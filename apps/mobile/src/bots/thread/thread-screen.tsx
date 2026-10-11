@@ -955,13 +955,16 @@ export function BotThreadScreen({
   const headerActions = useMemo<ThreadHeaderActions>(
     () => ({
       openDrawer: () => navigation.dispatch(DrawerActions.openDrawer()),
+      openComputer: () => router.push({ pathname: '/bots/computer', params: { c: sessionId } }),
       askInChat: () => {
         const bot = latest.current.owner;
         if (bot) openNewChat(router, { profile: isSproutyBot(bot) ? 'sprouty' : `bot:${bot.id}` });
       },
     }),
-    [navigation, router],
+    [navigation, router, sessionId],
   );
+  // The member's computer is theirs, not one Bot's: offered on every thread once computers run here.
+  const hasComputer = useBots((s) => s.computer?.state === 'ready');
 
   /* ---------- rows ---------- */
   const runActive = snap.runActive;
@@ -1112,6 +1115,7 @@ export function BotThreadScreen({
         badge={badge}
         ownerName={owner?.name ?? null}
         canAsk={!group && !!owner && owner.status === 'active'}
+        hasComputer={hasComputer}
         actions={headerActions}
       />
 

@@ -4,7 +4,24 @@ import type { DatabaseProvider, ScheduledTaskRow } from '@greenhouse/db';
 const ws = vi.hoisted(() => ({ sendToUser: vi.fn() }));
 vi.mock('../ws/connection-manager.js', () => ({ connectionManager: ws }));
 
-import { buildTaskEmail, buildTaskNotification, notifyTaskResult } from './notify.js';
+import { buildTaskEmail, buildTaskNotification, notifyTaskResult, taskResultTitle } from './notify.js';
+
+/** The reads `notifyTaskResult` makes besides the notification ledger: owner, Bots, push devices. */
+function accountReads(over: { locale?: string; devices?: unknown[] } = {}) {
+  return {
+    users: {
+      getById: vi.fn().mockResolvedValue({
+        id: 'owner-1',
+        locale: over.locale ?? 'en',
+        status: 'active',
+        role: 'team',
+        auth_version: 0,
+      }),
+    },
+    bots: { listBots: vi.fn().mockResolvedValue([]), getBot: vi.fn().mockResolvedValue(undefined) },
+    pushDevices: { listDeliverable: vi.fn().mockResolvedValue(over.devices ?? []) },
+  };
+}
 
 function task(): ScheduledTaskRow {
   return {
@@ -46,6 +63,7 @@ describe('durable scheduled-task notifications', () => {
     });
     const createDelivery = vi.fn().mockResolvedValue({ id: 'delivery-1' });
     const db = {
+      ...accountReads(),
       notifications: {
         createWithStatus,
         createDelivery,
@@ -83,6 +101,8 @@ describe('durable scheduled-task notifications', () => {
           summary: 'Everything is healthy.',
           runtime_kind: 'automation',
           runtime_run_id: 'runtime-1',
+          // the phone opens the result session; no Bot resolved → the workspace's name titles it
+          push: { k: 'done', sid: 'session-1', open: 'chat', bot_id: null, ok: true },
         },
       }),
     );
@@ -105,6 +125,7 @@ describe('durable scheduled-task notifications', () => {
   it('replays delivery creation idempotently but does not push a duplicate in-app notification', async () => {
     const createDelivery = vi.fn().mockResolvedValue({ id: 'delivery-1' });
     const db = {
+      ...accountReads(),
       notifications: {
         createWithStatus: vi.fn().mockResolvedValue({
           created: false,
@@ -125,6 +146,90 @@ describe('durable scheduled-task notifications', () => {
 
     expect(createDelivery).toHaveBeenCalledTimes(3);
     expect(ws.sendToUser).not.toHaveBeenCalled();
+  });
+});
+
+describe("scheduled-task results in the owner's language, and on the phone", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('titles the inbox fact in the account language', async () => {
+    expect(taskResultTitle('zh', '每周到期任务汇总', false)).toBe('「每周到期任务汇总」已完成');
+    expect(taskResultTitle('zh', '每周到期任务汇总', true)).toBe('「每周到期任务汇总」需要查看');
+    expect(taskResultTitle('en', 'Weekly digest', false)).toBe('Weekly digest completed');
+
+    const createWithStatus = vi.fn().mockResolvedValue({
+      created: true,
+      notification: {
+        id: 'ntf-zh',
+        user_id: 'owner-1',
+        kind: 'runtime_completed',
+        title: 'x',
+        created_at: new Date().toISOString(),
+        payload: '{}',
+      },
+    });
+    const db = {
+      ...accountReads({ locale: 'zh' }),
+      notifications: { createWithStatus, createDelivery: vi.fn(), countUnread: vi.fn().mockResolvedValue(1) },
+      runtime: { listToolCalls: vi.fn().mockResolvedValue([]) },
+    } as unknown as DatabaseProvider;
+    await notifyTaskResult(
+      db,
+      { ...task(), notify_webhook: null, notify_email: false, notify_wecom: false },
+      {
+        status: 'completed',
+        summary: '一切正常。',
+        sessionId: 'session-zh',
+      },
+    );
+    expect(createWithStatus.mock.calls[0]![0].title).toBe('「Daily report」已完成');
+  });
+
+  it('queues one mobile push per phone that has "done" on — none when it is off', async () => {
+    const now = new Date().toISOString();
+    const devices = [
+      { id: 'pdv_on', prefs: '{}', user_id: 'owner-1', auth_version: 0, disabled_at: null, last_seen_at: now },
+      {
+        id: 'pdv_off',
+        prefs: '{"done":false}',
+        user_id: 'owner-1',
+        auth_version: 0,
+        disabled_at: null,
+        last_seen_at: now,
+      },
+    ];
+    const createDelivery = vi.fn().mockResolvedValue({ id: 'd' });
+    const db = {
+      ...accountReads({ devices }),
+      notifications: {
+        createWithStatus: vi.fn().mockImplementation(async (input: { payload: unknown }) => ({
+          created: true,
+          notification: {
+            id: 'ntf-push',
+            user_id: 'owner-1',
+            kind: 'runtime_completed',
+            title: 'x',
+            created_at: now,
+            payload: JSON.stringify(input.payload),
+          },
+        })),
+        createDelivery,
+        countUnread: vi.fn().mockResolvedValue(1),
+      },
+      runtime: { listToolCalls: vi.fn().mockResolvedValue([]) },
+    } as unknown as DatabaseProvider;
+    await notifyTaskResult(
+      db,
+      { ...task(), notify_webhook: null, notify_email: false, notify_wecom: false },
+      {
+        status: 'completed',
+        summary: 'Done.',
+        sessionId: 'session-push',
+      },
+    );
+    expect(createDelivery.mock.calls.map(([input]) => input)).toEqual([
+      { notification_id: 'ntf-push', channel: 'mobile_push', recipient: 'pdv_on' },
+    ]);
   });
 });
 
@@ -209,6 +314,7 @@ describe('write receipt', () => {
 
   function dbWith(listToolCalls: unknown) {
     return {
+      ...accountReads(),
       notifications: {
         createWithStatus: vi.fn().mockResolvedValue({
           created: false,

@@ -376,6 +376,55 @@ export const botProcessWatches = pgTable(
   ],
 );
 
+// ─── bot_computer_backups ─────────────────────────────────
+
+/**
+ * An encrypted copy of a member's computer home (both uids) in the deployment's own
+ * storage — local disk or an S3 bucket, never the computer's provider (apps/api
+ * …/computer/backups.ts). Taken as an idle computer goes to sleep (at most every
+ * BOTS_COMPUTER_BACKUP_HOURS) or on an administrator's request; restored into a new
+ * computer when the member's previous one is gone (deleted, another provider or driver).
+ *
+ * `user_id` is a logical link to users, not a foreign key: the stored objects must be
+ * deleted before the row, so a member's deletion goes through the computer runtime
+ * (purge with wipe), and rows whose member is gone are swept with their objects.
+ * One `running` row per member at most (the partial unique index): of several API
+ * processes, one takes a member's backup.
+ */
+export const botComputerBackups = pgTable(
+  'bot_computer_backups',
+  {
+    /** `bkp_<hex>`. */
+    id: text('id').primaryKey(),
+    user_id: text('user_id').notNull(),
+    status: text('status', { enum: ['running', 'complete', 'failed'] }).notNull(),
+    /** idle = before the computer went to sleep; admin = Back up now. */
+    reason: text('reason', { enum: ['idle', 'admin'] }).notNull(),
+    /** Where the objects are (`<prefix>` + `<user>/<id>/<agent|browser>`). */
+    store: text('store', { enum: ['local', 's3'] }).notNull(),
+    /** The backup's own AES-256 key, sealed with the vault key (`gv1.<key id>.…`, AAD bound to user and id). */
+    key_enc: text('key_enc').notNull(),
+    /** Stream format version (backup-format.ts). */
+    format: integer('format').notNull().default(1),
+    /** The computer it was taken from: docker | e2b, and its container or sandbox. */
+    driver: text('driver').notNull(),
+    source_ref: text('source_ref').notNull(),
+    /** Stored size (compressed, encrypted), set when complete. */
+    bytes: bigint('bytes', { mode: 'number' }),
+    error: text('error'),
+    /** The last time it was put into a new computer. */
+    restored_at: ts('restored_at'),
+    created_at: ts('created_at').notNull(),
+    completed_at: ts('completed_at'),
+  },
+  (table) => [
+    index('idx_bot_computer_backups_user').on(table.user_id, table.created_at),
+    uniqueIndex('uq_bot_computer_backups_running')
+      .on(table.user_id)
+      .where(sql`${table.status} = 'running'`),
+  ],
+);
+
 // ─── vault_items ──────────────────────────────────────────
 
 export const vaultItems = pgTable(
@@ -446,5 +495,7 @@ export type BotComputerRow = typeof botComputers.$inferSelect;
 export type BotComputerState = BotComputerRow['state'];
 export type BotProcessWatchRow = typeof botProcessWatches.$inferSelect;
 export type BotProcessWatchStatus = BotProcessWatchRow['status'];
+export type BotComputerBackupRow = typeof botComputerBackups.$inferSelect;
+export type BotComputerBackupStatus = BotComputerBackupRow['status'];
 export type VaultItemRow = typeof vaultItems.$inferSelect;
 export type VaultAccessLogRow = typeof vaultAccessLog.$inferSelect;

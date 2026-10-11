@@ -1,8 +1,12 @@
-/** Durable optional-channel delivery for permanent platform notifications. */
+/**
+ * Durable optional-channel delivery for permanent platform notifications: the
+ * automation channels (WeCom / Feishu / email) one attempt at a time, mobile
+ * pushes as one batch per pass (push/deliver.ts — Expo takes ≤100 per request).
+ */
 
 import { randomUUID } from 'node:crypto';
 
-import type { DatabaseProvider, NotificationDeliveryAttemptRow } from '@greenhouse/db';
+import type { DatabaseProvider, NotificationDeliveryAttemptRow, NotificationDeliveryChannel } from '@greenhouse/db';
 import { toErrorMessage } from '@greenhouse/utils/error';
 import { safeJsonParse } from '@greenhouse/utils/json';
 import { logger } from '@greenhouse/utils/logger';
@@ -20,10 +24,15 @@ import {
 import { sendAppMarkdown } from '../wecom/client.js';
 import { sendCardMarkdown } from '../feishu/client.js';
 import { FEISHU_PROVIDER } from '../routes/feishu-oauth.js';
+import { deliverPushAttempts } from './push/deliver.js';
+import type { FetchLike } from './push/expo.js';
 
 const DEFAULT_INTERVAL_MS = 1_000;
 const DEFAULT_LEASE_MS = 120_000;
 const DEFAULT_BATCH_SIZE = 20;
+
+/** The automation result channels (the Runtime notification projector's half). */
+export const AUTOMATION_DELIVERY_CHANNELS: readonly NotificationDeliveryChannel[] = ['wecom', 'feishu', 'email'];
 
 interface DeliveryResult {
   ok: boolean;
@@ -37,8 +46,16 @@ export interface NotificationDeliveryWorkerOptions {
   leaseMs?: number;
   batchSize?: number;
   skipBootPass?: boolean;
+  /**
+   * The channels this worker claims (default: the automation channels). The API adds
+   * `mobile_push` when `MOBILE_PUSH_ENABLED` is on — never claimed otherwise, so a
+   * deployment with pushes off sends nothing to exp.host.
+   */
+  channels?: readonly NotificationDeliveryChannel[];
   /** Test seam for deterministic backoff timestamps. */
   now?: () => Date;
+  /** Test seam for the Expo HTTP client. */
+  pushFetch?: FetchLike;
 }
 
 export interface NotificationDeliveryWorker {
@@ -46,7 +63,7 @@ export interface NotificationDeliveryWorker {
   stop(): void;
 }
 
-function retryAt(attempts: number, now: Date): string {
+export function retryAt(attempts: number, now: Date): string {
   const delayMs = Math.min(15 * 60_000, 5_000 * 2 ** Math.min(Math.max(attempts - 1, 0), 8));
   return new Date(now.getTime() + delayMs).toISOString();
 }
@@ -141,6 +158,7 @@ export async function startNotificationDeliveryWorker(
   const workerId = options.workerId ?? `notification-api-${process.pid}-${randomUUID().slice(0, 8)}`;
   const leaseMs = Math.max(options.leaseMs ?? DEFAULT_LEASE_MS, 1_000);
   const batchSize = Math.min(Math.max(options.batchSize ?? DEFAULT_BATCH_SIZE, 1), 100);
+  const channels = [...(options.channels ?? AUTOMATION_DELIVERY_CHANNELS)];
   const now = options.now ?? (() => new Date());
   let running = false;
   let stopped = false;
@@ -212,13 +230,18 @@ export async function startNotificationDeliveryWorker(
       const attempts = await db.notifications.claimDeliveries({
         worker_id: workerId,
         lease_ms: leaseMs,
-        channels: ['wecom', 'feishu', 'email'],
+        channels,
         limit: batchSize,
         at: now(),
       });
+      const pushes = attempts.filter((attempt) => attempt.channel === 'mobile_push');
+      const others = attempts.filter((attempt) => attempt.channel !== 'mobile_push');
       // Start every claimed network request promptly so a slow first channel
       // cannot let a later row's lease expire before it even begins.
-      await Promise.all(attempts.map(processAttempt));
+      await Promise.all([
+        ...others.map(processAttempt),
+        deliverPushAttempts(pushes, { db, workerId, now, retryAt, fetch: options.pushFetch }),
+      ]);
     } finally {
       running = false;
     }

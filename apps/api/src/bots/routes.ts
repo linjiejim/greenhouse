@@ -9,13 +9,14 @@
  * GET    /api/bots/conversations/:id                  — 对话详情 + 消息分页（before_seq / limit）+ 本页记忆回执的当前状态
  * POST   /api/bots/conversations/:id/members          — 邀请 Bot 进私聊做客串（旧群聊只读：409 group_closed）
  * DELETE /api/bots/conversations/:id/members/:botId   — 移出客串 Bot（旧群聊只读：409 group_closed）
- * POST   /api/bots/conversations/:id/read             — 标记已读
+ * POST   /api/bots/conversations/:id/read             — 标记已读（同时把这段对话的「回复了你」提醒标为已读）
  * POST   /api/bots/conversations/:id/compact          — 立即整理摘要（有回合在跑时 409）
  * GET    /api/bots/conversations/:id/notes            — 共享笔记列表
  * POST   /api/bots/conversations/:id/notes            — 新建共享笔记
  * PATCH  /api/bots/conversations/:id/notes/:noteId    — 修改共享笔记
  * DELETE /api/bots/conversations/:id/notes/:noteId    — 删除共享笔记
  * GET    /api/bots/conversations/:id/tasks            — 本对话的后台任务
+ * GET    /api/bots/tasks?state=active                 — 我所有对话里在跑的后台任务 + 最近 30 分钟内结束的（手机 Live Activity 对账用）
  * POST   /api/bots/tasks/:runId/cancel                — 取消后台任务（Runtime 取消语义）
  * GET    /api/bots/requests                           — 「需要你」请求（?status=pending）
  * POST   /api/bots/requests/:id                       — 处理请求（审批 / 建 Bot / 开始任务 / 登录 / 交还），已处理 409 already_decided、处理中 409 deciding、旧群聊的卡 409 group_closed
@@ -36,7 +37,13 @@
  */
 
 import { Hono } from 'hono';
-import { BotsDomainError, getDb, type ConversationWithMembers, type DatabaseProvider } from '@greenhouse/db';
+import {
+  BOTS_REPLY_DEDUPE_PREFIX,
+  BotsDomainError,
+  getDb,
+  type ConversationWithMembers,
+  type DatabaseProvider,
+} from '@greenhouse/db';
 import { avatarConfigSchema, type AvatarConfig } from '@greenhouse/types/profile-manifest';
 import {
   BOT_DESCRIPTION_MAX,
@@ -73,7 +80,7 @@ import { writeGreeting } from './engine/greeting.js';
 import { deliverToConversation } from './engine/inbox.js';
 import { nextFreeName, validateBotInstructions, validateBotName, validateBotRole } from './engine/naming.js';
 import { decideBotRequest, RequestDecisionError } from './engine/requests.js';
-import { cancelBotTask, listConversationTasks } from './engine/tasks.js';
+import { cancelBotTask, listConversationTasks, listMemberTasks } from './engine/tasks.js';
 import { estimateRows, readTail } from './engine/transcript.js';
 import { NOTE_BODY_MAX, NOTE_TITLE_MAX } from './tools/conversation.js';
 import {
@@ -584,13 +591,23 @@ export function createBotsRoutes() {
         return c.json({ conversation: await conversationDetail(db, user.id, fresh, owner.locale) });
       })
 
-      // ── POST /api/bots/conversations/:id/read ──
+      // ── POST /api/bots/conversations/:id/read — also marks its missed-reply alerts read ──
       .post('/conversations/:id/read', async (c) => {
         const user = getAuthUser(c);
         const db = getDb();
         const conversation = await db.bots.getConversation(user.id, c.req.param('id'));
         if (!conversation) return c.json({ error: 'Conversation not found' }, 404);
         await db.bots.markRead(user.id, conversation.session_id);
+        const cleared = await db.notifications.markReadByDedupePrefix(
+          user.id,
+          `${BOTS_REPLY_DEDUPE_PREFIX}${conversation.session_id}:`,
+        );
+        if (cleared > 0) {
+          connectionManager.sendToUser(user.id, {
+            type: 'notification:summary',
+            unread: await db.notifications.countUnread(user.id),
+          });
+        }
         return c.json({ ok: true as const });
       })
 
@@ -720,6 +737,13 @@ export function createBotsRoutes() {
         const conversation = await db.bots.getConversation(user.id, c.req.param('id'));
         if (!conversation) return c.json({ error: 'Conversation not found' }, 404);
         return c.json({ tasks: await listConversationTasks(db, user.id, conversation.session_id) });
+      })
+
+      // ── GET /api/bots/tasks?state=active — the phone's Live Activities reconcile against it ──
+      .get('/tasks', async (c) => {
+        const user = getAuthUser(c);
+        if (c.req.query('state') !== 'active') return c.json({ error: 'state must be "active"' }, 400);
+        return c.json({ tasks: await listMemberTasks(getDb(), user.id) });
       })
 
       // ── POST /api/bots/tasks/:runId/cancel ──

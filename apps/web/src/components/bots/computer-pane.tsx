@@ -34,6 +34,7 @@ import {
   Activity,
   AlertTriangle,
   Folder,
+  History,
   Maximize2,
   Minimize2,
   Monitor,
@@ -174,6 +175,8 @@ const ComputerPaneBody = forwardRef<ComputerPaneHandle, ComputerPaneProps>(funct
   // The request a take-over answers, so handing back resumes exactly that Bot.
   const [answering, setAnswering] = useState<string | undefined>(undefined);
   const [tab, setTab] = useState<ComputerTab>('screen');
+  /** The restored-from-backup notice the member closed (it stays closed for that backup). */
+  const [dismissedRestore, setDismissedRestore] = useState<string | null>(null);
   // Tabs opened so far stay mounted (hidden) — see the header comment.
   const [opened, setOpened] = useState<ReadonlySet<ComputerTab>>(() => new Set<ComputerTab>(['screen']));
   const showTab = useCallback((next: ComputerTab) => {
@@ -409,6 +412,24 @@ const ComputerPaneBody = forwardRef<ComputerPaneHandle, ComputerPaneProps>(funct
           )
         ) : phase?.kind === 'running' ? (
           <>
+            {status.restored_from && dismissedRestore !== status.restored_from && (
+              <div
+                className="flex items-start gap-2 rounded-lg border border-edge bg-surface-raised px-3 py-2 text-xs text-fg-secondary"
+                role="status"
+                data-testid="computer-restored"
+              >
+                <History size={14} className="mt-0.5 flex-shrink-0 text-primary-fg" aria-hidden="true" />
+                <span className="min-w-0 flex-1">
+                  {t('botsComputer.restoredFrom', { when: new Date(status.restored_from).toLocaleString() })}
+                </span>
+                <IconButton
+                  label={t('botsComputer.restoredDismiss')}
+                  onClick={() => setDismissedRestore(status.restored_from)}
+                >
+                  <X size={14} />
+                </IconButton>
+              </div>
+            )}
             <Tabs
               ariaLabel={t('botsComputer.tabsLabel')}
               active={tab}

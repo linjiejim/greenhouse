@@ -186,6 +186,21 @@ export function createNotificationService(db: Db) {
       return row;
     },
 
+    /** The fact a producer already wrote under this dedupe key (a replay whose content moved on). */
+    async getByDedupeKey(userId: string, dedupeKey: string): Promise<NotificationRow | undefined> {
+      const [row] = await db
+        .select()
+        .from(notifications)
+        .where(
+          and(
+            eq(notifications.user_id, identifier(userId, 'user_id')),
+            eq(notifications.dedupe_key, identifier(dedupeKey, 'dedupe_key')),
+          ),
+        )
+        .limit(1);
+      return row;
+    },
+
     async getForUser(notificationId: string, userId: string): Promise<NotificationRow | undefined> {
       const [row] = await db
         .select()
@@ -274,6 +289,27 @@ export function createNotificationService(db: Db) {
         .returning();
       if (rows[0]) return rows[0];
       return service.getForUser(notificationId, userId);
+    },
+
+    /**
+     * Mark the member's unread facts whose dedupe key starts with `prefix` read
+     * (`bots-reply:<session>:` when the member opens that conversation). Returns
+     * how many changed.
+     */
+    async markReadByDedupePrefix(userId: string, prefix: string, at: string | Date = new Date()): Promise<number> {
+      const escaped = identifier(prefix, 'prefix').replace(/[\\%_]/g, (char) => `\\${char}`);
+      const rows = await db
+        .update(notifications)
+        .set({ read_at: timestamp(at, 'read_at') })
+        .where(
+          and(
+            eq(notifications.user_id, identifier(userId, 'user_id')),
+            isNull(notifications.read_at),
+            sql`${notifications.dedupe_key} LIKE ${`${escaped}%`} ESCAPE '\\'`,
+          ),
+        )
+        .returning({ id: notifications.id });
+      return rows.length;
     },
 
     async markAllRead(userId: string, at: string | Date = new Date()): Promise<number> {
@@ -440,6 +476,47 @@ export function createNotificationService(db: Db) {
           lease_expires_at: null,
           last_error: null,
           delivered_at: at,
+          updated_at: at,
+          version: sql`${notificationDeliveryAttempts.version} + 1`,
+        })
+        .where(
+          and(
+            eq(notificationDeliveryAttempts.id, identifier(input.id, 'id')),
+            eq(notificationDeliveryAttempts.version, positiveInt(input.expected_version, 'expected_version')),
+            eq(notificationDeliveryAttempts.status, 'claimed'),
+            eq(notificationDeliveryAttempts.lease_owner, identifier(input.worker_id, 'worker_id')),
+            gt(notificationDeliveryAttempts.lease_expires_at, at),
+          ),
+        )
+        .returning();
+      if (!updated) {
+        throw new NotificationError('notification_lease_lost', 'Notification delivery lease is no longer owned');
+      }
+      return updated;
+    },
+
+    /**
+     * End a leased attempt without delivering it, for good: `suppressed` (re-checked
+     * and no longer worth sending), `failed` (the transport says the recipient is
+     * gone) or `dead_letter` (a send that can never succeed — a bug). Lease rules as
+     * `acknowledgeDelivery`.
+     */
+    async settleDelivery(input: {
+      id: string;
+      expected_version: number;
+      worker_id: string;
+      status: Extract<NotificationDeliveryAttemptRow['status'], 'suppressed' | 'failed' | 'dead_letter'>;
+      reason: string;
+      at?: string | Date;
+    }): Promise<NotificationDeliveryAttemptRow> {
+      const at = timestamp(input.at);
+      const [updated] = await db
+        .update(notificationDeliveryAttempts)
+        .set({
+          status: input.status,
+          lease_owner: null,
+          lease_expires_at: null,
+          last_error: identifier(input.reason, 'reason', 2048),
           updated_at: at,
           version: sql`${notificationDeliveryAttempts.version} + 1`,
         })

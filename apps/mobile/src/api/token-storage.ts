@@ -165,6 +165,19 @@ export function clearTokens(): void {
   if (activeSid) purgeStationTokens(activeSid);
 }
 
+/**
+ * A station's persisted pair, read without touching the mirror — for a last call to a
+ * station that is not the active one (unregistering this phone's pushes as the
+ * station is removed).
+ */
+export async function readStationTokens(stationId: string): Promise<{ access: string | null; refresh: string | null }> {
+  const [access, refresh] = await Promise.all([
+    persistGet(keyFor(ACCESS_KEY, stationId)),
+    persistGet(keyFor(REFRESH_KEY, stationId)),
+  ]);
+  return { access, refresh };
+}
+
 /** Delete a station's persisted tokens (station removal / sign-out cleanup). */
 export function purgeStationTokens(stationId: string): void {
   persistSet(keyFor(ACCESS_KEY, stationId), null);

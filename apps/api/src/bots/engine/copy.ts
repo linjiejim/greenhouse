@@ -507,6 +507,29 @@ export const copy = {
 
   notificationBody: (l: BotsLocale) => (l === 'zh' ? '打开 Bots 查看并处理。' : 'Open Bots to review it.'),
 
+  /** The inbox fact of a finished background task (runtime-projector.ts). */
+  taskNotificationTitle: (l: BotsLocale, title: string, ok: boolean) => {
+    if (l === 'zh')
+      return title ? `后台任务${ok ? '完成了' : '没能完成'}：${title}` : `后台任务${ok ? '完成了' : '没能完成'}`;
+    const head = ok ? 'Background task finished' : 'Background task did not finish';
+    return title ? `${head}: ${title}` : head;
+  },
+  taskNotificationBody: (l: BotsLocale, ok: boolean) =>
+    l === 'zh'
+      ? ok
+        ? 'Bot 已在对话里汇报。'
+        : 'Bot 已在对话里说明了情况。'
+      : ok
+        ? 'The Bot reported back in its conversation.'
+        : 'The Bot reported what happened in its conversation.',
+
+  /**
+   * The inbox fact of a Bot reply nobody saw (reply-alerts.ts). Never the reply's
+   * words: facts are permanent, a conversation can be deleted.
+   */
+  replyAlertTitle: (l: BotsLocale, bot: string) => (l === 'zh' ? `${bot} 回复了你` : `${bot} replied`),
+  replyAlertBody: (l: BotsLocale) => (l === 'zh' ? '打开对话查看。' : 'Open the conversation to read it.'),
+
   /** The addressed Bot is archived (a DM's owner, or a mentioned guest): the message gets this line, not silence. */
   botArchived: (l: BotsLocale, name: string) =>
     l === 'zh'

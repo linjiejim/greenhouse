@@ -4,6 +4,9 @@
  * guarantees are in tests/db/bot-computer-capacity.db-commit.test.ts.
  */
 
+import type { ChildProcess } from 'node:child_process';
+import { EventEmitter } from 'node:events';
+import { PassThrough, Readable } from 'node:stream';
 import { describe, expect, it } from 'vitest';
 import type { BotComputerRow, BotComputerState } from '@greenhouse/db';
 
@@ -16,6 +19,7 @@ import {
   START_DEADLINE_MS,
   type Clock,
   type ComputerStore,
+  type ControllerBackups,
   type ControllerEnvironment,
   type HostDiskReading,
   type TryLockResult,
@@ -30,7 +34,7 @@ import {
   type ExecSpec,
 } from './docker.js';
 import { createDockerHost } from './docker-host.js';
-import { ComputerStartError, type ComputerStartSpec } from './host.js';
+import { ComputerStartError, type ComputerStartSpec, type HomeRestore } from './host.js';
 import { ComputerUnavailableError } from './errors.js';
 import { computerContainerName, computerVolumeName, LABEL_NAMESPACE, LABEL_USER } from './namespace.js';
 
@@ -198,8 +202,37 @@ class FakeDocker {
   dfCalls = 0;
   /** curl exit code per probed URL (default 7 = refused, i.e. blocked). */
   egress: Record<string, number> = {};
+  /** Per-uid overrides of `egress` (a hole only one account has). */
+  egressByUser: Record<string, Record<string, number>> = {};
+  /** The uids the egress probe ran as, in order. */
+  probedAs: string[] = [];
   onStop: ((name: string) => void) | null = null;
   log: string[] = [];
+  /** What each restore helper container was fed: `<volume>:<user>` → bytes. */
+  restoredInto = new Map<string, Buffer>();
+  /** A helper container's exit code (a restore that fails). */
+  helperExit = 0;
+
+  /** A one-off `docker run -i --rm` restore helper: reads its stdin, then exits. */
+  helper(args: string[]): ChildProcess {
+    const volume = args[args.indexOf('-v') + 1]!.split(':')[0]!;
+    const user = args[args.indexOf('--user') + 1]!;
+    this.log.push(`helper ${volume} ${user}`);
+    const proc = new EventEmitter() as ChildProcess;
+    const stdin = new PassThrough();
+    const chunks: Buffer[] = [];
+    stdin.on('data', (chunk: Buffer) => chunks.push(chunk));
+    stdin.on('end', () => {
+      this.restoredInto.set(`${volume}:${user}`, Buffer.concat(chunks));
+      setImmediate(() => proc.emit('close', this.helperExit, null));
+    });
+    const kill = () => {
+      setImmediate(() => proc.emit('close', null, 'SIGKILL'));
+      return true;
+    };
+    Object.assign(proc, { stdin, stdout: new PassThrough(), stderr: new PassThrough(), kill });
+    return proc;
+  }
 
   constructor(private clock: FakeClock) {}
 
@@ -231,6 +264,8 @@ class FakeDocker {
           .map(([name, v]) => ({ name, labels: v.labels }));
       },
       volumeCreatedAt: async (name) => this.volumes.get(name)?.createdAt ?? null,
+      volumeExists: async (name) => this.volumes.has(name),
+      runStream: (args) => this.helper(args),
       run: async (args) => {
         if (this.runFailure) throw this.runFailure;
         const name = args[args.indexOf('--name') + 1]!;
@@ -275,7 +310,9 @@ class FakeDocker {
         if (spec.argv[3] === 'gh-egress') {
           const urls = spec.argv.slice(4);
           this.log.push(`egress probe ${urls.join(' ')}`);
-          return ok({ stdout: Buffer.from(urls.map((u) => `${this.egress[u] ?? 7} ${u}\n`).join('')) });
+          this.probedAs.push(spec.user);
+          const code = (u: string) => this.egressByUser[spec.user]?.[u] ?? this.egress[u] ?? 7;
+          return ok({ stdout: Buffer.from(urls.map((u) => `${code(u)} ${u}\n`).join('')) });
         }
         return ok();
       },
@@ -294,6 +331,9 @@ function setup(
     awaitingHuman?: (userId: string) => boolean;
     tryLock?: boolean;
     egressProbe?: string[];
+    egressProbeUsers?: Array<'agent' | 'browser'>;
+    /** The host's kind as the controller sees it (the fake is docker underneath). */
+    hostKind?: 'docker' | 'e2b';
     /** Account locale per member (unknown = null). */
     locale?: (userId: string) => string | null;
     /** Running background jobs per container (the gh-jobs count); throwing = the computer did not answer. */
@@ -302,6 +342,7 @@ function setup(
     startError?: () => Error | null;
     operatorLang?: string | null;
     jobMaxHours?: number;
+    backups?: ControllerBackups;
   } = {},
 ) {
   const clock = new FakeClock();
@@ -332,6 +373,7 @@ function setup(
     urlBlocklist: ['green.example.com'],
     imageId: 'sha256:img',
     egressProbe: opts.egressProbe,
+    ...(opts.egressProbeUsers ? { egressProbeUsers: opts.egressProbeUsers } : {}),
   };
   const events = {
     states: [] as Array<[string, string, string | null]>,
@@ -346,6 +388,7 @@ function setup(
     store,
     host: {
       ...dockerHost,
+      kind: opts.hostKind ?? dockerHost.kind,
       start: (row, spec) => {
         starts.push(spec);
         const failure = opts.startError?.();
@@ -358,6 +401,7 @@ function setup(
     awaitingHuman: async (userId) => opts.awaitingHuman?.(userId) ?? false,
     memberLocale: async (userId) => opts.locale?.(userId) ?? null,
     ...(opts.runningJobs ? { runningJobs: async (container: string) => opts.runningJobs!(container) } : {}),
+    ...(opts.backups ? { backups: opts.backups } : {}),
     clock,
     onState: (row) => events.states.push([row.user_id, row.state, row.state_reason]),
     onStopped: (userId, reason) => events.stopped.push([userId, reason]),
@@ -1053,5 +1097,150 @@ describe('computer lifecycle', () => {
     expect(events.runtimeErrors.map((e) => e.reason)).toEqual(['network_invalid']);
     expect(await store.get('u2')).toMatchObject({ state: 'error', state_reason: 'network_invalid' });
     expect(docker.containers.has(computerContainerName(NS, 'u2'))).toBe(false);
+  });
+
+  it('probes a hosted computer from both accounts; a hole fails only that computer, never the runtime', async () => {
+    const probe = ['http://169.254.169.254/', 'http://127.0.0.1:49983/health'];
+    const { controller, store, docker, events } = setup({
+      egressProbe: probe,
+      egressProbeUsers: ['agent', 'browser'],
+      hostKind: 'e2b',
+    });
+    expect((await controller.ensureRunning('u1')).state).toBe('running');
+    expect(docker.probedAs).toEqual(['agent', 'browser']);
+
+    // The browser's account could reach the provider's agent: that computer is never used.
+    docker.egressByUser.browser = { 'http://127.0.0.1:49983/health': 0 };
+    const error = await controller.ensureRunning('u2').catch((e) => e);
+    expect(error).toMatchObject({ name: 'ComputerUnavailableError', code: 'start_failed' });
+    expect(String(error.message)).toMatch(/127\.0\.0\.1:49983\/health as browser/);
+    expect(events.runtimeErrors).toEqual([]);
+    expect(await store.get('u2')).toMatchObject({ state: 'error', state_reason: 'egress_open' });
+    expect(docker.containers.has(computerContainerName(NS, 'u2'))).toBe(false);
+    // Everyone else carries on, and the next try succeeds once the rules hold again.
+    expect((await store.get('u1'))?.state).toBe('running');
+    docker.egressByUser.browser = {};
+    expect((await controller.ensureRunning('u2')).state).toBe('running');
+  });
+});
+
+describe('backups', () => {
+  /** What the idle loop is told, and the backup a start can restore. */
+  function fakeBackups(opts: { verdict?: () => 'go' | 'wait'; source?: () => HomeRestore | null } = {}) {
+    const calls = {
+      beforeSleep: [] as string[],
+      restoreSource: [] as string[],
+      restored: [] as string[],
+      deleteAll: [] as string[],
+    };
+    const backups: ControllerBackups = {
+      beforeSleep: async (row) => {
+        calls.beforeSleep.push(row.user_id);
+        return opts.verdict?.() ?? 'go';
+      },
+      restoreSource: async (userId) => {
+        calls.restoreSource.push(userId);
+        return opts.source?.() ?? null;
+      },
+      restored: async (backupId) => {
+        calls.restored.push(backupId);
+      },
+      deleteAll: async (userId) => {
+        calls.deleteAll.push(userId);
+      },
+    };
+    return { backups, calls };
+  }
+
+  function source(opts: { fails?: boolean } = {}): HomeRestore {
+    return {
+      backupId: 'bkp_1',
+      takenAt: '2026-10-09T08:00:00.000Z',
+      open: async (user) => {
+        if (!opts.fails) return Readable.from([Buffer.from(`${user}-home`)]);
+        const broken = new PassThrough();
+        setImmediate(() => broken.destroy(new Error('a record failed authentication')));
+        return broken;
+      },
+    };
+  }
+
+  it('an idle computer stays awake while its backup runs, and sleeps once backups let it', async () => {
+    let verdict: 'go' | 'wait' = 'wait';
+    const { backups, calls } = fakeBackups({ verdict: () => verdict });
+    const { controller, clock, store } = setup({ backups });
+    await controller.ensureRunning('u1');
+    clock.ms += 16 * MIN;
+    await controller.idleTick();
+    expect(calls.beforeSleep).toEqual(['u1']);
+    expect((await store.get('u1'))?.state).toBe('running');
+    verdict = 'go';
+    await controller.idleTick();
+    expect(await store.get('u1')).toMatchObject({ state: 'absent', state_reason: 'idle' });
+  });
+
+  it('a member whose home volume is gone gets it back from the newest backup before the computer runs', async () => {
+    const { backups, calls } = fakeBackups({ source: () => source() });
+    const { controller, docker, store } = setup({ backups });
+    // A first computer starts empty: there is nothing of the member's to restore.
+    await controller.ensureRunning('u1');
+    expect(calls.restoreSource).toEqual([]);
+    await controller.stop('u1', 'user');
+    const volume = computerVolumeName(NS, 'u1');
+    docker.volumes.delete(volume); // another driver before, or the volume was lost
+    docker.log.length = 0;
+    await controller.ensureRunning('u1');
+    expect(calls.restoreSource).toEqual(['u1']);
+    // Filled as each uid by a helper container, before the computer's own container runs.
+    expect(docker.log).toEqual([
+      `volume create ${volume}`,
+      `helper ${volume} agent`,
+      `helper ${volume} browser`,
+      `run ${computerContainerName(NS, 'u1')}`,
+    ]);
+    expect(docker.restoredInto.get(`${volume}:agent`)?.toString()).toBe('agent-home');
+    expect(docker.restoredInto.get(`${volume}:browser`)?.toString()).toBe('browser-home');
+    expect(calls.restored).toEqual(['bkp_1']);
+    // The volume is there now: later starts keep it.
+    await controller.stop('u1', 'user');
+    await controller.ensureRunning('u1');
+    expect(calls.restoreSource).toEqual(['u1']);
+    expect((await store.get('u1'))?.state).toBe('running');
+  });
+
+  it('a member coming from a hosted computer gets their files back in a docker computer of its own name', async () => {
+    const { backups, calls } = fakeBackups({ source: () => source() });
+    const { controller, docker, store } = setup({ backups });
+    // The row as the e2b driver left it: a sandbox id, started before; this host has no home volume for it.
+    store.seed('u1', { container_name: 'i8tn0r4mbbv0x2gqk6pjo', last_started_at: '2026-10-09T08:00:00.000Z' });
+    const row = await controller.ensureRunning('u1');
+    expect(row.container_name).toBe(computerContainerName(NS, 'u1'));
+    expect(docker.containers.has(computerContainerName(NS, 'u1'))).toBe(true);
+    expect(docker.restoredInto.get(`${computerVolumeName(NS, 'u1')}:agent`)?.toString()).toBe('agent-home');
+    expect(calls.restored).toEqual(['bkp_1']);
+  });
+
+  it('a backup that cannot be restored fails the start (restore_failed) and leaves no half-filled home', async () => {
+    const { backups, calls } = fakeBackups({ source: () => source({ fails: true }) });
+    const { controller, docker, store } = setup({ backups });
+    await controller.ensureRunning('u1');
+    await controller.stop('u1', 'user');
+    const volume = computerVolumeName(NS, 'u1');
+    docker.volumes.delete(volume);
+    await expect(controller.ensureRunning('u1')).rejects.toMatchObject({ code: 'start_failed' });
+    expect(await store.get('u1')).toMatchObject({ state: 'error', state_reason: 'restore_failed' });
+    // The next start finds no home and tries the restore again.
+    expect(docker.volumes.has(volume)).toBe(false);
+    expect(calls.restored).toEqual([]);
+  });
+
+  it('a wipe deletes the member’s backups with the home', async () => {
+    const { backups, calls } = fakeBackups();
+    const { controller } = setup({ backups });
+    await controller.ensureRunning('u1');
+    await controller.purge('u1', { wipe: false });
+    expect(calls.deleteAll).toEqual([]);
+    await controller.purge('u1', { wipe: true });
+    expect(calls.deleteAll).toEqual(['u1']);
   });
 });

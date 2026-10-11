@@ -9,9 +9,9 @@
  * confirms). Each is a `bot_requests` row; the card binds to its id and is
  * settled exactly once through `db.bots.settleRequest` (CAS on `pending`).
  *
- * Every new request also becomes an in-app notification and a
- * `bots:attention` push, so a member who delegated and walked away still
- * learns their Bot is waiting.
+ * Every new request also becomes an in-app notification (and a push to the
+ * member's phones — `publishNotification`) and a `bots:attention` WS event, so
+ * a member who delegated and walked away still learns their Bot is waiting.
  *
  * Waiters are in-process; a decision made on another API slot is still seen
  * because the waiter also polls the row.
@@ -22,10 +22,12 @@ import type { BotApprovalPayload, BotRequestKind, BotRequestPayload } from '@gre
 import { logger } from '@greenhouse/utils/logger';
 import { toErrorMessage } from '@greenhouse/utils/error';
 import { safeJsonParse } from '@greenhouse/utils/json';
+import { publishNotification } from '../../notifications/publish.js';
 import { connectionManager } from '../../ws/connection-manager.js';
 import { toRequestView } from '../views.js';
 import type { ApprovalDecision } from './context.js';
 import { copy, type BotsLocale } from './copy.js';
+import { sweepReplyAlerts } from './reply-alerts.js';
 
 /**
  * The longest an in-turn approval may wait. The spec allows 150 s, but the
@@ -78,7 +80,7 @@ export function requestLine(locale: BotsLocale, botName: string, kind: BotReques
 
 async function notifyRequest(db: DatabaseProvider, row: BotRequestRow, bot: BotRow | null, locale: BotsLocale) {
   try {
-    const result = await db.notifications.createWithStatus({
+    await publishNotification(db, {
       user_id: row.user_id,
       kind: 'system',
       // The same line the transcript shows: names the Bot and what it needs.
@@ -92,17 +94,17 @@ async function notifyRequest(db: DatabaseProvider, row: BotRequestRow, bot: BotR
         href: `#/bots?c=${encodeURIComponent(row.session_id)}`,
       },
       dedupe_key: `bots-request:${row.id}`,
+      // …and the member's phones, until the card is decided or expires (spec 20261010-mobile-push §2.1).
+      push: {
+        k: 'needs_you',
+        sid: row.session_id,
+        open: 'bots',
+        rid: row.id,
+        request_kind: row.kind,
+        expires_at: row.expires_at,
+        bot_id: row.bot_id,
+      },
     });
-    if (result.created) {
-      const unread = await db.notifications.countUnread(row.user_id);
-      connectionManager.sendToUser(row.user_id, {
-        type: 'notification:new',
-        notificationId: result.notification.id,
-        kind: result.notification.kind,
-        title: result.notification.title,
-        unread,
-      });
-    }
   } catch (error) {
     // The card itself is the source of truth; a lost notification must not fail the tool.
     logger.warn('[bots] could not create the needs-you notification', {
@@ -255,12 +257,17 @@ export async function expireDueRequests(db: DatabaseProvider = getDb()): Promise
   return expired;
 }
 
+/**
+ * The 30 s sweep: expire overdue cards, then alert the replies nobody saw
+ * (reply-alerts.ts — the sweep it was specified to ride on).
+ */
 export function startRequestExpiryLoop(): void {
   if (expiryTimer) return;
   expiryTimer = setInterval(() => {
-    void expireDueRequests().catch((error) =>
-      logger.warn('[bots] request expiry sweep failed', { error: toErrorMessage(error) }),
-    );
+    void expireDueRequests()
+      .catch((error) => logger.warn('[bots] request expiry sweep failed', { error: toErrorMessage(error) }))
+      .then(() => sweepReplyAlerts())
+      .catch((error) => logger.warn('[bots] reply alert sweep failed', { error: toErrorMessage(error) }));
   }, EXPIRY_SWEEP_MS);
   expiryTimer.unref?.();
 }

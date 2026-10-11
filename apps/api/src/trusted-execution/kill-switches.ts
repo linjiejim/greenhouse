@@ -56,7 +56,12 @@ type Environment = Record<string, string | undefined>;
 const TRUE_VALUES = new Set(['1', 'true', 'yes', 'on']);
 const FALSE_VALUES = new Set(['0', 'false', 'no', 'off']);
 
-function defaultOnSwitch(env: Environment, name: string, invalidEnv: string[]): boolean {
+/**
+ * A deployment switch that is on unless set to a recognised "off" value; any other
+ * non-empty value is treated as off (fail closed) and its name pushed onto
+ * `invalidEnv`. Shared with the other deployment switches (`MOBILE_PUSH_ENABLED`).
+ */
+export function defaultOnSwitch(env: Environment, name: string, invalidEnv: string[]): boolean {
   const raw = env[name];
   if (raw === undefined || raw.trim() === '') return true;
   const normalized = raw.trim().toLowerCase();

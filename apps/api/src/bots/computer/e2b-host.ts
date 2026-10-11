@@ -52,6 +52,8 @@ import {
 
 import { CLEARED_PROXY_ENV, ComputerDockerError, ComputerRuntimeError } from './docker.js';
 import { bridgeExec, bridgeStream, bridgeTunnel, BridgeConnectionError, type BridgeTarget } from './e2b-bridge.js';
+import { EGRESS_APPLY_SCRIPT, egressApplyEnv, PROVIDER_DENY_OUT } from './e2b-egress.js';
+import { HOME_USERS, homeExportArgv, homeImportArgv, homeOf, pipeIntoImport } from './home-archive.js';
 import {
   ComputerStartError,
   type ComputerHost,
@@ -59,6 +61,7 @@ import {
   type ComputerStartSpec,
   type ComputerUser,
   type ExecOutcome,
+  type HomeRestore,
   type HostInstance,
   type StartedComputer,
 } from './host.js';
@@ -85,6 +88,8 @@ const BRIDGE_WAIT_MS = 30_000;
 const MOVE_TIMEOUT_MS = 10 * 60_000;
 /** Tries per home within MOVE_TIMEOUT_MS (a dropped connection restarts that home). */
 const MOVE_ATTEMPTS = 3;
+/** Putting both homes back from a backup (bounded for the same reason as a move). */
+const RESTORE_TIMEOUT_MS = 15 * 60_000;
 /**
  * A move into a newer template that failed is not tried again on every start: the member
  * keeps the recovered old computer this long, then the next start tries again. Per API
@@ -268,8 +273,9 @@ export function createE2bApi(conn: { apiKey: string; domain?: string }): E2bApi 
           ...opts,
           metadata,
           timeoutMs: SANDBOX_TIMEOUT_MS,
-          // Every port needs the edge's token (the bridges add their own secret on top).
-          network: { allowPublicTraffic: false },
+          // Every port needs the edge's token (the bridges add their own secret on top); private
+          // ranges are refused outside the VM, whatever runs in it (e2b-egress.ts).
+          network: { allowPublicTraffic: false, denyOut: PROVIDER_DENY_OUT },
           // Paused by the dead-man timeout, resumed only by the controller.
           lifecycle: { onTimeout: 'pause', autoResume: false },
         }),
@@ -434,6 +440,20 @@ export function createE2bHost(opts: E2bHostOptions): ComputerHost {
    * bridges. `resume` answers `fresh` when this sandbox cannot carry on as it
    * is: its desktop is down, or it was booted with other settings.
    */
+  /**
+   * The member uids' egress table (e2b-egress.ts), as root, before anything of the member runs —
+   * on every boot (it is idempotent): a computer of any template gets the API's current rules.
+   */
+  async function applyEgress(sandbox: SandboxHandle): Promise<void> {
+    const result = await runRootCommand(sandbox, EGRESS_APPLY_SCRIPT, egressApplyEnv(), BOOT_TIMEOUT_MS);
+    if (result.code !== 0) {
+      throw new ComputerDockerError(
+        'failed',
+        `Applying the computer's egress rules failed (exit ${result.code}): ${result.stderr.trim().slice(-300)}`,
+      );
+    }
+  }
+
   async function boot(
     sandbox: SandboxHandle,
     spec: ComputerStartSpec,
@@ -441,6 +461,7 @@ export function createE2bHost(opts: E2bHostOptions): ComputerHost {
     /** The env file to boot with, base64 — default: the member's current settings. */
     envFile: string = Buffer.from(computerEnvFile(spec)).toString('base64'),
   ): Promise<'ok' | 'fresh'> {
+    await applyEgress(sandbox);
     const flag = mode === 'first' ? '' : ` --${mode}`;
     const result = await runRootCommand(
       sandbox,
@@ -591,6 +612,16 @@ export function createE2bHost(opts: E2bHostOptions): ComputerHost {
     }
   }
 
+  /** Put a backup into a new sandbox's homes, each as its own uid through its bridge (home-archive.ts). */
+  async function restoreHome(to: SandboxHandle, source: HomeRestore): Promise<void> {
+    const deadline = now() + RESTORE_TIMEOUT_MS;
+    for (const user of HOME_USERS) {
+      const data = await source.open(user);
+      const sink = bridge.stream(targetOf(to, user), homeImportArgv(user), { cwd: '/' });
+      await pipeIntoImport(data, sink, Math.max(1, deadline - now()));
+    }
+  }
+
   /** The env file a sandbox was booted with, base64 (null when it cannot be read: move instead). */
   async function keptSettings(sandbox: SandboxHandle): Promise<string | null> {
     const result = await runRootCommand(sandbox, 'base64 -w0 /etc/gh-computer/env', {}, BOOT_TIMEOUT_MS);
@@ -606,6 +637,8 @@ export function createE2bHost(opts: E2bHostOptions): ComputerHost {
   async function recoverOld(old: SandboxHandle): Promise<boolean> {
     try {
       const sandbox = await resume(old.id);
+      // The member gets this one back: with the current rules, before its desktop starts again.
+      await applyEgress(sandbox);
       const result = await runRootCommand(sandbox, RECOVER_SCRIPT, {}, BOOT_TIMEOUT_MS);
       if (result.code !== 0) {
         logger.warn(
@@ -700,6 +733,14 @@ export function createE2bHost(opts: E2bHostOptions): ComputerHost {
       );
     },
 
+    exportHome(container, user): ComputerProcess {
+      return bridge.stream(
+        handleFor(container).then((sandbox) => targetOf(sandbox, user)),
+        homeExportArgv(user),
+        { cwd: homeOf(user) },
+      );
+    },
+
     openTunnel(container, target): ComputerProcess {
       return bridge.tunnel(
         handleFor(container).then((sandbox) => targetOf(sandbox, 'browser')),
@@ -757,12 +798,33 @@ export function createE2bHost(opts: E2bHostOptions): ComputerHost {
         });
       }
 
+      // Nothing to move from although the member had a computer (gone, another provider): the newest backup.
+      const restoreFrom = !current && spec.restore ? await spec.restore() : null;
       // A new sandbox — the first one, or one replacing an older template, other settings, a reset.
       const fresh = await create(row, template, settings, current?.sandboxId ?? null);
       /** Set once the old sandbox was woken for the move: from then on its desktop may be down. */
       let movedFrom: SandboxHandle | null = null;
       try {
         await assertPausesOnTimeout(fresh.id);
+        if (restoreFrom) {
+          await boot(fresh, spec, 'bridges-only');
+          const startedAt = now();
+          try {
+            await restoreHome(fresh, restoreFrom);
+          } catch (err) {
+            throw new ComputerStartError(
+              'restore_failed',
+              `Restoring the backup of ${restoreFrom.takenAt} failed: ${toErrorMessage(err)}`,
+              { cause: err },
+            );
+          }
+          logger.info('[bots-computer] restored a home from its backup', {
+            user_id: row.user_id,
+            backup: restoreFrom.backupId,
+            to: fresh.id,
+            duration_ms: now() - startedAt,
+          });
+        }
         if (current) {
           await boot(fresh, spec, 'bridges-only');
           movedFrom = await resume(current.sandboxId);
@@ -822,6 +884,7 @@ export function createE2bHost(opts: E2bHostOptions): ComputerHost {
       return {
         ref: fresh.id,
         imageId: template,
+        ...(restoreFrom ? { restoredFrom: restoreFrom.backupId } : {}),
         // The row still points at the old sandbox (or none): this one holds nothing it needs.
         abandon: () => killQuietly(fresh.id, 'start abandoned'),
       };

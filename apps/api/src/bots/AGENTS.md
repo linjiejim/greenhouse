@@ -42,6 +42,12 @@ bots/
   显而易见且安全的下一步直接做、否则最多给一个具体的下一步提议），与聊天页 `sprouty.yaml` 的 `## Communication`
   同一份措辞；模板守则只补岗位相关的话，不重复它。紧跟其后的「Cards speak for themselves」：Bot 发起卡片（审批 / 新建 Bot /
   后台任务 / 登录 / 守则修改）后不复述卡片内容，最多一句「你决定后会怎样」——成员看得到卡片。
+- **电脑产物只给成员要的**（2026-10-11，[spec](../../../../docs/specs/20261011-mobile-computer.md)）：`browser screenshot`
+  只在成员要看页面时拍——模型拿不到像素（结果只有一句回执、`snapshot` 为空），截图不能拿来「检查」自己的操作；
+  `computer share_file` 只交成员要的成品，不发进度 / 日志 / 中间文件。工具描述（`tools/meta.ts`）与 S1 规则
+  （`engine/prompt.ts`）各说一遍；后台任务保留截图（「每天早上截一张看板给我」是正当用法），同样只在被要求时拍。
+  成员随时能在电脑面板（web）/ 电脑页（手机）看实时画面、翻文件。两种结果都是 `type:'file'`；客户端把图片画成**一张图**
+  （下载在预览里，加载失败才退回文件卡），不再在图下多画一张同名下载卡。
 - **Bot 就是 Agent 身份**（2026-10-07 收敛，[spec](../../../../docs/specs/20261007-agent-bot-convergence.md)；
   推翻 20261005 的 D2）：原「自定义 Agent」表已删，`bots` 吸收了它的 `description` / `tools`（null = 继承主人全部
   有效工具，列表 = 只能收窄的过滤器）/ `max_steps` / 不可变版本（`bot_versions`，每次创建或编辑追加一版，供
@@ -127,8 +133,17 @@ bots/
   setuid、停 sshd、收回 `/usr/local`），名字按内容哈希（`gh-computer-c<契约>-<hash>`），运行时预检缺了就在服务商侧构建。
   停 = 暂停（内存进程都在，恢复约 1 s）；模板换代、成员设置变了或成员「重置」= 新沙箱 + 两个 uid 各自 tar 搬 home，
   旧沙箱暂停留 3 天兜底；服务商侧超时（闲置 + 10 分钟，≤1 h，健康循环续期）是 API 挂了时的自动暂停——每次启动都核对
-  服务商确实是「超时暂停」（报 kill 就拒绝：`provider_unsupported`，宁可不开也不丢 home）。出口靠服务商（私网 / 网关不通），
-  `169.254.169.254` 是 Firecracker MMDS（只有沙箱 id 之类），所以托管宿主不跑出口探针。
+  服务商确实是「超时暂停」（报 kill 就拒绝：`provider_unsupported`，宁可不开也不丢 home）。
+  - **出口（`e2b-egress.ts`）**：沙箱里一张 nftables 表**只管两个成员 uid**（agent / browser）发出的包：拒绝 VM 的
+    link-local 网段（Firecracker MMDS `169.254.169.254` 谁问都答、网关、VM 自己的地址上服务商的端口转发）、私网与保留段、
+    envd（:49983）、两个桥（:7681 / :7682，只该从服务商边缘进来）和 rpcbind（:111）；root（envd、启动脚本、端口转发）不受影响，
+    外网与 DNS（8.8.8.8）照常。**按属主跳进成员专用链**，不要写成「非成员就放行」：内核自己发的 ICMP「禁止」回包没有属主，
+    又是发往 VM 自己的 link-local 地址——被过滤的话每次拒绝都会卡到超时（实测踩过）。规则归 **API 版本**：每次 boot（以及
+    把旧沙箱还给成员前）以 root 重新加载（幂等），旧模板的电脑也有，改规则不重建模板、不触发全员搬家；新沙箱另加服务商侧
+    `denyOut` 私网（VM 外执行，root 也绕不过；**不要把 169.254/16 交给服务商**——那是 VM 自己的网关与 MMDS）。每次启动都从
+    两个成员 uid 探测（MMDS、envd、两个桥、rpcbind、一个私网地址），有一个能通就**只让这台电脑启动失败**（`egress_open`）——
+    docker 的规则在宿主共享网络上，漏洞是所有人的，所以那边仍是整个运行时 `network_invalid`。`nft` 来自服务商的基础镜像
+    （E2B 已验；接 PPIO 时先确认）。
   - **桥端口归 PID 1**：两个端口是 systemd socket unit（模板构建时就绑定、进快照），桥只从 fd 3 接 socket、自己绑端口直接
     退出——端口从不空出来，agent 抢不到端口去收 browser 的密钥（审查发现的抢端口攻击）。桥崩了 / 重启也一样。
   - **桌面只在没有任何 agent 进程时启动**：`/tmp` 不像 docker 那样每次是新的 tmpfs，X 的套接字名（含抽象命名空间）可能
@@ -148,6 +163,23 @@ bots/
     闲置回收问「有没有后台任务」时**问不到不等于没有**：`runningJobCount` 执行失败 / 超时会抛错，控制器给 `JOB_QUERY_GRACE` 轮宽限。
   - 模板的加固（`gh-e2b-harden`）做完要**逐项核对**（无 setuid / 文件 capability、账号已锁、sshd 已屏蔽、`/usr/local` 不可写、
     端口已归 PID 1、agent slice 有内存上限、三个 unit 的 OOMPolicy）才写构建在等的标记，任何一项不过构建就失败。签名密钥换了：桥第一次拒绝时 API 以 root 重写密钥再试一次。
+- **家目录备份**（可选，`BOTS_COMPUTER_BACKUP_*`；`backups.ts` / `backup-format.ts` / `backup-store.ts` / `home-archive.ts`）：
+  每个成员的两个 home 加密存进部署自己的存储（本地目录或 S3 兼容桶），服务商 / Docker 宿主从此不是唯一副本。
+  - **何时备**：闲置电脑休眠前、到期才备（至多每 `BOTS_COMPUTER_BACKUP_HOURS` 一次）——闲置循环等它，最多等到闲置时刻后
+    `BACKUP_DEFER_MS`；以及管理员「立即备份」（休眠的先唤醒，之后照常闲置休眠）。失败后 `BACKUP_RETRY_MS` 内不重试。
+  - **怎么备**：两个 uid 各自 `host.exportHome`（gzip 的 tar，**排除缓存与 Chromium 的 Singleton 锁**），API 内用每份备份
+    自己的随机 AES-256 密钥分块加密（STREAM 构造：每块验证后才放出、最后一块的标记在 nonce 里、label 绑定备份 id 与 home），
+    再写进存储；密钥用保险库密钥封存（`gv1`，AAD `computer-backup:<uid>:<id>`），`pnpm cli vault rekey` 一并轮换。
+    **存储从不见明文与密钥**。导出流不论成败都会正常结束，**只认 tar 的退出码**（0 / 1 才算完整）。
+  - **何时恢复**：只在主机得**从零建 home** 时——e2b 记录的沙箱不在了（被删 / 换了服务商），docker 没有 home 卷（换过驱动）——
+    且成员以前有过电脑（`last_started_at`）。各自以 uid 解包（docker：一次性 helper 容器，无网络、只读根），在任何东西运行之前；
+    **绝不覆盖还在的 home**（docker 的 `volumeExists` 严格：Docker 出错就抛，绝不当成「没有」）。对象缺失 / 验证失败的备份标 failed、
+    以后不再用（下次退到更早一份或空 home）；**密钥打不开（保险库密钥没配）就让启动失败**（`restore_failed`），不悄悄给空 home。
+    成员这一轮运行开头的提示来自 `restored_at ≥ last_started_at`。
+  - 一人同时只跑一份（部分唯一索引 + 本进程 `inFlight`）；保留最新 `BOTS_COMPUTER_BACKUP_KEEP` 份完整的；清空 home（wipe /
+    删除成员）连备份一起删；清扫循环把进程死掉的 running 标 failed、删掉成员已不在的备份（表与 users 只是逻辑关联）。
+    写存储前就挂上 error 监听（`holdEarlyError`）：流在建目录 / 开分片上传的空档出错，否则是一个未处理的 error 事件——进程崩溃。
+  - **换服务商 / 换驱动就靠它**：先「立即备份」（或等每人下次休眠），再换 key / 域名 / 驱动，每人下次启动从最新备份重建。
 - **镜像契约 2**：API 只认 `IMAGE_CONTRACT` 同版本的镜像（`greenhouse.bots.computer.contract`），升级 API 必须
   重建镜像。契约 2 = 桌面（tint2 任务栏 + `gh-window` 看门狗：所有浏览器窗口都被最小化 3 s 后自动恢复）、
   软件 WebGL（`--enable-unsafe-swiftshader`，边界仍是 gVisor）、浏览器语言用 `LANGUAGE` + `--accept-lang`
@@ -208,6 +240,27 @@ bots/
   `takeover` 卡（`payload.implicit`，同会话同 Bot 去重，60 分钟过期，不发应用内通知——成员就在电脑前），
   交还即唤醒那个 Bot。卡上的页面标题是页面内容，只给成员看，绝不进转录行或通知。
 
+### 通知与手机推送（2026-10-10，[spec](../../../../docs/specs/20261010-mobile-push.md)）
+
+- **一个出口**：Bots 写通知事实一律经 `notifications/publish.ts` `publishNotification()`（事实 + `notification:new` WS + 每台可投
+  设备一条 `mobile_push` 投递行），不要再直接 `db.notifications.createWithStatus`。会推到手机的事实带 `push` 信封（类别、要打开
+  的对话、卡片 id、Bot id——**不含内容**），预览要的内容由 worker 发送时从卡片 / 消息行里读。
+- **三类**：① 需要你——非隐式的卡（`approvals.ts` `notifyRequest`），过期时间对齐卡片自己的 `expires_at`，批准 / 登录 / 接管是
+  time-sensitive，守则提议（`instructions_update`）静音只进收件箱；② 办完了——后台任务（`runtime-projector.ts`：payload 补
+  `bots_session_id` = 发起任务的对话，标题按账号语言）与定时任务（`scheduler/notify.ts`）；③ 离开后的回复——`engine/reply-alerts.ts`。
+- **回复提醒**挂在 30 秒卡片过期扫描上（`startRequestExpiryLoop`）：私聊里最后一行是**已结束回合**写的 Bot 回复（回合在写完
+  之后才盖 `last_activity_at`，比它新的回复属于还在跑的链）、60 秒到 30 分钟之前、`last_read_at` 早于它、没有待处理卡（一个
+  对话只亮一个信号）→ 一条 `bots_reply` 事实，dedupe 键 `bots-reply:<会话>:<消息>`（`botsReplyDedupeKey`）；任务汇报
+  （`bot-task-report:` 消息）不算，它的「办完了」已经推过。事实正文不含回复内容（事实永久、对话可删）。
+  `POST /conversations/:id/read` 同时把这段对话的回复提醒标已读（并推 `notification:summary`）。
+- **发送前复核**（`notifications/push/deliver.ts`）：卡已处理 / 过期、回复已读或对话里有待处理卡、成员关了 `bots` 开关、
+  这一类在这台设备上关了 → `suppressed`，不发。所以「已读」的判定必须只在成员真看着时发生（web 可见、手机线程可见）。
+- **后台任务的 Live Activity**（2026-10-10，[spec](../../../../docs/specs/20261010-mobile-live-activity.md)）：手机按
+  `GET /api/bots/tasks?state=active`（`engine/tasks.ts` `listMemberTasks`：所有对话里还在跑的 + 最近 30 分钟内结束的，每条带
+  `conversation_id`）对账。后台任务的「办完了」推送 `data` 带 `run` / `st`（取自事实的 `run_id` 与 `payload.status`——
+  投影器测试钉着这两个字段）；设备开了 `prefs.live_activity` 就加 `contentAvailable`，关了「办完了」则改发静默推送，手机原生
+  直接收起 Live Activity。**取消不建事实，也就不推**——在网页上取消的任务，手机上要等过期态或回前台对账才收起。
+
 ### 上下文管理（数字以代码为准）
 
 | 层 | 规则 |
@@ -233,6 +286,9 @@ bots/
   用 GitHub Actions 的 **Live E2B**（`.github/workflows/live-e2b.yml`，手动触发，仓库 secret `E2B_API_KEY`，可填 domain）。
   本地整站：`BOTS_COMPUTER_E2B_API_KEY=… node scripts/run-dev.mjs up`（有 key 即默认开启且驱动为 e2b；也可在
   Runtime Config → Bot computers 填 key，保存即生效、无需重启）。
+- 备份：`backup-format.test.ts`（每种篡改 / 截断 / 换块 / 换 label 都失败，且只放出验证过的块）、`backup-store.test.ts`
+  （本地目录原子写、S3 分片 / 重试 / 中止、配置）、`backups.db.test.ts`（真库：备份与恢复、休眠等待、一人一份、保留、
+  不可读备份不再用、wipe、清扫、密钥轮换）；控制器与两个宿主的单测覆盖「只在从零建 home 时恢复」。
 - 真容器套件（`computer.live.db-commit.test.ts`、`browser.live.db-commit.test.ts`）只在 `BOTS_LIVE=1` 且
   本机有镜像时跑；镜像本身用 `scripts/bot-computer-smoke.sh` 验（双 uid 隔离、零端口、CDP 中继，以及
   契约 2 的任务栏 / 窗口恢复 / WebGL / 语言 / gh-term / gh-jobs / gh-agent-kill / 用户级安装持久化）。
@@ -262,9 +318,10 @@ Bot 身份本身（列表 / 新建 / 编辑 / 版本 / 文件夹 / 记忆）只�
 | GET / POST | `/api/bots/conversations` | `{ bot_ids }`（恰好 1 个 id） | 列表 / `{ conversation }`（该 Bot 的私聊，没有就建）；0 个或多个 id → `400 groups_retired`（群聊已退役）。每行带 `attention`（需要你 > 未读 > 在忙）、`pending_requests` 与 `unread_count`（`last_read_at` 之后 Bot 的回复条数，`assistant` 行，封顶 99；只来了系统事件时 `attention:'unread'` 而计数为 0） |
 | GET | `/api/bots/conversations/:id` | `before_seq?`、`limit?` | `{ conversation, messages, has_more, memory_states? }`（`allow_bot_chat` 已废弃、恒为 `true`；旧群 `kind:'group'` 照常可读） |
 | POST / DELETE | `/api/bots/conversations/:id/members[/:botId]` | `{ bot_id }` | `{ conversation }`（邀请 = guest；主人不能移出 400 `cannot_remove_owner`；旧群 `409 group_closed`） |
-| POST | `/api/bots/conversations/:id/read` · `/compact` | — | `{ ok }` · `{ digest }`（回合进行中 409） |
+| POST | `/api/bots/conversations/:id/read` · `/compact` | — | `{ ok }`（同时把这段对话的「回复了你」提醒标为已读）· `{ digest }`（回合进行中 409） |
 | GET / POST / PATCH / DELETE | `/api/bots/conversations/:id/notes[/:noteId]` | `{ title, body?, status?, pinned? }` | 共享笔记 |
 | GET / POST | `/api/bots/conversations/:id/tasks` · `/api/bots/tasks/:runId/cancel` | — | 后台任务 |
+| GET | `/api/bots/tasks?state=active` | — | 我所有对话的后台任务：在跑的 + 最近 30 分钟内结束的（手机 Live Activity 对账；裸路径在 `src/index.ts` 单独挂 `requireFeature('bots')`） |
 | GET / POST | `/api/bots/requests` · `/api/bots/requests/:id` | `BotRequestDecision` | `{ request }`；冲突 409 `already_decided` / `deciding`；旧群的卡 409 `group_closed`（仍待处理的顺手撤成 `canceled`）；其他 409 带具体 code（`BotRequestErrorCode`：`page_gone` / `origin_mismatch` / `no_fields` / `failed` / `invalid` / `limit` / `computer_restarted` / `bot_gone`）且卡片保持待处理 |
 
 对话没有可编辑的设置：原 `PATCH /api/bots/conversations/:id`（群标题 / 群规 / 负责人 / Bot 互聊开关）已删除。
@@ -298,7 +355,6 @@ Bot 等着用电脑，交还即唤醒它；`payload.kind:'captcha'` = 人机验�
 | POST | `/api/bots/computer/takeover` | — | `ComputerStatusView` |
 | POST | `/api/bots/computer/handback` | `{ note?, request_id?, session_id? }` | 结算点名的接管 / 登录卡（须属于 `session_id`），否则该会话里唯一的待处理接管 / 登录卡，否则只释放租约——从不跨会话猜 |
 | POST | `/api/bots/computer/type` | `{ text }` | `{ ok }`（成员持有租约；写入焦点，支持中文） |
-| GET | `/api/bots/computer/screenshot` | — | `image/png`；不唤醒电脑，停着时 `409 stopped` |
 | PUT | `/api/bots/computer/settings` | `{ timezone: string \| null }`（IANA；null = 部署默认） | `ComputerStatusView`（下次启动生效；`lang` 来自成员 locale，`BOTS_COMPUTER_LANG` 覆盖） |
 | POST | `/api/bots/computer/restore-window` | — | `{ ok }`（`gh-window restore`；停着时 `409 stopped`；每次交还后也会自动跑） |
 | POST | `/api/bots/computer/terminal-token` | — | `{ token, expires_at }`（60 s、一次性，用途与观看票据互不通用） |
@@ -334,7 +390,7 @@ PROVIDER 三把里找；无前缀的旧密文一律按 PROVIDER 解。轮换：�
 
 **管理端**（super）：`GET /api/admin/bot-computers`（运行时、每台电脑、旋钮、检查清单 `checks[]`：
 docker / runtime / image / network / egress / host_disk …，每项带修复命令）、
-`POST /api/admin/bot-computers/:userId/stop|reset`。旋钮是工作区设置 `bots.computer_idle_minutes` /
+`POST /api/admin/bot-computers/:userId/stop|reset|backup`。旋钮是工作区设置 `bots.computer_idle_minutes` /
 `bots.computer_max_running`。
 
 **电脑工具 `import_attachment {file_id, path?}`**：只在前台回合；把本对话的聊天附件拷进

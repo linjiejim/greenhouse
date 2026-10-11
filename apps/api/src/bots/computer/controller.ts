@@ -58,6 +58,8 @@ import { ComputerUnavailableError } from './errors.js';
 import {
   ComputerStartError,
   type ComputerHost,
+  type ComputerUser,
+  type HomeRestore,
   type HostInstance,
   type StartedComputer,
   type StopVerdict,
@@ -103,11 +105,14 @@ export interface ControllerEnvironment {
   /** Chromium URLBlocklist patterns passed to new containers. */
   urlBlocklist: string[];
   /**
-   * Hardened hosts: URLs a fresh computer must NOT be able to connect to (the
-   * host's API port on the bridge gateway, cloud metadata). Checked after every
-   * start as defence in depth behind the egress precheck; empty = no probe.
+   * URLs a started computer must NOT be able to connect to — docker (hardened): the host's
+   * API port on the bridge gateway and cloud metadata, behind the egress precheck; e2b: the
+   * metadata service, the provider's agent, the bridges, a private network (e2b-egress.ts).
+   * Checked after every start; empty = no probe.
    */
   egressProbe?: string[];
+  /** Which uids probe (default: the agent's). */
+  egressProbeUsers?: readonly ComputerUser[];
   /** The image (docker) / template (e2b) the prechecks found ready; recorded as `image_id`. */
   imageId: string | null;
   /** The latest free-space reading of the Docker disk (null = not measured yet; docker only). */
@@ -217,6 +222,20 @@ export interface ComputerControllerDeps {
   memberLocale?(userId: string): Promise<string | null>;
   /** Background jobs running on a computer (gh-jobs, by `container_name`); never throws, 0 when unreadable. */
   runningJobs?(container: string): Promise<number>;
+  /** Encrypted backups of the homes (backups.ts), when the deployment keeps them. */
+  backups?: ControllerBackups;
+}
+
+/** What the controller asks of backups.ts. */
+export interface ControllerBackups {
+  /** Before an idle stop: 'wait' while the computer's backup runs (starting one when due). */
+  beforeSleep(row: BotComputerRow, idleMinutes: number): Promise<'go' | 'wait'>;
+  /** The newest backup, for a start that has to make the member's home from nothing. */
+  restoreSource(userId: string): Promise<HomeRestore | null>;
+  /** A start put this backup into a new home (called once the computer runs). */
+  restored(backupId: string): Promise<void>;
+  /** The member's home was wiped: its backups go too. */
+  deleteAll(userId: string): Promise<void>;
 }
 
 export interface EnsureRunningOptions {
@@ -236,9 +255,9 @@ export const STALE_TRANSITION_MS = 60_000;
  * The longest a docker start can keep a row in `starting` (volume create 30 s,
  * rm 60 s, run 90 s, ready 45 s, egress probe 30 s, each bounded by its own
  * deadline): past it the starter is certainly gone, even without a try-lock.
- * An e2b start that moves a home can take longer (its move is bounded at 10
- * minutes); stores with a try-lock (the real one) never rely on this deadline —
- * they see the starter's lock.
+ * A start that moves a home (e2b, bounded at 10 minutes) or restores one from a
+ * backup (15) can take longer; stores with a try-lock (the real one) never rely
+ * on this deadline — they see the starter's lock.
  */
 export const START_DEADLINE_MS = 5 * 60_000;
 /** A home over the soft limit is re-measured this often while running, so a cleanup unblocks quickly. */
@@ -465,28 +484,44 @@ export function createComputerController(deps: ComputerControllerDeps) {
    * connection that succeeds is a host failure (the rules are gone or
    * shadowed): the start fails and the runtime closes until it re-checks.
    */
-  async function verifyEgress(container: string, targets: string[]): Promise<void> {
+  /**
+   * Every target must be refused, from every probing uid. Docker's rules live on the host's
+   * network (a hole is everyone's: the runtime closes); a hosted computer's live in its own VM
+   * (a hole is that computer's: only its start fails).
+   */
+  async function verifyEgress(container: string, targets: string[], users: readonly ComputerUser[]): Promise<void> {
     if (targets.length === 0) return;
-    const result = await host.exec({
-      container,
-      user: 'agent',
-      argv: ['sh', '-c', EGRESS_PROBE_SCRIPT, 'gh-egress', ...targets],
-      timeoutMs: 30_000,
-      maxStdoutBytes: 16 * 1024,
-    });
-    const codes = new Map<string, number>();
-    for (const line of result.stdout.toString('utf8').split('\n')) {
-      const match = /^(\d+) (\S+)$/.exec(line.trim());
-      if (match) codes.set(match[2]!, Number(match[1]));
+    const open: string[] = [];
+    for (const user of users) {
+      const result = await host.exec({
+        container,
+        user,
+        argv: ['sh', '-c', EGRESS_PROBE_SCRIPT, 'gh-egress', ...targets],
+        timeoutMs: 30_000,
+        maxStdoutBytes: 16 * 1024,
+      });
+      const codes = new Map<string, number>();
+      for (const line of result.stdout.toString('utf8').split('\n')) {
+        const match = /^(\d+) (\S+)$/.exec(line.trim());
+        if (match) codes.set(match[2]!, Number(match[1]));
+      }
+      for (const url of targets) {
+        if (!EGRESS_BLOCKED_CODES.has(codes.get(url) ?? -1)) {
+          open.push(`${url} as ${user} (curl ${codes.get(url) ?? 'gave no answer'})`);
+        }
+      }
     }
-    const open = targets.filter((url) => !EGRESS_BLOCKED_CODES.has(codes.get(url) ?? -1));
-    if (open.length > 0) {
-      const detail = open.map((url) => `${url} (curl ${codes.get(url) ?? 'gave no answer'})`).join(', ');
-      throw new ComputerRuntimeError(
-        'network_invalid',
-        `A new computer could reach ${detail}; the egress rules for the computers' network are not in force`,
+    if (open.length === 0) return;
+    if (host.kind === 'e2b') {
+      throw new ComputerStartError(
+        'egress_open',
+        `This computer could reach ${open.join(', ')}: its egress rules are not in force`,
       );
     }
+    throw new ComputerRuntimeError(
+      'network_invalid',
+      `A new computer could reach ${open.join(', ')}; the egress rules for the computers' network are not in force`,
+    );
   }
 
   async function pickEvictable(active: BotComputerRow[]): Promise<BotComputerRow | undefined> {
@@ -561,9 +596,11 @@ export function createComputerController(deps: ComputerControllerDeps) {
         timezone: parseTimezone(row.timezone) ?? config.timezone,
         lang: await langFor(row.user_id, config),
         fresh: opts.fresh,
+        // Only for a member who had a computer before: a first computer starts empty.
+        ...(deps.backups && row.last_started_at ? { restore: () => deps.backups!.restoreSource(row.user_id) } : {}),
       });
       const product = await waitReady(started.ref);
-      await verifyEgress(started.ref, env.egressProbe ?? []);
+      await verifyEgress(started.ref, env.egressProbe ?? [], env.egressProbeUsers ?? ['agent']);
       const running = await store.transition(row.user_id, row.version, ['starting'], {
         state: 'running',
         state_reason: null,
@@ -578,6 +615,14 @@ export function createComputerController(deps: ComputerControllerDeps) {
       }
       lastTouch.delete(row.user_id);
       await touchThrottled(row.user_id);
+      // After `last_started_at`: the member's view tells this run began from the backup.
+      if (started.restoredFrom) {
+        await deps.backups?.restored(started.restoredFrom).catch((err) => {
+          logger.warn(
+            `[bots-computer] could not mark backup ${started?.restoredFrom} restored: ${toErrorMessage(err)}`,
+          );
+        });
+      }
       logger.info('[bots-computer] start', {
         user_id: row.user_id,
         container: running.container_name,
@@ -801,6 +846,8 @@ export function createComputerController(deps: ComputerControllerDeps) {
       if (!row) return;
       await host.wipe(row);
       await store.delete(userId);
+      // A wiped home is never restored: its backups go with it (a member deleted while the host was down is swept).
+      await deps.backups?.deleteAll(userId);
       logger.info('[bots-computer] wiped', { user_id: userId, container: row.container_name, host: host.kind });
     });
     lastTouch.delete(userId);
@@ -860,11 +907,28 @@ export function createComputerController(deps: ComputerControllerDeps) {
     }
   }
 
+  /**
+   * A computer going to sleep is backed up first when its backup is due (backups.ts): it
+   * stays awake while the backup runs, for at most BACKUP_DEFER_MS past its idle time.
+   * Outside the member's lock, like the job query: a backup only reads the home. A
+   * backup that cannot even be asked about never holds a computer awake.
+   */
+  async function backupKeepsAwake(row: BotComputerRow, env: ControllerEnvironment): Promise<boolean> {
+    if (!deps.backups) return false;
+    try {
+      return (await deps.backups.beforeSleep(row, env.idleMinutes)) === 'wait';
+    } catch (err) {
+      logger.warn(`[bots-computer] backup check for ${row.user_id} failed: ${toErrorMessage(err)}`);
+      return false;
+    }
+  }
+
   async function idleTick(): Promise<void> {
     const env = await deps.environment();
     const cutoff = iso(clock.now() - env.idleMinutes * 60_000);
     for (const candidate of await store.listIdle(cutoff)) {
       if (await jobsKeepAwake(candidate, env)) continue;
+      if (await backupKeepsAwake(candidate, env)) continue;
       await store.withUserLock(candidate.user_id, async () => {
         // Re-check under the lock: a Bot or a viewer may have just used it.
         const row = await store.get(candidate.user_id);

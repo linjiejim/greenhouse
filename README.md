@@ -76,7 +76,7 @@ expose to Claude, Cursor, or any MCP client.
   <img src="docs/assets/screens/chat-knowledge-answer-dark.webp" alt="Dark theme" width="66%" />
   <img src="docs/assets/screens/mobile-chat.webp" alt="Mobile layout" width="19%" />
 </p>
-<p align="center"><sub>Light / dark / system themes and a responsive layout; the <a href="apps/mobile">Expo app</a> covers chat (with the same rich replies as the web — data tables, charts (Swift Charts on iOS), stat tiles, record cards, step timelines, Mermaid diagrams, HTML previews, question forms and reply buttons — and a "connect your account" card when a connector needs your sign-in or key), your Bots (on iOS: Sprouty and your other Bots at the top of the drawer, one ongoing thread per Bot — other Bots join it when a hand-off helps — with live per-Bot replies, @-mentions, "needs you" cards that open into a sheet to decide, background tasks that report back; a Bot's profile gathers its instructions, memory, shared notes, schedules and separate chats in tabs; new Bots are made by asking Sprouty, from an example or by hand in Settings → My Bots; replies show just the answer, with reasoning, tool calls and sources one ⋯ → Show toggle away; a home-screen widget lines up your Bots with unread and "needs you" badges — one tap into a Bot's thread, or a new chat with Sprouty), Settings → Connectors for your own keys and sign-ins, knowledge and projects with a native UI on both platforms — on iOS system navigation, Liquid Glass, native sheets, menus and SwiftUI forms; on Android Material 3 (Jetpack Compose forms, menus and dialogs).</sub></p>
+<p align="center"><sub>Light / dark / system themes and a responsive layout; the <a href="apps/mobile">Expo app</a> covers chat (with the same rich replies as the web — data tables, charts (Swift Charts on iOS), stat tiles, record cards, step timelines, Mermaid diagrams, HTML previews, question forms and reply buttons — and a "connect your account" card when a connector needs your sign-in or key), your Bots (on iOS: Sprouty and your other Bots at the top of the drawer, one ongoing thread per Bot — other Bots join it when a hand-off helps — with live per-Bot replies, @-mentions, "needs you" cards that open into a sheet to decide, background tasks that report back; your computer one tap away on a thread's bar — watch it live, take over with touch and native typing (pass a human check right from the card), browse and share its files, see its background processes; a Bot's profile gathers its instructions, memory, shared notes, schedules and separate chats in tabs; new Bots are made by asking Sprouty, from an example or by hand in Settings → My Bots; replies show just the answer, with reasoning, tool calls and sources one ⋯ → Show toggle away; a home-screen widget lines up your Bots with unread and "needs you" badges — one tap into a Bot's thread, or a new chat with Sprouty; notifications when a Bot needs you, a task finishes or a reply comes in after you left — content-free unless you turn previews on, one tap into the card or the conversation, on every station you are signed in to; and, experimentally, a running background task as a Live Activity on the Lock Screen and in the Dynamic Island), Settings → Connectors for your own keys and sign-ins, knowledge and projects with a native UI on both platforms — on iOS system navigation, Liquid Glass, native sheets, menus and SwiftUI forms; on Android Material 3 (Jetpack Compose forms, menus and dialogs).</sub></p>
 
 The mobile launch animation covers the first conversation while it loads. Authentication stays
 required; the opening page is prepared while fonts and the animation finish, with a short,
@@ -300,9 +300,8 @@ server to look after:
    (`[setup] Activate the first administrator …`).
 
 Choose the model afterwards under **Administration → Runtime Config** (or set `LLM_BASE_URL`
-/ `LLM_API_KEY` / `LLM_MODEL` as variables). For Bots computers, add `BOTS_COMPUTER_ENABLED=1`,
-`BOTS_COMPUTER_DRIVER=e2b` and `BOTS_COMPUTER_E2B_API_KEY` (an [E2B](https://e2b.dev) key) — see
-Bots below.
+/ `LLM_API_KEY` / `LLM_MODEL` as variables). For Bots computers, enter an [E2B](https://e2b.dev) key
+in the same place (Bot computers), or set `BOTS_COMPUTER_E2B_API_KEY` — see Bots below.
 
 ### Docker Compose by hand
 
@@ -341,8 +340,8 @@ network, and the sandbox image (`bash scripts/build-agent-runtime.sh`). They sta
 
 Bots work in any deployment. Their computers run in one of two places:
 
-- **Hosted sandboxes (no server work)** — `BOTS_COMPUTER_ENABLED=1`, `BOTS_COMPUTER_DRIVER=e2b`
-  and a provider key in `BOTS_COMPUTER_E2B_API_KEY`: each member's computer is a sandbox
+- **Hosted sandboxes (no server work)** — a provider key, entered under Administration → Runtime
+  Config → Bot computers (or `BOTS_COMPUTER_E2B_API_KEY`): each member's computer is a sandbox
   (one microVM) at an E2B-protocol provider — [E2B](https://e2b.dev) abroad, PPIO in mainland
   China (`BOTS_COMPUTER_E2B_DOMAIN=cn-beijing-1.sandbox.ppio.com`; not yet verified end to end).
   Works from Railway, the installer or compose. On first boot the API builds the computer
@@ -351,7 +350,9 @@ Bots work in any deployment. Their computers run in one of two places:
   it left off. After a greenhouse upgrade changes the template, each computer moves its home
   into a new sandbox at its next start; if that move fails, the member keeps the old computer and
   the move is tried again a few hours later. Keep the API close to the provider's region: homes
-  move through it.
+  move through it. Inside, the member's Bots and browser cannot reach the provider's metadata
+  service, its agent, private networks or the computer's own bridges — checked from both accounts at
+  every start (a computer that fails the check is not used).
 - **This server's Docker** — the API must run **on the Docker host itself** (bare metal / PM2,
   not the compose image — computers are reached through `docker exec` and publish no ports),
   plus gVisor, a hardened bridge
@@ -363,6 +364,13 @@ Bots work in any deployment. Their computers run in one of two places:
 On either kind, a Bot can hand you a **preview link** to a web app it runs on its computer (2 hours;
 the page is sandboxed — no cookies or local storage — and only relative links stay inside it), and a
 Bot that starts a long background process is woken to report when it ends.
+
+**Backups** — set `BOTS_COMPUTER_BACKUP_DIR` (e.g. `data/bot-backups`) or `BOTS_COMPUTER_BACKUP_S3_*`
+(any S3-compatible bucket) and every home is also kept, encrypted, in your own storage: as a computer
+goes to sleep (at most daily; two kept per member) or when you click **Back up now**. When a member's
+computer is gone — deleted at the provider, or you switched provider or driver — their next start
+rebuilds it from the newest backup, and they are told what date it is from. Each backup is encrypted
+in the API with its own key, sealed with `VAULT_ENCRYPTION_KEY`; the storage never sees a file.
 
 Either way **Administration → Bot computers** lists every precheck with what fixes it, and the
 live knobs (idle minutes, how many computers run at once) are in Runtime Config.
@@ -471,6 +479,19 @@ the LLM endpoint; `IMAGE_BASE_URL` + `IMAGE_API_KEY` move generation alone to an
 provider), external web search, email mailboxes, WeCom / Feishu, missions, Bots computers
 (`BOTS_COMPUTER_*`), usage budgets, and object storage. Uploads default to local disk (`data/uploads`), Skill Center
 bundles to `data/skills` — set `SKILLS_S3_*` to keep bundles in S3-compatible storage.
+
+**Mobile push**: the iOS app's notifications (a Bot needs you, a background or scheduled task
+finished, a Bot replied after you left) are sent through the Expo Push Service at `exp.host`.
+The server stores only each phone's Expo push token (no Apple key — the official app's
+credentials live with Expo), and by default a notification says only who and what kind of thing
+("Sprouty · Needs your approval"); members can turn on previews per phone in the app's Settings →
+Notifications. It is on by default and inert until a member allows notifications on a phone; set
+`MOBILE_PUSH_ENABLED=false` to keep every request off `exp.host` (the app then hides its push
+settings). The server must be able to reach `https://exp.host` (honouring `HTTPS_PROXY`); the
+Settings page's "Send a test" checks that from the phone. With **Live Activities** switched on in
+the same page (experimental, iOS 17+, needs notifications on that station), a Bot's background
+task also counts up on the Lock Screen and in the Dynamic Island; the "task finished" push then
+wakes the app so it can clear the activity, and nothing else leaves the server for it.
 
 **Admin-configurable at runtime**: the LLM / media / search credentials and the product name
 can also be set in **Administration → Runtime Config** (and branding in **Branding Studio**) —

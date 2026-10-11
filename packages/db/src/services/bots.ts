@@ -28,6 +28,7 @@ import {
   botInbox,
   sessions,
   messages,
+  notifications,
   users,
 } from '../schema/index.js';
 import type {
@@ -52,6 +53,14 @@ export const MAX_BOTS_PER_CONVERSATION = 6;
 export const MAX_OPEN_NOTES_PER_CONVERSATION = 50;
 /** Where a conversation's unread count stops (`unreadCounts`; clients show "99+"). */
 const UNREAD_COUNT_CAP = 99;
+
+/** Dedupe-key prefix of reply alerts (`notifications.dedupe_key`); `/read` clears a conversation's by prefix. */
+export const BOTS_REPLY_DEDUPE_PREFIX = 'bots-reply:';
+
+/** One alert per Bot reply: `bots-reply:<session>:<message>` (spec 20261010-mobile-push §3.4). */
+export function botsReplyDedupeKey(sessionId: string, messageId: string): string {
+  return `${BOTS_REPLY_DEDUPE_PREFIX}${sessionId}:${messageId}`;
+}
 
 export class BotsDomainError extends Error {
   constructor(
@@ -667,6 +676,100 @@ export function createBotsService(db: Db) {
         await tx.delete(botConversationMembers).where(eq(botConversationMembers.id, target.id));
         return true;
       });
+    },
+
+    /**
+     * The member's conversations that need them or hold an unread Bot line — the
+     * app icon badge a push carries, the same rule as the drawer's ☰ badge
+     * (`conversationAttention`: a pending card, or a last row that is not the
+     * member's own and is newer than `last_read_at`).
+     */
+    async attentionCount(userId: string): Promise<number> {
+      const rows = await db.execute<{ n: number }>(sql`
+        SELECT count(*)::int AS n
+        FROM ${botConversations} c
+        WHERE c.user_id = ${userId}
+          AND (
+            EXISTS (SELECT 1 FROM ${botRequests} r WHERE r.session_id = c.session_id AND r.status = 'pending')
+            OR EXISTS (
+              SELECT 1 FROM (
+                SELECT m.role, m.created_at FROM ${messages} m
+                WHERE m.session_id = c.session_id
+                ORDER BY m.seq DESC
+                LIMIT 1
+              ) last
+              WHERE last.role <> 'user' AND (c.last_read_at IS NULL OR last.created_at > c.last_read_at)
+            )
+          )
+      `);
+      return Number((rows as unknown as Array<{ n: number }>)[0]?.n ?? 0);
+    },
+
+    /**
+     * Bot replies nobody has seen (docs/specs/20261010-mobile-push.md §3.4 ②) —
+     * the reply-alert sweep's work list. A direct conversation qualifies when:
+     * its last row is a Bot reply written by a run that has finished (the run
+     * stamps `last_activity_at` after its writes, so a reply newer than the stamp
+     * belongs to a chain still going) between `windowMs` and `quietMs` ago; it was
+     * not read since; no card is pending (the card already called the member);
+     * the reply has no alert yet (`botsReplyDedupeKey`). Rows whose message id
+     * starts with `skipMessageIdPrefix` (background-task reports — their "done"
+     * push already said it) never qualify. Disabled / external accounts are
+     * left out. Oldest first.
+     */
+    async listMissedReplies(opts: {
+      quietMs: number;
+      windowMs: number;
+      skipMessageIdPrefix: string;
+      limit?: number;
+      now?: number;
+    }): Promise<Array<{ session_id: string; user_id: string; message_id: string; bot_id: string | null }>> {
+      const now = opts.now ?? Date.now();
+      const quietBefore = new Date(now - opts.quietMs).toISOString();
+      const windowStart = new Date(now - opts.windowMs).toISOString();
+      const rows = await db.execute<{
+        session_id: string;
+        user_id: string;
+        message_id: string;
+        bot_id: string | null;
+      }>(sql`
+        SELECT c.session_id, c.user_id, m.id AS message_id, m.bot_id
+        FROM ${botConversations} c
+        JOIN ${users} u ON u.id = c.user_id
+        JOIN LATERAL (
+          SELECT mm.id, mm.role, mm.bot_id, mm.created_at FROM ${messages} mm
+          WHERE mm.session_id = c.session_id
+          ORDER BY mm.seq DESC
+          LIMIT 1
+        ) m ON true
+        WHERE c.kind = 'direct'
+          AND c.last_activity_at >= ${windowStart}
+          AND c.last_activity_at <= ${quietBefore}
+          AND u.status = 'active'
+          AND u.role IN ('team', 'super')
+          AND m.role = 'assistant'
+          AND m.created_at <= c.last_activity_at
+          AND left(m.id, ${opts.skipMessageIdPrefix.length}::int) <> ${opts.skipMessageIdPrefix}::text
+          AND (c.last_read_at IS NULL OR c.last_read_at < m.created_at)
+          AND NOT EXISTS (
+            SELECT 1 FROM ${botRequests} r WHERE r.session_id = c.session_id AND r.status = 'pending'
+          )
+          AND NOT EXISTS (
+            SELECT 1 FROM ${notifications} n
+            WHERE n.user_id = c.user_id
+              AND n.dedupe_key = ${BOTS_REPLY_DEDUPE_PREFIX}::text || c.session_id || ':' || m.id
+          )
+        ORDER BY c.last_activity_at ASC
+        LIMIT ${Math.min(Math.max(opts.limit ?? 100, 1), 500)}
+      `);
+      return (
+        rows as unknown as Array<{ session_id: string; user_id: string; message_id: string; bot_id: string | null }>
+      ).map((row) => ({
+        session_id: row.session_id,
+        user_id: row.user_id,
+        message_id: row.message_id,
+        bot_id: row.bot_id,
+      }));
     },
 
     async markRead(userId: string, sessionId: string): Promise<void> {

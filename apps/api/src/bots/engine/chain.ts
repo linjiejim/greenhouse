@@ -50,7 +50,7 @@ import type { ToolRegistry } from '../../agent.js';
 import { resolveEffectiveTools } from '../../agent-runtime/tool-resolution.js';
 import { chatRunRegistry, type ChatRun } from '../../chat/runs.js';
 import { connectionManager } from '../../ws/connection-manager.js';
-import type { InboxItem } from './inbox-types.js';
+import { TASK_REPORT_MESSAGE_PREFIX, type InboxItem } from './inbox-types.js';
 import { botsLocale, copy } from './copy.js';
 import { botsEngineDeps } from './deps.js';
 import { digestView, effectiveDigestUpto, scheduleDigestCheck } from './digest.js';
@@ -139,7 +139,7 @@ export async function writeInboxItem(
       ...(messageId ? { messageId } : {}),
     });
   } else if (item.kind === 'task_report') {
-    const reportId = `bot-task-report:${item.runId}`;
+    const reportId = `${TASK_REPORT_MESSAGE_PREFIX}${item.runId}`;
     if (await db.sessions.getMessageById(reportId)) return;
     const event: BotEvent = {
       kind: 'task_report',

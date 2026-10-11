@@ -59,4 +59,9 @@ describe('initialSurface', () => {
     expect(initialSurface(input({ covered: true }))).toEqual({ kind: 'chat' });
     expect(initialSurface(input({ covered: false }))).toEqual({ kind: 'thread', c: 'sess_sprouty', title: 'Sprouty' });
   });
+
+  it('never restores when a notification tap launched the app (the tap decides, even before prefs are read)', () => {
+    expect(initialSurface(input({ launchedByPush: true }))).toEqual({ kind: 'chat' });
+    expect(initialSurface(input({ launchedByPush: true, hydrated: false }))).toEqual({ kind: 'chat' });
+  });
 });

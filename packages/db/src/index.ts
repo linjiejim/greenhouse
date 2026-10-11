@@ -89,6 +89,7 @@ export * from './services/agent-runs.js';
 export * from './services/chat-artifact-receipts.js';
 export * from './services/runtime.js';
 export * from './services/notifications.js';
+export * from './services/push-devices.js';
 export * from './services/workspace-settings.js';
 export * from './services/bots.js';
 export * from './services/bot-computers.js';

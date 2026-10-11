@@ -117,8 +117,9 @@ describe('image file artifacts (a Bot’s browser screenshot)', () => {
     const img = document.querySelector<HTMLImageElement>('[data-testid="auth-image"]');
     expect(img?.getAttribute('src')).toBe('blob:test-1');
     expect(img?.getAttribute('alt')).toBe('screenshot-20261005-061502.png');
-    // The file card (name, size, Download) stays under it.
-    expect(document.body.textContent).toContain('Download');
+    // Shown once: the preview it opens has the download, so no file card under it.
+    expect(document.body.textContent).not.toContain('Download');
+    expect(document.body.textContent).not.toContain('screenshot-20261005-061502.png');
   });
 
   it('keeps a spreadsheet a file card, with nothing fetched up front', async () => {
@@ -136,10 +137,12 @@ describe('image file artifacts (a Bot’s browser screenshot)', () => {
     expect(document.body.textContent).toContain('report.xlsx');
   });
 
-  it('shows a quiet placeholder when the picture cannot be loaded', async () => {
+  it('falls back to the file card when the picture cannot be loaded', async () => {
     download.fetchAuthenticatedBlob.mockRejectedValue(new Error('Download failed'));
     await mount(createElement(BodyArtifacts, { calls: [screenshot], ctx: {} }));
     expect(document.querySelector('[data-testid="auth-image"]')).toBeNull();
-    expect(document.querySelector('[data-testid="auth-image-placeholder"]')?.getAttribute('data-failed')).toBe('true');
+    expect(document.querySelector('[data-testid="auth-image-placeholder"]')).toBeNull();
+    expect(document.body.textContent).toContain('screenshot-20261005-061502.png');
+    expect(document.body.textContent).toContain('Download');
   });
 });

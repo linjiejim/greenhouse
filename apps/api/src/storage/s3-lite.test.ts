@@ -11,7 +11,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { signV4, sha256Hex, encodeS3Key, createS3Client } from './s3-lite.js';
+import { signV4, sha256Hex, encodeS3Key, canonicalQuery, createS3Client } from './s3-lite.js';
 
 const EMPTY_HASH = sha256Hex('');
 
@@ -54,6 +54,41 @@ describe('signV4 (official AWS vectors)', () => {
       amzDate: '20130524T000000Z',
     });
     expect(signature).toBe('f0e8bdb87c964420e857bd35b5d6ed310bd44f0170aba48dd91039c6036bdb41');
+  });
+
+  const s3DocsBucketGet = (query: string) =>
+    signV4({
+      method: 'GET',
+      path: '/',
+      query,
+      headers: {
+        host: 'examplebucket.s3.amazonaws.com',
+        'x-amz-content-sha256': EMPTY_HASH,
+        'x-amz-date': '20130524T000000Z',
+      },
+      payloadHash: EMPTY_HASH,
+      accessKeyId: 'AKIAIOSFODNN7EXAMPLE',
+      secretAccessKey: 'wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY',
+      region: 'us-east-1',
+      service: 's3',
+      amzDate: '20130524T000000Z',
+    }).signature;
+
+  it('reproduces the AWS S3 docs signatures of requests with a query string', () => {
+    // GET Bucket lifecycle (`?lifecycle`, a name without a value) and List Objects (two, sorted).
+    expect(s3DocsBucketGet(canonicalQuery({ lifecycle: '' }))).toBe(
+      'fea454ca298b7da1c68078a5d1bdbfbbe0d65c699e0f91ac7a200a0136783543',
+    );
+    expect(s3DocsBucketGet(canonicalQuery({ prefix: 'J', 'max-keys': '2' }))).toBe(
+      '34b48302e7b5fa45bde8084f4b7868a86f0a534bc59db6670ed5711ef69dc6f7',
+    );
+  });
+});
+
+describe('canonicalQuery', () => {
+  it('sorts by encoded name, encodes names and values, and keeps empty values', () => {
+    expect(canonicalQuery({ uploads: '' })).toBe('uploads=');
+    expect(canonicalQuery({ uploadId: 'a/b+c=', partNumber: '3' })).toBe('partNumber=3&uploadId=a%2Fb%2Bc%3D');
   });
 });
 
@@ -144,5 +179,73 @@ describe('createS3Client', () => {
 
   it('rejects an endpoint that carries a path', () => {
     expect(() => createS3Client({ ...CFG, endpoint: 'http://127.0.0.1:9000/minio' })).toThrow(/must not carry a path/);
+  });
+
+  it('streams a GET without buffering it, and answers null on 404', async () => {
+    const ok = mockFetch(200, 'streamed payload');
+    const stream = await createS3Client(CFG, ok.impl).getObjectStream('big/object');
+    const chunks: Buffer[] = [];
+    for await (const chunk of stream!) chunks.push(Buffer.from(chunk as Uint8Array));
+    expect(Buffer.concat(chunks).toString()).toBe('streamed payload');
+    expect(await createS3Client(CFG, mockFetch(404).impl).getObjectStream('k')).toBeNull();
+  });
+});
+
+describe('multipart upload', () => {
+  /** A fetch answering each multipart call as S3 does. */
+  function multipartFetch(
+    completeBody = '<CompleteMultipartUploadResult><ETag>"x-2"</ETag></CompleteMultipartUploadResult>',
+  ) {
+    const calls: Captured[] = [];
+    const impl = (async (url: any, init?: any) => {
+      calls.push({
+        url: String(url),
+        method: init?.method,
+        headers: (init?.headers ?? {}) as Record<string, string>,
+        body: init?.body ? Buffer.from(init.body) : undefined,
+      });
+      const { searchParams } = new URL(String(url));
+      if (init?.method === 'POST' && searchParams.has('uploads')) {
+        return new Response(
+          '<InitiateMultipartUploadResult><UploadId>up/1+x</UploadId></InitiateMultipartUploadResult>',
+        );
+      }
+      if (init?.method === 'PUT')
+        return new Response('', { headers: { etag: `"etag-${searchParams.get('partNumber')}"` } });
+      if (init?.method === 'POST') return new Response(completeBody);
+      return new Response(null, { status: 204 });
+    }) as typeof fetch;
+    return { calls, impl };
+  }
+
+  it('starts, uploads parts, completes and aborts with signed query strings', async () => {
+    const { calls, impl } = multipartFetch();
+    const client = createS3Client(CFG, impl);
+    const uploadId = await client.createMultipartUpload('bot-backups/u1/b1/agent', 'application/octet-stream');
+    expect(uploadId).toBe('up/1+x');
+    const etag = await client.uploadPart('bot-backups/u1/b1/agent', uploadId, 1, Buffer.from('part one'));
+    expect(etag).toBe('"etag-1"');
+    await client.completeMultipartUpload('bot-backups/u1/b1/agent', uploadId, [{ partNumber: 1, etag }]);
+    await client.abortMultipartUpload('bot-backups/u1/b1/agent', uploadId);
+
+    const base = 'http://127.0.0.1:9000/example-bucket/bot-backups/u1/b1/agent';
+    expect(calls.map((c) => `${c.method} ${c.url}`)).toEqual([
+      `POST ${base}?uploads=`,
+      `PUT ${base}?partNumber=1&uploadId=up%2F1%2Bx`,
+      `POST ${base}?uploadId=up%2F1%2Bx`,
+      `DELETE ${base}?uploadId=up%2F1%2Bx`,
+    ]);
+    expect(calls[1]!.headers['x-amz-content-sha256']).toBe(sha256Hex('part one'));
+    expect(calls[2]!.body!.toString()).toBe(
+      '<CompleteMultipartUpload><Part><PartNumber>1</PartNumber><ETag>"etag-1"</ETag></Part></CompleteMultipartUpload>',
+    );
+    for (const call of calls) expect(call.headers['authorization']).toMatch(/Signature=[0-9a-f]{64}$/);
+  });
+
+  it('treats an <Error> body as a failure even when the status is 200', async () => {
+    const { impl } = multipartFetch('<Error><Code>InternalError</Code></Error>');
+    await expect(
+      createS3Client(CFG, impl).completeMultipartUpload('k', 'u', [{ partNumber: 1, etag: '"e"' }]),
+    ).rejects.toThrow(/InternalError/);
   });
 });

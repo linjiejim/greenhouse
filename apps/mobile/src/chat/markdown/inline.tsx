@@ -18,7 +18,8 @@
  * Links (iOS text-link styling: tinted, no underline):
  *  - entity deeplinks (`#/knowledge/doc/<id>-<slug>`, `#/projects/<id>`) open
  *    the native preview sheet (src/lib/entity-links.ts),
- *  - http(s) and uploaded images (`/api/upload/…`) → the in-app Safari view
+ *  - http(s), uploaded images (`/api/upload/…`) and a Bot computer's port
+ *    previews (`/api/bots-preview/<ticket>/<port>/`) → the in-app Safari view
  *    (src/lib/links.ts `openLink`); mailto / tel → the system (Mail, Phone),
  *  - chat files (`/api/chat-files/<id>/content`, e.g. an export_table result)
  *    → authenticated download + the system share sheet (Save to Files,
@@ -101,7 +102,7 @@ const linkNode = (href: string, label: ReactNode, k: number, { s, open }: Ctx, n
 
 const INLINE_TOKENS: InlineTok[] = [
   {
-    re: /^!\[([^\]]*)\]\(([^)\s]+)\)/,
+    re: /^!\[([^\]]*)\]\(\s*([^)\s]+)\s*\)/,
     node: (m, k, { s, open, imageLabel }) => (
       <Text key={k} style={s.link} onPress={() => open(m[2], m[1])} accessibilityRole="link">
         {`[${m[1] || imageLabel}]`}
@@ -109,7 +110,8 @@ const INLINE_TOKENS: InlineTok[] = [
     ),
   },
   {
-    re: /^\[([^\]]+)\]\(([^)\s]+)\)/,
+    // CommonMark lets the destination sit between spaces: `[name]( /path )`
+    re: /^\[([^\]]+)\]\(\s*([^)\s]+)\s*\)/,
     node: (m, k, ctx, inner) => linkNode(m[2], inner(m[1]), k, ctx, m[1]),
   },
   {
@@ -234,8 +236,10 @@ export function useOpenLink(): OpenLink {
         void openLink(href, hex.accent).catch(() => alertError(t('chat.linkFailed')));
         return;
       }
-      // an uploaded / generated image (public, like the bubbles' thumbnails)
-      if (/^\/api\/upload\//.test(href)) {
+      // an uploaded / generated image (public, like the bubbles' thumbnails), or a
+      // Bot computer's port preview — its path carries its own ticket, so it opens
+      // top-level on the station like any page (never in a frame: the server forbids it)
+      if (/^\/api\/(upload|bots-preview)\//.test(href)) {
         void openLink(uploadUrl(href), hex.accent).catch(() => alertError(t('chat.linkFailed')));
         return;
       }

@@ -17,10 +17,13 @@
       "bundleIdentifier": "app.greenhouse.mobile",
       "appleTeamId": "3SKAS5BNK9",
       "entitlements": {
-        "com.apple.security.application-groups": ["group.app.greenhouse.mobile"]
+        "com.apple.security.application-groups": ["group.app.greenhouse.mobile"],
+        "aps-environment": "development",
+        "com.apple.developer.usernotifications.time-sensitive": true
       },
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSSupportsLiveActivities": true
       }
     },
     "android": {
@@ -45,6 +48,12 @@
         }
       ],
       "expo-router",
+      [
+        "expo-notifications",
+        {
+          "enableBackgroundRemoteNotifications": true
+        }
+      ],
       "expo-secure-store",
       "expo-status-bar",
       [

@@ -5,8 +5,10 @@ import type { RuntimeJsonValue } from '@greenhouse/types/runtime';
 import { BOT_TASK_SESSION_PREFIX } from '@greenhouse/types/session';
 import { safeJsonParse } from '@greenhouse/utils/json';
 
+import { botsLocale, copy } from '../bots/engine/copy.js';
+import { botTaskMetadata } from '../bots/engine/tasks.js';
 import type { RuntimeEventEnvelope } from '../runtime/worker.js';
-import { connectionManager } from '../ws/connection-manager.js';
+import { publishNotification } from './publish.js';
 
 function record(value: RuntimeJsonValue | undefined): Record<string, RuntimeJsonValue> | null {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
@@ -35,12 +37,25 @@ function runLabel(run: RuntimeRunRow): string {
 /**
  * A Bots background task (a subagent run whose child session is `bottask-…`)
  * reads as the Bot and its task, not as "Subagent": the member started it from
- * a card in a conversation and the report lands back there.
+ * a card in a conversation and the report lands back there — which is also
+ * where its notification and push open (`bots_session_id`). Its words are in
+ * the owner's language, like everything else Bots write.
  */
-function botTaskTitle(run: RuntimeRunRow): string | null {
+async function botTask(
+  db: DatabaseProvider,
+  run: RuntimeRunRow,
+): Promise<{ parentSessionId: string | null; botId: string | null; title: string; locale: 'en' | 'zh' } | null> {
   if (run.kind !== 'subagent' || !run.source_id.startsWith(BOT_TASK_SESSION_PREFIX)) return null;
-  const input = safeJsonParse(run.input, {}) as { title?: unknown };
-  return typeof input.title === 'string' && input.title.trim() ? input.title.trim() : 'Background task';
+  const input = safeJsonParse(run.input, {}) as { title?: unknown; parent_session_id?: unknown };
+  const [child, owner] = await Promise.all([db.sessions.getById(run.source_id), db.users.getById(run.owner_user_id)]);
+  const meta = botTaskMetadata(child?.metadata);
+  const fallback = typeof input.title === 'string' && input.title.trim() ? input.title.trim() : '';
+  return {
+    parentSessionId: typeof input.parent_session_id === 'string' ? input.parent_session_id : null,
+    botId: meta?.bot_id ?? null,
+    title: meta?.task_title.trim() || fallback,
+    locale: botsLocale(owner?.locale),
+  };
 }
 
 function interruptCopy(interrupt: RuntimeInterruptRow, run: RuntimeRunRow): { title: string; body: string } {
@@ -63,24 +78,6 @@ function interruptCopy(interrupt: RuntimeInterruptRow, run: RuntimeRunRow): { ti
   };
 }
 
-async function publishNew(
-  db: DatabaseProvider,
-  input: Parameters<DatabaseProvider['notifications']['createWithStatus']>[0],
-): Promise<void> {
-  const result = await db.notifications.createWithStatus(input);
-  if (!result.created) return;
-  const unread = await db.notifications.countUnread(result.notification.user_id);
-  connectionManager.sendToUser(result.notification.user_id, {
-    type: 'notification:new',
-    notificationId: result.notification.id,
-    kind: result.notification.kind,
-    title: result.notification.title,
-    unread,
-    runId: result.notification.run_id,
-    interruptId: result.notification.interrupt_id,
-  });
-}
-
 /**
  * Idempotent at-least-once observer for `startRuntimeWorker({ onEvent })`.
  * Throwing leaves the Runtime outbox row retryable; successful projection and
@@ -97,12 +94,12 @@ export function createRuntimeNotificationProjector(db: DatabaseProvider) {
       ]);
       if (!run || !interrupt) throw new Error(`Runtime interrupt event ${event.event_id} has missing source rows`);
       if (interrupt.status !== 'pending') return;
-      const copy = interruptCopy(interrupt, run);
-      await publishNew(db, {
+      const words = interruptCopy(interrupt, run);
+      await publishNotification(db, {
         user_id: interrupt.assignee_user_id,
         kind: interrupt.kind === 'budget_exceeded' ? 'budget_attention' : 'runtime_attention',
-        title: copy.title,
-        body: copy.body,
+        title: words.title,
+        body: words.body,
         payload: {
           runtime_kind: run.kind,
           source_kind: run.source_kind,
@@ -144,21 +141,18 @@ export function createRuntimeNotificationProjector(db: DatabaseProvider) {
     const failed = eventStatus !== 'succeeded';
     const eventError = typeof immutableResult.error_message === 'string' ? immutableResult.error_message : null;
     const eventErrorCode = typeof immutableResult.error_code === 'string' ? immutableResult.error_code : null;
-    const botTask = botTaskTitle(run);
-    await publishNew(db, {
+    const task = await botTask(db, run);
+    const parent = task?.parentSessionId ?? null;
+    await publishNotification(db, {
       user_id: run.owner_user_id,
       kind: failed ? 'runtime_failed' : 'runtime_completed',
-      title: botTask
-        ? failed
-          ? `Background task did not finish: ${botTask}`
-          : `Background task finished: ${botTask}`
+      title: task
+        ? copy.taskNotificationTitle(task.locale, task.title, !failed)
         : failed
           ? `${label} needs review`
           : `${label} completed`,
-      body: botTask
-        ? failed
-          ? 'The Bot reported what happened in its conversation.'
-          : 'The Bot reported back in its conversation.'
+      body: task
+        ? copy.taskNotificationBody(task.locale, !failed)
         : failed
           ? eventError || `Open Execution Center to review ${label.toLowerCase()} ${run.source_id}.`
           : `Open Execution Center to review the result for ${label.toLowerCase()} ${run.source_id}.`,
@@ -168,11 +162,21 @@ export function createRuntimeNotificationProjector(db: DatabaseProvider) {
         source_id: run.source_id,
         status: eventStatus,
         error_code: eventErrorCode,
+        ...(task && parent
+          ? {
+              bots_session_id: parent,
+              bot_id: task.botId,
+              task_title: task.title,
+              href: `#/bots?c=${encodeURIComponent(parent)}`,
+            }
+          : {}),
       },
       run_id: run.id,
       event_id: event.event_id,
       dedupe_key: `runtime-terminal:${run.id}:${eventStatus}:${immutableResult.version ?? event.seq}`,
       created_at: event.created_at,
+      // A Bot's background task tells the phone too (spec 20261010-mobile-push §2.1 "done").
+      ...(task && parent ? { push: { k: 'done', sid: parent, open: 'bots', bot_id: task.botId, ok: !failed } } : {}),
     });
   };
 }

@@ -700,6 +700,8 @@ export interface AdminBotComputersView {
   computers: ComputerAdminRow[];
   settings: { idle_minutes: number; max_running: number };
   checks: BotComputerCheck[];
+  /** Whether the deployment keeps encrypted home backups (BOTS_COMPUTER_BACKUP_*). */
+  backups_enabled: boolean;
 }
 
 export async function fetchAdminBotComputers(): Promise<AdminBotComputersView> {
@@ -710,6 +712,12 @@ export async function fetchAdminBotComputers(): Promise<AdminBotComputersView> {
 
 export async function adminStopComputer(userId: string): Promise<void> {
   const res = await rpc.api.admin['bot-computers'][':userId'].stop.$post({ param: { userId: enc(userId) } });
+  if (!res.ok) throw await failure(res);
+}
+
+/** Back up a member's computer now (a sleeping one is started for it); the backup runs in the background. */
+export async function adminBackupComputer(userId: string): Promise<void> {
+  const res = await rpc.api.admin['bot-computers'][':userId'].backup.$post({ param: { userId: enc(userId) } });
   if (!res.ok) throw await failure(res);
 }
 

@@ -14,6 +14,9 @@
  * does a deep link stacked over home (`covered`): `greenhouse://bots?c=…` or
  * `greenhouse://chat/<id>` mount their forwarder on top of a param-less home,
  * and a restore landing after the forwarder's `dismissTo` would overwrite it.
+ * Same for a notification tap that launched the app (`launchedByPush`): its
+ * route arrives only once auth is in (maybe after a station switch), later
+ * than the restore would.
  * Without Bots (off, refused, Android) there is nothing to restore — and no
  * wait, so the home renders exactly as it did before Bots.
  */
@@ -34,6 +37,8 @@ export interface SurfaceInput {
   restored: boolean;
   /** Another route is stacked over home (a cold-start deep link): it decides, not the restore. */
   covered?: boolean;
+  /** A tap on a notification launched the app (src/push/handler.ts): the tap decides, not the restore. */
+  launchedByPush?: boolean;
 }
 
 export type Surface = { kind: 'wait' } | { kind: 'thread'; c: string; title: string } | { kind: 'chat' };
@@ -42,7 +47,7 @@ const WAIT: Surface = { kind: 'wait' };
 const CHAT: Surface = { kind: 'chat' };
 
 export function initialSurface(i: SurfaceInput): Surface {
-  if (i.restored || i.covered || namesSurface(i.params) || !i.botsEnabled) return CHAT;
+  if (i.restored || i.covered || i.launchedByPush || namesSurface(i.params) || !i.botsEnabled) return CHAT;
   if (!i.hydrated) return WAIT;
   return i.last?.c ? { kind: 'thread', c: i.last.c, title: i.last.title } : CHAT;
 }

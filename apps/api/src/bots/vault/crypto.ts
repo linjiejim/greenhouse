@@ -107,8 +107,31 @@ export function vaultAad(userId: string, itemId: string, field: VaultField): str
 }
 
 export function encryptVaultField(userId: string, itemId: string, field: VaultField, plaintext: string): string {
+  return sealWithVaultKey(vaultAad(userId, itemId, field), plaintext);
+}
+
+/**
+ * Encrypt any member secret under the vault's current key, bound to `aad` — the
+ * vault's own fields, and the data key of each computer backup
+ * (`computer-backup:<uid>:<backup id>`). Same stored format and key rotation.
+ */
+export function sealWithVaultKey(aad: string, plaintext: string): string {
   const key = requireKey();
-  return `gv1.${vaultKeyId(key)}.${encrypt(plaintext, key, vaultAad(userId, itemId, field))}`;
+  return `gv1.${vaultKeyId(key)}.${encrypt(plaintext, key, aad)}`;
+}
+
+/** Open what sealWithVaultKey wrote; throws VaultError('vault_unavailable') when no known key can. */
+export function openWithVaultKey(aad: string, ciphertext: string, what = 'This secret'): string {
+  requireKey();
+  try {
+    const match = VERSIONED.exec(ciphertext);
+    if (!match) throw new Error('not a versioned ciphertext');
+    const key = knownKeys().find((known) => vaultKeyId(known) === match[1]);
+    if (!key) throw new Error('written with a key this deployment no longer has');
+    return decrypt(match[2]!, key, aad);
+  } catch {
+    throw new VaultError('vault_unavailable', `${what} can no longer be decrypted: its key is not configured.`);
+  }
 }
 
 /** Whether a stored field was written with the current key (`vault rekey` rewrites the others). */

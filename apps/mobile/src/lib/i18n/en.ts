@@ -8,6 +8,7 @@ import { botsThreadEn } from './bots/thread.en';
 import { botsCardsEn } from './bots/cards.en';
 import { botsNavEn } from './bots/nav.en';
 import { botsManageEn } from './bots/manage.en';
+import { botsComputerEn } from './bots/computer.en';
 
 export const en = {
   common: {
@@ -587,6 +588,53 @@ export const en = {
     colorTeal: 'Teal',
     colorIndigo: 'Indigo',
   },
+  /** Mobile push (spec docs/specs/20261010-mobile-push.md): Settings → Notifications and the soft ask. */
+  push: {
+    title: 'Notifications',
+    rowOn: 'On',
+    rowOff: 'Off',
+    rowSystemOff: 'Off in Settings',
+    rowNotSet: 'Not Set Up',
+    enable: 'Push Notifications',
+    stationFooter: 'For {station}. Each station you sign in to is set separately.',
+    systemOff: 'Notifications for Greenhouse are off in iOS Settings.',
+    openSystemSettings: 'Open Settings',
+    kinds: 'Notify Me When',
+    needsYou: 'A Bot Needs Me',
+    done: 'A Task Finishes',
+    replies: 'A Bot Replies While I’m Away',
+    kindsFooter:
+      'A Bot needs you: it asks you to approve, sign in or take over its computer. A task finishes: a Bot’s background task or a scheduled task is done. Replies: a Bot answered and you haven’t seen it anywhere for a minute.',
+    privacy: 'Privacy',
+    preview: 'Show Previews',
+    previewFooter:
+      'Off: a notification only says who and what kind of thing — “Sprouty · Needs your approval”. On: it also shows the subject and the first words of a reply, which anyone can read on the lock screen.',
+    test: 'Send a Test Notification',
+    testSent: 'Test notification sent',
+    testFailed: 'Couldn’t send the test',
+    testTooSoon: 'Wait a few seconds before sending another test.',
+    testUnregistered: 'This phone isn’t registered for notifications any more. Turn them off and on again.',
+    saveFailed: 'Couldn’t change notifications',
+    unavailableTitle: 'Notifications aren’t available',
+    unavailableUnsupported: 'This station’s server doesn’t send notifications yet.',
+    unavailableDisabled: 'Notifications are switched off on this station.',
+    tokenFailed: 'This phone couldn’t get a push token. Try again later.',
+    softAskTitle: 'Get notified when a Bot needs you, even when you’re not in the app?',
+    softAskMessage: 'Notifications say who and what kind of thing — not what it’s about.',
+    softAskAllow: 'Notify Me',
+    softAskLater: 'Not Now',
+    deniedTitle: 'Notifications are off',
+    deniedMessage: 'Turn on notifications for Greenhouse in Settings.',
+    liveActivity: 'Live Activities',
+    liveActivityTasks: 'Background Task Timer',
+    liveActivityExperimental: 'Experimental',
+    liveActivityFooter:
+      'A Bot’s background task counts up on the Lock Screen and in the Dynamic Island, and goes away when it ends. Experimental: if the app was force-quit, it goes away only once you open the app.',
+    liveActivityNeedsPush:
+      'Turn on notifications above first — a push is what clears the timer when a task ends while you’re away.',
+    liveActivitySystemOff: 'Live Activities for Greenhouse are off in Settings.',
+    liveActivityLog: 'Of the last {total} task ends, {ended} were cleared in the background.',
+  },
   /** Bots — split by owning package under ./bots (spec §2.6), mounted here once. */
   bots: {
     ...botsCommonEn,
@@ -594,6 +642,7 @@ export const en = {
     ...botsCardsEn,
     ...botsNavEn,
     ...botsManageEn,
+    ...botsComputerEn,
   },
 };
 

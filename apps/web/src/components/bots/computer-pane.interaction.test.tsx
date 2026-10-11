@@ -156,6 +156,7 @@ function status(overrides: Partial<ComputerStatusView> = {}): ComputerStatusView
     disk_bytes: null,
     timezone: null,
     lang: 'zh-CN',
+    restored_from: null,
     ...overrides,
   };
 }
@@ -380,6 +381,16 @@ describe('ComputerPane live screen', () => {
       blocker.dispatchEvent(new Event('pointerdown', { bubbles: true }));
     });
     expect(screen.textContent).toContain('View only — take over to operate');
+  });
+
+  it('tells the member this computer was rebuilt from a backup, until they dismiss it', async () => {
+    api.fetchComputerStatus.mockResolvedValue(status({ state: 'running', restored_from: '2026-10-09T08:00:00.000Z' }));
+    await renderPane();
+    const notice = document.querySelector('[data-testid="computer-restored"]')!;
+    expect(notice.textContent).toContain('rebuilt from its backup of');
+    expect(notice.textContent).toContain(new Date('2026-10-09T08:00:00.000Z').toLocaleString());
+    await click(notice.querySelector('button[aria-label="Dismiss"]')!);
+    expect(document.querySelector('[data-testid="computer-restored"]')).toBeNull();
   });
 
   it('confirms before interrupting a busy Bot, then hands the controls to the member', async () => {

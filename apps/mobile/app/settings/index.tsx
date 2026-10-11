@@ -4,7 +4,8 @@ import { brandFont as font } from '../../src/ui/brand-font';
  * stack, large title, ✓ Done). A real SwiftUI Form, iOS Settings–style:
  *
  *  - account: avatar + name + email (one VoiceOver element — the initial is
- *    decoration), role, and the 工作站 row (→ stations page),
+ *    decoration), role, the 工作站 row (→ stations page) and — on iOS, for a
+ *    station that pushes — 通知 · {state} (→ /settings/notifications),
  *  - 外观: theme (segmented; applied app-wide at once via Appearance) and
  *    language (menu picker),
  *  - 对话: 标签 (→ tag library page), — internal accounts on iOS — 我的 Bot
@@ -46,6 +47,7 @@ import {
 import { chooseLanguage } from '../../src/settings/account-language';
 import type { LangPref, ThemePref } from '../../src/store/prefs';
 import { useBotIdentityEnabled } from '../../src/bots/availability';
+import { PUSH_PLATFORM_READY, usePush } from '../../src/push/register';
 import { sproutyBot, useBots } from '../../src/bots/store';
 import { compactNumber } from '../../src/lib/format';
 import { useT } from '../../src/lib/i18n';
@@ -64,6 +66,7 @@ export default function Settings() {
     useSettings();
   const { theme, setTheme, lang } = prefs;
   const myBots = useMyBots();
+  const push = usePushRow();
 
   return (
     <>
@@ -113,6 +116,13 @@ export default function Settings() {
             value={station?.name ?? '—'}
             onPress={() => router.push('/settings/stations')}
           />
+          {push.shown ? (
+            <FormNavRow
+              label={t('push.title')}
+              value={t(push.value)}
+              onPress={() => router.push('/settings/notifications')}
+            />
+          ) : null}
         </Section>
 
         {/* ── appearance ── */}
@@ -219,4 +229,24 @@ function useMyBots() {
   }, [shown, botsLoaded, loadBots]);
 
   return { shown, count, main: shown ? main : null };
+}
+
+/**
+ * The 通知 row (iOS, a station that pushes — an older server or one with pushes off shows
+ * none): this phone's state on the active station.
+ */
+function usePushRow() {
+  const support = usePush((s) => s.support);
+  const permission = usePush((s) => s.permission);
+  const off = usePush((s) => s.off);
+  const device = usePush((s) => s.device);
+  const value =
+    permission === 'denied'
+      ? ('push.rowSystemOff' as const)
+      : off
+        ? ('push.rowOff' as const)
+        : permission === 'granted' && device
+          ? ('push.rowOn' as const)
+          : ('push.rowNotSet' as const);
+  return { shown: PUSH_PLATFORM_READY && support === 'enabled', value };
 }

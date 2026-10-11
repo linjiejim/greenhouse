@@ -99,6 +99,10 @@ function fakeClient(overrides: Partial<DockerClient> = {}): DockerClient {
     volumeRemove: async () => {},
     volumeList: async () => [],
     volumeCreatedAt: async () => null,
+    volumeExists: async () => false,
+    runStream: () => {
+      throw new Error('not used');
+    },
     run: async () => 'id',
     stop: async () => {},
     remove: async () => {},
@@ -294,6 +298,7 @@ describe('hosted prechecks (BOTS_COMPUTER_DRIVER=e2b)', () => {
     expect(result.checks.map((c) => [c.id, c.ok])).toEqual([
       ['provider', true],
       ['template', true],
+      ['egress', true],
     ]);
     // A different size is a different template.
     const bigger = await runHostedPrechecks({ ...hosted, e2b: { ...hosted.e2b!, memoryMB: 4096 } }, deps());

@@ -10,7 +10,8 @@
  *  - `peek/*`, `sheets/*`  form sheets (detail previews, pickers, short forms)
  *  - `bots/*`              Bots sheets (needs-you, cards, sign-in, management);
  *                          `bots/index` only forwards a deep link to home
- *  - `table`, `peek/diagram`, `peek/html`  full-screen viewers (modal pages)
+ *  - `table`, `peek/diagram`, `peek/html`  full-screen viewers (modal pages);
+ *                          `bots/computer` the member's computer (full-screen modal)
  *  - `login`               full screen, shown when signed out
  *
  * Presentation (push / sheet / modal) is decided here, because it must be
@@ -34,6 +35,8 @@
  *
  * <RealtimeBridge/> runs the app's one WebSocket (src/realtime) — it decides
  * itself when to connect (signed in, Bots available, foreground).
+ * `usePushBridge` runs the push side (src/push): registration, taps, banners, badge.
+ * `useLiveActivities` keeps a Bot's background tasks on the lock screen (src/live-activity).
  * <WidgetArtHost/> draws the home-screen widget's avatars off screen (src/widget).
  */
 
@@ -54,6 +57,8 @@ import { StartupContext } from '../src/startup/context';
 import { setOnUnauthorized } from '../src/api/client';
 import { useWidgetSnapshot } from '../src/widget/snapshot';
 import { useAccountLanguage } from '../src/settings/account-language';
+import { usePushBridge } from '../src/push/use-push';
+import { useLiveActivities } from '../src/live-activity/use-live-activities';
 import { WidgetArtHost } from '../src/widget/art-host';
 import { useApplyAppearance, useTheme } from '../src/theme';
 import { Splash } from '../src/ui/splash';
@@ -134,6 +139,15 @@ export default function RootLayout() {
   // The account's language follows the app's until the member picks one (src/settings/account-language.ts).
   useAccountLanguage();
 
+  // Pushes (src/push): this phone's registration per signed-in station, opening a tapped
+  // notification once the routes are up (switching station first when it came from
+  // another), clearing banners and keeping the app icon badge on the ☰ count.
+  usePushBridge(ready);
+
+  // A Bot's background tasks as Live Activities (lock screen / Dynamic Island), when the member
+  // switched them on in Settings → 通知 (src/live-activity).
+  useLiveActivities();
+
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <KeyboardProvider>
@@ -196,6 +210,11 @@ export default function RootLayout() {
                 <Stack.Screen name="bots/example" options={sheetScreen([0.6, 1], { header: true })} />
                 <Stack.Screen name="bots/archived" options={sheetScreen([0.6, 1], { header: true })} />
                 <Stack.Screen name="bots/relay" options={sheetScreen([0.6, 1], { header: true })} />
+                {/* the member's computer: full screen, no swipe-down (fingers on the screen are the computer's) */}
+                <Stack.Screen
+                  name="bots/computer"
+                  options={{ ...detailScreen(c), presentation: 'fullScreenModal', gestureEnabled: false }}
+                />
 
                 {/* ── modals with their own stack ── */}
                 <Stack.Screen name="settings" options={modalScreen()} />
