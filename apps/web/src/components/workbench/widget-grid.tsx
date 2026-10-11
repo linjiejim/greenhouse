@@ -10,10 +10,15 @@
  * saved `y`, and dragging is off — a 12-column drag target on a phone is not a
  * feature. Read mode also disables dragging entirely so a card's own content
  * (links, sorting, buttons) stays clickable.
+ *
+ * `onLayoutChange` reports only what a person did — a drag or a resize that
+ * changed the arrangement. Display-time adjustments (sizes clamped up to a
+ * minimum, overlaps pushed apart, compaction) are drawn but never reported, so
+ * opening a dashboard never rewrites its stored layout.
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import GridLayout, { type Layout, type LayoutItem } from 'react-grid-layout';
+import GridLayout, { type EventCallback, type Layout, type LayoutItem } from 'react-grid-layout';
 import 'react-grid-layout/css/styles.css';
 
 /**
@@ -119,6 +124,20 @@ export function WidgetGrid({
 
   const ordered = useMemo(() => [...items].sort((left, right) => left.y - right.y || left.x - right.x), [items]);
 
+  // The arrangement when a drag / resize began: the gesture is reported only if it changed it.
+  const gestureStart = useRef<Layout | null>(null);
+  const startGesture: EventCallback = (layout) => {
+    gestureStart.current = layout;
+  };
+  const endGesture: EventCallback = (layout) => {
+    const before = gestureStart.current;
+    gestureStart.current = null;
+    if (!onLayoutChange) return;
+    const next = fromLayout(layout, items);
+    if (before && sameLayout(next, fromLayout(before, items))) return;
+    if (!sameLayout(next, items)) onLayoutChange(next);
+  };
+
   // One return, and the measured container is always mounted. An early return
   // for the narrow case would leave the ref unattached on the first render, and
   // since the observer is set up once, the grid could never learn its width if
@@ -148,12 +167,11 @@ export function WidgetGrid({
             gridConfig={{ cols: columns, rowHeight, margin: [12, 12], containerPadding: [0, 0] }}
             dragConfig={{ enabled: editing, bounded: false, handle: `.${WIDGET_DRAG_HANDLE_CLASS}` }}
             resizeConfig={{ enabled: editing }}
-            onLayoutChange={(layout) => {
-              if (!onLayoutChange) return;
-              const next = fromLayout(layout, items);
-              // RGL emits on mount and on every compaction pass; only report real moves.
-              if (!sameLayout(next, items)) onLayoutChange(next);
-            }}
+            // Not `onLayoutChange`: RGL emits that on mount and on every compaction pass too.
+            onDragStart={startGesture}
+            onDragStop={endGesture}
+            onResizeStart={startGesture}
+            onResizeStop={endGesture}
           >
             {items.map((item) => (
               <div key={item.id}>{renderItem(item.id)}</div>
