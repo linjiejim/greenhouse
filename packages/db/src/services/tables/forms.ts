@@ -187,20 +187,26 @@ export function createTablesForms(db: Db, deps: { records: TablesRecordInternals
     return new Set(rows.map((row) => row.id));
   };
 
-  /** The audience, with listed people that must be active internal users and groups that must exist. */
-  const validateAudience = async (raw: unknown): Promise<TableFormAudience> => {
+  /**
+   * The audience, where every newly named person must be an active internal
+   * user and every newly named group must exist. Entries already on the form
+   * (`current`) stay as they are — someone deactivated since, or a deleted
+   * group, admits nobody and must not block editing the rest of the form.
+   */
+  const validateAudience = async (raw: unknown, current?: TableFormAudience): Promise<TableFormAudience> => {
     const audience = normalizeFormAudience(raw);
     if (audience.type !== 'principals') return audience;
-    const active = await activeInternalUserIds(audience.userIds);
-    if (audience.userIds.some((id) => !active.has(id))) {
+    const kept: { userIds: readonly string[]; groupIds: readonly number[] } =
+      current?.type === 'principals' ? current : { userIds: [], groupIds: [] };
+    const addedUsers = audience.userIds.filter((id) => !kept.userIds.includes(id));
+    const addedGroups = audience.groupIds.filter((id) => !kept.groupIds.includes(id));
+    const active = await activeInternalUserIds(addedUsers);
+    if (addedUsers.some((id) => !active.has(id))) {
       throw new TablesValidationError('Form audience lists someone who is not an active internal user');
     }
-    if (audience.groupIds.length > 0) {
-      const found = await db
-        .select({ id: userGroups.id })
-        .from(userGroups)
-        .where(inArray(userGroups.id, audience.groupIds));
-      if (found.length !== audience.groupIds.length) {
+    if (addedGroups.length > 0) {
+      const found = await db.select({ id: userGroups.id }).from(userGroups).where(inArray(userGroups.id, addedGroups));
+      if (found.length !== addedGroups.length) {
         throw new TablesValidationError('Form audience lists a group that does not exist');
       }
     }
@@ -423,7 +429,8 @@ export function createTablesForms(db: Db, deps: { records: TablesRecordInternals
       };
       if (patch.name !== undefined) values.name = trimmed(patch.name, 'Form name', 120);
       if (patch.status !== undefined) values.status = patch.status;
-      const audience = patch.audience !== undefined ? await validateAudience(patch.audience) : current.audience;
+      const audience =
+        patch.audience !== undefined ? await validateAudience(patch.audience, current.audience) : current.audience;
       if (patch.audience !== undefined) values.audience = audience;
       // A new audience re-checks the stored config (a relation field cannot go public).
       if (patch.config !== undefined || patch.audience !== undefined) {

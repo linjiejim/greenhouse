@@ -98,10 +98,11 @@ export function TablesFormEditor({
       : { userIds: [], groupIds: [] },
   );
   const [defaults, setDefaults] = useState<DefaultDraft[]>(() => readDefaults(form?.config, byId));
-  const [fieldIds, setFieldIds] = useState<number[]>(
-    () =>
-      form?.config.fieldIds ??
-      writable.filter((field) => field.type !== 'relation' || audience === 'base').map((field) => field.id),
+  // Archived fields drop out: the server refuses to save a form that shows one.
+  const [fieldIds, setFieldIds] = useState<number[]>(() =>
+    form
+      ? form.config.fieldIds.filter((fieldId) => byId.has(fieldId))
+      : writable.filter((field) => field.type !== 'relation' || audience === 'base').map((field) => field.id),
   );
   const [allowMultiple, setAllowMultiple] = useState(form?.config.allowMultiple !== false);
   const [users, setUsers] = useState<TableUserOption[]>([]);

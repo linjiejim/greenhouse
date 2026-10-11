@@ -226,6 +226,30 @@ describe('Tables forms (slice Fm)', () => {
     expect(await refused.json()).toMatchObject({ details: { reason: 'group_not_found' } });
   });
 
+  it('lets a form be edited after someone on its list was deactivated, but not add such a person', async () => {
+    const app = createHttpApp([owner, outsider, another]);
+    const { tableId, primaryId } = await createBase(app);
+    const audience = { type: 'principals' as const, userIds: [outsider.id], groupIds: [] };
+    const id = await formId(app, tableId, { fieldIds: [primaryId] }, audience);
+    await db.users.update(outsider.id, { status: 'disabled' });
+    await db.users.update(another.id, { status: 'disabled' });
+
+    const read = await send(app, owner, `/api/tables/forms/${id}`);
+    const { revision } = ((await read.json()) as { form: { revision: number } }).form;
+    const kept = await send(app, owner, `/api/tables/forms/${id}`, 'PATCH', {
+      revision,
+      name: 'Renamed',
+      audience,
+      config: { fieldIds: [primaryId] },
+    });
+    expect(kept.status).toBe(200);
+    const added = await send(app, owner, `/api/tables/forms/${id}`, 'PATCH', {
+      revision: revision + 1,
+      audience: { ...audience, userIds: [outsider.id, another.id] },
+    });
+    expect(added.status).toBe(400);
+  });
+
   it('keeps a Base-audience form to members who can create records', async () => {
     const app = createHttpApp([owner, outsider, another]);
     const { baseId, tableId, primaryId } = await createBase(app);
