@@ -21,6 +21,12 @@
  *  - a section with nothing in it is left out (a member with Sprouty alone has
  *    no Agent section), and so is one a search empties — the chats below carry
  *    the results;
+ *  - other members' public Agents (spec 20261011-agent-first-class §5c P4): a DM
+ *    with one is an Agent row like any other ("by {owner}" beside its name;
+ *    archived once it is no longer offered), and while any are offered to the
+ *    member the section ends with "Browse Agents ›" (`/bots/agents` — the
+ *    directory, `GET /api/agents`), which alone is enough to show the section;
+ *    a search hides it;
  *  - a failed first load is one quiet "Couldn't load Agents · Retry" line under
  *    Agent — no alert. A 403 / an older server closes both sections
  *    (`useBotsEnabled`), and with Agents off the drawer is the chat history alone.
@@ -83,6 +89,8 @@ function Section({ query, onClose }: { query: string; onClose(): void }) {
 
   const bots = useBots((s) => s.bots);
   const byId = useBots((s) => s.byId);
+  const shared = useBots((s) => s.shared);
+  const browsable = useBots((s) => s.directory.length > 0);
   const botsLoaded = useBots((s) => s.botsLoaded);
   const conversations = useBots((s) => s.conversations);
   const conversationsLoaded = useBots((s) => s.conversationsLoaded);
@@ -100,12 +108,14 @@ function Section({ query, onClose }: { query: string; onClose(): void }) {
       await useBots.getState().loadConversations();
       const after = useBots.getState();
       if (after.botsLoaded && after.conversationsLoaded) void after.ensureSprouty();
+      // The public Agents offered to the member: whether "Browse Agents" shows.
+      void after.loadDirectory();
     })();
   }, [status]);
 
   const rows = useMemo(
-    () => drawerRows({ bots, byId, botsLoaded, conversations }, { query, expanded }),
-    [bots, byId, botsLoaded, conversations, query, expanded],
+    () => drawerRows({ bots, byId, botsLoaded, conversations, shared }, { query, expanded }),
+    [bots, byId, botsLoaded, conversations, shared, query, expanded],
   );
   const dir = useMemo(() => ({ byId, botsLoaded }), [byId, botsLoaded]);
 
@@ -166,6 +176,7 @@ function Section({ query, onClose }: { query: string; onClose(): void }) {
     setExpanded(true);
   }, []);
   const openArchived = useCallback(() => later(() => router.push('/bots/archived')), [later, router]);
+  const openBrowse = useCallback(() => later(() => router.push('/bots/agents')), [later, router]);
   const retry = useCallback(() => {
     lastLoadAt = Date.now();
     void (async () => {
@@ -178,7 +189,8 @@ function Section({ query, onClose }: { query: string; onClose(): void }) {
   const total = rows.recent.length + rows.moreCount;
   const loadFailed = failed && !conversationsLoaded;
   // An empty section is left out — and one a search empties: the chats below carry the results.
-  const agentsShown = rows.recent.length > 0 || rows.archived.length > 0 || (loadFailed && !searching);
+  const browse = browsable && !searching;
+  const agentsShown = rows.recent.length > 0 || rows.archived.length > 0 || browse || (loadFailed && !searching);
   if (!pinned && !agentsShown) return null;
   // Hairlines run between rows — not after the last, and not against the highlighted current row.
   const separated = (current: boolean, next: BotConversationSummary | undefined) =>
@@ -235,6 +247,20 @@ function Section({ query, onClose }: { query: string; onClose(): void }) {
               >
                 <Text style={styles.archivedText}>{t('bots.nav.archived', { n: rows.archived.length })}</Text>
                 <Icon name="chevR" size={13} color={c.tertiaryLabel} weight="semibold" />
+              </Pressable>
+            </Animated.View>
+          ) : null}
+          {browse ? (
+            <Animated.View layout={ROW_LAYOUT} entering={ROW_ENTER}>
+              <Pressable
+                key={fontKey}
+                onPress={openBrowse}
+                accessibilityRole="button"
+                accessibilityHint={t('bots.nav.browseHint')}
+                style={({ pressed }) => [styles.textRow, pressed && { backgroundColor: c.fill }]}
+              >
+                <Text style={styles.moreText}>{t('bots.nav.browse')}</Text>
+                <Icon name="chevR" size={13} color={c.accent} weight="semibold" />
               </Pressable>
             </Animated.View>
           ) : null}

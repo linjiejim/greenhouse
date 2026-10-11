@@ -209,6 +209,8 @@ export default function RootLayout() {
                 <Stack.Screen name="bots/new-bot" options={sheetScreen([1], { header: true })} />
                 <Stack.Screen name="bots/example" options={sheetScreen([0.6, 1], { header: true })} />
                 <Stack.Screen name="bots/archived" options={sheetScreen([0.6, 1], { header: true })} />
+                {/* other members' public Agents offered to this one (P4) — "Browse Agents" in the drawer */}
+                <Stack.Screen name="bots/agents" options={sheetScreen([0.6, 1], { header: true })} />
                 <Stack.Screen name="bots/relay" options={sheetScreen([0.6, 1], { header: true })} />
                 {/* an Agent's computer: full screen, no swipe-down (fingers on the screen are the computer's) */}
                 <Stack.Screen

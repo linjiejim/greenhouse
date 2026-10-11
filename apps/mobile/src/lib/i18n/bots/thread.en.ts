@@ -41,6 +41,22 @@ export const botsThreadEn = {
     readOnlyDm: '{name} is archived and won’t reply',
     /** An old group chat: group chats were retired. */
     readOnlyClosed: 'Group chats were retired — this one stays as a record.',
+    /** Someone else's public Agent no longer offered to the member (unpublished, paused, out of its audience). */
+    readOnlyShared: '{name} isn’t shared with you any more — this conversation stays readable.',
+    /** The start of a DM with someone else's public Agent. */
+    sharedStart: '{owner} shared {name} with you. It remembers what you talk about here — {owner} can’t read it.',
+    /** `unavailable` · `daily_cap`, when the server wrote no line. */
+    dailyCap: 'You’ve used today’s allowance with {name}. Try again tomorrow.',
+    dailyCapBare: 'You’ve used today’s allowance. Try again tomorrow.',
+    /** Rating a public Agent's reply (its owner sees the rating and the note, never the conversation). */
+    rateUp: 'Good Response',
+    rateDown: 'Bad Response',
+    rateTitle: 'What Could Be Better?',
+    rateMessage: 'Optional. {owner} sees your rating and this note — never the conversation.',
+    rateSkip: 'Skip',
+    rateSend: 'Send',
+    rateThanks: 'Thanks for the feedback',
+    rateFailed: 'Couldn’t send your feedback',
     nameHint: 'Give {name} a name of your own?',
     nameHintRename: 'Rename',
     nameHintKeep: 'Keep {name}',
@@ -115,6 +131,10 @@ export const botsThreadEn = {
     archived: 'Archived',
     /** An old group chat (group chats were retired). */
     groupClosed: 'Retired group chat',
+    /** Someone else's public Agent, no longer offered to the member. */
+    unavailable: 'No longer shared',
+    /** At rest in a DM with someone else's public Agent: whose it is. */
+    sharedBy: 'by {name}',
   },
   stop: {
     afterStep: 'Stop After This Step',

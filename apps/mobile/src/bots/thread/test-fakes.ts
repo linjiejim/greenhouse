@@ -393,6 +393,7 @@ export function makeStore(api: Partial<BotsStoreDeps['api']> = {}, clock?: Threa
   const overview: BotsOverview = {
     bots: [bot('bot_a'), bot('bot_b')],
     archived_bots: [],
+    shared_bots: [],
     computer: { state: 'disabled', reason: null, hardened: false },
     vault_available: false,
     pending_requests: 0,
@@ -425,6 +426,9 @@ export function makeStore(api: Partial<BotsStoreDeps['api']> = {}, clock?: Threa
         calls.listChatRuns += 1;
         return [];
       },
+      listAgents: async () => ({ ok: true as const, value: [] }),
+      startAgentConversation: async () => ({ ok: false as const, status: 404, code: null, message: '' }),
+      rateReply: async () => ({ ok: false as const, status: 500, code: null, message: '' }),
       ...api,
     },
     clock: clock ?? { setTimeout: (fn, ms) => setTimeout(fn, ms), clearTimeout: () => {} },

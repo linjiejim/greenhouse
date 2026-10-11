@@ -280,7 +280,7 @@ describe('pinned tripwires', () => {
     expectPinnedText(
       `${WEB_BOTS}/conversation-header.tsx`,
       (sf) => [declaration(sf, 'useStatusLine')],
-      '2cb439415b87590f0f60e818c2c5409425ffde33e41af2d17877363b3ce99687',
+      '4e9d01254813e746ccee170f136fccf7bd8ba8cbc6d5ed80c6bd237fe5b6c93e',
       'apps/mobile/src/bots/thread/status-line.ts',
     );
   });

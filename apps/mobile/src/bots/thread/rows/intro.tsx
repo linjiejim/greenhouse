@@ -6,7 +6,8 @@
  * New Chat from the drawer or ⋯). A task chat: its Agent saying hello, the
  * chat's title, and that this is a separate chat with that Agent — its own
  * context, apart from the main thread (spec 20261011-agent-first-class §5a). A
- * group: its roster, its title, "This is the beginning of …".
+ * DM with someone else's public Agent (P4): who shared it, and that they can't
+ * read this conversation. A group: its roster, its title, "This is the beginning of …".
  */
 
 import React, { memo } from 'react';
@@ -23,6 +24,7 @@ export const Intro = memo(function Intro({
   title,
   owner,
   members,
+  sharedBy,
 }: {
   kind: 'direct' | 'task' | 'group';
   title: string;
@@ -30,6 +32,8 @@ export const Intro = memo(function Intro({
   owner: BotView | undefined;
   /** A group's roster. */
   members: BotView[];
+  /** A DM with someone else's public Agent: its owner's name. */
+  sharedBy?: string;
 }) {
   const { colors: c } = useTheme();
   const styles = useStyles(c);
@@ -59,7 +63,9 @@ export const Intro = memo(function Intro({
       <Text style={styles.body}>
         {task
           ? t('bots.thread.taskStart', { name: owner?.name ?? t('bots.card.aBot') })
-          : t('bots.thread.dmStart', { name })}
+          : sharedBy
+            ? t('bots.thread.sharedStart', { name, owner: sharedBy })
+            : t('bots.thread.dmStart', { name })}
       </Text>
     </View>
   );

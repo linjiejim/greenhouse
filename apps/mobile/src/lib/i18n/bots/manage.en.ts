@@ -190,5 +190,11 @@ export const botsManageEn = {
     outcomeWrongSite: 'Wrong site',
     outcomeCanceled: 'Canceled',
     outcomeInterrupted: 'Interrupted',
+    // ── Someone else's public Agent (P4): only what its owner shared ──
+    sharedBy: 'By {name}',
+    sharedAbout: 'About',
+    sharedFooter: '{owner} shared it with you. They see how much it’s used and your ratings — never your conversations.',
+    sharedUnavailable: 'It isn’t shared with you any more. Your conversation with it stays readable.',
+    talk: 'Talk',
   },
 };

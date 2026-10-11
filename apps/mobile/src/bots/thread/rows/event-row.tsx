@@ -11,7 +11,8 @@
  * Agent started a task in a new chat — opens that chat, `chat_origin` — the
  * first line of such a chat — the conversation it came from. Text comes from
  * the server (its `content`, in the account's language); the icon from the
- * event's kind.
+ * event's kind. A public Agent's per-member daily cap (`unavailable` ·
+ * `daily_cap`, P4) wears an hourglass.
  */
 
 import React, { memo } from 'react';
@@ -59,6 +60,7 @@ const REPORT_ICON: Record<'succeeded' | 'failed' | 'canceled', IconName> = {
 
 function iconOf(event: BotEvent | null): IconName | null {
   if (!event) return null;
+  if (event.kind === 'unavailable' && event.reason === 'daily_cap') return 'hourglass';
   if (event.kind === 'request') return REQUEST_ICON[event.request_kind] ?? null;
   if (event.kind === 'task_report') return REPORT_ICON[event.status] ?? null;
   return EVENT_ICON[event.kind] ?? null;
@@ -68,6 +70,7 @@ export const EventRow = memo(function EventRow({
   message,
   event,
   failedBotName,
+  botName = null,
   canAct,
   busy,
   onRetry,
@@ -79,6 +82,8 @@ export const EventRow = memo(function EventRow({
   event: BotEvent | null;
   /** The Bot whose turn failed (`turn_error`), when known — the fallback text and the Retry address it. */
   failedBotName: string | null;
+  /** The Bot an `unavailable` line is about, when known (a daily cap's fallback text names it). */
+  botName?: string | null;
   /** Someone can reply here (no one-click lines in a read-only thread). */
   canAct: boolean;
   /** A run is going: a retry now would only queue behind it. */
@@ -119,7 +124,11 @@ export const EventRow = memo(function EventRow({
     message.content ||
     (event?.kind === 'turn_error'
       ? t('bots.thread.turnFailed', { name: failedBotName ?? t('bots.common.deletedBot') })
-      : '');
+      : event?.kind === 'unavailable' && event.reason === 'daily_cap'
+        ? botName
+          ? t('bots.thread.dailyCap', { name: botName })
+          : t('bots.thread.dailyCapBare')
+        : '');
   const retryBot = event?.kind === 'turn_error' && failedBotName && canAct ? event.bot_id : null;
   const tint = danger ? c.red : c.secondaryLabel;
   const chat = onOpenChat ? linkedChat(event) : null;

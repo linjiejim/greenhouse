@@ -10,7 +10,8 @@
  * what the phone adds on top (spec §2.5.3 a), highest first:
  *
  *   read-only (an old group chat — groups are retired and kept as closed
- *     records — or a DM whose Bot was archived)
+ *     records — a DM whose Bot was archived, or a DM with someone else's
+ *     public Agent that is no longer offered)
  *   > the newest pending card (approval / sign-in / hand the computer back /
  *     human check / anything else: "your go-ahead")
  *   > a stop on its way ("Stopping after this step…" / "Stopping…")
@@ -20,7 +21,9 @@
  *   > busy without a segment (between turns, another API slot): "Working…"
  *   > idle: no line at all — the title alone (the role lives in the
  *     profile, one tap away); a task chat's title is its own, so its line
- *     says who answers there ("Chat with Sage" — the web's header too).
+ *     says who answers there ("Chat with Sage" — the web's header too); a DM
+ *     with someone else's public Agent says whose it is ("by Jim" — the web
+ *     adds the role, the phone keeps that in the profile).
  *
  * "Busy" only ever comes from real signals (`snap.runActive` — D14); the web
  * header's computer-phase branch ("you're in control") has no phone
@@ -29,6 +32,7 @@
 
 import type { TranslationKey } from '../../lib/i18n';
 import type { BotRequestView, BotView } from '../../shared/bots';
+import { sharedOwnerOf, sharedReadOnly, type SharedBots } from '../public-agents';
 import type { BotStreamSegment } from '../../shared/bots-wire';
 import type { PlantState } from '../../ui/plant-avatar/plant-ids';
 import type { BotsReadOnly, ThreadSnapshot } from '../contract';
@@ -46,22 +50,28 @@ export interface StatusInput {
   byId: Record<string, BotView>;
   /** A task chat reads like a DM: its Agent speaks under the title, guests are named. */
   kind: 'direct' | 'task' | 'group';
+  /** Other members' public Agents in the member's DMs (P4): one no longer offered turns its DM read-only. */
+  shared?: SharedBots;
 }
 
 /**
  * Why nobody here can reply, or null. The server's answer to a send (`snap.readOnly`)
  * wins; otherwise the directory decides — but only for Bots it knows: an id it has
- * not heard of yet is "not loaded", never "archived".
+ * not heard of yet is "not loaded", never "archived". Someone else's public Agent
+ * (`shared`) that is no longer offered: `agent_unavailable`.
  */
 export function threadReadOnly(
   snap: Pick<ThreadSnapshot, 'conversation' | 'readOnly'>,
   byId: Record<string, BotView>,
+  shared?: SharedBots,
 ): BotsReadOnly | null {
   // A group chat is a closed record (group chats were retired), whoever is in it.
   if (snap.conversation?.kind === 'group') return 'group_closed';
   if (snap.readOnly) return snap.readOnly;
   const conversation = snap.conversation;
   if (!conversation) return null;
+  const unavailable = sharedReadOnly(conversation, shared);
+  if (unavailable) return unavailable;
   const owner = conversation.owner_bot_id ? byId[conversation.owner_bot_id] : undefined;
   return owner && owner.status !== 'active' ? 'bot_archived' : null;
 }
@@ -96,9 +106,16 @@ function waitingKey(request: BotRequestView): TranslationKey {
   return 'bots.status.waitConfirm';
 }
 
-export function statusLine({ snap, byId, kind }: StatusInput): StatusLine | null {
-  const readOnly = threadReadOnly(snap, byId);
-  if (readOnly) return { key: readOnly === 'group_closed' ? 'bots.status.groupClosed' : 'bots.status.archived' };
+/** The status line of a thread nobody can reply in. */
+const READ_ONLY_STATUS = {
+  group_closed: 'bots.status.groupClosed',
+  bot_archived: 'bots.status.archived',
+  agent_unavailable: 'bots.status.unavailable',
+} as const satisfies Record<BotsReadOnly, TranslationKey>;
+
+export function statusLine({ snap, byId, kind, shared }: StatusInput): StatusLine | null {
+  const readOnly = threadReadOnly(snap, byId, shared);
+  if (readOnly) return { key: READ_ONLY_STATUS[readOnly] ?? 'bots.status.archived' };
 
   const pending = latestPending(snap.requests);
   if (pending) return { key: waitingKey(pending) };
@@ -130,6 +147,8 @@ export function statusLine({ snap, byId, kind }: StatusInput): StatusLine | null
   if (snap.runActive) return { key: 'bots.status.working' };
   const owner = conversation?.owner_bot_id ? byId[conversation.owner_bot_id] : undefined;
   if (kind === 'task' && owner) return { key: 'bots.status.taskWith', vars: { name: owner.name } };
+  const publishedBy = kind === 'direct' ? sharedOwnerOf(conversation, shared)?.owner.nickname : undefined;
+  if (publishedBy) return { key: 'bots.status.sharedBy', vars: { name: publishedBy } };
   return null;
 }
 
@@ -140,8 +159,8 @@ export function statusLine({ snap, byId, kind }: StatusInput): StatusLine | null
  * error (until the next one), else idle. The screen adds a brief `done` smile
  * when a reply finishes (`cheerPose`).
  */
-export function titlePose({ snap, byId }: StatusInput): PlantState {
-  if (threadReadOnly(snap, byId)) return 'sleep';
+export function titlePose({ snap, byId, shared }: StatusInput): PlantState {
+  if (threadReadOnly(snap, byId, shared)) return 'sleep';
   if (latestPending(snap.requests)) return 'waiting';
   const segment = talkingSegment(snap.run);
   if (segment) return segment.text.length > 0 ? 'speaking' : 'thinking';

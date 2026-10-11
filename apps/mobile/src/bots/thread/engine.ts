@@ -849,7 +849,10 @@ export class ThreadEngine implements ThreadController {
     }
 
     this.removePending(clientId);
-    if (result.status === 409 && (result.code === 'bot_archived' || result.code === 'group_closed')) {
+    if (
+      result.status === 409 &&
+      (result.code === 'bot_archived' || result.code === 'group_closed' || result.code === 'agent_unavailable')
+    ) {
       this.readOnly = result.code;
       this.publish();
       void this.deps.store.getState().loadBots();

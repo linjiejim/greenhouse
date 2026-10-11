@@ -139,6 +139,11 @@ const ICONS = {
   sleep: ['moon.zzz', 'bedtime'],
   at: ['at', 'alternate_email'],
   alertCircle: ['exclamationmark.circle', 'error'],
+  // rating a shared Agent's reply (the filled one marks the rating given)
+  thumbUp: ['hand.thumbsup', 'thumb_up'],
+  thumbUpFill: ['hand.thumbsup.fill', 'thumb_up'],
+  thumbDown: ['hand.thumbsdown', 'thumb_down'],
+  thumbDownFill: ['hand.thumbsdown.fill', 'thumb_down'],
   // ── an Agent's computer (screen, keys, zoom) ──
   computer: ['desktopcomputer', 'computer'],
   keyboard: ['keyboard', 'keyboard'],

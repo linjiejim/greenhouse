@@ -397,6 +397,21 @@ describe('sending', () => {
     expect(t.reloads()).toBe(reloads + 1);
   });
 
+  it('409 agent_unavailable (someone else’s Agent no longer shared) → read-only the same way', async () => {
+    const t = await setup();
+    const listBots = t.calls.listBots;
+    t.fake.posts.push({ kind: 'error', status: 409, code: 'agent_unavailable', message: 'unpublished' });
+    expect(await t.engine.send({ text: 'hello?', images: [], mentions: [] })).toEqual({
+      ok: false,
+      kind: 'read_only',
+      code: 'agent_unavailable',
+    });
+    await t.time.advance(0);
+    expect(t.snap().readOnly).toBe('agent_unavailable');
+    expect(t.snap().pending).toEqual([]);
+    expect(t.calls.listBots).toBe(listBots + 1);
+  });
+
   it('a refusal with any other code → rejected (the screen restores the draft)', async () => {
     const t = await setup();
     t.fake.posts.push({ kind: 'error', status: 409, code: 'something_else', message: 'nope' });

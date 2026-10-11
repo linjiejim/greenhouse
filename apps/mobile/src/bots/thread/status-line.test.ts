@@ -248,6 +248,37 @@ describe('threadReadOnly', () => {
   it('the server’s answer to a send wins in a DM', () => {
     expect(threadReadOnly({ conversation: conversation(), readOnly: 'group_closed' }, BY_ID)).toBe('group_closed');
   });
+
+  it('someone else’s public Agent that is no longer shared: agent_unavailable (P4)', () => {
+    const shared = (available: boolean) => ({
+      [SAGE.id]: {
+        id: SAGE.id,
+        name: 'Sage',
+        role: '',
+        description: '',
+        avatar: {},
+        template_key: null,
+        owner: { id: 'u_owner', nickname: 'Jim' },
+        dm_session_id: 's1',
+        available,
+      },
+    });
+    const snap = { conversation: conversation(), readOnly: null };
+    expect(threadReadOnly(snap, BY_ID, shared(false))).toBe('agent_unavailable');
+    expect(threadReadOnly(snap, BY_ID, shared(true))).toBeNull();
+    expect(threadReadOnly(snap, BY_ID)).toBeNull();
+    expect(statusLine({ ...input(), shared: shared(false) })).toEqual({ key: 'bots.status.unavailable' });
+    expect(titlePose({ ...input(), shared: shared(false) })).toBe('sleep');
+    expect(statusLine(input({ readOnly: 'agent_unavailable' }))).toEqual({ key: 'bots.status.unavailable' });
+    // at rest: whose it is (the web's "by {owner}"); busy lines win as anywhere
+    expect(statusLine({ ...input(), shared: shared(true) })).toEqual({
+      key: 'bots.status.sharedBy',
+      vars: { name: 'Jim' },
+    });
+    expect(statusLine({ ...input({ runActive: true }), shared: shared(true) })).toEqual({
+      key: 'bots.status.working',
+    });
+  });
 });
 
 describe('titlePose', () => {

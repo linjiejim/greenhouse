@@ -37,6 +37,7 @@ import type {
   BotUsageView,
   BotView,
   ComputerFileList,
+  SharedBotView,
   ComputerProcessLog,
   ComputerProcessView,
   ComputerStatusView,
@@ -126,7 +127,11 @@ const nothing = (): void => undefined;
 
 // ─── Bots ────────────────────────────────────────────────
 
-/** Active + archived Bots, the computer runtime, the vault flag and the pending-card count. */
+/**
+ * Active + archived Bots, other members' public Agents in the member's DMs (`shared_bots`, P4 —
+ * missing from servers older than 2026-10-12: read it as optional), the computer runtime, the
+ * vault flag and the pending-card count.
+ */
 export function listBots(): Promise<BotsRead<BotsOverview>> {
   return read('/api/bots', whole<BotsOverview>);
 }
@@ -259,6 +264,38 @@ export async function markConversationRead(sessionId: string): Promise<boolean> 
 
 function conversationOf(body: unknown): BotConversationDetail {
   return (body as { conversation: BotConversationDetail }).conversation;
+}
+
+// ─── Public Agents (spec 20261011-agent-first-class P4) ──
+
+/** Other members' public Agents offered to this member, not their own (404 on servers without them). */
+export function listAgents(): Promise<BotsRead<SharedBotView[]>> {
+  return read('/api/agents', (body) => (body as { agents: SharedBotView[] }).agents);
+}
+
+/** The member's own DM with a public Agent — made with its greeting when missing. 404 = no longer offered. */
+export function startAgentConversation(agentId: string): Promise<BotsWrite<string>> {
+  return call(
+    `/api/agents/${enc(agentId)}/conversation`,
+    jsonInit('POST'),
+    (body) => (body as { conversation_id: string }).conversation_id,
+  );
+}
+
+/**
+ * Rate a reply (👍 1 / 👎 -1, an optional sentence ≤ 1000) — its owner sees the rating and the
+ * sentence, never the conversation (D38). Rating again replaces it. 404 = not a reply here.
+ */
+export function rateReply(
+  sessionId: string,
+  messageId: string,
+  body: { rating: 1 | -1; comment?: string },
+): Promise<BotsWrite<void>> {
+  return call(
+    `/api/bots/conversations/${enc(sessionId)}/messages/${enc(messageId)}/feedback`,
+    jsonInit('POST', body),
+    nothing,
+  );
 }
 
 // ─── Shared notes (a conversation's) ─────────────────────

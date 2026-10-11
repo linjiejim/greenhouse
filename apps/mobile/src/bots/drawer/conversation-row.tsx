@@ -8,6 +8,9 @@
  * when only system lines are new, or from a server without the count). A Bot replying right now rewrites the preview to
  * "Replying…" instead of adding a badge; the server's `working` is never shown
  * (D14 — only `running` is the client's truth). Sprouty's DM carries a pin.
+ * A DM with someone else's public Agent (P4) says whose it is after the name
+ * ("Sage  by Jim", smaller and grey — the owner's name truncates first); asleep
+ * once it is no longer offered.
  *
  * A DM's plant shows the same signal on its face (./row-text.ts `rowPose`:
  * leaning in for "needs you", talking while it replies, asleep when archived).
@@ -32,8 +35,7 @@ import { Icon } from '../../ui/core';
 import { useFontScaleKey } from '../../ui/font-scale';
 import { Badge } from '../../ui/list';
 import { NativeMenu, menuSections, type MenuItem } from '../../ui/menu';
-import { rowSignal, useBots } from '../store';
-import { conversationCanReply } from '../task-chats';
+import { rowReplyable, rowSharedAgent, rowSignal, useBots } from '../store';
 import { AvatarStack } from '../ui/avatar-stack';
 import { BotAvatar } from '../ui/bot-avatar';
 import { rowPose, rowPreview, rowTime, rowTitle, type RowCopy } from './row-text';
@@ -106,9 +108,9 @@ export const ConversationRow = memo(function ConversationRow({
   const botsLoaded = useBots((s) => s.botsLoaded);
   const running = useBots((s) => s.running);
   // Before the Bot list is in, every row counts as replyable (a sleeping plant would be a guess).
-  const replyable = useBots(
-    (s) => row.kind !== 'group' && (!s.botsLoaded || conversationCanReply(row, new Set(s.bots.map((bot) => bot.id)))),
-  );
+  const replyable = useBots((s) => rowReplyable(s, row));
+  // Someone else's public Agent: whose it is, beside the name.
+  const sharedBy = useBots((s) => rowSharedAgent(s, row)?.owner.nickname ?? null);
 
   const dir = useMemo(() => ({ byId, botsLoaded }), [byId, botsLoaded]);
   const title = rowTitle(row, dir, copy);
@@ -130,8 +132,10 @@ export const ConversationRow = memo(function ConversationRow({
         : t('bots.common.needsYou')
       : null;
 
+  const by = sharedBy ? t('bots.nav.byOwner', { name: sharedBy }) : null;
   const a11yLabel = [
     title,
+    by,
     pinned && t('bots.nav.pinnedA11y'),
     needsYou ?? (unread && (unreadCount > 0 ? t('bots.nav.unreadN', { n: unreadCount }) : t('bots.nav.unread'))),
     signal.working ? preview : t('bots.nav.lastMessage', { text: preview }),
@@ -189,6 +193,11 @@ export const ConversationRow = memo(function ConversationRow({
           ) : (
             <View style={styles.titleSkeleton} />
           )}
+          {by && title ? (
+            <Text numberOfLines={1} style={styles.by}>
+              {by}
+            </Text>
+          ) : null}
           {pinned ? <Icon name="pin" size={11} color={c.tertiaryLabel} /> : null}
           {time ? <Text style={styles.time}>{time}</Text> : null}
         </View>
@@ -234,6 +243,8 @@ const useStyles = makeStyles((c) => ({
   title: { flexShrink: 1, ...typo.body, color: c.label },
   titleStrong: { fontWeight: weight.semibold },
   titleSkeleton: { width: 88, height: 12, marginVertical: 5, borderRadius: 6, backgroundColor: c.tertiaryFill },
+  // gives way to the name first (a long owner name truncates before the Agent's does)
+  by: { flexShrink: 3, ...typo.footnote, color: c.secondaryLabel },
   time: { marginLeft: 'auto', ...typo.footnote, color: c.secondaryLabel },
   preview: { flex: 1, ...typo.footnote, color: c.secondaryLabel },
   dot: { width: 8, height: 8, borderRadius: 4 },

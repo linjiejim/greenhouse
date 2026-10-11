@@ -18,7 +18,8 @@
  *    offers Retry ("@Name Please try that again."). Answers from its cards go
  *    back to that Bot (D22). It draws nothing for a turn with nothing on
  *    screen. A task chat's last reply offers Regenerate (answer the last
- *    member message again).
+ *    member message again). A persisted reply of someone else's public Agent
+ *    offers 👍 / 👎 in its menu (`rating`, spec 20261011-agent-first-class D38).
  *  - `PendingRow` — a send in flight with its Messages-style caption.
  *  - `RequestRow` — a "needs you" card (`RequestCard`); one the thread holds
  *    no state for (an old card past the detail window) reads as its line.
@@ -103,6 +104,7 @@ export const ReplyRow = memo(function ReplyRow({
   onRename,
   canRegenerate = false,
   onRegenerate,
+  rating,
   header,
   bot,
   readOnly,
@@ -129,6 +131,8 @@ export const ReplyRow = memo(function ReplyRow({
   /** A task chat's last reply, while nothing runs: Regenerate in its menu (and Retry on its error). */
   canRegenerate?: boolean;
   onRegenerate?: () => void;
+  /** A public Agent's persisted reply: 👍 / 👎 in its menu, the rating given here filled (undefined = none). */
+  rating?: 1 | -1 | null;
 }) {
   const botId = segment ? segment.botId : (persistedBotId ?? null);
   const onReply = useCallback((text: string) => onReplyAs(botId, text), [onReplyAs, botId]);
@@ -185,6 +189,7 @@ export const ReplyRow = memo(function ReplyRow({
         onRetry={segment ? onRetry : canRegenerate && onRegenerate ? onRegenerate : noop}
         onReply={onReply}
         allowRegenerate={!segment && canRegenerate}
+        rating={segment ? undefined : rating}
       />
       <MemoryReceipts
         receipts={receipts}

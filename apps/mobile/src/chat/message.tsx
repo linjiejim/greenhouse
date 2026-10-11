@@ -59,7 +59,8 @@ import { Inline } from './markdown/inline';
 import { MessageMenu } from './message-menu';
 import type { ChatMessage, Metrics, ToolStep } from './model';
 
-export type MessageAction = 'copy' | 'share' | 'quote' | 'regenerate' | 'edit';
+/** `rateUp` / `rateDown` — 👍 / 👎 on a reply of someone else's public Agent (a Bots thread only). */
+export type MessageAction = 'copy' | 'share' | 'quote' | 'regenerate' | 'edit' | 'rateUp' | 'rateDown';
 
 /* ----------------------------- shared row ----------------------------- */
 
@@ -242,6 +243,7 @@ export const AiMessage = memo(function AiMessage({
   allowRegenerate = true,
   quiet = false,
   header,
+  rating,
 }: {
   msg: ChatMessage;
   /** The newest reply — the only one that can be regenerated / retried. */
@@ -271,6 +273,11 @@ export const AiMessage = memo(function AiMessage({
   quiet?: boolean;
   /** Above the reply, only when it shows (a Bots speaker line). Keep it stable — the row is memoised. */
   header?: React.ReactNode;
+  /**
+   * 👍 / 👎 in the menu (`rateUp` / `rateDown`): a reply of someone else's public Agent. The rating
+   * given on this device (null = none yet) fills its thumb; undefined = not rateable.
+   */
+  rating?: 1 | -1 | null;
 }) {
   const { colors: c } = useTheme();
   const styles = useStyles(c);
@@ -311,8 +318,22 @@ export const AiMessage = memo(function AiMessage({
         canRerun && allowRegenerate
           ? [{ id: 'regenerate', title: translate(lang, 'chat.actionRegenerate'), icon: 'refresh' }]
           : [],
+        rating === undefined
+          ? []
+          : [
+              {
+                id: 'rateUp',
+                title: translate(lang, 'bots.thread.rateUp'),
+                icon: rating === 1 ? ('thumbUpFill' as const) : ('thumbUp' as const),
+              },
+              {
+                id: 'rateDown',
+                title: translate(lang, 'bots.thread.rateDown'),
+                icon: rating === -1 ? ('thumbDownFill' as const) : ('thumbDown' as const),
+              },
+            ],
       ]),
-    [lang, readOnly, canRerun, allowRegenerate],
+    [lang, readOnly, canRerun, allowRegenerate, rating],
   );
 
   const body = (

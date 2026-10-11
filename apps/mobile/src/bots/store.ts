@@ -19,6 +19,8 @@ import { createBotsSlice, type BotsState } from './store-core';
 export {
   attentionCount,
   drawerRows,
+  rowReplyable,
+  rowSharedAgent,
   rowSignal,
   sproutyBot,
   sproutyDm,

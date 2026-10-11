@@ -15,6 +15,7 @@ import type {
   BotTurnReason,
   BotView,
   ComputerRuntimeView,
+  SharedBotView,
 } from './bots';
 
 // ─── packages/types/src/session.ts ───────────────────────
@@ -85,6 +86,11 @@ export interface BotsOverview {
    * audit rows still show its real name and face (read-only).
    */
   archived_bots: BotView[];
+  /**
+   * Other members' public Agents this member talks to (spec 20261011-agent-first-class P4) —
+   * names and faces for those DMs; `available: false` once unpublished, paused or no longer offered.
+   */
+  shared_bots: SharedBotView[];
   computer: ComputerRuntimeView;
   vault_available: boolean;
   pending_requests: number;

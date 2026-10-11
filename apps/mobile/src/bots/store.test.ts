@@ -5,7 +5,7 @@
  */
 
 import { describe, expect, it, vi } from 'vitest';
-import type { BotConversationSummary, BotRequestView, BotView } from '../shared/bots';
+import type { BotConversationSummary, BotRequestView, BotView, SharedBotView } from '../shared/bots';
 import type { BotsOverview } from '../shared/bots-wire';
 import {
   attentionCount,
@@ -13,6 +13,8 @@ import {
   drawerRows,
   initialBotsData,
   PENDING_RELOAD_MS,
+  rowReplyable,
+  rowSharedAgent,
   rowSignal,
   sproutyBot,
   sproutyDm,
@@ -117,6 +119,7 @@ function deferred<T>() {
 const overview = (bots: BotView[], extra: Partial<BotsOverview> = {}): BotsOverview => ({
   bots: bots.filter((b) => b.status === 'active'),
   archived_bots: bots.filter((b) => b.status !== 'active'),
+  shared_bots: [],
   computer: { state: 'disabled', reason: null, hardened: false },
   vault_available: false,
   pending_requests: 0,
@@ -622,5 +625,143 @@ describe('task chats', () => {
     const same = store.get();
     store.get().dropTaskChat('missing');
     expect(store.get().taskChats).toBe(same.taskChats);
+  });
+});
+
+describe('public Agents (P4)', () => {
+  const shared = (id: string, partial: Partial<SharedBotView> = {}): SharedBotView => ({
+    id,
+    name: id,
+    role: 'Helper',
+    description: '',
+    avatar: {},
+    template_key: null,
+    owner: { id: 'u_owner', nickname: 'Jim' },
+    dm_session_id: null,
+    available: true,
+    ...partial,
+  });
+  const PUB = shared('bot_pub', { name: 'Handbook', dm_session_id: 's_pub' });
+  const GONE = shared('bot_gone', { name: 'Old Helper', available: false, dm_session_id: 's_gone' });
+
+  it('learns the shared Agents of the member’s DMs with the Bot list: names everywhere, never in `bots`', async () => {
+    const listBots = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        // the member's own Agent wins over a shared entry with the same id (the server never sends one)
+        value: { ...overview([SPROUTY]), shared_bots: [PUB, GONE, shared('bot_sprouty')] },
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        value: { ...overview([SPROUTY]), shared_bots: [{ ...PUB, available: false }] },
+      });
+    const store = makeStore({ listBots });
+    await store.get().loadBots();
+    const s = store.get();
+    expect(Object.keys(s.shared).sort()).toEqual(['bot_gone', 'bot_pub']);
+    expect(s.bots.map((b) => b.id)).toEqual(['bot_sprouty']);
+    expect(s.byId.bot_pub).toMatchObject({ name: 'Handbook', status: 'active', user_id: 'u_owner' });
+    expect(s.byId.bot_sprouty).toBe(SPROUTY);
+    // a later answer updates what it names and keeps the rest (like archived Bots)
+    await store.get().loadBots();
+    expect(store.get().shared.bot_pub.available).toBe(false);
+    expect(store.get().shared.bot_gone).toBe(GONE);
+    expect(store.get().byId.bot_gone?.name).toBe('Old Helper');
+    // an older server sends no `shared_bots`
+    const older = makeStore();
+    await older.get().loadBots();
+    expect(older.get().shared).toEqual({});
+  });
+
+  it('files a DM with a shared Agent under Agents while it is offered, under Archived once it is not', () => {
+    const s = data({
+      bots: [SPROUTY],
+      shared: { [PUB.id]: PUB, [GONE.id]: GONE },
+      conversations: [dm('s_pub', 'bot_pub'), dm('s_gone', 'bot_gone')],
+    });
+    const rows = drawerRows(s, { query: '', expanded: true });
+    expect(rows.recent.map((r) => r.session_id)).toEqual(['s_pub']);
+    expect(rows.archived.map((r) => r.session_id)).toEqual(['s_gone']);
+    // without `shared` (the widget) both are closed: the widget shows the member's own Agents
+    const own = drawerRows({ ...s, shared: undefined }, { query: '', expanded: true });
+    expect(own.recent).toEqual([]);
+    expect(rowReplyable(s, dm('s_pub', 'bot_pub'))).toBe(true);
+    expect(rowReplyable(s, dm('s_gone', 'bot_gone'))).toBe(false);
+    expect(rowReplyable({ ...s, botsLoaded: false }, dm('s_gone', 'bot_gone'))).toBe(true);
+    expect(rowSharedAgent(s, dm('s_pub', 'bot_pub'))).toBe(PUB);
+    expect(rowSharedAgent(s, dm('s_sprouty', 'bot_sprouty'))).toBeNull();
+    expect(rowSharedAgent(s, { kind: 'task', owner_bot_id: 'bot_pub' })).toBeNull();
+  });
+
+  it('reads the directory; a server without public Agents is asked once', async () => {
+    const listAgents = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: false, status: 500, code: null })
+      .mockResolvedValueOnce({ ok: true, value: [PUB] })
+      .mockResolvedValueOnce({ ok: false, status: 500, code: null })
+      .mockResolvedValueOnce({ ok: false, status: 404, code: null });
+    const store = makeStore({ listAgents });
+    await store.get().loadDirectory();
+    expect(store.get().directoryState).toBe('failed');
+    await store.get().loadDirectory();
+    expect([store.get().directoryState, store.get().directory]).toEqual(['loaded', [PUB]]);
+    // a blip keeps the last answer
+    await store.get().loadDirectory();
+    expect([store.get().directoryState, store.get().directory]).toEqual(['loaded', [PUB]]);
+    await store.get().loadDirectory();
+    expect([store.get().directoryState, store.get().directory]).toEqual(['missing', []]);
+    await store.get().loadDirectory();
+    expect(listAgents).toHaveBeenCalledTimes(4);
+  });
+
+  it('starts the member’s own DM: the Agent is named at once, the lists re-read', async () => {
+    const fresh = shared('bot_new', { name: 'Legal' });
+    const startAgentConversation = vi.fn(async () => ({ ok: true as const, value: 's_new' }));
+    const store = makeStore({ startAgentConversation });
+    store.set({ directory: [fresh, PUB], directoryState: 'loaded' });
+    const listBots = store.api.listBots as ReturnType<typeof vi.fn>;
+    const before = listBots.mock.calls.length;
+    expect(await store.get().startAgentChat(fresh)).toEqual({ ok: true, sessionId: 's_new' });
+    expect(startAgentConversation).toHaveBeenCalledWith('bot_new');
+    const s = store.get();
+    expect(s.shared.bot_new).toMatchObject({ dm_session_id: 's_new', available: true });
+    expect(s.byId.bot_new).toMatchObject({ name: 'Legal', dm_session_id: 's_new' });
+    expect(s.directory.map((a) => a.dm_session_id)).toEqual(['s_new', 's_pub']);
+    expect(listBots.mock.calls.length).toBe(before + 1);
+    expect(store.api.listConversations).toHaveBeenCalled();
+  });
+
+  it('an Agent no longer offered leaves the directory; a blip leaves it be', async () => {
+    const startAgentConversation = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: false, status: 0, code: null, message: '' })
+      .mockResolvedValueOnce({ ok: false, status: 404, code: null, message: 'Agent not found' });
+    const listAgents = vi.fn(async () => ({ ok: true as const, value: [] }));
+    const store = makeStore({ startAgentConversation, listAgents });
+    store.set({ directory: [PUB], directoryState: 'loaded' });
+    expect(await store.get().startAgentChat(PUB)).toEqual({ ok: false, reason: 'offline' });
+    expect(store.get().directory).toEqual([PUB]);
+    expect(await store.get().startAgentChat(PUB)).toEqual({ ok: false, reason: 'gone' });
+    expect(store.get().directory).toEqual([]);
+    expect(store.api.listAgents).toHaveBeenCalled();
+  });
+
+  it('rates a reply (the note trimmed, only when there is one) and remembers what went', async () => {
+    const rateReply = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: true, value: undefined })
+      .mockResolvedValueOnce({ ok: false, status: 404, code: null, message: '' })
+      .mockResolvedValueOnce({ ok: true, value: undefined });
+    const store = makeStore({ rateReply });
+    expect(await store.get().rateReply('s_pub', 'm1', -1, '  wrong year ')).toBe(true);
+    expect(rateReply).toHaveBeenLastCalledWith('s_pub', 'm1', { rating: -1, comment: 'wrong year' });
+    expect(await store.get().rateReply('s_pub', 'm2', 1)).toBe(false);
+    expect(store.get().ratings).toEqual({ m1: -1 });
+    expect(await store.get().rateReply('s_pub', 'm1', 1, '')).toBe(true);
+    expect(rateReply).toHaveBeenLastCalledWith('s_pub', 'm1', { rating: 1 });
+    expect(store.get().ratings).toEqual({ m1: 1 });
+    store.get().reset();
+    expect([store.get().ratings, store.get().shared, store.get().directoryState]).toEqual([{}, {}, 'idle']);
   });
 });

@@ -184,5 +184,10 @@ export const botsManageZh: typeof botsManageEn = {
     outcomeWrongSite: '网站不符',
     outcomeCanceled: '已取消',
     outcomeInterrupted: '已中断',
+    sharedBy: '{name} 发布',
+    sharedAbout: '简介',
+    sharedFooter: '{owner} 把它共享给了你。负责人能看到使用量和你的评分，看不到你们的对话。',
+    sharedUnavailable: '它已不再共享给你，之前的对话仍可查看。',
+    talk: '对话',
   },
 };

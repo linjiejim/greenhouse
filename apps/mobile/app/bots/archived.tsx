@@ -1,6 +1,7 @@
 /**
  * `/bots/archived` — the Bots conversations nobody can reply in any more: a
- * DM whose Bot was archived, a group with no active Bot left (spec
+ * DM whose Bot was archived, a DM with someone else's public Agent that is no
+ * longer shared with the member (P4), a group with no active Bot left (spec
  * docs/specs/20261008-mobile-bots.md §2.5.7). Reached from the drawer's
  * "Archived (N)" row. Each row is the conversation's sleeping plant, its title
  * (marked archived), the last message and the time; a tap closes the sheet and
@@ -50,6 +51,7 @@ function ArchivedSheet() {
 
   const bots = useBots((s) => s.bots);
   const byId = useBots((s) => s.byId);
+  const shared = useBots((s) => s.shared);
   const botsLoaded = useBots((s) => s.botsLoaded);
   const conversations = useBots((s) => s.conversations);
   const loaded = useBots((s) => s.conversationsLoaded && s.botsLoaded);
@@ -72,8 +74,8 @@ function ArchivedSheet() {
   }, [load]);
 
   const rows = useMemo(
-    () => drawerRows({ bots, byId, botsLoaded, conversations }, { query: '', expanded: true }).archived,
-    [bots, byId, botsLoaded, conversations],
+    () => drawerRows({ bots, byId, botsLoaded, conversations, shared }, { query: '', expanded: true }).archived,
+    [bots, byId, botsLoaded, conversations, shared],
   );
   const dir = useMemo(() => ({ byId, botsLoaded }), [byId, botsLoaded]);
 

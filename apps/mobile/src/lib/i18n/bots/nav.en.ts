@@ -30,5 +30,27 @@ export const botsNavEn = {
     archivedEmptyHint: 'When an Agent is archived, its conversations stay here, read-only.',
     archivedFooter: 'Nobody here replies any more — the history stays readable.',
     loadFailedTitle: 'Couldn’t Load Conversations',
+    /** Someone else's public Agent (P4): who published it, beside its name in a row. */
+    byOwner: 'by {name}',
+    /** The drawer's way to the public Agents offered to the member (`/bots/agents`). */
+    browse: 'Browse Agents',
+    browseHint: 'Agents your teammates shared with you',
+  },
+  /** "Browse Agents" (app/bots/agents.tsx): other members' public Agents offered to this member. */
+  agents: {
+    title: 'Browse Agents',
+    talk: 'Talk',
+    open: 'Open',
+    byOwner: 'By {name}',
+    footer:
+      'Each one is its owner’s, shared with you. They see how much it’s used and your ratings — never your conversations.',
+    empty: 'No Shared Agents Yet',
+    emptyHint: 'When a teammate shares an Agent with you, it shows up here.',
+    noMatch: 'No Results',
+    loadFailed: 'Couldn’t Load Agents',
+    missing: 'Not Available on This Server',
+    missingHint: 'This server doesn’t share Agents yet.',
+    gone: '{name} isn’t shared with you any more',
+    startFailed: 'Couldn’t start a conversation with {name}',
   },
 };

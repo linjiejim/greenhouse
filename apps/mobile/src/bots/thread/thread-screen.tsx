@@ -48,6 +48,13 @@
  * out through the same send path as the composer's. Lines about another chat
  * (`chat_opened` / `chat_origin`) open it.
  *
+ * A DM with someone else's public Agent (spec 20261011-agent-first-class §5c P4) is this screen
+ * too: the intro says who shared it (and that they can't read it), ⋯ has no "New Chat" (a chat
+ * with it is this DM — no task chats with someone else's Agent), 🖥 shows only once its owner
+ * granted it a computer (the member's own copy — the status read answers), its replies offer
+ * 👍 / 👎 (an optional note with 👎), and once it is no longer offered the thread is read-only
+ * (`agent_unavailable`) like an archived Agent's.
+ *
  * The engine (`useBotThread`, package A) owns sending, streaming, stops,
  * reloads, read receipts; this screen only renders its snapshot and routes
  * the member's intents to its controller. Streaming re-renders the screen
@@ -107,6 +114,7 @@ import type { BotsReadOnly, MobilePending, RewindInput, RewindOutcome, SendInput
 import { forgetGoneThread } from '../last-surface';
 import { openNewChat, openThread } from '../nav';
 import { attentionCount, useBots } from '../store';
+import { rateableReply, sharedOwnerOf } from '../public-agents';
 import { computerAgent, computerButtonTone, conversationComputer } from '../computer/target';
 import { useComputerStatus } from '../computer/use-computer-status';
 import { phaseLabelKey } from '../vendor/computer-phase';
@@ -266,6 +274,8 @@ export function BotThreadScreen({
   const snapRef = useRef(snap);
   snapRef.current = snap;
   const byId = useBots((s) => s.byId);
+  const shared = useBots((s) => s.shared);
+  const ratings = useBots((s) => s.ratings);
   const botsLoaded = useBots((s) => s.botsLoaded);
   const badge = useBots((s) => attentionCount(s, sessionId));
 
@@ -274,6 +284,8 @@ export function BotThreadScreen({
   const kind = conversation?.kind ?? 'direct';
   const group = kind === 'group';
   const owner = conversation?.owner_bot_id ? byId[conversation.owner_bot_id] : undefined;
+  /** Someone else's public Agent this DM is with (P4), else null. */
+  const sharedOwner = kind === 'direct' ? sharedOwnerOf(conversation, shared) : null;
   const memberList = conversation?.members;
   /** Active members in their order (a DM: its Bot and any guests) — mentions, the roster, the lookup by name. */
   const members = useMemo(
@@ -299,7 +311,7 @@ export function BotThreadScreen({
     },
     [byId, members],
   );
-  const readOnlyCode = threadReadOnly(snap, byId);
+  const readOnlyCode = threadReadOnly(snap, byId, shared);
   const readOnly = readOnlyCode != null;
   const directory = useMemo(() => new Map(Object.entries(byId)), [byId]);
   const task = kind === 'task';
@@ -382,7 +394,7 @@ export function BotThreadScreen({
   }, [liveMessages]);
 
   /* ---------- the title view ---------- */
-  const status = statusLine({ snap, byId, kind });
+  const status = statusLine({ snap, byId, kind, shared });
   const statusText = status ? t(status.key, status.vars) : '';
   // A brief smile when a reply finishes: the run ends without an error and nobody stopped it.
   const [cheering, setCheering] = useState(false);
@@ -404,7 +416,7 @@ export function BotThreadScreen({
     const timer = setTimeout(() => setCheering(false), CHEER_MS);
     return () => clearTimeout(timer);
   }, [cheering]);
-  const pose = cheerPose(titlePose({ snap, byId, kind }), cheering);
+  const pose = cheerPose(titlePose({ snap, byId, kind, shared }), cheering);
   const speakingId = talkingSegment(snap.run)?.botId ?? null;
   const headerBots = useMemo<Array<AvatarSource | null>>(() => {
     if (!group) return [owner ?? null];
@@ -764,9 +776,11 @@ export function BotThreadScreen({
   /* ---------- sending ---------- */
   const readOnlyMessage = useCallback(
     (code: BotsReadOnly) =>
-      code === 'bot_archived' && owner
-        ? tNow('bots.thread.readOnlyDm', { name: owner.name })
-        : tNow('bots.thread.readOnlyClosed'),
+      code === 'agent_unavailable' && owner
+        ? tNow('bots.thread.readOnlyShared', { name: owner.name })
+        : code !== 'group_closed' && owner
+          ? tNow('bots.thread.readOnlyDm', { name: owner.name })
+          : tNow('bots.thread.readOnlyClosed'),
     [owner],
   );
   /** Every send goes through here: where the transcript moves, and what a refusal says. */
@@ -1053,6 +1067,29 @@ export function BotThreadScreen({
     refreshTasks,
   ]);
 
+  /* ---------- 👍 / 👎 on a public Agent's reply (D38: its owner sees the rating and the note, not the chat) ---------- */
+  const rate = useCallback(
+    async (messageId: string, rating: 1 | -1) => {
+      const message = snapRef.current.messages.find((m) => m.id === messageId);
+      const store = useBots.getState();
+      if (!rateableReply(message, store.shared) || !message?.bot_id) return;
+      let comment: string | null = null;
+      if (rating === -1) {
+        // The note is optional: Skip still sends the 👎.
+        comment = await promptText({
+          title: tNow('bots.thread.rateTitle'),
+          message: tNow('bots.thread.rateMessage', { owner: store.shared[message.bot_id]?.owner.nickname ?? '' }),
+          confirmLabel: tNow('bots.thread.rateSend'),
+          cancelLabel: tNow('bots.thread.rateSkip'),
+        });
+      }
+      if (await useBots.getState().rateReply(sessionId, messageId, rating, comment)) {
+        toast(tNow('bots.thread.rateThanks'), rating === 1 ? 'thumbUp' : 'thumbDown');
+      } else alertError(tNow('bots.thread.rateFailed'));
+    },
+    [sessionId],
+  );
+
   /* ---------- message actions (stable — rows are memoised) ---------- */
   const onAction = useCallback(
     async (msg: ChatMessage, action: MessageAction) => {
@@ -1075,9 +1112,16 @@ export function BotThreadScreen({
         case 'regenerate':
           regenerate();
           break;
+        // a public Agent's reply (rows only offer these then)
+        case 'rateUp':
+          void rate(msg.id, 1);
+          break;
+        case 'rateDown':
+          void rate(msg.id, -1);
+          break;
       }
     },
-    [focusInput, addQuotes, startEdit, regenerate],
+    [focusInput, addQuotes, startEdit, regenerate, rate],
   );
   const handlers = useMemo<ReplyHandlers>(
     () => ({
@@ -1122,8 +1166,8 @@ export function BotThreadScreen({
   const computerBot = conversationComputer(conversation, (id) => byId[id]);
 
   /* ---------- header actions (stable; read the latest state via a ref) ---------- */
-  const latest = useRef({ owner, displayTitle, conversation, computerBot });
-  latest.current = { owner, displayTitle, conversation, computerBot };
+  const latest = useRef({ owner, displayTitle, conversation, computerBot, sharedOwner });
+  latest.current = { owner, displayTitle, conversation, computerBot, sharedOwner };
   const headerActions = useMemo<ThreadHeaderActions>(
     () => ({
       openDrawer: () => navigation.dispatch(DrawerActions.openDrawer()),
@@ -1133,7 +1177,10 @@ export function BotThreadScreen({
       },
       askInChat: () => {
         const bot = latest.current.owner;
-        if (bot) openNewChat(router, { profile: isSproutyBot(bot) ? 'sprouty' : `bot:${bot.id}` });
+        // (never offered for someone else's Agent: a chat with it is this DM)
+        if (bot && !latest.current.sharedOwner) {
+          openNewChat(router, { profile: isSproutyBot(bot) ? 'sprouty' : `bot:${bot.id}` });
+        }
       },
       // A task chat is a chat in the chats list: tags, rename and delete like one (never share — D26).
       openTags: () => router.push({ pathname: '/sheets/session-tags', params: { sessionId } }),
@@ -1176,6 +1223,9 @@ export function BotThreadScreen({
   const hasComputer = useBots((s) => s.computer?.state === 'ready');
   const computerName = useBots((s) => computerAgent(s, computerBot)?.name ?? null);
   const computerState = useComputerStatus(hasComputer && focused && !!conversation, computerBot);
+  // Someone else's Agent has a computer here only when its owner granted one (the member's own copy):
+  // the status read says so (404 `agent_not_found` otherwise).
+  const showComputer = hasComputer && (!sharedOwner || !!computerState.status);
   const computerTone = computerButtonTone(computerState.phase);
   const computerLabel = computerName
     ? computerState.phase
@@ -1197,7 +1247,15 @@ export function BotThreadScreen({
       case 'top':
         return <TopLoader state={snap.earlier} manual={manualEarlier} onLoad={loadEarlierByHand} />;
       case 'intro':
-        return <Intro kind={kind} title={displayTitle} owner={owner} members={members} />;
+        return (
+          <Intro
+            kind={kind}
+            title={displayTitle}
+            owner={owner}
+            members={members}
+            sharedBy={sharedOwner?.owner.nickname}
+          />
+        );
       case 'time':
         return <TimeSeparator at={row.at} />;
       case 'user':
@@ -1227,6 +1285,7 @@ export function BotThreadScreen({
             onRename={onRename}
             canRegenerate={!!rewind && rewind.replyId === row.message.id}
             onRegenerate={regenerate}
+            rating={rateableReply(row.message, shared) ? (ratings[row.message.id] ?? null) : undefined}
           />
         );
       case 'segment': {
@@ -1274,6 +1333,7 @@ export function BotThreadScreen({
             message={row.message}
             event={event}
             failedBotName={event?.kind === 'turn_error' ? (lookup(event.bot_id)?.name ?? null) : null}
+            botName={event?.kind === 'unavailable' ? (lookup(event.bot_id)?.name ?? null) : null}
             canAct={!readOnly}
             busy={runActive}
             onRetry={retryBot}
@@ -1307,6 +1367,8 @@ export function BotThreadScreen({
           />
         );
       case 'starters': {
+        // Someone else's Agent: its owner made it their own — its template's openers may not fit.
+        if (shared[row.botId]) return null;
         const template = botTemplate(lookup(row.botId)?.template_key);
         return <Starters starters={template?.copy[lang].starters ?? NO_STARTERS} onPick={onStarter} />;
       }
@@ -1341,8 +1403,8 @@ export function BotThreadScreen({
         title={displayTitle}
         badge={badge}
         ownerName={owner?.name ?? null}
-        canAsk={!group && !!owner && owner.status === 'active'}
-        hasComputer={hasComputer}
+        canAsk={!group && !!owner && owner.status === 'active' && !sharedOwner}
+        hasComputer={showComputer}
         computerTone={computerTone}
         computerLabel={computerLabel}
         taskChat={task}
