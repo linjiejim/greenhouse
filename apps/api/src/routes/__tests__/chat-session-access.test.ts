@@ -212,7 +212,7 @@ describe('POST /api/chat session authorization', () => {
 
     expect(response.status).toBe(403);
     await expect(response.json()).resolves.toEqual({
-      error: 'You do not have access to this Bot',
+      error: 'You do not have access to this Agent',
     });
     expect(mocks.sessions.addMessage).not.toHaveBeenCalled();
     expect(mocks.sessions.buildChatMessages).not.toHaveBeenCalled();

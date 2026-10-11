@@ -240,7 +240,7 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
             // trace, tools). canWriteSession above is owner-only for this channel.
             if (session.channel === BOTS_SESSION_CHANNEL) {
               if (!(await userHasFeature(userId, userRole, 'bots'))) {
-                return c.json({ error: 'Bots are not enabled for this account' }, 403);
+                return c.json({ error: 'Agents are not enabled for this account' }, 403);
               }
               if (regenerationTargetId) {
                 return c.json({ error: 'Replies in a Bots conversation cannot be regenerated' }, 409);
@@ -280,7 +280,7 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
               }
               if (replyState === 'bot_archived') {
                 return c.json(
-                  { error: 'This Bot was archived — its conversation is read-only', code: replyState },
+                  { error: 'This Agent was archived — its conversation is read-only', code: replyState },
                   409,
                 );
               }

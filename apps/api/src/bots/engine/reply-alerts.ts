@@ -50,7 +50,7 @@ export async function sweepReplyAlerts(db: DatabaseProvider = getDb(), now: numb
       const result = await publishNotification(db, {
         user_id: row.user_id,
         kind: 'bots_reply',
-        title: copy.replyAlertTitle(locale, bot?.name ?? 'Bot'),
+        title: copy.replyAlertTitle(locale, bot?.name ?? 'Agent'),
         body: copy.replyAlertBody(locale),
         payload: {
           bots_session_id: row.session_id,

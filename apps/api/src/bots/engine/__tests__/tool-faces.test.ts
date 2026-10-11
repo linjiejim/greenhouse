@@ -168,8 +168,8 @@ describe('interactive tool face', () => {
       describeToolInput(input, locale).map((l) => l.value);
 
     const knowledge = { action: 'knowledge.patch_doc', scope: 'bot', share_role: 'editor', doc_id: 'done' };
-    expect(values(knowledge, 'zh')).toEqual(['局部修改文档', '本 Bot 私有', '可编辑', 'done']);
-    expect(values(knowledge, 'en')).toEqual(['Edit part of a document', 'Private to this Bot', 'Can edit', 'done']);
+    expect(values(knowledge, 'zh')).toEqual(['局部修改文档', '本 Agent 私有', '可编辑', 'done']);
+    expect(values(knowledge, 'en')).toEqual(['Edit part of a document', 'Private to this Agent', 'Can edit', 'done']);
 
     const task = { action: 'task.update', status: 'in_progress', priority: 'urgent', visibility: 'private' };
     expect(values(task, 'zh')).toEqual(['更新任务', '进行中', '紧急', '私有']);

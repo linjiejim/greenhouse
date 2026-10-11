@@ -410,6 +410,7 @@ function mountRoutes(toolRegistry: ToolRegistry) {
       .use('/api/bots/conversations/*', requireFeature('bots'))
       .use('/api/bots/requests', requireFeature('bots'))
       .use('/api/bots/requests/*', requireFeature('bots'))
+      .use('/api/bots/tasks', requireFeature('bots'))
       .use('/api/bots/tasks/*', requireFeature('bots'))
       .use('/api/bots/computer', requireFeature('bots'))
       .use('/api/bots/computer/*', requireFeature('bots'))

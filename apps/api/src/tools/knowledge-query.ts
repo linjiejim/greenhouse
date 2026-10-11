@@ -75,7 +75,7 @@ const knowledgeQuerySchema = z.object({
     .enum(['team', 'personal', 'shared', 'bot'])
     .default('team')
     .describe(
-      'Knowledge scope: team docs, your own personal docs, docs others shared with you, or "bot" — the private reference folder of the Bot you are running as (your own files; omit folder).',
+      'Knowledge scope: team docs, your own personal docs, docs others shared with you, or "bot" — the private reference folder of the Agent you are running as (your own files; omit folder).',
     ),
   query: z.string().optional().describe('Search query for search/list filtering.'),
   doc_id: z
@@ -311,7 +311,7 @@ export function createKnowledgeQueryTool(db: DatabaseProvider, ctx: KnowledgeQue
           botFolderIds = scoped.ownFolderIds;
         }
         if (input.scope === 'bot') {
-          if (!ctx.botId) return { error: 'scope "bot" is only available when running as a Bot' };
+          if (!ctx.botId) return { error: 'scope "bot" is only available when running as an Agent' };
           // No folder yet = no files yet: an empty answer, never the whole library.
           if (!botFolderIds) botFolderIds = [];
         }

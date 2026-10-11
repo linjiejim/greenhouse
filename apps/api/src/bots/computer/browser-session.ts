@@ -352,7 +352,7 @@ export function unavailableFailure(err: ComputerUnavailableError): ToolFailure {
   const messages: Record<ComputerUnavailableError['code'], string> = {
     disabled: 'The computer is not enabled on this deployment, so browsing and shell commands are not possible.',
     unavailable:
-      "The computer host is not ready right now. Tell the member; an administrator can check 'Bot computers'.",
+      "The computer host is not ready right now. Tell the member; an administrator can check 'Agent computers'.",
     busy: "All of the organisation's computers are in use. Try again in a minute, or do what you can without the computer.",
     start_failed: 'The computer failed to start. Tell the member; trying again later may work.',
     user_in_control: MEMBER_IN_CONTROL.noCard,
@@ -616,7 +616,7 @@ async function guardLocation(page: Page): Promise<ToolFailure | null> {
   await page.goto('about:blank').catch(() => undefined);
   return failure(
     'url_forbidden',
-    'That page cannot be viewed by Bots (only http and https sites, and not greenhouse itself).',
+    'That page cannot be viewed by Agents (only http and https sites, and not greenhouse itself).',
   );
 }
 

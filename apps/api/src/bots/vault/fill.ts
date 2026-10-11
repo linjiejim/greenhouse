@@ -367,7 +367,7 @@ function approvalPayload(
     ].join(zh ? '、' : ', ');
     details.push({
       label: zh ? '为什么要确认' : 'Why you are asked',
-      value: zh ? `这一轮里 Bot 还读了其他内容：${list}` : `In this turn the Bot also read: ${list}`,
+      value: zh ? `这一轮里 Agent 还读了其他内容：${list}` : `In this turn the Agent also read: ${list}`,
     });
   }
   // The transcript line / notification: "<Bot> asks to <summary>" (engine/copy.ts approvalLine).
@@ -716,11 +716,11 @@ async function reopenCardPage(
     throw args.restarted
       ? new SecureLoginError(
           'computer_restarted',
-          'The computer restarted since the Bot asked, so its page is gone. Ask the Bot to open the page again, or use “Open computer” to sign in yourself.',
+          'The computer restarted since the Agent asked, so its page is gone. Ask the Agent to open the page again, or use “Open computer” to sign in yourself.',
         )
       : new SecureLoginError(
           'page_gone',
-          "The Bot's page is no longer open. Use “Open computer” to sign in yourself, or ask the Bot to open the page again.",
+          "The Agent's page is no longer open. Use “Open computer” to sign in yourself, or ask the Agent to open the page again.",
         );
   }
   try {
@@ -762,7 +762,7 @@ async function secureFillOnPage(
   if (facts.origin !== args.origin || isGreenhouseOrigin(facts.origin)) {
     throw new SecureLoginError(
       'origin_mismatch',
-      `The page moved to ${facts.origin ?? 'another page'} since the Bot asked. Use “Open computer” to sign in yourself.`,
+      `The page moved to ${facts.origin ?? 'another page'} since the Agent asked. Use “Open computer” to sign in yourself.`,
     );
   }
   for (const value of Object.values(args.values)) if (value) deps.remember(args.userId, value);

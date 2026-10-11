@@ -27,7 +27,7 @@ export const BOT_TOOL_METAS: readonly ToolMeta[] = [
     ...base,
     id: 'browser',
     name: 'Browser',
-    brief: "Drive the Bot's own tab in the member's computer browser",
+    brief: "Drive the Agent's own tab in the member's computer browser",
     icon: 'Globe',
     runtime_risk: 'r1',
     sort_order: 90,
@@ -44,7 +44,7 @@ Sign in with the vault tool. A CAPTCHA or "verify you are human" page goes to th
     icon: 'Monitor',
     runtime_risk: 'r1',
     sort_order: 91,
-    description: `The member's computer (Linux; shared by all their Bots).
+    description: `The member's computer (Linux; shared by all their Agents).
 Actions: shell {command, timeout_s?} — bash in ~/work as user "agent" (no sudo, ≤120 s, long output truncated); run_background {command, name?} — long work (installs, builds, downloads, data runs) that keeps running after the call, output to a log; processes; process_log {id, lines?}; stop_process {id}; read_file {path}; write_file {path, content}; share_file {path} — a download link for the member (≤20 MB); import_attachment {file_id, path?} — copy a file attached here into ~/work/inbox (or a path in ~/work) for the shell (≤20 MB); preview {port} — a link the member opens to use a web service running here (2 h; relative paths only); status — whether the computer is up and who controls it.
 Your whole home persists, not only ~/work: pip, npm -g and pipx installs stay. Browser downloads land in ~/Downloads; pdftotext and pdfinfo read PDFs. The browser profile and its passwords are not reachable from the shell.
 A server you start is reachable only inside this computer: never give the member its localhost address — use preview {port}.`,
@@ -76,12 +76,12 @@ No matching entry → request_takeover with kind login. Never ask the member to 
     ...base,
     id: 'team',
     name: 'Team',
-    brief: 'Hand work to, invite or propose other Bots',
+    brief: 'Hand work to, invite or propose other Agents',
     icon: 'Users',
     sort_order: 94,
-    description: `Work with the member's other Bots in this conversation.
-Actions: list — members and the member's other Bots; ask {bot_id, message} — hand a piece of work to a member Bot. It answers next, visibly, and your turn ends after the hand-off, so add one line saying what you handed over. add {bot_id} — invite one of the member's existing Bots into this conversation. create {name, role, instructions} — propose a new Bot; it exists only after the member confirms the card.
-One owner per step: never ask a Bot to redo what another already did.`,
+    description: `Work with the member's other Agents in this conversation.
+Actions: list — members and the member's other Agents; ask {bot_id, message} — hand a piece of work to a member Agent. It answers next, visibly, and your turn ends after the hand-off, so add one line saying what you handed over. add {bot_id} — invite one of the member's existing Agents into this conversation. create {name, role, instructions} — propose a new Agent; it exists only after the member confirms the card.
+One owner per step: never ask an Agent to redo what another already did.`,
   },
   {
     ...base,
@@ -91,7 +91,7 @@ One owner per step: never ask a Bot to redo what another already did.`,
     icon: 'StickyNote',
     sort_order: 95,
     description: `This conversation's shared memory.
-Actions: notes — list the shared notes (decisions, open items, facts every Bot here should know); add_note {title, body?}; update_note {id, title?, body?}; resolve_note {id} — mark done; recall {query} — search earlier messages of this conversation that were summarised out of your context (returns snippets with dates).`,
+Actions: notes — list the shared notes (decisions, open items, facts every Agent here should know); add_note {title, body?}; update_note {id, title?, body?}; resolve_note {id} — mark done; recall {query} — search earlier messages of this conversation that were summarised out of your context (returns snippets with dates).`,
   },
   {
     ...base,

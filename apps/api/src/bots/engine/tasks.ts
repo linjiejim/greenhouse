@@ -199,6 +199,47 @@ export async function listConversationTasks(
   return views;
 }
 
+/** At most this many rows in the member-wide list (the conversations sidebar's "Background" group). */
+export const MEMBER_TASKS_MAX = 50;
+
+/**
+ * Every Bot task of the member, across conversations (spec 20261011-agent-first-class §3.2):
+ * what the conversations sidebar lists under "Background", each row naming the conversation
+ * that started it (`session_id`) so a click lands where the report arrives. Live tasks first,
+ * then the most recent finished ones.
+ */
+export async function listMemberTasks(
+  db: DatabaseProvider,
+  userId: string,
+  limit = 20,
+): Promise<Array<BotTaskView & { session_id: string }>> {
+  const { items } = await db.runtime.listRuns({ owner_user_id: userId, kinds: ['subagent'], limit: 100 });
+  const views: Array<BotTaskView & { session_id: string }> = [];
+  for (const run of items) {
+    if (!isBotTaskRun(run)) continue;
+    const input = safeJsonParse(run.input, {}) as { parent_session_id?: unknown };
+    if (typeof input.parent_session_id !== 'string' || !input.parent_session_id) continue;
+    const child = await db.sessions.getById(run.source_id);
+    const meta = botTaskMetadata(child?.metadata);
+    if (!meta) continue;
+    views.push({
+      run_id: run.id,
+      bot_id: meta.bot_id,
+      title: meta.task_title,
+      status: taskStatus(run.status),
+      child_session_id: child?.id ?? null,
+      summary: taskSummary(run),
+      created_at: run.created_at,
+      started_at: run.started_at ?? null,
+      ended_at: run.settled_at ?? null,
+      session_id: input.parent_session_id,
+    });
+  }
+  const live = (view: BotTaskView) => (['queued', 'running', 'waiting'].includes(view.status) ? 0 : 1);
+  views.sort((a, b) => live(a) - live(b) || b.created_at.localeCompare(a.created_at));
+  return views.slice(0, Math.max(1, Math.min(limit, MEMBER_TASKS_MAX)));
+}
+
 /** Cancel through the Runtime command fence (same semantics as Execution Center). */
 export async function cancelBotTask(
   db: DatabaseProvider,

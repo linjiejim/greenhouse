@@ -17,6 +17,7 @@ import { insertLegacyGroup } from './helpers/legacy-group.js';
 import { chatRunRegistry } from '../../chat/runs.js';
 import { BOT_TEMPLATES, botTemplate } from '@greenhouse/types/bots';
 import { createBotsRoutes } from '../routes.js';
+import { admitBotTask } from '../engine/tasks.js';
 
 vi.mock('../../ws/connection-manager.js', () => ({ connectionManager: { sendToUser: vi.fn() } }));
 
@@ -192,6 +193,33 @@ describe('owner scoping', () => {
       expect((await call(intruder, 'GET', '/conversations')).json.conversations).toHaveLength(0);
     }
     expect((await db.bots.getRequest(jim.id, request.id))?.status).toBe('pending');
+  });
+});
+
+describe('background tasks across conversations', () => {
+  it('GET /tasks lists only the caller’s tasks, each with the conversation that started it', async () => {
+    const boot = await call(jim, 'POST', '/bootstrap');
+    const sprouty = await db.bots.getBot(jim.id, boot.json.bot.id as string);
+    const { runId } = await admitBotTask({
+      db,
+      userId: jim.id,
+      conversationId: boot.json.dm_session_id as string,
+      bot: sprouty!,
+      title: 'Check links',
+      brief: 'Open each link and report the broken ones.',
+      requestId: `req-${Date.now()}`,
+    });
+    const mine = await call(jim, 'GET', '/tasks');
+    expect(mine.status).toBe(200);
+    expect(mine.json.tasks).toEqual([
+      expect.objectContaining({ run_id: runId, session_id: boot.json.dm_session_id, title: 'Check links' }),
+    ]);
+    // Out-of-range limits fall back to a sane page instead of failing.
+    expect((await call(jim, 'GET', '/tasks?limit=0')).json.tasks).toHaveLength(1);
+    expect((await call(jim, 'GET', '/tasks?limit=abc')).json.tasks).toHaveLength(1);
+    for (const intruder of [ana, boss]) {
+      expect((await call(intruder, 'GET', '/tasks')).json.tasks).toEqual([]);
+    }
   });
 });
 

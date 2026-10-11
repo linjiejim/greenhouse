@@ -256,9 +256,9 @@ export async function loadBotReference(
   }
   if (!profileId.startsWith('bot:')) return null;
   const reference = parseBotProfileReference(profileId);
-  if (!reference) throw new Error(`Invalid Bot profile ID: "${profileId}"`);
+  if (!reference) throw new Error(`Invalid Agent profile ID: "${profileId}"`);
   const bot = await database.bots.getBotById(reference.botId);
-  if (!bot) throw new Error(`Bot not found: "${profileId}"`);
+  if (!bot) throw new Error(`Agent not found: "${profileId}"`);
   return { bot, ...(reference.version ? { version: reference.version } : {}) };
 }
 
@@ -340,16 +340,16 @@ export async function assertPinnedProfileExecutionAccess(
   try {
     loaded = await loadBotReference(database, normalized);
   } catch {
-    throw new Error(`${surface} Bot no longer exists`);
+    throw new Error(`${surface} Agent no longer exists`);
   }
   if (!loaded) return;
-  if (!loaded.version) throw new Error(`${surface} Bot reference is not pinned to an immutable version`);
+  if (!loaded.version) throw new Error(`${surface} Agent reference is not pinned to an immutable version`);
   const { bot, version } = loaded;
-  if (!isExecutableBot(bot)) throw new Error(`${surface} Bot is not executable (${bot.status})`);
+  if (!isExecutableBot(bot)) throw new Error(`${surface} Agent is not executable (${bot.status})`);
   const owns = actor.role === 'super' || bot.user_id === actor.id;
-  if (!owns) throw new Error(`${surface} Bot access was revoked`);
+  if (!owns) throw new Error(`${surface} Agent access was revoked`);
   if (!(await database.bots.getVersion(bot.id, version))) {
-    throw new Error(`${surface} Bot version no longer exists`);
+    throw new Error(`${surface} Agent version no longer exists`);
   }
 }
 
@@ -518,7 +518,7 @@ export async function resolveProfileAsync(
     // avoiding needless work on bad requests, this keeps the pure validation
     // path fast in CLI startup and tests.
     if (normalized.startsWith('bot:') && !parseBotProfileReference(normalized)) {
-      throw new Error(`Invalid Bot profile ID: "${normalized}"`);
+      throw new Error(`Invalid Agent profile ID: "${normalized}"`);
     }
     if (normalized.startsWith('custom:') && !parseCustomProfileReference(normalized)) {
       throw new Error(`Invalid custom profile ID: "${normalized}"`);
@@ -530,12 +530,12 @@ export async function resolveProfileAsync(
     if (!loaded) throw new Error(`Invalid profile ID: "${normalized}"`);
     const { bot } = loaded;
     if (!isExecutableBot(bot)) {
-      throw new Error(`Bot is not executable (${bot.status}): "${normalized}"`);
+      throw new Error(`Agent is not executable (${bot.status}): "${normalized}"`);
     }
     let version: BotVersionRow | undefined;
     if (loaded.version) {
       version = await db.bots.getVersion(bot.id, loaded.version);
-      if (!version) throw new Error(`Bot version not found: "${botProfileId(bot.id, loaded.version)}"`);
+      if (!version) throw new Error(`Agent version not found: "${botProfileId(bot.id, loaded.version)}"`);
     }
     return profileFromBot(bot, getDefaultProfile(), {
       id: botProfileId(bot.id, loaded.version),

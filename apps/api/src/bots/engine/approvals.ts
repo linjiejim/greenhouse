@@ -84,7 +84,7 @@ async function notifyRequest(db: DatabaseProvider, row: BotRequestRow, bot: BotR
       user_id: row.user_id,
       kind: 'system',
       // The same line the transcript shows: names the Bot and what it needs.
-      title: requestLine(locale, bot?.name ?? 'Bot', row.kind, toRequestView(row).payload).slice(0, 500),
+      title: requestLine(locale, bot?.name ?? 'Agent', row.kind, toRequestView(row).payload).slice(0, 500),
       body: copy.notificationBody(locale),
       payload: {
         bots_session_id: row.session_id,

@@ -87,9 +87,9 @@ const CORE_FEATURE_POINTS: readonly FeaturePointDef[] = [
   },
   {
     key: 'bots',
-    title: 'Bots',
+    title: 'Agents',
     description:
-      'Personal assistant Bots — the Bots page, their computer, the password vault and every Bot-only tool. Bot tools are built only inside Bots conversations.',
+      'Personal assistant Agents — their ongoing conversations, their computer, the password vault and every Agent-only tool. Agent tools are built only inside Agent conversations.',
     icon: 'Bot',
     kind: 'flag',
     group: 'basic',

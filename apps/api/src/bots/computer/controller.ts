@@ -714,7 +714,7 @@ export function createComputerController(deps: ComputerControllerDeps) {
     if (active !== true) {
       throw new ComputerUnavailableError(
         'disabled',
-        'Bots are not enabled for this account, so its computer cannot start',
+        'Agents are not enabled for this account, so its computer cannot start',
       );
     }
     let row: BotComputerRow | undefined = await ensureRow(userId, env.config.namespace);
@@ -743,7 +743,7 @@ export function createComputerController(deps: ComputerControllerDeps) {
       }
       throw new ComputerUnavailableError(
         'over_quota',
-        'The computer is out of disk space. Open it from the Bots page and clear Downloads, or reset it.',
+        'The computer is out of disk space. Open it and clear Downloads, or reset it.',
       );
     }
 

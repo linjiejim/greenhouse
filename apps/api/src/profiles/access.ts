@@ -44,7 +44,7 @@ export async function assertBotProfileAccess(
   const loaded = await loadReference(database, profileId);
   if (!loaded) return null;
   if (user.role !== 'super' && loaded.bot.user_id !== user.id) {
-    throw new ProfileAccessError('You do not have access to this Bot', 403);
+    throw new ProfileAccessError('You do not have access to this Agent', 403);
   }
   return loaded.bot;
 }
@@ -74,13 +74,13 @@ export async function pinProfileIdForUser(
   const loaded = await loadReference(database, profileId);
   if (!loaded) return profileId;
   const { bot } = loaded;
-  if (!isExecutableBot(bot)) throw new ProfileAccessError(`Bot is not executable (${bot.status})`, 403);
+  if (!isExecutableBot(bot)) throw new ProfileAccessError(`Agent is not executable (${bot.status})`, 403);
   if (user.role !== 'super' && bot.user_id !== user.id) {
-    throw new ProfileAccessError('You do not have access to this Bot', 403);
+    throw new ProfileAccessError('You do not have access to this Agent', 403);
   }
   if (options.mode === 'live' && loaded.version === undefined) return botProfileId(bot.id);
   const version = loaded.version ?? bot.current_version;
 
-  if (!(await database.bots.getVersion(bot.id, version))) throw new ProfileAccessError('Bot version not found', 404);
+  if (!(await database.bots.getVersion(bot.id, version))) throw new ProfileAccessError('Agent version not found', 404);
   return botProfileId(bot.id, version);
 }

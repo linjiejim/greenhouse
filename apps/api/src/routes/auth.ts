@@ -462,7 +462,7 @@ const auth = new Hono<AppEnv>()
 
     if (body.bot_id !== undefined && body.bot_id !== null) {
       if (typeof body.bot_id !== 'string' || !(await getDb().bots.getBot(authUser.id, body.bot_id))) {
-        return c.json({ error: 'Bot not found' }, 400);
+        return c.json({ error: 'Agent not found' }, 400);
       }
     }
 

@@ -4,7 +4,7 @@
  * Every line the engine itself writes into a transcript or a notification goes
  * through here, in the conversation owner's UI locale (`users.locale`). Two
  * reasons it is one module rather than inline strings:
- * - the speaker tags (`[小研（Bot）]:`) are a protocol, not decoration: the
+ * - the speaker tags (`[小研（Agent）]:`) are a protocol, not decoration: the
  *   projection writes them, the static rules (S1) describe them, and Bot names
  *   are validated against them — all three must agree byte for byte;
  * - system events are persisted verbatim, so a wording change here is a change
@@ -37,17 +37,17 @@ export interface SpeakerTags {
 export const SPEAKER_TAGS: Record<BotsLocale, SpeakerTags> = {
   zh: {
     user: (nickname) => `[${tagSafe(nickname)}（用户）]:`,
-    bot: (name) => `[${tagSafe(name)}（Bot）]:`,
+    bot: (name) => `[${tagSafe(name)}（Agent）]:`,
     event: '[事件]:',
     task: (name) => `[后台任务·${tagSafe(name)}]:`,
-    deleted: '[已删除的 Bot]:',
+    deleted: '[已删除的 Agent]:',
   },
   en: {
     user: (nickname) => `[${tagSafe(nickname)} (user)]:`,
-    bot: (name) => `[${tagSafe(name)} (Bot)]:`,
+    bot: (name) => `[${tagSafe(name)} (Agent)]:`,
     event: '[Event]:',
     task: (name) => `[Background task · ${tagSafe(name)}]:`,
-    deleted: '[Deleted Bot]:',
+    deleted: '[Deleted Agent]:',
   },
 };
 
@@ -55,7 +55,7 @@ export const SPEAKER_TAGS: Record<BotsLocale, SpeakerTags> = {
 
 const LIMIT_REASON: Record<BotsLocale, Record<Extract<BotEvent, { kind: 'limit' }>['reason'], string>> = {
   zh: {
-    turns: 'Bot 发言轮数',
+    turns: 'Agent 发言轮数',
     asks: '交接次数',
     depth: '交接层数',
     tokens: '本轮 token 用量',
@@ -63,7 +63,7 @@ const LIMIT_REASON: Record<BotsLocale, Record<Extract<BotEvent, { kind: 'limit' 
     wall_clock: '本轮时长',
   },
   en: {
-    turns: 'number of Bot turns',
+    turns: 'number of Agent turns',
     asks: 'number of hand-offs',
     depth: 'hand-off depth',
     tokens: 'token budget',
@@ -297,7 +297,7 @@ const FIELD_VALUES: Record<string, ValueWords> = {
   scope: {
     team: { zh: '团队', en: 'Team' },
     personal: { zh: '个人', en: 'Personal' },
-    bot: { zh: '本 Bot 私有', en: 'Private to this Bot' },
+    bot: { zh: '本 Agent 私有', en: 'Private to this Agent' },
   },
   share_role: {
     reader: { zh: '只读', en: 'Read-only' },
@@ -367,7 +367,7 @@ export const copy = {
   turnError: (l: BotsLocale, bot: string, reason: string) =>
     l === 'zh' ? `${bot} 没能回复（${reason}）` : `${bot} couldn't reply (${reason})`,
 
-  created: (l: BotsLocale, name: string) => (l === 'zh' ? `新建了 Bot「${name}」` : `Created the Bot “${name}”`),
+  created: (l: BotsLocale, name: string) => (l === 'zh' ? `新建了 Agent「${name}」` : `Created the Agent “${name}”`),
 
   joined: (l: BotsLocale, name: string, byBot?: string) =>
     l === 'zh'
@@ -421,7 +421,7 @@ export const copy = {
       approval: `${bot} 请你批准：${subject}`,
       login: `${bot} 需要你登录${subject ? ` ${subject}` : ''}`,
       takeover: `${bot} 请你接管电脑：${subject}`,
-      bot_create: `${bot} 提议新建 Bot「${subject}」`,
+      bot_create: `${bot} 提议新建 Agent「${subject}」`,
       task_start: `${bot} 提议后台任务「${subject}」`,
       instructions_update: `${bot} 提议修改自己的守则：${subject}`,
     };
@@ -429,7 +429,7 @@ export const copy = {
       approval: `${bot} asks you to approve: ${subject}`,
       login: `${bot} needs you to sign in${subject ? ` to ${subject}` : ''}`,
       takeover: `${bot} asks you to take over the computer: ${subject}`,
-      bot_create: `${bot} proposes a new Bot “${subject}”`,
+      bot_create: `${bot} proposes a new Agent “${subject}”`,
       task_start: `${bot} proposes the background task “${subject}”`,
       instructions_update: `${bot} proposes a change to its own instructions: ${subject}`,
     };
@@ -505,7 +505,7 @@ export const copy = {
     mailbox: (l: BotsLocale, ref: string) => (l === 'zh' ? `邮箱 ${ref}` : `mailbox ${ref}`),
   },
 
-  notificationBody: (l: BotsLocale) => (l === 'zh' ? '打开 Bots 查看并处理。' : 'Open Bots to review it.'),
+  notificationBody: (l: BotsLocale) => (l === 'zh' ? '打开对话查看并处理。' : 'Open the conversation to review it.'),
 
   /** The inbox fact of a finished background task (runtime-projector.ts). */
   taskNotificationTitle: (l: BotsLocale, title: string, ok: boolean) => {
@@ -517,11 +517,11 @@ export const copy = {
   taskNotificationBody: (l: BotsLocale, ok: boolean) =>
     l === 'zh'
       ? ok
-        ? 'Bot 已在对话里汇报。'
-        : 'Bot 已在对话里说明了情况。'
+        ? 'Agent 已在对话里汇报。'
+        : 'Agent 已在对话里说明了情况。'
       : ok
-        ? 'The Bot reported back in its conversation.'
-        : 'The Bot reported what happened in its conversation.',
+        ? 'The Agent reported back in its conversation.'
+        : 'The Agent reported what happened in its conversation.',
 
   /**
    * The inbox fact of a Bot reply nobody saw (reply-alerts.ts). Never the reply's
@@ -545,5 +545,5 @@ export const copy = {
   continueAfterCreate: (l: BotsLocale, name: string) =>
     l === 'zh'
       ? `成员确认新建了「${name}」，它已加入本对话。需要时用 team.ask 把工作交给它。`
-      : `The member confirmed the new Bot “${name}”; it has joined this conversation. Hand it work with team.ask when it helps.`,
+      : `The member confirmed the new Agent “${name}”; it has joined this conversation. Hand it work with team.ask when it helps.`,
 };

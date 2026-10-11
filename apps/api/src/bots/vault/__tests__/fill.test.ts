@@ -268,7 +268,7 @@ describe.skipIf(!chromiumAvailable())('vault fills on a real browser', { timeout
       // The card says why, from the ledger (server-derived), and offers no "always".
       expect(payload.allow_always).toBe(false);
       expect(payload.details).toEqual(
-        expect.arrayContaining([{ label: 'Why you are asked', value: 'In this turn the Bot also read: 127.0.0.1' }]),
+        expect.arrayContaining([{ label: 'Why you are asked', value: 'In this turn the Agent also read: 127.0.0.1' }]),
       );
       expect(await page().inputValue('input[name=password]')).toBe('');
       expect(site.submissions).toEqual([]);
@@ -295,7 +295,7 @@ describe.skipIf(!chromiumAvailable())('vault fills on a real browser', { timeout
         expect.arrayContaining([
           {
             label: 'Why you are asked',
-            value: 'In this turn the Bot also read: command output, files or search results',
+            value: 'In this turn the Agent also read: command output, files or search results',
           },
         ]),
       );

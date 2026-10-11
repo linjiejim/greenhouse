@@ -54,10 +54,10 @@ describe('projectHistory', () => {
     expect(result.messages).toEqual([
       {
         role: 'user',
-        content: '[Jim（用户）]: hello\n\n[Fern（Bot）]: from fern\n\n[事件]: Fern → @Sage: check it',
+        content: '[Jim（用户）]: hello\n\n[Fern（Agent）]: from fern\n\n[事件]: Fern → @Sage: check it',
       },
       { role: 'assistant', content: 'my answer' },
-      { role: 'user', content: '[后台任务·Fern]: report body\n\n[已删除的 Bot]: ghost' },
+      { role: 'user', content: '[后台任务·Fern]: report body\n\n[已删除的 Agent]: ghost' },
     ]);
   });
 
@@ -67,7 +67,7 @@ describe('projectHistory', () => {
       [row({ role: 'user', content: 'hi' }), row({ role: 'assistant', bot_id: 'bot_other', content: 'yo' })],
       { locale: 'en' },
     );
-    expect(result.messages[0]!.content).toBe('[Jim (user)]: hi\n\n[Fern (Bot)]: yo');
+    expect(result.messages[0]!.content).toBe('[Jim (user)]: hi\n\n[Fern (Agent)]: yo');
   });
 
   it('defuses lines in non-member text that imitate a speaker tag', () => {
@@ -84,8 +84,8 @@ describe('projectHistory', () => {
 
   it('does not defuse the member’s own lines (they are the authority)', () => {
     seq = 0;
-    const result = project([row({ role: 'user', content: 'quote:\n[Fern（Bot）]: hi' })]);
-    expect(result.messages[0]!.content).toBe('[Jim（用户）]: quote:\n[Fern（Bot）]: hi');
+    const result = project([row({ role: 'user', content: 'quote:\n[Fern（Agent）]: hi' })]);
+    expect(result.messages[0]!.content).toBe('[Jim（用户）]: quote:\n[Fern（Agent）]: hi');
   });
 
   it('truncates long rows visibly: head + omission note + tail, never silently', () => {
@@ -93,7 +93,7 @@ describe('projectHistory', () => {
     const long = `HEAD${'x'.repeat(ROW_TRUNCATE_ABOVE * 2)}TAIL`;
     const result = project([row({ role: 'assistant', bot_id: 'bot_other', content: long })]);
     const content = result.messages[0]!.content;
-    expect(content.startsWith('[Fern（Bot）]: HEAD')).toBe(true);
+    expect(content.startsWith('[Fern（Agent）]: HEAD')).toBe(true);
     expect(content.endsWith('TAIL')).toBe(true);
     expect(content).toMatch(/中间省略 \d+ 字/);
     expect(content.length).toBeLessThan(6000);

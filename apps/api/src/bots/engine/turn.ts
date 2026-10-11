@@ -434,7 +434,7 @@ export async function runBotTurn(rc: RunContext, chain: ChainState, item: FloorI
       instruction: buildInstruction({
         reason: item.reason,
         nickname: user.nickname,
-        ...(item.askedBy ? { askedByName: rc.bots.get(item.askedBy)?.name ?? 'Bot' } : {}),
+        ...(item.askedBy ? { askedByName: rc.bots.get(item.askedBy)?.name ?? 'Agent' } : {}),
         ...(item.message ? { message: item.message } : {}),
         askedOutcomes: outcomes,
       }),

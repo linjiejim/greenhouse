@@ -175,7 +175,7 @@ async function validateAgents(db: DatabaseProvider, userId: string, graph: Workf
       if (isBotProfileId(agent)) {
         const row = await loadBotReference(db, agent).catch(() => null);
         if (!row || !isExecutableBot(row.bot) || row.bot.user_id !== userId) {
-          errors.push(`node ${node.id}: Bot ${agent} not found or not accessible`);
+          errors.push(`node ${node.id}: Agent ${agent} not found or not accessible`);
         }
         continue;
       }

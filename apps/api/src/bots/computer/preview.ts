@@ -186,12 +186,13 @@ export async function servePreview(request: Request, deps: PreviewDeps): Promise
   const [token = '', portText = '', ...tail] = rest.split('/');
   const port = Number(portText);
   const claims = previewPortAllowed(port) ? verifyPreviewTicket(token, port) : null;
-  if (!claims) return notice(404, 'This preview link is not valid', 'It may have expired — ask the Bot for a new one.');
+  if (!claims)
+    return notice(404, 'This preview link is not valid', 'It may have expired — ask the Agent for a new one.');
   if ((await ticketHolderStatus(claims.uid, claims.av).catch(() => 'unauthorized')) !== 'ok') {
     return notice(
       403,
       'This preview link is no longer yours to use',
-      'Sign in to Greenhouse and ask the Bot for a new one.',
+      'Sign in to Greenhouse and ask the Agent for a new one.',
     );
   }
   const base = `${PREVIEW_PREFIX}/${token}/${port}/`;
@@ -202,7 +203,7 @@ export async function servePreview(request: Request, deps: PreviewDeps): Promise
     return notice(
       503,
       'The computer is asleep',
-      'Open Greenhouse and wake the computer (or ask a Bot to use it), then reload this page.',
+      'Open Greenhouse and wake the computer (or ask an Agent to use it), then reload this page.',
     );
   }
   void deps.touch(claims.uid).catch(() => undefined);
@@ -255,7 +256,7 @@ export async function servePreview(request: Request, deps: PreviewDeps): Promise
     return notice(
       502,
       `Nothing answered on port ${port}`,
-      'The service in the computer is not running (or not listening on that port). Ask the Bot to start it again.',
+      'The service in the computer is not running (or not listening on that port). Ask the Agent to start it again.',
     );
   }
 

@@ -68,8 +68,8 @@ const COPY = {
   skipped: (locale: Locale) => (locale === 'zh' ? '已跳过接管。' : 'Take-over skipped.'),
   released: (locale: Locale) =>
     locale === 'zh'
-      ? '查看窗口已关闭超过 3 分钟，电脑已交回给 Bot；请求仍在等你处理。'
-      : 'The viewer was closed for 3 minutes, so the computer went back to the Bots. The request is still waiting for you.',
+      ? '查看窗口已关闭超过 3 分钟，电脑已交回给 Agent；请求仍在等你处理。'
+      : 'The viewer was closed for 3 minutes, so the computer went back to the Agents. The request is still waiting for you.',
 };
 
 /** What the woken Bot reads (model-facing, so English). */

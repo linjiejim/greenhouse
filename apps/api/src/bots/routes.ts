@@ -16,6 +16,7 @@
  * PATCH  /api/bots/conversations/:id/notes/:noteId    — 修改共享笔记
  * DELETE /api/bots/conversations/:id/notes/:noteId    — 删除共享笔记
  * GET    /api/bots/conversations/:id/tasks            — 本对话的后台任务
+ * GET    /api/bots/tasks                              — 我全部对话的后台任务（?limit=，默认 20、最多 50；进行中在前），每行带派出它的对话 session_id
  * POST   /api/bots/tasks/:runId/cancel                — 取消后台任务（Runtime 取消语义）
  * GET    /api/bots/requests                           — 「需要你」请求（?status=pending）
  * POST   /api/bots/requests/:id                       — 处理请求（审批 / 建 Bot / 开始任务 / 登录 / 交还），已处理 409 already_decided、处理中 409 deciding、旧群聊的卡 409 group_closed
@@ -79,7 +80,7 @@ import { writeGreeting } from './engine/greeting.js';
 import { deliverToConversation } from './engine/inbox.js';
 import { nextFreeName, validateBotInstructions, validateBotName, validateBotRole } from './engine/naming.js';
 import { decideBotRequest, RequestDecisionError } from './engine/requests.js';
-import { cancelBotTask, listConversationTasks } from './engine/tasks.js';
+import { cancelBotTask, listConversationTasks, listMemberTasks, MEMBER_TASKS_MAX } from './engine/tasks.js';
 import { estimateRows, readTail } from './engine/transcript.js';
 import { NOTE_BODY_MAX, NOTE_TITLE_MAX } from './tools/conversation.js';
 import {
@@ -194,7 +195,7 @@ async function parseConnectors(
   }
   const slugs = [...new Set(raw as string[])];
   if (slugs.length > MAX_BOT_CONNECTORS) {
-    return { ok: false, error: `A Bot lists at most ${MAX_BOT_CONNECTORS} connectors` };
+    return { ok: false, error: `An Agent lists at most ${MAX_BOT_CONNECTORS} connectors` };
   }
   if (slugs.length === 0) return { ok: true, value: [] };
   const installed = new Set((await getDb().mcpServers.list()).map((row) => row.slug));
@@ -577,7 +578,7 @@ export function createBotsRoutes() {
             return c.json({ error: error.message, code: error.code }, domainStatus(error));
           throw error;
         }
-        if (!removed) return c.json({ error: 'That Bot is not in this conversation' }, 404);
+        if (!removed) return c.json({ error: 'That Agent is not in this conversation' }, 404);
         const bot = await db.bots.getBot(user.id, botId);
         await deliverToConversation(sessionId, {
           kind: 'event',
@@ -618,7 +619,7 @@ export function createBotsRoutes() {
         const conversation = await db.bots.getConversation(user.id, sessionId);
         if (!conversation) return c.json({ error: 'Conversation not found' }, 404);
         if (chatRunRegistry.getActive(sessionId)) {
-          return c.json({ error: 'A Bot is replying — try again when it has finished' }, 409);
+          return c.json({ error: 'An Agent is replying — try again when it has finished' }, 409);
         }
         const outcome = await compactConversation(sessionId, {
           force: true,
@@ -632,7 +633,7 @@ export function createBotsRoutes() {
           },
         });
         if (outcome.status === 'busy')
-          return c.json({ error: 'A Bot is replying — try again when it has finished' }, 409);
+          return c.json({ error: 'An Agent is replying — try again when it has finished' }, 409);
         if (outcome.status === 'failed')
           return c.json({ error: 'Could not update the summary right now — try again later' }, 502);
         notifyConversation(user.id, sessionId);
@@ -736,6 +737,14 @@ export function createBotsRoutes() {
         const conversation = await db.bots.getConversation(user.id, c.req.param('id'));
         if (!conversation) return c.json({ error: 'Conversation not found' }, 404);
         return c.json({ tasks: await listConversationTasks(db, user.id, conversation.session_id) });
+      })
+
+      // ── GET /api/bots/tasks — every conversation's background tasks (the sidebar's "Background") ──
+      .get('/tasks', async (c) => {
+        const user = getAuthUser(c);
+        const raw = Number(c.req.query('limit') ?? 20);
+        const limit = Number.isInteger(raw) && raw > 0 ? Math.min(raw, MEMBER_TASKS_MAX) : 20;
+        return c.json({ tasks: await listMemberTasks(getDb(), user.id, limit) });
       })
 
       // ── POST /api/bots/tasks/:runId/cancel ──
@@ -842,7 +851,7 @@ export function createBotsRoutes() {
         }
         try {
           const bot = await db.bots.updateBot(user.id, botId, updates);
-          if (!bot) return c.json({ error: 'Bot not found' }, 404);
+          if (!bot) return c.json({ error: 'Agent not found' }, 404);
           const dms = await dmIndex(db, user.id);
           const dm = dms.get(bot.id) ?? null;
           if (updates.name) {
@@ -866,11 +875,11 @@ export function createBotsRoutes() {
         // Sprouty is every member's main Bot: it stays (it can be renamed or re-instructed).
         if (isSproutyBot(await db.bots.getBot(user.id, botId)))
           return c.json(
-            { error: 'Sprouty is your main Bot and cannot be archived', code: 'bot_protected' as const },
+            { error: 'Sprouty is your main Agent and cannot be archived', code: 'bot_protected' as const },
             400,
           );
         const archived = await db.bots.archiveBot(user.id, botId);
-        if (!archived) return c.json({ error: 'Bot not found' }, 404);
+        if (!archived) return c.json({ error: 'Agent not found' }, 404);
         // Its open cards can no longer be acted on: withdraw them so "needs you"
         // does not keep pointing at a Bot that is gone.
         const pending = await db.bots.listRequests(user.id, { status: 'pending' });
@@ -889,7 +898,7 @@ export function createBotsRoutes() {
         const target =
           (await db.bots.getBot(user.id, botId)) ??
           (user.role === 'super' ? await db.bots.getBotById(botId) : undefined);
-        if (!target) return c.json({ error: 'Bot not found' }, 404);
+        if (!target) return c.json({ error: 'Agent not found' }, 404);
         const versions = await db.bots.listVersions(target.id);
         return c.json({
           bot_id: target.id,
@@ -904,7 +913,7 @@ export function createBotsRoutes() {
         const user = getAuthUser(c);
         const db = getDb();
         const bot = await db.bots.getBot(user.id, c.req.param('id'));
-        if (!bot) return c.json({ error: 'Bot not found' }, 404);
+        if (!bot) return c.json({ error: 'Agent not found' }, 404);
         const folder = await db.drive.getBotFolder(bot.id);
         if (!folder) return c.json({ folder: null, docs: [] });
         const folderIds = await kbFolderSubtreeIds(db, folder.id, { visibility: 'private', ownerUserId: user.id });
@@ -933,7 +942,7 @@ export function createBotsRoutes() {
         const user = getAuthUser(c);
         const db = getDb();
         const bot = await db.bots.getBot(user.id, c.req.param('id'));
-        if (!bot) return c.json({ error: 'Bot not found' }, 404);
+        if (!bot) return c.json({ error: 'Agent not found' }, 404);
         const folder = await ensureBotFolder(db, bot);
         return c.json({ folder: { id: folder.id, name: folder.name, url: `#/knowledge/folder/${folder.id}` } });
       })
@@ -943,7 +952,7 @@ export function createBotsRoutes() {
         const user = getAuthUser(c);
         const db = getDb();
         const bot = await db.bots.getBot(user.id, c.req.param('id'));
-        if (!bot) return c.json({ error: 'Bot not found' }, 404);
+        if (!bot) return c.json({ error: 'Agent not found' }, 404);
         const rows = (await db.userMemories.listByUser(user.id)).filter((row) => row.bot_id === bot.id);
         return c.json({
           memories: rows.map((row) => ({
@@ -964,7 +973,7 @@ export function createBotsRoutes() {
         const user = getAuthUser(c);
         const db = getDb();
         const bot = await db.bots.getBot(user.id, c.req.param('id'));
-        if (!bot) return c.json({ error: 'Bot not found' }, 404);
+        if (!bot) return c.json({ error: 'Agent not found' }, 404);
         const memoryId = Number(c.req.param('memoryId'));
         const memory = Number.isInteger(memoryId)
           ? await db.userMemories.getOwnedInScope(memoryId, user.id, { botId: bot.id, exact: true })

@@ -56,7 +56,7 @@ function speakerOf(port: ConversationPort) {
   return (row: MessageRow): string => {
     if (row.role === 'user') return port.nickname;
     if (row.role === 'system') return 'event';
-    return port.botName(row.bot_id ?? null) ?? 'Bot';
+    return port.botName(row.bot_id ?? null) ?? 'Agent';
   };
 }
 
@@ -70,7 +70,7 @@ async function listNotes(ctx: BotTurnContext, port: ConversationPort) {
       body: note.body,
       status: note.status,
       pinned: note.pinned,
-      author: note.author_bot_id ? (port.botName(note.author_bot_id) ?? 'Bot') : port.nickname,
+      author: note.author_bot_id ? (port.botName(note.author_bot_id) ?? 'Agent') : port.nickname,
       updated_at: note.updated_at,
     })),
   };

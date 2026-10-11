@@ -16,6 +16,7 @@ import {
   BotTaskError,
   cancelBotTask,
   listConversationTasks,
+  listMemberTasks,
   MAX_RUNNING_TASKS_PER_MEMBER,
 } from '../tasks.js';
 
@@ -86,6 +87,42 @@ describe('background tasks', () => {
     const other = await createInternalTestUser(db, { email: `bots-tasks-other-${Date.now()}@test.local` });
     expect(await listConversationTasks(db, other.id, conversationId)).toEqual([]);
     expect(await cancelBotTask(db, other.id, runId)).toBe('not_found');
+  });
+
+  it('lists the member’s tasks across conversations, live first, each naming the conversation that started it', async () => {
+    const quill = await db.bots.createBot({ user_id: user.id, name: 'Quill', role: 'Writer' });
+    const otherConversation = (await db.bots.ensureDirectConversation(user.id, quill.id)).session_id;
+    const first = await admitBotTask({
+      db,
+      userId: user.id,
+      conversationId,
+      bot: sage,
+      title: 'Check links',
+      brief: 'b',
+      requestId: 'req-member-1',
+    });
+    const second = await admitBotTask({
+      db,
+      userId: user.id,
+      conversationId: otherConversation,
+      bot: quill,
+      title: 'Draft the summary',
+      brief: 'b',
+      requestId: 'req-member-2',
+    });
+    // The newer one ends: a live task outranks recency.
+    expect(await cancelBotTask(db, user.id, second.runId)).toBe('canceled');
+
+    const tasks = await listMemberTasks(db, user.id);
+    expect(tasks.map((task) => [task.run_id, task.session_id, task.bot_id, task.status])).toEqual([
+      [first.runId, conversationId, sage.id, 'queued'],
+      [second.runId, otherConversation, quill.id, 'canceled'],
+    ]);
+    expect(tasks[0]).toMatchObject({ title: 'Check links' });
+    expect(await listMemberTasks(db, user.id, 1)).toHaveLength(1);
+    // Another member sees none of them.
+    const other = await createInternalTestUser(db, { email: `bots-tasks-member-${Date.now()}@test.local` });
+    expect(await listMemberTasks(db, other.id)).toEqual([]);
   });
 
   it(`runs at most ${MAX_RUNNING_TASKS_PER_MEMBER} at once per member`, async () => {

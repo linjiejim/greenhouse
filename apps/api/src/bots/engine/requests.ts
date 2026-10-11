@@ -77,7 +77,7 @@ async function decideInstructionsUpdate(db: DatabaseProvider, row: BotRequestRow
   const locale = botsLocale(user?.locale);
   const proposal = safeJsonParse(row.payload, {}) as BotInstructionsUpdatePayload;
   const bot = row.bot_id ? await db.bots.getBot(row.user_id, row.bot_id) : undefined;
-  const botName = bot?.name ?? 'Bot';
+  const botName = bot?.name ?? 'Agent';
   if (decision.decision === 'deny') {
     const settled = await settle(db, row, 'denied', { decision: 'deny' });
     await deliverToConversation(row.session_id, {
@@ -87,7 +87,7 @@ async function decideInstructionsUpdate(db: DatabaseProvider, row: BotRequestRow
     });
     return settled;
   }
-  if (!bot || bot.status !== 'active') throw new RequestDecisionError(409, 'The Bot no longer exists', 'bot_gone');
+  if (!bot || bot.status !== 'active') throw new RequestDecisionError(409, 'The Agent no longer exists', 'bot_gone');
   const instructions = validateBotInstructions(decision.instructions ?? proposal.instructions);
   if (!instructions.ok) throw new RequestDecisionError(400, instructions.error, instructions.code);
   const updated = await db.bots.updateBot(row.user_id, bot.id, {
@@ -95,7 +95,7 @@ async function decideInstructionsUpdate(db: DatabaseProvider, row: BotRequestRow
     change_log: `Proposed by ${botName}: ${(proposal.reason ?? '').slice(0, 200)}`,
     created_by: row.user_id,
   });
-  if (!updated) throw new RequestDecisionError(409, 'The Bot no longer exists', 'bot_gone');
+  if (!updated) throw new RequestDecisionError(409, 'The Agent no longer exists', 'bot_gone');
   const settled = await settle(db, row, 'resolved', { decision: decision.decision, version: updated.current_version });
   await deliverToConversation(row.session_id, {
     kind: 'event',
@@ -207,7 +207,7 @@ async function decideTaskStart(db: DatabaseProvider, row: BotRequestRow, decisio
   }
   const bot = row.bot_id ? await db.bots.getBot(row.user_id, row.bot_id) : undefined;
   if (!bot || bot.status !== 'active')
-    throw new RequestDecisionError(409, 'The Bot that proposed this task no longer exists', 'bot_gone');
+    throw new RequestDecisionError(409, 'The Agent that proposed this task no longer exists', 'bot_gone');
   let admitted;
   try {
     admitted = await admitBotTask({
