@@ -19,6 +19,7 @@ import {
   type AppRecordRow,
 } from '@greenhouse/types/apps';
 import type { TableAccessSchemaFacts, TableDataScope } from '@greenhouse/types/table-access';
+import type { TableSystemField } from '@greenhouse/types/tables';
 import { isRecordsCard } from './app-scope.js';
 import { sessionTableAccess, type AppSession } from './app-session.js';
 import type { Handler } from './handlers/shared.js';
@@ -30,8 +31,17 @@ function isoTimestamp(value: string): string {
   return Number.isNaN(parsed.getTime()) ? value : parsed.toISOString();
 }
 
-/** One record as an app card / drawer delivers it: `fields` only (values ∪ computed), absent never null-filled. */
-export function appRecordRow(row: TableRecordRow, fields: ReadonlySet<number>, actionIds: string[]): AppRecordRow {
+/**
+ * One record as an app card / drawer delivers it: `fields` only (values ∪
+ * computed), absent never null-filled. The last editor (`updatedBy`) is sent
+ * when the card shows the `updated_by` system field (`cardSystemFields`).
+ */
+export function appRecordRow(
+  row: TableRecordRow,
+  fields: ReadonlySet<number>,
+  actionIds: string[],
+  system: ReadonlySet<TableSystemField> = new Set(),
+): AppRecordRow {
   const values: Record<string, unknown> = {};
   for (const source of [row.values, row.computed_values]) {
     for (const [key, value] of Object.entries(source ?? {})) {
@@ -45,6 +55,7 @@ export function appRecordRow(row: TableRecordRow, fields: ReadonlySet<number>, a
     createdBy: row.created_by,
     createdAt: isoTimestamp(row.created_at),
     updatedAt: isoTimestamp(row.updated_at),
+    ...(system.has('updated_by') ? { updatedBy: row.updated_by ?? null } : {}),
     actionIds,
   };
 }
@@ -64,9 +75,9 @@ function labelText(value: unknown): string | undefined {
 }
 
 /**
- * Labels for what `rows` show in `fields`: people (user fields and creators),
- * linked records (inside the role's read scope on their table, else null),
- * attachments (live files only).
+ * Labels for what `rows` show in `fields`: people (user fields, creators and —
+ * when `system` shows it — the last editor), linked records (inside the role's
+ * read scope on their table, else null), attachments (live files only).
  */
 export async function appRecordRefs(
   context: Context,
@@ -74,6 +85,7 @@ export async function appRecordRefs(
   tableId: number,
   rows: readonly TableRecordRow[],
   fields: ReadonlySet<number>,
+  system: ReadonlySet<TableSystemField> = new Set(),
 ): Promise<AppRecordRefs> {
   const facts: TableAccessSchemaFacts = await session.facts();
   const byId = new Map(facts.fields.filter((field) => field.tableId === tableId).map((field) => [field.id, field]));
@@ -82,6 +94,7 @@ export async function appRecordRefs(
   const links = new Map<number, Set<number>>();
   for (const row of rows) {
     if (row.created_by) userIds.add(row.created_by);
+    if (system.has('updated_by') && row.updated_by) userIds.add(row.updated_by);
     for (const fieldId of fields) {
       const field = byId.get(fieldId);
       if (!field) continue;

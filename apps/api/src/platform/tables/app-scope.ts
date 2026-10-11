@@ -20,7 +20,13 @@
 
 import type { AppCard, AppDataSource, AppPage, AppRecordAction } from '@greenhouse/types/apps';
 import type { TableRowScope } from '@greenhouse/types/table-access';
-import type { TableFilterClause, TableFilterControl, TableFilterGroup, TableQuery } from '@greenhouse/types/tables';
+import type {
+  TableFilterClause,
+  TableFilterControl,
+  TableFilterGroup,
+  TableQuery,
+  TableSystemField,
+} from '@greenhouse/types/tables';
 import { PAGE_REF } from './app-spec.js';
 
 export type RecordsLikeCard = Extract<AppCard, { kind: 'records' | 'kanban' | 'calendar' | 'gallery' }>;
@@ -56,6 +62,11 @@ export function cardDetailFieldIds(card: RecordsLikeCard): number[] {
 /** Every field a records-like card may show anywhere (face ∪ drawer) — attachments are served only from these. */
 export function cardShownFieldIds(card: RecordsLikeCard): number[] {
   return [...new Set([...cardDisplayFieldIds(card), ...cardDetailFieldIds(card)])];
+}
+
+/** The system fields a records-like card shows anywhere — its columns (records cards) and its drawer. */
+export function cardSystemFields(card: RecordsLikeCard): ReadonlySet<TableSystemField> {
+  return new Set([...(card.kind === 'records' ? (card.systemFields ?? []) : []), ...(card.detail?.systemFields ?? [])]);
 }
 
 /** Row / card-face actions and the drawer's actions, in that order (ids are unique per card). */

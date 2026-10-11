@@ -701,6 +701,42 @@ describe('approving (acceptance 3)', () => {
     expect([404, 409]).toContain(again.status);
   });
 
+  it('names the last editor wherever the card shows updated_by, and nowhere else', async () => {
+    const p = await procurement();
+    const recordId = await pending(p);
+    // v2: "My requests" shows who changed a request last, as a column and in the drawer.
+    const draft = await json<AppDraftView>(await send(owner, `/api/apps/${p.appId}/draft`));
+    const spec = structuredClone(draft.spec);
+    const mine = spec.pages[0]!.cards[0]!;
+    if (mine.kind !== 'records') throw new Error('my-requests');
+    mine.systemFields = ['updated_by'];
+    mine.detail = { ...mine.detail!, systemFields: ['created_at', 'updated_by'] };
+    const saved = await json<AppDraftView>(
+      await send(owner, `/api/apps/${p.appId}/draft`, 'PUT', { spec, draftRevision: draft.draftRevision }),
+    );
+    expect(saved.errors).toEqual([]);
+    await json(await send(owner, `/api/apps/${p.appId}/publish`, 'POST', { draftRevision: saved.draftRevision }));
+    await json(await act(p, approver, { pageId: 'review', cardId: 'queue', actionId: 'approve', recordId }));
+
+    const list = await records(p, applicant, 'mine', 'my-requests');
+    expect(list.records.find((row) => row.id === recordId)?.updatedBy).toBe(approver.id);
+    expect(list.refs.users[approver.id]).toEqual({ nickname: 'GW approver' });
+    const drawer = await json<AppRecordView>(
+      await send(applicant, `/api/apps/${p.appId}/records/get`, 'POST', {
+        pageId: 'mine',
+        cardId: 'my-requests',
+        recordId,
+      }),
+    );
+    expect(drawer.systemFields).toEqual(['created_at', 'updated_by']);
+    expect(drawer.record.updatedBy).toBe(approver.id);
+    expect(drawer.refs.users[approver.id]).toEqual({ nickname: 'GW approver' });
+    // The board does not show it: no editor on its rows.
+    const board = await json<AppCardQueryResult>(await cardQuery(p, approver, 'review', 'board'));
+    if (board.kind !== 'records') throw new Error(`expected records, got ${board.kind}`);
+    expect(board.records.find((row) => row.id === recordId)).not.toHaveProperty('updatedBy');
+  });
+
   it('refuses a stale approval with 409 precondition once the status moved inside the card', async () => {
     const p = await procurement();
     const recordId = await pending(p);

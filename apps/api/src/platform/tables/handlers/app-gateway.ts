@@ -62,6 +62,7 @@ import {
   cardDisplayFieldIds,
   cardShownFieldIds,
   cardSource,
+  cardSystemFields,
   controlById,
   isAggregateCard,
   isRecordsCard,
@@ -336,12 +337,13 @@ const queryAppCard: Handler = async (request, context) => {
     rows.map((row) => row.id),
   );
   const shown = new Set(display);
+  const system = cardSystemFields(recordsCard);
   return ok({
     kind: 'records',
-    records: rows.map((row) => appRecordRow(row, shown, actionIds.get(row.id) ?? [])),
+    records: rows.map((row) => appRecordRow(row, shown, actionIds.get(row.id) ?? [], system)),
     total: result.page.total,
     nextCursor: result.page.nextCursor,
-    refs: await appRecordRefs(context, session, tableId, rows, shown),
+    refs: await appRecordRefs(context, session, tableId, rows, shown, system),
   } satisfies AppCardQueryResult);
 };
 
@@ -411,9 +413,10 @@ const getAppRecord: Handler = async (request, context) => {
     (await availableActionIds(context, session, card, scope, actions, [record.id])).get(record.id) ?? [];
   const shown = new Set(fields);
   const systemFields = card.detail?.systemFields ?? (card.kind === 'records' ? card.systemFields : undefined) ?? [];
+  const system = cardSystemFields(card);
   return ok({
-    record: appRecordRow(record, shown, actionIds),
-    refs: await appRecordRefs(context, session, tableId, [record], shown),
+    record: appRecordRow(record, shown, actionIds, system),
+    refs: await appRecordRefs(context, session, tableId, [record], shown, system),
     fieldIds: fields,
     systemFields,
     editableFieldIds,
