@@ -384,6 +384,7 @@ export const appsBuilderZh: DeepRecord<typeof appsBuilderEn> = {
       transferChoose: '选择一个人',
       transferAction: '转交',
       transferred: '已转交给 {name}',
+      transferNone: '这个 Base 还没有其他所有者或搭建者。先在 Base 的共享里把某人设为搭建者。',
       feature: '推荐',
       featureHint: '被推荐的应用会出现在所有分发对象的侧栏里。',
       featureLabel: '推荐这个应用',

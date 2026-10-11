@@ -1,8 +1,9 @@
 /**
  * The Base an app is built on, as the builder needs it: its tables and their
  * fields (pickers, conditions, defaults), its button automations (what
- * `run_automation` may name), the people directory (conditions, prefills) and
- * the access facts the role editor computes effective field access from.
+ * `run_automation` may name), the people directory (conditions, prefills),
+ * who may own an app here (a hand-over target) and the access facts the role
+ * editor computes effective field access from.
  *
  * Builders are Base owners / builders, so the Tables API answers them in
  * full. The facts with computed-field dependency edges come from the server
@@ -13,14 +14,22 @@
  */
 
 import { useCallback, useEffect, useState } from 'react';
-import type { TableAccessSchemaFacts } from '@greenhouse/types/table-access';
+import {
+  decideTableBaseAccess,
+  tableRoleAtLeast,
+  type TableAccessSchemaFacts,
+  type TableBaseAccessFacts,
+} from '@greenhouse/types/table-access';
 import {
   getTableBase,
   getTableSchema,
   listTableAutomations,
+  listTableBaseAccess,
   listTableBaseRoles,
   listTableUsers,
+  type TableBaseMemberGrant,
   type TableField,
+  type TableUser,
   type TableUserOption,
 } from '../../../lib/api/tables';
 import { fieldConfig } from '../../../components/tables/field-types';
@@ -29,6 +38,8 @@ import type { BuilderSchema } from './spec-model';
 export interface BuilderBase {
   schema: BuilderSchema;
   users: TableUserOption[];
+  /** People who may own an app on this Base (`appOwnerCandidates`): whom it can be handed to. */
+  appOwners: TableUserOption[];
   facts: TableAccessSchemaFacts;
   /** The facts carry the server's dependency edges (owner / super); otherwise computed fields show as declared. */
   exactFacts: boolean;
@@ -54,6 +65,30 @@ export function factsWithoutDependencies(schema: BuilderSchema): TableAccessSche
   };
 }
 
+/**
+ * Who may own an app on this Base — the server's rule for a hand-over: an
+ * owner or builder of the Base (its owner, a builder member, a super), decided
+ * by the one decision table. Group and team grants never reach builder, so the
+ * people's own member rows are all it needs.
+ */
+export function appOwnerCandidates(
+  users: readonly TableUser[],
+  base: TableBaseAccessFacts['base'],
+  members: readonly Pick<TableBaseMemberGrant, 'user_id' | 'role' | 'custom_role_id'>[],
+): TableUserOption[] {
+  const memberOf = new Map(members.map((member) => [member.user_id, member]));
+  return users
+    .filter((user) => {
+      const { level } = decideTableBaseAccess({
+        user: { id: user.id, role: user.role, status: 'active' },
+        base,
+        member: memberOf.get(user.id) ?? null,
+      });
+      return level !== 'none' && level !== 'custom' && tableRoleAtLeast(level, 'builder');
+    })
+    .map(({ id, nickname, email }) => ({ id, nickname, email }));
+}
+
 export function useBuilderBase(baseId: number | undefined, canPublish: boolean) {
   const [load, setLoad] = useState<BuilderBaseLoad>({ kind: 'loading' });
 
@@ -61,10 +96,12 @@ export function useBuilderBase(baseId: number | undefined, canPublish: boolean) 
     if (!baseId) return;
     setLoad({ kind: 'loading' });
     try {
-      const [workspace, automations, users] = await Promise.all([
+      const [workspace, automations, users, access] = await Promise.all([
         getTableBase(baseId),
         listTableAutomations(baseId).catch(() => []),
-        listTableUsers().catch((): TableUserOption[] => []),
+        listTableUsers().catch((): TableUser[] => []),
+        // Member rows (who builds here); unreadable → only the owner and supers are offered.
+        listTableBaseAccess(baseId).catch(() => null),
       ]);
       const schemas = await Promise.all(workspace.tables.map((table) => getTableSchema(table.id)));
       const fieldsByTable = new Map<number, TableField[]>(
@@ -94,6 +131,7 @@ export function useBuilderBase(baseId: number | undefined, canPublish: boolean) 
         base: {
           schema,
           users,
+          appOwners: appOwnerCandidates(users, workspace.base, access?.members ?? []),
           facts: serverFacts ?? factsWithoutDependencies(schema),
           exactFacts: serverFacts !== null,
         },

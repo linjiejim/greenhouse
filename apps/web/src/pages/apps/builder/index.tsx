@@ -374,7 +374,13 @@ export function AppBuilderPage({ appId }: { appId: number }) {
               />
             )}
             {tab === 'settings' && (
-              <SettingsTab app={app} spec={spec} users={base.load.base.users} edit={draft.edit} onApp={draft.setApp} />
+              <SettingsTab
+                app={app}
+                spec={spec}
+                owners={base.load.base.appOwners}
+                edit={draft.edit}
+                onApp={draft.setApp}
+              />
             )}
           </div>
         )}

@@ -56,6 +56,7 @@ const tablesApi = vi.hoisted(() => ({
   listTableAutomations: vi.fn(),
   listTableUsers: vi.fn(),
   listTableBaseRoles: vi.fn(),
+  listTableBaseAccess: vi.fn(),
 }));
 vi.mock('../../../lib/api/tables', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../../lib/api/tables')>()),
@@ -212,7 +213,18 @@ beforeEach(() => {
     }),
   });
   const schema = schemaFixture();
-  tablesApi.getTableBase.mockResolvedValue({ tables: schema.tables });
+  tablesApi.getTableBase.mockResolvedValue({
+    base: {
+      id: 3,
+      owner_id: 'owner',
+      visibility: 'team',
+      team_role: 'editor',
+      team_custom_role_id: null,
+      archived_at: null,
+    },
+    tables: schema.tables,
+  });
+  tablesApi.listTableBaseAccess.mockResolvedValue({ members: [], groups: [] });
   tablesApi.getTableSchema.mockImplementation(async (tableId: number) => ({
     table: schema.tables.find((table) => table.id === tableId),
     fields: schema.fieldsByTable.get(tableId),
@@ -666,6 +678,46 @@ describe('settings', () => {
         entry.getAttribute('data-testid'),
       )[0],
     ).toBe('app-usage-action-$submit');
+  });
+
+  it('hands the app only to the Base’s owners and builders, and says when there is nobody', async () => {
+    tablesApi.listTableUsers.mockResolvedValue([
+      { id: 'owner', nickname: 'Olive', email: 'o@x', role: 'team' },
+      { id: 'bea', nickname: 'Bea', email: 'b@x', role: 'team' },
+      { id: 'ed', nickname: 'Ed', email: 'e@x', role: 'team' },
+      { id: 'sam', nickname: 'Sam', email: 's@x', role: 'super' },
+      { id: 'tess', nickname: 'Tess', email: 't@x', role: 'team' },
+    ]);
+    const member = (user_id: string, role: string) => ({
+      id: 1,
+      base_id: 3,
+      user_id,
+      role,
+      custom_role_id: null,
+      name: user_id,
+    });
+    // Bea builds here; Ed only edits; Tess reaches the team-visible Base as an editor.
+    tablesApi.listTableBaseAccess.mockResolvedValue({
+      members: [member('bea', 'builder'), member('ed', 'editor')],
+      groups: [],
+    });
+    await mount();
+    await click(q('[data-testid="app-tab-settings"]'));
+    const select = q<HTMLSelectElement>('[data-testid="app-transfer-to"]')!;
+    // The app's owner (Olive) is who it is handed from.
+    expect([...select.options].map((option) => option.textContent)).toEqual(['Choose a person', 'Bea', 'Sam']);
+
+    act(() => root?.unmount());
+    root = null;
+    tablesApi.listTableBaseAccess.mockResolvedValue({ members: [member('ed', 'editor')], groups: [] });
+    tablesApi.listTableUsers.mockResolvedValue([
+      { id: 'owner', nickname: 'Olive', email: 'o@x', role: 'team' },
+      { id: 'ed', nickname: 'Ed', email: 'e@x', role: 'team' },
+    ]);
+    await mount();
+    await click(q('[data-testid="app-tab-settings"]'));
+    expect(q('[data-testid="app-transfer-to"]')).toBeNull();
+    expect(q('[data-testid="app-transfer-none"]')?.textContent).toContain('Nobody else owns or builds this Base yet');
   });
 });
 

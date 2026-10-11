@@ -179,13 +179,14 @@ function UsageSection({ appId, spec }: { appId: number; spec: AppSpec }) {
 export function SettingsTab({
   app,
   spec,
-  users,
+  owners,
   edit,
   onApp,
 }: {
   app: AppSummary;
   spec: AppSpec;
-  users: TableUserOption[];
+  /** Who may own an app on this Base (owners and builders) — the only people it can be handed to. */
+  owners: TableUserOption[];
   edit: (change: (spec: AppSpec) => AppSpec) => void;
   onApp: (app: AppSummary) => void;
 }) {
@@ -198,6 +199,7 @@ export function SettingsTab({
   const isSuper = currentUser?.role === 'super';
   const canTransfer = app.canPublish || app.ownerId === currentUser?.id;
   const canArchive = app.canPublish || app.publishedVersion === null;
+  const handOverTo = owners.filter((user) => user.id !== app.ownerId);
 
   const run = async (action: () => Promise<AppSummary>, done: string) => {
     setBusy(true);
@@ -250,35 +252,43 @@ export function SettingsTab({
 
       {canTransfer && (
         <PanelSection title={t('apps.builder.settings.transfer')} hint={t('apps.builder.settings.transferHint')}>
-          <div className="flex flex-wrap items-end gap-2">
-            <FormField label={t('apps.builder.settings.transferTo')} className="min-w-[12rem] flex-1">
-              <Select value={transferTo} onChange={(event) => setTransferTo(event.target.value)}>
-                <option value="">{t('apps.builder.settings.transferChoose')}</option>
-                {users
-                  .filter((user) => user.id !== app.ownerId)
-                  .map((user) => (
+          {handOverTo.length === 0 ? (
+            <p className="text-xs text-fg-faint" data-testid="app-transfer-none">
+              {t('apps.builder.settings.transferNone')}
+            </p>
+          ) : (
+            <div className="flex flex-wrap items-end gap-2">
+              <FormField label={t('apps.builder.settings.transferTo')} className="min-w-[12rem] flex-1">
+                <Select
+                  value={transferTo}
+                  onChange={(event) => setTransferTo(event.target.value)}
+                  data-testid="app-transfer-to"
+                >
+                  <option value="">{t('apps.builder.settings.transferChoose')}</option>
+                  {handOverTo.map((user) => (
                     <option key={user.id} value={user.id}>
                       {user.nickname}
                     </option>
                   ))}
-              </Select>
-            </FormField>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={!transferTo || busy}
-              onClick={() =>
-                void run(
-                  () => transferApp(app.id, transferTo),
-                  t('apps.builder.settings.transferred', {
-                    name: users.find((user) => user.id === transferTo)?.nickname ?? transferTo,
-                  }),
-                ).then((next) => next && setTransferTo(''))
-              }
-            >
-              {t('apps.builder.settings.transferAction')}
-            </Button>
-          </div>
+                </Select>
+              </FormField>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={!transferTo || busy}
+                onClick={() =>
+                  void run(
+                    () => transferApp(app.id, transferTo),
+                    t('apps.builder.settings.transferred', {
+                      name: handOverTo.find((user) => user.id === transferTo)?.nickname ?? transferTo,
+                    }),
+                  ).then((next) => next && setTransferTo(''))
+                }
+              >
+                {t('apps.builder.settings.transferAction')}
+              </Button>
+            </div>
+          )}
         </PanelSection>
       )}
 

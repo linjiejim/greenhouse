@@ -389,6 +389,7 @@ export const appsBuilderEn = {
       transferChoose: 'Choose a person',
       transferAction: 'Hand over',
       transferred: 'Handed over to {name}',
+      transferNone: 'Nobody else owns or builds this Base yet. Make someone a builder in the Base’s sharing first.',
       feature: 'Recommend',
       featureHint: 'A featured app appears in the sidebar of everyone it is shared with.',
       featureLabel: 'Feature this app',
