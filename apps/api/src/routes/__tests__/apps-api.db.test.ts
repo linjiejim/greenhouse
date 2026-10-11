@@ -434,5 +434,6 @@ describe('the Base audit feed', () => {
       limit: 500,
     });
     expect(reads).toHaveLength(200);
-  });
+    // 200 requests: room for a loaded full run.
+  }, 30_000);
 });

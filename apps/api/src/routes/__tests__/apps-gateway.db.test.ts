@@ -23,7 +23,7 @@
  *   kanban moves, D3 role resolution, managers' preview, the realtime audience.
  */
 
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Hono } from 'hono';
 import { _resetProvider, initDatabase, type DatabaseProvider, type UserRow } from '@greenhouse/db';
 import { TEST_DATABASE_URL } from '@greenhouse/db/test-config';
@@ -87,6 +87,9 @@ async function json<T>(response: Response, status = 200): Promise<T> {
   expect(response.status, text).toBe(status);
   return JSON.parse(text) as T;
 }
+
+// Each case drives a whole app over HTTP (dozens of requests): room for a loaded full run.
+vi.setConfig({ testTimeout: 30_000 });
 
 let requestCounter = 0;
 const requestId = () => `req-${Date.now()}-${(requestCounter += 1)}`;
@@ -1070,6 +1073,32 @@ describe('managers (D2)', () => {
     const previewView = await json<AppRuntimeView>(await send(builder, `/api/apps/${p.appId}?previewRole=applicant`));
     expect(previewView.spec.roles[0]!.tables).toEqual([]);
     expect((await send(builder, `/api/apps/${p.appId}/publish`, 'POST', { draftRevision: 2 })).status).toBe(403);
+  });
+
+  it('stops a downgraded owner from publishing or sharing, while the new owner can (acceptance 5)', async () => {
+    const p = await procurement();
+    await json(
+      await send(owner, `/api/tables/bases/${p.baseId}/transfer`, 'POST', {
+        userId: builder.id,
+        previousOwnerRole: 'builder',
+      }),
+    );
+    const draft = await json<AppDraftView>(await send(owner, `/api/apps/${p.appId}/draft`));
+    expect(draft.app.canPublish).toBe(false);
+    const publish = await send(owner, `/api/apps/${p.appId}/publish`, 'POST', { draftRevision: draft.draftRevision });
+    expect(publish.status).toBe(403);
+    expect(((await publish.json()) as { details: { reason: string } }).details.reason).toBe('owner_only');
+    expect(
+      (
+        await send(owner, `/api/apps/${p.appId}/audiences`, 'PUT', {
+          entries: [{ principal: { type: 'team' }, roleKey: 'approver' }],
+          audiencesRevision: 2,
+        })
+      ).status,
+    ).toBe(403);
+    // Still a manager: full access to the gateway, and the new owner publishes.
+    expect((await records(p, owner, 'review', 'queue')).kind).toBe('records');
+    await json(await send(builder, `/api/apps/${p.appId}/publish`, 'POST', { draftRevision: draft.draftRevision }));
   });
 });
 
