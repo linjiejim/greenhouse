@@ -4,7 +4,8 @@
 
 import { and, asc, desc, eq, isNotNull, isNull, or, sql, type SQL } from 'drizzle-orm';
 import { nowIso } from '@greenhouse/utils/date';
-import { isComputedFieldType } from '@greenhouse/types/tables';
+import { checkTableFormula } from '@greenhouse/types/table-formula';
+import { isComputedFieldType, TABLE_LOOKUP_TARGET_TYPES as LOOKUP_TARGET_TYPES } from '@greenhouse/types/tables';
 import type {
   TableBaseVisibility,
   TableFieldConfig,
@@ -151,7 +152,13 @@ export function createTablesSchema(
               depends_on_field_id: dependsOnFieldId,
               dependency_type: 'rollup' as const,
             }))
-          : [];
+          : field.type === 'lookup' && config.lookup
+            ? [config.lookup.relationFieldId, config.lookup.targetFieldId].map((dependsOnFieldId) => ({
+                field_id: field.id,
+                depends_on_field_id: dependsOnFieldId,
+                dependency_type: 'lookup' as const,
+              }))
+            : [];
     if (dependencies.length > 0) await tx.insert(tableFieldDependencies).values(dependencies);
   };
 
@@ -172,19 +179,52 @@ export function createTablesSchema(
       return;
     }
     if (type === 'formula') {
+      // The editor's own checks: every reference is an active stored field of
+      // this table (never itself), arity / argument kinds / units hold.
       const fields = await db
         .select()
         .from(tableFields)
         .where(and(eq(tableFields.table_id, tableId), isNull(tableFields.archived_at)));
-      const byId = new Map(fields.map((field) => [field.id, field]));
-      for (const dependencyId of formulaFieldIds(config.formula!.expression)) {
-        const dependency = byId.get(dependencyId);
-        if (!dependency || dependency.id === fieldId) {
-          throw new TablesValidationError(`Formula field ${dependencyId} is unavailable`);
-        }
-        if (isComputedField(dependency)) {
-          throw new TablesValidationError('Formula fields may reference stored fields only');
-        }
+      const checked = checkTableFormula(
+        config.formula!.expression,
+        fields.filter((field) => field.id !== fieldId),
+      );
+      if (!checked.ok) throw new TablesValidationError(checked.error.message);
+      return;
+    }
+    if (type === 'lookup') {
+      const lookup = config.lookup!;
+      const [relationField] = await db
+        .select()
+        .from(tableFields)
+        .where(
+          and(
+            eq(tableFields.id, lookup.relationFieldId),
+            eq(tableFields.table_id, tableId),
+            isNull(tableFields.archived_at),
+          ),
+        )
+        .limit(1);
+      if (!relationField || relationField.type !== 'relation') {
+        throw new TablesValidationError('Lookup relationFieldId must reference a relation field on this table');
+      }
+      const relation = parseTableFieldConfig(relationField).relation;
+      const [targetField] = await db
+        .select()
+        .from(tableFields)
+        .where(
+          and(
+            eq(tableFields.id, lookup.targetFieldId),
+            eq(tableFields.table_id, relation!.targetTableId),
+            isNull(tableFields.archived_at),
+          ),
+        )
+        .limit(1);
+      if (!targetField) throw new TablesValidationError('Lookup target field is unavailable');
+      if (!(LOOKUP_TARGET_TYPES as readonly string[]).includes(targetField.type)) {
+        throw new TablesValidationError(
+          `Lookup fields can show ${LOOKUP_TARGET_TYPES.join(', ')} fields, not ${targetField.type}`,
+        );
       }
       return;
     }
@@ -545,7 +585,11 @@ export function createTablesSchema(
         await writeSchemaVersion(tx, field.table_id, 'field_updated', patch.updated_by);
         return rows[0];
       });
-      if (row && isComputedField(row)) await deps.compute.recomputeTable(row.table_id);
+      // A new computed definition, or new select labels, change what formulas
+      // here and rollups / lookups elsewhere show.
+      if (row && (isComputedField(row) || normalizedConfig !== undefined)) {
+        await deps.compute.refreshAfterFieldChange(row, { computed: isComputedField(row) });
+      }
       return row;
     },
 
@@ -567,7 +611,8 @@ export function createTablesSchema(
         await writeSchemaVersion(tx, field.table_id, 'field_archived', userId);
         return rows[0];
       });
-      if (row && isComputedField(row)) await deps.compute.recomputeTable(row.table_id);
+      // Lookups showing the archived field empty out.
+      if (row) await deps.compute.refreshAfterFieldChange(row, { computed: isComputedField(row) });
       return row;
     },
 

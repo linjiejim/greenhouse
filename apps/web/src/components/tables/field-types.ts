@@ -43,12 +43,8 @@ export const SYSTEM_FIELD_LABEL_KEYS: Record<TableSystemField, TranslationKey> =
   updated_by: 'tables.updatedBy',
 };
 
-/**
- * Types the field dialog offers. `lookup` is in the contract but has no
- * configuration UI or server computation yet — slice Fx adds both and then
- * drops it from this exclusion.
- */
-export const CREATABLE_FIELD_TYPES: readonly TableFieldType[] = TABLE_FIELD_TYPES.filter((type) => type !== 'lookup');
+/** Types the field dialog offers: every type has a configuration there. */
+export const CREATABLE_FIELD_TYPES: readonly TableFieldType[] = TABLE_FIELD_TYPES;
 
 /** Derived, never written: formula / rollup / lookup (one list, `COMPUTED_FIELD_TYPES`). */
 export function isComputedField(field: Pick<TableField, 'type'>): boolean {

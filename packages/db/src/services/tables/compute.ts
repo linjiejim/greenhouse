@@ -1,54 +1,36 @@
 /**
- * Computed fields: formula evaluation, rollups, and the recompute paths.
+ * Computed fields: formula evaluation, rollups, lookups, and the recompute paths.
  *
  * `computeRecordValues` takes the executor of the record write so a write's
  * computed values are produced inside its transaction (and visible in the
- * history event and automation conditions). Recompute and rollup cascades are
- * maintenance writes: they never append history events and never trigger
- * automations.
+ * history event and automation conditions). Recompute and rollup / lookup
+ * cascades are maintenance writes: they never append history events and never
+ * trigger automations.
+ *
+ * Cascades are one level deep: a change to a record (or to a field's
+ * definition) refreshes the rollups / lookups that point at it, not the
+ * fields that in turn point at those. That is why a lookup may only target a
+ * stored or formula field (`schema.ts`).
  */
 
 import { and, asc, eq, inArray, isNull } from 'drizzle-orm';
 import { nowIso } from '@greenhouse/utils/date';
-import type { TableFieldConfig, TableFormulaExpression, TableRecordValues } from '@greenhouse/types/tables';
+import type { TableFieldConfig, TableRecordValues } from '@greenhouse/types/tables';
 import type { Db } from '../../client.js';
-import { tableFields, tableRecomputeJobs, tableRecords } from '../../schema/index.js';
-import type { TableRecordRow } from '../../schema/tables.js';
+import {
+  tableFieldDependencies,
+  tableFields,
+  tableRecomputeJobs,
+  tableRecordLinks,
+  tableRecords,
+  tableTables,
+} from '../../schema/index.js';
+import type { TableFieldRow, TableRecordRow } from '../../schema/tables.js';
+import { evaluateTableFormula, resolveFormulaInput } from './formula-eval.js';
 import { parseDate, parseTableFieldConfig, type TablesExecutor } from './shared.js';
 
-function evaluateFormula(expression: TableFormulaExpression, values: TableRecordValues): unknown {
-  if (expression.type === 'literal') return expression.value;
-  if (expression.type === 'field') return values[String(expression.fieldId)] ?? null;
-  if (expression.type === 'binary') {
-    const left = evaluateFormula(expression.left, values);
-    const right = evaluateFormula(expression.right, values);
-    if (expression.operator === 'concat') return `${left ?? ''}${right ?? ''}`;
-    if (expression.operator === 'and') return Boolean(left) && Boolean(right);
-    if (expression.operator === 'or') return Boolean(left) || Boolean(right);
-    if (expression.operator === 'eq') return left === right;
-    if (expression.operator === 'neq') return left !== right;
-    if (expression.operator === 'gt') return Number(left) > Number(right);
-    if (expression.operator === 'gte') return Number(left) >= Number(right);
-    if (expression.operator === 'lt') return Number(left) < Number(right);
-    if (expression.operator === 'lte') return Number(left) <= Number(right);
-    const leftNumber = Number(left);
-    const rightNumber = Number(right);
-    if (!Number.isFinite(leftNumber) || !Number.isFinite(rightNumber)) return null;
-    if (expression.operator === 'add') return leftNumber + rightNumber;
-    if (expression.operator === 'subtract') return leftNumber - rightNumber;
-    if (expression.operator === 'multiply') return leftNumber * rightNumber;
-    return rightNumber === 0 ? null : leftNumber / rightNumber;
-  }
-  const args = expression.args.map((argument) => evaluateFormula(argument, values));
-  if (expression.name === 'if') return args[0] ? (args[1] ?? null) : (args[2] ?? null);
-  if (expression.name === 'coalesce') return args.find((value) => value !== null && value !== undefined) ?? null;
-  if (expression.name === 'concat') return args.map((value) => value ?? '').join('');
-  if (expression.name === 'upper') return String(args[0] ?? '').toUpperCase();
-  if (expression.name === 'lower') return String(args[0] ?? '').toLowerCase();
-  const value = Number(args[0]);
-  const precision = Math.min(Math.max(Number(args[1] ?? 0), 0), 10);
-  return Number.isFinite(value) ? Number(value.toFixed(precision)) : null;
-}
+/** Most values one lookup keeps (a relation holds ≤ 500 records; multi-value targets are flattened). */
+export const MAX_LOOKUP_VALUES = 1_000;
 
 function normalizeFormulaResult(
   resultType: NonNullable<TableFieldConfig['formula']>['resultType'],
@@ -60,7 +42,7 @@ function normalizeFormulaResult(
     const number = Number(value);
     return Number.isFinite(number) ? number : null;
   }
-  if (resultType === 'boolean') return Boolean(value);
+  if (resultType === 'boolean') return Array.isArray(value) ? value.length > 0 : Boolean(value);
   if (resultType === 'date') {
     const date = typeof value === 'string' ? value.slice(0, 10) : '';
     return parseDate(date) ? date : null;
@@ -69,8 +51,43 @@ function normalizeFormulaResult(
   return Number.isNaN(date.valueOf()) ? null : date.toISOString();
 }
 
+function isBlank(value: unknown): boolean {
+  return value === null || value === undefined || value === '' || (Array.isArray(value) && value.length === 0);
+}
+
+/** Record ids in a relation value, in link order, without duplicates. */
+function relationIds(value: unknown): number[] {
+  const ids = Array.isArray(value) ? value : typeof value === 'number' ? [value] : [];
+  return [...new Set(ids.filter((id): id is number => typeof id === 'number' && Number.isInteger(id) && id > 0))];
+}
+
+/** A rollup or lookup field and the relation it reads through. */
+interface DependentField {
+  field: TableFieldRow;
+  relation: TableFieldRow;
+  targetFieldId: number;
+}
+
+function linkConfig(field: TableFieldRow): { relationFieldId: number; targetFieldId: number } | undefined {
+  const config = parseTableFieldConfig(field);
+  if (field.type === 'rollup') return config.rollup;
+  if (field.type === 'lookup') return config.lookup;
+  return undefined;
+}
+
+function rollupValue(aggregation: NonNullable<TableFieldConfig['rollup']>['aggregation'], values: unknown[]): unknown {
+  const present = values.filter((value) => value !== null && value !== undefined);
+  if (aggregation === 'count') return present.length;
+  if (aggregation === 'join') return present.map(String).join(', ');
+  const numbers = present.map(Number).filter(Number.isFinite);
+  if (aggregation === 'sum') return numbers.reduce((sum, value) => sum + value, 0);
+  if (numbers.length === 0) return null;
+  if (aggregation === 'avg') return numbers.reduce((sum, value) => sum + value, 0) / numbers.length;
+  return aggregation === 'min' ? Math.min(...numbers) : Math.max(...numbers);
+}
+
 export function createTablesCompute(db: Db) {
-  /** Computed values (formula / rollup) for `values`, read through `executor`. */
+  /** Computed values (formula / rollup / lookup) for `values`, read through `executor`. */
   const computeRecordValues = async (
     executor: TablesExecutor,
     tableId: number,
@@ -82,63 +99,86 @@ export function createTablesCompute(db: Db) {
       .where(and(eq(tableFields.table_id, tableId), isNull(tableFields.archived_at)))
       .orderBy(asc(tableFields.position), asc(tableFields.id));
     const fieldsById = new Map(fields.map((field) => [field.id, field]));
+    const inputs = new Map(
+      fields.map((field) => [field.id, { type: field.type, config: parseTableFieldConfig(field) }]),
+    );
+    const formulaRead = (fieldId: number): unknown => resolveFormulaInput(inputs.get(fieldId), values[String(fieldId)]);
+
+    // Rollups and lookups read the linked records: load them (and their target
+    // fields) once per target table instead of once per field.
+    const links = fields.flatMap((field) => {
+      const link = linkConfig(field);
+      if (!link) return [];
+      const relation = fieldsById.get(link.relationFieldId);
+      const targetTableId =
+        relation?.type === 'relation' ? parseTableFieldConfig(relation).relation?.targetTableId : undefined;
+      const recordIds = targetTableId ? relationIds(values[String(link.relationFieldId)]) : [];
+      return [{ field, targetTableId: targetTableId ?? 0, targetFieldId: link.targetFieldId, recordIds }];
+    });
+    const recordIdsByTable = new Map<number, Set<number>>();
+    for (const link of links) {
+      if (!link.targetTableId || link.recordIds.length === 0) continue;
+      const ids = recordIdsByTable.get(link.targetTableId) ?? new Set<number>();
+      link.recordIds.forEach((id) => ids.add(id));
+      recordIdsByTable.set(link.targetTableId, ids);
+    }
+    const targetRecords = new Map<number, TableRecordRow>();
+    for (const [targetTableId, ids] of recordIdsByTable) {
+      const rows = await executor
+        .select()
+        .from(tableRecords)
+        .where(
+          and(
+            eq(tableRecords.table_id, targetTableId),
+            inArray(tableRecords.id, [...ids]),
+            isNull(tableRecords.deleted_at),
+          ),
+        );
+      rows.forEach((row) => targetRecords.set(row.id, row));
+    }
+    const targetFieldIds = [...new Set(links.filter((link) => link.targetTableId).map((link) => link.targetFieldId))];
+    const targetFields = new Map<number, TableFieldRow>();
+    if (targetFieldIds.length > 0) {
+      const rows = await executor
+        .select()
+        .from(tableFields)
+        .where(and(inArray(tableFields.id, targetFieldIds), isNull(tableFields.archived_at)));
+      rows.forEach((row) => targetFields.set(row.id, row));
+    }
+
     const computed: TableRecordValues = {};
     for (const field of fields) {
       const config = parseTableFieldConfig(field);
       if (field.type === 'formula' && config.formula) {
         computed[String(field.id)] = normalizeFormulaResult(
           config.formula.resultType,
-          evaluateFormula(config.formula.expression, values),
+          evaluateTableFormula(config.formula.expression, formulaRead),
         );
-      } else if (field.type === 'rollup' && config.rollup) {
-        const relationField = fieldsById.get(config.rollup.relationFieldId);
-        const relationValue = values[String(config.rollup.relationFieldId)];
-        const recordIds = Array.isArray(relationValue)
-          ? relationValue.filter((value): value is number => typeof value === 'number')
-          : typeof relationValue === 'number'
-            ? [relationValue]
-            : [];
-        const targetTableId = relationField ? parseTableFieldConfig(relationField).relation?.targetTableId : undefined;
-        const targetRecords =
-          !targetTableId || recordIds.length === 0
-            ? []
-            : await executor
-                .select()
-                .from(tableRecords)
-                .where(
-                  and(
-                    eq(tableRecords.table_id, targetTableId),
-                    inArray(tableRecords.id, recordIds),
-                    isNull(tableRecords.deleted_at),
-                  ),
-                );
-        const targetValues = targetRecords
-          .map(
-            (record) =>
-              ({
-                ...record.values,
-                ...record.computed_values,
-              })[String(config.rollup!.targetFieldId)],
-          )
-          .filter((value) => value !== null && value !== undefined);
-        if (config.rollup.aggregation === 'count') computed[String(field.id)] = targetValues.length;
-        else if (config.rollup.aggregation === 'join') {
-          computed[String(field.id)] = targetValues.map(String).join(', ');
-        } else {
-          const numbers = targetValues.map(Number).filter(Number.isFinite);
-          if (config.rollup.aggregation === 'sum') {
-            computed[String(field.id)] = numbers.reduce((sum, value) => sum + value, 0);
-          } else if (config.rollup.aggregation === 'avg') {
-            computed[String(field.id)] =
-              numbers.length > 0 ? numbers.reduce((sum, value) => sum + value, 0) / numbers.length : null;
-          } else if (config.rollup.aggregation === 'min') {
-            computed[String(field.id)] = numbers.length > 0 ? Math.min(...numbers) : null;
-          } else {
-            computed[String(field.id)] = numbers.length > 0 ? Math.max(...numbers) : null;
-          }
-        }
+        continue;
       }
-      // lookup: computed by slice Fx; creation is refused until then.
+      const link = links.find((entry) => entry.field.id === field.id);
+      if (!link) continue;
+      const targetField = targetFields.get(link.targetFieldId);
+      const sameTable = targetField?.table_id === link.targetTableId ? targetField : undefined;
+      const targetInput = sameTable ? { type: sameTable.type, config: parseTableFieldConfig(sameTable) } : undefined;
+      const key = String(link.targetFieldId);
+      const linked = link.recordIds
+        .map((id) => targetRecords.get(id))
+        .filter((row): row is TableRecordRow => row !== undefined && row.table_id === link.targetTableId)
+        .map((row) =>
+          resolveFormulaInput(targetInput, key in row.computed_values ? row.computed_values[key] : row.values[key]),
+        );
+      if (field.type === 'rollup' && config.rollup) {
+        computed[String(field.id)] = rollupValue(config.rollup.aggregation, linked);
+      } else if (field.type === 'lookup') {
+        // A lookup whose target field is gone (archived / moved) shows nothing.
+        computed[String(field.id)] = sameTable
+          ? linked
+              .flatMap((value) => (Array.isArray(value) ? value : [value]))
+              .filter((value) => !isBlank(value))
+              .slice(0, MAX_LOOKUP_VALUES)
+          : [];
+      }
     }
     return computed;
   };
@@ -166,78 +206,170 @@ export function createTablesCompute(db: Db) {
     for (const record of records) await recomputeRecord(db, record);
   };
 
-  /** Refresh rollups on records that link to the changed target record (after the write commits). */
+  /**
+   * The rollup / lookup fields that read `targetTableId` through a relation.
+   * Relations never leave their Base, so only that Base's active tables are
+   * scanned — not every rollup in the database.
+   */
+  const dependentFields = async (targetTableId: number): Promise<DependentField[]> => {
+    const [target] = await db
+      .select({ base_id: tableTables.base_id })
+      .from(tableTables)
+      .where(eq(tableTables.id, targetTableId))
+      .limit(1);
+    if (!target) return [];
+    const rows = await db
+      .select({ field: tableFields })
+      .from(tableFields)
+      .innerJoin(tableTables, eq(tableTables.id, tableFields.table_id))
+      .where(
+        and(
+          eq(tableTables.base_id, target.base_id),
+          isNull(tableTables.archived_at),
+          isNull(tableFields.archived_at),
+          inArray(tableFields.type, ['relation', 'rollup', 'lookup']),
+        ),
+      );
+    const relations = new Map(
+      rows
+        .map((row) => row.field)
+        .filter(
+          (field) =>
+            field.type === 'relation' && parseTableFieldConfig(field).relation?.targetTableId === targetTableId,
+        )
+        .map((field) => [field.id, field]),
+    );
+    if (relations.size === 0) return [];
+    return rows.flatMap(({ field }) => {
+      const link = linkConfig(field);
+      const relation = link ? relations.get(link.relationFieldId) : undefined;
+      if (!link || !relation || relation.table_id !== field.table_id) return [];
+      return [{ field, relation, targetFieldId: link.targetFieldId }];
+    });
+  };
+
+  /** Records (not deleted) linking through any of `relationFieldIds`, optionally only to `targetRecordId`. */
+  const linkingRecords = async (
+    relationFieldIds: number[],
+    targetRecordId?: number,
+  ): Promise<Array<{ record: TableRecordRow; relationFieldIds: Set<number> }>> => {
+    if (relationFieldIds.length === 0) return [];
+    const linkRows = await db
+      .select({ field_id: tableRecordLinks.field_id, source_record_id: tableRecordLinks.source_record_id })
+      .from(tableRecordLinks)
+      .where(
+        and(
+          inArray(tableRecordLinks.field_id, relationFieldIds),
+          targetRecordId === undefined ? undefined : eq(tableRecordLinks.target_record_id, targetRecordId),
+        ),
+      );
+    const bySource = new Map<number, Set<number>>();
+    for (const link of linkRows) {
+      const fields = bySource.get(link.source_record_id) ?? new Set<number>();
+      fields.add(link.field_id);
+      bySource.set(link.source_record_id, fields);
+    }
+    if (bySource.size === 0) return [];
+    const records = await db
+      .select()
+      .from(tableRecords)
+      .where(and(inArray(tableRecords.id, [...bySource.keys()]), isNull(tableRecords.deleted_at)))
+      .orderBy(asc(tableRecords.id));
+    return records.map((record) => ({ record, relationFieldIds: bySource.get(record.id)! }));
+  };
+
+  /**
+   * After a target record changed (update / delete / restore, after commit):
+   * recompute the records that link to it from tables whose rollups or
+   * lookups read its table. One recompute per linking record; each dependent
+   * field logs an idempotent job keyed by the target's revision.
+   */
   const refreshDependentRollups = async (targetTableId: number, targetRecordId: number): Promise<void> => {
+    const dependents = await dependentFields(targetTableId);
+    if (dependents.length === 0) return;
     const [targetRecord] = await db
       .select({ revision: tableRecords.revision, deleted_at: tableRecords.deleted_at })
       .from(tableRecords)
       .where(eq(tableRecords.id, targetRecordId))
       .limit(1);
     const targetVersion = `${targetRecord?.revision ?? 0}:${targetRecord?.deleted_at ? 'deleted' : 'active'}`;
-    const rollupFields = await db
-      .select()
-      .from(tableFields)
-      .where(and(eq(tableFields.type, 'rollup'), isNull(tableFields.archived_at)));
-    for (const rollupField of rollupFields) {
-      const rollup = parseTableFieldConfig(rollupField).rollup;
-      if (!rollup) continue;
-      const [relationField] = await db
-        .select()
-        .from(tableFields)
-        .where(and(eq(tableFields.id, rollup.relationFieldId), isNull(tableFields.archived_at)))
-        .limit(1);
-      if (!relationField || parseTableFieldConfig(relationField).relation?.targetTableId !== targetTableId) continue;
-      const records = await db
-        .select()
-        .from(tableRecords)
-        .where(and(eq(tableRecords.table_id, rollupField.table_id), isNull(tableRecords.deleted_at)));
-      for (const record of records) {
-        const relationValue = record.values[String(relationField.id)];
-        if (
-          relationValue === targetRecordId ||
-          (Array.isArray(relationValue) && relationValue.includes(targetRecordId))
-        ) {
-          const now = nowIso();
-          const [job] = await db
-            .insert(tableRecomputeJobs)
-            .values({
-              table_id: record.table_id,
-              field_id: rollupField.id,
-              record_id: record.id,
-              status: 'queued',
-              idempotency_key: `rollup:${rollupField.id}:${record.id}:${targetRecordId}:${targetVersion}`,
-              created_at: now,
-            })
-            .onConflictDoNothing()
-            .returning();
-          if (!job) continue;
-          await db
-            .update(tableRecomputeJobs)
-            .set({ status: 'running', attempt: 1, started_at: now })
-            .where(eq(tableRecomputeJobs.id, job.id));
-          try {
-            await recomputeRecord(db, record);
-            await db
-              .update(tableRecomputeJobs)
-              .set({ status: 'succeeded', finished_at: nowIso() })
-              .where(eq(tableRecomputeJobs.id, job.id));
-          } catch (error) {
-            await db
-              .update(tableRecomputeJobs)
-              .set({
-                status: 'failed',
-                error: error instanceof Error ? error.message.slice(0, 2_000) : 'Unknown recompute error',
-                finished_at: nowIso(),
-              })
-              .where(eq(tableRecomputeJobs.id, job.id));
-            throw error;
-          }
-        }
+    const sources = await linkingRecords(
+      [...new Set(dependents.map((dependent) => dependent.relation.id))],
+      targetRecordId,
+    );
+    for (const { record, relationFieldIds } of sources) {
+      const fields = dependents.filter(
+        (dependent) => dependent.field.table_id === record.table_id && relationFieldIds.has(dependent.relation.id),
+      );
+      const now = nowIso();
+      const jobs = [];
+      for (const { field } of fields) {
+        const [job] = await db
+          .insert(tableRecomputeJobs)
+          .values({
+            table_id: record.table_id,
+            field_id: field.id,
+            record_id: record.id,
+            status: 'running',
+            attempt: 1,
+            idempotency_key: `${field.type}:${field.id}:${record.id}:${targetRecordId}:${targetVersion}`,
+            created_at: now,
+            started_at: now,
+          })
+          .onConflictDoNothing()
+          .returning({ id: tableRecomputeJobs.id });
+        if (job) jobs.push(job.id);
+      }
+      if (jobs.length === 0) continue;
+      try {
+        await recomputeRecord(db, record);
+        await db
+          .update(tableRecomputeJobs)
+          .set({ status: 'succeeded', finished_at: nowIso() })
+          .where(inArray(tableRecomputeJobs.id, jobs));
+      } catch (error) {
+        await db
+          .update(tableRecomputeJobs)
+          .set({
+            status: 'failed',
+            error: error instanceof Error ? error.message.slice(0, 2_000) : 'Unknown recompute error',
+            finished_at: nowIso(),
+          })
+          .where(inArray(tableRecomputeJobs.id, jobs));
+        throw error;
       }
     }
   };
 
-  return { computeRecordValues, recomputeRecord, recomputeTable, refreshDependentRollups };
+  /**
+   * After a field's definition changed (computed config, select options,
+   * archive): recompute its own table when its values or a same-table formula
+   * reading it changed, then every linking record in tables whose rollups /
+   * lookups target it (or a formula that reads it).
+   */
+  const refreshAfterFieldChange = async (
+    field: Pick<TableFieldRow, 'id' | 'table_id'>,
+    options: { computed: boolean },
+  ): Promise<void> => {
+    const formulaReaders = await db
+      .select({ field_id: tableFieldDependencies.field_id })
+      .from(tableFieldDependencies)
+      .where(
+        and(
+          eq(tableFieldDependencies.depends_on_field_id, field.id),
+          eq(tableFieldDependencies.dependency_type, 'formula'),
+        ),
+      );
+    if (options.computed || formulaReaders.length > 0) await recomputeTable(field.table_id);
+    const changed = new Set([field.id, ...formulaReaders.map((row) => row.field_id)]);
+    const dependents = (await dependentFields(field.table_id)).filter((dependent) =>
+      changed.has(dependent.targetFieldId),
+    );
+    const sources = await linkingRecords([...new Set(dependents.map((dependent) => dependent.relation.id))]);
+    for (const { record } of sources) await recomputeRecord(db, record);
+  };
+
+  return { computeRecordValues, recomputeRecord, recomputeTable, refreshDependentRollups, refreshAfterFieldChange };
 }
 
 export type TablesCompute = ReturnType<typeof createTablesCompute>;

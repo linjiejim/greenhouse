@@ -42,6 +42,26 @@ export function isComputedFieldType(type: TableFieldType): type is TableComputed
 }
 
 /**
+ * Field types a lookup may show: values that read as themselves (select
+ * options as their labels). People, files and record ids would show raw ids,
+ * and a rollup / lookup target would go stale (cascades are one level deep).
+ */
+export const TABLE_LOOKUP_TARGET_TYPES = [
+  'text',
+  'long_text',
+  'number',
+  'boolean',
+  'date',
+  'datetime',
+  'single_select',
+  'multi_select',
+  'url',
+  'email',
+  'phone',
+  'formula',
+] as const satisfies readonly TableFieldType[];
+
+/**
  * Columns every record has, addressable in filters, sorts, grouping and display
  * lists alongside user fields (`created_by` is how "my requests" is expressed).
  */
