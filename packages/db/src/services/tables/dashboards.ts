@@ -1,33 +1,57 @@
 /**
- * Dashboards and widgets (configuration only — evaluation goes through the
- * scoped record query / aggregate paths). The unified card spec and dashboard
- * filters arrive with slice D.
+ * Dashboards and widgets — configuration only. Evaluation goes through the
+ * scoped record query / aggregate paths (the API's `platform/tables/cards.ts`).
+ *
+ * - A widget's `config` is `{version: 2, card: TableCardSpec}` — the one card
+ *   shape shared with Phase 1 app cards. Legacy flat configs (`operation /
+ *   valueFieldId / groupByFieldId / query / limit / text`) are still accepted on
+ *   write and mapped onto a card (`legacyWidgetToCard`); stored legacy rows are
+ *   mapped the same way when read. The `type` column always mirrors the card
+ *   (`widgetTypeForCard`), and `table_id` always equals `card.source.tableId`.
+ * - A dashboard's `config` is `{version: 1, filters: TableFilterControl[]}`.
+ * - Both are checked against the schema on write: tables in the dashboard's
+ *   Base, active fields, a type each use can work with, and a card query that
+ *   the compiler accepts. Readability per viewer is the evaluator's job.
  */
 
-import { and, asc, eq } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull } from 'drizzle-orm';
 import { nowIso } from '@greenhouse/utils/date';
-import { TABLE_AGGREGATIONS, TABLE_DASHBOARD_WIDGET_TYPES } from '@greenhouse/types/tables';
+import { safeJsonParse } from '@greenhouse/utils/json';
+import { TABLE_DASHBOARD_WIDGET_TYPES } from '@greenhouse/types/tables';
 import type {
+  TableCardSpec,
+  TableDashboardConfig,
   TableDashboardWidgetConfig,
   TableDashboardWidgetLayout,
   TableDashboardWidgetType,
+  TableFieldType,
+  TableFilterControl,
 } from '@greenhouse/types/tables';
+import {
+  legacyWidgetToCard,
+  normalizeDashboardConfig,
+  normalizeTableCardSpec,
+  widgetTypeForCard,
+} from '@greenhouse/types/table-cards';
+import { fullTableAccess } from '@greenhouse/types/table-access';
 import type { Db } from '../../client.js';
-import { tableDashboardWidgets, tableDashboards } from '../../schema/index.js';
-import type { TableDashboardRow, TableDashboardWidgetRow } from '../../schema/tables.js';
-import { validateQueryShape } from './query.js';
-import { isPositiveInteger, TablesValidationError, trimmed, type TableRevisionResult } from './shared.js';
+import { tableDashboardWidgets, tableDashboards, tableFields, tableTables } from '../../schema/index.js';
+import type { TableDashboardRow, TableDashboardWidgetRow, TableFieldRow } from '../../schema/tables.js';
+import { compileRecordQuery, loadCompileContext, queryValueField } from './query.js';
+import { TablesValidationError, trimmed, type TableRevisionResult } from './shared.js';
 
 export interface CreateTableDashboardInput {
   base_id: number;
   name: string;
   description?: string | null;
+  config?: TableDashboardConfig;
   created_by: string;
 }
 
 export interface CreateTableDashboardWidgetInput {
   dashboard_id: number;
   table_id?: number | null;
+  /** Legacy flat configs need it; with `config.card` the card decides the stored type. */
   type: TableDashboardWidgetType;
   title: string;
   config?: TableDashboardWidgetConfig;
@@ -40,6 +64,7 @@ export interface UpdateTableDashboardInput {
   revision: number;
   name?: string;
   description?: string | null;
+  config?: TableDashboardConfig;
 }
 
 export interface UpdateTableDashboardWidgetInput {
@@ -56,48 +81,19 @@ export interface TableDashboardResult {
   widgets: TableDashboardWidgetRow[];
 }
 
-function validateWidgetType(type: TableDashboardWidgetType): void {
-  if (!TABLE_DASHBOARD_WIDGET_TYPES.includes(type)) {
-    throw new TablesValidationError(`Unsupported dashboard widget type "${type}"`);
-  }
+/** The card a stored widget row describes (legacy rows mapped on the fly). */
+export function widgetCard(widget: Pick<TableDashboardWidgetRow, 'type' | 'config' | 'table_id'>): TableCardSpec {
+  return legacyWidgetToCard(
+    widget.type,
+    safeJsonParse(widget.config, {}) as TableDashboardWidgetConfig,
+    widget.table_id,
+  );
 }
 
-function normalizeWidgetConfig(
-  type: TableDashboardWidgetType,
-  input: TableDashboardWidgetConfig = {},
-): TableDashboardWidgetConfig {
-  if (!input || typeof input !== 'object' || Array.isArray(input)) {
-    throw new TablesValidationError('Widget config must be an object');
-  }
-  if (type === 'text') {
-    if (input.text !== undefined && typeof input.text !== 'string') {
-      throw new TablesValidationError('Text widget content must be text');
-    }
-    if ((input.text?.length ?? 0) > 100_000) throw new TablesValidationError('Text widget exceeds 100,000 characters');
-    return { version: 1, text: input.text ?? '' };
-  }
-  const operation = input.operation ?? 'count';
-  if (!TABLE_AGGREGATIONS.includes(operation)) {
-    throw new TablesValidationError(`Unsupported aggregation "${operation}"`);
-  }
-  if (input.valueFieldId !== undefined && !isPositiveInteger(input.valueFieldId)) {
-    throw new TablesValidationError('valueFieldId must be a positive integer');
-  }
-  if (input.groupByFieldId !== undefined && !isPositiveInteger(input.groupByFieldId)) {
-    throw new TablesValidationError('groupByFieldId must be a positive integer');
-  }
-  if (input.limit !== undefined && (!Number.isInteger(input.limit) || input.limit < 1 || input.limit > 100)) {
-    throw new TablesValidationError('Widget limit must be between 1 and 100');
-  }
-  if (input.query !== undefined) validateQueryShape(input.query);
-  return {
-    version: 1,
-    operation,
-    ...(input.valueFieldId ? { valueFieldId: input.valueFieldId } : {}),
-    ...(input.groupByFieldId ? { groupByFieldId: input.groupByFieldId } : {}),
-    ...(input.query ? { query: input.query } : {}),
-    ...(input.limit ? { limit: input.limit } : {}),
-  };
+/** A dashboard row's filter controls (rows written before slice D hold `{}`). */
+export function dashboardFilterControls(dashboard: Pick<TableDashboardRow, 'config'>): TableFilterControl[] {
+  const result = normalizeDashboardConfig(dashboard.config);
+  return result.ok ? result.config.filters : [];
 }
 
 function normalizeWidgetLayout(input?: TableDashboardWidgetLayout): TableDashboardWidgetLayout {
@@ -118,9 +114,139 @@ function normalizeWidgetLayout(input?: TableDashboardWidgetLayout): TableDashboa
   return { ...layout, version: 1 };
 }
 
+const DATE_TYPES: ReadonlySet<TableFieldType> = new Set(['date', 'datetime']);
+const SELECT_TYPES: ReadonlySet<TableFieldType> = new Set(['single_select', 'multi_select']);
+const USER_TYPES: ReadonlySet<TableFieldType> = new Set(['user', 'multi_user']);
+const SEARCH_TYPES: ReadonlySet<TableFieldType> = new Set(['text', 'long_text', 'url', 'email', 'phone']);
+const CONTROL_FIELD_TYPES: Readonly<Record<TableFilterControl['kind'], ReadonlySet<TableFieldType>>> = {
+  date_range: DATE_TYPES,
+  select: SELECT_TYPES,
+  user: USER_TYPES,
+  search: SEARCH_TYPES,
+};
+
 export function createTablesDashboards(db: Db) {
+  async function tableInBase(tableId: number, baseId: number): Promise<boolean> {
+    const rows = await db
+      .select({ id: tableTables.id })
+      .from(tableTables)
+      .where(and(eq(tableTables.id, tableId), eq(tableTables.base_id, baseId), isNull(tableTables.archived_at)))
+      .limit(1);
+    return rows.length > 0;
+  }
+
+  async function activeFields(tableIds: number[]): Promise<Map<number, TableFieldRow>> {
+    if (tableIds.length === 0) return new Map();
+    const rows = await db
+      .select()
+      .from(tableFields)
+      .where(and(inArray(tableFields.table_id, tableIds), isNull(tableFields.archived_at)));
+    return new Map(rows.map((field) => [field.id, field]));
+  }
+
+  async function dashboardBaseId(dashboardId: number): Promise<number> {
+    const rows = await db
+      .select({ base_id: tableDashboards.base_id })
+      .from(tableDashboards)
+      .where(eq(tableDashboards.id, dashboardId))
+      .limit(1);
+    if (!rows[0]) throw new TablesValidationError('Dashboard not found');
+    return rows[0].base_id;
+  }
+
+  /** Schema checks for one card: table in the Base, live fields of usable types, a query the compiler accepts. */
+  async function validateCard(card: TableCardSpec, baseId: number): Promise<void> {
+    if (card.kind === 'text') return;
+    const tableId = card.source?.tableId;
+    if (!tableId || !(await tableInBase(tableId, baseId))) {
+      throw new TablesValidationError('Widget table must belong to this Base');
+    }
+    // Compile the card's own query as an unrestricted reader: unknown fields,
+    // operators and values fail here instead of on every viewer's dashboard.
+    const ctx = await loadCompileContext(db, tableId, fullTableAccess(null));
+    compileRecordQuery({ ...(card.source?.query ?? {}), limit: 1 }, fullTableAccess(null), ctx);
+    const field = (fieldId: number | undefined, label: string): TableFieldRow => {
+      const found = fieldId === undefined ? undefined : ctx.byId.get(fieldId);
+      if (!found) throw new TablesValidationError(`${label} field ${fieldId ?? ''} is unavailable`.trim());
+      return found;
+    };
+    const aggregate = card.aggregate;
+    if (aggregate) {
+      if (
+        aggregate.operation !== 'count' &&
+        queryValueField(field(aggregate.valueFieldId, 'Value')).type !== 'number'
+      ) {
+        throw new TablesValidationError(`${aggregate.operation} requires a numeric value field`);
+      }
+      if (aggregate.groupBy?.fieldId !== undefined) {
+        const groupField = field(aggregate.groupBy.fieldId, 'Group');
+        if (aggregate.groupBy.dateBucket && !DATE_TYPES.has(queryValueField(groupField).type)) {
+          throw new TablesValidationError('A date bucket requires a date or datetime field');
+        }
+      }
+      if (aggregate.series?.fieldId !== undefined) field(aggregate.series.fieldId, 'Series');
+    }
+    for (const fieldId of card.fieldIds ?? []) field(fieldId, 'Column');
+  }
+
+  /** The card a write stores, its type and table: normalized, consistent, schema-checked. */
+  async function prepareWidget(
+    type: TableDashboardWidgetType,
+    config: TableDashboardWidgetConfig | undefined,
+    tableId: number | null | undefined,
+    baseId: number,
+  ): Promise<{ type: TableDashboardWidgetType; tableId: number | null; config: string }> {
+    if (!TABLE_DASHBOARD_WIDGET_TYPES.includes(type)) {
+      throw new TablesValidationError(`Unsupported dashboard widget type "${type}"`);
+    }
+    if (config !== undefined && (!config || typeof config !== 'object' || Array.isArray(config))) {
+      throw new TablesValidationError('Widget config must be an object');
+    }
+    const raw = config?.card ?? legacyWidgetToCard(type, config ?? {}, tableId);
+    // A table given beside a sourceless card is the card's source.
+    const withSource =
+      raw.kind !== 'text' && !raw.source && tableId ? { ...raw, source: { tableId } } : (raw as TableCardSpec);
+    const normalized = normalizeTableCardSpec(withSource);
+    if (!normalized.ok) throw new TablesValidationError(normalized.error);
+    const card = normalized.card;
+    const sourceTable = card.source?.tableId ?? null;
+    if (card.kind !== 'text' && tableId && sourceTable !== tableId) {
+      throw new TablesValidationError('Widget table does not match its card source');
+    }
+    await validateCard(card, baseId);
+    return { type: widgetTypeForCard(card), tableId: sourceTable, config: JSON.stringify({ version: 2, card }) };
+  }
+
+  /** Shape + schema checks for a dashboard's filter controls. */
+  async function prepareDashboardConfig(config: unknown, baseId: number): Promise<Required<TableDashboardConfig>> {
+    const normalized = normalizeDashboardConfig(config);
+    if (!normalized.ok) throw new TablesValidationError(normalized.error);
+    const controls = normalized.config.filters;
+    const tableIds = [...new Set(controls.flatMap((control) => control.targets.map((target) => target.tableId)))];
+    for (const tableId of tableIds) {
+      if (!(await tableInBase(tableId, baseId))) {
+        throw new TablesValidationError('Filter targets must be tables of this Base');
+      }
+    }
+    const fields = await activeFields(tableIds);
+    for (const control of controls) {
+      for (const target of control.targets) {
+        if (target.fieldId === undefined) continue;
+        const field = fields.get(target.fieldId);
+        if (!field || field.table_id !== target.tableId) {
+          throw new TablesValidationError(`Filter "${control.label}" targets an unavailable field`);
+        }
+        if (!CONTROL_FIELD_TYPES[control.kind].has(queryValueField(field).type)) {
+          throw new TablesValidationError(`Filter "${control.label}" cannot filter field "${field.name}"`);
+        }
+      }
+    }
+    return normalized.config;
+  }
+
   const service = {
     async createDashboard(input: CreateTableDashboardInput): Promise<TableDashboardRow> {
+      const config = await prepareDashboardConfig(input.config, input.base_id);
       const now = nowIso();
       const [row] = await db
         .insert(tableDashboards)
@@ -128,6 +254,7 @@ export function createTablesDashboards(db: Db) {
           base_id: input.base_id,
           name: trimmed(input.name, 'Dashboard name', 120),
           description: input.description?.trim() || null,
+          config,
           created_by: input.created_by,
           created_at: now,
           updated_at: now,
@@ -170,6 +297,7 @@ export function createTablesDashboards(db: Db) {
       };
       if (patch.name !== undefined) values.name = trimmed(patch.name, 'Dashboard name', 120);
       if (patch.description !== undefined) values.description = patch.description?.trim() || null;
+      if (patch.config !== undefined) values.config = await prepareDashboardConfig(patch.config, current[0].base_id);
       const rows = await db
         .update(tableDashboards)
         .set(values)
@@ -198,21 +326,21 @@ export function createTablesDashboards(db: Db) {
     },
 
     async createDashboardWidget(input: CreateTableDashboardWidgetInput): Promise<TableDashboardWidgetRow> {
-      validateWidgetType(input.type);
-      if (input.type !== 'text' && !input.table_id) {
+      const baseId = await dashboardBaseId(input.dashboard_id);
+      if (input.type !== 'text' && !input.table_id && !input.config?.card) {
         throw new TablesValidationError(`${input.type} widgets require table_id`);
       }
-      const config = normalizeWidgetConfig(input.type, input.config);
+      const prepared = await prepareWidget(input.type, input.config, input.table_id, baseId);
       const layout = normalizeWidgetLayout(input.layout);
       const now = nowIso();
       const [row] = await db
         .insert(tableDashboardWidgets)
         .values({
           dashboard_id: input.dashboard_id,
-          table_id: input.table_id ?? null,
-          type: input.type,
+          table_id: prepared.tableId,
+          type: prepared.type,
           title: trimmed(input.title, 'Widget title', 120),
-          config: JSON.stringify(config),
+          config: prepared.config,
           layout: JSON.stringify(layout),
           position: input.position ?? 0,
           created_by: input.created_by,
@@ -236,9 +364,22 @@ export function createTablesDashboards(db: Db) {
         revision: patch.revision + 1,
         updated_at: nowIso(),
       };
-      if (patch.table_id !== undefined) values.table_id = patch.table_id;
+      if (patch.config !== undefined || patch.table_id !== undefined) {
+        const baseId = await dashboardBaseId(current.dashboard_id);
+        const tableId = patch.table_id === undefined ? current.table_id : patch.table_id;
+        // Moving a widget to another table without a new config re-points its card.
+        const existing = widgetCard(current);
+        const config: TableDashboardWidgetConfig =
+          patch.config ??
+          (existing.kind !== 'text' && tableId
+            ? { card: { ...existing, source: { ...existing.source, tableId } } }
+            : { card: existing });
+        const prepared = await prepareWidget(current.type, config, tableId, baseId);
+        values.type = prepared.type;
+        values.table_id = prepared.tableId;
+        values.config = prepared.config;
+      }
       if (patch.title !== undefined) values.title = trimmed(patch.title, 'Widget title', 120);
-      if (patch.config !== undefined) values.config = JSON.stringify(normalizeWidgetConfig(current.type, patch.config));
       if (patch.layout !== undefined) values.layout = JSON.stringify(normalizeWidgetLayout(patch.layout));
       if (patch.position !== undefined) values.position = patch.position;
       const rows = await db
