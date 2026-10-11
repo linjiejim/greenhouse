@@ -22,7 +22,7 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import { and, eq, inArray, isNull, lt, or, sql } from 'drizzle-orm';
+import { and, eq, gt, inArray, isNull, lt, lte, or, sql } from 'drizzle-orm';
 import type {
   TableFieldType,
   TableImportResult,
@@ -43,6 +43,8 @@ export const TABLE_IMPORT_MAX_COLUMNS = 100;
 export const TABLE_IMPORT_CHUNK_ROWS = 100;
 /** Failed rows kept in the result (the count keeps going). */
 export const TABLE_IMPORT_MAX_FAILURES = 100;
+/** Uploads one person may have staged or running at once (each holds up to 10,000 rows for an hour). */
+export const TABLE_IMPORT_MAX_LIVE_PER_USER = 20;
 const IMPORT_TTL_MS = 60 * 60 * 1000;
 const IMPORT_LEASE_MS = 60 * 1000;
 const MAX_CELL_CHARS = 100_000;
@@ -186,6 +188,21 @@ export function createTablesImports(db: Db, deps: { records: TablesRecordInterna
       return row!;
     },
 
+    /** Imports of one person that are still staged or running (a cap on parked uploads). */
+    async countLiveImports(userId: string): Promise<number> {
+      const rows = await db
+        .select({ n: sql<number>`count(*)::int` })
+        .from(tableImports)
+        .where(
+          and(
+            eq(tableImports.user_id, userId),
+            inArray(tableImports.status, ['previewed', 'committing']),
+            sql`${tableImports.expires_at} > now()`,
+          ),
+        );
+      return Number(rows[0]?.n ?? 0);
+    },
+
     async getImport(id: string): Promise<TableImportRow | undefined> {
       const rows = await db.select().from(tableImports).where(eq(tableImports.id, id)).limit(1);
       return rows[0];
@@ -200,7 +217,8 @@ export function createTablesImports(db: Db, deps: { records: TablesRecordInterna
       importId: string;
       userId: string;
       tableId: number;
-      plan: TableImportPlan;
+      /** Required to start a fresh import; a resumed one keeps its stored plan. */
+      plan?: TableImportPlan;
     }): Promise<TableImportClaim> {
       return db.transaction(async (tx): Promise<TableImportClaim> => {
         const [row] = await tx
@@ -220,7 +238,12 @@ export function createTablesImports(db: Db, deps: { records: TablesRecordInterna
         const resumed = row.status === 'committing';
         const state = storedState(row);
         const plan = resumed && state.plan ? state.plan : input.plan;
+        if (!plan) throw new TablesValidationError('Starting an import needs a mapping');
         const result: StoredImportState = { ...state, plan };
+        const now = new Date().toISOString();
+        // Compare-and-set on what was just read: the row lock serializes two
+        // claims on separate connections, and this WHERE still refuses the second
+        // one where statements interleave without a lock (one shared connection).
         const [claimed] = await tx
           .update(tableImports)
           .set({
@@ -229,9 +252,19 @@ export function createTablesImports(db: Db, deps: { records: TablesRecordInterna
             expires_at: inFuture(IMPORT_TTL_MS),
             result,
           })
-          .where(eq(tableImports.id, row.id))
+          .where(
+            and(
+              eq(tableImports.id, row.id),
+              eq(tableImports.status, row.status),
+              eq(tableImports.committed_rows, row.committed_rows),
+              resumed
+                ? or(isNull(tableImports.lease_expires_at), lte(tableImports.lease_expires_at, now))
+                : gt(tableImports.expires_at, now),
+            ),
+          )
           .returning();
-        return { ok: true, import: claimed!, plan, resumed };
+        if (!claimed) return { ok: false, reason: 'busy', import: row };
+        return { ok: true, import: claimed, plan, resumed };
       });
     },
 
@@ -270,21 +303,32 @@ export function createTablesImports(db: Db, deps: { records: TablesRecordInterna
         throw new TablesValidationError(`An import chunk holds at most ${TABLE_IMPORT_CHUNK_ROWS} rows`);
       }
       const context = await deps.records.loadValidationContext(input.tableId);
+      const committedRows = input.fromRow + input.items.length;
       return db.transaction(async (tx): Promise<TableImportChunkResult> => {
+        // The counter moves first, as a compare-and-set: it takes the row lock
+        // (a second runner waits here, then finds the counter moved), and it is
+        // one statement, so it holds even where statements interleave without a
+        // lock. Anything below that throws rolls the counter back with the rows.
+        // Records join this transaction directly (`within`): validation refuses
+        // a row before any statement runs, so a database error can only mean the
+        // whole chunk fails.
         const [row] = await tx
-          .select()
-          .from(tableImports)
-          .where(eq(tableImports.id, input.importId))
-          .limit(1)
-          .for('update');
-        if (
-          !row ||
-          row.table_id !== input.tableId ||
-          row.status !== 'committing' ||
-          row.committed_rows !== input.fromRow
-        ) {
-          return { ok: false, reason: 'moved' };
-        }
+          .update(tableImports)
+          .set({
+            committed_rows: committedRows,
+            lease_expires_at: inFuture(IMPORT_LEASE_MS),
+            expires_at: inFuture(IMPORT_TTL_MS),
+          })
+          .where(
+            and(
+              eq(tableImports.id, input.importId),
+              eq(tableImports.table_id, input.tableId),
+              eq(tableImports.status, 'committing'),
+              eq(tableImports.committed_rows, input.fromRow),
+            ),
+          )
+          .returning();
+        if (!row) return { ok: false, reason: 'moved' };
         const created: TableRecordRow[] = [];
         const failed: TableImportResult['failed'] = [];
         for (const item of input.items) {
@@ -314,16 +358,7 @@ export function createTablesImports(db: Db, deps: { records: TablesRecordInterna
           failed: [...state.failed, ...failed].slice(0, TABLE_IMPORT_MAX_FAILURES),
           failedCount: (state.failedCount ?? state.failed.length) + failed.length,
         };
-        const committedRows = input.fromRow + input.items.length;
-        await tx
-          .update(tableImports)
-          .set({
-            committed_rows: committedRows,
-            result: next,
-            lease_expires_at: inFuture(IMPORT_LEASE_MS),
-            expires_at: inFuture(IMPORT_TTL_MS),
-          })
-          .where(eq(tableImports.id, row.id));
+        await tx.update(tableImports).set({ result: next }).where(eq(tableImports.id, row.id));
         return { ok: true, created, failed, committedRows, result: tableImportResult({ result: next }) };
       });
     },

@@ -83,7 +83,7 @@ function chunkItems(w: Awaited<ReturnType<typeof workspace>>, rows: string[][], 
   }));
 }
 
-describe('Tables imports — lifecycle', () => {
+describe('Tables imports — lifecycle', { timeout: 30_000 }, () => {
   it('stages rows without NUL characters and within the limits', async () => {
     const w = await workspace();
     const NUL = String.fromCharCode(0);

@@ -8,6 +8,7 @@
  *
  * - 04:00 CST daily  — mine tool errors out of message pipelines into frictions
  * - 05:00 CST Sunday — memory consolidation: demote stale, merge duplicates
+ * - every 15 minutes — delete Tables imports past their expiry (staged rows run to megabytes)
  */
 
 import { Cron } from 'croner';
@@ -17,6 +18,7 @@ import { DEFAULT_TIMEZONE } from './task-limits.js';
 
 let frictionJob: Cron | null = null;
 let consolidationJob: Cron | null = null;
+let tablesImportSweepJob: Cron | null = null;
 let extensionJobHandles: Cron[] = [];
 
 export function startFrictionMiningJob(): void {
@@ -56,6 +58,18 @@ export function startMemoryConsolidationJob(): void {
   );
 }
 
+export function startTablesImportSweepJob(): void {
+  tablesImportSweepJob = new Cron('*/15 * * * *', { timezone: DEFAULT_TIMEZONE }, async () => {
+    try {
+      const { getDb } = await import('@greenhouse/db');
+      const removed = await getDb().tables.sweepExpiredImports();
+      if (removed > 0) logger.info('[TablesImportSweep] Removed expired imports', { removed });
+    } catch (err) {
+      logger.error('[TablesImportSweep] Failed:', err);
+    }
+  });
+}
+
 /** Periodic jobs declared by active extensions (see extensions/define.ts → `jobs`). */
 export function startExtensionJobs(): void {
   for (const job of extensionJobs()) {
@@ -76,6 +90,8 @@ export function stopUpkeepJobs(): void {
   frictionJob = null;
   consolidationJob?.stop();
   consolidationJob = null;
+  tablesImportSweepJob?.stop();
+  tablesImportSweepJob = null;
   for (const handle of extensionJobHandles) handle.stop();
   extensionJobHandles = [];
 }
