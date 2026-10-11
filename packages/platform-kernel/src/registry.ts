@@ -154,6 +154,8 @@ export class ApplicationRegistry<TContext = unknown> {
       actorType: request.actor.actorType,
       onBehalfOfUserId: request.actor.onBehalfOfUserId,
       clientId: request.actor.clientId,
+      ...(request.actor.agentId ? { agentId: request.actor.agentId } : {}),
+      ...(request.actor.sessionId ? { sessionId: request.actor.sessionId } : {}),
       requestId: request.actor.requestId,
       resource: request.resource ?? {
         appId: request.appId,

@@ -489,6 +489,7 @@ Automation、Tasks、Agents 的 `Mine / Shared / Team` 口径见 [personal asset
 领域规则、上下文管理、电脑与密码库的契约、HTTP 契约都在 [bots/AGENTS.md](./bots/AGENTS.md)；单写者 / `bot_inbox` 与 `MemoryScope` 的数据层规则在 [packages/db/src/AGENTS.md](../../../packages/db/src/AGENTS.md)。这里只记 API 其余部分必须守的几条：
 
 - **Bots 会话（`channel='bots'`）及 `bottask-` 后台子会话读写都只有主人，super 也不行**：`canWriteSession` / `canAccessSession` 通过共享 `isOwnerOnlySession` 对它们只比 `user_id`——续写一个 Bots 会话等于驱动主人的 Bot、电脑和密码库，读它等于读主人登录态浏览器里的页面文本与 shell 输出。`GET /api/sessions?channel=bots` 不论角色与 scope 都只列调用者自己的；分享、编辑、重新生成一律拒绝（400 / 409）。
+- **Agent 回合跑在 `runInAgentScope` 里**（`platform/agent-scope.ts`，AsyncLocalStorage）：Agents 引擎每个 Bot 回合、Bot 后台任务、以 Bot 身份跑的 Chat 回合（`profile.identity.botId`）、定时任务、飞书都包一层；`delegatedAgentActor` 读它（行为者 `bot:<id>`、`agentId`、`sessionId`，外部 `clientId` 优先），`createProviderAttemptBudgetHook` 读它写 `llm_usage.bot_id`。新加一条「以某个 Agent 身份跑」的入口时也要包。
 - **Bots 会话不进通用面**：会话列表（含置顶 / 分组回填）、标题搜索、`session_query` 统一用 `defaultSessionListHiding(channel)`（`@greenhouse/types/session`）排除 `HIDDEN_SESSION_CHANNELS` 与 `BOT_TASK_SESSION_PREFIX`（`bottask-` 后台任务子会话，LIKE 前缀已转义）；`session_query` 对 Bots 会话的 list / get / messages / usage 同样只有主人；`POST /api/chat` 见到 bots 会话走 Bots 引擎分支（懒加载 `bots/engine`，让 chat 路由测试不必 mock 整个引擎）。
 - **Runtime 不能扩大 Bots 权限**：所有对外 Runtime 查询与评测证据提取传入 viewer，DB 的 `bots-privacy.ts` 在分页/聚合前排除别人的私人记录，详情与命令也使用同一规则；原会话删除后靠持久 source 标记继续保护。
 - **Bot 工具是 `special`**，只由 Bots 引擎按回合构造，归 `bots` feature point；不要把它们加进 proxy / MCP / Chat 的工具面。一个 Bot 在聊天页开的新上下文走 chat 引擎：有身份、记忆分区与参考资料夹，**没有**电脑 / 团队 / 密码库 / `self` 工具。

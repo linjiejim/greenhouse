@@ -1,8 +1,8 @@
 ## Bots（个人助理）— 领域规则与 HTTP 契约
 
 每个成员开箱就有的常驻 Bot：有名字、角色和自己的记忆；对话就是某个 Bot 的私聊，需要时它把成员的
-其他 Bot 拉进来做客串，在同一个对话里协作（点名、交接、共享笔记）；开了电脑后，一个成员的所有 Bot 共用一台云电脑（浏览器 + shell），成员随时可以
-观看和接管；登录凭证来自只写不读的密码库。方案与决策（D1–D17）见
+其他 Bot 拉进来做客串，在同一个对话里协作（点名、交接、共享笔记）；开了电脑后，**每个 Bot 一台自己的云电脑**（浏览器 + shell；
+2026-10-12 起，此前一个成员一台），成员随时可以观看和接管；登录凭证来自只写不读的密码库。方案与决策（D1–D17）见
 [spec](../../../../docs/specs/20261005-personal-assistant-bots.md)。数据层规则（单写者 / `bot_inbox`、
 `MemoryScope`、`bot_computers` CAS）在 [packages/db/src/AGENTS.md](../../../../packages/db/src/AGENTS.md)。
 
@@ -214,6 +214,21 @@ bots/
   **成员消息**投进去（成员在卡上同意过，所以它算成员的话）并立即开跑，原对话写一行 `chat_opened`（带新会话 id）。
 - **视觉模型直读图片**：成员消息的图片随投影带上（`ProjectionRow.images`，合并时累加），`modelSupportsVision` 时
   `inlineImagesForVision`（与 Chat 同一预算）把它们换成图片 part，其余模型照旧只见 ID 提示。
+- **每个 Agent 一台电脑（2026-10-12，[spec](../../../../docs/specs/20261011-agent-first-class.md) P3a / D28–D30）**：
+  `bot_computers.id` 是电脑 id——主 Agent（Sprouty）的 = 成员的 user id（迁移 `0024` 前的所有电脑，容器 / 卷名、锁键、标签都没变，
+  家目录与登录态归主 Agent），其他 Agent 的 = `<userId>.<botId>`（`computer/namespace.ts` 的 `computerRef` / `computerRefForBot` /
+  `parseComputerId`，纯函数、不查库；容器 / 卷名 `gh-computer-<ns>-<user>-<bot>`）。计算机层（controller / access / lease / viewer /
+  terminal / jobs / files / preview / backups / process watches / CDP 锁 / 进程内各表）一律按电脑 id；要「成员」的地方（WS、卡片、
+  时区、语言、是否允许）用行上的 `user_id` 或 `parseComputerId`。**一个回合用说话 Agent 自己的电脑**（`ComputerTurn.computerId`，客串的
+  也是；后台任务同理），登录 / 接管卡、交还（`requestToSettle` 只认这台电脑的 Agent 的卡）、进程唤醒、预览、文件都跟着那台电脑走。
+  `/api/bots/computer*` 接 `?bot=<id>`（缺省主 Agent，旧客户端不变）；票据（查看 / 终端 / 预览）多一个 `k`（非主电脑才有）；
+  WS `bots:computer` 带 `computer_id` / `bot_id`；新电脑继承成员时区，改时区作用于成员所有电脑；Agent 归档时它的电脑停下（家目录留着）；
+  成员被停用 / 删除时 `purgeUserComputer` 清掉他的所有电脑。管理页按电脑列（`computer_id`，主电脑的 = 成员 id，旧链接照用）。
+- **谁做的（P3b）**：一个 Agent 回合（Agents 引擎、后台任务、以某个 Agent 身份跑的 Chat / 定时任务 / 飞书）跑在
+  `platform/agent-scope.ts` 的 `runInAgentScope` 里；平台动作的行为者（`delegatedAgentActor`）因此是 `bot:<id>`，带 `agentId` /
+  `sessionId`，审计行写 `agent_id` / `session_id`；用量（`llm_usage.bot_id`）同样记到这个 Agent。外部客户端（MCP / OAuth）照旧是它自己。
+- **密码库条目可限定 Agent（P3c）**：`vault_items.bot_ids`（null = 所有 Agent）；`vault list`、代填、登录卡上的匹配只看得到允许
+  说话 Agent 的条目（`vaultItemAllowsBot`），成员自己的设置页看全部。
 - **DB 权威生命周期**：`bot_computers` 每次迁移都是 `version` CAS，单成员操作在用户锁里、容量判断在
   全局锁里；闲置停止 + LRU 淘汰会跳过有待处理登录 / 接管卡的电脑（`HUMAN_WAIT_HOLD_MS`）；健康 tick
   对账卡住的 starting / stopping 行（成员锁空闲时立即，否则 5 分钟兜底）。
@@ -333,6 +348,7 @@ Bot 身份本身（列表 / 新建 / 编辑 / 版本 / 文件夹 / 记忆）只�
 | PATCH / DELETE | `/api/bots/:id` | 同上字段（每次 PATCH 追加一版） | `{ bot }` / `{ ok }`（删除 = 归档；Sprouty → 400 `bot_protected`） |
 | GET | `/api/bots/:id/versions` | — | `{ bot_id, profile_id, current_version, versions }`（仅主人；super 可查） |
 | GET / POST | `/api/bots/:id/files` · `/api/bots/:id/files/ensure` | — | `{ folder, docs }`（无文件夹时 `folder: null`）· `{ folder }`（首次使用建文件夹） |
+| GET | `/api/bots/:id/usage?days=` · `/api/bots/:id/activity?limit=` | — | `BotUsageView`（按天：次数 / token / 对话数，默认 30 天、最多 90）· `{ activity: BotActivityItem[] }`（平台动作 / 密码库使用 / 后台任务，新到旧，无消息内容）；只有主人 |
 | GET / DELETE | `/api/bots/:id/memories[/:memoryId]` | — | 该 Bot 的私有记忆 / `{ ok }`；改为共享走 `PATCH /api/auth/me/memories/:id { bot_id: null }` |
 | GET / POST | `/api/bots/conversations` | `?kind=task` · `{ bot_ids }`（恰好 1 个 id）或 `{ kind:'task', bot_id?, title?, model_id? }` | 列表（默认私聊 + 旧群；`?kind=task` 任务会话）/ `{ conversation }`（该 Bot 的私聊，没有就建；`kind:'task'` → 201 新任务会话，缺省 Sprouty）；0 个或多个 id → `400 groups_retired`（群聊已退役）。每行带 `attention`（需要你 > 未读 > 在忙）、`pending_requests` 与 `unread_count`（`last_read_at` 之后 Bot 的回复条数，`assistant` 行，封顶 99；只来了系统事件时 `attention:'unread'` 而计数为 0） |
 | GET | `/api/bots/conversations/:id` | `before_seq?`、`limit?` | `{ conversation, messages, has_more, memory_states? }`（`allow_bot_chat` 已废弃、恒为 `true`；旧群 `kind:'group'` 照常可读） |

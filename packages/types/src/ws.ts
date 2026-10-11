@@ -91,11 +91,15 @@ export type ServerWsEvent =
   // server-side (task report, handback event, request settled). Id only — the
   // client refetches /api/bots/conversations/:id.
   | { type: 'bots:conversation'; sessionId: string }
-  // Bots: the member's computer changed state or take-over lease.
+  // Bots: one of the member's computers changed state or take-over lease. `computer_id` /
+  // `bot_id` name which (one per Agent since 2026-10-12; bot_id null = the main Agent's); older
+  // servers sent neither (there was one computer).
   | {
       type: 'bots:computer';
       state: import('./bots.js').ComputerState;
       controller: 'bot' | 'user';
+      computer_id?: string;
+      bot_id?: string | null;
     }
   // Bots: the count of pending "needs you" requests changed.
   | { type: 'bots:attention'; pending: number };

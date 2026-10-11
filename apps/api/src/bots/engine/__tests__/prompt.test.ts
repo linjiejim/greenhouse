@@ -39,11 +39,11 @@ describe('static rules (S1)', () => {
   it('describes a tool only when it is registered', () => {
     const without = buildStaticRules(toolFaceFlags(['team', 'conversation'], false), 'en');
     expect(without).not.toMatch(/password vault/i);
-    expect(without).not.toMatch(/computer is shared/i);
+    expect(without).not.toMatch(/computer is your own/i);
     expect(without).not.toMatch(/approval card before they run/i);
     const withAll = buildStaticRules(toolFaceFlags(ALL, true), 'en');
     expect(withAll).toMatch(/password vault/i);
-    expect(withAll).toMatch(/computer is shared/i);
+    expect(withAll).toMatch(/computer is your own/i);
     expect(withAll).toMatch(/approval card before they run/i);
   });
 

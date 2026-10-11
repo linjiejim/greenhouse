@@ -103,7 +103,9 @@ function backups(opts: { keep?: number; hours?: number } = {}) {
 
 function computer(patch: Partial<BotComputerRow> = {}): BotComputerRow {
   return {
+    id: member.id,
     user_id: member.id,
+    bot_id: null,
     container_name: 'sandbox-1',
     state: 'running',
     last_active_at: new Date(now - 20 * 60_000).toISOString(),
@@ -259,6 +261,7 @@ describe('deleting and sweeping', () => {
     const stuck = (await db.botComputers.startBackup({
       id: `bkp_stuck${randomBytes(4).toString('hex')}`,
       user_id: member.id,
+      computer_id: member.id,
       reason: 'idle',
       store: 'local',
       key_enc: 'gv1.00000000.x',
@@ -268,6 +271,7 @@ describe('deleting and sweeping', () => {
     const orphan = (await db.botComputers.startBackup({
       id: `bkp_orphan${randomBytes(4).toString('hex')}`,
       user_id: `usr_gone_${randomBytes(4).toString('hex')}`,
+      computer_id: `usr_gone_${randomBytes(4).toString('hex')}`,
       reason: 'idle',
       store: 'local',
       key_enc: 'gv1.00000000.x',

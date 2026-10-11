@@ -23,7 +23,7 @@ import {
 const spec: ComputerRunSpec = {
   name: 'gh-computer-ns1-u1',
   namespace: 'ns1',
-  userId: 'u1',
+  computerId: 'u1',
   image: 'greenhouse/bot-computer:latest',
   volume: 'gh-computer-ns1-u1-home',
   network: 'gh-bots',
@@ -54,6 +54,8 @@ describe('computer docker run argv', () => {
       'greenhouse.bots.computer.namespace=ns1',
       '--label',
       'greenhouse.bots.computer.user=u1',
+      '--label',
+      'greenhouse.bots.computer.id=u1',
       '--read-only',
       '--cap-drop',
       'ALL',

@@ -32,10 +32,10 @@ import { toErrorMessage } from '@greenhouse/utils/error';
 import { ComputerUnavailableError } from './errors.js';
 
 export interface CdpOwnerStore {
-  tryLockCdpOwner(userId: string): Promise<boolean>;
-  unlockCdpOwner(userId: string): Promise<void>;
-  setCdpWanted(userId: string, wanted: boolean): Promise<void>;
-  isCdpWanted(userId: string): Promise<boolean>;
+  tryLockCdpOwner(computerId: string): Promise<boolean>;
+  unlockCdpOwner(computerId: string): Promise<void>;
+  setCdpWanted(computerId: string, wanted: boolean): Promise<void>;
+  isCdpWanted(computerId: string): Promise<boolean>;
 }
 
 /** How long a process waits for another one to let go of a member's browser. */
@@ -49,7 +49,7 @@ const CDP_IDLE_CHECK_MS = 5_000;
 export interface CdpOwnershipOptions {
   store(): CdpOwnerStore;
   /** Drop this process's connection to the member's browser (runs before the lock goes). */
-  disconnect(userId: string): void;
+  disconnect(computerId: string): void;
   waitMs?: number;
   pollMs?: number;
   idleMs?: number;
@@ -73,69 +73,69 @@ export function createCdpOwnership(options: CdpOwnershipOptions) {
   const lastUse = new Map<string, number>();
   const timers = new Map<string, NodeJS.Timeout>();
 
-  const idle = (userId: string) => held.has(userId) && (inUse.get(userId) ?? 0) === 0;
-  const quietFor = (userId: string) => Date.now() - (lastUse.get(userId) ?? 0);
+  const idle = (computerId: string) => held.has(computerId) && (inUse.get(computerId) ?? 0) === 0;
+  const quietFor = (computerId: string) => Date.now() - (lastUse.get(computerId) ?? 0);
 
-  function schedule(userId: string, delayMs: number): void {
-    clearTimeout(timers.get(userId));
+  function schedule(computerId: string, delayMs: number): void {
+    clearTimeout(timers.get(computerId));
     const timer = setTimeout(() => {
-      timers.delete(userId);
-      if (!idle(userId)) return; // end() re-arms it
-      if (quietFor(userId) < idleMs) schedule(userId, idleMs - quietFor(userId));
-      else void releaseIfWanted(userId);
+      timers.delete(computerId);
+      if (!idle(computerId)) return; // end() re-arms it
+      if (quietFor(computerId) < idleMs) schedule(computerId, idleMs - quietFor(computerId));
+      else void releaseIfWanted(computerId);
     }, delayMs);
     timer.unref?.();
-    timers.set(userId, timer);
+    timers.set(computerId, timer);
   }
 
   /** Idle long enough: hand the browser over if another process waits, else look again shortly. */
-  async function releaseIfWanted(userId: string): Promise<void> {
+  async function releaseIfWanted(computerId: string): Promise<void> {
     let wanted = false;
     try {
-      wanted = await options.store().isCdpWanted(userId);
+      wanted = await options.store().isCdpWanted(computerId);
     } catch (err) {
-      logger.warn('[bots-computer] DevTools waiter check failed', { user_id: userId, error: toErrorMessage(err) });
+      logger.warn('[bots-computer] DevTools waiter check failed', { user_id: computerId, error: toErrorMessage(err) });
     }
     // Used again while we asked: a new idle period starts (touch re-armed it).
-    if (!idle(userId) || quietFor(userId) < idleMs) return;
-    if (wanted) await release(userId);
-    else schedule(userId, checkMs);
+    if (!idle(computerId) || quietFor(computerId) < idleMs) return;
+    if (wanted) await release(computerId);
+    else schedule(computerId, checkMs);
   }
 
   /** Best effort: a hand that fails to go up only means the owner keeps it until it stops. */
-  async function setWanted(userId: string, wanted: boolean): Promise<void> {
+  async function setWanted(computerId: string, wanted: boolean): Promise<void> {
     try {
-      await options.store().setCdpWanted(userId, wanted);
+      await options.store().setCdpWanted(computerId, wanted);
     } catch (err) {
-      logger.warn('[bots-computer] DevTools waiter signal failed', { user_id: userId, error: toErrorMessage(err) });
+      logger.warn('[bots-computer] DevTools waiter signal failed', { user_id: computerId, error: toErrorMessage(err) });
     }
   }
 
-  async function attempt(userId: string): Promise<CdpClaim> {
-    const wasHeld = held.has(userId);
+  async function attempt(computerId: string): Promise<CdpClaim> {
+    const wasHeld = held.has(computerId);
     const deadline = Date.now() + waitMs;
     let waiting = false;
     try {
       for (;;) {
         let owned: boolean;
         try {
-          owned = await options.store().tryLockCdpOwner(userId);
+          owned = await options.store().tryLockCdpOwner(computerId);
         } catch (err) {
-          held.delete(userId);
+          held.delete(computerId);
           logger.warn('[bots-computer] DevTools owner lock check failed', {
-            user_id: userId,
+            user_id: computerId,
             error: toErrorMessage(err),
           });
           throw new ComputerUnavailableError('unavailable', 'Computers are unavailable on this server right now');
         }
         if (owned) {
-          held.add(userId);
-          touch(userId);
+          held.add(computerId);
+          touch(computerId);
           return { fresh: !wasHeld };
         }
         // Ours a moment ago, someone else's now: the lock connection died with
         // its locks and another process claimed the browser meanwhile.
-        held.delete(userId);
+        held.delete(computerId);
         if (Date.now() >= deadline) {
           throw new ComputerUnavailableError(
             'busy',
@@ -144,32 +144,32 @@ export function createCdpOwnership(options: CdpOwnershipOptions) {
         }
         if (!waiting) {
           waiting = true;
-          await setWanted(userId, true);
+          await setWanted(computerId, true);
         }
         await new Promise((resolve) => setTimeout(resolve, pollMs));
       }
     } finally {
-      if (waiting) await setWanted(userId, false);
+      if (waiting) await setWanted(computerId, false);
     }
   }
 
   /** Record browser use (keeps an owner from letting go for another idle period). */
-  function touch(userId: string): void {
-    lastUse.set(userId, Date.now());
-    if (held.has(userId) && (inUse.get(userId) ?? 0) === 0) schedule(userId, idleMs);
+  function touch(computerId: string): void {
+    lastUse.set(computerId, Date.now());
+    if (held.has(computerId) && (inUse.get(computerId) ?? 0) === 0) schedule(computerId, idleMs);
   }
 
   /** Let go of a member's browser: drop the connection, then the lock. Idempotent. */
-  async function release(userId: string): Promise<void> {
-    clearTimeout(timers.get(userId));
-    timers.delete(userId);
-    if (!held.delete(userId)) return;
-    options.disconnect(userId);
+  async function release(computerId: string): Promise<void> {
+    clearTimeout(timers.get(computerId));
+    timers.delete(computerId);
+    if (!held.delete(computerId)) return;
+    options.disconnect(computerId);
     try {
-      await options.store().unlockCdpOwner(userId);
+      await options.store().unlockCdpOwner(computerId);
     } catch (err) {
       // The lock goes with its connection; nothing else to do.
-      logger.warn('[bots-computer] DevTools owner unlock failed', { user_id: userId, error: toErrorMessage(err) });
+      logger.warn('[bots-computer] DevTools owner unlock failed', { user_id: computerId, error: toErrorMessage(err) });
     }
   }
 
@@ -179,31 +179,31 @@ export function createCdpOwnership(options: CdpOwnershipOptions) {
      * connect: it re-checks the lock even when this process holds it). Waits
      * for another owner up to the claim timeout, then throws `busy`.
      */
-    claim(userId: string): Promise<CdpClaim> {
-      const pending = claiming.get(userId);
+    claim(computerId: string): Promise<CdpClaim> {
+      const pending = claiming.get(computerId);
       if (pending) return pending;
-      const next = attempt(userId).finally(() => claiming.delete(userId));
-      claiming.set(userId, next);
+      const next = attempt(computerId).finally(() => claiming.delete(computerId));
+      claiming.set(computerId, next);
       return next;
     },
     touch,
     /** A browser action starts; call `end` in `finally`. */
-    begin(userId: string): void {
-      inUse.set(userId, (inUse.get(userId) ?? 0) + 1);
-      lastUse.set(userId, Date.now());
+    begin(computerId: string): void {
+      inUse.set(computerId, (inUse.get(computerId) ?? 0) + 1);
+      lastUse.set(computerId, Date.now());
     },
-    end(userId: string): void {
-      const left = (inUse.get(userId) ?? 1) - 1;
-      if (left > 0) inUse.set(userId, left);
-      else inUse.delete(userId);
-      touch(userId);
+    end(computerId: string): void {
+      const left = (inUse.get(computerId) ?? 1) - 1;
+      if (left > 0) inUse.set(computerId, left);
+      else inUse.delete(computerId);
+      touch(computerId);
     },
     release,
     async releaseAll(): Promise<void> {
-      await Promise.allSettled([...held].map((userId) => release(userId)));
+      await Promise.allSettled([...held].map((computerId) => release(computerId)));
     },
-    holds(userId: string): boolean {
-      return held.has(userId);
+    holds(computerId: string): boolean {
+      return held.has(computerId);
     },
   };
 }

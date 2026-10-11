@@ -169,6 +169,20 @@
       "when": 1791735649938,
       "tag": "0023_agent_task_chats",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1791738215539,
+      "tag": "0024_agent_computers",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1791740219180,
+      "tag": "0025_agent_attribution",
+      "breakpoints": true
     }
   ]
 }

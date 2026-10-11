@@ -38,7 +38,8 @@ function parseJson<T>(text: string): T | null {
 export interface ComputerRunSpec {
   name: string;
   namespace: string;
-  userId: string;
+  /** `bot_computers.id` (labels). */
+  computerId: string;
   image: string;
   volume: string;
   network: string;
@@ -80,7 +81,7 @@ export const CLEARED_PROXY_ENV = [
  */
 export function buildComputerRunArgs(spec: ComputerRunSpec): string[] {
   const args = ['run', '-d', '--name', spec.name];
-  for (const [key, value] of Object.entries(computerLabels(spec.namespace, spec.userId))) {
+  for (const [key, value] of Object.entries(computerLabels(spec.namespace, spec.computerId))) {
     args.push('--label', `${key}=${value}`);
   }
   args.push(

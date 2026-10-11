@@ -309,41 +309,56 @@ export const botInbox = pgTable(
 
 // ─── bot_computers ────────────────────────────────────────
 
-export const botComputers = pgTable('bot_computers', {
-  user_id: text('user_id')
-    .primaryKey()
-    .references(() => users.id, { onDelete: 'cascade' }),
-  /** Deployment namespace (keeps worktree/blue-green deployments apart on one daemon). */
-  namespace: text('namespace').notNull(),
-  container_name: text('container_name').notNull(),
-  volume_name: text('volume_name').notNull(),
-  state: text('state', { enum: ['absent', 'starting', 'running', 'stopping', 'error'] })
-    .notNull()
-    .default('absent'),
-  /** Machine-readable reason for `error` (oom, exited, start_failed…) or the last stop (idle, lru…). */
-  state_reason: text('state_reason'),
-  /** Compare-and-set counter for every lifecycle transition. */
-  version: integer('version').notNull().default(0),
-  /** Who drives the screen and input right now. */
-  lease_controller: text('lease_controller', { enum: ['bot', 'user'] })
-    .notNull()
-    .default('bot'),
-  /** Bumped on every lease change; Bot observations taken under an older epoch are discarded. */
-  lease_epoch: integer('lease_epoch').notNull().default(0),
-  lease_since: ts('lease_since'),
-  /** Refreshed every ~20 s by whichever API slot holds a live viewer socket. */
-  viewer_heartbeat_at: ts('viewer_heartbeat_at'),
-  last_active_at: ts('last_active_at').notNull(),
-  last_started_at: ts('last_started_at'),
-  image_id: text('image_id'),
-  /** Last measured size of the home volume, bytes. */
-  disk_bytes: bigint('disk_bytes', { mode: 'number' }),
-  disk_measured_at: ts('disk_measured_at'),
-  /** The member's own IANA timezone for the computer; null = the deployment default. Applied at the next start. */
-  timezone: text('timezone'),
-  created_at: ts('created_at').notNull(),
-  updated_at: ts('updated_at').notNull(),
-});
+export const botComputers = pgTable(
+  'bot_computers',
+  {
+    /**
+     * The computer id (spec 20261011-agent-first-class D28/D29): the member's user id for their
+     * main Agent's computer (every row before migration 0024), `<userId>.<botId>` for another
+     * Agent's. Locks, in-process maps, tickets and Docker/E2B labels all key on it.
+     */
+    id: text('id').primaryKey(),
+    user_id: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    /**
+     * The Agent whose computer this is; null = the member's main Agent. A logical link (no
+     * foreign key): the container and its home must be removed before the row goes.
+     */
+    bot_id: text('bot_id'),
+    /** Deployment namespace (keeps worktree/blue-green deployments apart on one daemon). */
+    namespace: text('namespace').notNull(),
+    container_name: text('container_name').notNull(),
+    volume_name: text('volume_name').notNull(),
+    state: text('state', { enum: ['absent', 'starting', 'running', 'stopping', 'error'] })
+      .notNull()
+      .default('absent'),
+    /** Machine-readable reason for `error` (oom, exited, start_failed…) or the last stop (idle, lru…). */
+    state_reason: text('state_reason'),
+    /** Compare-and-set counter for every lifecycle transition. */
+    version: integer('version').notNull().default(0),
+    /** Who drives the screen and input right now. */
+    lease_controller: text('lease_controller', { enum: ['bot', 'user'] })
+      .notNull()
+      .default('bot'),
+    /** Bumped on every lease change; Bot observations taken under an older epoch are discarded. */
+    lease_epoch: integer('lease_epoch').notNull().default(0),
+    lease_since: ts('lease_since'),
+    /** Refreshed every ~20 s by whichever API slot holds a live viewer socket. */
+    viewer_heartbeat_at: ts('viewer_heartbeat_at'),
+    last_active_at: ts('last_active_at').notNull(),
+    last_started_at: ts('last_started_at'),
+    image_id: text('image_id'),
+    /** Last measured size of the home volume, bytes. */
+    disk_bytes: bigint('disk_bytes', { mode: 'number' }),
+    disk_measured_at: ts('disk_measured_at'),
+    /** The member's own IANA timezone for the computer; null = the deployment default. Applied at the next start. */
+    timezone: text('timezone'),
+    created_at: ts('created_at').notNull(),
+    updated_at: ts('updated_at').notNull(),
+  },
+  (table) => [index('idx_bot_computers_user').on(table.user_id)],
+);
 
 // ─── bot_process_watches ──────────────────────────────────
 
@@ -366,6 +381,8 @@ export const botProcessWatches = pgTable(
     bot_id: text('bot_id')
       .notNull()
       .references(() => bots.id, { onDelete: 'cascade' }),
+    /** The computer the job runs on (`bot_computers.id`; the member's id for the main Agent's). */
+    computer_id: text('computer_id').notNull(),
     /** The gh-jobs id (`j` + 8 hex). */
     job_id: text('job_id').notNull(),
     /** Its label in the process list, for the wake-up note. */
@@ -378,7 +395,7 @@ export const botProcessWatches = pgTable(
     updated_at: ts('updated_at').notNull(),
   },
   (table) => [
-    uniqueIndex('uq_bot_process_watches_job').on(table.user_id, table.job_id),
+    uniqueIndex('uq_bot_process_watches_job').on(table.computer_id, table.job_id),
     index('idx_bot_process_watches_watching')
       .on(table.user_id)
       .where(sql`${table.status} = 'watching'`),
@@ -397,8 +414,8 @@ export const botProcessWatches = pgTable(
  * `user_id` is a logical link to users, not a foreign key: the stored objects must be
  * deleted before the row, so a member's deletion goes through the computer runtime
  * (purge with wipe), and rows whose member is gone are swept with their objects.
- * One `running` row per member at most (the partial unique index): of several API
- * processes, one takes a member's backup.
+ * One `running` row per computer at most (the partial unique index): of several API
+ * processes, one takes a computer's backup.
  */
 export const botComputerBackups = pgTable(
   'bot_computer_backups',
@@ -406,6 +423,8 @@ export const botComputerBackups = pgTable(
     /** `bkp_<hex>`. */
     id: text('id').primaryKey(),
     user_id: text('user_id').notNull(),
+    /** The computer it was taken from (`bot_computers.id`; the member's id for the main Agent's). */
+    computer_id: text('computer_id').notNull(),
     status: text('status', { enum: ['running', 'complete', 'failed'] }).notNull(),
     /** idle = before the computer went to sleep; admin = Back up now. */
     reason: text('reason', { enum: ['idle', 'admin'] }).notNull(),
@@ -428,8 +447,9 @@ export const botComputerBackups = pgTable(
   },
   (table) => [
     index('idx_bot_computer_backups_user').on(table.user_id, table.created_at),
+    index('idx_bot_computer_backups_computer').on(table.computer_id, table.created_at),
     uniqueIndex('uq_bot_computer_backups_running')
-      .on(table.user_id)
+      .on(table.computer_id)
       .where(sql`${table.status} = 'running'`),
   ],
 );
@@ -458,6 +478,11 @@ export const vaultItems = pgTable(
       .default('ask'),
     /** JSON array of origins the user chose "always allow on this site" for. */
     always_origins: text('always_origins').notNull().default('[]'),
+    /**
+     * JSON array of the Agents (`bots.id`) that may use this entry; null = every Agent of the
+     * member (spec 20261011-agent-first-class P3c).
+     */
+    bot_ids: text('bot_ids'),
     last_used_at: ts('last_used_at'),
     created_at: ts('created_at').notNull(),
     updated_at: ts('updated_at').notNull(),

@@ -18,6 +18,7 @@ import { resolveProfileAsync } from '../../profiles/profile.js';
 import { resolveEffectiveTools } from '../../agent-runtime/tool-resolution.js';
 import { buildLazyServerTools, LAZY_TOOL_IDS, profileToolIdentity } from '../../agent-runtime/tool-resolution.js';
 import { runAgentInSession, type AgentGenerate, type HeadlessMessage } from '../../agent-runtime/run-agent.js';
+import { runInAgentScope } from '../../platform/agent-scope.js';
 import { resolveMemoryContext } from '../../llm/memory.js';
 import { sanitizeChatMessagesForPrompt, sanitizeUserMessageForPrompt } from '../../chat/user-message.js';
 import { flattenForDelivery } from '../../notifications/render.js';
@@ -200,20 +201,24 @@ export async function dispatchFeishuMessage(message: FeishuIncomingMessage, deps
 
   // ── 5. 跑既有 runner（带上这串对话的历史）────────────────
   const priorMessages = await loadPriorMessages(db, sessionId, prompt, profile.model.id);
-  const result = await runAgentInSession({
-    db,
-    sessionId,
-    system: systemPrompt,
-    prompt,
-    priorMessages,
-    modelConfig: profile.model,
-    tools,
-    maxSteps: profile.max_steps ?? 12,
-    ...(profile.tool_choice ? { toolChoice: profile.tool_choice } : {}),
-    usageContext: { profileId: profile.id, userId: owner.id, caller: 'feishu-bot' },
-    ...(deps.generate ? { generate: deps.generate } : {}),
-    ...(deps.onStep ? { onStep: deps.onStep } : {}),
-  });
+  // Run as the Agent this profile is (platform audit and usage name it).
+  const agentBotId = profile.identity?.botId ?? null;
+  const execute = () =>
+    runAgentInSession({
+      db,
+      sessionId,
+      system: systemPrompt,
+      prompt,
+      priorMessages,
+      modelConfig: profile.model,
+      tools,
+      maxSteps: profile.max_steps ?? 12,
+      ...(profile.tool_choice ? { toolChoice: profile.tool_choice } : {}),
+      usageContext: { profileId: profile.id, userId: owner.id, caller: 'feishu-bot' },
+      ...(deps.generate ? { generate: deps.generate } : {}),
+      ...(deps.onStep ? { onStep: deps.onStep } : {}),
+    });
+  const result = agentBotId ? await runInAgentScope({ botId: agentBotId, sessionId }, execute) : await execute();
 
   // ── 6. 呈现：富块围栏拍平成飞书能渲染的 markdown（spec D10）──
   let content = flattenForDelivery(result.text ?? '').trim();

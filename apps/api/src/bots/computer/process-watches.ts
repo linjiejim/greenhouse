@@ -34,10 +34,10 @@ export const WATCH_MAX_AGE_MS = 7 * 24 * 60 * 60_000;
 export interface ProcessWatchDeps {
   store: Pick<
     BotComputerService,
-    'get' | 'listWatchingUsers' | 'listWatches' | 'settleWatch' | 'expireWatches' | 'dropWatches'
+    'get' | 'listWatchingComputers' | 'listWatches' | 'settleWatch' | 'expireWatches' | 'dropWatches'
   >;
-  /** The member's processes, or null when their computer is not running (never starts it). */
-  listJobs(userId: string): Promise<ComputerProcessView[] | null>;
+  /** A computer's processes, or null when it is not running (never starts it). */
+  listJobs(computerId: string): Promise<ComputerProcessView[] | null>;
   deliver(sessionId: string, item: InboxItem): Promise<void>;
   now?: () => number;
 }
@@ -59,24 +59,24 @@ export async function checkProcessWatches(deps: ProcessWatchDeps): Promise<{ wok
   const now = deps.now ?? Date.now;
   await deps.store.expireWatches(new Date(now() - WATCH_MAX_AGE_MS).toISOString());
   let woken = 0;
-  for (const userId of await deps.store.listWatchingUsers()) {
-    const computer = await deps.store.get(userId);
+  for (const computerId of await deps.store.listWatchingComputers()) {
+    const computer = await deps.store.get(computerId);
     if (!computer) {
-      await deps.store.dropWatches(userId);
+      await deps.store.dropWatches(computerId);
       continue;
     }
     if (computer.state !== 'running') continue;
     let jobs: ComputerProcessView[] | null;
     try {
-      jobs = await deps.listJobs(userId);
+      jobs = await deps.listJobs(computerId);
     } catch (err) {
-      logger.warn(`[bots-computer] could not list the processes of ${userId}: ${toErrorMessage(err)}`);
+      logger.warn(`[bots-computer] could not list the processes of ${computerId}: ${toErrorMessage(err)}`);
       continue;
     }
     // Stopped between the state check and the listing: ask again next round.
     if (jobs === null) continue;
     const byId = new Map(jobs.map((job) => [job.id, job]));
-    for (const watch of await deps.store.listWatches(userId)) {
+    for (const watch of await deps.store.listWatches(computerId)) {
       const job = byId.get(watch.job_id);
       if (job?.status === 'running') continue;
       const settled = await deps.store.settleWatch(watch.id, 'notified');

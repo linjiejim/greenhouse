@@ -18,6 +18,7 @@ import { resolveMemoryContext } from '../llm/memory.js';
 import type { UserRole } from '../auth/token.js';
 import type { ToolRegistry } from '../agent.js';
 import { runAgentInSession, SessionTranscriptChangedError } from '../agent-runtime/run-agent.js';
+import { runInAgentScope } from '../platform/agent-scope.js';
 import {
   buildLazyServerTools,
   filterUnattendedToolIds,
@@ -267,23 +268,27 @@ export async function executeTaskInSession(
     });
     const maxSteps = task.max_steps ?? profile.max_steps ?? 12;
 
-    const result = await runAgentInSession({
-      db,
-      sessionId,
-      system: systemPrompt,
-      prompt,
-      modelConfig: profile.model,
-      tools,
-      maxSteps,
-      toolChoice: profile.tool_choice,
-      usageContext: { profileId: profile.id, userId: owner.id, caller: 'scheduled-task' },
-      // The prepared prompt already opens with a timezone-aware stamp
-      // (buildTaskPrompt); the loop's default Asia/Shanghai stamp would be a
-      // second, unlabelled clock that disagrees whenever the task's zone differs.
-      timeContext: false,
-      ...(options.runtimeToolEvidence ? { runtimeToolEvidence: options.runtimeToolEvidence } : {}),
-      ...(options.abortSignal ? { abortSignal: options.abortSignal } : {}),
-    });
+    // Run as the Agent this profile is (platform audit and usage name it).
+    const agentBotId = profile.identity?.botId ?? null;
+    const execute = () =>
+      runAgentInSession({
+        db,
+        sessionId,
+        system: systemPrompt,
+        prompt,
+        modelConfig: profile.model,
+        tools,
+        maxSteps,
+        toolChoice: profile.tool_choice,
+        usageContext: { profileId: profile.id, userId: owner.id, caller: 'scheduled-task' },
+        // The prepared prompt already opens with a timezone-aware stamp
+        // (buildTaskPrompt); the loop's default Asia/Shanghai stamp would be a
+        // second, unlabelled clock that disagrees whenever the task's zone differs.
+        timeContext: false,
+        ...(options.runtimeToolEvidence ? { runtimeToolEvidence: options.runtimeToolEvidence } : {}),
+        ...(options.abortSignal ? { abortSignal: options.abortSignal } : {}),
+      });
+    const result = agentBotId ? await runInAgentScope({ botId: agentBotId, sessionId }, execute) : await execute();
 
     if (!options.deferLifecycle) await completeTaskExecution(task, sessionId, result.text ?? '', db);
 

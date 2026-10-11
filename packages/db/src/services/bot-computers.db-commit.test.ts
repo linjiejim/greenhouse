@@ -51,14 +51,14 @@ describe('bot computer locks across processes', () => {
     await Promise.all([a, b, observer].map((s) => s.client.client.end({ timeout: 5 })));
   });
 
-  it('tryWithUserLock skips a member whose lock another transaction holds, and takes it once free', async () => {
+  it('tryWithComputerLock skips a member whose lock another transaction holds, and takes it once free', async () => {
     const userId = `u-${randomUUID()}`;
     let release!: () => void;
     const held = new Promise<void>((resolve) => (release = resolve));
     let entered!: () => void;
     const inside = new Promise<void>((resolve) => (entered = resolve));
     // Slot A is at work on the member (a start under the blocking lock).
-    const working = a.computers.withUserLock(userId, async () => {
+    const working = a.computers.withComputerLock(userId, async () => {
       entered();
       await held;
       return 'started';
@@ -66,7 +66,7 @@ describe('bot computer locks across processes', () => {
     await inside;
 
     let ran = false;
-    const skipped = await b.computers.tryWithUserLock(userId, async () => {
+    const skipped = await b.computers.tryWithComputerLock(userId, async () => {
       ran = true;
       return 'swept';
     });
@@ -74,14 +74,17 @@ describe('bot computer locks across processes', () => {
     expect(ran).toBe(false);
 
     // Another member is not affected.
-    expect(await b.computers.tryWithUserLock(`u-${randomUUID()}`, async () => 'other')).toEqual({
+    expect(await b.computers.tryWithComputerLock(`u-${randomUUID()}`, async () => 'other')).toEqual({
       acquired: true,
       value: 'other',
     });
 
     release();
     expect(await working).toBe('started');
-    expect(await b.computers.tryWithUserLock(userId, async () => 'swept')).toEqual({ acquired: true, value: 'swept' });
+    expect(await b.computers.tryWithComputerLock(userId, async () => 'swept')).toEqual({
+      acquired: true,
+      value: 'swept',
+    });
   });
 
   it('gives one process the DevTools connection at a time, re-entrant for the owner', async () => {

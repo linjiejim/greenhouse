@@ -829,6 +829,8 @@ export function createPlatformService(db: Db) {
           actor_type: event.actorType,
           on_behalf_of_user_id: event.onBehalfOfUserId ?? null,
           client_id: event.clientId ?? null,
+          agent_id: event.agentId ?? null,
+          session_id: event.sessionId ?? null,
           request_id: event.requestId,
           app_id: event.resource.appId,
           module_id: event.resource.moduleId ?? null,
@@ -849,6 +851,27 @@ export function createPlatformService(db: Db) {
         .select()
         .from(platformAuditEvents)
         .where(eq(platformAuditEvents.org_id, orgId))
+        .orderBy(desc(platformAuditEvents.created_at))
+        .limit(Math.min(Math.max(limit, 1), 500));
+    },
+
+    /** What one of a member's Agents did (P3d's activity log), newest first. */
+    async listAuditEventsForAgent(
+      orgId: string,
+      agentId: string,
+      userId: string,
+      limit = 100,
+    ): Promise<PlatformAuditEventRow[]> {
+      return db
+        .select()
+        .from(platformAuditEvents)
+        .where(
+          and(
+            eq(platformAuditEvents.org_id, orgId),
+            eq(platformAuditEvents.agent_id, agentId),
+            eq(platformAuditEvents.on_behalf_of_user_id, userId),
+          ),
+        )
         .orderBy(desc(platformAuditEvents.created_at))
         .limit(Math.min(Math.max(limit, 1), 500));
     },

@@ -86,20 +86,20 @@ interface JobsDeps {
   /** BOTS_COMPUTER_PROXY: a job reaches the same internet as a Bot's shell call. */
   proxy?: () => string | null;
   /** The member's running container, or null when the computer is not running. */
-  runningContainer: (userId: string) => Promise<string | null>;
+  runningContainer: (computerId: string) => Promise<string | null>;
 }
 
 const defaultDeps: JobsDeps = {
   host: () => requireComputerRuntime().host,
   proxy: () => requireComputerRuntime().config.proxy,
-  runningContainer: async (userId) => {
-    const row = await getDb().botComputers.get(userId);
+  runningContainer: async (computerId) => {
+    const row = await getDb().botComputers.get(computerId);
     return row?.state === 'running' ? row.container_name : null;
   },
 };
 
-async function requireContainer(userId: string, deps: JobsDeps): Promise<string> {
-  const container = await deps.runningContainer(userId);
+async function requireContainer(computerId: string, deps: JobsDeps): Promise<string> {
+  const container = await deps.runningContainer(computerId);
   if (!container) throw new ComputerUnavailableError('stopped', 'The computer is not running');
   return container;
 }
@@ -136,7 +136,7 @@ function failed(what: string, result: { code: number; stderr: string }): never {
 
 /** Start a detached job in ~/work (or `cwd`, which must be under /home/agent). */
 export async function startJob(
-  userId: string,
+  computerId: string,
   input: { command: string; name?: string; cwd?: string },
   opts: { signal?: AbortSignal } = {},
   deps: JobsDeps = defaultDeps,
@@ -148,7 +148,7 @@ export async function startJob(
   if (cwd !== '/home/agent' && !cwd.startsWith('/home/agent/')) {
     throw new ComputerDockerError('failed', 'Jobs run inside /home/agent');
   }
-  const container = await requireContainer(userId, deps);
+  const container = await requireContainer(computerId, deps);
   const name = jobName(input.name, command);
   const result = await ghJobs(deps, container, ['start', '--name', name, '--cwd', cwd, '--', command], opts);
   if (result.code !== 0) failed('Starting the job', result);
@@ -164,16 +164,16 @@ export async function startJob(
 }
 
 /** The member's jobs, newest first; empty when the computer is not running (never starts it). */
-export async function listJobs(userId: string, deps: JobsDeps = defaultDeps): Promise<ComputerProcessView[]> {
-  return (await listJobsIfRunning(userId, deps)) ?? [];
+export async function listJobs(computerId: string, deps: JobsDeps = defaultDeps): Promise<ComputerProcessView[]> {
+  return (await listJobsIfRunning(computerId, deps)) ?? [];
 }
 
 /** Like listJobs, but null when the computer is not running — "no jobs" and "could not look" differ. */
 export async function listJobsIfRunning(
-  userId: string,
+  computerId: string,
   deps: JobsDeps = defaultDeps,
 ): Promise<ComputerProcessView[] | null> {
-  const container = await deps.runningContainer(userId);
+  const container = await deps.runningContainer(computerId);
   if (!container) return null;
   const result = await ghJobs(deps, container, ['list']);
   if (result.code !== 0) failed('Listing jobs', result);
@@ -182,7 +182,7 @@ export async function listJobsIfRunning(
 
 /** The tail of a job's log (text; the caller redacts). */
 export async function jobLog(
-  userId: string,
+  computerId: string,
   id: string,
   opts: { lines?: number; signal?: AbortSignal } = {},
   deps: JobsDeps = defaultDeps,
@@ -190,7 +190,7 @@ export async function jobLog(
   const jobId = parseJobId(id);
   if (!jobId) throw new ComputerDockerError('not_found', 'No such job');
   const lines = Math.min(Math.max(Math.floor(opts.lines ?? JOB_LOG_DEFAULT_LINES), 1), JOB_LOG_MAX_LINES);
-  const container = await requireContainer(userId, deps);
+  const container = await requireContainer(computerId, deps);
   const result = await ghJobs(deps, container, ['log', jobId, '--lines', String(lines)], {
     maxStdoutBytes: LOG_MAX_BYTES,
     ...(opts.signal ? { signal: opts.signal } : {}),
@@ -203,13 +203,13 @@ export async function jobLog(
 
 /** Stop a job (SIGTERM, then SIGKILL after 3 s). */
 export async function stopJob(
-  userId: string,
+  computerId: string,
   id: string,
   deps: JobsDeps = defaultDeps,
 ): Promise<{ id: string; stopped: boolean }> {
   const jobId = parseJobId(id);
   if (!jobId) throw new ComputerDockerError('not_found', 'No such job');
-  const container = await requireContainer(userId, deps);
+  const container = await requireContainer(computerId, deps);
   const result = await ghJobs(deps, container, ['stop', jobId], { timeoutMs: 15_000 });
   if (result.code !== 0) failed('Stopping the job', result);
   const parsed = safeJsonParse(result.stdout.trim(), null) as Record<string, unknown> | null;

@@ -11,6 +11,7 @@ import { randomUUID } from 'node:crypto';
 import type { DatabaseProvider, UsageBudgetAccountInput, UsageRecord } from '@greenhouse/db';
 import { getUtcMonthPeriod, UsageBudgetError, UsageBudgetExceededError } from '@greenhouse/db';
 import { estimateTokens, getAvailableProviders, getModelEntry, type ProviderAttemptHook } from '@greenhouse/agent-core';
+import { currentAgentScope } from '../platform/agent-scope.js';
 
 export const MODEL_BUDGET_TTL_MS = 20 * 60_000;
 export const IMAGE_BUDGET_TTL_MS = 5 * 60_000;
@@ -123,6 +124,8 @@ export interface ProviderAttemptBudgetContext {
   runId?: string;
   budgetPool?: UsageBudgetPool;
   metadata?: Readonly<Record<string, unknown>>;
+  /** The member's Agent the call is for; defaults to the Agent acting in this async context (agent-scope.ts). */
+  botId?: string | null;
 }
 
 function providerAttemptEstimate(options: Parameters<ProviderAttemptHook>[0]['options']): number {
@@ -165,6 +168,8 @@ function providerAttemptEstimate(options: Parameters<ProviderAttemptHook>[0]['op
  * so every actual provider I/O gets a fresh atomic user/org/provider reserve.
  */
 export function createProviderAttemptBudgetHook(context: ProviderAttemptBudgetContext): ProviderAttemptHook {
+  // Read when the hook is made: inside an Agent turn, this is that Agent.
+  const botId = context.botId !== undefined ? context.botId : (currentAgentScope()?.botId ?? null);
   return async ({ descriptor, options }) => {
     const startedAt = Date.now();
     const estimatedTokens = providerAttemptEstimate(options);
@@ -203,6 +208,7 @@ export function createProviderAttemptBudgetHook(context: ProviderAttemptBudgetCo
             caller: context.caller,
             session_id: context.sessionId,
             user_id: context.userId,
+            bot_id: botId,
             model: descriptor.modelId,
             input_tokens: inputTokens,
             output_tokens: outputTokens,
@@ -221,6 +227,7 @@ export function createProviderAttemptBudgetHook(context: ProviderAttemptBudgetCo
           caller: context.caller,
           session_id: context.sessionId,
           user_id: context.userId,
+          bot_id: botId,
           model: descriptor.modelId,
           input_tokens: 0,
           output_tokens: 0,

@@ -13,6 +13,7 @@ import { z } from 'zod';
 import type { BotTurnContext } from '../engine/context.js';
 import { defaultComputerDeps, failure, findLeasePage, type ComputerDeps } from '../computer/browser-session.js';
 import { fillLogin, fillTotp, type FillTurn } from '../vault/fill.js';
+import { computerRefForBot } from '../computer/namespace.js';
 import { originMatches, originOfUrl } from '../vault/origin.js';
 import { listVaultItems } from '../vault/service.js';
 import { foreignTurnReads } from '../vault/turn-observations.js';
@@ -32,6 +33,7 @@ export function fillTurnFrom(ctx: BotTurnContext, deps: ComputerDeps = defaultCo
   return {
     db: ctx.db,
     userId: ctx.userId,
+    computerId: computerRefForBot(ctx.userId, ctx.bot).id,
     botId: ctx.bot.id,
     botName: ctx.bot.name,
     sessionId: ctx.sessionId,
@@ -51,8 +53,10 @@ export async function runVaultAction(
   deps: ComputerDeps = defaultComputerDeps,
 ): Promise<Record<string, unknown>> {
   if (input.action === 'list') {
-    const items = await listVaultItems(ctx.db, ctx.userId);
-    const found = await findLeasePage(ctx.userId, ctx.bot.id, ctx.sessionId, deps).catch(() => null);
+    const items = await listVaultItems(ctx.db, ctx.userId, ctx.bot.id);
+    const found = await findLeasePage(computerRefForBot(ctx.userId, ctx.bot).id, ctx.bot.id, ctx.sessionId, deps).catch(
+      () => null,
+    );
     const currentSite = originOfUrl(found?.page.url());
     return {
       current_site: currentSite,

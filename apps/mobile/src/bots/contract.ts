@@ -39,7 +39,17 @@ export type ServerWsWire =
   | { type: 'chat:run'; sessionId: string; runId: string; status: 'running' | 'completed' | 'error' }
   | { type: 'bots:conversation'; sessionId: string }
   | { type: 'bots:attention'; pending: number }
-  | { type: 'bots:computer'; state: ComputerState; controller: 'bot' | 'user' };
+  /**
+   * `computer_id` / `bot_id` name which computer (one per Agent since 2026-10-12, spec
+   * 20261011-agent-first-class P3); older servers send neither. Not read here yet.
+   */
+  | {
+      type: 'bots:computer';
+      state: ComputerState;
+      controller: 'bot' | 'user';
+      computer_id?: string;
+      bot_id?: string | null;
+    };
 
 export type RealtimeEvent =
   | { type: 'chat:run'; sessionId: string; runId: string; status: 'running' | 'completed' | 'error' }

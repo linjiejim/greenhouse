@@ -75,6 +75,7 @@ describe.skipIf(!chromiumAvailable())('BrowserSession on a real browser', { time
     const turn: ComputerTurn = {
       db: {} as DatabaseProvider,
       userId: 'u1',
+      computerId: 'u1',
       botId: `bot_${++n}`,
       sessionId: 's1',
       turnId: `turn_${n}`,

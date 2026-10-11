@@ -39,6 +39,8 @@ import { recordVaultAccess, saveSecureLogin, vaultMatchesForOrigin } from '../va
 import { noteTurnObservation } from '../vault/turn-observations.js';
 import { defaultComputerDeps, releaseTurnLeases, type ComputerDeps, type ComputerTurn } from './browser-session.js';
 import { getComputerRuntime } from './runtime.js';
+import { computerRefForBot } from './namespace.js';
+import { computerForBot } from './refs.js';
 
 export { SecureLoginError } from '../vault/fill.js';
 export { releaseTurnLeases } from './browser-session.js';
@@ -51,6 +53,8 @@ export function computerTurnFrom(ctx: BotTurnContext, deps: ComputerDeps = defau
   return {
     db: ctx.db,
     userId: ctx.userId,
+    // Each Agent works on its own computer — guests in another Agent's conversation too (D30).
+    computerId: computerRefForBot(ctx.userId, ctx.bot).id,
     botId: ctx.bot.id,
     sessionId: ctx.sessionId,
     turnId: ctx.turnId,
@@ -58,7 +62,7 @@ export function computerTurnFrom(ctx: BotTurnContext, deps: ComputerDeps = defau
     signal: ctx.signal,
     markTainted: () => ctx.markTainted(),
     noteObservation: (origin) => noteTurnObservation(ctx, origin, ctx.isTainted()),
-    vaultMatches: withVault ? (origin) => vaultMatchesForOrigin(ctx.db, ctx.userId, origin) : null,
+    vaultMatches: withVault ? (origin) => vaultMatchesForOrigin(ctx.db, ctx.userId, origin, ctx.bot.id) : null,
     ...(implicitTakeover ? { implicitTakeover } : {}),
     ...(humanCheck ? { humanCheck } : {}),
   };
@@ -79,7 +83,9 @@ export function buildComputerTools(
   if (ctx.background) {
     // The clean context dies with the run when it is stopped; a normal finish
     // is covered by the engine calling releaseTurnLeases (and an idle sweep).
-    ctx.signal.addEventListener('abort', () => void releaseTurnLeases(ctx.userId, ctx.turnId, deps), { once: true });
+    ctx.signal.addEventListener('abort', () => void releaseTurnLeases(turn.computerId, ctx.turnId, deps), {
+      once: true,
+    });
     return { browser: createBrowserTool(turn, deps), computer: createComputerTool(turn, deps, host) };
   }
   const tools: Record<string, Tool> = {
@@ -175,13 +181,16 @@ export async function handleLoginDecision(
   // The Bot's page may be gone because the computer stopped (idle, an admin,
   // a crash) and came back since the card was raised: then the card's URL is
   // reopened in the Bot's tab, and if it cannot be the member is told why.
-  const computer = await db.botComputers.get(userId).catch(() => undefined);
+  // The computer of the Agent that asked (each Agent has its own, spec 20261011-agent-first-class D30).
+  const computerId = (await computerForBot(db, userId, request.bot_id)).id;
+  const computer = await db.botComputers.get(computerId).catch(() => undefined);
   const restarted =
     computer?.state !== 'running' ||
     (computer.last_started_at !== null && Date.parse(computer.last_started_at) > Date.parse(request.created_at));
   const filled = await fillSecureLogin(
     {
       userId,
+      computerId,
       botId: request.bot_id,
       sessionId: request.session_id,
       origin,

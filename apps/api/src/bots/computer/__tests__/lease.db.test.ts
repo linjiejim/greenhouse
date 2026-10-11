@@ -42,6 +42,7 @@ import {
   takeoverComputer,
   typeIntoFocusedField,
 } from '../lease.js';
+import { computerIdentity, computerRefForBot } from '../namespace.js';
 
 let db: DatabaseProvider;
 let user: UserRow;
@@ -55,7 +56,9 @@ beforeEach(async () => {
     role: 'team',
   });
   await db.botComputers.ensure({
+    id: user.id,
     user_id: user.id,
+    bot_id: null,
     namespace: 'leasetest',
     container_name: `gh-computer-leasetest-${user.id}`,
     volume_name: `gh-computer-leasetest-${user.id}-home`,
@@ -66,10 +69,13 @@ beforeEach(async () => {
   mocks.deliver.mockClear();
 });
 
-async function conversationWith(name: string): Promise<{ bot: BotRow; sessionId: string }> {
+/** An Agent with its DM and its own computer (one per Agent, spec 20261011-agent-first-class D30). */
+async function conversationWith(name: string): Promise<{ bot: BotRow; sessionId: string; computerId: string }> {
   const bot = await db.bots.createBot({ user_id: user.id, name, role: '' });
   const conversation = await db.bots.ensureDirectConversation(user.id, bot.id);
-  return { bot, sessionId: conversation.session_id };
+  const ref = computerRefForBot(user.id, bot);
+  await db.botComputers.ensure(computerIdentity('leasetest', ref));
+  return { bot, sessionId: conversation.session_id, computerId: ref.id };
 }
 
 async function card(sessionId: string, bot: BotRow, kind: 'takeover' | 'login' = 'takeover') {
@@ -83,26 +89,26 @@ async function card(sessionId: string, bot: BotRow, kind: 'takeover' | 'login' =
   });
 }
 
-const lease = async () => (await db.botComputers.get(user.id))!;
+const lease = async (computerId = user.id) => (await db.botComputers.get(computerId))!;
 
 describe('take-over and hand-back', () => {
   it('bumps the epoch, kills the Bot shell once, and wakes the asking Bot exactly once on hand-back', async () => {
-    const { bot, sessionId } = await conversationWith('Scout');
+    const { bot, sessionId, computerId } = await conversationWith('Scout');
     const request = await card(sessionId, bot);
-    const before = await lease();
+    const before = await lease(computerId);
 
-    await takeoverComputer(user.id);
-    expect(await lease()).toMatchObject({ lease_controller: 'user', lease_epoch: before.lease_epoch + 1 });
+    await takeoverComputer(computerId);
+    expect(await lease(computerId)).toMatchObject({ lease_controller: 'user', lease_epoch: before.lease_epoch + 1 });
     expect(mocks.exec).toHaveBeenCalledTimes(1);
     // Not `pkill -u agent`: background jobs and the member's terminals survive a take-over.
     expect(mocks.exec).toHaveBeenCalledWith(expect.objectContaining({ user: 'agent', argv: ['gh-agent-kill'] }));
-    await takeoverComputer(user.id); // already theirs: nothing more
+    await takeoverComputer(computerId); // already theirs: nothing more
     expect(mocks.exec).toHaveBeenCalledTimes(1);
     expect(mocks.restoreWindow).not.toHaveBeenCalled();
 
-    await handbackComputer(user.id, { note: 'done  \n ok', requestId: request.id });
-    expect(await lease()).toMatchObject({ lease_controller: 'bot', lease_epoch: before.lease_epoch + 2 });
-    expect(mocks.restoreWindow).toHaveBeenCalledWith(user.id); // the Bot gets its window back
+    await handbackComputer(computerId, { note: 'done  \n ok', requestId: request.id });
+    expect(await lease(computerId)).toMatchObject({ lease_controller: 'bot', lease_epoch: before.lease_epoch + 2 });
+    expect(mocks.restoreWindow).toHaveBeenCalledWith(computerId); // the Bot gets its window back
     const settled = await db.bots.getRequest(user.id, request.id);
     expect(settled?.status).toBe('resolved');
     expect(JSON.parse(settled!.result!)).toEqual({ by: 'member', note: 'done ok' });
@@ -112,15 +118,15 @@ describe('take-over and hand-back', () => {
     expect(item).toMatchObject({ kind: 'continue', botId: bot.id, event: { kind: 'takeover_done' } });
     expect(item.kind === 'continue' && item.note).toMatch(/handed it back.*done ok/);
 
-    await handbackComputer(user.id, { requestId: request.id }); // a double click
+    await handbackComputer(computerId, { requestId: request.id }); // a double click
     expect(mocks.deliver).toHaveBeenCalledTimes(1);
   });
 
   it('settles a named secure sign-in card too, and wakes its Bot', async () => {
-    const { bot, sessionId } = await conversationWith('Operator');
+    const { bot, sessionId, computerId } = await conversationWith('Operator');
     const login = await card(sessionId, bot, 'login');
-    await takeoverComputer(user.id);
-    await handbackComputer(user.id, { requestId: login.id });
+    await takeoverComputer(computerId);
+    await handbackComputer(computerId, { requestId: login.id });
     expect((await db.bots.getRequest(user.id, login.id))?.status).toBe('resolved');
     expect(mocks.deliver).toHaveBeenCalledWith(sessionId, expect.objectContaining({ kind: 'continue', botId: bot.id }));
   });
@@ -130,39 +136,52 @@ describe('take-over and hand-back', () => {
     const b = await conversationWith('Operator');
     const captcha = await card(a.sessionId, a.bot);
 
-    // A voluntary take-over in B (just to stop that Bot), then hand back: A's card stays.
-    await takeoverComputer(user.id);
-    await handbackComputer(user.id, {});
-    await takeoverComputer(user.id);
-    await handbackComputer(user.id, { sessionId: b.sessionId });
+    // A voluntary take-over of B's computer (just to stop that Agent), then hand back: A's card stays.
+    await takeoverComputer(b.computerId);
+    await handbackComputer(b.computerId, {});
+    await takeoverComputer(b.computerId);
+    await handbackComputer(b.computerId, { sessionId: b.sessionId });
     expect((await db.bots.getRequest(user.id, captcha.id))?.status).toBe('pending');
     // A card id from another conversation than the one the member says they are in.
-    await handbackComputer(user.id, { requestId: captcha.id, sessionId: b.sessionId });
+    await handbackComputer(a.computerId, { requestId: captcha.id, sessionId: b.sessionId });
+    expect((await db.bots.getRequest(user.id, captcha.id))?.status).toBe('pending');
+    // Another Agent's computer never answers A's card, even named.
+    await handbackComputer(b.computerId, { requestId: captcha.id });
     expect((await db.bots.getRequest(user.id, captcha.id))?.status).toBe('pending');
     expect(mocks.deliver).not.toHaveBeenCalled();
 
     // In A, the one card waiting there is the one the hand-back answers.
-    await takeoverComputer(user.id);
-    await handbackComputer(user.id, { sessionId: a.sessionId });
+    await takeoverComputer(a.computerId);
+    await handbackComputer(a.computerId, { sessionId: a.sessionId });
     expect((await db.bots.getRequest(user.id, captcha.id))?.status).toBe('resolved');
     expect(mocks.deliver).toHaveBeenCalledTimes(1);
     expect(mocks.deliver).toHaveBeenCalledWith(a.sessionId, expect.objectContaining({ botId: a.bot.id }));
 
-    // Two Bots waiting in one conversation: ambiguous, so nothing is guessed.
+    // Two cards of one Agent waiting in one conversation: ambiguous, so nothing is guessed.
     const second = await conversationWith('Writer');
     const one = await card(second.sessionId, second.bot);
     const two = await card(second.sessionId, second.bot, 'login');
-    await handbackComputer(user.id, { sessionId: second.sessionId });
+    await handbackComputer(second.computerId, { sessionId: second.sessionId });
     expect((await db.bots.getRequest(user.id, one.id))?.status).toBe('pending');
     expect((await db.bots.getRequest(user.id, two.id))?.status).toBe('pending');
+  });
+
+  it('gives each Agent its own computer: taking one over leaves the others with their Agents', async () => {
+    const a = await conversationWith('Researcher');
+    const b = await conversationWith('Operator');
+    expect(a.computerId).not.toBe(b.computerId);
+    await takeoverComputer(a.computerId);
+    expect((await lease(a.computerId)).lease_controller).toBe('user');
+    expect((await lease(b.computerId)).lease_controller).toBe('bot');
+    expect((await lease()).lease_controller).toBe('bot'); // the main Agent's computer too
   });
 });
 
 describe('take-over card decisions', () => {
   it('skip denies the card with the skipped note, and a stale double submit delivers once', async () => {
-    const { bot, sessionId } = await conversationWith('Scout');
+    const { bot, sessionId, computerId } = await conversationWith('Scout');
     const request = await card(sessionId, bot);
-    await takeoverComputer(user.id);
+    await takeoverComputer(computerId);
     await handleTakeoverDecision({ userId: user.id, request, decision: { decision: 'deny' } });
     await handleTakeoverDecision({ userId: user.id, request, decision: { decision: 'deny' } });
     expect((await db.bots.getRequest(user.id, request.id))?.status).toBe('denied');
@@ -175,19 +194,19 @@ describe('take-over card decisions', () => {
 
 describe('abandoned take-overs', () => {
   it('hands the computer back after 3 minutes without viewers, records an event, and resumes nobody', async () => {
-    const { bot, sessionId } = await conversationWith('Scout');
+    const { bot, sessionId, computerId } = await conversationWith('Scout');
     const request = await card(sessionId, bot);
-    await takeoverComputer(user.id);
-    const since = Date.parse((await lease()).lease_since!);
+    await takeoverComputer(computerId);
+    const since = Date.parse((await lease(computerId)).lease_since!);
 
     // A take-over that just started (no heartbeat yet) is left alone.
     await releaseAbandonedLeases(since + 1_000);
-    expect((await lease()).lease_controller).toBe('user');
+    expect((await lease(computerId)).lease_controller).toBe('user');
     expect(mocks.deliver).not.toHaveBeenCalled();
 
     await releaseAbandonedLeases(since + ABANDONED_LEASE_MS + 1_000);
-    expect((await lease()).lease_controller).toBe('bot');
-    expect(mocks.restoreWindow).toHaveBeenCalledWith(user.id);
+    expect((await lease(computerId)).lease_controller).toBe('bot');
+    expect(mocks.restoreWindow).toHaveBeenCalledWith(computerId);
     expect(mocks.deliver).toHaveBeenCalledTimes(1);
     const [deliveredTo, item] = mocks.deliver.mock.calls[0]!;
     expect(deliveredTo).toBe(sessionId);

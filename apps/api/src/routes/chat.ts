@@ -30,6 +30,7 @@ import {
   resolveEffectiveTools,
 } from '../agent-runtime/tool-resolution.js';
 import { createClientActionBridge } from '../tools/client-action-bridge.js';
+import { runInAgentScope } from '../platform/agent-scope.js';
 import type { ClientActionBridge } from '../tools/client-action-bridge.js';
 import { createClientActionTools } from '../tools/client-actions.js';
 import type { ChatRequestBody, ChatRequestMessage } from '@greenhouse/types/api';
@@ -708,11 +709,18 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
           // transport buffer remains detached.
 
           const maxSteps = profile.max_steps ?? 12;
+          // A Chat turn that runs as one of the member's Agents (its identity) acts as that Agent:
+          // platform audit and usage name it (platform/agent-scope.ts).
+          const agentBotId = profile.identity?.botId ?? null;
+          const turnRun = run;
+          const inAgentScope = <T>(fn: () => T): T =>
+            agentBotId ? runInAgentScope({ botId: agentBotId, sessionId: sessionId ?? null }, fn) : fn();
           const providerAttemptHook = createProviderAttemptBudgetHook({
             db: getDb(),
             userId,
             caller: 'chat',
             profileId,
+            botId: agentBotId,
             ...(sessionId ? { sessionId } : {}),
             runId: runtimeTrace?.runId ?? run.runId,
             budgetPool,
@@ -754,44 +762,48 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
           });
 
           // ── Create chat stream via shared engine ──
-          const stream = await createChatStreamAsync({
-            profile,
-            messages: engineMessages,
-            tools: executionToolRegistry,
-            systemPrompt,
-            prepareStepMessages: maskToolResults,
-            ...(sessionId ? { sessionId } : {}),
-            // Server-side stop / graceful shutdown aborts the loop; the SDK
-            // surfaces it as an `abort` part handled in the pump.
-            abortSignal: run.signal,
-            providerAttemptHook,
-            // Validated above against the catalog's chat-selectable set, so an
-            // arbitrary model id can never reach the engine.
-            ...(requestedModel ? { modelOverride: requestedModel } : {}),
-          });
+          const stream = await inAgentScope(() =>
+            createChatStreamAsync({
+              profile,
+              messages: engineMessages,
+              tools: executionToolRegistry,
+              systemPrompt,
+              prepareStepMessages: maskToolResults,
+              ...(sessionId ? { sessionId } : {}),
+              // Server-side stop / graceful shutdown aborts the loop; the SDK
+              // surfaces it as an `abort` part handled in the pump.
+              abortSignal: turnRun.signal,
+              providerAttemptHook,
+              // Validated above against the catalog's chat-selectable set, so an
+              // arbitrary model id can never reach the engine.
+              ...(requestedModel ? { modelOverride: requestedModel } : {}),
+            }),
+          );
           const { streamResult, dsmlRecoveries, startTime, modelId } = stream;
 
           // ── Detached pump: generation + persistence outlive this response ──
-          void pumpChatTurn({
-            run,
-            streamResult,
-            collectors: createCollectors(),
-            dsmlRecoveries,
-            startTime,
-            modelId,
-            profile,
-            systemPrompt,
-            chatMessages: engineMessages,
-            sessionId: sessionId ?? undefined,
-            userId,
-            userLocale: user?.locale ?? undefined,
-            titlePromise,
-            clientActionBridge,
-            replaceAssistantMessageId: regenerationTargetId,
-            expectedTail: expectedAssistantTail,
-            providerAttemptHook,
-            runtimeTrace,
-          });
+          void inAgentScope(() =>
+            pumpChatTurn({
+              run: turnRun,
+              streamResult,
+              collectors: createCollectors(),
+              dsmlRecoveries,
+              startTime,
+              modelId,
+              profile,
+              systemPrompt,
+              chatMessages: engineMessages,
+              sessionId: sessionId ?? undefined,
+              userId,
+              userLocale: user?.locale ?? undefined,
+              titlePromise,
+              clientActionBridge,
+              replaceAssistantMessageId: regenerationTargetId,
+              expectedTail: expectedAssistantTail,
+              providerAttemptHook,
+              runtimeTrace,
+            }),
+          );
         } catch (err) {
           if (runtimeTrace) {
             try {

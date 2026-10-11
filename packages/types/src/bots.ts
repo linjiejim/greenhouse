@@ -606,6 +606,12 @@ export type ComputerState = 'absent' | 'starting' | 'running' | 'stopping' | 'er
 
 export interface ComputerStatusView {
   runtime: ComputerRuntimeView;
+  /**
+   * Which computer (spec 20261011-agent-first-class P3a): `bot_computers.id` — the member's id for
+   * their main Agent's — and its Agent (null = the main Agent). Absent from servers before 2026-10-12.
+   */
+  computer_id?: string;
+  bot_id?: string | null;
   state: ComputerState;
   state_reason: string | null;
   controller: 'bot' | 'user';
@@ -668,8 +674,13 @@ export interface ComputerProcessLog {
 
 /** One running/known computer, for the administration page. */
 export interface ComputerAdminRow {
+  /** `bot_computers.id` (the member's id for their main Agent's computer) — the admin actions' key. */
+  computer_id: string;
   user_id: string;
   nickname: string;
+  /** The Agent it belongs to; null = the member's main Agent. */
+  bot_id: string | null;
+  bot_name: string | null;
   state: ComputerState;
   state_reason: string | null;
   controller: 'bot' | 'user';
@@ -704,6 +715,11 @@ export interface VaultItemView {
   has_totp: boolean;
   policy: 'ask' | 'auto';
   always_origins: string[];
+  /**
+   * The Agents (`bots.id`) that may use this entry; null = every Agent (spec
+   * 20261011-agent-first-class P3c). Absent from servers before 2026-10-12.
+   */
+  bot_ids?: string[] | null;
   last_used_at: string | null;
   created_at: string;
 }
@@ -722,6 +738,8 @@ export interface VaultItemWrite {
    * a subset of the current grants — new ones come only from an approval card.
    */
   always_origins?: string[];
+  /** The Agents that may use it (the member's own); null = every Agent. */
+  bot_ids?: string[] | null;
 }
 
 export interface VaultAccessView {
@@ -921,3 +939,40 @@ export type BotRequestErrorCode =
   | 'limit'
   | 'computer_restarted'
   | 'bot_gone';
+
+// ─── An Agent's usage and activity (spec 20261011-agent-first-class P3d) ────────
+
+/** One day of an Agent's model use (its owner's calls only). */
+export interface BotUsageDay {
+  /** YYYY-MM-DD (UTC). */
+  day: string;
+  calls: number;
+  input_tokens: number;
+  output_tokens: number;
+  /** Conversations it worked in that day. */
+  sessions: number;
+}
+
+/** GET /api/bots/:id/usage */
+export interface BotUsageView {
+  days: BotUsageDay[];
+  totals: { calls: number; input_tokens: number; output_tokens: number };
+}
+
+/**
+ * One thing an Agent did, newest first (GET /api/bots/:id/activity): a platform action it took
+ * for its owner (`action`, e.g. `projects.updateTask`), a password-vault use (`vault`), or a
+ * background task (`task`). Never message content.
+ */
+export interface BotActivityItem {
+  at: string;
+  kind: 'action' | 'vault' | 'task';
+  /** action: `<app>.<action>`; vault: the action (fill_login…); task: the task's title. */
+  title: string;
+  /** action: success | denied | error; vault: filled | denied | …; task: its status. */
+  outcome: string;
+  /** action: the record; vault: the site's origin and the entry's name. */
+  detail: string | null;
+  /** The conversation it happened in, when known. */
+  session_id: string | null;
+}

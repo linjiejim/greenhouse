@@ -71,6 +71,8 @@ export function previewPortAllowed(port: number): boolean {
 
 interface PreviewClaims {
   uid: string;
+  /** The computer (`bot_computers.id`); absent = the member's main one (tickets before per-Agent computers). */
+  k?: string;
   /** users.auth_version at issue time. */
   av: number;
   /** The one port it opens. */
@@ -84,9 +86,11 @@ export function createPreviewTicket(
   user: { id: string; authVersion: number },
   port: number,
   now = Date.now(),
+  computerId: string = user.id,
 ): { token: string; expires_at: string; path: string } {
   const claims: PreviewClaims = {
     uid: user.id,
+    ...(computerId !== user.id ? { k: computerId } : {}),
     av: user.authVersion,
     p: port,
     exp: now + PREVIEW_TICKET_TTL_MS,
@@ -112,7 +116,8 @@ export function verifyPreviewTicket(token: string, port: number, now = Date.now(
     typeof claims.uid !== 'string' ||
     typeof claims.av !== 'number' ||
     typeof claims.p !== 'number' ||
-    typeof claims.exp !== 'number'
+    typeof claims.exp !== 'number' ||
+    (claims.k !== undefined && (typeof claims.k !== 'string' || !claims.k.startsWith(`${claims.uid}.`)))
   ) {
     return null;
   }
@@ -176,7 +181,7 @@ function notice(status: number, title: string, detail: string): Response {
 export interface PreviewDeps {
   host(): Pick<ComputerExec, 'openPort'>;
   /** Mark the member's computer as in use (a preview keeps it awake like any other use). */
-  touch(userId: string): Promise<void>;
+  touch(computerId: string): Promise<void>;
 }
 
 /** The handler behind PREVIEW_PREFIX (exported for tests: a fake host, a real HTTP service). */
@@ -198,7 +203,8 @@ export async function servePreview(request: Request, deps: PreviewDeps): Promise
   const base = `${PREVIEW_PREFIX}/${token}/${port}/`;
   // /<ticket>/<port> without the slash: relative links would resolve one level up.
   if (tail.length === 0) return new Response(null, { status: 308, headers: { location: base } });
-  const computer = await getDb().botComputers.get(claims.uid);
+  const computerId = claims.k ?? claims.uid;
+  const computer = await getDb().botComputers.get(computerId);
   if (!computer || computer.state !== 'running') {
     return notice(
       503,
@@ -206,7 +212,7 @@ export async function servePreview(request: Request, deps: PreviewDeps): Promise
       'Open Greenhouse and wake the computer (or ask an Agent to use it), then reload this page.',
     );
   }
-  void deps.touch(claims.uid).catch(() => undefined);
+  void deps.touch(computerId).catch(() => undefined);
 
   const declared = Number(request.headers.get('content-length') ?? '0');
   if (declared > MAX_REQUEST_BYTES) return notice(413, 'Too large', 'A preview forwards at most 20 MB per request.');

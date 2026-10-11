@@ -9,11 +9,14 @@ export {
   initBotComputers,
   shutdownBotComputers,
   computerStatusFor,
+  stopComputer,
   stopUserComputer,
+  purgeComputer,
   purgeUserComputer,
   handleTakeoverDecision,
   botsComputerHealthView,
 } from './runtime.js';
 export { createBotsComputerRoutes, createComputerViewerRoutes, createAdminBotComputerRoutes } from './routes.js';
 export { buildComputerTools, handleLoginDecision, releaseTurnLeases, SecureLoginError } from './tools.js';
+export { computerRef, computerRefForBot, parseComputerId, type ComputerRef } from './namespace.js';
 export { createBotsVaultRoutes } from '../vault/routes.js';

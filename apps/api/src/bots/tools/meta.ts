@@ -44,7 +44,7 @@ Sign in with the vault tool. A CAPTCHA or "verify you are human" page goes to th
     icon: 'Monitor',
     runtime_risk: 'r1',
     sort_order: 91,
-    description: `The member's computer (Linux; shared by all their Agents).
+    description: `Your own computer (Linux; only you use it; the member can watch and take over).
 Actions: shell {command, timeout_s?} — bash in ~/work as user "agent" (no sudo, ≤120 s, long output truncated); run_background {command, name?} — long work (installs, builds, downloads, data runs) that keeps running after the call, output to a log; processes; process_log {id, lines?}; stop_process {id}; read_file {path}; write_file {path, content}; share_file {path} — give the member a finished file they asked for (≤20 MB), never progress, logs or drafts; import_attachment {file_id, path?} — copy a file attached here into ~/work/inbox (or a path in ~/work) for the shell (≤20 MB); preview {port} — a link the member opens to use a web service running here (2 h; relative paths only); status — whether the computer is up and who controls it.
 Your whole home persists, not only ~/work: pip, npm -g and pipx installs stay. Browser downloads land in ~/Downloads; pdftotext and pdfinfo read PDFs. The browser profile and its passwords are not reachable from the shell.
 A server you start is reachable only inside this computer: never give the member its localhost address — use preview {port}.`,

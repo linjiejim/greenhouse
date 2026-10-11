@@ -77,6 +77,12 @@ export const tasks = pgTable(
       .default('normal'),
     task_type: text('task_type').notNull().default('task'),
     assignee_id: text('assignee_id'),
+    /**
+     * Handed to an Agent (spec 20261011-agent-first-class P3e, D32): the Agent (`bots.id`, the
+     * assignee's own) working on it in a task chat (`agent_session_id`). The assignee stays responsible.
+     */
+    agent_id: text('agent_id'),
+    agent_session_id: text('agent_session_id'),
     start_date: text('start_date'),
     due_date: text('due_date'),
     completed_at: timestamp('completed_at', { withTimezone: true, mode: 'string' }),

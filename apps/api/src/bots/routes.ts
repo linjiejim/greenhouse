@@ -28,6 +28,8 @@
  * PATCH  /api/bots/:id                                — 修改 Bot 资料（追加一个不可变版本）
  * DELETE /api/bots/:id                                — 归档 Bot（Sprouty 不可归档：400 bot_protected）
  * GET    /api/bots/:id/versions                       — 不可变版本历史
+ * GET    /api/bots/:id/usage?days=                    — 它的模型用量（按天：次数、token、对话数；默认 30 天、最多 90）
+ * GET    /api/bots/:id/activity?limit=                — 它做过的事（平台动作 / 密码库使用 / 后台任务，新到旧，不含消息内容）
  * GET    /api/bots/:id/memories                       — 该 Bot 的私有记忆
  * DELETE /api/bots/:id/memories/:memoryId             — 删除一条私有记忆
  *
@@ -55,7 +57,9 @@ import {
   BOT_DESCRIPTION_MAX,
   galleryTemplate,
   isSproutyBot,
+  type BotActivityItem,
   type BotConversationDetail,
+  type BotUsageView,
   type BotRequestStatus,
   type BotTemplateKey,
 } from '@greenhouse/types/bots';
@@ -63,6 +67,7 @@ import type { BotVersionMeta } from '@greenhouse/db';
 import { resolveUserTools } from '../agent.js';
 import { userHasFeature } from '../auth/features.js';
 import { botProfileId } from '../profiles/profile.js';
+import { PLATFORM_ORG_ID } from '../platform/runtime.js';
 import { getAllToolIds } from '../tools/registry.js';
 import { ensureSproutyBot } from './sprouty.js';
 import { ensureBotFolder, renameBotFolder } from './folder.js';
@@ -80,7 +85,7 @@ import { streamRunToResponse } from '../chat/turn.js';
 import { admitRichBlocks } from '@greenhouse/types/rich-output';
 import { isChatModelAllowed } from '../config/models.js';
 import { connectionManager } from '../ws/connection-manager.js';
-import { getComputerRuntime } from './computer/index.js';
+import { computerRefForBot, getComputerRuntime, stopComputer } from './computer/index.js';
 import { pushAttention, resolveApprovalWaiter } from './engine/approvals.js';
 import { botsLocale, copy, type BotsLocale } from './engine/copy.js';
 import { compactConversation, digestView, DIGEST_TRIGGER_TOKENS, effectiveDigestUpto } from './engine/digest.js';
@@ -1012,6 +1017,10 @@ export function createBotsRoutes() {
           );
         const archived = await db.bots.archiveBot(user.id, botId);
         if (!archived) return c.json({ error: 'Agent not found' }, 404);
+        // Its own computer goes to sleep (the home stays: it can still be opened and cleaned up).
+        void stopComputer(computerRefForBot(user.id, { id: botId }).id, 'admin').catch((error: unknown) =>
+          logger.warn('[bots] could not stop an archived Agent’s computer', { error: toErrorMessage(error) }),
+        );
         // Its open cards can no longer be acted on: withdraw them so "needs you"
         // does not keep pointing at a Bot that is gone.
         const pending = await db.bots.listRequests(user.id, { status: 'pending' });
@@ -1077,6 +1086,77 @@ export function createBotsRoutes() {
         if (!bot) return c.json({ error: 'Agent not found' }, 404);
         const folder = await ensureBotFolder(db, bot);
         return c.json({ folder: { id: folder.id, name: folder.name, url: `#/knowledge/folder/${folder.id}` } });
+      })
+
+      // ── GET /api/bots/:id/usage — model use per day (spec 20261011-agent-first-class P3d) ──
+      .get('/:id/usage', async (c) => {
+        const user = getAuthUser(c);
+        const db = getDb();
+        const bot = await db.bots.getBot(user.id, c.req.param('id'));
+        if (!bot) return c.json({ error: 'Agent not found' }, 404);
+        const raw = Number(c.req.query('days') ?? 30);
+        const days = Number.isInteger(raw) && raw > 0 ? Math.min(raw, 90) : 30;
+        const since = new Date(Date.now() - days * 86_400_000).toISOString();
+        const rows = await db.usage.getBotDailyUsage(user.id, bot.id, since);
+        const view: BotUsageView = {
+          days: rows,
+          totals: rows.reduce(
+            (sum, row) => ({
+              calls: sum.calls + row.calls,
+              input_tokens: sum.input_tokens + row.input_tokens,
+              output_tokens: sum.output_tokens + row.output_tokens,
+            }),
+            { calls: 0, input_tokens: 0, output_tokens: 0 },
+          ),
+        };
+        return c.json(view);
+      })
+
+      // ── GET /api/bots/:id/activity — what it did: actions, vault uses, background tasks ──
+      .get('/:id/activity', async (c) => {
+        const user = getAuthUser(c);
+        const db = getDb();
+        const bot = await db.bots.getBot(user.id, c.req.param('id'));
+        if (!bot) return c.json({ error: 'Agent not found' }, 404);
+        const raw = Number(c.req.query('limit') ?? 50);
+        const limit = Number.isInteger(raw) && raw > 0 ? Math.min(raw, 200) : 50;
+        const [audit, vault, tasks] = await Promise.all([
+          db.platform.listAuditEventsForAgent(PLATFORM_ORG_ID, bot.id, user.id, limit),
+          db.vault.listAccess(user.id, 200),
+          listMemberTaskHistory(db, user.id, MEMBER_TASKS_MAX),
+        ]);
+        const items: BotActivityItem[] = [
+          ...audit.map((event) => ({
+            at: event.created_at,
+            kind: 'action' as const,
+            title: `${event.app_id}.${event.action_id}`,
+            outcome: event.result,
+            detail: event.record_id ? `${event.entity_id ?? event.app_id} ${event.record_id}` : null,
+            session_id: event.session_id,
+          })),
+          ...vault
+            .filter((row) => row.bot_id === bot.id)
+            .map((row) => ({
+              at: row.created_at,
+              kind: 'vault' as const,
+              title: row.action,
+              outcome: row.outcome,
+              detail: [row.origin, row.item_label].filter(Boolean).join(' · ') || null,
+              session_id: row.session_id,
+            })),
+          ...tasks
+            .filter((task) => task.bot_id === bot.id)
+            .map((task) => ({
+              at: task.created_at,
+              kind: 'task' as const,
+              title: task.title,
+              outcome: task.status,
+              detail: task.summary,
+              session_id: task.conversation_id,
+            })),
+        ];
+        items.sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
+        return c.json({ activity: items.slice(0, limit) });
       })
 
       // ── GET /api/bots/:id/memories ──

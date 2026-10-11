@@ -38,7 +38,9 @@ function setup(opts: { computers?: Record<string, BotComputerRow['state'] | null
   const store: ProcessWatchDeps['store'] = {
     get: async (userId) =>
       computers[userId] ? ({ user_id: userId, state: computers[userId] } as BotComputerRow) : undefined,
-    listWatchingUsers: async () => [...new Set(watches.filter((w) => w.status === 'watching').map((w) => w.user_id))],
+    listWatchingComputers: async () => [
+      ...new Set(watches.filter((w) => w.status === 'watching').map((w) => w.user_id)),
+    ],
     listWatches: async (userId) => watches.filter((w) => w.user_id === userId && w.status === 'watching'),
     settleWatch: async (id, status) => {
       const watch = watches.find((w) => w.id === id && w.status === 'watching');
@@ -68,6 +70,7 @@ function setup(opts: { computers?: Record<string, BotComputerRow['state'] | null
     watches.push({
       id: next++,
       user_id: userId,
+      computer_id: userId,
       session_id: `sess_${userId}`,
       bot_id: `bot_${userId}`,
       job_id: jobId,

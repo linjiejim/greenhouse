@@ -76,7 +76,7 @@ export const FEATURE_FLAGS = [
     key: 'bots',
     label: 'Agents',
     description:
-      "Agents' persistent threads (the main thread and every Agent's DM): persistent memory, a shared computer the member can watch and take over, a password vault, and Agents collaborating in one conversation",
+      "Agents' persistent threads (the main thread and every Agent's DM): persistent memory, a computer per Agent the member can watch and take over, a password vault, and Agents collaborating in one conversation",
     // Everyone in the org gets Bots (docs/specs/20261005-personal-assistant-bots.md).
     // The computer still needs BOTS_COMPUTER_ENABLED + passing prechecks; without
     // it Bots keep chat, memory, collaboration and background research.

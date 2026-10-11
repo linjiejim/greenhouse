@@ -121,6 +121,8 @@ function memoryDb(
     users: { getById: async () => ({ id: 'u1', locale }) },
     botComputers: { get: async () => ({ user_id: 'u1', ...computer }) },
     bots: {
+      // The asking Agent is the member's main one here: its computer is the member's (`u1`).
+      getBot: async (_userId: string, id: string) => ({ id, template_key: 'sprouty' }),
       settleRequest: vi.fn(async (_userId: string, id: string, status: string, result?: Record<string, unknown>) => {
         const current = requests.get(id);
         if (current && current.status !== 'pending') return undefined;
@@ -192,6 +194,7 @@ describe.skipIf(!chromiumAvailable())('handleLoginDecision', { timeout: 90_000 }
       {
         db: turn.db,
         userId: 'u1',
+        computerId: 'u1',
         botId,
         sessionId: 'sess_1',
         turnId: 't',

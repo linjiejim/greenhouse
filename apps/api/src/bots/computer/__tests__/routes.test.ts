@@ -31,6 +31,15 @@ vi.mock('@greenhouse/db', () => ({
   getDb: () => ({
     botComputers: { setTimezone: mocks.setTimezone, get: async () => undefined },
     users: { getById: async (id: string) => ({ id, auth_version: 4 }) },
+    // u1's Agents: Sprouty (the main computer) and Quill (its own).
+    bots: {
+      getBot: async (userId: string, id: string) =>
+        userId === 'u1' && id === 'bot_sprouty'
+          ? { id, template_key: 'sprouty' }
+          : userId === 'u1' && id === 'bot_quill'
+            ? { id, template_key: null }
+            : undefined,
+    },
   }),
 }));
 vi.mock('../runtime.js', () => ({
@@ -115,7 +124,9 @@ describe('PUT /settings', () => {
     expect(await res.json()).toMatchObject({ state: 'running', lang: 'zh-CN' });
     expect(mocks.setTimezone).toHaveBeenCalledWith(
       {
+        id: 'u1',
         user_id: 'u1',
+        bot_id: null,
         namespace: 'ns1',
         container_name: 'gh-computer-ns1-u1',
         volume_name: 'gh-computer-ns1-u1-home',
@@ -291,5 +302,36 @@ describe('processes', () => {
 
     mocks.jobLog.mockRejectedValueOnce(new ComputerUnavailableError('stopped', 'The computer is not running'));
     expect((await app().request('/processes/j00000001/log')).status).toBe(409);
+  });
+});
+
+describe('one computer per Agent (?bot=)', () => {
+  it('opens the asked-for Agent’s own computer, the main one for Sprouty or no Agent, 404 for anyone else’s', async () => {
+    await app().request('/takeover?bot=bot_quill', { method: 'POST' });
+    expect(mocks.takeoverComputer).toHaveBeenLastCalledWith('u1.bot_quill');
+    await app().request('/takeover?bot=bot_sprouty', { method: 'POST' });
+    expect(mocks.takeoverComputer).toHaveBeenLastCalledWith('u1');
+    await app().request('/takeover', { method: 'POST' });
+    expect(mocks.takeoverComputer).toHaveBeenLastCalledWith('u1');
+
+    const stranger = await app().request('/takeover?bot=bot_someone_else', { method: 'POST' });
+    expect(stranger.status).toBe(404);
+    expect(await stranger.json()).toMatchObject({ code: 'agent_not_found' });
+    expect(mocks.takeoverComputer).toHaveBeenCalledTimes(3);
+  });
+
+  it('binds a viewer ticket to that computer (and leaves a main-computer ticket as before)', async () => {
+    const quill = (await (await app().request('/view-token?bot=bot_quill', { method: 'POST' })).json()) as {
+      token: string;
+    };
+    expect(verifyViewToken(quill.token)).toMatchObject({
+      uid: 'u1',
+      k: 'u1.bot_quill',
+      c: 'gh-computer-ns1-u1-botquill',
+    });
+    const main = (await (await app().request('/view-token', { method: 'POST' })).json()) as { token: string };
+    const claims = verifyViewToken(main.token)!;
+    expect(claims.k).toBeUndefined();
+    expect(claims.c).toBe('gh-computer-ns1-u1');
   });
 });

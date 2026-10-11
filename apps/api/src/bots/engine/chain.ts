@@ -50,6 +50,7 @@ import type { ToolRegistry } from '../../agent.js';
 import { resolveEffectiveTools } from '../../agent-runtime/tool-resolution.js';
 import { chatRunRegistry, type ChatRun } from '../../chat/runs.js';
 import { connectionManager } from '../../ws/connection-manager.js';
+import { runInAgentScope } from '../../platform/agent-scope.js';
 import { TASK_REPORT_MESSAGE_PREFIX, type InboxItem } from './inbox-types.js';
 import { botsLocale, copy } from './copy.js';
 import { botsEngineDeps } from './deps.js';
@@ -435,7 +436,10 @@ async function runChain(rc: RunContext, trigger: ChainTrigger): Promise<ChainTri
       // Once limited, nothing but a reserved follow-up may start a turn.
       if (chain.limit) continue;
     }
-    const result = await runBotTurn(rc, chain, item);
+    // The speaking Agent acts: platform audit and usage name it (platform/agent-scope.ts).
+    const result = await runInAgentScope({ botId: item.botId, sessionId: rc.sessionId }, () =>
+      runBotTurn(rc, chain, item),
+    );
     if (result.transcriptChanged) throw new TranscriptChangedError(rc.sessionId);
     chain.outcomes.set(item.botId, result.status);
     floor.endTurn();

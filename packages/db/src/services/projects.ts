@@ -520,6 +520,33 @@ export function createProjectService(db: Db) {
       return deleted.length > 0;
     },
 
+    /**
+     * Hand a task to one of the member's Agents, working in a task chat
+     * (spec 20261011-agent-first-class P3e): who answers is recorded, the person responsible is
+     * not touched. null clears it.
+     */
+    async setTaskAgent(
+      id: number,
+      agent: { botId: string; sessionId: string; label: string } | null,
+      userId: string,
+    ): Promise<TaskRow | undefined> {
+      const [row] = await db
+        .update(tasks)
+        .set({ agent_id: agent?.botId ?? null, agent_session_id: agent?.sessionId ?? null, updated_at: nowIso() })
+        .where(eq(tasks.id, id))
+        .returning();
+      if (row) {
+        await service.logActivityInternal(
+          row.project_id,
+          id,
+          userId,
+          agent ? 'task_handed_to_agent' : 'task_agent_cleared',
+          agent?.label ?? null,
+        );
+      }
+      return row as TaskRow | undefined;
+    },
+
     // ── Activity Log ──
 
     async logActivity(

@@ -66,6 +66,7 @@ function item(
     id,
     user_id: USER,
     label: `Item ${id}`,
+    bot_ids: null,
     origins: JSON.stringify(origins),
     username_enc: secrets.username ? encryptVaultField(USER, id, 'username', secrets.username) : null,
     username_hint: secrets.username ? 'me***@example.com' : '',
@@ -128,6 +129,7 @@ describe.skipIf(!chromiumAvailable())('vault fills on a real browser', { timeout
     const computerTurn: ComputerTurn = {
       db: store.db,
       userId: USER,
+      computerId: USER,
       botId,
       sessionId: 's1',
       turnId: `t${n}`,
@@ -145,6 +147,7 @@ describe.skipIf(!chromiumAvailable())('vault fills on a real browser', { timeout
     const turn: FillTurn = {
       db: store.db,
       userId: USER,
+      computerId: USER,
       botId,
       botName: 'Sage',
       sessionId: 's1',
@@ -515,6 +518,7 @@ describe.skipIf(!chromiumAvailable())('vault fills on a real browser', { timeout
       const result = await fillSecureLogin(
         {
           userId: USER,
+          computerId: USER,
           botId: turn.botId,
           sessionId: 's1',
           origin: site.origin,
@@ -531,6 +535,7 @@ describe.skipIf(!chromiumAvailable())('vault fills on a real browser', { timeout
 
     const secure = (botId: string, values: { username?: string; password?: string; otp?: string }) => ({
       userId: USER,
+      computerId: USER,
       botId,
       sessionId: 's1',
       origin: site.origin,
@@ -601,6 +606,7 @@ describe.skipIf(!chromiumAvailable())('vault fills on a real browser', { timeout
       const { turn } = await botOn(`${other.origin}/login`);
       const args = {
         userId: USER,
+        computerId: USER,
         botId: turn.botId,
         sessionId: 's1',
         origin: site.origin,

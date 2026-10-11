@@ -78,6 +78,7 @@ function setup(overrides: Partial<ComputerDeps> = {}, turnOverrides: Partial<Com
   const turn: ComputerTurn = {
     db: { chatFiles, botComputers, users } as unknown as DatabaseProvider,
     userId: 'u1',
+    computerId: 'u1',
     botId: 'bot_1',
     sessionId: 'sess_1',
     turnId: 't1',
@@ -449,6 +450,7 @@ describe('what the Bot is told about its computer', () => {
     const result = await runComputerAction(turn, { action: 'run_background', command: 'make', name: 'build' }, deps);
     expect(botComputers.watchProcess).toHaveBeenCalledWith({
       user_id: 'u1',
+      computer_id: 'u1',
       session_id: 'sess_1',
       bot_id: 'bot_1',
       job_id: 'j0000beef',
