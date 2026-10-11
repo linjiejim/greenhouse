@@ -2,10 +2,11 @@
  * Built-in app templates and app plans, end to end over HTTP (Tables → Apps
  * Phase 1 slice AG, acceptance 6's deterministic part; real PostgreSQL, rolled
  * back per test):
- * - the catalog: every template drafts through the plan tool's validator with
- *   no problem and installs through the apply path with no failed operation —
- *   a new private Base the installer owns, disabled automations, one draft app
- *   whose spec has no problem against the Base it built;
+ * - the catalog: every template, in each of its languages, drafts through the
+ *   plan tool's validator with no problem and installs through the apply path
+ *   with no failed operation — a new private Base the installer owns, disabled
+ *   automations, one draft app whose spec has no problem against the Base it
+ *   built — in the language the center lists it in (the installer's);
  * - the procurement fixture as a confirmed CHAT plan (`/api/tables/schema-plan/apply`),
  *   shared and published in the same plan: 0 failed, published v1, audiences set;
  * - an app plan confirmed by a Base builder fails clearly on the owner's steps.
@@ -27,7 +28,12 @@ import tablesRoutes from '../tables/index.js';
 import appRoutes from '../apps.js';
 import { tablesRegistration } from '../../platform/tables/application.js';
 import { initializePlatformRuntime, resetPlatformRuntimeForTests } from '../../platform/runtime.js';
-import { APP_TEMPLATE_KEYS, appTemplates, findAppTemplate } from '../../platform/tables/app-templates/index.js';
+import {
+  APP_TEMPLATE_KEYS,
+  APP_TEMPLATE_LOCALES,
+  appTemplates,
+  findAppTemplate,
+} from '../../platform/tables/app-templates/index.js';
 import { draftTablesSchemaPlan } from '../../tools/tables-schema-plan.js';
 import { createInternalTestUser } from '../../../../../tests/helpers/internal-user.js';
 
@@ -100,18 +106,32 @@ describe('built-in app templates', () => {
     expect(chinese.templates.map((template) => template.name)).toEqual(['采购申请', 'IT 工单']);
   });
 
-  it.each(APP_TEMPLATE_KEYS)('%s drafts with no problem and installs with no failed operation', async (key) => {
+  const cases = APP_TEMPLATE_KEYS.flatMap((key) => APP_TEMPLATE_LOCALES.map((locale) => [key, locale] as const));
+  it.each(cases)('%s (%s) drafts with no problem and installs with no failed operation', async (key, locale) => {
     const template = findAppTemplate(key)!;
-    const drafted = await draftTablesSchemaPlan(owner.id, {
-      summary: template.summary,
-      operations: template.operations,
-    });
+    const plan = template.plans[locale];
+    const drafted = await draftTablesSchemaPlan(owner.id, { summary: plan.summary, operations: plan.operations });
     expect(drafted.ok ? [] : drafted.problems).toEqual([]);
 
+    await db.users.update(owner.id, { locale });
+    const listed = await json<{ templates: AppTemplateSummary[] }>(await send(owner, '/api/apps/templates'));
     const installed = await json<AppTemplateInstallResult>(
       await send(owner, `/api/apps/templates/${key}/install`, 'POST'),
       201,
     );
+    // Installed in the language it was listed in: the Base, its fields and the app all read in it.
+    const name = listed.templates.find((entry) => entry.key === key)!.name;
+    expect(installed.app.name).toBe(name);
+    const built = await db.tables.getBase(installed.baseId);
+    expect(built?.name).toBe(name);
+    const tables = await db.tables.listTables(installed.baseId);
+    const words = JSON.stringify({
+      tables: tables.map((table) => table.name),
+      fields: await Promise.all(tables.map(async (table) => (await db.tables.getSchema(table.id))?.fields)),
+      rules: (await db.tables.listAutomationRules(installed.baseId)).map((rule) => [rule.name, rule.config]),
+    });
+    const chinese = /[\u3000-\u9fff]/;
+    expect(chinese.test(words), words.slice(0, 300)).toBe(locale === 'zh');
     expect(installed.app).toMatchObject({
       status: 'draft',
       baseId: installed.baseId,
@@ -125,6 +145,7 @@ describe('built-in app templates', () => {
     const draft = await json<AppDraftView>(await send(owner, `/api/apps/${installed.app.id}/draft`));
     expect(draft.errors).toEqual([]);
     expect(draft.spec.roles.length).toBeGreaterThan(1);
+    expect(chinese.test(JSON.stringify(draft.spec))).toBe(locale === 'zh');
 
     // Nothing runs and nobody else is reached until the owner decides.
     const rules = await db.tables.listAutomationRules(installed.baseId);
@@ -140,11 +161,17 @@ describe('built-in app templates', () => {
 
   it('loads a catalog whose templates create no grants, forms, audiences or publishes', () => {
     for (const template of appTemplates().values()) {
-      const kinds = new Set(template.operations.map((operation) => operation.op));
-      for (const forbidden of ['member.set', 'role.create', 'form.create', 'app.audience', 'app.publish']) {
-        expect(kinds.has(forbidden as SchemaPlanOperation['op']), `${template.key} ${forbidden}`).toBe(false);
+      for (const plan of Object.values(template.plans)) {
+        const kinds = new Set(plan.operations.map((operation) => operation.op));
+        for (const forbidden of ['member.set', 'role.create', 'form.create', 'app.audience', 'app.publish']) {
+          expect(kinds.has(forbidden as SchemaPlanOperation['op']), `${template.key} ${forbidden}`).toBe(false);
+        }
+        expect(plan.operations[0]!.op).toBe('base.create');
       }
-      expect(template.operations[0]!.op).toBe('base.create');
+      // One structure in every language (both come from the same file): the same steps, the same refs.
+      const steps = (operations: SchemaPlanOperation[]) =>
+        operations.map((operation) => `${operation.op}:${'ref' in operation ? operation.ref : ''}`);
+      expect(steps(template.plans.en.operations)).toEqual(steps(template.plans.zh.operations));
     }
   });
 });
@@ -153,8 +180,9 @@ describe('the procurement app as a confirmed chat plan', () => {
   it('builds, shares and publishes it with 0 failed operations', async () => {
     const finance = await db.groups.create({ name: '财务', description: '', created_by: owner.id });
     const template = findAppTemplate('procurement')!;
+    const plan = template.plans.zh;
     const operations: SchemaPlanOperation[] = [
-      ...template.operations,
+      ...plan.operations,
       {
         op: 'app.audience',
         appRef: template.appRef,
@@ -165,7 +193,7 @@ describe('the procurement app as a confirmed chat plan', () => {
       },
       { op: 'app.publish', appRef: template.appRef, notes: '第一版' },
     ];
-    const drafted = await draftTablesSchemaPlan(owner.id, { summary: template.summary, operations });
+    const drafted = await draftTablesSchemaPlan(owner.id, { summary: plan.summary, operations });
     expect(drafted.ok ? [] : drafted.problems).toEqual([]);
     if (!drafted.ok) return;
     // The card's permission section names who gets what before Confirm.

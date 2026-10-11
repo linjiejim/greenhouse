@@ -14,7 +14,9 @@
  *     live table of the Base; fields exist on it with a usable type; queries,
  *     `when` preconditions, embedded `TableCardSpec`s and page filters pass the
  *     db's own validators (`checkWidgetCard` / `checkDashboardConfig`, the same
- *     code dashboards use — never a copy); `set_fields` keys are editable for
+ *     code dashboards use — never a copy); a `$page.<filterId>` clause compares
+ *     with an operator its filter kind gives a meaning (`PAGE_REF_OPERATORS`) on
+ *     a field that filter could target; `set_fields` keys are editable for
  *     **every** role the action applies to (compiled with the one access
  *     compiler); `run_automation` names a button rule of the card's table;
  *     role rules only name tables of the Base.
@@ -67,7 +69,9 @@ import {
   type TableFieldType,
   type TableFieldValueEntry,
   type TableFilterControl,
+  type TableFilterControlKind,
   type TableFilterGroup,
+  type TableFilterOperator,
   type TableQuery,
   type TableSystemField,
 } from '@greenhouse/types/tables';
@@ -378,6 +382,25 @@ function messageOf(error: unknown): string {
 
 /** A `$page.<filterId>` clause value (the gateway resolves it against the page's filter values). */
 export const PAGE_REF = /^\$page\.([a-z0-9][a-z0-9_-]{0,39})$/;
+
+/**
+ * How a `$page.<filterId>` clause may compare its field with what the viewer
+ * picked in that filter, per filter kind (the gateway's `pageRefGroups`
+ * applies it):
+ * - select / user: `eq` / `in` / `contains` = any of the picked options or
+ *   people (the filter's own predicate); `neq` / `not_contains` = none of them;
+ * - search: the clause's own operator with the typed text;
+ * - date_range: `eq` = inside the range, `neq` = outside it, `gte` = from its
+ *   start, `lte` = up to its end, `gt` = after it, `lt` = before it.
+ * Any other operator is a spec problem (a stored spec's card turns
+ * unavailable) — never quietly read as "is".
+ */
+export const PAGE_REF_OPERATORS: Readonly<Record<TableFilterControlKind, readonly TableFilterOperator[]>> = {
+  select: ['eq', 'in', 'contains', 'neq', 'not_contains'],
+  user: ['eq', 'in', 'contains', 'neq', 'not_contains'],
+  search: ['eq', 'neq', 'contains', 'not_contains', 'gt', 'gte', 'lt', 'lte'],
+  date_range: ['eq', 'neq', 'gte', 'lte', 'gt', 'lt'],
+};
 
 /** The `$page.<filterId>` ids a query's clauses reference. */
 function pageRefs(query: AppDataSource['query'] | undefined): string[] {
@@ -694,6 +717,48 @@ function schemaChecker(schema: AppSpecSchema, problems: Problems): SchemaChecker
   const condition = (tableId: number, group: TableFilterGroup | undefined, where: Where) =>
     group ? query(tableId, { where: group }, where) : Promise.resolve();
 
+  /**
+   * A card query's `$page` clauses (the dry compile strips them): an operator
+   * the filter kind gives a meaning (`PAGE_REF_OPERATORS`), on a field or system
+   * field that filter could target — the dashboards' own control check with the
+   * clause as its one target. A missing filter is a shape problem and a broken
+   * one is the filter's own issue: both are skipped here.
+   */
+  const pageRefClauses = async (
+    tableId: number,
+    raw: AppDataSource['query'] | undefined,
+    controls: readonly TableFilterControl[],
+    where: Where,
+  ) => {
+    for (const group of [raw?.where, ...(raw?.filters ?? [])]) {
+      for (const clause of group?.clauses ?? []) {
+        const filterId = typeof clause.value === 'string' ? PAGE_REF.exec(clause.value)?.[1] : undefined;
+        const control = filterId === undefined ? undefined : controls.find((entry) => entry.id === filterId);
+        if (!control) continue;
+        const allowed = PAGE_REF_OPERATORS[control.kind];
+        if (!allowed.includes(clause.operator)) {
+          problems.add(
+            where,
+            `$page.${control.id} is a ${control.kind} filter: compare with ${allowed.join(' / ')}, not ${clause.operator}`,
+          );
+          continue;
+        }
+        const target =
+          clause.systemField !== undefined
+            ? { tableId, systemField: clause.systemField }
+            : { tableId, fieldId: clause.fieldId };
+        try {
+          await checkDashboardConfig(schema.source, schema.baseId, {
+            version: 1,
+            filters: [{ ...control, targets: [target] }],
+          });
+        } catch (error) {
+          problems.add(where, `$page.${control.id}: ${messageOf(error)}`);
+        }
+      }
+    }
+  };
+
   const actionList = async (
     spec: AppSpec,
     pageId: string,
@@ -734,7 +799,13 @@ function schemaChecker(schema: AppSpecSchema, problems: Problems): SchemaChecker
     }
   };
 
-  const recordsLike = async (spec: AppSpec, pageId: string, item: AppCard, where: Where) => {
+  const recordsLike = async (
+    spec: AppSpec,
+    pageId: string,
+    item: AppCard,
+    controls: readonly TableFilterControl[],
+    where: Where,
+  ) => {
     if (item.kind !== 'records' && item.kind !== 'kanban' && item.kind !== 'calendar' && item.kind !== 'gallery')
       return;
     const tableId = item.source.tableId;
@@ -743,6 +814,7 @@ function schemaChecker(schema: AppSpecSchema, problems: Problems): SchemaChecker
       fieldIds: item.fieldIds,
       ...(item.kind === 'records' && item.systemFields ? { systemFields: item.systemFields } : {}),
     });
+    await pageRefClauses(tableId, item.source.query, controls, within(where, 'source.query'));
     if (item.kind === 'kanban') {
       await field(tableId, item.groupFieldId, within(where, 'groupFieldId'), {
         types: ['single_select', 'user'],
@@ -823,7 +895,7 @@ function schemaChecker(schema: AppSpecSchema, problems: Problems): SchemaChecker
             case 'kanban':
             case 'calendar':
             case 'gallery':
-              await recordsLike(spec, entry.id, item, where);
+              await recordsLike(spec, entry.id, item, controls, where);
               break;
             case 'form':
               if (!tableOk(item.tableId, within(where, 'tableId'))) break;
@@ -855,6 +927,11 @@ function schemaChecker(schema: AppSpecSchema, problems: Problems): SchemaChecker
                 cards.set(`${entry.id}/${item.id}`, shaped.card);
               } catch (error) {
                 problems.add(within(where, 'card'), messageOf(error));
+                break;
+              }
+              if (shaped.card.source) {
+                const { tableId, query: cardQuery } = shaped.card.source;
+                await pageRefClauses(tableId, cardQuery, controls, within(where, 'card.source.query'));
               }
               break;
             }

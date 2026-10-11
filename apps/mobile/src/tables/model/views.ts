@@ -20,7 +20,6 @@ import {
   type TableFilterOperator,
   type TableQuery,
   type TableSort,
-  type TableSystemField,
   type TableViewConfig,
   type TableViewType,
 } from '../../shared/tables';
@@ -328,6 +327,3 @@ export function busyDays(
   }
   return out;
 }
-
-/** A system field as a sort / filter target (the record list's "created by", "updated"). */
-export const SYSTEM_SORTS: readonly TableSystemField[] = ['created_at', 'updated_at'];

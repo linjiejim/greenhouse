@@ -12,15 +12,24 @@
  *   read (a predicate's constants would disclose hidden values — the Phase 0
  *   `trimCardForReader` rule);
  * - `$page.<filterId>` clause values are the viewer's: they are resolved
- *   through the Phase 0 filter-control helpers (`resolvePageRefs`) and dropped
- *   when the page filter is not visible to the role, has no value, or names a
- *   field the role cannot read.
+ *   through the Phase 0 filter-control helpers (`resolvePageRefs`), compared
+ *   the way the clause's operator says (`pageRefGroups`: match, exclude, or a
+ *   side of a date range) and dropped when the page filter is not visible to
+ *   the role, has no value, or names a field the role cannot read.
  * Everything here is data in, data out — the gateway modules do the I/O.
  */
 
-import type { AppCard, AppDataSource, AppPage, AppRecordAction } from '@greenhouse/types/apps';
+import type { AppCard, AppDataSource, AppRecordAction } from '@greenhouse/types/apps';
 import type { TableRowScope } from '@greenhouse/types/table-access';
-import type { TableFilterClause, TableFilterControl, TableFilterGroup, TableQuery } from '@greenhouse/types/tables';
+import type {
+  TableFilterClause,
+  TableFilterControl,
+  TableFilterControlKind,
+  TableFilterGroup,
+  TableFilterOperator,
+  TableQuery,
+  TableSystemField,
+} from '@greenhouse/types/tables';
 import { PAGE_REF } from './app-spec.js';
 
 export type RecordsLikeCard = Extract<AppCard, { kind: 'records' | 'kanban' | 'calendar' | 'gallery' }>;
@@ -56,6 +65,11 @@ export function cardDetailFieldIds(card: RecordsLikeCard): number[] {
 /** Every field a records-like card may show anywhere (face ∪ drawer) — attachments are served only from these. */
 export function cardShownFieldIds(card: RecordsLikeCard): number[] {
   return [...new Set([...cardDisplayFieldIds(card), ...cardDetailFieldIds(card)])];
+}
+
+/** The system fields a records-like card shows anywhere — its columns (records cards) and its drawer. */
+export function cardSystemFields(card: RecordsLikeCard): ReadonlySet<TableSystemField> {
+  return new Set([...(card.kind === 'records' ? (card.systemFields ?? []) : []), ...(card.detail?.systemFields ?? [])]);
 }
 
 /** Row / card-face actions and the drawer's actions, in that order (ids are unique per card). */
@@ -175,6 +189,68 @@ export function resolvePageRefs(
   return out;
 }
 
+/** The negation of one predicate `filterValueToGroups` emits (`in` → one `neq` per value). */
+function negatedClauses(clause: TableFilterClause): TableFilterClause[] {
+  const as = (operator: TableFilterOperator, value: unknown = clause.value): TableFilterClause =>
+    ({ ...clause, operator, value }) as TableFilterClause;
+  switch (clause.operator) {
+    case 'in':
+      return (Array.isArray(clause.value) ? clause.value : [clause.value]).map((value) => as('neq', value));
+    case 'eq':
+      return [as('neq')];
+    case 'contains':
+      return [as('not_contains')];
+    case 'gte':
+      return [as('lt')];
+    case 'lte':
+      return [as('gt')];
+    default:
+      return [clause];
+  }
+}
+
+/**
+ * What a `$page` clause adds, given the groups the page filter's value adds on
+ * the clause's field (`filterValueToGroups` — the filter's own predicate) and
+ * the operator the builder chose (`PAGE_REF_OPERATORS` in `./app-spec.ts`):
+ * - search: the clause's operator with the typed text;
+ * - `neq` / `not_contains`: the predicate negated (De Morgan — "none of the
+ *   picked options / people", "outside the date range");
+ * - a date range's `gte` / `lte`: its start / end alone; `gt` / `lt`: after its
+ *   end / before its start;
+ * - `eq` / `in` / `contains` (and anything the validator would refuse — a
+ *   card using it is unavailable before it gets here): the predicate as is.
+ */
+export function pageRefGroups(
+  operator: TableFilterOperator,
+  kind: TableFilterControlKind,
+  groups: readonly TableFilterGroup[],
+): TableFilterGroup[] {
+  if (kind === 'search') {
+    return groups.map((group) => ({
+      ...group,
+      clauses: group.clauses.map((clause) => ({ ...clause, operator }) as TableFilterClause),
+    }));
+  }
+  if (operator === 'neq' || operator === 'not_contains') {
+    return groups.map((group) => ({
+      combinator: group.combinator === 'or' ? 'and' : 'or',
+      clauses: group.clauses.flatMap(negatedClauses),
+    }));
+  }
+  if (kind === 'date_range' && (operator === 'gte' || operator === 'lte' || operator === 'gt' || operator === 'lt')) {
+    const side = operator === 'gte' || operator === 'lt' ? 'gte' : 'lte';
+    const flip = operator === 'gt' || operator === 'lt';
+    return groups.flatMap((group) => {
+      const clauses = group.clauses
+        .filter((clause) => clause.operator === side)
+        .flatMap((clause) => (flip ? negatedClauses(clause) : [clause]));
+      return clauses.length > 0 ? [{ combinator: 'and' as const, clauses }] : [];
+    });
+  }
+  return [...groups];
+}
+
 /** The `$page` clauses a query uses (their fields must be readable for the value to apply). */
 export function pageClauses(query: CardQuery | undefined): PageClause[] {
   return groupsOf(query).flatMap((group) =>
@@ -188,15 +264,4 @@ export function pageClauses(query: CardQuery | undefined): PageClause[] {
 /** A page's filter controls as the role sees them (`visible` = the Phase 0 reader trim, done by the caller). */
 export function controlById(controls: readonly TableFilterControl[], id: string): TableFilterControl | undefined {
   return controls.find((control) => control.id === id);
-}
-
-/** The page a card sits on and the card, when the page is one of `pages`. */
-export function locateCard(
-  pages: readonly AppPage[],
-  pageId: string,
-  cardId: string,
-): { page: AppPage; card: AppCard } | undefined {
-  const page = pages.find((entry) => entry.id === pageId);
-  const card = page?.cards.find((entry) => entry.id === cardId);
-  return page && card ? { page, card } : undefined;
 }

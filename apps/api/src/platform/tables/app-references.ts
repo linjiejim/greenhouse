@@ -7,12 +7,14 @@
  * the caller resends with `confirm: true`; the runtime then serves the
  * affected cards / actions / filters as unavailable (`revalidateSpec`).
  *
- * `specReferences` walks a spec once and names each place: a page filter, a
- * card (source, columns, detail, create spec, query, aggregate), a card action
- * or the lane move, a button, a role's table rules (fields, row predicates). It
+ * `specPlaces` walks a spec once and names each place: a page filter, a card
+ * (source, columns, detail, create spec, query, aggregate), a card action or
+ * the lane move, a button, a role's table rules (fields, row predicates). It
  * covers everything `appSpecDependencies` lists (a parity test keeps it so),
  * plus option ids in predicates and values, which the dependency list does not
- * carry.
+ * carry. Each place comes twice: structured and language-neutral (the
+ * `AppReference` fields a client words in its own language) and as the English
+ * `where` the plan tool shows the model.
  */
 
 import type { DatabaseProvider } from '@greenhouse/db';
@@ -21,6 +23,7 @@ import type {
   AppCard,
   AppPage,
   AppRecordAction,
+  AppReference,
   AppReferencesConflict,
   AppRole,
   AppSpec,
@@ -189,42 +192,63 @@ function roleHoldings(role: AppRole): Holdings {
   return into;
 }
 
+/** Where a place is, without words: the `AppReference` fields after `appId` / `name` / `where`. */
+export type SpecPlaceLocation = Omit<AppReference, 'appId' | 'name' | 'where'>;
+
 export interface SpecPlace {
+  /** The place in English (`v2 › “Review” › “Pending” › “Approve”`). */
   where: string;
+  location: SpecPlaceLocation;
   holds: Holdings;
 }
 
 const quote = (text: string) => `“${text}”`;
 
-/** Every place of a spec with what it holds; `label` prefixes each (`draft`, `v3`). */
-export function specPlaces(spec: AppSpec, label: string): SpecPlace[] {
+/** The English words for a place (the plan tool's problems, logs, older clients). */
+function placeWords(location: SpecPlaceLocation): string {
+  const parts = [location.version === 'draft' ? 'draft' : `v${location.version}`];
+  if (location.page) parts.push(quote(location.page.title));
+  if (location.filter) parts.push(`filter ${quote(location.filter.label)}`);
+  if (location.card) parts.push(quote(location.card.title ?? location.card.id));
+  if (location.action) parts.push(quote(location.action.label));
+  if (location.move) parts.push('move');
+  if (location.role) parts.push(`role ${quote(location.role.name)}`);
+  return parts.join(' › ');
+}
+
+/** Every place of a spec with what it holds, in `version` (a published version number, or the draft). */
+export function specPlaces(spec: AppSpec, version: number | 'draft'): SpecPlace[] {
   const places: SpecPlace[] = [];
-  const at = (...parts: string[]) => [label, ...parts].join(' › ');
+  const add = (location: Omit<SpecPlaceLocation, 'version'>, holds: Holdings) => {
+    const full: SpecPlaceLocation = { version, ...location };
+    places.push({ where: placeWords(full), location: full, holds });
+  };
   for (const page of spec.pages as AppPage[]) {
+    const pageRef = { id: page.id, title: page.title };
     for (const control of page.filters ?? []) {
-      places.push({ where: at(quote(page.title), `filter ${quote(control.label)}`), holds: controlHoldings(control) });
+      add({ page: pageRef, filter: { id: control.id, label: control.label } }, controlHoldings(control));
     }
     for (const card of page.cards) {
-      const cardName = quote(card.title ?? card.id);
-      places.push({ where: at(quote(page.title), cardName), holds: cardHoldings(card) });
+      const cardRef = { id: card.id, kind: card.kind, ...(card.title ? { title: card.title } : {}) };
+      add({ page: pageRef, card: cardRef }, cardHoldings(card));
       if (card.kind === 'records' || card.kind === 'kanban' || card.kind === 'calendar' || card.kind === 'gallery') {
         for (const action of [...(card.actions ?? []), ...(card.detail?.actions ?? [])]) {
-          places.push({ where: at(quote(page.title), cardName, quote(action.label)), holds: actionHoldings(action) });
+          add({ page: pageRef, card: cardRef, action: { id: action.id, label: action.label } }, actionHoldings(action));
         }
         if (card.kind === 'kanban' && card.move?.when) {
           const holds = holdings();
           addGroup(holds, card.move.when);
-          places.push({ where: at(quote(page.title), cardName, 'move'), holds });
+          add({ page: pageRef, card: cardRef, move: true }, holds);
         }
       }
       if (card.kind === 'buttons') {
         for (const button of card.buttons) {
-          places.push({ where: at(quote(page.title), cardName, quote(button.label)), holds: buttonHoldings(button) });
+          add({ page: pageRef, card: cardRef, action: { id: button.id, label: button.label } }, buttonHoldings(button));
         }
       }
     }
   }
-  for (const role of spec.roles) places.push({ where: at(`role ${quote(role.name)}`), holds: roleHoldings(role) });
+  for (const role of spec.roles) add({ role: { key: role.key, name: role.name } }, roleHoldings(role));
   return places;
 }
 
@@ -237,10 +261,8 @@ function hits(holds: Holdings, target: AppReferenceTarget): boolean {
 }
 
 /** The places of `spec` that use `target`. */
-export function specReferences(spec: AppSpec, target: AppReferenceTarget, label: string): string[] {
-  return specPlaces(spec, label)
-    .filter((place) => hits(place.holds, target))
-    .map((place) => place.where);
+export function specReferences(spec: AppSpec, target: AppReferenceTarget, version: number | 'draft'): SpecPlace[] {
+  return specPlaces(spec, version).filter((place) => hits(place.holds, target));
 }
 
 const MAX_PLACES_PER_APP = 20;
@@ -255,16 +277,20 @@ export async function appReferencesTo(
   for (const summary of await db.tables.listAppsForBase(baseId)) {
     const app = await db.tables.getApp(summary.id);
     if (!app || app.archived_at) continue;
-    const places = new Set<string>();
+    // One entry per place (two same-titled cards are two places: the key carries ids).
+    const places = new Map<string, SpecPlace>();
+    const collect = (found: SpecPlace[]) => {
+      for (const place of found) places.set(JSON.stringify(place.location), place);
+    };
     const draft = parseStoredAppSpec(app.draft_spec);
-    if (draft) for (const where of specReferences(draft, target, 'draft')) places.add(where);
+    if (draft) collect(specReferences(draft, target, 'draft'));
     if (app.published_version) {
       const version = await db.tables.getAppVersion(app.id, app.published_version);
       const live = version ? parseStoredAppSpec(version.spec) : undefined;
-      if (live) for (const where of specReferences(live, target, `v${app.published_version}`)) places.add(where);
+      if (live) collect(specReferences(live, target, app.published_version));
     }
-    for (const where of [...places].slice(0, MAX_PLACES_PER_APP)) {
-      references.push({ appId: app.id, name: app.name, where });
+    for (const place of [...places.values()].slice(0, MAX_PLACES_PER_APP)) {
+      references.push({ appId: app.id, name: app.name, where: place.where, ...place.location });
     }
   }
   return references;

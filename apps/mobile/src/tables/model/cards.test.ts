@@ -38,7 +38,6 @@ const ctx: CardLabelContext = {
     weekOf: (date) => `Week of ${date}`,
     quarter: (year, quarter) => `Q${quarter} ${year}`,
     valueCaption: (operation, field) => (operation === 'count' ? 'Records' : `${operation} of ${field}`),
-    systemField: (field) => field,
   },
   locale: 'en-US',
 };

@@ -8,7 +8,11 @@
  * to people who need not be Base members, and only the owner grants access to
  * a Base. Featuring is a super's call. Every check resolves the Base level
  * through `access.ts` (`requireBase` with entity `app`), so an archived Base,
- * a lost grant or a kernel deny answers 404 like a missing app.
+ * a lost grant or a kernel deny answers 404 like a missing app. The kernel
+ * capability is the dispatch's (`tables.apps.manage` / `.publish`), except
+ * where a `tables.apps.use` action decides who manages — `getApp` and the
+ * lists: there "manager" is `requireAppManager` (Base builder **and**
+ * `tables.apps.manage`), and anyone else is a viewer.
  *
  * Drafts and audiences are written under CAS (`draftRevision` /
  * `audiencesRevision` → 409 with the current revision). Specs go through
@@ -34,7 +38,13 @@ import {
   type AppVersionSummary,
 } from '@greenhouse/types/apps';
 import { tableRoleAtLeast } from '@greenhouse/types/table-access';
-import { requireBase, resolveBaseAccess, type BaseAccessGrant } from '../access.js';
+import {
+  capabilitySnapshot,
+  requireAppManager,
+  requireBase,
+  resolveBaseAccess,
+  type BaseAccessGrant,
+} from '../access.js';
 import { viewerRolesForApps } from '../app-audience.js';
 import { loadAppSpecSchema, parseStoredAppSpec, revalidateSpec, validateAppSpec } from '../app-spec.js';
 import { appRuntimeView, appSummary } from '../app-view.js';
@@ -95,13 +105,28 @@ async function appWithAccess(
   return { app, grant, canPublish: grant.access.level === 'owner' };
 }
 
-/** Per-Base management standing of the caller, resolved once per Base. */
+/**
+ * The app, when the caller manages it (`requireAppManager`: Base builder and
+ * `tables.apps.manage`) — for actions any app user may call. Undefined = treat
+ * the caller as a viewer.
+ */
+async function managedApp(ctx: Context, actor: ActorContext, appId: number | undefined): Promise<AppGrant | undefined> {
+  const app = appId ? await ctx.db.tables.getApp(appId) : undefined;
+  const base = app ? await ctx.db.tables.getBase(app.base_id) : undefined;
+  const grant = app && base ? await requireAppManager(ctx, actor, base) : undefined;
+  return app && grant ? { app, grant, canPublish: grant.access.level === 'owner' } : undefined;
+}
+
+/** Per-Base management standing of the caller (`requireAppManager`), resolved once per Base. */
 function managerLookup(ctx: Context, actor: ActorContext) {
+  const capabilities = capabilitySnapshot(actor);
   const cache = new Map<number, Promise<BaseAccessGrant | undefined>>();
   return (baseId: number) => {
     let found = cache.get(baseId);
     if (!found) {
-      found = requireBase(ctx, actor, baseId, 'app', 'builder');
+      found = ctx.db.tables
+        .getBase(baseId)
+        .then((base) => (base ? requireAppManager(ctx, actor, base, capabilities) : undefined));
       cache.set(baseId, found);
     }
     return found;
@@ -275,16 +300,17 @@ const listApps: Handler = async (request, context) => {
 };
 
 /**
- * Open an app. A manager gets the published version (or, with `draft: true`
- * or before the first publish, the draft) in full, with field metadata and
- * today's D6 issues — or, with `previewRole`, exactly what that role receives.
- * Anyone else opens the live version as their one role (D3) — the role-trimmed
- * spec without what the role cannot read (`../app-viewer.ts`); no role → 404.
+ * Open an app. A manager (`managedApp`) gets the published version (or, with
+ * `draft: true` or before the first publish, the draft) in full, with field
+ * metadata and today's D6 issues — or, with `previewRole`, exactly what that
+ * role receives. Anyone else opens the live version as their one role (D3) —
+ * the role-trimmed spec without what the role cannot read
+ * (`../app-viewer.ts`); `draft` / `previewRole` are ignored; no role → 404.
  */
 const getApp: Handler = async (request, context) => {
   const payload = payloadOf(request);
   const appId = positiveInt(payload, 'appId');
-  const access = await appWithAccess(context, request.actor, appId, 'builder');
+  const access = await managedApp(context, request.actor, appId);
   const previewRole = stringValue(payload, 'previewRole');
   if (!access || previewRole) {
     return roleAppView(request, context, payload, appId, (session) =>

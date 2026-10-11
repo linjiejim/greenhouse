@@ -16,6 +16,14 @@
  *   turns it on), dashboards and exactly one `app.create`, which stays a DRAFT;
  * - no grants, roles, forms, audiences or publishing — nothing reaches anyone
  *   but the installer until they decide to share it; no webhooks (D16).
+ *
+ * Every user-facing string in a file — the template's name, description and
+ * summary, and every name, label, title and message inside its operations — is
+ * `{ "zh": …, "en": … }`. A template is installed in the language the center
+ * lists it in (the installer's account language, `templateLocale`): Base,
+ * table, fields, options, pages, roles, buttons and automations all in that
+ * language. The catalog refuses a file whose English plan still has Chinese
+ * in it, and each language's plan is checked on its own.
  */
 
 import { readFileSync } from 'node:fs';
@@ -40,12 +48,20 @@ const ALLOWED_OPS: ReadonlySet<SchemaPlanOperationKind> = new Set([
   'app.create',
 ]);
 
-const words = z.object({ zh: z.string().min(1).max(500), en: z.string().min(1).max(500) });
+/** The languages a template is written in; the center lists and installs it in the reader's. */
+export const APP_TEMPLATE_LOCALES = ['en', 'zh'] as const;
+export type AppTemplateLocale = (typeof APP_TEMPLATE_LOCALES)[number];
 
+/** An account language → the template language (the same rule for listing and installing). */
+export function templateLocale(locale: string | null | undefined): AppTemplateLocale {
+  return locale === 'zh' ? 'zh' : 'en';
+}
+
+/** A template file in one language: the shape `templateSchema` checks. */
 const templateSchema = z.object({
   key: z.enum(APP_TEMPLATE_KEYS),
-  name: words,
-  description: words,
+  name: z.string().min(1).max(500),
+  description: z.string().min(1).max(500),
   icon: z.enum(APP_ICONS),
   accent: z.enum(APP_ACCENTS),
   /** The plan's one-line summary. */
@@ -53,16 +69,34 @@ const templateSchema = z.object({
   operations: z.array(schemaPlanOperationSchema).min(1).max(MAX_SCHEMA_PLAN_OPERATIONS),
 });
 
-export interface AppTemplate {
-  key: AppTemplateKey;
-  name: { zh: string; en: string };
-  description: { zh: string; en: string };
-  icon: AppTemplateSummary['icon'];
-  accent: AppTemplateSummary['accent'];
+/** The template's plan in one language: same structure in every language, words in that one. */
+export interface AppTemplatePlan {
   summary: string;
   operations: SchemaPlanOperation[];
+}
+
+export interface AppTemplate {
+  key: AppTemplateKey;
+  name: Record<AppTemplateLocale, string>;
+  description: Record<AppTemplateLocale, string>;
+  icon: AppTemplateSummary['icon'];
+  accent: AppTemplateSummary['accent'];
+  plans: Record<AppTemplateLocale, AppTemplatePlan>;
   /** The ref of its `app.create` — where the installed app's id is found in the apply result. */
   appRef: string;
+}
+
+/** Chinese characters (an English plan must not keep any). */
+const CJK = /[\u3000-\u9fff\uff00-\uffef]/;
+
+/** A file's value in `locale`: every `{zh, en}` pair of strings becomes the one string. */
+function inLocale(value: unknown, locale: AppTemplateLocale): unknown {
+  if (Array.isArray(value)) return value.map((item) => inLocale(item, locale));
+  if (!value || typeof value !== 'object') return value;
+  const record = value as Record<string, unknown>;
+  const keys = Object.keys(record);
+  if (keys.length === 2 && typeof record.zh === 'string' && typeof record.en === 'string') return record[locale];
+  return Object.fromEntries(keys.map((key) => [key, inLocale(record[key], locale)]));
 }
 
 /** The ids an operation may name directly — a template names none of them (everything is a ref). */
@@ -100,18 +134,39 @@ function templateProblem(template: z.infer<typeof templateSchema>): string | und
   return 'error' in shape ? shape.error : undefined;
 }
 
-function loadTemplate(key: AppTemplateKey): AppTemplate {
-  const path = resolve(import.meta.dirname, `${key}.json`);
-  const parsed = templateSchema.safeParse(JSON.parse(readFileSync(path, 'utf8')));
+/** One language of a template file, checked: the shape, the template rules, no Chinese left in English. */
+function loadInLocale(key: AppTemplateKey, raw: unknown, locale: AppTemplateLocale) {
+  const parsed = templateSchema.safeParse(inLocale(raw, locale));
   if (!parsed.success) {
     const issue = parsed.error.issues[0];
-    throw new Error(`App template ${key}: ${issue?.path.join('.') ?? ''} ${issue?.message ?? 'invalid'}`);
+    throw new Error(`App template ${key} (${locale}): ${issue?.path.join('.') ?? ''} ${issue?.message ?? 'invalid'}`);
   }
   if (parsed.data.key !== key) throw new Error(`App template ${key}: the file says it is "${parsed.data.key}"`);
   const problem = templateProblem(parsed.data);
-  if (problem) throw new Error(`App template ${key}: ${problem}`);
-  const app = parsed.data.operations.find((operation) => operation.op === 'app.create');
-  return { ...parsed.data, operations: parsed.data.operations, appRef: (app as { ref: string }).ref };
+  if (problem) throw new Error(`App template ${key} (${locale}): ${problem}`);
+  if (locale === 'en') {
+    const untranslated = JSON.stringify(parsed.data).match(new RegExp(`.{0,30}${CJK.source}.{0,30}`))?.[0];
+    if (untranslated) throw new Error(`App template ${key}: untranslated text in English — ${untranslated}`);
+  }
+  return parsed.data;
+}
+
+function loadTemplate(key: AppTemplateKey): AppTemplate {
+  const raw: unknown = JSON.parse(readFileSync(resolve(import.meta.dirname, `${key}.json`), 'utf8'));
+  const [en, zh] = [loadInLocale(key, raw, 'en'), loadInLocale(key, raw, 'zh')];
+  const app = en.operations.find((operation) => operation.op === 'app.create');
+  return {
+    key,
+    name: { en: en.name, zh: zh.name },
+    description: { en: en.description, zh: zh.description },
+    icon: en.icon,
+    accent: en.accent,
+    plans: {
+      en: { summary: en.summary, operations: en.operations },
+      zh: { summary: zh.summary, operations: zh.operations },
+    },
+    appRef: (app as { ref: string }).ref,
+  };
 }
 
 let catalog: ReadonlyMap<AppTemplateKey, AppTemplate> | undefined;
@@ -126,8 +181,8 @@ export function findAppTemplate(key: string): AppTemplate | undefined {
   return (APP_TEMPLATE_KEYS as readonly string[]).includes(key) ? appTemplates().get(key as AppTemplateKey) : undefined;
 }
 
-/** What the app center lists, in the viewer's language. */
-export function appTemplateSummaries(locale: 'en' | 'zh'): AppTemplateSummary[] {
+/** What the app center lists, in the viewer's language (`templateLocale`). */
+export function appTemplateSummaries(locale: AppTemplateLocale): AppTemplateSummary[] {
   return [...appTemplates().values()].map((template) => ({
     key: template.key,
     name: template.name[locale],

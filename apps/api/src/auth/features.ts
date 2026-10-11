@@ -63,3 +63,17 @@ export async function userHasFeature(
   const features = await resolveUserFeatures(userId, role, db);
   return features[feature] ?? featureDefault(feature);
 }
+
+/**
+ * `userHasFeature` for a caller known only by id (a tool's bound user): the
+ * account must exist and be active. Surfaces outside `requireFeature` — chat
+ * tools, MCP, plan drafting — gate on this.
+ */
+export async function activeUserHasFeature(
+  userId: string,
+  feature: string,
+  db: DatabaseProvider = getDb(),
+): Promise<boolean> {
+  const user = await db.users.getById(userId);
+  return !!user && user.status === 'active' && (await userHasFeature(userId, user.role, feature, db));
+}

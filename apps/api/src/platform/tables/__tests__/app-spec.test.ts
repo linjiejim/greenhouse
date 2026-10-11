@@ -2,7 +2,8 @@
  * The app spec validator (apps spec §2, D6) against an in-memory Base: the
  * shape layer (ids, limits, cross-references, `$page` refs, links), the schema
  * layer (tables in the Base, fields and their types, queries through the db's
- * own card validator, `set_fields` keys editable for every role the action
+ * own card validator, `$page` clauses compared with an operator their filter
+ * kind gives a meaning on a field it could target, `set_fields` keys editable for every role the action
  * applies to, `run_automation` = a button rule of the card's table) and the
  * runtime revalidation that turns problems into per-card / per-action issues.
  */
@@ -11,6 +12,7 @@ import { describe, expect, it } from 'vitest';
 import type { TableFieldRow, TablesSchemaSource } from '@greenhouse/db';
 import type { AppCard, AppPage, AppSpec } from '@greenhouse/types/apps';
 import type { TableAccessRule } from '@greenhouse/types/table-access';
+import type { TableFilterClause } from '@greenhouse/types/tables';
 import { parseAppSpec, revalidateSpec, validateAppSpec, type AppSpecSchema } from '../app-spec.js';
 
 const NOW = '2026-10-11T00:00:00.000Z';
@@ -436,6 +438,83 @@ describe('validateAppSpec — against the Base', () => {
         'pages[1].cards[0].actions[1].do.ruleId',
       ]),
     );
+  });
+});
+
+describe('validateAppSpec — $page comparisons', () => {
+  /** The approvals page with a Status filter beside the date range, its board and a kpi comparing with them. */
+  function comparing(clauses: TableFilterClause[]): AppSpec {
+    const spec = withPage(procurement(), 1, (page) => ({
+      ...page,
+      filters: [
+        ...(page.filters ?? []),
+        { id: 'state', label: 'State', kind: 'select', targets: [{ tableId: T, fieldId: F.status }] },
+      ],
+      cards: [
+        ...page.cards,
+        {
+          id: 'count',
+          kind: 'kpi',
+          layout,
+          card: {
+            kind: 'kpi',
+            source: { tableId: T, query: { where: { combinator: 'and', clauses } } },
+            aggregate: { operation: 'count' },
+          },
+        },
+      ],
+    }));
+    return withCard(spec, 1, 0, (card) =>
+      card.kind === 'kanban'
+        ? { ...card, source: { tableId: T, query: { where: { combinator: 'and', clauses } } } }
+        : card,
+    );
+  }
+
+  it('accepts the operators each filter kind gives a meaning', async () => {
+    const result = await validateAppSpec(
+      comparing([
+        { fieldId: F.status, operator: 'neq', value: '$page.state' },
+        { fieldId: F.status, operator: 'in', value: '$page.state' },
+        { fieldId: F.due, operator: 'lt', value: '$page.when' },
+        { systemField: 'created_at', operator: 'neq', value: '$page.when' },
+      ]),
+      schema(),
+    );
+    expect(result.ok, JSON.stringify(result)).toBe(true);
+  });
+
+  it('refuses an operator the filter kind has no meaning for, and a field the filter could not target', async () => {
+    const spec = comparing([
+      { fieldId: F.status, operator: 'gt', value: '$page.state' },
+      { fieldId: F.status, operator: 'is_empty', value: '$page.state' },
+      { fieldId: F.title, operator: 'eq', value: '$page.when' },
+      { systemField: 'created_by', operator: 'eq', value: '$page.when' },
+      { fieldId: 4242, operator: 'eq', value: '$page.state' },
+    ]);
+    const result = await validateAppSpec(spec, schema());
+    expect(result.ok).toBe(false);
+    const messages = result.ok ? [] : result.errors.map((error) => `${error.path}: ${error.message}`);
+    const problems = [
+      '$page.state is a select filter: compare with eq / in / contains / neq / not_contains, not gt',
+      '$page.state is a select filter: compare with eq / in / contains / neq / not_contains, not is_empty',
+      '$page.when: Filter "When" cannot filter field "Title"',
+      '$page.when: A date_range control cannot filter created_by',
+      '$page.state: Filter "State" targets an unavailable field',
+    ];
+    expect(messages).toEqual(
+      expect.arrayContaining([
+        ...problems.map((problem) => `pages[1].cards[0].source.query: ${problem}`),
+        ...problems.map((problem) => `pages[1].cards[1].card.source.query: ${problem}`),
+      ]),
+    );
+    // Stored that way (published before this check), both cards are unavailable — never read as "is".
+    const issues = await revalidateSpec(spec, schema());
+    for (const cardId of ['board', 'count']) {
+      expect(issues).toContainEqual(
+        expect.objectContaining({ pageId: 'approve', cardId, message: expect.stringContaining('not gt') }),
+      );
+    }
   });
 });
 

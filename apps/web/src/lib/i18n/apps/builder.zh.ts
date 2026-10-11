@@ -529,6 +529,17 @@ export const appsBuilderZh: DeepRecord<typeof appsBuilderEn> = {
       deleteAnyway: '仍然删除',
       saveAnyway: '仍然保存',
       failed: '没有完成，请重试。',
+      place: {
+        draft: '草稿',
+        version: 'v{version}',
+        page: '「{title}」',
+        filter: '筛选器「{label}」',
+        card: '「{title}」',
+        untitledCard: '{kind}卡片',
+        action: '按钮「{label}」',
+        move: '在列之间拖动',
+        role: '角色「{name}」',
+      },
     },
     baseSection: {
       button: '应用',

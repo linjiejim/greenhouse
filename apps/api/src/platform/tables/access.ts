@@ -354,6 +354,34 @@ export async function requireLoadedBase(
   return { base: gate.base, access: gate.access, role: gate.role };
 }
 
+/** The actor's kernel capability decisions, loaded on first use and shared for one request (never longer). */
+export type CapabilitySnapshot = () => ReturnType<ReturnType<typeof getPlatformRuntime>['capabilities']>;
+
+export function capabilitySnapshot(actor: ActorContext): CapabilitySnapshot {
+  let loaded: ReturnType<CapabilitySnapshot> | undefined;
+  return () => (loaded ??= getPlatformRuntime().capabilities(actor));
+}
+
+/**
+ * Managing apps on this Base (apps D2): Base owner / builder (a super counts
+ * as owner) **and** the kernel's `tables.apps.manage`. Opening an app only
+ * needs `tables.apps.use`, so without the capability a Base builder is a
+ * viewer like anyone else — their audience role or nothing — and never gets
+ * the draft, a role preview or full access. The capability is only asked when
+ * the Base level passes (`capabilities` shares the snapshot with the request's
+ * other checks).
+ */
+export async function requireAppManager(
+  ctx: AccessContext,
+  actor: ActorContext,
+  base: TableBaseRow,
+  capabilities: CapabilitySnapshot = capabilitySnapshot(actor),
+): Promise<BaseAccessGrant | undefined> {
+  const grant = await requireLoadedBase(ctx, actor, base, 'app', 'builder');
+  if (!grant || !(await capabilities())('tables.apps.manage').allowed) return undefined;
+  return grant;
+}
+
 /** Every listed Base the actor can open, resolving the user and the kernel policy once. */
 export async function listBaseGrants(
   ctx: AccessContext,
@@ -626,13 +654,12 @@ export function appDataCeilings(
   ctx: AccessContext,
   actor: ActorContext,
   base: TableBaseRow,
+  capabilities: CapabilitySnapshot = capabilitySnapshot(actor),
 ): (op: TableDataOp | 'comment') => Promise<AppDataCeiling | undefined> {
-  let decide: ReturnType<ReturnType<typeof getPlatformRuntime>['capabilities']> | undefined;
   let policy: Promise<EntityPolicy> | undefined;
   const answers = new Map<TableDataOp | 'comment', Promise<AppDataCeiling | undefined>>();
   const resolve = async (op: TableDataOp | 'comment'): Promise<AppDataCeiling | undefined> => {
-    decide ??= getPlatformRuntime().capabilities(actor);
-    if (!(await decide)(`tables.data.${op}`).allowed) return undefined;
+    if (!(await capabilities())(`tables.data.${op}`).allowed) return undefined;
     policy ??= entityPolicy(ctx, actor, 'record');
     const loaded = await policy;
     if (!canAccessRecord(actor, { ownerId: base.owner_id, collaboratorIds: [effectiveUserId(actor)] }, loaded)) {
@@ -649,11 +676,6 @@ export function appDataCeilings(
     }
     return found;
   };
-}
-
-/** A scope that sees rows but no values — what a masked `record.values` reader gets. */
-export function valuelessReadScope(userId: string, tableId: number): TableDataScope {
-  return valuelessScope(userId, tableId);
 }
 
 /**

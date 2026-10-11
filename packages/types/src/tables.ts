@@ -1238,6 +1238,11 @@ export interface SchemaPlanOperationResult {
   id?: number;
   /** Failure reason, or which ref's failure caused this one to be skipped — or a note on an applied one. */
   message?: string;
+  /**
+   * The app draft revision this operation wrote (`app.create`, `app.update` with a spec — even one that then
+   * failed on its rename): a retry builds on it and publishes exactly that draft (additive).
+   */
+  draftRevision?: number;
 }
 
 /** The ref → id map an apply built: what a retry reuses instead of creating again. */

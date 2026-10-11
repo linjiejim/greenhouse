@@ -7,24 +7,30 @@
   },
   "icon": "cart",
   "accent": "amber",
-  "summary": "采购申请：申请、审批、统计三个页面，申请人 / 审批人 / 管理员三个角色",
+  "summary": {
+    "zh": "采购申请：申请、审批、统计三个页面，申请人 / 审批人 / 管理员三个角色",
+    "en": "Purchase requests: apply, review and stats pages; applicant, approver and admin roles"
+  },
   "operations": [
     {
       "op": "base.create",
       "ref": "base",
-      "name": "采购申请",
-      "description": "每行一条采购申请。申请人提交后状态为「待审批」，审批人通过或驳回；审批人、审批时间由审批动作自动写入，驳回必须填写理由。",
+      "name": { "zh": "采购申请", "en": "Purchase requests" },
+      "description": {
+        "zh": "每行一条采购申请。申请人提交后状态为「待审批」，审批人通过或驳回；审批人、审批时间由审批动作自动写入，驳回必须填写理由。",
+        "en": "One purchase request per row. A new request is “Pending”; an approver approves or rejects it. The approve and reject actions fill in the approver and the time; a rejection needs a reason."
+      },
       "visibility": "private",
       "defaultTableRef": "requests",
-      "defaultTableName": "采购单",
+      "defaultTableName": { "zh": "采购单", "en": "Requests" },
       "primaryFieldRef": "title",
-      "primaryFieldName": "申请事项"
+      "primaryFieldName": { "zh": "申请事项", "en": "Item" }
     },
     {
       "op": "field.create",
       "ref": "amount",
       "tableRef": "requests",
-      "name": "金额",
+      "name": { "zh": "金额", "en": "Amount" },
       "type": "number",
       "required": true
     },
@@ -32,44 +38,107 @@
       "op": "field.create",
       "ref": "dept",
       "tableRef": "requests",
-      "name": "部门",
+      "name": { "zh": "部门", "en": "Department" },
       "type": "single_select",
       "config": {
         "options": [
-          { "id": "admin", "label": "行政" },
-          { "id": "rnd", "label": "研发" },
-          { "id": "marketing", "label": "市场" },
-          { "id": "sales", "label": "销售" },
-          { "id": "finance", "label": "财务" },
-          { "id": "other", "label": "其他" }
+          {
+            "id": "admin",
+            "label": { "zh": "行政", "en": "Admin" }
+          },
+          {
+            "id": "rnd",
+            "label": { "zh": "研发", "en": "R&D" }
+          },
+          {
+            "id": "marketing",
+            "label": { "zh": "市场", "en": "Marketing" }
+          },
+          {
+            "id": "sales",
+            "label": { "zh": "销售", "en": "Sales" }
+          },
+          {
+            "id": "finance",
+            "label": { "zh": "财务", "en": "Finance" }
+          },
+          {
+            "id": "other",
+            "label": { "zh": "其他", "en": "Other" }
+          }
         ]
       }
     },
-    { "op": "field.create", "ref": "note", "tableRef": "requests", "name": "用途说明", "type": "long_text" },
-    { "op": "field.create", "ref": "quote", "tableRef": "requests", "name": "报价单", "type": "attachment" },
+    {
+      "op": "field.create",
+      "ref": "note",
+      "tableRef": "requests",
+      "name": { "zh": "用途说明", "en": "Purpose" },
+      "type": "long_text"
+    },
+    {
+      "op": "field.create",
+      "ref": "quote",
+      "tableRef": "requests",
+      "name": { "zh": "报价单", "en": "Quote" },
+      "type": "attachment"
+    },
     {
       "op": "field.create",
       "ref": "status",
       "tableRef": "requests",
-      "name": "状态",
+      "name": { "zh": "状态", "en": "Status" },
       "type": "single_select",
       "config": {
         "options": [
-          { "id": "pending", "label": "待审批" },
-          { "id": "approved", "label": "已通过" },
-          { "id": "rejected", "label": "已驳回" }
+          {
+            "id": "pending",
+            "label": { "zh": "待审批", "en": "Pending" }
+          },
+          {
+            "id": "approved",
+            "label": { "zh": "已通过", "en": "Approved" }
+          },
+          {
+            "id": "rejected",
+            "label": { "zh": "已驳回", "en": "Rejected" }
+          }
         ]
       }
     },
-    { "op": "field.create", "ref": "approver", "tableRef": "requests", "name": "审批人", "type": "user" },
-    { "op": "field.create", "ref": "approved_at", "tableRef": "requests", "name": "审批时间", "type": "datetime" },
-    { "op": "field.create", "ref": "reason", "tableRef": "requests", "name": "驳回理由", "type": "long_text" },
-    { "op": "field.create", "ref": "memo", "tableRef": "requests", "name": "审批备注", "type": "long_text" },
+    {
+      "op": "field.create",
+      "ref": "approver",
+      "tableRef": "requests",
+      "name": { "zh": "审批人", "en": "Approver" },
+      "type": "user"
+    },
+    {
+      "op": "field.create",
+      "ref": "approved_at",
+      "tableRef": "requests",
+      "name": { "zh": "审批时间", "en": "Decided at" },
+      "type": "datetime"
+    },
+    {
+      "op": "field.create",
+      "ref": "reason",
+      "tableRef": "requests",
+      "name": { "zh": "驳回理由", "en": "Rejection reason" },
+      "type": "long_text"
+    },
+    {
+      "op": "field.create",
+      "ref": "memo",
+      "tableRef": "requests",
+      "name": { "zh": "审批备注", "en": "Approval note" },
+      "type": "long_text"
+    },
     {
       "op": "automation.create",
       "ref": "notify",
       "tableRef": "requests",
-      "name": "审批结果通知申请人",
+      "name": { "zh": "审批结果通知申请人", "en": "Tell the applicant the decision" },
       "trigger": "record_updated",
       "status": "disabled",
       "config": {
@@ -77,16 +146,29 @@
         "condition": {
           "combinator": "or",
           "clauses": [
-            { "fieldId": "$field:status", "operator": "eq", "value": "approved" },
-            { "fieldId": "$field:status", "operator": "eq", "value": "rejected" }
+            {
+              "fieldId": "$field:status",
+              "operator": "eq",
+              "value": "approved"
+            },
+            {
+              "fieldId": "$field:status",
+              "operator": "eq",
+              "value": "rejected"
+            }
           ]
         },
         "actions": [
           {
             "type": "notify",
-            "recipients": { "creator": true },
-            "title": "你的采购申请有结果了",
-            "message": "「{{field:$field:title}}」：{{field:$field:status}}",
+            "recipients": {
+              "creator": true
+            },
+            "title": { "zh": "你的采购申请有结果了", "en": "Your purchase request has a decision" },
+            "message": {
+              "zh": "「{{field:$field:title}}」：{{field:$field:status}}",
+              "en": "“{{field:$field:title}}”: {{field:$field:status}}"
+            },
             "channels": ["inbox"]
           }
         ]
@@ -96,33 +178,51 @@
       "op": "app.create",
       "ref": "app",
       "baseRef": "base",
-      "name": "采购申请",
-      "description": "提交采购申请、审批与统计",
+      "name": { "zh": "采购申请", "en": "Purchase requests" },
+      "description": { "zh": "提交采购申请、审批与统计", "en": "File, approve and track purchase requests" },
       "icon": "cart",
       "accent": "amber",
       "spec": {
         "version": 1,
         "home": "apply",
-        "nav": { "layout": "tabs" },
+        "nav": {
+          "layout": "tabs"
+        },
         "pages": [
           {
             "id": "apply",
-            "title": "我的申请",
+            "title": { "zh": "我的申请", "en": "My requests" },
             "icon": "inbox",
             "cards": [
               {
                 "id": "mine",
                 "kind": "records",
-                "title": "我的申请",
-                "layout": { "x": 0, "y": 0, "w": 8, "h": 8 },
+                "title": { "zh": "我的申请", "en": "My requests" },
+                "layout": {
+                  "x": 0,
+                  "y": 0,
+                  "w": 8,
+                  "h": 8
+                },
                 "source": {
                   "tableId": "$table:requests",
                   "query": {
                     "where": {
                       "combinator": "and",
-                      "clauses": [{ "systemField": "created_by", "operator": "eq", "value": "$me" }]
+                      "clauses": [
+                        {
+                          "systemField": "created_by",
+                          "operator": "eq",
+                          "value": "$me"
+                        }
+                      ]
                     },
-                    "sort": [{ "systemField": "created_at", "direction": "desc" }]
+                    "sort": [
+                      {
+                        "systemField": "created_at",
+                        "direction": "desc"
+                      }
+                    ]
                   }
                 },
                 "fieldIds": ["$field:title", "$field:amount", "$field:dept", "$field:status"],
@@ -146,26 +246,41 @@
               {
                 "id": "new",
                 "kind": "form",
-                "title": "新建申请",
-                "layout": { "x": 8, "y": 0, "w": 4, "h": 8 },
+                "title": { "zh": "新建申请", "en": "New request" },
+                "layout": {
+                  "x": 8,
+                  "y": 0,
+                  "w": 4,
+                  "h": 8
+                },
                 "tableId": "$table:requests",
                 "fieldIds": ["$field:title", "$field:amount", "$field:dept", "$field:note", "$field:quote"],
-                "defaults": [{ "fieldId": "$field:status", "value": "pending" }],
-                "submitLabel": "提交申请",
-                "successMessage": "已提交，等待审批"
+                "defaults": [
+                  {
+                    "fieldId": "$field:status",
+                    "value": "pending"
+                  }
+                ],
+                "submitLabel": { "zh": "提交申请", "en": "Submit request" },
+                "successMessage": { "zh": "已提交，等待审批", "en": "Submitted — waiting for approval" }
               }
             ]
           },
           {
             "id": "review",
-            "title": "审批",
+            "title": { "zh": "审批", "en": "Review" },
             "icon": "check",
             "cards": [
               {
                 "id": "pending",
                 "kind": "kpi",
-                "title": "待审批",
-                "layout": { "x": 0, "y": 0, "w": 3, "h": 3 },
+                "title": { "zh": "待审批", "en": "Pending" },
+                "layout": {
+                  "x": 0,
+                  "y": 0,
+                  "w": 3,
+                  "h": 3
+                },
                 "card": {
                   "kind": "kpi",
                   "source": {
@@ -173,19 +288,34 @@
                     "query": {
                       "where": {
                         "combinator": "and",
-                        "clauses": [{ "fieldId": "$field:status", "operator": "eq", "value": "pending" }]
+                        "clauses": [
+                          {
+                            "fieldId": "$field:status",
+                            "operator": "eq",
+                            "value": "pending"
+                          }
+                        ]
                       }
                     }
                   },
-                  "aggregate": { "operation": "count" }
+                  "aggregate": {
+                    "operation": "count"
+                  }
                 }
               },
               {
                 "id": "board",
                 "kind": "kanban",
-                "title": "审批看板",
-                "layout": { "x": 0, "y": 3, "w": 12, "h": 9 },
-                "source": { "tableId": "$table:requests" },
+                "title": { "zh": "审批看板", "en": "Approval board" },
+                "layout": {
+                  "x": 0,
+                  "y": 3,
+                  "w": 12,
+                  "h": 9
+                },
+                "source": {
+                  "tableId": "$table:requests"
+                },
                 "groupFieldId": "$field:status",
                 "fieldIds": ["$field:title", "$field:amount", "$field:dept"],
                 "detail": {
@@ -208,42 +338,76 @@
                 "actions": [
                   {
                     "id": "approve",
-                    "label": "通过",
+                    "label": { "zh": "通过", "en": "Approve" },
                     "roles": ["approver", "admin"],
                     "when": {
                       "combinator": "and",
                       "clauses": [
-                        { "fieldId": "$field:status", "operator": "eq", "value": "pending" },
-                        { "systemField": "created_by", "operator": "neq", "value": "$me" }
+                        {
+                          "fieldId": "$field:status",
+                          "operator": "eq",
+                          "value": "pending"
+                        },
+                        {
+                          "systemField": "created_by",
+                          "operator": "neq",
+                          "value": "$me"
+                        }
                       ]
                     },
                     "do": {
                       "type": "set_fields",
                       "values": [
-                        { "fieldId": "$field:status", "value": "approved" },
-                        { "fieldId": "$field:approver", "value": "$me" },
-                        { "fieldId": "$field:approved_at", "value": "$now" }
+                        {
+                          "fieldId": "$field:status",
+                          "value": "approved"
+                        },
+                        {
+                          "fieldId": "$field:approver",
+                          "value": "$me"
+                        },
+                        {
+                          "fieldId": "$field:approved_at",
+                          "value": "$now"
+                        }
                       ]
                     }
                   },
                   {
                     "id": "reject",
-                    "label": "驳回",
+                    "label": { "zh": "驳回", "en": "Reject" },
                     "roles": ["approver", "admin"],
                     "when": {
                       "combinator": "and",
                       "clauses": [
-                        { "fieldId": "$field:status", "operator": "eq", "value": "pending" },
-                        { "systemField": "created_by", "operator": "neq", "value": "$me" }
+                        {
+                          "fieldId": "$field:status",
+                          "operator": "eq",
+                          "value": "pending"
+                        },
+                        {
+                          "systemField": "created_by",
+                          "operator": "neq",
+                          "value": "$me"
+                        }
                       ]
                     },
-                    "confirm": "确定驳回这条申请吗？",
+                    "confirm": { "zh": "确定驳回这条申请吗？", "en": "Reject this request?" },
                     "do": {
                       "type": "set_fields",
                       "values": [
-                        { "fieldId": "$field:status", "value": "rejected" },
-                        { "fieldId": "$field:approver", "value": "$me" },
-                        { "fieldId": "$field:approved_at", "value": "$now" }
+                        {
+                          "fieldId": "$field:status",
+                          "value": "rejected"
+                        },
+                        {
+                          "fieldId": "$field:approver",
+                          "value": "$me"
+                        },
+                        {
+                          "fieldId": "$field:approved_at",
+                          "value": "$now"
+                        }
                       ],
                       "inputFieldIds": ["$field:reason"],
                       "requiredInputFieldIds": ["$field:reason"]
@@ -255,31 +419,51 @@
           },
           {
             "id": "stats",
-            "title": "统计",
+            "title": { "zh": "统计", "en": "Stats" },
             "icon": "chart",
             "cards": [
               {
                 "id": "monthly",
                 "kind": "chart",
-                "title": "按月申请金额",
-                "layout": { "x": 0, "y": 0, "w": 8, "h": 6 },
+                "title": { "zh": "按月申请金额", "en": "Amount requested per month" },
+                "layout": {
+                  "x": 0,
+                  "y": 0,
+                  "w": 8,
+                  "h": 6
+                },
                 "card": {
                   "kind": "chart",
-                  "source": { "tableId": "$table:requests" },
+                  "source": {
+                    "tableId": "$table:requests"
+                  },
                   "aggregate": {
                     "operation": "sum",
                     "valueFieldId": "$field:amount",
-                    "groupBy": { "systemField": "created_at", "dateBucket": "month" },
-                    "series": { "fieldId": "$field:status" }
+                    "groupBy": {
+                      "systemField": "created_at",
+                      "dateBucket": "month"
+                    },
+                    "series": {
+                      "fieldId": "$field:status"
+                    }
                   },
-                  "chart": { "type": "bar", "stacked": true }
+                  "chart": {
+                    "type": "bar",
+                    "stacked": true
+                  }
                 }
               },
               {
                 "id": "approved",
                 "kind": "kpi",
-                "title": "已通过金额",
-                "layout": { "x": 8, "y": 0, "w": 4, "h": 3 },
+                "title": { "zh": "已通过金额", "en": "Amount approved" },
+                "layout": {
+                  "x": 8,
+                  "y": 0,
+                  "w": 4,
+                  "h": 3
+                },
                 "card": {
                   "kind": "kpi",
                   "source": {
@@ -287,26 +471,46 @@
                     "query": {
                       "where": {
                         "combinator": "and",
-                        "clauses": [{ "fieldId": "$field:status", "operator": "eq", "value": "approved" }]
+                        "clauses": [
+                          {
+                            "fieldId": "$field:status",
+                            "operator": "eq",
+                            "value": "approved"
+                          }
+                        ]
                       }
                     }
                   },
-                  "aggregate": { "operation": "sum", "valueFieldId": "$field:amount" }
+                  "aggregate": {
+                    "operation": "sum",
+                    "valueFieldId": "$field:amount"
+                  }
                 }
               },
               {
                 "id": "by_dept",
                 "kind": "pivot",
-                "title": "部门 × 状态",
-                "layout": { "x": 0, "y": 6, "w": 12, "h": 6 },
+                "title": { "zh": "部门 × 状态", "en": "Department × status" },
+                "layout": {
+                  "x": 0,
+                  "y": 6,
+                  "w": 12,
+                  "h": 6
+                },
                 "card": {
                   "kind": "pivot",
-                  "source": { "tableId": "$table:requests" },
+                  "source": {
+                    "tableId": "$table:requests"
+                  },
                   "aggregate": {
                     "operation": "sum",
                     "valueFieldId": "$field:amount",
-                    "groupBy": { "fieldId": "$field:dept" },
-                    "series": { "fieldId": "$field:status" }
+                    "groupBy": {
+                      "fieldId": "$field:dept"
+                    },
+                    "series": {
+                      "fieldId": "$field:status"
+                    }
                   }
                 }
               }
@@ -316,27 +520,52 @@
         "roles": [
           {
             "key": "applicant",
-            "name": "申请人",
+            "name": { "zh": "申请人", "en": "Applicant" },
             "pages": ["apply"],
             "canComment": true,
             "tables": [
               {
                 "tableId": "$table:requests",
                 "access": "edit",
-                "rows": { "type": "related", "creator": true, "fieldIds": [] },
+                "rows": {
+                  "type": "related",
+                  "creator": true,
+                  "fieldIds": []
+                },
                 "editRows": {
                   "type": "where",
                   "where": {
                     "combinator": "and",
-                    "clauses": [{ "fieldId": "$field:status", "operator": "eq", "value": "pending" }]
+                    "clauses": [
+                      {
+                        "fieldId": "$field:status",
+                        "operator": "eq",
+                        "value": "pending"
+                      }
+                    ]
                   }
                 },
                 "fields": [
-                  { "fieldId": "$field:status", "access": "read" },
-                  { "fieldId": "$field:approver", "access": "read" },
-                  { "fieldId": "$field:approved_at", "access": "read" },
-                  { "fieldId": "$field:reason", "access": "read" },
-                  { "fieldId": "$field:memo", "access": "hidden" }
+                  {
+                    "fieldId": "$field:status",
+                    "access": "read"
+                  },
+                  {
+                    "fieldId": "$field:approver",
+                    "access": "read"
+                  },
+                  {
+                    "fieldId": "$field:approved_at",
+                    "access": "read"
+                  },
+                  {
+                    "fieldId": "$field:reason",
+                    "access": "read"
+                  },
+                  {
+                    "fieldId": "$field:memo",
+                    "access": "hidden"
+                  }
                 ],
                 "fieldDefault": "visible",
                 "create": true,
@@ -346,7 +575,7 @@
           },
           {
             "key": "approver",
-            "name": "审批人",
+            "name": { "zh": "审批人", "en": "Approver" },
             "pages": ["review", "stats"],
             "canComment": true,
             "tables": [
@@ -354,11 +583,26 @@
                 "tableId": "$table:requests",
                 "access": "edit",
                 "fields": [
-                  { "fieldId": "$field:title", "access": "read" },
-                  { "fieldId": "$field:amount", "access": "read" },
-                  { "fieldId": "$field:dept", "access": "read" },
-                  { "fieldId": "$field:note", "access": "read" },
-                  { "fieldId": "$field:quote", "access": "read" }
+                  {
+                    "fieldId": "$field:title",
+                    "access": "read"
+                  },
+                  {
+                    "fieldId": "$field:amount",
+                    "access": "read"
+                  },
+                  {
+                    "fieldId": "$field:dept",
+                    "access": "read"
+                  },
+                  {
+                    "fieldId": "$field:note",
+                    "access": "read"
+                  },
+                  {
+                    "fieldId": "$field:quote",
+                    "access": "read"
+                  }
                 ],
                 "fieldDefault": "visible",
                 "create": false,
@@ -368,7 +612,7 @@
           },
           {
             "key": "admin",
-            "name": "管理员",
+            "name": { "zh": "管理员", "en": "Admin" },
             "pages": "all",
             "canComment": true,
             "tables": [

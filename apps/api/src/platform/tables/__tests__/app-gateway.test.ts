@@ -1,6 +1,7 @@
 /**
  * The pure parts of the app gateway (slice G): how a card query becomes part
- * of a scope (`$page` values, row scopes), where a spec uses a structure
+ * of a scope (`$page` values compared by the clause's operator, row scopes),
+ * where a spec uses a structure
  * object (D6 — and that it covers `appSpecDependencies`), and what a role's
  * copy of the spec withholds.
  */
@@ -9,7 +10,7 @@ import { describe, expect, it } from 'vitest';
 import { appSpecDependencies, type AppSpec } from '@greenhouse/types/apps';
 import type { TableFilterGroup } from '@greenhouse/types/tables';
 import { specPlaces, specReferences } from '../app-references.js';
-import { cardDisplayFieldIds, queryFieldIds, queryRowScopes, resolvePageRefs } from '../app-scope.js';
+import { cardDisplayFieldIds, pageRefGroups, queryFieldIds, queryRowScopes, resolvePageRefs } from '../app-scope.js';
 import { viewerSpec } from '../app-viewer.js';
 
 const layout = { x: 0, y: 0, w: 6, h: 4 };
@@ -103,6 +104,70 @@ function spec(): AppSpec {
             kind: 'buttons',
             layout,
             buttons: [{ id: 'add', label: 'Add', type: 'create_record', tableId: V, fieldIds: [201, 202] }],
+          },
+        ],
+      },
+      {
+        // Every other place a field can be held: a calendar's start / end, a gallery cover, a chart's and a
+        // pivot's groupBy / series, a drawer action.
+        id: 'p2',
+        title: 'More',
+        cards: [
+          {
+            id: 'leave',
+            title: 'Leave',
+            kind: 'calendar',
+            layout,
+            source: { tableId: T },
+            startFieldId: 120,
+            endFieldId: 121,
+            fieldIds: [101],
+          },
+          {
+            id: 'pictures',
+            title: 'Pictures',
+            kind: 'gallery',
+            layout,
+            source: { tableId: T },
+            coverFieldId: 122,
+            fieldIds: [101],
+          },
+          {
+            id: 'by-type',
+            title: 'By type',
+            kind: 'chart',
+            layout,
+            card: {
+              kind: 'chart',
+              source: { tableId: T },
+              aggregate: { operation: 'count', groupBy: { fieldId: 123 }, series: { fieldId: 124 } },
+              chart: { type: 'bar' },
+            },
+          },
+          {
+            id: 'pivot',
+            title: 'Pivot',
+            kind: 'pivot',
+            layout,
+            card: {
+              kind: 'pivot',
+              source: { tableId: T },
+              aggregate: { operation: 'count', groupBy: { fieldId: 125 }, series: { fieldId: 126 } },
+            },
+          },
+          {
+            id: 'open',
+            title: 'Open items',
+            kind: 'records',
+            layout,
+            source: { tableId: T },
+            fieldIds: [101],
+            detail: {
+              fieldIds: [101],
+              actions: [
+                { id: 'close', label: 'Close', do: { type: 'set_fields', values: [{ fieldId: 127, value: 'x' }] } },
+              ],
+            },
           },
         ],
       },
@@ -207,6 +272,78 @@ describe('card queries as scope', () => {
     expect(resolvePageRefs(query, ({ filterId }) => (filterId === 'g' ? [pair] : [])).filters).toBeUndefined();
   });
 
+  it('compares a $page value the way the clause’s operator says', () => {
+    const select: TableFilterGroup = { combinator: 'or', clauses: [{ fieldId: 9, operator: 'in', value: ['a', 'b'] }] };
+    const multi: TableFilterGroup = {
+      combinator: 'or',
+      clauses: [
+        { fieldId: 8, operator: 'contains', value: 'a' },
+        { fieldId: 8, operator: 'contains', value: 'b' },
+      ],
+    };
+    const range: TableFilterGroup = {
+      combinator: 'and',
+      clauses: [
+        { fieldId: 7, operator: 'gte', value: '2026-01-01' },
+        { fieldId: 7, operator: 'lte', value: '2026-01-31' },
+      ],
+    };
+    const text: TableFilterGroup = { combinator: 'or', clauses: [{ fieldId: 6, operator: 'contains', value: 'desk' }] };
+
+    // Match: the filter's own predicate.
+    for (const operator of ['eq', 'in', 'contains'] as const) {
+      expect(pageRefGroups(operator, 'select', [select])).toEqual([select]);
+    }
+    expect(pageRefGroups('eq', 'date_range', [range])).toEqual([range]);
+    // Exclude: none of the picked options, outside the range.
+    expect(pageRefGroups('neq', 'select', [select])).toEqual([
+      {
+        combinator: 'and',
+        clauses: [
+          { fieldId: 9, operator: 'neq', value: 'a' },
+          { fieldId: 9, operator: 'neq', value: 'b' },
+        ],
+      },
+    ]);
+    expect(pageRefGroups('not_contains', 'select', [multi])).toEqual([
+      {
+        combinator: 'and',
+        clauses: [
+          { fieldId: 8, operator: 'not_contains', value: 'a' },
+          { fieldId: 8, operator: 'not_contains', value: 'b' },
+        ],
+      },
+    ]);
+    expect(pageRefGroups('neq', 'date_range', [range])).toEqual([
+      {
+        combinator: 'or',
+        clauses: [
+          { fieldId: 7, operator: 'lt', value: '2026-01-01' },
+          { fieldId: 7, operator: 'gt', value: '2026-01-31' },
+        ],
+      },
+    ]);
+    // One side of a range.
+    const side = (operator: 'gte' | 'lte' | 'gt' | 'lt') => pageRefGroups(operator, 'date_range', [range]);
+    expect(side('gte')).toEqual([{ combinator: 'and', clauses: [range.clauses[0]] }]);
+    expect(side('lte')).toEqual([{ combinator: 'and', clauses: [range.clauses[1]] }]);
+    expect(side('gt')).toEqual([{ combinator: 'and', clauses: [{ fieldId: 7, operator: 'gt', value: '2026-01-31' }] }]);
+    expect(side('lt')).toEqual([{ combinator: 'and', clauses: [{ fieldId: 7, operator: 'lt', value: '2026-01-01' }] }]);
+    // An open-ended range has no end to compare with: no constraint.
+    const from: TableFilterGroup = { combinator: 'and', clauses: [range.clauses[0]!] };
+    expect(pageRefGroups('gt', 'date_range', [from])).toEqual([]);
+    // Search: the typed text under the clause's own operator.
+    expect(pageRefGroups('eq', 'search', [text])).toEqual([
+      { combinator: 'or', clauses: [{ fieldId: 6, operator: 'eq', value: 'desk' }] },
+    ]);
+    expect(pageRefGroups('not_contains', 'search', [text])).toEqual([
+      { combinator: 'or', clauses: [{ fieldId: 6, operator: 'not_contains', value: 'desk' }] },
+    ]);
+    // A single negated option still inlines into an OR group; a negated pair cannot, so that group is no constraint.
+    const one = pageRefGroups('neq', 'select', [{ ...select, clauses: [{ ...select.clauses[0]!, value: ['a'] }] }]);
+    expect(one).toEqual([{ combinator: 'and', clauses: [{ fieldId: 9, operator: 'neq', value: 'a' }] }]);
+  });
+
   it('shows the lane, date and cover fields of a card with its columns', () => {
     const board = spec().pages[0]!.cards[1]!;
     if (board.kind !== 'kanban') throw new Error('board');
@@ -215,28 +352,58 @@ describe('card queries as scope', () => {
 });
 
 describe('where apps use structure (D6)', () => {
+  const wheres = (target: Parameters<typeof specReferences>[1], version: number | 'draft') =>
+    specReferences(spec(), target, version).map((place) => place.where);
+
   it('names the places a field, option, rule or table is used', () => {
-    const s = spec();
-    expect(specReferences(s, { fieldIds: [105] }, 'v2')).toEqual([
+    expect(wheres({ fieldIds: [105] }, 2)).toEqual([
       'v2 › “Requests” › filter “Department”',
       'v2 › “Requests” › “All”',
     ]);
-    expect(specReferences(s, { ruleIds: [77] }, 'draft')).toEqual(['draft › “Requests” › “All” › “Escalate”']);
-    expect(specReferences(s, { options: { fieldId: 102, optionIds: ['approved'] } }, 'v1')).toEqual([
+    expect(wheres({ ruleIds: [77] }, 'draft')).toEqual(['draft › “Requests” › “All” › “Escalate”']);
+    expect(wheres({ options: { fieldId: 102, optionIds: ['approved'] } }, 1)).toEqual([
       'v1 › “Requests” › “All” › “Approve”',
     ]);
-    expect(specReferences(s, { options: { fieldId: 105, optionIds: ['ops'] } }, 'v1')).toEqual([
+    expect(wheres({ options: { fieldId: 105, optionIds: ['ops'] } }, 1)).toEqual([
       'v1 › “Requests” › filter “Department”',
     ]);
-    expect(specReferences(s, { fieldIds: [111] }, 'v1')).toEqual(['v1 › role “Reader”']);
-    expect(specReferences(s, { tableIds: [V] }, 'v1')).toEqual(['v1 › “Requests” › “buttons” › “Add”']);
-    expect(specReferences(s, { fieldIds: [999] }, 'v1')).toEqual([]);
+    expect(wheres({ fieldIds: [111] }, 1)).toEqual(['v1 › role “Reader”']);
+    expect(wheres({ tableIds: [V] }, 1)).toEqual(['v1 › “Requests” › “buttons” › “Add”']);
+    expect(wheres({ fieldIds: [999] }, 1)).toEqual([]);
+  });
+
+  it('says where without words, for a client to word in its own language', () => {
+    const locations = (target: Parameters<typeof specReferences>[1], version: number | 'draft') =>
+      specReferences(spec(), target, version).map((place) => place.location);
+    const page = { id: 'p1', title: 'Requests' };
+    expect(locations({ fieldIds: [105] }, 2)).toEqual([
+      { version: 2, page, filter: { id: 'dept', label: 'Department' } },
+      { version: 2, page, card: { id: 'list', kind: 'records', title: 'All' } },
+    ]);
+    expect(locations({ ruleIds: [77] }, 'draft')).toEqual([
+      {
+        version: 'draft',
+        page,
+        card: { id: 'list', kind: 'records', title: 'All' },
+        action: { id: 'escalate', label: 'Escalate' },
+      },
+    ]);
+    // An untitled card carries its kind (no raw id in place of a name); a button is an action of its card.
+    expect(locations({ tableIds: [V] }, 1)).toEqual([
+      { version: 1, page, card: { id: 'buttons', kind: 'buttons' }, action: { id: 'add', label: 'Add' } },
+    ]);
+    expect(locations({ fieldIds: [110] }, 1)).toEqual([
+      { version: 1, page, card: { id: 'board', kind: 'kanban' }, move: true },
+    ]);
+    expect(locations({ fieldIds: [111] }, 1)).toEqual([{ version: 1, role: { key: 'r', name: 'Reader' } }]);
   });
 
   it('covers everything appSpecDependencies lists', () => {
     const s = spec();
     const deps = appSpecDependencies(s);
-    const places = specPlaces(s, 'v1');
+    // The fixture uses every kind of reference the dependency list carries.
+    expect(deps.fieldIds).toEqual(expect.arrayContaining([120, 121, 122, 123, 124, 125, 126, 127]));
+    const places = specPlaces(s, 1);
     const held = (pick: (holds: (typeof places)[number]['holds']) => Set<number>) =>
       new Set(places.flatMap((place) => [...pick(place.holds)]));
     const fields = held((holds) => holds.fields);
@@ -245,6 +412,13 @@ describe('where apps use structure (D6)', () => {
     expect(deps.fieldIds.filter((id) => !fields.has(id))).toEqual([]);
     expect(deps.tableIds.filter((id) => !tables.has(id))).toEqual([]);
     expect(deps.ruleIds.filter((id) => !rules.has(id))).toEqual([]);
+    // Each of those is found at its own place.
+    const at = (fieldId: number) => specReferences(s, { fieldIds: [fieldId] }, 1).map((place) => place.where);
+    expect(at(121)).toEqual(['v1 › “More” › “Leave”']);
+    expect(at(122)).toEqual(['v1 › “More” › “Pictures”']);
+    expect(at(124)).toEqual(['v1 › “More” › “By type”']);
+    expect(at(126)).toEqual(['v1 › “More” › “Pivot”']);
+    expect(at(127)).toEqual(['v1 › “More” › “Open items” › “Close”']);
   });
 });
 

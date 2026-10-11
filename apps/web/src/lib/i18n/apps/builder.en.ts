@@ -536,6 +536,17 @@ export const appsBuilderEn = {
       deleteAnyway: 'Delete anyway',
       saveAnyway: 'Save anyway',
       failed: 'That did not go through. Try again.',
+      place: {
+        draft: 'Draft',
+        version: 'v{version}',
+        page: '“{title}”',
+        filter: 'filter “{label}”',
+        card: '“{title}”',
+        untitledCard: '{kind} card',
+        action: 'button “{label}”',
+        move: 'dragging between lanes',
+        role: 'role “{name}”',
+      },
     },
     baseSection: {
       button: 'Apps',

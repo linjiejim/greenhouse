@@ -701,6 +701,42 @@ describe('approving (acceptance 3)', () => {
     expect([404, 409]).toContain(again.status);
   });
 
+  it('names the last editor wherever the card shows updated_by, and nowhere else', async () => {
+    const p = await procurement();
+    const recordId = await pending(p);
+    // v2: "My requests" shows who changed a request last, as a column and in the drawer.
+    const draft = await json<AppDraftView>(await send(owner, `/api/apps/${p.appId}/draft`));
+    const spec = structuredClone(draft.spec);
+    const mine = spec.pages[0]!.cards[0]!;
+    if (mine.kind !== 'records') throw new Error('my-requests');
+    mine.systemFields = ['updated_by'];
+    mine.detail = { ...mine.detail!, systemFields: ['created_at', 'updated_by'] };
+    const saved = await json<AppDraftView>(
+      await send(owner, `/api/apps/${p.appId}/draft`, 'PUT', { spec, draftRevision: draft.draftRevision }),
+    );
+    expect(saved.errors).toEqual([]);
+    await json(await send(owner, `/api/apps/${p.appId}/publish`, 'POST', { draftRevision: saved.draftRevision }));
+    await json(await act(p, approver, { pageId: 'review', cardId: 'queue', actionId: 'approve', recordId }));
+
+    const list = await records(p, applicant, 'mine', 'my-requests');
+    expect(list.records.find((row) => row.id === recordId)?.updatedBy).toBe(approver.id);
+    expect(list.refs.users[approver.id]).toEqual({ nickname: 'GW approver' });
+    const drawer = await json<AppRecordView>(
+      await send(applicant, `/api/apps/${p.appId}/records/get`, 'POST', {
+        pageId: 'mine',
+        cardId: 'my-requests',
+        recordId,
+      }),
+    );
+    expect(drawer.systemFields).toEqual(['created_at', 'updated_by']);
+    expect(drawer.record.updatedBy).toBe(approver.id);
+    expect(drawer.refs.users[approver.id]).toEqual({ nickname: 'GW approver' });
+    // The board does not show it: no editor on its rows.
+    const board = await json<AppCardQueryResult>(await cardQuery(p, approver, 'review', 'board'));
+    if (board.kind !== 'records') throw new Error(`expected records, got ${board.kind}`);
+    expect(board.records.find((row) => row.id === recordId)).not.toHaveProperty('updatedBy');
+  });
+
   it('refuses a stale approval with 409 precondition once the status moved inside the card', async () => {
     const p = await procurement();
     const recordId = await pending(p);
@@ -1069,6 +1105,57 @@ describe('attachments, options and page filters', () => {
     expect(chart.kind).toBe('chart');
   });
 
+  it('compares a $page value by the clause’s operator: “is not” excludes what was picked', async () => {
+    const p = await procurement();
+    const request = async (user: UserRow, title: string, requestedFor: UserRow) =>
+      submit(p, user, [
+        { fieldId: p.f.title, value: title },
+        { fieldId: p.f.requestedFor, value: requestedFor.id },
+      ]);
+    await request(applicant, 'Own, for the applicant', applicant);
+    await request(colleague, 'Colleague’s, for the applicant', applicant);
+    await request(colleague, 'Colleague’s, for themselves', colleague);
+    // v2: a "Requested for" filter on the review page; "By department" lists requests for that person that
+    // someone else filed — its clause compares the creator with the picked person by "is not".
+    const draft = await json<AppDraftView>(await send(owner, `/api/apps/${p.appId}/draft`));
+    const spec = structuredClone(draft.spec);
+    const review = spec.pages.find((page) => page.id === 'review')!;
+    review.filters = [
+      ...review.filters!,
+      { id: 'who', label: 'Requested for', kind: 'user', targets: [{ tableId: p.tableId, fieldId: p.f.requestedFor }] },
+    ];
+    const byDept = review.cards.find((card) => card.id === 'by-dept')!;
+    if (byDept.kind !== 'records') throw new Error('by-dept');
+    byDept.source.query = {
+      where: { combinator: 'and', clauses: [{ systemField: 'created_by', operator: 'neq', value: '$page.who' }] },
+    };
+    const saved = await json<AppDraftView>(
+      await send(owner, `/api/apps/${p.appId}/draft`, 'PUT', { spec, draftRevision: draft.draftRevision }),
+    );
+    expect(saved.errors).toEqual([]);
+    await json(await send(owner, `/api/apps/${p.appId}/publish`, 'POST', { draftRevision: saved.draftRevision }));
+
+    const titles = async (extra: Record<string, unknown> = {}) =>
+      (await records(p, owner, 'review', 'by-dept', extra)).records.map((row) => row.values[String(p.f.title)]).sort();
+    const forApplicant = { filterValues: { who: { kind: 'user', userIds: [applicant.id] } } };
+    // Requested for the applicant (the filter) and not filed by them (the clause) — not "filed by them".
+    expect(await titles(forApplicant)).toEqual(['Colleague’s, for the applicant']);
+    expect(await titles()).toHaveLength(3);
+
+    // An operator a user filter gives no meaning is a problem when saved, and publishing refuses it.
+    const latest = await json<AppDraftView>(await send(owner, `/api/apps/${p.appId}/draft`));
+    byDept.source.query = {
+      where: { combinator: 'and', clauses: [{ systemField: 'created_by', operator: 'gt', value: '$page.who' }] },
+    };
+    const refused = await json<AppDraftView>(
+      await send(owner, `/api/apps/${p.appId}/draft`, 'PUT', { spec, draftRevision: latest.draftRevision }),
+    );
+    expect(refused.errors.map((error) => error.message)).toContainEqual(expect.stringContaining('not gt'));
+    expect(
+      (await send(owner, `/api/apps/${p.appId}/publish`, 'POST', { draftRevision: refused.draftRevision })).status,
+    ).toBe(400);
+  });
+
   it('reads a null page-filter value as cleared: no constraint, and the default no longer applies', async () => {
     const p = await procurement();
     // v2: the Department filter starts on "ops".
@@ -1162,6 +1249,12 @@ describe('calendar cards', () => {
           pages: 'all',
           tables: [{ tableId, access: 'read', fields: [], fieldDefault: 'visible' }],
         },
+        {
+          key: 'starts',
+          name: 'Starts only',
+          pages: 'all',
+          tables: [{ tableId, access: 'read', fields: [{ fieldId: end, access: 'hidden' }], fieldDefault: 'visible' }],
+        },
       ],
     };
     const draft = await json<AppDraftView>(
@@ -1169,13 +1262,14 @@ describe('calendar cards', () => {
       201,
     );
     expect(draft.errors).toEqual([]);
-    const query = async (range: { from: string; to: string }) => {
+    const query = async (range: { from: string; to: string }, previewRole?: string) => {
       const result = await json<AppCardQueryResult>(
         await send(owner, `/api/apps/${draft.app.id}/cards/query`, 'POST', {
           pageId: 'cal',
           cardId: 'days',
           draft: true,
           range,
+          ...(previewRole ? { previewRole } : {}),
         }),
       );
       if (result.kind !== 'records') throw new Error(`expected records, got ${result.kind}`);
@@ -1184,6 +1278,8 @@ describe('calendar cards', () => {
 
     expect(await query({ from: '2026-09-28', to: '2026-11-01' })).toEqual(['inside', 'last day', 'spans in']);
     expect(await query({ from: '2026-10-04', to: '2026-10-31' })).toEqual(['inside']);
+    // A role that cannot read the end field still gets its calendar — matched by the start day alone.
+    expect(await query({ from: '2026-09-28', to: '2026-11-01' }, 'starts')).toEqual(['inside', 'last day']);
   });
 });
 
@@ -1225,6 +1321,107 @@ describe('managers (D2)', () => {
     expect((await records(p, owner, 'review', 'queue')).kind).toBe('records');
     await json(await send(builder, `/api/apps/${p.appId}/publish`, 'POST', { draftRevision: draft.draftRevision }));
   });
+
+  it('treats a Base builder without tables.apps.manage as a viewer: no draft, no preview, no full access', async () => {
+    const p = await procurement();
+    await submit(p, applicant, [{ fieldId: p.f.title, value: 'Someone else’s' }]);
+    // v2 in the draft only: a page the live version does not have.
+    const draft = await json<AppDraftView>(await send(owner, `/api/apps/${p.appId}/draft`));
+    const spec = structuredClone(draft.spec);
+    spec.pages[0]!.title = 'Draft title';
+    await json(await send(owner, `/api/apps/${p.appId}/draft`, 'PUT', { spec, draftRevision: draft.draftRevision }));
+    await db.platform.setUserCapabilityOverride({
+      org_id: 'default',
+      user_id: builder.id,
+      capability: 'tables.apps.manage',
+      effect: 'deny',
+      granted_by: owner.id,
+    });
+
+    // The team audience makes the builder an applicant — and that is all they get.
+    for (const query of ['', '?draft=1', '?previewRole=approver', '?previewRole=approver&draft=1']) {
+      const view = await json<AppRuntimeView>(await send(builder, `/api/apps/${p.appId}${query}`));
+      expect(view.version, query).toBe(1);
+      expect(view.draft, query).toBeFalsy();
+      expect(view.role, query).toEqual({ key: 'applicant', name: 'Applicant' });
+      expect(view.spec.pages.map((page) => [page.id, page.title])).toEqual([['mine', 'My requests']]);
+      expect(view.app.canManage, query).toBe(false);
+    }
+    expect((await send(builder, `/api/apps/${p.appId}/draft`)).status).toBe(403);
+    for (const extra of [{}, { previewRole: 'approver' }, { draft: true }]) {
+      expect((await cardQuery(p, builder, 'review', 'queue', extra)).status).toBe(404);
+    }
+    // Their own rows only (the applicant's request is not theirs).
+    expect((await records(p, builder, 'mine', 'my-requests', { draft: true })).total).toBe(0);
+    const list = await json<{ managed: Array<{ id: number }>; shared: Array<{ id: number; canManage: boolean }> }>(
+      await send(builder, '/api/apps'),
+    );
+    expect(list.managed).toEqual([]);
+    expect(list.shared.find((app) => app.id === p.appId)?.canManage).toBe(false);
+
+    // Outside every audience, the same builder opens nothing.
+    await json(
+      await send(owner, `/api/apps/${p.appId}/audiences`, 'PUT', {
+        entries: [{ principal: { type: 'group', groupId: p.groupId }, roleKey: 'approver' }],
+        audiencesRevision: 2,
+      }),
+    );
+    expect((await send(builder, `/api/apps/${p.appId}?draft=1`)).status).toBe(404);
+    expect((await cardQuery(p, builder, 'mine', 'my-requests', { draft: true })).status).toBe(404);
+    expect((await json<{ shared: unknown[] }>(await send(builder, '/api/apps'))).shared).toEqual([]);
+  });
+
+  it('ignores a viewer’s previewRole and draft (acceptance 4)', async () => {
+    const p = await procurement();
+    await submit(p, colleague, [{ fieldId: p.f.title, value: 'Colleague’s' }]);
+    // An applicant asking for the approver's card, or the draft, gets nothing more than their role.
+    expect((await cardQuery(p, applicant, 'review', 'queue', { previewRole: 'approver' })).status).toBe(404);
+    expect((await cardQuery(p, applicant, 'review', 'queue', { previewRole: 'approver', draft: true })).status).toBe(
+      404,
+    );
+    const mine = await records(p, applicant, 'mine', 'my-requests', { previewRole: 'approver', draft: true });
+    expect(mine.total).toBe(0);
+    const view = await json<AppRuntimeView>(await send(applicant, `/api/apps/${p.appId}?previewRole=approver&draft=1`));
+    expect(view.role.key).toBe('applicant');
+    expect(view.version).toBe(1);
+    expect(view.draft).toBeFalsy();
+    expect(view.spec.pages.map((page) => page.id)).toEqual(['mine']);
+  });
+
+  it('keeps a draft edit away from viewers until it is published (acceptance 4)', async () => {
+    const p = await procurement();
+    const draft = await json<AppDraftView>(await send(owner, `/api/apps/${p.appId}/draft`));
+    const spec = structuredClone(draft.spec);
+    const minePage = spec.pages.find((page) => page.id === 'mine')!;
+    minePage.title = 'Requests v2';
+    minePage.cards.push({ id: 'note', kind: 'text', layout: { x: 0, y: 6, w: 12, h: 2 }, markdown: 'New in v2' });
+    const saved = await json<AppDraftView>(
+      await send(owner, `/api/apps/${p.appId}/draft`, 'PUT', { spec, draftRevision: draft.draftRevision }),
+    );
+    expect(saved.errors).toEqual([]);
+
+    // Saved but not published: the applicant still runs v1.
+    const before = await json<AppRuntimeView>(await send(applicant, `/api/apps/${p.appId}`));
+    expect(before.version).toBe(1);
+    expect(before.spec.pages[0]!.title).toBe('My requests');
+    expect(before.spec.pages[0]!.cards.map((card) => card.id)).not.toContain('note');
+    expect((await cardQuery(p, applicant, 'mine', 'note')).status).toBe(404);
+    expect((await cardQuery(p, applicant, 'mine', 'note', { draft: true })).status).toBe(404);
+    // The manager sees the draft only when asking for it.
+    expect((await json<AppRuntimeView>(await send(owner, `/api/apps/${p.appId}`))).version).toBe(1);
+    expect((await json<AppRuntimeView>(await send(owner, `/api/apps/${p.appId}?draft=1`))).spec.pages[0]!.title).toBe(
+      'Requests v2',
+    );
+
+    await json(await send(owner, `/api/apps/${p.appId}/publish`, 'POST', { draftRevision: saved.draftRevision }));
+    const after = await json<AppRuntimeView>(await send(applicant, `/api/apps/${p.appId}`));
+    expect(after.version).toBe(2);
+    expect(after.spec.pages[0]!.title).toBe('Requests v2');
+    expect(await json<AppCardQueryResult>(await cardQuery(p, applicant, 'mine', 'note'))).toEqual({
+      kind: 'text',
+      markdown: 'New in v2',
+    });
+  });
 });
 
 // ─── Acceptance 5: structure changes (D6) ────────────────
@@ -1243,6 +1440,15 @@ describe('structure changes that break apps (acceptance 5, D6)', () => {
     expect(places).toEqual(
       expect.arrayContaining(['v1 › “Review” › “Pending”', 'draft › “Review” › filter “Department”']),
     );
+    // The same places without words, for the client to name in its own language.
+    const review = { id: 'review', title: 'Review' };
+    expect(body.details.references).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ version: 1, page: review, card: { id: 'queue', kind: 'records', title: 'Pending' } }),
+        expect.objectContaining({ version: 'draft', page: review, filter: { id: 'dept', label: 'Department' } }),
+        expect.objectContaining({ version: 1, page: review, card: { id: 'by-dept', kind: 'records' } }),
+      ]),
+    );
 
     await json(await send(owner, `/api/tables/fields/${p.f.dept}/archive`, 'POST', { confirm: true }));
     const queue = await json<AppCardQueryResult>(await cardQuery(p, approver, 'review', 'queue'));
@@ -1256,6 +1462,42 @@ describe('structure changes that break apps (acceptance 5, D6)', () => {
     expect(
       (await act(p, applicant, { pageId: 'mine', cardId: 'new-request', actionId: '$submit', values: [] })).status,
     ).toBe(403);
+  });
+
+  it('refuses to archive a table apps use until confirmed, then serves its cards as unavailable', async () => {
+    const p = await procurement();
+    const refused = await send(owner, `/api/tables/tables/${p.tableId}/archive`, 'POST', {});
+    expect(refused.status).toBe(409);
+    const body = (await refused.json()) as {
+      details: { reason: string; references: Array<{ appId: number; where: string; role?: { key: string } }> };
+    };
+    expect(body.details.reason).toBe('used_by_apps');
+    expect(body.details.references.map((ref) => ref.where)).toEqual(
+      expect.arrayContaining([
+        'v1 › “My requests” › “my-requests”',
+        'v1 › “Review” › “Pending”',
+        'v1 › “Stats” › “total”',
+        'v1 › role “Approver”',
+      ]),
+    );
+    expect(body.details.references).toContainEqual(
+      expect.objectContaining({ version: 1, role: { key: 'approver', name: 'Approver' } }),
+    );
+    // The vendors table only sits in the applicant's rules.
+    const vendors = await send(owner, `/api/tables/tables/${p.vendors.tableId}/archive`, 'POST', {});
+    expect(vendors.status).toBe(409);
+    expect(
+      ((await vendors.json()) as { details: { references: Array<{ where: string }> } }).details.references.map(
+        (ref) => ref.where,
+      ),
+    ).toEqual(['draft › role “Applicant”', 'v1 › role “Applicant”']);
+
+    await json(await send(owner, `/api/tables/tables/${p.tableId}/archive`, 'POST', { confirm: true }));
+    expect(await json<AppCardQueryResult>(await cardQuery(p, approver, 'review', 'queue'))).toEqual({
+      kind: 'unavailable',
+      message: 'This card is unavailable',
+    });
+    expect((await json<AppCardQueryResult>(await cardQuery(p, owner, 'stats', 'total'))).kind).toBe('unavailable');
   });
 
   it('guards select options used in predicates and values, and button rules used by actions', async () => {

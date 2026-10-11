@@ -739,8 +739,33 @@ export interface AppTemplateInstallResult {
   baseId: number;
 }
 
+/**
+ * One place an app uses what a schema change removes (D6). `where` words it in
+ * English (`v2 › “Review” › “Pending” › “Approve”`) for logs, the plan tool and
+ * older clients. The optional fields say the same thing language-neutrally so a
+ * client words it in its own language (additive): the `version` (a published
+ * one or the draft), the `page`, and then one of — a page `filter`, a `card`
+ * (alone, with one of its `action`s / buttons, or its lane `move`) — or, with
+ * no page, a `role`'s table rules.
+ */
+export interface AppReference {
+  appId: number;
+  name: string;
+  where: string;
+  version?: number | 'draft';
+  page?: { id: string; title: string };
+  filter?: { id: string; label: string };
+  /** `title` absent = an untitled card (name it by its kind). */
+  card?: { id: string; kind: AppCardKind; title?: string };
+  /** A card action, a drawer action or a button of a buttons card. */
+  action?: { id: string; label: string };
+  /** The board card's lane move (its `move.when`). */
+  move?: true;
+  role?: { key: string; name: string };
+}
+
 /** 409 `details` when a schema change would break apps (D6); resend with `confirm: true` to proceed. */
 export interface AppReferencesConflict {
   reason: 'used_by_apps';
-  references: Array<{ appId: number; name: string; where: string }>;
+  references: AppReference[];
 }

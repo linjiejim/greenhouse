@@ -730,6 +730,8 @@ interface Outcome {
   created?: Array<{ ref: SchemaPlanRef; kind: SchemaPlanObjectKind; id: number }>;
   /** The Base it touched, when known without another read. */
   baseId?: number;
+  /** The app draft revision it wrote (kept in the result: a retry builds on it). */
+  draftRevision?: number;
   /** Something the member should know about an operation that DID apply. */
   note?: string;
 }
@@ -751,8 +753,16 @@ export async function applySchemaPlan(
   const results: SchemaPlanOperationResult[] = [];
   const touchedBases = new Set<number>(prior?.baseId === undefined ? [] : [prior.baseId]);
   const tableBases = new Map<number, number>();
-  /** Draft revisions this run wrote, per app: what a later `app.update` / `app.publish` of it builds on. */
+  /**
+   * Draft revisions this plan wrote, per app: what a later `app.update` / `app.publish` of it builds on. A
+   * retry starts from the ones the earlier run recorded, so an `app.publish {appId}` whose `app.update`
+   * applied last time still publishes exactly that draft (or answers 409 if someone changed it since).
+   */
   const appRevisions = new Map<number, number>();
+  for (const result of [...(prior?.results ?? [])].sort((a, b) => a.index - b.index)) {
+    if (result.id !== undefined && result.draftRevision !== undefined)
+      appRevisions.set(result.id, result.draftRevision);
+  }
 
   const idOf = (kind: SchemaPlanObjectKind, ref: SchemaPlanRef): number => {
     const reason = unresolved.get(ref);
@@ -1209,6 +1219,7 @@ export async function applySchemaPlan(
           ok: true,
           id: appId,
           baseId,
+          draftRevision: appId === undefined ? undefined : appRevisions.get(appId),
           created: operation.ref && appId !== undefined ? [{ ref: operation.ref, kind: 'app', id: appId }] : [],
         };
       }
@@ -1216,6 +1227,7 @@ export async function applySchemaPlan(
       case 'app.update': {
         const appId = appOf(operation);
         let baseId: number | undefined;
+        let written: number | undefined;
         if (operation.spec !== undefined) {
           // A draft this plan already wrote builds on its own revision; else the one the model read; else today's.
           const draftRevision =
@@ -1228,14 +1240,16 @@ export async function applySchemaPlan(
           );
           if (!saved.ok) return { ok: false, message: failureMessage(saved) };
           noteRevision(appId, saved.data);
+          written = appRevisions.get(appId);
           baseId = appBaseId(saved.data);
         }
         if (operation.name !== undefined) {
           const renamed = await dispatch('updateApp', { appId, name: operation.name }, { appId });
-          if (!renamed.ok) return { ok: false, message: failureMessage(renamed) };
+          // The draft is saved even so: record its revision, a retry saves over its own write.
+          if (!renamed.ok) return { ok: false, id: appId, draftRevision: written, message: failureMessage(renamed) };
           baseId ??= appBaseId(renamed.data);
         }
-        return { ok: true, id: appId, baseId };
+        return { ok: true, id: appId, baseId, draftRevision: written };
       }
 
       case 'app.audience': {
@@ -1294,6 +1308,7 @@ export async function applySchemaPlan(
       op: operation.op,
       status: outcome.ok ? 'applied' : skipped ? 'skipped' : 'failed',
       ...(outcome.id === undefined ? {} : { id: outcome.id }),
+      ...(outcome.draftRevision === undefined ? {} : { draftRevision: outcome.draftRevision }),
       ...(outcome.ok
         ? outcome.note === undefined
           ? {}

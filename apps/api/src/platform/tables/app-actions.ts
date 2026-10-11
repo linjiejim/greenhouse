@@ -38,7 +38,6 @@ import {
   APP_BUILTIN_ACTIONS,
   type AppActionRefusal,
   type AppActionResult,
-  type AppCard,
   type AppRecordAction,
   type AppRecordRow,
 } from '@greenhouse/types/apps';
@@ -47,7 +46,13 @@ import type { TableFieldValueEntry, TableFilterGroup, TableRecordValues } from '
 import type { PlatformActionResult } from '@greenhouse/platform-kernel';
 import { cardReadScope } from './app-audience.js';
 import { appRecordRow, availableActionIds, usableActions } from './app-records.js';
-import { cardActions, cardDisplayFieldIds, isRecordsCard, type RecordsLikeCard } from './app-scope.js';
+import {
+  cardActions,
+  cardDisplayFieldIds,
+  cardSystemFields,
+  isRecordsCard,
+  type RecordsLikeCard,
+} from './app-scope.js';
 import { sessionRoleAllows, sessionTableAccess, type AppSession, type LocatedCard } from './app-session.js';
 import { claimAppAttachments } from './app-uploads.js';
 import { publishRecordsChanged } from './realtime.js';
@@ -322,7 +327,7 @@ async function rowAfterWrite(
   const ids = await availableActionIds(context, session, card, scope, actions, [row.id]);
   const readable = new Set(scope.readableFieldIds);
   const shown = new Set(cardDisplayFieldIds(card).filter((id) => readable.has(id)));
-  return appRecordRow(row, shown, ids.get(row.id) ?? []);
+  return appRecordRow(row, shown, ids.get(row.id) ?? [], cardSystemFields(card));
 }
 
 async function runCreate(
@@ -674,11 +679,6 @@ export async function runSessionAction(
       await context.db.tables.releaseAppActionRequest(claim.id);
     }
   }
-}
-
-/** Card kinds an action may target — the handler answers 400 for the rest before opening a ledger row. */
-export function cardTakesActions(card: AppCard): boolean {
-  return card.kind === 'form' || card.kind === 'buttons' || isRecordsCard(card);
 }
 
 const LEDGER_PRUNE_BATCH = 1000;
