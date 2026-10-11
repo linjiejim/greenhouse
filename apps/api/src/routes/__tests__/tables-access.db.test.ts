@@ -687,8 +687,16 @@ describe('acceptance 2 — the 销售 custom role', { timeout: 30_000 }, () => {
       await send(sales, `/api/tables/tables/${w.customers}/views`),
     );
     const trimmed = views.views.find((entry) => entry.id === view.view.id)!;
-    expect(trimmed.config).not.toContain(String(amount));
-    expect(JSON.parse(trimmed.config)).toMatchObject({ fieldIds: [w.fields.customerName.id] });
+    // Nothing in the trimmed config may name the hidden field: not as a column, a width key or a predicate.
+    const trimmedConfig = JSON.parse(trimmed.config) as {
+      fieldIds?: number[];
+      widths?: Record<string, number>;
+      query?: { where?: { clauses: Array<{ fieldId?: number }> }; sort?: Array<{ fieldId?: number }> };
+    };
+    expect(trimmedConfig.fieldIds).toEqual([w.fields.customerName.id]);
+    expect(Object.keys(trimmedConfig.widths ?? {})).not.toContain(String(amount));
+    expect((trimmedConfig.query?.where?.clauses ?? []).map((clause) => clause.fieldId)).not.toContain(amount);
+    expect((trimmedConfig.query?.sort ?? []).map((sort) => sort.fieldId)).not.toContain(amount);
     expect((await send(sales, `/api/tables/tables/${w.secrets}/views`)).status).toBe(404);
 
     // Forms: only on tables the role may create in, and only its editable fields.
@@ -730,21 +738,23 @@ describe('acceptance 2 — the 销售 custom role', { timeout: 30_000 }, () => {
     const count = await widget('kpi', w.customers, { operation: 'count' });
     const secret = await widget('records', w.secrets, {});
 
-    const seen = await json<{ widgets: Array<{ id: number; config: string; no_access?: boolean }> }>(
+    // Widgets the role cannot evaluate come back as a bare frame flagged no_access (slice D's card contract).
+    const seen = await json<{ widgets: Array<{ id: number; config: string; access?: 'no_access' }> }>(
       await send(sales, `/api/tables/dashboards/${dashboard.id}`),
     );
-    expect(seen.widgets.find((entry) => entry.id === sum)).toMatchObject({ config: '{}', no_access: true });
-    expect(seen.widgets.find((entry) => entry.id === secret)).toMatchObject({ no_access: true });
-    expect(seen.widgets.find((entry) => entry.id === count)?.no_access).toBeUndefined();
-    const sumResult = await json<{ noAccess?: boolean; rows?: unknown }>(
+    const sumWidget = seen.widgets.find((entry) => entry.id === sum)!;
+    expect(sumWidget.access).toBe('no_access');
+    expect(JSON.parse(sumWidget.config)).not.toHaveProperty('card');
+    expect(seen.widgets.find((entry) => entry.id === secret)?.access).toBe('no_access');
+    expect(seen.widgets.find((entry) => entry.id === count)?.access).toBeUndefined();
+    const sumResult = await json<{ result: { kind: string; value?: number } }>(
       await send(sales, `/api/tables/dashboard-widgets/${sum}/query`, 'POST'),
     );
-    expect(sumResult).toMatchObject({ noAccess: true });
-    expect(sumResult.rows).toBeUndefined();
-    const countResult = await json<{ rows: Array<{ value: number }> }>(
+    expect(sumResult.result).toEqual({ kind: 'no_access' });
+    const countResult = await json<{ result: { kind: string; value?: number } }>(
       await send(sales, `/api/tables/dashboard-widgets/${count}/query`, 'POST'),
     );
-    expect(countResult.rows).toEqual([expect.objectContaining({ value: 1 })]);
+    expect(countResult.result).toEqual({ kind: 'kpi', value: 1 });
 
     // dashboards: 'none' → the dashboards are not there at all.
     const current = await json<{ roles: Array<{ id: number; revision: number }> }>(

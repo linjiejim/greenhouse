@@ -265,3 +265,65 @@ describe('token source parity', () => {
     }
   });
 });
+
+/*
+ * Categorical chart colours (`--t-chart-1..8`). A chart sits on a card, so that is
+ * the surface every mark is measured against. The checks mirror the dataviz
+ * palette rules: adjacent slots (the neighbours a stack, a bar group or a pie puts
+ * side by side) must stay apart for normal vision, and every dark-mode slot is a
+ * WCAG 1.4.11 graphical object at ≥ 3:1. Light mode trades two slots (pink, amber)
+ * below 3:1 for hue separation; charts carry a legend, tooltips and a records view,
+ * which is the documented relief — the test pins exactly which slots rely on it.
+ */
+describe('chart palette', () => {
+  const SLOTS = [1, 2, 3, 4, 5, 6, 7, 8].map((slot) => `--t-chart-${slot}`);
+
+  /** OKLab (×100) of an opaque sRGB colour. */
+  function oklab([r, g, b]: [number, number, number]): [number, number, number] {
+    const [lr, lg, lb] = [channel(r), channel(g), channel(b)];
+    const l = Math.cbrt(0.4122214708 * lr + 0.5363325363 * lg + 0.0514459929 * lb);
+    const m = Math.cbrt(0.2119034982 * lr + 0.6806995451 * lg + 0.1073969566 * lb);
+    const s = Math.cbrt(0.0883024619 * lr + 0.2817188376 * lg + 0.6299787005 * lb);
+    return [
+      100 * (0.2104542553 * l + 0.793617785 * m - 0.0040720468 * s),
+      100 * (1.9779984951 * l - 2.428592205 * m + 0.4505937099 * s),
+      100 * (0.0259040371 * l + 0.7827717662 * m - 0.808675766 * s),
+    ];
+  }
+  const deltaE = (a: [number, number, number], b: [number, number, number]) => {
+    const [x, y] = [oklab(a), oklab(b)];
+    return Math.hypot(x[0] - y[0], x[1] - y[1], x[2] - y[2]);
+  };
+
+  it.each([
+    ['light', light],
+    ['dark', dark],
+  ])('%s: adjacent slots stay distinguishable', (name, block) => {
+    const { solid } = theme(block);
+    for (let index = 0; index < SLOTS.length - 1; index += 1) {
+      const pair = `${SLOTS[index]} / ${SLOTS[index + 1]} in ${name}`;
+      expect(deltaE(solid(SLOTS[index]!), solid(SLOTS[index + 1]!)), pair).toBeGreaterThanOrEqual(15);
+    }
+  });
+
+  it('dark: every slot clears 3:1 on the card', () => {
+    const { solid } = theme(dark);
+    for (const slot of SLOTS) {
+      expect(ratio(solid(slot), solid('--t-surface-card')), slot).toBeGreaterThanOrEqual(3);
+    }
+  });
+
+  it('light: only slots 5 and 6 rely on the legend / records relief', () => {
+    const { solid } = theme(light);
+    const below = SLOTS.filter((slot) => ratio(solid(slot), solid('--t-surface-card')) < 3);
+    expect(below).toEqual(['--t-chart-5', '--t-chart-6']);
+  });
+
+  it.each([
+    ['light', light],
+    ['dark', dark],
+  ])('%s: tokens.css matches lib/theme.ts', (key, block) => {
+    const chart = getThemeDefinition(key as 'light' | 'dark').chart;
+    SLOTS.forEach((slot, index) => expect(block.get(slot)?.toLowerCase(), slot).toBe(chart[index]!.toLowerCase()));
+  });
+});

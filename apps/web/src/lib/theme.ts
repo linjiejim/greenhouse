@@ -47,6 +47,11 @@ export interface ThemeDef {
   dark: boolean;
   primary: Record<50 | 100 | 200 | 300 | 400 | 500 | 600 | 700 | 800 | 900, string>;
   surface: ThemeSurface;
+  /**
+   * Categorical data colours `--t-chart-1..8`, in their fixed slot order (same
+   * eight hues in both modes, stepped per surface). Mirrors tokens.css.
+   */
+  chart: readonly [string, string, string, string, string, string, string, string];
 }
 
 const BRAND_PRIMARY: ThemeDef['primary'] = {
@@ -98,6 +103,7 @@ export const THEMES: ThemeDef[] = [
       infoSubtle: '#EDF7FA',
       infoFg: '#24566E',
     },
+    chart: ['#2B8A5E', '#2A78D6', '#EB6834', '#4A3AA7', '#E87BA4', '#EDA100', '#0F93B0', '#A0612E'],
   },
   {
     key: 'dark',
@@ -134,6 +140,7 @@ export const THEMES: ThemeDef[] = [
       infoSubtle: 'rgba(70, 145, 176, 0.15)',
       infoFg: '#A1CFE1',
     },
+    chart: ['#3A9E6F', '#3987E5', '#D95926', '#9085E9', '#D55181', '#C98500', '#2AA3C2', '#B87A45'],
   },
 ];
 
@@ -222,6 +229,7 @@ export function applyTheme(themeKey: string): void {
     '--t-info': theme.surface.info,
     '--t-info-subtle': theme.surface.infoSubtle,
     '--t-info-fg': theme.surface.infoFg,
+    ...Object.fromEntries(theme.chart.map((color, index) => [`--t-chart-${index + 1}`, color])),
   };
   for (const [name, value] of Object.entries(surfaceVariables)) {
     root.style.setProperty(name, value);

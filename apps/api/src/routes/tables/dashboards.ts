@@ -9,6 +9,8 @@ import type {
   TableDashboardWidgetRow,
   TableRecordQueryResult,
 } from '@greenhouse/db';
+import type { TableCardSpec } from '@greenhouse/types/tables';
+import type { TableCardResult } from '@greenhouse/types/table-cards';
 import type { AppEnv } from '../../app-env.js';
 import { actionError, dispatch, jsonBody, numberParam } from './shared.js';
 
@@ -61,16 +63,16 @@ export const dashboardRoutes = new Hono<AppEnv>()
     if (!result.ok) return actionError(c, result);
     return c.json(result.data as { success: true });
   })
+  // Body: {filterValues?, timezone?, drilldown?: {group, series?}, cursor?} — see queryDashboardWidget.
   .post('/dashboard-widgets/:widgetId/query', async (c) => {
     const widgetId = numberParam(c, 'widgetId');
-    const result = await dispatch(c, 'queryDashboardWidget', { widgetId }, { widgetId });
+    const result = await dispatch(c, 'queryDashboardWidget', { ...(await jsonBody(c)), widgetId }, { widgetId });
     if (!result.ok) return actionError(c, result);
     return c.json(
       result.data as {
-        widget: TableDashboardWidgetRow;
-        text?: string;
-        rows?: Array<{ group: string | number | boolean | null; value: number }>;
-        records?: TableRecordQueryResult;
+        widget: TableDashboardWidgetRow & { access?: 'no_access' };
+        card: TableCardSpec | null;
+        result: TableCardResult<TableRecordQueryResult>;
       },
     );
   });

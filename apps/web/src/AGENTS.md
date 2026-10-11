@@ -70,7 +70,7 @@
 
 ### 数据展示组件 (`components/blocks/`)
 - `<DataTableBlock>` — 可排序、可搜索、可把当前筛选/排序后的可见行导出 CSV 的数据表格，支持 text/number/currency/percent/boolean/badge 列类型
-- `<ChartBlock>` — 聊天富块默认保留固定阅读高度；工作台/仪表盘等已有明确父容器高度的场景传 `fill`，让 canvas 随卡片缩放，禁止在外层再用固定 px 高度覆盖。
+- `<ChartBlock>` — 聊天富块默认保留固定阅读高度；工作台/仪表盘等已有明确父容器高度的场景传 `fill`，让 canvas 随卡片缩放，禁止在外层再用固定 px 高度覆盖。怎么画（`display`：堆叠 / 横向 / 面积 / 数值标签 / 颜色槽）与点击（`onPointClick`）由宿主传，**不进**模型可写的 `ChartData` 协议；Chart.js 配置是纯函数 `chart-config.ts`（有单测）。
 - `<FileAttachmentCard>` — 文件附件统一展示；EditorJS attachment 与 Chat file artifact 共用，鉴权下载统一走 `lib/file-download.ts`
 - `<ConfirmBlock>` — 行内确认按钮组，用于 Agent 交互
 - `<HtmlPreviewBlock>` — ```html-preview fence 的消息流卡片（标题 + 「打开预览」+ 可折叠源码），真正渲染在右侧分栏的 `side-pane/html-preview.tsx`。**fence 名是 `html-preview` 不是 `html`**：后者是所有人展示 HTML 源码时写的，抢了它就会把「给我一段能复制的代码」变成不可复制的预览卡。**沙箱口径是承重的**：`<iframe srcdoc sandbox="allow-scripts">` 且**绝不加 `allow-same-origin`**——两者同时给等于完全没有 sandbox，文档就能读本页 localStorage 里的 token。不用 `blob:` URL、不给「新窗口打开」，理由与 `attachments-block.tsx` 拒绝预览 HTML 的注释完全一样（blob 继承本页 origin）。回归护栏 `side-pane/html-preview.render.test.tsx` 逐条断言这些属性。**唯一的回传通道**（[spec](../../../docs/specs/20261008-html-preview-bridge.md)）：inline 预览（`bridge`，Mission 产物不开）的**预览副本**注入 `window.greenhouse.sendPrompt(text)`（`injectHtmlBridge`，下载件与打印件不注入），只认 `event.source === 本 iframe` 的消息，经 `requestComposerDraft({ append, fromPage })` 追加进输入框、**从不发送**，1 秒节流、2000 字截断；**只在用户刚在页面里点按/键入后才收**（`hasTransientActivation`：iframe 里的激活会传到本窗口；不支持 `navigator.userActivation` 的浏览器放行），页面加载时或定时器里调用一律丢弃；`ConversationPane` 对非主人忽略 `fromPage` 草稿（`onComposerDraft` 的监听返回 `false` = 不接），`requestComposerDraft` 返回是否有输入框接了，提示 toast 只在接了时弹。sandbox 令牌不变
@@ -158,7 +158,7 @@ stores/
 - `safeParse(json, fallback)`、`relativeTime()`、`timeAgo()`、`formatDate()`、`formatDay()`、`formatTokens()`
 - 日期粒度：带时刻的时间戳用 `formatDate()`；**日历粒度字段**（项目起止日、任务到期日、表格里的创建日）用 `formatDay()`——`formatDate()` 会拖出一串 "12:00 AM" 噪音并占掉表格列宽
 - `roleBadgeStyles`——角色徽章样式，禁止在组件中重复定义
-- `CHART_PALETTE` / `BADGE_PALETTE`——数据可视化配色，禁止在组件中硬编码色板；图表默认使用克制的品牌 品牌绿阶，不恢复彩虹式特殊色板
+- `BADGE_PALETTE`——数据表徽章配色。**图表配色只有 `--t-chart-1..8`**（`packages/ui/src/styles/tokens.css`，亮 / 暗两套，`lib/theme.ts` 同步写入）：8 个类别色按固定顺序分配、绝不循环或生成，槽 1 是品牌绿，所以单系列图表仍是品牌色；顺序本身是色盲安全机制（相邻槽在 protan/deutan 下仍可区分），由 `lib/theme-contrast.test.ts` 钉住。`<ChartBlock>` 经 `components/blocks/chart-config.ts` 在渲染时读取这些 token，调用方只传槽位（`display.colorSlots`，例如选项的固定位置），禁止在组件里写色值
 - **禁止在组件文件中重复实现**
 
 ### 服务端下发文案的本地化 (`lib/i18n`)
@@ -278,6 +278,7 @@ stores/
 - **API 客户端**按域拆在 `lib/api/tables/<domain>.ts`（bases / members / schema / views / records / forms / automations / dashboards / plan，以及给后续切片预留的空模块 access / activity / imports），调用方只 import `lib/api/tables`（barrel）。新增客户端函数写进自己域的文件，不改 barrel。
 - **文案按切片拆**在 `lib/i18n/tables/<slice>.{en,zh}.ts`（access / views / forms / automations / dashboards / imports / activity / formula / plan），由 `lib/i18n/tables/en.ts|zh.ts` 一次并入 `tables.*`（plan 并入 `tablesSchemaPlan`）。每个模块独占自己的命名空间（`tables.forms.*`、`tables.automations.*`…），`lib/i18n/tables/slices.test.ts` 钉住不重名、不被核心键遮住；跨切片共享的键（字段类型、筛选操作符与令牌、记录元信息）留在 `en.ts` / `zh.ts` 的 `tables` 下。zh 模块用 `lib/i18n/types.ts` 的 `DeepRecord` 对齐英文。
 - **表单（切片 Fm）**：表单页 `form-page.tsx` 只走 `/api/forms`（`openTableForm` / `uploadTableFormFile` / `submitTableForm`），**不调 `listTableUsers`**——受众多半不是 Base 成员，人员选项来自提交视图的 `userOptions`；预填值不下发也不渲染。字段照样走 `FieldEditor`：附件经 `uploadAttachment` 渲染成只上传、不浏览 Drive 的 `AttachmentUploader`（`components/tables/attachment-uploader.tsx`，阶段 1 的应用表单复用）。`already_submitted`（打开时或并发提交输掉时的 409）显示「已提交」态。表单对话框 = 列表（状态、受众摘要、发布、复制 `#/forms/:id` 链接）+ `form-editor.tsx`（受众用共享 `PrincipalPicker`；非 Base 受众自动去掉并禁用关联字段；预填值按字段类型给 `$me` / `$today` / `$now` 或固定值；单次提交开关）。
+- **仪表盘 = 共享卡片**（切片 D）：卡片渲染只有 `components/table-cards/`（`TableCardView` 分派 KPI / 图表 / 透视 / 记录 / 文本；`card-labels.ts` 把分组键——选项 id、用户 id、`YYYY-MM-DD` 分桶起点、多值 JSON——变成文字，颜色槽跟随实体（选项位置）而不是名次；`filter-bar.tsx` 是查看者筛选条；`drilldown-drawer.tsx` 是下钻记录抽屉，加载器由宿主给、谓词永远由服务端算），阶段 1 的应用页面复用同一套。页面 `pages/tables/dashboard-view.tsx` 只做组合：数据与刷新在 `dashboard/use-dashboard-data.ts`（按查看者时区与筛选值逐个求值组件、各自失败、`tables:records_changed` 只刷新读那张表的组件），编辑器在 `dashboard/widget-dialog.tsx`（草稿 ↔ 卡片的纯映射 `widget-draft.ts`，保存前过共享的 `normalizeTableCardSpec`）与 `dashboard/filter-controls-dialog.tsx`。下钻记录用 `#/tables/<base>/table/<table>?record=<id>` 打开。
 - Tables 没有自己的通知收件箱：自动化通知与 @ 提及走平台通知中心（`tables_automation` / `tables_mention`），原「数据表通知」对话框已删。
 
 ### 页面上下文注入

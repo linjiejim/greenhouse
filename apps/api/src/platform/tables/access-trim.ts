@@ -2,29 +2,17 @@
  * Structure as a custom role sees it — the read-side trimming of spec §1
  * "结构读取". Record data needs none of this (the db enforces the compiled
  * scope on every record call); these helpers cut the *descriptions* of a Base
- * (tables, fields, views, dashboards) down to what the role can read, so a
- * view's filter constant or a widget's hidden column never reaches the client.
+ * (tables, fields, views) down to what the role can read, so a view's filter
+ * constant never reaches the client. Dashboards are trimmed by the card helpers
+ * (`trimCardForReader` / `trimFilterControlsForReader`, slice D).
  *
  * Every function takes the role's `CustomAccessLens` (`./access.ts`) and is
  * only called for `level === 'custom'`; built-in roles see structure as is.
  */
 
 import { safeJsonParse } from '@greenhouse/utils/json';
-import type {
-  TableDashboardResult,
-  TableDashboardWidgetRow,
-  TableFieldRow,
-  TableSchemaResult,
-  TableViewRow,
-} from '@greenhouse/db';
-import type {
-  TableCardSpec,
-  TableDashboardConfig,
-  TableDashboardWidgetConfig,
-  TableFilterGroup,
-  TableQuery,
-  TableViewConfig,
-} from '@greenhouse/types/tables';
+import type { TableFieldRow, TableSchemaResult, TableViewRow } from '@greenhouse/db';
+import type { TableFilterGroup, TableQuery, TableViewConfig } from '@greenhouse/types/tables';
 import type { CustomAccessLens } from './access.js';
 
 type Readable = ReadonlySet<number>;
@@ -110,84 +98,5 @@ export function trimSchema(lens: CustomAccessLens, schema: TableSchemaResult): T
     ...schema,
     fields: readableFields(lens, schema.table.id, schema.fields),
     views: schema.views.map((view) => trimView(lens, view)),
-  };
-}
-
-// ─── Dashboards ───────────────────────────────────────────
-
-function groupFieldIds(group: TableFilterGroup | undefined): number[] {
-  return (group?.clauses ?? []).flatMap((clause) => (clause.fieldId === undefined ? [] : [clause.fieldId]));
-}
-
-function queryFieldIds(query: StoredQuery | undefined): number[] {
-  if (!query) return [];
-  return [
-    ...groupFieldIds(query.where),
-    ...(query.filters ?? []).flatMap(groupFieldIds),
-    ...(query.sort ?? []).flatMap((sort) => (sort.fieldId === undefined ? [] : [sort.fieldId])),
-    ...(query.groupBy?.fieldId === undefined ? [] : [query.groupBy.fieldId]),
-  ];
-}
-
-/**
- * The fields a widget's result depends on (predicates, grouping, the measured
- * value) — a widget that needs an unreadable one is not evaluated for the role.
- * Display columns (`card.fieldIds`) are not here: they are trimmed instead.
- */
-function widgetDependencies(widget: TableDashboardWidgetRow, config: TableDashboardWidgetConfig) {
-  const card: TableCardSpec | undefined = config.card;
-  const tableIds = [widget.table_id, card?.source?.tableId].filter((id): id is number => typeof id === 'number');
-  const fieldIds = [
-    config.valueFieldId,
-    config.groupByFieldId,
-    ...queryFieldIds(config.query),
-    card?.aggregate?.valueFieldId,
-    card?.aggregate?.groupBy?.fieldId,
-    card?.aggregate?.series?.fieldId,
-    ...queryFieldIds(card?.source?.query),
-  ].filter((id): id is number => typeof id === 'number');
-  return { tableIds, fieldIds };
-}
-
-/** Can the role evaluate this widget? Every table it touches needs a rule; every field it depends on, read access. */
-export function widgetAccessible(lens: CustomAccessLens, widget: TableDashboardWidgetRow): boolean {
-  if (widget.type === 'text' && !widget.table_id) return true;
-  const config = safeJsonParse(widget.config, {}) as TableDashboardWidgetConfig;
-  const { tableIds, fieldIds } = widgetDependencies(widget, config);
-  if (tableIds.length === 0 || tableIds.some((id) => !lens.ruleFor(id))) return false;
-  const readable = new Set(tableIds.flatMap((id) => [...lens.readable(id)]));
-  return fieldIds.every((id) => readable.has(id));
-}
-
-/** A widget as the role gets it: its config with hidden display columns removed, or emptied and flagged `no_access`. */
-export function trimWidget(
-  lens: CustomAccessLens,
-  widget: TableDashboardWidgetRow,
-): TableDashboardWidgetRow & { no_access?: true } {
-  if (!widgetAccessible(lens, widget)) return { ...widget, config: '{}', no_access: true };
-  const config = safeJsonParse(widget.config, {}) as TableDashboardWidgetConfig;
-  if (!config.card?.fieldIds || !widget.table_id) return widget;
-  const readable = lens.readable(config.card.source?.tableId ?? widget.table_id);
-  const card = { ...config.card, fieldIds: config.card.fieldIds.filter((id) => readable.has(id)) };
-  return { ...widget, config: JSON.stringify({ ...config, card }) };
-}
-
-/** Filter controls lose the targets the role cannot read; a control with none left is removed. */
-function trimDashboardConfig(lens: CustomAccessLens, config: TableDashboardConfig): TableDashboardConfig {
-  if (!config.filters) return config;
-  const filters = config.filters.flatMap((control) => {
-    const targets = control.targets.filter(
-      (target) => lens.ruleFor(target.tableId) && refReadable(target, lens.readable(target.tableId)),
-    );
-    return targets.length > 0 ? [{ ...control, targets }] : [];
-  });
-  return { ...config, filters };
-}
-
-/** `getDashboard` for a custom role (the caller already refused `dashboards: 'none'`). */
-export function trimDashboard(lens: CustomAccessLens, result: TableDashboardResult): TableDashboardResult {
-  return {
-    dashboard: { ...result.dashboard, config: trimDashboardConfig(lens, result.dashboard.config) },
-    widgets: result.widgets.map((widget) => trimWidget(lens, widget)),
   };
 }
