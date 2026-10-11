@@ -70,6 +70,12 @@ interface WidgetGridProps {
   rowHeight?: number;
   /** Width under which the grid collapses to one column. */
   singleColumnBelow?: number;
+  /**
+   * Told whether the measured grid is one column (nothing drags) — once it has
+   * a width, and again whenever that flips — so a host's own copy ("drag a
+   * card…") follows this grid's breakpoint instead of guessing its own.
+   */
+  onSingleColumnChange?: (singleColumn: boolean) => void;
   className?: string;
 }
 
@@ -113,6 +119,7 @@ export function WidgetGrid({
   columns = 12,
   rowHeight = 52,
   singleColumnBelow = 768,
+  onSingleColumnChange,
   className,
 }: WidgetGridProps) {
   const { width, containerRef } = useMeasuredWidth();
@@ -121,6 +128,12 @@ export function WidgetGrid({
   // pre-layout) would otherwise latch the grid into single-column until the
   // next resize event that may never come.
   const narrow = width > 0 && width < singleColumnBelow;
+  const measured = width > 0;
+  const reportSingleColumn = useRef(onSingleColumnChange);
+  reportSingleColumn.current = onSingleColumnChange;
+  useEffect(() => {
+    if (measured) reportSingleColumn.current?.(narrow);
+  }, [measured, narrow]);
 
   const ordered = useMemo(() => [...items].sort((left, right) => left.y - right.y || left.x - right.x), [items]);
 

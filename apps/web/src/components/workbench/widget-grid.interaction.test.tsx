@@ -115,4 +115,36 @@ describe('WidgetGrid', () => {
       expect.objectContaining({ id: 'pivot', x: 4, y: 0, w: 6, h: 9 }),
     ]);
   });
+
+  it('tells its host whether it is one column, from its own measurement and threshold', async () => {
+    const onSingleColumnChange = vi.fn();
+    await act(async () => {
+      root.render(
+        <WidgetGrid
+          items={items}
+          editing
+          singleColumnBelow={1300}
+          onSingleColumnChange={onSingleColumnChange}
+          renderItem={(id) => <span>{id}</span>}
+        />,
+      );
+    });
+    // 1200px measured, under the host's 1300 threshold: one column, and no grid to drag.
+    expect(onSingleColumnChange).toHaveBeenLastCalledWith(true);
+    expect(grid.props).toBeNull();
+
+    await act(async () => {
+      root.render(
+        <WidgetGrid
+          items={items}
+          editing
+          singleColumnBelow={480}
+          onSingleColumnChange={onSingleColumnChange}
+          renderItem={(id) => <span>{id}</span>}
+        />,
+      );
+    });
+    expect(onSingleColumnChange).toHaveBeenLastCalledWith(false);
+    expect(grid.props).not.toBeNull();
+  });
 });

@@ -1,17 +1,20 @@
 /**
  * The Pages tab: the page list, the selected page's canvas, and the
  * properties of the selected card (or of the page, when no card is
- * selected). Three columns from `lg`; below it the list is a strip above the
- * canvas and the properties open in a dialog, so the builder works on a
- * phone too.
+ * selected). The columns are chosen from the tab's own measured width (the
+ * app sidebar takes a varying share of the window) so the canvas keeps room
+ * to drag and resize (`CANVAS_SINGLE_COLUMN_BELOW`): three columns when the
+ * list, the canvas and the properties all fit; then the list as a strip above
+ * the canvas with the properties beside it; then the properties in a dialog,
+ * so the builder works on a phone too.
  */
 
-import { useEffect, useState } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
 import type { AppCardKind, AppSpec, AppSpecError } from '@greenhouse/types/apps';
 import { Button, Dialog, IconButton, toast } from '../../../components/ui';
 import { useT } from '../../../lib/i18n';
 import { Settings, X } from '../../../lib/icons';
-import { PageCanvas } from './canvas';
+import { CANVAS_SINGLE_COLUMN_BELOW, PageCanvas } from './canvas';
 import { CardCatalog, CARD_KIND_ICONS } from './card-catalog';
 import { PageList } from './page-list';
 import { PageProperties } from './page-properties';
@@ -32,25 +35,42 @@ import {
 } from './spec-model';
 import type { BuilderBase } from './use-builder-schema';
 
-/** Tailwind's `lg`: three columns from here. */
-const WIDE_QUERY = '(min-width: 1024px)';
+/** The page list column (13rem), the properties column (24rem) and the gap between columns (1rem). */
+const LIST_WIDTH = 208;
+const PROPERTIES_WIDTH = 384;
+const COLUMN_GAP = 16;
 
-/** Tailwind's `md`: below it the canvas is one column (the shared grid's own breakpoint). */
-const GRID_QUERY = '(min-width: 768px)';
+export type PagesTabLayout = 'columns' | 'beside' | 'stacked';
 
-function useMinWidth(query: string): boolean {
-  const [matches, setMatches] = useState(() =>
-    typeof window !== 'undefined' && typeof window.matchMedia === 'function' ? window.matchMedia(query).matches : true,
-  );
-  useEffect(() => {
-    if (typeof window.matchMedia !== 'function') return;
-    const media = window.matchMedia(query);
-    const update = () => setMatches(media.matches);
-    update();
-    media.addEventListener('change', update);
-    return () => media.removeEventListener('change', update);
-  }, [query]);
-  return matches;
+/**
+ * How the tab lays out at `width` (its own, measured): everything side by side
+ * only while the canvas keeps its grid width. Unmeasured (0) is the desktop layout.
+ */
+export function pagesTabLayout(width: number): PagesTabLayout {
+  if (width <= 0 || width >= LIST_WIDTH + PROPERTIES_WIDTH + 2 * COLUMN_GAP + CANVAS_SINGLE_COLUMN_BELOW) {
+    return 'columns';
+  }
+  if (width >= PROPERTIES_WIDTH + COLUMN_GAP + CANVAS_SINGLE_COLUMN_BELOW) return 'beside';
+  return 'stacked';
+}
+
+/** The element's width, measured before paint (so the first frame already has its layout). */
+function useWidth() {
+  const ref = useRef<HTMLDivElement>(null);
+  const [width, setWidth] = useState(0);
+  useLayoutEffect(() => {
+    const element = ref.current;
+    if (!element) return;
+    setWidth(element.clientWidth);
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(([entry]) => {
+      const next = entry?.contentRect.width ?? element.clientWidth;
+      if (next > 0) setWidth(next);
+    });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+  return { ref, width };
 }
 
 export interface BuilderSelection {
@@ -74,8 +94,10 @@ export function PagesTab({
   onSelect: (next: BuilderSelection) => void;
 }) {
   const t = useT();
-  const wide = useMinWidth(WIDE_QUERY);
-  const grid = useMinWidth(GRID_QUERY);
+  const measured = useWidth();
+  const layout = pagesTabLayout(measured.width);
+  const wide = layout === 'columns';
+  const propertiesBeside = layout !== 'stacked';
   const [catalog, setCatalog] = useState(false);
   const [pageSettings, setPageSettings] = useState(false);
   const page = spec.pages.find((entry) => entry.id === selection.pageId) ?? spec.pages[0]!;
@@ -155,7 +177,7 @@ export function PagesTab({
           size="sm"
           onClick={() => {
             onSelect({ pageId: page.id, cardId: null });
-            if (!wide) setPageSettings(true);
+            if (!propertiesBeside) setPageSettings(true);
           }}
           data-testid="app-page-settings"
         >
@@ -175,41 +197,54 @@ export function PagesTab({
           if (selection.cardId === cardId) onSelect({ pageId: page.id, cardId: null });
         }}
         onAdd={() => setCatalog(true)}
-        narrow={!grid}
       />
     </div>
   );
 
+  const propertiesPanel = (
+    <aside
+      className="min-h-0 overflow-y-auto rounded-xl border border-edge bg-surface-raised p-4"
+      aria-label={propertiesTitle}
+      data-testid="app-properties"
+    >
+      <div className="mb-4 flex items-center justify-between gap-2">
+        <h3 className="flex min-w-0 items-center gap-2 text-sm font-semibold text-fg">
+          <KindIcon size={14} className="flex-shrink-0 text-fg-muted" />
+          <span className="truncate">{propertiesTitle}</span>
+        </h3>
+        {card && (
+          <IconButton label={t('apps.builder.props.close')} onClick={() => onSelect({ pageId: page.id, cardId: null })}>
+            <X size={13} />
+          </IconButton>
+        )}
+      </div>
+      {properties}
+    </aside>
+  );
+
   return (
-    <>
-      {wide ? (
+    // Side by side, the columns scroll themselves; stacked, the tab scrolls as one.
+    <div
+      ref={measured.ref}
+      className={`min-h-0 flex-1 ${layout === 'stacked' ? 'overflow-y-auto' : 'flex flex-col'}`}
+      data-layout={layout}
+    >
+      {layout === 'columns' ? (
         <div
           className="grid min-h-0 flex-1 grid-cols-[13rem_minmax(0,1fr)_24rem] gap-4"
           data-testid="app-builder-pages"
         >
           <aside className="min-h-0 overflow-y-auto">{list}</aside>
           <section className="min-h-0 overflow-y-auto pb-6">{canvas}</section>
-          <aside
-            className="min-h-0 overflow-y-auto rounded-xl border border-edge bg-surface-raised p-4"
-            aria-label={propertiesTitle}
-            data-testid="app-properties"
-          >
-            <div className="mb-4 flex items-center justify-between gap-2">
-              <h3 className="flex min-w-0 items-center gap-2 text-sm font-semibold text-fg">
-                <KindIcon size={14} className="flex-shrink-0 text-fg-muted" />
-                <span className="truncate">{propertiesTitle}</span>
-              </h3>
-              {card && (
-                <IconButton
-                  label={t('apps.builder.props.close')}
-                  onClick={() => onSelect({ pageId: page.id, cardId: null })}
-                >
-                  <X size={13} />
-                </IconButton>
-              )}
-            </div>
-            {properties}
-          </aside>
+          {propertiesPanel}
+        </div>
+      ) : layout === 'beside' ? (
+        <div className="flex min-h-0 flex-1 flex-col gap-3" data-testid="app-builder-pages">
+          {list}
+          <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_24rem] gap-4">
+            <section className="min-h-0 overflow-y-auto pb-6">{canvas}</section>
+            {propertiesPanel}
+          </div>
         </div>
       ) : (
         <div className="space-y-3" data-testid="app-builder-pages">
@@ -229,6 +264,6 @@ export function PagesTab({
         </div>
       )}
       <CardCatalog open={catalog} onClose={() => setCatalog(false)} onPick={addCardOfKind} schema={schema} />
-    </>
+    </div>
   );
 }

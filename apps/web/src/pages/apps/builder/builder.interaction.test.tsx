@@ -300,8 +300,9 @@ describe('pages and cards', () => {
     await click(button('Move earlier'));
     await autosave();
     let cards = saved().spec.pages[0]!.cards;
-    expect(cards.find((card) => card.id === 'note')!.layout).toMatchObject({ y: 0 });
-    expect(cards.find((card) => card.id === 'mine')!.layout).toMatchObject({ y: 6 });
+    // Only the places change: each card keeps its own size.
+    expect(cards.find((card) => card.id === 'note')!.layout).toEqual({ x: 0, y: 0, w: 12, h: 2 });
+    expect(cards.find((card) => card.id === 'mine')!.layout).toEqual({ x: 0, y: 2, w: 12, h: 6 });
 
     await click(q('[data-testid="grid-drag"]'));
     await autosave();

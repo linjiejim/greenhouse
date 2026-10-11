@@ -5,8 +5,12 @@
  * table, the fields, the buttons and how many problems the server found.
  * Live data is what "Preview" is for — the canvas never reads records.
  *
- * Below 768px the grid is one column and does not drag; each card's menu
- * moves it earlier / later instead.
+ * Schematics stay legible on a narrower grid than live cards, so the canvas
+ * keeps twelve columns down to `CANVAS_SINGLE_COLUMN_BELOW` of its own width
+ * (the runtime collapses at 768). Below it the grid is one column and does
+ * not drag; each card's menu moves it earlier / later instead. The grid says
+ * which it is (`onSingleColumnChange`), so the hint and the drag handles never
+ * promise what the grid does not do.
  */
 
 import { useState } from 'react';
@@ -22,21 +26,47 @@ import { cardErrors } from './spec-errors';
 import { SYSTEM_FIELD_LABEL_KEYS } from '../../../components/tables/field-types';
 import { cardTableId, fieldsOf, isEmbedded, isRecordsLike, tableName, type BuilderSchema } from './spec-model';
 
+/** Narrowest canvas (its own width) that is still a twelve-column grid you can drag and resize on. */
+export const CANVAS_SINGLE_COLUMN_BELOW = 480;
+
+const GRID_COLUMNS = 12;
+
 /** Cards in reading order (the order a narrow screen shows them). */
 export function readingOrder(cards: readonly AppCard[]): AppCard[] {
   return [...cards].sort((a, b) => a.layout.y - b.layout.y || a.layout.x - b.layout.x);
 }
 
-/** Swap a card's place with its neighbour in reading order (keyboard and phone reordering). */
+/**
+ * Swap a card's place with its neighbour in reading order (keyboard and phone
+ * reordering). Only places change — each card keeps its own size: the one
+ * moving earlier takes the other's top-left corner, and the other goes right
+ * after it (beside it when they shared a row and both still fit, else below).
+ */
 export function swapWithNeighbour(cards: readonly AppCard[], cardId: string, by: -1 | 1) {
   const ordered = readingOrder(cards);
   const index = ordered.findIndex((card) => card.id === cardId);
   const other = ordered[index + by];
   const card = ordered[index];
   if (!card || !other) return null;
+  const [first, second] = by < 0 ? [card, other] : [other, card];
+  const slot = second.layout;
+  const besideX = slot.x + first.layout.w;
+  const beside = first.layout.y === slot.y && besideX + second.layout.w <= GRID_COLUMNS;
   return [
-    { id: card.id, ...other.layout },
-    { id: other.id, ...card.layout },
+    {
+      id: first.id,
+      x: Math.max(0, Math.min(slot.x, GRID_COLUMNS - first.layout.w)),
+      y: slot.y,
+      w: first.layout.w,
+      h: first.layout.h,
+    },
+    {
+      id: second.id,
+      x: beside ? besideX : slot.x,
+      y: beside ? slot.y : slot.y + first.layout.h,
+      w: slot.w,
+      h: slot.h,
+    },
   ];
 }
 
@@ -108,7 +138,6 @@ export function PageCanvas({
   onLayout,
   onRemove,
   onAdd,
-  narrow = false,
 }: {
   page: AppPage;
   schema: BuilderSchema;
@@ -118,12 +147,12 @@ export function PageCanvas({
   onLayout: (layouts: Array<{ id: string; x: number; y: number; w: number; h: number }>) => void;
   onRemove: (cardId: string) => void;
   onAdd: () => void;
-  /** One column (below 768px): nothing drags, the card menu moves cards. */
-  narrow?: boolean;
 }) {
   const t = useT();
   const { menu, openMenu, closeMenu } = useContextMenu();
   const [removing, setRemoving] = useState<AppCard | null>(null);
+  /** The grid is one column (it measured itself): nothing drags, the card menu moves cards. */
+  const [narrow, setNarrow] = useState(false);
   const items: WidgetGridItem[] = page.cards.map((card) => ({
     id: card.id,
     ...card.layout,
@@ -154,7 +183,7 @@ export function PageCanvas({
       >
         <TableCardFrame
           title={titleOf(card)}
-          draggable
+          draggable={!narrow}
           actions={
             <span className="flex items-center" onClick={(event) => event.stopPropagation()}>
               <IconButton
@@ -221,6 +250,8 @@ export function PageCanvas({
         items={items}
         renderItem={render}
         editing
+        singleColumnBelow={CANVAS_SINGLE_COLUMN_BELOW}
+        onSingleColumnChange={setNarrow}
         onLayoutChange={(next) => onLayout(next.map(({ id, x, y, w, h }) => ({ id, x, y, w, h })))}
       />
       {menu && <ContextMenu {...menu} onClose={closeMenu} />}
