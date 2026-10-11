@@ -29,6 +29,5 @@ export function canUseFeature(user: AuthenticatedUser | null | undefined, key: s
  * signed-in user. Absent (an older server) = no: asking would 403.
  */
 export function readsTeamChats(user: AuthenticatedUser | null | undefined): boolean {
-  // Read by name: the shared AuthenticatedUser type does not declare the field yet.
-  return !!user && 'reads_team_chats' in user && user.reads_team_chats === true;
+  return user?.reads_team_chats === true;
 }

@@ -4,6 +4,7 @@ import { act, createElement } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { BotConversationDetail } from '@greenhouse/types/bots';
+import type { ServerWsEvent } from '@greenhouse/types/ws';
 import type { BotMessage, ConversationPage } from '../../lib/api/bots';
 import { I18nProvider } from '../../lib/i18n';
 import { ToastContainer } from '../ui';
@@ -16,7 +17,16 @@ vi.mock('../../lib/api/bots', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../lib/api/bots')>()),
   ...api,
 }));
-vi.mock('../../lib/ws', () => ({ wsClient: { onEvent: () => () => {}, onStatusChange: () => () => {} } }));
+const ws = vi.hoisted(() => ({ handlers: new Set<(event: ServerWsEvent) => void>() }));
+vi.mock('../../lib/ws', () => ({
+  wsClient: {
+    onEvent: (handler: (event: ServerWsEvent) => void) => {
+      ws.handlers.add(handler);
+      return () => ws.handlers.delete(handler);
+    },
+    onStatusChange: () => () => {},
+  },
+}));
 const runs = vi.hoisted(() => ({ getChatRun: vi.fn() }));
 vi.mock('../../lib/api', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../lib/api')>()),
@@ -110,6 +120,7 @@ beforeEach(() => {
   sessionManager.interruptSession.mockReset().mockResolvedValue('interrupting');
   sessionManager.attachSession.mockReset();
   runs.getChatRun.mockReset().mockResolvedValue({ active: false });
+  ws.handlers.clear();
   latest = null;
 });
 
@@ -486,9 +497,33 @@ describe('useBotConversation — a room (P5)', () => {
         owner_bot_id: null,
         lead_bot_id: null,
         members: [
-          { bot_id: 'bot_mine', role: 'member', position: 0, owner_user_id: 'u1', addressable: true },
-          { bot_id: 'bot_ben', role: 'member', position: 1, owner_user_id: 'u3', addressable: false },
-          { bot_id: 'bot_public', role: 'member', position: 2, owner_user_id: 'u4', addressable: true },
+          {
+            bot_id: 'bot_mine',
+            role: 'member',
+            position: 0,
+            owner_user_id: 'u1',
+            brought_by_user_id: 'u1',
+            addressable: true,
+            profile: { name: 'Sage', role: '', avatar: {}, template_key: null },
+          },
+          {
+            bot_id: 'bot_ben',
+            role: 'member',
+            position: 1,
+            owner_user_id: 'u3',
+            brought_by_user_id: 'u3',
+            addressable: false,
+            profile: { name: 'Scout', role: '', avatar: {}, template_key: null },
+          },
+          {
+            bot_id: 'bot_public',
+            role: 'member',
+            position: 2,
+            owner_user_id: 'u4',
+            brought_by_user_id: 'u3',
+            addressable: true,
+            profile: { name: 'Oracle', role: 'Analyst', avatar: {}, template_key: null },
+          },
         ],
         participants: [
           { user_id: 'u1', nickname: 'Mia', role: 'owner', joined_at: '' },
@@ -559,15 +594,61 @@ describe('useBotConversation — a room (P5)', () => {
     expect(runs.getChatRun).not.toHaveBeenCalled();
   });
 
-  it("lets the member stop a run their own Agent answers, or one they @-mentioned — never another person's", async () => {
-    const streaming = (botId: string) =>
-      sessionManager.activeSessions.set(ROOM_ID, {
-        sessionId: ROOM_ID,
-        status: 'streaming',
-        botSegments: [{ botId, reason: 'user', status: 'streaming', text: '', reasoning: '', toolCalls: [] }],
-        botRequests: [],
-        startedAt: 1,
-      });
+  const streaming = (botId: string) =>
+    sessionManager.activeSessions.set(ROOM_ID, {
+      sessionId: ROOM_ID,
+      status: 'streaming',
+      botSegments: [{ botId, reason: 'user', status: 'streaming', text: '', reasoning: '', toolCalls: [] }],
+      botRequests: [],
+      startedAt: 1,
+    });
+  const push = async (event: Extract<ServerWsEvent, { type: 'chat:run' }>) => {
+    await act(async () => ws.handlers.forEach((handler) => handler(event)));
+  };
+
+  it('lets the member stop the run the probe says is theirs, and only that one', async () => {
+    // Ben asked; his run happens to be answered by a public Agent the member may also @.
+    runs.getChatRun.mockResolvedValue({
+      active: true,
+      run: { run_id: 'run-ben', status: 'running', started_at: 1, next_seq: 0, user_id: 'u3' },
+    });
+    streaming('bot_public');
+    await open();
+    expect(latest?.canStop).toBe(false);
+    // Even after the member @-mentioned it themselves: the server named the asker.
+    sessionManager.sendBotsMessage.mockResolvedValue({ queued: true });
+    await act(async () => {
+      await latest?.send('@Oracle numbers?', { mentions: ['bot_public'] });
+    });
+    expect(latest?.canStop).toBe(false);
+
+    if (root) await act(async () => root?.unmount());
+    root = null;
+    runs.getChatRun.mockResolvedValue({
+      active: true,
+      run: { run_id: 'run-mia', status: 'running', started_at: 1, next_seq: 0, user_id: 'u1' },
+    });
+    // The member's own run, though Ben's Agent is the one speaking (the member's @ pulled it in).
+    streaming('bot_ben');
+    await open();
+    expect(latest?.canStop).toBe(true);
+  });
+
+  it('follows whose run it is from chat:run pushes, which every participant hears', async () => {
+    streaming('bot_public');
+    await open();
+    await push({ type: 'chat:run', sessionId: ROOM_ID, runId: 'run-1', status: 'running', userId: 'u1' });
+    expect(latest?.canStop).toBe(true);
+    // Another conversation's push changes nothing here.
+    await push({ type: 'chat:run', sessionId: 'elsewhere', runId: 'run-x', status: 'running', userId: 'u3' });
+    expect(latest?.canStop).toBe(true);
+    // The member's run ended and Ben's began.
+    await push({ type: 'chat:run', sessionId: ROOM_ID, runId: 'run-1', status: 'completed', userId: 'u1' });
+    await push({ type: 'chat:run', sessionId: ROOM_ID, runId: 'run-2', status: 'running', userId: 'u3' });
+    expect(latest?.canStop).toBe(false);
+  });
+
+  it("falls back, on a server that does not say whose run it is, to the member's own Agent or the one they @-mentioned", async () => {
     streaming('bot_ben');
     await open();
     expect(latest?.streaming).toBe(true);

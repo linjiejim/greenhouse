@@ -203,11 +203,7 @@ export function InfoPanel({
                     <BotAvatar bot={agent.bot} size="xs" />
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-xs font-medium text-fg">{agent.bot.name}</span>
-                      <span className="block truncate text-[10px] text-fg-faint">
-                        {agent.mine
-                          ? t('bots.room.yours')
-                          : t('bots.room.ownedBy', { name: room.personName(agent.member.owner_user_id) })}
-                      </span>
+                      <span className="block truncate text-[10px] text-fg-faint">{agent.byline}</span>
                     </span>
                   </button>
                   {agent.removable && (

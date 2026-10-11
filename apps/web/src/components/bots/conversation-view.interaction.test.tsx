@@ -781,7 +781,7 @@ describe("a DM with someone else's public Agent (P4)", () => {
 });
 
 describe('a conversation with other people (a room, P5)', () => {
-  const BEN_AGENT: BotView = { ...SAGE, id: 'bot_ben', name: "Ben's Agent", role: '', user_id: 'u3' };
+  const BEN_AGENT: BotView = { ...SAGE, id: 'bot_ben', name: 'Scout', role: '', user_id: 'u3' };
   const ROOM: BotConversationDetail = {
     ...DM,
     session_id: 'room-1',
@@ -790,8 +790,24 @@ describe('a conversation with other people (a room, P5)', () => {
     owner_bot_id: null,
     lead_bot_id: null,
     members: [
-      { bot_id: SAGE.id, role: 'member', position: 0, owner_user_id: 'u1', addressable: true },
-      { bot_id: BEN_AGENT.id, role: 'member', position: 1, owner_user_id: 'u3', addressable: false },
+      {
+        bot_id: SAGE.id,
+        role: 'member',
+        position: 0,
+        owner_user_id: 'u1',
+        brought_by_user_id: 'u1',
+        addressable: true,
+        profile: { name: SAGE.name, role: SAGE.role, avatar: SAGE.avatar, template_key: SAGE.template_key },
+      },
+      {
+        bot_id: BEN_AGENT.id,
+        role: 'member',
+        position: 1,
+        owner_user_id: 'u3',
+        brought_by_user_id: 'u3',
+        addressable: false,
+        profile: { name: BEN_AGENT.name, role: '', avatar: BEN_AGENT.avatar, template_key: null },
+      },
     ],
     participants: [
       { user_id: 'u1', nickname: 'Mia', role: 'owner', joined_at: '' },
@@ -807,8 +823,8 @@ describe('a conversation with other people (a room, P5)', () => {
     others: ROOM.participants!.slice(1),
     privateChat: false,
     agents: [
-      { member: ROOM.members[0], bot: SAGE, mine: true, addressable: true, removable: true },
-      { member: ROOM.members[1], bot: BEN_AGENT, mine: false, addressable: false, removable: true },
+      { member: ROOM.members[0], bot: SAGE, mine: true, byline: 'Yours', addressable: true, removable: true },
+      { member: ROOM.members[1], bot: BEN_AGENT, mine: false, byline: "Ben's", addressable: false, removable: true },
     ],
     addressable: [SAGE],
     faces: new Map([
@@ -897,7 +913,7 @@ describe('a conversation with other people (a room, P5)', () => {
     await flush();
     const options = [...document.querySelectorAll('[role="option"]')].map((option) => option.textContent);
     expect(options.some((text) => text?.includes('Sage'))).toBe(true);
-    expect(options.some((text) => text?.includes("Ben's Agent"))).toBe(false);
+    expect(options.some((text) => text?.includes('Scout'))).toBe(false);
   });
 
   it("offers Stop only for a run the member may stop — never someone else's", async () => {

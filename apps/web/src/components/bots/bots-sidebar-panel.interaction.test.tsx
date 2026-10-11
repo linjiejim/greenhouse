@@ -308,8 +308,24 @@ describe('<BotsThreadsSection/> conversations with people (P5)', () => {
     owner_bot_id: null,
     lead_bot_id: null,
     members: [
-      { bot_id: sage.id, role: 'member', position: 0, owner_user_id: ME, addressable: true },
-      { bot_id: 'bot_ben', role: 'member', position: 1, owner_user_id: 'u3', addressable: false },
+      {
+        bot_id: sage.id,
+        role: 'member',
+        position: 0,
+        owner_user_id: ME,
+        brought_by_user_id: ME,
+        addressable: true,
+        profile: { name: sage.name, role: '', avatar: {}, template_key: null },
+      },
+      {
+        bot_id: 'bot_ben',
+        role: 'member',
+        position: 1,
+        owner_user_id: 'u3',
+        brought_by_user_id: 'u3',
+        addressable: false,
+        profile: { name: 'Scout', role: 'Researcher', avatar: {}, template_key: null },
+      },
     ],
     participants: [
       { user_id: ME, nickname: 'Mia', role: 'owner', joined_at: '' },
@@ -352,14 +368,25 @@ describe('<BotsThreadsSection/> conversations with people (P5)', () => {
     expect(ana.querySelector('span[title="Ana"]')?.className).toContain('font-semibold');
   });
 
-  it("names a titled room by its title, and another person's Agent by its owner", () => {
+  it("names a titled room by its title, and another person's Agent as the room describes it", () => {
     mount('#/bots');
     const room = row('room-launch');
     expect(room.textContent).toContain('Launch plan');
-    expect(room.textContent).toContain("Ben's Agent: Shipped");
+    expect(room.textContent).toContain('Scout: Shipped');
     // The other two people, overlapped — not a plant.
     expect(room.querySelectorAll('[data-testid="person-avatar"]')).toHaveLength(2);
     expect(room.querySelector('[data-testid="plant-avatar-stack"]')).toBeNull();
+  });
+
+  it("falls back to the owner's name for an Agent an older server does not describe", () => {
+    useBotsStore.setState({
+      conversations: [
+        { ...launch, members: launch.members.map((member) => ({ ...member, profile: undefined })) },
+        ...useBotsStore.getState().conversations.filter((c) => c.session_id !== launch.session_id),
+      ],
+    });
+    mount('#/bots');
+    expect(row('room-launch').textContent).toContain("Ben's Agent: Shipped");
   });
 
   it('says "You" for the member\'s own last message', () => {
@@ -372,8 +399,10 @@ describe('<BotsThreadsSection/> conversations with people (P5)', () => {
     expect(row('room-ana').textContent).toContain('You: on my way');
   });
 
-  it("searches people's names too", () => {
+  it("searches people's names too, and the names of other people's Agents", () => {
     mount('#/bots', 'ben');
+    expect(order()).toEqual(['room-launch']);
+    mount('#/bots', 'scout');
     expect(order()).toEqual(['room-launch']);
   });
 

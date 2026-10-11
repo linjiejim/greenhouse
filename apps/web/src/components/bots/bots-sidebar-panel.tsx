@@ -31,7 +31,7 @@ import {
 import { BotAvatar, BotAvatarStack } from './bot-avatar';
 import { conversationTitle, openBotsConversation, useCurrentBotsConversation } from './navigation';
 import { PeopleAvatarStack, PersonAvatar } from './person-avatar';
-import { personName, roomOthers } from './room';
+import { personName, roomAgentCard, roomOthers } from './room';
 
 export function BotsThreadsSection({ query, onNavigate }: { query: string; onNavigate?: () => void }) {
   const t = useT();
@@ -83,7 +83,11 @@ export function BotsThreadsSection({ query, onNavigate }: { query: string; onNav
     const needle = query.trim().toLocaleLowerCase();
     const matches = (conversation: BotConversationSummary) => {
       if (!needle) return true;
-      const names = conversation.members.map((member) => lookup.get(member.bot_id)?.name ?? '');
+      // A room names other people's Agents itself (`profile`).
+      const names = conversation.members.map((member) => {
+        const bot = conversation.kind === 'room' ? roomAgentCard(member, me, lookup) : lookup.get(member.bot_id);
+        return bot?.name ?? '';
+      });
       const owner = conversation.owner_bot_id ? lookup.get(conversation.owner_bot_id)?.name : undefined;
       const publisher = conversation.owner_bot_id ? shared.get(conversation.owner_bot_id)?.owner.nickname : undefined;
       const people = (conversation.participants ?? []).map((person) => person.nickname);
@@ -113,7 +117,7 @@ export function BotsThreadsSection({ query, onNavigate }: { query: string; onNav
       else (conversationReplyable(conversation, activeIds) ? open : closed).push(conversation);
     }
     return { pinned: pinnedRow, rooms: withPeople, live: open, archived: closed };
-  }, [activeIds, conversations, lookup, query, shared, sprouty, titleOf]);
+  }, [activeIds, conversations, lookup, me, query, shared, sprouty, titleOf]);
 
   const go = (sessionId: string) => {
     openBotsConversation(sessionId);
@@ -365,9 +369,10 @@ function RoomRow({
       return personName(conversation, last.author_user_id) ?? t('bots.room.formerMember');
     }
     if (last.role === 'assistant' && last.bot_id) {
-      const known = lookup.get(last.bot_id)?.name;
-      if (known) return known;
       const member = conversation.members.find((candidate) => candidate.bot_id === last.bot_id);
+      const known = member ? roomAgentCard(member, me, lookup)?.name : lookup.get(last.bot_id)?.name;
+      if (known) return known;
+      // An older server describes nobody's Agent: its owner's name stands in.
       const owner = member ? personName(conversation, member.owner_user_id) : null;
       return owner ? t('bots.room.agentOf', { name: owner }) : null;
     }

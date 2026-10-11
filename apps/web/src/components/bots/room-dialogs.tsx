@@ -441,11 +441,7 @@ export function RoomAgentsDialog({
                   <BotAvatar bot={agent.bot} size="sm" />
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm font-medium text-fg">{agent.bot.name}</span>
-                    <span className="block truncate text-[11px] text-fg-faint">
-                      {agent.mine
-                        ? t('bots.room.yours')
-                        : t('bots.room.ownedBy', { name: room.personName(agent.member.owner_user_id) })}
-                    </span>
+                    <span className="block truncate text-[11px] text-fg-faint">{agent.byline}</span>
                   </span>
                   {agent.removable && (
                     <Button

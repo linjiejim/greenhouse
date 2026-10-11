@@ -3,28 +3,32 @@
  * Agent in it, which of those the member may @, and what they may take out — for the page, its
  * header, the composer, the transcript and the info panel.
  *
- * Agent cards: the member's own and the public Agents they talk to come from the directory; a
- * public Agent offered to them that they never talked to comes from `GET /api/agents` (read once,
- * when a room names one); another person's own Agent is never visible to the member, so its owner's
- * name stands in for it ("Ana's Agent", `roomAgentStandIn`).
+ * Agent cards (`roomAgentCard`): the member's own from their directory; anyone else's from the
+ * room's `profile` (the server shows each reader every Agent in it — a public one as its published
+ * version). Only an older server, which sends no profile, leaves one undescribed: the directory's
+ * copy if any, else its owner's name stands in ("Ana's Agent", `roomAgentStandIn`; "Public Agent"
+ * when its owner is not in the room).
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo } from 'react';
 import type { BotConversationSummary, BotMemberView, BotView, RoomParticipantView } from '@greenhouse/types/bots';
-import { listPublicAgents } from '../../lib/api/bots';
 import { useT } from '../../lib/i18n';
 import { useAuthStore } from '../../stores';
-import { sharedBotAsView } from './bots-store';
-import { canRemoveRoomAgent, isPrivateChat, roomAgentStandIn, roomOthers, roomOwnerId } from './room';
+import { canRemoveRoomAgent, isPrivateChat, roomAgentCard, roomAgentStandIn, roomOthers, roomOwnerId } from './room';
 
 export interface RoomAgent {
   member: BotMemberView;
   bot: BotView;
   /** The member's own Agent. */
   mine: boolean;
+  /**
+   * Whose it is, as a row says it: "Yours", "Ben's" (its owner is in the room), or "Public Agent"
+   * (someone else's shared Agent whose owner is not here).
+   */
+  byline: string;
   /** The member may @ it (their own, or a public one offered to them) — only those answer them. */
   addressable: boolean;
-  /** The member may take it out (theirs, or they own the room). */
+  /** The member may take it out (they brought it, it is theirs, or they own the room). */
   removable: boolean;
 }
 
@@ -46,45 +50,13 @@ export interface RoomView {
   personName: (userId: string | null | undefined) => string;
 }
 
-// Public Agents offered to the member they have no conversation with: read once per page load,
-// when a room names one the directory lacks (ids are global, faces are what their audience sees).
-const publicFaces = new Map<string, BotView>();
-const publicAsked = new Set<string>();
-
 export function useRoomView(
   conversation: BotConversationSummary | null | undefined,
   directory: ReadonlyMap<string, BotView>,
 ): RoomView | null {
   const t = useT();
   const me = useAuthStore((state) => state.currentUser?.id ?? null);
-  const [facesVersion, setFacesVersion] = useState(0);
   const room = conversation?.kind === 'room' ? conversation : null;
-
-  const missing = (room?.members ?? [])
-    .filter(
-      (member) =>
-        member.addressable &&
-        member.owner_user_id !== me &&
-        !directory.has(member.bot_id) &&
-        !publicFaces.has(member.bot_id) &&
-        !publicAsked.has(member.bot_id),
-    )
-    .map((member) => member.bot_id)
-    .join(',');
-  useEffect(() => {
-    if (!missing) return;
-    let live = true;
-    for (const id of missing.split(',')) publicAsked.add(id);
-    listPublicAgents()
-      .then((agents) => {
-        for (const agent of agents) publicFaces.set(agent.id, sharedBotAsView(agent));
-        if (live) setFacesVersion((version) => version + 1);
-      })
-      .catch(() => {});
-    return () => {
-      live = false;
-    };
-  }, [missing]);
 
   const formerMember = t('bots.room.formerMember');
   const personName = useCallback(
@@ -95,7 +67,6 @@ export function useRoomView(
 
   return useMemo(() => {
     if (!room) return null;
-    void facesVersion;
     const participants = room.participants ?? [];
     const ownerId = roomOwnerId(room);
     const faces = new Map<string, BotView>();
@@ -104,15 +75,20 @@ export function useRoomView(
       .sort((a, b) => a.position - b.position)
       .map((member): RoomAgent => {
         const mine = !!me && member.owner_user_id === me;
+        const owner = participants.find((person) => person.user_id === member.owner_user_id)?.nickname ?? null;
         const bot =
-          directory.get(member.bot_id) ??
-          publicFaces.get(member.bot_id) ??
-          roomAgentStandIn(member, t('bots.room.agentOf', { name: personName(member.owner_user_id) }));
+          roomAgentCard(member, me, directory) ??
+          roomAgentStandIn(member, owner ? t('bots.room.agentOf', { name: owner }) : t('bots.room.publicAgent'));
         faces.set(member.bot_id, bot);
         return {
           member,
           bot,
           mine,
+          byline: mine
+            ? t('bots.room.yours')
+            : owner
+              ? t('bots.room.ownedBy', { name: owner })
+              : t('bots.room.publicAgent'),
           addressable: member.addressable === true,
           removable: canRemoveRoomAgent(member, me, ownerId),
         };
@@ -129,5 +105,5 @@ export function useRoomView(
       faces,
       personName,
     };
-  }, [directory, facesVersion, me, personName, room, t]);
+  }, [directory, me, personName, room, t]);
 }

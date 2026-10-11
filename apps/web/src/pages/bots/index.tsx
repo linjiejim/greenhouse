@@ -146,8 +146,8 @@ function BotsWorkspace({ sessionId }: { sessionId: string }) {
   const directory = useBotDirectory();
   const botsState = useBotsLoadState();
   const conversation = controller.conversation;
-  // A room (P5): its people, a card for each Agent in it (another person's own Agent is never in
-  // the member's directory), and which of them the member may @.
+  // A room (P5): its people, a card for each Agent in it (from the room's `profile` — another
+  // person's own Agent is never in the member's directory), and which of them the member may @.
   const room = useRoomView(conversation, directory);
   const roomFaces = room?.faces;
   const faces = useMemo(
@@ -214,9 +214,12 @@ function BotsWorkspace({ sessionId }: { sessionId: string }) {
   const refetchedFor = useRef(new Set<string>());
   useEffect(() => {
     if (!conversation || botsState !== 'ready') return;
-    // In a room only the Agents the member may @ can be theirs to know; the rest are other people's.
+    // A room describes its Agents itself (`profile`); on an older server only the ones the member
+    // may @ can be theirs to know — the rest are other people's.
     const unknown = (
-      conversation.kind === 'room' ? conversation.members.filter((member) => member.addressable) : conversation.members
+      conversation.kind === 'room'
+        ? conversation.members.filter((member) => member.addressable && !member.profile)
+        : conversation.members
     )
       .map((member) => member.bot_id)
       .filter((id) => !directory.has(id) && !refetchedFor.current.has(id));

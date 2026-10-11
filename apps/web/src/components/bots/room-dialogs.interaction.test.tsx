@@ -72,8 +72,24 @@ const ROOM: BotConversationDetail = {
   owner_bot_id: null,
   lead_bot_id: null,
   members: [
-    { bot_id: SAGE.id, role: 'member', position: 0, owner_user_id: 'u1', addressable: true },
-    { bot_id: 'bot_ben', role: 'member', position: 1, owner_user_id: 'u3', addressable: false },
+    {
+      bot_id: SAGE.id,
+      role: 'member',
+      position: 0,
+      owner_user_id: 'u1',
+      brought_by_user_id: 'u1',
+      addressable: true,
+      profile: { name: SAGE.name, role: SAGE.role, avatar: SAGE.avatar, template_key: null },
+    },
+    {
+      bot_id: 'bot_ben',
+      role: 'member',
+      position: 1,
+      owner_user_id: 'u3',
+      brought_by_user_id: 'u3',
+      addressable: false,
+      profile: { name: 'Scout', role: '', avatar: {}, template_key: null },
+    },
   ],
   participants: [
     { user_id: 'u1', nickname: 'Mia', role: 'member', joined_at: '' },
@@ -225,11 +241,12 @@ describe('<RoomAgentsDialog/>', () => {
     others: [ROOM.participants![1]],
     privateChat: false,
     agents: [
-      { member: ROOM.members[0], bot: SAGE, mine: true, addressable: true, removable: true },
+      { member: ROOM.members[0], bot: SAGE, mine: true, byline: 'Yours', addressable: true, removable: true },
       {
         member: ROOM.members[1],
-        bot: bot('bot_ben', "Ben's Agent", { user_id: 'u3' }),
+        bot: bot('bot_ben', 'Scout', { user_id: 'u3' }),
         mine: false,
+        byline: "Ben's",
         addressable: false,
         removable: false,
       },
@@ -263,6 +280,7 @@ describe('<RoomAgentsDialog/>', () => {
     expect(here.map((row) => row.dataset.botId)).toEqual([SAGE.id, 'bot_ben']);
     expect(here[0].querySelector('[data-testid="room-agent-remove"]')).not.toBeNull();
     expect(here[1].querySelector('[data-testid="room-agent-remove"]')).toBeNull();
+    expect(here[1].textContent).toContain('Scout');
     expect(here[1].textContent).toContain("Ben's");
 
     const candidates = [...document.querySelectorAll<HTMLElement>('[data-testid="room-agent-candidate"]')];

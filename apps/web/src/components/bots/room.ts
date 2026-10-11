@@ -6,7 +6,7 @@
  *
  * The server decides everything (who may be added, which @ is answered, who may remove what); these
  * only read the room as the member sees it (`participants`, each Agent's `owner_user_id` /
- * `addressable`).
+ * `brought_by_user_id` / `addressable` / `profile`).
  */
 
 import type { BotConversationSummary, BotMemberView, BotView, RoomParticipantView } from '@greenhouse/types/bots';
@@ -65,9 +65,8 @@ export function personName(
 }
 
 /**
- * May the member take this Agent out? Its owner and the room's owner may. (The server also lets
- * whoever brought it, which the room view does not say — a public Agent the member brought into a
- * room someone else owns is removed by its owner or the room's.)
+ * May the member take this Agent out? Whoever brought it, its owner and the room's owner may (the
+ * server's rule; it still decides).
  */
 export function canRemoveRoomAgent(
   member: BotMemberView,
@@ -75,13 +74,37 @@ export function canRemoveRoomAgent(
   ownerId: string | null,
 ): boolean {
   if (!me) return false;
-  return member.owner_user_id === me || ownerId === me;
+  return member.brought_by_user_id === me || member.owner_user_id === me || ownerId === me;
 }
 
 /**
- * The card for an Agent in the room the member's directory does not have — another person's own
- * Agent (never in the member's Bot list) or a public one they have not talked to. Its owner's name
- * stands in for its own ("Ana's Agent"); the face comes from its id, so it stays the same plant.
+ * How an Agent in the room looks to the member. Their own comes from their directory (it has their
+ * latest edits); anyone else's from the room's `profile` — what the server shows this reader (a
+ * public Agent's published version) — laid over the directory's copy when there is one (a public
+ * Agent they also talk to). Null when neither knows it: an older server sends no `profile`, and
+ * another person's own Agent is never in the member's directory (`roomAgentStandIn` then).
+ */
+export function roomAgentCard(
+  member: BotMemberView,
+  me: string | null | undefined,
+  directory: ReadonlyMap<string, BotView>,
+): BotView | null {
+  const known = directory.get(member.bot_id);
+  const profile = member.profile;
+  if (!profile || (known && !!me && member.owner_user_id === me)) return known ?? null;
+  return {
+    ...(known ?? roomAgentStandIn(member, profile.name)),
+    name: profile.name,
+    role: profile.role,
+    avatar: profile.avatar,
+    template_key: profile.template_key,
+  };
+}
+
+/**
+ * The card for an Agent in the room nothing describes (`roomAgentCard` is null — an older server):
+ * its owner's name stands in for its own ("Ana's Agent"); the face comes from its id, so it stays
+ * the same plant. Also the base a `profile` is laid over.
  */
 export function roomAgentStandIn(member: Pick<BotMemberView, 'bot_id' | 'owner_user_id'>, name: string): BotView {
   return {

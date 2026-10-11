@@ -11,7 +11,8 @@
  * A room (P5) differs in three ways: every message is accepted with `202` and
  * written by the server (nobody answers unless @-mentioned), a run may be
  * someone else's (it is followed live — the page probes for one on open, since
- * the runs seed lists only the member's own — but only its asker may stop it),
+ * the runs seed lists only the member's own — but only its asker may stop it:
+ * the probe's `run.user_id` and each `chat:run` push's `userId` say who that is),
  * and only the member's own messages settle their sends.
  */
 
@@ -128,8 +129,14 @@ export function useBotConversation(sessionId: string) {
   // Whether the open conversation is a room (sends are accepted, never streamed; runs may be others').
   const roomRef = useRef(false);
   roomRef.current = conversation?.kind === 'room' && conversation.session_id === sessionId;
-  // The Agents the member last @-mentioned in this room: a run one of them answers is theirs to stop.
+  // The Agents the member last @-mentioned in this room: a run one of them answers is theirs to stop
+  // (the fallback when the server does not say whose run it is).
   const askedRef = useRef<{ sessionId: string; botIds: ReadonlySet<string> } | null>(null);
+  // Whose run is going in this room, as the server says it: the probe's `run.user_id` and each
+  // `chat:run` push's `userId` (an older server sends neither). A push outdates any probe answer
+  // still in flight (`runPushesRef` counts them).
+  const [runAsker, setRunAsker] = useState<{ sessionId: string; runId: string; userId: string } | null>(null);
+  const runPushesRef = useRef(0);
   const t = useT();
 
   const markRead = useCallback(() => {
@@ -155,8 +162,16 @@ export function useBotConversation(sessionId: string) {
       const page = await botsApi.getConversation(sessionId, { limit: PAGE_SIZE });
       if (ticket !== loadSeqRef.current) return;
       // A member or speaker this tab has not seen yet (a Bot made elsewhere):
-      // learn its name first instead of rendering "Deleted Bot".
-      const speakers = page.messages.flatMap((message) => (message.bot_id ? [message.bot_id] : []));
+      // learn its name first instead of rendering "Deleted Bot". A room's Agents come with their
+      // own `profile` — nothing to learn about them.
+      const described = new Set(
+        page.conversation.kind === 'room'
+          ? page.conversation.members.flatMap((member) => (member.profile ? [member.bot_id] : []))
+          : [],
+      );
+      const speakers = page.messages.flatMap((message) =>
+        message.bot_id && !described.has(message.bot_id) ? [message.bot_id] : [],
+      );
       await useBotsStore
         .getState()
         .ensureBotsKnown([...conversationBotIds(page.conversation), ...speakers])
@@ -202,25 +217,41 @@ export function useBotConversation(sessionId: string) {
   }, [reload, markRead]);
 
   // ── A room: someone else's run is not in the member's runs seed — probe, and follow it live ──
+  // Both the probe and every `chat:run` push say whose run it is (only the asker may stop it).
   const isRoom = conversation?.kind === 'room' && conversation.session_id === sessionId;
   useEffect(() => {
     if (!isRoom) return;
     let live = true;
     const probe = () => {
+      const pushes = runPushesRef.current;
       api
         .getChatRun(sessionId)
-        .then((run) => {
-          if (live && run.active && sessionRef.current === sessionId) attachSession(sessionId);
+        .then(({ active, run }) => {
+          if (!live || sessionRef.current !== sessionId) return;
+          if (runPushesRef.current === pushes) {
+            setRunAsker(active && run?.user_id ? { sessionId, runId: run.run_id, userId: run.user_id } : null);
+          }
+          if (active) attachSession(sessionId);
         })
         .catch(() => {});
     };
     probe();
-    const unsubscribe = wsClient.onStatusChange((status) => {
+    const unsubscribeStatus = wsClient.onStatusChange((status) => {
       if (status === 'connected') probe();
+    });
+    const unsubscribeRuns = wsClient.onEvent((event) => {
+      if (event.type !== 'chat:run' || event.sessionId !== sessionId) return;
+      runPushesRef.current += 1;
+      if (event.status === 'running') {
+        setRunAsker(event.userId ? { sessionId, runId: event.runId, userId: event.userId } : null);
+      } else {
+        setRunAsker((current) => (current?.runId === event.runId ? null : current));
+      }
     });
     return () => {
       live = false;
-      unsubscribe();
+      unsubscribeStatus();
+      unsubscribeRuns();
     };
   }, [attachSession, isRoom, sessionId]);
 
@@ -398,18 +429,22 @@ export function useBotConversation(sessionId: string) {
 
   /**
    * Whether the member may stop the run on screen. Anywhere but a room it is theirs. In a room only
-   * the asker may (the server refuses everyone else), and neither the probe nor `chat:run` says who
-   * asked: a run where one of the member's own Agents speaks is theirs (only its owner can address
-   * it), and so is one answered by an Agent they just @-mentioned. Unknown → no Stop.
+   * the asker may (the server refuses everyone else), and the server says who that is (`runAsker`).
+   * An older server does not: then a run where one of the member's own Agents speaks is theirs
+   * (only its owner can address it), and so is one answered by an Agent they just @-mentioned.
+   * Unknown → no Stop.
    */
+  const asker = isRoom && runAsker?.sessionId === sessionId ? runAsker.userId : null;
   const ownRun =
     !isRoom ||
-    (managed?.botSegments ?? []).some((segment) => {
-      const member = conversation?.members.find((candidate) => candidate.bot_id === segment.botId);
-      if (me && member?.owner_user_id === me) return true;
-      const asked = askedRef.current;
-      return asked?.sessionId === sessionId && asked.botIds.has(segment.botId);
-    });
+    (asker
+      ? asker === me
+      : (managed?.botSegments ?? []).some((segment) => {
+          const member = conversation?.members.find((candidate) => candidate.bot_id === segment.botId);
+          if (me && member?.owner_user_id === me) return true;
+          const asked = askedRef.current;
+          return asked?.sessionId === sessionId && asked.botIds.has(segment.botId);
+        }));
   const canStop = streaming && ownRun;
 
   const hardStopping = managed?.status === 'stopping';
