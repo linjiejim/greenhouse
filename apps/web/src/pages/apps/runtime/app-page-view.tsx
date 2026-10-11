@@ -176,17 +176,18 @@ export function AppPageView({
 
   const execute = useCallback(
     async (
-      card: AppRecordsLikeCard,
+      target: { pageId: string; card: AppRecordsLikeCard },
       action: AppRecordAction,
       row: Pick<AppRecordRow, 'id' | 'revision' | 'values'>,
       values: TableFieldValueEntry[] | undefined,
       requestId: string,
     ) => {
+      const { card } = target;
       try {
         const result = await runAppActionWithReplay(
           appId,
           {
-            pageId: page.id,
+            pageId: target.pageId,
             cardId: card.id,
             actionId: action.id,
             recordId: row.id,
@@ -207,23 +208,32 @@ export function AppPageView({
     },
     // `preview` is derived from `previewRole`.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [afterWrite, appId, doneMessage, page.id, previewRole],
+    [afterWrite, appId, doneMessage, previewRole],
   );
 
+  /** A card's gateway helpers; `pageId` is the card's page (a `?record=` card may sit on another page). */
   const optionsFor = useCallback(
-    (cardId: string, buttonId?: string) => (fieldId: number) =>
-      listAppFieldOptions(appId, { pageId: page.id, cardId, fieldId, ...(buttonId ? { buttonId } : {}) }),
+    (cardId: string, buttonId?: string, pageId = page.id) =>
+      (fieldId: number) =>
+        listAppFieldOptions(appId, { pageId, cardId, fieldId, ...(buttonId ? { buttonId } : {}) }),
     [appId, page.id],
   );
   const uploadFor = useCallback(
-    (cardId: string) => (fieldId: number, file: File) =>
-      uploadAppFile(appId, { pageId: page.id, cardId, fieldId, file }),
+    (cardId: string, pageId = page.id) =>
+      (fieldId: number, file: File) =>
+        uploadAppFile(appId, { pageId, cardId, fieldId, file }),
     [appId, page.id],
   );
 
   const runAction = useCallback(
-    (card: AppRecordsLikeCard, action: AppRecordAction, row: Pick<AppRecordRow, 'id' | 'revision' | 'values'>) => {
-      const key = `${card.id}:${row.id}:${action.id}`;
+    (
+      card: AppRecordsLikeCard,
+      action: AppRecordAction,
+      row: Pick<AppRecordRow, 'id' | 'revision' | 'values'>,
+      pageId: string = page.id,
+    ) => {
+      const target = { pageId, card };
+      const key = `${pageId}:${card.id}:${row.id}:${action.id}`;
       if (running.current.has(key)) return;
       const inputs = actionInputFieldIds(action);
       if (inputs.length > 0 && action.do.type === 'set_fields') {
@@ -235,9 +245,9 @@ export function AppPageView({
           mode: 'create',
           submitLabel: action.label,
           intro: action.confirm,
-          loadOptions: optionsFor(card.id),
-          upload: uploadFor(card.id),
-          onSubmit: (values) => execute(card, action, row, values, requestId),
+          loadOptions: optionsFor(card.id, undefined, pageId),
+          upload: uploadFor(card.id, pageId),
+          onSubmit: (values) => execute(target, action, row, values, requestId),
           testId: 'app-action-dialog',
         });
         return;
@@ -245,7 +255,7 @@ export function AppPageView({
       const go = async () => {
         running.current.add(key);
         try {
-          await execute(card, action, row, undefined, newAppRequestId());
+          await execute(target, action, row, undefined, newAppRequestId());
         } catch (error) {
           toast(describe(error), 'error');
         } finally {
@@ -264,7 +274,7 @@ export function AppPageView({
       }
       void go();
     },
-    [describe, execute, optionsFor, t, tableFields, uploadFor],
+    [describe, execute, optionsFor, page.id, t, tableFields, uploadFor],
   );
 
   const openCreate = useCallback(
@@ -463,7 +473,7 @@ export function AppPageView({
         onClose={() => setDrawer(null)}
         onRunAction={(target, detail, actionId) => {
           const action = drawerActions(target.card).find((entry) => entry.id === actionId);
-          if (action) runAction(target.card, action, detail.record);
+          if (action) runAction(target.card, action, detail.record, target.pageId);
         }}
         onEdit={(target, detail) => {
           const requestId = newAppRequestId();
@@ -473,8 +483,8 @@ export function AppPageView({
             initialValues: detail.record.values,
             mode: 'update',
             submitLabel: t('apps.runtime.record.save'),
-            loadOptions: optionsFor(target.card.id),
-            upload: uploadFor(target.card.id),
+            loadOptions: optionsFor(target.card.id, undefined, target.pageId),
+            upload: uploadFor(target.card.id, target.pageId),
             onSubmit: async (values) => {
               if (values.length === 0) return;
               await runAppActionWithReplay(

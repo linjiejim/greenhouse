@@ -253,7 +253,8 @@ describe('what managers get', () => {
       select.value = 'applicant';
       select.dispatchEvent(new Event('change', { bubbles: true }));
     });
-    expect(window.location.hash).toBe('#/apps/5/apply?previewRole=applicant');
+    // The role may not have this page: the preview opens at its home.
+    expect(window.location.hash).toBe('#/apps/5?previewRole=applicant');
 
     act(() => root?.unmount());
     container.remove();
@@ -391,6 +392,38 @@ describe('a page in use', () => {
       }),
     );
     expect(api.runAppAction.mock.calls[1]![1].requestId).not.toBe(firstRequest);
+  });
+
+  it('acts on a linked record through the page its card is on', async () => {
+    const view = runtimeView();
+    api.getApp.mockResolvedValue({
+      ...view,
+      spec: {
+        ...view.spec,
+        home: 'apply',
+        pages: [
+          { id: 'apply', title: 'Apply', cards: [CARDS.apply] },
+          { id: 'review', title: 'Review', cards: [CARDS.mine] },
+        ],
+      },
+    });
+    const replace = vi.spyOn(window.location, 'replace').mockImplementation(() => undefined);
+    await mount('5', 'record=11');
+    expect(api.getAppRecord).toHaveBeenCalledWith(5, { pageId: 'review', cardId: 'mine', recordId: 11 });
+    await click(byTestId('app-record-action-approve'));
+    expect(api.runAppActionWithReplay).toHaveBeenCalledWith(
+      5,
+      expect.objectContaining({ pageId: 'review', cardId: 'mine', actionId: 'approve' }),
+      LAPTOP,
+    );
+    replace.mockRestore();
+  });
+
+  it('shows a manager’s never-published draft as not published', async () => {
+    api.getApp.mockResolvedValue(runtimeView({ draft: true, version: 0, app: appSummary({ canManage: true }) }));
+    await mount('5');
+    expect(container.textContent).toContain('Not published yet');
+    expect(api.queryAppCard).not.toHaveBeenCalled();
   });
 
   it('re-evaluates the cards of a table when its records change elsewhere', async () => {

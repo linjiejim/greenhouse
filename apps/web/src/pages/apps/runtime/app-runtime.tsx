@@ -141,19 +141,22 @@ export function AppRuntimePage({
     window.location.replace(appPreviewHref(appId, previewRole, pageId));
   }, [appId, pageId, previewRole]);
 
-  if (unpublished && summary) {
+  // Never published: the shelves say so, or the gateway answered a manager with the draft (the
+  // runtime shows published versions; the builder shows drafts).
+  const draftApp = unpublished ? summary : view?.draft ? view.app : undefined;
+  if (draftApp) {
     return (
       <div className="h-full overflow-y-auto px-3 py-3 sm:px-6">
         <BackToCenter />
         <EmptyState
-          icon={appIcon(summary.icon)}
+          icon={appIcon(draftApp.icon)}
           variant="page"
           title={t('apps.runtime.notPublishedTitle')}
           description={t('apps.runtime.notPublishedDescription')}
           action={
-            summary.canManage ? (
+            draftApp.canManage ? (
               <Button size="sm" onClick={() => (window.location.hash = appBuilderHref(appId))}>
-                {t('apps.center.edit', { name: summary.name })}
+                {t('apps.center.edit', { name: draftApp.name })}
               </Button>
             ) : undefined
           }
@@ -233,7 +236,8 @@ export function AppRuntimePage({
               roles={roles}
               previewRole={previewRole}
               previewName={managerView ? undefined : state.view.role.name}
-              onChange={(roleKey) => (window.location.hash = appPreviewHref(app.id, roleKey, page?.id))}
+              // Another role may not have this page: land on its home.
+              onChange={(roleKey) => (window.location.hash = appPreviewHref(app.id, roleKey))}
             />
           )}
           {app.canManage && (
