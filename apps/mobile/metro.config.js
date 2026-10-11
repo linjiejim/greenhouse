@@ -23,4 +23,22 @@ config.resolver.blockList = config.resolver.blockList
   ? [].concat(config.resolver.blockList, blockRoot)
   : [blockRoot];
 
+// The contracts vendored verbatim from packages/types (src/shared/tables.ts,
+// table-access.ts, table-cards.ts, apps.ts …) keep their NodeNext sibling
+// specifiers (`./tables.js`). TypeScript's bundler resolution maps those to the
+// .ts file; Metro does not, so a relative `./x.js` from src/shared/ that has no
+// .js file resolves as `./x` (Metro then tries the source extensions).
+// (Metro's documented chaining: `context.resolveRequest` is the next resolver.)
+const sharedDir = path.join(__dirname, 'src', 'shared') + path.sep;
+config.resolver.resolveRequest = (context, moduleName, platform) => {
+  if (moduleName.startsWith('./') && moduleName.endsWith('.js') && context.originModulePath.startsWith(sharedDir)) {
+    try {
+      return context.resolveRequest(context, moduleName, platform);
+    } catch {
+      return context.resolveRequest(context, moduleName.slice(0, -'.js'.length), platform);
+    }
+  }
+  return context.resolveRequest(context, moduleName, platform);
+};
+
 module.exports = config;
