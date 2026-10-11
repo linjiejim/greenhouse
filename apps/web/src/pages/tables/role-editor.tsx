@@ -58,17 +58,24 @@ function newRule(tableId: number, access: 'read' | 'edit'): TableAccessRule {
   return { tableId, access, fields: [], fieldDefault: 'hidden' };
 }
 
+/** An unfinished row scope: condition `index` (1-based) of a "matching conditions" scope, or a "related" one naming nobody. */
+export type IncompleteRowScope = { tableId: number; index: number } | { tableId: number; related: true };
+
 /**
- * The first condition that is not finished, as a message key + values — the
- * dialog blocks Save on it (an empty or half-typed predicate would be stored
- * and then match nothing, which reads like a bug).
+ * The first row scope that is not finished — the dialog blocks Save on it (an
+ * empty or half-typed predicate would be stored and then match nothing, which
+ * reads like a bug; a "related" scope with neither the creator nor a person
+ * field is refused by the server).
  */
 export function incompleteRowScope(
   rules: TableAccessRules,
   fieldsByTable: ReadonlyMap<number, TableField[]>,
-): { tableId: number; index: number } | null {
+): IncompleteRowScope | null {
   for (const rule of rules.tables) {
     for (const scope of [rule.rows, rule.editRows]) {
+      if (scope?.type === 'related' && !scope.creator && scope.fieldIds.length === 0) {
+        return { tableId: rule.tableId, related: true };
+      }
       if (scope?.type !== 'where') continue;
       if (scope.where.clauses.length === 0) return { tableId: rule.tableId, index: 1 };
       const { incompleteIndex } = completedFilterGroup(scope.where, fieldsByTable.get(rule.tableId) ?? []);
@@ -335,9 +342,10 @@ export function RoleEditor({ rules, onChange, facts, fieldsByTable, users, disab
 /** Message for `incompleteRowScope` — kept next to the editor that produces it. */
 export function useIncompleteScopeMessage() {
   const t = useT();
-  return (issue: { tableId: number; index: number }, facts: TableAccessSchemaFacts) =>
-    t('tables.access.incompleteCondition', {
-      index: issue.index,
-      table: facts.tables.find((table) => table.id === issue.tableId)?.name ?? `#${issue.tableId}`,
-    });
+  return (issue: IncompleteRowScope, facts: TableAccessSchemaFacts) => {
+    const table = facts.tables.find((entry) => entry.id === issue.tableId)?.name ?? `#${issue.tableId}`;
+    return 'related' in issue
+      ? t('tables.access.relatedNeedsPerson', { table })
+      : t('tables.access.incompleteCondition', { index: issue.index, table });
+  };
 }

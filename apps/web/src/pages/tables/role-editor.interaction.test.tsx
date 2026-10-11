@@ -203,6 +203,19 @@ describe('RoleEditor', () => {
     await act(async () => (deleteBox.querySelector('input') as HTMLInputElement).click());
     expect(latest.tables.find((rule) => rule.tableId === 2)?.delete).toBe(true);
 
+    // "Related to them" naming nobody blocks saving in words (the contract would say `tables[0].rows …`).
+    const creatorBox = [...card(1).querySelectorAll('label')].find((label) =>
+      label.textContent?.includes('Records they created'),
+    )!;
+    await act(async () => (repBox.querySelector('input') as HTMLInputElement).click());
+    await act(async () => (creatorBox.querySelector('input') as HTMLInputElement).click());
+    expect(latest.tables.find((rule) => rule.tableId === 1)?.rows).toEqual({
+      type: 'related',
+      creator: false,
+      fieldIds: [],
+    });
+    expect(incompleteRowScope(latest, fieldsByTable)).toEqual({ tableId: 1, related: true });
+
     // An unfinished condition blocks saving.
     await press(rowsRead, 'Matching conditions');
     expect(incompleteRowScope(latest, fieldsByTable)).toEqual({ tableId: 1, index: 1 });

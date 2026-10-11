@@ -9,6 +9,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   normalizeTableCardSpec,
+  TABLE_CARD_LIMITS,
   TABLE_CARD_CHART_TYPES,
   TABLE_CARD_KINDS,
   TABLE_CARD_SORTS,
@@ -160,8 +161,18 @@ export function WidgetDialog({
     if (aggregates && draft.operation !== 'count' && !draft.valueFieldId) {
       return setError(t('tables.dashboard.editor.needsValueField'));
     }
+    // Typed numbers are not held to the inputs' min / max: check them here, in words.
+    const outside = (value: number | '', max: number) =>
+      value !== '' && (!Number.isInteger(value) || value < 1 || value > max);
+    if (grouped && draft.groupBy && outside(draft.limit, TABLE_CARD_LIMITS.groups)) {
+      return setError(t('tables.dashboard.editor.limitRange', { max: TABLE_CARD_LIMITS.groups }));
+    }
+    if (draft.kind === 'records' && outside(draft.rows, TABLE_CARD_LIMITS.records)) {
+      return setError(t('tables.dashboard.editor.rowsRange', { max: TABLE_CARD_LIMITS.records }));
+    }
     const normalized = normalizeTableCardSpec(cardFromDraft(draft, where));
-    if (!normalized.ok) return setError(normalized.error);
+    // Anything left is the contract's text (paths like `aggregate.limit`), meant for the API.
+    if (!normalized.ok) return setError(t('tables.dashboard.editor.invalid'));
     const card = normalized.card;
     const tableId = card.kind === 'text' ? null : card.source!.tableId;
     setSaving(true);
@@ -199,7 +210,6 @@ export function WidgetDialog({
       size="xl"
     >
       <div className="space-y-4">
-        <FormError>{error}</FormError>
         <FormGrid>
           <FormField label={t('tables.dashboard.widgetTitle')}>
             <Input value={draft.title} onChange={(event) => patch({ title: event.target.value })} />
@@ -437,6 +447,8 @@ export function WidgetDialog({
           </FormSection>
         )}
 
+        {/* Next to Save: the dialog scrolls, and an error at the top would be out of view. */}
+        <FormError>{error}</FormError>
         <FormActions>
           <Button variant="ghost" onClick={onClose}>
             {t('common.cancel')}
