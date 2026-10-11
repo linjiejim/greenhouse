@@ -103,8 +103,8 @@ same script doubles as an end-to-end smoke tour (see [Development](#development)
   your Bots propose the same plans as a card you apply when you choose. The draft is
   checked by the same validators as the editor before you see it, permission changes are listed
   on their own above Confirm, and a partly applied plan can retry just what failed. Two built-in
-  app templates (purchase requests, IT tickets) install a ready Base and a draft app in one step
-  (`POST /api/apps/templates/:key/install`). Share a base with people,
+  app templates (purchase requests, IT tickets) install a ready Base and a draft app in one step,
+  in English or Chinese to match your account (`POST /api/apps/templates/:key/install`). Share a base with people,
   groups or the whole team; custom roles decide, table by table, which rows and fields someone
   sees and may change — enforced on every path, including the agent. Forms are submit-only and
   can go to Base members, everyone in the workspace or chosen people and groups: they open at
