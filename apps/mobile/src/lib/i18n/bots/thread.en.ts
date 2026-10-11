@@ -3,6 +3,8 @@
 export const botsThreadEn = {
   thread: {
     dmStart: '{name} remembers what you talk about here',
+    /** The start of a task chat (a separate chat — its own context, apart from the main thread). */
+    taskStart: 'A separate chat with {name}, with its own context — your main thread carries on elsewhere.',
     /** Under the group's title (never repeats it — titles run long). */
     groupStart: 'The start of this group',
     /** A group without a title or a known member. */
@@ -76,6 +78,20 @@ export const botsThreadEn = {
     undoMemoryFailed: 'Couldn’t undo it',
     announceReplying: '{name} is replying',
     announceNeedsYou: '{name} needs you',
+    /** Editing the last message of a task chat (the composer's accessory). */
+    editing: 'Editing Your Message',
+    editHint: 'Send to answer the edited message again',
+    /** The `+` menu's title while editing: an edit changes the text only. */
+    editNoImages: 'An edit keeps the message’s images',
+    rewindFailed: 'Couldn’t answer again',
+    editFailed: 'Couldn’t send the edit',
+    /** Why a rewind was refused, by the server's 409 code. */
+    rewindBusy: 'A reply is still running — wait for it to finish.',
+    rewindNotLast: 'Only the last message can be edited or answered again.',
+    rewindCards: 'Finish the sign-in or computer card first.',
+    /** A line about another chat (`chat_opened` / `chat_origin`): VoiceOver hint. */
+    openChatHint: 'Opens that chat',
+    renameFailed: 'Couldn’t rename the chat',
   },
   status: {
     thinking: '{name} is thinking…',
@@ -87,6 +103,8 @@ export const botsThreadEn = {
     computer: 'Using the computer',
     handoff: 'Handing off…',
     working: 'Working…',
+    /** A task chat at rest: its title is the chat's own, so the line names the Agent answering there. */
+    taskWith: 'Chat with {name}',
     waitApproval: 'Waiting for your approval',
     waitLogin: 'Waiting for you to sign in',
     waitHandback: 'Waiting for the computer back',

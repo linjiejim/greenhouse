@@ -271,3 +271,33 @@ describe('titlePose', () => {
     }
   });
 });
+
+describe('a task chat (spec 20261011-agent-first-class §5a)', () => {
+  const task = conversation({ kind: 'task', title: 'Q3 plan' });
+  const at = (snap: Partial<StatusInput['snap']>): StatusInput => ({
+    snap: { ...input().snap, conversation: task, ...snap },
+    byId: BY_ID,
+    kind: 'task',
+  });
+
+  it('reads like a DM: its Agent unnamed, a guest named; at rest the line names the Agent (the title is the chat’s)', () => {
+    expect(statusLine(at({}))).toEqual({ key: 'bots.status.taskWith', vars: { name: 'Sage' } });
+    expect(statusLine(at({ conversation: conversation({ kind: 'task', owner_bot_id: 'b_new' }) }))).toBeNull();
+    expect(statusLine(at({ run: run([segment({ text: 'Hi' })]), runActive: true }))).toEqual({
+      key: 'bots.status.replyingDm',
+    });
+    expect(statusLine(at({ run: run([segment({ botId: FERN.id })]), runActive: true }))).toEqual({
+      key: 'bots.status.thinking',
+      vars: { name: 'Fern' },
+    });
+  });
+
+  it('is read-only only once its Agent is archived', () => {
+    expect(threadReadOnly({ conversation: task, readOnly: null }, BY_ID)).toBeNull();
+    const orphan = conversation({ kind: 'task', owner_bot_id: OLD.id });
+    expect(threadReadOnly({ conversation: orphan, readOnly: null }, BY_ID)).toBe('bot_archived');
+    expect(statusLine({ ...at({}), snap: { ...at({}).snap, conversation: orphan } })).toEqual({
+      key: 'bots.status.archived',
+    });
+  });
+});

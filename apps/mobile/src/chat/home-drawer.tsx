@@ -37,8 +37,13 @@
  * With Agents on (iOS, an internal account, `features.bots`), the 主线 and
  * Agent sections (src/bots/drawer/bots-section.tsx) come first, above the
  * history, and the search filters them too; otherwise they render nothing and
- * the drawer is the history alone. Every route to home goes through
- * src/bots/nav.ts (all seven params — an Agent thread is `?c=`).
+ * the drawer is the history alone. With Agents on, the history also lists the
+ * member's task chats (`include=agent_chats` — spec
+ * docs/specs/20261011-agent-first-class.md §5a, D21): such a row
+ * (`channel: 'bots'`) opens as a thread (`?c=`), shows its Agent and the
+ * thread's signal (src/bots/drawer/agent-chat-row.tsx), and its menu is the
+ * same pin / tags / rename / delete — no share (D26). Every route to home goes
+ * through src/bots/nav.ts (all seven params — an Agent thread is `?c=`).
  */
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
@@ -49,8 +54,12 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useHomeSurface } from '../bots/home/surface';
 import { useTags } from '../store/tags';
 import { deleteSession, setSessionPinned, updateSessionTitle } from '../api/sessions';
+import { useBotsEnabled } from '../bots/availability';
+import { AgentChatRow } from '../bots/drawer/agent-chat-row';
 import { BotsSection } from '../bots/drawer/bots-section';
-import { openChat, openNewChat } from '../bots/nav';
+import { openChat, openNewChat, openThread } from '../bots/nav';
+import { useBots } from '../bots/store';
+import { isAgentChatRow } from '../bots/task-chats';
 import type { Session } from '../shared/greenhouse-types';
 import { parseMs } from '../lib/format';
 import { useT, type TranslationKey } from '../lib/i18n';
@@ -137,7 +146,9 @@ export function HomeDrawerContent({ navigation }: DrawerContentComponentProps) {
   const setFilter = useTags((s) => s.setFilter);
   const [search, setSearch] = useState('');
   const query = search.trim();
-  const mine = useSessions(true, 30, filterId, query);
+  // With Agents on, the member's task chats are chats too (they open as threads).
+  const botsOn = useBotsEnabled();
+  const mine = useSessions(true, 30, filterId, query, 'mine', botsOn);
   const shared = useSessions(true, 30, null, query, 'shared');
   const [earlierOpen, setEarlierOpen] = useState(false);
   const [sharedOpen, setSharedOpen] = useState(false);
@@ -162,6 +173,8 @@ export function HomeDrawerContent({ navigation }: DrawerContentComponentProps) {
     const now = new Date();
     const byBucket = new Map<Bucket, Row[]>();
     for (const session of mine.items) {
+      // a task chat opens as a thread — only while there are threads to open
+      if (!botsOn && isAgentChatRow(session)) continue;
       const bucket = bucketOf(session, now);
       const row: Row = { kind: 'session', session, shared: false };
       const list = byBucket.get(bucket);
@@ -199,17 +212,21 @@ export function HomeDrawerContent({ navigation }: DrawerContentComponentProps) {
         });
     }
     return out;
-  }, [mine.items, mine.done, shared.items, shared.done, showAll, earlierOpen, sharedOpen, query, t]);
+  }, [mine.items, mine.done, shared.items, shared.done, showAll, earlierOpen, sharedOpen, query, t, botsOn]);
 
   const close = useCallback(() => navigation.closeDrawer(), [navigation]);
 
   const openConversation = useCallback(
     (s: Session) => {
       close();
+      if (isAgentChatRow(s)) {
+        if (s.id !== activeThread) openThread(router, { c: s.id, title: s.title ?? '' });
+        return;
+      }
       if (s.id === activeId) return;
       openChat(router, { id: s.id, title: s.title ?? '', ro: s.is_owner === false });
     },
-    [close, router, activeId],
+    [close, router, activeId, activeThread],
   );
 
   // Already on a plain new chat → just close; anything else (a chat, a thread — a restored one
@@ -278,12 +295,13 @@ export function HomeDrawerContent({ navigation }: DrawerContentComponentProps) {
             return;
           }
           removeMine(s.id);
+          if (isAgentChatRow(s)) useBots.getState().dropTaskChat(s.id);
           toast(t('chat.deleted'), 'trash');
-          if (s.id === activeId) openNewChat(router);
+          if (s.id === activeId || s.id === activeThread) openNewChat(router);
         })();
       }
     },
-    [close, router, t, patchMine, patchShared, removeMine, refreshMine, activeId],
+    [close, router, t, patchMine, patchShared, removeMine, refreshMine, activeId, activeThread],
   );
 
   // Every row can be pinned (any conversation the member can see); tags, rename and delete are the owner's.
@@ -346,7 +364,9 @@ export function HomeDrawerContent({ navigation }: DrawerContentComponentProps) {
     }
     const s = item.session;
     const owner = s.is_owner !== false && !item.shared;
-    const row = (
+    const row = isAgentChatRow(s) ? (
+      <AgentChatRow session={s} current={s.id === activeThread} onPress={() => openConversation(s)} />
+    ) : (
       <Pressable
         key={fontKey}
         onPress={() => openConversation(s)}

@@ -419,12 +419,16 @@ export type BotConversationAttention = 'needs_you' | 'unread' | 'working' | 'idl
 export interface BotConversationSummary {
   session_id: string;
   /**
-   * `group` = a retired group chat (2026-10-09): readable history, closed to new messages,
-   * invites and card decisions (409 `group_closed`). Every conversation since is a Bot's DM;
-   * other Bots join it as guests.
+   * `direct` = a Bot's one DM (the main thread is Sprouty's). `task` = a separate chat with its own
+   * context, answered by `owner_bot_id`; listed with the chats, not the threads (spec
+   * 20261011-agent-first-class D20/D21). `group` = a retired group chat (2026-10-09): readable
+   * history, closed to new messages, invites and card decisions (409 `group_closed`). Other Bots
+   * join a DM or a task chat as guests.
    */
-  kind: 'direct' | 'group';
+  kind: 'direct' | 'task' | 'group';
   title: string | null;
+  /** A task chat's chosen model; null = the owner Bot's model. Absent on DMs and older servers. */
+  model_id?: string | null;
   owner_bot_id: string | null;
   lead_bot_id: string | null;
   members: BotMemberView[];
@@ -522,6 +526,13 @@ export interface BotCreatePayload {
 export interface BotTaskStartPayload {
   title: string;
   brief: string;
+  /**
+   * `chat` = start it in a new separate chat the member can keep talking in (spec
+   * 20261011-agent-first-class D25) instead of a read-only background task. Absent = background.
+   */
+  mode?: 'background' | 'chat';
+  /** `chat` only: the Agent that answers there (default: the proposing Agent). */
+  agent_id?: string;
 }
 
 /**
@@ -803,7 +814,11 @@ export type BotEvent =
    */
   | { kind: 'unavailable'; bot_id: string | null; reason: 'archived' | 'no_active_members' }
   /** The member pressed Stop while a wake-up (hand-back, joined Bot…) was queued: it was not resumed. */
-  | { kind: 'stopped'; bot_id: string };
+  | { kind: 'stopped'; bot_id: string }
+  /** A `task_start` card in `chat` mode was approved: the new separate chat (written where it was proposed). */
+  | { kind: 'chat_opened'; session_id: string; bot_id: string; title: string }
+  /** The first line of a separate chat an Agent opened: where it came from. */
+  | { kind: 'chat_origin'; from_session_id: string; bot_id: string };
 
 // ─── Messages ────────────────────────────────────────────
 

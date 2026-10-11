@@ -22,7 +22,9 @@
  *    in): New Chat (subtitle: the Bot's name) and Show › (the reply details,
  *    global — src/chat/reply-details-menu.tsx). No ✎ (a thread is not a
  *    session), no share (the server refuses to share Bots conversations), no
- *    delete.
+ *    delete. A task chat (a separate chat, spec 20261011-agent-first-class
+ *    §5a) is a chat in the chats list: it adds Tags, Rename and Delete — still
+ *    no share (D26).
  *
  * The title view reads a tiny store the screen publishes to
  * (`publishThreadHeader`, only when a field changed) instead of taking props:
@@ -161,6 +163,10 @@ export interface ThreadHeaderActions {
   openDrawer: () => void;
   openComputer: () => void;
   askInChat: () => void;
+  /** A task chat's own actions (the chats list's: tags, rename, delete). */
+  openTags: () => void;
+  rename: () => void;
+  remove: () => void;
 }
 
 /**
@@ -175,6 +181,7 @@ export const ThreadHeader = memo(function ThreadHeader({
   ownerName,
   canAsk,
   hasComputer,
+  taskChat,
   actions,
 }: {
   sessionId: string;
@@ -188,6 +195,8 @@ export const ThreadHeader = memo(function ThreadHeader({
   canAsk: boolean;
   /** Computers run on this server: the 🖥 button opens the member's. */
   hasComputer: boolean;
+  /** A task chat (not a thread): Tags / Rename / Delete join the menu. */
+  taskChat: boolean;
   actions: ThreadHeaderActions;
 }) {
   const t = useT();
@@ -233,7 +242,20 @@ export const ThreadHeader = memo(function ThreadHeader({
               {t('bots.thread.askInChat')}
             </Stack.Toolbar.MenuAction>
           </Stack.Toolbar.Menu>
+          <Stack.Toolbar.Menu inline hidden={!taskChat}>
+            <Stack.Toolbar.MenuAction icon={toolbarIcon('tag')} onPress={actions.openTags}>
+              {t('chat.actionTags')}
+            </Stack.Toolbar.MenuAction>
+            <Stack.Toolbar.MenuAction icon={toolbarIcon('pen')} onPress={actions.rename}>
+              {t('chat.actionRename')}
+            </Stack.Toolbar.MenuAction>
+          </Stack.Toolbar.Menu>
           <Stack.Toolbar.Menu inline>{replyDetailsMenu(t, details, setDetail)}</Stack.Toolbar.Menu>
+          <Stack.Toolbar.Menu inline hidden={!taskChat}>
+            <Stack.Toolbar.MenuAction icon={toolbarIcon('trash')} destructive onPress={actions.remove}>
+              {t('chat.actionDelete')}
+            </Stack.Toolbar.MenuAction>
+          </Stack.Toolbar.Menu>
         </Stack.Toolbar.Menu>
       </Stack.Toolbar>
     </>

@@ -16,6 +16,7 @@ import {
   rowSignal,
   sproutyBot,
   sproutyDm,
+  taskChatRow,
   type BotsData,
   type BotsState,
   type BotsStoreDeps,
@@ -132,6 +133,7 @@ function makeStore(api: Partial<BotsStoreDeps['api']> = {}) {
         value: { bot: SPROUTY, dm_session_id: 's_sprouty', created: false },
       })),
       listConversations: vi.fn(async () => ({ ok: true as const, value: [] })),
+      listTaskChats: vi.fn(async () => ({ ok: true as const, value: [] })),
       listRequests: vi.fn(async () => ({ ok: true as const, value: [] })),
       decideRequest: vi.fn(),
       listChatRuns: vi.fn(async () => []),
@@ -537,5 +539,88 @@ describe('small writes', () => {
     expect(store.get().pendingTotal).toBe(0);
     store.get().noteForbidden();
     expect(store.get().error).toBe('forbidden');
+  });
+});
+
+// ─── Task chats (spec 20261011-agent-first-class §5a) ────
+
+describe('task chats', () => {
+  const task = (sessionId: string, botId: string, partial: Partial<BotConversationSummary> = {}) =>
+    dm(sessionId, botId, { kind: 'task', title: 'A chat', ...partial });
+
+  it('are read with the threads (?kind=task), never drawn as threads; an older server’s DMs are left out', async () => {
+    const store = makeStore({
+      listConversations: vi.fn(async () => ({ ok: true as const, value: [dm('s_sprouty', 'bot_sprouty')] })),
+      // an older server ignores `kind`: its answer is the threads again
+      listTaskChats: vi.fn(async () => ({
+        ok: true as const,
+        value: [task('t1', 'bot_sprouty', { pending_requests: 2 }), dm('s_sprouty', 'bot_sprouty')],
+      })),
+    });
+    await store.get().loadBots();
+    await store.get().loadConversations();
+    const s = store.get();
+    expect(s.conversations.map((r) => r.session_id)).toEqual(['s_sprouty']);
+    expect(s.taskChats.map((r) => r.session_id)).toEqual(['t1']);
+    expect(s.pendingTotal).toBe(2);
+    // a task row that slipped into the threads is still no thread
+    const rows = drawerRows(
+      { ...s, conversations: [...s.conversations, task('t2', 'bot_sprouty')] },
+      {
+        query: '',
+        expanded: true,
+      },
+    );
+    expect([
+      rows.pinned?.session_id,
+      ...rows.recent.map((r) => r.session_id),
+      ...rows.archived.map((r) => r.session_id),
+    ]).toEqual(['s_sprouty']);
+  });
+
+  it('a failed task list keeps the last answer (the threads still publish)', async () => {
+    const listTaskChats = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: true, value: [task('t1', 'bot_sprouty')] })
+      .mockResolvedValueOnce({ ok: false, status: 500, code: null });
+    const store = makeStore({ listTaskChats });
+    await store.get().loadConversations();
+    await store.get().loadConversations();
+    expect(store.get().taskChats.map((r) => r.session_id)).toEqual(['t1']);
+    expect(store.get().conversationsLoaded).toBe(true);
+    expect(store.get().error).toBeNull();
+  });
+
+  it('count for the ☰ badge (once per conversation), read and decide like threads, and go when deleted', async () => {
+    const card = request('r1', 't1', { kind: 'approval' });
+    const store = makeStore({
+      decideRequest: vi.fn(async () => ({ ok: true as const, value: { ...card, status: 'resolved' as const } })),
+    });
+    store.set({
+      conversations: [dm('s1', 'a', { attention: 'unread' })],
+      taskChats: [
+        task('t1', 'a', { pending_requests: 1, attention: 'needs_you' }),
+        task('t2', 'a', { attention: 'unread', unread_count: 2 }),
+        task('t3', 'a'),
+      ],
+      pendingRequests: [card],
+      pendingTotal: 1,
+    });
+    expect(attentionCount(store.get(), null)).toBe(3);
+    expect(attentionCount(store.get(), 't2')).toBe(2);
+    expect(taskChatRow(store.get(), 't2')?.unread_count).toBe(2);
+    expect(taskChatRow(store.get(), 'nope')).toBeNull();
+
+    store.get().noteRead('t2');
+    expect(taskChatRow(store.get(), 't2')).toMatchObject({ attention: 'idle', unread_count: 0 });
+    await store.get().decide(card, { decision: 'approve' });
+    expect(taskChatRow(store.get(), 't1')).toMatchObject({ pending_requests: 0, attention: 'idle' });
+    expect(attentionCount(store.get(), null)).toBe(1);
+
+    store.get().dropTaskChat('t3');
+    expect(store.get().taskChats.map((r) => r.session_id)).toEqual(['t1', 't2']);
+    const same = store.get();
+    store.get().dropTaskChat('missing');
+    expect(store.get().taskChats).toBe(same.taskChats);
   });
 });

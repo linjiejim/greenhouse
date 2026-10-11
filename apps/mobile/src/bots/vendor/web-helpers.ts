@@ -74,18 +74,18 @@ export function mergeArchived(current: BotView[], incoming: readonly BotView[]):
 }
 
 /**
- * Whether anyone in a conversation can still reply: only a DM whose Bot is
- * still active. A DM whose Bot was archived is read-only, and so is every
- * group — group chats were retired (a Bot brings another into its own DM when
- * it needs one), and the old ones stay as records. The API refuses a message
- * to either (409), so the composer gives way to an explanation instead. Only
- * meaningful once the Bot list is loaded.
+ * Whether anyone in a conversation can still reply: a DM or a separate (task)
+ * chat whose answering Bot is still active. One whose Bot was archived is
+ * read-only, and so is every group — group chats were retired (a Bot brings
+ * another into its own conversation when it needs one), and the old ones stay
+ * as records. The API refuses a message to either (409), so the composer gives
+ * way to an explanation instead. Only meaningful once the Bot list is loaded.
  */
 export function conversationReplyable(
   conversation: Pick<BotConversationSummary, 'kind' | 'owner_bot_id'>,
   activeIds: ReadonlySet<string>,
 ): boolean {
-  return conversation.kind === 'direct' && !!conversation.owner_bot_id && activeIds.has(conversation.owner_bot_id);
+  return conversation.kind !== 'group' && !!conversation.owner_bot_id && activeIds.has(conversation.owner_bot_id);
 }
 
 // ─── apps/web/src/components/bots/navigation.ts ──────────
@@ -100,20 +100,24 @@ export interface ConversationTitleCopy {
   unknownBot: string;
   /** A group with no title and no known member. */
   group: string;
+  /** A separate (task) chat with no title yet — titled after its first reply. */
+  chat: string;
   /** "Sage (archived)": the Bot no longer replies; its conversation stays readable. */
   archived: (name: string) => string;
 }
 
 /**
  * A conversation's display name: the Bot's name for a DM (marked when that
- * Bot is archived), the title or the roster for a group. `bots` is the full
- * directory — active and archived Bots.
+ * Bot is archived), its own title for a separate chat ("New chat" until one is
+ * generated — the header names the answering Agent beside it), the title or
+ * the roster for a group. `bots` is the full directory — active and archived Bots.
  */
 export function conversationTitle(
   conversation: Pick<BotConversationSummary, 'kind' | 'title' | 'owner_bot_id' | 'members'>,
   bots: ReadonlyMap<string, BotView>,
   copy: ConversationTitleCopy,
 ): string {
+  if (conversation.kind === 'task') return conversation.title?.trim() || copy.chat;
   if (conversation.kind === 'direct') {
     const owner = bots.get(conversation.owner_bot_id ?? '');
     if (!owner) return copy.unknownBot;

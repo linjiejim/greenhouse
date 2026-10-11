@@ -62,6 +62,11 @@ export interface Session {
   pin_sort?: number;
   /** Inline session tags returned by the list endpoint. */
   tags?: SessionTag[];
+  /**
+   * An Agent task chat folded into the list (`GET /api/sessions?include=agent_chats`; its
+   * `channel` is `bots`): the Agent that answers there. Opens as a thread (`/?c=`), never shared.
+   */
+  agent_chat?: { bot_id: string | null };
 }
 
 export interface SessionTag {

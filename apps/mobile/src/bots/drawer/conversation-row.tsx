@@ -33,9 +33,9 @@ import { useFontScaleKey } from '../../ui/font-scale';
 import { Badge } from '../../ui/list';
 import { NativeMenu, menuSections, type MenuItem } from '../../ui/menu';
 import { rowSignal, useBots } from '../store';
+import { conversationCanReply } from '../task-chats';
 import { AvatarStack } from '../ui/avatar-stack';
 import { BotAvatar } from '../ui/bot-avatar';
-import { conversationReplyable } from '../vendor/web-helpers';
 import { rowPose, rowPreview, rowTime, rowTitle, type RowCopy } from './row-text';
 
 /**
@@ -66,6 +66,7 @@ export function useRowCopy(): RowCopy {
     () => ({
       deletedBot: t('bots.common.deletedBot'),
       untitledGroup: t('bots.nav.untitledGroup'),
+      newChat: t('chat.newConversation'),
       archivedName: (name) => t('bots.nav.archivedName', { name }),
       youSaid: (text) => t('bots.common.youSaid', { text }),
       botSaid: (name, text) => t('bots.nav.botSaid', { name, text }),
@@ -106,8 +107,7 @@ export const ConversationRow = memo(function ConversationRow({
   const running = useBots((s) => s.running);
   // Before the Bot list is in, every row counts as replyable (a sleeping plant would be a guess).
   const replyable = useBots(
-    (s) =>
-      row.kind === 'direct' && (!s.botsLoaded || conversationReplyable(row, new Set(s.bots.map((bot) => bot.id)))),
+    (s) => row.kind !== 'group' && (!s.botsLoaded || conversationCanReply(row, new Set(s.bots.map((bot) => bot.id)))),
   );
 
   const dir = useMemo(() => ({ byId, botsLoaded }), [byId, botsLoaded]);
@@ -169,7 +169,7 @@ export const ConversationRow = memo(function ConversationRow({
       ]}
     >
       <View style={[styles.lead, { width: leadWidth(fontScale) }]}>
-        {row.kind === 'direct' ? (
+        {row.kind !== 'group' ? (
           <BotAvatar bot={owner} size={avatarSize} state={pose.state} animate={pose.animate} />
         ) : (
           <AvatarStack

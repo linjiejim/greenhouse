@@ -280,7 +280,7 @@ describe('pinned tripwires', () => {
     expectPinnedText(
       `${WEB_BOTS}/conversation-header.tsx`,
       (sf) => [declaration(sf, 'useStatusLine')],
-      '4ff635b8fa565868bb9e12f6f5cafaa0e445844d31edb0ccf7b396602298dc7a',
+      '2cb439415b87590f0f60e818c2c5409425ffde33e41af2d17877363b3ce99687',
       'apps/mobile/src/bots/thread/status-line.ts',
     );
   });
@@ -316,7 +316,7 @@ describe('pinned tripwires', () => {
     expectPinnedText(
       `${WEB_BOTS}/request-decision.ts`,
       (sf) => [declaration(sf, 'settledLabelKey')],
-      'e608070f7d9d0ceed369ee7fce1d791150c20abf3c78cf5a7c0e30d32f397468',
+      '5ce1244a3a2e943744f063dd2a7bd809081b15a95faa1f5170e69d05f2f112db',
       'apps/mobile/src/bots/cards/decision.ts',
     );
   });

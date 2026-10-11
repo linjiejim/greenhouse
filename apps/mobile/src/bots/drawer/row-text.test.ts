@@ -11,6 +11,7 @@ import { rowPose, rowPreview, rowTime, rowTitle, type RowCopy, type RowDirectory
 const COPY: RowCopy = {
   deletedBot: 'Deleted Bot',
   untitledGroup: 'Group',
+  newChat: 'New chat',
   archivedName: (name) => `${name} (archived)`,
   youSaid: (text) => `You: ${text}`,
   botSaid: (name, text) => `${name}: ${text}`,
@@ -88,6 +89,13 @@ describe('rowTitle', () => {
     expect(rowTitle(group('Writers', ['b_fern', 'b_dandy']), DIR, COPY)).toBe('Writers');
     expect(rowTitle(group(null, ['b_fern', 'b_dandy']), DIR, COPY)).toBe('Fern, Dandy');
     expect(rowTitle(group(null, ['b_gone']), DIR, COPY)).toBe('Group');
+  });
+
+  it("is a task chat's own title, else New chat — even before the Bot list answers", () => {
+    const task = (title: string | null) => ({ ...dm('b_fern'), kind: 'task' as const, title });
+    expect(rowTitle(task('Q3 plan'), DIR, COPY)).toBe('Q3 plan');
+    expect(rowTitle(task(null), DIR, COPY)).toBe('New chat');
+    expect(rowTitle(task(null), NOT_LOADED, COPY)).toBe('New chat');
   });
 
   it('names a Bot missing from a loaded list as deleted', () => {

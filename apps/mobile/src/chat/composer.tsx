@@ -198,6 +198,8 @@ export const Composer = memo(
       onSelectionChange?: (sel: { start: number; end: number }) => void;
       /** More `+` menu items, in their own section (ids other than `camera` / `library`). */
       menuExtra?: { items: MenuItem[]; onSelect(id: string): void };
+      /** Images can't be added now (editing a sent message): the `+` menu says why and its picks are off. */
+      attachNote?: string;
     }
   >(function Composer(
     {
@@ -219,6 +221,7 @@ export const Composer = memo(
       accessory,
       onSelectionChange,
       menuExtra,
+      attachNote,
     },
     ref,
   ) {
@@ -229,7 +232,7 @@ export const Composer = memo(
     const uploading = images.some((im) => im.status === 'uploading');
     const canSend = !uploading && (value.trim().length > 0 || images.some((im) => im.status === 'done'));
     const hasAttachments = images.length > 0 || annotations.length > 0;
-    const full = images.length >= maxImages;
+    const full = images.length >= maxImages || !!attachNote;
     // A single agent is no choice — no capsule (and no empty row) for it.
     // A separate Stop takes over from the in-place one (Send stays Send).
     const stopInPlace = streaming && !stop;
@@ -247,7 +250,7 @@ export const Composer = memo(
 
         <GlassGroup spacing={8} style={styles.row}>
           <NativeMenu
-            title={full ? t('chat.maxImages', { n: maxImages }) : undefined}
+            title={attachNote ?? (full ? t('chat.maxImages', { n: maxImages }) : undefined)}
             items={menuExtra ? menuSections([attachItems, menuExtra.items]) : attachItems}
             onSelect={(id) => {
               if (menuExtra && !ATTACH_IDS.has(id)) menuExtra.onSelect(id);

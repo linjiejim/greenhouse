@@ -84,6 +84,23 @@ export type SendOutcome =
   /** No answer: the bubble stays, marked "Not Delivered", with Try Again. */
   | { ok: false; kind: 'not_delivered' };
 
+/** Edit / answer again in a task chat: back to the last member message (`content` = its edited text). */
+export interface RewindInput {
+  messageId: string;
+  content?: string;
+}
+
+export type RewindOutcome =
+  | { ok: true }
+  /** Something is in flight here (a run, a send): nothing was asked. */
+  | { ok: false; kind: 'busy' }
+  /** The Agent was archived (409 `bot_archived`): the thread turns read-only. */
+  | { ok: false; kind: 'read_only'; code: BotsReadOnly }
+  /** Refused (`busy`, `not_last`, `requests_pending`…): the rows are put back and re-read. */
+  | { ok: false; kind: 'rejected'; status: number; code: string | null; message: string }
+  /** No answer: the rows are put back and re-read. */
+  | { ok: false; kind: 'not_delivered' };
+
 /** A send in flight on this device; `failed` = the POST got no answer (kept for a retry). */
 export interface MobilePending extends PendingWithBase {
   failed?: boolean;
@@ -144,6 +161,8 @@ export interface ThreadController {
   setVisible(visible: boolean): void;
   setForeground(active: boolean): void;
   send(input: SendInput): Promise<SendOutcome>;
+  /** Task chats: edit the last member message / answer it again (streams like a send). */
+  rewind(input: RewindInput): Promise<RewindOutcome>;
   retry(clientId: string): Promise<SendOutcome>;
   /** Drop a local bubble only. */
   discard(clientId: string): void;
@@ -160,7 +179,7 @@ export interface ThreadDeps {
   api: Pick<typeof import('../api/bots'), 'getConversation' | 'markConversationRead'> &
     Pick<
       typeof import('../api/chat'),
-      'openBotsChat' | 'interruptChatRun' | 'getChatRun' | 'streamChatRun' | 'stopChatRun'
+      'openBotsChat' | 'openBotsRewind' | 'interruptChatRun' | 'getChatRun' | 'streamChatRun' | 'stopChatRun'
     >;
   realtime: Realtime;
   store: { getState(): BotsState; subscribe(listener: (s: BotsState) => void): () => void };

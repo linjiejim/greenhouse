@@ -12,12 +12,15 @@
 
 import type { BotConversationSummary, BotView } from '../../shared/bots';
 import type { PlantState } from '../../ui/plant-avatar/plant-ids';
-import { conversationBotIds, conversationTitle } from '../vendor/web-helpers';
+import { threadTitle } from '../task-chats';
+import { conversationBotIds } from '../vendor/web-helpers';
 
 /** Localized copy, built by the caller (this module never reads the language). */
 export interface RowCopy {
   deletedBot: string;
   untitledGroup: string;
+  /** A task chat with no title yet. */
+  newChat: string;
   archivedName(name: string): string;
   youSaid(text: string): string;
   botSaid(name: string, text: string): string;
@@ -32,17 +35,18 @@ export interface RowDirectory {
 
 type Row = Pick<BotConversationSummary, 'kind' | 'title' | 'owner_bot_id' | 'members' | 'last_message'>;
 
-/** The row's title; '' while the Bot list has not answered. */
+/** The row's title ('' while the Bot list has not answered); a task chat's own title, else "New chat". */
 export function rowTitle(row: Row, dir: RowDirectory, copy: RowCopy): string {
   const bots = new Map<string, BotView>();
   for (const id of conversationBotIds(row)) {
     const bot = dir.byId[id];
     if (bot) bots.set(id, bot);
   }
-  return conversationTitle(row, bots, {
+  return threadTitle(row, bots, {
     unknownBot: dir.botsLoaded ? copy.deletedBot : '',
     group: dir.botsLoaded ? copy.untitledGroup : '',
     archived: copy.archivedName,
+    chat: copy.newChat,
   });
 }
 

@@ -33,6 +33,13 @@ export const botsCardsEn = {
     /** `{site}` when no detail row names the site. */
     thisSite: 'this site',
     taskTitle: '{name} wants to run a task',
+    /** A `task_start` card in chat mode: the task opens in a new chat the member keeps talking in. */
+    chatTitle: '{name} wants to open a new chat',
+    chatNote: 'Opens a new chat',
+    chatNoteWith: 'Opens a new chat — {name} answers there',
+    openChat: 'Open Chat',
+    /** Status badge of a chat-mode card that was approved. */
+    chatStarted: 'Chat Opened',
     start: 'Start',
     cancel: 'Cancel',
     taskLimit: 'Too many background tasks are running (max 3)',
@@ -83,6 +90,8 @@ export const botsCardsEn = {
       allowed: 'Allowed · {title}',
       allowedAlways: 'Always allowed · {title}',
       started: 'Started · {title}',
+      chatOpened: 'Opened a new chat',
+      chatOpenedTitle: 'New chat · {title}',
       handedBack: 'Handed the computer back',
       instructions: 'New instructions accepted',
       signedIn: 'Signed in',

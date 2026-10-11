@@ -19,7 +19,8 @@
  *     or thinking — named when a guest is speaking
  *   > busy without a segment (between turns, another API slot): "Working…"
  *   > idle: no line at all — the title alone (the role lives in the
- *     profile, one tap away).
+ *     profile, one tap away); a task chat's title is its own, so its line
+ *     says who answers there ("Chat with Sage" — the web's header too).
  *
  * "Busy" only ever comes from real signals (`snap.runActive` — D14); the web
  * header's computer-phase branch ("you're in control") has no phone
@@ -43,7 +44,8 @@ export interface StatusInput {
   snap: Pick<ThreadSnapshot, 'conversation' | 'readOnly' | 'requests' | 'stopPhase' | 'run' | 'runActive' | 'runError'>;
   /** The full directory (active and archived Bots). */
   byId: Record<string, BotView>;
-  kind: 'direct' | 'group';
+  /** A task chat reads like a DM: its Agent speaks under the title, guests are named. */
+  kind: 'direct' | 'task' | 'group';
 }
 
 /**
@@ -118,7 +120,7 @@ export function statusLine({ snap, byId, kind }: StatusInput): StatusLine | null
       return { key: 'bots.status.working' };
     }
     const replying = segment.text.length > 0;
-    // A DM's owner speaks under its own title; anyone else (a group, a DM guest) is named.
+    // A DM's (or task chat's) owner speaks under its own title; anyone else (a group, a guest) is named.
     const name = byId[segment.botId]?.name;
     const named = !!name && (kind === 'group' || segment.botId !== conversation?.owner_bot_id);
     if (named) return { key: replying ? 'bots.status.replying' : 'bots.status.thinking', vars: { name } };
@@ -126,6 +128,8 @@ export function statusLine({ snap, byId, kind }: StatusInput): StatusLine | null
   }
 
   if (snap.runActive) return { key: 'bots.status.working' };
+  const owner = conversation?.owner_bot_id ? byId[conversation.owner_bot_id] : undefined;
+  if (kind === 'task' && owner) return { key: 'bots.status.taskWith', vars: { name: owner.name } };
   return null;
 }
 

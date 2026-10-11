@@ -8,7 +8,7 @@
  * | push                          | store                                                  |
  * |-------------------------------|--------------------------------------------------------|
  * | `resync` (connected)          | Bots + conversations + pending + busy seed (`seedRuns`) |
- * | `chat:run running`            | busy mark; a known Bots conversation → list reload       |
+ * | `chat:run running`            | busy mark; a known Bots conversation / task chat → list reload |
  * | `chat:run completed / error`  | busy mark cleared; a known Bots conversation → list reload |
  * | `bots:conversation`           | list reload                                            |
  * | `bots:attention {pending}`    | the count at once + pending list reload                |
@@ -73,8 +73,10 @@ export function startBotsSync(deps: BotsSyncDeps): BotsSync {
     void state.loadPending();
     void state.seedRuns();
   };
-  const knownConversation = (sessionId: string) =>
-    store.getState().conversations.some((row) => row.session_id === sessionId);
+  const knownConversation = (sessionId: string) => {
+    const state = store.getState();
+    return [...state.conversations, ...state.taskChats].some((row) => row.session_id === sessionId);
+  };
 
   const onEvent = (e: RealtimeEvent) => {
     if (disposed) return;

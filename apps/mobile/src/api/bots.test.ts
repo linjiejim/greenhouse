@@ -21,7 +21,7 @@ vi.mock('../store/stations', () => ({ getApiBase: () => 'http://api.test' }));
 vi.mock('../lib/i18n', () => ({ t: (key: string) => key }));
 
 import * as bots from './bots';
-import { interruptChatRun, listChatRuns, openBotsChat, type RunStreamEvent } from './chat';
+import { interruptChatRun, listChatRuns, openBotsChat, openBotsRewind, type RunStreamEvent } from './chat';
 import { MOBILE_RICH_BLOCKS } from '../chat/markdown/rich';
 
 const json = (status: number, body: unknown) =>
@@ -266,6 +266,92 @@ describe('Bots writes', () => {
       status: 409,
       code: null,
       message: 'That task has already finished',
+    });
+  });
+});
+
+// ─── Task chats (spec 20261011-agent-first-class §5a) ────
+
+describe('task chats', () => {
+  it('lists them with ?kind=task — an older server answers with its threads: only task rows are kept', async () => {
+    const task = { session_id: 't1', kind: 'task', last_activity_at: '2026-10-12T00:00:00.000Z' };
+    const dm = { session_id: 'd1', kind: 'direct', last_activity_at: '2026-10-12T00:00:00.000Z' };
+    apiMock.mockResolvedValueOnce(json(200, { conversations: [task, dm] }));
+    expect(await bots.listTaskChats()).toEqual({ ok: true, value: [task] });
+    expect(apiMock).toHaveBeenLastCalledWith('/api/bots/conversations?kind=task', {});
+    apiMock.mockResolvedValueOnce(json(403, { error: 'Forbidden' }));
+    expect(await bots.listTaskChats()).toEqual({ ok: false, status: 403, code: null });
+  });
+
+  it('creates one (kind task, the Agent when given) and reads an older server’s refusal as a plain 400', async () => {
+    apiMock.mockResolvedValueOnce(json(201, { conversation: { session_id: 't1', kind: 'task' } }));
+    expect(await bots.createTaskChat({ bot_id: 'bot_a' })).toEqual({
+      ok: true,
+      value: { session_id: 't1', kind: 'task' },
+    });
+    expect(apiMock.mock.calls.at(-1)).toEqual([
+      '/api/bots/conversations',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ kind: 'task', bot_id: 'bot_a' }),
+      },
+    ]);
+    apiMock.mockResolvedValueOnce(json(400, { error: 'bot_ids must be a list of Bot ids' }));
+    expect(await bots.createTaskChat()).toEqual({
+      ok: false,
+      status: 400,
+      code: null,
+      message: 'bot_ids must be a list of Bot ids',
+    });
+    expect(apiMock.mock.calls.at(-1)?.[1]).toMatchObject({ body: JSON.stringify({ kind: 'task' }) });
+  });
+
+  it('renames one (PATCH), a DM refusing with its code', async () => {
+    apiMock.mockResolvedValueOnce(json(200, { conversation: { session_id: 't 1', title: 'Plan' } }));
+    expect(await bots.updateTaskChat('t 1', { title: 'Plan' })).toEqual({
+      ok: true,
+      value: { session_id: 't 1', title: 'Plan' },
+    });
+    expect(apiMock.mock.calls.at(-1)).toEqual([
+      '/api/bots/conversations/t%201',
+      { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: 'Plan' }) },
+    ]);
+    apiMock.mockResolvedValueOnce(json(409, { error: 'Only a separate chat…', code: 'not_task_chat' }));
+    expect(await bots.updateTaskChat('d1', { title: 'x' })).toMatchObject({ ok: false, code: 'not_task_chat' });
+  });
+});
+
+describe('openBotsRewind', () => {
+  it('posts the message (and an edit’s text) with the rich blocks, and streams the run like a send', async () => {
+    expoFetchMock.mockResolvedValue(new Response(`${JSON.stringify({ type: 'finish' })}\n`));
+    const result = await openBotsRewind({ sessionId: 't 1', messageId: 'u9', content: 'Shorter, please' });
+    expect(result.kind).toBe('stream');
+    if (result.kind === 'stream') expect((await drain(result.events)).map((event) => event.type)).toEqual(['finish']);
+    const [url, init] = expoFetchMock.mock.calls.at(-1)!;
+    expect(url).toBe('http://api.test/api/bots/conversations/t%201/rewind');
+    expect(JSON.parse(init.body as string)).toEqual({
+      message_id: 'u9',
+      content: 'Shorter, please',
+      rich_blocks: [...MOBILE_RICH_BLOCKS],
+    });
+  });
+
+  it('answer again sends no content; a refusal keeps the server’s code; no answer is status 0', async () => {
+    expoFetchMock.mockResolvedValueOnce(json(409, { error: 'Busy', code: 'busy' }));
+    expect(await openBotsRewind({ sessionId: 't1', messageId: 'u9' })).toEqual({
+      kind: 'error',
+      status: 409,
+      code: 'busy',
+      message: 'Busy',
+    });
+    expect(JSON.parse(expoFetchMock.mock.calls.at(-1)![1].body as string)).not.toHaveProperty('content');
+    expoFetchMock.mockRejectedValueOnce(new TypeError('offline'));
+    expect(await openBotsRewind({ sessionId: 't1', messageId: 'u9' })).toEqual({
+      kind: 'error',
+      status: 0,
+      code: null,
+      message: '',
     });
   });
 });

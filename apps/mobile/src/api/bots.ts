@@ -187,6 +187,38 @@ export function createConversation(input: {
   return call('/api/bots/conversations', jsonInit('POST', input), conversationOf);
 }
 
+// ─── Task chats (separate chats on the Agents engine, spec 20261011-agent-first-class §5a) ─
+
+/**
+ * The member's task chats (`?kind=task`), newest activity first — the drawer's chat rows read
+ * their signals (needs you, unread, replying) from here. An older server ignores `kind` and answers
+ * with its threads: only `kind: 'task'` rows are kept.
+ */
+export function listTaskChats(): Promise<BotsRead<BotConversationSummary[]>> {
+  return read('/api/bots/conversations?kind=task', (body) =>
+    (body as { conversations: BotConversationSummary[] }).conversations.filter((row) => row.kind === 'task'),
+  );
+}
+
+/**
+ * A new task chat answered by `bot_id` (absent = the member's Sprouty). 201 with its detail. An
+ * older server reads this as a DM request without `bot_ids`: 400 with no code (`taskChatFailure`
+ * in src/bots/task-chats.ts tells the two apart).
+ */
+export function createTaskChat(
+  input: { bot_id?: string; title?: string; model_id?: string } = {},
+): Promise<BotsWrite<BotConversationDetail>> {
+  return call('/api/bots/conversations', jsonInit('POST', { kind: 'task', ...input }), conversationOf);
+}
+
+/** A task chat's title / model (a DM answers 409 `not_task_chat`). */
+export function updateTaskChat(
+  sessionId: string,
+  patch: { title?: string | null; model_id?: string | null },
+): Promise<BotsWrite<BotConversationDetail>> {
+  return call(`/api/bots/conversations/${enc(sessionId)}`, jsonInit('PATCH', patch), conversationOf);
+}
+
 /** A page of the transcript (`seq` ascending): the newest, or the one before `beforeSeq`. */
 export function getConversation(
   sessionId: string,

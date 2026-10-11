@@ -1392,3 +1392,100 @@ describe('stale probe answers', () => {
     expect(t.fake.calls.attach).toEqual([-1]);
   });
 });
+
+// ─── Task chats: edit / answer again (spec 20261011-agent-first-class D23) ─
+
+describe('rewind', () => {
+  const chat = () => [
+    message(0, { bot_event: { kind: 'greeting', bot_id: 'bot_a' } }),
+    userRow(1, 'Plan Q3'),
+    message(2, { id: 'm2', content: 'Here is a plan' }),
+    message(3, { id: 'm3', content: 'And a table' }),
+  ];
+
+  it('cuts after the message at once; the POST’s stream is the run’s one reader (latched), then the rows settle', async () => {
+    const t = await setup({ messages: chat() });
+    const post = deferred<BotsPost>();
+    t.fake.rewinds.push(post.promise);
+    const going = t.engine.rewind({ messageId: 'u1' });
+    await t.time.advance(0);
+    expect(t.snap().messages.map((m) => m.id)).toEqual(['m0', 'u1']);
+    expect(t.fake.calls.rewind).toEqual([{ messageId: 'u1' }]);
+    // the run is announced before the POST answers: held by the latch, never a second reader
+    t.rt.emit({ type: 'chat:run', sessionId: SID, runId: 'r7', status: 'running' });
+    await t.time.advance(0);
+
+    t.fake.server.messages = chat().slice(0, 2);
+    const stream = new FakeStream([turnStart('bot_a'), text('Shorter')]);
+    post.resolve({ kind: 'stream', events: stream.events });
+    expect(await going).toEqual({ ok: true });
+    await t.time.advance(300);
+    expect(t.snap().runActive).toBe(true);
+    expect(t.snap().run?.segments[0]).toMatchObject({ text: 'Shorter' });
+    expect(t.snap().messages.map((m) => m.id)).toEqual(['m0', 'u1']);
+
+    t.fake.server.messages.push(message(4, { id: 'm4', content: 'Shorter' }));
+    stream.push(turnEnd('bot_a', 'm4'), FINISH).end();
+    await t.time.advance(500);
+    expect(t.snap().run).toBeNull();
+    expect(t.snap().messages.map((m) => m.id)).toEqual(['m0', 'u1', 'm4']);
+    expect(t.fake.calls.attach).toEqual([]);
+    expect(t.effects).toContainEqual({ type: 'run-started', runKey: `${SID}:r7`, byMe: true });
+  });
+
+  it('an edit shows the new text in place of the old at once', async () => {
+    const t = await setup({ messages: chat() });
+    t.fake.rewinds.push(deferred<BotsPost>().promise);
+    void t.engine.rewind({ messageId: 'u1', content: 'Plan Q4 instead' });
+    await t.time.advance(0);
+    expect(t.snap().messages.map((m) => [m.id, m.content])).toEqual([
+      ['m0', 'message 0'],
+      ['u1', 'Plan Q4 instead'],
+    ]);
+    expect(t.fake.calls.rewind).toEqual([{ messageId: 'u1', content: 'Plan Q4 instead' }]);
+  });
+
+  it('a refusal puts the rows back, re-reads them and says why (the server’s code)', async () => {
+    const t = await setup({ messages: chat() });
+    t.fake.rewinds.push({ kind: 'error', status: 409, code: 'not_last', message: 'Only the last message…' });
+    const reloads = t.reloads();
+    expect(await t.engine.rewind({ messageId: 'u1', content: 'x' })).toEqual({
+      ok: false,
+      kind: 'rejected',
+      status: 409,
+      code: 'not_last',
+      message: 'Only the last message…',
+    });
+    await t.time.advance(0);
+    expect(t.snap().messages.map((m) => [m.id, m.content])).toEqual(chat().map((m) => [m.id, m.content]));
+    expect(t.reloads()).toBe(reloads + 1);
+    expect(t.snap().runActive).toBe(false);
+  });
+
+  it('no answer → not delivered, rows back; an archived Agent → read-only', async () => {
+    const t = await setup({ messages: chat() });
+    expect(await t.engine.rewind({ messageId: 'u1' })).toEqual({ ok: false, kind: 'not_delivered' });
+    await t.time.advance(0);
+    expect(t.snap().messages).toHaveLength(4);
+    t.fake.rewinds.push({ kind: 'error', status: 409, code: 'bot_archived', message: 'archived' });
+    expect(await t.engine.rewind({ messageId: 'u1' })).toEqual({ ok: false, kind: 'read_only', code: 'bot_archived' });
+    await t.time.advance(0);
+    expect(t.snap().readOnly).toBe('bot_archived');
+  });
+
+  it('never while something is in flight here (a run, a send), nor for a message it has not loaded', async () => {
+    const t = await setup({ messages: chat() });
+    const { stream } = await startRun(t, 'one more');
+    expect(await t.engine.rewind({ messageId: 'u1' })).toEqual({ ok: false, kind: 'busy' });
+    t.fake.server.messages.push(userRow(4, 'one more'));
+    stream.push(FINISH).end();
+    await t.time.advance(500);
+    expect(t.snap().pending).toEqual([]);
+    expect(await t.engine.rewind({ messageId: 'missing' })).toMatchObject({
+      ok: false,
+      kind: 'rejected',
+      code: 'not_last',
+    });
+    expect(t.fake.calls.rewind).toEqual([]);
+  });
+});

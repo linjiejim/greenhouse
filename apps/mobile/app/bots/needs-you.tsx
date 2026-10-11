@@ -24,7 +24,8 @@ import { BotsRouteGate } from '../../src/bots/route-gate';
 import { useBots } from '../../src/bots/store';
 import { AvatarStack } from '../../src/bots/ui/avatar-stack';
 import { BotAvatar } from '../../src/bots/ui/bot-avatar';
-import { botsById, conversationBotIds, conversationTitle } from '../../src/bots/vendor/web-helpers';
+import { threadTitle } from '../../src/bots/task-chats';
+import { botsById, conversationBotIds } from '../../src/bots/vendor/web-helpers';
 import type { BotConversationSummary, BotRequestView } from '../../src/shared/bots';
 import { useT } from '../../src/lib/i18n';
 import { makeStyles, space, typo, useTheme, weight } from '../../src/theme';
@@ -67,7 +68,10 @@ function NeedsYouSheet() {
   const pendingRequests = useBots((s) => s.pendingRequests);
   const overrides = useBots((s) => s.requestOverrides);
   const pendingTotal = useBots((s) => s.pendingTotal);
-  const conversations = useBots((s) => s.conversations);
+  const threads = useBots((s) => s.conversations);
+  const taskChats = useBots((s) => s.taskChats);
+  // a card's conversation: a thread, or a task chat
+  const conversations = useMemo(() => [...threads, ...taskChats], [threads, taskChats]);
   const conversationsLoaded = useBots((s) => s.conversationsLoaded);
   const loadPending = useBots((s) => s.loadPending);
   const loadConversations = useBots((s) => s.loadConversations);
@@ -186,14 +190,15 @@ function GroupHeader({
 
   const fallbackName = (fallbackBotId && byId[fallbackBotId]?.name) || '';
   const title = row
-    ? conversationTitle(row, lookup, {
+    ? threadTitle(row, lookup, {
         // Before the directory answers, an unknown id is not a deleted Bot.
         unknownBot: botsLoaded ? t('bots.common.deletedBot') : '',
         group: t('bots.needs.group'),
         archived: (name) => t('bots.needs.archivedName', { name }),
+        chat: t('chat.newConversation'),
       })
     : fallbackName;
-  const memberIds = row ? (row.kind === 'direct' ? [row.owner_bot_id] : conversationBotIds(row)) : [fallbackBotId];
+  const memberIds = row ? (row.kind !== 'group' ? [row.owner_bot_id] : conversationBotIds(row)) : [fallbackBotId];
   const faces = memberIds.map((id) => (id ? (byId[id] ?? null) : null));
 
   return (

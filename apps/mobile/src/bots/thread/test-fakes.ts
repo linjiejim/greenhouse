@@ -296,6 +296,8 @@ export class FakeThreadApi {
   probes: Array<ChatRunProbe | null | Promise<ChatRunProbe | null>> = [];
   /** POST answers, consumed in order (a deferred lets the test hold the POST open). */
   posts: Array<BotsPost | Promise<BotsPost>> = [];
+  /** Rewind answers (`POST …/rewind`), consumed in order (default: no answer). */
+  rewinds: Array<BotsPost | Promise<BotsPost>> = [];
   /** `streamChatRun` answers, consumed in order (default: a stream that fails with 404). */
   attaches: FakeStream[] = [];
   interrupt: Array<'interrupting' | 'no_run' | 'refused' | Promise<'interrupting' | 'no_run' | 'refused'>> = [];
@@ -310,6 +312,7 @@ export class FakeThreadApi {
     getConversation: [] as Array<{ beforeSeq?: number; limit?: number }>,
     markRead: 0,
     open: [] as Array<{ content: string; images?: unknown[]; mentions?: string[] }>,
+    rewind: [] as Array<{ messageId: string; content?: string }>,
     interrupt: 0,
     probe: 0,
     attach: [] as number[],
@@ -350,6 +353,15 @@ export class FakeThreadApi {
       if (!next) return { kind: 'error', status: 0, code: null, message: '' };
       return next;
     },
+    openBotsRewind: async (args) => {
+      this.calls.rewind.push({
+        messageId: args.messageId,
+        ...(args.content === undefined ? {} : { content: args.content }),
+      });
+      const next = this.rewinds.shift();
+      if (!next) return { kind: 'error', status: 0, code: null, message: '' };
+      return next;
+    },
     interruptChatRun: async () => {
       this.calls.interrupt += 1;
       return this.interrupt.shift() ?? 'interrupting';
@@ -385,7 +397,7 @@ export function makeStore(api: Partial<BotsStoreDeps['api']> = {}, clock?: Threa
     vault_available: false,
     pending_requests: 0,
   };
-  const calls = { listBots: 0, listConversations: 0, listRequests: 0, listChatRuns: 0, decide: 0 };
+  const calls = { listBots: 0, listConversations: 0, listTaskChats: 0, listRequests: 0, listChatRuns: 0, decide: 0 };
   const deps: BotsStoreDeps = {
     api: {
       listBots: async () => {
@@ -395,6 +407,10 @@ export function makeStore(api: Partial<BotsStoreDeps['api']> = {}, clock?: Threa
       bootstrapBots: async () => ({ ok: false as const, status: 500, code: null, message: '' }),
       listConversations: async () => {
         calls.listConversations += 1;
+        return { ok: true as const, value: [] };
+      },
+      listTaskChats: async () => {
+        calls.listTaskChats += 1;
         return { ok: true as const, value: [] };
       },
       listRequests: async () => {

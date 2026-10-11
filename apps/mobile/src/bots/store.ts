@@ -22,6 +22,7 @@ export {
   rowSignal,
   sproutyBot,
   sproutyDm,
+  taskChatRow,
   type BotsState,
   type DrawerRows,
 } from './store-core';

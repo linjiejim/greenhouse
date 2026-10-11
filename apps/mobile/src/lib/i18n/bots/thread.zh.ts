@@ -3,6 +3,7 @@ import type { botsThreadEn } from './thread.en';
 export const botsThreadZh: typeof botsThreadEn = {
   thread: {
     dmStart: '{name} 会记得这里聊过的事',
+    taskStart: '这是与 {name} 的独立会话，有自己的上下文；主线在别处继续。',
     groupStart: '群聊从这里开始',
     group: '群聊',
     askedBy: '应 {name} 之邀',
@@ -68,6 +69,16 @@ export const botsThreadZh: typeof botsThreadEn = {
     undoMemoryFailed: '撤销失败',
     announceReplying: '{name} 正在回复',
     announceNeedsYou: '{name} 需要你',
+    editing: '编辑你的消息',
+    editHint: '发送后按修改后的内容重新回答',
+    editNoImages: '编辑只改文字，图片保持不变',
+    rewindFailed: '没能重新回答',
+    editFailed: '没能发出修改',
+    rewindBusy: '还有回复在进行，请等它结束。',
+    rewindNotLast: '只有最后一条消息可以编辑或重新回答。',
+    rewindCards: '请先处理登录或电脑卡片。',
+    openChatHint: '打开那个会话',
+    renameFailed: '会话改名失败',
   },
   status: {
     thinking: '{name} 正在思考…',
@@ -78,6 +89,7 @@ export const botsThreadZh: typeof botsThreadEn = {
     computer: '正在使用电脑',
     handoff: '正在交接…',
     working: '正在工作…',
+    taskWith: '与 {name} 的会话',
     waitApproval: '等你批准',
     waitLogin: '等你登录',
     waitHandback: '等你交还电脑',

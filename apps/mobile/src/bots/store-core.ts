@@ -26,7 +26,8 @@ import type {
 import { isSproutyBot } from '../shared/bots';
 import type { DecideOutcome } from './contract';
 import { classifyDecision } from './requests';
-import { botsById, conversationBotIds, conversationReplyable, mergeArchived } from './vendor/web-helpers';
+import { conversationCanReply } from './task-chats';
+import { botsById, conversationBotIds, mergeArchived } from './vendor/web-helpers';
 
 // ─── State ───────────────────────────────────────────────
 
@@ -43,8 +44,15 @@ export interface BotsData {
   vaultAvailable: boolean;
   /** The Bot list arrived at least once — until then an unknown id is "not loaded yet", never "deleted". */
   botsLoaded: boolean;
+  /** The threads: DMs and retired groups (`GET /api/bots/conversations`). */
   conversations: BotConversationSummary[];
   conversationsLoaded: boolean;
+  /**
+   * The member's task chats (`?kind=task`, read with the threads): never drawn as threads — the
+   * drawer's chat rows (listed from the sessions) take their signals from here, and they count
+   * for the ☰ badge.
+   */
+  taskChats: BotConversationSummary[];
   /** Every conversation's pending cards (`GET /api/bots/requests?status=pending`). */
   pendingRequests: BotRequestView[];
   /** Pending cards across every conversation (the overview, the list, the pending list or WS). */
@@ -87,6 +95,8 @@ export interface BotsState extends BotsData {
   noteForbidden(): void;
   /** Optimistic: `unread` → `idle`, unread count → 0. */
   noteRead(sessionId: string): void;
+  /** A task chat deleted here: gone from the signals and the badge at once. */
+  dropTaskChat(sessionId: string): void;
   setVisibleThread(sessionId: string | null): void;
   /** `POST /api/bots/requests/:id`, classified; `ok` is remembered in `requestOverrides`. */
   decide(request: BotRequestView, body: BotRequestDecision): Promise<DecideOutcome>;
@@ -104,6 +114,7 @@ export function initialBotsData(generation = 0): BotsData {
     botsLoaded: false,
     conversations: [],
     conversationsLoaded: false,
+    taskChats: [],
     pendingRequests: [],
     pendingTotal: 0,
     running: {},
@@ -121,7 +132,7 @@ export type GetBots = () => BotsState;
 export interface BotsStoreDeps {
   api: Pick<
     typeof import('../api/bots'),
-    'listBots' | 'bootstrapBots' | 'listConversations' | 'listRequests' | 'decideRequest'
+    'listBots' | 'bootstrapBots' | 'listConversations' | 'listTaskChats' | 'listRequests' | 'decideRequest'
   > &
     Pick<typeof import('../api/chat'), 'listChatRuns'>;
   clock: { setTimeout(fn: () => void, ms: number): unknown; clearTimeout(handle: unknown): void };
@@ -225,21 +236,25 @@ export function createBotsSlice(set: SetBots, get: GetBots, deps: BotsStoreDeps)
   const conversations = coalesced(async () => {
     if (closed()) return;
     const asked = get().generation;
-    const result = await api.listConversations();
+    const [result, tasks] = await Promise.all([api.listConversations(), api.listTaskChats()]);
     if (get().generation !== asked) return;
     if (!result.ok) {
       failedWith(result.status);
       return;
     }
+    // The task chats are a secondary list: a blip keeps the last answer (an older server has none).
+    const taskChats = tasks.ok ? tasks.value.filter((row) => row.kind === 'task') : get().taskChats;
+    const rows = [...result.value, ...taskChats];
     // Learn Bots made elsewhere before publishing, so no row flashes as "Deleted Bot".
-    const speakers = result.value.flatMap((row) => (row.last_message?.bot_id ? [row.last_message.bot_id] : []));
-    await get().ensureBotsKnown([...result.value.flatMap(conversationBotIds), ...speakers]);
+    const speakers = rows.flatMap((row) => (row.last_message?.bot_id ? [row.last_message.bot_id] : []));
+    await get().ensureBotsKnown([...rows.flatMap(conversationBotIds), ...speakers]);
     if (get().generation !== asked) return;
     set({
       conversations: result.value,
+      taskChats,
       conversationsLoaded: true,
-      // As fresh as the list; the WS push overrides it between loads.
-      pendingTotal: result.value.reduce((sum, row) => sum + row.pending_requests, 0),
+      // As fresh as the lists; the WS push overrides it between loads.
+      pendingTotal: rows.reduce((sum, row) => sum + row.pending_requests, 0),
       ...recovered(),
     });
   });
@@ -272,7 +287,7 @@ export function createBotsSlice(set: SetBots, get: GetBots, deps: BotsStoreDeps)
       if (before.status !== 'pending' || after.status === 'pending') return next;
       next.pendingRequests = state.pendingRequests.filter((request) => request.id !== after.id);
       next.pendingTotal = Math.max(0, state.pendingTotal - 1);
-      next.conversations = state.conversations.map((row) => {
+      const decided = (row: BotConversationSummary): BotConversationSummary => {
         if (row.session_id !== after.session_id || row.pending_requests === 0) return row;
         const left = row.pending_requests - 1;
         // The next list load says what it really is (unread / working); "needs you" is over.
@@ -281,7 +296,9 @@ export function createBotsSlice(set: SetBots, get: GetBots, deps: BotsStoreDeps)
           pending_requests: left,
           attention: left === 0 && row.attention === 'needs_you' ? 'idle' : row.attention,
         };
-      });
+      };
+      next.conversations = state.conversations.map(decided);
+      next.taskChats = state.taskChats.map(decided);
       return next;
     });
 
@@ -379,13 +396,19 @@ export function createBotsSlice(set: SetBots, get: GetBots, deps: BotsStoreDeps)
     },
 
     noteRead(sessionId) {
-      set((state) => ({
-        conversations: state.conversations.map((row) =>
-          row.session_id === sessionId && row.attention === 'unread'
-            ? { ...row, attention: 'idle', ...(row.unread_count === undefined ? {} : { unread_count: 0 }) }
-            : row,
-        ),
-      }));
+      const read = (row: BotConversationSummary): BotConversationSummary =>
+        row.session_id === sessionId && row.attention === 'unread'
+          ? { ...row, attention: 'idle', ...(row.unread_count === undefined ? {} : { unread_count: 0 }) }
+          : row;
+      set((state) => ({ conversations: state.conversations.map(read), taskChats: state.taskChats.map(read) }));
+    },
+
+    dropTaskChat(sessionId) {
+      set((state) =>
+        state.taskChats.some((row) => row.session_id === sessionId)
+          ? { taskChats: state.taskChats.filter((row) => row.session_id !== sessionId) }
+          : {},
+      );
     },
 
     setVisibleThread(sessionId) {
@@ -465,6 +488,7 @@ export interface DrawerRows {
  * filters every part by title, member names and the last preview, and never
  * collapses. Before the Bot list arrives every DM counts as replyable; an old
  * group chat is a closed record (group chats were retired) whatever the list says.
+ * Task chats are never threads here — they are the chats section's rows.
  */
 export function drawerRows(
   s: Pick<BotsData, 'bots' | 'byId' | 'botsLoaded' | 'conversations'>,
@@ -476,10 +500,11 @@ export function drawerRows(
   const pinnedSid = sproutyDm(s);
   const activeIds = new Set(s.bots.map((bot) => bot.id));
   const replyable = (row: BotConversationSummary) =>
-    row.kind === 'direct' && (!s.botsLoaded || conversationReplyable(row, activeIds));
+    row.kind === 'direct' && (!s.botsLoaded || conversationCanReply(row, activeIds));
+  const threads = s.conversations.filter((row) => row.kind !== 'task');
 
-  const pinnedRow = pinnedSid ? (s.conversations.find((row) => row.session_id === pinnedSid) ?? null) : null;
-  const rest = s.conversations.filter((row) => row.session_id !== pinnedSid && matches(row));
+  const pinnedRow = pinnedSid ? (threads.find((row) => row.session_id === pinnedSid) ?? null) : null;
+  const rest = threads.filter((row) => row.session_id !== pinnedSid && matches(row));
   const open = rest.filter(replyable);
   const collapse = !query && !o.expanded && open.length > limit;
   return {
@@ -513,9 +538,17 @@ export function rowSignal(
   return { badge, needsYouCount, working: row.session_id in s.running };
 }
 
-/** Other conversations that need the member or have something unread — the ☰ badge. */
-export function attentionCount(s: Pick<BotsData, 'conversations'>, excludeSid: string | null): number {
-  return s.conversations.filter(
-    (row) => row.session_id !== excludeSid && (row.pending_requests > 0 || row.attention === 'unread'),
-  ).length;
+/** Other conversations — threads and task chats — that need the member or have something unread: the ☰ badge. */
+export function attentionCount(s: Pick<BotsData, 'conversations' | 'taskChats'>, excludeSid: string | null): number {
+  const counted = new Set<string>();
+  for (const row of [...s.conversations, ...s.taskChats]) {
+    if (row.session_id === excludeSid || counted.has(row.session_id)) continue;
+    if (row.pending_requests > 0 || row.attention === 'unread') counted.add(row.session_id);
+  }
+  return counted.size;
+}
+
+/** A task chat's summary (the drawer's chat row signals), when the store has read it. */
+export function taskChatRow(s: Pick<BotsData, 'taskChats'>, sessionId: string): BotConversationSummary | null {
+  return s.taskChats.find((row) => row.session_id === sessionId) ?? null;
 }

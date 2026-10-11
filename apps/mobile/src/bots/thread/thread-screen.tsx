@@ -38,6 +38,16 @@
  *    warning haptic + one VoiceOver announcement; a Bot starting to reply →
  *    one announcement (never replays, never per token).
  *
+ * A task chat (a separate chat — `kind: 'task'`, spec
+ * docs/specs/20261011-agent-first-class.md §5a) is this same screen: its title
+ * is the chat's (else "New chat"), the intro says it is a separate chat with
+ * its Agent, ⋯ adds Tags / Rename / Delete, and while nothing runs its last
+ * member message can be edited (the composer takes the text; Send answers it
+ * again — `ctl.rewind`) and its last reply regenerated (D23). A new chat's
+ * first message arrives from the new-chat screen (`takeFirstSend`) and goes
+ * out through the same send path as the composer's. Lines about another chat
+ * (`chat_opened` / `chat_origin`) open it.
+ *
  * The engine (`useBotThread`, package A) owns sending, streaming, stops,
  * reloads, read receipts; this screen only renders its snapshot and routes
  * the member's intents to its controller. Streaming re-renders the screen
@@ -90,19 +100,30 @@ import { Glass, GlassIconButton } from '../../ui/glass';
 import { notifyWarning, selectionTick } from '../../ui/haptics';
 import { useHeaderInset } from '../../ui/header-inset';
 import { toast } from '../../ui/toast';
-import type { BotsReadOnly, MobilePending, SendInput, SendOutcome } from '../contract';
+import { deleteSession } from '../../api/sessions';
+import { updateTaskChat } from '../../api/bots';
+import { confirmAction, promptText } from '../../ui/dialogs';
+import type { BotsReadOnly, MobilePending, RewindInput, RewindOutcome, SendInput, SendOutcome } from '../contract';
 import { forgetGoneThread } from '../last-surface';
-import { openNewChat } from '../nav';
+import { openNewChat, openThread } from '../nav';
 import { attentionCount, useBots } from '../store';
+import {
+  editedContent,
+  rewindRefusalKey,
+  rewindTarget,
+  takeFirstSend,
+  threadTitle,
+  transcriptKind,
+} from '../task-chats';
 import { BotAvatar, type AvatarSource } from '../ui/bot-avatar';
 import { useBotThread } from '../use-bot-thread';
 import { useStartupContent } from '../../startup/context';
 import { mentionToken, parseMentions } from '../vendor/mentions';
 import { buildTranscript, type TranscriptItem } from '../vendor/transcript';
-import { conversationTitle } from '../vendor/web-helpers';
 import { fromSegment } from './adapters';
 import { threadCache } from './cache';
-import { useThreadDraft } from './drafts';
+import { saveDraft, useThreadDraft, type ThreadDraft } from './drafts';
+import { EditBar } from './edit-bar';
 import { MentionStrip } from './mention-strip';
 import { EventRow } from './rows/event-row';
 import { HandoffRow } from './rows/handoff-row';
@@ -278,13 +299,15 @@ export function BotThreadScreen({
   const readOnlyCode = threadReadOnly(snap, byId);
   const readOnly = readOnlyCode != null;
   const directory = useMemo(() => new Map(Object.entries(byId)), [byId]);
+  const task = kind === 'task';
   const displayTitle =
     (conversation &&
-      conversationTitle(conversation, directory, {
+      threadTitle(conversation, directory, {
         // Not loaded yet ≠ deleted: keep the placeholder meanwhile.
         unknownBot: botsLoaded ? t('bots.common.deletedBot') : '',
         group: t('bots.thread.group'),
         archived: (name) => `${name} ${t('bots.common.archivedSuffix')}`,
+        chat: t('chat.newConversation'),
       })) ||
     titleParam;
 
@@ -307,7 +330,8 @@ export function BotThreadScreen({
       stableTurnKeys(
         buildTranscript({
           messages: snap.messages,
-          conversationKind: kind,
+          // a task chat reads like a DM: its Agent speaks under the title
+          conversationKind: transcriptKind(kind),
           ownerBotId: conversation?.owner_bot_id ?? null,
           segments,
           liveRequests: snap.run?.requests ?? EMPTY_REQUESTS,
@@ -401,6 +425,14 @@ export function BotThreadScreen({
   const inputRef = useRef<TextInput>(null);
   const draft = useThreadDraft(sessionId, MAX_IMAGES);
   const { text: input, setText: setInput, images, annotations, take, giveBack, addQuotes } = draft;
+  /**
+   * Editing a task chat's last message: Send answers it again with the new text (`ctl.rewind`).
+   * `original` is the message's content (its file fences are kept), `held` the draft the composer
+   * had before — Cancel or a sent edit puts it back.
+   */
+  const [editing, setEditing] = useState<{ messageId: string; original: string; held: ThreadDraft } | null>(null);
+  const editingRef = useRef(editing);
+  editingRef.current = editing;
   const [composerH, setComposerH] = useState(60);
   const composerBottom = Math.max(insets.bottom, space.md) + (Platform.OS === 'android' ? space.sm : 0);
   const extraPad = useSharedValue(60 + composerBottom + space.md);
@@ -761,9 +793,132 @@ export function BotThreadScreen({
     [ctl, holdForTurn, cancelTurn, readOnlyMessage],
   );
 
+  /* ---------- a task chat: edit the last message / answer it again (D23) ---------- */
+  const rewind = useMemo(
+    () =>
+      rewindTarget({
+        kind: conversation?.kind ?? null,
+        messages: snap.messages,
+        readOnly,
+        busy: snap.runActive || snap.pending.length > 0 || snap.load !== 'ready',
+      }),
+    [conversation?.kind, snap.messages, readOnly, snap.runActive, snap.pending.length, snap.load],
+  );
+  const rewindRef = useRef(rewind);
+  rewindRef.current = rewind;
+  /** Every rewind goes through here: the turn is anchored like a send's, a refusal is explained. */
+  const dispatchRewind = useCallback(
+    async (body: RewindInput): Promise<RewindOutcome> => {
+      if (Keyboard.isVisible()) {
+        holdForTurn();
+        Keyboard.dismiss();
+      }
+      const going = ctl.rewind(body);
+      // The member message stays where it is (everything after it goes): the reply unfolds under it.
+      anchorTo(body.messageId);
+      const outcome = await going;
+      if (outcome.ok) return outcome;
+      cancelTurn();
+      const edit = body.content !== undefined;
+      if (outcome.kind === 'read_only') alertError(readOnlyMessage(outcome.code));
+      else if (outcome.kind === 'busy') alertError(tNow('bots.thread.rewindBusy'));
+      else {
+        const key = outcome.kind === 'rejected' ? rewindRefusalKey(outcome.code) : null;
+        alertError(
+          tNow(edit ? 'bots.thread.editFailed' : 'bots.thread.rewindFailed'),
+          key ? tNow(key) : outcome.kind === 'rejected' ? outcome.message || undefined : tNow('bots.card.err.network'),
+        );
+      }
+      return outcome;
+    },
+    [ctl, holdForTurn, cancelTurn, anchorTo, readOnlyMessage],
+  );
+  const regenerate = useCallback(() => {
+    const target = rewindRef.current;
+    if (target) void dispatchRewind({ messageId: target.memberId });
+  }, [dispatchRewind]);
+  /** Put the message's text in the composer; what it held waits for Cancel (or the sent edit). */
+  const startEdit = useCallback(
+    (messageId: string) => {
+      const target = rewindRef.current;
+      const message = snapRef.current.messages.find((m) => m.id === messageId);
+      if (!target || target.memberId !== messageId || !target.editable || !message) return;
+      const held = editingRef.current?.held ?? take();
+      setEditing({ messageId, original: message.content, held });
+      setInput(splitAttachments(message.content).text);
+      focusInput();
+    },
+    [take, setInput, focusInput],
+  );
+  const cancelEdit = useCallback(() => {
+    const current = editingRef.current;
+    if (!current) return;
+    setEditing(null);
+    setInput('');
+    inputRef.current?.clear();
+    giveBack(current.held);
+  }, [setInput, giveBack]);
+  // The message is no longer the last one (another message landed meanwhile): no edit to send —
+  // its text stays in the composer (sendable as a new message), what it held before comes back.
+  useEffect(() => {
+    if (!editing || !rewind || rewind.memberId === editing.messageId) return;
+    setEditing(null);
+    giveBack(editing.held);
+  }, [editing, rewind, giveBack]);
+  // Leaving mid-edit: the thread's draft is what the composer held before the edit (an unsent edit
+  // would come back as a plain draft — a new message — next time).
+  useEffect(
+    () => () => {
+      const current = editingRef.current;
+      if (current) saveDraft(sessionId, current.held);
+    },
+    [sessionId],
+  );
+  /** Send while editing: the edited text (quotes before it, the message's files kept) answered again. */
+  const sendEdit = useCallback(
+    async (current: { messageId: string; original: string; held: ThreadDraft }) => {
+      const text = input.trim();
+      if (!text) return;
+      if (!rewindRef.current || rewindRef.current.memberId !== current.messageId) {
+        alertError(tNow(rewindRef.current ? 'bots.thread.rewindNotLast' : 'bots.thread.rewindBusy'));
+        return;
+      }
+      const quote = annotations.length ? annotations.map((a) => a.text).join('\n') : null;
+      const sent = take();
+      inputRef.current?.clear();
+      const outcome = await dispatchRewind({
+        messageId: current.messageId,
+        content: editedContent(current.original, quote ? `${quote}\n\n${text}` : text),
+      });
+      if (outcome.ok) {
+        setEditing(null);
+        giveBack(current.held);
+      } else giveBack(sent);
+    },
+    [input, annotations, take, giveBack, dispatchRewind],
+  );
+
+  /* ---------- a new chat's first message (the new-chat screen created this task chat) ---------- */
+  useEffect(() => {
+    const first = takeFirstSend(sessionId);
+    if (!first) return;
+    void dispatchSend(first.input, 'composer').then((outcome) => {
+      // Refused: the words come back to the composer (a "Not Delivered" bubble keeps them itself).
+      if (!outcome.ok && (outcome.kind === 'read_only' || outcome.kind === 'rejected')) {
+        giveBack({ text: first.input.text, images: first.images });
+      }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once, as the thread opens
+  }, [sessionId]);
+
   const membersRef = useRef(members);
   membersRef.current = members;
   const send = useCallback(async () => {
+    const current = editingRef.current;
+    if (current) {
+      await sendEdit(current);
+      return;
+    }
     const text = input.trim();
     const uploaded = images.filter((im) => im.status === 'done' && im.remote);
     // Send stays disabled while a picked image is still uploading (see Composer).
@@ -782,7 +937,7 @@ export function BotThreadScreen({
       'composer',
     );
     if (!outcome.ok && (outcome.kind === 'read_only' || outcome.kind === 'rejected')) giveBack(held);
-  }, [input, images, annotations, take, giveBack, dispatchSend]);
+  }, [input, images, annotations, take, giveBack, dispatchSend, sendEdit]);
 
   /** An answer from a card in a Bot's reply, addressed back to that Bot (D22). Resolves false if it didn't go. */
   const onReplyAs = useCallback(
@@ -878,6 +1033,7 @@ export function BotThreadScreen({
         <MentionStrip candidates={picker.candidates} onPick={mention} />
       );
     }
+    if (editing) return <EditBar onCancel={cancelEdit} />;
     if (softStopping && stop?.phase === 'soft') return <StopHint />;
     if (activeTasks.length) return <TaskDock active={activeTasks} byId={byId} onChanged={refreshTasks} />;
     return null;
@@ -885,6 +1041,8 @@ export function BotThreadScreen({
     picker.open,
     picker.candidates,
     mention,
+    editing,
+    cancelEdit,
     softStopping,
     stop?.phase,
     activeTasks,
@@ -907,9 +1065,16 @@ export function BotThreadScreen({
           addQuotes([excerpt(plainText(msg.text), 120)]);
           focusInput();
           break;
+        // a task chat's last message / reply (rows only offer these then)
+        case 'edit':
+          startEdit(msg.id);
+          break;
+        case 'regenerate':
+          regenerate();
+          break;
       }
     },
-    [focusInput, addQuotes],
+    [focusInput, addQuotes, startEdit, regenerate],
   );
   const handlers = useMemo<ReplyHandlers>(
     () => ({
@@ -961,9 +1126,42 @@ export function BotThreadScreen({
         const bot = latest.current.owner;
         if (bot) openNewChat(router, { profile: isSproutyBot(bot) ? 'sprouty' : `bot:${bot.id}` });
       },
+      // A task chat is a chat in the chats list: tags, rename and delete like one (never share — D26).
+      openTags: () => router.push({ pathname: '/sheets/session-tags', params: { sessionId } }),
+      rename: async () => {
+        const current = latest.current.conversation?.title ?? '';
+        const next = await promptText({
+          title: tNow('chat.renameTitle'),
+          defaultValue: current,
+          confirmLabel: tNow('common.save'),
+        });
+        // (an emptied field answers null: nothing to save)
+        if (!next || next === current.trim()) return;
+        const result = await updateTaskChat(sessionId, { title: next });
+        if (result.ok) void ctl.reload();
+        else alertError(tNow('bots.thread.renameFailed'), result.message || undefined);
+      },
+      remove: async () => {
+        const ok = await confirmAction({
+          title: tNow('drawer.deleteTitle'),
+          message: tNow('chat.deleteHint'),
+          confirmLabel: tNow('common.delete'),
+          destructive: true,
+        });
+        if (!ok) return;
+        if (snapRef.current.runActive) ctl.stop('hard');
+        if (!(await deleteSession(sessionId))) {
+          alertError(tNow('chat.deleteFailed'));
+          return;
+        }
+        useBots.getState().dropTaskChat(sessionId);
+        openNewChat(router);
+        toast(tNow('chat.deleted'), 'trash');
+      },
     }),
-    [navigation, router, sessionId],
+    [navigation, router, sessionId, ctl],
   );
+  const onOpenChat = useCallback((chat: { c: string; title: string }) => openThread(router, chat), [router]);
   // The member's computer is theirs, not one Bot's: offered on every thread once computers run here.
   const hasComputer = useBots((s) => s.computer?.state === 'ready');
 
@@ -985,7 +1183,14 @@ export function BotThreadScreen({
       case 'time':
         return <TimeSeparator at={row.at} />;
       case 'user':
-        return <UserRow message={row.message} readOnly={readOnly} onAction={onAction} />;
+        return (
+          <UserRow
+            message={row.message}
+            readOnly={readOnly}
+            editable={!!rewind?.editable && rewind.memberId === row.message.id}
+            onAction={onAction}
+          />
+        );
       case 'bot':
         return (
           <ReplyRow
@@ -1002,6 +1207,8 @@ export function BotThreadScreen({
                 : undefined
             }
             onRename={onRename}
+            canRegenerate={!!rewind && rewind.replyId === row.message.id}
+            onRegenerate={regenerate}
           />
         );
       case 'segment': {
@@ -1054,6 +1261,7 @@ export function BotThreadScreen({
             onRetry={retryBot}
             onContinue={continueRun}
             onViewSummary={onViewSummary}
+            onOpenChat={onOpenChat}
           />
         );
       }
@@ -1117,6 +1325,7 @@ export function BotThreadScreen({
         ownerName={owner?.name ?? null}
         canAsk={!group && !!owner && owner.status === 'active'}
         hasComputer={hasComputer}
+        taskChat={task}
         actions={headerActions}
       />
 
@@ -1214,6 +1423,7 @@ export function BotThreadScreen({
                   images={images}
                   onRemoveImage={draft.removeImage}
                   maxImages={MAX_IMAGES}
+                  attachNote={editing ? t('bots.thread.editNoImages') : undefined}
                   placeholder={placeholder}
                   autoFocus={compose}
                   onHeight={onComposerHeight}

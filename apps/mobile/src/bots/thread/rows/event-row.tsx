@@ -6,8 +6,11 @@
  * decision carries an action: a failed turn offers Retry (an honest new
  * message "@Name Please try that again."), a hit limit offers Continue. The
  * summary marker is a thin rule: "Earlier messages were summarized · View"
- * (→ the Bot's profile, 记忆 tab, where the digest lives). Text comes from the
- * server (its `content`, in the account's language); the icon from the
+ * (→ the Bot's profile, 记忆 tab, where the digest lives). A line about another
+ * chat is a link (spec 20261011-agent-first-class D25): `chat_opened` — an
+ * Agent started a task in a new chat — opens that chat, `chat_origin` — the
+ * first line of such a chat — the conversation it came from. Text comes from
+ * the server (its `content`, in the account's language); the icon from the
  * event's kind.
  */
 
@@ -19,6 +22,7 @@ import { HIT, makeStyles, space, typo, useTheme, weight } from '../../../theme';
 import { NativeButton } from '../../../ui/button';
 import { Icon, type IconName } from '../../../ui/core';
 import { useFontScaleKey } from '../../../ui/font-scale';
+import { linkedChat } from '../../task-chats';
 
 const EVENT_ICON: Partial<Record<BotEvent['kind'], IconName>> = {
   joined: 'userPlus',
@@ -33,6 +37,8 @@ const EVENT_ICON: Partial<Record<BotEvent['kind'], IconName>> = {
   unavailable: 'sleep',
   limit: 'alert',
   turn_error: 'alert',
+  chat_opened: 'compose',
+  chat_origin: 'branch',
 };
 
 /** A later line about a card wears the card's icon. */
@@ -67,6 +73,7 @@ export const EventRow = memo(function EventRow({
   onRetry,
   onContinue,
   onViewSummary,
+  onOpenChat,
 }: {
   message: BotMessage;
   event: BotEvent | null;
@@ -79,6 +86,8 @@ export const EventRow = memo(function EventRow({
   onRetry: (botId: string) => void;
   onContinue: () => void;
   onViewSummary: () => void;
+  /** A line about another chat was tapped (see `linkedChat`); without it the line is plain text. */
+  onOpenChat?: (chat: { c: string; title: string }) => void;
 }) {
   const { colors: c } = useTheme();
   const styles = useStyles(c);
@@ -113,6 +122,24 @@ export const EventRow = memo(function EventRow({
       : '');
   const retryBot = event?.kind === 'turn_error' && failedBotName && canAct ? event.bot_id : null;
   const tint = danger ? c.red : c.secondaryLabel;
+  const chat = onOpenChat ? linkedChat(event) : null;
+  if (chat && onOpenChat) {
+    return (
+      <View key={fontKey} style={styles.wrap}>
+        <Pressable
+          onPress={() => onOpenChat(chat)}
+          accessibilityRole="link"
+          accessibilityHint={t('bots.thread.openChatHint')}
+          hitSlop={{ top: (HIT - 18) / 2, bottom: (HIT - 18) / 2 }}
+          style={({ pressed }) => [styles.line, pressed && styles.pressed]}
+        >
+          {icon ? <Icon name={icon} size={12} weight="medium" color={c.accent} /> : null}
+          <Text style={[styles.text, { color: c.accent }]}>{text}</Text>
+          <Icon name="chevR" size={9} weight="bold" color={c.accent} />
+        </Pressable>
+      </View>
+    );
+  }
   return (
     <View key={fontKey} style={styles.wrap}>
       <View style={styles.line}>

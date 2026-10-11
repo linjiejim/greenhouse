@@ -18,7 +18,10 @@
  *    drawer calls it each time it opens so new / renamed / deleted
  *    conversations show up;
  *  - a failed page sets `error` (and does NOT mark the list done), so the
- *    drawer can tell "couldn't load" from "no conversations" and offer a retry.
+ *    drawer can tell "couldn't load" from "no conversations" and offer a retry;
+ *  - `agentChats` folds the member's Agent task chats in (`include=agent_chats`
+ *    — rows with `channel: 'bots'`; spec 20261011-agent-first-class D21): the
+ *    next page or refresh asks for them, the drawer refreshes on every open.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -36,6 +39,7 @@ export function useSessions(
   tagId: number | null = null,
   search = '',
   scope: SessionScope = 'mine',
+  agentChats = false,
 ) {
   const [all, setAll] = useState<Session[]>([]);
   const [loading, setLoading] = useState(false);
@@ -52,7 +56,13 @@ export function useSessions(
     setLoading(true);
     setError(false);
     const forTag = tagRef.current;
-    const page = await fetchSessionsPage({ limit: pageSize, offset: nextOffset.current, tagId: forTag, scope });
+    const page = await fetchSessionsPage({
+      limit: pageSize,
+      offset: nextOffset.current,
+      tagId: forTag,
+      scope,
+      agentChats,
+    });
     // The tag filter changed while this page was in flight — discard it (the
     // reset already started the new filter's first page).
     if (tagRef.current !== forTag) return;
@@ -71,7 +81,7 @@ export function useSessions(
       doneRef.current = true;
       setDone(true);
     }
-  }, [pageSize, scope]);
+  }, [pageSize, scope, agentChats]);
 
   // Kick off the first page once the surface becomes visible.
   useEffect(() => {
@@ -104,7 +114,7 @@ export function useSessions(
     const forTag = tagRef.current;
     const empty = nextOffset.current === 0;
     if (empty) setLoading(true);
-    const page = await fetchSessionsPage({ limit: pageSize, offset: 0, tagId: forTag, scope });
+    const page = await fetchSessionsPage({ limit: pageSize, offset: 0, tagId: forTag, scope, agentChats });
     if (tagRef.current !== forTag) return;
     busy.current = false;
     if (empty) setLoading(false);
@@ -118,7 +128,7 @@ export function useSessions(
     nextOffset.current = page.nextOffset;
     doneRef.current = !page.hasMore;
     setDone(doneRef.current);
-  }, [pageSize, scope]);
+  }, [pageSize, scope, agentChats]);
 
   const query = search.trim().toLowerCase();
   const items = useMemo(

@@ -14,7 +14,9 @@
  * travel through the store, never callbacks). The sheet closes once a decision
  * went through or turned out to be settled elsewhere; a refusal keeps it open
  * with the reason in an alert. A decision that went through may be followed by
- * the push soft ask (src/push/soft-ask.ts). Pure RN + `NativeButton` (both platforms).
+ * the push soft ask (src/push/soft-ask.ts). A task card in `chat` mode ("Open
+ * Chat") goes straight to the chat it opened (spec 20261011-agent-first-class
+ * D25). Pure RN + `NativeButton` (both platforms).
  */
 
 import React, { useCallback, useState } from 'react';
@@ -23,11 +25,20 @@ import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { DecisionBar, tr, useBotName, useCardActions } from '../../src/bots/cards/card-frame';
 import { Countdown } from '../../src/bots/cards/countdown';
-import { CARD_ICON, cardKind, cardTitle, statusBadge, type CardButton } from '../../src/bots/cards/decision';
+import {
+  CARD_ICON,
+  cardKind,
+  cardTitle,
+  chatStart,
+  openedChat,
+  statusBadge,
+  type CardButton,
+} from '../../src/bots/cards/decision';
 import { RequestBody } from '../../src/bots/cards/request-card';
 import { useRequestLookup } from '../../src/bots/cards/use-login-form';
 import { softAskAfterDecision } from '../../src/push/soft-ask';
 import { noteTaskStarted } from '../../src/live-activity/controller';
+import { openThread } from '../../src/bots/nav';
 import { BotsRouteGate } from '../../src/bots/route-gate';
 import { useBots } from '../../src/bots/store';
 import type { BotRequestDecision, BotRequestView } from '../../src/shared/bots';
@@ -88,11 +99,21 @@ function RequestDetail({ request, sessionId }: { request: BotRequestView; sessio
   const onPress = useCallback(
     (button: CardButton) =>
       void press(button).then((outcome) => {
-        if (outcome && outcome.kind !== 'refused') router.back();
+        // "Open Chat": straight into the chat it opened (the sheet closes on the way home)
+        const chat = outcome?.kind === 'ok' ? openedChat(outcome.request) : null;
+        if (chat && outcome?.kind === 'ok') {
+          const title = (outcome.request.payload as { title?: unknown }).title;
+          openThread(router, { c: chat, title: typeof title === 'string' ? title : '' }, 'dismissTo');
+        } else if (outcome && outcome.kind !== 'refused') router.back();
         // the member just decided a card in the app: the moment for the push soft ask (spec §2.3)
         if (outcome?.kind === 'ok') void softAskAfterDecision();
-        // a task the member just started can go on the lock screen (src/live-activity)
-        if (outcome?.kind === 'ok' && outcome.request.kind === 'task_start' && outcome.request.status === 'resolved') {
+        // a background task the member just started can go on the lock screen (src/live-activity)
+        if (
+          outcome?.kind === 'ok' &&
+          outcome.request.kind === 'task_start' &&
+          outcome.request.status === 'resolved' &&
+          !chatStart(outcome.request)
+        ) {
           noteTaskStarted(sessionId);
         }
       }),

@@ -65,6 +65,8 @@ import type {
   DecideOutcome,
   MobilePending,
   RealtimeEvent,
+  RewindInput,
+  RewindOutcome,
   SendInput,
   SendOutcome,
   ThreadController,
@@ -420,6 +422,72 @@ export class ThreadEngine implements ThreadController {
   }
 
   /**
+   * Edit / answer again in a task chat (spec 20261011-agent-first-class D23): back to the last
+   * member message — everything after it goes, an edit replaces its text — and the chain answers
+   * it again on a run read like a send's (the POST's 200 stream is its reader; the run is announced
+   * on the socket before it answers, so the send latch holds it). Only from rest: with a run or a
+   * send in flight here the server would answer 409 `busy`. The cut is shown at once; a refusal
+   * puts the rows back and re-reads them.
+   */
+  async rewind(input: RewindInput): Promise<RewindOutcome> {
+    if (this.disposed) return { ok: false, kind: 'not_delivered' };
+    if (this.compose().runActive || this.sendsInFlight > 0 || this.pending.length > 0)
+      return { ok: false, kind: 'busy' };
+    const before = this.messages;
+    const at = before.findIndex((message) => message.id === input.messageId);
+    if (at < 0) return { ok: false, kind: 'rejected', status: 409, code: 'not_last', message: '' };
+    const target = before[at];
+    const cut = [...before.slice(0, at), input.content === undefined ? target : { ...target, content: input.content }];
+    this.messages = cut;
+    this.runError = null;
+    this.publish();
+    const transport = new AbortController();
+    this.sendsInFlight += 1;
+    let result: Awaited<ReturnType<ThreadDeps['api']['openBotsRewind']>>;
+    try {
+      result = await this.deps.api.openBotsRewind({
+        sessionId: this.sessionId,
+        messageId: input.messageId,
+        ...(input.content === undefined ? {} : { content: input.content }),
+        signal: transport.signal,
+      });
+    } catch {
+      result = { kind: 'error', status: 0, code: null, message: '' };
+    } finally {
+      this.sendsInFlight -= 1;
+    }
+    const latched = this.latchRunId;
+    this.latchRunId = null;
+    if (this.disposed) {
+      if (result.kind === 'stream') {
+        transport.abort();
+        void result.events.return(undefined).catch(() => {});
+      }
+      return result.kind === 'stream' ? { ok: true } : { ok: false, kind: 'not_delivered' };
+    }
+    if (result.kind === 'stream') {
+      // The run's one reader; its start re-reads the cut transcript.
+      const reader = this.newReader({ kind: 'post', runId: latched, byMe: true, source: result.events, transport });
+      this.enqueue(reader);
+      this.learnRunId(reader);
+      return { ok: true };
+    }
+    // Nothing changed server-side: the rows come back (unless a reload already put the server's in).
+    if (this.messages === cut) this.messages = before;
+    if (latched) void this.ensureAttached();
+    this.publish();
+    void this.reload();
+    if (result.kind === 'queued') return { ok: true };
+    if (result.status === 0) return { ok: false, kind: 'not_delivered' };
+    if (result.status === 409 && result.code === 'bot_archived') {
+      this.readOnly = result.code;
+      void this.deps.store.getState().loadBots();
+      return { ok: false, kind: 'read_only', code: result.code };
+    }
+    return { ok: false, kind: 'rejected', status: result.status, code: result.code, message: result.message };
+  }
+
+  /**
    * Try a "Not Delivered" send again — after a reload, because the POST may
    * have reached the server and only its answer was lost: then the persisted
    * copy settles the bubble. Not in the transcript is not "never received"
@@ -757,19 +825,7 @@ export class ThreadEngine implements ThreadController {
       this.patchPending(clientId, { status: 'sent' });
       const reader = this.newReader({ kind: 'post', runId: latched, byMe: true, source: result.events, transport });
       this.enqueue(reader);
-      // The run's id, for resuming and dedupe — right after the 200 the session's run slot is ours.
-      if (!reader.runId) {
-        void this.deps.api.getChatRun(this.sessionId).then((probe) => {
-          if (reader.runId || reader.detached || !probe?.run) return;
-          reader.runId = probe.run.run_id;
-          if (this.dropDuplicate(reader)) return;
-          if (this.reader === reader && this.run && !this.run.runId) {
-            this.run.runId = reader.runId;
-            this.noteOwnRunning(reader.runId);
-            this.publish();
-          }
-        });
-      }
+      this.learnRunId(reader);
       return { ok: true, startedRun: true };
     }
 
@@ -802,6 +858,24 @@ export class ThreadEngine implements ThreadController {
     }
     this.publish();
     return { ok: false, kind: 'rejected', status: result.status, message: result.message };
+  }
+
+  /**
+   * A POST reader's run id, for resuming and dedupe — right after its 200 the session's run slot
+   * is ours. Nothing to learn when the latch named it.
+   */
+  private learnRunId(reader: Reader): void {
+    if (reader.runId) return;
+    void this.deps.api.getChatRun(this.sessionId).then((probe) => {
+      if (reader.runId || reader.detached || !probe?.run) return;
+      reader.runId = probe.run.run_id;
+      if (this.dropDuplicate(reader)) return;
+      if (this.reader === reader && this.run && !this.run.runId) {
+        this.run.runId = reader.runId;
+        this.noteOwnRunning(reader.runId);
+        this.publish();
+      }
+    });
   }
 
   private findPending(clientId: string): MobilePending | undefined {
