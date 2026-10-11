@@ -41,12 +41,12 @@ const enrichPageContext = vi.hoisted(() => vi.fn());
 vi.mock('../../../components/agent-context', () => ({ useAgentContext: () => ({ enrichPageContext }) }));
 
 const api = vi.hoisted(() => ({
-  getApp: vi.fn<(appId: number, options?: { previewRole?: string }) => Promise<AppRuntimeView>>(),
+  getApp: vi.fn<(appId: number, preview?: { previewRole?: string; draft?: true }) => Promise<AppRuntimeView>>(),
   queryAppCard: vi.fn<(appId: number, input: Record<string, unknown>) => Promise<AppCardQueryResult>>(),
   getAppRecord: vi.fn<(appId: number, input: Record<string, unknown>) => Promise<AppRecordView>>(),
   runAppAction: vi.fn<(appId: number, input: AppActionInput) => Promise<AppActionResult>>(),
   runAppActionWithReplay: vi.fn<(appId: number, input: AppActionInput, base?: unknown) => Promise<AppActionResult>>(),
-  listAppActivity: vi.fn(),
+  listAppActivity: vi.fn<(appId: number, input: Record<string, unknown>) => Promise<unknown>>(),
   listAppFieldOptions: vi.fn(async () => ({ options: [] })),
   uploadAppFile: vi.fn(),
 }));
@@ -229,6 +229,9 @@ describe('the app shell', () => {
     await mount('6');
     expect(api.getApp).not.toHaveBeenCalled();
     expect(container.textContent).toContain('Not published yet');
+    // Its manager can still open the builder or the draft itself.
+    await click(byTestId('app-preview-draft'));
+    expect(window.location.hash).toBe('#/apps/6?draft=1');
   });
 });
 
@@ -265,6 +268,106 @@ describe('what managers get', () => {
     expect(api.getApp).toHaveBeenCalledWith(5, { previewRole: 'applicant' });
     expect(byTestId('app-preview-bar')?.textContent).toContain('Previewing as Applicant');
     expect(api.queryAppCard).toHaveBeenCalledWith(5, expect.objectContaining({ previewRole: 'applicant' }));
+  });
+
+  describe('previewing the draft (the builder’s Preview)', () => {
+    const draftView = (patch: Partial<AppRuntimeView> = {}) =>
+      viewWith([CARDS.mine], {
+        app: appSummary({ canManage: true, canPublish: true, status: 'draft', publishedVersion: null }),
+        draft: true,
+        version: 0,
+        ...patch,
+      });
+
+    beforeEach(() => {
+      // The shelves know the app was never published: the draft still opens when asked for.
+      useAppsStore.setState({
+        catalog: {
+          managed: [appSummary({ canManage: true, status: 'draft', publishedVersion: null })],
+          shared: [],
+          featured: [],
+        },
+        status: 'ready',
+      });
+      api.getApp.mockImplementation(async (_appId, preview) =>
+        preview?.previewRole
+          ? draftView({ role: { key: 'applicant', name: 'Applicant' } })
+          : draftView({ role: { key: '__manager__', name: 'Manager' } }),
+      );
+    });
+
+    it('renders the draft’s pages as the role, and every gateway call reads the draft', async () => {
+      const replace = vi.spyOn(window.location, 'replace').mockImplementation(() => undefined);
+      await mount('5', 'draft=1&previewRole=applicant&record=11');
+
+      expect(api.getApp).toHaveBeenCalledWith(5, { previewRole: 'applicant', draft: true });
+      // The switcher's roles come from the draft too.
+      expect(api.getApp).toHaveBeenCalledWith(5, { draft: true });
+      expect(container.textContent).not.toContain('Not published yet');
+      expect(byTestId('app-runtime')).not.toBeNull();
+      const bar = byTestId('app-preview-bar') as HTMLElement;
+      expect(bar.dataset.draft).toBe('true');
+      expect(bar.textContent).toContain('Previewing the draft as Applicant');
+      expect(container.textContent).toContain('Draft');
+      expect(api.queryAppCard).toHaveBeenCalledWith(
+        5,
+        expect.objectContaining({ cardId: 'mine', previewRole: 'applicant', draft: true }),
+      );
+      // The record link opens through the draft, and the address keeps the preview.
+      expect(api.getAppRecord).toHaveBeenCalledWith(5, {
+        pageId: 'apply',
+        cardId: 'mine',
+        recordId: 11,
+        previewRole: 'applicant',
+        draft: true,
+      });
+      expect(replace).toHaveBeenCalledWith('#/apps/5?draft=1&previewRole=applicant');
+      await click(byTestId('app-record-action-approve'));
+      expect(api.runAppActionWithReplay).toHaveBeenCalledWith(
+        5,
+        expect.objectContaining({ actionId: 'approve', previewRole: 'applicant', draft: true }),
+        LAPTOP,
+      );
+      await click(byTestId('app-record-activity-tab'));
+      expect(api.listAppActivity).toHaveBeenCalledWith(5, {
+        pageId: 'apply',
+        cardId: 'mine',
+        recordId: 11,
+        previewRole: 'applicant',
+        draft: true,
+      });
+      // Page links stay in the draft preview.
+      expect(document.querySelector('a[href="#/apps/5/stats?draft=1&previewRole=applicant"]')).not.toBeNull();
+      replace.mockRestore();
+    });
+
+    it('keeps the draft when switching roles, and goes back to the builder on exit', async () => {
+      await mount('5', 'draft=1&previewRole=applicant');
+      const select = byTestId('app-preview-role') as HTMLSelectElement;
+      await act(async () => {
+        select.value = '';
+        select.dispatchEvent(new Event('change', { bubbles: true }));
+      });
+      expect(window.location.hash).toBe('#/apps/5?draft=1');
+      await act(async () => {
+        select.value = 'applicant';
+        select.dispatchEvent(new Event('change', { bubbles: true }));
+      });
+      expect(window.location.hash).toBe('#/apps/5?draft=1&previewRole=applicant');
+      await click(byTestId('app-preview-exit'));
+      expect(window.location.hash).toBe('#/apps/5/edit');
+    });
+
+    it('opens the draft with full access, telling the Assistant no published version is on screen', async () => {
+      await mount('5', 'draft=1');
+      expect(api.getApp).toHaveBeenCalledWith(5, { draft: true });
+      expect(byTestId('app-preview-bar')?.textContent).toContain('Previewing the draft with full access');
+      expect(api.queryAppCard).toHaveBeenCalledWith(5, expect.objectContaining({ draft: true }));
+      expect(api.queryAppCard.mock.calls.every(([, input]) => input.previewRole === undefined)).toBe(true);
+      const context = enrichPageContext.mock.lastCall?.[0] as Record<string, unknown>;
+      expect(context).toMatchObject({ appName: 'Purchase requests', roleName: 'Full access' });
+      expect(context).not.toHaveProperty('version');
+    });
   });
 });
 

@@ -2,7 +2,10 @@
  * What only an app's managers see above its pages:
  * - the preview bar — they open an app with full access; "preview as" shows
  *   it exactly as one role gets it (pages, cards, rows, columns, actions —
- *   the gateway evaluates for that role; writes still run as the manager);
+ *   the gateway evaluates for that role; writes still run as the manager).
+ *   On the draft (`?draft=1`, the builder's "Preview") it says so: what is on
+ *   screen is not live yet, switching roles stays on the draft, and leaving
+ *   goes back to the builder;
  * - the issues bar — the runtime revalidation found cards or actions that
  *   refer to something deleted or changed since this version (D6); viewers
  *   see those cards as unavailable, managers see why and where to fix it.
@@ -17,27 +20,40 @@ export function PreviewBar({
   roles,
   previewRole,
   previewName,
+  draft = false,
   onChange,
+  onExit,
 }: {
   roles: ReadonlyArray<{ key: string; name: string }>;
   previewRole: string | undefined;
   /** The previewed role's name (from the trimmed view). */
   previewName?: string;
+  /** The draft is on screen, not the published version. */
+  draft?: boolean;
+  /** Another role, or full access (`undefined`) — on the same version. */
   onChange: (roleKey: string | undefined) => void;
+  /** Leave the preview (back to full access; from the draft, back to the builder). */
+  onExit: () => void;
 }) {
   const t = useT();
+  const role = previewName ?? previewRole;
   return (
     <div
       className="flex flex-col gap-2 rounded-md border border-info bg-info-subtle px-3 py-2 text-xs text-info sm:flex-row sm:items-center"
       role="status"
       data-testid="app-preview-bar"
+      data-draft={draft ? 'true' : undefined}
     >
       <div className="flex min-w-0 flex-1 items-start gap-2 sm:items-center">
         <Eye size={14} aria-hidden="true" className="mt-px flex-shrink-0 sm:mt-0" />
         <span className="min-w-0">
-          {previewRole
-            ? t('apps.runtime.preview.previewing', { role: previewName ?? previewRole })
-            : t('apps.runtime.preview.fullAccess')}
+          {draft
+            ? role
+              ? t('apps.runtime.preview.draftAs', { role })
+              : t('apps.runtime.preview.draftFullAccess')
+            : role
+              ? t('apps.runtime.preview.previewing', { role })
+              : t('apps.runtime.preview.fullAccess')}
         </span>
       </div>
       <div className="flex flex-shrink-0 flex-wrap items-center gap-2">
@@ -58,9 +74,15 @@ export function PreviewBar({
             ))}
           </Select>
         )}
-        {previewRole && (
-          <Button variant="ghost" size="sm" className="min-h-11 md:min-h-0" onClick={() => onChange(undefined)}>
-            {t('apps.runtime.preview.exit')}
+        {(previewRole || draft) && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="min-h-11 md:min-h-0"
+            onClick={onExit}
+            data-testid="app-preview-exit"
+          >
+            {draft ? t('apps.runtime.preview.backToBuilder') : t('apps.runtime.preview.exit')}
           </Button>
         )}
       </div>

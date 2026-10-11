@@ -24,7 +24,7 @@ import { useAgentContext } from '../../../components/agent-context';
 import { AppBadge } from '../../../components/apps';
 import { ContextMenu, useContextMenu } from '../../../components/app/context-menu';
 import { Button, Dialog, EmptyState, Spinner, Tabs, Tag, toast } from '../../../components/ui';
-import { APP_CENTER_HREF, appHref } from '../../../lib/app-routes';
+import { APP_CENTER_HREF, appPreviewHref } from '../../../lib/app-routes';
 import { useT } from '../../../lib/i18n';
 import { AlertTriangle, ArrowLeft, Eye, History, Lock, RefreshCw, Send, Wrench } from '../../../lib/icons';
 import { useAppsStore } from '../../../stores/apps-store';
@@ -39,11 +39,6 @@ import { useBuilderBase } from './use-builder-schema';
 import { VersionsDrawer } from './versions-drawer';
 
 type BuilderTab = 'pages' | 'roles' | 'audiences' | 'settings';
-
-/** Where "Preview" opens: the runtime, on the draft, as one role (managers only; the gateway checks). */
-export function appPreviewHref(appId: number, roleKey: string): string {
-  return `${appHref(appId)}?draft=1&previewRole=${encodeURIComponent(roleKey)}`;
-}
 
 const SAVE_TONE: Record<DraftSaveState, 'neutral' | 'warning' | 'danger' | 'success'> = {
   saved: 'success',
@@ -210,7 +205,8 @@ export function AppBuilderPage({ appId }: { appId: number }) {
 
   const preview = async (roleKey: string) => {
     if (!(await draft.flush())) return toast(t('apps.builder.preview.saveFirst'), 'warning');
-    window.location.hash = appPreviewHref(appId, roleKey);
+    // The runtime, on the draft, as that role (managers only; the gateway checks).
+    window.location.hash = appPreviewHref(appId, { previewRole: roleKey, draft: true });
   };
 
   const tabs = [

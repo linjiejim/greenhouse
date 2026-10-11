@@ -1,24 +1,33 @@
 /**
  * An app as its viewer uses it (`#/apps/<id>[/<pageId>]`, spec §6): the app
  * as `GET /api/apps/:id` gives it to this person — the published version
- * trimmed to their role, or, for a manager, in full (`?previewRole=<key>`
- * shows one role's trim). The shell draws the header, the pages (tabs or a
- * side list, `nav.layout`), the managers' preview and issues bars, and the
- * current page (`AppPageView`). `?record=<id>` opens that record (the link a
- * notification carries). The Assistant is told which app, page, role and
- * filters are on screen (`app-page` context).
+ * trimmed to their role, or, for a manager, in full. A manager's preview
+ * scope comes from the address (`appPreviewScope`): `?previewRole=<key>`
+ * shows one role's trim, `?draft=1` the draft instead of the published
+ * version (where the builder's "Preview" lands); the one scope object goes
+ * to every gateway call below. The shell draws the header, the pages (tabs
+ * or a side list, `nav.layout`), the managers' preview and issues bars, and
+ * the current page (`AppPageView`). `?record=<id>` opens that record (the
+ * link a notification carries). The Assistant is told which app, page, role,
+ * pages and filters are on screen (`app-page` context).
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { AppPage, AppRuntimeView } from '@greenhouse/types/apps';
 import { useAgentContext } from '../../../components/agent-context';
 import { AppBadge } from '../../../components/apps';
 import { Button, EmptyState, Spinner, Tag } from '../../../components/ui';
 import { getApp } from '../../../lib/api/apps';
 import { TablesRequestError } from '../../../lib/api/tables';
-import { APP_CENTER_HREF, appBuilderHref, appPreviewHref } from '../../../lib/app-routes';
+import {
+  APP_CENTER_HREF,
+  appBuilderHref,
+  appPreviewHref,
+  appPreviewScope,
+  appPreviewScopeOf,
+} from '../../../lib/app-routes';
 import { useT } from '../../../lib/i18n';
-import { ArrowLeft, LayoutGrid, Lock, Pencil, appIcon } from '../../../lib/icons';
+import { ArrowLeft, Eye, LayoutGrid, Lock, Pencil, appIcon } from '../../../lib/icons';
 import { catalogApps, useAppsStore } from '../../../stores/apps-store';
 import { AppPageView } from './app-page-view';
 import { AppPageSidebar, AppPageTabs } from './page-nav';
@@ -72,6 +81,9 @@ export function AppRuntimePage({
   const t = useT();
   const { enrichPageContext } = useAgentContext();
   const previewRole = params?.get('previewRole') || undefined;
+  const draftPreview = appPreviewScope(params).draft === true;
+  /** The manager's preview as one object (stable per address) — every gateway call carries it. */
+  const preview = useMemo(() => appPreviewScopeOf(previewRole, draftPreview), [draftPreview, previewRole]);
   const deepLink = recordLink(params);
   const [state, setState] = useState<LoadState>({ kind: 'loading' });
   /** Every role of the app — what a manager may preview as (the previewed view lists only its own). */
@@ -83,7 +95,7 @@ export function AppRuntimePage({
   const load = useCallback(async () => {
     setState({ kind: 'loading' });
     try {
-      const view = await getApp(appId, previewRole ? { previewRole } : {});
+      const view = await getApp(appId, preview);
       setState({ kind: 'ready', view });
       if (view.role.key === MANAGER_ROLE) setRoles(view.spec.roles.map((role) => ({ key: role.key, name: role.name })));
     } catch (error) {
@@ -93,24 +105,25 @@ export function AppRuntimePage({
         setState({ kind: 'failed' });
       }
     }
-  }, [appId, previewRole]);
+  }, [appId, preview]);
 
   useEffect(() => {
     void loadCatalog();
   }, [loadCatalog]);
-  // A manager's never-published draft has nothing to open; everyone else asks the gateway.
+  // A manager's never-published app has nothing published to open — unless they asked for the draft.
   const unpublished = summary?.publishedVersion === null;
   useEffect(() => {
-    if (!unpublished) void load();
-  }, [load, unpublished]);
-  // Opened straight into a preview: learn the roles to switch between from the full view.
+    if (!unpublished || draftPreview) void load();
+  }, [draftPreview, load, unpublished]);
+  // Opened straight into a role's preview: learn the roles to switch between from the full view
+  // of the same version (the draft's roles when previewing the draft).
   const previewing = Boolean(previewRole) && state.kind === 'ready' && state.view.app.canManage;
   useEffect(() => {
     if (!previewing || roles.length > 0) return;
-    void getApp(appId)
+    void getApp(appId, draftPreview ? { draft: true } : {})
       .then((full) => setRoles(full.spec.roles.map((role) => ({ key: role.key, name: role.name }))))
       .catch(() => undefined);
-  }, [appId, previewing, roles.length]);
+  }, [appId, draftPreview, previewing, roles.length]);
 
   const view = state.kind === 'ready' ? state.view : null;
   const page = view ? currentAppPage(view, pageId) : null;
@@ -124,7 +137,8 @@ export function AppRuntimePage({
       appName: name,
       ...(view
         ? {
-            version: view.version,
+            // A draft has no published version to name.
+            ...(view.draft ? {} : { version: view.version }),
             roleName,
             ...(page ? { pageId: page.id, pageTitle: page.title } : {}),
             ...(filters.length > 0 ? { filters } : {}),
@@ -134,16 +148,17 @@ export function AppRuntimePage({
     return () => enrichPageContext(null);
   }, [enrichPageContext, filters, page, roleName, summary?.name, view]);
 
-  const hrefFor = useCallback((target: string) => appPreviewHref(appId, previewRole, target), [appId, previewRole]);
+  const hrefFor = useCallback((target: string) => appPreviewHref(appId, preview, target), [appId, preview]);
   const openPage = useCallback((target: string) => (window.location.hash = hrefFor(target)), [hrefFor]);
   const clearDeepLink = useCallback(() => {
     // The drawer is open now; the address loses `record` so the same link opens it again later.
-    window.location.replace(appPreviewHref(appId, previewRole, pageId));
-  }, [appId, pageId, previewRole]);
+    window.location.replace(appPreviewHref(appId, preview, pageId));
+  }, [appId, pageId, preview]);
 
-  // Never published: the shelves say so, or the gateway answered a manager with the draft (the
-  // runtime shows published versions; the builder shows drafts).
-  const draftApp = unpublished ? summary : view?.draft ? view.app : undefined;
+  // Not published and the draft was not asked for: the shelves say so, or the gateway answered a
+  // manager with the draft (it does before the first publish). The runtime shows the published
+  // version; the draft opens on purpose — the builder's "Preview" or the link here.
+  const draftApp = draftPreview ? undefined : unpublished ? summary : view?.draft ? view.app : undefined;
   if (draftApp) {
     return (
       <div className="h-full overflow-y-auto px-3 py-3 sm:px-6">
@@ -152,12 +167,27 @@ export function AppRuntimePage({
           icon={appIcon(draftApp.icon)}
           variant="page"
           title={t('apps.runtime.notPublishedTitle')}
-          description={t('apps.runtime.notPublishedDescription')}
+          description={
+            draftApp.canManage
+              ? t('apps.runtime.notPublishedManagerDescription')
+              : t('apps.runtime.notPublishedDescription')
+          }
           action={
             draftApp.canManage ? (
-              <Button size="sm" onClick={() => (window.location.hash = appBuilderHref(appId))}>
-                {t('apps.center.edit', { name: draftApp.name })}
-              </Button>
+              <div className="flex flex-wrap items-center justify-center gap-2">
+                <Button size="sm" onClick={() => (window.location.hash = appBuilderHref(appId))}>
+                  {t('apps.center.edit', { name: draftApp.name })}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => (window.location.hash = appPreviewHref(appId, { draft: true }, pageId))}
+                  data-testid="app-preview-draft"
+                >
+                  <Eye size={13} className="mr-1.5" />
+                  {t('apps.runtime.previewDraft')}
+                </Button>
+              </div>
             ) : undefined
           }
         />
@@ -213,7 +243,11 @@ export function AppRuntimePage({
           </div>
           <div className="flex flex-shrink-0 flex-wrap items-center justify-end gap-1.5">
             <Tag tone="neutral">{roleName}</Tag>
-            <Tag tone="primary">{t('apps.center.version', { version })}</Tag>
+            {state.view.draft ? (
+              <Tag tone="warning">{t('apps.status.draft')}</Tag>
+            ) : (
+              <Tag tone="primary">{t('apps.center.version', { version })}</Tag>
+            )}
             {app.canManage && (
               <a
                 href={appBuilderHref(app.id)}
@@ -236,8 +270,13 @@ export function AppRuntimePage({
               roles={roles}
               previewRole={previewRole}
               previewName={managerView ? undefined : state.view.role.name}
-              // Another role may not have this page: land on its home.
-              onChange={(roleKey) => (window.location.hash = appPreviewHref(app.id, roleKey))}
+              draft={draftPreview}
+              // Another role may not have this page: land on its home. The draft stays the draft.
+              onChange={(roleKey) =>
+                (window.location.hash = appPreviewHref(app.id, appPreviewScopeOf(roleKey, draftPreview)))
+              }
+              // Leaving the draft goes back to where it is edited.
+              onExit={() => (window.location.hash = draftPreview ? appBuilderHref(app.id) : appPreviewHref(app.id, {}))}
             />
           )}
           {app.canManage && (
@@ -250,10 +289,10 @@ export function AppRuntimePage({
           )}
           {page ? (
             <AppPageView
-              key={`${page.id}:${previewRole ?? ''}`}
+              key={`${page.id}:${previewRole ?? ''}:${draftPreview ? 'draft' : ''}`}
               view={state.view}
               page={page}
-              previewRole={previewRole}
+              preview={preview}
               deepLink={deepLink}
               onDeepLinkHandled={clearDeepLink}
               onOpenPage={openPage}

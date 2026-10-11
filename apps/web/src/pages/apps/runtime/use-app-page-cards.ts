@@ -34,6 +34,7 @@ import {
 } from '../../../components/table-cards';
 import { useTablesRecordsChanged } from '../../../hooks/use-tables-records-changed';
 import { queryAppCard, type AppCardQueryRequest } from '../../../lib/api/apps';
+import type { AppPreviewScope } from '../../../lib/app-routes';
 import { VIEW_RECORD_LIMIT } from '../../tables/views/view-query';
 
 /** Every page of a records card up to the view limit, as one answer (kanban and calendar do not page). */
@@ -60,13 +61,14 @@ export function useAppPageCards({
   appId,
   view,
   page,
-  previewRole,
+  preview,
   filterValues,
 }: {
   appId: number;
   view: AppRuntimeView;
   page: AppPage;
-  previewRole?: string;
+  /** A manager's preview (a role, the draft): every card query carries it. */
+  preview: AppPreviewScope;
   filterValues: TableCardFilterValues;
 }) {
   const params = useRef(new Map<string, AppCardParams>());
@@ -83,7 +85,7 @@ export function useAppPageCards({
           cardId,
           filterValues: input.filterValues,
           timezone: input.timezone,
-          ...(previewRole ? { previewRole } : {}),
+          ...preview,
         };
         const result =
           card.kind === 'kanban' || card.kind === 'calendar'
@@ -93,7 +95,7 @@ export function useAppPageCards({
       },
       loadFields: async (tableId) => appTableFields(viewTable(view, tableId)),
     }),
-    [appId, cardsById, page.id, previewRole, view],
+    [appId, cardsById, page.id, preview, view],
   );
   const { states, query, queryMany } = useTableCardResults(provider, filterValues);
 

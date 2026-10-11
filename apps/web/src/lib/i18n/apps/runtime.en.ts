@@ -14,6 +14,9 @@ export const appsRuntimeEn = {
     pageMissing: 'This page is not part of the app.',
     notPublishedTitle: 'Not published yet',
     notPublishedDescription: 'People see this app once its first version is published.',
+    notPublishedManagerDescription:
+      'People see this app once its first version is published. Until then, preview the draft or keep building.',
+    previewDraft: 'Preview the draft',
     managerView: 'Full access',
     openBuilder: 'Edit app',
     noPagesTitle: 'Nothing here for your role',
@@ -28,6 +31,11 @@ export const appsRuntimeEn = {
       switchLabel: 'Preview as',
       asRole: 'Preview as {role}',
       exit: 'Exit preview',
+      draftFullAccess:
+        'Previewing the draft with full access — this is not live yet; people still get the published version.',
+      draftAs:
+        'Previewing the draft as {role} — not live yet; people still get the published version. Changes are still yours.',
+      backToBuilder: 'Back to the builder',
     },
     issues: {
       title: 'Parts of v{version} stopped working after Base changes ({count}) — people see them as unavailable.',

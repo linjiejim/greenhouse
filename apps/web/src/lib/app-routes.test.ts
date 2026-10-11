@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { APP_BUILDER_SEGMENT, appBuilderHref, appHref, appRecordHref, parseAppRoute } from './app-routes';
+import {
+  APP_BUILDER_SEGMENT,
+  appBuilderHref,
+  appHref,
+  appPreviewHref,
+  appPreviewScope,
+  appRecordHref,
+  parseAppRoute,
+} from './app-routes';
 
 describe('app routes', () => {
   it('parses the center, a runtime page and the builder', () => {
@@ -30,5 +38,26 @@ describe('app routes', () => {
     expect(appBuilderHref(3)).toBe('#/apps/3/edit');
     expect(appRecordHref(3, 41)).toBe('#/apps/3?record=41');
     expect(appRecordHref(3, 41, 'orders')).toBe('#/apps/3/orders?record=41');
+  });
+
+  it('writes and reads back a manager’s preview: a role, the draft, both, or neither', () => {
+    expect(appPreviewHref(3, {})).toBe('#/apps/3');
+    expect(appPreviewHref(3, { previewRole: 'approver' })).toBe('#/apps/3?previewRole=approver');
+    expect(appPreviewHref(3, { draft: true })).toBe('#/apps/3?draft=1');
+    expect(appPreviewHref(3, { previewRole: 'a b', draft: true }, 'orders')).toBe(
+      '#/apps/3/orders?draft=1&previewRole=a+b',
+    );
+    for (const scope of [
+      {},
+      { previewRole: 'a b' },
+      { draft: true as const },
+      { previewRole: 'x', draft: true as const },
+    ]) {
+      const query = appPreviewHref(3, scope).split('?')[1] ?? '';
+      expect(appPreviewScope(new URLSearchParams(query))).toEqual(scope);
+    }
+    // No absent keys: the scope is spread into requests as it is.
+    expect(appPreviewScope(new URLSearchParams('draft=0&previewRole='))).toEqual({});
+    expect(appPreviewScope(undefined)).toEqual({});
   });
 });

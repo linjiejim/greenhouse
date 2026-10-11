@@ -5,7 +5,9 @@
  * confirmations and input dialogs, the create and edit forms. Every write goes
  * through the gateway's `/actions` with a request id; a stale revision is
  * replayed when it is safe (`runAppActionWithReplay`), refusals are said in
- * the viewer's words, and the cards reading the written table refresh.
+ * the viewer's words, and the cards reading the written table refresh. A
+ * manager's preview scope (`preview`: a role, the draft) goes with every
+ * gateway call the page and its cards make.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -44,6 +46,7 @@ import {
   uploadAppFile,
 } from '../../../lib/api/apps';
 import type { TableField } from '../../../lib/api/tables';
+import type { AppPreviewScope } from '../../../lib/app-routes';
 import { useT } from '../../../lib/i18n';
 import { LayoutGrid } from '../../../lib/icons';
 import { describeAppError } from './errors';
@@ -106,7 +109,8 @@ interface PendingConfirm {
 export interface AppPageViewProps {
   view: AppRuntimeView;
   page: AppPage;
-  previewRole?: string;
+  /** A manager's preview (a role, the draft); empty for everyone else. */
+  preview: AppPreviewScope;
   /** `?record=<id>` (optionally `&card=<cardId>`): open that record once, then `onDeepLinkHandled`. */
   deepLink?: { recordId: number; cardId?: string };
   onDeepLinkHandled: () => void;
@@ -118,7 +122,7 @@ export interface AppPageViewProps {
 export function AppPageView({
   view,
   page,
-  previewRole,
+  preview,
   deepLink,
   onDeepLinkHandled,
   onOpenPage,
@@ -127,7 +131,7 @@ export function AppPageView({
   const t = useT();
   const appId = view.app.id;
   const [filterValues, setFilterValues] = useState<TableCardFilterValues>({});
-  const cards = useAppPageCards({ appId, view, page, previewRole, filterValues });
+  const cards = useAppPageCards({ appId, view, page, preview, filterValues });
   const [drawer, setDrawer] = useState<AppRecordTarget | null>(null);
   const [drawerVersion, setDrawerVersion] = useState(0);
   const [form, setForm] = useState<AppFormRequest | null>(null);
@@ -140,8 +144,6 @@ export function AppPageView({
     () => new Map(view.tables.map((table) => [table.id, appTableFields(table)])),
     [view.tables],
   );
-  const preview = previewRole ? { previewRole } : {};
-
   const described = useMemo(
     () => describeFilters(controls, filterValues, fieldsByTable, cards.users, t),
     [cards.users, controls, fieldsByTable, filterValues, t],
@@ -206,23 +208,21 @@ export function AppPageView({
         throw error;
       }
     },
-    // `preview` is derived from `previewRole`.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [afterWrite, appId, doneMessage, previewRole],
+    [afterWrite, appId, doneMessage, preview],
   );
 
   /** A card's gateway helpers; `pageId` is the card's page (a `?record=` card may sit on another page). */
   const optionsFor = useCallback(
     (cardId: string, buttonId?: string, pageId = page.id) =>
       (fieldId: number) =>
-        listAppFieldOptions(appId, { pageId, cardId, fieldId, ...(buttonId ? { buttonId } : {}) }),
-    [appId, page.id],
+        listAppFieldOptions(appId, { pageId, cardId, fieldId, ...(buttonId ? { buttonId } : {}), ...preview }),
+    [appId, page.id, preview],
   );
   const uploadFor = useCallback(
     (cardId: string, pageId = page.id) =>
       (fieldId: number, file: File) =>
-        uploadAppFile(appId, { pageId, cardId, fieldId, file }),
-    [appId, page.id],
+        uploadAppFile(appId, { pageId, cardId, fieldId, file, ...preview }),
+    [appId, page.id, preview],
   );
 
   const runAction = useCallback(
@@ -317,9 +317,7 @@ export function AppPageView({
         testId: 'app-create-dialog',
       });
     },
-    // `preview` is derived from `previewRole`.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [afterWrite, appId, optionsFor, page.id, previewRole, t, tableFields, uploadFor, view],
+    [afterWrite, appId, optionsFor, page.id, preview, t, tableFields, uploadFor, view],
   );
 
   const host = useMemo<AppCardHost>(
@@ -327,7 +325,7 @@ export function AppPageView({
       appId,
       pageId: page.id,
       view,
-      previewRole,
+      preview,
       users: cards.users,
       setParams: cards.setParams,
       retry: cards.retry,
@@ -343,7 +341,7 @@ export function AppPageView({
           actionId: '$submit',
           values,
           requestId: newAppRequestId(),
-          ...(previewRole ? { previewRole } : {}),
+          ...preview,
         });
         void cards.refreshTable(card.tableId);
       },
@@ -359,7 +357,7 @@ export function AppPageView({
               revision: row.revision,
               values: [{ fieldId, value }],
               requestId: newAppRequestId(),
-              ...(previewRole ? { previewRole } : {}),
+              ...preview,
             },
             row,
           );
@@ -372,19 +370,19 @@ export function AppPageView({
       },
       openPage: onOpenPage,
       fileUrl: (card, recordId, fieldId, fileId) =>
-        appFilePath(appId, fileId, { pageId: page.id, cardId: card.id, recordId, fieldId }),
-      upload: (card, fieldId, file) => uploadAppFile(appId, { pageId: page.id, cardId: card.id, fieldId, file }),
+        appFilePath(appId, fileId, { pageId: page.id, cardId: card.id, recordId, fieldId, ...preview }),
+      upload: (card, fieldId, file) => uploadFor(card.id)(fieldId, file),
       loadOptions: (card, fieldId, buttonId) => optionsFor(card.id, buttonId)(fieldId),
       describeError: describe,
     }),
-    [appId, cards, describe, onOpenPage, openCreate, optionsFor, page.id, previewRole, runAction, view],
+    [appId, cards, describe, onOpenPage, openCreate, optionsFor, page.id, preview, runAction, uploadFor, view],
   );
 
   // A link to one record (a notification, `?record=`): find the card that may show it. Once per
   // link — later renders (cards loading) must not cancel the search; only leaving the page does.
   const linkKey = deepLink ? `${deepLink.recordId}:${deepLink.cardId ?? ''}` : '';
-  const latest = useRef({ appId, page, view, previewRole, onDeepLinkHandled, t });
-  latest.current = { appId, page, view, previewRole, onDeepLinkHandled, t };
+  const latest = useRef({ appId, page, view, preview, onDeepLinkHandled, t });
+  latest.current = { appId, page, view, preview, onDeepLinkHandled, t };
   const mounted = useRef(true);
   useEffect(() => {
     mounted.current = true;
@@ -396,7 +394,7 @@ export function AppPageView({
     if (!linkKey) return;
     const [recordPart, cardPart] = linkKey.split(':');
     const recordId = Number(recordPart);
-    const { appId: app, page: here, view: current, previewRole: role } = latest.current;
+    const { appId: app, page: here, view: current, preview: scope } = latest.current;
     const candidates = [here, ...current.spec.pages.filter((entry) => entry.id !== here.id)].flatMap((entry) =>
       entry.cards
         .filter(isRecordsLikeCard)
@@ -410,7 +408,7 @@ export function AppPageView({
           pageId: candidate.pageId,
           cardId: candidate.card.id,
           recordId,
-          ...(role ? { previewRole: role } : {}),
+          ...scope,
         }).catch(() => null);
         if (!mounted.current) return;
         if (found) {
@@ -468,7 +466,7 @@ export function AppPageView({
         appId={appId}
         view={view}
         target={drawer}
-        previewRole={previewRole}
+        preview={preview}
         version={drawerVersion}
         onClose={() => setDrawer(null)}
         onRunAction={(target, detail, actionId) => {
@@ -497,7 +495,7 @@ export function AppPageView({
                   revision: detail.record.revision,
                   values,
                   requestId,
-                  ...(previewRole ? { previewRole } : {}),
+                  ...preview,
                 },
                 detail.record,
               );

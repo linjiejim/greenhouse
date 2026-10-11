@@ -3,4 +3,4 @@
  * `./builder/` (slice B); this file keeps the router's import stable.
  */
 
-export { AppBuilderPage, appPreviewHref } from './builder';
+export { AppBuilderPage } from './builder';

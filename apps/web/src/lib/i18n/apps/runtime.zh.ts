@@ -17,6 +17,8 @@ export const appsRuntimeZh: DeepRecord<typeof appsRuntimeEn> = {
     pageMissing: '这个应用里没有这个页面。',
     notPublishedTitle: '尚未发布',
     notPublishedDescription: '发布第一个版本后，使用者才能看到这个应用。',
+    notPublishedManagerDescription: '发布第一个版本后，使用者才能看到这个应用。在那之前，可以预览草稿或继续搭建。',
+    previewDraft: '预览草稿',
     managerView: '完整访问',
     openBuilder: '编辑应用',
     noPagesTitle: '你的角色在这里没有页面',
@@ -29,6 +31,9 @@ export const appsRuntimeZh: DeepRecord<typeof appsRuntimeEn> = {
       switchLabel: '以角色预览',
       asRole: '以「{role}」预览',
       exit: '退出预览',
+      draftFullAccess: '正在以完整访问预览草稿——草稿尚未上线，使用者看到的仍是已发布版本。',
+      draftAs: '正在以「{role}」预览草稿——草稿尚未上线，使用者看到的仍是已发布版本；你做的修改仍记在你名下。',
+      backToBuilder: '回到构建器',
     },
     issues: {
       title: 'Base 结构变更后，v{version} 有 {count} 处失效——使用者会看到它们不可用。',

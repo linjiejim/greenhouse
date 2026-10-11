@@ -6,6 +6,10 @@
  *   #/apps                       the app center
  *   #/apps/<id>[/<pageId>]       a page of the published app (`?record=<id>` opens a record)
  *   #/apps/<id>/edit             the builder (the app's draft)
+ *
+ * Managers may add `?previewRole=<key>` (the app as one role gets it) and
+ * `?draft=1` (the draft instead of the published version) to a runtime
+ * address — `appPreviewHref` writes them, `appPreviewScope` reads them back.
  */
 
 import { APP_BUILDER_SEGMENT } from '@greenhouse/types/apps';
@@ -54,11 +58,37 @@ export function appRecordHref(appId: number, recordId: number, pageId?: string):
 }
 
 /**
- * The published app as a manager previews it in one of its roles
- * (`?previewRole=<key>`; the gateway trims and evaluates for that role). No
- * role = the manager's full view.
+ * How a manager previews an app (the gateway honours both for managers only):
+ * `previewRole` = as one of its roles (absent: full access), `draft` = the
+ * draft instead of the published version. One object travels from the address
+ * to every gateway call, so the role and the draft never drift apart.
  */
-export function appPreviewHref(appId: number, roleKey: string | undefined, pageId?: string): string {
-  const href = appHref(appId, pageId);
-  return roleKey ? `${href}?previewRole=${encodeURIComponent(roleKey)}` : href;
+export interface AppPreviewScope {
+  previewRole?: string;
+  draft?: true;
+}
+
+/** A scope without absent keys (it is spread into requests as it is). */
+export function appPreviewScopeOf(previewRole: string | undefined, draft: boolean | undefined): AppPreviewScope {
+  return { ...(previewRole ? { previewRole } : {}), ...(draft ? { draft: true as const } : {}) };
+}
+
+/** The scope a runtime address asks for (`?previewRole=<key>`, `?draft=1`). */
+export function appPreviewScope(params: URLSearchParams | undefined): AppPreviewScope {
+  const draft = params?.get('draft');
+  return appPreviewScopeOf(params?.get('previewRole') || undefined, draft === '1' || draft === 'true');
+}
+
+/**
+ * A runtime address in a manager's preview: `?draft=1` for the draft,
+ * `?previewRole=<key>` for one role's view (no scope = the published app with
+ * the manager's full access). The builder's "Preview" and the runtime's role
+ * switch both come here, so the draft flag survives switching roles.
+ */
+export function appPreviewHref(appId: number, preview: AppPreviewScope, pageId?: string): string {
+  const query = new URLSearchParams();
+  if (preview.draft) query.set('draft', '1');
+  if (preview.previewRole) query.set('previewRole', preview.previewRole);
+  const search = query.toString();
+  return search ? `${appHref(appId, pageId)}?${search}` : appHref(appId, pageId);
 }

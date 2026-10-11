@@ -13,6 +13,10 @@
  * Failures throw the Tables client's `TablesRequestError` (status + details,
  * `details.reason` for action refusals): apps live in the Tables domain
  * (spec D1), so callers keep one error type.
+ *
+ * A manager's preview travels as one `AppPreviewScope` (`previewRole?`,
+ * `draft?`) — spread into every gateway input, the query of `getApp`, the
+ * upload's form fields and the file download's query.
  */
 
 import type {
@@ -22,6 +26,7 @@ import type {
   AppActivityInput,
   AppCardQueryInput,
   AppCardQueryResult,
+  AppCommentInput,
   AppDraftView,
   AppFieldOptionsInput,
   AppFieldOptionsView,
@@ -35,6 +40,7 @@ import type {
   AppUploadView,
 } from '@greenhouse/types/apps';
 import type { TableFilterValue, TableRecordActivityPage, TableRecordCommentView } from '@greenhouse/types/tables';
+import type { AppPreviewScope } from '../app-routes';
 import { authFetch } from '../auth';
 import { rpc } from './client';
 import { TablesRequestError, responseError } from './tables/shared';
@@ -144,10 +150,15 @@ export async function installAppTemplate(key: string): Promise<AppTemplateInstal
 /**
  * One app as the caller uses it: the published spec trimmed to their role
  * with the field metadata to render it (a manager gets full access, or the
- * trim of `previewRole`).
+ * trim of `previewRole`; `draft` reads the draft instead of the published
+ * version).
  */
-export async function getApp(appId: number, options: { previewRole?: string } = {}): Promise<AppRuntimeView> {
-  const args = { param: appParam(appId), query: options.previewRole ? { previewRole: options.previewRole } : {} };
+export async function getApp(appId: number, preview: AppPreviewScope = {}): Promise<AppRuntimeView> {
+  const query = {
+    ...(preview.previewRole ? { previewRole: preview.previewRole } : {}),
+    ...(preview.draft ? { draft: '1' } : {}),
+  };
+  const args = { param: appParam(appId), ...(Object.keys(query).length > 0 ? { query } : {}) };
   const response = await rpc.api.apps[':appId'].$get(args);
   if (!response.ok) throw await responseError(response, 'Unable to load app');
   return response.json();
@@ -226,6 +237,7 @@ export async function runAppActionWithReplay(
       cardId: input.cardId,
       recordId: input.recordId,
       ...(input.previewRole ? { previewRole: input.previewRole } : {}),
+      ...(input.draft ? { draft: true } : {}),
     }).catch(() => null);
     if (!current) throw error;
     const builtin = input.actionId === '$edit' || input.actionId === '$move';
@@ -248,10 +260,7 @@ export async function listAppActivity(appId: number, input: AppActivityInput): P
   return response.json();
 }
 
-export async function createAppComment(
-  appId: number,
-  input: { pageId: string; cardId: string; recordId: number; body: string },
-): Promise<TableRecordCommentView> {
+export async function createAppComment(appId: number, input: AppCommentInput): Promise<TableRecordCommentView> {
   const args = { param: appParam(appId), json: input };
   const response = await rpc.api.apps[':appId'].comments.$post(args);
   if (!response.ok) throw await responseError(response, 'Unable to post the comment');
@@ -261,7 +270,7 @@ export async function createAppComment(
 export async function updateAppComment(
   appId: number,
   commentId: number,
-  input: { pageId: string; cardId: string; body: string },
+  input: { pageId: string; cardId: string; body: string } & AppPreviewScope,
 ): Promise<TableRecordCommentView> {
   const args = { param: { ...appParam(appId), commentId: String(commentId) }, json: input };
   const response = await rpc.api.apps[':appId'].comments[':commentId'].$patch(args);
@@ -272,7 +281,7 @@ export async function updateAppComment(
 export async function deleteAppComment(
   appId: number,
   commentId: number,
-  input: { pageId: string; cardId: string },
+  input: { pageId: string; cardId: string } & AppPreviewScope,
 ): Promise<void> {
   const args = { param: { ...appParam(appId), commentId: String(commentId) }, json: input };
   const response = await rpc.api.apps[':appId'].comments[':commentId'].$delete(args);
@@ -290,13 +299,15 @@ export async function listAppFieldOptions(appId: number, input: AppFieldOptionsI
 /** Upload an attachment for a card's form or edit (bound to the record on the next write). Multipart → raw `authFetch`. */
 export async function uploadAppFile(
   appId: number,
-  input: { pageId: string; cardId: string; fieldId: number; file: File },
+  input: { pageId: string; cardId: string; fieldId: number; file: File } & AppPreviewScope,
 ): Promise<AppUploadView> {
   const form = new FormData();
   form.append('file', input.file);
   form.append('pageId', input.pageId);
   form.append('cardId', input.cardId);
   form.append('fieldId', String(input.fieldId));
+  if (input.previewRole) form.append('previewRole', input.previewRole);
+  if (input.draft) form.append('draft', '1');
   const response = await authFetch(`/api/apps/${appId}/uploads`, { method: 'POST', body: form });
   if (!response.ok) throw await responseError(response, 'Unable to upload the file');
   return ((await response.json()) as { file: AppUploadView }).file;
@@ -306,7 +317,7 @@ export async function uploadAppFile(
 export function appFilePath(
   appId: number,
   fileId: number,
-  context: { pageId: string; cardId: string; recordId: number; fieldId: number },
+  context: { pageId: string; cardId: string; recordId: number; fieldId: number } & AppPreviewScope,
 ): string {
   const query = new URLSearchParams({
     pageId: context.pageId,
@@ -314,5 +325,7 @@ export function appFilePath(
     recordId: String(context.recordId),
     fieldId: String(context.fieldId),
   });
+  if (context.previewRole) query.set('previewRole', context.previewRole);
+  if (context.draft) query.set('draft', '1');
   return `/api/apps/${appId}/files/${fileId}?${query.toString()}`;
 }

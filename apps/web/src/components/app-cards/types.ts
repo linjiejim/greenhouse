@@ -21,6 +21,7 @@ import type {
 import type { TableFieldValueEntry } from '@greenhouse/types/tables';
 import type { TableCardState } from '../table-cards';
 import type { TableUserOption } from '../../lib/api/tables';
+import type { AppPreviewScope } from '../../lib/app-routes';
 import type { AppRecordsLikeCard } from './model';
 
 /** Per-card query parameters a card controls itself (records search and paging). */
@@ -33,8 +34,8 @@ export interface AppCardHost {
   appId: number;
   pageId: string;
   view: AppRuntimeView;
-  /** A manager previewing the app as one of its roles. */
-  previewRole?: string;
+  /** A manager's preview (one of its roles, the draft) — every gateway call the host makes carries it. */
+  preview: AppPreviewScope;
   /** People the page has seen (refs of its cards) — labels for aggregates, the people filter. */
   users: readonly TableUserOption[];
   /** Re-evaluate a card with new parameters (and remember them for later refreshes). */

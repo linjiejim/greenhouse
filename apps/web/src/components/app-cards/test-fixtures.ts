@@ -199,6 +199,7 @@ export function mockHost(patch: Partial<AppCardHost> = {}): AppCardHost {
     appId: 5,
     pageId: 'apply',
     view: runtimeView(),
+    preview: {},
     users: [{ id: 'u1', nickname: 'Mia', email: '' }],
     setParams: vi.fn(),
     retry: vi.fn(),

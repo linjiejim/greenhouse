@@ -3,6 +3,7 @@ import type { AppSummary } from '@greenhouse/types/apps';
 import {
   appActionRefusal,
   appFilePath,
+  getApp,
   getAppPins,
   listApps,
   listAppTemplates,
@@ -221,6 +222,17 @@ describe('apps gateway client', () => {
     expect((await listAppTemplates())?.map((template) => template.key)).toEqual(['it']);
   });
 
+  it('asks for the draft and the previewed role in the query', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) =>
+      String(input).includes('/actions') ? Response.json({ outcome: 'updated', recordId: 9 }) : Response.json({}),
+    );
+    globalThis.fetch = fetchMock as typeof globalThis.fetch;
+    await getApp(5, { previewRole: 'approver', draft: true });
+    expect(String(fetchMock.mock.calls[0]![0])).toBe('/api/apps/5?previewRole=approver&draft=1');
+    await getApp(5);
+    expect(String(fetchMock.mock.calls[1]![0])).toBe('/api/apps/5');
+  });
+
   it('uploads attachments as multipart for one card field, and addresses downloads by card, record and field', async () => {
     const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
       Response.json({ file: { id: 31, name: 'a.pdf', size: 3 } }, { status: 201 }),
@@ -236,8 +248,24 @@ describe('apps gateway client', () => {
     expect(String(url)).toBe('/api/apps/5/uploads');
     const form = init?.body as FormData;
     expect([form.get('pageId'), form.get('cardId'), form.get('fieldId')]).toEqual(['p', 'apply', '4']);
+    expect(form.has('draft')).toBe(false);
     expect(appFilePath(5, 31, { pageId: 'p', cardId: 'mine', recordId: 9, fieldId: 4 })).toBe(
       '/api/apps/5/files/31?pageId=p&cardId=mine&recordId=9&fieldId=4',
     );
+
+    // A manager's draft preview reaches the gateway on uploads and downloads too.
+    await uploadAppFile(5, { pageId: 'p', cardId: 'apply', fieldId: 4, file, previewRole: 'approver', draft: true });
+    const previewForm = fetchMock.mock.calls[1]![1]?.body as FormData;
+    expect([previewForm.get('previewRole'), previewForm.get('draft')]).toEqual(['approver', '1']);
+    expect(
+      appFilePath(5, 31, {
+        pageId: 'p',
+        cardId: 'mine',
+        recordId: 9,
+        fieldId: 4,
+        previewRole: 'approver',
+        draft: true,
+      }),
+    ).toBe('/api/apps/5/files/31?pageId=p&cardId=mine&recordId=9&fieldId=4&previewRole=approver&draft=1');
   });
 });

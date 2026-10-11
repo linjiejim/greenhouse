@@ -629,6 +629,16 @@ describe('publishing and versions', () => {
   });
 });
 
+describe('preview', () => {
+  it('opens the runtime on the draft as the chosen role, after saving', async () => {
+    window.location.hash = `#/apps/${APP_ID}/edit`;
+    await mount();
+    await click(q('[data-testid="app-preview"]'));
+    await click(button('As Approver'));
+    expect(window.location.hash).toBe(`#/apps/${APP_ID}?draft=1&previewRole=approver`);
+  });
+});
+
 describe('the second table', () => {
   it('moves a card to another table and starts its fields over', async () => {
     await mount();

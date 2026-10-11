@@ -44,6 +44,7 @@ import { useT } from '../../../lib/i18n';
 import { Download, Edit3, Eye, Lock, Paperclip, X } from '../../../lib/icons';
 import { formatDate } from '../../../lib/utils';
 import { useAuthStore } from '../../../stores';
+import type { AppPreviewScope } from '../../../lib/app-routes';
 import { RecordActivityPanel, type RecordActivitySource } from '../../tables/record-drawer/activity-panel';
 
 /** Which record, opened through which card (the gateway authorizes per card). */
@@ -63,7 +64,8 @@ interface AppRecordDrawerProps {
   appId: number;
   view: AppRuntimeView;
   target: AppRecordTarget | null;
-  previewRole?: string;
+  /** A manager's preview (a role, the draft): the record, its activity and comments are read through it. */
+  preview: AppPreviewScope;
   /** Bumped by the host after its own writes to this record (an action, an edit). */
   version: number;
   onClose: () => void;
@@ -130,7 +132,8 @@ function RecordContent({
   onClose,
   onRunAction,
   onEdit,
-}: Omit<AppRecordDrawerProps, 'target' | 'version' | 'previewRole'> & {
+  preview,
+}: Omit<AppRecordDrawerProps, 'target' | 'version'> & {
   target: AppRecordTarget;
   detail: AppRecordView;
 }) {
@@ -162,22 +165,22 @@ function RecordContent({
 
   const download = (field: TableField) => (fileId: number, name: string) =>
     void downloadAuthenticatedFile(
-      appFilePath(appId, fileId, { pageId, cardId: card.id, recordId: record.id, fieldId: field.id }),
+      appFilePath(appId, fileId, { pageId, cardId: card.id, recordId: record.id, fieldId: field.id, ...preview }),
       name,
     ).catch(() => toast(t('apps.runtime.record.downloadFailed'), 'error'));
 
-  const ref = { pageId, cardId: card.id, recordId: record.id };
+  const ref = { pageId, cardId: card.id, recordId: record.id, ...preview };
   const source = useMemo<RecordActivitySource>(
     () => ({
       load: (cursor) => listAppActivity(appId, { ...ref, ...(cursor ? { cursor } : {}) }),
       create: (body) => createAppComment(appId, { ...ref, body }),
-      update: (commentId, body) => updateAppComment(appId, commentId, { pageId, cardId: card.id, body }),
-      remove: (commentId) => deleteAppComment(appId, commentId, { pageId, cardId: card.id }),
+      update: (commentId, body) => updateAppComment(appId, commentId, { pageId, cardId: card.id, body, ...preview }),
+      remove: (commentId) => deleteAppComment(appId, commentId, { pageId, cardId: card.id, ...preview }),
       viewer: { userId: currentUserId, canComment: detail.canComment, canModerate: false },
     }),
     // `ref` is derived from these.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [appId, card.id, currentUserId, detail.canComment, pageId, record.id],
+    [appId, card.id, currentUserId, detail.canComment, pageId, preview, record.id],
   );
 
   return (
@@ -290,7 +293,7 @@ function RecordContent({
 
 export function AppRecordDrawer(props: AppRecordDrawerProps) {
   const t = useT();
-  const { appId, target, previewRole, version } = props;
+  const { appId, target, preview, version } = props;
   const [state, setState] = useState<LoadState>({ kind: 'loading' });
   const key = target ? `${target.pageId}:${target.card.id}:${target.recordId}` : '';
 
@@ -303,7 +306,7 @@ export function AppRecordDrawer(props: AppRecordDrawerProps) {
           pageId: target.pageId,
           cardId: target.card.id,
           recordId: target.recordId,
-          ...(previewRole ? { previewRole } : {}),
+          ...preview,
         });
         setState({ kind: 'ready', detail });
       } catch (error) {
@@ -314,7 +317,7 @@ export function AppRecordDrawer(props: AppRecordDrawerProps) {
     },
     // Keyed by the record, not the target object.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [appId, key, previewRole],
+    [appId, key, preview],
   );
 
   useEffect(() => {
