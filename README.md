@@ -76,7 +76,7 @@ expose to Claude, Cursor, or any MCP client.
   <img src="docs/assets/screens/chat-knowledge-answer-dark.webp" alt="Dark theme" width="66%" />
   <img src="docs/assets/screens/mobile-chat.webp" alt="Mobile layout" width="19%" />
 </p>
-<p align="center"><sub>Light / dark / system themes and a responsive layout; the <a href="apps/mobile">Expo app</a> covers chat (with the same rich replies as the web — data tables, charts (Swift Charts on iOS), stat tiles, record cards, step timelines, Mermaid diagrams, HTML previews, question forms and reply buttons — and a "connect your account" card when a connector needs your sign-in or key), your Bots (on iOS: Sprouty and your other Bots at the top of the drawer, one ongoing thread per Bot — other Bots join it when a hand-off helps — with live per-Bot replies, @-mentions, "needs you" cards that open into a sheet to decide, background tasks that report back; your computer one tap away on a thread's bar — watch it live, take over with touch and native typing (pass a human check right from the card), browse and share its files, see its background processes; a Bot's profile gathers its instructions, memory, shared notes, schedules and separate chats in tabs; new Bots are made by asking Sprouty, from an example or by hand in Settings → My Bots; replies show just the answer, with reasoning, tool calls and sources one ⋯ → Show toggle away; a home-screen widget lines up your Bots with unread and "needs you" badges — one tap into a Bot's thread, or a new chat with Sprouty; notifications when a Bot needs you, a task finishes or a reply comes in after you left — content-free unless you turn previews on, one tap into the card or the conversation, on every station you are signed in to; and, experimentally, a running background task as a Live Activity on the Lock Screen and in the Dynamic Island), Settings → Connectors for your own keys and sign-ins, knowledge and projects with a native UI on both platforms — on iOS system navigation, Liquid Glass, native sheets, menus and SwiftUI forms; on Android Material 3 (Jetpack Compose forms, menus and dialogs).</sub></p>
+<p align="center"><sub>Light / dark / system themes and a responsive layout; the <a href="apps/mobile">Expo app</a> covers chat (with the same rich replies as the web — data tables, charts (Swift Charts on iOS), stat tiles, record cards, step timelines, Mermaid diagrams, HTML previews, question forms and reply buttons — and a "connect your account" card when a connector needs your sign-in or key), your Bots (on iOS: Sprouty and your other Bots at the top of the drawer, one ongoing thread per Bot — other Bots join it when a hand-off helps — with live per-Bot replies, @-mentions, "needs you" cards that open into a sheet to decide, background tasks that report back; your computer one tap away on a thread's bar — watch it live, take over with touch and native typing (pass a human check right from the card), browse and share its files, see its background processes; a Bot's profile gathers its instructions, memory, shared notes, schedules and separate chats in tabs; new Bots are made by asking Sprouty, from an example or by hand in Settings → My Bots; replies show just the answer, with reasoning, tool calls and sources one ⋯ → Show toggle away; a home-screen widget lines up your Bots with unread and "needs you" badges — one tap into a Bot's thread, or a new chat with Sprouty; notifications when a Bot needs you, a task finishes or a reply comes in after you left, and when a Tables automation notifies you or a comment @-mentions you — content-free unless you turn previews on, one tap into the card, the conversation, the record or the app page, on every station you are signed in to; and, experimentally, a running background task as a Live Activity on the Lock Screen and in the Dynamic Island), Settings → Connectors for your own keys and sign-ins, knowledge and projects, and on iOS your Tables (Bases; list, board, calendar and gallery views; editing records, comments with @-mentions; submit-only forms with photo uploads; dashboards), Apps (the app center, each app's pages and cards for your role, actions and approvals, photo attachments) and a notification list — with a native UI on both platforms — on iOS system navigation, Liquid Glass, native sheets, menus and SwiftUI forms; on Android Material 3 (Jetpack Compose forms, menus and dialogs).</sub></p>
 
 The mobile launch animation covers the first conversation while it loads. Authentication stays
 required; the opening page is prepared while fonts and the animation finish, with a short,
@@ -119,8 +119,9 @@ same script doubles as an end-to-end smoke tour (see [Development](#development)
   required input, `$me` / `$now`), app roles that decide pages, rows and fields, and who gets
   which role; managers preview the draft as any role, and only the base owner publishes —
   versions are immutable and an old one can be restored into the draft. People open what was
-  shared with them from the app center or the sidebar (pinned and featured apps), and every read
-  and write goes through the app's own gateway, so an app never shows more than its role allows.
+  shared with them from the app center or the sidebar (pinned and featured apps) — on an iPhone,
+  from the app center and the drawer's Apps section — and every read and write goes through the
+  app's own gateway, so an app never shows more than its role allows.
   Archiving a table or field, removing options or deleting an automation an app uses asks first
   and lists the apps.
 - **Home workbench** — a personal dashboard of live cards backed by the same tools (recipes and
@@ -199,7 +200,8 @@ greenhouse/
 │   ├── bot-computer/         # Bots computer image (desktop + Chromium + shell, zero published ports)
 │   ├── browser/              # Chrome extension (MV3) — side-panel companion; connects to your
 │   │                         #   instances via saved multi-server "stations"
-│   └── mobile/               # Expo (React Native) app — chat, Bots (iOS), knowledge, projects, settings;
+│   └── mobile/               # Expo (React Native) app — chat, Bots / Tables / Apps (iOS),
+│                             #   knowledge, projects, notifications, settings;
 │                             #   native UI: iOS SwiftUI forms + Liquid Glass, Android Material 3
 │                             #   (both via @expo/ui); isolated install (pnpm mobile:install,
 │                             #   then pnpm mobile)
@@ -507,7 +509,9 @@ provider), external web search, email mailboxes, WeCom / Feishu, missions, Bots 
 bundles to `data/skills` — set `SKILLS_S3_*` to keep bundles in S3-compatible storage.
 
 **Mobile push**: the iOS app's notifications (a Bot needs you, a background or scheduled task
-finished, a Bot replied after you left) are sent through the Expo Push Service at `exp.host`.
+finished, a Bot replied after you left; a Tables automation's notice — an urgent one as
+time-sensitive — or a comment that @-mentions you, which opens the record or the app page) are
+sent through the Expo Push Service at `exp.host`.
 The server stores only each phone's Expo push token (no Apple key — the official app's
 credentials live with Expo), and by default a notification says only who and what kind of thing
 ("Sprouty · Needs your approval"); members can turn on previews per phone in the app's Settings →
