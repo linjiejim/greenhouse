@@ -4,6 +4,7 @@
  */
 
 import type { TableBaseRole, TableBaseVisibility } from '@greenhouse/types/tables';
+import type { TableBaseMemberRole, TableTeamRole } from '@greenhouse/types/table-access';
 import { authFetch } from '../../auth';
 import { rpc } from '../client';
 import { responseError } from './shared';
@@ -16,6 +17,8 @@ export interface TableBase {
   description: string | null;
   visibility: TableBaseVisibility;
   owner_id: string;
+  team_role: TableTeamRole;
+  team_custom_role_id: number | null;
   created_by: string;
   created_at: string;
   updated_at: string;
@@ -30,7 +33,8 @@ export interface TableBaseMember {
   id: number;
   base_id: number;
   user_id: string;
-  role: TableBaseRole;
+  role: TableBaseMemberRole;
+  custom_role_id: number | null;
   added_by: string;
   created_at: string;
   updated_at: string;
