@@ -63,11 +63,7 @@ describe('Tables registration (manifest 1.3.0)', () => {
   });
 
   it.each([
-    'transferBaseOwner',
-    'listRoles',
-    'createRole',
-    'updateRole',
-    'deleteRole',
+    // Slice A's actions (roles, owner transfer) have landed: tables-access.db.test.ts.
     'deleteView',
     'openForm',
     'deleteAutomation',
