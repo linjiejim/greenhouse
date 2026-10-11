@@ -15,7 +15,8 @@
  *    for every row, plus 标签 / 重命名 / 删除 on the member's own; a tag filter
  *    lives in a native menu on the header,
  *  - pinned to the bottom: one row of app entries, icon over a caption
- *    (知识库 / 项目 / 设置; more than four collapse into 「更多」).
+ *    (知识库 / 项目 / 表格 / 设置 — 表格 only where Tables are on (iOS,
+ *    `features.tables`); more than four collapse into 「更多」).
  *
  * History states: LoadingState while the first page loads, then EmptyState
  * (ContentUnavailableView) for 暂无对话 / 无匹配结果 / 加载失败 (with 重试).
@@ -32,7 +33,10 @@
  *
  * With Bots on (iOS, an internal account, `features.bots`), the Bots section
  * (src/bots/drawer/bots-section.tsx) comes first, above the history, and the
- * search filters it too; otherwise it renders nothing. Every route to home goes
+ * search filters it too; otherwise it renders nothing. The Apps section
+ * (src/apps/drawer-section.tsx: pinned + featured apps, the header opens the app
+ * center) follows it where Apps are on. A bell next to the new-chat button opens
+ * the notification list (`/inbox`, iOS + an internal account). Every route to home goes
  * through src/bots/nav.ts (all seven params — a Bots thread is `?c=`).
  */
 
@@ -45,6 +49,10 @@ import { useHomeSurface } from '../bots/home/surface';
 import { useTags } from '../store/tags';
 import { deleteSession, setSessionPinned, updateSessionTitle } from '../api/sessions';
 import { BotsSection } from '../bots/drawer/bots-section';
+import { AppsSection } from '../apps/drawer-section';
+import { isInternal } from '../bots/availability';
+import { TABLES_PLATFORM_READY, useTablesEnabled } from '../tables/availability';
+import { useAuth } from '../store/auth';
 import { openChat, openNewChat } from '../bots/nav';
 import type { Session } from '../shared/greenhouse-types';
 import { parseMs } from '../lib/format';
@@ -103,11 +111,12 @@ interface Section {
   data: Row[];
 }
 
-/** The apps reachable from the drawer's bottom bar (no registry: three entries today). */
-type AppPath = '/knowledge' | '/projects' | '/settings';
-const APPS: ReadonlyArray<{ path: AppPath; icon: IconName; label: TranslationKey }> = [
+/** The apps reachable from the drawer's bottom bar (no registry: four entries at most today). */
+type AppPath = '/knowledge' | '/projects' | '/tables' | '/settings' | '/inbox';
+const APPS: ReadonlyArray<{ path: AppPath; icon: IconName; label: TranslationKey; tables?: true }> = [
   { path: '/knowledge', icon: 'books', label: 'drawer.knowledge' },
   { path: '/projects', icon: 'folder', label: 'drawer.projects' },
+  { path: '/tables', icon: 'table', label: 'drawer.tables', tables: true },
   { path: '/settings', icon: 'gear', label: 'drawer.settings' },
 ];
 
@@ -126,6 +135,8 @@ export function HomeDrawerContent({ navigation }: DrawerContentComponentProps) {
   const activeThread = useHomeSurface((s) => s.c);
   const activeProfile = useHomeSurface((s) => s.profile);
 
+  const tablesOn = useTablesEnabled();
+  const inboxOn = useAuth((s) => TABLES_PLATFORM_READY && !s.loading && isInternal(s.user));
   const tags = useTags((s) => s.tags);
   const loadTags = useTags((s) => s.load);
   const filterId = useTags((s) => s.filterId);
@@ -380,12 +391,12 @@ export function HomeDrawerContent({ navigation }: DrawerContentComponentProps) {
     );
   };
 
-  const apps = APPS.length > BAR_SLOTS ? APPS.slice(0, BAR_SLOTS - 1) : APPS;
-  const overflow = APPS.length > BAR_SLOTS ? APPS.slice(BAR_SLOTS - 1) : [];
+  const entries = useMemo(() => APPS.filter((app) => !app.tables || tablesOn), [tablesOn]);
+  const apps = entries.length > BAR_SLOTS ? entries.slice(0, BAR_SLOTS - 1) : entries;
+  const overflow = useMemo(() => (entries.length > BAR_SLOTS ? entries.slice(BAR_SLOTS - 1) : []), [entries]);
   const overflowItems = useMemo<MenuItem[]>(
     () => overflow.map((app) => ({ id: app.path, title: t(app.label), icon: app.icon })),
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- APPS is a module constant
-    [t],
+    [overflow, t],
   );
 
   return (
@@ -408,6 +419,16 @@ export function HomeDrawerContent({ navigation }: DrawerContentComponentProps) {
             style={styles.searchInput}
           />
         </View>
+        {inboxOn ? (
+          <Touchable
+            onPress={() => go('/inbox')}
+            style={styles.topBtn}
+            accessibilityRole="button"
+            accessibilityLabel={t('drawer.inbox')}
+          >
+            <Icon name="bell" size={21} color={c.label} />
+          </Touchable>
+        ) : null}
         <Touchable
           onPress={newChat}
           style={styles.topBtn}
@@ -430,6 +451,7 @@ export function HomeDrawerContent({ navigation }: DrawerContentComponentProps) {
         ListHeaderComponent={
           <>
             <BotsSection query={search} onClose={close} />
+            <AppsSection query={search} onClose={close} />
             <View key={fontKey} style={styles.navBlock}>
               <View style={styles.historyHead}>
                 <Text style={styles.historyTitle}>{activeTag ? activeTag.name : t('drawer.history')}</Text>

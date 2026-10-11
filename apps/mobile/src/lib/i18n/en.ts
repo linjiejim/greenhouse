@@ -9,6 +9,9 @@ import { botsCardsEn } from './bots/cards.en';
 import { botsNavEn } from './bots/nav.en';
 import { botsManageEn } from './bots/manage.en';
 import { botsComputerEn } from './bots/computer.en';
+import { tablesEn } from './tables/tables.en';
+import { appsEn } from './tables/apps.en';
+import { inboxEn } from './tables/inbox.en';
 
 export const en = {
   common: {
@@ -275,6 +278,8 @@ export const en = {
     chats: 'Chats',
     knowledge: 'Knowledge',
     projects: 'Projects',
+    tables: 'Tables',
+    inbox: 'Notifications',
     history: 'Recent',
     settings: 'Settings',
     search: 'Search',
@@ -644,6 +649,10 @@ export const en = {
     ...botsManageEn,
     ...botsComputerEn,
   },
+  /** Tables, Apps and the inbox (spec 20261011-mobile-tables-apps) — split under ./tables, mounted here once. */
+  tables: tablesEn,
+  apps: appsEn,
+  inbox: inboxEn,
 };
 
 export type Catalog = typeof en;
