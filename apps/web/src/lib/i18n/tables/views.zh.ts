@@ -78,7 +78,9 @@ export const tablesViewsZh: DeepRecord<typeof tablesViewsEn> = {
     today: '今天',
     newRecordOnDay: '在 {date} 新建记录',
     galleryEmpty: '没有可显示的记录',
-    expandGroup: '展开分组',
-    collapseGroup: '收起分组',
+    noMatchTitle: '没有匹配的记录',
+    noMatchDescription: '清空搜索或调整筛选条件以查看更多记录。',
+    emptyTableTitle: '还没有记录',
+    emptyTableDescription: '添加一条记录、粘贴多行，或导入 CSV / Excel 文件。',
   },
 };

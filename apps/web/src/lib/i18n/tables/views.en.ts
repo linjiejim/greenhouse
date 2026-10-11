@@ -79,7 +79,9 @@ export const tablesViewsEn = {
     today: 'Today',
     newRecordOnDay: 'New record on {date}',
     galleryEmpty: 'No records to show',
-    expandGroup: 'Expand group',
-    collapseGroup: 'Collapse group',
+    noMatchTitle: 'No records match',
+    noMatchDescription: 'Clear the search or change the filters to see more records.',
+    emptyTableTitle: 'No records yet',
+    emptyTableDescription: 'Add a record, paste rows or import a CSV or Excel file.',
   },
 } as const;
