@@ -384,6 +384,63 @@ function exactlyOne(at: number, a: unknown, b: unknown, names: string): string |
   return (a === undefined) === (b === undefined) ? `operation ${at}: give exactly one of ${names}` : undefined;
 }
 
+// ─── Webhooks (D16) ──────────────────────────────────────
+
+export const WEBHOOK_REFUSAL = 'webhook actions can only be added or changed in the Tables editor, not in a plan';
+
+/** How a webhook URL is shown to a model: its origin only — a path or query can carry a token. */
+export function webhookDisplayUrl(url: string): string {
+  try {
+    return `${new URL(url).origin}/…`;
+  } catch {
+    return '…';
+  }
+}
+
+function planWebhooks(config: Record<string, unknown>): Array<Record<string, unknown>> {
+  const actions = Array.isArray(config.actions) ? (config.actions as unknown[]) : [];
+  return actions.filter(
+    (action): action is Record<string, unknown> =>
+      !!action && typeof action === 'object' && (action as { type?: unknown }).type === 'webhook',
+  );
+}
+
+/**
+ * A plan may keep a rule's webhook, never add or change one: every webhook
+ * action must carry the id of one the rule has, its URL (or the shown form of
+ * it, as `tables_query` returns it) and the same fieldIds. Returns the actions
+ * with each kept webhook replaced by the stored one, or undefined when any is
+ * new or changed.
+ */
+export function keepStoredWebhooks(actions: unknown, stored: unknown): unknown[] | undefined {
+  const list = Array.isArray(actions) ? actions : [];
+  const known = (Array.isArray(stored) ? stored : []).filter(
+    (action): action is Record<string, unknown> =>
+      !!action && typeof action === 'object' && (action as { type?: unknown }).type === 'webhook',
+  );
+  const kept: unknown[] = [];
+  for (const action of list) {
+    const webhook = action as Record<string, unknown> | null;
+    if (!webhook || typeof webhook !== 'object' || webhook.type !== 'webhook') {
+      kept.push(action);
+      continue;
+    }
+    const original = known.find((candidate) => candidate.id === webhook.id);
+    const url = typeof original?.url === 'string' ? original.url : undefined;
+    if (
+      !original ||
+      !url ||
+      (webhook.url !== url && webhook.url !== webhookDisplayUrl(url)) ||
+      JSON.stringify(webhook.fieldIds ?? []) !== JSON.stringify(original.fieldIds ?? []) ||
+      'secret' in webhook
+    ) {
+      return undefined;
+    }
+    kept.push({ id: original.id, type: 'webhook', url, ...(original.fieldIds ? { fieldIds: original.fieldIds } : {}) });
+  }
+  return kept;
+}
+
 /** Automation configs from a plan: no webhooks to new places, no secrets, no executor (D16, D17). */
 function automationProblem(at: number, operation: SchemaPlanOperation): string | undefined {
   if (operation.op !== 'automation.create' && operation.op !== 'automation.update') return undefined;
@@ -405,7 +462,7 @@ function automationProblem(at: number, operation: SchemaPlanOperation): string |
     // A plan may keep a webhook the rule already has (same id, URL and fields — checked against the
     // stored rule when drafting) but never add one: webhooks are built by a person in the editor.
     if (operation.op === 'automation.create' || typeof webhook.id !== 'string' || 'secret' in webhook) {
-      return `operation ${at}: webhook actions can only be added in the Tables editor, not in a plan`;
+      return `operation ${at}: ${WEBHOOK_REFUSAL}`;
     }
   }
   return undefined;
@@ -810,6 +867,21 @@ export async function applySchemaPlan(
       }
 
       case 'automation.update': {
+        let config = resolve(operation.config);
+        if (config && planWebhooks(config).length > 0) {
+          // D16 holds on apply too (this route acts as a person, whom the handler lets add webhooks).
+          const baseId = await baseOfTable(operation.tableId);
+          const listed = baseId === undefined ? undefined : await dispatch('listAutomations', { baseId }, { baseId });
+          const rule = listed?.ok
+            ? (
+                (listed.data as { automations?: Array<{ id?: unknown; config?: { actions?: unknown } }> })
+                  .automations ?? []
+              ).find((candidate) => candidate.id === operation.automationId)
+            : undefined;
+          const actions = rule ? keepStoredWebhooks(config.actions, rule.config?.actions) : undefined;
+          if (!actions) return { ok: false, message: WEBHOOK_REFUSAL };
+          config = { ...config, actions };
+        }
         const result = await dispatch(
           'updateAutomation',
           {
@@ -818,7 +890,7 @@ export async function applySchemaPlan(
             name: operation.name,
             trigger: operation.trigger,
             status: operation.status,
-            config: resolve(operation.config),
+            config,
           },
           { automationId: operation.automationId },
         );

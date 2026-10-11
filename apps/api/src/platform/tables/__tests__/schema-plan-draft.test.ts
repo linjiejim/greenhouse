@@ -355,9 +355,17 @@ describe('draftSchemaPlan', () => {
         world,
       ),
     ).toEqual([]);
-    expect(await problemsOf([update([{ ...webhook, url: 'https://evil.example.com/in' }])], world)).toEqual([
-      expect.stringContaining('webhook actions can only be added or changed in the Tables editor'),
-    ]);
+    // tables_query shows only the origin of a webhook URL; copying that form back keeps the webhook too.
+    expect(await problemsOf([update([{ ...webhook, url: 'https://hooks.example.com/…' }])], world)).toEqual([]);
+    for (const changed of [
+      { ...webhook, url: 'https://evil.example.com/in' },
+      { ...webhook, fieldIds: [101, 102] },
+      { ...webhook, id: 'a2' },
+    ]) {
+      expect(await problemsOf([update([changed])], world)).toEqual([
+        expect.stringContaining('webhook actions can only be added or changed in the Tables editor'),
+      ]);
+    }
   });
 
   it('reports a broken creation once, not again for everything built on it', async () => {

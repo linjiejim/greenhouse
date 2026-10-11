@@ -56,7 +56,7 @@ import { normalizeTableCardSpec, widgetTypeForCard } from '@greenhouse/types/tab
 import { toErrorMessage } from '@greenhouse/utils/error';
 import { safeJsonParse } from '@greenhouse/utils/json';
 import { validateTablesSchedule } from './automation-schedule.js';
-import { analyzeSchemaPlan, type SchemaPlanDispatch } from './schema-plan.js';
+import { analyzeSchemaPlan, keepStoredWebhooks, WEBHOOK_REFUSAL, type SchemaPlanDispatch } from './schema-plan.js';
 import { resolveRefTokens } from './schema-plan-refs.js';
 
 /** What the draft check reads, all as the drafting user. */
@@ -818,9 +818,9 @@ export async function draftSchemaPlan(
           const config = (operation.config === undefined
             ? rule.config
             : resolve(operation.config)) as unknown as TableAutomationConfigInput;
-          keptWebhooksOnly(rule, config);
-          checkSchedule(trigger, config);
-          await check(() => checkAutomationConfig(source, base.id, table.id, trigger, config));
+          const kept = keptWebhooksOnly(rule, config);
+          checkSchedule(trigger, kept);
+          await check(() => checkAutomationConfig(source, base.id, table.id, trigger, kept));
         }
         rule.revision += 1;
         return;
@@ -1002,21 +1002,10 @@ export async function draftSchemaPlan(
     if (issue) problem(issue);
   };
 
-  /** D16: a plan may keep a rule's existing webhook verbatim, never add or change one. */
-  const keptWebhooksOnly = (rule: DraftAutomation, config: TableAutomationConfigInput) => {
-    const stored = (Array.isArray(rule.config.actions) ? rule.config.actions : []) as Array<Record<string, unknown>>;
-    const actions = (Array.isArray(object(config).actions) ? object(config).actions : []) as Array<
-      Record<string, unknown>
-    >;
-    for (const action of actions) {
-      if (action.type !== 'webhook') continue;
-      const kept = stored.find((candidate) => candidate.type === 'webhook' && candidate.id === action.id);
-      const same =
-        kept &&
-        kept.url === action.url &&
-        JSON.stringify(kept.fieldIds ?? []) === JSON.stringify(action.fieldIds ?? []);
-      if (!same) problem('webhook actions can only be added or changed in the Tables editor, not in a plan');
-    }
+  /** D16: a plan may keep a rule's existing webhook, never add or change one; the stored URL is restored. */
+  const keptWebhooksOnly = (rule: DraftAutomation, config: TableAutomationConfigInput): TableAutomationConfigInput => {
+    const actions = keepStoredWebhooks(object(config).actions, rule.config.actions) ?? problem(WEBHOOK_REFUSAL);
+    return { ...config, actions } as TableAutomationConfigInput;
   };
 
   /**

@@ -15,6 +15,7 @@ import { defineTool, type ToolMeta } from './define.js';
 import { dispatchTablesAgentAction } from '../platform/tables/agent-adapter.js';
 import { BUILDER_REFERENCE_TOPICS, builderReference } from '../platform/tables/builder-reference.js';
 import { grantableGroups } from '../platform/tables/directory.js';
+import { webhookDisplayUrl } from '../platform/tables/schema-plan.js';
 
 const filterClauseSchema = z.object({
   fieldId: z.number().int().positive().describe('Stable numeric field ID from schema.get.'),
@@ -113,15 +114,6 @@ Before drafting tables_schema_plan: builder.reference {topic} shows each config'
   sort_order: 28,
 };
 
-/** `https://host/…` — the path and query of a webhook URL can carry a token. */
-function webhookOrigin(url: string): string {
-  try {
-    return `${new URL(url).origin}/…`;
-  } catch {
-    return '…';
-  }
-}
-
 /** A webhook target reduced to its origin: a URL can carry a token, and secrets never leave the server. */
 function redactWebhooks(data: unknown): unknown {
   const automations = (data as { automations?: unknown } | undefined)?.automations;
@@ -136,7 +128,7 @@ function redactWebhooks(data: unknown): unknown {
           ...rule.config,
           actions: actions.map((action: { type?: unknown; url?: unknown }) => {
             if (action.type !== 'webhook' || typeof action.url !== 'string') return action;
-            return { ...action, url: webhookOrigin(action.url) };
+            return { ...action, url: webhookDisplayUrl(action.url) };
           }),
         },
       };

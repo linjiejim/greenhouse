@@ -204,7 +204,7 @@ describe('analyzeSchemaPlan', () => {
       analyzeSchemaPlan([
         { op: 'automation.create', tableId: 1, name: 'Out', trigger: 'record_created', config: { actions: [webhook] } },
       ]),
-    ).toEqual({ error: expect.stringContaining('webhook actions can only be added in the Tables editor') });
+    ).toEqual({ error: expect.stringContaining('webhook actions can only be added or changed in the Tables editor') });
     // An update may carry a webhook the rule already has (id kept) — the draft check compares it to the stored one.
     expect(
       'error' in
@@ -446,6 +446,46 @@ describe('applySchemaPlan', () => {
       },
       { dashboardId: 2 },
     );
+  });
+
+  it('restores a kept webhook’s stored URL on apply and refuses a new one there too (D16)', async () => {
+    const stored = { id: 'a1', type: 'webhook', url: 'https://hooks.example.com/in?token=t0p', hasSecret: true };
+    const dispatch = vi.fn<SchemaPlanDispatch>(async (actionId) => {
+      if (actionId === 'getSchema') return ok({ table: { id: 4, base_id: 2 } });
+      if (actionId === 'listAutomations') return ok({ automations: [{ id: 9, config: { actions: [stored] } }] });
+      return ok({ automation: { id: 9 } });
+    });
+    const update = (url: string): SchemaPlanOperation => ({
+      op: 'automation.update',
+      tableId: 4,
+      automationId: 9,
+      revision: 1,
+      config: {
+        actions: [
+          { id: 'a1', type: 'webhook', url },
+          { type: 'delay', minutes: 5 },
+        ],
+      },
+    });
+    const kept = await applySchemaPlan([update('https://hooks.example.com/…')], dispatch);
+    expect(kept.results[0]?.status).toBe('applied');
+    expect(dispatch).toHaveBeenCalledWith(
+      'updateAutomation',
+      expect.objectContaining({
+        config: {
+          actions: [
+            { id: 'a1', type: 'webhook', url: 'https://hooks.example.com/in?token=t0p' },
+            { type: 'delay', minutes: 5 },
+          ],
+        },
+      }),
+      { automationId: 9 },
+    );
+
+    dispatch.mockClear();
+    const changed = await applySchemaPlan([update('https://elsewhere.example.com/in')], dispatch);
+    expect(changed.results[0]).toMatchObject({ status: 'failed', message: expect.stringContaining('Tables editor') });
+    expect(dispatch).not.toHaveBeenCalledWith('updateAutomation', expect.anything(), expect.anything());
   });
 
   it('offers no Base link when the plan spans several Bases', async () => {
