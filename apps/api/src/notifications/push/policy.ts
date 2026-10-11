@@ -86,6 +86,12 @@ export type PushDecision =
   | { push: false; reason: 'category_off' | 'muted' | 'expired' }
   | {
       push: true;
+      /**
+       * No banner, no sound — only wakes the app (`content-available`): a Bot task finished
+       * on a device that has "done" pushes off but shows the task as a Live Activity, which
+       * the app ends in the background (spec docs/specs/20261010-mobile-live-activity.md §3.4).
+       */
+      silent: boolean;
       /** Epoch ms after which the push must not arrive (APNs `expiration`). */
       expiresAt: number;
       interruptionLevel: 'time-sensitive' | 'active';
@@ -103,7 +109,8 @@ export function pushPolicy(input: {
   now: number;
 }): PushDecision {
   const { envelope, prefs } = input;
-  if (!prefs[envelope.k]) return { push: false, reason: 'category_off' };
+  const silent = !prefs[envelope.k] && isBotTaskEnd(envelope) && prefs.live_activity;
+  if (!prefs[envelope.k] && !silent) return { push: false, reason: 'category_off' };
   if (envelope.k === 'needs_you' && envelope.request_kind && MUTED_REQUESTS.has(envelope.request_kind)) {
     return { push: false, reason: 'muted' };
   }
@@ -115,6 +122,7 @@ export function pushPolicy(input: {
   if (expiresAt <= input.now) return { push: false, reason: 'expired' };
   return {
     push: true,
+    silent,
     expiresAt,
     interruptionLevel:
       envelope.k === 'needs_you' && envelope.request_kind && TIME_SENSITIVE_REQUESTS.has(envelope.request_kind)
@@ -123,6 +131,11 @@ export function pushPolicy(input: {
     threadId: `${envelope.open}:${envelope.sid}`,
     ...(envelope.k === 'replies' ? { collapseId: `bots-reply:${envelope.sid}` } : {}),
   };
+}
+
+/** A Bot's background task finished — the push a Live Activity on the phone ends on. */
+export function isBotTaskEnd(envelope: PushEnvelope): boolean {
+  return envelope.k === 'done' && envelope.open === 'bots';
 }
 
 /** Where a tap goes — the app's existing deep-link routes (scheme-less; the app owns its scheme). */

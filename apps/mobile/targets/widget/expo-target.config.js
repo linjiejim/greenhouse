@@ -31,6 +31,9 @@ module.exports = {
     OnAccent: { light: '#FFFFFF', dark: '#123427' },
     AccentTint: { light: '#E5ECEA', dark: '#343938' },
     AccentBorder: { light: '#BDCECA', dark: '#49534E' },
+    // The Dynamic Island is always black: the Live Activity's accent there is the dark one
+    // in both schemes (BotTaskLiveActivity.swift).
+    IslandAccent: { light: '#B1D2BF', dark: '#B1D2BF' },
   },
   // Sprouty's plant avatar, rendered by apps/mobile/scripts/render-widget-art.mjs from the
   // vendored static builder (light + dark palettes; mono = lock-screen knockout silhouette).

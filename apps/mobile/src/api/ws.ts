@@ -19,8 +19,8 @@
  *
  * Frames: `ping` → answer `pong`; `connected` → status open + a `resync` to
  * every listener (pushes may have been missed while down); `chat:run`,
- * `bots:conversation`, `bots:attention` → delivered; anything else
- * (`notification:new`, `bots:computer`…) and malformed JSON → dropped.
+ * `bots:conversation`, `bots:attention`, `bots:computer` → delivered; anything
+ * else (`notification:new`…) and malformed JSON → dropped.
  *
  * Closing:
  * - our own close (stop: background, sign-out, station switch) → nothing more;
@@ -46,6 +46,7 @@
  */
 
 import type { Realtime, RealtimeEvent, RealtimeStatus, ServerWsWire, ThreadDeps } from '../bots/contract';
+import type { ComputerState } from '../shared/bots';
 
 /** No frame at all for this long (the server pings every 30 s) = a dead socket. */
 export const WATCHDOG_MS = 70_000;
@@ -65,6 +66,8 @@ export function realtimeUrl(apiBase: string, token: string): string {
   const base = apiBase.replace(/\/+$/, '').replace(/^http(s?):\/\//i, (_m, s: string) => `ws${s.toLowerCase()}://`);
   return `${base}/api/ws?token=${encodeURIComponent(token)}`;
 }
+
+const COMPUTER_STATES: ReadonlySet<string> = new Set<ComputerState>(['absent', 'starting', 'running', 'stopping', 'error']);
 
 /** A frame's payload as one of the events mobile reads, or null (dropped). */
 export function parseFrame(data: unknown): ServerWsWire | null {
@@ -92,6 +95,10 @@ export function parseFrame(data: unknown): ServerWsWire | null {
     case 'bots:attention':
       return typeof f.pending === 'number' && Number.isFinite(f.pending)
         ? { type: 'bots:attention', pending: f.pending }
+        : null;
+    case 'bots:computer':
+      return COMPUTER_STATES.has(f.state as string) && (f.controller === 'bot' || f.controller === 'user')
+        ? { type: 'bots:computer', state: f.state as ComputerState, controller: f.controller }
         : null;
     default:
       return null;

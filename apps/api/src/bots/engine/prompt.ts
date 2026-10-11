@@ -111,7 +111,8 @@ export function buildStaticRules(
   }
   if (flags.browser || flags.computer) {
     lines.push(
-      `- The computer is shared by all of the member's Bots and the member can watch it live. Check the result of every action before the next one. If the member has taken over, wait for the hand-back instead of acting.`,
+      `- The computer is shared by all of the member's Bots; the member can watch it live and open its files. Check the result of every action in what it returns (the page, the command output) before the next one. If the member has taken over, wait for the hand-back instead of acting.`,
+      `- Pictures and files you share land in the conversation: take a screenshot only when the member asks to see a page, and share a file only when it is the result they asked for — never as progress or proof.`,
     );
   }
   if (flags.computer) {

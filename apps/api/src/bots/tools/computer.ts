@@ -369,7 +369,7 @@ class ComputerActions {
     return {
       url: ticket.path,
       expires_at: ticket.expires_at,
-      note: 'Give the member this link as it is (a path on Greenhouse; it works for 2 hours, then ask for a new one). The page runs sandboxed — no cookies, no local storage, no WebSockets — and only relative links stay inside the preview: serve the app with relative paths (no leading "/"). Nothing listening on the port shows the member a "nothing answered" page.',
+      note: 'Give the member this link as a Markdown link with a short name — [name](path), the path exactly as it is — never in a code span, where it cannot be opened (a path on Greenhouse; it works for 2 hours, then ask for a new one). The page runs sandboxed — no cookies, no local storage, no WebSockets — and only relative links stay inside the preview: serve the app with relative paths (no leading "/"). Nothing listening on the port shows the member a "nothing answered" page.',
     };
   }
 

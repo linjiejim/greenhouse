@@ -112,6 +112,11 @@ const SOURCES: Record<IconName, ImageSourcePropType> = {
   sleep: require('../../assets/icons/android/bedtime.xml'),
   at: require('../../assets/icons/android/alternate_email.xml'),
   alertCircle: require('../../assets/icons/android/error.xml'),
+  computer: require('../../assets/icons/android/computer.xml'),
+  keyboard: require('../../assets/icons/android/keyboard.xml'),
+  chevL: require('../../assets/icons/android/chevron_left.xml'),
+  zoomIn: require('../../assets/icons/android/zoom_in.xml'),
+  zoomOut: require('../../assets/icons/android/zoom_out.xml'),
 };
 /* eslint-enable @typescript-eslint/no-require-imports */
 
