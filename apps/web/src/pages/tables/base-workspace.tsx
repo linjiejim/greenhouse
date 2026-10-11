@@ -119,7 +119,7 @@ export function BaseWorkspace({
           <h1 className="truncate text-sm font-semibold text-fg">{workspace.base.name}</h1>
           <p className="truncate text-[11px] text-fg-faint">
             {workspace.base.visibility === 'team' ? t('tables.home.teamVisible') : t('tables.home.private')} ·{' '}
-            {t(`tables.home.role.${workspace.role}`)}
+            {workspace.access.customRole?.name ?? t(`tables.home.role.${workspace.role}`)}
           </p>
         </div>
         {canBuild && (
@@ -199,6 +199,7 @@ export function BaseWorkspace({
               table={selectedTable}
               tables={workspace.tables}
               role={workspace.role}
+              access={workspace.access}
               users={users}
               focusRecordId={recordId}
             />

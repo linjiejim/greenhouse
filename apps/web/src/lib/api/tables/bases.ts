@@ -4,7 +4,7 @@
  */
 
 import type { TableBaseRole, TableBaseVisibility } from '@greenhouse/types/tables';
-import type { TableBaseMemberRole, TableTeamRole } from '@greenhouse/types/table-access';
+import type { TableBaseAccessView, TableBaseMemberRole, TableTeamRole } from '@greenhouse/types/table-access';
 import { authFetch } from '../../auth';
 import { rpc } from '../client';
 import { responseError } from './shared';
@@ -42,10 +42,15 @@ export interface TableBaseMember {
 
 export interface TableBaseWorkspace {
   base: TableBase;
+  /** The built-in role this reads as (a custom role reads as viewer — see `access`). */
   role: TableBaseRole;
+  /** The effective access; for a custom role, its compiled per-table view (`./access` → `tableCapabilities`). */
+  access: TableBaseAccessView;
+  /** For a custom role: only the tables it has a rule for. */
   tables: TableDefinition[];
   dashboards: TableDashboard[];
-  members: TableBaseMember[];
+  /** People with a direct grant, names only. Grants themselves: `listTableBaseAccess` (owner). */
+  members: Array<{ id: string; name: string }>;
 }
 
 /** One internal account from the Tables user directory. */
