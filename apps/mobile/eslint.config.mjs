@@ -16,6 +16,11 @@ export default tseslint.config(
       parserOptions: { tsconfigRootDir: import.meta.dirname },
     },
   },
+  // Build scripts run in Node (`node apps/mobile/scripts/*.mjs`), not in the app.
+  {
+    files: ['scripts/**/*.mjs'],
+    languageOptions: { globals: { console: 'readonly', process: 'readonly' } },
+  },
   {
     plugins: { 'react-hooks': reactHooks },
     rules: {

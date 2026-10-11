@@ -11,7 +11,9 @@
  *  - description (Markdown), subtasks (tap the glyph to complete, tap the row
  *    to open, + 添加子任务), the comment thread (long-press: copy / delete;
  *    a failed load says so and offers a retry),
- *  - a Liquid Glass comment composer pinned above the keyboard.
+ *  - a Liquid Glass comment composer pinned above the keyboard (the thread's
+ *    row and composer are shared with the Tables record page:
+ *    src/ui/comment-thread.tsx).
  *
  * Navigation bar: pencil = edit (form sheet); `…` = 状态 submenu / 添加子任务 /
  * 里程碑 / 删除. The API has no single-task GET — the task is found in the
@@ -19,25 +21,14 @@
  */
 
 import React, { useCallback, useMemo, useRef, useState } from 'react';
-import {
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-  type NativeScrollEvent,
-  type NativeSyntheticEvent,
-} from 'react-native';
-import Animated, { useAnimatedStyle } from 'react-native-reanimated';
+import { ScrollView, Text, View, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
 import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useHeaderInset } from '../../../src/ui/header-inset';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Clipboard from 'expo-clipboard';
 import { addComment, deleteComment, listComments, updateTask, type Priority, type ProjectTask, type TaskComment } from '../../../src/api/projects';
 import { Markdown } from '../../../src/chat/markdown';
-import { relativeTime } from '../../../src/lib/format';
 import { useT } from '../../../src/lib/i18n';
-import { useReanimatedKeyboardAnimation } from 'react-native-keyboard-controller';
 import { useAuth } from '../../../src/store/auth';
 import { usePrefs } from '../../../src/store/prefs';
 import {
@@ -62,12 +53,11 @@ import {
 import { useAssignableUsers, useProjectDetail, useProjects } from '../../../src/projects/store';
 import { useTaskActions } from '../../../src/projects/task-actions';
 import { TaskStatusButton } from '../../../src/projects/task-list';
-import { HIT, makeStyles, radius, space, squircle, typo, useTheme, weight } from '../../../src/theme';
+import { makeStyles, radius, space, squircle, typo, useTheme } from '../../../src/theme';
 import { Icon } from '../../../src/ui/core';
-import { InitialAvatar } from '../../../src/ui/avatar';
+import { COMPOSER_SPACE, CommentComposer, CommentRow } from '../../../src/ui/comment-thread';
 import { alertError, confirmAction } from '../../../src/ui/dialogs';
 import { EmptyState, LoadingState } from '../../../src/ui/empty';
-import { Glass, GlassGroup, GlassIconButton } from '../../../src/ui/glass';
 import { tapLight } from '../../../src/ui/haptics';
 import { Badge, ListRow, ListSection, type ListRowProps } from '../../../src/ui/list';
 import { NativeMenu, menuSections, type MenuItem } from '../../../src/ui/menu';
@@ -197,12 +187,6 @@ export default function TaskDetailScreen() {
     if (task && (await actions.remove(task))) router.back();
   }, [task, actions, router]);
 
-  // ── keyboard-pinned composer ──
-  const { height: kbHeight, progress: kbProgress } = useReanimatedKeyboardAnimation();
-  const composerStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: kbHeight.value + insets.bottom * kbProgress.value }],
-  }));
-
   const showComposer = !!task && access.canWrite;
   const pid = String(projectId);
 
@@ -283,7 +267,7 @@ export default function TaskDetailScreen() {
         automaticallyAdjustKeyboardInsets
         keyboardDismissMode="interactive"
         keyboardShouldPersistTaps="handled"
-        contentContainerStyle={{ paddingBottom: (showComposer ? 76 : space.xxl) + insets.bottom }}
+        contentContainerStyle={{ paddingBottom: (showComposer ? COMPOSER_SPACE : space.xxl) + insets.bottom }}
         onScroll={onScroll}
         scrollEventThrottle={16}
       >
@@ -448,7 +432,9 @@ export default function TaskDetailScreen() {
               {comments.map((cm, i) => (
                 <CommentRow
                   key={cm.id}
-                  comment={cm}
+                  author={cm.user_nickname ?? cm.user_id}
+                  createdAt={cm.created_at}
+                  body={cm.content}
                   last={i === comments.length - 1}
                   items={menuSections([
                     [{ id: 'copy', title: t('projects.copyComment'), icon: 'copy' }],
@@ -463,28 +449,14 @@ export default function TaskDetailScreen() {
       </ScrollView>
 
       {showComposer ? (
-        <Animated.View style={[styles.composerWrap, { paddingBottom: insets.bottom + space.sm }, composerStyle]}>
-          <GlassGroup spacing={10} style={styles.composerRow}>
-            <Glass style={styles.inputGlass}>
-              <TextInput
-                value={draft}
-                onChangeText={setDraft}
-                placeholder={t('projects.commentPlaceholder')}
-                placeholderTextColor={c.placeholder}
-                multiline
-                style={styles.input}
-              />
-            </Glass>
-            <GlassIconButton
-              icon="up"
-              prominent
-              size={40}
-              disabled={!draft.trim() || sending}
-              onPress={() => void send()}
-              accessibilityLabel={t('projects.sendComment')}
-            />
-          </GlassGroup>
-        </Animated.View>
+        <CommentComposer
+          value={draft}
+          onChange={setDraft}
+          onSend={() => void send()}
+          sending={sending}
+          placeholder={t('projects.commentPlaceholder')}
+          sendLabel={t('projects.sendComment')}
+        />
       ) : null}
     </>
   );
@@ -505,39 +477,6 @@ function MenuRow({
   return (
     <NativeMenu trigger="tap" fill items={items} onSelect={onSelect}>
       <ListRow {...row} last={last} menuTrigger accessory={<Icon name="chevUpDown" size={13} weight="semibold" color={c.tertiaryLabel} />} />
-    </NativeMenu>
-  );
-}
-
-function CommentRow({
-  comment,
-  last,
-  items,
-  onSelect,
-}: {
-  comment: TaskComment;
-  last: boolean;
-  items: MenuItem[];
-  onSelect: (id: string) => void;
-}) {
-  const { colors: c } = useTheme();
-  const styles = useStyles(c);
-  const name = comment.user_nickname ?? comment.user_id;
-  return (
-    <NativeMenu trigger="longPress" items={items} onSelect={onSelect}>
-      <View style={styles.comment}>
-        <InitialAvatar name={name} size={30} tint={c.gray} />
-        <View style={styles.commentBody}>
-          <View style={styles.commentHead}>
-            <Text numberOfLines={1} style={styles.commentAuthor}>
-              {name}
-            </Text>
-            <Text style={styles.commentTime}>{relativeTime(comment.created_at)}</Text>
-          </View>
-          <Text style={styles.commentText}>{comment.content}</Text>
-        </View>
-        {!last ? <View pointerEvents="none" style={styles.commentSep} /> : null}
-      </View>
     </NativeMenu>
   );
 }
@@ -570,31 +509,4 @@ const useStyles = makeStyles((c) => ({
   noComments: { ...typo.subheadline, color: c.tertiaryLabel, paddingHorizontal: space.margin },
   commentsLoading: { flexGrow: 0, paddingVertical: space.lg },
   commentsFailed: { paddingVertical: space.sm },
-
-  comment: { flexDirection: 'row', gap: space.md, paddingVertical: space.md, minHeight: HIT },
-  commentBody: { flex: 1, minWidth: 0, gap: 2 },
-  commentHead: { flexDirection: 'row', alignItems: 'baseline', gap: space.sm },
-  commentAuthor: { ...typo.subheadline, fontWeight: weight.semibold, color: c.label, flexShrink: 1 },
-  commentTime: { ...typo.footnote, color: c.tertiaryLabel },
-  commentText: { ...typo.body, color: c.label },
-  commentSep: {
-    position: 'absolute',
-    right: -space.margin,
-    bottom: 0,
-    left: 30 + space.md,
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: c.separator,
-  },
-
-  composerWrap: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: space.md },
-  composerRow: { flexDirection: 'row', alignItems: 'flex-end', gap: space.sm },
-  inputGlass: { flex: 1, borderRadius: 22, minHeight: 44, justifyContent: 'center' },
-  input: {
-    ...typo.body,
-    color: c.label,
-    paddingHorizontal: space.lg,
-    paddingTop: 11,
-    paddingBottom: 11,
-    maxHeight: 120,
-  },
 }));

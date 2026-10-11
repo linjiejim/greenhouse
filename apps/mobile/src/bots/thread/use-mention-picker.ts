@@ -10,14 +10,21 @@
  * `parseMentions` turns what was typed into ids (it also catches a name typed
  * by hand), so the strip is a shortcut, not the source of truth.
  *
- * The pure pieces live in ./mention-query.ts (tested in the root vitest); the
- * hook only holds the caret.
+ * The pure pieces live in ../../lib/mentions.ts (shared with the Tables / app
+ * comment strip, tested in the root vitest); the hook only holds the caret.
  */
 
 import { useCallback, useMemo, useState } from 'react';
-import { applyMention, mentionCandidates, mentionQuery, type MentionMember } from './mention-query';
+import { applyMention, mentionCandidates, mentionQuery } from '../../lib/mentions';
+import { mentionToken } from '../vendor/mentions';
 
-export type { MentionMember };
+/** A Bot that can be addressed here. */
+export interface MentionMember {
+  id: string;
+  name: string;
+  role: string;
+}
+
 
 export interface MentionPicker<T extends MentionMember> {
   /** Show the strip: the caret is in an `@` token and someone matches. */
@@ -47,7 +54,7 @@ export function useMentionPicker<T extends MentionMember>({
   const candidates = useMemo(() => (q == null ? [] : mentionCandidates(members, q)), [members, q]);
   const start = query?.start ?? -1;
   const pick = useCallback(
-    (member: T) => (caret == null || start < 0 ? null : applyMention(text, start, caret, member.name)),
+    (member: T) => (caret == null || start < 0 ? null : applyMention(text, start, caret, mentionToken(member.name))),
     [text, start, caret],
   );
   return { open: candidates.length > 0, candidates, onSelectionChange: setSelection, pick };
