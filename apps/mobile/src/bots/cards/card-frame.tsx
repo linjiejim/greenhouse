@@ -158,8 +158,8 @@ export function DecisionBar({
 }
 
 /**
- * Turns a button into what it does: open the sign-in / Bot form sheet, ask
- * first (always-allow, "I've done it"), or post the decision through
+ * Turns a button into what it does: open the sign-in / Bot form sheet or the
+ * computer page, ask first (always-allow), or post the decision through
  * `onDecide` (the thread's `ctl.decide`, the needs-you sheet's
  * `useBots.decide`) and give the outcome its feedback. `press` resolves to the
  * outcome (null when nothing was posted) so a sheet can close on `ok` / `stale`.
@@ -186,6 +186,14 @@ export function useCardActions({
       if (inFlight.current) return null;
       if (button.id === 'signIn') {
         router.push({ pathname: '/bots/login', params: { id: request.id, c: sessionId } });
+        return null;
+      }
+      if (button.id === 'computer') {
+        // Leave the card's sheet for the computer page; a human check / a Bot's request
+        // takes the computer on arrival (its Done hands back for this card).
+        const control = cardKind(request) === 'handback' ? {} : { control: '1' };
+        router.back();
+        setTimeout(() => router.push({ pathname: '/bots/computer', params: { c: sessionId, request: request.id, ...control } }), 0);
         return null;
       }
       const editProposal = () => router.push({ pathname: '/bots/bot-form', params: { request: request.id } });
@@ -229,17 +237,14 @@ export function useCardActions({
   return { busy, press };
 }
 
-/** The question behind a `confirm` button, written out with its scope. */
-function confirmFor(t: TFunction, request: BotRequestView, button: CardButton, name: string): Promise<boolean> {
-  if (button.id === 'always') {
-    const site = alwaysSite(request.payload as BotApprovalPayload) ?? t('bots.card.thisSite');
-    return confirmAction({
-      title: t('bots.card.alwaysTitle', { site }),
-      message: t('bots.card.alwaysBody', { name }),
-      confirmLabel: t('bots.card.alwaysConfirm'),
-    });
-  }
-  return confirmAction({ title: t('bots.card.finishedConfirm', { name }), confirmLabel: t('bots.card.finished') });
+/** The question behind a `confirm` button (always-allow, the only one), written out with its scope. */
+function confirmFor(t: TFunction, request: BotRequestView, _button: CardButton, name: string): Promise<boolean> {
+  const site = alwaysSite(request.payload as BotApprovalPayload) ?? t('bots.card.thisSite');
+  return confirmAction({
+    title: t('bots.card.alwaysTitle', { site }),
+    message: t('bots.card.alwaysBody', { name }),
+    confirmLabel: t('bots.card.alwaysConfirm'),
+  });
 }
 
 // ─── Text blocks ─────────────────────────────────────────

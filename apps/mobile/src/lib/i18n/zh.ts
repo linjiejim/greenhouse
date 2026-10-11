@@ -4,6 +4,7 @@ import { botsThreadZh } from './bots/thread.zh';
 import { botsCardsZh } from './bots/cards.zh';
 import { botsNavZh } from './bots/nav.zh';
 import { botsManageZh } from './bots/manage.zh';
+import { botsComputerZh } from './bots/computer.zh';
 
 export const zh: Catalog = {
   common: {
@@ -616,6 +617,14 @@ export const zh: Catalog = {
     softAskLater: '以后再说',
     deniedTitle: '通知已关闭',
     deniedMessage: '请在系统设置里打开 Greenhouse 的通知。',
+    liveActivity: '实时活动',
+    liveActivityTasks: '后台任务计时',
+    liveActivityExperimental: '实验',
+    liveActivityFooter:
+      'Bot 的后台任务会在锁屏和灵动岛上计时，结束后自动收起。实验中：App 被强退过的话，任务结束后要打开 App 才会收起。',
+    liveActivityNeedsPush: '先打开上面的推送通知：任务结束时，靠推送在后台收起锁屏上的计时。',
+    liveActivitySystemOff: '系统设置里关闭了 Greenhouse 的实时活动。',
+    liveActivityLog: '最近 {total} 次任务结束，{ended} 次在后台收起。',
   },
   bots: {
     ...botsCommonZh,
@@ -623,5 +632,6 @@ export const zh: Catalog = {
     ...botsCardsZh,
     ...botsNavZh,
     ...botsManageZh,
+    ...botsComputerZh,
   },
 };

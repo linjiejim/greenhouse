@@ -8,6 +8,7 @@ import { botsThreadEn } from './bots/thread.en';
 import { botsCardsEn } from './bots/cards.en';
 import { botsNavEn } from './bots/nav.en';
 import { botsManageEn } from './bots/manage.en';
+import { botsComputerEn } from './bots/computer.en';
 
 export const en = {
   common: {
@@ -625,6 +626,15 @@ export const en = {
     softAskLater: 'Not Now',
     deniedTitle: 'Notifications are off',
     deniedMessage: 'Turn on notifications for Greenhouse in Settings.',
+    liveActivity: 'Live Activities',
+    liveActivityTasks: 'Background Task Timer',
+    liveActivityExperimental: 'Experimental',
+    liveActivityFooter:
+      'A Bot’s background task counts up on the Lock Screen and in the Dynamic Island, and goes away when it ends. Experimental: if the app was force-quit, it goes away only once you open the app.',
+    liveActivityNeedsPush:
+      'Turn on notifications above first — a push is what clears the timer when a task ends while you’re away.',
+    liveActivitySystemOff: 'Live Activities for Greenhouse are off in Settings.',
+    liveActivityLog: 'Of the last {total} task ends, {ended} were cleared in the background.',
   },
   /** Bots (the product's Agents; code keeps `bots`) — split by owning package under ./bots (spec §2.6), mounted here once. */
   bots: {
@@ -633,6 +643,7 @@ export const en = {
     ...botsCardsEn,
     ...botsNavEn,
     ...botsManageEn,
+    ...botsComputerEn,
   },
 };
 

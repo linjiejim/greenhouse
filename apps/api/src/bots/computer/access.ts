@@ -462,33 +462,6 @@ export async function writeComputerFile(
 const DESKTOP_ENV = { DISPLAY: ':0', XAUTHORITY: '/home/browser/.Xauthority', HOME: '/home/browser' };
 
 /**
- * Full-desktop PNG (what the member's viewer shows), taken as uid `browser`.
- * Never starts the computer and never counts as activity: a page polling for
- * a thumbnail must not keep a computer alive (or wake it).
- */
-export async function captureDesktop(userId: string): Promise<Buffer> {
-  const { host } = requireComputerRuntime();
-  const row = await getDb().botComputers.get(userId);
-  if (row?.state !== 'running') throw new ComputerUnavailableError('stopped', 'The computer is not running');
-  try {
-    const result = await host.exec({
-      container: row.container_name,
-      user: 'browser',
-      env: DESKTOP_ENV,
-      argv: ['import', '-window', 'root', 'png:-'],
-      timeoutMs: 30_000,
-      maxStdoutBytes: 32 * 1024 * 1024,
-    });
-    if (result.code !== 0 || result.stdout.length === 0) {
-      throw new ComputerDockerError('failed', result.stderr.trim() || 'Screenshot failed');
-    }
-    return result.stdout;
-  } catch (err) {
-    return await containerFailed(userId, err);
-  }
-}
-
-/**
  * Bring the browser window back (`gh-window restore`, as uid `browser`):
  * every Chromium window mapped and raised, a new one opened when none is
  * left. Backs the "back to the browser" button and every hand-back: a

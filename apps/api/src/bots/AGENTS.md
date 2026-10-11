@@ -44,6 +44,12 @@ bots/
   显而易见且安全的下一步直接做、否则最多给一个具体的下一步提议），与聊天页 `sprouty.yaml` 的 `## Communication`
   同一份措辞；模板守则只补岗位相关的话，不重复它。紧跟其后的「Cards speak for themselves」：Bot 发起卡片（审批 / 新建 Bot /
   后台任务 / 登录 / 守则修改）后不复述卡片内容，最多一句「你决定后会怎样」——成员看得到卡片。
+- **电脑产物只给成员要的**（2026-10-11，[spec](../../../../docs/specs/20261011-mobile-computer.md)）：`browser screenshot`
+  只在成员要看页面时拍——模型拿不到像素（结果只有一句回执、`snapshot` 为空），截图不能拿来「检查」自己的操作；
+  `computer share_file` 只交成员要的成品，不发进度 / 日志 / 中间文件。工具描述（`tools/meta.ts`）与 S1 规则
+  （`engine/prompt.ts`）各说一遍；后台任务保留截图（「每天早上截一张看板给我」是正当用法），同样只在被要求时拍。
+  成员随时能在电脑面板（web）/ 电脑页（手机）看实时画面、翻文件。两种结果都是 `type:'file'`；客户端把图片画成**一张图**
+  （下载在预览里，加载失败才退回文件卡），不再在图下多画一张同名下载卡。
 - **Bot 就是 Agent 身份**（2026-10-07 收敛，[spec](../../../../docs/specs/20261007-agent-bot-convergence.md)；
   推翻 20261005 的 D2）：原「自定义 Agent」表已删，`bots` 吸收了它的 `description` / `tools`（null = 继承主人全部
   有效工具，列表 = 只能收窄的过滤器）/ `max_steps` / 不可变版本（`bot_versions`，每次创建或编辑追加一版，供
@@ -251,6 +257,11 @@ bots/
   `POST /conversations/:id/read` 同时把这段对话的回复提醒标已读（并推 `notification:summary`）。
 - **发送前复核**（`notifications/push/deliver.ts`）：卡已处理 / 过期、回复已读或对话里有待处理卡、成员关了 `bots` 开关、
   这一类在这台设备上关了 → `suppressed`，不发。所以「已读」的判定必须只在成员真看着时发生（web 可见、手机线程可见）。
+- **后台任务的 Live Activity**（2026-10-10，[spec](../../../../docs/specs/20261010-mobile-live-activity.md)）：手机按
+  `GET /api/bots/tasks?state=active`（`engine/tasks.ts` `listMemberTasks`：所有对话里还在跑的 + 最近 30 分钟内结束的，每条带
+  `conversation_id`）对账。后台任务的「办完了」推送 `data` 带 `run` / `st`（取自事实的 `run_id` 与 `payload.status`——
+  投影器测试钉着这两个字段）；设备开了 `prefs.live_activity` 就加 `contentAvailable`，关了「办完了」则改发静默推送，手机原生
+  直接收起 Live Activity。**取消不建事实，也就不推**——在网页上取消的任务，手机上要等过期态或回前台对账才收起。
 
 ### 上下文管理（数字以代码为准）
 
@@ -312,6 +323,8 @@ Bot 身份本身（列表 / 新建 / 编辑 / 版本 / 文件夹 / 记忆）只�
 | POST | `/api/bots/conversations/:id/read` · `/compact` | — | `{ ok }`（同时把这段对话的「回复了你」提醒标为已读）· `{ digest }`（回合进行中 409） |
 | GET / POST / PATCH / DELETE | `/api/bots/conversations/:id/notes[/:noteId]` | `{ title, body?, status?, pinned? }` | 共享笔记 |
 | GET / POST | `/api/bots/conversations/:id/tasks` · `/api/bots/tasks/:runId/cancel` | — | 后台任务 |
+| GET | `/api/bots/tasks?state=active` | — | 我所有对话的后台任务：在跑的 + 最近 30 分钟内结束的（手机 Live Activity 对账；裸路径在 `src/index.ts` 单独挂 `requireFeature('bots')`） |
+| GET | `/api/bots/tasks?limit=` | — | 我所有对话的后台任务历史（`listMemberTaskHistory`：进行中在前、再按新到旧，默认 20、最多 50，每条带 `conversation_id`）——对话侧栏的「后台」组；其他 `state` 值 400 |
 | GET / POST | `/api/bots/requests` · `/api/bots/requests/:id` | `BotRequestDecision` | `{ request }`；冲突 409 `already_decided` / `deciding`；旧群的卡 409 `group_closed`（仍待处理的顺手撤成 `canceled`）；其他 409 带具体 code（`BotRequestErrorCode`：`page_gone` / `origin_mismatch` / `no_fields` / `failed` / `invalid` / `limit` / `computer_restarted` / `bot_gone`）且卡片保持待处理 |
 
 对话没有可编辑的设置：原 `PATCH /api/bots/conversations/:id`（群标题 / 群规 / 负责人 / Bot 互聊开关）已删除。
@@ -345,7 +358,6 @@ Bot 等着用电脑，交还即唤醒它；`payload.kind:'captcha'` = 人机验�
 | POST | `/api/bots/computer/takeover` | — | `ComputerStatusView` |
 | POST | `/api/bots/computer/handback` | `{ note?, request_id?, session_id? }` | 结算点名的接管 / 登录卡（须属于 `session_id`），否则该会话里唯一的待处理接管 / 登录卡，否则只释放租约——从不跨会话猜 |
 | POST | `/api/bots/computer/type` | `{ text }` | `{ ok }`（成员持有租约；写入焦点，支持中文） |
-| GET | `/api/bots/computer/screenshot` | — | `image/png`；不唤醒电脑，停着时 `409 stopped` |
 | PUT | `/api/bots/computer/settings` | `{ timezone: string \| null }`（IANA；null = 部署默认） | `ComputerStatusView`（下次启动生效；`lang` 来自成员 locale，`BOTS_COMPUTER_LANG` 覆盖） |
 | POST | `/api/bots/computer/restore-window` | — | `{ ok }`（`gh-window restore`；停着时 `409 stopped`；每次交还后也会自动跑） |
 | POST | `/api/bots/computer/terminal-token` | — | `{ token, expires_at }`（60 s、一次性，用途与观看票据互不通用） |

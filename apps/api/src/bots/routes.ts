@@ -16,7 +16,8 @@
  * PATCH  /api/bots/conversations/:id/notes/:noteId    — 修改共享笔记
  * DELETE /api/bots/conversations/:id/notes/:noteId    — 删除共享笔记
  * GET    /api/bots/conversations/:id/tasks            — 本对话的后台任务
- * GET    /api/bots/tasks                              — 我全部对话的后台任务（?limit=，默认 20、最多 50；进行中在前），每行带派出它的对话 session_id
+ * GET    /api/bots/tasks                              — 我全部对话的后台任务（?limit=，默认 20、最多 50；进行中在前，再列最近结束的），每行带派出它的对话 conversation_id（侧栏「后台」）
+ * GET    /api/bots/tasks?state=active                 — 我所有对话里在跑的后台任务 + 最近 30 分钟内结束的（手机 Live Activity 对账用）
  * POST   /api/bots/tasks/:runId/cancel                — 取消后台任务（Runtime 取消语义）
  * GET    /api/bots/requests                           — 「需要你」请求（?status=pending）
  * POST   /api/bots/requests/:id                       — 处理请求（审批 / 建 Bot / 开始任务 / 登录 / 交还），已处理 409 already_decided、处理中 409 deciding、旧群聊的卡 409 group_closed
@@ -80,7 +81,13 @@ import { writeGreeting } from './engine/greeting.js';
 import { deliverToConversation } from './engine/inbox.js';
 import { nextFreeName, validateBotInstructions, validateBotName, validateBotRole } from './engine/naming.js';
 import { decideBotRequest, RequestDecisionError } from './engine/requests.js';
-import { cancelBotTask, listConversationTasks, listMemberTasks, MEMBER_TASKS_MAX } from './engine/tasks.js';
+import {
+  cancelBotTask,
+  listConversationTasks,
+  listMemberTaskHistory,
+  listMemberTasks,
+  MEMBER_TASKS_MAX,
+} from './engine/tasks.js';
 import { estimateRows, readTail } from './engine/transcript.js';
 import { NOTE_BODY_MAX, NOTE_TITLE_MAX } from './tools/conversation.js';
 import {
@@ -739,12 +746,16 @@ export function createBotsRoutes() {
         return c.json({ tasks: await listConversationTasks(db, user.id, conversation.session_id) });
       })
 
-      // ── GET /api/bots/tasks — every conversation's background tasks (the sidebar's "Background") ──
+      // ── GET /api/bots/tasks — every conversation's background tasks: the sidebar's "Background" (bare)
+      //    and the phone's Live Activity reconcile (?state=active) ──
       .get('/tasks', async (c) => {
         const user = getAuthUser(c);
+        const state = c.req.query('state');
+        if (state === 'active') return c.json({ tasks: await listMemberTasks(getDb(), user.id) });
+        if (state !== undefined) return c.json({ error: 'state must be "active"' }, 400);
         const raw = Number(c.req.query('limit') ?? 20);
         const limit = Number.isInteger(raw) && raw > 0 ? Math.min(raw, MEMBER_TASKS_MAX) : 20;
-        return c.json({ tasks: await listMemberTasks(getDb(), user.id, limit) });
+        return c.json({ tasks: await listMemberTaskHistory(getDb(), user.id, limit) });
       })
 
       // ── POST /api/bots/tasks/:runId/cancel ──

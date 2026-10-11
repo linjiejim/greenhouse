@@ -42,7 +42,6 @@ vi.mock('../runtime.js', () => ({
   stopUserComputer: vi.fn(),
 }));
 vi.mock('../access.js', () => ({
-  captureDesktop: vi.fn(),
   restoreBrowserWindow: mocks.restoreBrowserWindow,
   redactFilledSecrets: (_userId: string, text: string) => text.replaceAll('hunter2', '••••••'),
   containerFailed: vi.fn(),

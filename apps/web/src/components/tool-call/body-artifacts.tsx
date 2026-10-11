@@ -257,12 +257,12 @@ function BodyArtifactItem({ call, ctx }: { call: ArtifactCall; ctx: ArtifactCtx 
         downloadError={() => toast(t('fileArtifact.downloadFailed'), 'error')}
       />
     );
-    // A picture (a Bot's browser screenshot, a chart it shared) is shown, not
-    // just offered as a download — fetched with the member's token like the file.
+    // A picture (a Bot's browser screenshot, a chart it shared) is shown once,
+    // fetched with the member's token like the file: its preview has the
+    // download, so no second card under it. The card returns if it won't load.
     return isImageFileArtifact(out) ? (
-      <div className="space-y-1.5" data-testid="file-artifact-image">
-        <FileArtifactImage src={downloadUrl} name={name} />
-        {card}
+      <div data-testid="file-artifact-image">
+        <FileArtifactImage src={downloadUrl} name={name} fallback={card} />
       </div>
     ) : (
       card
@@ -353,7 +353,7 @@ function isImageFileArtifact(out: Record<string, unknown>): boolean {
   return type ? isSafeAttachmentPreview('image', type) : IMAGE_FILE_EXT.test(String(out.name ?? ''));
 }
 
-function FileArtifactImage({ src, name }: { src: string; name: string }) {
+function FileArtifactImage({ src, name, fallback }: { src: string; name: string; fallback: React.ReactNode }) {
   const [previewUrl, setPreviewUrl] = React.useState<string | null>(null);
   return (
     <>
@@ -362,6 +362,7 @@ function FileArtifactImage({ src, name }: { src: string; name: string }) {
         alt={name}
         className="max-h-80 max-w-full rounded-lg border border-edge object-contain"
         onOpen={setPreviewUrl}
+        fallback={fallback}
       />
       <MediaPreviewDialog
         open={previewUrl !== null}

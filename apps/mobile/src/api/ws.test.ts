@@ -93,6 +93,13 @@ describe('realtimeUrl / parseFrame', () => {
     });
     expect(parseFrame('{"type":"bots:conversation","sessionId":"s"}')).toEqual({ type: 'bots:conversation', sessionId: 's' });
     expect(parseFrame('{"type":"bots:attention","pending":3}')).toEqual({ type: 'bots:attention', pending: 3 });
+    expect(parseFrame('{"type":"bots:computer","state":"running","controller":"user"}')).toEqual({
+      type: 'bots:computer',
+      state: 'running',
+      controller: 'user',
+    });
+    expect(parseFrame('{"type":"bots:computer","state":"melting","controller":"user"}')).toBeNull();
+    expect(parseFrame('{"type":"bots:computer","state":"running"}')).toBeNull();
     expect(parseFrame('{"type":"notification:new","id":1}')).toBeNull();
     expect(parseFrame('{"type":"chat:run","sessionId":"s","status":"running"}')).toBeNull();
     expect(parseFrame('{"type":"chat:run","sessionId":"s","runId":"r","status":"weird"}')).toBeNull();

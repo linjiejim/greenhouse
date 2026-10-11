@@ -16,8 +16,10 @@ import {
   BotTaskError,
   cancelBotTask,
   listConversationTasks,
+  listMemberTaskHistory,
   listMemberTasks,
   MAX_RUNNING_TASKS_PER_MEMBER,
+  RECENT_TASK_WINDOW_MS,
 } from '../tasks.js';
 
 vi.mock('../../../ws/connection-manager.js', () => ({ connectionManager: { sendToUser: vi.fn() } }));
@@ -113,16 +115,16 @@ describe('background tasks', () => {
     // The newer one ends: a live task outranks recency.
     expect(await cancelBotTask(db, user.id, second.runId)).toBe('canceled');
 
-    const tasks = await listMemberTasks(db, user.id);
-    expect(tasks.map((task) => [task.run_id, task.session_id, task.bot_id, task.status])).toEqual([
+    const tasks = await listMemberTaskHistory(db, user.id);
+    expect(tasks.map((task) => [task.run_id, task.conversation_id, task.bot_id, task.status])).toEqual([
       [first.runId, conversationId, sage.id, 'queued'],
       [second.runId, otherConversation, quill.id, 'canceled'],
     ]);
     expect(tasks[0]).toMatchObject({ title: 'Check links' });
-    expect(await listMemberTasks(db, user.id, 1)).toHaveLength(1);
+    expect(await listMemberTaskHistory(db, user.id, 1)).toHaveLength(1);
     // Another member sees none of them.
     const other = await createInternalTestUser(db, { email: `bots-tasks-member-${Date.now()}@test.local` });
-    expect(await listMemberTasks(db, other.id)).toEqual([]);
+    expect(await listMemberTaskHistory(db, other.id)).toEqual([]);
   });
 
   it(`runs at most ${MAX_RUNNING_TASKS_PER_MEMBER} at once per member`, async () => {
@@ -276,6 +278,54 @@ describe('background tasks', () => {
     // owner) and lands once they have Bots again.
     const queued = await db.bots.listPendingInbox(conversationId);
     expect(queued.map((row) => [row.kind, JSON.parse(row.payload).status])).toEqual([['task_report', 'failed']]);
+  });
+
+  it('lists the member’s tasks across conversations for the phone: running ones, and ended ones for half an hour', async () => {
+    const ivy = await db.bots.createBot({ user_id: user.id, name: 'Ivy', role: 'Writer', instructions: 'Be brief.' });
+    const ivyConversation = (await db.bots.ensureDirectConversation(user.id, ivy.id)).session_id;
+    const sageTask = await admitBotTask({
+      db,
+      userId: user.id,
+      conversationId,
+      bot: sage,
+      title: 'Check links',
+      brief: 'b',
+      requestId: 'req-member-1',
+    });
+    const ivyTask = await admitBotTask({
+      db,
+      userId: user.id,
+      conversationId: ivyConversation,
+      bot: ivy,
+      title: 'Draft the note',
+      brief: 'b',
+      requestId: 'req-member-2',
+    });
+
+    const listed = await listMemberTasks(db, user.id);
+    expect(listed.map((task) => [task.run_id, task.conversation_id, task.bot_id, task.status])).toEqual(
+      expect.arrayContaining([
+        [sageTask.runId, conversationId, sage.id, 'queued'],
+        [ivyTask.runId, ivyConversation, ivy.id, 'queued'],
+      ]),
+    );
+    // the per-conversation list carries the conversation too
+    expect((await listConversationTasks(db, user.id, ivyConversation))[0]).toMatchObject({
+      run_id: ivyTask.runId,
+      conversation_id: ivyConversation,
+    });
+
+    // an ended task stays for half an hour (a phone back in the foreground ends its Live Activity), then goes
+    expect(await cancelBotTask(db, user.id, sageTask.runId)).toBe('canceled');
+    expect((await listMemberTasks(db, user.id)).find((task) => task.run_id === sageTask.runId)?.status).toBe(
+      'canceled',
+    );
+    const later = await listMemberTasks(db, user.id, Date.now() + RECENT_TASK_WINDOW_MS + 60_000);
+    expect(later.map((task) => task.run_id)).toEqual([ivyTask.runId]);
+
+    // nobody else's
+    const other = await createInternalTestUser(db, { email: `bots-tasks-member-${Date.now()}@test.local` });
+    expect(await listMemberTasks(db, other.id)).toEqual([]);
   });
 
   it('a canceled queued task reports the cancellation', async () => {

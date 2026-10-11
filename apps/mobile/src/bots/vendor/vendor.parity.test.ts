@@ -222,6 +222,14 @@ describe('declaration-verbatim copies', () => {
     for (const [file, names] of table) expectDeclarationsVendored(`${WEB_BOTS}/${file}`, helpers, names);
   });
 
+  it('web computer phase (computer-phase.tsx)', () => {
+    expectDeclarationsVendored(`${WEB_BOTS}/computer-phase.tsx`, `${MOBILE}/bots/vendor/computer-phase.ts`, [
+      'ComputerPhase',
+      'computerPhase',
+      'isTransientPhase',
+    ]);
+  });
+
   it('the stream union names every canonical event (Bots turns included)', () => {
     const members = (path: string) => {
       const sf = parse(path);
@@ -286,6 +294,24 @@ describe('pinned tripwires', () => {
     );
   });
 
+  it('web computer phase labels and reasons ↔ mobile vendor/computer-phase.ts', () => {
+    expectPinnedText(
+      `${WEB_BOTS}/computer-phase.tsx`,
+      (sf) => [declaration(sf, 'phaseLabelKey'), declaration(sf, 'REASON_KEYS')],
+      '6d5b96ec7090fc6fe8a45185c2f552cc6654fdcda31c0ff16ea8c704564f34d3',
+      'apps/mobile/src/bots/vendor/computer-phase.ts',
+    );
+  });
+
+  it('web screen reconnects (computer-screen.tsx) ↔ mobile computer/use-computer-screen.ts', () => {
+    expectPinnedText(
+      `${WEB_BOTS}/computer-screen.tsx`,
+      (sf) => [declaration(sf, 'MAX_RETRIES'), declaration(sf, 'MAX_BACKOFF_MS'), declaration(sf, 'backoffDelay')],
+      '15d17e3618aaf751bd385a5f4c29797256b4e58231b46086ffa946f37eee92a4',
+      'apps/mobile/src/bots/computer/use-computer-screen.ts',
+    );
+  });
+
   it('web settled-card labels (settledLabelKey) ↔ mobile cards/decision.ts settledReceipt', () => {
     expectPinnedText(
       `${WEB_BOTS}/request-decision.ts`,
@@ -338,6 +364,8 @@ describe('behaviour', () => {
     const api = parse('packages/types/src/api.ts');
     const aliases: Record<string, string> = {
       ChatRunStatus: normalise((declaration(api, 'ChatRunStatus') as ts.TypeAliasDeclaration).type.getText(api)),
+      // the server spells the computer state as an inline import; both sides name the same vendored type
+      "import('./bots.js').ComputerState": 'ComputerState',
     };
     const frames = (path: string, union: string) => {
       const sf = parse(path);
@@ -366,6 +394,7 @@ describe('behaviour', () => {
     const mobile = frames(`${MOBILE}/bots/contract.ts`, 'ServerWsWire');
     expect(Object.keys(mobile).sort()).toEqual([
       "'bots:attention'",
+      "'bots:computer'",
       "'bots:conversation'",
       "'chat:run'",
       "'connected'",

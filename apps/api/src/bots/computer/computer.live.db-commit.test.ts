@@ -156,12 +156,6 @@ describe.skipIf(!LIVE)('bot computer (live Docker)', () => {
     ).rejects.toThrow();
   }, 60_000);
 
-  it('captures the desktop', async () => {
-    const png = await access.captureDesktop(user.id);
-    expect(png.subarray(1, 4).toString('latin1')).toBe('PNG');
-    expect(png.length).toBeGreaterThan(5_000);
-  }, 60_000);
-
   it('serves the live viewer over a real WebSocket, view-only until take-over', async () => {
     const { createComputerViewerRoutes } = await import('./viewer.js');
     const { createViewToken } = await import('./view-token.js');

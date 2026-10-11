@@ -56,7 +56,7 @@ function task(run_id: string, bot_id: string, status: BotTaskView['status'], tit
     created_at: '2026-10-05T00:00:00.000Z',
     started_at: null,
     ended_at: null,
-    session_id: `dm-${bot_id}`,
+    conversation_id: `dm-${bot_id}`,
   };
 }
 

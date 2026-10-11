@@ -4,12 +4,14 @@
  * (./request-card.tsx and the kind files beside it, the sheets under
  * app/bots/) only render what these functions decide.
  *
- * Honest button mapping (spec docs/specs/20261008-mobile-bots.md §2.5.4, D11):
- * the phone cannot see the computer, so a human check can only be skipped, a
- * Bot's take-over request is skipped or confirmed as done on the web, and a
- * take-over the computer raised itself is only handed back. Every button maps
- * to one `BotRequestDecision` the server reads exactly that way
- * (apps/api/src/bots/computer/lease.ts — approve = "done, hand back").
+ * Computer cards (spec docs/specs/20261011-mobile-computer.md §2.4 — it
+ * replaces the 20261008 "the phone cannot see the computer" mapping, D11): a
+ * human check is verified and a Bot's take-over request handled on the
+ * computer page (`computer` opens it and takes over; its Done hands back for
+ * the card), or skipped; a take-over the computer raised itself is handed back
+ * or looked at. Every other button maps to one `BotRequestDecision` the server
+ * reads exactly that way (apps/api/src/bots/computer/lease.ts — approve =
+ * "done, hand back", deny = "skip").
  *
  * Ports of web logic that is inlined in components there, each named below:
  * - `settledReceipt` / `statusBadge` ← request-decision.ts `settledLabelKey`
@@ -217,13 +219,14 @@ function firstLine(value: string): string | null {
 // ─── Buttons ─────────────────────────────────────────────
 
 /**
- * One decision button. `approve` / `always` / `deny` / `finished` post a
- * decision (`decisionFor`); `edit` (a proposed Bot → the Bot form) and
- * `signIn` (→ the secure sign-in sheet) open a sheet instead. `confirm` asks
- * first (system alert). At most one per card is `prominent`.
+ * One decision button. `approve` / `always` / `deny` post a decision
+ * (`decisionFor`); `edit` (a proposed Bot → the Bot form), `signIn` (→ the
+ * secure sign-in sheet) and `computer` (→ the computer page, taking over for a
+ * human check or a Bot's request) open a screen instead. `confirm` asks first
+ * (system alert). At most one per card is `prominent`.
  */
 export type CardButton = {
-  id: 'approve' | 'always' | 'deny' | 'edit' | 'signIn' | 'finished';
+  id: 'approve' | 'always' | 'deny' | 'edit' | 'signIn' | 'computer';
   prominent: boolean;
   confirm?: boolean;
 };
@@ -258,15 +261,16 @@ export function cardButtons(r: BotRequestView): CardButton[] {
         { id: 'signIn', prominent: true },
       ];
     case 'handback':
-      return [{ id: 'approve', prominent: true }];
-    // Nobody can pass the check from the phone: answering approve would tell the Bot it was done.
+      return [
+        { id: 'computer', prominent: false },
+        { id: 'approve', prominent: true },
+      ];
+    // Done on the computer page (its Done hands back for this card) — never "done" from the card itself.
     case 'captcha':
-      return [{ id: 'deny', prominent: false }];
-    // The server reads approve as "done, hand back" — offered only behind a confirmation.
     case 'takeover':
       return [
         { id: 'deny', prominent: false },
-        { id: 'finished', prominent: false, confirm: true },
+        { id: 'computer', prominent: true },
       ];
     default:
       return [];
@@ -283,8 +287,8 @@ export function buttonLabel(r: Pick<BotRequestView, 'kind' | 'payload'>, id: Car
       return { key: 'bots.card.editFirst' };
     case 'signIn':
       return { key: 'bots.card.signIn' };
-    case 'finished':
-      return { key: 'bots.card.finished' };
+    case 'computer':
+      return { key: kind === 'captcha' ? 'bots.card.verify' : kind === 'takeover' ? 'bots.card.takeOver' : 'bots.card.openComputer' };
     case 'deny': {
       const deny: Partial<Record<CardKind, TranslationKey>> = {
         task_start: 'bots.card.cancel',
@@ -308,9 +312,9 @@ export function buttonLabel(r: Pick<BotRequestView, 'kind' | 'payload'>, id: Car
   }
 }
 
-/** The decision a button posts; null for the two that open a sheet instead. */
+/** The decision a button posts; null for the ones that open a screen instead. */
 export function decisionFor(id: CardButton['id']): BotRequestDecision | null {
-  if (id === 'approve' || id === 'finished') return { decision: 'approve' };
+  if (id === 'approve') return { decision: 'approve' };
   if (id === 'always') return { decision: 'always' };
   if (id === 'deny') return { decision: 'deny' };
   return null;

@@ -10,7 +10,7 @@
 import { describe, expect, it } from 'vitest';
 import type { BotsPost, ChatRunProbe, RunStreamEvent } from '../../api/chat';
 import type { BotMessage, BotRequestView } from '../../shared/bots';
-import type { RealtimeStatus, ThreadEffect } from '../contract';
+import type { RealtimeEvent, RealtimeStatus, ThreadEffect } from '../contract';
 import type { BotsStoreDeps } from '../store-core';
 import { ThreadCache } from './cache';
 import {
@@ -32,6 +32,7 @@ import {
   FakeThreadApi,
   makeStore,
   message,
+  page,
   request,
 } from './test-fakes';
 
@@ -125,6 +126,112 @@ describe('opening', () => {
     expect(t.store.getState().visibleThread).toBeNull();
   });
 
+  it.each([
+    ['reconnect', { type: 'resync' }],
+    ['run completion', { type: 'chat:run', sessionId: SID, runId: 'r1', status: 'completed' }],
+    ['run failure', { type: 'chat:run', sessionId: SID, runId: 'r1', status: 'error' }],
+    ['conversation change', { type: 'bots:conversation', sessionId: SID }],
+  ] satisfies Array<[string, RealtimeEvent]>)(
+    'publishes the opening page before one queued %s catch-up, without dropping the catch-up',
+    async (_name, event) => {
+      const first = deferred<void>();
+      const catchUp = deferred<void>();
+      const t = await setup({ prepare: (fake) => (fake.conversationGate = first.promise) });
+      expect(t.snap().load).toBe('loading');
+      // Any reconnect GET is slower than the already pending opening page.
+      t.fake.conversationGate = catchUp.promise;
+      for (let i = 0; i < 3; i += 1) t.rt.emit(event);
+      await t.time.advance(CONVERSATION_RELOAD_MS);
+
+      // The initial GET is still useful; the catch-up is slower and must not hold it back.
+      first.resolve();
+      await t.time.advance(0);
+      expect(t.snap().load).toBe('ready');
+      expect(seqs(t.snap().messages)).toEqual([0]);
+      expect(t.reloads()).toBe(2);
+
+      t.fake.server.messages.push(message(1));
+      catchUp.resolve();
+      await t.time.advance(0);
+      expect(seqs(t.snap().messages)).toEqual([0, 1]);
+      expect(t.reloads()).toBe(2);
+    },
+  );
+
+  it.each(['resync', 'running push'] as const)(
+    'publishes the opening page before %s attaches to an active run, then resumes it',
+    async (event) => {
+      const first = deferred<void>();
+      const catchUp = deferred<void>();
+      const t = await setup({ prepare: (fake) => (fake.conversationGate = first.promise) });
+      t.fake.conversationGate = catchUp.promise;
+      t.fake.probe = live('r1');
+      t.fake.attaches.push(
+        new FakeStream([
+          turnStart('bot_a', 'user', { seq: 0, replayed: true }),
+          text('Already working', { seq: 1, replayed: true }),
+        ]),
+      );
+      // The app-wide sync owns the busy mark; the opening page must not delay it.
+      t.store.getState().setRunning(SID, 'r1');
+      t.rt.emit(
+        event === 'resync' ? { type: 'resync' } : { type: 'chat:run', sessionId: SID, runId: 'r1', status: 'running' },
+      );
+      await t.time.advance(0);
+      expect(t.snap().runActive).toBe(true);
+
+      first.resolve();
+      await t.time.advance(0);
+      expect(t.snap().load).toBe('ready');
+      expect(seqs(t.snap().messages)).toEqual([0]);
+      expect(t.fake.calls.attach).toEqual([-1]);
+      await t.time.advance(40);
+      expect(t.snap().run?.segments[0].text).toBe('Already working');
+
+      t.fake.server.messages.push(message(1));
+      catchUp.resolve();
+      await t.time.advance(0);
+      expect(seqs(t.snap().messages)).toEqual([0, 1]);
+      expect(t.fake.calls.attach).toEqual([-1]);
+      expect(t.snap().runActive).toBe(true);
+    },
+  );
+
+  it('shows an initial failure and still runs the queued reconnect catch-up', async () => {
+    const first = deferred<void>();
+    const catchUp = deferred<void>();
+    const t = await setup({ prepare: (fake) => (fake.conversationGate = first.promise) });
+    t.rt.emit({ type: 'resync' });
+    t.fake.conversationGate = catchUp.promise;
+    t.fake.conversationFailure = 500;
+    first.resolve();
+    await t.time.advance(0);
+    expect(t.snap().load).toBe('error');
+    expect(t.reloads()).toBe(2);
+
+    t.fake.conversationFailure = null;
+    catchUp.resolve();
+    await t.time.advance(0);
+    expect(t.snap().load).toBe('ready');
+    expect(seqs(t.snap().messages)).toEqual([0]);
+  });
+
+  it('keeps latest-answer-wins for overlapping reloads after opening', async () => {
+    const t = await setup();
+    const older = deferred<Awaited<ReturnType<FakeThreadApi['api']['getConversation']>>>();
+    const newer = deferred<Awaited<ReturnType<FakeThreadApi['api']['getConversation']>>>();
+    let calls = 0;
+    t.fake.api.getConversation = () => (++calls === 1 ? older.promise : newer.promise);
+    const first = t.engine.reload();
+    const second = t.engine.reload();
+    newer.resolve({ ok: true, value: page(SID, rows(0, 3)) });
+    await second;
+    older.resolve({ ok: true, value: page(SID, rows(0, 2)) });
+    await first;
+    await t.time.advance(0);
+    expect(seqs(t.snap().messages)).toEqual([0, 1, 2]);
+  });
+
   it('404 → not_found; 403 → forbidden and the Bots surfaces close', async () => {
     const gone = await setup({ prepare: (fake) => (fake.conversationFailure = 404) });
     expect(gone.snap().load).toBe('not_found');
@@ -153,6 +260,73 @@ describe('opening', () => {
     expect(t.effects).toContainEqual({ type: 'run-started', runKey: `${SID}:r1`, byMe: false });
     expect(t.effects).toContainEqual({ type: 'segment-start', botId: 'bot_a', replayed: true });
     expect(t.snap().runActive).toBe(true);
+  });
+});
+
+describe('account and station generations', () => {
+  it('drops a pending opening page and its queued catch-up as soon as the store resets', async () => {
+    const cache = new ThreadCache();
+    const first = deferred<void>();
+    const t = await setup({ cache, prepare: (fake) => (fake.conversationGate = first.promise) });
+    t.rt.emit({ type: 'resync' });
+    const renders = t.renders();
+    t.store.getState().reset();
+    expect(t.engine.isDisposed).toBe(true);
+    first.resolve();
+    await t.time.advance(0);
+
+    expect(t.renders()).toBe(renders);
+    expect(t.snap().load).toBe('loading');
+    expect(t.reloads()).toBe(1);
+    expect(t.fake.calls.markRead).toBe(0);
+    expect(cache.get(SID, t.store.getState().generation)).toBeNull();
+  });
+
+  it('never saves an old ready transcript under the new generation on reset or late unmount', async () => {
+    const cache = new ThreadCache();
+    const t = await setup({ cache });
+    expect(cache.get(SID, 0)?.messages).toHaveLength(1);
+    t.store.getState().reset();
+    expect(t.engine.isDisposed).toBe(true);
+    const generation = t.store.getState().generation;
+    expect(cache.get(SID, generation)).toBeNull();
+
+    const current = page(SID, [message(9)]);
+    cache.put(SID, generation, {
+      conversation: current.conversation,
+      messages: current.messages,
+      hasMore: false,
+      memoryStates: {},
+    });
+    t.store.getState().setVisibleThread(SID);
+    t.engine.dispose();
+    expect(seqs(cache.get(SID, generation)?.messages ?? [])).toEqual([9]);
+    expect(t.store.getState().visibleThread).toBe(SID);
+  });
+
+  it('drops a stale forbidden answer without closing Bots for the new account', async () => {
+    const gate = deferred<void>();
+    const t = await setup({ prepare: (fake) => (fake.conversationGate = gate.promise) });
+    t.store.getState().reset();
+    t.fake.conversationFailure = 403;
+    gate.resolve();
+    await t.time.advance(0);
+    expect(t.store.getState().error).toBeNull();
+    expect(t.snap().load).toBe('loading');
+  });
+
+  it('does no I/O if the identity changed between construction and the first subscription', async () => {
+    const time = new FakeClock();
+    const fake = new FakeThreadApi(SID);
+    const rt = new FakeRealtime(time.clock.now);
+    const { store } = makeStore({}, time.clock);
+    const engine = new ThreadEngine(SID, { api: fake.api, realtime: rt, store, clock: time.clock });
+    store.getState().reset();
+    engine.subscribe(() => {});
+    await time.advance(0);
+    expect(engine.isDisposed).toBe(true);
+    expect(fake.calls.getConversation).toEqual([]);
+    expect(fake.calls.probe).toBe(0);
   });
 });
 

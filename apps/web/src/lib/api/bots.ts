@@ -394,10 +394,12 @@ export async function listConversationTasks(sessionId: string): Promise<{ tasks:
 }
 
 /** Every conversation's background tasks, live first — the conversations sidebar's "Background" group. */
-export async function listMemberTasks(): Promise<{ tasks: Array<BotTaskView & { session_id: string }> }> {
-  const res = await rpc.api.bots.tasks.$get();
+export async function listMemberTasks(): Promise<{ tasks: Array<BotTaskView & { conversation_id: string }> }> {
+  const res = await rpc.api.bots.tasks.$get({ query: {} });
   if (!res.ok) throw await failure(res);
-  return res.json();
+  // The bare list always names the conversation (`listMemberTaskHistory`); the route's type also
+  // covers `?state=active`, where the field is optional.
+  return (await res.json()) as { tasks: Array<BotTaskView & { conversation_id: string }> };
 }
 
 export async function cancelBotTask(runId: string): Promise<void> {

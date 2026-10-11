@@ -1037,7 +1037,7 @@ export class BrowserSession {
               type: 'file',
               ...file,
               content_type: 'image/png',
-              note: 'Screenshot saved. The member sees it as an image card in this conversation (only they can open it); do not paste its link. Mention it only if they asked to see the page.',
+              note: 'Screenshot saved for the member: they see it as an image in this conversation (only they can open it). You cannot see it — do not describe it or paste its link.',
             };
             observedOrigins.set(shot, [originOfUrl(page.url())]);
             return shot;

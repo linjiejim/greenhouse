@@ -18,7 +18,7 @@ import { ACTIVE_TASK_STATUSES, TASK_POSE, TASK_STATUS_TONE } from './bot-task-do
 import { useBotDirectory } from './bots-store';
 import { openBotsConversation } from './navigation';
 
-type MemberTask = BotTaskView & { session_id: string };
+type MemberTask = BotTaskView & { conversation_id: string };
 
 const POLL_MS = 15_000;
 /** One refresh for a burst of thread events (a turn ending, a card, a report land together). */
@@ -98,7 +98,7 @@ export function BackgroundTasksSection({ query, onNavigate }: { query: string; o
             key={task.run_id}
             type="button"
             onClick={() => {
-              openBotsConversation(task.session_id);
+              openBotsConversation(task.conversation_id);
               onNavigate?.();
             }}
             // Never "active": a task is not a conversation — the thread it came from is the

@@ -212,7 +212,7 @@ describe('background tasks across conversations', () => {
     const mine = await call(jim, 'GET', '/tasks');
     expect(mine.status).toBe(200);
     expect(mine.json.tasks).toEqual([
-      expect.objectContaining({ run_id: runId, session_id: boot.json.dm_session_id, title: 'Check links' }),
+      expect.objectContaining({ run_id: runId, conversation_id: boot.json.dm_session_id, title: 'Check links' }),
     ]);
     // Out-of-range limits fall back to a sane page instead of failing.
     expect((await call(jim, 'GET', '/tasks?limit=0')).json.tasks).toHaveLength(1);

@@ -96,6 +96,7 @@ import { openNewChat } from '../nav';
 import { attentionCount, useBots } from '../store';
 import { BotAvatar, type AvatarSource } from '../ui/bot-avatar';
 import { useBotThread } from '../use-bot-thread';
+import { useStartupContent } from '../../startup/context';
 import { mentionToken, parseMentions } from '../vendor/mentions';
 import { buildTranscript, type TranscriptItem } from '../vendor/transcript';
 import { conversationTitle } from '../vendor/web-helpers';
@@ -237,6 +238,7 @@ export function BotThreadScreen({
   const focused = useIsFocused();
 
   const { snap, ctl } = useBotThread(sessionId);
+  useStartupContent(snap.load !== 'loading');
   const snapRef = useRef(snap);
   snapRef.current = snap;
   const byId = useBots((s) => s.byId);
@@ -954,13 +956,16 @@ export function BotThreadScreen({
   const headerActions = useMemo<ThreadHeaderActions>(
     () => ({
       openDrawer: () => navigation.dispatch(DrawerActions.openDrawer()),
+      openComputer: () => router.push({ pathname: '/bots/computer', params: { c: sessionId } }),
       askInChat: () => {
         const bot = latest.current.owner;
         if (bot) openNewChat(router, { profile: isSproutyBot(bot) ? 'sprouty' : `bot:${bot.id}` });
       },
     }),
-    [navigation, router],
+    [navigation, router, sessionId],
   );
+  // The member's computer is theirs, not one Bot's: offered on every thread once computers run here.
+  const hasComputer = useBots((s) => s.computer?.state === 'ready');
 
   /* ---------- rows ---------- */
   const runActive = snap.runActive;
@@ -1111,6 +1116,7 @@ export function BotThreadScreen({
         badge={badge}
         ownerName={owner?.name ?? null}
         canAsk={!group && !!owner && owner.status === 'active'}
+        hasComputer={hasComputer}
         actions={headerActions}
       />
 

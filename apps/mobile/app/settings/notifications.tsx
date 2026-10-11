@@ -8,7 +8,10 @@
  *    the system settings; never asked yet, switching on brings up the system prompt;
  *  - 这些时候提醒我 — needs you / a task finishes / replies (the device's prefs);
  *  - 隐私 — show previews (off by default: only who + what kind of thing);
- *  - 发一条测试通知 — the server sends this phone one push now (checks exp.host too).
+ *  - 发一条测试通知 — the server sends this phone one push now (checks exp.host too);
+ *  - 实时活动 — a Bot's background tasks on the lock screen / Dynamic Island (src/live-activity;
+ *    experimental, off by default, iOS 17+). It needs pushes on this station: a push is what
+ *    ends the activity while the app is away. While on, how often that worked lately.
  *
  * The page reads the station once on entry and whenever the app comes back to the
  * front (iOS settings may have changed). The Settings root shows the row only for a
@@ -19,10 +22,13 @@ import React, { useEffect, useState } from 'react';
 import { AppState, Linking } from 'react-native';
 import { Stack } from 'expo-router';
 import { Button, ProgressView, Section, Text, Toggle } from '@expo/ui/swift-ui';
-import { frame } from '@expo/ui/swift-ui/modifiers';
+import { disabled, frame } from '@expo/ui/swift-ui/modifiers';
+import { readTaskActivityLog } from '../../modules/widget-bridge';
 import { sendTestPush } from '../../src/api/push';
 import { useT } from '../../src/lib/i18n';
 import { setPushOff, setPushPrefs, syncPush, usePush } from '../../src/push/register';
+import { readLiveActivitySystem, setLiveActivityOn, useLiveActivity } from '../../src/live-activity/controller';
+import { tallyBackgroundEnds } from '../../src/live-activity/model';
 import type { PushPrefs } from '../../src/shared/push';
 import { useActiveStation } from '../../src/stations/use-active-station';
 import { alertError } from '../../src/ui/dialogs';
@@ -40,11 +46,17 @@ export default function SettingsNotifications() {
   const tokenFailed = usePush((s) => s.tokenFailed);
   const [busy, setBusy] = useState(false);
   const [testing, setTesting] = useState(false);
+  const laSupported = useLiveActivity((s) => s.supported);
+  const laOn = useLiveActivity((s) => s.on);
+  const laSystem = useLiveActivity((s) => s.systemEnabled);
 
   useEffect(() => {
     void syncPush();
+    readLiveActivitySystem();
     const sub = AppState.addEventListener('change', (state) => {
-      if (state === 'active') void syncPush();
+      if (state !== 'active') return;
+      void syncPush();
+      readLiveActivitySystem();
     });
     return () => sub.remove();
   }, []);
@@ -81,6 +93,18 @@ export default function SettingsNotifications() {
   const togglePref = async (key: keyof PushPrefs, value: boolean) => {
     if (!(await setPushPrefs({ [key]: value }))) alertError(t('push.saveFailed'));
   };
+
+  const toggleLiveActivity = async (next: boolean) => {
+    if (!(await setLiveActivityOn(next))) alertError(t('push.saveFailed'));
+  };
+  const laLog = laOn ? tallyBackgroundEnds(readTaskActivityLog()) : null;
+  const laFooter = !on
+    ? t('push.liveActivityNeedsPush')
+    : !laSystem
+      ? t('push.liveActivitySystemOff')
+      : laLog && laLog.total > 0
+        ? `${t('push.liveActivityFooter')}\n${t('push.liveActivityLog', { total: laLog.total, ended: laLog.ended })}`
+        : t('push.liveActivityFooter');
 
   const test = async () => {
     if (!device || testing) return;
@@ -158,6 +182,26 @@ export default function SettingsNotifications() {
                   </Button>
                 </Section>
               </>
+            ) : null}
+
+            {laSupported ? (
+              <Section title={t('push.liveActivity')} footer={<Text>{laFooter}</Text>}>
+                <Toggle
+                  isOn={on && laOn}
+                  onIsOnChange={(next) => void toggleLiveActivity(next)}
+                  modifiers={on ? undefined : [disabled(true)]}
+                >
+                  <Text>{t('push.liveActivityTasks')}</Text>
+                  <Text>{t('push.liveActivityExperimental')}</Text>
+                </Toggle>
+                {on && laOn && !laSystem ? (
+                  <Button onPress={() => void Linking.openSettings()}>
+                    <Text modifiers={[frame({ maxWidth: 9999, alignment: 'leading' })]}>
+                      {t('push.openSystemSettings')}
+                    </Text>
+                  </Button>
+                ) : null}
+              </Section>
             ) : null}
           </>
         )}
