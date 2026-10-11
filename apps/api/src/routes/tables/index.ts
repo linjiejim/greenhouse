@@ -1,8 +1,8 @@
 /**
  * Tables 路由 — /api/tables（Platform Kernel 适配层，每个端点都经 runtime.dispatch）
  *
- * 按领域拆成子路由（./bases ./schema ./views ./forms ./records ./automations
- * ./dashboards），在这里用 `.route('/', …)` 组合成一条链，AppType 因此仍带全部端点。
+ * 按领域拆成子路由（./bases ./schema ./views ./forms ./records ./imports
+ * ./automations ./dashboards），在这里用 `.route('/', …)` 组合成一条链，AppType 因此仍带全部端点。
  * 新端点加进所属领域的子路由；新领域在这里追加一个 `.route()`。
  *
  * Base 与成员（./bases.ts）
@@ -63,6 +63,11 @@
  * POST   /tables/:tableId/records/batch-validate     — 批量预校验
  * DELETE /tables/:tableId/records/:recordId          — revision 软删除
  *
+ * 导入（./imports.ts；CSV / Excel，归上传者与这张表）
+ * POST   /tables/:tableId/imports                    — 上传（multipart file ≤10 MB）→ 列、样例、类型推断、建议映射
+ * POST   /tables/:tableId/imports/:importId/validate — 按映射预检全部行（不写入）
+ * POST   /tables/:tableId/imports/:importId/commit   — 提交（每次写几秒；committing 时再调一次续写）
+ *
  * 自动化（./automations.ts）
  * GET    /bases/:baseId/automations                  — 自动化规则列表（builder）
  * POST   /bases/:baseId/automations                  — 创建规则
@@ -91,6 +96,7 @@ import { automationRoutes } from './automations.js';
 import { baseRoutes } from './bases.js';
 import { dashboardRoutes } from './dashboards.js';
 import { formRoutes } from './forms.js';
+import { importRoutes } from './imports.js';
 import { recordRoutes } from './records.js';
 import { schemaRoutes } from './schema.js';
 import { viewRoutes } from './views.js';
@@ -102,6 +108,7 @@ const tablesRoutes = new Hono<AppEnv>()
   .route('/', viewRoutes)
   .route('/', formRoutes)
   .route('/', recordRoutes)
+  .route('/', importRoutes)
   .route('/', automationRoutes)
   .route('/', dashboardRoutes);
 

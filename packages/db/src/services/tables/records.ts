@@ -120,6 +120,12 @@ export interface TableValidationContext {
 /** Extra work a caller runs inside the record's write transaction (e.g. the form submission row). */
 export interface RecordWriteHooks {
   inTransaction?: (tx: TablesTransaction, record: TableRecordRow) => Promise<void>;
+  /**
+   * Write inside this open transaction instead of opening one — an import
+   * commits 100 rows and its progress counter atomically. Validation happens
+   * before any statement; a database error aborts the caller's transaction.
+   */
+  within?: TablesTransaction;
 }
 
 export interface TablesRecordsDeps {
@@ -452,7 +458,7 @@ export function createTablesRecords(db: Db, deps: TablesRecordsDeps) {
     }
     assertEditableKeys(scope, input.values);
     const values = validateValuesWithContext(context, input.values, { requireAll: true, scope });
-    return db.transaction(async (tx) => {
+    const write = async (tx: TablesTransaction): Promise<TableRecordRow> => {
       await assertScopedWriteTargets(tx, { scope, context, recordId: null, values, previous: null });
       const now = nowIso();
       const computed = await compute.computeRecordValues(tx, input.table_id, values);
@@ -482,7 +488,8 @@ export function createTablesRecords(db: Db, deps: TablesRecordsDeps) {
       });
       if (hooks.inTransaction) await hooks.inTransaction(tx, created!);
       return created!;
-    });
+    };
+    return hooks.within ? write(hooks.within) : db.transaction(write);
   };
 
   const updateRecordWithContext = async (

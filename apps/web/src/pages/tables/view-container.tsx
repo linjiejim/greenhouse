@@ -56,6 +56,7 @@ import { orderedViewFields } from './view-fields';
 import { DEFAULT_RECORD_SORT, useRecordQuery } from './use-record-query';
 import { tableCapabilities } from './capabilities';
 import { isComputedField } from '../../components/tables/field-types';
+import { TablesImportWizard } from './import/import-wizard';
 
 interface TablesViewContainerProps {
   table: TableDefinition;
@@ -112,6 +113,7 @@ export function TablesViewContainer({ table, tables, role, access, users, focusR
   const [recycleBin, setRecycleBin] = useState(false);
   const [formsDialog, setFormsDialog] = useState(false);
   const [filterDialog, setFilterDialog] = useState(false);
+  const [importDialog, setImportDialog] = useState(false);
   const [pasting, setPasting] = useState(false);
   const currentUser = useAuthStore((state) => state.currentUser);
 
@@ -370,6 +372,7 @@ export function TablesViewContainer({ table, tables, role, access, users, focusR
         onOpenForms={() => setFormsDialog(true)}
         onAddField={() => setFieldDialog('new')}
         onAddRecord={() => openNewRecord()}
+        onImport={() => setImportDialog(true)}
       />
 
       {error && (
@@ -461,6 +464,17 @@ export function TablesViewContainer({ table, tables, role, access, users, focusR
               closeDetail();
             }}
             onRecordChanged={() => void refreshDetail()}
+          />
+          <TablesImportWizard
+            open={importDialog}
+            table={table}
+            fields={schema.fields}
+            canBuild={canBuild}
+            onClose={() => setImportDialog(false)}
+            onImported={() => {
+              void loadSchema();
+              void query.reload();
+            }}
           />
           <TablesFormsDialog
             open={formsDialog}

@@ -43,6 +43,8 @@ const SCOPE_PARAM = {
   validateBatchRecords: 1,
   batchUpsertRecords: 1,
   submitForm: 2,
+  commitImportChunk: 1,
+  matchImportRelationLabels: 3,
 } as const satisfies Partial<Record<keyof TablesService, number>>;
 
 /** Write method → index of its meta parameter. */
@@ -53,6 +55,7 @@ const META_PARAM = {
   restoreRecord: 2,
   batchUpsertRecords: 2,
   submitForm: 3,
+  commitImportChunk: 2,
 } as const satisfies Partial<Record<keyof TablesService, number>>;
 
 type S = TablesService;
@@ -69,6 +72,8 @@ type ScopeGuards = [
   Expect<RequiredParam<S['validateBatchRecords'], 1, TableAccessScope>>,
   Expect<RequiredParam<S['batchUpsertRecords'], 1, TableAccessScope>>,
   Expect<RequiredParam<S['submitForm'], 2, TableAccessScope>>,
+  Expect<RequiredParam<S['commitImportChunk'], 1, TableAccessScope>>,
+  Expect<RequiredParam<S['matchImportRelationLabels'], 3, TableAccessScope>>,
 ];
 type MetaGuards = [
   Expect<RequiredParam<S['createRecord'], 2, TableRecordWriteMeta>>,
@@ -77,6 +82,7 @@ type MetaGuards = [
   Expect<RequiredParam<S['restoreRecord'], 2, TableRecordWriteMeta>>,
   Expect<RequiredParam<S['batchUpsertRecords'], 2, TableRecordWriteMeta>>,
   Expect<RequiredParam<S['submitForm'], 3, TableRecordWriteMeta>>,
+  Expect<RequiredParam<S['commitImportChunk'], 2, TableRecordWriteMeta>>,
 ];
 
 describe('Tables record methods require an access scope and write meta', () => {

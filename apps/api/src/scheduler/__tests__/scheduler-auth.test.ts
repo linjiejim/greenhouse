@@ -44,6 +44,7 @@ vi.mock('../runtime-driver.js', () => ({
 vi.mock('../upkeep-jobs.js', () => ({
   startFrictionMiningJob: mocks.startFrictionMiningJob,
   startMemoryConsolidationJob: mocks.startMemoryConsolidationJob,
+  startTablesImportSweepJob: vi.fn(),
   stopUpkeepJobs: mocks.stopUpkeepJobs,
   startTablesFormUploadSweepJob: vi.fn(),
   startExtensionJobs: vi.fn(),

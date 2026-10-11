@@ -67,8 +67,6 @@ describe('Tables registration (manifest 1.3.0)', () => {
     'deleteAutomation',
     'triggerAutomation',
     'listRecordButtons',
-    'previewImport',
-    'commitImport',
     'listRecordActivity',
     'createComment',
     'updateComment',

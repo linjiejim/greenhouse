@@ -630,6 +630,26 @@ export interface TableRecordButton {
 
 // ─── Import ───────────────────────────────────────────────
 
+/**
+ * Types an import may give a field it creates for a column. Relations need a
+ * target table and attachments are never imported; computed types are derived.
+ */
+export const TABLE_IMPORT_CREATABLE_FIELD_TYPES = [
+  'text',
+  'long_text',
+  'number',
+  'boolean',
+  'date',
+  'datetime',
+  'single_select',
+  'multi_select',
+  'user',
+  'multi_user',
+  'url',
+  'email',
+  'phone',
+] as const satisfies readonly TableFieldType[];
+
 export interface TableImportColumn {
   index: number;
   header: string;
@@ -656,12 +676,43 @@ export interface TableImportCommitInput {
   hasHeader: boolean;
   /** Builders only: add missing select options instead of failing those cells. */
   createOptions?: boolean;
+  /** IANA zone for datetimes written without an offset (the importer's own). Default UTC. */
+  timezone?: string;
 }
 
 export interface TableImportResult {
   created: number;
+  /** The first 100 failed rows; `row` is the line in the file, counting the header. */
   failed: Array<{ row: number; errors: string[] }>;
   createdFieldIds: number[];
+  /** Every failed row (`failed` lists the first 100). */
+  failedCount?: number;
+}
+
+/**
+ * commitImport's answer. Each call writes for a few seconds; while `status`
+ * is `committing`, call again with the same input to continue (a resumed
+ * commit keeps the plan it started with).
+ */
+export interface TableImportProgress {
+  importId: string;
+  status: 'committing' | 'committed' | 'failed';
+  totalRows: number;
+  processedRows: number;
+  result: TableImportResult;
+  /** status = failed: why the import stopped. */
+  error?: string;
+}
+
+/** previewImport with a mapping: the same checks as the commit over every row, nothing written. */
+export interface TableImportValidation {
+  totalRows: number;
+  validRows: number;
+  /** The first 100 rows that would fail. */
+  failed: Array<{ row: number; errors: string[] }>;
+  failedCount: number;
+  /** Mapped required fields left empty, and required fields left unmapped (names). */
+  missingRequired: string[];
 }
 
 // ─── Conversational schema editing ───────────────────────

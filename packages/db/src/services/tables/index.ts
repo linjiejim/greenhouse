@@ -19,6 +19,8 @@
  *   forms.ts        forms and submissions
  *   automations.ts  rules, runs, enqueue entry point, legacy executor
  *   dashboards.ts   dashboards and widgets
+ *   imports.ts      CSV / Excel import lifecycle (stage, claim, chunked commit, sweep)
+ *   import-values.ts  cell text → field value, column inference (pure)
  *   resources.ts    resource → owning Base (the Base audit feed's reverse lookup)
  */
 
@@ -29,6 +31,7 @@ import { createTablesAutomations } from './automations.js';
 import { createTablesCompute } from './compute.js';
 import { createTablesDashboards } from './dashboards.js';
 import { createTablesForms } from './forms.js';
+import { createTablesImports } from './imports.js';
 import { createTablesMembers } from './members.js';
 import { createTablesRecords } from './records.js';
 import { createTablesResources } from './resources.js';
@@ -102,6 +105,39 @@ export type {
   TableRecordQueryResult,
   TableRecordWriteResult,
 } from './records.js';
+export {
+  TABLE_IMPORT_CHUNK_ROWS,
+  TABLE_IMPORT_MAX_COLUMNS,
+  TABLE_IMPORT_MAX_FAILURES,
+  TABLE_IMPORT_MAX_LIVE_PER_USER,
+  TABLE_IMPORT_MAX_ROWS,
+  tableImportDataRows,
+  tableImportError,
+  tableImportPlan,
+  tableImportResult,
+  tableImportRowNumber,
+  type CreateTableImportInput,
+  type TableImportChunkItem,
+  type TableImportChunkResult,
+  type TableImportClaim,
+  type TableImportPlan,
+  type TableImportPlanColumn,
+} from './imports.js';
+export {
+  buildImportUserDirectory,
+  coerceImportValue,
+  inferImportColumnType,
+  inferImportDateOrder,
+  matchImportHeader,
+  missingSelectLabels,
+  withImportedOptions,
+  type ImportCellResult,
+  type ImportDateOrder,
+  type ImportDirectoryUser,
+  type ImportField,
+  type ImportUserDirectory,
+  type ImportValueContext,
+} from './import-values.js';
 export type {
   CreateTableDashboardInput,
   CreateTableDashboardWidgetInput,
@@ -140,6 +176,7 @@ export function createTablesService(db: Db) {
     ...createTablesForms(db, { records: records.internal }),
     ...automations.service,
     ...createTablesDashboards(db),
+    ...createTablesImports(db, { records: records.internal }),
     ...createTablesResources(db),
   };
 }

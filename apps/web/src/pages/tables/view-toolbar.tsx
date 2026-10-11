@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { IconButton, SearchInput } from '../../components/ui';
-import { ClipboardList, Columns3, Filter, Plus, Trash2 } from '../../lib/icons';
+import { ClipboardList, Columns3, FileUp, Filter, Plus, Trash2 } from '../../lib/icons';
 import { useT } from '../../lib/i18n';
 
 interface TablesViewToolbarProps {
@@ -21,6 +21,8 @@ interface TablesViewToolbarProps {
   onOpenForms: () => void;
   onAddField: () => void;
   onAddRecord: () => void;
+  /** Open the CSV / Excel import wizard (shown to editors when given). */
+  onImport?: () => void;
 }
 
 export function TablesViewToolbar({
@@ -38,6 +40,7 @@ export function TablesViewToolbar({
   onOpenForms,
   onAddField,
   onAddRecord,
+  onImport,
 }: TablesViewToolbarProps) {
   const t = useT();
   const filterLabel =
@@ -64,6 +67,17 @@ export function TablesViewToolbar({
         {canDelete && (
           <IconButton label={t('tables.recycleBin')} tooltip="top" onClick={onOpenRecycleBin} className="sm:h-8 sm:w-8">
             <Trash2 size={14} />
+          </IconButton>
+        )}
+        {canEdit && onImport && (
+          <IconButton
+            label={t('tables.imports.action')}
+            tooltip="top"
+            onClick={onImport}
+            className="sm:h-8 sm:w-8"
+            data-testid="tables-import-open"
+          >
+            <FileUp size={14} />
           </IconButton>
         )}
         {canBuild && (

@@ -191,6 +191,8 @@ Subagent 以 child session 作为唯一 `source_id`，完整请求保存在 Run/
 | `table_dashboards` | PK `id`；UK `(base_id, name)` | Base 自定义仪表盘；`config JSONB`（`{version, filters: TableFilterControl[]}`）；revision 乐观并发 |
 | `table_dashboard_widgets` | PK `id` | 仪表盘组件；`config` 是 JSON 文本 `{version: 2, card: TableCardSpec}`（统一卡片规格，与阶段 1 应用卡片共用；旧的扁平配置读写时经 `legacyWidgetToCard` 映射），`type`（kpi/bar/line/pie/area/pivot/records/text）与 `table_id` 始终跟随 card；布局是 JSON 文本；revision 乐观并发 |
 | `table_imports` | PK `id`（text） | CSV / Excel 导入暂存：表头与解析后的行（≤10,000×100，JSONB）、`status`（previewed/committing/committed/failed）、`committed_rows` 续传游标、租约、结果；1 小时过期，由 upkeep 清理 |
+| `table_dashboard_widgets` | PK `id` | KPI/Chart/records/text 组件；配置与布局是 JSON 文本，单组件最多绑定一张 Table；revision 乐观并发 |
+| `table_imports` | PK `id`（text） | CSV / Excel 导入暂存：表头与解析后的行（≤10,000×100，JSONB，无 NUL）、`status`（previewed/committing/committed/failed）、`committed_rows` 续传游标（按块 CAS）、`lease_expires_at` 租约、`result`（运行中的结果 + 认领时存下的计划 `plan` / 失败原因 `error`）；最后一次活动后 1 小时过期，由 upkeep 清理，完成后清空 `rows` |
 
 ### 评测与工单智能化
 

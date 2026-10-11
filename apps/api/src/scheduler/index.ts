@@ -24,6 +24,7 @@ import {
   startFrictionMiningJob,
   startMemoryConsolidationJob,
   startTablesFormUploadSweepJob,
+  startTablesImportSweepJob,
   stopUpkeepJobs,
   startExtensionJobs,
 } from './upkeep-jobs.js';
@@ -83,6 +84,7 @@ export class TaskScheduler {
     startFrictionMiningJob();
     startMemoryConsolidationJob();
     startTablesFormUploadSweepJob();
+    startTablesImportSweepJob();
     startExtensionJobs();
   }
 
