@@ -639,6 +639,7 @@ describe('public Agents (P4)', () => {
     owner: { id: 'u_owner', nickname: 'Jim' },
     dm_session_id: null,
     available: true,
+    computer: false,
     ...partial,
   });
   const PUB = shared('bot_pub', { name: 'Handbook', dm_session_id: 's_pub' });
@@ -763,5 +764,48 @@ describe('public Agents (P4)', () => {
     expect(store.get().ratings).toEqual({ m1: 1 });
     store.get().reset();
     expect([store.get().ratings, store.get().shared, store.get().directoryState]).toEqual([{}, {}, 'idle']);
+  });
+
+  it('takes a rating back (DELETE) and forgets it once that went; a refusal keeps it', async () => {
+    const unrateReply = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: false, status: 0, code: null, message: '' })
+      .mockResolvedValueOnce({ ok: true, value: undefined });
+    const store = makeStore({ unrateReply });
+    store.set({ ratings: { m1: 1, m2: -1 } });
+    expect(await store.get().unrateReply('s_pub', 'm1')).toBe(false);
+    expect(store.get().ratings).toEqual({ m1: 1, m2: -1 });
+    expect(await store.get().unrateReply('s_pub', 'm1')).toBe(true);
+    expect(unrateReply).toHaveBeenLastCalledWith('s_pub', 'm1');
+    expect(store.get().ratings).toEqual({ m2: -1 });
+  });
+
+  it('seeds the ratings from each page; one rated or taken back here keeps that choice', async () => {
+    const reply = (id: string) => ({ id, role: 'assistant' as const, bot_id: 'bot_pub' });
+    const store = makeStore({
+      rateReply: vi.fn(async () => ({ ok: true as const, value: undefined })),
+      unrateReply: vi.fn(async () => ({ ok: true as const, value: undefined })),
+    });
+    store.get().seedRatings([reply('m1'), reply('m2'), reply('m3')], { m1: 1, m2: -1 });
+    expect(store.get().ratings).toEqual({ m1: 1, m2: -1 });
+    // A later read: m2 taken back elsewhere, m3 rated elsewhere; m1 is on an older page this time.
+    const before = store.get().ratings;
+    store.get().seedRatings([reply('m2'), reply('m3')], { m3: 1 });
+    expect(store.get().ratings).toEqual({ m1: 1, m3: 1 });
+    // Nothing new: the same object (rows memoised on it stay put).
+    const now = store.get().ratings;
+    store.get().seedRatings([reply('m2'), reply('m3')], { m3: 1 });
+    expect(store.get().ratings).toBe(now);
+    expect(now).not.toBe(before);
+
+    // Changed here: a page read before that landed does not undo it.
+    await store.get().rateReply('s_pub', 'm2', 1);
+    await store.get().unrateReply('s_pub', 'm3');
+    store.get().seedRatings([reply('m2'), reply('m3')], { m3: 1 });
+    expect(store.get().ratings).toEqual({ m1: 1, m2: 1 });
+    // …until the store is reset (another account / station).
+    store.get().reset();
+    store.get().seedRatings([reply('m2'), reply('m3')], { m3: 1 });
+    expect(store.get().ratings).toEqual({ m3: 1 });
   });
 });

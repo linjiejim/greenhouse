@@ -298,6 +298,15 @@ export function rateReply(
   );
 }
 
+/** Take a rating back — the reply is unrated again. */
+export function unrateReply(sessionId: string, messageId: string): Promise<BotsWrite<void>> {
+  return call(
+    `/api/bots/conversations/${enc(sessionId)}/messages/${enc(messageId)}/feedback`,
+    jsonInit('DELETE'),
+    nothing,
+  );
+}
+
 // ─── Shared notes (a conversation's) ─────────────────────
 
 /** Add a note (title ≤ 80, body ≤ 2000) — the member's own (no author Bot). */

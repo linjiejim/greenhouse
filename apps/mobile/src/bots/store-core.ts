@@ -23,6 +23,7 @@
 
 import type {
   BotConversationSummary,
+  BotMessage,
   BotRequestDecision,
   BotRequestErrorCode,
   BotRequestView,
@@ -32,7 +33,15 @@ import type {
 } from '../shared/bots';
 import { isSproutyBot } from '../shared/bots';
 import type { DecideOutcome } from './contract';
-import { feedbackBody, replyableIds, sharedAsBot, sharedById, startFailure, withConversation } from './public-agents';
+import {
+  feedbackBody,
+  replyableIds,
+  sharedAsBot,
+  sharedById,
+  startFailure,
+  withConversation,
+  withPageRatings,
+} from './public-agents';
 import { classifyDecision } from './requests';
 import { conversationCanReply } from './task-chats';
 import { botsById, conversationBotIds, mergeArchived } from './vendor/web-helpers';
@@ -59,7 +68,10 @@ export interface BotsData {
    */
   directory: SharedBotView[];
   directoryState: 'idle' | 'loaded' | 'failed' | 'missing';
-  /** Replies the member rated on this device this app session (the server keeps no read of them). */
+  /**
+   * The member's 👍 (1) / 👎 (-1) on public Agents' replies, by message id: seeded by every
+   * conversation page (`my_ratings`, `seedRatings`) and changed by rating here.
+   */
   ratings: Record<string, 1 | -1>;
   computer: ComputerRuntimeView | null;
   vaultAvailable: boolean;
@@ -118,6 +130,13 @@ export interface BotsState extends BotsData {
   ): Promise<{ ok: true; sessionId: string } | { ok: false; reason: 'gone' | 'offline' | 'failed' }>;
   /** Rate a public Agent's reply (👍 1 / 👎 -1, optional sentence); remembered in `ratings` when it went. */
   rateReply(sessionId: string, messageId: string, rating: 1 | -1, comment?: string | null): Promise<boolean>;
+  /** Take a rating back (`DELETE …/feedback`); gone from `ratings` when it went. */
+  unrateReply(sessionId: string, messageId: string): Promise<boolean>;
+  /** A conversation page arrived: the member's ratings of its replies (`my_ratings`, see `withPageRatings`). */
+  seedRatings(
+    messages: readonly Pick<BotMessage, 'id' | 'role' | 'bot_id'>[],
+    myRatings: Record<string, 1 | -1> | undefined,
+  ): void;
   setRunning(sessionId: string, runId: string | null): void;
   setPendingTotal(n: number): void;
   /**
@@ -177,6 +196,7 @@ export interface BotsStoreDeps {
     | 'listAgents'
     | 'startAgentConversation'
     | 'rateReply'
+    | 'unrateReply'
   > &
     Pick<typeof import('../api/chat'), 'listChatRuns'>;
   clock: { setTimeout(fn: () => void, ms: number): unknown; clearTimeout(handle: unknown): void };
@@ -237,6 +257,8 @@ export function createBotsSlice(set: SetBots, get: GetBots, deps: BotsStoreDeps)
   let pendingTimer: unknown = null;
   /** One set per `seedRuns` request in flight: the conversations whose busy mark changed meanwhile. */
   const seedsInFlight = new Set<Set<string>>();
+  /** Replies rated or taken back here: a page read before that landed must not undo it (`withPageRatings`). */
+  const ratedHere = new Set<string>();
 
   /** The thread surfaces are closed for this app session (403 / older server). */
   const closed = () => get().error === 'forbidden' || get().error === 'missing';
@@ -410,8 +432,31 @@ export function createBotsSlice(set: SetBots, get: GetBots, deps: BotsStoreDeps)
       const asked = get().generation;
       const result = await api.rateReply(sessionId, messageId, feedbackBody(rating, comment));
       if (!result.ok) return false;
-      if (get().generation === asked) set((state) => ({ ratings: { ...state.ratings, [messageId]: rating } }));
+      if (get().generation === asked) {
+        ratedHere.add(messageId);
+        set((state) => ({ ratings: { ...state.ratings, [messageId]: rating } }));
+      }
       return true;
+    },
+
+    async unrateReply(sessionId, messageId) {
+      const asked = get().generation;
+      const result = await api.unrateReply(sessionId, messageId);
+      if (!result.ok) return false;
+      if (get().generation === asked) {
+        ratedHere.add(messageId);
+        set((state) => {
+          const ratings = { ...state.ratings };
+          delete ratings[messageId];
+          return { ratings };
+        });
+      }
+      return true;
+    },
+
+    seedRatings(messages, myRatings) {
+      const ratings = withPageRatings(get().ratings, messages, myRatings, ratedHere);
+      if (ratings !== get().ratings) set({ ratings });
     },
 
     async seedRuns() {
@@ -553,6 +598,7 @@ export function createBotsSlice(set: SetBots, get: GetBots, deps: BotsStoreDeps)
       pending.reset();
       directory.reset();
       refreshedForIds.clear();
+      ratedHere.clear();
       sproutyOnce = null;
       if (pendingTimer !== null) clock.clearTimeout(pendingTimer);
       pendingTimer = null;

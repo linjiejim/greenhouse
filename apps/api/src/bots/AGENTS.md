@@ -241,7 +241,7 @@ bots/
   使用者自己的一份电脑、没有密码库），S2 用 `buildPublicIdentity`（谁发布、在帮谁），不放任何人的个人备注，记忆索引 `onlyBot`；
   额度 `agentBudget` → `reserveAgentTokenBudget`（Agent 账户 + 组织 + 供应商，不扣使用者），每人每日上限超了写一行 `unavailable`
   `daily_cap` 不调模型；审计行为者 `bot:<id>`、代表负责人、`requested_by_user_id` = 使用者。不能邀请客串（409 `public_agent`）；
-  下线 / 暂停 / 移出受众 → 发消息 409 `agent_unavailable`，`GET /api/bots` 的 `shared_bots` 带 `available:false`。
+  下线 / 暂停 / 移出受众 → 发消息 409 `agent_unavailable`，`GET /api/bots` 的 `shared_bots` 带 `available:false`（`computer` = 负责人是否授权了电脑，客户端据此显示电脑入口）。替使用者做的操作在负责人的「操作记录」里不带对话链接（`session_id: null`）。
   负责人看用量（全部使用者）、操作记录、反馈（`bot_feedback`：评分 + 使用者写的一句话），不看原文；管理员 `/api/admin/agents` 只能暂停 / 恢复。
   第一版授权只有知识库文件夹（只读）+ 电脑开关；项目 / 表格的记录级授权留作后续（D36）。
 - **对外找 Agent（P6，2026-10-12，[spec](../../../../docs/specs/20261011-agent-first-class.md) §5e / D48–D55）**：MCP 客户端、
@@ -376,13 +376,13 @@ Bot 身份本身（列表 / 新建 / 编辑 / 版本 / 文件夹 / 记忆）只�
 | GET / POST | `/api/bots/:id/files` · `/api/bots/:id/files/ensure` | — | `{ folder, docs }`（无文件夹时 `folder: null`）· `{ folder }`（首次使用建文件夹） |
 | GET / PUT | `/api/bots/:id/publication` | `BotPublicationWrite`（`visibility`、`audience`、`grants`、`budget`、`publish:true` 发布当前版本） | `BotPublicationView`；Sprouty 400 `bot_protected`；未发布就设公开 / 受众或文件夹不合法 400 `invalid` |
 | GET | `/api/bots/:id/feedback` | — | `{ feedback: BotFeedbackView[] }`（评分 + 使用者的一句话 + 版本，不含对话） |
-| POST | `/api/bots/conversations/:id/messages/:messageId/feedback` | `{ rating: 1 \| -1, comment? }` | `{ ok, rating }`（每人每条回复一份，再评覆盖） |
+| POST / DELETE | `/api/bots/conversations/:id/messages/:messageId/feedback` | `{ rating: 1 \| -1, comment? }` · — | `{ ok, rating }`（每人每条回复一份，再评覆盖）· `{ ok }`（撤回自己的评分） |
 | GET / POST | `/api/agents` · `/api/agents/:id/conversation` | — | `{ agents: SharedBotView[] }`（我能用的别人的公开 Agent）· 201 `{ conversation_id }`（我和它的私聊；不可用 404） |
-| GET / POST | `/api/admin/agents` · `/api/admin/agents/:id/pause` · `/resume`（super） | — | 全部公开 Agent（负责人、受众、是否可用 / 暂停、使用者数）· `{ ok, paused }` |
+| GET / POST | `/api/admin/agents` · `/api/admin/agents/:id/pause` · `/resume`（super） | — | 全部公开 Agent（负责人、受众 `{ everyone, user_count, group_count }`、是否可用 / 暂停、使用者数）· `{ ok, paused }` |
 | GET | `/api/bots/:id/usage?days=` · `/api/bots/:id/activity?limit=` | — | `BotUsageView`（按天：次数 / token / 对话数，默认 30 天、最多 90）· `{ activity: BotActivityItem[] }`（平台动作 / 密码库使用 / 后台任务，新到旧，无消息内容）；只有主人 |
 | GET / DELETE | `/api/bots/:id/memories[/:memoryId]` | — | 该 Bot 的私有记忆 / `{ ok }`；改为共享走 `PATCH /api/auth/me/memories/:id { bot_id: null }` |
 | GET / POST | `/api/bots/conversations` | `?kind=task` · `{ bot_ids }`（恰好 1 个 id）或 `{ kind:'task', bot_id?, title?, model_id? }` | 列表（默认私聊 + 旧群；`?kind=task` 任务会话）/ `{ conversation }`（该 Bot 的私聊，没有就建；`kind:'task'` → 201 新任务会话，缺省 Sprouty）；0 个或多个 id → `400 groups_retired`（群聊已退役）。每行带 `attention`（需要你 > 未读 > 在忙）、`pending_requests` 与 `unread_count`（`last_read_at` 之后 Bot 的回复条数，`assistant` 行，封顶 99；只来了系统事件时 `attention:'unread'` 而计数为 0） |
-| GET | `/api/bots/conversations/:id` | `before_seq?`、`limit?` | `{ conversation, messages, has_more, memory_states? }`（`allow_bot_chat` 已废弃、恒为 `true`；旧群 `kind:'group'` 照常可读） |
+| GET | `/api/bots/conversations/:id` | `before_seq?`、`limit?` | `{ conversation, messages, has_more, memory_states?, my_ratings? }`（`my_ratings`：这一页里自己给回复的评分 `{ [messageId]: 1 \| -1 }`；`allow_bot_chat` 已废弃、恒为 `true`；旧群 `kind:'group'` 照常可读） |
 | POST / DELETE | `/api/bots/conversations/:id/members[/:botId]` | `{ bot_id }` | `{ conversation }`（邀请 = guest；主人不能移出 400 `cannot_remove_owner`；旧群 `409 group_closed`） |
 | POST | `/api/bots/conversations/:id/read` · `/compact` | — | `{ ok }`（同时把这段对话的「回复了你」提醒标为已读）· `{ digest }`（回合进行中 409） |
 | GET / POST / PATCH / DELETE | `/api/bots/conversations/:id/notes[/:noteId]` | `{ title, body?, status?, pinned? }` | 共享笔记 |

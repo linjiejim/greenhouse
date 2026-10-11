@@ -7,6 +7,7 @@ import type { BotConversationDetail } from '@greenhouse/types/bots';
 import type { BotMessage, ConversationPage } from '../../lib/api/bots';
 import { I18nProvider } from '../../lib/i18n';
 import { ToastContainer } from '../ui';
+import { ReplyFeedback, resetReplyRatings } from './reply-feedback';
 import { useBotConversation, type BotConversationController } from './use-bot-conversation';
 
 const api = vi.hoisted(() => ({ getConversation: vi.fn(), markConversationRead: vi.fn() }));
@@ -192,6 +193,61 @@ describe('useBotConversation — memory receipt states', () => {
     await flush();
     // An older page adds its receipts' states without dropping the latest page's.
     expect(latest?.memoryStates).toEqual({ '41': 'archived', '42': 'deleted', '7': 'superseded' });
+  });
+});
+
+describe('useBotConversation — the member’s ratings (P4)', () => {
+  const reply = (id: string, seq: number): BotMessage => ({ ...message(id, seq), role: 'assistant', bot_id: 'bot_a' });
+  const ratingOf = (id: string) =>
+    document.querySelector(`[data-message="${id}"] [data-testid="bots-reply-feedback"]`)?.getAttribute('data-rating');
+
+  beforeEach(() => resetReplyRatings());
+
+  it('shows each reply’s rating from the latest page and older ones, and forgets one no longer there', async () => {
+    api.getConversation.mockImplementation((_sessionId: string, opts: { beforeSeq?: number }) =>
+      Promise.resolve(
+        opts.beforeSeq !== undefined
+          ? { ...page('A', [reply('r-1', 1)], false), my_ratings: { 'r-1': -1 } }
+          : { ...page('A', [reply('r-9', 9), reply('r-10', 10)], true), my_ratings: { 'r-10': 1 } },
+      ),
+    );
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+    const feedback = (id: string) =>
+      createElement(
+        'div',
+        { key: id, 'data-message': id },
+        createElement(ReplyFeedback, { sessionId: 'A', messageId: id }),
+      );
+    await act(async () =>
+      root?.render(
+        createElement(I18nProvider, {
+          initialLocale: 'en',
+          children: createElement(
+            'div',
+            null,
+            createElement(Probe, { sessionId: 'A' }),
+            ...['r-1', 'r-9', 'r-10'].map(feedback),
+          ),
+        }),
+      ),
+    );
+    await flush();
+    expect([ratingOf('r-10'), ratingOf('r-9'), ratingOf('r-1')]).toEqual(['1', '', '']);
+
+    await act(async () => {
+      await latest?.loadEarlier();
+    });
+    await flush();
+    expect(ratingOf('r-1')).toBe('-1');
+
+    // Taken back elsewhere: the next read of the page no longer carries it.
+    api.getConversation.mockResolvedValue(page('A', [reply('r-9', 9), reply('r-10', 10)], true));
+    await act(async () => {
+      await latest?.reload();
+    });
+    expect([ratingOf('r-10'), ratingOf('r-1')]).toEqual(['', '-1']);
   });
 });
 

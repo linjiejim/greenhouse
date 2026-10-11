@@ -31,7 +31,7 @@ const ROWS: AdminPublicAgentRow[] = [
     published_version: 3,
     available: true,
     paused: false,
-    audience: 'everyone',
+    audience: { everyone: true, user_count: 0, group_count: 0 },
     users: 12,
   },
   {
@@ -41,7 +41,7 @@ const ROWS: AdminPublicAgentRow[] = [
     published_version: 1,
     available: false,
     paused: true,
-    audience: '2 people, 1 groups',
+    audience: { everyone: false, user_count: 2, group_count: 1 },
     users: 0,
   },
 ];
@@ -119,9 +119,10 @@ describe('PublicAgentsPanel', () => {
 describe('audienceLabel', () => {
   const t = ((key: string, params?: Record<string, string | number>) =>
     translate('zh', key as never, params)) as unknown as Parameters<typeof audienceLabel>[1];
-  it("reads the server's summary in the reader's language, and anything else verbatim", () => {
-    expect(audienceLabel('everyone', t)).toBe('所有人');
-    expect(audienceLabel('3 people, 0 groups', t)).toBe('3 人 · 0 个小组');
-    expect(audienceLabel('something new', t)).toBe('something new');
+  it("reads the server's structured audience in the reader's language", () => {
+    expect(audienceLabel({ everyone: true, user_count: 0, group_count: 0 }, t)).toBe('所有人');
+    // Everyone wins over any lists the settings still carry.
+    expect(audienceLabel({ everyone: true, user_count: 4, group_count: 2 }, t)).toBe('所有人');
+    expect(audienceLabel({ everyone: false, user_count: 3, group_count: 0 }, t)).toBe('3 人 · 0 个小组');
   });
 });

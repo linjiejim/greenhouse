@@ -289,8 +289,16 @@ type Read<T> = { ok: true; value: T } | { ok: false; status: number; code: strin
  * no run, interrupts accepted, stops accepted, the next queued POST answer).
  */
 export class FakeThreadApi {
-  /** What `GET /conversations/:id` returns (newest page = the last `PAGE_SIZE`). */
-  server: { conversation: BotConversationDetail; messages: BotMessage[]; hasMore: boolean };
+  /**
+   * What `GET /conversations/:id` returns (newest page = the last `PAGE_SIZE`); `ratings` = the
+   * member's 👍 / 👎 by message id, sent as the page's `my_ratings` (only its replies, none → omitted).
+   */
+  server: {
+    conversation: BotConversationDetail;
+    messages: BotMessage[];
+    hasMore: boolean;
+    ratings: Record<string, 1 | -1>;
+  };
   probe: ChatRunProbe | null = { active: false };
   /** One-off probe answers, consumed in order before `probe` (a deferred holds that one probe open). */
   probes: Array<ChatRunProbe | null | Promise<ChatRunProbe | null>> = [];
@@ -320,7 +328,7 @@ export class FakeThreadApi {
   };
 
   constructor(sessionId: string) {
-    this.server = { conversation: conversation(sessionId), messages: [], hasMore: false };
+    this.server = { conversation: conversation(sessionId), messages: [], hasMore: false, ratings: {} };
   }
 
   readonly api: ThreadApi = {
@@ -334,12 +342,17 @@ export class FakeThreadApi {
       const below = opts?.beforeSeq !== undefined ? all.filter((m) => m.seq < (opts.beforeSeq as number)) : all;
       const limit = opts?.limit ?? 60;
       const messages = below.slice(-limit);
+      const rated = messages.flatMap((m) => {
+        const rating = this.server.ratings[m.id];
+        return m.role === 'assistant' && m.bot_id && rating ? [[m.id, rating] as const] : [];
+      });
       return {
         ok: true,
         value: {
           conversation: this.server.conversation,
           messages,
           has_more: below.length > messages.length || (opts?.beforeSeq === undefined && this.server.hasMore),
+          ...(rated.length > 0 ? { my_ratings: Object.fromEntries(rated) } : {}),
         },
       } as Read<ConversationPage>;
     },
@@ -429,6 +442,7 @@ export function makeStore(api: Partial<BotsStoreDeps['api']> = {}, clock?: Threa
       listAgents: async () => ({ ok: true as const, value: [] }),
       startAgentConversation: async () => ({ ok: false as const, status: 404, code: null, message: '' }),
       rateReply: async () => ({ ok: false as const, status: 500, code: null, message: '' }),
+      unrateReply: async () => ({ ok: false as const, status: 500, code: null, message: '' }),
       ...api,
     },
     clock: clock ?? { setTimeout: (fn, ms) => setTimeout(fn, ms), clearTimeout: () => {} },

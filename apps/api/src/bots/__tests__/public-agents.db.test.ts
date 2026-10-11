@@ -155,6 +155,7 @@ describe('using a public Agent (member)', () => {
         dm_session_id: dm,
         available: true,
         owner: { id: jim.id, nickname: 'Jim' },
+        computer: false,
       }),
     ]);
     const anaBot = await db.bots.createBot({ user_id: ana.id, name: 'Ivy', role: '' });
@@ -299,7 +300,13 @@ describe('availability, oversight and administration', () => {
     expect((await call(boss, 'POST', `/api/admin/agents/${helpdesk.id}/pause`)).status).toBe(200);
     expect(await conversationReplyState(db, ana.id, dm)).toBe('agent_unavailable');
     expect((await call(boss, 'GET', '/api/admin/agents')).json.agents).toEqual([
-      expect.objectContaining({ id: helpdesk.id, paused: true, available: false, users: 1 }),
+      expect.objectContaining({
+        id: helpdesk.id,
+        paused: true,
+        available: false,
+        users: 1,
+        audience: { everyone: false, user_count: 1, group_count: 0 },
+      }),
     ]);
     await call(boss, 'POST', `/api/admin/agents/${helpdesk.id}/resume`);
     expect(await conversationReplyState(db, ana.id, dm)).toBe('ok');
@@ -327,6 +334,11 @@ describe('availability, oversight and administration', () => {
     ]);
     expect(JSON.stringify(feedback.json)).not.toContain('Restart it.');
     expect((await call(ana, 'GET', `/api/bots/${helpdesk.id}/feedback`)).status).toBe(404);
+    // Ana sees her own rating with the conversation, and can take it back.
+    expect((await call(ana, 'GET', `/api/bots/conversations/${dm}`)).json.my_ratings).toEqual({ [reply.id]: -1 });
+    expect((await call(ana, 'DELETE', `/api/bots/conversations/${dm}/messages/${reply.id}/feedback`)).status).toBe(200);
+    expect((await call(ana, 'GET', `/api/bots/conversations/${dm}`)).json.my_ratings).toBeUndefined();
+    expect((await call(jim, 'GET', `/api/bots/${helpdesk.id}/feedback`)).json.feedback).toEqual([]);
 
     // The owner takes it back.
     await call(jim, 'PUT', `/api/bots/${helpdesk.id}/publication`, { visibility: 'private' });

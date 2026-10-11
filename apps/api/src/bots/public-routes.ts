@@ -74,9 +74,11 @@ export function createAdminAgentsRoutes() {
           published_version: bot.published_version,
           available: isPublished(bot),
           paused: bot.public_paused,
-          audience: settings.audience.everyone
-            ? 'everyone'
-            : `${settings.audience.user_ids.length} people, ${settings.audience.group_ids.length} groups`,
+          audience: {
+            everyone: settings.audience.everyone,
+            user_count: settings.audience.user_ids.length,
+            group_count: settings.audience.group_ids.length,
+          },
           users: await db.bots.countBotUsers(bot.id),
         });
       }

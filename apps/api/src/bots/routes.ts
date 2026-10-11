@@ -125,7 +125,10 @@ import {
   vaultAvailable,
   type BotMemoryState,
   type BotMessageView,
+  type RoomViewExtras,
 } from './views.js';
+import { pushToConversation } from './engine/fanout.js';
+import { roomViewExtras } from './room-access.js';
 
 const MESSAGES_PAGE_DEFAULT = 60;
 const MESSAGES_PAGE_MAX = 200;
@@ -133,12 +136,12 @@ const REQUESTS_IN_DETAIL = 50;
 
 type BotFieldErrorCode = 'bot_name_invalid' | 'bot_name_taken' | 'bot_limit';
 
-async function readJson(c: { req: { json: () => Promise<unknown> } }): Promise<Record<string, unknown>> {
+export async function readJson(c: { req: { json: () => Promise<unknown> } }): Promise<Record<string, unknown>> {
   const body = await c.req.json().catch(() => null);
   return body && typeof body === 'object' && !Array.isArray(body) ? (body as Record<string, unknown>) : {};
 }
 
-async function ownerContext(db: DatabaseProvider, userId: string) {
+export async function ownerContext(db: DatabaseProvider, userId: string) {
   const user = await db.users.getById(userId);
   return { nickname: user?.nickname ?? '', locale: botsLocale(user?.locale) };
 }
@@ -267,16 +270,16 @@ async function conversationsEnabled(user: Pick<AuthUser, 'id' | 'role'>): Promis
   return userHasFeature(user.id, user.role, 'bots');
 }
 
-async function conversationDetail(
+export async function conversationDetail(
   db: DatabaseProvider,
   userId: string,
   conversation: ConversationWithMembers,
   locale: BotsLocale,
 ): Promise<BotConversationDetail> {
   const sessionId = conversation.session_id;
-  const [latest, unread, requests, notes, allBots, tail] = await Promise.all([
+  const [latest, unread, requests, notes, allBots, tail, room] = await Promise.all([
     db.bots.latestMessages([sessionId]),
-    db.bots.unreadCounts([sessionId]),
+    db.bots.unreadCounts([sessionId], userId),
     db.bots.listRequests(userId, { sessionId }),
     db.bots.listNotes(sessionId),
     conversationBotNames(
@@ -285,6 +288,7 @@ async function conversationDetail(
       conversation.members.map((member) => member.bot_id),
     ),
     readTail(db, sessionId, effectiveDigestUpto(conversation)),
+    conversation.kind === 'room' ? roomViewExtras(db, userId, conversation) : Promise.resolve(undefined),
   ]);
   const botNames = allBots;
   const pending = requests.filter((request) => request.status === 'pending').length;
@@ -293,6 +297,7 @@ async function conversationDetail(
     pendingRequests: pending,
     unreadCount: unread.get(sessionId) ?? 0,
     working: Boolean(chatRunRegistry.getActive(sessionId)),
+    ...(room ? { room } : {}),
   });
   return {
     ...summary,
@@ -353,7 +358,7 @@ function rememberedMemoryId(step: BotMessageView['pipeline'][number]): number | 
   return typeof id === 'number' && Number.isInteger(id) && id > 0 ? id : null;
 }
 
-function domainStatus(error: BotsDomainError): 400 | 404 | 409 {
+export function domainStatus(error: BotsDomainError): 400 | 404 | 409 {
   switch (error.code) {
     case 'bot_not_found':
     case 'conversation_not_found':
@@ -361,6 +366,7 @@ function domainStatus(error: BotsDomainError): 400 | 404 | 409 {
       return 404;
     case 'already_member':
     case 'group_closed':
+    case 'room_full':
       return 409;
     default:
       return 400;
@@ -380,7 +386,7 @@ async function publicationView(db: DatabaseProvider, bot: BotRow): Promise<BotPu
 }
 
 function notifyConversation(userId: string, sessionId: string): void {
-  connectionManager.sendToUser(userId, { type: 'bots:conversation', sessionId });
+  void pushToConversation(sessionId, userId, { type: 'bots:conversation', sessionId });
 }
 
 export function createBotsRoutes() {
@@ -531,8 +537,14 @@ export function createBotsRoutes() {
         const sessionIds = conversations.map((conversation) => conversation.session_id);
         const [latest, unread] = await Promise.all([
           db.bots.latestMessages(sessionIds),
-          db.bots.unreadCounts(sessionIds),
+          db.bots.unreadCounts(sessionIds, user.id),
         ]);
+        const rooms = new Map<string, RoomViewExtras>();
+        for (const conversation of conversations) {
+          if (conversation.kind === 'room') {
+            rooms.set(conversation.session_id, await roomViewExtras(db, user.id, conversation));
+          }
+        }
         const pendingBySession = new Map<string, number>();
         for (const request of pending) {
           pendingBySession.set(request.session_id, (pendingBySession.get(request.session_id) ?? 0) + 1);
@@ -544,6 +556,7 @@ export function createBotsRoutes() {
               pendingRequests: pendingBySession.get(conversation.session_id) ?? 0,
               unreadCount: unread.get(conversation.session_id) ?? 0,
               working: Boolean(chatRunRegistry.getActive(conversation.session_id)),
+              ...(rooms.has(conversation.session_id) ? { room: rooms.get(conversation.session_id)! } : {}),
             }),
           ),
         });
@@ -623,11 +636,17 @@ export function createBotsRoutes() {
         ]);
         const messages = page.messages.map(toMessageView);
         const memoryStates = await memoryStatesOf(db, user.id, messages);
+        // The member's own ratings of these replies (P4 feedback), so the thumbs survive a reload.
+        const ratings = await db.bots.listMyFeedback(
+          user.id,
+          messages.filter((m) => m.role === 'assistant' && m.bot_id).map((m) => m.id),
+        );
         return c.json({
           conversation: detail,
           messages,
           has_more: page.has_more,
           ...(memoryStates ? { memory_states: memoryStates } : {}),
+          ...(ratings.size > 0 ? { my_ratings: Object.fromEntries(ratings) } : {}),
         });
       })
 
@@ -664,6 +683,20 @@ export function createBotsRoutes() {
           version: bot.user_id === user.id ? null : bot.published_version,
         });
         return c.json({ ok: true as const, rating: row.rating });
+      })
+
+      // ── DELETE /api/bots/conversations/:id/messages/:messageId/feedback — take a rating back ──
+      .delete('/conversations/:id/messages/:messageId/feedback', async (c) => {
+        const user = getAuthUser(c);
+        const db = getDb();
+        const conversation = await db.bots.getConversation(user.id, c.req.param('id'));
+        if (!conversation) return c.json({ error: 'Conversation not found' }, 404);
+        const message = await db.sessions.getMessageById(c.req.param('messageId'));
+        if (!message || message.session_id !== conversation.session_id) {
+          return c.json({ error: 'Reply not found' }, 404);
+        }
+        await db.bots.deleteFeedback(user.id, message.id);
+        return c.json({ ok: true as const });
       })
 
       // ── PATCH /api/bots/conversations/:id — a task chat's model / title ──
@@ -1279,7 +1312,8 @@ export function createBotsRoutes() {
             title: `${event.app_id}.${event.action_id}`,
             outcome: event.result,
             detail: event.record_id ? `${event.entity_id ?? event.app_id} ${event.record_id}` : null,
-            session_id: event.session_id,
+            // Done for another member (a public Agent, P4): their conversation, which the owner never opens.
+            session_id: event.requested_by_user_id && event.requested_by_user_id !== user.id ? null : event.session_id,
           })),
           ...vault
             .filter((row) => row.bot_id === bot.id)

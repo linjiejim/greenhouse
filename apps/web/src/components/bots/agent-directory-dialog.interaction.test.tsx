@@ -39,6 +39,7 @@ function agent(id: string, name: string, extra: Partial<SharedBotView> = {}): Sh
     owner: { id: 'u2', nickname: 'Alice' },
     dm_session_id: null,
     available: true,
+    computer: false,
     ...extra,
   };
 }

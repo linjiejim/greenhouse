@@ -261,6 +261,7 @@ describe('threadReadOnly', () => {
         owner: { id: 'u_owner', nickname: 'Jim' },
         dm_session_id: 's1',
         available,
+        computer: false,
       },
     });
     const snap = { conversation: conversation(), readOnly: null };

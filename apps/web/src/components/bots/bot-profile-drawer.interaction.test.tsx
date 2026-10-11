@@ -313,6 +313,7 @@ describe('BotProfileDrawer — publishing and ratings (P4)', () => {
       owner: { id: 'u2', nickname: 'Alice' },
       dm_session_id: null,
       available: true,
+      computer: false,
     };
     api.openPublicAgent.mockResolvedValue({ conversation_id: 'dm-oracle' });
     useBotsStore.setState({ bots: [SAGE], sharedBots: [oracle], profileBotId: oracle.id });

@@ -248,6 +248,7 @@ describe("<BotsThreadsSection/> other members' public Agents (P4)", () => {
     owner: { id: 'u2', nickname: 'Alice' },
     dm_session_id: 'dm-bot_oracle',
     available: true,
+    computer: false,
   };
   const order = () =>
     [...host.querySelectorAll<HTMLElement>('[data-testid="bots-conversation-row"]')].map((el) => el.dataset.sessionId);

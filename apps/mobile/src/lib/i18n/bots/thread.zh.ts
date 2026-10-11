@@ -47,6 +47,8 @@ export const botsThreadZh: typeof botsThreadEn = {
     rateSend: '发送',
     rateThanks: '感谢反馈',
     rateFailed: '反馈没能发出',
+    rateRemoved: '已撤回评分',
+    rateRemoveFailed: '评分没能撤回',
     nameHint: '给 {name} 起个名字？',
     nameHintRename: '改名',
     nameHintKeep: '就叫 {name}',

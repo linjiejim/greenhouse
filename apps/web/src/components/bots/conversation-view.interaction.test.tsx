@@ -17,7 +17,7 @@ import { ToastContainer } from '../ui';
 import { useProfileStore } from '../../stores';
 import { ConversationView, isReadOnlySendError, type ConversationViewProps } from './conversation-view';
 import { queueFirstSend, takeFirstSend } from './first-send';
-import { resetReplyRatings } from './reply-feedback';
+import { resetReplyRatings, seedReplyRatings } from './reply-feedback';
 import { sharedBotAsView, useBotsStore } from './bots-store';
 import type { BotConversationController } from './use-bot-conversation';
 
@@ -27,6 +27,7 @@ const api = vi.hoisted(() => ({
   listBots: vi.fn(),
   updateTaskChat: vi.fn(),
   rateReply: vi.fn(),
+  unrateReply: vi.fn(),
 }));
 vi.mock('../../lib/api/bots', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../lib/api/bots')>()),
@@ -608,6 +609,7 @@ describe("a DM with someone else's public Agent (P4)", () => {
     owner: { id: 'u2', nickname: 'Alice' },
     dm_session_id: 'dm-oracle',
     available: true,
+    computer: false,
   };
   const oracle = sharedBotAsView(ORACLE);
   const DM_ORACLE: BotConversationDetail = {
@@ -646,6 +648,8 @@ describe("a DM with someone else's public Agent (P4)", () => {
   beforeEach(() => {
     api.rateReply.mockReset();
     api.rateReply.mockResolvedValue({ ok: true, rating: 1 });
+    api.unrateReply.mockReset();
+    api.unrateReply.mockResolvedValue(undefined);
     resetReplyRatings();
   });
 
@@ -686,6 +690,40 @@ describe("a DM with someone else's public Agent (P4)", () => {
     await flush();
     expect(api.rateReply).toHaveBeenLastCalledWith('dm-oracle', 'm-reply', -1, 'Missed Q4');
     expect(document.querySelector('[data-testid="bots-reply-feedback-comment"]')).toBeNull();
+  });
+
+  it("shows the member's rating from the page, and a second press takes it back", async () => {
+    // The page said: rated 👎 earlier (a reload).
+    seedReplyRatings([reply], { 'm-reply': -1 });
+    await render(sharedProps());
+    const feedback = document.querySelector('[data-testid="bots-reply-feedback"]')!;
+    expect(feedback.getAttribute('data-rating')).toBe('-1');
+
+    const down = feedback.querySelectorAll('button')[1]!;
+    await act(async () => down.dispatchEvent(new MouseEvent('click', { bubbles: true })));
+    await flush();
+    expect(api.unrateReply).toHaveBeenCalledWith('dm-oracle', 'm-reply');
+    expect(api.rateReply).not.toHaveBeenCalled();
+    expect(feedback.getAttribute('data-rating')).toBe('');
+    // Taking a 👎 back asks for nothing.
+    expect(document.querySelector('[data-testid="bots-reply-feedback-comment"]')).toBeNull();
+
+    // A page asked before that landed does not bring the old rating back.
+    await act(async () => seedReplyRatings([reply], { 'm-reply': -1 }));
+    expect(feedback.getAttribute('data-rating')).toBe('');
+  });
+
+  it('puts the rating back when taking it back fails', async () => {
+    api.unrateReply.mockRejectedValue(new BotsApiError('Internal error', 500));
+    seedReplyRatings([reply], { 'm-reply': 1 });
+    await render(sharedProps());
+    const feedback = document.querySelector('[data-testid="bots-reply-feedback"]')!;
+    const up = feedback.querySelectorAll('button')[0]!;
+    await act(async () => up.dispatchEvent(new MouseEvent('click', { bubbles: true })));
+    await flush();
+    expect(api.unrateReply).toHaveBeenCalledTimes(1);
+    expect(feedback.getAttribute('data-rating')).toBe('1');
+    expect(document.body.textContent).toContain('Could not save your rating');
   });
 
   it("offers no rating on the member's own Agents' replies", async () => {

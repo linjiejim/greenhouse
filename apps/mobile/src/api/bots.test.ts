@@ -270,6 +270,38 @@ describe('Bots writes', () => {
   });
 });
 
+describe('rating a public Agent’s reply (P4)', () => {
+  it('rates (POST) and takes back (DELETE) on the reply’s feedback route', async () => {
+    apiMock.mockResolvedValueOnce(json(200, { ok: true, rating: -1 }));
+    expect(await bots.rateReply('s 1', 'm 1', { rating: -1, comment: 'wrong year' })).toEqual({
+      ok: true,
+      value: undefined,
+    });
+    expect(apiMock.mock.calls.at(-1)?.[0]).toBe('/api/bots/conversations/s%201/messages/m%201/feedback');
+    expect(apiMock.mock.calls.at(-1)?.[1]).toMatchObject({ method: 'POST' });
+    apiMock.mockResolvedValueOnce(json(200, { ok: true }));
+    expect(await bots.unrateReply('s 1', 'm 1')).toEqual({ ok: true, value: undefined });
+    expect(apiMock).toHaveBeenLastCalledWith('/api/bots/conversations/s%201/messages/m%201/feedback', {
+      method: 'DELETE',
+    });
+    apiMock.mockResolvedValueOnce(json(404, { error: 'Reply not found' }));
+    expect(await bots.unrateReply('s1', 'm_x')).toEqual({
+      ok: false,
+      status: 404,
+      code: null,
+      message: 'Reply not found',
+    });
+  });
+
+  it('a page keeps the member’s ratings of its replies', async () => {
+    apiMock.mockResolvedValueOnce(
+      json(200, { conversation: { session_id: 's1' }, messages: [], has_more: false, my_ratings: { m1: 1, m2: -1 } }),
+    );
+    const page = await bots.getConversation('s1');
+    expect(page.ok && page.value.my_ratings).toEqual({ m1: 1, m2: -1 });
+  });
+});
+
 // ─── Task chats (spec 20261011-agent-first-class §5a) ────
 
 describe('task chats', () => {

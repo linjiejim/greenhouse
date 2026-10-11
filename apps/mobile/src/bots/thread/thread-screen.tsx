@@ -50,9 +50,10 @@
  *
  * A DM with someone else's public Agent (spec 20261011-agent-first-class §5c P4) is this screen
  * too: the intro says who shared it (and that they can't read it), ⋯ has no "New Chat" (a chat
- * with it is this DM — no task chats with someone else's Agent), 🖥 shows only once its owner
- * granted it a computer (the member's own copy — the status read answers), its replies offer
- * 👍 / 👎 (an optional note with 👎), and once it is no longer offered the thread is read-only
+ * with it is this DM — no task chats with someone else's Agent), 🖥 shows only when its owner
+ * granted it a computer (the member's own copy — `shared_bots[].computer`) and it is still offered,
+ * its replies offer 👍 / 👎 (an optional note with 👎; the member's rating comes with each page,
+ * and choosing it again takes it back), and once it is no longer offered the thread is read-only
  * (`agent_unavailable`) like an archived Agent's.
  *
  * The engine (`useBotThread`, package A) owns sending, streaming, stops,
@@ -114,7 +115,7 @@ import type { BotsReadOnly, MobilePending, RewindInput, RewindOutcome, SendInput
 import { forgetGoneThread } from '../last-surface';
 import { openNewChat, openThread } from '../nav';
 import { attentionCount, useBots } from '../store';
-import { rateableReply, sharedOwnerOf } from '../public-agents';
+import { computerOffered, rateableReply, sharedOwnerOf } from '../public-agents';
 import { computerAgent, computerButtonTone, conversationComputer } from '../computer/target';
 import { useComputerStatus } from '../computer/use-computer-status';
 import { phaseLabelKey } from '../vendor/computer-phase';
@@ -1073,6 +1074,13 @@ export function BotThreadScreen({
       const message = snapRef.current.messages.find((m) => m.id === messageId);
       const store = useBots.getState();
       if (!rateableReply(message, store.shared) || !message?.bot_id) return;
+      // The rating it already has, chosen again: take it back.
+      if (store.ratings[messageId] === rating) {
+        if (await store.unrateReply(sessionId, messageId)) {
+          toast(tNow('bots.thread.rateRemoved'), rating === 1 ? 'thumbUp' : 'thumbDown');
+        } else alertError(tNow('bots.thread.rateRemoveFailed'));
+        return;
+      }
       let comment: string | null = null;
       if (rating === -1) {
         // The note is optional: Skip still sends the 👎.
@@ -1220,12 +1228,11 @@ export function BotThreadScreen({
   const onOpenChat = useCallback((chat: { c: string; title: string }) => openThread(router, chat), [router]);
   // The conversation's Agent's computer, offered on every thread once computers run here; the 🖥 is
   // tinted with its state (only primitives reach the memoised header: no stream-tick re-renders).
-  const hasComputer = useBots((s) => s.computer?.state === 'ready');
+  // Someone else's Agent has one only when its owner granted it (the member's own copy) and it is
+  // still offered — otherwise its status is never read (the routes answer 404 `agent_not_found`).
+  const hasComputer = useBots((s) => s.computer?.state === 'ready') && computerOffered(sharedOwner);
   const computerName = useBots((s) => computerAgent(s, computerBot)?.name ?? null);
   const computerState = useComputerStatus(hasComputer && focused && !!conversation, computerBot);
-  // Someone else's Agent has a computer here only when its owner granted one (the member's own copy):
-  // the status read says so (404 `agent_not_found` otherwise).
-  const showComputer = hasComputer && (!sharedOwner || !!computerState.status);
   const computerTone = computerButtonTone(computerState.phase);
   const computerLabel = computerName
     ? computerState.phase
@@ -1404,7 +1411,7 @@ export function BotThreadScreen({
         badge={badge}
         ownerName={owner?.name ?? null}
         canAsk={!group && !!owner && owner.status === 'active' && !sharedOwner}
-        hasComputer={showComputer}
+        hasComputer={hasComputer}
         computerTone={computerTone}
         computerLabel={computerLabel}
         taskChat={task}

@@ -78,6 +78,16 @@ export function sharedOwnerOf(
   return (id && shared?.[id]) || null;
 }
 
+/**
+ * May a conversation offer its Agent's computer? Always for the member's own Agents (`view` null).
+ * Someone else's has one only when its owner granted it (`computer` — the member gets their own copy)
+ * and it is still offered; the computer routes refuse it otherwise (404 `agent_not_found`), so its
+ * status is never asked for.
+ */
+export function computerOffered(view: SharedBotView | null): boolean {
+  return !view || (view.available && view.computer);
+}
+
 /** A DM with a shared Agent that is no longer offered: read-only (`agent_unavailable`). */
 export function sharedReadOnly(
   conversation: { owner_bot_id: string | null } | null | undefined,
@@ -98,6 +108,30 @@ export function rateableReply(
   return (
     !!message && message.role === 'assistant' && !message.bot_event && !!message.bot_id && !!shared?.[message.bot_id]
   );
+}
+
+/**
+ * The member's ratings once a conversation page arrived: its replies carry them (`my_ratings`; a
+ * reply missing from it is unrated, an older server sends none). Replies rated or taken back on this
+ * device (`ratedHere`) keep that choice — the member is a rating's only writer, and a page read before
+ * the write landed would bring the old one back. Nothing changed → `ratings` itself.
+ */
+export function withPageRatings(
+  ratings: Record<string, 1 | -1>,
+  messages: readonly Pick<BotMessage, 'id' | 'role' | 'bot_id'>[],
+  myRatings: Readonly<Record<string, 1 | -1>> | undefined,
+  ratedHere: ReadonlySet<string>,
+): Record<string, 1 | -1> {
+  let out = ratings;
+  for (const message of messages) {
+    if (message.role !== 'assistant' || !message.bot_id || ratedHere.has(message.id)) continue;
+    const next = myRatings?.[message.id];
+    if (out[message.id] === next) continue;
+    if (out === ratings) out = { ...ratings };
+    if (next === undefined) delete out[message.id];
+    else out[message.id] = next;
+  }
+  return out;
 }
 
 /** A rating's comment as the server takes it: trimmed, at most 1000 characters, none when empty. */

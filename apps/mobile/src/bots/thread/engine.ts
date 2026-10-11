@@ -598,6 +598,7 @@ export class ThreadEngine implements ThreadController {
     );
     this.hasMore = page.has_more;
     if (page.memory_states) this.memoryStates = { ...this.memoryStates, ...page.memory_states };
+    this.seedRatings(page);
     this.earlier = 'idle';
     this.publish();
   }
@@ -747,12 +748,19 @@ export class ThreadEngine implements ThreadController {
       this.readOnly = null;
     }
     if (page.memory_states) this.memoryStates = { ...this.memoryStates, ...page.memory_states };
+    this.seedRatings(page);
     this.settleSends();
     this.load = 'ready';
     this.refreshFailed = false;
     // A run nobody here reads any more (it ended while detached, or its settle could not reload): the rows are the truth now.
     if (this.run && !this.reader) this.run = null;
     this.saveCache();
+  }
+
+  /** The member's 👍 / 👎 on this page's replies (a public Agent's DM) — into this account's store only. */
+  private seedRatings(page: ConversationPage): void {
+    const store = this.deps.store.getState();
+    if (store.generation === this.generation) store.seedRatings(page.messages, page.my_ratings);
   }
 
   /** Drop sends whose persisted copy is in (one-to-one, oldest first; includes `sending`). */

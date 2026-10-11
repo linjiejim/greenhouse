@@ -12,7 +12,7 @@
  */
 
 import { createHash, randomBytes } from 'node:crypto';
-import { and, asc, desc, eq, inArray, isNull, lt, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNull, lt, ne, or, sql } from 'drizzle-orm';
 import { PgTransaction } from 'drizzle-orm/pg-core';
 import { nowIso } from '@greenhouse/utils/date';
 import { isUniqueViolation } from '@greenhouse/utils/error';
@@ -27,6 +27,7 @@ import {
   botSharedNotes,
   botRequests,
   botInbox,
+  conversationParticipants,
   sessions,
   messages,
   notifications,
@@ -44,6 +45,7 @@ import type {
   BotRequestStatus,
   BotInboxRow,
   BotInboxKind,
+  ConversationParticipantRow,
 } from '../schema/bots.js';
 
 /** Per-user cap on active Bots. */
@@ -55,6 +57,26 @@ export const MAX_BOTS_PER_CONVERSATION = 6;
 export const MAX_OPEN_NOTES_PER_CONVERSATION = 50;
 /** Where a conversation's unread count stops (`unreadCounts`; clients show "99+"). */
 const UNREAD_COUNT_CAP = 99;
+/** People in one room, its creator included (spec 20261011-agent-first-class P5). */
+export const MAX_ROOM_PARTICIPANTS = 20;
+
+/**
+ * The conversations a member may open: their own (every kind but `room`, keyed by `user_id`) and
+ * the rooms they take part in (`conversation_participants`) — a room's creator who left is out.
+ */
+function visibleTo(userId: string) {
+  return or(
+    and(ne(botConversations.kind, 'room'), eq(botConversations.user_id, userId)),
+    and(
+      eq(botConversations.kind, 'room'),
+      sql`EXISTS (SELECT 1 FROM ${conversationParticipants} p WHERE p.session_id = ${botConversations.session_id} AND p.user_id = ${userId})`,
+    ),
+  );
+}
+
+export interface RoomParticipant extends ConversationParticipantRow {
+  nickname: string;
+}
 
 /** Dedupe-key prefix of reply alerts (`notifications.dedupe_key`); `/read` clears a conversation's by prefix. */
 export const BOTS_REPLY_DEDUPE_PREFIX = 'bots-reply:';
@@ -76,6 +98,8 @@ export class BotsDomainError extends Error {
       | 'cannot_remove_owner'
       /** A retired group chat: readable history, no invites or removals. */
       | 'group_closed'
+      /** A room already holds MAX_ROOM_PARTICIPANTS people. */
+      | 'room_full'
       | 'note_limit'
       | 'note_not_found',
     message: string,
@@ -391,6 +415,25 @@ export function createBotsService(db: Db) {
       return row!;
     },
 
+    /** This member's own ratings of these replies (message id → 1 / -1). */
+    async listMyFeedback(userId: string, messageIds: readonly string[]): Promise<Map<string, 1 | -1>> {
+      if (messageIds.length === 0) return new Map();
+      const rows = await db
+        .select({ message_id: botFeedback.message_id, rating: botFeedback.rating })
+        .from(botFeedback)
+        .where(and(eq(botFeedback.user_id, userId), inArray(botFeedback.message_id, [...messageIds])));
+      return new Map(rows.map((row) => [row.message_id, row.rating === -1 ? -1 : 1]));
+    },
+
+    /** Take back a rating; false when there was none. */
+    async deleteFeedback(userId: string, messageId: string): Promise<boolean> {
+      const rows = await db
+        .delete(botFeedback)
+        .where(and(eq(botFeedback.user_id, userId), eq(botFeedback.message_id, messageId)))
+        .returning({ id: botFeedback.id });
+      return rows.length > 0;
+    },
+
     async listFeedback(botId: string, limit = 100): Promise<BotFeedbackRow[]> {
       return db
         .select()
@@ -658,6 +701,265 @@ export function createBotsService(db: Db) {
       });
     },
 
+    // ─── Rooms (spec 20261011-agent-first-class P5, D42–D46) ───
+
+    /**
+     * A new room: its creator (`owner`) and `participantIds` (active internal members — the caller
+     * checks), an optional title. The session is channel `bots`, owned by the creator.
+     */
+    async createRoom(input: {
+      creatorId: string;
+      participantIds: readonly string[];
+      title?: string | null;
+    }): Promise<ConversationWithMembers> {
+      const people = [input.creatorId, ...new Set(input.participantIds.filter((id) => id !== input.creatorId))];
+      if (people.length > MAX_ROOM_PARTICIPANTS) {
+        throw new BotsDomainError('room_full', `At most ${MAX_ROOM_PARTICIPANTS} people in a room`);
+      }
+      return db.transaction(async (tx) => {
+        const now = nowIso();
+        const sessionId = randomBytes(16).toString('hex');
+        const title = input.title?.trim() ? input.title.trim().slice(0, 200) : null;
+        await tx.insert(sessions).values({
+          id: sessionId,
+          title: title ?? '',
+          status: 'active',
+          profile_id: 'sprouty',
+          user_id: input.creatorId,
+          channel: 'bots',
+          metadata: '{}',
+          created_at: now,
+          updated_at: now,
+        });
+        const [conversation] = await tx
+          .insert(botConversations)
+          .values({
+            session_id: sessionId,
+            user_id: input.creatorId,
+            kind: 'room',
+            owner_bot_id: null,
+            lead_bot_id: null,
+            title,
+            last_activity_at: now,
+            created_at: now,
+            updated_at: now,
+          })
+          .returning();
+        await tx.insert(conversationParticipants).values(
+          people.map((userId, index) => ({
+            session_id: sessionId,
+            user_id: userId,
+            role: index === 0 ? ('owner' as const) : ('member' as const),
+            added_by: input.creatorId,
+            joined_at: now,
+          })),
+        );
+        return { ...conversation!, members: [] };
+      });
+    },
+
+    /** The private room of exactly these two people (no title, no Agents), when there is one. */
+    async findPrivateRoom(userA: string, userB: string): Promise<BotConversationRow | undefined> {
+      const rows = await db.execute<{ session_id: string }>(sql`
+        SELECT c.session_id FROM ${botConversations} c
+        WHERE c.kind = 'room' AND c.title IS NULL
+          AND NOT EXISTS (SELECT 1 FROM ${botConversationMembers} m WHERE m.session_id = c.session_id)
+          AND (SELECT count(*) FROM ${conversationParticipants} p WHERE p.session_id = c.session_id) = 2
+          AND EXISTS (
+            SELECT 1 FROM ${conversationParticipants} p WHERE p.session_id = c.session_id AND p.user_id = ${userA}
+          )
+          AND EXISTS (
+            SELECT 1 FROM ${conversationParticipants} p WHERE p.session_id = c.session_id AND p.user_id = ${userB}
+          )
+        ORDER BY c.created_at ASC
+        LIMIT 1
+      `);
+      const id = (rows as unknown as Array<{ session_id: string }>)[0]?.session_id;
+      if (!id) return undefined;
+      const [row] = await db.select().from(botConversations).where(eq(botConversations.session_id, id));
+      return row;
+    },
+
+    /** The people of these rooms (with their nicknames), creator first, then by joining order. */
+    async listParticipants(sessionIds: readonly string[]): Promise<Map<string, RoomParticipant[]>> {
+      const result = new Map<string, RoomParticipant[]>();
+      if (sessionIds.length === 0) return result;
+      const rows = await db
+        .select({ participant: conversationParticipants, nickname: users.nickname, email: users.email })
+        .from(conversationParticipants)
+        .innerJoin(users, eq(users.id, conversationParticipants.user_id))
+        .where(inArray(conversationParticipants.session_id, [...sessionIds]))
+        .orderBy(asc(conversationParticipants.joined_at), asc(conversationParticipants.id));
+      for (const row of rows) {
+        const list = result.get(row.participant.session_id) ?? [];
+        const person = { ...row.participant, nickname: row.nickname || row.email };
+        if (person.role === 'owner') list.unshift(person);
+        else list.push(person);
+        result.set(row.participant.session_id, list);
+      }
+      return result;
+    },
+
+    async isParticipant(sessionId: string, userId: string): Promise<boolean> {
+      const [row] = await db
+        .select({ id: conversationParticipants.id })
+        .from(conversationParticipants)
+        .where(and(eq(conversationParticipants.session_id, sessionId), eq(conversationParticipants.user_id, userId)))
+        .limit(1);
+      return Boolean(row);
+    },
+
+    /** Add a person to a room. */
+    async addParticipant(sessionId: string, userId: string, addedBy: string): Promise<'added' | 'already'> {
+      return db.transaction(async (tx) => {
+        const [room] = await tx
+          .select()
+          .from(botConversations)
+          .where(and(eq(botConversations.session_id, sessionId), eq(botConversations.kind, 'room')))
+          .for('update');
+        if (!room) throw new BotsDomainError('conversation_not_found', 'Conversation not found');
+        const people = await tx
+          .select({ user_id: conversationParticipants.user_id })
+          .from(conversationParticipants)
+          .where(eq(conversationParticipants.session_id, sessionId));
+        if (people.some((p) => p.user_id === userId)) return 'already';
+        if (people.length >= MAX_ROOM_PARTICIPANTS) {
+          throw new BotsDomainError('room_full', `At most ${MAX_ROOM_PARTICIPANTS} people in a room`);
+        }
+        const now = nowIso();
+        await tx.insert(conversationParticipants).values({
+          session_id: sessionId,
+          user_id: userId,
+          role: 'member',
+          added_by: addedBy,
+          joined_at: now,
+        });
+        await tx
+          .update(botConversations)
+          .set({ updated_at: now, last_activity_at: now })
+          .where(eq(botConversations.session_id, sessionId));
+        return 'added';
+      });
+    },
+
+    /**
+     * Take a person out of a room, with the Agents they brought. The last one out deletes the
+     * room; when its owner leaves, the earliest remaining person becomes its owner (the session's
+     * `user_id` follows, so owner-keyed housekeeping always points at someone still in it).
+     */
+    async removeParticipant(
+      sessionId: string,
+      userId: string,
+    ): Promise<{ removed: boolean; removedBotIds: string[]; deleted: boolean }> {
+      return db.transaction(async (tx) => {
+        const [room] = await tx
+          .select()
+          .from(botConversations)
+          .where(and(eq(botConversations.session_id, sessionId), eq(botConversations.kind, 'room')))
+          .for('update');
+        if (!room) throw new BotsDomainError('conversation_not_found', 'Conversation not found');
+        const gone = await tx
+          .delete(conversationParticipants)
+          .where(and(eq(conversationParticipants.session_id, sessionId), eq(conversationParticipants.user_id, userId)))
+          .returning({ id: conversationParticipants.id });
+        if (gone.length === 0) return { removed: false, removedBotIds: [], deleted: false };
+        const agents = await tx
+          .delete(botConversationMembers)
+          .where(and(eq(botConversationMembers.session_id, sessionId), eq(botConversationMembers.user_id, userId)))
+          .returning({ bot_id: botConversationMembers.bot_id });
+        const left = await tx
+          .select()
+          .from(conversationParticipants)
+          .where(eq(conversationParticipants.session_id, sessionId))
+          .orderBy(asc(conversationParticipants.joined_at), asc(conversationParticipants.id));
+        if (left.length === 0) {
+          await tx.delete(sessions).where(eq(sessions.id, sessionId));
+          return { removed: true, removedBotIds: agents.map((a) => a.bot_id), deleted: true };
+        }
+        const now = nowIso();
+        if (room.user_id === userId) {
+          const heir = left[0]!;
+          await tx
+            .update(conversationParticipants)
+            .set({ role: 'owner' })
+            .where(eq(conversationParticipants.id, heir.id));
+          await tx.update(sessions).set({ user_id: heir.user_id, updated_at: now }).where(eq(sessions.id, sessionId));
+          await tx
+            .update(botConversations)
+            .set({ user_id: heir.user_id, updated_at: now })
+            .where(eq(botConversations.session_id, sessionId));
+        }
+        await tx
+          .update(botConversations)
+          .set({ updated_at: now, last_activity_at: now })
+          .where(eq(botConversations.session_id, sessionId));
+        return { removed: true, removedBotIds: agents.map((a) => a.bot_id), deleted: false };
+      });
+    },
+
+    /**
+     * Bring an Agent into a room (the caller checked it may: the adder's own, or a public one
+     * offered to everyone in the room — D45). `user_id` on the row = who brought it: it leaves
+     * with them.
+     */
+    async addRoomAgent(sessionId: string, botId: string, addedBy: string): Promise<BotConversationMemberRow> {
+      return db.transaction(async (tx) => {
+        const [room] = await tx
+          .select()
+          .from(botConversations)
+          .where(and(eq(botConversations.session_id, sessionId), eq(botConversations.kind, 'room')))
+          .for('update');
+        if (!room) throw new BotsDomainError('conversation_not_found', 'Conversation not found');
+        const members = await membersOf(tx, sessionId);
+        if (members.some((m) => m.bot_id === botId)) {
+          throw new BotsDomainError('already_member', 'This Agent is already in the conversation');
+        }
+        if (members.length >= MAX_BOTS_PER_CONVERSATION) {
+          throw new BotsDomainError('member_limit', `At most ${MAX_BOTS_PER_CONVERSATION} Agents per conversation`);
+        }
+        const now = nowIso();
+        const [row] = await tx
+          .insert(botConversationMembers)
+          .values({
+            session_id: sessionId,
+            user_id: addedBy,
+            bot_id: botId,
+            role: 'member',
+            position: members.length,
+            added_by: 'user',
+            joined_at: now,
+          })
+          .returning();
+        await tx
+          .update(botConversations)
+          .set({ updated_at: now, last_activity_at: now })
+          .where(eq(botConversations.session_id, sessionId));
+        return row!;
+      });
+    },
+
+    async removeRoomAgent(sessionId: string, botId: string): Promise<boolean> {
+      const rows = await db
+        .delete(botConversationMembers)
+        .where(and(eq(botConversationMembers.session_id, sessionId), eq(botConversationMembers.bot_id, botId)))
+        .returning({ id: botConversationMembers.id });
+      return rows.length > 0;
+    },
+
+    /** A room's title (the session's too); null = none (two people and no title read as a private chat). */
+    async setRoomTitle(sessionId: string, title: string | null): Promise<void> {
+      const clean = title?.trim() ? title.trim().slice(0, 200) : null;
+      const now = nowIso();
+      await db
+        .update(botConversations)
+        .set({ title: clean, updated_at: now })
+        .where(and(eq(botConversations.session_id, sessionId), eq(botConversations.kind, 'room')));
+      await db
+        .update(sessions)
+        .set({ title: clean ?? '', updated_at: now })
+        .where(eq(sessions.id, sessionId));
+    },
+
     /** A task chat's model and title (the title is the session's too, so the chats list follows). */
     async updateTaskConversation(
       userId: string,
@@ -691,29 +993,31 @@ export function createBotsService(db: Db) {
       });
     },
 
+    /** A conversation this member may open: their own, or a room they take part in. */
     async getConversation(userId: string, sessionId: string): Promise<ConversationWithMembers | undefined> {
       const [row] = await db
         .select()
         .from(botConversations)
-        .where(and(eq(botConversations.session_id, sessionId), eq(botConversations.user_id, userId)));
+        .where(and(eq(botConversations.session_id, sessionId), visibleTo(userId)));
       if (!row) return undefined;
       return { ...row, members: await membersOf(db, sessionId) };
     },
 
     /**
-     * Conversations by recent activity, with members. Default: the threads list (DMs and retired
-     * groups); task chats are listed only when asked for — they live in the chats list.
+     * Conversations by recent activity, with members. Default: the threads list (DMs, rooms the
+     * member takes part in, retired groups); task chats are listed only when asked for — they live
+     * in the chats list.
      */
     async listConversations(
       userId: string,
       limit = 100,
       opts: { kinds?: ReadonlyArray<BotConversationRow['kind']> } = {},
     ): Promise<ConversationWithMembers[]> {
-      const kinds = opts.kinds ?? (['direct', 'group'] as const);
+      const kinds = opts.kinds ?? (['direct', 'group', 'room'] as const);
       const rows = await db
         .select()
         .from(botConversations)
-        .where(and(eq(botConversations.user_id, userId), inArray(botConversations.kind, [...kinds])))
+        .where(and(visibleTo(userId), inArray(botConversations.kind, [...kinds])))
         .orderBy(desc(botConversations.last_activity_at))
         .limit(limit);
       if (rows.length === 0) return [];
@@ -739,10 +1043,29 @@ export function createBotsService(db: Db) {
     /** Latest message per conversation (preview + unread computation). */
     async latestMessages(
       sessionIds: string[],
-    ): Promise<Map<string, { content: string; role: string; bot_id: string | null; created_at: string; seq: number }>> {
+    ): Promise<
+      Map<
+        string,
+        {
+          content: string;
+          role: string;
+          bot_id: string | null;
+          author_user_id: string | null;
+          created_at: string;
+          seq: number;
+        }
+      >
+    > {
       const result = new Map<
         string,
-        { content: string; role: string; bot_id: string | null; created_at: string; seq: number }
+        {
+          content: string;
+          role: string;
+          bot_id: string | null;
+          author_user_id: string | null;
+          created_at: string;
+          seq: number;
+        }
       >();
       if (sessionIds.length === 0) return result;
       const rows = await db.execute<{
@@ -750,10 +1073,11 @@ export function createBotsService(db: Db) {
         content: string;
         role: string;
         bot_id: string | null;
+        author_user_id: string | null;
         created_at: string;
         seq: number;
       }>(sql`
-        SELECT DISTINCT ON (session_id) session_id, content, role, bot_id, created_at::text AS created_at, seq
+        SELECT DISTINCT ON (session_id) session_id, content, role, bot_id, author_user_id, created_at::text AS created_at, seq
         FROM ${messages}
         WHERE session_id IN (${sql.join(
           sessionIds.map((id) => sql`${id}`),
@@ -766,6 +1090,7 @@ export function createBotsService(db: Db) {
         content: string;
         role: string;
         bot_id: string | null;
+        author_user_id: string | null;
         created_at: string;
         seq: number;
       }>) {
@@ -773,6 +1098,7 @@ export function createBotsService(db: Db) {
           content: row.content,
           role: row.role,
           bot_id: row.bot_id,
+          author_user_id: row.author_user_id ?? null,
           created_at: row.created_at,
           seq: Number(row.seq),
         });
@@ -782,22 +1108,31 @@ export function createBotsService(db: Db) {
 
     /**
      * Bot replies (`assistant` rows) after each conversation's `last_read_at`, capped at
-     * UNREAD_COUNT_CAP — the badge number beside `attention: 'unread'`. Sessions with none
-     * are absent from the map.
+     * UNREAD_COUNT_CAP — the badge number beside `attention: 'unread'`. In a room: replies and
+     * other people's messages after this reader's own marker (`userId`). Sessions with none are
+     * absent from the map.
      */
-    async unreadCounts(sessionIds: string[]): Promise<Map<string, number>> {
+    async unreadCounts(sessionIds: string[], userId?: string): Promise<Map<string, number>> {
       const result = new Map<string, number>();
       if (sessionIds.length === 0) return result;
+      const reader = userId ?? '';
       const rows = await db.execute<{ session_id: string; n: number }>(sql`
         SELECT m.session_id, LEAST(COUNT(*), ${UNREAD_COUNT_CAP})::int AS n
         FROM ${messages} m
         JOIN ${botConversations} c ON c.session_id = m.session_id
+        LEFT JOIN ${conversationParticipants} p ON p.session_id = c.session_id AND p.user_id = ${reader}
         WHERE m.session_id IN (${sql.join(
           sessionIds.map((id) => sql`${id}`),
           sql`, `,
         )})
-          AND m.role = 'assistant'
-          AND (c.last_read_at IS NULL OR m.created_at > c.last_read_at)
+          AND (
+            (c.kind <> 'room' AND m.role = 'assistant' AND (c.last_read_at IS NULL OR m.created_at > c.last_read_at))
+            OR (
+              c.kind = 'room'
+              AND (m.role = 'assistant' OR (m.role = 'user' AND m.author_user_id IS DISTINCT FROM ${reader}))
+              AND (p.last_read_at IS NULL OR m.created_at > p.last_read_at)
+            )
+          )
         GROUP BY m.session_id
       `);
       for (const row of rows as unknown as Array<{ session_id: string; n: number }>) {
@@ -884,10 +1219,13 @@ export function createBotsService(db: Db) {
      * member's own and is newer than `last_read_at`).
      */
     async attentionCount(userId: string): Promise<number> {
+      // A room counts only for a card waiting for this member (its chatter is the list's unread count).
       const rows = await db.execute<{ n: number }>(sql`
         SELECT count(*)::int AS n
         FROM ${botConversations} c
-        WHERE c.user_id = ${userId}
+        WHERE (
+          c.kind <> 'room'
+          AND c.user_id = ${userId}
           AND (
             EXISTS (SELECT 1 FROM ${botRequests} r WHERE r.session_id = c.session_id AND r.status = 'pending')
             OR EXISTS (
@@ -900,6 +1238,16 @@ export function createBotsService(db: Db) {
               WHERE last.role <> 'user' AND (c.last_read_at IS NULL OR last.created_at > c.last_read_at)
             )
           )
+        ) OR (
+          c.kind = 'room'
+          AND EXISTS (
+            SELECT 1 FROM ${conversationParticipants} p WHERE p.session_id = c.session_id AND p.user_id = ${userId}
+          )
+          AND EXISTS (
+            SELECT 1 FROM ${botRequests} r
+            WHERE r.session_id = c.session_id AND r.user_id = ${userId} AND r.status = 'pending'
+          )
+        )
       `);
       return Number((rows as unknown as Array<{ n: number }>)[0]?.n ?? 0);
     },
@@ -971,11 +1319,23 @@ export function createBotsService(db: Db) {
       }));
     },
 
+    /** The reader's marker: the conversation's own, or in a room their participant row's. */
     async markRead(userId: string, sessionId: string): Promise<void> {
+      const now = nowIso();
       await db
         .update(botConversations)
-        .set({ last_read_at: nowIso() })
-        .where(and(eq(botConversations.session_id, sessionId), eq(botConversations.user_id, userId)));
+        .set({ last_read_at: now })
+        .where(
+          and(
+            eq(botConversations.session_id, sessionId),
+            eq(botConversations.user_id, userId),
+            ne(botConversations.kind, 'room'),
+          ),
+        );
+      await db
+        .update(conversationParticipants)
+        .set({ last_read_at: now })
+        .where(and(eq(conversationParticipants.session_id, sessionId), eq(conversationParticipants.user_id, userId)));
     },
 
     async touchActivity(sessionId: string): Promise<void> {

@@ -15,11 +15,10 @@ import { useT, type TranslationKey } from '../../lib/i18n';
 import { fetchAdminPublicAgents, setAdminPublicAgentPaused, type AdminPublicAgentRow } from '../../lib/api/bots';
 import { CrudPage, defineCrud, type CrudDataSource } from '../settings/crud';
 
-/** The server's audience summary (`everyone` / `N people, M groups`) in the reader's language. */
-export function audienceLabel(raw: string, t: ReturnType<typeof useT>): string {
-  if (raw === 'everyone') return t('bots.publicAdmin.audienceEveryone');
-  const match = /^(\d+) people, (\d+) groups$/.exec(raw);
-  return match ? t('bots.publicAdmin.audienceSome', { people: Number(match[1]), groups: Number(match[2]) }) : raw;
+/** Who it was published to, in the reader's language: everyone, or how many members and groups. */
+export function audienceLabel(audience: AdminPublicAgentRow['audience'], t: ReturnType<typeof useT>): string {
+  if (audience.everyone) return t('bots.publicAdmin.audienceEveryone');
+  return t('bots.publicAdmin.audienceSome', { people: audience.user_count, groups: audience.group_count });
 }
 
 function stateOf(row: AdminPublicAgentRow): { key: TranslationKey; tone: TagTone } {

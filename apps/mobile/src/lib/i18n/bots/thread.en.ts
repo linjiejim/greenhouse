@@ -57,6 +57,9 @@ export const botsThreadEn = {
     rateSend: 'Send',
     rateThanks: 'Thanks for the feedback',
     rateFailed: 'Couldn’t send your feedback',
+    /** The rating the reply already had, chosen again: taken back. */
+    rateRemoved: 'Rating removed',
+    rateRemoveFailed: 'Couldn’t remove your rating',
     nameHint: 'Give {name} a name of your own?',
     nameHintRename: 'Rename',
     nameHintKeep: 'Keep {name}',

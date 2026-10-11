@@ -1061,6 +1061,19 @@ describe('paging & lifecycle', () => {
     expect(t.snap().hasMore).toBe(false);
   });
 
+  it('hands each page’s ratings (my_ratings) to the store — older pages too; a reload drops one taken back elsewhere', async () => {
+    const t = await setup({
+      messages: rows(0, 70),
+      prepare: (fake) => (fake.server.ratings = { m65: 1, m3: -1 }),
+    });
+    expect(t.store.getState().ratings).toEqual({ m65: 1 });
+    await t.engine.loadEarlier();
+    expect(t.store.getState().ratings).toEqual({ m65: 1, m3: -1 });
+    t.fake.server.ratings = { m3: -1 };
+    await t.engine.reload();
+    expect(t.store.getState().ratings).toEqual({ m3: -1 });
+  });
+
   it('a reload that changes nothing keeps the message objects (rows stay memoised)', async () => {
     const t = await setup();
     const before = t.snap().messages;

@@ -519,6 +519,7 @@ describe("a DM with someone else's public Agent (P4)", () => {
     owner: { id: 'u2', nickname: 'Alice' },
     dm_session_id: 'dm-oracle',
     available: true,
+    computer: false,
   };
   const oracleAsBot = { ...SAGE, id: ORACLE.id, name: ORACLE.name, user_id: 'u2' };
 
@@ -541,7 +542,6 @@ describe("a DM with someone else's public Agent (P4)", () => {
 
   it('names it, answers in it, and shows no computer its owner did not grant', async () => {
     withShared(ORACLE);
-    api.fetchComputerStatus.mockRejectedValue(new BotsApiError('Agent not found', 404, 'agent_not_found'));
     await renderPage('c=dm-oracle');
 
     const header = document.querySelector('[data-testid="bots-conversation-header"]')!;
@@ -550,20 +550,24 @@ describe("a DM with someone else's public Agent (P4)", () => {
     expect(document.body.textContent).not.toContain('Deleted Agent');
     expect(document.querySelector('[data-testid="chat-input"]')).not.toBeNull();
     expect(document.querySelector('[data-testid="bots-computer-button"]')).toBeNull();
-    // Asked once for this Agent's computer; no polling after the refusal.
+    // The list says it has none (`computer: false`): its computer is never asked about.
+    expect(api.fetchComputerStatus).not.toHaveBeenCalled();
+  });
+
+  it('shows the computer door when its owner granted one — the member’s own copy', async () => {
+    withShared({ ...ORACLE, computer: true });
+    api.fetchComputerStatus.mockResolvedValue(
+      computer({ state: 'absent', computer_id: 'u1.bot_oracle', bot_id: 'bot_oracle' }),
+    );
+    await renderPage('c=dm-oracle');
+    expect(document.querySelector('[data-testid="bots-computer-button"]')).not.toBeNull();
+    // One status read (the page's), no separate probe first.
     expect(api.fetchComputerStatus).toHaveBeenCalledTimes(1);
     expect(api.fetchComputerStatus).toHaveBeenCalledWith('bot_oracle');
   });
 
-  it('shows the computer door when its owner granted one', async () => {
-    withShared(ORACLE);
-    api.fetchComputerStatus.mockResolvedValue(computer({ state: 'absent' }));
-    await renderPage('c=dm-oracle');
-    expect(document.querySelector('[data-testid="bots-computer-button"]')).not.toBeNull();
-  });
-
-  it('is read-only once it is no longer offered', async () => {
-    withShared({ ...ORACLE, available: false });
+  it('is read-only once it is no longer offered — a computer granted before included', async () => {
+    withShared({ ...ORACLE, available: false, computer: true });
     await renderPage('c=dm-oracle');
     expect(document.querySelector('[data-testid="chat-input"]')).toBeNull();
     expect(document.querySelector('[data-testid="bots-read-only"]')?.textContent).toContain(

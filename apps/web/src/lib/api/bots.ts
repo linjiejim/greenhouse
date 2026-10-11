@@ -181,6 +181,11 @@ export interface ConversationPage {
    * after a reload. Optional: without it, undo state lasts for the tab.
    */
   memory_states?: Record<string, string>;
+  /**
+   * The caller's own 👍 (1) / 👎 (-1) on the replies of this page, by message id (a public Agent's
+   * DM, P4). Omitted when there are none; a reply missing from it is not rated.
+   */
+  my_ratings?: Record<string, 1 | -1>;
 }
 
 export async function listBots(): Promise<BotsOverview> {
@@ -287,6 +292,13 @@ export async function rateReply(
   const res = await rpc.api.bots.conversations[':id'].messages[':messageId'].feedback.$post(args);
   if (!res.ok) throw await failure(res);
   return res.json();
+}
+
+/** Take a rating back (the reply is unrated again). */
+export async function unrateReply(sessionId: string, messageId: string): Promise<void> {
+  const args = { param: { id: enc(sessionId), messageId: enc(messageId) } };
+  const res = await rpc.api.bots.conversations[':id'].messages[':messageId'].feedback.$delete(args);
+  if (!res.ok) throw await failure(res);
 }
 
 /** Other members' public Agents this member may talk to (never their own). */
@@ -910,8 +922,8 @@ export interface AdminPublicAgentRow {
   /** Published, not paused and active. */
   available: boolean;
   paused: boolean;
-  /** `everyone`, or the server's `N people, M groups` summary. */
-  audience: string;
+  /** Everyone, or how many members and groups it was published to. */
+  audience: { everyone: boolean; user_count: number; group_count: number };
   /** Members who have a conversation with it. */
   users: number;
 }

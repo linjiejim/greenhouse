@@ -18,6 +18,7 @@ import { wsClient } from '../../lib/ws';
 import { useT } from '../../lib/i18n';
 import { toast } from '../ui';
 import { conversationBotIds, useBotsStore } from './bots-store';
+import { seedReplyRatings } from './reply-feedback';
 import { pickUpQueued, type PendingSend } from './transcript';
 
 const VIEWPORT_ID = 'bots-page';
@@ -137,6 +138,8 @@ export function useBotConversation(sessionId: string) {
         .catch(() => {});
       if (ticket !== loadSeqRef.current) return;
       const merged = mergeLatest(messagesRef.current, page.messages);
+      // The member's ratings of these replies, before they render (a reload shows them again).
+      seedReplyRatings(page.messages, page.my_ratings);
       setConversation(page.conversation);
       setMessages(merged);
       if (page.memory_states) {
@@ -234,6 +237,7 @@ export function useBotConversation(sessionId: string) {
       const page = await botsApi.getConversation(forSession, { beforeSeq: oldest.seq, limit: PAGE_SIZE });
       // Switched away meanwhile: these rows are another conversation's history.
       if (sessionRef.current !== forSession) return;
+      seedReplyRatings(page.messages, page.my_ratings);
       setMessages((current) => {
         const known = new Set(current.map((message) => message.id));
         return [...page.messages.filter((message) => !known.has(message.id)), ...current].sort((a, b) => a.seq - b.seq);

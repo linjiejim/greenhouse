@@ -64,6 +64,7 @@ function sharedBot(id: string, name: string, available = true): SharedBotView {
     owner: { id: 'u2', nickname: 'Alice' },
     dm_session_id: `dm-${id}`,
     available,
+    computer: false,
   };
 }
 

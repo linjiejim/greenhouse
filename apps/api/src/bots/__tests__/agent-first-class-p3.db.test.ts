@@ -144,8 +144,14 @@ describe('who acted (P3b)', () => {
     expect(usage.json.totals).toEqual({ calls: 1, input_tokens: 1200, output_tokens: 300 });
     expect(usage.json.days).toEqual([expect.objectContaining({ calls: 1, sessions: 1 })]);
 
+    // Done for another member (a public Agent's user, P4): listed, but no link into their conversation.
+    await runInAgentScope({ botId: quill.id, sessionId: 'sess-ana', requestedByUserId: ana.id }, () =>
+      dispatchProjectAgentAction({ userId: jim.id }, 'createProject', { title: 'For Ana' }),
+    );
+
     const activity = await call(jim, 'GET', `/api/bots/${quill.id}/activity`);
     expect(activity.json.activity).toEqual([
+      expect.objectContaining({ kind: 'action', title: 'projects.createProject', session_id: null }),
       expect.objectContaining({
         kind: 'action',
         title: 'projects.createProject',

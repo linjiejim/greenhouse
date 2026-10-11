@@ -274,8 +274,8 @@ export const AiMessage = memo(function AiMessage({
   /** Above the reply, only when it shows (a Bots speaker line). Keep it stable — the row is memoised. */
   header?: React.ReactNode;
   /**
-   * 👍 / 👎 in the menu (`rateUp` / `rateDown`): a reply of someone else's public Agent. The rating
-   * given on this device (null = none yet) fills its thumb; undefined = not rateable.
+   * 👍 / 👎 in the menu (`rateUp` / `rateDown`): a reply of someone else's public Agent. The member's
+   * rating (null = none) fills its thumb — choosing that one again takes it back; undefined = not rateable.
    */
   rating?: 1 | -1 | null;
 }) {

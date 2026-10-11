@@ -63,6 +63,8 @@ export interface SharedBotView {
   dm_session_id: string | null;
   /** false once its owner unpublished it or an administrator paused it (the DM stays readable). */
   available: boolean;
+  /** Its owner granted it a computer (each member gets their own copy). */
+  computer: boolean;
 }
 
 // ─── Public Agents (spec 20261011-agent-first-class P4) ─────────────────
@@ -483,6 +485,22 @@ export interface BotMemberView {
   bot_id: string;
   role: BotMemberRole;
   position: number;
+  /** In a room: whose Agent it is (`bots.user_id`). Absent elsewhere — there it is the member's. */
+  owner_user_id?: string;
+  /**
+   * In a room: may the person reading @ it (their own Agent, or a public one offered to them)?
+   * Only those answer them (spec 20261011-agent-first-class D44). Absent elsewhere.
+   */
+  addressable?: boolean;
+}
+
+/** A person in a room (spec 20261011-agent-first-class P5). */
+export interface RoomParticipantView {
+  user_id: string;
+  nickname: string;
+  /** `owner` = who created the room. */
+  role: 'owner' | 'member';
+  joined_at: string;
 }
 
 /** "Needs you" > unread > working, the sidebar's attention order. */
@@ -495,16 +513,27 @@ export interface BotConversationSummary {
    * context, answered by `owner_bot_id`; listed with the chats, not the threads (spec
    * 20261011-agent-first-class D20/D21). `group` = a retired group chat (2026-10-09): readable
    * history, closed to new messages, invites and card decisions (409 `group_closed`). Other Bots
-   * join a DM or a task chat as guests.
+   * join a DM or a task chat as guests. `room` = several people and the Agents they brought
+   * (P5): `participants` lists the people; an Agent answers only when someone allowed to address
+   * it @-mentions it; two people, no title, no Agents reads as a private chat between them.
    */
-  kind: 'direct' | 'task' | 'group';
+  kind: 'direct' | 'task' | 'group' | 'room';
   title: string | null;
   /** A task chat's chosen model; null = the owner Bot's model. Absent on DMs and older servers. */
   model_id?: string | null;
   owner_bot_id: string | null;
   lead_bot_id: string | null;
   members: BotMemberView[];
-  last_message: { preview: string; bot_id: string | null; role: string; created_at: string } | null;
+  /** A room's people (the reader included). Absent for every other kind. */
+  participants?: RoomParticipantView[];
+  last_message: {
+    preview: string;
+    bot_id: string | null;
+    role: string;
+    created_at: string;
+    /** In a room: which person wrote a member message (null = the reader's single-member chats). */
+    author_user_id?: string | null;
+  } | null;
   attention: BotConversationAttention;
   pending_requests: number;
   /**
@@ -910,7 +939,11 @@ export type BotEvent =
   /** The first line of a separate chat an Agent opened: where it came from. */
   | { kind: 'chat_origin'; from_session_id: string; bot_id: string }
   /** The first line of a conversation opened from outside Greenhouse: an MCP client, the CLI, Feishu (P6). */
-  | { kind: 'external_origin'; via: string };
+  | { kind: 'external_origin'; via: string }
+  /** A person joined a room (P5); `by` = who added them. */
+  | { kind: 'person_joined'; user_id: string; by: string }
+  /** A person left a room or was removed (P5). Their Agents leave with them. */
+  | { kind: 'person_left'; user_id: string };
 
 // ─── Messages ────────────────────────────────────────────
 
@@ -921,6 +954,8 @@ export interface BotMessage {
   content: string;
   bot_id: string | null;
   bot_event: BotEvent | null;
+  /** In a room: the person who wrote this member message (P5). Null / absent everywhere else. */
+  author_user_id?: string | null;
   pipeline: import('./session.js').PipelineStep[];
   references: import('./session.js').Reference[];
   reasoning: string | null;

@@ -8,6 +8,7 @@ import { describe, expect, it } from 'vitest';
 import type { BotMessage, SharedBotView } from '../shared/bots';
 import {
   FEEDBACK_COMMENT_MAX,
+  computerOffered,
   directoryRows,
   feedbackBody,
   rateableReply,
@@ -18,6 +19,7 @@ import {
   sharedReadOnly,
   startFailure,
   withConversation,
+  withPageRatings,
 } from './public-agents';
 
 function shared(id: string, partial: Partial<SharedBotView> = {}): SharedBotView {
@@ -31,6 +33,7 @@ function shared(id: string, partial: Partial<SharedBotView> = {}): SharedBotView
     owner: { id: 'u_owner', nickname: 'Jim' },
     dm_session_id: null,
     available: true,
+    computer: false,
     ...partial,
   };
 }
@@ -118,6 +121,47 @@ describe('rateableReply', () => {
     expect(rateableReply(message({ bot_id: null }), SHARED)).toBe(false);
     expect(rateableReply(undefined, SHARED)).toBe(false);
     expect(rateableReply(message(), undefined)).toBe(false);
+  });
+});
+
+describe('computerOffered', () => {
+  it('the member’s own Agents always; someone else’s only when granted and still offered', () => {
+    expect(computerOffered(null)).toBe(true);
+    expect(computerOffered(PUB)).toBe(false);
+    expect(computerOffered({ ...PUB, computer: true })).toBe(true);
+    expect(computerOffered({ ...GONE, computer: true })).toBe(false);
+  });
+});
+
+describe('withPageRatings', () => {
+  const reply = (id: string) => message({ id });
+  it('sets and clears the page’s replies only; system lines and member messages are not rated', () => {
+    const before = { m_old: -1 as const, m2: 1 as const };
+    const after = withPageRatings(
+      before,
+      [
+        reply('m1'),
+        reply('m2'),
+        message({ id: 'm_greet', bot_event: { kind: 'greeting', bot_id: 'b_pub' } }),
+        message({ id: 'u1', role: 'user', bot_id: null }),
+      ],
+      { m1: -1, u1: 1 },
+      new Set(),
+    );
+    // m_old is on another page; m2 is unrated now; a member message never gets one.
+    expect(after).toEqual({ m_old: -1, m1: -1 });
+    expect(before).toEqual({ m_old: -1, m2: 1 });
+  });
+
+  it('keeps the object when nothing changed, and what was chosen on this device', () => {
+    const ratings = { m1: 1 as const };
+    expect(withPageRatings(ratings, [reply('m1')], { m1: 1 }, new Set())).toBe(ratings);
+    expect(withPageRatings(ratings, [reply('m1'), reply('m2')], { m2: -1 }, new Set(['m1']))).toEqual({
+      m1: 1,
+      m2: -1,
+    });
+    // An older server sends no ratings at all.
+    expect(withPageRatings(ratings, [reply('m1')], undefined, new Set())).toEqual({});
   });
 });
 
