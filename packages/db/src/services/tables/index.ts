@@ -10,7 +10,8 @@
  *   query.ts        THE SQL compiler (clauses, tokens, row scopes, queries)
  *   compute.ts      formula / rollup computation and recompute
  *   schema.ts       Bases, tables, fields, schema versions
- *   members.ts      Base membership rows
+ *   members.ts      Base membership rows (people)
+ *   roles.ts        custom roles, group grants, team default, owner transfer, access facts
  *   views.ts        saved views
  *   records.ts      record reads / writes (scope + write meta required)
  *   aggregate.ts    aggregates (date buckets, series)
@@ -31,6 +32,7 @@ import { createTablesForms } from './forms.js';
 import { createTablesMembers } from './members.js';
 import { createTablesRecords } from './records.js';
 import { createTablesResources } from './resources.js';
+import { createTablesRoles } from './roles.js';
 import { createTablesSchema } from './schema.js';
 import { createTablesViews } from './views.js';
 
@@ -72,6 +74,14 @@ export type {
 } from './schema.js';
 export type { CreateTableViewInput, UpdateTableViewInput } from './views.js';
 export { TABLES_RESOURCE_KINDS, type TablesResourceKind } from './resources.js';
+export type {
+  CreateTableBaseRoleInput,
+  DeleteTableBaseRoleResult,
+  TableBaseGroupGrantRow,
+  TablePreviousOwnerRole,
+  TableUserGroupGrantRow,
+  UpdateTableBaseRoleInput,
+} from './roles.js';
 export type { CreateTableFormInput, UpdateTableFormInput } from './forms.js';
 export type {
   BatchUpsertTableRecordItem,
@@ -113,6 +123,7 @@ export function createTablesService(db: Db) {
   return {
     ...createTablesSchema(db, { compute, listViews: views.listViews }),
     ...members,
+    ...createTablesRoles(db),
     ...views,
     ...records.service,
     ...createTablesAggregates(db),

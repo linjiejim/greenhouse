@@ -7,7 +7,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { TableBaseRole, TableRecordValues, TableViewConfig, TableViewScope } from '@greenhouse/types/tables';
-import { tableRoleAtLeast } from '@greenhouse/types/table-access';
+import type { TableBaseAccessView } from '@greenhouse/types/table-access';
 import {
   archiveTableField,
   createTableRecord,
@@ -41,20 +41,26 @@ import { FilterDialog } from './filter-dialog';
 import { viewBodyFor, type TableViewPermissions } from './views';
 import { orderedViewFields } from './view-fields';
 import { DEFAULT_RECORD_SORT, useRecordQuery } from './use-record-query';
+import { tableCapabilities } from './capabilities';
+import { isComputedField } from '../../components/tables/field-types';
 
 interface TablesViewContainerProps {
   table: TableDefinition;
   tables: TableDefinition[];
   role: TableBaseRole;
+  /** The effective access (`getBase.access`); a custom role's per-table view narrows every affordance. Default: `role`. */
+  access?: TableBaseAccessView;
   users: TableUserOption[];
   /** `?record=<id>` on the route: open this record's drawer. */
   focusRecordId?: number;
 }
 
-export function TablesViewContainer({ table, tables, role, users, focusRecordId }: TablesViewContainerProps) {
+export function TablesViewContainer({ table, tables, role, access, users, focusRecordId }: TablesViewContainerProps) {
   const t = useT();
-  const canEdit = tableRoleAtLeast(role, 'editor');
-  const canBuild = tableRoleAtLeast(role, 'builder');
+  // One mirror of the server's decision (built-in role or compiled custom role):
+  // nothing below offers a write the server would refuse.
+  const capabilities = useMemo(() => tableCapabilities(access ?? { level: role }, table), [access, role, table]);
+  const { canEdit, canBuild } = capabilities;
   const [schema, setSchema] = useState<TableSchema | null>(null);
   const [selectedViewId, setSelectedViewId] = useState('');
   const [error, setError] = useState('');
@@ -218,11 +224,20 @@ export function TablesViewContainer({ table, tables, role, users, focusRecordId 
     canBuild,
     canChangeView:
       selectedView === null
-        ? canEdit
+        ? capabilities.canSaveView
         : selectedView.scope === 'personal' && selectedView.owner_id === currentUser?.id
-          ? canEdit
+          ? capabilities.canSaveView
           : canBuild,
+    canEditField: capabilities.canEditField,
+    canDelete: capabilities.canDelete,
   };
+
+  // The record dialog writes every field it shows, so it only shows what this
+  // person may write (computed fields stay as read-only context).
+  const dialogFields = useMemo(
+    () => (schema?.fields ?? []).filter((field) => isComputedField(field) || capabilities.canEditField(field.id)),
+    [capabilities, schema?.fields],
+  );
 
   const updateViewConfig = async (patch: Partial<TableViewConfig>) => {
     // The unsaved default view has nowhere to keep a view setting, so send the
@@ -272,6 +287,9 @@ export function TablesViewContainer({ table, tables, role, users, focusRecordId 
         filterCount={where?.clauses.length ?? 0}
         canEdit={canEdit}
         canBuild={canBuild}
+        canCreate={capabilities.canCreate}
+        canDelete={capabilities.canDelete}
+        canSaveView={capabilities.canSaveView}
         pasting={pasting}
         onSelectView={(viewId) => selectView(viewId)}
         onSearch={(value) => setQuery({ search: value })}
@@ -340,7 +358,7 @@ export function TablesViewContainer({ table, tables, role, users, focusRecordId 
           <RecordDialog
             open={recordDialog !== null}
             baseId={table.base_id}
-            fields={schema.fields}
+            fields={dialogFields}
             record={recordDialog === 'new' ? null : recordDialog}
             users={users}
             saving={savingRecord}

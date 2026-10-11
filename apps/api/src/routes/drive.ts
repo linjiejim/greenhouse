@@ -33,7 +33,7 @@ import type { Context } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { z } from 'zod';
 import { getDb } from '@greenhouse/db';
-import type { DriveScope, DriveFolderRow } from '@greenhouse/db';
+import type { DriveFileRow, DriveFolderRow, DriveScope } from '@greenhouse/db';
 import { logger } from '@greenhouse/utils/logger';
 import { toErrorMessage } from '@greenhouse/utils/error';
 import { getAuthUser } from '../auth/middleware.js';
@@ -53,7 +53,12 @@ import {
 import type { AppEnv } from '../app-env.js';
 import { humanActor } from '../platform/actor.js';
 import { getPlatformRuntime } from '../platform/runtime.js';
-import { resolveBaseAccess } from '../platform/tables/access.js';
+import {
+  canReadTablesFile,
+  canUploadTablesFiles,
+  resolveBaseAccess,
+  type ResolvedBaseAccess,
+} from '../platform/tables/access.js';
 
 // ─── Helpers ─────────────────────────────────────────────
 
@@ -98,26 +103,93 @@ function buildScopeKeys(
   };
 }
 
-/** Authorize against a node (folder/file row, or a scope-root descriptor). */
+/**
+ * The caller's standing on a Tables Base for Drive: the kernel capability for
+ * `operation` first (outer ceiling), then the one Base resolver
+ * (platform/tables/access.ts). Null = neither applies.
+ */
+async function tablesStanding(
+  c: Context<AppEnv>,
+  baseId: number,
+  operation: 'read' | 'write',
+): Promise<ResolvedBaseAccess | null> {
+  const user = getAuthUser(c);
+  const decision = await getPlatformRuntime().authorize(
+    humanActor(user, c),
+    operation === 'read' ? 'tables.data.read' : 'tables.data.update',
+  );
+  if (!decision.allowed) return null;
+  const db = getDb();
+  const [base, account] = await Promise.all([db.tables.getBase(baseId), db.users.getById(user.id)]);
+  if (!base) return null;
+  const access = await resolveBaseAccess({ db }, account, base);
+  return access.level === 'none' ? null : access;
+}
+
+/**
+ * Authorize against a node (folder/file row, or a scope-root descriptor). For
+ * scope='tables' this is the cabinet: built-in Base roles only — a custom role
+ * gets 403 on every listing, folder and breadcrumb (D15) and reaches single
+ * files only through `tablesFileAllowed`.
+ */
 async function accessFor(c: Context<AppEnv>, node: DriveAccessNode, operation: 'read' | 'write') {
   const user = getAuthUser(c);
   let tablesRole: 'owner' | 'builder' | 'editor' | 'viewer' | null | undefined;
   if (node.scope === 'tables' && node.base_id) {
-    const decision = await getPlatformRuntime().authorize(
-      humanActor(user, c),
-      operation === 'read' ? 'tables.data.read' : 'tables.data.update',
-    );
-    if (!decision.allowed) return null;
-    const db = getDb();
-    const [base, account] = await Promise.all([db.tables.getBase(node.base_id), db.users.getById(user.id)]);
-    if (base) {
-      // The one Base resolver (platform/tables/access.ts). A custom role never
-      // reaches Drive listings (spec D15); slice A adds per-file reads for it.
-      const access = await resolveBaseAccess({ db }, account, base);
-      tablesRole = access.level === 'none' || access.level === 'custom' ? null : access.level;
-    }
+    const access = await tablesStanding(c, node.base_id, operation);
+    if (!access) return null;
+    tablesRole = access.level === 'none' || access.level === 'custom' ? null : access.level;
   }
   return resolveDriveAccessAsync(node, { userId: user.id, userRole: user.role, db: getDb(), operation, tablesRole });
+}
+
+/**
+ * One Tables file, per operation (spec §1 Drive matrix, D15):
+ * - `upload` (finishing one — complete / PUT content): built-in editor+, or a
+ *   custom role that can create / edit some attachment field and uploaded this
+ *   file; only while it is still pending, so bytes already attached somewhere
+ *   are never replaced;
+ * - `read`: built-in viewer+ (the cabinet), or — for a custom role — the file
+ *   sits in a readable attachment field of a record in its row scope
+ *   (`canReadTablesFile`), or it is the caller's own upload not attached yet;
+ * - `delete`: builder+, or the uploader while the file is attached nowhere.
+ */
+async function tablesFileAllowed(
+  c: Context<AppEnv>,
+  file: Pick<DriveFileRow, 'id' | 'base_id' | 'uploaded_by' | 'status'>,
+  operation: 'upload' | 'read' | 'delete',
+): Promise<boolean> {
+  if (!file.base_id) return false;
+  if (operation === 'upload' && file.status !== 'pending') return false;
+  const user = getAuthUser(c);
+  const access = await tablesStanding(c, file.base_id, operation === 'read' ? 'read' : 'write');
+  if (!access) return false;
+  const db = getDb();
+  const builtIn = access.level === 'custom' ? null : access.level;
+  const ownUpload = file.uploaded_by === user.id;
+  if (operation === 'upload') {
+    if (builtIn) return builtIn !== 'viewer';
+    return ownUpload && (await canUploadTablesFiles({ db }, access, user.id));
+  }
+  if (operation === 'read') {
+    if (builtIn) return true;
+    if (await canReadTablesFile({ db }, humanActor(user, c), file)) return true;
+    return ownUpload && (await db.tables.listFileAttachments(file.id)).length === 0;
+  }
+  if (builtIn === 'owner' || builtIn === 'builder') return true;
+  if (!ownUpload || !(await canUploadTablesFiles({ db }, access, user.id))) return false;
+  return (await db.tables.listFileAttachments(file.id)).length === 0;
+}
+
+/** One file, any scope: Tables files go through their matrix, everything else through `accessFor`. */
+async function fileAllowed(
+  c: Context<AppEnv>,
+  file: DriveFileRow,
+  operation: 'upload' | 'read' | 'delete',
+): Promise<boolean> {
+  if (file.scope === 'tables') return tablesFileAllowed(c, file, operation);
+  const access = await accessFor(c, toNode(file), operation === 'read' ? 'read' : 'write');
+  return operation === 'read' ? canReadDrive(access) : canWriteDrive(access);
 }
 
 const toNode = (
@@ -333,7 +405,18 @@ const drive = new Hono<AppEnv>()
 
     const keys = buildScopeKeys(c, scope, { base_id, visibility, owner_key });
     if ('error' in keys) return c.json({ error: keys.error }, 400);
-    if (!canWriteDrive(await accessFor(c, keys, 'write'))) return c.json({ error: 'forbidden' }, 403);
+    // Tables: anyone who may fill an attachment field uploads; a custom role
+    // (no cabinet view) always lands at the root.
+    let folderId = folder_id ?? null;
+    if (scope === 'tables' && keys.base_id) {
+      const access = await tablesStanding(c, keys.base_id, 'write');
+      if (!access || !(await canUploadTablesFiles({ db: getDb() }, access, getAuthUser(c).id))) {
+        return c.json({ error: 'forbidden' }, 403);
+      }
+      if (access.level === 'custom') folderId = null;
+    } else if (!canWriteDrive(await accessFor(c, keys, 'write'))) {
+      return c.json({ error: 'forbidden' }, 403);
+    }
 
     const cosKey = driveKeyFor({
       scope,
@@ -344,7 +427,7 @@ const drive = new Hono<AppEnv>()
     });
     const file = await getDb().drive.initFile({
       scope,
-      folder_id: folder_id ?? null,
+      folder_id: folderId,
       name,
       cos_key: cosKey,
       // Client MIME is only an input to the reject policy. Stored response
@@ -375,7 +458,7 @@ const drive = new Hono<AppEnv>()
     const db = getDb();
     const file = await db.drive.getFile(id);
     if (!file) return c.json({ error: 'not found' }, 404);
-    if (!canWriteDrive(await accessFor(c, toNode(file), 'write'))) return c.json({ error: 'forbidden' }, 403);
+    if (!(await fileAllowed(c, file, 'upload'))) return c.json({ error: 'forbidden' }, 403);
 
     // Trust the bucket, not the client: the real size comes from HeadObject.
     const size = await headObjectSize(file.cos_key);
@@ -399,7 +482,7 @@ const drive = new Hono<AppEnv>()
       const db = getDb();
       const file = await db.drive.getFile(id);
       if (!file) return c.json({ error: 'not found' }, 404);
-      if (!canWriteDrive(await accessFor(c, toNode(file), 'write'))) return c.json({ error: 'forbidden' }, 403);
+      if (!(await fileAllowed(c, file, 'upload'))) return c.json({ error: 'forbidden' }, 403);
 
       const buffer = Buffer.from(await c.req.arrayBuffer());
       await putObjectAtKey(file.cos_key, buffer, safeDriveContentType(file.name));
@@ -411,7 +494,7 @@ const drive = new Hono<AppEnv>()
     const id = Number(c.req.param('id'));
     const file = await getDb().drive.getFile(id);
     if (!file || file.status !== 'active') return c.json({ error: 'not found' }, 404);
-    if (!canReadDrive(await accessFor(c, toNode(file), 'read'))) return c.json({ error: 'forbidden' }, 403);
+    if (!(await fileAllowed(c, file, 'read'))) return c.json({ error: 'forbidden' }, 403);
 
     // Never cache authed customer bytes — and never the signed-URL redirect either:
     // a shared browser could otherwise replay one user's download (or the still-valid
@@ -435,7 +518,7 @@ const drive = new Hono<AppEnv>()
     const db = getDb();
     const file = await db.drive.getFile(id);
     if (!file) return c.json({ error: 'not found' }, 404);
-    if (!canWriteDrive(await accessFor(c, toNode(file), 'write'))) return c.json({ error: 'forbidden' }, 403);
+    if (!(await fileAllowed(c, file, 'delete'))) return c.json({ error: 'forbidden' }, 403);
 
     await db.drive.softDeleteFile(id);
     // Best-effort object GC; the row already dropped from listings.

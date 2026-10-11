@@ -195,7 +195,7 @@ export function GridViewBody({
                       field={field}
                       value={value}
                       users={users}
-                      canEdit={canEdit}
+                      canEdit={canEdit && (permissions.canEditField?.(field.id) ?? true)}
                       onCommit={(next) => onCommitValue(record, field, next)}
                       onPaste={(event) => {
                         if (!canEdit) return;
@@ -215,6 +215,7 @@ export function GridViewBody({
                 <RecordRowActions
                   record={record}
                   canEdit={canEdit}
+                  canDelete={permissions.canDelete ?? canEdit}
                   onView={onOpenRecord}
                   onEdit={onEditRecord}
                   onDelete={onDeleteRecord}

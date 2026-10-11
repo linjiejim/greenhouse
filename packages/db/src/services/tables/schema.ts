@@ -243,6 +243,15 @@ export function createTablesSchema(
             WHERE table_base_members.base_id = ${tableBases.id}
               AND table_base_members.user_id = ${userId}
           )`,
+          // Group grants reach only listed members (`group_members`), never a
+          // group's creator by that fact alone. Candidates only: the API's
+          // resolver decides the level (and drops dangling custom grants).
+          sql`EXISTS (
+            SELECT 1 FROM table_base_group_members g
+            JOIN group_members m ON m.group_id = g.group_id
+            WHERE g.base_id = ${tableBases.id}
+              AND m.user_id = ${userId}
+          )`,
         )!,
       ];
       if (search?.trim()) {

@@ -29,6 +29,12 @@ export function AttachmentPicker({ baseId, value, onChange }: AttachmentPickerPr
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState('');
+  /**
+   * The Base's file cabinet is for built-in roles only; a custom role gets 403
+   * on every listing (spec D15) and attaches its own fresh uploads instead.
+   */
+  const [cabinetClosed, setCabinetClosed] = useState(false);
+  const [uploadedNames, setUploadedNames] = useState<Record<number, string>>({});
   const fileInput = useRef<HTMLInputElement>(null);
   const owner = useMemo(() => ({ scope: 'tables' as const, base_id: baseId }), [baseId]);
 
@@ -49,7 +55,9 @@ export function AttachmentPicker({ baseId, value, onChange }: AttachmentPickerPr
         ...Object.fromEntries(nextFiles.map((file) => [file.id, file])),
       }));
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : t('tables.attachments.loadFailed'));
+      // Drive answers a closed cabinet with `{error: 'forbidden'}` (403).
+      if (loadError instanceof Error && loadError.message === 'forbidden') setCabinetClosed(true);
+      else setError(loadError instanceof Error ? loadError.message : t('tables.attachments.loadFailed'));
     } finally {
       setLoading(false);
     }
@@ -69,8 +77,15 @@ export function AttachmentPicker({ baseId, value, onChange }: AttachmentPickerPr
     setUploading(true);
     setError('');
     try {
-      for (const file of Array.from(list)) await uploadDriveFile(owner, folderId, file);
-      await load();
+      // A fresh upload is selected right away — it is what the person meant to attach.
+      const uploaded: number[] = [];
+      for (const file of Array.from(list)) {
+        const id = await uploadDriveFile(owner, cabinetClosed ? null : folderId, file);
+        uploaded.push(id);
+        setUploadedNames((current) => ({ ...current, [id]: file.name }));
+      }
+      onChange([...value, ...uploaded.filter((id) => !selectedIds.has(id))]);
+      if (!cabinetClosed) await load();
     } catch (uploadError) {
       setError(uploadError instanceof Error ? uploadError.message : t('tables.attachments.uploadFailed'));
     } finally {
@@ -91,7 +106,9 @@ export function AttachmentPicker({ baseId, value, onChange }: AttachmentPickerPr
                 className="inline-flex items-center gap-1 rounded-md border border-edge bg-surface-sunken px-2 py-1 text-xs text-fg-secondary"
               >
                 <Paperclip size={11} />
-                {file?.name ?? t('tables.attachments.fileNumber', { id: entry })}
+                {file?.name ??
+                  (typeof entry === 'number' ? uploadedNames[entry] : undefined) ??
+                  t('tables.attachments.fileNumber', { id: entry })}
                 <button
                   type="button"
                   className="ml-1 text-fg-faint hover:text-danger"
@@ -149,7 +166,11 @@ export function AttachmentPicker({ baseId, value, onChange }: AttachmentPickerPr
             />
           </div>
           {error && <p className="rounded-md bg-danger-subtle px-3 py-2 text-xs text-danger">{error}</p>}
-          {loading ? (
+          {cabinetClosed ? (
+            <p className="rounded-md bg-surface-sunken px-3 py-2 text-xs text-fg-muted">
+              {t('tables.access.uploadOnly')}
+            </p>
+          ) : loading ? (
             <div className="flex justify-center py-12">
               <Spinner />
             </div>

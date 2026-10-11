@@ -36,12 +36,27 @@ const getForm: Handler = async (request, context) => {
   if (!formId) return fail('INVALID_INPUT', 'formId is required');
   const form = await context.db.tables.getForm(formId);
   const base = await baseForForm(context.db, formId);
-  if (!form || !base || !(await requireBase(context, request.actor, base.id, 'form', 'editor'))) {
+  if (!form || !base) return fail('NOT_FOUND', 'Form not found');
+  // Built-in editors and up; a custom role only when it may create on the
+  // form's table, and then it gets only the form fields it can edit (slice A).
+  const grant = await requireBase(context, request.actor, base.id, 'form', 'viewer', { allowCustom: true });
+  if (!grant) return fail('NOT_FOUND', 'Form not found');
+  let writable: Set<number> | null = null;
+  if (grant.access.level === 'custom') {
+    const data = await requireTableData(request, context, form.table_id, 'create');
+    if (!data || data.scope.kind !== 'scoped') return fail('NOT_FOUND', 'Form not found');
+    writable = new Set(data.scope.editableFieldIds);
+  } else if (!(await requireBase(context, request.actor, base.id, 'form', 'editor'))) {
     return fail('NOT_FOUND', 'Form not found');
   }
   const schema = await context.db.tables.getSchema(form.table_id, effectiveUserId(request.actor));
   if (!schema) return fail('NOT_FOUND', 'Form table not found');
-  return ok({ form, fields: schema.fields.filter((field) => form.config.fieldIds.includes(field.id)) });
+  return ok({
+    form,
+    fields: schema.fields.filter(
+      (field) => form.config.fieldIds.includes(field.id) && (!writable || writable.has(field.id)),
+    ),
+  });
 };
 
 const createForm: Handler = async (request, context) => {

@@ -10,6 +10,12 @@ interface TablesViewToolbarProps {
   filterCount: number;
   canEdit: boolean;
   canBuild: boolean;
+  /** Add records. Defaults to `canEdit` (a custom role may edit without creating, or the reverse). */
+  canCreate?: boolean;
+  /** The recycle bin needs delete rights. Defaults to `canEdit`. */
+  canDelete?: boolean;
+  /** Save a view (personal views need a built-in editor). Defaults to `canEdit`. */
+  canSaveView?: boolean;
   pasting: boolean;
   onSelectView: (viewId: string) => void;
   onSearch: (value: string) => void;
@@ -28,6 +34,9 @@ export function TablesViewToolbar({
   filterCount,
   canEdit,
   canBuild,
+  canCreate = canEdit,
+  canDelete = canEdit,
+  canSaveView = canEdit,
   pasting,
   onSelectView,
   onSearch,
@@ -72,12 +81,12 @@ export function TablesViewToolbar({
           label={t('tables.saveView')}
           tooltip="top"
           onClick={onSaveView}
-          disabled={!canEdit}
+          disabled={!canSaveView}
           className="sm:h-8 sm:w-8"
         >
           <Save size={14} />
         </IconButton>
-        {canEdit && (
+        {canDelete && (
           <IconButton label={t('tables.recycleBin')} tooltip="top" onClick={onOpenRecycleBin} className="sm:h-8 sm:w-8">
             <Trash2 size={14} />
           </IconButton>
@@ -92,7 +101,7 @@ export function TablesViewToolbar({
             </IconButton>
           </>
         )}
-        {canEdit && (
+        {canCreate && (
           <IconButton
             label={t('tables.addRecord')}
             tooltip="top"

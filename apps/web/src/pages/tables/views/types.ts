@@ -19,6 +19,13 @@ export interface TableViewPermissions {
    * change goes through Save view.
    */
   canChangeView: boolean;
+  /**
+   * Per field: may this person write it? A custom role edits only some fields
+   * (`tableCapabilities`); omitted = every field `canEdit` covers.
+   */
+  canEditField?: (fieldId: number) => boolean;
+  /** Delete records. Omitted = `canEdit`. */
+  canDelete?: boolean;
 }
 
 export interface TableViewBodyProps {

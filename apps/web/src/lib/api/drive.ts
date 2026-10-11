@@ -137,7 +137,8 @@ export async function deleteDriveFile(id: number): Promise<void> {
  * Upload one file: init → upload bytes → (presigned: confirm). Works in both
  * backends — direct presigned PUT to COS, or proxy PUT through the API on local.
  */
-export async function uploadDriveFile(owner: DriveOwner, folderId: number | null, file: File): Promise<void> {
+/** Upload one file; resolves to its Drive file id (a Tables attachment value). */
+export async function uploadDriveFile(owner: DriveOwner, folderId: number | null, file: File): Promise<number> {
   const init = await jsonReq<{ file_id: number; mode: 'cos' | 'proxy'; upload_url: string }>(
     '/api/drive/files/init',
     'POST',
@@ -162,6 +163,7 @@ export async function uploadDriveFile(owner: DriveOwner, folderId: number | null
     });
     if (!put.ok) throw new Error('上传失败');
   }
+  return init.file_id;
 }
 
 /**

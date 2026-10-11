@@ -6,7 +6,8 @@
 
 import { effectiveUserId } from '@greenhouse/platform-kernel';
 import type { TableBaseRole, TableViewConfig, TableViewScope } from '@greenhouse/types/tables';
-import { baseForTable, baseForView, requireBase } from '../access.js';
+import { baseForTable, baseForView, customAccessLens, requireBase } from '../access.js';
+import { trimView } from '../access-trim.js';
 import {
   fail,
   notImplemented,
@@ -24,10 +25,15 @@ const listViews: Handler = async (request, context) => {
   const tableId = positiveInt(payloadOf(request), 'tableId');
   if (!tableId) return fail('INVALID_INPUT', 'tableId is required');
   const base = await baseForTable(context.db, tableId);
-  if (!base || !(await requireBase(context, request.actor, base.id, 'view', 'viewer'))) {
-    return fail('NOT_FOUND', 'Table not found');
-  }
-  return ok({ views: await context.db.tables.listViews(tableId, effectiveUserId(request.actor)) });
+  const grant = base && (await requireBase(context, request.actor, base.id, 'view', 'viewer', { allowCustom: true }));
+  if (!grant) return fail('NOT_FOUND', 'Table not found');
+  const userId = effectiveUserId(request.actor);
+  const views = await context.db.tables.listViews(tableId, userId);
+  // A custom role: only tables it has a rule for, and view configs without its hidden fields (slice A).
+  const lens = await customAccessLens(context, grant.access, userId);
+  if (!lens) return ok({ views });
+  if (!lens.ruleFor(tableId)) return fail('NOT_FOUND', 'Table not found');
+  return ok({ views: views.map((view) => trimView(lens, view)) });
 };
 
 const createView: Handler = async (request, context) => {
