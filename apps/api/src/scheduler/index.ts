@@ -23,6 +23,7 @@ import { toErrorMessage } from '@greenhouse/utils/error';
 import {
   startFrictionMiningJob,
   startMemoryConsolidationJob,
+  startTablesFormUploadSweepJob,
   stopUpkeepJobs,
   startExtensionJobs,
 } from './upkeep-jobs.js';
@@ -81,6 +82,7 @@ export class TaskScheduler {
     // System-level jobs
     startFrictionMiningJob();
     startMemoryConsolidationJob();
+    startTablesFormUploadSweepJob();
     startExtensionJobs();
   }
 

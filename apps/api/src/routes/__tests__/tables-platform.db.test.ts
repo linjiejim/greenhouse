@@ -7,6 +7,7 @@ import { Hono } from 'hono';
 import { _resetProvider, initDatabase, type DatabaseProvider, type UserRow } from '@greenhouse/db';
 import type { AppEnv } from '../../app-env.js';
 import tablesRoutes from '../tables/index.js';
+import formRoutes from '../forms.js';
 import { tablesRegistration } from '../../platform/tables/application.js';
 import { tablesManifest } from '../../platform/manifests/tables.js';
 import type { FieldPolicy } from '@greenhouse/platform-kernel';
@@ -56,6 +57,7 @@ function createHttpApp(users: UserRow[]) {
     return next();
   });
   app.route('/api/tables', tablesRoutes);
+  app.route('/api/forms', formRoutes);
   return app;
 }
 
@@ -419,7 +421,7 @@ describe('Tables Platform application', () => {
     });
     expect(formResponse.status).toBe(201);
     const form = (await formResponse.json()).form as { id: number };
-    const submission = await app.request(`/api/tables/forms/${form.id}/submit`, {
+    const submission = await app.request(`/api/forms/${form.id}/submit`, {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-test-user': editor.id },
       body: JSON.stringify({ values: { [primaryId]: 'Submitted by form' } }),

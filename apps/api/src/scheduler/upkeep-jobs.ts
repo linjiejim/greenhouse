@@ -8,6 +8,7 @@
  *
  * - 04:00 CST daily  — mine tool errors out of message pipelines into frictions
  * - 05:00 CST Sunday — memory consolidation: demote stale, merge duplicates
+ * - hourly           — expire Tables form uploads nobody submitted (24 h TTL)
  */
 
 import { Cron } from 'croner';
@@ -17,6 +18,7 @@ import { DEFAULT_TIMEZONE } from './task-limits.js';
 
 let frictionJob: Cron | null = null;
 let consolidationJob: Cron | null = null;
+let tablesFormUploadJob: Cron | null = null;
 let extensionJobHandles: Cron[] = [];
 
 export function startFrictionMiningJob(): void {
@@ -56,6 +58,25 @@ export function startMemoryConsolidationJob(): void {
   );
 }
 
+/**
+ * Files a form's audience staged through `POST /api/forms/:id/uploads` but never
+ * submitted (spec 20261011-tables-foundation §3): expire them and delete the
+ * objects once they are older than 24 h.
+ */
+export function startTablesFormUploadSweepJob(): void {
+  tablesFormUploadJob = new Cron('23 * * * *', { timezone: DEFAULT_TIMEZONE }, async () => {
+    try {
+      const { sweepStaleFormUploads } = await import('../platform/tables/form-uploads.js');
+      const { getDb } = await import('@greenhouse/db');
+      const expired = await sweepStaleFormUploads(getDb());
+      if (expired > 0) logger.info('[TablesFormUploads] Expired unsubmitted form uploads', { expired });
+    } catch (err) {
+      logger.error('[TablesFormUploads] Sweep failed:', err);
+    }
+  });
+  logger.info(`[TablesFormUploads] Scheduled hourly sweep → next: ${tablesFormUploadJob.nextRun()?.toISOString()}`);
+}
+
 /** Periodic jobs declared by active extensions (see extensions/define.ts → `jobs`). */
 export function startExtensionJobs(): void {
   for (const job of extensionJobs()) {
@@ -76,6 +97,8 @@ export function stopUpkeepJobs(): void {
   frictionJob = null;
   consolidationJob?.stop();
   consolidationJob = null;
+  tablesFormUploadJob?.stop();
+  tablesFormUploadJob = null;
   for (const handle of extensionJobHandles) handle.stop();
   extensionJobHandles = [];
 }

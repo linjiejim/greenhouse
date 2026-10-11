@@ -69,7 +69,6 @@ describe('Tables registration (manifest 1.3.0)', () => {
     'updateRole',
     'deleteRole',
     'deleteView',
-    'openForm',
     'deleteAutomation',
     'triggerAutomation',
     'listRecordButtons',

@@ -259,11 +259,20 @@ export function driveKeyFor(opts: {
   /** Owner of an extension scope. */
   ownerKey?: string | null;
   visibility?: string | null;
+  /**
+   * A tables-scope file staged through this form (`POST /api/forms/:id/uploads`):
+   * filed under `tables/<baseId>/forms/<formId>/`, the segment the db's
+   * `formUploadKeySegment` matches when it binds or expires form uploads.
+   */
+  formId?: number;
   filename: string;
 }): string {
   const ext = extname(opts.filename).toLowerCase();
   const uid = randomUUID();
-  if (opts.scope === 'tables') return `${DRIVE_PREFIX}tables/${opts.baseId ?? 'none'}/${uid}${ext}`;
+  if (opts.scope === 'tables') {
+    const form = opts.formId === undefined ? '' : `forms/${opts.formId}/`;
+    return `${DRIVE_PREFIX}tables/${opts.baseId ?? 'none'}/${form}${uid}${ext}`;
+  }
   // An extension scope is namespaced by its own owner key, sanitized — the key is
   // extension data and must never be able to escape the prefix.
   if (opts.scope !== 'kb') {

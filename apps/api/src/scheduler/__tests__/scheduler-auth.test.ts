@@ -45,6 +45,7 @@ vi.mock('../upkeep-jobs.js', () => ({
   startFrictionMiningJob: mocks.startFrictionMiningJob,
   startMemoryConsolidationJob: mocks.startMemoryConsolidationJob,
   stopUpkeepJobs: mocks.stopUpkeepJobs,
+  startTablesFormUploadSweepJob: vi.fn(),
   startExtensionJobs: vi.fn(),
 }));
 
