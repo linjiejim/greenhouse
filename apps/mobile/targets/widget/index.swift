@@ -1,8 +1,8 @@
 /**
- * Greenhouse widget (v3) — the member's Bots on the home screen:
- *   · systemSmall          greeting + the default agent's face → new chat
- *   · systemMedium         Sprouty + the 3 Bots that spoke last (badges) · [新对话]
- *   · systemLarge          the same Bots as rows (last message, time) · [新对话] [知识库]
+ * Greenhouse widget (v4) — the member's Bots on the home screen:
+ *   · systemSmall          greeting + main face + compact other faces → new chat
+ *   · systemMedium         main Agent row · [新对话] + 3 compact Bot faces
+ *   · systemLarge          Greenhouse header · prominent main Agent + 3 rows · [新对话]
  *   · accessoryRectangular what is waiting on the member, or "start a new chat" (lock screen)
  *   · accessoryCircular    Sprouty silhouette → new chat (lock screen)
  * …and, in the same bundle, a Bot's background task as a Live Activity (lock screen +
@@ -23,7 +23,7 @@
  * Deep links ride the `greenhouse://` scheme (expo-router): `bots?c=<dm>`
  * opens a Bot's thread (`&request=<id>` scrolls to the card waiting on the
  * member; no `c` bootstraps Sprouty's), `?compose=1` starts a new chat with
- * the default agent, `knowledge`, `settings/bots`, `chat/<id>` resumes a
+ * the default agent, `settings/bots`, `chat/<id>` resumes a
  * conversation. Strings mirror src/lib/i18n; language follows the snapshot's
  * app preference, falling back to the system locale.
  */
@@ -183,7 +183,6 @@ private func isNight(_ date: Date) -> Bool {
 // MARK: - Deep links (routes in apps/mobile/app/)
 
 private let composeURL = URL(string: "greenhouse://?compose=1")!
-private let knowledgeURL = URL(string: "greenhouse://knowledge")!
 private let botsURL = URL(string: "greenhouse://bots")!
 private let newBotURL = URL(string: "greenhouse://settings/bots")!
 
@@ -281,6 +280,7 @@ private struct BotFace: View {
   @Environment(\.colorScheme) private var scheme
   let bot: SnapshotBot
   let size: CGFloat
+  var showsBadge: Bool = true
 
   var body: some View {
     Group {
@@ -300,7 +300,7 @@ private struct BotFace: View {
     }
     .frame(width: size, height: size)
     .overlay(alignment: .topTrailing) {
-      BadgeView(bot: bot).offset(x: 6, y: -4)
+      if showsBadge { BadgeView(bot: bot, compact: size < 36).offset(x: 5, y: -3) }
     }
   }
 }
@@ -308,6 +308,7 @@ private struct BotFace: View {
 /** One signal: orange = needs you (card count), accent = unread (reply count, or a dot). */
 private struct BadgeView: View {
   let bot: SnapshotBot
+  var compact: Bool = false
 
   var body: some View {
     if bot.badge == "needs_you" || bot.badge == "unread" {
@@ -317,11 +318,11 @@ private struct BadgeView: View {
       Group {
         if let n = bot.count, n > 0 {
           Text(countText(n))
-            .font(.system(size: 11.5, weight: .semibold))
+            .font(.system(size: compact ? 9 : 11.5, weight: .semibold))
             .monospacedDigit()
             .foregroundStyle(ink)
-            .padding(.horizontal, 5)
-            .frame(minWidth: 19, minHeight: 19)
+            .padding(.horizontal, compact ? 3 : 5)
+            .frame(minWidth: compact ? 14 : 19, minHeight: compact ? 14 : 19)
             .background(Capsule().fill(fill))
         } else {
           Circle().fill(fill).frame(width: 11, height: 11)
@@ -339,17 +340,9 @@ private struct BadgeView: View {
 private struct AccentPill: View {
   let icon: String
   let label: String
-  var agent: SnapshotAgent? = nil
-  var date: Date = Date()
 
   var body: some View {
     HStack(spacing: 4) {
-      if let agent {
-        AgentFace(agent: agent, date: date, size: 18)
-          .background(Circle().fill(Color("OnAccent")).padding(-1.5))
-          .padding(.leading, -5)
-          .padding(.trailing, 1)
-      }
       Image(systemName: icon).font(.system(size: 11, weight: .semibold))
       Text(label).font(.system(size: 12, weight: .semibold))
     }
@@ -360,33 +353,13 @@ private struct AccentPill: View {
   }
 }
 
-private struct TintPill: View {
-  let icon: String
-  let label: String
-
-  var body: some View {
-    HStack(spacing: 4) {
-      Image(systemName: icon).font(.system(size: 11, weight: .semibold))
-      Text(label).font(.system(size: 12, weight: .semibold))
-    }
-    .foregroundStyle(Color("$accent"))
-    .padding(.vertical, 7)
-    .padding(.horizontal, 12)
-    .background(
-      Capsule()
-        .fill(Color("AccentTint"))
-        .overlay(Capsule().strokeBorder(Color("AccentBorder"), lineWidth: 1))
-    )
-  }
-}
-
 private struct NewChatLink: View {
   let entry: LauncherEntry
   let zh: Bool
 
   var body: some View {
     Link(destination: composeURL) {
-      AccentPill(icon: "plus", label: zh ? "新对话" : "New chat", agent: entry.snapshot?.defaultAgent, date: entry.date)
+      AccentPill(icon: "square.and.pencil", label: zh ? "新对话" : "New chat")
     }
     .accessibilityLabel(newChatA11y(entry.snapshot, zh: zh))
   }
@@ -395,16 +368,6 @@ private struct NewChatLink: View {
 private func newChatA11y(_ snap: Snapshot?, zh: Bool) -> String {
   guard let name = snap?.defaultAgent?.name, !name.isEmpty else { return zh ? "新对话" : "New chat" }
   return zh ? "新对话，\(name)" : "New chat, \(name)"
-}
-
-private struct KnowledgeLink: View {
-  let zh: Bool
-
-  var body: some View {
-    Link(destination: knowledgeURL) {
-      TintPill(icon: "book", label: zh ? "知识库" : "Knowledge")
-    }
-  }
 }
 
 private struct UpdatedLabel: View {
@@ -425,30 +388,6 @@ private func botA11y(_ bot: SnapshotBot, zh: Bool) -> String {
   return (zh ? "\(bot.name)，" : "\(bot.name), ") + signal
 }
 
-/** A medium-widget slot: face + name. */
-private struct BotCell: View {
-  let bot: SnapshotBot
-  let zh: Bool
-
-  var body: some View {
-    // Accessibility modifiers go on the label, never around the Link: wrapping the Link in
-    // `.accessibilityElement(children:)` drops its URL — the tap then just opens the app.
-    Link(destination: botURL(bot)) {
-      VStack(spacing: 6) {
-        BotFace(bot: bot, size: 50)
-        Text(bot.name)
-          .font(.system(size: 12, weight: .medium))
-          .foregroundStyle(Color.primary)
-          .lineLimit(1)
-      }
-      .frame(maxWidth: .infinity)
-      .contentShape(Rectangle())
-      .accessibilityElement(children: .ignore)
-      .accessibilityLabel(botA11y(bot, zh: zh))
-    }
-  }
-}
-
 /** Only Sprouty so far: one dashed "New Bot" slot (Settings → My Bots), never a row of empties. */
 private struct NewBotCell: View {
   let zh: Bool
@@ -462,22 +401,20 @@ private struct NewBotCell: View {
   }
 }
 
-/** A large-widget row: face, name (+ pin for Sprouty), time, last message. */
+/** Reused by the main row and the compact large-widget rows. */
 private struct BotRow: View {
   let bot: SnapshotBot
   let now: Date
   let zh: Bool
+  var prominent: Bool = false
 
   var body: some View {
     Link(destination: botURL(bot)) {
       HStack(spacing: 11) {
-        BotFace(bot: bot, size: 42)
+        BotFace(bot: bot, size: prominent ? 62 : 34)
         VStack(alignment: .leading, spacing: 1) {
           HStack(spacing: 5) {
-            Text(bot.name).font(.system(size: 14.5, weight: .semibold)).foregroundStyle(Color.primary).lineLimit(1)
-            if bot.sprouty {
-              Image(systemName: "pin.fill").font(.system(size: 8)).foregroundStyle(Color.secondary)
-            }
+            Text(bot.name).font(.system(size: prominent ? 18 : 14, weight: .semibold)).foregroundStyle(Color.primary).lineLimit(1)
             Spacer(minLength: 4)
             if let at = bot.lastAt {
               Text(rowTime(at, now: now, zh: zh)).font(.system(size: 11.5)).foregroundStyle(Color.secondary)
@@ -497,10 +434,10 @@ private struct BotRow: View {
       (Text(zh ? "需要你 · " : "Needs You · ") + Text(bot.preview).foregroundStyle(Color.secondary))
         .font(.system(size: 12.5))
         .foregroundStyle(Color.orange)
-        .lineLimit(1)
+        .lineLimit(prominent ? 2 : 1)
         .privacySensitive()
     } else if !bot.preview.isEmpty {
-      Text(bot.preview).font(.system(size: 12.5)).foregroundStyle(Color.secondary).lineLimit(1).privacySensitive()
+      Text(bot.preview).font(.system(size: 12.5)).foregroundStyle(Color.secondary).lineLimit(prominent ? 2 : 1).privacySensitive()
     }
   }
 }
@@ -544,19 +481,29 @@ private struct SmallLauncher: View {
 
   var body: some View {
     let zh = isZh(entry.snapshot)
+    let others = Array((entry.snapshot?.bots ?? []).filter { !$0.sprouty }.prefix(3))
     VStack(spacing: 6) {
       Text(greetingText(for: entry.date, zh: zh))
         .font(.system(size: 11, weight: .medium))
         .foregroundStyle(Color.secondary)
         .frame(maxWidth: .infinity, alignment: .leading)
-      AgentFace(agent: entry.snapshot?.defaultAgent, date: entry.date, size: 82)
+      AgentFace(agent: entry.snapshot?.defaultAgent, date: entry.date, size: 76)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-      Text(zh ? "新对话" : "New chat")
-        .font(.system(size: 13, weight: .semibold))
+      HStack(spacing: 6) {
+        HStack(spacing: 5) {
+          Image(systemName: "square.and.pencil").font(.system(size: 14, weight: .semibold))
+          if others.isEmpty { Text(zh ? "新对话" : "New chat").font(.system(size: 12, weight: .semibold)) }
+        }
         .foregroundStyle(Color("OnAccent"))
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 8)
+        .frame(maxWidth: others.isEmpty ? .infinity : nil)
+        .frame(minWidth: 32, minHeight: 32)
         .background(Capsule().fill(Color("$accent")))
+        if !others.isEmpty {
+          Spacer(minLength: 0)
+          // Small WidgetKit families have one whole-card URL: these faces are summaries.
+          ForEach(others, id: \.id) { bot in BotFace(bot: bot, size: 24, showsBadge: false) }
+        }
+      }
     }
     .containerBackground(Color("$widgetBackground"), for: .widget)
     .widgetURL(composeURL)
@@ -570,61 +517,43 @@ private struct MediumLauncher: View {
   var body: some View {
     let zh = isZh(entry.snapshot)
     let bots = Array((entry.snapshot?.bots ?? []).prefix(4))
-    VStack(alignment: .leading, spacing: 0) {
-      if !bots.isEmpty {
-        HStack(alignment: .top, spacing: 4) {
-          ForEach(bots, id: \.id) { bot in BotCell(bot: bot, zh: zh) }
-          if bots.count == 1 {
-            Link(destination: newBotURL) {
-              VStack(spacing: 6) {
-                NewBotCell(zh: zh, size: 50)
-                Text(zh ? "新建 Bot" : "New Bot").font(.system(size: 12)).foregroundStyle(Color.secondary).lineLimit(1)
-              }
-              .frame(maxWidth: .infinity)
+    VStack(alignment: .leading, spacing: 4) {
+      if let main = bots.first {
+        BotRow(bot: main, now: entry.date, zh: zh, prominent: true)
+        Spacer(minLength: 0)
+        HStack(spacing: 12) {
+          NewChatLink(entry: entry, zh: zh)
+          Spacer(minLength: 0)
+          ForEach(bots.dropFirst(), id: \.id) { bot in
+            Link(destination: botURL(bot)) {
+              BotFace(bot: bot, size: 28)
+                .frame(width: 36, height: 36)
+                .contentShape(Rectangle())
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(botA11y(bot, zh: zh))
             }
           }
-          // Keep four columns: a face stays where it was when Bots come and go.
-          ForEach(0..<max(0, 4 - max(bots.count, 2)), id: \.self) { _ in Color.clear.frame(maxWidth: .infinity) }
-        }
-        .padding(.top, 2)
-        Spacer(minLength: 0)
-        HStack {
-          NewChatLink(entry: entry, zh: zh)
-          Spacer(minLength: 4)
-          UpdatedLabel(snapshot: entry.snapshot, zh: zh)
         }
       } else if let sessions = entry.snapshot?.sessions, entry.snapshot?.bots == nil, !sessions.isEmpty {
-        HStack {
-          sectionLabel(zh ? "继续对话" : "Continue chatting")
-          Spacer(minLength: 4)
-          UpdatedLabel(snapshot: entry.snapshot, zh: zh)
-        }
+        sectionLabel(zh ? "继续对话" : "Continue chatting")
         VStack(alignment: .leading, spacing: 6) {
           ForEach(sessions.prefix(2), id: \.id) { s in SessionRow(session: s, zh: zh) }
         }
-        .padding(.top, 6)
         Spacer(minLength: 0)
-        HStack(spacing: 8) {
-          NewChatLink(entry: entry, zh: zh)
-          KnowledgeLink(zh: zh)
-        }
+        NewChatLink(entry: entry, zh: zh)
       } else {
         HStack(spacing: 12) {
-          AgentFace(agent: entry.snapshot?.defaultAgent, date: entry.date, size: 56)
+          AgentFace(agent: entry.snapshot?.defaultAgent, date: entry.date, size: 62)
           VStack(alignment: .leading, spacing: 2) {
             Text(greetingText(for: entry.date, zh: zh) + greetingName(entry.snapshot, zh: zh))
-              .font(.system(size: 12, weight: .medium))
-              .foregroundStyle(Color.secondary)
-              .lineLimit(1)
+              .font(.system(size: 12, weight: .medium)).foregroundStyle(Color.secondary).lineLimit(1)
             emptyPrompt(zh, size: 15)
           }
         }
         .frame(maxHeight: .infinity)
-        HStack(spacing: 8) {
-          NewChatLink(entry: entry, zh: zh)
-          KnowledgeLink(zh: zh)
-        }
+        NewChatLink(entry: entry, zh: zh)
       }
+      UpdatedLabel(snapshot: entry.snapshot, zh: zh).frame(maxWidth: .infinity, alignment: .trailing)
     }
     .containerBackground(Color("$widgetBackground"), for: .widget)
   }
@@ -636,27 +565,23 @@ private struct LargeLauncher: View {
   var body: some View {
     let zh = isZh(entry.snapshot)
     let bots = Array((entry.snapshot?.bots ?? []).prefix(4))
-    VStack(alignment: .leading, spacing: 10) {
-      HStack(spacing: 10) {
-        AgentFace(agent: entry.snapshot?.defaultAgent, date: entry.date, size: 34)
-        VStack(alignment: .leading, spacing: 1) {
-          Text(greetingText(for: entry.date, zh: zh) + greetingName(entry.snapshot, zh: zh))
-            .font(.system(size: 15, weight: .semibold))
-            .foregroundStyle(Color.primary)
-            .lineLimit(1)
-          UpdatedLabel(snapshot: entry.snapshot, zh: zh)
-        }
-        Spacer(minLength: 0)
+    VStack(alignment: .leading, spacing: 12) {
+      HStack(spacing: 6) {
+        Image("greenhouseMark").renderingMode(.template).resizable().scaledToFit()
+          .foregroundStyle(Color("$accent")).frame(width: 28, height: 28)
+        Text("Greenhouse").font(.system(size: 15, weight: .semibold)).foregroundStyle(Color.primary)
       }
-
-      if !bots.isEmpty {
+      if let main = bots.first {
+        BotRow(bot: main, now: entry.date, zh: zh, prominent: true)
+          .padding(10)
+          .background(RoundedRectangle(cornerRadius: 18).fill(Color("AccentTint")))
         VStack(alignment: .leading, spacing: 12) {
-          ForEach(bots, id: \.id) { bot in BotRow(bot: bot, now: entry.date, zh: zh) }
+          ForEach(bots.dropFirst(), id: \.id) { bot in BotRow(bot: bot, now: entry.date, zh: zh) }
           if bots.count == 1 {
             Link(destination: newBotURL) {
               HStack(spacing: 11) {
-                NewBotCell(zh: zh, size: 42)
-                Text(zh ? "新建 Bot" : "New Bot").font(.system(size: 14.5)).foregroundStyle(Color.secondary)
+                NewBotCell(zh: zh, size: 34)
+                Text(zh ? "新建 Bot" : "New Bot").font(.system(size: 14)).foregroundStyle(Color.secondary)
               }
             }
           }
@@ -673,11 +598,11 @@ private struct LargeLauncher: View {
       } else {
         emptyPrompt(zh, size: 17).frame(maxWidth: .infinity, maxHeight: .infinity)
       }
-
       Spacer(minLength: 0)
-      HStack(spacing: 8) {
+      HStack(alignment: .bottom, spacing: 8) {
         NewChatLink(entry: entry, zh: zh)
-        KnowledgeLink(zh: zh)
+        Spacer(minLength: 4)
+        UpdatedLabel(snapshot: entry.snapshot, zh: zh)
       }
     }
     .containerBackground(Color("$widgetBackground"), for: .widget)
