@@ -9,6 +9,24 @@ import type { appsBuilderEn } from './builder.en';
 
 export const appsBuilderZh: DeepRecord<typeof appsBuilderEn> = {
   builder: {
+    external: {
+      source: '数据源',
+      readTool: '只读工具',
+      connector: '连接器',
+      tool: '工具 ID',
+      server: '连接器 ID',
+      input: '保存的参数（JSON）',
+      display: '显示方式',
+      table: '表格',
+      value: '数值路径',
+      rows: '行数组路径',
+      group: '分组路径',
+      series: '系列路径（可选）',
+      columns: '列（JSON：key、label、path、type）',
+      pointer: '使用 JSON Pointer，例如 /items；空字符串表示整个结果。',
+      invalidJson: '请输入形状正确的 JSON。',
+      hint: '每位查看者使用自己的权限和连接器账号。参数随应用保存，仅可调用只读工具。',
+    },
     title: '编辑 {name}',
     back: '返回应用中心',
     loadFailed: '无法加载这个应用的草稿',

@@ -6,6 +6,24 @@
 
 export const appsBuilderEn = {
   builder: {
+    external: {
+      source: 'Source',
+      readTool: 'Read tool',
+      connector: 'Connector',
+      tool: 'Tool ID',
+      server: 'Connector ID',
+      input: 'Saved arguments (JSON)',
+      display: 'Display',
+      table: 'Table',
+      value: 'Value pointer',
+      rows: 'Rows pointer',
+      group: 'Group pointer',
+      series: 'Series pointer (optional)',
+      columns: 'Columns (JSON: key, label, path, type)',
+      pointer: 'Use a JSON Pointer, e.g. /items or an empty string for the whole result.',
+      invalidJson: 'Enter valid JSON with the expected shape.',
+      hint: 'Every viewer uses their own permissions and connector account. Arguments are saved with the app; only read tools can run.',
+    },
     title: 'Edit {name}',
     back: 'Back to the app center',
     loadFailed: 'Unable to load this app’s draft',

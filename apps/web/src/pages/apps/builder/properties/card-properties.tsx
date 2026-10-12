@@ -1,4 +1,6 @@
 import { CustomProperties } from './custom-properties';
+
+import { ExternalProperties } from './external-properties';
 /**
  * The properties of one card, per kind (spec §6 构建器 · 属性面板):
  *
@@ -704,6 +706,8 @@ export function CardProperties(props: CardPropertiesProps) {
         <EmbeddedProperties key={card.id} card={card} context={props} />
       )}
       {card.kind === 'custom' && <CustomProperties key={card.id} card={card} schema={schema} onChange={onChange} />}
+
+      {card.kind === 'external' && <ExternalProperties key={card.id} card={card} onChange={onChange} />}
       {card.kind === 'text' && <TextProperties card={card} onChange={onChange} />}
       {card.kind === 'buttons' && (
         <PanelSection title={t('apps.builder.props.buttons')}>

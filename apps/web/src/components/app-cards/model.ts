@@ -23,8 +23,10 @@ export type AppAggregateCard = Extract<AppCard, { kind: 'kpi' | 'chart' | 'pivot
 export type AppViewTable = AppRuntimeView['tables'][number];
 
 /** Cards whose content is evaluated by `POST /cards/query` (the others draw from the spec alone). */
-export function isQueriedCard(card: AppCard): card is AppRecordsLikeCard | AppAggregateCard {
-  return isRecordsLikeCard(card) || isAggregateCard(card);
+export function isQueriedCard(
+  card: AppCard,
+): card is AppRecordsLikeCard | AppAggregateCard | Extract<AppCard, { kind: 'external' }> {
+  return isRecordsLikeCard(card) || isAggregateCard(card) || card.kind === 'external';
 }
 
 export function isRecordsLikeCard(card: AppCard): card is AppRecordsLikeCard {

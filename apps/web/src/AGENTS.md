@@ -664,3 +664,5 @@ stores/
 `pages/tables/ai-field-editor.tsx` configures AI fields and runs saved configurations. The editor uses the shared input/result-type limits; field creation and run controls obey `tables_ai_fields`. AI results use the shared read-only `FieldValue` renderer by result type, and filters use that same result type. Grid job state polls once per visible AI column (at most 200 visible record IDs per call); scoped readers do not receive whole-field status summaries. Fill and regenerate use saved settings; unsaved draft changes are never sent to the worker.
 
 - Tables automation 的 Agent 编辑器复用 `TemplateText`、表格字段选择和 `listBots`，仅提供无工具 / 本 Base 只读两种模式，输出仅文本字段；Bot 版本由服务端固定。应用页面 ambient context 给出 `app_id` 和 `apps_query` / `apps_action` 的入口提示，仍是参考信息，不是授权。
+
+- **外部数据卡**：构建器提供 `external` 的工具/连接器 ID、保存参数与声明式映射；运行时复用 TableCardView 绘制 KPI/图表，表格仅画文本（不解释 HTML/链接），`needs_connection` 复用 McpConnectCard，连接后由宿主重试。同一张卡各查看者按自己的权限取数。

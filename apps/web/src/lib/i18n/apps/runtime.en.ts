@@ -5,6 +5,15 @@
 
 export const appsRuntimeEn = {
   runtime: {
+    external: {
+      failed: 'Unable to load the external source.',
+      timeout: 'The source timed out.',
+      too_large: 'The result is too large.',
+      not_read_only: 'This tool does not advertise read-only access.',
+      not_allowed: 'This source is not available to your account.',
+      map: 'The returned data does not match the saved mapping.',
+      truncated: 'Showing the first 200 rows.',
+    },
     loadFailed: 'Unable to load this app',
     notFoundTitle: 'App not available',
     notFoundDescription: 'It does not exist, is archived, or has not been shared with you.',

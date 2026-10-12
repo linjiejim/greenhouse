@@ -1,3 +1,4 @@
+import { callConnectorTool } from '../../mcp-client/gateway.js';
 /**
  * mcp_call — the one gateway tool to installed MCP servers (connectors),
  * driven against a real MCP server. Pins: no tool without a callable server,
@@ -498,5 +499,51 @@ describe('renderMcpCatalog', () => {
     const text = renderMcpCatalog(many);
     expect(text.length).toBeLessThan(1700);
     expect(text).toMatch(/\(\d+ more servers — use action:"list"\)/);
+  });
+});
+
+describe('external source connector gateway', () => {
+  it('keeps structured data and bounds its serialized size', async () => {
+    const data = await callConnectorTool(
+      fakeDb(() => [row]),
+      { userId: 'u1' },
+      { server: 'orders', tool: 'chart_png' },
+    );
+    expect(data).toEqual({ data: { points: 3 } });
+    const large = await callConnectorTool(
+      fakeDb(() => [row]),
+      { userId: 'u1' },
+      { server: 'orders', tool: 'chart_png' },
+      { maxBytes: 2 },
+    );
+    expect(large).toMatchObject({ reason: 'too_large' });
+  });
+  it('requires the remote read-only annotation, not an administrator override', async () => {
+    const writable = { ...row, read_only_tools: ['create_ticket'] };
+    directoryOf(writable);
+    const result = await callConnectorTool(
+      fakeDb(() => [writable]),
+      { userId: 'u1' },
+      { server: 'orders', tool: 'create_ticket', arguments: { title: 'No' } },
+    );
+    expect(result).toMatchObject({ reason: 'not_read_only' });
+    expect(fixture.tickets).toEqual([]);
+  });
+  it('rechecks a revoked allowlist after the directory was cached', async () => {
+    const result = await callConnectorTool(
+      fakeDb(() => [{ ...row, allowed_tools: [] }]),
+      { userId: 'u1' },
+      { server: 'orders', tool: 'lookup_order', arguments: { order_id: '1' } },
+    );
+    expect(result).toMatchObject({ reason: 'not_allowed' });
+  });
+  it('does not borrow another member’s connection', async () => {
+    directoryOf(keyedRow);
+    const result = await callConnectorTool(
+      fakeDb(() => [keyedRow]),
+      { userId: 'u2' },
+      { server: 'maps', tool: 'lookup_order' },
+    );
+    expect(result).toMatchObject({ needs_connection: true, reason: 'not_connected' });
   });
 });

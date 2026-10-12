@@ -177,7 +177,7 @@ export const CARD_SIZES: Readonly<Record<AppCardKind, { w: number; h: number }>>
  * (slice SRC) join when their editors do — until then a builder cannot add a
  * card nothing can configure.
  */
-export const CATALOG_CARD_KINDS: readonly AppCardKind[] = APP_CARD_KINDS.filter((kind) => kind !== 'external');
+export const CATALOG_CARD_KINDS: readonly AppCardKind[] = APP_CARD_KINDS;
 
 /** Below everything already on the page, full left. */
 export function nextCardLayout(cards: readonly AppCard[], kind: AppCardKind): AppCardLayout {
@@ -256,6 +256,17 @@ export interface CardDefaultsContext {
 export function defaultCard(kind: AppCardKind, context: CardDefaultsContext): AppCard | null {
   const { schema, id, layout } = context;
   const base = { id, layout };
+  if (kind === 'external')
+    return {
+      ...base,
+      kind,
+      source: {
+        kind: 'tool',
+        toolId: 'project_query',
+        input: { action: 'list' },
+        map: { kind: 'kpi', value: '/projects' },
+      },
+    };
   if (kind === 'text') return { ...base, kind: 'text', markdown: '' };
   if (kind === 'buttons') {
     return {
@@ -346,10 +357,6 @@ export function defaultCard(kind: AppCardKind, context: CardDefaultsContext): Ap
         html: '<main id="rows"></main><script>greenhouse.query("rows").then(function(result){document.getElementById("rows").textContent=JSON.stringify(result,null,2);});</script>',
         bindings: [{ id: 'rows', kind: 'records', source, fieldIds: firstFieldIds(fields, 5) }],
       };
-    // External sources join when their editor lands.
-
-    case 'external':
-      return null;
   }
 }
 

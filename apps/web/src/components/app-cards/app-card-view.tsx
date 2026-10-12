@@ -15,7 +15,8 @@ import { TableCardFrame } from '../table-cards';
 import { FieldValueRefsProvider, type FieldValueRefs } from '../tables/field-value';
 import { Button, EmptyState, ErrorBoundary, Skeleton } from '../ui';
 import { useT } from '../../lib/i18n';
-import { AlertTriangle, Clock, Lock, Plus } from '../../lib/icons';
+import { AlertTriangle, Lock, Plus } from '../../lib/icons';
+import { AppExternalCard } from './external-card';
 import { AppAggregateCard } from './aggregate-card';
 import { AppButtonsCard } from './buttons-card';
 import { AppFormCard } from './form-card';
@@ -31,24 +32,6 @@ function AppTextCard({ card }: AppCardRendererProps<'text'>) {
   return <TextCard markdown={card.markdown} />;
 }
 
-/**
- * Kinds this build does not draw yet — Phase 2's `custom` (slice S) and
- * `external` (slice SRC) until their renderers land. Never runs the card's
- * code or queries it (`isQueriedCard` leaves them out).
- */
-function AppPendingCard() {
-  const t = useT();
-  return (
-    <EmptyState
-      icon={Clock}
-      variant="compact"
-      tone="neutral"
-      title={t('apps.runtime.cards.pendingTitle')}
-      description={t('apps.runtime.cards.pendingDescription')}
-    />
-  );
-}
-
 export const APP_CARD_RENDERERS = {
   records: AppRecordsCard,
   kanban: AppViewCard,
@@ -61,7 +44,7 @@ export const APP_CARD_RENDERERS = {
   text: AppTextCard,
   buttons: AppButtonsCard,
   custom: AppCustomCard,
-  external: AppPendingCard,
+  external: AppExternalCard,
 } satisfies AppCardRenderers;
 
 function CardState({ card, host, state }: AppCardRendererProps) {

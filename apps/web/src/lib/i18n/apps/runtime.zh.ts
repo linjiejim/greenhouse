@@ -8,6 +8,15 @@ import type { appsRuntimeEn } from './runtime.en';
 
 export const appsRuntimeZh: DeepRecord<typeof appsRuntimeEn> = {
   runtime: {
+    external: {
+      failed: '无法加载外部数据。',
+      timeout: '数据源响应超时。',
+      too_large: '返回的数据过大。',
+      not_read_only: '此工具未声明为只读。',
+      not_allowed: '你的账号无权使用此数据源。',
+      map: '返回数据与保存的映射不匹配。',
+      truncated: '显示前 200 行。',
+    },
     loadFailed: '无法加载这个应用',
     notFoundTitle: '应用不可用',
     notFoundDescription: '它不存在、已归档，或没有分发给你。',

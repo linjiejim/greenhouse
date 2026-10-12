@@ -642,3 +642,8 @@ Automation、Tasks、Agents 的 `Mine / Shared / Team` 口径见 [personal asset
 - Before Agent I/O the outbox is atomically marked `max_attempts=1`; the turn has a 10-minute abort deadline inside an 11-minute lease. Crashes go to dead letter rather than replaying provider calls. A successful checkpoint restores the ordinary retry allowance for subsequent actions. Agent sessions/results and token counts appear in the existing automation run log.
 - `apps_query` and `apps_action` adapt the existing app gateway, belong to the independent `apps` feature point and MCP consent group, and never expand a `tables` OAuth grant. Apps-only audience members need no Tables membership. `apps_query` supports list/get/query/record (including custom `binding_id`).
 - `apps_action` executes only stored declared actions. Chat requires `user_confirmed` per call after an explicit yes; proxy/MCP uses the existing per-call `confirm` gate. Bots uses the existing approval request, with action/effect/record resolved from the server's role-trimmed view; no model label is trusted. The app definition and record are rechecked after approval; the gateway repeats authorization/precondition checks. Feishu and unattended runs exclude this writer.
+
+### 应用外部数据源（SRC）
+- `platform/tables/app-sources.ts` 仅接收网关从已存规格读取的 `external` 卡；请求中的 source/input 不参与求值。工具通过工作台 evaluator 执行 `WORKBENCH_READ_TOOL_IDS ∩ resolveUserTools(viewer)`；相对日期仍复用工作台语义。
+- 连接器统一走 `mcp-client/gateway.ts`（`mcp_call` 同样调用它）：当前服务器行重验 enabled/allowlist，身份永远为查看者；external 要求远端原始 `read_only` 且非 destructive，管理员 override 不能授予。未连接/过期保留连接卡协议。结构化结果优先，否则 JSON 文本；先去凭据，再声明式 JSON Pointer 映射，不渲染 HTML。
+- 一次源求值 15 秒，传播 AbortSignal；原始 JSON 512 KB、200 行、单元格 2000 字符。超时/无权/只读拒绝/映射错误为卡级 source_error，不暴露原始工具异常或其他成员连接。

@@ -88,6 +88,7 @@ import {
 import { stageAppUpload } from '../app-uploads.js';
 import { appSummary } from '../app-view.js';
 import { roleRuntimeView } from '../app-viewer.js';
+import { evaluateAppSource } from '../app-sources.js';
 import { evaluateTableCard } from '../cards.js';
 import { notifyCommentMentions, resolveMentionedUserIds } from '../mentions.js';
 import { tablesManifest, type TablesActionId } from '../../manifests/tables.js';
@@ -216,7 +217,11 @@ const queryAppCard: Handler = async (request, context) => {
     return fail('INVALID_INPUT', 'filterValues must be an object');
   }
   if (card.kind === 'text') return ok({ kind: 'text', markdown: card.markdown } satisfies AppCardQueryResult);
-  if (card.kind === 'external') return fail('INVALID_INPUT', 'not_implemented', { notImplemented: true });
+  if (card.kind === 'external') {
+    if (located.unavailable)
+      return ok({ kind: 'unavailable', message: unavailableMessage(session, located) } satisfies AppCardQueryResult);
+    return ok(await evaluateAppSource(context.db, session.userId, card.source));
+  }
   if (!isRecordsCard(card) && !isAggregateCard(card)) return fail('INVALID_INPUT', 'This card has no data to query');
   if (located.unavailable) {
     return ok({ kind: 'unavailable', message: unavailableMessage(session, located) } satisfies AppCardQueryResult);

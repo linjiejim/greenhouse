@@ -46,6 +46,7 @@ export interface McpConnectTarget {
 export interface McpCallOutcome {
   isError: boolean;
   text: string;
+  structuredContent?: unknown;
 }
 
 type FetchLike = (url: string | URL, init?: RequestInit) => Promise<Response>;
@@ -266,7 +267,11 @@ export function flattenMcpResult(result: {
   }
   // Pre-2025 servers answer with a bare `toolResult`.
   if (lines.length === 0 && result.toolResult !== undefined) lines.push(JSON.stringify(result.toolResult));
-  return { isError: result.isError === true, text: lines.join('\n').trim() };
+  return {
+    isError: result.isError === true,
+    text: lines.join('\n').trim(),
+    ...(result.structuredContent !== undefined ? { structuredContent: result.structuredContent } : {}),
+  };
 }
 
 /** Call one tool and flatten its result. Throws on transport/protocol failure. */

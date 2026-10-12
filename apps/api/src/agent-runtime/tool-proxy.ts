@@ -204,7 +204,7 @@ export async function executeProxyTool(
   toolId: string,
   allowedToolIds: string[],
   input: unknown,
-  opts: { confirm?: boolean } = {},
+  opts: { confirm?: boolean; abortSignal?: AbortSignal } = {},
 ): Promise<unknown> {
   const normalized = normalizeLegacyToolCall(toolId, input);
   const actualToolId = normalized.toolId;
@@ -222,7 +222,12 @@ export async function executeProxyTool(
   const prepared = prepareProxyToolCall(registry, toolId, allowedToolIds, actualInput);
   const confirmedInput =
     actualToolId === 'apps_action' ? { ...(prepared.input as object), user_confirmed: true } : prepared.input;
-  return prepared.execute(confirmedInput, { toolCallId: `agent-proxy-${actualToolId}`, messages: [], context: {} });
+  return prepared.execute(confirmedInput, {
+    toolCallId: `agent-proxy-${actualToolId}`,
+    messages: [],
+    context: {},
+    ...(opts.abortSignal ? { abortSignal: opts.abortSignal } : {}),
+  });
 }
 
 function normalizeLegacyToolCall(toolId: string, input: unknown): { toolId: string; input: unknown } {

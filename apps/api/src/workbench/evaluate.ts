@@ -80,10 +80,12 @@ export interface WorkbenchEvaluatorParams {
   readableToolIds: string[];
   /** Shared by every card in one refresh so relative windows agree. */
   today?: Date;
+  abortSignal?: AbortSignal;
 }
 
 export function createWorkbenchEvaluator({
   registry,
+  abortSignal,
   readableToolIds,
   today = new Date(),
 }: WorkbenchEvaluatorParams): WorkbenchEvaluator {
@@ -101,7 +103,7 @@ export function createWorkbenchEvaluator({
     if (existing) return existing;
     const outcome = (async (): Promise<SourceOutcome> => {
       try {
-        const data = await executeProxyTool(registry, source.toolId, readableToolIds, input);
+        const data = await executeProxyTool(registry, source.toolId, readableToolIds, input, { abortSignal });
         const refusal = toolRefusal(data);
         if (refusal) return { ok: false, error: 'failed', message: refusal };
         return { ok: true, data };
