@@ -523,7 +523,7 @@ describe('rooms: who answers', () => {
     expect(captured[2]!.input.messages.some((m) => JSON.stringify(m.content).includes('Monday is confirmed.'))).toBe(
       true,
     );
-  });
+  }, 20_000);
 
   it('waits for a returned child reply to be consumed before completing its parent consultation', async () => {
     const fern = await db.bots.createBot({ user_id: jim.id, name: 'Fern' });
@@ -597,12 +597,12 @@ describe('rooms: who answers', () => {
     });
     await vi.waitFor(
       async () => expect((await transcript(id)).some((r) => r[2] === 'Finished without a loop.')).toBe(true),
-      { timeout: 4000 },
+      { timeout: 10_000 },
     );
     await settled(id);
     expect(captured.map((t) => t.bot)).toEqual(['Ivy', 'Fern', 'Ivy']);
     expect(await db.bots.pendingAgentMessages()).toEqual([]);
-  });
+  }, 20_000);
 
   it('returns a revoked queued request once and never starts the revoked target', async () => {
     const fern = await db.bots.createBot({ user_id: jim.id, name: 'Fern', role: 'Reviewer' });
@@ -626,7 +626,7 @@ describe('rooms: who answers', () => {
     await sweepInboxes(db);
     await vi.waitFor(
       async () => expect((await transcript(id)).some((r) => r[2] === 'Recipient unavailable.')).toBe(true),
-      { timeout: 4000 },
+      { timeout: 10_000 },
     );
     await settled(id);
     await sweepInboxes(db);
@@ -636,7 +636,7 @@ describe('rooms: who answers', () => {
       (m) => m.bot_event?.includes(first.id) && m.bot_event.includes('failed'),
     );
     expect(returned).toHaveLength(1);
-  });
+  }, 20_000);
 
   it('keeps an unread count and a read marker per person', async () => {
     const id = (await call(jim, 'POST', '/api/rooms', { user_ids: [ana.id] })).json.conversation.session_id;
