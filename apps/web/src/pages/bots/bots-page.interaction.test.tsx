@@ -475,6 +475,25 @@ describe('Chat’s side pane on the Agents page', () => {
 describe('the computer keeps the member’s clock', () => {
   const zone = browserTimeZone();
 
+  it.each(['disabled', 'unavailable', 'checking'] as const)(
+    'does not write settings while the runtime is %s, and syncs once it becomes ready',
+    async (state) => {
+      api.getConversation.mockResolvedValue({ conversation: detail('dm-sage', SAGE), messages: [], has_more: false });
+      api.fetchComputerStatus.mockResolvedValue(
+        computer({ state: 'absent', timezone: null, runtime: { state, reason: null, hardened: false } }),
+      );
+      await renderPage('c=dm-sage');
+      expect(api.updateComputerSettings).not.toHaveBeenCalled();
+
+      // An early status must not consume the one sync allowed for this page load.
+      await act(async () => root?.unmount());
+      root = null;
+      api.fetchComputerStatus.mockResolvedValue(computer({ state: 'absent', timezone: null }));
+      await renderPage('c=dm-sage');
+      expect(api.updateComputerSettings).toHaveBeenCalledExactlyOnceWith({ timezone: zone }, 'bot_sage');
+    },
+  );
+
   it('stores the browser’s timezone once per page load when the computer’s differs', async () => {
     expect(zone).toBeTruthy();
     api.getConversation.mockResolvedValue({ conversation: detail('dm-sage', SAGE), messages: [], has_more: false });

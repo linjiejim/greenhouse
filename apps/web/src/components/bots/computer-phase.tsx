@@ -15,7 +15,7 @@
  *
  * `useComputerTimezoneSync` keeps the computer on the member's own clock: the
  * page tells the server the browser's timezone once per page load when the
- * computer's differs (it takes effect at the next start).
+ * runtime is ready and the computer's differs (it takes effect at the next start).
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -346,7 +346,7 @@ export function browserTimeZone(): string | null {
 }
 
 /**
- * After the computer status loads: if the computer's stored timezone is not
+ * After the computer runtime is ready: if the computer's stored timezone is not
  * the browser's, store the browser's (`PUT /api/bots/computer/settings`; the
  * setting applies to all of the member's computers). Quiet on failure — the
  * computer keeps the deployment default and the next page load tries again.
@@ -354,7 +354,7 @@ export function browserTimeZone(): string | null {
 export function useComputerTimezoneSync(computer: Pick<ComputerStatusState, 'bot' | 'status' | 'apply'>): void {
   const { bot, status, apply } = computer;
   useEffect(() => {
-    if (!status || timezoneChecked) return;
+    if (!status || status.runtime.state !== 'ready' || timezoneChecked) return;
     timezoneChecked = true;
     const timezone = browserTimeZone();
     if (!timezone || status.timezone === timezone) return;
