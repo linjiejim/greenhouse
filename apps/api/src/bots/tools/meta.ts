@@ -100,8 +100,8 @@ Actions: notes — list the shared notes (decisions, open items, facts every Age
     brief: 'Propose read-only background work that reports back, or a separate chat for a piece of work',
     icon: 'ListTodo',
     sort_order: 96,
-    description: `Work that goes on outside this conversation; the member always starts it on a card.
-Actions: start {title, brief, mode?, agent_id?} — mode background (default): a read-only task (browse, read, summarise — no form submits, no shell) that reports back here when done, so write a self-contained brief. mode chat: a separate chat with its own context, answered by you or another of the member's Agents (agent_id); the brief becomes its first message and the member continues there — use it for work that needs back-and-forth, changes things, or would crowd this thread. list — this conversation's background tasks; cancel {run_id}.`,
+    description: `Propose work outside this conversation; only the member starts it on a card.
+background: read-only work (browse, read, summarise; no form submits or shell) that reports back here. chat: a separate conversation the member continues for interactive work or changes. Write a self-contained brief. list/cancel manage this conversation's background tasks.`,
   },
   {
     ...base,

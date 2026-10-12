@@ -27,7 +27,7 @@ export const AGENT_ACCESS_TOOL_METAS: readonly ToolMeta[] = [
     icon: 'Bot',
     surface: { proxy: 'read', mcp: 'agents' },
     sort_order: 120,
-    description: `List the Greenhouse Agents this account can talk to: kind "main" (the member's main Agent), "own" (their other Agents) and "public" (other members' Agents published to them, with the owner's name). Use an id with agent_message.`,
+    description: `List this account's main Agent, own Agents and public Agents offered to it (with owner names). Use their IDs with agent_message.`,
   },
   {
     ...base,
@@ -37,10 +37,9 @@ export const AGENT_ACCESS_TOOL_METAS: readonly ToolMeta[] = [
     icon: 'Send',
     surface: { proxy: 'write', mcp: 'agents' },
     sort_order: 121,
-    description: `Send a message to a Greenhouse Agent and wait for its reply.
-agent_id: from agents_list (omit for the main Agent). Without conversation_id a new conversation starts (it shows in the member's Greenhouse app); pass the returned conversation_id to continue it.
-Waits up to wait_seconds (default 45, max 55). status: answered — replies are in; working — still busy: call agent_conversation_get with the conversation_id later; needs_you — the Agent is waiting for the member to approve or sign in inside the Greenhouse app (url): you cannot do that for them.
-Write a self-contained message: the Agent sees only this conversation.`,
+    description: `Message a Greenhouse Agent; a new conversation appears in the member's app unless you continue one.
+Write a self-contained message: the Agent sees only that conversation.
+answered: replies ready; working: poll agent_conversation_get later; needs_you: the member must approve or sign in at the returned app URL. You cannot do that for them.`,
   },
   {
     ...base,
@@ -50,7 +49,7 @@ Write a self-contained message: the Agent sees only this conversation.`,
     icon: 'MessagesSquare',
     surface: { proxy: 'read', mcp: 'agents' },
     sort_order: 122,
-    description: `Read a conversation with a Greenhouse Agent that agent_message started: its status (answered / working / needs_you) and the replies after the last message sent to it, or after after_message_id. Poll it while the status is working.`,
+    description: `Read replies in a conversation started by agent_message (by default, since the last message sent to it). Poll while status is working.`,
   },
 ];
 

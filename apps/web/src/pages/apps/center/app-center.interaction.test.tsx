@@ -2,7 +2,7 @@
 
 /**
  * The app center: the three shelves with pins, and the ways to make an app —
- * a new app on a Base the member builds (or a new Base), a Bot asked through
+ * a new app on a Base the member builds (or a new Base), an Agent asked through
  * Chat, a built-in template — each only offered when it can work.
  */
 
@@ -207,12 +207,12 @@ describe('app center shelves', () => {
 });
 
 describe('making an app', () => {
-  it('offers new / ask a Bot to Tables members, and templates only when the server lists some', async () => {
+  it('offers new / ask an Agent to Tables members, and templates only when the server lists some', async () => {
     seed({});
     await mount();
     const entries = () =>
       [...container.querySelectorAll('[data-testid="app-center-entries"] button')].map((entry) => entry.textContent);
-    expect(entries()).toEqual(['New app', 'Ask a Bot to build one']);
+    expect(entries()).toEqual(['New app', 'Ask an Agent to build one']);
     expect(container.textContent).toContain('Apps turn a Base into pages');
 
     act(() => root?.unmount());
@@ -221,7 +221,7 @@ describe('making an app', () => {
       { key: 'it-tickets', name: 'IT tickets', description: 'Report and resolve', icon: 'ticket', accent: 'blue' },
     ]);
     await mount();
-    expect(entries()).toEqual(['New app', 'Ask a Bot to build one', 'From a template']);
+    expect(entries()).toEqual(['New app', 'Ask an Agent to build one', 'From a template']);
   });
 
   it('offers nothing to build to a member without Tables (an app’s audience)', async () => {
@@ -387,7 +387,7 @@ describe('making an app', () => {
     tables.listTableBases.mockResolvedValue([base(4, 'Purchasing', 'owner')]);
     seed({});
     await mount();
-    await act(async () => button('Ask a Bot to build one')!.click());
+    await act(async () => button('Ask an Agent to build one')!.click());
     await change(document.querySelector('[data-testid="ask-bot-base"]') as HTMLSelectElement, '4');
     await change(
       document.querySelector('[data-testid="ask-bot-dialog"] textarea') as HTMLTextAreaElement,

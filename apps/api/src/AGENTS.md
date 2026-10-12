@@ -396,6 +396,7 @@ Automation、Tasks、Agents 的 `Mine / Shared / Team` 口径见 [personal asset
 - **深链格式的唯一真源是 `@greenhouse/types/entity-links` 的 `entityUrl()`**，构造与解析共用一张表（浏览器侧靠 `parseEntityUrl` 认出这些链接）。**别再手写 `#/knowledge/doc/${id}-${slug}` 这种模板**——`knowledge-mutation.ts` 手抄过一份，两边已经开始漂移，这次一并收敛了。
 - **引用指令写在工具 description，措辞取自零 import 叶子模块 `tools/cite-url.ts` 的 `CITE_URL_INSTRUCTION`**（今天 6 个工具在用）。写在 description 而不是 profile prompt，是因为它随 function definition 下发、自动覆盖 chat / proxy / MCP 三个面；抽成常量是因为六份同义句必然漂移。**「verbatim，不许自己拼」是这句话的重点**——伪造的链接和真链接长得一模一样，直到有人点开。
 - **加这句话要付描述预算**（`__tests__/description-budget.test.ts`）：这次的 ~600 字符是靠删工具里 zod schema 已经 `.describe()` 过的筛选/排序字段清单付的，ceiling 没动。下次同理——先删重复，别先抬预算。
+- **描述预算统计完整目录，包含 Bots 与 external-only Agent 工具**，实际请求仍按 surface 装配。并行 PR 合并时重新测量双方与合并后的总量；先删参数 schema 已说明的细节，保留成员确认、只读及不可信内容边界，预算变动在测试历史中记录精简量与少量余量。
 
 ### Tables 的对话式搭建（`tables_schema_plan` + `/api/tables/schema-plan/apply`）
 - **三个 Tables 工具的分工**：`tables_query` 读、`tables_mutation` 写记录（两者都上 proxy/MCP）、`tables_schema_plan` 改结构与搭建（**只上聊天面**）。前两个调用即生效，第三个只起草。方案与决策见 [spec](../../../docs/specs/20260803-tables-conversational-schema-editing.md) 与 [Tables 地基 spec](../../../docs/specs/20261011-tables-foundation.md) §9（D8 / D16 / D18）。

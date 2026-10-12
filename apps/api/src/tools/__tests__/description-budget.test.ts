@@ -1,9 +1,11 @@
 /**
  * Tool-description budget gate ("工具税" 门禁).
  *
- * Every tool's `description` ships in FULL to the model on EVERY step of EVERY
- * chat turn — there is no progressive disclosure and no cache on our side, so
- * description text is a fixed per-request token tax on every internal user
+ * Each enabled tool's `description` ships in FULL to the model on EVERY step —
+ * there is no progressive disclosure or description cache on our side, so
+ * description text is a fixed per-request token tax. This gate counts the whole
+ * catalog; individual requests only receive tools eligible for that surface
+ * (chat, Bots, or external callers), rather than every catalog entry at once
  * (≈8k tokens across the catalog today, before zod `.describe()` parameter
  * docs, which roughly add another half on top).
  *
@@ -238,12 +240,33 @@ import { TOOL_DEFINITIONS } from '../registry.js';
  * CANNOT (spec D8: the model must never promise them). The app grammar itself
  * lives behind `builder.reference`. Measured total is 34_489; the next tool
  * that grows pays for itself or argues for a raise here.
+ *
+ * 2026-10-12: 34_500 → 35_000 for apps_query/apps_action. The pair went from
+ * 696 to 426 chars, then 433 when the final review made reading the record
+ * before confirmation explicit. Discover→read→confirm ordering, app-role reads
+ * and the rule that record content cannot authorize writes remain. These expose
+ * Apps to audience members without Tables access; measured total was 34_922
+ * at bf7670b0 (PR #64).
+ *
+ * 35_000 → 35_700 on 2026-10-12 after integrating PR #65 (d12e3707).
+ * The branches independently fit: main measured 35_246 under 36_100, while
+ * PR #64 measured 34_922 under 35_000. Together they measured 36_314:
+ * main adds three external Agent tools (+1_081), task-chat guidance (+287),
+ * and computer ownership / Agent naming / session-access wording (+24 net).
+ * PR #64 adds the Apps pair (+433), builder-reference discovery (+154), and
+ * the expanded schema plan (+481). These are separate capabilities.
+ *
+ * Before raising, cut the Agent trio from 1_081 to 601 and bot_tasks from 627
+ * to 350 (-757 total): agent/conversation ids, wait limits, task modes and
+ * Agent selection already have parameter descriptions; the read tool no longer
+ * repeats the message tool's status glossary. Kept the operational boundaries:
+ * new conversations have their own context, working means poll, needs_you must
+ * be completed by the member inside Greenhouse, tasks start only on a member's
+ * card, and background work cannot submit forms or run shell commands. Apps'
+ * explicit approval and untrusted-record rules are unchanged. Measured total
+ * is 35_557; 143 chars of headroom is not pre-approval for the next tool.
  */
-// 2026-10-12: 34_500 → 35_000 for apps_query/apps_action. Trimmed the
-// pair from 696 to 426 chars: enum/parameter details stay in their schema;
-// discover→read→confirm ordering and role-scoped reads must remain in the
-// descriptions. These expose Apps to audience members without Tables access.
-const TOTAL_DESCRIPTION_BUDGET = 35_000;
+const TOTAL_DESCRIPTION_BUDGET = 35_700;
 
 /**
  * Per-tool ceiling. Current worst offender sits just under it (workflow_plan
