@@ -9,8 +9,8 @@
  * and side pane are bound to one Agent. The renderers underneath are shared.
  *
  * A room (P5, `room`): the header shows the people and a manage menu, the `@`
- * list holds only the Agents the member may address (the placeholder says
- * they answer only when @-mentioned), other people's messages sit on the
+ * list holds people and Agents the member may address. Unaddressed messages
+ * let Agents consider whether to contribute. Other people's messages sit on the
  * left, and Stop is offered only for a run the member asked for.
  */
 

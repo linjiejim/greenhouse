@@ -901,10 +901,10 @@ describe('a conversation with other people (a room, P5)', () => {
     expect(menuLabels()).not.toContain('Rename');
   });
 
-  it('offers only the Agents the member may address in the @ list, and says they answer only then', async () => {
+  it('offers people and available Agents in the directed-message @ list', async () => {
     await render(roomProps());
     const input = document.querySelector<HTMLTextAreaElement>('[data-testid="chat-input"]')!;
-    expect(input.placeholder).toBe('Message Launch — Agents answer only when you @ them');
+    expect(input.placeholder).toBe('Message Launch — @ someone to address only them');
     await act(async () => {
       Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(input, '@');
       input.setSelectionRange(1, 1);
@@ -914,6 +914,8 @@ describe('a conversation with other people (a room, P5)', () => {
     const options = [...document.querySelectorAll('[role="option"]')].map((option) => option.textContent);
     expect(options.some((text) => text?.includes('Sage'))).toBe(true);
     expect(options.some((text) => text?.includes('Scout'))).toBe(false);
+    expect(options.some((text) => text?.includes('Ana'))).toBe(true);
+    expect(options.some((text) => text?.includes('Ben'))).toBe(true);
   });
 
   it("offers Stop only for a run the member may stop — never someone else's", async () => {

@@ -2,7 +2,7 @@
  * Rooms — several people and the Agents they bring (spec 20261011-agent-first-class P5, D42–D46)
  * against real PostgreSQL with a scripted model: a room or the pair's one private chat, readable
  * and writable by its people only (super included), messages with their author, an Agent that
- * answers only an allowed @-mention in a run of the person who asked, someone else's mention
+ * considers ordinary messages or answers an allowed target in the original author's run, another person's trigger
  * waiting for their own run, per-person unread markers, public Agents only while everyone is in
  * the audience, leaving (with your Agents; ownership passes on; the last one out deletes it), and
  * an account purge that keeps everyone else's room.
@@ -459,7 +459,7 @@ describe('rooms: who answers', () => {
       author_user_id: jim.id,
     });
     await settled(id);
-    const message = (await db.sessions.getMessages(id)).findLast((m) => m.role === 'user')!;
+    const message = (await db.sessions.getMessages(id)).reverse().find((m) => m.role === 'user')!;
     await db.bots.setAgentReceipt(id, message.id, ivy.id, 'processing');
     await db.bots.setAgentReceipt(id, message.id, sage.id, 'queued');
     expect(await db.bots.expireAgentReceipts()).toEqual([]);
