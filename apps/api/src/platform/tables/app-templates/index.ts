@@ -34,7 +34,7 @@ import type { SchemaPlanOperation, SchemaPlanOperationKind } from '@greenhouse/t
 import { analyzeSchemaPlan, MAX_SCHEMA_PLAN_OPERATIONS, schemaPlanOperationSchema } from '../schema-plan.js';
 
 /** The catalog, in the order the app center lists it. One JSON file per key. */
-export const APP_TEMPLATE_KEYS = ['procurement', 'it-tickets'] as const;
+export const APP_TEMPLATE_KEYS = ['procurement', 'it-tickets', 'crm', 'recruiting'] as const;
 export type AppTemplateKey = (typeof APP_TEMPLATE_KEYS)[number];
 
 const ALLOWED_OPS: ReadonlySet<SchemaPlanOperationKind> = new Set([
@@ -179,15 +179,4 @@ export function appTemplates(): ReadonlyMap<AppTemplateKey, AppTemplate> {
 
 export function findAppTemplate(key: string): AppTemplate | undefined {
   return (APP_TEMPLATE_KEYS as readonly string[]).includes(key) ? appTemplates().get(key as AppTemplateKey) : undefined;
-}
-
-/** What the app center lists, in the viewer's language (`templateLocale`). */
-export function appTemplateSummaries(locale: AppTemplateLocale): AppTemplateSummary[] {
-  return [...appTemplates().values()].map((template) => ({
-    key: template.key,
-    name: template.name[locale],
-    description: template.description[locale],
-    icon: template.icon,
-    accent: template.accent,
-  }));
 }

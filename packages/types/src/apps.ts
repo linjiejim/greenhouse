@@ -1011,7 +1011,7 @@ export interface AppTemplateSummary {
   source?: AppTemplateSource;
   /** The version an install gets (semver). */
   version?: string;
-  /** That version's review state (installs by anyone but its publisher need `approved` or `not_required`). */
+  /** That version's review state (all installs need `approved` or `not_required`). */
   reviewStatus?: AppTemplateReviewStatus;
 }
 
@@ -1021,7 +1021,7 @@ export interface AppTemplateSummary {
 // (`source: 'builtin'`, synced from the repo at boot) and templates members
 // publish from an app ("save as template"). Versions are immutable semver with a
 // changelog; content is hashed; a scan runs before a version is stored; versions
-// carrying custom cards or automations need a super's review before anyone else
+// carrying custom cards or automations need a super's review before anyone
 // installs them. Installing creates a NEW Base + a draft app through the plan
 // path (D9), automations disabled, executor = the installer; never idempotent (D12).
 
@@ -1050,6 +1050,8 @@ export interface AppTemplateVersionView {
 
 /** `GET /api/apps/templates/:key`. */
 export interface AppTemplateDetailView {
+  /** Exact immutable content and scan evidence; only the publisher and administrators receive it. */
+  review?: { version: string; content: string; scanFindings: unknown[] };
   template: AppTemplateSummary & {
     source: AppTemplateSource;
     status: AppTemplateStatus;
@@ -1136,6 +1138,12 @@ export interface AppCustomReviewItem {
 export interface AppTemplateInstallResult {
   app: AppSummary;
   baseId: number;
+}
+
+/** Optional body of `POST /api/apps/templates/:key/install`. */
+export interface AppTemplateInstallInput {
+  /** Name for the new Base and application (1–60 characters); otherwise use the localized template name. */
+  name?: string;
 }
 
 /**

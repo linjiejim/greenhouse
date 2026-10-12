@@ -92,6 +92,7 @@ import costValueRoutes from './routes/cost-value.js';
 import adminGatewayRoutes from './routes/admin-llm-gateway.js';
 import adminMcpServerRoutes from './routes/admin-mcp-servers.js';
 import connectorRoutes from './routes/connectors.js';
+import { syncBuiltinAppTemplates } from './platform/tables/app-templates/lifecycle.js';
 import { refreshMcpDirectory } from './mcp-client/directory.js';
 import { wecomOAuthRoutes } from './routes/wecom-oauth.js';
 import { feishuOAuthRoutes } from './routes/feishu-oauth.js';
@@ -548,6 +549,7 @@ async function main() {
   // First-party skill packs ride the release: sync the repo's skillhub/ into
   // the Skill Center on boot (no-op without the directory; never blocks boot).
   await seedSkillhub(dbProvider);
+  await syncBuiltinAppTemplates(dbProvider);
 
   // Backfill security verdicts for skills published before the scanner existed.
   // Fire-and-forget like the other boot sweeps — never blocks the health gate,

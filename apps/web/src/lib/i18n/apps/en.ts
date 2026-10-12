@@ -12,9 +12,11 @@ import { appsSandboxEn } from './sandbox.en';
 import { appsAgentEn } from './agent.en';
 import { appsBuilderEn } from './builder.en';
 import { appsCenterEn } from './center.en';
+import { appsTemplatesEn } from './templates.en';
 import { appsRuntimeEn } from './runtime.en';
 
 export const APPS_SLICE_MODULES_EN = {
+  templates: appsTemplatesEn,
   agent: appsAgentEn,
   builder: appsBuilderEn,
   center: appsCenterEn,
@@ -23,6 +25,7 @@ export const APPS_SLICE_MODULES_EN = {
 } as const;
 
 export const APPS_SLICES_EN = {
+  ...appsTemplatesEn,
   ...appsAgentEn,
   ...appsBuilderEn,
   ...appsCenterEn,

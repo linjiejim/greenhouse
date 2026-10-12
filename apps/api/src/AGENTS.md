@@ -647,3 +647,9 @@ Automation、Tasks、Agents 的 `Mine / Shared / Team` 口径见 [personal asset
 - `platform/tables/app-sources.ts` 仅接收网关从已存规格读取的 `external` 卡；请求中的 source/input 不参与求值。工具通过工作台 evaluator 执行 `WORKBENCH_READ_TOOL_IDS ∩ resolveUserTools(viewer)`；相对日期仍复用工作台语义。
 - 连接器统一走 `mcp-client/gateway.ts`（`mcp_call` 同样调用它）：当前服务器行重验 enabled/allowlist，身份永远为查看者；external 要求远端原始 `read_only` 且非 destructive，管理员 override 不能授予。未连接/过期保留连接卡协议。结构化结果优先，否则 JSON 文本；先去凭据，再声明式 JSON Pointer 映射，不渲染 HTML。
 - 一次源求值 15 秒，传播 AbortSignal；原始 JSON 512 KB、200 行、单元格 2000 字符。超时/无权/只读拒绝/映射错误为卡级 source_error，不暴露原始工具异常或其他成员连接。
+
+### 应用模板生命周期（T）
+- `/api/apps/templates` 全部经清单已有动作 dispatch；`app-templates/lifecycle.ts` 启动同步四个仓库模板（采购 / IT / CRM / 招聘），目录内容变更必须提升内置版本，禁止覆写同版本 hash。builtin 保留中英文计划；published 由应用管理者从已保存草稿 + 本 Base 表/字段导出，从不查询线上记录；跨 Base 结构引用明确拒绝。
+- `content.ts` 将表/字段/自动化引用改为计划 ref，包括公式、角色规则和通知 `{{field:id}}`；字段按依赖排序，全部经过现有计划 grammar 与虚拟 schema 预检。样例只能显式提交（≤50 行普通字段），安装时经 `createRecord` dispatch 创建。含用户/关联/附件/计算字段的样例拒绝。
+- 发布扫描复用技能扫描器的纯 `scanBundle`，不复用技能中心生命周期/存储（模板没有 SKILL.md）。版本保存 exact content/hash；自定义卡、自动化或异常扫描均 pending；只有 super 可 approve/reject，按不可变版本（审核同时覆盖扫描）。待审/拒绝版本仅发布者与 super 可看，任何人安装都需 approved 或 clean+not_required。详情的 `review` 原文/扫描证据也仅发布者与 super 可见。
+- 安装预检后走 `applySchemaPlan`，每步仍按安装者 dispatch，创建新私有 Base + 草稿应用。所有自动化 disabled，webhook 删除、固定通知 userIds/groupIds 删除、Bot 绑定删除（用安装者默认 agent），执行者为安装者；没有剩余可移植动作的规则拒绝导出，提示先添加动作。custom 安装前校验 apps_custom_code（避免建出半个 Base 后才拒绝）；审核仅批准模板安装，本轮自定义 HTML 执行仍关闭；安装可选 name（1–60字）重命名新 Base 与应用；不发布、不复制受众/共享。归档阻止新安装，不触已有应用。

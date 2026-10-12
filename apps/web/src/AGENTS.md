@@ -666,3 +666,5 @@ stores/
 - Tables automation 的 Agent 编辑器复用 `TemplateText`、表格字段选择和 `listBots`，仅提供无工具 / 本 Base 只读两种模式，输出仅文本字段；Bot 版本由服务端固定。应用页面 ambient context 给出 `app_id` 和 `apps_query` / `apps_action` 的入口提示，仍是参考信息，不是授权。
 
 - **外部数据卡**：构建器提供 `external` 的工具/连接器 ID、保存参数与声明式映射；运行时复用 TableCardView 绘制 KPI/图表，表格仅画文本（不解释 HTML/链接），`needs_connection` 复用 McpConnectCard，连接后由宿主重试。同一张卡各查看者按自己的权限取数。
+
+- **模板中心**：`TemplateDialog` 显示内置/发布模板版本与审核状态，pending/rejected 不可安装；详情可查看版本/hash/扫描、owner/super 可看确切内容，super 批准/拒绝，owner/super 可归档。构建器设置的 `TemplatePublishSection` 从已保存草稿发布，手写样例用显式 JSON 输入，不提供读取线上记录的入口。模板文案独占 `apps.templates.*`。安装允许填写新应用名称；含 custom 的详情明确说明当前不能执行，模板批准不会开启执行。

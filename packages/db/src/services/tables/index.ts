@@ -35,6 +35,7 @@ import { createTablesAiQueue } from './ai-queue.js';
 export { aiInputHash } from './ai-queue.js';
 import type { Db } from '../../client.js';
 import { createTablesActivity } from './activity.js';
+import { createTablesAppTemplates } from './app-templates.js';
 import { createTablesApps } from './apps.js';
 import { createTablesAppGateway } from './app-gateway.js';
 import { createTablesAggregates } from './aggregate.js';
@@ -221,6 +222,7 @@ export function createTablesService(db: Db) {
     ...createTablesImports(db, { records: records.internal }),
     ...createTablesResources(db),
     ...createTablesApps(db),
+    ...createTablesAppTemplates(db),
     ...createTablesAppGateway(db),
     /** The live schema as the config validators read it (the API's app spec validator passes it on). */
     liveSchemaSource: (): TablesSchemaSource => dbSchemaSource(db),
@@ -228,3 +230,5 @@ export function createTablesService(db: Db) {
 }
 
 export type TablesService = ReturnType<typeof createTablesService>;
+
+export { templateContentHash } from './app-templates.js';

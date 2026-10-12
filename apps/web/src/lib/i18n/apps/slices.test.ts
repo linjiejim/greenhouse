@@ -13,7 +13,14 @@ import { APPS_SLICE_MODULES_ZH } from './zh';
 
 describe('Apps slice catalogs', () => {
   it('has one module per Phase 1 slice, named after its namespace', () => {
-    expect(Object.keys(APPS_SLICE_MODULES_EN).sort()).toEqual(['agent', 'builder', 'center', 'runtime', 'sandbox']);
+    expect(Object.keys(APPS_SLICE_MODULES_EN).sort()).toEqual([
+      'agent',
+      'builder',
+      'center',
+      'runtime',
+      'sandbox',
+      'templates',
+    ]);
     for (const [slice, catalog] of Object.entries(APPS_SLICE_MODULES_EN)) {
       expect(Object.keys(catalog), slice).toEqual([slice]);
     }

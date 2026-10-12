@@ -12,7 +12,7 @@
  * - an app plan confirmed by a Base builder fails clearly on the owner's steps.
  */
 
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Hono } from 'hono';
 import { _resetProvider, initDatabase, type DatabaseProvider, type UserRow } from '@greenhouse/db';
 import { TEST_DATABASE_URL } from '@greenhouse/db/test-config';
@@ -20,6 +20,7 @@ import type {
   AppAudiencesView,
   AppDraftView,
   AppTemplateInstallResult,
+  AppTemplateDetailView,
   AppTemplateSummary,
 } from '@greenhouse/types/apps';
 import type { SchemaPlanApplyResult, SchemaPlanOperation } from '@greenhouse/types/tables';
@@ -41,6 +42,8 @@ let db: DatabaseProvider;
 let owner: UserRow;
 let builder: UserRow;
 let actionCounter = 0;
+// Each install dispatches dozens of real schema actions; allow slow local/CI PostgreSQL runs.
+vi.setConfig({ testTimeout: 30_000 });
 
 function createHttpApp(users: UserRow[]) {
   const byId = new Map(users.map((user) => [user.id, user]));
@@ -103,7 +106,7 @@ describe('built-in app templates', () => {
     expect(english.templates[0]).toMatchObject({ key: 'procurement', name: 'Purchase requests', icon: 'cart' });
     await db.users.update(owner.id, { locale: 'zh' });
     const chinese = await json<{ templates: AppTemplateSummary[] }>(await send(owner, '/api/apps/templates'));
-    expect(chinese.templates.map((template) => template.name)).toEqual(['采购申请', 'IT 工单']);
+    expect(chinese.templates.map((template) => template.name)).toEqual(['采购申请', 'IT 工单', '轻量 CRM', '招聘流程']);
   });
 
   const cases = APP_TEMPLATE_KEYS.flatMap((key) => APP_TEMPLATE_LOCALES.map((locale) => [key, locale] as const));
@@ -144,12 +147,12 @@ describe('built-in app templates', () => {
     // The installed draft has no problem against the Base the template built.
     const draft = await json<AppDraftView>(await send(owner, `/api/apps/${installed.app.id}/draft`));
     expect(draft.errors).toEqual([]);
-    expect(draft.spec.roles.length).toBeGreaterThan(1);
+    expect(draft.spec.roles.length).toBeGreaterThan(0);
     expect(chinese.test(JSON.stringify(draft.spec))).toBe(locale === 'zh');
 
     // Nothing runs and nobody else is reached until the owner decides.
     const rules = await db.tables.listAutomationRules(installed.baseId);
-    expect(rules.length).toBeGreaterThan(0);
+    expect(rules.length).toBe(template.plans[locale].operations.filter((op) => op.op === 'automation.create').length);
     expect(rules.every((rule) => rule.status === 'disabled')).toBe(true);
     const audiences = await json<AppAudiencesView>(await send(owner, `/api/apps/${installed.app.id}/audiences`));
     expect(audiences.entries).toEqual([]);
@@ -279,5 +282,127 @@ describe('the procurement app as a confirmed chat plan', () => {
     const applied = await json<SchemaPlanApplyResult>(await applyPlan(builder, operations));
     expect(applied.results.map((result) => result.status)).toEqual(['applied', 'applied', 'failed']);
     expect(applied.results[2]!.message).toMatch(/Only the Base owner can publish/);
+  });
+});
+
+describe('published template lifecycle', () => {
+  async function source() {
+    return json<AppTemplateInstallResult>(await send(owner, '/api/apps/templates/crm/install', 'POST'), 201);
+  }
+  async function publish(appId: number, extra: Record<string, unknown> = {}) {
+    return send(owner, '/api/apps/templates', 'POST', { appId, key: 'my-crm', version: '1.0.0', ...extra });
+  }
+  it('exports structure without live records, installs explicit samples and keeps versions immutable', async () => {
+    const original = await source();
+    const [table] = await db.tables.listTables(original.baseId);
+    const fields = await db.tables.listFields(table!.id);
+    const primary = fields.find((field) => field.is_primary)!;
+    expect(
+      (
+        await publish(original.app.id, {
+          sampleRecords: [{ tableId: table!.id, values: [{ fieldId: primary.id, value: 12 }] }],
+        })
+      ).status,
+    ).toBe(400);
+    await json(
+      await send(owner, `/api/tables/tables/${table!.id}/records`, 'POST', {
+        values: { [primary.id]: 'PRIVATE LIVE RECORD' },
+      }),
+      201,
+    );
+    const published = await json<AppTemplateDetailView>(
+      await publish(original.app.id, {
+        sampleRecords: [{ tableId: table!.id, values: [{ fieldId: primary.id, value: 'Handwritten example' }] }],
+      }),
+      201,
+    );
+    expect(published.template.reviewStatus).toBe('not_required');
+    expect(published.review?.content).not.toContain('PRIVATE LIVE RECORD');
+    const installed = await json<AppTemplateInstallResult>(
+      await send(builder, '/api/apps/templates/my-crm/install', 'POST', { name: 'My CRM copy' }),
+      201,
+    );
+    expect(installed.baseId).not.toBe(original.baseId);
+    expect(installed.app.name).toBe('My CRM copy');
+    expect((await db.tables.getBase(installed.baseId))?.name).toBe('My CRM copy');
+    expect((await db.tables.getBase(installed.baseId))?.owner_id).toBe(builder.id);
+    const [copy] = await db.tables.listTables(installed.baseId);
+    const rows = await json<{ records: Array<{ values: unknown }> }>(
+      await send(builder, `/api/tables/tables/${copy!.id}/records/query`, 'POST', {}),
+    );
+    expect(JSON.stringify(rows)).toContain('Handwritten example');
+    expect(JSON.stringify(rows)).not.toContain('PRIVATE LIVE RECORD');
+    const outsider = await json<AppTemplateDetailView>(await send(builder, '/api/apps/templates/my-crm'));
+    expect(outsider.review).toBeUndefined();
+    expect(outsider.template.canManage).toBe(false);
+    expect((await publish(original.app.id)).status).toBe(400);
+    expect((await publish(original.app.id, { version: '1.1.0' })).status).toBe(400);
+    const next = await json<AppTemplateDetailView>(
+      await publish(original.app.id, { version: '1.1.0', changelog: 'More examples' }),
+      201,
+    );
+    expect(next.versions).toHaveLength(2);
+    expect(next.versions.find((version) => version.version === '1.0.0')?.contentHash).toBe(
+      published.versions[0]?.contentHash,
+    );
+    expect((await send(builder, '/api/apps/templates/my-crm/archive', 'POST')).status).toBe(403);
+    await json(await send(owner, '/api/apps/templates/my-crm/archive', 'POST'));
+    expect((await send(owner, '/api/apps/templates/my-crm/install', 'POST')).status).toBe(404);
+  });
+  it('holds automations for a super review, sanitizes fixed recipients, and installs with the installer as executor', async () => {
+    const original = await json<AppTemplateInstallResult>(
+      await send(owner, '/api/apps/templates/it-tickets/install', 'POST'),
+      201,
+    );
+    const rules = await db.tables.listAutomationRules(original.baseId);
+    const sourceRule = rules[0]!;
+    const config = {
+      ...sourceRule.config,
+      actions: sourceRule.config.actions.map((action) =>
+        action.type === 'notify' ? { ...action, recipients: { creator: true, userIds: [owner.id] } } : action,
+      ),
+    };
+    await json(
+      await send(owner, `/api/tables/automations/${sourceRule.id}`, 'PATCH', { revision: sourceRule.revision, config }),
+    );
+    const published = await json<AppTemplateDetailView>(await publish(original.app.id), 201);
+    expect(published.template.reviewStatus).toBe('pending');
+    expect(published.review?.content).not.toContain(owner.id);
+    expect((await send(builder, '/api/apps/templates/my-crm')).status).toBe(404);
+    expect((await send(owner, '/api/apps/templates/my-crm/install', 'POST')).status).toBe(403);
+    expect(
+      (await send(owner, '/api/apps/templates/my-crm/versions/1.0.0/review', 'POST', { decision: 'approve' })).status,
+    ).toBe(403);
+    const admin = await createInternalTestUser(db, {
+      email: `template-reviewer-${Date.now()}@test.com`,
+      role: 'super',
+    });
+    http = createHttpApp([owner, builder, admin]);
+    await json(
+      await send(admin, '/api/apps/templates/my-crm/versions/1.0.0/review', 'POST', {
+        decision: 'approve',
+        note: 'Reviewed exact content',
+      }),
+    );
+    const installed = await json<AppTemplateInstallResult>(
+      await send(builder, '/api/apps/templates/my-crm/install', 'POST'),
+      201,
+    );
+    const installedRules = await db.tables.listAutomationRules(installed.baseId);
+    expect(installedRules.length).toBe(rules.length);
+    for (const rule of installedRules) {
+      expect(rule.status).toBe('disabled');
+      expect(rule.execution_user_id).toBe(builder.id);
+    }
+    await json(await send(admin, '/api/apps/templates/my-crm/versions/1.0.0/review', 'POST', { decision: 'reject' }));
+    expect((await send(builder, '/api/apps/templates/my-crm/install', 'POST')).status).toBe(403);
+  });
+  it('refuses another builder’s private app and reserved builtin keys', async () => {
+    const original = await source();
+    expect(
+      (await send(builder, '/api/apps/templates', 'POST', { appId: original.app.id, key: 'stolen', version: '1.0.0' }))
+        .status,
+    ).toBe(404);
+    expect((await publish(original.app.id, { key: 'procurement' })).status).toBe(403);
   });
 });

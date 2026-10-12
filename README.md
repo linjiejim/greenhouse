@@ -103,7 +103,7 @@ same script doubles as an end-to-end smoke tour (see [Development](#development)
   your Bots propose the same plans as a card you apply when you choose. The draft is
   checked by the same validators as the editor before you see it, permission changes are listed
   on their own above Confirm, and a partly applied plan can retry just what failed. Two built-in
-  app templates (purchase requests, IT tickets) install a ready Base and a draft app in one step,
+  app templates (purchase requests, IT tickets, CRM, recruiting) install a ready Base and a draft app in one step,
   in English or Chinese to match your account (`POST /api/apps/templates/:key/install`). Share a base with people,
   groups or the whole team; custom roles decide, table by table, which rows and fields someone
   sees and may change — enforced on every path, including the agent. Forms are submit-only and
@@ -802,3 +802,5 @@ Tables automations can run an **Agent** step to summarize a new record into a te
 Apps are also available to chat and external agents through `apps_query` and `apps_action`. These use the same app roles, row rules and field rules as the app page, under a separate **Apps** MCP consent group. Every write requires confirmation; Bots shows an approval card with the stored action and record, and Feishu does not expose app writes.
 
 External data cards in Apps can display a KPI, chart, or table from an allowed read tool or a connector that advertises read-only access. Each viewer uses their own permissions and connector account; a disconnected viewer sees a connection card. Builders save arguments and JSON Pointer mappings with the app, and the runtime limits each evaluation to 15 seconds and 512 KB.
+
+Apps include four bilingual templates: purchase requests, IT tickets, lightweight CRM, and recruiting. In the app builder’s Settings, save the current draft and Base structure as a versioned template, with optional handwritten sample rows; existing business records are never exported. Versions containing custom components or automations require administrator approval. Installation creates your own private Base and draft app, leaves automations disabled, and removes webhooks and fixed notification recipients. Template details show version history, the content hash, and review status. Custom HTML can be edited and reviewed but cannot execute in this release; template approval does not enable it.

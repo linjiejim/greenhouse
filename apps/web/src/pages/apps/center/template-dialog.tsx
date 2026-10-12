@@ -8,14 +8,15 @@
  * only shows this entry to Tables members when the server lists templates.
  */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { AppTemplateSummary } from '@greenhouse/types/apps';
 import { AppBadge } from '../../../components/apps';
-import { FormError } from '../../../components/form';
-import { Button, Dialog } from '../../../components/ui';
-import { installAppTemplate } from '../../../lib/api/apps';
+import { FormError, FormField } from '../../../components/form';
+import { Button, Dialog, Input } from '../../../components/ui';
+import { installAppTemplate, listAppTemplates } from '../../../lib/api/apps';
 import { appBuilderHref } from '../../../lib/app-routes';
 import { useT } from '../../../lib/i18n';
+import { TemplateDetailDialog } from './template-detail-dialog';
 import { useAppsStore } from '../../../stores/apps-store';
 
 export function TemplateDialog({
@@ -31,13 +32,19 @@ export function TemplateDialog({
   const reloadShelves = useAppsStore((state) => state.load);
   const [installing, setInstalling] = useState<string | null>(null);
   const [error, setError] = useState('');
+  const [detailKey, setDetailKey] = useState('');
+  const [newName, setNewName] = useState('');
+  const [catalog, setCatalog] = useState(templates);
+  useEffect(() => setCatalog(templates), [templates]);
 
   const install = async (template: AppTemplateSummary) => {
     if (installing) return;
     setInstalling(template.key);
     setError('');
     try {
-      const result = await installAppTemplate(template.key);
+      const result = newName.trim()
+        ? await installAppTemplate(template.key, { name: newName.trim() })
+        : await installAppTemplate(template.key);
       void reloadShelves(true);
       onClose();
       window.location.hash = appBuilderHref(result.app.id);
@@ -63,8 +70,16 @@ export function TemplateDialog({
     >
       <div className="space-y-4" data-testid="template-dialog">
         <p className="text-xs text-fg-muted">{t('apps.center.templates.note')}</p>
+        <FormField label={t('apps.templates.newName')}>
+          <Input
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            maxLength={60}
+            disabled={installing !== null}
+          />
+        </FormField>
         <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          {templates.map((template) => (
+          {catalog.map((template) => (
             <li
               key={template.key}
               className="flex flex-col gap-3 rounded-xl border border-edge bg-surface-card p-4"
@@ -79,10 +94,24 @@ export function TemplateDialog({
                   <p className="mt-1 line-clamp-3 text-xs text-fg-muted">{template.description}</p>
                 </div>
               </div>
+              <p className="text-xs text-fg-muted">
+                {template.version}
+                {template.reviewStatus && ` · ${t(`apps.templates.status.${template.reviewStatus}`)}`}
+              </p>
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={installing !== null}
+                onClick={() => setDetailKey(template.key)}
+              >
+                {t('apps.templates.details')}
+              </Button>
               <Button
                 size="sm"
                 className="min-h-11 self-end md:min-h-0"
-                disabled={installing !== null}
+                disabled={
+                  installing !== null || template.reviewStatus === 'pending' || template.reviewStatus === 'rejected'
+                }
                 onClick={() => void install(template)}
                 data-testid={`template-${template.key}-install`}
               >
@@ -92,6 +121,17 @@ export function TemplateDialog({
           ))}
         </ul>
         <FormError>{error}</FormError>
+        {detailKey && (
+          <TemplateDetailDialog
+            templateKey={detailKey}
+            onClose={() => {
+              setDetailKey('');
+              void listAppTemplates()
+                .then(setCatalog)
+                .catch(() => undefined);
+            }}
+          />
+        )}
       </div>
     </Dialog>
   );

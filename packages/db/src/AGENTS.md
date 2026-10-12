@@ -372,3 +372,5 @@
 ### Tables automation Agent steps (Phase 2)
 
 `checkAutomationConfig` validates Agent prompts, 1–20 steps, the `none | same_base_read` tool mode and text-only output fields. `createTablesAutomations` alone pins an executor-owned active Bot's immutable version; caller-supplied version numbers are ignored. `startAutomationAgent` is the leased CAS before provider I/O: it sets `max_attempts=1`, so an expired lease never replays an Agent call. A successful cursor checkpoint restores ordinary retries for later actions. This uses existing outbox columns; there is no extra queue or schema migration.
+
+- **应用模板存储**（`services/tables/app-templates.ts`）：在 F2 的两张模板表上发布；按 key 事务 advisory lock + expected latest CAS，严格递增安全整数 semver，版本内容不可改写、读取时核对 SHA-256。super 审核只改该版本的审核列，归档只改目录状态。业务校验/扫描/安装由 API 负责，不新增迁移。

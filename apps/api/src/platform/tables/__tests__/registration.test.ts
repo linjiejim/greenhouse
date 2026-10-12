@@ -126,12 +126,6 @@ describe('Tables registration (manifest 1.5.0)', () => {
     const placeholders = [
       'listAppCustomReviews',
       'reviewAppCustomCode',
-      'listAppTemplates',
-      'getAppTemplate',
-      'publishAppTemplate',
-      'reviewAppTemplate',
-      'installAppTemplate',
-      'archiveAppTemplate',
       'fillAiField',
       'regenerateAiField',
       'getAiFieldStatus',

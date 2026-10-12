@@ -27,6 +27,7 @@ import { formatDate } from '../../../lib/utils';
 import { useAppsStore } from '../../../stores/apps-store';
 import { useAuthStore } from '../../../stores';
 import { AppAccentPicker, AppIconPicker } from './identity-fields';
+import { TemplatePublishSection } from './template-publish-section';
 import { PanelSection } from './properties/common';
 import { actionLabelsById } from './spec-model';
 
@@ -228,6 +229,7 @@ export function SettingsTab({
         }}
       />
 
+      <TemplatePublishSection app={app} />
       <PanelSection title={t('apps.builder.settings.navigation')} hint={t('apps.builder.settings.navigationHint')}>
         <FilterPills
           variant="segment"

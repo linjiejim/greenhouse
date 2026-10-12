@@ -115,8 +115,9 @@ export async function listAppTemplates(): Promise<AppTemplateSummary[]> {
  * (`AppTemplateInstallResult`). Not idempotent — every call builds another
  * Base, so callers send it once per intent.
  */
-export async function installAppTemplate(key: string): Promise<AppTemplateInstallResult> {
-  const response = await rpc.api.apps.templates[':key'].install.$post({ param: { key } });
+export async function installAppTemplate(key: string, input?: { name?: string }): Promise<AppTemplateInstallResult> {
+  const args = { param: { key }, json: input ?? {} };
+  const response = await rpc.api.apps.templates[':key'].install.$post(args);
   if (!response.ok) throw await responseError(response, 'Unable to install the template');
   return response.json();
 }

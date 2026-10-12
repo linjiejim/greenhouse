@@ -1,0 +1,293 @@
+{
+  "key": "recruiting",
+  "name": {
+    "zh": "招聘流程",
+    "en": "Recruiting pipeline"
+  },
+  "description": {
+    "zh": "整理候选人、岗位与面试安排，在看板跟进招聘进度。",
+    "en": "Track candidates, positions and interviews through a hiring board."
+  },
+  "summary": {
+    "zh": "整理候选人、岗位与面试安排，在看板跟进招聘进度。",
+    "en": "Track candidates, positions and interviews through a hiring board."
+  },
+  "icon": "users",
+  "accent": "violet",
+  "operations": [
+    {
+      "op": "base.create",
+      "ref": "base",
+      "name": {
+        "zh": "招聘流程",
+        "en": "Recruiting pipeline"
+      },
+      "visibility": "private",
+      "defaultTableRef": "items",
+      "defaultTableName": {
+        "zh": "候选人",
+        "en": "Candidates"
+      },
+      "primaryFieldRef": "name",
+      "primaryFieldName": {
+        "zh": "姓名",
+        "en": "Name"
+      }
+    },
+    {
+      "op": "field.create",
+      "ref": "stage",
+      "tableRef": "items",
+      "name": {
+        "zh": "阶段",
+        "en": "Stage"
+      },
+      "type": "single_select",
+      "config": {
+        "options": [
+          {
+            "id": "applied",
+            "label": {
+              "zh": "已申请",
+              "en": "Applied"
+            }
+          },
+          {
+            "id": "screen",
+            "label": {
+              "zh": "筛选中",
+              "en": "Screening"
+            }
+          },
+          {
+            "id": "interview",
+            "label": {
+              "zh": "面试中",
+              "en": "Interview"
+            }
+          },
+          {
+            "id": "offer",
+            "label": {
+              "zh": "已录用",
+              "en": "Hired"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "op": "field.create",
+      "ref": "owner",
+      "tableRef": "items",
+      "name": {
+        "zh": "负责人",
+        "en": "Owner"
+      },
+      "type": "user"
+    },
+    {
+      "op": "field.create",
+      "ref": "contact",
+      "tableRef": "items",
+      "name": {
+        "zh": "联系方式",
+        "en": "Contact"
+      },
+      "type": "text"
+    },
+    {
+      "op": "field.create",
+      "ref": "next",
+      "tableRef": "items",
+      "name": {
+        "zh": "下次跟进",
+        "en": "Next follow-up"
+      },
+      "type": "date"
+    },
+    {
+      "op": "field.create",
+      "ref": "notes",
+      "tableRef": "items",
+      "name": {
+        "zh": "备注",
+        "en": "Notes"
+      },
+      "type": "long_text"
+    },
+    {
+      "op": "field.create",
+      "ref": "position",
+      "tableRef": "items",
+      "name": {
+        "zh": "应聘岗位",
+        "en": "Position"
+      },
+      "type": "text"
+    },
+    {
+      "op": "app.create",
+      "ref": "app",
+      "baseRef": "base",
+      "name": {
+        "zh": "招聘流程",
+        "en": "Recruiting pipeline"
+      },
+      "description": {
+        "zh": "整理候选人、岗位与面试安排，在看板跟进招聘进度。",
+        "en": "Track candidates, positions and interviews through a hiring board."
+      },
+      "icon": "users",
+      "accent": "violet",
+      "spec": {
+        "version": 1,
+        "pages": [
+          {
+            "id": "home",
+            "title": {
+              "zh": "招聘流程",
+              "en": "Recruiting pipeline"
+            },
+            "cards": [
+              {
+                "id": "list",
+                "kind": "records",
+                "title": {
+                  "zh": "候选人",
+                  "en": "Candidates"
+                },
+                "layout": {
+                  "x": 0,
+                  "y": 0,
+                  "w": 12,
+                  "h": 6
+                },
+                "source": {
+                  "tableId": "$table:items"
+                },
+                "fieldIds": ["$field:name", "$field:stage", "$field:owner", "$field:contact", "$field:next"],
+                "detail": {
+                  "fieldIds": [
+                    "$field:name",
+                    "$field:stage",
+                    "$field:owner",
+                    "$field:contact",
+                    "$field:next",
+                    "$field:notes",
+                    "$field:position"
+                  ],
+                  "editableFieldIds": [
+                    "$field:name",
+                    "$field:stage",
+                    "$field:owner",
+                    "$field:contact",
+                    "$field:next",
+                    "$field:notes",
+                    "$field:position"
+                  ],
+                  "comments": true
+                },
+                "create": {
+                  "fieldIds": [
+                    "$field:name",
+                    "$field:stage",
+                    "$field:owner",
+                    "$field:contact",
+                    "$field:next",
+                    "$field:notes",
+                    "$field:position"
+                  ]
+                }
+              },
+              {
+                "id": "board",
+                "kind": "kanban",
+                "title": {
+                  "zh": "进度看板",
+                  "en": "Pipeline"
+                },
+                "layout": {
+                  "x": 0,
+                  "y": 6,
+                  "w": 12,
+                  "h": 6
+                },
+                "source": {
+                  "tableId": "$table:items"
+                },
+                "groupFieldId": "$field:stage",
+                "fieldIds": ["$field:name", "$field:owner"],
+                "detail": {
+                  "fieldIds": [
+                    "$field:name",
+                    "$field:stage",
+                    "$field:owner",
+                    "$field:contact",
+                    "$field:next",
+                    "$field:notes",
+                    "$field:position"
+                  ],
+                  "editableFieldIds": [
+                    "$field:name",
+                    "$field:stage",
+                    "$field:owner",
+                    "$field:contact",
+                    "$field:next",
+                    "$field:notes",
+                    "$field:position"
+                  ]
+                },
+                "move": {}
+              },
+              {
+                "id": "total",
+                "kind": "kpi",
+                "title": {
+                  "zh": "总数",
+                  "en": "Total"
+                },
+                "layout": {
+                  "x": 0,
+                  "y": 12,
+                  "w": 4,
+                  "h": 3
+                },
+                "card": {
+                  "kind": "kpi",
+                  "source": {
+                    "tableId": "$table:items"
+                  },
+                  "aggregate": {
+                    "operation": "count"
+                  }
+                }
+              }
+            ]
+          }
+        ],
+        "roles": [
+          {
+            "key": "member",
+            "name": {
+              "zh": "成员",
+              "en": "Member"
+            },
+            "pages": "all",
+            "canComment": true,
+            "tables": [
+              {
+                "tableId": "$table:items",
+                "access": "edit",
+                "fields": [],
+                "fieldDefault": "visible",
+                "create": true,
+                "delete": false
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}
