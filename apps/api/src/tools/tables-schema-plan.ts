@@ -98,21 +98,16 @@ const meta: ToolMeta = {
   id: 'tables_schema_plan',
   name: 'Tables Schema Plan',
   brief: 'Draft Tables structure, views, forms, automations, dashboards, access and apps for the user to confirm',
-  description: `Draft a change to internal Tables — Bases, tables, fields, views (grid/kanban/calendar/gallery), submit-only forms, automations, dashboards and widgets, custom roles, who has access, apps on a Base — as a card the user confirms.
+  // Keep runtime/permission rules here; config grammar and examples stay in builder.reference.
+  description: `Draft Tables structure, views, submit-only forms, automations, dashboards/widgets, roles, access and Base apps. Nothing changes until the user presses Confirm; never claim drafted objects exist or cite their IDs.
 
-NOTHING changes until they press Confirm. Never say an object exists, or cite its id, in the turn you drafted it.
+Read existing IDs and revisions via tables_query, never memory: bases.list → tables.list → schema.get; forms.list, automations.list, dashboard.get, roles.list; people/groups via directory.search. Updates require the read revision. Before writing configs, read builder.reference (app topic for apps; plan for formula ASTs, never formula strings).
 
-Every existing id comes from tables_query (bases.list → tables.list → schema.get; forms.list, automations.list, dashboard.get, roles.list; people and groups via directory.search), never from memory; updates carry the revision you read. Read a config's JSON shape with tables_query builder.reference before writing one.
+Reference earlier creates via ref + tableRef/baseRef/dashboardRef/roleRef; in config keys/values use "$field:<ref>" (also $table/$view/$form/$automation/$dashboard/$role). Fix all returned validation problems and redraft.
 
-To use something created earlier in the same plan, give its create a ref and point at it with tableRef/baseRef/dashboardRef/roleRef, or anywhere inside a config with the string "$field:<ref>" ($table/$view/$form/$automation/$dashboard/$role too) — as a value or as an object key.
+A new Base includes a table: name/reuse it with defaultTableName/defaultTableRef. New tables include required primary text field "Name" and Grid view; don't add another title field. Describe each new Base/table's purpose and field conventions.
 
-An invalid plan comes back with every problem listed — fix them all and draft again.
-
-Creating a Base also creates one table: name it with defaultTableName + defaultTableRef and put your fields in it. Every new table already has a required primary text field "Name" and a Grid view — don't add your own title field. ALWAYS describe a new Base/table (what it holds, field conventions).
-
-A formula config takes an AST, not a string (builder.reference topic=plan). Apps: read builder.reference topic=app first; publishing or sharing one is the Base owner's.
-
-CANNOT do — never promise it: change a field's TYPE (add a new field instead), delete a table or Base (the user does that in the sidebar: right-click → Delete, creator only, archived so an admin can restore it), add or change a webhook (a person does that in the automation editor), multi-level or parallel approvals in an app. Records are tables_mutation's job. Structure needs the builder role; roles, members and Base settings the owner's.`,
+CANNOT change field types (create a field instead), delete tables/Bases (creator: sidebar right-click → Delete; archived, admin-restorable), add/change webhooks (use the automation editor), or build multi-level/parallel app approvals. Records: tables_mutation. Structure: builder role. Roles, members, Base settings, app publishing/sharing: Base owner.`,
   category: 'team',
   is_global: false,
   icon: 'Columns3',
