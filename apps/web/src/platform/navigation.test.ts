@@ -52,23 +52,28 @@ describe('Primary navigation', () => {
     expect(primary.map((item) => item.key)).not.toContain('home');
   });
 
-  it('puts Bots right after Chat only when the member has the feature', () => {
+  it('keeps one conversations entry: a new chat without Agents, the main thread with them', () => {
     const without = buildPrimaryNavigation({ applications: [application('knowledge')], ...baseLabels });
     expect(without.primary.map((item) => item.key)).toEqual(['chat', 'knowledge']);
+    expect(without.primary[0].href).toBe('#/chat');
+    expect(without.primary[0].badge).toBeUndefined();
 
-    const withBots = buildPrimaryNavigation({
+    const withAgents = buildPrimaryNavigation({
       applications: [application('knowledge'), application('projects')],
       ...baseLabels,
-      bots: { label: 'Bots' },
+      bots: {},
     });
-    expect(withBots.primary.map((item) => item.key)).toEqual(['chat', 'bots', 'knowledge', 'projects']);
-    expect(withBots.primary[1]).toMatchObject({ href: '#/bots', badge: undefined });
-    expect(withBots.overflow.map((item) => item.key)).toEqual(['skillhub']);
+    // No separate Agents entry: their threads live in the one conversations list.
+    expect(withAgents.primary.map((item) => item.key)).toEqual(['chat', 'knowledge', 'projects']);
+    expect(withAgents.primary[0].href).toBe('#/bots');
+    expect(withAgents.primary[0].badge).toBeUndefined();
+    expect(withAgents.overflow.map((item) => item.key)).toEqual(['skillhub']);
   });
 
-  it('carries the pending "needs you" count as the Bots badge', () => {
-    const { primary } = buildPrimaryNavigation({ applications: [], ...baseLabels, bots: { label: 'Bots', badge: 3 } });
-    expect(primary.find((item) => item.key === 'bots')?.badge).toBe(3);
+  it('carries the pending "needs you" count on the conversations entry', () => {
+    const { primary } = buildPrimaryNavigation({ applications: [], ...baseLabels, bots: { badge: 3 } });
+    expect(primary.find((item) => item.key === 'chat')?.badge).toBe(3);
+    expect(primary.find((item) => item.key === 'bots')).toBeUndefined();
   });
 
   it('keeps durable executions out of More because they have one fixed utility entry', () => {

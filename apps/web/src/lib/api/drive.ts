@@ -21,6 +21,8 @@ export interface DriveFolder {
   visibility: 'team' | 'private' | null;
   owner_user_id: string | null;
   base_id: number | null;
+  /** An Agent's own reference folder (a personal kb folder only that Agent reads); null otherwise. */
+  bot_id?: string | null;
   /** Manual order among siblings; 0 = never dragged (falls back to name order). */
   sort_order: number;
   created_by: string | null;

@@ -2,11 +2,13 @@
  * The Bots message list. Reuses Chat's renderers (MessageBubble for persisted
  * turns, StreamingMessageBubble for live ones, ToolCallRenderer inside them)
  * and adds only what several speakers need: a speaker header on change,
- * hand-off strips, system events, request cards and memory receipts.
+ * hand-off strips, system events, request cards and memory receipts. In a room
+ * (P5) other people's messages sit on the left under their names, and only the
+ * Agents the member may @ take the member's answers (a form, a confirm, a retry).
  */
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import type { BotRequestView, BotView } from '@greenhouse/types/bots';
+import type { BotConversationSummary, BotRequestView, BotView } from '@greenhouse/types/bots';
 import { botTemplate } from '@greenhouse/types/bots';
 import { MessageBubble } from '../chat/message';
 import { Button, Spinner } from '../ui';
@@ -17,23 +19,39 @@ import type { BotMessage } from '../../lib/api/bots';
 import { MemoryReceipts, memoryReceiptsFromCalls } from './memory-receipts';
 import { RequestCard, type RequestCardComputer } from './request-card';
 import { LiveSegment } from './live-segment';
-import { buildTranscript, type PendingSend, type TranscriptItem } from './transcript';
+import { ReplyFeedback } from './reply-feedback';
+import { buildTranscript, rewindTargets, type PendingSend, type TranscriptItem } from './transcript';
 import {
   ConversationIntro,
   EventRow,
   HandoffStrip,
   PendingBubble,
+  PersonHeader,
   SpeakerHeader,
   TaskReportRow,
   type BotLookup,
 } from './transcript-rows';
+
+/** What the transcript needs to know about a room (P5). */
+export interface TranscriptRoom {
+  me: string | null;
+  /** A person's name ("Someone who left" once they are gone). */
+  personName: (userId: string) => string;
+  /** The other people's names (the intro). */
+  others: string[];
+  privateChat: boolean;
+  /** May the member @ this Agent — answer its forms, ask it again? */
+  canAddress: (botId: string | null) => boolean;
+  /** Send `text` to this Agent (`@Name text`): a form's answers, a confirm's pick. Rejects when not delivered. */
+  sendTo: (botId: string, text: string) => Promise<void>;
+}
 
 /** Pixels from the bottom that still count as "following along". */
 const STICK_THRESHOLD = 96;
 
 export interface BotTranscriptProps {
   sessionId: string;
-  kind: 'direct' | 'group';
+  kind: BotConversationSummary['kind'];
   title: string;
   ownerBotId: string | null;
   members: BotView[];
@@ -64,7 +82,8 @@ export interface BotTranscriptProps {
   vaultAvailable: boolean;
   onRequestSettled: (request: BotRequestView) => void;
   onStale: () => void;
-  onOpenComputer: () => void;
+  /** A card opens the computer of the Agent that raised it (`botId`; each Agent has its own). */
+  onOpenComputer: (botId: string | null) => void;
   onViewSummary: () => void;
   /** Address one Bot with a fixed line ("try again", "please continue"). */
   onAddress: (botId: string | null, text: 'retry' | 'continue') => void;
@@ -77,6 +96,17 @@ export interface BotTranscriptProps {
   onStarter: (text: string) => void;
   /** A speaker header opens that Bot's profile. */
   onOpenProfile?: (botId: string) => void;
+  /**
+   * A separate chat (spec 20261011-agent-first-class D23): edit the last member message and
+   * answer it again. Offered only on that message, and not while a send or a reply is in flight.
+   */
+  onEditLast?: (messageId: string, content: string) => void;
+  /** …or answer it again (`lastUserId`: the member message it answers): offered on the last reply after it. */
+  onRegenerateLast?: (lastUserId: string) => void;
+  /** 👍 / 👎 on each reply — a DM with someone else's public Agent (P4). */
+  replyFeedback?: boolean;
+  /** A room (P5): people, and which Agents answer the member. */
+  room?: TranscriptRoom;
 }
 
 export function BotTranscript(props: BotTranscriptProps) {
@@ -114,8 +144,19 @@ export function BotTranscript(props: BotTranscriptProps) {
     onSendText,
     onStarter,
     onOpenProfile,
+    onEditLast,
+    onRegenerateLast,
+    replyFeedback = false,
+    room,
   } = props;
 
+  // Stable, so the memoized reply bubbles do not re-render on every streamed token.
+  const renderFeedback = useCallback(
+    (messageId: string) => <ReplyFeedback sessionId={sessionId} messageId={messageId} />,
+    [sessionId],
+  );
+
+  const me = room?.me ?? null;
   const items = useMemo(
     () =>
       buildTranscript({
@@ -126,9 +167,25 @@ export function BotTranscript(props: BotTranscriptProps) {
         liveRequests,
         pending,
         requests,
+        me,
       }),
-    [kind, liveRequests, messages, ownerBotId, pending, requests, segments],
+    [kind, liveRequests, me, messages, ownerBotId, pending, requests, segments],
   );
+
+  // In a room an answer from a card goes to the Agent that asked, by name — nobody answers an
+  // unaddressed message there. One stable sender per Agent keeps the memoized bubbles still.
+  const roomSenders = useMemo(() => {
+    const senders = new Map<string, (text: string) => Promise<void>>();
+    return (botId: string) => {
+      let sender = senders.get(botId);
+      if (!sender && room) {
+        const target = botId;
+        sender = (text: string) => room.sendTo(target, text);
+        senders.set(botId, sender);
+      }
+      return sender;
+    };
+  }, [room]);
 
   // ── Stick to the bottom while the member is following along ──
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -165,10 +222,23 @@ export function BotTranscript(props: BotTranscriptProps) {
   }, [lastItem, locale, lookup, readOnly]);
   // A read-only conversation offers nothing that would address a Bot.
   const actionsLocked = busy || readOnly;
+  // Edit / answer again: the last member message and the reply after it, when nothing is in flight.
+  const rewind = useMemo(
+    () =>
+      actionsLocked || (!onEditLast && !onRegenerateLast)
+        ? { lastUserId: null, lastReplyId: null }
+        : rewindTargets(items),
+    [actionsLocked, items, onEditLast, onRegenerateLast],
+  );
+  const lastUserId = rewind.lastUserId;
+  const regenerateLast = useCallback(() => {
+    if (lastUserId) onRegenerateLast?.(lastUserId);
+  }, [lastUserId, onRegenerateLast]);
 
   const renderItem = (item: TranscriptItem, index: number) => {
     switch (item.kind) {
-      case 'user':
+      case 'user': {
+        const editable = !!onEditLast && item.message.id === rewind.lastUserId;
         return (
           <MessageBubble
             role="user"
@@ -177,12 +247,35 @@ export function BotTranscript(props: BotTranscriptProps) {
             sessionId={sessionId}
             images={item.message.images}
             createdAt={item.message.created_at}
+            isLastUser={editable}
+            onEdit={editable ? onEditLast : undefined}
           />
         );
+      }
+      case 'person': {
+        return (
+          <div>
+            {item.header && <PersonHeader name={room?.personName(item.userId) ?? ''} />}
+            <MessageBubble
+              role="user"
+              side="start"
+              content={item.message.content}
+              messageId={item.message.id}
+              sessionId={sessionId}
+              images={item.message.images}
+              createdAt={item.message.created_at}
+            />
+          </div>
+        );
+      }
       case 'bot': {
         const bot = lookup(item.botId);
         const name = bot?.name ?? t('bots.deletedBot');
         const next = items[index + 1];
+        // A room: only the Agents the member may @ act for the member; answers go to them by name.
+        const roomSender = room && item.botId && room.canAddress(item.botId) ? roomSenders(item.botId) : undefined;
+        const canAct = !readOnly && (!room || !!roomSender);
+        const answer = room ? roomSender : onSendText;
         return (
           <div>
             {item.header && <SpeakerHeader bot={bot} fallbackName={name} onOpenProfile={onOpenProfile} />}
@@ -197,8 +290,18 @@ export function BotTranscript(props: BotTranscriptProps) {
               images={item.message.images}
               model={item.message.model}
               createdAt={item.message.created_at}
-              onAskUserSubmit={onSendText}
-              onBlockAction={readOnly ? undefined : onSendText}
+              // Cards in a reply act for the member, the conversation's only owner — never in a
+              // read-only record, and (like Chat) a confirm waits for the reply under way. A form's
+              // answers go through `onSendText`, which says why when they cannot go out yet.
+              canActOnArtifacts={canAct}
+              onAskUserSubmit={answer}
+              onBlockAction={actionsLocked ? undefined : answer}
+              onRegenerate={
+                onRegenerateLast && rewind.lastUserId && item.message.id === rewind.lastReplyId
+                  ? regenerateLast
+                  : undefined
+              }
+              renderFooterActions={replyFeedback ? renderFeedback : undefined}
               hasFollowUpUserMessage={next?.kind === 'user' || next?.kind === 'pending'}
               submittedUserMessage={next?.kind === 'user' ? next.message.content : undefined}
               confirmedActionValue={next?.kind === 'user' ? next.message.content : undefined}
@@ -223,6 +326,7 @@ export function BotTranscript(props: BotTranscriptProps) {
             onAddress={onAddress}
             onOpenProfile={onOpenProfile}
             busy={actionsLocked}
+            canRetry={!room || room.canAddress(item.segment.botId)}
           />
         );
       case 'handoff':
@@ -240,6 +344,8 @@ export function BotTranscript(props: BotTranscriptProps) {
             onRetry={(botId) => onAddress(botId, 'retry')}
             onContinue={() => onAddress(null, 'continue')}
             onViewSummary={onViewSummary}
+            canRetry={room ? room.canAddress : undefined}
+            canContinue={!room}
           />
         );
       case 'request':
@@ -286,7 +392,12 @@ export function BotTranscript(props: BotTranscriptProps) {
               </Button>
             </div>
           ) : (
-            <ConversationIntro kind={kind} title={title} bots={members} />
+            <ConversationIntro
+              kind={kind}
+              title={title}
+              bots={members}
+              room={room ? { others: room.others, privateChat: room.privateChat } : undefined}
+            />
           )}
           {items.map((item, index) => (
             <div key={item.key} data-transcript-kind={item.kind}>

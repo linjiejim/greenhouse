@@ -1,10 +1,18 @@
 /**
  * HomeDrawerContent — the left drawer behind the conversation surface
- * (ChatGPT / Claude-style sidebar, built from native pieces):
+ * (ChatGPT / Claude-style sidebar, built from native pieces). One list in three
+ * sections (spec docs/specs/20261011-agent-first-class.md §3.1): 主线 / Main
+ * thread and Agent / Agents (src/bots/drawer/bots-section.tsx, with Agents on),
+ * then 会话 / Chats — the chat history:
  *
- *  - top: a search field (filters the loaded history by title — see
- *    use-sessions; there is no server-side title search) + a new-chat button,
- *  - the member's own conversations (`scope=mine` — never anyone else's: a
+ *  - top: a search field (filters every section; the history by its loaded
+ *    titles — see use-sessions; there is no server-side title search) + the
+ *    新会话 / New chat button (with Agents on and anyone to talk with, its
+ *    long press is a menu: New Chat / With People… → `/bots/new-room`, a
+ *    conversation with other people — spec 20261011-agent-first-class P5; the
+ *    同事 section's last row is the same way in, and VoiceOver gets it as an
+ *    action on the button),
+ *  - 会话: the member's own conversations (`scope=mine` — never anyone else's: a
  *    super used to get every member's history mixed in, read-only rows without
  *    a menu). Only the live part shows by default — 置顶 and 今天; everything
  *    older folds into one 「更早的对话」 row that expands in place (昨天 / 7 天内
@@ -30,10 +38,16 @@
  * conversations started / renamed / deleted on the surface show up. What is on
  * screen comes from the home screen (src/bots/home/surface.ts), not the route.
  *
- * With Bots on (iOS, an internal account, `features.bots`), the Bots section
- * (src/bots/drawer/bots-section.tsx) comes first, above the history, and the
- * search filters it too; otherwise it renders nothing. Every route to home goes
- * through src/bots/nav.ts (all seven params — a Bots thread is `?c=`).
+ * With Agents on (iOS, an internal account, `features.bots`), the 主线 and
+ * Agent sections (src/bots/drawer/bots-section.tsx) come first, above the
+ * history, and the search filters them too; otherwise they render nothing and
+ * the drawer is the history alone. With Agents on, the history also lists the
+ * member's task chats (`include=agent_chats` — spec
+ * docs/specs/20261011-agent-first-class.md §5a, D21): such a row
+ * (`channel: 'bots'`) opens as a thread (`?c=`), shows its Agent and the
+ * thread's signal (src/bots/drawer/agent-chat-row.tsx), and its menu is the
+ * same pin / tags / rename / delete — no share (D26). Every route to home goes
+ * through src/bots/nav.ts (all seven params — an Agent thread is `?c=`).
  */
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
@@ -44,8 +58,12 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useHomeSurface } from '../bots/home/surface';
 import { useTags } from '../store/tags';
 import { deleteSession, setSessionPinned, updateSessionTitle } from '../api/sessions';
+import { useBotsEnabled } from '../bots/availability';
+import { AgentChatRow } from '../bots/drawer/agent-chat-row';
 import { BotsSection } from '../bots/drawer/bots-section';
-import { openChat, openNewChat } from '../bots/nav';
+import { openChat, openNewChat, openThread } from '../bots/nav';
+import { useBots } from '../bots/store';
+import { isAgentChatRow } from '../bots/task-chats';
 import type { Session } from '../shared/greenhouse-types';
 import { parseMs } from '../lib/format';
 import { useT, type TranslationKey } from '../lib/i18n';
@@ -132,7 +150,12 @@ export function HomeDrawerContent({ navigation }: DrawerContentComponentProps) {
   const setFilter = useTags((s) => s.setFilter);
   const [search, setSearch] = useState('');
   const query = search.trim();
-  const mine = useSessions(true, 30, filterId, query);
+  // With Agents on, the member's task chats are chats too (they open as threads).
+  const botsOn = useBotsEnabled();
+  // Anyone to start a conversation with (rooms, P5 — the 同事 section reads it as the drawer opens).
+  const canMeet = useBots((s) => s.peopleState === 'loaded' && s.people.length > 0);
+  const meet = botsOn && canMeet;
+  const mine = useSessions(true, 30, filterId, query, 'mine', botsOn);
   const shared = useSessions(true, 30, null, query, 'shared');
   const [earlierOpen, setEarlierOpen] = useState(false);
   const [sharedOpen, setSharedOpen] = useState(false);
@@ -157,6 +180,8 @@ export function HomeDrawerContent({ navigation }: DrawerContentComponentProps) {
     const now = new Date();
     const byBucket = new Map<Bucket, Row[]>();
     for (const session of mine.items) {
+      // a task chat opens as a thread — only while there are threads to open
+      if (!botsOn && isAgentChatRow(session)) continue;
       const bucket = bucketOf(session, now);
       const row: Row = { kind: 'session', session, shared: false };
       const list = byBucket.get(bucket);
@@ -194,17 +219,21 @@ export function HomeDrawerContent({ navigation }: DrawerContentComponentProps) {
         });
     }
     return out;
-  }, [mine.items, mine.done, shared.items, shared.done, showAll, earlierOpen, sharedOpen, query, t]);
+  }, [mine.items, mine.done, shared.items, shared.done, showAll, earlierOpen, sharedOpen, query, t, botsOn]);
 
   const close = useCallback(() => navigation.closeDrawer(), [navigation]);
 
   const openConversation = useCallback(
     (s: Session) => {
       close();
+      if (isAgentChatRow(s)) {
+        if (s.id !== activeThread) openThread(router, { c: s.id, title: s.title ?? '' });
+        return;
+      }
       if (s.id === activeId) return;
       openChat(router, { id: s.id, title: s.title ?? '', ro: s.is_owner === false });
     },
-    [close, router, activeId],
+    [close, router, activeId, activeThread],
   );
 
   // Already on a plain new chat → just close; anything else (a chat, a thread — a restored one
@@ -213,6 +242,23 @@ export function HomeDrawerContent({ navigation }: DrawerContentComponentProps) {
     close();
     if (activeId || activeThread || activeProfile) openNewChat(router);
   }, [close, router, activeId, activeThread, activeProfile]);
+
+  // A conversation with other people: the drawer closes, then the sheet comes up.
+  const withPeople = useCallback(() => {
+    close();
+    setTimeout(() => router.push('/bots/new-room'), 160);
+  }, [close, router]);
+  const composeItems = useMemo<MenuItem[]>(
+    () => [
+      { id: 'new', title: t('bots.room.newChat'), icon: 'compose' },
+      { id: 'people', title: t('bots.room.newRoomShort'), icon: 'users' },
+    ],
+    [t],
+  );
+  const onComposeMenu = useCallback(
+    (id: string) => (id === 'people' ? withPeople() : newChat()),
+    [withPeople, newChat],
+  );
 
   // Close first, then push — the panel settles under the incoming page.
   const go = useCallback(
@@ -273,12 +319,13 @@ export function HomeDrawerContent({ navigation }: DrawerContentComponentProps) {
             return;
           }
           removeMine(s.id);
+          if (isAgentChatRow(s)) useBots.getState().dropTaskChat(s.id);
           toast(t('chat.deleted'), 'trash');
-          if (s.id === activeId) openNewChat(router);
+          if (s.id === activeId || s.id === activeThread) openNewChat(router);
         })();
       }
     },
-    [close, router, t, patchMine, patchShared, removeMine, refreshMine, activeId],
+    [close, router, t, patchMine, patchShared, removeMine, refreshMine, activeId, activeThread],
   );
 
   // Every row can be pinned (any conversation the member can see); tags, rename and delete are the owner's.
@@ -341,7 +388,9 @@ export function HomeDrawerContent({ navigation }: DrawerContentComponentProps) {
     }
     const s = item.session;
     const owner = s.is_owner !== false && !item.shared;
-    const row = (
+    const row = isAgentChatRow(s) ? (
+      <AgentChatRow session={s} current={s.id === activeThread} onPress={() => openConversation(s)} />
+    ) : (
       <Pressable
         key={fontKey}
         onPress={() => openConversation(s)}
@@ -408,14 +457,31 @@ export function HomeDrawerContent({ navigation }: DrawerContentComponentProps) {
             style={styles.searchInput}
           />
         </View>
-        <Touchable
-          onPress={newChat}
-          style={styles.topBtn}
-          accessibilityRole="button"
-          accessibilityLabel={t('drawer.newChat')}
-        >
-          <Icon name="compose" size={22} color={c.label} />
-        </Touchable>
+        {meet ? (
+          <NativeMenu trigger="longPress" fill={false} items={composeItems} onSelect={onComposeMenu}>
+            <Pressable
+              onPress={newChat}
+              accessibilityRole="button"
+              accessibilityLabel={t('drawer.newChat')}
+              accessibilityActions={[{ name: 'people', label: t('bots.room.newRoomShort') }]}
+              onAccessibilityAction={(e) => {
+                if (e.nativeEvent.actionName === 'people') withPeople();
+              }}
+              style={({ pressed }) => [styles.topBtn, pressed && styles.pressedDim]}
+            >
+              <Icon name="compose" size={22} color={c.label} />
+            </Pressable>
+          </NativeMenu>
+        ) : (
+          <Touchable
+            onPress={newChat}
+            style={styles.topBtn}
+            accessibilityRole="button"
+            accessibilityLabel={t('drawer.newChat')}
+          >
+            <Icon name="compose" size={22} color={c.label} />
+          </Touchable>
+        )}
       </View>
 
       <SectionList<Row, Section>
@@ -432,7 +498,10 @@ export function HomeDrawerContent({ navigation }: DrawerContentComponentProps) {
             <BotsSection query={search} onClose={close} />
             <View key={fontKey} style={styles.navBlock}>
               <View style={styles.historyHead}>
-                <Text style={styles.historyTitle}>{activeTag ? activeTag.name : t('drawer.history')}</Text>
+                {/* 会话 — or, filtered, the tag's name */}
+                <Text accessibilityRole="header" style={styles.historyTitle}>
+                  {activeTag ? activeTag.name : t('drawer.sessions')}
+                </Text>
                 {tags.length ? (
                   <NativeMenu
                     title={t('drawer.filterByTag')}
@@ -542,6 +611,8 @@ const useStyles = makeStyles((c) => ({
   },
   searchInput: { flex: 1, ...typo.body, color: c.label, paddingVertical: 0 },
   topBtn: { width: HIT, height: HIT, alignItems: 'center', justifyContent: 'center' },
+  // (the Touchable's pressed look, for the button that also has a menu)
+  pressedDim: { opacity: 0.55 },
   navBlock: { paddingHorizontal: space.sm },
   historyHead: { flexDirection: 'row', alignItems: 'center', marginTop: space.xs, paddingLeft: space.sm + 2 },
   historyTitle: { ...typo.footnote, fontWeight: weight.semibold, color: c.secondaryLabel, flex: 1 },

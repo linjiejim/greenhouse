@@ -4,11 +4,17 @@
  * per the Drawer/Dialog convention. Private memories are listed in full and
  * each can be forgotten: nothing a Bot keeps about the member is out of the
  * member's sight. Every save appends an immutable version (spec 20261007 §2.1).
+ *
+ * Tabs: Profile (the above), Usage and Activity (what the Agent spent and did —
+ * bot-profile-activity.tsx, spec 20261011-agent-first-class P3d), and for any
+ * Agent but the main one Publish and Ratings (bot-publish-panel.tsx, P4). The tab
+ * resets to Profile for every Agent opened. Someone else's public Agent opens
+ * its public face only (shared-agent-profile.tsx).
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { isSproutyBot, type BotVersionView, type BotView } from '@greenhouse/types/bots';
-import { Button, ConfirmDialog, Dialog, Drawer, IconButton, Spinner, toast } from '../ui';
+import { Button, ConfirmDialog, Dialog, Drawer, IconButton, Spinner, Tabs, Tag, toast } from '../ui';
 import { FormActions } from '../form';
 import { Archive, FolderOpen, MessageCircle, MessageSquare, Pencil, Trash2, X } from '../../lib/icons';
 import { useT } from '../../lib/i18n';
@@ -22,6 +28,13 @@ import { BotFields, useBotNameMessage, type BotDraft } from './bot-form';
 import { botNameIssueFromCode, validateBotName } from './bot-name';
 import { PanelSection } from './bots-side-panel';
 import { openChatWith } from './navigation';
+import { BotActivityPanel, BotUsagePanel } from './bot-profile-activity';
+import { BotFeedbackPanel, BotPublishPanel } from './bot-publish-panel';
+import { SharedAgentProfile } from './shared-agent-profile';
+
+type ProfileTab = 'profile' | 'usage' | 'activity' | 'publish' | 'feedback';
+
+const TABS: readonly ProfileTab[] = ['profile', 'usage', 'activity', 'publish', 'feedback'];
 
 export function BotProfileDrawer({ onOpenDm }: { onOpenDm: (bot: BotView) => void }) {
   const t = useT();
@@ -29,6 +42,12 @@ export function BotProfileDrawer({ onOpenDm }: { onOpenDm: (bot: BotView) => voi
   const openProfile = useBotsStore((state) => state.openProfile);
   const profileEdit = useBotsStore((state) => state.profileEdit);
   const bot = useBotsStore((state) => state.bots.find((candidate) => candidate.id === state.profileBotId));
+  // Someone else's public Agent (P4): its public face only.
+  const shared = useBotsStore((state) =>
+    state.bots.some((candidate) => candidate.id === state.profileBotId)
+      ? undefined
+      : state.sharedBots.find((candidate) => candidate.id === state.profileBotId),
+  );
   const markArchived = useBotsStore((state) => state.markArchived);
   const loadConversations = useBotsStore((state) => state.loadConversations);
   const models = useProfileStore((state) => state.models);
@@ -42,10 +61,14 @@ export function BotProfileDrawer({ onOpenDm }: { onOpenDm: (bot: BotView) => voi
   );
   const [editing, setEditing] = useState(false);
   const [archiving, setArchiving] = useState(false);
+  const [tab, setTab] = useState<ProfileTab>('profile');
 
   useEffect(() => {
     if (botId && profileEdit) setEditing(true);
   }, [botId, profileEdit]);
+
+  // Every Agent opens on its profile.
+  useEffect(() => setTab('profile'), [botId]);
 
   useEffect(() => {
     void fetchProfiles();
@@ -82,13 +105,15 @@ export function BotProfileDrawer({ onOpenDm }: { onOpenDm: (bot: BotView) => voi
     }
   }, []);
 
+  // Own Agents only: someone else's has no memories, versions or files to show here.
+  const ownId = bot?.id ?? null;
   useEffect(() => {
-    if (botId) {
-      void loadMemories(botId);
-      void loadVersions(botId);
-      void loadFiles(botId);
+    if (ownId) {
+      void loadMemories(ownId);
+      void loadVersions(ownId);
+      void loadFiles(ownId);
     }
-  }, [botId, loadFiles, loadMemories, loadVersions]);
+  }, [ownId, loadFiles, loadMemories, loadVersions]);
 
   const openFolder = async () => {
     if (!bot) return;
@@ -101,9 +126,12 @@ export function BotProfileDrawer({ onOpenDm }: { onOpenDm: (bot: BotView) => voi
     }
   };
 
-  // A save appends a version: refresh the history the drawer shows.
+  // A save appends a version: refresh the history the drawer shows. An empty history (the read
+  // failed) is left alone — re-reading it on every render would never stop.
   useEffect(() => {
-    if (bot?.id && versions && versions[0]?.version !== bot.current_version) void loadVersions(bot.id);
+    if (bot?.id && versions && versions.length > 0 && versions[0]!.version !== bot.current_version) {
+      void loadVersions(bot.id);
+    }
   }, [bot?.id, bot?.current_version, loadVersions, versions]);
 
   const close = () => openProfile(null);
@@ -136,9 +164,12 @@ export function BotProfileDrawer({ onOpenDm }: { onOpenDm: (bot: BotView) => voi
   };
 
   const modelName = bot?.model_id ? (models.find((model) => model.id === bot.model_id)?.id ?? bot.model_id) : null;
+  const main = isSproutyBot(bot);
+  const isPublic = bot?.visibility === 'public' && bot.published_version != null;
   return (
     <>
-      <Drawer open={!!bot} onClose={close} side="right" width={400} ariaLabel={t('bots.profile.title')}>
+      <Drawer open={!!bot || !!shared} onClose={close} side="right" width={400} ariaLabel={t('bots.profile.title')}>
+        {!bot && shared && <SharedAgentProfile bot={shared} onClose={close} />}
         {bot && (
           <div className="flex min-h-0 flex-1 flex-col" data-testid="bots-profile-drawer">
             <div className="flex items-start gap-3 border-b border-edge px-4 py-4">
@@ -148,8 +179,15 @@ export function BotProfileDrawer({ onOpenDm }: { onOpenDm: (bot: BotView) => voi
                   {bot.name}
                 </h2>
                 {bot.role && <p className="truncate text-xs text-fg-muted">{bot.role}</p>}
-                <p className="mt-1 text-[10px] text-fg-faint">
-                  {t('bots.profile.created', { date: formatDay(bot.created_at) })} · v{bot.current_version}
+                <p className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px] text-fg-faint">
+                  <span>
+                    {t('bots.profile.created', { date: formatDay(bot.created_at) })} · v{bot.current_version}
+                  </span>
+                  {isPublic && (
+                    <span data-testid="bots-profile-public">
+                      <Tag tone="success">{t('bots.profile.publicBadge', { version: bot.published_version ?? 0 })}</Tag>
+                    </span>
+                  )}
                 </p>
                 <div className="mt-2 flex flex-wrap gap-1.5">
                   <Button size="sm" onClick={() => openChatWith(bot.id)} data-testid="bots-profile-chat">
@@ -172,7 +210,59 @@ export function BotProfileDrawer({ onOpenDm }: { onOpenDm: (bot: BotView) => voi
                 <X size={16} />
               </IconButton>
             </div>
-            <div className="min-h-0 flex-1 overflow-y-auto">
+            <div className="flex-shrink-0 border-b border-edge px-4 py-2">
+              <Tabs
+                ariaLabel={t('bots.profile.tabsLabel')}
+                active={tab}
+                onChange={(key) => setTab(TABS.find((candidate) => candidate === key) ?? 'profile')}
+                tabs={[
+                  { key: 'profile', label: t('bots.profile.tabProfile'), testId: 'bots-profile-tab-profile' },
+                  { key: 'usage', label: t('bots.profile.tabUsage'), testId: 'bots-profile-tab-usage' },
+                  { key: 'activity', label: t('bots.profile.tabActivity'), testId: 'bots-profile-tab-activity' },
+                  // The main Agent is never published (D33).
+                  ...(main
+                    ? []
+                    : [
+                        { key: 'publish', label: t('bots.profile.tabPublish'), testId: 'bots-profile-tab-publish' },
+                        { key: 'feedback', label: t('bots.profile.tabFeedback'), testId: 'bots-profile-tab-feedback' },
+                      ]),
+                ]}
+              />
+            </div>
+            {tab === 'usage' && (
+              <div className="min-h-0 flex-1 overflow-y-auto" role="tabpanel" aria-label={t('bots.profile.tabUsage')}>
+                <BotUsagePanel botId={bot.id} name={bot.name} isPublic={isPublic} />
+              </div>
+            )}
+            {tab === 'publish' && !main && (
+              <div className="min-h-0 flex-1 overflow-y-auto" role="tabpanel" aria-label={t('bots.profile.tabPublish')}>
+                <BotPublishPanel bot={bot} />
+              </div>
+            )}
+            {tab === 'feedback' && !main && (
+              <div
+                className="min-h-0 flex-1 overflow-y-auto"
+                role="tabpanel"
+                aria-label={t('bots.profile.tabFeedback')}
+              >
+                <BotFeedbackPanel botId={bot.id} name={bot.name} />
+              </div>
+            )}
+            {tab === 'activity' && (
+              <div
+                className="min-h-0 flex-1 overflow-y-auto"
+                role="tabpanel"
+                aria-label={t('bots.profile.tabActivity')}
+              >
+                <BotActivityPanel botId={bot.id} name={bot.name} onOpenConversation={close} />
+              </div>
+            )}
+            <div
+              className="min-h-0 flex-1 overflow-y-auto"
+              role="tabpanel"
+              aria-label={t('bots.profile.tabProfile')}
+              hidden={tab !== 'profile'}
+            >
               {bot.description && (
                 <PanelSection title={t('bots.profile.description')}>
                   <p className="text-xs leading-5 text-fg-secondary">{bot.description}</p>

@@ -65,6 +65,7 @@ import { projectsManifest } from '../platform/manifests/projects.js';
 import { knowledgeManifest } from '../platform/manifests/knowledge.js';
 import { extensionPlatformToolCapabilities } from '../extensions/boot.js';
 import { tablesManifest } from '../platform/manifests/tables.js';
+import { AGENT_ACCESS_TOOL_IDS } from '../bots/external/meta.js';
 import { dispatchKnowledgeOperation } from '../platform/knowledge/adapter.js';
 import {
   KNOWLEDGE_RESOURCE_URI_TEMPLATE,
@@ -165,7 +166,12 @@ const contextCache = new Map<string, { ctx: McpContext; expiresAt: number }>();
  * intersection → MCP surface narrowing → per-request platform visibility.
  * Exported so the cross-channel parity test can drive the real composition.
  */
-export async function composeMcpContext(identity: AgentIdentity, toolRegistry: ToolRegistry): Promise<McpContext> {
+export async function composeMcpContext(
+  identity: AgentIdentity,
+  toolRegistry: ToolRegistry,
+  /** The OAuth client calling (P6): the Agent access tools name it on a conversation they open. */
+  client?: { id: string; name: string },
+): Promise<McpContext> {
   const profile = await resolveProfileAsync(MCP_PROFILE_ID);
   const { effectiveTools } = await resolveEffectiveTools({
     userId: identity.userId,
@@ -181,6 +187,7 @@ export async function composeMcpContext(identity: AgentIdentity, toolRegistry: T
     identity.allowedTools ? [...identity.allowedTools].sort().join(',') : '*',
     [...identity.allowedWriteTools].sort().join(','),
     [...effectiveTools].sort().join(','),
+    client?.id ?? '',
   ].join(':');
   const cached = contextCache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) {
@@ -190,13 +197,17 @@ export async function composeMcpContext(identity: AgentIdentity, toolRegistry: T
   const toolIds = resolveProxyToolIds(effectiveTools, {
     allowedTools: identity.allowedTools,
     allowedWriteTools: identity.allowedWriteTools,
-  }).filter((id) => MCP_EXPOSED_TOOL_IDS.has(id));
+  })
+    .filter((id) => MCP_EXPOSED_TOOL_IDS.has(id))
+    // The Agent access tools need the calling client (they name it); without one they are not built.
+    .filter((id) => client !== undefined || !AGENT_ACCESS_TOOL_IDS.includes(id));
   const registry: ToolRegistry = {
     ...toolRegistry,
     ...buildLazyServerTools(getDb(), effectiveTools, {
       userId: identity.userId,
       userRole: identity.userRole,
       workspaceId: null,
+      ...(client ? { externalCaller: { label: client.name || 'an MCP client' } } : {}),
     }),
   };
 
@@ -207,7 +218,13 @@ export async function composeMcpContext(identity: AgentIdentity, toolRegistry: T
 
 /** Resolve the MCP context for the current request's authenticated identity. */
 async function resolveMcpContext(c: Context, toolRegistry: ToolRegistry): Promise<McpContext> {
-  return composeMcpContext(getAgentIdentity(c), toolRegistry);
+  const clientId = c.get('oauthClientId') as string | undefined;
+  const clientName = (c.get('oauthClientName') as string | undefined) ?? '';
+  return composeMcpContext(
+    getAgentIdentity(c),
+    toolRegistry,
+    clientId ? { id: clientId, name: clientName } : undefined,
+  );
 }
 
 /**

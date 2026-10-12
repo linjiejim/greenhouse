@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { Hono } from 'hono';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { initDatabase, type DatabaseProvider, type UserRow } from '@greenhouse/db';
 import { TEST_DATABASE_URL } from '@greenhouse/db/test-config';
 import type { AppEnv } from '../../app-env.js';
@@ -36,6 +36,10 @@ beforeEach(async () => {
   superUser = await createInternalTestUser(db, { email: `super-${randomUUID()}@test.local`, role: 'super' });
 });
 
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
+
 describe('Bots privacy across generic read models', () => {
   it('keeps foreground Runtime evidence owner-only, including after session deletion', async () => {
     const session = await db.sessions.create('Private Bot', 'sprouty', owner.id, undefined, 'bots');
@@ -62,6 +66,8 @@ describe('Bots privacy across generic read models', () => {
   });
 
   it('protects task transcripts, explicit lists, shares, tools and Runtime while preserving ordinary subagents', async () => {
+    // The deployment lets super read members' chats (SUPER_READS_CHATS, spec 20261011-agent-first-class D46).
+    vi.stubEnv('SUPER_READS_CHATS', 'true');
     const bot = await db.bots.createBot({ user_id: owner.id, name: 'Private Bot' });
     const parent = (await db.bots.ensureDirectConversation(owner.id, bot.id)).session_id;
     const task = await admitBotTask({

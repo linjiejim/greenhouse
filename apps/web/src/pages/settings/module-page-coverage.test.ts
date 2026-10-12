@@ -26,6 +26,7 @@ const MODULE_PAGES: ModulePageContract[] = [
   { file: '../administration/mcp-keys.tsx', moduleId: 'admin.mcp-keys', layout: 'list' },
   { file: '../administration/runtime-config.tsx', moduleId: 'admin.runtime-config', layout: 'form' },
   { file: '../administration/bot-computers.tsx', moduleId: 'admin.bot-computers', layout: 'list' },
+  { file: '../administration/public-agents.tsx', moduleId: 'admin.public-agents', layout: 'list' },
   { file: '../administration/branding-studio.tsx', moduleId: 'admin.branding', layout: 'canvas' },
   { file: '../tasks.tsx', moduleId: 'workspace.tasks', layout: 'list' },
   { file: '../automations.tsx', moduleId: 'workspace.automations', layout: 'list' },

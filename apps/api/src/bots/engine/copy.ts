@@ -4,7 +4,7 @@
  * Every line the engine itself writes into a transcript or a notification goes
  * through here, in the conversation owner's UI locale (`users.locale`). Two
  * reasons it is one module rather than inline strings:
- * - the speaker tags (`[小研（Bot）]:`) are a protocol, not decoration: the
+ * - the speaker tags (`[小研（Agent）]:`) are a protocol, not decoration: the
  *   projection writes them, the static rules (S1) describe them, and Bot names
  *   are validated against them — all three must agree byte for byte;
  * - system events are persisted verbatim, so a wording change here is a change
@@ -28,6 +28,8 @@ function tagSafe(name: string): string {
 
 export interface SpeakerTags {
   user(nickname: string): string;
+  /** Another person in a room (P5): what they say is information, not a request to you. */
+  participant(nickname: string): string;
   bot(name: string): string;
   event: string;
   task(name: string): string;
@@ -37,17 +39,19 @@ export interface SpeakerTags {
 export const SPEAKER_TAGS: Record<BotsLocale, SpeakerTags> = {
   zh: {
     user: (nickname) => `[${tagSafe(nickname)}（用户）]:`,
-    bot: (name) => `[${tagSafe(name)}（Bot）]:`,
+    participant: (nickname) => `[${tagSafe(nickname)}（参与者）]:`,
+    bot: (name) => `[${tagSafe(name)}（Agent）]:`,
     event: '[事件]:',
     task: (name) => `[后台任务·${tagSafe(name)}]:`,
-    deleted: '[已删除的 Bot]:',
+    deleted: '[已删除的 Agent]:',
   },
   en: {
     user: (nickname) => `[${tagSafe(nickname)} (user)]:`,
-    bot: (name) => `[${tagSafe(name)} (Bot)]:`,
+    participant: (nickname) => `[${tagSafe(nickname)} (participant)]:`,
+    bot: (name) => `[${tagSafe(name)} (Agent)]:`,
     event: '[Event]:',
     task: (name) => `[Background task · ${tagSafe(name)}]:`,
-    deleted: '[Deleted Bot]:',
+    deleted: '[Deleted Agent]:',
   },
 };
 
@@ -55,7 +59,7 @@ export const SPEAKER_TAGS: Record<BotsLocale, SpeakerTags> = {
 
 const LIMIT_REASON: Record<BotsLocale, Record<Extract<BotEvent, { kind: 'limit' }>['reason'], string>> = {
   zh: {
-    turns: 'Bot 发言轮数',
+    turns: 'Agent 发言轮数',
     asks: '交接次数',
     depth: '交接层数',
     tokens: '本轮 token 用量',
@@ -63,7 +67,7 @@ const LIMIT_REASON: Record<BotsLocale, Record<Extract<BotEvent, { kind: 'limit' 
     wall_clock: '本轮时长',
   },
   en: {
-    turns: 'number of Bot turns',
+    turns: 'number of Agent turns',
     asks: 'number of hand-offs',
     depth: 'hand-off depth',
     tokens: 'token budget',
@@ -297,7 +301,7 @@ const FIELD_VALUES: Record<string, ValueWords> = {
   scope: {
     team: { zh: '团队', en: 'Team' },
     personal: { zh: '个人', en: 'Personal' },
-    bot: { zh: '本 Bot 私有', en: 'Private to this Bot' },
+    bot: { zh: '本 Agent 私有', en: 'Private to this Agent' },
   },
   share_role: {
     reader: { zh: '只读', en: 'Read-only' },
@@ -367,7 +371,7 @@ export const copy = {
   turnError: (l: BotsLocale, bot: string, reason: string) =>
     l === 'zh' ? `${bot} 没能回复（${reason}）` : `${bot} couldn't reply (${reason})`,
 
-  created: (l: BotsLocale, name: string) => (l === 'zh' ? `新建了 Bot「${name}」` : `Created the Bot “${name}”`),
+  created: (l: BotsLocale, name: string) => (l === 'zh' ? `新建了 Agent「${name}」` : `Created the Agent “${name}”`),
 
   joined: (l: BotsLocale, name: string, byBot?: string) =>
     l === 'zh'
@@ -382,6 +386,34 @@ export const copy = {
 
   taskStarted: (l: BotsLocale, bot: string, title: string) =>
     l === 'zh' ? `${bot} 开始后台任务「${title}」` : `${bot} started “${title}” in the background`,
+
+  /** A public Agent's per-member daily cap is reached (P4). */
+  publicDailyCap: (l: BotsLocale, bot: string) =>
+    l === 'zh'
+      ? `${bot} 今天给你的额度用完了，明天再来，或者问问它的负责人。`
+      : `You've used today's allowance with ${bot}. Try again tomorrow, or ask its owner.`,
+
+  /** A `task_start` card in `chat` mode, approved: the line where it was proposed. */
+  chatOpened: (l: BotsLocale, bot: string, title: string) =>
+    l === 'zh' ? `${bot} 在新会话里开始「${title}」` : `${bot} started “${title}” in a new chat`,
+
+  /** The first line of that new chat. */
+  chatOrigin: (l: BotsLocale, proposer: string) =>
+    l === 'zh' ? `${proposer} 从另一段对话开了这个会话` : `${proposer} opened this chat from another conversation`,
+
+  /** Rooms (P5): people joining and leaving, an Agent taken out because not everyone may use it. */
+  personJoined: (l: BotsLocale, name: string, by: string) =>
+    l === 'zh' ? `${by} 邀请 ${name} 加入了对话` : `${by} added ${name} to the conversation`,
+  personLeft: (l: BotsLocale, name: string) => (l === 'zh' ? `${name} 离开了对话` : `${name} left the conversation`),
+  agentNotForEveryone: (l: BotsLocale, bot: string) =>
+    l === 'zh'
+      ? `${bot} 离开了对话：它没有对这里的每个人开放`
+      : `${bot} left the conversation: it isn't shared with everyone here`,
+  agentLeftWithOwner: (l: BotsLocale, bot: string) =>
+    l === 'zh' ? `${bot} 随主人离开了对话` : `${bot} left with its owner`,
+
+  /** The first line of a conversation opened from outside Greenhouse (MCP, CLI, Feishu — P6). */
+  externalOrigin: (l: BotsLocale, via: string) => (l === 'zh' ? `这段对话由 ${via} 发起` : `Started from ${via}`),
 
   taskUnavailable: (l: BotsLocale, title: string) =>
     l === 'zh'
@@ -421,7 +453,7 @@ export const copy = {
       approval: `${bot} 请你批准：${subject}`,
       login: `${bot} 需要你登录${subject ? ` ${subject}` : ''}`,
       takeover: `${bot} 请你接管电脑：${subject}`,
-      bot_create: `${bot} 提议新建 Bot「${subject}」`,
+      bot_create: `${bot} 提议新建 Agent「${subject}」`,
       task_start: `${bot} 提议后台任务「${subject}」`,
       instructions_update: `${bot} 提议修改自己的守则：${subject}`,
     };
@@ -429,7 +461,7 @@ export const copy = {
       approval: `${bot} asks you to approve: ${subject}`,
       login: `${bot} needs you to sign in${subject ? ` to ${subject}` : ''}`,
       takeover: `${bot} asks you to take over the computer: ${subject}`,
-      bot_create: `${bot} proposes a new Bot “${subject}”`,
+      bot_create: `${bot} proposes a new Agent “${subject}”`,
       task_start: `${bot} proposes the background task “${subject}”`,
       instructions_update: `${bot} proposes a change to its own instructions: ${subject}`,
     };
@@ -468,8 +500,7 @@ export const copy = {
 
   declined: (l: BotsLocale, kind: BotRequestKind, subject: string) => {
     if (kind === 'bot_create') return l === 'zh' ? `你没有新建「${subject}」` : `You declined to create “${subject}”`;
-    if (kind === 'task_start')
-      return l === 'zh' ? `你没有开始后台任务「${subject}」` : `You declined the background task “${subject}”`;
+    if (kind === 'task_start') return l === 'zh' ? `你没有开始「${subject}」` : `You declined “${subject}”`;
     if (kind === 'instructions_update')
       return l === 'zh' ? `你没有采纳守则修改：${subject}` : `You declined the instructions change: ${subject}`;
     return l === 'zh' ? `你拒绝了：${subject}` : `You declined: ${subject}`;
@@ -505,7 +536,7 @@ export const copy = {
     mailbox: (l: BotsLocale, ref: string) => (l === 'zh' ? `邮箱 ${ref}` : `mailbox ${ref}`),
   },
 
-  notificationBody: (l: BotsLocale) => (l === 'zh' ? '打开 Bots 查看并处理。' : 'Open Bots to review it.'),
+  notificationBody: (l: BotsLocale) => (l === 'zh' ? '打开对话查看并处理。' : 'Open the conversation to review it.'),
 
   /** The inbox fact of a finished background task (runtime-projector.ts). */
   taskNotificationTitle: (l: BotsLocale, title: string, ok: boolean) => {
@@ -517,11 +548,11 @@ export const copy = {
   taskNotificationBody: (l: BotsLocale, ok: boolean) =>
     l === 'zh'
       ? ok
-        ? 'Bot 已在对话里汇报。'
-        : 'Bot 已在对话里说明了情况。'
+        ? 'Agent 已在对话里汇报。'
+        : 'Agent 已在对话里说明了情况。'
       : ok
-        ? 'The Bot reported back in its conversation.'
-        : 'The Bot reported what happened in its conversation.',
+        ? 'The Agent reported back in its conversation.'
+        : 'The Agent reported what happened in its conversation.',
 
   /**
    * The inbox fact of a Bot reply nobody saw (reply-alerts.ts). Never the reply's
@@ -545,5 +576,5 @@ export const copy = {
   continueAfterCreate: (l: BotsLocale, name: string) =>
     l === 'zh'
       ? `成员确认新建了「${name}」，它已加入本对话。需要时用 team.ask 把工作交给它。`
-      : `The member confirmed the new Bot “${name}”; it has joined this conversation. Hand it work with team.ask when it helps.`,
+      : `The member confirmed the new Agent “${name}”; it has joined this conversation. Hand it work with team.ask when it helps.`,
 };

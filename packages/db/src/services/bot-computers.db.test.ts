@@ -26,7 +26,9 @@ afterEach(() => {
 });
 
 const identity = () => ({
+  id: user.id,
   user_id: user.id,
+  bot_id: null,
   namespace: 'tztest',
   container_name: `gh-computer-tztest-${user.id}`,
   volume_name: `gh-computer-tztest-${user.id}-home`,
@@ -80,24 +82,31 @@ describe('process watches', () => {
 
   it('watches a process once per job, lists it, and hands it to exactly one claimer', async () => {
     const { botId, sessionId } = await conversation();
-    const input = { user_id: user.id, session_id: sessionId, bot_id: botId, job_id: 'j0000beef', name: 'tests' };
+    const input = {
+      user_id: user.id,
+      computer_id: user.id,
+      session_id: sessionId,
+      bot_id: botId,
+      job_id: 'j0000beef',
+      name: 'tests',
+    };
     await db.botComputers.watchProcess(input);
     await db.botComputers.watchProcess({ ...input, name: 'again' }); // the same job: ignored
     const [watch, ...rest] = await db.botComputers.listWatches(user.id);
     expect(rest).toEqual([]);
     expect(watch).toMatchObject({ job_id: 'j0000beef', name: 'tests', status: 'watching' });
-    expect(await db.botComputers.listWatchingUsers()).toContain(user.id);
+    expect(await db.botComputers.listWatchingComputers()).toContain(user.id);
 
     // A conditional update: the first claim gets the row, a second one nothing.
     expect(await db.botComputers.settleWatch(watch!.id, 'notified')).toMatchObject({ status: 'notified' });
     expect(await db.botComputers.settleWatch(watch!.id, 'notified')).toBeUndefined();
     expect(await db.botComputers.listWatches(user.id)).toEqual([]);
-    expect(await db.botComputers.listWatchingUsers()).not.toContain(user.id);
+    expect(await db.botComputers.listWatchingComputers()).not.toContain(user.id);
   });
 
   it('gives up on old watches and drops a member’s watches, touching nothing else', async () => {
     const { botId, sessionId } = await conversation();
-    const base = { user_id: user.id, session_id: sessionId, bot_id: botId, name: 'job' };
+    const base = { user_id: user.id, computer_id: user.id, session_id: sessionId, bot_id: botId, name: 'job' };
     await db.botComputers.watchProcess({ ...base, job_id: 'j000000a1' });
     await db.botComputers.watchProcess({ ...base, job_id: 'j000000a2' });
     const [first] = await db.botComputers.listWatches(user.id);

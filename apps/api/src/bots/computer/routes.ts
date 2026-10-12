@@ -1,7 +1,9 @@
 /**
  * Bot 电脑路由 — 成员自己的电脑 + 管理员视图 + 实时画面 / 终端
  *
- * /api/bots/computer（requireInternal + requireFeature('bots')，只操作当前成员自己的电脑）
+ * /api/bots/computer（requireInternal + requireFeature('bots')，只操作当前成员自己的电脑）。每个 Agent 一台电脑
+ * （spec 20261011-agent-first-class P3a）：所有路径都接受 `?bot=<id>`（成员自己的某个 Agent；不是自己的 → 404
+ * agent_not_found），缺省 = 主 Agent（Sprouty）的那台，即 2026-10-12 之前唯一的那台。
  * GET  /api/bots/computer                  — 电脑状态（运行时、状态、谁在操作、排队位置、磁盘、时区、浏览器语言）
  * POST /api/bots/computer/start            — 启动并等就绪（含排队，最长约 45s + 45s）
  * POST /api/bots/computer/stop             — 停止（文件与登录态保留）
@@ -27,9 +29,9 @@
  *
  * /api/admin/bot-computers（requireSuper）
  * GET  /api/admin/bot-computers                 — 运行时、预检清单（含修复命令）、每台电脑、旋钮
- * POST /api/admin/bot-computers/:userId/stop    — 停止某成员的电脑
- * POST /api/admin/bot-computers/:userId/backup  — 立即备份（休眠中的先唤醒，备份在后台进行；未开备份 → 503 disabled）
- * POST /api/admin/bot-computers/:userId/reset   — 重置 {wipe_data?}（不代为重启，成员下次使用时自动启动；
+ * POST /api/admin/bot-computers/:computerId/stop    — 停止一台电脑（`computer_id`；主 Agent 的那台 = 成员 id，旧链接照用）
+ * POST /api/admin/bot-computers/:computerId/backup  — 立即备份（休眠中的先唤醒，备份在后台进行；未开备份 → 503 disabled）
+ * POST /api/admin/bot-computers/:computerId/reset   — 重置 {wipe_data?}（不代为重启，成员下次使用时自动启动；
  *                                                 清空数据时宿主不可用返回 503 unavailable，绝不假装已清空）
  *
  * WS /api/ws/computer?token= — see viewer.ts; WS /api/ws/computer-terminal?token= — see terminal.ts.
@@ -52,6 +54,7 @@ import { bodyLimit } from 'hono/body-limit';
 import { validator } from 'hono/validator';
 import { z } from 'zod';
 import { getDb } from '@greenhouse/db';
+import { publicationOf, publicBotFor } from '../public.js';
 import type { ComputerStatusView } from '@greenhouse/types/bots';
 import { logger } from '@greenhouse/utils/logger';
 import { toErrorMessage } from '@greenhouse/utils/error';
@@ -74,15 +77,21 @@ import {
 } from './files.js';
 import { jobLog, listJobs, stopJob } from './jobs.js';
 import { handbackComputer, LeaseRequiredError, takeoverComputer, typeIntoFocusedField } from './lease.js';
-import { computerContainerName, computerIdentity } from './namespace.js';
+import {
+  computerContainerName,
+  computerIdentity,
+  computerRef,
+  computerRefForBot,
+  type ComputerRef,
+} from './namespace.js';
 import {
   adminComputersView,
   backupComputerNow,
   computerNamespace,
   computerStatusFor,
-  purgeUserComputer,
+  purgeComputer,
   requireComputerRuntime,
-  stopUserComputer,
+  stopComputer,
 } from './runtime.js';
 import {
   createViewToken,
@@ -196,6 +205,8 @@ function jsonOf<T extends z.ZodType>(schema: T) {
 /** A one-time ticket for one of the computer's sockets (viewer or terminal), bound to the member's container. */
 async function socketTicket(c: Context<AppEnv>, purpose: ComputerTicketPurpose) {
   const user = getAuthUser(c);
+  const computer = await computerOf(c);
+  if (!computer) return c.json(NO_AGENT, 404);
   let namespace: string;
   try {
     namespace = requireComputerRuntime().config.namespace;
@@ -203,47 +214,75 @@ async function socketTicket(c: Context<AppEnv>, purpose: ComputerTicketPurpose) 
     return computerError(c, err);
   }
   const db = getDb();
-  const [account, row] = await Promise.all([db.users.getById(user.id), db.botComputers.get(user.id)]);
+  const [account, row] = await Promise.all([db.users.getById(user.id), db.botComputers.get(computer.id)]);
   if (!account) return c.json({ error: 'Unauthorized', code: 'invalid' }, 401);
-  const container = row?.container_name ?? computerContainerName(namespace, user.id);
-  return c.json(createViewToken({ id: user.id, authVersion: account.auth_version }, container, { purpose }));
+  const container = row?.container_name ?? computerContainerName(namespace, computer);
+  return c.json(
+    createViewToken({ id: user.id, authVersion: account.auth_version }, container, {
+      purpose,
+      computerId: computer.id,
+    }),
+  );
+}
+
+const NO_AGENT = { error: 'Agent not found', code: 'agent_not_found' as const };
+
+/**
+ * Which computer a request is about: `?bot=<id>` — one of the member's own Agents (archived
+ * ones too, so their computer can still be opened and cleaned up) — or the member's main one.
+ */
+async function computerOf(c: Context<AppEnv>): Promise<ComputerRef | null> {
+  const user = getAuthUser(c);
+  const botId = c.req.query('bot');
+  if (!botId) return computerRef(user.id, null);
+  const db = getDb();
+  const bot = await db.bots.getBot(user.id, botId);
+  if (bot) return computerRefForBot(user.id, bot);
+  // Someone else's public Agent whose owner granted it a computer: this member's own copy (P4, D7).
+  const shared = await publicBotFor(db, user.id, botId);
+  return shared && publicationOf(shared).grants.computer ? computerRef(user.id, shared.id) : null;
 }
 
 /** /api/bots/computer — the member's own computer. */
 export function createBotsComputerRoutes() {
   return new Hono<AppEnv>()
     .get('/', async (c) => {
-      const user = getAuthUser(c);
-      const status: ComputerStatusView = await computerStatusFor(user.id);
+      const computer = await computerOf(c);
+      if (!computer) return c.json(NO_AGENT, 404);
+      const status: ComputerStatusView = await computerStatusFor(computer.id);
       return c.json(status);
     })
     .post('/start', async (c) => {
-      const user = getAuthUser(c);
+      const computer = await computerOf(c);
+      if (!computer) return c.json(NO_AGENT, 404);
       try {
-        await requireComputerRuntime().controller.ensureRunning(user.id, { allowOverQuota: true });
+        await requireComputerRuntime().controller.ensureRunning(computer.id, { allowOverQuota: true });
       } catch (err) {
         return computerError(c, err);
       }
-      return c.json(await computerStatusFor(user.id));
+      return c.json(await computerStatusFor(computer.id));
     })
     .post('/stop', async (c) => {
-      const user = getAuthUser(c);
-      await stopUserComputer(user.id, 'user');
-      return c.json(await computerStatusFor(user.id));
+      const computer = await computerOf(c);
+      if (!computer) return c.json(NO_AGENT, 404);
+      await stopComputer(computer.id, 'user');
+      return c.json(await computerStatusFor(computer.id));
     })
     .post('/reset', async (c) => {
-      const user = getAuthUser(c);
+      const computer = await computerOf(c);
+      if (!computer) return c.json(NO_AGENT, 404);
       const body = await readBody(c, resetSchema);
       if (!body) return c.json(INVALID, 400);
       try {
-        await requireComputerRuntime().controller.reset(user.id, { wipe: body.wipe_data === true });
+        await requireComputerRuntime().controller.reset(computer.id, { wipe: body.wipe_data === true });
       } catch (err) {
         return computerError(c, err);
       }
-      return c.json(await computerStatusFor(user.id));
+      return c.json(await computerStatusFor(computer.id));
     })
     .put('/settings', jsonOf(settingsSchema), async (c) => {
-      const user = getAuthUser(c);
+      const computer = await computerOf(c);
+      if (!computer) return c.json(NO_AGENT, 404);
       const { timezone } = c.req.valid('json');
       const zone = timezone === null ? null : parseTimezone(timezone);
       if (timezone !== null && !zone) return c.json({ error: 'Not an IANA time zone', code: 'invalid' as const }, 400);
@@ -253,42 +292,46 @@ export function createBotsComputerRoutes() {
       if (!namespace) {
         return c.json({ error: 'The computer is not enabled on this deployment', code: 'disabled' as const }, 503);
       }
-      await getDb().botComputers.setTimezone(computerIdentity(namespace, user.id), zone);
-      return c.json(await computerStatusFor(user.id));
+      await getDb().botComputers.setTimezone(computerIdentity(namespace, computer), zone);
+      return c.json(await computerStatusFor(computer.id));
     })
     .post('/view-token', (c) => socketTicket(c, VIEW_TOKEN_PURPOSE))
     .post('/terminal-token', (c) => socketTicket(c, TERMINAL_TOKEN_PURPOSE))
     .post('/takeover', async (c) => {
-      const user = getAuthUser(c);
+      const computer = await computerOf(c);
+      if (!computer) return c.json(NO_AGENT, 404);
       try {
-        await takeoverComputer(user.id);
+        await takeoverComputer(computer.id);
       } catch (err) {
         return computerError(c, err);
       }
-      return c.json(await computerStatusFor(user.id));
+      return c.json(await computerStatusFor(computer.id));
     })
     .post('/handback', async (c) => {
-      const user = getAuthUser(c);
+      const computer = await computerOf(c);
+      if (!computer) return c.json(NO_AGENT, 404);
       const body = await readBody(c, handbackSchema);
       if (!body) return c.json(INVALID, 400);
-      await handbackComputer(user.id, { note: body.note, requestId: body.request_id, sessionId: body.session_id });
-      return c.json(await computerStatusFor(user.id));
+      await handbackComputer(computer.id, { note: body.note, requestId: body.request_id, sessionId: body.session_id });
+      return c.json(await computerStatusFor(computer.id));
     })
     .post('/restore-window', async (c) => {
-      const user = getAuthUser(c);
+      const computer = await computerOf(c);
+      if (!computer) return c.json(NO_AGENT, 404);
       try {
-        await restoreBrowserWindow(user.id);
+        await restoreBrowserWindow(computer.id);
       } catch (err) {
         return computerError(c, err);
       }
       return c.json({ ok: true as const });
     })
     .post('/type', async (c) => {
-      const user = getAuthUser(c);
+      const computer = await computerOf(c);
+      if (!computer) return c.json(NO_AGENT, 404);
       const body = await readBody(c, typeSchema);
       if (!body) return c.json(INVALID, 400);
       try {
-        await typeIntoFocusedField(user.id, body.text);
+        await typeIntoFocusedField(computer.id, body.text);
       } catch (err) {
         if (err instanceof LeaseRequiredError) return c.json({ error: err.message, code: 'lease_required' }, 409);
         return computerError(c, err);
@@ -296,18 +339,20 @@ export function createBotsComputerRoutes() {
       return c.json({ ok: true as const });
     })
     .get('/files', queryOf(filesQuery), async (c) => {
-      const user = getAuthUser(c);
+      const computer = await computerOf(c);
+      if (!computer) return c.json(NO_AGENT, 404);
       try {
-        return c.json(await listComputerFiles(user.id, c.req.valid('query').path));
+        return c.json(await listComputerFiles(computer.id, c.req.valid('query').path));
       } catch (err) {
         return fileError(c, err);
       }
     })
     .get('/files/download', queryOf(downloadQuery), async (c) => {
-      const user = getAuthUser(c);
+      const computer = await computerOf(c);
+      if (!computer) return c.json(NO_AGENT, 404);
       let download: ComputerDownload;
       try {
-        download = await openComputerDownload(user.id, c.req.valid('query').path);
+        download = await openComputerDownload(computer.id, c.req.valid('query').path);
       } catch (err) {
         return fileError(c, err);
       }
@@ -331,7 +376,8 @@ export function createBotsComputerRoutes() {
         onError: (c) => c.json({ error: 'Files up to 100 MiB can be uploaded', code: 'too_large' as const }, 413),
       }),
       async (c) => {
-        const user = getAuthUser(c);
+        const computer = await computerOf(c);
+        if (!computer) return c.json(NO_AGENT, 404);
         const { dir, name } = c.req.valid('query');
         const declared = c.req.header('content-length');
         let body: Readable | Buffer;
@@ -347,35 +393,38 @@ export function createBotsComputerRoutes() {
           size = bytes.length;
         }
         try {
-          return c.json(await uploadComputerFile(user.id, { dir, name, body, size }));
+          return c.json(await uploadComputerFile(computer.id, { dir, name, body, size }));
         } catch (err) {
           return fileError(c, err);
         }
       },
     )
     .get('/processes', async (c) => {
-      const user = getAuthUser(c);
+      const computer = await computerOf(c);
+      if (!computer) return c.json(NO_AGENT, 404);
       try {
-        return c.json({ processes: await listJobs(user.id) });
+        return c.json({ processes: await listJobs(computer.id) });
       } catch (err) {
         return processError(c, err);
       }
     })
     .get('/processes/:id/log', queryOf(logQuery), async (c) => {
-      const user = getAuthUser(c);
+      const computer = await computerOf(c);
+      if (!computer) return c.json(NO_AGENT, 404);
       const { lines } = c.req.valid('query');
       try {
-        const log = await jobLog(user.id, c.req.param('id'), lines ? { lines: Number(lines) } : {});
+        const log = await jobLog(computer.id, c.req.param('id'), lines ? { lines: Number(lines) } : {});
         // A job's output can echo whatever a vault fill typed into a page.
-        return c.json({ id: log.id, text: redactFilledSecrets(user.id, log.text), truncated: log.truncated });
+        return c.json({ id: log.id, text: redactFilledSecrets(computer.id, log.text), truncated: log.truncated });
       } catch (err) {
         return processError(c, err);
       }
     })
     .post('/processes/:id/stop', async (c) => {
-      const user = getAuthUser(c);
+      const computer = await computerOf(c);
+      if (!computer) return c.json(NO_AGENT, 404);
       try {
-        return c.json(await stopJob(user.id, c.req.param('id')));
+        return c.json(await stopJob(computer.id, c.req.param('id')));
       } catch (err) {
         return processError(c, err);
       }
@@ -386,25 +435,25 @@ export function createBotsComputerRoutes() {
 export function createAdminBotComputerRoutes() {
   return new Hono<AppEnv>()
     .get('/', async (c) => c.json(await adminComputersView()))
-    .post('/:userId/stop', async (c) => {
-      await stopUserComputer(c.req.param('userId'), 'admin');
+    .post('/:computerId/stop', async (c) => {
+      await stopComputer(c.req.param('computerId'), 'admin');
       return c.json({ ok: true as const });
     })
-    .post('/:userId/reset', async (c) => {
+    .post('/:computerId/reset', async (c) => {
       const body = await readBody(c, resetSchema);
       if (!body) return c.json(INVALID, 400);
-      const userId = c.req.param('userId');
+      const computerId = c.req.param('computerId');
       try {
-        if (body.wipe_data) await purgeUserComputer(userId, { wipe: true, reason: 'reset' });
-        else await stopUserComputer(userId, 'reset');
+        if (body.wipe_data) await purgeComputer(computerId, { wipe: true, reason: 'reset' });
+        else await stopComputer(computerId, 'reset');
       } catch (err) {
         return computerError(c, err);
       }
       return c.json({ ok: true as const });
     })
-    .post('/:userId/backup', async (c) => {
+    .post('/:computerId/backup', async (c) => {
       try {
-        await backupComputerNow(c.req.param('userId'));
+        await backupComputerNow(c.req.param('computerId'));
       } catch (err) {
         return computerError(c, err);
       }

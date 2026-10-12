@@ -11,6 +11,7 @@ import { randomUUID } from 'node:crypto';
 import type { DatabaseProvider, UsageBudgetAccountInput, UsageRecord } from '@greenhouse/db';
 import { getUtcMonthPeriod, UsageBudgetError, UsageBudgetExceededError } from '@greenhouse/db';
 import { estimateTokens, getAvailableProviders, getModelEntry, type ProviderAttemptHook } from '@greenhouse/agent-core';
+import { currentAgentScope } from '../platform/agent-scope.js';
 
 export const MODEL_BUDGET_TTL_MS = 20 * 60_000;
 export const IMAGE_BUDGET_TTL_MS = 5 * 60_000;
@@ -123,6 +124,10 @@ export interface ProviderAttemptBudgetContext {
   runId?: string;
   budgetPool?: UsageBudgetPool;
   metadata?: Readonly<Record<string, unknown>>;
+  /** The member's Agent the call is for; defaults to the Agent acting in this async context (agent-scope.ts). */
+  botId?: string | null;
+  /** A public Agent serving someone other than its owner: charge its own account, not the member's (D37). */
+  agentBudget?: { botId: string; monthlyTokens: number };
 }
 
 function providerAttemptEstimate(options: Parameters<ProviderAttemptHook>[0]['options']): number {
@@ -165,10 +170,15 @@ function providerAttemptEstimate(options: Parameters<ProviderAttemptHook>[0]['op
  * so every actual provider I/O gets a fresh atomic user/org/provider reserve.
  */
 export function createProviderAttemptBudgetHook(context: ProviderAttemptBudgetContext): ProviderAttemptHook {
+  // Read when the hook is made: inside an Agent turn, this is that Agent.
+  const botId = context.botId !== undefined ? context.botId : (currentAgentScope()?.botId ?? null);
   return async ({ descriptor, options }) => {
     const startedAt = Date.now();
     const estimatedTokens = providerAttemptEstimate(options);
-    const lease = await reserveUserTokenBudget({
+    const reserve = context.agentBudget
+      ? (input: ReserveUserTokenBudgetInput) => reserveAgentTokenBudget({ ...input, agent: context.agentBudget! })
+      : reserveUserTokenBudget;
+    const lease = await reserve({
       db: context.db,
       userId: context.userId,
       caller: context.caller,
@@ -203,6 +213,7 @@ export function createProviderAttemptBudgetHook(context: ProviderAttemptBudgetCo
             caller: context.caller,
             session_id: context.sessionId,
             user_id: context.userId,
+            bot_id: botId,
             model: descriptor.modelId,
             input_tokens: inputTokens,
             output_tokens: outputTokens,
@@ -221,6 +232,7 @@ export function createProviderAttemptBudgetHook(context: ProviderAttemptBudgetCo
           caller: context.caller,
           session_id: context.sessionId,
           user_id: context.userId,
+          bot_id: botId,
           model: descriptor.modelId,
           input_tokens: 0,
           output_tokens: 0,
@@ -393,6 +405,63 @@ export async function reserveUserTokenBudget(input: ReserveUserTokenBudgetInput)
     return new UserTokenBudgetLease(input.db, idempotencyKey, estimatedTokens);
   } catch (err) {
     throw toAdmissionError(err);
+  }
+}
+
+/**
+ * Reserve a public Agent's own token account (spec 20261011-agent-first-class D37) with the
+ * organization and provider accounts — never the member's personal account: a public Agent's
+ * use is its owner's budget line, not the member's. The member must still be an active internal
+ * account (they asked).
+ */
+export async function reserveAgentTokenBudget(
+  input: ReserveUserTokenBudgetInput & { agent: { botId: string; monthlyTokens: number } },
+): Promise<UserTokenBudgetLease> {
+  const estimatedTokens = positiveSafeInteger(input.estimatedTokens);
+  const idempotencyKey = input.idempotencyKey ?? `${input.caller}:${randomUUID()}`;
+  try {
+    const user = await requireBudgetOwner(input.db, input.userId);
+    const period = getUtcMonthPeriod();
+    const accounts = await Promise.all(
+      [
+        {
+          scope_type: 'agent' as const,
+          scope_id: input.agent.botId,
+          unit: 'tokens' as const,
+          period_start: period.start,
+          period_end: period.end,
+          limit_units: input.agent.monthlyTokens,
+          bootstrap_metadata: { bot_id: input.agent.botId },
+          // The owner's setting is the source of truth: a change applies this month.
+          update_existing_limit: true,
+        },
+        ...buildTokenSharedAccounts(input),
+      ].map((account) => input.db.usageBudget.ensureAccount(account)),
+    );
+    await input.db.usageBudget.reserve({
+      account_ids: accounts.map((account) => account.id),
+      idempotency_key: idempotencyKey,
+      estimated_units: estimatedTokens,
+      caller: input.caller,
+      user_id: user.id,
+      ttl_ms: input.ttlMs ?? MODEL_BUDGET_TTL_MS,
+      ...(input.modelId ? { model_id: input.modelId } : {}),
+      ...(input.providerId ? { provider_id: input.providerId } : {}),
+      ...(input.runId ? { run_id: input.runId } : {}),
+      metadata: { ...(input.metadata ?? {}), agent_budget: input.agent.botId },
+    });
+    return new UserTokenBudgetLease(input.db, idempotencyKey, estimatedTokens);
+  } catch (err) {
+    const admission = toAdmissionError(err);
+    if (admission.code === 'usage_budget_exceeded') {
+      throw new UsageBudgetAdmissionError(
+        'This Agent has used up its budget for the month. Its owner can raise the limit.',
+        429,
+        admission.code,
+        { cause: err },
+      );
+    }
+    throw admission;
   }
 }
 

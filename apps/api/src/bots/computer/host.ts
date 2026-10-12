@@ -155,8 +155,8 @@ export interface StartedComputer {
 export interface HostInstance {
   /** What a row's `container_name` points at. */
   ref: string;
-  /** The member it belongs to ('' when the host cannot tell). */
-  userId: string;
+  /** The computer it belongs to (`bot_computers.id`; '' when the host cannot tell). */
+  computerId: string;
   running: boolean;
 }
 
@@ -220,9 +220,9 @@ export interface ComputerHost extends ComputerExec {
   removeOrphan(instance: HostInstance, all: HostInstance[]): Promise<boolean>;
   /**
    * Storage no row points at (docker: home volumes past a grace period).
-   * `owner(userId)` re-reads the row right before a removal.
+   * `owner(computerId)` re-reads the row right before a removal.
    */
-  sweepStorage(namespace: string, owner: (userId: string) => Promise<BotComputerRow | undefined>): Promise<number>;
+  sweepStorage(namespace: string, owner: (computerId: string) => Promise<BotComputerRow | undefined>): Promise<number>;
   /** Called by the health loop for every running computer (e2b: renews the provider's timeout). */
   keepAlive?(row: BotComputerRow, idleMinutes: number): Promise<void>;
   /** Memory in use per ref (the admin page); missing = unknown. */

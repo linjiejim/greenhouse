@@ -1,7 +1,7 @@
 /**
  * The computer page's pure rules (tested in ./model.test.ts): how paths read,
  * how long the member has held the computer, and which "needs you" card the
- * page answers.
+ * page answers. Which computer (one per Agent) is ./target.ts.
  */
 
 import type { BotRequestView } from '../../shared/bots';
@@ -38,18 +38,27 @@ export function isComputerCard(r: Pick<BotRequestView, 'kind'>): boolean {
 /**
  * The card the page answers: the one it was opened for (`?request=`) while it
  * is pending, else the oldest pending computer card of the conversation it was
- * opened from (`?c=`) — never one from another conversation.
+ * opened from (`?c=`) — never one from another conversation, and (one computer
+ * per Agent) never one about another computer: `onComputer` says whether a
+ * card's Agent works on the computer the page shows (a guest Agent in the
+ * conversation has its own).
  */
 export function cardToAnswer(
   pending: readonly BotRequestView[],
-  opts: { requestId?: string; sessionId?: string },
+  opts: { requestId?: string; sessionId?: string; onComputer?: (r: BotRequestView) => boolean },
 ): BotRequestView | null {
   if (opts.requestId) {
     const asked = pending.find((r) => r.id === opts.requestId);
     if (asked) return asked.status === 'pending' ? asked : null;
   }
   if (!opts.sessionId) return null;
-  const here = pending.filter((r) => r.status === 'pending' && r.session_id === opts.sessionId && isComputerCard(r));
+  const here = pending.filter(
+    (r) =>
+      r.status === 'pending' &&
+      r.session_id === opts.sessionId &&
+      isComputerCard(r) &&
+      (opts.onComputer ? opts.onComputer(r) : true),
+  );
   return here.sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at))[0] ?? null;
 }
 

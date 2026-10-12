@@ -27,6 +27,14 @@ export interface ActorContext {
   authMethod: AuthMethod;
   onBehalfOfUserId?: string;
   clientId?: string;
+  /**
+   * One of the member's own Agents (`bots.id`) is the actor (actorType 'agent'): which one, and the
+   * conversation it acts in. Its permissions are `onBehalfOfUserId`'s (spec 20261011-agent-first-class).
+   */
+  agentId?: string;
+  sessionId?: string;
+  /** Who asked, when that is not `onBehalfOfUserId` (a public Agent serving a colleague, P4). */
+  requestedByUserId?: string;
 }
 
 /** Return the workspace user whose authorization policy should be evaluated. */
@@ -74,6 +82,9 @@ export interface PlatformAuditEvent {
   actorType: ActorType;
   onBehalfOfUserId?: string;
   clientId?: string;
+  agentId?: string;
+  sessionId?: string;
+  requestedByUserId?: string;
   requestId: string;
   resource: ResourceRef;
   actionId: string;

@@ -83,12 +83,22 @@ export function createSearchRoute() {
 
         const [sessionHistory, projects, docs] = await Promise.all([
           lane('session', async () => {
-            const rows = await db.sessions.searchByTitle(user.id, query, fetchLimit, 'web');
-            return rows.map((row) => ({
-              sessionId: row.id,
-              title: row.title ?? '',
-              subtitle: subtitle(row.updated_at),
-            }));
+            // Ordinary chats, plus Agent task chats (they replace new chats when Agents are on).
+            const [chats, agentChats] = await Promise.all([
+              db.sessions.searchByTitle(user.id, query, fetchLimit, 'web'),
+              db.sessions.searchByTitle(user.id, query, fetchLimit, undefined, { agentChatsOnly: true }),
+            ]);
+            return [
+              ...chats.map((row) => ({ row, channel: undefined })),
+              ...agentChats.map((row) => ({ row, channel: 'bots' as const })),
+            ]
+              .sort((a, b) => (b.row.updated_at > a.row.updated_at ? 1 : -1))
+              .map(({ row, channel }) => ({
+                sessionId: row.id,
+                title: row.title ?? '',
+                subtitle: subtitle(row.updated_at),
+                ...(channel ? { channel } : {}),
+              }));
           }),
           // Projects owns its whole read path in the registry handler (policy →
           // access → query), so this only has to hand it a payload.

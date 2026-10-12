@@ -34,6 +34,7 @@ import * as access from '../access.js';
 import { defaultComputerDeps, type ComputerDeps } from '../browser-session.js';
 import { HUMAN_WAIT_HOLD_MS } from '../limits.js';
 import { handbackComputer, takeoverComputer } from '../lease.js';
+import { computerIdentity, computerRefForBot } from '../namespace.js';
 import { computerTurnFrom } from '../tools.js';
 import { runComputerAction } from '../../tools/computer.js';
 
@@ -49,7 +50,9 @@ beforeEach(async () => {
     role: 'team',
   });
   await db.botComputers.ensure({
+    id: user.id,
     user_id: user.id,
+    bot_id: null,
     namespace: 'implicittest',
     container_name: `gh-computer-implicittest-${user.id}`,
     volume_name: `gh-computer-implicittest-${user.id}-home`,
@@ -96,7 +99,11 @@ describe('implicit take-over', () => {
   it('a voluntary take-over during a Bot action leaves exactly one implicit card, and the hand-back wakes that Bot', async () => {
     const bot = await db.bots.createBot({ user_id: user.id, name: 'Scout', role: '' });
     const { session_id: sessionId } = await db.bots.ensureDirectConversation(user.id, bot.id);
+    // Scout works on its own computer (spec 20261011-agent-first-class D30).
+    const computer = computerRefForBot(user.id, bot);
+    await db.botComputers.ensure(computerIdentity('implicittest', computer));
     const { ctx, turn, deps, started } = await botTurn(bot, sessionId);
+    expect(turn.computerId).toBe(computer.id);
 
     // Two commands in one step (parallel tool calls), both running.
     const first = runComputerAction(turn, { action: 'shell', command: 'npm test' }, deps);
@@ -104,7 +111,7 @@ describe('implicit take-over', () => {
     await vi.waitFor(() => expect(started).toHaveLength(2));
 
     const takenAt = Date.now();
-    await takeoverComputer(user.id); // the member presses "Take over"
+    await takeoverComputer(computer.id); // the member presses "Take over"
     const results = await Promise.all([first, second]);
     for (const result of results) {
       expect(result).toMatchObject({ code: 'user_in_control' });
@@ -129,7 +136,7 @@ describe('implicit take-over', () => {
     expect(await db.bots.listRequests(user.id, { sessionId, status: 'pending', kinds: ['takeover'] })).toHaveLength(1);
 
     // "Done, hand back" from the conversation: the card is settled and Scout is woken, once.
-    await handbackComputer(user.id, { sessionId });
+    await handbackComputer(computer.id, { sessionId });
     expect((await db.bots.getRequest(user.id, card.id))?.status).toBe('resolved');
     expect(mocks.deliver).toHaveBeenCalledTimes(1);
     expect(mocks.deliver).toHaveBeenCalledWith(

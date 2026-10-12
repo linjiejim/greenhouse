@@ -42,15 +42,21 @@ export async function fetchSessionsPage(opts?: {
   tagId?: number | null;
   scope?: SessionScope;
   profile?: string;
+  /**
+   * Fold the member's Agent task chats in (`include=agent_chats`, spec 20261011-agent-first-class
+   * D21): rows with `channel: 'bots'` and `agent_chat`. An older server ignores it.
+   */
+  agentChats?: boolean;
 }): Promise<SessionPage | null> {
   const limit = opts?.limit ?? 200;
   const offset = opts?.offset ?? 0;
   const tag = opts?.tagId != null ? `&tag_id=${opts.tagId}` : '';
   const profile = opts?.profile ? `&profile=${encodeURIComponent(opts.profile)}` : '';
+  const include = opts?.agentChats ? '&include=agent_chats' : '';
   const scope = opts?.scope ?? 'mine';
   try {
     const res = await api(
-      `/api/sessions?status=active&scope=${scope}&page_meta=1&limit=${limit}&offset=${offset}${tag}${profile}`,
+      `/api/sessions?status=active&scope=${scope}&page_meta=1&limit=${limit}&offset=${offset}${tag}${profile}${include}`,
     );
     if (!res.ok) return null;
     const data = (await res.json()) as {

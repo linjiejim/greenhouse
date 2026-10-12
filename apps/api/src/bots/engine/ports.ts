@@ -34,4 +34,6 @@ export interface ConversationPort {
   /** Names for speaker labels in recall results. */
   botName(botId: string | null): string | null;
   nickname: string;
+  /** In a room: a person's name by user id (recall labels other people's messages with it). */
+  personName?(userId: string): string | null;
 }

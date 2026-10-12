@@ -15,6 +15,7 @@ import {
   cardKind,
   cardSubject,
   cardTitle,
+  chatStart,
   countdown,
   countdownNextChange,
   decisionErrorKey,
@@ -24,6 +25,7 @@ import {
   cardGist,
   diffCounts,
   hostOf,
+  openedChat,
   refusalCopy,
   settledReceipt,
   statusBadge,
@@ -420,5 +422,52 @@ describe('details and diffs', () => {
   it('counts added and removed instruction lines', () => {
     expect(diffCounts({ current: 'a\nold', instructions: 'a\nb\nc' })).toEqual({ added: 2, removed: 1 });
     expect(diffCounts({ current: 'same', instructions: 'same' })).toEqual({ added: 0, removed: 0 });
+  });
+});
+
+// ─── task_start in chat mode (spec 20261011-agent-first-class D25) ─
+
+describe('a task card in chat mode', () => {
+  const chat = (over: Partial<BotRequestView> = {}, payload: Record<string, unknown> = {}) =>
+    req('task_start', { title: 'Plan Q3', brief: 'Draft the **plan**', mode: 'chat', ...payload }, over);
+
+  it('reads as a new chat: its own title, "Open Chat", the brief as its gist', () => {
+    expect(chatStart(chat())).toEqual({ agent: null });
+    expect(chatStart(chat({}, { agent_id: 'bot_b' }))).toEqual({ agent: 'bot_b' });
+    expect(cardTitle(chat(), 'Sage')).toEqual({ key: 'bots.card.chatTitle', vars: { name: 'Sage' } });
+    expect(cardButtons(chat()).map((b) => [b.id, b.prominent])).toEqual([
+      ['deny', false],
+      ['approve', true],
+    ]);
+    expect(buttonLabel(chat(), 'approve')).toEqual({ key: 'bots.card.openChat' });
+    expect(buttonLabel(chat(), 'deny')).toEqual({ key: 'bots.card.cancel' });
+    expect(cardGist(chat())).toEqual({ what: 'Plan Q3', detail: 'Draft the **plan**' });
+  });
+
+  it('a background task (no mode, or an older server’s card) stays one', () => {
+    const background = req('task_start', { title: 'Tidy notes', brief: 'x' });
+    expect(chatStart(background)).toBeNull();
+    expect(chatStart(req('task_start', { title: 'T', brief: 'x', mode: 'background' }))).toBeNull();
+    expect(chatStart(approval())).toBeNull();
+    expect(cardTitle(background, 'Sage').key).toBe('bots.card.taskTitle');
+    expect(buttonLabel(background, 'approve')).toEqual({ key: 'bots.card.start' });
+  });
+
+  it('settles into "New chat · {title}" and names the chat it opened', () => {
+    const done = chat({ status: 'resolved', result: { decision: 'approve', conversation_id: 't9' } });
+    expect(settledReceipt(done)).toEqual({ key: 'bots.card.receipt.chatOpenedTitle', vars: { title: 'Plan Q3' } });
+    expect(settledReceipt(chat({ status: 'resolved' }, { title: '' }))).toEqual({
+      key: 'bots.card.receipt.chatOpened',
+    });
+    expect(openedChat(done)).toBe('t9');
+    expect(openedChat(chat())).toBeNull();
+    expect(openedChat(chat({ status: 'denied', result: { decision: 'deny' } }))).toBeNull();
+    expect(
+      openedChat(req('task_start', { title: 'T', brief: 'x' }, { status: 'resolved', result: { run_id: 'r' } })),
+    ).toBeNull();
+    expect(settledReceipt(chat({ status: 'denied' }))).toEqual({
+      key: 'bots.card.receipt.declinedTitle',
+      vars: { title: 'Plan Q3' },
+    });
   });
 });

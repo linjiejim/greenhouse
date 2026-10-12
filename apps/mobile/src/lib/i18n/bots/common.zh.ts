@@ -7,7 +7,7 @@ export const botsCommonZh: typeof botsCommonEn = {
     youSaid: '你：{text}',
     noMessages: '还没有消息',
     replying: '正在回复…',
-    deletedBot: '已删除的 Bot',
+    deletedBot: '已删除的 Agent',
     archivedSuffix: '（已归档）',
   },
 };

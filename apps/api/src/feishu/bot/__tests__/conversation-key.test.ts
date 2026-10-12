@@ -51,6 +51,10 @@ describe('filterFeishuToolIds', () => {
 
   it('禁用集合钉死 —— 增删都应该是有意识的改动', () => {
     expect([...FEISHU_DENIED_TOOL_IDS].sort()).toEqual([
+      // 对外渠道的 Agent 工具（spec 20261011-agent-first-class D48）：飞书用 `@名字` 找 Agent
+      'agent_conversation_get',
+      'agent_message',
+      'agents_list',
       // Bot 工具（Bots spec §5）：纵深防御，见 conversation-key.ts 注释
       'bot_tasks',
       'browser',

@@ -18,6 +18,8 @@ export type AppEnv = {
     agentIdentity: AgentIdentity;
     /** Set by the OAuth-only MCP credential middleware. */
     oauthClientId: string;
+    /** That client's registered name — names a conversation it opens with an Agent. */
+    oauthClientName: string;
     oauthScopes: OAuthScope[];
     /** 'oauth' = authorization-code (human consent); 'oauth-client' = client_credentials (machine). */
     oauthAuthMethod: 'oauth' | 'oauth-client';

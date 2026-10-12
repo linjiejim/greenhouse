@@ -30,6 +30,24 @@ vi.mock('@greenhouse/db', async (importOriginal) => ({
   getDb: () => mocks.db,
 }));
 
+// Pass-throughs the Bot-identity test narrows for one call.
+vi.mock('../../agent-runtime/tool-resolution.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../agent-runtime/tool-resolution.js')>();
+  return { ...actual, buildLazyServerTools: vi.fn(actual.buildLazyServerTools) };
+});
+vi.mock('../../profiles/profile.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../profiles/profile.js')>();
+  return {
+    ...actual,
+    resolveProfileAsync: vi.fn(actual.resolveProfileAsync),
+    assertPinnedProfileExecutionAccess: vi.fn(actual.assertPinnedProfileExecutionAccess),
+  };
+});
+vi.mock('../../llm/memory.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../llm/memory.js')>();
+  return { ...actual, resolveMemoryContext: vi.fn(actual.resolveMemoryContext) };
+});
+
 vi.mock('../../agent-runtime/run-agent.js', () => ({
   runAgentInSession: mocks.runAgentInSession,
   SessionTranscriptChangedError: class SessionTranscriptChangedError extends Error {},
@@ -43,6 +61,9 @@ import {
   scheduledToolBase,
 } from '../executor.js';
 import { SessionTranscriptChangedError } from '../../agent-runtime/run-agent.js';
+import { buildLazyServerTools } from '../../agent-runtime/tool-resolution.js';
+import { assertPinnedProfileExecutionAccess, getDefaultProfile, resolveProfileAsync } from '../../profiles/profile.js';
+import { resolveMemoryContext } from '../../llm/memory.js';
 
 function task(overrides: Partial<ScheduledTaskRow> = {}): ScheduledTaskRow {
   return {
@@ -182,6 +203,35 @@ describe('scheduled task executor authorization', () => {
     expect(teamTools).not.toHaveProperty('eval_message');
     expect(teamTools).not.toHaveProperty('query_eval_runs');
     expect(teamTools).not.toHaveProperty('manage_eval_dataset');
+  });
+
+  it('builds a Bot-pinned run’s tools as that Bot — the same identity as its memory index', async () => {
+    // A run pinned to `bot:<id>@<v>`: the memory index reads the Bot's private notes, so the
+    // memory tool, the knowledge identity and the connector list must carry the Bot too.
+    vi.mocked(assertPinnedProfileExecutionAccess).mockResolvedValueOnce(undefined);
+    vi.mocked(resolveProfileAsync).mockResolvedValueOnce({
+      ...getDefaultProfile(),
+      id: 'bot:bot-7@2',
+      identity: {
+        botId: 'bot-7',
+        ownerUserId: 'owner-1',
+        name: 'Ivy',
+        role: 'Researcher',
+        instructions: '',
+        avatar: '',
+      },
+      mcp_connectors: ['github'],
+    });
+    vi.mocked(resolveMemoryContext).mockResolvedValueOnce(null);
+
+    await executeTaskInSession(task({ profile_id: 'bot:bot-7@2' }), 'session-bot', {});
+
+    expect(resolveMemoryContext).toHaveBeenCalledWith('owner-1', 'team', { botId: 'bot-7' });
+    expect(buildLazyServerTools).toHaveBeenCalledWith(
+      mocks.db,
+      expect.any(Array),
+      expect.objectContaining({ botId: 'bot-7', mcpConnectors: ['github'], unattended: true }),
+    );
   });
 
   it('never lets writes or human-gated tools into the scheduled tool base', () => {

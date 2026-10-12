@@ -1,5 +1,6 @@
 /**
- * 任务详情抽屉 — 查看/编辑任务信息、管理评论。
+ * 任务详情抽屉 — 查看/编辑任务信息、管理评论；有 Agent（`bots`）时可「交给 Agent」
+ * （task-agent.tsx：任务会话由所选 Agent 回答，负责人不变）。
  */
 
 import React, { useState, useEffect } from 'react';
@@ -21,6 +22,7 @@ import {
   X,
   ArrowRight,
   Link,
+  Bot,
 } from '../../lib/icons';
 import { StatusIcon } from './task-tree';
 import { statusConfig } from './types';
@@ -28,6 +30,7 @@ import type { Task, Comment } from './types';
 import { useT } from '../../lib/i18n';
 import { Markdown } from '../markdown';
 import { TaskForm, type TaskFormValue } from './task-form';
+import { HandToAgentDialog, TaskAgentRow, useTaskAgents } from './task-agent';
 
 export function TaskDetailDrawer({
   task,
@@ -64,6 +67,8 @@ export function TaskDetailDrawer({
   const [loadingComments, setLoadingComments] = useState(false);
   const [editDeps, setEditDeps] = useState(false);
   const [depSearch, setDepSearch] = useState('');
+  const [handing, setHanding] = useState(false);
+  const taskAgents = useTaskAgents();
 
   // Load comments when task changes
   useEffect(() => {
@@ -211,6 +216,16 @@ export function TaskDetailDrawer({
               <span className="text-xs text-fg-faint">#{task.id}</span>
             </div>
             <div className="flex items-center gap-1">
+              {taskAgents.enabled && (
+                <IconButton
+                  label={t('task.agent.handTo')}
+                  size="compact"
+                  onClick={() => setHanding(true)}
+                  data-testid="task-hand-to-agent"
+                >
+                  <Bot size={14} />
+                </IconButton>
+              )}
               <IconButton label={t('task.editTask')} size="compact" onClick={() => setEditing(true)}>
                 <Edit3 size={14} />
               </IconButton>
@@ -254,6 +269,7 @@ export function TaskDetailDrawer({
                   <span className="text-fg-faint w-12">{t('common.assignee')}</span>
                   <span className="text-fg-secondary">{task.assignee_nickname || t('common.unassigned')}</span>
                 </div>
+                {taskAgents.enabled && <TaskAgentRow task={task} directory={taskAgents.directory} />}
                 {task.due_date && (
                   <div className="flex items-center gap-2 text-fg-muted">
                     <Calendar size={12} />
@@ -543,6 +559,16 @@ export function TaskDetailDrawer({
           </FormActions>
         </form>
       </Dialog>
+
+      {taskAgents.enabled && (
+        <HandToAgentDialog
+          task={task}
+          agents={taskAgents.agents}
+          open={handing}
+          onClose={() => setHanding(false)}
+          onHanded={onUpdate}
+        />
+      )}
 
       <ConfirmDialog
         open={showDeleteConfirm}

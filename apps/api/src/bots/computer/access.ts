@@ -84,9 +84,9 @@ const MAX_WRITE_BYTES = 64 * 1024 * 1024;
 
 // ─── Ensure ───────────────────────────────────────────────
 
-async function ensureRunningRow(userId: string, opts: EnsureOptions & { allowOverQuota?: boolean } = {}) {
+async function ensureRunningRow(computerId: string, opts: EnsureOptions & { allowOverQuota?: boolean } = {}) {
   const { controller } = requireComputerRuntime();
-  const running = controller.ensureRunning(userId, opts);
+  const running = controller.ensureRunning(computerId, opts);
   if (!opts.maxWaitMs) return await running;
   // It goes on without us: the next tool call (or the member's panel) finds it running.
   running.catch(() => undefined);
@@ -110,15 +110,15 @@ async function ensureRunningRow(userId: string, opts: EnsureOptions & { allowOve
   }
 }
 
-export async function ensureComputerReady(userId: string, opts: EnsureOptions = {}): Promise<void> {
-  await ensureRunningRow(userId, opts);
+export async function ensureComputerReady(computerId: string, opts: EnsureOptions = {}): Promise<void> {
+  await ensureRunningRow(computerId, opts);
 }
 
 /** Map an exec failure on a running computer (gone, stopped) to the member's row and a tool-friendly error. */
-export async function containerFailed(userId: string, err: unknown): Promise<never> {
+export async function containerFailed(computerId: string, err: unknown): Promise<never> {
   if (err instanceof ComputerDockerError && (err.code === 'not_found' || err.code === 'not_running')) {
     try {
-      await requireComputerRuntime().controller.markBroken(userId, 'exited');
+      await requireComputerRuntime().controller.markBroken(computerId, 'exited');
     } catch {
       /* runtime closed meanwhile */
     }
@@ -141,13 +141,13 @@ const browsers = new Map<string, Promise<BrowserEntry>>();
 /** Which members' DevTools this process owns (cdp-owner.ts); letting go drops the connection. */
 const ownership = createCdpOwnership({
   store: () => getDb().botComputers,
-  disconnect: (userId) => dropBrowser(userId),
+  disconnect: (computerId) => dropBrowser(computerId),
 });
 
-function dropBrowser(userId: string): void {
-  const entry = browsers.get(userId);
+function dropBrowser(computerId: string): void {
+  const entry = browsers.get(computerId);
   if (!entry) return;
-  browsers.delete(userId);
+  browsers.delete(computerId);
   void entry
     .then(async ({ browser, bridge }) => {
       await browser.close().catch(() => {});
@@ -156,7 +156,7 @@ function dropBrowser(userId: string): void {
     .catch(() => {});
 }
 
-async function connectBrowser(userId: string, container: string, startedAt: string | null): Promise<BrowserEntry> {
+async function connectBrowser(computerId: string, container: string, startedAt: string | null): Promise<BrowserEntry> {
   const { host } = requireComputerRuntime();
   const bridge = await openCdpBridge({
     spawnTunnel: () => host.openTunnel(container, 'cdp'),
@@ -167,8 +167,8 @@ async function connectBrowser(userId: string, container: string, startedAt: stri
     const browser = await chromium.connectOverCDP(bridge.url, { noDefaults: true, timeout: 30_000 });
     const entry: BrowserEntry = { browser, bridge, container, startedAt };
     browser.on('disconnected', () => {
-      void browsers.get(userId)?.then((current) => {
-        if (current === entry) browsers.delete(userId);
+      void browsers.get(computerId)?.then((current) => {
+        if (current === entry) browsers.delete(computerId);
       });
       void bridge.close();
     });
@@ -182,9 +182,9 @@ async function connectBrowser(userId: string, container: string, startedAt: stri
   }
 }
 
-export async function getBrowser(userId: string, opts: EnsureOptions = {}): Promise<Browser> {
-  const row = await ensureRunningRow(userId, opts);
-  ownership.touch(userId);
+export async function getBrowser(computerId: string, opts: EnsureOptions = {}): Promise<Browser> {
+  const row = await ensureRunningRow(computerId, opts);
+  ownership.touch(computerId);
   // Re-read the cache after every await: a concurrent caller may have replaced
   // the entry meanwhile, and the relay accepts ONE DevTools client — a second
   // connection from this process would kick the first mid-action. From the
@@ -192,7 +192,7 @@ export async function getBrowser(userId: string, opts: EnsureOptions = {}): Prom
   // block returns its promise before its first await), so exactly one waiter
   // reconnects and the others adopt its promise.
   for (;;) {
-    const cached = browsers.get(userId);
+    const cached = browsers.get(computerId);
     if (!cached) break;
     const entry = await cached.catch(() => null);
     // A restarted computer is a new container: the old connection is dead even
@@ -205,31 +205,31 @@ export async function getBrowser(userId: string, opts: EnsureOptions = {}): Prom
     ) {
       return entry.browser;
     }
-    if (browsers.get(userId) !== cached) continue; // replaced while we waited: judge that one
-    dropBrowser(userId);
+    if (browsers.get(computerId) !== cached) continue; // replaced while we waited: judge that one
+    dropBrowser(computerId);
     break;
   }
   // Claim the member's DevTools first (another slot may own it), inside the
   // shared promise so concurrent callers wait on one claim and one connect.
   // Counted as browser use, so a slow connect is never mistaken for idleness.
   const pending = (async () => {
-    ownership.begin(userId);
+    ownership.begin(computerId);
     try {
-      const claim = await ownership.claim(userId);
-      const entry = await connectBrowser(userId, row.container_name, row.last_started_at);
+      const claim = await ownership.claim(computerId);
+      const entry = await connectBrowser(computerId, row.container_name, row.last_started_at);
       // New to this process: no live process owns the contexts still there
       // (an owner that died, or one that closed its own on letting go).
       if (claim.fresh) leaseRegistryFor(entry.browser).expireForeign();
       return entry;
     } finally {
-      ownership.end(userId);
+      ownership.end(computerId);
     }
   })();
-  browsers.set(userId, pending);
+  browsers.set(computerId, pending);
   try {
     return (await pending).browser;
   } catch (err) {
-    if (browsers.get(userId) === pending) browsers.delete(userId);
+    if (browsers.get(computerId) === pending) browsers.delete(computerId);
     throw err;
   }
 }
@@ -262,19 +262,19 @@ export interface TrackedComputerAction {
   done(): void;
 }
 
-type AbortListener = (userId: string, reason: ComputerAbortReason) => void;
+type AbortListener = (computerId: string, reason: ComputerAbortReason) => void;
 const inflight = new Map<string, Set<AbortController>>();
 const abortListeners = new Set<AbortListener>();
 
-function trackAction(userId: string, signal?: AbortSignal): TrackedComputerAction {
+function trackAction(computerId: string, signal?: AbortSignal): TrackedComputerAction {
   const controller = new AbortController();
   const onAbort = () => controller.abort(signal?.reason);
   if (signal) {
     if (signal.aborted) controller.abort(signal.reason);
     else signal.addEventListener('abort', onAbort, { once: true });
   }
-  let set = inflight.get(userId);
-  if (!set) inflight.set(userId, (set = new Set()));
+  let set = inflight.get(computerId);
+  if (!set) inflight.set(computerId, (set = new Set()));
   const own = set;
   own.add(controller);
   return {
@@ -282,7 +282,7 @@ function trackAction(userId: string, signal?: AbortSignal): TrackedComputerActio
     done() {
       signal?.removeEventListener('abort', onAbort);
       own.delete(controller);
-      if (own.size === 0 && inflight.get(userId) === own) inflight.delete(userId);
+      if (own.size === 0 && inflight.get(computerId) === own) inflight.delete(computerId);
     },
   };
 }
@@ -293,10 +293,10 @@ function trackAction(userId: string, signal?: AbortSignal): TrackedComputerActio
  * wait and call `done()` in `finally`. Shell and file commands in this module
  * are tracked already.
  */
-export function trackComputerAction(userId: string, signal?: AbortSignal): TrackedComputerAction {
+export function trackComputerAction(computerId: string, signal?: AbortSignal): TrackedComputerAction {
   // Browser work: the DevTools owner never lets go while one is in flight.
-  ownership.begin(userId);
-  const action = trackAction(userId, signal);
+  ownership.begin(computerId);
+  const action = trackAction(computerId, signal);
   let done = false;
   return {
     signal: action.signal,
@@ -304,7 +304,7 @@ export function trackComputerAction(userId: string, signal?: AbortSignal): Track
       if (done) return;
       done = true;
       action.done();
-      ownership.end(userId);
+      ownership.end(computerId);
     },
   };
 }
@@ -320,13 +320,13 @@ export function onComputerActionsAborted(listener: AbortListener): () => void {
 }
 
 /** Abort every computer action this process is running for the member (take-over, purge). */
-export function abortComputerActions(userId: string, reason: ComputerAbortReason = 'takeover'): number {
-  const set = inflight.get(userId);
+export function abortComputerActions(computerId: string, reason: ComputerAbortReason = 'takeover'): number {
+  const set = inflight.get(computerId);
   const count = set?.size ?? 0;
   for (const controller of set ?? []) controller.abort(new ComputerActionsAbortedError(reason));
   for (const listener of abortListeners) {
     try {
-      listener(userId, reason);
+      listener(computerId, reason);
     } catch (err) {
       logger.warn(`[bots-computer] abort listener failed: ${toErrorMessage(err)}`);
     }
@@ -336,10 +336,10 @@ export function abortComputerActions(userId: string, reason: ComputerAbortReason
 
 // ─── Shell and files ──────────────────────────────────────
 
-export async function execInComputer(userId: string, command: string, opts: ExecOptions): Promise<ExecResult> {
-  const row = await ensureRunningRow(userId, { signal: opts.signal });
+export async function execInComputer(computerId: string, command: string, opts: ExecOptions): Promise<ExecResult> {
+  const row = await ensureRunningRow(computerId, { signal: opts.signal });
   const { host, config } = requireComputerRuntime();
-  const action = trackAction(userId, opts.signal);
+  const action = trackAction(computerId, opts.signal);
   try {
     return await runShell(host, row.container_name, command, {
       user: opts.user ?? 'agent',
@@ -351,10 +351,10 @@ export async function execInComputer(userId: string, command: string, opts: Exec
       proxy: config.proxy,
     });
   } catch (err) {
-    return await containerFailed(userId, err);
+    return await containerFailed(computerId, err);
   } finally {
     action.done();
-    void touchComputer(userId);
+    void touchComputer(computerId);
   }
 }
 
@@ -391,14 +391,14 @@ function throwIfAborted(signal: AbortSignal | undefined): void {
  * uid cannot read the browser's profile, so neither can this.
  */
 export async function readComputerFile(
-  userId: string,
+  computerId: string,
   path: string,
   opts: { maxBytes: number; signal?: AbortSignal },
 ): Promise<Buffer> {
   checkPath(path);
-  const row = await ensureRunningRow(userId, { signal: opts.signal });
+  const row = await ensureRunningRow(computerId, { signal: opts.signal });
   const { host } = requireComputerRuntime();
-  const action = trackAction(userId, opts.signal);
+  const action = trackAction(computerId, opts.signal);
   try {
     const result = await host.exec({
       container: row.container_name,
@@ -415,16 +415,16 @@ export async function readComputerFile(
     if (result.code !== 0) throw new ComputerDockerError('failed', result.stderr.trim() || `Cannot read ${path}`);
     return result.stdout;
   } catch (err) {
-    return await containerFailed(userId, err);
+    return await containerFailed(computerId, err);
   } finally {
     action.done();
-    void touchComputer(userId);
+    void touchComputer(computerId);
   }
 }
 
 /** Write a file as uid `agent` (parents created; relative paths under /home/agent). */
 export async function writeComputerFile(
-  userId: string,
+  computerId: string,
   path: string,
   content: Buffer,
   opts: { signal?: AbortSignal } = {},
@@ -433,9 +433,9 @@ export async function writeComputerFile(
   if (content.length > MAX_WRITE_BYTES) {
     throw new ComputerDockerError('too_large', `Files up to ${MAX_WRITE_BYTES / 1024 / 1024} MiB can be written`);
   }
-  const row = await ensureRunningRow(userId, { signal: opts.signal });
+  const row = await ensureRunningRow(computerId, { signal: opts.signal });
   const { host } = requireComputerRuntime();
-  const action = trackAction(userId, opts.signal);
+  const action = trackAction(computerId, opts.signal);
   try {
     const result = await host.exec({
       container: row.container_name,
@@ -451,10 +451,10 @@ export async function writeComputerFile(
     throwIfAborted(action.signal);
     if (result.code !== 0) throw new ComputerDockerError('failed', result.stderr.trim() || `Cannot write ${path}`);
   } catch (err) {
-    await containerFailed(userId, err);
+    await containerFailed(computerId, err);
   } finally {
     action.done();
-    void touchComputer(userId);
+    void touchComputer(computerId);
   }
 }
 
@@ -468,9 +468,9 @@ const DESKTOP_ENV = { DISPLAY: ':0', XAUTHORITY: '/home/browser/.Xauthority', HO
  * minimised or closed window otherwise leaves the member watching a bare
  * desktop. Never starts the computer (`stopped` when it is not running).
  */
-export async function restoreBrowserWindow(userId: string): Promise<void> {
+export async function restoreBrowserWindow(computerId: string): Promise<void> {
   const { host } = requireComputerRuntime();
-  const row = await getDb().botComputers.get(userId);
+  const row = await getDb().botComputers.get(computerId);
   if (row?.state !== 'running') throw new ComputerUnavailableError('stopped', 'The computer is not running');
   try {
     const result = await host.exec({
@@ -487,21 +487,21 @@ export async function restoreBrowserWindow(userId: string): Promise<void> {
       throw new ComputerDockerError('failed', `gh-window restore failed: ${reason}`);
     }
   } catch (err) {
-    await containerFailed(userId, err);
+    await containerFailed(computerId, err);
   }
-  void touchComputer(userId);
+  void touchComputer(computerId);
 }
 
-export async function touchComputer(userId: string): Promise<void> {
+export async function touchComputer(computerId: string): Promise<void> {
   try {
-    await getDb().botComputers.touch(userId);
+    await getDb().botComputers.touch(computerId);
   } catch (err) {
     logger.warn(`[bots-computer] touch failed: ${toErrorMessage(err)}`);
   }
 }
 
-export async function currentLease(userId: string): Promise<ComputerLease> {
-  const row = await getDb().botComputers.get(userId);
+export async function currentLease(computerId: string): Promise<ComputerLease> {
+  const row = await getDb().botComputers.get(computerId);
   return { controller: row?.lease_controller ?? 'bot', epoch: row?.lease_epoch ?? 0 };
 }
 
@@ -522,12 +522,12 @@ const MIN_SECRET_LENGTH = 4;
 const REDACTED = '••••••';
 const filledSecrets = new Map<string, Map<string, number>>();
 
-function liveSecrets(userId: string): string[] {
-  const secrets = filledSecrets.get(userId);
+function liveSecrets(computerId: string): string[] {
+  const secrets = filledSecrets.get(computerId);
   if (!secrets) return [];
   const now = Date.now();
   for (const [value, expiresAt] of secrets) if (expiresAt <= now) secrets.delete(value);
-  if (secrets.size === 0) filledSecrets.delete(userId);
+  if (secrets.size === 0) filledSecrets.delete(computerId);
   return [...secrets.keys()];
 }
 
@@ -536,11 +536,11 @@ function liveSecrets(userId: string): string[] {
  * sign-in, "type text" during take-over) so every later Bot observation of this
  * member's computer redacts it. TTL ≥ 10 minutes.
  */
-export function rememberFilledSecret(userId: string, value: string): void {
+export function rememberFilledSecret(computerId: string, value: string): void {
   const trimmed = value.trim();
   if (trimmed.length < MIN_SECRET_LENGTH) return;
-  let secrets = filledSecrets.get(userId);
-  if (!secrets) filledSecrets.set(userId, (secrets = new Map()));
+  let secrets = filledSecrets.get(computerId);
+  if (!secrets) filledSecrets.set(computerId, (secrets = new Map()));
   const expiresAt = Date.now() + SECRET_TTL_MS;
   for (const variant of new Set([trimmed, encodeURIComponent(trimmed), JSON.stringify(trimmed).slice(1, -1)])) {
     if (variant.length >= MIN_SECRET_LENGTH) secrets.set(variant, expiresAt);
@@ -548,8 +548,8 @@ export function rememberFilledSecret(userId: string, value: string): void {
 }
 
 /** Redact remembered secrets from text about to be shown to a Bot. */
-export function redactFilledSecrets(userId: string, text: string): string {
-  const secrets = liveSecrets(userId);
+export function redactFilledSecrets(computerId: string, text: string): string {
+  const secrets = liveSecrets(computerId);
   if (secrets.length === 0 || !text) return text;
   // Longest first, so a value never leaves a redacted fragment of a longer one behind.
   let out = text;
@@ -559,19 +559,19 @@ export function redactFilledSecrets(userId: string, text: string): string {
 
 // ─── Lifecycle wiring ─────────────────────────────────────
 
-computerLifecycleHooks.onStopped((userId) => {
-  dropBrowser(userId);
+computerLifecycleHooks.onStopped((computerId) => {
+  dropBrowser(computerId);
   // The container is gone: nothing to keep the other slot waiting for.
-  void ownership.release(userId);
+  void ownership.release(computerId);
 });
-computerLifecycleHooks.onPurged((userId) => {
-  abortComputerActions(userId, 'purge');
-  dropBrowser(userId);
-  void ownership.release(userId);
-  filledSecrets.delete(userId);
+computerLifecycleHooks.onPurged((computerId) => {
+  abortComputerActions(computerId, 'purge');
+  dropBrowser(computerId);
+  void ownership.release(computerId);
+  filledSecrets.delete(computerId);
 });
 computerLifecycleHooks.onShutdown(async () => {
   const entries = [...browsers.keys()];
-  for (const userId of entries) dropBrowser(userId);
+  for (const computerId of entries) dropBrowser(computerId);
   await ownership.releaseAll();
 });

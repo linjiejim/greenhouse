@@ -10,9 +10,16 @@
  *    sleeps), name, role; 发消息 (its DM — opened, or made with
  *    `POST /api/bots/conversations`; hidden when we came from that DM or Bots
  *    threads are off); an archived Bot only offers 查看对话;
- *  - a segmented control over five tabs (./profile-tabs.tsx): 概览 (instructions
- *    first) · 记忆 · 笔记 · 定时 · 对话 — `tab` picks the first one shown (the
- *    thread's "summarized · View" opens 记忆).
+ *  - a segmented control over six tabs (./profile-tabs.tsx): 概览 (instructions
+ *    first) · 记忆 · 笔记 · 定时 · 对话 · 记录 (usage + what it did) — `tab` picks
+ *    the first one shown (the thread's "summarized · View" opens 记忆).
+ *
+ * Someone else's public Agent (spec 20261011-agent-first-class §5c P4 — its
+ * owner shared it with the member) shows only what its owner shared: the plant,
+ * name, role, who shared it, what it is for, and 对话 (the member's own DM with
+ * it — made with its greeting the first time). No edit, no new chat, no tabs
+ * (its memory, notes, schedules and activity are its owner's business, not the
+ * member's); once it is no longer shared, its DM stays readable.
  *
  * Navigating to a thread / new chat always `dismissTo`s home (closing this
  * sheet, or the whole Settings modal).
@@ -23,9 +30,10 @@ import { ScrollView, Text, View } from 'react-native';
 import { Stack, useIsFocused, useRouter } from 'expo-router';
 import { archiveBot, createConversation } from '../../api/bots';
 import { useT, type TranslationKey } from '../../lib/i18n';
-import { isSproutyBot, type BotView } from '../../shared/bots';
+import { isSproutyBot, type BotView, type SharedBotView } from '../../shared/bots';
 import { makeStyles, space, typo, useTheme } from '../../theme';
 import { NativeButton } from '../../ui/button';
+import { ListCard, ListSectionFooter, ListSectionHeader } from '../../ui/list';
 import { alertError, confirmAction } from '../../ui/dialogs';
 import { EmptyState, LoadingState } from '../../ui/empty';
 import { Segmented } from '../../ui/segmented';
@@ -36,6 +44,7 @@ import { openNewChat, openThread } from '../nav';
 import { useBots } from '../store';
 import { BotAvatar } from '../ui/bot-avatar';
 import {
+  ActivityTab,
   ChatsTab,
   MemoryTab,
   NotesTab,
@@ -62,6 +71,7 @@ export function BotProfileView({
 }) {
   const t = useT();
   const bot = useBots((s) => s.byId[botId]);
+  const shared = useBots((s) => s.shared[botId]);
   const ensureBotsKnown = useBots((s) => s.ensureBotsKnown);
   const directory = useBotDirectory();
   const botsLoaded = directory.loaded;
@@ -79,6 +89,7 @@ export function BotProfileView({
     };
   }, [botsLoaded, bot, rechecked, botId, ensureBotsKnown]);
 
+  if (shared) return <SharedProfile agent={shared} from={from} presentation={presentation} />;
   if (!bot) {
     return (
       <>
@@ -96,6 +107,96 @@ export function BotProfileView({
     );
   }
   return <Profile bot={bot} from={from} presentation={presentation} tab={tab} />;
+}
+
+/** Someone else's public Agent: only what its owner shared (see the file header). */
+function SharedProfile({
+  agent,
+  from,
+  presentation,
+}: {
+  agent: SharedBotView;
+  from?: string;
+  presentation: 'sheet' | 'page';
+}) {
+  const t = useT();
+  const router = useRouter();
+  const focused = useIsFocused();
+  const { colors: c } = useTheme();
+  const styles = useStyles(c);
+  const botsOn = useBotsEnabled();
+  const [opening, setOpening] = useState(false);
+  const dm = agent.dm_session_id;
+  const description = agent.description.trim();
+
+  const talk = useCallback(async () => {
+    if (dm) {
+      openThread(router, { c: dm, title: agent.name }, 'dismissTo');
+      return;
+    }
+    setOpening(true);
+    const result = await useBots.getState().startAgentChat(agent);
+    setOpening(false);
+    if (result.ok) openThread(router, { c: result.sessionId, title: agent.name }, 'dismissTo');
+    else {
+      alertError(result.reason === 'gone' ? t('bots.agents.gone', { name: agent.name }) : t('bots.manage.openFailed'));
+    }
+  }, [dm, router, agent, t]);
+
+  return (
+    <>
+      <Stack.Screen options={{ title: presentation === 'page' ? agent.name : '' }} />
+      <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerStyle={styles.content}>
+        <View style={styles.hero}>
+          <BotAvatar
+            bot={agent}
+            size={80}
+            state={agent.available ? undefined : 'sleep'}
+            animate={focused && agent.available}
+          />
+          <Text accessibilityRole="header" style={styles.name}>
+            {agent.name}
+          </Text>
+          {agent.role ? <Text style={styles.role}>{agent.role}</Text> : null}
+          <Text style={styles.role}>{t('bots.profile.sharedBy', { name: agent.owner.nickname })}</Text>
+        </View>
+
+        {botsOn && (agent.available ? !dm || dm !== from : !!dm && dm !== from) ? (
+          <View style={styles.actions}>
+            {agent.available ? (
+              <NativeButton
+                label={dm ? t('bots.manage.message') : t('bots.profile.talk')}
+                icon="msg"
+                variant="prominent"
+                loading={opening}
+                onPress={() => void talk()}
+              />
+            ) : (
+              <NativeButton label={t('bots.manage.viewChat')} icon="msg" onPress={() => void talk()} />
+            )}
+          </View>
+        ) : null}
+
+        <View style={styles.sharedBody}>
+          {description ? (
+            <>
+              <ListSectionHeader title={t('bots.profile.sharedAbout')} />
+              <ListCard style={styles.about}>
+                <Text style={styles.aboutText}>{description}</Text>
+              </ListCard>
+            </>
+          ) : null}
+          <ListSectionFooter
+            text={
+              agent.available
+                ? t('bots.profile.sharedFooter', { owner: agent.owner.nickname })
+                : t('bots.profile.sharedUnavailable')
+            }
+          />
+        </View>
+      </ScrollView>
+    </>
+  );
 }
 
 function Profile({
@@ -234,8 +335,10 @@ function Profile({
           <NotesTab bot={bot} />
         ) : tab === 'schedule' ? (
           <ScheduleTab bot={bot} main={main} />
-        ) : (
+        ) : tab === 'chats' ? (
           <ChatsTab bot={bot} main={main} />
+        ) : (
+          <ActivityTab bot={bot} />
         )}
       </ScrollView>
     </>
@@ -248,6 +351,7 @@ const TAB_LABEL = {
   notes: 'bots.profile.tabNotes',
   schedule: 'bots.profile.tabSchedule',
   chats: 'bots.profile.tabChats',
+  activity: 'bots.profile.tabActivity',
 } as const satisfies Record<ProfileTab, TranslationKey>;
 
 const useStyles = makeStyles((c) => ({
@@ -257,4 +361,7 @@ const useStyles = makeStyles((c) => ({
   role: { ...typo.subheadline, color: c.secondaryLabel, textAlign: 'center' },
   actions: { alignItems: 'center', paddingHorizontal: space.margin, paddingTop: space.lg },
   tabs: { marginHorizontal: space.margin, marginTop: space.xl, marginBottom: space.lg },
+  sharedBody: { marginTop: space.xl },
+  about: { paddingHorizontal: space.lg, paddingVertical: space.md },
+  aboutText: { ...typo.body, color: c.label },
 }));

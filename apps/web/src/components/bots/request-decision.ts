@@ -142,6 +142,10 @@ export function settledLabelKey(request: BotRequestView): TranslationKey {
   }
   if (request.kind === 'takeover') return 'bots.requests.handedBack';
   if (request.kind === 'bot_create') return 'bots.requests.created';
-  if (request.kind === 'task_start') return 'bots.requests.started';
+  if (request.kind === 'task_start') {
+    // A `chat`-mode card opened a separate chat instead of starting a background task.
+    const mode = (request.payload as { mode?: unknown } | null)?.mode;
+    return mode === 'chat' ? 'bots.requests.chatStarted' : 'bots.requests.started';
+  }
   return 'bots.requests.done';
 }

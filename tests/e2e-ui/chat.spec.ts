@@ -3,11 +3,14 @@ import { test, expect } from './fixtures';
 /**
  * Chat flow with a MOCKED LLM — deterministic, no real model call, no cost.
  *
- * Internal chat path: ChatPage → SessionManager.sendMessage → streamChat (POST /api/chat,
- * NDJSON). On completion ChatPage reloads the session (GET /api/sessions/:id) and renders
- * strictly the server's messages (reconcileMessages). So two routes are stubbed:
+ * With Agents on (the e2e user is a super), a NEW chat starts on the Agents engine — that path is
+ * covered in bots.spec.ts. A chat that already exists keeps the chat engine (spec
+ * 20261011-agent-first-class D27), and that is what this spec drives:
+ * ChatPage → SessionManager.sendMessage → streamChat (POST /api/chat, NDJSON). On completion
+ * ChatPage reloads the session (GET /api/sessions/:id) and renders strictly the server's messages
+ * (reconcileMessages). So two routes are stubbed:
  *   - POST /api/chat        → the streamed "LLM" answer (text-delta… + finish)
- *   - GET  /api/sessions/:id → the post-completion reload echoing user + assistant
+ *   - GET  /api/sessions/:id → the session, then the post-completion reload echoing user + assistant
  * POST /api/sessions stays real (cheap); the created session is deleted in cleanup.
  */
 
@@ -15,12 +18,15 @@ import { test, expect } from './fixtures';
 const ASSISTANT_REPLY = 'pong from the mocked LLM ✅';
 const CHUNKS = ['pong from ', 'the mocked LLM ✅'];
 
-test('chat: sends a message and renders the mocked assistant reply', async ({ page, api }) => {
+test('chat: an existing chat sends a message and renders the mocked assistant reply', async ({ page, api }) => {
+  const created = await api.post('/api/sessions', { data: { title: 'e2e chat' } });
+  expect(created.ok(), `POST /api/sessions → ${created.status()}`).toBe(true);
+  const { id: sessionId } = (await created.json()) as { id: string };
   let userText = '';
-  let sessionId: string | null = null;
 
   await page.route('**/api/chat', async (route) => {
-    const body = route.request().postDataJSON() as { messages?: Array<{ content?: string }> };
+    const body = route.request().postDataJSON() as { session_id?: string; messages?: Array<{ content?: string }> };
+    expect(body.session_id).toBe(sessionId);
     userText = body?.messages?.[0]?.content ?? '';
     const ndjson =
       CHUNKS.map((text) => JSON.stringify({ type: 'text-delta', text })).join('\n') +
@@ -30,10 +36,9 @@ test('chat: sends a message and renders the mocked assistant reply', async ({ pa
     await route.fulfill({ status: 200, headers: { 'content-type': 'application/x-ndjson' }, body: ndjson });
   });
 
-  // Post-completion reload — return the persisted-looking user + assistant turn.
+  // The session (empty until the turn is sent), then the persisted-looking user + assistant turn.
   await page.route(/\/api\/sessions\/[^/?]+(\?.*)?$/, async (route) => {
     if (route.request().method() !== 'GET') return route.fallback();
-    sessionId = new URL(route.request().url()).pathname.split('/').pop() ?? null;
     const msg = (role: string, content: string, seq: number) => ({
       id: `m-${seq}`,
       session_id: sessionId,
@@ -62,10 +67,11 @@ test('chat: sends a message and renders the mocked assistant reply', async ({ pa
           title: 'e2e chat',
           rating: null,
           comment: null,
-          profile_id: 'default',
+          profile_id: 'sprouty',
           status: 'active',
+          channel: 'web',
         },
-        messages: [msg('user', userText || 'ping', 1), msg('assistant', ASSISTANT_REPLY, 2)],
+        messages: userText ? [msg('user', userText, 1), msg('assistant', ASSISTANT_REPLY, 2)] : [],
         usage: { totalInputTokens: 1, totalOutputTokens: 1, totalCachedTokens: 0, totalReasoningTokens: 0 },
         share_info: null,
       }),
@@ -73,7 +79,7 @@ test('chat: sends a message and renders the mocked assistant reply', async ({ pa
   });
 
   try {
-    await page.goto('/#/chat');
+    await page.goto(`/#/chat?session=${sessionId}`);
     await page.getByTestId('chat-input').fill('ping from playwright');
     // Desktop composer sends on Enter (the round send button is mobile-only).
     await page.getByTestId('chat-input').press('Enter');
@@ -81,8 +87,9 @@ test('chat: sends a message and renders the mocked assistant reply', async ({ pa
     // User bubble shows immediately; assistant bubble shows the streamed + reloaded mock reply.
     await expect(page.getByText('ping from playwright')).toBeVisible();
     await expect(page.getByText(ASSISTANT_REPLY)).toBeVisible();
+    // Still the chat engine's page — an existing chat is not moved.
+    await expect(page).toHaveURL(new RegExp(`#/chat\\?session=${sessionId}$`));
   } finally {
-    // POST /api/sessions was real — delete the empty session it created.
-    if (sessionId) await api.delete(`/api/sessions/${sessionId}`).catch(() => {});
+    await api.delete(`/api/sessions/${sessionId}`).catch(() => {});
   }
 });

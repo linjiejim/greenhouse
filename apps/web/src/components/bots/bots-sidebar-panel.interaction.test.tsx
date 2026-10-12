@@ -1,9 +1,10 @@
 /**
  * @vitest-environment happy-dom
  *
- * The Bots sidebar is one conversation list: Sprouty's DM pinned first, a search over titles,
- * Bot names and the last message, and one "new Bot" action in its toolbar. Retired group chats
- * and archived Bots' DMs sit under "Archived".
+ * The Agent threads of the conversations sidebar: Sprouty's DM — the main thread — under
+ * "Main thread", the other Agents' DMs by activity under "Agents", retired group chats and
+ * archived Agents' DMs under "Archived"; the sidebar's one search box filters titles, Agent
+ * names and the last message (spec 20261011-agent-first-class §3.1).
  *
  * Sidebar conversation rows: a retired group row's overlapped avatar chips are separated
  * by a ring painted in the row's own colour, so the ring has to follow the row
@@ -14,10 +15,11 @@
 import { act, createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { BotConversationSummary, BotView } from '@greenhouse/types/bots';
+import type { BotConversationSummary, BotView, SharedBotView } from '@greenhouse/types/bots';
 import { I18nProvider } from '../../lib/i18n';
+import { useAuthStore } from '../../stores';
 import { useBotsStore } from './bots-store';
-import { BotsSidebarPanel } from './bots-sidebar-panel';
+import { BotsThreadsSection } from './bots-sidebar-panel';
 
 const api = vi.hoisted(() => ({ bootstrapBots: vi.fn() }));
 vi.mock('../../lib/api/bots', async (importOriginal) => ({
@@ -112,10 +114,12 @@ afterEach(() => {
   window.location.hash = '';
 });
 
-function mount(currentHash: string) {
+function mount(currentHash: string, query = '') {
   window.location.hash = currentHash;
   act(() =>
-    root.render(createElement(I18nProvider, { initialLocale: 'en', children: createElement(BotsSidebarPanel) })),
+    root.render(
+      createElement(I18nProvider, { initialLocale: 'en', children: createElement(BotsThreadsSection, { query }) }),
+    ),
   );
 }
 
@@ -127,7 +131,7 @@ const chipRings = (sessionId: string) =>
     chip.className.split(/\s+/).filter((name) => name.includes('ring-') && name !== 'ring-2'),
   );
 
-describe('<BotsSidebarPanel/> retired group rows', () => {
+describe('<BotsThreadsSection/> retired group rows', () => {
   it("paints chip rings the row's resting colour, and its hover fill under the pointer", () => {
     mount('#/bots?c=dm-bot_sage');
     expect(row(GROUP).className.split(/\s+/)).toContain('group');
@@ -146,8 +150,8 @@ describe('<BotsSidebarPanel/> retired group rows', () => {
   });
 });
 
-describe('<BotsSidebarPanel/> DM rows', () => {
-  it("shows an archived Bot's DM asleep and a live one at rest, both still", () => {
+describe('<BotsThreadsSection/> DM rows', () => {
+  it("shows an archived Agent's DM asleep and a live one at rest, both still", () => {
     mount('#/bots');
     const svg = (sessionId: string) => row(sessionId).querySelector('svg')!.getAttribute('class') ?? '';
     expect(svg('dm-bot_moss')).toContain('pa-s-sleep');
@@ -156,20 +160,30 @@ describe('<BotsSidebarPanel/> DM rows', () => {
   });
 });
 
-describe('<BotsSidebarPanel/> list', () => {
+describe('<BotsThreadsSection/> list', () => {
   const order = () =>
     [...host.querySelectorAll<HTMLElement>('[data-testid="bots-conversation-row"]')].map((el) => el.dataset.sessionId);
 
-  it("is one list: Sprouty's DM pinned first, then by activity, archived last — no avatar strip", () => {
+  it("is one list: the main thread (Sprouty's DM) first, then by activity, archived last", () => {
     mount('#/bots');
     expect(order()).toEqual(['dm-bot_sprouty', 'dm-bot_sage', GROUP, 'dm-bot_moss']);
     expect(row('dm-bot_sprouty').dataset.pinned).toBe('true');
     expect(row(GROUP).dataset.pinned).toBeUndefined();
-    expect(host.textContent).not.toContain('Your Bots');
     expect(api.bootstrapBots).not.toHaveBeenCalled(); // Sprouty is here already
   });
 
-  it('files a retired group chat under Archived, dimmed, even with every Bot in it active', () => {
+  it('labels the groups: Main thread above Sprouty, People (always: it starts one), Agents above the other live threads', () => {
+    mount('#/bots');
+    const labels = [...host.querySelectorAll<HTMLElement>('[data-testid^="sidebar-section-"]')];
+    expect(labels.map((el) => el.textContent)).toEqual(['Main thread', 'People', 'Agents']);
+    const [main, , agents] = labels;
+    const follows = (label: HTMLElement, sessionId: string) =>
+      !!(label.compareDocumentPosition(row(sessionId)) & Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(follows(main, 'dm-bot_sprouty') && !follows(agents, 'dm-bot_sprouty')).toBe(true);
+    expect(follows(agents, 'dm-bot_sage')).toBe(true);
+  });
+
+  it('files a retired group chat under Archived, dimmed, even with every Agent in it active', () => {
     mount('#/bots');
     const label = [...host.querySelectorAll('nav span')].find((el) => el.textContent === 'Archived')!;
     expect(label).toBeDefined();
@@ -182,31 +196,28 @@ describe('<BotsSidebarPanel/> list', () => {
     expect(row('dm-bot_sage').className).not.toContain('opacity-70');
   });
 
-  it('searches titles, Bot names and the last message, and says when nothing matches', async () => {
-    mount('#/bots');
-    const input = host.querySelector<HTMLInputElement>('input[placeholder="Search conversations…"]')!;
-    const type = (value: string) =>
-      act(() => {
-        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, value);
-        input.dispatchEvent(new Event('input', { bubbles: true }));
-      });
-    type('draft');
-    expect(order()).toEqual([GROUP]); // last message
-    type('SAGE');
-    expect(order()).toEqual(['dm-bot_sage', GROUP]); // a member's name, case-insensitive
-    type('sprout');
-    expect(order()).toEqual(['dm-bot_sprouty']);
-    type('nobody');
-    expect(order()).toEqual([]);
-    expect(host.querySelector('[data-testid="bots-sidebar-empty"]')!.textContent).toBe('No conversations match');
+  it('never lists a separate chat as a thread — it belongs with the chats', () => {
+    useBotsStore.setState({
+      conversations: [
+        ...useBotsStore.getState().conversations,
+        { ...conversation('task-1', 'direct', [sage.id]), kind: 'task', title: 'Vendor shortlist' },
+      ],
+    });
+    mount('#/bots?c=task-1');
+    expect(order()).toEqual(['dm-bot_sprouty', 'dm-bot_sage', GROUP, 'dm-bot_moss']);
   });
 
-  it('opens the new-Bot dialog from the toolbar — the only toolbar action, no "new group"', () => {
-    mount('#/bots');
-    act(() => host.querySelector<HTMLButtonElement>('button[aria-label="New"]')!.click());
-    expect(useBotsStore.getState().dialog).toEqual({ kind: 'new-bot' });
-    expect(host.querySelector('button[aria-label="New group"]')).toBeNull();
-    expect(host.querySelector('button[aria-label="Bots directory"]')).toBeNull();
+  it("filters by the sidebar's search: titles, Agent names and the last message", () => {
+    mount('#/bots', 'draft');
+    expect(order()).toEqual([GROUP]); // last message
+    mount('#/bots', 'SAGE');
+    expect(order()).toEqual(['dm-bot_sage', GROUP]); // a member's name, case-insensitive
+    mount('#/bots', 'sprout');
+    expect(order()).toEqual(['dm-bot_sprouty']);
+    mount('#/bots', 'nobody');
+    // Nothing matches: the threads step aside (no empty labels) and the chats below speak for the list.
+    expect(order()).toEqual([]);
+    expect(host.querySelectorAll('[data-testid^="sidebar-section-"]')).toHaveLength(0);
   });
 
   it('makes sure a member whose Bots predate Sprouty gets it', async () => {
@@ -224,5 +235,189 @@ describe('<BotsSidebarPanel/> list', () => {
     mount('#/bots');
     await act(async () => {});
     expect(api.bootstrapBots).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("<BotsThreadsSection/> other members' public Agents (P4)", () => {
+  const oracle: SharedBotView = {
+    id: 'bot_oracle',
+    name: 'Oracle',
+    role: 'Analyst',
+    description: '',
+    avatar: { color: 'ocean' },
+    template_key: null,
+    owner: { id: 'u2', nickname: 'Alice' },
+    dm_session_id: 'dm-bot_oracle',
+    available: true,
+    computer: false,
+  };
+  const order = () =>
+    [...host.querySelectorAll<HTMLElement>('[data-testid="bots-conversation-row"]')].map((el) => el.dataset.sessionId);
+
+  beforeEach(() => {
+    useBotsStore.setState({
+      sharedBots: [oracle],
+      conversations: [
+        conversation('dm-bot_oracle', 'direct', [oracle.id], { last_activity_at: '2026-10-06T00:00:00.000Z' }),
+        ...useBotsStore.getState().conversations,
+      ],
+    });
+  });
+
+  it("lists its DM with the member's Agents, by name, saying whose it is", () => {
+    mount('#/bots');
+    expect(order()).toEqual(['dm-bot_sprouty', 'dm-bot_oracle', 'dm-bot_sage', GROUP, 'dm-bot_moss']);
+    const oracleRow = row('dm-bot_oracle');
+    expect(oracleRow.textContent).toContain('Oracle');
+    expect(oracleRow.querySelector('[data-testid="bots-conversation-row-owner"]')?.textContent).toBe('by Alice');
+    expect(oracleRow.className).not.toContain('opacity-70');
+    // Its publisher's name finds it too.
+    mount('#/bots', 'alice');
+    expect(order()).toEqual(['dm-bot_oracle']);
+  });
+
+  it('files it under Archived, asleep, once it is no longer offered', () => {
+    useBotsStore.setState({ sharedBots: [{ ...oracle, available: false }] });
+    mount('#/bots');
+    // Archived keeps the list's activity order: Oracle's DM is the most recent record.
+    expect(order()).toEqual(['dm-bot_sprouty', 'dm-bot_sage', 'dm-bot_oracle', GROUP, 'dm-bot_moss']);
+    expect(row('dm-bot_oracle').className).toContain('opacity-70');
+    expect(row('dm-bot_oracle').querySelector('svg')!.getAttribute('class')).toContain('pa-s-sleep');
+  });
+});
+
+describe('<BotsThreadsSection/> conversations with people (P5)', () => {
+  const ME = 'u1';
+  const privateChat = conversation('room-ana', 'direct', [], {
+    kind: 'room',
+    title: null,
+    owner_bot_id: null,
+    lead_bot_id: null,
+    members: [],
+    participants: [
+      { user_id: ME, nickname: 'Mia', role: 'owner', joined_at: '' },
+      { user_id: 'u2', nickname: 'Ana', role: 'member', joined_at: '' },
+    ],
+    last_message: { role: 'user', bot_id: null, author_user_id: 'u2', preview: 'lunch?', created_at: '' },
+    attention: 'unread',
+    last_activity_at: '2026-10-07T00:00:00.000Z',
+  });
+  const launch = conversation('room-launch', 'direct', [], {
+    kind: 'room',
+    title: 'Launch plan',
+    owner_bot_id: null,
+    lead_bot_id: null,
+    members: [
+      {
+        bot_id: sage.id,
+        role: 'member',
+        position: 0,
+        owner_user_id: ME,
+        brought_by_user_id: ME,
+        addressable: true,
+        profile: { name: sage.name, role: '', avatar: {}, template_key: null },
+      },
+      {
+        bot_id: 'bot_ben',
+        role: 'member',
+        position: 1,
+        owner_user_id: 'u3',
+        brought_by_user_id: 'u3',
+        addressable: false,
+        profile: { name: 'Scout', role: 'Researcher', avatar: {}, template_key: null },
+      },
+    ],
+    participants: [
+      { user_id: ME, nickname: 'Mia', role: 'owner', joined_at: '' },
+      { user_id: 'u2', nickname: 'Ana', role: 'member', joined_at: '' },
+      { user_id: 'u3', nickname: 'Ben', role: 'member', joined_at: '' },
+    ],
+    last_message: { role: 'assistant', bot_id: 'bot_ben', author_user_id: null, preview: 'Shipped', created_at: '' },
+    last_activity_at: '2026-10-06T12:00:00.000Z',
+  });
+  const order = () =>
+    [...host.querySelectorAll<HTMLElement>('[data-testid="bots-conversation-row"]')].map((el) => el.dataset.sessionId);
+
+  beforeEach(() => {
+    useAuthStore.setState({ currentUser: { id: ME, role: 'team', nickname: 'Mia' } });
+    useBotsStore.setState({
+      conversations: [privateChat, launch, ...useBotsStore.getState().conversations],
+    });
+  });
+  afterEach(() => useAuthStore.setState({ currentUser: null }));
+
+  it('lists them under People, after the main thread and before the Agents, by activity', () => {
+    mount('#/bots');
+    expect(order()).toEqual(['dm-bot_sprouty', 'room-ana', 'room-launch', 'dm-bot_sage', GROUP, 'dm-bot_moss']);
+    const people = host.querySelector<HTMLElement>('[data-testid="sidebar-section-people"]')!;
+    const agents = host.querySelector<HTMLElement>('[data-testid="sidebar-section-agents"]')!;
+    for (const id of ['room-ana', 'room-launch']) {
+      expect(people.compareDocumentPosition(row(id)) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      expect(agents.compareDocumentPosition(row(id)) & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy();
+    }
+  });
+
+  it('names a private chat after the other person, with their initial, and says who spoke last', () => {
+    mount('#/bots');
+    const ana = row('room-ana');
+    expect(ana.dataset.kind).toBe('room');
+    expect(ana.textContent).toContain('Ana');
+    expect(ana.textContent).toContain('Ana: lunch?');
+    expect(ana.querySelector('[data-testid="person-avatar"]')?.textContent).toBe('A');
+    // Someone else's message is news: unread.
+    expect(ana.querySelector('span[title="Ana"]')?.className).toContain('font-semibold');
+  });
+
+  it("names a titled room by its title, and another person's Agent as the room describes it", () => {
+    mount('#/bots');
+    const room = row('room-launch');
+    expect(room.textContent).toContain('Launch plan');
+    expect(room.textContent).toContain('Scout: Shipped');
+    // The other two people, overlapped — not a plant.
+    expect(room.querySelectorAll('[data-testid="person-avatar"]')).toHaveLength(2);
+    expect(room.querySelector('[data-testid="plant-avatar-stack"]')).toBeNull();
+  });
+
+  it("falls back to the owner's name for an Agent an older server does not describe", () => {
+    useBotsStore.setState({
+      conversations: [
+        { ...launch, members: launch.members.map((member) => ({ ...member, profile: undefined })) },
+        ...useBotsStore.getState().conversations.filter((c) => c.session_id !== launch.session_id),
+      ],
+    });
+    mount('#/bots');
+    expect(row('room-launch').textContent).toContain("Ben's Agent: Shipped");
+  });
+
+  it('says "You" for the member\'s own last message', () => {
+    useBotsStore.setState({
+      conversations: [
+        { ...privateChat, last_message: { ...privateChat.last_message!, author_user_id: ME, preview: 'on my way' } },
+      ],
+    });
+    mount('#/bots');
+    expect(row('room-ana').textContent).toContain('You: on my way');
+  });
+
+  it("searches people's names too, and the names of other people's Agents", () => {
+    mount('#/bots', 'ben');
+    expect(order()).toEqual(['room-launch']);
+    mount('#/bots', 'scout');
+    expect(order()).toEqual(['room-launch']);
+  });
+
+  it('ends the group with "New conversation with people…", which opens its dialog', () => {
+    mount('#/bots');
+    const entry = host.querySelector<HTMLButtonElement>('[data-testid="sidebar-new-room"]')!;
+    expect(entry.textContent).toContain('New conversation with people');
+    act(() => entry.click());
+    expect(useBotsStore.getState().dialog).toEqual({ kind: 'new-room' });
+  });
+
+  it('keeps the entry when the member has no conversation with people yet', () => {
+    useBotsStore.setState({ conversations: useBotsStore.getState().conversations.filter((c) => c.kind !== 'room') });
+    mount('#/bots');
+    expect(host.querySelector('[data-testid="sidebar-section-people"]')).not.toBeNull();
+    expect(host.querySelector('[data-testid="sidebar-new-room"]')).not.toBeNull();
   });
 });

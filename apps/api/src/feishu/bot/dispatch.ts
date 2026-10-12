@@ -16,14 +16,16 @@ import { toErrorMessage } from '@greenhouse/utils/error';
 import { buildSystemPrompt, selectTools, type ToolRegistry } from '../../agent.js';
 import { resolveProfileAsync } from '../../profiles/profile.js';
 import { resolveEffectiveTools } from '../../agent-runtime/tool-resolution.js';
-import { buildLazyServerTools, LAZY_TOOL_IDS } from '../../agent-runtime/tool-resolution.js';
+import { buildLazyServerTools, LAZY_TOOL_IDS, profileToolIdentity } from '../../agent-runtime/tool-resolution.js';
 import { runAgentInSession, type AgentGenerate, type HeadlessMessage } from '../../agent-runtime/run-agent.js';
+import { runInAgentScope } from '../../platform/agent-scope.js';
 import { resolveMemoryContext } from '../../llm/memory.js';
 import { sanitizeChatMessagesForPrompt, sanitizeUserMessageForPrompt } from '../../chat/user-message.js';
 import { flattenForDelivery } from '../../notifications/render.js';
 import { FEISHU_PROVIDER } from '../../routes/feishu-oauth.js';
 import { renderAskUserFromEvidence } from './ask-user.js';
 import { feishuConversationKey, filterFeishuToolIds, groupVisibilityFooter } from './conversation-key.js';
+import { answerThroughAgent, renderAgentList, routeFeishuMessage } from './agent-route.js';
 import type { FeishuThreadRefs } from './conversation-key.js';
 
 /** 一条飞书消息里我们关心的全部内容。 */
@@ -136,6 +138,39 @@ export async function dispatchFeishuMessage(message: FeishuIncomingMessage, deps
   // ── 2. 会话映射（spec D1）────────────────────────────────
   const key = feishuConversationKey(message);
   let mapping = await db.feishuBot.findConversation(key);
+
+  // ── 2a. 指名 Agent：`/agents`、`@名字`，或这串话题已经交给了某个 Agent
+  //        （spec 20261011-agent-first-class D54，agent-route.ts）──
+  const route = await routeFeishuMessage(db, owner, mapping, message.text);
+  if (route.kind === 'list') return { kind: 'markdown', content: await renderAgentList(db, owner.id) };
+  if (route.kind === 'private') {
+    return {
+      kind: 'guidance',
+      content: '**这串话题是别人和他的 Agent 的私密对话**\n\n请新开一个话题 @我，或在开头写 `@名字` 找你自己的 Agent。',
+    };
+  }
+  if (route.kind === 'address' || route.kind === 'continue') {
+    const text = route.kind === 'address' ? route.text : message.text;
+    let content = await answerThroughAgent({
+      db,
+      owner,
+      route,
+      text: sanitizeUserMessageForPrompt(text),
+      point: async (sessionId) => {
+        await db.feishuBot.pointConversation({
+          feishu_key: key,
+          session_id: sessionId,
+          user_id: owner.id,
+          chat_id: message.chat_id,
+          chat_type: message.chat_type,
+        });
+      },
+    });
+    if (message.chat_type === 'group') content += groupVisibilityFooter(owner.nickname || owner.email);
+    if (mapping && route.kind === 'continue') await db.feishuBot.touchConversation(key);
+    return { kind: 'markdown', content };
+  }
+
   if (!mapping) {
     const session = await db.sessions.create(
       message.text.slice(0, 40) || '飞书对话',
@@ -181,6 +216,8 @@ export async function dispatchFeishuMessage(message: FeishuIncomingMessage, deps
       userRole: owner.role,
       sessionId,
       profileId: profile.id,
+      // 与下面的记忆索引同一个身份：Sprouty 的私有记忆、它的资料夹、它的连接器清单。
+      ...profileToolIdentity(profile),
       toolRegistry: deps.toolRegistry,
       // 对面有真人在等回答——这不是无人值守（spec D6）。
       unattended: false,
@@ -198,20 +235,24 @@ export async function dispatchFeishuMessage(message: FeishuIncomingMessage, deps
 
   // ── 5. 跑既有 runner（带上这串对话的历史）────────────────
   const priorMessages = await loadPriorMessages(db, sessionId, prompt, profile.model.id);
-  const result = await runAgentInSession({
-    db,
-    sessionId,
-    system: systemPrompt,
-    prompt,
-    priorMessages,
-    modelConfig: profile.model,
-    tools,
-    maxSteps: profile.max_steps ?? 12,
-    ...(profile.tool_choice ? { toolChoice: profile.tool_choice } : {}),
-    usageContext: { profileId: profile.id, userId: owner.id, caller: 'feishu-bot' },
-    ...(deps.generate ? { generate: deps.generate } : {}),
-    ...(deps.onStep ? { onStep: deps.onStep } : {}),
-  });
+  // Run as the Agent this profile is (platform audit and usage name it).
+  const agentBotId = profile.identity?.botId ?? null;
+  const execute = () =>
+    runAgentInSession({
+      db,
+      sessionId,
+      system: systemPrompt,
+      prompt,
+      priorMessages,
+      modelConfig: profile.model,
+      tools,
+      maxSteps: profile.max_steps ?? 12,
+      ...(profile.tool_choice ? { toolChoice: profile.tool_choice } : {}),
+      usageContext: { profileId: profile.id, userId: owner.id, caller: 'feishu-bot' },
+      ...(deps.generate ? { generate: deps.generate } : {}),
+      ...(deps.onStep ? { onStep: deps.onStep } : {}),
+    });
+  const result = agentBotId ? await runInAgentScope({ botId: agentBotId, sessionId }, execute) : await execute();
 
   // ── 6. 呈现：富块围栏拍平成飞书能渲染的 markdown（spec D10）──
   let content = flattenForDelivery(result.text ?? '').trim();

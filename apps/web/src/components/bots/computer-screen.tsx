@@ -1,6 +1,6 @@
 /**
- * Live screen of the member's computer — a noVNC RFB client over
- * `WS /api/ws/computer?token=…`.
+ * Live screen of an Agent's computer (`bot`; null = the main Agent's) — a noVNC
+ * RFB client over `WS /api/ws/computer?token=…` (the ticket names the computer).
  *
  * Connection lifecycle:
  * - Every (re)connect fetches a fresh one-time view token (60 s, single use),
@@ -21,7 +21,7 @@ import React, { forwardRef, useEffect, useImperativeHandle, useRef, useState } f
 import { Button, Spinner } from '../ui';
 import { LogIn, WifiOff } from '../../lib/icons';
 import { useT } from '../../lib/i18n';
-import { computerViewerUrl, createComputerViewToken } from '../../lib/api/bots';
+import { computerViewerUrl, createComputerViewToken, type ComputerBot } from '../../lib/api/bots';
 import { loadRfb } from '../../lib/novnc/loader';
 import { RFB_KEY_CODES, RFB_KEYSYMS, type RfbClient, type RfbHelperKey } from '../../lib/novnc/types';
 
@@ -40,6 +40,8 @@ export interface ComputerScreenHandle {
 }
 
 interface ComputerScreenProps {
+  /** Whose computer: an Agent's id, null (default) = the main Agent's. */
+  bot?: ComputerBot;
   viewOnly: boolean;
   /** Offered in the "view only" hint after a click on the screen. */
   onTakeOver?: () => void;
@@ -79,7 +81,7 @@ export function useBackgrounded(afterMs = HIDDEN_DISCONNECT_MS): boolean {
 }
 
 export const ComputerScreen = forwardRef<ComputerScreenHandle, ComputerScreenProps>(function ComputerScreen(
-  { viewOnly, onTakeOver, onDisconnected, className = '' },
+  { bot = null, viewOnly, onTakeOver, onDisconnected, className = '' },
   ref,
 ) {
   const t = useT();
@@ -129,7 +131,7 @@ export const ComputerScreen = forwardRef<ComputerScreenHandle, ComputerScreenPro
 
     const connect = async () => {
       try {
-        const [{ token }, RFB] = await Promise.all([createComputerViewToken(), loadRfb()]);
+        const [{ token }, RFB] = await Promise.all([createComputerViewToken(bot), loadRfb()]);
         const target = targetRef.current;
         if (cancelled || !target) return;
         const rfb = new RFB(target, computerViewerUrl(token), { shared: true });
@@ -171,7 +173,7 @@ export const ComputerScreen = forwardRef<ComputerScreenHandle, ComputerScreenPro
       client?.disconnect();
       rfbRef.current = null;
     };
-  }, [backgrounded, generation]);
+  }, [backgrounded, generation, bot]);
 
   // Follow the lease without reconnecting: the server re-checks it per message.
   useEffect(() => {

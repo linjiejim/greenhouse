@@ -138,7 +138,7 @@ describe('ComputerProcesses', () => {
     api.listComputerProcesses.mockResolvedValue([BUILD, FETCH]);
     await renderProcesses();
     await click(row('build')?.querySelector('button'));
-    expect(api.fetchComputerProcessLog).toHaveBeenCalledWith(BUILD.id);
+    expect(api.fetchComputerProcessLog).toHaveBeenCalledWith(BUILD.id, undefined, null);
     expect(document.querySelector('[data-testid="computer-process-log-text"]')?.textContent).toBe('step 1\n');
     expect(document.body.textContent).toContain('Refreshing every 3 seconds');
 
@@ -196,7 +196,7 @@ describe('ComputerProcesses', () => {
 
     api.listComputerProcesses.mockResolvedValue([{ ...BUILD, status: 'exited', exit_code: 143 }]);
     await click(document.querySelector('[data-testid="confirm-dialog-confirm"]'));
-    expect(api.stopComputerProcess).toHaveBeenCalledWith(BUILD.id);
+    expect(api.stopComputerProcess).toHaveBeenCalledWith(BUILD.id, null);
     expect(document.body.textContent).toContain('Stopped build.');
     expect(row('build')?.textContent).toContain('Exit code 143');
   });
@@ -209,7 +209,7 @@ describe('ComputerProcesses', () => {
 
     await click(document.querySelector('[data-testid="computer-process-log"] [data-testid="computer-process-stop"]'));
     await click(document.querySelector('[data-testid="confirm-dialog-confirm"]'));
-    expect(api.stopComputerProcess).toHaveBeenCalledWith(BUILD.id);
+    expect(api.stopComputerProcess).toHaveBeenCalledWith(BUILD.id, null);
     expect(document.body.textContent).toContain('build had already finished.');
   });
 

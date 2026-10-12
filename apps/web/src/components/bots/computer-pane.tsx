@@ -1,8 +1,11 @@
 /**
- * ComputerPane — the member's computer beside a Bots conversation: status,
- * the live screen, take over / hand back, and the typing helpers.
+ * ComputerPane — an Agent's computer beside a conversation: status, the live
+ * screen, take over / hand back, and the typing helpers.
  *
- * One computer per member, shared by all of their Bots (and their sign-ins).
+ * Every Agent has its own computer, its files and its sign-ins (spec
+ * 20261011-agent-first-class P3a): the pane shows ONE — the conversation's
+ * Agent's, or the one a card was raised on — named by `bot` (null = the main
+ * Agent's, Sprouty's). Every call below goes to that computer.
  * The pane never decides who may operate it — the server holds the lease and
  * filters input — it only makes the current state obvious and the next step
  * one click away:
@@ -55,6 +58,7 @@ import {
   stopComputer,
   takeoverComputer,
   typeIntoComputer,
+  type ComputerBot,
 } from '../../lib/api/bots';
 import { ComputerStatusDot, phaseLabelKey, useComputerStatus, type ComputerStatusState } from './computer-phase';
 import { ComputerScreen, type ComputerScreenHandle } from './computer-screen';
@@ -82,9 +86,13 @@ export interface ComputerPaneProps {
    * one — the Bots page does, for the header's state dot. Sharing it means one
    * fetch/WS listener/poll per tab, and the header and the pane always agree
    * (an action's result, or a start in flight, updates both at once). Without
-   * it the pane keeps its own.
+   * it the pane keeps its own, of `bot`'s computer. Its `bot` is the computer.
    */
   computer?: ComputerStatusState;
+  /** Whose computer, when the host shares no status: an Agent's id, null (default) = the main Agent's. */
+  bot?: ComputerBot;
+  /** The Agent whose computer this is — named in the title and the "only it uses it" note. */
+  agentName?: string | null;
 }
 
 /**
@@ -152,7 +160,7 @@ function asTab(key: string): ComputerTab {
 }
 
 const ComputerPaneBody = forwardRef<ComputerPaneHandle, ComputerPaneProps>(function ComputerPaneBody(
-  { onClose, sessionId, focus = false, onFocusChange, busyBotName, computer: shared },
+  { onClose, sessionId, focus = false, onFocusChange, busyBotName, computer: shared, bot = null, agentName },
   ref,
 ) {
   const t = useT();
@@ -160,11 +168,13 @@ const ComputerPaneBody = forwardRef<ComputerPaneHandle, ComputerPaneProps>(funct
   const rootRef = useRef<HTMLDivElement>(null);
   const screenRef = useRef<ComputerScreenHandle>(null);
   // Disabled when the host shares its own: no second fetch, listener or poll.
-  const own = useComputerStatus(!shared);
+  const own = useComputerStatus(!shared, bot);
   const computer = shared ?? own;
+  // The computer every call below goes to.
+  const target = computer.bot;
   const { status, phase } = computer;
   const fullscreen = useFullscreen(rootRef);
-  const { pending, reload: reloadPending } = usePendingRequest(sessionId);
+  const { pending, reload: reloadPending } = usePendingRequest(sessionId, target);
   const [busy, setBusy] = useState<BusyAction | null>(null);
   const [confirmTakeover, setConfirmTakeover] = useState(false);
   // Set while "hand back before closing?" is open: what to do once it may close.
@@ -196,7 +206,7 @@ const ComputerPaneBody = forwardRef<ComputerPaneHandle, ComputerPaneProps>(funct
     setBusy('takeover');
     showTab('screen');
     try {
-      computer.apply(await takeoverComputer());
+      computer.apply(await takeoverComputer(target));
       setAnswering(requestId);
       onFocusChange?.(true);
       screenRef.current?.focus();
@@ -228,7 +238,7 @@ const ComputerPaneBody = forwardRef<ComputerPaneHandle, ComputerPaneProps>(funct
   const handBack = async (note: string, requestId?: string): Promise<boolean> => {
     setBusy('handback');
     try {
-      computer.apply(await handbackComputer({ note, requestId: requestId ?? answering, sessionId }));
+      computer.apply(await handbackComputer({ note, requestId: requestId ?? answering, sessionId }, target));
       setAnswering(undefined);
       onFocusChange?.(false);
       if (fullscreen.active) void fullscreen.toggle();
@@ -247,14 +257,14 @@ const ComputerPaneBody = forwardRef<ComputerPaneHandle, ComputerPaneProps>(funct
   const typeText = useCallback(
     async (text: string): Promise<boolean> => {
       try {
-        await typeIntoComputer(text);
+        await typeIntoComputer(text, target);
         return true;
       } catch (err) {
         toast(computerErrorText(t, err, 'botsComputer.typeFailed'), 'error');
         return false;
       }
     },
-    [t],
+    [t, target],
   );
 
   const paste = async () => {
@@ -291,7 +301,7 @@ const ComputerPaneBody = forwardRef<ComputerPaneHandle, ComputerPaneProps>(funct
   const sleep = async () => {
     setBusy('sleep');
     try {
-      computer.apply(await stopComputer());
+      computer.apply(await stopComputer(target));
     } catch (err) {
       toast(computerErrorText(t, err, 'botsComputer.sleepFailed'), 'error');
     } finally {
@@ -303,7 +313,7 @@ const ComputerPaneBody = forwardRef<ComputerPaneHandle, ComputerPaneProps>(funct
   const restoreWindow = async () => {
     setBusy('restore');
     try {
-      await restoreComputerWindow();
+      await restoreComputerWindow(target);
     } catch (err) {
       toast(computerErrorText(t, err, 'botsComputer.restoreWindowFailed'), 'error');
       void computer.refresh();
@@ -315,7 +325,7 @@ const ComputerPaneBody = forwardRef<ComputerPaneHandle, ComputerPaneProps>(funct
   const reset = async (wipeData: boolean) => {
     setBusy('reset');
     try {
-      computer.apply(await resetComputer(wipeData));
+      computer.apply(await resetComputer(wipeData, target));
       setResetOpen(false);
       toast(t('botsComputer.resetDone'), 'success');
     } catch (err) {
@@ -346,7 +356,9 @@ const ComputerPaneBody = forwardRef<ComputerPaneHandle, ComputerPaneProps>(funct
     >
       <header className="flex flex-shrink-0 items-center gap-2 border-b border-edge px-3 py-1.5">
         <Monitor size={16} className="flex-shrink-0 text-primary-fg" aria-hidden="true" />
-        <h2 className="text-sm font-semibold text-fg">{t('botsComputer.title')}</h2>
+        <h2 className="min-w-0 truncate text-sm font-semibold text-fg" data-testid="computer-title">
+          {agentName ? t('botsComputer.titleOf', { name: agentName }) : t('botsComputer.title')}
+        </h2>
         {phase && (
           <span className="flex min-w-0 items-center gap-1.5 text-xs text-fg-muted" data-testid="computer-state">
             <ComputerStatusDot phase={phase} />
@@ -453,6 +465,7 @@ const ComputerPaneBody = forwardRef<ComputerPaneHandle, ComputerPaneProps>(funct
             >
               <ComputerScreen
                 ref={screenRef}
+                bot={target}
                 viewOnly={!inControl}
                 onTakeOver={() => requestTakeOver(pending?.request.id)}
                 onDisconnected={() => void computer.refresh()}
@@ -495,7 +508,11 @@ const ComputerPaneBody = forwardRef<ComputerPaneHandle, ComputerPaneProps>(funct
                 hidden={tab !== 'terminal'}
                 className="flex min-h-0 flex-1 flex-col"
               >
-                <ComputerTerminal active={tab === 'terminal'} onDisconnected={() => void computer.refresh()} />
+                <ComputerTerminal
+                  bot={target}
+                  active={tab === 'terminal'}
+                  onDisconnected={() => void computer.refresh()}
+                />
               </div>
             )}
             {opened.has('files') && (
@@ -505,7 +522,7 @@ const ComputerPaneBody = forwardRef<ComputerPaneHandle, ComputerPaneProps>(funct
                 hidden={tab !== 'files'}
                 className="flex min-h-0 flex-1 flex-col"
               >
-                <ComputerFiles active={tab === 'files'} onStale={() => void computer.refresh()} />
+                <ComputerFiles bot={target} active={tab === 'files'} onStale={() => void computer.refresh()} />
               </div>
             )}
             {opened.has('processes') && (
@@ -515,7 +532,7 @@ const ComputerPaneBody = forwardRef<ComputerPaneHandle, ComputerPaneProps>(funct
                 hidden={tab !== 'processes'}
                 className="flex min-h-0 flex-1 flex-col"
               >
-                <ComputerProcesses active={tab === 'processes'} onStale={() => void computer.refresh()} />
+                <ComputerProcesses bot={target} active={tab === 'processes'} onStale={() => void computer.refresh()} />
               </div>
             )}
           </>
@@ -533,7 +550,9 @@ const ComputerPaneBody = forwardRef<ComputerPaneHandle, ComputerPaneProps>(funct
 
       {status && phase && phase.kind !== 'unavailable' && (
         <footer className="flex flex-shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-t border-edge px-3 py-2">
-          <p className="min-w-0 flex-1 text-[11px] leading-4 text-fg-faint">{t('botsComputer.sharedNote')}</p>
+          <p className="min-w-0 flex-1 text-[11px] leading-4 text-fg-faint" data-testid="computer-own-note">
+            {agentName ? t('botsComputer.ownNote', { name: agentName }) : t('botsComputer.ownNoteGeneric')}
+          </p>
           {phase.kind === 'running' && !inControl && (
             <Button size="sm" variant="ghost" onClick={() => void sleep()} disabled={busy !== null}>
               {busy === 'sleep' && <Spinner className="mr-1" />}

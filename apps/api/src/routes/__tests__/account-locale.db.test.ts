@@ -110,6 +110,39 @@ describe("Sprouty's words follow the language", () => {
     expect((await ensureSproutyBot(db, user.id)).current_version).toBe(after.current_version);
   });
 
+  // What earlier templates wrote into Sprouty rows, verbatim. Rows are never rewritten, so these
+  // are still stored — and they are the template's words, not the member's.
+  const SAID_BOT = {
+    en: "You are Sprouty, the member's main assistant and the one they talk to first. Help directly with questions, writing, research and everyday errands. Break bigger asks into steps and keep track of open items in the shared notes. Do small things yourself; when a job clearly belongs to a specialist, bring in the right Bot — add one of the member's Bots to this conversation or propose a new one — and hand it over with a precise brief. Report progress in one line.",
+    zh: '你是 Sprouty，这位成员的主助手，也是对方最先找的那一个。问答、写作、调研和日常杂事都直接帮忙。把大的请求拆成步骤，用共享笔记跟踪未完成的事项。小事自己做；明显属于专家的活，就请合适的 Bot 来——把成员已有的 Bot 拉进这个对话，或者提议新建一个——并给出准确的交接说明。进展用一句话汇报。',
+  } as const;
+  const FIRST_SPROUTY_EN =
+    "You are Sprouty, the member's main assistant and the one they talk to first. Help directly with questions, writing, research and everyday errands. Clarify what they actually want, break bigger asks into steps, and keep track of open items in the shared notes. Do small things yourself; when a job clearly belongs to a specialist, bring in the right Bot — add one of the member's Bots to this conversation or propose a new one — and hand it over with a precise brief. Keep the member informed in short, concrete updates.";
+
+  it('re-words a Sprouty still holding an earlier template wording (before Bot became Agent)', async () => {
+    const cases = [
+      { from: 'en', to: 'zh', stored: SAID_BOT.en },
+      { from: 'zh', to: 'en', stored: SAID_BOT.zh },
+      { from: 'en', to: 'zh', stored: FIRST_SPROUTY_EN },
+    ] as const;
+    for (const { from, to, stored } of cases) {
+      const { user, app } = await member();
+      if (from === 'zh') await put(app, { locale: 'zh', inferred: true });
+      const sprouty = await ensureSproutyBot(db, user.id);
+      expect(sprouty.instructions).toBe(SPROUTY_BOT_TEMPLATE.copy[from].instructions);
+      expect(stored).not.toBe(sprouty.instructions);
+      // A row written before the rename: the template's role, the old instructions.
+      const old = await db.bots.updateBot(user.id, sprouty.id, { instructions: stored });
+
+      await put(app, { locale: to });
+      expect(await ensureSproutyBot(db, user.id)).toMatchObject({
+        role: SPROUTY_BOT_TEMPLATE.copy[to].role,
+        instructions: SPROUTY_BOT_TEMPLATE.copy[to].instructions,
+        current_version: old!.current_version + 1,
+      });
+    }
+  });
+
   it('leaves instructions the member rewrote alone', async () => {
     const { user, app } = await member();
     const sprouty = await ensureSproutyBot(db, user.id);

@@ -27,6 +27,7 @@ import {
   type RunAgentResult,
 } from '../agent-runtime/run-agent.js';
 import { resolveMemoryContext } from '../llm/memory.js';
+import { runInAgentScope } from '../platform/agent-scope.js';
 import {
   enrichSystemPrompt,
   assertPinnedProfileExecutionAccess,
@@ -552,26 +553,32 @@ export async function executeSubagentRuntimeRun(
       const identityPrompt = enrichSystemPrompt(profile, { nickname: owner.nickname });
       system = memory ? `${identityPrompt}\n\n## User Context\n${memory}` : identityPrompt;
     }
-    const result = await runAgentInSession({
-      db,
-      sessionId: session.id,
-      system,
-      prompt: input.prompt,
-      modelConfig,
-      tools: currentTools,
-      maxSteps: input.max_steps,
-      toolChoice: profile.tool_choice,
-      ...(options.generate ? { generate: options.generate } : {}),
-      abortSignal: abort.signal,
-      usageContext: { profileId: profile.id, userId: owner.id, caller: botId ? 'bots-task' : 'spawn_session' },
-      runtimeToolEvidence: {
-        runId: run.id,
-        stepId: step.id,
-        actorUserId: owner.id,
-        executionAuthority: { mode: 'leased', workerId, leaseMs },
-        idempotencyPrefix: `subagent:${step.id}`,
-      },
-    });
+    const stepId = step.id;
+    const execute = () =>
+      runAgentInSession({
+        db,
+        sessionId: session.id,
+        system,
+        prompt: input.prompt,
+        modelConfig,
+        tools: currentTools,
+        maxSteps: input.max_steps,
+        toolChoice: profile.tool_choice,
+        ...(options.generate ? { generate: options.generate } : {}),
+        abortSignal: abort.signal,
+        usageContext: { profileId: profile.id, userId: owner.id, caller: botId ? 'bots-task' : 'spawn_session' },
+        runtimeToolEvidence: {
+          runId: run.id,
+          stepId,
+          actorUserId: owner.id,
+          executionAuthority: { mode: 'leased', workerId, leaseMs },
+          idempotencyPrefix: `subagent:${stepId}`,
+        },
+      });
+    // A Bot's background task acts as that Bot, in the conversation it reports to.
+    const result = botId
+      ? await runInAgentScope({ botId, sessionId: input.parent_session_id }, execute)
+      : await execute();
     const latest = await db.runtime.getRun(run.id);
     if (abort.signal.aborted || latest?.desired_state === 'cancel') {
       const terminalOutput = payload({

@@ -25,9 +25,10 @@
  * Bots conversations (`channel: 'bots'`) send through `openBotsChat` instead of
  * `streamChat`: a busy conversation answers `202 {queued:true}` (the message was
  * delivered and is read between Bot turns) rather than 409, and a refusal
- * carries a `code` (`bot_archived`, `group_closed`) the thread turns into
+ * carries a `code` (`bot_archived`, `group_closed`, `agent_unavailable`) the thread turns into
  * its read-only state. They also have a soft stop (`interruptChatRun`), and
- * `listChatRuns` seeds which conversations are busy after a reconnect.
+ * `listChatRuns` seeds which conversations are busy after a reconnect. A task
+ * chat's edit / answer-again (`openBotsRewind`) answers with the same stream.
  *
  * Yields the canonical `StreamingEvent` union (vendored from @greenhouse/types)
  * so callers can drive it through `handleStreamEvent`.
@@ -68,7 +69,14 @@ export class ChatHttpError extends Error {
 /** Shape of `GET /api/chat/runs/:sessionId` (vendored `ChatRunInfo`). */
 export interface ChatRunProbe {
   active: boolean;
-  run?: { run_id: string; status: 'running' | 'completed' | 'error'; started_at: number; next_seq: number };
+  run?: {
+    run_id: string;
+    status: 'running' | 'completed' | 'error';
+    started_at: number;
+    next_seq: number;
+    /** Whose run it is, when the server says (a room's run is its asker's — only they may stop it). */
+    user_id?: string;
+  };
 }
 
 /**
@@ -251,9 +259,35 @@ export async function openBotsChat(args: {
     rich_blocks: [...MOBILE_RICH_BLOCKS],
     ...(args.mentions?.length ? { mentions: args.mentions } : {}),
   };
+  return openBotsStream('/api/chat', body, args.signal);
+}
+
+/**
+ * Edit or answer again in a task chat (`POST /api/bots/conversations/:id/rewind`): everything
+ * after the member's last message goes and the chain answers it again — with `content`, as
+ * edited text. `messageId` must be that last member message. Same NDJSON run stream as a send;
+ * refusals carry the server's 409 code (`busy`, `not_last`, `not_task_chat`, `requests_pending`,
+ * `bot_archived`).
+ */
+export async function openBotsRewind(args: {
+  sessionId: string;
+  messageId: string;
+  content?: string;
+  signal?: AbortSignal;
+}): Promise<BotsPost> {
+  const body = {
+    message_id: args.messageId,
+    ...(args.content !== undefined ? { content: args.content } : {}),
+    rich_blocks: [...MOBILE_RICH_BLOCKS],
+  };
+  return openBotsStream(`/api/bots/conversations/${encodeURIComponent(args.sessionId)}/rewind`, body, args.signal);
+}
+
+/** POST a Bots turn and read how it went (see `BotsPost`). */
+async function openBotsStream(path: string, body: unknown, signal?: AbortSignal): Promise<BotsPost> {
   let res: Awaited<ReturnType<typeof openAuthed>>;
   try {
-    res = await openAuthed('/api/chat', { method: 'POST', body: JSON.stringify(body), signal: args.signal });
+    res = await openAuthed(path, { method: 'POST', body: JSON.stringify(body), signal });
   } catch {
     return { kind: 'error', status: 0, code: null, message: '' };
   }

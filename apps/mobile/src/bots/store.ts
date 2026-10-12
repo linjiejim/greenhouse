@@ -19,9 +19,12 @@ import { createBotsSlice, type BotsState } from './store-core';
 export {
   attentionCount,
   drawerRows,
+  rowReplyable,
+  rowSharedAgent,
   rowSignal,
   sproutyBot,
   sproutyDm,
+  taskChatRow,
   type BotsState,
   type DrawerRows,
 } from './store-core';
@@ -36,9 +39,15 @@ export const useBots = create<BotsState>()((set, get) =>
   }),
 );
 
+// Who the member is (rooms name everyone else) — set now, and again whenever the account changes.
+useBots.getState().setViewer(useAuth.getState().user?.id ?? null);
+
 // Per account per station — drop the cache when either changes.
 useAuth.subscribe((s, prev) => {
-  if ((s.user?.id ?? null) !== (prev.user?.id ?? null)) useBots.getState().reset();
+  const id = s.user?.id ?? null;
+  if (id === (prev.user?.id ?? null)) return;
+  useBots.getState().reset();
+  useBots.getState().setViewer(id);
 });
 useStations.subscribe((s, prev) => {
   if (s.activeId !== prev.activeId) useBots.getState().reset();

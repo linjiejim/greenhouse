@@ -47,6 +47,7 @@ export const SEPARATOR_GAP_MS = 60 * 60_000;
 function writtenAt(item: TranscriptItem, now: number): number | null {
   switch (item.kind) {
     case 'user':
+    case 'person':
     case 'bot':
     case 'event': {
       const at = Date.parse(item.message.created_at);

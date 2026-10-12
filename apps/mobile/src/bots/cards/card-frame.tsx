@@ -33,6 +33,7 @@ import { NativeButton } from '../../ui/button';
 import { Icon, type IconName } from '../../ui/core';
 import { alertError, confirmAction } from '../../ui/dialogs';
 import { notifySuccess } from '../../ui/haptics';
+import { cardComputer } from '../computer/target';
 import type { DecideOutcome } from '../contract';
 import { useBots } from '../store';
 import { validateBotName } from '../vendor/bot-name';
@@ -189,11 +190,20 @@ export function useCardActions({
         return null;
       }
       if (button.id === 'computer') {
-        // Leave the card's sheet for the computer page; a human check / a Bot's request
-        // takes the computer on arrival (its Done hands back for this card).
+        // Leave the card's sheet for the computer page; a human check / an Agent's request
+        // takes the computer on arrival (its Done hands back for this card). The computer is
+        // the card's Agent's own (one per Agent; the main Agent's needs no `bot`).
         const control = cardKind(request) === 'handback' ? {} : { control: '1' };
+        const bot = cardComputer(request, (id) => useBots.getState().byId[id]);
         router.back();
-        setTimeout(() => router.push({ pathname: '/bots/computer', params: { c: sessionId, request: request.id, ...control } }), 0);
+        setTimeout(
+          () =>
+            router.push({
+              pathname: '/bots/computer',
+              params: { c: sessionId, request: request.id, ...control, ...(bot ? { bot } : {}) },
+            }),
+          0,
+        );
         return null;
       }
       const editProposal = () => router.push({ pathname: '/bots/bot-form', params: { request: request.id } });

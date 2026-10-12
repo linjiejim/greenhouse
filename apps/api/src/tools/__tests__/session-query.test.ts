@@ -4,7 +4,7 @@
  * every action — a super can read anyone's ordinary chat, never their Bots.
  */
 
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DatabaseProvider } from '@greenhouse/db';
 import { BOT_TASK_SESSION_PREFIX, defaultSessionListHiding } from '@greenhouse/types/session';
 import { createSessionQueryTool, type SessionQueryContext } from '../session-query.js';
@@ -52,6 +52,10 @@ beforeEach(() => {
   sessions.getMessageCount.mockResolvedValue(0);
 });
 
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
+
 describe('session_query list', () => {
   it('hides Bots conversations, workflow internals and Bot task children by default', async () => {
     await run(team, { action: 'list' });
@@ -72,6 +76,8 @@ describe('session_query list', () => {
   });
 
   it('a super lists everyone’s ordinary chats but only their own Bots conversations', async () => {
+    // The deployment lets super read members' chats (SUPER_READS_CHATS, spec 20261011-agent-first-class D46).
+    vi.stubEnv('SUPER_READS_CHATS', 'true');
     await run(boss, { action: 'list', channel: 'web' });
     expect(sessions.list).toHaveBeenLastCalledWith(expect.objectContaining({ channel: 'web', userId: undefined }));
     await run(boss, { action: 'list', channel: 'bots' });
@@ -81,6 +87,8 @@ describe('session_query list', () => {
 
 describe('session_query get / messages', () => {
   it('a super reads another member’s ordinary chat', async () => {
+    // The deployment lets super read members' chats (SUPER_READS_CHATS, spec 20261011-agent-first-class D46).
+    vi.stubEnv('SUPER_READS_CHATS', 'true');
     sessions.getById.mockResolvedValue(session('s-web', 'u-team', 'web'));
     const result = await run(boss, { action: 'get', session_id: 's-web' });
     expect(result).toHaveProperty('session');

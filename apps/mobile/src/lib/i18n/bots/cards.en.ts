@@ -13,8 +13,8 @@ export const botsCardsEn = {
     declined: 'Declined',
     expired: 'Expired',
     canceled: 'Canceled',
-    /** A Bot the directory has not answered for yet (never "Deleted Bot" before it has). */
-    aBot: 'Your Bot',
+    /** An Agent the directory has not answered for yet (never "Deleted Agent" before it has). */
+    aBot: 'Your Agent',
     askAgain: 'Ask Again',
     expiresIn: 'Expires in {s}s',
     expiringNow: 'Expiring now',
@@ -33,10 +33,17 @@ export const botsCardsEn = {
     /** `{site}` when no detail row names the site. */
     thisSite: 'this site',
     taskTitle: '{name} wants to run a task',
+    /** A `task_start` card in chat mode: the task opens in a new chat the member keeps talking in. */
+    chatTitle: '{name} wants to open a new chat',
+    chatNote: 'Opens a new chat',
+    chatNoteWith: 'Opens a new chat — {name} answers there',
+    openChat: 'Open Chat',
+    /** Status badge of a chat-mode card that was approved. */
+    chatStarted: 'Chat Opened',
     start: 'Start',
     cancel: 'Cancel',
     taskLimit: 'Too many background tasks are running (max 3)',
-    createTitle: '{name} suggests a new Bot',
+    createTitle: '{name} suggests a new Agent',
     create: 'Create',
     editFirst: 'Edit First',
     notNow: 'Not Now',
@@ -83,6 +90,8 @@ export const botsCardsEn = {
       allowed: 'Allowed · {title}',
       allowedAlways: 'Always allowed · {title}',
       started: 'Started · {title}',
+      chatOpened: 'Opened a new chat',
+      chatOpenedTitle: 'New chat · {title}',
       handedBack: 'Handed the computer back',
       instructions: 'New instructions accepted',
       signedIn: 'Signed in',
@@ -106,8 +115,8 @@ export const botsCardsEn = {
       failed: 'That couldn’t be done. Try again, or finish it in the web app.',
       invalid: 'Those details couldn’t be used. Check them and try again.',
       limit: 'Too many background tasks are running. Try again when one finishes.',
-      computer_restarted: 'The computer restarted and closed the page — ask the Bot to open it again.',
-      bot_gone: 'The Bot that asked is no longer available, so this can’t continue.',
+      computer_restarted: 'The computer restarted and closed the page — ask the Agent to open it again.',
+      bot_gone: 'The Agent that asked is no longer available, so this can’t continue.',
       /** 503: the computer or the password vault is down. */
       unavailable: 'The computer or the password vault isn’t available right now. Try again later.',
       /** No answer from the server (status 0). */

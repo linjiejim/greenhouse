@@ -7,14 +7,23 @@
  * only a row that needs a decision (retry, continue) carries a button.
  */
 
-import type { BotEvent, BotRequestKind, BotView } from '@greenhouse/types/bots';
+import {
+  isSproutyBot,
+  type BotConversationSummary,
+  type BotEvent,
+  type BotRequestKind,
+  type BotView,
+} from '@greenhouse/types/bots';
 import type { ReactNode } from 'react';
 import {
   AlertTriangle,
   Archive,
   ArrowRight,
   CheckCircle2,
+  CornerDownRight,
+  Gauge,
   Info,
+  MessageSquare,
   Lock,
   LogOut,
   Monitor,
@@ -34,6 +43,9 @@ import { splitAttachments } from '../blocks';
 import { RichMarkdown } from '../rich-markdown';
 import { AttachmentsBlock } from '../blocks/attachments-block';
 import { BotAvatar, BotAvatarStack } from './bot-avatar';
+import { PeopleAvatarStack, PersonAvatar } from './person-avatar';
+import { useBotDirectory, useBotsStore } from './bots-store';
+import { conversationTitle, openBotsConversation } from './navigation';
 import type { Handoff, PendingSend } from './transcript';
 
 export type BotLookup = (botIdOrName: string | null | undefined) => BotView | undefined;
@@ -108,6 +120,18 @@ export function SpeakerHeader({
   );
 }
 
+/** Another person in a room (P5): their initial and name, above their message when the speaker changes. */
+export function PersonHeader({ name }: { name: string }) {
+  return (
+    <div className="mb-1 flex items-center gap-2" data-testid="room-person-header">
+      <PersonAvatar name={name} size="xs" />
+      <span className="truncate text-xs font-semibold text-fg-secondary" data-testid="room-person-name">
+        {name}
+      </span>
+    </div>
+  );
+}
+
 /** `team.ask`: one Bot hands work to another, visible so the member can follow the relay. */
 export function HandoffStrip({ handoff, lookup }: { handoff: Handoff; lookup: BotLookup }) {
   const t = useT();
@@ -146,6 +170,11 @@ const EVENT_ICON: Partial<Record<BotEvent['kind'], LucideIcon>> = {
   // Nobody could answer (the Bot was archived) — the engine says so instead of going quiet.
   unavailable: Archive,
   stopped: Square,
+  chat_opened: MessageSquare,
+  chat_origin: CornerDownRight,
+  // Rooms (P5): people come and go.
+  person_joined: UserPlus,
+  person_left: LogOut,
 };
 
 /**
@@ -170,6 +199,8 @@ export function EventRow({
   onContinue,
   onViewSummary,
   busy,
+  canRetry,
+  canContinue = true,
 }: {
   message: BotMessage;
   event: BotEvent | null;
@@ -179,8 +210,14 @@ export function EventRow({
   onViewSummary: () => void;
   /** A run is in progress — retrying now would only queue behind it. */
   busy: boolean;
+  /** Whether the member may ask this Agent again (a room: only Agents they may @). Default: any known one. */
+  canRetry?: (botId: string) => boolean;
+  /** "Continue" addresses whoever answers by default — a room has nobody, so it is not offered there. */
+  canContinue?: boolean;
 }) {
   const t = useT();
+  if (event?.kind === 'chat_opened') return <ChatOpenedRow message={message} event={event} />;
+  if (event?.kind === 'chat_origin') return <ChatOriginRow event={event} lookup={lookup} />;
   if (event?.kind === 'digest') {
     return (
       <div className="flex items-center gap-3 px-2 py-1 text-[11px] text-fg-faint" role="separator">
@@ -193,8 +230,11 @@ export function EventRow({
   }
 
   const danger = event?.kind === 'turn_error' || (event?.kind === 'task_report' && event.status === 'failed');
-  const Icon =
-    event?.kind === 'task_report'
+  // A public Agent's per-person daily allowance ran out (P4): a meter, not an archive box.
+  const dailyCap = event?.kind === 'unavailable' && event.reason === 'daily_cap';
+  const Icon = dailyCap
+    ? Gauge
+    : event?.kind === 'task_report'
       ? event.status === 'succeeded'
         ? CheckCircle2
         : XCircle
@@ -206,7 +246,11 @@ export function EventRow({
   const failedBot = event?.kind === 'turn_error' ? lookup(event.bot_id) : undefined;
   const text =
     message.content ||
-    (event?.kind === 'turn_error' ? t('bots.transcript.turnFailed', { name: failedBot?.name ?? '' }) : '');
+    (event?.kind === 'turn_error'
+      ? t('bots.transcript.turnFailed', { name: failedBot?.name ?? '' })
+      : dailyCap
+        ? t('bots.transcript.dailyCap', { name: lookup(event.bot_id)?.name ?? '' })
+        : '');
 
   return (
     <div className="flex justify-center px-2" data-testid="bots-event" data-event-kind={event?.kind ?? 'system'}>
@@ -217,13 +261,13 @@ export function EventRow({
       >
         <Icon size={12} className="flex-shrink-0" aria-hidden="true" />
         <span className="min-w-0">{text}</span>
-        {event?.kind === 'turn_error' && failedBot && (
+        {event?.kind === 'turn_error' && failedBot && (!canRetry || canRetry(event.bot_id)) && (
           <InlineAction disabled={busy} onClick={() => onRetry(event.bot_id)}>
             <RotateCcw size={11} aria-hidden="true" />
             {t('bots.transcript.retry')}
           </InlineAction>
         )}
-        {event?.kind === 'limit' && (
+        {event?.kind === 'limit' && canContinue && (
           <InlineAction disabled={busy} onClick={onContinue}>
             {t('bots.transcript.continue')}
           </InlineAction>
@@ -231,6 +275,69 @@ export function EventRow({
       </div>
     </div>
   );
+}
+
+/** An Agent opened a separate chat from here (a `task_start` card in chat mode was approved): go there. */
+function ChatOpenedRow({ message, event }: { message: BotMessage; event: Extract<BotEvent, { kind: 'chat_opened' }> }) {
+  const t = useT();
+  return (
+    <div className="flex justify-center px-2" data-testid="bots-event" data-event-kind="chat_opened">
+      <div className="flex max-w-[min(40rem,100%)] flex-wrap items-center justify-center gap-x-2 gap-y-1 text-center text-[11px] text-fg-muted">
+        <MessageSquare size={12} className="flex-shrink-0" aria-hidden="true" />
+        <span className="min-w-0">{message.content || event.title}</span>
+        <InlineAction onClick={() => openBotsConversation(event.session_id)} testId="bots-chat-opened-link">
+          {t('bots.transcript.openChat')}
+        </InlineAction>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The first line of a chat an Agent opened: who opened it, from where — a link back to that
+ * conversation, named when it is one of the member's threads.
+ */
+function ChatOriginRow({ event, lookup }: { event: Extract<BotEvent, { kind: 'chat_origin' }>; lookup: BotLookup }) {
+  const t = useT();
+  const directory = useBotDirectory();
+  const source = useBotsStore((state) =>
+    state.conversations.find((conversation) => conversation.session_id === event.from_session_id),
+  );
+  const name = lookup(event.bot_id)?.name ?? t('bots.deletedBot');
+  const sourceName = source ? threadName(source, directory, t) : t('bots.transcript.anotherConversation');
+  // The link sits where the sentence names the source, in either language's word order.
+  const SLOT = '\u0000';
+  const [before, after = ''] = t('bots.transcript.chatOrigin', { name, source: SLOT }).split(SLOT);
+  return (
+    <div className="flex justify-center px-2" data-testid="bots-event" data-event-kind="chat_origin">
+      <div className="flex max-w-[min(40rem,100%)] flex-wrap items-center justify-center gap-x-1 gap-y-1 text-center text-[11px] text-fg-muted">
+        <CornerDownRight size={12} className="mr-1 flex-shrink-0" aria-hidden="true" />
+        {before && <span className="min-w-0">{before}</span>}
+        <InlineAction onClick={() => openBotsConversation(event.from_session_id)} testId="bots-chat-origin-link">
+          {sourceName}
+        </InlineAction>
+        {after && <span className="min-w-0">{after}</span>}
+      </div>
+    </div>
+  );
+}
+
+/** How the sentence names a thread: the main thread, a DM by its Agent, anything else by its title. */
+function threadName(
+  conversation: BotConversationSummary,
+  directory: ReadonlyMap<string, BotView>,
+  t: ReturnType<typeof useT>,
+): string {
+  const owner = conversation.owner_bot_id ? directory.get(conversation.owner_bot_id) : undefined;
+  if (conversation.kind === 'direct' && owner) {
+    return isSproutyBot(owner) ? t('bots.transcript.mainThread') : t('bots.transcript.dmWith', { name: owner.name });
+  }
+  return conversationTitle(conversation, directory, {
+    unknownBot: t('bots.transcript.anotherConversation'),
+    group: t('bots.sidebar.group'),
+    chat: t('bots.newChat'),
+    archived: (name) => t('bots.archivedName', { name }),
+  });
 }
 
 type TaskReportEvent = Extract<BotEvent, { kind: 'task_report' }>;
@@ -350,15 +457,45 @@ export function PendingBubble({
 }
 
 /**
- * Thread start: who this is and what Bots are for — the positioning line lives here. A retired
- * group chat shows only who was in it and its name (the read-only bar says what became of it).
+ * Thread start: who this is and what Agents are for — the positioning line lives here; the
+ * main Agent's DM says it is the member's main thread, the default place to start, and a
+ * separate chat says it is one, with its own context (spec 20261011-agent-first-class §3.1 /
+ * §5a). A room (P5) shows its people and says how Agents behave there. A retired group chat shows
+ * only who was in it and its name (the read-only bar says what became of it).
  */
-export function ConversationIntro({ kind, title, bots }: { kind: 'direct' | 'group'; title: string; bots: BotView[] }) {
+export function ConversationIntro({
+  kind,
+  title,
+  bots,
+  room,
+}: {
+  kind: BotConversationSummary['kind'];
+  title: string;
+  bots: BotView[];
+  /** A room: the other people, and whether it is the pair's private chat. */
+  room?: { others: string[]; privateChat: boolean };
+}) {
   const t = useT();
   const owner = bots[0];
+  const single = kind !== 'group';
+  if (room) {
+    return (
+      <div className="flex flex-col items-center gap-2 px-4 pb-4 pt-6 text-center" data-testid="bots-intro">
+        {room.others.length <= 1 ? (
+          <PersonAvatar name={room.others[0] ?? title} size="md" />
+        ) : (
+          <PeopleAvatarStack names={room.others} max={4} size="sm" ringClassName="ring-surface-canvas" />
+        )}
+        <p className="text-base font-semibold text-fg">{title}</p>
+        <p className="max-w-md text-xs leading-5 text-fg-faint">
+          {room.privateChat ? t('bots.room.introPrivate', { name: room.others[0] ?? title }) : t('bots.room.introRoom')}
+        </p>
+      </div>
+    );
+  }
   return (
-    <div className="flex flex-col items-center gap-2 px-4 pb-4 pt-6 text-center">
-      {kind === 'direct' && owner ? (
+    <div className="flex flex-col items-center gap-2 px-4 pb-4 pt-6 text-center" data-testid="bots-intro">
+      {single && owner ? (
         // The thread starts with the Bot saying hi. Static: in a transcript, motion means "this Bot is talking".
         <BotAvatar bot={owner} size="lg" state="hello" animate={false} />
       ) : (
@@ -372,7 +509,14 @@ export function ConversationIntro({ kind, title, bots }: { kind: 'direct' | 'gro
       </div>
       {kind === 'direct' && (
         <p className="max-w-md text-xs leading-5 text-fg-faint">
-          {t('bots.transcript.dmStart', { name: owner?.name ?? title })} {t('bots.positioning')}
+          {owner && isSproutyBot(owner)
+            ? t('bots.mainPositioning', { name: owner.name })
+            : `${t('bots.transcript.dmStart', { name: owner?.name ?? title })} ${t('bots.positioning')}`}
+        </p>
+      )}
+      {kind === 'task' && (
+        <p className="max-w-md text-xs leading-5 text-fg-faint">
+          {t('bots.transcript.taskStart', { name: owner?.name ?? t('bots.deletedBot') })}
         </p>
       )}
     </div>

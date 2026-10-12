@@ -1,8 +1,8 @@
 ## Bots（个人助理）— 领域规则与 HTTP 契约
 
 每个成员开箱就有的常驻 Bot：有名字、角色和自己的记忆；对话就是某个 Bot 的私聊，需要时它把成员的
-其他 Bot 拉进来做客串，在同一个对话里协作（点名、交接、共享笔记）；开了电脑后，一个成员的所有 Bot 共用一台云电脑（浏览器 + shell），成员随时可以
-观看和接管；登录凭证来自只写不读的密码库。方案与决策（D1–D17）见
+其他 Bot 拉进来做客串，在同一个对话里协作（点名、交接、共享笔记）；开了电脑后，**每个 Bot 一台自己的云电脑**（浏览器 + shell；
+2026-10-12 起，此前一个成员一台），成员随时可以观看和接管；登录凭证来自只写不读的密码库。方案与决策（D1–D17）见
 [spec](../../../../docs/specs/20261005-personal-assistant-bots.md)。数据层规则（单写者 / `bot_inbox`、
 `MemoryScope`、`bot_computers` CAS）在 [packages/db/src/AGENTS.md](../../../../packages/db/src/AGENTS.md)。
 
@@ -29,7 +29,9 @@ bots/
   由 `POST /bootstrap` 保证存在（幂等，每次进入都可调；早于它的老成员下次进入补建，不占 20 个上限）——Bot 行本身也可能由
   聊天页先建（`ensureSproutyBot`），bootstrap 只补私聊与欢迎语。它在侧栏
   置顶、**不能归档**（`DELETE` 返回 400 `bot_protected`），可以改名改守则（岗位与守则按建行时的账号语言写；
-  账号语言变了且成员没改过它们，`relocalizeSprouty` 把两者换成新语言、记一个版本——见 `PUT /api/auth/me/preferences`）；它就是原来的「总管」——用 `team`
+  账号语言变了且成员没改过它们，`relocalizeSprouty` 把两者换成新语言、记一个版本——见 `PUT /api/auth/me/preferences`；
+  「没改过」= 等于模板现在或以往任一版的措辞：已存的行从不改写，老行还是旧措辞，所以改模板的岗位或守则时要把旧的中英文
+  加进 `LEGACY_SPROUTY_COPY`（`bots/sprouty.ts`），否则老成员的 Sprouty 会被当成「改过」而不再跟语言）；它就是原来的「总管」——用 `team`
   工具把成员的其他 Bot 拉进对话（客串）、转交工作、提议新建。`POST /api/bots` 只接受模板库模板
   （`galleryTemplate`：研究员/操作员/写手/分析师/周报助手/会议记录员/项目跟进人；后三个是不需要电脑的示例，`needsComputer: false`）：
   Sprouty 只来自 bootstrap，「总管」模板已退役（旧的 chief Bot 照常工作，`botTemplate('chief')` 仍能查到它的开场白与 starters）。
@@ -51,8 +53,9 @@ bots/
 - **Bot 就是 Agent 身份**（2026-10-07 收敛，[spec](../../../../docs/specs/20261007-agent-bot-convergence.md)；
   推翻 20261005 的 D2）：原「自定义 Agent」表已删，`bots` 吸收了它的 `description` / `tools`（null = 继承主人全部
   有效工具，列表 = 只能收窄的过滤器）/ `max_steps` / 不可变版本（`bot_versions`，每次创建或编辑追加一版，供
-  `bot:<id>@<v>` 固定引用、守则提议卡与抽屉「历史」读）。**Bot 是私有的**（2026-10-08 决定）：没有分享、评审、
-  发布或克隆，旧自定义 Agent 的治理列已随迁移 0014 删除；他人（super 除外）拿任何版本都是 403。
+  `bot:<id>@<v>` 固定引用、守则提议卡与抽屉「历史」读）。**Bot 默认是私有的**（2026-10-08 决定）：没有评审或克隆，
+  旧自定义 Agent 的治理列已随迁移 0014 删除；他人（super 除外）拿任何版本都是 403——**唯一的例外是 2026-10-12 起的公开
+  Agent**（见下「公开 Agent」）：别的成员只在自己的私聊里、经引擎的公开面用它的发布版本，拿不到它的定义。
   同一个 Bot 有两种对话模式：**Bots 页的永续线程**（本引擎：摘要 / recall / 多 Bot / 电脑 / 审批卡）与**聊天页的新上下文**
   （chat 引擎，窗口化历史；`sessions.profile_id = 'bot:<id>'` 跟随主人的最新定义，无人值守固定 `bot:<id>@<v>`）。
   聊天页的默认身份 `sprouty` 按成员解析成**他自己的 Sprouty Bot**（`bots/sprouty.ts`，首次使用即建行），所以改名
@@ -195,6 +198,79 @@ bots/
   结束（两道闸都有测试）。迁移同时把群里所有仍待处理的卡片置为 `canceled`（`result = {"decision":"group_closed"}`），
   不删任何行。测试里的旧群用 `__tests__/helpers/legacy-group.ts` 直接插库（API 已经建不出来）。私聊的 owner / guest
   角色从不变；归档一个 Bot 把它从所有客串位（以及旧群的名单）里移出，不再改派负责人。
+- **任务会话（独立会话，`kind = 'task'`，2026-10-12，[spec](../../../../docs/specs/20261011-agent-first-class.md) §5a / D20–D27）**：
+  「新会话」跑在本引擎上——同一张 `bot_conversations`、`sessions.channel = 'bots'`，所以单写者、互斥、卡片、收件箱、笔记、摘要、
+  隐私全部照旧；一个负责 Bot（`owner_bot_id`，缺省 Sprouty），可客串；每个 Bot 的私聊仍只有一个（迁移 `0023` 把
+  `uq_bot_conversations_owner_bot` 改成只管 `kind='direct'` 的部分唯一索引；`ensureDirectConversation` 也按 `kind='direct'` 查）。
+  与私聊的差别只有这些：S1 第一段说「这是一段独立会话」（`buildStaticRules` 的 `conversationKind`）；模型 = 会话
+  `model_id`（`POST /api/chat` 的 `model` 或 `PATCH` 记下，`resolveTurnModel`）> Bot 的 > 预设；第一次跑时用标题模型命名
+  （`deps.generateTitle`，成员改过名就不动）；只有它能**回退**（`POST …/rewind`，`startBotsRewind`：目标必须是最后一条成员消息，
+  `editUserMessageAndTruncate` 截断，切到摘要边界就重置摘要，`triggerKey = <消息 id>~<run id>`，留下的待处理卡撤成 `canceled`，
+  登录 / 接管卡挡着则 409）；不进线程列表（`listConversations` 默认只列 `direct` / `group`），走会话列表
+  （`/api/sessions?include=agent_chats`，`hiddenChannelsCondition`）与全局搜索（`channel:'bots'` 的命中）。「回复了你」提醒覆盖它。
+- **起草类工具在可交互回合放开**（D24）：`workflow_plan` / `mission_dispatch` / `tables_schema_plan` / `task_capture` 只起草，
+  执行靠成员按卡片上的按钮、走模型够不着的接口，等价于审批卡；`spawn_session` 仍排除。后台任务照旧没有它们。
+- **开新会话 = `task_start` 卡的 `chat` 模式**（D25，`bot_tasks start {mode:'chat', agent_id?}`）：批准后
+  `requests.ts` `decideChatStart` 建任务会话（负责 Bot = `agent_id` 或提议者），先写 `chat_origin` 事件、再把批准的说明作为
+  **成员消息**投进去（成员在卡上同意过，所以它算成员的话）并立即开跑，原对话写一行 `chat_opened`（带新会话 id）。
+- **视觉模型直读图片**：成员消息的图片随投影带上（`ProjectionRow.images`，合并时累加），`modelSupportsVision` 时
+  `inlineImagesForVision`（与 Chat 同一预算）把它们换成图片 part，其余模型照旧只见 ID 提示。
+- **每个 Agent 一台电脑（2026-10-12，[spec](../../../../docs/specs/20261011-agent-first-class.md) P3a / D28–D30）**：
+  `bot_computers.id` 是电脑 id——主 Agent（Sprouty）的 = 成员的 user id（迁移 `0024` 前的所有电脑，容器 / 卷名、锁键、标签都没变，
+  家目录与登录态归主 Agent），其他 Agent 的 = `<userId>.<botId>`（`computer/namespace.ts` 的 `computerRef` / `computerRefForBot` /
+  `parseComputerId`，纯函数、不查库；容器 / 卷名 `gh-computer-<ns>-<user>-<bot>`）。计算机层（controller / access / lease / viewer /
+  terminal / jobs / files / preview / backups / process watches / CDP 锁 / 进程内各表）一律按电脑 id；要「成员」的地方（WS、卡片、
+  时区、语言、是否允许）用行上的 `user_id` 或 `parseComputerId`。**一个回合用说话 Agent 自己的电脑**（`ComputerTurn.computerId`，客串的
+  也是；后台任务同理），登录 / 接管卡、交还（`requestToSettle` 只认这台电脑的 Agent 的卡）、进程唤醒、预览、文件都跟着那台电脑走。
+  `/api/bots/computer*` 接 `?bot=<id>`（缺省主 Agent，旧客户端不变）；票据（查看 / 终端 / 预览）多一个 `k`（非主电脑才有）；
+  WS `bots:computer` 带 `computer_id` / `bot_id`；新电脑继承成员时区，改时区作用于成员所有电脑；Agent 归档时它的电脑停下（家目录留着）；
+  成员被停用 / 删除时 `purgeUserComputer` 清掉他的所有电脑。管理页按电脑列（`computer_id`，主电脑的 = 成员 id，旧链接照用）。
+- **谁做的（P3b）**：一个 Agent 回合（Agents 引擎、后台任务、以某个 Agent 身份跑的 Chat / 定时任务 / 飞书）跑在
+  `platform/agent-scope.ts` 的 `runInAgentScope` 里；平台动作的行为者（`delegatedAgentActor`）因此是 `bot:<id>`，带 `agentId` /
+  `sessionId`，审计行写 `agent_id` / `session_id`；用量（`llm_usage.bot_id`）同样记到这个 Agent。外部客户端（MCP / OAuth）照旧是它自己。
+- **密码库条目可限定 Agent（P3c）**：`vault_items.bot_ids`（null = 所有 Agent）；`vault list`、代填、登录卡上的匹配只看得到允许
+  说话 Agent 的条目（`vaultItemAllowsBot`），成员自己的设置页看全部。
+- **公开 Agent（P4，2026-10-12，[spec](../../../../docs/specs/20261011-agent-first-class.md) §5c / D33–D41）**：负责人把一个
+  非主 Agent 发布给受众（`bots.visibility = 'public'` + `published_version` + `publication` JSON：受众 / 授权 / 额度；`public.ts`
+  `validatePublicationWrite`、`publicBotFor` 判可用：已发布、未暂停、活跃、受众含此人、不是负责人自己）。使用者经 `/api/agents`
+  看到它、`POST /api/agents/:id/conversation` 得到**自己的**私聊（`ensureDirectConversation(..., { public: true })`，私聊唯一键
+  =（成员, Agent），迁移 `0026`；欢迎语按私聊一条、不说「你的…」）。负责人读不到这些对话。
+  引擎：`loadRunContext` / `refreshRoster` 把对话里别人的公开 Agent 以**发布版本**放进 `rc.bots`，`rc.publicBots` 记负责人与设置；
+  它的回合 `ctx.publicUse` 置位，走 `engine/public-face.ts` 的**公开面**（授权文件夹的只读知识库——以负责人身份、限定在授权子树
+  `grantedFolderIds` 与它自己的参考文件夹；按（使用者, Agent）分区的记忆 `partitionOnly`；对话笔记；`ask_user`；负责人勾选时
+  使用者自己的一份电脑、没有密码库），S2 用 `buildPublicIdentity`（谁发布、在帮谁），不放任何人的个人备注，记忆索引 `onlyBot`；
+  额度 `agentBudget` → `reserveAgentTokenBudget`（Agent 账户 + 组织 + 供应商，不扣使用者），每人每日上限超了写一行 `unavailable`
+  `daily_cap` 不调模型；审计行为者 `bot:<id>`、代表负责人、`requested_by_user_id` = 使用者。不能邀请客串（409 `public_agent`）；
+  下线 / 暂停 / 移出受众 → 发消息 409 `agent_unavailable`，`GET /api/bots` 的 `shared_bots` 带 `available:false`（`computer` = 负责人是否授权了电脑，客户端据此显示电脑入口）。替使用者做的操作在负责人的「操作记录」里不带对话链接（`session_id: null`）。
+  负责人看用量（全部使用者）、操作记录、反馈（`bot_feedback`：评分 + 使用者写的一句话），不看原文；管理员 `/api/admin/agents` 只能暂停 / 恢复。
+  公开面的知识库每次执行都经 `runKnowledgeAgentAction` 以负责人当前能力鉴权并审计，再重新读取发布状态、受众、授权子树和 `resolveKbAccess` 文档权限；不能缓存整轮的授权或借用使用者权限。
+  第一版授权只有知识库文件夹（只读）+ 电脑开关；项目 / 表格的记录级授权留作后续（D36）。
+- **多人对话 room（P5，2026-10-12，[spec](../../../../docs/specs/20261011-agent-first-class.md) §5d / D42–D47）**：同一张
+  `bot_conversations`，`kind = 'room'`，`user_id` = 创建者（离开 / 账号删除时交给最早加入的人，`sessions.user_id` 同步），人在
+  `conversation_participants`（各自的 `last_read_at`），Agent 仍在 `bot_conversation_members`（`user_id` = 谁带进来的：随他离开）。
+  `getConversation` / `listConversations` 按**参与**判可见（`visibleTo`），其余种类仍按 `user_id`；super 也读不到（D46）。
+  **没有默认答话的 Agent**：消息一律经 inbox（作者写在 `user_message.author_user_id`，落成 `messages.author_user_id`），只保留作者
+  **能 @ 的** Agent（`room-access.ts`：自己的、或受众含他的公开 Agent），**以作者为 `rc.user` 的那一轮**回答——权限、卡片、额度都是他的。
+  别人的回合正在跑时，你的消息照常写进去，你的 @ 变成 `mention` 收件项、在那一轮结束后以你为 `rc.user` 另起一轮
+  （`drainIdleConversation` 的 `roomRunUser` 按队首作者认领）；别人的消息不会软停你的 Agent（`memberMessageQueued(…, author)`）。
+  电脑交还、登录决定、进程结束和新 Agent 加入的 `continue.author_user_id` 必须带实际请求人；空闲与忙碌队列都按此人续跑。已离开者的续跑被消费，旧的无作者 room 续跑被隔离，不能回退成房间创建者；普通私聊保持兼容。
+  投影：发问者是 `[名字 (user)]`，其他人是 `[名字 (participant)]`——只是信息；S1 有 room 版说明，S3（成员私人备注）不放；
+  room 里没有 `team` 和 `bot_tasks`。推送（`bots:conversation`、`chat:run`，后者带 `userId` = 发问者）经 `engine/fanout.ts` 发给全部
+  参与者，参与者能探测 / 接上正在跑的回合（`canPostToSession`；探测结果带 `run.user_id`），只有发问者能停。room 的成员视图按读者算：
+  `owner_user_id`、`brought_by_user_id`、`addressable`，以及 `profile`（名字 / 岗位 / 头像 / 模板——别人的公开 Agent 用发布版本，读者不认识的
+  Agent 也能显示）。公开 Agent 由非负责人带进来时，必须对房间里每个人开放（D45：新人
+  不在受众里就把它移出并写一行）。两个人、没标题、没 Agent 的 room 就是私聊，一对人只有一个（`findPrivateRoom`）。
+- **对外找 Agent（P6，2026-10-12，[spec](../../../../docs/specs/20261011-agent-first-class.md) §5e / D48–D55）**：MCP 客户端、
+  命令行、飞书都走 `external/agents.ts` 一个服务——能找到的 = 自己的 Agent（含主 Agent）+ `publicBotFor` 放行的公开 Agent；
+  不带 `conversation_id` 时自己的 Agent **新开任务会话**、公开 Agent 用成员和它的私聊，第一行是 `external_origin {via}`
+  事件（`copy.externalOrigin`，只在新开时写一次）；占到运行槽就 `startBotsChain`（`richBlocks: []`——对面画不出富块）并最多等
+  `waitMs`，占不到就进 inbox 排队；结果 = 最近一条成员消息之后的回复 + 待成员处理的卡（`needs_you`）+ 引擎写的说明行。
+  **卡片永远只在应用里**：外部调用方不能替成员点确认（D52）。工具 `agents_list` / `agent_message`（写，`confirm`）/
+  `agent_conversation_get` 的元数据在 `external/meta.ts`（`context: 'external'`，MCP 组 `agents`、随 `bots` 功能点），只在
+  `LazyServerToolContext.externalCaller` 存在时构建（`/api/mcp` 用 OAuth 客户端名、`/api/agent` 的命令行登录用 `Greenhouse CLI`；
+  Mission 任务令牌没有）；聊天、Agent 自己的回合、后台任务、飞书都把它们排除在外。飞书：`/agents` 列表，消息以 `@名字` 开头 →
+  `feishu/bot/agent-route.ts` 交给同一个服务，并 `pointConversation` 把这串话题改指向那段会话，之后不带 @ 也继续；群里别人在
+  这串话题里发的消息进不去（私密）；不带 @ 的新话题照旧走主 Agent 的单 Agent 执行器。
 - **DB 权威生命周期**：`bot_computers` 每次迁移都是 `version` CAS，单成员操作在用户锁里、容量判断在
   全局锁里；闲置停止 + LRU 淘汰会跳过有待处理登录 / 接管卡的电脑（`HUMAN_WAIT_HOLD_MS`）；健康 tick
   对账卡住的 starting / stopping 行（成员锁空闲时立即，否则 5 分钟兜底）。
@@ -314,17 +390,32 @@ Bot 身份本身（列表 / 新建 / 编辑 / 版本 / 文件夹 / 记忆）只�
 | PATCH / DELETE | `/api/bots/:id` | 同上字段（每次 PATCH 追加一版） | `{ bot }` / `{ ok }`（删除 = 归档；Sprouty → 400 `bot_protected`） |
 | GET | `/api/bots/:id/versions` | — | `{ bot_id, profile_id, current_version, versions }`（仅主人；super 可查） |
 | GET / POST | `/api/bots/:id/files` · `/api/bots/:id/files/ensure` | — | `{ folder, docs }`（无文件夹时 `folder: null`）· `{ folder }`（首次使用建文件夹） |
+| GET / PUT | `/api/bots/:id/publication` | `BotPublicationWrite`（`visibility`、`audience`、`grants`、`budget`、`publish:true` 发布当前版本） | `BotPublicationView`；Sprouty 400 `bot_protected`；未发布就设公开 / 受众或文件夹不合法 400 `invalid` |
+| GET | `/api/bots/:id/feedback` | — | `{ feedback: BotFeedbackView[] }`（评分 + 使用者的一句话 + 版本，不含对话） |
+| POST / DELETE | `/api/bots/conversations/:id/messages/:messageId/feedback` | `{ rating: 1 \| -1, comment? }` · — | `{ ok, rating }`（每人每条回复一份，再评覆盖）· `{ ok }`（撤回自己的评分） |
+| GET / POST | `/api/agents` · `/api/agents/:id/conversation` | — | `{ agents: SharedBotView[] }`（我能用的别人的公开 Agent）· 201 `{ conversation_id }`（我和它的私聊；不可用 404） |
+| GET / POST | `/api/rooms` | — · `{ user_ids, title?, bot_ids? }` | `{ rooms: BotConversationSummary[] }`（`kind:'room'`，带 `participants`、成员的 `owner_user_id` / `addressable`）· 201 `{ conversation }`（两人、无标题、无 Agent → 复用这一对人的私聊，200）；不合格的人 400、别人的私有 Agent 404、不对所有人开放的公开 Agent 409 |
+| GET | `/api/rooms/people` | — | `{ people: { id, nickname, email }[] }`（能一起对话的人：活跃、内部、开了 Agent，不含自己） |
+| PATCH | `/api/rooms/:id` | `{ title }` | `{ conversation }`（任何参与者） |
+| POST / DELETE | `/api/rooms/:id/participants` · `/participants/:userId` | `{ user_id }` · — | `{ conversation }`（任何参与者拉人；新人不在某公开 Agent 受众里 → 它被移出）· `{ ok, deleted }`（自己离开或创建者移人；带进来的 Agent 随人离开；最后一人离开即删除；他的 Agent 正在答 409 `busy`） |
+| POST / DELETE | `/api/rooms/:id/agents` · `/agents/:botId` | `{ bot_id }` · — | `{ conversation }`（自己的 Agent，或对所有人开放的公开 Agent）· `{ ok }`（带它来的人、它的主人或创建者） |
+| GET / POST | `/api/admin/agents` · `/api/admin/agents/:id/pause` · `/resume`（super） | — | 全部公开 Agent（负责人、受众 `{ everyone, user_count, group_count }`、是否可用 / 暂停、使用者数）· `{ ok, paused }` |
+| GET | `/api/bots/:id/usage?days=` · `/api/bots/:id/activity?limit=` | — | `BotUsageView`（按天：次数 / token / 对话数，默认 30 天、最多 90）· `{ activity: BotActivityItem[] }`（平台动作 / 密码库使用 / 后台任务，新到旧，无消息内容）；只有主人 |
 | GET / DELETE | `/api/bots/:id/memories[/:memoryId]` | — | 该 Bot 的私有记忆 / `{ ok }`；改为共享走 `PATCH /api/auth/me/memories/:id { bot_id: null }` |
-| GET / POST | `/api/bots/conversations` | `{ bot_ids }`（恰好 1 个 id） | 列表 / `{ conversation }`（该 Bot 的私聊，没有就建）；0 个或多个 id → `400 groups_retired`（群聊已退役）。每行带 `attention`（需要你 > 未读 > 在忙）、`pending_requests` 与 `unread_count`（`last_read_at` 之后 Bot 的回复条数，`assistant` 行，封顶 99；只来了系统事件时 `attention:'unread'` 而计数为 0） |
-| GET | `/api/bots/conversations/:id` | `before_seq?`、`limit?` | `{ conversation, messages, has_more, memory_states? }`（`allow_bot_chat` 已废弃、恒为 `true`；旧群 `kind:'group'` 照常可读） |
+| GET / POST | `/api/bots/conversations` | `?kind=task` · `{ bot_ids }`（恰好 1 个 id）或 `{ kind:'task', bot_id?, title?, model_id? }` | 列表（默认私聊 + 旧群；`?kind=task` 任务会话）/ `{ conversation }`（该 Bot 的私聊，没有就建；`kind:'task'` → 201 新任务会话，缺省 Sprouty）；0 个或多个 id → `400 groups_retired`（群聊已退役）。每行带 `attention`（需要你 > 未读 > 在忙）、`pending_requests` 与 `unread_count`（`last_read_at` 之后 Bot 的回复条数，`assistant` 行，封顶 99；只来了系统事件时 `attention:'unread'` 而计数为 0） |
+| GET | `/api/bots/conversations/:id` | `before_seq?`、`limit?` | `{ conversation, messages, has_more, memory_states?, my_ratings? }`（`my_ratings`：这一页里自己给回复的评分 `{ [messageId]: 1 \| -1 }`；`allow_bot_chat` 已废弃、恒为 `true`；旧群 `kind:'group'` 照常可读） |
 | POST / DELETE | `/api/bots/conversations/:id/members[/:botId]` | `{ bot_id }` | `{ conversation }`（邀请 = guest；主人不能移出 400 `cannot_remove_owner`；旧群 `409 group_closed`） |
 | POST | `/api/bots/conversations/:id/read` · `/compact` | — | `{ ok }`（同时把这段对话的「回复了你」提醒标为已读）· `{ digest }`（回合进行中 409） |
 | GET / POST / PATCH / DELETE | `/api/bots/conversations/:id/notes[/:noteId]` | `{ title, body?, status?, pinned? }` | 共享笔记 |
 | GET / POST | `/api/bots/conversations/:id/tasks` · `/api/bots/tasks/:runId/cancel` | — | 后台任务 |
 | GET | `/api/bots/tasks?state=active` | — | 我所有对话的后台任务：在跑的 + 最近 30 分钟内结束的（手机 Live Activity 对账；裸路径在 `src/index.ts` 单独挂 `requireFeature('bots')`） |
+| GET | `/api/bots/tasks?limit=` | — | 我所有对话的后台任务历史（`listMemberTaskHistory`：进行中在前、再按新到旧，默认 20、最多 50，每条带 `conversation_id`）——对话侧栏的「后台」组；其他 `state` 值 400 |
 | GET / POST | `/api/bots/requests` · `/api/bots/requests/:id` | `BotRequestDecision` | `{ request }`；冲突 409 `already_decided` / `deciding`；旧群的卡 409 `group_closed`（仍待处理的顺手撤成 `canceled`）；其他 409 带具体 code（`BotRequestErrorCode`：`page_gone` / `origin_mismatch` / `no_fields` / `failed` / `invalid` / `limit` / `computer_restarted` / `bot_gone`）且卡片保持待处理 |
 
-对话没有可编辑的设置：原 `PATCH /api/bots/conversations/:id`（群标题 / 群规 / 负责人 / Bot 互聊开关）已删除。
+| PATCH | `/api/bots/conversations/:id` | `{ model_id?, title? }` | `{ conversation }`——只给任务会话（私聊 / 旧群 409 `not_task_chat`；模型不在白名单 400）；标题同步到会话表 |
+| POST | `/api/bots/conversations/:id/rewind` | `{ message_id, content?, rich_blocks? }` | NDJSON 运行流（同 `POST /api/chat`）；只给任务会话（409 `not_task_chat`），`message_id` 须是最后一条成员消息（409 `not_last` / 404 `not_found`），有回合在跑 409 `busy`，有登录 / 接管卡 409 `requests_pending`，Bot 已归档 409 `bot_archived` |
+
+私聊与旧群没有可编辑的设置（原群标题 / 群规 / 负责人 / Bot 互聊开关的 PATCH 已删除）；任务会话只有模型与标题。
 
 名字校验：1–24 字，不含 `[ ] : ：` 与换行，非保留词、不等于成员昵称、在成员的 active Bot 中唯一 →
 `400 { code: 'bot_name_invalid' | 'bot_name_taken' | 'bot_limit' }`。

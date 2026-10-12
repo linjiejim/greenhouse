@@ -6,7 +6,7 @@
  */
 
 import { Hono } from 'hono';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SessionRow } from '@greenhouse/types/session';
 import type { UserRole } from '@greenhouse/types/api';
 import type { AppEnv } from '../../app-env.js';
@@ -106,6 +106,10 @@ function createSession(body: Record<string, unknown>) {
   });
 }
 
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
+
 describe('POST /api/sessions channel', () => {
   it('files an extension conversation on the browser channel', async () => {
     const response = await createSession({ profile_id: 'sprouty', channel: 'browser' });
@@ -151,6 +155,8 @@ describe('GET /api/sessions channel-filtered list', () => {
   });
 
   it("lists only the caller's own Bots conversations, even for a super", async () => {
+    // The deployment lets super read members' chats (SUPER_READS_CHATS, spec 20261011-agent-first-class D46).
+    vi.stubEnv('SUPER_READS_CHATS', 'true');
     const superApp = createApp({ id: 'admin', role: 'super' });
 
     const unscoped = await superApp.request('/api/sessions?channel=bots');

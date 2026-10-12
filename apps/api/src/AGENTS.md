@@ -32,8 +32,8 @@
 
 侧边栏「我的 / 分享给我 / Team」三档的后端。方案与决策（D1–D8）见 [spec](../../../docs/specs/20260806-session-list-scope-filter.md)。
 
-- **不传 `scope` = 历史行为，一个字节都没变**（super 看全部、team 看自己 + 分享回填）。历史弹框仍这么用，所以别把默认改成 `mine` —— 那会让 View All 名不副实且波及面不可控。
-- `scope=team` **对非 super 直接 403**，不是静默返回空数组：空列表会把调用方的 bug 藏起来。
+- **不传 `scope` = 历史行为**（team 看自己 + 分享回填；super 看全部——**仅当部署开了 `SUPER_READS_CHATS`**，2026-10-12 起默认关，super 也只看自己的，spec 20261011-agent-first-class D46）。历史弹框仍这么用，所以别把默认改成 `mine` —— 那会让 View All 名不副实且波及面不可控。
+- `scope=team` **对非 super、以及没开 `SUPER_READS_CHATS` 的 super 直接 403**，不是静默返回空数组：空列表会把调用方的 bug 藏起来。super 能否读别人的会话只有一个判断：`sessions/access.ts` 的 `superSeesAllChats`（`canAccessSession` / `canWriteSession` / 会话列表 / `session_query` / `/api/auth/me` 的 `reads_team_chats` 都用它）；Agent 对话（`channel='bots'`）无论如何只属于成员本人（room：它的参与者，`canPostToSession`）。
 - **`excludeUserId` 必须用 `IS DISTINCT FROM`**（`sessions.user_id` 可空：历史与引擎会话没有 owner）。写成 `<>` 的话三值逻辑会静默吞掉所有无主会话，「除我以外的全部」就变成「除我以外**有主**的全部」，且没有任何报错。
 - **`owner_nickname` 按「owner ≠ 请求者」统一附带，不按 scope 特判**（`withOwnerNicknames`）：一条规则同时覆盖 Team tab、分享 tab、super 的无 scope 列表、team 用户的分享回填行。按 scope 特判的话历史弹框里 super 看别人的会话就没名字，得再开第二条通道。
 - **分享列表查询只有一份**：`db.sessions.listSharedWith()`。`scope=shared` 用它，无 scope 的回填也用它（原先是拿到 id 列表后逐个 `getById` 的 N+1）。它是 EXISTS 半连接不是 join —— 同一会话可能同时有直接分享和 `__team__` 分享，join 会把它返回两次。
@@ -489,6 +489,7 @@ Automation、Tasks、Agents 的 `Mine / Shared / Team` 口径见 [personal asset
 领域规则、上下文管理、电脑与密码库的契约、HTTP 契约都在 [bots/AGENTS.md](./bots/AGENTS.md)；单写者 / `bot_inbox` 与 `MemoryScope` 的数据层规则在 [packages/db/src/AGENTS.md](../../../packages/db/src/AGENTS.md)。这里只记 API 其余部分必须守的几条：
 
 - **Bots 会话（`channel='bots'`）及 `bottask-` 后台子会话读写都只有主人，super 也不行**：`canWriteSession` / `canAccessSession` 通过共享 `isOwnerOnlySession` 对它们只比 `user_id`——续写一个 Bots 会话等于驱动主人的 Bot、电脑和密码库，读它等于读主人登录态浏览器里的页面文本与 shell 输出。`GET /api/sessions?channel=bots` 不论角色与 scope 都只列调用者自己的；分享、编辑、重新生成一律拒绝（400 / 409）。
+- **Agent 回合跑在 `runInAgentScope` 里**（`platform/agent-scope.ts`，AsyncLocalStorage）：Agents 引擎每个 Bot 回合、Bot 后台任务、以 Bot 身份跑的 Chat 回合（`profile.identity.botId`）、定时任务、飞书都包一层；`delegatedAgentActor` 读它（行为者 `bot:<id>`、`agentId`、`sessionId`，外部 `clientId` 优先），`createProviderAttemptBudgetHook` 读它写 `llm_usage.bot_id`。新加一条「以某个 Agent 身份跑」的入口时也要包。
 - **Bots 会话不进通用面**：会话列表（含置顶 / 分组回填）、标题搜索、`session_query` 统一用 `defaultSessionListHiding(channel)`（`@greenhouse/types/session`）排除 `HIDDEN_SESSION_CHANNELS` 与 `BOT_TASK_SESSION_PREFIX`（`bottask-` 后台任务子会话，LIKE 前缀已转义）；`session_query` 对 Bots 会话的 list / get / messages / usage 同样只有主人；`POST /api/chat` 见到 bots 会话走 Bots 引擎分支（懒加载 `bots/engine`，让 chat 路由测试不必 mock 整个引擎）。
 - **Runtime 不能扩大 Bots 权限**：所有对外 Runtime 查询与评测证据提取传入 viewer，DB 的 `bots-privacy.ts` 在分页/聚合前排除别人的私人记录，详情与命令也使用同一规则；原会话删除后靠持久 source 标记继续保护。
 - **Bot 工具是 `special`**，只由 Bots 引擎按回合构造，归 `bots` feature point；不要把它们加进 proxy / MCP / Chat 的工具面。一个 Bot 在聊天页开的新上下文走 chat 引擎：有身份、记忆分区与参考资料夹，**没有**电脑 / 团队 / 密码库 / `self` 工具。

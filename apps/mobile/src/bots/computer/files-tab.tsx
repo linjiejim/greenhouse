@@ -1,9 +1,9 @@
 /**
- * The computer's files (the Bots' sandbox, home /home/agent): start in ~/work,
+ * One Agent's computer's files (its sandbox, home /home/agent): start in ~/work,
  * open folders, go up to ~; a file opens the system share sheet (Save to Files,
  * AirDrop, another app) after an authenticated download. Read-only on the phone
  * (spec D4): a file the member wants on the computer goes in as a chat
- * attachment, which the Bot copies over itself.
+ * attachment, which the Agent copies over itself.
  */
 
 import React, { useCallback, useEffect, useState } from 'react';
@@ -20,8 +20,10 @@ import { EmptyState, LoadingState } from '../../ui/empty';
 import { ListSection, ListRow } from '../../ui/list';
 import { computerErrorKey } from './errors';
 import { homePath, parentPath } from './model';
+import type { ComputerBot } from './target';
 
-export function FilesTab() {
+/** `bot`: whose computer (null = the main Agent's). */
+export function FilesTab({ bot }: { bot: ComputerBot }) {
   const t = useT();
   const { colors: c } = useTheme();
   const styles = useStyles(c);
@@ -33,7 +35,7 @@ export function FilesTab() {
 
   const load = useCallback(
     async (target: string | undefined) => {
-      const result = await listComputerFiles(target);
+      const result = await listComputerFiles(target, bot);
       if (result.ok) {
         setList(result.value);
         setFailed(null);
@@ -41,7 +43,7 @@ export function FilesTab() {
         setFailed(t(computerErrorKey(result.code) ?? 'bots.computer.filesLoadFailed'));
       }
     },
-    [t],
+    [t, bot],
   );
 
   useEffect(() => {
@@ -57,7 +59,7 @@ export function FilesTab() {
       return;
     }
     setBusy(entry.name);
-    void downloadAndShare(computerFilePath(full), entry.name).then((ok) => {
+    void downloadAndShare(computerFilePath(full, bot), entry.name).then((ok) => {
       setBusy(null);
       if (!ok) alertError(t('bots.computer.filesDownloadFailed', { name: entry.name }));
     });

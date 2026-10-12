@@ -29,6 +29,7 @@ const liveDeps: ThreadDeps = {
     getConversation: botsApi.getConversation,
     markConversationRead: botsApi.markConversationRead,
     openBotsChat: chatApi.openBotsChat,
+    openBotsRewind: chatApi.openBotsRewind,
     interruptChatRun: chatApi.interruptChatRun,
     getChatRun: chatApi.getChatRun,
     streamChatRun: chatApi.streamChatRun,

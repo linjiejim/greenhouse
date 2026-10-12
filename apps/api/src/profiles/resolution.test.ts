@@ -14,7 +14,7 @@ import { resolveProfileAsync } from './profile.js';
 describe('Bot profile resolution', () => {
   it('fails explicitly when the Bot is missing and never falls back to Sprouty', async () => {
     await expect(resolveProfileAsync('custom:404')).rejects.toThrow('Custom profile not found');
-    await expect(resolveProfileAsync('bot:bot_0123456789abcdef')).rejects.toThrow('Bot not found');
-    await expect(resolveProfileAsync('bot:nope')).rejects.toThrow('Invalid Bot profile ID');
+    await expect(resolveProfileAsync('bot:bot_0123456789abcdef')).rejects.toThrow('Agent not found');
+    await expect(resolveProfileAsync('bot:nope')).rejects.toThrow('Invalid Agent profile ID');
   });
 });

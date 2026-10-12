@@ -12,6 +12,7 @@ import { createChatStreamAsync, createModelFromConfig, type ChatEngineInput } fr
 import { getDb } from '@greenhouse/db';
 import { resolveProfileAsync, type AgentProfile } from '../../profiles/profile.js';
 import { createProviderAttemptBudgetHook } from '../../llm/usage-budget.js';
+import { generateSessionTitle } from '../../llm/title.js';
 
 export interface SummarizeInput {
   userId: string;
@@ -26,6 +27,8 @@ export interface BotsEngineDeps {
   resolveProfile: (id: string) => Promise<AgentProfile>;
   /** One budgeted, tool-less completion for the rolling digest. Returns the raw text. */
   summarize: (input: SummarizeInput) => Promise<string>;
+  /** A task chat's title from its first member message (falls back to the message's own words). */
+  generateTitle: (message: string, usage: { userId: string; sessionId: string }) => Promise<string>;
 }
 
 async function summarizeWithModel(input: SummarizeInput): Promise<string> {
@@ -59,6 +62,7 @@ const defaults: BotsEngineDeps = {
   createStream: (input) => createChatStreamAsync(input),
   resolveProfile: (id) => resolveProfileAsync(id),
   summarize: summarizeWithModel,
+  generateTitle: (message, usage) => generateSessionTitle(message, usage),
 };
 
 let current: BotsEngineDeps = defaults;

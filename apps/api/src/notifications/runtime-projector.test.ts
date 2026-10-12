@@ -228,7 +228,7 @@ describe('Runtime notification projector', () => {
     expect(createWithStatus).toHaveBeenCalledWith(
       expect.objectContaining({
         title: 'Background task finished: Check links',
-        body: 'The Bot reported back in its conversation.',
+        body: 'The Agent reported back in its conversation.',
         // the run and its status name the Live Activity the phone ends (push/deliver.ts `botTaskEnd`)
         run_id: 'rtm_task_1',
         payload: expect.objectContaining({
@@ -283,7 +283,7 @@ describe('Runtime notification projector', () => {
       expect.objectContaining({
         kind: 'runtime_failed',
         title: '后台任务没能完成：小研 · 竞品调研',
-        body: 'Bot 已在对话里说明了情况。',
+        body: 'Agent 已在对话里说明了情况。',
         payload: expect.objectContaining({
           push: { k: 'done', sid: 'bots-dm-2', open: 'bots', bot_id: null, ok: false },
         }),

@@ -22,19 +22,21 @@ import type { StopCondition, ToolSet } from 'ai';
 import {
   buildEngineResult,
   createCollectors,
+  modelSupportsVision,
   processStreamPart,
   resolveHistoryBudget,
   withFinalAnswerGuarantee,
   type EngineMessage,
 } from '@greenhouse/agent-core';
 import { BotsDomainError, type BotRow, type ConversationWithMembers, type DatabaseProvider } from '@greenhouse/db';
-import type { BotEvent, BotRequestKind, BotTurnReason } from '@greenhouse/types/bots';
+import type { BotEvent, BotPublicationSettings, BotRequestKind, BotTurnReason } from '@greenhouse/types/bots';
 import { logger } from '@greenhouse/utils/logger';
 import { toErrorMessage } from '@greenhouse/utils/error';
 import { safeJsonParse } from '@greenhouse/utils/json';
 import type { ToolRegistry } from '../../agent.js';
 import type { ChatRun } from '../../chat/runs.js';
 import { persistChatResult } from '../../chat/persist.js';
+import { inlineImagesForVision } from '../../chat/vision.js';
 import { chatInterruptionNotice, chatStopNotice, streamPartToWireEvent, usageBudgetNotice } from '../../chat/turn.js';
 import {
   chatRuntimePayload,
@@ -65,6 +67,7 @@ import {
   assembleSystemPrompt,
   buildDigestSection,
   buildIdentity,
+  buildPublicIdentity,
   buildInstruction,
   buildMemberNotes,
   buildStaticRules,
@@ -76,6 +79,8 @@ import {
 } from './prompt.js';
 import { observeToolResult } from './taint.js';
 import { assembleInteractiveTools } from './tools-assembly.js';
+import { assemblePublicAgentTools } from './public-face.js';
+import { monthlyTokensOf } from '../public.js';
 import { readTail } from './transcript.js';
 import { TranscriptChangedError, type TranscriptWriter } from './writer.js';
 
@@ -99,6 +104,18 @@ export interface RunContext {
   members: Set<string>;
   /** Every Bot of the member, archived ones included (names in old messages); updated in place. */
   bots: Map<string, BotRow>;
+  /**
+   * Someone else's public Agents in this conversation (P4), with their published version applied in
+   * `bots` and what their public face needs. Empty for a member's own Bots.
+   */
+  publicBots: Map<string, PublicBotRun>;
+  /**
+   * A room (P5): every person's name (user id → nickname), for the speaker tags. This run is the
+   * requester's (`user`): only their messages are requests; others' are information.
+   */
+  people: Map<string, string> | null;
+  /** Names of Agents here that are not the member's (another person's, in a room) — for the speaker tags. */
+  otherBotNames: Map<string, string>;
   writer: TranscriptWriter;
   /** Digest snapshot for the whole run (spec: one snapshot per chain; never changes mid-run). */
   digest: { rendered: string | null; uptoSeq: number };
@@ -111,6 +128,14 @@ export interface RunContext {
   turnCounter: number;
   usage: { input: number; output: number; cached: number; reasoning: number };
   startedAt: number;
+}
+
+/** A public Agent in a member's conversation (spec 20261011-agent-first-class P4). */
+export interface PublicBotRun {
+  ownerId: string;
+  ownerNickname: string;
+  settings: BotPublicationSettings;
+  version: number;
 }
 
 /** Per-chain budgets. */
@@ -164,12 +189,30 @@ const HANDOFF_STOP = Symbol('bots-handoff-stop');
  * answers it right after an interrupt). Unreadable counts as none: the worst
  * case is a stop notice above a message that is then answered anyway.
  */
-export async function memberMessageQueued(db: DatabaseProvider, sessionId: string): Promise<boolean> {
+/**
+ * A member message waits in the inbox. In a room only the run's own member counts (`authorId`):
+ * someone else's message never cuts this member's Agent short — their own run answers it.
+ */
+export async function memberMessageQueued(
+  db: DatabaseProvider,
+  sessionId: string,
+  authorId?: string,
+): Promise<boolean> {
   try {
-    return (await db.bots.listPendingInbox(sessionId)).some((row) => row.kind === 'user_message');
+    return (await db.bots.listPendingInbox(sessionId)).some((row) => {
+      if (row.kind !== 'user_message' && row.kind !== 'mention') return false;
+      if (!authorId) return row.kind === 'user_message';
+      const author = (safeJsonParse(row.payload, {}) as { author_user_id?: unknown }).author_user_id;
+      return author === undefined || author === authorId;
+    });
   } catch {
     return false;
   }
+}
+
+/** The member a room run is for, or undefined outside rooms (see memberMessageQueued). */
+export function roomMember(rc: Pick<RunContext, 'people' | 'user'>): string | undefined {
+  return rc.people ? rc.user.id : undefined;
 }
 
 /**
@@ -210,7 +253,9 @@ function rosterOf(rc: RunContext): RosterEntry[] {
     .filter((entry): entry is RosterEntry => entry !== null);
 }
 
-function resolveTurnModel(bot: BotRow): string | undefined {
+/** A task chat's chosen model, else the Bot's own, else the preset's (undefined); a retired id falls through. */
+export function resolveTurnModel(bot: BotRow, chatModelId?: string | null): string | undefined {
+  if (chatModelId && isChatModelAllowed(chatModelId)) return chatModelId;
   return bot.model_id && isChatModelAllowed(bot.model_id) ? bot.model_id : undefined;
 }
 
@@ -263,9 +308,12 @@ export async function runBotTurn(rc: RunContext, chain: ChainState, item: FloorI
     });
   };
 
+  // Someone else's public Agent (P4): its narrow public face, its owner's grants, its own budget.
+  const publicRun = rc.publicBots.get(bot.id) ?? null;
   const ctx: BotTurnContext = {
     db,
     userId: user.id,
+    ...(publicRun ? { publicUse: { ownerId: publicRun.ownerId } } : {}),
     userRole: user.role,
     locale,
     sessionId,
@@ -355,7 +403,8 @@ export async function runBotTurn(rc: RunContext, chain: ChainState, item: FloorI
   let recallMaxSeq = rc.digest.uptoSeq;
   const conversationPort: ConversationPort = {
     nickname: user.nickname,
-    botName: (id) => (id ? (rc.bots.get(id)?.name ?? null) : null),
+    botName: (id) => (id ? (rc.bots.get(id)?.name ?? rc.otherBotNames.get(id) ?? null) : null),
+    ...(rc.people ? { personName: (id: string) => rc.people?.get(id) ?? null } : {}),
     recallMaxSeq: () => recallMaxSeq,
   };
 
@@ -378,22 +427,47 @@ export async function runBotTurn(rc: RunContext, chain: ChainState, item: FloorI
   const traceState: { status: ChatRuntimeTerminalStatus } = { status: 'interrupted' };
 
   try {
+    // A public Agent's per-member daily cap (D37): over it, say so instead of answering.
+    if (publicRun?.settings.budget.daily_tokens_per_user) {
+      const since = new Date(new Date().setUTCHours(0, 0, 0, 0)).toISOString();
+      const used = await db.usage.getBotUserTokensSince(bot.id, user.id, since);
+      if (used >= publicRun.settings.budget.daily_tokens_per_user) {
+        await rc.writer.appendEvent({
+          text: copy.publicDailyCap(locale, bot.name),
+          event: { kind: 'unavailable', bot_id: bot.id, reason: 'daily_cap' },
+          botId: bot.id,
+        });
+        return { status: 'skipped' };
+      }
+    }
+
     // ── Tools, prompt, history ──
-    const { tools, approvalGated } = assembleInteractiveTools({
-      db,
-      ctx,
-      toolRegistry: rc.toolRegistry,
-      effectiveTools: botEffectiveTools(rc.effectiveTools, bot),
-      team,
-      conversation: conversationPort,
-      runtimeRunId: null,
-    });
-    const modelOverride = resolveTurnModel(bot);
+    const { tools, approvalGated } = publicRun
+      ? assemblePublicAgentTools({
+          db,
+          ctx,
+          toolRegistry: rc.toolRegistry,
+          conversation: conversationPort,
+          settings: publicRun.settings,
+        })
+      : assembleInteractiveTools({
+          db,
+          ctx,
+          toolRegistry: rc.toolRegistry,
+          effectiveTools: botEffectiveTools(rc.effectiveTools, bot),
+          team,
+          conversation: conversationPort,
+          runtimeRunId: null,
+          room: rc.people !== null,
+        });
+    const modelOverride = resolveTurnModel(bot, rc.conversation.kind === 'task' ? rc.conversation.model_id : null);
     const effectiveModel = modelOverride ?? rc.profile.model.id;
     const systemPrompt = assembleSystemPrompt([
-      buildStaticRules(toolFaceFlags(Object.keys(tools), approvalGated), locale, rc.richBlocks),
-      buildIdentity(bot, user.nickname),
-      buildMemberNotes(user.nickname, user.notes),
+      buildStaticRules(toolFaceFlags(Object.keys(tools), approvalGated), locale, rc.richBlocks, rc.conversation.kind),
+      // A public Agent knows whom it serves, and nothing personal about either side (D35, D6).
+      publicRun ? buildPublicIdentity(bot, publicRun.ownerNickname, user.nickname) : buildIdentity(bot, user.nickname),
+      // A room is read by everyone in it: the member's private notes stay out (P5).
+      publicRun || rc.people ? null : buildMemberNotes(user.nickname, user.notes),
       buildDigestSection(rc.digest.rendered),
     ]);
 
@@ -402,7 +476,8 @@ export async function runBotTurn(rc: RunContext, chain: ChainState, item: FloorI
       selfBotId: bot.id,
       locale,
       nickname: user.nickname,
-      botNames: new Map([...rc.bots.values()].map((b) => [b.id, b.name])),
+      botNames: new Map([...rc.otherBotNames, ...[...rc.bots.values()].map((b) => [b.id, b.name] as const)]),
+      ...(rc.people ? { room: { memberId: user.id, people: rc.people } } : {}),
       uptoSeq: rc.digest.uptoSeq,
       budgetTokens: Math.min(resolveHistoryBudget(effectiveModel), PROJECTION_MAX_TOKENS),
     });
@@ -410,7 +485,7 @@ export async function runBotTurn(rc: RunContext, chain: ChainState, item: FloorI
       projection.firstSeq !== null ? projection.firstSeq - 1 : Math.max(rc.digest.uptoSeq, rc.writer.tailSeq);
 
     const [memoryBlock, openNotes] = await Promise.all([
-      resolveMemoryContext(user.id, user.role, { botId: bot.id }),
+      resolveMemoryContext(user.id, user.role, { botId: bot.id, onlyBot: publicRun !== null }),
       db.bots.listNotes(sessionId, { status: 'open' }),
     ]);
     const outcomes = (item.askedBots ?? []).map((id) => ({
@@ -434,15 +509,25 @@ export async function runBotTurn(rc: RunContext, chain: ChainState, item: FloorI
       instruction: buildInstruction({
         reason: item.reason,
         nickname: user.nickname,
-        ...(item.askedBy ? { askedByName: rc.bots.get(item.askedBy)?.name ?? 'Bot' } : {}),
+        ...(item.askedBy ? { askedByName: rc.bots.get(item.askedBy)?.name ?? 'Agent' } : {}),
         ...(item.message ? { message: item.message } : {}),
         askedOutcomes: outcomes,
       }),
     });
-    const engineMessages: EngineMessage[] = projection.messages.map((m) => ({ role: m.role, content: m.content }));
+    // Attached images: pixels for vision models (Chat's budget, chat/vision.ts), IDs for the rest.
+    const engineMessages: EngineMessage[] =
+      modelSupportsVision(effectiveModel) && projection.messages.some((m) => m.images?.length)
+        ? (
+            await inlineImagesForVision(
+              projection.messages.map((m) => ({ role: m.role, content: m.content, images: m.images ?? null })),
+            )
+          ).messages.map((m) => ({ role: m.role, content: m.content }) as EngineMessage)
+        : projection.messages.map((m) => ({ role: m.role, content: m.content }));
     const last = engineMessages[engineMessages.length - 1];
     if (last && last.role === 'user' && typeof last.content === 'string') {
       last.content = `${last.content}\n\n${tailText}`;
+    } else if (last && last.role === 'user' && Array.isArray(last.content)) {
+      last.content = [...last.content, { type: 'text', text: `\n\n${tailText}` }];
     } else {
       engineMessages.push({ role: 'user', content: tailText });
     }
@@ -497,6 +582,8 @@ export async function runBotTurn(rc: RunContext, chain: ChainState, item: FloorI
       runId: trace?.runId ?? run.runId,
       budgetPool: 'standard',
       metadata: { max_steps: maxSteps, bot_id: bot.id, reason: item.reason },
+      botId: bot.id,
+      ...(publicRun ? { agentBudget: { botId: bot.id, monthlyTokens: monthlyTokensOf(publicRun.settings) } } : {}),
     });
     const stopWhenHandedOff: StopCondition<ToolSet> = () => stopAfter !== null;
     // Soft stop: read after each step's tool calls completed, so the step in
@@ -621,7 +708,7 @@ export async function runBotTurn(rc: RunContext, chain: ChainState, item: FloorI
     let notice: string | undefined;
     // Soft-stopped with nobody waiting: the run ends with this turn, which says
     // so like a Stop does. A queued member message is answered next instead.
-    const stopNotice = interrupted && completed && !(await memberMessageQueued(db, sessionId));
+    const stopNotice = interrupted && completed && !(await memberMessageQueued(db, sessionId, roomMember(rc)));
     if (completed) {
       status = 'completed';
       if (stopNotice) notice = chatStopNotice(locale);
