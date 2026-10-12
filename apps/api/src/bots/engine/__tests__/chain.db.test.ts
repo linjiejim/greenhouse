@@ -705,13 +705,18 @@ describe('inbox: claim-then-apply', () => {
     });
 
     // The stopped run does not answer it; the run right after does, without waiting for a sweep.
-    await vi.waitFor(async () => {
-      const rows = await db.sessions.getMessages(dm.session_id);
-      expect(rows.slice(-2).map((r) => [r.role, r.content])).toEqual([
-        ['user', 'second'],
-        ['assistant', 'Answering the second.'],
-      ]);
-    });
+    await vi.waitFor(
+      async () => {
+        const rows = await db.sessions.getMessages(dm.session_id);
+        expect(rows.slice(-2).map((r) => [r.role, r.content])).toEqual([
+          ['user', 'second'],
+          ['assistant', 'Answering the second.'],
+        ]);
+      },
+      // Match settled()'s budget: the real DB follow-up can exceed vi.waitFor's
+      // default one second while the complete multi-project suite is running.
+      { timeout: 4_000 },
+    );
     await settled(dm.session_id);
     expect(await db.bots.listPendingInbox(dm.session_id)).toHaveLength(0);
   });
