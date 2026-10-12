@@ -19,6 +19,8 @@ import { getHandoff } from '../src/lib/handoff';
 import { useT } from '../src/lib/i18n';
 import { makeStyles, radius, space, squircle, useTheme } from '../src/theme';
 import { EmptyState } from '../src/ui/empty';
+import { TableRecords } from '../src/chat/markdown/blocks/table';
+import { Segmented } from '../src/ui/segmented';
 import { SheetClose } from '../src/ui/sheet-chrome';
 
 export default function FullTable() {
@@ -28,6 +30,7 @@ export default function FullTable() {
   const { k, title } = useLocalSearchParams<{ k?: string; title?: string }>();
   const data = getHandoff<TableData>(k);
   const [avail, setAvail] = useState(0);
+  const [mode, setMode] = useState<'records' | 'grid'>(data && data.head.length > 4 ? 'records' : 'grid');
 
   return (
     <View style={styles.root}>
@@ -35,8 +38,21 @@ export default function FullTable() {
       <SheetClose />
       {data ? (
         <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerStyle={styles.content}>
+          <Segmented
+            value={mode}
+            options={[
+              { value: 'records', label: t('chat.tableRecords') },
+              { value: 'grid', label: t('chat.tableGrid') },
+            ]}
+            onChange={setMode}
+            style={{ marginBottom: space.md }}
+          />
           <View style={styles.card} onLayout={(e) => setAvail(Math.floor(e.nativeEvent.layout.width))}>
-            <TableGrid data={data} big avail={avail || undefined} />
+            {mode === 'records' ? (
+              <TableRecords data={data} />
+            ) : (
+              <TableGrid data={data} big avail={avail || undefined} />
+            )}
           </View>
         </ScrollView>
       ) : (

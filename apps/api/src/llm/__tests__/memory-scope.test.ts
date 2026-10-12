@@ -7,6 +7,9 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { MEMORY_WRITING_RULE } from '../memory-limits.js';
+import { createMemoryTool } from '../../tools/memory.js';
+import type { DatabaseProvider } from '@greenhouse/db';
 
 const mocks = vi.hoisted(() => {
   const row = (id: number, botId: string | null) => ({
@@ -66,7 +69,8 @@ vi.mock('ai', async (importOriginal) => {
   const actual = await importOriginal<typeof import('ai')>();
   return {
     ...actual,
-    generateText: vi.fn(async (input: { messages: Array<{ content: string }> }) => {
+    generateText: vi.fn(async (input: { instructions: string; messages: Array<{ content: string }> }) => {
+      expect(input.instructions).toContain(MEMORY_WRITING_RULE);
       const listing = input.messages[0]!.content;
       mocks.prompts.push(listing);
       // In the Bot's partition the "model" merges two of its notes — and also
@@ -98,6 +102,10 @@ beforeEach(() => {
 });
 
 describe('consolidation partitions', () => {
+  it('uses the same plain-text writing rule for explicit notes and consolidation', () => {
+    const tool = createMemoryTool(mocks.db as unknown as DatabaseProvider, { userId: 'user-1' });
+    expect(tool.description).toContain(MEMORY_WRITING_RULE);
+  });
   it('consolidates each scope on its own; a merge stays inside its partition', async () => {
     const stats = await runMemoryConsolidation();
     expect(stats.opsApplied).toBe(1);
@@ -122,6 +130,8 @@ describe('memory index block', () => {
   it('a Bot gets the shared layer plus its own notes under their own header', async () => {
     const block = await buildMemoryIndexBlock('user-1', { botId: 'botA' });
     expect(block).toContain('Shared note 1');
+    expect(block).toContain('only notes relevant to the current request');
+    expect(block).toContain('not a task list');
     expect(block).toMatch(/Your own private notes \(only you see these\):\n- \[fact\] Bot note 101/);
     const scopes = mocks.db.userMemories.listForIndex.mock.calls.map((call) => call[1]);
     expect(scopes).toEqual([{ botId: null }, { botId: 'botA', exact: true }]);

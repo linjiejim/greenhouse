@@ -166,7 +166,7 @@ import { StartupContext, useStartupContent, useStartupCovered } from './context'
 const { act, createElement: h } = test.React;
 let root: ReturnType<typeof test.createRoot> | null = null;
 let container: HTMLDivElement;
-const FADE_TOTAL_MS = 350;
+const FADE_TOTAL_MS = 160;
 
 async function render(element: ReturnType<typeof h>) {
   await act(async () => {
@@ -301,31 +301,30 @@ describe('root startup reveal', () => {
     expect(screen.fetchContent).toHaveBeenCalledTimes(1);
   });
 
-  it.each(['populated', 'empty', 'error'])('fast %s content never cuts the mark build short', async (outcome) => {
-    const screen = routeFixture();
-    test.auth.loading = false;
-    test.fonts = [true, null];
-    await render(h(RootLayout));
-    await act(async () => {
-      if (outcome === 'error') screen.response.reject(new Error('offline'));
-      else screen.response.resolve(outcome);
-    });
-    await advance(MARK_BUILD_MS - 1);
-    expect(fadeCalls()).toHaveLength(0);
-    expect(covered()).toBe(true);
-    await advance(1);
-    expect(fadeCalls()).toHaveLength(1);
-    await advance(FADE_TOTAL_MS);
-    expect(covered()).toBe(false);
-    expect(container.querySelector('article')?.textContent).toBe(outcome);
-  });
+  it.each(['populated', 'empty', 'error'])(
+    'fast %s content enters immediately without waiting for the logo',
+    async (outcome) => {
+      const screen = routeFixture();
+      test.auth.loading = false;
+      test.fonts = [true, null];
+      await render(h(RootLayout));
+      await act(async () => {
+        if (outcome === 'error') screen.response.reject(new Error('offline'));
+        else screen.response.resolve(outcome);
+      });
+      expect(fadeCalls()).toHaveLength(1);
+      expect(covered()).toBe(true);
+      await advance(FADE_TOTAL_MS);
+      expect(covered()).toBe(false);
+      expect(container.querySelector('article')?.textContent).toBe(outcome);
+    },
+  );
 
   it('waits briefly for slow content instead of revealing a second loading screen', async () => {
     const screen = routeFixture();
     test.auth.loading = false;
     test.fonts = [true, null];
     await render(h(RootLayout));
-    await advance(MARK_BUILD_MS);
     await advance(STARTUP_CONTENT_GRACE_MS - 1);
     expect(fadeCalls()).toHaveLength(0);
     expect(covered()).toBe(true);
@@ -344,7 +343,6 @@ describe('root startup reveal', () => {
     test.fonts = [true, null];
     await render(h(RootLayout));
     const mountedNode = container.querySelector('article');
-    await advance(MARK_BUILD_MS);
     await advance(STARTUP_CONTENT_GRACE_MS - 1);
     expect(fadeCalls()).toHaveLength(0);
     await advance(1);
@@ -410,7 +408,7 @@ describe('root startup reveal', () => {
 });
 
 describe('splash deadline and animation lifecycle', () => {
-  it('starts grace only after both app prerequisites and the mark settle', async () => {
+  it('starts grace when app prerequisites settle, independently of the logo', async () => {
     const onGone = vi.fn();
     await render(h(Splash, { ready: false, contentReady: false, onGone }));
     await advance(MARK_BUILD_MS);
@@ -444,7 +442,7 @@ describe('splash deadline and animation lifecycle', () => {
     test.reduced.mockResolvedValue(true);
     const onGone = vi.fn();
     await render(h(Splash, { ready: true, contentReady: false, onGone }));
-    await advance(1000);
+    await advance(STARTUP_CONTENT_GRACE_MS - 500);
     await render(h(Splash, { ready: true, contentReady: true, onGone }));
     await advance(100);
     await render(h(Splash, { ready: true, contentReady: false, onGone }));
@@ -466,7 +464,7 @@ describe('splash deadline and animation lifecycle', () => {
     expect(vi.getTimerCount()).toBe(0);
     await advance(10_000);
     expect(onGone).not.toHaveBeenCalled();
-    expect(test.removeMotionListener).toHaveBeenCalledTimes(1);
+    expect(test.removeMotionListener).toHaveBeenCalledTimes(phase === 'fade' ? 0 : 1);
   });
 
   it('a finished fade uses the latest callback without restarting the animation', async () => {

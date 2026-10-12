@@ -6,7 +6,7 @@ import { describe, it, expect } from 'vitest';
 import { resolve } from 'node:path';
 import { readFileSync, existsSync } from 'node:fs';
 import { parse as parseYaml } from 'yaml';
-import { REPLY_STYLE_RULE } from '@greenhouse/utils/prompts';
+import { REPLY_STYLE_RULE, CONVERSATION_FOCUS_RULE } from '@greenhouse/utils/prompts';
 
 // We test the profile loading logic directly since the module
 // uses import.meta.dirname which points to the actual profiles dir.
@@ -58,6 +58,10 @@ describe('Profile: sprouty.yaml', () => {
   it('carries the shared reply-style rule verbatim (the Bots engine embeds the same wording)', () => {
     const flat = (text: string) => text.replace(/\s+/g, ' ');
     expect(flat(profile.system_prompt)).toContain(`## Communication - ${REPLY_STYLE_RULE}`);
+  });
+
+  it('keeps topic changes and genuine follow-ups consistent with Bots', () => {
+    expect(profile.system_prompt.replace(/\s+/g, ' ')).toContain(CONVERSATION_FOCUS_RULE);
   });
 
   it('has reasonable max_steps', () => {

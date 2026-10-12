@@ -17,7 +17,7 @@ import { z } from 'zod';
 import { toErrorMessage } from '@greenhouse/utils/error';
 import type { DatabaseProvider, UserMemoryRow } from '@greenhouse/db';
 import { defineTool, type ToolMeta } from './define.js';
-import { validateMemoryText, MEMORY_TITLE_MAX, MEMORY_CONTENT_MAX } from '../llm/memory-limits.js';
+import { validateMemoryText, MEMORY_TITLE_MAX, MEMORY_CONTENT_MAX, MEMORY_WRITING_RULE } from '../llm/memory-limits.js';
 
 const memorySchema = z.object({
   action: z
@@ -27,14 +27,9 @@ const memorySchema = z.object({
     .string()
     .optional()
     .describe(
-      `One-line recall index (≤${MEMORY_TITLE_MAX} chars). Write it so a future reader can judge relevance WITHOUT opening the note: "Prefers CRM figures broken down by 客户类型, not by country" beats "CRM preferences".`,
+      `Plain-text one-line recall index (≤${MEMORY_TITLE_MAX} chars). Write it so a future reader can judge relevance WITHOUT opening the note: "Prefers CRM figures broken down by 客户类型, not by country" beats "CRM preferences".`,
     ),
-  content: z
-    .string()
-    .optional()
-    .describe(
-      `The memory itself (≤${MEMORY_CONTENT_MAX} chars). One self-contained idea, specific enough to still be usable in a month.`,
-    ),
+  content: z.string().optional().describe(`The memory itself (≤${MEMORY_CONTENT_MAX} chars). ${MEMORY_WRITING_RULE}`),
   category: z
     .enum(['preference', 'fact', 'behavior'])
     .optional()
@@ -101,7 +96,9 @@ const meta: ToolMeta = {
 
 Call \`remember\` whenever the user tells you to ("remember that…", "from now on…") — that is never optional — and when you learn something durable about them or about how they want to be worked with. Do NOT store one-off task details, anything you can look up on demand, or credentials (those are rejected). Prefer \`update\` over storing a second, contradicting note.
 
-Write memories in ENGLISH whatever language you are speaking, with one exception that matters: keep literals EXACTLY as they appear — identifiers, enum values (e.g. 潜在), document titles, customer names, error strings. A translated literal stops matching the thing it names, which makes the memory worse than useless.`,
+${MEMORY_WRITING_RULE}
+
+Write in English; never translate literal values (e.g. enum 潜在), titles, names or error strings.`,
   category: 'core',
   // Rides the `memory` feature flag (default-on) rather than being global, so a
   // super who explicitly disables memory for someone also removes the tool.

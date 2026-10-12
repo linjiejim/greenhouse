@@ -131,7 +131,9 @@ const EMPTY: Filled = { username: false, password: false, otp: false };
 
 export function useLoginForm({ request, fields }: { request: BotRequestView; fields: LoginFieldsIO }) {
   const payload = request.payload as BotLoginPayload;
-  const otpOnly = payload.kind === 'otp';
+  const visibleFields =
+    payload.kind === 'otp' ? ['otp'] : payload.fields?.length ? payload.fields : ['username', 'password'];
+  const otpOnly = visibleFields.length === 1 && visibleFields[0] === 'otp';
   const vaultOffered = useBots((s) => s.vaultAvailable) && !otpOnly;
   const [save, setSave] = useState(false);
   const [filled, setFilled] = useState<Filled>(EMPTY);
@@ -199,6 +201,7 @@ export function useLoginForm({ request, fields }: { request: BotRequestView; fie
   return {
     payload,
     otpOnly,
+    visibleFields,
     /** The page's origin host, for the sheet's title ("Sign In to github.com"). */
     host: hostOf(payload.origin) ?? hostOf(payload.url) ?? '',
     /** The page address, when it says more than the origin. */
