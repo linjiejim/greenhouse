@@ -102,7 +102,6 @@ export const botsComputerEn = {
     filesEmpty: 'This folder is empty',
     filesTruncated: 'Showing the first {count} items.',
     filesLoadFailed: 'Couldn’t open this folder.',
-    filesDownloadFailed: 'Couldn’t download {name}.',
     filesUp: 'Up',
     filesHint: 'Tap a file to preview it, then share or save if needed.',
     procEmptyTitle: 'No background processes yet',

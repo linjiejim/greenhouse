@@ -14,7 +14,7 @@
  *    reply the menu offers "Regenerate" on, and an edit's text with the message's file fence kept.
  */
 
-import type { ComposerImage } from '../chat/composer';
+import type { ComposerImage } from '../chat/composer-images';
 import type { TranslationKey } from '../lib/i18n';
 import type { BotConversationSummary, BotEvent, BotMessage, BotView } from '../shared/bots';
 import type { SendInput } from './contract';

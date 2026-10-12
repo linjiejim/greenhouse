@@ -388,7 +388,7 @@ private func botA11y(_ bot: SnapshotBot, zh: Bool) -> String {
   return (zh ? "\(bot.name)，" : "\(bot.name), ") + signal
 }
 
-/** Only Sprouty so far: one dashed "New Agent" slot (Settings → My Bots), never a row of empties. */
+/** Only Sprouty so far: one dashed "New Agent" slot (Settings → My Agents), never a row of empties. */
 private struct NewBotCell: View {
   let zh: Bool
   let size: CGFloat

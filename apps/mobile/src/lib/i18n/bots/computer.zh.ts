@@ -94,7 +94,6 @@ export const botsComputerZh: typeof botsComputerEn = {
     filesEmpty: '这个文件夹是空的',
     filesTruncated: '只显示了前 {count} 项。',
     filesLoadFailed: '无法打开这个文件夹。',
-    filesDownloadFailed: '没能下载 {name}。',
     filesUp: '上一级',
     filesHint: '点文件即可预览，也可以分享或保存。',
     procEmptyTitle: '还没有后台进程',
