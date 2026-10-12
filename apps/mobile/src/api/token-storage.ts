@@ -20,6 +20,7 @@
 import { Platform } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import type { AuthenticatedUser } from '../shared/greenhouse-types';
+import { checkAborted } from './connection-deadline';
 
 const ACCESS_KEY = 'greenhouse_access_token';
 const REFRESH_KEY = 'greenhouse_refresh_token';
@@ -67,8 +68,8 @@ function persistSet(key: string, value: string | null): void {
       else globalThis.localStorage?.setItem(key, value);
       return;
     }
-    if (value == null) void SecureStore.deleteItemAsync(key);
-    else void SecureStore.setItemAsync(key, value);
+    if (value == null) void SecureStore.deleteItemAsync(key).catch(() => undefined);
+    else void SecureStore.setItemAsync(key, value).catch(() => undefined);
   } catch {
     /* ignore — best effort */
   }
@@ -98,7 +99,7 @@ export function detachTokens(stationId: string | null): void {
  * detached first (synchronously, before the reads); reads that a newer switch
  * or a session write (setTokens / clearTokens) overtook are dropped.
  */
-export async function hydrateTokens(stationId: string | null): Promise<void> {
+export async function hydrateTokens(stationId: string | null, signal?: AbortSignal): Promise<void> {
   detachTokens(stationId);
   if (!stationId) return;
   const started = epoch;
@@ -107,6 +108,7 @@ export async function hydrateTokens(stationId: string | null): Promise<void> {
     persistGet(keyFor(REFRESH_KEY, stationId)),
     persistGet(keyFor(USER_KEY, stationId)),
   ]);
+  checkAborted(signal);
   if (started !== epoch) return;
   mem = { access, refresh, user: userRaw ? safeParseUser(userRaw) : null };
   hydrating = false;

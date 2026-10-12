@@ -4,7 +4,7 @@
  * the saved stations, which one is active, and the three changes —
  *
  *  - `select` — tap a station: the active one just closes (`onDone`); any
- *    other becomes active,
+ *    other is probed before dismissal; a failed probe keeps the current station,
  *  - `remove` — confirmed with a destructive alert; the station first stops
  *    pushing to this phone (src/push/register.ts, best effort),
  *  - `add` — validates the address (`normalizeBaseUrl`), probes it (is there a
@@ -20,7 +20,7 @@
  * reroute never happens under a presented sheet.
  */
 
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { IS_SINGLE_STATION } from '../config';
 import { normalizeBaseUrl, probeStation, useStations, type StationRecord } from '../store/stations';
 import { AFTER_DISMISS_MS, useAuth } from '../store/auth';
@@ -35,6 +35,18 @@ export function useStationsForm({ onDone, onLeave }: { onDone: () => void; onLea
   const locked = IS_SINGLE_STATION;
   const active = stations.find((s) => s.id === activeId) ?? null;
   const [busy, setBusy] = useState(false);
+  const pending = useRef(false);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  const setPending = useCallback((value: boolean) => {
+    pending.current = value;
+    setBusy(value);
+  }, []);
 
   /** Dismiss, then mutate the registry and sign in to the new active station. */
   const leaveThen = useCallback(
@@ -48,51 +60,80 @@ export function useStationsForm({ onDone, onLeave }: { onDone: () => void; onLea
   );
 
   const select = useCallback(
-    (station: StationRecord) => {
-      if (station.id === activeId) onDone();
-      else leaveThen(() => useStations.getState().switchTo(station.id));
+    async (station: StationRecord) => {
+      if (pending.current) return;
+      if (station.id === activeId) {
+        onDone();
+        return;
+      }
+      setPending(true);
+      const probe = await probeStation(station.baseUrl);
+      if (!mounted.current) return;
+      if (!probe.ok || probe.authEnabled === false) {
+        setPending(false);
+        alertError(
+          t('station.switchFailed'),
+          t(probe.authEnabled === false ? 'station.authDisabled' : 'station.unreachable'),
+        );
+        return;
+      }
+      leaveThen(() => useStations.getState().switchTo(station.id));
     },
-    [activeId, onDone, leaveThen],
+    [activeId, onDone, leaveThen, setPending, t],
   );
 
   const remove = useCallback(
     async (station: StationRecord) => {
+      if (pending.current) return;
+      setPending(true);
       const ok = await confirmAction({
         title: t('station.deleteTitle'),
         message: t('station.deleteHint', { name: station.name }),
         confirmLabel: t('station.delete'),
         destructive: true,
       });
-      if (!ok) return;
+      if (!ok) {
+        setPending(false);
+        return;
+      }
       // Removing the active station changes where the app points — leave first. Either
       // way the station stops pushing to this phone first (best effort, its own session).
       if (station.id === activeId) {
         const unregistered = unregisterActive();
         leaveThen(() => unregistered.then(() => useStations.getState().remove(station.id)));
       } else {
-        void unregisterStation(station).finally(() => useStations.getState().remove(station.id));
+        try {
+          await unregisterStation(station).catch(() => undefined);
+          await useStations.getState().remove(station.id);
+        } catch {
+          alertError(t('common.error'));
+        } finally {
+          setPending(false);
+        }
       }
     },
-    [activeId, leaveThen, t],
+    [activeId, leaveThen, setPending, t],
   );
 
   /** Validate, probe and save a typed address (+ optional name) as the active station. */
   const add = useCallback(
     async (rawUrl: string, rawName: string) => {
-      if (busy) return;
+      if (pending.current) return;
       const baseUrl = normalizeBaseUrl(rawUrl);
       if (!baseUrl) {
         alertError(t('station.addFailed'), t('station.invalidUrl'));
         return;
       }
-      setBusy(true);
+      setPending(true);
       const probe = await probeStation(baseUrl);
-      setBusy(false);
+      if (!mounted.current) return;
       if (!probe.ok) {
+        setPending(false);
         alertError(t('station.addFailed'), t('station.unreachable'));
         return;
       }
       if (probe.authEnabled === false) {
+        setPending(false);
         alertError(t('station.addFailed'), t('station.authDisabled'));
         return;
       }
@@ -100,7 +141,7 @@ export function useStationsForm({ onDone, onLeave }: { onDone: () => void; onLea
       const label = rawName.trim() || probe.productName;
       leaveThen(() => useStations.getState().add(baseUrl, label || undefined));
     },
-    [busy, t, leaveThen],
+    [t, leaveThen, setPending],
   );
 
   return { stations, activeId, active, locked, busy, select, remove, add };

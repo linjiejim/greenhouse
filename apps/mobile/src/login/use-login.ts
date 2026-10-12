@@ -15,6 +15,8 @@ import { useT } from '../lib/i18n';
 export function useLogin(fields: { email: () => string | undefined; password: () => string | undefined }) {
   const t = useT();
   const doLogin = useAuth((s) => s.login);
+  const startupError = useAuth((s) => s.startupError);
+  const retry = useAuth((s) => s.bootstrap);
   const router = useRouter();
   const station = useActiveStation();
   const [error, setError] = useState<string | null>(null);
@@ -47,5 +49,6 @@ export function useLogin(fields: { email: () => string | undefined; password: ()
     if (!res.ok) setError(res.error || t('login.failed'));
   }, [busy, station, readEmail, readPassword, doLogin, t, openStations]);
 
-  return { station, error, busy, submit, clearError, openStations };
+  const connectionError = startupError ? t(startupError === 'timeout' ? 'station.timeout' : 'station.connectionFailed') : null;
+  return { station, error, connectionError, retry, busy, submit, clearError, openStations };
 }

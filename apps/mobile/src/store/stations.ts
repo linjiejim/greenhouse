@@ -23,6 +23,7 @@
  */
 
 import { create } from 'zustand';
+import { checkAborted, withConnectionDeadline } from '../api/connection-deadline';
 import { DEFAULT_API_BASE, IS_SINGLE_STATION, STATIONS } from '../config';
 import type { StationConfig } from '../shared/greenhouse-config';
 import { detachTokens, loadPref, savePref, migrateLegacyTokens, purgeStationTokens } from '../api/token-storage';
@@ -75,18 +76,15 @@ function defaultScheme(input: string): 'http' | 'https' {
   return 'https';
 }
 
-async function getJson(url: string): Promise<Record<string, unknown> | null> {
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), 6000);
+async function getJson(url: string, signal: AbortSignal): Promise<Record<string, unknown> | null> {
   try {
-    const res = await fetch(url, { signal: ctrl.signal });
+    checkAborted(signal);
+    const res = await fetch(url, { signal });
     if (!res.ok) return null;
     const body: unknown = await res.json();
     return body && typeof body === 'object' ? (body as Record<string, unknown>) : null;
   } catch {
     return null;
-  } finally {
-    clearTimeout(timer);
   }
 }
 
@@ -102,14 +100,16 @@ async function getJson(url: string): Promise<Record<string, unknown> | null> {
 export async function probeStation(
   baseUrl: string,
 ): Promise<{ ok: boolean; authEnabled?: boolean; productName?: string }> {
-  const boot = await getJson(`${baseUrl}/api/bootstrap`);
-  if (boot && 'product_name' in boot) {
-    const name = typeof boot.product_name === 'string' ? boot.product_name.trim() : '';
-    return { ok: true, authEnabled: true, productName: name || undefined };
-  }
-  const legacy = await getJson(`${baseUrl}/api/auth/status`);
-  if (legacy && typeof legacy.authEnabled === 'boolean') return { ok: true, authEnabled: legacy.authEnabled };
-  return { ok: false };
+  return withConnectionDeadline(async (signal) => {
+    const boot = await getJson(`${baseUrl}/api/bootstrap`, signal);
+    if (boot && 'product_name' in boot) {
+      const name = typeof boot.product_name === 'string' ? boot.product_name.trim() : '';
+      return { ok: true, authEnabled: true, productName: name || undefined };
+    }
+    const legacy = await getJson(`${baseUrl}/api/auth/status`, signal);
+    if (legacy && typeof legacy.authEnabled === 'boolean') return { ok: true, authEnabled: legacy.authEnabled };
+    return { ok: false };
+  }).catch(() => ({ ok: false }));
 }
 
 /** Signed-out record for a configured default: config id, normalized origin. */
@@ -129,7 +129,7 @@ interface StationsState {
   activeId: string | null;
   hydrated: boolean;
   /** Load the persisted registry (with legacy adoption / first-launch seeding / single-station lock). */
-  hydrate: () => Promise<void>;
+  hydrate: (signal?: AbortSignal) => Promise<void>;
   /** Save a station and make it active; a duplicate origin switches instead. Locked builds ignore other origins. */
   add: (baseUrl: string, name?: string) => Promise<StationRecord>;
   /** Make a station active. No-op in a locked build. */
@@ -149,10 +149,7 @@ function safeParseStations(raw: string | null): StationRecord[] | null {
 }
 
 async function persist(stations: StationRecord[], activeId: string | null): Promise<void> {
-  await Promise.all([
-    savePref(STATIONS_PREF, JSON.stringify(stations)),
-    savePref(ACTIVE_PREF, activeId),
-  ]);
+  await Promise.all([savePref(STATIONS_PREF, JSON.stringify(stations)), savePref(ACTIVE_PREF, activeId)]);
 }
 
 export const useStations = create<StationsState>((set, get) => ({
@@ -160,9 +157,10 @@ export const useStations = create<StationsState>((set, get) => ({
   activeId: null,
   hydrated: false,
 
-  async hydrate() {
+  async hydrate(signal) {
     if (get().hydrated) return;
     const [rawList, rawActive] = await Promise.all([loadPref(STATIONS_PREF), loadPref(ACTIVE_PREF)]);
+    checkAborted(signal);
     let stations = safeParseStations(rawList);
     let activeId = rawActive;
 
@@ -173,6 +171,7 @@ export const useStations = create<StationsState>((set, get) => ({
       // or onto a station built from the build default when nothing is seeded.
       const first = stations[0] ?? { id: newStationId(), baseUrl: DEFAULT_API_BASE, name: hostLabel(DEFAULT_API_BASE) };
       const hadLegacySession = await migrateLegacyTokens(first.id);
+      checkAborted(signal);
       if (stations.length === 0 && (hadLegacySession || __DEV__)) stations = [first];
       activeId = stations[0]?.id ?? null;
       await persist(stations, activeId);
@@ -186,7 +185,10 @@ export const useStations = create<StationsState>((set, get) => ({
       const existing = stations.find((s) => s.baseUrl === locked.baseUrl);
       const station = existing ? { ...existing, name: locked.name } : locked;
       const alreadyLocked =
-        stations.length === 1 && stations[0].id === station.id && stations[0].name === station.name && activeId === station.id;
+        stations.length === 1 &&
+        stations[0].id === station.id &&
+        stations[0].name === station.name &&
+        activeId === station.id;
       if (!alreadyLocked) {
         for (const s of stations) if (s.id !== station.id) purgeStationTokens(s.id);
         stations = [station];
@@ -196,6 +198,7 @@ export const useStations = create<StationsState>((set, get) => ({
     }
 
     if (activeId && !stations.some((s) => s.id === activeId)) activeId = stations[0]?.id ?? null;
+    checkAborted(signal);
     detachTokens(activeId);
     set({ stations, activeId, hydrated: true });
   },

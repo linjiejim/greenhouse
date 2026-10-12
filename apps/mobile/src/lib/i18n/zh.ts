@@ -63,6 +63,9 @@ export const zh: Catalog = {
     namePlaceholder: '名称（可选）',
     addHint: '不填名称时显示服务器自身的名称或地址。',
     addFailed: '无法添加工作站',
+    switchFailed: '无法切换工作站',
+    timeout: '工作站 10 秒内未响应。请重试或选择其他工作站，已保存的登录信息会保留。',
+    connectionFailed: '无法连接工作站，请重试或选择其他工作站。',
   },
   home: {
     greetingDawn: '凌晨好',

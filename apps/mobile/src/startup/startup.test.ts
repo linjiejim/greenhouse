@@ -30,7 +30,13 @@ const test = await vi.hoisted(async () => {
     reduced: vi.fn(),
     removeMotionListener: vi.fn(),
     motionListener: null as ((reduced: boolean) => void) | null,
-    auth: { loading: true, user: { id: 'member-a' } as { id: string } | null, bootstrap: vi.fn(), logout: vi.fn() },
+    auth: {
+      startupError: null as string | null,
+      loading: true,
+      user: { id: 'member-a' } as { id: string } | null,
+      bootstrap: vi.fn(),
+      logout: vi.fn(),
+    },
     prefs: { hydrate: vi.fn() },
     station: { activeId: 'station-a' },
     fonts: [false, null] as [boolean, Error | null],
@@ -143,6 +149,9 @@ vi.mock('../settings/account-language', () => ({ useAccountLanguage: () => {} })
 vi.mock('../push/use-push', () => ({ usePushBridge: () => {} }));
 vi.mock('../live-activity/use-live-activities', () => ({ useLiveActivities: () => {} }));
 vi.mock('../widget/art-host', () => ({ WidgetArtHost: () => null }));
+vi.mock('../ui/loading-state', () => ({
+  LoadingState: () => test.React.createElement('div', { role: 'progressbar' }),
+}));
 vi.mock('../ui/dialogs', () => ({ DialogHost: () => null }));
 vi.mock('../ui/menu', () => ({ MenuHost: () => null }));
 vi.mock('../ui/toast', () => ({ ToastHost: () => null }));
@@ -228,6 +237,7 @@ function routeFixture() {
 }
 
 beforeEach(() => {
+  test.auth.startupError = null;
   vi.useFakeTimers();
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   test.timing.mockClear();
@@ -599,5 +609,30 @@ describe('reduced-motion mark readiness', () => {
     expect(onBuilt).not.toHaveBeenCalled();
     expect(test.timing).not.toHaveBeenCalled();
     expect(test.removeMotionListener).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('station transition recovery UI', () => {
+  it('shows a progress indicator during a switch after the launch cover is gone', async () => {
+    test.auth.loading = false;
+    test.auth.user = null;
+    test.fonts = [true, null];
+    await render(h(RootLayout));
+    await advance(160);
+    expect(covered()).toBe(false);
+    test.auth.loading = true;
+    await render(h(RootLayout));
+    expect(container.querySelector('[role="progressbar"]')).not.toBeNull();
+  });
+
+  it('removes the cover immediately on startup failure, even with pending fonts', async () => {
+    await render(h(RootLayout));
+    expect(covered()).toBe(true);
+    test.auth.loading = false;
+    test.auth.user = null;
+    test.auth.startupError = 'timeout';
+    await render(h(RootLayout));
+    expect(covered()).toBe(false);
+    expect(test.router.replace).toHaveBeenCalledWith('/login');
   });
 });

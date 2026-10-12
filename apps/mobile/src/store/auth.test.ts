@@ -7,7 +7,7 @@
  * are mocked.
  */
 
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 type User = { id: string };
 
@@ -43,7 +43,7 @@ vi.mock('../api/auth', () => ({
   logout: () => {},
 }));
 
-const { useAuth } = await import('./auth');
+const { useAuth, STARTUP_CONNECTION_TIMEOUT_MS } = await import('./auth');
 
 beforeEach(() => {
   log.length = 0;
@@ -63,14 +63,14 @@ describe('switchStation', () => {
     expect(useAuth.getState()).toMatchObject({ loading: false, user: { id: 'u-b' } });
   });
 
-  it('bootstraps even when the change throws', async () => {
+  it('settles a failed registry mutation as a recoverable error', async () => {
     await expect(
       useAuth.getState().switchStation(async () => {
         throw new Error('persist failed');
       }),
-    ).rejects.toThrow('persist failed');
-    expect(log).toEqual(['hydrate:b']);
-    expect(useAuth.getState().loading).toBe(false);
+    ).resolves.toBeUndefined();
+    expect(log).toEqual([]);
+    expect(useAuth.getState()).toMatchObject({ loading: false, user: null, startupError: 'connection' });
   });
 
   it('an earlier bootstrap finishing mid-switch does not lower loading', async () => {
@@ -91,4 +91,64 @@ describe('switchStation', () => {
     expect(loadingAfterStaleBoot).toBe(true);
     expect(useAuth.getState()).toMatchObject({ loading: false, user: { id: 'u-b' } });
   });
+});
+
+afterEach(() => vi.useRealTimers());
+
+describe('startup deadline', () => {
+  it('reserves native rendering time inside the 10-second visible limit', () => {
+    expect(STARTUP_CONNECTION_TIMEOUT_MS).toBeLessThanOrEqual(8500);
+  });
+  it('releases loading with time left for native recovery UI even when validation ignores abort, and ignores its late answer', async () => {
+    vi.useFakeTimers();
+    let release!: (user: User | null) => void;
+    validate = () =>
+      new Promise((resolve) => {
+        release = resolve;
+      });
+    const boot = useAuth.getState().bootstrap();
+    await vi.advanceTimersByTimeAsync(STARTUP_CONNECTION_TIMEOUT_MS - 1);
+    expect(useAuth.getState().loading).toBe(true);
+    await vi.advanceTimersByTimeAsync(1);
+    await boot;
+    expect(useAuth.getState()).toMatchObject({ loading: false, user: null, startupError: 'timeout' });
+    validate = async () => ({ id: 'new-user' });
+    await useAuth.getState().bootstrap();
+    release({ id: 'late-user' });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(useAuth.getState()).toMatchObject({ loading: false, user: { id: 'new-user' }, startupError: null });
+  });
+
+  it('includes the registry mutation in the same startup budget', async () => {
+    vi.useFakeTimers();
+    const boot = useAuth.getState().switchStation(() => new Promise(() => {}));
+    await vi.advanceTimersByTimeAsync(STARTUP_CONNECTION_TIMEOUT_MS);
+    await boot;
+    expect(useAuth.getState()).toMatchObject({ loading: false, user: null, startupError: 'timeout' });
+    expect(log).toEqual([]);
+  });
+
+  it('reports network errors immediately and lets a retry recover', async () => {
+    validate = async () => {
+      throw new Error('offline');
+    };
+    await useAuth.getState().bootstrap();
+    expect(useAuth.getState()).toMatchObject({ loading: false, user: null, startupError: 'connection' });
+    validate = async () => ({ id: 'u-b' });
+    await useAuth.getState().bootstrap();
+    expect(useAuth.getState()).toMatchObject({ loading: false, user: { id: 'u-b' }, startupError: null });
+  });
+});
+
+
+it('profile updates during startup do not bypass session validation', async () => {
+  vi.useFakeTimers();
+  validate = () => new Promise(() => {});
+  const boot = useAuth.getState().bootstrap();
+  await vi.advanceTimersByTimeAsync(0);
+  useAuth.getState().setUser({ id: 'u-b', locale: 'zh' } as never);
+  expect(useAuth.getState().loading).toBe(true);
+  await vi.advanceTimersByTimeAsync(STARTUP_CONNECTION_TIMEOUT_MS);
+  await boot;
+  expect(useAuth.getState()).toMatchObject({ loading: false, user: null, startupError: 'timeout' });
 });

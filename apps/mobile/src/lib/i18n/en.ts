@@ -68,6 +68,9 @@ export const en = {
     namePlaceholder: 'Name (optional)',
     addHint: 'Without a name, the server’s own name or address is shown.',
     addFailed: 'Couldn’t add the station',
+    switchFailed: 'Couldn’t switch stations',
+    timeout: 'No response from this station within 10 seconds. Retry or choose another station. Your saved sign-in is kept.',
+    connectionFailed: 'Could not connect to this station. Retry or choose another station.',
   },
   home: {
     greetingDawn: 'Good early morning',

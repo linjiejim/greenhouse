@@ -12,6 +12,7 @@
  */
 
 import { getApiBase } from '../store/stations';
+import { checkAborted, withConnectionDeadline } from './connection-deadline';
 import {
   getAccessToken,
   getRefreshToken,
@@ -27,7 +28,7 @@ export function setOnUnauthorized(cb: () => void): void {
 }
 
 /** The refresh in flight, per station the token mirror belonged to when it started. */
-const refreshing = new Map<string | null, Promise<boolean>>();
+const refreshing = new Map<string | null, { promise: Promise<boolean>; signal?: AbortSignal }>();
 
 /**
  * Refresh the active station's access token. Concurrent callers on one station
@@ -37,38 +38,48 @@ const refreshing = new Map<string | null, Promise<boolean>>();
  * on the new station would read that false as "this session is over" and sign
  * the new station out.
  */
-export function refreshTokens(): Promise<boolean> {
+export function refreshTokens(signal?: AbortSignal): Promise<boolean> {
+  checkAborted(signal);
   const sid = getTokenStationId();
   const pending = refreshing.get(sid);
-  if (pending) return pending;
-  const run: Promise<boolean> = doRefresh(sid).finally(() => {
-    if (refreshing.get(sid) === run) refreshing.delete(sid);
+  if (pending && !pending.signal?.aborted) return pending.promise;
+  const controller = new AbortController();
+  const cancel = () => controller.abort(signal?.reason);
+  signal?.addEventListener('abort', cancel, { once: true });
+  // Background refreshes also expire, so a later bootstrap cannot keep joining a hung rotation.
+  const run: Promise<boolean> = withConnectionDeadline((attempt) => doRefresh(sid, attempt), controller).finally(() => {
+    signal?.removeEventListener('abort', cancel);
+    if (refreshing.get(sid)?.promise === run) refreshing.delete(sid);
   });
-  refreshing.set(sid, run);
+  refreshing.set(sid, { promise: run, signal: controller.signal });
   return run;
 }
 
-async function doRefresh(sid: string | null): Promise<boolean> {
+async function doRefresh(sid: string | null, signal?: AbortSignal): Promise<boolean> {
   // Origin and refresh token are read in the same tick as `sid` (the mirror follows the active station synchronously).
   const refreshToken = getRefreshToken();
   if (!refreshToken) return false;
-  try {
-    const res = await fetch(`${getApiBase()}/api/auth/refresh`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ refreshToken }),
-    });
-    if (!res.ok) return false;
-    const data = await res.json();
-    // A station switch mid-refresh repoints the mirror — this rotation belongs
-    // to the old station, so writing it now would corrupt the new one's slot.
-    if (getTokenStationId() !== sid) return false;
-    setTokens(data.accessToken, data.refreshToken);
-    if (data.user) setCachedUser(data.user);
-    return true;
-  } catch {
+  const res = await fetch(`${getApiBase()}/api/auth/refresh`, {
+    signal,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ refreshToken }),
+  });
+  checkAborted(signal);
+  if (getTokenStationId() !== sid) return false;
+  if (!res.ok) {
+    // Only explicit credential rejection ends the session; outages must be retryable.
+    if (res.status !== 401 && res.status !== 403) throw new Error('Station refresh failed');
     return false;
   }
+  const data = await res.json();
+  checkAborted(signal);
+  // A station switch mid-refresh repoints the mirror — this rotation belongs
+  // to the old station, so writing it now would corrupt the new one's slot.
+  if (getTokenStationId() !== sid) return false;
+  setTokens(data.accessToken, data.refreshToken);
+  if (data.user) setCachedUser(data.user);
+  return true;
 }
 
 /**
@@ -96,6 +107,7 @@ export function onStation(url: string, base: string): boolean {
  * it to the old origin, and signing out would end the new station's session.
  */
 export async function api(path: string, init: RequestInit = {}): Promise<Response> {
+  checkAborted(init.signal);
   const base = getApiBase();
   const url = /^https?:\/\//i.test(path) ? path : `${base}${path}`;
   const own = onStation(url, base);
@@ -106,17 +118,20 @@ export async function api(path: string, init: RequestInit = {}): Promise<Respons
   if (token) headers.set('Authorization', `Bearer ${token}`);
 
   let res = await fetch(url, { ...init, headers });
+  checkAborted(init.signal);
   // Another origin's 401 is about no session of ours.
   if (!own) return res;
 
   if (res.status === 401 && sameStation()) {
-    const ok = await refreshTokens();
+    const ok = await refreshTokens(init.signal ?? undefined);
+    checkAborted(init.signal);
     if (!sameStation()) return res;
     if (ok) {
       const retryHeaders = new Headers(init.headers);
       const newToken = getAccessToken();
       if (newToken) retryHeaders.set('Authorization', `Bearer ${newToken}`);
       res = await fetch(url, { ...init, headers: retryHeaders });
+      checkAborted(init.signal);
       if (res.status === 401 && sameStation()) {
         clearTokens();
         onUnauthorized?.();

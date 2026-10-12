@@ -22,6 +22,7 @@ import type { AuthenticatedUser } from '../shared/greenhouse-types';
 import { hydrateTokens, getCachedUser, getAccessToken } from '../api/token-storage';
 import { useStations } from './stations';
 import * as authApi from '../api/auth';
+import { checkAborted, ConnectionTimeoutError, withConnectionDeadline } from '../api/connection-deadline';
 
 /**
  * An auth transition reroutes the whole app (the root layout replaces the
@@ -31,14 +32,21 @@ import * as authApi from '../api/auth';
  */
 export const AFTER_DISMISS_MS = 380;
 
+/** Keep the visible startup below 10s, including native mount/redirect time.
+ * Simulator recordings showed a full 10s network budget left the cover visible for ~11s.
+ */
+export const STARTUP_CONNECTION_TIMEOUT_MS = 8_500;
+
 /** Bumped per bootstrap so a superseded run (station switched again mid-flight)
  *  can't stomp the newer one's user/loading state. */
 let bootGeneration = 0;
+let bootController: AbortController | undefined;
 
 interface AuthState {
   user: AuthenticatedUser | null;
   /** true until the current hydrate + validate completes */
   loading: boolean;
+  startupError: 'timeout' | 'connection' | null;
   bootstrap: () => Promise<void>;
   /**
    * Change the active station (`change` is a useStations mutation: switchTo /
@@ -53,49 +61,67 @@ interface AuthState {
   setUser: (user: AuthenticatedUser | null) => void;
 }
 
-export const useAuth = create<AuthState>((set, get) => ({
-  user: null,
-  loading: true,
-
-  async bootstrap() {
+export const useAuth = create<AuthState>((set) => {
+  async function initialize(change?: () => Promise<unknown>): Promise<void> {
     const gen = ++bootGeneration;
-    set({ loading: true });
-    await useStations.getState().hydrate();
-    if (gen !== bootGeneration) return;
-    await hydrateTokens(useStations.getState().activeId);
-    if (gen !== bootGeneration) return;
-    // Optimistically show the cached user, then validate in the background.
-    const cached = getCachedUser();
-    if (cached) set({ user: cached });
-    const validated = getAccessToken() ? await authApi.validateSession() : null;
-    if (gen !== bootGeneration) return;
-    set({ user: validated, loading: false });
-  },
-
-  async switchStation(change) {
-    // Supersede an in-flight bootstrap first: it must not lower `loading`
-    // between this change and the bootstrap that follows it.
-    bootGeneration += 1;
-    set({ loading: true });
+    bootController?.abort();
+    const controller = new AbortController();
+    bootController = controller;
+    set({ loading: true, user: null, startupError: null });
     try {
-      await change();
-    } finally {
-      await get().bootstrap();
+      const user = await withConnectionDeadline(async (signal) => {
+        const current = () => {
+          checkAborted(signal);
+          if (gen !== bootGeneration) throw new Error('Superseded startup');
+        };
+        if (change) await change();
+        current();
+        await useStations.getState().hydrate(signal);
+        current();
+        await hydrateTokens(useStations.getState().activeId, signal);
+        current();
+        const cached = getCachedUser();
+        if (cached) set({ user: cached });
+        return getAccessToken() ? authApi.validateSession(signal) : null;
+      }, controller, STARTUP_CONNECTION_TIMEOUT_MS);
+      if (gen === bootGeneration) set({ user, loading: false });
+    } catch (error) {
+      if (gen === bootGeneration) {
+        set({
+          user: null,
+          loading: false,
+          startupError: error instanceof ConnectionTimeoutError ? 'timeout' : 'connection',
+        });
+      }
     }
-  },
+  }
 
-  async login(email, password) {
-    const res = await authApi.login(email, password);
-    if (res.ok && res.user) set({ user: res.user });
-    return { ok: res.ok, error: res.error };
-  },
+  return {
+    user: null,
+    loading: true,
+    startupError: null,
 
-  logout() {
-    authApi.logout();
-    set({ user: null });
-  },
+    bootstrap: () => initialize(),
+    switchStation: (change) => initialize(change),
 
-  setUser(user) {
-    set({ user });
-  },
-}));
+    async login(email, password) {
+      const res = await authApi.login(email, password);
+      if (res.ok && res.user) {
+        bootGeneration += 1;
+        set({ user: res.user, loading: false, startupError: null });
+      }
+      return { ok: res.ok, error: res.error };
+    },
+
+    logout() {
+      bootGeneration += 1;
+      bootController?.abort();
+      authApi.logout();
+      set({ user: null, loading: false, startupError: null });
+    },
+
+    setUser(user) {
+      set({ user });
+    },
+  };
+});
