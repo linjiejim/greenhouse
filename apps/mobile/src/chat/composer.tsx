@@ -7,8 +7,8 @@
  * `+` opens a native menu (拍照 / 照片图库 — images only, the upload API
  * rejects other types); the field grows to ~6 lines then scrolls; the send
  * button is the accent-tinted glass button and turns into stop while a reply
- * streams. No agent picker above it (2026-10-09): a new chat takes the
- * default agent from Settings, and a chat with one Bot starts from that Bot
+ * streams. No agent picker above it (2026-10-09): a new chat starts with
+ * Sprouty, and a chat with one Bot starts from that Bot
  * (the drawer, its profile, "New Chat" in its thread). Pure view:
  * the screen owns the draft, attachments and keyboard placement (it wraps this
  * in a KeyboardStickyView) and gets the control layer's height through
@@ -46,15 +46,7 @@ import { Icon, Spinner, Touchable } from '../ui/core';
 import { Glass, GlassGroup, GlassIconButton, LIQUID_GLASS } from '../ui/glass';
 import { NativeMenu, menuSections, type MenuItem } from '../ui/menu';
 import type { Annotation } from './model';
-
-/** A picked image being uploaded (or uploaded) before send. */
-export interface ComposerImage {
-  id: string;
-  /** Local (picker) uri for the thumbnail preview. */
-  uri: string;
-  status: 'uploading' | 'done' | 'error';
-  remote?: { id: string; url: string };
-}
+import { canSendMessage, type ComposerImage } from './composer-images';
 
 /**
  * The Bots composer's Stop (a run is live). `phase`: `running` — tap asks for
@@ -184,6 +176,7 @@ export const Composer = memo(
       onRemoveAnnotation: (id: string) => void;
       images: ComposerImage[];
       onRemoveImage: (id: string) => void;
+      onRetryImages: () => void;
       /** Image cap per message — at the cap the `+` menu explains it and disables its items. */
       maxImages?: number;
       placeholder: string;
@@ -211,6 +204,7 @@ export const Composer = memo(
       onRemoveAnnotation,
       images,
       onRemoveImage,
+      onRetryImages,
       maxImages = Infinity,
       placeholder,
       autoFocus = false,
@@ -225,9 +219,8 @@ export const Composer = memo(
     const { colors: c } = useTheme();
     const styles = useStyles(c);
     const t = useT();
-    // Not while a picked image is still uploading — it would be left out of the message.
-    const uploading = images.some((im) => im.status === 'uploading');
-    const canSend = !uploading && (value.trim().length > 0 || images.some((im) => im.status === 'done'));
+    const canSend = canSendMessage(value, images);
+    const failedImages = images.some((im) => im.status === 'error');
     const hasAttachments = images.length > 0 || annotations.length > 0;
     const full = images.length >= maxImages;
     // A single agent is no choice — no capsule (and no empty row) for it.
@@ -261,7 +254,12 @@ export const Composer = memo(
             {hasAttachments ? (
               <Animated.View layout={LinearTransition.duration(180)} style={styles.attachments}>
                 {images.length ? (
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.thumbs}>
+                  <ScrollView
+                    horizontal
+                    keyboardShouldPersistTaps="always"
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={styles.thumbs}
+                  >
                     {images.map((im) => (
                       <Animated.View key={im.id} entering={FadeIn.duration(180)} style={styles.thumb}>
                         <Image source={{ uri: im.uri }} style={StyleSheet.absoluteFill} contentFit="cover" />
@@ -276,7 +274,6 @@ export const Composer = memo(
                         ) : null}
                         <Touchable
                           onPress={() => onRemoveImage(im.id)}
-                          hitSlop={8}
                           style={styles.thumbX}
                           accessibilityRole="button"
                           accessibilityLabel={t('chat.removeAttachment')}
@@ -289,6 +286,12 @@ export const Composer = memo(
                     ))}
                   </ScrollView>
                 ) : null}
+                {failedImages ? (
+                  <View style={styles.uploadError}>
+                    <Text style={styles.uploadErrorText}>{t('upload.failed')}</Text>
+                    <NativeButton label={t('common.retry')} size="small" onPress={onRetryImages} />
+                  </View>
+                ) : null}
                 {annotations.map((a) => (
                   <View key={a.id} style={styles.quote}>
                     <View style={styles.quoteBar} />
@@ -297,7 +300,7 @@ export const Composer = memo(
                     </Text>
                     <Touchable
                       onPress={() => onRemoveAnnotation(a.id)}
-                      hitSlop={10}
+                      style={styles.quoteRemove}
                       accessibilityRole="button"
                       accessibilityLabel={t('chat.removeAttachment')}
                     >
@@ -410,7 +413,9 @@ const useStyles = makeStyles((c) => ({
     backgroundColor: c.background,
     opacity: 0.7,
   },
-  thumbX: { position: 'absolute', top: 4, right: 4 },
+  thumbX: { position: 'absolute', top: 0, right: 0, width: HIT, height: HIT, alignItems: 'flex-end', padding: 4 },
+  uploadError: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', paddingLeft: space.xs, gap: space.xs },
+  uploadErrorText: { ...typo.footnote, color: c.red, flexShrink: 1 },
   // label-on-background inverts per scheme: dark dot + light ✕ in light mode, and vice versa
   thumbXDot: {
     width: 20,
@@ -434,6 +439,7 @@ const useStyles = makeStyles((c) => ({
   },
   quoteBar: { width: 3, alignSelf: 'stretch', borderRadius: 2, backgroundColor: c.accent },
   quoteText: { flex: 1, ...typo.footnote, color: c.secondaryLabel },
+  quoteRemove: { width: HIT, minHeight: HIT, alignItems: 'center', justifyContent: 'center' },
   readOnly: { height: 44, borderRadius: 22, justifyContent: 'center' },
   readOnlyInner: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: space.sm },
   readOnlyText: { ...typo.subheadline, color: c.secondaryLabel },

@@ -26,7 +26,6 @@ export const botsThreadEn = {
     turnFailed: '{name} couldn’t reply',
     summarized: 'Earlier messages were summarized',
     view: 'View',
-    runFailed: 'Reply interrupted: {reason}',
     refreshFailed: 'Couldn’t refresh · Retry',
     sendFailed: 'Couldn’t send',
     handleNowFailed: 'Couldn’t handle it now',

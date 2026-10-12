@@ -63,10 +63,13 @@ export function alertError(title: string, message?: string, detail?: string): vo
   Alert.alert(
     title,
     message || undefined,
-    detail
-      ? [{ text: tr('common.details'), onPress: () => Alert.alert(tr('common.details'), detail, [ok]) }, ok]
-      : [ok],
+    detail ? [{ text: tr('common.details'), onPress: () => showErrorDetails(detail) }, ok] : [ok],
   );
+}
+
+/** Only after the member explicitly opens Details, including an inline chat error. */
+export function showErrorDetails(detail: string): void {
+  Alert.alert(tr('common.details'), detail, [{ text: tr('common.ok') }]);
 }
 
 export function promptText(opts: {
@@ -84,7 +87,10 @@ export function promptText(opts: {
       opts.message,
       [
         { text: tr('common.cancel'), style: 'cancel', onPress: () => resolve(null) },
-        { text: opts.confirmLabel ?? tr('common.ok'), onPress: (value?: string) => resolve((value ?? '').trim() || null) },
+        {
+          text: opts.confirmLabel ?? tr('common.ok'),
+          onPress: (value?: string) => resolve((value ?? '').trim() || null),
+        },
       ],
       opts.secure ? 'secure-text' : 'plain-text',
       opts.defaultValue,

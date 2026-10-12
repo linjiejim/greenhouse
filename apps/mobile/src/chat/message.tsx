@@ -46,8 +46,9 @@ import { translate, useT } from '../lib/i18n';
 import { openLink } from '../lib/links';
 import { splitAttachments } from '../shared/rich-output';
 import { usePrefs } from '../store/prefs';
-import { makeStyles, radius, space, squircle, typo, useTheme } from '../theme';
+import { HIT, makeStyles, radius, space, squircle, typo, useTheme } from '../theme';
 import { NativeButton } from '../ui/button';
+import { showErrorDetails } from '../ui/dialogs';
 import { Icon, type IconName, Spinner, Touchable } from '../ui/core';
 import { useFontScaleKey } from '../ui/font-scale';
 import { NativeMenu, menuSections, type MenuItem } from '../ui/menu';
@@ -232,17 +233,34 @@ function MetricsCaption({ m }: { m: Metrics }) {
   return <Text style={styles.metrics}>{parts.join(' · ')}</Text>;
 }
 
-function ErrorLine({ error, onRetry }: { error: string; onRetry?: () => void }) {
+export function ReplyError({
+  error,
+  onRetry,
+  onDismiss,
+}: {
+  error: string;
+  onRetry?: () => void;
+  onDismiss?: () => void;
+}) {
   const { colors: c } = useTheme();
   const styles = useStyles(c);
   const t = useT();
   return (
     <View style={styles.error}>
       <Icon name="alert" size={15} weight="semibold" color={c.red} />
-      <Text style={styles.errorText} selectable>
-        {error}
-      </Text>
+      <Text style={styles.errorText}>{t('chat.replyFailed')}</Text>
+      <NativeButton label={t('common.details')} size="small" onPress={() => showErrorDetails(error)} />
       {onRetry ? <NativeButton label={t('common.retry')} icon="refresh" size="small" onPress={onRetry} /> : null}
+      {onDismiss ? (
+        <Touchable
+          onPress={onDismiss}
+          style={styles.errorClose}
+          accessibilityRole="button"
+          accessibilityLabel={t('common.close')}
+        >
+          <Icon name="x" size={13} weight="semibold" color={c.red} />
+        </Touchable>
+      ) : null}
     </View>
   );
 }
@@ -365,7 +383,7 @@ export const AiMessage = memo(function AiMessage({
     cardsBelow.length && !live ? (
       <ArtifactCards key="cards" steps={cardsBelow} text={msg.text} live={live} followUp={followUp} onReply={reply} />
     ) : null,
-    msg.error ? <ErrorLine key="error" error={msg.error} onRetry={canRerun ? onRetry : undefined} /> : null,
+    msg.error ? <ReplyError key="error" error={msg.error} onRetry={canRerun ? onRetry : undefined} /> : null,
     !live && refCount && details.sources ? (
       <DisclosureRow
         key="refs"
@@ -574,6 +592,7 @@ const useStyles = makeStyles((c) => ({
     ...squircle,
   },
   errorText: { flex: 1, ...typo.footnote, color: c.red },
+  errorClose: { width: HIT, minHeight: HIT, alignItems: 'center', justifyContent: 'center' },
 
   /* user */
   userRow: { paddingHorizontal: space.margin, paddingTop: space.xs, paddingBottom: space.md, alignItems: 'flex-end' },

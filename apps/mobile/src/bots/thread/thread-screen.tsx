@@ -103,6 +103,7 @@ import { conversationTitle } from '../vendor/web-helpers';
 import { fromSegment } from './adapters';
 import { threadCache } from './cache';
 import { useThreadDraft } from './drafts';
+import { canSendMessage } from '../../chat/composer-images';
 import { MentionStrip } from './mention-strip';
 import { EventRow } from './rows/event-row';
 import { HandoffRow } from './rows/handoff-row';
@@ -765,8 +766,8 @@ export function BotThreadScreen({
   const send = useCallback(async () => {
     const text = input.trim();
     const uploaded = images.filter((im) => im.status === 'done' && im.remote);
-    // Send stays disabled while a picked image is still uploading (see Composer).
-    if ((!text && !uploaded.length) || images.some((im) => im.status === 'uploading')) return;
+    // Share the same all-attachments-ready rule with the composer.
+    if (!canSendMessage(text, images)) return;
     const quote = annotations.length ? annotations.map((a) => a.text).join('\n') : null;
     const held = take();
     // Clear natively too: a multiline field emptied only through `value` keeps its grown height (Fabric).
@@ -1212,6 +1213,7 @@ export function BotThreadScreen({
                   onRemoveAnnotation={draft.removeAnnotation}
                   images={images}
                   onRemoveImage={draft.removeImage}
+                  onRetryImages={draft.retryImages}
                   maxImages={MAX_IMAGES}
                   placeholder={placeholder}
                   autoFocus={compose}
