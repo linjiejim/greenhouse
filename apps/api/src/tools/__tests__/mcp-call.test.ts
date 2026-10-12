@@ -503,6 +503,23 @@ describe('renderMcpCatalog', () => {
 });
 
 describe('external source connector gateway', () => {
+  it('redacts credentials after decoding escaped JSON strings and keys', async () => {
+    const key = 'member-"key\\secret';
+    const remote = await startMcpTestServer({ apiKey: { value: key, query: 'key' } });
+    const configured = { ...keyedRow, url: remote.url };
+    directoryOf(configured);
+    try {
+      const db = fakeDb(() => [configured], { 'u1:8': { provider_credential: sealMemberCredential(8, 'u1', key) } });
+      const result = await callConnectorTool(
+        db,
+        { userId: 'u1' },
+        { server: 'maps', tool: 'chart_png', arguments: { echo: { [key]: [key] } } },
+      );
+      expect(result).toEqual({ data: { points: 3, echo: { '***': ['***'] } } });
+    } finally {
+      await remote.close();
+    }
+  });
   it('keeps structured data and bounds its serialized size', async () => {
     const data = await callConnectorTool(
       fakeDb(() => [row]),

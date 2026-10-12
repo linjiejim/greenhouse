@@ -132,7 +132,7 @@ function buildServer(tickets: string[], identity: string): Server {
       case 'chart_png':
         return {
           content: [{ type: 'image', data: 'iVBORw0KGgo=', mimeType: 'image/png' }],
-          structuredContent: { points: 3 },
+          structuredContent: { points: 3, ...(args.echo ? { echo: args.echo } : {}) },
         };
       case 'leaky':
         return {

@@ -218,7 +218,17 @@ export async function executeConnectorTool(
         if (Buffer.byteLength(serialized) > (options.maxBytes ?? 512 * 1024))
           return { error: 'Connector result exceeds the size limit.', reason: 'too_large' as const };
         try {
-          return { data: JSON.parse(redactSecrets(serialized, resolved.secrets)) as unknown };
+          // Decode JSON escapes before redacting; a quoted/backslashed credential
+          // otherwise no longer matches its serialized spelling.
+          const data: unknown = JSON.parse(serialized, (_key, value: unknown) => {
+            if (typeof value === 'string') return redactSecrets(value, resolved.secrets);
+            if (value && typeof value === 'object' && !Array.isArray(value))
+              return Object.fromEntries(
+                Object.entries(value).map(([key, item]) => [redactSecrets(key, resolved.secrets), item]),
+              );
+            return value;
+          });
+          return { data };
         } catch {
           return { error: 'Connector result is not JSON.', reason: 'map' as const };
         }
