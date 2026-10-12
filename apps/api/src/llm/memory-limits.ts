@@ -19,6 +19,10 @@ export const MEMORY_INDEX_BUDGET_CHARS = 3000;
 export const MEMORY_TITLE_MAX = 80;
 export const MEMORY_CONTENT_MAX = 2000;
 
+/** One writing rule for explicit memory writes and weekly consolidation. */
+export const MEMORY_WRITING_RULE =
+  'Use compact plain text for each title and body: no Markdown headings, bullets, checkboxes, tables, code fences or decorative emphasis. One durable idea per note, usually 1–3 short sentences. Do not repeat the title in the body or add conversational filler. Keep the facts that will change future assistance, with their conditions and scope; preserve exact names, identifiers, paths, dates, numbers and negations. Literal punctuation inside a value is data, not decoration.';
+
 /** Memories unused for this long drop out of the injected index (still searchable). */
 export const MEMORY_DORMANT_AFTER_DAYS = 90;
 

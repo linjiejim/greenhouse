@@ -94,6 +94,8 @@ description:
 失败和重要限制必须说全，按需展开。Bots 引擎的 S1 引用同一个常量；YAML 不能 import，
 `tests/api/profile.test.ts` 保证两边逐字一致——改措辞就改常量，再同步 YAML。
 
+Chat 与 Bots 还共享 `CONVERSATION_FOCUS_RULE`：明确换题跟随新意图，相关追问保留上下文，无关旧事项不反复带回；记忆和摘要只作相关参考。
+
 ## 模型是每轮的选择（2026-08-01，推翻 v3 的「一个 Agent = 一个模型」）
 
 v3 曾把模型收进 Agent 身份：想更强的推理就选 deep、想百万上下文就选 K3。实际结果是三个 Agent

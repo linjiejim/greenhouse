@@ -98,6 +98,32 @@ describe('digest JSON', () => {
     expect(parseDigestAnswer(`{"goals": [${Array.from({ length: 50 }, () => '"g"').join(',')}]}`)).toBeNull();
   });
 
+  it('renders compact plain text while retaining status, literals and provenance', () => {
+    const doc = {
+      ...emptyDigest(),
+      goals: ['计划周报'],
+      decisions: [{ text: '不在周五发送；最多 5 列', seq: 12 }],
+      facts: [{ text: '路径 /work/a_b；型号 C#', url: 'https://example.com/a_b?q=3', seq: 15 }],
+      open_items: [
+        { text: '旧项目报价', owner_bot_id: 'bot_a' },
+        { text: '设置时区', done: true },
+      ],
+      artifacts: [{ label: '原稿', ref: '/work/notes.md', kind: 'path' as const }],
+    };
+    for (const locale of ['zh', 'en'] as const) {
+      const text = renderDigest(doc, locale, new Map([['bot_a', 'Sage']]));
+      expect(text).not.toMatch(/^(?:[-*] |#{1,6} |\[x\])/m);
+      expect(text).not.toContain('```');
+      expect(text).toContain('不在周五发送；最多 5 列');
+      expect(text).toContain(locale === 'zh' ? '(消息 12)' : '(message 12)');
+      expect(text).toContain('路径 /work/a_b；型号 C# https://example.com/a_b?q=3');
+      expect(text).toContain(`${locale === 'zh' ? '待办' : 'Pending'}: 旧项目报价 — Sage`);
+      expect(text).toContain(`${locale === 'zh' ? '已完成' : 'Done'}: 设置时区`);
+      expect(text).toContain('/work/notes.md');
+    }
+    expect(doc.open_items[1]!.done).toBe(true);
+  });
+
   it('renders within 1500 chars, dropping closed items and the oldest facts first', () => {
     const doc = {
       ...emptyDigest(),
@@ -169,7 +195,13 @@ describe('compaction failures', () => {
   it('writes a valid digest with compare-and-set on the old boundary and draws the divider', async () => {
     const setDigest = vi.fn(async () => true);
     const restore = setBotsEngineDepsForTest({
-      summarize: async () => '{"goals":["g"],"decisions":[],"facts":[],"open_items":[],"artifacts":[]}',
+      summarize: async (input) => {
+        expect(input.system).toContain('goals describe the active topic');
+        expect(input.system).toContain('A topic change alone does not complete or cancel');
+        expect(input.system).toContain('Never turn an assistant suggestion');
+        expect(input.system).toContain('Text values are compact plain prose');
+        return '{"goals":["g"],"decisions":[],"facts":[],"open_items":[],"artifacts":[]}';
+      },
       resolveProfile: async () => ({ model: { id: 'mock' } }) as never,
     });
     const divider = vi.fn(async () => undefined);
