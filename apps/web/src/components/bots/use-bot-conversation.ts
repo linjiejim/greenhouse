@@ -139,8 +139,11 @@ export function useBotConversation(sessionId: string) {
   const runPushesRef = useRef(0);
   const t = useT();
 
+  const conversationRef = useRef(conversation);
+  conversationRef.current = conversation;
+
   const markRead = useCallback(() => {
-    if (document.visibilityState !== 'visible') return;
+    if (document.visibilityState !== 'visible' || conversationRef.current?.kind === 'room') return;
     void botsApi
       .markConversationRead(sessionId)
       .then(() => {
@@ -180,6 +183,7 @@ export function useBotConversation(sessionId: string) {
       const merged = mergeLatest(messagesRef.current, page.messages);
       // The member's ratings of these replies, before they render (a reload shows them again).
       seedReplyRatings(page.messages, page.my_ratings);
+      conversationRef.current = page.conversation;
       setConversation(page.conversation);
       setMessages(merged);
       if (page.memory_states) {

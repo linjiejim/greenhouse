@@ -109,6 +109,120 @@ async function startRun(t: Awaited<ReturnType<typeof setup>>, content = 'hi') {
   return { stream, outcome };
 }
 
+describe('precise room read position', () => {
+  it('acknowledges only reported, loaded message ends while visible and moves forward', async () => {
+    const t = await setup({
+      messages: [message(1), message(2)],
+      prepare: (fake) => {
+        fake.server.conversation.kind = 'room';
+      },
+    });
+    const calls: Array<string | undefined> = [];
+    t.fake.api.markConversationRead = async (_sid, id) => {
+      calls.push(id);
+      return true;
+    };
+    t.engine.readThrough('missing');
+    t.engine.setVisible(false);
+    t.engine.readThrough('m2');
+    t.engine.setVisible(true);
+    t.engine.setForeground(false);
+    t.engine.readThrough('m2');
+    t.engine.setForeground(true);
+    await t.time.advance(0);
+    expect(calls.filter(Boolean)).toEqual([]);
+    t.engine.readThrough('m1');
+    await t.time.advance(0);
+    t.engine.readThrough('m1');
+    t.engine.readThrough('m2');
+    await t.time.advance(0);
+    t.engine.readThrough('m1');
+    expect(calls.filter(Boolean)).toEqual(['m1', 'm2']);
+    t.engine.dispose();
+  });
+
+  it('sends the latest newly visible end after a successful slow acknowledgement', async () => {
+    const t = await setup({
+      messages: rows(1, 3),
+      prepare: (fake) => {
+        fake.server.conversation.kind = 'room';
+      },
+    });
+    const gate = deferred<boolean>();
+    const ids: string[] = [];
+    t.fake.api.markConversationRead = async (_sid, id) => {
+      if (id) ids.push(id);
+      return ids.length === 1 ? gate.promise : true;
+    };
+    t.engine.readThrough('m1');
+    t.engine.readThrough('m2');
+    t.engine.readThrough('m3');
+    expect(ids).toEqual(['m1']);
+    gate.resolve(true);
+    await t.time.advance(0);
+    expect(ids).toEqual(['m1', 'm3']);
+    t.engine.dispose();
+  });
+
+  it('does not post an older position queued while a newer one was in flight', async () => {
+    const t = await setup({
+      messages: rows(1, 3),
+      prepare: (fake) => {
+        fake.server.conversation.kind = 'room';
+      },
+    });
+    const gate = deferred<boolean>();
+    const ids: string[] = [];
+    t.fake.api.markConversationRead = async (_sid, id) => {
+      if (id) ids.push(id);
+      return gate.promise;
+    };
+    t.engine.readThrough('m3');
+    t.engine.readThrough('m1');
+    gate.resolve(true);
+    await t.time.advance(0);
+    expect(ids).toEqual(['m3']);
+    t.engine.dispose();
+  });
+
+  it('coalesces slow requests, retries failures, and drops queued acknowledgements after hiding', async () => {
+    const t = await setup({
+      messages: rows(1, 5),
+      prepare: (fake) => {
+        fake.server.conversation.kind = 'room';
+      },
+    });
+    const gate = deferred<boolean>();
+    const ids: string[] = [];
+    t.fake.api.markConversationRead = async (_sid, id) => {
+      if (!id) return true;
+      ids.push(id);
+      return ids.length === 1 ? gate.promise : true;
+    };
+    t.engine.readThrough('m1');
+    t.engine.readThrough('m2');
+    t.engine.readThrough('m3');
+    expect(ids).toEqual(['m1']);
+    gate.resolve(false);
+    await t.time.advance(0);
+    t.engine.readThrough('m3');
+    await t.time.advance(0);
+    expect(ids).toEqual(['m1', 'm3']);
+    const slow = deferred<boolean>();
+    t.fake.api.markConversationRead = async (_sid, id) => {
+      if (id) ids.push(id);
+      return slow.promise;
+    };
+    t.engine.readThrough('m4');
+    t.engine.readThrough('m5');
+    t.engine.setVisible(false);
+    slow.resolve(true);
+    await t.time.advance(0);
+    expect(ids).toEqual(['m1', 'm3', 'm4']);
+    t.engine.dispose();
+  });
+});
+
 describe('opening', () => {
   it('loads the newest page; marks it read only while visible', async () => {
     const t = await setup({ visible: false });

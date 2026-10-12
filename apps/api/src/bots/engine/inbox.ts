@@ -38,6 +38,7 @@ import type { InboxItem } from './inbox-types.js';
 import { botsOwnerEligible, claimBotsRun, releaseBotsRun } from './run-slot.js';
 import { TranscriptWriter } from './writer.js';
 import { pushToConversation } from './fanout.js';
+import { sweepAgentMessages } from './agent-messages.js';
 
 const SWEEP_INTERVAL_MS = 5_000;
 const SWEEP_BATCH = 50;
@@ -190,6 +191,12 @@ export async function sweepInboxes(db: DatabaseProvider = getDb()): Promise<void
   if (sweeping) return;
   sweeping = true;
   try {
+    await sweepAgentMessages(db);
+    for (const sessionId of await db.bots.expireAgentReceipts()) {
+      const session = await db.sessions.getById(sessionId);
+      if (session?.user_id)
+        await pushToConversation(sessionId, session.user_id, { type: 'bots:receipts', sessionId }, db);
+    }
     // Fetch a little more than a batch so sessions in backoff don't shrink it.
     const sessions = await db.bots.listSessionsWithPendingInbox(SWEEP_BATCH + Math.min(backoff.size, SWEEP_BATCH));
     const now = Date.now();

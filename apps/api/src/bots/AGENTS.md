@@ -250,13 +250,11 @@ knowledge base`；没有 summary 的旧卡照旧用标题）。参数行的标�
   `bot_conversations`，`kind = 'room'`，`user_id` = 创建者（离开 / 账号删除时交给最早加入的人，`sessions.user_id` 同步），人在
   `conversation_participants`（各自的 `last_read_at`），Agent 仍在 `bot_conversation_members`（`user_id` = 谁带进来的：随他离开）。
   `getConversation` / `listConversations` 按**参与**判可见（`visibleTo`），其余种类仍按 `user_id`；super 也读不到（D46）。
-  **没有默认答话的 Agent**：消息一律经 inbox（作者写在 `user_message.author_user_id`，落成 `messages.author_user_id`），只保留作者
-  **能 @ 的** Agent（`room-access.ts`：自己的、或受众含他的公开 Agent），**以作者为 `rc.user` 的那一轮**回答——权限、卡片、额度都是他的。
-  别人的回合正在跑时，你的消息照常写进去，你的 @ 变成 `mention` 收件项、在那一轮结束后以你为 `rc.user` 另起一轮
+  **默认所有可用 Agent 考虑普通消息**，有价值才回复，`consider` 用 `<<skip>>` 静默跳过；明确 @ 人/Agent 只发给指定目标，未知/失效 @ 不退化成广播。解析复用 `@greenhouse/utils/mentions`。消息一律经 inbox，作者保留在 `author_user_id`，运行身份始终是原始作者。别人带入的私有 Agent 仅在负责人仍在群且有资格时可用：只拿 `conversation` / `team` 群内面，不拿负责人私有记忆、知识、电脑或密码库；公开 Agent 继续受发布/受众限制。忙时其他人的普通消息也保留触发器，等待该作者自己的运行。
   （`drainIdleConversation` 的 `roomRunUser` 按队首作者认领）；别人的消息不会软停你的 Agent（`memberMessageQueued(…, author)`）。
   电脑交还、登录决定、进程结束和新 Agent 加入的 `continue.author_user_id` 必须带实际请求人；空闲与忙碌队列都按此人续跑。已离开者的续跑被消费，旧的无作者 room 续跑被隔离，不能回退成房间创建者；普通私聊保持兼容。
   投影：发问者是 `[名字 (user)]`，其他人是 `[名字 (participant)]`——只是信息；S1 有 room 版说明，S3（成员私人备注）不放；
-  room 里没有 `team` 和 `bot_tasks`。推送（`bots:conversation`、`chat:run`，后者带 `userId` = 发问者）经 `engine/fanout.ts` 发给全部
+  room 的 `team` 只开放 list/ask/message；不开放 add/create 和 `bot_tasks`。推送（`bots:conversation`、`chat:run`，后者带 `userId` = 发问者）经 `engine/fanout.ts` 发给全部
   参与者，参与者能探测 / 接上正在跑的回合（`canPostToSession`；探测结果带 `run.user_id`），只有发问者能停。room 的成员视图按读者算：
   `owner_user_id`、`brought_by_user_id`、`addressable`，以及 `profile`（名字 / 岗位 / 头像 / 模板——别人的公开 Agent 用发布版本，读者不认识的
   Agent 也能显示）。公开 Agent 由非负责人带进来时，必须对房间里每个人开放（D45：新人
@@ -406,7 +404,8 @@ Bot 身份本身（列表 / 新建 / 编辑 / 版本 / 文件夹 / 记忆）只�
 | GET / POST | `/api/bots/conversations` | `?kind=task` · `{ bot_ids }`（恰好 1 个 id）或 `{ kind:'task', bot_id?, title?, model_id? }` | 列表（默认私聊 + 旧群；`?kind=task` 任务会话）/ `{ conversation }`（该 Bot 的私聊，没有就建；`kind:'task'` → 201 新任务会话，缺省 Sprouty）；0 个或多个 id → `400 groups_retired`（群聊已退役）。每行带 `attention`（需要你 > 未读 > 在忙）、`pending_requests` 与 `unread_count`（`last_read_at` 之后 Bot 的回复条数，`assistant` 行，封顶 99；只来了系统事件时 `attention:'unread'` 而计数为 0） |
 | GET | `/api/bots/conversations/:id` | `before_seq?`、`limit?` | `{ conversation, messages, has_more, memory_states?, my_ratings? }`（`my_ratings`：这一页里自己给回复的评分 `{ [messageId]: 1 \| -1 }`；`allow_bot_chat` 已废弃、恒为 `true`；旧群 `kind:'group'` 照常可读） |
 | POST / DELETE | `/api/bots/conversations/:id/members[/:botId]` | `{ bot_id }` | `{ conversation }`（邀请 = guest；主人不能移出 400 `cannot_remove_owner`；旧群 `409 group_closed`） |
-| POST | `/api/bots/conversations/:id/read` · `/compact` | — | `{ ok }`（同时把这段对话的「回复了你」提醒标为已读）· `{ digest }`（回合进行中 409） |
+| POST | `/api/bots/conversations/:id/read` · `/compact` | `{ through_message_id? }` · — | 已展示消息的已读边界只能单调前进；无参数旧客户端只维护未读计数，不产生对外回执。compact 回合进行中 409 |
+| GET | `/api/bots/conversations/:id/receipts` | — | 当前参与者的精确 seq 回执和最近 600 条 Agent 消息状态；非参与者 404 |
 | GET / POST / PATCH / DELETE | `/api/bots/conversations/:id/notes[/:noteId]` | `{ title, body?, status?, pinned? }` | 共享笔记 |
 | GET / POST | `/api/bots/conversations/:id/tasks` · `/api/bots/tasks/:runId/cancel` | — | 后台任务 |
 | GET | `/api/bots/tasks?state=active` | — | 我所有对话的后台任务：在跑的 + 最近 30 分钟内结束的（手机 Live Activity 对账；裸路径在 `src/index.ts` 单独挂 `requireFeature('bots')`） |
@@ -496,5 +495,11 @@ file input 就点它并接住弹出的文件选择框）、`wait {text?, timeout
 结果是本会话的聊天文件（`/api/chat-files/<id>/content`，主人鉴权），不进公共上传区。与某个 Bot 的按会话聊天（聊天页的
 新上下文）走 `GET /api/sessions?scope=mine&profile=bot:<id>`（主 Bot 用 `sprouty`），固定版本与旧 id 一并算上，口径见
 [apps/api/src/AGENTS.md](../AGENTS.md)「会话列表的 profile 筛选」。
+
+### Agent 通信与回执（2026-10-12）
+
+`team.ask` 复用 floor：群内所有回复可见；目标原本排队 `consider` 时升级为一次交接，避免重复回应，仍受 8 回合 / 4 交接 / 深度 3 限制。`team.message` 将独立 brief 发进目标 task 会话，回复幂等回到原会话，再唤醒发送 Agent。`bot_agent_messages` 保存原始请求人、发送者/收件 Agent、源/目标会话、父请求、路径与终态；与 inbox 写入同一事务。只允许原始请求人自己的或当前可访问的公开 Agent，不借其他负责人的身份，传递的 Agent 文本不代表人的授权。目标执行和回传前重查授权；同链最多 4 条消息、路径最多 3 个 Agent、禁止重复目标/回环，25 分钟未完成由 inbox sweep 回传失败。退出原群不回传群内；归档/撤权后不再执行排队请求。
+
+`bot_message_receipts` 的 processing 只在对应原文进入实际模型调用时设置（processed_at），queued 不等于已读。answered/skipped/failed/canceled 单独保存，超过 25 分钟的遗留排队/处理状态由 sweep 标为失败。`bots:receipts` 是独立无内容 WS 提示，客户端只取回执，不触发转录 reload/markRead 循环。成员精确已读用 `conversation_participants.last_read_seq`，按服务端验证的消息序号单调更新，禁止用客户端时钟或 `now()` 冒充看到消息。
 
 Secure-login request payloads may include `fields` (username/password/otp): server-observed empty visible fields on the current same-origin page. `loginFieldsForPage` reuses vault fill discovery and returns names only, never values; absent metadata preserves older clients/pages. Clients must not weaken the origin/document/lease checks when consuming this display metadata.

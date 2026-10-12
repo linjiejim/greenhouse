@@ -175,7 +175,7 @@ export const ConversationRow = memo(function ConversationRow({
     [row, viewerId],
   );
   const avatarScale = Math.min(Math.max(fontScale, 1), AVATAR_SCALE_MAX);
-  const avatarSize = Math.round(DM_AVATAR * avatarScale);
+  const avatarSize = Math.round((pinned ? 48 : DM_AVATAR) * avatarScale);
 
   const body = (
     <Pressable
@@ -185,11 +185,12 @@ export const ConversationRow = memo(function ConversationRow({
       accessibilityState={{ selected: current }}
       style={({ pressed }) => [
         styles.row,
+        pinned && { paddingVertical: space.md },
         current && { backgroundColor: c.tertiaryFill },
         pressed && { backgroundColor: c.fill },
       ]}
     >
-      <View style={[styles.lead, { width: leadWidth(fontScale) }]}>
+      <View style={[styles.lead, { width: leadWidth(fontScale) + (pinned ? Math.round(8 * avatarScale) : 0) }]}>
         {people ? (
           <PeopleAvatar people={people} size={avatarSize} max={2} />
         ) : row.kind !== 'group' ? (

@@ -280,10 +280,10 @@ export interface InteractiveToolsInput {
   conversation: ConversationPort;
   runtimeRunId: string | null;
   /**
-   * A room (several people, P5): no `team` (no hand-offs or invitations — people bring their own
-   * Agents) and no `bot_tasks` (a background report would land in front of everyone).
+   * A room: team list/ask/message only; people manage membership. No background task reports.
    */
   room?: boolean;
+  roomGuest?: boolean;
 }
 
 export interface InteractiveTools {
@@ -294,6 +294,15 @@ export interface InteractiveTools {
 
 export function assembleInteractiveTools(input: InteractiveToolsInput): InteractiveTools {
   const { db, ctx } = input;
+  if (input.roomGuest) {
+    return {
+      tools: {
+        conversation: createConversationTool(ctx, input.conversation),
+        team: createTeamTool(ctx, input.team, true),
+      },
+      approvalGated: false,
+    };
+  }
   const ids = interactiveMemberToolIds(input.effectiveTools);
   const registry: ToolRegistry = selectTools(
     input.toolRegistry,
@@ -346,7 +355,7 @@ export function assembleInteractiveTools(input: InteractiveToolsInput): Interact
     }
   }
 
-  if (!input.room) registry.team = createTeamTool(ctx, input.team);
+  registry.team = createTeamTool(ctx, input.team, input.room);
   registry.conversation = createConversationTool(ctx, input.conversation);
   registry.self = createSelfTool(ctx);
   // Offered only where background tasks can actually run (same check as the

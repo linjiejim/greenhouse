@@ -31,7 +31,6 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import type { BotView } from '@greenhouse/types/bots';
 import { ChatInput, type PendingImage } from '../chat/chat-input';
 import { useTriggerPopup } from '../chat/use-trigger-popup';
 import {
@@ -46,7 +45,7 @@ import { useT } from '../../lib/i18n';
 import * as api from '../../lib/api';
 import { uploadChatFile, type ChatFileRef } from '../../lib/api/chat-files';
 import { onComposerDraft } from '../../lib/composer-draft';
-import { BotMentionPopover } from './bot-mention-popover';
+import { BotMentionPopover, type ConversationMention } from './bot-mention-popover';
 import { mentionToken, parseMentions } from './mentions';
 import type { StopPhase } from './use-bot-conversation';
 
@@ -68,7 +67,7 @@ export interface BotsComposerHandle {
 export interface BotsComposerProps {
   /** The conversation's session — attachments are uploaded against it. */
   sessionId: string;
-  members: BotView[];
+  members: ConversationMention[];
   placeholder: string;
   /** A run is streaming — show Stop beside Send (sending stays allowed). */
   busy: boolean;
@@ -262,7 +261,7 @@ export const BotsComposer = forwardRef<BotsComposerHandle, BotsComposerProps>(fu
   }, [attachments, images, input, members, onSend, sending, sessionId, setInput, t, uploaded, uploading]);
 
   const pickMember = useCallback(
-    (bot: BotView) => {
+    (bot: ConversationMention) => {
       const at = mention.triggerIndex;
       const next = mention.insertSelection(mentionToken(bot.name));
       setInput(next);

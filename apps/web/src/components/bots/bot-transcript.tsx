@@ -9,6 +9,8 @@
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { BotConversationSummary, BotRequestView, BotView } from '@greenhouse/types/bots';
+import { MessageReceipts } from './message-receipts';
+import { useConversationReceipts } from './use-conversation-receipts';
 import { botTemplate } from '@greenhouse/types/bots';
 import { MessageBubble } from '../chat/message';
 import { Button, Spinner } from '../ui';
@@ -172,8 +174,8 @@ export function BotTranscript(props: BotTranscriptProps) {
     [kind, liveRequests, me, messages, ownerBotId, pending, requests, segments],
   );
 
-  // In a room an answer from a card goes to the Agent that asked, by name — nobody answers an
-  // unaddressed message there. One stable sender per Agent keeps the memoized bubbles still.
+  // In a room a card answer is directed to the Agent that asked it.
+  // One stable sender per Agent keeps the memoized bubbles still.
   const roomSenders = useMemo(() => {
     const senders = new Map<string, (text: string) => Promise<void>>();
     return (botId: string) => {
@@ -190,6 +192,7 @@ export function BotTranscript(props: BotTranscriptProps) {
   // ── Stick to the bottom while the member is following along ──
   const scrollRef = useRef<HTMLDivElement>(null);
   const [atBottom, setAtBottom] = useState(true);
+  const receipts = useConversationReceipts(sessionId, !!room, messages, scrollRef);
   const atBottomRef = useRef(true);
   const onScroll = useCallback(() => {
     const el = scrollRef.current;
@@ -247,6 +250,9 @@ export function BotTranscript(props: BotTranscriptProps) {
             sessionId={sessionId}
             images={item.message.images}
             createdAt={item.message.created_at}
+            userMetadata={
+              room && <MessageReceipts message={item.message} receipts={receipts} me={room.me} lookup={lookup} />
+            }
             isLastUser={editable}
             onEdit={editable ? onEditLast : undefined}
           />
@@ -400,8 +406,15 @@ export function BotTranscript(props: BotTranscriptProps) {
             />
           )}
           {items.map((item, index) => (
-            <div key={item.key} data-transcript-kind={item.kind}>
+            <div
+              key={item.key}
+              data-transcript-kind={item.kind}
+              data-receipt-message={'message' in item ? item.message?.id : undefined}
+            >
               {renderItem(item, index)}
+              {'message' in item && item.message && (
+                <span className="block h-0" aria-hidden="true" data-receipt-end={item.message.id} />
+              )}
             </div>
           ))}
           {starters.length > 0 && (

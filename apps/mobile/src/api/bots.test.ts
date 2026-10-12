@@ -258,6 +258,14 @@ describe('Bots writes', () => {
     expect(apiMock.mock.calls.at(-1)?.[1]).toMatchObject({ method: 'PATCH', body: JSON.stringify({ status: 'done' }) });
     apiMock.mockResolvedValueOnce(json(200, { ok: true }));
     expect(await bots.markConversationRead('s1')).toBe(true);
+    apiMock.mockResolvedValueOnce(json(200, { ok: true }));
+    expect(await bots.markConversationRead('s1', 'm4')).toBe(true);
+    expect(apiMock).toHaveBeenLastCalledWith(
+      '/api/bots/conversations/s1/read',
+      expect.objectContaining({
+        body: JSON.stringify({ through_message_id: 'm4' }),
+      }),
+    );
     apiMock.mockRejectedValueOnce(new TypeError('offline'));
     expect(await bots.markConversationRead('s1')).toBe(false);
     apiMock.mockResolvedValueOnce(json(409, { error: 'That task has already finished' }));
@@ -524,7 +532,14 @@ describe('an Agent’s usage and activity', () => {
     apiMock.mockResolvedValueOnce(
       json(200, {
         activity: [
-          { at: '2026-10-12 05:05:34.202+00', kind: 'task', title: 'Report', outcome: 'succeeded', detail: null, session_id: 's1' },
+          {
+            at: '2026-10-12 05:05:34.202+00',
+            kind: 'task',
+            title: 'Report',
+            outcome: 'succeeded',
+            detail: null,
+            session_id: 's1',
+          },
         ],
       }),
     );

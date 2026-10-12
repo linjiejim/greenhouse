@@ -2,7 +2,7 @@
  * Rooms — several people and the Agents they bring (spec 20261011-agent-first-class P5, D42–D46)
  * against real PostgreSQL with a scripted model: a room or the pair's one private chat, readable
  * and writable by its people only (super included), messages with their author, an Agent that
- * answers only an allowed @-mention in a run of the person who asked, someone else's mention
+ * considers ordinary messages or answers an allowed target in the original author's run, another person's trigger
  * waiting for their own run, per-person unread markers, public Agents only while everyone is in
  * the audience, leaving (with your Agents; ownership passes on; the last one out deletes it), and
  * an account purge that keeps everyone else's room.
@@ -176,26 +176,98 @@ describe('rooms: who is in, who can read', () => {
 });
 
 describe('rooms: who answers', () => {
+  it('lets every room Agent consider an unaddressed message and keeps irrelevant replies silent', async () => {
+    const captured: CapturedTurn[] = [];
+    useScript({ Ivy: [[{ text: 'I can verify the release checklist.' }]], Sage: [[{ text: '<<skip>>' }]] }, captured);
+    const id = await roomWithAgents();
+    await deliverToConversation(id, {
+      kind: 'user_message',
+      content: 'We plan to ship Monday. Anything useful to add?',
+      mentions: [],
+      author_user_id: ana.id,
+    });
+    await settled(id);
+    expect(captured.map((turn) => turn.bot)).toEqual(['Ivy', 'Sage']);
+    expect((await transcript(id)).filter((row) => row[0] === 'assistant')).toEqual([
+      ['assistant', ivy.id, 'I can verify the release checklist.'],
+    ]);
+    // Ana can ask Jim's Agent about this room without borrowing Jim's private tools or memory.
+    const guest = captured.find((turn) => turn.bot === 'Ivy')!.input;
+    expect(Object.keys(guest.tools ?? {})).not.toContain('knowledge_query');
+    expect(Object.keys(guest.tools ?? {})).not.toContain('memory');
+    expect(Object.keys(guest.tools ?? {})).not.toContain('computer');
+    expect(guest.systemPrompt).toContain('conversation between several people');
+  });
+
+  it('keeps explicit human, unknown and Agent addressees directed, including plain text mentions', async () => {
+    const captured: CapturedTurn[] = [];
+    useScript({ Ivy: [[{ text: 'Directed answer.' }]], Sage: [[{ text: 'Should stay silent.' }]] }, captured);
+    const id = await roomWithAgents();
+    for (const content of ['@Ana can you confirm?', '@FormerAgent please check', '@Ivy please check']) {
+      await deliverToConversation(id, { kind: 'user_message', content, mentions: [], author_user_id: jim.id });
+      await settled(id);
+    }
+    expect(captured.map((t) => t.bot)).toEqual(['Ivy']);
+    expect((await transcript(id)).filter((row) => row[0] === 'assistant')).toEqual([
+      ['assistant', ivy.id, 'Directed answer.'],
+    ]);
+  });
+
+  it('hands a room question to a queued Agent and returns once without ping-pong', async () => {
+    const captured: CapturedTurn[] = [];
+    useScript(
+      {
+        Ivy: [
+          [
+            {
+              toolCalls: [
+                { toolName: 'team', input: { action: 'ask', bot_id: sage.id, message: 'Verify the numbers.' } },
+              ],
+            },
+          ],
+          [{ text: 'Thanks, the plan is ready.' }],
+        ],
+        Sage: [[{ text: 'The numbers are verified.' }]],
+      },
+      captured,
+    );
+    const id = await roomWithAgents();
+    await deliverToConversation(id, {
+      kind: 'user_message',
+      content: 'Please review our plan together',
+      mentions: [],
+      author_user_id: ana.id,
+    });
+    await settled(id);
+    expect(captured.map((t) => t.bot)).toEqual(['Ivy', 'Sage', 'Ivy']);
+    expect((await transcript(id)).filter((row) => row[0] === 'assistant').map((row) => row[2])).toContain(
+      'The numbers are verified.',
+    );
+    expect(captured[1]!.input.messages.some((m) => JSON.stringify(m.content).includes('Verify the numbers.'))).toBe(
+      true,
+    );
+  });
+
   it('an Agent answers only its allowed asker, in a run that is theirs; others’ lines are information', async () => {
     const captured: CapturedTurn[] = [];
     useScript({ Ivy: [[{ text: 'Here is the summary.' }]], Sage: [[{ text: 'Numbers look fine.' }]] }, captured);
     const id = await roomWithAgents();
     const room = (await db.bots.getConversation(ana.id, id))!;
-    // Ana may @ her Sage, never Jim's private Ivy — but she sees who Ivy is and who brought it.
-    expect(await addressableMentions(db, ana.id, room, [ivy.id, sage.id, 'nope'])).toEqual([sage.id]);
+    // Owner-brought private Agents can answer through a restricted room face.
+    expect(await addressableMentions(db, ana.id, room, [ivy.id, sage.id, 'nope'])).toEqual([ivy.id, sage.id]);
     const anasView = (await call(ana, 'GET', `/api/bots/conversations/${id}`)).json.conversation;
     expect(anasView.members.find((m: any) => m.bot_id === ivy.id)).toMatchObject({
       owner_user_id: jim.id,
       brought_by_user_id: jim.id,
-      addressable: false,
+      addressable: true,
       profile: { name: 'Ivy', role: 'Researcher' },
     });
-    expect(await addressableMentions(db, jim.id, room, [ivy.id, sage.id])).toEqual([ivy.id]);
+    expect(await addressableMentions(db, jim.id, room, [ivy.id, sage.id])).toEqual([ivy.id, sage.id]);
 
     // Ana talks (no allowed mention): nobody answers, and no "unavailable" line either.
     await deliverToConversation(id, {
       kind: 'user_message',
-      content: 'I think we ship Monday',
+      content: '@Jim I think we ship Monday',
       mentions: [],
       author_user_id: ana.id,
     });
@@ -211,7 +283,7 @@ describe('rooms: who answers', () => {
 
     const rows = await transcript(id);
     expect(rows.filter((r) => r[0] !== 'system')).toEqual([
-      ['user', ana.id, 'I think we ship Monday'],
+      ['user', ana.id, '@Jim I think we ship Monday'],
       ['user', jim.id, '@Ivy summarize the plan'],
       ['assistant', ivy.id, 'Here is the summary.'],
     ]);
@@ -229,7 +301,7 @@ describe('rooms: who answers', () => {
     expect(history).toContain('[Jim (user)]:');
     expect(ivyTurn.systemPrompt).toContain('conversation between several people');
     // No hand-offs or background tasks in a room.
-    expect(Object.keys(ivyTurn.tools ?? {})).not.toContain('team');
+    expect(Object.keys(ivyTurn.tools ?? {})).toContain('team');
     expect(Object.keys(ivyTurn.tools ?? {})).not.toContain('bot_tasks');
   });
 
@@ -321,6 +393,250 @@ describe('rooms: who answers', () => {
     expect(JSON.stringify(sageTurn.messages)).toContain('[Jim (participant)]:');
     await releaseBotsRun(db, run).catch(() => undefined);
   });
+
+  it('records only the displayed message, advances monotonically and rejects foreign read markers', async () => {
+    const id = await roomWithAgents();
+    for (const content of ['first', 'second']) {
+      await deliverToConversation(id, {
+        kind: 'user_message',
+        content: `@Ana ${content}`,
+        mentions: [],
+        author_user_id: jim.id,
+      });
+      await settled(id);
+    }
+    const messages = await db.sessions.getMessages(id);
+    const first = messages.find((m) => m.content === '@Ana first')!;
+    const second = messages.find((m) => m.content === '@Ana second')!;
+    expect(
+      (await call(ana, 'POST', `/api/bots/conversations/${id}/read`, { through_message_id: second.id })).status,
+    ).toBe(200);
+    await call(ana, 'POST', `/api/bots/conversations/${id}/read`, { through_message_id: first.id });
+    const receipts = await call(jim, 'GET', `/api/bots/conversations/${id}/receipts`);
+    expect(receipts.status).toBe(200);
+    expect(receipts.json.people.find((p: any) => p.user_id === ana.id).through_seq).toBe(second.seq);
+    expect((await call(ben, 'GET', `/api/bots/conversations/${id}/receipts`)).status).toBe(404);
+    expect(
+      (await call(ana, 'POST', `/api/bots/conversations/${id}/read`, { through_message_id: 'foreign-message' })).status,
+    ).toBe(400);
+  });
+
+  it('tracks actual Agent processing separately from replies and silent consideration', async () => {
+    const id = await roomWithAgents();
+    const deps = scriptedDeps({ Ivy: [[{ text: 'Useful answer.' }]], Sage: [[{ text: '<<skip>>' }]] });
+    const observed: string[][] = [];
+    restoreDeps = setBotsEngineDepsForTest({
+      ...deps,
+      createStream: async (input) => {
+        const current = await call(jim, 'GET', `/api/bots/conversations/${id}/receipts`);
+        observed.push((current.json.agents ?? []).map((r: any) => r.status));
+        return deps.createStream!(input);
+      },
+    });
+    await deliverToConversation(id, {
+      kind: 'user_message',
+      content: 'Any useful input?',
+      mentions: [],
+      author_user_id: jim.id,
+    });
+    await settled(id);
+    const receipts = (await call(ana, 'GET', `/api/bots/conversations/${id}/receipts`)).json;
+    expect(observed[0]).toEqual(expect.arrayContaining(['processing', 'queued']));
+    expect(receipts.agents).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ bot_id: ivy.id, status: 'answered', processed_at: expect.any(String) }),
+        expect.objectContaining({ bot_id: sage.id, status: 'skipped', processed_at: expect.any(String) }),
+      ]),
+    );
+  });
+
+  it('expires abandoned processing receipts without marking queued work as processed', async () => {
+    const id = await roomWithAgents();
+    await deliverToConversation(id, {
+      kind: 'user_message',
+      content: '@Ana hello',
+      mentions: [],
+      author_user_id: jim.id,
+    });
+    await settled(id);
+    const message = (await db.sessions.getMessages(id)).reverse().find((m) => m.role === 'user')!;
+    await db.bots.setAgentReceipt(id, message.id, ivy.id, 'processing');
+    await db.bots.setAgentReceipt(id, message.id, sage.id, 'queued');
+    expect(await db.bots.expireAgentReceipts()).toEqual([]);
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      vi.setSystemTime(Date.now() + 26 * 60_000);
+      expect(await db.bots.expireAgentReceipts()).toEqual([id]);
+    } finally {
+      vi.useRealTimers();
+    }
+    const receipts = (await db.bots.readReceipts(jim.id, id))!;
+    expect(receipts.agents).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ bot_id: ivy.id, status: 'failed', processed_at: expect.any(String) }),
+        expect.objectContaining({ bot_id: sage.id, status: 'failed', processed_at: null }),
+      ]),
+    );
+  });
+
+  it('exchanges a direct Agent message in a separate conversation and returns the reply to its sender', async () => {
+    const fern = await db.bots.createBot({ user_id: jim.id, name: 'Fern', role: 'Reviewer' });
+    const captured: CapturedTurn[] = [];
+    useScript(
+      {
+        Ivy: [
+          [
+            {
+              toolCalls: [
+                { toolName: 'team', input: { action: 'message', bot_id: fern.id, message: 'Review release Monday.' } },
+              ],
+            },
+          ],
+          [{ text: 'Fern confirmed the release.' }],
+        ],
+        Fern: [[{ text: 'Monday is confirmed.' }]],
+      },
+      captured,
+    );
+    const id = await roomWithAgents();
+    await deliverToConversation(id, {
+      kind: 'user_message',
+      content: '@Ivy ask Fern privately to review',
+      mentions: [ivy.id],
+      author_user_id: jim.id,
+    });
+    await vi.waitFor(
+      async () => {
+        expect((await transcript(id)).some((r) => r[2] === 'Fern confirmed the release.')).toBe(true);
+      },
+      { timeout: 10_000 },
+    );
+    await settled(id);
+    expect(captured.map((t) => t.bot)).toEqual(['Ivy', 'Fern', 'Ivy']);
+    const targetSession = captured[1]!.input.sessionId!;
+    expect(targetSession).not.toBe(id);
+    const targetRows = await db.sessions.getMessages(targetSession);
+    expect(targetRows.some((m) => m.role === 'user')).toBe(false);
+    expect(
+      targetRows.some((m) => m.bot_event?.includes('agent_message') && m.content.includes('Review release Monday.')),
+    ).toBe(true);
+    expect(captured[2]!.input.messages.some((m) => JSON.stringify(m.content).includes('Monday is confirmed.'))).toBe(
+      true,
+    );
+  }, 20_000);
+
+  it('waits for a returned child reply to be consumed before completing its parent consultation', async () => {
+    const fern = await db.bots.createBot({ user_id: jim.id, name: 'Fern' });
+    const cedar = await db.bots.createBot({ user_id: jim.id, name: 'Cedar' });
+    const id = await roomWithAgents();
+    const parent = await db.bots.createAgentMessage({
+      dedupeKey: 'parent-request',
+      chainKey: 'nested-request',
+      requesterId: jim.id,
+      sourceSessionId: id,
+      sourceBotId: ivy.id,
+      targetBotId: fern.id,
+      body: 'Consult Cedar first.',
+    });
+    const child = await db.bots.createAgentMessage({
+      dedupeKey: 'child-request',
+      chainKey: 'ignored-parent-key',
+      parentId: parent.id,
+      requesterId: jim.id,
+      sourceSessionId: parent.target_session_id,
+      sourceBotId: fern.id,
+      targetBotId: cedar.id,
+      body: 'Check this.',
+    });
+    await db.bots.returnAgentMessage(child.id, 'answered', 'Cedar checked it.');
+    const { finishAgentMessage } = await import('../engine/agent-messages.js');
+    await finishAgentMessage(db, parent.target_session_id, false);
+    expect((await db.bots.getAgentMessage(parent.id))?.returned_at).toBeNull();
+    expect(
+      (await db.bots.listPendingInbox(parent.target_session_id)).some((item) => item.payload.includes(child.id)),
+    ).toBe(true);
+  });
+
+  it('refuses private targets of another member and prevents cross-conversation cycles', async () => {
+    const fern = await db.bots.createBot({ user_id: jim.id, name: 'Fern', role: 'Reviewer' });
+    const captured: CapturedTurn[] = [];
+    useScript(
+      {
+        Ivy: [
+          [
+            {
+              toolCalls: [
+                { toolName: 'team', input: { action: 'message', bot_id: sage.id, message: 'Private information?' } },
+              ],
+            },
+            {
+              toolCalls: [{ toolName: 'team', input: { action: 'message', bot_id: fern.id, message: 'Review this.' } }],
+            },
+          ],
+          [{ text: 'Finished without a loop.' }],
+        ],
+        Fern: [
+          [
+            {
+              toolCalls: [
+                { toolName: 'team', input: { action: 'message', bot_id: ivy.id, message: 'Ask you again.' } },
+              ],
+            },
+            { text: 'Cycle refused; here is my review.' },
+          ],
+        ],
+      },
+      captured,
+    );
+    const id = await roomWithAgents();
+    await deliverToConversation(id, {
+      kind: 'user_message',
+      content: '@Ivy review',
+      mentions: [ivy.id],
+      author_user_id: jim.id,
+    });
+    await vi.waitFor(
+      async () => expect((await transcript(id)).some((r) => r[2] === 'Finished without a loop.')).toBe(true),
+      { timeout: 10_000 },
+    );
+    await settled(id);
+    expect(captured.map((t) => t.bot)).toEqual(['Ivy', 'Fern', 'Ivy']);
+    expect(await db.bots.pendingAgentMessages()).toEqual([]);
+  }, 20_000);
+
+  it('returns a revoked queued request once and never starts the revoked target', async () => {
+    const fern = await db.bots.createBot({ user_id: jim.id, name: 'Fern', role: 'Reviewer' });
+    const id = await roomWithAgents();
+    const input = {
+      dedupeKey: 'revoked-direct-request',
+      chainKey: 'revoked-chain',
+      requesterId: jim.id,
+      sourceSessionId: id,
+      sourceBotId: ivy.id,
+      targetBotId: fern.id,
+      body: 'Check this',
+    };
+    const first = await db.bots.createAgentMessage(input);
+    const duplicate = await db.bots.createAgentMessage(input);
+    expect(duplicate.id).toBe(first.id);
+    const captured: CapturedTurn[] = [];
+    useScript({ Ivy: [[{ text: 'Recipient unavailable.' }]], Fern: [[{ text: 'Must not run.' }]] }, captured);
+    await db.bots.archiveBot(jim.id, fern.id);
+    const { sweepInboxes } = await import('../engine/inbox.js');
+    await sweepInboxes(db);
+    await vi.waitFor(
+      async () => expect((await transcript(id)).some((r) => r[2] === 'Recipient unavailable.')).toBe(true),
+      { timeout: 10_000 },
+    );
+    await settled(id);
+    await sweepInboxes(db);
+    expect(captured.map((t) => t.bot)).toEqual(['Ivy']);
+    expect((await db.bots.getAgentMessage(first.id))?.status).toBe('failed');
+    const returned = (await db.sessions.getMessages(id)).filter(
+      (m) => m.bot_event?.includes(first.id) && m.bot_event.includes('failed'),
+    );
+    expect(returned).toHaveLength(1);
+  }, 20_000);
 
   it('keeps an unread count and a read marker per person', async () => {
     const id = (await call(jim, 'POST', '/api/rooms', { user_ids: [ana.id] })).json.conversation.session_id;

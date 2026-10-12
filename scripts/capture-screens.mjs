@@ -54,7 +54,7 @@ function attachDiagnostics(page, label) {
   const issues = [];
   page.on('console', (m) => {
     if (m.type() === 'error' && !/502|ERR_CONNECTION/.test(m.text()))
-      issues.push(`console at ${page.url()}: ${m.text().slice(0, 400)}`);
+      issues.push(`console at ${m.location().url || page.url()}: ${m.text().slice(0, 400)}`);
   });
   page.on('pageerror', (e) => issues.push(`pageerror at ${page.url()}: ${String(e).slice(0, 400)}`));
   page.on('response', (r) => {

@@ -30,7 +30,9 @@ import { BOT_TOOL_METAS } from './meta.js';
 const DESCRIPTION = BOT_TOOL_METAS.find((meta) => meta.id === 'team')?.description ?? 'team';
 
 const teamSchema = z.object({
-  action: z.enum(['list', 'ask', 'add', 'create']).describe('list | ask | add | create'),
+  action: z
+    .enum(['list', 'ask', 'message', 'add', 'create'])
+    .describe('list | ask (same room) | message (separate conversation, reply returns) | add | create'),
   bot_id: z.string().max(64).optional().describe('ask / add: the Agent id (or exact name) from list.'),
   message: z
     .string()
@@ -78,16 +80,22 @@ export function proposedAvatar(name: string): BotCreatePayload['avatar'] {
   return plantAvatarConfig(IMPLICIT_POOL[hashSeed(name) % IMPLICIT_POOL.length]!);
 }
 
-export function createTeamTool(ctx: BotTurnContext, port: TeamPort) {
+export function createTeamTool(ctx: BotTurnContext, port: TeamPort, roomOnly = false) {
   return tool({
-    description: DESCRIPTION,
-    inputSchema: teamSchema,
-    execute: async (input: TeamInput) => {
+    description: roomOnly
+      ? 'Work with Agents in this room: list the roster, ask an Agent here a precise question, or message an accessible Agent in a separate conversation. A message reply automatically returns here and wakes you. A real hand-off uses ask; writing @Name in prose does not send a message.'
+      : DESCRIPTION,
+    inputSchema: roomOnly ? teamSchema.extend({ action: z.enum(['list', 'ask', 'message']) }) : teamSchema,
+    execute: async (input: TeamInput, options) => {
       try {
+        if (roomOnly && input.action !== 'list' && input.action !== 'ask' && input.action !== 'message')
+          return { error: 'Only list, ask and message are available in this room.' };
         switch (input.action) {
           case 'list': {
+            const direct = port.directTargets ? await port.directTargets() : port.others();
             return {
               action: 'list',
+              message_targets: direct.map((bot) => ({ id: bot.id, name: bot.name, role: bot.role })),
               members: port.members().map((m) => ({
                 id: m.bot.id,
                 name: m.bot.name,
@@ -95,8 +103,19 @@ export function createTeamTool(ctx: BotTurnContext, port: TeamPort) {
                 member_role: m.role,
                 ...(m.bot.id === ctx.bot.id ? { you: true } : {}),
               })),
-              not_in_conversation: port.others().map((bot) => ({ id: bot.id, name: bot.name, role: bot.role })),
+              not_in_conversation: (roomOnly ? [] : port.others()).map((bot) => ({
+                id: bot.id,
+                name: bot.name,
+                role: bot.role,
+              })),
             };
+          }
+
+          case 'message': {
+            if (!port.message) return { status: 'refused', reason: 'Direct Agent messages are unavailable here.' };
+            if (!input.bot_id || !input.message?.trim())
+              return { status: 'refused', reason: 'bot_id and message are required.' };
+            return port.message(input.bot_id, input.message.trim(), options.toolCallId);
           }
 
           case 'ask': {

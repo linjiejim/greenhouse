@@ -76,7 +76,7 @@ expose to Claude, Cursor, or any MCP client.
   <img src="docs/assets/screens/chat-knowledge-answer-dark.webp" alt="Dark theme" width="66%" />
   <img src="docs/assets/screens/mobile-chat.webp" alt="Mobile layout" width="19%" />
 </p>
-<p align="center"><sub>Light / dark / system themes and a responsive layout; the <a href="apps/mobile">Expo app</a> covers chat (with the same rich replies as the web — data tables, charts (Swift Charts on iOS), stat tiles, record cards, step timelines, Mermaid diagrams, HTML previews, question forms (a chat card opens a native bottom sheet on iOS, with clear selection states and optional fields / supporting context collapsed) and reply buttons — and a "connect your account" card when a connector needs your sign-in or key), your Agents (on iOS: the app opens on your main thread with Sprouty, and the drawer lists it first, then your other Agents' threads, then your chats — one ongoing thread per Agent, other Agents join it when a hand-off helps — with live per-Agent replies, @-mentions, "needs you" cards that open into a sheet to decide, background tasks that report back; your computer one tap away on a thread's bar — watch it live, take over with touch and native typing (pass a human check right from the card), preview its files in-app and share them when needed, see its background processes; an Agent's profile gathers its instructions, memory, shared notes, schedules and separate chats in tabs; new Agents are made by asking Sprouty, from an example or by hand in Settings → My Agents; routine replies lead with a short result and follow topic changes without reviving unrelated old work, with reasoning, tool calls and sources one ⋯ → Show toggle away; durable memories use compact plain-text notes; selected images stay in the draft until every upload is ready, with retry for failures; a home-screen widget highlights your main Agent with compact shortcuts to other Agents and unread and "needs you" badges — one tap into an Agent's thread, or a new chat with Sprouty; notifications when an Agent needs you, a task finishes or a reply comes in after you left — content-free unless you turn previews on, one tap into the card or the conversation, on every station you are signed in to; and, experimentally, a running background task as a Live Activity on the Lock Screen and in the Dynamic Island), Settings → Connectors for your own keys and sign-ins, knowledge and projects with a native UI on both platforms — on iOS system navigation, Liquid Glass, native sheets, menus and SwiftUI forms; on Android Material 3 (Jetpack Compose forms, menus and dialogs).</sub></p>
+<p align="center"><sub>Light / dark / system themes and a responsive layout; the <a href="apps/mobile">Expo app</a> covers chat (with the same rich replies as the web — data tables, charts (Swift Charts on iOS), stat tiles, record cards, step timelines, Mermaid diagrams, HTML previews, question forms (a chat card opens a native bottom sheet on iOS, with clear selection states and optional fields / supporting context collapsed) and reply buttons — and a "connect your account" card when a connector needs your sign-in or key), your Agents (on iOS: the app opens on your main thread with Sprouty, and the drawer lists it first, then your other Agents' threads, then your chats — one ongoing thread per Agent, other Agents join it when a hand-off helps — with live per-Agent replies, @-mentions, "needs you" cards that open into a sheet to decide, background tasks that report back; your computer one tap away on a thread's bar — watch it live, take over with touch and native typing (pass a human check right from the card), preview its files in-app and share them when needed, see its background processes; an Agent's profile gathers its instructions, memory, shared notes, schedules and separate chats in tabs; new Agents are made from the Agents heading’s +, by asking Sprouty, or in Settings → My Agents; routine replies lead with a short result and follow topic changes without reviving unrelated old work, with reasoning, tool calls and sources one ⋯ → Show toggle away; durable memories use compact plain-text notes; selected images stay in the draft until every upload is ready, with retry for failures; a home-screen widget highlights your main Agent with compact shortcuts to other Agents and unread and "needs you" badges — one tap into an Agent's thread, or a new chat with Sprouty; notifications when an Agent needs you, a task finishes or a reply comes in after you left — content-free unless you turn previews on, one tap into the card or the conversation, on every station you are signed in to; and, experimentally, a running background task as a Live Activity on the Lock Screen and in the Dynamic Island), Settings → Connectors for your own keys and sign-ins, knowledge and projects with a native UI on both platforms — on iOS system navigation, Liquid Glass, native sheets, menus and SwiftUI forms; on Android Material 3 (Jetpack Compose forms, menus and dialogs).</sub></p>
 
 The mobile launch cover leaves as soon as authentication, fonts and the focused page are ready;
 the 650 ms logo animation adds no minimum wait. Unsettled content gets up to 900 ms before
@@ -92,9 +92,12 @@ same script doubles as an end-to-end smoke tour (see [Development](#development)
 - **Conversations** — one list for every place you talk: your **main thread** with your main
   Agent (the app opens on it), your other Agents' threads, **conversations with other people**
   (a private chat with one colleague, or a room with several — each brings their own Agents, and
-  an Agent answers only the person allowed to @-mention it, with that person's permissions), the
+  Agents consider unaddressed messages and contribute only when useful; @ a person or Agent to direct a message only to them), the
   background tasks your Agents run, and your **chats** — separate conversations with a fresh
-  context for anything separate. Chats stream
+  context for anything separate. The sidebar groups the larger main Agent with other **Agents**, then
+  **People**, then **Chats**; each heading owns its relevant actions. The Agents `+` opens a blank
+  Custom form directly. Desktop message times and short read receipts share one floating hover row.
+  Expo also offers room members in @ suggestions and reports actually visible message ends as read. Chats stream
   with tool-call traces, attachments of any file type (the agent reads text / CSV / JSON / xlsx /
   docx / PDF), per-turn model switching from a config catalog, a side pane for artifacts and
   records, session forking, background runs, sharing / grouping / tagging, and a global ⌘P search.
@@ -112,7 +115,8 @@ same script doubles as an end-to-end smoke tour (see [Development](#development)
   agent gets a real shell, files and a document toolchain, reports progress live and hands back
   artifacts.
 - **Agents** — personal assistants every member gets out of the box. Every member starts with
-  **Sprouty**, the main Agent: its thread is your main thread, the default place to start — talk
+  **Sprouty**, the main Agent (rename it in its profile whenever you want; there is no naming reminder):
+  its thread is your main thread, the default place to start — talk
   to it straight away, or let it bring in, brief and create other Agents (researcher, operator,
   writer, analyst, weekly reporter, note taker, project tracker or your own). An Agent has a
   name, a role and its own memory; several Agents can share one thread (@-mention them, let them
@@ -131,7 +135,12 @@ same script doubles as an end-to-end smoke tour (see [Development](#development)
   conversations list while they run; reading private notes or history then disables all further
   browser actions. Their transcripts and execution traces stay owner-only (a room: its
   participants only), including against admins — and since 2026-10 admins no longer read members'
-  ordinary chats either, unless the deployment sets `SUPER_READS_CHATS=true`. In rooms, handing back
+  ordinary chats either, unless the deployment sets `SUPER_READS_CHATS=true`. Agents can hand work to
+  another Agent in the room or send a brief in a separate conversation and receive its reply back.
+  Communication preserves the original member's access, has depth/count/cycle limits, and forwards
+  only the brief. Owner-brought private Agents use a restricted room face for other members.
+  Room receipts distinguish people who displayed a message from Agents queued, processing,
+  replied, silent, failed or canceled. In rooms, handing back
   a computer or completing a sign-in resumes the Agent for the person who requested it. A new message can interrupt an Agent after its current step. The organisation configures
   one Docker host; computers start on demand, stop when idle (unless a job is still running) and
   queue when the host is full.

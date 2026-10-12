@@ -53,6 +53,7 @@ import type { BotEvent } from '@greenhouse/types/bots';
 import { logger } from '@greenhouse/utils/logger';
 import { toErrorMessage } from '@greenhouse/utils/error';
 import { safeJsonParse } from '@greenhouse/utils/json';
+import { parseMentions, hasExplicitMention } from '@greenhouse/utils/mentions';
 import type { ToolRegistry } from '../../agent.js';
 import { resolveEffectiveTools } from '../../agent-runtime/tool-resolution.js';
 import { chatRunRegistry, type ChatRun } from '../../chat/runs.js';
@@ -76,8 +77,10 @@ import {
 import { conversationBotNames, publicationOf, publicBotFor } from '../public.js';
 import { TranscriptChangedError, TranscriptWriter } from './writer.js';
 import { pushToConversation } from './fanout.js';
+import { roomGuestBot } from '../room-access.js';
+import { startAgentMessage, finishAgentMessage } from './agent-messages.js';
 
-type WakeUp = { botId: string; note: string };
+type WakeUp = { botId: string; note: string; exchangeId?: string };
 
 /** What starts a chain. A member message is already persisted (it is the writer's tail). */
 export type ChainTrigger =
@@ -85,6 +88,8 @@ export type ChainTrigger =
       kind: 'message';
       reason: 'user' | 'interjection';
       mentions: readonly string[];
+      directed?: boolean;
+      messageId?: string;
       /** Wake-ups the interrupted chain had not run yet: they run after this message's addressees. */
       carry?: readonly WakeUp[];
     }
@@ -171,7 +176,7 @@ export async function writeInboxItem(
     await writer.appendEvent({
       text: item.eventText,
       event: item.event,
-      botId: item.botId,
+      botId: item.event.kind === 'agent_message' ? item.event.from : item.botId,
       ...(messageId ? { messageId } : {}),
     });
   } else if (item.kind === 'user_message') {
@@ -276,7 +281,11 @@ async function addPublicBots(
   for (const member of conversation.members) {
     if (bots.has(member.bot_id)) continue;
     const bot = await publicBotFor(db, userId, member.bot_id);
-    if (!bot) continue;
+    if (!bot) {
+      const guest = conversation.kind === 'room' ? await roomGuestBot(db, member) : null;
+      if (guest) bots.set(guest.id, guest);
+      continue;
+    }
     const owner = await db.users.getById(bot.user_id);
     bots.set(bot.id, bot);
     publicBots.set(bot.id, {
@@ -309,7 +318,7 @@ interface DrainResult {
 /** Drain the conversation's inbox in id order (see the module comment). */
 async function drainInbox(
   rc: RunContext,
-  onContinue: (botId: string, note: string) => void,
+  onContinue: (botId: string, note: string, exchangeId?: string) => void,
   mode: DrainMode,
 ): Promise<DrainResult> {
   const rows = await rc.db.bots.listPendingInbox(rc.sessionId);
@@ -341,6 +350,16 @@ async function drainInbox(
       if (isTrigger(row) && mode === 'writes') break;
       if ((row.kind === 'user_message' || row.kind === 'mention') && mode === 'stop') break;
     }
+    if (rc.people && item.kind === 'user_message') {
+      const candidates = [
+        ...[...rc.people].map(([id, name]) => ({ id, name })),
+        ...[...rc.bots.values()].filter((b) => rc.members.has(b.id)).map((b) => ({ id: b.id, name: b.name })),
+      ];
+      const parsed = parseMentions(item.content, candidates);
+      item.directed =
+        item.directed || item.mentions.length > 0 || parsed.length > 0 || hasExplicitMention(item.content);
+      item.mentions = [...new Set([...item.mentions, ...parsed])];
+    }
     if (item.kind === 'mention') {
       // Their own run reached their mention: answer it (the message was written earlier).
       if (!(await rc.db.bots.consumeInbox(row.id))) continue;
@@ -350,6 +369,8 @@ async function drainInbox(
           kind: 'message',
           reason: rc.turnCounter === 0 ? 'user' : 'interjection',
           mentions: item.mentions,
+          directed: item.directed,
+          messageId: item.kind === 'mention' ? item.messageId : inboxMessageId(row.id),
         },
         wrote,
       };
@@ -361,11 +382,13 @@ async function drainInbox(
     wrote = true;
     if (mode === 'record') continue;
     if (item.kind === 'user_message' && foreign) {
-      if (item.mentions.length > 0) {
+      {
         await rc.db.bots.enqueueInbox(rc.sessionId, 'mention', {
           kind: 'mention',
           author_user_id: item.author_user_id!,
           mentions: item.mentions,
+          directed: item.directed,
+          messageId: inboxMessageId(row.id),
         });
       }
       continue;
@@ -374,7 +397,16 @@ async function drainInbox(
       // Before any turn ran (a server-initiated run opened for this message) it is
       // an ordinary message, not an interjection into Bots at work.
       const reason = rc.turnCounter === 0 ? 'user' : 'interjection';
-      return { interjection: { kind: 'message', reason, mentions: item.mentions ?? [] }, wrote };
+      return {
+        interjection: {
+          kind: 'message',
+          reason,
+          mentions: item.mentions ?? [],
+          directed: item.directed,
+          messageId: inboxMessageId(row.id),
+        },
+        wrote,
+      };
     }
     // A Bot joined / left / was created: the wake-up below and the queued turns see it.
     if (changesRoster(item)) await refreshRoster(rc);
@@ -387,7 +419,7 @@ async function drainInbox(
         botId: item.botId,
         messageId: inboxMessageId(row.id, ':stopped'),
       });
-    } else onContinue(item.botId, item.note);
+    } else onContinue(item.botId, item.note, item.exchangeId);
   }
   return { wrote };
 }
@@ -399,9 +431,14 @@ function isActiveMember(rc: RunContext, botId: string | null | undefined): botId
 function ownersFor(
   rc: RunContext,
   trigger: ChainTrigger,
-): Array<{ botId: string; reason: FloorItem['reason']; message?: string }> {
+): Array<{ botId: string; reason: FloorItem['reason']; message?: string; exchangeId?: string }> {
   if (trigger.kind === 'continue') {
-    return trigger.items.map((item) => ({ botId: item.botId, reason: 'continue' as const, message: item.note }));
+    return trigger.items.map((item) => ({
+      botId: item.botId,
+      reason: 'continue' as const,
+      message: item.note,
+      exchangeId: item.exchangeId,
+    }));
   }
   const mentioned = trigger.mentions.filter((id) => isActiveMember(rc, id));
   if (mentioned.length > 0) {
@@ -410,8 +447,12 @@ function ownersFor(
       reason: trigger.reason === 'interjection' ? 'interjection' : 'mention',
     }));
   }
-  // A room has no default speaker: an Agent answers only when addressed (P5, D44).
-  if (rc.people !== null) return [];
+  if (rc.people !== null) {
+    if (trigger.directed || trigger.mentions.length > 0) return [];
+    return [...rc.members]
+      .filter((id) => isActiveMember(rc, id))
+      .map((botId) => ({ botId, reason: 'consider' as const }));
+  }
   // A DM is its owner's: when the owner is archived nobody answers there (its
   // guests only speak when addressed).
   const ownerId = rc.conversation.owner_bot_id;
@@ -484,10 +525,17 @@ async function runChain(rc: RunContext, trigger: ChainTrigger): Promise<ChainTri
     // anyway sees its hand-back line in the history, so it gets no second turn.
     const addressed = new Set(owners.map((owner) => owner.botId));
     for (const wake of trigger.carry ?? []) {
-      if (!addressed.has(wake.botId)) floor.addContinue(wake.botId, wake.note);
+      if (!addressed.has(wake.botId)) floor.addContinue(wake.botId, wake.note, wake.exchangeId);
     }
   }
+  const receiptMessageId =
+    rc.people && trigger.kind === 'message' ? (trigger.messageId ?? rc.writer.tail?.id) : undefined;
+  if (receiptMessageId) {
+    for (const owner of owners) await rc.db.bots.setAgentReceipt(rc.sessionId, receiptMessageId, owner.botId, 'queued');
+    await pushToConversation(rc.sessionId, rc.user.id, { type: 'bots:receipts', sessionId: rc.sessionId }, rc.db);
+  }
   const chain: ChainState = {
+    receiptMessageId,
     floor,
     deadline: Date.now() + CHAIN_LIMITS.wallClockMs,
     inputWeighted: 0,
@@ -497,53 +545,72 @@ async function runChain(rc: RunContext, trigger: ChainTrigger): Promise<ChainTri
     outcomes: new Map(),
   };
 
-  for (;;) {
-    if (rc.run.signal.aborted) throw new RunAbortError();
-    // Soft stop: the Bot that was speaking finished its step; nothing planned runs.
-    if (rc.run.interruptRequested) return await takeInterrupt(rc, floor.clear());
-    // After a budget hit only the reserved follow-ups run: new turns wait in the
-    // inbox for a fresh chain (the final drain of the run starts one).
-    const drained = await drainInbox(
-      rc,
-      (botId, note) => floor.addContinue(botId, note),
-      !chain.limit && rc.turnCounter < CHAIN_LIMITS.runTurns ? 'run' : 'writes',
-    );
-    if (drained.interjection) {
-      const carried = floor.clear();
-      return { ...drained.interjection, carry: [...(drained.interjection.carry ?? []), ...carried] };
-    }
-    // The next turn runs against the current roster (a Bot archived or removed
-    // meanwhile is skipped; one invited meanwhile is a valid hand-off target).
-    await refreshRoster(rc);
-    const item = floor.next();
-    if (item === null) return null;
-    if (item === 'turns') {
-      await writeLimit(rc, chain, 'turns');
-      continue;
-    }
-    if (item.reason !== 'followup') {
-      if (!chain.limit) {
-        if (Date.now() >= chain.deadline) await writeLimit(rc, chain, 'wall_clock');
-        else if (chain.steps >= CHAIN_LIMITS.steps) await writeLimit(rc, chain, 'steps');
+  try {
+    for (;;) {
+      if (rc.run.signal.aborted) throw new RunAbortError();
+      // Soft stop: the Bot that was speaking finished its step; nothing planned runs.
+      if (rc.run.interruptRequested) return await takeInterrupt(rc, floor.clear());
+      // After a budget hit only the reserved follow-ups run: new turns wait in the
+      // inbox for a fresh chain (the final drain of the run starts one).
+      const drained = await drainInbox(
+        rc,
+        (botId, note, exchangeId) => floor.addContinue(botId, note, exchangeId),
+        !chain.limit && rc.turnCounter < CHAIN_LIMITS.runTurns ? 'run' : 'writes',
+      );
+      if (drained.interjection) {
+        const carried = floor.clear();
+        return { ...drained.interjection, carry: [...(drained.interjection.carry ?? []), ...carried] };
       }
-      // Once limited, nothing but a reserved follow-up may start a turn.
-      if (chain.limit) continue;
+      // The next turn runs against the current roster (a Bot archived or removed
+      // meanwhile is skipped; one invited meanwhile is a valid hand-off target).
+      await refreshRoster(rc);
+      const item = floor.next();
+      if (item === null) return null;
+      if (item === 'turns') {
+        await writeLimit(rc, chain, 'turns');
+        continue;
+      }
+      if (item.reason !== 'followup') {
+        if (!chain.limit) {
+          if (Date.now() >= chain.deadline) await writeLimit(rc, chain, 'wall_clock');
+          else if (chain.steps >= CHAIN_LIMITS.steps) await writeLimit(rc, chain, 'steps');
+        }
+        // Once limited, nothing but a reserved follow-up may start a turn.
+        if (chain.limit) continue;
+      }
+      // The speaking Agent acts: platform audit and usage name it (platform/agent-scope.ts).
+      // A public Agent (P4) acts for its owner at this member's request.
+      const result = await runInAgentScope(
+        {
+          botId: item.botId,
+          sessionId: rc.sessionId,
+          ...(rc.bots.get(item.botId)?.user_id !== rc.user.id ? { requestedByUserId: rc.user.id } : {}),
+        },
+        () => runBotTurn(rc, chain, item),
+      );
+      if (receiptMessageId) {
+        const status =
+          result.status === 'completed'
+            ? 'answered'
+            : result.status === 'error'
+              ? 'failed'
+              : result.status === 'skipped'
+                ? 'skipped'
+                : 'canceled';
+        await rc.db.bots.setAgentReceipt(rc.sessionId, receiptMessageId, item.botId, status);
+        await pushToConversation(rc.sessionId, rc.user.id, { type: 'bots:receipts', sessionId: rc.sessionId }, rc.db);
+      }
+      if (result.transcriptChanged) throw new TranscriptChangedError(rc.sessionId);
+      chain.outcomes.set(item.botId, result.status);
+      floor.endTurn();
+      if (rc.run.signal.aborted) throw new RunAbortError();
+      if (result.limit) await writeLimit(rc, chain, result.limit);
     }
-    // The speaking Agent acts: platform audit and usage name it (platform/agent-scope.ts).
-    // A public Agent (P4) acts for its owner at this member's request.
-    const result = await runInAgentScope(
-      {
-        botId: item.botId,
-        sessionId: rc.sessionId,
-        ...(rc.publicBots.has(item.botId) ? { requestedByUserId: rc.user.id } : {}),
-      },
-      () => runBotTurn(rc, chain, item),
-    );
-    if (result.transcriptChanged) throw new TranscriptChangedError(rc.sessionId);
-    chain.outcomes.set(item.botId, result.status);
-    floor.endTurn();
-    if (rc.run.signal.aborted) throw new RunAbortError();
-    if (result.limit) await writeLimit(rc, chain, result.limit);
+  } finally {
+    if (receiptMessageId) {
+      await rc.db.bots.cancelAgentReceipts(rc.sessionId, receiptMessageId);
+      await pushToConversation(rc.sessionId, rc.user.id, { type: 'bots:receipts', sessionId: rc.sessionId }, rc.db);
+    }
   }
 }
 
@@ -740,6 +807,7 @@ export async function runBotsRun(args: BotsRunArgs): Promise<BotsRunOutcome> {
   let rc: RunContext | null = null;
   let status: 'completed' | 'error' = 'completed';
   try {
+    if (!(await startAgentMessage(db, sessionId))) throw new ConversationGoneError();
     rc = await loadRunContext(args, db);
     // A task chat without a title is named from its first member message, alongside the reply.
     if (rc.conversation.kind === 'task' && !rc.conversation.title) void titleTaskChat(db, userId, sessionId);
@@ -761,7 +829,7 @@ export async function runBotsRun(args: BotsRunArgs): Promise<BotsRunOutcome> {
       const pending: WakeUp[] = [];
       const drained = await drainInbox(
         rc,
-        (botId, note) => pending.push({ botId, note }),
+        (botId, note, exchangeId) => pending.push({ botId, note, exchangeId }),
         rc.turnCounter < CHAIN_LIMITS.runTurns ? 'run' : 'writes',
       );
       if (drained.interjection) {
@@ -784,6 +852,14 @@ export async function runBotsRun(args: BotsRunArgs): Promise<BotsRunOutcome> {
   // never run; queued member messages stay and are answered right below. A
   // shutdown keeps everything queued for the next process.
   if (rc && run.stopReason === 'user') await drainAfterStop(rc);
+  // Settle the exchange while this run still owns the conversation lock.
+  // Otherwise a returned child can start a new turn while we choose the reply.
+  try {
+    if (run.stopReason !== 'shutdown')
+      await finishAgentMessage(db, sessionId, status === 'error' || run.signal.aborted || !rc);
+  } catch (error) {
+    logger.warn('[bots] Agent message return deferred to recovery', { sessionId, error: toErrorMessage(error) });
+  }
   await finishRun(db, run, rc, userId, status);
   if (!rc) return { status, loaded: false };
   await db.bots.touchActivity(sessionId).catch(() => undefined);

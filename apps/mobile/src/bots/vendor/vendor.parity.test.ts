@@ -145,7 +145,7 @@ describe('file-verbatim copies', () => {
 
   it('transcript assembly, mentions, Bot name rules', () => {
     expectFileVendored(`${WEB_BOTS}/transcript.ts`, `${MOBILE}/bots/vendor/transcript.ts`);
-    expectFileVendored(`${WEB_BOTS}/mentions.ts`, `${MOBILE}/bots/vendor/mentions.ts`);
+    expectFileVendored('packages/utils/src/mentions.ts', `${MOBILE}/bots/vendor/mentions.ts`);
     expectFileVendored(`${WEB_BOTS}/bot-name.ts`, `${MOBILE}/bots/vendor/bot-name.ts`);
   });
 

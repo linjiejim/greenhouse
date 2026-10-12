@@ -3,7 +3,7 @@
  *
  * The conversations sidebar is one list (spec 20261011-agent-first-class §3.1): with Agent
  * threads, the chats panel carries the threads and the Background group above the chats, one
- * search box feeds every section, and its toolbar opens the "new Agent" dialog; without them it
+ * search box feeds every section, and each section owns its actions; without them it
  * is just the chats, as before. The chats panel itself is stubbed here — its own tests cover it.
  */
 
@@ -19,7 +19,6 @@ interface StubProps {
   leading?: ReactNode;
   chatsTitle?: string;
   searchPlaceholder?: string;
-  extraActions?: Array<{ label: string; onClick: () => void }>;
   onQueryChange?: (query: string) => void;
   agentChats?: { currentId: string | null; onOpen: (sessionId: string) => void };
 }
@@ -42,9 +41,6 @@ vi.mock('./chat-history-panel', () => ({
         'data-testid': 'search',
         onChange: (event: { target: { value: string } }) => props.onQueryChange?.(event.target.value),
       }),
-      ...(props.extraActions ?? []).map((action) =>
-        createElement('button', { key: action.label, 'aria-label': action.label, onClick: action.onClick }),
-      ),
       createElement('div', { 'data-testid': 'leading' }, props.leading ?? null),
     ),
 }));
@@ -94,7 +90,7 @@ function mount(features: Record<string, boolean>, hostDialogs = false) {
 const get = (testId: string) => host.querySelector<HTMLElement>(`[data-testid="${testId}"]`);
 
 describe('<ConversationsSidebarPanel/>', () => {
-  it('with Agent threads: threads + Background above the chats, one search for all, a "new Agent" action', () => {
+  it('with Agent threads: threads + Background above the chats, one search for all, no unrelated actions beside search', () => {
     mount({ bots: true });
     const chats = get('chats')!;
     expect(chats.dataset.title).toBe('Chats');
@@ -110,8 +106,7 @@ describe('<ConversationsSidebarPanel/>', () => {
     expect(get('threads')!.textContent).toBe('sage');
     expect(get('background')!.textContent).toBe('sage');
 
-    act(() => host.querySelector<HTMLButtonElement>('button[aria-label="New Agent"]')!.click());
-    expect(useBotsStore.getState().dialog).toEqual({ kind: 'new-bot' });
+    expect(host.querySelector('button[aria-label="New Agent"]')).toBeNull();
   });
 
   it('lists separate Agent chats among the chats, highlighted and opened at their own address', async () => {
