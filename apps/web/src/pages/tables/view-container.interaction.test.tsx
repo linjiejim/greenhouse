@@ -195,6 +195,27 @@ describe('TablesViewContainer', () => {
     expect(headerNames()).toEqual(['Amount', 'Name']);
   });
 
+  it('replaces old rows with a loading state while the selected page is fetched', async () => {
+    let finishPage!: (page: { records: TableRecord[]; total: number; nextCursor: null }) => void;
+    api.queryTableRecords.mockImplementation((_tableId, query) =>
+      query.cursor
+        ? new Promise((resolve) => {
+            finishPage = resolve;
+          })
+        : Promise.resolve({ records: [record(5, { '1': 'Acme', '2': 10 })], total: 40, nextCursor: 'page-2' }),
+    );
+    await mount();
+    expect(container.querySelector('tbody')?.textContent).toContain('Acme');
+    const next = [...container.querySelectorAll('button')].find((button) => button.textContent === 'Next')!;
+    await act(async () => next.click());
+    expect(container.querySelector('tbody')).toBeNull();
+    expect(container.querySelector('[aria-busy="true"]')).not.toBeNull();
+    await act(async () => finishPage({ records: [record(25, { '1': 'Beta', '2': 20 })], total: 40, nextCursor: null }));
+    expect(container.querySelector('tbody')?.textContent).toContain('Beta');
+    expect(container.querySelector('tbody')?.textContent).not.toContain('Acme');
+    expect(container.textContent).toContain('21–40 of 40');
+  });
+
   it('applies a saved view’s query.filters (an Agent plan writes them) to the record query', async () => {
     const open = { combinator: 'and' as const, clauses: [{ fieldId: 2, operator: 'gt' as const, value: 5 }] };
     api.getTableSchema.mockResolvedValue({

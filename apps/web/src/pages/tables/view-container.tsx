@@ -447,7 +447,7 @@ export function TablesViewContainer({ table, tables, role, access, users, focusR
         </div>
       )}
 
-      <div className="min-h-0 flex-1 overflow-auto">
+      <div className="min-h-0 flex-1 overflow-auto" aria-busy={query.loading}>
         {(query.loading && records.length === 0) || !schema ? (
           <div className="flex h-full items-center justify-center">
             <Spinner className="h-6 w-6 text-fg-faint" />

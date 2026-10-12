@@ -13,7 +13,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { TableFilterGroup, TableGroupBy, TableQuery } from '@greenhouse/types/tables';
-import { queryTableRecords, type TableRecord } from '../../lib/api/tables';
+import { queryTableRecords, TablesRequestError, type TableRecord } from '../../lib/api/tables';
 import { usePersistedPageSize } from '../../hooks/use-persisted-page-size';
 import { useT } from '../../lib/i18n';
 import { combinedFilters, viewerTimeZone } from './views/view-query';
@@ -55,67 +55,122 @@ export function useRecordQuery(
   const [page, setPage] = useState(0);
   const [pageSize, setStoredPageSize] = usePersistedPageSize(`tables.${tableId}`, 20);
   const [loading, setLoading] = useState(true);
+  const selectionKey = JSON.stringify([tableId, query, page, pageSize, shape]);
+  const [loadedSelectionKey, setLoadedSelectionKey] = useState<string | null>(null);
   const cursorByPage = useRef(new Map<number, string | undefined>([[0, undefined]]));
   // The shape arrives as a fresh object every render; its JSON is the identity.
   const shapeKey = JSON.stringify(shape);
   const appliedShape = useRef(shapeKey);
   /** Only the latest request may land: a slow page must not overwrite a newer one. */
   const latestRequest = useRef(0);
+  const activeReload = useRef<{ key: string; again: boolean; promise: Promise<void> } | null>(null);
+  const invalidateRequests = useCallback(() => {
+    latestRequest.current++;
+    activeReload.current = null;
+  }, []);
 
-  const reload = useCallback(async () => {
+  const reload = useCallback(() => {
+    // Record-change events during a page jump must not keep cancelling it.
+    // Finish this selection, then refresh it once for events received in flight.
+    if (activeReload.current?.key === selectionKey) {
+      activeReload.current.again = true;
+      return activeReload.current.promise;
+    }
+    const requestId = ++latestRequest.current;
     const current = JSON.parse(shapeKey) as RecordQueryShape;
     if (appliedShape.current !== shapeKey) {
       appliedShape.current = shapeKey;
       cursorByPage.current = new Map([[0, undefined]]);
       if (page !== 0) {
         setPage(0);
-        return;
+        return Promise.resolve();
       }
     }
-    const requestId = ++latestRequest.current;
     const lastPage = current.limit ? 0 : page;
+    const active = { key: selectionKey, again: false, promise: Promise.resolve() };
+    activeReload.current = active;
     setLoading(true);
     onError('');
-    try {
-      const filters = combinedFilters(query.filters, current.filters);
-      const request: TableQuery = {
-        where: query.where,
-        search: query.search || undefined,
-        sort: query.sort,
-        limit: current.limit ?? pageSize,
-        ...(current.groupBy ? { groupBy: current.groupBy } : {}),
-        ...(filters ? { filters } : {}),
-      };
-      // Same zone as the view's group counts, so `$today` and day filters agree with them.
-      const timezone = viewerTimeZone();
-      let cursor = cursorByPage.current.get(0);
-      let result = await queryTableRecords(tableId, { ...request, cursor }, timezone);
-      cursorByPage.current.set(1, result.nextCursor ?? undefined);
-      for (let currentPage = 1; currentPage <= lastPage; currentPage += 1) {
-        cursor = cursorByPage.current.get(currentPage);
-        if (!cursor) {
-          result = { ...result, records: [] };
-          break;
+    active.promise = (async () => {
+      try {
+        const filters = combinedFilters(query.filters, current.filters);
+        const request: TableQuery = {
+          where: query.where,
+          search: query.search || undefined,
+          sort: query.sort,
+          limit: current.limit ?? pageSize,
+          ...(current.groupBy ? { groupBy: current.groupBy } : {}),
+          ...(filters ? { filters } : {}),
+        };
+        // Same zone as the view's group counts, so `$today` and day filters agree with them.
+        const timezone = viewerTimeZone();
+        let retriedCursor = false;
+        do {
+          active.again = false;
+          const cursors = cursorByPage.current;
+          let usedCursor = false;
+          try {
+            let firstPage = 0;
+            for (const [cachedPage, cursor] of cursors) {
+              if (cachedPage <= lastPage && cachedPage > firstPage && cursor) firstPage = cachedPage;
+            }
+            usedCursor = firstPage > 0;
+            let result = await queryTableRecords(tableId, { ...request, cursor: cursors.get(firstPage) }, timezone);
+            if (requestId !== latestRequest.current) return;
+            cursors.set(firstPage + 1, result.nextCursor ?? undefined);
+            for (let currentPage = firstPage + 1; currentPage <= lastPage; currentPage += 1) {
+              if (!result.nextCursor) {
+                result = { ...result, records: [] };
+                break;
+              }
+              usedCursor = true;
+              result = await queryTableRecords(tableId, { ...request, cursor: result.nextCursor }, timezone);
+              // An obsolete response must neither keep walking nor poison a new query's cursors.
+              if (requestId !== latestRequest.current) return;
+              cursors.set(currentPage + 1, result.nextCursor ?? undefined);
+            }
+            setRecords(result.records);
+            setTotal(result.total);
+            setLoadedSelectionKey(selectionKey);
+          } catch (error) {
+            if (requestId !== latestRequest.current) return;
+            // Cursors bind to the reader's current row/field scope. A changed
+            // grant invalidates the cache even when the view query is unchanged.
+            if (
+              !retriedCursor &&
+              usedCursor &&
+              error instanceof TablesRequestError &&
+              error.status === 400 &&
+              error.message === 'cursor is invalid for this query'
+            ) {
+              retriedCursor = true;
+              cursorByPage.current = new Map([[0, undefined]]);
+              active.again = true;
+              continue;
+            }
+            throw error;
+          }
+        } while (active.again && requestId === latestRequest.current);
+      } catch (loadError) {
+        if (requestId !== latestRequest.current) return;
+        onError(loadError instanceof Error ? loadError.message : t('tables.loadRecordsFailed'));
+      } finally {
+        if (requestId === latestRequest.current) {
+          activeReload.current = null;
+          setLoading(false);
         }
-        result = await queryTableRecords(tableId, { ...request, cursor }, timezone);
-        cursorByPage.current.set(currentPage + 1, result.nextCursor ?? undefined);
       }
-      if (requestId !== latestRequest.current) return;
-      setRecords(result.records);
-      setTotal(result.total);
-    } catch (loadError) {
-      if (requestId !== latestRequest.current) return;
-      onError(loadError instanceof Error ? loadError.message : t('tables.loadRecordsFailed'));
-    } finally {
-      if (requestId === latestRequest.current) setLoading(false);
-    }
-  }, [onError, page, pageSize, query, shapeKey, tableId, t]);
+    })();
+    return active.promise;
+  }, [onError, page, pageSize, query, selectionKey, shapeKey, tableId, t]);
 
   useEffect(() => {
     void reload();
-  }, [reload]);
+    return invalidateRequests;
+  }, [reload, invalidateRequests]);
 
   const restartPaging = () => {
+    invalidateRequests();
     cursorByPage.current = new Map([[0, undefined]]);
     setPage(0);
   };
@@ -127,6 +182,7 @@ export function useRecordQuery(
   };
 
   const setPageSize = (size: number) => {
+    if (size === pageSize) return;
     restartPaging();
     setStoredPageSize(size);
   };
@@ -134,7 +190,9 @@ export function useRecordQuery(
   return {
     ...query,
     setQuery,
-    records,
+    // Page controls change immediately; rows from the old selection must not
+    // remain actionable while the new page (or filter) is still loading.
+    records: loadedSelectionKey === selectionKey ? records : [],
     setRecords,
     total,
     loading,
