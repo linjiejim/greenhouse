@@ -69,7 +69,7 @@ export function TableGrid({
   const text = big ? typo.body : typo.subheadline;
   const charW = big ? 9.4 : 8.4;
   const cjkW = big ? 17 : 15;
-  const maxW = big ? 360 : 280;
+  const maxW = big ? 220 : 160;
   const minW = big ? 72 : 56;
   // A datatable's values are literal; a markdown table's cells carry inline marks.
   const content = (s: string) => (plain ? s : <Inline text={s} />);
@@ -144,7 +144,9 @@ export function TableGrid({
           <View style={[styles.tr, styles.trHead]} onLayout={(e) => onHeadHeight?.(e.nativeEvent.layout.height)}>
             {Array.from({ length: cols }, (_, j) => {
               const label = (
-                <Text style={[text, styles.cellText, styles.cellHead, { textAlign: al(j) }]}>{content(head[j] ?? '')}</Text>
+                <Text style={[text, styles.cellText, styles.cellHead, { textAlign: al(j) }]}>
+                  {content(head[j] ?? '')}
+                </Text>
               );
               return onHeadPress ? (
                 <Pressable
@@ -177,6 +179,30 @@ export function TableGrid({
   );
 }
 
+/** Wide tables read vertically on a phone. All columns remain present in every record. */
+export function TableRecords({ data, limit }: { data: TableData; limit?: number }) {
+  const { colors: c } = useTheme();
+  const styles = useStyles(c);
+  const rows = limit == null ? data.rows : data.rows.slice(0, limit);
+  const content = (s: string) => (data.plain ? s : <Inline text={s} />);
+  return (
+    <View>
+      {rows.map((row, i) => (
+        <View key={i} style={[styles.record, i < rows.length - 1 && styles.trSep]}>
+          {Array.from({ length: Math.max(data.head.length, row.length) }, (_, j) => (
+            <View key={j} style={styles.recordField}>
+              <Text style={styles.recordLabel}>{content(data.head[j] || String(j + 1))}</Text>
+              <Text selectable style={styles.recordValue}>
+                {content(row[j] ?? '—')}
+              </Text>
+            </View>
+          ))}
+        </View>
+      ))}
+    </View>
+  );
+}
+
 /** Inline table: the grid in a rounded card, the expand glyph pinned to its header. */
 export function Table({
   data,
@@ -199,6 +225,17 @@ export function Table({
     const k = putHandoff('table', data);
     router.push({ pathname: '/table', params: title ? { k, title } : { k } });
   };
+  if (!onHeadPress && data.head.length > 4)
+    return (
+      <View style={styles.wrap}>
+        <View style={styles.card}>
+          <TableRecords data={data} limit={2} />
+          <Touchable onPress={open} accessibilityRole="button" style={styles.record}>
+            <Text style={{ ...typo.subheadline, color: c.accent }}>{t('chat.tableMore', { n: data.rows.length })}</Text>
+          </Touchable>
+        </View>
+      </View>
+    );
   return (
     <View style={styles.wrap}>
       <View style={styles.card} onLayout={(e) => setAvail(Math.floor(e.nativeEvent.layout.width))}>
@@ -237,6 +274,10 @@ export function Table({
 }
 
 const useStyles = makeStyles((c) => ({
+  record: { padding: space.md, gap: space.sm },
+  recordField: { flexDirection: 'row', alignItems: 'flex-start', gap: space.md },
+  recordLabel: { width: '28%', ...typo.footnote, color: c.secondaryLabel },
+  recordValue: { flex: 1, ...typo.subheadline, color: c.label },
   wrap: { marginVertical: space.sm + 2 },
   card: {
     borderRadius: radius.md,

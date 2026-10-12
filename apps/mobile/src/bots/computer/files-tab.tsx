@@ -1,7 +1,7 @@
 /**
  * The computer's files (the Bots' sandbox, home /home/agent): start in ~/work,
- * open folders, go up to ~; a file opens the system share sheet (Save to Files,
- * AirDrop, another app) after an authenticated download. Read-only on the phone
+ * open folders, go up to ~; a file opens the shared native preview after an authenticated cache download;
+ * sharing/saving is a secondary action. Read-only on the phone
  * (spec D4): a file the member wants on the computer goes in as a chat
  * attachment, which the Bot copies over itself.
  */
@@ -11,11 +11,9 @@ import { RefreshControl, ScrollView, Text } from 'react-native';
 import { computerFilePath, listComputerFiles } from '../../api/bots';
 import { useT } from '../../lib/i18n';
 import { formatBytes, relativeTime } from '../../lib/format';
-import { downloadAndShare } from '../../lib/share-file';
+import { saveFile } from '../../chat/file-card';
 import type { ComputerFileEntry, ComputerFileList } from '../../shared/bots';
 import { makeStyles, space, typo, useTheme } from '../../theme';
-import { Spinner } from '../../ui/core';
-import { alertError } from '../../ui/dialogs';
 import { EmptyState, LoadingState } from '../../ui/empty';
 import { ListSection, ListRow } from '../../ui/list';
 import { computerErrorKey } from './errors';
@@ -29,7 +27,6 @@ export function FilesTab() {
   const [list, setList] = useState<ComputerFileList | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
-  const [busy, setBusy] = useState<string | null>(null);
 
   const load = useCallback(
     async (target: string | undefined) => {
@@ -56,11 +53,7 @@ export function FilesTab() {
       setPath(full);
       return;
     }
-    setBusy(entry.name);
-    void downloadAndShare(computerFilePath(full), entry.name).then((ok) => {
-      setBusy(null);
-      if (!ok) alertError(t('bots.computer.filesDownloadFailed', { name: entry.name }));
-    });
+    saveFile(computerFilePath(full), entry.name);
   };
 
   if (!list) {
@@ -88,7 +81,13 @@ export function FilesTab() {
       <Text style={styles.path} numberOfLines={1} ellipsizeMode="head" selectable>
         {homePath(list.path)}
       </Text>
-      <ListSection footer={list.truncated ? t('bots.computer.filesTruncated', { count: list.entries.length }) : t('bots.computer.filesHint')}>
+      <ListSection
+        footer={
+          list.truncated
+            ? t('bots.computer.filesTruncated', { count: list.entries.length })
+            : t('bots.computer.filesHint')
+        }
+      >
         {up ? (
           <ListRow
             title={t('bots.computer.filesUp')}
@@ -114,8 +113,8 @@ export function FilesTab() {
                   : `${formatBytes(entry.size)} · ${relativeTime(entry.mtime)}`
               }
               icon={entry.type === 'dir' ? 'folder' : 'file'}
-              accessory={busy === entry.name ? <Spinner /> : entry.type === 'dir' ? 'chevron' : 'none'}
-              disabled={entry.type === 'other' || busy !== null}
+              accessory="chevron"
+              disabled={entry.type === 'other'}
               onPress={() => open(entry)}
             />
           ))
@@ -130,4 +129,3 @@ const useStyles = makeStyles((c) => ({
   content: { paddingTop: space.md, paddingBottom: space.xxxl },
   path: { ...typo.footnote, color: c.secondaryLabel, marginHorizontal: space.margin * 2, marginBottom: space.sm },
 }));
-

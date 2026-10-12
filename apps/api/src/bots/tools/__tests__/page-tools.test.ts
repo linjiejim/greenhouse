@@ -152,6 +152,7 @@ describe.skipIf(!chromiumAvailable())('tools on a real page', { timeout: 90_000 
       'login',
       {
         reason: 'I need you to sign in to the fixture site',
+        fields: ['username', 'password'],
         kind: 'login',
         origin: site.origin,
         url: `${site.origin}/login`,

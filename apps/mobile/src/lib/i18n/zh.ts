@@ -144,6 +144,17 @@ export const zh: Catalog = {
     maxImages: '每条消息最多 {n} 张图片',
     deleted: '对话已删除',
     linkFailed: '无法打开链接',
+    askOpen: '点击填写',
+    askOptionalFields: '补充（选填）',
+    askDetails: '说明',
+    askFailed: '未能发送，请重试',
+    fileTextTruncated: '仅预览前 50,000 个字符。可通过分享或存储查看完整文件。',
+    fileUnsupported: '此格式暂不支持预览',
+    fileShare: '分享或存储',
+    tableRecords: '逐条阅读',
+    tableGrid: '表格视图',
+    tableMore: '查看全部 {n} 条',
+    loginSubmitting: '正在安全提交…',
     preparingFile: '正在准备文件…',
     downloadFailed: '文件下载失败',
     pendingChart: '正在生成图表…',
@@ -298,7 +309,8 @@ export const zh: Catalog = {
   /** Connectors — Settings → 连接器 and the chat's "Connect X" card (web parity: `connectors.*`). */
   connectors: {
     title: '连接器',
-    intro: '连接器让你的 Agent 和 Bot 使用其他服务里的工具。公开的直接可用；标着「你的账号」的，用的是你自己的登录或 key——别人用不了。',
+    intro:
+      '连接器让你的 Agent 和 Bot 使用其他服务里的工具。公开的直接可用；标着「你的账号」的，用的是你自己的登录或 key——别人用不了。',
     disabledTitle: '你的账号还没有开启外部工具',
     disabledDesc: '请管理员为你授予「External MCP tools」。',
     noneTitle: '还没有连接器',

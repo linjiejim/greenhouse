@@ -478,6 +478,8 @@ export interface BotTakeoverPayload {
 }
 
 export interface BotLoginPayload {
+  /** Empty fields currently visible on the same-origin login page; absent on older/unknown pages. */
+  fields?: Array<'username' | 'password' | 'otp'>;
   reason: string;
   kind: 'login' | 'otp';
   /** Server-derived origin of the page asking for credentials. */

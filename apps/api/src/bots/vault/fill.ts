@@ -263,6 +263,30 @@ async function locateFields(
   return found;
 }
 
+/** Metadata only: reuse the verified filler’s field discovery, never return field values. */
+export async function loginFieldsForPage(page: Page, origin: string): Promise<FieldName[] | undefined> {
+  if (originOfUrl(page.url()) !== origin) return undefined;
+  const fields = await locateFields(page, [origin], new Set(['username', 'password', 'otp']));
+  try {
+    const needed: FieldName[] = [];
+    for (const name of ['username', 'password', 'otp'] as const) {
+      const handles = name === 'otp' ? fields.otp : fields[name] ? [fields[name]!] : undefined;
+      if (!handles?.length) continue;
+      const empty = await Promise.all(
+        handles.map((handle) => handle.evaluate((el) => !(el as HTMLInputElement).value)),
+      );
+      if (empty.some(Boolean)) needed.push(name);
+    }
+    return needed.length && originOfUrl(page.url()) === origin ? needed : undefined;
+  } finally {
+    await Promise.all(
+      [fields.username, fields.password, ...(fields.otp ?? [])].map((handle) =>
+        handle?.dispose().catch(() => undefined),
+      ),
+    );
+  }
+}
+
 // ─── Verified fill ────────────────────────────────────────
 
 interface FillGuard {

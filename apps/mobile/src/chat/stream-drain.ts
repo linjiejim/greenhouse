@@ -6,7 +6,7 @@
  *
  * Each tick reveals a small share of the backlog, a few characters at most,
  * so a reply unfolds like calm typing instead of slamming in whole chunks:
- * Latin words whole (bounded), CJK character by character (with no spaces to
+ * Short Latin words whole (bounded), CJK character by character (with no spaces to
  * stop at, snapping ran a dozen characters ahead and lines popped in whole),
  * and never half a surrogate pair. Once the wire has closed the rest flows
  * out faster.
@@ -17,15 +17,15 @@ export const TICK_MS = 33;
 
 /**
  * Reveal pace, per tick: backlog ÷ `share`, clamped to [min, max] chars —
- * live, the text trails the model by ~⅓ s at up to 240 chars/s; once the
- * wire has closed, the rest flows out faster.
+ * live, the text trails the model by ~⅓ s at up to 90 chars/s; once the
+ * wire has closed, the rest flows out at at most six characters per tick.
  */
-const DRAIN_LIVE = { share: 10, min: 1, max: 8 };
-const DRAIN_END = { share: 5, min: 3, max: 40 };
+const DRAIN_LIVE = { share: 10, min: 1, max: 3 };
+const DRAIN_END = { share: 5, min: 2, max: 6 };
 /** Characters that continue a Latin word (revealed whole; CJK has no word gaps). */
 const WORD_CHAR = /[A-Za-z0-9\u00C0-\u024F_'’-]/;
 /** How far past the pace a Latin word in progress may be finished. */
-const WORD_RUN = 12;
+const WORD_RUN = 3;
 
 const isHighSurrogate = (code: number) => code >= 0xd800 && code <= 0xdbff;
 

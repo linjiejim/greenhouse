@@ -218,6 +218,8 @@ export default function RootLayout() {
 
                 {/* ── modals with their own stack ── */}
                 <Stack.Screen name="settings" options={modalScreen()} />
+                <Stack.Screen name="sheets/ask-user" options={sheetScreen([0.75, 1], { header: true })} />
+                <Stack.Screen name="file-preview" options={{ ...detailScreen(c), presentation: 'modal' }} />
                 <Stack.Screen name="table" options={{ ...detailScreen(c), presentation: 'modal' }} />
                 <Stack.Screen name="peek/diagram" options={{ ...detailScreen(c), presentation: 'modal' }} />
                 <Stack.Screen name="peek/html" options={{ ...detailScreen(c), presentation: 'modal' }} />

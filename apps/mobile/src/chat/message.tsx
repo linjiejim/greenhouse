@@ -115,9 +115,18 @@ function DisclosureRow({
 function reasoningHeadline(reasoning: string): string {
   const firsts = reasoning
     .split(/\n\s*\n/)
-    .map((p) => p.split('\n').find((l) => l.trim())?.trim() ?? '')
+    .map(
+      (p) =>
+        p
+          .split('\n')
+          .find((l) => l.trim())
+          ?.trim() ?? '',
+    )
     .filter(Boolean);
-  return (firsts.at(-2) ?? '').replace(/[*_#`]/g, '').trim().slice(0, 160);
+  return (firsts.at(-2) ?? '')
+    .replace(/[*_#`]/g, '')
+    .trim()
+    .slice(0, 160);
 }
 
 /* ----------------------------- assistant ----------------------------- */
@@ -156,7 +165,12 @@ function Thinking({
           {onOpen ? <Icon name="chevR" size={11} weight="semibold" color={c.tertiaryLabel} /> : null}
         </View>
         {headline ? (
-          <Animated.Text key={headline} entering={FadeIn.duration(200)} numberOfLines={1} style={styles.thinkingHeadline}>
+          <Animated.Text
+            key={headline}
+            entering={FadeIn.duration(200)}
+            numberOfLines={1}
+            style={styles.thinkingHeadline}
+          >
             {headline}
           </Animated.Text>
         ) : null}
@@ -193,7 +207,13 @@ function ToolsRow({ steps, live, onOpen }: { steps: ToolStep[]; live: boolean; o
 function ReasoningRow({ text, active, onOpen }: { text: string; active: boolean; onOpen: () => void }) {
   const t = useT();
   return active ? (
-    <DisclosureRow icon="brain" busy label={t('chat.thinking')} detail={reasoningHeadline(text) || undefined} onPress={onOpen} />
+    <DisclosureRow
+      icon="brain"
+      busy
+      label={t('chat.thinking')}
+      detail={reasoningHeadline(text) || undefined}
+      onPress={onOpen}
+    />
   ) : (
     <DisclosureRow icon="brain" label={t('chat.reasoning')} onPress={onOpen} />
   );
@@ -373,7 +393,12 @@ export const AiMessage = memo(function AiMessage({
     <Animated.View key={fontKey} entering={entering} style={styles.aiRow}>
       {/* nothing to act on until text arrives */}
       {msg.text ? (
-        <MessageMenu items={items} text={msg.text} onSelect={(id) => onAction(msg, id as MessageAction)}>
+        <MessageMenu
+          streaming={live}
+          items={items}
+          text={msg.text}
+          onSelect={(id) => onAction(msg, id as MessageAction)}
+        >
           {body}
         </MessageMenu>
       ) : (
@@ -513,7 +538,13 @@ const useStyles = makeStyles((c) => ({
   aiRow: { paddingTop: space.xs, paddingBottom: space.lg, gap: space.xs },
   aiBody: { paddingHorizontal: space.margin, gap: space.xs },
   aiTail: { paddingHorizontal: space.margin, gap: space.xs },
-  thinking: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', gap: space.sm, paddingVertical: space.xs },
+  thinking: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: space.sm,
+    paddingVertical: space.xs,
+  },
   thinkingTexts: { flexShrink: 1 },
   thinkingLine: { flexDirection: 'row', alignItems: 'center', gap: space.xs + 2 },
   thinkingText: { ...typo.subheadline, color: c.secondaryLabel },

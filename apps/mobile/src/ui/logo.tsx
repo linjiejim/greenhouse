@@ -5,8 +5,8 @@ import Svg, { Path } from 'react-native-svg';
 import { useTheme } from '../theme';
 import { GREENHOUSE_PATHS } from './brand.generated';
 
-/** How long the mark takes to build itself (the launch splash plays it in full). */
-export const MARK_BUILD_MS = 1800;
+/** How long the mark takes to build itself (the launch splash can leave earlier when content is ready). */
+export const MARK_BUILD_MS = 650;
 
 export function GreenhouseMark({
   size = 72,

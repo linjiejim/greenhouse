@@ -19,7 +19,8 @@ export const botsComputerEn = {
     stateError: 'Something went wrong',
     asleepDesc: 'It wakes up by itself when a Bot needs it. Files and sign-ins are kept while it sleeps.',
     startingDesc: 'The first start takes about 30 seconds.',
-    queuedDesc: 'All of your organisation’s computers are busy. Yours starts as soon as one frees up — you are #{position} in line.',
+    queuedDesc:
+      'All of your organisation’s computers are busy. Yours starts as soon as one frees up — you are #{position} in line.',
     unavailableDesc: 'Your organisation hasn’t set up computers for Bots, or they aren’t working right now.',
     start: 'Start Now',
     startFailed: 'Couldn’t start the computer.',
@@ -41,7 +42,8 @@ export const botsComputerEn = {
     takeOver: 'Take Over',
     takeOverFailed: 'Couldn’t take over the computer.',
     takeOverBusyTitle: 'Take over the computer?',
-    takeOverBusy: 'A Bot is working on it. Taking over pauses that work — it picks up where it left off when you hand back.',
+    takeOverBusy:
+      'A Bot is working on it. Taking over pauses that work — it picks up where it left off when you hand back.',
     inControlFor: 'In control · {time}',
     handBack: 'Hand Back',
     handBackWithNote: 'Hand Back with a Note…',
@@ -91,7 +93,7 @@ export const botsComputerEn = {
     filesLoadFailed: 'Couldn’t open this folder.',
     filesDownloadFailed: 'Couldn’t download {name}.',
     filesUp: 'Up',
-    filesHint: 'Tap a file to save or share it.',
+    filesHint: 'Tap a file to preview it, then share or save if needed.',
     procEmptyTitle: 'No background processes yet',
     procEmptyDesc: 'Long jobs your Bots start (installs, builds, downloads) show up here.',
     procRunning: 'Running',

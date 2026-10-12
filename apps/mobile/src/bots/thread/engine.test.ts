@@ -339,7 +339,7 @@ describe('sending', () => {
     expect(t.snap().pending.map((p) => p.status)).toEqual(['sent']);
 
     stream.push(turnStart('bot_a'), text('Hello there'));
-    await t.time.advance(100);
+    await t.time.advance(200);
     expect(t.snap().run?.segments[0]).toMatchObject({ text: 'Hello there', status: 'streaming' });
     expect(t.snap().runActive).toBe(true);
 

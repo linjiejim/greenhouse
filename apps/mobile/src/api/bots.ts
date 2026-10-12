@@ -230,7 +230,10 @@ function conversationOf(body: unknown): BotConversationDetail {
 // ─── Shared notes (a conversation's) ─────────────────────
 
 /** Add a note (title ≤ 80, body ≤ 2000) — the member's own (no author Bot). */
-export function addNote(sessionId: string, note: { title: string; body?: string }): Promise<BotsWrite<BotSharedNoteView>> {
+export function addNote(
+  sessionId: string,
+  note: { title: string; body?: string },
+): Promise<BotsWrite<BotSharedNoteView>> {
   return call(`/api/bots/conversations/${enc(sessionId)}/notes`, jsonInit('POST', note), noteOf);
 }
 
@@ -373,7 +376,7 @@ export function listComputerFiles(path?: string): Promise<BotsRead<ComputerFileL
   return read(`/api/bots/computer/files${path ? `?path=${enc(path)}` : ''}`, whole<ComputerFileList>);
 }
 
-/** The download route of one file, for `downloadAndShare` (src/lib/share-file.ts). */
+/** The download route of one file, for the shared `/file-preview` route. */
 export function computerFilePath(path: string): string {
   return `/api/bots/computer/files/download?path=${enc(path)}`;
 }

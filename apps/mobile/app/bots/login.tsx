@@ -32,7 +32,7 @@
  */
 
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from 'react';
-import { Keyboard } from 'react-native';
+import { Keyboard, View, Text as RNText, StyleSheet } from 'react-native';
 import { Stack, useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
 import {
   Button,
@@ -69,7 +69,7 @@ import { refusalCopy } from '../../src/bots/cards/decision';
 import { useT } from '../../src/lib/i18n';
 import { useTheme } from '../../src/theme';
 import { alertError } from '../../src/ui/dialogs';
-import { EmptyState } from '../../src/ui/empty';
+import { EmptyState, LoadingState } from '../../src/ui/empty';
 import { NativeForm } from '../../src/ui/native-form';
 import { FormChrome, SheetClose } from '../../src/ui/sheet-chrome';
 import { softAskAfterDecision } from '../../src/push/soft-ask';
@@ -88,6 +88,7 @@ export default function BotLoginRoute() {
 
 function BotLoginSheet() {
   const t = useT();
+  const { colors } = useTheme();
   const router = useRouter();
   const { id, c } = useLocalSearchParams<{ id?: string; c?: string }>();
   const lookup = useRequestLookup(id, c);
@@ -139,19 +140,33 @@ function BotLoginSheet() {
           <EmptyState icon="lock" title={t('bots.login.gone')} message={t('bots.login.goneHint')} style={{ flex: 1 }} />
         )
       ) : (
-        <NativeForm>
-          {request ? (
-            <LoginSections key={request.id} request={request} onHold={hold} onDone={done} onChrome={setChrome} />
-          ) : (
-            <Section>
-              <HStack>
-                <Spacer />
-                <ProgressView />
-                <Spacer />
-              </HStack>
-            </Section>
-          )}
-        </NativeForm>
+        <View style={{ flex: 1 }}>
+          <NativeForm style={{ opacity: chrome?.saving ? 0 : 1 }}>
+            {request ? (
+              <LoginSections key={request.id} request={request} onHold={hold} onDone={done} onChrome={setChrome} />
+            ) : (
+              <Section>
+                <HStack>
+                  <Spacer />
+                  <ProgressView />
+                  <Spacer />
+                </HStack>
+              </Section>
+            )}
+          </NativeForm>
+          {chrome?.saving ? (
+            <View
+              accessibilityLiveRegion="polite"
+              style={[
+                StyleSheet.absoluteFill,
+                { backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center' },
+              ]}
+            >
+              <LoadingState style={{ flexGrow: 0, paddingVertical: 16 }} />
+              <RNText style={{ color: colors.secondaryLabel }}>{t('chat.loginSubmitting')}</RNText>
+            </View>
+          ) : null}
+        </View>
       )}
     </>
   );
@@ -237,6 +252,7 @@ function LoginSections({
   };
 
   const submit = async () => {
+    Keyboard.dismiss();
     const outcome = await decideHeld(form.submit, (o) => o === 'ok' || o === 'stale');
     if (outcome === 'ok' || outcome === 'stale') onDone();
   };
@@ -314,29 +330,39 @@ function LoginSections({
           codeField
         ) : (
           <>
-            <TextField
-              text={usernameState}
-              placeholder={t('bots.login.username')}
-              autoFocus
-              onTextChange={(value) => form.noteInput('username', value)}
-              modifiers={[
-                autocorrectionDisabled(),
-                textInputAutocapitalization('never'),
-                privacySensitive(),
-                submitLabel('next'),
-                onSubmit(() => void passwordRef.current?.focus()),
-              ]}
-            />
-            <SecureField
-              ref={passwordRef}
-              text={passwordState}
-              placeholder={t('bots.login.password')}
-              onTextChange={(value) => form.noteInput('password', value)}
-              modifiers={[privacySensitive(), submitLabel('go'), onSubmit(() => void submit())]}
-            />
-            <DisclosureGroup label={t('bots.login.needOtp')} isExpanded={showOtp} onIsExpandedChange={setShowOtp}>
-              {codeField}
-            </DisclosureGroup>
+            {form.visibleFields.includes('username') ? (
+              <TextField
+                text={usernameState}
+                placeholder={t('bots.login.username')}
+                autoFocus
+                onTextChange={(value) => form.noteInput('username', value)}
+                modifiers={[
+                  autocorrectionDisabled(),
+                  textInputAutocapitalization('never'),
+                  privacySensitive(),
+                  submitLabel('next'),
+                  onSubmit(() =>
+                    form.visibleFields.includes('password') ? void passwordRef.current?.focus() : void submit(),
+                  ),
+                ]}
+              />
+            ) : null}
+            {form.visibleFields.includes('password') ? (
+              <SecureField
+                ref={passwordRef}
+                text={passwordState}
+                placeholder={t('bots.login.password')}
+                onTextChange={(value) => form.noteInput('password', value)}
+                modifiers={[privacySensitive(), submitLabel('go'), onSubmit(() => void submit())]}
+              />
+            ) : null}
+            {form.visibleFields.includes('otp') ? (
+              codeField
+            ) : !form.payload.fields ? (
+              <DisclosureGroup label={t('bots.login.needOtp')} isExpanded={showOtp} onIsExpandedChange={setShowOtp}>
+                {codeField}
+              </DisclosureGroup>
+            ) : null}
           </>
         )}
       </Section>

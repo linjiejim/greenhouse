@@ -91,7 +91,7 @@ export const botsComputerZh: typeof botsComputerEn = {
     filesLoadFailed: '无法打开这个文件夹。',
     filesDownloadFailed: '没能下载 {name}。',
     filesUp: '上一级',
-    filesHint: '点文件即可保存或分享。',
+    filesHint: '点文件即可预览，也可以分享或保存。',
     procEmptyTitle: '还没有后台进程',
     procEmptyDesc: 'Bot 启动的耗时任务（安装、构建、下载）会显示在这里。',
     procRunning: '运行中',

@@ -19,18 +19,13 @@ function drain(buffer: string, ended: boolean, from = 0): number[] {
 }
 
 describe('nextReveal — pace', () => {
-  it('reveals a share of the backlog per tick, clamped to 1–8 chars while live', () => {
-    const cjk = '天'.repeat(200);
-    expect(nextReveal(cjk, 0, false)).toBe(8); // ⌈200/10⌉ = 20 → capped at 8
-    expect(nextReveal(cjk, 195, false)).toBe(196); // ⌈5/10⌉ = 1
-    expect(nextReveal('天', 0, false)).toBe(1); // at least one char
-  });
-
-  it('flows faster once the wire has closed (3–40 chars per tick)', () => {
-    const cjk = '天'.repeat(200);
-    expect(nextReveal(cjk, 0, true)).toBe(40); // ⌈200/5⌉ = 40
-    expect(nextReveal(cjk, 150, true)).toBe(160); // ⌈50/5⌉ = 10
-    expect(nextReveal(cjk, 199, true)).toBe(200); // min 3, clamped to the end
+  it('bounds bursts even when the server sends the whole reply at once', () => {
+    for (const ended of [false, true]) {
+      const text = '天'.repeat(1000);
+      const steps = [0, ...drain(text, ended)];
+      for (let i = 1; i < steps.length; i++) expect(steps[i] - steps[i - 1]).toBeLessThanOrEqual(ended ? 6 : 3);
+      expect(steps.at(-1)).toBe(text.length);
+    }
   });
 
   it('never goes backwards and stops when there is no backlog', () => {
@@ -48,44 +43,13 @@ describe('nextReveal — pace', () => {
   });
 });
 
-describe('nextReveal — Latin words', () => {
-  it('finishes the word in progress instead of cutting it', () => {
-    // pace 3 lands inside "Hello": the word is revealed whole, the space is not
-    expect(nextReveal('Hello wonderful world', 0, false)).toBe(5);
-    // from "Hello " the next word comes out whole too
-    expect('Hello wonderful world'.slice(0, nextReveal('Hello wonderful world', 6, false))).toBe('Hello wonderful');
+describe('nextReveal — readable increments', () => {
+  it('finishes short Latin words without dumping a long word or identifier at once', () => {
+    expect(nextReveal('Hello world', 0, false)).toBe(5);
+    expect(nextReveal('a'.repeat(100), 0, false)).toBeLessThanOrEqual(6);
   });
-
-  it('counts accented letters, digits, apostrophes and hyphens as part of a word', () => {
-    expect('Ça-déjà'.slice(0, nextReveal('Ça-déjà vu', 0, false))).toBe('Ça-déjà');
-    expect("don't".slice(0, nextReveal("don't stop", 0, false))).toBe("don't");
-    expect('v2026'.slice(0, nextReveal('v2026 is here', 0, false))).toBe('v2026');
-  });
-
-  it('extends a word at most 12 chars past the pace', () => {
-    const long = 'a'.repeat(100);
-    // pace ⌈100/10⌉ = 10 → capped at 8, then the word runs on for up to 12 more
-    expect(nextReveal(long, 0, false)).toBe(8 + 12);
-  });
-
-  it('never cuts a word on a word boundary that is already there', () => {
-    const text = 'ab cd';
-    // pace 1 lands after "a" ("b" continues the word) → "ab"
-    expect(nextReveal(text, 0, false)).toBe(2);
-    // after "ab": the space is not a word char, so the next step is just the space
-    expect(nextReveal(text, 2, false)).toBe(3);
-  });
-});
-
-describe('nextReveal — CJK', () => {
-  it('goes character by character, never snapping ahead to a "word"', () => {
-    const text = '你好世界，今天天气很好'; // 11 chars, no spaces
-    expect(nextReveal(text, 0, false)).toBe(2); // ⌈11/10⌉ = 2 — no extension
-    expect(nextReveal(text, 2, false)).toBe(3); // ⌈9/10⌉ = 1
-  });
-
-  it('stops a Latin word at the CJK text that follows it', () => {
-    expect(nextReveal('Greenhouse温室', 0, false)).toBe('Greenhouse'.length);
+  it('does not snap CJK forward to the next space', () => {
+    expect(nextReveal('你好世界，今天天气很好', 0, false)).toBe(2);
   });
 });
 
