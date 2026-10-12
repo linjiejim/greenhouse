@@ -12,6 +12,7 @@ import type { TableViewConfig } from '../../shared/tables';
 import { useT } from '../../lib/i18n';
 import { makeStyles, radius, space, squircle, typo, useTheme, weight } from '../../theme';
 import { EmptyState, LoadingState } from '../../ui/empty';
+import { NativeButton } from '../../ui/button';
 import { useFontScaleKey } from '../../ui/font-scale';
 import { AuthImage } from '../auth-image';
 import { RecordLines } from '../field-value';
@@ -25,11 +26,13 @@ export function GalleryView({
   data,
   config,
   searching,
+  header,
 }: {
   ctx: ViewContext;
   data: RecordsData;
   config: NonNullable<TableViewConfig['gallery']> | undefined;
   searching: boolean;
+  header?: React.ReactElement | null;
 }) {
   const t = useT();
   const { colors: c, hex } = useTheme();
@@ -80,6 +83,7 @@ export function GalleryView({
       onEndReached={() => void data.loadMore()}
       onEndReachedThreshold={0.5}
       renderItem={render}
+      ListHeaderComponent={header}
       ListEmptyComponent={
         data.records === null ? (
           <LoadingState style={{ paddingTop: space.xxl }} />
@@ -89,6 +93,16 @@ export function GalleryView({
           <EmptyState
             icon={searching ? 'search' : 'photos'}
             title={searching ? t('tables.noMatches') : t('tables.noRecords')}
+            action={
+              !searching && ctx.abilities.canCreate ? (
+                <NativeButton
+                  label={t('tables.newRecord')}
+                  icon="plus"
+                  variant="prominent"
+                  onPress={() => ctx.create()}
+                />
+              ) : undefined
+            }
           />
         )
       }

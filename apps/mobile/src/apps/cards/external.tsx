@@ -28,7 +28,7 @@ export function ExternalCard(props: AppCardProps) {
   const result = data.result;
   const retry = <NativeButton label={t('common.retry')} icon="refresh" onPress={() => void data.reload()} />;
   return (
-    <CardFrame title={card.title}>
+    <CardFrame title={result?.kind === 'kpi' ? undefined : card.title}>
       {data.failed || result?.kind === 'source_error' ? (
         <>
           <CardNote

@@ -133,7 +133,13 @@ function ViewOptions() {
 
   return (
     <>
-      <FormChrome title={t('tables.options.title')} dirty={dirty} canSave={!!draft} onSave={apply} />
+      <FormChrome
+        title={t('tables.options.title')}
+        dirty={dirty}
+        canSave={!!draft}
+        onSave={apply}
+        saveLabel={t('tables.options.apply')}
+      />
       <NativeForm>
         {!draft ? (
           <Section>

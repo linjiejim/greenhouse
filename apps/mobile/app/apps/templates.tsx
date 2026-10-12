@@ -1,6 +1,6 @@
 /** Native template catalog; installation creates a Base and app through the server plan. */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { FlatList, RefreshControl, Text, View } from 'react-native';
+import { FlatList, RefreshControl, Text } from 'react-native';
 import { Stack, useFocusEffect, useRouter } from 'expo-router';
 import { installTemplate, listTemplates } from '../../src/api/apps';
 import { appAccent, appIcon } from '../../src/apps/meta';
@@ -66,10 +66,10 @@ function TemplateCatalog() {
     installing.current = true;
     try {
       const name = await promptText({
-        title: t('apps.templates.create'),
+        title: t('apps.templates.install'),
         message: t('apps.templates.installHint'),
         defaultValue: template.name,
-        confirmLabel: t('apps.templates.create'),
+        confirmLabel: t('apps.templates.install'),
       });
       if (!name || !alive.current) return;
       if (name.length > 60) {
@@ -116,7 +116,7 @@ function TemplateCatalog() {
         }
         ListHeaderComponent={
           <Text key={fontKey} style={styles.hint}>
-            {t('apps.templates.installHint')}
+            {t('apps.templates.intro')}
           </Text>
         }
         renderItem={({ item, index }) => {
@@ -125,7 +125,7 @@ function TemplateCatalog() {
             <ListRow
               title={item.name}
               subtitle={item.description}
-              subtitleLines={3}
+              subtitleLines={2}
               icon={appIcon(item.icon)}
               iconTint={appAccent(item.accent, c)}
               disabled={!ready || busy !== null}
@@ -133,14 +133,11 @@ function TemplateCatalog() {
               position={position(index, templates?.length ?? 0)}
               onPress={ready ? () => void install(item) : undefined}
               footer={
-                <View key={fontKey} style={styles.meta}>
-                  <Text style={styles.detail}>
-                    {busy === item.key
-                      ? t('apps.templates.installing')
-                      : `${t(item.source === 'published' ? 'apps.templates.published' : 'apps.templates.builtin')}${item.version ? ` · v${item.version}` : ''}`}
+                busy === item.key || !ready ? (
+                  <Text key={fontKey} style={styles.detail}>
+                    {busy === item.key ? t('apps.templates.installing') : t('apps.templates.reviewRequired')}
                   </Text>
-                  {!ready ? <Text style={styles.detail}>{t('apps.templates.reviewRequired')}</Text> : null}
-                </View>
+                ) : undefined
               }
             />
           );
@@ -166,6 +163,5 @@ const useStyles = makeStyles((c) => ({
     marginHorizontal: space.margin + space.md,
     marginVertical: space.md,
   },
-  meta: { gap: space.xs },
   detail: { ...typo.caption1, color: c.secondaryLabel },
 }));

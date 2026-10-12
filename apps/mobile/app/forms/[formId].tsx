@@ -74,6 +74,7 @@ function SubmitForm() {
   const [form, setForm] = useState<TableFormSubmitView | null>(null);
   const [missingForm, setMissingForm] = useState(false);
   const [draft, setDraft] = useState<Record<string, unknown>>({});
+  const [initial, setInitial] = useState<Record<string, unknown>>({});
   const [files, setFiles] = useState<Record<string, AttachmentDraft[]>>({});
   const [uploading, setUploading] = useState<number | null>(null);
   const [openDate, setOpenDate] = useState<number | null>(null);
@@ -86,7 +87,9 @@ function SubmitForm() {
     setForm(result.value);
     setMissingForm(false);
     const fields = formFields(result.value);
-    setDraft(Object.fromEntries(fields.map((field) => [String(field.id), draftValue(field, null)])));
+    const start = Object.fromEntries(fields.map((field) => [String(field.id), draftValue(field, null)]));
+    setInitial(start);
+    setDraft(start);
     setFiles({});
   }, [formId]);
   useEffect(() => {
@@ -171,6 +174,7 @@ function SubmitForm() {
   }, []);
 
   const missing = form ? missingRequired(fields, editable, draft) : [];
+  const dirty = JSON.stringify(initial) !== JSON.stringify(draft);
   const badNumbers = form ? invalidNumbers(fields, draft) : [];
   const canSubmit =
     !!form && !done && !form.alreadySubmitted && !missing.length && !badNumbers.length && uploading === null;
@@ -250,7 +254,11 @@ function SubmitForm() {
             />
             <Section
               footer={
-                missing.length ? (
+                badNumbers.length ? (
+                  <Text>
+                    {t('tables.form.invalidNumbers', { fields: badNumbers.map((field) => field.name).join(', ') })}
+                  </Text>
+                ) : dirty && missing.length ? (
                   <Text>
                     {t('tables.form.missingRequired', { fields: missing.map((field) => field.name).join(', ') })}
                   </Text>

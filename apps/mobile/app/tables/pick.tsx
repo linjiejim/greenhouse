@@ -11,7 +11,7 @@
  */
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ProgressView, Section, Text, TextField, useNativeState } from '@expo/ui/swift-ui';
+import { Button, ProgressView, Section, Text, TextField, useNativeState } from '@expo/ui/swift-ui';
 import { textInputAutocapitalization } from '@expo/ui/swift-ui/modifiers';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { fieldOptions } from '../../src/api/apps';
@@ -51,11 +51,12 @@ function Pick({ request }: { request: PickRequest | undefined }) {
     request?.source.kind === 'options' ? request.source.choices : null,
   );
   const [failed, setFailed] = useState(false);
+  const [attempt, setAttempt] = useState(0);
   const labelsRef = useRef<Record<string, string>>({ ...(request?.labels ?? {}) });
 
   // records of the related table, titled by their primary field
   const targetTable = request?.source.kind === 'records' ? request.source.tableId : 0;
-  const { schema } = useSchema(targetTable);
+  const { schema, failed: schemaFailed, reload } = useSchema(targetTable);
   // names for people inside related rows' titles: whatever directory is already loaded (never a new load —
   // an app or form viewer may not read the Tables directory)
   const users = useTables((s) => s.users) ?? undefined;
@@ -97,7 +98,7 @@ function Pick({ request }: { request: PickRequest | undefined }) {
       live = false;
       clearTimeout(timer);
     };
-  }, [request, schema, search, labels]);
+  }, [request, schema, search, labels, attempt]);
 
   const shown = useMemo(() => {
     if (!choices) return null;
@@ -158,11 +159,26 @@ function Pick({ request }: { request: PickRequest | undefined }) {
             modifiers={[textInputAutocapitalization('never')]}
           />
         </Section>
-        {shown === null ? (
-          <Section>{failed ? <Text>{t('tables.pick.failed')}</Text> : <ProgressView />}</Section>
+        {failed || (targetTable > 0 && schemaFailed) ? (
+          <Section>
+            <Text>{t('tables.pick.failed')}</Text>
+            <Button
+              label={t('common.retry')}
+              systemImage="arrow.clockwise"
+              onPress={() => {
+                setFailed(false);
+                if (targetTable && (schemaFailed || !schema)) void reload({ fresh: true });
+                setAttempt((value) => value + 1);
+              }}
+            />
+          </Section>
+        ) : shown === null ? (
+          <Section>
+            <ProgressView />
+          </Section>
         ) : shown.length === 0 ? (
           <Section>
-            <Text>{failed ? t('tables.pick.failed') : t('tables.pick.none')}</Text>
+            <Text>{t('tables.pick.none')}</Text>
           </Section>
         ) : (
           <Section>

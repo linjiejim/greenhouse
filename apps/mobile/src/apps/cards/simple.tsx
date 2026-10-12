@@ -39,7 +39,7 @@ export function FormCard(props: AppCardProps) {
   return (
     <CardFrame title={card.title}>
       <NativeButton
-        label={card.submitLabel || t('apps.fillForm')}
+        label={t('apps.fillForm')}
         icon="form"
         variant="prominent"
         fullWidth

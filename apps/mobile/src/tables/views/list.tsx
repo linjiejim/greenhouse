@@ -78,10 +78,9 @@ export function ListView({
       <EmptyState
         icon="table"
         title={t('tables.noRecords')}
-        message={t('tables.noRecordsHint')}
         action={
           ctx.abilities.canCreate ? (
-            <NativeButton label={t('tables.newRecord')} icon="plus" onPress={() => ctx.create()} />
+            <NativeButton label={t('tables.newRecord')} icon="plus" variant="prominent" onPress={() => ctx.create()} />
           ) : undefined
         }
       />

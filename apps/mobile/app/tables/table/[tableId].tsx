@@ -181,7 +181,12 @@ function TablePage() {
   }
 
   const changed = hasOverrides(overrides);
-  const banner = changed ? <Text style={styles.banner}>{t('tables.overridden')}</Text> : null;
+  const banner = view ? (
+    <Text style={styles.banner}>
+      {view.name}
+      {changed ? ` · ${t('tables.overridden')}` : ''}
+    </Text>
+  ) : null;
 
   return (
     <>
@@ -248,9 +253,9 @@ function TablePage() {
           />
         </View>
       ) : type === 'calendar' ? (
-        <CalendarView ctx={ctx} config={config.calendar} baseQuery={query ?? {}} />
+        <CalendarView ctx={ctx} config={config.calendar} baseQuery={query ?? {}} header={banner} />
       ) : type === 'gallery' ? (
-        <GalleryView ctx={ctx} data={data} config={config.gallery} searching={!!typed.trim()} />
+        <GalleryView ctx={ctx} data={data} config={config.gallery} searching={!!typed.trim()} header={banner} />
       ) : (
         <ListView
           ctx={ctx}

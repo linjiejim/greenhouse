@@ -241,10 +241,17 @@ function RecordForm() {
               openDate={openDate}
               setOpenDate={setOpenDate}
             />
-            {missing.length ? (
+            {dirty && missing.length ? (
               <Section>
                 <Text>
                   {t('tables.form.missingRequired', { fields: missing.map((field) => field.name).join(', ') })}
+                </Text>
+              </Section>
+            ) : null}
+            {badNumbers.length ? (
+              <Section>
+                <Text>
+                  {t('tables.form.invalidNumbers', { fields: badNumbers.map((field) => field.name).join(', ') })}
                 </Text>
               </Section>
             ) : null}

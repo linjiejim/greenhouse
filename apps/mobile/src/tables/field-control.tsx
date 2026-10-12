@@ -159,7 +159,7 @@ function FieldRow(props: FieldFormProps & { field: FieldLike }) {
     case 'date':
       return (
         <OptionalDateField
-          label={field.required ? `${field.name} *` : field.name}
+          label={required(field, t)}
           icon="calendar"
           value={typeof value === 'string' ? value : null}
           onChange={(stamp) => onChange(field.id, stamp)}
@@ -178,7 +178,7 @@ function FieldRow(props: FieldFormProps & { field: FieldLike }) {
     case 'single_select':
       return (
         <Picker
-          label={field.name}
+          label={required(field, t)}
           selection={typeof value === 'string' ? value : ''}
           onSelectionChange={(id) => onChange(field.id, id ? String(id) : null)}
           modifiers={[pickerStyle('menu')]}
@@ -197,7 +197,7 @@ function FieldRow(props: FieldFormProps & { field: FieldLike }) {
         const current = typeof value === 'string' ? value : '';
         return (
           <Picker
-            label={field.name}
+            label={required(field, t)}
             selection={current}
             onSelectionChange={(id) => onChange(field.id, id ? String(id) : null)}
             modifiers={[pickerStyle('menu')]}
@@ -238,10 +238,10 @@ function TextRow({
   const text = useNativeState(initial);
   const keyboard = keyboardFor(field.type);
   return (
-    <LabeledContent label={<Label title={field.name} />}>
+    <LabeledContent label={<Label title={required(field, t)} />}>
       <TextField
         text={text}
-        placeholder={field.required ? t('tables.form.required') : ''}
+        placeholder=""
         onTextChange={(next) => onChange(field.id, next)}
         modifiers={[
           keyboardType(keyboard),
@@ -284,11 +284,16 @@ function DateTimeRow({
   value: string | null;
   onChange: (iso: string | null) => void;
 }) {
+  const t = useT();
   const date = value ? new Date(value) : null;
   const valid = date && !Number.isNaN(date.valueOf()) ? date : null;
   return (
     <>
-      <Toggle label={field.name} isOn={!!valid} onIsOnChange={(on) => onChange(on ? new Date().toISOString() : null)} />
+      <Toggle
+        label={required(field, t)}
+        isOn={!!valid}
+        onIsOnChange={(on) => onChange(on ? new Date().toISOString() : null)}
+      />
       {valid ? (
         <DatePicker
           selection={valid}
@@ -317,13 +322,7 @@ function PickRow(props: FieldFormProps & { field: FieldLike }) {
       : joined.length <= 28
         ? joined
         : t('tables.form.nChosen', { n: ids.length });
-  return (
-    <FormNavRow
-      label={field.required ? `${field.name} *` : field.name}
-      value={summary}
-      onPress={() => props.onPick(field)}
-    />
-  );
+  return <FormNavRow label={required(field, t)} value={summary} onPress={() => props.onPick(field)} />;
 }
 
 function AttachmentSection(props: FieldFormProps & { field: FieldLike }) {

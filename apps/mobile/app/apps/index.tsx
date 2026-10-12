@@ -22,6 +22,7 @@ import { alertError } from '../../src/ui/dialogs';
 import { EmptyState, LoadingState } from '../../src/ui/empty';
 import { ListRow, ListSectionHeader, type RowPosition } from '../../src/ui/list';
 import { NativeMenu } from '../../src/ui/menu';
+import { NativeButton } from '../../src/ui/button';
 import { toolbarIcon } from '../../src/ui/toolbar-icon';
 
 export default function AppCenterScreen() {
@@ -151,7 +152,21 @@ function AppCenter() {
           ) : failed && !catalog ? (
             <EmptyState icon="alert" title={t('apps.loadFailed')} onRetry={() => void load()} />
           ) : (
-            <EmptyState icon="apps" title={t('apps.empty')} message={t('apps.emptyHint')} />
+            <EmptyState
+              icon="apps"
+              title={t('apps.empty')}
+              message={t('apps.emptyHint')}
+              action={
+                canCreate ? (
+                  <NativeButton
+                    label={t('apps.templates.create')}
+                    icon="plus"
+                    variant="prominent"
+                    onPress={() => router.push('/apps/templates')}
+                  />
+                ) : undefined
+              }
+            />
           )
         }
       />

@@ -25,7 +25,7 @@ import { findCard } from '../../src/shared/apps';
 import { isRecordsLike, recordActions, tableFields } from '../../src/apps/model';
 import { useApps } from '../../src/apps/store';
 import { useValueLabels } from '../../src/tables/labels';
-import type { FieldLike } from '../../src/tables/model/fields';
+import { primaryField, type FieldLike } from '../../src/tables/model/fields';
 import { ActivityList, useCommentDraft, useRecordActivity } from '../../src/tables/record-activity';
 import { FieldsCard, RecordHeader } from '../../src/tables/record-details';
 import { TablesRouteGate } from '../../src/tables/route-gate';
@@ -153,6 +153,7 @@ function AppRecord() {
   }
 
   const record = data.record;
+  const headingField = primaryField(fields);
   return (
     <>
       <Stack.Screen options={{ title: '' }} />
@@ -198,7 +199,9 @@ function AppRecord() {
         ) : null}
         <FieldsCard
           title={t('tables.details')}
-          fields={shown}
+          fields={shown.filter(
+            (field) => field.id !== headingField?.id || (field.type !== 'text' && field.type !== 'long_text'),
+          )}
           record={record}
           labels={labels}
           filePath={(field, fileId) => appFilePath(appId, fileId, { pageId, cardId, recordId, fieldId: field.id })}

@@ -29,11 +29,13 @@ export function CalendarView({
   ctx,
   config,
   baseQuery,
+  header,
 }: {
   ctx: ViewContext;
   config: NonNullable<TableViewConfig['calendar']> | undefined;
   /** The view's query with the phone's overrides (the month window is ANDed on). */
   baseQuery: Omit<TableQuery, 'cursor' | 'limit'>;
+  header?: React.ReactElement | null;
 }) {
   const t = useT();
   const locale = useLocale();
@@ -76,6 +78,7 @@ export function CalendarView({
         <RefreshControl refreshing={data.refreshing} onRefresh={() => void data.refresh()} tintColor={hex.accent} />
       }
     >
+      {header}
       <Host
         matchContents={{ vertical: true }}
         colorScheme={isDark ? 'dark' : 'light'}
