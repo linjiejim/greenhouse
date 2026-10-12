@@ -26,6 +26,8 @@ import {
   type AppRecordView,
   type AppRuntimeView,
   type AppSummary,
+  type AppTemplateSummary,
+  type AppTemplateInstallResult,
   type AppUploadView,
 } from '../shared/apps';
 import type { TableRecordActivityPage, TableRecordCommentView } from '../shared/tables';
@@ -57,6 +59,20 @@ export function listPins(): Promise<Fetch<AppSummary[]>> {
 /** Replace my pins (server-stored, D9). */
 export function setPins(appIds: number[]): Promise<Write<AppSummary[]>> {
   return write('/api/apps/pins', { method: 'PUT', json: { appIds } }, (body) => (body?.apps ?? []) as AppSummary[]);
+}
+
+/** Installable catalog plus the caller's versions waiting for review. */
+export function listTemplates(): Promise<Fetch<AppTemplateSummary[]>> {
+  return read('/api/apps/templates', (body) => (body?.templates ?? []) as AppTemplateSummary[]);
+}
+
+/** Creates a new Base and draft app; writes are never automatically retried. */
+export function installTemplate(key: string, name?: string): Promise<Write<AppTemplateInstallResult>> {
+  return write(
+    `/api/apps/templates/${encodeURIComponent(key)}/install`,
+    { method: 'POST', json: name ? { name } : {} },
+    (body) => body as AppTemplateInstallResult,
+  );
 }
 
 // ─── One app ──────────────────────────────────────────────

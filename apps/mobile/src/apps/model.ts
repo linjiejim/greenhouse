@@ -28,6 +28,7 @@ import {
   type AppSpec,
 } from '../shared/apps';
 import type { TableFieldValueEntry } from '../shared/tables';
+import { isComputed } from '../tables/model/fields';
 
 export type RecordsLikeCard = Extract<AppCard, { kind: 'records' | 'kanban' | 'calendar' | 'gallery' }>;
 
@@ -108,7 +109,7 @@ export function writableFieldIds(
 ): number[] {
   const editable = new Set(
     tableFields(view, tableId)
-      .filter((field) => field.editable)
+      .filter((field) => field.editable && !isComputed(field))
       .map((field) => field.id),
   );
   return ids.filter((id) => editable.has(id));

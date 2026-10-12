@@ -14,6 +14,7 @@ import { CardBoundary, CardFrame, CardNote } from '../../tables/cards/card-frame
 import { isMobileCard } from '../model';
 import { CalendarCard, GalleryCard, KanbanCard, RecordsCard } from './records';
 import { AggregateCard, ButtonsCard, FormCard, TextCard } from './simple';
+import { ExternalCard } from './external';
 import type { AppCardProps } from './types';
 
 type CardRenderer = (props: AppCardProps) => React.ReactElement | null;
@@ -24,6 +25,16 @@ function WebOnlyCard(props: AppCardProps) {
   return (
     <CardFrame title={(props.card as { title?: string }).title}>
       <CardNote icon="open" text={t('apps.cardWebOnly')} hint={t('apps.cardWebOnlyHint')} />
+    </CardFrame>
+  );
+}
+
+/** Custom HTML stays disabled on every client until isolation is verified. */
+function CustomUnavailableCard(props: AppCardProps) {
+  const t = useT();
+  return (
+    <CardFrame title={(props.card as { title?: string }).title}>
+      <CardNote icon="lock" text={t('apps.customUnavailable')} />
     </CardFrame>
   );
 }
@@ -39,13 +50,13 @@ export const APP_CARD_RENDERERS = {
   pivot: AggregateCard,
   text: TextCard,
   buttons: ButtonsCard,
-  // Phase 2: slice M draws these (and adds them to MOBILE_APP_CARDS); until then, the web.
-  custom: WebOnlyCard,
-  external: WebOnlyCard,
+  custom: CustomUnavailableCard,
+  external: ExternalCard,
 } satisfies Record<AppCardKind, CardRenderer>;
 
 export function AppCardView(props: AppCardProps) {
   const kind: string = props.card.kind;
+  if (kind === 'custom') return <CustomUnavailableCard {...props} />;
   if (!isMobileCard(kind)) return <WebOnlyCard {...props} />;
   const Renderer: CardRenderer = APP_CARD_RENDERERS[kind];
   return (

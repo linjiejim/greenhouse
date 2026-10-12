@@ -52,10 +52,11 @@ function sortValue(value: unknown, type: DataTableColumn['type']): number | stri
 export function DataTableBlock({ raw }: { raw: string }) {
   const seg = useMemo(() => richSegment('datatable', raw), [raw]);
   if (seg?.type !== 'datatable') return <CodeBlock lang="datatable" code={raw} />;
-  return <DataTable data={seg.data} />;
+  return <DataTableView data={seg.data} />;
 }
 
-function DataTable({ data }: { data: DataTableData }) {
+/** Also used by app external cards: cells stay literal text. */
+export function DataTableView({ data }: { data: DataTableData }) {
   const { colors: c } = useTheme();
   const styles = useStyles(c);
   const t = useT();
@@ -96,5 +97,11 @@ function DataTable({ data }: { data: DataTableData }) {
 }
 
 const useStyles = makeStyles((c) => ({
-  title: { ...typo.subheadline, fontWeight: weight.semibold, color: c.label, marginTop: space.sm, marginBottom: -space.xs },
+  title: {
+    ...typo.subheadline,
+    fontWeight: weight.semibold,
+    color: c.label,
+    marginTop: space.sm,
+    marginBottom: -space.xs,
+  },
 }));

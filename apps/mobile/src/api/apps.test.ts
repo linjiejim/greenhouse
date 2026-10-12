@@ -10,7 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const apiMock = vi.fn<(path: string, init?: RequestInit) => Promise<Response>>();
 vi.mock('./client', () => ({ api: (path: string, init?: RequestInit) => apiMock(path, init) }));
 
-import { queryCard, runAction } from './apps';
+import { installTemplate, listTemplates, queryCard, runAction } from './apps';
 
 const json = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
@@ -51,7 +51,42 @@ describe('the viewer’s time zone', () => {
     expect(sent()).toMatchObject({ timezone: 'Asia/Shanghai' });
 
     apiMock.mockResolvedValueOnce(json(200, { outcome: 'updated', recordId: 11 }));
-    await runAction(5, { pageId: 'apply', cardId: 'mine', actionId: '$edit', timezone: 'Europe/Paris', requestId: 'r-3' });
+    await runAction(5, {
+      pageId: 'apply',
+      cardId: 'mine',
+      actionId: '$edit',
+      timezone: 'Europe/Paris',
+      requestId: 'r-3',
+    });
     expect(sent()).toMatchObject({ timezone: 'Europe/Paris' });
+  });
+});
+
+describe('template installation', () => {
+  it('reads the catalog and sends only the chosen name to the saved-template endpoint', async () => {
+    apiMock.mockResolvedValueOnce(json(200, { templates: [{ key: 'purchase', version: '1.0.0' }] }));
+    expect(await listTemplates()).toEqual({ ok: true, value: [{ key: 'purchase', version: '1.0.0' }] });
+    apiMock.mockResolvedValueOnce(json(201, { app: { id: 17, name: 'Procurement' }, baseId: 9 }));
+    expect(await installTemplate('team/purchase', 'Procurement')).toEqual({
+      ok: true,
+      value: { app: { id: 17, name: 'Procurement' }, baseId: 9 },
+    });
+    expect(apiMock).toHaveBeenLastCalledWith(
+      '/api/apps/templates/team%2Fpurchase/install',
+      expect.objectContaining({ method: 'POST' }),
+    );
+    expect(sent()).toEqual({ name: 'Procurement' });
+  });
+
+  it('reports review refusals without retrying a creation', async () => {
+    apiMock.mockResolvedValueOnce(
+      json(409, { error: 'Template review is required', details: { reason: 'review_required' } }),
+    );
+    expect(await installTemplate('purchase')).toMatchObject({
+      ok: false,
+      status: 409,
+      message: 'Template review is required',
+    });
+    expect(apiMock).toHaveBeenCalledTimes(1);
   });
 });

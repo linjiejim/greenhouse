@@ -100,6 +100,7 @@ export const tablesZh: typeof tablesEn = {
   recordMissing: '这条记录不可用',
   recordMissingHint: '它可能已被删除，或你已无权访问。',
   details: '详情',
+  aiGenerated: 'AI 生成',
   calculated: '计算字段',
   record: '记录',
   editRecord: '编辑记录',

@@ -13,9 +13,10 @@ import { makeStyles, space, typo, useTheme } from '../theme';
 import { useFontScaleKey } from '../ui/font-scale';
 import { Badge } from '../ui/list';
 import { tagHex } from '../lib/tag-colors';
+import { useT } from '../lib/i18n';
 import {
   effectiveType,
-  fieldConfig,
+  selectOptions,
   isEmptyValue,
   recordValue,
   valueChips,
@@ -26,24 +27,32 @@ import {
 
 const MAX_CHIPS = 6;
 
-export function FieldValueView({
-  field,
-  value,
-  labels,
-  numberOfLines,
-}: {
+interface FieldValueViewProps {
   field: FieldLike;
   value: unknown;
   labels: ValueLabels;
   numberOfLines?: number;
-}) {
+}
+
+export function FieldValueView(props: FieldValueViewProps) {
+  const t = useT();
+  if (props.field.type !== 'ai') return <ValueView {...props} />;
+  return (
+    <View style={{ gap: space.xs, alignItems: 'flex-start' }}>
+      <Badge label={t('tables.aiGenerated')} />
+      <ValueView {...props} />
+    </View>
+  );
+}
+
+function ValueView({ field, value, labels, numberOfLines }: FieldValueViewProps) {
   const { colors: c } = useTheme();
   const styles = useStyles(c);
   if (isEmptyValue(value)) return <Text style={styles.empty}>—</Text>;
   const chips = valueChips(field, value, labels);
   if (chips) {
     const type = effectiveType(field);
-    const options = fieldConfig(field).options ?? [];
+    const options = selectOptions(field);
     const ids = Array.isArray(value) ? value : [value];
     const shown = chips.slice(0, MAX_CHIPS);
     return (

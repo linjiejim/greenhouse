@@ -103,6 +103,7 @@ export const tablesEn = {
   recordMissing: 'This record isn’t available',
   recordMissingHint: 'It may have been deleted, or you no longer have access to it.',
   details: 'Details',
+  aiGenerated: 'AI generated',
   calculated: 'Calculated',
   record: 'Record',
   editRecord: 'Edit Record',

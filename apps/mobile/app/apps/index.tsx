@@ -16,11 +16,13 @@ import { useT } from '../../src/lib/i18n';
 import { appAccent, appIcon } from '../../src/apps/meta';
 import { useApps } from '../../src/apps/store';
 import { TablesRouteGate } from '../../src/tables/route-gate';
+import { useTablesEnabled } from '../../src/tables/availability';
 import { space, useTheme } from '../../src/theme';
 import { alertError } from '../../src/ui/dialogs';
 import { EmptyState, LoadingState } from '../../src/ui/empty';
 import { ListRow, ListSectionHeader, type RowPosition } from '../../src/ui/list';
 import { NativeMenu } from '../../src/ui/menu';
+import { toolbarIcon } from '../../src/ui/toolbar-icon';
 
 export default function AppCenterScreen() {
   return (
@@ -39,6 +41,7 @@ function position(index: number, count: number): RowPosition {
 function AppCenter() {
   const t = useT();
   const router = useRouter();
+  const canCreate = useTablesEnabled();
   const { colors: c, hex } = useTheme();
   const catalog = useApps((s) => s.catalog);
   const failed = useApps((s) => s.catalogFailed);
@@ -81,6 +84,15 @@ function AppCenter() {
   return (
     <>
       <Stack.Screen options={{ title: t('apps.center') }} />
+      {canCreate ? (
+        <Stack.Toolbar placement="right">
+          <Stack.Toolbar.Button
+            icon={toolbarIcon('plus')}
+            accessibilityLabel={t('apps.templates.create')}
+            onPress={() => router.push('/apps/templates')}
+          />
+        </Stack.Toolbar>
+      ) : null}
       <SectionList
         sections={sections}
         keyExtractor={(app, index) => `${app.id}:${index}`}

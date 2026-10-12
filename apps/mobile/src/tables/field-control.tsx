@@ -142,7 +142,7 @@ function FieldRow(props: FieldFormProps & { field: FieldLike }) {
 
   if (readOnly) {
     return (
-      <LabeledContent label={field.name}>
+      <LabeledContent label={field.type === 'ai' ? `${field.name} · ${t('tables.aiGenerated')}` : field.name}>
         <Text modifiers={[foregroundStyle(hex.secondaryLabel), lineLimit(3)]}>
           {valueText(field, value, labels) || '—'}
         </Text>

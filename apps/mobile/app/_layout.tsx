@@ -201,6 +201,7 @@ export default function RootLayout() {
                 <Stack.Screen name="tables/pick" options={sheetScreen([0.6, 1], { header: true })} />
                 <Stack.Screen name="forms/[formId]" options={detailScreen(c, { grouped: true })} />
                 <Stack.Screen name="apps/index" options={pageScreen(c, { grouped: true })} />
+                <Stack.Screen name="apps/templates" options={pageScreen(c, { grouped: true })} />
                 <Stack.Screen name="apps/[appId]" options={detailScreen(c, { grouped: true })} />
                 <Stack.Screen name="apps/record" options={detailScreen(c, { grouped: true })} />
                 {/* an app's write form: a form card, a new record, an action's inputs, an edit */}

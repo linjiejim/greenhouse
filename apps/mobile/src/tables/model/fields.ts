@@ -66,10 +66,12 @@ export function isComputed(field: Pick<FieldLike, 'type'>): boolean {
 /** The type a value reads as: a formula reads as its result type. */
 export function effectiveType(field: FieldLike): string {
   if (field.type === 'formula') return fieldConfig(field).formula?.resultType ?? 'text';
+  if (field.type === 'ai') return fieldConfig(field).ai?.resultType ?? 'text';
   return field.type;
 }
 
 export function selectOptions(field: FieldLike): TableSelectOption[] {
+  if (field.type === 'ai') return fieldConfig(field).ai?.options ?? [];
   return fieldConfig(field).options ?? [];
 }
 
@@ -185,7 +187,8 @@ export function attachmentIds(value: unknown): number[] {
 export function valueChips(field: FieldLike, value: unknown, labels: ValueLabels): string[] | null {
   const type = effectiveType(field);
   const config = fieldConfig(field);
-  const option = (id: unknown) => config.options?.find((entry) => entry.id === id)?.label ?? String(id);
+  const options = selectOptions(field);
+  const option = (id: unknown) => options.find((entry) => entry.id === id)?.label ?? String(id);
   switch (type) {
     case 'single_select':
     case 'multi_select':
@@ -394,7 +397,7 @@ export function changedValues(
 ): TableRecordValues {
   const out: TableRecordValues = {};
   for (const field of fields) {
-    if (!editable.has(field.id)) continue;
+    if (!editable.has(field.id) || isComputed(field)) continue;
     const key = String(field.id);
     if (!(key in draft)) continue;
     const next = wireValue(field, draft[key]);

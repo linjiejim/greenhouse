@@ -64,6 +64,13 @@ const labels: ValueLabels = {
 };
 
 describe('reading values', () => {
+  it('reads AI results by their result type and resolves the AI field’s option labels', () => {
+    const ai = field(12, 'ai', { ai: { resultType: 'single_select', options: [{ id: 'yes', label: 'Accepted' }] } });
+    expect(valueText(ai, 'yes', labels)).toBe('Accepted');
+    expect(valueText(field(13, 'ai', { ai: { resultType: 'number' } }), 12345, labels)).toBe('12,345');
+    expect(controlFor(ai)).toBe('readonly');
+    expect(changedValues([ai], new Set([12]), { '12': 'yes' }, { '12': 'no' }, { create: false })).toEqual({});
+  });
   it('parses JSON-encoded and object configs alike', () => {
     expect(fieldConfig(status).options?.[1]?.label).toBe('Done');
     expect(fieldConfig(tags).options?.length).toBe(2);
