@@ -18,11 +18,9 @@ const meta: ToolMeta = {
   id: 'ask_user',
   name: 'Ask User',
   brief: 'Ask the user clarifying questions',
-  description: `Ask only for missing information that changes the next step. Reuse answers already in the conversation and omit irrelevant fields.
-Prefer 1–3 focused questions with 2–4 clearly distinct, short options. Use the user's language.
-Keep question labels short (e.g. "注册方式", "完成到哪一步"). Option labels should name the choice, ideally within 12 Chinese characters or 6 English words (e.g. "安全填卡", "我自己注册", "仅注册账号", "注册并创建 API key"). Preserve essential distinctions and consequences; do not shorten by hiding them.
-Do not put implementation details, assurances, parenthetical explanations, or repeated instructions in each option. If essential, put one short sentence in description, but never hide a material consequence there.
-Do not add generic optional questions such as "Anything else?", ask about later tasks, or request passwords/codes here. Use the dedicated secure-login flow for credentials.`,
+  description: `Ask only for missing information needed for the next step; reuse prior answers. Use the user's language, preferably 1–3 focused questions and 2–4 distinct options.
+Labels name the choice (e.g. "安全填卡", "我自己注册"), ideally ≤12 Chinese characters or 6 English words; retain essential distinctions and consequences. Omit implementation details, assurances and repeated explanations. Add at most one supporting sentence if needed.
+No generic "Anything else?", questions about later tasks, or passwords/codes; credentials go through secure login.`,
   category: 'core',
   is_global: true,
   builtin: true,

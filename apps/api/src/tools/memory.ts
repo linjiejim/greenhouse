@@ -98,7 +98,7 @@ Call \`remember\` whenever the user tells you to ("remember that…", "from now 
 
 ${MEMORY_WRITING_RULE}
 
-Write memories in ENGLISH whatever language you are speaking, with one exception that matters: keep literals EXACTLY as they appear — identifiers, enum values (e.g. 潜在), document titles, customer names, error strings. A translated literal stops matching the thing it names, which makes the memory worse than useless.`,
+Write in English; never translate literal values (e.g. enum 潜在), titles, names or error strings.`,
   category: 'core',
   // Rides the `memory` feature flag (default-on) rather than being global, so a
   // super who explicitly disables memory for someone also removes the tool.
