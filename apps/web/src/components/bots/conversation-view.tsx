@@ -514,7 +514,7 @@ function ConversationColumn({
       : t('bots.composer.placeholderShort');
 
   // A room's transcript: whose message is whose, and an answer from a card goes to the Agent that
-  // asked, by name (nobody answers an unaddressed message in a room).
+  // asked, by name (card answers should not wake every Agent).
   const streaming = controller.streaming;
   const transcriptRoom = useMemo<TranscriptRoom | undefined>(() => {
     if (!room) return undefined;

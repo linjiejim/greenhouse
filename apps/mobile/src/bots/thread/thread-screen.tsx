@@ -60,8 +60,8 @@
  * 20261011-agent-first-class §5d P5) is this screen too: its title is the room's
  * (else the other people's names) over their initials, its status line says who
  * is in it; other people's messages sit on the left under their name; an Agent
- * answers only when @-mentioned by someone it may answer, so the @ picker (and
- * `+` → Ask an Agent) offers only the Agents the member may address, every send
+ * considers ordinary messages and answers explicit targets. The @ picker offers
+ * people and addressable Agents; `+` → Ask an Agent offers the Agent roster. Every send
  * answers 202 (the engine's room handling) and a run is its asker's — no Stop,
  * no Handle Now and no cards to act on in someone else's. People talking (a
  * message that asks no Agent, another person's message while the end is in
@@ -170,7 +170,6 @@ import { EventRow } from './rows/event-row';
 import { HandoffRow } from './rows/handoff-row';
 import { Intro } from './rows/intro';
 import { RunTail } from './rows/run-tail';
-import { wantsNameHint } from './rows/sprouty-name';
 import { Starters } from './rows/starters';
 import { TaskReport } from './rows/task-report';
 import {
@@ -201,12 +200,14 @@ import {
   expectOnRunStarted,
   prependStep,
   pruneRowGeometry,
+  visibleReadThrough,
   hintFits,
   showsFreshPage,
   type ExpectAnchor,
 } from './thread-screen-model';
 import { useBotTasks } from './use-bot-tasks';
 import { useMentionPicker } from './use-mention-picker';
+import { conversationMentions, type ConversationMention } from './mention-query';
 
 /**
  * D15: how prepended pages keep the reading position — `mvcp` lets the
@@ -321,7 +322,7 @@ export function BotThreadScreen({
   const headerHeight = useHeaderInset();
   const focused = useIsFocused();
 
-  const { snap, ctl } = useBotThread(sessionId);
+  const { snap, ctl, visible } = useBotThread(sessionId);
   useStartupContent(snap.load !== 'loading');
   const snapRef = useRef(snap);
   snapRef.current = snap;
@@ -384,7 +385,7 @@ export function BotThreadScreen({
   const memberList = conversation?.members;
   /**
    * Active members in their order (a DM: its Bot and any guests) — mentions, the roster, the lookup by
-   * name. A room: only the Agents the member may @ (their own, or public ones offered to them).
+   * name. A room: only Agents the server marks addressable (own, public or a restricted room guest).
    */
   const members = useMemo(
     () =>
@@ -655,6 +656,38 @@ export function BotThreadScreen({
   const geo = useRef({ viewport: 0, content: 0, offset: 0 });
   /** Where every row sits in the content (anchoring, the deep-linked card, "needs you ↓"). */
   const rowGeo = useRef(new Map<string, { y: number; h: number }>());
+  // Read positions use the same row geometry as anchoring. The engine rechecks foreground/focus.
+  const readView = useRef({ rows, showRows, topPad, room, visible });
+  readView.current = { rows, showRows, topPad, room, visible };
+  const readTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scheduleRead = useCallback(() => {
+    if (readTimer.current !== null) return;
+    readTimer.current = setTimeout(() => {
+      readTimer.current = null;
+      const view = readView.current;
+      // Keyboard lift is animated independently; wait for its settled hidden geometry.
+      if (!view.visible || !view.room || !view.showRows || Keyboard.isVisible()) return;
+      const { offset, viewport } = geo.current;
+      const messageId = visibleReadThrough(
+        view.rows,
+        rowGeo.current,
+        offset + view.topPad,
+        offset + viewport - bottomInsetRef.current(),
+      );
+      if (messageId) ctl.readThrough(messageId);
+    }, 150);
+  }, [ctl]);
+  useEffect(() => {
+    scheduleRead();
+  }, [rows, visible, showRows, topPad, composerH, scheduleRead]);
+  useEffect(() => {
+    const keyboard = Keyboard.addListener('keyboardDidHide', scheduleRead);
+    return () => {
+      keyboard.remove();
+      if (readTimer.current !== null) clearTimeout(readTimer.current);
+      readTimer.current = null;
+    };
+  }, [scheduleRead]);
   /** The row the next anchor is waiting for. */
   const anchorKey = useRef<string | null>(null);
   /** A send / server run whose first row should be anchored once it appears (./thread-screen-model.ts). */
@@ -682,18 +715,22 @@ export function BotThreadScreen({
   const anchorRowLayout = useRef(onAnchorRowLayout);
   anchorRowLayout.current = onAnchorRowLayout;
   const layoutHandlers = useRef(new Map<string, (e: LayoutChangeEvent) => void>());
-  const rowLayout = useCallback((key: string) => {
-    let handler = layoutHandlers.current.get(key);
-    if (!handler) {
-      handler = (e: LayoutChangeEvent) => {
-        const { y, height } = e.nativeEvent.layout;
-        rowGeo.current.set(key, { y, h: height });
-        if (anchorKey.current === key) anchorRowLayout.current(key, e);
-      };
-      layoutHandlers.current.set(key, handler);
-    }
-    return handler;
-  }, []);
+  const rowLayout = useCallback(
+    (key: string) => {
+      let handler = layoutHandlers.current.get(key);
+      if (!handler) {
+        handler = (e: LayoutChangeEvent) => {
+          const { y, height } = e.nativeEvent.layout;
+          rowGeo.current.set(key, { y, h: height });
+          scheduleRead();
+          if (anchorKey.current === key) anchorRowLayout.current(key, e);
+        };
+        layoutHandlers.current.set(key, handler);
+      }
+      return handler;
+    },
+    [scheduleRead],
+  );
   // Geometry lives as long as its row (before this commit's effects can anchor anything).
   useLayoutEffect(() => {
     const mounted = showRows ? rows.map((row) => row.key) : [];
@@ -810,8 +847,9 @@ export function BotThreadScreen({
     (e: LayoutChangeEvent) => {
       geo.current.viewport = e.nativeEvent.layout.height;
       anchorViewport(e);
+      scheduleRead();
     },
-    [anchorViewport],
+    [anchorViewport, scheduleRead],
   );
   const onContentSize = useCallback(
     (w: number, h: number) => {
@@ -835,8 +873,9 @@ export function BotThreadScreen({
       }
       geo.current.content = h;
       anchorContentSize(w, h);
+      scheduleRead();
     },
-    [anchorContentSize, shift, scrollRef],
+    [anchorContentSize, shift, scrollRef, scheduleRead],
   );
   const onScroll = useCallback(
     (e: NativeSyntheticEvent<NativeScrollEvent>) => {
@@ -844,8 +883,9 @@ export function BotThreadScreen({
       geo.current.offset = e.nativeEvent.contentOffset.y;
       if (dragged.current && geo.current.offset < EARLIER_THRESHOLD) loadEarlier(true);
       checkBelow();
+      scheduleRead();
     },
-    [anchorScroll, loadEarlier, checkBelow],
+    [anchorScroll, loadEarlier, checkBelow, scheduleRead],
   );
   const onDragStart = useCallback(() => {
     dragged.current = true;
@@ -1156,7 +1196,8 @@ export function BotThreadScreen({
   const onDiscardPending = useCallback((clientId: string) => ctl.discard(clientId), [ctl]);
 
   /* ---------- mentions ---------- */
-  const picker = useMentionPicker({ text: input, members, enabled: !readOnly });
+  const mentionMembers = useMemo(() => conversationMentions(members, room, viewerId), [members, room, viewerId]);
+  const picker = useMentionPicker({ text: input, members: mentionMembers, enabled: !readOnly });
   const selection = useRef<{ start: number; end: number } | null>(null);
   const pickerSelection = picker.onSelectionChange;
   const onSelectionChange = useCallback(
@@ -1173,7 +1214,7 @@ export function BotThreadScreen({
   const pickMention = picker.pick;
   /** Mention a member at the caret: completes an `@` token there, else inserts "@Name ". */
   const mention = useCallback(
-    (bot: BotView) => {
+    (bot: ConversationMention) => {
       selectionTick();
       const completed = pickMention(bot);
       if (completed) {
@@ -1224,9 +1265,7 @@ export function BotThreadScreen({
   });
   const accessory = useMemo(() => {
     if (picker.open) {
-      return (
-        <MentionStrip candidates={picker.candidates} onPick={mention} />
-      );
+      return <MentionStrip candidates={picker.candidates} onPick={mention} />;
     }
     if (editing) return <EditBar onCancel={cancelEdit} />;
     if (softStopping && stop?.phase === 'soft') return <StopHint />;
@@ -1337,10 +1376,6 @@ export function BotThreadScreen({
     if (botId) router.push({ pathname: '/bots/profile', params: { botId, from: sessionId, tab: 'memory' } });
   }, [router, sessionId]);
   const onNewChat = useCallback(() => openNewChat(router), [router]);
-  const onRename = useCallback(
-    (botId: string) => router.push({ pathname: '/bots/bot-form', params: { botId } }),
-    [router],
-  );
   const onStarter = useCallback(
     (text: string) => {
       setInput(text);
@@ -1575,12 +1610,6 @@ export function BotThreadScreen({
             header={row.header}
             bot={lookup(row.botId)}
             followUp={followUps.get(row.message.id)}
-            nameHint={
-              row.message.bot_event?.kind === 'greeting' && !group && !readOnly && wantsNameHint(owner)
-                ? owner
-                : undefined
-            }
-            onRename={onRename}
             canRegenerate={!!rewind && rewind.replyId === row.message.id}
             onRegenerate={regenerate}
             rating={rateableReply(row.message, shared) ? (ratings[row.message.id] ?? null) : undefined}

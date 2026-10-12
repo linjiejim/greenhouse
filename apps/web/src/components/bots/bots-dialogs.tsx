@@ -51,6 +51,7 @@ export function BotsDialogs({
       <BotProfileDrawer onOpenDm={(bot) => void openDm(bot).catch(() => {})} />
       <NewBotDialog
         open={dialog?.kind === 'new-bot'}
+        customOnly={dialog?.kind === 'new-bot' && dialog.customOnly}
         inviteTo={dialog?.kind === 'new-bot' ? dialog.inviteTo : undefined}
         onClose={() => openDialog(null)}
         onCreated={({ dmSessionId, invitedTo, inviteFailed }) => {

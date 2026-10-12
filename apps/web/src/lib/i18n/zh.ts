@@ -3988,7 +3988,6 @@ const zh: Messages = {
       conversations: '对话',
       searchAll: '搜索…',
       pinned: '置顶',
-      main: '主线',
       agents: 'Agent',
       chats: '会话',
       background: '后台',
@@ -4417,7 +4416,7 @@ const zh: Messages = {
       agentOf: '{name} 的 Agent',
       formerMember: '已离开的人',
       placeholder: '发消息给 {name}…',
-      agentsRead: 'Agent 已处理 {read}/{total}',
+      agentsRead: 'Agent {read}/{total}',
       receiptRead: '已读',
       receipt: {
         queued: '排队中',

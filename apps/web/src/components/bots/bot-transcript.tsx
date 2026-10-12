@@ -174,8 +174,8 @@ export function BotTranscript(props: BotTranscriptProps) {
     [kind, liveRequests, me, messages, ownerBotId, pending, requests, segments],
   );
 
-  // In a room an answer from a card goes to the Agent that asked, by name — nobody answers an
-  // unaddressed message there. One stable sender per Agent keeps the memoized bubbles still.
+  // In a room a card answer is directed to the Agent that asked it.
+  // One stable sender per Agent keeps the memoized bubbles still.
   const roomSenders = useMemo(() => {
     const senders = new Map<string, (text: string) => Promise<void>>();
     return (botId: string) => {
@@ -250,6 +250,9 @@ export function BotTranscript(props: BotTranscriptProps) {
             sessionId={sessionId}
             images={item.message.images}
             createdAt={item.message.created_at}
+            userMetadata={
+              room && <MessageReceipts message={item.message} receipts={receipts} me={room.me} lookup={lookup} />
+            }
             isLastUser={editable}
             onEdit={editable ? onEditLast : undefined}
           />
@@ -411,9 +414,6 @@ export function BotTranscript(props: BotTranscriptProps) {
               {renderItem(item, index)}
               {'message' in item && item.message && (
                 <span className="block h-0" aria-hidden="true" data-receipt-end={item.message.id} />
-              )}
-              {item.kind === 'user' && room && (
-                <MessageReceipts message={item.message} receipts={receipts} me={room.me} lookup={lookup} />
               )}
             </div>
           ))}

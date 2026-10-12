@@ -1,48 +1,6 @@
-/**
- * The drawer's first sections — 主线, 同事 and Agent (spec
- * docs/specs/20261008-mobile-bots.md §2.5.1, D1; docs/specs/20261011-agent-first-class.md
- * §3.1: one list — 主线 · Agent · 会话, the third being the chat history in
- * ../../chat/home-drawer.tsx). The product calls a Bot an Agent; the code keeps
- * `bot` (D12). The drawer is this app's conversation navigation, so talking and
- * switching to another Agent are the same right swipe:
- *
- *  - 主线 / "Main thread": Sprouty's DM — the member's ongoing conversation with
- *    their main Agent, the cold start's default (../home/initial-surface.ts) —
- *    pinned on its own;
- *  - Agent / "Agents": the other conversations someone can still reply in, in
- *    the server's order (newest activity first — never re-sorted by attention,
- *    so rows keep their place); five of them, then "Show All (N)" expands in
- *    place for the rest of this run; "Archived (N)" → the read-only
- *    conversations (`/bots/archived`) — an archived Agent's DM, and every old
- *    group chat. Nothing to add from here: Agents are created by asking Sprouty
- *    in its thread, or in Settings → My Agents (examples, by hand) — the
- *    drawer's ＋ menu was retired 2026-10. No groups either: Agents bring each
- *    other into a conversation themselves (retired 2026-10-09);
- *  - 同事 / "People" (rooms, spec 20261011-agent-first-class §5d P5 — the web's
- *    sidebar puts them in the same place): the member's conversations with other
- *    people — private chats and rooms, server order, five then "Show All" like
- *    the Agents — ending in "New Conversation With People ›" (`/bots/new-room`)
- *    while there is anyone to talk with (`GET /api/rooms/people`, read the first
- *    time the drawer opens — the sheet reads it again; a server without rooms
- *    answers 404 and the way in stays away). That row alone shows the section; a search hides it;
- *  - a section with nothing in it is left out (a member with Sprouty alone has
- *    no Agent section), and so is one a search empties — the chats below carry
- *    the results;
- *  - other members' public Agents (spec 20261011-agent-first-class §5c P4): a DM
- *    with one is an Agent row like any other ("by {owner}" beside its name;
- *    archived once it is no longer offered), and while any are offered to the
- *    member the section ends with "Browse Agents ›" (`/bots/agents` — the
- *    directory, `GET /api/agents`), which alone is enough to show the section;
- *    a search hides it;
- *  - a failed first load is one quiet "Couldn't load Agents · Retry" line under
- *    Agent — no alert. A 403 / an older server closes both sections
- *    (`useBotsEnabled`), and with Agents off the drawer is the chat history alone.
- *
- * Opening the drawer refreshes the list (at most once per 400 ms); the first
- * look also makes sure Sprouty has its DM (`ensureSprouty` — at most one
- * bootstrap per app session). Rows open with `replace` (the home cross-fade,
- * no back stack); sheets open after the drawer has slid shut.
- */
+/** Agents (larger main Agent first), then People. Each heading owns its creation action.
+ * Custom creation reuses the native Bot form; public discovery and archived history remain below.
+ * Search, availability gates, dynamic type and native row menus retain their existing behavior. */
 
 import React, { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
@@ -189,6 +147,10 @@ function Section({ query, onClose }: { query: string; onClose(): void }) {
   }, []);
   const openArchived = useCallback(() => later(() => router.push('/bots/archived')), [later, router]);
   const openBrowse = useCallback(() => later(() => router.push('/bots/agents')), [later, router]);
+  const openNewAgent = useCallback(
+    () => later(() => router.push({ pathname: '/bots/bot-form', params: { template: 'custom' } })),
+    [later, router],
+  );
   const openNewRoom = useCallback(() => later(() => router.push('/bots/new-room')), [later, router]);
   const retry = useCallback(() => {
     lastLoadAt = Date.now();
@@ -206,72 +168,29 @@ function Section({ query, onClose }: { query: string; onClose(): void }) {
   const agentsShown = rows.recent.length > 0 || rows.archived.length > 0 || browse || (loadFailed && !searching);
   const meet = canMeet && !searching;
   const peopleShown = rows.rooms.length > 0 || meet;
-  if (!pinned && !agentsShown && !peopleShown) return null;
+  if (searching && !pinned && !agentsShown && !peopleShown) return null;
   // Hairlines run between rows — not after the last, and not against the highlighted current row.
   const separated = (current: boolean, next: BotConversationSummary | undefined) =>
     !!next && !current && next.session_id !== currentSid;
 
   return (
     <>
-      {pinned ? (
+      {pinned || agentsShown || !searching ? (
         <View style={styles.section}>
-          <SectionHead title={t('bots.nav.mainThread')} />
-          <DrawerRow
-            row={pinned}
-            current={!!pinned.session_id && pinned.session_id === currentSid}
-            separator={false}
-            onOpen={open}
-            // the stand-in has no conversation to act on yet
-            onMenu={pinned.session_id && rows.pinned ? onRowMenu : undefined}
+          <SectionHead
+            title={t('bots.nav.agents')}
+            action={{ label: t('bots.manage.formNew'), onPress: openNewAgent }}
           />
-        </View>
-      ) : null}
-      {peopleShown ? (
-        <View style={styles.section}>
-          <SectionHead title={t('bots.room.section')} />
-          {rows.rooms.map((row, index) => (
+          {pinned ? (
             <DrawerRow
-              key={row.session_id}
-              row={row}
-              current={row.session_id === currentSid}
-              separator={separated(row.session_id === currentSid, rows.rooms[index + 1])}
+              row={pinned}
+              current={!!pinned.session_id && pinned.session_id === currentSid}
+              separator={false}
               onOpen={open}
-              onMenu={onRowMenu}
+              // the stand-in has no conversation to act on yet
+              onMenu={pinned.session_id && rows.pinned ? onRowMenu : undefined}
             />
-          ))}
-          {rows.moreRooms > 0 ? (
-            <Animated.View layout={ROW_LAYOUT}>
-              <Pressable
-                key={fontKey}
-                onPress={expand}
-                accessibilityRole="button"
-                style={({ pressed }) => [styles.textRow, pressed && { backgroundColor: c.fill }]}
-              >
-                <Text style={styles.moreText}>{t('bots.nav.showAll', { n: rows.rooms.length + rows.moreRooms })}</Text>
-              </Pressable>
-            </Animated.View>
           ) : null}
-          {meet ? (
-            <Animated.View layout={ROW_LAYOUT} entering={ROW_ENTER}>
-              <Pressable
-                key={fontKey}
-                onPress={openNewRoom}
-                accessibilityRole="button"
-                accessibilityHint={t('bots.room.newRoomHint')}
-                style={({ pressed }) => [styles.textRow, pressed && { backgroundColor: c.fill }]}
-              >
-                <Text style={styles.moreText} numberOfLines={1}>
-                  {t('bots.room.newRoom')}
-                </Text>
-                <Icon name="chevR" size={13} color={c.accent} weight="semibold" />
-              </Pressable>
-            </Animated.View>
-          ) : null}
-        </View>
-      ) : null}
-      {agentsShown ? (
-        <View style={styles.section}>
-          <SectionHead title={t('bots.nav.agents')} />
           {rows.recent.map((row, index) => (
             <DrawerRow
               key={row.session_id}
@@ -334,6 +253,36 @@ function Section({ query, onClose }: { query: string; onClose(): void }) {
           ) : null}
         </View>
       ) : null}
+      {peopleShown ? (
+        <View style={styles.section}>
+          <SectionHead
+            title={t('bots.room.section')}
+            action={meet ? { label: t('bots.room.newRoom'), onPress: openNewRoom } : undefined}
+          />
+          {rows.rooms.map((row, index) => (
+            <DrawerRow
+              key={row.session_id}
+              row={row}
+              current={row.session_id === currentSid}
+              separator={separated(row.session_id === currentSid, rows.rooms[index + 1])}
+              onOpen={open}
+              onMenu={onRowMenu}
+            />
+          ))}
+          {rows.moreRooms > 0 ? (
+            <Animated.View layout={ROW_LAYOUT}>
+              <Pressable
+                key={fontKey}
+                onPress={expand}
+                accessibilityRole="button"
+                style={({ pressed }) => [styles.textRow, pressed && { backgroundColor: c.fill }]}
+              >
+                <Text style={styles.moreText}>{t('bots.nav.showAll', { n: rows.rooms.length + rows.moreRooms })}</Text>
+              </Pressable>
+            </Animated.View>
+          ) : null}
+        </View>
+      ) : null}
     </>
   );
 }
@@ -342,7 +291,7 @@ function Section({ query, onClose }: { query: string; onClose(): void }) {
  * A section's title. The drawer's three — 主线 · Agent · 会话 — read alike (the chats' own head with
  * its tag filter is in ../../chat/home-drawer.tsx); it moves with the rows when a section comes or goes.
  */
-function SectionHead({ title }: { title: string }) {
+function SectionHead({ title, action }: { title: string; action?: { label: string; onPress(): void } }) {
   const { colors: c } = useTheme();
   const styles = useStyles(c);
   // keyed on the text size: the line re-measures when Dynamic Type changes (src/ui/font-scale.ts)
@@ -352,6 +301,22 @@ function SectionHead({ title }: { title: string }) {
       <Text accessibilityRole="header" style={styles.headTitle}>
         {title}
       </Text>
+      {action ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={action.label}
+          onPress={action.onPress}
+          style={({ pressed }) => ({
+            width: 44,
+            height: 44,
+            alignItems: 'center',
+            justifyContent: 'center',
+            opacity: pressed ? 0.5 : 1,
+          })}
+        >
+          <Icon name="plus" size={18} color={c.accent} />
+        </Pressable>
+      ) : null}
     </Animated.View>
   );
 }

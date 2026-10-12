@@ -22,7 +22,7 @@ import * as botsApi from '../../lib/api/bots';
  * conversation with other people (P5).
  */
 export type BotsDialog =
-  | { kind: 'new-bot'; inviteTo?: string }
+  | { kind: 'new-bot'; inviteTo?: string; customOnly?: boolean }
   | { kind: 'invite'; sessionId: string }
   | { kind: 'directory' }
   | { kind: 'new-room' }

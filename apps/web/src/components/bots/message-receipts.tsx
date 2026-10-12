@@ -19,7 +19,7 @@ export function MessageReceipts({
   if (!people.length && !agents.length) return null;
   const processed = agents.filter((r) => r.processed_at !== null).length;
   return (
-    <details className="relative mt-0.5 text-right text-[10px] text-fg-faint" data-testid="message-read-receipt">
+    <details className="relative text-right" data-testid="message-read-receipt">
       <summary className="inline cursor-pointer list-none hover:text-fg-secondary">
         {[
           people.length ? t('bots.room.readBy', { count: String(people.length) }) : '',

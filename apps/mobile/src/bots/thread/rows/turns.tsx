@@ -9,8 +9,7 @@
  *  - `ReplyRow` — a Bot reply, live or persisted, as one component type so
  *    the persisted reply takes over the live row's instance when a run
  *    settles (no end-of-turn jump). Persisted: under its speaker line (on a
- *    change of speaker), its memory receipts, and — under the main Bot's
- *    greeting — the naming hint; a server placeholder for a turn with no text
+ *    change of speaker), its memory receipts, and a server placeholder for a turn with no text
  *    is left out while the tool steps are hidden (../filler.ts). Live: quiet
  *    until it has something to show — no thinking row and no speaker line
  *    while the Bot is still thinking (the title says "Thinking…"); with the
@@ -44,7 +43,6 @@ import { EventRow } from './event-row';
 import { MemoryReceipts } from './memory-receipts';
 import { PendingCaption } from './pending-caption';
 import { SpeakerLine } from './speaker-line';
-import { SproutyNameHint } from './sprouty-name';
 
 const noop = () => {};
 
@@ -107,8 +105,7 @@ export const PersonRow = memo(function PersonRow({
  * live row's instance when the run settles, so the text, its measured tables and its diagrams stay
  * put instead of mounting again (the end-of-turn jump). Props stay flat and stable — rows are memoised.
  *
- * Persisted: under its speaker line (on a change of speaker), its memory receipts and — under the main
- * Bot's greeting — the naming hint; a server placeholder for a turn with no text is left out while the
+ * Persisted: under its speaker line (on a change of speaker), its memory receipts; a server placeholder for a turn with no text is left out while the
  * tool steps are hidden (../filler.ts). Live: quiet until it has something to show; with the first
  * words the speaker line arrives, its plant talking; a failed turn offers Retry.
  */
@@ -120,8 +117,6 @@ export const ReplyRow = memo(function ReplyRow({
   message,
   botId: persistedBotId,
   followUp,
-  nameHint,
-  onRename,
   canRegenerate = false,
   onRegenerate,
   rating,
@@ -145,9 +140,6 @@ export const ReplyRow = memo(function ReplyRow({
   message?: BotMessage;
   botId?: string | null;
   followUp?: string;
-  /** Under the main Bot's greeting while it still has its built-in name (./rows/sprouty-name.tsx). */
-  nameHint?: BotView;
-  onRename?: (botId: string) => void;
   /** A task chat's last reply, while nothing runs: Regenerate in its menu (and Retry on its error). */
   canRegenerate?: boolean;
   onRegenerate?: () => void;
@@ -218,7 +210,6 @@ export const ReplyRow = memo(function ReplyRow({
         memoryStates={memoryStates}
         readOnly={readOnly}
       />
-      {nameHint && onRename ? <SproutyNameHint bot={nameHint} onRename={onRename} /> : null}
     </View>
   );
 });

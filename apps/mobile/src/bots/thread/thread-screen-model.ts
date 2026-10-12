@@ -29,6 +29,23 @@ export function pruneRowGeometry<V>(geometry: Map<string, V>, mounted: Iterable<
   for (const key of [...geometry.keys()]) if (!keep.has(key)) geometry.delete(key);
 }
 
+/** Latest persisted message end inside the viewport after subtracting overlays. No streaming/pending rows. */
+export function visibleReadThrough(
+  rows: readonly { key: string; message?: { id: string; seq: number } | null }[],
+  geometry: ReadonlyMap<string, { y: number; h: number }>,
+  top: number,
+  bottom: number,
+): string | null {
+  let latest: { id: string; seq: number } | undefined;
+  for (const row of rows) {
+    const box = geometry.get(row.key);
+    if (!box || box.h <= 0 || !row.message) continue;
+    const end = box.y + box.h;
+    if (end > top && end <= bottom && (!latest || row.message.seq > latest.seq)) latest = row.message;
+  }
+  return latest?.id ?? null;
+}
+
 /* ---------- anchoring a turn ---------- */
 
 /**

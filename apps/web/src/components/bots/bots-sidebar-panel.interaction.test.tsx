@@ -172,15 +172,25 @@ describe('<BotsThreadsSection/> list', () => {
     expect(api.bootstrapBots).not.toHaveBeenCalled(); // Sprouty is here already
   });
 
-  it('labels the groups: Main thread above Sprouty, People (always: it starts one), Agents above the other live threads', () => {
+  it('groups the main Agent and other Agents together above People', () => {
     mount('#/bots');
     const labels = [...host.querySelectorAll<HTMLElement>('[data-testid^="sidebar-section-"]')];
-    expect(labels.map((el) => el.textContent)).toEqual(['Main thread', 'People', 'Agents']);
-    const [main, , agents] = labels;
+    expect(labels.map((el) => el.firstElementChild?.textContent)).toEqual(['Agents', 'People']);
+    const [agents, people] = labels;
     const follows = (label: HTMLElement, sessionId: string) =>
       !!(label.compareDocumentPosition(row(sessionId)) & Node.DOCUMENT_POSITION_FOLLOWING);
-    expect(follows(main, 'dm-bot_sprouty') && !follows(agents, 'dm-bot_sprouty')).toBe(true);
+    expect(follows(agents, 'dm-bot_sprouty') && !follows(people, 'dm-bot_sprouty')).toBe(true);
     expect(follows(agents, 'dm-bot_sage')).toBe(true);
+  });
+
+  it('keeps creation actions in their own headings and opens Custom directly', () => {
+    mount('#/bots');
+    const agents = host.querySelector('[data-testid="sidebar-section-agents"]')!;
+    const people = host.querySelector('[data-testid="sidebar-section-people"]')!;
+    act(() => agents.querySelector<HTMLButtonElement>('[data-testid="sidebar-new-agent"]')!.click());
+    expect(useBotsStore.getState().dialog).toEqual({ kind: 'new-bot', customOnly: true });
+    act(() => people.querySelector<HTMLButtonElement>('[data-testid="sidebar-new-room"]')!.click());
+    expect(useBotsStore.getState().dialog).toEqual({ kind: 'new-room' });
   });
 
   it('files a retired group chat under Archived, dimmed, even with every Agent in it active', () => {
@@ -346,14 +356,14 @@ describe('<BotsThreadsSection/> conversations with people (P5)', () => {
   });
   afterEach(() => useAuthStore.setState({ currentUser: null }));
 
-  it('lists them under People, after the main thread and before the Agents, by activity', () => {
+  it('lists them under People, after all the Agents, by activity', () => {
     mount('#/bots');
-    expect(order()).toEqual(['dm-bot_sprouty', 'room-ana', 'room-launch', 'dm-bot_sage', GROUP, 'dm-bot_moss']);
+    expect(order()).toEqual(['dm-bot_sprouty', 'dm-bot_sage', 'room-ana', 'room-launch', GROUP, 'dm-bot_moss']);
     const people = host.querySelector<HTMLElement>('[data-testid="sidebar-section-people"]')!;
     const agents = host.querySelector<HTMLElement>('[data-testid="sidebar-section-agents"]')!;
     for (const id of ['room-ana', 'room-launch']) {
       expect(people.compareDocumentPosition(row(id)) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-      expect(agents.compareDocumentPosition(row(id)) & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy();
+      expect(agents.compareDocumentPosition(row(id)) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     }
   });
 
@@ -406,10 +416,11 @@ describe('<BotsThreadsSection/> conversations with people (P5)', () => {
     expect(order()).toEqual(['room-launch']);
   });
 
-  it('ends the group with "New conversation with people…", which opens its dialog', () => {
+  it('offers a People heading icon that opens its dialog', () => {
     mount('#/bots');
     const entry = host.querySelector<HTMLButtonElement>('[data-testid="sidebar-new-room"]')!;
-    expect(entry.textContent).toContain('New conversation with people');
+    expect(entry.getAttribute('aria-label')).toContain('New conversation with people');
+    expect(entry.closest('[data-testid="sidebar-section-people"]')).not.toBeNull();
     act(() => entry.click());
     expect(useBotsStore.getState().dialog).toEqual({ kind: 'new-room' });
   });

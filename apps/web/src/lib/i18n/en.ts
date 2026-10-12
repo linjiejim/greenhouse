@@ -4068,7 +4068,6 @@ export default {
       conversations: 'Conversations',
       searchAll: 'Search…',
       pinned: 'Pinned',
-      main: 'Main thread',
       agents: 'Agents',
       chats: 'Chats',
       background: 'Background',
@@ -4505,7 +4504,7 @@ export default {
       agentOf: "{name}'s Agent",
       formerMember: 'Someone who left',
       placeholder: 'Message {name}…',
-      agentsRead: 'Agents processed {read}/{total}',
+      agentsRead: 'Agents {read}/{total}',
       receiptRead: 'Read',
       receipt: {
         queued: 'Queued',
@@ -4515,7 +4514,7 @@ export default {
         failed: 'Failed',
         canceled: 'Canceled',
       },
-      readBy: 'Read by {count}',
+      readBy: 'Read {count}',
       placeholderAgents: 'Message {name} — @ someone to address only them',
       introPrivate: 'This is the beginning of your private chat with {name}.',
       introRoom:

@@ -3,7 +3,6 @@
 export const botsNavEn = {
   nav: {
     /** The drawer's sections (主线 · Agent · 会话 — the third is `drawer.sessions`). */
-    mainThread: 'Main thread',
     agents: 'Agents',
     showAll: 'Show All ({n})',
     archived: 'Archived ({n})',
