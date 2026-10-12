@@ -10,12 +10,13 @@ function positiveWorkerCount(value: string | undefined, fallback: number, variab
   return parsed;
 }
 
-const unitWorkers = positiveWorkerCount(
-  process.env.VITEST_UNIT_MAX_WORKERS ?? process.env.VITEST_MAX_WORKERS,
+// Vitest 3 owns one fork pool across projects. Worker limits inside a project
+// are ignored; keep legacy env names as aliases for the shared pool limit.
+const workers = positiveWorkerCount(
+  process.env.VITEST_MAX_WORKERS ?? process.env.VITEST_UNIT_MAX_WORKERS ?? process.env.VITEST_DB_MAX_WORKERS,
   3,
-  'VITEST_UNIT_MAX_WORKERS',
+  'VITEST_MAX_WORKERS',
 );
-const dbWorkers = positiveWorkerCount(process.env.VITEST_DB_MAX_WORKERS, 3, 'VITEST_DB_MAX_WORKERS');
 
 export default defineConfig({
   resolve: {
@@ -75,6 +76,8 @@ export default defineConfig({
   },
   test: {
     globals: true,
+    minWorkers: 1,
+    maxWorkers: workers,
     // .claude/** holds agent worktrees (full repo copies) — never collect them.
     // skillhub/** ships in-bundle node:test files (*.test.mjs) that vitest
     // cannot parse; tests/skillhub/bundles.test.ts runs them via `node --test`.
@@ -114,9 +117,6 @@ export default defineConfig({
           // test still pass. forks reclaim per file, so nothing accumulates.
           // Cost, measured: unit 17.1s -> 27.6s, full suite ~33s -> ~45s.
           pool: 'forks',
-          fileParallelism: true,
-          minWorkers: 1,
-          maxWorkers: unitWorkers,
           sequence: { concurrent: false, groupOrder: 0 },
         },
       },
@@ -128,9 +128,6 @@ export default defineConfig({
           globalSetup: ['./tests/setup/db-global.ts'],
           setupFiles: ['./tests/setup/db-transaction.ts'],
           pool: 'forks',
-          fileParallelism: true,
-          minWorkers: 1,
-          maxWorkers: dbWorkers,
           // Platform integration fixtures can cross Vitest's 10s default when
           // the local machine is simultaneously CPU/IO saturated. This is a
           // fail-safe, not a sleep; normal dedicated DB runs stay below it.
@@ -144,8 +141,8 @@ export default defineConfig({
           name: 'db-commit',
           include: ['**/*.db-commit.test.ts'],
           pool: 'forks',
-          fileParallelism: false,
-          maxWorkers: 1,
+          // This project alone must serialize all files, regardless of the shared pool size.
+          poolOptions: { forks: { singleFork: true } },
           sequence: { concurrent: false, groupOrder: 1 },
         },
       },

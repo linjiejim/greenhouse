@@ -657,5 +657,7 @@ is parsed; the generic OpenAI client drops both (that is how auto-titles went bl
 - Parallel worktrees set `TEST_DATABASE_URL=.../greenhouse_test_<slug>`; the safety check only
   accepts loopback targets whose name contains `test` / `e2e`.
 - Fast feedback: `pnpm test:unit`; database focus: `pnpm test:db`; before landing run the full
-  `pnpm test`. Worker counts are tunable via `VITEST_UNIT_MAX_WORKERS` /
-  `VITEST_DB_MAX_WORKERS`.
+  `pnpm test`. Vitest 3 shares one fork pool: set its cap with `VITEST_MAX_WORKERS` (default 3; the old
+  `VITEST_UNIT_MAX_WORKERS` / `VITEST_DB_MAX_WORKERS` names remain aliases for that shared cap).
+  Worker limits belong at the root config; project-level limits are ignored. The `db-commit`
+  project uses `poolOptions.forks.singleFork` to keep its files serial.
