@@ -354,7 +354,7 @@ export function browserTimeZone(): string | null {
 export function useComputerTimezoneSync(computer: Pick<ComputerStatusState, 'bot' | 'status' | 'apply'>): void {
   const { bot, status, apply } = computer;
   useEffect(() => {
-    if (!status || timezoneChecked) return;
+    if (!status || status.runtime.state !== 'ready' || timezoneChecked) return;
     timezoneChecked = true;
     const timezone = browserTimeZone();
     if (!timezone || status.timezone === timezone) return;

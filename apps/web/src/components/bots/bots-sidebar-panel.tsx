@@ -1,20 +1,17 @@
 /**
  * The Agent threads of the conversations sidebar (spec 20261011-agent-first-class §3.1): the
- * member's main thread — their DM with Sprouty, the built-in main Agent — under "Main thread",
- * then the member's conversations with other people (rooms, P5 — private chats and titled rooms,
- * by activity, ending in "New conversation with people…") under "People", then every other
- * Agent's DM by activity under "Agents". Each row shows that Agent's face and
+ * main Agent is the larger first row under "Agents", followed by other Agents by activity.
+ * "People" follows, with private chats and rooms. Each section owns its creation action. Each row shows that Agent's face and
  * carries at most one signal, by priority: needs you > unread > working. Someone else's public Agent
  * (spec P4) is listed with the member's own, marked "by {owner}". What nobody can answer in any
  * more — an archived Agent's DM, a public Agent no longer offered, a retired group chat (a stacked
- * roster) — stays readable under "Archived". The search box and "new Agent" live in the sidebar's one toolbar
- * (`ConversationsSidebarPanel`); the member's chats follow in the same list.
+ * roster) — stays readable under "Archived". The search box sits above every section; the member's chats follow in the same list.
  */
 
 import { useCallback, useEffect, useMemo } from 'react';
 import { isSproutyBot, type BotConversationSummary, type BotView, type SharedBotView } from '@greenhouse/types/bots';
-import { Button, Skeleton, StatusDot, Tag } from '../ui';
-import { Pin, Plus } from '../../lib/icons';
+import { Button, IconButton, Skeleton, StatusDot, Tag } from '../ui';
+import { Pin, Plus, Users } from '../../lib/icons';
 import { useT } from '../../lib/i18n';
 import { relativeTime } from '../../lib/utils';
 import { useAuthStore } from '../../stores';
@@ -76,8 +73,8 @@ export function BotsThreadsSection({ query, onNavigate }: { query: string; onNav
     [lookup, me, t],
   );
 
-  // The main thread first; then the conversations with other people; then the Agent threads
-  // someone can still answer in, by activity; those nobody can answer any more (an archived Agent's
+  // Agents first (the larger main thread pinned), then conversations with other people.
+  // Those nobody can answer any more (an archived Agent's
   // DM, a retired group chat) stay readable under their own label.
   const { pinned, rooms, live, archived } = useMemo(() => {
     const needle = query.trim().toLocaleLowerCase();
@@ -160,17 +157,53 @@ export function BotsThreadsSection({ query, onNavigate }: { query: string; onNav
         </div>
       ) : (
         <>
-          {pinned && (
+          {(pinned || live.length > 0 || !query.trim()) && (
             <>
-              <SidebarSectionLabel testId="sidebar-section-main">{t('bots.sidebar.main')}</SidebarSectionLabel>
-              {renderRow(pinned, false, true)}
+              <SidebarSectionLabel
+                testId="sidebar-section-agents"
+                actions={
+                  <>
+                    <IconButton
+                      label={t('bots.shared.browse')}
+                      size="compact"
+                      onClick={() => openDialog({ kind: 'directory' })}
+                    >
+                      <Users size={13} />
+                    </IconButton>
+                    <IconButton
+                      label={t('bots.sidebar.newBot')}
+                      size="compact"
+                      onClick={() => openDialog({ kind: 'new-bot', customOnly: true })}
+                      data-testid="sidebar-new-agent"
+                    >
+                      <Plus size={14} />
+                    </IconButton>
+                  </>
+                }
+              >
+                {t('bots.sidebar.agents')}
+              </SidebarSectionLabel>
+              {pinned && renderRow(pinned, false, true)}
+              {live.map((conversation) => renderRow(conversation, false))}
             </>
           )}
-          {/* People (P5): always there — it is also where a conversation with people starts. While
-              searching, only when something matches. */}
           {(rooms.length > 0 || !query.trim()) && (
             <>
-              <SidebarSectionLabel testId="sidebar-section-people">{t('bots.room.section')}</SidebarSectionLabel>
+              <SidebarSectionLabel
+                testId="sidebar-section-people"
+                actions={
+                  <IconButton
+                    label={t('bots.room.newRoom')}
+                    size="compact"
+                    onClick={() => openDialog({ kind: 'new-room' })}
+                    data-testid="sidebar-new-room"
+                  >
+                    <Plus size={14} />
+                  </IconButton>
+                }
+              >
+                {t('bots.room.section')}
+              </SidebarSectionLabel>
               {rooms.map((conversation) => (
                 <RoomRow
                   key={conversation.session_id}
@@ -182,27 +215,6 @@ export function BotsThreadsSection({ query, onNavigate }: { query: string; onNav
                   onOpen={() => go(conversation.session_id)}
                 />
               ))}
-              {!query.trim() && (
-                <button
-                  type="button"
-                  onClick={() => openDialog({ kind: 'new-room' })}
-                  className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs text-fg-muted transition-colors hover:bg-surface-muted hover:text-fg-secondary"
-                  data-testid="sidebar-new-room"
-                >
-                  <span className="flex w-[42px] flex-shrink-0 justify-center">
-                    <span className="flex h-8 w-8 items-center justify-center rounded-full border border-dashed border-edge-strong">
-                      <Plus size={14} aria-hidden="true" />
-                    </span>
-                  </span>
-                  <span className="min-w-0 flex-1 truncate">{t('bots.room.newRoom')}</span>
-                </button>
-              )}
-            </>
-          )}
-          {live.length > 0 && (
-            <>
-              <SidebarSectionLabel testId="sidebar-section-agents">{t('bots.sidebar.agents')}</SidebarSectionLabel>
-              {live.map((conversation) => renderRow(conversation, false))}
             </>
           )}
           {archived.length > 0 && (
@@ -261,7 +273,7 @@ function ConversationRow({
       type="button"
       onClick={onOpen}
       aria-current={active ? 'page' : undefined}
-      className={`group flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors ${
+      className={`group flex w-full items-center gap-2 rounded-lg px-2 ${pinned ? 'py-2.5' : 'py-1.5'} text-left transition-colors ${
         active ? 'sidebar-active-item' : 'hover:bg-surface-muted'
       } ${readOnly && !active ? 'opacity-70' : ''}`}
       data-testid="bots-conversation-row"
@@ -273,7 +285,7 @@ function ConversationRow({
       <span className="flex w-[42px] flex-shrink-0 justify-center">
         {conversation.kind !== 'group' ? (
           // Static; a DM nobody can answer any more (its Bot was archived) sleeps.
-          <BotAvatar bot={owner} size="sm" state={readOnly ? 'sleep' : 'idle'} animate={false} />
+          <BotAvatar bot={owner} size={pinned ? 'md' : 'sm'} state={readOnly ? 'sleep' : 'idle'} animate={false} />
         ) : (
           <BotAvatarStack
             bots={members.slice(0, 2)}
@@ -288,7 +300,7 @@ function ConversationRow({
       <span className="min-w-0 flex-1">
         <span className="flex items-center gap-1.5">
           <span
-            className={`min-w-0 flex-1 truncate text-xs ${attention === 'unread' ? 'font-semibold text-fg' : 'font-medium text-fg-secondary'}`}
+            className={`min-w-0 flex-1 truncate ${pinned ? 'text-sm font-semibold' : 'text-xs'} ${attention === 'unread' ? 'font-semibold text-fg' : 'font-medium text-fg-secondary'}`}
             title={title}
           >
             {title}

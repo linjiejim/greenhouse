@@ -2,7 +2,6 @@ import type { botsNavEn } from './nav.en';
 
 export const botsNavZh: typeof botsNavEn = {
   nav: {
-    mainThread: '主线',
     agents: 'Agent',
     showAll: '显示全部（{n}）',
     archived: '已归档（{n}）',

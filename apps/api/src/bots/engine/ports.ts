@@ -21,6 +21,8 @@ export interface TeamPort {
   members(): TeamMember[];
   /** The member's other active Bots, not in this conversation. */
   others(): BotRow[];
+  directTargets?(): Promise<BotRow[]>;
+  message?(ref: string, message: string, callId: string): Promise<unknown>;
   checkAsk(toBotId: string): AskRejection | null;
   /** Persist the hand-off line, queue the target, end the asker's turn after this step. */
   acceptAsk(toBotId: string, message: string): Promise<void>;

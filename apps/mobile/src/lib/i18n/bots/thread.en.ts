@@ -59,9 +59,6 @@ export const botsThreadEn = {
     /** The rating the reply already had, chosen again: taken back. */
     rateRemoved: 'Rating removed',
     rateRemoveFailed: 'Couldn’t remove your rating',
-    nameHint: 'Give {name} a name of your own?',
-    nameHintRename: 'Rename',
-    nameHintKeep: 'Keep {name}',
     /** Time separators: the day part (bold) before the time. */
     today: 'Today',
     yesterday: 'Yesterday',

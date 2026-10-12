@@ -303,6 +303,7 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
                   kind: 'user_message',
                   ...botsMessage,
                   mentions: await addressableMentions(botsDb, userId, botsConversation, rawMentions),
+                  directed: rawMentions.length > 0,
                   author_user_id: userId,
                 });
                 return c.json({ queued: true as const }, 202);

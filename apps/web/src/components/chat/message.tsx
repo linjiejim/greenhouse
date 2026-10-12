@@ -63,6 +63,8 @@ interface MessageProps {
   /** Registry model id that produced this turn — visible now that it varies per turn. */
   model?: string | null;
   createdAt?: string;
+  /** Room receipts share the user's floating metadata row with its timestamp. */
+  userMetadata?: React.ReactNode;
   isLastUser?: boolean;
   isStreaming?: boolean;
   /** Compact mode for Agent Panel — hides eval, fullscreen, translate, pipeline chart */
@@ -135,6 +137,7 @@ function MessageBubbleImpl(props: MessageProps) {
     durationMs,
     model,
     createdAt,
+    userMetadata,
     isLastUser,
     isStreaming,
     compact,
@@ -323,18 +326,22 @@ function MessageBubbleImpl(props: MessageProps) {
             ) : (
               <UserMessageContent content={userText} />
             )}
-            {/* Mission inputs: pills between the text and the timestamp row. */}
+            {/* Mission inputs stay inside the bubble; metadata floats outside it. */}
             {attachments.length > 0 && !isEditing && (
               <div className="mt-2">
                 <AttachmentsBlock data={attachments} />
               </div>
             )}
-            <div className="flex items-center justify-between mt-1.5">
-              {createdAt && <p className="text-[10px] text-fg-faint">{new Date(createdAt).toLocaleTimeString()}</p>}
+            <div
+              data-testid="message-metadata"
+              className="absolute right-0 top-full z-10 flex items-center gap-2 whitespace-nowrap rounded bg-surface px-1 py-0.5 text-[10px] text-fg-faint opacity-0 pointer-events-none transition-opacity group-hover:opacity-100 group-hover:pointer-events-auto group-has-[:focus-visible]:opacity-100 group-has-[:focus-visible]:pointer-events-auto [@media(hover:none)]:opacity-100 [@media(hover:none)]:pointer-events-auto"
+            >
+              {userMetadata}
+              {createdAt && <time dateTime={createdAt}>{new Date(createdAt).toLocaleTimeString()}</time>}
               {isLastUser && !isEditing && onEdit && (
                 <button
                   onClick={() => setIsEditing(true)}
-                  className="text-[10px] text-fg-faint hover:text-primary-fg opacity-0 group-hover:opacity-100 touch-visible transition-opacity ml-2"
+                  className="text-[10px] text-fg-faint hover:text-primary-fg"
                   title={t('chat.editMessage')}
                 >
                   <Pencil size={10} className="inline mr-0.5" />

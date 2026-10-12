@@ -13,6 +13,7 @@ import {
   menuBadge,
   prependStep,
   pruneRowGeometry,
+  visibleReadThrough,
   showsFreshPage,
   type ExpectAnchor,
   hintFits,
@@ -174,5 +175,26 @@ describe('the composer hint', () => {
     // a 375pt phone has less room: the English group hint falls back to plain "Message"
     expect(hintFits('Message or @ a Bot', 375, 17)).toBe(false);
     expect(hintFits('发消息，用 @ 点名', 375, 17)).toBe(true);
+  });
+});
+
+describe('visibleReadThrough', () => {
+  it('uses the newest persisted message whose end is inside the unobscured viewport', () => {
+    const rows = [
+      { key: 'old', message: { id: 'm1', seq: 1 } },
+      { key: 'long', message: { id: 'm2', seq: 2 } },
+      { key: 'next', message: { id: 'm3', seq: 3 } },
+      { key: 'live' },
+    ];
+    const geometry = new Map([
+      ['old', { y: 10, h: 50 }],
+      ['long', { y: 60, h: 450 }],
+      ['next', { y: 530, h: 90 }],
+      ['live', { y: 630, h: 20 }],
+    ]);
+    expect(visibleReadThrough(rows, geometry, 100, 480)).toBeNull();
+    expect(visibleReadThrough(rows, geometry, 100, 520)).toBe('m2');
+    expect(visibleReadThrough(rows, geometry, 600, 650)).toBe('m3');
+    expect(visibleReadThrough(rows, geometry, 650, 600)).toBeNull();
   });
 });

@@ -44,7 +44,7 @@ const liveDeps: ThreadDeps = {
   },
 };
 
-export function useBotThread(sessionId: string): { snap: ThreadSnapshot; ctl: ThreadController } {
+export function useBotThread(sessionId: string): { snap: ThreadSnapshot; ctl: ThreadController; visible: boolean } {
   const [engine, setEngine] = useState(() => new ThreadEngine(sessionId, liveDeps));
   // Another thread in the same instance (the screen is normally keyed by it): a new engine.
   const current = engine.sessionId === sessionId ? engine : null;
@@ -78,5 +78,5 @@ export function useBotThread(sessionId: string): { snap: ThreadSnapshot; ctl: Th
     active.setVisible(focused && appActive && !covered);
   }, [active, focused, appActive, covered]);
 
-  return { snap, ctl: active };
+  return { snap, ctl: active, visible: focused && appActive && !covered };
 }

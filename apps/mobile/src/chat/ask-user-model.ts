@@ -57,7 +57,7 @@ const NOT_ANSWERED = '(not answered)';
 
 /** The message the answers go out as (web: AskUserCard.handleSubmit). */
 export function formatAnswers(questions: Question[], answers: Answers): string {
-  const lines = ['Here are my answers to your questions:', ''];
+  const lines: string[] = [];
   questions.forEach((q, idx) => {
     const a = answers[keyOf(q, idx)];
     let shown: string;

@@ -12,6 +12,9 @@ import { useT } from '../../lib/i18n';
 import { PopoverWrapper } from '../chat/popover-wrapper';
 import { BotAvatar } from './bot-avatar';
 
+export type ConversationMention = Pick<BotView, 'id' | 'name' | 'role'> &
+  Partial<Pick<BotView, 'avatar' | 'template_key'>> & { person?: boolean };
+
 const INVITE = '__invite__';
 
 export function BotMentionPopover({
@@ -24,9 +27,9 @@ export function BotMentionPopover({
   anchorRef,
 }: {
   query: string;
-  members: BotView[];
+  members: ConversationMention[];
   canInvite: boolean;
-  onSelect: (bot: BotView) => void;
+  onSelect: (bot: ConversationMention) => void;
   onInvite: () => void;
   onDismiss: () => void;
   anchorRef: React.RefObject<HTMLDivElement | null>;
@@ -40,7 +43,7 @@ export function BotMentionPopover({
       (bot) => !q || bot.name.toLocaleLowerCase().includes(q) || bot.role.toLocaleLowerCase().includes(q),
     );
   }, [members, query]);
-  const options = useMemo<Array<BotView | typeof INVITE>>(
+  const options = useMemo<Array<ConversationMention | typeof INVITE>>(
     () => (canInvite ? [...filtered, INVITE] : filtered),
     [canInvite, filtered],
   );
@@ -51,7 +54,7 @@ export function BotMentionPopover({
   useEffect(() => setSelectedIndex(filtered.length > 0 ? 0 : -1), [query, filtered.length]);
 
   const pick = useCallback(
-    (option: BotView | typeof INVITE) => {
+    (option: ConversationMention | typeof INVITE) => {
       if (option === INVITE) onInvite();
       else onSelect(option);
     },
@@ -145,7 +148,13 @@ export function BotMentionPopover({
               }}
               onMouseEnter={() => setSelectedIndex(index)}
             >
-              <BotAvatar bot={option} size="xs" />
+              {option.person ? (
+                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-surface-muted text-xs">
+                  {option.name.slice(0, 1)}
+                </span>
+              ) : (
+                <BotAvatar bot={option} size="xs" />
+              )}
               <span className="min-w-0 truncate text-sm font-medium" title={option.name}>
                 {option.name}
               </span>

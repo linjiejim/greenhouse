@@ -55,9 +55,9 @@
  *   most one snapshot; anything else is published on the next microtask.
  *
  * - A room (several people, spec 20261011-agent-first-class P5): every message
- *   answers 202 — nobody answers unless an Agent is @-mentioned by someone it
- *   may answer, and then in a run of that person's, started server-side. A
- *   message that asked no one is just sent; one that asked an Agent waits for
+ *   answers 202 — the server decides which Agents should consider an unaddressed
+ *   message, or answer explicit targets, in the sender's run. An unaddressed
+ *   send settles as delivered and learns of any run by push; an explicit Agent ask waits for
  *   the run (`queued` while someone else's is going, else `sent`) and is this
  *   device's open ask until a run answers it. Only the asker may stop a run:
  *   `runMine` — whose the server says it is (the probe's `run.user_id`, the
@@ -244,6 +244,9 @@ export class ThreadEngine implements ThreadController {
   private disposed = false;
   private visible = false;
   private foreground = true;
+  private readSeq = -1;
+  private readPending: BotMessage | null = null;
+  private reading = false;
 
   // Transcript
   private load: ThreadSnapshot['load'] = 'loading';
@@ -390,6 +393,7 @@ export class ThreadEngine implements ThreadController {
   setVisible(visible: boolean): void {
     if (this.disposed || visible === this.visible) return;
     this.visible = visible;
+    if (!visible) this.readPending = null;
     const store = this.deps.store.getState();
     if (visible) {
       store.setVisibleThread(this.sessionId);
@@ -404,6 +408,7 @@ export class ThreadEngine implements ThreadController {
   setForeground(active: boolean): void {
     if (this.disposed || active === this.foreground) return;
     this.foreground = active;
+    if (!active) this.readPending = null;
     this.poller.setActive(this.visible && this.foreground);
     // Backgrounded: nothing to do — the run goes on server-side, and the
     // transport is left to the OS; coming back checks on it.
@@ -824,6 +829,40 @@ export class ThreadEngine implements ThreadController {
       hasMore: this.hasMore,
       memoryStates: this.memoryStates,
     });
+  }
+
+  /** Geometry supplies the target; the engine owns visibility, account lifetime and monotonic delivery. */
+  readThrough(messageId: string): void {
+    if (
+      this.disposed ||
+      !this.visible ||
+      !this.foreground ||
+      this.load !== 'ready' ||
+      this.conversation?.kind !== 'room'
+    )
+      return;
+    const message = this.messages.find((m) => m.id === messageId);
+    if (!message || message.seq <= this.readSeq || (this.readPending && message.seq <= this.readPending.seq)) return;
+    this.readPending = message;
+    if (!this.reading) void this.flushRead();
+  }
+
+  private async flushRead(): Promise<void> {
+    this.reading = true;
+    try {
+      while (this.readPending && !this.disposed && this.visible && this.foreground) {
+        const message = this.readPending;
+        this.readPending = null;
+        if (message.seq <= this.readSeq) continue;
+        const ok = await this.deps.api.markConversationRead(this.sessionId, message.id);
+        if (!ok) break; // Next layout/scroll retries; never spin on a network failure.
+        this.readSeq = Math.max(this.readSeq, message.seq);
+        if (!this.disposed) this.deps.store.getState().noteRead(this.sessionId);
+      }
+    } finally {
+      this.reading = false;
+      this.readPending = null;
+    }
   }
 
   private markRead(): void {

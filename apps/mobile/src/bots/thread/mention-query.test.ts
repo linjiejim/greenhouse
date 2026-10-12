@@ -5,7 +5,15 @@
 
 import { describe, expect, it } from 'vitest';
 import { parseMentions } from '../vendor/mentions';
-import { applyMention, mentionCandidates, mentionQuery, type MentionMember } from './mention-query';
+import {
+  applyMention,
+  conversationMentions,
+  mentionCandidates,
+  mentionQuery,
+  type MentionMember,
+} from './mention-query';
+
+import { bot, conversation } from './test-fakes';
 
 const SAGE: MentionMember = { id: 'b_sage', name: 'Sage', role: 'Researcher' };
 const FERN: MentionMember = { id: 'b_fern', name: 'Fern', role: 'Writer' };
@@ -70,5 +78,21 @@ describe('applyMention', () => {
   it('what a pick writes parses back to the member', () => {
     const { text } = applyMention('@', 0, 1, '卷卷');
     expect(parseMentions(`${text}写一句诗`, MEMBERS)).toEqual(['b_juan']);
+  });
+});
+
+describe('conversationMentions', () => {
+  it('offers room people alongside Agents, excluding the viewer', () => {
+    const agent = bot('sage');
+    const room = conversation('room');
+    room.participants = [
+      { user_id: 'me', nickname: 'Jim', role: 'owner', joined_at: '2026-10-12T00:00:00Z' },
+      { user_id: 'ana', nickname: 'Ana', role: 'member', joined_at: '2026-10-12T00:00:00Z' },
+    ];
+    const choices = conversationMentions([agent], room, 'me');
+    expect(choices[0]).toBe(agent);
+    expect(choices.slice(1)).toEqual([{ id: 'ana', name: 'Ana', role: '', person: true }]);
+    expect(mentionCandidates(choices, 'Ana').map((p) => p.id)).toEqual(['ana']);
+    expect(conversationMentions([agent], null, 'me')).toEqual([agent]);
   });
 });

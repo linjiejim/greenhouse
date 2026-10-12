@@ -206,7 +206,7 @@ describe('using a public Agent (member)', () => {
     expect(systemPrompt).toMatch(/published for colleagues\. You are now helping Ana — not Jim/);
     expect(systemPrompt).not.toContain('ANA-PRIVATE-NOTE');
     expect(JSON.stringify(messages)).not.toContain('ANA-USER-MEMORY');
-    expect(Object.keys(tools ?? {}).sort()).toEqual(['conversation', 'knowledge_query', 'memory']);
+    expect(Object.keys(tools ?? {}).sort()).toEqual(['conversation', 'knowledge_query', 'memory', 'team']);
     const rows = await db.sessions.getMessages(dm);
     expect(rows.at(-1)).toMatchObject({
       role: 'assistant',

@@ -186,6 +186,8 @@ export interface ThreadController {
   /** Focused && foreground (a sheet on top does not count). Drives read receipts and polling. */
   setVisible(visible: boolean): void;
   setForeground(active: boolean): void;
+  /** A persisted message end actually shown in the unobscured viewport. */
+  readThrough(messageId: string): void;
   send(input: SendInput): Promise<SendOutcome>;
   /** Task chats: edit the last member message / answer it again (streams like a send). */
   rewind(input: RewindInput): Promise<RewindOutcome>;

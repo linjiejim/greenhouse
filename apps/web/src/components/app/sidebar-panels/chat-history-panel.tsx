@@ -12,7 +12,7 @@
  */
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Spinner, ConfirmDialog, StatusDot, Checkbox, FilterPills, toast } from '../../ui';
+import { IconButton, Spinner, ConfirmDialog, StatusDot, Checkbox, FilterPills, toast } from '../../ui';
 import { SidebarToolbar, type SidebarToolbarAction } from '../sidebar-toolbar';
 import {
   History,
@@ -63,8 +63,6 @@ interface ChatHistoryPanelProps {
   leading?: React.ReactNode;
   /** Conversations sidebar: label above the chats (and their scope tabs / tag filter). */
   chatsTitle?: string;
-  /** Actions placed before the chats' own toolbar actions. */
-  extraActions?: SidebarToolbarAction[];
   /** The search box's text, for sections the caller renders (it filters them too). */
   onQueryChange?: (query: string) => void;
   searchPlaceholder?: string;
@@ -296,7 +294,6 @@ export function ChatHistoryPanel({
   collapsed,
   leading,
   chatsTitle,
-  extraActions,
   onQueryChange,
   searchPlaceholder,
   agentChats,
@@ -1212,6 +1209,21 @@ export function ChatHistoryPanel({
     </>
   );
 
+  const chatActions: SidebarToolbarAction[] = [
+    {
+      label: t('sessionGroups.select'),
+      icon: CheckSquare,
+      onClick: () => (selectMode ? exitSelectMode() : setSelectMode(true)),
+    },
+    {
+      label: t('sessionGroups.manageGroups'),
+      icon: FolderOpen,
+      onClick: () => setShowGroupManager(true),
+    },
+    { label: t('sessionTags.manage'), icon: Tag, onClick: () => setShowTagManager(true) },
+    { label: t('history.viewAll'), icon: History, onClick: () => setShowFullHistory(true) },
+  ];
+
   return (
     <>
       <div className="flex flex-col flex-1 min-h-0">
@@ -1224,21 +1236,7 @@ export function ChatHistoryPanel({
               onQueryChange?.(value);
             }}
             placeholder={searchPlaceholder ?? t('common.search')}
-            actions={[
-              ...(extraActions ?? []),
-              {
-                label: t('sessionGroups.select'),
-                icon: CheckSquare,
-                onClick: () => (selectMode ? exitSelectMode() : setSelectMode(true)),
-              },
-              {
-                label: t('sessionGroups.manageGroups'),
-                icon: FolderOpen,
-                onClick: () => setShowGroupManager(true),
-              },
-              { label: t('sessionTags.manage'), icon: Tag, onClick: () => setShowTagManager(true) },
-              { label: t('history.viewAll'), icon: History, onClick: () => setShowFullHistory(true) },
-            ]}
+            actions={unified ? [] : chatActions}
           />
         </div>
 
@@ -1255,7 +1253,18 @@ export function ChatHistoryPanel({
           {unified && (
             <>
               {leading}
-              {chatsTitle && <SidebarSectionLabel>{chatsTitle}</SidebarSectionLabel>}
+              {chatsTitle && (
+                <SidebarSectionLabel
+                  testId="sidebar-section-chats"
+                  actions={chatActions.map(({ label, icon: Icon, onClick }) => (
+                    <IconButton key={label} label={label} size="compact" onClick={onClick}>
+                      <Icon size={13} />
+                    </IconButton>
+                  ))}
+                >
+                  {chatsTitle}
+                </SidebarSectionLabel>
+              )}
               {scopeControls}
             </>
           )}

@@ -126,6 +126,25 @@ describe('NewBotDialog from Invite', () => {
 });
 
 describe('New Bot look', () => {
+  it('quick create opens an empty Custom form without a gallery or template navigation', async () => {
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+    await act(async () =>
+      root?.render(
+        createElement(I18nProvider, {
+          initialLocale: 'en',
+          children: createElement(NewBotDialog, { open: true, customOnly: true, onClose: vi.fn(), onCreated: vi.fn() }),
+        }),
+      ),
+    );
+    await flush();
+    expect(document.querySelector('[data-testid="bots-new-bot-form"]')).not.toBeNull();
+    expect(document.querySelector('[data-testid="bots-template-gallery"]')).toBeNull();
+    expect(document.querySelector<HTMLInputElement>('[data-testid="bots-new-bot-form"] input')?.value).toBe('');
+    expect(document.body.textContent).not.toContain('Back to templates');
+  });
+
   it("dresses a blank Bot in a plant none of the member's Bots wears", () => {
     expect(emptyBotDraft([]).avatar).toEqual({ plant: 'sage', color: 'forest' });
     expect(emptyBotDraft(['sage', 'basil', 'ivy']).avatar).toEqual({ plant: 'monstera', color: 'forest' });

@@ -26,7 +26,7 @@ export interface RoomAgent {
    * (someone else's shared Agent whose owner is not here).
    */
   byline: string;
-  /** The member may @ it (their own, or a public one offered to them) — only those answer them. */
+  /** The member may address its own, public or restricted room face. */
   addressable: boolean;
   /** The member may take it out (they brought it, it is theirs, or they own the room). */
   removable: boolean;

@@ -197,6 +197,27 @@
       "when": 1791746786283,
       "tag": "0027_rooms",
       "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1791784824539,
+      "tag": "0028_conversation_read_receipts",
+      "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1791784946821,
+      "tag": "0029_agent_processing_receipts",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1791785139599,
+      "tag": "0030_agent_direct_messages",
+      "breakpoints": true
     }
   ]
 }

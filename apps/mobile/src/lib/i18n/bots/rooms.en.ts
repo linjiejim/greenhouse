@@ -30,7 +30,7 @@ export const botsRoomsEn = {
     /** The start of the thread. */
     privateStart: 'This is the beginning of your private chat with {name}.',
     groupStart:
-      'Everyone here sees every message. An Agent answers only when someone who may use it @-mentions it — your own Agents answer only you.',
+      'Everyone here sees every message. Agents contribute when useful; @ someone to direct your message only to them.',
     /** The composer's `+` menu: @-mention an Agent you may ask here. */
     ask: 'Ask an Agent',
     /** ⋯ menu. */
@@ -67,7 +67,7 @@ export const botsRoomsEn = {
       'Without one, it’s named after the people in it. Two of you with no title and no Agents is your private chat.',
     people: 'People',
     agents: 'Your Agents',
-    agentsFooter: 'An Agent answers here only when you @-mention it, and works for you — with your access.',
+    agentsFooter: 'Agents contribute when useful. @ a person or Agent to address only them.',
     noPeople: 'No One to Add',
     noPeopleHint: 'Only teammates with Agents turned on can join a conversation.',
     everyoneIn: 'Everyone’s Already Here',

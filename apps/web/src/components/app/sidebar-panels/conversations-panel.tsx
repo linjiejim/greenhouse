@@ -2,8 +2,8 @@
  * The conversations sidebar (spec 20261011-agent-first-class §3.1): ONE list for every place the
  * member talks, under one search box —
  *
- *   Main thread  the member's DM with their main Agent (Sprouty), pinned
- *   Agents       the other Agents' threads, by activity (archived ones folded under "Archived")
+ *   Agents       the larger main Agent first, then the other Agents by activity (archived ones folded under "Archived")
+ *   People       conversations with other members
  *   Background   the background tasks those Agents run, live first (a row opens its thread)
  *   Chats        the member's independent chats, with their scope tabs, folders, tags and dates —
  *                separate Agent chats among them (they open at `#/bots?c=`, spec §5a D21)
@@ -14,14 +14,12 @@
  */
 
 import { useState } from 'react';
-import { Plus, Users } from '../../../lib/icons';
 import { useT } from '../../../lib/i18n';
 import { canUseFeature } from '../../../lib/features';
 import { useAuthStore } from '../../../stores';
 import { BotsDialogs } from '../../bots/bots-dialogs';
 import { BotsThreadsSection } from '../../bots/bots-sidebar-panel';
 import { BackgroundTasksSection } from '../../bots/background-tasks-section';
-import { useBotsStore } from '../../bots/bots-store';
 import { openBotsConversation, useCurrentBotsConversation } from '../../bots/navigation';
 import { ChatHistoryPanel } from './chat-history-panel';
 
@@ -41,7 +39,6 @@ export function ConversationsSidebarPanel({
   const t = useT();
   const currentUser = useAuthStore((state) => state.currentUser);
   const threads = canUseFeature(currentUser, 'bots');
-  const openDialog = useBotsStore((state) => state.openDialog);
   const [query, setQuery] = useState('');
   const currentAgentChat = useCurrentBotsConversation();
 
@@ -57,11 +54,6 @@ export function ConversationsSidebarPanel({
         {...(threads
           ? {
               searchPlaceholder: t('bots.sidebar.searchAll'),
-              extraActions: [
-                { label: t('bots.sidebar.newBot'), icon: Plus, onClick: () => openDialog({ kind: 'new-bot' }) },
-                // Other members' public Agents (spec 20261011-agent-first-class P4).
-                { label: t('bots.shared.browse'), icon: Users, onClick: () => openDialog({ kind: 'directory' }) },
-              ],
               leading: (
                 <>
                   <BotsThreadsSection query={query} onNavigate={onNavigate} />

@@ -464,8 +464,36 @@ export async function removeConversationMember(
   return res.json();
 }
 
-export async function markConversationRead(sessionId: string): Promise<void> {
-  const res = await rpc.api.bots.conversations[':id'].read.$post({ param: { id: enc(sessionId) } });
+export interface AgentMessageReceipt {
+  message_id: string;
+  bot_id: string;
+  status: 'queued' | 'processing' | 'answered' | 'skipped' | 'failed' | 'canceled';
+  processed_at: string | null;
+}
+
+export interface ConversationReceipts {
+  agents: AgentMessageReceipt[];
+  people: Array<{ user_id: string; nickname: string; through_seq: number }>;
+}
+
+export async function getConversationReceipts(sessionId: string): Promise<ConversationReceipts> {
+  const res = await rpc.api.bots.conversations[':id'].receipts.$get({ param: { id: enc(sessionId) } });
+  if (!res.ok) throw await failure(res);
+  return res.json();
+}
+
+export async function markConversationRead(sessionId: string, throughMessageId?: string): Promise<void> {
+  const res = await rpc.api.bots.conversations[':id'].read.$post(
+    { param: { id: enc(sessionId) } },
+    throughMessageId
+      ? {
+          init: {
+            body: JSON.stringify({ through_message_id: throughMessageId }),
+            headers: { 'Content-Type': 'application/json' },
+          },
+        }
+      : undefined,
+  );
   if (!res.ok) throw await failure(res);
 }
 

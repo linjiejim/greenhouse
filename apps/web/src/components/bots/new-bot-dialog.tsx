@@ -56,12 +56,15 @@ export function templateBotDraft(template: BotTemplate, copyLocale: 'en' | 'zh')
 export function NewBotDialog({
   open,
   inviteTo,
+  customOnly = false,
   onClose,
   onCreated,
 }: {
   open: boolean;
   /** Add the new Bot to this conversation as a guest (Invite → "Create a new Bot"). */
   inviteTo?: string;
+  /** The sidebar's quick create goes straight to a blank form. */
+  customOnly?: boolean;
   onClose: () => void;
   /**
    * The Bot exists. `invitedTo` is set when it also joined `inviteTo`;
@@ -79,7 +82,7 @@ export function NewBotDialog({
   const models = useProfileStore((state) => state.models);
   const fetchProfiles = useProfileStore((state) => state.fetchProfiles);
   const nameMessage = useBotNameMessage();
-  const [step, setStep] = useState<'gallery' | 'form'>('gallery');
+  const [step, setStep] = useState<'gallery' | 'form'>(customOnly ? 'form' : 'gallery');
   const [templateKey, setTemplateKey] = useState<BotTemplateKey | null>(null);
   const takenPlants = useMemo(() => bots.map(botPlant), [bots]);
   const [draft, setDraft] = useState<BotDraft>(() => emptyBotDraft(takenPlants));
@@ -90,7 +93,7 @@ export function NewBotDialog({
 
   useEffect(() => {
     if (!open) return;
-    setStep('gallery');
+    setStep(customOnly ? 'form' : 'gallery');
     setTemplateKey(null);
     setDraft(emptyBotDraft(takenPlants));
     setTouched(false);
@@ -98,7 +101,7 @@ export function NewBotDialog({
     void fetchProfiles();
     // Reset on open only: a Bot list refresh must not re-dress the draft mid-edit.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fetchProfiles, open]);
+  }, [fetchProfiles, open, customOnly]);
 
   const issue = useMemo(
     () => validateBotName(draft.name, { otherNames: bots.map((bot) => bot.name), nickname }),
@@ -240,10 +243,12 @@ export function NewBotDialog({
           <FormActions
             className="mt-4"
             leading={
-              <Button variant="ghost" onClick={() => setStep('gallery')}>
-                <ArrowLeft size={14} className="mr-1" />
-                {t('bots.gallery.back')}
-              </Button>
+              !customOnly && (
+                <Button variant="ghost" onClick={() => setStep('gallery')}>
+                  <ArrowLeft size={14} className="mr-1" />
+                  {t('bots.gallery.back')}
+                </Button>
+              )
             }
           >
             <Button

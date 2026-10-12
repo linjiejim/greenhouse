@@ -6,12 +6,29 @@
  */
 
 import { mentionToken } from '../vendor/mentions';
+import type { BotView, BotConversationSummary } from '../../shared/bots';
 
 /** A Bot that can be addressed here. */
 export interface MentionMember {
   id: string;
   name: string;
   role: string;
+}
+
+export type ConversationMention = BotView | (MentionMember & { person: true });
+
+/** People can be explicit targets too; only the server decides who may respond. */
+export function conversationMentions(
+  agents: readonly BotView[],
+  room: BotConversationSummary | null,
+  viewerId: string | null,
+): ConversationMention[] {
+  return [
+    ...agents,
+    ...(room?.participants ?? [])
+      .filter((person) => person.user_id !== viewerId)
+      .map((person) => ({ id: person.user_id, name: person.nickname, role: '', person: true as const })),
+  ];
 }
 
 /** The token before the caret: `@` after the start / a space / an opener, then ≤ 24 non-space characters. */

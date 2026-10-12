@@ -47,6 +47,7 @@ export const CHAIN_LIMITS = {
 
 /** Model steps a single turn may take, by why the Bot is speaking. */
 export const STEP_CAPS: Record<BotTurnReason, number> = {
+  consider: 8,
   user: 30,
   mention: 30,
   interjection: 30,
@@ -56,6 +57,7 @@ export const STEP_CAPS: Record<BotTurnReason, number> = {
 };
 
 export interface FloorItem {
+  exchangeId?: string;
   botId: string;
   reason: BotTurnReason;
   /** The Bot that handed this work over (reason `ask`). */
@@ -106,7 +108,7 @@ export class FloorController {
   }
 
   /** Queue the owners of a new chain. Unknown ids are dropped; duplicates keep their first position. */
-  start(owners: Array<{ botId: string; reason: BotTurnReason; message?: string }>): void {
+  start(owners: Array<{ botId: string; reason: BotTurnReason; message?: string; exchangeId?: string }>): void {
     const seen = new Set<string>();
     for (const owner of owners) {
       if (!this.opts.members.has(owner.botId) || seen.has(owner.botId)) continue;
@@ -114,6 +116,7 @@ export class FloorController {
       this.queue.push({
         botId: owner.botId,
         reason: owner.reason,
+        exchangeId: owner.exchangeId,
         ...(owner.message ? { message: owner.message } : {}),
         askerChain: [],
         depth: 0,
@@ -123,9 +126,9 @@ export class FloorController {
   }
 
   /** Append a server-initiated `continue` (after a hand-back, a created Bot joining…). */
-  addContinue(botId: string, note: string): void {
+  addContinue(botId: string, note: string, exchangeId?: string): void {
     if (!this.opts.members.has(botId)) return;
-    this.queue.push({ botId, reason: 'continue', message: note, askerChain: [], depth: 0, owner: true });
+    this.queue.push({ botId, reason: 'continue', message: note, exchangeId, askerChain: [], depth: 0, owner: true });
   }
 
   /**
@@ -160,7 +163,12 @@ export class FloorController {
     // Also addressed by the member and still waiting for its own turn: it will
     // answer after this one anyway, so a hand-off would make it speak twice
     // (once for the asker, once more after the asker's wrap-up).
-    if (this.queue.some((queued) => queued.owner && queued.reason !== 'followup' && queued.botId === toBotId)) {
+    if (
+      this.queue.some(
+        (queued) =>
+          queued.owner && queued.reason !== 'followup' && queued.reason !== 'consider' && queued.botId === toBotId,
+      )
+    ) {
       return 'queued';
     }
     if (this.asksUsed >= CHAIN_LIMITS.asks) return 'asks';
@@ -168,7 +176,8 @@ export class FloorController {
     // The owner's follow-up is reserved when its turn ends with any accepted
     // ask, so it is already committed budget from the first ask on.
     const followup = from.owner && !this.followupReserved.has(from.botId) ? 1 : 0;
-    const committed = this.turnsUsed + this.queue.length + this.pendingAsks.length + followup;
+    const replaces = this.queue.filter((q) => q.botId === toBotId && q.reason === 'consider').length;
+    const committed = this.turnsUsed + this.queue.length - replaces + this.pendingAsks.length + followup;
     if (committed + 1 > this.turnBudget) return 'turns';
     return null;
   }
@@ -179,12 +188,14 @@ export class FloorController {
     // Defence in depth: after a budget hit no new turn may be queued, even if
     // a caller skipped `checkAsk`.
     if (!from || this.limited) return;
+    this.queue = this.queue.filter((q) => q.botId !== toBotId || q.reason !== 'consider');
     this.askedThisChain.add(toBotId);
     this.asksUsed += 1;
     this.pendingAsks.push({
       botId: toBotId,
       reason: 'ask',
       askedBy: from.botId,
+      exchangeId: from.exchangeId,
       message,
       askerChain: [...from.askerChain, from.botId],
       depth: from.depth + 1,
@@ -206,6 +217,7 @@ export class FloorController {
       front.push({
         botId: from.botId,
         reason: 'followup',
+        exchangeId: from.exchangeId,
         askerChain: [],
         depth: from.depth,
         owner: true,
@@ -230,10 +242,14 @@ export class FloorController {
    * so an interjection carries them into the chain it starts instead of
    * losing them.
    */
-  clear(): Array<{ botId: string; note: string }> {
+  clear(): Array<{ botId: string; note: string; exchangeId?: string }> {
     const carried = this.queue
       .filter((item) => item.reason === 'continue')
-      .map((item) => ({ botId: item.botId, note: item.message ?? '' }));
+      .map((item) => ({
+        botId: item.botId,
+        note: item.message ?? '',
+        ...(item.exchangeId ? { exchangeId: item.exchangeId } : {}),
+      }));
     this.pendingAsks = [];
     this.queue = [];
     return carried;

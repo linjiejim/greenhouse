@@ -17,6 +17,7 @@
  * depends on it; apps/mobile itself stays out of the workspace).
  */
 
+import { log } from 'node:console';
 import { createRequire } from 'node:module';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { URL, fileURLToPath } from 'node:url';
@@ -57,4 +58,4 @@ export const NOVNC_VERSION = ${JSON.stringify(version)};
 export const NOVNC_SOURCE = ${JSON.stringify(source)};
 `,
 );
-console.log(`noVNC ${version}: ${(source.length / 1024).toFixed(0)} KB → ${OUT.slice(ROOT.length)}`);
+log(`noVNC ${version}: ${(source.length / 1024).toFixed(0)} KB → ${OUT.slice(ROOT.length)}`);

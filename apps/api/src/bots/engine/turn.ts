@@ -1,3 +1,5 @@
+import { pushToConversation } from './fanout.js';
+import { directMessageTargets, sendAgentMessage } from './agent-messages.js';
 /**
  * One Bot turn inside a running Bots chain (spec §4.2–§4.5, design review R4).
  *
@@ -140,6 +142,7 @@ export interface PublicBotRun {
 
 /** Per-chain budgets. */
 export interface ChainState {
+  receiptMessageId?: string;
   floor: FloorController;
   deadline: number;
   /** Provider input tokens with cached input weighted ×0.25. */
@@ -296,6 +299,7 @@ export async function runBotTurn(rc: RunContext, chain: ChainState, item: FloorI
   /** The loop stopped at a step boundary because the member asked to (soft stop). */
   let interrupted = false;
   let tainted = false;
+  let directHandedOff = false;
   const handoffs: Array<{ toBotId: string; message: string }> = [];
   const emit = (event: Record<string, unknown> & { type: string }) => run.emit(event);
 
@@ -310,6 +314,8 @@ export async function runBotTurn(rc: RunContext, chain: ChainState, item: FloorI
 
   // Someone else's public Agent (P4): its narrow public face, its owner's grants, its own budget.
   const publicRun = rc.publicBots.get(bot.id) ?? null;
+  const roomGuest = rc.people !== null && bot.user_id !== user.id && publicRun === null;
+  const maySkip = item.reason === 'followup' || item.reason === 'consider';
   const ctx: BotTurnContext = {
     db,
     userId: user.id,
@@ -364,6 +370,23 @@ export async function runBotTurn(rc: RunContext, chain: ChainState, item: FloorI
   };
 
   const team: TeamPort = {
+    directTargets: () => directMessageTargets(ctx),
+    message: async (ref, message, callId) => {
+      if (chain.floor.isLimited || chain.floor.asksUsed >= CHAIN_LIMITS.asks)
+        return { status: 'refused', reason: 'This chain reached its communication limit.' };
+      const result = await sendAgentMessage(ctx, {
+        ref,
+        body: message,
+        dedupeKey: `${ctx.turnId}:${callId}`,
+        chainKey: `${sessionId}:${chain.receiptMessageId ?? rc.triggerKey}`,
+        parentId: item.exchangeId,
+      });
+      if (result.status === 'sent') {
+        chain.floor.asksUsed += 1;
+        directHandedOff = true;
+      }
+      return result;
+    },
     members: () => rosterOf(rc).map((entry) => ({ bot: rc.bots.get(entry.id)!, role: entry.memberRole })),
     others: () => [...rc.bots.values()].filter((other) => other.status === 'active' && !rc.members.has(other.id)),
     checkAsk: (toBotId) => chain.floor.checkAsk(toBotId),
@@ -418,7 +441,7 @@ export async function runBotTurn(rc: RunContext, chain: ChainState, item: FloorI
   let trace: ChatRuntimeTrace | null = null;
   const collectors = createCollectors();
   let held = '';
-  let holding = item.reason === 'followup';
+  let holding = maySkip;
   let admissionNotice: string | undefined;
   let modelId = rc.profile.model.id ?? 'unknown';
   let engineResultForTrace: Awaited<ReturnType<typeof buildEngineResult>> | undefined;
@@ -449,6 +472,7 @@ export async function runBotTurn(rc: RunContext, chain: ChainState, item: FloorI
           toolRegistry: rc.toolRegistry,
           conversation: conversationPort,
           settings: publicRun.settings,
+          team,
         })
       : assembleInteractiveTools({
           db,
@@ -459,6 +483,7 @@ export async function runBotTurn(rc: RunContext, chain: ChainState, item: FloorI
           conversation: conversationPort,
           runtimeRunId: null,
           room: rc.people !== null,
+          roomGuest,
         });
     const modelOverride = resolveTurnModel(bot, rc.conversation.kind === 'task' ? rc.conversation.model_id : null);
     const effectiveModel = modelOverride ?? rc.profile.model.id;
@@ -467,7 +492,7 @@ export async function runBotTurn(rc: RunContext, chain: ChainState, item: FloorI
       // A public Agent knows whom it serves, and nothing personal about either side (D35, D6).
       publicRun ? buildPublicIdentity(bot, publicRun.ownerNickname, user.nickname) : buildIdentity(bot, user.nickname),
       // A room is read by everyone in it: the member's private notes stay out (P5).
-      publicRun || rc.people ? null : buildMemberNotes(user.nickname, user.notes),
+      publicRun || rc.people || item.exchangeId ? null : buildMemberNotes(user.nickname, user.notes),
       buildDigestSection(rc.digest.rendered),
     ]);
 
@@ -485,7 +510,9 @@ export async function runBotTurn(rc: RunContext, chain: ChainState, item: FloorI
       projection.firstSeq !== null ? projection.firstSeq - 1 : Math.max(rc.digest.uptoSeq, rc.writer.tailSeq);
 
     const [memoryBlock, openNotes] = await Promise.all([
-      resolveMemoryContext(user.id, user.role, { botId: bot.id, onlyBot: publicRun !== null }),
+      roomGuest
+        ? Promise.resolve(null)
+        : resolveMemoryContext(user.id, user.role, { botId: bot.id, onlyBot: publicRun !== null || !!item.exchangeId }),
       db.bots.listNotes(sessionId, { status: 'open' }),
     ]);
     const outcomes = (item.askedBots ?? []).map((id) => ({
@@ -496,6 +523,7 @@ export async function runBotTurn(rc: RunContext, chain: ChainState, item: FloorI
       locale,
       selfBotId: bot.id,
       roster: rosterOf(rc),
+      room: rc.people !== null,
       memoryBlock,
       notesIndex: renderNotesIndex(
         openNotes.map((note) => ({
@@ -592,6 +620,15 @@ export async function runBotTurn(rc: RunContext, chain: ChainState, item: FloorI
       if (run.interruptRequested) interrupted = true;
       return interrupted;
     };
+    if (
+      chain.receiptMessageId &&
+      tail.rows.some(
+        (row) => row.id === chain.receiptMessageId && (projection.firstSeq === null || row.seq >= projection.firstSeq),
+      )
+    ) {
+      await db.bots.setAgentReceipt(sessionId, chain.receiptMessageId, bot.id, 'processing');
+      await pushToConversation(sessionId, user.id, { type: 'bots:receipts', sessionId }, db);
+    }
     const stream = await botsEngineDeps().createStream({
       profile: rc.profile,
       messages: engineMessages,
@@ -620,7 +657,7 @@ export async function runBotTurn(rc: RunContext, chain: ChainState, item: FloorI
         processStreamPart(part, collectors);
         // Each step of a follow-up holds its text back again: a later step's
         // standalone `<<skip>>` must not flash by after an earlier step spoke.
-        if (part.type === 'start-step' && item.reason === 'followup') {
+        if (part.type === 'start-step' && maySkip) {
           holding = true;
           held = '';
         }
@@ -681,13 +718,14 @@ export async function runBotTurn(rc: RunContext, chain: ChainState, item: FloorI
       engineResult.finishReason !== 'error';
     // A hand-off/take-over ends the loop through stopWhen — a normal finish.
     let text = engineResult.text.trim();
-    const onlyHandoffs = handoffs.length > 0 && engineResult.pipelineSteps.every((step) => step.tool === 'team');
+    const onlyHandoffs =
+      (directHandedOff || handoffs.length > 0) && engineResult.pipelineSteps.every((step) => step.tool === 'team');
 
     // ── Follow-up with nothing to add ──
     // "Nothing to add" is an empty answer, exactly the token, or held text that
     // never got past the token's prefix (cut off mid-token). A token trailing
     // real text is stripped. Either way the raw token is never shown or stored.
-    const followup = item.reason === 'followup';
+    const followup = maySkip;
     const saidSkip = followup && (!text || text === SKIP_TOKEN || (holding && SKIP_TOKEN.startsWith(text)));
     if (saidSkip) text = '';
     else if (followup && text.endsWith(SKIP_TOKEN)) text = text.slice(0, -SKIP_TOKEN.length).trimEnd();

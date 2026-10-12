@@ -257,8 +257,12 @@ export function removeConversationMember(sessionId: string, botId: string): Prom
 }
 
 /** Mark read (best effort — callers ignore a failure). */
-export async function markConversationRead(sessionId: string): Promise<boolean> {
-  const result = await call(`/api/bots/conversations/${enc(sessionId)}/read`, jsonInit('POST'), nothing);
+export async function markConversationRead(sessionId: string, throughMessageId?: string): Promise<boolean> {
+  const result = await call(
+    `/api/bots/conversations/${enc(sessionId)}/read`,
+    jsonInit('POST', throughMessageId ? { through_message_id: throughMessageId } : undefined),
+    nothing,
+  );
   return result.ok;
 }
 

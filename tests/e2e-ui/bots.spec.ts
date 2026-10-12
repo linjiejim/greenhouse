@@ -245,6 +245,7 @@ test.describe('bots — real API', () => {
     // The fixed greeting (no model call) names the Bot.
     const transcript = page.getByTestId('bots-transcript');
     await expect(transcript).toContainText(first.name);
+    await expect(page.getByText('Give it a name of your own?', { exact: false })).toHaveCount(0);
     await expect(page.getByTestId('bots-conversation-header')).toContainText(first.name);
     // The greeting is the last word, so its starters are offered — and only prefill.
     const starter = page.getByTestId('bots-starters').getByRole('button').first();
@@ -270,19 +271,31 @@ test.describe('bots — real API', () => {
     await expect(nav.locator('a[href="#/bots"]')).toHaveAttribute('aria-current', 'page');
     await expect(nav.locator('a[href="#/chat"]')).toHaveCount(0);
 
-    // One list: the main thread section first, then the chats with their own label.
+    // One list: the main Agent leads Agents, with actions owned by their headings.
     const sidebar = page.getByTestId('bots-sidebar');
-    await expect(sidebar.getByTestId('sidebar-section-main')).toBeVisible();
+    await expect(sidebar.getByTestId('sidebar-section-agents')).toBeVisible();
     await expect(sidebar.getByTestId('bots-conversation-row').first()).toHaveAttribute(
       'data-session-id',
       sprouty.dm_session_id!,
     );
     await expect(page.getByText('Chats', { exact: true })).toBeVisible();
+    const agentsHeading = sidebar.getByTestId('sidebar-section-agents');
+    await agentsHeading.getByRole('button', { name: 'New Agent', exact: true }).click();
+    const create = page.getByRole('dialog');
+    await expect(create.getByRole('textbox', { name: 'Name', exact: true })).toBeVisible();
+    await expect(create.getByText('Back to templates', { exact: true })).toHaveCount(0);
+    await create.getByRole('button', { name: 'Close', exact: true }).click();
+    const peopleHeading = sidebar.getByTestId('sidebar-section-people');
+    await expect(peopleHeading.getByTestId('sidebar-new-room')).toBeVisible();
+    const chatsHeading = page.getByTestId('sidebar-section-chats');
+    for (const name of ['Select', 'Manage groups', 'Manage Tags']) {
+      await expect(chatsHeading.getByRole('button', { name, exact: true })).toBeVisible();
+    }
 
     // A new chat keeps the same list: the main thread is still there beside the chat page.
     await page.getByRole('button', { name: 'New chat' }).first().click();
     await expect(page).toHaveURL(/#\/chat\?new=/);
-    await expect(page.getByTestId('bots-sidebar').getByTestId('sidebar-section-main')).toBeVisible();
+    await expect(page.getByTestId('bots-sidebar').getByTestId('sidebar-section-agents')).toBeVisible();
     await expect(nav.locator('a[href="#/bots"]')).toHaveAttribute('aria-current', 'page');
   });
 
@@ -368,6 +381,84 @@ test.describe('bots — real API', () => {
     });
     expect(sent.status()).toBe(409);
   });
+});
+
+test('room receipts name human readers and distinguish Agent processing from replies', async ({ page, api }) => {
+  const { user } = await (await api.get('/api/auth/me')).json();
+  const state = freshState();
+  state.bots = [SAGE, FERN];
+  const room = summary('receipt-room', 'direct', [SAGE, FERN], {
+    kind: 'room',
+    title: 'Receipt check',
+    owner_bot_id: null,
+    lead_bot_id: null,
+    participants: [
+      { user_id: user.id, nickname: 'Me', role: 'owner', joined_at: NOW },
+      { user_id: 'reader', nickname: 'Ana', role: 'member', joined_at: NOW },
+    ],
+  });
+  room.members = room.members.map((member) => ({
+    ...member,
+    role: 'member',
+    owner_user_id: user.id,
+    addressable: true,
+  }));
+  state.conversations = [room];
+  state.pages[room.session_id] = {
+    detail: detail(room),
+    messages: [
+      message(1, {
+        role: 'user',
+        author_user_id: user.id,
+        content: 'Here are my answers to your questions:\n\n**1. Name**: Jim',
+      }),
+    ],
+  };
+  await stubBots(page, state);
+  const reads: Json[] = [];
+  await page.route('**/api/bots/conversations/receipt-room/read', async (route) => {
+    reads.push(route.request().postDataJSON());
+    await route.fulfill({ json: { ok: true } });
+  });
+  await page.route('**/api/bots/conversations/receipt-room/receipts', (route) =>
+    route.fulfill({
+      json: {
+        people: [
+          { user_id: user.id, nickname: 'Me', through_seq: 1 },
+          { user_id: 'reader', nickname: 'Ana', through_seq: 1 },
+        ],
+        agents: [
+          { message_id: 'msg-1', bot_id: SAGE.id, status: 'answered', processed_at: NOW },
+          { message_id: 'msg-1', bot_id: FERN.id, status: 'queued', processed_at: null },
+        ],
+      },
+    }),
+  );
+  await page.goto('/#/bots?c=receipt-room');
+  const transcript = page.getByTestId('bots-transcript');
+  await expect(transcript).toContainText('Name: Jim');
+  await expect(transcript).not.toContainText('Here are my answers');
+  const receipt = page.getByTestId('message-read-receipt');
+  const metadata = transcript.getByTestId('message-metadata');
+  const time = metadata.locator('time');
+  await page.getByTestId('chat-input').hover();
+  await expect(metadata).toHaveCSS('opacity', '0');
+  const before = await transcript.getByText('Name: Jim', { exact: false }).boundingBox();
+  await transcript.getByText('Name: Jim', { exact: false }).hover();
+  await expect(metadata).toHaveCSS('opacity', '1');
+  await expect(receipt).toContainText('Read 1 · Agents 1/2');
+  const receiptBox = (await receipt.locator('summary').boundingBox())!;
+  const timeBox = (await time.boundingBox())!;
+  expect(receiptBox.x + receiptBox.width).toBeLessThan(timeBox.x);
+  expect(await transcript.getByText('Name: Jim', { exact: false }).boundingBox()).toEqual(before);
+  await receipt.locator('summary').click();
+  await expect(receipt).toContainText('Ana · Read');
+  await expect(receipt).toContainText('Sage · Replied');
+  await expect(receipt).toContainText('Fern · Queued');
+  await expect.poll(() => reads).toContainEqual({ through_message_id: 'msg-1' });
+  await page.getByTestId('chat-input').hover();
+  await expect(metadata).toHaveCSS('opacity', '0');
+  expect(await metadata.evaluate((node) => getComputedStyle(node).position)).toBe('absolute');
 });
 
 test.describe('bots', () => {

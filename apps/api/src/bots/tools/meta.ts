@@ -80,7 +80,7 @@ No matching entry → request_takeover with kind login. Never ask the member to 
     icon: 'Users',
     sort_order: 94,
     description: `Work with the member's other Agents in this conversation.
-Actions: list — members and the member's other Agents; ask {bot_id, message} — hand a piece of work to a member Agent. It answers next, visibly, and your turn ends after the hand-off, so add one line saying what you handed over. add {bot_id} — invite one of the member's existing Agents into this conversation. create {name, role, instructions} — propose a new Agent; it exists only after the member confirms the card.
+Actions: list — members and accessible direct-message targets; message {bot_id, message} — send a self-contained brief in a separate conversation; your turn ends and its reply returns here and wakes you. ask {bot_id, message} — hand a piece of work to a member Agent. It answers next, visibly, and your turn ends after the hand-off, so add one line saying what you handed over. add {bot_id} — invite one of the member's existing Agents into this conversation. create {name, role, instructions} — propose a new Agent; it exists only after the member confirms the card.
 One owner per step: never ask an Agent to redo what another already did.`,
   },
   {
