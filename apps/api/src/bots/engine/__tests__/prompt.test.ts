@@ -95,7 +95,8 @@ describe('static rules (S1)', () => {
       expect(lines.some((line) => line.startsWith('- Cards speak for themselves:'))).toBe(true);
     }
     expect(REPLY_STYLE_RULE).toMatch(/^Lead with the answer or the result\./);
-    expect(REPLY_STYLE_RULE).toMatch(/at most one concrete next-step offer/);
+    expect(REPLY_STYLE_RULE).toContain('usually 1–3 short sentences');
+    expect(REPLY_STYLE_RULE).toContain('Brevity must not omit requested content');
   });
 
   it('states the trust rule with the exact speaker tags of the locale', () => {

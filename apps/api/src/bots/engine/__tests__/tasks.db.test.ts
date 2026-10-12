@@ -8,6 +8,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { _resetProvider, initDatabase, type BotRow, type DatabaseProvider, type UserRow } from '@greenhouse/db';
 import { TEST_DATABASE_URL } from '@greenhouse/db/test-config';
+import { REPLY_STYLE_RULE } from '@greenhouse/utils/prompts';
 import { createInternalTestUser } from '../../../../../../tests/helpers/internal-user.js';
 import { createSubagentRuntimeDriver } from '../../../runtime/subagent-driver.js';
 import { decideBotRequest } from '../requests.js';
@@ -173,6 +174,7 @@ describe('background tasks', () => {
     const completed = await db.runtime.getRun(runId);
     expect(completed?.status, completed?.error_message ?? undefined).toBe('succeeded');
     expect(seen.system).toContain('# Background task');
+    expect(seen.system).toContain(REPLY_STYLE_RULE);
     expect(seen.system).not.toContain('Sage');
     expect(seen.system).not.toContain('Researcher');
     expect(seen.system).not.toContain('Cite sources.');

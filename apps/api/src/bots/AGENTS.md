@@ -38,8 +38,8 @@ bots/
   不列能力清单、不写记忆行、不收尾提问——起手式由客户端显示在下面。它不能承诺部署没有的能力：`needsComputer`
   模板在电脑未就绪时用 `pitchNoComputer`。模板 pitch 保持短（中文 ≤30 字、英文 ≤90 字符，`greeting.test.ts` 守着）。
   已写入的欢迎语从不改写，改文案只影响之后新建的 Bot。
-- **回复风格**：S1 的「Reply style」就是 `REPLY_STYLE_RULE`（`@greenhouse/utils/prompts`，开门见山、不复述不收尾客套、
-  显而易见且安全的下一步直接做、否则最多给一个具体的下一步提议），与聊天页 `sprouty.yaml` 的 `## Communication`
+- **回复风格**：S1 的「Reply style」就是 `REPLY_STYLE_RULE`（`@greenhouse/utils/prompts`，开门见山、明确且授权范围内的事直接做；
+  普通完成汇报通常 1–3 句，只说结果、交付链接和必要决定，不复述过程、不额外推荐下一步；请求内容、来源、失败和重要限制必须说全），与聊天页 `sprouty.yaml` 的 `## Communication`
   同一份措辞；模板守则只补岗位相关的话，不重复它。紧跟其后的「Cards speak for themselves」：Bot 发起卡片（审批 / 新建 Bot /
   后台任务 / 登录 / 守则修改）后不复述卡片内容，最多一句「你决定后会怎样」——成员看得到卡片。
 - **电脑产物只给成员要的**（2026-10-11，[spec](../../../../docs/specs/20261011-mobile-computer.md)）：`browser screenshot`
