@@ -25,6 +25,7 @@
  *   only `hasSecret`.
  */
 
+import { isDeepStrictEqual } from 'node:util';
 import { and, asc, desc, eq, inArray, isNull, sql, type SQL } from 'drizzle-orm';
 import { nowIso } from '@greenhouse/utils/date';
 import { fullTableAccess } from '@greenhouse/types/table-access';
@@ -218,7 +219,8 @@ function isNonEmptyString(value: unknown): value is string {
 }
 
 function sameJson(left: unknown, right: unknown): boolean {
-  return JSON.stringify(left ?? null) === JSON.stringify(right ?? null);
+  // PostgreSQL jsonb reorders object keys; property order never changes behavior.
+  return isDeepStrictEqual(left ?? null, right ?? null);
 }
 
 /**
