@@ -67,7 +67,7 @@ import { loginSheetRequest } from '../../src/bots/cards/login-sheet';
 import { useLoginForm, useRequestLookup, type LoginFieldsIO } from '../../src/bots/cards/use-login-form';
 import { refusalCopy } from '../../src/bots/cards/decision';
 import { useT } from '../../src/lib/i18n';
-import { useTheme } from '../../src/theme';
+import { space, typo, useTheme } from '../../src/theme';
 import { alertError } from '../../src/ui/dialogs';
 import { EmptyState, LoadingState } from '../../src/ui/empty';
 import { NativeForm } from '../../src/ui/native-form';
@@ -162,8 +162,8 @@ function BotLoginSheet() {
                 { backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center' },
               ]}
             >
-              <LoadingState style={{ flexGrow: 0, paddingVertical: 16 }} />
-              <RNText style={{ color: colors.secondaryLabel }}>{t('chat.loginSubmitting')}</RNText>
+              <LoadingState style={{ flexGrow: 0, paddingVertical: space.md }} />
+              <RNText style={{ ...typo.subheadline, color: colors.secondaryLabel }}>{t('chat.loginSubmitting')}</RNText>
             </View>
           ) : null}
         </View>

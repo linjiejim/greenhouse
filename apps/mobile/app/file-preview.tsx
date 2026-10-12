@@ -7,7 +7,7 @@ import { FilePreviewView } from '../modules/file-preview';
 import { downloadFile, type CachedFile } from '../src/lib/share-file';
 import { useT } from '../src/lib/i18n';
 import { useStations } from '../src/store/stations';
-import { useTheme } from '../src/theme';
+import { space, typo, useTheme } from '../src/theme';
 import { EmptyState, LoadingState } from '../src/ui/empty';
 import { NativeButton } from '../src/ui/button';
 import { SheetClose } from '../src/ui/sheet-chrome';
@@ -86,12 +86,14 @@ export default function FilePreview() {
       ) : !file ? (
         <LoadingState style={{ flex: 1 }} />
       ) : file.previewText !== undefined ? (
-        <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerStyle={{ padding: 20 }}>
-          <Text selectable style={{ color: colors.label, fontSize: 16, lineHeight: 24 }}>
+        <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerStyle={{ padding: space.margin }}>
+          <Text selectable style={{ ...typo.body, color: colors.label }}>
             {file.previewText}
           </Text>
           {file.previewTruncated ? (
-            <Text style={{ color: colors.secondaryLabel, marginTop: 16 }}>{t('chat.fileTextTruncated')}</Text>
+            <Text style={{ ...typo.footnote, color: colors.secondaryLabel, marginTop: space.md }}>
+              {t('chat.fileTextTruncated')}
+            </Text>
           ) : null}
         </ScrollView>
       ) : !FilePreviewView || unsupported ? (
