@@ -12,6 +12,7 @@ const store = new Map<string, string>();
 /** Answers parked until `release()` — the Keychain's async gap. */
 let parked: Array<() => void> = [];
 let parkReads = false;
+let failWrites = false;
 const deleted: string[] = [];
 
 vi.mock('react-native', () => ({ Platform: { OS: 'ios' } }));
@@ -24,9 +25,11 @@ vi.mock('expo-secure-store', () => ({
       else resolve(value);
     }),
   setItemAsync: async (key: string, value: string) => {
+    if (failWrites) throw new Error('Keychain unavailable');
     store.set(key, value);
   },
   deleteItemAsync: async (key: string) => {
+    if (failWrites) throw new Error('Keychain unavailable');
     deleted.push(key);
     store.delete(key);
   },
@@ -55,6 +58,7 @@ async function release(): Promise<void> {
 
 beforeEach(() => {
   store.clear();
+  failWrites = false;
   parked = [];
   parkReads = false;
   deleted.length = 0;
@@ -162,6 +166,32 @@ describe('writes during a pending hydrate', () => {
 
     await release();
     await reread;
+    expect(m.getAccessToken()).toBeNull();
+  });
+});
+
+
+describe('startup storage failures', () => {
+  it('ignores a token hydration that finishes after the startup deadline', async () => {
+    const m = await load();
+    const controller = new AbortController();
+    parkReads = true;
+    const reading = m.hydrateTokens('A', controller.signal);
+    const rejected = expect(reading).rejects.toThrow('timeout');
+    controller.abort(new Error('timeout'));
+    await release();
+    await rejected;
+    expect(m.getAccessToken()).toBeNull();
+  });
+
+  it('handles rejected native persistence promises without unhandled errors', async () => {
+    const m = await load();
+    await m.hydrateTokens('A');
+    failWrites = true;
+    m.setTokens('new-access', 'new-refresh');
+    await m.savePref('active_station', 'A');
+    m.clearTokens();
+    await release();
     expect(m.getAccessToken()).toBeNull();
   });
 });

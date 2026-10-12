@@ -517,7 +517,10 @@ values saved there are stored in the database (secrets encrypted with
 **Structure lives in code**: [`greenhouse.config.ts`](./greenhouse.config.ts) (typed, validated
 at boot) declares which extensions are switched on, where content packs live (skill packs,
 agent profiles, a seed dataset) and how the browser extension / mobile app treat server
-stations. `GREENHOUSE_EXTENSIONS=crm,example` overrides the extension list per deployment.
+stations. In the mobile station picker, a connection check runs before switching; a failed
+check keeps the current station. Startup authentication is capped at 10 seconds, with retry
+and station selection on failure. `GREENHOUSE_EXTENSIONS=crm,example` overrides the extension
+list per deployment.
 
 ## MCP & agent access
 

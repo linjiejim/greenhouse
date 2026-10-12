@@ -8,6 +8,7 @@ import { getApiBase } from '../store/stations';
 import type { AuthenticatedUser } from '../shared/greenhouse-types';
 import { t } from '../lib/i18n';
 import { api } from './client';
+import { checkAborted } from './connection-deadline';
 import { setTokens, setCachedUser, clearTokens, getAccessToken, getTokenStationId } from './token-storage';
 
 export type { AuthenticatedUser };
@@ -41,19 +42,23 @@ export async function login(
 }
 
 /** Validate the stored session against /api/auth/me (refreshes if needed via api()). */
-export async function validateSession(): Promise<AuthenticatedUser | null> {
+export async function validateSession(signal?: AbortSignal): Promise<AuthenticatedUser | null> {
   if (!getAccessToken()) return null;
   const sid = getTokenStationId();
   try {
-    const res = await api('/api/auth/me');
-    if (!res.ok) return null;
+    const res = await api('/api/auth/me', { signal });
+    if (res.status === 401) return null;
+    if (!res.ok) throw new Error('Station validation failed');
     const data = await res.json();
+    checkAborted(signal);
     // Same in-flight guard as login/refresh: a station switch mid-validate
     // means this user belongs to the previous station — don't cache it here.
     if (getTokenStationId() !== sid) return null;
+    if (!data.user || typeof data.user.id !== 'string') throw new Error('Invalid station session');
     setCachedUser(data.user);
     return data.user as AuthenticatedUser;
-  } catch {
+  } catch (error) {
+    if (signal) throw error;
     return null;
   }
 }

@@ -35,7 +35,7 @@ export default function Login() {
   const passwordRef = useRef<TextFieldRef>(null);
   const readEmail = useCallback(() => emailState.get(), [emailState]);
   const readPassword = useCallback(() => passwordState.get(), [passwordState]);
-  const { station, error, busy, submit, clearError, openStations } = useLogin({
+  const { station, error, connectionError, retry, busy, submit, clearError, openStations } = useLogin({
     email: readEmail,
     password: readPassword,
   });
@@ -60,6 +60,14 @@ export default function Login() {
             onPress={openStations}
           />
         </FormSection>
+
+        {connectionError ? (
+          <FormSection footer={connectionError}>
+            <Button onClick={() => void retry()}>
+              <Text>{t('common.retry')}</Text>
+            </Button>
+          </FormSection>
+        ) : null}
 
         <FormFields>
           <FormTextField

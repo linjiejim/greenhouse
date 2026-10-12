@@ -59,7 +59,7 @@ export default function Login() {
   const passwordRef = useRef<SecureFieldRef>(null);
   const readEmail = useCallback(() => emailState.get(), [emailState]);
   const readPassword = useCallback(() => passwordState.get(), [passwordState]);
-  const { station, error, busy, submit, clearError, openStations } = useLogin({
+  const { station, error, connectionError, retry, busy, submit, clearError, openStations } = useLogin({
     email: readEmail,
     password: readPassword,
   });
@@ -86,6 +86,12 @@ export default function Login() {
             onPress={openStations}
           />
         </Section>
+
+        {connectionError ? (
+          <Section footer={<Text modifiers={[foregroundStyle('red')]}>{connectionError}</Text>}>
+            <Button label={t('common.retry')} onPress={() => void retry()} />
+          </Section>
+        ) : null}
 
         {/* The footer is always a Text — the error in red, else the members-only
             note. Adding / removing a Section footer rebuilds its rows, and the

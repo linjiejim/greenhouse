@@ -23,7 +23,7 @@ vi.mock('./token-storage', () => ({
   clearTokens: () => clearTokens(),
 }));
 
-const { api, onStation, setOnUnauthorized } = await import('./client');
+const { api, onStation, setOnUnauthorized, refreshTokens } = await import('./client');
 
 type Call = { url: string; auth: string | null };
 let calls: Call[] = [];
@@ -231,4 +231,70 @@ describe('the token only goes to the active station', () => {
     expect(onStation('not a url', base)).toBe(false);
     expect(onStation('https://a.example/x', 'not a base')).toBe(false);
   });
+});
+
+describe('cancelled startup requests', () => {
+  it('does not refresh or clear a session for a late 401 after timeout', async () => {
+    const controller = new AbortController();
+    answer = async () => {
+      controller.abort(new Error('timeout'));
+      return status(401);
+    };
+    await expect(api('/api/auth/me', { signal: controller.signal })).rejects.toThrow('timeout');
+    expect(refreshCalls()).toEqual([]);
+    expect(clearTokens).not.toHaveBeenCalled();
+  });
+
+  it.each([undefined, new AbortController().signal])('preserves credentials on a refresh network failure (signal: %s)', async (signal) => {
+    answer = async (call) => {
+      if (call.url.endsWith('/api/auth/refresh')) throw new Error('offline');
+      return status(401);
+    };
+    await expect(api('/api/auth/me', { signal })).rejects.toThrow('offline');
+    expect(clearTokens).not.toHaveBeenCalled();
+  });
+
+  it('lets retry start a fresh rotation after timeout and discards the abandoned answer', async () => {
+    const controller = new AbortController();
+    let release!: () => void;
+    let rotations = 0;
+    answer = async (call) => {
+      if (call.url.endsWith('/api/auth/refresh')) {
+        if (++rotations === 1) {
+          await new Promise<void>((resolve) => {
+            release = resolve;
+          });
+          return rotated('late', 'late-refresh');
+        }
+        return rotated('A2', 'r2');
+      }
+      return call.auth === 'Bearer A2' ? status(200) : status(401);
+    };
+    setTokens.mockImplementation((access: string) => (state.access = access));
+    const first = api('/api/auth/me', { signal: controller.signal });
+    const rejected = expect(first).rejects.toThrow('timeout');
+    await flush();
+    controller.abort(new Error('timeout'));
+    expect((await api('/api/auth/me', { signal: new AbortController().signal })).status).toBe(200);
+    release();
+    await rejected;
+    expect(setTokens.mock.calls).toEqual([['A2', 'r2']]);
+    expect(clearTokens).not.toHaveBeenCalled();
+  });
+});
+
+
+it('expires a background refresh too, so startup retries never join it forever', async () => {
+  vi.useFakeTimers();
+  try {
+    answer = () => new Promise(() => {});
+    const expired = expect(refreshTokens()).rejects.toThrow('timed out');
+    await vi.advanceTimersByTimeAsync(10000);
+    await expired;
+    expect(clearTokens).not.toHaveBeenCalled();
+    answer = async () => rotated('A2', 'r2');
+    expect(await refreshTokens()).toBe(true);
+  } finally {
+    vi.useRealTimers();
+  }
 });

@@ -62,6 +62,7 @@ import { useLiveActivities } from '../src/live-activity/use-live-activities';
 import { WidgetArtHost } from '../src/widget/art-host';
 import { useApplyAppearance, useTheme } from '../src/theme';
 import { Splash } from '../src/ui/splash';
+import { LoadingState } from '../src/ui/loading-state';
 import { DialogHost } from '../src/ui/dialogs';
 import { MenuHost } from '../src/ui/menu';
 import { ToastHost } from '../src/ui/toast';
@@ -91,6 +92,7 @@ export default function RootLayout() {
   const t = useT();
   const bootstrap = useAuth((s) => s.bootstrap);
   const loading = useAuth((s) => s.loading);
+  const startupError = useAuth((s) => s.startupError);
   const user = useAuth((s) => s.user);
   const logout = useAuth((s) => s.logout);
   const router = useRouter();
@@ -107,7 +109,7 @@ export default function RootLayout() {
   // Do not gate mounting on fonts or page data: mounting is what starts the
   // first request, and the same screen keeps its result when the cover leaves.
   const routesReady = !loading;
-  const ready = routesReady && (fontsLoaded || !!fontError);
+  const ready = routesReady && (fontsLoaded || !!fontError || !!startupError);
   const [splashGone, setSplashGone] = useState(false);
   const stationId = useStations((s) => s.activeId);
   const userId = user?.id;
@@ -115,7 +117,7 @@ export default function RootLayout() {
   // eslint-disable-next-line react-hooks/exhaustive-deps -- these are the lifetime keys of the launch scope
   const content = useMemo(() => new StartupContent(), [loading, stationId, userId]);
   const contentReady = useSyncExternalStore(content.subscribe, content.getSnapshot, content.getSnapshot);
-  const startup = useMemo(() => ({ content, covered: !splashGone }), [content, splashGone]);
+  const startup = useMemo(() => ({ content, covered: !splashGone && !startupError }), [content, splashGone, startupError]);
 
   // Redirect based on auth state once bootstrap resolves.
   useEffect(() => {
@@ -157,7 +159,9 @@ export default function RootLayout() {
           <WidgetArtHost />
           <StartupContext.Provider value={startup}>
             {!routesReady ? (
-              <View style={{ flex: 1, backgroundColor: c.background }} />
+              <View style={{ flex: 1, backgroundColor: c.background }}>
+                <LoadingState />
+              </View>
             ) : (
               <Stack screenOptions={{ ...stackDefaults(c, hex), headerShown: false }} screenLayout={sheetEdgeLayout}>
                 {/* title = the back-button label (a11y) for pages pushed over the conversation */}
@@ -232,7 +236,7 @@ export default function RootLayout() {
             )}
           </StartupContext.Provider>
           {/* over the app until its mark is built and the app is ready, then it fades away */}
-          {splashGone ? null : (
+          {splashGone || startupError ? null : (
             <Splash
               ready={ready}
               contentReady={!user || !waitsForHome(segments) || contentReady}
