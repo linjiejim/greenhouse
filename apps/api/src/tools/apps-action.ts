@@ -5,6 +5,7 @@ import { z } from 'zod';
 import type { AppRuntimeView, AppRecordView } from '@greenhouse/types/apps';
 import { activeUserHasFeature } from '../auth/features.js';
 import { dispatchTablesAgentAction } from '../platform/tables/agent-adapter.js';
+import { cardActions } from '../platform/tables/app-scope.js';
 import { defineTool, type ToolMeta } from './define.js';
 
 export const appsActionSchema = z.object({
@@ -53,7 +54,7 @@ export async function resolveAppActionApproval(userId: string, input: AppsAction
   const page = view.spec.pages.find((p) => p.id === input.page_id);
   const card = page?.cards.find((c) => c.id === input.card_id);
   if (!card) throw new Error('Card not found');
-  const actions = 'actions' in card ? card.actions : undefined;
+  const actions = card.kind === 'custom' ? card.actions : cardActions(card);
   const declared = actions?.find((a) => a.id === input.action_id);
   const builtin = ['$submit', '$create', '$edit', '$move'].includes(input.action_id);
   if (!declared && !builtin) throw new Error('Action not found');

@@ -3,6 +3,7 @@ import { createAppsQueryTool } from '../apps-query.js';
 import { createAppsActionTool } from '../apps-action.js';
 import { createTablesQueryTool } from '../tables-query.js';
 import { dispatchTablesAgentAction } from '../../platform/tables/agent-adapter.js';
+import type { AppRuntimeView } from '@greenhouse/types/apps';
 
 vi.mock('../../platform/tables/agent-adapter.js', () => ({ dispatchTablesAgentAction: vi.fn() }));
 vi.mock('../../auth/features.js', () => ({ activeUserHasFeature: vi.fn(async () => true) }));
@@ -113,6 +114,23 @@ describe('Apps tools', () => {
       { appId: 1 },
     );
   });
+  it('resolves an action declared only in the record detail before asking for approval', async () => {
+    const original = dispatch.getMockImplementation()!;
+    dispatch.mockImplementation(async (...args) => {
+      const result = await original(...args);
+      if (args[1] === 'getApp' && result.ok) {
+        const card = (result.data as AppRuntimeView).spec.pages[0]!.cards[0]!;
+        if (card.kind === 'records') {
+          card.detail = { fieldIds: [5], actions: card.actions };
+          delete card.actions;
+        }
+      }
+      return result;
+    });
+    const approve = vi.fn(async () => true);
+    expect(await call(createAppsActionTool({ userId: 'member', approve }), input)).toEqual({ outcome: 'updated' });
+    expect(approve).toHaveBeenCalledWith(expect.objectContaining({ summary: 'Tickets: Close ticket' }));
+  });
   it('rejects a record whose fresh action list no longer includes the action', async () => {
     dispatch.mockImplementation(async (_ctx, action) =>
       action === 'getApp'
@@ -121,7 +139,9 @@ describe('Apps tools', () => {
             data: {
               app: { id: 1, name: 'Tickets' },
               spec: {
-                pages: [{ id: 'home', cards: [{ id: 'tickets', actions: [{ id: 'close', do: {} }] }] }],
+                pages: [
+                  { id: 'home', cards: [{ id: 'tickets', kind: 'records', actions: [{ id: 'close', do: {} }] }] },
+                ],
               },
             },
           }
