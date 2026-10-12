@@ -17,6 +17,7 @@ import { ToastContainer } from '../ui';
 import { BotTranscript, type BotTranscriptProps } from './bot-transcript';
 import { computerPhase } from './computer-phase';
 import { MemoryReceipts, resetUndoneMemoriesForTest } from './memory-receipts';
+import { useBotsStore } from './bots-store';
 import type { PendingSend } from './transcript';
 
 const fakes = vi.hoisted(() => {
@@ -53,6 +54,7 @@ const api = vi.hoisted(() => ({
   archiveUserMemory: vi.fn(),
   listBots: vi.fn(),
   takeoverComputer: vi.fn(),
+  fetchComputerStatus: vi.fn(),
   createComputerViewToken: vi.fn(),
   computerViewerUrl: (token: string) => `ws://greenhouse.test/api/ws/computer?token=${token}`,
 }));
@@ -345,7 +347,7 @@ describe('secure sign-in: what is sent', () => {
     await mountLogin(request({ status: 'expired' }));
     const card = document.querySelector('[data-testid="bots-request-card"]')!;
     expect(card.textContent).toContain('Expired');
-    expect(card.textContent).toContain('This sign-in request expired — ask the Bot again');
+    expect(card.textContent).toContain('This sign-in request expired — ask the Agent again');
     expect(card.querySelectorAll('input')).toHaveLength(0);
     expect(card.querySelectorAll('button:not([aria-expanded])').length).toBe(0);
   });
@@ -618,7 +620,7 @@ describe('memory receipts', () => {
     );
     const receipts = [...document.querySelectorAll('[data-testid="bots-memory-receipts"] > span')];
     expect(receipts).toHaveLength(2);
-    expect(receipts[0].textContent).toContain('Remembered for all your Bots');
+    expect(receipts[0].textContent).toContain('Remembered for all your Agents');
     expect(receipts[0].textContent).toContain('Undo');
     expect(receipts[1].textContent).toContain('Forgotten');
     expect(receipts[1].textContent).not.toContain('Undo');
@@ -672,15 +674,20 @@ describe('the human-check card', () => {
       ...partial,
     });
 
-  /** What the Bots page does: one computer status the card reads and updates. */
+  /**
+   * What the Bots page does: one computer status the card reads and updates — by default the
+   * card's own Agent's (Sage's) computer; `pageBot` names another one the page follows.
+   */
   function Host({
     req,
     initial,
     onOpenComputer,
+    pageBot = SAGE.id,
   }: {
     req: BotRequestView;
     initial: ComputerStatusView;
-    onOpenComputer?: () => void;
+    onOpenComputer?: (botId: string | null) => void;
+    pageBot?: string | null;
   }) {
     const [status, setStatus] = useState(initial);
     return createElement(BotTranscript, {
@@ -689,7 +696,7 @@ describe('the human-check card', () => {
         requests: new Map([[req.id, req]]),
         onOpenComputer: onOpenComputer ?? vi.fn(),
       }),
-      computer: { phase: computerPhase(status), apply: setStatus, refresh: vi.fn(async () => {}) },
+      computer: { bot: pageBot, phase: computerPhase(status), apply: setStatus, refresh: vi.fn(async () => {}) },
     });
   }
 
@@ -717,6 +724,9 @@ describe('the human-check card', () => {
     });
     await flush();
     expect(api.takeoverComputer).toHaveBeenCalledTimes(1);
+    // The check is on the computer of the Agent that raised the card.
+    expect(api.takeoverComputer).toHaveBeenCalledWith(SAGE.id);
+    expect(api.createComputerViewToken).toHaveBeenCalledWith(SAGE.id);
     expect(screen()?.getAttribute('data-view-only')).toBe('false');
     expect(fakes.FakeRfb.instances.at(-1)?.viewOnly).toBe(false);
     // In control: no second "Verify here"; "I'm done" hands back for this card.
@@ -752,6 +762,8 @@ describe('the human-check card', () => {
         ?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     });
     expect(onOpenComputer).toHaveBeenCalledTimes(1);
+    // …the computer of the Agent that raised the card.
+    expect(onOpenComputer).toHaveBeenCalledWith(SAGE.id);
 
     await act(async () => {
       card()
@@ -777,6 +789,17 @@ describe('the human-check card', () => {
     await flush();
     // The take-over woke it: the screen is there, and it is the member's.
     expect(screen()?.getAttribute('data-view-only')).toBe('false');
+  });
+
+  it("follows its own Agent's computer when the page shows another one", async () => {
+    api.fetchComputerStatus.mockResolvedValue(computerStatus({ state: 'absent', bot_id: SAGE.id }));
+    // The page follows the main Agent's computer (null); the card was raised by Sage.
+    await mount(createElement(Host, { req: captcha(), initial: computerStatus(), pageBot: null }));
+    await flush();
+    expect(api.fetchComputerStatus).toHaveBeenCalledWith(SAGE.id);
+    // Sage's computer is asleep — not the page's running one.
+    expect(card().textContent).toContain('The computer is asleep — Verify here wakes it up.');
+    expect(screen()).toBeNull();
   });
 
   it('collapses once settled — no screen, no actions', async () => {
@@ -841,5 +864,161 @@ describe('a message waiting for the current reply', () => {
   it('offers nothing to hurry when no run is going', async () => {
     await mount(createElement(BotTranscript, props({ pending: [queued], busy: false, onHandleNow: vi.fn() })));
     expect(document.querySelector('[data-testid="bots-pending-handle-now"]')).toBeNull();
+  });
+});
+
+describe('an Agent opening a separate chat (a task_start card in chat mode)', () => {
+  const FERN: BotView = { ...SAGE, id: 'bot_fern', name: 'Fern', dm_session_id: 'dm-fern' };
+  const lookup = (key: string | null | undefined) => [SAGE, FERN].find((bot) => bot.id === key || bot.name === key);
+  const chatCard = (partial: Partial<BotRequestView> = {}) =>
+    request({
+      id: 'brq_chat',
+      kind: 'task_start',
+      payload: { title: 'Q3 pricing', brief: 'Compare the plans', mode: 'chat', agent_id: FERN.id },
+      ...partial,
+    });
+  const click = async (element: Element | null | undefined) => {
+    await act(async () => element?.dispatchEvent(new MouseEvent('click', { bubbles: true })));
+    await flush();
+  };
+  const buttonNamed = (label: string) =>
+    [...document.querySelectorAll('button')].find((candidate) => candidate.textContent?.trim() === label);
+
+  beforeEach(() => {
+    window.location.hash = '#/bots?c=dm-sage';
+  });
+
+  it('says it opens a new chat, with which Agent, and approves on "Open chat"', async () => {
+    const req = chatCard();
+    api.decideRequest.mockResolvedValue({
+      request: { ...req, status: 'resolved', result: { decision: 'approve', conversation_id: 'chat-9' } },
+    });
+    await mount(
+      createElement(
+        BotTranscript,
+        props({ lookup, messages: [requestRow(req, 1)], requests: new Map([[req.id, req]]) }),
+      ),
+    );
+    const card = document.querySelector('[data-testid="bots-request-card"][data-request-kind="task_start"]')!;
+    expect(card.textContent).toContain('Sage wants to open a new chat');
+    expect(card.textContent).toContain('Fern answers there');
+    expect(buttonNamed('Start')).toBeUndefined();
+
+    await click(buttonNamed('Open chat'));
+    expect(api.decideRequest).toHaveBeenCalledWith('brq_chat', { decision: 'approve' });
+  });
+
+  it('once opened, links to the chat it opened', async () => {
+    const req = chatCard({ status: 'resolved', result: { decision: 'approve', conversation_id: 'chat-9' } });
+    await mount(
+      createElement(
+        BotTranscript,
+        props({ lookup, messages: [requestRow(req, 1)], requests: new Map([[req.id, req]]) }),
+      ),
+    );
+    const card = document.querySelector('[data-testid="bots-request-card"]')!;
+    expect(card.textContent).toContain('Chat opened');
+    await click(card.querySelector('button[aria-expanded]'));
+    await click(document.querySelector('[data-testid="bots-request-open-chat"]'));
+    expect(window.location.hash).toBe('#/bots?c=chat-9');
+  });
+
+  it('keeps a background task card a background task', async () => {
+    const req = request({ kind: 'task_start', payload: { title: 'Weekly digest', brief: 'Collect the news' } });
+    await mount(
+      createElement(BotTranscript, props({ messages: [requestRow(req, 1)], requests: new Map([[req.id, req]]) })),
+    );
+    expect(document.body.textContent).toContain('Sage wants to start a background task');
+    expect(buttonNamed('Start')).toBeDefined();
+    expect(buttonNamed('Open chat')).toBeUndefined();
+  });
+
+  const eventRow = (seq: number, content: string, bot_event: BotMessage['bot_event']): BotMessage => ({
+    ...requestRow(chatCard(), seq),
+    id: `ev-${seq}`,
+    content,
+    bot_event,
+  });
+
+  it('links the line it leaves behind to the new chat', async () => {
+    const row = eventRow(2, 'Fern started “Q3 pricing” in a new chat', {
+      kind: 'chat_opened',
+      session_id: 'chat-9',
+      bot_id: FERN.id,
+      title: 'Q3 pricing',
+    });
+    await mount(createElement(BotTranscript, props({ lookup, messages: [row] })));
+    const line = document.querySelector('[data-testid="bots-event"][data-event-kind="chat_opened"]');
+    expect(line?.textContent).toContain('Fern started “Q3 pricing” in a new chat');
+    await click(line?.querySelector('[data-testid="bots-chat-opened-link"]'));
+    expect(window.location.hash).toBe('#/bots?c=chat-9');
+  });
+
+  it('starts the new chat with where it came from, named when it is one of the threads', async () => {
+    const SPROUTY: BotView = { ...SAGE, id: 'bot_sprouty', name: 'Sprouty', template_key: 'sprouty' };
+    useBotsStore.setState({
+      bots: [SAGE, FERN, SPROUTY],
+      conversations: [
+        {
+          session_id: 'dm-sprouty',
+          kind: 'direct',
+          title: null,
+          owner_bot_id: SPROUTY.id,
+          lead_bot_id: SPROUTY.id,
+          members: [{ bot_id: SPROUTY.id, role: 'owner', position: 0 }],
+          last_message: null,
+          attention: 'idle',
+          pending_requests: 0,
+          last_activity_at: '2026-10-05T00:00:00.000Z',
+        },
+        {
+          session_id: 'dm-sage',
+          kind: 'direct',
+          title: null,
+          owner_bot_id: SAGE.id,
+          lead_bot_id: SAGE.id,
+          members: [{ bot_id: SAGE.id, role: 'owner', position: 0 }],
+          last_message: null,
+          attention: 'idle',
+          pending_requests: 0,
+          last_activity_at: '2026-10-05T00:00:00.000Z',
+        },
+      ],
+    });
+    const origin = (from: string) =>
+      eventRow(1, 'Sage opened this chat from another conversation', {
+        kind: 'chat_origin',
+        from_session_id: from,
+        bot_id: SAGE.id,
+      });
+    try {
+      await mount(createElement(BotTranscript, props({ lookup, kind: 'task', messages: [origin('dm-sage')] })));
+      const line = document.querySelector('[data-testid="bots-event"][data-event-kind="chat_origin"]')!;
+      expect(line.textContent).toBe('Opened by Sage from your conversation with Sage');
+      await click(line.querySelector('[data-testid="bots-chat-origin-link"]'));
+      expect(window.location.hash).toBe('#/bots?c=dm-sage');
+
+      await rerender(createElement(BotTranscript, props({ lookup, kind: 'task', messages: [origin('dm-sprouty')] })));
+      expect(document.querySelector('[data-event-kind="chat_origin"]')?.textContent).toBe(
+        'Opened by Sage from your main thread',
+      );
+
+      await rerender(
+        createElement(BotTranscript, props({ lookup, kind: 'task', messages: [origin('chat-elsewhere')] })),
+      );
+      expect(document.querySelector('[data-event-kind="chat_origin"]')?.textContent).toBe(
+        'Opened by Sage from another conversation',
+      );
+    } finally {
+      await act(async () => useBotsStore.setState({ ...useBotsStore.getInitialState() }));
+    }
+  });
+
+  it('still shows the words of an event kind it does not know yet', async () => {
+    const row = eventRow(1, 'Something new happened', {
+      kind: 'from_the_future',
+    } as unknown as BotMessage['bot_event']);
+    await mount(createElement(BotTranscript, props({ messages: [row] })));
+    expect(document.querySelector('[data-testid="bots-event"]')?.textContent).toBe('Something new happened');
   });
 });

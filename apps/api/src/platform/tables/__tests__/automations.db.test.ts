@@ -3,7 +3,7 @@
  * the in-transaction enqueue (formula conditions, watched fields,
  * record_matched), the worker (lease, cursor, delay, retry, cancel, executor
  * downgrade, per-recipient rendering, notification dedupe), the minute sweep
- * (idempotent, no historical backfill), buttons, and migration 0024's SQL on
+ * (idempotent, no historical backfill), buttons, and migration 0029's SQL on
  * seeded legacy rows.
  */
 
@@ -24,6 +24,7 @@ import { fullTableAccess } from '@greenhouse/types/table-access';
 import type { TableAutomationTrigger, TableRecordWriteMeta } from '@greenhouse/types/tables';
 import { createInternalTestUser } from '../../../../../../tests/helpers/internal-user.js';
 import { humanActor } from '../../actor.js';
+import { currentAgentScope } from '../../agent-scope.js';
 import { getPlatformRuntime, initializePlatformRuntime, resetPlatformRuntimeForTests } from '../../runtime.js';
 import { tablesRegistration } from '../application.js';
 import { tablesScheduling } from '../automation-schedule.js';
@@ -708,7 +709,7 @@ describe('buttons', () => {
   });
 });
 
-describe('migration 0024', () => {
+describe('migration 0029', () => {
   it('moves the legacy inbox, settles legacy outbox rows and backfills stable action ids', async () => {
     const t = await workspace();
     const [legacyRule] = (await db.executeRaw(sql`
@@ -741,7 +742,7 @@ describe('migration 0024', () => {
       RETURNING id`)) as Array<{ id: number }>;
 
     const migration = readFileSync(
-      resolve(__dirname, '../../../../../../drizzle/0024_tables_automation_backfill.sql'),
+      resolve(__dirname, '../../../../../../drizzle/0029_tables_automation_backfill.sql'),
       'utf8',
     );
     const statements = migration.split('--> statement-breakpoint');
@@ -857,6 +858,7 @@ describe('Agent automation steps', () => {
       expect(args.system).toContain('untrusted data');
       expect(args.prompt).toContain('Untrusted triggering record');
       expect(args.usageContext.userId).toBe(owner.id);
+      expect(currentAgentScope()).toBeUndefined();
       return generated;
     });
     catchUp();
@@ -900,6 +902,7 @@ describe('Agent automation steps', () => {
     const runAgent = vi.fn(async (args: import('../../../agent-runtime/run-agent.js').RunAgentInSessionArgs) => {
       expect(Object.keys(args.tools ?? {})).toEqual(botTools === null ? ['tables_query'] : []);
       expect(args.maxSteps).toBe(3);
+      expect(currentAgentScope()).toEqual({ botId: bot.id, sessionId: args.sessionId });
       return generated;
     });
     catchUp();

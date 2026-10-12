@@ -136,7 +136,7 @@ describe('home paths', () => {
 describe('ComputerFiles browsing', () => {
   it('opens in ~/work and lists folders, links and files with size and date', async () => {
     await renderFiles();
-    expect(api.listComputerFiles).toHaveBeenCalledWith('~/work');
+    expect(api.listComputerFiles).toHaveBeenCalledWith('~/work', null);
     expect(rows().map((el) => el.getAttribute('data-type'))).toEqual(['dir', 'link', 'file', 'other']);
     expect(row('report.pdf')?.textContent).toContain('2 KB');
     expect(breadcrumb()?.textContent).toContain('work');
@@ -159,24 +159,24 @@ describe('ComputerFiles browsing', () => {
     await renderFiles();
 
     await click(row('data')?.querySelector('button'));
-    expect(api.listComputerFiles).toHaveBeenLastCalledWith('/home/agent/work/data');
+    expect(api.listComputerFiles).toHaveBeenLastCalledWith('/home/agent/work/data', null);
     expect(breadcrumb()?.textContent).toContain('work');
     expect(breadcrumb()?.textContent).toContain('data');
     expect(row('raw.csv')).toBeDefined();
 
     const up = [...(breadcrumb()?.querySelectorAll('button') ?? [])].find((button) => button.textContent === 'work');
     await click(up);
-    expect(api.listComputerFiles).toHaveBeenLastCalledWith('/home/agent/work');
+    expect(api.listComputerFiles).toHaveBeenLastCalledWith('/home/agent/work', null);
   });
 
   it('jumps to ~/Downloads and ~ with the shortcuts', async () => {
     await renderFiles();
     await click(document.querySelector('[data-testid="computer-files-shortcut-downloads"]'));
-    expect(api.listComputerFiles).toHaveBeenLastCalledWith('~/Downloads');
+    expect(api.listComputerFiles).toHaveBeenLastCalledWith('~/Downloads', null);
     expect(document.body.textContent).toContain('This folder is empty');
 
     await click(document.querySelector('[data-testid="computer-files-shortcut-home"]'));
-    expect(api.listComputerFiles).toHaveBeenLastCalledWith('~');
+    expect(api.listComputerFiles).toHaveBeenLastCalledWith('~', null);
   });
 
   it('says when a folder has more entries than shown', async () => {
@@ -242,7 +242,7 @@ describe('ComputerFiles transfers', () => {
     api.downloadComputerFile.mockResolvedValue(undefined);
     await renderFiles();
     await click(row('report.pdf')?.querySelector('[data-testid="computer-file-download"]'));
-    expect(api.downloadComputerFile).toHaveBeenCalledWith('/home/agent/work/report.pdf', 'report.pdf');
+    expect(api.downloadComputerFile).toHaveBeenCalledWith('/home/agent/work/report.pdf', 'report.pdf', null);
   });
 
   it('names the file a download failed for', async () => {
@@ -283,7 +283,7 @@ describe('ComputerFiles transfers', () => {
     expect(api.uploadComputerFile).toHaveBeenCalledWith(
       '/home/agent/work',
       expect.objectContaining({ name: 'a.csv' }),
-      expect.objectContaining({ onProgress: expect.any(Function) }),
+      expect.objectContaining({ onProgress: expect.any(Function), bot: null }),
     );
 
     await act(async () => progress?.(500, 1000));
@@ -296,7 +296,7 @@ describe('ComputerFiles transfers', () => {
     expect(api.uploadComputerFile).toHaveBeenCalledTimes(2);
     expect(document.body.textContent).toContain('Uploaded 2 file(s) to ~/work');
     expect(document.querySelector('[data-testid="computer-uploads"]')).toBeNull();
-    expect(api.listComputerFiles).toHaveBeenCalledWith('/home/agent/work');
+    expect(api.listComputerFiles).toHaveBeenCalledWith('/home/agent/work', null);
   });
 
   it('takes files dropped onto the tab', async () => {

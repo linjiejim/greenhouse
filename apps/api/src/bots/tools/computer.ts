@@ -203,7 +203,7 @@ class ComputerActions {
     readonly deps: ComputerDeps,
   ) {}
 
-  private redact = (text: string) => this.deps.redact(this.turn.userId, text);
+  private redact = (text: string) => this.deps.redact(this.turn.computerId, text);
 
   async run(input: ComputerInput): Promise<Record<string, unknown> | ToolFailure> {
     const { turn, deps } = this;
@@ -218,9 +218,9 @@ class ComputerActions {
       }
     }
     // Aborts with the turn, and when the member takes over in this process.
-    const action = deps.trackAction(turn.userId, turn.signal);
+    const action = deps.trackAction(turn.computerId, turn.signal);
     try {
-      const memberHasIt = async () => (await deps.currentLease(turn.userId)).controller === 'user';
+      const memberHasIt = async () => (await deps.currentLease(turn.computerId)).controller === 'user';
       // Fast path: do not start the computer for a Bot that may not act.
       if (await memberHasIt()) return await memberInControl(turn, { reason: 'waiting' });
       // A stopped computer runs no processes: listing or stopping one never starts it.
@@ -228,10 +228,10 @@ class ComputerActions {
       if (input.action === 'stop_process') return await this.stopProcess(input.id);
       // Start it (or wait in the queue) first, then check again: the member
       // may have taken over during that wait.
-      await deps.ensureReady(turn.userId, { signal: action.signal, maxWaitMs: BOT_START_WAIT_MS });
+      await deps.ensureReady(turn.computerId, { signal: action.signal, maxWaitMs: BOT_START_WAIT_MS });
       if (await memberHasIt()) return await memberInControl(turn, { reason: 'interrupted' });
       throwIfAborted(action.signal);
-      void deps.touch(turn.userId).catch(() => undefined);
+      void deps.touch(turn.computerId).catch(() => undefined);
       switch (input.action) {
         case 'shell':
           return await this.shell(input.command, input.timeout_s, action.signal);
@@ -256,7 +256,11 @@ class ComputerActions {
       // command): a card for the hand-back, or the member already gave it back.
       if (fail.code === 'user_in_control') return await afterLeaseChange(turn, deps, () => ({ reason: 'interrupted' }));
       if (fail.code === 'failed') {
-        logger.warn('[bots/computer] action failed', { action: input.action, userId: turn.userId, error: fail.error });
+        logger.warn('[bots/computer] action failed', {
+          action: input.action,
+          computerId: turn.computerId,
+          error: fail.error,
+        });
       }
       return fail;
     } finally {
@@ -265,7 +269,7 @@ class ComputerActions {
   }
 
   private async status(): Promise<Record<string, unknown>> {
-    const status = await computerStatusFor(this.turn.userId);
+    const status = await computerStatusFor(this.turn.computerId);
     return {
       runtime: status.runtime.state,
       state: status.state,
@@ -291,7 +295,7 @@ class ComputerActions {
     // Start in ~/work, recreating it if the member deleted it (the home is a
     // persistent volume, so the image's copy is not guaranteed to be there).
     const script = `cd ${AGENT_WORKDIR} 2>/dev/null || { mkdir -p ${AGENT_WORKDIR} && cd ${AGENT_WORKDIR}; } || cd ~\n${command}`;
-    const result = await this.deps.exec(this.turn.userId, script, {
+    const result = await this.deps.exec(this.turn.computerId, script, {
       timeoutSec,
       signal,
       user: 'agent',
@@ -321,7 +325,7 @@ class ComputerActions {
     if (!command?.trim()) return failure('invalid', 'run_background needs a command.');
     let job;
     try {
-      job = await this.deps.startJob(this.turn.userId, { command, ...(name?.trim() ? { name } : {}) }, { signal });
+      job = await this.deps.startJob(this.turn.computerId, { command, ...(name?.trim() ? { name } : {}) }, { signal });
     } catch (err) {
       throwIfAborted(signal); // a take-over killed the start: say so, not "exit -1"
       throw err;
@@ -333,6 +337,7 @@ class ComputerActions {
     try {
       await this.turn.db.botComputers.watchProcess({
         user_id: this.turn.userId,
+        computer_id: this.turn.computerId,
         session_id: this.turn.sessionId,
         bot_id: this.turn.botId,
         job_id: job.id,
@@ -365,7 +370,12 @@ class ComputerActions {
     }
     const user = await this.turn.db.users.getById(this.turn.userId);
     if (!user) return failure('failed', 'The member is gone.');
-    const ticket = createPreviewTicket({ id: user.id, authVersion: user.auth_version }, port);
+    const ticket = createPreviewTicket(
+      { id: user.id, authVersion: user.auth_version },
+      port,
+      Date.now(),
+      this.turn.computerId,
+    );
     return {
       url: ticket.path,
       expires_at: ticket.expires_at,
@@ -375,7 +385,7 @@ class ComputerActions {
 
   /** The member's background processes, newest first (the Bots' and the member's own). */
   private async processes(): Promise<Record<string, unknown>> {
-    const jobs = await this.deps.listJobs(this.turn.userId);
+    const jobs = await this.deps.listJobs(this.turn.computerId);
     // Names and commands were written on the computer: outside content.
     this.turn.noteObservation(null);
     this.turn.markTainted();
@@ -415,7 +425,7 @@ class ComputerActions {
     if (!JOB_ID.test(id)) return invalidProcessId('process_log');
     let log;
     try {
-      log = await this.deps.jobLog(this.turn.userId, id, { ...(lines ? { lines } : {}), signal });
+      log = await this.deps.jobLog(this.turn.computerId, id, { ...(lines ? { lines } : {}), signal });
     } catch (err) {
       throwIfAborted(signal);
       if (isUnknownJob(err)) return unknownProcess(id);
@@ -441,7 +451,7 @@ class ComputerActions {
     const id = rawId?.trim() ?? '';
     if (!JOB_ID.test(id)) return invalidProcessId('stop_process');
     try {
-      const result = await this.deps.stopJob(this.turn.userId, id);
+      const result = await this.deps.stopJob(this.turn.computerId, id);
       return result.stopped
         ? { id, stopped: true }
         : { id, stopped: false, note: 'It was not running any more (see processes for how it ended).' };
@@ -457,7 +467,7 @@ class ComputerActions {
   private async readFile(raw: string | undefined, signal: AbortSignal): Promise<Record<string, unknown> | ToolFailure> {
     if (!raw?.trim()) return failure('invalid', 'read_file needs a path.');
     const path = resolveAgentPath(raw);
-    const buffer = await this.deps.readFile(this.turn.userId, path, { maxBytes: READ_MAX_BYTES + 1, signal });
+    const buffer = await this.deps.readFile(this.turn.computerId, path, { maxBytes: READ_MAX_BYTES + 1, signal });
     this.turn.noteObservation(null);
     this.turn.markTainted();
     if (buffer.length > READ_MAX_BYTES) {
@@ -491,7 +501,7 @@ class ComputerActions {
     const bytes = Buffer.from(content, 'utf8');
     if (bytes.length > WRITE_MAX_BYTES)
       return failure('too_large', 'write_file is limited to 1 MiB; write in parts with shell.');
-    await this.deps.writeFile(this.turn.userId, path, bytes, { signal });
+    await this.deps.writeFile(this.turn.computerId, path, bytes, { signal });
     return { path, bytes: bytes.length, written: true };
   }
 
@@ -504,7 +514,7 @@ class ComputerActions {
     if (!isUnderAgentHome(path)) return failure('forbidden_path', `Only files inside ${AGENT_HOME} can be shared.`);
     const name = sanitizeUploadName(posix.basename(path));
     if (!name) return failure('invalid', 'That file name cannot be used; rename the file first.');
-    const buffer = await this.deps.readFile(this.turn.userId, path, { maxBytes: SHARE_MAX_BYTES + 1, signal });
+    const buffer = await this.deps.readFile(this.turn.computerId, path, { maxBytes: SHARE_MAX_BYTES + 1, signal });
     if (buffer.length > SHARE_MAX_BYTES)
       return failure('too_large', `${name} is larger than 20 MB. Compress or split it first.`);
 
@@ -574,7 +584,7 @@ class ComputerActions {
     if (!object) return failure('not_found', `${name} is no longer stored; ask the member to attach it again.`);
     if (object.buffer.length > SHARE_MAX_BYTES) return tooLarge();
     throwIfAborted(signal);
-    await this.deps.writeFile(this.turn.userId, path, object.buffer, { signal });
+    await this.deps.writeFile(this.turn.computerId, path, object.buffer, { signal });
     this.turn.noteObservation(null);
     return { path, size: object.buffer.length, name };
   }

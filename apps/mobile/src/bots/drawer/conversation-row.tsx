@@ -8,12 +8,19 @@
  * when only system lines are new, or from a server without the count). A Bot replying right now rewrites the preview to
  * "Replying…" instead of adding a badge; the server's `working` is never shown
  * (D14 — only `running` is the client's truth). Sprouty's DM carries a pin.
+ * A DM with someone else's public Agent (P4) says whose it is after the name
+ * ("Sage  by Jim", smaller and grey — the owner's name truncates first); asleep
+ * once it is no longer offered.
  *
  * A DM's plant shows the same signal on its face (./row-text.ts `rowPose`:
  * leaning in for "needs you", talking while it replies, asleep when archived).
  * Only a replying Bot moves — a list that is always in motion is noise (and
  * keeps XCUITest from ever going idle). The row is one VoiceOver element —
  * "Dandy, needs you, last message: …, 3 min ago".
+ *
+ * A room (several people, P5) leads with the other people's initials instead of
+ * a plant, is named after them unless it has a title, and its preview names who
+ * wrote last ("You: …", "Ana: …", "Sage: …" — ./row-text.ts).
  *
  * Rows are separated by a hairline from the text column on (the section draws
  * it, ./bots-section.tsx); the preview is a size under the title.
@@ -32,10 +39,11 @@ import { Icon } from '../../ui/core';
 import { useFontScaleKey } from '../../ui/font-scale';
 import { Badge } from '../../ui/list';
 import { NativeMenu, menuSections, type MenuItem } from '../../ui/menu';
-import { rowSignal, useBots } from '../store';
+import { rowReplyable, rowSharedAgent, rowSignal, useBots } from '../store';
+import { roomFaces } from '../rooms';
 import { AvatarStack } from '../ui/avatar-stack';
 import { BotAvatar } from '../ui/bot-avatar';
-import { conversationReplyable } from '../vendor/web-helpers';
+import { PeopleAvatar } from '../ui/people-avatar';
 import { rowPose, rowPreview, rowTime, rowTitle, type RowCopy } from './row-text';
 
 /**
@@ -66,10 +74,14 @@ export function useRowCopy(): RowCopy {
     () => ({
       deletedBot: t('bots.common.deletedBot'),
       untitledGroup: t('bots.nav.untitledGroup'),
+      newChat: t('chat.newConversation'),
       archivedName: (name) => t('bots.nav.archivedName', { name }),
       youSaid: (text) => t('bots.common.youSaid', { text }),
       botSaid: (name, text) => t('bots.nav.botSaid', { name, text }),
       noMessages: t('bots.common.noMessages'),
+      roomUntitled: t('bots.room.untitled'),
+      agentOf: (name) => t('bots.room.agentOf', { name }),
+      someAgent: t('bots.room.someAgent'),
     }),
     [t],
   );
@@ -103,14 +115,14 @@ export const ConversationRow = memo(function ConversationRow({
   const { fontScale } = useWindowDimensions();
   const byId = useBots((s) => s.byId);
   const botsLoaded = useBots((s) => s.botsLoaded);
+  const viewerId = useBots((s) => s.viewerId);
   const running = useBots((s) => s.running);
   // Before the Bot list is in, every row counts as replyable (a sleeping plant would be a guess).
-  const replyable = useBots(
-    (s) =>
-      row.kind === 'direct' && (!s.botsLoaded || conversationReplyable(row, new Set(s.bots.map((bot) => bot.id)))),
-  );
+  const replyable = useBots((s) => rowReplyable(s, row));
+  // Someone else's public Agent: whose it is, beside the name.
+  const sharedBy = useBots((s) => rowSharedAgent(s, row)?.owner.nickname ?? null);
 
-  const dir = useMemo(() => ({ byId, botsLoaded }), [byId, botsLoaded]);
+  const dir = useMemo(() => ({ byId, botsLoaded, viewerId }), [byId, botsLoaded, viewerId]);
   const title = rowTitle(row, dir, copy);
   const signal = rowSignal({ running }, row, current ? row.session_id : null);
   const preview = signal.working ? t('bots.common.replying') : rowPreview(row, dir, copy);
@@ -130,8 +142,10 @@ export const ConversationRow = memo(function ConversationRow({
         : t('bots.common.needsYou')
       : null;
 
+  const by = sharedBy ? t('bots.nav.byOwner', { name: sharedBy }) : null;
   const a11yLabel = [
     title,
+    by,
     pinned && t('bots.nav.pinnedA11y'),
     needsYou ?? (unread && (unreadCount > 0 ? t('bots.nav.unreadN', { n: unreadCount }) : t('bots.nav.unread'))),
     signal.working ? preview : t('bots.nav.lastMessage', { text: preview }),
@@ -153,6 +167,13 @@ export const ConversationRow = memo(function ConversationRow({
   );
 
   const members = useMemo(() => [...row.members].sort((a, b) => a.position - b.position).slice(0, 2), [row.members]);
+  const people = useMemo(
+    () =>
+      row.kind === 'room'
+        ? roomFaces(row, viewerId).map((person) => ({ id: person.user_id, name: person.nickname }))
+        : null,
+    [row, viewerId],
+  );
   const avatarScale = Math.min(Math.max(fontScale, 1), AVATAR_SCALE_MAX);
   const avatarSize = Math.round(DM_AVATAR * avatarScale);
 
@@ -169,7 +190,9 @@ export const ConversationRow = memo(function ConversationRow({
       ]}
     >
       <View style={[styles.lead, { width: leadWidth(fontScale) }]}>
-        {row.kind === 'direct' ? (
+        {people ? (
+          <PeopleAvatar people={people} size={avatarSize} max={2} />
+        ) : row.kind !== 'group' ? (
           <BotAvatar bot={owner} size={avatarSize} state={pose.state} animate={pose.animate} />
         ) : (
           <AvatarStack
@@ -189,6 +212,11 @@ export const ConversationRow = memo(function ConversationRow({
           ) : (
             <View style={styles.titleSkeleton} />
           )}
+          {by && title ? (
+            <Text numberOfLines={1} style={styles.by}>
+              {by}
+            </Text>
+          ) : null}
           {pinned ? <Icon name="pin" size={11} color={c.tertiaryLabel} /> : null}
           {time ? <Text style={styles.time}>{time}</Text> : null}
         </View>
@@ -234,6 +262,8 @@ const useStyles = makeStyles((c) => ({
   title: { flexShrink: 1, ...typo.body, color: c.label },
   titleStrong: { fontWeight: weight.semibold },
   titleSkeleton: { width: 88, height: 12, marginVertical: 5, borderRadius: 6, backgroundColor: c.tertiaryFill },
+  // gives way to the name first (a long owner name truncates before the Agent's does)
+  by: { flexShrink: 3, ...typo.footnote, color: c.secondaryLabel },
   time: { marginLeft: 'auto', ...typo.footnote, color: c.secondaryLabel },
   preview: { flex: 1, ...typo.footnote, color: c.secondaryLabel },
   dot: { width: 8, height: 8, borderRadius: 4 },

@@ -50,6 +50,33 @@ export function vaultItemAlwaysOrigins(row: Pick<VaultItemRow, 'always_origins'>
   return Array.isArray(parsed) ? parsed.filter((o): o is string => typeof o === 'string') : [];
 }
 
+/** The Agents an entry is limited to (`bot_ids`); null = every Agent of the member. */
+export function vaultItemBotIds(row: Pick<VaultItemRow, 'bot_ids'>): string[] | null {
+  if (row.bot_ids === null || row.bot_ids === undefined) return null;
+  const parsed = safeJsonParse(row.bot_ids, null);
+  return Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === 'string') : [];
+}
+
+/** May this Agent use the entry (spec 20261011-agent-first-class P3c)? */
+export function vaultItemAllowsBot(row: Pick<VaultItemRow, 'bot_ids'>, botId: string): boolean {
+  const ids = vaultItemBotIds(row);
+  return ids === null || ids.includes(botId);
+}
+
+/** A write's `bot_ids`: the member's own Bots, deduplicated; null = every Agent. */
+async function validBotIds(
+  db: DatabaseProvider,
+  userId: string,
+  raw: string[] | null | undefined,
+): Promise<string[] | null | undefined> {
+  if (raw === undefined || raw === null) return raw;
+  const ids = [...new Set(raw)];
+  if (ids.length > 50) throw new VaultError('invalid', 'Choose at most 50 Agents');
+  const owned = new Set((await db.bots.listBots(userId, { includeArchived: true })).map((bot) => bot.id));
+  if (ids.some((id) => !owned.has(id))) throw new VaultError('invalid', 'Unknown Agent');
+  return ids;
+}
+
 export function toVaultItemView(row: VaultItemRow): VaultItemView {
   return {
     id: row.id,
@@ -60,6 +87,7 @@ export function toVaultItemView(row: VaultItemRow): VaultItemView {
     has_totp: !!row.totp_enc,
     policy: row.policy,
     always_origins: vaultItemAlwaysOrigins(row),
+    bot_ids: vaultItemBotIds(row),
     last_used_at: row.last_used_at,
     created_at: row.created_at,
   };
@@ -86,8 +114,10 @@ function validTotp(value: string): string {
   return trimmed;
 }
 
-export async function listVaultItems(db: DatabaseProvider, userId: string): Promise<VaultItemView[]> {
-  return (await db.vault.list(userId)).map(toVaultItemView);
+/** The member's entries — or, given an Agent, only those it may use. */
+export async function listVaultItems(db: DatabaseProvider, userId: string, botId?: string): Promise<VaultItemView[]> {
+  const rows = await db.vault.list(userId);
+  return (botId ? rows.filter((row) => vaultItemAllowsBot(row, botId)) : rows).map(toVaultItemView);
 }
 
 export async function createVaultItem(
@@ -104,6 +134,7 @@ export async function createVaultItem(
   const username = boundedSecret((input.username ?? '').trim(), USERNAME_MAX, 'user name');
   const password = input.password ? boundedSecret(input.password, PASSWORD_MAX, 'password') : '';
   const totp = input.totp ? validTotp(input.totp) : '';
+  const botIds = await validBotIds(db, userId, input.bot_ids);
   const row = await db.vault.create({
     id,
     user_id: userId,
@@ -114,6 +145,7 @@ export async function createVaultItem(
     password_enc: password ? encryptVaultField(userId, id, 'password', password) : null,
     totp_enc: totp ? encryptVaultField(userId, id, 'totp', totp) : null,
     policy: input.policy ?? 'ask',
+    bot_ids: botIds ?? null,
   });
   return toVaultItemView(row);
 }
@@ -145,6 +177,7 @@ export async function updateVaultItem(
     patch.always_origins = vaultItemAlwaysOrigins(existing).filter((origin) => originMatches(origins, origin));
   }
   if (input.policy !== undefined) patch.policy = input.policy;
+  if (input.bot_ids !== undefined) patch.bot_ids = (await validBotIds(db, userId, input.bot_ids)) ?? null;
   if (input.always_origins !== undefined) {
     // Narrowing only: anything not already granted is refused, so this path
     // can revoke "always allow" grants but never invent one.
@@ -197,11 +230,13 @@ export async function vaultMatchesForOrigin(
   db: DatabaseProvider,
   userId: string,
   origin: string | null,
+  /** Only the entries this Agent may use (P3c); omitted = every entry (the member's own screens). */
+  botId?: string,
 ): Promise<Array<{ id: string; label: string; username_hint: string; has_password: boolean; has_totp: boolean }>> {
   if (!origin) return [];
   const rows = await db.vault.list(userId);
   return rows
-    .filter((row) => originMatches(vaultItemOrigins(row), origin))
+    .filter((row) => originMatches(vaultItemOrigins(row), origin) && (!botId || vaultItemAllowsBot(row, botId)))
     .map((row) => ({
       id: row.id,
       label: row.label,

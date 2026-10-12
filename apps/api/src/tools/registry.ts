@@ -9,7 +9,8 @@
  *
  * SPECIAL_METAS holds the Bot tools (bots/tools/meta.ts): catalogued here so
  * feature points, guard tests and the description budget see them, but built
- * only by the Bots engine inside Bots conversations.
+ * only by the Bots engine inside Bots conversations — and the Agent access
+ * tools (bots/external/meta.ts), built only on the external surfaces (MCP, CLI).
  *
  * Frontend fetches metadata via GET /api/tools.
  */
@@ -55,6 +56,7 @@ import { memoryTool } from './memory.js';
 import { logFrictionTool } from './log-friction.js';
 import { workbenchQueryTool, workbenchMutationTool } from './workbench.js';
 import { BOT_TOOL_METAS } from '../bots/tools/meta.js';
+import { AGENT_ACCESS_TOOL_METAS } from '../bots/external/meta.js';
 
 // ─── Catalog ─────────────────────────────────────────────
 
@@ -118,7 +120,7 @@ function withExtensionTools(core: ToolModule[], extension: ToolModule[]): ToolMo
 export const STATIC_TOOL_MODULES: ToolModule[] = TOOL_MODULES.filter((m) => m.kind === 'static');
 
 /** Specially constructed tools keep CENTRAL metadata here rather than in TOOL_MODULES. */
-const SPECIAL_METAS: ToolMeta[] = [...BOT_TOOL_METAS];
+const SPECIAL_METAS: ToolMeta[] = [...BOT_TOOL_METAS, ...AGENT_ACCESS_TOOL_METAS];
 
 /** Single source of truth for all tool metadata. */
 export const TOOL_DEFINITIONS: ToolMeta[] = [...TOOL_MODULES.map((m) => m.meta), ...SPECIAL_METAS];

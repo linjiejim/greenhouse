@@ -248,6 +248,38 @@ describe('threadReadOnly', () => {
   it('the server’s answer to a send wins in a DM', () => {
     expect(threadReadOnly({ conversation: conversation(), readOnly: 'group_closed' }, BY_ID)).toBe('group_closed');
   });
+
+  it('someone else’s public Agent that is no longer shared: agent_unavailable (P4)', () => {
+    const shared = (available: boolean) => ({
+      [SAGE.id]: {
+        id: SAGE.id,
+        name: 'Sage',
+        role: '',
+        description: '',
+        avatar: {},
+        template_key: null,
+        owner: { id: 'u_owner', nickname: 'Jim' },
+        dm_session_id: 's1',
+        available,
+        computer: false,
+      },
+    });
+    const snap = { conversation: conversation(), readOnly: null };
+    expect(threadReadOnly(snap, BY_ID, shared(false))).toBe('agent_unavailable');
+    expect(threadReadOnly(snap, BY_ID, shared(true))).toBeNull();
+    expect(threadReadOnly(snap, BY_ID)).toBeNull();
+    expect(statusLine({ ...input(), shared: shared(false) })).toEqual({ key: 'bots.status.unavailable' });
+    expect(titlePose({ ...input(), shared: shared(false) })).toBe('sleep');
+    expect(statusLine(input({ readOnly: 'agent_unavailable' }))).toEqual({ key: 'bots.status.unavailable' });
+    // at rest: whose it is (the web's "by {owner}"); busy lines win as anywhere
+    expect(statusLine({ ...input(), shared: shared(true) })).toEqual({
+      key: 'bots.status.sharedBy',
+      vars: { name: 'Jim' },
+    });
+    expect(statusLine({ ...input({ runActive: true }), shared: shared(true) })).toEqual({
+      key: 'bots.status.working',
+    });
+  });
 });
 
 describe('titlePose', () => {
@@ -269,5 +301,79 @@ describe('titlePose', () => {
     for (const pose of ['waiting', 'error', 'sleep', 'thinking', 'speaking'] as const) {
       expect(cheerPose(pose, true), pose).toBe(pose);
     }
+  });
+});
+
+describe('a task chat (spec 20261011-agent-first-class §5a)', () => {
+  const task = conversation({ kind: 'task', title: 'Q3 plan' });
+  const at = (snap: Partial<StatusInput['snap']>): StatusInput => ({
+    snap: { ...input().snap, conversation: task, ...snap },
+    byId: BY_ID,
+    kind: 'task',
+  });
+
+  it('reads like a DM: its Agent unnamed, a guest named; at rest the line names the Agent (the title is the chat’s)', () => {
+    expect(statusLine(at({}))).toEqual({ key: 'bots.status.taskWith', vars: { name: 'Sage' } });
+    expect(statusLine(at({ conversation: conversation({ kind: 'task', owner_bot_id: 'b_new' }) }))).toBeNull();
+    expect(statusLine(at({ run: run([segment({ text: 'Hi' })]), runActive: true }))).toEqual({
+      key: 'bots.status.replyingDm',
+    });
+    expect(statusLine(at({ run: run([segment({ botId: FERN.id })]), runActive: true }))).toEqual({
+      key: 'bots.status.thinking',
+      vars: { name: 'Fern' },
+    });
+  });
+
+  it('is read-only only once its Agent is archived', () => {
+    expect(threadReadOnly({ conversation: task, readOnly: null }, BY_ID)).toBeNull();
+    const orphan = conversation({ kind: 'task', owner_bot_id: OLD.id });
+    expect(threadReadOnly({ conversation: orphan, readOnly: null }, BY_ID)).toBe('bot_archived');
+    expect(statusLine({ ...at({}), snap: { ...at({}).snap, conversation: orphan } })).toEqual({
+      key: 'bots.status.archived',
+    });
+  });
+});
+
+describe('a room (spec 20261011-agent-first-class §5d P5)', () => {
+  const person = (user_id: string, nickname: string) => ({
+    user_id,
+    nickname,
+    role: 'member' as const,
+    joined_at: '2026-10-12T00:00:00.000Z',
+  });
+  const room = (partial: Partial<BotConversationDetail> = {}) =>
+    conversation({
+      kind: 'room',
+      owner_bot_id: null,
+      lead_bot_id: null,
+      members: [],
+      participants: [person('u_me', 'Me'), person('u_ana', 'Ana')],
+      ...partial,
+    });
+  const at = (convo: BotConversationDetail, snap: Partial<StatusInput['snap']> = {}): StatusInput => ({
+    snap: { ...input().snap, conversation: convo, ...snap },
+    byId: BY_ID,
+    kind: 'room',
+  });
+  const sage = { bot_id: SAGE.id, role: 'member' as const, position: 0, owner_user_id: 'u_me', addressable: true };
+  const fern = { bot_id: FERN.id, role: 'member' as const, position: 1, owner_user_id: 'u_ana', addressable: false };
+
+  it('at rest says who is in it: a private chat, else how many people and Agents (the web’s words)', () => {
+    expect(statusLine(at(room()))).toEqual({ key: 'bots.room.privateChat' });
+    expect(statusLine(at(room({ title: 'Launch' })))).toEqual({ key: 'bots.room.statusPeople', vars: { n: 2 } });
+    expect(statusLine(at(room({ title: 'Launch', participants: [person('u_me', 'Me')] })))).toEqual({
+      key: 'bots.room.statusAlone',
+    });
+    expect(statusLine(at(room({ members: [sage] })))).toEqual({ key: 'bots.room.statusOneAgent', vars: { n: 2 } });
+    expect(statusLine(at(room({ members: [sage, fern] })))).toEqual({
+      key: 'bots.room.statusAgents',
+      vars: { n: 2, m: 2 },
+    });
+  });
+
+  it('names every Agent that speaks — a room has no Agent of its own — and is never read-only', () => {
+    const live = at(room({ members: [sage] }), { run: run([segment({ text: 'On it' })]), runActive: true });
+    expect(statusLine(live)).toEqual({ key: 'bots.status.replying', vars: { name: 'Sage' } });
+    expect(threadReadOnly({ conversation: room(), readOnly: null }, BY_ID)).toBeNull();
   });
 });

@@ -166,36 +166,50 @@
     {
       "idx": 23,
       "version": "7",
-      "when": 1791655515827,
-      "tag": "0023_tables_foundation",
+      "when": 1791735649938,
+      "tag": "0023_agent_task_chats",
       "breakpoints": true
     },
     {
       "idx": 24,
       "version": "7",
-      "when": 1791685913968,
-      "tag": "0024_tables_automation_backfill",
+      "when": 1791738215539,
+      "tag": "0024_agent_computers",
       "breakpoints": true
     },
     {
       "idx": 25,
       "version": "7",
-      "when": 1791706311072,
-      "tag": "0025_tables_apps",
+      "when": 1791740219180,
+      "tag": "0025_agent_attribution",
       "breakpoints": true
     },
     {
       "idx": 26,
       "version": "7",
-      "when": 1791710042592,
-      "tag": "0026_tables_app_action_requests",
+      "when": 1791742214022,
+      "tag": "0026_public_agents",
       "breakpoints": true
     },
     {
       "idx": 27,
       "version": "7",
-      "when": 1791728223179,
-      "tag": "0027_tables_apps_advanced",
+      "when": 1791746786283,
+      "tag": "0027_rooms",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1791780438369,
+      "tag": "0028_tables_apps_advanced",
+      "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1791780476402,
+      "tag": "0029_tables_automation_backfill",
       "breakpoints": true
     }
   ]

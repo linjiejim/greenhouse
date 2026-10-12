@@ -10,6 +10,9 @@
  * with unit tests:
  * - Speaker headers appear only when the speaker changes, and never for the
  *   owner Bot of a DM (the conversation header already says who it is).
+ * - In a room (P5) another person's message is theirs, not the member's: it
+ *   renders on the other side under their name (again only when the speaker
+ *   changes), and every Agent gets its name — a room has no owner Agent.
  * - A live segment disappears the moment its persisted message shows up
  *   (dedupe by message id), so a mid-run reload never doubles a reply.
  * - A message sent while Bots were working stays where it was sent, between
@@ -20,7 +23,7 @@
  *   that order it would jump above the text it was streaming under.
  */
 
-import type { BotEvent, BotMessage, BotRequestView } from '../../shared/bots';
+import type { BotConversationSummary, BotEvent, BotMessage, BotRequestView } from '../../shared/bots';
 import type { BotStreamSegment, PipelineStep } from '../../shared/bots-wire';
 
 /** A member message the client has sent but the transcript does not contain yet. */
@@ -45,6 +48,8 @@ export interface Handoff {
 
 export type TranscriptItem =
   | { key: string; kind: 'user'; message: BotMessage }
+  /** Another person's message in a room (P5); `header` = their name goes above it. */
+  | { key: string; kind: 'person'; message: BotMessage; userId: string; header: boolean }
   | { key: string; kind: 'bot'; message: BotMessage; botId: string | null; header: boolean }
   | { key: string; kind: 'handoff'; handoff: Handoff }
   | { key: string; kind: 'event'; message: BotMessage; event: BotEvent | null }
@@ -54,13 +59,15 @@ export type TranscriptItem =
 
 export interface TranscriptInput {
   messages: readonly BotMessage[];
-  conversationKind: 'direct' | 'group';
+  conversationKind: BotConversationSummary['kind'];
   ownerBotId: string | null;
   segments?: readonly BotStreamSegment[];
   liveRequests?: readonly BotRequestView[];
   pending?: readonly PendingSend[];
   /** Latest known state of each card — tells a card's own row from a later line about it. */
   requests?: ReadonlyMap<string, BotRequestView>;
+  /** The reader, in a room: their own messages are `user` items, everyone else's `person` items. */
+  me?: string | null;
 }
 
 /**
@@ -157,6 +164,7 @@ export function buildTranscript({
   liveRequests = [],
   pending = [],
   requests,
+  me = null,
 }: TranscriptInput): TranscriptItem[] {
   const items: TranscriptItem[] = [];
   const ordered = [...messages].sort((a, b) => a.seq - b.seq);
@@ -166,8 +174,9 @@ export function buildTranscript({
     const changed = botId !== lastSpeaker;
     lastSpeaker = botId;
     if (!changed) return false;
-    // DMs: the owner speaks under the conversation header; guests get a name.
-    return conversationKind === 'group' || botId !== ownerBotId;
+    // DMs and separate chats: the owner speaks under the conversation header; guests get a name.
+    // A room has no owner Agent: everyone is named.
+    return conversationKind === 'group' || conversationKind === 'room' || botId !== ownerBotId;
   };
 
   // A hand-off the engine also recorded as an event row is drawn once, from
@@ -279,6 +288,14 @@ export function buildTranscript({
       continue;
     }
     if (message.role === 'user') {
+      const author = message.author_user_id;
+      if (conversationKind === 'room' && author && author !== me) {
+        const speaker = `person:${author}`;
+        const header = lastSpeaker !== speaker;
+        lastSpeaker = speaker;
+        items.push({ key: message.id, kind: 'person', message, userId: author, header });
+        continue;
+      }
       lastSpeaker = 'user';
       items.push({ key: message.id, kind: 'user', message });
       continue;
@@ -339,6 +356,37 @@ export function buildTranscript({
     });
   }
   return items;
+}
+
+/**
+ * Where "edit" and "answer again" apply in a separate chat (spec 20261011-agent-first-class D23):
+ * the last member message, and the last Agent reply after it (none when nobody has answered it
+ * yet). Nothing while a send or a reply is still in flight on screen — a rewind would race it.
+ */
+export function rewindTargets(items: readonly TranscriptItem[]): {
+  lastUserId: string | null;
+  lastReplyId: string | null;
+} {
+  const none = { lastUserId: null, lastReplyId: null };
+  if (items.some((item) => item.kind === 'pending' || item.kind === 'segment')) return none;
+  let userIndex = -1;
+  for (let index = items.length - 1; index >= 0; index -= 1) {
+    if (items[index].kind === 'user') {
+      userIndex = index;
+      break;
+    }
+  }
+  const user = items[userIndex];
+  if (!user || user.kind !== 'user') return none;
+  let lastReplyId: string | null = null;
+  for (let index = items.length - 1; index > userIndex; index -= 1) {
+    const item = items[index];
+    if (item.kind === 'bot') {
+      lastReplyId = item.message.id;
+      break;
+    }
+  }
+  return { lastUserId: user.message.id, lastReplyId };
 }
 
 /**

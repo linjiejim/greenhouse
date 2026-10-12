@@ -8,6 +8,7 @@ import { toErrorMessage } from '@greenhouse/utils/error';
 import type { DatabaseProvider } from '@greenhouse/db';
 import { BOTS_SESSION_CHANNEL, defaultSessionListHiding, isOwnerOnlySession } from '@greenhouse/types/session';
 import { defineTool, type ToolMeta } from './define.js';
+import { superSeesAllChats } from '../sessions/access.js';
 
 const sessionQuerySchema = z.object({
   action: z.enum(['list', 'search', 'get', 'messages', 'usage']).describe('Read-only session action.'),
@@ -30,7 +31,7 @@ const meta: ToolMeta = {
   id: 'session_query',
   name: 'Session Query',
   brief: 'Read Greenhouse conversation sessions and usage',
-  description: `Read-only session query tool. Actions: list (recent sessions; channel:"web" = the user's normal conversations), search (by title keyword), get, messages, usage. Team users can read their own sessions; super users can list/read broader session data where supported.
+  description: `Read-only session query tool. Actions: list (recent sessions; channel:"web" = the user's normal conversations), search (by title keyword), get, messages, usage. Members read their own sessions; super reads others' only where the deployment allows it.
 
 Use it to recall past conversations when the user references one ("上次我们讨论的…", "之前那个方案") or you need historical context: search/list to find the session, then messages to read it.`,
   category: 'team',
@@ -51,7 +52,7 @@ export function createSessionQueryTool(db: DatabaseProvider, ctx: SessionQueryCo
         if (input.action === 'list') {
           // Bots conversations are owner-only, super included (sessions/access.ts):
           // asking for that channel lists the caller's own, whatever the role.
-          const ownerOnly = ctx.userRole !== 'super' || input.channel === BOTS_SESSION_CHANNEL;
+          const ownerOnly = !superSeesAllChats({ role: ctx.userRole }) || input.channel === BOTS_SESSION_CHANNEL;
           const sessions = await db.sessions.list({
             viewerUserId: ctx.userId,
             userId: ownerOnly ? ctx.userId : undefined,
@@ -94,7 +95,7 @@ export function createSessionQueryTool(db: DatabaseProvider, ctx: SessionQueryCo
         if (!input.session_id) return { error: 'session_id is required' };
         const session = await db.sessions.getById(input.session_id);
         if (!session) return { error: 'Session not found' };
-        const ownerOnly = ctx.userRole !== 'super' || isOwnerOnlySession(session);
+        const ownerOnly = !superSeesAllChats({ role: ctx.userRole }) || isOwnerOnlySession(session);
         if (ownerOnly && session.user_id !== ctx.userId) {
           return { error: 'Access denied — you can only read your own sessions' };
         }

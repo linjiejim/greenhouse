@@ -13,6 +13,8 @@
  * POST   /api/projects/:id/tasks               — 创建任务
  * PATCH  /api/projects/tasks/:taskId           — 更新任务
  * DELETE /api/projects/tasks/:taskId           — 删除任务
+ * POST   /api/projects/tasks/:taskId/agent     — 交给 Agent {bot_id}：开一个任务会话、用任务内容开场并开跑，
+ *                                                记在任务上（agent_id / agent_session_id，负责人不变）→ {task, session_id}
  * GET    /api/projects/tasks/:taskId/comments  — 评论列表
  * POST   /api/projects/tasks/:taskId/comments  — 添加评论
  * DELETE /api/projects/comments/:commentId     — 删除评论
@@ -32,6 +34,8 @@ import { getAuthUser } from '../auth/middleware.js';
 import { humanActor } from '../platform/actor.js';
 import { projectResource, type ProjectActionId } from '../platform/projects/application.js';
 import { getPlatformRuntime } from '../platform/runtime.js';
+import { userHasFeature } from '../auth/features.js';
+import { entityUrl } from '@greenhouse/types/entity-links';
 
 const PROJECT_COLORS = ['#3b82f6', '#8b5cf6', '#06b6d4', '#f59e0b', '#ef4444', '#10b981', '#ec4899', '#6366f1'];
 
@@ -78,6 +82,39 @@ async function dispatch(
     payload,
     resource: projectResource(actionId, ids),
   });
+}
+
+/** The opening message of a task chat for a project task (written as the member's — they asked for it). */
+function taskBrief(task: TaskRow, projectName: string | null, locale: 'en' | 'zh'): string {
+  const link = `${entityUrl({ kind: 'project', id: task.project_id })}?task=${task.id}`;
+  const facts = [
+    `${locale === 'zh' ? '状态' : 'Status'}: ${task.status}`,
+    `${locale === 'zh' ? '优先级' : 'Priority'}: ${task.priority}`,
+    ...(task.due_date ? [`${locale === 'zh' ? '截止' : 'Due'}: ${task.due_date}`] : []),
+  ].join(' · ');
+  const lines =
+    locale === 'zh'
+      ? [
+          `请处理这个项目任务。你替我做，负责人仍然是我；要改任务就用项目工具（每次改动都会先问我）。`,
+          ``,
+          `任务：${task.title}（#${task.id}）`,
+          ...(projectName ? [`项目：${projectName}`] : []),
+          facts,
+          ...(task.description?.trim() ? [``, task.description.trim()] : []),
+          ``,
+          `链接：${link}`,
+        ]
+      : [
+          `Please work on this project task. You're doing it for me and I stay responsible for it; change the task only with the project tools (each change asks me first).`,
+          ``,
+          `Task: ${task.title} (#${task.id})`,
+          ...(projectName ? [`Project: ${projectName}`] : []),
+          facts,
+          ...(task.description?.trim() ? [``, task.description.trim()] : []),
+          ``,
+          `Link: ${link}`,
+        ];
+  return lines.join('\n');
 }
 
 async function getUserMap() {
@@ -346,6 +383,44 @@ const projects = new Hono<AppEnv>()
     );
     if (!result.ok) return actionError(c, result);
     return c.json(result.data as { task: TaskRow });
+  })
+  // ── POST /api/projects/tasks/:taskId/agent — hand it to one of my Agents (spec 20261011-agent-first-class P3e) ──
+  .post('/tasks/:taskId/agent', async (c) => {
+    const user = getAuthUser(c);
+    const taskId = Number(c.req.param('taskId'));
+    const body = (await c.req.json().catch(() => ({}))) as { bot_id?: unknown };
+    if (!Number.isInteger(taskId) || typeof body.bot_id !== 'string') {
+      return c.json({ error: 'bot_id is required' }, 400);
+    }
+    if (!(await userHasFeature(user.id, user.role, 'bots'))) {
+      return c.json({ error: 'Agents are not enabled for this account' }, 403);
+    }
+    const db = getDb();
+    const [task, bot] = await Promise.all([db.projects.getTaskById(taskId), db.bots.getBot(user.id, body.bot_id)]);
+    if (!bot || bot.status !== 'active') return c.json({ error: 'Agent not found' }, 404);
+    if (!task) return c.json({ error: 'Task not found' }, 404);
+    const chat = await db.bots.createTaskConversation(user.id, bot.id, { title: task.title });
+    const result = await dispatch(
+      c,
+      'handTaskToAgent',
+      { taskId, botId: bot.id, sessionId: chat.session_id },
+      { taskId },
+    );
+    if (!result.ok) {
+      await db.sessions.delete(chat.session_id).catch(() => undefined);
+      return actionError(c, result);
+    }
+    const [project, account] = await Promise.all([
+      db.projects.getProjectById(task.project_id),
+      db.users.getById(user.id),
+    ]);
+    const { deliverToConversation } = await import('../bots/engine/inbox.js');
+    await deliverToConversation(chat.session_id, {
+      kind: 'user_message',
+      content: taskBrief(task, project?.title ?? null, account?.locale === 'zh' ? 'zh' : 'en'),
+      mentions: [],
+    });
+    return c.json({ task: (result.data as { task: TaskRow }).task, session_id: chat.session_id }, 201);
   })
   .delete('/tasks/:taskId', async (c) => {
     const taskId = Number(c.req.param('taskId'));

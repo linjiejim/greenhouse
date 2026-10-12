@@ -44,7 +44,13 @@ import { ComputerUnavailableError } from './errors.js';
 import { computerLifecycleHooks } from './hooks.js';
 import { requireComputerRuntime } from './runtime.js';
 import { agentEnv } from './shell.js';
-import { TERMINAL_TOKEN_PURPOSE, ticketHolderStatus, verifyViewToken, type ViewTokenClaims } from './view-token.js';
+import {
+  TERMINAL_TOKEN_PURPOSE,
+  ticketComputerId,
+  ticketHolderStatus,
+  verifyViewToken,
+  type ViewTokenClaims,
+} from './view-token.js';
 import { VIEWER_CLOSE } from './viewer.js';
 
 const PING_MS = 20_000;
@@ -100,34 +106,34 @@ export function resizeFrame(text: string): Buffer | null {
 // ─── Live terminals (per member, this process) ────────────
 
 interface Terminal {
-  userId: string;
+  computerId: string;
   close(code: number, reason: string): void;
 }
 
 const terminals = new Map<string, Set<Terminal>>();
 
 function register(terminal: Terminal): void {
-  let set = terminals.get(terminal.userId);
-  if (!set) terminals.set(terminal.userId, (set = new Set()));
+  let set = terminals.get(terminal.computerId);
+  if (!set) terminals.set(terminal.computerId, (set = new Set()));
   set.add(terminal);
 }
 
 function unregister(terminal: Terminal): void {
-  const set = terminals.get(terminal.userId);
+  const set = terminals.get(terminal.computerId);
   if (!set) return;
   set.delete(terminal);
-  if (set.size === 0) terminals.delete(terminal.userId);
+  if (set.size === 0) terminals.delete(terminal.computerId);
 }
 
 /** Close every terminal of a member in this process (purge, suspend). */
-export function closeTerminalsFor(userId: string, reason = 'closed'): number {
-  const list = [...(terminals.get(userId) ?? [])];
+export function closeTerminalsFor(computerId: string, reason = 'closed'): number {
+  const list = [...(terminals.get(computerId) ?? [])];
   for (const terminal of list) terminal.close(VIEWER_CLOSE.closedByServer, reason);
   return list.length;
 }
 
-export function terminalCount(userId: string): number {
-  return terminals.get(userId)?.size ?? 0;
+export function terminalCount(computerId: string): number {
+  return terminals.get(computerId)?.size ?? 0;
 }
 
 function rejectSocket(code: number, reason: string) {
@@ -156,8 +162,9 @@ export function createComputerTerminalRoutes() {
 }
 
 /** The socket handlers of one verified terminal (exported for tests). */
-export function terminalSession(claims: Pick<ViewTokenClaims, 'uid' | 'av' | 'c'>) {
+export function terminalSession(claims: Pick<ViewTokenClaims, 'uid' | 'av' | 'c' | 'k'>) {
   const userId = claims.uid;
+  const computerId = ticketComputerId(claims);
 
   let raw: WsSocket | null = null;
   let child: ComputerProcess | null = null;
@@ -169,7 +176,7 @@ export function terminalSession(claims: Pick<ViewTokenClaims, 'uid' | 'av' | 'c'
   const timers: NodeJS.Timeout[] = [];
 
   const terminal: Terminal = {
-    userId,
+    computerId,
     close(code, reason) {
       if (closed) return;
       try {
@@ -249,7 +256,11 @@ export function terminalSession(claims: Pick<ViewTokenClaims, 'uid' | 'av' | 'c'
       // The shell exiting (`exit`) ends gh-term with its code; a broken image
       // or a missing ~/work shows up here too, so leave a trace for operators.
       if (code !== 0 && !closed) {
-        logger.warn('[bots-computer] terminal ended', { user_id: userId, code, stderr: stderr.trim().slice(-300) });
+        logger.warn('[bots-computer] terminal ended', {
+          computer_id: computerId,
+          code,
+          stderr: stderr.trim().slice(-300),
+        });
       }
       terminal.close(VIEWER_CLOSE.tunnelClosed, 'terminal closed');
     });
@@ -263,7 +274,7 @@ export function terminalSession(claims: Pick<ViewTokenClaims, 'uid' | 'av' | 'c'
         alive = true;
       });
       // Counted and registered before the first await: concurrent opens cannot slip past the cap.
-      if (terminalCount(userId) >= MAX_TERMINALS_PER_MEMBER) {
+      if (terminalCount(computerId) >= MAX_TERMINALS_PER_MEMBER) {
         terminal.close(VIEWER_CLOSE.unavailable, 'too_many');
         return;
       }
@@ -273,13 +284,13 @@ export function terminalSession(claims: Pick<ViewTokenClaims, 'uid' | 'av' | 'c'
         const { controller, host, config } = requireComputerRuntime();
         // Opening a terminal may start the computer, even over the soft disk
         // limit — a shell is how a member cleans up.
-        const row = await controller.ensureRunning(userId, { allowOverQuota: true });
+        const row = await controller.ensureRunning(computerId, { allowOverQuota: true });
         if (closed) return;
         if (row.container_name !== claims.c) {
           terminal.close(VIEWER_CLOSE.unauthorized, 'stale ticket');
           return;
         }
-        await db.botComputers.heartbeatViewer(userId);
+        await db.botComputers.heartbeatViewer(computerId);
         // Nothing below awaits; a socket gone during the awaits above stops here.
         if (closed) return;
         const tunnel = host.execStream(row.container_name, 'agent', TERMINAL_ARGV, {
@@ -305,7 +316,7 @@ export function terminalSession(claims: Pick<ViewTokenClaims, 'uid' | 'av' | 'c'
         setInterval(() => {
           if (!alive) {
             // terminate(), not close(): a half-open peer never answers the close frame.
-            logger.info('[bots-computer] terminal missed a pong; dropping it', { user_id: userId });
+            logger.info('[bots-computer] terminal missed a pong; dropping it', { computer_id: computerId });
             try {
               raw?.terminate();
             } catch {
@@ -324,7 +335,7 @@ export function terminalSession(claims: Pick<ViewTokenClaims, 'uid' | 'av' | 'c'
       );
       trackTimer(
         setInterval(() => {
-          void db.botComputers.heartbeatViewer(userId).catch(() => {});
+          void db.botComputers.heartbeatViewer(computerId).catch(() => {});
         }, HEARTBEAT_MS),
       );
       trackTimer(
@@ -379,9 +390,9 @@ export function terminalSession(claims: Pick<ViewTokenClaims, 'uid' | 'av' | 'c'
   };
 }
 
-computerLifecycleHooks.onPurged((userId) => {
-  closeTerminalsFor(userId, 'computer removed');
+computerLifecycleHooks.onPurged((computerId) => {
+  closeTerminalsFor(computerId, 'computer removed');
 });
 computerLifecycleHooks.onShutdown(async () => {
-  for (const userId of [...terminals.keys()]) closeTerminalsFor(userId, 'server restarting');
+  for (const computerId of [...terminals.keys()]) closeTerminalsFor(computerId, 'server restarting');
 });

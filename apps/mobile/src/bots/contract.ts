@@ -36,17 +36,38 @@ export type BotsReadOnly = BotConversationReadOnlyCode;
 export type ServerWsWire =
   | { type: 'connected'; userId: string }
   | { type: 'ping' }
-  | { type: 'chat:run'; sessionId: string; runId: string; status: 'running' | 'completed' | 'error' }
+  | { type: 'chat:run'; sessionId: string; runId: string; status: 'running' | 'completed' | 'error'; userId?: string }
   | { type: 'bots:conversation'; sessionId: string }
   | { type: 'bots:attention'; pending: number }
-  | { type: 'bots:computer'; state: ComputerState; controller: 'bot' | 'user' };
+  /**
+   * `computer_id` / `bot_id` name which computer (one per Agent since 2026-10-12, spec
+   * 20261011-agent-first-class P3; `bot_id` null = the main Agent's); older servers send
+   * neither — the frame is then about the main computer (src/bots/computer/target.ts).
+   */
+  | {
+      type: 'bots:computer';
+      state: ComputerState;
+      controller: 'bot' | 'user';
+      computer_id?: string;
+      bot_id?: string | null;
+    };
 
 export type RealtimeEvent =
-  | { type: 'chat:run'; sessionId: string; runId: string; status: 'running' | 'completed' | 'error' }
+  /** `userId` = whose run it is (its asker — in a room only they may stop it); older servers don't say. */
+  | { type: 'chat:run'; sessionId: string; runId: string; status: 'running' | 'completed' | 'error'; userId?: string }
   | { type: 'bots:conversation'; sessionId: string }
   | { type: 'bots:attention'; pending: number }
-  /** The member's computer changed state or hands (the computer page re-reads its status). */
-  | { type: 'bots:computer'; state: ComputerState; controller: 'bot' | 'user' }
+  /**
+   * One of the member's computers changed state or hands (the computer page and the thread's 🖥
+   * re-read theirs — only when it is this one: `frameIsFor` in src/bots/computer/target.ts).
+   */
+  | {
+      type: 'bots:computer';
+      state: ComputerState;
+      controller: 'bot' | 'user';
+      computer_id?: string;
+      bot_id?: string | null;
+    }
   /** Synthesised: the socket (re)connected or the app came back to the foreground — re-read everything. */
   | { type: 'resync' };
 
@@ -82,6 +103,23 @@ export type SendOutcome =
   /** Refused by the server: the bubble is removed, the draft restored, an alert shown. */
   | { ok: false; kind: 'rejected'; status: number; message: string }
   /** No answer: the bubble stays, marked "Not Delivered", with Try Again. */
+  | { ok: false; kind: 'not_delivered' };
+
+/** Edit / answer again in a task chat: back to the last member message (`content` = its edited text). */
+export interface RewindInput {
+  messageId: string;
+  content?: string;
+}
+
+export type RewindOutcome =
+  | { ok: true }
+  /** Something is in flight here (a run, a send): nothing was asked. */
+  | { ok: false; kind: 'busy' }
+  /** The Agent was archived (409 `bot_archived`): the thread turns read-only. */
+  | { ok: false; kind: 'read_only'; code: BotsReadOnly }
+  /** Refused (`busy`, `not_last`, `requests_pending`…): the rows are put back and re-read. */
+  | { ok: false; kind: 'rejected'; status: number; code: string | null; message: string }
+  /** No answer: the rows are put back and re-read. */
   | { ok: false; kind: 'not_delivered' };
 
 /** A send in flight on this device; `failed` = the POST got no answer (kept for a retry). */
@@ -123,6 +161,11 @@ export interface ThreadSnapshot {
   /** The server is busy but this device cannot attach (another API slot): a static "Working…". */
   remoteBusy: boolean;
   stopPhase: 'soft' | 'hard' | null;
+  /**
+   * The member may stop the live run (and "Handle Now" into it). Always outside a room; in a room
+   * only their own (a run is its asker's — src/bots/rooms.ts `roomRunMine`). True while idle.
+   */
+  runMine: boolean;
   pending: MobilePending[];
   /** Merged from three sources, only ever forward (`mergeRequests`). */
   requests: ReadonlyMap<string, BotRequestView>;
@@ -144,6 +187,8 @@ export interface ThreadController {
   setVisible(visible: boolean): void;
   setForeground(active: boolean): void;
   send(input: SendInput): Promise<SendOutcome>;
+  /** Task chats: edit the last member message / answer it again (streams like a send). */
+  rewind(input: RewindInput): Promise<RewindOutcome>;
   retry(clientId: string): Promise<SendOutcome>;
   /** Drop a local bubble only. */
   discard(clientId: string): void;
@@ -160,7 +205,7 @@ export interface ThreadDeps {
   api: Pick<typeof import('../api/bots'), 'getConversation' | 'markConversationRead'> &
     Pick<
       typeof import('../api/chat'),
-      'openBotsChat' | 'interruptChatRun' | 'getChatRun' | 'streamChatRun' | 'stopChatRun'
+      'openBotsChat' | 'openBotsRewind' | 'interruptChatRun' | 'getChatRun' | 'streamChatRun' | 'stopChatRun'
     >;
   realtime: Realtime;
   store: { getState(): BotsState; subscribe(listener: (s: BotsState) => void): () => void };

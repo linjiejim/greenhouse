@@ -16,10 +16,12 @@ import {
 } from './session-manager';
 
 const openBotsChat = vi.fn();
+const openBotsRewind = vi.fn();
 const interruptChatRun = vi.fn();
 
 vi.mock('./api', () => ({
   openBotsChat: (...args: unknown[]) => openBotsChat(...args),
+  openBotsRewind: (...args: unknown[]) => openBotsRewind(...args),
   interruptChatRun: (...args: unknown[]) => interruptChatRun(...args),
   listChatRuns: vi.fn().mockResolvedValue({ runs: [] }),
   getChatRun: vi.fn().mockResolvedValue({ active: false }),
@@ -75,6 +77,7 @@ describe('SessionManager — Bots runs', () => {
   beforeEach(async () => {
     manager = null;
     openBotsChat.mockReset();
+    openBotsRewind.mockReset();
     interruptChatRun.mockReset();
     container = document.createElement('div');
     document.body.appendChild(container);
@@ -166,6 +169,46 @@ describe('SessionManager — Bots runs', () => {
     await act(async () => {
       await expect(manager!.sendBotsMessage('s1', 'hi')).rejects.toThrow('not enabled');
     });
+    expect(manager!.activeSessions.has('s1')).toBe(false);
+  });
+
+  it('sends a separate chat’s model with the message', async () => {
+    openBotsChat.mockResolvedValue({ queued: true });
+    await act(async () => {
+      await manager!.sendBotsMessage('s1', 'hi', { model: 'pro' });
+    });
+    expect(openBotsChat).toHaveBeenCalledWith(expect.objectContaining({ sessionId: 's1', model: 'pro' }));
+  });
+
+  it('streams an edit / answer-again run like a send', async () => {
+    openBotsRewind.mockResolvedValue(
+      stream([
+        { type: 'bot-turn-start', bot_id: 'bot_a', reason: 'user' },
+        { type: 'text-delta', text: 'Shorter now.' },
+        { type: 'bot-turn-end', bot_id: 'bot_a', status: 'completed', message_id: 'm9' },
+        { type: 'finish', finishReason: 'stop' },
+      ]),
+    );
+    await act(async () => {
+      await manager!.rewindBotsMessage('s1', { messageId: 'u1', content: 'shorter' });
+    });
+    await settle();
+    expect(openBotsRewind).toHaveBeenCalledWith(
+      expect.objectContaining({ sessionId: 's1', messageId: 'u1', content: 'shorter' }),
+    );
+    const session = manager!.activeSessions.get('s1');
+    expect(session?.status).toBe('completed');
+    expect(session?.botSegments.map((segment) => [segment.botId, segment.text, segment.messageId])).toEqual([
+      ['bot_a', 'Shorter now.', 'm9'],
+    ]);
+  });
+
+  it('rejects a refused edit without opening a stream', async () => {
+    openBotsRewind.mockRejectedValue(new BotsApiError('A reply is still running here', 409, 'busy'));
+    await act(async () => {
+      await expect(manager!.rewindBotsMessage('s1', { messageId: 'u1' })).rejects.toThrow('still running');
+    });
+    expect(openBotsRewind).toHaveBeenCalledWith(expect.not.objectContaining({ content: expect.anything() }));
     expect(manager!.activeSessions.has('s1')).toBe(false);
   });
 });

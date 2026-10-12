@@ -64,7 +64,7 @@ import {
   type StartedComputer,
   type StopVerdict,
 } from './host.js';
-import { computerIdentity } from './namespace.js';
+import { computerIdentity, parseComputerId } from './namespace.js';
 
 /** safeJsonParse with the caller's expected shape (still validated field by field). */
 function parseJson<T>(text: string): T | null {
@@ -84,7 +84,7 @@ export type ComputerStore = Pick<
   | 'listIdle'
   | 'setDisk'
   | 'delete'
-  | 'withUserLock'
+  | 'withComputerLock'
   | 'withCapacityLock'
 > & {
   /**
@@ -93,7 +93,7 @@ export type ComputerStore = Pick<
    * without it still works: the sweeps then take the blocking lock, and only
    * for rows past the deadline by which any live holder must have finished.
    */
-  tryWithUserLock?<T>(userId: string, fn: () => Promise<T>): Promise<TryLockResult<T>>;
+  tryWithComputerLock?<T>(computerId: string, fn: () => Promise<T>): Promise<TryLockResult<T>>;
 };
 
 /** What the controller needs to know right now (config and knobs can change at runtime). */
@@ -208,12 +208,12 @@ export interface ComputerControllerDeps {
    * A Bot of this member waits on a secure sign-in or take-over card younger
    * than HUMAN_WAIT_HOLD_MS (limits.ts): its page must survive until the member answers.
    */
-  awaitingHuman?(userId: string): Promise<boolean>;
+  awaitingHuman?(computerId: string): Promise<boolean>;
   clock?: Clock;
   /** A row changed state or reason (pushed to the owner over WS). */
   onState?(row: BotComputerRow): void;
   /** The computer went away (drop cached DevTools connections, viewers die with their tunnels). */
-  onStopped?(userId: string, reason: string): void;
+  onStopped?(computerId: string, reason: string): void;
   /** The host itself failed; the runtime goes unavailable and re-checks. */
   onRuntimeError?(err: ComputerRuntimeError): void;
   /** A new free-space reading of the Docker disk (the runtime keeps the latest). */
@@ -231,11 +231,11 @@ export interface ControllerBackups {
   /** Before an idle stop: 'wait' while the computer's backup runs (starting one when due). */
   beforeSleep(row: BotComputerRow, idleMinutes: number): Promise<'go' | 'wait'>;
   /** The newest backup, for a start that has to make the member's home from nothing. */
-  restoreSource(userId: string): Promise<HomeRestore | null>;
+  restoreSource(computerId: string): Promise<HomeRestore | null>;
   /** A start put this backup into a new home (called once the computer runs). */
   restored(backupId: string): Promise<void>;
   /** The member's home was wiped: its backups go too. */
-  deleteAll(userId: string): Promise<void>;
+  deleteAll(computerId: string): Promise<void>;
 }
 
 export interface EnsureRunningOptions {
@@ -376,31 +376,31 @@ export function createComputerController(deps: ComputerControllerDeps) {
    * to the blocking lock; callers then only come here for rows past the
    * deadline of whatever could still hold it.
    */
-  async function withFreeUserLock<T>(userId: string, fn: () => Promise<T>): Promise<TryLockResult<T>> {
-    if (store.tryWithUserLock) return await store.tryWithUserLock(userId, fn);
-    return { acquired: true, value: await store.withUserLock(userId, fn) };
+  async function withFreeComputerLock<T>(computerId: string, fn: () => Promise<T>): Promise<TryLockResult<T>> {
+    if (store.tryWithComputerLock) return await store.tryWithComputerLock(computerId, fn);
+    return { acquired: true, value: await store.withComputerLock(computerId, fn) };
   }
 
   /** See `awaitingHuman`; a failed lookup protects the computer (stopping it would lose the page). */
-  async function isAwaitingHuman(userId: string): Promise<boolean> {
+  async function isAwaitingHuman(computerId: string): Promise<boolean> {
     if (!deps.awaitingHuman) return false;
     try {
-      return await deps.awaitingHuman(userId);
+      return await deps.awaitingHuman(computerId);
     } catch (err) {
-      logger.warn(`[bots-computer] pending-request lookup failed for ${userId}: ${toErrorMessage(err)}`);
+      logger.warn(`[bots-computer] pending-request lookup failed for ${computerId}: ${toErrorMessage(err)}`);
       return true;
     }
   }
 
-  async function touchThrottled(userId: string): Promise<void> {
+  async function touchThrottled(computerId: string): Promise<void> {
     const now = clock.now();
-    if (now - (lastTouch.get(userId) ?? 0) < TOUCH_THROTTLE_MS) return;
-    lastTouch.set(userId, now);
-    await store.touch(userId);
+    if (now - (lastTouch.get(computerId) ?? 0) < TOUCH_THROTTLE_MS) return;
+    lastTouch.set(computerId, now);
+    await store.touch(computerId);
   }
 
-  async function ensureRow(userId: string, namespace: string): Promise<BotComputerRow> {
-    return await store.ensure(computerIdentity(namespace, userId));
+  async function ensureRow(computerId: string, namespace: string): Promise<BotComputerRow> {
+    return await store.ensure(computerIdentity(namespace, parseComputerId(computerId)));
   }
 
   /** The browser language for the member's next start (a failed lookup falls back like an unknown locale). */
@@ -536,16 +536,14 @@ export function createComputerController(deps: ComputerControllerDeps) {
       )
       .sort((a, b) => Date.parse(a.last_active_at) - Date.parse(b.last_active_at));
     // Least recently used first, skipping computers whose Bot waits on the member.
-    for (const row of candidates) if (!(await isAwaitingHuman(row.user_id))) return row;
+    for (const row of candidates) if (!(await isAwaitingHuman(row.id))) return row;
     return undefined;
   }
 
   async function claimSlot(row: BotComputerRow, env: ControllerEnvironment): Promise<SlotDecision> {
-    const active = (await store.listByStates(['starting', 'running', 'stopping'])).filter(
-      (r) => r.user_id !== row.user_id,
-    );
+    const active = (await store.listByStates(['starting', 'running', 'stopping'])).filter((r) => r.id !== row.id);
     if (active.length < env.maxRunning) {
-      const claimed = await store.transition(row.user_id, row.version, ['absent', 'error'], {
+      const claimed = await store.transition(row.id, row.version, ['absent', 'error'], {
         state: 'starting',
         state_reason: null,
       });
@@ -553,7 +551,7 @@ export function createComputerController(deps: ComputerControllerDeps) {
     }
     const victim = await pickEvictable(active);
     if (victim) {
-      const stopping = await store.transition(victim.user_id, victim.version, ['running'], {
+      const stopping = await store.transition(victim.id, victim.version, ['running'], {
         state: 'stopping',
         state_reason: 'lru',
       });
@@ -564,18 +562,18 @@ export function createComputerController(deps: ComputerControllerDeps) {
 
   async function finishStop(row: BotComputerRow, reason: StopReason, startedAt: number): Promise<void> {
     await stopQuietly(row.container_name);
-    const absent = await store.transition(row.user_id, row.version, ['stopping'], {
+    const absent = await store.transition(row.id, row.version, ['stopping'], {
       state: 'absent',
       state_reason: reason,
     });
-    lastTouch.delete(row.user_id);
+    lastTouch.delete(row.id);
     logger.info('[bots-computer] stop', {
-      user_id: row.user_id,
+      computer_id: row.id,
       container: row.container_name,
       reason,
       duration_ms: clock.now() - startedAt,
     });
-    deps.onStopped?.(row.user_id, reason);
+    deps.onStopped?.(row.id, reason);
     emitState(absent);
   }
 
@@ -597,11 +595,11 @@ export function createComputerController(deps: ComputerControllerDeps) {
         lang: await langFor(row.user_id, config),
         fresh: opts.fresh,
         // Only for a member who had a computer before: a first computer starts empty.
-        ...(deps.backups && row.last_started_at ? { restore: () => deps.backups!.restoreSource(row.user_id) } : {}),
+        ...(deps.backups && row.last_started_at ? { restore: () => deps.backups!.restoreSource(row.id) } : {}),
       });
       const product = await waitReady(started.ref);
       await verifyEgress(started.ref, env.egressProbe ?? [], env.egressProbeUsers ?? ['agent']);
-      const running = await store.transition(row.user_id, row.version, ['starting'], {
+      const running = await store.transition(row.id, row.version, ['starting'], {
         state: 'running',
         state_reason: null,
         last_started_at: nowIso(),
@@ -613,8 +611,8 @@ export function createComputerController(deps: ComputerControllerDeps) {
         await abandonQuietly(started);
         throw new ComputerUnavailableError('stopped', 'The computer was stopped while it was starting');
       }
-      lastTouch.delete(row.user_id);
-      await touchThrottled(row.user_id);
+      lastTouch.delete(row.id);
+      await touchThrottled(row.id);
       // After `last_started_at`: the member's view tells this run began from the backup.
       if (started.restoredFrom) {
         await deps.backups?.restored(started.restoredFrom).catch((err) => {
@@ -624,7 +622,7 @@ export function createComputerController(deps: ComputerControllerDeps) {
         });
       }
       logger.info('[bots-computer] start', {
-        user_id: row.user_id,
+        computer_id: row.id,
         container: running.container_name,
         duration_ms: clock.now() - startedAt,
         browser: product,
@@ -645,11 +643,9 @@ export function createComputerController(deps: ComputerControllerDeps) {
       else await discardQuietly(row.container_name);
       const reason =
         err instanceof ComputerRuntimeError || err instanceof ComputerStartError ? err.reason : 'start_failed';
-      emitState(
-        await store.transition(row.user_id, row.version, ['starting'], { state: 'error', state_reason: reason }),
-      );
+      emitState(await store.transition(row.id, row.version, ['starting'], { state: 'error', state_reason: reason }));
       logger.warn('[bots-computer] start failed', {
-        user_id: row.user_id,
+        computer_id: row.id,
         container: started?.ref ?? row.container_name,
         reason,
         error: toErrorMessage(err),
@@ -673,18 +669,18 @@ export function createComputerController(deps: ComputerControllerDeps) {
     const stopping = row.state === 'stopping';
     if (stopping) await stopQuietly(row.container_name);
     else await discardQuietly(row.container_name);
-    const settled = await store.transition(row.user_id, row.version, [row.state], {
+    const settled = await store.transition(row.id, row.version, [row.state], {
       state: 'absent',
       state_reason: stopping ? row.state_reason : 'start_interrupted',
     });
     if (!settled) return undefined;
-    lastTouch.delete(row.user_id);
+    lastTouch.delete(row.id);
     logger.info('[bots-computer] settled an interrupted transition', {
-      user_id: row.user_id,
+      computer_id: row.id,
       from: row.state,
       reason: settled.state_reason,
     });
-    deps.onStopped?.(row.user_id, settled.state_reason ?? 'interrupted');
+    deps.onStopped?.(row.id, settled.state_reason ?? 'interrupted');
     emitState(settled);
     return settled;
   }
@@ -704,20 +700,20 @@ export function createComputerController(deps: ComputerControllerDeps) {
 
   /** One attempt under the member's lock: running, start it, or report why not yet. */
   async function attemptStart(
-    userId: string,
+    computerId: string,
     env: ControllerEnvironment,
     opts: EnsureRunningOptions,
   ): Promise<Attempt> {
     // Under the lock, so ordered after a suspend / feature-off and its purge:
     // a Bot action already in flight cannot bring the computer back.
-    const active = await deps.userIsActive(userId);
+    const active = await deps.userIsActive(parseComputerId(computerId).userId);
     if (active !== true) {
       throw new ComputerUnavailableError(
         'disabled',
-        'Bots are not enabled for this account, so its computer cannot start',
+        'Agents are not enabled for this account, so its computer cannot start',
       );
     }
-    let row: BotComputerRow | undefined = await ensureRow(userId, env.config.namespace);
+    let row: BotComputerRow | undefined = await ensureRow(computerId, env.config.namespace);
     if (row.state === 'running') return { kind: 'running', row };
     if (row.state === 'stopping' && ageMs(row.updated_at) < STALE_TRANSITION_MS) return { kind: 'wait' };
     if (row.state === 'stopping' || row.state === 'starting') {
@@ -739,11 +735,11 @@ export function createComputerController(deps: ComputerControllerDeps) {
 
     if (!opts.allowOverQuota && overQuota(row)) {
       if (row.state_reason !== 'over_quota') {
-        emitState(await store.transition(userId, row.version, ['absent', 'error'], { state_reason: 'over_quota' }));
+        emitState(await store.transition(computerId, row.version, ['absent', 'error'], { state_reason: 'over_quota' }));
       }
       throw new ComputerUnavailableError(
         'over_quota',
-        'The computer is out of disk space. Open it from the Bots page and clear Downloads, or reset it.',
+        'The computer is out of disk space. Open it and clear Downloads, or reset it.',
       );
     }
 
@@ -763,28 +759,30 @@ export function createComputerController(deps: ComputerControllerDeps) {
       const stopStartedAt = clock.now();
       emitState(decision.victim);
       await finishStop(decision.victim, 'lru', stopStartedAt);
-      const refreshed = await store.get(userId);
+      const refreshed = await store.get(computerId);
       if (!refreshed) return { kind: 'wait' };
       row = refreshed;
     }
     return { kind: 'queued' };
   }
 
-  async function ensureRunning(userId: string, opts: EnsureRunningOptions = {}): Promise<BotComputerRow> {
-    const existing = await store.get(userId);
+  async function ensureRunning(computerId: string, opts: EnsureRunningOptions = {}): Promise<BotComputerRow> {
+    const existing = await store.get(computerId);
     if (existing?.state === 'running') {
-      await touchThrottled(userId);
+      await touchThrottled(computerId);
       return existing;
     }
-    return await ensureMutex.run(userId, async () => {
+    return await ensureMutex.run(computerId, async () => {
       const env = await deps.environment();
       const deadline = clock.now() + QUEUE_WAIT_MS;
       try {
         for (;;) {
           if (opts.signal?.aborted) throw abortError();
-          const attempt = await startSlots.run(() => store.withUserLock(userId, () => attemptStart(userId, env, opts)));
+          const attempt = await startSlots.run(() =>
+            store.withComputerLock(computerId, () => attemptStart(computerId, env, opts)),
+          );
           if (attempt.kind === 'running') {
-            await touchThrottled(userId);
+            await touchThrottled(computerId);
             return attempt.row;
           }
           if (clock.now() >= deadline) {
@@ -794,13 +792,13 @@ export function createComputerController(deps: ComputerControllerDeps) {
             );
           }
           if (attempt.kind === 'queued') {
-            if (!waiters.includes(userId)) waiters.push(userId);
-            opts.onQueued?.(waiters.indexOf(userId) + 1);
+            if (!waiters.includes(computerId)) waiters.push(computerId);
+            opts.onQueued?.(waiters.indexOf(computerId) + 1);
           }
           await clock.sleep(attempt.kind === 'queued' ? 2_000 : 1_000, opts.signal);
         }
       } finally {
-        const index = waiters.indexOf(userId);
+        const index = waiters.indexOf(computerId);
         if (index >= 0) waiters.splice(index, 1);
       }
     });
@@ -812,12 +810,12 @@ export function createComputerController(deps: ComputerControllerDeps) {
    * where finishing it here is safe: stop and remove are idempotent and the
    * row only moves by compare-and-set.
    */
-  async function stopLocked(userId: string, reason: StopReason, opts: { force?: boolean } = {}): Promise<void> {
-    const row = await store.get(userId);
+  async function stopLocked(computerId: string, reason: StopReason, opts: { force?: boolean } = {}): Promise<void> {
+    const row = await store.get(computerId);
     if (!row || row.state === 'absent') return;
     if (row.state === 'stopping' && !opts.force && ageMs(row.updated_at) < STALE_TRANSITION_MS) return;
     const startedAt = clock.now();
-    const stopping = await store.transition(userId, row.version, ['running', 'starting', 'error', 'stopping'], {
+    const stopping = await store.transition(computerId, row.version, ['running', 'starting', 'error', 'stopping'], {
       state: 'stopping',
       state_reason: reason,
     });
@@ -827,8 +825,8 @@ export function createComputerController(deps: ComputerControllerDeps) {
   }
 
   /** Stop the member's computer (their files kept). Safe to call in any state. */
-  async function stop(userId: string, reason: StopReason): Promise<void> {
-    await store.withUserLock(userId, () => stopLocked(userId, reason));
+  async function stop(computerId: string, reason: StopReason): Promise<void> {
+    await store.withComputerLock(computerId, () => stopLocked(computerId, reason));
   }
 
   /**
@@ -837,39 +835,42 @@ export function createComputerController(deps: ComputerControllerDeps) {
    * waiting either ran before (its computer is removed here) or runs after the
    * row is gone (and gets a fresh row and a fresh, empty home).
    */
-  async function purge(userId: string, opts: { wipe: boolean; reason?: StopReason }): Promise<void> {
+  async function purge(computerId: string, opts: { wipe: boolean; reason?: StopReason }): Promise<void> {
     const reason = opts.reason ?? 'purge';
-    await store.withUserLock(userId, async () => {
-      await stopLocked(userId, reason, { force: opts.wipe });
+    await store.withComputerLock(computerId, async () => {
+      await stopLocked(computerId, reason, { force: opts.wipe });
       if (!opts.wipe) return;
-      const row = await store.get(userId);
+      const row = await store.get(computerId);
       if (!row) return;
       await host.wipe(row);
-      await store.delete(userId);
+      await store.delete(computerId);
       // A wiped home is never restored: its backups go with it (a member deleted while the host was down is swept).
-      await deps.backups?.deleteAll(userId);
-      logger.info('[bots-computer] wiped', { user_id: userId, container: row.container_name, host: host.kind });
+      await deps.backups?.deleteAll(computerId);
+      logger.info('[bots-computer] wiped', { computer_id: computerId, container: row.container_name, host: host.kind });
     });
-    lastTouch.delete(userId);
+    lastTouch.delete(computerId);
   }
 
   /** Rebuild from scratch: stop, optionally wipe the home, start again (current image and settings). */
-  async function reset(userId: string, opts: { wipe: boolean }): Promise<BotComputerRow> {
-    if (opts.wipe) await purge(userId, { wipe: true, reason: 'reset' });
-    else await stop(userId, 'reset');
-    return await ensureRunning(userId, { allowOverQuota: true });
+  async function reset(computerId: string, opts: { wipe: boolean }): Promise<BotComputerRow> {
+    if (opts.wipe) await purge(computerId, { wipe: true, reason: 'reset' });
+    else await stop(computerId, 'reset');
+    return await ensureRunning(computerId, { allowOverQuota: true });
   }
 
   /** An exec found the computer gone or stopped: mark the row so the next use rebuilds it. */
-  async function markBroken(userId: string, reason: string): Promise<void> {
-    const row = await store.get(userId);
+  async function markBroken(computerId: string, reason: string): Promise<void> {
+    const row = await store.get(computerId);
     if (!row || row.state !== 'running') return;
-    const broken = await store.transition(userId, row.version, ['running'], { state: 'error', state_reason: reason });
+    const broken = await store.transition(computerId, row.version, ['running'], {
+      state: 'error',
+      state_reason: reason,
+    });
     if (!broken) return;
     await discardQuietly(row.container_name);
-    lastTouch.delete(userId);
-    logger.warn('[bots-computer] exited', { user_id: userId, container: row.container_name, reason });
-    deps.onStopped?.(userId, reason);
+    lastTouch.delete(computerId);
+    logger.warn('[bots-computer] exited', { computer_id: computerId, container: row.container_name, reason });
+    deps.onStopped?.(computerId, reason);
     emitState(broken);
   }
 
@@ -890,18 +891,18 @@ export function createComputerController(deps: ComputerControllerDeps) {
   async function jobsKeepAwake(row: BotComputerRow, env: ControllerEnvironment): Promise<boolean> {
     const maxMs = env.config.jobMaxHours * 3_600_000;
     if (!deps.runningJobs || maxMs <= 0 || clock.now() - Date.parse(row.last_active_at) >= maxMs) {
-      jobQueryFailures.delete(row.user_id);
+      jobQueryFailures.delete(row.id);
       return false;
     }
     try {
       const running = (await deps.runningJobs(row.container_name)) > 0;
-      jobQueryFailures.delete(row.user_id);
+      jobQueryFailures.delete(row.id);
       return running;
     } catch (err) {
-      const failures = (jobQueryFailures.get(row.user_id) ?? 0) + 1;
-      jobQueryFailures.set(row.user_id, failures);
+      const failures = (jobQueryFailures.get(row.id) ?? 0) + 1;
+      jobQueryFailures.set(row.id, failures);
       logger.warn(
-        `[bots-computer] could not read the background jobs of ${row.user_id} (${failures}/${JOB_QUERY_GRACE}): ${toErrorMessage(err)}`,
+        `[bots-computer] could not read the background jobs of ${row.id} (${failures}/${JOB_QUERY_GRACE}): ${toErrorMessage(err)}`,
       );
       return failures < JOB_QUERY_GRACE;
     }
@@ -918,7 +919,7 @@ export function createComputerController(deps: ComputerControllerDeps) {
     try {
       return (await deps.backups.beforeSleep(row, env.idleMinutes)) === 'wait';
     } catch (err) {
-      logger.warn(`[bots-computer] backup check for ${row.user_id} failed: ${toErrorMessage(err)}`);
+      logger.warn(`[bots-computer] backup check for ${row.id} failed: ${toErrorMessage(err)}`);
       return false;
     }
   }
@@ -929,9 +930,9 @@ export function createComputerController(deps: ComputerControllerDeps) {
     for (const candidate of await store.listIdle(cutoff)) {
       if (await jobsKeepAwake(candidate, env)) continue;
       if (await backupKeepsAwake(candidate, env)) continue;
-      await store.withUserLock(candidate.user_id, async () => {
+      await store.withComputerLock(candidate.id, async () => {
         // Re-check under the lock: a Bot or a viewer may have just used it.
-        const row = await store.get(candidate.user_id);
+        const row = await store.get(candidate.id);
         // Timestamps come back in Postgres' text format: compare instants, never strings.
         const cutoffMs = Date.parse(cutoff);
         if (
@@ -944,9 +945,9 @@ export function createComputerController(deps: ComputerControllerDeps) {
           return;
         }
         // A Bot waits on the member (sign-in or take-over card): keep its page.
-        if (await isAwaitingHuman(row.user_id)) return;
+        if (await isAwaitingHuman(row.id)) return;
         const startedAt = clock.now();
-        const stopping = await store.transition(row.user_id, row.version, ['running'], {
+        const stopping = await store.transition(row.id, row.version, ['running'], {
           state: 'stopping',
           state_reason: 'idle',
         });
@@ -967,9 +968,9 @@ export function createComputerController(deps: ComputerControllerDeps) {
   async function settleIfDead(snapshot: BotComputerRow): Promise<boolean> {
     const age = ageMs(snapshot.updated_at);
     if (snapshot.state === 'stopping' && age < STALE_TRANSITION_MS) return false;
-    if (snapshot.state === 'starting' && !store.tryWithUserLock && age < START_DEADLINE_MS) return false;
-    const result = await withFreeUserLock(snapshot.user_id, async () => {
-      const row = await store.get(snapshot.user_id);
+    if (snapshot.state === 'starting' && !store.tryWithComputerLock && age < START_DEADLINE_MS) return false;
+    const result = await withFreeComputerLock(snapshot.id, async () => {
+      const row = await store.get(snapshot.id);
       if (!row || row.version !== snapshot.version || row.state !== snapshot.state) return false;
       return (await settleDead(row)) !== undefined;
     });
@@ -982,7 +983,7 @@ export function createComputerController(deps: ComputerControllerDeps) {
         await settleIfDead(row);
       } catch (err) {
         reportRuntime(err);
-        logger.warn(`[bots-computer] could not settle ${row.user_id} (${row.state}): ${toErrorMessage(err)}`);
+        logger.warn(`[bots-computer] could not settle ${row.id} (${row.state}): ${toErrorMessage(err)}`);
       }
     }
   }
@@ -1019,7 +1020,7 @@ export function createComputerController(deps: ComputerControllerDeps) {
         if (host.keepAlive) {
           void host.keepAlive(row, env.idleMinutes).catch((err: unknown) => {
             reportRuntime(err);
-            logger.warn(`[bots-computer] keep-alive failed for ${row.user_id}: ${toErrorMessage(err)}`);
+            logger.warn(`[bots-computer] keep-alive failed for ${row.id}: ${toErrorMessage(err)}`);
           });
         }
         // Over the soft limit: re-measure often, so a cleanup unblocks automatic starts.
@@ -1033,23 +1034,23 @@ export function createComputerController(deps: ComputerControllerDeps) {
         continue;
       }
       const verdict = await verdictFor(row.container_name, instance);
-      const settled = await store.transition(row.user_id, row.version, ['running'], {
+      const settled = await store.transition(row.id, row.version, ['running'], {
         state: verdict.state,
         state_reason: verdict.reason,
       });
       if (!settled) continue;
       if (instance) await discardQuietly(instance.ref);
-      lastTouch.delete(row.user_id);
+      lastTouch.delete(row.id);
       if (verdict.state === 'error') {
-        logger.warn(`[bots-computer] ${verdict.reason}`, { user_id: row.user_id, container: row.container_name });
+        logger.warn(`[bots-computer] ${verdict.reason}`, { computer_id: row.id, container: row.container_name });
       } else {
         logger.info('[bots-computer] went to sleep on its own', {
-          user_id: row.user_id,
+          computer_id: row.id,
           container: row.container_name,
           reason: verdict.reason,
         });
       }
-      deps.onStopped?.(row.user_id, verdict.reason);
+      deps.onStopped?.(row.id, verdict.reason);
       emitState(settled);
     }
   }
@@ -1066,7 +1067,7 @@ export function createComputerController(deps: ComputerControllerDeps) {
     const env = await deps.environment();
     const namespace = env.config.namespace;
     const rows = await store.list();
-    const byUser = new Map(rows.map((r) => [r.user_id, r]));
+    const byComputer = new Map(rows.map((r) => [r.id, r]));
     const instances = await host.list(namespace);
     const byRef = new Map(instances.map((i) => [i.ref, i]));
     let removedContainers = 0;
@@ -1074,15 +1075,15 @@ export function createComputerController(deps: ComputerControllerDeps) {
 
     // Computers no row points at (deleted member, crashed start under an old name).
     for (const instance of instances) {
-      const userId = instance.userId;
-      const snapshot = byUser.get(userId);
+      const computerId = instance.computerId;
+      const snapshot = byComputer.get(computerId);
       if (snapshot && snapshot.container_name === instance.ref) continue;
-      if (!userId) {
+      if (!computerId) {
         if (await removeOrphanQuietly(instance, instances)) removedContainers++;
         continue;
       }
-      const result = await withFreeUserLock(userId, async () => {
-        const row = await store.get(userId);
+      const result = await withFreeComputerLock(computerId, async () => {
+        const row = await store.get(computerId);
         if (row && row.container_name === instance.ref) return false; // started meanwhile: it is theirs
         return await removeOrphanQuietly(instance, instances);
       });
@@ -1093,7 +1094,7 @@ export function createComputerController(deps: ComputerControllerDeps) {
       if (snapshot.state === 'absent') continue;
       const active = await deps.userIsActive(snapshot.user_id);
       if (active !== true) {
-        await stop(snapshot.user_id, 'suspend');
+        await stop(snapshot.id, 'suspend');
         removedContainers++;
         continue;
       }
@@ -1107,9 +1108,9 @@ export function createComputerController(deps: ComputerControllerDeps) {
       if (snapshot.state === 'error' && !seen) continue;
       // Without a try-lock, a row touched in the last minute may have its lock
       // held by a start at work; leave it to the next pass rather than wait.
-      if (!store.tryWithUserLock && ageMs(snapshot.updated_at) < STALE_TRANSITION_MS) continue;
-      const result = await withFreeUserLock(snapshot.user_id, async () => {
-        const row = await store.get(snapshot.user_id);
+      if (!store.tryWithComputerLock && ageMs(snapshot.updated_at) < STALE_TRANSITION_MS) continue;
+      const result = await withFreeComputerLock(snapshot.id, async () => {
+        const row = await store.get(snapshot.id);
         if (!row || row.version !== snapshot.version) return false;
         const state = await host.inspect(row.container_name);
         if (row.state === 'running' && state?.running) return false;
@@ -1118,17 +1119,17 @@ export function createComputerController(deps: ComputerControllerDeps) {
           row.state === 'running'
             ? await verdictFor(
                 row.container_name,
-                state ? { ref: row.container_name, userId: row.user_id, running: false } : undefined,
+                state ? { ref: row.container_name, computerId: row.id, running: false } : undefined,
               )
             : { state: 'error', reason: row.state_reason ?? 'interrupted' };
-        const settled = await store.transition(row.user_id, row.version, [row.state], {
+        const settled = await store.transition(row.id, row.version, [row.state], {
           state: row.state === 'error' ? 'error' : verdict.state === 'error' ? 'absent' : verdict.state,
           state_reason: verdict.reason,
         });
         if (!settled) return false;
         if (state) await discardQuietly(row.container_name);
-        lastTouch.delete(row.user_id);
-        if (row.state === 'running') deps.onStopped?.(row.user_id, verdict.reason);
+        lastTouch.delete(row.id);
+        if (row.state === 'running') deps.onStopped?.(row.id, verdict.reason);
         emitState(settled);
         return true;
       });
@@ -1139,7 +1140,7 @@ export function createComputerController(deps: ComputerControllerDeps) {
     // suspended; deleting the member cascades the row away, and the files follow.
     let removedVolumes = 0;
     try {
-      removedVolumes = await host.sweepStorage(namespace, (userId) => store.get(userId));
+      removedVolumes = await host.sweepStorage(namespace, (computerId) => store.get(computerId));
     } catch (err) {
       reportRuntime(err);
       logger.warn(`[bots-computer] could not sweep orphan storage: ${toErrorMessage(err)}`);
@@ -1187,7 +1188,7 @@ export function createComputerController(deps: ComputerControllerDeps) {
       });
       const reading = result.code === 0 ? parseDfOutput(result.stdout.toString('utf8'), clock.now()) : null;
       if (!reading) {
-        logger.warn('[bots-computer] could not read the Docker disk free space', { user_id: row.user_id });
+        logger.warn('[bots-computer] could not read the Docker disk free space', { computer_id: row.id });
         return;
       }
       if (reading.freeRatio < HOST_DISK_MIN_FREE_RATIO) {
@@ -1212,8 +1213,8 @@ export function createComputerController(deps: ComputerControllerDeps) {
    * decides on this reading.
    */
   async function measureDisk(row: BotComputerRow): Promise<void> {
-    if (measuring.has(row.user_id)) return;
-    measuring.add(row.user_id);
+    if (measuring.has(row.id)) return;
+    measuring.add(row.id);
     // The Docker disk first: one cheap df, before the du that can take minutes.
     await measureHostDisk(row);
     try {
@@ -1232,17 +1233,17 @@ export function createComputerController(deps: ComputerControllerDeps) {
         const bytes = Number(/^(\d+)/.exec(result.stdout.toString('utf8'))?.[1] ?? NaN);
         if (Number.isFinite(bytes)) total += bytes;
       }
-      await store.setDisk(row.user_id, total);
+      await store.setDisk(row.id, total);
       if (total > DISK_SOFT_LIMIT_BYTES) {
-        logger.warn('[bots-computer] over the soft disk limit', { user_id: row.user_id, disk_bytes: total });
+        logger.warn('[bots-computer] over the soft disk limit', { computer_id: row.id, disk_bytes: total });
       }
     } catch (err) {
       reportRuntime(err);
       // Stopped since the loop listed it: the next running start measures again.
       const gone = err instanceof ComputerDockerError && (err.code === 'not_running' || err.code === 'not_found');
-      if (!gone) logger.warn(`[bots-computer] disk measurement failed for ${row.user_id}: ${toErrorMessage(err)}`);
+      if (!gone) logger.warn(`[bots-computer] disk measurement failed for ${row.id}: ${toErrorMessage(err)}`);
     } finally {
-      measuring.delete(row.user_id);
+      measuring.delete(row.id);
     }
   }
 
@@ -1262,8 +1263,8 @@ export function createComputerController(deps: ComputerControllerDeps) {
     reconcile,
     diskTick,
     /** 1-based position among this process's waiting members; null when not waiting. */
-    queuePosition(userId: string): number | null {
-      const index = waiters.indexOf(userId);
+    queuePosition(computerId: string): number | null {
+      const index = waiters.indexOf(computerId);
       return index >= 0 ? index + 1 : null;
     },
   };

@@ -20,6 +20,7 @@ import {
   isBotsApiError,
   listComputerProcesses,
   stopComputerProcess,
+  type ComputerBot,
 } from '../../lib/api/bots';
 import { formatDate, timeAgo } from '../../lib/utils';
 import { computerErrorKey, computerErrorText } from './computer-pane';
@@ -76,13 +77,15 @@ function ProcessStatus({ process }: { process: ComputerProcessView }) {
 }
 
 export interface ComputerProcessesProps {
+  /** Whose computer: an Agent's id, null (default) = the main Agent's. */
+  bot?: ComputerBot;
   /** The Processes tab is the one showing: refresh, and keep refreshing while a job runs. */
   active: boolean;
   /** A call found the computer stopped: let the owner refresh its status. */
   onStale?: () => void;
 }
 
-export function ComputerProcesses({ active, onStale }: ComputerProcessesProps) {
+export function ComputerProcesses({ bot = null, active, onStale }: ComputerProcessesProps) {
   const t = useT();
   const [processes, setProcesses] = useState<ComputerProcessView[] | null>(null);
   const [loadFailed, setLoadFailed] = useState<string | null>(null);
@@ -105,7 +108,7 @@ export function ComputerProcesses({ active, onStale }: ComputerProcessesProps) {
   const loadList = useCallback(async () => {
     setRefreshing(true);
     try {
-      const next = await listComputerProcesses();
+      const next = await listComputerProcesses(bot);
       if (!mounted.current) return;
       setProcesses(next);
       setLoadFailed(null);
@@ -116,14 +119,14 @@ export function ComputerProcesses({ active, onStale }: ComputerProcessesProps) {
     } finally {
       if (mounted.current) setRefreshing(false);
     }
-  }, [t]);
+  }, [t, bot]);
 
   const openIdRef = useRef(openId);
   openIdRef.current = openId;
   const loadLog = useCallback(
     async (id: string) => {
       try {
-        const next = await fetchComputerProcessLog(id);
+        const next = await fetchComputerProcessLog(id, undefined, bot);
         if (!mounted.current || openIdRef.current !== id) return;
         setLog(next);
         setLogFailed(null);
@@ -133,7 +136,7 @@ export function ComputerProcesses({ active, onStale }: ComputerProcessesProps) {
         }
       }
     },
-    [t],
+    [t, bot],
   );
 
   const open = processes?.find((process) => process.id === openId) ?? null;
@@ -172,7 +175,7 @@ export function ComputerProcesses({ active, onStale }: ComputerProcessesProps) {
     setConfirmStop(null);
     setStopping(process.id);
     try {
-      const { stopped } = await stopComputerProcess(process.id);
+      const { stopped } = await stopComputerProcess(process.id, bot);
       toast(
         stopped
           ? t('botsComputer.proc_stopped', { name: process.name })

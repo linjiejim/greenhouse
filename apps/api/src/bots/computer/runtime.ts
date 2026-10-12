@@ -90,6 +90,9 @@ import {
   LABEL_IMAGE_CONTRACT,
   LABEL_IMAGE_EXTRA_PACKAGES,
   LABEL_NAMESPACE,
+  computerRef,
+  computerRefForBot,
+  parseComputerId,
 } from './namespace.js';
 import { onWorkspaceConfigRefreshed } from '../../settings/workspace-config.js';
 import { checkProcessWatches, WATCH_CHECK_MS } from './process-watches.js';
@@ -608,11 +611,20 @@ async function userIsActive(userId: string): Promise<boolean | null> {
   return await userHasFeature(user.id, user.role, 'bots');
 }
 
-/** A Bot of the member waits on a secure sign-in or take-over card (see controller.ts). */
-async function awaitingHuman(userId: string): Promise<boolean> {
+/** The Agent this computer belongs to waits on a secure sign-in or take-over card (see controller.ts). */
+async function awaitingHuman(computerId: string): Promise<boolean> {
   const since = Date.now() - HUMAN_WAIT_HOLD_MS;
-  const pending = await getDb().bots.listRequests(userId, { status: 'pending', kinds: ['login', 'takeover'] });
-  return pending.some((request) => Date.parse(request.created_at) >= since);
+  const { userId } = parseComputerId(computerId);
+  const db = getDb();
+  const pending = (await db.bots.listRequests(userId, { status: 'pending', kinds: ['login', 'takeover'] })).filter(
+    (request) => Date.parse(request.created_at) >= since,
+  );
+  if (pending.length === 0) return false;
+  const bots = new Map((await db.bots.listBots(userId, { includeArchived: true })).map((bot) => [bot.id, bot]));
+  return pending.some((request) => {
+    const bot = request.bot_id ? bots.get(request.bot_id) : undefined;
+    return (bot ? computerRefForBot(userId, bot) : computerRef(userId, null)).id === computerId;
+  });
 }
 
 function notifyOwner(row: BotComputerRow): void {
@@ -620,6 +632,8 @@ function notifyOwner(row: BotComputerRow): void {
     type: 'bots:computer',
     state: row.state,
     controller: row.lease_controller,
+    computer_id: row.id,
+    bot_id: row.bot_id,
   });
 }
 
@@ -860,7 +874,7 @@ export async function initBotComputers(): Promise<void> {
     // Loaded lazily: jobs.ts sits above the runtime (it reaches containers through it).
     runningJobs: async (container) => (await import('./jobs.js')).runningJobCount(container, { host: () => host }),
     onState: notifyOwner,
-    onStopped: (userId, reason) => computerLifecycleHooks.stopped(userId, reason),
+    onStopped: (computerId, reason) => computerLifecycleHooks.stopped(computerId, reason),
     onRuntimeError,
     onHostDisk: (reading) => {
       state.hostDisk = reading;
@@ -884,7 +898,7 @@ export async function initBotComputers(): Promise<void> {
     const [{ listJobsIfRunning }, engine] = await Promise.all([import('./jobs.js'), import('../engine/index.js')]);
     await checkProcessWatches({
       store: getDb().botComputers,
-      listJobs: (userId) => listJobsIfRunning(userId),
+      listJobs: (computerId) => listJobsIfRunning(computerId),
       deliver: (sessionId, item) => engine.deliverToConversation(sessionId, item),
     });
   });
@@ -943,21 +957,25 @@ function iso(value: string | null | undefined): string | null {
   return Number.isFinite(ms) ? new Date(ms).toISOString() : null;
 }
 
-export async function computerStatusFor(userId: string): Promise<ComputerStatusView> {
+/** One computer's status (by `bot_computers.id`: the member's id for their main Agent's). */
+export async function computerStatusFor(computerId: string): Promise<ComputerStatusView> {
   const db = getDb();
-  const [row, user] = await Promise.all([db.botComputers.get(userId), db.users.getById(userId)]);
+  const ref = parseComputerId(computerId);
+  const [row, user] = await Promise.all([db.botComputers.get(computerId), db.users.getById(ref.userId)]);
   const restoredFrom =
     backups && row?.state === 'running'
-      ? await backups.restoredInto(userId, row.last_started_at).catch(() => null)
+      ? await backups.restoredInto(computerId, row.last_started_at).catch(() => null)
       : null;
   return {
     runtime: getComputerRuntime(),
+    computer_id: computerId,
+    bot_id: ref.botId,
     state: row?.state ?? 'absent',
     state_reason: row?.state_reason ?? null,
     controller: row?.lease_controller ?? 'bot',
     controller_since: iso(row?.lease_since),
     last_active_at: iso(row?.last_active_at),
-    queue_position: controller?.queuePosition(userId) ?? null,
+    queue_position: controller?.queuePosition(computerId) ?? null,
     disk_bytes: row?.disk_bytes ?? null,
     timezone: row?.timezone ?? null,
     lang: computerLang(state.config?.lang ?? null, user?.locale),
@@ -969,19 +987,26 @@ export async function computerStatusFor(userId: string): Promise<ComputerStatusV
  * An administrator's "Back up now": start the member's computer if it sleeps (it goes back
  * to sleep on its own once idle, its backup fresh), then back it up in the background.
  */
-export async function backupComputerNow(userId: string): Promise<void> {
+export async function backupComputerNow(computerId: string): Promise<void> {
   const { controller: ready } = requireComputerRuntime();
   if (!backups) throw new ComputerUnavailableError('disabled', 'Backups are off on this deployment');
-  const row = await ready.ensureRunning(userId, { allowOverQuota: true });
+  const row = await ready.ensureRunning(computerId, { allowOverQuota: true });
   void backups.start(row, 'admin');
 }
 
-/** Stop a member's computer (volume kept). No-op when there is none or computers are off. */
-export async function stopUserComputer(userId: string, reason: string): Promise<void> {
+/** Stop one computer (home kept). No-op when there is none or computers are off. */
+export async function stopComputer(computerId: string, reason: string): Promise<void> {
   if (!controller) return;
   const known = ['idle', 'lru', 'reset', 'suspend', 'admin', 'user', 'purge'] as const;
   const stopReason = (known as readonly string[]).includes(reason) ? (reason as (typeof known)[number]) : 'admin';
-  await controller.stop(userId, stopReason);
+  await controller.stop(computerId, stopReason);
+}
+
+/** Stop every computer of a member (homes kept). */
+export async function stopUserComputer(userId: string, reason: string): Promise<void> {
+  if (!controller) return;
+  const ids = new Set([userId, ...(await getDb().botComputers.listForUser(userId)).map((row) => row.id)]);
+  for (const id of ids) await stopComputer(id, reason);
 }
 
 /** Host failures under which a host call can only fail or hang: cleanup waits for reconcile. */
@@ -1000,24 +1025,46 @@ export async function purgeUserComputer(
   userId: string,
   opts: { wipe: boolean; reason?: 'suspend' | 'reset' | 'admin' },
 ): Promise<void> {
+  // Every Agent's computer of the member; the main one even before it has a row.
+  const ids = [
+    ...new Set([
+      userId,
+      ...(
+        await getDb()
+          .botComputers.listForUser(userId)
+          .catch(() => [])
+      ).map((row) => row.id),
+    ]),
+  ];
+  if ((opts.reason ?? 'suspend') !== 'reset') await cancelBackgroundTasks(userId);
+  for (const id of ids) await purgeComputer(id, opts);
+}
+
+/** One computer (an administrator's reset, an archived Agent's): see purgeUserComputer. */
+export async function purgeComputer(
+  computerId: string,
+  opts: { wipe: boolean; reason?: 'suspend' | 'reset' | 'admin' },
+): Promise<void> {
   const reason = opts.reason ?? 'suspend';
   const revocation = reason !== 'reset';
-  computerLifecycleHooks.purged(userId);
-  if (revocation) await cancelBackgroundTasks(userId);
+  computerLifecycleHooks.purged(computerId);
   if (!controller) return;
   if (state.view.state === 'unavailable' && DOCKER_DOWN.has(state.view.reason ?? '')) {
     if (!revocation) {
       throw new ComputerUnavailableError('unavailable', 'Computers are unavailable on this server right now');
     }
-    logger.warn('[bots-computer] docker is down; the computer is cleared when it is back', { user_id: userId, reason });
+    logger.warn('[bots-computer] docker is down; the computer is cleared when it is back', {
+      computer_id: computerId,
+      reason,
+    });
     return;
   }
   try {
-    await controller.purge(userId, { wipe: opts.wipe, reason });
+    await controller.purge(computerId, { wipe: opts.wipe, reason });
   } catch (err) {
     if (!revocation) throw err;
     logger.warn('[bots-computer] purge failed; reconcile clears it when the host is back', {
-      user_id: userId,
+      computer_id: computerId,
       reason,
       error: toErrorMessage(err),
     });
@@ -1108,6 +1155,10 @@ export async function adminComputersView(): Promise<{
   const knobs = await resolveComputerKnobs();
   const rows = await db.botComputers.list();
   const users = await Promise.all(rows.map((row) => db.users.getById(row.user_id)));
+  const botNames = new Map<string, string>();
+  for (const userId of new Set(rows.filter((row) => row.bot_id).map((row) => row.user_id))) {
+    for (const bot of await db.bots.listBots(userId, { includeArchived: true })) botNames.set(bot.id, bot.name);
+  }
   const running = rows.filter((row) => row.state === 'running').map((row) => row.container_name);
   let memory = new Map<string, number>();
   if (state.view.state === 'ready' && running.length > 0) {
@@ -1116,8 +1167,11 @@ export async function adminComputersView(): Promise<{
   const backupSummaries = backups ? await backups.summaries().catch(() => new Map()) : new Map();
   const computers: ComputerAdminRow[] = rows
     .map((row, index) => ({
+      computer_id: row.id,
       user_id: row.user_id,
       nickname: users[index]?.nickname || users[index]?.email || row.user_id,
+      bot_id: row.bot_id,
+      bot_name: row.bot_id ? (botNames.get(row.bot_id) ?? null) : null,
       state: row.state,
       state_reason: row.state_reason,
       controller: row.lease_controller,
@@ -1125,7 +1179,7 @@ export async function adminComputersView(): Promise<{
       last_started_at: iso(row.last_started_at),
       disk_bytes: row.disk_bytes,
       memory_bytes: memory.get(row.container_name) ?? null,
-      backup: backupView(backupSummaries.get(row.user_id)),
+      backup: backupView(backupSummaries.get(row.id)),
     }))
     .sort((a, b) => Date.parse(b.last_active_at ?? '') - Date.parse(a.last_active_at ?? ''));
   const effective = state.config

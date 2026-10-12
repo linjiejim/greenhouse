@@ -192,6 +192,7 @@ describe('deciding a tables_plan request', () => {
       sessionId: conversationId,
       item: {
         kind: 'continue',
+        author_user_id: user.id,
         botId: bot.id,
         eventText: '已应用表格变更：跑腿登记',
         event: { kind: 'request', request_id: request.id, request_kind: 'tables_plan', bot_id: bot.id },
@@ -199,6 +200,25 @@ describe('deciding a tables_plan request', () => {
     });
     expect(delivered[0]!.item.note).toContain(`app "app" = ${app!.id}`);
     expect(delivered[0]!.item.note).toContain(`base "b" = ${base!.id}`);
+  });
+
+  it('applies a room participant’s plan only for them and attributes the wake-up to them', async () => {
+    const creator = await createInternalTestUser(db, { email: `plan-room-owner-${Date.now()}@test.local` });
+    const room = await db.bots.createRoom({ creatorId: creator.id, participantIds: [user.id] });
+    await db.bots.addRoomAgent(room.session_id, bot.id, user.id);
+    conversationId = room.session_id;
+    const request = await propose();
+
+    await expect(decideBotRequest(creator.id, request.id, { decision: 'approve' }, db)).rejects.toMatchObject({
+      status: 404,
+    });
+    const settled = await decideBotRequest(user.id, request.id, { decision: 'approve' }, db);
+    expect(JSON.parse(settled.result!)).toMatchObject({ state: 'applied', applied: 3 });
+    expect(await basesNamed('Errands')).toEqual([expect.objectContaining({ owner_id: user.id })]);
+    expect(delivered[0]).toMatchObject({
+      sessionId: room.session_id,
+      item: { kind: 'continue', author_user_id: user.id, botId: bot.id },
+    });
   });
 
   it('applies once on a double click — in this process and across slots', async () => {

@@ -110,6 +110,7 @@ export async function openBotsChat({
   message,
   images,
   mentions,
+  model,
   signal,
 }: {
   sessionId: string;
@@ -117,13 +118,16 @@ export async function openBotsChat({
   images?: Array<{ id: string; url: string }>;
   /** Bot ids the member addressed (`@Name`, or a leading "Name:"). */
   mentions?: string[];
+  /** A separate chat's model (the API remembers it on the chat); a DM answers on its Agent's own. */
+  model?: string;
   signal?: AbortSignal;
 }): Promise<BotsChatOpenResult> {
   const messagePayload: ChatRequestMessage = { role: 'user', content: message };
   if (images && images.length > 0) messagePayload.images = images;
-  // The Bots page has no side pane, so it never asks for html-preview.
+  // html-preview is declared only while the page hosts the side pane (webRichBlocks reads it).
   const body: ChatRequestBody = { session_id: sessionId, messages: [messagePayload], rich_blocks: webRichBlocks() };
   if (mentions && mentions.length > 0) body.mentions = mentions;
+  if (model) body.model = model;
   const wsId = useUIStore.getState().activeWorkspace;
   if (wsId) body.workspace_id = wsId;
 
@@ -137,23 +141,56 @@ export async function openBotsChat({
     await res.body?.cancel().catch(() => {});
     return { queued: true };
   }
-  if (!res.ok) {
-    const raw = await res.text();
-    let reason = raw;
-    let code: string | null = null;
-    try {
-      const parsed = JSON.parse(raw) as { error?: unknown; code?: unknown };
-      if (typeof parsed.error === 'string') reason = parsed.error;
-      if (typeof parsed.code === 'string') code = parsed.code;
-    } catch {
-      /* not JSON — keep the raw body */
-    }
-    // A Bots refusal carries a code (409 `bot_archived` / `group_closed`:
-    // nobody here can reply) the page turns into its read-only state.
-    throw new BotsApiError(reason || `Chat error ${res.status}`, res.status, code);
-  }
+  // A Bots refusal carries a code (409 `bot_archived` / `group_closed`:
+  // nobody here can reply) the page turns into its read-only state.
+  if (!res.ok) throw await botsStreamFailure(res);
   const reader = res.body!.getReader();
   return { queued: false, events: requireChatStreamFinish(readNdjsonStream<StreamEvent>(reader)) };
+}
+
+/**
+ * Edit the last member message of a separate chat and answer it again (`content`), or just answer
+ * it again (no `content`) — spec 20261011-agent-first-class D23. Same NDJSON run stream as a send
+ * (reattachable through `GET /api/chat/runs/:id/stream`). Refusals are `BotsApiError`s: 409
+ * `busy` / `not_last` / `requests_pending` / `not_task_chat` / `bot_archived`, 404 `not_found`.
+ */
+export async function openBotsRewind({
+  sessionId,
+  messageId,
+  content,
+  signal,
+}: {
+  sessionId: string;
+  messageId: string;
+  content?: string;
+  signal?: AbortSignal;
+}): Promise<AsyncGenerator<StreamEvent>> {
+  const body: Record<string, unknown> = { message_id: messageId, rich_blocks: webRichBlocks() };
+  if (content !== undefined) body.content = content;
+  const res = await authFetch(`${BASE}/api/bots/conversations/${encodeURIComponent(sessionId)}/rewind`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+    signal,
+  });
+  if (!res.ok) throw await botsStreamFailure(res);
+  const reader = res.body!.getReader();
+  return requireChatStreamFinish(readNdjsonStream<StreamEvent>(reader));
+}
+
+/** A refused Bots stream request: the server's `{ error, code? }` (or raw text) as a BotsApiError. */
+async function botsStreamFailure(res: Response): Promise<BotsApiError> {
+  const raw = await res.text();
+  let reason = raw;
+  let code: string | null = null;
+  try {
+    const parsed = JSON.parse(raw) as { error?: unknown; code?: unknown };
+    if (typeof parsed.error === 'string') reason = parsed.error;
+    if (typeof parsed.code === 'string') code = parsed.code;
+  } catch {
+    /* not JSON — keep the raw body */
+  }
+  return new BotsApiError(reason || `Chat error ${res.status}`, res.status, code);
 }
 
 // ─── Background Runs (reconnectable generations) ────────────

@@ -12,7 +12,12 @@ const bots = new Map<string, BotView>(
     ] as const
   ).map(([id, name, status]) => [id, { id, name, status } as BotView]),
 );
-const copy = { unknownBot: 'Deleted Bot', group: 'Group', archived: (name: string) => `${name} (archived)` };
+const copy = {
+  unknownBot: 'Deleted Bot',
+  group: 'Group',
+  chat: 'New chat',
+  archived: (name: string) => `${name} (archived)`,
+};
 const member = (bot_id: string, position: number) => ({ bot_id, role: 'member' as const, position });
 
 describe('Bots navigation helpers', () => {
@@ -49,6 +54,24 @@ describe('Bots navigation helpers', () => {
       'Ivy, Sage',
     );
     expect(conversationTitle({ kind: 'group', title: '', owner_bot_id: null, members: [] }, bots, copy)).toBe('Group');
+  });
+
+  it('names a separate chat by its own title, "New chat" until it has one — never after its Agent', () => {
+    expect(
+      conversationTitle({ kind: 'task', title: ' Q3 pricing ', owner_bot_id: 'bot_ivy', members: [] }, bots, copy),
+    ).toBe('Q3 pricing');
+    expect(conversationTitle({ kind: 'task', title: null, owner_bot_id: 'bot_ivy', members: [] }, bots, copy)).toBe(
+      'New chat',
+    );
+    expect(conversationTitle({ kind: 'task', title: '  ', owner_bot_id: 'bot_old', members: [] }, bots, copy)).toBe(
+      'New chat',
+    );
+  });
+
+  it('lets a separate chat take messages while its Agent is active', () => {
+    const active = new Set(['bot_ivy']);
+    expect(conversationReplyable({ kind: 'task', owner_bot_id: 'bot_ivy' }, active)).toBe(true);
+    expect(conversationReplyable({ kind: 'task', owner_bot_id: 'bot_old' }, active)).toBe(false);
   });
 
   it('lets only a live DM take messages: an archived Bot’s DM and every group chat are read-only', () => {

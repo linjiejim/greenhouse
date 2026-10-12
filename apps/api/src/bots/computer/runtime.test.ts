@@ -14,7 +14,8 @@ vi.mock('@greenhouse/db', () => ({
       list: async () => [...rows.values()],
       listByStates: async (states: string[]) => [...rows.values()].filter((r) => states.includes(String(r.state))),
       get: async (userId: string) => rows.get(userId),
-      withUserLock: async <T>(_userId: string, fn: () => Promise<T>) => await fn(),
+      listForUser: async (userId: string) => [...rows.values()].filter((r) => (r.user_id ?? r.id) === userId),
+      withComputerLock: async <T>(_userId: string, fn: () => Promise<T>) => await fn(),
       transition: async (userId: string, version: number, from: string[], patch: Record<string, unknown>) => {
         const row = rows.get(userId);
         if (!row || row.version !== version || !from.includes(String(row.state))) return undefined;
@@ -405,6 +406,7 @@ describe('computer runtime state', () => {
     });
     await readyDevRuntime(client);
     rows.set('leaver', {
+      id: 'leaver',
       user_id: 'leaver',
       state: 'running',
       state_reason: null,

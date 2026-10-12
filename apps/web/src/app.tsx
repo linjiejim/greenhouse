@@ -64,7 +64,7 @@ import {
 import { ActionConfirmDialog } from './components/app/action-confirm-dialog';
 import { DesktopKnowledgeSearchBridge } from './components/app/desktop-knowledge-search-bridge';
 import {
-  ChatHistoryPanel,
+  ConversationsSidebarPanel,
   KnowledgeNavPanel,
   MobileAppsSection,
   MobilePinnedSection,
@@ -92,7 +92,6 @@ import { canUseFeature } from './lib/features';
 import { useBotsSync } from './components/bots/use-bots-sync';
 import { useBotsStore } from './components/bots/bots-store';
 import { useAppsStore } from './stores/apps-store';
-import { BotsSidebarPanel } from './components/bots/bots-sidebar-panel';
 import { botsConversationHash } from './components/bots/navigation';
 
 /**
@@ -548,6 +547,11 @@ function App() {
   );
 }
 
+/** No route in the address at all (a fresh tab, a bare bookmark) — as opposed to an explicit `#/chat`. */
+function isRootHash(hash: string): boolean {
+  return hash === '' || hash === '#' || hash === '#/';
+}
+
 // ─── App Shell — new sidebar-first layout ────────────────
 
 interface AppShellProps {
@@ -573,6 +577,13 @@ function AppShell({ route, subPath, params, extensionRoute }: AppShellProps) {
   useBotsSync(botsEnabled);
   const botsPending = useBotsStore((state) => state.pending);
   const botsSessionIds = useBotsStore((state) => state.knownSessionIds);
+  // The main thread is the default entry (spec 20261011-agent-first-class §3.1): with Agent
+  // threads, a bare address lands on `#/bots`, whose landing opens the member's DM with their
+  // main Agent. An explicit `#/chat` stays the new-chat page (the workbench is its empty state).
+  const landOnMainThread = botsEnabled && route === 'chat' && isRootHash(window.location.hash);
+  useEffect(() => {
+    if (landOnMainThread) window.location.replace('#/bots');
+  }, [landOnMainThread]);
   const [chatLaunchRequest, setChatLaunchRequest] = useState<AssistantLaunchRequest | null>(null);
   const chatLaunchIdRef = useRef(0);
 
@@ -679,7 +690,7 @@ function AppShell({ route, subPath, params, extensionRoute }: AppShellProps) {
     applications: orderedApplications,
     chatLabel: t('app.chat'),
     skillhubLabel: t('app.skillhub'),
-    bots: botsEnabled ? { label: t('bots.title'), badge: botsPending } : null,
+    bots: botsEnabled ? { badge: botsPending } : null,
     apps: appsEnabled ? { label: t('apps.title') } : null,
   });
   return (
@@ -770,20 +781,15 @@ function AppShell({ route, subPath, params, extensionRoute }: AppShellProps) {
                     className="pb-2"
                   />
                   <div className="mx-3 border-t border-edge" />
-                  {route === 'chat' ? (
+                  {route === 'chat' || route === 'bots' ? (
+                    // On a phone the one conversations list lives here, as in the desktop sidebar.
                     <div className="flex min-h-0 flex-1 flex-col pt-1">
-                      <ChatHistoryPanel
-                        currentSessionId={currentSessionId}
-                        onSelectSession={(sessionId) => {
-                          handleSelectSession(sessionId);
-                          setNavOpen(false);
-                        }}
+                      <ConversationsSidebarPanel
+                        currentSessionId={route === 'chat' ? currentSessionId : null}
+                        onSelectSession={handleSelectSession}
+                        onNavigate={() => setNavOpen(false)}
+                        hostDialogs={route === 'chat'}
                       />
-                    </div>
-                  ) : route === 'bots' && botsEnabled ? (
-                    // On a phone the conversation list lives here, like Chat history.
-                    <div className="flex min-h-0 flex-1 flex-col pt-1">
-                      <BotsSidebarPanel onNavigate={() => setNavOpen(false)} />
                     </div>
                   ) : route === 'knowledge' ? (
                     // The tree is the ONLY way to reach an internal doc (the page
@@ -847,7 +853,7 @@ function AppShell({ route, subPath, params, extensionRoute }: AppShellProps) {
                     <Spinner className="h-6 w-6 text-fg-faint" />
                   </div>
                 )}
-                {route === 'chat' && !chatSessionIsBots && (
+                {route === 'chat' && !chatSessionIsBots && !landOnMainThread && (
                   <ChatPage
                     key={params.get('session') || params.get('new') || 'new'}
                     initialSessionId={params.get('session') || undefined}
@@ -865,7 +871,14 @@ function AppShell({ route, subPath, params, extensionRoute }: AppShellProps) {
                 {route === 'administration' && <AdministrationPage subPath={subPath} />}
                 {route === 'projects' &&
                   hasApplication('projects') &&
-                  (subPath ? <ProjectDetailPage projectId={parseInt(subPath)} /> : <ProjectsPage />)}
+                  (subPath ? (
+                    <ProjectDetailPage
+                      projectId={parseInt(subPath)}
+                      initialTaskId={Number(params.get('task')) || null}
+                    />
+                  ) : (
+                    <ProjectsPage />
+                  ))}
                 {route === 'design' && <DesignPage />}
                 {route === 'knowledge' && hasApplication('knowledge') && (
                   <KnowledgePage subPath={subPath} basePath="#/knowledge" />

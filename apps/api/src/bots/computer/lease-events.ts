@@ -11,7 +11,7 @@ import type { BotComputerRow } from '@greenhouse/db';
 import { connectionManager } from '../../ws/connection-manager.js';
 import type { ComputerLease } from './access.js';
 
-type LeaseListener = (userId: string, lease: ComputerLease) => void;
+type LeaseListener = (computerId: string, lease: ComputerLease) => void;
 const leaseListeners = new Set<LeaseListener>();
 
 /** Subscribe to lease changes made by this process; returns the unsubscribe. */
@@ -23,10 +23,12 @@ export function onLeaseChange(listener: LeaseListener): () => void {
 /** Publish a lease change to local viewers and the owner's open tabs (WS `bots:computer`). */
 export function leaseChanged(row: BotComputerRow): void {
   const lease: ComputerLease = { controller: row.lease_controller, epoch: row.lease_epoch };
-  for (const listener of leaseListeners) listener(row.user_id, lease);
+  for (const listener of leaseListeners) listener(row.id, lease);
   connectionManager.sendToUser(row.user_id, {
     type: 'bots:computer',
     state: row.state,
     controller: row.lease_controller,
+    computer_id: row.id,
+    bot_id: row.bot_id,
   });
 }

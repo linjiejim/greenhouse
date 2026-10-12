@@ -121,6 +121,8 @@ function memoryDb(
     users: { getById: async () => ({ id: 'u1', locale }) },
     botComputers: { get: async () => ({ user_id: 'u1', ...computer }) },
     bots: {
+      // The asking Agent is the member's main one here: its computer is the member's (`u1`).
+      getBot: async (_userId: string, id: string) => ({ id, template_key: 'sprouty' }),
       settleRequest: vi.fn(async (_userId: string, id: string, status: string, result?: Record<string, unknown>) => {
         const current = requests.get(id);
         if (current && current.status !== 'pending') return undefined;
@@ -192,6 +194,7 @@ describe.skipIf(!chromiumAvailable())('handleLoginDecision', { timeout: 90_000 }
       {
         db: turn.db,
         userId: 'u1',
+        computerId: 'u1',
         botId,
         sessionId: 'sess_1',
         turnId: 't',
@@ -251,6 +254,7 @@ describe.skipIf(!chromiumAvailable())('handleLoginDecision', { timeout: 90_000 }
     expect(sessionId).toBe('sess_1');
     expect(item).toMatchObject({
       kind: 'continue',
+      author_user_id: 'u1',
       botId: request.bot_id,
       event: { kind: 'login_done', request_id: request.id, origin: site.origin, saved_to_vault: false },
     });
@@ -331,6 +335,7 @@ describe.skipIf(!chromiumAvailable())('handleLoginDecision', { timeout: 90_000 }
     expect(deliver).toHaveBeenCalledTimes(1);
     expect(deliver.mock.calls[0]![1]).toMatchObject({
       kind: 'continue',
+      author_user_id: 'u1',
       botId: request.bot_id,
       eventText: 'Sign-in to 127.0.0.1 skipped',
       event: { kind: 'request', request_kind: 'login', request_id: request.id, bot_id: request.bot_id },

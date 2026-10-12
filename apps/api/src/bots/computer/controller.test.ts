@@ -36,7 +36,13 @@ import {
 import { createDockerHost } from './docker-host.js';
 import { ComputerStartError, type ComputerStartSpec, type HomeRestore } from './host.js';
 import { ComputerUnavailableError } from './errors.js';
-import { computerContainerName, computerVolumeName, LABEL_NAMESPACE, LABEL_USER } from './namespace.js';
+import {
+  computerContainerName,
+  computerVolumeName,
+  LABEL_NAMESPACE,
+  LABEL_USER,
+  parseComputerId,
+} from './namespace.js';
 
 const NS = 'testns';
 const T0 = Date.parse('2026-10-05T08:00:00.000Z');
@@ -73,16 +79,18 @@ class FakeStore implements ComputerStore {
     private clock: FakeClock,
     opts: { tryLock?: boolean } = {},
   ) {
-    if (opts.tryLock === false) delete (this as Partial<FakeStore>).tryWithUserLock;
+    if (opts.tryLock === false) delete (this as Partial<FakeStore>).tryWithComputerLock;
   }
 
   seed(userId: string, patch: Partial<BotComputerRow>): BotComputerRow {
     const now = this.clock.iso();
     const row: BotComputerRow = {
+      id: userId,
       user_id: userId,
+      bot_id: null,
       namespace: NS,
-      container_name: computerContainerName(NS, userId),
-      volume_name: computerVolumeName(NS, userId),
+      container_name: computerContainerName(NS, parseComputerId(userId)),
+      volume_name: computerVolumeName(NS, parseComputerId(userId)),
       state: 'absent',
       state_reason: null,
       version: 0,
@@ -106,8 +114,8 @@ class FakeStore implements ComputerStore {
 
   get = async (userId: string) => (this.rows.has(userId) ? { ...this.rows.get(userId)! } : undefined);
   ensure: ComputerStore['ensure'] = async (identity) => {
-    if (!this.rows.has(identity.user_id)) this.seed(identity.user_id, identity);
-    return { ...this.rows.get(identity.user_id)! };
+    if (!this.rows.has(identity.id)) this.seed(identity.id, identity);
+    return { ...this.rows.get(identity.id)! };
   };
   list = async () => [...this.rows.values()].map((r) => ({ ...r }));
   listByStates = async (states: BotComputerState[]) =>
@@ -147,7 +155,7 @@ class FakeStore implements ComputerStore {
   delete = async (userId: string) => {
     this.rows.delete(userId);
   };
-  withUserLock = async <T>(userId: string, fn: () => Promise<T>): Promise<T> => {
+  withComputerLock = async <T>(userId: string, fn: () => Promise<T>): Promise<T> => {
     const previous = this.tails.get(userId) ?? Promise.resolve();
     let release!: () => void;
     const current = new Promise<void>((resolve) => (release = resolve));
@@ -162,9 +170,9 @@ class FakeStore implements ComputerStore {
       if (this.tails.get(userId) === tail) this.tails.delete(userId);
     }
   };
-  tryWithUserLock? = async <T>(userId: string, fn: () => Promise<T>): Promise<TryLockResult<T>> => {
+  tryWithComputerLock? = async <T>(userId: string, fn: () => Promise<T>): Promise<TryLockResult<T>> => {
     if (this.heldLocks.has(userId) || this.tails.has(userId)) return { acquired: false };
-    return { acquired: true, value: await this.withUserLock(userId, fn) };
+    return { acquired: true, value: await this.withComputerLock(userId, fn) };
   };
   withCapacityLock = async <T>(fn: () => Promise<T>) => await fn();
 }
@@ -427,11 +435,13 @@ describe('computer lifecycle', () => {
     expect(row.state).toBe('running');
     expect(row.image_id).toBe('sha256:img');
     expect(row.last_started_at).not.toBeNull();
-    const container = docker.containers.get(computerContainerName(NS, 'u1'))!;
+    const container = docker.containers.get(computerContainerName(NS, parseComputerId('u1')))!;
     expect(container.labels).toMatchObject({ [LABEL_NAMESPACE]: NS, [LABEL_USER]: 'u1' });
     expect(container.args).toContain('runsc');
     expect(container.args).toContain('GH_COMPUTER_URL_BLOCKLIST=green.example.com');
-    expect(docker.volumes.get(computerVolumeName(NS, 'u1'))?.labels).toMatchObject({ [LABEL_USER]: 'u1' });
+    expect(docker.volumes.get(computerVolumeName(NS, parseComputerId('u1')))?.labels).toMatchObject({
+      [LABEL_USER]: 'u1',
+    });
     expect(docker.probes).toBe(3);
     expect(events.states.map(([, state]) => state)).toEqual(['starting', 'running']);
     expect((await store.get('u1'))?.version).toBe(2);
@@ -465,8 +475,8 @@ describe('computer lifecycle', () => {
     expect(await store.get('old')).toMatchObject({ state: 'absent', state_reason: 'lru' });
     expect((await store.get('recent'))?.state).toBe('running');
     expect((await store.get('new'))?.state).toBe('running');
-    expect(docker.containers.has(computerContainerName(NS, 'old'))).toBe(false);
-    expect(docker.volumes.has(computerVolumeName(NS, 'old'))).toBe(true); // files kept
+    expect(docker.containers.has(computerContainerName(NS, parseComputerId('old')))).toBe(false);
+    expect(docker.volumes.has(computerVolumeName(NS, parseComputerId('old')))).toBe(true); // files kept
     expect(events.stopped).toContainEqual(['old', 'lru']);
   });
 
@@ -531,7 +541,9 @@ describe('computer lifecycle', () => {
     const locales: Record<string, string> = { zh: 'zh-CN', 'zh-tw': 'zh-TW', en: 'en' };
     const { controller, store, docker } = setup({ maxRunning: 5, locale: (userId) => locales[userId] ?? null });
     const envOf = (userId: string) =>
-      docker.containers.get(computerContainerName(NS, userId))!.args.filter((_, i, args) => args[i - 1] === '-e');
+      docker.containers
+        .get(computerContainerName(NS, parseComputerId(userId)))!
+        .args.filter((_, i, args) => args[i - 1] === '-e');
 
     store.seed('zh', { timezone: 'Asia/Shanghai' });
     await controller.ensureRunning('zh');
@@ -554,7 +566,9 @@ describe('computer lifecycle', () => {
   it('lets the operator’s BOTS_COMPUTER_LANG override every member’s locale', async () => {
     const { controller, docker } = setup({ operatorLang: 'ja-JP', locale: () => 'zh-CN' });
     await controller.ensureRunning('u1');
-    expect(docker.containers.get(computerContainerName(NS, 'u1'))!.args).toContain('GH_COMPUTER_LANG=ja-JP');
+    expect(docker.containers.get(computerContainerName(NS, parseComputerId('u1')))!.args).toContain(
+      'GH_COMPUTER_LANG=ja-JP',
+    );
   });
 
   it('keeps an idle computer awake while background jobs run, for at most BOTS_COMPUTER_JOB_MAX_HOURS', async () => {
@@ -570,7 +584,7 @@ describe('computer lifecycle', () => {
       },
     });
     for (const user of ['busy', 'quiet']) await controller.ensureRunning(user);
-    jobs.set(computerContainerName(NS, 'busy'), 2);
+    jobs.set(computerContainerName(NS, parseComputerId('busy')), 2);
     clock.ms += 20 * MIN;
     await controller.idleTick();
     expect((await store.get('busy'))?.state).toBe('running');
@@ -633,15 +647,15 @@ describe('computer lifecycle', () => {
   it('notices OOM kills and exits on the health tick and rebuilds on next use', async () => {
     const { controller, store, docker, events } = setup({ maxRunning: 5 });
     for (const user of ['oom', 'gone', 'fine']) await controller.ensureRunning(user);
-    const oom = docker.containers.get(computerContainerName(NS, 'oom'))!;
+    const oom = docker.containers.get(computerContainerName(NS, parseComputerId('oom')))!;
     oom.state = 'exited';
     oom.exitCode = 137;
-    docker.containers.delete(computerContainerName(NS, 'gone'));
+    docker.containers.delete(computerContainerName(NS, parseComputerId('gone')));
     await controller.healthTick();
     expect(await store.get('oom')).toMatchObject({ state: 'error', state_reason: 'oom' });
     expect(await store.get('gone')).toMatchObject({ state: 'error', state_reason: 'exited' });
     expect((await store.get('fine'))?.state).toBe('running');
-    expect(docker.containers.has(computerContainerName(NS, 'oom'))).toBe(false);
+    expect(docker.containers.has(computerContainerName(NS, parseComputerId('oom')))).toBe(false);
     expect(events.stopped).toEqual([
       ['oom', 'oom'],
       ['gone', 'exited'],
@@ -693,7 +707,7 @@ describe('computer lifecycle', () => {
     expect(docker.containers.has('gh-computer-testns-deleted')).toBe(false);
     expect(docker.containers.has('gh-computer-otherns-x')).toBe(true);
     expect(await store.get('suspended')).toMatchObject({ state: 'absent', state_reason: 'suspend' });
-    expect(docker.volumes.has(computerVolumeName(NS, 'suspended'))).toBe(true); // a suspended member keeps files
+    expect(docker.volumes.has(computerVolumeName(NS, parseComputerId('suspended')))).toBe(true); // a suspended member keeps files
     expect((await store.get('healthy'))?.state).toBe('running');
     expect((await store.get('stale'))?.state).toBe('absent');
     expect((await store.get('fresh'))?.state).toBe('starting');
@@ -745,7 +759,7 @@ describe('computer lifecycle', () => {
   it('recovers a start whose process died (a starting row found under the member lock)', async () => {
     const { controller, store, docker } = setup();
     store.seed('u1', { state: 'starting', updated_at: new Date(T0).toISOString() });
-    docker.containers.set(computerContainerName(NS, 'u1'), {
+    docker.containers.set(computerContainerName(NS, parseComputerId('u1')), {
       state: 'created',
       exitCode: 0,
       oom: false,
@@ -774,7 +788,7 @@ describe('computer lifecycle', () => {
   it('marks a vanished container broken, purges with or without the volume, and resets on the current image', async () => {
     const { controller, store, docker, events } = setup();
     await controller.ensureRunning('u1');
-    docker.containers.delete(computerContainerName(NS, 'u1'));
+    docker.containers.delete(computerContainerName(NS, parseComputerId('u1')));
     await controller.markBroken('u1', 'exited');
     expect(await store.get('u1')).toMatchObject({ state: 'error', state_reason: 'exited' });
     expect(events.stopped).toContainEqual(['u1', 'exited']);
@@ -785,11 +799,11 @@ describe('computer lifecycle', () => {
 
     await controller.purge('u1', { wipe: false, reason: 'suspend' });
     expect(await store.get('u1')).toMatchObject({ state: 'absent', state_reason: 'suspend' });
-    expect(docker.volumes.has(computerVolumeName(NS, 'u1'))).toBe(true);
+    expect(docker.volumes.has(computerVolumeName(NS, parseComputerId('u1')))).toBe(true);
 
     await controller.purge('u1', { wipe: true });
     expect(await store.get('u1')).toBeUndefined();
-    expect(docker.volumes.has(computerVolumeName(NS, 'u1'))).toBe(false);
+    expect(docker.volumes.has(computerVolumeName(NS, parseComputerId('u1')))).toBe(false);
   });
 
   it('refuses to start a computer for a member who may no longer use one (suspended, bots off, deleted)', async () => {
@@ -811,7 +825,7 @@ describe('computer lifecycle', () => {
     allowed.set('member', false);
     await controller.purge('member', { wipe: false, reason: 'suspend' });
     await expect(controller.ensureRunning('member')).rejects.toMatchObject({ code: 'disabled' });
-    expect(docker.containers.has(computerContainerName(NS, 'member'))).toBe(false);
+    expect(docker.containers.has(computerContainerName(NS, parseComputerId('member')))).toBe(false);
   });
 
   describe('interrupted transitions (a slot that died mid-start or mid-stop)', () => {
@@ -819,7 +833,7 @@ describe('computer lifecycle', () => {
       const { controller, store, docker, clock, events } = setup();
       for (const user of ['dead', 'alive']) {
         store.seed(user, { state: 'starting', updated_at: clock.iso(-5_000) });
-        docker.containers.set(computerContainerName(NS, user), {
+        docker.containers.set(computerContainerName(NS, parseComputerId(user)), {
           state: 'created',
           exitCode: 0,
           oom: false,
@@ -830,10 +844,10 @@ describe('computer lifecycle', () => {
       store.heldLocks.add('alive');
       await controller.healthTick();
       expect(await store.get('dead')).toMatchObject({ state: 'absent', state_reason: 'start_interrupted' });
-      expect(docker.containers.has(computerContainerName(NS, 'dead'))).toBe(false);
+      expect(docker.containers.has(computerContainerName(NS, parseComputerId('dead')))).toBe(false);
       expect(events.stopped).toContainEqual(['dead', 'start_interrupted']);
       expect((await store.get('alive'))?.state).toBe('starting');
-      expect(docker.containers.has(computerContainerName(NS, 'alive'))).toBe(true);
+      expect(docker.containers.has(computerContainerName(NS, parseComputerId('alive')))).toBe(true);
     });
 
     it('settles a stopping row only once it is stale (LRU stops run without the victim’s lock)', async () => {
@@ -868,7 +882,7 @@ describe('computer lifecycle', () => {
     it('leaves a slow start in progress elsewhere alone, and settles a dead one however young', async () => {
       const { controller, store, docker, clock } = setup();
       store.seed('slow', { state: 'starting', updated_at: clock.iso(-70_000) });
-      docker.containers.set(computerContainerName(NS, 'slow'), {
+      docker.containers.set(computerContainerName(NS, parseComputerId('slow')), {
         state: 'running',
         exitCode: 0,
         oom: false,
@@ -879,7 +893,7 @@ describe('computer lifecycle', () => {
       store.seed('dead', { state: 'starting', updated_at: clock.iso(-5_000) });
       await controller.reconcile();
       expect((await store.get('slow'))?.state).toBe('starting');
-      expect(docker.containers.has(computerContainerName(NS, 'slow'))).toBe(true);
+      expect(docker.containers.has(computerContainerName(NS, parseComputerId('slow')))).toBe(true);
       expect(await store.get('dead')).toMatchObject({ state: 'absent', state_reason: 'start_interrupted' });
     });
 
@@ -888,7 +902,7 @@ describe('computer lifecycle', () => {
       // Snapshot: running row, container gone (it died) → would be settled and cleaned.
       store.seed('u1', { state: 'running', updated_at: clock.iso(-10 * MIN), last_started_at: clock.iso(-10 * MIN) });
       // An orphan container of a member with no row yet → would be removed.
-      docker.containers.set(computerContainerName(NS, 'newbie'), {
+      docker.containers.set(computerContainerName(NS, parseComputerId('newbie')), {
         state: 'running',
         exitCode: 0,
         oom: false,
@@ -899,7 +913,7 @@ describe('computer lifecycle', () => {
       store.onLock = (userId) => {
         if (userId === 'u1' && store.rows.get('u1')!.version === 0) {
           store.rows.set('u1', { ...store.rows.get('u1')!, version: 2, updated_at: clock.iso() });
-          docker.containers.set(computerContainerName(NS, 'u1'), {
+          docker.containers.set(computerContainerName(NS, parseComputerId('u1')), {
             state: 'running',
             exitCode: 0,
             oom: false,
@@ -911,15 +925,15 @@ describe('computer lifecycle', () => {
       };
       await controller.reconcile();
       expect((await store.get('u1'))?.state).toBe('running');
-      expect(docker.containers.has(computerContainerName(NS, 'u1'))).toBe(true);
-      expect(docker.containers.has(computerContainerName(NS, 'newbie'))).toBe(true);
+      expect(docker.containers.has(computerContainerName(NS, parseComputerId('u1')))).toBe(true);
+      expect(docker.containers.has(computerContainerName(NS, parseComputerId('newbie')))).toBe(true);
     });
   });
 
   it('wipes in one critical section: a concurrent start or an LRU stop in flight cannot make it fail', async () => {
     const { controller, store, docker, clock } = setup();
-    const volume = computerVolumeName(NS, 'u1');
-    const container = computerContainerName(NS, 'u1');
+    const volume = computerVolumeName(NS, parseComputerId('u1'));
+    const container = computerContainerName(NS, parseComputerId('u1'));
     await controller.ensureRunning('u1');
     // A Bot action arrives while the wipe is stopping the container: it waits
     // for the member's lock, then starts on a fresh row and a fresh volume.
@@ -941,7 +955,7 @@ describe('computer lifecycle', () => {
     store.rows.set('u2', { ...row, state: 'stopping', state_reason: 'lru', updated_at: clock.iso() });
     await expect(controller.purge('u2', { wipe: true, reason: 'admin' })).resolves.toBeUndefined();
     expect(await store.get('u2')).toBeUndefined();
-    expect(docker.volumes.has(computerVolumeName(NS, 'u2'))).toBe(false);
+    expect(docker.volumes.has(computerVolumeName(NS, parseComputerId('u2')))).toBe(false);
   });
 
   it('lets automatic starts through again once a cleanup is measured, even after an idle stop', async () => {
@@ -1096,7 +1110,7 @@ describe('computer lifecycle', () => {
     expect(error).toMatchObject({ name: 'ComputerUnavailableError', code: 'unavailable' });
     expect(events.runtimeErrors.map((e) => e.reason)).toEqual(['network_invalid']);
     expect(await store.get('u2')).toMatchObject({ state: 'error', state_reason: 'network_invalid' });
-    expect(docker.containers.has(computerContainerName(NS, 'u2'))).toBe(false);
+    expect(docker.containers.has(computerContainerName(NS, parseComputerId('u2')))).toBe(false);
   });
 
   it('probes a hosted computer from both accounts; a hole fails only that computer, never the runtime', async () => {
@@ -1116,7 +1130,7 @@ describe('computer lifecycle', () => {
     expect(String(error.message)).toMatch(/127\.0\.0\.1:49983\/health as browser/);
     expect(events.runtimeErrors).toEqual([]);
     expect(await store.get('u2')).toMatchObject({ state: 'error', state_reason: 'egress_open' });
-    expect(docker.containers.has(computerContainerName(NS, 'u2'))).toBe(false);
+    expect(docker.containers.has(computerContainerName(NS, parseComputerId('u2')))).toBe(false);
     // Everyone else carries on, and the next try succeeds once the rules hold again.
     expect((await store.get('u1'))?.state).toBe('running');
     docker.egressByUser.browser = {};
@@ -1186,7 +1200,7 @@ describe('backups', () => {
     await controller.ensureRunning('u1');
     expect(calls.restoreSource).toEqual([]);
     await controller.stop('u1', 'user');
-    const volume = computerVolumeName(NS, 'u1');
+    const volume = computerVolumeName(NS, parseComputerId('u1'));
     docker.volumes.delete(volume); // another driver before, or the volume was lost
     docker.log.length = 0;
     await controller.ensureRunning('u1');
@@ -1196,7 +1210,7 @@ describe('backups', () => {
       `volume create ${volume}`,
       `helper ${volume} agent`,
       `helper ${volume} browser`,
-      `run ${computerContainerName(NS, 'u1')}`,
+      `run ${computerContainerName(NS, parseComputerId('u1'))}`,
     ]);
     expect(docker.restoredInto.get(`${volume}:agent`)?.toString()).toBe('agent-home');
     expect(docker.restoredInto.get(`${volume}:browser`)?.toString()).toBe('browser-home');
@@ -1214,9 +1228,11 @@ describe('backups', () => {
     // The row as the e2b driver left it: a sandbox id, started before; this host has no home volume for it.
     store.seed('u1', { container_name: 'i8tn0r4mbbv0x2gqk6pjo', last_started_at: '2026-10-09T08:00:00.000Z' });
     const row = await controller.ensureRunning('u1');
-    expect(row.container_name).toBe(computerContainerName(NS, 'u1'));
-    expect(docker.containers.has(computerContainerName(NS, 'u1'))).toBe(true);
-    expect(docker.restoredInto.get(`${computerVolumeName(NS, 'u1')}:agent`)?.toString()).toBe('agent-home');
+    expect(row.container_name).toBe(computerContainerName(NS, parseComputerId('u1')));
+    expect(docker.containers.has(computerContainerName(NS, parseComputerId('u1')))).toBe(true);
+    expect(docker.restoredInto.get(`${computerVolumeName(NS, parseComputerId('u1'))}:agent`)?.toString()).toBe(
+      'agent-home',
+    );
     expect(calls.restored).toEqual(['bkp_1']);
   });
 
@@ -1225,7 +1241,7 @@ describe('backups', () => {
     const { controller, docker, store } = setup({ backups });
     await controller.ensureRunning('u1');
     await controller.stop('u1', 'user');
-    const volume = computerVolumeName(NS, 'u1');
+    const volume = computerVolumeName(NS, parseComputerId('u1'));
     docker.volumes.delete(volume);
     await expect(controller.ensureRunning('u1')).rejects.toMatchObject({ code: 'start_failed' });
     expect(await store.get('u1')).toMatchObject({ state: 'error', state_reason: 'restore_failed' });

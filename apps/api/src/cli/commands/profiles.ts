@@ -69,7 +69,7 @@ export async function run(args: string[]): Promise<number> {
     ),
   );
 
-  console.log(heading(`Bots (${custom.length})`));
+  console.log(heading(`Agents (${custom.length})`));
   if (!custom.length) {
     console.log(dim('  (none)'));
   } else {

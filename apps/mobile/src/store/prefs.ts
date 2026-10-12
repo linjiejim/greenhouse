@@ -1,8 +1,8 @@
 /**
  * Lightweight UI preferences shared across screens (theme, language, the Bots
- * thread to reopen on a cold start, which details a reply shows). In-memory store
- * hydrated from persistent storage at startup (SecureStore on native,
- * localStorage on web — same backend as tokens).
+ * thread to reopen on a cold start and the member's main thread, which details a
+ * reply shows). In-memory store hydrated from persistent storage at startup
+ * (SecureStore on native, localStorage on web — same backend as tokens).
  */
 
 import { create } from 'zustand';
@@ -11,7 +11,7 @@ import { loadPref, savePref } from '../api/token-storage';
 export type ThemePref = 'system' | 'light' | 'dark';
 export type LangPref = 'zh' | 'en';
 
-/** The Bots thread the member left the app on — its id and placeholder title, nothing else (D19). */
+/** A Bots thread to open on a cold start — its id and placeholder title, nothing else (D19). */
 export interface LastThreadPref {
   c: string;
   title: string;
@@ -36,7 +36,7 @@ export type ReplyDetail = keyof ReplyDetails;
 
 const DETAILS_OFF: ReplyDetails = { reasoning: false, tools: false, sources: false };
 
-/** Remembered surfaces kept (one per station + account); the oldest go first. */
+/** Remembered threads kept per map (one per station + account); the oldest go first. */
 const LAST_THREADS_MAX = 8;
 
 interface Prefs {
@@ -53,6 +53,13 @@ interface Prefs {
   lastThreads: Record<string, LastThreadPref>;
   /** Remember (or, with null, forget) the thread for one station + account. */
   setLastThread: (key: string, thread: LastThreadPref | null) => void;
+  /**
+   * The main thread (Sprouty's DM) per `${stationId}:${userId}`, as the Bots store last knew it — so a
+   * cold start can open it before the network answers (src/bots/last-surface.ts reads and writes it).
+   */
+  mainThreads: Record<string, LastThreadPref>;
+  /** Remember (or, with null, forget) the main thread for one station + account. */
+  setMainThread: (key: string, thread: LastThreadPref | null) => void;
   /** Hydrate persisted prefs once at app start. */
   hydrate: () => Promise<void>;
 }
@@ -78,32 +85,57 @@ export const usePrefs = create<Prefs>((set, get) => ({
   hydrated: false,
   lastThreads: {},
   setLastThread: (key, thread) => {
-    const current = get().lastThreads;
-    const known = current[key];
-    if (thread ? known?.c === thread.c && known.title === thread.title : !known) return;
-    // Re-inserted last = most recent; the map stays small (SecureStore values are size-capped).
-    const { [key]: _previous, ...rest } = current;
-    const entries = Object.entries(thread ? { ...rest, [key]: thread } : rest).slice(-LAST_THREADS_MAX);
-    const lastThreads = Object.fromEntries(entries);
+    const lastThreads = withThread(get().lastThreads, key, thread);
+    if (!lastThreads) return;
     set({ lastThreads });
-    void savePref('lastThreads', entries.length ? JSON.stringify(lastThreads) : null);
+    void savePref('lastThreads', storedThreads(lastThreads));
+  },
+  mainThreads: {},
+  setMainThread: (key, thread) => {
+    const mainThreads = withThread(get().mainThreads, key, thread);
+    if (!mainThreads) return;
+    set({ mainThreads });
+    void savePref('mainThreads', storedThreads(mainThreads));
   },
   hydrate: async () => {
-    const [theme, lang, lastThreads, details] = await Promise.all([
+    const [theme, lang, lastThreads, mainThreads, details] = await Promise.all([
       loadPref('theme'),
       loadPref('lang'),
       loadPref('lastThreads'),
+      loadPref('mainThreads'),
       loadPref('details'),
     ]);
     set({
       ...(theme === 'light' || theme === 'dark' || theme === 'system' ? { theme } : {}),
       ...(lang === 'zh' || lang === 'en' ? { lang } : {}),
-      lastThreads: parseLastThreads(lastThreads),
+      lastThreads: parseThreads(lastThreads),
+      mainThreads: parseThreads(mainThreads),
       details: parseDetails(details),
       hydrated: true,
     });
   },
 }));
+
+/**
+ * `map` with `key` set to `thread` (re-inserted last = most recent) or dropped (null) — at most
+ * `LAST_THREADS_MAX` entries, the oldest go first (SecureStore values are size-capped). null when
+ * nothing would change, so a caller can skip the write.
+ */
+function withThread(
+  map: Record<string, LastThreadPref>,
+  key: string,
+  thread: LastThreadPref | null,
+): Record<string, LastThreadPref> | null {
+  const known = map[key];
+  if (thread ? known?.c === thread.c && known.title === thread.title : !known) return null;
+  const { [key]: _previous, ...rest } = map;
+  return Object.fromEntries(Object.entries(thread ? { ...rest, [key]: thread } : rest).slice(-LAST_THREADS_MAX));
+}
+
+/** What a thread map persists as: its JSON, or null (deleted) when empty. */
+function storedThreads(map: Record<string, LastThreadPref>): string | null {
+  return Object.keys(map).length ? JSON.stringify(map) : null;
+}
 
 /** The stored switches; anything missing or malformed reads as off. */
 export function parseDetails(raw: string | null): ReplyDetails {
@@ -121,8 +153,8 @@ export function parseDetails(raw: string | null): ReplyDetails {
   }
 }
 
-/** The stored map, keeping only well-formed entries (a corrupt value reads as empty). */
-function parseLastThreads(raw: string | null): Record<string, LastThreadPref> {
+/** A stored thread map (`lastThreads` / `mainThreads`), keeping only well-formed entries (a corrupt value reads as empty). */
+function parseThreads(raw: string | null): Record<string, LastThreadPref> {
   if (!raw) return {};
   try {
     const parsed: unknown = JSON.parse(raw);

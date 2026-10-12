@@ -57,7 +57,7 @@ type BackupDb = Pick<
   | 'completeBackup'
   | 'failBackup'
   | 'getBackup'
-  | 'listBackups'
+  | 'listComputerBackups'
   | 'latestCompleteBackup'
   | 'listAllBackups'
   | 'listStaleBackups'
@@ -112,14 +112,14 @@ function exited(proc: ComputerProcess): Promise<{ code: number | null; stderr: s
 
 export function createComputerBackups(deps: ComputerBackupsDeps) {
   const now = deps.now ?? Date.now;
-  /** Backups this process is taking, per member. */
+  /** Backups this process is taking, per computer. */
   const inFlight = new Map<string, Promise<BotComputerBackupRow | null>>();
 
   const ageMs = (iso: string | null | undefined): number => (iso ? now() - Date.parse(iso) : Infinity);
 
   /** due: take one; fresh: the newest is recent enough (or failing: wait); running: one is under way. */
-  async function backupState(userId: string): Promise<'due' | 'fresh' | 'running'> {
-    const rows = await deps.db.listBackups(userId);
+  async function backupState(computerId: string): Promise<'due' | 'fresh' | 'running'> {
+    const rows = await deps.db.listComputerBackups(computerId);
     const latest = rows[0];
     if (latest?.status === 'running' && ageMs(latest.created_at) < BACKUP_TIMEOUT_MS) return 'running';
     if (latest?.status === 'failed' && ageMs(latest.completed_at ?? latest.created_at) < BACKUP_RETRY_MS)
@@ -144,8 +144,8 @@ export function createComputerBackups(deps: ComputerBackupsDeps) {
   }
 
   /** Keep the newest `keep` complete backups, and a few failures newer than them. */
-  async function prune(userId: string): Promise<void> {
-    const rows = await deps.db.listBackups(userId);
+  async function prune(computerId: string): Promise<void> {
+    const rows = await deps.db.listComputerBackups(computerId);
     const complete = rows.filter((row) => row.status === 'complete');
     const newestComplete = complete[0];
     const failedNewer = rows.filter(
@@ -204,6 +204,7 @@ export function createComputerBackups(deps: ComputerBackupsDeps) {
       started = await deps.db.startBackup({
         id,
         user_id: row.user_id,
+        computer_id: row.id,
         reason,
         store: deps.store.kind,
         key_enc: sealWithVaultKey(backupKeyAad(row.user_id, id), key.toString('base64')),
@@ -211,7 +212,7 @@ export function createComputerBackups(deps: ComputerBackupsDeps) {
         source_ref: row.container_name,
       });
     } catch (err) {
-      logger.warn(`[bots-computer] could not start a backup of ${row.user_id}: ${toErrorMessage(err)}`);
+      logger.warn(`[bots-computer] could not start a backup of ${row.id}: ${toErrorMessage(err)}`);
       return null;
     }
     if (!started) return null;
@@ -223,20 +224,20 @@ export function createComputerBackups(deps: ComputerBackupsDeps) {
       // Ended meanwhile: swept as stale, or deleted with the member's home.
       if (!done) throw new Error('The backup was ended while it ran');
       logger.info('[bots-computer] backed up a computer', {
-        user_id: row.user_id,
+        computer_id: row.id,
         backup: id,
         reason,
         bytes,
         store: deps.store.kind,
         duration_ms: now() - startedAt,
       });
-      await prune(row.user_id).catch((err) => {
-        logger.warn(`[bots-computer] pruning the backups of ${row.user_id} failed: ${toErrorMessage(err)}`);
+      await prune(row.id).catch((err) => {
+        logger.warn(`[bots-computer] pruning the backups of ${row.id} failed: ${toErrorMessage(err)}`);
       });
       return done;
     } catch (err) {
       logger.warn('[bots-computer] backup failed', {
-        user_id: row.user_id,
+        computer_id: row.id,
         backup: id,
         error: toErrorMessage(err),
         duration_ms: now() - startedAt,
@@ -247,18 +248,18 @@ export function createComputerBackups(deps: ComputerBackupsDeps) {
     }
   }
 
-  /** Take a backup of a running computer now (one per member at a time); resolves when it ends. */
+  /** Take a backup of a running computer now (one per computer at a time); resolves when it ends. */
   function start(row: BotComputerRow, reason: BotComputerBackupRow['reason']): Promise<BotComputerBackupRow | null> {
-    const running = inFlight.get(row.user_id);
+    const running = inFlight.get(row.id);
     if (running) return running;
-    const run = take(row, reason).finally(() => inFlight.delete(row.user_id));
-    inFlight.set(row.user_id, run);
+    const run = take(row, reason).finally(() => inFlight.delete(row.id));
+    inFlight.set(row.id, run);
     return run;
   }
 
   async function markUnusable(backup: BotComputerBackupRow, err: unknown): Promise<void> {
     logger.warn('[bots-computer] a backup cannot be restored; it is never used again', {
-      user_id: backup.user_id,
+      computer_id: backup.computer_id,
       backup: backup.id,
       error: toErrorMessage(err),
     });
@@ -276,8 +277,8 @@ export function createComputerBackups(deps: ComputerBackupsDeps) {
      */
     async beforeSleep(row: BotComputerRow, idleMinutes: number): Promise<'go' | 'wait'> {
       const overdue = ageMs(row.last_active_at) > idleMinutes * 60_000 + BACKUP_DEFER_MS;
-      if (inFlight.has(row.user_id)) return overdue ? 'go' : 'wait';
-      const state = await backupState(row.user_id);
+      if (inFlight.has(row.id)) return overdue ? 'go' : 'wait';
+      const state = await backupState(row.id);
       if (state === 'fresh' || overdue) return 'go';
       // Another API process is taking it.
       if (state === 'running') return 'wait';
@@ -289,12 +290,15 @@ export function createComputerBackups(deps: ComputerBackupsDeps) {
     start,
 
     /** ComputerStartSpec.restore: the newest complete backup, ready to stream back. */
-    async restoreSource(userId: string): Promise<HomeRestore | null> {
-      const backup = await deps.db.latestCompleteBackup(userId);
+    async restoreSource(computerId: string): Promise<HomeRestore | null> {
+      const backup = await deps.db.latestCompleteBackup(computerId);
       if (!backup) return null;
       let key: Buffer;
       try {
-        key = Buffer.from(openWithVaultKey(backupKeyAad(userId, backup.id), backup.key_enc, 'This backup'), 'base64');
+        key = Buffer.from(
+          openWithVaultKey(backupKeyAad(backup.user_id, backup.id), backup.key_enc, 'This backup'),
+          'base64',
+        );
       } catch (err) {
         throw new ComputerStartError(
           'restore_failed',
@@ -328,29 +332,29 @@ export function createComputerBackups(deps: ComputerBackupsDeps) {
       await deps.db.markBackupRestored(backupId);
     },
 
-    /** The member's home is gone for good (a wipe, the member deleted): so are its backups. */
-    async deleteAll(userId: string): Promise<void> {
-      for (const backup of await deps.db.listBackups(userId)) await drop(backup);
+    /** A computer's home is gone for good (a wipe, the member deleted): so are its backups. */
+    async deleteAll(computerId: string): Promise<void> {
+      for (const backup of await deps.db.listComputerBackups(computerId)) await drop(backup);
     },
 
     /** End backups whose process died, and delete those whose member is gone. */
     async sweep(): Promise<void> {
       const cutoff = new Date(now() - BACKUP_TIMEOUT_MS - 15 * 60_000).toISOString();
       for (const backup of await deps.db.listStaleBackups(cutoff)) {
-        if (inFlight.has(backup.user_id)) continue;
+        if (inFlight.has(backup.computer_id)) continue;
         await removeObjects(backup);
         await deps.db.failBackup(backup.id, 'The API process taking it stopped');
       }
       for (const backup of await deps.db.listOrphanBackups()) await drop(backup);
     },
 
-    /** Per member: the newest backup and the newest complete one. */
+    /** Per computer: the newest backup and the newest complete one. */
     async summaries(): Promise<Map<string, BackupSummary>> {
       const out = new Map<string, BackupSummary>();
       for (const row of await deps.db.listAllBackups()) {
-        const summary = out.get(row.user_id);
+        const summary = out.get(row.computer_id);
         if (!summary) {
-          out.set(row.user_id, {
+          out.set(row.computer_id, {
             status: row.status,
             at: row.completed_at ?? row.created_at,
             error: row.error,
@@ -369,9 +373,9 @@ export function createComputerBackups(deps: ComputerBackupsDeps) {
      * When the backup the member's current computer began from was taken — if this run began
      * with one (it is marked restored once the computer is running, after `last_started_at`).
      */
-    async restoredInto(userId: string, lastStartedAt: string | null): Promise<string | null> {
+    async restoredInto(computerId: string, lastStartedAt: string | null): Promise<string | null> {
       if (!lastStartedAt) return null;
-      const rows = await deps.db.listBackups(userId);
+      const rows = await deps.db.listComputerBackups(computerId);
       const restored = rows.find((row) => row.restored_at && Date.parse(row.restored_at) >= Date.parse(lastStartedAt));
       return restored ? (restored.completed_at ?? restored.created_at) : null;
     },

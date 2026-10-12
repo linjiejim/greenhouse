@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SessionMessagePage, SessionRow } from '@greenhouse/types/session';
 import type { AppEnv } from '../../app-env.js';
 
@@ -98,6 +98,10 @@ beforeEach(() => {
   mocks.sessionTags.getSessionTags.mockResolvedValue([]);
 });
 
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
+
 describe('GET /api/sessions/:id metadata mode', () => {
   it('skips the legacy unbounded message read when include_messages=0', async () => {
     const response = await requestDetail('?include_messages=0');
@@ -128,6 +132,8 @@ describe('GET /api/sessions/:id/messages', () => {
     ['shared reader', 'reader', 'team'] as const,
     ['super user', 'admin', 'super'] as const,
   ])('allows the %s to read a page', async (_label, userId, role) => {
+    // Super: where the deployment lets super read members' chats (SUPER_READS_CHATS, D46).
+    if (role === 'super') vi.stubEnv('SUPER_READS_CHATS', 'true');
     if (userId === 'reader') {
       mocks.sessionShares.getSharedSessionIds.mockResolvedValue(['session-a']);
     }

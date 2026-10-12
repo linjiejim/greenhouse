@@ -135,6 +135,8 @@ export class TranscriptWriter {
     content: string;
     images?: Array<{ id: string; url: string }>;
     messageId?: string;
+    /** In a room: who wrote it (P5). */
+    authorUserId?: string;
   }): Promise<MessageRow> {
     return this.serialize(async () => {
       const message = {
@@ -142,6 +144,7 @@ export class TranscriptWriter {
         role: 'user' as const,
         content: input.content,
         ...(input.images?.length ? { images: input.images } : {}),
+        ...(input.authorUserId ? { author_user_id: input.authorUserId } : {}),
       };
       const row = input.messageId
         ? await this.db.sessions.addMessageOnce(input.messageId, message)

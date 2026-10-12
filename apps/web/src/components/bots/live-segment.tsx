@@ -18,6 +18,7 @@ export function LiveSegment({
   onAddress,
   onOpenProfile,
   busy,
+  canRetry = true,
 }: {
   segment: BotStreamSegment;
   header: boolean;
@@ -25,6 +26,8 @@ export function LiveSegment({
   onAddress: (botId: string | null, text: 'retry' | 'continue') => void;
   onOpenProfile?: (botId: string) => void;
   busy: boolean;
+  /** The member may ask this Agent again (in a room: only an Agent they may @). Default: yes. */
+  canRetry?: boolean;
 }) {
   const { t } = useI18n();
   const bot = lookup(segment.botId);
@@ -47,9 +50,11 @@ export function LiveSegment({
         <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-danger">
           <AlertTriangle size={12} aria-hidden="true" />
           <span>{segment.error || t('bots.transcript.turnFailed', { name })}</span>
-          <InlineAction disabled={busy} onClick={() => onAddress(segment.botId, 'retry')}>
-            {t('bots.transcript.retry')}
-          </InlineAction>
+          {canRetry && (
+            <InlineAction disabled={busy} onClick={() => onAddress(segment.botId, 'retry')}>
+              {t('bots.transcript.retry')}
+            </InlineAction>
+          )}
         </div>
       )}
       {segment.status === 'stopped' && <p className="mt-1 text-[11px] text-fg-faint">{t('bots.transcript.stopped')}</p>}

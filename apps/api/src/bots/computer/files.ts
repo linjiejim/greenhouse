@@ -221,35 +221,35 @@ function scriptFailure(code: number | null, stderr: string, what: string): Error
 export interface FilesDeps {
   host(): Pick<ComputerExec, 'exec' | 'execStream'>;
   /** Start the member's computer when needed (over the soft disk limit too); its container. */
-  container(userId: string): Promise<string>;
-  touch(userId: string): Promise<void>;
+  container(computerId: string): Promise<string>;
+  touch(computerId: string): Promise<void>;
   /** A docker failure: a vanished container marks the member's row and becomes `stopped`; else rethrown. */
-  failed(userId: string, err: unknown): Promise<never>;
+  failed(computerId: string, err: unknown): Promise<never>;
 }
 
 const defaultDeps: FilesDeps = {
   host: () => requireComputerRuntime().host,
-  container: async (userId) =>
-    (await requireComputerRuntime().controller.ensureRunning(userId, { allowOverQuota: true })).container_name,
+  container: async (computerId) =>
+    (await requireComputerRuntime().controller.ensureRunning(computerId, { allowOverQuota: true })).container_name,
   touch: touchComputer,
   failed: containerFailed,
 };
 
-async function rethrow(userId: string, err: unknown, deps: FilesDeps): Promise<never> {
+async function rethrow(computerId: string, err: unknown, deps: FilesDeps): Promise<never> {
   if (err instanceof ComputerFileError) throw err;
-  return await deps.failed(userId, err);
+  return await deps.failed(computerId, err);
 }
 
 // ─── List ─────────────────────────────────────────────────
 
 /** A folder of the agent home (default ~/work): ≤500 entries, folders first, then by name. */
 export async function listComputerFiles(
-  userId: string,
+  computerId: string,
   rawPath: string | undefined,
   deps: FilesDeps = defaultDeps,
 ): Promise<ComputerFileList> {
   const path = resolveMemberPath(rawPath);
-  const container = await deps.container(userId);
+  const container = await deps.container(computerId);
   try {
     const result = await deps.host().exec({
       container,
@@ -264,9 +264,9 @@ export async function listComputerFiles(
     if (result.code !== 0) throw scriptFailure(result.code, result.stderr, 'Listing the folder');
     return parseListing(result.stdout);
   } catch (err) {
-    return await rethrow(userId, err, deps);
+    return await rethrow(computerId, err, deps);
   } finally {
-    void deps.touch(userId);
+    void deps.touch(computerId);
   }
 }
 
@@ -366,13 +366,13 @@ function bodyStream(
 
 /** Open a download of one regular file (≤1 GiB) under the agent home. */
 export async function openComputerDownload(
-  userId: string,
+  computerId: string,
   rawPath: string,
   deps: FilesDeps = defaultDeps,
 ): Promise<ComputerDownload> {
   const path = resolveMemberPath(rawPath, '');
   if (path === AGENT_HOME) throw new ComputerFileError('invalid', 'Not a regular file');
-  const container = await deps.container(userId);
+  const container = await deps.container(computerId);
   let child: ComputerProcess;
   try {
     child = deps
@@ -382,7 +382,7 @@ export async function openComputerDownload(
         env: AGENT_ENV,
       });
   } catch (err) {
-    return await rethrow(userId, err, deps);
+    return await rethrow(computerId, err, deps);
   }
   child.stdin?.end();
   const deadline = setTimeout(() => child.kill('SIGKILL'), TRANSFER_TIMEOUT_MS);
@@ -396,15 +396,15 @@ export async function openComputerDownload(
       'header' in header
         ? new ComputerDockerError('failed', 'The computer did not say how large the file is')
         : scriptFailure(header.code, header.stderr, 'Reading the file');
-    return await rethrow(userId, failure, deps);
+    return await rethrow(computerId, failure, deps);
   }
-  void deps.touch(userId);
-  const touching = setInterval(() => void deps.touch(userId), TOUCH_EVERY_MS);
+  void deps.touch(computerId);
+  const touching = setInterval(() => void deps.touch(computerId), TOUCH_EVERY_MS);
   touching.unref?.();
   const stream = bodyStream(child, header.rest, Number(announced), () => {
     clearTimeout(deadline);
     clearInterval(touching);
-    void deps.touch(userId);
+    void deps.touch(computerId);
   });
   return { name: posix.basename(path), size: Number(announced), stream };
 }
@@ -417,7 +417,7 @@ export async function openComputerDownload(
  * container, never held whole in the API) or the bytes themselves.
  */
 export async function uploadComputerFile(
-  userId: string,
+  computerId: string,
   input: { dir?: string; name: string; body: Readable | Buffer; size: number },
   deps: FilesDeps = defaultDeps,
 ): Promise<{ entry: ComputerFileEntry; path: string }> {
@@ -428,8 +428,8 @@ export async function uploadComputerFile(
     throw new ComputerFileError('invalid', 'Unknown upload size');
   }
   if (input.size > UPLOAD_MAX_BYTES) throw new ComputerFileError('too_large', 'Files up to 100 MiB can be uploaded');
-  const container = await deps.container(userId);
-  const touching = setInterval(() => void deps.touch(userId), TOUCH_EVERY_MS);
+  const container = await deps.container(computerId);
+  const touching = setInterval(() => void deps.touch(computerId), TOUCH_EVERY_MS);
   touching.unref?.();
   try {
     const result = await deps.host().exec({
@@ -463,9 +463,9 @@ export async function uploadComputerFile(
       path: posix.join(dir, stored),
     };
   } catch (err) {
-    return await rethrow(userId, err, deps);
+    return await rethrow(computerId, err, deps);
   } finally {
     clearInterval(touching);
-    void deps.touch(userId);
+    void deps.touch(computerId);
   }
 }

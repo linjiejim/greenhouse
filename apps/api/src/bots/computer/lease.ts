@@ -38,6 +38,8 @@ import {
 import { ComputerUnavailableError } from './errors.js';
 import { computerLifecycleHooks } from './hooks.js';
 import { leaseChanged } from './lease-events.js';
+import { parseComputerId } from './namespace.js';
+import { computerForBot } from './refs.js';
 import { requireComputerRuntime } from './runtime.js';
 
 /** Viewers gone this long hand the computer back to the Bots (event only, no continue). */
@@ -68,8 +70,8 @@ const COPY = {
   skipped: (locale: Locale) => (locale === 'zh' ? '已跳过接管。' : 'Take-over skipped.'),
   released: (locale: Locale) =>
     locale === 'zh'
-      ? '查看窗口已关闭超过 3 分钟，电脑已交回给 Bot；请求仍在等你处理。'
-      : 'The viewer was closed for 3 minutes, so the computer went back to the Bots. The request is still waiting for you.',
+      ? '查看窗口已关闭超过 3 分钟，电脑已交回给 Agent；请求仍在等你处理。'
+      : 'The viewer was closed for 3 minutes, so the computer went back to the Agents. The request is still waiting for you.',
 };
 
 /** What the woken Bot reads (model-facing, so English). */
@@ -131,6 +133,7 @@ async function settleAndContinue(
     if (request.bot_id) {
       await deliverToConversation(request.session_id, {
         kind: 'continue',
+        author_user_id: request.user_id,
         botId: request.bot_id,
         note: outcome.status === 'resolved' ? BOT_NOTE.handback(outcome.note) : BOT_NOTE.skipped(),
         eventText: text,
@@ -150,12 +153,12 @@ async function settleAndContinue(
 /** Kills every process of uid agent except background jobs and terminals (image contract 2). */
 const AGENT_KILL_ARGV = ['gh-agent-kill'];
 
-/** The member takes the screen and input. Idempotent. */
-export async function takeoverComputer(userId: string): Promise<void> {
-  await ensureComputerReady(userId);
-  const row = await getDb().botComputers.setLease(userId, 'user');
+/** The member takes the screen and input of one computer. Idempotent. */
+export async function takeoverComputer(computerId: string): Promise<void> {
+  await ensureComputerReady(computerId);
+  const row = await getDb().botComputers.setLease(computerId, 'user');
   if (!row) return; // already theirs
-  const aborted = abortComputerActions(userId);
+  const aborted = abortComputerActions(computerId);
   // Commands of other API slots and anything the Bot's shell left behind: the
   // agent uid's processes go — except background jobs (they are meant to
   // outlive a take-over) and the member's own terminals. The browser
@@ -177,7 +180,7 @@ export async function takeoverComputer(userId: string): Promise<void> {
     logger.warn(`[bots-computer] could not stop the Bot shell on take-over: ${toErrorMessage(err)}`);
   }
   logger.info('[bots-computer] takeover', {
-    user_id: userId,
+    computer_id: computerId,
     epoch: row.lease_epoch,
     aborted_actions: aborted,
     killed_processes: killed,
@@ -190,8 +193,8 @@ export async function takeoverComputer(userId: string): Promise<void> {
  * (the member may have minimised it). Best effort, never awaited — it must
  * not hold up the hand-back, and a stopped computer has no window to restore.
  */
-function restoreWindowAfterHandback(userId: string): void {
-  void restoreBrowserWindow(userId).catch((err: unknown) => {
+function restoreWindowAfterHandback(computerId: string): void {
+  void restoreBrowserWindow(computerId).catch((err: unknown) => {
     if (err instanceof ComputerUnavailableError) return;
     logger.warn(`[bots-computer] could not restore the browser window after a hand-back: ${toErrorMessage(err)}`);
   });
@@ -205,22 +208,29 @@ function restoreWindowAfterHandback(userId: string): void {
  * must not resolve another Bot's CAPTCHA card and wake it.
  */
 async function requestToSettle(
-  userId: string,
+  computerId: string,
   opts: { requestId?: string; sessionId?: string },
 ): Promise<BotRequestRow | undefined> {
   const db = getDb();
+  const { userId } = parseComputerId(computerId);
+  // Only a card of the Agent whose computer this is (each Agent has its own).
+  const onThisComputer = async (request: BotRequestRow) =>
+    (await computerForBot(db, userId, request.bot_id)).id === computerId;
   if (opts.requestId) {
     const request = await db.bots.getRequest(userId, opts.requestId);
     if (!request || request.status !== 'pending' || !isHumanStep(request)) return undefined;
     if (opts.sessionId && request.session_id !== opts.sessionId) return undefined;
-    return request;
+    return (await onThisComputer(request)) ? request : undefined;
   }
   if (!opts.sessionId) return undefined;
-  const waiting = await db.bots.listRequests(userId, {
+  const waiting: BotRequestRow[] = [];
+  for (const request of await db.bots.listRequests(userId, {
     sessionId: opts.sessionId,
     status: 'pending',
     kinds: [...HUMAN_STEP_KINDS],
-  });
+  })) {
+    if (await onThisComputer(request)) waiting.push(request);
+  }
   return waiting.length === 1 ? waiting[0] : undefined;
 }
 
@@ -229,17 +239,18 @@ async function requestToSettle(
  * answers (see requestToSettle; none = just release) and wake its Bot.
  */
 export async function handbackComputer(
-  userId: string,
+  computerId: string,
   opts: { note?: string; requestId?: string; sessionId?: string } = {},
 ): Promise<void> {
   const db = getDb();
-  const row = await db.botComputers.setLease(userId, 'bot');
+  const { userId } = parseComputerId(computerId);
+  const row = await db.botComputers.setLease(computerId, 'bot');
   if (row) {
-    logger.info('[bots-computer] handback', { user_id: userId, epoch: row.lease_epoch });
+    logger.info('[bots-computer] handback', { computer_id: computerId, epoch: row.lease_epoch });
     leaseChanged(row);
   }
-  restoreWindowAfterHandback(userId);
-  const request = await requestToSettle(userId, opts);
+  restoreWindowAfterHandback(computerId);
+  const request = await requestToSettle(computerId, opts);
   if (!request) return;
   await settleAndContinue(userId, request, { status: 'resolved', note: cleanNote(opts.note) });
 }
@@ -256,10 +267,12 @@ export async function handleTakeoverDecision(args: {
 }): Promise<void> {
   const { userId, request, decision } = args;
   const db = getDb();
-  const row = await db.botComputers.setLease(userId, 'bot');
+  // The computer of the Agent that asked.
+  const computer = await computerForBot(db, userId, request.bot_id);
+  const row = await db.botComputers.setLease(computer.id, 'bot');
   if (row) {
     leaseChanged(row);
-    restoreWindowAfterHandback(userId);
+    restoreWindowAfterHandback(computer.id);
   }
   // false = a double click or the other slot settled it first; that one woke the Bot.
   await settleAndContinue(userId, request, {
@@ -276,14 +289,20 @@ export async function releaseAbandonedLeases(now = Date.now()): Promise<void> {
   for (const candidate of rows) {
     // A take-over that just started has no viewer heartbeat yet.
     if (candidate.lease_since && Date.parse(candidate.lease_since) > cutoff) continue;
-    const row = await db.botComputers.setLease(candidate.user_id, 'bot');
+    const row = await db.botComputers.setLease(candidate.id, 'bot');
     if (!row) continue;
-    logger.info('[bots-computer] lease auto-released', { user_id: row.user_id, epoch: row.lease_epoch });
+    logger.info('[bots-computer] lease auto-released', { computer_id: row.id, epoch: row.lease_epoch });
     leaseChanged(row);
-    restoreWindowAfterHandback(row.user_id);
-    // The note goes to the conversation whose card is still waiting — only
-    // when that is unambiguous; the lease change itself reaches every tab.
-    const waiting = await db.bots.listRequests(row.user_id, { status: 'pending', kinds: [...HUMAN_STEP_KINDS] });
+    restoreWindowAfterHandback(row.id);
+    // The note goes to the conversation whose card (from this computer's Agent) is still
+    // waiting — only when that is unambiguous; the lease change itself reaches every tab.
+    const waiting: BotRequestRow[] = [];
+    for (const request of await db.bots.listRequests(row.user_id, {
+      status: 'pending',
+      kinds: [...HUMAN_STEP_KINDS],
+    })) {
+      if ((await computerForBot(db, row.user_id, request.bot_id)).id === row.id) waiting.push(request);
+    }
     if (waiting.length !== 1) continue;
     const request = waiting[0]!;
     const locale = await localeOf(row.user_id);
@@ -314,11 +333,11 @@ export class LeaseRequiredError extends Error {
  * cannot). Only while the member holds the lease; the value is never logged
  * and joins the redaction set.
  */
-export async function typeIntoFocusedField(userId: string, text: string): Promise<void> {
+export async function typeIntoFocusedField(computerId: string, text: string): Promise<void> {
   if (!text || text.length > MAX_TYPE_CHARS) throw new RangeError(`Text must be 1–${MAX_TYPE_CHARS} characters`);
-  const row = await getDb().botComputers.get(userId);
+  const row = await getDb().botComputers.get(computerId);
   if (row?.lease_controller !== 'user') throw new LeaseRequiredError();
-  const browser = await getBrowser(userId);
+  const browser = await getBrowser(computerId);
   const pages = browser.contexts().flatMap((context) => context.pages());
   if (pages.length === 0) throw new ComputerUnavailableError('stopped', 'No page is open on the computer');
   let target = pages[pages.length - 1]!;
@@ -332,7 +351,7 @@ export async function typeIntoFocusedField(userId: string, text: string): Promis
       break;
     }
   }
-  rememberFilledSecret(userId, text);
+  rememberFilledSecret(computerId, text);
   await target.keyboard.insertText(text);
 }
 

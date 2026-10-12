@@ -28,6 +28,7 @@ import { toRequestView } from '../views.js';
 import type { ApprovalDecision } from './context.js';
 import { copy, type BotsLocale } from './copy.js';
 import { sweepReplyAlerts } from './reply-alerts.js';
+import { pushToConversation } from './fanout.js';
 
 /**
  * The longest an in-turn approval may wait. The spec allows 150 s, but the
@@ -86,7 +87,7 @@ async function notifyRequest(db: DatabaseProvider, row: BotRequestRow, bot: BotR
       user_id: row.user_id,
       kind: 'system',
       // The same line the transcript shows: names the Bot and what it needs.
-      title: requestLine(locale, bot?.name ?? 'Bot', row.kind, toRequestView(row).payload).slice(0, 500),
+      title: requestLine(locale, bot?.name ?? 'Agent', row.kind, toRequestView(row).payload).slice(0, 500),
       body: copy.notificationBody(locale),
       payload: {
         bots_session_id: row.session_id,
@@ -253,7 +254,7 @@ export async function expireDueRequests(db: DatabaseProvider = getDb()): Promise
   for (const row of expired) {
     resolveApprovalWaiter(row.id, 'expired');
     users.add(row.user_id);
-    connectionManager.sendToUser(row.user_id, { type: 'bots:conversation', sessionId: row.session_id });
+    void pushToConversation(row.session_id, row.user_id, { type: 'bots:conversation', sessionId: row.session_id });
   }
   for (const userId of users) await pushAttention(db, userId);
   return expired;

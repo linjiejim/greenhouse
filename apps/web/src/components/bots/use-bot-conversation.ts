@@ -7,17 +7,27 @@
  * changed", the transcript is re-read over REST; a run's own events arrive
  * through SessionManager, and when the run settles the persisted rows replace
  * the live segments in one swap.
+ *
+ * A room (P5) differs in three ways: every message is accepted with `202` and
+ * written by the server (nobody answers unless @-mentioned), a run may be
+ * someone else's (it is followed live — the page probes for one on open, since
+ * the runs seed lists only the member's own — but only its asker may stop it:
+ * the probe's `run.user_id` and each `chat:run` push's `userId` say who that is),
+ * and only the member's own messages settle their sends.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { BotConversationDetail, BotRequestView } from '@greenhouse/types/bots';
+import * as api from '../../lib/api';
 import * as botsApi from '../../lib/api/bots';
 import type { BotMessage } from '../../lib/api/bots';
+import { useAuthStore } from '../../stores';
 import { useSessionManager, type ManagedSession } from '../../lib/session-manager';
 import { wsClient } from '../../lib/ws';
 import { useT } from '../../lib/i18n';
 import { toast } from '../ui';
 import { conversationBotIds, useBotsStore } from './bots-store';
+import { seedReplyRatings } from './reply-feedback';
 import { pickUpQueued, type PendingSend } from './transcript';
 
 const VIEWPORT_ID = 'bots-page';
@@ -42,8 +52,15 @@ function mergeLatest(loaded: readonly BotMessage[], latest: readonly BotMessage[
   return [...loaded.filter((message) => message.seq < floor), ...latest].sort((a, b) => a.seq - b.seq);
 }
 
-/** Drop sends whose persisted copy has arrived (matched one-to-one, oldest first). */
-function settlePending(pending: readonly PendingWithBase[], messages: readonly BotMessage[]): PendingWithBase[] {
+/**
+ * Drop sends whose persisted copy has arrived (matched one-to-one, oldest first). In a room only
+ * the member's own messages count (`me`): someone else saying the same "ok" is not this send.
+ */
+function settlePending(
+  pending: readonly PendingWithBase[],
+  messages: readonly BotMessage[],
+  me: string | null = null,
+): PendingWithBase[] {
   const used = new Set<string>();
   // Matching includes `sending`: the API persists the message before it answers,
   // so a reload racing the POST may already contain it.
@@ -52,6 +69,7 @@ function settlePending(pending: readonly PendingWithBase[], messages: readonly B
       (message) =>
         message.role === 'user' &&
         !message.bot_event &&
+        (!message.author_user_id || !me || message.author_user_id === me) &&
         message.seq > send.baseSeq &&
         !used.has(message.id) &&
         message.content.trim() === send.content.trim(),
@@ -70,8 +88,19 @@ export type StopPhase = 'soft' | 'hard' | null;
 
 export function useBotConversation(sessionId: string) {
   const sessionManager = useSessionManager();
-  const { registerViewport, unregisterViewport, clearSession, sendBotsMessage, stopSession, interruptSession } =
-    sessionManager;
+  const {
+    registerViewport,
+    unregisterViewport,
+    clearSession,
+    sendBotsMessage,
+    rewindBotsMessage,
+    stopSession,
+    interruptSession,
+    attachSession,
+  } = sessionManager;
+  const me = useAuthStore((state) => state.currentUser?.id ?? null);
+  const meRef = useRef(me);
+  meRef.current = me;
   const managed: ManagedSession | undefined = sessionManager.activeSessions.get(sessionId);
   const streaming = managed?.status === 'streaming' || managed?.status === 'stopping';
 
@@ -97,6 +126,17 @@ export function useBotConversation(sessionId: string) {
   // (`loadSeqRef` is no substitute: every reload bumps it.)
   const sessionRef = useRef(sessionId);
   sessionRef.current = sessionId;
+  // Whether the open conversation is a room (sends are accepted, never streamed; runs may be others').
+  const roomRef = useRef(false);
+  roomRef.current = conversation?.kind === 'room' && conversation.session_id === sessionId;
+  // The Agents the member last @-mentioned in this room: a run one of them answers is theirs to stop
+  // (the fallback when the server does not say whose run it is).
+  const askedRef = useRef<{ sessionId: string; botIds: ReadonlySet<string> } | null>(null);
+  // Whose run is going in this room, as the server says it: the probe's `run.user_id` and each
+  // `chat:run` push's `userId` (an older server sends neither). A push outdates any probe answer
+  // still in flight (`runPushesRef` counts them).
+  const [runAsker, setRunAsker] = useState<{ sessionId: string; runId: string; userId: string } | null>(null);
+  const runPushesRef = useRef(0);
   const t = useT();
 
   const markRead = useCallback(() => {
@@ -122,14 +162,24 @@ export function useBotConversation(sessionId: string) {
       const page = await botsApi.getConversation(sessionId, { limit: PAGE_SIZE });
       if (ticket !== loadSeqRef.current) return;
       // A member or speaker this tab has not seen yet (a Bot made elsewhere):
-      // learn its name first instead of rendering "Deleted Bot".
-      const speakers = page.messages.flatMap((message) => (message.bot_id ? [message.bot_id] : []));
+      // learn its name first instead of rendering "Deleted Bot". A room's Agents come with their
+      // own `profile` — nothing to learn about them.
+      const described = new Set(
+        page.conversation.kind === 'room'
+          ? page.conversation.members.flatMap((member) => (member.profile ? [member.bot_id] : []))
+          : [],
+      );
+      const speakers = page.messages.flatMap((message) =>
+        message.bot_id && !described.has(message.bot_id) ? [message.bot_id] : [],
+      );
       await useBotsStore
         .getState()
         .ensureBotsKnown([...conversationBotIds(page.conversation), ...speakers])
         .catch(() => {});
       if (ticket !== loadSeqRef.current) return;
       const merged = mergeLatest(messagesRef.current, page.messages);
+      // The member's ratings of these replies, before they render (a reload shows them again).
+      seedReplyRatings(page.messages, page.my_ratings);
       setConversation(page.conversation);
       setMessages(merged);
       if (page.memory_states) {
@@ -137,7 +187,7 @@ export function useBotConversation(sessionId: string) {
         setMemoryStates((current) => ({ ...current, ...states }));
       }
       setHasMore((previous) => (messagesRef.current.length > page.messages.length ? previous : page.has_more));
-      setPending((current) => settlePending(current, merged));
+      setPending((current) => settlePending(current, merged, page.conversation.kind === 'room' ? meRef.current : null));
       setState('ready');
       setError(null);
       useBotsStore.getState().noteSession(sessionId);
@@ -165,6 +215,45 @@ export function useBotConversation(sessionId: string) {
     setRequestOverrides(new Map());
     void reload().then(markRead);
   }, [reload, markRead]);
+
+  // ── A room: someone else's run is not in the member's runs seed — probe, and follow it live ──
+  // Both the probe and every `chat:run` push say whose run it is (only the asker may stop it).
+  const isRoom = conversation?.kind === 'room' && conversation.session_id === sessionId;
+  useEffect(() => {
+    if (!isRoom) return;
+    let live = true;
+    const probe = () => {
+      const pushes = runPushesRef.current;
+      api
+        .getChatRun(sessionId)
+        .then(({ active, run }) => {
+          if (!live || sessionRef.current !== sessionId) return;
+          if (runPushesRef.current === pushes) {
+            setRunAsker(active && run?.user_id ? { sessionId, runId: run.run_id, userId: run.user_id } : null);
+          }
+          if (active) attachSession(sessionId);
+        })
+        .catch(() => {});
+    };
+    probe();
+    const unsubscribeStatus = wsClient.onStatusChange((status) => {
+      if (status === 'connected') probe();
+    });
+    const unsubscribeRuns = wsClient.onEvent((event) => {
+      if (event.type !== 'chat:run' || event.sessionId !== sessionId) return;
+      runPushesRef.current += 1;
+      if (event.status === 'running') {
+        setRunAsker(event.userId ? { sessionId, runId: event.runId, userId: event.userId } : null);
+      } else {
+        setRunAsker((current) => (current?.runId === event.runId ? null : current));
+      }
+    });
+    return () => {
+      live = false;
+      unsubscribeStatus();
+      unsubscribeRuns();
+    };
+  }, [attachSession, isRoom, sessionId]);
 
   // ── Visible viewport → SessionManager auto-attach + unread suppression ──
   useEffect(() => {
@@ -205,6 +294,11 @@ export function useBotConversation(sessionId: string) {
   useEffect(() => {
     if (!settledStatus) return;
     if (settledStatus === 'error') setRunError(managed?.error ?? null);
+    // The run that answered the member's last @ in a room is over: the next one may be anyone's.
+    const asked = askedRef.current;
+    if (asked?.sessionId === sessionId && managed?.botSegments.some((segment) => asked.botIds.has(segment.botId))) {
+      askedRef.current = null;
+    }
     let canceled = false;
     void reload().then(() => {
       if (canceled) return;
@@ -227,6 +321,7 @@ export function useBotConversation(sessionId: string) {
       const page = await botsApi.getConversation(forSession, { beforeSeq: oldest.seq, limit: PAGE_SIZE });
       // Switched away meanwhile: these rows are another conversation's history.
       if (sessionRef.current !== forSession) return;
+      seedReplyRatings(page.messages, page.my_ratings);
       setMessages((current) => {
         const known = new Set(current.map((message) => message.id));
         return [...page.messages.filter((message) => !known.has(message.id)), ...current].sort((a, b) => a.seq - b.seq);
@@ -244,9 +339,16 @@ export function useBotConversation(sessionId: string) {
   }, [loadingEarlier, sessionId, t]);
 
   const send = useCallback(
-    async (content: string, options: { images?: Array<{ id: string; url: string }>; mentions?: string[] } = {}) => {
+    async (
+      content: string,
+      options: { images?: Array<{ id: string; url: string }>; mentions?: string[]; model?: string } = {},
+    ) => {
       const clientId = `send-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
       const segmentsNow = streaming ? (managed?.botSegments.length ?? 0) : 0;
+      const inRoom = roomRef.current;
+      if (inRoom && options.mentions && options.mentions.length > 0) {
+        askedRef.current = { sessionId, botIds: new Set(options.mentions) };
+      }
       setRunError(null);
       setPending((current) => [
         ...current,
@@ -264,8 +366,12 @@ export function useBotConversation(sessionId: string) {
         setPending((current) =>
           current.map((send) =>
             send.clientId === clientId
-              ? // A fresh run starts after this message; a queued one sits where it was sent.
-                { ...send, status: queued ? 'queued' : 'sent', afterSegment: queued ? send.afterSegment : 0 }
+              ? inRoom
+                ? // A room accepts every message (202) and writes it at once, mid-run or not: it
+                  // is said, where it was said — never "read after the current reply".
+                  { ...send, status: 'sent' }
+                : // A fresh run starts after this message; a queued one sits where it was sent.
+                  { ...send, status: queued ? 'queued' : 'sent', afterSegment: queued ? send.afterSegment : 0 }
               : send,
           ),
         );
@@ -275,6 +381,35 @@ export function useBotConversation(sessionId: string) {
       }
     },
     [managed?.botSegments.length, sendBotsMessage, sessionId, streaming],
+  );
+
+  /**
+   * A separate chat: edit its last member message (`content`) or answer it again. What the run
+   * replaces leaves the screen at once (the server truncates the same way); a refusal puts it back
+   * and rejects with the API's error, for the caller to explain.
+   */
+  const rewind = useCallback(
+    async (messageId: string, content?: string) => {
+      const before = messagesRef.current;
+      const target = before.find((message) => message.id === messageId);
+      if (!target) return;
+      const kept = before
+        .filter((message) => message.seq <= target.seq)
+        .map((message) => (message.id === messageId && content !== undefined ? { ...message, content } : message));
+      messagesRef.current = kept;
+      setMessages(kept);
+      setRunError(null);
+      try {
+        await rewindBotsMessage(sessionId, { messageId, ...(content !== undefined ? { content } : {}) });
+      } catch (err) {
+        if (sessionRef.current === sessionId) {
+          messagesRef.current = before;
+          setMessages(before);
+        }
+        throw err;
+      }
+    },
+    [rewindBotsMessage, sessionId],
   );
 
   // ── A queued message the run picked up (an interjection turn answers it) ──
@@ -291,6 +426,26 @@ export function useBotConversation(sessionId: string) {
     matchedTurns.current.count = turns.length;
     setPending((current) => pickUpQueued(current, fresh));
   }, [segmentsNow, runKey]);
+
+  /**
+   * Whether the member may stop the run on screen. Anywhere but a room it is theirs. In a room only
+   * the asker may (the server refuses everyone else), and the server says who that is (`runAsker`).
+   * An older server does not: then a run where one of the member's own Agents speaks is theirs
+   * (only its owner can address it), and so is one answered by an Agent they just @-mentioned.
+   * Unknown → no Stop.
+   */
+  const asker = isRoom && runAsker?.sessionId === sessionId ? runAsker.userId : null;
+  const ownRun =
+    !isRoom ||
+    (asker
+      ? asker === me
+      : (managed?.botSegments ?? []).some((segment) => {
+          const member = conversation?.members.find((candidate) => candidate.bot_id === segment.botId);
+          if (me && member?.owner_user_id === me) return true;
+          const asked = askedRef.current;
+          return asked?.sessionId === sessionId && asked.botIds.has(segment.botId);
+        }));
+  const canStop = streaming && ownRun;
 
   const hardStopping = managed?.status === 'stopping';
   const interrupting =
@@ -377,8 +532,11 @@ export function useBotConversation(sessionId: string) {
     memoryStates,
     reload,
     send,
+    rewind,
     stop,
     stopPhase,
+    /** A run is on screen and the member may stop it (in a room: only a run they asked for). */
+    canStop,
     /** The run stops (or reads a waiting message) once the current step is done. */
     interrupting,
     handleNow,

@@ -120,6 +120,8 @@ export interface MessageRow {
   bot_id?: string | null;
   /** Structured Bots system event (JSON text), see `BotEvent` in @greenhouse/types/bots. */
   bot_event?: string | null;
+  /** The person who wrote a member message in a room (several people); null/absent everywhere else. */
+  author_user_id?: string | null;
   images: string;
   confidence: number | null;
   grounded: number | null;
@@ -176,6 +178,8 @@ export interface MessageInput {
   bot_id?: string;
   /** Structured Bots system event, serialised. */
   bot_event?: string;
+  /** The person who wrote a member message in a room. */
+  author_user_id?: string;
   images?: Array<{ id: string; url: string }>;
   confidence?: number;
   grounded?: boolean;

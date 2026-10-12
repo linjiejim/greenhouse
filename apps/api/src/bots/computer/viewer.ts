@@ -34,7 +34,7 @@ import { computerLifecycleHooks } from './hooks.js';
 import { onLeaseChange } from './lease-events.js';
 import { RfbClientFilter } from './rfb-filter.js';
 import { requireComputerRuntime } from './runtime.js';
-import { verifyViewToken, type ViewTokenClaims } from './view-token.js';
+import { ticketComputerId, verifyViewToken, type ViewTokenClaims } from './view-token.js';
 
 const PING_MS = 20_000;
 const HEARTBEAT_MS = 20_000;
@@ -57,36 +57,36 @@ export const VIEWER_CLOSE = {
 } as const;
 
 interface Viewer {
-  userId: string;
+  computerId: string;
   close(code: number, reason: string): void;
 }
 
 const viewers = new Map<string, Set<Viewer>>();
 
 function register(viewer: Viewer): void {
-  let set = viewers.get(viewer.userId);
-  if (!set) viewers.set(viewer.userId, (set = new Set()));
+  let set = viewers.get(viewer.computerId);
+  if (!set) viewers.set(viewer.computerId, (set = new Set()));
   set.add(viewer);
 }
 
 function unregister(viewer: Viewer): void {
-  const set = viewers.get(viewer.userId);
+  const set = viewers.get(viewer.computerId);
   if (!set) return;
   set.delete(viewer);
-  if (set.size === 0) viewers.delete(viewer.userId);
+  if (set.size === 0) viewers.delete(viewer.computerId);
 }
 
 /** Close every live viewer of a member (suspend, purge, account change). */
-export function closeViewersFor(userId: string, reason = 'closed'): number {
-  const set = viewers.get(userId);
+export function closeViewersFor(computerId: string, reason = 'closed'): number {
+  const set = viewers.get(computerId);
   if (!set) return 0;
   const list = [...set];
   for (const viewer of list) viewer.close(VIEWER_CLOSE.closedByServer, reason);
   return list.length;
 }
 
-export function viewerCount(userId: string): number {
-  return viewers.get(userId)?.size ?? 0;
+export function viewerCount(computerId: string): number {
+  return viewers.get(computerId)?.size ?? 0;
 }
 
 /** Re-read the member: still allowed to watch their computer? */
@@ -121,8 +121,9 @@ export function createComputerViewerRoutes() {
 }
 
 /** The socket handlers of one verified viewer (exported for tests). */
-export function viewerSession(claims: Pick<ViewTokenClaims, 'uid' | 'av' | 'c'>) {
+export function viewerSession(claims: Pick<ViewTokenClaims, 'uid' | 'av' | 'c' | 'k'>) {
   const userId = claims.uid;
+  const computerId = ticketComputerId(claims);
 
   let raw: WsSocket | null = null;
   let child: ComputerProcess | null = null;
@@ -150,7 +151,7 @@ export function viewerSession(claims: Pick<ViewTokenClaims, 'uid' | 'av' | 'c'>)
   };
 
   const viewer: Viewer = {
-    userId,
+    computerId,
     close(code, reason) {
       if (closed) return;
       try {
@@ -196,7 +197,7 @@ export function viewerSession(claims: Pick<ViewTokenClaims, 'uid' | 'av' | 'c'>)
   }
 
   async function refreshLease(): Promise<void> {
-    const row = await getDb().botComputers.get(userId);
+    const row = await getDb().botComputers.get(computerId);
     if (row && row.lease_epoch !== lastEpoch) applyLease(row.lease_controller, row.lease_epoch);
   }
 
@@ -232,19 +233,19 @@ export function viewerSession(claims: Pick<ViewTokenClaims, 'uid' | 'av' | 'c'>)
         const { controller, host } = requireComputerRuntime();
         // Opening your own computer may start it, even over the soft disk
         // limit — that is how a member gets in to clean up.
-        const row = await controller.ensureRunning(userId, { allowOverQuota: true });
+        const row = await controller.ensureRunning(computerId, { allowOverQuota: true });
         if (closed) return;
         if (row.container_name !== claims.c) {
           viewer.close(VIEWER_CLOSE.unauthorized, 'stale ticket');
           return;
         }
         applyLease(row.lease_controller, row.lease_epoch);
-        await db.botComputers.heartbeatViewer(userId);
+        await db.botComputers.heartbeatViewer(computerId);
         // Nothing below awaits; a socket gone during the awaits above stops here.
         if (closed) return;
         adoptLeaseListener(
           onLeaseChange((changedUser, lease) => {
-            if (changedUser === userId) applyLease(lease.controller, lease.epoch);
+            if (changedUser === computerId) applyLease(lease.controller, lease.epoch);
           }),
         );
         const tunnel = host.openTunnel(row.container_name, 'vnc');
@@ -267,7 +268,7 @@ export function viewerSession(claims: Pick<ViewTokenClaims, 'uid' | 'av' | 'c'>)
           if (!alive) {
             // terminate(), not close(): a half-open peer never answers the
             // close frame, and close() would wait 30 s for it.
-            logger.info('[bots-computer] viewer missed a pong; dropping it', { user_id: userId });
+            logger.info('[bots-computer] viewer missed a pong; dropping it', { computer_id: computerId });
             try {
               raw?.terminate();
             } catch {
@@ -286,7 +287,7 @@ export function viewerSession(claims: Pick<ViewTokenClaims, 'uid' | 'av' | 'c'>)
       );
       trackTimer(
         setInterval(() => {
-          void db.botComputers.heartbeatViewer(userId).catch(() => {});
+          void db.botComputers.heartbeatViewer(computerId).catch(() => {});
         }, HEARTBEAT_MS),
       );
       trackTimer(
@@ -337,9 +338,9 @@ export function viewerSession(claims: Pick<ViewTokenClaims, 'uid' | 'av' | 'c'>)
   };
 }
 
-computerLifecycleHooks.onPurged((userId) => {
-  closeViewersFor(userId, 'computer removed');
+computerLifecycleHooks.onPurged((computerId) => {
+  closeViewersFor(computerId, 'computer removed');
 });
 computerLifecycleHooks.onShutdown(async () => {
-  for (const userId of [...viewers.keys()]) closeViewersFor(userId, 'server restarting');
+  for (const computerId of [...viewers.keys()]) closeViewersFor(computerId, 'server restarting');
 });

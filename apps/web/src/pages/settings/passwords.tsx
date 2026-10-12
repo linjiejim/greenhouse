@@ -9,7 +9,9 @@
  *
  * Two views over one ModulePage:
  * - Saved logins — @greenhouse/crud schema (table, add/edit dialog, delete
- *   confirm); "always allowed on" grants can be withdrawn inline.
+ *   confirm); "always allowed on" grants can be withdrawn inline. Each login
+ *   names the Agents that may use it — all of them (null) or a chosen few
+ *   (spec 20261011-agent-first-class P3c); others never see it.
  * - Access log — every fill attempt (which login, which Bot, which site,
  *   outcome and how it was approved), metadata only.
  *
@@ -18,7 +20,7 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import type { VaultAccessView, VaultErrorCode, VaultItemView, VaultItemWrite } from '@greenhouse/types/bots';
+import type { BotView, VaultAccessView, VaultErrorCode, VaultItemView, VaultItemWrite } from '@greenhouse/types/bots';
 import { ModulePage } from '../../components/app/module-page';
 import { Button, EmptyState, IconButton, Input, Tabs, Tag, TagList, toast } from '../../components/ui';
 import { History, Lock, Plus, ShieldCheck, X } from '../../lib/icons';
@@ -38,17 +40,20 @@ import {
   updateVaultItem,
 } from '../../lib/api/bots';
 import {
+  AgentScopeField,
   EMPTY_SECRET,
   PolicyChoice,
   SecretInput,
   SitesField,
   VAULT_LABEL_MAX,
   VAULT_MAX_SITES,
+  asAgentScope,
   asSecret,
   normalizeTotpSecret,
   parseSiteLines,
   secretWrite,
   type SecretValue,
+  type VaultAgentOption,
   type VaultPolicy,
 } from '../../components/bots/vault-fields';
 import { CrudPage, defineCrud, type CrudDataSource } from './crud';
@@ -67,6 +72,8 @@ interface VaultDraft extends Record<string, unknown> {
   has_password: boolean;
   has_totp: boolean;
   always_origins: string[];
+  /** The Agents that may use it; null = every Agent. */
+  bot_ids: string[] | null;
   last_used_at: string | null;
 }
 
@@ -84,6 +91,7 @@ function toDraft(item: VaultItemView): VaultDraft {
     has_password: item.has_password,
     has_totp: item.has_totp,
     always_origins: item.always_origins,
+    bot_ids: item.bot_ids ?? null,
     last_used_at: item.last_used_at,
   };
 }
@@ -121,7 +129,17 @@ export function draftToWrite(input: Partial<VaultDraft>, mode: 'add' | 'edit'): 
   if (password !== undefined && !(mode === 'add' && password === '')) write.password = password;
   const totp = secretWrite(asSecret(input.totp), normalizeTotpSecret);
   if (totp !== undefined && !(mode === 'add' && totp === '')) write.totp = totp;
+  // The form always carries the scope (null = every Agent); a draft without it leaves it as it is.
+  if ('bot_ids' in input) write.bot_ids = asAgentScope(input.bot_ids);
   return write;
+}
+
+/** The member's Agents for the scope picker and the list (archived ones too: a login may still name them). */
+function agentOptions(active: readonly BotView[], archived: readonly BotView[]): VaultAgentOption[] {
+  return [
+    ...active.map((bot) => ({ id: bot.id, name: bot.name, archived: false })),
+    ...archived.map((bot) => ({ id: bot.id, name: bot.name, archived: true })),
+  ];
 }
 
 export function PasswordsPanel() {
@@ -180,6 +198,24 @@ function VaultItems({ onUnavailable }: { onUnavailable: () => void }) {
   const t = useT();
   // Withdrawn "always allow" grants, applied over the last list until the next reload.
   const [revoked, setRevoked] = useState<Record<string, string[]>>({});
+  const [agents, setAgents] = useState<VaultAgentOption[]>([]);
+
+  useEffect(() => {
+    listBots()
+      .then((overview) => setAgents(agentOptions(overview.bots, overview.archived_bots)))
+      .catch(() => setAgents([]));
+  }, []);
+
+  /** A login's scope as words: "All Agents", or the chosen Agents' names. */
+  const scopeNames = useCallback(
+    (ids: string[]) =>
+      ids.map((id) => {
+        const agent = agents.find((candidate) => candidate.id === id);
+        if (!agent) return t('botsVault.deletedBot');
+        return agent.archived ? t('bots.archivedName', { name: agent.name }) : agent.name;
+      }),
+    [agents, t],
+  );
 
   const revoke = useCallback(
     async (row: VaultDraft, origin: string) => {
@@ -256,6 +292,7 @@ function VaultItems({ onUnavailable }: { onUnavailable: () => void }) {
                 {/* Phones hide the Policy and "Always allowed" columns; what lets a
                     Bot fill without asking must stay visible — and revocable — there too. */}
                 <div className="mt-1 space-y-1 md:hidden" data-testid="vault-row-mobile-access">
+                  {row.bot_ids !== null && <TagList items={scopeNames(row.bot_ids)} max={2} />}
                   {row.policy === 'auto' && <Tag tone="warning">{t('botsVault.policyAuto')}</Tag>}
                   <AlwaysAllowedChips
                     row={row}
@@ -272,6 +309,20 @@ function VaultItems({ onUnavailable }: { onUnavailable: () => void }) {
             label: t('botsVault.col_sites'),
             type: 'custom',
             render: (row) => <TagList items={row.origins} max={2} />,
+          },
+          {
+            key: 'bot_ids',
+            label: t('botsVault.col_agents'),
+            type: 'custom',
+            responsiveHide: 'md',
+            render: (row) =>
+              row.bot_ids === null ? (
+                <Tag>{t('botsVault.agentsAll')}</Tag>
+              ) : (
+                <span data-testid="vault-row-agents">
+                  <TagList items={scopeNames(row.bot_ids)} max={2} />
+                </span>
+              ),
           },
           {
             key: 'policy',
@@ -418,6 +469,24 @@ function VaultItems({ onUnavailable }: { onUnavailable: () => void }) {
               <PolicyChoice value={value} onChange={onChange} disabled={disabled} />
             ),
           },
+          {
+            key: 'bot_ids',
+            label: t('botsVault.field_agents'),
+            type: 'custom',
+            defaultValue: null,
+            help: t('botsVault.field_agentsHelp'),
+            render: ({ value, onChange, disabled }) => (
+              <AgentScopeField value={value} onChange={onChange} agents={agents} disabled={disabled} />
+            ),
+            rules: [
+              {
+                validate: (value) => {
+                  const scope = asAgentScope(value);
+                  return scope !== null && scope.length === 0 ? t('botsVault.err_agentsRequired') : null;
+                },
+              },
+            ],
+          },
         ],
         access: { canView: false, canAdd: true, canEdit: true, canDelete: true },
         onRowClick: 'edit',
@@ -439,7 +508,7 @@ function VaultItems({ onUnavailable }: { onUnavailable: () => void }) {
           empty: <EmptyState icon={Lock} title={t('botsVault.emptyTitle')} description={t('botsVault.emptyDesc')} />,
         },
       }),
-    [t, dataSource, revoke, revoked],
+    [t, dataSource, revoke, revoked, agents, scopeNames],
   );
 
   return <CrudPage schema={schema} />;

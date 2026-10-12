@@ -27,6 +27,8 @@ export const llmUsage = pgTable(
     caller: text('caller').notNull().default(''),
     session_id: text('session_id'),
     user_id: text('user_id'),
+    /** The member's Agent (`bots.id`) the call was made for, when known (spec 20261011-agent-first-class P3b). */
+    bot_id: text('bot_id'),
     model: text('model').notNull(),
     input_tokens: integer('input_tokens').notNull().default(0),
     output_tokens: integer('output_tokens').notNull().default(0),
@@ -43,6 +45,7 @@ export const llmUsage = pgTable(
     index('idx_llm_usage_caller').on(table.caller),
     index('idx_llm_usage_user').on(table.user_id),
     index('idx_llm_usage_budget_key').on(table.budget_idempotency_key),
+    index('idx_llm_usage_bot_created').on(table.bot_id, table.created_at),
   ],
 );
 

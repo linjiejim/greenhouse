@@ -14,6 +14,7 @@ import platformRoutes from '../platform.js';
 import platformAdminRoutes from '../platform-admin.js';
 import { bootstrapPlatform } from '../../platform/bootstrap.js';
 import { tablesManifest } from '../../platform/manifests/tables.js';
+import { projectsManifest } from '../../platform/manifests/projects.js';
 import { projectsRegistration } from '../../platform/projects/application.js';
 import { initializePlatformRuntime, resetPlatformRuntimeForTests } from '../../platform/runtime.js';
 import { humanActor } from '../../platform/actor.js';
@@ -143,7 +144,7 @@ describe('Projects Platform Kernel migration', () => {
     const coreIds = new Set(['knowledge', 'projects', 'tables']);
     expect(
       active.filter((release) => coreIds.has(release.app_id)).map((release) => `${release.app_id}@${release.version}`),
-    ).toEqual(['knowledge@1.0.1', 'projects@1.0.1', `tables@${tablesManifest.version}`]);
+    ).toEqual(['knowledge@1.0.1', `projects@${projectsManifest.version}`, `tables@${tablesManifest.version}`]);
     const roles = await db.platform.listRoles('default');
     expect(roles.map((role) => role.code)).toEqual(['super', 'team']);
     expect(roles.every((role) => role.system_protected)).toBe(true);

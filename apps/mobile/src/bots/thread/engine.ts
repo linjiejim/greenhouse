@@ -54,6 +54,16 @@
  *   stream events only touch the accumulator and a ~33 ms tick publishes at
  *   most one snapshot; anything else is published on the next microtask.
  *
+ * - A room (several people, spec 20261011-agent-first-class P5): every message
+ *   answers 202 — nobody answers unless an Agent is @-mentioned by someone it
+ *   may answer, and then in a run of that person's, started server-side. A
+ *   message that asked no one is just sent; one that asked an Agent waits for
+ *   the run (`queued` while someone else's is going, else `sent`) and is this
+ *   device's open ask until a run answers it. Only the asker may stop a run:
+ *   `runMine` — whose the server says it is (the probe's `run.user_id`, the
+ *   `chat:run` push's `userId`), else ../rooms.ts `roomRunMine`. Another
+ *   person's message never settles this device's send.
+ *
  * Privacy: the transcript lives in memory only (./cache.ts LRU, never on disk),
  * nothing here logs.
  */
@@ -65,6 +75,8 @@ import type {
   DecideOutcome,
   MobilePending,
   RealtimeEvent,
+  RewindInput,
+  RewindOutcome,
   SendInput,
   SendOutcome,
   ThreadController,
@@ -74,6 +86,7 @@ import type {
   ThreadSnapshot,
 } from '../contract';
 import { mergeRequests } from '../requests';
+import { learnableIds, roomRunMine, type RoomAsk } from '../rooms';
 import { pickUpQueued } from '../vendor/transcript';
 import { conversationBotIds, maxSeq, mergeLatest, PAGE_SIZE, settlePending } from '../vendor/web-helpers';
 import { threadCache, type ThreadCache } from './cache';
@@ -93,6 +106,8 @@ import { applyRunEvent, emptyRunState, settleRun, type RunState } from './run-st
 
 /** Re-attach attempts after a transport drop before the run is treated as gone (the transcript is reloaded). */
 export const MAX_RESUMES = 5;
+/** Runs whose asker a push named, remembered per thread (a room: whose run it is). */
+const MAX_PUSHED_ASKERS = 8;
 /** Back in the foreground with no event (not even the server's 15 s ping) for this long = a dead socket. */
 export const STALE_MS = 20_000;
 /** `bots:conversation` pushes for the open thread collapse into one reload. */
@@ -171,6 +186,8 @@ interface Reader {
   /** Null until known (a POST's run is learned from the latch or a probe). */
   runId: string | null;
   byMe: boolean;
+  /** Whose run, when a probe said (`run.user_id`): a room's run is its asker's. */
+  askerId: string | null;
   /** A POST's opened 200 stream; null for an attach (opened when its turn comes). */
   source: AsyncGenerator<RunStreamEvent> | null;
   /** Aborts the current transport (the POST's own request, or the latest re-attach). */
@@ -199,6 +216,10 @@ interface LiveRun {
   replaying: boolean;
   /** Interjection turns already matched to queued sends — each turn once, even when replayed again. */
   matched: number;
+  /** When a reader began on it here, in `stamp()` order (a room's open ask is only answered by a run begun after it). */
+  beganAt: number;
+  /** Whose run, when a probe said (a room: decides `runMine` outright). */
+  askerId: string | null;
 }
 
 type AttachResult = 'attached' | 'idle' | 'busy' | 'failed';
@@ -244,6 +265,12 @@ export class ThreadEngine implements ThreadController {
   private runError: string | null = null;
   /** Retried while a run was going and found in no transcript yet: maybe waiting in that run's inbox. */
   private readonly unconfirmed = new Set<string>();
+  /** A room: this device's last message that @-mentioned Agents, until a run answers it (see the header). */
+  private roomAsk: RoomAsk | null = null;
+  /** Orders a room's asks and runs: the clock can read the same for both. */
+  private stamps = 0;
+  /** Whose each recently announced run is, from its `chat:run` push (`userId`, newer servers) — run id → asker. */
+  private readonly pushedAskers = new Map<string, string>();
 
   // The run
   private run: LiveRun | null = null;
@@ -420,6 +447,72 @@ export class ThreadEngine implements ThreadController {
   }
 
   /**
+   * Edit / answer again in a task chat (spec 20261011-agent-first-class D23): back to the last
+   * member message — everything after it goes, an edit replaces its text — and the chain answers
+   * it again on a run read like a send's (the POST's 200 stream is its reader; the run is announced
+   * on the socket before it answers, so the send latch holds it). Only from rest: with a run or a
+   * send in flight here the server would answer 409 `busy`. The cut is shown at once; a refusal
+   * puts the rows back and re-reads them.
+   */
+  async rewind(input: RewindInput): Promise<RewindOutcome> {
+    if (this.disposed) return { ok: false, kind: 'not_delivered' };
+    if (this.compose().runActive || this.sendsInFlight > 0 || this.pending.length > 0)
+      return { ok: false, kind: 'busy' };
+    const before = this.messages;
+    const at = before.findIndex((message) => message.id === input.messageId);
+    if (at < 0) return { ok: false, kind: 'rejected', status: 409, code: 'not_last', message: '' };
+    const target = before[at];
+    const cut = [...before.slice(0, at), input.content === undefined ? target : { ...target, content: input.content }];
+    this.messages = cut;
+    this.runError = null;
+    this.publish();
+    const transport = new AbortController();
+    this.sendsInFlight += 1;
+    let result: Awaited<ReturnType<ThreadDeps['api']['openBotsRewind']>>;
+    try {
+      result = await this.deps.api.openBotsRewind({
+        sessionId: this.sessionId,
+        messageId: input.messageId,
+        ...(input.content === undefined ? {} : { content: input.content }),
+        signal: transport.signal,
+      });
+    } catch {
+      result = { kind: 'error', status: 0, code: null, message: '' };
+    } finally {
+      this.sendsInFlight -= 1;
+    }
+    const latched = this.latchRunId;
+    this.latchRunId = null;
+    if (this.disposed) {
+      if (result.kind === 'stream') {
+        transport.abort();
+        void result.events.return(undefined).catch(() => {});
+      }
+      return result.kind === 'stream' ? { ok: true } : { ok: false, kind: 'not_delivered' };
+    }
+    if (result.kind === 'stream') {
+      // The run's one reader; its start re-reads the cut transcript.
+      const reader = this.newReader({ kind: 'post', runId: latched, byMe: true, source: result.events, transport });
+      this.enqueue(reader);
+      this.learnRunId(reader);
+      return { ok: true };
+    }
+    // Nothing changed server-side: the rows come back (unless a reload already put the server's in).
+    if (this.messages === cut) this.messages = before;
+    if (latched) void this.ensureAttached();
+    this.publish();
+    void this.reload();
+    if (result.kind === 'queued') return { ok: true };
+    if (result.status === 0) return { ok: false, kind: 'not_delivered' };
+    if (result.status === 409 && result.code === 'bot_archived') {
+      this.readOnly = result.code;
+      void this.deps.store.getState().loadBots();
+      return { ok: false, kind: 'read_only', code: result.code };
+    }
+    return { ok: false, kind: 'rejected', status: result.status, code: result.code, message: result.message };
+  }
+
+  /**
    * Try a "Not Delivered" send again — after a reload, because the POST may
    * have reached the server and only its answer was lost: then the persisted
    * copy settles the bubble. Not in the transcript is not "never received"
@@ -465,7 +558,8 @@ export class ThreadEngine implements ThreadController {
   stop(mode: 'next' | 'soft' | 'hard' = 'next'): void {
     if (this.disposed) return;
     const snap = this.compose();
-    if (!snap.runActive) return;
+    // (In a room only the asker may stop a run: the server refuses anyone else.)
+    if (!snap.runActive || !snap.runMine) return;
     let step: 'soft' | 'hard';
     if (mode === 'next') {
       if (snap.stopPhase === 'hard') return;
@@ -483,6 +577,8 @@ export class ThreadEngine implements ThreadController {
    * finished — the message is read anyway; only a refusal is reported.
    */
   async handleNow(clientId: string): Promise<'ok' | 'refused'> {
+    // Someone else's run in a room: only they may interrupt it.
+    if (!this.runIsMine()) return 'refused';
     this.patchPending(clientId, { nudged: true });
     const outcome = await this.deps.api.interruptChatRun(this.sessionId);
     if (outcome !== 'refused') return 'ok';
@@ -515,7 +611,12 @@ export class ThreadEngine implements ThreadController {
       return;
     }
     const page = result.value;
-    await this.deps.store.getState().ensureBotsKnown(page.messages.flatMap((m) => (m.bot_id ? [m.bot_id] : [])));
+    await this.deps.store.getState().ensureBotsKnown(
+      learnableIds(
+        page.conversation,
+        page.messages.flatMap((m) => (m.bot_id ? [m.bot_id] : [])),
+      ),
+    );
     if (this.disposed) return;
     if (this.messages[0]?.seq !== oldest.seq) {
       // The newest page replaced what was loaded meanwhile (`applyLatest`, a hole): this page sits below
@@ -530,6 +631,7 @@ export class ThreadEngine implements ThreadController {
     );
     this.hasMore = page.has_more;
     if (page.memory_states) this.memoryStates = { ...this.memoryStates, ...page.memory_states };
+    this.seedRatings(page);
     this.earlier = 'idle';
     this.publish();
   }
@@ -631,8 +733,11 @@ export class ThreadEngine implements ThreadController {
     }
     const page = result.value;
     // A member or speaker this device has not heard of (a Bot made elsewhere): learn it before showing it.
+    // (In a room, never another person's own Agent: it is never in the member's list.)
     const speakers = page.messages.flatMap((message) => (message.bot_id ? [message.bot_id] : []));
-    await this.deps.store.getState().ensureBotsKnown([...conversationBotIds(page.conversation), ...speakers]);
+    await this.deps.store
+      .getState()
+      .ensureBotsKnown([...conversationBotIds(page.conversation), ...learnableIds(page.conversation, speakers)]);
     if (this.disposed) return 'failed';
     if (ticket !== this.ticket) return superseded();
     this.applyLatest(page);
@@ -679,6 +784,7 @@ export class ThreadEngine implements ThreadController {
       this.readOnly = null;
     }
     if (page.memory_states) this.memoryStates = { ...this.memoryStates, ...page.memory_states };
+    this.seedRatings(page);
     this.settleSends();
     this.load = 'ready';
     this.refreshFailed = false;
@@ -687,10 +793,17 @@ export class ThreadEngine implements ThreadController {
     this.saveCache();
   }
 
+  /** The member's 👍 / 👎 on this page's replies (a public Agent's DM) — into this account's store only. */
+  private seedRatings(page: ConversationPage): void {
+    const store = this.deps.store.getState();
+    if (store.generation === this.generation) store.seedRatings(page.messages, page.my_ratings);
+  }
+
   /** Drop sends whose persisted copy is in (one-to-one, oldest first; includes `sending`). */
   private settleSends(): void {
     if (this.pending.length === 0) return;
-    const left = settlePending(this.pending, this.messages) as MobilePending[];
+    // (A room: only the member's own messages — someone else's same words are theirs.)
+    const left = settlePending(this.pending, this.messages, this.deps.store.getState().viewerId) as MobilePending[];
     if (left.length === this.pending.length) return;
     const kept = new Set(left.map((send) => send.clientId));
     for (const send of this.pending) {
@@ -757,21 +870,11 @@ export class ThreadEngine implements ThreadController {
       this.patchPending(clientId, { status: 'sent' });
       const reader = this.newReader({ kind: 'post', runId: latched, byMe: true, source: result.events, transport });
       this.enqueue(reader);
-      // The run's id, for resuming and dedupe — right after the 200 the session's run slot is ours.
-      if (!reader.runId) {
-        void this.deps.api.getChatRun(this.sessionId).then((probe) => {
-          if (reader.runId || reader.detached || !probe?.run) return;
-          reader.runId = probe.run.run_id;
-          if (this.dropDuplicate(reader)) return;
-          if (this.reader === reader && this.run && !this.run.runId) {
-            this.run.runId = reader.runId;
-            this.noteOwnRunning(reader.runId);
-            this.publish();
-          }
-        });
-      }
+      this.learnRunId(reader);
       return { ok: true, startedRun: true };
     }
+
+    if (result.kind === 'queued' && this.isRoom()) return this.roomQueued(clientId);
 
     if (result.kind === 'queued') {
       // Delivered while busy: read between Bot turns. It stays where it was sent.
@@ -793,7 +896,10 @@ export class ThreadEngine implements ThreadController {
     }
 
     this.removePending(clientId);
-    if (result.status === 409 && (result.code === 'bot_archived' || result.code === 'group_closed')) {
+    if (
+      result.status === 409 &&
+      (result.code === 'bot_archived' || result.code === 'group_closed' || result.code === 'agent_unavailable')
+    ) {
       this.readOnly = result.code;
       this.publish();
       void this.deps.store.getState().loadBots();
@@ -802,6 +908,90 @@ export class ThreadEngine implements ThreadController {
     }
     this.publish();
     return { ok: false, kind: 'rejected', status: result.status, message: result.message };
+  }
+
+  /** This thread is a room (several people): known once its first page is in. */
+  private isRoom(): boolean {
+    return this.conversation?.kind === 'room';
+  }
+
+  /**
+   * A room took the message (always 202 there). One that asked no Agent is just a message: it is
+   * sent — its copy arrives with the push (or the look below, if a push is missed). One that asked
+   * Agents is this device's open ask: it waits for the run that answers it — after the current one
+   * when a run is going (`queued`), else the next one, started server-side (`sent`) — read like any
+   * run this device did not post (the push, or the look right now).
+   */
+  private async roomQueued(clientId: string): Promise<SendOutcome> {
+    const mentions = this.mentions.get(clientId) ?? [];
+    if (mentions.length === 0) {
+      this.patchPending(clientId, { status: 'sent' });
+      this.after(REMOTE_BUSY_FIRST_MS, () => {
+        if (this.findPending(clientId)) void this.reloadLatest();
+      });
+      return { ok: true, startedRun: false };
+    }
+    const busy = this.compose().runActive;
+    this.roomAsk = { at: ++this.stamps, bots: new Set(mentions) };
+    this.patchPending(clientId, { status: busy ? 'queued' : 'sent' });
+    const attach = await this.ensureAttached();
+    if (!this.disposed && (attach === 'idle' || attach === 'failed') && this.findPending(clientId)) {
+      this.startRemoteBusy(clientId);
+    }
+    return { ok: true, startedRun: false };
+  }
+
+  /**
+   * May the member stop the run on screen? Always outside a room; in one, only when it is theirs —
+   * the server says whose (the probe's `run.user_id`, the push's `userId`; for the run being read,
+   * else the run the session is marked busy with), else the first Agent to speak tells, else this
+   * device's open ask (../rooms.ts `roomRunMine`).
+   */
+  private runIsMine(): boolean {
+    const conversation = this.conversation;
+    if (conversation?.kind !== 'room') return true;
+    const run = this.run;
+    const store = this.deps.store.getState();
+    const viewerId = store.viewerId;
+    // The server said whose run it is: that decides.
+    const asker = this.knownAsker(run ?? this.mark());
+    if (asker) return asker === viewerId;
+    const ask = this.roomAsk && (!run || run.beganAt >= this.roomAsk.at) ? this.roomAsk : null;
+    return roomRunMine({
+      viewerId,
+      members: conversation.members,
+      firstSpeaker: run?.state.segments[0]?.botId ?? null,
+      ownPrivate: (botId) => {
+        const bot = store.byId[botId];
+        return !!bot && bot.user_id === viewerId && bot.visibility !== 'public';
+      },
+      ask,
+    });
+  }
+
+  /** Whose a run is, when the server said (its probe, else its push) — the live run, or a run id. */
+  private knownAsker(run: LiveRun | string | null): string | null {
+    if (run === null) return null;
+    if (typeof run === 'string') return this.pushedAskers.get(run) ?? null;
+    return run.askerId ?? (run.runId ? (this.pushedAskers.get(run.runId) ?? null) : null);
+  }
+
+  /**
+   * A POST reader's run id, for resuming and dedupe — right after its 200 the session's run slot
+   * is ours. Nothing to learn when the latch named it.
+   */
+  private learnRunId(reader: Reader): void {
+    if (reader.runId) return;
+    void this.deps.api.getChatRun(this.sessionId).then((probe) => {
+      if (reader.runId || reader.detached || !probe?.run) return;
+      reader.runId = probe.run.run_id;
+      if (this.dropDuplicate(reader)) return;
+      if (this.reader === reader && this.run && !this.run.runId) {
+        this.run.runId = reader.runId;
+        this.noteOwnRunning(reader.runId);
+        this.publish();
+      }
+    });
   }
 
   private findPending(clientId: string): MobilePending | undefined {
@@ -959,12 +1149,13 @@ export class ThreadEngine implements ThreadController {
   // ─── Readers ────────────────────────────────────────────
 
   private newReader(
-    r: Pick<Reader, 'kind' | 'runId' | 'byMe'> & Partial<Pick<Reader, 'source' | 'transport'>>,
+    r: Pick<Reader, 'kind' | 'runId' | 'byMe'> & Partial<Pick<Reader, 'source' | 'transport' | 'askerId'>>,
   ): Reader {
     return {
       kind: r.kind,
       runId: r.runId,
       byMe: r.byMe,
+      askerId: r.askerId ?? null,
       source: r.source ?? null,
       transport: r.transport ?? new AbortController(),
       detached: false,
@@ -1012,7 +1203,9 @@ export class ThreadEngine implements ThreadController {
         if (!this.noteIdle(markBefore, probe.run?.run_id ?? null)) this.lookAgain(this.mark());
         return 'idle';
       }
-      this.enqueue(this.newReader({ kind: 'attach', runId: probe.run.run_id, byMe: false }));
+      this.enqueue(
+        this.newReader({ kind: 'attach', runId: probe.run.run_id, byMe: false, askerId: probe.run.user_id ?? null }),
+      );
       return 'attached';
     })();
     this.attaching = attempt;
@@ -1228,6 +1421,11 @@ export class ThreadEngine implements ThreadController {
       reader.forced = false;
       reader.lastEventAt = this.deps.clock.now();
       if (reader.runId !== null && probe.run.run_id === reader.runId) {
+        // (whose it is, when the probe says — an earlier probe may not have)
+        if (probe.run.user_id) {
+          reader.askerId = probe.run.user_id;
+          if (this.run) this.run.askerId = probe.run.user_id;
+        }
         // Same run: replay only what was missed.
         source = this.deps.api.streamChatRun(this.sessionId, this.run?.state.lastSeq ?? -1, reader.transport.signal);
         continue;
@@ -1239,6 +1437,7 @@ export class ThreadEngine implements ThreadController {
         break;
       }
       // Another run (its seq starts at 0) — or ours, never identified: read it from its start.
+      reader.askerId = probe.run.user_id ?? null;
       await this.switchRun(reader, probe.run.run_id);
       if (reader.detached || this.disposed) {
         outcome = cut();
@@ -1331,6 +1530,8 @@ export class ThreadEngine implements ThreadController {
       byMe: reader.byMe,
       replaying: false,
       matched: 0,
+      beganAt: ++this.stamps,
+      askerId: reader.askerId,
     };
     this.presentCache = [];
     this.stopRemoteBusy();
@@ -1370,7 +1571,18 @@ export class ThreadEngine implements ThreadController {
   /** The run is over: the persisted rows replace the live ones in one commit. */
   private async settle(): Promise<void> {
     const run = this.run;
+    // A room: the run that answered this device's open ask is over — the ask with it (once its rows are in).
+    // Whose run it was, when the server said; else the Agent that spoke first was one the ask named.
+    const ask = this.roomAsk;
+    const answerer = run?.state.segments[0]?.botId;
+    const asker = this.knownAsker(run);
+    const answered =
+      !!ask &&
+      !!run &&
+      run.beganAt >= ask.at &&
+      (asker ? asker === this.deps.store.getState().viewerId : !!answerer && ask.bots.has(answerer));
     const reloaded = await this.reloadLatest({ quiet: true });
+    if (answered && this.roomAsk === ask) this.roomAsk = null;
     if (this.disposed) return;
     if (this.run === run && run) {
       if (reloaded === 'ok') this.run = null;
@@ -1406,7 +1618,8 @@ export class ThreadEngine implements ThreadController {
         return;
       case 'bot-turn-start':
         this.emit({ type: 'segment-start', botId: event.bot_id, replayed });
-        if (event.reason === 'interjection') this.pickUp(run);
+        // (In a room someone else's run never reads this device's queued message.)
+        if (event.reason === 'interjection' && this.runIsMine()) this.pickUp(run);
         break;
       case 'bot-request':
         this.emit({ type: 'request-arrived', request: event.request, replayed });
@@ -1493,6 +1706,7 @@ export class ThreadEngine implements ThreadController {
     switch (e.type) {
       case 'chat:run':
         if (e.sessionId !== this.sessionId) return;
+        if (e.userId) this.noteAsker(e.runId, e.userId);
         if (e.status === 'running') {
           // Announced before the POST that started it answers: that POST's stream will read it.
           if (this.sendsInFlight > 0) {
@@ -1534,6 +1748,19 @@ export class ThreadEngine implements ThreadController {
       default:
         return;
     }
+  }
+
+  /** A push named whose run it is (a room: decides `runMine` before, or without, a probe). */
+  private noteAsker(runId: string, userId: string): void {
+    if (this.pushedAskers.get(runId) === userId) return;
+    this.pushedAskers.delete(runId);
+    this.pushedAskers.set(runId, userId);
+    // only the last few runs matter (the one on screen, the one announced next)
+    for (const old of this.pushedAskers.keys()) {
+      if (this.pushedAskers.size <= MAX_PUSHED_ASKERS) break;
+      this.pushedAskers.delete(old);
+    }
+    this.publish();
   }
 
   private onStore(): void {
@@ -1614,6 +1841,8 @@ export class ThreadEngine implements ThreadController {
       runActive,
       remoteBusy: this.remoteBusy !== null,
       stopPhase: !runActive ? null : this.hardStopping ? 'hard' : soft ? 'soft' : null,
+      // (a finished run still on screen counts too: its cards stay its asker's until it settles)
+      runMine: (!runActive && !this.run) || this.runIsMine(),
       pending: this.pending,
       requests: this.mergedRequests(state.requestOverrides),
       runError: this.runError,

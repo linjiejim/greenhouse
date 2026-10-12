@@ -257,6 +257,101 @@ test.describe('bots — real API', () => {
     await expect(firstRow).toHaveAttribute('data-pinned', 'true');
   });
 
+  test('a bare address lands on the main thread, under one conversations entry and one list', async ({ page, api }) => {
+    await page.goto('/');
+    // The main thread is the default entry (spec 20261011-agent-first-class §3.1).
+    await expect(page).toHaveURL(/#\/bots\?c=[^&]+$/);
+    const { bots } = (await (await api.get('/api/bots')).json()) as { bots: BotView[] };
+    const sprouty = bots.find((bot) => bot.template_key === 'sprouty')!;
+    await expect(page).toHaveURL(new RegExp(`#/bots\\?c=${sprouty.dm_session_id}$`));
+
+    // One conversations entry, no separate Agents/Bots entry, active on the thread.
+    const nav = page.getByRole('navigation', { name: 'Main navigation' });
+    await expect(nav.locator('a[href="#/bots"]')).toHaveAttribute('aria-current', 'page');
+    await expect(nav.locator('a[href="#/chat"]')).toHaveCount(0);
+
+    // One list: the main thread section first, then the chats with their own label.
+    const sidebar = page.getByTestId('bots-sidebar');
+    await expect(sidebar.getByTestId('sidebar-section-main')).toBeVisible();
+    await expect(sidebar.getByTestId('bots-conversation-row').first()).toHaveAttribute(
+      'data-session-id',
+      sprouty.dm_session_id!,
+    );
+    await expect(page.getByText('Chats', { exact: true })).toBeVisible();
+
+    // A new chat keeps the same list: the main thread is still there beside the chat page.
+    await page.getByRole('button', { name: 'New chat' }).first().click();
+    await expect(page).toHaveURL(/#\/chat\?new=/);
+    await expect(page.getByTestId('bots-sidebar').getByTestId('sidebar-section-main')).toBeVisible();
+    await expect(nav.locator('a[href="#/bots"]')).toHaveAttribute('aria-current', 'page');
+  });
+
+  test('New chat creates a separate chat on the Agents engine, lists it in Chats, and opens it', async ({
+    page,
+    api,
+  }) => {
+    // The main Agent answers a new chat by default.
+    const boot = await api.post('/api/bots/bootstrap');
+    expect(boot.ok(), `POST /api/bots/bootstrap → ${boot.status()}`).toBe(true);
+    const { bot: sprouty } = (await boot.json()) as { bot: BotView };
+
+    // The reply is stubbed (no model); everything else — creating the chat, the lists — is real.
+    let posted: Json | null = null;
+    await page.route('**/api/chat', async (route) => {
+      posted = route.request().postDataJSON() as Json;
+      await route.fulfill({
+        status: 200,
+        headers: { 'content-type': 'application/x-ndjson' },
+        body: ndjson([
+          { type: 'bot-turn-start', bot_id: sprouty.id, reason: 'user' },
+          { type: 'text-delta', text: 'On it.' },
+          { type: 'bot-turn-end', bot_id: sprouty.id, status: 'completed' },
+          { type: 'finish', finishReason: 'stop' },
+        ]),
+      });
+    });
+
+    let chatId: string | null = null;
+    try {
+      await page.goto('/#/chat');
+      // The new-chat page keeps its workbench and composer…
+      await page.getByTestId('chat-input').fill('Plan the Q3 launch');
+      await page.getByTestId('chat-input').press('Enter');
+
+      // …and its first send opens a separate Agent chat at its own address.
+      await expect(page).toHaveURL(/#\/bots\?c=[^&]+$/);
+      chatId = decodeURIComponent(/c=([^&]+)/.exec(page.url())![1]);
+      const listed = await api.get('/api/bots/conversations?kind=task');
+      const { conversations } = (await listed.json()) as { conversations: BotConversationSummary[] };
+      const chat = conversations.find((conversation) => conversation.session_id === chatId);
+      expect(chat, 'the new chat is a task chat').toBeTruthy();
+      expect(chat).toMatchObject({ kind: 'task', owner_bot_id: sprouty.id });
+
+      // The message went out there, through the Agents engine's send path.
+      await expect.poll(() => posted?.session_id).toBe(chatId);
+      expect(((posted as Json | null)?.messages as Json[])[0].content).toBe('Plan the Q3 launch');
+      await expect(page.getByTestId('bots-conversation-header')).toContainText('New chat');
+      await expect(page.getByTestId('bots-intro')).toContainText('A separate chat with');
+      await expect(page.getByTestId('bots-transcript')).toContainText('Plan the Q3 launch');
+
+      // Listed in Chats (not as an Agent thread), highlighted while open.
+      const row = page.locator(`[data-testid="chat-history-row"][data-session-id="${chatId}"]`);
+      await expect(row).toBeVisible();
+      await expect(row).toHaveAttribute('data-agent-chat', 'true');
+      await expect(row).toHaveAttribute('aria-current', 'page');
+      await expect(page.getByTestId('bots-sidebar').locator(`[data-session-id="${chatId}"]`)).toHaveCount(0);
+
+      // From the new-chat page, its row opens it again.
+      await page.getByRole('button', { name: 'New chat' }).first().click();
+      await expect(page).toHaveURL(/#\/chat\?new=/);
+      await row.click();
+      await expect(page).toHaveURL(new RegExp(`#/bots\\?c=${chatId}$`));
+      await expect(page.getByTestId('bots-conversation')).toHaveAttribute('data-session-id', chatId);
+    } finally {
+      if (chatId) await api.patch(`/api/sessions/${chatId}`, { data: { status: 'deleted' } }).catch(() => {});
+    }
+  });
+
   test("an archived Bot's DM is read-only and points to a new Bot", async ({ page, api }) => {
     const made = await api.post('/api/bots', { data: { template_key: 'writer' } });
     expect(made.ok(), `POST /api/bots → ${made.status()}`).toBe(true);
@@ -408,9 +503,9 @@ test.describe('bots', () => {
       return route.fulfill({ status: 409, contentType: 'application/json', body: '{"code":"group_closed"}' });
     });
 
-    // The landing never picks it, however recent: it opens Sage's DM.
+    // The landing never picks it, however recent: it opens the main thread (spec 20261011 §3.1).
     await page.goto('/#/bots');
-    await expect(page).toHaveURL(/#\/bots\?c=dm-sage$/);
+    await expect(page).toHaveURL(/#\/bots\?c=dm-sprouty$/);
 
     await page.goto('/#/bots?c=grp-1');
     const transcript = page.getByTestId('bots-transcript');
@@ -420,7 +515,7 @@ test.describe('bots', () => {
     // …and it is a record: no composer, no invite, the read-only bar says why.
     await expect(page.getByTestId('bots-read-only')).toContainText('Group chats were retired');
     await expect(page.getByTestId('chat-input')).toHaveCount(0);
-    await expect(page.getByRole('button', { name: 'Invite a Bot' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Invite an Agent' })).toHaveCount(0);
     await expect(page.getByTestId('bots-status-line')).toHaveText('Retired group chat — read-only');
     // The sidebar files it under Archived, below the live DM.
     const sidebar = page.getByTestId('bots-sidebar');

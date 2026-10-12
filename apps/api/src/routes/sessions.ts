@@ -29,7 +29,7 @@ import {
 import { getAuthUser } from '../auth/middleware.js';
 import { generateSessionTitle } from '../llm/title.js';
 import { resolveProfileAsync } from '../profiles/profile.js';
-import { canAccessSession, canWriteSession } from '../sessions/access.js';
+import { canAccessSession, canWriteSession, superSeesAllChats } from '../sessions/access.js';
 import { pinProfileIdForUser, ProfileAccessError } from '../profiles/access.js';
 import { createOwnedSession, SessionCreationError } from '../sessions/creation.js';
 import { parseSessionProfileFilter, sessionProfileRefs } from '../sessions/profile-filter.js';
@@ -39,6 +39,7 @@ import { logger } from '@greenhouse/utils/logger';
 import { toErrorMessage } from '@greenhouse/utils/error';
 import { chatRunRegistry } from '../chat/runs.js';
 import { withOwnerNicknames } from '../user-display.js';
+import { connectionManager } from '../ws/connection-manager.js';
 
 // ─── Visibility Helpers ──────────────────────────────────
 
@@ -127,6 +128,8 @@ const sessions = new Hono<AppEnv>()
     // exact requested limit until Web has migrated to the page_meta contract.
     const limit = includePageMeta ? Math.min(requestedLimit, 200) : requestedLimit;
     const includeEval = c.req.query('include_eval') === '1';
+    // `include=agent_chats`: Agent task chats join the chats list (spec 20261011-agent-first-class D21).
+    const includeAgentChats = (c.req.query('include') ?? '').split(',').includes('agent_chats');
     const tagId = c.req.query('tag_id') ? parseInt(c.req.query('tag_id')!, 10) : undefined;
     const channel = c.req.query('channel');
 
@@ -136,7 +139,7 @@ const sessions = new Hono<AppEnv>()
     }
     // Fail closed rather than quietly returning an empty page — an empty list
     // would hide the caller's bug instead of naming it.
-    if (scope === 'team' && authUser.role !== 'super') {
+    if (scope === 'team' && !superSeesAllChats(authUser)) {
       return c.json({ error: 'Forbidden' }, 403);
     }
 
@@ -163,13 +166,25 @@ const sessions = new Hono<AppEnv>()
       includeEval,
       channel,
       ...defaultSessionListHiding(channel),
+      ...(includeAgentChats ? { includeAgentChats } : {}),
       ...profileOpts,
     };
+
+    // The caller's task chats (owner-only), when the list includes them: the backfill check and
+    // the row's `agent_chat` (which Agent answers there).
+    const taskChats = includeAgentChats
+      ? new Map(
+          (await getDb().bots.listConversations(authUser.id, 500, { kinds: ['task'] })).map((conversation) => [
+            conversation.session_id,
+            conversation,
+          ]),
+        )
+      : null;
 
     // The backfill below fetches rows one by one: same hide-by-default rule.
     const hiding = defaultSessionListHiding(channel);
     const isHiddenByDefault = (s: { id: string; channel: string }) =>
-      (hiding.excludeChannels ?? []).some((hidden) => hidden === s.channel) ||
+      ((hiding.excludeChannels ?? []).some((hidden) => hidden === s.channel) && !taskChats?.has(s.id)) ||
       (hiding.excludeIdPrefixes ?? []).some((prefix) => s.id.startsWith(prefix));
 
     // `?channel=bots` lists only the caller's own Bots conversations, whatever the
@@ -186,8 +201,9 @@ const sessions = new Hono<AppEnv>()
       baseList = await getDb().sessions.list({ ...listOpts, excludeUserId: authUser.id });
     } else {
       // 'mine' pins the query to the caller for every role. Without a scope the
-      // historical rule stands: super sees everyone's sessions.
-      const ownerId = scope === 'mine' || authUser.role !== 'super' ? authUser.id : undefined;
+      // historical rule stands where the deployment lets super read chats
+      // (SUPER_READS_CHATS): super sees everyone's sessions.
+      const ownerId = scope === 'mine' || !superSeesAllChats(authUser) ? authUser.id : undefined;
       baseList = await getDb().sessions.list({ ...listOpts, userId: ownerId });
     }
     const hasMore = includePageMeta && baseList.length > limit;
@@ -202,7 +218,7 @@ const sessions = new Hono<AppEnv>()
     // Unscoped + non-super: fold in sessions shared with this user. `scope=mine`
     // deliberately skips this — shared conversations live in their own tab — and
     // so does a channel-filtered list ("my conversations on <channel>").
-    if (scope === undefined && !channel && authUser.role !== 'super' && sharedSessionIds.length > 0) {
+    if (scope === undefined && !channel && !superSeesAllChats(authUser) && sharedSessionIds.length > 0) {
       const sharedRows = await getDb().sessions.listSharedWith(authUser.id, {
         viewerUserId: authUser.id,
         status,
@@ -235,7 +251,7 @@ const sessions = new Hono<AppEnv>()
         const fetched = await Promise.all(missingIds.map((id) => getDb().sessions.getById(id)));
         for (const s of fetched) {
           if (!s) continue;
-          const accessible = authUser.role === 'super' || s.user_id === authUser.id || sharedIdSet.has(s.id);
+          const accessible = superSeesAllChats(authUser) || s.user_id === authUser.id || sharedIdSet.has(s.id);
           if (!accessible) continue;
           // Mirror the main query's status / eval-visibility filters — and its
           // hiding: a Bots conversation filed into a group must not surface here,
@@ -260,8 +276,10 @@ const sessions = new Hono<AppEnv>()
     ]);
     const enriched = list.map((s) => {
       const m = membershipMap.get(s.id);
+      const taskChat = taskChats?.get(s.id);
       return {
         ...s,
+        ...(taskChat ? { agent_chat: { bot_id: taskChat.owner_bot_id } } : {}),
         is_owner: s.user_id === authUser.id,
         shared: sharedIdSet.has(s.id) && s.user_id !== authUser.id,
         tags: (tagsMap.get(s.id) || []).map((t) => ({ id: t.id, name: t.name, color: t.color })),
@@ -455,6 +473,12 @@ const sessions = new Hono<AppEnv>()
     }
     const session = await getDb().sessions.update(id, body);
     if (!session) return c.json({ error: 'Session not found' }, 404);
+    // A task chat's title lives on its conversation too (the thread header reads it there).
+    if (body.title !== undefined && existing.channel === BOTS_SESSION_CHANNEL && existing.user_id) {
+      const chat = await getDb().bots.updateTaskConversation(existing.user_id, id, { title: body.title });
+      // Open views of the chat (its header, other tabs) re-read it.
+      if (chat) connectionManager.sendToUser(existing.user_id, { type: 'bots:conversation', sessionId: id });
+    }
     return c.json(session);
   })
   /** GET /api/sessions/:id/messages/:msgId/eval — get cached eval result for a message */
@@ -524,6 +548,14 @@ const sessions = new Hono<AppEnv>()
     // Write permission check
     if (!canWriteSession(authUser, session)) {
       return c.json({ error: 'Forbidden' }, 403);
+    }
+    // A room is several people's: its owner leaves it (DELETE /api/rooms/:id/participants/:me)
+    // rather than deleting it under everyone else (spec 20261011-agent-first-class P5).
+    if (
+      session.channel === BOTS_SESSION_CHANNEL &&
+      (await getDb().bots.getConversation(authUser.id, id))?.kind === 'room'
+    ) {
+      return c.json({ error: 'Leave the conversation instead — others are still in it', code: 'room' }, 409);
     }
 
     if (chatRunRegistry.getActive(id)) {

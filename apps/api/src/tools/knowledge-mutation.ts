@@ -43,7 +43,7 @@ export const knowledgeMutationSchema = z.object({
     .enum(['team', 'personal', 'bot'])
     .default('team')
     .describe(
-      'Team shared doc, current-user personal doc, or "bot": the private reference folder of the Bot you are running as (create files there; omit folder).',
+      'Team shared doc, current-user personal doc, or "bot": the private reference folder of the Agent you are running as (create files there; omit folder).',
     ),
   doc_id: z
     .string()
@@ -165,7 +165,7 @@ export function createKnowledgeMutationTool(db: DatabaseProvider, ctx: Knowledge
           ownBotFolderIds = scoped.ownFolderIds;
         }
         if (scope === 'bot' && !ctx.botId) {
-          return { action: input.action, error: 'scope "bot" is only available when running as a Bot' };
+          return { action: input.action, error: 'scope "bot" is only available when running as an Agent' };
         }
 
         if (input.action === 'knowledge.create_doc') {
@@ -181,7 +181,7 @@ export function createKnowledgeMutationTool(db: DatabaseProvider, ctx: Knowledge
           if (scope === 'bot' && ctx.botId) {
             // Files of the Bot go into its own folder, created on first use.
             const bot = await db.bots.getBot(ctx.userId, ctx.botId);
-            if (!bot) return { action: input.action, error: 'The Bot no longer exists' };
+            if (!bot) return { action: input.action, error: 'The Agent no longer exists' };
             const folder = await ensureBotFolder(db, bot);
             folderId = folder.id;
             folderPath = folder.name;

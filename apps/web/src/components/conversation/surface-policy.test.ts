@@ -26,10 +26,17 @@ describe('conversation surface policy', () => {
       // The overlay is a side panel about the page behind it; a personal
       // dashboard in its empty state would be noise, not a home page.
       showWorkbench: false,
+      // Page context and client actions live on the chat engine (spec 20261011 D27).
+      startsAgentChats: false,
     });
   });
 
   it('opens the full surface onto the workbench', () => {
     expect(CONVERSATION_SURFACE_POLICIES.full.showWorkbench).toBe(true);
+  });
+
+  it('starts new conversations as Agent chats only from the full page', () => {
+    expect(CONVERSATION_SURFACE_POLICIES.full.startsAgentChats).toBe(true);
+    expect(CONVERSATION_SURFACE_POLICIES.overlay.startsAgentChats).toBe(false);
   });
 });

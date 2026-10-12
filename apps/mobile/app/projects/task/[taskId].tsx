@@ -6,7 +6,12 @@
  *    navigation bar once scrolled under it), status / milestone / overdue
  *    pills, project name,
  *  - details: iOS list rows with colored symbol tiles — 状态 / 优先级 / 负责人
- *    are pop-up menus that change the value in place; 开始 / 截止 open the
+ *    are pop-up menus that change the value in place; Agent (iOS, Agents on):
+ *    "Hand to Agent" picks one of the member's Agents — the server opens a task
+ *    chat with the task as its first message and the app goes there; once
+ *    handed, "Agent · Sprouty ›" opens that chat (the assignee stays
+ *    responsible — spec 20261011-agent-first-class P3e, D32; rules in
+ *    src/projects/agent-handoff.ts); 开始 / 截止 open the
  *    form; milestone, parent task, estimate, tags, dependencies when present,
  *  - description (Markdown), subtasks (tap the glyph to complete, tap the row
  *    to open, + 添加子任务), the comment thread (long-press: copy / delete;
@@ -16,17 +21,31 @@
  *    src/ui/comment-thread.tsx).
  *
  * Navigation bar: pencil = edit (form sheet); `…` = 状态 submenu / 添加子任务 /
- * 里程碑 / 删除. The API has no single-task GET — the task is found in the
+ * 里程碑 / Hand to (another) Agent submenu / 删除. The API has no single-task GET — the task is found in the
  * project's tree from the shared projects store (refetched on focus).
  */
 
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ScrollView, Text, View, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
 import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useHeaderInset } from '../../../src/ui/header-inset';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Clipboard from 'expo-clipboard';
-import { addComment, deleteComment, listComments, updateTask, type Priority, type ProjectTask, type TaskComment } from '../../../src/api/projects';
+import {
+  addComment,
+  deleteComment,
+  handTaskToAgent,
+  listComments,
+  updateTask,
+  type Priority,
+  type ProjectTask,
+  type TaskComment,
+} from '../../../src/api/projects';
+import { useBotsEnabled } from '../../../src/bots/availability';
+import { openThread } from '../../../src/bots/nav';
+import { useBots } from '../../../src/bots/store';
+import type { BotView } from '../../../src/shared/bots';
+import { handoffAgents, handoffErrorKey, taskAgent } from '../../../src/projects/agent-handoff';
 import { Markdown } from '../../../src/chat/markdown';
 import { useT } from '../../../src/lib/i18n';
 import { useAuth } from '../../../src/store/auth';
@@ -54,7 +73,7 @@ import { useAssignableUsers, useProjectDetail, useProjects } from '../../../src/
 import { useTaskActions } from '../../../src/projects/task-actions';
 import { TaskStatusButton } from '../../../src/projects/task-list';
 import { makeStyles, radius, space, squircle, typo, useTheme } from '../../../src/theme';
-import { Icon } from '../../../src/ui/core';
+import { Icon, Spinner } from '../../../src/ui/core';
 import { COMPOSER_SPACE, CommentComposer, CommentRow } from '../../../src/ui/comment-thread';
 import { alertError, confirmAction } from '../../../src/ui/dialogs';
 import { EmptyState, LoadingState } from '../../../src/ui/empty';
@@ -85,6 +104,17 @@ export default function TaskDetailScreen() {
   const [commentsFailed, setCommentsFailed] = useState(false);
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
+  const [handing, setHanding] = useState(false);
+
+  // Agents (iOS, Agents on for this account): the member's own, for "Hand to Agent".
+  const agentsOn = useBotsEnabled();
+  const botsLoaded = useBots((s) => s.botsLoaded);
+  const allBots = useBots((s) => s.bots);
+  const byId = useBots((s) => s.byId);
+  const agents = useMemo(() => (agentsOn ? handoffAgents(allBots) : []), [agentsOn, allBots]);
+  useEffect(() => {
+    if (agentsOn && !botsLoaded) void useBots.getState().loadBots();
+  }, [agentsOn, botsLoaded]);
 
   // Refetch on focus; a failure keeps what's shown (or flags the empty thread).
   const commentsSeq = useRef(0);
@@ -183,6 +213,33 @@ export default function TaskDetailScreen() {
     [t],
   );
 
+  /** Hand it to `bot`: a task chat opens with the task as its first message; go there. */
+  const handTo = useCallback(
+    async (bot: BotView) => {
+      if (!task || handing) return;
+      // Already with this Agent: its chat is the place to go, not a second one.
+      if (task.agent_id === bot.id && task.agent_session_id) {
+        openThread(router, { c: task.agent_session_id, title: task.title }, 'dismissTo');
+        return;
+      }
+      setHanding(true);
+      const result = await handTaskToAgent(task.id, bot.id);
+      setHanding(false);
+      if (!result.ok) {
+        const why = handoffErrorKey(result.status);
+        alertError(t('projects.handFailed', { name: bot.name }), why ? t(why) : undefined);
+        return;
+      }
+      patchTask(projectId, task.id, { agent_id: bot.id, agent_session_id: result.sessionId });
+      void reload({ fresh: true });
+      // the new chat joins the drawer's list
+      void useBots.getState().loadConversations();
+      toast(t('projects.handedTo', { name: bot.name }), 'sparkle');
+      openThread(router, { c: result.sessionId, title: task.title }, 'dismissTo');
+    },
+    [task, handing, patchTask, projectId, reload, router, t],
+  );
+
   const deleteThis = useCallback(async () => {
     if (task && (await actions.remove(task))) router.back();
   }, [task, actions, router]);
@@ -229,6 +286,15 @@ export default function TaskDetailScreen() {
     users.map((u) => ({ id: u.id, title: u.nickname, checked: u.id === task.assignee_id })),
   ]);
   const canDeleteComment = (cm: TaskComment) => !!me && (cm.user_id === me.id || access.canManage);
+  const working = taskAgent(task, byId);
+  // not among this member's Agents: someone else's — known only once the member's own list is in
+  const workingName = working?.name ?? (agentsOn && botsLoaded ? t('projects.agentNotYours') : t('projects.agentSome'));
+  const canHand = access.canWrite && agents.length > 0;
+  const agentItems: MenuItem[] = agents.map((bot) => ({ id: bot.id, title: bot.name, checked: bot.id === task.agent_id }));
+  const onPickAgent = (id: string) => {
+    const bot = agents.find((b) => b.id === id);
+    if (bot) void handTo(bot);
+  };
 
   return (
     <>
@@ -255,6 +321,17 @@ export default function TaskDetailScreen() {
             <Stack.Toolbar.MenuAction icon={toolbarIcon('diamond')} onPress={() => void actions.toggleMilestone(task)}>
               {isMilestone(task) ? t('projects.unmakeMilestone') : t('projects.makeMilestone')}
             </Stack.Toolbar.MenuAction>
+          </Stack.Toolbar.Menu>
+          <Stack.Toolbar.Menu
+            hidden={!canHand}
+            title={working ? t('projects.handToAnother') : t('projects.handToAgent')}
+            icon={toolbarIcon('sparkle')}
+          >
+            {agents.map((bot) => (
+              <Stack.Toolbar.MenuAction key={bot.id} isOn={bot.id === task.agent_id} onPress={() => void handTo(bot)}>
+                {bot.name}
+              </Stack.Toolbar.MenuAction>
+            ))}
           </Stack.Toolbar.Menu>
           <Stack.Toolbar.MenuAction icon={toolbarIcon('trash')} destructive onPress={() => void deleteThis()}>
             {t('projects.deleteTask')}
@@ -331,6 +408,31 @@ export default function TaskDetailScreen() {
             iconTint={c.indigo}
             value={task.assignee_nickname ?? t('projects.unassigned')}
           />
+          {working ? (
+            <ListRow
+              title={t('projects.agent')}
+              icon="sparkle"
+              iconTint={c.accent}
+              value={workingName}
+              accessory={handing ? <Spinner /> : working.sessionId ? 'chevron' : 'none'}
+              accessibilityLabel={`${t('projects.agent')}, ${workingName}`}
+              onPress={
+                working.sessionId
+                  ? () => openThread(router, { c: working.sessionId as string, title: task.title }, 'dismissTo')
+                  : undefined
+              }
+            />
+          ) : canHand ? (
+            <NativeMenu trigger="tap" fill title={t('projects.handHint')} items={agentItems} onSelect={onPickAgent}>
+              <ListRow
+                title={t('projects.handToAgent')}
+                icon="sparkle"
+                iconTint={c.accent}
+                menuTrigger
+                accessory={handing ? <Spinner /> : <Icon name="chevUpDown" size={13} weight="semibold" color={c.tertiaryLabel} />}
+              />
+            </NativeMenu>
+          ) : null}
           <ListRow
             title={t('projects.startDate')}
             icon="calendar"

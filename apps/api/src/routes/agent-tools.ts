@@ -36,6 +36,7 @@ import {
 } from '../agent-runtime/api-auth.js';
 import type { AppEnv } from '../app-env.js';
 import { pinProfileIdForUser, ProfileAccessError } from '../profiles/access.js';
+import { AGENT_ACCESS_TOOL_IDS } from '../bots/external/meta.js';
 import {
   agentToolAction,
   canonicalAgentToolInput,
@@ -97,10 +98,11 @@ export function createAgentRoutes(toolRegistry: ToolRegistry) {
       profile,
       profileId: pinnedProfileId,
     });
+    const external = identity.credential !== 'task';
     const toolIds = resolveProxyToolIds(effectiveTools, {
       allowedTools: identity.allowedTools,
       allowedWriteTools: identity.allowedWriteTools,
-    });
+    }).filter((id) => external || !AGENT_ACCESS_TOOL_IDS.includes(id));
     const registry: ToolRegistry = {
       ...toolRegistry,
       ...buildLazyServerTools(getDb(), effectiveTools, {
@@ -108,6 +110,8 @@ export function createAgentRoutes(toolRegistry: ToolRegistry) {
         userRole: identity.userRole,
         workspaceId,
         lockWorkspace: true,
+        // The member's Agents from their CLI login; a Mission sandbox's task token never reaches them.
+        ...(external ? { externalCaller: { label: 'Greenhouse CLI' } } : {}),
       }),
     };
     return { toolIds, registry };

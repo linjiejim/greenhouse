@@ -1,6 +1,6 @@
 /** Shared desktop/mobile primary navigation composition. */
 
-import { Bot, LayoutGrid, MessageCircle, Package, type LucideIcon } from '../lib/icons';
+import { LayoutGrid, MessageCircle, Package, type LucideIcon } from '../lib/icons';
 import {
   PRIMARY_NAV_APPLICATION_IDS,
   platformApplicationHref,
@@ -32,11 +32,14 @@ interface BuildPrimaryNavigationArgs {
   chatLabel: string;
   skillhubLabel: string;
   /**
-   * Bots, when the member has the `bots` feature (the caller decides with
-   * `canUseFeature`; the API enforces it again). `badge` = pending "needs
-   * you" requests — the one place a waiting Bot is visible from every page.
+   * Agents' persistent threads, when the member has the `bots` feature (the
+   * caller decides with `canUseFeature`; the API enforces it again). They live
+   * under the one conversations entry (spec 20261011-agent-first-class §3.1):
+   * the entry then opens the member's main thread (`#/bots`), and `badge` =
+   * pending "needs you" requests — the one place a waiting Agent is visible
+   * from every page.
    */
-  bots?: { label: string; badge?: number } | null;
+  bots?: { badge?: number } | null;
   /**
    * Apps — the ones members build on Tables (spec 20261011-tables-apps), when
    * the member has the `apps` feature. A host destination, not a catalog
@@ -80,19 +83,20 @@ export function buildPrimaryNavigation({
     primaryApplicationItems.splice(at, 0, { key: 'apps', label: apps.label, icon: LayoutGrid, href: '#/apps' });
   }
 
-  // Visible sidebar order: Chat, Bots, then the authorized primary modules
+  // Visible sidebar order: conversations, then the authorized primary modules
   // (Knowledge, Projects, Tables) and Apps. SkillHub and secondary destinations collapse
-  // into "More". Chat leads because it is also the home page — a new
-  // conversation opens onto the user's workbench; Bots sit right after it as
-  // the other place you talk.
+  // into "More". Conversations lead because they are the home page. With
+  // Agents' threads the one entry opens the main thread — the default place to
+  // start — and every chat and Agent thread is one sidebar list below it;
+  // without them it opens a new chat, which opens onto the user's workbench.
   const primary: PrimaryNavigationItem[] = [
     {
       key: 'chat',
       label: chatLabel,
       icon: MessageCircle,
-      href: '#/chat',
+      href: bots ? '#/bots' : '#/chat',
+      ...(bots?.badge ? { badge: bots.badge } : {}),
     },
-    ...(bots ? [{ key: 'bots', label: bots.label, icon: Bot, href: '#/bots', badge: bots.badge || undefined }] : []),
     ...primaryApplicationItems,
   ];
 

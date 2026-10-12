@@ -188,6 +188,11 @@ export interface Session {
   pinned?: boolean;
   /** Sort order within the current user's Pinned group. */
   pin_sort?: number;
+  /**
+   * An Agent task chat in the chats list (`GET /api/sessions?include=agent_chats`, channel `bots`):
+   * the Agent that answers there. Opened at `#/bots?c=<id>`, not as an ordinary chat.
+   */
+  agent_chat?: { bot_id: string | null };
 }
 
 /**
@@ -547,6 +552,11 @@ export interface AuthenticatedUser {
   locale_chosen?: boolean;
   /** Feature flags enabled for this user (e.g. { memory: true }). */
   features?: Record<string, boolean>;
+  /**
+   * May this account list and open other members' chats — a super, where the deployment sets
+   * SUPER_READS_CHATS (spec 20261011-agent-first-class D46). Absent from older servers.
+   */
+  reads_team_chats?: boolean;
 }
 
 // ─── Client Action Types ─────────────────────────────────
@@ -835,6 +845,8 @@ export interface ChatRunInfo {
   status: ChatRunStatus;
   started_at: number;
   next_seq: number;
+  /** Whose run it is (in a room only the asker may stop it). Absent from older servers. */
+  user_id?: string;
 }
 
 // ─── Stream Event Callbacks ──────────────────────────────

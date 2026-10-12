@@ -76,7 +76,7 @@ expose to Claude, Cursor, or any MCP client.
   <img src="docs/assets/screens/chat-knowledge-answer-dark.webp" alt="Dark theme" width="66%" />
   <img src="docs/assets/screens/mobile-chat.webp" alt="Mobile layout" width="19%" />
 </p>
-<p align="center"><sub>Light / dark / system themes and a responsive layout; the <a href="apps/mobile">Expo app</a> covers chat (with the same rich replies as the web — data tables, charts (Swift Charts on iOS), stat tiles, record cards, step timelines, Mermaid diagrams, HTML previews, question forms and reply buttons — and a "connect your account" card when a connector needs your sign-in or key), your Bots (on iOS: Sprouty and your other Bots at the top of the drawer, one ongoing thread per Bot — other Bots join it when a hand-off helps — with live per-Bot replies, @-mentions, "needs you" cards that open into a sheet to decide, background tasks that report back; your computer one tap away on a thread's bar — watch it live, take over with touch and native typing (pass a human check right from the card), browse and share its files, see its background processes; a Bot's profile gathers its instructions, memory, shared notes, schedules and separate chats in tabs; new Bots are made by asking Sprouty, from an example or by hand in Settings → My Bots; replies show just the answer, with reasoning, tool calls and sources one ⋯ → Show toggle away; a home-screen widget lines up your Bots with unread and "needs you" badges — one tap into a Bot's thread, or a new chat with Sprouty; notifications when a Bot needs you, a task finishes or a reply comes in after you left, and when a Tables automation notifies you or a comment @-mentions you — content-free unless you turn previews on, one tap into the card, the conversation, the record or the app page, on every station you are signed in to; and, experimentally, a running background task as a Live Activity on the Lock Screen and in the Dynamic Island), Settings → Connectors for your own keys and sign-ins, knowledge and projects, and on iOS your Tables (Bases; list, board, calendar and gallery views; editing records, comments with @-mentions; submit-only forms with photo uploads; dashboards), Apps (the app center, each app's pages and cards for your role, actions and approvals, photo attachments) and a notification list — with a native UI on both platforms — on iOS system navigation, Liquid Glass, native sheets, menus and SwiftUI forms; on Android Material 3 (Jetpack Compose forms, menus and dialogs).</sub></p>
+<p align="center"><sub>Light / dark / system themes and a responsive layout; the <a href="apps/mobile">Expo app</a> covers chat (with the same rich replies as the web — data tables, charts (Swift Charts on iOS), stat tiles, record cards, step timelines, Mermaid diagrams, HTML previews, question forms and reply buttons — and a "connect your account" card when a connector needs your sign-in or key), your Agents (on iOS: the app opens on your main thread with Sprouty, and the drawer lists it first, then your other Agents' threads, then your chats — one ongoing thread per Agent, other Agents join it when a hand-off helps — with live per-Agent replies, @-mentions, "needs you" cards that open into a sheet to decide, background tasks that report back; your computer one tap away on a thread's bar — watch it live, take over with touch and native typing (pass a human check right from the card), browse and share its files, see its background processes; an Agent's profile gathers its instructions, memory, shared notes, schedules and separate chats in tabs; new Agents are made by asking Sprouty, from an example or by hand in Settings → My Agents; replies show just the answer, with reasoning, tool calls and sources one ⋯ → Show toggle away; a home-screen widget lines up your Agents with unread and "needs you" badges — one tap into an Agent's thread, or a new chat with Sprouty; notifications when an Agent needs you, a task finishes or a reply comes in after you left, and when a Tables automation notifies you or a comment @-mentions you — content-free unless you turn previews on, one tap into the card, the conversation, the record or the app page, on every station you are signed in to; and, experimentally, a running background task as a Live Activity on the Lock Screen and in the Dynamic Island), Settings → Connectors for your own keys and sign-ins, knowledge and projects, and on iOS your Tables (Bases; list, board, calendar and gallery views; editing records, comments with @-mentions; submit-only forms with photo uploads; dashboards), Apps (the app center, each app's pages and cards for your role, actions and approvals, photo attachments) and a notification list — with a native UI on both platforms — on iOS system navigation, Liquid Glass, native sheets, menus and SwiftUI forms; on Android Material 3 (Jetpack Compose forms, menus and dialogs).</sub></p>
 
 The mobile launch animation covers the first conversation while it loads. Authentication stays
 required; the opening page is prepared while fonts and the animation finish, with a short,
@@ -87,10 +87,15 @@ same script doubles as an end-to-end smoke tour (see [Development](#development)
 
 ## Features
 
-- **Chat** — streaming agent with tool-call traces, attachments of any file type (the agent
-  reads text / CSV / JSON / xlsx / docx / PDF), per-turn model switching from a config catalog,
-  a side pane for artifacts and records, session forking, background runs, sharing / grouping /
-  tagging, and a global ⌘P search.
+- **Conversations** — one list for every place you talk: your **main thread** with your main
+  Agent (the app opens on it), your other Agents' threads, **conversations with other people**
+  (a private chat with one colleague, or a room with several — each brings their own Agents, and
+  an Agent answers only the person allowed to @-mention it, with that person's permissions), the
+  background tasks your Agents run, and your **chats** — separate conversations with a fresh
+  context for anything separate. Chats stream
+  with tool-call traces, attachments of any file type (the agent reads text / CSV / JSON / xlsx /
+  docx / PDF), per-turn model switching from a config catalog, a side pane for artifacts and
+  records, session forking, background runs, sharing / grouping / tagging, and a global ⌘P search.
 - **Knowledge Base** — team, personal and shared documents with a Tiptap editor, Markdown-first
   storage, folders plus a file cabinet, backlinks, comments and @-mentions, templates, version
   history, fine-grained sharing via groups, and segmented full-text search (CJK-aware).
@@ -100,7 +105,7 @@ same script doubles as an end-to-end smoke tour (see [Development](#development)
   conversational building: in chat the agent drafts a whole setup — tables and fields, views,
   forms, automations, dashboards, roles and who has access, and apps built on the base (pages,
   app roles, approve / reject actions, who it is shared with, publishing) — as one card you confirm;
-  your Bots propose the same plans as a card you apply when you choose. The draft is
+  your Agents propose the same plans as a card you apply when you choose. The draft is
   checked by the same validators as the editor before you see it, permission changes are listed
   on their own above Confirm, and a partly applied plan can retry just what failed. Four built-in
   app templates (purchase requests, IT tickets, CRM, recruiting) install a ready Base and a draft app in one step,
@@ -137,33 +142,43 @@ same script doubles as an end-to-end smoke tour (see [Development](#development)
   draft app, disables automations, and removes webhooks and fixed notification recipients.
   The template center shows versions, hashes and review state; iPhone users can install templates too.
   `apps_query` and `apps_action` expose the same gateway to chat and external agents under a
-  separate Apps MCP consent group. Writes require confirmation; Bots shows the stored action
-  and record for approval, and Feishu does not expose app writes.
+  separate Apps MCP consent group. Writes require confirmation; Agents show the stored action
+  and record for approval. Feishu cannot execute app writes directly; a request handed to an Agent
+  still requires approval inside Greenhouse.
 - **Agent steps in Tables** — summarize records into a text field as the rule executor, with
   no tools by default or optional reads limited to that Base. Bot versions are pinned on save,
   paid steps are never automatically replayed, and a changed record revision prevents stale output.
 - **Home workbench** — a personal dashboard of live cards backed by the same tools (recipes and
-  templates), editable by drag-and-drop or by asking the agent.
+  templates), editable by drag-and-drop or by asking the agent; it is the empty state of a new chat.
 - **Execution center** — one surface for every durable run: automations (cron), missions,
   workflows and sub-agents, with an approval inbox for steps that need a human.
 - **Missions** *(optional)* — long-running tasks in disposable sandboxes (Docker + gVisor): the
   agent gets a real shell, files and a document toolchain, reports progress live and hands back
   artifacts.
-- **Bots** — personal assistants every member gets out of the box. Every member starts with
-  **Sprouty**, the main Bot pinned first: talk to it straight away, or let it bring in, brief and
-  create other Bots (researcher, operator, writer, analyst, weekly reporter, note taker, project
-  tracker or your own). A Bot has a name, a role
-  and its own memory; several Bots can share one conversation (@-mention them, let them hand work
-  to each other) and long conversations are summarised instead of truncated. With a computer
-  enabled, each member's Bots share one cloud desktop (a browser with a taskbar, a shell, files
-  and long-running jobs) the member can watch live, take over, or use directly through its
-  terminal and file tabs; logins come from a write-only password vault that Bots fill in without
-  ever seeing the values, and a site's "verify you are human" check is handed to the member with
-  one click in the chat. Background tasks start from the brief you approve; reading private notes or history then
-  disables all further browser actions. Their transcripts and execution traces stay owner-only, including
-  against other admins. A new message can
-  interrupt a Bot after its current step. The organisation configures one Docker host; computers
-  start on demand, stop when idle (unless a job is still running) and queue when the host is full.
+- **Agents** — personal assistants every member gets out of the box. Every member starts with
+  **Sprouty**, the main Agent: its thread is your main thread, the default place to start — talk
+  to it straight away, or let it bring in, brief and create other Agents (researcher, operator,
+  writer, analyst, weekly reporter, note taker, project tracker or your own). An Agent has a
+  name, a role and its own memory; several Agents can share one thread (@-mention them, let them
+  hand work to each other) and long threads are summarised instead of truncated. With computers
+  enabled, each Agent has its own cloud desktop (a browser with a taskbar, a shell, files and
+  long-running jobs) the member can watch live, take over, or use directly through its terminal
+  and file tabs; logins come from a write-only password vault (entries can be limited to some
+  Agents) that Agents fill in without ever seeing the values, and a site's "verify you are human"
+  check is handed to the member with one click in the chat. Usage, audit records and project tasks
+  name the Agent that acted. A member can **publish** an Agent to colleagues (everyone, people or
+  groups): they talk to its published version in their own conversation, on a narrow face (only
+  the knowledge folders and computer its owner granted, its own memory per person, never the
+  owner's unshared private data). Knowledge reads recheck the owner's current permissions and grants
+  on every call. It has its own monthly token budget; the owner sees usage and ratings but
+  not the conversations, and an admin can pause it. Background tasks start from the brief you approve and show in the
+  conversations list while they run; reading private notes or history then disables all further
+  browser actions. Their transcripts and execution traces stay owner-only (a room: its
+  participants only), including against admins — and since 2026-10 admins no longer read members'
+  ordinary chats either, unless the deployment sets `SUPER_READS_CHATS=true`. In rooms, handing back
+  a computer or completing a sign-in resumes the Agent for the person who requested it. A new message can interrupt an Agent after its current step. The organisation configures
+  one Docker host; computers start on demand, stop when idle (unless a job is still running) and
+  queue when the host is full.
 - **Workflows** — a multi-agent task-graph engine (database state machine, human gates,
   pause / retry per node) that the agent can plan from a conversation.
 - **Memory** — per-user memories with titles, pinning and lifecycle, plus the friction signals
@@ -181,8 +196,8 @@ same script doubles as an end-to-end smoke tour (see [Development](#development)
   proxy.
 - **Connectors (MCP client)** — install remote MCP servers from the official catalog
   (`connectors/`), the MCP Registry or by URL; members connect their own accounts (OAuth sign-in
-  or their own key) and use the tools from chat and from their Bots through one `mcp_call`
-  gateway tool — writes confirmed per call in chat, approved on a card in Bots.
+  or their own key) and use the tools from chat and from their Agents through one `mcp_call`
+  gateway tool — writes confirmed per call in chat, approved on a card in Agent threads.
 - **LLM relay + usage budgets** — an OpenAI-compatible relay for internal users, plus monthly
   token and image budgets per user, organization and provider.
 - **Platform kernel** — applications declare a manifest (modules, entities, fields, actions);
@@ -191,10 +206,10 @@ same script doubles as an end-to-end smoke tour (see [Development](#development)
 - **Workspace branding & runtime config** — rebrand from the web (name, logo, theme tokens) and
   manage runtime credentials (LLM / media / search) in Administration; values live in the
   database with env-var fallback and apply without a restart, from the login screen on.
-- **Plant avatars** — every agent and Bot is a flat, geometric plant with a small face (16
+- **Plant avatars** — every Agent is a flat, geometric plant with a small face (16
   species, light and dark). Its pose, face and a small mark show what it is doing (thinking,
   working, done, needs you, error, asleep, saying hi), only the one that is speaking moves, and
-  members pick their own plant and colour. Sprouty is the sprout, and the Bot templates are named
+  members pick their own plant and colour. Sprouty is the sprout, and the Agent templates are named
   after theirs: Dandy 蒲蒲 (dandelion), Cactus 仙仙, Fern 卷卷, Clover 叶叶, Sunny 葵葵 (sunflower),
   Lavender 薰薰 and Maple 枫枫.
 
@@ -205,7 +220,7 @@ stored secrets need `PROVIDER_TOKEN_ENCRYPTION_KEY`.
 ## Architecture
 
 A pnpm monorepo. The Hono API also serves the built React SPA, so production is a single
-process / single container (plus optional images for Mission sandboxes and Bots computers).
+process / single container (plus optional images for Mission sandboxes and Agent computers).
 
 ```
 greenhouse/
@@ -215,10 +230,10 @@ greenhouse/
 │   ├── web/                  # React + Vite single-page app (hash router)
 │   ├── agent-runner/         # Mission sandbox runner — built into the greenhouse/agent-runtime
 │   │                         #   image; the API never imports it
-│   ├── bot-computer/         # Bots computer image (desktop + Chromium + shell, zero published ports)
+│   ├── bot-computer/         # Agent computer image (desktop + Chromium + shell, zero published ports)
 │   ├── browser/              # Chrome extension (MV3) — side-panel companion; connects to your
 │   │                         #   instances via saved multi-server "stations"
-│   └── mobile/               # Expo (React Native) app — chat, Bots / Tables / Apps (iOS),
+│   └── mobile/               # Expo (React Native) app — chat, Agents / Tables / Apps (iOS),
 │                             #   knowledge, projects, notifications, settings;
 │                             #   native UI: iOS SwiftUI forms + Liquid Glass, Android Material 3
 │                             #   (both via @expo/ui); isolated install (pnpm mobile:install,
@@ -346,8 +361,8 @@ server to look after:
    (`[setup] Activate the first administrator …`).
 
 Choose the model afterwards under **Administration → Runtime Config** (or set `LLM_BASE_URL`
-/ `LLM_API_KEY` / `LLM_MODEL` as variables). For Bots computers, enter an [E2B](https://e2b.dev) key
-in the same place (Bot computers), or set `BOTS_COMPUTER_E2B_API_KEY` — see Bots below.
+/ `LLM_API_KEY` / `LLM_MODEL` as variables). For Agent computers, enter an [E2B](https://e2b.dev) key
+in the same place (Agent computers), or set `BOTS_COMPUTER_E2B_API_KEY` — see Agents below.
 
 ### Docker Compose by hand
 
@@ -384,10 +399,10 @@ Missions need one more piece on the host: Docker with the gVisor runtime, a dedi
 network, and the sandbox image (`bash scripts/build-agent-runtime.sh`). They stay off until
 `MISSION_ENABLED=1` and every preflight passes — see `.env.example`.
 
-Bots work in any deployment. Their computers run in one of two places:
+Agents work in any deployment. Their computers run in one of two places:
 
 - **Hosted sandboxes (no server work)** — a provider key, entered under Administration → Runtime
-  Config → Bot computers (or `BOTS_COMPUTER_E2B_API_KEY`): each member's computer is a sandbox
+  Config → Agent computers (or `BOTS_COMPUTER_E2B_API_KEY`): each member's computer is a sandbox
   (one microVM) at an E2B-protocol provider — [E2B](https://e2b.dev) abroad, PPIO in mainland
   China (`BOTS_COMPUTER_E2B_DOMAIN=cn-beijing-1.sandbox.ppio.com`; not yet verified end to end).
   Works from Railway, the installer or compose. On first boot the API builds the computer
@@ -396,7 +411,7 @@ Bots work in any deployment. Their computers run in one of two places:
   it left off. After a greenhouse upgrade changes the template, each computer moves its home
   into a new sandbox at its next start; if that move fails, the member keeps the old computer and
   the move is tried again a few hours later. Keep the API close to the provider's region: homes
-  move through it. Inside, the member's Bots and browser cannot reach the provider's metadata
+  move through it. Inside, the member's Agents and browser cannot reach the provider's metadata
   service, its agent, private networks or the computer's own bridges — checked from both accounts at
   every start (a computer that fails the check is not used).
 - **This server's Docker** — the API must run **on the Docker host itself** (bare metal / PM2,
@@ -407,9 +422,9 @@ Bots work in any deployment. Their computers run in one of two places:
   with `BOTS_COMPUTER_EXTRA_PACKAGES="…"`). The API only accepts an image of its own contract
   version, so rebuild the image whenever you upgrade.
 
-On either kind, a Bot can hand you a **preview link** to a web app it runs on its computer (2 hours;
-the page is sandboxed — no cookies or local storage — and only relative links stay inside it), and a
-Bot that starts a long background process is woken to report when it ends.
+On either kind, an Agent can hand you a **preview link** to a web app it runs on its computer (2 hours;
+the page is sandboxed — no cookies or local storage — and only relative links stay inside it), and an
+Agent that starts a long background process is woken to report when it ends.
 
 **Backups** — set `BOTS_COMPUTER_BACKUP_DIR` (e.g. `data/bot-backups`) or `BOTS_COMPUTER_BACKUP_S3_*`
 (any S3-compatible bucket) and every home is also kept, encrypted, in your own storage: as a computer
@@ -418,7 +433,7 @@ computer is gone — deleted at the provider, or you switched provider or driver
 rebuilds it from the newest backup, and they are told what date it is from. Each backup is encrypted
 in the API with its own key, sealed with `VAULT_ENCRYPTION_KEY`; the storage never sees a file.
 
-Either way **Administration → Bot computers** lists every precheck with what fixes it, and the
+Either way **Administration → Agent computers** lists every precheck with what fixes it, and the
 live knobs (idle minutes, how many computers run at once) are in Runtime Config.
 
 ## Releases & stability
@@ -502,7 +517,7 @@ Everything is environment-driven; see [.env.example](./.env.example) for the ful
 | `DATABASE_URL` | PostgreSQL connection string |
 | `TOKEN_SIGNING_KEY` | Signing key for auth tokens (`openssl rand -hex 32`) |
 | `PROVIDER_TOKEN_ENCRYPTION_KEY` | AES-256-GCM key for stored secrets — email passwords, integration tokens, workspace-setting secrets (`openssl rand -hex 32`) |
-| `VAULT_ENCRYPTION_KEY` | Optional: the Bots' password vault's own key (falls back to `PROVIDER_TOKEN_ENCRYPTION_KEY`). Rotate it with `VAULT_ENCRYPTION_KEY_PREVIOUS` + `pnpm cli vault rekey` — see `.env.example` |
+| `VAULT_ENCRYPTION_KEY` | Optional: the Agents' password vault's own key (falls back to `PROVIDER_TOKEN_ENCRYPTION_KEY`). Rotate it with `VAULT_ENCRYPTION_KEY_PREVIOUS` + `pnpm cli vault rekey` — see `.env.example` |
 | `LLM_BASE_URL` / `LLM_API_KEY` / `LLM_MODEL` | Any OpenAI-compatible endpoint; the `flash` catalog entry resolves to `LLM_MODEL` (add a stronger `pro` with `LLM_MODEL_PRO`). The server starts without them — chat needs them, and they can be set later in Runtime Config |
 
 **First run and hosting**: `BOOTSTRAP_ADMIN_EMAIL` (the first administrator's activation link —
@@ -522,12 +537,12 @@ its payload. Set `LLM_VISION=false` when `LLM_MODEL` is text-only, and images go
 
 Optional: media (vision `analyze_image` + `generate_image` through `MEDIA_*`, falling back to
 the LLM endpoint; `IMAGE_BASE_URL` + `IMAGE_API_KEY` move generation alone to an image
-provider), external web search, email mailboxes, WeCom / Feishu, missions, Bots computers
+provider), external web search, email mailboxes, WeCom / Feishu, missions, Agent computers
 (`BOTS_COMPUTER_*`), usage budgets, and object storage. Uploads default to local disk (`data/uploads`), Skill Center
 bundles to `data/skills` — set `SKILLS_S3_*` to keep bundles in S3-compatible storage.
 
-**Mobile push**: the iOS app's notifications (a Bot needs you, a background or scheduled task
-finished, a Bot replied after you left; a Tables automation's notice — an urgent one as
+**Mobile push**: the iOS app's notifications (an Agent needs you, a background or scheduled task
+finished, an Agent replied after you left; a Tables automation's notice — an urgent one as
 time-sensitive — or a comment that @-mentions you, which opens the record or the app page) are
 sent through the Expo Push Service at `exp.host`.
 The server stores only each phone's Expo push token (no Apple key — the official app's
@@ -574,6 +589,13 @@ Every capability is reachable three ways from the same tool layer:
   (client credentials) that a super binds to a least-privilege internal user under
   Administration → MCP Access. Scopes combine an action (`mcp:read` / `mcp:write`) with
   resource groups (`mcp:knowledge`, `mcp:projects`, `mcp:tables`, …).
+- **Your Agents from outside** — the `mcp:agents` group gives an MCP client (or a machine client,
+  or the CLI) three tools: `agents_list`, `agent_message` (a write: needs `mcp:write` and
+  `confirm: true`) and `agent_conversation_get`. A message opens a new chat with that Agent in
+  the member's Greenhouse list (marked with where it came from), waits up to ~55 s for the
+  reply and otherwise hands back the conversation id to read later. Approvals and sign-ins the
+  Agent asks for stay in the app. In Feishu, start a message with `@AgentName` to hand the
+  thread to that Agent; `/agents` lists who you can reach.
 
 ### Connectors (Greenhouse as an MCP client)
 
@@ -582,7 +604,7 @@ Administration → MCP Servers — from the **official catalog** (`connectors/*.
 in the MCP Registry's own `server.json` format; see [connectors/README.md](connectors/README.md) to
 contribute one), by searching the **official MCP Registry**, or by URL (a *Detect* button tells
 whether the address wants no sign-in, a key, or OAuth). Members granted the **External MCP tools**
-(`mcp_call`) tool reach them from chat and from their Bots through that one gateway tool.
+(`mcp_call`) tool reach them from chat and from their Agents through that one gateway tool.
 
 Each connector authenticates one of four ways:
 
@@ -603,7 +625,7 @@ and never returned; a member's connection is theirs alone.
 
 Results are wrapped as untrusted external content. A tool the server does not mark read-only (and
 the catalog or an admin did not vouch for) needs the user's explicit confirmation per call in chat;
-in a Bots conversation it asks on an approval card, and a Bot's own connector list narrows what it
+in an Agent thread it asks on an approval card, and an Agent's own connector list narrows what it
 may reach. Connectors are not offered to scheduled tasks, background tasks, Feishu or the browser
 extension, and are never re-exported through `/api/agent` or `/api/mcp`.
 
@@ -669,7 +691,7 @@ if (effectiveTools.includes('my_user_tool')) {
 
 There is no per-tool access guard to declare. Who may call a tool is resolved before anything
 is built: `super` gets every tool; a `team` member gets the `is_global` tools, the tools owned
-by each feature flag they have, and any tools assigned to them individually. A Bot's tool
+by each feature flag they have, and any tools assigned to them individually. An Agent's tool
 filter can only narrow that set, and each surface narrows it again (the proxy allowlists and OAuth scopes,
 the unattended denylist for scheduled runs). Ownership of the data itself is checked inside the
 tool, against the `userId` its factory received.
@@ -768,9 +790,9 @@ smoke test. Re-run it after visible UI changes so the README and landing page st
 Two layers. **Administration → Evaluation** (`pnpm cli eval`) replays single-question regression
 cases against the live agent and an LLM judge scores each answer against its expected facts; the
 starter set (`pnpm cli eval seed`) asks about the example dataset's knowledge base. The
-**[Agent scenario bank](docs/evals/README.md)** — 43 end-to-end tasks across Chat, Bots and mobile,
+**[Agent scenario bank](docs/evals/README.md)** — 43 end-to-end tasks across chats, Agents and mobile,
 scored by a reviewer on process, deliverable and safety — covers what one turn can't (approval
-cards, permissions, Bots computers, attachments). It is run by hand today; a scenario runner is
+cards, permissions, Agent computers, attachments). It is run by hand today; a scenario runner is
 the planned follow-up.
 
 A husky + lint-staged pre-commit hook runs `eslint --fix` + `prettier --write` on staged

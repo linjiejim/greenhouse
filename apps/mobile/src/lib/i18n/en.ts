@@ -12,6 +12,7 @@ import { botsComputerEn } from './bots/computer.en';
 import { tablesEn } from './tables/tables.en';
 import { appsEn } from './tables/apps.en';
 import { inboxEn } from './tables/inbox.en';
+import { botsRoomsEn } from './bots/rooms.en';
 
 export const en = {
   common: {
@@ -83,7 +84,7 @@ export const en = {
     greetingFormat: '{greeting}, {name}',
   },
   chat: {
-    newConversation: 'New conversation',
+    newConversation: 'New chat',
     followUpPlaceholder: 'Ask a follow-up…',
     jumpLatest: 'Jump to latest',
     newContent: 'New content',
@@ -265,9 +266,9 @@ export const en = {
     langEn: 'English',
     conversations: 'Conversations',
     tags: 'Tags',
-    myBots: 'My Bots',
+    myBots: 'My Agents',
     connectors: 'Connectors',
-    newChatHint: 'New chats start with {name}, who brings in the right Bot when needed. To talk to one Bot on its own, open its profile and tap New Chat.',
+    newChatHint: 'New chats start with {name}, who brings in the right Agent when needed. To talk to one Agent on its own, open its profile and tap New Chat.',
     update: 'Update',
     updateDev: 'Development build',
     updateEmbedded: 'Built-in',
@@ -280,15 +281,16 @@ export const en = {
     projects: 'Projects',
     tables: 'Tables',
     inbox: 'Notifications',
-    history: 'Recent',
     settings: 'Settings',
     search: 'Search',
     newChat: 'New chat',
+    /** The drawer's chat history section (主线 · Agent · 会话 — the other two are `bots.nav.*`). */
+    sessions: 'Chats',
     filterByTag: 'Filter by tag',
     allConversations: 'All conversations',
     deleteTitle: 'Delete this conversation?',
-    noResults: 'No matching conversations',
-    empty: 'No conversations yet',
+    noResults: 'No matching chats',
+    empty: 'No chats yet',
     pinned: 'Pinned',
     today: 'Today',
     yesterday: 'Yesterday',
@@ -309,7 +311,7 @@ export const en = {
   connectors: {
     title: 'Connectors',
     intro:
-      'Connectors give your agents and Bots tools from other services. Public ones just work; the ones on "your account" use your own sign-in or key — nobody else can use it.',
+      'Connectors give your Agents tools from other services. Public ones just work; the ones on "your account" use your own sign-in or key — nobody else can use it.',
     disabledTitle: 'External tools are not enabled for your account',
     disabledDesc: 'Ask an administrator to grant "External MCP tools".',
     noneTitle: 'No connectors yet',
@@ -338,17 +340,17 @@ export const en = {
     connectedToast: 'Connected to {name}',
     signInFailed: 'Couldn’t start the sign-in',
     disconnectTitle: 'Disconnect {name}?',
-    disconnectMessage: 'Your key or sign-in is removed; your agents and Bots can’t use {name} until you connect again.',
+    disconnectMessage: 'Your key or sign-in is removed; your Agents can’t use {name} until you connect again.',
     disconnectFailed: 'Couldn’t disconnect',
     keyTitle: 'Your key for {name}',
-    keyHint: 'Checked with one call, then stored encrypted. Only your agents and Bots use it; nobody can read it back.',
+    keyHint: 'Checked with one call, then stored encrypted. Only your Agents use it; nobody can read it back.',
     keyPlaceholder: 'Paste your key',
     keyFailed: 'The key wasn’t accepted',
     keyRejected: '{name} didn’t accept this key. Check that it was copied in full and that the service it belongs to is enabled.',
     save: 'Save',
     cardTitle: '{name} needs your account',
-    cardBodyOauth: 'Sign in to {name} so the agent can use it for you. Only you and your Bots use this connection.',
-    cardBodyKey: 'Add your own key for {name}. Only you and your Bots use it.',
+    cardBodyOauth: 'Sign in to {name} so the Agent can use it for you. Only you and your Agents use this connection.',
+    cardBodyKey: 'Add your own key for {name}. Only you and your Agents use it.',
     cardExpired: 'Your {name} sign-in stopped working — reconnect it.',
     cardConnected: 'Connected to {name}.',
     cardContinue: 'Continue',
@@ -459,6 +461,17 @@ export const en = {
     unmakeMilestone: 'Unset milestone',
     assignee: 'Assignee',
     unassigned: 'Unassigned',
+    // ── handed to an Agent (spec 20261011-agent-first-class P3e) ──
+    agent: 'Agent',
+    agentNotYours: 'Someone else’s Agent',
+    agentSome: 'An Agent',
+    handToAgent: 'Hand to Agent',
+    handToAnother: 'Hand to Another Agent',
+    handHint: 'It works on the task in a new chat; the assignee stays responsible.',
+    handedTo: 'Handed to {name}',
+    handFailed: 'Couldn’t hand the task to {name}',
+    handOff: 'Agents aren’t turned on for your account.',
+    handGone: 'That Agent or task is no longer here.',
     estimatedHours: 'Estimated hours',
     tags: 'Tags',
     description: 'Description',
@@ -529,6 +542,8 @@ export const en = {
     act_task_updated: 'Updated a task',
     act_comment_added: 'Commented',
     act_member_added: 'Added a member',
+    act_task_handed_to_agent: 'Handed a task to {name}',
+    act_task_agent_cleared: 'Took a task back from its Agent',
     loadFailed: 'Couldn’t load',
     loadFailedHint: 'Check your connection and try again.',
     commentsFailed: 'Couldn’t load comments',
@@ -605,11 +620,11 @@ export const en = {
     systemOff: 'Notifications for Greenhouse are off in iOS Settings.',
     openSystemSettings: 'Open Settings',
     kinds: 'Notify Me When',
-    needsYou: 'A Bot Needs Me',
+    needsYou: 'An Agent Needs Me',
     done: 'A Task Finishes',
-    replies: 'A Bot Replies While I’m Away',
+    replies: 'An Agent Replies While I’m Away',
     kindsFooter:
-      'A Bot needs you: it asks you to approve, sign in or take over its computer. A task finishes: a Bot’s background task or a scheduled task is done. Replies: a Bot answered and you haven’t seen it anywhere for a minute.',
+      'An Agent needs you: it asks you to approve, sign in or take over its computer. A task finishes: an Agent’s background task or a scheduled task is done. Replies: an Agent answered and you haven’t seen it anywhere for a minute.',
     privacy: 'Privacy',
     preview: 'Show Previews',
     previewFooter:
@@ -624,7 +639,7 @@ export const en = {
     unavailableUnsupported: 'This station’s server doesn’t send notifications yet.',
     unavailableDisabled: 'Notifications are switched off on this station.',
     tokenFailed: 'This phone couldn’t get a push token. Try again later.',
-    softAskTitle: 'Get notified when a Bot needs you, even when you’re not in the app?',
+    softAskTitle: 'Get notified when an Agent needs you, even when you’re not in the app?',
     softAskMessage: 'Notifications say who and what kind of thing — not what it’s about.',
     softAskAllow: 'Notify Me',
     softAskLater: 'Not Now',
@@ -640,7 +655,7 @@ export const en = {
     liveActivitySystemOff: 'Live Activities for Greenhouse are off in Settings.',
     liveActivityLog: 'Of the last {total} task ends, {ended} were cleared in the background.',
   },
-  /** Bots — split by owning package under ./bots (spec §2.6), mounted here once. */
+  /** Bots (the product's Agents; code keeps `bots`) — split by owning package under ./bots (spec §2.6), mounted here once. */
   bots: {
     ...botsCommonEn,
     ...botsThreadEn,
@@ -648,6 +663,7 @@ export const en = {
     ...botsNavEn,
     ...botsManageEn,
     ...botsComputerEn,
+    ...botsRoomsEn,
   },
   /** Tables, Apps and the inbox (spec 20261011-mobile-tables-apps) — split under ./tables, mounted here once. */
   tables: tablesEn,

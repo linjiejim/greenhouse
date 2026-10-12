@@ -8,8 +8,9 @@ import { SidebarGlobalNavigation } from './sidebar-global-navigation';
 
 const navigation: PrimaryNavigation = {
   primary: [
-    { key: 'chat', label: 'Chat', icon: MessageCircle, href: '#/chat' },
-    { key: 'bots', label: 'Bots', icon: MessageCircle, href: '#/bots', badge: 2 },
+    // The one conversations entry: with Agent threads it opens the main thread and carries
+    // the "needs you" count (spec 20261011-agent-first-class §3.1).
+    { key: 'chat', label: 'Chat', icon: MessageCircle, href: '#/bots', badge: 2 },
     { key: 'knowledge', label: 'Knowledge', icon: MessageCircle, href: '#/knowledge' },
     { key: 'projects', label: 'Projects', icon: MessageCircle, href: '#/projects' },
     { key: 'tables', label: 'Tables', icon: MessageCircle, href: '#/tables' },
@@ -40,15 +41,14 @@ describe('SidebarGlobalNavigation', () => {
   it('keeps primary destinations visible before More', () => {
     const html = render();
 
-    expect(html.indexOf('Chat')).toBeLessThan(html.indexOf('Bots'));
-    expect(html.indexOf('Bots')).toBeLessThan(html.indexOf('Knowledge'));
+    expect(html.indexOf('Chat')).toBeLessThan(html.indexOf('Knowledge'));
     expect(html.indexOf('Knowledge')).toBeLessThan(html.indexOf('Projects'));
     expect(html.indexOf('Projects')).toBeLessThan(html.indexOf('Tables'));
     expect(html.indexOf('Tables')).toBeLessThan(html.indexOf('>Apps<'));
     expect(html.indexOf('>Apps<')).toBeLessThan(html.indexOf('More'));
     expect(html).toContain('md:min-h-8');
-    expect(html).toMatch(/href="#\/chat"[^>]*aria-current="page"[^>]*class="[^"]*sidebar-active-item/);
-    expect(html).toMatch(/href="#\/chat"[^>]*class="[^"]*font-semibold/);
+    expect(html).toMatch(/href="#\/bots"[^>]*aria-current="page"[^>]*class="[^"]*sidebar-active-item/);
+    expect(html).toMatch(/href="#\/bots"[^>]*class="[^"]*font-semibold/);
   });
 
   it('marks Apps active on the app center and on any app page', () => {
@@ -57,17 +57,17 @@ describe('SidebarGlobalNavigation', () => {
     expect(html).not.toMatch(/href="#\/tables"[^>]*aria-current="page"/);
   });
 
-  it('marks Bots active on its own route and shows the pending "needs you" badge', () => {
+  it('keeps the one conversations entry active on an Agent thread too, with the pending "needs you" badge', () => {
     const html = render('bots');
 
     expect(html).toMatch(/href="#\/bots"[^>]*aria-current="page"[^>]*class="[^"]*sidebar-active-item/);
-    expect(html).not.toMatch(/href="#\/chat"[^>]*aria-current="page"/);
+    expect(html.match(/aria-current="page"/g)).toHaveLength(1);
     expect(html).toMatch(/href="#\/bots"[\s\S]*?>2<\/span>/);
   });
 
-  it('names the collapsed Bots link with what its badge counts, not just the number', () => {
+  it('names the collapsed conversations link with what its badge counts, not just the number', () => {
     const html = render('chat', true);
-    expect(html).toMatch(/href="#\/bots"[^>]*aria-label="Bots, 2 waiting for you"/);
+    expect(html).toMatch(/href="#\/bots"[^>]*aria-label="Chat, 2 waiting for you"/);
     // The visual number is hidden from assistive tech (the name already carries it).
     expect(html).toMatch(/<span aria-hidden="true"[^>]*>2<\/span>/);
   });

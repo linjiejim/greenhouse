@@ -3,14 +3,15 @@
  * modules built on it (access: cached DevTools connections; viewer: live
  * sockets; lease: take-over). The upper modules register here when they load,
  * so runtime.ts never imports them and the dependency direction stays one-way.
+ * Keyed by computer id (`bot_computers.id`; the member's id for their main Agent's).
  */
 
-type StoppedListener = (userId: string, reason: string) => void;
-type UserListener = (userId: string) => void;
+type StoppedListener = (computerId: string, reason: string) => void;
+type ComputerListener = (computerId: string) => void;
 type AsyncTask = () => Promise<void>;
 
 const stoppedListeners: StoppedListener[] = [];
-const purgedListeners: UserListener[] = [];
+const purgedListeners: ComputerListener[] = [];
 const leaseTasks: AsyncTask[] = [];
 const shutdownTasks: AsyncTask[] = [];
 
@@ -18,7 +19,7 @@ export const computerLifecycleHooks = {
   onStopped(listener: StoppedListener): void {
     stoppedListeners.push(listener);
   },
-  onPurged(listener: UserListener): void {
+  onPurged(listener: ComputerListener): void {
     purgedListeners.push(listener);
   },
   /** Runs every 30 s while the runtime is ready (auto-release of abandoned take-overs). */
@@ -29,11 +30,11 @@ export const computerLifecycleHooks = {
     shutdownTasks.push(task);
   },
 
-  stopped(userId: string, reason: string): void {
-    for (const listener of stoppedListeners) listener(userId, reason);
+  stopped(computerId: string, reason: string): void {
+    for (const listener of stoppedListeners) listener(computerId, reason);
   },
-  purged(userId: string): void {
-    for (const listener of purgedListeners) listener(userId);
+  purged(computerId: string): void {
+    for (const listener of purgedListeners) listener(computerId);
   },
   async leaseTick(): Promise<void> {
     for (const task of leaseTasks) await task();

@@ -63,8 +63,12 @@ describe('E2E: the member-wide background-task list', () => {
     const res = await fetch(`${BASE_URL}/api/bots/tasks?state=active`, { headers: authHeaders(memberToken) });
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ tasks: [] });
+    // Bare, it is the sidebar's history (spec 20261011-agent-first-class §3.2); any other state is refused.
     const bare = await fetch(`${BASE_URL}/api/bots/tasks`, { headers: authHeaders(memberToken) });
-    expect(bare.status).toBe(400);
+    expect(bare.status).toBe(200);
+    expect(await bare.json()).toEqual({ tasks: [] });
+    const unknown = await fetch(`${BASE_URL}/api/bots/tasks?state=done`, { headers: authHeaders(memberToken) });
+    expect(unknown.status).toBe(400);
   });
 
   it('is closed to a member whose bots feature is off, like the rest of the Bots task routes', async () => {

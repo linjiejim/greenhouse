@@ -7,21 +7,38 @@
  * Not ConversationPane (spec D17): that controller is single-agent — its
  * messages have no author, its stream has no speaker, and its drafts, dock
  * and side pane are bound to one Agent. The renderers underneath are shared.
+ *
+ * A room (P5, `room`): the header shows the people and a manage menu, the `@`
+ * list holds only the Agents the member may address (the placeholder says
+ * they answer only when @-mentioned), other people's messages sit on the
+ * left, and Stop is offered only for a run the member asked for.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { isSproutyBot, type BotRequestView, type BotView } from '@greenhouse/types/bots';
+import {
+  isSproutyBot,
+  type BotConversationReadOnlyCode,
+  type BotConversationSummary,
+  type BotRequestView,
+  type BotView,
+  type SharedBotView,
+} from '@greenhouse/types/bots';
 import { EmptyState, Skeleton, Button, toast } from '../ui';
-import { AlertTriangle, Archive, MessageCircle, Paperclip, Plus } from '../../lib/icons';
-import { useT } from '../../lib/i18n';
-import { isBotsApiError } from '../../lib/api/bots';
+import { AlertTriangle, Archive, MessageCircle, Paperclip, Plus, Users } from '../../lib/icons';
+import { useT, type TranslationKey } from '../../lib/i18n';
+import { copyForCode, isBotsApiError, updateTaskChat } from '../../lib/api/bots';
+import { useProfileStore, useUIStore } from '../../stores';
 import { MAX_ATTACHMENTS } from '../conversation/attachments';
+import { ModelSelector } from '../chat/model-selector';
+import type { ContextMenuItem } from '../app/context-menu';
 import { BotsBareHeader, BotsMobileNavButton, ConversationHeader, useStatusLine } from './conversation-header';
-import { BotTranscript } from './bot-transcript';
+import { BotTranscript, type TranscriptRoom } from './bot-transcript';
+import type { RoomView } from './use-room';
 import { useBotsStore } from './bots-store';
 import { BotsComposer, type BotsComposerHandle } from './bots-composer';
 import { BotTaskDock, useBotTasks } from './bot-task-dock';
 import { speakingSegment } from './transcript';
+import { takeFirstSend } from './first-send';
 import type { BotConversationController } from './use-bot-conversation';
 import type { BotLookup } from './transcript-rows';
 import type { ComputerPhase, ComputerStatusState } from './computer-phase';
@@ -34,15 +51,41 @@ const drafts = new Map<string, string>();
 
 /**
  * 409 codes the API answers a message with when nobody in the conversation
- * can reply any more — its Bot was archived (`bot_archived`), or it is a
- * retired group chat (`group_closed`, kept as a record). Nothing was persisted.
- * (`BotConversationReadOnlyCode` in @greenhouse/types/bots.)
+ * can reply any more — its Bot was archived (`bot_archived`), it is a retired
+ * group chat (`group_closed`, kept as a record), or it is someone else's public
+ * Agent that is no longer offered (`agent_unavailable`, P4). Nothing was
+ * persisted. (`BotConversationReadOnlyCode` in @greenhouse/types/bots.)
  */
-const READ_ONLY_CODES: ReadonlySet<string> = new Set(['bot_archived', 'group_closed']);
+const READ_ONLY_CODES: ReadonlySet<BotConversationReadOnlyCode> = new Set<BotConversationReadOnlyCode>([
+  'bot_archived',
+  'group_closed',
+  'agent_unavailable',
+]);
+
+const READ_ONLY_TOAST = {
+  bot_archived: 'bots.readOnly.sendRefused',
+  group_closed: 'bots.readOnly.groupClosedTitle',
+  agent_unavailable: 'bots.shared.sendRefused',
+} satisfies Record<BotConversationReadOnlyCode, TranslationKey>;
 
 export function isReadOnlySendError(err: unknown): boolean {
-  return isBotsApiError(err) && err.status === 409 && err.code !== null && READ_ONLY_CODES.has(err.code);
+  return readOnlyCode(err) !== null;
 }
+
+function readOnlyCode(err: unknown): BotConversationReadOnlyCode | null {
+  if (!isBotsApiError(err) || err.status !== 409 || err.code === null) return null;
+  const code = err.code as BotConversationReadOnlyCode;
+  return READ_ONLY_CODES.has(code) ? code : null;
+}
+
+/** Why "edit" / "answer again" was refused (POST …/rewind), in the member's words. */
+const REWIND_COPY: Partial<Record<string, TranslationKey>> = {
+  busy: 'bots.rewind.busy',
+  not_last: 'bots.rewind.notLast',
+  not_found: 'bots.rewind.notFound',
+  requests_pending: 'bots.rewind.requestsPending',
+  not_task_chat: 'bots.rewind.notTaskChat',
+};
 
 export interface ConversationViewProps {
   sessionId: string;
@@ -62,13 +105,36 @@ export interface ConversationViewProps {
   onReadOnly: () => void;
   vaultAvailable: boolean;
   computerPhase: ComputerPhase | null;
-  /** The page's one computer status — a human-check card embeds the screen and takes over through it. */
+  /**
+   * The page's one computer status (the conversation's Agent's computer) — a human-check card raised
+   * on it embeds the screen and takes over through it.
+   */
   computer?: ComputerStatusState;
   activePane: 'info' | 'computer' | null;
   onPane: (pane: 'info' | 'computer' | null) => void;
+  /**
+   * A card's "Open computer": the computer of the Agent that raised it (each Agent has its own).
+   * Without it a card opens the page's computer pane.
+   */
+  onOpenAgentComputer?: (botId: string | null) => void;
+  /**
+   * The DM is with someone else's public Agent (P4): its owner is named, nobody can be invited in,
+   * its replies can be rated, and once it is no longer offered the conversation is read-only.
+   */
+  shared?: SharedBotView;
+  /** The computer door (a public Agent has one only when its owner granted it). Default: shown. */
+  showComputer?: boolean;
   onInvite: () => void;
   onNewBot: () => void;
   onOpenProfile: (botId: string) => void;
+  /** A room (P5): its people and Agents as the member sees them. */
+  room?: RoomView | null;
+  /** A room's manage menu, after "Rename" (rename, add people, Agents, leave). */
+  roomMenu?: ContextMenuItem[];
+  /** Rename a room (rejects when it was not saved). */
+  onRenameRoom?: (title: string) => Promise<void>;
+  /** The `@` list's last row in a room: bring an Agent. */
+  onBringAgent?: () => void;
 }
 
 export function ConversationView(props: ConversationViewProps) {
@@ -86,6 +152,25 @@ export function ConversationView(props: ConversationViewProps) {
   const [draft, setDraftState] = useState(() => drafts.get(sessionId) ?? '');
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const { tasks, refresh: refreshTasks } = useBotTasks(sessionId);
+
+  // A separate chat runs on the model chosen for it (spec 20261011-agent-first-class D22); a DM
+  // always answers on its Agent's own. The picker shows the choice made here at once, before the
+  // PATCH lands.
+  const isTaskChat = conversation?.kind === 'task';
+  const models = useProfileStore((state) => state.models);
+  const fetchProfiles = useProfileStore((state) => state.fetchProfiles);
+  useEffect(() => {
+    if (isTaskChat) void fetchProfiles();
+  }, [fetchProfiles, isTaskChat]);
+  const [modelPick, setModelPick] = useState<{ sessionId: string; modelId: string } | null>(null);
+  const chatModel = isTaskChat
+    ? ((modelPick?.sessionId === sessionId ? modelPick.modelId : null) ??
+      conversation?.model_id ??
+      props.owner?.model_id ??
+      null)
+    : null;
+  // Only a model the catalog still offers is sent; otherwise the chat falls back to the Agent's.
+  const sendModel = chatModel && models.some((model) => model.id === chatModel) ? chatModel : undefined;
 
   useEffect(() => setDraftState(drafts.get(sessionId) ?? ''), [sessionId]);
   const setDraft = useCallback(
@@ -111,12 +196,11 @@ export function ConversationView(props: ConversationViewProps) {
    */
   const reportSendFailure = useCallback(
     (err: unknown) => {
-      if (isReadOnlySendError(err)) {
-        // Read-only for good: an archived Bot's DM (a new Bot is the way on) or a retired group chat.
-        toast(
-          t(isBotsApiError(err, 'group_closed') ? 'bots.readOnly.groupClosedTitle' : 'bots.readOnly.sendRefused'),
-          'info',
-        );
+      const code = readOnlyCode(err);
+      if (code) {
+        // Read-only for good: an archived Bot's DM (a new Bot is the way on), a retired group chat,
+        // or someone else's public Agent no longer offered.
+        toast(t(READ_ONLY_TOAST[code]), 'info');
         setRefusedFor(sessionId);
         onReadOnly();
         return;
@@ -130,13 +214,92 @@ export function ConversationView(props: ConversationViewProps) {
   const send = useCallback(
     async (text: string, images: Array<{ id: string; url: string }>, mentions: string[]) => {
       try {
-        await controller.send(text, { images, mentions });
+        await controller.send(text, { images, mentions, ...(sendModel ? { model: sendModel } : {}) });
       } catch (err) {
         reportSendFailure(err);
         throw err;
       }
     },
-    [controller, reportSendFailure],
+    [controller, reportSendFailure, sendModel],
+  );
+
+  /**
+   * An answer from a card in a reply (an ask_user form, a confirm block) — like Chat, not while a
+   * reply is still under way: the form keeps the answers and can be sent once it is done.
+   */
+  const sendFromCard = useCallback(
+    (text: string) => {
+      if (streaming) {
+        toast(t('bots.composer.waitForReply'), 'info');
+        return Promise.reject(new Error('busy'));
+      }
+      return send(text, [], []);
+    },
+    [send, streaming, t],
+  );
+
+  // The first message of a chat started on the new-chat page goes out from here, through the same
+  // send path as the composer (its pending bubble, its failure notice); a failure gives it back as a draft.
+  const loadedSession = controller.state === 'ready' ? (conversation?.session_id ?? null) : null;
+  useEffect(() => {
+    if (loadedSession !== sessionId) return;
+    const first = takeFirstSend(sessionId);
+    if (!first) return;
+    send(first.content, first.images, []).catch(() => setDraft(first.draft));
+  }, [loadedSession, send, sessionId, setDraft]);
+
+  const changeModel = useCallback(
+    (modelId: string) => {
+      setModelPick({ sessionId, modelId });
+      updateTaskChat(sessionId, { model_id: modelId })
+        .then(({ conversation: next }) => controller.setConversation(next))
+        .catch(() => {
+          setModelPick(null);
+          toast(t('bots.composer.modelFailed'), 'error');
+        });
+    },
+    [controller, sessionId, t],
+  );
+
+  const rename = useCallback(
+    async (title: string) => {
+      try {
+        const { conversation: next } = await updateTaskChat(sessionId, { title });
+        controller.setConversation(next);
+        // The chats list names it too.
+        useUIStore.getState().bumpSessionListVersion();
+      } catch (err) {
+        toast(t('bots.header.renameFailed'), 'error');
+        throw err;
+      }
+    },
+    [controller, sessionId, t],
+  );
+
+  /** "Edit" / "answer again" refused: a read-only chat says so like a send; anything else in a line. */
+  const reportRewindFailure = useCallback(
+    (err: unknown) => {
+      if (isReadOnlySendError(err)) {
+        reportSendFailure(err);
+        return;
+      }
+      const key = isBotsApiError(err) ? copyForCode(REWIND_COPY, err.code) : undefined;
+      toast(
+        key ? t(key) : t('bots.rewind.failed', { reason: err instanceof Error ? err.message : String(err) }),
+        'error',
+      );
+      // The transcript may have moved on (another tab, a message that is no longer last).
+      void controller.reload();
+    },
+    [controller, reportSendFailure, t],
+  );
+  const editLast = useCallback(
+    (messageId: string, content: string) => void controller.rewind(messageId, content).catch(reportRewindFailure),
+    [controller, reportRewindFailure],
+  );
+  const regenerateLast = useCallback(
+    (messageId: string) => void controller.rewind(messageId).catch(reportRewindFailure),
+    [controller, reportRewindFailure],
   );
 
   /** One click on "Retry" / "Continue" / "Ask again" is an honest new member message. */
@@ -243,8 +406,31 @@ export function ConversationView(props: ConversationViewProps) {
       prefill={prefill}
       tasks={tasks}
       refreshTasks={refreshTasks}
+      sendFromCard={sendFromCard}
+      taskChat={
+        isTaskChat
+          ? {
+              models,
+              model: chatModel,
+              onModel: changeModel,
+              onRename: rename,
+              onEditLast: editLast,
+              onRegenerateLast: regenerateLast,
+            }
+          : null
+      }
     />
   );
+}
+
+/** What a separate chat adds to the column: its model, its title, edit / answer again. */
+interface TaskChatControls {
+  models: ReturnType<typeof useProfileStore.getState>['models'];
+  model: string | null;
+  onModel: (modelId: string) => void;
+  onRename: (title: string) => Promise<void>;
+  onEditLast: (messageId: string, content: string) => void;
+  onRegenerateLast: (messageId: string) => void;
 }
 
 function ConversationColumn({
@@ -261,6 +447,9 @@ function ConversationColumn({
   computer,
   activePane,
   onPane,
+  onOpenAgentComputer,
+  shared,
+  showComputer = true,
   onInvite,
   onNewBot,
   onOpenProfile,
@@ -274,6 +463,12 @@ function ConversationColumn({
   prefill,
   tasks,
   refreshTasks,
+  sendFromCard,
+  taskChat,
+  room: roomProp,
+  roomMenu,
+  onRenameRoom,
+  onBringAgent,
 }: ConversationViewProps & {
   conversation: NonNullable<BotConversationController['conversation']>;
   speaking: ReturnType<typeof speakingSegment>;
@@ -286,19 +481,64 @@ function ConversationColumn({
   prefill: (text: string) => void;
   tasks: ReturnType<typeof useBotTasks>['tasks'];
   refreshTasks: () => Promise<void>;
+  sendFromCard: (text: string) => Promise<void>;
+  taskChat: TaskChatControls | null;
 }) {
   const t = useT();
-  const status = useStatusLine({ conversation, members, speaking, pendingRequests, computerPhase, readOnly });
-  const isDirect = conversation.kind === 'direct';
-  // Guests join a live DM only: an archived Bot's DM has nobody to host them, and a group chat is a record.
-  const canInvite = !readOnly && conversation.members.length < MAX_MEMBERS;
+  const room = conversation.kind === 'room' ? (roomProp ?? null) : null;
+  const status = useStatusLine({
+    conversation,
+    members,
+    speaking,
+    pendingRequests,
+    computerPhase,
+    readOnly,
+    publishedBy: shared?.owner.nickname,
+    room: room
+      ? { privateChat: room.privateChat, people: room.participants.length, agents: room.agents.length }
+      : undefined,
+  });
+  // A DM and a separate chat belong to one Agent; only a retired group had a roster.
+  const single = conversation.kind !== 'group';
+  // Guests join a live DM only: an archived Bot's DM has nobody to host them, a group chat is a
+  // record, and someone else's public Agent talks with this member alone (P4). A room has its own
+  // way in (its manage menu).
+  const canInvite = !room && !readOnly && !shared && conversation.members.length < MAX_MEMBERS;
   const segments = controller.managed?.botSegments ?? [];
   const liveRequests = controller.managed?.botRequests ?? [];
-  const placeholder = owner
-    ? t('bots.composer.placeholderDm', { name: owner.name })
-    : t('bots.composer.placeholderShort');
+  const placeholder = room
+    ? room.addressable.length > 0
+      ? t('bots.room.placeholderAgents', { name: title })
+      : t('bots.room.placeholder', { name: title })
+    : owner
+      ? t('bots.composer.placeholderDm', { name: owner.name })
+      : t('bots.composer.placeholderShort');
+
+  // A room's transcript: whose message is whose, and an answer from a card goes to the Agent that
+  // asked, by name (nobody answers an unaddressed message in a room).
+  const streaming = controller.streaming;
+  const transcriptRoom = useMemo<TranscriptRoom | undefined>(() => {
+    if (!room) return undefined;
+    const addressable = new Set(room.addressable.map((bot) => bot.id));
+    return {
+      me: room.me,
+      personName: room.personName,
+      others: room.others.map((person) => person.nickname),
+      privateChat: room.privateChat,
+      canAddress: (botId) => !!botId && addressable.has(botId),
+      sendTo: (botId, text) => {
+        const bot = room.faces.get(botId);
+        if (!bot) return Promise.reject(new Error('unknown Agent'));
+        if (streaming) {
+          toast(t('bots.composer.waitForReply'), 'info');
+          return Promise.reject(new Error('busy'));
+        }
+        return send(`@${bot.name} ${text}`, [], [bot.id]);
+      },
+    };
+  }, [room, send, streaming, t]);
   // A retired group's intro shows the roster it had (the active ones).
-  const introBots = isDirect ? (owner ? [owner] : []) : members;
+  const introBots = single ? (owner ? [owner] : []) : members;
 
   // ── Drop files anywhere on the conversation → the composer's attachments ──
   const composerRef = useRef<BotsComposerHandle>(null);
@@ -364,8 +604,22 @@ function ConversationColumn({
         canInvite={canInvite}
         onInvite={onInvite}
         onOpenComputer={() => onPane(activePane === 'computer' ? null : 'computer')}
+        // A room has no Agent of its own, so no computer of its own: a card opens its Agent's.
+        showComputer={showComputer && !room}
         onOpenInfo={() => onPane(activePane === 'info' ? null : 'info')}
         onOpenProfile={onOpenProfile}
+        onRename={
+          room ? (room.privateChat ? undefined : onRenameRoom) : taskChat && !readOnly ? taskChat.onRename : undefined
+        }
+        room={
+          room
+            ? {
+                others: room.others.map((person) => person.nickname),
+                privateChat: room.privateChat,
+                menu: roomMenu ?? [],
+              }
+            : undefined
+        }
       />
       <BotTranscript
         sessionId={sessionId}
@@ -385,7 +639,8 @@ function ConversationColumn({
         memoryStates={controller.memoryStates}
         busy={controller.streaming}
         interrupting={controller.interrupting}
-        onHandleNow={(clientId) => void controller.handleNow(clientId)}
+        // In a room the run may be someone else's: nobody jumps its queue.
+        onHandleNow={room ? undefined : (clientId) => void controller.handleNow(clientId)}
         computer={computer}
         computerNotice={
           computerPhase?.kind === 'starting' ? 'starting' : computerPhase?.kind === 'queued' ? 'queued' : null
@@ -395,37 +650,54 @@ function ConversationColumn({
         vaultAvailable={vaultAvailable}
         onRequestSettled={controller.applyRequest}
         onStale={() => void controller.reload()}
-        onOpenComputer={() => onPane('computer')}
+        onOpenComputer={(botId) => (onOpenAgentComputer ? onOpenAgentComputer(botId) : onPane('computer'))}
         onViewSummary={() => onPane('info')}
         onAddress={address}
-        onSendText={(text) => send(text, [], [])}
+        onSendText={sendFromCard}
         onStarter={prefill}
         onOpenProfile={onOpenProfile}
         readOnly={readOnly}
+        onEditLast={taskChat?.onEditLast}
+        onRegenerateLast={taskChat?.onRegenerateLast}
+        replyFeedback={!!shared}
+        room={transcriptRoom}
       />
       {!readOnly && owner && isSproutyBot(owner) && owner.name === 'Sprouty' && owner.current_version === 1 && (
         <SproutyNamingNudge bot={owner} onOpenProfile={onOpenProfile} />
       )}
       {readOnly ? (
-        <ReadOnlyNotice kind={conversation.kind} name={owner?.name ?? null} onNewBot={onNewBot} />
+        <ReadOnlyNotice
+          kind={conversation.kind}
+          name={owner?.name ?? null}
+          onNewBot={onNewBot}
+          // Someone else's public Agent is read-only only once it is no longer offered.
+          unavailable={!!shared}
+        />
       ) : (
         <BotsComposer
           // Remount per conversation: attachments belong to the draft they were added to.
           key={sessionId}
           ref={composerRef}
           sessionId={sessionId}
-          members={members}
+          // A room's `@` list: only the Agents the member may address — no one else answers them.
+          members={room ? room.addressable : members}
           placeholder={placeholder}
-          busy={controller.streaming}
+          // Stop is for a run the member may stop (in a room, one they asked for).
+          busy={controller.canStop}
           stopPhase={controller.stopPhase}
           input={draft}
           setInput={setDraft}
           onSend={send}
           onStop={controller.stop}
-          onInvite={onInvite}
-          canInvite={canInvite}
+          onInvite={room ? (onBringAgent ?? onInvite) : onInvite}
+          canInvite={room ? !!onBringAgent : canInvite}
           inputRef={inputRef}
           aboveSlot={<BotTaskDock tasks={tasks} lookup={lookup} onChanged={() => void refreshTasks()} />}
+          toolbarSlot={
+            taskChat ? (
+              <ModelSelector models={taskChat.models} selectedModelId={taskChat.model} onSelect={taskChat.onModel} />
+            ) : null
+          }
         />
       )}
     </div>
@@ -443,13 +715,42 @@ function ReadOnlyNotice({
   kind,
   name,
   onNewBot,
+  unavailable = false,
 }: {
-  kind: 'direct' | 'group';
+  kind: BotConversationSummary['kind'];
   name: string | null;
   onNewBot: () => void;
+  /** Someone else's public Agent its owner stopped offering (or an administrator paused). */
+  unavailable?: boolean;
 }) {
   const t = useT();
-  const direct = kind === 'direct';
+  const openDialog = useBotsStore((state) => state.openDialog);
+  if (unavailable) {
+    return (
+      <div
+        className="flex-shrink-0 border-t border-edge bg-surface-raised px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 md:px-6"
+        data-testid="bots-read-only"
+        data-reason="agent_unavailable"
+        role="status"
+      >
+        <div className="mx-auto flex w-full max-w-5xl flex-wrap items-center gap-3 rounded-xl border border-edge bg-surface-sunken px-3 py-2.5">
+          <Archive size={16} className="flex-shrink-0 text-fg-muted" aria-hidden="true" />
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-medium text-fg">
+              {name ? t('bots.shared.unavailableTitle', { name }) : t('bots.shared.unavailableTitleUnknown')}
+            </p>
+            <p className="text-xs text-fg-muted">{t('bots.shared.unavailableDescription')}</p>
+          </div>
+          <Button size="sm" variant="outline" onClick={() => openDialog({ kind: 'directory' })}>
+            <Users size={14} className="mr-1" />
+            {t('bots.shared.browse')}
+          </Button>
+        </div>
+      </div>
+    );
+  }
+  // A DM or a separate chat whose Agent was archived: the way on is a new Agent.
+  const direct = kind !== 'group';
   return (
     <div
       className="flex-shrink-0 border-t border-edge bg-surface-raised px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 md:px-6"

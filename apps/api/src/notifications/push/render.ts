@@ -41,7 +41,7 @@ const NEEDS_YOU: Record<BotsLocale, Record<BotRequestKind, string>> = {
     approval: '请你批准一个操作',
     login: '需要你登录一个网站',
     takeover: '需要你接手电脑',
-    bot_create: '提议新建一个 Bot',
+    bot_create: '提议新建一个 Agent',
     task_start: '提议一个后台任务',
     instructions_update: '提议修改工作说明',
     tables_plan: '提议修改表格',
@@ -50,7 +50,7 @@ const NEEDS_YOU: Record<BotsLocale, Record<BotRequestKind, string>> = {
     approval: 'Needs your approval',
     login: 'Needs you to sign in to a site',
     takeover: 'Needs you to take over the computer',
-    bot_create: 'Proposes a new Bot',
+    bot_create: 'Proposes a new Agent',
     task_start: 'Proposes a background task',
     instructions_update: 'Proposes a change to its instructions',
     tables_plan: 'Proposes a Tables change',
@@ -84,7 +84,7 @@ function needsYouPreview(l: BotsLocale, kind: BotRequestKind, subject: string): 
     case 'takeover':
       return `Needs you to take over the computer: ${subject}`;
     case 'bot_create':
-      return `Proposes the new Bot “${subject}”`;
+      return `Proposes the new Agent “${subject}”`;
     case 'task_start':
       return `Proposes the background task “${subject}”`;
     case 'instructions_update':

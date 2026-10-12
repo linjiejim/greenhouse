@@ -6,7 +6,7 @@
  */
 
 import { Hono } from 'hono';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SessionRow } from '@greenhouse/types/session';
 import type { AuthUser } from '../../auth/token.js';
 import type { AppEnv } from '../../app-env.js';
@@ -96,6 +96,10 @@ function makeSession(ownerId = 'owner'): SessionRow {
   };
 }
 
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
+
 describe('Eval execution provenance', () => {
   it('never lets a team-owned mutable session status select the Eval budget pool', () => {
     expect(isTrustedEvalExecution({ role: 'team' }, 'eval')).toBe(false);
@@ -172,6 +176,10 @@ describe('session access policy', () => {
     await expect(canAccessSession(owner, session)).resolves.toBe(true);
     await expect(canAccessSession(other, session)).resolves.toBe(false);
     await expect(canAccessSession(shared, session)).resolves.toBe(true);
+    // Super reads and writes members' chats only where the deployment allows it (D46).
+    await expect(canAccessSession(superUser, session)).resolves.toBe(false);
+    expect(canWriteSession(superUser, session)).toBe(false);
+    vi.stubEnv('SUPER_READS_CHATS', 'true');
     await expect(canAccessSession(superUser, session)).resolves.toBe(true);
 
     expect(canWriteSession(owner, session)).toBe(true);
@@ -212,7 +220,7 @@ describe('POST /api/chat session authorization', () => {
 
     expect(response.status).toBe(403);
     await expect(response.json()).resolves.toEqual({
-      error: 'You do not have access to this Bot',
+      error: 'You do not have access to this Agent',
     });
     expect(mocks.sessions.addMessage).not.toHaveBeenCalled();
     expect(mocks.sessions.buildChatMessages).not.toHaveBeenCalled();
@@ -244,6 +252,8 @@ describe('POST /api/chat session authorization', () => {
     ['the owner', { id: 'owner', role: 'team' as const }],
     ['a super user', { id: 'admin', role: 'super' as const }],
   ])('allows %s to enter the session write path', async (_label, user) => {
+    // Super: where the deployment lets super continue members' chats (SUPER_READS_CHATS, D46).
+    if (user.role === 'super') vi.stubEnv('SUPER_READS_CHATS', 'true');
     const response = await continueSession(createApp(), user);
 
     // The fake history is empty, so the route intentionally stops before any

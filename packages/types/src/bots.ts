@@ -35,9 +35,89 @@ export interface BotView {
   current_version: number;
   /** The owner's user id. */
   user_id: string;
+  /**
+   * `public` = published to an audience (spec 20261011-agent-first-class P4); absent on older
+   * servers = private.
+   */
+  visibility?: 'private' | 'public';
+  /** The version its audience talks to; null = not published. */
+  published_version?: number | null;
   last_active_at: string | null;
   created_at: string;
   updated_at: string;
+}
+
+/**
+ * Someone else's public Agent as its users see it (`GET /api/bots` `shared_bots`, `GET /api/agents`):
+ * no instructions, tools or settings — only who it is and whose it is.
+ */
+export interface SharedBotView {
+  id: string;
+  name: string;
+  role: string;
+  description: string;
+  avatar: AvatarConfig;
+  template_key: string | null;
+  owner: { id: string; nickname: string };
+  /** The user's DM with it, when it exists. */
+  dm_session_id: string | null;
+  /** false once its owner unpublished it or an administrator paused it (the DM stays readable). */
+  available: boolean;
+  /** Its owner granted it a computer (each member gets their own copy). */
+  computer: boolean;
+}
+
+// ─── Public Agents (spec 20261011-agent-first-class P4) ─────────────────
+
+/** Default monthly token cap of a public Agent's own budget (D37). */
+export const PUBLIC_AGENT_DEFAULT_MONTHLY_TOKENS = 2_000_000;
+
+/** Who may use a public Agent. */
+export interface BotAudience {
+  /** Every internal member. */
+  everyone: boolean;
+  user_ids: string[];
+  /** `user_groups.id`. */
+  group_ids: number[];
+}
+
+/** A public Agent's settings (`bots.publication`). */
+export interface BotPublicationSettings {
+  audience: BotAudience;
+  /** Resource-level grants, each within the owner's own access (D36: v1 = knowledge folders + computer). */
+  grants: { kb_folder_ids: number[]; computer: boolean };
+  /** Its own budget (D37): monthly tokens (null = the default) and an optional per-user daily cap. */
+  budget: { monthly_tokens: number | null; daily_tokens_per_user: number | null };
+}
+
+/** GET /api/bots/:id/publication */
+export interface BotPublicationView extends BotPublicationSettings {
+  visibility: 'private' | 'public';
+  published_version: number | null;
+  current_version: number;
+  /** An administrator paused it. */
+  paused: boolean;
+  /** Members who have a conversation with it. */
+  users: number;
+}
+
+/** PUT /api/bots/:id/publication — every field optional; `publish: true` publishes the current version. */
+export interface BotPublicationWrite {
+  visibility?: 'private' | 'public';
+  audience?: BotAudience;
+  grants?: { kb_folder_ids?: number[]; computer?: boolean };
+  budget?: { monthly_tokens?: number | null; daily_tokens_per_user?: number | null };
+  publish?: boolean;
+}
+
+/** One rating of a reply (GET /api/bots/:id/feedback) — never the conversation. */
+export interface BotFeedbackView {
+  id: number;
+  rating: 1 | -1;
+  comment: string;
+  version: number | null;
+  user: { id: string; nickname: string };
+  created_at: string;
 }
 
 /** One immutable manifest of a Bot (`GET /api/bots/:id/versions`). */
@@ -127,18 +207,22 @@ export const SPROUTY_BOT_TEMPLATE: BotTemplate = {
     en: {
       name: 'Sprouty',
       role: 'Main assistant',
-      pitch: "Ask anything or hand me a task; when it needs a specialist, I'll bring in the right Bot.",
+      pitch: "Ask anything or hand me a task; when it needs a specialist, I'll bring in the right Agent.",
       instructions:
-        "You are Sprouty, the member's main assistant and the one they talk to first. Help directly with questions, writing, research and everyday errands. Break bigger asks into steps and keep track of open items in the shared notes. Do small things yourself; when a job clearly belongs to a specialist, bring in the right Bot — add one of the member's Bots to this conversation or propose a new one — and hand it over with a precise brief. Report progress in one line.",
-      starters: ['Plan my week from my open projects', 'What can my Bots do for me?', 'Create a researcher Bot for me'],
+        "You are Sprouty, the member's main assistant and the one they talk to first. Help directly with questions, writing, research and everyday errands. Break bigger asks into steps and keep track of open items in the shared notes. Do small things yourself; when a job clearly belongs to a specialist, bring in the right Agent — add one of the member's Agents to this conversation or propose a new one — and hand it over with a precise brief. Report progress in one line.",
+      starters: [
+        'Plan my week from my open projects',
+        'What can my Agents do for me?',
+        'Create a researcher Agent for me',
+      ],
     },
     zh: {
       name: 'Sprouty',
       role: '主助手',
-      pitch: '有问题直接问，有事交给我；需要专家时，我来请合适的 Bot。',
+      pitch: '有问题就问，有事交给我；需要专家时，我请合适的 Agent。',
       instructions:
-        '你是 Sprouty，这位成员的主助手，也是对方最先找的那一个。问答、写作、调研和日常杂事都直接帮忙。把大的请求拆成步骤，用共享笔记跟踪未完成的事项。小事自己做；明显属于专家的活，就请合适的 Bot 来——把成员已有的 Bot 拉进这个对话，或者提议新建一个——并给出准确的交接说明。进展用一句话汇报。',
-      starters: ['根据我手上的项目帮我排一下这周', '我的 Bot 们能帮我做什么？', '帮我建一个研究员 Bot'],
+        '你是 Sprouty，这位成员的主助手，也是对方最先找的那一个。问答、写作、调研和日常杂事都直接帮忙。把大的请求拆成步骤，用共享笔记跟踪未完成的事项。小事自己做；明显属于专家的活，就请合适的 Agent 来——把成员已有的 Agent 拉进这个对话，或者提议新建一个——并给出准确的交接说明。进展用一句话汇报。',
+      starters: ['根据我手上的项目帮我排一下这周', '我的 Agent 们能帮我做什么？', '帮我建一个研究员 Agent'],
     },
   },
 };
@@ -156,22 +240,22 @@ const RETIRED_TEMPLATES: readonly BotTemplate[] = [
       en: {
         name: 'Ivy',
         role: 'Chief of staff',
-        pitch: 'Your first point of contact — plans the work and brings in the right Bot.',
+        pitch: 'Your first point of contact — plans the work and brings in the right Agent.',
         instructions:
-          "You are the member's chief of staff. Break bigger asks into steps and keep track of open items in the shared notes. Do small things yourself; when a job clearly belongs to a specialist, invite or create the right Bot and hand it over with a precise brief. Report progress in one line.",
+          "You are the member's chief of staff. Break bigger asks into steps and keep track of open items in the shared notes. Do small things yourself; when a job clearly belongs to a specialist, invite or create the right Agent and hand it over with a precise brief. Report progress in one line.",
         starters: [
           'Plan my week from my open projects',
-          'What can my Bots do for me?',
-          'Create a researcher Bot for me',
+          'What can my Agents do for me?',
+          'Create a researcher Agent for me',
         ],
       },
       zh: {
         name: '藤藤',
         role: '总管',
-        pitch: '理清需求、安排工作，需要时请合适的 Bot 来帮忙。',
+        pitch: '理清需求、安排工作，需要时请合适的 Agent 来帮忙。',
         instructions:
-          '你是这位成员的总管。把大的请求拆成步骤，用共享笔记跟踪未完成的事项。小事自己做；明显属于专家的活，邀请或新建合适的 Bot，并给出准确的交接说明。进展用一句话汇报。',
-        starters: ['根据我手上的项目帮我排一下这周', '我的 Bot 们能帮我做什么？', '帮我建一个研究员 Bot'],
+          '你是这位成员的总管。把大的请求拆成步骤，用共享笔记跟踪未完成的事项。小事自己做；明显属于专家的活，邀请或新建合适的 Agent，并给出准确的交接说明。进展用一句话汇报。',
+        starters: ['根据我手上的项目帮我排一下这周', '我的 Agent 们能帮我做什么？', '帮我建一个研究员 Agent'],
       },
     },
   },
@@ -401,6 +485,29 @@ export interface BotMemberView {
   bot_id: string;
   role: BotMemberRole;
   position: number;
+  /** In a room: whose Agent it is (`bots.user_id`). Absent elsewhere — there it is the member's. */
+  owner_user_id?: string;
+  /** In a room: who brought it in (it leaves with them; they may take it out). Absent elsewhere. */
+  brought_by_user_id?: string;
+  /**
+   * In a room: how to show an Agent the reader may not otherwise know (another person's) — its
+   * name, role, avatar and template (a public one's published version). Absent elsewhere.
+   */
+  profile?: { name: string; role: string; avatar: AvatarConfig; template_key: string | null };
+  /**
+   * In a room: may the person reading @ it (their own Agent, or a public one offered to them)?
+   * Only those answer them (spec 20261011-agent-first-class D44). Absent elsewhere.
+   */
+  addressable?: boolean;
+}
+
+/** A person in a room (spec 20261011-agent-first-class P5). */
+export interface RoomParticipantView {
+  user_id: string;
+  nickname: string;
+  /** `owner` = who created the room. */
+  role: 'owner' | 'member';
+  joined_at: string;
 }
 
 /** "Needs you" > unread > working, the sidebar's attention order. */
@@ -409,16 +516,31 @@ export type BotConversationAttention = 'needs_you' | 'unread' | 'working' | 'idl
 export interface BotConversationSummary {
   session_id: string;
   /**
-   * `group` = a retired group chat (2026-10-09): readable history, closed to new messages,
-   * invites and card decisions (409 `group_closed`). Every conversation since is a Bot's DM;
-   * other Bots join it as guests.
+   * `direct` = a Bot's one DM (the main thread is Sprouty's). `task` = a separate chat with its own
+   * context, answered by `owner_bot_id`; listed with the chats, not the threads (spec
+   * 20261011-agent-first-class D20/D21). `group` = a retired group chat (2026-10-09): readable
+   * history, closed to new messages, invites and card decisions (409 `group_closed`). Other Bots
+   * join a DM or a task chat as guests. `room` = several people and the Agents they brought
+   * (P5): `participants` lists the people; an Agent answers only when someone allowed to address
+   * it @-mentions it; two people, no title, no Agents reads as a private chat between them.
    */
-  kind: 'direct' | 'group';
+  kind: 'direct' | 'task' | 'group' | 'room';
   title: string | null;
+  /** A task chat's chosen model; null = the owner Bot's model. Absent on DMs and older servers. */
+  model_id?: string | null;
   owner_bot_id: string | null;
   lead_bot_id: string | null;
   members: BotMemberView[];
-  last_message: { preview: string; bot_id: string | null; role: string; created_at: string } | null;
+  /** A room's people (the reader included). Absent for every other kind. */
+  participants?: RoomParticipantView[];
+  last_message: {
+    preview: string;
+    bot_id: string | null;
+    role: string;
+    created_at: string;
+    /** In a room: which person wrote a member message (null = the reader's single-member chats). */
+    author_user_id?: string | null;
+  } | null;
   attention: BotConversationAttention;
   pending_requests: number;
   /**
@@ -519,6 +641,13 @@ export interface BotCreatePayload {
 export interface BotTaskStartPayload {
   title: string;
   brief: string;
+  /**
+   * `chat` = start it in a new separate chat the member can keep talking in (spec
+   * 20261011-agent-first-class D25) instead of a read-only background task. Absent = background.
+   */
+  mode?: 'background' | 'chat';
+  /** `chat` only: the Agent that answers there (default: the proposing Agent). */
+  agent_id?: string;
 }
 
 /**
@@ -637,6 +766,12 @@ export type ComputerState = 'absent' | 'starting' | 'running' | 'stopping' | 'er
 
 export interface ComputerStatusView {
   runtime: ComputerRuntimeView;
+  /**
+   * Which computer (spec 20261011-agent-first-class P3a): `bot_computers.id` — the member's id for
+   * their main Agent's — and its Agent (null = the main Agent). Absent from servers before 2026-10-12.
+   */
+  computer_id?: string;
+  bot_id?: string | null;
   state: ComputerState;
   state_reason: string | null;
   controller: 'bot' | 'user';
@@ -699,8 +834,13 @@ export interface ComputerProcessLog {
 
 /** One running/known computer, for the administration page. */
 export interface ComputerAdminRow {
+  /** `bot_computers.id` (the member's id for their main Agent's computer) — the admin actions' key. */
+  computer_id: string;
   user_id: string;
   nickname: string;
+  /** The Agent it belongs to; null = the member's main Agent. */
+  bot_id: string | null;
+  bot_name: string | null;
   state: ComputerState;
   state_reason: string | null;
   controller: 'bot' | 'user';
@@ -735,6 +875,11 @@ export interface VaultItemView {
   has_totp: boolean;
   policy: 'ask' | 'auto';
   always_origins: string[];
+  /**
+   * The Agents (`bots.id`) that may use this entry; null = every Agent (spec
+   * 20261011-agent-first-class P3c). Absent from servers before 2026-10-12.
+   */
+  bot_ids?: string[] | null;
   last_used_at: string | null;
   created_at: string;
 }
@@ -753,6 +898,8 @@ export interface VaultItemWrite {
    * a subset of the current grants — new ones come only from an approval card.
    */
   always_origins?: string[];
+  /** The Agents that may use it (the member's own); null = every Agent. */
+  bot_ids?: string[] | null;
 }
 
 export interface VaultAccessView {
@@ -837,9 +984,19 @@ export type BotEvent =
    * Nobody could answer: the addressed Bot was archived or removed. Written instead of
    * ending silently. `no_active_members` only appears on rows from retired group chats.
    */
-  | { kind: 'unavailable'; bot_id: string | null; reason: 'archived' | 'no_active_members' }
+  | { kind: 'unavailable'; bot_id: string | null; reason: 'archived' | 'no_active_members' | 'daily_cap' }
   /** The member pressed Stop while a wake-up (hand-back, joined Bot…) was queued: it was not resumed. */
-  | { kind: 'stopped'; bot_id: string };
+  | { kind: 'stopped'; bot_id: string }
+  /** A `task_start` card in `chat` mode was approved: the new separate chat (written where it was proposed). */
+  | { kind: 'chat_opened'; session_id: string; bot_id: string; title: string }
+  /** The first line of a separate chat an Agent opened: where it came from. */
+  | { kind: 'chat_origin'; from_session_id: string; bot_id: string }
+  /** The first line of a conversation opened from outside Greenhouse: an MCP client, the CLI, Feishu (P6). */
+  | { kind: 'external_origin'; via: string }
+  /** A person joined a room (P5); `by` = who added them. */
+  | { kind: 'person_joined'; user_id: string; by: string }
+  /** A person left a room or was removed (P5). Their Agents leave with them. */
+  | { kind: 'person_left'; user_id: string };
 
 // ─── Messages ────────────────────────────────────────────
 
@@ -850,6 +1007,8 @@ export interface BotMessage {
   content: string;
   bot_id: string | null;
   bot_event: BotEvent | null;
+  /** In a room: the person who wrote this member message (P5). Null / absent everywhere else. */
+  author_user_id?: string | null;
   pipeline: import('./session.js').PipelineStep[];
   references: import('./session.js').Reference[];
   reasoning: string | null;
@@ -921,7 +1080,12 @@ export type VaultErrorCode =
  * readable either way: the DM's Bot was archived (`bot_archived`), or it is a retired group
  * chat (`group_closed`, which the member routes — invite / remove a Bot — answer too).
  */
-export type BotConversationReadOnlyCode = 'bot_archived' | 'group_closed';
+/**
+ * Why nobody can answer: `bot_archived` = the owner archived its Agent; `group_closed` = a retired
+ * group; `agent_unavailable` = someone else's public Agent that was unpublished, paused, or no longer
+ * offered to this member (P4).
+ */
+export type BotConversationReadOnlyCode = 'bot_archived' | 'group_closed' | 'agent_unavailable';
 
 /**
  * `POST /api/bots/conversations` takes exactly one Bot id (that Bot's DM); any other count is
@@ -948,3 +1112,40 @@ export type BotRequestErrorCode =
   | 'limit'
   | 'computer_restarted'
   | 'bot_gone';
+
+// ─── An Agent's usage and activity (spec 20261011-agent-first-class P3d) ────────
+
+/** One day of an Agent's model use (its owner's calls only). */
+export interface BotUsageDay {
+  /** YYYY-MM-DD (UTC). */
+  day: string;
+  calls: number;
+  input_tokens: number;
+  output_tokens: number;
+  /** Conversations it worked in that day. */
+  sessions: number;
+}
+
+/** GET /api/bots/:id/usage */
+export interface BotUsageView {
+  days: BotUsageDay[];
+  totals: { calls: number; input_tokens: number; output_tokens: number };
+}
+
+/**
+ * One thing an Agent did, newest first (GET /api/bots/:id/activity): a platform action it took
+ * for its owner (`action`, e.g. `projects.updateTask`), a password-vault use (`vault`), or a
+ * background task (`task`). Never message content.
+ */
+export interface BotActivityItem {
+  at: string;
+  kind: 'action' | 'vault' | 'task';
+  /** action: `<app>.<action>`; vault: the action (fill_login…); task: the task's title. */
+  title: string;
+  /** action: success | denied | error; vault: filled | denied | …; task: its status. */
+  outcome: string;
+  /** action: the record; vault: the site's origin and the entry's name. */
+  detail: string | null;
+  /** The conversation it happened in, when known. */
+  session_id: string | null;
+}

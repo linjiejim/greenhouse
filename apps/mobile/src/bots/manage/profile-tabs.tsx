@@ -15,7 +15,11 @@
  *    run now, delete; a new one is asked for in its thread (the Bot raises the
  *    approval card);
  *  - 对话 `ChatsTab` — the member's separate conversations with it (fresh
- *    chats, its automation runs: `GET /api/sessions?profile=`).
+ *    chats, its automation runs: `GET /api/sessions?profile=`);
+ *  - 记录 `ActivityTab` — its last 30 days of model use (calls, tokens, active
+ *    days) and what it did for the member: platform actions, password uses,
+ *    background tasks — never message content (spec 20261011-agent-first-class
+ *    P3d; a row with a conversation opens it). Rules: ./activity-model.ts.
  *
  * Plain RN lists from the list kit, loaded when a tab first shows; every write
  * is applied at once and rolled back with an alert when refused.
@@ -26,6 +30,8 @@ import { Pressable, Switch, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import {
   addNote,
+  botActivity,
+  botUsage,
   deleteBotMemory,
   deleteNote,
   listBotFiles,
@@ -37,21 +43,22 @@ import { deleteAutomation, listAutomations, runAutomation, setAutomationEnabled,
 import { useConnectors } from '../../connectors/use-connectors';
 import { fetchSessionsPage, type Session } from '../../api/sessions';
 import { Markdown } from '../../chat/markdown';
-import { parseMs, relativeTime } from '../../lib/format';
+import { compactNumber, parseMs, relativeTime } from '../../lib/format';
 import { entityRoute, parseEntityUrl } from '../../lib/entity-links';
 import { useLocale, useT, type TFunction } from '../../lib/i18n';
-import type { BotSharedNoteView, BotView } from '../../shared/bots';
+import type { BotActivityItem, BotSharedNoteView, BotUsageView, BotView } from '../../shared/bots';
 import type { BotMemoryView } from '../../shared/bots-wire';
 import { makeStyles, space, squircle, typo, useTheme, weight } from '../../theme';
 import { Icon, Spinner } from '../../ui/core';
 import { alertError, confirmAction, promptText } from '../../ui/dialogs';
-import { ListCard, ListRow, ListSection, ListSectionFooter, ListSectionHeader } from '../../ui/list';
+import { Badge, ListCard, ListRow, ListSection, ListSectionFooter, ListSectionHeader } from '../../ui/list';
 import { NativeMenu, menuSections, type MenuItem } from '../../ui/menu';
 import { toast } from '../../ui/toast';
 import { openChat, openThread } from '../nav';
 import { BotAvatar } from '../ui/bot-avatar';
 import { useAuth } from '../../store/auth';
 import { useBots } from '../store';
+import { activityIcon, activityOutcome, activityTitle, usageSummary } from './activity-model';
 import { memberRemovable, orderedNotes, sortedMembers } from './member-model';
 import { matchesProfile, profileQuery, profileRefs } from './profile-refs';
 import { scheduleWords } from './schedule-words';
@@ -62,8 +69,11 @@ const FOLD_LINES = 8;
 const FOLD_CHARS = 360;
 const FOLD_HEIGHT = 220;
 
-export type ProfileTab = 'overview' | 'memory' | 'notes' | 'schedule' | 'chats';
-export const PROFILE_TABS: readonly ProfileTab[] = ['overview', 'memory', 'notes', 'schedule', 'chats'];
+export type ProfileTab = 'overview' | 'memory' | 'notes' | 'schedule' | 'chats' | 'activity';
+export const PROFILE_TABS: readonly ProfileTab[] = ['overview', 'memory', 'notes', 'schedule', 'chats', 'activity'];
+
+/** The usage window the Activity tab sums (the server's default; it allows up to 90). */
+const USAGE_DAYS = 30;
 
 /* ───────────────────────────── 概览 ───────────────────────────── */
 
@@ -671,6 +681,91 @@ export function ChatsTab({ bot, main }: { bot: BotView; main: boolean }) {
   );
 }
 
+/* ───────────────────────────── 记录 ───────────────────────────── */
+
+export function ActivityTab({ bot }: { bot: BotView }) {
+  const t = useT();
+  const { colors: c } = useTheme();
+  const styles = useStyles(c);
+  const router = useRouter();
+  // null = loading; usage that cannot be read (an older server) just leaves its section out
+  const [usage, setUsage] = useState<BotUsageView | 'none' | null>(null);
+  const [items, setItems] = useState<BotActivityItem[] | null>(null);
+  const [failed, setFailed] = useState(false);
+
+  const load = useCallback(async () => {
+    setFailed(false);
+    const [used, did] = await Promise.all([botUsage(bot.id, USAGE_DAYS), botActivity(bot.id)]);
+    setUsage(used.ok ? used.value : 'none');
+    if (did.ok) setItems(did.value);
+    else setFailed(true);
+  }, [bot.id]);
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  if (items === null) {
+    return failed ? (
+      <ListSection>
+        <ListRow title={t('bots.profile.loadFailed')} onPress={() => void load()} />
+      </ListSection>
+    ) : (
+      <ListCard style={[styles.pending, styles.inset]}>
+        <Spinner />
+      </ListCard>
+    );
+  }
+  const summary = usage && usage !== 'none' ? usageSummary(usage) : null;
+  return (
+    <>
+      {summary ? (
+        <ListSection header={t('bots.profile.usageHeader', { n: USAGE_DAYS })}>
+          <ListRow icon="sparkle" iconTint={c.accent} title={t('bots.profile.usageCalls')} value={compactNumber(summary.calls)} />
+          <ListRow icon="bar" iconTint={c.indigo} title={t('bots.profile.usageTokens')} value={compactNumber(summary.tokens)} />
+          <ListRow
+            icon="calendar"
+            iconTint={c.orange}
+            title={t('bots.profile.usageDays')}
+            value={t('bots.profile.usageDaysValue', { n: summary.activeDays, of: USAGE_DAYS })}
+          />
+        </ListSection>
+      ) : null}
+      <ListSection header={t('bots.profile.activityHeader')} footer={t('bots.profile.activityFooter', { name: bot.name })}>
+        {items.length === 0 ? (
+          <ListRow title={t('bots.profile.noActivity', { name: bot.name })} titleLines={3} />
+        ) : (
+          items.map((item, index) => {
+            const outcome = activityOutcome(item);
+            const sessionId = item.session_id;
+            return (
+              <ListRow
+                key={`${item.kind}:${item.at}:${index}`}
+                icon={activityIcon(item)}
+                iconTint={item.kind === 'vault' ? c.orange : item.kind === 'task' ? c.blue : c.indigo}
+                title={activityTitle(item, t)}
+                titleLines={2}
+                subtitle={[item.detail, relativeTime(item.at)].filter(Boolean).join(' · ')}
+                subtitleLines={2}
+                accessory={
+                  outcome || sessionId ? (
+                    <View style={styles.trailing}>
+                      {outcome ? <Badge label={t(outcome.key)} tone={outcome.tone} /> : null}
+                      {sessionId ? <Icon name="chevR" size={12} weight="semibold" color={c.tertiaryLabel} /> : null}
+                    </View>
+                  ) : (
+                    'none'
+                  )
+                }
+                onPress={sessionId ? () => openThread(router, { c: sessionId }, 'dismissTo') : undefined}
+              />
+            );
+          })
+        )}
+      </ListSection>
+    </>
+  );
+}
+
 /* ───────────────────────────── shared ───────────────────────────── */
 
 /** One async read on mount (and when its loader changes); `value` null until it lands or when it fails. */
@@ -702,4 +797,5 @@ const useStyles = makeStyles((c) => ({
   inset: { marginHorizontal: space.margin },
   note: { ...typo.footnote, color: c.secondaryLabel, paddingHorizontal: space.margin + space.xs },
   closing: { textAlign: 'center', marginTop: space.md },
+  trailing: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
 }));

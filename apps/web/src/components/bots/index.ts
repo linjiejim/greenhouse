@@ -12,12 +12,15 @@ export {
   ensureSprouty,
   useBotDirectory,
   useBotsLoadState,
+  useReplyableBotIds,
+  useSharedBots,
+  sharedBotAsView,
   type BotsDialog,
 } from './bots-store';
 export { BotsBareHeader, BotsMobileNavButton } from './conversation-header';
 export { useBotsSync } from './use-bots-sync';
 export { useBotConversation, type BotConversationController } from './use-bot-conversation';
-export { BotsSidebarPanel } from './bots-sidebar-panel';
+export { BotsThreadsSection } from './bots-sidebar-panel';
 export { ConversationView } from './conversation-view';
 export { BotsSidePanel, PanelSection, useSplitCapable } from './bots-side-panel';
 export { InfoPanel } from './info-panel';
@@ -25,6 +28,7 @@ export { BotProfileDrawer } from './bot-profile-drawer';
 export { NewBotDialog } from './new-bot-dialog';
 export { BotsDialogs } from './bots-dialogs';
 export { InviteDialog } from './invite-dialog';
+export { AgentDirectoryDialog } from './agent-directory-dialog';
 export { BotAvatar, BotAvatarStack } from './bot-avatar';
 export {
   conversationTitle,

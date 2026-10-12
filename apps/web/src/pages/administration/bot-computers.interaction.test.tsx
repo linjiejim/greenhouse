@@ -37,8 +37,12 @@ const VIEW: AdminBotComputersView = {
   ],
   computers: [
     {
+      // A member's main Agent's computer: its id is the member's.
+      computer_id: 'u-mia',
       user_id: 'u-mia',
       nickname: 'Mia',
+      bot_id: null,
+      bot_name: null,
       state: 'running',
       state_reason: null,
       controller: 'user',
@@ -49,8 +53,11 @@ const VIEW: AdminBotComputersView = {
       backup: null,
     },
     {
+      computer_id: 'u-leo',
       user_id: 'u-leo',
       nickname: 'Leo',
+      bot_id: null,
+      bot_name: null,
       state: 'absent',
       state_reason: null,
       controller: 'bot',
@@ -97,11 +104,24 @@ async function fill(selector: string, value: string) {
   });
 }
 
-function rowOf(name: string): HTMLTableRowElement {
-  const row = [...document.querySelectorAll('tr')].find((tr) => tr.textContent?.includes(name));
-  if (!row) throw new Error(`No row for ${name}`);
+function rowOf(name: string, agent = 'Main Agent'): HTMLTableRowElement {
+  const row = [...document.querySelectorAll('tr')].find(
+    (tr) =>
+      tr.textContent?.includes(name) && tr.querySelector('[data-testid="bot-computer-agent"]')?.textContent === agent,
+  );
+  if (!row) throw new Error(`No row for ${name} / ${agent}`);
   return row;
 }
+
+/** Mia's second Agent has a computer of its own: a row of its own, acted on by its own id. */
+const SAGE_COMPUTER = {
+  ...VIEW.computers[0]!,
+  computer_id: 'u-mia.bot_sage',
+  bot_id: 'bot_sage',
+  bot_name: 'Sage',
+  controller: 'bot' as const,
+  disk_bytes: 1024 * 1024,
+};
 
 beforeEach(() => {
   for (const fn of Object.values(api)) fn.mockReset();
@@ -200,10 +220,30 @@ describe('BotComputersPanel', () => {
     // Asleep computers have nothing to stop.
     expect(rowOf('Leo').querySelector('button[title="Stop"]')).toBeNull();
     await click(rowOf('Mia').querySelector('button[title="Stop"]'));
-    expect(document.body.textContent).toContain("Stop Mia's computer?");
+    expect(document.body.textContent).toContain("Stop Main Agent's computer (Mia)?");
     await click(document.querySelector('[data-testid="confirm-dialog-confirm"]'));
 
     expect(api.adminStopComputer).toHaveBeenCalledWith('u-mia');
+  });
+
+  it('lists one row per computer — each Agent its own — and acts on that computer', async () => {
+    api.fetchAdminBotComputers.mockResolvedValue({ ...VIEW, computers: [...VIEW.computers, SAGE_COMPUTER] });
+    api.adminStopComputer.mockResolvedValue(undefined);
+    api.adminResetComputer.mockResolvedValue(undefined);
+    await renderPanel();
+
+    expect(document.body.textContent).toContain('3 total');
+    expect(rowOf('Mia').textContent).toContain('700 MB');
+    expect(rowOf('Mia', 'Sage').textContent).toContain('1.0 MB');
+
+    await click(rowOf('Mia', 'Sage').querySelector('button[title="Stop"]'));
+    expect(document.body.textContent).toContain("Stop Sage's computer (Mia)?");
+    await click(document.querySelector('[data-testid="confirm-dialog-confirm"]'));
+    expect(api.adminStopComputer).toHaveBeenCalledWith('u-mia.bot_sage');
+
+    await click(rowOf('Mia', 'Sage').querySelector('button[title="Reset"]'));
+    await click(document.querySelector('[data-testid="computer-reset-confirm"]'));
+    expect(api.adminResetComputer).toHaveBeenCalledWith('u-mia.bot_sage', false);
   });
 
   it('shows each member’s backups and backs one up on request — only where backups are on', async () => {
@@ -251,7 +291,7 @@ describe('BotComputersPanel', () => {
     await renderPanel();
 
     await click(rowOf('Leo').querySelector('button[title="Reset"]'));
-    expect(document.body.textContent).toContain("Reset Leo's computer?");
+    expect(document.body.textContent).toContain("Reset Main Agent's computer (Leo)?");
     const confirm = document.querySelector<HTMLButtonElement>('[data-testid="computer-reset-confirm"]')!;
     expect(confirm.textContent).toBe('Reset');
 
@@ -284,7 +324,7 @@ describe('BotComputersPanel', () => {
   it('offers a retry when the view cannot be loaded', async () => {
     api.fetchAdminBotComputers.mockRejectedValueOnce(new Error('boom'));
     await renderPanel();
-    expect(document.body.textContent).toContain("Couldn't load Bot computers.");
+    expect(document.body.textContent).toContain("Couldn't load Agent computers.");
 
     const retry = [...document.querySelectorAll('button')].find((b) => b.textContent === 'Retry');
     await click(retry);

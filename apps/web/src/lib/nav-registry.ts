@@ -33,6 +33,7 @@ import {
   Lock,
   Server,
   Plug,
+  Globe,
 } from './icons';
 import type { LucideIcon } from './icons';
 import type { FeatureKey } from '@greenhouse/types/features';
@@ -246,6 +247,15 @@ const ADMINISTRATION_MODULES: NavModule[] = [
     requireRole: ['super'],
   },
   {
+    id: 'admin.public-agents',
+    label: 'Public Agents',
+    icon: Globe,
+    path: '#/administration/public-agents',
+    parent: 'administration',
+    description: 'Agents members published — owner, audience, people; pause and resume',
+    requireRole: ['super'],
+  },
+  {
     id: 'admin.branding',
     label: 'Branding Studio',
     icon: Palette,
@@ -339,7 +349,7 @@ const STANDALONE_MODULES: NavModule[] = [
     // Immersive workspace like Chat (no ModulePage header); registered so the
     // breadcrumb, pins and feature gating resolve the page identity here.
     id: 'workspace.bots',
-    label: 'Bots',
+    label: 'Agents',
     icon: Bot,
     path: '#/bots',
     parent: 'standalone',
@@ -449,6 +459,7 @@ const NAV_COPY: Record<string, { label: TranslationKey; description?: Translatio
   'admin.users': { label: 'navigation.users', description: 'navigation.usersDesc' },
   'admin.runtime-config': { label: 'navigation.runtimeConfig', description: 'navigation.runtimeConfigDesc' },
   'admin.bot-computers': { label: 'botsAdmin.navLabel', description: 'botsAdmin.navDesc' },
+  'admin.public-agents': { label: 'navigation.publicAgents', description: 'navigation.publicAgentsDesc' },
   'admin.branding': { label: 'navigation.branding', description: 'navigation.brandingDesc' },
   'admin.usage': { label: 'navigation.agentUsages', description: 'navigation.agentUsagesDesc' },
   'admin.feature-requests': {

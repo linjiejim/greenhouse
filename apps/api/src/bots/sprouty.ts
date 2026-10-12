@@ -35,7 +35,7 @@ export async function ensureSproutyBot(db: DatabaseProvider, userId: string): Pr
       avatar: JSON.stringify(SPROUTY_BOT_TEMPLATE.avatar),
       template_key: SPROUTY_BOT_TEMPLATE.key,
       builtIn: true,
-      change_log: 'Built-in main Bot',
+      change_log: 'Built-in main Agent',
     });
   } catch (error) {
     // A concurrent visit created it: return that one.
@@ -47,14 +47,46 @@ export async function ensureSproutyBot(db: DatabaseProvider, userId: string): Pr
 }
 
 /**
+ * Sprouty's words as earlier versions of the template wrote them. Stored rows are never
+ * rewritten, so a Sprouty created before a wording change still holds the old words — the
+ * template's, not the member's: relocalization must not take them for an edit. When the
+ * template's role or instructions change, add the outgoing en and zh pair here.
+ */
+const LEGACY_SPROUTY_COPY: ReadonlyArray<{ role: string; instructions: string }> = [
+  // Until 2026-10-11, when the product's "Bot" became "Agent".
+  {
+    role: 'Main assistant',
+    instructions:
+      "You are Sprouty, the member's main assistant and the one they talk to first. Help directly with questions, writing, research and everyday errands. Break bigger asks into steps and keep track of open items in the shared notes. Do small things yourself; when a job clearly belongs to a specialist, bring in the right Bot — add one of the member's Bots to this conversation or propose a new one — and hand it over with a precise brief. Report progress in one line.",
+  },
+  {
+    role: '主助手',
+    instructions:
+      '你是 Sprouty，这位成员的主助手，也是对方最先找的那一个。问答、写作、调研和日常杂事都直接帮忙。把大的请求拆成步骤，用共享笔记跟踪未完成的事项。小事自己做；明显属于专家的活，就请合适的 Bot 来——把成员已有的 Bot 拉进这个对话，或者提议新建一个——并给出准确的交接说明。进展用一句话汇报。',
+  },
+  // Until 2026-10-08 (the first Sprouty, before replies were made concise).
+  {
+    role: 'Main assistant',
+    instructions:
+      "You are Sprouty, the member's main assistant and the one they talk to first. Help directly with questions, writing, research and everyday errands. Clarify what they actually want, break bigger asks into steps, and keep track of open items in the shared notes. Do small things yourself; when a job clearly belongs to a specialist, bring in the right Bot — add one of the member's Bots to this conversation or propose a new one — and hand it over with a precise brief. Keep the member informed in short, concrete updates.",
+  },
+  {
+    role: '主助手',
+    instructions:
+      '你是 Sprouty，这位成员的主助手，也是对方最先找的那一个。问答、写作、调研和日常杂事都直接帮忙。先弄清对方真正想要什么，把大的请求拆成步骤，用共享笔记跟踪未完成的事项。小事自己做；明显属于专家的活，就请合适的 Bot 来——把成员已有的 Bot 拉进这个对话，或者提议新建一个——并给出准确的交接说明。用简短、具体的进展汇报让对方随时心里有数。',
+  },
+];
+
+/**
  * The member's language changed: Sprouty's built-in role and instructions follow it, as a
- * new version — only while they are still the template's words in some language (a member
- * who rewrote them keeps theirs). True when Sprouty changed.
+ * new version — only while they are still the template's words in some language, current
+ * or earlier (`LEGACY_SPROUTY_COPY`); a member who rewrote them keeps theirs. True when
+ * Sprouty changed.
  */
 export async function relocalizeSprouty(db: DatabaseProvider, userId: string, locale: BotsLocale): Promise<boolean> {
   const bot = (await db.bots.listBots(userId)).find((row) => isSproutyBot(row));
   if (!bot) return false;
-  const untouched = Object.values(SPROUTY_BOT_TEMPLATE.copy).some(
+  const untouched = [...Object.values(SPROUTY_BOT_TEMPLATE.copy), ...LEGACY_SPROUTY_COPY].some(
     (copy) => copy.role === bot.role && copy.instructions === bot.instructions,
   );
   const target = SPROUTY_BOT_TEMPLATE.copy[locale];

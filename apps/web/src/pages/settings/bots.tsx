@@ -1,16 +1,18 @@
 /**
  * Settings → My Bots — the Bots a member created, as identities: edit (the
  * profile drawer), open a fresh Chat session, message (where Bots threads are
- * enabled) and see the archived ones. Bots are private; there is nothing to
- * share, review or clone. The page does not need the `bots` feature flag: a
- * Bot is the agent identity, the flag only gates the persistent threads and
- * the computer (spec 20261007 D5).
+ * enabled) and see the archived ones. A Bot is private unless its owner
+ * publishes it (the drawer's Publish tab, spec 20261011-agent-first-class P4):
+ * a published one is badged "Public · vN" here, and "Browse Agents" lists the
+ * ones other members published to this member. Nothing is reviewed or cloned.
+ * The page does not need the `bots` feature flag: a Bot is the agent identity,
+ * the flag only gates the persistent threads and the computer (spec 20261007 D5).
  */
 
 import { useEffect, useMemo } from 'react';
 import { isSproutyBot, type BotView } from '@greenhouse/types/bots';
-import { Badge, Button, EmptyState, Spinner, toast } from '../../components/ui';
-import { Bot, MessageCircle, MessageSquare, Pencil, Plus } from '../../lib/icons';
+import { Badge, Button, EmptyState, Spinner, Tag, toast } from '../../components/ui';
+import { Bot, MessageCircle, MessageSquare, Pencil, Plus, Users } from '../../lib/icons';
 import { useT } from '../../lib/i18n';
 import { canUseFeature } from '../../lib/features';
 import { formatDay } from '../../lib/utils';
@@ -74,10 +76,23 @@ export function BotsPanel() {
       moduleId="settings.bots"
       layout="list"
       actions={
-        <Button size="sm" onClick={() => openDialog({ kind: 'new-bot' })} data-testid="bots-manage-new">
-          <Plus size={14} className="mr-1" />
-          {t('bots.sidebar.newBot')}
-        </Button>
+        <>
+          {threadsEnabled && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => openDialog({ kind: 'directory' })}
+              data-testid="bots-manage-browse"
+            >
+              <Users size={14} className="mr-1" />
+              {t('bots.shared.browse')}
+            </Button>
+          )}
+          <Button size="sm" onClick={() => openDialog({ kind: 'new-bot' })} data-testid="bots-manage-new">
+            <Plus size={14} className="mr-1" />
+            {t('bots.sidebar.newBot')}
+          </Button>
+        </>
       }
     >
       {!botsLoaded ? (
@@ -128,9 +143,20 @@ export function BotsPanel() {
                         <div className="flex items-center gap-2">
                           <BotAvatar bot={bot} size="xs" />
                           <div className="min-w-0">
-                            <div className="truncate font-medium text-fg-secondary" title={bot.name}>
-                              {bot.name}
-                              {bot.role && <span className="ml-1.5 text-xs font-normal text-fg-faint">{bot.role}</span>}
+                            <div className="flex min-w-0 items-center gap-1.5">
+                              <span className="truncate font-medium text-fg-secondary" title={bot.name}>
+                                {bot.name}
+                                {bot.role && (
+                                  <span className="ml-1.5 text-xs font-normal text-fg-faint">{bot.role}</span>
+                                )}
+                              </span>
+                              {bot.visibility === 'public' && bot.published_version != null && (
+                                <span className="flex-shrink-0" data-testid="bots-manage-public">
+                                  <Tag tone="success">
+                                    {t('bots.manage.public', { version: bot.published_version })}
+                                  </Tag>
+                                </span>
+                              )}
                             </div>
                             {bot.description && (
                               <div className="max-w-[300px] truncate text-xs text-fg-faint" title={bot.description}>

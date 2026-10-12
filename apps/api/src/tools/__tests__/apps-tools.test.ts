@@ -4,6 +4,10 @@ import { createAppsActionTool } from '../apps-action.js';
 import { createTablesQueryTool } from '../tables-query.js';
 import { dispatchTablesAgentAction } from '../../platform/tables/agent-adapter.js';
 import type { AppRuntimeView } from '@greenhouse/types/apps';
+import type { DatabaseProvider } from '@greenhouse/db';
+import { assembleInteractiveTools } from '../../bots/engine/tools-assembly.js';
+import type { ConversationPort, TeamPort } from '../../bots/engine/ports.js';
+import { testTurn } from '../../bots/__tests__/helpers/turn.js';
 
 vi.mock('../../platform/tables/agent-adapter.js', () => ({ dispatchTablesAgentAction: vi.fn() }));
 vi.mock('../../auth/features.js', () => ({ activeUserHasFeature: vi.fn(async () => true) }));
@@ -92,6 +96,40 @@ describe('Apps tools', () => {
       }),
     );
     expect(dispatch.mock.calls.some((c) => c[1] === 'runAppAction')).toBe(false);
+  });
+  it.each(['approve', 'deny'] as const)('room Apps calls use one server-resolved approval (%s)', async (decision) => {
+    const requestApproval = vi.fn(async () => decision);
+    const ctx = testTurn({ userId: 'member', requestApproval });
+    const { tools, approvalGated } = assembleInteractiveTools({
+      db: {} as DatabaseProvider,
+      ctx,
+      toolRegistry: {},
+      effectiveTools: ['apps_action', 'tables_schema_plan'],
+      team: {} as TeamPort,
+      conversation: {} as ConversationPort,
+      runtimeRunId: null,
+      room: true,
+    });
+    expect(approvalGated).toBe(true);
+    expect(tools).not.toHaveProperty('team');
+    expect(tools).not.toHaveProperty('bot_tasks');
+    expect(tools.tables_schema_plan?.description).toContain('card the member applies when they choose');
+
+    const result = await call(tools.apps_action, { ...input, user_confirmed: true, label: 'Harmless' });
+    expect(requestApproval).toHaveBeenCalledTimes(1);
+    expect(requestApproval).toHaveBeenCalledWith(
+      expect.objectContaining({
+        summary: 'Tickets: Close ticket',
+        allow_always: false,
+        details: expect.arrayContaining([
+          { label: 'Effect', value: JSON.stringify({ type: 'set_fields', values: [{ fieldId: 5, value: 'closed' }] }) },
+        ]),
+      }),
+    );
+    expect(dispatch.mock.calls.filter((c) => c[1] === 'runAppAction')).toHaveLength(decision === 'approve' ? 1 : 0);
+    expect(result).toEqual(
+      decision === 'approve' ? { outcome: 'updated' } : { error: 'Action was not approved; nothing changed' },
+    );
   });
   it('a changed app invalidates a pending Bot approval', async () => {
     const approve = async () => {

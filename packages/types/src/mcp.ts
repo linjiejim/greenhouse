@@ -48,6 +48,8 @@ export const MCP_RESOURCE_GROUP_IDS = [
   'chat',
   'automation',
   'image',
+  // The member's Agents: list them, message one, read the reply (spec 20261011-agent-first-class P6).
+  'agents',
 ] as const;
 
 export type McpResourceGroup = (typeof MCP_RESOURCE_GROUP_IDS)[number];

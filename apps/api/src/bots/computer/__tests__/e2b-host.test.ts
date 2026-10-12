@@ -275,7 +275,9 @@ function setup(opts: { tarRead?: number; tarWrite?: number | number[]; sinkDrops
 
 function row(patch: Partial<BotComputerRow> = {}): BotComputerRow {
   return {
+    id: 'u1',
     user_id: 'u1',
+    bot_id: null,
     namespace: NS,
     container_name: 'gh-computer-testns-u1',
     volume_name: 'gh-computer-testns-u1-home',
@@ -656,7 +658,7 @@ describe('e2b host: stops, wipes, listings', () => {
     const { api, host } = setup();
     const id = api.seed(meta(TEMPLATE), 'paused');
     const [instance] = await host.list(NS);
-    expect(instance).toMatchObject({ ref: id, userId: 'u1', running: false });
+    expect(instance).toMatchObject({ ref: id, computerId: 'u1', running: false });
     expect(await host.verdict(id, instance)).toEqual({ state: 'absent', reason: 'provider_timeout' });
     expect(await host.verdict('sandbox9999', undefined)).toEqual({ state: 'error', reason: 'exited' });
     expect(await host.inspect(id)).toEqual({ running: false });

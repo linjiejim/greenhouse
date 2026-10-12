@@ -122,6 +122,8 @@ const REKEY_EVERY_MS = 5 * 60_000;
 const META = {
   namespace: 'gh_ns',
   user: 'gh_user',
+  /** `bot_computers.id`; absent on sandboxes made before 2026-10-12 (main computers: = gh_user). */
+  computer: 'gh_computer',
   template: 'gh_template',
   /** Hash of the member's settings the sandbox was booted with (they never change in place). */
   settings: 'gh_settings',
@@ -330,16 +332,21 @@ export function createE2bHost(opts: E2bHostOptions): ComputerHost {
   const handles = new Map<string, Promise<SandboxHandle>>();
   const renewedAt = new Map<string, number>();
   const rekeyedAt = new Map<string, number>();
-  /** Members whose move into a newer template failed: keep waking `from` until `at` (MOVE_RETRY_AFTER_MS). */
+  /** Computers whose move into a newer template failed: keep waking `from` until `at` (MOVE_RETRY_AFTER_MS). */
   const moveRetry = new Map<string, { from: string; at: number }>();
   let lifecycleUnreported = false;
 
-  function movingBackOff(userId: string, sandboxId: string): boolean {
-    const entry = moveRetry.get(userId);
+  function movingBackOff(computerId: string, sandboxId: string): boolean {
+    const entry = moveRetry.get(computerId);
     if (!entry) return false;
     if (entry.from === sandboxId && now() < entry.at) return true;
-    moveRetry.delete(userId);
+    moveRetry.delete(computerId);
     return false;
+  }
+
+  /** The computer a sandbox belongs to (older sandboxes name only the member: a main computer). */
+  function sandboxComputer(metadata: Record<string, string> | undefined): string {
+    return metadata?.[META.computer] ?? metadata?.[META.user] ?? '';
   }
 
   const ours = (info: SandboxInfo | null): info is SandboxInfo => info?.metadata?.[META.namespace] === namespace;
@@ -672,7 +679,7 @@ export function createE2bHost(opts: E2bHostOptions): ComputerHost {
   }
 
   async function create(
-    row: { user_id: string },
+    row: { id: string; user_id: string },
     template: string,
     settings: string,
     replaces: string | null,
@@ -682,6 +689,7 @@ export function createE2bHost(opts: E2bHostOptions): ComputerHost {
         await api.create(template, {
           [META.namespace]: namespace,
           [META.user]: row.user_id,
+          [META.computer]: row.id,
           [META.template]: template,
           [META.settings]: settings,
           [META.created]: new Date(now()).toISOString(),
@@ -767,13 +775,13 @@ export function createE2bHost(opts: E2bHostOptions): ComputerHost {
           container: row.container_name,
         });
       }
-      if (current && current.metadata[META.user] !== row.user_id) {
-        throw new ComputerDockerError('failed', `Sandbox ${current.sandboxId} does not belong to this member`);
+      if (current && sandboxComputer(current.metadata) !== row.id) {
+        throw new ComputerDockerError('failed', `Sandbox ${current.sandboxId} does not belong to this computer`);
       }
 
       // The same template and settings: wake it. So too an older one while a move into the
       // current template backs off after failing (MOVE_RETRY_AFTER_MS) — with the settings it has.
-      const backingOff = current ? movingBackOff(row.user_id, current.sandboxId) : false;
+      const backingOff = current ? movingBackOff(row.id, current.sandboxId) : false;
       const matches = current?.metadata[META.template] === template && current?.metadata[META.settings] === settings;
       if (current && !spec.fresh && (matches || backingOff)) {
         const sandbox = await resume(current.sandboxId);
@@ -860,7 +868,7 @@ export function createE2bHost(opts: E2bHostOptions): ComputerHost {
         });
         if (recovered && !spec.fresh) {
           // An upgrade or new settings: the member carries on with the old computer; the move waits.
-          moveRetry.set(row.user_id, { from: current.sandboxId, at: now() + MOVE_RETRY_AFTER_MS });
+          moveRetry.set(row.id, { from: current.sandboxId, at: now() + MOVE_RETRY_AFTER_MS });
           return {
             ref: current.sandboxId,
             imageId: current.metadata[META.template] ?? template,
@@ -880,7 +888,7 @@ export function createE2bHost(opts: E2bHostOptions): ComputerHost {
           },
         );
       }
-      moveRetry.delete(row.user_id);
+      moveRetry.delete(row.id);
       return {
         ref: fresh.id,
         imageId: template,
@@ -909,7 +917,7 @@ export function createE2bHost(opts: E2bHostOptions): ComputerHost {
       if (isSandboxId(row.container_name)) doomed.add(row.container_name);
       try {
         for (const sandbox of await api.list(namespace)) {
-          if (sandbox.metadata?.[META.user] === row.user_id) doomed.add(sandbox.sandboxId);
+          if (sandboxComputer(sandbox.metadata) === row.id) doomed.add(sandbox.sandboxId);
         }
       } catch (err) {
         throw providerError(err, 'Listing the computers');
@@ -936,7 +944,7 @@ export function createE2bHost(opts: E2bHostOptions): ComputerHost {
         const created = Date.parse(sandbox.metadata?.[META.created] ?? '');
         return {
           ref: sandbox.sandboxId,
-          userId: sandbox.metadata?.[META.user] ?? '',
+          computerId: sandboxComputer(sandbox.metadata),
           running: sandbox.state === 'running',
           createdAt: Number.isFinite(created) ? created : sandbox.startedAt.getTime(),
           replaces: sandbox.metadata?.[META.replaces] ?? null,

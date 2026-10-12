@@ -1,8 +1,13 @@
 /**
- * The member's computer phase: a pure mapping from the server view,
+ * An Agent's computer phase: a pure mapping from the server view,
  * the copy/tone for each phase, and `useComputerStatus` — the one place that
  * keeps the view fresh (WS `bots:computer` pushes + a visibility-aware poll as
  * the safety net when the socket is down).
+ *
+ * Every Agent has its own computer (spec 20261011-agent-first-class P3a). A
+ * computer is named by its Agent (`ComputerBot`: the Agent's id, or null for
+ * the main Agent's — Sprouty's — which is the member's original computer); the
+ * hook follows exactly one and ignores the pushes about the others.
  *
  * The phase is what the member reads; the raw `ComputerStatusView` is what the
  * server knows. Keeping the mapping pure (`computerPhase`) makes every state of
@@ -14,8 +19,9 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { ComputerRuntimeView, ComputerStatusView } from '@greenhouse/types/bots';
-import { fetchComputerStatus, startComputer, updateComputerSettings } from '../../lib/api/bots';
+import { isSproutyBot, type BotView, type ComputerRuntimeView, type ComputerStatusView } from '@greenhouse/types/bots';
+import type { ServerWsEvent } from '@greenhouse/types/ws';
+import { fetchComputerStatus, startComputer, updateComputerSettings, type ComputerBot } from '../../lib/api/bots';
 import { wsClient } from '../../lib/ws';
 import type { TranslationKey } from '../../lib/i18n';
 import { StatusDot } from '../ui';
@@ -143,12 +149,60 @@ export function ComputerStatusDot({ phase, className = '' }: { phase: ComputerPh
   return <StatusDot color={dot.color} pulse={dot.pulse} className={className} />;
 }
 
+// ─── Which computer ──────────────────────────────────────
+
+/**
+ * The computer an Agent works on, as the routes name it: null for the main Agent
+ * (Sprouty — its computer is the member's original one) and for no Agent at all,
+ * the Agent's own id otherwise. An id the directory does not know (yet) is sent
+ * as is: the server maps Sprouty to the main computer either way.
+ */
+export function computerBotFor(
+  botId: string | null | undefined,
+  lookup: (id: string) => Pick<BotView, 'template_key'> | undefined,
+): ComputerBot {
+  if (!botId) return null;
+  const bot = lookup(botId);
+  return bot && isSproutyBot(bot) ? null : botId;
+}
+
+type ComputerEvent = Extract<ServerWsEvent, { type: 'bots:computer' }>;
+
+/**
+ * Does a `bots:computer` push concern the computer this view follows? Pushes name
+ * their computer (`computer_id` / `bot_id`, null = the main one); older servers sent
+ * neither, and then had only the main computer. Once the view knows its own
+ * `computer_id`, that is the exact match; before, the Agent is.
+ */
+export function computerEventMatches(
+  event: Pick<ComputerEvent, 'computer_id' | 'bot_id'>,
+  bot: ComputerBot,
+  known: Pick<ComputerStatusView, 'computer_id' | 'bot_id'> | null,
+): boolean {
+  if (event.computer_id === undefined && event.bot_id === undefined) {
+    return bot === null || known?.bot_id === null;
+  }
+  if (event.computer_id && known?.computer_id) return event.computer_id === known.computer_id;
+  return (event.bot_id ?? null) === bot;
+}
+
+/**
+ * Is this view (an action's result) about the computer `bot` names? Views from
+ * older servers carry no Agent; the main computer comes back as null even when
+ * asked for by Sprouty's own id (before the directory said who Sprouty is).
+ */
+function viewMatches(view: ComputerStatusView, bot: ComputerBot): boolean {
+  return view.bot_id === undefined || view.bot_id === null || view.bot_id === bot;
+}
+
 // ─── useComputerStatus ───────────────────────────────────
 
 const FAST_POLL_MS = 2_000;
 const SLOW_POLL_MS = 20_000;
 
 export interface ComputerStatusState {
+  /** Whose computer this is (null = the main Agent's). */
+  bot: ComputerBot;
   status: ComputerStatusView | null;
   phase: ComputerPhase | null;
   /** Initial load failed (no status to show yet). */
@@ -156,16 +210,35 @@ export interface ComputerStatusState {
   /** A start request is in flight (it can take up to ~45 s while queued). */
   starting: boolean;
   refresh: () => Promise<void>;
-  /** Replace the view with a fresher one an action returned. */
+  /** Replace the view with a fresher one an action returned (ignored when it is another computer's). */
   apply: (next: ComputerStatusView) => void;
   start: () => Promise<void>;
 }
 
-export function useComputerStatus(enabled: boolean): ComputerStatusState {
-  const [status, setStatus] = useState<ComputerStatusView | null>(null);
+/**
+ * Follow one computer — `bot`'s (null = the main Agent's). Switching `bot` starts
+ * over (no view of the previous computer lingers), and an answer about the
+ * previous one arriving late is dropped.
+ */
+export function useComputerStatus(enabled: boolean, bot: ComputerBot = null): ComputerStatusState {
+  const [state, setState] = useState<{ bot: ComputerBot; status: ComputerStatusView | null }>({
+    bot,
+    status: null,
+  });
   const [loadError, setLoadError] = useState(false);
   const [starting, setStarting] = useState(false);
   const mounted = useRef(true);
+  const current = useRef(bot);
+  current.current = bot;
+  // Another computer: forget the last one's view at once (render-time reset, no flash of it).
+  const status = state.bot === bot ? state.status : null;
+  if (state.bot !== bot) {
+    setState({ bot, status: null });
+    setLoadError(false);
+    setStarting(false);
+  }
+  const statusRef = useRef(status);
+  statusRef.current = status;
 
   useEffect(() => {
     mounted.current = true;
@@ -174,28 +247,34 @@ export function useComputerStatus(enabled: boolean): ComputerStatusState {
     };
   }, []);
 
+  /** Store a view of `forBot`'s computer, unless the hook moved on to another one meanwhile. */
+  const store = useCallback((forBot: ComputerBot, next: ComputerStatusView) => {
+    if (!mounted.current || current.current !== forBot || !viewMatches(next, forBot)) return;
+    setState({ bot: forBot, status: next });
+  }, []);
+
   const refresh = useCallback(async () => {
     try {
-      const next = await fetchComputerStatus();
-      if (!mounted.current) return;
-      setStatus(next);
-      setLoadError(false);
+      const next = await fetchComputerStatus(bot);
+      store(bot, next);
+      if (mounted.current && current.current === bot) setLoadError(false);
     } catch {
       // Keep the last good view; only an empty pane turns into an error state.
-      if (mounted.current) setLoadError(true);
+      if (mounted.current && current.current === bot) setLoadError(true);
     }
-  }, []);
+  }, [bot, store]);
 
   const start = useCallback(async () => {
     setStarting(true);
     try {
-      const next = await startComputer();
-      if (mounted.current) setStatus(next);
+      store(bot, await startComputer(bot));
     } finally {
-      if (mounted.current) setStarting(false);
+      if (mounted.current && current.current === bot) setStarting(false);
       void refresh();
     }
-  }, [refresh]);
+  }, [bot, refresh, store]);
+
+  const apply = useCallback((next: ComputerStatusView) => store(current.current, next), [store]);
 
   const phase = status ? computerPhase(status, { starting }) : null;
   const transient = starting || (phase ? isTransientPhase(phase) : false);
@@ -205,16 +284,22 @@ export function useComputerStatus(enabled: boolean): ComputerStatusState {
     void refresh();
   }, [enabled, refresh]);
 
-  // Pushes: patch what the event carries at once, then refetch the details
-  // (controller_since, queue position) the event does not.
+  // Pushes about this computer: patch what the event carries at once, then
+  // refetch the details (controller_since, queue position) the event does not.
+  // Pushes about the member's other computers are none of this view's business.
   useEffect(() => {
     if (!enabled) return;
     return wsClient.onEvent((event) => {
       if (event.type !== 'bots:computer') return;
-      setStatus((prev) => (prev ? { ...prev, state: event.state, controller: event.controller } : prev));
+      if (!computerEventMatches(event, bot, statusRef.current)) return;
+      setState((prev) =>
+        prev.bot === bot && prev.status
+          ? { bot, status: { ...prev.status, state: event.state, controller: event.controller } }
+          : prev,
+      );
       void refresh();
     });
-  }, [enabled, refresh]);
+  }, [enabled, bot, refresh]);
 
   // Safety-net poll, paused while the tab is hidden: fast while the server is
   // mid-transition, slow otherwise (the WS push normally wins).
@@ -230,12 +315,13 @@ export function useComputerStatus(enabled: boolean): ComputerStatusState {
   }, [enabled, transient, refresh]);
 
   return {
+    bot,
     status,
     phase,
     loadError: loadError && !status,
     starting,
     refresh,
-    apply: setStatus,
+    apply,
     start,
   };
 }
@@ -261,17 +347,17 @@ export function browserTimeZone(): string | null {
 
 /**
  * After the computer status loads: if the computer's stored timezone is not
- * the browser's, store the browser's (`PUT /api/bots/computer/settings`). Quiet
- * on failure — the computer keeps the deployment default and the next page
- * load tries again.
+ * the browser's, store the browser's (`PUT /api/bots/computer/settings`; the
+ * setting applies to all of the member's computers). Quiet on failure — the
+ * computer keeps the deployment default and the next page load tries again.
  */
-export function useComputerTimezoneSync(computer: Pick<ComputerStatusState, 'status' | 'apply'>): void {
-  const { status, apply } = computer;
+export function useComputerTimezoneSync(computer: Pick<ComputerStatusState, 'bot' | 'status' | 'apply'>): void {
+  const { bot, status, apply } = computer;
   useEffect(() => {
     if (!status || timezoneChecked) return;
     timezoneChecked = true;
     const timezone = browserTimeZone();
     if (!timezone || status.timezone === timezone) return;
-    updateComputerSettings({ timezone }).then(apply, () => {});
-  }, [status, apply]);
+    updateComputerSettings({ timezone }, bot).then(apply, () => {});
+  }, [bot, status, apply]);
 }

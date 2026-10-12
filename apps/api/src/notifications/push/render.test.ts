@@ -31,7 +31,7 @@ describe('push words', () => {
       renderPush({ ...base, ...secret, locale: 'zh', envelope, preview: false }).body;
     expect(zh(card('login'))).toBe('需要你登录一个网站');
     expect(zh(card('takeover'))).toBe('需要你接手电脑');
-    expect(zh(card('bot_create'))).toBe('提议新建一个 Bot');
+    expect(zh(card('bot_create'))).toBe('提议新建一个 Agent');
     expect(zh(card('task_start'))).toBe('提议一个后台任务');
     expect(zh(reply)).toBe('回复了你');
     expect(zh(task(true))).toBe('后台任务完成了');

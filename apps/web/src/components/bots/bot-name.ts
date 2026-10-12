@@ -4,7 +4,7 @@
  * learns them before pressing Create. The server stays authoritative.
  *
  * Why these rules: a Bot's name is a speaker tag in every other Bot's
- * transcript (`[Sage（Bot）]: …`) and the handle the member types after `@`.
+ * transcript (`[Sage（Agent）]: …`) and the handle the member types after `@`.
  * Brackets and colons would forge speaker tags; reserved words and the
  * member's own nickname would impersonate the member or the system.
  */
