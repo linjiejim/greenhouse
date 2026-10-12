@@ -49,6 +49,17 @@ describe('FieldValue', () => {
     expect(render(<FieldValue field={sum} value={12000} usersById={usersById} />)).toBe('12,000');
   });
 
+  it('shows AI result types as read-only values with select labels and formatted numbers', () => {
+    const ai = field(5, 'ai', { ai: { resultType: 'number' } });
+    expect(render(<FieldValue field={ai} value={1200.5} usersById={usersById} />)).toBe('1,200.5');
+    const choice = field(6, 'ai', {
+      ai: { resultType: 'single_select' },
+      options: [{ id: 'bug', label: 'Bug report' }],
+    });
+    expect(render(<FieldValue field={choice} value="bug" usersById={usersById} />)).toContain('Bug report');
+    expect(render(<FieldEditor field={choice} value="bug" onChange={() => {}} users={users} />)).toBe('');
+  });
+
   it('renders a lookup array as read-only chips and an empty one as a dash', () => {
     const lookup = field(2, 'lookup', { lookup: { relationFieldId: 3, targetFieldId: 4 } });
     const html = render(<FieldValue field={lookup} value={['Acme', 'Globex']} usersById={usersById} />);

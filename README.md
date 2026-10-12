@@ -527,6 +527,8 @@ the same page (experimental, iOS 17+, needs notifications on that station), a Bo
 task also counts up on the Lock Screen and in the Dynamic Island; the "task finished" push then
 wakes the app so it can clear the activity, and nothing else leaves the server for it.
 
+AI fields in Tables generate read-only text, numbers, or select choices from chosen input columns. Configure instructions and a monthly token cap in field settings, then fill empty cells or regenerate existing rows. Input changes can regenerate automatically; usage is charged to the field creator under both the user budget and the field cap. Failed or interrupted cells remain visible and can be regenerated. Deployments can pause generation with `TABLES_AI_WORKER=0`.
+
 **Tables automations** run asynchronously on a worker inside the API (a minute sweep queues
 scheduled and date rules); every run and its steps show in the rule's run log. A rule runs as
 the builder who last saved what it does, and stops if that person loses builder access. Webhook

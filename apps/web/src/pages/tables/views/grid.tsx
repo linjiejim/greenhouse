@@ -34,6 +34,7 @@ import {
 import type { TableField, TableRecord } from '../../../lib/api/tables';
 import { useT } from '../../../lib/i18n';
 import { formatDay } from '../../../lib/utils';
+import { useAiCellStatus } from '../use-ai-cell-status';
 import { InlineCell } from '../inline-cell';
 import { RecordRowActions } from '../record-row-actions';
 import { systemFieldText } from './record-card';
@@ -90,6 +91,7 @@ export function GridViewBody({
   onUpdateViewConfig,
 }: TableViewBodyProps) {
   const t = useT();
+  const aiStates = useAiCellStatus(fields, records);
   const { canEdit, canBuild, canChangeView } = permissions;
   const { menu, openMenu, closeMenu } = useContextMenu();
   const frozenCount = Math.min(config.frozenCount ?? 0, fields.length, MAX_FROZEN_COLUMNS);
@@ -225,7 +227,15 @@ export function GridViewBody({
                 onPaste(rowIndex, columnIndex, event.clipboardData.getData('text/plain'));
               }}
             >
-              <FieldValue field={field} value={value} usersById={usersById} />
+              {aiStates[`${field.id}:${record.id}`] ? (
+                <span
+                  className={aiStates[`${field.id}:${record.id}`] === 'failed' ? 'text-danger-fg' : 'text-fg-muted'}
+                >
+                  {t(`tables.ai.${aiStates[`${field.id}:${record.id}`]!}`)}
+                </span>
+              ) : (
+                <FieldValue field={field} value={value} usersById={usersById} />
+              )}
             </InlineCell>
           </td>
         );

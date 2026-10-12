@@ -147,6 +147,7 @@ import { createSubagentRuntimeDriver, reconcileReclaimedSubagentRun } from './ru
 import { createRuntimeNotificationProjector } from './notifications/runtime-projector.js';
 import { AUTOMATION_DELIVERY_CHANNELS, startNotificationDeliveryWorker } from './notifications/delivery-worker.js';
 import { tablesAutomationWorkerEnabled } from './platform/tables/automation-config.js';
+import { startTablesAiWorker, tablesAiWorkerEnabled } from './platform/tables/ai-worker.js';
 import { startTablesAutomationWorker } from './platform/tables/automation-worker.js';
 import { mobilePushEnabled } from './notifications/push/config.js';
 import { createRuntimeDomainProjector } from './runtime/domain-projector.js';
@@ -585,6 +586,7 @@ async function main() {
   if (trustedExecutionPlan.evalDriver) await reconcileEvalRuntimeRuns(dbProvider);
   let runtimeWorker: Awaited<ReturnType<typeof startRuntimeWorker>> | null = null;
   let notificationDeliveryWorker: Awaited<ReturnType<typeof startNotificationDeliveryWorker>> | null = null;
+  let tablesAiWorker: ReturnType<typeof startTablesAiWorker> | null = null;
   let tablesAutomationWorker: Awaited<ReturnType<typeof startTablesAutomationWorker>> | null = null;
 
   // Mount everything (single typed chain — see mountRoutes/AppType above)
@@ -616,6 +618,7 @@ async function main() {
     runtimeWorker?.stop();
     notificationDeliveryWorker?.stop();
     tablesAutomationWorker?.stop();
+    tablesAiWorker?.stop();
     stopFeishuBot();
     await runExtensionShutdownHooks();
     await chatRunRegistry.shutdown(5000);
@@ -666,6 +669,7 @@ async function main() {
   // Tables automations: record writes, the minute sweep (scheduler upkeep) and
   // button presses queue rule runs; this worker runs them (TABLES_AUTOMATION_WORKER).
   tablesAutomationWorker = tablesAutomations ? await startTablesAutomationWorker({ db: dbProvider }) : null;
+  tablesAiWorker = tablesAiWorkerEnabled() ? startTablesAiWorker({ db: dbProvider }) : null;
 
   // Eval calls the authenticated local HTTP surface, so no Runtime driver may
   // claim work until the socket above is actually listening. The boot pass is

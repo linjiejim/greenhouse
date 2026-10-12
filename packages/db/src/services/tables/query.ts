@@ -17,6 +17,7 @@
  *   be readable, and search only covers readable text fields.
  */
 
+import { tableAiValueType } from '@greenhouse/types/tables';
 import { createHash } from 'node:crypto';
 import { and, asc, desc, eq, inArray, isNull, or, sql, type SQL } from 'drizzle-orm';
 import { expandDateToken, isDateToken, ME_TOKEN, zoneOffsetMs } from '@greenhouse/types/date-tokens';
@@ -259,6 +260,7 @@ export function systemColumn(field: TableSystemField): SQL {
 /** The type a field's stored / computed value behaves as in predicates. */
 export function queryValueField(field: TableFieldRow): TableFieldRow {
   const config = parseTableFieldConfig(field);
+  if (field.type === 'ai' && config.ai) return { ...field, type: tableAiValueType(config) };
   if (field.type === 'formula' && config.formula) return { ...field, type: config.formula.resultType };
   if (field.type === 'rollup' && config.rollup) {
     return { ...field, type: config.rollup.aggregation === 'join' ? 'text' : 'number' };

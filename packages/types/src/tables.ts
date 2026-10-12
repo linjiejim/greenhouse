@@ -201,6 +201,49 @@ export const TABLE_AI_FIELD_LIMITS = Object.freeze({
   maxMonthlyTokenCap: 10_000_000,
 });
 
+/**
+ * Smallest configurable cap. Admission also requires headroom for the actual
+ * prompt and output estimate, so very small caps may require raising first.
+ */
+export const TABLE_AI_MIN_MONTHLY_TOKEN_CAP = 1_000;
+
+/**
+ * Field types an AI field may read (`inputFieldIds`). Stored values only:
+ * their changes pass the record-write producer. Formula/lookup/rollup values
+ * can also change during maintenance; AI values come from the worker; relation
+ * and attachment values are opaque IDs. Those types need their own input and
+ * update semantics before they can be offered here.
+ */
+export const TABLE_AI_INPUT_FIELD_TYPES = [
+  'text',
+  'long_text',
+  'number',
+  'boolean',
+  'date',
+  'datetime',
+  'single_select',
+  'multi_select',
+  'user',
+  'multi_user',
+  'url',
+  'email',
+  'phone',
+] as const satisfies readonly TableFieldType[];
+
+export function isTableAiInputFieldType(type: TableFieldType): boolean {
+  return (TABLE_AI_INPUT_FIELD_TYPES as readonly TableFieldType[]).includes(type);
+}
+
+/**
+ * How an `ai` field's value behaves everywhere a type decides something
+ * (renderers, filters, sorting, grouping, the query compiler): its result type.
+ * Select results store option ids of the field's own options, which the server
+ * mirrors to `config.options` so select-aware readers resolve labels unchanged.
+ */
+export function tableAiValueType(config: Pick<TableFieldConfig, 'ai'>): TableAiResultType {
+  return config.ai?.resultType ?? 'text';
+}
+
 /** Where one record's AI value stands (absent from a status view = settled, nothing queued). */
 export type TableAiCellState = 'queued' | 'running' | 'failed';
 
@@ -970,6 +1013,16 @@ export interface SchemaPlanFieldConfig {
   formula?: { resultType: TableFormulaResultType; expression: unknown };
   rollup?: { relationFieldId: number | string; targetFieldId: number | string; aggregation: TableRollupAggregation };
   lookup?: { relationFieldId: number | string; targetFieldId: number | string };
+  /** `ai` fields: inputs may be `$field:` tokens; the prompt may name them as `{{field:$field:<ref>}}`. */
+  ai?: {
+    prompt: string;
+    inputFieldIds: Array<number | string>;
+    resultType: TableAiResultType;
+    options?: Array<{ id: string; label: string; color?: string }>;
+    autoUpdate?: boolean;
+    model?: string;
+    monthlyTokenCap?: number;
+  };
 }
 
 export type SchemaPlanFormAudience =
@@ -991,11 +1044,11 @@ export interface SchemaPlanAppAudienceEntry {
 }
 
 /**
- * Field types a plan may create: every type but `ai` — AI fields join plans
- * when they can be configured there (Phase 2 slice AI), so the model is never
- * offered a type every apply would refuse.
+ * Field types a plan may create — every type, `ai` included since Phase 2's
+ * AI slice (its config: `SchemaPlanFieldConfig.ai`; the apply runs the same
+ * `createField` checks, the `tables_ai_fields` switch among them).
  */
-export type SchemaPlanFieldType = Exclude<TableFieldType, 'ai'>;
+export type SchemaPlanFieldType = TableFieldType;
 
 export type SchemaPlanOperation =
   | {

@@ -105,3 +105,27 @@ export async function archiveTableField(fieldId: number, options: AppReferenceCo
   if (!response.ok) throw await responseError(response, 'Unable to archive field');
   return (await response.json()).field;
 }
+
+export async function runAiField(
+  fieldId: number,
+  mode: 'fill' | 'regenerate',
+  recordIds?: number[],
+): Promise<import('@greenhouse/types/tables').TableAiFieldRunResult> {
+  const route = rpc.api.tables.fields[':fieldId'].ai;
+  const args = { param: { fieldId: String(fieldId) }, json: { recordIds } };
+  const response = mode === 'fill' ? await route.fill.$post(args) : await route.regenerate.$post(args);
+  if (!response.ok) throw await responseError(response, 'Unable to generate AI field');
+  return response.json();
+}
+
+export async function getAiFieldStatus(
+  fieldId: number,
+  recordIds?: number[],
+): Promise<import('@greenhouse/types/tables').TableAiFieldStatusView> {
+  const response = await rpc.api.tables.fields[':fieldId'].ai.status.$get({
+    param: { fieldId: String(fieldId) },
+    query: { ...(recordIds ? { recordIds: recordIds.join(',') } : {}) },
+  });
+  if (!response.ok) throw await responseError(response, 'Unable to load AI field status');
+  return response.json();
+}

@@ -4,7 +4,7 @@
  */
 
 import { createContext, useContext, type ReactNode } from 'react';
-import type { TableFieldConfig } from '@greenhouse/types/tables';
+import { tableAiValueType, type TableFieldConfig } from '@greenhouse/types/tables';
 import { TagList } from '../ui';
 import type { TableField, TableRecord } from '../../lib/api/tables';
 import { useI18n } from '../../lib/i18n';
@@ -85,7 +85,12 @@ export function FieldValue({ field, value, usersById }: FieldValueProps): ReactN
   const yes = t('common.yes');
   const no = t('common.no');
   const config: TableFieldConfig = fieldConfig(field);
-  const type = field.type === 'formula' ? (config.formula?.resultType ?? 'text') : field.type;
+  const type =
+    field.type === 'ai'
+      ? tableAiValueType(config)
+      : field.type === 'formula'
+        ? (config.formula?.resultType ?? 'text')
+        : field.type;
 
   if (type === 'boolean') return value === true ? yes : no;
   // Numbers, number formulas and rollup results (count / sum / avg / min / max).

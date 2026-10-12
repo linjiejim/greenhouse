@@ -9,6 +9,7 @@
  * (`../app-references.ts`) until resent with `confirm: true`.
  */
 
+import { activeUserHasFeature } from '../../../auth/features.js';
 import { effectiveUserId } from '@greenhouse/platform-kernel';
 import { parseTableFieldConfig } from '@greenhouse/db';
 import { TABLE_FIELD_TYPES, type TableFieldConfig, type TableFieldType } from '@greenhouse/types/tables';
@@ -148,8 +149,8 @@ const createField: Handler = async (request, context) => {
   const type = stringValue(payload, 'type') as TableFieldType | undefined;
   if (!tableId || !name || !type) return fail('INVALID_INPUT', 'tableId, name, and type are required');
   if (!TABLE_FIELD_TYPES.includes(type)) return fail('INVALID_INPUT', `Unsupported field type "${type}"`);
-  // Phase 2 foundation: AI fields need their worker, budget and editor (slice AI) before anyone can make one.
-  if (type === 'ai') return fail('INVALID_INPUT', 'not_implemented', { notImplemented: true });
+  if (type === 'ai' && !(await activeUserHasFeature(effectiveUserId(request.actor), 'tables_ai_fields', context.db)))
+    return fail('FORBIDDEN', 'AI fields are disabled for this account');
   const base = await baseForTable(context.db, tableId);
   if (!base || !(await requireBase(context, request.actor, base.id, 'field', 'builder'))) {
     return fail('NOT_FOUND', 'Table not found');
@@ -174,6 +175,12 @@ const updateField: Handler = async (request, context) => {
   if (!base || !(await requireBase(context, request.actor, base.id, 'field', 'builder'))) {
     return fail('NOT_FOUND', 'Field not found');
   }
+  const existing = await context.db.tables.getField(fieldId);
+  if (
+    existing?.type === 'ai' &&
+    !(await activeUserHasFeature(effectiveUserId(request.actor), 'tables_ai_fields', context.db))
+  )
+    return fail('FORBIDDEN', 'AI fields are disabled for this account');
   const config = objectValue<TableFieldConfig>(payload, 'config');
   const removed = config ? await removedOptionIds(context, fieldId, config) : [];
   if (removed.length > 0) {

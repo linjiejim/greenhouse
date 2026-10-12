@@ -63,13 +63,21 @@ const selectOptionSchema = z.object({
   color: z.string().max(32).optional(),
 });
 
-/** Field types a plan may create (`SchemaPlanFieldType`: everything but `ai` until slice AI adds it). */
-const PLAN_FIELD_TYPES = TABLE_FIELD_TYPES.filter((type): type is SchemaPlanFieldType => type !== 'ai') as [
-  SchemaPlanFieldType,
-  ...SchemaPlanFieldType[],
-];
+/** Field types a plan may create (`SchemaPlanFieldType`: including AI fields). */
+const PLAN_FIELD_TYPES = [...TABLE_FIELD_TYPES] as [SchemaPlanFieldType, ...SchemaPlanFieldType[]];
 
 const fieldConfigSchema = z.object({
+  ai: z
+    .object({
+      prompt: z.string().min(1).max(4000),
+      inputFieldIds: z.array(fieldIdSchema).min(1).max(20),
+      resultType: z.enum(['text', 'number', 'single_select', 'multi_select']),
+      options: z.array(selectOptionSchema).max(50).optional(),
+      autoUpdate: z.boolean().optional(),
+      model: z.string().max(100).optional(),
+      monthlyTokenCap: z.number().int().min(1000).max(10_000_000).optional(),
+    })
+    .optional(),
   options: z.array(selectOptionSchema).max(100).optional().describe('Choices for single_select / multi_select.'),
   relation: z
     .object({
@@ -197,7 +205,7 @@ export const schemaPlanOperationSchema = z.discriminatedUnion('op', [
     required: z.boolean().optional(),
     config: fieldConfigSchema
       .optional()
-      .describe('Required for single_select, multi_select, relation, formula, rollup, lookup.'),
+      .describe('Required for single_select, multi_select, relation, formula, rollup, lookup, ai.'),
   }),
   z.object({
     op: z.literal('field.update'),

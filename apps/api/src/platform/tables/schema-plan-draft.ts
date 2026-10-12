@@ -79,6 +79,7 @@ export interface SchemaPlanReader {
   grantableGroups(): Promise<Array<{ id: number; name: string; managedBy?: { id: string; name: string } }>>;
   /** Whether the drafter may use Apps (the `apps` feature); absent = yes. App operations need it. */
   appsEnabled?(): Promise<boolean>;
+  aiFieldsEnabled?(): Promise<boolean>;
   /**
    * Where the live apps of a Base use what an operation takes away — an
    * archived field, removed select options (`app-references.ts`, D6). Absent =
@@ -845,6 +846,8 @@ export async function draftSchemaPlan(
       }
 
       case 'field.create': {
+        if (operation.type === 'ai' && reader.aiFieldsEnabled && !(await reader.aiFieldsEnabled()))
+          problem('AI fields are disabled for you');
         const { table } = await requireTable(operation.tableId ?? refId(operation.tableRef!), 'builder');
         unique(
           table.fields.map((candidate) => candidate.name),
@@ -877,6 +880,8 @@ export async function draftSchemaPlan(
       case 'field.update': {
         const { table, base } = await requireTable(operation.tableId, 'builder');
         const target = field(table, operation.fieldId);
+        if (target.type === 'ai' && reader.aiFieldsEnabled && !(await reader.aiFieldsEnabled()))
+          problem('AI fields are disabled for you');
         named(index, target.name);
         if (operation.name !== undefined && operation.name !== target.name) {
           unique(

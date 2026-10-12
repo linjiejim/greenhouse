@@ -239,11 +239,19 @@
   - **置顶**：`setAppPins(userId, appIds)` 整体替换（去重、按顺序、≤ 50），随应用级联删除；能不能置顶某个应用（看不看得见）是 API 的判断。
   - **网关的存取（`services/tables/app-gateway.ts`，迁移 0026）**：`matchRecordIds(tableId, ids, scope, {purpose, condition})` 一次查询告诉网关一页记录里哪些在 scope 的读行（或读 ∧ 编辑行）内、且满足构建者写的条件（动作的 `when`）——条件按**行范围**编译（不限可读字段、编译不了即 FALSE、`$me` = scope 的人），空条件 = 无条件；`matchRecordIdsEach(tableId, ids, scope, conditions, {purpose})` 是同一判定的批量版（一张卡片的全部动作：一个编译上下文、一条查询，每个条件一列布尔，NULL 当不满足），`matchRecordIds` 就是它的单条件特例；`listRecordsByIds` 按 scope 取记录（关联标签只给读范围内的行）；`listDriveFileMeta` 给附件标签。应用上传：`pending` 的 tables 作用域文件、键段 `appUploadKeySegment(baseId, appId)` = `tables/<base>/apps/<app>/`，写前 `claimAppUploads`（pending → active，只认本人、本应用）+ `appUploadsAttachable`（本人经本应用上传、没挂在别的记录上），写失败 `releaseAppUploads`，`expireStaleAppUploads` 由每小时的上传清理调用。动作账本 `table_app_action_requests`：`claimAppActionRequest`（插入即认领，唯一键冲突 → 返回已有行；卡住 2 分钟的 running 可接管）、`completeAppActionRequest`（存结果）、`releaseAppActionRequest`（被拒 / 出错时删掉认领）、`pruneAppActionRequests(before, limit)`（upkeep：删掉早于用量窗口 `APP_USAGE_WINDOW_DAYS` = 30 天的行，任何状态，每批 `limit` 行）。`appUsageSummary` 读应用审计（`idx_platform_audit_resource_created`）与账本。编译器仍只在包内：网关从不自己拼 SQL。
 
-- **应用阶段 2 地基（迁移 0027 `tables_apps_advanced`，F2）**：方案见 [阶段 2 spec](../../../docs/specs/20261011-tables-apps-advanced.md) §2 / §6 / D10。只落了表与列，**还没有 service**——切片 AI / T / S 各自在 `services/tables/` 里加存取（不再生成迁移，D5：编号与快照链只由地基出）。
-  - `table_recompute_jobs` 加 `kind`（`rollup` 默认 / `ai`）、租约 `lease_owner` / `lease_expires_at`、`input_hash`、`source_revision`、`tokens`、`model`（`error` 原有），索引 `(kind, status, created_at)`（领取）与 `(field_id, status)`（按字段计数 / 单元格状态）。存量行不受影响。AI 结果仍存在 `table_records.computed_values`（D6）——`computeRecordValues` 会从头重建这一列，切片 AI 必须把已有 AI 结果带过去。
+- **应用阶段 2 地基（迁移 0027 `tables_apps_advanced`，F2）**：方案见 [阶段 2 spec](../../../docs/specs/20261011-tables-apps-advanced.md) §2 / §6 / D10。F2 提供表与列；AI 队列已在 `services/tables/ai-queue.ts` 实装，切片 T / S 各自在 `services/tables/` 里加存取（不再生成迁移，D5：编号与快照链只由地基出）。
+  - `table_recompute_jobs` 加 `kind`（`rollup` 默认 / `ai`）、租约 `lease_owner` / `lease_expires_at`、`input_hash`、`source_revision`、`tokens`、`model`（`error` 原有），索引 `(kind, status, created_at)`（领取）与 `(field_id, status)`（按字段计数 / 单元格状态）。存量行不受影响。AI 结果仍存在 `table_records.computed_values`（D6）——`computeRecordValues` 保留已有 AI 结果，再重算同步计算字段。
   - `table_app_templates` / `table_app_template_versions`（semver 版本、`content` 原样文本 + `content_hash`、扫描、审核、出处）；版本外键名手写（`foreignKey({name})`）——drizzle 自动生成的名字会超过 Postgres 63 字符而被截断，下一次 generate 就会对不上。
   - `table_app_versions.custom_review` 沿用阶段 1 已有的 jsonb 列，类型收紧为 `TableAppCustomReviewRecord`（只是 TS，无迁移）。
   - 只改 TS 的枚举：字段类型 `ai`（`table_fields.type`）、依赖类型 `ai`（`table_field_dependencies.dependency_type`）、额度主体 `tables_field`（`usage_budget_accounts.scope_type`）——文本列没有 CHECK，第二次 `drizzle-kit generate` 报告无变更。
+
+### Tables AI fields (Phase 2)
+
+- `ai-queue.ts` owns transaction-only producers and leases. `onRecordWritten` queues only changed declared inputs when `autoUpdate` is on, independently of automation enqueue. AI inputs are stored scalar / people fields; computed, relation and attachment inputs are rejected (their changes do not all pass this producer).
+- AI values live in `computed_values`; every ordinary write and locked maintenance recompute preserves them. Completion requires the live record revision, unchanged input/config hash and an unexpired owned lease. It merges only that cell, allowing parallel AI columns without losing another result.
+- `claimAiJobs` uses `FOR UPDATE SKIP LOCKED`, bounded claims and `attempt` ownership. Expired paid calls become `generation_interrupted`, never automatically replayed; explicit regeneration is the retry. Models run only in API `platform/tables/ai-worker.ts`.
+- Changing an AI generation definition (prompt, inputs, model, result type/options) clears prior answers and cancels unfinished jobs in the schema transaction before replacing dependency edges. This prevents answers from a formerly private input leaking after its dependency is removed. Changing only the cap or auto-update setting retains answers.
+- AI dependency edges participate in the existing field-access closure, hiding a generated value when any input is hidden. Results are read-only to every writer and excluded from forms/import mappings.
 
 ### Tables 的软删与恢复
 

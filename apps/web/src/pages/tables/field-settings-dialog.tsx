@@ -5,6 +5,9 @@
  * dialog, and "Save anyway" resends the change with `confirm`.
  */
 
+import { useAuthStore } from '../../stores';
+import { canUseFeature } from '../../lib/features';
+import { AiFieldEditor, AiFieldRuns, emptyAiConfig } from './ai-field-editor';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   formatTableFormula,
@@ -60,6 +63,10 @@ export function FieldSettingsDialog({
   onArchive,
 }: FieldSettingsDialogProps) {
   const t = useT();
+  const currentUser = useAuthStore((state) => state.currentUser);
+  const aiAllowed = canUseFeature(currentUser, 'tables_ai_fields');
+  const creatableTypes = CREATABLE_FIELD_TYPES.filter((entry) => entry !== 'ai' || aiAllowed);
+  const [ai, setAi] = useState(emptyAiConfig);
   const [name, setName] = useState('');
   const [type, setType] = useState<TableFieldType>('text');
   const [required, setRequired] = useState(false);
@@ -95,6 +102,7 @@ export function FieldSettingsDialog({
     if (!field) return;
     const config = field === 'new' ? {} : fieldConfig(field);
     const link = config.rollup ?? config.lookup;
+    setAi(config.ai ?? emptyAiConfig());
     setName(field === 'new' ? '' : field.name);
     setType(field === 'new' ? 'text' : field.type);
     setRequired(field === 'new' ? false : field.required);
@@ -160,6 +168,15 @@ export function FieldSettingsDialog({
   }, [type, relationTargetTableId, linkTargetTableId]);
 
   const buildConfig = (): TableFieldConfig | undefined => {
+    if (type === 'ai')
+      return {
+        ai: {
+          ...ai,
+          ...(['single_select', 'multi_select'].includes(ai.resultType)
+            ? { options: optionsFromRows(options, field && field !== 'new' ? fieldConfig(field).options : []) }
+            : {}),
+        },
+      };
     if (type === 'single_select' || type === 'multi_select') {
       // Rows carry their stored option: ids follow options, never line positions.
       return { options: optionsFromRows(options, field && field !== 'new' ? fieldConfig(field).options : []) };
@@ -275,13 +292,11 @@ export function FieldSettingsDialog({
               onChange={(event) => setType(event.target.value as TableFieldType)}
             >
               {/* An existing field keeps showing its own type even when it is not creatable here. */}
-              {(CREATABLE_FIELD_TYPES.includes(type) ? CREATABLE_FIELD_TYPES : [type, ...CREATABLE_FIELD_TYPES]).map(
-                (entry) => (
-                  <option key={entry} value={entry}>
-                    {t(FIELD_TYPE_LABEL_KEYS[entry])}
-                  </option>
-                ),
-              )}
+              {(creatableTypes.includes(type) ? creatableTypes : [type, ...creatableTypes]).map((entry) => (
+                <option key={entry} value={entry}>
+                  {t(FIELD_TYPE_LABEL_KEYS[entry])}
+                </option>
+              ))}
             </Select>
           </FormField>
           <Checkbox
@@ -290,7 +305,11 @@ export function FieldSettingsDialog({
             disabled={isComputedFieldType(type)}
             onChange={(event) => setRequired(event.target.checked)}
           />
-          {(type === 'single_select' || type === 'multi_select') && (
+          {type === 'ai' && <AiFieldEditor value={ai} onChange={setAi} fields={fields} />}
+          {type === 'ai' && aiAllowed && field && field !== 'new' && <AiFieldRuns fieldId={field.id} />}
+          {(type === 'single_select' ||
+            type === 'multi_select' ||
+            (type === 'ai' && ['single_select', 'multi_select'].includes(ai.resultType))) && (
             <FormGroup label={t('tables.fieldOptions.title')} help={t('tables.fieldOptions.hint')}>
               <OptionListEditor rows={options} onChange={setOptions} />
             </FormGroup>

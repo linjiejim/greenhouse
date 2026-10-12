@@ -92,6 +92,7 @@ export function createTablesCompute(db: Db) {
     executor: TablesExecutor,
     tableId: number,
     values: TableRecordValues,
+    previousComputed: TableRecordValues = {},
   ): Promise<TableRecordValues> => {
     const fields = await executor
       .select()
@@ -154,6 +155,10 @@ export function createTablesCompute(db: Db) {
     const computed: TableRecordValues = {};
     for (const field of fields) {
       const config = parseTableFieldConfig(field);
+      if (field.type === 'ai') {
+        if (String(field.id) in previousComputed) computed[String(field.id)] = previousComputed[String(field.id)];
+        continue;
+      }
       if (field.type === 'formula' && config.formula) {
         computed[String(field.id)] = normalizeFormulaResult(
           config.formula.resultType,
@@ -190,26 +195,35 @@ export function createTablesCompute(db: Db) {
   };
 
   /** Maintenance write: refresh computed values only (no revision bump, no event, no automation). */
-  const recomputeRecord = async (executor: TablesExecutor, record: TableRecordRow): Promise<TableRecordRow> => {
-    const computedValues = await computeRecordValues(executor, record.table_id, record.values);
-    const [updated] = await executor
-      .update(tableRecords)
-      .set({
-        computed_values: computedValues,
-        computed_revision: record.computed_revision + 1,
-        computed_at: nowIso(),
-      })
-      .where(eq(tableRecords.id, record.id))
-      .returning();
-    return updated ?? record;
-  };
+  const recomputeRecord = async (snapshot: TableRecordRow): Promise<TableRecordRow> =>
+    db.transaction(async (tx) => {
+      // A rollup refresh may have waited behind an AI completion or record edit.
+      // Always recompute the locked live row so it cannot erase those values.
+      const [record] = await tx
+        .select()
+        .from(tableRecords)
+        .where(and(eq(tableRecords.id, snapshot.id), isNull(tableRecords.deleted_at)))
+        .for('update');
+      if (!record) return snapshot;
+      const computedValues = await computeRecordValues(tx, record.table_id, record.values, record.computed_values);
+      const [updated] = await tx
+        .update(tableRecords)
+        .set({
+          computed_values: computedValues,
+          computed_revision: record.computed_revision + 1,
+          computed_at: nowIso(),
+        })
+        .where(eq(tableRecords.id, record.id))
+        .returning();
+      return updated ?? record;
+    });
 
   const recomputeTable = async (tableId: number): Promise<void> => {
     const records = await db
       .select()
       .from(tableRecords)
       .where(and(eq(tableRecords.table_id, tableId), isNull(tableRecords.deleted_at)));
-    for (const record of records) await recomputeRecord(db, record);
+    for (const record of records) await recomputeRecord(record);
   };
 
   /**
@@ -328,7 +342,7 @@ export function createTablesCompute(db: Db) {
       }
       if (jobs.length === 0) continue;
       try {
-        await recomputeRecord(db, record);
+        await recomputeRecord(record);
         await db
           .update(tableRecomputeJobs)
           .set({ status: 'succeeded', finished_at: nowIso() })
@@ -375,7 +389,7 @@ export function createTablesCompute(db: Db) {
       changed.has(dependent.targetFieldId),
     );
     const sources = await linkingRecords([...new Set(dependents.map((dependent) => dependent.relation.id))]);
-    for (const { record } of sources) await recomputeRecord(db, record);
+    for (const { record } of sources) await recomputeRecord(record);
   };
 
   return { computeRecordValues, recomputeRecord, recomputeTable, refreshDependentRollups, refreshAfterFieldChange };

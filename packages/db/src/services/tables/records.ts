@@ -519,7 +519,7 @@ export function createTablesRecords(db: Db, deps: TablesRecordsDeps) {
         previous: current.values,
       });
       const now = nowIso();
-      const computed = await compute.computeRecordValues(tx, input.table_id, values);
+      const computed = await compute.computeRecordValues(tx, input.table_id, values, current.computed_values);
       const [updated] = await tx
         .update(tableRecords)
         .set({

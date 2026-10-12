@@ -188,6 +188,14 @@ describe('ai fields', () => {
       table_id: table.id,
       name: 'Category',
       type: 'ai',
+      config: {
+        ai: {
+          prompt: 'Summarize',
+          inputFieldIds: [(await db.tables.listFields(table.id))[0]!.id],
+          resultType: 'text',
+          autoUpdate: true,
+        },
+      },
       created_by: owner.id,
     });
     expect(field.type).toBe('ai');

@@ -658,3 +658,7 @@ stores/
 - **文档编辑表单只有三个「必答项」**：Title（50%）/ Visibility（25%）/ Status（25%）排一行，其余（Slug、标签、摘要）在**恒默认收起**的高级选项里，开关右侧标注哪几项已有值——收起不等于藏起来。**不要再加第四个首屏字段**；也不要恢复 `Space`：一级 `meta.space` 分组在目录树上线时就被取代，留着等于问「这篇放在哪」的第二个更弱的答案（服务端字段与 `internal/<space>/` URL 段刻意保留，文档按 slug 取、那段只是装饰，删了只会让历史链接失效）。见 [spec D3/D4/D5](../../../docs/specs/20260811-kb-editing-ergonomics.md)。
 - **slug 是文档的链接身份，改标题不动它**：侧栏 Rename 只发 `PUT { title }`，编辑器里已保存的文档也不自动重算 slug——复制的链接、`[[ref]]`、导出文件名都指着它。只有**新文档**的 slug 跟随标题，且作者手改过就停止跟随；规则在零依赖叶子模块 `components/knowledge/doc-slug.ts`，不要在组件里重写（旧的 `slug || slugify(title)` 在第一个字符就冻结，新建文档全都拿到单字符永久链接）。
 - ⚠️ **富文本编辑器外壳不能加 `overflow-hidden`**：它会让外壳成为滚动容器，里面的 sticky 工具栏于是只相对它定位、永远不动（改 `top`/`z-index` 都没用）。圆角挂在子元素上，宽内容用内层 `overflow-x-auto` 承接。
+
+### Tables AI fields
+
+`pages/tables/ai-field-editor.tsx` configures AI fields and runs saved configurations. The editor uses the shared input/result-type limits; field creation and run controls obey `tables_ai_fields`. AI results use the shared read-only `FieldValue` renderer by result type, and filters use that same result type. Grid job state polls once per visible AI column (at most 200 visible record IDs per call); scoped readers do not receive whole-field status summaries. Fill and regenerate use saved settings; unsaved draft changes are never sent to the worker.

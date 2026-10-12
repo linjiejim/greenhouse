@@ -5,7 +5,11 @@
 import { and, asc, desc, eq, isNotNull, isNull, or, sql, type SQL } from 'drizzle-orm';
 import { nowIso } from '@greenhouse/utils/date';
 import { checkTableFormula } from '@greenhouse/types/table-formula';
-import { isComputedFieldType, TABLE_LOOKUP_TARGET_TYPES as LOOKUP_TARGET_TYPES } from '@greenhouse/types/tables';
+import {
+  isComputedFieldType,
+  isTableAiInputFieldType,
+  TABLE_LOOKUP_TARGET_TYPES as LOOKUP_TARGET_TYPES,
+} from '@greenhouse/types/tables';
 import type {
   TableBaseVisibility,
   TableFieldConfig,
@@ -19,6 +23,7 @@ import {
   tableBases,
   tableFieldDependencies,
   tableFields,
+  tableRecords,
   tableSchemaVersions,
   tableTables,
   tableViews,
@@ -31,6 +36,7 @@ import type {
   TableSchemaVersionRow,
   TableViewRow,
 } from '../../schema/tables.js';
+import { aiInputHash, cancelQueuedAiJobs } from './ai-queue.js';
 import type { TablesCompute } from './compute.js';
 import { dbSchemaSource, type TablesSchemaSource } from './schema-source.js';
 import {
@@ -124,6 +130,19 @@ export async function checkFieldConfig(
       fields.filter((field) => field.id !== fieldId),
     );
     if (!checked.ok) throw new TablesValidationError(checked.error.message);
+    return normalized;
+  }
+  if (type === 'ai') {
+    // Inputs: active fields of this table (never the AI field itself) of a type
+    // whose changes reach a record write (`TABLE_AI_INPUT_FIELD_TYPES`).
+    const fields = new Map((await source.fields(tableId)).map((field) => [field.id, field]));
+    for (const inputId of normalized.ai!.inputFieldIds) {
+      const input = inputId === fieldId ? undefined : fields.get(inputId);
+      if (!input) throw new TablesValidationError(`AI input field ${inputId} is unavailable on this table`);
+      if (!isTableAiInputFieldType(input.type)) {
+        throw new TablesValidationError(`AI fields cannot read ${input.type} fields ("${input.name}")`);
+      }
+    }
     return normalized;
   }
   if (type === 'lookup' || type === 'rollup') {
@@ -223,7 +242,15 @@ export function createTablesSchema(
                 depends_on_field_id: dependsOnFieldId,
                 dependency_type: 'lookup' as const,
               }))
-            : [];
+            : // An AI field depends on its inputs: the access compiler hides it from a
+              // reader who cannot read every input (the answer would leak them).
+              field.type === 'ai' && config.ai
+              ? config.ai.inputFieldIds.map((dependsOnFieldId) => ({
+                  field_id: field.id,
+                  depends_on_field_id: dependsOnFieldId,
+                  dependency_type: 'ai' as const,
+                }))
+              : [];
     if (dependencies.length > 0) await tx.insert(tableFieldDependencies).values(dependencies);
   };
 
@@ -520,7 +547,9 @@ export function createTablesSchema(
         await writeSchemaVersion(tx, input.table_id, 'field_created', input.created_by);
         return row!;
       });
-      if (isComputedFieldType(input.type)) await deps.compute.recomputeTable(input.table_id);
+      // A new AI field starts empty: its values come from the worker, queued by
+      // "fill" / "regenerate" (or the next input change), never by a recompute.
+      if (isComputedFieldType(input.type) && input.type !== 'ai') await deps.compute.recomputeTable(input.table_id);
       return row;
     },
 
@@ -532,8 +561,32 @@ export function createTablesSchema(
           ? undefined
           : await checkFieldConfig(dbSchemaSource(db), existing.table_id, existing.type, patch.config, existing.id);
       const row = await db.transaction(async (tx) => {
-        const [field] = await tx.select().from(tableFields).where(eq(tableFields.id, id)).limit(1);
+        // Match completion's record-before-field lock order. A changed AI
+        // definition must discard prior answers before replacing dependencies:
+        // an answer generated from a now-hidden old input cannot become visible.
+        if (existing.type === 'ai' && normalizedConfig)
+          await tx
+            .select({ id: tableRecords.id })
+            .from(tableRecords)
+            .where(eq(tableRecords.table_id, existing.table_id))
+            .orderBy(asc(tableRecords.id))
+            .for('update');
+        const [field] = await tx.select().from(tableFields).where(eq(tableFields.id, id)).limit(1).for('update');
         if (!field || field.archived_at) return undefined;
+        if (field.type === 'ai' && normalizedConfig?.ai) {
+          const previous = parseTableFieldConfig(field).ai;
+          if (!previous || aiInputHash(previous, {}) !== aiInputHash(normalizedConfig.ai, {})) {
+            await tx
+              .update(tableRecords)
+              .set({
+                computed_values: sql`${tableRecords.computed_values} - ${String(field.id)}`,
+                computed_revision: sql`${tableRecords.computed_revision} + 1`,
+                computed_at: nowIso(),
+              })
+              .where(eq(tableRecords.table_id, field.table_id));
+            await cancelQueuedAiJobs(tx, field.id, 'configuration_changed');
+          }
+        }
         const values: Partial<TableFieldRow> = { updated_at: nowIso() };
         if (patch.name !== undefined) values.name = trimmed(patch.name, 'Field name', 120);
         if (patch.required !== undefined) values.required = field.is_primary ? true : patch.required;
@@ -544,9 +597,12 @@ export function createTablesSchema(
         await writeSchemaVersion(tx, field.table_id, 'field_updated', patch.updated_by);
         return rows[0];
       });
-      // A new computed definition, or new select labels, change what formulas
-      // here and rollups / lookups elsewhere show.
-      if (row && (isComputedField(row) || normalizedConfig !== undefined)) {
+      // A new definition or select labels can affect dependent computations.
+      // AI definitions clear prior answers above; generating replacements is
+      // an explicit paid action, never part of this maintenance refresh.
+      if (row?.type === 'ai') {
+        if (normalizedConfig !== undefined) await deps.compute.refreshAfterFieldChange(row, { computed: false });
+      } else if (row && (isComputedField(row) || normalizedConfig !== undefined)) {
         await deps.compute.refreshAfterFieldChange(row, { computed: isComputedField(row) });
       }
       return row;
@@ -567,6 +623,9 @@ export function createTablesSchema(
         // archived source as unknown and hides them (fail-closed), and the
         // refresh below still finds the same-table formulas to recompute.
         await tx.delete(tableFieldDependencies).where(eq(tableFieldDependencies.field_id, field.id));
+        // An archived AI field generates nothing more: its queue goes (a running
+        // job finds the field gone when it tries to write).
+        if (field.type === 'ai') await cancelQueuedAiJobs(tx, field.id, 'field_archived');
         await writeSchemaVersion(tx, field.table_id, 'field_archived', userId);
         return rows[0];
       });

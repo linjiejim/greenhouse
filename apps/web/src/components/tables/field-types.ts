@@ -46,9 +46,9 @@ export const SYSTEM_FIELD_LABEL_KEYS: Record<TableSystemField, TranslationKey> =
 
 /**
  * Types the field dialog offers: every type that has a configuration there.
- * `ai` joins when its editor does (Phase 2 slice AI; the server refuses it until then).
+ * AI field creation additionally requires the user feature.
  */
-export const CREATABLE_FIELD_TYPES: readonly TableFieldType[] = TABLE_FIELD_TYPES.filter((type) => type !== 'ai');
+export const CREATABLE_FIELD_TYPES: readonly TableFieldType[] = TABLE_FIELD_TYPES;
 
 /** Derived, never written: formula / rollup / lookup / ai (one list, `COMPUTED_FIELD_TYPES`). */
 export function isComputedField(field: Pick<TableField, 'type'>): boolean {

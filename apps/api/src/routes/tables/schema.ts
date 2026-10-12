@@ -89,7 +89,7 @@ export const schemaRoutes = new Hono<AppEnv>()
     if (!result.ok) return actionError(c, result);
     return c.json(result.data as { field: TableFieldRow });
   })
-  // ─── AI fields (Phase 2 §2; placeholders until slice AI) ───
+  // ─── AI fields (Phase 2 §2; queue-only writes) ───
   .post('/fields/:fieldId/ai/fill', async (c) => {
     const fieldId = numberParam(c, 'fieldId');
     const result = await dispatch(c, 'fillAiField', { fieldId }, { fieldId });

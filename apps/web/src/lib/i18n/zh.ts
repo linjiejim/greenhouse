@@ -3071,6 +3071,23 @@ const zh: Messages = {
 
   // Tables 结构变更计划卡（模型起草、用户确认后才执行）
   tables: {
+    ai: {
+      prompt: '生成指令',
+      promptHint: '选择下方输入字段。可用 {{field:123}} 引用字段 ID。',
+      inputs: '输入字段',
+      resultType: '结果类型',
+      autoUpdate: '输入变化时自动重新生成',
+      cap: '每月 Token 上限',
+      payerHint: '计入字段创建者用量，同时受个人额度与字段上限约束。',
+      fill: '填充空白',
+      regenerate: '全部重新生成',
+      runSaved: '生成使用已保存的设置。修改指令、输入或结果类型会清除旧答案；保存后请填充空白。',
+      queuedCount: '已排队 {count} 条，跳过 {skipped} 条。',
+      usage: '{tokens} / {cap} Token · 排队 {queued} · 生成中 {running} · 失败 {failed}',
+      queued: '等待生成',
+      running: '生成中…',
+      failed: '生成失败',
+    },
     // Per-slice modules (lib/i18n/tables/*): a Phase 0 slice edits only its own file.
     // Spread first, so a core key of the same name would win (and fail the slice test).
     ...TABLES_SLICES_ZH,

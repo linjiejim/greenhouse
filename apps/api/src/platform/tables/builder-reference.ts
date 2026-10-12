@@ -596,6 +596,7 @@ const PLAN_NOTES = [
   'Updates name the existing id and the revision you read (field/table/base updates have no revision). Nothing is deleted except widgets (widget.delete) and grants (member.set role none).',
   'Ops: base.create|update, table.create|update, field.create|update|archive, view.create|update, form.create|update, automation.create|update, dashboard.create|update, widget.create|update|delete, role.create|update, member.set, app.create|update|audience|publish (topic=app).',
   'Every new table has a required primary text field "Name": rename it with primaryFieldName and point at it with primaryFieldRef (base.create / table.create) — forms and app cards usually need it.',
+  `AI fields: type="ai", config.ai={prompt,inputFieldIds,resultType:"text"|"number"|"single_select"|"multi_select",options?,autoUpdate,model?,monthlyTokenCap?}. Read-only results. Inputs must be stored fields of this table; no relations, attachments or computed inputs. Prompt references {{field:<id>}} (or {{field:$field:<ref>}} in a plan). Defaults: autoUpdate=true; monthly cap=200000 tokens charged to the creator. Existing rows need explicit fill/regenerate from field settings.`,
   `formula AST: {type:"literal",value} | {type:"field",fieldId} | {type:"binary",operator,left,right} | {type:"function",name,args}. operators: ${TABLE_FORMULA_BINARY_OPERATORS.join(', ')}. functions: ${TABLE_FORMULA_FUNCTIONS.join(', ')}.`,
 ];
 

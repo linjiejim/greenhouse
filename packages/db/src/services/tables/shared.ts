@@ -8,15 +8,22 @@
 
 import { safeJsonParse } from '@greenhouse/utils/json';
 import {
+  automationTemplateFieldIds,
   isComputedFieldType,
+  TABLE_AI_FIELD_LIMITS,
+  TABLE_AI_MIN_MONTHLY_TOKEN_CAP,
+  TABLE_AI_RESULT_TYPES,
   TABLE_FIELD_TYPES,
   TABLE_FORMULA_BINARY_OPERATORS,
   TABLE_FORMULA_FUNCTIONS,
   TABLE_RECORD_ACTOR_KINDS,
 } from '@greenhouse/types/tables';
 import type {
+  TableAiFieldConfig,
+  TableAiResultType,
   TableFieldConfig,
   TableFieldType,
+  TableSelectOption,
   TableFormulaExpression,
   TableRecordEventType,
   TableRecordValues,
@@ -292,13 +299,96 @@ export function validateTableFieldConfig(type: TableFieldType, config: TableFiel
     }
     return { version: 1, rollup: { ...rollup } };
   }
+  if (type === 'ai') return normalizeAiFieldConfig(config.ai);
   if (type !== 'single_select' && type !== 'multi_select') return { version: 1 };
   const options = config.options ?? [];
   if (!Array.isArray(options) || options.length > 100) {
     throw new TablesValidationError('Select fields support at most 100 options');
   }
+  return { version: 1, options: normalizeSelectOptions(options) };
+}
+
+/**
+ * An `ai` field's config, shape-checked (`checkFieldConfig` checks the inputs
+ * against the schema): a prompt, 1–20 distinct inputs that every
+ * `{{field:<id>}}` in the prompt is among, a result type, options for select
+ * results (mirrored to `config.options`, so every select-aware reader resolves
+ * the stored ids unchanged), `autoUpdate` (default on), an optional model id
+ * and an optional monthly token cap.
+ */
+function normalizeAiFieldConfig(raw: unknown): TableFieldConfig {
+  if (!isPlainObject(raw)) throw new TablesValidationError('AI fields require an ai configuration');
+  const prompt = typeof raw.prompt === 'string' ? raw.prompt.replaceAll('\u0000', '').trim() : '';
+  if (!prompt) throw new TablesValidationError('AI fields require a prompt');
+  if (prompt.length > TABLE_AI_FIELD_LIMITS.prompt) {
+    throw new TablesValidationError(`An AI prompt is at most ${TABLE_AI_FIELD_LIMITS.prompt} characters`);
+  }
+  const inputs = Array.isArray(raw.inputFieldIds) ? raw.inputFieldIds : [];
+  if (!inputs.every(isPositiveInteger)) throw new TablesValidationError('AI inputFieldIds must be field ids');
+  const inputFieldIds = [...new Set(inputs)];
+  if (inputFieldIds.length === 0) throw new TablesValidationError('AI fields read at least one input field');
+  if (inputFieldIds.length > TABLE_AI_FIELD_LIMITS.inputFields) {
+    throw new TablesValidationError(`An AI field reads at most ${TABLE_AI_FIELD_LIMITS.inputFields} input fields`);
+  }
+  const outside = automationTemplateFieldIds(prompt).filter((id) => !inputFieldIds.includes(id));
+  if (outside.length > 0) {
+    throw new TablesValidationError(`The prompt names field ${outside[0]}, which is not one of the AI field's inputs`);
+  }
+  const resultType = raw.resultType as TableAiResultType;
+  if (!TABLE_AI_RESULT_TYPES.includes(resultType)) {
+    throw new TablesValidationError(`AI resultType must be one of ${TABLE_AI_RESULT_TYPES.join(', ')}`);
+  }
+  const select = resultType === 'single_select' || resultType === 'multi_select';
+  let options: TableSelectOption[] | undefined;
+  if (select) {
+    const rawOptions = raw.options ?? [];
+    if (!Array.isArray(rawOptions) || rawOptions.length === 0 || rawOptions.length > TABLE_AI_FIELD_LIMITS.options) {
+      throw new TablesValidationError(
+        `AI fields with a ${resultType} result need 1–${TABLE_AI_FIELD_LIMITS.options} options`,
+      );
+    }
+    options = normalizeSelectOptions(rawOptions);
+  }
+  let model: string | undefined;
+  if (raw.model !== undefined && raw.model !== null && raw.model !== '') {
+    if (typeof raw.model !== 'string' || !raw.model.trim() || raw.model.length > 100) {
+      throw new TablesValidationError('AI model must be a model id');
+    }
+    model = raw.model.trim();
+  }
+  let monthlyTokenCap: number | undefined;
+  if (raw.monthlyTokenCap !== undefined && raw.monthlyTokenCap !== null) {
+    const cap = raw.monthlyTokenCap;
+    if (
+      !Number.isSafeInteger(cap) ||
+      (cap as number) < TABLE_AI_MIN_MONTHLY_TOKEN_CAP ||
+      (cap as number) > TABLE_AI_FIELD_LIMITS.maxMonthlyTokenCap
+    ) {
+      throw new TablesValidationError(
+        `AI monthlyTokenCap must be a whole number from ${TABLE_AI_MIN_MONTHLY_TOKEN_CAP} to ${TABLE_AI_FIELD_LIMITS.maxMonthlyTokenCap}`,
+      );
+    }
+    monthlyTokenCap = cap as number;
+  }
+  if (raw.autoUpdate !== undefined && typeof raw.autoUpdate !== 'boolean')
+    throw new TablesValidationError('AI autoUpdate must be boolean');
+  const ai: TableAiFieldConfig = {
+    prompt,
+    inputFieldIds,
+    resultType,
+    ...(options ? { options } : {}),
+    autoUpdate: raw.autoUpdate !== false,
+    ...(model ? { model } : {}),
+    ...(monthlyTokenCap !== undefined ? { monthlyTokenCap } : {}),
+  };
+  return { version: 1, ai, ...(options ? { options } : {}) };
+}
+
+/** Select options: ids are stable `[a-zA-Z0-9_-]` keys stored in records, labels are free text. */
+function normalizeSelectOptions(options: unknown[]): TableSelectOption[] {
   const ids = new Set<string>();
-  const normalized = options.map((option, index) => {
+  return options.map((raw, index) => {
+    const option = raw as TableSelectOption;
     if (!option || typeof option !== 'object') {
       throw new TablesValidationError(`Option ${index + 1} is invalid`);
     }
@@ -311,7 +401,6 @@ export function validateTableFieldConfig(type: TableFieldType, config: TableFiel
     ids.add(id);
     return { id, label, ...(option.color ? { color: option.color.slice(0, 32) } : {}) };
   });
-  return { version: 1, options: normalized };
 }
 
 /**

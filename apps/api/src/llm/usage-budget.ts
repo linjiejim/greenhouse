@@ -42,6 +42,8 @@ export class UsageBudgetAdmissionError extends Error {
 }
 
 export interface ReserveUserTokenBudgetInput {
+  /** Additional concrete budgets charged atomically with the owner/org/provider. */
+  extraAccounts?: readonly UsageBudgetAccountInput[];
   db: DatabaseProvider;
   userId: string;
   caller: string;
@@ -115,6 +117,7 @@ function providerBudgetScopes(input: ReserveUserTokenBudgetInput): string[] {
 }
 
 export interface ProviderAttemptBudgetContext {
+  extraAccounts?: readonly UsageBudgetAccountInput[];
   db: DatabaseProvider;
   userId: string;
   caller: string;
@@ -178,6 +181,7 @@ export function createProviderAttemptBudgetHook(context: ProviderAttemptBudgetCo
       providerScopeOverride: descriptor.scopeId,
       runId: context.runId ?? context.sessionId,
       budgetPool: context.budgetPool,
+      extraAccounts: context.extraAccounts,
       metadata: {
         ...(context.metadata ?? {}),
         profile_id: context.profileId,
@@ -387,7 +391,7 @@ export async function reserveUserTokenBudget(input: ReserveUserTokenBudgetInput)
       model_id: input.modelId,
       provider_id: input.providerId,
       run_id: input.runId,
-      additional_accounts: buildTokenSharedAccounts(input),
+      additional_accounts: [...buildTokenSharedAccounts(input), ...(input.extraAccounts ?? [])],
       metadata: input.metadata,
     });
     return new UserTokenBudgetLease(input.db, idempotencyKey, estimatedTokens);

@@ -248,6 +248,37 @@ describe('provider usage-budget guard', () => {
     );
   });
 
+  it('atomically reserves the extra per-field account on every provider attempt', async () => {
+    const f = fixture();
+    const extra = {
+      scope_type: 'tables_field' as const,
+      scope_id: '17',
+      unit: 'tokens' as const,
+      period_start: '2026-10-01T00:00:00.000Z',
+      period_end: '2026-11-01T00:00:00.000Z',
+      limit_units: 5000,
+    };
+    const hook = createProviderAttemptBudgetHook({
+      db: f.db as never,
+      userId: 'user-1',
+      caller: 'tables-ai-field',
+      profileId: 'system',
+      extraAccounts: [extra],
+    });
+    await hook({
+      descriptor: {
+        provider: 'openai-compatible',
+        modelId: 'test',
+        apiKeyEnv: 'LLM_API_KEY',
+        scopeId: 'provider:test',
+      },
+      options: { prompt: [{ role: 'user', content: [{ type: 'text', text: 'feedback' }] }], maxOutputTokens: 200 },
+    });
+    expect(f.reserveMonthlyUser).toHaveBeenCalledWith(
+      expect.objectContaining({ additional_accounts: expect.arrayContaining([extra]) }),
+    );
+  });
+
   it('estimates a provider attempt in tokens, not payload bytes', async () => {
     const f = fixture();
     const hook = createProviderAttemptBudgetHook({

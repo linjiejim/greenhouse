@@ -31,6 +31,8 @@
  *   schema-source.ts  what config validators read about the schema (live, or a plan's virtual draft)
  */
 
+import { createTablesAiQueue } from './ai-queue.js';
+export { aiInputHash } from './ai-queue.js';
 import type { Db } from '../../client.js';
 import { createTablesActivity } from './activity.js';
 import { createTablesApps } from './apps.js';
@@ -214,6 +216,7 @@ export function createTablesService(db: Db) {
     ...createTablesForms(db, { records: records.internal }),
     ...automations.service,
     ...createTablesAutomationQueue(db),
+    ...createTablesAiQueue(db),
     ...createTablesDashboards(db),
     ...createTablesImports(db, { records: records.internal }),
     ...createTablesResources(db),

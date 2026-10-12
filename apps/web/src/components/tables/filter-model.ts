@@ -10,6 +10,7 @@
 
 import {
   TABLE_SYSTEM_FIELDS,
+  tableAiValueType,
   type TableFieldType,
   type TableFilterClause,
   type TableFilterGroup,
@@ -78,6 +79,7 @@ export function isFilterToken(value: unknown): value is string {
 /** The type a field filters as: formulas by result type, rollups as number (or text for `join`). */
 export function filterValueType(field: Pick<TableField, 'type' | 'config'>): TableFieldType {
   const config = fieldConfig(field);
+  if (field.type === 'ai') return tableAiValueType(config);
   if (field.type === 'formula') return config.formula?.resultType ?? 'text';
   if (field.type === 'rollup') return config.rollup?.aggregation === 'join' ? 'text' : 'number';
   return field.type;

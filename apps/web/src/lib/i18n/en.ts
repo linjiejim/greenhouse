@@ -3142,6 +3142,24 @@ export default {
   // Profile editor
 
   tables: {
+    ai: {
+      prompt: 'Generation instructions',
+      promptHint: 'Select input fields below. Use {{field:123}} to refer to a field ID.',
+      inputs: 'Input fields',
+      resultType: 'Result type',
+      autoUpdate: 'Regenerate when inputs change',
+      cap: 'Monthly token limit',
+      payerHint: 'Charged to the field creator, within both their account budget and this field limit.',
+      fill: 'Fill empty cells',
+      regenerate: 'Regenerate all cells',
+      runSaved:
+        'These actions use saved settings. Changing instructions, inputs or result type clears previous answers; save, then fill empty cells.',
+      queuedCount: 'Queued {count}; skipped {skipped}.',
+      usage: '{tokens} / {cap} tokens · queued {queued} · running {running} · failed {failed}',
+      queued: 'Queued',
+      running: 'Generating…',
+      failed: 'Generation failed',
+    },
     // Per-slice modules (lib/i18n/tables/*): a Phase 0 slice edits only its own file.
     // Spread first, so a core key of the same name would win (and fail the slice test).
     ...TABLES_SLICES_EN,

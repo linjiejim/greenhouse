@@ -13,6 +13,7 @@ import type { TableRecordFieldChange, TableRecordValues, TableRecordWriteSource 
 import type { Db } from '../../client.js';
 import { tableRecordEvents } from '../../schema/index.js';
 import type { TableRecordEventRow } from '../../schema/tables.js';
+import { enqueueAiEvents } from './ai-queue.js';
 import { enqueueAutomationEvents } from './automations.js';
 import { isPlainObject, type TableRecordWrittenEvent, type TablesExecutor } from './shared.js';
 
@@ -103,6 +104,7 @@ export async function appendRecordEvent(
 export async function onRecordWritten(tx: TablesExecutor, event: TableRecordWrittenEvent): Promise<void> {
   await appendRecordEvent(tx, event);
   await enqueueAutomationEvents(tx, event);
+  await enqueueAiEvents(tx, event);
 }
 
 export function createTablesActivity(db: Db) {

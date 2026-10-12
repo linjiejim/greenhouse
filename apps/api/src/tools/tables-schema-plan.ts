@@ -56,6 +56,7 @@ function schemaPlanReader(userId: string): SchemaPlanReader {
     dispatch: (actionId, payload, ids) => dispatchTablesAgentAction({ userId }, actionId, payload, ids),
     grantableGroups: () => grantableGroups(getDb(), userId),
     appsEnabled: () => activeUserHasFeature(userId, 'apps'),
+    aiFieldsEnabled: () => activeUserHasFeature(userId, 'tables_ai_fields'),
     // Only asked for Bases the drafter builds on (field.archive / field.update need builder first).
     appReferences: (baseId, target) => appReferencesTo(getDb(), baseId, target),
   };
