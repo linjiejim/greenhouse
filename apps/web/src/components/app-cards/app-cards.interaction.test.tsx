@@ -307,3 +307,20 @@ describe('shared states', () => {
     expect(host.retry).toHaveBeenCalledWith(CARDS.mine);
   });
 });
+
+it('keeps custom HTML inert until its network isolation is enforceable', async () => {
+  const host = mockHost();
+  await mount(
+    {
+      id: 'blocked',
+      kind: 'custom',
+      layout: { x: 0, y: 0, w: 12, h: 6 },
+      html: '<script>fetch("/api/auth/me")</script><iframe srcdoc="malicious"></iframe>',
+      bindings: [],
+    },
+    host,
+  );
+  expect(container.textContent).toContain('execution is unavailable');
+  expect(container.querySelector('iframe,script')).toBeNull();
+  expect(mocks.authFetch).not.toHaveBeenCalled();
+});

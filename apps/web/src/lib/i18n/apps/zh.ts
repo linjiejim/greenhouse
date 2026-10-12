@@ -1,3 +1,4 @@
+import { appsSandboxZh } from './sandbox.zh';
 /** Chinese counterpart of ./en.ts — spread once into `../zh.ts`. */
 
 import { appsAgentZh } from './agent.zh';
@@ -10,6 +11,7 @@ export const APPS_SLICE_MODULES_ZH = {
   builder: appsBuilderZh,
   center: appsCenterZh,
   runtime: appsRuntimeZh,
+  sandbox: appsSandboxZh,
 };
 
 export const APPS_SLICES_ZH = {
@@ -17,4 +19,5 @@ export const APPS_SLICES_ZH = {
   ...appsBuilderZh,
   ...appsCenterZh,
   ...appsRuntimeZh,
+  ...appsSandboxZh,
 };

@@ -25,6 +25,7 @@ import { recordsResult } from './records-data';
 import { TextCard } from '../table-cards/text-card';
 import type { AppCardRendererProps, AppCardRenderers } from './types';
 import { AppViewCard } from './view-card';
+import { AppCustomCard } from './custom/custom-card';
 
 function AppTextCard({ card }: AppCardRendererProps<'text'>) {
   return <TextCard markdown={card.markdown} />;
@@ -59,7 +60,7 @@ export const APP_CARD_RENDERERS = {
   pivot: AppAggregateCard,
   text: AppTextCard,
   buttons: AppButtonsCard,
-  custom: AppPendingCard,
+  custom: AppCustomCard,
   external: AppPendingCard,
 } satisfies AppCardRenderers;
 

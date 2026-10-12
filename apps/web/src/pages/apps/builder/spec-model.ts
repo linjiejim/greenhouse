@@ -177,9 +177,7 @@ export const CARD_SIZES: Readonly<Record<AppCardKind, { w: number; h: number }>>
  * (slice SRC) join when their editors do — until then a builder cannot add a
  * card nothing can configure.
  */
-export const CATALOG_CARD_KINDS: readonly AppCardKind[] = APP_CARD_KINDS.filter(
-  (kind) => kind !== 'custom' && kind !== 'external',
-);
+export const CATALOG_CARD_KINDS: readonly AppCardKind[] = APP_CARD_KINDS.filter((kind) => kind !== 'external');
 
 /** Below everything already on the page, full left. */
 export function nextCardLayout(cards: readonly AppCard[], kind: AppCardKind): AppCardLayout {
@@ -206,6 +204,7 @@ const NEEDS_TABLE: ReadonlySet<AppCardKind> = new Set([
   'kpi',
   'chart',
   'pivot',
+  'custom',
 ]);
 
 /** Tables a card of `kind` can read (a kanban needs a lane field, a calendar a date field…). */
@@ -340,8 +339,15 @@ export function defaultCard(kind: AppCardKind, context: CardDefaultsContext): Ap
         kind,
         card: { kind: 'pivot', source, aggregate: { operation: 'count', groupBy: defaultGroupBy(fields) } },
       };
-    // Phase 2: their editors (slices S and SRC) start them; the catalog does not offer them yet.
     case 'custom':
+      return {
+        ...titled,
+        kind,
+        html: '<main id="rows"></main><script>greenhouse.query("rows").then(function(result){document.getElementById("rows").textContent=JSON.stringify(result,null,2);});</script>',
+        bindings: [{ id: 'rows', kind: 'records', source, fieldIds: firstFieldIds(fields, 5) }],
+      };
+    // External sources join when their editor lands.
+
     case 'external':
       return null;
   }

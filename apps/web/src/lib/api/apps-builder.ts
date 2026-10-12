@@ -77,7 +77,7 @@ export async function getPublishedApp(appId: number): Promise<AppRuntimeView> {
 export async function publishApp(
   appId: number,
   input: { draftRevision: number; notes?: string | null },
-): Promise<{ app: AppSummary; version: AppVersionSummary }> {
+): Promise<{ app: AppSummary; version: AppVersionSummary; pendingReview?: boolean }> {
   const args = { param: appParam(appId), json: input };
   const response = await rpc.api.apps[':appId'].publish.$post(args);
   if (!response.ok) throw await responseError(response, 'Unable to publish the app');

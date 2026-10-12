@@ -1,3 +1,4 @@
+import { appsSandboxEn } from './sandbox.en';
 /**
  * Apps copy (Phase 1, spec 20261011-tables-apps), split per slice so parallel
  * slices never edit the same catalog lines — the same layout as ../tables. Each
@@ -18,6 +19,7 @@ export const APPS_SLICE_MODULES_EN = {
   builder: appsBuilderEn,
   center: appsCenterEn,
   runtime: appsRuntimeEn,
+  sandbox: appsSandboxEn,
 } as const;
 
 export const APPS_SLICES_EN = {
@@ -25,4 +27,5 @@ export const APPS_SLICES_EN = {
   ...appsBuilderEn,
   ...appsCenterEn,
   ...appsRuntimeEn,
+  ...appsSandboxEn,
 } as const;

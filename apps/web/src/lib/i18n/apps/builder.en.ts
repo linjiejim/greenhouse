@@ -126,7 +126,7 @@ export const appsBuilderEn = {
         buttons: { name: 'Buttons', description: 'Buttons that open a page, a link or a new-record form.' },
         custom: {
           name: 'Custom component',
-          description: 'Your own HTML and script in a sandbox, reading this Base through declared bindings.',
+          description: 'Author HTML and declared bindings for review. Code execution is currently unavailable.',
         },
         external: {
           name: 'External data',

@@ -35,7 +35,13 @@ import {
   tableBaseMembers,
   tableBases,
 } from '../../schema/index.js';
-import type { TableAppAudienceRow, TableAppPinRow, TableAppRow, TableAppVersionRow } from '../../schema/table-apps.js';
+import type {
+  TableAppAudienceRow,
+  TableAppPinRow,
+  TableAppRow,
+  TableAppVersionRow,
+  TableAppCustomReviewRecord,
+} from '../../schema/table-apps.js';
 import { TablesValidationError, trimmed, type TableRevisionResult } from './shared.js';
 
 /** An app without its draft text — what lists carry. */
@@ -71,8 +77,8 @@ export interface TableAppAudienceInput {
 }
 
 export type PublishTableAppResult =
-  | { ok: true; app: TableAppRow; version: TableAppVersionRow }
-  | { ok: false; reason: 'not_found' | 'archived' }
+  | { ok: true; app: TableAppRow; version: TableAppVersionRow; pendingReview?: boolean }
+  | { ok: false; reason: 'not_found' | 'archived' | 'audiences_changed' }
   | { ok: false; reason: 'conflict'; current: number };
 
 export type RestoreTableAppVersionResult =
@@ -81,7 +87,7 @@ export type RestoreTableAppVersionResult =
 
 export type ReplaceTableAppAudiencesResult =
   | { ok: true; app: TableAppRow; audiences: TableAppAudienceRow[] }
-  | { ok: false; reason: 'not_found' | 'archived' }
+  | { ok: false; reason: 'not_found' | 'archived' | 'publication_changed' }
   | { ok: false; reason: 'conflict'; current: number };
 
 /** Hex sha256 of a spec's exact text — the one hash both publish and read use. */
@@ -285,7 +291,14 @@ export function createTablesApps(db: Db) {
      */
     async publishApp(
       appId: number,
-      input: { draftRevision: number; notes?: string | null; publishedBy: string },
+      input: {
+        draftRevision: number;
+        notes?: string | null;
+        publishedBy: string;
+        /** Checked audience snapshot; a concurrent sharing change must be re-authorized. */
+        audiencesRevision?: number;
+        customCode?: { requireReview: boolean };
+      },
     ): Promise<PublishTableAppResult> {
       return db.transaction(async (tx) => {
         const app = await lockApp(tx, appId);
@@ -294,6 +307,27 @@ export function createTablesApps(db: Db) {
         if (app.draft_revision !== input.draftRevision) {
           return { ok: false, reason: 'conflict', current: app.draft_revision } as const;
         }
+        if (input.audiencesRevision !== undefined && app.audiences_revision !== input.audiencesRevision) {
+          return { ok: false, reason: 'audiences_changed' } as const;
+        }
+        const hash = appSpecHash(app.draft_spec);
+        const matching = input.customCode
+          ? await tx
+              .select()
+              .from(tableAppVersions)
+              .where(and(eq(tableAppVersions.app_id, appId), eq(tableAppVersions.spec_hash, hash)))
+              .orderBy(desc(tableAppVersions.version))
+          : [];
+        for (const row of matching) verifiedAppVersionSpec(row);
+        const approved = matching.find(
+          (row) => row.custom_review?.status === 'approved' && row.custom_review.hash === hash,
+        );
+        const review: TableAppCustomReviewRecord | undefined = input.customCode
+          ? (approved?.custom_review ?? { status: 'pending', hash })
+          : undefined;
+        const pendingReview = !!input.customCode?.requireReview && !approved;
+        const pending = matching.find((row) => row.draft_revision === app.draft_revision);
+        if (pendingReview && pending) return { ok: true, app, version: pending, pendingReview: true } as const;
         const [last] = await tx
           .select({ version: sql<number>`coalesce(max(${tableAppVersions.version}), 0)` })
           .from(tableAppVersions)
@@ -307,19 +341,78 @@ export function createTablesApps(db: Db) {
             app_id: appId,
             version: nextVersion,
             spec: app.draft_spec,
-            spec_hash: appSpecHash(app.draft_spec),
+            spec_hash: hash,
+            custom_review: review ?? null,
             draft_revision: app.draft_revision,
             notes,
             published_by: input.publishedBy,
             published_at: now,
           })
           .returning();
+        if (pendingReview) return { ok: true, app, version: version!, pendingReview: true } as const;
         const [updated] = await tx
           .update(tableApps)
           .set({ published_version: nextVersion, status: 'published', updated_at: now })
           .where(eq(tableApps.id, appId))
           .returning();
         return { ok: true, app: updated!, version: version! } as const;
+      });
+    },
+
+    /** Review queue, including past decisions; only the API's super handler exposes it. */
+    async listAppCustomReviews(): Promise<Array<{ app: TableAppSummaryRow; version: TableAppVersionRow }>> {
+      const rows = await db
+        .select({ app: summaryColumns, version: getTableColumns(tableAppVersions) })
+        .from(tableAppVersions)
+        .innerJoin(tableApps, eq(tableApps.id, tableAppVersions.app_id))
+        .innerJoin(tableBases, eq(tableBases.id, tableApps.base_id))
+        .where(
+          and(
+            sql`${tableAppVersions.custom_review} IS NOT NULL`,
+            isNull(tableApps.archived_at),
+            isNull(tableBases.archived_at),
+          ),
+        )
+        .orderBy(desc(tableAppVersions.published_at))
+        .limit(200);
+      for (const row of rows) verifiedAppVersionSpec(row.version);
+      return rows;
+    },
+
+    /** The app row lock serializes a hash-level decision with publishing. */
+    async reviewAppCustomCode(
+      appId: number,
+      input: {
+        version: number;
+        hash: string;
+        decision: 'approve' | 'reject';
+        reviewerId: string;
+        note?: string;
+      },
+    ): Promise<TableAppVersionRow | undefined> {
+      return db.transaction(async (tx) => {
+        const app = await lockApp(tx, appId);
+        if (!app || app.archived_at) return undefined;
+        const [version] = await tx
+          .select()
+          .from(tableAppVersions)
+          .where(and(eq(tableAppVersions.app_id, appId), eq(tableAppVersions.version, input.version)))
+          .limit(1);
+        if (!version || !version.custom_review || version.spec_hash !== input.hash) return undefined;
+        verifiedAppVersionSpec(version);
+        const review: TableAppCustomReviewRecord = {
+          status: input.decision === 'approve' ? 'approved' : 'rejected',
+          hash: input.hash,
+          reviewed_by: input.reviewerId,
+          reviewed_at: nowIso(),
+          ...(input.note ? { note: input.note } : {}),
+        };
+        const rows = await tx
+          .update(tableAppVersions)
+          .set({ custom_review: review })
+          .where(and(eq(tableAppVersions.app_id, appId), eq(tableAppVersions.spec_hash, input.hash)))
+          .returning();
+        return rows.find((row) => row.version === input.version);
       });
     },
 
@@ -423,7 +516,12 @@ export function createTablesApps(db: Db) {
      */
     async replaceAppAudiences(
       appId: number,
-      input: { entries: readonly TableAppAudienceInput[]; audiencesRevision: number; createdBy: string },
+      input: {
+        entries: readonly TableAppAudienceInput[];
+        audiencesRevision: number;
+        createdBy: string;
+        publishedVersion?: number | null;
+      },
     ): Promise<ReplaceTableAppAudiencesResult> {
       if (input.entries.length > MAX_AUDIENCE_ENTRIES) {
         throw new TablesValidationError(`An app has at most ${MAX_AUDIENCE_ENTRIES} audience entries`);
@@ -438,6 +536,9 @@ export function createTablesApps(db: Db) {
         const app = await lockApp(tx, appId);
         if (!app) return { ok: false, reason: 'not_found' } as const;
         if (app.archived_at) return { ok: false, reason: 'archived' } as const;
+        if (input.publishedVersion !== undefined && app.published_version !== input.publishedVersion) {
+          return { ok: false, reason: 'publication_changed' } as const;
+        }
         if (app.audiences_revision !== input.audiencesRevision) {
           return { ok: false, reason: 'conflict', current: app.audiences_revision } as const;
         }

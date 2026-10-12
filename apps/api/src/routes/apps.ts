@@ -153,7 +153,7 @@ const appRoutes = new Hono<AppEnv>()
     const appId = appIdOf(c);
     const result = await dispatch(c, 'publishApp', { ...(await jsonBody(c)), appId }, { appId });
     if (!result.ok) return actionError(c, result);
-    return c.json(result.data as { app: AppSummary; version: AppVersionSummary });
+    return c.json(result.data as { app: AppSummary; version: AppVersionSummary; pendingReview?: boolean });
   })
   .get('/:appId/versions', async (c) => {
     const appId = appIdOf(c);

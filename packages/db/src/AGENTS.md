@@ -358,3 +358,5 @@
 
 - `bots-privacy.ts` 是 session 列表、旧分享与 Runtime 的共同 SQL 边界。对外 session 列表必须传 `viewerUserId`；Runtime 列表/详情/审批/统计必须传 `viewer_user_id` 或对应方法的 viewer 参数，在 LIMIT/游标/COUNT 前过滤。引擎内部查询可省略，不把该可见性过滤当成通用授权。
 - Runtime 独立于 session 的生命周期：`source_id=bots:*`、`source_id/session_id=bottask-*`、`input.source_mode=bots` 的记录始终只有 owner 可见，即使原 session 已删除。不要只用活着的 session JOIN 判断。
+
+- **应用自定义组件审核**：`publishApp` 在应用行锁内校验受众修订并保存按 hash 审核的不可变版本，`pendingReview` 时保留线上指针；`reviewAppCustomCode` 对确切 version/hash 批准或拒绝，同一 hash 的版本一同更新。扩大受众带 `publishedVersion` CAS，防止与发布竞态。DB 审核不启用客户端 HTML 执行。

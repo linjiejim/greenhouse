@@ -1,3 +1,4 @@
+import { appSessionSpecToken } from '../app-session.js';
 /**
  * The app gateway (docs/specs/20261011-tables-apps.md §3–§4): what an app's
  * audience — who need not be Base members — reads and does through
@@ -53,6 +54,9 @@ import type {
   TableSystemField,
 } from '@greenhouse/types/tables';
 import { requireBase } from '../access.js';
+import { customBindingCard } from '../app-custom-bindings.js';
+import { APP_SANDBOX_LIMITS } from '@greenhouse/types/app-sandbox';
+import { InMemoryRateLimiter } from '../../../security/security.js';
 import { cardWriteTargets, runSessionAction } from '../app-actions.js';
 import { cardReadScope } from '../app-audience.js';
 import { appRecordRefs, appRecordRow, availableActionIds, usableActions } from '../app-records.js';
@@ -114,6 +118,7 @@ const PAGE_SIZE: Readonly<Record<RecordsLikeCard['kind'], number>> = {
   gallery: 50,
 };
 const MAX_SEARCH = 200;
+const customQueryLimiter = new InMemoryRateLimiter();
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 
 type Opened = { ok: true; session: AppSession; located: LocatedCard; payload: Record<string, unknown> };
@@ -171,7 +176,7 @@ export async function roleAppView(
   const opened = await openAppSession(context, request, payload, appId);
   if (!opened.ok) return opened.result;
   const view = await roleRuntimeView(opened.session, await summary(opened.session));
-  return view ? ok(view) : fail('NOT_FOUND', 'App not found');
+  return view ? ok({ ...view, specToken: appSessionSpecToken(opened.session) }) : fail('NOT_FOUND', 'App not found');
 }
 
 /** A viewer's app summary: they neither manage nor publish it. */
@@ -189,17 +194,29 @@ export async function viewerSummary(context: Context, session: AppSession): Prom
 const queryAppCard: Handler = async (request, context) => {
   const opened = await openCard(request, context);
   if (!opened.ok) return opened.result;
-  const { session, located, payload } = opened;
+  const { session, payload } = opened;
+  let { located } = opened;
+  if (located.card.kind === 'custom') {
+    if (located.unavailable) return ok({ kind: 'unavailable', message: unavailableMessage(session, located) });
+    const permitted = customQueryLimiter.check(
+      `${session.userId}:${session.app.id}:${located.page.id}:${located.card.id}`,
+      60_000,
+      APP_SANDBOX_LIMITS.queriesPerMinute,
+    );
+    if (!permitted.allowed) return fail('FORBIDDEN', 'Too many component queries', { reason: 'rate_limited' });
+    const binding = customBindingCard(located.card, payload.bindingId);
+    if (!binding) return CARD_NOT_FOUND();
+    // Only the stored binding and host page filters control the query.
+    if (payload.search !== undefined || payload.range !== undefined)
+      return fail('INVALID_INPUT', 'Custom queries accept only a cursor');
+    located = { ...located, card: binding };
+  }
   const { card, page } = located;
   if (payload.filterValues !== undefined && !objectValue(payload, 'filterValues')) {
     return fail('INVALID_INPUT', 'filterValues must be an object');
   }
   if (card.kind === 'text') return ok({ kind: 'text', markdown: card.markdown } satisfies AppCardQueryResult);
-  // Phase 2: a custom card's bindings (`payload.bindingId`, slice S) and external sources (slice SRC)
-  // are evaluated by the slices that own them; until then they answer the foundation placeholder.
-  if (card.kind === 'custom' || card.kind === 'external') {
-    return fail('INVALID_INPUT', 'not_implemented', { notImplemented: true });
-  }
+  if (card.kind === 'external') return fail('INVALID_INPUT', 'not_implemented', { notImplemented: true });
   if (!isRecordsCard(card) && !isAggregateCard(card)) return fail('INVALID_INPUT', 'This card has no data to query');
   if (located.unavailable) {
     return ok({ kind: 'unavailable', message: unavailableMessage(session, located) } satisfies AppCardQueryResult);
@@ -402,7 +419,13 @@ function commentsOn(session: AppSession, card: RecordsLikeCard): boolean {
 const getAppRecord: Handler = async (request, context) => {
   const opened = await openCard(request, context);
   if (!opened.ok) return opened.result;
-  const { session, located, payload } = opened;
+  const { session, payload } = opened;
+  let { located } = opened;
+  if (located.card.kind === 'custom') {
+    const card = customBindingCard(located.card, payload.bindingId);
+    if (!card || !isRecordsCard(card)) return CARD_NOT_FOUND();
+    located = { ...located, card };
+  }
   const read = await reachForRead(context, session, located, positiveInt(payload, 'recordId'));
   if (!read.ok) return read.result;
   const { card, scope, fields, record } = read.reached;

@@ -2,17 +2,22 @@
  * The Phase 2 foundation over HTTP (docs/specs/20261011-tables-apps-advanced.md
  * §8, F2; real PostgreSQL, rolled back per test): writing custom code into an
  * app needs the `apps_custom_code` flag (keeping a colleague's component does
- * not), a spec with custom cards cannot be published until the super review
- * gate exists, custom / external cards answer the placeholder, every Phase 2
- * route is mounted and answers `not_implemented`, the Phase 1 template routes
- * keep working, and nobody can create an `ai` field or write one's value yet.
+ * not). The implemented slices have separate gateway/worker/lifecycle suites.
  */
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { Hono } from 'hono';
 import { _resetProvider, initDatabase, type DatabaseProvider, type UserRow } from '@greenhouse/db';
 import { TEST_DATABASE_URL } from '@greenhouse/db/test-config';
-import type { AppCard, AppDraftView, AppSpec } from '@greenhouse/types/apps';
+import type {
+  AppCard,
+  AppDraftView,
+  AppSpec,
+  AppCustomReviewItem,
+  AppVersionSummary,
+  AppRuntimeView,
+  AppCardQueryResult,
+} from '@greenhouse/types/apps';
 import type { AppEnv } from '../../app-env.js';
 import tablesRoutes from '../tables/index.js';
 import appRoutes from '../apps.js';
@@ -23,6 +28,8 @@ import { createInternalTestUser } from '../../../../../tests/helpers/internal-us
 let db: DatabaseProvider;
 let owner: UserRow;
 let builder: UserRow;
+let admin: UserRow;
+let viewer: UserRow;
 
 let http: Hono<AppEnv>;
 
@@ -40,8 +47,6 @@ async function json<T>(response: Response, status = 200): Promise<T> {
   return body;
 }
 
-const NOT_IMPLEMENTED = { error: 'not_implemented', details: { notImplemented: true } };
-
 beforeEach(async () => {
   _resetProvider();
   db = await initDatabase({ type: 'pg', pgConnectionString: TEST_DATABASE_URL });
@@ -51,8 +56,10 @@ beforeEach(async () => {
       createInternalTestUser(db, { email: `apps-f2-${who}-${tag}@test.local`, nickname: `F2 ${who}` }),
     ),
   );
+  admin = await createInternalTestUser(db, { email: `apps-admin-${tag}@test.local`, role: 'super' });
+  viewer = await createInternalTestUser(db, { email: `apps-viewer-${tag}@test.local` });
   initializePlatformRuntime(db, [tablesRegistration]);
-  const byId = new Map([owner, builder].map((user) => [user.id, user]));
+  const byId = new Map([owner, builder, admin, viewer].map((user) => [user.id, user]));
   http = new Hono<AppEnv>();
   http.use('*', async (c, next) => {
     const user = byId.get(c.req.header('x-test-user') ?? '');
@@ -113,6 +120,40 @@ function specWith(tableId: number, ...cards: AppCard[]): AppSpec {
 }
 
 describe('custom code is opt-in to write (apps_custom_code)', () => {
+  it('checks the custom-code grant when restoring a version into the draft', async () => {
+    const { baseId, tableId, primaryId } = await base();
+    await db.userFeatures.upsert({ user_id: owner.id, feature: 'apps_custom_code', enabled: true });
+    const created = await json<AppDraftView>(
+      await send(owner, '/api/apps', 'POST', {
+        baseId,
+        name: 'Restored board',
+        spec: specWith(tableId, customCard(tableId, primaryId)),
+      }),
+      201,
+    );
+    // A historical version, before the current draft removed its custom code.
+    await db.tables.publishApp(created.app.id, { draftRevision: 1, publishedBy: owner.id });
+    await json(
+      await send(owner, `/api/apps/${created.app.id}/draft`, 'PUT', {
+        spec: specWith(tableId),
+        draftRevision: 1,
+      }),
+    );
+    const path = `/api/apps/${created.app.id}/versions/1/restore`;
+    const refused = await json<{ details: Record<string, unknown> }>(
+      await send(builder, path, 'POST', { draftRevision: 2 }),
+      403,
+    );
+    expect(refused.details).toEqual({ reason: 'feature_disabled', feature: 'apps_custom_code' });
+    expect((await db.tables.getApp(created.app.id))?.draft_revision).toBe(2);
+    await db.userFeatures.upsert({ user_id: builder.id, feature: 'apps_custom_code', enabled: true });
+    const restored = await json<AppDraftView>(await send(builder, path, 'POST', { draftRevision: 2 }));
+    expect(restored.spec.pages[0]!.cards.some((card) => card.kind === 'custom')).toBe(true);
+    // Keeping exactly the same component remains allowed after the grant is removed.
+    await db.userFeatures.upsert({ user_id: builder.id, feature: 'apps_custom_code', enabled: false });
+    expect((await send(builder, path, 'POST', { draftRevision: 3 })).status).toBe(200);
+  });
+
   it('refuses a new or changed component without the flag, and lets anyone keep one', async () => {
     const { baseId, tableId, primaryId } = await base();
     const withCustom = specWith(tableId, customCard(tableId, primaryId));
@@ -148,107 +189,137 @@ describe('custom code is opt-in to write (apps_custom_code)', () => {
   });
 });
 
-describe('placeholders until the slices land', () => {
-  it('cannot publish custom code before the super review gate exists (D10)', async () => {
-    const { baseId, tableId, primaryId } = await base();
+describe('custom component review and binding gateway', () => {
+  async function draft() {
+    const ids = await base();
     await db.userFeatures.upsert({ user_id: owner.id, feature: 'apps_custom_code', enabled: true });
+    const spec = specWith(ids.tableId, customCard(ids.tableId, ids.primaryId));
     const created = await json<AppDraftView>(
-      await send(owner, '/api/apps', 'POST', {
-        baseId,
-        name: 'Board',
-        spec: specWith(tableId, customCard(tableId, primaryId)),
-      }),
+      await send(owner, '/api/apps', 'POST', { baseId: ids.baseId, name: 'Custom', spec }),
       201,
     );
-    const published = await json<{ error: string; details: Record<string, unknown> }>(
-      await send(owner, `/api/apps/${created.app.id}/publish`, 'POST', { draftRevision: 1 }),
-      400,
-    );
-    expect(published).toEqual({
-      error: 'not_implemented',
-      details: { notImplemented: true, reason: 'custom_review' },
-    });
-  });
-
-  it('answers not_implemented for custom and external cards, and on every Phase 2 route', async () => {
-    const { baseId, tableId, primaryId } = await base();
-    await db.userFeatures.upsert({ user_id: owner.id, feature: 'apps_custom_code', enabled: true });
-    const external: AppCard = {
-      id: 'issues',
-      kind: 'external',
-      layout: { x: 0, y: 6, w: 6, h: 4 },
-      source: {
-        kind: 'connector',
-        server: 'github',
-        tool: 'list_issues',
-        input: {},
-        map: { kind: 'kpi', value: '/total_count' },
-      },
-    };
-    const created = await json<AppDraftView>(
-      await send(owner, '/api/apps', 'POST', {
-        baseId,
-        name: 'Board',
-        spec: specWith(tableId, customCard(tableId, primaryId), external),
+    return { ...ids, appId: created.app.id, spec };
+  }
+  async function review(appId: number, version: AppVersionSummary, decision: 'approve' | 'reject' = 'approve') {
+    return json(
+      await send(admin, `/api/apps/${appId}/versions/${version.version}/review`, 'POST', {
+        hash: version.specHash,
+        decision,
       }),
-      201,
     );
-    const appId = created.app.id;
-    for (const cardId of ['timeline', 'issues']) {
-      expect(
-        await json(
-          await send(owner, `/api/apps/${appId}/cards/query`, 'POST', { pageId: 'home', cardId, draft: true }),
-          400,
-        ),
-      ).toEqual(NOT_IMPLEMENTED);
-    }
-
-    const field = await db.tables.createField({
-      table_id: tableId,
-      name: 'Category',
-      type: 'ai',
-      created_by: owner.id,
-    });
-    const routes: Array<[string, string, unknown?]> = [
-      ['GET', '/api/apps/reviews'],
-      ['POST', `/api/apps/${appId}/versions/1/review`, { hash: 'x', decision: 'approve' }],
-      ['POST', '/api/apps/templates', { appId, version: '1.0.0' }],
-      ['GET', '/api/apps/templates/procurement'],
-      ['POST', '/api/apps/templates/procurement/versions', { appId, version: '1.1.0', changelog: 'x' }],
-      ['POST', '/api/apps/templates/procurement/versions/1.0.0/review', { decision: 'approve' }],
-      ['POST', '/api/apps/templates/procurement/archive'],
-      ['POST', `/api/tables/fields/${field.id}/ai/fill`],
-      ['POST', `/api/tables/fields/${field.id}/ai/regenerate`, { recordIds: [1] }],
-      ['GET', `/api/tables/fields/${field.id}/ai/status?recordIds=1,2`],
-    ];
-    for (const [method, path, body] of routes) {
-      expect(await json(await send(owner, path, method, body), 400), `${method} ${path}`).toEqual(NOT_IMPLEMENTED);
-    }
-  });
-
-  it('keeps the Phase 1 template catalog working', async () => {
-    const list = await json<{ templates: Array<{ key: string }> }>(await send(owner, '/api/apps/templates'));
-    expect(list.templates.map((template) => template.key)).toEqual(['procurement', 'it-tickets']);
-  });
-
-  it('refuses to create an ai field, and its value is never writable', async () => {
-    const { tableId } = await base();
+  }
+  it('stages an immutable review without moving the live pointer and revokes all copies of a hash', async () => {
+    const p = await draft();
+    await json(
+      await send(owner, `/api/apps/${p.appId}/audiences`, 'PUT', {
+        entries: [{ principal: { type: 'user', userId: viewer.id }, roleKey: 'member' }],
+        audiencesRevision: 1,
+      }),
+    );
+    const staged = await json<{ pendingReview: boolean; version: AppVersionSummary }>(
+      await send(owner, `/api/apps/${p.appId}/publish`, 'POST', { draftRevision: 1 }),
+    );
+    expect(staged.pendingReview).toBe(true);
+    expect((await db.tables.getApp(p.appId))?.published_version).toBeNull();
+    expect((await send(viewer, `/api/apps/${p.appId}`)).status).toBe(404);
+    expect((await send(owner, '/api/apps/reviews')).status).toBe(403);
+    const queue = await json<{ items: AppCustomReviewItem[] }>(await send(admin, '/api/apps/reviews'));
+    expect(queue.items.find((item) => item.app.id === p.appId)?.cards[0]?.bindings[0]?.id).toBe('rows');
     expect(
-      await json(
-        await send(owner, `/api/tables/tables/${tableId}/fields`, 'POST', { name: 'Category', type: 'ai' }),
-        400,
-      ),
-    ).toEqual(NOT_IMPLEMENTED);
-    const field = await db.tables.createField({
-      table_id: tableId,
-      name: 'Category',
-      type: 'ai',
-      created_by: owner.id,
-    });
-    const written = await json<{ error: string }>(
-      await send(owner, `/api/tables/tables/${tableId}/records`, 'POST', { values: { [field.id]: 'bug' } }),
-      400,
+      (
+        await send(admin, `/api/apps/${p.appId}/versions/1/review`, 'POST', {
+          hash: 'a'.repeat(64),
+          decision: 'approve',
+        })
+      ).status,
+    ).toBe(409);
+    await review(p.appId, staged.version);
+    expect((await send(viewer, `/api/apps/${p.appId}`)).status).toBe(404);
+    const active = await json<{ pendingReview?: boolean; version: AppVersionSummary }>(
+      await send(owner, `/api/apps/${p.appId}/publish`, 'POST', { draftRevision: 1 }),
     );
-    expect(written.error).toMatch(/computed/);
+    expect(active.pendingReview).toBeUndefined();
+    expect(active.version.version).toBeGreaterThan(staged.version.version);
+    expect((await send(viewer, `/api/apps/${p.appId}`)).status).toBe(200);
+    await review(p.appId, staged.version, 'reject');
+    expect((await send(viewer, `/api/apps/${p.appId}`)).status).toBe(404);
+  });
+
+  it('requires review when private code gains an audience and preserves the old live version on an edit', async () => {
+    const p = await draft();
+    const live = await json<{ version: AppVersionSummary }>(
+      await send(owner, `/api/apps/${p.appId}/publish`, 'POST', { draftRevision: 1 }),
+    );
+    const audience = { entries: [{ principal: { type: 'team' }, roleKey: 'member' }], audiencesRevision: 1 };
+    expect((await send(owner, `/api/apps/${p.appId}/audiences`, 'PUT', audience)).status).toBe(403);
+    await review(p.appId, live.version);
+    await json(await send(owner, `/api/apps/${p.appId}/audiences`, 'PUT', audience));
+    const edited = specWith(p.tableId, customCard(p.tableId, p.primaryId, '<p>New code</p>'));
+    await json(await send(owner, `/api/apps/${p.appId}/draft`, 'PUT', { spec: edited, draftRevision: 1 }));
+    const staged = await json<{ pendingReview: boolean }>(
+      await send(owner, `/api/apps/${p.appId}/publish`, 'POST', { draftRevision: 2 }),
+    );
+    expect(staged.pendingReview).toBe(true);
+    const view = await json<AppRuntimeView>(await send(viewer, `/api/apps/${p.appId}`));
+    expect(view.version).toBe(live.version.version);
+    const queue = await json<{ items: AppCustomReviewItem[] }>(await send(admin, '/api/apps/reviews'));
+    expect(
+      queue.items.find((item) => item.app.id === p.appId && item.review.status === 'pending')?.previous?.version,
+    ).toBe(live.version.version);
+  });
+
+  it('queries only a stored binding, trims fields, and executes only declared actions at the confirmed version', async () => {
+    const p = await draft();
+    const card = p.spec.pages[0]!.cards[1]!;
+    if (card.kind !== 'custom') throw new Error('fixture');
+    card.actions = [
+      {
+        id: 'rename',
+        label: 'Rename',
+        bindingId: 'rows',
+        do: { type: 'set_fields', values: [], inputFieldIds: [p.primaryId] },
+      },
+    ];
+    p.spec.roles[0]!.tables[0]!.access = 'edit';
+    p.spec.roles[0]!.tables[0]!.fieldDefault = 'visible';
+    const saved = await json<AppDraftView>(
+      await send(owner, `/api/apps/${p.appId}/draft`, 'PUT', { spec: p.spec, draftRevision: 1 }),
+    );
+    expect(saved.errors).toEqual([]);
+    const record = await json<{ record: { id: number; revision: number } }>(
+      await send(owner, `/api/tables/tables/${p.tableId}/records`, 'POST', { values: { [p.primaryId]: 'First' } }),
+      201,
+    );
+    const query = { pageId: 'home', cardId: 'timeline', bindingId: 'rows', draft: true };
+    const rows = await json<AppCardQueryResult>(await send(owner, `/api/apps/${p.appId}/cards/query`, 'POST', query));
+    expect(rows.kind).toBe('records');
+    if (rows.kind !== 'records') throw new Error('fixture');
+    expect(rows.records[0]?.values).toEqual({ [p.primaryId]: 'First' });
+    expect(rows.records[0]?.actionIds).toEqual(['rename']);
+    expect(
+      (await send(owner, `/api/apps/${p.appId}/cards/query`, 'POST', { ...query, bindingId: 'invented' })).status,
+    ).toBe(404);
+    const action = {
+      ...query,
+      recordId: record.record.id,
+      revision: record.record.revision,
+      requestId: 'custom-action-1',
+      actionId: 'rename',
+      values: [{ fieldId: p.primaryId, value: 'Second' }],
+    };
+    expect((await send(owner, `/api/apps/${p.appId}/actions`, 'POST', { ...action, actionId: '$edit' })).status).toBe(
+      403,
+    );
+    expect(
+      (await send(owner, `/api/apps/${p.appId}/actions`, 'POST', { ...action, expectedSpecToken: 'draft:1' })).status,
+    ).toBe(409);
+    const view = await json<AppRuntimeView>(await send(owner, `/api/apps/${p.appId}?draft=1`));
+    expect(view.specToken).toBe('draft:2');
+    await json(
+      await send(owner, `/api/apps/${p.appId}/actions`, 'POST', { ...action, expectedSpecToken: view.specToken }),
+    );
+    expect(
+      await json<AppCardQueryResult>(await send(owner, `/api/apps/${p.appId}/cards/query`, 'POST', query)),
+    ).toMatchObject({ kind: 'records', records: [{ values: { [p.primaryId]: 'Second' } }] });
   });
 });

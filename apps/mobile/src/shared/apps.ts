@@ -653,6 +653,8 @@ export interface AppIssue {
 /** What a viewer receives: the published spec trimmed to their role, plus field metadata to render it. */
 export interface AppRuntimeView {
   app: AppSummary;
+  /** Pins a host confirmation to this definition; old servers may omit it. */
+  specToken?: string;
   /** The published version shown; 0 for a manager's draft preview (`draft: true`). */
   version: number;
   /** Set when a manager previews the draft instead of the published version (added in F1; additive). */
@@ -716,6 +718,8 @@ export interface AppActionInput {
   /** Input field values for set_fields actions, create values for create actions. */
   values?: TableFieldValueEntry[];
   requestId: string;
+  /** Refuse if the definition changed since the host displayed its confirmation. */
+  expectedSpecToken?: string;
   /** `$create` from a `create_record` button. */
   buttonId?: string;
   /** Managers only: act as this role (writes still run as the manager). */
@@ -909,6 +913,8 @@ export type AppSourceErrorReason = 'failed' | 'timeout' | 'too_large' | 'not_rea
 
 /** `POST /api/apps/:id/records/get`. */
 export interface AppRecordGetInput {
+  /** Custom cards: the stored records binding to open. */
+  bindingId?: string;
   pageId: string;
   cardId: string;
   recordId: number;

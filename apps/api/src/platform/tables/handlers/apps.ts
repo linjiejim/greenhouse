@@ -54,6 +54,7 @@ import {
   type BaseAccessGrant,
 } from '../access.js';
 import { viewerRolesForApps } from '../app-audience.js';
+import { audiencesNeedCustomReview, customVersionApproved, hasCustomCards } from '../app-custom-review.js';
 import { loadAppSpecSchema, parseStoredAppSpec, revalidateSpec, validateAppSpec } from '../app-spec.js';
 import { appRuntimeView, appSummary } from '../app-view.js';
 import { appGatewayHandlers, roleAppView, viewerSummary } from './app-gateway.js';
@@ -295,7 +296,7 @@ export function customReviewView(
   };
 }
 
-function versionSummary(
+export function versionSummary(
   row: {
     version: number;
     notes: string | null;
@@ -358,15 +359,6 @@ async function customCodeRefusal(
   });
 }
 
-/**
- * Phase 2 foundation: a spec with custom cards cannot be published until the
- * super review gate (D10, slice S) exists — the version would reach its
- * audience unreviewed. Slice S replaces this with the `custom_review` check.
- */
-export function customCardsBlockPublish(spec: AppSpec): boolean {
-  return spec.pages.some((page) => page.cards.some((card) => card.kind === 'custom'));
-}
-
 // ─── Management handlers ──────────────────────────────────
 
 /** `GET /api/apps`: managed, shared with me, recommended. */
@@ -409,7 +401,9 @@ const getApp: Handler = async (request, context) => {
     schema,
     issues: await revalidateSpec(spec, schema),
   });
-  return view ? ok(view) : fail('INVALID_INPUT', 'The stored spec is not a valid app spec');
+  return view
+    ? ok({ ...view, specToken: useDraft ? `draft:${app.draft_revision}` : `version:${app.published_version}` })
+    : fail('INVALID_INPUT', 'The stored spec is not a valid app spec');
 };
 
 const createApp: Handler = async (request, context) => {
@@ -523,15 +517,25 @@ const publishApp: Handler = async (request, context) => {
         checked && !checked.ok ? checked.errors : [{ path: '', message: 'The stored draft is not a valid app spec' }],
     });
   }
-  if (customCardsBlockPublish(checked.spec)) {
-    return fail('INVALID_INPUT', 'not_implemented', { notImplemented: true, reason: 'custom_review' });
-  }
+  const customCode = hasCustomCards(checked.spec)
+    ? {
+        requireReview: await audiencesNeedCustomReview(
+          context.db,
+          access.app,
+          await context.db.tables.listAppAudiences(access.app.id),
+        ),
+      }
+    : undefined;
   const published = await context.db.tables.publishApp(access.app.id, {
     draftRevision,
     notes: nullableString(payload, 'notes'),
     publishedBy: effectiveUserId(request.actor),
+    audiencesRevision: access.app.audiences_revision,
+    customCode,
   });
   if (!published.ok) {
+    if (published.reason === 'audiences_changed')
+      return fail('CONFLICT', 'Sharing changed; reload before publishing', { reason: 'audiences_conflict' });
     return published.reason === 'conflict'
       ? fail('CONFLICT', 'The draft changed since you loaded it', {
           reason: 'draft_conflict',
@@ -543,6 +547,7 @@ const publishApp: Handler = async (request, context) => {
   return ok({
     app: await summaryFor(context, request.actor, { ...access, app: published.app }),
     version: versionSummary(published.version, names),
+    ...(published.pendingReview ? { pendingReview: true } : {}),
   });
 };
 
@@ -561,6 +566,12 @@ const restoreAppVersion: Handler = async (request, context) => {
   if (!version || !draftRevision) return fail('INVALID_INPUT', 'version and draftRevision are required');
   const access = await appWithAccess(context, request.actor, positiveInt(payload, 'appId'), 'builder');
   if (!access) return fail('NOT_FOUND', 'App not found');
+  const target = await context.db.tables.getAppVersion(access.app.id, version);
+  if (!target) return fail('NOT_FOUND', 'Version not found');
+  const spec = parseStoredAppSpec(target.spec);
+  if (!spec) return fail('INVALID_INPUT', 'The stored spec is not a valid app spec');
+  const refused = await customCodeRefusal(context, request.actor, parseStoredAppSpec(access.app.draft_spec), spec);
+  if (refused) return refused;
   const restored = await context.db.tables.restoreAppVersion(access.app.id, { version, draftRevision });
   if (!restored.ok) {
     if (restored.reason === 'conflict') {
@@ -647,12 +658,26 @@ const setAppAudiences: Handler = async (request, context) => {
     if (typeof row === 'string') return fail('INVALID_INPUT', row);
     rows.push(row);
   }
+  const version = access.app.published_version
+    ? await context.db.tables.getAppVersion(access.app.id, access.app.published_version)
+    : undefined;
+  if (
+    version &&
+    specs.live &&
+    !customVersionApproved(specs.live, version) &&
+    (await audiencesNeedCustomReview(context.db, access.app, rows))
+  ) {
+    return fail('FORBIDDEN', 'Custom components need administrator review before sharing', { reason: 'custom_review' });
+  }
   const replaced = await context.db.tables.replaceAppAudiences(access.app.id, {
     entries: rows,
     audiencesRevision,
+    publishedVersion: access.app.published_version,
     createdBy: effectiveUserId(request.actor),
   });
   if (!replaced.ok) {
+    if (replaced.reason === 'publication_changed')
+      return fail('CONFLICT', 'The published version changed; reload before sharing', { reason: 'custom_review' });
     return replaced.reason === 'conflict'
       ? fail('CONFLICT', 'The audience changed since you loaded it', {
           reason: 'audiences_conflict',

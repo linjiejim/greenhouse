@@ -19,7 +19,7 @@ import type {
   AppSummary,
   AppVersionSummary,
 } from '@greenhouse/types/apps';
-import { Button, Dialog, Spinner, Tag, Textarea } from '../../../components/ui';
+import { Button, Dialog, Spinner, Tag, Textarea, toast } from '../../../components/ui';
 import { FormActions, FormError, FormField } from '../../../components/form';
 import {
   getAppAudiences,
@@ -236,7 +236,10 @@ export function PublishDialog({
     setFailedErrors([]);
     try {
       const result = await publishApp(app.id, { draftRevision: revision(), notes: notes.trim() || null });
-      onPublished(result.app, result.version);
+      if (result.pendingReview) {
+        toast(t('apps.sandbox.pendingPublish'), 'info');
+        onClose();
+      } else onPublished(result.app, result.version);
     } catch (error) {
       if (isRevisionConflict(error)) {
         onConflict();

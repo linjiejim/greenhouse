@@ -1,3 +1,5 @@
+import { useAuthStore } from '../../../stores';
+import { canUseFeature } from '../../../lib/features';
 /**
  * The card catalog: every `AppCardKind`, what it is for, and — when the Base
  * cannot host it yet — why (no table; no choice / person field for a board; no
@@ -58,37 +60,40 @@ export function CardCatalog({
   schema: BuilderSchema;
 }) {
   const t = useT();
+  const user = useAuthStore((state) => state.currentUser);
   return (
     <Dialog open={open} onClose={onClose} title={t('apps.builder.catalog.title')} size="lg">
       <p className="mb-3 text-xs text-fg-muted">{t('apps.builder.catalog.intro')}</p>
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2" data-testid="app-card-catalog">
-        {CATALOG_CARD_KINDS.map((kind) => {
-          const Icon = CARD_KIND_ICONS[kind];
-          const blocker = catalogBlocker(kind, schema);
-          return (
-            <button
-              key={kind}
-              type="button"
-              disabled={blocker !== null}
-              onClick={() => onPick(kind)}
-              data-testid={`app-catalog-${kind}`}
-              className="flex min-h-11 items-start gap-3 rounded-lg border border-edge bg-surface-card p-3 text-left transition-colors hover:border-primary-edge hover:bg-surface-muted disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:border-edge disabled:hover:bg-surface-card"
-            >
-              <span className="mt-0.5 inline-flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-primary-subtle text-primary-fg">
-                <Icon size={16} />
-              </span>
-              <span className="min-w-0">
-                <span className="block text-sm font-semibold text-fg">
-                  {t(`apps.builder.catalog.kinds.${kind}.name`)}
+        {CATALOG_CARD_KINDS.filter((kind) => kind !== 'custom' || canUseFeature(user, 'apps_custom_code')).map(
+          (kind) => {
+            const Icon = CARD_KIND_ICONS[kind];
+            const blocker = catalogBlocker(kind, schema);
+            return (
+              <button
+                key={kind}
+                type="button"
+                disabled={blocker !== null}
+                onClick={() => onPick(kind)}
+                data-testid={`app-catalog-${kind}`}
+                className="flex min-h-11 items-start gap-3 rounded-lg border border-edge bg-surface-card p-3 text-left transition-colors hover:border-primary-edge hover:bg-surface-muted disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:border-edge disabled:hover:bg-surface-card"
+              >
+                <span className="mt-0.5 inline-flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-primary-subtle text-primary-fg">
+                  <Icon size={16} />
                 </span>
-                <span className="block text-xs leading-4 text-fg-muted">
-                  {t(`apps.builder.catalog.kinds.${kind}.description`)}
+                <span className="min-w-0">
+                  <span className="block text-sm font-semibold text-fg">
+                    {t(`apps.builder.catalog.kinds.${kind}.name`)}
+                  </span>
+                  <span className="block text-xs leading-4 text-fg-muted">
+                    {t(`apps.builder.catalog.kinds.${kind}.description`)}
+                  </span>
+                  {blocker && <span className="mt-1 block text-[11px] text-warning">{t(BLOCKER_KEYS[blocker])}</span>}
                 </span>
-                {blocker && <span className="mt-1 block text-[11px] text-warning">{t(BLOCKER_KEYS[blocker])}</span>}
-              </span>
-            </button>
-          );
-        })}
+              </button>
+            );
+          },
+        )}
       </div>
     </Dialog>
   );

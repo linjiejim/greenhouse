@@ -342,3 +342,8 @@ export async function sessionPageControls(
   const controls = (page.filters ?? []).filter((control) => !brokenFilters.has(control.id));
   return trimFilterControlsForReader(controls, readable);
 }
+
+/** A definition token, independent of the role-trimmed wire view. */
+export function appSessionSpecToken(session: AppSession): string {
+  return session.draft ? `draft:${session.app.draft_revision}` : `version:${session.version}`;
+}

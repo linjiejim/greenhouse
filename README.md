@@ -123,7 +123,11 @@ same script doubles as an end-to-end smoke tour (see [Development](#development)
   from the app center and the drawer's Apps section — and every read and write goes through the
   app's own gateway, so an app never shows more than its role allows.
   Archiving a table or field, removing options or deleting an automation an app uses asks first
-  and lists the apps.
+  and lists the apps. Custom component authors need the opt-in `apps_custom_code` grant;
+  code and bindings can be edited and immutable versions reviewed by an administrator.
+  Sharing those versions outside Base managers requires approval of the exact version hash.
+  **Custom HTML execution remains disabled on web and mobile**: nested-frame WebRTC isolation
+  is not yet enforceable. Approval does not enable execution.
 - **Home workbench** — a personal dashboard of live cards backed by the same tools (recipes and
   templates), editable by drag-and-drop or by asking the agent.
 - **Execution center** — one surface for every durable run: automations (cron), missions,

@@ -1,3 +1,4 @@
+import { CustomReviewsDialog } from './custom-reviews-dialog';
 /**
  * The app center (`#/apps`, spec 20261011-tables-apps §6): the member's three
  * shelves — managed by me, shared with me, featured — from `GET /api/apps`,
@@ -84,6 +85,7 @@ export function AppCenterPage() {
   const status = useAppsStore((state) => state.status);
   const load = useAppsStore((state) => state.load);
   const [templates, setTemplates] = useState<AppTemplateSummary[]>([]);
+  const [reviews, setReviews] = useState(false);
   const [dialog, setDialog] = useState<OpenDialog>(null);
 
   // Opening the center always asks again: shelves change as people share and publish.
@@ -111,7 +113,16 @@ export function AppCenterPage() {
     <ModulePage
       moduleId="workspace.apps"
       layout="list"
-      toolbar={<EntryPoints canBuild={canBuild} templates={templates} onOpen={setDialog} />}
+      toolbar={
+        <div className="flex flex-wrap gap-2">
+          <EntryPoints canBuild={canBuild} templates={templates} onOpen={setDialog} />
+          {currentUser?.role === 'super' && (
+            <Button variant="outline" size="sm" onClick={() => setReviews(true)} data-testid="app-center-reviews">
+              {t('apps.sandbox.reviews')}
+            </Button>
+          )}
+        </div>
+      }
       notice={
         status === 'error' ? (
           <div className="flex items-center justify-between gap-3 rounded-md border border-danger bg-danger-subtle px-4 py-2 text-xs text-danger">
@@ -154,6 +165,7 @@ export function AppCenterPage() {
           ))}
         </div>
       )}
+      {reviews && <CustomReviewsDialog onClose={() => setReviews(false)} />}
       {dialog === 'new' && (
         <CreateAppDialog
           open

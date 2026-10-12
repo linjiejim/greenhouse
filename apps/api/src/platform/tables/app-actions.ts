@@ -1,3 +1,4 @@
+import { appSessionSpecToken } from './app-session.js';
 /**
  * App writes — `POST /api/apps/:id/actions` (docs/specs/20261011-tables-apps.md
  * §3 动作授权, D8). One entry for declared actions (`set_fields`, `delete`,
@@ -45,6 +46,7 @@ import type { TableDataScope, TableRowScope } from '@greenhouse/types/table-acce
 import type { TableFieldValueEntry, TableFilterGroup, TableRecordValues } from '@greenhouse/types/tables';
 import type { PlatformActionResult } from '@greenhouse/platform-kernel';
 import { cardReadScope } from './app-audience.js';
+import { customBindingCard } from './app-custom-bindings.js';
 import { appRecordRow, availableActionIds, usableActions } from './app-records.js';
 import {
   cardActions,
@@ -96,6 +98,13 @@ export interface CardWriteTarget {
 export function cardWriteTargets(session: AppSession, located: LocatedCard, buttonId?: string): CardWriteTarget[] {
   const { card, page } = located;
   const out: CardWriteTarget[] = [];
+  if (card.kind === 'custom') {
+    for (const binding of card.bindings) {
+      const adapted = customBindingCard(card, binding.id);
+      if (adapted && isRecordsCard(adapted)) out.push(...cardWriteTargets(session, { ...located, card: adapted }));
+    }
+    return out;
+  }
   if (card.kind === 'form' && sessionRoleAllows(session, card.roles)) {
     out.push({ tableId: card.tableId, op: 'create', fieldIds: card.fieldIds });
   }
@@ -612,6 +621,9 @@ export async function runSessionAction(
   located: LocatedCard,
   payload: Record<string, unknown>,
 ): Promise<PlatformActionResult> {
+  if (payload.expectedSpecToken !== undefined && payload.expectedSpecToken !== appSessionSpecToken(session)) {
+    return fail('CONFLICT', 'The app changed; reopen the action confirmation', { reason: 'spec_changed' });
+  }
   const actionId = typeof payload.actionId === 'string' ? payload.actionId : '';
   const requestId = typeof payload.requestId === 'string' ? payload.requestId : '';
   if (!actionId) return fail('INVALID_INPUT', 'actionId is required');
@@ -630,6 +642,15 @@ export async function runSessionAction(
       ? payload.revision
       : undefined;
   const buttonId = typeof payload.buttonId === 'string' && payload.buttonId ? payload.buttonId : undefined;
+  if (located.card.kind === 'custom') {
+    const custom = located.card;
+    const action = custom.actions?.find((entry) => entry.id === actionId);
+    if (actionId !== '$create' && (!action || action.do.type === 'delete')) return NOT_ALLOWED();
+    const bindingId = actionId === '$create' ? custom.create?.bindingId : action?.bindingId;
+    const card = customBindingCard(custom, bindingId);
+    if (!card || !isRecordsCard(card)) return NOT_ALLOWED();
+    located = { ...located, card };
+  }
   const plan = planFor(session, located, actionId, buttonId);
   if (!isPlan(plan)) return plan;
 

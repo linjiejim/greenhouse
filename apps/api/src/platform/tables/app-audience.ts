@@ -34,6 +34,7 @@ import {
 } from '@greenhouse/types/table-access';
 import { userHasFeature } from '../../auth/features.js';
 import { parseStoredAppSpec } from './app-spec.js';
+import { customVersionApproved } from './app-custom-review-status.js';
 import { cardShownFieldIds, isRecordsCard, queryFieldIds, queryRowScopes, type RecordsLikeCard } from './app-scope.js';
 
 type AudienceContext = { db: DatabaseProvider };
@@ -43,6 +44,7 @@ export interface LiveApp {
   base: TableBaseRow;
   version: number;
   spec: AppSpec;
+  customApproved: boolean;
 }
 
 const EMPTY_RULES: TableAccessRules = { version: 1, tables: [], dashboards: 'none' };
@@ -63,7 +65,9 @@ export async function liveAppOf(
   ]);
   if (!base || base.archived_at || !version) return undefined;
   const spec = parseStoredAppSpec(version.spec);
-  return spec ? { app, base, version: version.version, spec } : undefined;
+  return spec
+    ? { app, base, version: version.version, spec, customApproved: customVersionApproved(spec, version) }
+    : undefined;
 }
 
 /** Every live app on a Base. */
@@ -96,6 +100,7 @@ export function pickViewerRole(
 
 /** The person's role in a live app, or undefined (not in the audience, or their entry names a gone role). */
 export async function viewerRoleIn(db: DatabaseProvider, live: LiveApp, userId: string): Promise<AppRole | undefined> {
+  if (!live.customApproved) return undefined;
   return pickViewerRole(live.spec, await db.tables.listAudienceMatches(live.app.id, userId));
 }
 
@@ -121,12 +126,13 @@ export async function viewerRolesForApps(
   ]);
   for (const version of versions) {
     const spec = parseStoredAppSpec(version.spec);
-    const role = spec
-      ? pickViewerRole(
-          spec,
-          matches.filter((row) => row.app_id === version.app_id),
-        )
-      : undefined;
+    const role =
+      spec && customVersionApproved(spec, version)
+        ? pickViewerRole(
+            spec,
+            matches.filter((row) => row.app_id === version.app_id),
+          )
+        : undefined;
     if (role) roles.set(version.app_id, role);
   }
   return roles;
