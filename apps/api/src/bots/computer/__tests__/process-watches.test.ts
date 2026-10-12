@@ -95,6 +95,7 @@ describe('process watches', () => {
         'sess_u1',
         {
           kind: 'continue',
+          author_user_id: 'u1',
           botId: 'bot_u1',
           note: expect.stringContaining('ended with exit code 2'),
         },

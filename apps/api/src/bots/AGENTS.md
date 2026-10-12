@@ -243,6 +243,7 @@ bots/
   `daily_cap` 不调模型；审计行为者 `bot:<id>`、代表负责人、`requested_by_user_id` = 使用者。不能邀请客串（409 `public_agent`）；
   下线 / 暂停 / 移出受众 → 发消息 409 `agent_unavailable`，`GET /api/bots` 的 `shared_bots` 带 `available:false`（`computer` = 负责人是否授权了电脑，客户端据此显示电脑入口）。替使用者做的操作在负责人的「操作记录」里不带对话链接（`session_id: null`）。
   负责人看用量（全部使用者）、操作记录、反馈（`bot_feedback`：评分 + 使用者写的一句话），不看原文；管理员 `/api/admin/agents` 只能暂停 / 恢复。
+  公开面的知识库每次执行都经 `runKnowledgeAgentAction` 以负责人当前能力鉴权并审计，再重新读取发布状态、受众、授权子树和 `resolveKbAccess` 文档权限；不能缓存整轮的授权或借用使用者权限。
   第一版授权只有知识库文件夹（只读）+ 电脑开关；项目 / 表格的记录级授权留作后续（D36）。
 - **多人对话 room（P5，2026-10-12，[spec](../../../../docs/specs/20261011-agent-first-class.md) §5d / D42–D47）**：同一张
   `bot_conversations`，`kind = 'room'`，`user_id` = 创建者（离开 / 账号删除时交给最早加入的人，`sessions.user_id` 同步），人在
@@ -252,6 +253,7 @@ bots/
   **能 @ 的** Agent（`room-access.ts`：自己的、或受众含他的公开 Agent），**以作者为 `rc.user` 的那一轮**回答——权限、卡片、额度都是他的。
   别人的回合正在跑时，你的消息照常写进去，你的 @ 变成 `mention` 收件项、在那一轮结束后以你为 `rc.user` 另起一轮
   （`drainIdleConversation` 的 `roomRunUser` 按队首作者认领）；别人的消息不会软停你的 Agent（`memberMessageQueued(…, author)`）。
+  电脑交还、登录决定、进程结束和新 Agent 加入的 `continue.author_user_id` 必须带实际请求人；空闲与忙碌队列都按此人续跑。已离开者的续跑被消费，旧的无作者 room 续跑被隔离，不能回退成房间创建者；普通私聊保持兼容。
   投影：发问者是 `[名字 (user)]`，其他人是 `[名字 (participant)]`——只是信息；S1 有 room 版说明，S3（成员私人备注）不放；
   room 里没有 `team` 和 `bot_tasks`。推送（`bots:conversation`、`chat:run`，后者带 `userId` = 发问者）经 `engine/fanout.ts` 发给全部
   参与者，参与者能探测 / 接上正在跑的回合（`canPostToSession`；探测结果带 `run.user_id`），只有发问者能停。room 的成员视图按读者算：

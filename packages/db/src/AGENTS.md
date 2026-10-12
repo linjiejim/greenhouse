@@ -320,3 +320,7 @@
 
 - `bots-privacy.ts` 是 session 列表、旧分享与 Runtime 的共同 SQL 边界。对外 session 列表必须传 `viewerUserId`；Runtime 列表/详情/审批/统计必须传 `viewer_user_id` 或对应方法的 viewer 参数，在 LIMIT/游标/COUNT 前过滤。引擎内部查询可省略，不把该可见性过滤当成通用授权。
 - Runtime 独立于 session 的生命周期：`source_id=bots:*`、`source_id/session_id=bottask-*`、`input.source_mode=bots` 的记录始终只有 owner 可见，即使原 session 已删除。不要只用活着的 session JOIN 判断。
+
+- **主 Agent 并发首次访问**：`createBot({ builtIn: true, template_key: "sprouty" })` 在事务中锁住成员行并复查当前主 Agent，以身份幂等；不同入口选出不同显示名、跨 API 进程并发，也只能返回同一个活跃 Sprouty。
+
+- 知识库 `list` / `search` / `searchLike` 的 `readerUserId` 在 SQL 的 LIMIT 前限制为自己的、团队可见、或仍有个人/群组共享的私有文档（匹配 `resolveKbAccess`）；公开 Agent 还要交集授权文件夹。不可先截断候选再仅在应用层滤权限，否则隐藏文档会挤掉合法结果。

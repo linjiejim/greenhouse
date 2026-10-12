@@ -216,19 +216,19 @@ describe('E2E: Session Cross-User Isolation', () => {
     expect([403, 404]).toContain(patchRes.status);
   });
 
-  it('super user can access any session', async () => {
+  it('super cannot read another member’s session by default', async () => {
     const createRes = await fetch(`${BASE_URL}/api/sessions`, {
       method: 'POST',
       headers: h(memberTokenA),
       body: JSON.stringify({ profile_id: 'team' }),
     });
     const session = await createRes.json();
-    sessionsToClean.push({ id: session.id, token: superToken });
+    sessionsToClean.push({ id: session.id, token: memberTokenA });
 
     const getRes = await fetch(`${BASE_URL}/api/sessions/${session.id}`, {
       headers: h(superToken),
     });
-    expect(getRes.status).toBe(200);
+    expect(getRes.status).toBe(404);
   });
 });
 

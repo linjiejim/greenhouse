@@ -22,7 +22,7 @@ export type InboxItem =
   /** A system line in the transcript (role `system`, `bot_event` set). */
   | { kind: 'event'; text: string; event: BotEvent; botId?: string | null }
   /** Wake a Bot to continue (after a hand-back, an approval, a created Bot joining…). */
-  | { kind: 'continue'; botId: string; note: string; eventText?: string; event?: BotEvent }
+  | { kind: 'continue'; botId: string; note: string; author_user_id?: string; eventText?: string; event?: BotEvent }
   /** A background task finished: the Bot reports, then nothing else runs. */
   | {
       kind: 'task_report';

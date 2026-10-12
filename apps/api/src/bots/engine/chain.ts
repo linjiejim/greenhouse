@@ -320,13 +320,23 @@ async function drainInbox(
       await quarantineMalformed(rc.db, rc.sessionId, row);
       continue;
     }
+    if (rc.people !== null && item.kind === 'continue') {
+      if (typeof item.author_user_id !== 'string') {
+        await quarantineMalformed(rc.db, rc.sessionId, row);
+        continue;
+      }
+      if (!(await rc.db.bots.isParticipant(rc.sessionId, item.author_user_id))) {
+        await rc.db.bots.consumeInbox(row.id);
+        continue;
+      }
+    }
     // In a room this run is one person's (P5): someone else's message is written now (it is not a
     // turn of this run), and its @-mentions wait for a run of their own after this one.
     const foreign =
       rc.people !== null &&
-      (item.kind === 'user_message' || item.kind === 'mention') &&
+      (item.kind === 'user_message' || item.kind === 'mention' || item.kind === 'continue') &&
       (item.author_user_id ?? rc.user.id) !== rc.user.id;
-    if (foreign && item.kind === 'mention') break;
+    if (foreign && (item.kind === 'mention' || item.kind === 'continue')) break;
     if (!foreign) {
       if (isTrigger(row) && mode === 'writes') break;
       if ((row.kind === 'user_message' || row.kind === 'mention') && mode === 'stop') break;

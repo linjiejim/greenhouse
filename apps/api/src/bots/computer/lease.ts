@@ -133,6 +133,7 @@ async function settleAndContinue(
     if (request.bot_id) {
       await deliverToConversation(request.session_id, {
         kind: 'continue',
+        author_user_id: request.user_id,
         botId: request.bot_id,
         note: outcome.status === 'resolved' ? BOT_NOTE.handback(outcome.note) : BOT_NOTE.skipped(),
         eventText: text,

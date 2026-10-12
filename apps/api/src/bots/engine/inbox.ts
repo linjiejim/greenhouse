@@ -156,18 +156,20 @@ export async function drainIdleConversation(sessionId: string, db: DatabaseProvi
 }
 
 /**
- * Whose run a room's queue needs next (P5): the author of its first member message or mention.
- * A mention by someone no longer in the room is dropped (nobody may answer it any more); a wake-up
- * or a write runs for the room's owner.
+ * Whose run a room's queue needs next: the author of its first message, mention or wake-up.
+ * Unattributed room wake-ups and triggers by departed participants cannot run as the owner.
  */
 async function roomRunUser(db: DatabaseProvider, sessionId: string, ownerId: string): Promise<string> {
   for (const row of await db.bots.listPendingInbox(sessionId)) {
     if (row.kind !== 'user_message' && row.kind !== 'mention' && row.kind !== 'continue') continue;
-    if (row.kind === 'continue') return ownerId;
     const author = (safeJsonParse(row.payload, {}) as { author_user_id?: unknown }).author_user_id;
+    if (row.kind === 'continue' && typeof author !== 'string') {
+      await db.bots.quarantineInbox(row.id);
+      continue;
+    }
     if (typeof author !== 'string') return ownerId;
     if (await db.bots.isParticipant(sessionId, author)) return author;
-    if (row.kind === 'mention') {
+    if (row.kind === 'mention' || row.kind === 'continue') {
       await db.bots.consumeInbox(row.id);
       continue;
     }

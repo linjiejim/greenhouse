@@ -233,6 +233,51 @@ describe('rooms: who answers', () => {
     expect(Object.keys(ivyTurn.tools ?? {})).not.toContain('bot_tasks');
   });
 
+  it.each([false, true])('resumes a participant’s Agent as that participant (room busy: %s)', async (busy) => {
+    const captured: CapturedTurn[] = [];
+    useScript({ Sage: [[{ text: 'Continued for Ana.' }]] }, captured);
+    const id = await roomWithAgents();
+    const run = busy ? (await claimBotsRun(db, id, jim.id))! : null;
+    await deliverToConversation(id, {
+      kind: 'continue',
+      botId: sage.id,
+      author_user_id: ana.id,
+      note: 'The member handed the computer back.',
+    });
+    if (run) {
+      const latest = await db.sessions.getLatestMessage(id);
+      await runBotsRun({
+        run,
+        userId: jim.id,
+        sessionId: id,
+        toolRegistry: {},
+        trigger: { kind: 'continue', items: [] },
+        triggerKey: latest!.id,
+        db,
+      });
+    }
+    await settled(id);
+    expect(captured.map((turn) => turn.bot)).toEqual(['Sage']);
+    expect(captured[0]!.input.systemPrompt).toContain('Ana');
+    const { connectionManager } = await import('../../ws/connection-manager.js');
+    expect(
+      vi
+        .mocked(connectionManager.sendToUser)
+        .mock.calls.some(([, event]) => event.type === 'chat:run' && event.userId === ana.id),
+    ).toBe(true);
+  });
+
+  it('does not resume a departed participant or an unidentified legacy room wake-up', async () => {
+    const captured: CapturedTurn[] = [];
+    useScript({ Ivy: [[{ text: 'Must not run as Jim.' }]] }, captured);
+    const id = await roomWithAgents();
+    await db.bots.removeParticipant(id, ana.id);
+    await deliverToConversation(id, { kind: 'continue', botId: ivy.id, author_user_id: ana.id, note: 'Former member' });
+    await deliverToConversation(id, { kind: 'continue', botId: ivy.id, note: 'Legacy without actor' });
+    await settled(id);
+    expect(captured).toEqual([]);
+  });
+
   it('someone else’s mention during a run is written at once and answered in a run of theirs afterwards', async () => {
     const captured: CapturedTurn[] = [];
     useScript({ Ivy: [[{ text: 'Ivy here.' }]], Sage: [[{ text: 'Sage here.' }]] }, captured);

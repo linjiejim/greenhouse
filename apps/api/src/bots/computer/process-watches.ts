@@ -84,6 +84,7 @@ export async function checkProcessWatches(deps: ProcessWatchDeps): Promise<{ wok
       try {
         await deps.deliver(watch.session_id, {
           kind: 'continue',
+          author_user_id: watch.user_id,
           botId: watch.bot_id,
           note: processEndedNote(watch, job),
         });

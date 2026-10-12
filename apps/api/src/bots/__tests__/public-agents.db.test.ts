@@ -12,6 +12,9 @@ import { _resetProvider, initDatabase, type BotRow, type DatabaseProvider, type 
 import { TEST_DATABASE_URL } from '@greenhouse/db/test-config';
 import type { AppEnv } from '../../app-env.js';
 import { createInternalTestUser } from '../../../../../tests/helpers/internal-user.js';
+import { PLATFORM_ORG_ID, initializePlatformRuntime, resetPlatformRuntimeForTests } from '../../platform/runtime.js';
+import { knowledgeRegistration } from '../../platform/knowledge/registration.js';
+import { runInAgentScope } from '../../platform/agent-scope.js';
 import { chatRunRegistry } from '../../chat/runs.js';
 import { reserveAgentTokenBudget } from '../../llm/usage-budget.js';
 import { runBotsRun } from '../engine/chain.js';
@@ -61,6 +64,7 @@ async function call(as: UserRow, method: string, path: string, body?: unknown) {
 beforeEach(async () => {
   _resetProvider();
   db = await initDatabase({ type: 'pg', pgConnectionString: TEST_DATABASE_URL });
+  initializePlatformRuntime(db, [knowledgeRegistration]);
   const stamp = `${Date.now()}-${Math.random()}`;
   jim = await createInternalTestUser(db, { email: `pub-jim-${stamp}@test.local`, nickname: 'Jim', role: 'team' });
   ana = await createInternalTestUser(db, { email: `pub-ana-${stamp}@test.local`, nickname: 'Ana', role: 'team' });
@@ -75,6 +79,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
+  resetPlatformRuntimeForTests();
   restoreDeps?.();
   restoreDeps = null;
 });
@@ -261,7 +266,8 @@ describe('using a public Agent (member)', () => {
     const bot = (await db.bots.getBot(jim.id, helpdesk.id))!;
     const folderIds = await grantedFolderIds(db, bot, publicationOf(bot));
     expect(folderIds).toEqual([handbook.id]);
-    const knowledge = createGrantedKnowledgeTool(db, folderIds) as unknown as {
+    await publishToAna();
+    const knowledge = createGrantedKnowledgeTool(db, bot, ana.id) as unknown as {
       execute: (input: Record<string, unknown>, options: unknown) => Promise<Record<string, any>>;
     };
     const listed = await knowledge.execute({ action: 'list' }, {});
@@ -347,4 +353,147 @@ describe('availability, oversight and administration', () => {
       expect.objectContaining({ id: helpdesk.id, available: false }),
     ]);
   });
+});
+
+describe('public knowledge authorization at execution time', () => {
+  async function fixture() {
+    const folder = await db.drive.createFolder({
+      scope: 'kb',
+      name: 'Handbook',
+      visibility: 'team',
+      owner_user_id: jim.id,
+    });
+    const child = await db.drive.createFolder({
+      scope: 'kb',
+      name: 'Guides',
+      visibility: 'team',
+      owner_user_id: jim.id,
+      parent_id: folder.id,
+    });
+    const doc = await db.knowledgeBase.create({
+      doc_id: `public-vpn-${Date.now()}`,
+      title: 'VPN handbook',
+      content: 'VPN synthetic restricted content',
+      visibility: 'team',
+      status: 'published',
+      folder_id: child.id,
+      owner_user_id: ben.id,
+    });
+    await publishToAna();
+    await call(jim, 'PUT', `/api/bots/${helpdesk.id}/publication`, { grants: { kb_folder_ids: [folder.id] } });
+    const knowledge = createGrantedKnowledgeTool(db, helpdesk, ana.id);
+    const execute = (action: 'get' | 'list' | 'search') =>
+      runInAgentScope({ botId: helpdesk.id, sessionId: 'public-test-session', requestedByUserId: ana.id }, () =>
+        knowledge.execute!({ action, id: doc.id, query: 'VPN' }, {} as never),
+      );
+    const visible = async () => {
+      expect(await execute('get')).toMatchObject({ id: doc.id, content: doc.content });
+      for (const action of ['list', 'search'] as const)
+        expect(await execute(action)).toMatchObject({ results: [expect.objectContaining({ id: doc.id })] });
+    };
+    const hidden = async () => {
+      expect(await execute('get')).toHaveProperty('error');
+      for (const action of ['list', 'search'] as const) expect(await execute(action)).toMatchObject({ results: [] });
+    };
+    return { folder, child, doc, execute, visible, hidden };
+  }
+
+  it('uses the owner’s current capability and status, with Agent/requester audit attribution', async () => {
+    const f = await fixture();
+    await db.platform.setUserCapabilityOverride({
+      org_id: PLATFORM_ORG_ID,
+      user_id: ana.id,
+      capability: 'knowledge.*',
+      effect: 'deny',
+    });
+    await f.visible(); // the requester cannot lend or remove the owner's permissions
+    const events = await db.platform.listAuditEventsForAgent(PLATFORM_ORG_ID, helpdesk.id, jim.id);
+    expect(events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          actor_id: `bot:${helpdesk.id}`,
+          on_behalf_of_user_id: jim.id,
+          requested_by_user_id: ana.id,
+          action_id: 'readDocument',
+          result: 'success',
+        }),
+      ]),
+    );
+    await db.platform.setUserCapabilityOverride({
+      org_id: PLATFORM_ORG_ID,
+      user_id: jim.id,
+      capability: 'knowledge.*',
+      effect: 'deny',
+    });
+    for (const action of ['get', 'list', 'search'] as const)
+      expect(await f.execute(action)).toMatchObject({ error: expect.stringContaining('knowledge.library.read') });
+    expect(await db.platform.listAuditEventsForAgent(PLATFORM_ORG_ID, helpdesk.id, jim.id)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ action_id: 'readDocument', result: 'denied', requested_by_user_id: ana.id }),
+      ]),
+    );
+  });
+
+  it('rejects a disabled owner even with an already-created tool', async () => {
+    const f = await fixture();
+    await f.visible();
+    await db.users.update(jim.id, { status: 'disabled' });
+    for (const action of ['get', 'list', 'search'] as const) expect(await f.execute(action)).toHaveProperty('error');
+  });
+
+  it('rechecks document privacy and current shares inside a granted team folder', async () => {
+    const f = await fixture();
+    await f.visible();
+    await db.knowledgeBase.update(f.doc.id, { visibility: 'private' });
+    await f.hidden();
+    await db.knowledgeShares.grant(f.doc.id, jim.id, 'reader', ben.id);
+    await f.visible();
+    expect(await f.execute('get')).not.toHaveProperty('url');
+    await db.knowledgeShares.revoke(f.doc.id, jim.id);
+    await f.hidden();
+  });
+
+  it('filters unreadable higher-ranked candidates before list/search limits, including ILIKE fallback', async () => {
+    const f = await fixture();
+    const hidden = await db.knowledgeBase.create({
+      doc_id: `hidden-vpn-${Date.now()}`,
+      title: 'VPN VPN VPN',
+      content: 'VPN VPN VPN VPN VPN',
+      visibility: 'private',
+      status: 'published',
+      folder_id: f.child.id,
+      owner_user_id: ben.id,
+    });
+    const opts = { folderIds: [f.child.id], readerUserId: jim.id, limit: 1 };
+    expect((await db.knowledgeBase.list(opts)).map((doc) => doc.id)).toEqual([f.doc.id]);
+    expect((await db.knowledgeBase.search('VPN', opts)).map((doc) => doc.id)).toEqual([f.doc.id]);
+    expect((await db.knowledgeBase.searchLike('VPN', opts, 1)).map((doc) => doc.id)).toEqual([f.doc.id]);
+    await db.knowledgeShares.grant(hidden.id, jim.id, 'reader', ben.id);
+    expect((await db.knowledgeBase.list(opts)).map((doc) => doc.id)).toEqual([hidden.id]);
+    await db.knowledgeShares.revoke(hidden.id, jim.id);
+    expect((await db.knowledgeBase.list(opts)).map((doc) => doc.id)).toEqual([f.doc.id]);
+  });
+
+  it.each(['folder move', 'grant removal', 'pause', 'audience removal', 'unpublish'] as const)(
+    'rechecks %s on an already-created tool',
+    async (change) => {
+      const f = await fixture();
+      await f.visible();
+      if (change === 'folder move') await db.drive.updateFolder(f.child.id, { parent_id: null });
+      if (change === 'grant removal')
+        await call(jim, 'PUT', `/api/bots/${helpdesk.id}/publication`, { grants: { kb_folder_ids: [] } });
+      if (change === 'pause') await call(boss, 'POST', `/api/admin/agents/${helpdesk.id}/pause`);
+      if (change === 'audience removal')
+        await call(jim, 'PUT', `/api/bots/${helpdesk.id}/publication`, {
+          audience: { everyone: false, user_ids: [ben.id], group_ids: [] },
+        });
+      if (change === 'unpublish')
+        await call(jim, 'PUT', `/api/bots/${helpdesk.id}/publication`, { visibility: 'private' });
+      for (const action of ['get', 'list', 'search'] as const) {
+        const result = await f.execute(action);
+        expect(result).not.toHaveProperty('content');
+        expect(JSON.stringify(result)).not.toContain('VPN');
+      }
+    },
+  );
 });

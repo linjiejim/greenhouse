@@ -80,7 +80,7 @@ import {
 import { observeToolResult } from './taint.js';
 import { assembleInteractiveTools } from './tools-assembly.js';
 import { assemblePublicAgentTools } from './public-face.js';
-import { grantedFolderIds, monthlyTokensOf } from '../public.js';
+import { monthlyTokensOf } from '../public.js';
 import { readTail } from './transcript.js';
 import { TranscriptChangedError, type TranscriptWriter } from './writer.js';
 
@@ -449,7 +449,6 @@ export async function runBotTurn(rc: RunContext, chain: ChainState, item: FloorI
           toolRegistry: rc.toolRegistry,
           conversation: conversationPort,
           settings: publicRun.settings,
-          folderIds: await grantedFolderIds(db, bot, publicRun.settings),
         })
       : assembleInteractiveTools({
           db,

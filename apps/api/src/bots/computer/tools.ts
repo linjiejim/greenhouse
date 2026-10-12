@@ -157,6 +157,7 @@ export async function handleLoginDecision(
       request.bot_id
         ? {
             kind: 'continue',
+            author_user_id: request.user_id,
             botId: request.bot_id,
             note: `The member chose not to sign in${origin ? ` on ${origin}` : ''} right now. Do not ask again unless they say so: continue another way, or tell them in one line what you need the sign-in for.`,
             eventText,
@@ -236,6 +237,7 @@ export async function handleLoginDecision(
   const outcome = describeSecureLogin(filled, origin, savedItem, await zh());
   await safeDeliver(deliver, request.session_id, {
     kind: 'continue',
+    author_user_id: request.user_id,
     botId: request.bot_id,
     note: outcome.note,
     eventText: outcome.eventText,

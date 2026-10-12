@@ -254,6 +254,7 @@ describe.skipIf(!chromiumAvailable())('handleLoginDecision', { timeout: 90_000 }
     expect(sessionId).toBe('sess_1');
     expect(item).toMatchObject({
       kind: 'continue',
+      author_user_id: 'u1',
       botId: request.bot_id,
       event: { kind: 'login_done', request_id: request.id, origin: site.origin, saved_to_vault: false },
     });
@@ -334,6 +335,7 @@ describe.skipIf(!chromiumAvailable())('handleLoginDecision', { timeout: 90_000 }
     expect(deliver).toHaveBeenCalledTimes(1);
     expect(deliver.mock.calls[0]![1]).toMatchObject({
       kind: 'continue',
+      author_user_id: 'u1',
       botId: request.bot_id,
       eventText: 'Sign-in to 127.0.0.1 skipped',
       event: { kind: 'request', request_kind: 'login', request_id: request.id, bot_id: request.bot_id },

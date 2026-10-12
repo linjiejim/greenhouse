@@ -237,6 +237,16 @@ export interface RequestInput {
 function insertBotFactory(db: Db) {
   return async function insertBot(input: BotInput): Promise<BotRow> {
     return db.transaction(async (tx) => {
+      if (input.builtIn && input.template_key === 'sprouty') {
+        // Serialize first visits across API processes, independent of the chosen display name.
+        await tx.select({ id: users.id }).from(users).where(eq(users.id, input.user_id)).for('update');
+        const [existing] = await tx
+          .select()
+          .from(bots)
+          .where(and(eq(bots.user_id, input.user_id), eq(bots.status, 'active'), eq(bots.template_key, 'sprouty')))
+          .limit(1);
+        if (existing) return existing;
+      }
       const [count] = await tx
         .select({ n: sql<string>`count(*)` })
         .from(bots)

@@ -123,12 +123,14 @@ same script doubles as an end-to-end smoke tour (see [Development](#development)
   name the Agent that acted. A member can **publish** an Agent to colleagues (everyone, people or
   groups): they talk to its published version in their own conversation, on a narrow face (only
   the knowledge folders and computer its owner granted, its own memory per person, never the
-  owner's private data), with its own monthly token budget; the owner sees usage and ratings but
+  owner's unshared private data). Knowledge reads recheck the owner's current permissions and grants
+  on every call. It has its own monthly token budget; the owner sees usage and ratings but
   not the conversations, and an admin can pause it. Background tasks start from the brief you approve and show in the
   conversations list while they run; reading private notes or history then disables all further
   browser actions. Their transcripts and execution traces stay owner-only (a room: its
   participants only), including against admins — and since 2026-10 admins no longer read members'
-  ordinary chats either, unless the deployment sets `SUPER_READS_CHATS=true`. A new message can interrupt an Agent after its current step. The organisation configures
+  ordinary chats either, unless the deployment sets `SUPER_READS_CHATS=true`. In rooms, handing back
+  a computer or completing a sign-in resumes the Agent for the person who requested it. A new message can interrupt an Agent after its current step. The organisation configures
   one Docker host; computers start on demand, stop when idle (unless a job is still running) and
   queue when the host is full.
 - **Workflows** — a multi-agent task-graph engine (database state machine, human gates,

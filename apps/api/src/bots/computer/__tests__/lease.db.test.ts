@@ -115,7 +115,12 @@ describe('take-over and hand-back', () => {
     expect(mocks.deliver).toHaveBeenCalledTimes(1);
     const [deliveredTo, item] = mocks.deliver.mock.calls[0]!;
     expect(deliveredTo).toBe(sessionId);
-    expect(item).toMatchObject({ kind: 'continue', botId: bot.id, event: { kind: 'takeover_done' } });
+    expect(item).toMatchObject({
+      kind: 'continue',
+      author_user_id: user.id,
+      botId: bot.id,
+      event: { kind: 'takeover_done' },
+    });
     expect(item.kind === 'continue' && item.note).toMatch(/handed it back.*done ok/);
 
     await handbackComputer(computerId, { requestId: request.id }); // a double click
@@ -128,7 +133,10 @@ describe('take-over and hand-back', () => {
     await takeoverComputer(computerId);
     await handbackComputer(computerId, { requestId: login.id });
     expect((await db.bots.getRequest(user.id, login.id))?.status).toBe('resolved');
-    expect(mocks.deliver).toHaveBeenCalledWith(sessionId, expect.objectContaining({ kind: 'continue', botId: bot.id }));
+    expect(mocks.deliver).toHaveBeenCalledWith(
+      sessionId,
+      expect.objectContaining({ kind: 'continue', author_user_id: user.id, botId: bot.id }),
+    );
   });
 
   it('never resolves a card in another conversation, and only the single one waiting in the member’s', async () => {

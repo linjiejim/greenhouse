@@ -180,6 +180,7 @@ async function decideBotCreate(db: DatabaseProvider, row: BotRequestRow, decisio
     if (proposer && proposer.status === 'active') {
       await deliverToConversation(row.session_id, {
         kind: 'continue',
+        author_user_id: row.user_id,
         botId: proposer.id,
         note: copy.continueAfterCreate(locale, bot.name),
         eventText: joinedLine,
