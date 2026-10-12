@@ -73,7 +73,7 @@ export const tablesAutomationsZh: DeepRecord<typeof tablesAutomationsEn> = {
     agent: {
       result: '查看 Agent 结果',
       prompt: '指令',
-      bot: 'Bot 身份',
+      bot: 'Agent 身份',
       defaultBot: '默认助手',
       output: '输出保存到',
       noOutput: '仅运行日志',
@@ -82,8 +82,8 @@ export const tablesAutomationsZh: DeepRecord<typeof tablesAutomationsEn> = {
       sameBase: '仅可读取本 Base',
       maxSteps: '最多步数',
       invalid: '请填写指令与 1–20 步；输出必须是触发记录的文本字段。',
-      botsFailed: '未能加载 Bot，请重新打开编辑器重试。',
-      help: '以规则执行者身份运行一次。输出标记为 AI 生成，仅在记录未变化时写回；保存时固定 Bot 版本。',
+      botsFailed: '未能加载 Agent，请重新打开编辑器重试。',
+      help: '以规则执行者身份运行一次。输出标记为 AI 生成，仅在记录未变化时写回；保存时固定 Agent 版本。',
     },
     action: {
       agent: 'Agent',
