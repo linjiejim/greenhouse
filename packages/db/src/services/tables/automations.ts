@@ -50,6 +50,7 @@ import {
 } from '@greenhouse/types/tables';
 import type { Db } from '../../client.js';
 import {
+  bots,
   tableAutomationOutbox,
   tableAutomationRules,
   tableAutomationRuns,
@@ -272,6 +273,7 @@ export function normalizeStoredAutomationConfig(raw: unknown): TableAutomationCo
         ...(Array.isArray(action.fieldIds) ? { fieldIds: action.fieldIds.filter(isPositiveInteger) } : {}),
       };
     }
+    if (action.type === 'agent') return { ...action, id } as unknown as TableAutomationAction;
     return { id, type: 'delay', minutes: Number(action.minutes) || 1 };
   });
   return { ...(source as unknown as TableAutomationConfig), actions };
@@ -562,6 +564,32 @@ export async function checkAutomationConfig(
         }
       }
       actions.push({ id, type: 'webhook', url: parsed.toString(), ...(fieldIds.length > 0 ? { fieldIds } : {}) });
+    } else if (raw.type === 'agent') {
+      const prompt = trimmed(raw.prompt as string, 'Agent prompt', TABLE_AUTOMATION_LIMITS.agentPrompt);
+      assertTemplate(context, prompt, 'Agent prompt');
+      const maxSteps = raw.maxSteps ?? 12;
+      if (!isPositiveInteger(maxSteps) || maxSteps > TABLE_AUTOMATION_LIMITS.agentMaxSteps)
+        throw new TablesValidationError('Agent maxSteps must be between 1 and 20');
+      const tools = raw.tools ?? 'none';
+      if (tools !== 'none' && tools !== 'same_base_read') throw new TablesValidationError('Unsupported agent tools');
+      if (raw.botId !== undefined && (typeof raw.botId !== 'string' || !raw.botId || raw.botId.length > 100))
+        throw new TablesValidationError('Invalid Bot id');
+      if (raw.outputFieldId !== undefined) {
+        if (!context.hasRecord || !isPositiveInteger(raw.outputFieldId))
+          throw new TablesValidationError('Agent output needs a triggering record');
+        const field = fieldOf(context, raw.outputFieldId, 'Agent output');
+        if (!['text', 'long_text'].includes(field.type) || isComputedField(field))
+          throw new TablesValidationError('Agent output must be a text or long-text field');
+      }
+      actions.push({
+        id,
+        type: 'agent',
+        prompt,
+        maxSteps,
+        tools,
+        ...(typeof raw.botId === 'string' ? { botId: raw.botId } : {}),
+        ...(isPositiveInteger(raw.outputFieldId) ? { outputFieldId: raw.outputFieldId } : {}),
+      });
     } else if (raw.type === 'delay') {
       const minutes = raw.minutes;
       if (
@@ -590,6 +618,25 @@ export async function checkAutomationConfig(
 }
 
 export function createTablesAutomations(db: Db) {
+  // Only the server chooses the immutable version. A no-op edit keeps the stored pin.
+  async function pinAgentBots(config: TableAutomationConfig, userId: string, previous?: TableAutomationConfig) {
+    for (const action of config.actions) {
+      if (action.type !== 'agent' || !action.botId) continue;
+      const [bot] = await db
+        .select()
+        .from(bots)
+        .where(and(eq(bots.id, action.botId), eq(bots.user_id, userId)))
+        .limit(1);
+      if (!bot || bot.status !== 'active')
+        throw new TablesValidationError('Agent Bot must belong to the executor and be active');
+      const prior = previous?.actions.find((a) => a.id === action.id);
+      action.botVersion =
+        prior?.type === 'agent' && prior.botId === action.botId
+          ? (prior.botVersion ?? bot.current_version)
+          : bot.current_version;
+    }
+  }
+
   /** next_fire_at / swept_until for a rule whose trigger config was just set (or that was just enabled). */
   const timing = (
     trigger: TableAutomationTrigger,
@@ -704,6 +751,7 @@ export function createTablesAutomations(db: Db) {
         input.trigger,
         input.config,
       );
+      await pinAgentBots(config, input.user_id);
       const name = trimmed(input.name, 'Automation name', 120);
       const row = await db.transaction(async (tx) => {
         const now = nowIso();
@@ -763,8 +811,22 @@ export function createTablesAutomations(db: Db) {
           patch.config ?? (config as TableAutomationConfigInput),
           { reservedActionIds: stored.actions.map((action) => action.id) },
         );
+        // Restore server-owned pins before comparing behavior: a builder renaming
+        // another member's rule must not take over its executor or Bot.
+        for (const action of normalized.config.actions) {
+          if (action.type !== 'agent' || !action.botId) continue;
+          const prior = stored.actions.find((candidate) => candidate.id === action.id);
+          if (prior?.type === 'agent' && prior.botId === action.botId) action.botVersion = prior.botVersion;
+        }
+        const behaviorChanged = triggerChanged || !sameJson(normalized.config, config);
+        const executorId = behaviorChanged ? patch.user_id : current.execution_user_id;
+        await pinAgentBots(
+          normalized.config,
+          executorId,
+          executorId === current.execution_user_id ? stored : undefined,
+        );
         secrets = normalized.secrets;
-        if (triggerChanged || !sameJson(normalized.config, config)) {
+        if (behaviorChanged) {
           // D17: whoever last changed what the rule does is who it runs as.
           values.execution_user_id = patch.user_id;
         }

@@ -4,7 +4,8 @@
  * `FieldEditor`, or a token), and text with `{{field:<id>}}` templates.
  */
 
-import { useId } from 'react';
+import { useEffect, useId, useState } from 'react';
+import { listBots } from '../../../lib/api/bots';
 import { automationTemplateFieldIds, type TableAutomationTrigger } from '@greenhouse/types/tables';
 import { Button, Checkbox, IconButton, Input, Select, Textarea } from '../../../components/ui';
 import { FormField, FormGrid, FormGroup } from '../../../components/form';
@@ -441,6 +442,8 @@ export function ActionEditor({
           <WebhookSecret action={action} onChange={onChange} />
         </div>
       );
+    case 'agent':
+      return <AgentEditor action={action} context={context} onChange={onChange} />;
     case 'delay':
       return (
         <FormGrid>
@@ -515,5 +518,95 @@ function WebhookSecret({
         )}
       </div>
     </FormGroup>
+  );
+}
+
+/** Saved Bot identities are version-pinned by the server, never by this form. */
+function AgentEditor({
+  action,
+  context,
+  onChange,
+}: {
+  action: Extract<ActionDraft, { type: 'agent' }>;
+  context: ActionEditorContext;
+  onChange: (next: ActionDraft) => void;
+}) {
+  const t = useT();
+  const [bots, setBots] = useState<Array<{ id: string; name: string }>>([]);
+  const [error, setError] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    void listBots().then(
+      (v) => {
+        if (alive) setBots(v.bots);
+      },
+      () => {
+        if (alive) setError(true);
+      },
+    );
+    return () => {
+      alive = false;
+    };
+  }, []);
+  return (
+    <div className="space-y-3">
+      <p className="text-xs text-fg-muted">{t('tables.automations.agent.help')}</p>
+      <TemplateText
+        label={t('tables.automations.agent.prompt')}
+        value={action.prompt}
+        multiline
+        fields={context.hasRecord ? context.fields : []}
+        onChange={(prompt) => onChange({ ...action, prompt })}
+      />
+      <FormGrid>
+        <FormField
+          label={t('tables.automations.agent.bot')}
+          help={error ? t('tables.automations.agent.botsFailed') : undefined}
+        >
+          <Select value={action.botId} onChange={(e) => onChange({ ...action, botId: e.target.value })}>
+            <option value="">{t('tables.automations.agent.defaultBot')}</option>
+            {bots.map((bot) => (
+              <option key={bot.id} value={bot.id}>
+                {bot.name}
+              </option>
+            ))}
+          </Select>
+        </FormField>
+        <FormField label={t('tables.automations.agent.output')}>
+          <Select
+            value={action.outputFieldId ?? ''}
+            disabled={!context.hasRecord}
+            onChange={(e) => onChange({ ...action, outputFieldId: e.target.value ? Number(e.target.value) : null })}
+          >
+            <option value="">{t('tables.automations.agent.noOutput')}</option>
+            {writableFields(context.fields)
+              .filter((f) => ['text', 'long_text'].includes(f.type))
+              .map((f) => (
+                <option key={f.id} value={f.id}>
+                  {f.name}
+                </option>
+              ))}
+          </Select>
+        </FormField>
+        <FormField label={t('tables.automations.agent.tools')}>
+          <Select
+            value={action.tools}
+            onChange={(e) => onChange({ ...action, tools: e.target.value as 'none' | 'same_base_read' })}
+          >
+            <option value="none">{t('tables.automations.agent.none')}</option>
+            <option value="same_base_read">{t('tables.automations.agent.sameBase')}</option>
+          </Select>
+        </FormField>
+        <FormField label={t('tables.automations.agent.maxSteps')}>
+          <Input
+            type="number"
+            min={1}
+            max={20}
+            value={action.maxSteps}
+            onChange={(e) => onChange({ ...action, maxSteps: e.target.value })}
+          />
+        </FormField>
+      </FormGrid>
+    </div>
   );
 }

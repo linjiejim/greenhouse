@@ -52,6 +52,7 @@ describe('filterFeishuToolIds', () => {
   it('禁用集合钉死 —— 增删都应该是有意识的改动', () => {
     expect([...FEISHU_DENIED_TOOL_IDS].sort()).toEqual([
       // Bot 工具（Bots spec §5）：纵深防御，见 conversation-key.ts 注释
+      'apps_action',
       'bot_tasks',
       'browser',
       'call_llm',

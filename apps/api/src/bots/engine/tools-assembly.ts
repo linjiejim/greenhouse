@@ -30,6 +30,7 @@ import { getToolMeta } from '../../tools/registry.js';
 import { createMemoryTool } from '../../tools/memory.js';
 import { runtimeDriverEnabled } from '../../trusted-execution/kill-switches.js';
 import { buildComputerTools } from '../computer/index.js';
+import { createAppsActionTool } from '../../tools/apps-action.js';
 import { createMcpCallTool } from '../../tools/mcp-call.js';
 import { botProfileId, parseBotConnectors } from '../../profiles/profile.js';
 import { BOT_TOOL_IDS } from '../tools/meta.js';
@@ -320,7 +321,7 @@ export function assembleInteractiveTools(input: InteractiveToolsInput): Interact
 
   let approvalGated = false;
   for (const id of Object.keys(registry)) {
-    if (!needsBotApproval(id)) continue;
+    if (id === 'apps_action' || !needsBotApproval(id)) continue;
     registry[id] = withBotApproval(id, registry[id], ctx);
     approvalGated = true;
   }
@@ -333,6 +334,22 @@ export function assembleInteractiveTools(input: InteractiveToolsInput): Interact
     }
   }
 
+  if (ids.includes('apps_action')) {
+    registry.apps_action = createAppsActionTool({
+      userId: ctx.userId,
+      approve: async (resolved) => {
+        const decision = await ctx.requestApproval({
+          action: 'tool_call',
+          title: copy.approvalTitle(ctx.locale, resolved.summary),
+          summary: resolved.summary,
+          details: resolved.details,
+          allow_always: false,
+        });
+        return decision === 'approve' || decision === 'always';
+      },
+    });
+    approvalGated = true;
+  }
   registry.team = createTeamTool(ctx, input.team);
   registry.conversation = createConversationTool(ctx, input.conversation);
   registry.self = createSelfTool(ctx);

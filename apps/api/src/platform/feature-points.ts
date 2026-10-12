@@ -83,7 +83,7 @@ const CORE_FEATURE_POINTS: readonly FeaturePointDef[] = [
     kind: 'flag',
     group: 'basic',
     flag: 'apps',
-    toolIds: [],
+    toolIds: ['apps_query', 'apps_action'],
   },
   {
     key: 'tables_ai_fields',

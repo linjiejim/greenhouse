@@ -52,6 +52,7 @@ export const FEISHU_DENIED_TOOL_IDS: readonly string[] = [
   'mission_dispatch',
   'workflow_plan',
   'tables_schema_plan',
+  'apps_action',
   'task_capture',
   'spawn_session',
   'call_llm',

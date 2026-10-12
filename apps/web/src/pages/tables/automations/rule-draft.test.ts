@@ -184,3 +184,15 @@ describe('rule drafts', () => {
     });
   });
 });
+
+it('supports bounded Agent steps with an optional text output', () => {
+  const draft = newRuleDraft({ tableId: 1, timezone: 'UTC' });
+  draft.name = 'Summarize';
+  draft.actions = [
+    { key: 'agent', type: 'agent', prompt: 'Summarize', botId: '', outputFieldId: null, maxSteps: '20', tools: 'none' },
+  ];
+  const result = draftToInput(draft, new Map());
+  expect(result.ok && result.input.config.actions[0]).toMatchObject({ type: 'agent', maxSteps: 20, tools: 'none' });
+  if (draft.actions[0]?.type === 'agent') draft.actions[0].maxSteps = '21';
+  expect(draftToInput(draft, new Map()).ok).toBe(false);
+});

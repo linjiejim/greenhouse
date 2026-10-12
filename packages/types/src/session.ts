@@ -12,6 +12,7 @@ export type SessionChannel =
   | 'api'
   | 'a2a'
   | 'task'
+  | 'tables_automation'
   | 'subagent'
   | 'workflow'
   | 'mission'

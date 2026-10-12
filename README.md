@@ -796,3 +796,7 @@ issue — see [SECURITY.md](./SECURITY.md).
 ## License
 
 [MIT](./LICENSE) — © Greenhouse contributors.
+
+Tables automations can run an **Agent** step to summarize a new record into a text field. Each step runs once as the rule executor, with no tools by default; the optional read mode reaches only that Base. Bot versions are pinned when saved, costs belong to the executor, and output is written only while the record revision is unchanged. The automation run log links the result to its session.
+
+Apps are also available to chat and external agents through `apps_query` and `apps_action`. These use the same app roles, row rules and field rules as the app page, under a separate **Apps** MCP consent group. Every write requires confirmation; Bots shows an approval card with the stored action and record, and Feishu does not expose app writes.

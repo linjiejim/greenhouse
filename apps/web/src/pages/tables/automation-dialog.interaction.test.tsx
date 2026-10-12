@@ -40,6 +40,9 @@ vi.mock('../../lib/api', async (importOriginal) => ({
     .mockResolvedValue([{ id: 'u1', nickname: 'Jim', email: 'jim@example.com', role: 'team' }]),
 }));
 vi.mock('../../lib/api/groups', () => ({ listGroups: vi.fn().mockResolvedValue([]) }));
+vi.mock('../../lib/api/bots', () => ({
+  listBots: vi.fn().mockResolvedValue({ bots: [{ id: 'bot1', name: 'Summary Bot' }] }),
+}));
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -179,6 +182,43 @@ afterEach(() => {
 });
 
 describe('TablesAutomationDialog', () => {
+  it('saves an Agent step with a selected Bot, same-Base reads and a text output', async () => {
+    await mount();
+    await click(byTestId('automation-new'));
+    const editor = byTestId('automation-rule-editor');
+    await type(editor.querySelector('input[placeholder^="Notify the owner"]') as HTMLInputElement, 'Summarize');
+    await click(buttonNamed('Remove step'));
+    await choose(byTestId<HTMLSelectElement>('automation-add-action'), 'agent');
+    await type(editor.querySelector('textarea')!, 'Summarize the request');
+    const selectWith = (value: string) =>
+      [...editor.querySelectorAll('select')].find((select) =>
+        [...select.options].some((option) => option.value === value),
+      )!;
+    await choose(selectWith('bot1'), 'bot1');
+    await choose(selectWith('same_base_read'), 'same_base_read');
+    await choose(selectWith('2'), '2');
+    await type(editor.querySelector('input[type="number"]')!, '20');
+    await click(byTestId('automation-save'));
+    expect(api.createTableAutomation).toHaveBeenCalledWith(
+      3,
+      expect.objectContaining({
+        name: 'Summarize',
+        config: {
+          version: 1,
+          actions: [
+            {
+              type: 'agent',
+              prompt: 'Summarize the request',
+              botId: 'bot1',
+              outputFieldId: 2,
+              tools: 'same_base_read',
+              maxSteps: 20,
+            },
+          ],
+        },
+      }),
+    );
+  });
   it('builds a rule with a watched field and a signed webhook, and saves it once', async () => {
     await mount();
     await click(byTestId('automation-new'));

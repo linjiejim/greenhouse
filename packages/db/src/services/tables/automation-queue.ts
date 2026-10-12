@@ -188,12 +188,22 @@ export function createTablesAutomationQueue(db: Db) {
       });
     },
 
+    /** Before provider I/O: a crashed Agent step is never replayed. */
+    startAutomationAgent(ref: LeaseRef & { leaseMs: number }) {
+      return leased(ref, {
+        attempts: 1,
+        max_attempts: 1,
+        lease_expires_at: new Date(Date.parse(iso(ref.at)) + ref.leaseMs).toISOString(),
+      });
+    },
+
     /** After an action succeeded: move the cursor, renew the lease, reset the attempt count. */
     checkpointAutomationOutbox(ref: LeaseRef & { cursor: string | null; leaseMs: number }) {
       const at = iso(ref.at);
       return leased(ref, {
         cursor: ref.cursor,
         attempts: 1,
+        max_attempts: 3,
         lease_expires_at: new Date(Date.parse(at) + Math.max(ref.leaseMs, 1_000)).toISOString(),
         last_error: null,
       });

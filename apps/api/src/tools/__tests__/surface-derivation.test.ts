@@ -46,6 +46,7 @@ describe('surface-derived exposure sets', () => {
         'skill_query',
         'generate_image',
         'tables_query',
+        'apps_query',
         // 2026-08-03: Automations (scheduled tasks) — the model can inspect and
         // manage the user's own schedules; owner scoping is inside the tools.
         'automation_query',
@@ -63,6 +64,7 @@ describe('surface-derived exposure sets', () => {
         'knowledge_mutation',
         'skill_mutation',
         'tables_mutation',
+        'apps_action',
         'automation_mutation',
         'email_mutation',
       ].sort(),
@@ -83,7 +85,9 @@ describe('surface-derived exposure sets', () => {
         // call a tool instead of a REST relay.
         'generate_image',
         'tables_query',
+        'apps_query',
         'tables_mutation',
+        'apps_action',
         // 2026-08-16: automation_query stays (reading your own schedule is
         // harmless and useful); automation_mutation left — a machine client IS
         // unattended, and an automation that can create automations multiplies.
@@ -112,11 +116,11 @@ describe('surface-derived exposure sets', () => {
     expect(sorted(grouped)).toEqual(sorted(MCP_EXPOSED_TOOL_IDS));
   });
 
-  it('registers the apps resource group before any tool joins it (Phase 2 F2)', () => {
+  it('keeps app tools in their own consent group', () => {
     // Its own consent group, never folded into `tables` — a token granted `mcp:tables`
     // must not quietly reach apps. Slice AGT puts apps_query / apps_action in it.
     expect(allMcpResourceGroups()).toContain('apps');
-    expect([...(MCP_TOOL_IDS_BY_GROUP.get('apps') ?? [])]).toEqual([]);
+    expect([...(MCP_TOOL_IDS_BY_GROUP.get('apps') ?? [])]).toEqual(['apps_query', 'apps_action']);
   });
 
   it('every resource group is reachable with read-only scope', () => {
@@ -170,7 +174,9 @@ describe('surface-derived exposure sets', () => {
         'call_llm',
         'skill_mutation',
         'tables_query',
+        'apps_query',
         'tables_mutation',
+        'apps_action',
         'tables_schema_plan',
         'workflow_plan',
         'mission_dispatch',

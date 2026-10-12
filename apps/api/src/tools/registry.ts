@@ -41,6 +41,8 @@ import { manageEvalDatasetTool } from './manage-eval-dataset.js';
 import { queryEvalRunsTool } from './query-eval-runs.js';
 import { skillQueryTool } from './skills/skill-query.js';
 import { skillMutationTool } from './skills/skill-mutation.js';
+import { appsQueryTool } from './apps-query.js';
+import { appsActionTool } from './apps-action.js';
 import { tablesQueryTool } from './tables-query.js';
 import { tablesMutationTool } from './tables-mutation.js';
 import { tablesSchemaPlanTool } from './tables-schema-plan.js';
@@ -81,6 +83,8 @@ const CORE_TOOL_MODULES: ToolModule[] = [
   queryEvalRunsTool,
   skillQueryTool,
   skillMutationTool,
+  appsQueryTool,
+  appsActionTool,
   tablesQueryTool,
   tablesMutationTool,
   tablesSchemaPlanTool,

@@ -90,6 +90,9 @@ const provider: ContextProviderDescriptor<'app-page'> = {
     parts.push(
       'An app grants access through its own roles: what the page shows is evaluated for this viewer, and Tables tools reach the underlying Base only if the viewer has Tables access to it',
     );
+    parts.push(
+      `Use apps_query get with app_id=${context.appId} to read this app, then query or record through its cards; apps_action only after confirming each action`,
+    );
     if (context.mode === 'build') {
       parts.push(
         'Changes to this app are drafted with tables_schema_plan app.update (read tables_query apps.get and builder.reference topic=app first)',

@@ -99,6 +99,8 @@ type TablesQueryInput = z.infer<typeof tablesQuerySchema>;
 
 export interface TablesQueryContext {
   userId: string;
+  /** Automation-only narrowing: the existing tool and kernel remain the authority. */
+  onlyBaseId?: number;
 }
 
 const DIRECTORY_LIMIT = 20;
@@ -188,6 +190,16 @@ export function createTablesQueryTool(ctx: TablesQueryContext) {
     description: meta.description,
     inputSchema: tablesQuerySchema,
     execute: async (input: TablesQueryInput) => {
+      if (ctx.onlyBaseId !== undefined) {
+        if (!['tables.list', 'schema.get', 'records.get', 'records.query', 'records.aggregate'].includes(input.action))
+          return { error: 'Only same-Base schema and record reads are available' };
+        if (
+          input.action === 'tables.list'
+            ? input.base_id !== ctx.onlyBaseId
+            : !input.table_id || (await getDb().tables.getTable(input.table_id))?.base_id !== ctx.onlyBaseId
+        )
+          return { error: 'Only this Base may be read' };
+      }
       const context = { userId: ctx.userId };
       const run = async (
         action: Parameters<typeof dispatchTablesAgentAction>[1],

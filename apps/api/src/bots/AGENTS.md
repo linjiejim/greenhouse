@@ -419,3 +419,5 @@ file input 就点它并接住弹出的文件选择框）、`wait {text?, timeout
 结果是本会话的聊天文件（`/api/chat-files/<id>/content`，主人鉴权），不进公共上传区。与某个 Bot 的按会话聊天（聊天页的
 新上下文）走 `GET /api/sessions?scope=mine&profile=bot:<id>`（主 Bot 用 `sprouty`），固定版本与旧 id 一并算上，口径见
 [apps/api/src/AGENTS.md](../AGENTS.md)「会话列表的 profile 筛选」。
+
+- **应用动作审批**（Phase 2）：`apps_action` 与 `mcp_call` 一样在工具内部调用 `requestApproval`，不经通用写工具的参数摘要。卡片的动作、效果与记录来自服务端当前 `getApp` / `getAppRecord`；模型没有确认字段。批准后重读定义、版本与记录 revision，变化则要求重新批准，最终写仍走 app gateway。`apps_query` / `apps_action` 结果会污染回合，不能把应用记录内容当作成员授权。

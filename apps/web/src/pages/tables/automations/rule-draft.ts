@@ -67,10 +67,27 @@ export type ActionDraft =
       secretAction: 'keep' | 'set' | 'clear';
       secret: string;
     }
+  | {
+      key: string;
+      id?: string;
+      type: 'agent';
+      prompt: string;
+      botId: string;
+      outputFieldId: number | null;
+      maxSteps: string;
+      tools: 'none' | 'same_base_read';
+    }
   | { key: string; id?: string; type: 'delay'; minutes: string };
 
 export type ActionType = ActionDraft['type'];
-export const ACTION_TYPES: readonly ActionType[] = ['update_record', 'create_record', 'notify', 'webhook', 'delay'];
+export const ACTION_TYPES: readonly ActionType[] = [
+  'update_record',
+  'create_record',
+  'notify',
+  'webhook',
+  'delay',
+  'agent',
+];
 
 export const ACTION_LABEL_KEYS = {
   update_record: 'tables.automations.action.update_record',
@@ -78,6 +95,7 @@ export const ACTION_LABEL_KEYS = {
   notify: 'tables.automations.action.notify',
   webhook: 'tables.automations.action.webhook',
   delay: 'tables.automations.action.delay',
+  agent: 'tables.automations.action.agent',
 } as const satisfies Record<ActionType, TranslationKey>;
 
 export const TRIGGER_LABEL_KEYS = {
@@ -159,6 +177,8 @@ export function newActionDraft(type: ActionType, defaultTableId: number | null):
       return { key, type, recipients: emptyRecipients(), title: '', message: '', im: false, email: false };
     case 'webhook':
       return { key, type, url: '', fieldIds: [], hasSecret: false, secretAction: 'keep', secret: '' };
+    case 'agent':
+      return { key, type, prompt: '', botId: '', outputFieldId: null, maxSteps: '12', tools: 'none' };
     case 'delay':
       return { key, type, minutes: '60' };
   }
@@ -262,10 +282,17 @@ export function ruleToDraft(
           };
         case 'delay':
           return { key: draftKey(), id: action.id, type: action.type, minutes: String(action.minutes) };
-        // Phase 2 slice AGT adds the agent step's editor; the server refuses the step until then,
-        // so a stored rule cannot carry one yet.
         case 'agent':
-          throw new Error('Agent steps cannot be edited in this version');
+          return {
+            key: draftKey(),
+            id: action.id,
+            type: 'agent',
+            prompt: action.prompt,
+            botId: action.botId ?? '',
+            outputFieldId: action.outputFieldId ?? null,
+            maxSteps: String(action.maxSteps),
+            tools: action.tools,
+          };
       }
     }),
   };
@@ -402,6 +429,32 @@ export function draftToInput(draft: RuleDraft, fieldsByTable: ReadonlyMap<number
           url: action.url.trim(),
           ...(action.fieldIds.length > 0 ? { fieldIds: action.fieldIds } : {}),
           ...secret,
+        });
+        break;
+      }
+      case 'agent': {
+        const maxSteps = Number(action.maxSteps);
+        if (
+          !action.prompt.trim() ||
+          action.prompt.length > TABLE_AUTOMATION_LIMITS.agentPrompt ||
+          !Number.isInteger(maxSteps) ||
+          maxSteps < 1 ||
+          maxSteps > 20
+        )
+          return fail('tables.automations.agent.invalid', step);
+        if (
+          action.outputFieldId !== null &&
+          (!hasRecord || !fields.some((f) => f.id === action.outputFieldId && ['text', 'long_text'].includes(f.type)))
+        )
+          return fail('tables.automations.agent.invalid', step);
+        actions.push({
+          ...id,
+          type: 'agent',
+          prompt: action.prompt.trim(),
+          maxSteps,
+          tools: action.tools,
+          ...(action.botId ? { botId: action.botId } : {}),
+          ...(action.outputFieldId ? { outputFieldId: action.outputFieldId } : {}),
         });
         break;
       }

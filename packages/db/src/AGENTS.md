@@ -368,3 +368,7 @@
 - Runtime 独立于 session 的生命周期：`source_id=bots:*`、`source_id/session_id=bottask-*`、`input.source_mode=bots` 的记录始终只有 owner 可见，即使原 session 已删除。不要只用活着的 session JOIN 判断。
 
 - **应用自定义组件审核**：`publishApp` 在应用行锁内校验受众修订并保存按 hash 审核的不可变版本，`pendingReview` 时保留线上指针；`reviewAppCustomCode` 对确切 version/hash 批准或拒绝，同一 hash 的版本一同更新。扩大受众带 `publishedVersion` CAS，防止与发布竞态。DB 审核不启用客户端 HTML 执行。
+
+### Tables automation Agent steps (Phase 2)
+
+`checkAutomationConfig` validates Agent prompts, 1–20 steps, the `none | same_base_read` tool mode and text-only output fields. `createTablesAutomations` alone pins an executor-owned active Bot's immutable version; caller-supplied version numbers are ignored. `startAutomationAgent` is the leased CAS before provider I/O: it sets `max_attempts=1`, so an expired lease never replays an Agent call. A successful cursor checkpoint restores ordinary retries for later actions. This uses existing outbox columns; there is no extra queue or schema migration.

@@ -23,6 +23,8 @@ export const TAINTING_TOOLS: ReadonlySet<string> = new Set([
   'read_attachment',
   'analyze_image',
   'mcp_call',
+  'apps_query',
+  'apps_action',
 ]);
 
 /**

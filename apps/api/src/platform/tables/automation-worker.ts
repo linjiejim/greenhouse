@@ -76,6 +76,7 @@ import {
   type RenderUser,
 } from './automation-render.js';
 import { publishRecordsChanged } from './realtime.js';
+import { runAutomationAgent, AUTOMATION_AGENT_TIMEOUT_MS } from './automation-agent.js';
 
 const DEFAULT_INTERVAL_MS = 2_000;
 const DEFAULT_LEASE_MS = 120_000;
@@ -91,6 +92,7 @@ export interface TablesAutomationWorkerOptions {
   skipBootPass?: boolean;
   now?: () => Date;
   /** Test seams. */
+  runAgent?: Parameters<typeof runAutomationAgent>[0]['run'];
   postWebhook?: typeof postPublicWebhook;
   recipientAccess?: typeof canRecipientRead;
   publishOptions?: PublishOptions;
@@ -479,10 +481,36 @@ export function createTablesAutomationRunner(options: TablesAutomationWorkerOpti
               step: step(action, { status: 'succeeded', code: 'delayed', params: { until: until.toISOString() } }),
             };
           }
-          // Phase 2 slice AGT runs agent steps; until then the rule normalizer refuses them, so a
-          // stored one can only be a hand-edited row — fail it rather than skip it.
-          case 'agent':
-            return failed(action, 'not_implemented');
+          case 'agent': {
+            // Commit the non-replay boundary before creating the session or touching the provider.
+            row = await db.tables.startAutomationAgent({ ...ref(), leaseMs: AUTOMATION_AGENT_TIMEOUT_MS + 60_000 });
+            try {
+              const generated = await runAutomationAgent({
+                db,
+                rule,
+                action,
+                outboxId: row.id,
+                record,
+                run: options.runAgent,
+              });
+              return {
+                kind: 'ok',
+                ...(generated.record ? { record: generated.record } : {}),
+                step: step(action, {
+                  status: 'succeeded',
+                  message: `AI-generated · ${generated.sessionId}`,
+                  params: {
+                    sessionId: generated.sessionId,
+                    inputTokens: generated.result.usage?.inputTokens ?? 0,
+                    outputTokens: generated.result.usage?.outputTokens ?? 0,
+                    steps: generated.result.pipeline.length,
+                  },
+                }),
+              };
+            } catch (error) {
+              return failed(action, toErrorMessage(error));
+            }
+          }
         }
       } catch (error) {
         if (error instanceof TablesValidationError) return failed(action, error.message);

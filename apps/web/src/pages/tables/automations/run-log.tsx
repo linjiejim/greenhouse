@@ -75,6 +75,11 @@ function StepLine({ step }: { step: TableAutomationRunStep }) {
       {step.message && step.code !== 'record_updated' && (
         <span className="min-w-0 break-words text-fg-faint">{step.message}</span>
       )}
+      {step.type === 'agent' && typeof step.params?.sessionId === 'string' && (
+        <a className="text-primary underline" href={`#/chat?session=${encodeURIComponent(step.params.sessionId)}`}>
+          {t('tables.automations.agent.result')}
+        </a>
+      )}
       <span className="ml-auto text-[11px] text-fg-faint">{formatDate(step.at)}</span>
     </li>
   );

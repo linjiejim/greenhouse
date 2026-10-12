@@ -83,8 +83,8 @@ describe('flag-owned tool sets', () => {
     const byKey = Object.fromEntries(FEATURE_POINTS.map((p) => [p.key, [...p.toolIds]]));
 
     expect(byKey.tables).toEqual(['tables_query', 'tables_mutation', 'tables_schema_plan']);
-    // Apps ride no tool of their own yet (app-as-tool is Phase 2); the Tables tools stay with `tables`.
-    expect(byKey.apps).toEqual([]);
+    // Apps are an independent grant; Tables consent never expands to apps.
+    expect(byKey.apps).toEqual(['apps_query', 'apps_action']);
     // Phase 2 rollout switches: no tool of their own (apps_query / apps_action ride `apps`, slice AGT).
     expect(byKey.apps_custom_code).toEqual([]);
     expect(byKey.tables_ai_fields).toEqual([]);

@@ -643,6 +643,8 @@ export type TableAutomationAction =
       /** Supports `{{field:<id>}}` (the record's values are handed over as untrusted data). */
       prompt: string;
       botId?: string;
+      /** Server-pinned immutable Bot version. */
+      botVersion?: number;
       outputFieldId?: number;
       /** 1–`TABLE_AUTOMATION_LIMITS.agentMaxSteps`. */
       maxSteps: number;

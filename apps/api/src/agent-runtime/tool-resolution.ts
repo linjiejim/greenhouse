@@ -47,6 +47,8 @@ import { createLogFrictionTool } from '../tools/log-friction.js';
 import { createEvalMessageTool } from '../tools/eval-message.js';
 import { createGenerateImageTool } from '../tools/generate-image.js';
 import { createAnalyzeImageTool } from '../tools/analyze-image.js';
+import { createAppsQueryTool } from '../tools/apps-query.js';
+import { createAppsActionTool } from '../tools/apps-action.js';
 import { createTablesQueryTool } from '../tools/tables-query.js';
 import { createTablesMutationTool } from '../tools/tables-mutation.js';
 import { createTablesSchemaPlanTool } from '../tools/tables-schema-plan.js';
@@ -197,7 +199,7 @@ export interface LazyServerToolContext {
  * one-step send. Automation that needs to deliver by email uses the scheduler's
  * own channel (scheduler/notify.ts), which no model can aim.
  */
-export const UNATTENDED_TOOL_DENYLIST = new Set(['automation_mutation', 'email_mutation']);
+export const UNATTENDED_TOOL_DENYLIST = new Set(['automation_mutation', 'email_mutation', 'apps_action']);
 
 /**
  * The automatic baseline is fail-closed: an unattended execution receives only
@@ -323,6 +325,8 @@ export function buildLazyServerTools(
   if (effectiveTools.includes('project_mutation')) {
     tools.project_mutation = createProjectMutationTool({ userId });
   }
+  if (effectiveTools.includes('apps_query')) tools.apps_query = createAppsQueryTool({ userId });
+  if (effectiveTools.includes('apps_action')) tools.apps_action = createAppsActionTool({ userId });
   if (effectiveTools.includes('tables_query')) {
     tools.tables_query = createTablesQueryTool({ userId });
   }

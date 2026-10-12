@@ -296,3 +296,7 @@ stateless Agent/MCP 不开放该文件工具。
 
 - Batch eval judge 配置位于 `apps/api/src/llm/tasks/batch-eval-judge.ts`。
 - 这些配置仅由对应 eval 引擎调用，不出现在 profile picker，也不能被用户选择；交互式评估使用 `eval-judge` profile。
+
+### Apps and Tables Agent steps (Phase 2)
+
+`apps_query` / `apps_action` belong to the member's `apps` feature point (independent of Tables). The app-page ambient hint supplies the app ID; use the viewer gateway rather than assuming access to its Base. Chat requires explicit confirmation for each app write, Bots uses its approval card, and unattended/Feishu surfaces exclude `apps_action`. Tables rule Agent steps use a separate bounded tool surface: no tools by default, or same-Base reads only, with any selected Bot version pinned when the rule is saved.
