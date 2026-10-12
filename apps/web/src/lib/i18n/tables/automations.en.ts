@@ -80,9 +80,11 @@ export const tablesAutomationsEn = {
       none: 'No tools',
       sameBase: 'Read this Base only',
       maxSteps: 'Maximum steps',
+      advanced: 'Execution settings',
+      versionHint: 'The Agent version is fixed when you save this rule.',
       invalid: 'Enter instructions and 1–20 steps; output must be a text field on the triggering record.',
       botsFailed: 'Could not load Agents. Retry by reopening this editor.',
-      help: 'Runs once as the rule executor. Output is AI-generated and saves only if the record has not changed. Agent versions are fixed when saved.',
+      help: 'Runs as the rule executor. AI output is saved only if the record has not changed.',
     },
     action: {
       agent: 'Agent',

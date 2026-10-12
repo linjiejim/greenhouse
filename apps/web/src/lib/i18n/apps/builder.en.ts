@@ -7,6 +7,7 @@
 export const appsBuilderEn = {
   builder: {
     external: {
+      mapping: 'Display mapping',
       source: 'Source',
       readTool: 'Read tool',
       connector: 'Connector',
@@ -22,7 +23,7 @@ export const appsBuilderEn = {
       columns: 'Columns (JSON: key, label, path, type)',
       pointer: 'Use a JSON Pointer, e.g. /items or an empty string for the whole result.',
       invalidJson: 'Enter valid JSON with the expected shape.',
-      hint: 'Every viewer uses their own permissions and connector account. Arguments are saved with the app; only read tools can run.',
+      hint: 'Read-only. Each viewer uses their own permissions and connector account.',
     },
     title: 'Edit {name}',
     back: 'Back to the app center',
@@ -94,12 +95,16 @@ export const appsBuilderEn = {
       title: 'Title',
       icon: 'Icon',
       startHere: 'Open this page first',
-      startHereHint: 'People land here when they open the app, if their role can see it.',
+      startHereHint: 'For people whose role can see this page.',
       filters: 'Page filters',
-      filtersHint:
-        'Filters people set while using the page. Each filters the cards on the tables it targets; a card can also compare a field with a filter under “Follow page filters”.',
+      filtersHint: 'Let people filter the cards on this page. Choose which tables each filter affects.',
     },
     canvas: {
+      help: 'Arrange cards',
+      externalSource: 'Source: {source}',
+      sourceNeeded: 'Choose a data source in card settings.',
+      externalDisplay: 'Display: {display}',
+      customBindings: 'Data bindings: {count}',
       hint: 'Select a card to set it up. Drag a card by its title to move it, and its corner to resize it.',
       hintNarrow: 'Select a card to set it up. Its menu moves it earlier or later.',
       addCard: 'Add card',
@@ -126,29 +131,35 @@ export const appsBuilderEn = {
     catalog: {
       title: 'Add a card',
       intro: 'Pick what the card shows. Its data and settings come next.',
+      groups: {
+        records: 'Records and forms',
+        reports: 'Reports',
+        content: 'Text and navigation',
+        advanced: 'Advanced · external data and code',
+      },
       defaultButton: 'Open',
       cannotAdd: 'This card cannot be added to this Base yet.',
       kinds: {
         records: {
           name: 'Records',
-          description: 'A table or list of records, with details, buttons and adding new ones.',
+          description: 'Browse records in a table or list.',
         },
-        kanban: { name: 'Board', description: 'Records in lanes by a choice or person field; drag them across.' },
-        calendar: { name: 'Calendar', description: 'Records on the days of a date field.' },
-        gallery: { name: 'Gallery', description: 'Records as cards with a picture.' },
-        form: { name: 'Form', description: 'A form that adds a record.' },
-        kpi: { name: 'Number', description: 'One total: a count, a sum or an average.' },
-        chart: { name: 'Chart', description: 'Bars, lines, areas or a pie over the records.' },
-        pivot: { name: 'Pivot', description: 'A summary table over one or two dimensions.' },
-        text: { name: 'Text', description: 'Headings, notes and links in Markdown.' },
-        buttons: { name: 'Buttons', description: 'Buttons that open a page, a link or a new-record form.' },
+        kanban: { name: 'Board', description: 'Organize records into lanes.' },
+        calendar: { name: 'Calendar', description: 'Place records on a calendar.' },
+        gallery: { name: 'Gallery', description: 'Show records as image cards.' },
+        form: { name: 'Form', description: 'Collect a new record.' },
+        kpi: { name: 'Number', description: 'Show a count, total or average.' },
+        chart: { name: 'Chart', description: 'Visualize trends and comparisons.' },
+        pivot: { name: 'Pivot', description: 'Summarize records by category.' },
+        text: { name: 'Text', description: 'Add headings, notes and links.' },
+        buttons: { name: 'Buttons', description: 'Open a page, link or new-record form.' },
         custom: {
           name: 'Custom component',
-          description: 'Author HTML and declared bindings for review. Code execution is currently unavailable.',
+          description: 'HTML and data bindings. Execution is unavailable.',
         },
         external: {
           name: 'External data',
-          description: 'A number, chart or table from a tool or a connector, read with each viewer’s own access.',
+          description: 'Display read-only tool or connector data.',
         },
       },
       blocked: {
@@ -168,8 +179,7 @@ export const appsBuilderEn = {
       table: 'Table',
       retargetFailed: 'This card cannot use that table.',
       conditions: 'Which records',
-      conditionsHint:
-        'Only records that match show on this card — on top of what each role may read. Use “Created by is Me” for “my records”.',
+      conditionsHint: 'Narrow the records each role may read. For “my records”, use “Created by is Me”.',
       incompleteCondition: 'Condition {index} has no value yet; the card keeps its previous conditions until it does.',
       pageRefs: 'Follow page filters',
       pageRefsHint: 'Compare a field with what someone picks in one of this page’s filters.',
@@ -331,15 +341,15 @@ export const appsBuilderEn = {
       roles: 'Who sees it',
     },
     roles: {
-      intro:
-        'A role decides which pages someone sees and, table by table, which records and fields they read or change. People get roles under Sharing.',
+      intro: 'Set what each role can see and change, then assign people under Sharing.',
       listLabel: 'Roles',
       none: 'No roles',
       add: 'Add role',
       newName: 'New role',
       identity: 'Role',
       name: 'Name',
-      key: 'Key: {key} (buttons, forms and sharing refer to the role by it)',
+      identifier: 'Role identifier',
+      key: 'Key: {key}',
       pages: 'Pages',
       pagesHint: 'The pages this role sees, in the app’s order.',
       allPages: 'All pages',
@@ -347,8 +357,7 @@ export const appsBuilderEn = {
       comments: 'Can comment',
       commentsHint: 'On cards whose details allow comments.',
       tables: 'Data access',
-      tablesHint:
-        'Per table: no access, read or edit; which rows; which fields. A table without a rule is invisible to the role — whatever the cards show.',
+      tablesHint: 'Choose tables, records and fields this role may access. Tables without a rule stay hidden.',
       inexactFacts:
         'Formulas, rollups and lookups follow the visibility of the fields they are computed from. Only the Base owner sees that worked out here; the server applies it either way.',
       delete: 'Delete role',
@@ -358,10 +367,11 @@ export const appsBuilderEn = {
       deleteMentions: 'Buttons, forms and other lists that name it: {count} — they will no longer include it.',
     },
     audiences: {
-      intro:
-        'Who can open the published app, and as which role. Each person has one role: their own entry first, then the first of their groups in role order, then everyone.',
-      readOnly:
-        'Only the Base owner can change who this app is shared with: sharing it gives people access to the Base’s data through the app.',
+      intro: 'Choose who can open the app and their role. Saving updates access to the published app immediately.',
+      priorityTitle: 'How a person’s role is chosen',
+      priority:
+        'A personal entry takes priority, then group entries in role order, then Everyone. Each person uses one role.',
+      readOnly: 'Only the Base owner can grant access to the app and its data.',
       notPublished: 'Nothing is shared until the first version is published.',
       empty: 'Not shared with anyone yet.',
       listLabel: 'Shared with',
@@ -384,7 +394,8 @@ export const appsBuilderEn = {
     },
     settings: {
       identity: 'Name and look',
-      identityHint: 'Saved on the app right away — not part of a version.',
+      appearance: 'Icon and colour',
+      identityHint: 'Saving applies these changes immediately, without publishing.',
       name: 'Name',
       description: 'Description',
       icon: 'Icon',
@@ -393,7 +404,7 @@ export const appsBuilderEn = {
       saved: 'Saved',
       saveFailed: 'Unable to save',
       navigation: 'Page navigation',
-      navigationHint: 'How people move between pages. Part of the draft — it changes when you publish.',
+      navigationHint: 'Takes effect when you publish.',
       navTabs: 'Tabs across the top',
       navSidebar: 'A list on the side',
       usage: 'Usage',
@@ -473,7 +484,7 @@ export const appsBuilderEn = {
       noAudience: 'Not shared with anyone yet — set that under Sharing.',
       losesAccess: 'Loses access: this version drops the role',
       gainsAccess: 'Gets access',
-      notes: 'Release notes',
+      notes: 'Release notes (optional)',
       notesPlaceholder: 'What changed, for the people who use it',
       hasProblems: 'Problems to fix before publishing: {count}.',
       unsaved: 'The draft could not be saved — publish what you see once it is.',
@@ -486,8 +497,7 @@ export const appsBuilderEn = {
     versions: {
       button: 'Versions',
       title: 'Versions',
-      intro:
-        'Every published version, newest first. Restoring copies a version into the draft; people keep the live version until you publish it again, as a new version.',
+      intro: 'Restore replaces the draft. Publish it to update the live app.',
       empty: 'Nothing published yet.',
       loadFailed: 'Unable to load versions',
       label: 'v{version}',
@@ -497,11 +507,12 @@ export const appsBuilderEn = {
       restore: 'Restore to draft',
       restoreTitle: 'Restore v{version} to the draft?',
       restoreDescription:
-        'The draft becomes a copy of v{version}, replacing what is in it now. Nothing changes for people until you publish it — as v{next}.',
+        'Replace the current draft with v{version}? The live app changes only after you publish v{next}.',
       restored: 'v{version} is in the draft',
       restoreFailed: 'Unable to restore the version',
     },
     identity: {
+      changeIcon: 'Change',
       noIcon: 'No icon',
       icons: {
         app: 'App',
@@ -535,6 +546,7 @@ export const appsBuilderEn = {
     },
     create: {
       title: 'New app',
+      optional: 'Description and appearance (optional)',
       name: 'Name',
       namePlaceholder: 'e.g. Purchase requests',
       description: 'Description',
@@ -548,7 +560,7 @@ export const appsBuilderEn = {
       baseName: 'Name of the new Base',
       basesFailed: 'Unable to load your Bases — you can still create a new one.',
       noBases: 'You do not build any Base yet; the app gets a new Base of its own.',
-      publishNote: 'The app starts as a draft. Only the Base owner publishes it and chooses who may use it.',
+      publishNote: 'Starts as a draft. The Base owner publishes it and manages access.',
     },
     references: {
       title: 'Apps use this:',

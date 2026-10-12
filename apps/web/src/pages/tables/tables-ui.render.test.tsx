@@ -85,7 +85,7 @@ const views: TableView[] = [
 ];
 
 describe('Tables compact grid controls', () => {
-  it('renders crowded toolbar operations as accessible icon buttons with upward tooltips', () => {
+  it('labels the primary add action and keeps secondary controls compact and accessible', () => {
     const html = renderToStaticMarkup(
       <TablesViewToolbar
         viewControls={
@@ -119,37 +119,13 @@ describe('Tables compact grid controls', () => {
     expect(html).toContain('aria-label="Fields"');
     expect(html).toContain('aria-label="View settings"');
     expect(html).toContain('aria-label="View"');
-    expect(html).toContain('aria-label="Recycle bin"');
-    expect(html).toContain('aria-label="Manage forms"');
-    expect(html).toContain('aria-label="Add field"');
-    expect(html).toContain('aria-label="Add record"');
-    expect(html.match(/bottom-full mb-1\.5/g)).toHaveLength(8);
-    expect(html).toContain('bg-primary-500');
-  });
-
-  it('offers import to whoever may create records, which is what the server checks', () => {
-    const toolbar = (rights: { canEdit: boolean; canCreate: boolean }) =>
-      renderToStaticMarkup(
-        <TablesViewToolbar
-          viewControls={null}
-          search=""
-          filterCount={0}
-          canBuild={false}
-          pasting={false}
-          onSearch={vi.fn()}
-          onOpenFilters={vi.fn()}
-          onOpenRecycleBin={vi.fn()}
-          onOpenForms={vi.fn()}
-          onAddField={vi.fn()}
-          onAddRecord={vi.fn()}
-          onImport={vi.fn()}
-          {...rights}
-        />,
-      );
-    // A custom role that edits but may not create gets no import (the server would refuse it)…
-    expect(toolbar({ canEdit: true, canCreate: false })).not.toContain('data-testid="tables-import-open"');
-    // …and one that creates without editing any existing record does.
-    expect(toolbar({ canEdit: false, canCreate: true })).toContain('data-testid="tables-import-open"');
+    expect(html).toContain('data-testid="tables-more-actions"');
+    expect(html).not.toContain('aria-label="Recycle bin"');
+    expect(html).not.toContain('aria-label="Manage forms"');
+    expect(html).not.toContain('aria-label="Add field"');
+    expect(html).toMatch(/<button[^>]*bg-primary-600[^>]*>.*Add record<\/button>/);
+    expect(html.match(/bottom-full mb-1\.5/g)).toHaveLength(5);
+    expect(html).toMatch(/aria-hidden="true">2<\/span>/);
   });
 
   it('always exposes View while keeping edit and delete behind record edit permission', () => {
@@ -186,9 +162,28 @@ describe('Tables compact grid controls', () => {
     expect(html).toContain('Record #42');
     expect(html).toContain('Revision 3');
     expect(html).toContain('Launch review');
+    expect(html).toMatch(/<h1[^>]*>.*Launch review.*<\/h1>/);
     expect(html).toContain('Planned');
     expect(html).toContain('Launch review · Planned');
     expect(html).toContain('Computed');
     expect(html).toContain('aria-label="Close record details"');
+  });
+
+  it('never takes the record title from a primary field outside the authorized field list', () => {
+    const html = renderToStaticMarkup(
+      <RecordDetailContent
+        table={table}
+        record={record}
+        fields={[fields[1]!]}
+        users={[jim]}
+        usersById={new Map([[jim.id, jim]])}
+        canEdit={false}
+        onEdit={vi.fn()}
+        onRecordChanged={vi.fn()}
+      />,
+    );
+    expect(html).toMatch(/<h1[^>]*>.*#42.*<\/h1>/);
+    expect(html).not.toContain('Launch review');
+    expect(html).toContain('Planned');
   });
 });

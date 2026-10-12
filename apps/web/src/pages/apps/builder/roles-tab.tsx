@@ -121,7 +121,10 @@ export function RolesTab({
             testId="app-role-name"
             onChange={(name) => name && setRole((entry) => ({ ...entry, name }))}
           />
-          <p className="text-[11px] text-fg-faint">{t('apps.builder.roles.key', { key: role.key })}</p>
+          <details className="text-xs text-fg-muted">
+            <summary className="cursor-pointer">{t('apps.builder.roles.identifier')}</summary>
+            <p className="mt-2 font-mono">{t('apps.builder.roles.key', { key: role.key })}</p>
+          </details>
         </PanelSection>
 
         <PanelSection title={t('apps.builder.roles.pages')} hint={t('apps.builder.roles.pagesHint')}>

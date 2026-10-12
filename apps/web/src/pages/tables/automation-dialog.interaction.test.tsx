@@ -196,7 +196,11 @@ describe('TablesAutomationDialog', () => {
       )!;
     await choose(selectWith('bot1'), 'bot1');
     await choose(selectWith('same_base_read'), 'same_base_read');
-    await choose(selectWith('2'), '2');
+    const outputLabel = [...editor.querySelectorAll('label')].find((label) => label.textContent === 'Save output to')!;
+    await choose(document.getElementById(outputLabel.htmlFor) as HTMLSelectElement, '2');
+    const limits = editor.querySelector('details')!;
+    expect(limits.open).toBe(false);
+    await click(limits.querySelector('summary')!);
     await type(editor.querySelector('input[type="number"]')!, '20');
     await click(byTestId('automation-save'));
     expect(api.createTableAutomation).toHaveBeenCalledWith(

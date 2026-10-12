@@ -39,12 +39,34 @@ export function PanelSection({
   hint,
   children,
   testId,
+  defaultOpen,
 }: {
   title: string;
   hint?: string;
   children: ReactNode;
   testId?: string;
+  /** Optional settings can be disclosed without unmounting their unfinished input. */
+  defaultOpen?: boolean;
 }) {
+  const [expanded, setExpanded] = useState(defaultOpen ?? true);
+  if (defaultOpen !== undefined) {
+    return (
+      <details
+        open={expanded}
+        onToggle={(event) => setExpanded(event.currentTarget.open)}
+        className="border-t border-edge pt-3 first:border-t-0 first:pt-0"
+        data-testid={testId}
+      >
+        <summary className="cursor-pointer rounded py-1 text-xs font-semibold text-fg-secondary focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary-500">
+          {title}
+        </summary>
+        <div className="mt-2 space-y-3">
+          {hint && <p className="text-xs leading-5 text-fg-muted">{hint}</p>}
+          {children}
+        </div>
+      </details>
+    );
+  }
   return (
     <section className="space-y-2 border-t border-edge pt-4 first:border-t-0 first:pt-0" data-testid={testId}>
       <div>

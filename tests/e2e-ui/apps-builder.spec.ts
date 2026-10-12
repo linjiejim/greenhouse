@@ -90,6 +90,7 @@ test.describe('apps builder', () => {
       await expect(page.getByTestId('app-page-new-page')).toBeVisible();
       await renamePage(page, 'Approve');
       await addCard(page, 'records');
+      await page.locator('summary').filter({ hasText: 'Buttons on each record' }).click();
       const rowActions = page.getByTestId('app-row-actions');
       await rowActions.getByRole('button', { name: 'Add a button' }).click();
       const action = rowActions.getByTestId('app-action-action-1');
@@ -124,7 +125,10 @@ test.describe('apps builder', () => {
       // ── Edit: rename the approval queue, publish v2 ──
       await page.getByTestId('app-tab-pages').click();
       await page.getByTestId('app-page-new-page').click();
-      await page.getByTestId('app-canvas-card-records-1').getByRole('button', { name: /^Set up/ }).click();
+      await page
+        .getByTestId('app-canvas-card-records-1')
+        .getByRole('button', { name: /^Set up/ })
+        .click();
       await page.getByTestId('app-card-title').fill('Approval queue');
       await saved(page);
       await page.getByTestId('app-publish').click();
@@ -150,9 +154,9 @@ test.describe('apps builder', () => {
         await api.get(`/api/apps/${appId}/versions`),
       );
       expect(list.versions.map((version) => version.version)).toEqual([2, 1]);
-      const draft = await json<{ spec: { pages: Array<{ id: string; cards: Array<{ id: string; title?: string }> }> } }>(
-        await api.get(`/api/apps/${appId}/draft`),
-      );
+      const draft = await json<{
+        spec: { pages: Array<{ id: string; cards: Array<{ id: string; title?: string }> }> };
+      }>(await api.get(`/api/apps/${appId}/draft`));
       expect(draft.spec.pages.map((entry) => entry.id)).toEqual(['home', 'new-page']);
       expect(draft.spec.pages[1]!.cards.find((card) => card.id === 'records-1')?.title).toBe('Requests');
     } finally {

@@ -46,6 +46,7 @@ test.describe('tables import', () => {
 
       // ── Upload ──
       await page.goto(`/#/tables/${baseId}/table/${tableId}`);
+      await page.getByTestId('tables-more-actions').click();
       await page.getByTestId('tables-import-open').click();
       const wizard = page.getByTestId('tables-import-dialog');
       await expect(wizard).toBeVisible();

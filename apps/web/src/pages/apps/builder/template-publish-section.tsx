@@ -41,7 +41,12 @@ export function TemplatePublishSection({ app }: { app: AppSummary }) {
     }
   };
   return (
-    <PanelSection title={t('apps.templates.save')} hint={t('apps.templates.saveHint')}>
+    <PanelSection
+      title={t('apps.templates.save')}
+      hint={t('apps.templates.saveHint')}
+      defaultOpen={false}
+      testId="app-template-publish-section"
+    >
       <FormField label={t('apps.templates.key')}>
         <Input value={key} maxLength={40} onChange={(e) => setKey(e.target.value)} data-testid="template-publish-key" />
       </FormField>
@@ -63,7 +68,12 @@ export function TemplatePublishSection({ app }: { app: AppSummary }) {
         />
       </details>
       <FormError>{error}</FormError>
-      <Button disabled={busy || !key.trim() || !version} onClick={() => void publish()} data-testid="template-publish">
+      <Button
+        variant="outline"
+        disabled={busy || !key.trim() || !version}
+        onClick={() => void publish()}
+        data-testid="template-publish"
+      >
         {t('apps.templates.publish')}
       </Button>
       {published && <TemplateDetailDialog templateKey={published} onClose={() => setPublished('')} />}

@@ -37,9 +37,10 @@ export function PreviewBar({
 }) {
   const t = useT();
   const role = previewName ?? previewRole;
+  if (!draft && !role && roles.length === 0) return null;
   return (
     <div
-      className="flex flex-col gap-2 rounded-md border border-info bg-info-subtle px-3 py-2 text-xs text-info sm:flex-row sm:items-center"
+      className={`flex flex-col gap-2 rounded-md border px-3 py-2 text-xs sm:flex-row sm:items-center ${draft || role ? 'border-info bg-info-subtle text-info' : 'border-edge text-fg-muted'}`}
       role="status"
       data-testid="app-preview-bar"
       data-draft={draft ? 'true' : undefined}

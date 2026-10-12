@@ -211,7 +211,11 @@ export function SourceEditor({
           </Select>
         </FormField>
       </PanelSection>
-      <PanelSection title={t('apps.builder.props.conditions')} hint={t('apps.builder.props.conditionsHint')}>
+      <PanelSection
+        title={t('apps.builder.props.conditions')}
+        hint={t('apps.builder.props.conditionsHint')}
+        defaultOpen={Boolean(source.query?.where)}
+      >
         <ConditionEditor
           value={source.query?.where}
           onChange={(where) => onChange(withQuery(source, { where: where ?? null }))}
@@ -220,7 +224,11 @@ export function SourceEditor({
           testId="app-card-conditions"
         />
       </PanelSection>
-      <PanelSection title={t('apps.builder.props.pageRefs')} hint={t('apps.builder.props.pageRefsHint')}>
+      <PanelSection
+        title={t('apps.builder.props.pageRefs')}
+        hint={t('apps.builder.props.pageRefsHint')}
+        defaultOpen={pageRefClauses(source.query).length > 0}
+      >
         <PageRefsEditor
           clauses={pageRefClauses(source.query)}
           onChange={(pageRefs) => onChange(withQuery(source, { pageRefs }))}
@@ -228,7 +236,7 @@ export function SourceEditor({
           filters={pageFilters}
         />
       </PanelSection>
-      <PanelSection title={t('apps.builder.props.sort')}>
+      <PanelSection title={t('apps.builder.props.sort')} defaultOpen={Boolean(sort)}>
         <FormGrid>
           <FormField label={t('apps.builder.props.sortField')}>
             <Select

@@ -82,18 +82,20 @@ function IdentitySection({ app, onSaved }: { app: AppSummary; onSaved: (app: App
           />
         </FormField>
       </FormGrid>
-      <div className="space-y-1.5">
-        <p className="text-xs font-medium text-fg-secondary">{t('apps.builder.settings.icon')}</p>
-        <AppIconPicker
-          label={t('apps.builder.settings.icon')}
-          value={icon}
-          onChange={(next) => next && setIcon(next)}
-        />
-      </div>
-      <div className="space-y-1.5">
-        <p className="text-xs font-medium text-fg-secondary">{t('apps.builder.settings.accent')}</p>
-        <AppAccentPicker label={t('apps.builder.settings.accent')} value={accent} icon={icon} onChange={setAccent} />
-      </div>
+      <PanelSection title={t('apps.builder.settings.appearance')} defaultOpen={false}>
+        <div className="space-y-1.5">
+          <p className="text-xs font-medium text-fg-secondary">{t('apps.builder.settings.icon')}</p>
+          <AppIconPicker
+            label={t('apps.builder.settings.icon')}
+            value={icon}
+            onChange={(next) => next && setIcon(next)}
+          />
+        </div>
+        <div className="space-y-1.5">
+          <p className="text-xs font-medium text-fg-secondary">{t('apps.builder.settings.accent')}</p>
+          <AppAccentPicker label={t('apps.builder.settings.accent')} value={accent} icon={icon} onChange={setAccent} />
+        </div>
+      </PanelSection>
       <div className="flex justify-end">
         <Button size="sm" disabled={!dirty || saving || !name.trim()} onClick={() => void save()}>
           {saving ? t('common.saving') : t('apps.builder.settings.save')}
@@ -134,7 +136,11 @@ function UsageSection({ appId, spec }: { appId: number; spec: AppSpec }) {
   }, [appId]);
   const actions = usage ? Object.entries(usage.actions30d).sort(([, a], [, b]) => b - a) : [];
   return (
-    <PanelSection title={t('apps.builder.settings.usage')} hint={t('apps.builder.settings.usageHint')}>
+    <PanelSection
+      title={t('apps.builder.settings.usage')}
+      hint={t('apps.builder.settings.usageHint')}
+      defaultOpen={false}
+    >
       {failed ? (
         <p className="text-xs text-fg-faint">{t('apps.builder.settings.usageUnavailable')}</p>
       ) : !usage ? (
@@ -229,7 +235,6 @@ export function SettingsTab({
         }}
       />
 
-      <TemplatePublishSection app={app} />
       <PanelSection title={t('apps.builder.settings.navigation')} hint={t('apps.builder.settings.navigationHint')}>
         <FilterPills
           variant="segment"
@@ -250,10 +255,15 @@ export function SettingsTab({
         />
       </PanelSection>
 
+      <TemplatePublishSection app={app} />
       <UsageSection appId={app.id} spec={spec} />
 
       {canTransfer && (
-        <PanelSection title={t('apps.builder.settings.transfer')} hint={t('apps.builder.settings.transferHint')}>
+        <PanelSection
+          title={t('apps.builder.settings.transfer')}
+          hint={t('apps.builder.settings.transferHint')}
+          defaultOpen={false}
+        >
           {handOverTo.length === 0 ? (
             <p className="text-xs text-fg-faint" data-testid="app-transfer-none">
               {t('apps.builder.settings.transferNone')}
@@ -317,7 +327,11 @@ export function SettingsTab({
         </PanelSection>
       )}
 
-      <PanelSection title={t('apps.builder.settings.archive')} hint={t('apps.builder.settings.archiveHint')}>
+      <PanelSection
+        title={t('apps.builder.settings.archive')}
+        hint={t('apps.builder.settings.archiveHint')}
+        defaultOpen={false}
+      >
         {canArchive ? (
           <Button
             variant="destructive"

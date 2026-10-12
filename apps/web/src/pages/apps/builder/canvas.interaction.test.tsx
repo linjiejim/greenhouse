@@ -65,12 +65,12 @@ afterEach(() => {
   if (clientWidth) Object.defineProperty(HTMLElement.prototype, 'clientWidth', clientWidth);
 });
 
-async function mountCanvas(width: number) {
+async function mountCanvas(width: number, cards?: AppCard[]) {
   measuredWidth = width;
   const page: AppPage = {
     id: 'home',
     title: 'Home',
-    cards: [card('mine', { x: 0, y: 0, w: 6, h: 6 }), card('all', { x: 6, y: 0, w: 6, h: 6 })],
+    cards: cards ?? [card('mine', { x: 0, y: 0, w: 6, h: 6 }), card('all', { x: 6, y: 0, w: 6, h: 6 })],
   };
   container = document.createElement('div');
   document.body.appendChild(container);
@@ -99,8 +99,33 @@ describe('the canvas grid', () => {
     await mountCanvas(520);
     expect(grid.rendered).toBeGreaterThan(0);
     expect(grid.dragEnabled).toBe(true);
+    expect(container.querySelector('details')?.open).toBe(false);
     expect(container.textContent).toContain('Drag a card by its title to move it');
     expect(container.querySelectorAll('.widget-drag-handle')).toHaveLength(2);
+  });
+
+  it('describes external configuration without fetching results, and shows custom execution as unavailable', async () => {
+    await mountCanvas(520, [
+      {
+        id: 'external',
+        kind: 'external',
+        layout: { x: 0, y: 0, w: 6, h: 4 },
+        source: {
+          kind: 'connector',
+          server: 'metrics',
+          tool: 'summary',
+          input: {},
+          map: { kind: 'kpi', value: '/total' },
+        },
+      },
+      { id: 'custom', kind: 'custom', layout: { x: 6, y: 0, w: 6, h: 4 }, html: '<p>Do not run</p>', bindings: [] },
+    ]);
+    expect(container.textContent).toContain('Source: metrics / summary');
+    expect(container.textContent).toContain('Display: Number');
+    expect(container.textContent).toContain('Data bindings: 0');
+    expect(container.textContent).toContain('cannot run yet');
+    expect(container.querySelector('iframe')).toBeNull();
+    expect(container.textContent).not.toContain('Do not run');
   });
 
   it('says to use the card menu when the grid it drew is one column, and offers no drag handle', async () => {

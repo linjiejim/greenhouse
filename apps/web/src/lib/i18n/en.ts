@@ -3181,14 +3181,18 @@ export default {
   tables: {
     ai: {
       prompt: 'Generation instructions',
-      promptHint: 'Select input fields below. Use {{field:123}} to refer to a field ID.',
+      promptHint: 'Describe the result you want. Insert a field by name to refer to it in your instructions.',
       inputs: 'Input fields',
+      noInputs: 'Add a text, number, date or select field first to give AI something to work with.',
       resultType: 'Result type',
       autoUpdate: 'Regenerate when inputs change',
       cap: 'Monthly token limit',
       payerHint: 'Charged to the field creator, within both their account budget and this field limit.',
       fill: 'Fill empty cells',
       regenerate: 'Regenerate all cells',
+      regenerateTitle: 'Regenerate every record?',
+      regenerateDescription:
+        'This replaces existing AI results using saved settings and uses the field creator’s AI budget.',
       runSaved:
         'These actions use saved settings. Changing instructions, inputs or result type clears previous answers; save, then fill empty cells.',
       queuedCount: 'Queued {count}; skipped {skipped}.',
@@ -3495,7 +3499,7 @@ export default {
     // Spread first, so a core key of the same name would win (and fail the slice test).
     ...APPS_SLICES_EN,
     title: 'Apps',
-    description: 'Apps built on your Tables and shared with the people who use them',
+    description: 'Build and share apps from your tables',
     status: {
       draft: 'Draft',
       published: 'Published',

@@ -21,6 +21,7 @@ import { useT } from '../../../lib/i18n';
 import { useBuilderBases } from '../center/use-builder-bases';
 import { AppAccentPicker, AppIconPicker } from './identity-fields';
 import { CARD_SIZES } from './spec-model';
+import { PanelSection } from './properties/common';
 
 /** The Base choice that creates a new one. */
 const NEW_BASE = 'new';
@@ -109,6 +110,15 @@ export function CreateAppDialog({
   return (
     <Dialog open={open} onClose={onClose} title={t('apps.builder.create.title')} size={choosing ? 'lg' : 'md'}>
       <div className="space-y-4" data-testid="app-create-dialog">
+        <FormField label={t('apps.builder.create.name')} required>
+          <Input
+            value={name}
+            maxLength={APP_LIMITS.nameLength}
+            placeholder={t('apps.builder.create.namePlaceholder')}
+            onChange={(event) => setName(event.target.value)}
+            data-testid="app-create-name"
+          />
+        </FormField>
         {choosing && (
           <>
             <FormField label={t('apps.builder.create.base')} required>
@@ -148,35 +158,33 @@ export function CreateAppDialog({
             )}
           </>
         )}
-        <FormField label={t('apps.builder.create.name')} required>
-          <Input
-            value={name}
-            maxLength={APP_LIMITS.nameLength}
-            placeholder={t('apps.builder.create.namePlaceholder')}
-            onChange={(event) => setName(event.target.value)}
-            data-testid="app-create-name"
-          />
-        </FormField>
-        <FormField label={t('apps.builder.create.description')}>
-          <Textarea
-            rows={2}
-            value={description}
-            maxLength={500}
-            onChange={(event) => setDescription(event.target.value)}
-          />
-        </FormField>
-        <div className="space-y-1.5">
-          <p className="text-xs font-medium text-fg-secondary">{t('apps.builder.settings.icon')}</p>
-          <AppIconPicker
-            label={t('apps.builder.settings.icon')}
-            value={icon}
-            onChange={(next) => next && setIcon(next)}
-          />
-        </div>
-        <div className="space-y-1.5">
-          <p className="text-xs font-medium text-fg-secondary">{t('apps.builder.settings.accent')}</p>
-          <AppAccentPicker label={t('apps.builder.settings.accent')} value={accent} icon={icon} onChange={setAccent} />
-        </div>
+        <PanelSection title={t('apps.builder.create.optional')} defaultOpen={false}>
+          <FormField label={t('apps.builder.create.description')}>
+            <Textarea
+              rows={2}
+              value={description}
+              maxLength={500}
+              onChange={(event) => setDescription(event.target.value)}
+            />
+          </FormField>
+          <div className="space-y-1.5">
+            <p className="text-xs font-medium text-fg-secondary">{t('apps.builder.settings.icon')}</p>
+            <AppIconPicker
+              label={t('apps.builder.settings.icon')}
+              value={icon}
+              onChange={(next) => next && setIcon(next)}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <p className="text-xs font-medium text-fg-secondary">{t('apps.builder.settings.accent')}</p>
+            <AppAccentPicker
+              label={t('apps.builder.settings.accent')}
+              value={accent}
+              icon={icon}
+              onChange={setAccent}
+            />
+          </div>
+        </PanelSection>
         {choosing && <p className="text-xs text-fg-faint">{t('apps.builder.create.publishNote')}</p>}
         <FormError>{error}</FormError>
         <FormActions>

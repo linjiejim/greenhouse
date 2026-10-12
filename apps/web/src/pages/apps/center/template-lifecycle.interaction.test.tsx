@@ -69,7 +69,10 @@ it('reviews the exact displayed version and explains that custom HTML remains un
   );
   expect(document.body.textContent).toContain('abc123');
   expect(document.body.textContent).toContain('immutable');
-  expect(document.body.textContent).toContain('Execution is currently unavailable');
+  expect(document.body.textContent).toContain('Custom code cannot run yet');
+  const status = [...document.querySelectorAll('span')].find((element) => element.textContent === 'Awaiting review');
+  expect(status).toBeDefined();
+  expect(status?.closest('details')).toBeNull();
   const approve = document.querySelector<HTMLButtonElement>('[data-testid="template-approve"]')!;
   await act(async () => approve.click());
   expect(api.reviewAppTemplate).toHaveBeenCalledWith('review-me', '1.2.0', { decision: 'approve', note: '' });
@@ -85,9 +88,7 @@ it('does not offer installation until review is approved, while keeping details 
   );
   const install = document.querySelector<HTMLButtonElement>('[data-testid="template-review-me-install"]')!;
   expect(install.disabled).toBe(true);
-  const inspect = [...document.querySelectorAll('button')].find(
-    (button) => button.textContent === 'Details and review',
-  )!;
+  const inspect = [...document.querySelectorAll('button')].find((button) => button.textContent === 'View details')!;
   await act(async () => inspect.click());
   expect(api.getAppTemplate).toHaveBeenCalledWith('review-me', undefined);
   expect(catalog.installAppTemplate).not.toHaveBeenCalled();

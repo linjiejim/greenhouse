@@ -10,6 +10,7 @@ import type { appsBuilderEn } from './builder.en';
 export const appsBuilderZh: DeepRecord<typeof appsBuilderEn> = {
   builder: {
     external: {
+      mapping: '显示内容',
       source: '数据源',
       readTool: '只读工具',
       connector: '连接器',
@@ -25,7 +26,7 @@ export const appsBuilderZh: DeepRecord<typeof appsBuilderEn> = {
       columns: '列（JSON：key、label、path、type）',
       pointer: '使用 JSON Pointer，例如 /items；空字符串表示整个结果。',
       invalidJson: '请输入形状正确的 JSON。',
-      hint: '每位查看者使用自己的权限和连接器账号。参数随应用保存，仅可调用只读工具。',
+      hint: '仅调用只读工具，使用每位查看者自己的权限和连接器账号。',
     },
     title: '编辑 {name}',
     back: '返回应用中心',
@@ -96,12 +97,16 @@ export const appsBuilderZh: DeepRecord<typeof appsBuilderEn> = {
       title: '标题',
       icon: '图标',
       startHere: '首先打开这个页面',
-      startHereHint: '打开应用时先进入这里（如果其角色能看到）。',
+      startHereHint: '对有权查看此页的人生效。',
       filters: '页面筛选器',
-      filtersHint:
-        '使用页面时设置的筛选器。每个筛选器作用于它所针对的表上的卡片；卡片也可以在「跟随页面筛选器」里拿字段与筛选器比较。',
+      filtersHint: '让使用者筛选本页卡片，并选择筛选器作用的数据表。',
     },
     canvas: {
+      help: '如何排列卡片',
+      externalSource: '数据源：{source}',
+      sourceNeeded: '在卡片设置中选择数据源。',
+      externalDisplay: '显示为：{display}',
+      customBindings: '数据绑定：{count} 个',
       hint: '选中卡片进行设置。拖动卡片标题可以移动，拖动右下角可以调整大小。',
       hintNarrow: '选中卡片进行设置。卡片菜单可以把它往前或往后移。',
       addCard: '添加卡片',
@@ -128,11 +133,17 @@ export const appsBuilderZh: DeepRecord<typeof appsBuilderEn> = {
     catalog: {
       title: '添加卡片',
       intro: '选择卡片显示什么，然后再设置它的数据。',
+      groups: {
+        records: '记录与表单',
+        reports: '汇总与图表',
+        content: '文本与导航',
+        advanced: '高级 · 外部数据与代码',
+      },
       defaultButton: '打开',
       cannotAdd: '这种卡片暂时不能添加到这个 Base。',
       kinds: {
-        records: { name: '记录', description: '记录的表格或列表，可查看详情、使用按钮、新建记录。' },
-        kanban: { name: '看板', description: '按单选或人员字段分列的记录，可拖动换列。' },
+        records: { name: '记录', description: '以表格或列表浏览记录。' },
+        kanban: { name: '看板', description: '按单选或人员字段分列显示记录。' },
         calendar: { name: '日历', description: '按日期字段排在日历上的记录。' },
         gallery: { name: '画册', description: '带图片的记录卡片。' },
         form: { name: '表单', description: '新建一条记录的表单。' },
@@ -141,8 +152,8 @@ export const appsBuilderZh: DeepRecord<typeof appsBuilderEn> = {
         pivot: { name: '透视表', description: '按一个或两个维度汇总的表格。' },
         text: { name: '文本', description: 'Markdown 标题、说明和链接。' },
         buttons: { name: '按钮', description: '打开页面、链接或新建记录表单的按钮。' },
-        custom: { name: '自定义组件', description: '编写 HTML 与数据绑定并提交审核。代码执行暂未开放。' },
-        external: { name: '外部数据', description: '来自工具或连接器的数字、图表或表格，按每位查看者自己的权限读取。' },
+        custom: { name: '自定义组件', description: 'HTML 与数据绑定。执行暂未开放。' },
+        external: { name: '外部数据', description: '来自只读工具或连接器的数字、图表或表格。' },
       },
       blocked: {
         noTables: '请先在 Base 中添加数据表。',
@@ -161,8 +172,7 @@ export const appsBuilderZh: DeepRecord<typeof appsBuilderEn> = {
       table: '数据表',
       retargetFailed: '这张卡片不能使用那张表。',
       conditions: '哪些记录',
-      conditionsHint:
-        '只有满足条件的记录出现在这张卡片上——在各角色可读范围之上再做筛选。「我的记录」用「创建人 等于 我」。',
+      conditionsHint: '在角色可读范围内筛选记录。「我的记录」可设置为「创建人 等于 我」。',
       incompleteCondition: '第 {index} 个条件还没有值；填好之前卡片保留原来的条件。',
       pageRefs: '跟随页面筛选器',
       pageRefsHint: '拿一个字段与使用者在本页筛选器里选的值比较。',
@@ -322,14 +332,15 @@ export const appsBuilderZh: DeepRecord<typeof appsBuilderEn> = {
       roles: '谁能看到',
     },
     roles: {
-      intro: '角色决定一个人能看到哪些页面，以及逐张表能读写哪些记录和字段。在「分发」里把角色分给人。',
+      intro: '设置各角色可查看和修改的内容，再到「分发」指定人员。',
       listLabel: '角色',
       none: '没有角色',
       add: '添加角色',
       newName: '新角色',
       identity: '角色',
       name: '名称',
-      key: '标识：{key}（按钮、表单和分发都用它指代这个角色）',
+      identifier: '角色标识',
+      key: '标识：{key}',
       pages: '页面',
       pagesHint: '这个角色能看到的页面，按应用中的顺序。',
       allPages: '全部页面',
@@ -337,8 +348,7 @@ export const appsBuilderZh: DeepRecord<typeof appsBuilderEn> = {
       comments: '可以评论',
       commentsHint: '在详情允许评论的卡片上。',
       tables: '数据权限',
-      tablesHint:
-        '逐张表设置：无权限、可读或可编辑；哪些行；哪些字段。没有规则的表对这个角色不可见——不论卡片显示什么。',
+      tablesHint: '选择可访问的数据表、记录和字段。未配置规则的数据表不可见。',
       inexactFacts:
         '公式、汇总和查找字段的可见性跟随它们所依赖的字段。只有 Base 所有者能在这里看到推算结果；服务器始终按此执行。',
       delete: '删除角色',
@@ -348,9 +358,10 @@ export const appsBuilderZh: DeepRecord<typeof appsBuilderEn> = {
       deleteMentions: '引用它的按钮、表单等列表：{count} 处——之后不再包含它。',
     },
     audiences: {
-      intro:
-        '谁能打开已发布的应用，以什么角色。每人只有一个角色：先看本人条目，再看所在群组（按角色顺序取第一个），最后是全员。',
-      readOnly: '只有 Base 所有者可以修改应用分发给谁：分发意味着让这些人通过应用访问 Base 的数据。',
+      intro: '选择谁可以使用应用及其角色。保存后，已发布应用的访问权限立即更新。',
+      priorityTitle: '如何确定一个人的角色',
+      priority: '优先使用个人条目，其次按角色顺序取所在群组的首个条目，最后使用全员条目。每人使用一个角色。',
+      readOnly: '只有 Base 所有者可以授予应用及其数据的访问权限。',
       notPublished: '首个版本发布之前不会分发给任何人。',
       empty: '还没有分发给任何人。',
       listLabel: '分发对象',
@@ -373,7 +384,8 @@ export const appsBuilderZh: DeepRecord<typeof appsBuilderEn> = {
     },
     settings: {
       identity: '名称与外观',
-      identityHint: '立即保存到应用上——不属于某个版本。',
+      appearance: '图标与颜色',
+      identityHint: '保存后立即生效，无需发布。',
       name: '名称',
       description: '描述',
       icon: '图标',
@@ -382,7 +394,7 @@ export const appsBuilderZh: DeepRecord<typeof appsBuilderEn> = {
       saved: '已保存',
       saveFailed: '无法保存',
       navigation: '页面导航',
-      navigationHint: '在页面之间切换的方式。属于草稿——发布后生效。',
+      navigationHint: '发布后生效。',
       navTabs: '顶部页签',
       navSidebar: '侧边列表',
       usage: '用量',
@@ -461,7 +473,7 @@ export const appsBuilderZh: DeepRecord<typeof appsBuilderEn> = {
       noAudience: '还没有分发给任何人——在「分发」里设置。',
       losesAccess: '失去访问：这个版本去掉了该角色',
       gainsAccess: '获得访问',
-      notes: '发布说明',
+      notes: '发布说明（可选）',
       notesPlaceholder: '这次改了什么，写给使用它的人',
       hasProblems: '发布前需要修好的问题：{count} 个。',
       unsaved: '草稿未能保存——保存成功后再发布你看到的内容。',
@@ -474,8 +486,7 @@ export const appsBuilderZh: DeepRecord<typeof appsBuilderEn> = {
     versions: {
       button: '版本',
       title: '版本',
-      intro:
-        '所有已发布的版本，最新的在前。恢复会把某个版本复制到草稿；在你再次发布（成为新版本）之前，大家仍使用当前上线的版本。',
+      intro: '恢复会替换草稿，再次发布后才会更新使用中的应用。',
       empty: '还没有发布过。',
       loadFailed: '无法加载版本',
       label: 'v{version}',
@@ -484,12 +495,12 @@ export const appsBuilderZh: DeepRecord<typeof appsBuilderEn> = {
       noNotes: '没有发布说明',
       restore: '恢复到草稿',
       restoreTitle: '把 v{version} 恢复到草稿？',
-      restoreDescription:
-        '草稿会变成 v{version} 的副本，替换现在的内容。在你发布之前（将成为 v{next}），大家使用的不会改变。',
+      restoreDescription: '当前草稿将被 v{version} 替换。发布为 v{next} 后才会更新使用中的应用。',
       restored: 'v{version} 已复制到草稿',
       restoreFailed: '无法恢复这个版本',
     },
     identity: {
+      changeIcon: '更换',
       noIcon: '无图标',
       icons: {
         app: '应用',
@@ -523,6 +534,7 @@ export const appsBuilderZh: DeepRecord<typeof appsBuilderEn> = {
     },
     create: {
       title: '新建应用',
+      optional: '描述与外观（可选）',
       name: '名称',
       namePlaceholder: '例如：采购申请',
       description: '描述',
@@ -536,7 +548,7 @@ export const appsBuilderZh: DeepRecord<typeof appsBuilderEn> = {
       baseName: '新 Base 的名称',
       basesFailed: '无法加载你的 Base——仍可新建一个。',
       noBases: '你还没有参与搭建任何 Base，应用会带一个新的 Base。',
-      publishNote: '应用从草稿开始。只有 Base 的所有者能发布它并决定谁可以使用。',
+      publishNote: '创建后为草稿，由 Base 所有者发布并管理访问权限。',
     },
     references: {
       title: '这些应用在使用它：',

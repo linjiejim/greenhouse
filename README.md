@@ -108,11 +108,12 @@ same script doubles as an end-to-end smoke tour (see [Development](#development)
   your Agents propose the same plans as a card you apply when you choose. The draft is
   checked by the same validators as the editor before you see it, permission changes are listed
   on their own above Confirm, and a partly applied plan can retry just what failed. Four built-in
-  app templates (purchase requests, IT tickets, CRM, recruiting) install a ready Base and a draft app in one step,
-  in English or Chinese to match your account (`POST /api/apps/templates/:key/install`). Share a base with people,
-  groups or the whole team; custom roles decide, table by table, which rows and fields someone
-  sees and may change — enforced on every path, including the agent. Forms are submit-only and
-  can go to Base members, everyone in the workspace or chosen people and groups: they open at
+  app templates (purchase requests, IT tickets, CRM, recruiting) let you choose a template, name your app
+  and confirm before creating a new Base and draft app, in English or Chinese to match your account.
+  Share a base with people, groups or the whole team; custom roles decide, table by table,
+  which rows and fields someone sees and may change — enforced on every path, including the agent.
+  Forms are submit-only and can go to Base members, everyone in the workspace or chosen people
+  and groups: they open at
   `#/forms/<id>` without the Tables module, take file uploads, prefill hidden values (the
   submitter, today) and can be limited to one response per person — and submitting never lets
   anyone read the table. Automations run in the background (on create / change / matching a
@@ -126,7 +127,8 @@ same script doubles as an end-to-end smoke tour (see [Development](#development)
   versions are immutable and an old one can be restored into the draft. People open what was
   shared with them from the app center or the sidebar (pinned and featured apps) — on an iPhone,
   from the app center and the drawer's Apps section — and every read and write goes through the
-  app's own gateway, so an app never shows more than its role allows.
+  app's own gateway, so an app never shows more than its role allows. Managers open unpublished
+  drafts directly in the builder from the app center; optional builder settings expand when needed.
   Archiving a table or field, removing options or deleting an automation an app uses asks first
   and lists the apps. Custom component authors need the opt-in `apps_custom_code` grant;
   code and bindings can be edited and immutable versions reviewed by an administrator.
@@ -140,7 +142,8 @@ same script doubles as an end-to-end smoke tour (see [Development](#development)
   handwritten samples; existing records are never exported. Templates with automations or
   custom components require administrator review. Installation creates a private Base and
   draft app, disables automations, and removes webhooks and fixed notification recipients.
-  The template center shows versions, hashes and review state; iPhone users can install templates too.
+  The template center keeps review status visible, with versions, hashes and scan details available
+  on demand. iPhone users can also choose a template, name the app and confirm installation.
   `apps_query` and `apps_action` expose the same gateway to chat and external agents under a
   separate Apps MCP consent group. Writes require confirmation; Agents show the stored action
   and record for approval. Feishu cannot execute app writes directly; a request handed to an Agent
@@ -556,7 +559,7 @@ the same page (experimental, iOS 17+, needs notifications on that station), a Bo
 task also counts up on the Lock Screen and in the Dynamic Island; the "task finished" push then
 wakes the app so it can clear the activity, and nothing else leaves the server for it.
 
-AI fields in Tables generate read-only text, numbers, or select choices from chosen input columns. Configure instructions and a monthly token cap in field settings, then fill empty cells or regenerate existing rows. Input changes can regenerate automatically; usage is charged to the field creator under both the user budget and the field cap. Failed or interrupted cells remain visible and can be regenerated. Deployments can pause generation with `TABLES_AI_WORKER=0`.
+AI fields in Tables generate read-only text, numbers, or select choices from chosen input columns. Configure instructions and a monthly token cap in field settings, then fill empty cells or regenerate existing rows. Regenerating the whole column asks for confirmation before replacing results and using the creator's AI budget. Input changes can regenerate automatically; usage is charged to the field creator under both the user budget and the field cap. Failed or interrupted cells remain visible and can be regenerated. Deployments can pause generation with `TABLES_AI_WORKER=0`.
 
 **Tables automations** run asynchronously on a worker inside the API (a minute sweep queues
 scheduled and date rules); every run and its steps show in the rule's run log. A rule runs as

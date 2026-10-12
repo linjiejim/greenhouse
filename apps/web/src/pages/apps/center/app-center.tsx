@@ -41,7 +41,7 @@ function EntryPoints({
   const t = useT();
   if (!canBuild) return null;
   return (
-    <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center" data-testid="app-center-entries">
+    <div className="contents" data-testid="app-center-entries">
       {canBuild && (
         <Button
           size="sm"
@@ -113,11 +113,12 @@ export function AppCenterPage() {
     <ModulePage
       moduleId="workspace.apps"
       layout="list"
-      toolbar={
-        <div className="flex flex-wrap gap-2">
+      className="[&>header]:flex-wrap [&>header>div:first-child]:min-w-40 [&_[data-module-page-slot=actions]]:max-w-full"
+      actions={
+        <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-wrap">
           <EntryPoints canBuild={canBuild} templates={templates} onOpen={setDialog} />
           {currentUser?.role === 'super' && (
-            <Button variant="outline" size="sm" onClick={() => setReviews(true)} data-testid="app-center-reviews">
+            <Button variant="ghost" size="sm" onClick={() => setReviews(true)} data-testid="app-center-reviews">
               {t('apps.sandbox.reviews')}
             </Button>
           )}
@@ -151,10 +152,13 @@ export function AppCenterPage() {
           {shelves.map((shelf) => (
             <section key={shelf.key} aria-labelledby={`app-shelf-${shelf.key}`} data-testid={`app-shelf-${shelf.key}`}>
               <div className="mb-3">
-                <h2 id={`app-shelf-${shelf.key}`} className="text-sm font-semibold text-fg">
+                <h2
+                  id={`app-shelf-${shelf.key}`}
+                  className="text-sm font-semibold text-fg"
+                  title={t(`apps.center.shelf.${shelf.key}Hint`)}
+                >
                   {t(`apps.center.shelf.${shelf.key}`)}
                 </h2>
-                <p className="text-xs text-fg-faint">{t(`apps.center.shelf.${shelf.key}Hint`)}</p>
               </div>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
                 {shelf.apps.map((app) => (

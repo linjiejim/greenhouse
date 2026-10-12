@@ -24,7 +24,15 @@ import {
   Type,
   type LucideIcon,
 } from '../../../lib/icons';
-import { CATALOG_CARD_KINDS, catalogBlocker, type BuilderSchema, type CatalogBlocker } from './spec-model';
+import { catalogBlocker, type BuilderSchema, type CatalogBlocker } from './spec-model';
+import { PanelSection } from './properties/common';
+
+const CARD_GROUPS = [
+  { key: 'records', kinds: ['records', 'kanban', 'calendar', 'gallery', 'form'] },
+  { key: 'reports', kinds: ['kpi', 'chart', 'pivot'] },
+  { key: 'content', kinds: ['text', 'buttons'] },
+  { key: 'advanced', kinds: ['external', 'custom'] },
+] as const satisfies readonly { key: string; kinds: readonly AppCardKind[] }[];
 
 export const CARD_KIND_ICONS: Readonly<Record<AppCardKind, LucideIcon>> = {
   records: Table2,
@@ -64,36 +72,49 @@ export function CardCatalog({
   return (
     <Dialog open={open} onClose={onClose} title={t('apps.builder.catalog.title')} size="lg">
       <p className="mb-3 text-xs text-fg-muted">{t('apps.builder.catalog.intro')}</p>
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2" data-testid="app-card-catalog">
-        {CATALOG_CARD_KINDS.filter((kind) => kind !== 'custom' || canUseFeature(user, 'apps_custom_code')).map(
-          (kind) => {
-            const Icon = CARD_KIND_ICONS[kind];
-            const blocker = catalogBlocker(kind, schema);
-            return (
-              <button
-                key={kind}
-                type="button"
-                disabled={blocker !== null}
-                onClick={() => onPick(kind)}
-                data-testid={`app-catalog-${kind}`}
-                className="flex min-h-11 items-start gap-3 rounded-lg border border-edge bg-surface-card p-3 text-left transition-colors hover:border-primary-edge hover:bg-surface-muted disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:border-edge disabled:hover:bg-surface-card"
-              >
-                <span className="mt-0.5 inline-flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-primary-subtle text-primary-fg">
-                  <Icon size={16} />
-                </span>
-                <span className="min-w-0">
-                  <span className="block text-sm font-semibold text-fg">
-                    {t(`apps.builder.catalog.kinds.${kind}.name`)}
-                  </span>
-                  <span className="block text-xs leading-4 text-fg-muted">
-                    {t(`apps.builder.catalog.kinds.${kind}.description`)}
-                  </span>
-                  {blocker && <span className="mt-1 block text-[11px] text-warning">{t(BLOCKER_KEYS[blocker])}</span>}
-                </span>
-              </button>
-            );
-          },
-        )}
+      <div className="space-y-4" data-testid="app-card-catalog">
+        {CARD_GROUPS.map((group) => (
+          <PanelSection
+            key={group.key}
+            title={t(`apps.builder.catalog.groups.${group.key}`)}
+            defaultOpen={group.key === 'advanced' ? false : undefined}
+            testId={`app-catalog-group-${group.key}`}
+          >
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              {group.kinds
+                .filter((kind) => kind !== 'custom' || canUseFeature(user, 'apps_custom_code'))
+                .map((kind) => {
+                  const Icon = CARD_KIND_ICONS[kind];
+                  const blocker = catalogBlocker(kind, schema);
+                  return (
+                    <button
+                      key={kind}
+                      type="button"
+                      disabled={blocker !== null}
+                      onClick={() => onPick(kind)}
+                      data-testid={`app-catalog-${kind}`}
+                      className="flex min-h-11 items-start gap-3 rounded-lg border border-edge bg-surface-card p-3 text-left transition-colors hover:border-primary-edge hover:bg-surface-muted disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:border-edge disabled:hover:bg-surface-card"
+                    >
+                      <span className="mt-0.5 inline-flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-primary-subtle text-primary-fg">
+                        <Icon size={16} />
+                      </span>
+                      <span className="min-w-0">
+                        <span className="block text-sm font-semibold text-fg">
+                          {t(`apps.builder.catalog.kinds.${kind}.name`)}
+                        </span>
+                        <span className="block text-xs leading-4 text-fg-muted">
+                          {t(`apps.builder.catalog.kinds.${kind}.description`)}
+                        </span>
+                        {blocker && (
+                          <span className="mt-1 block text-[11px] text-warning">{t(BLOCKER_KEYS[blocker])}</span>
+                        )}
+                      </span>
+                    </button>
+                  );
+                })}
+            </div>
+          </PanelSection>
+        ))}
       </div>
     </Dialog>
   );

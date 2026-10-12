@@ -3109,14 +3109,17 @@ const zh: Messages = {
   tables: {
     ai: {
       prompt: '生成指令',
-      promptHint: '选择下方输入字段。可用 {{field:123}} 引用字段 ID。',
+      promptHint: '描述你想得到的结果；需要引用字段时，可按名称插入。',
       inputs: '输入字段',
+      noInputs: '先添加文本、数字、日期或选项字段，供 AI 读取。',
       resultType: '结果类型',
       autoUpdate: '输入变化时自动重新生成',
       cap: '每月 Token 上限',
       payerHint: '计入字段创建者用量，同时受个人额度与字段上限约束。',
       fill: '填充空白',
       regenerate: '全部重新生成',
+      regenerateTitle: '重新生成所有记录？',
+      regenerateDescription: '将按已保存的设置替换现有 AI 结果，并消耗字段创建者的 AI 额度。',
       runSaved: '生成使用已保存的设置。修改指令、输入或结果类型会清除旧答案；保存后请填充空白。',
       queuedCount: '已排队 {count} 条，跳过 {skipped} 条。',
       usage: '{tokens} / {cap} Token · 排队 {queued} · 生成中 {running} · 失败 {failed}',
@@ -3421,7 +3424,7 @@ const zh: Messages = {
     // Spread first, so a core key of the same name would win (and fail the slice test).
     ...APPS_SLICES_ZH,
     title: '应用',
-    description: '基于表格搭建、分发给使用者的应用',
+    description: '用表格搭建应用，与团队共享',
     status: {
       draft: '草稿',
       published: '已发布',

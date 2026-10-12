@@ -93,6 +93,34 @@ async function setValue(element: HTMLInputElement | HTMLSelectElement, value: st
 }
 
 describe('WidgetDialog', () => {
+  it('asks for a numeric field only when the calculation uses one, preserving the previous choice', async () => {
+    const amount = { ...stage, id: 3, type: 'number' as const, name: 'Amount', config: '{}' };
+    await act(async () =>
+      root.render(
+        <I18nProvider initialLocale="en">
+          <WidgetDialog
+            open
+            dashboardId={11}
+            editing={null}
+            tables={[table]}
+            users={[]}
+            loadFields={async () => [stage, amount]}
+            onClose={vi.fn()}
+            onSaved={vi.fn()}
+          />
+        </I18nProvider>,
+      ),
+    );
+    await flush();
+    expect([...document.querySelectorAll('label')].some((label) => label.textContent === 'Value field')).toBe(false);
+    await setValue(labelled<HTMLSelectElement>('Calculation'), 'sum');
+    await setValue(labelled<HTMLSelectElement>('Value field'), '3');
+    await setValue(labelled<HTMLSelectElement>('Calculation'), 'count');
+    expect([...document.querySelectorAll('label')].some((label) => label.textContent === 'Value field')).toBe(false);
+    await setValue(labelled<HTMLSelectElement>('Calculation'), 'sum');
+    expect(labelled<HTMLSelectElement>('Value field').value).toBe('3');
+  });
+
   it('says a typed limit outside 1–100 in words, next to Save, and saves nothing', async () => {
     await act(async () => {
       root.render(

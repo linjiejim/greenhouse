@@ -53,6 +53,14 @@ export function TablesFormEditor({
   const [title, setTitle] = useState(form?.config.title ?? '');
   const [description, setDescription] = useState(form?.config.description ?? '');
   const [successMessage, setSuccessMessage] = useState(form?.config.successMessage ?? '');
+  const [showPresentation, setShowPresentation] = useState(
+    Boolean(
+      form?.config.description ||
+      form?.config.successMessage ||
+      (form?.config.title && form.config.title !== form.name),
+    ),
+  );
+  const [showDefaults, setShowDefaults] = useState(() => fieldValueRows(form?.config.defaults, byId).length > 0);
   const [audience, setAudience] = useState<AudienceKind>(form?.audience.type ?? 'base');
   const [principals, setPrincipals] = useState<PrincipalSelection>(
     form?.audience.type === 'principals'
@@ -117,7 +125,10 @@ export function TablesFormEditor({
       return setError(t('tables.forms.audience.pickRequired'));
     }
     const prefilled = fieldValueEntries(defaults, byId);
-    if (!prefilled) return setError(t('tables.forms.defaults.valueRequired'));
+    if (!prefilled) {
+      setShowDefaults(true);
+      return setError(t('tables.forms.defaults.valueRequired'));
+    }
     const config: TableFormConfig = {
       version: 1,
       title: title.trim() || name.trim(),
@@ -155,17 +166,6 @@ export function TablesFormEditor({
           data-testid="form-name-input"
         />
       </FormField>
-      <FormField label={t('tables.forms.formTitle')}>
-        <Input
-          value={title}
-          onChange={(event) => setTitle(event.target.value)}
-          placeholder={t('tables.forms.formTitlePlaceholder')}
-        />
-      </FormField>
-      <FormField label={t('common.description')}>
-        <Textarea rows={3} value={description} onChange={(event) => setDescription(event.target.value)} />
-      </FormField>
-
       <FormSection title={t('tables.forms.audience.title')} description={t(`tables.forms.audience.${audience}Hint`)}>
         <Select
           aria-label={t('tables.forms.audience.title')}
@@ -209,17 +209,6 @@ export function TablesFormEditor({
         </div>
       </FormSection>
 
-      <FormSection title={t('tables.forms.defaults.title')} description={t('tables.forms.defaults.description')}>
-        <FieldValuesEditor
-          rows={defaults}
-          onChange={setDefaults}
-          fields={prefillFields}
-          users={users}
-          copy={defaultsCopy}
-          emptyLabel={t('tables.forms.choose')}
-        />
-      </FormSection>
-
       <FormSection>
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
@@ -228,14 +217,58 @@ export function TablesFormEditor({
           </div>
           <Toggle checked={allowMultiple} onChange={setAllowMultiple} label={t('tables.forms.allowMultiple')} />
         </div>
-        <FormField className="mt-4" label={t('tables.forms.successMessage')}>
-          <Input
-            value={successMessage}
-            onChange={(event) => setSuccessMessage(event.target.value)}
-            placeholder={t('tables.forms.successMessagePlaceholder')}
-          />
-        </FormField>
       </FormSection>
+
+      <details
+        open={showPresentation}
+        onToggle={(event) => setShowPresentation(event.currentTarget.open)}
+        className="border-t border-edge pt-3"
+        data-testid="form-presentation"
+      >
+        <summary className="cursor-pointer text-sm font-medium text-fg-secondary">
+          {t('tables.forms.presentation')}
+        </summary>
+        <div className="mt-3 space-y-3">
+          <FormField label={t('tables.forms.formTitle')}>
+            <Input
+              value={title}
+              onChange={(event) => setTitle(event.target.value)}
+              placeholder={name.trim() || t('tables.forms.formTitlePlaceholder')}
+            />
+          </FormField>
+          <FormField label={t('common.description')}>
+            <Textarea rows={3} value={description} onChange={(event) => setDescription(event.target.value)} />
+          </FormField>
+          <FormField label={t('tables.forms.successMessage')}>
+            <Input
+              value={successMessage}
+              onChange={(event) => setSuccessMessage(event.target.value)}
+              placeholder={t('tables.forms.successMessagePlaceholder')}
+            />
+          </FormField>
+        </div>
+      </details>
+
+      <details
+        open={showDefaults}
+        onToggle={(event) => setShowDefaults(event.currentTarget.open)}
+        className="border-t border-edge pt-3"
+        data-testid="form-defaults"
+      >
+        <summary className="cursor-pointer text-sm font-medium text-fg-secondary">
+          {t('tables.forms.defaults.title')}
+          {defaults.length > 0 && ` · ${defaults.length}`}
+        </summary>
+        <p className="my-3 text-xs text-fg-muted">{t('tables.forms.defaults.description')}</p>
+        <FieldValuesEditor
+          rows={defaults}
+          onChange={setDefaults}
+          fields={prefillFields}
+          users={users}
+          copy={defaultsCopy}
+          emptyLabel={t('tables.forms.choose')}
+        />
+      </details>
 
       <FormError>{error}</FormError>
       <FormActions>

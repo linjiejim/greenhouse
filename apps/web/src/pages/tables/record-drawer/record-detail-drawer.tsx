@@ -15,6 +15,7 @@ import { isComputedField } from '../../../components/tables/field-types';
 import { Edit3, Eye, X } from '../../../lib/icons';
 import { formatDate } from '../../../lib/utils';
 import { useT } from '../../../lib/i18n';
+import { RecordTitle } from '../views/record-card';
 import { RECORD_ACTIVITY_TAB } from './activity-slot';
 import { RecordActionsSlot } from './actions-slot';
 import type { RecordDrawerSlotProps, RecordDrawerTab } from './slots';
@@ -56,14 +57,16 @@ function FieldsPanel({ record, fields, usersById }: RecordDrawerSlotProps) {
         </FieldGrid>
       </DetailSection>
 
-      <DetailSection title={t('tables.recordMetadata')}>
+      <details className="border-t border-edge pt-3">
+        <summary className="cursor-pointer text-sm font-medium text-fg-secondary">{t('tables.recordMetadata')}</summary>
+        <p className="my-3 text-xs text-fg-muted">{t('tables.revision', { revision: record.revision })}</p>
         <FieldGrid cols={2}>
           <Field label={t('tables.created')} value={formatDate(record.created_at)} />
           <Field label={t('tables.createdBy')} value={createdBy} />
           <Field label={t('tables.updated')} value={formatDate(record.updated_at)} />
           <Field label={t('tables.updatedBy')} value={updatedBy} />
         </FieldGrid>
-      </DetailSection>
+      </details>
     </div>
   );
 }
@@ -92,11 +95,19 @@ export function RecordDetailContent({ onClose, onEdit, ...slot }: RecordDetailCo
               <Eye size={18} />
             </div>
           }
-          title={t('tables.recordNumber', { id: record.id })}
+          title={
+            <h1 className="min-w-0 break-words text-xl font-bold text-fg">
+              <RecordTitle
+                record={record}
+                primary={slot.fields.find((field) => field.is_primary)}
+                usersById={slot.usersById}
+              />
+            </h1>
+          }
           meta={
             <>
               <span>{table.name}</span>
-              <span>{t('tables.revision', { revision: record.revision })}</span>
+              <span>{t('tables.recordNumber', { id: record.id })}</span>
             </>
           }
           actions={

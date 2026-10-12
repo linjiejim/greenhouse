@@ -60,6 +60,12 @@ export function CustomProperties({
   };
   return (
     <>
+      <p
+        className="rounded-md border border-warning/30 bg-warning-subtle px-3 py-2 text-xs leading-5 text-warning"
+        data-testid="app-custom-execution-notice"
+      >
+        {t('apps.sandbox.editorNotice')}
+      </p>
       {!enabled && (
         <p role="alert" className="text-xs text-warning">
           {t('apps.sandbox.disabled')}
@@ -67,7 +73,7 @@ export function CustomProperties({
       )}
       <PanelSection title={t('apps.sandbox.code')} hint={t('apps.sandbox.codeHint')}>
         <Textarea
-          rows={18}
+          rows={10}
           spellCheck={false}
           className="font-mono text-xs"
           value={card.html}
@@ -77,12 +83,15 @@ export function CustomProperties({
           onChange={(event) => onChange({ ...card, html: event.target.value })}
         />
         <p className="text-xs text-fg-muted">
-          {new TextEncoder().encode(card.html).byteLength} / {APP_SANDBOX_LIMITS.htmlBytes}
+          {t('apps.sandbox.codeSize', {
+            used: Math.ceil(new TextEncoder().encode(card.html).byteLength / 1024),
+            limit: APP_SANDBOX_LIMITS.htmlBytes / 1024,
+          })}
         </p>
       </PanelSection>
-      <PanelSection title={t('apps.sandbox.bindings')} hint={t('apps.sandbox.bindingsHint')}>
+      <PanelSection title={t('apps.sandbox.bindings')} hint={t('apps.sandbox.bindingsHint')} defaultOpen={false}>
         <Textarea
-          rows={18}
+          rows={10}
           spellCheck={false}
           className="font-mono text-xs"
           value={json}
@@ -118,7 +127,7 @@ export function CustomProperties({
           </pre>
         </details>
       </PanelSection>
-      <PanelSection title={t('apps.sandbox.bridge')} hint={t('apps.sandbox.bridgeHint')}>
+      <PanelSection title={t('apps.sandbox.bridge')} hint={t('apps.sandbox.bridgeHint')} defaultOpen={false}>
         <pre className="overflow-auto whitespace-pre-wrap text-xs">
           {
             'await greenhouse.query("rows", { cursor });\nawait greenhouse.action("approve", { recordId, values: [] });\nawait greenhouse.create([{ fieldId: 1, value: "…" }]);'

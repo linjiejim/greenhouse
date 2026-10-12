@@ -21,6 +21,7 @@ export function AppIconPicker({
   onChange,
   allowNone = false,
   disabled = false,
+  compact = false,
 }: {
   label: string;
   value: AppIconName | undefined;
@@ -28,9 +29,10 @@ export function AppIconPicker({
   /** A page may have no icon; an app always has one. */
   allowNone?: boolean;
   disabled?: boolean;
+  compact?: boolean;
 }) {
   const t = useT();
-  return (
+  const choices = (
     <div role="group" aria-label={label} className="flex flex-wrap gap-1.5">
       {allowNone && (
         <button
@@ -64,6 +66,20 @@ export function AppIconPicker({
         );
       })}
     </div>
+  );
+  if (!compact) return choices;
+  const CurrentIcon = value ? appIcon(value) : Ban;
+  return (
+    <details>
+      <summary className="cursor-pointer rounded border border-edge px-3 py-2 text-xs text-fg-secondary">
+        <span className="inline-flex items-center gap-2 align-middle">
+          <CurrentIcon size={16} />
+          {value ? t(`apps.builder.identity.icons.${value}`) : t('apps.builder.identity.noIcon')}
+          <span className="text-fg-faint">{t('apps.builder.identity.changeIcon')}</span>
+        </span>
+      </summary>
+      <div className="pt-2">{choices}</div>
+    </details>
   );
 }
 

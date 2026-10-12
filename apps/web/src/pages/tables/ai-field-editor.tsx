@@ -7,11 +7,12 @@ import {
   type TableAiFieldConfig,
   type TableAiFieldStatusView,
 } from '@greenhouse/types/tables';
-import { Button, Checkbox, Input, Select, Textarea } from '../../components/ui';
+import { Button, Checkbox, ConfirmDialog, Input, Select, Textarea } from '../../components/ui';
 import { FormField } from '../../components/form';
 import { FIELD_TYPE_LABEL_KEYS } from '../../components/tables/field-types';
 import { getAiFieldStatus, runAiField, type TableField } from '../../lib/api/tables';
 import { useT } from '../../lib/i18n';
+import { InsertField } from './automations/action-editors';
 
 export const emptyAiConfig = (): TableAiFieldConfig => ({
   prompt: '',
@@ -31,34 +32,50 @@ export function AiFieldEditor({
   fields: TableField[];
 }) {
   const t = useT();
+  const inputFields = fields.filter((field) => isTableAiInputFieldType(field.type));
   return (
     <div className="space-y-3">
       <FormField label={t('tables.ai.prompt')} help={t('tables.ai.promptHint')}>
         <Textarea
           value={value.prompt}
+          rows={3}
           maxLength={TABLE_AI_FIELD_LIMITS.prompt}
           onChange={(event) => onChange({ ...value, prompt: event.target.value })}
         />
       </FormField>
+      <InsertField
+        fields={inputFields}
+        disabled={inputFields.some(
+          (field) => value.prompt.length + `{{field:${field.id}}}`.length > TABLE_AI_FIELD_LIMITS.prompt,
+        )}
+        onInsert={(token, fieldId) =>
+          onChange({
+            ...value,
+            prompt: `${value.prompt}${token}`,
+            inputFieldIds: value.inputFieldIds.includes(fieldId)
+              ? value.inputFieldIds
+              : [...value.inputFieldIds, fieldId],
+          })
+        }
+      />
       <FormField label={t('tables.ai.inputs')}>
-        <div className="space-y-2">
-          {fields
-            .filter((field) => isTableAiInputFieldType(field.type))
-            .map((field) => (
-              <Checkbox
-                key={field.id}
-                label={`${field.name} (#${field.id})`}
-                checked={value.inputFieldIds.includes(field.id)}
-                onChange={(event) =>
-                  onChange({
-                    ...value,
-                    inputFieldIds: event.target.checked
-                      ? [...value.inputFieldIds, field.id]
-                      : value.inputFieldIds.filter((id) => id !== field.id),
-                  })
-                }
-              />
-            ))}
+        <div className="grid max-h-40 grid-cols-1 gap-2 overflow-y-auto rounded-md border border-edge p-3 sm:grid-cols-2">
+          {inputFields.map((field) => (
+            <Checkbox
+              key={field.id}
+              label={field.name}
+              checked={value.inputFieldIds.includes(field.id)}
+              onChange={(event) =>
+                onChange({
+                  ...value,
+                  inputFieldIds: event.target.checked
+                    ? [...value.inputFieldIds, field.id]
+                    : value.inputFieldIds.filter((id) => id !== field.id),
+                })
+              }
+            />
+          ))}
+          {inputFields.length === 0 && <p className="text-xs text-fg-muted">{t('tables.ai.noInputs')}</p>}
         </div>
       </FormField>
       <FormField label={t('tables.ai.resultType')}>
@@ -99,6 +116,7 @@ export function AiFieldRuns({ fieldId }: { fieldId: number }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
+  const [confirmRegenerate, setConfirmRegenerate] = useState(false);
   useEffect(() => {
     let canceled = false;
     const load = () =>
@@ -143,14 +161,25 @@ export function AiFieldRuns({ fieldId }: { fieldId: number }) {
           })}
         </p>
       )}
-      <div className="flex gap-2">
-        <Button variant="secondary" disabled={busy} onClick={() => void run('fill')}>
+      <div className="flex flex-wrap gap-2">
+        <Button variant="outline" size="sm" disabled={busy} onClick={() => void run('fill')}>
           {t('tables.ai.fill')}
         </Button>
-        <Button variant="secondary" disabled={busy} onClick={() => void run('regenerate')}>
+        <Button variant="ghost" size="sm" disabled={busy} onClick={() => setConfirmRegenerate(true)}>
           {t('tables.ai.regenerate')}
         </Button>
       </div>
+      <ConfirmDialog
+        open={confirmRegenerate}
+        onClose={() => setConfirmRegenerate(false)}
+        onConfirm={() => {
+          setConfirmRegenerate(false);
+          void run('regenerate');
+        }}
+        title={t('tables.ai.regenerateTitle')}
+        description={t('tables.ai.regenerateDescription')}
+        confirmLabel={t('tables.ai.regenerate')}
+      />
       {message && (
         <p role="status" className="text-xs text-fg-muted">
           {message}

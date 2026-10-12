@@ -69,9 +69,11 @@ export function TemplateText({
 export function InsertField({
   fields,
   onInsert,
+  disabled,
 }: {
   fields: readonly TableField[];
-  onInsert: (token: string) => void;
+  onInsert: (token: string, fieldId: number) => void;
+  disabled?: boolean;
 }) {
   const t = useT();
   if (fields.length === 0) return null;
@@ -80,9 +82,10 @@ export function InsertField({
       size="sm"
       inline
       value=""
+      disabled={disabled}
       aria-label={t('tables.automations.insertField')}
       onChange={(event) => {
-        if (event.target.value) onInsert(`{{field:${event.target.value}}}`);
+        if (event.target.value) onInsert(`{{field:${event.target.value}}}`, Number(event.target.value));
       }}
     >
       <option value="">{t('tables.automations.insertField')}</option>
@@ -534,6 +537,7 @@ function AgentEditor({
   const t = useT();
   const [bots, setBots] = useState<Array<{ id: string; name: string }>>([]);
   const [error, setError] = useState(false);
+  const [showLimits, setShowLimits] = useState(action.maxSteps !== '12');
   useEffect(() => {
     let alive = true;
     void listBots().then(
@@ -558,6 +562,12 @@ function AgentEditor({
         fields={context.hasRecord ? context.fields : []}
         onChange={(prompt) => onChange({ ...action, prompt })}
       />
+      {context.hasRecord && (
+        <InsertField
+          fields={context.fields}
+          onInsert={(token) => onChange({ ...action, prompt: `${action.prompt}${token}` })}
+        />
+      )}
       <FormGrid>
         <FormField
           label={t('tables.automations.agent.bot')}
@@ -597,7 +607,17 @@ function AgentEditor({
             <option value="same_base_read">{t('tables.automations.agent.sameBase')}</option>
           </Select>
         </FormField>
-        <FormField label={t('tables.automations.agent.maxSteps')}>
+      </FormGrid>
+      <details
+        open={showLimits}
+        onToggle={(event) => setShowLimits(event.currentTarget.open)}
+        className="border-t border-edge pt-3"
+      >
+        <summary className="cursor-pointer text-sm font-medium text-fg-secondary">
+          {t('tables.automations.agent.advanced')}
+        </summary>
+        <p className="mt-3 text-xs text-fg-muted">{t('tables.automations.agent.versionHint')}</p>
+        <FormField className="mt-3" label={t('tables.automations.agent.maxSteps')}>
           <Input
             type="number"
             min={1}
@@ -606,7 +626,7 @@ function AgentEditor({
             onChange={(e) => onChange({ ...action, maxSteps: e.target.value })}
           />
         </FormField>
-      </FormGrid>
+      </details>
     </div>
   );
 }

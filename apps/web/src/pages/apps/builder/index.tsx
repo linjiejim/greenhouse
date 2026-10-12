@@ -280,7 +280,7 @@ export function AppBuilderPage({ appId }: { appId: number }) {
             <Eye size={13} className="mr-1.5" />
             {t('apps.builder.preview.button')}
           </Button>
-          <Button variant="outline" size="sm" onClick={() => setVersions(true)} data-testid="app-versions-button">
+          <Button variant="ghost" size="sm" onClick={() => setVersions(true)} data-testid="app-versions-button">
             <History size={13} className="mr-1.5" />
             {t('apps.builder.versions.button')}
           </Button>

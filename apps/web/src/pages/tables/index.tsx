@@ -23,17 +23,26 @@ function TablesHome() {
   const [dialog, setDialog] = useState(false);
 
   useEffect(() => {
+    let cancelled = false;
     const timer = window.setTimeout(() => {
       setLoading(true);
       listTableBases(search)
         .then((next) => {
+          if (cancelled) return;
           setBases(next);
           setError('');
         })
-        .catch((loadError) => setError(loadError instanceof Error ? loadError.message : t('tables.home.loadFailed')))
-        .finally(() => setLoading(false));
+        .catch((loadError) => {
+          if (!cancelled) setError(loadError instanceof Error ? loadError.message : t('tables.home.loadFailed'));
+        })
+        .finally(() => {
+          if (!cancelled) setLoading(false);
+        });
     }, 180);
-    return () => window.clearTimeout(timer);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
   }, [search, t]);
 
   return (

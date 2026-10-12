@@ -239,20 +239,21 @@ export function CardSettingsFields({
                 ))}
               </Select>
             </FormField>
-            <FormField label={t('tables.dashboard.valueField')}>
-              <Select
-                value={draft.valueFieldId}
-                disabled={draft.operation === 'count'}
-                onChange={(event) => patch({ valueFieldId: event.target.value ? Number(event.target.value) : '' })}
-              >
-                <option value="">—</option>
-                {numericFields.map((field) => (
-                  <option key={field.id} value={field.id}>
-                    {field.name}
-                  </option>
-                ))}
-              </Select>
-            </FormField>
+            {draft.operation !== 'count' && (
+              <FormField label={t('tables.dashboard.valueField')}>
+                <Select
+                  value={draft.valueFieldId}
+                  onChange={(event) => patch({ valueFieldId: event.target.value ? Number(event.target.value) : '' })}
+                >
+                  <option value="">—</option>
+                  {numericFields.map((field) => (
+                    <option key={field.id} value={field.id}>
+                      {field.name}
+                    </option>
+                  ))}
+                </Select>
+              </FormField>
+            )}
             {grouped && (
               <FormField label={t('tables.dashboard.groupBy')}>
                 <Select
@@ -353,7 +354,7 @@ export function CardSettingsFields({
       {draft.kind === 'records' && (
         <FormSection>
           <FormGroup label={t('tables.dashboard.editor.columns')}>
-            <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
+            <div className="grid max-h-48 grid-cols-2 gap-1.5 overflow-y-auto sm:grid-cols-3">
               {fields.map((field) => (
                 <Checkbox
                   key={field.id}

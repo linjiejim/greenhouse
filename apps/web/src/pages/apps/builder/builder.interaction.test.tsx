@@ -297,6 +297,9 @@ describe('pages and cards', () => {
     // Every kind is offered; the board is available (Requests has a choice field).
     expect(document.querySelectorAll('[data-testid="app-card-catalog"] button')).toHaveLength(11);
     expect(q('[data-testid="app-catalog-external"]')).not.toBeNull();
+    expect(q<HTMLDetailsElement>('[data-testid="app-catalog-group-advanced"]')?.open).toBe(false);
+    await click(q('[data-testid="app-catalog-group-advanced"] summary'));
+    expect(q<HTMLDetailsElement>('[data-testid="app-catalog-group-advanced"]')?.open).toBe(true);
     expect(document.querySelector('[data-testid="app-catalog-custom"]')).toBeNull();
     await click(q('[data-testid="app-catalog-kanban"]'));
     expect(q('[data-testid="app-save-state"]')?.dataset.state).toBe('pending');
@@ -340,8 +343,15 @@ describe('pages and cards', () => {
     await setValue(q<HTMLInputElement>('[data-testid="app-card-title"]')!, 'Mine ');
     await click(button('Remove Amount'));
     const conditions = q('[data-testid="app-card-conditions"]')!;
+    const disclosure = conditions.closest('details')!;
+    expect(disclosure.open).toBe(false);
+    await click(disclosure.querySelector('summary'));
     await click(button('Condition', conditions));
     // The first target is Item (text): the clause waits for a value before it is written.
+    expect(conditions.textContent).toContain('Condition 1 has no value yet');
+    // Collapsing optional settings must keep an unfinished local condition.
+    await click(disclosure.querySelector('summary'));
+    await click(disclosure.querySelector('summary'));
     expect(conditions.textContent).toContain('Condition 1 has no value yet');
     await setValue(conditions.querySelector('input[aria-label="Value"]') as HTMLInputElement, 'Laptop');
     await autosave();
@@ -697,6 +707,10 @@ describe('settings', () => {
     await mount();
     await click(q('[data-testid="app-tab-settings"]'));
     const usage = q('[data-testid="app-usage"]')!;
+    expect(usage.closest('details')?.open).toBe(false);
+    await click(usage.closest('details')!.querySelector('summary'));
+    expect(usage.closest('details')?.open).toBe(true);
+    expect(q<HTMLDetailsElement>('[data-testid="app-template-publish-section"]')?.open).toBe(false);
     expect(appsApi.getAppUsage).toHaveBeenCalledWith(APP_ID);
     expect(usage.textContent).toContain('People, last 7 days3');
     expect(usage.textContent).toContain('People, last 30 days5');

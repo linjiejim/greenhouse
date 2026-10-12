@@ -22,19 +22,37 @@ export interface ContextMenuItem {
   icon?: LucideIcon;
   onClick: () => void;
   danger?: boolean;
+  testId?: string;
 }
 
 interface ContextMenuProps {
   items: ContextMenuItem[];
   position: { x: number; y: number };
   onClose: () => void;
+  /** Button-anchored menus restore focus here; right-click menus use the previous focus. */
+  returnFocusTo?: HTMLElement | null;
 }
 
 // ─── Component ───────────────────────────────────────────
 
-export function ContextMenu({ items, position, onClose }: ContextMenuProps) {
+export function ContextMenu({ items, position, onClose, returnFocusTo }: ContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
   const [adjustedPos, setAdjustedPos] = useState(position);
+
+  useEffect(() => {
+    const menu = menuRef.current;
+    const previous = returnFocusTo ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null);
+    menu?.querySelector<HTMLButtonElement>('[role="menuitem"]')?.focus();
+    return () => {
+      // An action may have opened a dialog and moved focus there already.
+      if (
+        previous?.isConnected &&
+        (document.activeElement === document.body || menu?.contains(document.activeElement))
+      ) {
+        previous.focus();
+      }
+    };
+  }, [returnFocusTo]);
 
   // Adjust position to prevent overflow
   useEffect(() => {
@@ -53,7 +71,8 @@ export function ContextMenu({ items, position, onClose }: ContextMenuProps) {
   // Close on outside click or Escape
   useEffect(() => {
     const handleClick = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) onClose();
+      if (menuRef.current && !menuRef.current.contains(e.target as Node) && !returnFocusTo?.contains(e.target as Node))
+        onClose();
     };
     const handleKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
@@ -68,7 +87,7 @@ export function ContextMenu({ items, position, onClose }: ContextMenuProps) {
       document.removeEventListener('mousedown', handleClick);
       document.removeEventListener('keydown', handleKey);
     };
-  }, [onClose]);
+  }, [onClose, returnFocusTo]);
 
   if (items.length === 0) return null;
 
@@ -78,6 +97,29 @@ export function ContextMenu({ items, position, onClose }: ContextMenuProps) {
       role="menu"
       className="fixed z-50 min-w-[160px] py-1 bg-surface-raised border border-edge rounded-lg shadow-lg animate-fade-in"
       style={{ left: adjustedPos.x, top: adjustedPos.y }}
+      onKeyDown={(event) => {
+        const buttons = [...(menuRef.current?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]') ?? [])];
+        const current = buttons.indexOf(document.activeElement as HTMLButtonElement);
+        const next =
+          event.key === 'ArrowDown'
+            ? (current + 1) % buttons.length
+            : event.key === 'ArrowUp'
+              ? (current - 1 + buttons.length) % buttons.length
+              : event.key === 'Home'
+                ? 0
+                : event.key === 'End'
+                  ? buttons.length - 1
+                  : null;
+        if (next !== null) {
+          event.preventDefault();
+          event.stopPropagation();
+          buttons[next]?.focus();
+        } else if (event.key === 'Escape') {
+          event.preventDefault();
+          event.stopPropagation();
+          onClose();
+        }
+      }}
     >
       {items.map((item, i) => {
         const Icon = item.icon;
@@ -85,6 +127,7 @@ export function ContextMenu({ items, position, onClose }: ContextMenuProps) {
           <button
             key={i}
             role="menuitem"
+            data-testid={item.testId}
             onClick={() => {
               item.onClick();
               onClose();

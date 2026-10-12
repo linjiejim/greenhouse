@@ -4,9 +4,10 @@ export const appsSandboxEn = {
     create: 'Create record',
     confirm: 'This component requests a change to {record}. Review the values before confirming.',
     executionUnavailable: 'Custom component execution is unavailable while browser isolation is being strengthened.',
+    editorNotice: 'Custom components cannot run yet. You can save code and data bindings for review.',
+    codeSize: '{used} / {limit} KB',
     code: 'Component HTML',
-    codeHint:
-      'Inline HTML, CSS and JavaScript, up to 200 KB. Execution is currently disabled while stronger browser isolation is implemented.',
+    codeHint: 'Inline HTML, CSS and JavaScript, up to 200 KB.',
     bindings: 'Data bindings and actions',
     bindingsHint:
       'Edit the saved JSON. Bindings name tables in this Base; actions reference a records bindingId. Deletion is not supported. Every write asks the member to confirm.',
@@ -14,7 +15,7 @@ export const appsSandboxEn = {
       'Enter an object with bindings, optional actions and optional create. The server checks its schema on save.',
     disabled: 'Writing custom components is disabled for your account.',
     schema: 'Table and field identifiers',
-    bridge: 'Component API',
+    bridge: 'API reference',
     bridgeHint:
       'The saved bindings and actions are validated by the role-scoped gateway. The HTML bridge will become available when component execution is enabled.',
     pendingPublish:

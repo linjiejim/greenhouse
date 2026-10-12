@@ -13,8 +13,11 @@ export function AppExternalCard({ card, host, state }: AppCardRendererProps<'ext
   if (state?.error || result?.kind === 'source_error')
     return (
       <div className="space-y-3 p-3 text-sm text-fg-muted">
-        <p>{t('apps.runtime.external.failed')}</p>
-        {result?.kind === 'source_error' && <p>{t(`apps.runtime.external.${result.reason}`)}</p>}
+        <p>
+          {result?.kind === 'source_error'
+            ? t(`apps.runtime.external.${result.reason}`)
+            : t('apps.runtime.external.failed')}
+        </p>
         <Button variant="outline" size="sm" onClick={() => host.retry(card)}>
           {t('common.retry')}
         </Button>
@@ -35,6 +38,13 @@ export function AppExternalCard({ card, host, state }: AppCardRendererProps<'ext
             </tr>
           </thead>
           <tbody>
+            {result.rows.length === 0 && (
+              <tr>
+                <td colSpan={Math.max(result.columns.length, 1)} className="p-4 text-center text-fg-muted">
+                  {t('apps.runtime.cards.noRecords')}
+                </td>
+              </tr>
+            )}
             {result.rows.map((row, i) => (
               <tr key={i}>
                 {result.columns.map((col) => (

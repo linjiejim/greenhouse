@@ -367,7 +367,11 @@ function RecordsLikeProperties({ card, context }: { card: RecordsLikeCard; conte
         </PanelSection>
       )}
 
-      <PanelSection title={t('apps.builder.props.rowActions')} hint={t('apps.builder.props.rowActionsHint')}>
+      <PanelSection
+        title={t('apps.builder.props.rowActions')}
+        hint={t('apps.builder.props.rowActionsHint')}
+        defaultOpen={Boolean(card.actions?.length)}
+      >
         <ActionsEditor
           actions={card.actions ?? []}
           onChange={(actions) => set(withList(card, 'actions', actions))}

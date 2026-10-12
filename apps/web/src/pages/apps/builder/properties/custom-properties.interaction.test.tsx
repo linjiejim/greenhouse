@@ -47,6 +47,9 @@ afterEach(() => {
 
 async function apply(settings: unknown) {
   const input = container.querySelector<HTMLTextAreaElement>('[data-testid="app-custom-settings"]')!;
+  if (!input.closest('details')!.open) {
+    await act(async () => input.closest('details')!.querySelector('summary')!.click());
+  }
   await act(async () => {
     Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(input, JSON.stringify(settings));
     input.dispatchEvent(new Event('input', { bubbles: true }));
@@ -55,6 +58,19 @@ async function apply(settings: unknown) {
     container.querySelector<HTMLButtonElement>('[data-testid="app-custom-settings-apply"]')!.click();
   });
 }
+
+it('keeps the execution limit visible while code and optional bindings stay editable', async () => {
+  const notice = container.querySelector('[data-testid="app-custom-execution-notice"]')!;
+  expect(notice.textContent).toContain('cannot run yet');
+  expect(notice.closest('details')).toBeNull();
+  const code = container.querySelector<HTMLTextAreaElement>('[data-testid="app-custom-code"]')!;
+  const settings = container.querySelector<HTMLTextAreaElement>('[data-testid="app-custom-settings"]')!;
+  expect(code.disabled).toBe(false);
+  expect(settings.closest('details')!.open).toBe(false);
+  await apply({ bindings: card.bindings, actions: [] });
+  expect(settings.closest('details')!.open).toBe(true);
+  expect(onChange).toHaveBeenCalledOnce();
+});
 
 it.each([
   { bindings: [null] },

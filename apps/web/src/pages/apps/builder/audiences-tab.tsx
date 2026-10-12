@@ -229,6 +229,10 @@ export function AudiencesTab({
   return (
     <div className="mx-auto max-w-3xl space-y-4" data-testid="app-audiences-tab">
       <p className="text-xs leading-5 text-fg-muted">{t('apps.builder.audiences.intro')}</p>
+      <details className="text-xs text-fg-muted">
+        <summary className="cursor-pointer">{t('apps.builder.audiences.priorityTitle')}</summary>
+        <p className="mt-2 leading-5">{t('apps.builder.audiences.priority')}</p>
+      </details>
       {!canPublish && (
         <p
           className="flex items-start gap-2 rounded-md border border-edge bg-surface-sunken px-3 py-2 text-xs leading-5 text-fg-secondary"

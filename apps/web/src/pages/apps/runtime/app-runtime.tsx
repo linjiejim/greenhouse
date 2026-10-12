@@ -248,12 +248,12 @@ export function AppRuntimePage({
             )}
           </div>
           <div className="flex flex-shrink-0 flex-wrap items-center justify-end gap-1.5">
-            <Tag tone="neutral">{roleName}</Tag>
+            {!app.canManage && <Tag tone="neutral">{roleName}</Tag>}
             {state.view.draft ? (
               <Tag tone="warning">{t('apps.status.draft')}</Tag>
-            ) : (
+            ) : app.canManage ? (
               <Tag tone="primary">{t('apps.center.version', { version })}</Tag>
-            )}
+            ) : null}
             {app.canManage && (
               <a
                 href={appBuilderHref(app.id)}

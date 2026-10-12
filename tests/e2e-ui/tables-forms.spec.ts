@@ -45,7 +45,8 @@ test.describe('tables forms', () => {
     try {
       // ── Build it in the forms dialog ──
       await page.goto(`/#/tables/${baseId}/table/${tableId}`);
-      await page.getByRole('button', { name: 'Manage forms' }).click();
+      await page.getByTestId('tables-more-actions').click();
+      await page.getByTestId('tables-manage-forms').click();
       await page.getByTestId('forms-new').click();
       const editor = page.getByTestId('form-editor');
       await expect(editor).toBeVisible();

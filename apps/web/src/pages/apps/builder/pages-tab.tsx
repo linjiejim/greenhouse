@@ -133,7 +133,7 @@ export function PagesTab({
       onChange={(next) => edit((current) => updateCard(current, page.id, card.id, () => next))}
     />
   ) : (
-    <PageProperties spec={spec} pageId={page.id} schema={schema} errors={errors} edit={edit} />
+    <PageProperties key={page.id} spec={spec} pageId={page.id} schema={schema} errors={errors} edit={edit} />
   );
   const propertiesTitle = card
     ? t('apps.builder.props.kindTitle', { kind: t(`apps.builder.catalog.kinds.${card.kind}.name`) })

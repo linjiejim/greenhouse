@@ -170,14 +170,14 @@ afterEach(() => {
 });
 
 describe('the app shell', () => {
-  it('shows the app, its role and version, the pages as tabs with the home page current, and tells the Assistant', async () => {
+  it('shows the app and role, keeps version metadata in context, and selects the home page', async () => {
     api.getApp.mockResolvedValue(viewWith([CARDS.mine]));
     await mount('5');
 
     expect(api.getApp).toHaveBeenCalledWith(5, {});
     expect(document.querySelector('h1')?.textContent).toBe('Purchase requests');
     expect(container.textContent).toContain('Applicant');
-    expect(container.textContent).toContain('v2');
+    expect(container.textContent).not.toContain('v2');
     expect(document.querySelector('a[href="#/apps/5/apply"]')?.getAttribute('aria-current')).toBe('page');
     expect(document.querySelector('a[href="#/apps/5/stats"]')?.hasAttribute('aria-current')).toBe(false);
     // The page's cards are evaluated for this viewer and page.
@@ -254,7 +254,7 @@ describe('what managers get', () => {
     api.getApp.mockResolvedValue(manager({ issues }));
     await mount('5');
 
-    expect(byTestId('app-preview-bar')?.textContent).toContain('see all of it');
+    expect(byTestId('app-preview-bar')?.textContent).toContain('Check a role’s view');
     expect(byTestId('app-issues-bar')?.textContent).toContain('Field 9 was deleted');
     expect(document.querySelector('a[href="#/apps/5/edit"]')).not.toBeNull();
     const select = byTestId('app-preview-role') as HTMLSelectElement;
@@ -313,7 +313,7 @@ describe('what managers get', () => {
       expect(byTestId('app-runtime')).not.toBeNull();
       const bar = byTestId('app-preview-bar') as HTMLElement;
       expect(bar.dataset.draft).toBe('true');
-      expect(bar.textContent).toContain('Previewing the draft as Applicant');
+      expect(bar.textContent).toContain('Unpublished draft as Applicant');
       expect(container.textContent).toContain('Draft');
       expect(api.queryAppCard).toHaveBeenCalledWith(
         5,
@@ -373,10 +373,10 @@ describe('what managers get', () => {
       );
       await mount('5', 'draft=1');
       // The draft's problems are the draft's, not a "v0" that stopped working.
-      expect(byTestId('app-issues-bar')?.textContent).toContain('The draft has problems with the Base');
+      expect(byTestId('app-issues-bar')?.textContent).toContain('draft issues before publishing');
       expect(byTestId('app-issues-bar')?.textContent).not.toContain('v0');
       expect(api.getApp).toHaveBeenCalledWith(5, { draft: true });
-      expect(byTestId('app-preview-bar')?.textContent).toContain('Previewing the draft with full access');
+      expect(byTestId('app-preview-bar')?.textContent).toContain('Draft preview — unpublished layout, live data');
       expect(api.queryAppCard).toHaveBeenCalledWith(5, expect.objectContaining({ draft: true }));
       expect(api.queryAppCard.mock.calls.every(([, input]) => input.previewRole === undefined)).toBe(true);
       const context = enrichPageContext.mock.lastCall?.[0] as Record<string, unknown>;

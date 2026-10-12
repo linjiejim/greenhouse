@@ -55,6 +55,7 @@ export function PageProperties({
         <div className="space-y-1.5">
           <p className="text-xs font-medium text-fg-secondary">{t('apps.builder.pages.icon')}</p>
           <AppIconPicker
+            compact
             label={t('apps.builder.pages.icon')}
             allowNone
             value={page.icon}
@@ -84,7 +85,11 @@ export function PageProperties({
           />
         </div>
       </div>
-      <PanelSection title={t('apps.builder.pages.filters')} hint={t('apps.builder.pages.filtersHint')}>
+      <PanelSection
+        title={t('apps.builder.pages.filters')}
+        hint={t('apps.builder.pages.filtersHint')}
+        defaultOpen={Boolean(page.filters?.length)}
+      >
         <div className="space-y-3" data-testid="app-page-filters">
           <FilterControlsEditor
             controls={page.filters ?? []}

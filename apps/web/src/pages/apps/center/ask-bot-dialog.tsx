@@ -35,39 +35,47 @@ export function AskBotDialog({ open, onClose }: { open: boolean; onClose: () => 
     <Dialog open={open} onClose={onClose} title={t('apps.center.askBot.title')} size="md">
       <div className="space-y-4" data-testid="ask-bot-dialog">
         <p className="text-xs text-fg-muted">{t('apps.center.askBot.hint')}</p>
-        <FormField label={t('apps.center.askBot.base')}>
-          {bases.kind === 'loading' ? (
-            <div className="flex h-9 items-center">
-              <Spinner className="h-4 w-4 text-fg-faint" />
-            </div>
-          ) : (
-            <Select
-              value={choice || NEW_BASE}
-              onChange={(event) => setChoice(event.target.value)}
-              data-testid="ask-bot-base"
-            >
-              <option value={NEW_BASE}>{t('apps.center.askBot.newBase')}</option>
-              {available.map((entry) => (
-                <option key={entry.id} value={String(entry.id)}>
-                  {entry.name}
-                </option>
-              ))}
-            </Select>
-          )}
-        </FormField>
         <FormField label={t('apps.center.askBot.goal')}>
           <Textarea
+            autoFocus
             rows={3}
             value={goal}
             onChange={(event) => setGoal(event.target.value)}
             placeholder={t('apps.center.askBot.goalPlaceholder')}
           />
         </FormField>
+        <details className="text-sm">
+          <summary className="cursor-pointer text-fg-muted">
+            {t('apps.center.askBot.base')}: {base?.name ?? t('apps.center.askBot.newBase')}
+          </summary>
+          <div className="pt-3">
+            <FormField label={t('apps.center.askBot.base')}>
+              {bases.kind === 'loading' ? (
+                <div className="flex h-9 items-center">
+                  <Spinner className="h-4 w-4 text-fg-faint" />
+                </div>
+              ) : (
+                <Select
+                  value={choice || NEW_BASE}
+                  onChange={(event) => setChoice(event.target.value)}
+                  data-testid="ask-bot-base"
+                >
+                  <option value={NEW_BASE}>{t('apps.center.askBot.newBase')}</option>
+                  {available.map((entry) => (
+                    <option key={entry.id} value={String(entry.id)}>
+                      {entry.name}
+                    </option>
+                  ))}
+                </Select>
+              )}
+            </FormField>
+          </div>
+        </details>
         <div className="flex justify-end gap-2 border-t border-edge pt-4">
           <Button variant="outline" onClick={onClose}>
             {t('common.cancel')}
           </Button>
-          <Button onClick={openChat} data-testid="ask-bot-open">
+          <Button onClick={openChat} disabled={!goal.trim() || bases.kind === 'loading'} data-testid="ask-bot-open">
             {t('apps.center.askBot.open')}
           </Button>
         </div>

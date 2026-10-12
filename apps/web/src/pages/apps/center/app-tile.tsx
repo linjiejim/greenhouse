@@ -37,7 +37,7 @@ export function AppTile({ app, pinned }: { app: AppSummary; pinned: boolean }) {
     >
       {/* The whole card opens the app; the buttons sit above this link. */}
       <a
-        href={appHref(app.id)}
+        href={app.canManage && app.publishedVersion === null ? appBuilderHref(app.id) : appHref(app.id)}
         className="absolute inset-0 z-0 rounded-xl"
         aria-label={t('apps.center.open', { name: app.name })}
       />
@@ -69,17 +69,14 @@ export function AppTile({ app, pinned }: { app: AppSummary; pinned: boolean }) {
       <h3 className="pointer-events-none relative mt-3 truncate text-sm font-semibold text-fg" title={app.name}>
         {app.name}
       </h3>
-      <p className="pointer-events-none relative mt-1 line-clamp-2 min-h-8 text-xs leading-4 text-fg-muted">
-        {app.description || t('apps.center.noDescription')}
-      </p>
+      {app.description && (
+        <p className="pointer-events-none relative mt-1 line-clamp-2 text-xs leading-4 text-fg-muted">
+          {app.description}
+        </p>
+      )}
       <div className="pointer-events-none relative mt-3 flex items-center justify-between gap-2 border-t border-edge pt-2.5 text-[11px] text-fg-faint">
         <span className="flex min-w-0 items-center gap-1.5">
           <Tag tone={app.status === 'published' ? 'primary' : 'neutral'}>{t(`apps.status.${app.status}`)}</Tag>
-          <span className="truncate">
-            {app.publishedVersion !== null
-              ? t('apps.center.version', { version: app.publishedVersion })
-              : t('apps.center.notPublished')}
-          </span>
         </span>
         <span className="flex-shrink-0">{formatDay(app.updatedAt)}</span>
       </div>

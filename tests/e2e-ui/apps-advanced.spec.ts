@@ -16,14 +16,16 @@ test('installs a named template and evaluates an external card in the browser', 
     for (const key of ['procurement', 'it-tickets', 'crm', 'recruiting']) {
       await expect(page.getByTestId(`template-${key}`)).toBeVisible();
     }
-    await page.getByRole('textbox', { name: 'New application name (optional)' }).fill(`${runId} CRM`);
     await page.getByTestId('template-crm-install').click();
+    await page.getByTestId('template-new-name').fill(`${runId} CRM`);
+    await page.getByTestId('template-create').click();
     await expect(page).toHaveURL(/#\/apps\/\d+\/edit$/);
     const appId = Number(/#\/apps\/(\d+)/.exec(page.url())![1]);
     draft = await json<AppDraftView>(await api.get(`/api/apps/${appId}/draft`));
     expect(draft.app.name).toBe(`${runId} CRM`);
     expect(draft.app.publishedVersion).toBeNull();
     await page.getByTestId('app-add-card').click();
+    await page.getByTestId('app-catalog-group-advanced').locator('summary').click();
     await page.getByTestId('app-catalog-external').click();
     await expect(page.getByTestId('app-save-state')).toHaveAttribute('data-state', 'saved');
     draft = await json<AppDraftView>(await api.get(`/api/apps/${appId}/draft`));

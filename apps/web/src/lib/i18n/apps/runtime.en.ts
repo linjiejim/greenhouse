@@ -34,22 +34,19 @@ export const appsRuntimeEn = {
     allNoAccess:
       'This role cannot read any card on this page — check the role’s table rules in the builder, or preview as another role.',
     preview: {
-      fullAccess: 'You manage this app and see all of it. Preview it as one of its roles to check what people get.',
-      previewing:
-        'Previewing as {role} — pages, rows, columns and actions as that role sees them. Changes are still yours.',
+      fullAccess: 'Check a role’s view',
+      previewing: 'Previewing as {role}. Changes affect live data and are attributed to you.',
       switchLabel: 'Preview as',
       asRole: 'Preview as {role}',
       exit: 'Exit preview',
-      draftFullAccess:
-        'Previewing the draft with full access — this is not live yet; people still get the published version.',
-      draftAs:
-        'Previewing the draft as {role} — not live yet; people still get the published version. Changes are still yours.',
-      backToBuilder: 'Back to the builder',
+      draftFullAccess: 'Draft preview — unpublished layout, live data. Changes take effect.',
+      draftAs: 'Unpublished draft as {role}. Changes affect live data and are attributed to you.',
+      backToBuilder: 'Continue editing',
     },
     issues: {
-      title: 'Parts of v{version} stopped working after Base changes ({count}) — people see them as unavailable.',
-      draftTitle: 'The draft has problems with the Base as it is now ({count}) — fix them before publishing.',
-      fix: 'Fix in the builder',
+      title: 'v{version} has {count} unavailable items.',
+      draftTitle: 'Fix {count} draft issues before publishing.',
+      fix: 'Fix issues',
       more: '…and {count} more',
     },
     cards: {

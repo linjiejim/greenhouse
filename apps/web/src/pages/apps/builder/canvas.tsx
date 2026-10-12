@@ -118,6 +118,25 @@ function CardSummary({ card, schema }: { card: AppCard; schema: BuilderSchema })
   if (card.kind === 'buttons') {
     lines.push(t('apps.builder.canvas.buttons', { labels: card.buttons.map((button) => button.label).join(', ') }));
   }
+  if (card.kind === 'external') {
+    const source =
+      card.source.kind === 'tool'
+        ? card.source.toolId
+        : [card.source.server, card.source.tool].filter(Boolean).join(' / ');
+    lines.push(source ? t('apps.builder.canvas.externalSource', { source }) : t('apps.builder.canvas.sourceNeeded'));
+    lines.push(
+      t('apps.builder.canvas.externalDisplay', {
+        display:
+          card.source.map.kind === 'table'
+            ? t('apps.builder.external.table')
+            : t(`apps.builder.catalog.kinds.${card.source.map.kind}.name`),
+      }),
+    );
+  }
+  if (card.kind === 'custom') {
+    lines.push(t('apps.builder.canvas.customBindings', { count: card.bindings.length }));
+    lines.push(t('apps.sandbox.editorNotice'));
+  }
   return (
     <ul className="space-y-1 text-xs text-fg-muted">
       {lines.map((line, index) => (
@@ -236,9 +255,12 @@ export function PageCanvas({
   return (
     <div className="space-y-3" data-testid="app-canvas">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-xs text-fg-faint">
-          {narrow ? t('apps.builder.canvas.hintNarrow') : t('apps.builder.canvas.hint')}
-        </p>
+        <details className="text-xs text-fg-faint">
+          <summary className="cursor-pointer">{t('apps.builder.canvas.help')}</summary>
+          <p className="mt-1 max-w-sm leading-5">
+            {narrow ? t('apps.builder.canvas.hintNarrow') : t('apps.builder.canvas.hint')}
+          </p>
+        </details>
         <Button size="sm" onClick={onAdd} data-testid="app-add-card">
           <Plus size={13} className="mr-1.5" />
           {t('apps.builder.canvas.addCard')}

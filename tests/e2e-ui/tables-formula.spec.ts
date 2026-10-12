@@ -58,7 +58,8 @@ test.describe('tables formulas', () => {
       await expect(page.getByText('Big deal')).toBeVisible();
 
       // 1. IF formula, the field picked from the autocomplete.
-      await page.getByRole('button', { name: 'Add field' }).click();
+      await page.getByTestId('tables-more-actions').click();
+      await page.getByTestId('tables-add-field').click();
       let dialog = page.getByRole('dialog');
       await dialog.getByLabel('Name').fill('Size');
       await dialog.locator('select').first().selectOption('formula');
@@ -76,7 +77,8 @@ test.describe('tables formulas', () => {
       await expect(page.getByRole('cell', { name: '小单' })).toBeVisible();
 
       // 2. A parse error is shown where it is and blocks saving; DATEDIFF then computes.
-      await page.getByRole('button', { name: 'Add field' }).click();
+      await page.getByTestId('tables-more-actions').click();
+      await page.getByTestId('tables-add-field').click();
       dialog = page.getByRole('dialog');
       await dialog.getByLabel('Name').fill('Days');
       await dialog.locator('select').first().selectOption('formula');
@@ -92,7 +94,8 @@ test.describe('tables formulas', () => {
       await expect(page.getByRole('cell', { name: '43', exact: true })).toBeVisible();
 
       // 3. A lookup through the relation shows the linked customer's name.
-      await page.getByRole('button', { name: 'Add field' }).click();
+      await page.getByTestId('tables-more-actions').click();
+      await page.getByTestId('tables-add-field').click();
       dialog = page.getByRole('dialog');
       await dialog.getByLabel('Name').fill('Company');
       await dialog.locator('select').first().selectOption('lookup');

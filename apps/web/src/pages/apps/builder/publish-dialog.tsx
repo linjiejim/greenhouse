@@ -260,7 +260,7 @@ export function PublishDialog({
   };
 
   return (
-    <Dialog open={open} onClose={onClose} title={t('apps.builder.publish.title', { name: app.name })} size="xl">
+    <Dialog open={open} onClose={onClose} title={t('apps.builder.publish.title', { name: app.name })} size="workspace">
       <div className="space-y-5" data-testid="app-publish-dialog">
         {!diff && !problem ? (
           <div className="flex justify-center py-10">

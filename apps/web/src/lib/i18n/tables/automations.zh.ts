@@ -81,9 +81,11 @@ export const tablesAutomationsZh: DeepRecord<typeof tablesAutomationsEn> = {
       none: '无工具',
       sameBase: '仅可读取本 Base',
       maxSteps: '最多步数',
+      advanced: '执行设置',
+      versionHint: '保存规则时会固定所选 Agent 的版本。',
       invalid: '请填写指令与 1–20 步；输出必须是触发记录的文本字段。',
       botsFailed: '未能加载 Agent，请重新打开编辑器重试。',
-      help: '以规则执行者身份运行一次。输出标记为 AI 生成，仅在记录未变化时写回；保存时固定 Agent 版本。',
+      help: '以规则执行者身份运行。AI 结果仅在记录未变化时保存。',
     },
     action: {
       agent: 'Agent',

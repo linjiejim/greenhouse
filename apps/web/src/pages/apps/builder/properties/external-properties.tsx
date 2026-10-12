@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { isJsonPointer, type AppCard, type AppExternalSource, type AppSourceMap } from '@greenhouse/types/apps';
 import { Input, Select, Textarea } from '../../../../components/ui';
 import { useT } from '../../../../lib/i18n';
+import { PanelSection } from './common';
 
 type ExternalCard = Extract<AppCard, { kind: 'external' }>;
 function JsonInput({
@@ -57,6 +58,7 @@ export function ExternalProperties({ card, onChange }: { card: ExternalCard; onC
       }
     >
       <Input
+        placeholder={key === 'rows' ? '/items' : key === 'group' ? '/name' : key === 'series' ? '/category' : '/value'}
         value={key in map ? String(map[key as keyof typeof map] ?? '') : ''}
         onChange={(event) => set({ ...source, map: { ...map, [key]: event.target.value } as AppSourceMap })}
       />
@@ -65,83 +67,89 @@ export function ExternalProperties({ card, onChange }: { card: ExternalCard; onC
   return (
     <div className="space-y-3" data-testid="app-external-properties">
       <p className="text-xs text-fg-muted">{t('apps.builder.external.hint')}</p>
-      <FormField label={t('apps.builder.external.source')}>
-        <Select
-          value={source.kind}
-          onChange={(event) =>
-            set(
-              event.target.value === 'tool'
-                ? { kind: 'tool', toolId: '', input: {}, map }
-                : { kind: 'connector', server: '', tool: '', input: {}, map },
-            )
-          }
-        >
-          <option value="tool">{t('apps.builder.external.readTool')}</option>
-          <option value="connector">{t('apps.builder.external.connector')}</option>
-        </Select>
-      </FormField>
-      {source.kind === 'tool' ? (
-        <FormField label={t('apps.builder.external.tool')}>
-          <Input value={source.toolId} onChange={(event) => set({ ...source, toolId: event.target.value })} />
+      <PanelSection title={t('apps.builder.props.source')}>
+        <FormField label={t('apps.builder.external.source')}>
+          <Select
+            value={source.kind}
+            onChange={(event) =>
+              set(
+                event.target.value === 'tool'
+                  ? { kind: 'tool', toolId: '', input: {}, map }
+                  : { kind: 'connector', server: '', tool: '', input: {}, map },
+              )
+            }
+          >
+            <option value="tool">{t('apps.builder.external.readTool')}</option>
+            <option value="connector">{t('apps.builder.external.connector')}</option>
+          </Select>
         </FormField>
-      ) : (
-        <>
-          <FormField label={t('apps.builder.external.server')}>
-            <Input value={source.server} onChange={(event) => set({ ...source, server: event.target.value })} />
-          </FormField>
+        {source.kind === 'tool' ? (
           <FormField label={t('apps.builder.external.tool')}>
-            <Input value={source.tool} onChange={(event) => set({ ...source, tool: event.target.value })} />
+            <Input value={source.toolId} onChange={(event) => set({ ...source, toolId: event.target.value })} />
           </FormField>
-        </>
-      )}
-      <JsonInput
-        key={`${card.id}:${source.kind}`}
-        label={t('apps.builder.external.input')}
-        value={source.input}
-        onChange={(input) => set({ ...source, input: input as Record<string, unknown> })}
-      />
-      <FormField label={t('apps.builder.external.display')}>
-        <Select
-          value={map.kind}
-          onChange={(event) =>
-            set({
-              ...source,
-              map:
-                event.target.value === 'kpi'
-                  ? { kind: 'kpi', value: '' }
-                  : event.target.value === 'chart'
-                    ? { kind: 'chart', rows: '', group: '/name', value: '/value' }
-                    : { kind: 'table', rows: '', columns: [{ key: 'name', label: 'Name', path: '/name' }] },
-            })
-          }
-        >
-          <option value="kpi">{t('apps.builder.catalog.kinds.kpi.name')}</option>
-          <option value="chart">{t('apps.builder.catalog.kinds.chart.name')}</option>
-          <option value="table">{t('apps.builder.external.table')}</option>
-        </Select>
-      </FormField>
-      {map.kind === 'kpi' ? (
-        pointer('value')
-      ) : (
-        <>
-          {pointer('rows')}
-          {map.kind === 'chart' ? (
-            <>
-              {pointer('group')}
-              {pointer('value')}
-              {pointer('series')}
-            </>
-          ) : (
-            <JsonInput
-              key={card.id}
-              array
-              label={t('apps.builder.external.columns')}
-              value={map.columns}
-              onChange={(columns) => set({ ...source, map: { ...map, columns: columns as typeof map.columns } })}
-            />
-          )}
-        </>
-      )}
+        ) : (
+          <>
+            <FormField label={t('apps.builder.external.server')}>
+              <Input value={source.server} onChange={(event) => set({ ...source, server: event.target.value })} />
+            </FormField>
+            <FormField label={t('apps.builder.external.tool')}>
+              <Input value={source.tool} onChange={(event) => set({ ...source, tool: event.target.value })} />
+            </FormField>
+          </>
+        )}
+        <PanelSection title={t('apps.builder.external.input')} defaultOpen={Object.keys(source.input).length > 0}>
+          <JsonInput
+            key={`${card.id}:${source.kind}`}
+            label={t('apps.builder.external.input')}
+            value={source.input}
+            onChange={(input) => set({ ...source, input: input as Record<string, unknown> })}
+          />
+        </PanelSection>
+      </PanelSection>
+      <PanelSection title={t('apps.builder.external.mapping')} hint={t('apps.builder.external.pointer')}>
+        <FormField label={t('apps.builder.external.display')}>
+          <Select
+            value={map.kind}
+            onChange={(event) =>
+              set({
+                ...source,
+                map:
+                  event.target.value === 'kpi'
+                    ? { kind: 'kpi', value: '' }
+                    : event.target.value === 'chart'
+                      ? { kind: 'chart', rows: '', group: '/name', value: '/value' }
+                      : { kind: 'table', rows: '', columns: [{ key: 'name', label: 'Name', path: '/name' }] },
+              })
+            }
+          >
+            <option value="kpi">{t('apps.builder.catalog.kinds.kpi.name')}</option>
+            <option value="chart">{t('apps.builder.catalog.kinds.chart.name')}</option>
+            <option value="table">{t('apps.builder.external.table')}</option>
+          </Select>
+        </FormField>
+        {map.kind === 'kpi' ? (
+          pointer('value')
+        ) : (
+          <>
+            {pointer('rows')}
+            {map.kind === 'chart' ? (
+              <>
+                {pointer('group')}
+                {pointer('value')}
+                {pointer('series')}
+              </>
+            ) : (
+              <JsonInput
+                key={card.id}
+                array
+                label={t('apps.builder.external.columns')}
+                value={map.columns}
+                onChange={(columns) => set({ ...source, map: { ...map, columns: columns as typeof map.columns } })}
+              />
+            )}
+          </>
+        )}
+      </PanelSection>
     </div>
   );
 }

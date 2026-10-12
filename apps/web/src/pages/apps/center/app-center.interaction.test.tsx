@@ -212,8 +212,8 @@ describe('making an app', () => {
     await mount();
     const entries = () =>
       [...container.querySelectorAll('[data-testid="app-center-entries"] button')].map((entry) => entry.textContent);
-    expect(entries()).toEqual(['New app', 'Ask an Agent to build one']);
-    expect(container.textContent).toContain('Apps turn a Base into pages');
+    expect(entries()).toEqual(['New app', 'Build with an Agent']);
+    expect(container.textContent).toContain('Create an app or start from a template.');
 
     act(() => root?.unmount());
     container.remove();
@@ -221,7 +221,7 @@ describe('making an app', () => {
       { key: 'it-tickets', name: 'IT tickets', description: 'Report and resolve', icon: 'ticket', accent: 'blue' },
     ]);
     await mount();
-    expect(entries()).toEqual(['New app', 'Ask an Agent to build one', 'From a template']);
+    expect(entries()).toEqual(['New app', 'Build with an Agent', 'From a template']);
   });
 
   it('offers nothing to build to a member without Tables (an app’s audience)', async () => {
@@ -339,7 +339,9 @@ describe('making an app', () => {
     await mount();
     await act(async () => button('From a template')!.click());
     expect(document.querySelector('[data-testid="template-procurement"]')?.textContent).toContain('Purchase requests');
-    await act(async () => button('Use this template')!.click());
+    await act(async () => button('Choose template')!.click());
+    expect(api.installAppTemplate).not.toHaveBeenCalled();
+    await act(async () => (document.querySelector('[data-testid="template-create"]') as HTMLButtonElement).click());
     expect(api.installAppTemplate).toHaveBeenCalledWith('procurement');
     expect(window.location.hash).toBe('#/apps/21/edit');
   });
@@ -359,27 +361,33 @@ describe('making an app', () => {
     seed({});
     await mount();
     await act(async () => button('From a template')!.click());
-    const install = (key: string) =>
-      document.querySelector(`[data-testid="template-${key}-install"]`) as HTMLButtonElement;
-    await act(async () => install('procurement').click());
-    expect(install('procurement').disabled).toBe(true);
-    expect(install('it-tickets').disabled).toBe(true);
-    expect(install('procurement').textContent).toBe('Setting it up…');
-    // A second click, or another template, does not start another install.
-    await act(async () => install('procurement').click());
-    await act(async () => install('it-tickets').click());
+    await act(async () =>
+      (document.querySelector('[data-testid="template-procurement-install"]') as HTMLButtonElement).click(),
+    );
+    const create = () => document.querySelector('[data-testid="template-create"]') as HTMLButtonElement;
+    const back = () => document.querySelector('[data-testid="template-back"]') as HTMLButtonElement;
+    await change(document.querySelector('[data-testid="template-new-name"]') as HTMLInputElement, 'My purchases');
+    await act(async () => create().click());
+    expect(create().disabled).toBe(true);
+    expect(back().disabled).toBe(true);
+    expect(create().textContent).toBe('Setting it up…');
+    await act(async () => create().click());
+    await act(async () => back().click());
     // Escape cannot close the dialog mid-install (closing would drop the guard).
     await act(async () => {
       document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     });
     expect(document.querySelector('[data-testid="template-dialog"]')).not.toBeNull();
     expect(api.installAppTemplate).toHaveBeenCalledTimes(1);
-
+    expect(api.installAppTemplate).toHaveBeenCalledWith('procurement', { name: 'My purchases' });
     await act(async () => fail(new Error('Tables is turned off for you')));
     expect(document.querySelector('[data-testid="template-dialog"]')?.textContent).toContain(
       'Tables is turned off for you',
     );
-    expect(install('it-tickets').disabled).toBe(false);
+    expect(create().disabled).toBe(false);
+    await act(async () => back().click());
+    expect(document.querySelector('[data-testid="template-it-tickets-install"]')).not.toBeNull();
+    expect(document.activeElement).toBe(document.querySelector('[data-testid="template-procurement-install"]'));
     expect(window.location.hash).toBe('#/apps');
   });
 
@@ -387,7 +395,7 @@ describe('making an app', () => {
     tables.listTableBases.mockResolvedValue([base(4, 'Purchasing', 'owner')]);
     seed({});
     await mount();
-    await act(async () => button('Ask an Agent to build one')!.click());
+    await act(async () => button('Build with an Agent')!.click());
     await change(document.querySelector('[data-testid="ask-bot-base"]') as HTMLSelectElement, '4');
     await change(
       document.querySelector('[data-testid="ask-bot-dialog"] textarea') as HTMLTextAreaElement,
