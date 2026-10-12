@@ -6,7 +6,7 @@
  *   node --import tsx apps/mobile/scripts/render-widget-art.mjs        # from the repo root
  *
  * Needs `rsvg-convert` (librsvg — the SVG engine behind sharp; `brew install librsvg`) and the
- * root workspace's tsx. Writes 1024×1024 PNGs into targets/widget/ (the sources the
+ * root workspace's tsx. Writes 1024×1024 Sprouty PNGs and a 96×96 shared brand mark into targets/widget/ (the sources the
  * @bacons/apple-targets `images` config points at) and mirrors each into the committed
  * Assets.xcassets/<name>.imageset/1x.png that prebuild would regenerate from them:
  *
@@ -23,7 +23,7 @@
  */
 
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import process from 'node:process';
 import { URL, fileURLToPath } from 'node:url';
 
@@ -55,6 +55,12 @@ function knockout(layers) {
 }
 
 const ART = [
+  {
+    file: 'greenhouse-mark.png',
+    asset: 'greenhouseMark',
+    px: 96,
+    svg: readFileSync(new URL('../../../packages/ui/src/assets/greenhouse-mark.svg', import.meta.url), 'utf8'),
+  },
   { file: 'sprouty-idle.png', asset: 'sprouty', svg: buildPlantAvatarSvg({ state: 'idle', size: 48, theme: 'light' }) },
   {
     file: 'sprouty-sleep.png',
@@ -84,8 +90,8 @@ const CONTENTS = {
   info: { version: 1, author: 'expo' },
 };
 
-for (const { file, asset, svg } of ART) {
-  const png = execFileSync('rsvg-convert', ['--width', String(PX), '--height', String(PX), '--format', 'png'], {
+for (const { file, asset, svg, px = PX } of ART) {
+  const png = execFileSync('rsvg-convert', ['--width', String(px), '--height', String(px), '--format', 'png'], {
     input: svg,
     maxBuffer: 32 * 1024 * 1024,
   });

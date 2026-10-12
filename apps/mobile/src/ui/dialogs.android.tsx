@@ -71,6 +71,11 @@ export function alertError(title: string, message?: string, detail?: string): vo
   push({ kind: 'alert', title, message: message || undefined, detail: detail || undefined });
 }
 
+/** Only after the member explicitly opens Details, including an inline chat error. */
+export function showErrorDetails(detail: string): void {
+  push({ kind: 'alert', title: tr('common.details'), message: detail });
+}
+
 export function promptText(opts: {
   title: string;
   message?: string;
@@ -114,7 +119,7 @@ function Dialog({ request: r }: { request: Request }) {
 
   const showDetail = () => {
     close(r.id);
-    if (r.kind === 'alert' && r.detail) push({ kind: 'alert', title: tr('common.details'), message: r.detail });
+    if (r.kind === 'alert' && r.detail) showErrorDetails(r.detail);
   };
 
   const confirmLabel = r.kind === 'alert' ? tr('common.ok') : (r.confirmLabel ?? tr('common.ok'));

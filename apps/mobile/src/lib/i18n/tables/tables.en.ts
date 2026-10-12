@@ -118,7 +118,6 @@ export const tablesEn = {
   buttonFailed: 'Couldn’t start it',
   attachments: '{n} files',
   openAttachment: 'Open',
-  attachmentFailed: 'Couldn’t open the file',
   // activity
   activity: 'Activity',
   comments: 'Comments',

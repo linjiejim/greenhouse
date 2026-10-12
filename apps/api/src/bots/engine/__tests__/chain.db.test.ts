@@ -705,7 +705,6 @@ describe('inbox: claim-then-apply', () => {
     });
 
     // The stopped run does not answer it; the run right after does, without waiting for a sweep.
-    // The next durable run crosses multiple DB awaits; allow a loaded CI host to settle.
     await vi.waitFor(
       async () => {
         const rows = await db.sessions.getMessages(dm.session_id);
@@ -714,7 +713,9 @@ describe('inbox: claim-then-apply', () => {
           ['assistant', 'Answering the second.'],
         ]);
       },
-      { timeout: 5000 },
+      // Match settled()'s budget: the real DB follow-up can exceed vi.waitFor's
+      // default one second while the complete multi-project suite is running.
+      { timeout: 4_000 },
     );
     await settled(dm.session_id);
     expect(await db.bots.listPendingInbox(dm.session_id)).toHaveLength(0);

@@ -40,10 +40,11 @@ bots/
   不列能力清单、不写记忆行、不收尾提问——起手式由客户端显示在下面。它不能承诺部署没有的能力：`needsComputer`
   模板在电脑未就绪时用 `pitchNoComputer`。模板 pitch 保持短（中文 ≤30 字、英文 ≤90 字符，`greeting.test.ts` 守着）。
   已写入的欢迎语从不改写，改文案只影响之后新建的 Bot。
-- **回复风格**：S1 的「Reply style」就是 `REPLY_STYLE_RULE`（`@greenhouse/utils/prompts`，开门见山、不复述不收尾客套、
-  显而易见且安全的下一步直接做、否则最多给一个具体的下一步提议），与聊天页 `sprouty.yaml` 的 `## Communication`
+- **回复风格**：S1 的「Reply style」就是 `REPLY_STYLE_RULE`（`@greenhouse/utils/prompts`，开门见山、明确且授权范围内的事直接做；
+  普通完成汇报通常 1–3 句，只说结果、交付链接和必要决定，不复述过程、不额外推荐下一步；请求内容、来源、失败和重要限制必须说全），与聊天页 `sprouty.yaml` 的 `## Communication`
   同一份措辞；模板守则只补岗位相关的话，不重复它。紧跟其后的「Cards speak for themselves」：Bot 发起卡片（审批 / 新建 Bot /
   后台任务 / 登录 / 守则修改）后不复述卡片内容，最多一句「你决定后会怎样」——成员看得到卡片。
+- **话题跟随当前意图**：Chat 与 Bots 共享 `CONVERSATION_FOCUS_RULE`；明确换话题就回答新问题，不附带无关旧待办；追问、纠正和状态查询照常沿用上下文。换话题不自动取消已授权的后台工作。摘要/共享笔记/记忆都只是相关参考，不能因为还开着就每轮提醒。滚动摘要的 goals 只保留当前主题，旧的未完成事项带主题留在 open_items，不因换题擅自记成完成；不把 Bot 的建议当成员承诺。摘要仍用原有 JSON 存储，渲染为紧凑纯文本并保留事项状态、负责人和来源。
 - **电脑产物只给成员要的**（2026-10-11，[spec](../../../../docs/specs/20261011-mobile-computer.md)）：`browser screenshot`
   只在成员要看页面时拍——模型拿不到像素（结果只有一句回执、`snapshot` 为空），截图不能拿来「检查」自己的操作；
   `computer share_file` 只交成员要的成品，不发进度 / 日志 / 中间文件。工具描述（`tools/meta.ts`）与 S1 规则
@@ -111,7 +112,7 @@ bots/
     `允许 X 修改知识库？` / `Allow X to edit the knowledge base?`；`email_mutation` 分 draft / send），工具目录的
     英文 `name`（「Knowledge Mutation」）只给没有短语的写工具（扩展工具）兜底（`使用「name」`）；新增内置写工具要同时补短语。
     同一短语存进 `payload.summary`，转录行 / 通知只点一次名（`Sprouty 请你批准：修改知识库` / `Sprouty asks to edit the
-    knowledge base`；没有 summary 的旧卡照旧用标题）。参数行的标签按 locale 译（`approvalFieldLabel`，没收录的键人性化
+knowledge base`；没有 summary 的旧卡照旧用标题）。参数行的标签按 locale 译（`approvalFieldLabel`，没收录的键人性化
     显示）；值里内置写工具的枚举值与布尔值也译成成员的话（`approvalFieldValue`：按参数键查 `FIELD_VALUES`，
     `knowledge.create_doc` → 新建文档、`false` → 否），**只改显示，工具照原值执行**；其余值（ID、自由文本、扩展工具自己的
     枚举）原样显示。译名按参数键不按工具，所以措辞要对任何用这个键的工具都成立；内置写工具新增枚举值要同时补译名
@@ -350,14 +351,14 @@ bots/
 
 ### 上下文管理（数字以代码为准）
 
-| 层 | 规则 |
-|---|---|
-| Prompt | system = S1 静态守则（按实际注册的工具拼段落）→ S2 Bot 身份与守则 → S3 成员自己的备注 → S4 滚动摘要（≤1500 字）；每回合重建、不落库的最后一条 user = T1（名册：主人与客串 / 记忆索引 / 共享笔记索引 ≤1500 字，定界数据块）+ T2（本回合说明）；system 与历史前缀只追加，可缓存 |
-| 历史投影 | 摘要边界之后的行逐行 sanitize + 说话人标签，按预算 48k token 开窗 |
-| 滚动摘要 | 投影超过 24k token 时在**链边界**折叠，保留最近 ≥2 条链 / 8k token；结构化 JSON（目标、决定、待办、事实…），CAS 更新 |
-| 回合内 | `browser` / `computer` 观测超过 12k token 时旧观测压成存根（机制是 agent-core 的 `createToolResultMasker`，与 chat 共用；策略不同：只遮观测、只留最新一条、**不开** `pinRefetched`——同一个 `snapshot` 入参每次拿到的是新页面，是「后者取代前者」而不是重取）；文件产物（截图、share_file）整条保留 |
-| 记忆 | 用户级 + 本 Bot 私有两个分区；Bot 只看自己的私有分区；索引预算 3000 字 = 用户级 1800 + 私有 1200（`llm/memory.ts`） |
-| 预算 | 每条成员消息一条链：Bot 回合 ≤8、交接 ≤4、深度 <3、输入 600k（缓存 ×0.25）、输出 30k、步数 60、墙钟 20 分钟；单回合步数：点名 / 续跑 30、被问 12、收尾 4 |
+| 层       | 规则                                                                                                                                                                                                                                                                                               |
+| -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Prompt   | system = S1 静态守则（按实际注册的工具拼段落）→ S2 Bot 身份与守则 → S3 成员自己的备注 → S4 滚动摘要（≤1500 字）；每回合重建、不落库的最后一条 user = T1（名册：主人与客串 / 记忆索引 / 共享笔记索引 ≤1500 字，定界数据块）+ T2（本回合说明）；system 与历史前缀只追加，可缓存                      |
+| 历史投影 | 摘要边界之后的行逐行 sanitize + 说话人标签，按预算 48k token 开窗                                                                                                                                                                                                                                  |
+| 滚动摘要 | 投影超过 24k token 时在**链边界**折叠，保留最近 ≥2 条链 / 8k token；结构化 JSON（目标、决定、待办、事实…），CAS 更新                                                                                                                                                                               |
+| 回合内   | `browser` / `computer` 观测超过 12k token 时旧观测压成存根（机制是 agent-core 的 `createToolResultMasker`，与 chat 共用；策略不同：只遮观测、只留最新一条、**不开** `pinRefetched`——同一个 `snapshot` 入参每次拿到的是新页面，是「后者取代前者」而不是重取）；文件产物（截图、share_file）整条保留 |
+| 记忆     | 用户级 + 本 Bot 私有两个分区；Bot 只看自己的私有分区；索引预算 3000 字 = 用户级 1800 + 私有 1200（`llm/memory.ts`）                                                                                                                                                                                |
+| 预算     | 每条成员消息一条链：Bot 回合 ≤8、交接 ≤4、深度 <3、输入 600k（缓存 ×0.25）、输出 30k、步数 60、墙钟 20 分钟；单回合步数：点名 / 续跑 30、被问 12、收尾 4                                                                                                                                           |
 
 ### 测试
 
@@ -432,13 +433,10 @@ Bot 身份本身（列表 / 新建 / 编辑 / 版本 / 文件夹 / 记忆）只�
 `400 { code: 'bot_name_invalid' | 'bot_name_taken' | 'bot_limit' }`。
 
 **发消息**：`POST /api/chat` `{ session_id, messages:[{ role:'user', content, images? }], mentions? }`（文字或
-图片至少一样；附件走 Chat 的 ```attachments 围栏）。`200` NDJSON（与 Chat 同传输、同重连）：每个 Bot
-`bot-turn-start` → 常规事件 → `bot-turn-end`，卡片 `bot-request`，整条只有一个 `finish`。会话忙时
+图片至少一样；附件走 Chat 的 ```attachments 围栏）。`200`NDJSON（与 Chat 同传输、同重连）：每个 Bot`bot-turn-start`→ 常规事件 →`bot-turn-end`，卡片 `bot-request`，整条只有一个 `finish`。会话忙时
 `202 { queued:true }`（回合之间送达）。旧群聊 `409 { code:'group_closed' }`（先于其他检查，忙时也不排队）；私聊主人已归档
-`409 { code:'bot_archived' }`（两者即 `BotConversationReadOnlyCode`；`no_active_members` 不再返回，只留在旧群的
-`unavailable` 事件里）。编辑 / 重新生成对 Bots 会话一律 409；停止走
-`POST /api/chat/runs/:sessionId/stop`；打断（这一步做完再停，排队的消息接着处理）走
-`POST /api/chat/runs/:sessionId/interrupt` → `{ ok, run_id }`（只限主人；非 Bots 会话 400
+`409 { code:'bot_archived' }`（两者即 `BotConversationReadOnlyCode`；`no_active_members`不再返回，只留在旧群的`unavailable`事件里）。编辑 / 重新生成对 Bots 会话一律 409；停止走`POST /api/chat/runs/:sessionId/stop`；打断（这一步做完再停，排队的消息接着处理）走
+`POST /api/chat/runs/:sessionId/interrupt`→`{ ok, run_id }`（只限主人；非 Bots 会话 400
 `not_supported`；没有在跑的 run 404），流里发一次 `{ type:'run-interrupting' }`，之后照常是下一条链的
 `bot-turn-start`。
 
@@ -450,24 +448,24 @@ Bot 等着用电脑，交还即唤醒它；`payload.kind:'captcha'` = 人机验�
 
 **电脑**（`computer/routes.ts`）
 
-| 方法 | 路径 | 请求 | 响应 |
-|---|---|---|---|
-| GET / POST | `/api/bots/computer` · `/start` · `/stop` · `/reset` | reset: `{ wipe_data? }` | `ComputerStatusView`（start 会等就绪或排队 ≤45 s） |
-| POST | `/api/bots/computer/view-token` | — | `{ token, expires_at }`（60 s、一次性） |
-| WS | `/api/ws/computer?token=` | 二进制 RFB | 非租约持有者服务端强制只读 |
-| POST | `/api/bots/computer/takeover` | — | `ComputerStatusView` |
-| POST | `/api/bots/computer/handback` | `{ note?, request_id?, session_id? }` | 结算点名的接管 / 登录卡（须属于 `session_id`），否则该会话里唯一的待处理接管 / 登录卡，否则只释放租约——从不跨会话猜 |
-| POST | `/api/bots/computer/type` | `{ text }` | `{ ok }`（成员持有租约；写入焦点，支持中文） |
-| PUT | `/api/bots/computer/settings` | `{ timezone: string \| null }`（IANA；null = 部署默认） | `ComputerStatusView`（下次启动生效；`lang` 来自成员 locale，`BOTS_COMPUTER_LANG` 覆盖） |
-| POST | `/api/bots/computer/restore-window` | — | `{ ok }`（`gh-window restore`；停着时 `409 stopped`；每次交还后也会自动跑） |
-| POST | `/api/bots/computer/terminal-token` | — | `{ token, expires_at }`（60 s、一次性，用途与观看票据互不通用） |
-| WS | `/api/ws/computer-terminal?token=` | 二进制 = 键入；文本 `{"type":"resize","cols","rows"}` | 二进制终端输出；`gh-term` + tmux，`agent` uid、成员的终端不需要租约；每进程每成员 ≤4 个 |
-| GET | `/api/bots/computer/files` | `?path=`（默认 `~/work`） | `ComputerFileList`（≤500 项，目录在前；路径须在 `/home/agent` 内，容器里 `realpath` 复核） |
-| GET | `/api/bots/computer/files/download` | `?path=` | 文件流（≤1 GiB；`Content-Disposition: attachment`、`nosniff`、`no-store`） |
-| POST | `/api/bots/computer/files/upload` | `?dir=&name=` + 原始字节（≤100 MiB） | `{ entry, path }`；同名不覆盖（`name (1).ext`）；`413 too_large` |
-| GET | `/api/bots/computer/processes` | — | `{ processes: ComputerProcessView[] }`（不唤醒电脑） |
-| GET | `/api/bots/computer/processes/:id/log` | `?lines=`（≤2000） | `ComputerProcessLog`（打码后） |
-| POST | `/api/bots/computer/processes/:id/stop` | — | `{ id, stopped }` |
+| 方法       | 路径                                                 | 请求                                                    | 响应                                                                                                                |
+| ---------- | ---------------------------------------------------- | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| GET / POST | `/api/bots/computer` · `/start` · `/stop` · `/reset` | reset: `{ wipe_data? }`                                 | `ComputerStatusView`（start 会等就绪或排队 ≤45 s）                                                                  |
+| POST       | `/api/bots/computer/view-token`                      | —                                                       | `{ token, expires_at }`（60 s、一次性）                                                                             |
+| WS         | `/api/ws/computer?token=`                            | 二进制 RFB                                              | 非租约持有者服务端强制只读                                                                                          |
+| POST       | `/api/bots/computer/takeover`                        | —                                                       | `ComputerStatusView`                                                                                                |
+| POST       | `/api/bots/computer/handback`                        | `{ note?, request_id?, session_id? }`                   | 结算点名的接管 / 登录卡（须属于 `session_id`），否则该会话里唯一的待处理接管 / 登录卡，否则只释放租约——从不跨会话猜 |
+| POST       | `/api/bots/computer/type`                            | `{ text }`                                              | `{ ok }`（成员持有租约；写入焦点，支持中文）                                                                        |
+| PUT        | `/api/bots/computer/settings`                        | `{ timezone: string \| null }`（IANA；null = 部署默认） | `ComputerStatusView`（下次启动生效；`lang` 来自成员 locale，`BOTS_COMPUTER_LANG` 覆盖）                             |
+| POST       | `/api/bots/computer/restore-window`                  | —                                                       | `{ ok }`（`gh-window restore`；停着时 `409 stopped`；每次交还后也会自动跑）                                         |
+| POST       | `/api/bots/computer/terminal-token`                  | —                                                       | `{ token, expires_at }`（60 s、一次性，用途与观看票据互不通用）                                                     |
+| WS         | `/api/ws/computer-terminal?token=`                   | 二进制 = 键入；文本 `{"type":"resize","cols","rows"}`   | 二进制终端输出；`gh-term` + tmux，`agent` uid、成员的终端不需要租约；每进程每成员 ≤4 个                             |
+| GET        | `/api/bots/computer/files`                           | `?path=`（默认 `~/work`）                               | `ComputerFileList`（≤500 项，目录在前；路径须在 `/home/agent` 内，容器里 `realpath` 复核）                          |
+| GET        | `/api/bots/computer/files/download`                  | `?path=`                                                | 文件流（≤1 GiB；`Content-Disposition: attachment`、`nosniff`、`no-store`）                                          |
+| POST       | `/api/bots/computer/files/upload`                    | `?dir=&name=` + 原始字节（≤100 MiB）                    | `{ entry, path }`；同名不覆盖（`name (1).ext`）；`413 too_large`                                                    |
+| GET        | `/api/bots/computer/processes`                       | —                                                       | `{ processes: ComputerProcessView[] }`（不唤醒电脑）                                                                |
+| GET        | `/api/bots/computer/processes/:id/log`               | `?lines=`（≤2000）                                      | `ComputerProcessLog`（打码后）                                                                                      |
+| POST       | `/api/bots/computer/processes/:id/stop`              | —                                                       | `{ id, stopped }`                                                                                                   |
 
 文件 / 进程另有 `not_found`（404）与 `too_large`（413）。终端关闭码：4001 票据无效或成员被撤权、4003 开关
 关闭、4009 电脑不可用（`too_many` = 第 5 个终端）、4010 清除 / 关机、1008 协议错误、1011 shell 退出或电脑
@@ -512,3 +510,5 @@ file input 就点它并接住弹出的文件选择框）、`wait {text?, timeout
 [apps/api/src/AGENTS.md](../AGENTS.md)「会话列表的 profile 筛选」。
 
 - **应用动作审批**（Phase 2）：`apps_action` 与 `mcp_call` 一样在工具内部调用 `requestApproval`，不经通用写工具的参数摘要。卡片的动作、效果与记录来自服务端当前 `getApp` / `getAppRecord`；模型没有确认字段。批准后重读定义、版本与记录 revision，变化则要求重新批准，最终写仍走 app gateway。`apps_query` / `apps_action` 结果会污染回合，不能把应用记录内容当作成员授权。
+
+Secure-login request payloads may include `fields` (username/password/otp): server-observed empty visible fields on the current same-origin page. `loginFieldsForPage` reuses vault fill discovery and returns names only, never values; absent metadata preserves older clients/pages. Clients must not weaken the origin/document/lease checks when consuming this display metadata.

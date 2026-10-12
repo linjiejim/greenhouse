@@ -1,20 +1,52 @@
-/**
- * `uploadUrl` (./upload.ts): an upload url resolved against the active station with `new URL`,
- * not string concatenation. Runs in the ROOT vitest unit project with `react-native`,
- * `expo-image-manipulator`, the station registry and the API client mocked (virtual — the
- * app's own install is absent in CI).
- */
-
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const state = { base: 'https://a.example' };
 
 vi.mock('react-native', () => ({ Platform: { OS: 'ios' } }));
-vi.mock('expo-image-manipulator', () => ({ ImageManipulator: {}, SaveFormat: { JPEG: 'jpeg' } }));
+vi.mock('expo-image-manipulator', () => ({ ImageManipulator: {}, SaveFormat: {} }));
+vi.mock('expo-file-system', () => ({
+  File: class extends Blob {
+    name = 'photo.png';
+    constructor(readonly uri: string) {
+      super(['native-image-bytes'], { type: 'image/png' });
+    }
+  },
+}));
 vi.mock('../store/stations', () => ({ getApiBase: () => state.base }));
 vi.mock('./client', () => ({ api: vi.fn() }));
 
-const { uploadUrl } = await import('./upload');
+import { api } from './client';
+import { uploadImage, uploadUrl } from './upload';
+
+const uploaded = { id: 'image-1', url: '/public/photo.png' };
+beforeEach(() => {
+  vi.mocked(api).mockReset();
+});
+
+describe('native image upload', () => {
+  it('sends serializable image bytes, not a React Native URI descriptor', async () => {
+    vi.mocked(api).mockImplementation(async (path, init) => {
+      expect(path).toBe('/api/upload');
+      expect(init?.method).toBe('POST');
+      const file = (init?.body as FormData).get('file') as File;
+      expect(file).toBeInstanceOf(Blob);
+      expect(file.type).toBe('image/png');
+      expect(await file.text()).toBe('native-image-bytes');
+      // Exercise multipart serialization: a plain { uri, type, name } becomes "[object Object]".
+      const request = new Request('http://localhost/api/upload', init);
+      expect(await request.text()).toContain('native-image-bytes');
+      return Response.json(uploaded);
+    });
+    expect(await uploadImage('file:///photo.png', 'image/png')).toEqual(uploaded);
+  });
+
+  it('reports a rejected or interrupted upload as a failure', async () => {
+    vi.mocked(api).mockResolvedValueOnce(new Response(null, { status: 503 }));
+    expect(await uploadImage('file:///photo.png')).toBeNull();
+    vi.mocked(api).mockRejectedValueOnce(new TypeError('Network request failed'));
+    expect(await uploadImage('file:///photo.png')).toBeNull();
+  });
+});
 
 describe('uploadUrl', () => {
   it('puts a path on the active station', () => {

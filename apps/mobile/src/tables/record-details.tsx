@@ -3,8 +3,8 @@
  * web parity: the record drawer's 字段 tab): the title (primary field) on top,
  * then the stored fields as name-over-value rows, the calculated ones
  * (formula / rollup / lookup) in their own card, and who created / last changed
- * it. Attachments are chips that download the file into the share sheet (the
- * content route checks it is readable for me). `useRecord` loads one record and
+ * it. Attachment chips open the shared authenticated file preview, with explicit
+ * share/save (the Tables or app gateway checks access). `useRecord` loads one record and
  * refetches it on focus and after any write on its table.
  */
 
@@ -13,12 +13,11 @@ import { Pressable, Text, View } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { getRecord, tablesFilePath, type TableField, type TableRecord } from '../api/tables';
 import { relativeTime } from '../lib/format';
-import { downloadAndShare } from '../lib/share-file';
+import { saveFile } from '../chat/file-card';
 import { useT } from '../lib/i18n';
 import { makeStyles, radius, space, squircle, typo, useTheme, weight } from '../theme';
 import { Icon } from '../ui/core';
 import { useFontScaleKey } from '../ui/font-scale';
-import { alertError } from '../ui/dialogs';
 import { FieldValueView } from './field-value';
 import {
   attachmentIds,
@@ -127,11 +126,7 @@ export function FieldsCard({
                         key={fileId}
                         accessibilityRole="button"
                         accessibilityLabel={`${t('tables.openAttachment')} ${name}`}
-                        onPress={async () => {
-                          if (!(await downloadAndShare(filePath(field, fileId), name))) {
-                            alertError(t('tables.attachmentFailed'));
-                          }
-                        }}
+                        onPress={() => saveFile(filePath(field, fileId), name)}
                         style={({ pressed }) => [styles.file, pressed && { opacity: 0.6 }]}
                       >
                         <Icon name="attach" size={13} color={c.accentText} />

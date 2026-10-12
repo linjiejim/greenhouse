@@ -19,7 +19,7 @@
 
 import { useCallback } from 'react';
 import { createTaskChat } from '../../api/bots';
-import type { ComposerImage } from '../../chat/composer';
+import type { ComposerImage } from '../../chat/composer-images';
 import { useStations } from '../../store/stations';
 import { useBotsEnabled } from '../availability';
 import { useBots } from '../store';

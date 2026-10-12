@@ -1,46 +1,88 @@
-/**
- * Hand a file to the system share sheet — Save to Files, AirDrop, Mail,
- * Numbers…:
- *  - `downloadAndShare` downloads an authenticated server file (e.g. an
- *    `export_table` result at /api/chat-files/<id>/content) into the cache
- *    first. The request goes through the app's `api()` client, so the bearer
- *    token and the transparent 401 refresh apply; the file name comes from
- *    Content-Disposition (falling back to the caller's name or the id).
- *  - `shareTextFile` writes text the app already holds (an html-preview page)
- *    to the cache under a readable name.
+/** Authenticated preview cache and sharing of locally generated text files.
+ * Downloads use api() for station-bound credentials and refresh; each preview
+ * owns a unique directory and deletes it when closed. No user-visible save is required.
  */
 
-import { File, Paths } from 'expo-file-system';
+import { Directory, File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import { api } from '../api/client';
+import { getTokenStationId } from '../api/token-storage';
 
 function fileNameFrom(disposition: string | null, fallback: string): string {
   if (disposition) {
     const star = /filename\*=UTF-8''([^;]+)/i.exec(disposition);
-    if (star) return decodeURIComponent(star[1]);
+    if (star) {
+      try {
+        return decodeURIComponent(star[1]);
+      } catch {
+        /* use plain name */
+      }
+    }
     const plain = /filename="?([^";]+)"?/i.exec(disposition);
     if (plain) return plain[1];
   }
   return fallback;
 }
 
-/** Resolves false when the download fails (callers show their own error). */
-export async function downloadAndShare(path: string, fallbackName = 'download'): Promise<boolean> {
+export interface CachedFile {
+  uri: string;
+  name: string;
+  mimeType?: string;
+  previewText?: string;
+  previewTruncated?: boolean;
+  dispose(): void;
+}
+
+/** Private, per-preview cache; never replaces another open file with the same name. */
+export async function downloadFile(path: string, fallbackName = 'download', signal?: AbortSignal): Promise<CachedFile> {
+  const station = getTokenStationId();
+  const res = await api(path, { signal });
+  if (!res.ok) throw new Error('download_failed');
+  const bytes = new Uint8Array(await res.arrayBuffer());
+  if (signal?.aborted || station !== getTokenStationId()) throw new Error('download_cancelled');
+  const name = fileNameFrom(res.headers.get('content-disposition'), fallbackName)
+    .replace(/[\\/]/g, '_')
+    .split('')
+    .filter((ch) => ch.charCodeAt(0) >= 32)
+    .join('');
+  const dir = new Directory(Paths.cache, `preview-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  dir.create();
+  const file = new File(dir, name && name !== '.' && name !== '..' ? name : 'download');
+  const dispose = () => {
+    if (dir.exists) dir.delete();
+  };
   try {
-    const res = await api(path);
-    if (!res.ok) return false;
-    const name = fileNameFrom(res.headers.get('content-disposition'), fallbackName).replace(/[\\/]/g, '_');
-    const bytes = new Uint8Array(await res.arrayBuffer());
-    const file = new File(Paths.cache, name);
-    if (file.exists) file.delete();
     file.create();
     file.write(bytes);
-    if (!(await Sharing.isAvailableAsync())) return false;
-    await Sharing.shareAsync(file.uri, { mimeType: res.headers.get('content-type') ?? undefined, dialogTitle: name });
-    return true;
-  } catch {
-    return false;
+  } catch (error) {
+    dispose();
+    throw error;
   }
+  // Quick Look renders small CSVs at spreadsheet-page scale. Text formats are
+  // more readable as selectable, wrapping native text; no HTML/script execution.
+  let previewText: string | undefined;
+  let previewTruncated = false;
+  if (/\.(txt|md|csv|tsv|json|log|yaml|yml|js|ts|css|py|sh)$/i.test(file.name)) {
+    try {
+      const content = await file.text();
+      previewText = content.slice(0, 50_000);
+      previewTruncated = content.length > previewText.length;
+    } catch {
+      /* Quick Look / share fallback */
+    }
+  }
+  if (signal?.aborted || station !== getTokenStationId()) {
+    dispose();
+    throw new Error('download_cancelled');
+  }
+  return {
+    uri: file.uri,
+    name: file.name,
+    mimeType: res.headers.get('content-type') ?? undefined,
+    previewText,
+    previewTruncated,
+    dispose,
+  };
 }
 
 /** A file name from a title: path separators and control characters out, `fallback` when nothing is left. */
@@ -62,7 +104,11 @@ export async function shareTextFile(name: string, content: string, mimeType: str
     file.create();
     file.write(content);
     if (!(await Sharing.isAvailableAsync())) return false;
-    await Sharing.shareAsync(file.uri, { mimeType, dialogTitle: name, UTI: mimeType === 'text/html' ? 'public.html' : undefined });
+    await Sharing.shareAsync(file.uri, {
+      mimeType,
+      dialogTitle: name,
+      UTI: mimeType === 'text/html' ? 'public.html' : undefined,
+    });
     return true;
   } catch {
     return false;

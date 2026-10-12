@@ -39,6 +39,7 @@ import {
   type ImplicitTakeoverOutcome,
 } from '../computer/browser-session.js';
 import { HUMAN_WAIT_HOLD_MS } from '../computer/limits.js';
+import { loginFieldsForPage } from '../vault/fill.js';
 import { computerRefForBot } from '../computer/namespace.js';
 import { isVaultAvailable } from '../vault/crypto.js';
 import { hostOfOrigin, originOfUrl } from '../vault/origin.js';
@@ -106,6 +107,9 @@ export async function requestTakeover(
     const payload: BotLoginPayload = {
       reason,
       kind: input.kind as 'login' | 'otp',
+      ...(input.kind === 'login' && found
+        ? { fields: await loginFieldsForPage(found.page, origin).catch(() => undefined) }
+        : {}),
       origin,
       url,
       vault_matches: matches.map(({ id, label, username_hint }) => ({ id, label, username_hint })),

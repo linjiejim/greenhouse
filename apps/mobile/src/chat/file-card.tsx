@@ -7,31 +7,20 @@
  *    Icon by type, name, a detail line (size · rows / its path), tap to get it.
  *  - `AttachmentChip` — a file the user attached to a turn (the ```attachments
  *    fence in a user message): a lighter capsule, same tap.
- *  - `saveFile(path, name)` — the tap: download into the system share sheet
- *    (Save to Files, AirDrop, Numbers…; src/lib/share-file.ts) with a short
- *    "正在准备文件…" HUD, one at a time, a system alert if it fails. Markdown
- *    links to chat files use it too (./markdown/inline.tsx).
+ *  - `saveFile(path, name)` opens /file-preview: authenticated cache download,
+ *    native Quick Look on iOS, with explicit share/save and unsupported fallback.
+ *    Markdown links and computer files share this entry point.
  */
 import { StyleSheet, Text, View } from 'react-native';
-import { t } from '../lib/i18n';
+import { router } from 'expo-router';
 import { formatBytes } from '../lib/format';
-import { downloadAndShare } from '../lib/share-file';
+
 import { makeStyles, radius, space, squircle, typo, useTheme, weight } from '../theme';
 import { Icon, type IconName, Touchable } from '../ui/core';
-import { alertError } from '../ui/dialogs';
-import { toast } from '../ui/toast';
 
-/** One download at a time (a double tap must not open two share sheets). */
-let busy = false;
-
+/** Both chat and computer files use the same authenticated preview route. */
 export function saveFile(path: string, name: string): void {
-  if (busy) return;
-  busy = true;
-  toast(t('chat.preparingFile'), 'download');
-  void downloadAndShare(path, name.trim() || 'download').then((ok) => {
-    busy = false;
-    if (!ok) alertError(t('chat.downloadFailed'));
-  });
+  router.push({ pathname: '/file-preview', params: { path, name: name.trim() || 'download' } });
 }
 
 const ext = (name: string) => name.split('.').pop()?.toLowerCase() ?? '';
@@ -74,7 +63,7 @@ export function FileCard({ name, detail, path }: { name: string; detail?: string
           </Text>
         ) : null}
       </View>
-      <Icon name="download" size={17} weight="medium" color={c.accent} />
+      <Icon name="chevR" size={17} weight="medium" color={c.accent} />
     </Touchable>
   );
 }

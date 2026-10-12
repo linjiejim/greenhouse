@@ -48,9 +48,10 @@ import { translate, useT } from '../lib/i18n';
 import { openLink } from '../lib/links';
 import { splitAttachments } from '../shared/rich-output';
 import { usePrefs } from '../store/prefs';
-import { makeStyles, radius, space, squircle, typo, useTheme, weight } from '../theme';
+import { HIT, makeStyles, radius, space, squircle, typo, useTheme, weight } from '../theme';
 import { InitialAvatar } from '../ui/avatar';
 import { NativeButton } from '../ui/button';
+import { showErrorDetails } from '../ui/dialogs';
 import { Icon, type IconName, Spinner, Touchable } from '../ui/core';
 import { useFontScaleKey } from '../ui/font-scale';
 import { NativeMenu, menuSections, type MenuItem } from '../ui/menu';
@@ -119,9 +120,18 @@ function DisclosureRow({
 function reasoningHeadline(reasoning: string): string {
   const firsts = reasoning
     .split(/\n\s*\n/)
-    .map((p) => p.split('\n').find((l) => l.trim())?.trim() ?? '')
+    .map(
+      (p) =>
+        p
+          .split('\n')
+          .find((l) => l.trim())
+          ?.trim() ?? '',
+    )
     .filter(Boolean);
-  return (firsts.at(-2) ?? '').replace(/[*_#`]/g, '').trim().slice(0, 160);
+  return (firsts.at(-2) ?? '')
+    .replace(/[*_#`]/g, '')
+    .trim()
+    .slice(0, 160);
 }
 
 /* ----------------------------- assistant ----------------------------- */
@@ -160,7 +170,12 @@ function Thinking({
           {onOpen ? <Icon name="chevR" size={11} weight="semibold" color={c.tertiaryLabel} /> : null}
         </View>
         {headline ? (
-          <Animated.Text key={headline} entering={FadeIn.duration(200)} numberOfLines={1} style={styles.thinkingHeadline}>
+          <Animated.Text
+            key={headline}
+            entering={FadeIn.duration(200)}
+            numberOfLines={1}
+            style={styles.thinkingHeadline}
+          >
             {headline}
           </Animated.Text>
         ) : null}
@@ -197,7 +212,13 @@ function ToolsRow({ steps, live, onOpen }: { steps: ToolStep[]; live: boolean; o
 function ReasoningRow({ text, active, onOpen }: { text: string; active: boolean; onOpen: () => void }) {
   const t = useT();
   return active ? (
-    <DisclosureRow icon="brain" busy label={t('chat.thinking')} detail={reasoningHeadline(text) || undefined} onPress={onOpen} />
+    <DisclosureRow
+      icon="brain"
+      busy
+      label={t('chat.thinking')}
+      detail={reasoningHeadline(text) || undefined}
+      onPress={onOpen}
+    />
   ) : (
     <DisclosureRow icon="brain" label={t('chat.reasoning')} onPress={onOpen} />
   );
@@ -216,17 +237,34 @@ function MetricsCaption({ m }: { m: Metrics }) {
   return <Text style={styles.metrics}>{parts.join(' · ')}</Text>;
 }
 
-function ErrorLine({ error, onRetry }: { error: string; onRetry?: () => void }) {
+export function ReplyError({
+  error,
+  onRetry,
+  onDismiss,
+}: {
+  error: string;
+  onRetry?: () => void;
+  onDismiss?: () => void;
+}) {
   const { colors: c } = useTheme();
   const styles = useStyles(c);
   const t = useT();
   return (
     <View style={styles.error}>
       <Icon name="alert" size={15} weight="semibold" color={c.red} />
-      <Text style={styles.errorText} selectable>
-        {error}
-      </Text>
+      <Text style={styles.errorText}>{t('chat.replyFailed')}</Text>
+      <NativeButton label={t('common.details')} size="small" onPress={() => showErrorDetails(error)} />
       {onRetry ? <NativeButton label={t('common.retry')} icon="refresh" size="small" onPress={onRetry} /> : null}
+      {onDismiss ? (
+        <Touchable
+          onPress={onDismiss}
+          style={styles.errorClose}
+          accessibilityRole="button"
+          accessibilityLabel={t('common.close')}
+        >
+          <Icon name="x" size={13} weight="semibold" color={c.red} />
+        </Touchable>
+      ) : null}
     </View>
   );
 }
@@ -369,7 +407,7 @@ export const AiMessage = memo(function AiMessage({
     cardsBelow.length && !live ? (
       <ArtifactCards key="cards" steps={cardsBelow} text={msg.text} live={live} followUp={followUp} onReply={reply} />
     ) : null,
-    msg.error ? <ErrorLine key="error" error={msg.error} onRetry={canRerun ? onRetry : undefined} /> : null,
+    msg.error ? <ReplyError key="error" error={msg.error} onRetry={canRerun ? onRetry : undefined} /> : null,
     !live && refCount && details.sources ? (
       <DisclosureRow
         key="refs"
@@ -397,7 +435,12 @@ export const AiMessage = memo(function AiMessage({
     <Animated.View key={fontKey} entering={entering} style={styles.aiRow}>
       {/* nothing to act on until text arrives */}
       {msg.text ? (
-        <MessageMenu items={items} text={msg.text} onSelect={(id) => onAction(msg, id as MessageAction)}>
+        <MessageMenu
+          streaming={live}
+          items={items}
+          text={msg.text}
+          onSelect={(id) => onAction(msg, id as MessageAction)}
+        >
           {body}
         </MessageMenu>
       ) : (
@@ -556,7 +599,13 @@ const useStyles = makeStyles((c) => ({
   aiRow: { paddingTop: space.xs, paddingBottom: space.lg, gap: space.xs },
   aiBody: { paddingHorizontal: space.margin, gap: space.xs },
   aiTail: { paddingHorizontal: space.margin, gap: space.xs },
-  thinking: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', gap: space.sm, paddingVertical: space.xs },
+  thinking: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: space.sm,
+    paddingVertical: space.xs,
+  },
   thinkingTexts: { flexShrink: 1 },
   thinkingLine: { flexDirection: 'row', alignItems: 'center', gap: space.xs + 2 },
   thinkingText: { ...typo.subheadline, color: c.secondaryLabel },
@@ -586,6 +635,7 @@ const useStyles = makeStyles((c) => ({
     ...squircle,
   },
   errorText: { flex: 1, ...typo.footnote, color: c.red },
+  errorClose: { width: HIT, minHeight: HIT, alignItems: 'center', justifyContent: 'center' },
 
   /* user */
   userRow: { paddingHorizontal: space.margin, paddingTop: space.xs, paddingBottom: space.md, alignItems: 'flex-end' },

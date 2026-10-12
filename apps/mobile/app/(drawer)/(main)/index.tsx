@@ -60,7 +60,6 @@
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import {
   Keyboard,
-  Linking,
   Platform,
   ScrollView,
   Share,
@@ -81,14 +80,14 @@ import {
   useReanimatedKeyboardAnimation,
 } from 'react-native-keyboard-controller';
 import * as Clipboard from 'expo-clipboard';
-import * as ImagePicker from 'expo-image-picker';
 import type { Session, SessionTag } from '../../../src/shared/greenhouse-types';
 import { splitAttachments } from '../../../src/shared/rich-output';
 import { deleteSession, updateSessionTitle } from '../../../src/api/sessions';
-import { prepareImage, uploadImage } from '../../../src/api/upload';
 import { useAuth } from '../../../src/store/auth';
 import { useTags } from '../../../src/store/tags';
-import { Composer, ReadOnlyBar, type ComposerImage } from '../../../src/chat/composer';
+import { Composer, ReadOnlyBar } from '../../../src/chat/composer';
+import { canSendMessage } from '../../../src/chat/composer-images';
+import { useComposerImages } from '../../../src/chat/use-composer-images';
 import { draftsFor, useComposerBridge } from '../../../src/chat/composer-bridge';
 import { AiMessage, UserMessage, type MessageAction } from '../../../src/chat/message';
 import { excerpt, plainText, transcript, type Annotation, type ChatMessage } from '../../../src/chat/model';
@@ -283,7 +282,7 @@ function Conversation() {
   const inputRef = useRef<TextInput>(null);
   const [input, setInput] = useState('');
   const [annotations, setAnnotations] = useState<Annotation[]>([]);
-  const [images, setImages] = useState<ComposerImage[]>([]);
+  const { images, setImages, attach: onAttach, removeImage, retryImages } = useComposerImages(maxImages);
   const [composerH, setComposerH] = useState(60);
   // Insets are managed here, not by UIKit (`contentInsetAdjustmentBehavior`
   // "never"): KeyboardChatScrollView's keyboard lift assumes a 0 rest offset,
@@ -374,61 +373,7 @@ function Conversation() {
     focusInput();
   }, [draftCount, focusInput, readOnly]);
 
-  const addPicked = useCallback(async (assets: ImagePicker.ImagePickerAsset[]) => {
-    for (const asset of assets) {
-      const localId = nextId();
-      setImages((arr) => [...arr, { id: localId, uri: asset.uri, status: 'uploading' }]);
-      const uri = await prepareImage(asset.uri, asset.width);
-      const up = await uploadImage(uri, asset.mimeType || 'image/jpeg');
-      setImages((arr) =>
-        arr.map((im) =>
-          im.id === localId
-            ? up
-              ? { ...im, status: 'done', remote: { id: up.id, url: up.url } }
-              : { ...im, status: 'error' }
-            : im,
-        ),
-      );
-      if (!up) alertError(tNow('upload.failed'));
-    }
-  }, []);
-
-  const imageCount = images.length;
-  const onAttach = useCallback(
-    async (from: 'camera' | 'library') => {
-      const room = maxImages - imageCount;
-      if (room <= 0) {
-        alertError(tNow('chat.maxImages', { n: maxImages }));
-        return;
-      }
-      if (from === 'camera') {
-        const perm = await ImagePicker.requestCameraPermissionsAsync();
-        if (!perm.granted) {
-          // The system only asks once — after a "Don't Allow" the way back is Settings.
-          const go = await confirmAction({
-            title: tNow('chat.cameraDenied'),
-            message: tNow('chat.cameraDeniedHint'),
-            confirmLabel: tNow('chat.openSettings'),
-          });
-          if (go) void Linking.openSettings();
-          return;
-        }
-        const res = await ImagePicker.launchCameraAsync({ quality: 0.9 });
-        if (!res.canceled) void addPicked(res.assets);
-        return;
-      }
-      const res = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ['images'],
-        allowsMultipleSelection: true,
-        selectionLimit: room,
-        quality: 0.9,
-      });
-      if (!res.canceled) void addPicked(res.assets.slice(0, room));
-    },
-    [maxImages, imageCount, addPicked],
-  );
   const removeAnnotation = useCallback((id: string) => setAnnotations((a) => a.filter((x) => x.id !== id)), []);
-  const removeImage = useCallback((id: string) => setImages((arr) => arr.filter((im) => im.id !== id)), []);
 
   // Reset to a new conversation in place (the 新对话 deep link on an open one):
   // the old conversation's draft doesn't carry over.
@@ -440,13 +385,13 @@ function Conversation() {
       setImages([]);
     }
     prevSession.current = sessionId;
-  }, [sessionId]);
+  }, [sessionId, setImages]);
 
   const send = useCallback(async () => {
     const text = input.trim();
     const ready = images.filter((im) => im.status === 'done' && im.remote);
-    // Send stays disabled while a picked image is still uploading (see Composer).
-    if ((!text && !ready.length) || streaming || images.some((im) => im.status === 'uploading')) return;
+    // The handler and button share the same all-attachments-ready rule.
+    if (streaming || !canSendMessage(text, images)) return;
     if (creatingTask.current) return;
     const draft = { input, annotations, images };
     setInput('');
@@ -512,6 +457,7 @@ function Conversation() {
     startTaskChat,
     profile,
     router,
+    setImages,
   ]);
 
   /** A follow-up sent from a card in a reply (ask_user answers, a confirm pick). Stable: reads `streaming` live. */
@@ -843,6 +789,7 @@ function Conversation() {
               onRemoveAnnotation={removeAnnotation}
               images={images}
               onRemoveImage={removeImage}
+              onRetryImages={retryImages}
               maxImages={maxImages}
               placeholder={isNew ? t('home.heroPlaceholder') : t('chat.followUpPlaceholder')}
               autoFocus={params.compose === '1'}

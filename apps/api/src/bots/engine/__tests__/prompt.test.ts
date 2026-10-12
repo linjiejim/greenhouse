@@ -6,7 +6,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { REPLY_STYLE_RULE } from '@greenhouse/utils/prompts';
+import { REPLY_STYLE_RULE, CONVERSATION_FOCUS_RULE } from '@greenhouse/utils/prompts';
 import {
   buildDigestSection,
   buildIdentity,
@@ -99,11 +99,14 @@ describe('static rules (S1)', () => {
   it('asks for concise but proactive replies, whatever the tools', () => {
     for (const flags of [toolFaceFlags([], false), toolFaceFlags(ALL, true)]) {
       const lines = buildStaticRules(flags, 'zh').split('\n');
-      expect(lines).toContain(`- Reply style: ${REPLY_STYLE_RULE} If anything is still open, say so in one line.`);
+      expect(lines).toContain(`- Reply style: ${REPLY_STYLE_RULE}`);
       expect(lines.some((line) => line.startsWith('- Cards speak for themselves:'))).toBe(true);
+      expect(lines).toContain(`- Conversation focus: ${CONVERSATION_FOCUS_RULE}`);
+      expect(lines.join(' ')).not.toContain('If anything is still open');
     }
     expect(REPLY_STYLE_RULE).toMatch(/^Lead with the answer or the result\./);
-    expect(REPLY_STYLE_RULE).toMatch(/at most one concrete next-step offer/);
+    expect(REPLY_STYLE_RULE).toContain('usually 1–3 short sentences');
+    expect(REPLY_STYLE_RULE).toContain('Brevity must not omit requested content');
   });
 
   it('states the trust rule with the exact speaker tags of the locale', () => {

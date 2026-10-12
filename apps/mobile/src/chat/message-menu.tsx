@@ -13,20 +13,25 @@ import { brandFont as font } from '../ui/brand-font';
  * The trigger is pinned to the given width up front (the conversation is
  * full-width), so the subtree mounts once — no measure-then-reparent.
  *
+ * Replies mounted while streaming stay in a React Native Pressable for their
+ * lifetime, with a native action sheet on long press. This avoids the growing
+ * RN → SwiftUI → RN size feedback; already settled history keeps the preview.
+ *
  * Kept separate from `NativeMenu` on purpose: that one is the community
  * `MenuView` (UIKit context menu, the lifted preview is always the trigger
  * itself); a custom preview needs SwiftUI's `ContextMenu.Preview`.
  * iOS only (SwiftUI); elsewhere it falls back to `NativeMenu`.
  */
 
-import React, { useMemo } from 'react';
-import { Platform, View, useWindowDimensions } from 'react-native';
+import React, { useMemo, useRef } from 'react';
+import { ActionSheetIOS, Platform, Pressable, View, useWindowDimensions } from 'react-native';
 import { Button, ContextMenu, Host, RNHostView, Section, Text, VStack } from '@expo/ui/swift-ui';
 import { frame, lineLimit, padding } from '@expo/ui/swift-ui/modifiers';
 import { useTheme } from '../theme';
 import { sfSymbol } from '../ui/core';
 import { NativeMenu, type MenuItem } from '../ui/menu';
 import { useLocaleEnv } from '../ui/native-form';
+import { useT } from '../lib/i18n';
 import { plainText } from './model';
 
 /** Lines of the excerpt shown in the lifted preview. */
@@ -60,7 +65,9 @@ export function MessageMenu({
   text,
   width: widthProp,
   children,
+  streaming = false,
 }: {
+  streaming?: boolean;
   items: MenuItem[];
   onSelect: (id: string) => void;
   /** The reply's markdown — its plain-text excerpt becomes the lifted preview. */
@@ -69,6 +76,10 @@ export function MessageMenu({
   width?: number;
   children: React.ReactNode;
 }) {
+  // A growing reply stays in Yoga for its entire lifetime. SwiftUI's bidirectional
+  // Host/RNHostView measurement otherwise resizes the transcript on every token.
+  const nativeFlow = useRef(streaming).current;
+  const t = useT();
   const { width: windowW } = useWindowDimensions();
   const { isDark } = useTheme();
   const locale = useLocaleEnv();
@@ -77,6 +88,25 @@ export function MessageMenu({
     const plain = plainText(text);
     return plain.length > PREVIEW_CHARS ? `${plain.slice(0, PREVIEW_CHARS)}…` : plain;
   }, [text]);
+
+  if (nativeFlow && Platform.OS === 'ios') {
+    const flat = items.flatMap((item) => item.children ?? [item]).filter((item) => !item.disabled);
+    const show = () =>
+      ActionSheetIOS.showActionSheetWithOptions(
+        {
+          options: [...flat.map((item) => item.title), t('common.cancel')],
+          cancelButtonIndex: flat.length,
+        },
+        (index) => {
+          if (index < flat.length) onSelect(flat[index].id);
+        },
+      );
+    return (
+      <Pressable onLongPress={show} accessible={false}>
+        {children}
+      </Pressable>
+    );
+  }
 
   if (Platform.OS !== 'ios') {
     return (

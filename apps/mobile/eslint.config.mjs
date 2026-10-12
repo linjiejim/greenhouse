@@ -7,6 +7,7 @@ import reactHooks from 'eslint-plugin-react-hooks';
 export default tseslint.config(
   { ignores: ['node_modules/', '.expo/', 'dist/', 'android/', 'ios/', '*.config.js', 'targets/'] },
   js.configs.recommended,
+  { files: ['scripts/**/*.mjs'], languageOptions: { globals: { console: 'readonly' } } },
   ...tseslint.configs.recommended,
   // Pin the project root, as the root config does: ESLint picks this config for
   // mobile files even when the root runs it (lint-staged), and typescript-eslint

@@ -25,7 +25,7 @@ import { logger } from '@greenhouse/utils/logger';
 import { extractJson } from '@greenhouse/utils/json';
 import { getDb, type UserMemoryRow } from '@greenhouse/db';
 import { sanitizeForPrompt } from '../security/security.js';
-import { MEMORY_INDEX_BUDGET_CHARS, validateMemoryText } from './memory-limits.js';
+import { MEMORY_INDEX_BUDGET_CHARS, MEMORY_WRITING_RULE, validateMemoryText } from './memory-limits.js';
 import { userHasFeature } from '../auth/features.js';
 import type { UserRole } from '../auth/token.js';
 import { createProviderAttemptBudgetHook } from './usage-budget.js';
@@ -135,7 +135,7 @@ export async function buildMemoryIndexBlock(
 
   return (
     `What you remember about this user, one line each. These are point-in-time notes, not live state — ` +
-    `re-check anything that may have changed. Use them to personalise your answers without announcing that you ` +
+    `re-check anything that may have changed. Use only notes relevant to the current request; this index is not a task list or a reason to revisit an earlier topic. Personalise without announcing that you ` +
     `"remember"; call memory(action:"recall", ids:[…]) to read the full note when a line looks relevant.\n` +
     sections.filter(Boolean).join('\n') +
     overflow
@@ -184,6 +184,7 @@ Return a JSON array of operations. Valid operations:
 - {"op":"demote","id":<id>} — this was a one-off task detail or is plainly obsolete, and is not worth keeping active.
 
 Rules:
+- ${MEMORY_WRITING_RULE}
 - Write in English. Keep proper nouns and literal values (identifiers, enum values such as 潜在, document titles, customer names, error strings) EXACTLY as they appear — never translate them.
 - A merged title must be one line, under 80 characters, and written so a reader can judge relevance without opening the body.
 - Be conservative. If two memories are merely related, leave them alone. Prefer returning [] over a speculative edit.

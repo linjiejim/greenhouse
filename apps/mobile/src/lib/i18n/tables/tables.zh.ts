@@ -115,7 +115,6 @@ export const tablesZh: typeof tablesEn = {
   buttonFailed: '没能开始',
   attachments: '{n} 个文件',
   openAttachment: '打开',
-  attachmentFailed: '文件打开失败',
   activity: '动态',
   comments: '评论',
   noActivity: '还没有动态',
