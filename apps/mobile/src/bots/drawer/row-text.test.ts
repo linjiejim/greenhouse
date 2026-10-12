@@ -11,10 +11,14 @@ import { rowPose, rowPreview, rowTime, rowTitle, type RowCopy, type RowDirectory
 const COPY: RowCopy = {
   deletedBot: 'Deleted Bot',
   untitledGroup: 'Group',
+  newChat: 'New chat',
   archivedName: (name) => `${name} (archived)`,
   youSaid: (text) => `You: ${text}`,
   botSaid: (name, text) => `${name}: ${text}`,
   noMessages: 'No messages yet',
+  roomUntitled: 'Just You',
+  agentOf: (name) => `${name}’s Agent`,
+  someAgent: 'An Agent',
 };
 
 function bot(id: string, name: string, status: BotView['status'] = 'active'): BotView {
@@ -90,6 +94,13 @@ describe('rowTitle', () => {
     expect(rowTitle(group(null, ['b_gone']), DIR, COPY)).toBe('Group');
   });
 
+  it("is a task chat's own title, else New chat — even before the Bot list answers", () => {
+    const task = (title: string | null) => ({ ...dm('b_fern'), kind: 'task' as const, title });
+    expect(rowTitle(task('Q3 plan'), DIR, COPY)).toBe('Q3 plan');
+    expect(rowTitle(task(null), DIR, COPY)).toBe('New chat');
+    expect(rowTitle(task(null), NOT_LOADED, COPY)).toBe('New chat');
+  });
+
   it('names a Bot missing from a loaded list as deleted', () => {
     expect(rowTitle(dm('b_gone'), DIR, COPY)).toBe('Deleted Bot');
   });
@@ -156,5 +167,75 @@ describe('rowPose', () => {
     expect(rowPose({ badge: 'needs_you', working: true }, true)).toEqual({ state: 'waiting', animate: false });
     expect(rowPose({ badge: null, working: true }, true)).toEqual({ state: 'speaking', animate: true });
     expect(rowPose({ badge: 'needs_you', working: true }, false)).toEqual({ state: 'sleep', animate: false });
+  });
+});
+
+describe('a room (several people, P5)', () => {
+  const person = (user_id: string, nickname: string, role: 'owner' | 'member' = 'member') => ({
+    user_id,
+    nickname,
+    role,
+    joined_at: '2026-10-12T00:00:00.000Z',
+  });
+  function room(partial: Partial<BotConversationSummary> = {}): BotConversationSummary {
+    return {
+      ...dm('b_fern'),
+      session_id: 's_room',
+      kind: 'room',
+      owner_bot_id: null,
+      lead_bot_id: null,
+      members: [],
+      participants: [person('u_me', 'Me', 'owner'), person('u_ana', 'Ana'), person('u_bo', 'Bo')],
+      ...partial,
+    };
+  }
+  const ME: RowDirectory = { ...DIR, viewerId: 'u_me' };
+  const last = (partial: Partial<NonNullable<BotConversationSummary['last_message']>>) => ({
+    preview: 'see   you\nsoon',
+    bot_id: null,
+    role: 'user',
+    created_at: '2026-10-12T09:00:00.000Z',
+    ...partial,
+  });
+
+  it('is its title, else the other people (never the member), else "Just You"', () => {
+    expect(rowTitle(room({ title: '  Launch  ' }), ME, COPY)).toBe('Launch');
+    expect(rowTitle(room(), ME, COPY)).toBe('Ana, Bo');
+    expect(rowTitle(room({ participants: [person('u_me', 'Me')] }), ME, COPY)).toBe('Just You');
+    // a private chat: the other person
+    expect(rowTitle(room({ participants: [person('u_me', 'Me'), person('u_ana', 'Ana')] }), ME, COPY)).toBe('Ana');
+  });
+
+  it('previews who wrote last: the member, another person, an Agent — a stranger Agent by its owner', () => {
+    expect(rowPreview(room({ last_message: last({ author_user_id: 'u_me' }) }), ME, COPY)).toBe('You: see you soon');
+    expect(rowPreview(room({ last_message: last({ author_user_id: 'u_ana' }) }), ME, COPY)).toBe('Ana: see you soon');
+    // someone who left: no name to give
+    expect(rowPreview(room({ last_message: last({ author_user_id: 'u_gone' }) }), ME, COPY)).toBe('see you soon');
+    const reply = last({ role: 'assistant', bot_id: 'b_fern', preview: 'Done' });
+    expect(rowPreview(room({ last_message: reply }), ME, COPY)).toBe('Fern: Done');
+    const theirs = room({
+      members: [{ bot_id: 'b_x', role: 'member', position: 0, owner_user_id: 'u_bo', addressable: false }],
+      last_message: last({ role: 'assistant', bot_id: 'b_x', preview: 'Hi' }),
+    });
+    expect(rowPreview(theirs, ME, COPY)).toBe('Bo’s Agent: Hi');
+    expect(rowPreview(room({ last_message: null }), ME, COPY)).toBe('No messages yet');
+  });
+
+  it('names another person’s Agent as the room shows it (`profile`), when the server says', () => {
+    const theirs = room({
+      members: [
+        {
+          bot_id: 'b_x',
+          role: 'member',
+          position: 0,
+          owner_user_id: 'u_bo',
+          brought_by_user_id: 'u_bo',
+          addressable: false,
+          profile: { name: 'Ivy', role: 'Researcher', avatar: {}, template_key: null },
+        },
+      ],
+      last_message: last({ role: 'assistant', bot_id: 'b_x', preview: 'Hi' }),
+    });
+    expect(rowPreview(theirs, ME, COPY)).toBe('Ivy: Hi');
   });
 });

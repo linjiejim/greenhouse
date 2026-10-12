@@ -97,6 +97,7 @@ describe.skipIf(!chromiumAvailable())('tools on a real page', { timeout: 90_000 
       id,
       user_id: 'u1',
       label: `Login ${id}`,
+      bot_ids: null,
       origins: JSON.stringify(origins),
       username_enc: encryptVaultField('u1', id, 'username', 'me@example.com'),
       username_hint: 'me***@example.com',
@@ -127,6 +128,7 @@ describe.skipIf(!chromiumAvailable())('tools on a real page', { timeout: 90_000 
       {
         db,
         userId: 'u1',
+        computerId: 'u1',
         botId,
         sessionId: ctx.sessionId,
         turnId: 't',
@@ -332,8 +334,9 @@ describe.skipIf(!chromiumAvailable())('page actions and human checks on a real p
       ref: refOf(page.snapshot, /button "Attachment"/),
       path: 'reports/Q3 报告.pdf',
     })) as Observation;
+    // The Agent's own computer (not the member's main one): spec 20261011-agent-first-class D30.
     expect(readFile).toHaveBeenCalledWith(
-      'u1',
+      expect.stringMatching(/^u1\.bot_/),
       '/home/agent/work/reports/Q3 报告.pdf',
       expect.objectContaining({ maxBytes: 20 * 1024 * 1024 + 1, signal: expect.any(AbortSignal) }),
     );

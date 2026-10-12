@@ -20,10 +20,10 @@ import { DockRow } from '../conversation/task-dock';
 import { BotAvatar } from './bot-avatar';
 import type { BotLookup } from './transcript-rows';
 
-const ACTIVE: ReadonlySet<BotTaskView['status']> = new Set(['queued', 'running', 'waiting']);
+export const ACTIVE_TASK_STATUSES: ReadonlySet<BotTaskView['status']> = new Set(['queued', 'running', 'waiting']);
 const POLL_MS = 15_000;
 
-const STATUS_TONE: Record<BotTaskView['status'], TagTone> = {
+export const TASK_STATUS_TONE: Record<BotTaskView['status'], TagTone> = {
   queued: 'neutral',
   running: 'primary',
   waiting: 'warning',
@@ -38,7 +38,7 @@ const STATUS_TONE: Record<BotTaskView['status'], TagTone> = {
  * the Bots surface motion means "this Bot is talking" — a pose, not a loop, is
  * what tells a failed task's Bot from a finished one at a glance.
  */
-const TASK_POSE: Record<BotTaskView['status'], PlantState> = {
+export const TASK_POSE: Record<BotTaskView['status'], PlantState> = {
   queued: 'idle',
   running: 'idle',
   waiting: 'waiting',
@@ -82,7 +82,7 @@ export function useBotTasks(sessionId: string) {
     [refresh, sessionId, tasks],
   );
 
-  const anyActive = tasks.some((task) => ACTIVE.has(task.status));
+  const anyActive = tasks.some((task) => ACTIVE_TASK_STATUSES.has(task.status));
   useEffect(() => {
     if (!anyActive) return;
     const timer = setInterval(() => void refresh(), POLL_MS);
@@ -104,7 +104,7 @@ export function BotTaskDock({
   const t = useT();
   const [now, setNow] = useState(() => Date.now());
   const [canceling, setCanceling] = useState<string | null>(null);
-  const active = tasks.filter((task) => ACTIVE.has(task.status));
+  const active = tasks.filter((task) => ACTIVE_TASK_STATUSES.has(task.status));
 
   useEffect(() => {
     if (active.length === 0) return;
@@ -151,7 +151,7 @@ export function BotTaskDock({
         <ul className="divide-y divide-edge">
           {visible.map((task) => {
             const bot = lookup(task.bot_id);
-            const isActive = ACTIVE.has(task.status);
+            const isActive = ACTIVE_TASK_STATUSES.has(task.status);
             return (
               <li key={task.run_id} className="flex items-center gap-2 py-2">
                 {bot ? (
@@ -171,7 +171,7 @@ export function BotTaskDock({
                   )}
                 </span>
                 <span className="flex-shrink-0 text-[10px] tabular-nums text-fg-faint">{elapsed(task, now)}</span>
-                <Tag tone={STATUS_TONE[task.status]}>{t(`bots.tasks.${task.status}` as TranslationKey)}</Tag>
+                <Tag tone={TASK_STATUS_TONE[task.status]}>{t(`bots.tasks.${task.status}` as TranslationKey)}</Tag>
                 {isActive && (
                   <IconButton
                     size="compact"

@@ -18,9 +18,9 @@ export function sortedMembers(members: readonly BotMemberView[]): BotMemberView[
   return [...members].sort((a, b) => a.position - b.position);
 }
 
-/** Who can be removed: a DM's guest — never its owner; nobody in a closed group. */
+/** Who can be removed: a DM's (or task chat's) guest — never its owner; nobody in a closed group. */
 export function memberRemovable(conversation: Pick<BotConversationDetail, 'kind'>, member: BotMemberView): boolean {
-  return conversation.kind === 'direct' && member.role === 'guest';
+  return conversation.kind !== 'group' && member.role === 'guest';
 }
 
 // ─── Optimistic edits (the server's answer replaces them) ─

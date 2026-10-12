@@ -143,7 +143,8 @@ export function SidebarGlobalNavigation({
   }, [closeMore, moreOpen]);
 
   const directPrimaryActive = (item: PrimaryNavigationItem) => {
-    if (item.key === 'chat') return route === 'chat' && chatWorkspaceView === 'conversation';
+    // Chats and Agent threads are one conversations list under this one entry.
+    if (item.key === 'chat') return (route === 'chat' && chatWorkspaceView === 'conversation') || route === 'bots';
     return item.key === route;
   };
 

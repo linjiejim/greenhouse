@@ -69,6 +69,7 @@ import {
   addAlwaysOrigin,
   recordVaultAccess,
   revealVaultSecrets,
+  vaultItemAllowsBot,
   vaultItemAlwaysOrigins,
   vaultItemOrigins,
 } from './service.js';
@@ -80,6 +81,8 @@ import type { ForeignReads } from './turn-observations.js';
 export interface FillTurn {
   db: DatabaseProvider;
   userId: string;
+  /** The speaking Agent's own computer (spec 20261011-agent-first-class D30). */
+  computerId: string;
   botId: string;
   botName: string;
   sessionId: string;
@@ -391,7 +394,7 @@ function approvalPayload(
     ].join(zh ? '、' : ', ');
     details.push({
       label: zh ? '为什么要确认' : 'Why you are asked',
-      value: zh ? `这一轮里 Bot 还读了其他内容：${list}` : `In this turn the Bot also read: ${list}`,
+      value: zh ? `这一轮里 Agent 还读了其他内容：${list}` : `In this turn the Agent also read: ${list}`,
     });
   }
   // The transcript line / notification: "<Bot> asks to <summary>" (engine/copy.ts approvalLine).
@@ -423,7 +426,9 @@ async function fillFromVault(
   if (!isVaultAvailable())
     return failure('vault_unavailable', 'The password vault is not configured on this deployment.');
 
-  const item = await turn.db.vault.get(turn.userId, input.item_id);
+  const found = await turn.db.vault.get(turn.userId, input.item_id);
+  // An entry the member limited to other Agents does not exist for this one (P3c).
+  const item = found && vaultItemAllowsBot(found, turn.botId) ? found : undefined;
   if (!item) return failure('not_found', `No vault entry ${input.item_id}. Use vault list to see the entries.`);
   if (kind === 'login' && !item.username_enc && !item.password_enc) {
     return failure('invalid', 'That vault entry has no user name or password saved.');
@@ -455,15 +460,15 @@ async function fillFromVault(
   let origin: string | null = null;
   let approval: Approval | null = null;
   // Registered like a browser action: a take-over in this process aborts it.
-  const tracked = deps.trackAction(turn.userId, turn.signal);
+  const tracked = deps.trackAction(turn.computerId, turn.signal);
   try {
-    const lease0 = await deps.currentLease(turn.userId);
+    const lease0 = await deps.currentLease(turn.computerId);
     if (lease0.controller === 'user') return await memberInControl(turn, { reason: 'waiting' });
     // The member has not taken the computer since this call began (another
     // API slot's take-over shows only in the DB lease, hence the read).
     const stillOurs = async () => {
       throwIfAborted(tracked.signal);
-      const now = await deps.currentLease(turn.userId);
+      const now = await deps.currentLease(turn.computerId);
       if (now.controller === 'user') {
         throw new ComputerUnavailableError('user_in_control', 'The member took over the computer');
       }
@@ -471,7 +476,7 @@ async function fillFromVault(
         throw new FillAbort('page_changed', 'The member used the computer meanwhile, so the page may have changed.');
       }
     };
-    const found = await findLeasePage(turn.userId, turn.botId, turn.sessionId, deps);
+    const found = await findLeasePage(turn.computerId, turn.botId, turn.sessionId, deps);
     if (!found) return failure('no_tab', 'Open the sign-in page in your browser tab first.');
     const { page } = found;
     // Serialised with the Bot's other actions on this tab lease, so a
@@ -550,14 +555,14 @@ async function fillFromVault(
           kind === 'login'
             ? revealVaultSecrets(turn.userId, item, ['username', 'password'])
             : await freshTotp(turn, item);
-        for (const value of Object.values(values)) if (value) deps.remember(turn.userId, value);
+        for (const value of Object.values(values)) if (value) deps.remember(turn.computerId, value);
 
         const fields = await locateFields(page, patterns, want, 'otp' in values ? (values.otp?.length ?? 6) : 6);
         const guard: FillGuard = { context, page, patterns, origin, loaderId: facts.loaderId };
         const result = await fillLocated(guard, fields, values, input.submit === true, stillOurs);
         await log(origin, 'filled', approval);
         await turn.db.vault.touch(turn.userId, item.id).catch(() => undefined);
-        void deps.touch(turn.userId).catch(() => undefined);
+        void deps.touch(turn.computerId).catch(() => undefined);
 
         const note =
           kind === 'login' && result.fields.length === 1 && result.fields[0] === 'username'
@@ -672,6 +677,8 @@ const MAX_FOLLOW_STEPS = 2;
 export async function fillSecureLogin(
   args: {
     userId: string;
+    /** The asking Agent's computer. */
+    computerId: string;
     botId: string;
     sessionId: string;
     origin: string;
@@ -689,11 +696,11 @@ export async function fillSecureLogin(
   opts: { nextStepWaitMs?: number } = {},
 ): Promise<SecureLoginResult> {
   // Browser work (keeps this process's DevTools ownership while it types).
-  const tracked = deps.trackAction(args.userId, new AbortController().signal);
+  const tracked = deps.trackAction(args.computerId, new AbortController().signal);
   try {
     let found: Awaited<ReturnType<typeof findLeasePage>> = null;
     try {
-      found = await findLeasePage(args.userId, args.botId, args.sessionId, deps);
+      found = await findLeasePage(args.computerId, args.botId, args.sessionId, deps);
     } catch (err) {
       // Busy (another API slot drives the browser) or down: reopening would hit the same wall.
       if (err instanceof ComputerUnavailableError) {
@@ -740,16 +747,16 @@ async function reopenCardPage(
     throw args.restarted
       ? new SecureLoginError(
           'computer_restarted',
-          'The computer restarted since the Bot asked, so its page is gone. Ask the Bot to open the page again, or use “Open computer” to sign in yourself.',
+          'The computer restarted since the Agent asked, so its page is gone. Ask the Agent to open the page again, or use “Open computer” to sign in yourself.',
         )
       : new SecureLoginError(
           'page_gone',
-          "The Bot's page is no longer open. Use “Open computer” to sign in yourself, or ask the Bot to open the page again.",
+          "The Agent's page is no longer open. Use “Open computer” to sign in yourself, or ask the Agent to open the page again.",
         );
   }
   try {
-    await deps.ensureReady(args.userId);
-    return await openLeasePage(args.userId, args.botId, args.sessionId, target.url, deps);
+    await deps.ensureReady(args.computerId);
+    return await openLeasePage(args.computerId, args.botId, args.sessionId, target.url, deps);
   } catch (err) {
     if (err instanceof ComputerUnavailableError) {
       throw new SecureLoginError(
@@ -786,10 +793,10 @@ async function secureFillOnPage(
   if (facts.origin !== args.origin || isGreenhouseOrigin(facts.origin)) {
     throw new SecureLoginError(
       'origin_mismatch',
-      `The page moved to ${facts.origin ?? 'another page'} since the Bot asked. Use “Open computer” to sign in yourself.`,
+      `The page moved to ${facts.origin ?? 'another page'} since the Agent asked. Use “Open computer” to sign in yourself.`,
     );
   }
-  for (const value of Object.values(args.values)) if (value) deps.remember(args.userId, value);
+  for (const value of Object.values(args.values)) if (value) deps.remember(args.computerId, value);
 
   const patterns = [args.origin];
   const digits = args.values.otp?.length ?? 6;
@@ -833,7 +840,7 @@ async function secureFillOnPage(
     ...(rest.password ? (['password'] as const) : []),
     ...(rest.otp ? (['otp'] as const) : []),
   ];
-  void deps.touch(args.userId).catch(() => undefined);
+  void deps.touch(args.computerId).catch(() => undefined);
   return { fields: filled, submitted, pending, next: submitted ? await sniffAfterSubmit(page) : null };
 }
 

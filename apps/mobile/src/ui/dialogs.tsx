@@ -78,6 +78,8 @@ export function promptText(opts: {
   defaultValue?: string;
   placeholder?: string;
   confirmLabel?: string;
+  /** Override the 取消 label (e.g. 跳过 when the text is optional — both still answer null). */
+  cancelLabel?: string;
   /** A secret (an API key): the field hides what is typed. */
   secure?: boolean;
 }): Promise<string | null> {
@@ -86,11 +88,8 @@ export function promptText(opts: {
       opts.title,
       opts.message,
       [
-        { text: tr('common.cancel'), style: 'cancel', onPress: () => resolve(null) },
-        {
-          text: opts.confirmLabel ?? tr('common.ok'),
-          onPress: (value?: string) => resolve((value ?? '').trim() || null),
-        },
+        { text: opts.cancelLabel ?? tr('common.cancel'), style: 'cancel', onPress: () => resolve(null) },
+        { text: opts.confirmLabel ?? tr('common.ok'), onPress: (value?: string) => resolve((value ?? '').trim() || null) },
       ],
       opts.secure ? 'secure-text' : 'plain-text',
       opts.defaultValue,

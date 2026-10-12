@@ -39,7 +39,7 @@ afterEach(() => {
 });
 
 describe('interactive tool face', () => {
-  it('drops dispatch tools, spawn_session and the special Bot ids from the member face', () => {
+  it('keeps the card-only drafts, drops spawn_session and the special Bot ids from the member face', () => {
     const ids = interactiveMemberToolIds([
       'knowledge_query',
       'knowledge_mutation',
@@ -48,7 +48,8 @@ describe('interactive tool face', () => {
       ...DISPATCH_TOOL_IDS,
       ...BOT_TOOL_IDS,
     ]);
-    expect(ids).toEqual(['knowledge_query', 'knowledge_mutation', 'memory']);
+    // Drafts only run when the member presses their card (spec 20261011-agent-first-class D24).
+    expect(ids).toEqual(['knowledge_query', 'knowledge_mutation', 'memory', ...DISPATCH_TOOL_IDS]);
   });
 
   it('gates every Greenhouse writer behind an approval', () => {
@@ -168,8 +169,8 @@ describe('interactive tool face', () => {
       describeToolInput(input, locale).map((l) => l.value);
 
     const knowledge = { action: 'knowledge.patch_doc', scope: 'bot', share_role: 'editor', doc_id: 'done' };
-    expect(values(knowledge, 'zh')).toEqual(['局部修改文档', '本 Bot 私有', '可编辑', 'done']);
-    expect(values(knowledge, 'en')).toEqual(['Edit part of a document', 'Private to this Bot', 'Can edit', 'done']);
+    expect(values(knowledge, 'zh')).toEqual(['局部修改文档', '本 Agent 私有', '可编辑', 'done']);
+    expect(values(knowledge, 'en')).toEqual(['Edit part of a document', 'Private to this Agent', 'Can edit', 'done']);
 
     const task = { action: 'task.update', status: 'in_progress', priority: 'urgent', visibility: 'private' };
     expect(values(task, 'zh')).toEqual(['更新任务', '进行中', '紧急', '私有']);

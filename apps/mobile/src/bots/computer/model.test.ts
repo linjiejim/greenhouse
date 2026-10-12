@@ -63,6 +63,16 @@ describe('cardToAnswer', () => {
     const login = req('l', { kind: 'login', payload: { reason: 'r', origin: 'https://x.example' } });
     expect(cardToAnswer([login], { sessionId: 's1' })).toBe(login);
   });
+
+  it('one computer per Agent: only a card of the computer on screen (a guest Agent has its own)', () => {
+    const guest = req('guest', { bot_id: 'b2', created_at: '2026-10-11T07:00:00.000Z' });
+    const owner = req('owner', { bot_id: 'b1' });
+    const onB1 = (r: { bot_id: string | null }) => r.bot_id === 'b1';
+    expect(cardToAnswer([guest, owner], { sessionId: 's1', onComputer: onB1 })).toBe(owner);
+    expect(cardToAnswer([guest], { sessionId: 's1', onComputer: onB1 })).toBeNull();
+    // the card the page was opened for is that card's computer already
+    expect(cardToAnswer([guest], { requestId: 'guest', sessionId: 's1', onComputer: onB1 })).toBe(guest);
+  });
 });
 
 describe('needsKey', () => {

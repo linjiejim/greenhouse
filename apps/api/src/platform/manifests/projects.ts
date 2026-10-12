@@ -11,7 +11,7 @@ import { compileApp, defineApp } from '@greenhouse/platform-kernel';
 export const projectsManifest = compileApp(
   defineApp({
     id: 'projects',
-    version: '1.0.1',
+    version: '1.1.0',
     title: 'Projects',
     description: 'Team projects, tasks, collaboration, and activity history.',
     modules: {
@@ -234,6 +234,14 @@ export const projectsManifest = compileApp(
         capability: 'projects.execution.update',
         risk: 'medium',
         mcp: true,
+      },
+      handTaskToAgent: {
+        title: 'Hand a task to an Agent',
+        module: 'execution',
+        entity: 'task',
+        kind: 'command',
+        capability: 'projects.execution.update',
+        risk: 'medium',
       },
       deleteTask: {
         title: 'Delete task',

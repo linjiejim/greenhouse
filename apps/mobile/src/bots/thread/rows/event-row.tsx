@@ -6,9 +6,14 @@
  * decision carries an action: a failed turn offers Retry (an honest new
  * message "@Name Please try that again."), a hit limit offers Continue. The
  * summary marker is a thin rule: "Earlier messages were summarized · View"
- * (→ the Bot's profile, 记忆 tab, where the digest lives). Text comes from the
- * server (its `content`, in the account's language); the icon from the
- * event's kind.
+ * (→ the Bot's profile, 记忆 tab, where the digest lives). A line about another
+ * chat is a link (spec 20261011-agent-first-class D25): `chat_opened` — an
+ * Agent started a task in a new chat — opens that chat, `chat_origin` — the
+ * first line of such a chat — the conversation it came from. Text comes from
+ * the server (its `content`, in the account's language); the icon from the
+ * event's kind (a room's people coming and going, P5, included). A public
+ * Agent's per-member daily cap (`unavailable` · `daily_cap`, P4) wears an
+ * hourglass.
  */
 
 import React, { memo } from 'react';
@@ -19,6 +24,7 @@ import { HIT, makeStyles, space, typo, useTheme, weight } from '../../../theme';
 import { NativeButton } from '../../../ui/button';
 import { Icon, type IconName } from '../../../ui/core';
 import { useFontScaleKey } from '../../../ui/font-scale';
+import { linkedChat } from '../../task-chats';
 
 const EVENT_ICON: Partial<Record<BotEvent['kind'], IconName>> = {
   joined: 'userPlus',
@@ -33,6 +39,10 @@ const EVENT_ICON: Partial<Record<BotEvent['kind'], IconName>> = {
   unavailable: 'sleep',
   limit: 'alert',
   turn_error: 'alert',
+  chat_opened: 'compose',
+  chat_origin: 'branch',
+  person_joined: 'userPlus',
+  person_left: 'personMinus',
 };
 
 /** A later line about a card wears the card's icon. */
@@ -53,6 +63,7 @@ const REPORT_ICON: Record<'succeeded' | 'failed' | 'canceled', IconName> = {
 
 function iconOf(event: BotEvent | null): IconName | null {
   if (!event) return null;
+  if (event.kind === 'unavailable' && event.reason === 'daily_cap') return 'hourglass';
   if (event.kind === 'request') return REQUEST_ICON[event.request_kind] ?? null;
   if (event.kind === 'task_report') return REPORT_ICON[event.status] ?? null;
   return EVENT_ICON[event.kind] ?? null;
@@ -62,16 +73,20 @@ export const EventRow = memo(function EventRow({
   message,
   event,
   failedBotName,
+  botName = null,
   canAct,
   busy,
   onRetry,
   onContinue,
   onViewSummary,
+  onOpenChat,
 }: {
   message: BotMessage;
   event: BotEvent | null;
   /** The Bot whose turn failed (`turn_error`), when known — the fallback text and the Retry address it. */
   failedBotName: string | null;
+  /** The Bot an `unavailable` line is about, when known (a daily cap's fallback text names it). */
+  botName?: string | null;
   /** Someone can reply here (no one-click lines in a read-only thread). */
   canAct: boolean;
   /** A run is going: a retry now would only queue behind it. */
@@ -79,6 +94,8 @@ export const EventRow = memo(function EventRow({
   onRetry: (botId: string) => void;
   onContinue: () => void;
   onViewSummary: () => void;
+  /** A line about another chat was tapped (see `linkedChat`); without it the line is plain text. */
+  onOpenChat?: (chat: { c: string; title: string }) => void;
 }) {
   const { colors: c } = useTheme();
   const styles = useStyles(c);
@@ -110,9 +127,31 @@ export const EventRow = memo(function EventRow({
     message.content ||
     (event?.kind === 'turn_error'
       ? t('bots.thread.turnFailed', { name: failedBotName ?? t('bots.common.deletedBot') })
-      : '');
+      : event?.kind === 'unavailable' && event.reason === 'daily_cap'
+        ? botName
+          ? t('bots.thread.dailyCap', { name: botName })
+          : t('bots.thread.dailyCapBare')
+        : '');
   const retryBot = event?.kind === 'turn_error' && failedBotName && canAct ? event.bot_id : null;
   const tint = danger ? c.red : c.secondaryLabel;
+  const chat = onOpenChat ? linkedChat(event) : null;
+  if (chat && onOpenChat) {
+    return (
+      <View key={fontKey} style={styles.wrap}>
+        <Pressable
+          onPress={() => onOpenChat(chat)}
+          accessibilityRole="link"
+          accessibilityHint={t('bots.thread.openChatHint')}
+          hitSlop={{ top: (HIT - 18) / 2, bottom: (HIT - 18) / 2 }}
+          style={({ pressed }) => [styles.line, pressed && styles.pressed]}
+        >
+          {icon ? <Icon name={icon} size={12} weight="medium" color={c.accent} /> : null}
+          <Text style={[styles.text, { color: c.accent }]}>{text}</Text>
+          <Icon name="chevR" size={9} weight="bold" color={c.accent} />
+        </Pressable>
+      </View>
+    );
+  }
   return (
     <View key={fontKey} style={styles.wrap}>
       <View style={styles.line}>

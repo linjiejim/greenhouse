@@ -44,13 +44,16 @@ export async function sweepReplyAlerts(db: DatabaseProvider = getDb(), now: numb
     try {
       const [owner, bot] = await Promise.all([
         db.users.getById(row.user_id),
-        row.bot_id ? db.bots.getBot(row.user_id, row.bot_id) : Promise.resolve(undefined),
+        // Their own Bot, or another member's public Agent (P4).
+        row.bot_id
+          ? db.bots.getBot(row.user_id, row.bot_id).then((bot) => bot ?? db.bots.getBotById(row.bot_id!))
+          : Promise.resolve(undefined),
       ]);
       const locale = botsLocale(owner?.locale);
       const result = await publishNotification(db, {
         user_id: row.user_id,
         kind: 'bots_reply',
-        title: copy.replyAlertTitle(locale, bot?.name ?? 'Bot'),
+        title: copy.replyAlertTitle(locale, bot?.name ?? 'Agent'),
         body: copy.replyAlertBody(locale),
         payload: {
           bots_session_id: row.session_id,

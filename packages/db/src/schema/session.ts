@@ -72,6 +72,12 @@ export const messages = pgTable(
      * human-readable line; this drives rendering and transcript projection.
      */
     bot_event: text('bot_event'),
+    /**
+     * Who wrote this member message in a room (several people, spec 20261011-agent-first-class
+     * D43); null = the conversation's only member — every row of every other session. Logical
+     * reference to `users.id`, like `bot_id` (no FK on the largest table).
+     */
+    author_user_id: text('author_user_id'),
     images: text('images').notNull().default('[]'),
     confidence: doublePrecision('confidence'),
     grounded: integer('grounded'),

@@ -21,7 +21,7 @@ import type { Tool } from 'ai';
 import type { DatabaseProvider } from '@greenhouse/db';
 import type { ToolRegistry } from '../../agent.js';
 import { selectTools } from '../../agent.js';
-import { buildLazyServerTools, DISPATCH_TOOL_IDS, LAZY_TOOL_IDS } from '../../agent-runtime/tool-resolution.js';
+import { buildLazyServerTools, LAZY_TOOL_IDS } from '../../agent-runtime/tool-resolution.js';
 import { peekDraftToken } from '../../email/security.js';
 import { getSharedMailboxCredentials } from '../../email/service.js';
 import { getToolMeta } from '../../tools/registry.js';
@@ -31,6 +31,7 @@ import { buildComputerTools } from '../computer/index.js';
 import { createMcpCallTool } from '../../tools/mcp-call.js';
 import { botProfileId, parseBotConnectors } from '../../profiles/profile.js';
 import { BOT_TOOL_IDS } from '../tools/meta.js';
+import { AGENT_ACCESS_TOOL_IDS } from '../external/meta.js';
 import { createTeamTool } from '../tools/team.js';
 import { createSelfTool } from '../tools/self.js';
 import { createConversationTool } from '../tools/conversation.js';
@@ -55,14 +56,24 @@ export const BOT_APPROVAL_TOOL_IDS: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * Never in a Bots turn: card-only drafts and recursive spawning (D14).
+ * Never in a Bots turn: recursive spawning (a Bot opens a separate chat through a `task_start`
+ * card instead, `bot_tasks` mode `chat`).
+ *
+ * The card-only drafts (`DISPATCH_TOOL_IDS`: workflow_plan, mission_dispatch, tables_schema_plan,
+ * task_capture) are in since 2026-10-12 (spec 20261011-agent-first-class D24): each only drafts,
+ * and what it drafts runs only when the member presses the card's button, on an endpoint no
+ * model can reach — the same guarantee as an approval card. Background tasks still never get
+ * them (background.ts).
  *
  * The external MCP gateway (`mcp_call`) is in: its results taint the turn
  * (taint.ts) and each call to a remote tool that is not read-only asks the
  * member on an approval card (`createBotMcpCallTool`) — spec
  * 20261009-mcp-connectors D8.
+ *
+ * The Agent access tools (agents_list / agent_message / …) are for callers outside Greenhouse;
+ * inside, a Bot works with the member's other Agents through `team`.
  */
-const EXCLUDED_TOOL_IDS: ReadonlySet<string> = new Set([...DISPATCH_TOOL_IDS, 'spawn_session', ...BOT_TOOL_IDS]);
+const EXCLUDED_TOOL_IDS: ReadonlySet<string> = new Set(['spawn_session', ...BOT_TOOL_IDS, ...AGENT_ACCESS_TOOL_IDS]);
 
 export function needsBotApproval(toolId: string): boolean {
   return BOT_APPROVAL_TOOL_IDS.has(toolId) || getToolMeta(toolId)?.surface?.proxy === 'write';
@@ -268,6 +279,11 @@ export interface InteractiveToolsInput {
   team: TeamPort;
   conversation: ConversationPort;
   runtimeRunId: string | null;
+  /**
+   * A room (several people, P5): no `team` (no hand-offs or invitations — people bring their own
+   * Agents) and no `bot_tasks` (a background report would land in front of everyone).
+   */
+  room?: boolean;
 }
 
 export interface InteractiveTools {
@@ -330,12 +346,12 @@ export function assembleInteractiveTools(input: InteractiveToolsInput): Interact
     }
   }
 
-  registry.team = createTeamTool(ctx, input.team);
+  if (!input.room) registry.team = createTeamTool(ctx, input.team);
   registry.conversation = createConversationTool(ctx, input.conversation);
   registry.self = createSelfTool(ctx);
   // Offered only where background tasks can actually run (same check as the
   // greeting): otherwise S1 would promise them and every Start would fail.
-  if (runtimeDriverEnabled('subagent')) registry.bot_tasks = createBotTasksTool(ctx);
+  if (runtimeDriverEnabled('subagent') && !input.room) registry.bot_tasks = createBotTasksTool(ctx);
   Object.assign(registry, buildComputerTools(ctx));
 
   // Fixed order: the tool list is part of the cached prompt prefix.

@@ -35,6 +35,8 @@ export const VIEW_TOKEN_TTL_MS = 60_000;
 
 export interface ViewTokenClaims {
   uid: string;
+  /** The computer (`bot_computers.id`); absent on tickets from before per-Agent computers = the main one (uid). */
+  k?: string;
   /** users.auth_version at issue time. */
   av: number;
   /** Container name the ticket is good for. */
@@ -54,11 +56,12 @@ function prune(now: number): void {
 export function createViewToken(
   user: { id: string; authVersion: number },
   container: string,
-  opts: { now?: number; purpose?: ComputerTicketPurpose } = {},
+  opts: { now?: number; purpose?: ComputerTicketPurpose; computerId?: string } = {},
 ): { token: string; expires_at: string } {
   const now = opts.now ?? Date.now();
   const claims: ViewTokenClaims = {
     uid: user.id,
+    ...(opts.computerId && opts.computerId !== user.id ? { k: opts.computerId } : {}),
     av: user.authVersion,
     c: container,
     exp: now + VIEW_TOKEN_TTL_MS,
@@ -93,7 +96,8 @@ export function verifyViewToken(
     typeof claims.av !== 'number' ||
     typeof claims.c !== 'string' ||
     typeof claims.exp !== 'number' ||
-    typeof claims.n !== 'string'
+    typeof claims.n !== 'string' ||
+    (claims.k !== undefined && (typeof claims.k !== 'string' || !claims.k.startsWith(`${claims.uid}.`)))
   ) {
     return null;
   }
@@ -119,4 +123,9 @@ export async function ticketHolderStatus(
   if (!user || user.status !== 'active' || user.auth_version !== authVersion) return 'unauthorized';
   if (user.role !== 'super' && user.role !== 'team') return 'unauthorized';
   return (await userHasFeature(user.id, user.role, 'bots')) ? 'ok' : 'forbidden';
+}
+
+/** The computer a verified ticket opens (the member's main one when it names none). */
+export function ticketComputerId(claims: Pick<ViewTokenClaims, 'uid' | 'k'>): string {
+  return claims.k ?? claims.uid;
 }

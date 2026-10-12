@@ -22,6 +22,8 @@ export interface EntitySearchHit extends SearchHitBase {
 
 export interface SessionSearchHit extends SearchHitBase {
   sessionId: string;
+  /** `bots` = an Agent conversation (a task chat), opened at `#/bots?c=`; absent = an ordinary chat. */
+  channel?: 'bots';
 }
 
 export type SearchHit = EntitySearchHit | SessionSearchHit;

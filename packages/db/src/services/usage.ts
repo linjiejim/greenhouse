@@ -2,7 +2,7 @@
  * Usage service — LLM usage tracking and aggregate stats (PostgreSQL).
  */
 
-import { sql } from 'drizzle-orm';
+import { and, eq, gte, sql } from 'drizzle-orm';
 import { nowIso } from '@greenhouse/utils/date';
 
 import type { Db } from '../client.js';
@@ -13,6 +13,8 @@ export interface UsageRecord {
   caller: string; // 'chat' | 'compiler' | 'judge' | 'api'
   session_id?: string;
   user_id?: string; // authenticated user who triggered this call
+  /** The member's Agent the call was made for, when known. */
+  bot_id?: string | null;
   model: string;
   input_tokens: number;
   output_tokens: number;
@@ -200,6 +202,7 @@ export function createUsageService(db: Db) {
         caller: usage.caller,
         session_id: usage.session_id ?? null,
         user_id: usage.user_id ?? null,
+        bot_id: usage.bot_id ?? null,
         model: usage.model,
         input_tokens: usage.input_tokens,
         output_tokens: usage.output_tokens,
@@ -209,6 +212,46 @@ export function createUsageService(db: Db) {
         budget_idempotency_key: usage.budget_idempotency_key ?? null,
         created_at: nowIso(),
       });
+    },
+
+    /**
+     * One Agent's usage per day since `since` (its owner's calls only): tokens, calls and
+     * conversations — the Agent page (spec 20261011-agent-first-class P3d).
+     */
+    async getBotDailyUsage(
+      /** null = every member's use (its owner reads it; a public Agent serves many). */
+      userId: string | null,
+      botId: string,
+      since: string,
+    ): Promise<Array<{ day: string; calls: number; input_tokens: number; output_tokens: number; sessions: number }>> {
+      const rows = await db
+        .select({
+          day: sql<string>`to_char(date_trunc('day', ${llmUsage.created_at}), 'YYYY-MM-DD')`,
+          calls: sql<number>`count(*)::int`,
+          input_tokens: sql<number>`coalesce(sum(${llmUsage.input_tokens}), 0)::int`,
+          output_tokens: sql<number>`coalesce(sum(${llmUsage.output_tokens}), 0)::int`,
+          sessions: sql<number>`count(distinct ${llmUsage.session_id})::int`,
+        })
+        .from(llmUsage)
+        .where(
+          and(
+            ...(userId ? [eq(llmUsage.user_id, userId)] : []),
+            eq(llmUsage.bot_id, botId),
+            gte(llmUsage.created_at, since),
+          ),
+        )
+        .groupBy(sql`1`)
+        .orderBy(sql`1`);
+      return rows;
+    },
+
+    /** Tokens one member used with one Agent since `since` (a public Agent's per-user daily cap, D37). */
+    async getBotUserTokensSince(botId: string, userId: string, since: string): Promise<number> {
+      const [row] = await db
+        .select({ n: sql<number>`coalesce(sum(${llmUsage.input_tokens} + ${llmUsage.output_tokens}), 0)::int` })
+        .from(llmUsage)
+        .where(and(eq(llmUsage.bot_id, botId), eq(llmUsage.user_id, userId), gte(llmUsage.created_at, since)));
+      return row?.n ?? 0;
     },
 
     /** Aggregate stats grouped by profile. */

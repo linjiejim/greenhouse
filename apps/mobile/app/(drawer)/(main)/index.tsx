@@ -42,13 +42,19 @@
  * thread (src/bots/thread/thread-screen.tsx, remounted per thread), anything
  * else this conversation screen. Every route here carries all seven home
  * params (src/bots/nav.ts). On a cold start a bare home reopens the Bots
- * thread the member left the app in (src/bots/home/initial-surface.ts), once
- * per process. With Bots on, the conversation screen also gets: a `?profile=`
- * new chat with one Bot (its face and name in the hero, a "Back to …" button;
- * the profile is never saved); the ☰ badge (other conversations that need the
+ * thread the member left the app in, else the main thread — Sprouty's DM
+ * (src/bots/home/initial-surface.ts), once per process. With Bots on, the
+ * conversation screen also gets: a `?profile=` new chat with one Bot (its
+ * face and name in the hero, a "Back to …" button; the profile is never
+ * saved); the ☰ badge (other conversations that need the
  * member or have something unread); a Bots session reached by id is forwarded
- * to its thread. With Bots off (or on Android) none of this renders and the
- * screen is exactly what it was.
+ * to its thread. And a new chat runs on the Agents engine (spec
+ * docs/specs/20261011-agent-first-class.md §5a, D27): its first send creates a
+ * task chat with that Agent (Sprouty by default) and continues in its thread,
+ * where the message goes out (src/bots/home/new-task-chat.ts) — unless the
+ * station has no task chats (an older server), then it stays here. With Bots
+ * off (or on Android) none of this renders and the screen is exactly what it
+ * was.
  */
 
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
@@ -109,17 +115,27 @@ import {
 import { useRowCopy } from '../../../src/bots/drawer/conversation-row';
 import { rowTitle } from '../../../src/bots/drawer/row-text';
 import { useBotsWarm, useProfileBot } from '../../../src/bots/home/home-bridge';
+import { useNewTaskChat } from '../../../src/bots/home/new-task-chat';
 import { useStartupContent } from '../../../src/startup/context';
 import { initialSurface } from '../../../src/bots/home/initial-surface';
 import { launchedByPush } from '../../../src/push/handler';
 import { useHomeSurface } from '../../../src/bots/home/surface';
-import { forgetThread, lastThread, rememberThread, type LastThread } from '../../../src/bots/last-surface';
+import {
+  forgetThread,
+  lastThread,
+  mainThread,
+  rememberMainThread,
+  rememberThread,
+  type LastThread,
+} from '../../../src/bots/last-surface';
 import { homeNavCount, homeParams, onHomeNav, openNewChat, openThread, type HomeParams } from '../../../src/bots/nav';
-import { attentionCount, sproutyBot, useBots } from '../../../src/bots/store';
+import { attentionCount, sproutyBot, sproutyDm, useBots } from '../../../src/bots/store';
 import { BotThreadScreen } from '../../../src/bots/thread/thread-screen';
 import { usePrefs } from '../../../src/store/prefs';
 
 const MAX_IMAGES = 4;
+/** A new chat that becomes a task chat takes the Agents composer's cap (the web's Bots composer allows 3). */
+const MAX_TASK_IMAGES = 3;
 
 /** What a message shows — a user turn without its attachments fence (that's for chips, not for copying). */
 const visibleText = (msg: ChatMessage) => (msg.role === 'user' ? splitAttachments(msg.text).text : msg.text);
@@ -232,6 +248,8 @@ function Conversation() {
   const sprouty = useBots((st) => (botsOn ? sproutyBot(st) : null));
 
   const onCreated = useCallback((s: { id: string }) => router.setParams({ id: s.id }), [router]);
+  // stable `start` (the composer is memoised — `send` must not change on every stream tick)
+  const { enabled: taskChatsOn, start: startTaskChat } = useNewTaskChat();
   // A Bots conversation reached by id (`greenhouse://chat/<id>`) belongs on its thread.
   const leave = useCallback(
     (session: Session) => {
@@ -252,6 +270,10 @@ function Conversation() {
   // Nothing said yet: a new conversation, or one that loaded empty (never while it loads — no hero flash).
   const isNew =
     messages.length === 0 && (!sessionId || (!convo.loading && !convo.loadFailed && !readOnly && !streaming));
+  // A new chat's first send creates a task chat (Agents on) and goes on in its thread.
+  const taskMode = !sessionId && taskChatsOn;
+  const maxImages = taskMode ? MAX_TASK_IMAGES : MAX_IMAGES;
+  const creatingTask = useRef(false);
   // the hero's Bot: the one `?profile=` starts a chat with, or the loaded session's own (Sprouty: the greeting)
   const sessionBot = sessionId && convo.profileId !== 'sprouty' ? convo.profileId : null;
   const profileBot = useProfileBot(profile ?? sessionBot ?? undefined);
@@ -260,7 +282,7 @@ function Conversation() {
   const inputRef = useRef<TextInput>(null);
   const [input, setInput] = useState('');
   const [annotations, setAnnotations] = useState<Annotation[]>([]);
-  const { images, setImages, attach: onAttach, removeImage, retryImages } = useComposerImages(MAX_IMAGES);
+  const { images, setImages, attach: onAttach, removeImage, retryImages } = useComposerImages(maxImages);
   const [composerH, setComposerH] = useState(60);
   // Insets are managed here, not by UIKit (`contentInsetAdjustmentBehavior`
   // "never"): KeyboardChatScrollView's keyboard lift assumes a 0 rest offset,
@@ -370,6 +392,7 @@ function Conversation() {
     const ready = images.filter((im) => im.status === 'done' && im.remote);
     // The handler and button share the same all-attachments-ready rule.
     if (streaming || !canSendMessage(text, images)) return;
+    if (creatingTask.current) return;
     const draft = { input, annotations, images };
     setInput('');
     // Clear natively too: a multiline field emptied only through `value` keeps
@@ -377,6 +400,32 @@ function Conversation() {
     inputRef.current?.clear();
     setAnnotations([]);
     setImages([]);
+    if (taskMode) {
+      // The Agents engine: a task chat with this chat's Agent, then its thread sends the message.
+      creatingTask.current = true;
+      Keyboard.dismiss();
+      const quote = draft.annotations.length ? draft.annotations.map((a) => a.text).join('\n') : null;
+      const outcome = await startTaskChat({
+        text: quote ? `${quote}\n\n${text}` : text,
+        images: ready,
+        profile,
+      });
+      creatingTask.current = false;
+      if (outcome.kind === 'started') {
+        // Same route, no animation: the home dispatcher renders the thread (all seven params).
+        router.setParams({ ...homeParams({ c: outcome.sessionId, title: outcome.title }) });
+        return;
+      }
+      if (outcome.kind === 'stale') return;
+      if (outcome.kind === 'failed') {
+        setInput(draft.input);
+        setAnnotations(draft.annotations);
+        setImages(draft.images);
+        alertError(tNow('chat.createFailed'));
+        return;
+      }
+      // unsupported: no task chats here — the chat engine takes it, as before.
+    }
     // Read the reply, not the keyboard. A temporary floor first: with the
     // keyboard gone, the current offset must stay valid until the anchor lands.
     // The anchor itself starts with the turn (the `streaming` effect), once the
@@ -396,7 +445,20 @@ function Conversation() {
       setImages(draft.images);
       alertError(tNow('chat.createFailed'));
     }
-  }, [input, images, annotations, streaming, convoSend, holdForTurn, cancelTurn, setImages]);
+  }, [
+    input,
+    images,
+    annotations,
+    streaming,
+    convoSend,
+    holdForTurn,
+    cancelTurn,
+    taskMode,
+    startTaskChat,
+    profile,
+    router,
+    setImages,
+  ]);
 
   /** A follow-up sent from a card in a reply (ask_user answers, a confirm pick). Stable: reads `streaming` live. */
   const streamingRef = useRef(streaming);
@@ -728,7 +790,7 @@ function Conversation() {
               images={images}
               onRemoveImage={removeImage}
               onRetryImages={retryImages}
-              maxImages={MAX_IMAGES}
+              maxImages={maxImages}
               placeholder={isNew ? t('home.heroPlaceholder') : t('chat.followUpPlaceholder')}
               autoFocus={params.compose === '1'}
               onHeight={onComposerHeight}
@@ -742,20 +804,27 @@ function Conversation() {
 
 /* ------------------------------ home: a Bots thread or the conversation ------------------------------ */
 
-/** A cold start reopens the last Bots thread at most once per process (D3); warm starts stay where they are. */
+/** A cold start picks its thread (remembered, else the main thread) at most once per process (D3); warm starts stay where they are. */
 let restoreSettled = false;
-/** How long a cold start waits for persisted prefs before settling on a new chat. */
+/**
+ * How long a cold start waits for persisted prefs — and, with neither a last nor a remembered main
+ * thread in them (a first launch), for the Bots store's main thread — before settling on what it
+ * knows: a new chat when nothing answered (on a real cold start the splash covers it).
+ */
 const RESTORE_WAIT_MS = 400;
 
 /**
  * The home route (D2): `?c=` renders the Bots thread — keyed by session, so
  * another thread is a fresh screen and its engine — anything else the
  * conversation screen, which stays exactly as it was. The first time a bare
- * home mounts in a process, the thread the member left the app in comes back
- * (src/bots/home/initial-surface.ts): rendered at once, and the route is
- * pointed at it with `setParams` (same screen, no animation). Which thread is
- * open is remembered per station + account for the next cold start; any chat
- * or new chat forgets it.
+ * home mounts in a process, the thread the member left the app in comes back,
+ * and with none remembered the main thread opens (主线: Sprouty's DM, spec
+ * 20261011 §3.1; src/bots/home/initial-surface.ts): rendered at once, and the
+ * route is pointed at it with `setParams` (same screen, no animation). Which
+ * thread is open is remembered per station + account for the next cold start;
+ * any chat or new chat forgets it. The main thread is remembered per station +
+ * account too (src/bots/last-surface.ts), whenever the Bots store learns it —
+ * so a cold start opens it from prefs, without waiting for the network.
  */
 export default function Home() {
   const raw = useLocalSearchParams<{ [K in keyof HomeParams]?: string }>();
@@ -773,6 +842,10 @@ export default function Home() {
   const hydrated = usePrefs((s) => s.hydrated);
   const [settled, setSettled] = useState(restoreSettled);
   const [gaveUp, setGaveUp] = useState(false);
+  // The main thread — Sprouty's DM: the Bots store's answer once it has one (the wait below fills the
+  // store), else the one remembered for this station + account (no network needed).
+  const storeMainC = useBots((s) => sproutyDm(s));
+  const storeMainTitle = useBots((s) => sproutyBot(s)?.name ?? '');
   // The restored thread, shown until the route's own `c` catches up with `setParams`.
   const [restored, setRestored] = useState<LastThread | null>(null);
   // Navigations to home since the restore (see the stand-in's effect below).
@@ -783,8 +856,10 @@ export default function Home() {
     ? null
     : initialSurface({
         params,
-        hydrated: hydrated || gaveUp,
+        hydrated,
+        gaveUp,
         last: hydrated ? lastThread() : null,
+        main: storeMainC ? { c: storeMainC, title: storeMainTitle } : mainThread(),
         botsEnabled: botsEnabledNow(),
         restored: restoreSettled,
         // a cold-start deep link stacked over home decides where home points
@@ -800,6 +875,9 @@ export default function Home() {
   useEffect(() => {
     if (settled || !kind) return;
     if (kind === 'wait') {
+      // Meanwhile learn the main thread the way the drawer and `greenhouse://bots` do: the store
+      // loads the Agent list (Sprouty carries its DM) and bootstraps the DM once if it has none.
+      void useBots.getState().ensureSprouty();
       const timer = setTimeout(() => setGaveUp(true), RESTORE_WAIT_MS);
       return () => clearTimeout(timer);
     }
@@ -831,7 +909,8 @@ export default function Home() {
   const copy = useRowCopy();
   const knownTitle = useBots((s) => {
     if (!thread) return '';
-    const row = s.conversations.find((r) => r.session_id === c);
+    // a thread, or a task chat (its own title)
+    const row = s.conversations.find((r) => r.session_id === c) ?? s.taskChats.find((r) => r.session_id === c);
     return row ? rowTitle(row, s, copy) : '';
   });
   useEffect(() => {
@@ -839,6 +918,11 @@ export default function Home() {
     if (thread) rememberThread({ c, title: knownTitle || title });
     else forgetThread();
   }, [settled, hydrated, thread, c, knownTitle, title]);
+
+  // …and the main thread, whenever the store learns it or its name (prefs skip a write that changes nothing).
+  useEffect(() => {
+    if (hydrated && storeMainC) rememberMainThread({ c: storeMainC, title: storeMainTitle });
+  }, [hydrated, storeMainC, storeMainTitle]);
 
   // What is on screen — the drawer reads this, not the route (src/bots/home/surface.ts).
   const publishSurface = useHomeSurface((s) => s.publish);

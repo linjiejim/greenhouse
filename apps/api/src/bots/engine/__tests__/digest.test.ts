@@ -167,6 +167,7 @@ describe('compaction failures', () => {
       bots: {
         getConversation: async () => ({ session_id: 's1', digest: '', digest_upto_seq: 0, digest_updated_at: null }),
         listBots: async () => [],
+        getBotById: async () => undefined,
         setDigest,
       },
     } as unknown as DatabaseProvider;
@@ -258,6 +259,7 @@ describe('oversized backlog', () => {
           digest_updated_at: null,
         }),
         listBots: async () => [],
+        getBotById: async () => undefined,
         setDigest: vi.fn(async (_id: string, expected: number, next: { upto_seq: number; text: string }) => {
           if (expected !== state.upto) return false;
           state.upto = next.upto_seq;

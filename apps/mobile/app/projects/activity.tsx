@@ -19,13 +19,20 @@ import { EmptyState, LoadingState } from '../../src/ui/empty';
 import { ListRow, ListSection } from '../../src/ui/list';
 import { SheetClose, useLeaveSheetTo } from '../../src/ui/sheet-chrome';
 
-const KINDS: Record<string, { icon: IconName; tint: (c: ThemeColors) => ColorValue; label: TranslationKey }> = {
+/** `named`: the server's `detail` is a name the label is about ("Handed to {name}"), not the line itself. */
+const KINDS: Record<
+  string,
+  { icon: IconName; tint: (c: ThemeColors) => ColorValue; label: TranslationKey; named?: boolean }
+> = {
   project_created: { icon: 'folderPlus', tint: (c) => c.accent, label: 'projects.act_project_created' },
   project_updated: { icon: 'pen', tint: (c) => c.indigo, label: 'projects.act_project_updated' },
   task_created: { icon: 'plusCircle', tint: (c) => c.green, label: 'projects.act_task_created' },
   task_updated: { icon: 'refresh', tint: (c) => c.blue, label: 'projects.act_task_updated' },
   comment_added: { icon: 'comment', tint: (c) => c.orange, label: 'projects.act_comment_added' },
   member_added: { icon: 'userPlus', tint: (c) => c.purple, label: 'projects.act_member_added' },
+  // handed to an Agent (spec 20261011-agent-first-class P3e): detail = the Agent's name
+  task_handed_to_agent: { icon: 'sparkle', tint: (c) => c.accent, label: 'projects.act_task_handed_to_agent', named: true },
+  task_agent_cleared: { icon: 'sparkle', tint: (c) => c.gray, label: 'projects.act_task_agent_cleared' },
 };
 const FALLBACK = { icon: 'activity' as IconName, tint: (c: ThemeColors) => c.gray };
 /** Empty / failed states sit in the middle of the sheet. */
@@ -95,7 +102,9 @@ export default function ActivitySheet() {
               return (
                 <ListRow
                   key={a.id}
-                  title={a.detail || (kind ? t(kind.label) : a.action)}
+                  title={
+                    kind?.named && a.detail ? t(kind.label, { name: a.detail }) : a.detail || (kind ? t(kind.label) : a.action)
+                  }
                   titleLines={3}
                   subtitle={`${actor} · ${relativeTime(a.created_at)}`}
                   icon={kind?.icon ?? FALLBACK.icon}

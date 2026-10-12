@@ -31,13 +31,13 @@ const DESCRIPTION = BOT_TOOL_METAS.find((meta) => meta.id === 'team')?.descripti
 
 const teamSchema = z.object({
   action: z.enum(['list', 'ask', 'add', 'create']).describe('list | ask | add | create'),
-  bot_id: z.string().max(64).optional().describe('ask / add: the Bot id (or exact name) from list.'),
+  bot_id: z.string().max(64).optional().describe('ask / add: the Agent id (or exact name) from list.'),
   message: z
     .string()
     .max(6000)
     .optional()
     .describe('ask: a precise, self-contained brief — what you need, the context it needs, the form of the answer.'),
-  name: z.string().max(BOT_NAME_MAX).optional().describe('create: the new Bot’s name.'),
+  name: z.string().max(BOT_NAME_MAX).optional().describe('create: the new Agent’s name.'),
   role: z.string().max(BOT_ROLE_MAX).optional().describe('create: its job title, a few words.'),
   instructions: z
     .string()
@@ -49,12 +49,12 @@ type TeamInput = z.infer<typeof teamSchema>;
 
 const REFUSAL: Record<AskRejection, string> = {
   self: 'You cannot hand work to yourself.',
-  not_member: 'That Bot is not in this conversation. Use list; invite it with add first if the member has it.',
+  not_member: 'That Agent is not in this conversation. Use list; invite it with add first if the member has it.',
   cycle:
-    'That Bot is already waiting on this hand-off chain — handing back would loop. Finish the part you can and answer.',
-  repeat: 'That Bot was already asked in this round. Do not ask it again; use what it said.',
+    'That Agent is already waiting on this hand-off chain — handing back would loop. Finish the part you can and answer.',
+  repeat: 'That Agent was already asked in this round. Do not ask it again; use what it said.',
   queued:
-    'That Bot was also addressed by the member and answers after you anyway. Do not hand it work; answer your part and leave the rest to it.',
+    'That Agent was also addressed by the member and answers after you anyway. Do not hand it work; answer your part and leave the rest to it.',
   asks: 'This round already used its hand-offs. Finish with what you have.',
   depth: 'Hand-offs cannot go deeper in this round. Do this part yourself.',
   turns: 'Not enough turns left in this round for another hand-off. Finish with what you have.',
@@ -119,14 +119,14 @@ export function createTeamTool(ctx: BotTurnContext, port: TeamPort) {
             const ref = input.bot_id?.trim();
             if (!ref) return { action: 'add', status: 'refused', reason: 'bot_id is required (see list).' };
             if (resolveMember(port, ref))
-              return { action: 'add', status: 'refused', reason: 'That Bot is already here.' };
+              return { action: 'add', status: 'refused', reason: 'That Agent is already here.' };
             const key = ref.replace(/^@/, '').toLowerCase();
             const bot = port.others().find((b) => b.id === ref || b.name.toLowerCase() === key);
             if (!bot) {
               return {
                 action: 'add',
                 status: 'refused',
-                reason: 'The member has no such Bot. Propose one with create if it would help.',
+                reason: 'The member has no such Agent. Propose one with create if it would help.',
               };
             }
             const added = await port.addMember(bot.id);
@@ -151,7 +151,7 @@ export function createTeamTool(ctx: BotTurnContext, port: TeamPort) {
               return {
                 action: 'create',
                 status: 'refused',
-                reason: `The member already has a Bot called ${name.name}. Invite it with add instead.`,
+                reason: `The member already has an Agent called ${name.name}. Invite it with add instead.`,
               };
             }
             const payload: BotCreatePayload = {

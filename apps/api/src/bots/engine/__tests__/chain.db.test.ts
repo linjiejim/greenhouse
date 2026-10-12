@@ -210,8 +210,8 @@ describe('Bots runs', () => {
     // Fern sees the hand-off as an untrusted Bot message, and Ivy's words tagged.
     const fernTurn = captured.find((t) => t.bot === 'Fern')!.input;
     const fernTail = String(fernTurn.messages.at(-1)!.content);
-    expect(fernTail).toContain('<bot_message from="Ivy" untrusted="true">');
-    expect(fernTail).toContain('[Ivy（Bot）]: Fern is better at this.');
+    expect(fernTail).toContain('<agent_message from="Ivy" untrusted="true">');
+    expect(fernTail).toContain('[Ivy（Agent）]: Fern is better at this.');
     expect(fernTurn.maxStepsOverride).toBe(12);
     const followup = captured.filter((t) => t.bot === 'Ivy')[1]!.input;
     expect(followup.maxStepsOverride).toBe(4);

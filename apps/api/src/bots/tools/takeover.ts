@@ -40,6 +40,7 @@ import {
 } from '../computer/browser-session.js';
 import { HUMAN_WAIT_HOLD_MS } from '../computer/limits.js';
 import { loginFieldsForPage } from '../vault/fill.js';
+import { computerRefForBot } from '../computer/namespace.js';
 import { isVaultAvailable } from '../vault/crypto.js';
 import { hostOfOrigin, originOfUrl } from '../vault/origin.js';
 import { vaultMatchesForOrigin } from '../vault/service.js';
@@ -68,11 +69,12 @@ export async function requestTakeover(
   input: z.infer<typeof schema>,
   deps: ComputerDeps = defaultComputerDeps,
 ): Promise<Record<string, unknown>> {
-  const found = await findLeasePage(ctx.userId, ctx.bot.id, ctx.sessionId, deps).catch(() => null);
+  const computerId = computerRefForBot(ctx.userId, ctx.bot).id;
+  const found = await findLeasePage(computerId, ctx.bot.id, ctx.sessionId, deps).catch(() => null);
   const pageUrl = found?.page.url() ?? null;
   const origin = originOfUrl(pageUrl);
   const url = displayUrl(pageUrl);
-  const reason = deps.redact(ctx.userId, input.reason.replace(/\s+/g, ' ').trim()).slice(0, 300);
+  const reason = deps.redact(computerId, input.reason.replace(/\s+/g, ' ').trim()).slice(0, 300);
 
   const secureCard = (input.kind === 'login' || input.kind === 'otp') && origin !== null;
 
@@ -100,7 +102,8 @@ export async function requestTakeover(
 
   let requestId: string;
   if (secureCard) {
-    const matches = isVaultAvailable() ? await vaultMatchesForOrigin(ctx.db, ctx.userId, origin) : [];
+    const matches =
+      isVaultAvailable() && !ctx.publicUse ? await vaultMatchesForOrigin(ctx.db, ctx.userId, origin, ctx.bot.id) : [];
     const payload: BotLoginPayload = {
       reason,
       kind: input.kind as 'login' | 'otp',
@@ -183,7 +186,7 @@ async function raiseImplicitTakeover(
     // A hand-back between the take-over and this card found nothing to settle
     // and woke nobody; a card left now would wait for a hand-back that already
     // happened. Withdraw it, unless a hand-back since then settled (and woke) it.
-    const lease = await deps.currentLease(ctx.userId);
+    const lease = await deps.currentLease(computerRefForBot(ctx.userId, ctx.bot).id);
     if (lease.controller !== 'user') {
       const withdrawn = await ctx.db.bots.settleRequest(ctx.userId, created.id, 'canceled', {
         by: 'system',

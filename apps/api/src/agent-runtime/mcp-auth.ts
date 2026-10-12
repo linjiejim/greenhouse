@@ -123,6 +123,7 @@ async function oauthIdentityMiddleware(c: Context, rawToken: string, next: Next)
   c.set('agentIdentity', identity);
   c.set('user', { id: identity.userId, role: identity.userRole });
   c.set('oauthClientId', resolved.client.id);
+  c.set('oauthClientName', resolved.client.client_name);
   c.set('oauthScopes', scopes);
   // Machine (client_credentials) tokens are distinguished in platform audit.
   c.set(

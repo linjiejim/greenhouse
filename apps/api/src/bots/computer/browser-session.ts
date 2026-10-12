@@ -99,9 +99,9 @@ export type TrackedAction = TrackedComputerAction;
 export type StartedJob = Awaited<ReturnType<typeof jobs.startJob>>;
 
 export interface ComputerDeps {
-  getBrowser(userId: string, opts?: EnsureOptions): Promise<Browser>;
+  getBrowser(computerId: string, opts?: EnsureOptions): Promise<Browser>;
   /** Make sure the computer is running (start / capacity queue) without doing anything on it. */
-  ensureReady(userId: string, opts?: EnsureOptions): Promise<void>;
+  ensureReady(computerId: string, opts?: EnsureOptions): Promise<void>;
   /**
    * Register an action on the member's computer so a take-over in this
    * process (access.abortComputerActions) stops it. Playwright calls take no
@@ -109,13 +109,13 @@ export interface ComputerDeps {
    * changes the page; its waits give up at once. Take-overs made on another
    * API slot are caught by the DB lease re-checks.
    */
-  trackAction(userId: string, signal: AbortSignal): TrackedAction;
-  currentLease(userId: string): Promise<ComputerLease>;
-  touch(userId: string): Promise<void>;
-  remember(userId: string, value: string): void;
-  redact(userId: string, text: string): string;
+  trackAction(computerId: string, signal: AbortSignal): TrackedAction;
+  currentLease(computerId: string): Promise<ComputerLease>;
+  touch(computerId: string): Promise<void>;
+  remember(computerId: string, value: string): void;
+  redact(computerId: string, text: string): string;
   /** Whether the computer is running right now — without starting it. */
-  isRunning(userId: string): Promise<boolean>;
+  isRunning(computerId: string): Promise<boolean>;
   exec: typeof access.execInComputer;
   readFile: typeof access.readComputerFile;
   writeFile: typeof access.writeComputerFile;
@@ -126,32 +126,32 @@ export interface ComputerDeps {
    * running (it does not start it); listing never starts it — [] when stopped.
    */
   startJob(
-    userId: string,
+    computerId: string,
     input: { command: string; name?: string },
     opts?: { signal?: AbortSignal },
   ): Promise<StartedJob>;
-  listJobs(userId: string): Promise<ComputerProcessView[]>;
-  jobLog(userId: string, id: string, opts?: { lines?: number; signal?: AbortSignal }): Promise<ComputerProcessLog>;
-  stopJob(userId: string, id: string): Promise<{ id: string; stopped: boolean }>;
+  listJobs(computerId: string): Promise<ComputerProcessView[]>;
+  jobLog(computerId: string, id: string, opts?: { lines?: number; signal?: AbortSignal }): Promise<ComputerProcessLog>;
+  stopJob(computerId: string, id: string): Promise<{ id: string; stopped: boolean }>;
 }
 
 export const defaultComputerDeps: ComputerDeps = {
-  getBrowser: (userId, opts) => access.getBrowser(userId, opts),
-  ensureReady: (userId, opts) => access.ensureComputerReady(userId, opts),
-  trackAction: (userId, signal) => access.trackComputerAction(userId, signal),
-  currentLease: (userId) => access.currentLease(userId),
-  touch: (userId) => access.touchComputer(userId),
-  remember: (userId, value) => access.rememberFilledSecret(userId, value),
-  redact: (userId, text) => access.redactFilledSecrets(userId, text),
-  isRunning: async (userId) => (await computerStatusFor(userId)).state === 'running',
-  exec: (userId: string, command: string, opts: ExecOptions) => access.execInComputer(userId, command, opts),
-  readFile: (userId, path, opts) => access.readComputerFile(userId, path, opts),
-  writeFile: (userId, path, content, opts) => access.writeComputerFile(userId, path, content, opts),
+  getBrowser: (computerId, opts) => access.getBrowser(computerId, opts),
+  ensureReady: (computerId, opts) => access.ensureComputerReady(computerId, opts),
+  trackAction: (computerId, signal) => access.trackComputerAction(computerId, signal),
+  currentLease: (computerId) => access.currentLease(computerId),
+  touch: (computerId) => access.touchComputer(computerId),
+  remember: (computerId, value) => access.rememberFilledSecret(computerId, value),
+  redact: (computerId, text) => access.redactFilledSecrets(computerId, text),
+  isRunning: async (computerId) => (await computerStatusFor(computerId)).state === 'running',
+  exec: (computerId: string, command: string, opts: ExecOptions) => access.execInComputer(computerId, command, opts),
+  readFile: (computerId, path, opts) => access.readComputerFile(computerId, path, opts),
+  writeFile: (computerId, path, content, opts) => access.writeComputerFile(computerId, path, content, opts),
   storeScreenshot: (png, owner) => storeScreenshotAsChatFile(png, owner),
-  startJob: (userId, input, opts) => jobs.startJob(userId, input, opts),
-  listJobs: (userId) => jobs.listJobs(userId),
-  jobLog: (userId, id, opts) => jobs.jobLog(userId, id, opts),
-  stopJob: (userId, id) => jobs.stopJob(userId, id),
+  startJob: (computerId, input, opts) => jobs.startJob(computerId, input, opts),
+  listJobs: (computerId) => jobs.listJobs(computerId),
+  jobLog: (computerId, id, opts) => jobs.jobLog(computerId, id, opts),
+  stopJob: (computerId, id) => jobs.stopJob(computerId, id),
 };
 
 /**
@@ -195,15 +195,15 @@ export async function storeScreenshotAsChatFile(png: Buffer, owner: ScreenshotOw
  */
 const connections = new Map<string, Browser>();
 
-function rememberConnection(userId: string, browser: Browser): Browser {
-  connections.set(userId, browser);
+function rememberConnection(computerId: string, browser: Browser): Browser {
+  connections.set(computerId, browser);
   return browser;
 }
 
-function heldConnection(userId: string): Browser | null {
-  const browser = connections.get(userId);
+function heldConnection(computerId: string): Browser | null {
+  const browser = connections.get(computerId);
   if (browser?.isConnected()) return browser;
-  connections.delete(userId);
+  connections.delete(computerId);
   return null;
 }
 
@@ -213,6 +213,8 @@ function heldConnection(userId: string): Browser | null {
 export interface ComputerTurn {
   db: DatabaseProvider;
   userId: string;
+  /** The computer this turn uses: the speaking Agent's own (spec 20261011-agent-first-class D30). */
+  computerId: string;
   botId: string;
   sessionId: string;
   turnId: string;
@@ -311,7 +313,7 @@ const HANDED_BACK =
  * be woken.
  */
 export async function memberInControl(
-  turn: Pick<ComputerTurn, 'userId' | 'background' | 'implicitTakeover'>,
+  turn: Pick<ComputerTurn, 'computerId' | 'background' | 'implicitTakeover'>,
   info: ImplicitTakeover,
   code: 'user_in_control' | 'observation_dropped' = 'user_in_control',
 ): Promise<ToolFailure> {
@@ -323,7 +325,7 @@ export async function memberInControl(
     return failure(code, MEMBER_IN_CONTROL[info.reason]);
   } catch (err) {
     logger.warn('[bots/computer] could not raise the take-over card', {
-      userId: turn.userId,
+      computerId: turn.computerId,
       error: toErrorMessage(err),
     });
     return failure(code, MEMBER_IN_CONTROL.noCard);
@@ -336,13 +338,13 @@ export async function memberInControl(
  * still holds the computer (→ memberInControl), or already handed it back.
  */
 export async function afterLeaseChange(
-  turn: Pick<ComputerTurn, 'userId' | 'background' | 'implicitTakeover'>,
+  turn: Pick<ComputerTurn, 'computerId' | 'background' | 'implicitTakeover'>,
   deps: Pick<ComputerDeps, 'currentLease'>,
   info: () => Promise<ImplicitTakeover> | ImplicitTakeover,
   code: 'user_in_control' | 'observation_dropped' = 'user_in_control',
 ): Promise<ToolFailure> {
   // An unreadable lease counts as the member's: never act on a guess.
-  const now = await deps.currentLease(turn.userId).catch(() => null);
+  const now = await deps.currentLease(turn.computerId).catch(() => null);
   if (now && now.controller !== 'user') return failure('observation_dropped', HANDED_BACK);
   return await memberInControl(turn, await info(), code);
 }
@@ -352,7 +354,7 @@ export function unavailableFailure(err: ComputerUnavailableError): ToolFailure {
   const messages: Record<ComputerUnavailableError['code'], string> = {
     disabled: 'The computer is not enabled on this deployment, so browsing and shell commands are not possible.',
     unavailable:
-      "The computer host is not ready right now. Tell the member; an administrator can check 'Bot computers'.",
+      "The computer host is not ready right now. Tell the member; an administrator can check 'Agent computers'.",
     busy: "All of the organisation's computers are in use. Try again in a minute, or do what you can without the computer.",
     start_failed: 'The computer failed to start. Tell the member; trying again later may work.',
     user_in_control: MEMBER_IN_CONTROL.noCard,
@@ -616,7 +618,7 @@ async function guardLocation(page: Page): Promise<ToolFailure | null> {
   await page.goto('about:blank').catch(() => undefined);
   return failure(
     'url_forbidden',
-    'That page cannot be viewed by Bots (only http and https sites, and not greenhouse itself).',
+    'That page cannot be viewed by Agents (only http and https sites, and not greenhouse itself).',
   );
 }
 
@@ -632,7 +634,7 @@ export class BrowserSession {
     readonly deps: ComputerDeps = defaultComputerDeps,
   ) {}
 
-  private redact = (text: string) => this.deps.redact(this.turn.userId, text);
+  private redact = (text: string) => this.deps.redact(this.turn.computerId, text);
 
   /** The browser + this turn's lease (opening a window when `create`). */
   async lease(
@@ -640,8 +642,8 @@ export class BrowserSession {
     signal: AbortSignal = this.turn.signal,
   ): Promise<{ registry: LeaseRegistry; lease: TabLease | null }> {
     const browser = rememberConnection(
-      this.turn.userId,
-      await this.deps.getBrowser(this.turn.userId, { signal, maxWaitMs: access.BOT_START_WAIT_MS }),
+      this.turn.computerId,
+      await this.deps.getBrowser(this.turn.computerId, { signal, maxWaitMs: access.BOT_START_WAIT_MS }),
     );
     const registry = leaseRegistryFor(browser);
     const lease = await registry.acquire(leaseSpecFor(this.turn), { create });
@@ -661,15 +663,15 @@ export class BrowserSession {
       return failure('human_check', humanCheckRefusal(targetOrigin, turn.background));
     }
     // Aborts with the turn, and when the member takes over in this process.
-    const action = deps.trackAction(turn.userId, turn.signal);
+    const action = deps.trackAction(turn.computerId, turn.signal);
     const signal = action.signal;
     let held: TabLease | null = null;
     try {
       throwIfAborted(signal);
       // Fast path: do not even start the computer for a Bot that may not act.
-      const before = await deps.currentLease(turn.userId);
+      const before = await deps.currentLease(turn.computerId);
       if (before.controller === 'user') return await memberInControl(turn, { reason: 'waiting' });
-      void deps.touch(turn.userId).catch(() => undefined);
+      void deps.touch(turn.computerId).catch(() => undefined);
 
       const { registry, lease } = await abortable(this.lease(input.action === 'open', signal), signal);
       held = lease;
@@ -688,7 +690,7 @@ export class BrowserSession {
           // Starting the computer or waiting in the queue / behind another
           // action can take a minute: check again at the real start.
           throwIfAborted(signal);
-          const now = await deps.currentLease(turn.userId);
+          const now = await deps.currentLease(turn.computerId);
           // Taken over while this call waited: handled with every other take-over below.
           if (now.controller === 'user') throw new ComputerUnavailableError('user_in_control', 'Taken over');
           if (now.epoch !== before.epoch) return failure('observation_dropped', HANDED_BACK);
@@ -703,7 +705,7 @@ export class BrowserSession {
       if ('code' in result && result.code && !('url' in result)) return result;
 
       // Observations made across a take-over are dropped, never returned.
-      const after = await deps.currentLease(turn.userId);
+      const after = await deps.currentLease(turn.computerId);
       if (after.controller === 'user') {
         return await memberInControl(turn, await this.where(lease, 'interrupted'), 'observation_dropped');
       }
@@ -712,7 +714,7 @@ export class BrowserSession {
       // notices when something else tainted the turn first.
       for (const origin of observedOrigins.get(result) ?? []) if (origin) turn.noteObservation(origin);
       turn.markTainted();
-      void deps.touch(turn.userId).catch(() => undefined);
+      void deps.touch(turn.computerId).catch(() => undefined);
       return result;
     } catch (err) {
       const fail = toFailure(err, this.redact);
@@ -724,13 +726,17 @@ export class BrowserSession {
       // Aborted while the turn itself goes on: a take-over (or a stop) made
       // through a path that aborts without a reason. Say what happened.
       if (fail.code === 'aborted' && !turn.signal.aborted) {
-        const now = await deps.currentLease(turn.userId).catch(() => null);
+        const now = await deps.currentLease(turn.computerId).catch(() => null);
         return now?.controller === 'user'
           ? await memberInControl(turn, await this.where(held, 'interrupted'))
           : unavailableFailure(new ComputerUnavailableError('stopped', 'The computer was stopped'));
       }
       if (fail.code === 'failed') {
-        logger.warn('[bots/browser] action failed', { action: input.action, userId: turn.userId, error: fail.error });
+        logger.warn('[bots/browser] action failed', {
+          action: input.action,
+          computerId: turn.computerId,
+          error: fail.error,
+        });
       }
       return fail;
     } finally {
@@ -781,7 +787,7 @@ export class BrowserSession {
     // take-over on another API slot shows only in the DB lease.
     const stillOurs = async () => {
       step();
-      const now = await this.deps.currentLease(this.turn.userId);
+      const now = await this.deps.currentLease(this.turn.computerId);
       if (now.controller === 'user' || now.epoch !== epoch) {
         throw new ComputerUnavailableError('user_in_control', 'The member took over the computer');
       }
@@ -1022,7 +1028,7 @@ export class BrowserSession {
             const png = await page.screenshot({ type: 'png', timeout: 15_000 });
             // Store the image only once it is known to be taken under the
             // Bot's lease — a picture of the member's take-over must not exist.
-            const now = await this.deps.currentLease(this.turn.userId);
+            const now = await this.deps.currentLease(this.turn.computerId);
             if (now.controller === 'user') throw new ComputerUnavailableError('user_in_control', 'Taken over');
             if (now.epoch !== epoch) return failure('observation_dropped', HANDED_BACK);
             const file = await this.deps.storeScreenshot(png, {
@@ -1094,7 +1100,7 @@ export class BrowserSession {
     const tooLarge = () => failure('too_large', `${name} is larger than 20 MB, so it cannot be uploaded from here.`);
     let buffer: Buffer;
     try {
-      buffer = await this.deps.readFile(this.turn.userId, path, { maxBytes: UPLOAD_MAX_BYTES + 1, signal });
+      buffer = await this.deps.readFile(this.turn.computerId, path, { maxBytes: UPLOAD_MAX_BYTES + 1, signal });
     } catch (err) {
       throwIfAborted(signal);
       if (err instanceof ComputerUnavailableError) throw err;
@@ -1152,7 +1158,7 @@ export class BrowserSession {
         outcome = await this.turn.humanCheck(check);
       } catch (err) {
         logger.warn('[bots/browser] could not raise the verification card', {
-          userId: this.turn.userId,
+          computerId: this.turn.computerId,
           error: toErrorMessage(err),
         });
       }
@@ -1253,13 +1259,13 @@ class RefError extends Error {
  * starting the computer or opening a window (null when there is none).
  */
 export async function findLeasePage(
-  userId: string,
+  computerId: string,
   botId: string,
   sessionId: string,
   deps: ComputerDeps = defaultComputerDeps,
 ): Promise<{ page: Page; registry: LeaseRegistry; lease: TabLease } | null> {
-  if (!(await deps.isRunning(userId).catch(() => false))) return null;
-  const browser = rememberConnection(userId, await deps.getBrowser(userId));
+  if (!(await deps.isRunning(computerId).catch(() => false))) return null;
+  const browser = rememberConnection(computerId, await deps.getBrowser(computerId));
   const registry = leaseRegistryFor(browser);
   const lease = await registry.acquire({ kind: 'foreground', botId, sessionId }, { create: false });
   const page = lease?.currentPage();
@@ -1273,13 +1279,13 @@ export async function findLeasePage(
  * the URL (normalizeBrowseUrl) and checks where the page ended up.
  */
 export async function openLeasePage(
-  userId: string,
+  computerId: string,
   botId: string,
   sessionId: string,
   url: string,
   deps: ComputerDeps = defaultComputerDeps,
 ): Promise<{ page: Page; registry: LeaseRegistry; lease: TabLease }> {
-  const browser = rememberConnection(userId, await deps.getBrowser(userId));
+  const browser = rememberConnection(computerId, await deps.getBrowser(computerId));
   const registry = leaseRegistryFor(browser);
   const lease = await registry.acquire({ kind: 'foreground', botId, sessionId }, { create: true });
   if (!lease) throw new Error('The Bot has no tab');
@@ -1303,15 +1309,19 @@ export async function openLeasePage(
  * context dies anyway — a later connection sweeps it, see tab-leases.ts).
  */
 export async function releaseTurnLeases(
-  userId: string,
+  computerId: string,
   turnId: string,
   deps: ComputerDeps = defaultComputerDeps,
 ): Promise<void> {
   try {
-    const browser = heldConnection(userId);
-    if (!browser || !(await deps.isRunning(userId))) return;
+    const browser = heldConnection(computerId);
+    if (!browser || !(await deps.isRunning(computerId))) return;
     await leaseRegistryFor(browser).release(`bg:${turnId}`);
   } catch (err) {
-    logger.warn('[bots/browser] releasing a background lease failed', { userId, turnId, error: toErrorMessage(err) });
+    logger.warn('[bots/browser] releasing a background lease failed', {
+      computerId,
+      turnId,
+      error: toErrorMessage(err),
+    });
   }
 }

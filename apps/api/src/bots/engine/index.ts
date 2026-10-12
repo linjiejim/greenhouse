@@ -24,6 +24,7 @@ import { logger } from '@greenhouse/utils/logger';
 import { toErrorMessage } from '@greenhouse/utils/error';
 import { startRequestExpiryLoop, stopRequestExpiryLoop } from './approvals.js';
 import { runBotsRun } from './chain.js';
+import { publicBotFor } from '../public.js';
 import {
   deliverToConversation as deliver,
   setInboxToolRegistry,
@@ -114,6 +115,52 @@ export async function startBotsChain(args: StartBotsChainArgs): Promise<void> {
   }).catch(logCrash(sessionId));
 }
 
+export interface StartBotsRewindArgs extends Omit<StartBotsChainArgs, 'message'> {
+  /** The member message the chat goes back to — the last one (checked by the caller). */
+  messageId: string;
+  /** Its new text (edit); undefined = the same text again (regenerate). */
+  content?: string;
+}
+
+/**
+ * Edit or regenerate in a task chat (spec 20261011-agent-first-class D23), inside an
+ * already-claimed run: everything after the member's last message goes, its text changes when
+ * edited, the rolling summary is reset when the cut reaches into it, and the chain answers it
+ * again. Throws `RewindError` (nothing changed, the caller releases the run) when the message is
+ * not the chat's last member message.
+ */
+export async function startBotsRewind(args: StartBotsRewindArgs): Promise<void> {
+  const db = args.db ?? getDb();
+  const sessionId = args.session.id;
+  const target = await db.sessions.getMessageById(args.messageId);
+  if (!target || target.session_id !== sessionId || target.role !== 'user') throw new RewindError('not_found');
+  const recent = await db.sessions.getMessagePage(sessionId, { limit: 200 });
+  const lastMember = [...recent.messages].reverse().find((row) => row.role === 'user');
+  if (!lastMember || lastMember.id !== target.id) throw new RewindError('not_last');
+  const content = args.content ?? target.content;
+  const edited = await db.sessions.editUserMessageAndTruncate(sessionId, target.id, content);
+  if (!edited.ok) throw new RewindError('not_found');
+  const conversation = await db.bots.getConversation(args.authUser.id, sessionId);
+  if (conversation && conversation.digest_upto_seq >= target.seq) await db.bots.resetDigest(sessionId);
+  void runBotsRun({
+    run: args.run,
+    userId: args.authUser.id,
+    sessionId,
+    toolRegistry: args.toolRegistry,
+    trigger: { kind: 'message', reason: 'user', mentions: [] },
+    // A fresh key per attempt: the Runtime trace source of the earlier answer stays its own.
+    triggerKey: `${target.id}~${args.run.runId}`,
+    db,
+    richBlocks: args.richBlocks,
+  }).catch(logCrash(sessionId));
+}
+
+export class RewindError extends Error {
+  constructor(readonly code: 'not_found' | 'not_last') {
+    super(code === 'not_last' ? 'Only the last message can be edited or answered again' : 'Message not found');
+  }
+}
+
 export type BotsReplyState = 'ok' | BotConversationReadOnlyCode;
 
 /**
@@ -134,8 +181,15 @@ export async function conversationReplyState(
   ]);
   if (!conversation) return 'ok'; // the run reports a missing conversation itself
   if (conversation.kind === 'group') return 'group_closed';
+  // A room takes messages from its people; who may be answered is the mentions' business (P5).
+  if (conversation.kind === 'room') return 'ok';
+  const ownerBotId = conversation.owner_bot_id;
+  // Someone else's public Agent (P4): answerable while it is still offered to this member.
+  if (ownerBotId && !bots.some((bot) => bot.id === ownerBotId)) {
+    return (await publicBotFor(db, userId, ownerBotId)) ? 'ok' : 'agent_unavailable';
+  }
   const active = new Set(bots.filter((bot) => bot.status === 'active').map((bot) => bot.id));
-  return conversation.owner_bot_id && active.has(conversation.owner_bot_id) ? 'ok' : 'bot_archived';
+  return ownerBotId && active.has(ownerBotId) ? 'ok' : 'bot_archived';
 }
 
 /** Single-writer delivery into a Bots conversation (see inbox-types.ts). */

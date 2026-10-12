@@ -152,8 +152,15 @@ export interface SessionManagerContextValue {
   sendBotsMessage: (
     sessionId: string,
     message: string,
-    options?: { images?: Array<{ id: string; url: string }>; mentions?: string[] },
+    options?: { images?: Array<{ id: string; url: string }>; mentions?: string[]; model?: string },
   ) => Promise<{ queued: boolean }>;
+
+  /**
+   * A separate Agent chat: edit its last member message (`content`) or answer it again, and
+   * stream the new run into `activeSessions` like a send. Rejects (a `BotsApiError`) when the
+   * API refused — a run is going, it is not the last message, a computer card is open.
+   */
+  rewindBotsMessage: (sessionId: string, options: { messageId: string; content?: string }) => Promise<void>;
 
   /** Attach to a generation already running server-side (after refresh / other tab) */
   attachSession: (sessionId: string) => void;
@@ -607,11 +614,28 @@ export function SessionManagerProvider({ children }: { children: React.ReactNode
     [runStream],
   );
 
+  /**
+   * Consume an already-opened Bots run stream. If this tab is still draining the previous run's
+   * tail (the server had finished it, or it would have queued us), the new stream is handed over
+   * when that consumer releases the session — still one consumer per session.
+   */
+  const adoptBotsStream = useCallback(
+    (sessionId: string, events: AsyncIterable<SeqStreamEvent>, abort: AbortController) => {
+      if (streamDataRef.current.has(sessionId)) {
+        pendingSourcesRef.current.get(sessionId)?.abort.abort();
+        pendingSourcesRef.current.set(sessionId, { source: events, abort });
+      } else {
+        runStream(sessionId, { source: events, abortController: abort });
+      }
+    },
+    [runStream],
+  );
+
   const sendBotsMessage = useCallback(
     async (
       sessionId: string,
       message: string,
-      options: { images?: Array<{ id: string; url: string }>; mentions?: string[] } = {},
+      options: { images?: Array<{ id: string; url: string }>; mentions?: string[]; model?: string } = {},
     ): Promise<{ queued: boolean }> => {
       const abort = new AbortController();
       const opened = await api.openBotsChat({
@@ -619,21 +643,28 @@ export function SessionManagerProvider({ children }: { children: React.ReactNode
         message,
         images: options.images,
         mentions: options.mentions,
+        ...(options.model ? { model: options.model } : {}),
         signal: abort.signal,
       });
       if (opened.queued) return { queued: true };
-      if (streamDataRef.current.has(sessionId)) {
-        // The server had already finished the previous run (or it would have
-        // queued us) but this tab is still draining its tail. Hand the new
-        // stream over when that consumer releases the session.
-        pendingSourcesRef.current.get(sessionId)?.abort.abort();
-        pendingSourcesRef.current.set(sessionId, { source: opened.events, abort });
-      } else {
-        runStream(sessionId, { source: opened.events, abortController: abort });
-      }
+      adoptBotsStream(sessionId, opened.events, abort);
       return { queued: false };
     },
-    [runStream],
+    [adoptBotsStream],
+  );
+
+  const rewindBotsMessage = useCallback(
+    async (sessionId: string, options: { messageId: string; content?: string }): Promise<void> => {
+      const abort = new AbortController();
+      const events = await api.openBotsRewind({
+        sessionId,
+        messageId: options.messageId,
+        ...(options.content !== undefined ? { content: options.content } : {}),
+        signal: abort.signal,
+      });
+      adoptBotsStream(sessionId, events, abort);
+    },
+    [adoptBotsStream],
   );
 
   const attachSession = useCallback(
@@ -845,6 +876,7 @@ export function SessionManagerProvider({ children }: { children: React.ReactNode
     unregisterViewport,
     sendMessage,
     sendBotsMessage,
+    rewindBotsMessage,
     attachSession,
     stopSession,
     interruptSession,

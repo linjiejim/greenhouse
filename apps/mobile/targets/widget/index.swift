@@ -1,8 +1,8 @@
 /**
  * Greenhouse widget (v4) — the member's Bots on the home screen:
  *   · systemSmall          greeting + main face + compact other faces → new chat
- *   · systemMedium         main Agent row · [新对话] + 3 compact Bot faces
- *   · systemLarge          Greenhouse header · prominent main Agent + 3 rows · [新对话]
+ *   · systemMedium         main Agent row · [新会话] + 3 compact Bot faces
+ *   · systemLarge          Greenhouse header · prominent main Agent + 3 rows · [新会话]
  *   · accessoryRectangular what is waiting on the member, or "start a new chat" (lock screen)
  *   · accessoryCircular    Sprouty silhouette → new chat (lock screen)
  * …and, in the same bundle, a Bot's background task as a Live Activity (lock screen +
@@ -359,15 +359,15 @@ private struct NewChatLink: View {
 
   var body: some View {
     Link(destination: composeURL) {
-      AccentPill(icon: "square.and.pencil", label: zh ? "新对话" : "New chat")
+      AccentPill(icon: "square.and.pencil", label: zh ? "新会话" : "New chat")
     }
     .accessibilityLabel(newChatA11y(entry.snapshot, zh: zh))
   }
 }
 
 private func newChatA11y(_ snap: Snapshot?, zh: Bool) -> String {
-  guard let name = snap?.defaultAgent?.name, !name.isEmpty else { return zh ? "新对话" : "New chat" }
-  return zh ? "新对话，\(name)" : "New chat, \(name)"
+  guard let name = snap?.defaultAgent?.name, !name.isEmpty else { return zh ? "新会话" : "New chat" }
+  return zh ? "新会话，\(name)" : "New chat, \(name)"
 }
 
 private struct UpdatedLabel: View {
@@ -388,7 +388,7 @@ private func botA11y(_ bot: SnapshotBot, zh: Bool) -> String {
   return (zh ? "\(bot.name)，" : "\(bot.name), ") + signal
 }
 
-/** Only Sprouty so far: one dashed "New Bot" slot (Settings → My Bots), never a row of empties. */
+/** Only Sprouty so far: one dashed "New Agent" slot (Settings → My Bots), never a row of empties. */
 private struct NewBotCell: View {
   let zh: Bool
   let size: CGFloat
@@ -450,7 +450,7 @@ private struct SessionRow: View {
     Link(destination: chatURL(session.id)) {
       HStack(spacing: 6) {
         Image(systemName: "message").font(.system(size: 12)).foregroundStyle(Color("$accent"))
-        Text(session.title.isEmpty ? (zh ? "新对话" : "New conversation") : session.title)
+        Text(session.title.isEmpty ? (zh ? "新会话" : "New chat") : session.title)
           .font(.system(size: 12.5, weight: .medium))
           .foregroundStyle(Color.primary)
           .lineLimit(1)
@@ -492,7 +492,7 @@ private struct SmallLauncher: View {
       HStack(spacing: 6) {
         HStack(spacing: 5) {
           Image(systemName: "square.and.pencil").font(.system(size: 14, weight: .semibold))
-          if others.isEmpty { Text(zh ? "新对话" : "New chat").font(.system(size: 12, weight: .semibold)) }
+          if others.isEmpty { Text(zh ? "新会话" : "New chat").font(.system(size: 12, weight: .semibold)) }
         }
         .foregroundStyle(Color("OnAccent"))
         .frame(maxWidth: others.isEmpty ? .infinity : nil)
@@ -581,7 +581,7 @@ private struct LargeLauncher: View {
             Link(destination: newBotURL) {
               HStack(spacing: 11) {
                 NewBotCell(zh: zh, size: 34)
-                Text(zh ? "新建 Bot" : "New Bot").font(.system(size: 14)).foregroundStyle(Color.secondary)
+                Text(zh ? "新建 Agent" : "New Agent").font(.system(size: 14)).foregroundStyle(Color.secondary)
               }
             }
           }
@@ -641,7 +641,7 @@ private struct RectangularLauncher: View {
       } else {
         HStack(spacing: 6) {
           sproutyMono().resizable().scaledToFit().frame(width: 22, height: 22)
-          Text(zh ? "开始新对话" : "Start a new chat").font(.system(size: 13, weight: .semibold))
+          Text(zh ? "开始新会话" : "Start a new chat").font(.system(size: 13, weight: .semibold))
         }
         .widgetURL(composeURL)
       }
@@ -690,8 +690,8 @@ struct GreenhouseLauncher: Widget {
     .configurationDisplayName(systemZh ? "Greenhouse 快捷入口" : "Greenhouse Launcher")
     .description(
       systemZh
-        ? "你的 Bot 和它们的新消息，一键进入对话或开始新对话。"
-        : "Your Bots and what's new with them — one tap into a chat, or start a new one."
+        ? "你的 Agent 和它们的新消息，一键进入对话或开始新会话。"
+        : "Your Agents and what's new with them — one tap into a chat, or start a new one."
     )
     .supportedFamilies([.systemSmall, .systemMedium, .systemLarge, .accessoryRectangular, .accessoryCircular])
   }

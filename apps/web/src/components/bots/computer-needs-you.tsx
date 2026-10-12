@@ -9,13 +9,14 @@
  */
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import type { BotLoginPayload, BotRequestView, BotTakeoverPayload } from '@greenhouse/types/bots';
+import type { BotLoginPayload, BotRequestView, BotTakeoverPayload, BotView } from '@greenhouse/types/bots';
 import { Button, Spinner } from '../ui';
 import { ShieldAlert } from '../../lib/icons';
 import { useT } from '../../lib/i18n';
 import { wsClient } from '../../lib/ws';
-import { allBotsOf, computerRequestsFor, listBots, listRequests } from '../../lib/api/bots';
+import { allBotsOf, computerRequestsFor, listBots, listRequests, type ComputerBot } from '../../lib/api/bots';
 import { implicitTakeover } from './request-decision';
+import { computerBotFor } from './computer-phase';
 
 export function NeedsYouBanner({
   request,
@@ -76,9 +77,15 @@ export function NeedsYouBanner({
   );
 }
 
-export function usePendingRequest(sessionId: string | undefined) {
+/**
+ * The take-over / sign-in card waiting in `sessionId` for this computer — `bot`'s
+ * (null = the main Agent's). Each Agent works on its own computer, so a guest's
+ * card in this conversation belongs on the guest's computer, not on this one.
+ */
+export function usePendingRequest(sessionId: string | undefined, bot: ComputerBot = null) {
   const [pending, setPending] = useState<{ request: BotRequestView; botName: string | null } | null>(null);
-  const names = useRef<Record<string, string> | null>(null);
+  // Who raised the cards: names for the banner, template keys to tell Sprouty's (main computer) apart.
+  const directory = useRef<Map<string, Pick<BotView, 'name' | 'template_key'>> | null>(null);
 
   const reload = useCallback(async () => {
     if (!sessionId) {
@@ -87,22 +94,24 @@ export function usePendingRequest(sessionId: string | undefined) {
     }
     try {
       const { requests } = await listRequests('pending');
-      const [request] = computerRequestsFor(requests, sessionId);
-      if (!request) {
+      const candidates = computerRequestsFor(requests, sessionId);
+      if (candidates.length === 0) {
         setPending(null);
         return;
       }
-      if (request.bot_id && !names.current?.[request.bot_id]) {
+      if (candidates.some((request) => request.bot_id && !directory.current?.has(request.bot_id))) {
         // Archived Bots included: a request outlives the Bot that raised it.
-        names.current = await listBots()
-          .then((overview) => Object.fromEntries(allBotsOf(overview).map((bot) => [bot.id, bot.name])))
-          .catch(() => names.current);
+        directory.current = await listBots()
+          .then((overview) => new Map(allBotsOf(overview).map((one) => [one.id, one])))
+          .catch(() => directory.current);
       }
-      setPending({ request, botName: (request.bot_id && names.current?.[request.bot_id]) || null });
+      const known = (id: string) => directory.current?.get(id);
+      const request = candidates.find((candidate) => computerBotFor(candidate.bot_id, known) === bot);
+      setPending(request ? { request, botName: (request.bot_id && known(request.bot_id)?.name) || null } : null);
     } catch {
       // The banner is a convenience; the conversation's own card stays the source of truth.
     }
-  }, [sessionId]);
+  }, [sessionId, bot]);
 
   useEffect(() => {
     void reload();

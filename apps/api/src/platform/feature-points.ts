@@ -23,6 +23,7 @@ import { getPlatformRuntime, PLATFORM_ORG_ID } from './runtime.js';
 import { humanActor } from './actor.js';
 import { TOOL_DEFINITIONS, getToolMeta, getGlobalToolIds } from '../tools/registry.js';
 import { BOT_TOOL_IDS } from '../bots/tools/meta.js';
+import { AGENT_ACCESS_TOOL_IDS } from '../bots/external/meta.js';
 
 // ─── Registry ────────────────────────────────────────────
 
@@ -87,14 +88,14 @@ const CORE_FEATURE_POINTS: readonly FeaturePointDef[] = [
   },
   {
     key: 'bots',
-    title: 'Bots',
+    title: 'Agents',
     description:
-      'Personal assistant Bots — the Bots page, their computer, the password vault and every Bot-only tool. Bot tools are built only inside Bots conversations.',
+      'Personal assistant Agents — their ongoing conversations, their computer, the password vault and every Agent-only tool. Agent tools are built only inside Agent conversations; the Agent access tools only on MCP and the CLI.',
     icon: 'Bot',
     kind: 'flag',
     group: 'basic',
     flag: 'bots',
-    toolIds: BOT_TOOL_IDS,
+    toolIds: [...BOT_TOOL_IDS, ...AGENT_ACCESS_TOOL_IDS],
   },
   {
     key: 'memory',

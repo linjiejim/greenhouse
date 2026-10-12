@@ -56,6 +56,8 @@ import { createMissionDispatchTool } from '../tools/mission-dispatch.js';
 import { createTaskCaptureTool } from '../tools/task-capture.js';
 import { createReadAttachmentTool } from '../tools/read-attachment.js';
 import { createMcpCallTool } from '../tools/mcp-call.js';
+import { createAgentAccessTools } from '../bots/external/tools.js';
+import type { ExternalCaller } from '../bots/external/agents.js';
 import type { AgentProfile } from '../profiles/profile.js';
 
 /**
@@ -171,6 +173,24 @@ export interface LazyServerToolContext {
    * (spec 20261009-mcp-connectors D9).
    */
   mcpConnectors?: readonly string[] | null;
+  /**
+   * A caller outside Greenhouse on /api/mcp or the CLI proxy (spec 20261011-agent-first-class P6):
+   * only then are the Agent access tools built (agents_list / agent_message /
+   * agent_conversation_get), and the label names where a conversation they open came from.
+   */
+  externalCaller?: ExternalCaller;
+}
+
+/**
+ * What a resolved profile lends its lazy server tools: the Bot it runs as and
+ * that Bot's connector list. Every surface that runs a profile (Chat, scheduled
+ * runs, Feishu) spreads this, so the memory tool's Bot scope, the knowledge
+ * identity and the connector narrowing match the prompt's memory index.
+ */
+export function profileToolIdentity(
+  profile: Pick<AgentProfile, 'identity' | 'mcp_connectors'>,
+): Pick<LazyServerToolContext, 'botId' | 'mcpConnectors'> {
+  return { botId: profile.identity?.botId ?? null, mcpConnectors: profile.mcp_connectors ?? null };
 }
 
 /**
@@ -397,6 +417,11 @@ export function buildLazyServerTools(
       connectors: ctx.mcpConnectors ?? null,
     });
     if (mcp) tools.mcp_call = mcp;
+  }
+
+  // The member's Agents, for a caller outside Greenhouse only (bots/external).
+  if (ctx.externalCaller) {
+    Object.assign(tools, createAgentAccessTools({ db, userId, caller: ctx.externalCaller }, effectiveTools));
   }
 
   // Home workbench — owner-scoped inside the tools. Cards may only bind tools

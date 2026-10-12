@@ -96,12 +96,26 @@ export const bots = pgTable(
     current_version: integer('current_version').notNull().default(1),
     /** The `custom_profiles.id` this Bot was migrated from; stored `custom:<id>[@v]` references resolve through it. */
     legacy_custom_id: integer('legacy_custom_id'),
+    // ── Publication (spec 20261011-agent-first-class P4) ──
+    /** `public` = published to an audience (never Sprouty); `private` = its owner's only. */
+    visibility: text('visibility', { enum: ['private', 'public'] })
+      .notNull()
+      .default('private'),
+    /** The immutable version (bot_versions) its audience talks to; null = not published yet. */
+    published_version: integer('published_version'),
+    /** An administrator paused it: nobody but its owner can use it until resumed. */
+    public_paused: boolean('public_paused').notNull().default(false),
+    /** JSON `BotPublication` settings: audience, grants, budget (packages/types `BotPublicationSettings`). */
+    publication: text('publication').notNull().default('{}'),
     last_active_at: ts('last_active_at'),
     created_at: ts('created_at').notNull(),
     updated_at: ts('updated_at').notNull(),
   },
   (table) => [
     index('idx_bots_user').on(table.user_id, table.status),
+    index('idx_bots_public')
+      .on(table.visibility)
+      .where(sql`${table.visibility} = 'public'`),
     uniqueIndex('uq_bots_user_name_active')
       .on(table.user_id, table.name_key)
       .where(sql`${table.status} = 'active'`),
@@ -160,9 +174,15 @@ export const botConversations = pgTable(
     user_id: text('user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
-    /** `group` = a retired group chat (read-only history); every new conversation is `direct`. */
-    kind: text('kind', { enum: ['direct', 'group'] }).notNull(),
-    /** Direct conversations only: the Bot whose DM this is (one DM per Bot). */
+    /**
+     * `direct` = a Bot's one DM (the main thread is Sprouty's); `task` = a separate chat with its own
+     * context, owned by one Bot, as many as the member opens (spec 20261011-agent-first-class D20);
+     * `group` = a retired group chat (read-only history); `room` = several people (and the Agents
+     * they bring) in one conversation — `user_id` is its creator, the people are in
+     * `conversation_participants`, nobody answers unaddressed messages (D42–D46).
+     */
+    kind: text('kind', { enum: ['direct', 'task', 'group', 'room'] }).notNull(),
+    /** The Bot that answers here: a DM's Bot (one DM per Bot) or a task chat's Bot. */
     owner_bot_id: text('owner_bot_id').references(() => bots.id, { onDelete: 'cascade' }),
     /** Who answers an unaddressed message: a DM's owner (null once it is archived); a retired group's old coordinator. */
     lead_bot_id: text('lead_bot_id').references(() => bots.id, { onDelete: 'set null' }),
@@ -175,6 +195,8 @@ export const botConversations = pgTable(
      * allowed and nothing reads this column. Kept so old rows / clients stay valid.
      */
     allow_bot_chat: boolean('allow_bot_chat').notNull().default(true),
+    /** A task chat's chosen model (the composer's picker); null = the owner Bot's model. DMs never set it. */
+    model_id: text('model_id'),
     /** Structured rolling summary (JSON text) covering messages up to digest_upto_seq. */
     digest: text('digest').notNull().default(''),
     digest_upto_seq: integer('digest_upto_seq').notNull().default(0),
@@ -188,7 +210,11 @@ export const botConversations = pgTable(
   },
   (table) => [
     index('idx_bot_conversations_user').on(table.user_id, table.last_activity_at),
-    uniqueIndex('uq_bot_conversations_owner_bot').on(table.owner_bot_id),
+    // One DM per (member, Bot): a Bot's owner has one, and so has each member using a public Bot
+    // (spec 20261011-agent-first-class D34); task chats are unlimited.
+    uniqueIndex('uq_bot_conversations_owner_bot')
+      .on(table.user_id, table.owner_bot_id)
+      .where(sql`${table.kind} = 'direct'`),
   ],
 );
 
@@ -219,6 +245,38 @@ export const botConversationMembers = pgTable(
     index('idx_bot_conversation_members_bot').on(table.bot_id),
   ],
 );
+
+// ─── conversation_participants ─────────────────────────────
+
+/**
+ * The people in a room (`bot_conversations.kind = 'room'`, spec 20261011-agent-first-class D42):
+ * each reads and writes it, has their own read marker, and brings their own Agents (which stay in
+ * `bot_conversation_members`, `user_id` = who added them). The creator is a participant too
+ * (`owner`). Other conversation kinds have no rows here: their one member is `user_id`.
+ */
+export const conversationParticipants = pgTable(
+  'conversation_participants',
+  {
+    id: serial('id').primaryKey(),
+    session_id: text('session_id')
+      .notNull()
+      .references(() => botConversations.session_id, { onDelete: 'cascade' }),
+    user_id: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    role: text('role', { enum: ['owner', 'member'] }).notNull(),
+    /** Who added them (`users.id`); the creator adds themselves. */
+    added_by: text('added_by').notNull(),
+    last_read_at: ts('last_read_at'),
+    joined_at: ts('joined_at').notNull(),
+  },
+  (table) => [
+    uniqueIndex('uq_conversation_participants').on(table.session_id, table.user_id),
+    index('idx_conversation_participants_user').on(table.user_id),
+  ],
+);
+
+export type ConversationParticipantRow = typeof conversationParticipants.$inferSelect;
 
 // ─── bot_shared_notes ─────────────────────────────────────
 
@@ -286,7 +344,7 @@ export const botInbox = pgTable(
     session_id: text('session_id')
       .notNull()
       .references(() => botConversations.session_id, { onDelete: 'cascade' }),
-    kind: text('kind', { enum: ['event', 'continue', 'task_report', 'user_message'] }).notNull(),
+    kind: text('kind', { enum: ['event', 'continue', 'task_report', 'user_message', 'mention'] }).notNull(),
     payload: text('payload').notNull().default('{}'),
     created_at: ts('created_at').notNull(),
     consumed_at: ts('consumed_at'),
@@ -300,41 +358,56 @@ export const botInbox = pgTable(
 
 // ─── bot_computers ────────────────────────────────────────
 
-export const botComputers = pgTable('bot_computers', {
-  user_id: text('user_id')
-    .primaryKey()
-    .references(() => users.id, { onDelete: 'cascade' }),
-  /** Deployment namespace (keeps worktree/blue-green deployments apart on one daemon). */
-  namespace: text('namespace').notNull(),
-  container_name: text('container_name').notNull(),
-  volume_name: text('volume_name').notNull(),
-  state: text('state', { enum: ['absent', 'starting', 'running', 'stopping', 'error'] })
-    .notNull()
-    .default('absent'),
-  /** Machine-readable reason for `error` (oom, exited, start_failed…) or the last stop (idle, lru…). */
-  state_reason: text('state_reason'),
-  /** Compare-and-set counter for every lifecycle transition. */
-  version: integer('version').notNull().default(0),
-  /** Who drives the screen and input right now. */
-  lease_controller: text('lease_controller', { enum: ['bot', 'user'] })
-    .notNull()
-    .default('bot'),
-  /** Bumped on every lease change; Bot observations taken under an older epoch are discarded. */
-  lease_epoch: integer('lease_epoch').notNull().default(0),
-  lease_since: ts('lease_since'),
-  /** Refreshed every ~20 s by whichever API slot holds a live viewer socket. */
-  viewer_heartbeat_at: ts('viewer_heartbeat_at'),
-  last_active_at: ts('last_active_at').notNull(),
-  last_started_at: ts('last_started_at'),
-  image_id: text('image_id'),
-  /** Last measured size of the home volume, bytes. */
-  disk_bytes: bigint('disk_bytes', { mode: 'number' }),
-  disk_measured_at: ts('disk_measured_at'),
-  /** The member's own IANA timezone for the computer; null = the deployment default. Applied at the next start. */
-  timezone: text('timezone'),
-  created_at: ts('created_at').notNull(),
-  updated_at: ts('updated_at').notNull(),
-});
+export const botComputers = pgTable(
+  'bot_computers',
+  {
+    /**
+     * The computer id (spec 20261011-agent-first-class D28/D29): the member's user id for their
+     * main Agent's computer (every row before migration 0024), `<userId>.<botId>` for another
+     * Agent's. Locks, in-process maps, tickets and Docker/E2B labels all key on it.
+     */
+    id: text('id').primaryKey(),
+    user_id: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    /**
+     * The Agent whose computer this is; null = the member's main Agent. A logical link (no
+     * foreign key): the container and its home must be removed before the row goes.
+     */
+    bot_id: text('bot_id'),
+    /** Deployment namespace (keeps worktree/blue-green deployments apart on one daemon). */
+    namespace: text('namespace').notNull(),
+    container_name: text('container_name').notNull(),
+    volume_name: text('volume_name').notNull(),
+    state: text('state', { enum: ['absent', 'starting', 'running', 'stopping', 'error'] })
+      .notNull()
+      .default('absent'),
+    /** Machine-readable reason for `error` (oom, exited, start_failed…) or the last stop (idle, lru…). */
+    state_reason: text('state_reason'),
+    /** Compare-and-set counter for every lifecycle transition. */
+    version: integer('version').notNull().default(0),
+    /** Who drives the screen and input right now. */
+    lease_controller: text('lease_controller', { enum: ['bot', 'user'] })
+      .notNull()
+      .default('bot'),
+    /** Bumped on every lease change; Bot observations taken under an older epoch are discarded. */
+    lease_epoch: integer('lease_epoch').notNull().default(0),
+    lease_since: ts('lease_since'),
+    /** Refreshed every ~20 s by whichever API slot holds a live viewer socket. */
+    viewer_heartbeat_at: ts('viewer_heartbeat_at'),
+    last_active_at: ts('last_active_at').notNull(),
+    last_started_at: ts('last_started_at'),
+    image_id: text('image_id'),
+    /** Last measured size of the home volume, bytes. */
+    disk_bytes: bigint('disk_bytes', { mode: 'number' }),
+    disk_measured_at: ts('disk_measured_at'),
+    /** The member's own IANA timezone for the computer; null = the deployment default. Applied at the next start. */
+    timezone: text('timezone'),
+    created_at: ts('created_at').notNull(),
+    updated_at: ts('updated_at').notNull(),
+  },
+  (table) => [index('idx_bot_computers_user').on(table.user_id)],
+);
 
 // ─── bot_process_watches ──────────────────────────────────
 
@@ -357,6 +430,8 @@ export const botProcessWatches = pgTable(
     bot_id: text('bot_id')
       .notNull()
       .references(() => bots.id, { onDelete: 'cascade' }),
+    /** The computer the job runs on (`bot_computers.id`; the member's id for the main Agent's). */
+    computer_id: text('computer_id').notNull(),
     /** The gh-jobs id (`j` + 8 hex). */
     job_id: text('job_id').notNull(),
     /** Its label in the process list, for the wake-up note. */
@@ -369,7 +444,7 @@ export const botProcessWatches = pgTable(
     updated_at: ts('updated_at').notNull(),
   },
   (table) => [
-    uniqueIndex('uq_bot_process_watches_job').on(table.user_id, table.job_id),
+    uniqueIndex('uq_bot_process_watches_job').on(table.computer_id, table.job_id),
     index('idx_bot_process_watches_watching')
       .on(table.user_id)
       .where(sql`${table.status} = 'watching'`),
@@ -388,8 +463,8 @@ export const botProcessWatches = pgTable(
  * `user_id` is a logical link to users, not a foreign key: the stored objects must be
  * deleted before the row, so a member's deletion goes through the computer runtime
  * (purge with wipe), and rows whose member is gone are swept with their objects.
- * One `running` row per member at most (the partial unique index): of several API
- * processes, one takes a member's backup.
+ * One `running` row per computer at most (the partial unique index): of several API
+ * processes, one takes a computer's backup.
  */
 export const botComputerBackups = pgTable(
   'bot_computer_backups',
@@ -397,6 +472,8 @@ export const botComputerBackups = pgTable(
     /** `bkp_<hex>`. */
     id: text('id').primaryKey(),
     user_id: text('user_id').notNull(),
+    /** The computer it was taken from (`bot_computers.id`; the member's id for the main Agent's). */
+    computer_id: text('computer_id').notNull(),
     status: text('status', { enum: ['running', 'complete', 'failed'] }).notNull(),
     /** idle = before the computer went to sleep; admin = Back up now. */
     reason: text('reason', { enum: ['idle', 'admin'] }).notNull(),
@@ -419,9 +496,44 @@ export const botComputerBackups = pgTable(
   },
   (table) => [
     index('idx_bot_computer_backups_user').on(table.user_id, table.created_at),
+    index('idx_bot_computer_backups_computer').on(table.computer_id, table.created_at),
     uniqueIndex('uq_bot_computer_backups_running')
-      .on(table.user_id)
+      .on(table.computer_id)
       .where(sql`${table.status} = 'running'`),
+  ],
+);
+
+// ─── bot_feedback ─────────────────────────────────────────
+
+/**
+ * A member's rating of one reply of an Agent (spec 20261011-agent-first-class D38): what the
+ * owner of a public Agent sees instead of the conversation. `comment` is only what the member
+ * chose to write; no message text is copied here.
+ */
+export const botFeedback = pgTable(
+  'bot_feedback',
+  {
+    id: serial('id').primaryKey(),
+    bot_id: text('bot_id')
+      .notNull()
+      .references(() => bots.id, { onDelete: 'cascade' }),
+    /** The member who rated (the conversation's member). */
+    user_id: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    session_id: text('session_id').notNull(),
+    message_id: text('message_id').notNull(),
+    /** 1 = helpful, -1 = not. */
+    rating: integer('rating').notNull(),
+    comment: text('comment').notNull().default(''),
+    /** The published version the reply came from (null = the owner's own conversation). */
+    version: integer('version'),
+    created_at: ts('created_at').notNull(),
+    updated_at: ts('updated_at').notNull(),
+  },
+  (table) => [
+    uniqueIndex('uq_bot_feedback_message').on(table.user_id, table.message_id),
+    index('idx_bot_feedback_bot').on(table.bot_id, table.created_at),
   ],
 );
 
@@ -449,6 +561,11 @@ export const vaultItems = pgTable(
       .default('ask'),
     /** JSON array of origins the user chose "always allow on this site" for. */
     always_origins: text('always_origins').notNull().default('[]'),
+    /**
+     * JSON array of the Agents (`bots.id`) that may use this entry; null = every Agent of the
+     * member (spec 20261011-agent-first-class P3c).
+     */
+    bot_ids: text('bot_ids'),
     last_used_at: ts('last_used_at'),
     created_at: ts('created_at').notNull(),
     updated_at: ts('updated_at').notNull(),
@@ -499,3 +616,4 @@ export type BotComputerBackupRow = typeof botComputerBackups.$inferSelect;
 export type BotComputerBackupStatus = BotComputerBackupRow['status'];
 export type VaultItemRow = typeof vaultItems.$inferSelect;
 export type VaultAccessLogRow = typeof vaultAccessLog.$inferSelect;
+export type BotFeedbackRow = typeof botFeedback.$inferSelect;

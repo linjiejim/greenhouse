@@ -1,6 +1,6 @@
 /**
  * Bots API — the member's Bots, their conversations, background tasks and the
- * "needs you" requests (`/api/bots*`; endpoint table in
+ * "needs you" requests (`/api/bots*`), and rooms with other people (`/api/rooms*`; endpoint table in
  * apps/api/src/bots/AGENTS.md → HTTP contract). Function names follow the web
  * client (apps/web/src/lib/api/bots.ts); sending a message is `POST /api/chat`
  * (`openBotsChat` in ./chat.ts), not this module.
@@ -25,6 +25,7 @@
  */
 
 import type {
+  BotActivityItem,
   BotConversationDetail,
   BotConversationSummary,
   BotMessage,
@@ -33,8 +34,10 @@ import type {
   BotRequestStatus,
   BotRequestView,
   BotTaskView,
+  BotUsageView,
   BotView,
   ComputerFileList,
+  SharedBotView,
   ComputerProcessLog,
   ComputerProcessView,
   ComputerStatusView,
@@ -124,7 +127,11 @@ const nothing = (): void => undefined;
 
 // ─── Bots ────────────────────────────────────────────────
 
-/** Active + archived Bots, the computer runtime, the vault flag and the pending-card count. */
+/**
+ * Active + archived Bots, other members' public Agents in the member's DMs (`shared_bots`, P4 —
+ * missing from servers older than 2026-10-12: read it as optional), the computer runtime, the
+ * vault flag and the pending-card count.
+ */
 export function listBots(): Promise<BotsRead<BotsOverview>> {
   return read('/api/bots', whole<BotsOverview>);
 }
@@ -187,6 +194,38 @@ export function createConversation(input: {
   return call('/api/bots/conversations', jsonInit('POST', input), conversationOf);
 }
 
+// ─── Task chats (separate chats on the Agents engine, spec 20261011-agent-first-class §5a) ─
+
+/**
+ * The member's task chats (`?kind=task`), newest activity first — the drawer's chat rows read
+ * their signals (needs you, unread, replying) from here. An older server ignores `kind` and answers
+ * with its threads: only `kind: 'task'` rows are kept.
+ */
+export function listTaskChats(): Promise<BotsRead<BotConversationSummary[]>> {
+  return read('/api/bots/conversations?kind=task', (body) =>
+    (body as { conversations: BotConversationSummary[] }).conversations.filter((row) => row.kind === 'task'),
+  );
+}
+
+/**
+ * A new task chat answered by `bot_id` (absent = the member's Sprouty). 201 with its detail. An
+ * older server reads this as a DM request without `bot_ids`: 400 with no code (`taskChatFailure`
+ * in src/bots/task-chats.ts tells the two apart).
+ */
+export function createTaskChat(
+  input: { bot_id?: string; title?: string; model_id?: string } = {},
+): Promise<BotsWrite<BotConversationDetail>> {
+  return call('/api/bots/conversations', jsonInit('POST', { kind: 'task', ...input }), conversationOf);
+}
+
+/** A task chat's title / model (a DM answers 409 `not_task_chat`). */
+export function updateTaskChat(
+  sessionId: string,
+  patch: { title?: string | null; model_id?: string | null },
+): Promise<BotsWrite<BotConversationDetail>> {
+  return call(`/api/bots/conversations/${enc(sessionId)}`, jsonInit('PATCH', patch), conversationOf);
+}
+
 /** A page of the transcript (`seq` ascending): the newest, or the one before `beforeSeq`. */
 export function getConversation(
   sessionId: string,
@@ -225,6 +264,116 @@ export async function markConversationRead(sessionId: string): Promise<boolean> 
 
 function conversationOf(body: unknown): BotConversationDetail {
   return (body as { conversation: BotConversationDetail }).conversation;
+}
+
+// ─── Public Agents (spec 20261011-agent-first-class P4) ──
+
+/** Other members' public Agents offered to this member, not their own (404 on servers without them). */
+export function listAgents(): Promise<BotsRead<SharedBotView[]>> {
+  return read('/api/agents', (body) => (body as { agents: SharedBotView[] }).agents);
+}
+
+/** The member's own DM with a public Agent — made with its greeting when missing. 404 = no longer offered. */
+export function startAgentConversation(agentId: string): Promise<BotsWrite<string>> {
+  return call(
+    `/api/agents/${enc(agentId)}/conversation`,
+    jsonInit('POST'),
+    (body) => (body as { conversation_id: string }).conversation_id,
+  );
+}
+
+/**
+ * Rate a reply (👍 1 / 👎 -1, an optional sentence ≤ 1000) — its owner sees the rating and the
+ * sentence, never the conversation (D38). Rating again replaces it. 404 = not a reply here.
+ */
+export function rateReply(
+  sessionId: string,
+  messageId: string,
+  body: { rating: 1 | -1; comment?: string },
+): Promise<BotsWrite<void>> {
+  return call(
+    `/api/bots/conversations/${enc(sessionId)}/messages/${enc(messageId)}/feedback`,
+    jsonInit('POST', body),
+    nothing,
+  );
+}
+
+/** Take a rating back — the reply is unrated again. */
+export function unrateReply(sessionId: string, messageId: string): Promise<BotsWrite<void>> {
+  return call(
+    `/api/bots/conversations/${enc(sessionId)}/messages/${enc(messageId)}/feedback`,
+    jsonInit('DELETE'),
+    nothing,
+  );
+}
+
+// ─── Rooms: conversations with other people (spec 20261011-agent-first-class P5) ─
+//
+// A room is a Bots conversation of kind `room`: it comes back in `listConversations` for every
+// participant (with `participants`, and each Agent's `owner_user_id` / `addressable` for this
+// reader), its transcript is `getConversation`, and a message is `POST /api/chat` like any thread —
+// always 202 there (nobody answers unless someone allowed @-mentions an Agent). These are the
+// routes only a room has. A server without rooms answers 404.
+
+/** Someone who can be in a conversation with the member: active, internal, Agents on (never the member). */
+export interface RoomPerson {
+  id: string;
+  nickname: string;
+  email: string;
+}
+
+/** Who the member can start a conversation with, or add to one (sorted by name, ≤ 500). */
+export function listRoomPeople(): Promise<BotsRead<RoomPerson[]>> {
+  return read('/api/rooms/people', (body) => (body as { people: RoomPerson[] }).people);
+}
+
+/**
+ * A new room with these people (the member is in it anyway), an optional title and some of the
+ * member's own Agents. One other person, no title, no Agents = the pair's private chat: the existing
+ * one comes back (200) instead of a new one (201). Refusals: 400 (someone who can't join), 404 (an
+ * Agent that isn't the member's), 409 (a public Agent not offered to everyone; `room_full`).
+ */
+export function createRoom(input: {
+  user_ids: string[];
+  title?: string;
+  bot_ids?: string[];
+}): Promise<BotsWrite<BotConversationDetail>> {
+  return call('/api/rooms', jsonInit('POST', input), conversationOf);
+}
+
+/** Its title (anyone in it); null clears it — the room is named after its people again. */
+export function renameRoom(sessionId: string, title: string | null): Promise<BotsWrite<BotConversationDetail>> {
+  return call(`/api/rooms/${enc(sessionId)}`, jsonInit('PATCH', { title }), conversationOf);
+}
+
+/** Add someone (anyone in it may). A public Agent the newcomer isn't offered leaves, with a line. */
+export function addRoomPerson(sessionId: string, userId: string): Promise<BotsWrite<BotConversationDetail>> {
+  return call(`/api/rooms/${enc(sessionId)}/participants`, jsonInit('POST', { user_id: userId }), conversationOf);
+}
+
+/**
+ * Take someone out — the member themself (leaving: their Agents go with them), or, as its owner,
+ * anyone. `deleted` = they were the last one: the room is gone. 409 `busy`: their Agent is answering.
+ */
+export function removeRoomPerson(sessionId: string, userId: string): Promise<BotsWrite<{ deleted: boolean }>> {
+  return call(`/api/rooms/${enc(sessionId)}/participants/${enc(userId)}`, jsonInit('DELETE'), (body) => ({
+    deleted: (body as { deleted?: unknown } | null)?.deleted === true,
+  }));
+}
+
+/** Leave: `removeRoomPerson` with the member's own id. A room can't be deleted — the last one out deletes it. */
+export function leaveRoom(sessionId: string, me: string): Promise<BotsWrite<{ deleted: boolean }>> {
+  return removeRoomPerson(sessionId, me);
+}
+
+/** Bring an Agent in: one of the member's own, or a public one offered to everyone in the room (else 409). */
+export function addRoomAgent(sessionId: string, botId: string): Promise<BotsWrite<BotConversationDetail>> {
+  return call(`/api/rooms/${enc(sessionId)}/agents`, jsonInit('POST', { bot_id: botId }), conversationOf);
+}
+
+/** Take an Agent out — whoever brought it, its owner or the room's owner may (else 403). */
+export function removeRoomAgent(sessionId: string, botId: string): Promise<BotsWrite<void>> {
+  return call(`/api/rooms/${enc(sessionId)}/agents/${enc(botId)}`, jsonInit('DELETE'), nothing);
 }
 
 // ─── Shared notes (a conversation's) ─────────────────────
@@ -309,26 +458,40 @@ export function decideRequest(requestId: string, body: BotRequestDecision): Prom
   );
 }
 
-// ─── The member's computer (spec docs/specs/20261011-mobile-computer.md) ─
+// ─── An Agent's computer (spec docs/specs/20261011-mobile-computer.md) ─
 //
-// One computer per member, shared by all their Bots (apps/api/src/bots/computer).
+// One computer per Agent (spec 20261011-agent-first-class P3a): every call takes
+// the Agent whose computer it is — `bot`, null / absent = the member's main Agent
+// (Sprouty), whose computer is the one every member had before 2026-10-12. The
+// server reads `?bot=<id>` (an unknown or foreign id: 404 `agent_not_found`); an
+// older server ignores it and answers for the one computer it knows.
 // The screen itself is a WebSocket the viewer page opens with a one-time ticket
 // (`computerViewToken`); everything else is plain REST. Only `takeover`,
 // `handback` and `typeIntoComputer` touch the lease.
 
+/** `path` for the computer of `bot` (null = the main Agent's: no parameter). */
+export function computerPath(path: string, bot?: string | null): string {
+  if (!bot) return path;
+  return `${path}${path.includes('?') ? '&' : '?'}bot=${enc(bot)}`;
+}
+
 /** Its state, who controls it (`bot` / `user`), the start queue, the runtime behind it. */
-export function computerStatus(): Promise<BotsRead<ComputerStatusView>> {
-  return read('/api/bots/computer', whole<ComputerStatusView>);
+export function computerStatus(bot?: string | null): Promise<BotsRead<ComputerStatusView>> {
+  return read(computerPath('/api/bots/computer', bot), whole<ComputerStatusView>);
 }
 
 /** Wake it. Resolves once it runs — or with `queue_position` set when the org's slots are full. */
-export function startComputer(): Promise<BotsWrite<ComputerStatusView>> {
-  return call('/api/bots/computer/start', jsonInit('POST'), whole<ComputerStatusView>);
+export function startComputer(bot?: string | null): Promise<BotsWrite<ComputerStatusView>> {
+  return call(computerPath('/api/bots/computer/start', bot), jsonInit('POST'), whole<ComputerStatusView>);
 }
 
-/** A one-time, 60-second ticket for the live screen. Fetch it right before connecting. */
-export function computerViewToken(): Promise<BotsWrite<{ token: string; expires_at: string }>> {
-  return call('/api/bots/computer/view-token', jsonInit('POST'), whole<{ token: string; expires_at: string }>);
+/** A one-time, 60-second ticket for the live screen of that computer. Fetch it right before connecting. */
+export function computerViewToken(bot?: string | null): Promise<BotsWrite<{ token: string; expires_at: string }>> {
+  return call(
+    computerPath('/api/bots/computer/view-token', bot),
+    jsonInit('POST'),
+    whole<{ token: string; expires_at: string }>,
+  );
 }
 
 /** `ws(s)://<station>/api/ws/computer?token=…` — the ticket is the credential (no bearer token in it). */
@@ -337,22 +500,23 @@ export function computerViewerUrl(apiBase: string, token: string): string {
   return `${base}/api/ws/computer?token=${enc(token)}`;
 }
 
-/** Take the lease: the server stops the Bots' computer actions (waking it if asleep) and forwards this member's input. */
-export function takeoverComputer(): Promise<BotsWrite<ComputerStatusView>> {
-  return call('/api/bots/computer/takeover', jsonInit('POST'), whole<ComputerStatusView>);
+/** Take the lease: the server stops the Agent's computer actions (waking it if asleep) and forwards this member's input. */
+export function takeoverComputer(bot?: string | null): Promise<BotsWrite<ComputerStatusView>> {
+  return call(computerPath('/api/bots/computer/takeover', bot), jsonInit('POST'), whole<ComputerStatusView>);
 }
 
 /**
  * Give the lease back. The server settles the card it answers — `requestId`, or
- * else the single take-over / sign-in card waiting in `sessionId` — and wakes the
- * Bot that asked, with the note as context. Neither → the lease is just released.
+ * else the single take-over / sign-in card of this computer waiting in
+ * `sessionId` — and wakes the Agent that asked, with the note as context.
+ * Neither → the lease is just released.
  */
 export function handbackComputer(
-  input: { note?: string; requestId?: string; sessionId?: string } = {},
+  input: { note?: string; requestId?: string; sessionId?: string; bot?: string | null } = {},
 ): Promise<BotsWrite<ComputerStatusView>> {
   const note = input.note?.trim();
   return call(
-    '/api/bots/computer/handback',
+    computerPath('/api/bots/computer/handback', input.bot),
     jsonInit('POST', {
       ...(note ? { note } : {}),
       ...(input.requestId ? { request_id: input.requestId } : {}),
@@ -367,30 +531,60 @@ export function handbackComputer(
  * IME output and pasted text that raw VNC key events cannot carry). Only while
  * this member holds the lease — else 409 `lease_required`.
  */
-export function typeIntoComputer(text: string): Promise<BotsWrite<void>> {
-  return call('/api/bots/computer/type', jsonInit('POST', { text }), nothing);
+export function typeIntoComputer(text: string, bot?: string | null): Promise<BotsWrite<void>> {
+  return call(computerPath('/api/bots/computer/type', bot), jsonInit('POST', { text }), nothing);
 }
 
 /** A folder of the computer (default `~/work`; `~` = /home/agent). Directories first, ≤500 entries. Starts it if needed. */
-export function listComputerFiles(path?: string): Promise<BotsRead<ComputerFileList>> {
-  return read(`/api/bots/computer/files${path ? `?path=${enc(path)}` : ''}`, whole<ComputerFileList>);
+export function listComputerFiles(path?: string, bot?: string | null): Promise<BotsRead<ComputerFileList>> {
+  return read(
+    computerPath(`/api/bots/computer/files${path ? `?path=${enc(path)}` : ''}`, bot),
+    whole<ComputerFileList>,
+  );
 }
 
 /** The download route of one file, for the shared `/file-preview` route. */
-export function computerFilePath(path: string): string {
-  return `/api/bots/computer/files/download?path=${enc(path)}`;
+export function computerFilePath(path: string, bot?: string | null): string {
+  return computerPath(`/api/bots/computer/files/download?path=${enc(path)}`, bot);
 }
 
-/** Long jobs started with `gh-jobs` (a Bot's run_background, or a terminal). Empty while it is off — never starts it. */
-export function listComputerProcesses(): Promise<BotsRead<ComputerProcessView[]>> {
-  return read('/api/bots/computer/processes', (body) => (body as { processes: ComputerProcessView[] }).processes);
+/** Long jobs started with `gh-jobs` (an Agent's run_background, or a terminal). Empty while it is off — never starts it. */
+export function listComputerProcesses(bot?: string | null): Promise<BotsRead<ComputerProcessView[]>> {
+  return read(
+    computerPath('/api/bots/computer/processes', bot),
+    (body) => (body as { processes: ComputerProcessView[] }).processes,
+  );
 }
 
 /** The tail of a job's log (redacted by the server). */
-export function computerProcessLog(id: string, lines = 200): Promise<BotsRead<ComputerProcessLog>> {
-  return read(`/api/bots/computer/processes/${enc(id)}/log?lines=${lines}`, whole<ComputerProcessLog>);
+export function computerProcessLog(
+  id: string,
+  lines = 200,
+  bot?: string | null,
+): Promise<BotsRead<ComputerProcessLog>> {
+  return read(
+    computerPath(`/api/bots/computer/processes/${enc(id)}/log?lines=${lines}`, bot),
+    whole<ComputerProcessLog>,
+  );
 }
 
-export function stopComputerProcess(id: string): Promise<BotsWrite<void>> {
-  return call(`/api/bots/computer/processes/${enc(id)}/stop`, jsonInit('POST'), nothing);
+export function stopComputerProcess(id: string, bot?: string | null): Promise<BotsWrite<void>> {
+  return call(computerPath(`/api/bots/computer/processes/${enc(id)}/stop`, bot), jsonInit('POST'), nothing);
+}
+
+// ─── An Agent's usage and activity (spec 20261011-agent-first-class P3d; owner only) ─
+
+/** Its model use per day over the last `days` (≤ 90) and the totals. */
+export function botUsage(botId: string, days = 30): Promise<BotsRead<BotUsageView>> {
+  return read(`/api/bots/${enc(botId)}/usage?days=${days}`, whole<BotUsageView>);
+}
+
+/**
+ * What it did, newest first (≤ `limit`, server cap 200): platform actions, password uses,
+ * background tasks — never message content. `at` is not an `*_at` key: rewritten here.
+ */
+export function botActivity(botId: string, limit = 50): Promise<BotsRead<BotActivityItem[]>> {
+  return read(`/api/bots/${enc(botId)}/activity?limit=${limit}`, (body) =>
+    (body as { activity: BotActivityItem[] }).activity.map((item) => ({ ...item, at: isoTimestamp(item.at) })),
+  );
 }

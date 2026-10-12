@@ -82,10 +82,14 @@ export async function publishWidgetSnapshot(): Promise<void> {
       copy: {
         deletedBot: t('bots.common.deletedBot'),
         untitledGroup: t('bots.nav.untitledGroup'),
+        newChat: t('chat.newConversation'),
         archivedName: (name) => t('bots.nav.archivedName', { name }),
         youSaid: (text) => t('bots.common.youSaid', { text }),
         botSaid: (name, text) => t('bots.nav.botSaid', { name, text }),
         noMessages: t('bots.common.noMessages'),
+        roomUntitled: t('bots.room.untitled'),
+        agentOf: (name) => t('bots.room.agentOf', { name }),
+        someAgent: t('bots.room.someAgent'),
       },
       parseMs,
     });

@@ -131,7 +131,11 @@ describe('POST /api/chat on a Bots conversation', () => {
     expect(canWriteSession({ id: boss.id, role: 'super' }, session)).toBe(false);
     expect(canWriteSession({ id: jim.id, role: 'team' }, session)).toBe(true);
     expect(canWriteSession({ id: ana.id, role: 'team' }, session)).toBe(false);
+    // An ordinary chat: super continues it only where the deployment allows it (D46).
+    expect(canWriteSession({ id: boss.id, role: 'super' }, { ...session, channel: 'web' })).toBe(false);
+    process.env.SUPER_READS_CHATS = 'true';
     expect(canWriteSession({ id: boss.id, role: 'super' }, { ...session, channel: 'web' })).toBe(true);
+    delete process.env.SUPER_READS_CHATS;
 
     // Idle: nothing persisted.
     const idle = await post(boss, { session_id: dm.session_id, messages: [{ role: 'user', content: 'do it' }] });

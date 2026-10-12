@@ -192,7 +192,8 @@ function voteFromRating(rating?: number | null): 'up' | 'down' | null {
   return null;
 }
 
-function FeedbackVoteButton({
+/** One thumbs button — also the per-reply rating of a public Agent (components/bots/reply-feedback.tsx). */
+export function FeedbackVoteButton({
   active,
   negative = false,
   readonly,

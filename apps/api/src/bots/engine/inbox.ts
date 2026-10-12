@@ -29,14 +29,15 @@
 
 import { getDb, type DatabaseProvider } from '@greenhouse/db';
 import { logger } from '@greenhouse/utils/logger';
+import { safeJsonParse } from '@greenhouse/utils/json';
 import { toErrorMessage } from '@greenhouse/utils/error';
 import type { ToolRegistry } from '../../agent.js';
 import { chatRunRegistry, type ChatRun } from '../../chat/runs.js';
-import { connectionManager } from '../../ws/connection-manager.js';
 import { applyInboxRow, parseInboxRow, runBotsRun, type BotsRunOutcome } from './chain.js';
 import type { InboxItem } from './inbox-types.js';
 import { botsOwnerEligible, claimBotsRun, releaseBotsRun } from './run-slot.js';
 import { TranscriptWriter } from './writer.js';
+import { pushToConversation } from './fanout.js';
 
 const SWEEP_INTERVAL_MS = 5_000;
 const SWEEP_BATCH = 50;
@@ -50,6 +51,11 @@ let sweeping = false;
 const backoff = new Map<string, { failures: number; retryAt: number }>();
 
 /** Boot wiring: the static tool registry server-initiated chains need. */
+/** The registry the engine was started with (routes that start a run outside `POST /api/chat`). */
+export function engineToolRegistry(): ToolRegistry | null {
+  return toolRegistry;
+}
+
 export function setInboxToolRegistry(registry: ToolRegistry | null): void {
   toolRegistry = registry;
 }
@@ -86,7 +92,9 @@ export async function drainIdleConversation(sessionId: string, db: DatabaseProvi
   if (chatRunRegistry.getActive(sessionId)) return false; // the running chain drains it
   const session = await db.sessions.getById(sessionId);
   if (!session || session.channel !== 'bots' || !session.user_id) return false;
-  const userId = session.user_id;
+  const conversation = await db.bots.getConversation(session.user_id, sessionId);
+  // A room's run is for whoever is next to be answered (P5); every other kind runs for its member.
+  const userId = conversation?.kind === 'room' ? await roomRunUser(db, sessionId, session.user_id) : session.user_id;
   // An owner who may not run Bots right now: leave the items queued, claim nothing.
   if (!(await botsOwnerEligible(db, await db.users.getById(userId)))) return false;
   const run = await claimBotsRun(db, sessionId, userId);
@@ -95,8 +103,9 @@ export async function drainIdleConversation(sessionId: string, db: DatabaseProvi
   let handedOff = false;
   try {
     // A retired group chat: record what is queued, never start a turn there.
-    const closed = (await db.bots.getConversation(userId, sessionId))?.kind === 'group';
-    const isTurn = (row: { kind: string }) => !closed && (row.kind === 'user_message' || row.kind === 'continue');
+    const closed = conversation?.kind === 'group';
+    const isTurn = (row: { kind: string }) =>
+      !closed && (row.kind === 'user_message' || row.kind === 'continue' || row.kind === 'mention');
     const rows = await db.bots.listPendingInbox(sessionId);
     const firstTrigger = rows.find(isTurn);
     if (firstTrigger && toolRegistry) {
@@ -123,7 +132,7 @@ export async function drainIdleConversation(sessionId: string, db: DatabaseProvi
     }
     if (wrote) {
       await db.bots.touchActivity(sessionId);
-      connectionManager.sendToUser(userId, { type: 'bots:conversation', sessionId });
+      await pushToConversation(sessionId, userId, { type: 'bots:conversation', sessionId }, db);
     }
     // A member message may have been queued while this slot was held for the
     // writes above (their POST got 202): answer it now rather than next sweep.
@@ -144,6 +153,29 @@ export async function drainIdleConversation(sessionId: string, db: DatabaseProvi
     // Writes-only path: no stream ever existed, so release silently.
     if (!handedOff) await releaseBotsRun(db, run);
   }
+}
+
+/**
+ * Whose run a room's queue needs next: the author of its first message, mention or wake-up.
+ * Unattributed room wake-ups and triggers by departed participants cannot run as the owner.
+ */
+async function roomRunUser(db: DatabaseProvider, sessionId: string, ownerId: string): Promise<string> {
+  for (const row of await db.bots.listPendingInbox(sessionId)) {
+    if (row.kind !== 'user_message' && row.kind !== 'mention' && row.kind !== 'continue') continue;
+    const author = (safeJsonParse(row.payload, {}) as { author_user_id?: unknown }).author_user_id;
+    if (row.kind === 'continue' && typeof author !== 'string') {
+      await db.bots.quarantineInbox(row.id);
+      continue;
+    }
+    if (typeof author !== 'string') return ownerId;
+    if (await db.bots.isParticipant(sessionId, author)) return author;
+    if (row.kind === 'mention' || row.kind === 'continue') {
+      await db.bots.consumeInbox(row.id);
+      continue;
+    }
+    return ownerId; // their message is still written; its mentions are dropped next drain
+  }
+  return ownerId;
 }
 
 /** Single-writer delivery (see the module comment). Durable before it returns. */

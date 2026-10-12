@@ -18,7 +18,7 @@
  * the single writer.
  */
 
-import { BotsDomainError, getDb, type BotRequestRow, type DatabaseProvider } from '@greenhouse/db';
+import { BotsDomainError, getDb, type BotRequestRow, type BotRow, type DatabaseProvider } from '@greenhouse/db';
 import { avatarConfigSchema } from '@greenhouse/types/profile-manifest';
 import type {
   BotCreatePayload,
@@ -29,14 +29,14 @@ import type {
 import { logger } from '@greenhouse/utils/logger';
 import { toErrorMessage } from '@greenhouse/utils/error';
 import { safeJsonParse } from '@greenhouse/utils/json';
-import { connectionManager } from '../../ws/connection-manager.js';
 import { handleLoginDecision, handleTakeoverDecision, SecureLoginError } from '../computer/index.js';
 import { pushAttention, requestSubject, resolveApprovalWaiter } from './approvals.js';
-import { botsLocale, copy } from './copy.js';
+import { botsLocale, copy, type BotsLocale } from './copy.js';
 import { writeGreeting } from './greeting.js';
 import { deliverToConversation } from './inbox.js';
 import { validateBotInstructions, validateBotName, validateBotRole } from './naming.js';
 import { admitBotTask, BotTaskError, cancelBotTask } from './tasks.js';
+import { pushToConversation } from './fanout.js';
 
 export class RequestDecisionError extends Error {
   constructor(
@@ -77,7 +77,7 @@ async function decideInstructionsUpdate(db: DatabaseProvider, row: BotRequestRow
   const locale = botsLocale(user?.locale);
   const proposal = safeJsonParse(row.payload, {}) as BotInstructionsUpdatePayload;
   const bot = row.bot_id ? await db.bots.getBot(row.user_id, row.bot_id) : undefined;
-  const botName = bot?.name ?? 'Bot';
+  const botName = bot?.name ?? 'Agent';
   if (decision.decision === 'deny') {
     const settled = await settle(db, row, 'denied', { decision: 'deny' });
     await deliverToConversation(row.session_id, {
@@ -87,7 +87,7 @@ async function decideInstructionsUpdate(db: DatabaseProvider, row: BotRequestRow
     });
     return settled;
   }
-  if (!bot || bot.status !== 'active') throw new RequestDecisionError(409, 'The Bot no longer exists', 'bot_gone');
+  if (!bot || bot.status !== 'active') throw new RequestDecisionError(409, 'The Agent no longer exists', 'bot_gone');
   const instructions = validateBotInstructions(decision.instructions ?? proposal.instructions);
   if (!instructions.ok) throw new RequestDecisionError(400, instructions.error, instructions.code);
   const updated = await db.bots.updateBot(row.user_id, bot.id, {
@@ -95,7 +95,7 @@ async function decideInstructionsUpdate(db: DatabaseProvider, row: BotRequestRow
     change_log: `Proposed by ${botName}: ${(proposal.reason ?? '').slice(0, 200)}`,
     created_by: row.user_id,
   });
-  if (!updated) throw new RequestDecisionError(409, 'The Bot no longer exists', 'bot_gone');
+  if (!updated) throw new RequestDecisionError(409, 'The Agent no longer exists', 'bot_gone');
   const settled = await settle(db, row, 'resolved', { decision: decision.decision, version: updated.current_version });
   await deliverToConversation(row.session_id, {
     kind: 'event',
@@ -180,6 +180,7 @@ async function decideBotCreate(db: DatabaseProvider, row: BotRequestRow, decisio
     if (proposer && proposer.status === 'active') {
       await deliverToConversation(row.session_id, {
         kind: 'continue',
+        author_user_id: row.user_id,
         botId: proposer.id,
         note: copy.continueAfterCreate(locale, bot.name),
         eventText: joinedLine,
@@ -207,7 +208,8 @@ async function decideTaskStart(db: DatabaseProvider, row: BotRequestRow, decisio
   }
   const bot = row.bot_id ? await db.bots.getBot(row.user_id, row.bot_id) : undefined;
   if (!bot || bot.status !== 'active')
-    throw new RequestDecisionError(409, 'The Bot that proposed this task no longer exists', 'bot_gone');
+    throw new RequestDecisionError(409, 'The Agent that proposed this task no longer exists', 'bot_gone');
+  if (payload.mode === 'chat') return decideChatStart(db, row, payload, bot, locale, decision);
   let admitted;
   try {
     admitted = await admitBotTask({
@@ -261,6 +263,49 @@ async function decideTaskStart(db: DatabaseProvider, row: BotRequestRow, decisio
     text: copy.taskStarted(locale, bot.name, payload.title ?? ''),
     event: { kind: 'task_started', run_id: admitted.runId, bot_id: bot.id, title: payload.title ?? '' },
     botId: bot.id,
+  });
+  return settled;
+}
+
+/**
+ * A `task_start` card in `chat` mode (spec 20261011-agent-first-class D25): a new task chat
+ * answered by the chosen Agent, whose opening member message is the brief the member just
+ * approved; it starts at once, and the conversation it came from gets a line linking to it.
+ */
+async function decideChatStart(
+  db: DatabaseProvider,
+  row: BotRequestRow,
+  payload: BotTaskStartPayload,
+  proposer: BotRow,
+  locale: BotsLocale,
+  decision: BotRequestDecision,
+) {
+  const target = payload.agent_id ? await db.bots.getBot(row.user_id, payload.agent_id) : proposer;
+  if (!target || target.status !== 'active') {
+    throw new RequestDecisionError(409, 'The Agent for this chat no longer exists', 'bot_gone');
+  }
+  const title = (payload.title ?? '').trim();
+  const brief = (payload.brief ?? '').trim();
+  const chat = await db.bots.createTaskConversation(row.user_id, target.id, { title: title || null });
+  let settled: BotRequestRow;
+  try {
+    settled = await settle(db, row, 'resolved', { decision: decision.decision, conversation_id: chat.session_id });
+  } catch (error) {
+    // Another click won: this chat was never announced anywhere.
+    await db.sessions.delete(chat.session_id).catch(() => undefined);
+    throw error;
+  }
+  await deliverToConversation(chat.session_id, {
+    kind: 'event',
+    text: copy.chatOrigin(locale, proposer.name),
+    event: { kind: 'chat_origin', from_session_id: row.session_id, bot_id: proposer.id },
+  });
+  await deliverToConversation(chat.session_id, { kind: 'user_message', content: brief, mentions: [] });
+  await deliverToConversation(row.session_id, {
+    kind: 'event',
+    text: copy.chatOpened(locale, target.name, title),
+    event: { kind: 'chat_opened', session_id: chat.session_id, bot_id: target.id, title },
+    botId: target.id,
   });
   return settled;
 }
@@ -348,7 +393,7 @@ export async function decideBotRequest(
       subject: requestSubject(row.kind, safeJsonParse(row.payload, {}) as never).slice(0, 80),
     });
     await pushAttention(db, userId);
-    connectionManager.sendToUser(userId, { type: 'bots:conversation', sessionId: row.session_id });
+    void pushToConversation(row.session_id, userId, { type: 'bots:conversation', sessionId: row.session_id });
     return settled;
   } finally {
     inFlight.delete(row.id);

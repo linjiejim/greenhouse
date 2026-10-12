@@ -27,18 +27,21 @@ export async function createSession(title?: string, profileId?: string): Promise
 /**
  * Omitting `scope` asks for the legacy combined list (a super gets everyone's
  * conversations) — the history browser still wants that. The sidebar passes an
- * explicit scope.
+ * explicit scope. `includeAgentChats` folds the caller's separate Agent chats in
+ * (rows with `channel: 'bots'`, opened at `#/bots?c=` — spec 20261011-agent-first-class D21).
  */
 export async function listSessions(
   status?: string,
   includeEval = true,
   limit = 500,
   scope?: SessionScope,
+  opts: { includeAgentChats?: boolean } = {},
 ): Promise<Session[]> {
   const query: Record<string, string> = { limit: String(limit) };
   if (status && status !== 'all') query.status = status;
   if (includeEval) query.include_eval = '1';
   if (scope) query.scope = scope;
+  if (opts.includeAgentChats) query.include = 'agent_chats';
   try {
     const res = await rpc.api.sessions.$get({ query });
     if (!res.ok) return [];

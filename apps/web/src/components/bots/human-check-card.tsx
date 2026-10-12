@@ -11,6 +11,10 @@
  *
  * "Open computer" moves to the full pane (typing helpers, full screen);
  * "Skip" declines, which wakes the Bot to carry on without that site.
+ *
+ * The check is on the computer of the Agent that raised the card (each Agent has
+ * its own): the page's computer status is used when it is that computer, the card
+ * follows that computer itself otherwise (a guest's card in someone else's DM).
  */
 
 import { useRef, useState, type ReactNode } from 'react';
@@ -21,21 +25,25 @@ import { Monitor, ShieldCheck } from '../../lib/icons';
 import { useT } from '../../lib/i18n';
 import { takeoverComputer } from '../../lib/api/bots';
 import { computerErrorText } from './computer-pane';
-import { phaseLabelKey, type ComputerStatusState } from './computer-phase';
+import { computerBotFor, phaseLabelKey, useComputerStatus, type ComputerStatusState } from './computer-phase';
 import { ComputerScreen, type ComputerScreenHandle } from './computer-screen';
 import { DetailList, useSettledStatus } from './request-card-parts';
 import { useRequestDecision, type RequestCardCallbacks } from './request-decision';
 import type { BotLookup } from './transcript-rows';
 
-/** What a card needs of the page's computer status (`useComputerStatus`). */
-export type RequestCardComputer = Pick<ComputerStatusState, 'phase' | 'apply' | 'refresh'>;
+/** What a card needs of the page's computer status (`useComputerStatus`) — `bot` says whose computer it is. */
+export type RequestCardComputer = Pick<ComputerStatusState, 'bot' | 'phase' | 'apply' | 'refresh'>;
 
 export interface HumanCheckCardProps extends RequestCardCallbacks {
   request: BotRequestView;
   check: { reason: string; url: string | null };
   lookup: BotLookup;
-  onOpenComputer: () => void;
-  /** The page's computer status. Without it the card connects the screen and tracks its own take-over. */
+  /** Open the full computer pane on this card's Agent's computer (`request.bot_id`). */
+  onOpenComputer: (botId: string | null) => void;
+  /**
+   * The page's computer status. Without it the card connects the screen and tracks its own take-over;
+   * with another Agent's computer, the card follows its own Agent's computer itself.
+   */
   computer?: RequestCardComputer;
 }
 
@@ -46,10 +54,16 @@ export function HumanCheckCard({
   onSettled,
   onStale,
   onOpenComputer,
-  computer,
+  computer: hostComputer,
 }: HumanCheckCardProps) {
   const t = useT();
   const name = lookup(request.bot_id)?.name ?? t('bots.deletedBot');
+  // The computer the check is on: the raising Agent's own.
+  const cardBot = computerBotFor(request.bot_id, lookup);
+  const pageComputer = hostComputer && hostComputer.bot === cardBot ? hostComputer : undefined;
+  // Only when the page follows another computer: this card's own view of its Agent's.
+  const ownComputer = useComputerStatus(!!hostComputer && !pageComputer, cardBot);
+  const computer: RequestCardComputer | undefined = pageComputer ?? (hostComputer ? ownComputer : undefined);
   const { busy, decide } = useRequestDecision(request, { onSettled, onStale });
   const { pending, status } = useSettledStatus(request);
   const screenRef = useRef<ComputerScreenHandle>(null);
@@ -65,7 +79,7 @@ export function HumanCheckCard({
   const verifyHere = async () => {
     setTakingOver(true);
     try {
-      const next = await takeoverComputer();
+      const next = await takeoverComputer(cardBot);
       computer?.apply(next);
       setTookOver(true);
       screenRef.current?.focus();
@@ -84,6 +98,7 @@ export function HumanCheckCard({
     screen = (
       <ComputerScreen
         ref={screenRef}
+        bot={cardBot}
         viewOnly={!inControl}
         onTakeOver={() => void verifyHere()}
         onDisconnected={() => void computer?.refresh()}
@@ -122,7 +137,12 @@ export function HumanCheckCard({
             >
               {t('bots.requests.skip')}
             </Button>
-            <Button size="sm" variant="outline" onClick={onOpenComputer} data-testid="bots-request-open-computer">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => onOpenComputer(request.bot_id)}
+              data-testid="bots-request-open-computer"
+            >
               {t('bots.requests.openComputerShort')}
             </Button>
             {inControl ? (

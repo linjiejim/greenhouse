@@ -1,12 +1,19 @@
 /**
- * Chat History Panel — sidebar contextual panel for Chat tab.
+ * Chat History Panel — the member's chats (independent sessions) in the sidebar.
  * Shows recent sessions grouped by date (Today / Yesterday / This Week / Earlier)
  * with search/filter capabilities and auto-refresh on new session creation.
+ *
+ * In the conversations sidebar (`ConversationsSidebarPanel`, spec
+ * 20261011-agent-first-class §3.1) it is the "Chats" section of one list: the
+ * caller's `leading` content (main thread, Agents, Background) scrolls above the
+ * chats in the same scroll area, the one search box also feeds the caller
+ * (`onQueryChange`), and the scope tabs / tag filter move under the "Chats"
+ * label so they visibly belong to the chats only.
  */
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Spinner, ConfirmDialog, StatusDot, Checkbox, FilterPills, toast } from '../../ui';
-import { SidebarToolbar } from '../sidebar-toolbar';
+import { SidebarToolbar, type SidebarToolbarAction } from '../sidebar-toolbar';
 import {
   History,
   MoreHorizontal,
@@ -28,7 +35,9 @@ import {
 import { relativeTime } from '../../../lib/utils';
 import { SessionTypeIcon } from '../../chat/session-type-icon';
 import { useSessionManager } from '../../../lib/session-manager';
+import { wsClient } from '../../../lib/ws';
 import { useUIStore, useAuthStore, useWsStore } from '../../../stores';
+import { useBotsStore } from '../../bots/bots-store';
 import * as api from '../../../lib/api';
 import { runWithConcurrency } from '@greenhouse/utils/concurrency';
 import { FullHistoryModal } from '../../history-modal';
@@ -37,8 +46,10 @@ import { TagFilter, TagSelector, BatchTagSelector, TagManagerDialog, SessionTags
 import { GroupManagerDialog, GroupSelector } from '../../session-groups';
 import { BatchActionBar } from './batch-action-bar';
 import { pruneMissing, rangeSelect, toggleOne, type SelectableRow } from './selection';
+import { SidebarSectionLabel } from '../sidebar-section-label';
 import type { SessionTag, SessionGroup, SessionScope } from '@greenhouse/types/api';
 import { DEFAULT_ASSET_SCOPE } from '../../../lib/asset-scopes';
+import { readsTeamChats } from '../../../lib/features';
 
 // Long-press duration (touch) to enter multi-select mode.
 const LONG_PRESS_MS = 450;
@@ -48,7 +59,34 @@ interface ChatHistoryPanelProps {
   currentSessionId: string | null;
   onSelectSession: (sessionId: string) => void;
   collapsed?: boolean;
+  /** Conversations sidebar: sections rendered above the chats, inside the same scroll area. */
+  leading?: React.ReactNode;
+  /** Conversations sidebar: label above the chats (and their scope tabs / tag filter). */
+  chatsTitle?: string;
+  /** Actions placed before the chats' own toolbar actions. */
+  extraActions?: SidebarToolbarAction[];
+  /** The search box's text, for sections the caller renders (it filters them too). */
+  onQueryChange?: (query: string) => void;
+  searchPlaceholder?: string;
+  /**
+   * Agents on: the member's separate Agent chats are chats too (spec 20261011-agent-first-class
+   * D21) — listed here from the same sessions list (`include=agent_chats`, rows with
+   * `channel: 'bots'`), organised the same way, but opened in their own view.
+   */
+  agentChats?: {
+    /** The Agent chat open right now (`#/bots?c=`), highlighted like the open chat. */
+    currentId: string | null;
+    onOpen: (sessionId: string) => void;
+  };
 }
+
+/** A separate Agent chat in the chats list: it opens at `#/bots?c=`, not in the chat engine. */
+export function isAgentChat(session: Pick<api.Session, 'channel'>): boolean {
+  return session.channel === 'bots';
+}
+
+/** Collapse a burst of `bots:conversation` pushes (one per Agent turn) into one list reload. */
+const AGENT_CHAT_REFRESH_MS = 400;
 
 // ── Date grouping helpers ────────────────────────────────
 
@@ -191,7 +229,9 @@ function SessionContextMenu({
       action: () => onMoveToGroup(session, x, y),
     },
     { key: 'tags', icon: Tag, label: 'Tags', action: () => onTags(session) },
-    {
+    // An Agent chat is titled by its own run (and renamed like any chat); the chat engine's
+    // title generator is not for it.
+    !isAgentChat(session) && {
       key: 'regenerate-title',
       icon: RefreshCw,
       label: 'Regenerate Title',
@@ -250,7 +290,17 @@ function SessionContextMenu({
   );
 }
 
-export function ChatHistoryPanel({ currentSessionId, onSelectSession, collapsed }: ChatHistoryPanelProps) {
+export function ChatHistoryPanel({
+  currentSessionId,
+  onSelectSession,
+  collapsed,
+  leading,
+  chatsTitle,
+  extraActions,
+  onQueryChange,
+  searchPlaceholder,
+  agentChats,
+}: ChatHistoryPanelProps) {
   const t = useT();
   const [sessions, setSessions] = useState<api.Session[]>([]);
   const [loading, setLoading] = useState(true);
@@ -317,10 +367,11 @@ export function ChatHistoryPanel({ currentSessionId, onSelectSession, collapsed 
   const currentUser = useAuthStore((s) => s.currentUser);
   // Same unread number the inbox shows — one server-pushed count, not a second tally.
   const unreadShareCount = useWsStore((s) => s.shareCount);
-  const isSuper = currentUser?.role === 'super';
+  // Other members' chats are readable only where the deployment allows it (D46) — not by role.
+  const teamScope = readsTeamChats(currentUser);
 
-  // A stored 'team' from a demoted account would 403 on every load.
-  const effectiveScope: SessionScope = scope === 'team' && !isSuper ? 'mine' : scope;
+  // A stored 'team' from an account that may no longer read the team's chats would 403 on every load.
+  const effectiveScope: SessionScope = scope === 'team' && !teamScope ? 'mine' : scope;
 
   const changeScope = useCallback((next: SessionScope) => {
     setScope(next);
@@ -450,10 +501,11 @@ export function ChatHistoryPanel({ currentSessionId, onSelectSession, collapsed 
     setContextMenu({ sessionId: session.id, x: rect.left, y: rect.bottom + 4 });
   }, []);
 
+  const includeAgentChats = !!agentChats;
   const loadSessions = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await api.listSessions('active', false, 500, effectiveScope);
+      const data = await api.listSessions('active', false, 500, effectiveScope, { includeAgentChats });
       // Keep the full set (server caps at 500): pinned/grouped sessions must
       // survive even when older than the 50 most-recent. Date buckets cap
       // their own render below.
@@ -466,7 +518,7 @@ export function ChatHistoryPanel({ currentSessionId, onSelectSession, collapsed 
       console.error('Failed to load sessions:', err);
     }
     setLoading(false);
-  }, [effectiveScope]);
+  }, [effectiveScope, includeAgentChats]);
 
   // Load user tags.
   const loadTags = useCallback(async () => {
@@ -626,6 +678,32 @@ export function ChatHistoryPanel({ currentSessionId, onSelectSession, collapsed 
       loadSessions();
     }
   }, [sessionListVersion, loadSessions]);
+
+  // Agent chats change server-side (created by an Agent's card, titled after their first reply,
+  // renamed in their header, in another tab): `bots:conversation` says which one. A listed chat
+  // or one this tab has never seen (a new chat) reloads the list; an Agent thread's push does not.
+  const listedIdsRef = useRef<Set<string>>(new Set());
+  listedIdsRef.current = new Set(sessions.map((session) => session.id));
+  useEffect(() => {
+    if (!includeAgentChats) return;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const unsubscribe = wsClient.onEvent((event) => {
+      if (event.type !== 'bots:conversation') return;
+      const isThread = useBotsStore
+        .getState()
+        .conversations.some((conversation) => conversation.session_id === event.sessionId);
+      if (isThread && !listedIdsRef.current.has(event.sessionId)) return;
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => {
+        timer = null;
+        void loadSessions();
+      }, AGENT_CHAT_REFRESH_MS);
+    });
+    return () => {
+      if (timer) clearTimeout(timer);
+      unsubscribe();
+    };
+  }, [includeAgentChats, loadSessions]);
 
   // Detect AI-generated title from streaming sessions and apply typewriter effect
   useEffect(() => {
@@ -860,7 +938,8 @@ export function ChatHistoryPanel({ currentSessionId, onSelectSession, collapsed 
 
   // ── Row + section renderers (shared by Pinned, folders, and date buckets) ──
   const renderRow = (session: api.Session, sectionKey: string, dragGroupId?: number, orderedIds?: string[]) => {
-    const isActive = session.id === currentSessionId;
+    const agentChat = isAgentChat(session);
+    const isActive = agentChat ? session.id === agentChats?.currentId : session.id === currentSessionId;
     // Local streaming state OR the server-reported run set — the latter is what
     // keeps the dot alive across a page refresh (runs continue in the cloud).
     const isSessionStreaming =
@@ -912,6 +991,8 @@ export function ChatHistoryPanel({ currentSessionId, onSelectSession, collapsed 
       } else if (e.metaKey || e.ctrlKey) {
         // Cmd/Ctrl-click from normal mode: enter select mode + tick this row.
         enterSelectModeWith(session.id, rowKey);
+      } else if (agentChat && agentChats) {
+        agentChats.onOpen(session.id);
       } else {
         onSelectSession(session.id);
       }
@@ -935,6 +1016,9 @@ export function ChatHistoryPanel({ currentSessionId, onSelectSession, collapsed 
         onClick={handleRowClick}
         onContextMenu={(e) => handleContextMenu(e, session)}
         aria-current={isActive ? 'page' : undefined}
+        data-testid="chat-history-row"
+        data-session-id={session.id}
+        data-agent-chat={agentChat ? 'true' : undefined}
         className={`group/item w-full text-left px-3 py-2 flex items-center gap-2 transition-colors cursor-pointer ${
           isDragging ? 'opacity-50 ' : ''
         }${
@@ -1093,6 +1177,41 @@ export function ChatHistoryPanel({ currentSessionId, onSelectSession, collapsed 
     );
   };
 
+  const unified = leading !== undefined;
+  const scopeControls = (
+    <>
+      {/* Scope tabs — mine (default) / shared with me / team (accounts that may read it: reads_team_chats).
+          `segment`, not pills: this is a switch where one option is always on,
+          and the round pills below it are the tag filter. Same shape for two
+          different behaviours reads as one long filter row. */}
+      <div className="px-3 pb-1.5 flex-shrink-0">
+        <FilterPills
+          variant="segment"
+          items={[
+            { key: 'mine', label: t('history.scopeMine') },
+            {
+              key: 'shared',
+              label: t('history.scopeShared'),
+              count: unreadShareCount > 0 ? unreadShareCount : undefined,
+            },
+            ...(teamScope ? [{ key: 'team', label: t('history.scopeTeam') }] : []),
+          ]}
+          activeKey={effectiveScope}
+          onChange={(k) => changeScope((k as SessionScope) ?? 'mine')}
+          selectLabel={t('history.scopeFilterLabel')}
+          fill
+        />
+      </div>
+
+      {/* Tag filter */}
+      {allTags.length > 0 && (
+        <div className="px-3 pb-2 flex-shrink-0">
+          <TagFilter tags={allTags} activeTagId={activeTagFilter} onSelect={setActiveTagFilter} collapseInSidebar />
+        </div>
+      )}
+    </>
+  );
+
   return (
     <>
       <div className="flex flex-col flex-1 min-h-0">
@@ -1100,9 +1219,13 @@ export function ChatHistoryPanel({ currentSessionId, onSelectSession, collapsed 
         <div className="px-3 py-1.5 flex-shrink-0 space-y-1.5">
           <SidebarToolbar
             value={searchQuery}
-            onChange={setSearchQuery}
-            placeholder={t('common.search')}
+            onChange={(value) => {
+              setSearchQuery(value);
+              onQueryChange?.(value);
+            }}
+            placeholder={searchPlaceholder ?? t('common.search')}
             actions={[
+              ...(extraActions ?? []),
               {
                 label: t('sessionGroups.select'),
                 icon: CheckSquare,
@@ -1119,35 +1242,7 @@ export function ChatHistoryPanel({ currentSessionId, onSelectSession, collapsed 
           />
         </div>
 
-        {/* Scope tabs — mine (default) / shared with me / team (super only).
-            `segment`, not pills: this is a switch where one option is always on,
-            and the round pills below it are the tag filter. Same shape for two
-            different behaviours reads as one long filter row. */}
-        <div className="px-3 pb-1.5 flex-shrink-0">
-          <FilterPills
-            variant="segment"
-            items={[
-              { key: 'mine', label: t('history.scopeMine') },
-              {
-                key: 'shared',
-                label: t('history.scopeShared'),
-                count: unreadShareCount > 0 ? unreadShareCount : undefined,
-              },
-              ...(isSuper ? [{ key: 'team', label: t('history.scopeTeam') }] : []),
-            ]}
-            activeKey={effectiveScope}
-            onChange={(k) => changeScope((k as SessionScope) ?? 'mine')}
-            selectLabel={t('history.scopeFilterLabel')}
-            fill
-          />
-        </div>
-
-        {/* Tag filter */}
-        {allTags.length > 0 && (
-          <div className="px-3 pb-2 flex-shrink-0">
-            <TagFilter tags={allTags} activeTagId={activeTagFilter} onSelect={setActiveTagFilter} collapseInSidebar />
-          </div>
-        )}
+        {!unified && scopeControls}
 
         {/* Session list — grouped by date. In select mode, a click on the empty
             padding (target === the scroll container itself) exits. */}
@@ -1157,6 +1252,14 @@ export function ChatHistoryPanel({ currentSessionId, onSelectSession, collapsed 
             if (selectMode && e.target === e.currentTarget) exitSelectMode();
           }}
         >
+          {unified && (
+            <>
+              {leading}
+              {chatsTitle && <SidebarSectionLabel>{chatsTitle}</SidebarSectionLabel>}
+              {scopeControls}
+            </>
+          )}
+
           {loading && sessions.length === 0 && (
             <div className="flex justify-center py-6">
               <Spinner className="h-4 w-4 text-fg-faint" />

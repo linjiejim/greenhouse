@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { BOT_TASK_SESSION_PREFIX, defaultSessionListHiding, type SessionRow } from '@greenhouse/types/session';
 import type { UserRole } from '@greenhouse/types/api';
 import type { AppEnv } from '../../app-env.js';
@@ -76,6 +76,10 @@ beforeEach(() => {
   mocks.sessionGroups.getOrganizedSessionIds.mockResolvedValue([]);
   mocks.sessionGroups.getMembershipsForUser.mockResolvedValue(new Map());
   mocks.sessionTags.getTagsBySessionIds.mockResolvedValue(new Map());
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
 });
 
 describe('PATCH /api/sessions/:id status boundary', () => {
@@ -323,10 +327,18 @@ describe('GET /api/sessions?scope=', () => {
   });
 
   it('excludes the caller by owner for scope=team, and skips the organized backfill', async () => {
+    // The deployment lets super read members' chats (SUPER_READS_CHATS, spec 20261011-agent-first-class D46).
+    vi.stubEnv('SUPER_READS_CHATS', 'true');
     await createApp(superUser).request('/api/sessions?scope=team');
 
     expect(mocks.sessions.list).toHaveBeenCalledWith(expect.objectContaining({ excludeUserId: 'boss' }));
     expect(mocks.sessionGroups.getOrganizedSessionIds).not.toHaveBeenCalled();
+  });
+
+  it('keeps a super to their own chats by default: no team scope, the unscoped list is theirs (D46)', async () => {
+    expect((await createApp(superUser).request('/api/sessions?scope=team')).status).toBe(403);
+    await createApp(superUser).request('/api/sessions');
+    expect(mocks.sessions.list).toHaveBeenCalledWith(expect.objectContaining({ userId: 'boss' }));
   });
 
   it('reads scope=shared from the share query, not the owner query', async () => {
@@ -341,6 +353,8 @@ describe('GET /api/sessions?scope=', () => {
   });
 
   it("names the owner on rows the caller doesn't own, and leaves their own rows bare", async () => {
+    // The deployment lets super read members' chats (SUPER_READS_CHATS, spec 20261011-agent-first-class D46).
+    vi.stubEnv('SUPER_READS_CHATS', 'true');
     mocks.sessions.list.mockResolvedValue([makeSession('theirs', 'another-user'), makeSession('mine', 'boss')]);
     mocks.users.getById.mockResolvedValue({ id: 'another-user', nickname: 'Ada' });
 
@@ -353,6 +367,8 @@ describe('GET /api/sessions?scope=', () => {
   });
 
   it('leaves the unscoped list on the legacy rule: a super sees every owner', async () => {
+    // The deployment lets super read members' chats (SUPER_READS_CHATS, spec 20261011-agent-first-class D46).
+    vi.stubEnv('SUPER_READS_CHATS', 'true');
     await createApp(superUser).request('/api/sessions');
 
     expect(mocks.sessions.list).toHaveBeenCalledWith(expect.objectContaining({ userId: undefined }));

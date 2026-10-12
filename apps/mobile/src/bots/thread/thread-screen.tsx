@@ -38,6 +38,39 @@
  *    warning haptic + one VoiceOver announcement; a Bot starting to reply →
  *    one announcement (never replays, never per token).
  *
+ * A task chat (a separate chat — `kind: 'task'`, spec
+ * docs/specs/20261011-agent-first-class.md §5a) is this same screen: its title
+ * is the chat's (else "New chat"), the intro says it is a separate chat with
+ * its Agent, ⋯ adds Tags / Rename / Delete, and while nothing runs its last
+ * member message can be edited (the composer takes the text; Send answers it
+ * again — `ctl.rewind`) and its last reply regenerated (D23). A new chat's
+ * first message arrives from the new-chat screen (`takeFirstSend`) and goes
+ * out through the same send path as the composer's. Lines about another chat
+ * (`chat_opened` / `chat_origin`) open it.
+ *
+ * A DM with someone else's public Agent (spec 20261011-agent-first-class §5c P4) is this screen
+ * too: the intro says who shared it (and that they can't read it), ⋯ has no "New Chat" (a chat
+ * with it is this DM — no task chats with someone else's Agent), 🖥 shows only when its owner
+ * granted it a computer (the member's own copy — `shared_bots[].computer`) and it is still offered,
+ * its replies offer 👍 / 👎 (an optional note with 👎; the member's rating comes with each page,
+ * and choosing it again takes it back), and once it is no longer offered the thread is read-only
+ * (`agent_unavailable`) like an archived Agent's.
+ *
+ * A room (several people and the Agents they brought, spec
+ * 20261011-agent-first-class §5d P5) is this screen too: its title is the room's
+ * (else the other people's names) over their initials, its status line says who
+ * is in it; other people's messages sit on the left under their name; an Agent
+ * answers only when @-mentioned by someone it may answer, so the @ picker (and
+ * `+` → Ask an Agent) offers only the Agents the member may address, every send
+ * answers 202 (the engine's room handling) and a run is its asker's — no Stop,
+ * no Handle Now and no cards to act on in someone else's. People talking (a
+ * message that asks no Agent, another person's message while the end is in
+ * view) scroll Messages-style — the keyboard stays, the end stays in view; an
+ * Agent's reply is anchored like everywhere else. ⋯ is the room's: who
+ * is in it, Add People… (`/bots/new-room?room=`), Bring an Agent ›, Remove an
+ * Agent ›, Rename, Leave (confirmed). No New Chat and no 🖥: a room has no Agent
+ * of its own (each Agent's computer is reached from its cards).
+ *
  * The engine (`useBotThread`, package A) owns sending, streaming, stops,
  * reloads, read receipts; this screen only renders its snapshot and routes
  * the member's intents to its controller. Streaming re-renders the screen
@@ -90,19 +123,47 @@ import { Glass, GlassIconButton } from '../../ui/glass';
 import { notifyWarning, selectionTick } from '../../ui/haptics';
 import { useHeaderInset } from '../../ui/header-inset';
 import { toast } from '../../ui/toast';
-import type { BotsReadOnly, MobilePending, SendInput, SendOutcome } from '../contract';
-import { forgetThread } from '../last-surface';
-import { openNewChat } from '../nav';
+import { deleteSession } from '../../api/sessions';
+import { addRoomAgent, leaveRoom, removeRoomAgent, renameRoom, updateTaskChat } from '../../api/bots';
+import { confirmAction, promptText } from '../../ui/dialogs';
+import type { BotsReadOnly, MobilePending, RewindInput, RewindOutcome, SendInput, SendOutcome } from '../contract';
+import { forgetGoneThread } from '../last-surface';
+import { openNewChat, openThread } from '../nav';
 import { attentionCount, useBots } from '../store';
+import { computerOffered, rateableReply, sharedOwnerOf } from '../public-agents';
+import {
+  bringableAgents,
+  isPrivateChat,
+  lastOneIn,
+  mentionableAgents,
+  needsOffered,
+  personName,
+  personTint,
+  removableAgents,
+  roomDirectory,
+  roomFaces,
+  roomOwnerId,
+} from '../rooms';
+import { computerAgent, computerButtonTone, conversationComputer } from '../computer/target';
+import { useComputerStatus } from '../computer/use-computer-status';
+import { phaseLabelKey } from '../vendor/computer-phase';
+import {
+  editedContent,
+  rewindRefusalKey,
+  rewindTarget,
+  takeFirstSend,
+  threadTitle,
+  transcriptKind,
+} from '../task-chats';
 import { BotAvatar, type AvatarSource } from '../ui/bot-avatar';
 import { useBotThread } from '../use-bot-thread';
 import { useStartupContent } from '../../startup/context';
 import { mentionToken, parseMentions } from '../vendor/mentions';
 import { buildTranscript, type TranscriptItem } from '../vendor/transcript';
-import { conversationTitle } from '../vendor/web-helpers';
 import { fromSegment } from './adapters';
 import { threadCache } from './cache';
-import { useThreadDraft } from './drafts';
+import { saveDraft, useThreadDraft, type ThreadDraft } from './drafts';
+import { EditBar } from './edit-bar';
 import { canSendMessage } from '../../chat/composer-images';
 import { MentionStrip } from './mention-strip';
 import { EventRow } from './rows/event-row';
@@ -112,13 +173,27 @@ import { RunTail } from './rows/run-tail';
 import { wantsNameHint } from './rows/sprouty-name';
 import { Starters } from './rows/starters';
 import { TaskReport } from './rows/task-report';
-import { PendingRow, ReplyRow, RequestRow, UserRow, type ReplyHandlers, type ReplyRowProps } from './rows/turns';
+import {
+  PendingRow,
+  PersonRow,
+  ReplyRow,
+  RequestRow,
+  UserRow,
+  type ReplyHandlers,
+  type ReplyRowProps,
+} from './rows/turns';
 import { TimeSeparator } from './rows/time-separator';
 import { TopLoader } from './rows/top-loader';
 import { CHEER_MS, cheerPose, statusLine, threadReadOnly, talkingSegment, titlePose } from './status-line';
 import { StopHint, useComposerStop } from './stop-control';
 import { TaskDock } from './task-dock';
-import { dropThreadHeader, publishThreadHeader, ThreadHeader, type ThreadHeaderActions } from './thread-header';
+import {
+  dropThreadHeader,
+  publishThreadHeader,
+  ThreadHeader,
+  type RoomMenu,
+  type ThreadHeaderActions,
+} from './thread-header';
 import { stableTurnKeys, threadRows, type ThreadRow } from './thread-rows';
 import {
   deepLinkStep,
@@ -164,6 +239,14 @@ const EMPTY_SEGMENTS: BotStreamSegment[] = [];
 const EMPTY_REQUESTS: BotRequestView[] = [];
 const NO_BOTS: BotView[] = [];
 const NO_STARTERS: readonly string[] = [];
+const NO_IDS: readonly string[] = [];
+
+/** The same object for as long as `key` says it is the same (a memoised bar must not rebuild on equal data). */
+function useStable<T>(value: T, key: string): T {
+  const ref = useRef({ key, value });
+  if (ref.current.key !== key) ref.current = { key, value };
+  return ref.current.value;
+}
 
 /** What a message shows — a member message without its attachments fence (that's for chips, not for copying). */
 const visibleText = (msg: ChatMessage) => (msg.role === 'user' ? splitAttachments(msg.text).text : msg.text);
@@ -242,7 +325,12 @@ export function BotThreadScreen({
   useStartupContent(snap.load !== 'loading');
   const snapRef = useRef(snap);
   snapRef.current = snap;
-  const byId = useBots((s) => s.byId);
+  const storeById = useBots((s) => s.byId);
+  const shared = useBots((s) => s.shared);
+  const viewerId = useBots((s) => s.viewerId);
+  const offered = useBots((s) => s.directory);
+  const ownBots = useBots((s) => s.bots);
+  const ratings = useBots((s) => s.ratings);
   const botsLoaded = useBots((s) => s.botsLoaded);
   const badge = useBots((s) => attentionCount(s, sessionId));
 
@@ -250,20 +338,67 @@ export function BotThreadScreen({
   const conversation = snap.conversation;
   const kind = conversation?.kind ?? 'direct';
   const group = kind === 'group';
+  /** A room (several people, P5), else null. */
+  const room = kind === 'room' ? conversation : null;
+  // Every Agent that spoke here (some may have left a room since) — as one stable key: segments
+  // change on every streamed word, the speakers almost never.
+  const speakerKey = useMemo(() => {
+    if (!room) return '';
+    const ids = new Set<string>();
+    for (const message of snap.messages) if (message.bot_id) ids.add(message.bot_id);
+    for (const segment of snap.run?.segments ?? []) ids.add(segment.botId);
+    return [...ids].sort().join(',');
+  }, [room, snap.messages, snap.run?.segments]);
+  const agentCopy = useMemo(
+    () => ({ agentOf: (name: string) => t('bots.room.agentOf', { name }), someAgent: t('bots.room.someAgent') }),
+    [t],
+  );
+  // In a room, another person's Agent shows as the room describes it (`members[].profile`); one nothing
+  // describes (an older server) gets a card too — "Ana's Agent" (../rooms.ts `roomDirectory`).
+  const roomDir = useMemo(
+    () =>
+      room
+        ? roomDirectory({
+            byId: storeById,
+            room,
+            offered,
+            speakers: speakerKey ? speakerKey.split(',') : NO_IDS,
+            viewerId,
+            copy: agentCopy,
+          })
+        : null,
+    [room, storeById, offered, speakerKey, viewerId, agentCopy],
+  );
+  const byId = roomDir?.byId ?? storeById;
+  // A public Agent the member may @ here but neither a list nor the room names (an older server):
+  // "Browse Agents" has it (once per thread).
+  const askedOffered = useRef(false);
+  useEffect(() => {
+    if (!room || askedOffered.current || !needsOffered(room, storeById, offered)) return;
+    askedOffered.current = true;
+    void useBots.getState().loadDirectory();
+  }, [room, storeById, offered]);
   const owner = conversation?.owner_bot_id ? byId[conversation.owner_bot_id] : undefined;
+  /** Someone else's public Agent this DM is with (P4), else null. */
+  const sharedOwner = kind === 'direct' ? sharedOwnerOf(conversation, shared) : null;
   const memberList = conversation?.members;
-  /** Active members in their order (a DM: its Bot and any guests) — mentions, the roster, the lookup by name. */
+  /**
+   * Active members in their order (a DM: its Bot and any guests) — mentions, the roster, the lookup by
+   * name. A room: only the Agents the member may @ (their own, or public ones offered to them).
+   */
   const members = useMemo(
     () =>
-      memberList
-        ? [...memberList]
-            .sort((a, b) => a.position - b.position)
-            .flatMap((member) => {
-              const bot = byId[member.bot_id];
-              return bot && bot.status === 'active' ? [bot] : [];
-            })
-        : NO_BOTS,
-    [memberList, byId],
+      room && roomDir
+        ? mentionableAgents(room, roomDir.byId, roomDir.guessed)
+        : memberList
+          ? [...memberList]
+              .sort((a, b) => a.position - b.position)
+              .flatMap((member) => {
+                const bot = byId[member.bot_id];
+                return bot && bot.status === 'active' ? [bot] : [];
+              })
+          : NO_BOTS,
+    [room, roomDir, memberList, byId],
   );
   /** Speakers by id (archived ones too — history keeps their names); hand-offs may name the target instead. */
   const lookup = useCallback(
@@ -276,24 +411,52 @@ export function BotThreadScreen({
     },
     [byId, members],
   );
-  const readOnlyCode = threadReadOnly(snap, byId);
+  /**
+   * May the member act on what this Agent put in the transcript — its forms and buttons, a Retry?
+   * In a room only on an Agent they may address (another person's answers to that person).
+   */
+  const answerable = useCallback(
+    (botId: string | null | undefined) =>
+      !room || !botId || room.members.some((member) => member.bot_id === botId && member.addressable === true),
+    [room],
+  );
+  const readOnlyCode = threadReadOnly(snap, byId, shared);
   const readOnly = readOnlyCode != null;
   const directory = useMemo(() => new Map(Object.entries(byId)), [byId]);
+  const task = kind === 'task';
   const displayTitle =
     (conversation &&
-      conversationTitle(conversation, directory, {
+      threadTitle(conversation, directory, {
         // Not loaded yet ≠ deleted: keep the placeholder meanwhile.
         unknownBot: botsLoaded ? t('bots.common.deletedBot') : '',
         group: t('bots.thread.group'),
         archived: (name) => `${name} ${t('bots.common.archivedSuffix')}`,
+        chat: t('chat.newConversation'),
+        room: { me: viewerId, untitled: t('bots.room.untitled') },
       })) ||
     titleParam;
+  const privateChat = !!room && isPrivateChat(room);
+  const roomRef = useRef(room);
+  roomRef.current = room;
+  /** A room's people as its avatar shows them (stable while they are the same). */
+  const faces = useMemo(
+    () => (room ? roomFaces(room, viewerId).map((person) => ({ id: person.user_id, name: person.nickname })) : null),
+    [room, viewerId],
+  );
+  const people = useStable(faces, faces ? faces.map((face) => `${face.id}:${face.name}`).join('|') : '');
+  /** Someone else's run in a room: its cards are its asker's — only the member's own (`conversation.requests`) count. */
+  const requests = useMemo(() => {
+    if (!room || snap.runMine) return snap.requests;
+    const mine = new Set(room.requests.map((request) => request.id));
+    return new Map([...snap.requests].filter(([id]) => mine.has(id)));
+  }, [room, snap.runMine, snap.requests]);
 
   /* ---------- a thread that is gone is not reopened on the next cold start (D3; home remembers it) ---------- */
+  // …neither as the last thread nor as the remembered main thread (../last-surface.ts).
   const gone = snap.load === 'not_found' || snap.load === 'forbidden';
   useEffect(() => {
-    if (gone) forgetThread();
-  }, [gone]);
+    if (gone) forgetGoneThread(sessionId);
+  }, [gone, sessionId]);
 
   /* ---------- transcript rows ---------- */
   const ready = snap.load === 'ready';
@@ -307,16 +470,31 @@ export function BotThreadScreen({
       stableTurnKeys(
         buildTranscript({
           messages: snap.messages,
-          conversationKind: kind,
+          // a task chat reads like a DM: its Agent speaks under the title; a room names everyone
+          conversationKind: transcriptKind(kind),
           ownerBotId: conversation?.owner_bot_id ?? null,
           segments,
-          liveRequests: snap.run?.requests ?? EMPTY_REQUESTS,
+          // (someone else's run in a room: its cards are theirs)
+          liveRequests: (room && !snap.runMine ? undefined : snap.run?.requests) ?? EMPTY_REQUESTS,
           pending: snap.pending,
-          requests: snap.requests,
+          requests,
+          me: viewerId,
         }),
         { runKey, segments, known: turnKeys.current },
       ),
-    [snap.messages, kind, conversation?.owner_bot_id, segments, snap.run?.requests, snap.pending, snap.requests, runKey],
+    [
+      snap.messages,
+      kind,
+      conversation?.owner_bot_id,
+      segments,
+      room,
+      snap.runMine,
+      snap.run?.requests,
+      snap.pending,
+      requests,
+      viewerId,
+      runKey,
+    ],
   );
   const rows = useMemo(
     () => threadRows(items, { hasMore: snap.hasMore, replyable: !readOnly, locale: lang }),
@@ -355,7 +533,7 @@ export function BotThreadScreen({
   }, [liveMessages]);
 
   /* ---------- the title view ---------- */
-  const status = statusLine({ snap, byId, kind });
+  const status = statusLine({ snap: room ? { ...snap, requests } : snap, byId, kind, shared });
   const statusText = status ? t(status.key, status.vars) : '';
   // A brief smile when a reply finishes: the run ends without an error and nobody stopped it.
   const [cheering, setCheering] = useState(false);
@@ -377,7 +555,7 @@ export function BotThreadScreen({
     const timer = setTimeout(() => setCheering(false), CHEER_MS);
     return () => clearTimeout(timer);
   }, [cheering]);
-  const pose = cheerPose(titlePose({ snap, byId, kind }), cheering);
+  const pose = cheerPose(titlePose({ snap, byId, kind, shared }), cheering);
   const speakingId = talkingSegment(snap.run)?.botId ?? null;
   const headerBots = useMemo<Array<AvatarSource | null>>(() => {
     if (!group) return [owner ?? null];
@@ -393,14 +571,23 @@ export function BotThreadScreen({
       pose,
       group,
       ownerBotId: owner?.id ?? null,
+      ...(people ? { people } : {}),
     });
-  }, [sessionId, displayTitle, statusText, headerBots, pose, group, owner?.id]);
+  }, [sessionId, displayTitle, statusText, headerBots, pose, group, owner?.id, people]);
   useEffect(() => () => dropThreadHeader(sessionId), [sessionId]);
 
   /* ---------- composer state (the draft survives switching threads) ---------- */
   const inputRef = useRef<TextInput>(null);
   const draft = useThreadDraft(sessionId, MAX_IMAGES);
   const { text: input, setText: setInput, images, annotations, take, giveBack, addQuotes } = draft;
+  /**
+   * Editing a task chat's last message: Send answers it again with the new text (`ctl.rewind`).
+   * `original` is the message's content (its file fences are kept), `held` the draft the composer
+   * had before — Cancel or a sent edit puts it back.
+   */
+  const [editing, setEditing] = useState<{ messageId: string; original: string; held: ThreadDraft } | null>(null);
+  const editingRef = useRef(editing);
+  editingRef.current = editing;
   const [composerH, setComposerH] = useState(60);
   const composerBottom = Math.max(insets.bottom, space.md) + (Platform.OS === 'android' ? space.sm : 0);
   const extraPad = useSharedValue(60 + composerBottom + space.md);
@@ -459,6 +646,7 @@ export function BotThreadScreen({
     holdForTurn,
     cancelTurn,
     jumpToLatest,
+    landOnEnd,
     shift,
   } = anchor;
   const endVisibleRef = useRef(endVisible);
@@ -537,6 +725,14 @@ export function BotThreadScreen({
     }
   }, [firstSegmentKey, anchorTo, holdingEnd]);
 
+  // A room: another person's message while the member reads the end — people talking are followed
+  // (Messages-style); a reply streaming is not (its turn is anchored, never chased).
+  const lastItem = items[items.length - 1];
+  const lastPerson = lastItem?.kind === 'person' ? lastItem.key : null;
+  useEffect(() => {
+    if (lastPerson && endVisibleRef.current && !snapRef.current.runActive) landOnEnd();
+  }, [lastPerson, landOnEnd]);
+
   /* ---------- earlier pages (D15) ---------- */
   const dragged = useRef(false);
   const autoPages = useRef(0);
@@ -586,11 +782,11 @@ export function BotThreadScreen({
   const pendingCards = useMemo(
     () =>
       rows.flatMap((row) =>
-        row.kind === 'request' && snap.requests.get(row.requestId)?.status === 'pending'
+        row.kind === 'request' && requests.get(row.requestId)?.status === 'pending'
           ? [{ key: row.key, botId: row.botId }]
           : [],
       ),
-    [rows, snap.requests],
+    [rows, requests],
   );
   const pendingCardsRef = useRef(pendingCards);
   pendingCardsRef.current = pendingCards;
@@ -711,6 +907,8 @@ export function BotThreadScreen({
           if (name) AccessibilityInfo.announceForAccessibility(tNow('bots.thread.announceReplying', { name }));
         } else if (e.type === 'request-arrived') {
           if (e.replayed || e.request.status !== 'pending' || !visible || announced.current.has(e.request.id)) return;
+          // (a room: someone else's run's card is theirs)
+          if (!snapRef.current.runMine) return;
           announced.current.add(e.request.id);
           notifyWarning();
           const name = lookupRef.current(e.request.bot_id)?.name ?? tNow('bots.common.deletedBot');
@@ -729,16 +927,22 @@ export function BotThreadScreen({
   /* ---------- sending ---------- */
   const readOnlyMessage = useCallback(
     (code: BotsReadOnly) =>
-      code === 'bot_archived' && owner
-        ? tNow('bots.thread.readOnlyDm', { name: owner.name })
-        : tNow('bots.thread.readOnlyClosed'),
+      code === 'agent_unavailable' && owner
+        ? tNow('bots.thread.readOnlyShared', { name: owner.name })
+        : code !== 'group_closed' && owner
+          ? tNow('bots.thread.readOnlyDm', { name: owner.name })
+          : tNow('bots.thread.readOnlyClosed'),
     [owner],
   );
   /** Every send goes through here: where the transcript moves, and what a refusal says. */
   const dispatchSend = useCallback(
     async (body: SendInput, via: 'composer' | 'card'): Promise<SendOutcome> => {
       const keyboardUp = Keyboard.isVisible();
-      if (!snapRef.current.runActive) {
+      if (roomRef.current && body.mentions.length === 0) {
+        // A room, and no Agent asked: people talking, Messages-style — the keyboard stays, the end
+        // stays in view and the bubble lands there (no reply is coming to unfold below it).
+        landOnEnd();
+      } else if (!snapRef.current.runActive) {
         // The conversation's turn: the keyboard goes down and the bubble slides under the bar once it
         // is in the list; the replies unfold below it — the view never follows them.
         if (keyboardUp) {
@@ -758,12 +962,135 @@ export function BotThreadScreen({
       else alertError(tNow('bots.thread.sendFailed'), outcome.message || undefined);
       return outcome;
     },
-    [ctl, holdForTurn, cancelTurn, readOnlyMessage],
+    [ctl, holdForTurn, cancelTurn, landOnEnd, readOnlyMessage],
   );
+
+  /* ---------- a task chat: edit the last message / answer it again (D23) ---------- */
+  const rewind = useMemo(
+    () =>
+      rewindTarget({
+        kind: conversation?.kind ?? null,
+        messages: snap.messages,
+        readOnly,
+        busy: snap.runActive || snap.pending.length > 0 || snap.load !== 'ready',
+      }),
+    [conversation?.kind, snap.messages, readOnly, snap.runActive, snap.pending.length, snap.load],
+  );
+  const rewindRef = useRef(rewind);
+  rewindRef.current = rewind;
+  /** Every rewind goes through here: the turn is anchored like a send's, a refusal is explained. */
+  const dispatchRewind = useCallback(
+    async (body: RewindInput): Promise<RewindOutcome> => {
+      if (Keyboard.isVisible()) {
+        holdForTurn();
+        Keyboard.dismiss();
+      }
+      const going = ctl.rewind(body);
+      // The member message stays where it is (everything after it goes): the reply unfolds under it.
+      anchorTo(body.messageId);
+      const outcome = await going;
+      if (outcome.ok) return outcome;
+      cancelTurn();
+      const edit = body.content !== undefined;
+      if (outcome.kind === 'read_only') alertError(readOnlyMessage(outcome.code));
+      else if (outcome.kind === 'busy') alertError(tNow('bots.thread.rewindBusy'));
+      else {
+        const key = outcome.kind === 'rejected' ? rewindRefusalKey(outcome.code) : null;
+        alertError(
+          tNow(edit ? 'bots.thread.editFailed' : 'bots.thread.rewindFailed'),
+          key ? tNow(key) : outcome.kind === 'rejected' ? outcome.message || undefined : tNow('bots.card.err.network'),
+        );
+      }
+      return outcome;
+    },
+    [ctl, holdForTurn, cancelTurn, anchorTo, readOnlyMessage],
+  );
+  const regenerate = useCallback(() => {
+    const target = rewindRef.current;
+    if (target) void dispatchRewind({ messageId: target.memberId });
+  }, [dispatchRewind]);
+  /** Put the message's text in the composer; what it held waits for Cancel (or the sent edit). */
+  const startEdit = useCallback(
+    (messageId: string) => {
+      const target = rewindRef.current;
+      const message = snapRef.current.messages.find((m) => m.id === messageId);
+      if (!target || target.memberId !== messageId || !target.editable || !message) return;
+      const held = editingRef.current?.held ?? take();
+      setEditing({ messageId, original: message.content, held });
+      setInput(splitAttachments(message.content).text);
+      focusInput();
+    },
+    [take, setInput, focusInput],
+  );
+  const cancelEdit = useCallback(() => {
+    const current = editingRef.current;
+    if (!current) return;
+    setEditing(null);
+    setInput('');
+    inputRef.current?.clear();
+    giveBack(current.held);
+  }, [setInput, giveBack]);
+  // The message is no longer the last one (another message landed meanwhile): no edit to send —
+  // its text stays in the composer (sendable as a new message), what it held before comes back.
+  useEffect(() => {
+    if (!editing || !rewind || rewind.memberId === editing.messageId) return;
+    setEditing(null);
+    giveBack(editing.held);
+  }, [editing, rewind, giveBack]);
+  // Leaving mid-edit: the thread's draft is what the composer held before the edit (an unsent edit
+  // would come back as a plain draft — a new message — next time).
+  useEffect(
+    () => () => {
+      const current = editingRef.current;
+      if (current) saveDraft(sessionId, current.held);
+    },
+    [sessionId],
+  );
+  /** Send while editing: the edited text (quotes before it, the message's files kept) answered again. */
+  const sendEdit = useCallback(
+    async (current: { messageId: string; original: string; held: ThreadDraft }) => {
+      const text = input.trim();
+      if (!text) return;
+      if (!rewindRef.current || rewindRef.current.memberId !== current.messageId) {
+        alertError(tNow(rewindRef.current ? 'bots.thread.rewindNotLast' : 'bots.thread.rewindBusy'));
+        return;
+      }
+      const quote = annotations.length ? annotations.map((a) => a.text).join('\n') : null;
+      const sent = take();
+      inputRef.current?.clear();
+      const outcome = await dispatchRewind({
+        messageId: current.messageId,
+        content: editedContent(current.original, quote ? `${quote}\n\n${text}` : text),
+      });
+      if (outcome.ok) {
+        setEditing(null);
+        giveBack(current.held);
+      } else giveBack(sent);
+    },
+    [input, annotations, take, giveBack, dispatchRewind],
+  );
+
+  /* ---------- a new chat's first message (the new-chat screen created this task chat) ---------- */
+  useEffect(() => {
+    const first = takeFirstSend(sessionId);
+    if (!first) return;
+    void dispatchSend(first.input, 'composer').then((outcome) => {
+      // Refused: the words come back to the composer (a "Not Delivered" bubble keeps them itself).
+      if (!outcome.ok && (outcome.kind === 'read_only' || outcome.kind === 'rejected')) {
+        giveBack({ text: first.input.text, images: first.images });
+      }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once, as the thread opens
+  }, [sessionId]);
 
   const membersRef = useRef(members);
   membersRef.current = members;
   const send = useCallback(async () => {
+    const current = editingRef.current;
+    if (current) {
+      await sendEdit(current);
+      return;
+    }
     const text = input.trim();
     const uploaded = images.filter((im) => im.status === 'done' && im.remote);
     // Share the same all-attachments-ready rule with the composer.
@@ -782,7 +1109,7 @@ export function BotThreadScreen({
       'composer',
     );
     if (!outcome.ok && (outcome.kind === 'read_only' || outcome.kind === 'rejected')) giveBack(held);
-  }, [input, images, annotations, take, giveBack, dispatchSend]);
+  }, [input, images, annotations, take, giveBack, dispatchSend, sendEdit]);
 
   /** An answer from a card in a Bot's reply, addressed back to that Bot (D22). Resolves false if it didn't go. */
   const onReplyAs = useCallback(
@@ -865,11 +1192,34 @@ export function BotThreadScreen({
     [pickMention, placeCaret, focusInput, input, setInput],
   );
 
+  /** A room: `+` → Ask an Agent ▸ — the Agents the member may @ here (the token goes in at the caret). */
+  const askItems = useMemo(
+    () =>
+      room && members.length
+        ? {
+            items: [
+              {
+                id: 'ask',
+                title: t('bots.room.ask'),
+                icon: 'at' as const,
+                children: members.map((bot) => ({ id: `ask:${bot.id}`, title: bot.name })),
+              },
+            ],
+            onSelect: (id: string) => {
+              const bot = membersRef.current.find((candidate) => `ask:${candidate.id}` === id);
+              if (bot) mention(bot);
+            },
+          }
+        : undefined,
+    [room, members, t, mention],
+  );
+
   /* ---------- the accessory slot: mention strip > stop hint > task dock ---------- */
   const stop = useComposerStop(snap, ctl);
   const softStopping = snap.stopPhase === 'soft' || !!snap.run?.interrupting;
   const { active: activeTasks, refresh: refreshTasks } = useBotTasks(sessionId, {
-    enabled: ready && !readOnly,
+    // (a room has no background tasks)
+    enabled: ready && !readOnly && !room,
     taskRows,
   });
   const accessory = useMemo(() => {
@@ -878,6 +1228,7 @@ export function BotThreadScreen({
         <MentionStrip candidates={picker.candidates} onPick={mention} />
       );
     }
+    if (editing) return <EditBar onCancel={cancelEdit} />;
     if (softStopping && stop?.phase === 'soft') return <StopHint />;
     if (activeTasks.length) return <TaskDock active={activeTasks} byId={byId} onChanged={refreshTasks} />;
     return null;
@@ -885,12 +1236,44 @@ export function BotThreadScreen({
     picker.open,
     picker.candidates,
     mention,
+    editing,
+    cancelEdit,
     softStopping,
     stop?.phase,
     activeTasks,
     byId,
     refreshTasks,
   ]);
+
+  /* ---------- 👍 / 👎 on a public Agent's reply (D38: its owner sees the rating and the note, not the chat) ---------- */
+  const rate = useCallback(
+    async (messageId: string, rating: 1 | -1) => {
+      const message = snapRef.current.messages.find((m) => m.id === messageId);
+      const store = useBots.getState();
+      if (!rateableReply(message, store.shared) || !message?.bot_id) return;
+      // The rating it already has, chosen again: take it back.
+      if (store.ratings[messageId] === rating) {
+        if (await store.unrateReply(sessionId, messageId)) {
+          toast(tNow('bots.thread.rateRemoved'), rating === 1 ? 'thumbUp' : 'thumbDown');
+        } else alertError(tNow('bots.thread.rateRemoveFailed'));
+        return;
+      }
+      let comment: string | null = null;
+      if (rating === -1) {
+        // The note is optional: Skip still sends the 👎.
+        comment = await promptText({
+          title: tNow('bots.thread.rateTitle'),
+          message: tNow('bots.thread.rateMessage', { owner: store.shared[message.bot_id]?.owner.nickname ?? '' }),
+          confirmLabel: tNow('bots.thread.rateSend'),
+          cancelLabel: tNow('bots.thread.rateSkip'),
+        });
+      }
+      if (await useBots.getState().rateReply(sessionId, messageId, rating, comment)) {
+        toast(tNow('bots.thread.rateThanks'), rating === 1 ? 'thumbUp' : 'thumbDown');
+      } else alertError(tNow('bots.thread.rateFailed'));
+    },
+    [sessionId],
+  );
 
   /* ---------- message actions (stable — rows are memoised) ---------- */
   const onAction = useCallback(
@@ -907,9 +1290,23 @@ export function BotThreadScreen({
           addQuotes([excerpt(plainText(msg.text), 120)]);
           focusInput();
           break;
+        // a task chat's last message / reply (rows only offer these then)
+        case 'edit':
+          startEdit(msg.id);
+          break;
+        case 'regenerate':
+          regenerate();
+          break;
+        // a public Agent's reply (rows only offer these then)
+        case 'rateUp':
+          void rate(msg.id, 1);
+          break;
+        case 'rateDown':
+          void rate(msg.id, -1);
+          break;
       }
     },
-    [focusInput, addQuotes],
+    [focusInput, addQuotes, startEdit, regenerate, rate],
   );
   const handlers = useMemo<ReplyHandlers>(
     () => ({
@@ -925,7 +1322,11 @@ export function BotThreadScreen({
     [router, onAction],
   );
   const onOpenProfile = useCallback(
-    (botId: string) => router.push({ pathname: '/bots/profile', params: { botId, from: sessionId } }),
+    (botId: string) => {
+      // (a room: another person's own Agent has no profile the member may see)
+      if (!useBots.getState().byId[botId]) return;
+      router.push({ pathname: '/bots/profile', params: { botId, from: sessionId } });
+    },
     [router, sessionId],
   );
   // "Earlier messages were summarized · View": the summary lives in the Bot's profile, Memory tab.
@@ -950,22 +1351,173 @@ export function BotThreadScreen({
   const dismissRunError = useCallback(() => ctl.dismissRunError(), [ctl]);
   const reload = useCallback(() => void ctl.reload(), [ctl]);
 
+  /* ---------- this conversation's computer: its Agent's own (one per Agent, spec 20261011-agent-first-class P3a) ---------- */
+  const computerBot = conversationComputer(conversation, (id) => byId[id]);
+
   /* ---------- header actions (stable; read the latest state via a ref) ---------- */
-  const latest = useRef({ owner, displayTitle, conversation });
-  latest.current = { owner, displayTitle, conversation };
+  const latest = useRef({ owner, displayTitle, conversation, computerBot, sharedOwner, byId, viewerId });
+  latest.current = { owner, displayTitle, conversation, computerBot, sharedOwner, byId, viewerId };
   const headerActions = useMemo<ThreadHeaderActions>(
     () => ({
       openDrawer: () => navigation.dispatch(DrawerActions.openDrawer()),
-      openComputer: () => router.push({ pathname: '/bots/computer', params: { c: sessionId } }),
+      openComputer: () => {
+        const bot = latest.current.computerBot;
+        router.push({ pathname: '/bots/computer', params: { c: sessionId, ...(bot ? { bot } : {}) } });
+      },
       askInChat: () => {
         const bot = latest.current.owner;
-        if (bot) openNewChat(router, { profile: isSproutyBot(bot) ? 'sprouty' : `bot:${bot.id}` });
+        // (never offered for someone else's Agent: a chat with it is this DM)
+        if (bot && !latest.current.sharedOwner) {
+          openNewChat(router, { profile: isSproutyBot(bot) ? 'sprouty' : `bot:${bot.id}` });
+        }
+      },
+      // A task chat is a chat in the chats list: tags, rename and delete like one (never share — D26).
+      openTags: () => router.push({ pathname: '/sheets/session-tags', params: { sessionId } }),
+      rename: async () => {
+        const current = latest.current.conversation?.title ?? '';
+        const next = await promptText({
+          title: tNow('chat.renameTitle'),
+          defaultValue: current,
+          confirmLabel: tNow('common.save'),
+        });
+        // (an emptied field answers null: nothing to save)
+        if (!next || next === current.trim()) return;
+        const result = await updateTaskChat(sessionId, { title: next });
+        if (result.ok) void ctl.reload();
+        else alertError(tNow('bots.thread.renameFailed'), result.message || undefined);
+      },
+      remove: async () => {
+        const ok = await confirmAction({
+          title: tNow('drawer.deleteTitle'),
+          message: tNow('chat.deleteHint'),
+          confirmLabel: tNow('common.delete'),
+          destructive: true,
+        });
+        if (!ok) return;
+        if (snapRef.current.runActive) ctl.stop('hard');
+        if (!(await deleteSession(sessionId))) {
+          alertError(tNow('chat.deleteFailed'));
+          return;
+        }
+        useBots.getState().dropTaskChat(sessionId);
+        openNewChat(router);
+        toast(tNow('chat.deleted'), 'trash');
+      },
+      // ── a room's (P5) ──
+      renameRoom: async () => {
+        const current = latest.current.conversation?.title ?? '';
+        const next = await promptText({
+          title: tNow('bots.room.rename'),
+          defaultValue: current,
+          placeholder: latest.current.displayTitle,
+          confirmLabel: tNow('common.save'),
+        });
+        if (!next || next === current.trim()) return;
+        const result = await renameRoom(sessionId, next);
+        if (result.ok) {
+          void ctl.reload();
+          void useBots.getState().loadConversations();
+        } else alertError(tNow('bots.room.renameFailed'), result.message || undefined);
+      },
+      addPeople: () => router.push({ pathname: '/bots/new-room', params: { room: sessionId } }),
+      bringAgent: async (botId) => {
+        const name = latest.current.byId[botId]?.name ?? '';
+        const result = await addRoomAgent(sessionId, botId);
+        if (result.ok) {
+          void ctl.reload();
+          toast(tNow('bots.room.agentAdded', { name }), 'sparkle');
+        } else if (result.status === 409) alertError(tNow('bots.room.agentNotForEveryone', { name }));
+        else alertError(tNow('bots.room.agentAddFailed', { name }), result.message || undefined);
+      },
+      removeAgent: async (botId) => {
+        const name = latest.current.byId[botId]?.name ?? '';
+        const result = await removeRoomAgent(sessionId, botId);
+        if (result.ok) {
+          void ctl.reload();
+          toast(tNow('bots.room.agentRemoved', { name }), 'personMinus');
+        } else alertError(tNow('bots.room.agentRemoveFailed', { name }), result.message || undefined);
+      },
+      leave: async () => {
+        const { conversation: here, viewerId: me } = latest.current;
+        if (!me) return;
+        const ok = await confirmAction({
+          title: tNow('bots.room.leaveTitle'),
+          message: here && lastOneIn(here, me) ? tNow('bots.room.leaveLast') : tNow('bots.room.leaveMessage'),
+          confirmLabel: tNow('bots.room.leaveConfirm'),
+          destructive: true,
+        });
+        if (!ok) return;
+        const result = await leaveRoom(sessionId, me);
+        if (!result.ok) {
+          alertError(
+            result.code === 'busy' ? tNow('bots.room.leaveBusy') : tNow('bots.room.leaveFailed'),
+            result.code === 'busy' ? undefined : result.message || undefined,
+          );
+          return;
+        }
+        useBots.getState().dropConversation(sessionId);
+        forgetGoneThread(sessionId);
+        openNewChat(router);
+        toast(tNow('bots.room.left'), 'logout');
       },
     }),
-    [navigation, router, sessionId],
+    [navigation, router, sessionId, ctl],
   );
-  // The member's computer is theirs, not one Bot's: offered on every thread once computers run here.
-  const hasComputer = useBots((s) => s.computer?.state === 'ready');
+  /** A room's ⋯ entries — the same object while what they say is the same (the bar is memoised). */
+  const roomMenuNow = useMemo<RoomMenu | null>(() => {
+    if (!room) return null;
+    const ownerId = roomOwnerId(room);
+    const name = (botId: string) => byId[botId]?.name ?? t('bots.room.someAgent');
+    const everyone = [...(room.participants ?? [])].sort((a, b) =>
+      a.user_id === viewerId ? -1 : b.user_id === viewerId ? 1 : 0,
+    );
+    return {
+      people: everyone.map((person) => ({
+        id: person.user_id,
+        name: person.nickname,
+        detail:
+          [
+            person.user_id === viewerId ? t('bots.room.you') : '',
+            person.user_id === ownerId ? t('bots.room.owner') : '',
+          ]
+            .filter(Boolean)
+            .join(t('bots.nav.listSep')) || undefined,
+      })),
+      agents: [...room.members]
+        .sort((a, b) => a.position - b.position)
+        .map((member) => {
+          const owner = member.owner_user_id ?? '';
+          const ownerName = owner === viewerId ? null : personName(room, owner);
+          return {
+            id: member.bot_id,
+            name: name(member.bot_id),
+            detail:
+              owner === viewerId
+                ? t('bots.room.yourAgent')
+                : ownerName && !roomDir?.guessed.has(member.bot_id)
+                  ? t('bots.room.agentOf', { name: ownerName })
+                  : undefined,
+          };
+        }),
+      bringable: bringableAgents(room, ownBots).map((bot) => ({ id: bot.id, name: bot.name })),
+      removable: removableAgents(room, viewerId).map((member) => ({ id: member.bot_id, name: name(member.bot_id) })),
+    };
+  }, [room, byId, viewerId, ownBots, roomDir, t]);
+  const roomMenu = useStable(roomMenuNow, roomMenuNow ? JSON.stringify(roomMenuNow) : '');
+  const onOpenChat = useCallback((chat: { c: string; title: string }) => openThread(router, chat), [router]);
+  // The conversation's Agent's computer, offered on every thread once computers run here; the 🖥 is
+  // tinted with its state (only primitives reach the memoised header: no stream-tick re-renders).
+  // Someone else's Agent has one only when its owner granted it (the member's own copy) and it is
+  // still offered — otherwise its status is never read (the routes answer 404 `agent_not_found`).
+  const hasComputer = useBots((s) => s.computer?.state === 'ready') && computerOffered(sharedOwner) && !room;
+  const computerName = useBots((s) => computerAgent(s, computerBot)?.name ?? null);
+  const computerState = useComputerStatus(hasComputer && focused && !!conversation, computerBot);
+  const computerTone = computerButtonTone(computerState.phase);
+  const computerLabel = computerName
+    ? computerState.phase
+      ? t('bots.computer.openOfState', { name: computerName, state: t(phaseLabelKey(computerState.phase)) })
+      : t('bots.computer.openOf', { name: computerName })
+    : t('bots.computer.open');
 
   /* ---------- rows ---------- */
   const runActive = snap.runActive;
@@ -981,16 +1533,43 @@ export function BotThreadScreen({
       case 'top':
         return <TopLoader state={snap.earlier} manual={manualEarlier} onLoad={loadEarlierByHand} />;
       case 'intro':
-        return <Intro kind={kind} title={displayTitle} owner={owner} members={members} />;
+        return (
+          <Intro
+            kind={kind}
+            title={displayTitle}
+            owner={owner}
+            members={members}
+            sharedBy={sharedOwner?.owner.nickname}
+            people={people ?? undefined}
+            privateChat={privateChat}
+          />
+        );
       case 'time':
         return <TimeSeparator at={row.at} />;
       case 'user':
-        return <UserRow message={row.message} readOnly={readOnly} onAction={onAction} />;
+        return (
+          <UserRow
+            message={row.message}
+            readOnly={readOnly}
+            editable={!!rewind?.editable && rewind.memberId === row.message.id}
+            onAction={onAction}
+          />
+        );
+      case 'person':
+        return (
+          <PersonRow
+            message={row.message}
+            name={(room && personName(room, row.userId)) || t('bots.room.someone')}
+            tint={c[personTint(row.userId)]}
+            header={row.header}
+            onAction={onAction}
+          />
+        );
       case 'bot':
         return (
           <ReplyRow
             {...reply}
-            readOnly={readOnly}
+            readOnly={readOnly || !answerable(row.botId)}
             message={row.message}
             botId={row.botId}
             header={row.header}
@@ -1002,6 +1581,9 @@ export function BotThreadScreen({
                 : undefined
             }
             onRename={onRename}
+            canRegenerate={!!rewind && rewind.replyId === row.message.id}
+            onRegenerate={regenerate}
+            rating={rateableReply(row.message, shared) ? (ratings[row.message.id] ?? null) : undefined}
           />
         );
       case 'segment': {
@@ -1010,7 +1592,7 @@ export function BotThreadScreen({
         return (
           <ReplyRow
             {...reply}
-            readOnly={readOnly}
+            readOnly={readOnly || !answerable(row.segment.botId)}
             segment={row.segment}
             msg={liveMessages[index] ?? fromSegment(row.segment, { id: `${runKey}#${index}`, errorText: '' })}
             header={row.header}
@@ -1049,18 +1631,22 @@ export function BotThreadScreen({
             message={row.message}
             event={event}
             failedBotName={event?.kind === 'turn_error' ? (lookup(event.bot_id)?.name ?? null) : null}
-            canAct={!readOnly}
+            botName={event?.kind === 'unavailable' ? (lookup(event.bot_id)?.name ?? null) : null}
+            // (a room: Retry asks the failed Agent again — only one the member may ask; a bare
+            // "Please continue." addresses no one there, so a limit offers nothing)
+            canAct={!readOnly && (!room || (event?.kind === 'turn_error' && answerable(event.bot_id)))}
             busy={runActive}
             onRetry={retryBot}
             onContinue={continueRun}
             onViewSummary={onViewSummary}
+            onOpenChat={onOpenChat}
           />
         );
       }
       case 'request':
         return (
           <RequestRow
-            request={snap.requests.get(row.requestId)}
+            request={requests.get(row.requestId)}
             fallback={row.message}
             sessionId={sessionId}
             readOnly={readOnly}
@@ -1072,7 +1658,8 @@ export function BotThreadScreen({
         return (
           <PendingRow
             pending={row.pending as MobilePending}
-            runActive={runActive}
+            // (Handle Now only into the member's own run)
+            runActive={runActive && snap.runMine}
             upNext={softStopping}
             onAction={onAction}
             onHandleNow={onHandleNow}
@@ -1081,6 +1668,8 @@ export function BotThreadScreen({
           />
         );
       case 'starters': {
+        // Someone else's Agent: its owner made it their own — its template's openers may not fit.
+        if (shared[row.botId]) return null;
         const template = botTemplate(lookup(row.botId)?.template_key);
         return <Starters starters={template?.copy[lang].starters ?? NO_STARTERS} onPick={onStarter} />;
       }
@@ -1115,8 +1704,12 @@ export function BotThreadScreen({
         title={displayTitle}
         badge={badge}
         ownerName={owner?.name ?? null}
-        canAsk={!group && !!owner && owner.status === 'active'}
+        canAsk={!group && !!owner && owner.status === 'active' && !sharedOwner}
         hasComputer={hasComputer}
+        computerTone={computerTone}
+        computerLabel={computerLabel}
+        taskChat={task}
+        room={roomMenu}
         actions={headerActions}
       />
 
@@ -1215,12 +1808,14 @@ export function BotThreadScreen({
                   onRemoveImage={draft.removeImage}
                   onRetryImages={draft.retryImages}
                   maxImages={MAX_IMAGES}
+                  attachNote={editing ? t('bots.thread.editNoImages') : undefined}
                   placeholder={placeholder}
                   autoFocus={compose}
                   onHeight={onComposerHeight}
                   stop={stop}
                   accessory={accessory}
                   onSelectionChange={onSelectionChange}
+                  menuExtra={askItems}
                 />
               )}
             </View>

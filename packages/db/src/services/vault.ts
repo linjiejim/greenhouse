@@ -28,6 +28,8 @@ export interface VaultItemInsert {
   password_enc: string | null;
   totp_enc: string | null;
   policy: 'ask' | 'auto';
+  /** The Agents that may use it; null = every Agent of the member. */
+  bot_ids?: string[] | null;
 }
 
 export interface VaultItemPatch {
@@ -39,6 +41,7 @@ export interface VaultItemPatch {
   totp_enc?: string | null;
   policy?: 'ask' | 'auto';
   always_origins?: string[];
+  bot_ids?: string[] | null;
 }
 
 export type VaultAccessInput = Omit<typeof vaultAccessLog.$inferInsert, 'id' | 'created_at'>;
@@ -63,6 +66,7 @@ export function createVaultService(db: Db) {
         .values({
           ...input,
           origins: JSON.stringify(input.origins),
+          bot_ids: input.bot_ids ? JSON.stringify(input.bot_ids) : null,
           always_origins: '[]',
           created_at: now,
           updated_at: now,
@@ -98,6 +102,7 @@ export function createVaultService(db: Db) {
       if (patch.totp_enc !== undefined) set.totp_enc = patch.totp_enc;
       if (patch.policy !== undefined) set.policy = patch.policy;
       if (patch.always_origins !== undefined) set.always_origins = JSON.stringify(patch.always_origins);
+      if (patch.bot_ids !== undefined) set.bot_ids = patch.bot_ids ? JSON.stringify(patch.bot_ids) : null;
       const [row] = await db
         .update(vaultItems)
         .set(set)

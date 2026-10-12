@@ -3,9 +3,13 @@
  * apps/api/src/bots/AGENTS.md → HTTP contract):
  * - `/api/bots*`             Bots, conversations, shared notes, background
  *                            tasks and the "needs you" requests
- * - `/api/bots/computer/*`   the member's computer (status, take over, type…)
+ * - `/api/bots/computer/*`   an Agent's own computer (status, take over, type…);
+ *                            every call takes the Agent (`bot`, see `ComputerBot`)
  * - `/api/bots/vault/*`      the password vault
+ * - `/api/agents*`           other members' public Agents (the directory, my DM with one)
+ * - `/api/rooms*`            conversations with other people and the Agents they bring (P5)
  * - `/api/admin/bot-computers/*`  everyone's computers (super)
+ * - `/api/admin/agents/*`    every public Agent, pause / resume (super)
  *
  * Typed RPC over `rpc` (hc<AppType>): response types flow from the routes'
  * `c.json(...)` and are checked structurally against the declared return types
@@ -50,6 +54,12 @@ import type {
   VaultItemView,
   VaultItemWrite,
   BotVersionView,
+  BotUsageView,
+  BotActivityItem,
+  BotFeedbackView,
+  BotPublicationView,
+  BotPublicationWrite,
+  SharedBotView,
 } from '@greenhouse/types/bots';
 import { apiWebSocketUrl } from '../api-base';
 import { authFetch } from '../auth';
@@ -125,6 +135,11 @@ export interface BotsOverview {
    * audit rows still show its real name and face (read-only).
    */
   archived_bots: BotView[];
+  /**
+   * Other members' public Agents this member talks to (spec 20261011-agent-first-class P4) —
+   * names and faces for those DMs; `available: false` once unpublished, paused or no longer offered.
+   */
+  shared_bots: SharedBotView[];
   computer: ComputerRuntimeView;
   vault_available: boolean;
   pending_requests: number;
@@ -157,7 +172,6 @@ export interface BotWriteInput {
   change_log?: string;
 }
 
-/** A shared Bot as listed to other members (published manifest + owner). */
 export interface ConversationPage {
   conversation: BotConversationDetail;
   messages: BotMessage[];
@@ -168,6 +182,11 @@ export interface ConversationPage {
    * after a reload. Optional: without it, undo state lasts for the tab.
    */
   memory_states?: Record<string, string>;
+  /**
+   * The caller's own 👍 (1) / 👎 (-1) on the replies of this page, by message id (a public Agent's
+   * DM, P4). Omitted when there are none; a reply missing from it is not rated.
+   */
+  my_ratings?: Record<string, 1 | -1>;
 }
 
 export async function listBots(): Promise<BotsOverview> {
@@ -214,6 +233,85 @@ export async function listBotVersions(botId: string): Promise<{
   versions: BotVersionView[];
 }> {
   const res = await rpc.api.bots[':id'].versions.$get({ param: { id: enc(botId) } });
+  if (!res.ok) throw await failure(res);
+  return res.json();
+}
+
+/** The Agent's model use per day over the last `days` (everyone's, for a public Agent). */
+export async function fetchBotUsage(botId: string, days = 30): Promise<BotUsageView> {
+  const args = { param: { id: enc(botId) }, query: { days: String(days) } };
+  const res = await rpc.api.bots[':id'].usage.$get(args);
+  if (!res.ok) throw await failure(res);
+  return res.json();
+}
+
+/** What the Agent did for its owner — platform actions, vault uses, background tasks — newest first. */
+export async function fetchBotActivity(botId: string, limit = 50): Promise<BotActivityItem[]> {
+  const args = { param: { id: enc(botId) }, query: { limit: String(limit) } };
+  const res = await rpc.api.bots[':id'].activity.$get(args);
+  if (!res.ok) throw await failure(res);
+  return (await res.json()).activity;
+}
+
+// ─── Publishing (spec 20261011-agent-first-class P4) ────
+
+/** An Agent's publication: visibility, audience, grants, budget, published vs current version. */
+export async function fetchBotPublication(botId: string): Promise<BotPublicationView> {
+  const res = await rpc.api.bots[':id'].publication.$get({ param: { id: enc(botId) } });
+  if (!res.ok) throw await failure(res);
+  return res.json();
+}
+
+/**
+ * Change it. Only the fields given change; `publish: true` publishes the current version.
+ * 400 `bot_protected` for Sprouty, 400 `invalid` (with a message) for anything the server refuses.
+ */
+export async function updateBotPublication(botId: string, write: BotPublicationWrite): Promise<BotPublicationView> {
+  const args = { param: { id: enc(botId) }, json: write };
+  const res = await rpc.api.bots[':id'].publication.$put(args);
+  if (!res.ok) throw await failure(res);
+  return res.json();
+}
+
+/** What its users said about its replies — ratings and their one line, never the conversations. */
+export async function fetchBotFeedback(botId: string): Promise<BotFeedbackView[]> {
+  const res = await rpc.api.bots[':id'].feedback.$get({ param: { id: enc(botId) } });
+  if (!res.ok) throw await failure(res);
+  return (await res.json()).feedback;
+}
+
+/** 👍 / 👎 an Agent's reply (one rating per member and reply; rating again replaces it). */
+export async function rateReply(
+  sessionId: string,
+  messageId: string,
+  rating: 1 | -1,
+  comment?: string,
+): Promise<{ rating: number }> {
+  const json: { rating: 1 | -1; comment?: string } = { rating };
+  if (comment) json.comment = comment;
+  const args = { param: { id: enc(sessionId), messageId: enc(messageId) }, json };
+  const res = await rpc.api.bots.conversations[':id'].messages[':messageId'].feedback.$post(args);
+  if (!res.ok) throw await failure(res);
+  return res.json();
+}
+
+/** Take a rating back (the reply is unrated again). */
+export async function unrateReply(sessionId: string, messageId: string): Promise<void> {
+  const args = { param: { id: enc(sessionId), messageId: enc(messageId) } };
+  const res = await rpc.api.bots.conversations[':id'].messages[':messageId'].feedback.$delete(args);
+  if (!res.ok) throw await failure(res);
+}
+
+/** Other members' public Agents this member may talk to (never their own). */
+export async function listPublicAgents(): Promise<SharedBotView[]> {
+  const res = await rpc.api.agents.$get();
+  if (!res.ok) throw await failure(res);
+  return (await res.json()).agents;
+}
+
+/** My DM with someone else's public Agent — created (with its greeting) on first use. */
+export async function openPublicAgent(botId: string): Promise<{ conversation_id: string }> {
+  const res = await rpc.api.agents[':id'].conversation.$post({ param: { id: enc(botId) } });
   if (!res.ok) throw await failure(res);
   return res.json();
 }
@@ -290,6 +388,35 @@ export async function createConversation(botId: string): Promise<{ conversation:
   return res.json();
 }
 
+/**
+ * A new separate chat (spec 20261011-agent-first-class D20): its own context, answered by `botId`
+ * (default: the member's Sprouty), on the chosen model (default: that Agent's). Listed with the
+ * chats (`GET /api/sessions?include=agent_chats`), opened at `#/bots?c=`.
+ */
+export async function createTaskChat(
+  opts: { botId?: string; modelId?: string | null; title?: string | null } = {},
+): Promise<{ conversation: BotConversationDetail }> {
+  const json: Record<string, unknown> = { kind: 'task' };
+  if (opts.botId) json.bot_id = opts.botId;
+  if (opts.modelId) json.model_id = opts.modelId;
+  if (opts.title) json.title = opts.title;
+  const args = { json };
+  const res = await rpc.api.bots.conversations.$post(args);
+  if (!res.ok) throw await failure(res);
+  return res.json();
+}
+
+/** A separate chat's model and title (409 `not_task_chat` anywhere else — a DM uses its Agent's model). */
+export async function updateTaskChat(
+  sessionId: string,
+  changes: { model_id?: string | null; title?: string | null },
+): Promise<{ conversation: BotConversationDetail }> {
+  const args = { param: { id: enc(sessionId) }, json: changes };
+  const res = await rpc.api.bots.conversations[':id'].$patch(args);
+  if (!res.ok) throw await failure(res);
+  return res.json();
+}
+
 export async function getConversation(
   sessionId: string,
   opts: { beforeSeq?: number; limit?: number } = {},
@@ -349,6 +476,89 @@ export async function compactConversation(sessionId: string): Promise<{ digest: 
   return res.json();
 }
 
+// ─── Rooms (spec 20261011-agent-first-class P5) ─────────
+//
+// Several people, and the Agents they bring, in one conversation (`kind: 'room'`). Rooms come back
+// in `listConversations()` with the threads; the transcript, notes and read marker are the
+// conversation routes above; a message is `POST /api/chat` (always `202 queued` in a room).
+
+/** Someone who can be in a conversation with the member: active, internal, Agents on — never the member. */
+export interface RoomPerson {
+  id: string;
+  nickname: string;
+  email: string;
+}
+
+export async function listRoomPeople(): Promise<RoomPerson[]> {
+  const res = await rpc.api.rooms.people.$get();
+  if (!res.ok) throw await failure(res);
+  return (await res.json()).people;
+}
+
+/**
+ * A new conversation with these people (and, optionally, a title and some of the member's own
+ * Agents). One other person, no title and no Agents is the two people's private chat: the existing
+ * one comes back (`created: false`). 400 someone who cannot be in a conversation, 404 someone
+ * else's private Agent, 409 a public Agent not offered to everyone picked.
+ */
+export async function createRoom(input: {
+  userIds: string[];
+  title?: string | null;
+  botIds?: string[];
+}): Promise<{ conversation: BotConversationDetail; created: boolean }> {
+  const json: { user_ids: string[]; title?: string; bot_ids?: string[] } = { user_ids: input.userIds };
+  if (input.title?.trim()) json.title = input.title.trim();
+  if (input.botIds && input.botIds.length > 0) json.bot_ids = input.botIds;
+  const args = { json };
+  const res = await rpc.api.rooms.$post(args);
+  if (!res.ok) throw await failure(res);
+  const { conversation } = await res.json();
+  if (!conversation) throw new BotsApiError('Conversation not found', 404);
+  return { conversation, created: res.status === 201 };
+}
+
+/** Anyone in the room may name it; an empty title goes back to the people's names. */
+export async function renameRoom(sessionId: string, title: string | null): Promise<BotConversationDetail> {
+  const args = { param: { id: enc(sessionId) }, json: { title: title?.trim() || null } };
+  const res = await rpc.api.rooms[':id'].$patch(args);
+  if (!res.ok) throw await failure(res);
+  return (await res.json()).conversation;
+}
+
+/** Anyone in the room may add a person (a public Agent the newcomer may not use leaves, with a line). */
+export async function addRoomPerson(sessionId: string, userId: string): Promise<BotConversationDetail> {
+  const args = { param: { id: enc(sessionId) }, json: { user_id: userId } };
+  const res = await rpc.api.rooms[':id'].participants.$post(args);
+  if (!res.ok) throw await failure(res);
+  return (await res.json()).conversation;
+}
+
+/**
+ * Leave (`userId` = the member) or, as the room's owner, remove someone. Their Agents leave with
+ * them; the last one out deletes the room (`deleted`). 409 `busy` while that person's Agent answers.
+ */
+export async function removeRoomPerson(sessionId: string, userId: string): Promise<{ deleted: boolean }> {
+  const args = { param: { id: enc(sessionId), userId: enc(userId) } };
+  const res = await rpc.api.rooms[':id'].participants[':userId'].$delete(args);
+  if (!res.ok) throw await failure(res);
+  return { deleted: (await res.json()).deleted };
+}
+
+/** Bring one of the member's Agents, or a public Agent offered to everyone in the room (409 otherwise). */
+export async function addRoomAgent(sessionId: string, botId: string): Promise<BotConversationDetail> {
+  const args = { param: { id: enc(sessionId) }, json: { bot_id: botId } };
+  const res = await rpc.api.rooms[':id'].agents.$post(args);
+  if (!res.ok) throw await failure(res);
+  return (await res.json()).conversation;
+}
+
+/** Take an Agent out: who brought it, its owner, or the room's owner (403 for anyone else). */
+export async function removeRoomAgent(sessionId: string, botId: string): Promise<void> {
+  const args = { param: { id: enc(sessionId), botId: enc(botId) } };
+  const res = await rpc.api.rooms[':id'].agents[':botId'].$delete(args);
+  if (!res.ok) throw await failure(res);
+}
+
 // ─── Shared notes ────────────────────────────────────────
 
 export async function listNotes(sessionId: string): Promise<{ notes: BotSharedNoteView[] }> {
@@ -391,6 +601,15 @@ export async function listConversationTasks(sessionId: string): Promise<{ tasks:
   const res = await rpc.api.bots.conversations[':id'].tasks.$get({ param: { id: enc(sessionId) } });
   if (!res.ok) throw await failure(res);
   return res.json();
+}
+
+/** Every conversation's background tasks, live first — the conversations sidebar's "Background" group. */
+export async function listMemberTasks(): Promise<{ tasks: Array<BotTaskView & { conversation_id: string }> }> {
+  const res = await rpc.api.bots.tasks.$get({ query: {} });
+  if (!res.ok) throw await failure(res);
+  // The bare list always names the conversation (`listMemberTaskHistory`); the route's type also
+  // covers `?state=active`, where the field is optional.
+  return (await res.json()) as { tasks: Array<BotTaskView & { conversation_id: string }> };
 }
 
 export async function cancelBotTask(runId: string): Promise<void> {
@@ -436,38 +655,61 @@ export async function decideRequest(
   return res.json();
 }
 
-// ─── The member's computer ───────────────────────────────
+// ─── An Agent's computer ─────────────────────────────────
+//
+// Every Agent has its own computer (spec 20261011-agent-first-class P3a): the
+// main Agent's (Sprouty's) is the member's original one, any other Agent's is
+// its own. Each call below takes the Agent as `bot` — `null` (the default) is
+// the main Agent's computer, the only one before 2026-10-12, so a call without
+// it means what it always meant. Unknown or foreign Agent → 404 `agent_not_found`.
 
-export async function fetchComputerStatus(): Promise<ComputerStatusView> {
-  const res = await rpc.api.bots.computer.$get();
+/** Which Agent's computer: its id, or null for the member's main Agent (Sprouty). */
+export type ComputerBot = string | null;
+
+/** The `?bot=` the computer routes take (nothing for the main Agent's). */
+function computerQuery(bot: ComputerBot | undefined): Record<string, string> {
+  return bot ? { bot } : {};
+}
+
+/** `&bot=…` for the raw (binary) computer URLs. */
+function computerParam(bot: ComputerBot | undefined): string {
+  return bot ? `&bot=${enc(bot)}` : '';
+}
+
+export async function fetchComputerStatus(bot: ComputerBot = null): Promise<ComputerStatusView> {
+  const args = { query: computerQuery(bot) };
+  const res = await rpc.api.bots.computer.$get(args);
   if (!res.ok) throw await failure(res);
   return res.json();
 }
 
 /** Wake the computer. Resolves once it is running — or with `queue_position` set when the org's slots are full. */
-export async function startComputer(): Promise<ComputerStatusView> {
-  const res = await rpc.api.bots.computer.start.$post();
+export async function startComputer(bot: ComputerBot = null): Promise<ComputerStatusView> {
+  const args = { query: computerQuery(bot) };
+  const res = await rpc.api.bots.computer.start.$post(args);
   if (!res.ok) throw await failure(res);
   return res.json();
 }
 
-export async function stopComputer(): Promise<ComputerStatusView> {
-  const res = await rpc.api.bots.computer.stop.$post();
+export async function stopComputer(bot: ComputerBot = null): Promise<ComputerStatusView> {
+  const args = { query: computerQuery(bot) };
+  const res = await rpc.api.bots.computer.stop.$post(args);
   if (!res.ok) throw await failure(res);
   return res.json();
 }
 
 /** Recreate the computer; `wipeData` also deletes its home volume (files + browser sign-ins). */
-export async function resetComputer(wipeData: boolean): Promise<ComputerStatusView> {
-  const args = { json: { wipe_data: wipeData } };
+export async function resetComputer(wipeData: boolean, bot: ComputerBot = null): Promise<ComputerStatusView> {
+  const args = { query: computerQuery(bot), json: { wipe_data: wipeData } };
   const res = await rpc.api.bots.computer.reset.$post(args);
   if (!res.ok) throw await failure(res);
   return res.json();
 }
 
 /** One-time, 60-second ticket for the live viewer WebSocket. Fetch it right before connecting. */
-export async function createComputerViewToken(): Promise<{ token: string; expires_at: string }> {
-  const res = await rpc.api.bots.computer['view-token'].$post();
+export async function createComputerViewToken(bot: ComputerBot = null): Promise<{ token: string; expires_at: string }> {
+  const args = { query: computerQuery(bot) };
+  const res = await rpc.api.bots.computer['view-token'].$post(args);
   if (!res.ok) throw await failure(res);
   return res.json();
 }
@@ -478,11 +720,12 @@ export function computerViewerUrl(token: string): string {
 }
 
 /**
- * Take the lease: the server stops the Bots' computer actions (and starts the
+ * Take the lease: the server stops the Agent's computer actions (and starts the
  * computer if it is asleep), then forwards this member's keyboard and mouse.
  */
-export async function takeoverComputer(): Promise<ComputerStatusView> {
-  const res = await rpc.api.bots.computer.takeover.$post();
+export async function takeoverComputer(bot: ComputerBot = null): Promise<ComputerStatusView> {
+  const args = { query: computerQuery(bot) };
+  const res = await rpc.api.bots.computer.takeover.$post(args);
   if (!res.ok) throw await failure(res);
   return res.json();
 }
@@ -491,14 +734,16 @@ export async function takeoverComputer(): Promise<ComputerStatusView> {
  * Give the lease back. The server settles the card it answers — `requestId`
  * when the member took over from one, else the single take-over / sign-in
  * card waiting in `sessionId` (the conversation beside the computer; never a
- * guess across conversations) — and wakes the Bot that asked, with the
+ * guess across conversations) — and wakes the Agent that asked, with the
  * optional note as context. Neither → the lease is just released.
  */
 export async function handbackComputer(
   input: { note?: string; requestId?: string; sessionId?: string } = {},
+  bot: ComputerBot = null,
 ): Promise<ComputerStatusView> {
   const trimmed = input.note?.trim();
   const args = {
+    query: computerQuery(bot),
     json: {
       ...(trimmed ? { note: trimmed } : {}),
       ...(input.requestId ? { request_id: input.requestId } : {}),
@@ -515,8 +760,8 @@ export async function handbackComputer(
  * `Input.insertText`): works for Chinese IME output and pasted passwords, which
  * raw VNC key events cannot carry. Only while this member holds the lease.
  */
-export async function typeIntoComputer(text: string): Promise<void> {
-  const args = { json: { text } };
+export async function typeIntoComputer(text: string, bot: ComputerBot = null): Promise<void> {
+  const args = { query: computerQuery(bot), json: { text } };
   const res = await rpc.api.bots.computer.type.$post(args);
   if (!res.ok) throw await failure(res);
 }
@@ -526,17 +771,22 @@ export async function typeIntoComputer(text: string): Promise<void> {
  * opens a new one when every window was closed. 409 `stopped` when the
  * computer is not running. Needs no take-over lease.
  */
-export async function restoreComputerWindow(): Promise<void> {
-  const res = await rpc.api.bots.computer['restore-window'].$post();
+export async function restoreComputerWindow(bot: ComputerBot = null): Promise<void> {
+  const args = { query: computerQuery(bot) };
+  const res = await rpc.api.bots.computer['restore-window'].$post(args);
   if (!res.ok) throw await failure(res);
 }
 
 /**
- * The member's computer settings — today the timezone it starts with (IANA
- * name; takes effect at the next start). Returns the fresh status view.
+ * The member's computer settings — today the timezone their computers start
+ * with (IANA name; takes effect at each one's next start, and applies to every
+ * Agent's computer). Returns the fresh status view of `bot`'s computer.
  */
-export async function updateComputerSettings(settings: { timezone: string }): Promise<ComputerStatusView> {
-  const args = { json: settings };
+export async function updateComputerSettings(
+  settings: { timezone: string },
+  bot: ComputerBot = null,
+): Promise<ComputerStatusView> {
+  const args = { query: computerQuery(bot), json: settings };
   const res = await rpc.api.bots.computer.settings.$put(args);
   if (!res.ok) throw await failure(res);
   return res.json();
@@ -544,7 +794,7 @@ export async function updateComputerSettings(settings: { timezone: string }): Pr
 
 // ─── The computer's terminal, files and processes ────────
 //
-// The member's view of the Bots' sandbox (uid agent, home /home/agent): none
+// The member's view of an Agent's sandbox (uid agent, home /home/agent): none
 // of these need the take-over lease.
 
 /**
@@ -552,8 +802,11 @@ export async function updateComputerSettings(settings: { timezone: string }): Pr
  * with its own purpose (a view ticket never opens a terminal, and vice versa).
  * Fetch it right before connecting.
  */
-export async function createComputerTerminalToken(): Promise<{ token: string; expires_at: string }> {
-  const res = await rpc.api.bots.computer['terminal-token'].$post();
+export async function createComputerTerminalToken(
+  bot: ComputerBot = null,
+): Promise<{ token: string; expires_at: string }> {
+  const args = { query: computerQuery(bot) };
+  const res = await rpc.api.bots.computer['terminal-token'].$post(args);
   if (!res.ok) throw await failure(res);
   return res.json();
 }
@@ -571,8 +824,8 @@ export const COMPUTER_UPLOAD_MAX_BYTES = 100 * 1024 * 1024;
  * relative path is under ~/work). Directories first, then by name; at most
  * 500 entries (`truncated` when there are more). Starts the computer if needed.
  */
-export async function listComputerFiles(path?: string): Promise<ComputerFileList> {
-  const query: Record<string, string> = {};
+export async function listComputerFiles(path?: string, bot: ComputerBot = null): Promise<ComputerFileList> {
+  const query: Record<string, string> = computerQuery(bot);
   if (path) query.path = path;
   const args = { query };
   const res = await rpc.api.bots.computer.files.$get(args);
@@ -581,8 +834,8 @@ export async function listComputerFiles(path?: string): Promise<ComputerFileList
 }
 
 /** Save a file from the computer to the member's device (fetched with auth, then handed to the browser). */
-export async function downloadComputerFile(path: string, filename: string): Promise<void> {
-  const res = await authFetch(`/api/bots/computer/files/download?path=${enc(path)}`);
+export async function downloadComputerFile(path: string, filename: string, bot: ComputerBot = null): Promise<void> {
+  const res = await authFetch(`/api/bots/computer/files/download?path=${enc(path)}${computerParam(bot)}`);
   if (!res.ok) throw await failure(res);
   saveBlobAs(await res.blob(), filename);
 }
@@ -595,9 +848,9 @@ export async function downloadComputerFile(path: string, filename: string): Prom
 export async function uploadComputerFile(
   dir: string,
   file: File,
-  options: { onProgress?: (loaded: number, total: number) => void; signal?: AbortSignal } = {},
+  options: { onProgress?: (loaded: number, total: number) => void; signal?: AbortSignal; bot?: ComputerBot } = {},
 ): Promise<{ entry: ComputerFileEntry; path: string }> {
-  const url = `/api/bots/computer/files/upload?dir=${enc(dir)}&name=${enc(file.name)}`;
+  const url = `/api/bots/computer/files/upload?dir=${enc(dir)}&name=${enc(file.name)}${computerParam(options.bot)}`;
   const headers = { 'Content-Type': 'application/octet-stream' };
   let res = await postWithProgress(url, file, { headers, onProgress: options.onProgress, signal: options.signal });
   if (res.status === 401) {
@@ -609,16 +862,21 @@ export async function uploadComputerFile(
   return res.json();
 }
 
-/** Long jobs started with `gh-jobs` (a Bot's run_background, or the terminal). Empty while the computer is off — never starts it. */
-export async function listComputerProcesses(): Promise<ComputerProcessView[]> {
-  const res = await rpc.api.bots.computer.processes.$get();
+/** Long jobs started with `gh-jobs` (an Agent's run_background, or the terminal). Empty while the computer is off — never starts it. */
+export async function listComputerProcesses(bot: ComputerBot = null): Promise<ComputerProcessView[]> {
+  const args = { query: computerQuery(bot) };
+  const res = await rpc.api.bots.computer.processes.$get(args);
   if (!res.ok) throw await failure(res);
   return (await res.json()).processes;
 }
 
 /** The tail of a job's log (redacted server-side); `truncated` when earlier output was cut. */
-export async function fetchComputerProcessLog(id: string, lines?: number): Promise<ComputerProcessLog> {
-  const query: Record<string, string> = {};
+export async function fetchComputerProcessLog(
+  id: string,
+  lines?: number,
+  bot: ComputerBot = null,
+): Promise<ComputerProcessLog> {
+  const query: Record<string, string> = computerQuery(bot);
   if (lines !== undefined) query.lines = String(lines);
   const args = { param: { id: enc(id) }, query };
   const res = await rpc.api.bots.computer.processes[':id'].log.$get(args);
@@ -627,8 +885,12 @@ export async function fetchComputerProcessLog(id: string, lines?: number): Promi
 }
 
 /** Stop a job (SIGTERM, then SIGKILL after 3 s). `stopped: false` = it had already ended. */
-export async function stopComputerProcess(id: string): Promise<{ id: string; stopped: boolean }> {
-  const res = await rpc.api.bots.computer.processes[':id'].stop.$post({ param: { id: enc(id) } });
+export async function stopComputerProcess(
+  id: string,
+  bot: ComputerBot = null,
+): Promise<{ id: string; stopped: boolean }> {
+  const args = { param: { id: enc(id) }, query: computerQuery(bot) };
+  const res = await rpc.api.bots.computer.processes[':id'].stop.$post(args);
   if (!res.ok) throw await failure(res);
   return res.json();
 }
@@ -710,20 +972,58 @@ export async function fetchAdminBotComputers(): Promise<AdminBotComputersView> {
   return res.json();
 }
 
-export async function adminStopComputer(userId: string): Promise<void> {
-  const res = await rpc.api.admin['bot-computers'][':userId'].stop.$post({ param: { userId: enc(userId) } });
+/**
+ * Admin actions name a computer by `computer_id` (a member's main Agent's computer
+ * has the member's id; any other Agent's is `<userId>.<botId>`).
+ */
+export async function adminStopComputer(computerId: string): Promise<void> {
+  const res = await rpc.api.admin['bot-computers'][':computerId'].stop.$post({
+    param: { computerId: enc(computerId) },
+  });
   if (!res.ok) throw await failure(res);
 }
 
-/** Back up a member's computer now (a sleeping one is started for it); the backup runs in the background. */
-export async function adminBackupComputer(userId: string): Promise<void> {
-  const res = await rpc.api.admin['bot-computers'][':userId'].backup.$post({ param: { userId: enc(userId) } });
+/** Back up a computer now (a sleeping one is started for it); the backup runs in the background. */
+export async function adminBackupComputer(computerId: string): Promise<void> {
+  const res = await rpc.api.admin['bot-computers'][':computerId'].backup.$post({
+    param: { computerId: enc(computerId) },
+  });
   if (!res.ok) throw await failure(res);
 }
 
-export async function adminResetComputer(userId: string, wipeData: boolean): Promise<void> {
-  const args = { param: { userId: enc(userId) }, json: { wipe_data: wipeData } };
-  const res = await rpc.api.admin['bot-computers'][':userId'].reset.$post(args);
+export async function adminResetComputer(computerId: string, wipeData: boolean): Promise<void> {
+  const args = { param: { computerId: enc(computerId) }, json: { wipe_data: wipeData } };
+  const res = await rpc.api.admin['bot-computers'][':computerId'].reset.$post(args);
+  if (!res.ok) throw await failure(res);
+}
+
+/** One public Agent as an administrator sees it (`GET /api/admin/agents`) — never its conversations. */
+export interface AdminPublicAgentRow {
+  id: string;
+  name: string;
+  owner: { id: string; nickname: string };
+  published_version: number | null;
+  /** Published, not paused and active. */
+  available: boolean;
+  paused: boolean;
+  /** Everyone, or how many members and groups it was published to. */
+  audience: { everyone: boolean; user_count: number; group_count: number };
+  /** Members who have a conversation with it. */
+  users: number;
+}
+
+export async function fetchAdminPublicAgents(): Promise<AdminPublicAgentRow[]> {
+  const res = await rpc.api.admin.agents.$get();
+  if (!res.ok) throw await failure(res);
+  return (await res.json()).agents;
+}
+
+/** Pause (nobody but its owner can use it) or resume a public Agent. */
+export async function setAdminPublicAgentPaused(botId: string, paused: boolean): Promise<void> {
+  const route = rpc.api.admin.agents[':id'];
+  const res = paused
+    ? await route.pause.$post({ param: { id: enc(botId) } })
+    : await route.resume.$post({ param: { id: enc(botId) } });
   if (!res.ok) throw await failure(res);
 }
 

@@ -13,20 +13,45 @@
  *   station switch, Bots turned off) drops answers to requests made before it.
  * - `running` is the only client truth for "busy" (D14): the list's
  *   `attention: 'working'` only knows the API process that served it.
+ *
+ * Other members' public Agents (spec 20261011-agent-first-class P4): the ones in the member's DMs
+ * (`shared_bots`) are kept by id in `shared` and also enter `byId` as stand-in entries
+ * (./public-agents.ts `sharedAsBot`) so names and plants render everywhere; they are never in
+ * `bots` (pickers, mentions, Settings → My Agents, new chats are the member's own). The directory
+ * of public Agents offered to the member (`GET /api/agents`, "Browse Agents") is `directory`.
+ *
+ * Rooms (spec 20261011-agent-first-class P5): conversations with other people come back with the
+ * threads (`kind: 'room'`) and are drawn in their own section (`drawerRows().rooms`); who the member
+ * is (`viewerId` — rooms name "the other people") is set by ./store.ts from the signed-in account.
+ * Who the member can start one with (`GET /api/rooms/people`) is `people`.
  */
 
+import type { RoomPerson } from '../api/bots';
 import type {
   BotConversationSummary,
+  BotMessage,
   BotRequestDecision,
   BotRequestErrorCode,
   BotRequestView,
   BotView,
   ComputerRuntimeView,
+  SharedBotView,
 } from '../shared/bots';
 import { isSproutyBot } from '../shared/bots';
 import type { DecideOutcome } from './contract';
+import {
+  feedbackBody,
+  replyableIds,
+  sharedAsBot,
+  sharedById,
+  startFailure,
+  withConversation,
+  withPageRatings,
+} from './public-agents';
 import { classifyDecision } from './requests';
-import { botsById, conversationBotIds, conversationReplyable, mergeArchived } from './vendor/web-helpers';
+import { learnableIds, roomSearchText } from './rooms';
+import { conversationCanReply } from './task-chats';
+import { botsById, conversationBotIds, mergeArchived } from './vendor/web-helpers';
 
 // ─── State ───────────────────────────────────────────────
 
@@ -37,14 +62,37 @@ export interface BotsData {
   bots: BotView[];
   /** Archived Bots: they never reply again, but history still needs their names and faces. */
   archived: BotView[];
-  /** Every Bot the member has had (archived first, active wins) — titles, speakers, cards. */
+  /**
+   * Every Bot the member has had (archived first, active wins) — titles, speakers, cards — plus the
+   * shared Agents of their DMs as stand-ins (`sharedAsBot`).
+   */
   byId: Record<string, BotView>;
+  /** Other members' public Agents in the member's DMs, by id (`GET /api/bots` `shared_bots`, P4). */
+  shared: Record<string, SharedBotView>;
+  /**
+   * Public Agents offered to the member ("Browse Agents", `GET /api/agents`), in the server's order.
+   * `directoryState`: `idle` until the first answer, `missing` on a server without them (404).
+   */
+  directory: SharedBotView[];
+  directoryState: 'idle' | 'loaded' | 'failed' | 'missing';
+  /**
+   * The member's 👍 (1) / 👎 (-1) on public Agents' replies, by message id: seeded by every
+   * conversation page (`my_ratings`, `seedRatings`) and changed by rating here.
+   */
+  ratings: Record<string, 1 | -1>;
   computer: ComputerRuntimeView | null;
   vaultAvailable: boolean;
   /** The Bot list arrived at least once — until then an unknown id is "not loaded yet", never "deleted". */
   botsLoaded: boolean;
+  /** The threads: DMs and retired groups (`GET /api/bots/conversations`). */
   conversations: BotConversationSummary[];
   conversationsLoaded: boolean;
+  /**
+   * The member's task chats (`?kind=task`, read with the threads): never drawn as threads — the
+   * drawer's chat rows (listed from the sessions) take their signals from here, and they count
+   * for the ☰ badge.
+   */
+  taskChats: BotConversationSummary[];
   /** Every conversation's pending cards (`GET /api/bots/requests?status=pending`). */
   pendingRequests: BotRequestView[];
   /** Pending cards across every conversation (the overview, the list, the pending list or WS). */
@@ -55,6 +103,14 @@ export interface BotsData {
   requestOverrides: Record<string, BotRequestView>;
   /** The thread on screen (focused + foreground), maintained by the thread engine. */
   visibleThread: string | null;
+  /** The signed-in member (./store.ts keeps it): a room is named after everyone else. Kept across `reset()`. */
+  viewerId: string | null;
+  /**
+   * Who the member can start a room with (`GET /api/rooms/people`, P5). `peopleState`: `idle` until
+   * the first answer, `missing` on a server without rooms (404) — the ways in stay away.
+   */
+  people: RoomPerson[];
+  peopleState: 'idle' | 'loaded' | 'failed' | 'missing';
   /**
    * `forbidden` — a Bots route answered 403 (feature off / not internal): the
    * surfaces close for this app session; `missing` — `GET /api/bots` 404 (an
@@ -78,6 +134,24 @@ export interface BotsState extends BotsData {
   ensureSprouty(): Promise<string | null>;
   /** Re-read the Bot list when `ids` name a Bot never seen here (made elsewhere) — once per id. */
   ensureBotsKnown(ids: readonly string[]): Promise<void>;
+  /** `GET /api/agents` — the public Agents offered to the member. */
+  loadDirectory(): Promise<void>;
+  /**
+   * The member's own DM with a public Agent (`POST /api/agents/:id/conversation`, greeting
+   * included): its session id, the Agent learned as shared at once; `gone` = no longer offered.
+   */
+  startAgentChat(
+    agent: SharedBotView,
+  ): Promise<{ ok: true; sessionId: string } | { ok: false; reason: 'gone' | 'offline' | 'failed' }>;
+  /** Rate a public Agent's reply (👍 1 / 👎 -1, optional sentence); remembered in `ratings` when it went. */
+  rateReply(sessionId: string, messageId: string, rating: 1 | -1, comment?: string | null): Promise<boolean>;
+  /** Take a rating back (`DELETE …/feedback`); gone from `ratings` when it went. */
+  unrateReply(sessionId: string, messageId: string): Promise<boolean>;
+  /** A conversation page arrived: the member's ratings of its replies (`my_ratings`, see `withPageRatings`). */
+  seedRatings(
+    messages: readonly Pick<BotMessage, 'id' | 'role' | 'bot_id'>[],
+    myRatings: Record<string, 1 | -1> | undefined,
+  ): void;
   setRunning(sessionId: string, runId: string | null): void;
   setPendingTotal(n: number): void;
   /**
@@ -87,6 +161,26 @@ export interface BotsState extends BotsData {
   noteForbidden(): void;
   /** Optimistic: `unread` → `idle`, unread count → 0. */
   noteRead(sessionId: string): void;
+  /** A task chat deleted here: gone from the signals and the badge at once. */
+  dropTaskChat(sessionId: string): void;
+  /** The signed-in member's id (./store.ts, on sign-in and account changes). */
+  setViewer(userId: string | null): void;
+  /** `GET /api/rooms/people` — who the member can talk with (a room's sheet, the drawer's way in). */
+  loadPeople(): Promise<void>;
+  /**
+   * A new room (`POST /api/rooms`) — or the pair's private chat, when it exists already. Listed at
+   * once (the drawer, the thread's title), then the list is re-read.
+   */
+  createRoom(input: {
+    user_ids: string[];
+    title?: string;
+    bot_ids?: string[];
+  }): Promise<
+    | { ok: true; conversation: BotConversationSummary }
+    | { ok: false; status: number; code: string | null; message: string }
+  >;
+  /** A conversation the member is no longer in (they left a room): gone from the lists at once. */
+  dropConversation(sessionId: string): void;
   setVisibleThread(sessionId: string | null): void;
   /** `POST /api/bots/requests/:id`, classified; `ok` is remembered in `requestOverrides`. */
   decide(request: BotRequestView, body: BotRequestDecision): Promise<DecideOutcome>;
@@ -99,16 +193,24 @@ export function initialBotsData(generation = 0): BotsData {
     bots: [],
     archived: [],
     byId: {},
+    shared: {},
+    directory: [],
+    directoryState: 'idle',
+    ratings: {},
     computer: null,
     vaultAvailable: false,
     botsLoaded: false,
     conversations: [],
     conversationsLoaded: false,
+    taskChats: [],
     pendingRequests: [],
     pendingTotal: 0,
     running: {},
     requestOverrides: {},
     visibleThread: null,
+    viewerId: null,
+    people: [],
+    peopleState: 'idle',
     error: null,
   };
 }
@@ -121,7 +223,18 @@ export type GetBots = () => BotsState;
 export interface BotsStoreDeps {
   api: Pick<
     typeof import('../api/bots'),
-    'listBots' | 'bootstrapBots' | 'listConversations' | 'listRequests' | 'decideRequest'
+    | 'listBots'
+    | 'bootstrapBots'
+    | 'listConversations'
+    | 'listTaskChats'
+    | 'listRequests'
+    | 'decideRequest'
+    | 'listAgents'
+    | 'startAgentConversation'
+    | 'rateReply'
+    | 'unrateReply'
+    | 'listRoomPeople'
+    | 'createRoom'
   > &
     Pick<typeof import('../api/chat'), 'listChatRuns'>;
   clock: { setTimeout(fn: () => void, ms: number): unknown; clearTimeout(handle: unknown): void };
@@ -182,6 +295,8 @@ export function createBotsSlice(set: SetBots, get: GetBots, deps: BotsStoreDeps)
   let pendingTimer: unknown = null;
   /** One set per `seedRuns` request in flight: the conversations whose busy mark changed meanwhile. */
   const seedsInFlight = new Set<Set<string>>();
+  /** Replies rated or taken back here: a page read before that landed must not undo it (`withPageRatings`). */
+  const ratedHere = new Set<string>();
 
   /** The thread surfaces are closed for this app session (403 / older server). */
   const closed = () => get().error === 'forbidden' || get().error === 'missing';
@@ -210,10 +325,23 @@ export function createBotsSlice(set: SetBots, get: GetBots, deps: BotsStoreDeps)
       get().archived,
       everyone.filter((bot) => bot.status !== 'active'),
     ).filter((bot) => !activeIds.has(bot.id));
+    // Someone else's public Agents in the member's DMs: names and faces only (an older server sends none).
+    // Like archived Bots, one this answer does not name is kept: a DM started here while the request
+    // was out (`startAgentChat`) must not lose its name to an answer read before it existed.
+    const ownIds = new Set(everyone.map((bot) => bot.id));
+    const shared = {
+      ...sharedById(Object.values(get().shared), ownIds),
+      // (`shared_bots` is missing from servers without public Agents: `sharedById` reads that as none.)
+      ...sharedById(result.value.shared_bots, ownIds),
+    };
     set({
       bots: active,
       archived,
-      byId: Object.fromEntries(botsById([...archived, ...active])),
+      shared,
+      byId: Object.fromEntries([
+        ...Object.values(shared).map((view) => [view.id, sharedAsBot(view)] as const),
+        ...botsById([...archived, ...active]),
+      ]),
       computer: result.value.computer,
       vaultAvailable: result.value.vault_available,
       pendingTotal: result.value.pending_requests,
@@ -225,21 +353,28 @@ export function createBotsSlice(set: SetBots, get: GetBots, deps: BotsStoreDeps)
   const conversations = coalesced(async () => {
     if (closed()) return;
     const asked = get().generation;
-    const result = await api.listConversations();
+    const [result, tasks] = await Promise.all([api.listConversations(), api.listTaskChats()]);
     if (get().generation !== asked) return;
     if (!result.ok) {
       failedWith(result.status);
       return;
     }
-    // Learn Bots made elsewhere before publishing, so no row flashes as "Deleted Bot".
-    const speakers = result.value.flatMap((row) => (row.last_message?.bot_id ? [row.last_message.bot_id] : []));
-    await get().ensureBotsKnown([...result.value.flatMap(conversationBotIds), ...speakers]);
+    // The task chats are a secondary list: a blip keeps the last answer (an older server has none).
+    const taskChats = tasks.ok ? tasks.value.filter((row) => row.kind === 'task') : get().taskChats;
+    const rows = [...result.value, ...taskChats];
+    // Learn Bots made elsewhere before publishing, so no row flashes as "Deleted Bot" — never another
+    // person's own Agent in a room (it is never in the member's list).
+    const speakers = rows.flatMap((row) =>
+      row.last_message?.bot_id ? learnableIds(row, [row.last_message.bot_id]) : [],
+    );
+    await get().ensureBotsKnown([...rows.flatMap(conversationBotIds), ...speakers]);
     if (get().generation !== asked) return;
     set({
       conversations: result.value,
+      taskChats,
       conversationsLoaded: true,
-      // As fresh as the list; the WS push overrides it between loads.
-      pendingTotal: result.value.reduce((sum, row) => sum + row.pending_requests, 0),
+      // As fresh as the lists; the WS push overrides it between loads.
+      pendingTotal: rows.reduce((sum, row) => sum + row.pending_requests, 0),
       ...recovered(),
     });
   });
@@ -257,6 +392,30 @@ export function createBotsSlice(set: SetBots, get: GetBots, deps: BotsStoreDeps)
     set({ pendingRequests: result.value, pendingTotal: result.value.length });
   });
 
+  const directory = coalesced(async () => {
+    if (closed() || get().directoryState === 'missing') return;
+    const asked = get().generation;
+    const result = await api.listAgents();
+    if (get().generation !== asked) return;
+    if (result.ok) set({ directory: result.value, directoryState: 'loaded' });
+    // A server without public Agents: the entry stays away for this app session.
+    else if (result.status === 404) set({ directory: [], directoryState: 'missing' });
+    // A blip keeps the last answer; a 403 is the threads' verdict too (they say it themselves).
+    else if (get().directoryState === 'idle') set({ directoryState: 'failed' });
+  });
+
+  const people = coalesced(async () => {
+    if (closed() || get().peopleState === 'missing') return;
+    const asked = get().generation;
+    const result = await api.listRoomPeople();
+    if (get().generation !== asked) return;
+    if (result.ok) set({ people: result.value, peopleState: 'loaded' });
+    // A server without rooms: the ways in stay away for this app session.
+    else if (result.status === 404) set({ people: [], peopleState: 'missing' });
+    // A blip keeps the last answer.
+    else if (get().peopleState === 'idle') set({ peopleState: 'failed' });
+  });
+
   const reloadPendingSoon = () => {
     if (pendingTimer !== null) clock.clearTimeout(pendingTimer);
     pendingTimer = clock.setTimeout(() => {
@@ -272,7 +431,7 @@ export function createBotsSlice(set: SetBots, get: GetBots, deps: BotsStoreDeps)
       if (before.status !== 'pending' || after.status === 'pending') return next;
       next.pendingRequests = state.pendingRequests.filter((request) => request.id !== after.id);
       next.pendingTotal = Math.max(0, state.pendingTotal - 1);
-      next.conversations = state.conversations.map((row) => {
+      const decided = (row: BotConversationSummary): BotConversationSummary => {
         if (row.session_id !== after.session_id || row.pending_requests === 0) return row;
         const left = row.pending_requests - 1;
         // The next list load says what it really is (unread / working); "needs you" is over.
@@ -281,7 +440,9 @@ export function createBotsSlice(set: SetBots, get: GetBots, deps: BotsStoreDeps)
           pending_requests: left,
           attention: left === 0 && row.attention === 'needs_you' ? 'idle' : row.attention,
         };
-      });
+      };
+      next.conversations = state.conversations.map(decided);
+      next.taskChats = state.taskChats.map(decided);
       return next;
     });
 
@@ -291,6 +452,96 @@ export function createBotsSlice(set: SetBots, get: GetBots, deps: BotsStoreDeps)
     loadBots: () => bots.run(),
     loadConversations: () => conversations.run(),
     loadPending: () => pending.run(),
+    loadDirectory: () => directory.run(),
+    loadPeople: () => people.run(),
+
+    async createRoom(input) {
+      const asked = get().generation;
+      const result = await api.createRoom(input);
+      if (!result.ok) return { ok: false, status: result.status, code: result.code, message: result.message };
+      const row = result.value;
+      if (get().generation === asked) {
+        set((state) => ({
+          conversations: [row, ...state.conversations.filter((other) => other.session_id !== row.session_id)],
+        }));
+        void get().loadConversations();
+      }
+      return { ok: true, conversation: row };
+    },
+
+    dropConversation(sessionId) {
+      set((state) =>
+        state.conversations.some((row) => row.session_id === sessionId) ||
+        state.taskChats.some((row) => row.session_id === sessionId)
+          ? {
+              conversations: state.conversations.filter((row) => row.session_id !== sessionId),
+              taskChats: state.taskChats.filter((row) => row.session_id !== sessionId),
+            }
+          : {},
+      );
+    },
+
+    setViewer(userId) {
+      if (get().viewerId !== userId) set({ viewerId: userId });
+    },
+
+    async startAgentChat(agent) {
+      const asked = get().generation;
+      const result = await api.startAgentConversation(agent.id);
+      if (!result.ok) {
+        if (get().generation === asked && result.status === 404) {
+          // No longer offered: drop it from the list now, and re-read what is.
+          set((state) => ({ directory: state.directory.filter((entry) => entry.id !== agent.id) }));
+          void get().loadDirectory();
+        }
+        return { ok: false, reason: startFailure(result) };
+      }
+      const sessionId = result.value;
+      if (get().generation === asked) {
+        // The thread names it at once; the lists catch up with its DM and greeting.
+        const view = withConversation(agent, sessionId);
+        // (The directory never lists the member's own Agents.)
+        set((state) => ({
+          shared: { ...state.shared, [view.id]: view },
+          byId: { ...state.byId, [view.id]: sharedAsBot(view) },
+          directory: state.directory.map((entry) => (entry.id === view.id ? view : entry)),
+        }));
+        void get().loadBots();
+        void get().loadConversations();
+      }
+      return { ok: true, sessionId };
+    },
+
+    async rateReply(sessionId, messageId, rating, comment) {
+      const asked = get().generation;
+      const result = await api.rateReply(sessionId, messageId, feedbackBody(rating, comment));
+      if (!result.ok) return false;
+      if (get().generation === asked) {
+        ratedHere.add(messageId);
+        set((state) => ({ ratings: { ...state.ratings, [messageId]: rating } }));
+      }
+      return true;
+    },
+
+    async unrateReply(sessionId, messageId) {
+      const asked = get().generation;
+      const result = await api.unrateReply(sessionId, messageId);
+      if (!result.ok) return false;
+      if (get().generation === asked) {
+        ratedHere.add(messageId);
+        set((state) => {
+          const ratings = { ...state.ratings };
+          delete ratings[messageId];
+          return { ratings };
+        });
+      }
+      return true;
+    },
+
+    seedRatings(messages, myRatings) {
+      const ratings = withPageRatings(get().ratings, messages, myRatings, ratedHere);
+      if (ratings !== get().ratings) set({ ratings });
+    },
 
     async seedRuns() {
       if (closed()) return;
@@ -379,13 +630,19 @@ export function createBotsSlice(set: SetBots, get: GetBots, deps: BotsStoreDeps)
     },
 
     noteRead(sessionId) {
-      set((state) => ({
-        conversations: state.conversations.map((row) =>
-          row.session_id === sessionId && row.attention === 'unread'
-            ? { ...row, attention: 'idle', ...(row.unread_count === undefined ? {} : { unread_count: 0 }) }
-            : row,
-        ),
-      }));
+      const read = (row: BotConversationSummary): BotConversationSummary =>
+        row.session_id === sessionId && row.attention === 'unread'
+          ? { ...row, attention: 'idle', ...(row.unread_count === undefined ? {} : { unread_count: 0 }) }
+          : row;
+      set((state) => ({ conversations: state.conversations.map(read), taskChats: state.taskChats.map(read) }));
+    },
+
+    dropTaskChat(sessionId) {
+      set((state) =>
+        state.taskChats.some((row) => row.session_id === sessionId)
+          ? { taskChats: state.taskChats.filter((row) => row.session_id !== sessionId) }
+          : {},
+      );
     },
 
     setVisibleThread(sessionId) {
@@ -423,11 +680,15 @@ export function createBotsSlice(set: SetBots, get: GetBots, deps: BotsStoreDeps)
       bots.reset();
       conversations.reset();
       pending.reset();
+      directory.reset();
+      people.reset();
       refreshedForIds.clear();
+      ratedHere.clear();
       sproutyOnce = null;
       if (pendingTimer !== null) clock.clearTimeout(pendingTimer);
       pendingTimer = null;
-      set(initialBotsData(get().generation + 1));
+      // Who the member is outlives the cache (./store.ts sets it again when the account changes).
+      set({ ...initialBotsData(get().generation + 1), viewerId: get().viewerId });
     },
   };
 }
@@ -456,30 +717,44 @@ export interface DrawerRows {
   moreCount: number;
   /** Conversations nobody can reply in any more (an archived DM Bot, every old group chat). */
   archived: BotConversationSummary[];
+  /**
+   * Conversations with other people (rooms, P5), server order — their own section; open for as
+   * long as the member is in one, so never archived. Collapsed like `recent`.
+   */
+  rooms: BotConversationSummary[];
+  /** Rooms hidden behind "Show All" (0 when expanded or searching). */
+  moreRooms: number;
 }
 
 /**
- * The drawer's Bots section: Sprouty pinned, then the replyable conversations
+ * The drawer's Bots section: Sprouty pinned, then the replyable conversations (a shared public
+ * Agent's DM among them while it is still offered — one no longer offered is archived)
  * in the server's order (spatial memory beats attention sorting), the first
  * `recent` of them unless expanded; read-only ones go to "Archived". A search
  * filters every part by title, member names and the last preview, and never
  * collapses. Before the Bot list arrives every DM counts as replyable; an old
  * group chat is a closed record (group chats were retired) whatever the list says.
+ * Task chats are never threads here — they are the chats section's rows; rooms (conversations
+ * with other people) are their own list, searched by their title and people.
  */
 export function drawerRows(
-  s: Pick<BotsData, 'bots' | 'byId' | 'botsLoaded' | 'conversations'>,
+  s: Pick<BotsData, 'bots' | 'byId' | 'botsLoaded' | 'conversations'> & Partial<Pick<BotsData, 'shared'>>,
   o: { query: string; expanded: boolean; recent?: number },
 ): DrawerRows {
   const limit = o.recent ?? 5;
   const query = o.query.trim().toLocaleLowerCase();
   const matches = (row: BotConversationSummary) => !query || searchText(s.byId, row).includes(query);
   const pinnedSid = sproutyDm(s);
-  const activeIds = new Set(s.bots.map((bot) => bot.id));
+  // A shared Agent's DM is open while it is still offered (without `shared`, like the widget: closed).
+  const activeIds = replyableIds(s.bots, s.shared);
   const replyable = (row: BotConversationSummary) =>
-    row.kind === 'direct' && (!s.botsLoaded || conversationReplyable(row, activeIds));
+    row.kind === 'direct' && (!s.botsLoaded || conversationCanReply(row, activeIds));
+  const threads = s.conversations.filter((row) => row.kind !== 'task' && row.kind !== 'room');
+  const rooms = s.conversations.filter((row) => row.kind === 'room' && matches(row));
+  const collapseRooms = !query && !o.expanded && rooms.length > limit;
 
-  const pinnedRow = pinnedSid ? (s.conversations.find((row) => row.session_id === pinnedSid) ?? null) : null;
-  const rest = s.conversations.filter((row) => row.session_id !== pinnedSid && matches(row));
+  const pinnedRow = pinnedSid ? (threads.find((row) => row.session_id === pinnedSid) ?? null) : null;
+  const rest = threads.filter((row) => row.session_id !== pinnedSid && matches(row));
   const open = rest.filter(replyable);
   const collapse = !query && !o.expanded && open.length > limit;
   return {
@@ -487,11 +762,14 @@ export function drawerRows(
     recent: collapse ? open.slice(0, limit) : open,
     moreCount: collapse ? open.length - limit : 0,
     archived: rest.filter((row) => !replyable(row)),
+    rooms: collapseRooms ? rooms.slice(0, limit) : rooms,
+    moreRooms: collapseRooms ? rooms.length - limit : 0,
   };
 }
 
-/** What a drawer search looks at: the group title, every member's name, the last preview. */
+/** What a drawer search looks at: the group title, every member's name, the last preview (a room: its people). */
 function searchText(byId: Record<string, BotView>, row: BotConversationSummary): string {
+  if (row.kind === 'room') return roomSearchText(row);
   const names = [...conversationBotIds(row)].map((id) => byId[id]?.name ?? '');
   return [row.title ?? '', ...names, row.last_message?.preview ?? ''].join('\n').toLocaleLowerCase();
 }
@@ -513,9 +791,33 @@ export function rowSignal(
   return { badge, needsYouCount, working: row.session_id in s.running };
 }
 
-/** Other conversations that need the member or have something unread — the ☰ badge. */
-export function attentionCount(s: Pick<BotsData, 'conversations'>, excludeSid: string | null): number {
-  return s.conversations.filter(
-    (row) => row.session_id !== excludeSid && (row.pending_requests > 0 || row.attention === 'unread'),
-  ).length;
+/** Other conversations — threads and task chats — that need the member or have something unread: the ☰ badge. */
+export function attentionCount(s: Pick<BotsData, 'conversations' | 'taskChats'>, excludeSid: string | null): number {
+  const counted = new Set<string>();
+  for (const row of [...s.conversations, ...s.taskChats]) {
+    if (row.session_id === excludeSid || counted.has(row.session_id)) continue;
+    if (row.pending_requests > 0 || row.attention === 'unread') counted.add(row.session_id);
+  }
+  return counted.size;
+}
+
+/** Can anyone still reply in this conversation (a row's sleeping plant)? Before the Bot list arrives: yes. */
+export function rowReplyable(
+  s: Pick<BotsData, 'bots' | 'botsLoaded' | 'shared'>,
+  row: Pick<BotConversationSummary, 'kind' | 'owner_bot_id'>,
+): boolean {
+  return row.kind !== 'group' && (!s.botsLoaded || conversationCanReply(row, replyableIds(s.bots, s.shared)));
+}
+
+/** The DM's shared Agent (someone else's public Agent), if the row is one. */
+export function rowSharedAgent(
+  s: Pick<BotsData, 'shared'>,
+  row: Pick<BotConversationSummary, 'kind' | 'owner_bot_id'>,
+): SharedBotView | null {
+  return (row.kind === 'direct' && row.owner_bot_id && s.shared[row.owner_bot_id]) || null;
+}
+
+/** A task chat's summary (the drawer's chat row signals), when the store has read it. */
+export function taskChatRow(s: Pick<BotsData, 'taskChats'>, sessionId: string): BotConversationSummary | null {
+  return s.taskChats.find((row) => row.session_id === sessionId) ?? null;
 }

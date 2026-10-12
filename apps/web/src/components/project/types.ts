@@ -28,6 +28,12 @@ export interface Task {
   created_by: string;
   created_at: string;
   updated_at: string;
+  /**
+   * The Agent working on it in a task chat (spec 20261011-agent-first-class P3e), and that chat.
+   * The assignee stays responsible. Absent from servers before 2026-10-12.
+   */
+  agent_id?: string | null;
+  agent_session_id?: string | null;
   children?: Task[];
 }
 

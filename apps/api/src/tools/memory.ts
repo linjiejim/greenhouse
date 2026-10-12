@@ -70,6 +70,11 @@ export interface MemoryToolContext {
      * `forget` refuse user-level rows.
      */
     userScopeAllowed: () => boolean;
+    /**
+     * The (member, Bot) partition alone: user-level memories are neither read nor written — a
+     * public Agent talking to someone other than its owner (spec 20261011-agent-first-class D6).
+     */
+    partitionOnly?: boolean;
   };
 }
 
@@ -78,7 +83,7 @@ const botScopeSchema = memorySchema.extend({
     .enum(['user', 'bot'])
     .optional()
     .describe(
-      'remember only. user: a fact about the user every Bot should know. bot: a note about how YOU do your job, visible only to you.',
+      'remember only. user: a fact about the user every Agent should know. bot: a note about how YOU do your job, visible only to you.',
     ),
 });
 type BotMemoryInput = z.infer<typeof botScopeSchema>;
@@ -123,11 +128,14 @@ function publicShape(row: UserMemoryRow) {
 
 /** Why a Bot turn may not change a memory every Bot (and every chat) reads. */
 const SHARED_MEMORY_LOCKED =
-  "This memory is shared with all of the member's Bots and chats, and it can't be changed in a turn that read outside content or wasn't started by the member. Ask the member to confirm in their next message.";
+  "This memory is shared with all of the member's Agents and chats, and it can't be changed in a turn that read outside content or wasn't started by the member. Ask the member to confirm in their next message.";
 
 export function createMemoryTool(db: DatabaseProvider, ctx: MemoryToolContext) {
-  // Read scope: user-level only, or user-level + this Bot's private notes.
-  const readScope = { botId: ctx.bot?.botId ?? null };
+  // Read scope: user-level only, or user-level + this Bot's private notes, or (public Agent) the
+  // Bot's partition with this member alone.
+  const readScope = ctx.bot?.partitionOnly
+    ? { botId: ctx.bot.botId, exact: true as const }
+    : { botId: ctx.bot?.botId ?? null };
   return tool({
     description: meta.description,
     inputSchema: ctx.bot ? botScopeSchema : memorySchema,
@@ -165,7 +173,7 @@ export function createMemoryTool(db: DatabaseProvider, ctx: MemoryToolContext) {
               ...(forced
                 ? {
                     scope_forced: true,
-                    note: 'Saved to your private notes only: this turn read outside content (or was not started by the member), so it cannot change what every Bot knows. Tell the member; they can share it under Settings → Memory.',
+                    note: 'Saved to your private notes only: this turn read outside content (or was not started by the member), so it cannot change what every Agent knows. Tell the member; they can share it under Settings → Memory.',
                   }
                 : {}),
             };

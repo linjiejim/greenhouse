@@ -110,6 +110,24 @@ export function hostOf(url: string | null | undefined): string | null {
   return host || null;
 }
 
+/**
+ * A `task_start` card in `chat` mode (spec 20261011-agent-first-class D25): approving opens a new
+ * task chat — answered by `agent` (null: the Agent that proposed it) — instead of a background
+ * task. An older server never sends the mode: absent = background.
+ */
+export function chatStart(r: Pick<BotRequestView, 'kind' | 'payload'>): { agent: string | null } | null {
+  if (r.kind !== 'task_start') return null;
+  const payload = r.payload as BotTaskStartPayload;
+  if (payload?.mode !== 'chat') return null;
+  return { agent: text(payload.agent_id) || null };
+}
+
+/** The chat a resolved chat-mode card opened (`result.conversation_id`), null otherwise. */
+export function openedChat(r: Pick<BotRequestView, 'kind' | 'payload' | 'status' | 'result'>): string | null {
+  if (r.status !== 'resolved' || !chatStart(r)) return null;
+  return text(r.result?.conversation_id) || null;
+}
+
 /** What a card is about, for receipts and the sheet's title line; null when nothing is. */
 export function cardSubject(r: Pick<BotRequestView, 'kind' | 'payload'>): string | null {
   const kind = cardKind(r);
@@ -136,7 +154,7 @@ export function cardTitle(r: Pick<BotRequestView, 'kind' | 'payload'>, name: str
     case 'approval':
       return { key: 'bots.card.approvalTitle', vars: { name } };
     case 'task_start':
-      return { key: 'bots.card.taskTitle', vars: { name } };
+      return { key: chatStart(r) ? 'bots.card.chatTitle' : 'bots.card.taskTitle', vars: { name } };
     case 'bot_create':
       return { key: 'bots.card.createTitle', vars: { name } };
     case 'instructions_update':
@@ -302,6 +320,7 @@ export function buttonLabel(r: Pick<BotRequestView, 'kind' | 'payload'>, id: Car
     }
     case 'approve': {
       if (kind === 'handback') return { key: 'bots.card.handBack' };
+      if (chatStart(r)) return { key: 'bots.card.openChat' };
       const approve: Partial<Record<CardKind, TranslationKey>> = {
         task_start: 'bots.card.start',
         bot_create: 'bots.card.create',
@@ -339,7 +358,7 @@ export function alwaysSite(payload: Pick<BotApprovalPayload, 'details'>): string
  * expired / canceled neutral. One label per settled state, as the web's
  * `settledLabelKey` (approvals also say whether "always" was chosen).
  */
-export function statusBadge(r: Pick<BotRequestView, 'kind' | 'status' | 'result'>): {
+export function statusBadge(r: Pick<BotRequestView, 'kind' | 'status' | 'result' | 'payload'>): {
   key: TranslationKey;
   tone: BadgeTone;
 } {
@@ -352,7 +371,11 @@ export function statusBadge(r: Pick<BotRequestView, 'kind' | 'status' | 'result'
   }
   if (r.kind === 'takeover') return { key: 'bots.card.handedBack', tone: 'green' };
   if (r.kind === 'bot_create') return { key: 'bots.card.createdShort', tone: 'green' };
-  if (r.kind === 'task_start') return { key: 'bots.card.started', tone: 'green' };
+  if (r.kind === 'task_start') {
+    // a chat-mode card opened a separate chat instead of starting a background task
+    const mode = (r.payload as { mode?: unknown } | null)?.mode;
+    return { key: mode === 'chat' ? 'bots.card.chatStarted' : 'bots.card.started', tone: 'green' };
+  }
   return { key: 'bots.card.done', tone: 'green' };
 }
 
@@ -389,7 +412,9 @@ export function settledReceipt(
         ? titled('bots.card.allowedAlways', 'bots.card.receipt.allowedAlways')
         : titled('bots.card.allowed', 'bots.card.receipt.allowed');
     case 'task_start':
-      return titled('bots.card.started', 'bots.card.receipt.started');
+      return chatStart(r)
+        ? titled('bots.card.receipt.chatOpened', 'bots.card.receipt.chatOpenedTitle')
+        : titled('bots.card.started', 'bots.card.receipt.started');
     case 'bot_create': {
       const made = typeof r.result?.bot_id === 'string' ? botName?.(r.result.bot_id) : undefined;
       return { key: 'bots.card.created', vars: { bot: made ?? subject ?? '' } };

@@ -4,7 +4,8 @@
  * the engine shares structure, so while a reply streams only the row whose
  * message / segment / send / card changed re-renders.
  *
- *  - `UserRow` — a member message (copy only: Bots messages can't be edited).
+ *  - `UserRow` — a member message (copy; in a task chat its last one can be
+ *    edited — spec 20261011-agent-first-class D23 — a thread's never).
  *  - `ReplyRow` — a Bot reply, live or persisted, as one component type so
  *    the persisted reply takes over the live row's instance when a run
  *    settles (no end-of-turn jump). Persisted: under its speaker line (on a
@@ -16,14 +17,18 @@
  *    first words the speaker line arrives, its plant talking. A failed turn
  *    offers Retry ("@Name Please try that again."). Answers from its cards go
  *    back to that Bot (D22). It draws nothing for a turn with nothing on
- *    screen.
+ *    screen. A task chat's last reply offers Regenerate (answer the last
+ *    member message again). A persisted reply of someone else's public Agent
+ *    offers 👍 / 👎 in its menu (`rating`, spec 20261011-agent-first-class D38).
+ *  - `PersonRow` — another person's message in a room (P5): on the left, their
+ *    initial and name over the first of their messages in a row.
  *  - `PendingRow` — a send in flight with its Messages-style caption.
  *  - `RequestRow` — a "needs you" card (`RequestCard`); one the thread holds
  *    no state for (an old card past the detail window) reads as its line.
  */
 
 import React, { memo, useCallback, useMemo } from 'react';
-import { View } from 'react-native';
+import { View, type ColorValue } from 'react-native';
 import { space } from '../../../theme';
 import { AiMessage, UserMessage, type MessageAction } from '../../../chat/message';
 import type { ChatMessage } from '../../../chat/model';
@@ -66,14 +71,34 @@ export interface ReplyRowProps {
 export const UserRow = memo(function UserRow({
   message,
   readOnly,
+  editable = false,
   onAction,
 }: {
   message: BotMessage;
   readOnly: boolean;
+  /** A task chat's last member message, while nothing runs (a thread's are a record: never). */
+  editable?: boolean;
   onAction: (msg: ChatMessage, action: MessageAction) => void;
 }) {
-  // Bots messages can't be edited (the server answers 409) — copy only.
-  return <UserMessage msg={fromBotMessage(message)} readOnly={readOnly} onAction={onAction} allowEdit={false} />;
+  return <UserMessage msg={fromBotMessage(message)} readOnly={readOnly} onAction={onAction} allowEdit={editable} />;
+});
+
+/** Another person's message in a room: theirs, on the left; `header` = their name over it. */
+export const PersonRow = memo(function PersonRow({
+  message,
+  name,
+  tint,
+  header,
+  onAction,
+}: {
+  message: BotMessage;
+  name: string;
+  tint: ColorValue;
+  header: boolean;
+  onAction: (msg: ChatMessage, action: MessageAction) => void;
+}) {
+  const author = useMemo(() => ({ name, tint, header }), [name, tint, header]);
+  return <UserMessage msg={fromBotMessage(message)} readOnly onAction={onAction} allowEdit={false} author={author} />;
 });
 
 /**
@@ -97,6 +122,9 @@ export const ReplyRow = memo(function ReplyRow({
   followUp,
   nameHint,
   onRename,
+  canRegenerate = false,
+  onRegenerate,
+  rating,
   header,
   bot,
   readOnly,
@@ -120,6 +148,11 @@ export const ReplyRow = memo(function ReplyRow({
   /** Under the main Bot's greeting while it still has its built-in name (./rows/sprouty-name.tsx). */
   nameHint?: BotView;
   onRename?: (botId: string) => void;
+  /** A task chat's last reply, while nothing runs: Regenerate in its menu (and Retry on its error). */
+  canRegenerate?: boolean;
+  onRegenerate?: () => void;
+  /** A public Agent's persisted reply: 👍 / 👎 in its menu, the rating given here filled (undefined = none). */
+  rating?: 1 | -1 | null;
 }) {
   const botId = segment ? segment.botId : (persistedBotId ?? null);
   const onReply = useCallback((text: string) => onReplyAs(botId, text), [onReplyAs, botId]);
@@ -166,16 +199,17 @@ export const ReplyRow = memo(function ReplyRow({
         quiet
         header={speaker}
         msg={shown}
-        isLatest={!!segment}
+        isLatest={!!segment || canRegenerate}
         readOnly={readOnly}
         followUp={followUp}
         onOpenTools={handlers.onOpenTools}
         onOpenReasoning={handlers.onOpenReasoning}
         onOpenRefs={handlers.onOpenRefs}
         onAction={handlers.onAction}
-        onRetry={segment ? onRetry : noop}
+        onRetry={segment ? onRetry : canRegenerate && onRegenerate ? onRegenerate : noop}
         onReply={onReply}
-        allowRegenerate={false}
+        allowRegenerate={!segment && canRegenerate}
+        rating={segment ? undefined : rating}
       />
       <MemoryReceipts
         receipts={receipts}

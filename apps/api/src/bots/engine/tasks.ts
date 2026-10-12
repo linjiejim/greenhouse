@@ -234,6 +234,32 @@ export async function listMemberTasks(
   return taskViews(db, runs.slice(0, limit));
 }
 
+/** At most this many rows in the member-wide history (the conversations sidebar's "Background" group). */
+export const MEMBER_TASKS_MAX = 50;
+
+/**
+ * Every Bot task of the member, across conversations (spec 20261011-agent-first-class §3.2):
+ * what the conversations sidebar lists under "Background", each row naming the conversation
+ * that started it (`conversation_id`) so a click lands where the report arrives. Live tasks
+ * first, then the most recent finished ones, however old.
+ */
+export async function listMemberTaskHistory(
+  db: DatabaseProvider,
+  userId: string,
+  limit = 20,
+): Promise<Array<BotTaskView & { conversation_id: string }>> {
+  const { items } = await db.runtime.listRuns({ owner_user_id: userId, kinds: ['subagent'], limit: 100 });
+  const views = (
+    await taskViews(
+      db,
+      items.filter((run) => isBotTaskRun(run) && taskConversationId(run)),
+    )
+  ).filter((view): view is BotTaskView & { conversation_id: string } => Boolean(view.conversation_id));
+  const live = (view: BotTaskView) => (['queued', 'running', 'waiting'].includes(view.status) ? 0 : 1);
+  views.sort((a, b) => live(a) - live(b) || b.created_at.localeCompare(a.created_at));
+  return views.slice(0, Math.max(1, Math.min(limit, MEMBER_TASKS_MAX)));
+}
+
 /** Cancel through the Runtime command fence (same semantics as Execution Center). */
 export async function cancelBotTask(
   db: DatabaseProvider,

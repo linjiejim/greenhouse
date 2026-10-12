@@ -299,3 +299,87 @@ export function PolicyChoice({
     </div>
   );
 }
+
+// ─── Which Agents may use it ─────────────────────────────
+
+/** An Agent the member can pick for a login (archived ones only while a login still names them). */
+export interface VaultAgentOption {
+  id: string;
+  name: string;
+  archived: boolean;
+}
+
+/** The form value of a login's Agent scope: null = every Agent, else the chosen ones (spec 20261011-agent-first-class P3c). */
+export function asAgentScope(value: unknown): string[] | null {
+  return Array.isArray(value) ? value.filter((id): id is string => typeof id === 'string') : null;
+}
+
+/**
+ * "Which Agents can use it": every Agent (the default), or only the ones ticked. An
+ * archived Agent a login still names stays listed (marked) so it can be unticked.
+ */
+export function AgentScopeField({
+  value,
+  onChange,
+  agents,
+  disabled,
+}: {
+  value: unknown;
+  onChange: (value: string[] | null) => void;
+  agents: readonly VaultAgentOption[];
+  disabled?: boolean;
+}) {
+  const t = useT();
+  const scope = asAgentScope(value);
+  const options = agents.filter((agent) => !agent.archived || scope?.includes(agent.id));
+  const choices: Array<{ key: 'all' | 'only'; label: string }> = [
+    { key: 'all', label: t('botsVault.agentsAll') },
+    { key: 'only', label: t('botsVault.agentsOnly') },
+  ];
+  const current = scope === null ? 'all' : 'only';
+  return (
+    <div className="space-y-2" data-testid="vault-field-agents">
+      <div className="grid gap-2 sm:grid-cols-2" role="group">
+        {choices.map((choice) => {
+          const selected = current === choice.key;
+          return (
+            <button
+              key={choice.key}
+              type="button"
+              disabled={disabled}
+              aria-pressed={selected}
+              onClick={() => onChange(choice.key === 'all' ? null : (scope ?? []))}
+              data-testid={`vault-agents-${choice.key}`}
+              className={`rounded-lg border px-3 py-2 text-left text-sm transition-colors disabled:opacity-50 ${
+                selected
+                  ? 'border-primary-edge bg-primary-subtle font-medium text-primary-fg-strong'
+                  : 'border-edge bg-surface-raised text-fg-secondary hover:bg-surface-sunken'
+              }`}
+            >
+              {choice.label}
+            </button>
+          );
+        })}
+      </div>
+      {scope !== null && (
+        <div className="flex flex-col gap-1.5 rounded-lg border border-edge px-3 py-2">
+          {options.map((agent) => (
+            <Checkbox
+              key={agent.id}
+              checked={scope.includes(agent.id)}
+              disabled={disabled}
+              onChange={(event) =>
+                onChange(event.target.checked ? [...scope, agent.id] : scope.filter((id) => id !== agent.id))
+              }
+              label={
+                <span className="text-sm" data-testid={`vault-agent-${agent.id}`}>
+                  {agent.archived ? t('bots.archivedName', { name: agent.name }) : agent.name}
+                </span>
+              }
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}

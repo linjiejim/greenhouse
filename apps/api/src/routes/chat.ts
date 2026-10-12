@@ -26,9 +26,11 @@ import {
   filterBrowserSessionToolIds,
   filterUnattendedToolIds,
   LAZY_TOOL_IDS,
+  profileToolIdentity,
   resolveEffectiveTools,
 } from '../agent-runtime/tool-resolution.js';
 import { createClientActionBridge } from '../tools/client-action-bridge.js';
+import { runInAgentScope } from '../platform/agent-scope.js';
 import type { ClientActionBridge } from '../tools/client-action-bridge.js';
 import { createClientActionTools } from '../tools/client-actions.js';
 import type { ChatRequestBody, ChatRequestMessage } from '@greenhouse/types/api';
@@ -60,7 +62,7 @@ import {
 import type { EngineMessage } from '@greenhouse/agent-core';
 import { inlineImagesForVision } from '../chat/vision.js';
 import { generateSessionTitle } from '../llm/title.js';
-import { canWriteSession } from '../sessions/access.js';
+import { canPostToSession, canWriteSession } from '../sessions/access.js';
 import { formatAmbientContextPrompt } from '../chat/ambient-context.js';
 import { admitTurnEnvironment } from '../chat/turn-environment.js';
 import type { AmbientContextEnvelope } from '@greenhouse/types/agent-context';
@@ -231,7 +233,8 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
             // Continuing a chat mutates the session and reads its full history.
             // Sharing grants read-only inbox access, so only the owner or super may
             // reach addMessage/buildChatMessages/title updates below.
-            if (!canWriteSession(authUser, session)) {
+            // The owner — or, in a room (several people, P5), any of its people.
+            if (!(await canPostToSession(authUser, session))) {
               return c.json({ error: 'Session not found' }, 404);
             }
 
@@ -240,7 +243,7 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
             // trace, tools). canWriteSession above is owner-only for this channel.
             if (session.channel === BOTS_SESSION_CHANNEL) {
               if (!(await userHasFeature(userId, userRole, 'bots'))) {
-                return c.json({ error: 'Bots are not enabled for this account' }, 403);
+                return c.json({ error: 'Agents are not enabled for this account' }, 403);
               }
               if (regenerationTargetId) {
                 return c.json({ error: 'Replies in a Bots conversation cannot be regenerated' }, 409);
@@ -278,11 +281,39 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
                   409,
                 );
               }
-              if (replyState === 'bot_archived') {
+              if (replyState === 'agent_unavailable') {
                 return c.json(
-                  { error: 'This Bot was archived — its conversation is read-only', code: replyState },
+                  { error: 'This Agent is no longer available to you — its owner unpublished it', code: replyState },
                   409,
                 );
+              }
+              if (replyState === 'bot_archived') {
+                return c.json(
+                  { error: 'This Agent was archived — its conversation is read-only', code: replyState },
+                  409,
+                );
+              }
+              // A room (P5): nobody answers by default and a run is its asker's. Every message is
+              // queued with its author; only the @-mentions this author may make are kept, and the
+              // drain answers them in a run of theirs (participants follow it via chat:run).
+              const botsConversation = await botsDb.bots.getConversation(userId, sessionId);
+              if (botsConversation?.kind === 'room') {
+                const { addressableMentions } = await import('../bots/room-access.js');
+                await botsEngine.deliverToConversation(sessionId, {
+                  kind: 'user_message',
+                  ...botsMessage,
+                  mentions: await addressableMentions(botsDb, userId, botsConversation, rawMentions),
+                  author_user_id: userId,
+                });
+                return c.json({ queued: true as const }, 202);
+              }
+              // A task chat remembers the composer's model (spec 20261011-agent-first-class D22);
+              // an unknown or retired id is ignored, as on the chat path.
+              if (typeof body.model === 'string' && body.model && isChatModelAllowed(body.model)) {
+                const conversation = await botsDb.bots.getConversation(userId, sessionId);
+                if (conversation?.kind === 'task' && conversation.model_id !== body.model) {
+                  await botsDb.bots.updateTaskConversation(userId, sessionId, { modelId: body.model });
+                }
               }
               const botsRun = await botsEngine.claimBotsRun(botsDb, sessionId, userId);
               if (!botsRun) {
@@ -577,8 +608,7 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
               sessionId,
               workspaceId: body.workspace_id,
               profileId: profile.id,
-              botId: profile.identity?.botId ?? null,
-              mcpConnectors: profile.mcp_connectors ?? null,
+              ...profileToolIdentity(profile),
               runtimeRunId: runtimeTrace?.runId ?? null,
               toolRegistry,
               unattended: unattendedExecution,
@@ -700,11 +730,18 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
           // transport buffer remains detached.
 
           const maxSteps = profile.max_steps ?? 12;
+          // A Chat turn that runs as one of the member's Agents (its identity) acts as that Agent:
+          // platform audit and usage name it (platform/agent-scope.ts).
+          const agentBotId = profile.identity?.botId ?? null;
+          const turnRun = run;
+          const inAgentScope = <T>(fn: () => T): T =>
+            agentBotId ? runInAgentScope({ botId: agentBotId, sessionId: sessionId ?? null }, fn) : fn();
           const providerAttemptHook = createProviderAttemptBudgetHook({
             db: getDb(),
             userId,
             caller: 'chat',
             profileId,
+            botId: agentBotId,
             ...(sessionId ? { sessionId } : {}),
             runId: runtimeTrace?.runId ?? run.runId,
             budgetPool,
@@ -746,44 +783,48 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
           });
 
           // ── Create chat stream via shared engine ──
-          const stream = await createChatStreamAsync({
-            profile,
-            messages: engineMessages,
-            tools: executionToolRegistry,
-            systemPrompt,
-            prepareStepMessages: maskToolResults,
-            ...(sessionId ? { sessionId } : {}),
-            // Server-side stop / graceful shutdown aborts the loop; the SDK
-            // surfaces it as an `abort` part handled in the pump.
-            abortSignal: run.signal,
-            providerAttemptHook,
-            // Validated above against the catalog's chat-selectable set, so an
-            // arbitrary model id can never reach the engine.
-            ...(requestedModel ? { modelOverride: requestedModel } : {}),
-          });
+          const stream = await inAgentScope(() =>
+            createChatStreamAsync({
+              profile,
+              messages: engineMessages,
+              tools: executionToolRegistry,
+              systemPrompt,
+              prepareStepMessages: maskToolResults,
+              ...(sessionId ? { sessionId } : {}),
+              // Server-side stop / graceful shutdown aborts the loop; the SDK
+              // surfaces it as an `abort` part handled in the pump.
+              abortSignal: turnRun.signal,
+              providerAttemptHook,
+              // Validated above against the catalog's chat-selectable set, so an
+              // arbitrary model id can never reach the engine.
+              ...(requestedModel ? { modelOverride: requestedModel } : {}),
+            }),
+          );
           const { streamResult, dsmlRecoveries, startTime, modelId } = stream;
 
           // ── Detached pump: generation + persistence outlive this response ──
-          void pumpChatTurn({
-            run,
-            streamResult,
-            collectors: createCollectors(),
-            dsmlRecoveries,
-            startTime,
-            modelId,
-            profile,
-            systemPrompt,
-            chatMessages: engineMessages,
-            sessionId: sessionId ?? undefined,
-            userId,
-            userLocale: user?.locale ?? undefined,
-            titlePromise,
-            clientActionBridge,
-            replaceAssistantMessageId: regenerationTargetId,
-            expectedTail: expectedAssistantTail,
-            providerAttemptHook,
-            runtimeTrace,
-          });
+          void inAgentScope(() =>
+            pumpChatTurn({
+              run: turnRun,
+              streamResult,
+              collectors: createCollectors(),
+              dsmlRecoveries,
+              startTime,
+              modelId,
+              profile,
+              systemPrompt,
+              chatMessages: engineMessages,
+              sessionId: sessionId ?? undefined,
+              userId,
+              userLocale: user?.locale ?? undefined,
+              titlePromise,
+              clientActionBridge,
+              replaceAssistantMessageId: regenerationTargetId,
+              expectedTail: expectedAssistantTail,
+              providerAttemptHook,
+              runtimeTrace,
+            }),
+          );
         } catch (err) {
           if (runtimeTrace) {
             try {
@@ -842,7 +883,8 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
         if (!authUser) return c.json({ error: 'Authentication required' }, 401);
         const sessionId = c.req.param('sessionId');
         const session = await getDb().sessions.getById(sessionId);
-        if (!session || !canWriteSession(authUser, session)) {
+        // A room's people all follow its live run (whoever asked).
+        if (!session || !(await canPostToSession(authUser, session))) {
           return c.json({ error: 'Session not found' }, 404);
         }
         const run = chatRunRegistry.get(sessionId);
@@ -856,6 +898,8 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
             status: run.status,
             started_at: run.startedAt,
             next_seq: run.nextSeq,
+            // Whose run it is: in a room (P5) only the asker may stop it.
+            user_id: run.userId,
           },
         });
       })
@@ -866,7 +910,7 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
         if (!authUser) return c.json({ error: 'Authentication required' }, 401);
         const sessionId = c.req.param('sessionId');
         const session = await getDb().sessions.getById(sessionId);
-        if (!session || !canWriteSession(authUser, session)) {
+        if (!session || !(await canPostToSession(authUser, session))) {
           return c.json({ error: 'Session not found' }, 404);
         }
         const run = chatRunRegistry.get(sessionId);
@@ -921,8 +965,9 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
         if (!authUser) return c.json({ error: 'Authentication required' }, 401);
         const sessionId = c.req.param('sessionId');
         const session = await getDb().sessions.getById(sessionId);
-        // Owner only, super included: nobody interrupts someone else's Bots.
-        if (!session || session.user_id !== authUser.id) {
+        // Owner only, super included: nobody interrupts someone else's Bots. In a room the run is
+        // its asker's: they (and only they — checked below) may soft-stop it.
+        if (!session || !(await canPostToSession(authUser, session))) {
           return c.json({ error: 'Session not found' }, 404);
         }
         if (session.channel !== BOTS_SESSION_CHANNEL) {

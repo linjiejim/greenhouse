@@ -112,6 +112,7 @@ describe.skipIf(!LIVE)('browser + vault on a live computer', { timeout: 180_000 
     return {
       db,
       userId: user.id,
+      computerId: user.id,
       botId,
       sessionId: 'live-session',
       turnId: `turn-${botId}`,
@@ -207,6 +208,7 @@ describe.skipIf(!LIVE)('browser + vault on a live computer', { timeout: 180_000 
     const fillTurn: FillTurn = {
       db,
       userId: user.id,
+      computerId: user.id,
       botId,
       botName: 'Live',
       sessionId: 'live-session',

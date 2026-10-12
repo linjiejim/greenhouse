@@ -13,7 +13,9 @@
  *   computer and stayed away over three minutes comes back watching — the
  *   server returned the lease, and the status hook follows it;
  * - the lease is followed without reconnecting (the server re-checks every
- *   input message; `viewOnly` keeps the page honest).
+ *   input message; `viewOnly` keeps the page honest);
+ * - the ticket is for one computer — `bot`'s (one per Agent, null = the main
+ *   Agent's): another `bot` is another connection.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -21,6 +23,7 @@ import { AppState } from 'react-native';
 import type { WebView, WebViewMessageEvent } from 'react-native-webview';
 import { computerViewToken, computerViewerUrl } from '../../api/bots';
 import { getApiBase } from '../../store/stations';
+import type { ComputerBot } from './target';
 import { readViewerMessage, viewerCommand, type HelperKey } from './viewer-html';
 
 /** Reconnect attempts before the member gets a manual "Reconnect". */
@@ -46,11 +49,14 @@ export interface ComputerScreenState {
 }
 
 export function useComputerScreen({
+  bot,
   enabled,
   viewOnly,
   onTapWhileWatching,
   onDisconnected,
 }: {
+  /** Whose computer (null = the main Agent's). */
+  bot: ComputerBot;
   /** The computer runs and this screen is on view. */
   enabled: boolean;
   viewOnly: boolean;
@@ -100,7 +106,7 @@ export function useComputerScreen({
     };
 
     const connect = async () => {
-      const ticket = await computerViewToken();
+      const ticket = await computerViewToken(bot);
       if (cancelled) return;
       if (!ticket.ok) {
         // Refused (computer stopped, Bots off) or offline: same recovery — refresh, back off, retry.
@@ -130,7 +136,7 @@ export function useComputerScreen({
       clearTimeout(timer);
       inject(viewerCommand('disconnect'));
     };
-  }, [ready, enabled, active, generation, inject]);
+  }, [ready, enabled, active, generation, inject, bot]);
 
   // Follow the lease without reconnecting.
   useEffect(() => {

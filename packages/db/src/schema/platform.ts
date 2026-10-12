@@ -220,6 +220,15 @@ export const platformAuditEvents = pgTable(
     actor_type: text('actor_type', { enum: ['human', 'agent', 'service', 'system', 'migration'] }).notNull(),
     on_behalf_of_user_id: text('on_behalf_of_user_id'),
     client_id: text('client_id'),
+    /**
+     * The member's Agent (`bots.id`) that acted, when the actor is one of Greenhouse's own Agents
+     * (spec 20261011-agent-first-class P3b); `on_behalf_of_user_id` is whose permissions applied.
+     */
+    agent_id: text('agent_id'),
+    /** The conversation it acted in (`sessions.id`), when there was one. */
+    session_id: text('session_id'),
+    /** The member who asked, when that is not whom the Agent acts for (a public Agent's user, P4). */
+    requested_by_user_id: text('requested_by_user_id'),
     request_id: text('request_id').notNull(),
     app_id: text('app_id').notNull(),
     module_id: text('module_id'),
@@ -236,6 +245,7 @@ export const platformAuditEvents = pgTable(
     index('idx_platform_audit_actor_created').on(table.actor_id, table.created_at),
     index('idx_platform_audit_resource_created').on(table.app_id, table.entity_id, table.record_id, table.created_at),
     index('idx_platform_audit_request').on(table.request_id),
+    index('idx_platform_audit_agent_created').on(table.agent_id, table.created_at),
   ],
 );
 

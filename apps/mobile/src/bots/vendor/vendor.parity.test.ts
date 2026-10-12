@@ -148,6 +148,10 @@ describe('file-verbatim copies', () => {
     expectFileVendored(`${WEB_BOTS}/mentions.ts`, `${MOBILE}/bots/vendor/mentions.ts`);
     expectFileVendored(`${WEB_BOTS}/bot-name.ts`, `${MOBILE}/bots/vendor/bot-name.ts`);
   });
+
+  it('room helpers (who is in a room, what it is called, which Agents are whose)', () => {
+    expectFileVendored(`${WEB_BOTS}/room.ts`, `${MOBILE}/bots/vendor/room.ts`);
+  });
 });
 
 // ─── 2. Declarations ─────────────────────────────────────
@@ -216,7 +220,7 @@ describe('declaration-verbatim copies', () => {
       ['login-request-card.tsx', ['loginValues']],
       ['instructions-update-card.tsx', ['DiffLine', 'lineDiff']],
       ['conversation-header.tsx', ['hostFromInput']],
-      ['bot-task-dock.tsx', ['ACTIVE', 'TASK_POSE', 'elapsed']],
+      ['bot-task-dock.tsx', ['ACTIVE_TASK_STATUSES', 'TASK_POSE', 'elapsed']],
       ['memory-receipts.tsx', ['MemoryReceipt', 'asRecord', 'memoryReceiptsFromCalls']],
     ];
     for (const [file, names] of table) expectDeclarationsVendored(`${WEB_BOTS}/${file}`, helpers, names);
@@ -280,7 +284,7 @@ describe('pinned tripwires', () => {
     expectPinnedText(
       `${WEB_BOTS}/conversation-header.tsx`,
       (sf) => [declaration(sf, 'useStatusLine')],
-      '4ff635b8fa565868bb9e12f6f5cafaa0e445844d31edb0ccf7b396602298dc7a',
+      '10863f6db853a4c1c4fc40c14ef587177ac7e777d27079ec1f6c70087d443894',
       'apps/mobile/src/bots/thread/status-line.ts',
     );
   });
@@ -316,7 +320,7 @@ describe('pinned tripwires', () => {
     expectPinnedText(
       `${WEB_BOTS}/request-decision.ts`,
       (sf) => [declaration(sf, 'settledLabelKey')],
-      'e608070f7d9d0ceed369ee7fce1d791150c20abf3c78cf5a7c0e30d32f397468',
+      '5ce1244a3a2e943744f063dd2a7bd809081b15a95faa1f5170e69d05f2f112db',
       'apps/mobile/src/bots/cards/decision.ts',
     );
   });

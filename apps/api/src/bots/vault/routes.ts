@@ -36,6 +36,8 @@ const writeSchema = z
     // Revoke only: the remaining "always allow on this site" grants. A grant is
     // only ever ADDED by the member's choice on an approval card.
     always_origins: z.array(z.string().max(300)).max(50).optional(),
+    // The Agents that may use the entry (their ids); null = every Agent.
+    bot_ids: z.array(z.string().max(80)).max(50).nullable().optional(),
   })
   .strict();
 

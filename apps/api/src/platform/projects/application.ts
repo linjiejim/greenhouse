@@ -360,6 +360,30 @@ const updateTask: Handler = async (request, context) => {
   return updated ? ok({ task: updated }) : fail('NOT_FOUND', 'Task not found');
 };
 
+/**
+ * Record that one of the caller's own Agents works on a task in a task chat (P3e, D32): needs
+ * write access to the task; the Agent must be the caller's and active. The assignee is untouched.
+ */
+const handTaskToAgent: Handler = async (request, context) => {
+  const payload = (request.payload ?? {}) as { taskId?: number; botId?: string; sessionId?: string };
+  if (!payload.taskId || !payload.botId || !payload.sessionId) {
+    return fail('INVALID_INPUT', 'taskId, botId and sessionId are required');
+  }
+  const task = await context.db.projects.getTaskById(payload.taskId);
+  if (!task || !(await canAccessTask(context, request.actor, task, 'write'))) {
+    return fail('NOT_FOUND', 'Task not found');
+  }
+  const userId = effectiveUserId(request.actor);
+  const bot = await context.db.bots.getBot(userId, payload.botId);
+  if (!bot || bot.status !== 'active') return fail('NOT_FOUND', 'Agent not found');
+  const updated = await context.db.projects.setTaskAgent(
+    task.id,
+    { botId: bot.id, sessionId: payload.sessionId, label: bot.name },
+    userId,
+  );
+  return updated ? ok({ task: updated }) : fail('NOT_FOUND', 'Task not found');
+};
+
 const deleteTask: Handler = async (request, context) => {
   const payload = (request.payload ?? {}) as Record<string, unknown>;
   const taskId = numberPayload(payload, 'taskId');
@@ -536,6 +560,7 @@ export const projectsRegistration: ApplicationRegistration<PlatformHandlerContex
     listTasks,
     createTask,
     updateTask,
+    handTaskToAgent,
     deleteTask,
     reorderTasks,
     moveTask,

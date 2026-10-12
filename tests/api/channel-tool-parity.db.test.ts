@@ -78,7 +78,8 @@ async function channelSets(user: UserRow) {
     allowedTools: identity.allowedTools,
     allowedWriteTools: identity.allowedWriteTools,
   });
-  const mcp = (await composeMcpContext(mcpIdentityFor(user), {})).toolIds;
+  // A real MCP request always carries its OAuth client (the Agent access tools name it).
+  const mcp = (await composeMcpContext(mcpIdentityFor(user), {}, { id: 'client-parity', name: 'Parity' })).toolIds;
   return { chat: new Set(effectiveTools), proxy: new Set(proxy), mcp: new Set(mcp) };
 }
 

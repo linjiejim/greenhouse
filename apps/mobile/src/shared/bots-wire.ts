@@ -15,6 +15,7 @@ import type {
   BotTurnReason,
   BotView,
   ComputerRuntimeView,
+  SharedBotView,
 } from './bots';
 
 // ─── packages/types/src/session.ts ───────────────────────
@@ -73,6 +74,8 @@ export interface ChatRunInfo {
   status: ChatRunStatus;
   started_at: number;
   next_seq: number;
+  /** Whose run it is (in a room only the asker may stop it). Absent from older servers. */
+  user_id?: string;
 }
 
 // ─── apps/web/src/lib/api/bots.ts ────────────────────────
@@ -85,6 +88,11 @@ export interface BotsOverview {
    * audit rows still show its real name and face (read-only).
    */
   archived_bots: BotView[];
+  /**
+   * Other members' public Agents this member talks to (spec 20261011-agent-first-class P4) —
+   * names and faces for those DMs; `available: false` once unpublished, paused or no longer offered.
+   */
+  shared_bots: SharedBotView[];
   computer: ComputerRuntimeView;
   vault_available: boolean;
   pending_requests: number;
@@ -128,6 +136,11 @@ export interface ConversationPage {
    * after a reload. Optional: without it, undo state lasts for the tab.
    */
   memory_states?: Record<string, string>;
+  /**
+   * The caller's own 👍 (1) / 👎 (-1) on the replies of this page, by message id (a public Agent's
+   * DM, P4). Omitted when there are none; a reply missing from it is not rated.
+   */
+  my_ratings?: Record<string, 1 | -1>;
 }
 
 // ─── apps/web/src/lib/stream-events.ts ───────────────────

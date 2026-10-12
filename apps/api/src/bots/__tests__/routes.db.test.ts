@@ -17,6 +17,7 @@ import { insertLegacyGroup } from './helpers/legacy-group.js';
 import { chatRunRegistry } from '../../chat/runs.js';
 import { BOT_TEMPLATES, botTemplate } from '@greenhouse/types/bots';
 import { createBotsRoutes } from '../routes.js';
+import { admitBotTask } from '../engine/tasks.js';
 
 vi.mock('../../ws/connection-manager.js', () => ({ connectionManager: { sendToUser: vi.fn() } }));
 
@@ -195,6 +196,33 @@ describe('owner scoping', () => {
   });
 });
 
+describe('background tasks across conversations', () => {
+  it('GET /tasks lists only the caller’s tasks, each with the conversation that started it', async () => {
+    const boot = await call(jim, 'POST', '/bootstrap');
+    const sprouty = await db.bots.getBot(jim.id, boot.json.bot.id as string);
+    const { runId } = await admitBotTask({
+      db,
+      userId: jim.id,
+      conversationId: boot.json.dm_session_id as string,
+      bot: sprouty!,
+      title: 'Check links',
+      brief: 'Open each link and report the broken ones.',
+      requestId: `req-${Date.now()}`,
+    });
+    const mine = await call(jim, 'GET', '/tasks');
+    expect(mine.status).toBe(200);
+    expect(mine.json.tasks).toEqual([
+      expect.objectContaining({ run_id: runId, conversation_id: boot.json.dm_session_id, title: 'Check links' }),
+    ]);
+    // Out-of-range limits fall back to a sane page instead of failing.
+    expect((await call(jim, 'GET', '/tasks?limit=0')).json.tasks).toHaveLength(1);
+    expect((await call(jim, 'GET', '/tasks?limit=abc')).json.tasks).toHaveLength(1);
+    for (const intruder of [ana, boss]) {
+      expect((await call(intruder, 'GET', '/tasks')).json.tasks).toEqual([]);
+    }
+  });
+});
+
 describe('conversations', () => {
   it('opens a Bot’s DM, lists it with attention, pages its messages with parsed events', async () => {
     const ivy = (await call(jim, 'POST', '', { name: 'Ivy' })).json.bot;
@@ -258,13 +286,13 @@ describe('conversations', () => {
     expect(added.status).toBe(200);
     expect(added.json.conversation.kind).toBe('direct');
     expect(added.json.conversation.members.map((m: { role: string }) => m.role)).toEqual(['owner', 'guest']);
-    // There is nothing to edit on a conversation any more: the PATCH route is gone.
-    const patch = await app().request(`/api/bots/conversations/${ivy.dm_session_id}`, {
-      method: 'PATCH',
-      headers: { 'x-test-user': jim.id, 'content-type': 'application/json' },
-      body: JSON.stringify({ title: 'x', allow_bot_chat: false }),
+    // A DM has nothing to edit: only a separate chat has its own title and model.
+    const patch = await call(jim, 'PATCH', `/conversations/${ivy.dm_session_id}`, {
+      title: 'x',
+      allow_bot_chat: false,
     });
-    expect(patch.status).toBe(404);
+    expect(patch.status).toBe(409);
+    expect(patch.json.code).toBe('not_task_chat');
     expect((await call(jim, 'DELETE', `/conversations/${ivy.dm_session_id}/members/${ivy.bot.id}`)).status).toBe(400);
     const rows = await db.sessions.getMessages(ivy.dm_session_id);
     expect(JSON.parse(rows.at(-1)!.bot_event!)).toMatchObject({ kind: 'joined', bot_id: sage.id, by: 'user' });
@@ -609,5 +637,47 @@ describe('Bot avatars', () => {
     });
     const picked = await db.bots.getBot(jim.id, edited.json.request.result.bot_id);
     expect(JSON.parse(picked!.avatar)).toEqual({ plant: 'lavender', color: 'lavender', faceStyle: 'sleepy' });
+  });
+});
+
+describe('task chats (separate chats on the Agents engine)', () => {
+  it('opens one with Sprouty by default, lists it only on ?kind=task, and edits its title', async () => {
+    const boot = await call(jim, 'POST', '/bootstrap');
+    const created = await call(jim, 'POST', '/conversations', { kind: 'task', title: 'Trip plan' });
+    expect(created.status).toBe(201);
+    expect(created.json.conversation).toMatchObject({
+      kind: 'task',
+      title: 'Trip plan',
+      owner_bot_id: boot.json.bot.id,
+      model_id: null,
+    });
+    const id = created.json.conversation.session_id as string;
+
+    const threads = await call(jim, 'GET', '/conversations');
+    expect(threads.json.conversations.map((c: { session_id: string }) => c.session_id)).not.toContain(id);
+    const chats = await call(jim, 'GET', '/conversations?kind=task');
+    expect(chats.json.conversations.map((c: { session_id: string }) => c.session_id)).toEqual([id]);
+    expect((await call(jim, 'GET', '/conversations?kind=group')).status).toBe(400);
+
+    const renamed = await call(jim, 'PATCH', `/conversations/${id}`, { title: 'Kyoto trip', model_id: 'not-a-model' });
+    expect(renamed.status).toBe(400);
+    const ok = await call(jim, 'PATCH', `/conversations/${id}`, { title: 'Kyoto trip' });
+    expect(ok.json.conversation.title).toBe('Kyoto trip');
+    expect((await db.sessions.getById(id))?.title).toBe('Kyoto trip');
+
+    // Another member can neither see nor change it.
+    expect((await call(ana, 'GET', `/conversations/${id}`)).status).toBe(404);
+    expect((await call(ana, 'PATCH', `/conversations/${id}`, { title: 'mine' })).status).toBe(404);
+    expect((await call(ana, 'POST', '/conversations', { kind: 'task', bot_id: boot.json.bot.id })).status).toBe(404);
+  });
+
+  it('refuses a rewind outside a separate chat and for a message that is not the last', async () => {
+    const boot = await call(jim, 'POST', '/bootstrap');
+    const dm = boot.json.dm_session_id as string;
+    const [greeting] = await db.sessions.getMessages(dm);
+    const onDm = await call(jim, 'POST', `/conversations/${dm}/rewind`, { message_id: greeting!.id });
+    expect(onDm.status).toBe(409);
+    expect(onDm.json.code).toBe('not_task_chat');
+    expect((await call(jim, 'POST', `/conversations/${dm}/rewind`, {})).status).toBe(400);
   });
 });

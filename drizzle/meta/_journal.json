@@ -162,6 +162,41 @@
       "when": 1791642611679,
       "tag": "0022_bot_computer_backups",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1791735649938,
+      "tag": "0023_agent_task_chats",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1791738215539,
+      "tag": "0024_agent_computers",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1791740219180,
+      "tag": "0025_agent_attribution",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1791742214022,
+      "tag": "0026_public_agents",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1791746786283,
+      "tag": "0027_rooms",
+      "breakpoints": true
     }
   ]
 }

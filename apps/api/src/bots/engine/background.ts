@@ -41,6 +41,7 @@ import { buildComputerTools } from '../computer/index.js';
 import { failure } from '../computer/browser-session.js';
 import { AGENT_WORKDIR, resolveAgentPath } from '../tools/computer.js';
 import { BOT_TOOL_IDS } from '../tools/meta.js';
+import { AGENT_ACCESS_TOOL_IDS } from '../external/meta.js';
 import { createReadOnlyConversationTool } from '../tools/conversation.js';
 import type { BotTurnContext } from './context.js';
 import { botsLocale, copy, type BotsLocale } from './copy.js';
@@ -60,6 +61,7 @@ export const BOT_BACKGROUND_DENYLIST: ReadonlySet<string> = new Set([
   'spawn_session',
   ...DISPATCH_TOOL_IDS,
   ...BOT_TOOL_IDS,
+  ...AGENT_ACCESS_TOOL_IDS,
 ]);
 
 /** Background tools that do NOT read the member's private data (everything else does — fail closed). */

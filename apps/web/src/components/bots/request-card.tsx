@@ -18,7 +18,7 @@ import type {
 } from '@greenhouse/types/bots';
 import { ArtifactCard, ArtifactCardActions } from '../chat/artifact-card';
 import { Button } from '../ui';
-import { Info, ListTodo, Monitor, ShieldCheck } from '../../lib/icons';
+import { Info, ListTodo, MessageSquare, Monitor, ShieldCheck } from '../../lib/icons';
 import { useT } from '../../lib/i18n';
 import { RichMarkdown } from '../rich-markdown';
 import type { BotMessage } from '../../lib/api/bots';
@@ -33,7 +33,8 @@ import {
   type RequestCardCallbacks,
 } from './request-decision';
 import { DetailList, ExpiredFooter, useSettledStatus } from './request-card-parts';
-import type { BotLookup } from './transcript-rows';
+import { InlineAction, type BotLookup } from './transcript-rows';
+import { openBotsConversation } from './navigation';
 
 export type { RequestCardComputer } from './human-check-card';
 
@@ -43,7 +44,8 @@ export interface RequestCardProps extends RequestCardCallbacks {
   fallback: BotMessage | null;
   lookup: BotLookup;
   vaultAvailable: boolean;
-  onOpenComputer: () => void;
+  /** Open the computer pane on the card's Agent's computer (`request.bot_id`: each Agent has its own). */
+  onOpenComputer: (botId: string | null) => void;
   onAskAgain: (botId: string) => void;
   /** The page's computer status, for the human-check card's embedded screen. */
   computer?: RequestCardComputer;
@@ -164,7 +166,7 @@ function PlainTakeoverCard({ request, lookup, onSettled, onStale, onOpenComputer
         footer={
           pending ? (
             <ArtifactCardActions hint={t('bots.requests.implicitHint', { name })}>
-              <Button size="sm" variant="outline" onClick={onOpenComputer}>
+              <Button size="sm" variant="outline" onClick={() => onOpenComputer(request.bot_id)}>
                 {t('bots.requests.openComputerShort')}
               </Button>
               {handBack}
@@ -189,7 +191,7 @@ function PlainTakeoverCard({ request, lookup, onSettled, onStale, onOpenComputer
       footer={
         pending ? (
           <ArtifactCardActions hint={t('bots.requests.handBackHint', { name })}>
-            <Button size="sm" variant="outline" onClick={onOpenComputer}>
+            <Button size="sm" variant="outline" onClick={() => onOpenComputer(request.bot_id)}>
               {t('bots.requests.takeOver')}
             </Button>
             {handBack}
@@ -209,11 +211,22 @@ function TaskStartCard({ request, lookup, onSettled, onStale, onAskAgain }: Know
   const { busy, decide } = useRequestDecision(request, { onSettled, onStale });
   const { pending, expired, status } = useSettledStatus(request);
   const [open, setOpen] = useState(false);
+  // `chat` mode (spec 20261011-agent-first-class D25): approving opens a separate chat the member
+  // keeps talking in — answered by `agent_id` when the proposer picked another Agent.
+  const chat = payload.mode === 'chat';
+  const answeredBy =
+    chat && payload.agent_id && payload.agent_id !== request.bot_id
+      ? (lookup(payload.agent_id)?.name ?? t('bots.deletedBot'))
+      : null;
+  const openedChat =
+    chat && request.status === 'resolved' && typeof request.result?.conversation_id === 'string'
+      ? request.result.conversation_id
+      : null;
 
   return (
     <ArtifactCard
-      icon={<ListTodo size={14} />}
-      title={t('bots.requests.taskTitle', { name })}
+      icon={chat ? <MessageSquare size={14} /> : <ListTodo size={14} />}
+      title={t(chat ? 'bots.requests.chatTitle' : 'bots.requests.taskTitle', { name })}
       meta={payload.title}
       status={status}
       tone={pending ? 'accent' : 'neutral'}
@@ -221,13 +234,21 @@ function TaskStartCard({ request, lookup, onSettled, onStale, onAskAgain }: Know
       onToggle={pending || expired ? undefined : () => setOpen((value) => !value)}
       footer={
         pending ? (
-          <ArtifactCardActions>
+          <ArtifactCardActions hint={answeredBy ? t('bots.requests.chatWith', { name: answeredBy }) : undefined}>
             <Button size="sm" variant="ghost" disabled={busy} onClick={() => void decide({ decision: 'deny' })}>
               {t('bots.requests.cancel')}
             </Button>
             <Button size="sm" disabled={busy} onClick={() => void decide({ decision: 'approve' })}>
-              {t('bots.requests.start')}
+              {t(chat ? 'bots.requests.openChat' : 'bots.requests.start')}
             </Button>
+          </ArtifactCardActions>
+        ) : openedChat ? (
+          <ArtifactCardActions>
+            <span className="text-xs">
+              <InlineAction onClick={() => openBotsConversation(openedChat)} testId="bots-request-open-chat">
+                {t('bots.requests.goToChat')}
+              </InlineAction>
+            </span>
           </ArtifactCardActions>
         ) : (
           <ExpiredFooter request={request} onAskAgain={onAskAgain} />

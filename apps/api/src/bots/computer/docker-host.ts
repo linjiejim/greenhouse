@@ -24,7 +24,13 @@ import {
   type HomeRestore,
   type HostInstance,
 } from './host.js';
-import { computerContainerName, computerLabels, LABEL_USER, namespaceFilter } from './namespace.js';
+import {
+  computerContainerName,
+  computerIdFromLabels,
+  computerLabels,
+  namespaceFilter,
+  parseComputerId,
+} from './namespace.js';
 
 /** `docker stop -t` — gh-computer closes the browser first, so its profile reaches the volume. */
 const STOP_TIMEOUT_SEC = 5;
@@ -69,10 +75,10 @@ export function createDockerHost(docker: DockerClient, opts: { now?: () => numbe
       // A row a hosted computer used last holds its sandbox id: the container gets this host's own name.
       const name = row.container_name.startsWith('gh-computer-')
         ? row.container_name
-        : computerContainerName(config.namespace, row.user_id);
+        : computerContainerName(config.namespace, parseComputerId(row.id));
       // No home volume although the member had a computer (another driver before): make it from the newest backup.
       const restoreFrom = spec.restore && !(await docker.volumeExists(row.volume_name)) ? await spec.restore() : null;
-      await docker.volumeCreate(row.volume_name, computerLabels(config.namespace, row.user_id));
+      await docker.volumeCreate(row.volume_name, computerLabels(config.namespace, row.id));
       if (restoreFrom) {
         const startedAt = now();
         try {
@@ -87,7 +93,7 @@ export function createDockerHost(docker: DockerClient, opts: { now?: () => numbe
           );
         }
         logger.info('[bots-computer] restored a home from its backup', {
-          user_id: row.user_id,
+          computer_id: row.id,
           backup: restoreFrom.backupId,
           volume: row.volume_name,
           duration_ms: now() - startedAt,
@@ -99,7 +105,7 @@ export function createDockerHost(docker: DockerClient, opts: { now?: () => numbe
         buildComputerRunArgs({
           name,
           namespace: config.namespace,
-          userId: row.user_id,
+          computerId: row.id,
           image: config.image,
           volume: row.volume_name,
           network: config.network,
@@ -141,7 +147,7 @@ export function createDockerHost(docker: DockerClient, opts: { now?: () => numbe
       return (await docker.ps(namespaceFilter(namespace))).map(
         (container): HostInstance => ({
           ref: container.name,
-          userId: container.labels[LABEL_USER] ?? '',
+          computerId: computerIdFromLabels(container.labels) ?? '',
           running: container.state === 'running',
         }),
       );
@@ -167,12 +173,12 @@ export function createDockerHost(docker: DockerClient, opts: { now?: () => numbe
     async sweepStorage(namespace, owner) {
       let removed = 0;
       for (const volume of await docker.volumeList(namespaceFilter(namespace))) {
-        const userId = volume.labels[LABEL_USER] ?? '';
-        if ((await owner(userId))?.volume_name === volume.name) continue;
+        const computerId = computerIdFromLabels(volume.labels) ?? '';
+        if ((await owner(computerId))?.volume_name === volume.name) continue;
         const createdAt = await docker.volumeCreatedAt(volume.name);
         if (!createdAt || now() - Date.parse(createdAt) < VOLUME_GRACE_MS) continue;
         // A row created meanwhile (a member's first start) owns it now.
-        if ((await owner(userId))?.volume_name === volume.name) continue;
+        if ((await owner(computerId))?.volume_name === volume.name) continue;
         try {
           await docker.volumeRemove(volume.name);
           removed++;

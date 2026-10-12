@@ -35,6 +35,7 @@ type Request = { id: number; title: string; message?: string } & (
       defaultValue?: string;
       placeholder?: string;
       confirmLabel?: string;
+      cancelLabel?: string;
       secure?: boolean;
       resolve: (v: string | null) => void;
     }
@@ -81,6 +82,8 @@ export function promptText(opts: {
   defaultValue?: string;
   placeholder?: string;
   confirmLabel?: string;
+  /** Override the 取消 label (e.g. 跳过 when the text is optional — both still answer null). */
+  cancelLabel?: string;
   /** A secret (an API key): the field masks what is typed. */
   secure?: boolean;
 }): Promise<string | null> {
@@ -120,7 +123,7 @@ function Dialog({ request: r }: { request: Request }) {
   };
 
   const confirmLabel = r.kind === 'alert' ? tr('common.ok') : (r.confirmLabel ?? tr('common.ok'));
-  const cancelLabel = r.kind === 'confirm' ? (r.cancelLabel ?? tr('common.cancel')) : tr('common.cancel');
+  const cancelLabel = r.kind === 'alert' ? tr('common.cancel') : (r.cancelLabel ?? tr('common.cancel'));
   const destructive = r.kind === 'confirm' && r.destructive;
 
   return (

@@ -15,6 +15,12 @@ export interface ConversationSurfacePolicy {
    * where a dashboard would be noise.
    */
   showWorkbench: boolean;
+  /**
+   * With Agents on, a new conversation started here is a separate Agent chat on the Agents
+   * engine (spec 20261011-agent-first-class §5a): the full page hands it over to `#/bots?c=`.
+   * The overlay keeps the chat engine (D27): page context and client actions live there.
+   */
+  startsAgentChats: boolean;
 }
 
 /**
@@ -33,6 +39,7 @@ export const CONVERSATION_SURFACE_POLICIES: Record<ConversationSurface, Conversa
     allowTranslate: true,
     allowQuote: true,
     showWorkbench: true,
+    startsAgentChats: true,
   },
   overlay: {
     compactMessages: true,
@@ -44,5 +51,6 @@ export const CONVERSATION_SURFACE_POLICIES: Record<ConversationSurface, Conversa
     allowTranslate: false,
     allowQuote: false,
     showWorkbench: false,
+    startsAgentChats: false,
   },
 };

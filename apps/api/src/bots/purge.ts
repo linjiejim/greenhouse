@@ -7,7 +7,8 @@
  * deleted nobody can continue or delete it (`canWriteSession` is owner-only for
  * `channel='bots'`), so deleting a member takes their Bots conversations and the
  * `bottask-` background-task children along. The `bot_*` rows follow through the
- * `bot_conversations.session_id` cascade.
+ * `bot_conversations.session_id` cascade. A room they created is the exception: they leave it and
+ * the next person in it owns it (it goes only with the last one).
  *
  * A session whose runtime run is still settling (a background task asked to
  * cancel but not yet terminal) cannot be deleted yet; the hourly sweep retries
@@ -53,6 +54,16 @@ export async function purgeBotsConversations(userId: string | null): Promise<Bot
       continue;
     }
     try {
+      // A room is several people's (spec 20261011-agent-first-class P5): the member leaves it and
+      // the next person owns it; it goes only with the last one.
+      if (await db.bots.getRoom(id)) {
+        if (userId && (await db.bots.isParticipant(id, userId))) {
+          const left = await db.bots.removeParticipant(id, userId);
+          if (left.deleted) result.deleted += 1;
+          continue;
+        }
+        if (await db.bots.reassignRoomOwner(id)) continue;
+      }
       const files = await db.chatFiles.listBySession(id);
       await db.sessions.delete(id);
       result.deleted += 1;

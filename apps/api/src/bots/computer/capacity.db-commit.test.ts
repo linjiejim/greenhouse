@@ -173,7 +173,9 @@ describe('computer lifecycle across two API slots (real PostgreSQL)', () => {
   it('lets exactly one of two concurrent transitions and lease changes win', async () => {
     const userId = await seedUser();
     const row = await db.botComputers.ensure({
+      id: userId,
       user_id: userId,
+      bot_id: null,
       namespace: config.namespace,
       container_name: `gh-computer-capacity-${userId}`,
       volume_name: `gh-computer-capacity-${userId}-home`,

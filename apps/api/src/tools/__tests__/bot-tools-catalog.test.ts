@@ -9,6 +9,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { BOT_TOOL_IDS, BOT_TOOL_METAS } from '../../bots/tools/meta.js';
+import { AGENT_ACCESS_TOOL_IDS, AGENT_ACCESS_TOOL_METAS } from '../../bots/external/meta.js';
 import {
   LAZY_TOOL_IDS,
   MCP_EXPOSED_TOOL_IDS,
@@ -44,16 +45,44 @@ describe('Bot tool catalog', () => {
     expect(getGlobalToolIds().some((id) => BOT_TOOL_IDS.includes(id))).toBe(false);
   });
 
-  it('is owned by exactly the bots feature point', () => {
-    const owners = FEATURE_POINTS.filter((point) => point.toolIds.some((id) => BOT_TOOL_IDS.includes(id)));
+  it('is owned by exactly the bots feature point (with the Agent access tools)', () => {
+    const owners = FEATURE_POINTS.filter((point) =>
+      point.toolIds.some((id) => BOT_TOOL_IDS.includes(id) || AGENT_ACCESS_TOOL_IDS.includes(id)),
+    );
     expect(owners.map((p) => p.key)).toEqual(['bots']);
-    expect([...owners[0]!.toolIds].sort()).toEqual([...BOT_TOOL_IDS].sort());
+    expect([...owners[0]!.toolIds].sort()).toEqual([...BOT_TOOL_IDS, ...AGENT_ACCESS_TOOL_IDS].sort());
     expect(owners[0]!.flag).toBe('bots');
   });
 
   it('keeps every description within the per-tool budget', () => {
     for (const meta of BOT_TOOL_METAS) {
       expect(meta.description.length, meta.id).toBeLessThan(1200);
+    }
+  });
+});
+
+/**
+ * Guard: the Agent access tools (spec 20261011-agent-first-class P6, D48) exist only for callers
+ * outside Greenhouse — /api/mcp in the `agents` group and the CLI proxy — built with the caller in
+ * hand, never in the static registry, never default-on, never in an Agent's pick list.
+ */
+describe('Agent access tool catalog', () => {
+  it('pins the ids and their surfaces: listing and reading are reads, messaging is a confirmed write', () => {
+    expect(AGENT_ACCESS_TOOL_METAS.map((meta) => [meta.id, meta.surface])).toEqual([
+      ['agents_list', { proxy: 'read', mcp: 'agents' }],
+      ['agent_message', { proxy: 'write', mcp: 'agents' }],
+      ['agent_conversation_get', { proxy: 'read', mcp: 'agents' }],
+    ]);
+    for (const id of AGENT_ACCESS_TOOL_IDS) {
+      const meta = getToolMeta(id)!;
+      expect(meta.context).toBe('external');
+      expect(meta.is_global).toBe(false);
+      expect(meta.builtin).toBeUndefined();
+      expect(meta.surface?.workbench).toBeUndefined();
+      expect(meta.surface?.unattendedReplaySafe).toBeUndefined();
+      expect(LAZY_TOOL_IDS.has(id)).toBe(true);
+      expect(MCP_EXPOSED_TOOL_IDS.has(id)).toBe(true);
+      expect(meta.description.length, id).toBeLessThan(1200);
     }
   });
 });

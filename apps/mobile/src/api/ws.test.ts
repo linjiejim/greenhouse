@@ -91,12 +91,42 @@ describe('realtimeUrl / parseFrame', () => {
       runId: 'r',
       status: 'completed',
     });
+    // whose run it is (its asker), when the server says
+    expect(parseFrame('{"type":"chat:run","sessionId":"s","runId":"r","status":"running","userId":"u_ana"}')).toEqual({
+      type: 'chat:run',
+      sessionId: 's',
+      runId: 'r',
+      status: 'running',
+      userId: 'u_ana',
+    });
+    expect(parseFrame('{"type":"chat:run","sessionId":"s","runId":"r","status":"running","userId":7}')).toEqual({
+      type: 'chat:run',
+      sessionId: 's',
+      runId: 'r',
+      status: 'running',
+    });
     expect(parseFrame('{"type":"bots:conversation","sessionId":"s"}')).toEqual({ type: 'bots:conversation', sessionId: 's' });
     expect(parseFrame('{"type":"bots:attention","pending":3}')).toEqual({ type: 'bots:attention', pending: 3 });
     expect(parseFrame('{"type":"bots:computer","state":"running","controller":"user"}')).toEqual({
       type: 'bots:computer',
       state: 'running',
       controller: 'user',
+    });
+    // one computer per Agent: which one rides along (null = the main Agent's); junk ids are dropped
+    expect(
+      parseFrame('{"type":"bots:computer","state":"running","controller":"bot","computer_id":"u1.bot_a","bot_id":"bot_a"}'),
+    ).toEqual({ type: 'bots:computer', state: 'running', controller: 'bot', computer_id: 'u1.bot_a', bot_id: 'bot_a' });
+    expect(parseFrame('{"type":"bots:computer","state":"absent","controller":"bot","computer_id":"u1","bot_id":null}')).toEqual({
+      type: 'bots:computer',
+      state: 'absent',
+      controller: 'bot',
+      computer_id: 'u1',
+      bot_id: null,
+    });
+    expect(parseFrame('{"type":"bots:computer","state":"running","controller":"bot","computer_id":7,"bot_id":""}')).toEqual({
+      type: 'bots:computer',
+      state: 'running',
+      controller: 'bot',
     });
     expect(parseFrame('{"type":"bots:computer","state":"melting","controller":"user"}')).toBeNull();
     expect(parseFrame('{"type":"bots:computer","state":"running"}')).toBeNull();

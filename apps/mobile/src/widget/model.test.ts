@@ -166,6 +166,7 @@ describe('firstPendingRequest', () => {
 const copy: RowCopy = {
   deletedBot: 'Deleted Bot',
   untitledGroup: 'Group',
+  newChat: 'New chat',
   archivedName: (name) => `${name} (archived)`,
   youSaid: (text) => `You: ${text}`,
   botSaid: (name, text) => `${name}: ${text}`,

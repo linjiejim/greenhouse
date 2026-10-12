@@ -23,7 +23,7 @@ import { randomUUID } from 'node:crypto';
 import { getDb } from '@greenhouse/db';
 import { getAuthUser } from '../auth/middleware.js';
 import { contentDisposition } from '../http/content-disposition.js';
-import { canAccessSession } from '../sessions/access.js';
+import { canPostToSession, canAccessSession } from '../sessions/access.js';
 import { getObjectAtKey, presignGetUrl, putObjectAtKey } from '../storage/uploads.js';
 import { sanitizeUploadName } from '../storage/filename.js';
 import type { AppEnv } from '../app-env.js';
@@ -70,9 +70,10 @@ const chatFiles = new Hono<AppEnv>()
       }
 
       // Writing is stricter than reading: a shared session stays readable by
-      // its recipients, but only the owner may attach to it.
+      // its recipients, but only the owner may attach to it — or, in a room,
+      // any of its people (they all post there).
       const session = await getDb().sessions.getById(sessionId);
-      if (!session || session.user_id !== user.id) return c.json({ error: 'Session not found' }, 404);
+      if (!session || !(await canPostToSession(user, session))) return c.json({ error: 'Session not found' }, 404);
 
       const used = await getDb().chatFiles.totalUploadedBytes(user.id);
       if (used + file.size > MAX_USER_UPLOAD_BYTES) {

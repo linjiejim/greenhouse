@@ -27,6 +27,7 @@ import { nowIso } from '@greenhouse/utils/date';
 import type { Db } from '../client.js';
 import { runtimeVisibleTo } from '../bots-privacy.js';
 import {
+  conversationParticipants,
   messages,
   runtimeArtifacts,
   runtimeEvents,
@@ -888,7 +889,22 @@ export function createRuntimeService(db: Db) {
         const tx = rawTx as unknown as TransactionalDb;
         if (sessionId) {
           const [session] = await tx.select().from(sessions).where(eq(sessions.id, sessionId)).for('update').limit(1);
-          if (!session || session.user_id !== ownerUserId) {
+          // A room (several people, spec 20261011-agent-first-class P5) runs each turn as whoever
+          // asked: any of its participants owns their own turns' traces.
+          const participant =
+            session && session.user_id !== ownerUserId
+              ? await tx
+                  .select({ id: conversationParticipants.id })
+                  .from(conversationParticipants)
+                  .where(
+                    and(
+                      eq(conversationParticipants.session_id, sessionId),
+                      eq(conversationParticipants.user_id, ownerUserId),
+                    ),
+                  )
+                  .limit(1)
+              : [];
+          if (!session || (session.user_id !== ownerUserId && participant.length === 0)) {
             fail('runtime_not_found', 'Chat session is missing or belongs to another owner');
           }
         }

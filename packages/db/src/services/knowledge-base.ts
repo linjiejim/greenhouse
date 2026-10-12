@@ -107,6 +107,8 @@ export interface KnowledgeListOpts {
   /** Filter by the `owner_user_id` column (the document creator). */
   ownerUserId?: string | null;
   visibility?: string;
+  /** Readable by this member (owner, team, or current direct/group share), before LIMIT. */
+  readerUserId?: string;
   status?: string;
   space?: string;
   search?: string;
@@ -131,12 +133,29 @@ export interface KnowledgeSearchOpts {
   /** Filter by the `owner_user_id` column (the document creator). */
   ownerUserId?: string | null;
   visibility?: string;
+  /** Same semantics as KnowledgeListOpts.readerUserId. */
+  readerUserId?: string;
   status?: string;
   /** Same semantics as KnowledgeListOpts.folderIds. */
   folderIds?: number[];
   /** Same semantics as KnowledgeListOpts.excludeFolderIds. */
   excludeFolderIds?: number[];
   limit?: number;
+}
+
+/** SQL read gate matching resolveKbAccess, applied before ranking/pagination. */
+function readerFilter(userId: string, table: 'kb' | 'knowledge_base') {
+  const column = (name: string) => sql`${sql.identifier(table)}.${sql.identifier(name)}`;
+  return sql`(
+    ${column('owner_user_id')} = ${userId}
+    OR ${column('visibility')} = 'team'
+    OR (${column('visibility')} = 'private' AND EXISTS (
+      SELECT 1 FROM knowledge_base_shares s
+      WHERE s.doc_id = ${column('id')}
+        AND (s.shared_with = ${userId}
+          OR s.shared_with IN (SELECT 'group:' || group_id FROM group_members WHERE user_id = ${userId}))
+    ))
+  )`;
 }
 
 /**
@@ -392,6 +411,7 @@ export function createKnowledgeBaseService(db: Db) {
               AND kb.status = ${status}
             ${ownerClause}
             ${visibilityClause}
+            ${opts?.readerUserId ? sql`AND ${readerFilter(opts.readerUserId, 'kb')}` : sql``}
             ${folderClause}
             ORDER BY relevance DESC
             LIMIT ${limit}
@@ -533,6 +553,7 @@ export function createKnowledgeBaseService(db: Db) {
       const conditions = [eq(knowledgeBase.scope, scope), eq(knowledgeBase.status, status)];
       if (opts?.ownerUserId) conditions.push(eq(knowledgeBase.owner_user_id, opts.ownerUserId));
       if (opts?.visibility) conditions.push(eq(knowledgeBase.visibility, opts.visibility));
+      if (opts?.readerUserId) conditions.push(readerFilter(opts.readerUserId, 'knowledge_base'));
       if (opts?.space) conditions.push(sql`${knowledgeBase.meta}::jsonb ->> 'space' = ${opts.space}`);
       // An empty folder set matches nothing (see folderFilter) — never widen.
       if (opts?.folderIds !== undefined) {
@@ -848,6 +869,7 @@ export function createKnowledgeBaseService(db: Db) {
         AND status = ${status}
         ${ownerClause}
         ${visibilityClause}
+        ${opts.readerUserId ? sql`AND ${readerFilter(opts.readerUserId, 'knowledge_base')}` : sql``}
         ${folderClause}
         AND (
           title ILIKE ${like} OR content ILIKE ${like}

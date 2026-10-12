@@ -27,7 +27,7 @@ import type { ITheme, Terminal } from '@xterm/xterm';
 import { Button, Spinner } from '../ui';
 import { WifiOff } from '../../lib/icons';
 import { useT } from '../../lib/i18n';
-import { computerTerminalUrl, createComputerTerminalToken } from '../../lib/api/bots';
+import { computerTerminalUrl, createComputerTerminalToken, type ComputerBot } from '../../lib/api/bots';
 import { loadXterm } from '../../lib/xterm/loader';
 import { MAX_RETRIES, backoffDelay, useBackgrounded } from './computer-screen';
 
@@ -93,13 +93,15 @@ function fitQuietly(fit: FitAddon | null): void {
 }
 
 export interface ComputerTerminalProps {
+  /** Whose computer: an Agent's id, null (default) = the main Agent's. */
+  bot?: ComputerBot;
   /** The Terminal tab is the one showing: fit to the pane and follow its size. */
   active: boolean;
   /** The socket dropped — the computer may have stopped; let the owner refresh its status. */
   onDisconnected?: () => void;
 }
 
-export function ComputerTerminal({ active, onDisconnected }: ComputerTerminalProps) {
+export function ComputerTerminal({ bot = null, active, onDisconnected }: ComputerTerminalProps) {
   const t = useT();
   const hostRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
@@ -176,7 +178,7 @@ export function ComputerTerminal({ active, onDisconnected }: ComputerTerminalPro
 
     const connect = async () => {
       try {
-        const { token } = await createComputerTerminalToken();
+        const { token } = await createComputerTerminalToken(bot);
         if (cancelled) return;
         const ws = new WebSocket(computerTerminalUrl(token));
         ws.binaryType = 'arraybuffer';
@@ -232,7 +234,7 @@ export function ComputerTerminal({ active, onDisconnected }: ComputerTerminalPro
       }
       socketRef.current = null;
     };
-  }, [ready, backgrounded, generation]);
+  }, [ready, backgrounded, generation, bot]);
 
   // ── Fit to the pane while showing, and follow its size ──
   useEffect(() => {

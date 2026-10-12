@@ -9,8 +9,10 @@
  * - Capacity: idle timeout and how many computers may run at once — workspace
  *   settings `bots.computer_idle_minutes` / `bots.computer_max_running`, saved
  *   through the shared admin settings API (Runtime Config shows them too).
- * - Computers: one row per member with state, controller, activity, disk and
- *   memory; Stop and Reset (optionally wiping files and sign-ins).
+ * - Computers: one row per computer — every Agent has its own (spec
+ *   20261011-agent-first-class P3a) — with its member and Agent, state,
+ *   controller, activity, disk and memory; Stop and Reset (optionally wiping
+ *   files and sign-ins) act on that computer (`computer_id`).
  *
  * One GET feeds all three sections: the computers table's data source fetches
  * the admin view and lifts the rest into page state.
@@ -67,6 +69,18 @@ export const IDLE_MINUTES_RANGE = { min: 5, max: 240 } as const;
 export const MAX_RUNNING_RANGE = { min: 1, max: 50 } as const;
 
 type ComputerRow = ComputerAdminRow & Record<string, unknown>;
+
+type Translate = ReturnType<typeof useT>;
+
+/** Whose computer a row is: its Agent's name (the main Agent's when `bot_id` is null). */
+function agentLabel(t: Translate, row: Pick<ComputerAdminRow, 'bot_id' | 'bot_name'>): string {
+  return row.bot_id === null ? t('botsAdmin.mainAgent') : (row.bot_name ?? t('botsVault.deletedBot'));
+}
+
+/** `{agent}` + `{member}` for the confirmations and toasts that name one computer. */
+function computerNames(t: Translate, row: ComputerRow | null): { agent: string; member: string } {
+  return row ? { agent: agentLabel(t, row), member: row.nickname } : { agent: '', member: '' };
+}
 
 export function formatBytes(bytes: number | null): string {
   if (bytes == null) return '—';
@@ -168,7 +182,7 @@ export function BotComputersPanel() {
     if (!stopTarget) return;
     setActing(true);
     try {
-      await adminStopComputer(stopTarget.user_id);
+      await adminStopComputer(stopTarget.computer_id);
       toast(t('botsAdmin.stopped'), 'success');
       reload();
     } catch (err) {
@@ -182,8 +196,8 @@ export function BotComputersPanel() {
   const backUp = useCallback(
     async (row: ComputerRow) => {
       try {
-        await adminBackupComputer(row.user_id);
-        toast(t('botsAdmin.backupStarted', { name: row.nickname }), 'success');
+        await adminBackupComputer(row.computer_id);
+        toast(t('botsAdmin.backupStarted', computerNames(t, row)), 'success');
         reload();
       } catch (err) {
         toast(err instanceof Error ? err.message : t('botsAdmin.actionFailed'), 'error');
@@ -196,7 +210,7 @@ export function BotComputersPanel() {
     if (!resetTarget) return;
     setActing(true);
     try {
-      await adminResetComputer(resetTarget.user_id, wipeData);
+      await adminResetComputer(resetTarget.computer_id, wipeData);
       toast(t('botsComputer.resetDone'), 'success');
       setResetTarget(null);
       reload();
@@ -213,7 +227,7 @@ export function BotComputersPanel() {
         name: t('botsAdmin.computerEntity'),
         testId: 'bot-computers',
         dataSource,
-        idField: 'user_id',
+        idField: 'computer_id',
         icon: Server,
         columns: [
           {
@@ -225,6 +239,23 @@ export function BotComputersPanel() {
                 {row.nickname}
               </span>
             ),
+          },
+          {
+            key: 'bot_name',
+            label: t('botsAdmin.col_agent'),
+            type: 'custom',
+            render: (row) => {
+              const name = agentLabel(t, row);
+              return (
+                <span
+                  className={`block max-w-[180px] truncate text-sm ${row.bot_id === null ? 'text-fg-muted' : 'text-fg'}`}
+                  title={name}
+                  data-testid="bot-computer-agent"
+                >
+                  {name}
+                </span>
+              );
+            },
           },
           {
             key: 'state',
@@ -386,14 +417,14 @@ export function BotComputersPanel() {
         open={stopTarget !== null}
         onClose={() => setStopTarget(null)}
         onConfirm={() => void stop()}
-        title={t('botsAdmin.stopTitle', { name: stopTarget?.nickname ?? '' })}
+        title={t('botsAdmin.stopTitle', computerNames(t, stopTarget))}
         description={t('botsAdmin.stopDesc')}
         confirmLabel={t('botsAdmin.stop')}
         confirmVariant="destructive"
       />
       <ComputerResetDialog
         open={resetTarget !== null}
-        title={t('botsAdmin.resetTitleFor', { name: resetTarget?.nickname ?? '' })}
+        title={t('botsAdmin.resetTitleFor', computerNames(t, resetTarget))}
         busy={acting}
         onClose={() => setResetTarget(null)}
         onConfirm={(wipe) => void reset(wipe)}
