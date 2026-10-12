@@ -245,6 +245,7 @@ test.describe('bots — real API', () => {
     // The fixed greeting (no model call) names the Bot.
     const transcript = page.getByTestId('bots-transcript');
     await expect(transcript).toContainText(first.name);
+    await expect(page.getByText('Give it a name of your own?', { exact: false })).toHaveCount(0);
     await expect(page.getByTestId('bots-conversation-header')).toContainText(first.name);
     // The greeting is the last word, so its starters are offered — and only prefill.
     const starter = page.getByTestId('bots-starters').getByRole('button').first();
@@ -368,6 +369,76 @@ test.describe('bots — real API', () => {
     });
     expect(sent.status()).toBe(409);
   });
+});
+
+test('room receipts name human readers and distinguish Agent processing from replies', async ({ page, api }) => {
+  const { user } = await (await api.get('/api/auth/me')).json();
+  const state = freshState();
+  state.bots = [SAGE, FERN];
+  const room = summary('receipt-room', 'direct', [SAGE, FERN], {
+    kind: 'room',
+    title: 'Receipt check',
+    owner_bot_id: null,
+    lead_bot_id: null,
+    participants: [
+      { user_id: user.id, nickname: 'Me', role: 'owner', joined_at: NOW },
+      { user_id: 'reader', nickname: 'Ana', role: 'member', joined_at: NOW },
+    ],
+  });
+  room.members = room.members.map((member) => ({
+    ...member,
+    role: 'member',
+    owner_user_id: user.id,
+    addressable: true,
+  }));
+  state.conversations = [room];
+  state.pages[room.session_id] = {
+    detail: detail(room),
+    messages: [
+      message(1, {
+        role: 'user',
+        author_user_id: user.id,
+        content: 'Here are my answers to your questions:\n\n**1. Name**: Jim',
+      }),
+    ],
+  };
+  await stubBots(page, state);
+  const reads: Json[] = [];
+  await page.route('**/api/bots/conversations/receipt-room/read', async (route) => {
+    reads.push(route.request().postDataJSON());
+    await route.fulfill({ json: { ok: true } });
+  });
+  await page.route('**/api/bots/conversations/receipt-room/receipts', (route) =>
+    route.fulfill({
+      json: {
+        people: [
+          { user_id: user.id, nickname: 'Me', through_seq: 1 },
+          { user_id: 'reader', nickname: 'Ana', through_seq: 1 },
+        ],
+        agents: [
+          { message_id: 'msg-1', bot_id: SAGE.id, status: 'answered', processed_at: NOW },
+          { message_id: 'msg-1', bot_id: FERN.id, status: 'queued', processed_at: null },
+        ],
+      },
+    }),
+  );
+  await page.goto('/#/bots?c=receipt-room');
+  const transcript = page.getByTestId('bots-transcript');
+  await expect(transcript).toContainText('Name: Jim');
+  await expect(transcript).not.toContainText('Here are my answers');
+  const receipt = page.getByTestId('message-read-receipt');
+  await expect(receipt).toContainText('Read by 1 · Agents processed 1/2');
+  await receipt.locator('summary').click();
+  await expect(receipt).toContainText('Ana · Read');
+  await expect(receipt).toContainText('Sage · Replied');
+  await expect(receipt).toContainText('Fern · Queued');
+  await expect.poll(() => reads).toContainEqual({ through_message_id: 'msg-1' });
+  const time = transcript.locator('time');
+  await page.getByTestId('chat-input').hover();
+  await expect(time).toHaveCSS('opacity', '0');
+  await transcript.getByText('Name: Jim', { exact: false }).hover();
+  await expect(time).toHaveCSS('opacity', '1');
+  expect(await time.evaluate((node) => getComputedStyle(node.parentElement!).position)).toBe('absolute');
 });
 
 test.describe('bots', () => {

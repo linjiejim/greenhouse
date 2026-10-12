@@ -59,8 +59,6 @@ interface BotsState {
   dialog: BotsDialog;
   /** Bot whose profile drawer is open. */
   profileBotId: string | null;
-  /** Open the profile drawer straight into its edit dialog (the Sprouty naming nudge). */
-  profileEdit: boolean;
 
   loadBots: () => Promise<void>;
   loadConversations: () => Promise<void>;
@@ -79,7 +77,7 @@ interface BotsState {
   setPending: (pending: number) => void;
   noteSession: (sessionId: string) => void;
   openDialog: (dialog: BotsDialog) => void;
-  openProfile: (botId: string | null, options?: { edit?: boolean }) => void;
+  openProfile: (botId: string | null) => void;
   reset: () => void;
 }
 
@@ -97,7 +95,6 @@ const INITIAL = {
   loadError: null as string | null,
   dialog: null as BotsDialog,
   profileBotId: null as string | null,
-  profileEdit: false,
 };
 
 // In-flight dedupe: the shell, sidebar and page all ask on mount.
@@ -235,7 +232,7 @@ export const useBotsStore = create<BotsState>((set, get) => ({
 
   openDialog: (dialog) => set({ dialog }),
 
-  openProfile: (profileBotId, options) => set({ profileBotId, profileEdit: Boolean(profileBotId && options?.edit) }),
+  openProfile: (profileBotId) => set({ profileBotId }),
 
   reset: () => {
     generation += 1;

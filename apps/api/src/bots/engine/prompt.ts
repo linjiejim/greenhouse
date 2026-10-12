@@ -89,7 +89,7 @@ export function buildStaticRules(
     conversationKind === 'task'
       ? `You are one of a member's personal Agents: a long-lived assistant with a name, a job and a memory. This is a separate chat the member opened for one piece of work: it has its own context, and the member's main thread with you continues elsewhere. Stay on this chat's topic; your memory and the shared notes are the same as everywhere.`
       : room
-        ? `You are an Agent in Greenhouse, in a conversation between several people. You speak only when the member (user) addresses you, and you act for that member alone: their permissions, their tools, their cards. Everyone here reads your replies — so never bring up the member's private information (their notes, memories, files, other conversations) unless they ask you to share it here.`
+        ? `You are an Agent in Greenhouse, in a conversation between several people. Unaddressed messages are considered by every Agent; explicitly addressed messages go only to their targets. Contribute only when useful; remain silent when irrelevant or already answered. Use team.ask to speak to another Agent. You act for the member who sent the message: their permissions, their tools, their cards. Everyone here reads your replies — so never bring up the member's private information (their notes, memories, files, other conversations) unless they ask you to share it here.`
         : `You are one of a member's personal Agents: a long-lived assistant with a name, a job and a memory, working with the member (and sometimes with their other Agents) in an ongoing conversation. There are no separate sessions — this thread continues for as long as the member uses it.`,
     ``,
     `## Who is speaking`,
@@ -117,7 +117,10 @@ export function buildStaticRules(
   );
   if (flags.team) {
     lines.push(
-      `- Hand-offs: when another of the member's Agents is clearly better placed for part of the work, bring it into this conversation with the team tool if it is not here yet, and hand it over with a precise, self-contained brief. Your turn ends right after the hand-off — say in one line what you handed over and never answer on the other Agent's behalf; it replies next, visibly. New Agents only exist after the member confirms the proposal card.`,
+      `- Agent messages: team.list shows accessible message_targets. team.message sends a self-contained brief to another Agent in a separate conversation; only that brief is forwarded. Your turn ends, and its reply returns here and wakes you once. Use team.ask for an Agent already here. Never claim that an @ in prose sends a message.`,
+      room
+        ? `- Hand-offs: use team.ask with a precise brief to ask another Agent in this room. They answer next and you get one follow-up. End your turn after handing over. Do not pretend that writing @Name sends a message. People manage room membership.`
+        : `- Hand-offs: when another of the member's Agents is clearly better placed for part of the work, bring it into this conversation with the team tool if it is not here yet, and hand it over with a precise, self-contained brief. Your turn ends right after the hand-off — say in one line what you handed over and never answer on the other Agent's behalf; it replies next, visibly. New Agents only exist after the member confirms the proposal card.`,
     );
   }
   if (flags.tasks) {
@@ -282,17 +285,22 @@ export function renderNotesIndex(notes: readonly NoteIndexEntry[], locale: BotsL
 export interface TurnTailInput {
   locale: BotsLocale;
   selfBotId: string;
+  room?: boolean;
   roster: readonly RosterEntry[];
   memoryBlock: string | null;
   notesIndex: string | null;
   instruction: string;
 }
 
-function rosterLine(entry: RosterEntry, selfBotId: string): string {
+function rosterLine(entry: RosterEntry, selfBotId: string, room = false): string {
   const flags = [
     entry.id === selfBotId ? 'you' : null,
     entry.memberRole === 'owner' ? 'answers unaddressed messages' : null,
-    entry.memberRole === 'guest' ? 'guest — speaks only when mentioned or handed work' : null,
+    entry.memberRole === 'guest'
+      ? room
+        ? 'guest — considers unaddressed room messages'
+        : 'guest — speaks only when mentioned or handed work'
+      : null,
   ].filter(Boolean);
   const role = entry.role ? ` — ${sanitizeForPrompt(entry.role)}` : '';
   return `- ${entry.name} [id ${entry.id}]${role}${flags.length ? ` (${flags.join('; ')})` : ''}`;
@@ -301,7 +309,10 @@ function rosterLine(entry: RosterEntry, selfBotId: string): string {
 /** The synthetic final user message: context blocks + this turn's instruction. */
 export function buildTurnTail(input: TurnTailInput): string {
   const blocks: string[] = ['<turn_context note="Rebuilt by the system for this turn.">'];
-  blocks.push(`## In this conversation`, ...input.roster.map((entry) => rosterLine(entry, input.selfBotId)));
+  blocks.push(
+    `## In this conversation`,
+    ...input.roster.map((entry) => rosterLine(entry, input.selfBotId, input.room)),
+  );
   if (input.memoryBlock) blocks.push(``, input.memoryBlock);
   if (input.notesIndex) {
     blocks.push(``, `## Shared notes`, `<shared_notes untrusted="true">`, input.notesIndex, `</shared_notes>`);
@@ -313,7 +324,7 @@ export function buildTurnTail(input: TurnTailInput): string {
 // ─── Turn instructions ───────────────────────────────────
 
 export interface InstructionInput {
-  reason: 'user' | 'mention' | 'interjection' | 'ask' | 'followup' | 'continue';
+  reason: 'user' | 'mention' | 'interjection' | 'ask' | 'followup' | 'continue' | 'consider';
   nickname: string;
   /** reason ask: who handed the work over and what they wrote. */
   askedByName?: string;
@@ -327,6 +338,8 @@ export const SKIP_TOKEN = '<<skip>>';
 export function buildInstruction(input: InstructionInput): string {
   const member = sanitizeForPrompt(input.nickname);
   switch (input.reason) {
+    case 'consider':
+      return `Consider the latest room message and the replies already given. Reply only if you can add useful, relevant information or perform work that helps. Do not repeat other Agents, acknowledge for its own sake, or reply to a message directed at someone else. If you have nothing useful to add, output exactly ${SKIP_TOKEN} and nothing else. Use team.ask for a real hand-off; merely writing @Name does not notify another Agent.`;
     case 'user':
       return `Reply to ${member}'s latest message.`;
     case 'mention':

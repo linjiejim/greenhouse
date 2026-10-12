@@ -1,10 +1,9 @@
 /**
  * Who may do what with the Agents in a room (spec 20261011-agent-first-class P5, D44/D45).
  *
- * - An Agent answers in a room only when someone allowed to address it @-mentions it: its owner
- *   (their own Agent, main Agent included), or — for a public Agent — anyone in its audience. Each
- *   turn then runs as the person who asked (the chain's `rc.user`), so permissions, cards and
- *   budget are theirs.
+ * - Unaddressed messages are considered by available Agents. Explicit targets only wake those
+ *   Agents; turns retain the original member's permissions, cards and budget. Owner-brought
+ *   private Agents have a room-only face when another participant asks them.
  * - A public Agent someone brought in (not its owner) stays only while everyone in the room is in
  *   its audience; an owner's own Agent stays as long as its owner does.
  */
@@ -14,6 +13,19 @@ import type { AvatarConfig } from '@greenhouse/types/profile-manifest';
 import { safeJsonParse } from '@greenhouse/utils/json';
 import type { RoomAgentProfile, RoomViewExtras } from './views.js';
 import { publicBotFor } from './public.js';
+import { botsOwnerEligible } from './engine/run-slot.js';
+
+/** Owner-brought private Agents may use only the room face while their owner remains eligible. */
+export async function roomGuestBot(db: DatabaseProvider, member: BotConversationMemberRow): Promise<BotRow | null> {
+  const bot = await db.bots.getBotById(member.bot_id);
+  if (!bot || bot.status !== 'active' || bot.visibility === 'public' || member.user_id !== bot.user_id) return null;
+  if (
+    !(await db.bots.isParticipant(member.session_id, bot.user_id)) ||
+    !(await botsOwnerEligible(db, await db.users.getById(bot.user_id)))
+  )
+    return null;
+  return bot;
+}
 
 /**
  * Each Agent in the room → its owner, how to show it (a public one as its published version, so
@@ -32,7 +44,10 @@ export async function roomAgentAccess(
     if (!bot) continue;
     agentOwners.set(bot.id, bot.user_id);
     const offered = bot.user_id === readerId ? null : await publicBotFor(db, readerId, bot.id);
-    if (bot.user_id === readerId ? bot.status === 'active' : offered !== null) addressable.add(bot.id);
+    if (
+      bot.user_id === readerId ? bot.status === 'active' : offered !== null || (await roomGuestBot(db, member)) !== null
+    )
+      addressable.add(bot.id);
     const shown = bot.user_id === readerId ? bot : (offered ?? (await publishedFace(db, bot)));
     profiles.set(bot.id, {
       name: shown.name,
@@ -74,7 +89,8 @@ export async function addressableMentions(
   for (const id of new Set(mentions)) {
     if (!inRoom.has(id)) continue;
     const bot = await db.bots.getBotById(id);
-    if (bot && (await mayAddress(db, authorId, bot))) out.push(id);
+    const member = conversation.members.find((m) => m.bot_id === id)!;
+    if (bot && ((await mayAddress(db, authorId, bot)) || (await roomGuestBot(db, member)))) out.push(id);
   }
   return out;
 }

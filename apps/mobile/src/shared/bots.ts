@@ -501,8 +501,8 @@ export interface BotMemberView {
    */
   profile?: { name: string; role: string; avatar: AvatarConfig; template_key: string | null };
   /**
-   * In a room: may the person reading @ it (their own Agent, or a public one offered to them)?
-   * Only those answer them (spec 20261011-agent-first-class D44). Absent elsewhere.
+   * In a room: may this reader address it through its own, public or restricted room face?
+   * Absent elsewhere.
    */
   addressable?: boolean;
 }
@@ -527,8 +527,8 @@ export interface BotConversationSummary {
    * 20261011-agent-first-class D20/D21). `group` = a retired group chat (2026-10-09): readable
    * history, closed to new messages, invites and card decisions (409 `group_closed`). Other Bots
    * join a DM or a task chat as guests. `room` = several people and the Agents they brought
-   * (P5): `participants` lists the people; an Agent answers only when someone allowed to address
-   * it @-mentions it; two people, no title, no Agents reads as a private chat between them.
+   * (P5): `participants` lists the people; Agents consider unaddressed messages and explicit @
+   * targets are directed. Two people, no title, no Agents reads as a private chat between them.
    */
   kind: 'direct' | 'task' | 'group' | 'room';
   title: string | null;
@@ -875,7 +875,7 @@ export interface VaultAccessView {
 
 // ─── Stream events (multi-speaker turns) ─────────────────
 
-export type BotTurnReason = 'user' | 'mention' | 'ask' | 'followup' | 'continue' | 'interjection';
+export type BotTurnReason = 'user' | 'mention' | 'ask' | 'followup' | 'continue' | 'interjection' | 'consider';
 
 export interface BotTurnStartEvent {
   type: 'bot-turn-start';
@@ -917,6 +917,7 @@ export interface BotRequestEvent {
  * `messages.bot_event` next to a human-readable `content` line.
  */
 export type BotEvent =
+  | { kind: 'agent_message'; id: string; from: string; to: string; status: 'sent' | 'answered' | 'failed' }
   | { kind: 'ask'; from: string; to: string }
   | { kind: 'joined'; bot_id: string; by: 'user' | 'bot'; by_bot_id?: string }
   | { kind: 'left'; bot_id: string }

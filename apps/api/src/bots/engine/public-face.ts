@@ -8,7 +8,8 @@
  * - `conversation` (this conversation's shared notes, recall);
  * - `ask_user` when the deployment has it;
  * - the computer (the member's own copy, no vault) only when its owner granted it.
- * Never: team, self, background tasks, email, automations, connectors, projects, tables, sessions,
+ * `team` can consult accessible Agents without granting their private tools to this Agent.
+ * Never: self, background tasks, email, automations, connectors, projects, tables, sessions,
  * exports, images, the vault.
  */
 
@@ -26,7 +27,8 @@ import { createMemoryTool } from '../../tools/memory.js';
 import { buildComputerTools } from '../computer/index.js';
 import { createConversationTool } from '../tools/conversation.js';
 import type { BotTurnContext } from './context.js';
-import type { ConversationPort } from './ports.js';
+import type { ConversationPort, TeamPort } from './ports.js';
+import { createTeamTool } from '../tools/team.js';
 
 const SEARCH_LIMIT = 10;
 const BODY_MAX_CHARS = 12_000;
@@ -132,6 +134,7 @@ export interface PublicFaceInput {
   toolRegistry: ToolRegistry;
   conversation: ConversationPort;
   settings: BotPublicationSettings;
+  team?: TeamPort;
 }
 
 export function assemblePublicAgentTools(input: PublicFaceInput): {
@@ -147,6 +150,7 @@ export function assemblePublicAgentTools(input: PublicFaceInput): {
     bot: { botId: ctx.bot.id, userScopeAllowed: () => false, partitionOnly: true },
   });
   registry.conversation = createConversationTool(ctx, input.conversation);
+  if (input.team) registry.team = createTeamTool(ctx, input.team, true);
   if (input.settings.grants.computer) Object.assign(registry, buildComputerTools(ctx));
   // Fixed order: the tool list is part of the cached prompt prefix.
   const tools: Record<string, Tool> = {};

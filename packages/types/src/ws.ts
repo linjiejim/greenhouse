@@ -93,6 +93,7 @@ export type ServerWsEvent =
   // server-side (task report, handback event, request settled). Id only — the
   // client refetches /api/bots/conversations/:id.
   | { type: 'bots:conversation'; sessionId: string }
+  | { type: 'bots:receipts'; sessionId: string }
   // Bots: one of the member's computers changed state or take-over lease. `computer_id` /
   // `bot_id` name which (one per Agent since 2026-10-12; bot_id null = the main Agent's); older
   // servers sent neither (there was one computer).

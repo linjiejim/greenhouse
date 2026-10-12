@@ -90,7 +90,7 @@ same script doubles as an end-to-end smoke tour (see [Development](#development)
 - **Conversations** — one list for every place you talk: your **main thread** with your main
   Agent (the app opens on it), your other Agents' threads, **conversations with other people**
   (a private chat with one colleague, or a room with several — each brings their own Agents, and
-  an Agent answers only the person allowed to @-mention it, with that person's permissions), the
+  Agents consider unaddressed messages and contribute only when useful; @ a person or Agent to direct a message only to them), the
   background tasks your Agents run, and your **chats** — separate conversations with a fresh
   context for anything separate. Chats stream
   with tool-call traces, attachments of any file type (the agent reads text / CSV / JSON / xlsx /
@@ -110,7 +110,8 @@ same script doubles as an end-to-end smoke tour (see [Development](#development)
   agent gets a real shell, files and a document toolchain, reports progress live and hands back
   artifacts.
 - **Agents** — personal assistants every member gets out of the box. Every member starts with
-  **Sprouty**, the main Agent: its thread is your main thread, the default place to start — talk
+  **Sprouty**, the main Agent (rename it in its profile whenever you want; there is no naming reminder):
+  its thread is your main thread, the default place to start — talk
   to it straight away, or let it bring in, brief and create other Agents (researcher, operator,
   writer, analyst, weekly reporter, note taker, project tracker or your own). An Agent has a
   name, a role and its own memory; several Agents can share one thread (@-mention them, let them
@@ -129,7 +130,12 @@ same script doubles as an end-to-end smoke tour (see [Development](#development)
   conversations list while they run; reading private notes or history then disables all further
   browser actions. Their transcripts and execution traces stay owner-only (a room: its
   participants only), including against admins — and since 2026-10 admins no longer read members'
-  ordinary chats either, unless the deployment sets `SUPER_READS_CHATS=true`. In rooms, handing back
+  ordinary chats either, unless the deployment sets `SUPER_READS_CHATS=true`. Agents can hand work to
+  another Agent in the room or send a brief in a separate conversation and receive its reply back.
+  Communication preserves the original member's access, has depth/count/cycle limits, and forwards
+  only the brief. Owner-brought private Agents use a restricted room face for other members.
+  Room receipts distinguish people who displayed a message from Agents queued, processing,
+  replied, silent, failed or canceled. In rooms, handing back
   a computer or completing a sign-in resumes the Agent for the person who requested it. A new message can interrupt an Agent after its current step. The organisation configures
   one Docker host; computers start on demand, stop when idle (unless a job is still running) and
   queue when the host is full.

@@ -324,3 +324,5 @@
 - **主 Agent 并发首次访问**：`createBot({ builtIn: true, template_key: "sprouty" })` 在事务中锁住成员行并复查当前主 Agent，以身份幂等；不同入口选出不同显示名、跨 API 进程并发，也只能返回同一个活跃 Sprouty。
 
 - 知识库 `list` / `search` / `searchLike` 的 `readerUserId` 在 SQL 的 LIMIT 前限制为自己的、团队可见、或仍有个人/群组共享的私有文档（匹配 `resolveKbAccess`）；公开 Agent 还要交集授权文件夹。不可先截断候选再仅在应用层滤权限，否则隐藏文档会挤掉合法结果。
+
+- **通信与已读（迁移 0028–0030，2026-10-12）**：`conversation_participants.last_read_seq` 默认 -1，与旧 `last_read_at` 分开，`markReadThrough` 必须验证消息属于当前会话并单调前进；旧客户端无参数 markRead 不生成精确回执。`bot_message_receipts` 按 `(message_id, bot_id)` 唯一，queued/processing/answered/skipped/failed/canceled，只有实际模型调用填 processed_at。`bot_agent_messages` 保存 Agent 请求和一次性返回，与目标 task、inbox 同事务；dedupe_key 唯一，chain_key 事务锁约束最多 4 次和目标不重复，path 防回环/深度。`createTaskConversation` 的 `public: true` 和 ensureDirectConversation 一样只供已在 API 检查受众的调用者使用。回传 CAS returned_at + inbox 原子提交，不伪造 user 消息，不绕开 visibleTo。

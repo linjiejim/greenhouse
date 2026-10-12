@@ -849,13 +849,36 @@ export function createBotsRoutes() {
         return c.json({ conversation: await conversationDetail(db, user.id, fresh, owner.locale) });
       })
 
+      .get('/conversations/:id/receipts', async (c) => {
+        const receipts = await getDb().bots.readReceipts(getAuthUser(c).id, c.req.param('id'));
+        if (!receipts) return c.json({ error: 'Conversation not found' }, 404);
+        return c.json(receipts);
+      })
+
       // ── POST /api/bots/conversations/:id/read — also marks its missed-reply alerts read ──
       .post('/conversations/:id/read', async (c) => {
         const user = getAuthUser(c);
         const db = getDb();
         const conversation = await db.bots.getConversation(user.id, c.req.param('id'));
         if (!conversation) return c.json({ error: 'Conversation not found' }, 404);
-        await db.bots.markRead(user.id, conversation.session_id);
+        const body = await c.req.json().catch(() => ({}));
+        const through = body?.through_message_id;
+        if (through !== undefined) {
+          if (
+            typeof through !== 'string' ||
+            !through ||
+            !(await db.bots.markReadThrough(user.id, conversation.session_id, through))
+          ) {
+            return c.json({ error: 'Message is not in this conversation' }, 400);
+          }
+          // Receipt pushes carry no content and never ask clients to reload the transcript.
+          await pushToConversation(
+            conversation.session_id,
+            user.id,
+            { type: 'bots:receipts', sessionId: conversation.session_id },
+            db,
+          );
+        } else await db.bots.markRead(user.id, conversation.session_id);
         const cleared = await db.notifications.markReadByDedupePrefix(
           user.id,
           `${BOTS_REPLY_DEDUPE_PREFIX}${conversation.session_id}:`,

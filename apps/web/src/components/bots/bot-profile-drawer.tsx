@@ -40,7 +40,6 @@ export function BotProfileDrawer({ onOpenDm }: { onOpenDm: (bot: BotView) => voi
   const t = useT();
   const botId = useBotsStore((state) => state.profileBotId);
   const openProfile = useBotsStore((state) => state.openProfile);
-  const profileEdit = useBotsStore((state) => state.profileEdit);
   const bot = useBotsStore((state) => state.bots.find((candidate) => candidate.id === state.profileBotId));
   // Someone else's public Agent (P4): its public face only.
   const shared = useBotsStore((state) =>
@@ -62,10 +61,6 @@ export function BotProfileDrawer({ onOpenDm }: { onOpenDm: (bot: BotView) => voi
   const [editing, setEditing] = useState(false);
   const [archiving, setArchiving] = useState(false);
   const [tab, setTab] = useState<ProfileTab>('profile');
-
-  useEffect(() => {
-    if (botId && profileEdit) setEditing(true);
-  }, [botId, profileEdit]);
 
   // Every Agent opens on its profile.
   useEffect(() => setTab('profile'), [botId]);

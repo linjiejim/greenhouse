@@ -64,7 +64,7 @@ describe('AskUserCard choice submission', () => {
     await submit();
 
     expect(onSubmit).toHaveBeenCalledTimes(1);
-    expect(onSubmit.mock.calls[0][0]).toContain('**1. Send from jim@example.com?**: Send (send WWBLE2)');
+    expect(onSubmit.mock.calls[0][0]).toBe('**1. Send from jim@example.com?**: Send (send WWBLE2)');
   });
 
   it('keeps the bare label when the value only restates it', async () => {

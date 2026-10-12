@@ -8,10 +8,13 @@ import { Markdown } from '../markdown';
 import { parseAnnotatedContent } from './annotations';
 
 export function UserMessageContent({ content }: { content: string }) {
-  const parsed = useMemo(() => parseAnnotatedContent(content), [content]);
+  // Older question forms persisted this boilerplate before the numbered answers.
+  // Keep the stored message intact, while showing the same concise answers as new forms.
+  const displayContent = content.replace(/^Here are my answers to your questions:\r?\n\r?\n(?=\*\*1\. )/, '');
+  const parsed = useMemo(() => parseAnnotatedContent(displayContent), [displayContent]);
 
   if (!parsed) {
-    return <Markdown content={content} linkTarget="new-window" />;
+    return <Markdown content={displayContent} linkTarget="new-window" />;
   }
 
   return (

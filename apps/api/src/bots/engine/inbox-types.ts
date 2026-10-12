@@ -22,7 +22,15 @@ export type InboxItem =
   /** A system line in the transcript (role `system`, `bot_event` set). */
   | { kind: 'event'; text: string; event: BotEvent; botId?: string | null }
   /** Wake a Bot to continue (after a hand-back, an approval, a created Bot joining…). */
-  | { kind: 'continue'; botId: string; note: string; author_user_id?: string; eventText?: string; event?: BotEvent }
+  | {
+      kind: 'continue';
+      botId: string;
+      note: string;
+      exchangeId?: string;
+      author_user_id?: string;
+      eventText?: string;
+      event?: BotEvent;
+    }
   /** A background task finished: the Bot reports, then nothing else runs. */
   | {
       kind: 'task_report';
@@ -38,6 +46,7 @@ export type InboxItem =
       kind: 'user_message';
       content: string;
       mentions: string[];
+      directed?: boolean;
       images?: Array<{ id: string; url: string }>;
       /** In a room: who wrote it; their own run answers its @-mentions (P5). */
       author_user_id?: string;
@@ -46,4 +55,4 @@ export type InboxItem =
    * In a room: someone @-mentioned Agents while another person's run held the conversation. Their
    * message is already written; this answers it in a run of their own, after the current one (P5).
    */
-  | { kind: 'mention'; author_user_id: string; mentions: string[] };
+  | { kind: 'mention'; author_user_id: string; mentions: string[]; directed?: boolean; messageId?: string };

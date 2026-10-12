@@ -16,7 +16,6 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  isSproutyBot,
   type BotConversationReadOnlyCode,
   type BotConversationSummary,
   type BotRequestView,
@@ -662,9 +661,6 @@ function ConversationColumn({
         replyFeedback={!!shared}
         room={transcriptRoom}
       />
-      {!readOnly && owner && isSproutyBot(owner) && owner.name === 'Sprouty' && owner.current_version === 1 && (
-        <SproutyNamingNudge bot={owner} onOpenProfile={onOpenProfile} />
-      )}
       {readOnly ? (
         <ReadOnlyNotice
           kind={conversation.kind}
@@ -680,7 +676,14 @@ function ConversationColumn({
           ref={composerRef}
           sessionId={sessionId}
           // A room's `@` list: only the Agents the member may address — no one else answers them.
-          members={room ? room.addressable : members}
+          members={
+            room
+              ? [
+                  ...room.addressable,
+                  ...room.others.map((p) => ({ id: p.user_id, name: p.nickname, role: '', person: true })),
+                ]
+              : members
+          }
           placeholder={placeholder}
           // Stop is for a run the member may stop (in a room, one they asked for).
           busy={controller.canStop}
@@ -778,57 +781,6 @@ function ReadOnlyNotice({
           </Button>
         )}
       </div>
-    </div>
-  );
-}
-
-const NAMING_DISMISSED_KEY = 'greenhouse_bots_sprouty_named';
-
-/**
- * First-run naming nudge (spec 20261007 phase 4, OpenClaw's "birth sequence"
- * trimmed to one card): the built-in main Bot still carries its template name
- * and has never been edited. Rename it (opens the edit dialog) or keep it;
- * either way the nudge is gone for this browser.
- */
-function SproutyNamingNudge({ bot, onOpenProfile }: { bot: BotView; onOpenProfile: (botId: string) => void }) {
-  const t = useT();
-  const openProfile = useBotsStore((state) => state.openProfile);
-  const [dismissed, setDismissed] = useState(() => {
-    try {
-      return (localStorage.getItem(NAMING_DISMISSED_KEY) ?? '').split(',').includes(bot.id);
-    } catch {
-      return false;
-    }
-  });
-  const dismiss = () => {
-    setDismissed(true);
-    try {
-      const seen = (localStorage.getItem(NAMING_DISMISSED_KEY) ?? '').split(',').filter(Boolean);
-      localStorage.setItem(NAMING_DISMISSED_KEY, [...new Set([...seen, bot.id])].join(','));
-    } catch {
-      /* private mode: the nudge simply returns next time */
-    }
-  };
-  if (dismissed) return null;
-  void onOpenProfile;
-  return (
-    <div
-      className="mx-3 mb-2 flex flex-wrap items-center gap-2 rounded-lg border border-primary-edge bg-primary-subtle px-3 py-2 text-xs text-fg"
-      data-testid="bots-naming-nudge"
-    >
-      <span className="min-w-0 flex-1">{t('bots.naming.prompt', { name: bot.name })}</span>
-      <Button size="sm" variant="ghost" onClick={dismiss}>
-        {t('bots.naming.keep', { name: bot.name })}
-      </Button>
-      <Button
-        size="sm"
-        onClick={() => {
-          dismiss();
-          openProfile(bot.id, { edit: true });
-        }}
-      >
-        {t('bots.naming.rename')}
-      </Button>
     </div>
   );
 }

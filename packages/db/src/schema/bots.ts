@@ -46,7 +46,7 @@ import {
 } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { users } from './user.js';
-import { sessions } from './session.js';
+import { sessions, messages } from './session.js';
 
 const ts = (name: string) => timestamp(name, { withTimezone: true, mode: 'string' });
 
@@ -268,6 +268,7 @@ export const conversationParticipants = pgTable(
     /** Who added them (`users.id`); the creator adds themselves. */
     added_by: text('added_by').notNull(),
     last_read_at: ts('last_read_at'),
+    last_read_seq: integer('last_read_seq').notNull().default(-1),
     joined_at: ts('joined_at').notNull(),
   },
   (table) => [
@@ -617,3 +618,68 @@ export type BotComputerBackupStatus = BotComputerBackupRow['status'];
 export type VaultItemRow = typeof vaultItems.$inferSelect;
 export type VaultAccessLogRow = typeof vaultAccessLog.$inferSelect;
 export type BotFeedbackRow = typeof botFeedback.$inferSelect;
+
+/** Per-message Agent receipts: queued is not read; processed_at is set only at model invocation. */
+export const botMessageReceipts = pgTable(
+  'bot_message_receipts',
+  {
+    id: serial('id').primaryKey(),
+    session_id: text('session_id')
+      .notNull()
+      .references(() => botConversations.session_id, { onDelete: 'cascade' }),
+    message_id: text('message_id')
+      .notNull()
+      .references(() => messages.id, { onDelete: 'cascade' }),
+    bot_id: text('bot_id')
+      .notNull()
+      .references(() => bots.id, { onDelete: 'cascade' }),
+    status: text('status', { enum: ['queued', 'processing', 'answered', 'skipped', 'failed', 'canceled'] }).notNull(),
+    processed_at: ts('processed_at'),
+    updated_at: ts('updated_at').notNull(),
+  },
+  (table) => [
+    uniqueIndex('uq_bot_message_receipt').on(table.message_id, table.bot_id),
+    index('idx_bot_message_receipts_session').on(table.session_id),
+  ],
+);
+export type BotMessageReceiptRow = typeof botMessageReceipts.$inferSelect;
+
+/** Durable Agent request/return, always bound to the original member and two private contexts. */
+export const botAgentMessages = pgTable(
+  'bot_agent_messages',
+  {
+    id: text('id').primaryKey(),
+    dedupe_key: text('dedupe_key').notNull(),
+    chain_key: text('chain_key').notNull(),
+    parent_id: text('parent_id'),
+    path: text('path').notNull(),
+    requester_id: text('requester_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    source_session_id: text('source_session_id')
+      .notNull()
+      .references(() => botConversations.session_id, { onDelete: 'cascade' }),
+    source_bot_id: text('source_bot_id')
+      .notNull()
+      .references(() => bots.id, { onDelete: 'cascade' }),
+    target_session_id: text('target_session_id')
+      .notNull()
+      .references(() => botConversations.session_id, { onDelete: 'cascade' }),
+    target_bot_id: text('target_bot_id')
+      .notNull()
+      .references(() => bots.id, { onDelete: 'cascade' }),
+    body: text('body').notNull(),
+    status: text('status', { enum: ['queued', 'running', 'answered', 'failed'] }).notNull(),
+    reply: text('reply'),
+    created_at: ts('created_at').notNull(),
+    updated_at: ts('updated_at').notNull(),
+    returned_at: ts('returned_at'),
+  },
+  (table) => [
+    uniqueIndex('uq_bot_agent_message_dedupe').on(table.dedupe_key),
+    uniqueIndex('uq_bot_agent_message_target').on(table.target_session_id),
+    index('idx_bot_agent_message_chain').on(table.chain_key),
+    index('idx_bot_agent_message_pending').on(table.returned_at, table.updated_at),
+  ],
+);
+export type BotAgentMessageRow = typeof botAgentMessages.$inferSelect;

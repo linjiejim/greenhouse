@@ -107,7 +107,7 @@ export function AskUserCard({ data, onSubmit, submitted = false, submittedMessag
     submittingRef.current = true;
 
     // Format answers into a structured user message
-    const lines: string[] = ['Here are my answers to your questions:', ''];
+    const lines: string[] = [];
     for (let idx = 0; idx < questions.length; idx++) {
       const q = questions[idx];
       const num = idx + 1;

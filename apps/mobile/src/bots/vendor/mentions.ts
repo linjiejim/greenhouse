@@ -1,4 +1,4 @@
-// VENDORED from apps/web/src/components/bots/mentions.ts — verbatim (apps/mobile cannot import the
+// VENDORED from packages/utils/src/mentions.ts — verbatim (apps/mobile cannot import the
 // web app; see apps/mobile/AGENTS.md). Do not edit here: change the canonical file, re-copy it,
 // and run src/bots/vendor/vendor.parity.test.ts. `localeCompare(…, { sensitivity: 'accent' })`
 // runs on Hermes here — verify CJK / case-insensitive names on a device after any change.
@@ -68,4 +68,9 @@ export function parseMentions(text: string, members: readonly MentionCandidate[]
 /** Composer insertion for a picked member: the visible `@Name ` token. */
 export function mentionToken(name: string): string {
   return `@${name} `;
+}
+
+/** An explicit but stale/unknown @ target still makes a message directed. Ignore email addresses. */
+export function hasExplicitMention(text: string): boolean {
+  return /(?:^|[\s(（[【"“'‘])@[^\s@,.;:!?，。；：！？、)）\]】"'”’]+/u.test(text);
 }
