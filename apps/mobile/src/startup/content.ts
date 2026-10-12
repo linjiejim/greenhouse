@@ -36,5 +36,5 @@ export function waitsForHome(segments: readonly string[]): boolean {
   return !group || group === '(drawer)' || group === 'chat' || (group === 'bots' && (!page || page === 'index'));
 }
 
-/** Extra grace after auth/fonts and the mark are ready, not a new minimum launch duration. */
-export const STARTUP_CONTENT_GRACE_MS = 1500;
+/** Extra grace after auth/fonts are ready, not a new minimum launch duration. */
+export const STARTUP_CONTENT_GRACE_MS = 900;

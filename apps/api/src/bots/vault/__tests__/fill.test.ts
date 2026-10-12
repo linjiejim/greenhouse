@@ -11,7 +11,7 @@ import { abortComputerActions } from '../../computer/access.js';
 import { BrowserSession, type ComputerTurn, type Observation } from '../../computer/browser-session.js';
 import { leaseRegistryFor } from '../../computer/tab-leases.js';
 import { encryptVaultField } from '../crypto.js';
-import { fillLogin, fillSecureLogin, fillTotp, SecureLoginError, type FillTurn } from '../fill.js';
+import { fillLogin, fillSecureLogin, fillTotp, loginFieldsForPage, SecureLoginError, type FillTurn } from '../fill.js';
 import { currentTotp } from '../totp.js';
 import { foreignTurnReads, noteTurnObservation } from '../turn-observations.js';
 import {
@@ -112,6 +112,24 @@ describe.skipIf(!chromiumAvailable())('vault fills on a real browser', { timeout
   afterEach(async () => {
     const registry = leaseRegistryFor(chromium.browser);
     for (const lease of registry.list()) await registry.release(lease.key);
+  });
+
+  it('asks only for empty visible login fields, without returning their values', async () => {
+    const page = await chromium.browser.newPage();
+    try {
+      await page.goto(site.origin);
+      await page.setContent(
+        '<input name="username" value="already-filled"><input type="password"><input type="hidden" name="otp">',
+      );
+      expect(await loginFieldsForPage(page, site.origin)).toEqual(['password']);
+      await page.setContent('<input autocomplete="one-time-code">');
+      expect(await loginFieldsForPage(page, site.origin)).toEqual(['otp']);
+      await page.setContent('<input type="email">');
+      expect(await loginFieldsForPage(page, site.origin)).toEqual(['username']);
+      expect(await loginFieldsForPage(page, other.origin)).toBeUndefined();
+    } finally {
+      await page.close();
+    }
   });
 
   /**

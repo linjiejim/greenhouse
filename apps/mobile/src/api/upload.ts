@@ -6,6 +6,7 @@
 
 import { Platform } from 'react-native';
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
+import { File as LocalFile } from 'expo-file-system';
 import type { UploadResult } from '../shared/greenhouse-types';
 import { getApiBase } from '../store/stations';
 import { api } from './client';
@@ -33,8 +34,8 @@ export async function uploadImage(uri: string, mime = 'image/jpeg'): Promise<Upl
       const blob = await (await fetch(uri)).blob();
       form.append('file', new File([blob], 'photo.jpg', { type: blob.type || mime }));
     } else {
-      // React Native FormData file descriptor.
-      form.append('file', { uri, name: 'photo.jpg', type: mime } as unknown as Blob);
+      // Expo fetch serializes Blob/File bytes; legacy React Native URI descriptors fail before the request.
+      form.append('file', new LocalFile(uri));
     }
     const res = await api('/api/upload', { method: 'POST', body: form });
     if (!res.ok) return null;

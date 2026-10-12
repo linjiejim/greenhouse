@@ -543,7 +543,7 @@ export function listComputerFiles(path?: string, bot?: string | null): Promise<B
   );
 }
 
-/** The download route of one file, for `downloadAndShare` (src/lib/share-file.ts). */
+/** The download route of one file, for the shared `/file-preview` route. */
 export function computerFilePath(path: string, bot?: string | null): string {
   return computerPath(`/api/bots/computer/files/download?path=${enc(path)}`, bot);
 }

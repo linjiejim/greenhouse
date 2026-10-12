@@ -39,8 +39,10 @@ import {
   accessibilityHidden,
   accessibilityLabel,
   environment,
+  frame,
   foregroundStyle,
   lineLimit,
+  listRowBackground,
   opacity,
   tint,
 } from '@expo/ui/swift-ui/modifiers';
@@ -198,6 +200,7 @@ export function FormCheckRow({
   systemImage,
   systemImageColor,
   checked,
+  choice,
   onPress,
 }: {
   label: string;
@@ -206,15 +209,40 @@ export function FormCheckRow({
   /** Data color for the leading symbol (tag / project color); default secondary. */
   systemImageColor?: string;
   checked: boolean;
+  /** Explicit selection control for question forms; default retains Settings-style checks. */
+  choice?: 'single' | 'multiple';
   onPress: () => void;
 }) {
   const { hex } = useTheme();
   return (
     <Button
       onPress={onPress}
-      modifiers={[PRIMARY, accessibilityAddTraits(checked ? ['isButton', 'isSelected'] : ['isButton'])]}
+      modifiers={[
+        PRIMARY,
+        accessibilityAddTraits(checked ? ['isButton', 'isSelected'] : ['isButton']),
+        ...(choice && checked ? [listRowBackground(hex.accentFill)] : []),
+      ]}
     >
-      <HStack spacing={10}>
+      <HStack spacing={12}>
+        {choice ? (
+          <Image
+            systemName={
+              choice === 'multiple'
+                ? checked
+                  ? 'checkmark.square.fill'
+                  : 'square'
+                : checked
+                  ? 'largecircle.fill.circle'
+                  : 'circle'
+            }
+            modifiers={[
+              frame({ width: 24 }),
+              font({ textStyle: 'title3' }),
+              checked ? foregroundStyle(hex.accent) : SECONDARY,
+              accessibilityHidden(true),
+            ]}
+          />
+        ) : null}
         {systemImage ? (
           <Image
             systemName={systemImage}
@@ -222,11 +250,13 @@ export function FormCheckRow({
           />
         ) : null}
         <VStack alignment="leading" spacing={2}>
-          <Text>{label}</Text>
+          <Text modifiers={choice ? [font({ textStyle: 'callout', weight: checked ? 'semibold' : 'regular' })] : []}>
+            {label}
+          </Text>
           {detail ? <Text modifiers={[font({ textStyle: 'footnote' }), SECONDARY, lineLimit(2)]}>{detail}</Text> : null}
         </VStack>
         <Spacer />
-        {checked ? (
+        {checked && !choice ? (
           // foregroundStyle, not tint: inside a primary-styled Button tint doesn't recolor an Image
           <Image
             systemName="checkmark"

@@ -30,7 +30,6 @@ module.exports = {
     // .green / .red) in index.swift, so they follow the system exactly.
     OnAccent: { light: '#FFFFFF', dark: '#123427' },
     AccentTint: { light: '#E5ECEA', dark: '#343938' },
-    AccentBorder: { light: '#BDCECA', dark: '#49534E' },
     // The Dynamic Island is always black: the Live Activity's accent there is the dark one
     // in both schemes (BotTaskLiveActivity.swift).
     IslandAccent: { light: '#B1D2BF', dark: '#B1D2BF' },
@@ -38,6 +37,7 @@ module.exports = {
   // Sprouty's plant avatar, rendered by apps/mobile/scripts/render-widget-art.mjs from the
   // vendored static builder (light + dark palettes; mono = lock-screen knockout silhouette).
   images: {
+    greenhouseMark: './greenhouse-mark.png',
     sprouty: './sprouty-idle.png',
     sproutySleep: './sprouty-sleep.png',
     sproutyDark: './sprouty-idle-dark.png',
