@@ -239,7 +239,11 @@ import { TOOL_DEFINITIONS } from '../registry.js';
  * lives behind `builder.reference`. Measured total is 34_489; the next tool
  * that grows pays for itself or argues for a raise here.
  */
-const TOTAL_DESCRIPTION_BUDGET = 34_500;
+// 2026-10-12: 34_500 → 35_000 for apps_query/apps_action. Trimmed the
+// pair from 696 to 426 chars: enum/parameter details stay in their schema;
+// discover→read→confirm ordering and role-scoped reads must remain in the
+// descriptions. These expose Apps to audience members without Tables access.
+const TOTAL_DESCRIPTION_BUDGET = 35_000;
 
 /**
  * Per-tool ceiling. Current worst offender sits just under it (workflow_plan

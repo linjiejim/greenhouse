@@ -102,7 +102,7 @@ same script doubles as an end-to-end smoke tour (see [Development](#development)
   app roles, approve / reject actions, who it is shared with, publishing) — as one card you confirm;
   your Bots propose the same plans as a card you apply when you choose. The draft is
   checked by the same validators as the editor before you see it, permission changes are listed
-  on their own above Confirm, and a partly applied plan can retry just what failed. Two built-in
+  on their own above Confirm, and a partly applied plan can retry just what failed. Four built-in
   app templates (purchase requests, IT tickets, CRM, recruiting) install a ready Base and a draft app in one step,
   in English or Chinese to match your account (`POST /api/apps/templates/:key/install`). Share a base with people,
   groups or the whole team; custom roles decide, table by table, which rows and fields someone
@@ -128,6 +128,20 @@ same script doubles as an end-to-end smoke tour (see [Development](#development)
   Sharing those versions outside Base managers requires approval of the exact version hash.
   **Custom HTML execution remains disabled on web and mobile**: nested-frame WebRTC isolation
   is not yet enforceable. Approval does not enable execution.
+  External cards display a KPI, chart or table from an allowed read tool or a read-only connector.
+  Each viewer uses their own permissions and account; missing connections have a connection card.
+  Saved arguments and JSON Pointer mappings drive queries, capped at 15 seconds and 512 KB.
+  Save a draft and its Base structure as a versioned template from Settings, with optional
+  handwritten samples; existing records are never exported. Templates with automations or
+  custom components require administrator review. Installation creates a private Base and
+  draft app, disables automations, and removes webhooks and fixed notification recipients.
+  The template center shows versions, hashes and review state; iPhone users can install templates too.
+  `apps_query` and `apps_action` expose the same gateway to chat and external agents under a
+  separate Apps MCP consent group. Writes require confirmation; Bots shows the stored action
+  and record for approval, and Feishu does not expose app writes.
+- **Agent steps in Tables** — summarize records into a text field as the rule executor, with
+  no tools by default or optional reads limited to that Base. Bot versions are pinned on save,
+  paid steps are never automatically replayed, and a changed record revision prevents stale output.
 - **Home workbench** — a personal dashboard of live cards backed by the same tools (recipes and
   templates), editable by drag-and-drop or by asking the agent.
 - **Execution center** — one surface for every durable run: automations (cron), missions,
@@ -796,11 +810,3 @@ issue — see [SECURITY.md](./SECURITY.md).
 ## License
 
 [MIT](./LICENSE) — © Greenhouse contributors.
-
-Tables automations can run an **Agent** step to summarize a new record into a text field. Each step runs once as the rule executor, with no tools by default; the optional read mode reaches only that Base. Bot versions are pinned when saved, costs belong to the executor, and output is written only while the record revision is unchanged. The automation run log links the result to its session.
-
-Apps are also available to chat and external agents through `apps_query` and `apps_action`. These use the same app roles, row rules and field rules as the app page, under a separate **Apps** MCP consent group. Every write requires confirmation; Bots shows an approval card with the stored action and record, and Feishu does not expose app writes.
-
-External data cards in Apps can display a KPI, chart, or table from an allowed read tool or a connector that advertises read-only access. Each viewer uses their own permissions and connector account; a disconnected viewer sees a connection card. Builders save arguments and JSON Pointer mappings with the app, and the runtime limits each evaluation to 15 seconds and 512 KB.
-
-Apps include four bilingual templates: purchase requests, IT tickets, lightweight CRM, and recruiting. In the app builder’s Settings, save the current draft and Base structure as a versioned template, with optional handwritten sample rows; existing business records are never exported. Versions containing custom components or automations require administrator approval. Installation creates your own private Base and draft app, leaves automations disabled, and removes webhooks and fixed notification recipients. Template details show version history, the content hash, and review status. Custom HTML can be edited and reviewed but cannot execute in this release; template approval does not enable it.

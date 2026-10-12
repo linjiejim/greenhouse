@@ -12,6 +12,7 @@ import { NativeButton } from '../../ui/button';
 import { LoadingState } from '../../ui/empty';
 import { space } from '../../theme';
 import { useCardQuery } from '../use-card';
+import { externalTableData } from '../model';
 import type { AppCardProps } from './types';
 
 const NO_PEOPLE = () => undefined;
@@ -49,7 +50,7 @@ export function ExternalCard(props: AppCardProps) {
         />
       ) : result.kind === 'table' ? (
         <>
-          <DataTableView data={{ columns: result.columns, rows: result.rows }} />
+          <DataTableView data={externalTableData(result)} />
           {result.truncated ? <CardNote icon="table" text={t('apps.external.truncated')} /> : null}
         </>
       ) : result.kind === 'kpi' ? (

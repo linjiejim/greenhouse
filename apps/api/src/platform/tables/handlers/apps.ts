@@ -461,6 +461,12 @@ const saveAppDraft: Handler = async (request, context) => {
   if (!draftRevision) return fail('INVALID_INPUT', 'draftRevision is required');
   const access = await appWithAccess(context, request.actor, positiveInt(payload, 'appId'), 'builder');
   if (!access) return fail('NOT_FOUND', 'App not found');
+  if (access.app.draft_revision !== draftRevision) {
+    return fail('CONFLICT', 'The draft changed since you loaded it', {
+      reason: 'draft_conflict',
+      currentRevision: access.app.draft_revision,
+    });
+  }
   const checked = await validateAppSpec(payload.spec, await loadAppSpecSchema(context.db, access.app.base_id));
   if (!checked.spec) {
     return fail('INVALID_INPUT', 'spec_invalid', { reason: 'spec_invalid', errors: checked.ok ? [] : checked.errors });
@@ -566,6 +572,12 @@ const restoreAppVersion: Handler = async (request, context) => {
   if (!version || !draftRevision) return fail('INVALID_INPUT', 'version and draftRevision are required');
   const access = await appWithAccess(context, request.actor, positiveInt(payload, 'appId'), 'builder');
   if (!access) return fail('NOT_FOUND', 'App not found');
+  if (access.app.draft_revision !== draftRevision) {
+    return fail('CONFLICT', 'The draft changed since you loaded it', {
+      reason: 'draft_conflict',
+      currentRevision: access.app.draft_revision,
+    });
+  }
   const target = await context.db.tables.getAppVersion(access.app.id, version);
   if (!target) return fail('NOT_FOUND', 'Version not found');
   const spec = parseStoredAppSpec(target.spec);

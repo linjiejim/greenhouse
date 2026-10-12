@@ -30,6 +30,8 @@ const INTENTIONAL_COPY = [
   /^(L|W|H) \(cm\)$/,
   /^(https?:\/\/|[^\s@]+@[^\s@]+\.[^\s@]+$|[a-z0-9.-]+\.com|[A-Z0-9][A-Z0-9-]+$)/,
   /^skillhub-sync$/,
+  // Executable API examples in the custom-component editor, not prose.
+  /^await greenhouse\.(query|action|create)\(/,
   /^[a-z][a-z0-9_-]*(, [a-z][a-z0-9_-]*)+$/,
 ];
 

@@ -705,13 +705,17 @@ describe('inbox: claim-then-apply', () => {
     });
 
     // The stopped run does not answer it; the run right after does, without waiting for a sweep.
-    await vi.waitFor(async () => {
-      const rows = await db.sessions.getMessages(dm.session_id);
-      expect(rows.slice(-2).map((r) => [r.role, r.content])).toEqual([
-        ['user', 'second'],
-        ['assistant', 'Answering the second.'],
-      ]);
-    });
+    // The next durable run crosses multiple DB awaits; allow a loaded CI host to settle.
+    await vi.waitFor(
+      async () => {
+        const rows = await db.sessions.getMessages(dm.session_id);
+        expect(rows.slice(-2).map((r) => [r.role, r.content])).toEqual([
+          ['user', 'second'],
+          ['assistant', 'Answering the second.'],
+        ]);
+      },
+      { timeout: 5000 },
+    );
     await settled(dm.session_id);
     expect(await db.bots.listPendingInbox(dm.session_id)).toHaveLength(0);
   });

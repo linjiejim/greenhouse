@@ -72,7 +72,7 @@ what exists." These rules are as binding as the "add" rules:
     status colouring, inspector, ≤ 15 nodes); chat mermaid is read-only rendering of arbitrary
     diagram types. Lazy-loaded on the first mermaid fence; zero main-bundle cost.
   - Registered: **workbench evaluation has one implementation** (`apps/api/src/workbench/evaluate.ts`)
-    shared by the batch evaluate endpoint and the `workbench_*` tools, so "what the model
+    shared by the batch evaluate endpoint, the `workbench_*` tools and Apps external cards, so "what the model
     previews" and "what the user refreshes" are the same thing. The bindable set is derived
     from tool metadata (`surface.workbench: true` → `WORKBENCH_READ_TOOL_IDS`), deliberately
     narrower than the read proxy.
@@ -111,6 +111,11 @@ what exists." These rules are as binding as the "add" rules:
 - **Declared capabilities must be real.** LLM tool descriptions, UI options, and docs must not
   claim unimplemented capabilities. Unconfigured / unimplemented paths must error explicitly,
   not pretend.
+- **Apps custom HTML execution is disabled on web and mobile** (2026-10-12 user decision).
+  Authors can edit code/bindings and administrators can review immutable versions, but review
+  approval must never enable HTML execution. Chromium's nested `srcdoc` frames can recover
+  WebRTC despite opaque frames and CSP; a runtime with enforceable network isolation is a
+  separate prerequisite. External cards render data only and use each viewer's own permissions.
 
 ## Code quality
 

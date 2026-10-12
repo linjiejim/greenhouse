@@ -64,7 +64,7 @@ export function CustomReviewsDialog({ onClose }: { onClose(): void }) {
         </div>
         {selected && (
           <>
-            <p className="break-all font-mono text-xs">SHA-256: {selected.specHash}</p>
+            <p className="break-all font-mono text-xs">sha256: {selected.specHash}</p>
             {selected.cards.map((card) => (
               <section key={`${card.pageId}:${card.cardId}`} className="space-y-2 rounded border border-edge p-3">
                 <h3 className="font-semibold">

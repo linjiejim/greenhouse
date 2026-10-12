@@ -12,6 +12,7 @@ import {
   actionInputs,
   canMove,
   cardsInOrder,
+  externalTableData,
   inAppLink,
   isMobileCard,
   MANAGER_ROLE,
@@ -24,6 +25,24 @@ import {
 } from './model';
 
 const layout = (y: number, x = 0) => ({ x, y, w: 6, h: 4 });
+
+it('renders external URLs and timestamps as literal native table cells', () => {
+  const rows = [{ link: 'javascript:alert(1)', at: '2026-10-12T08:00:00+08:00', count: 3, ready: true }];
+  const data = externalTableData({
+    kind: 'table',
+    columns: [
+      { key: 'link', label: 'URL', type: 'url' },
+      { key: 'at', label: 'Time', type: 'datetime' },
+      { key: 'day', label: 'Day', type: 'date' },
+      { key: 'count', label: 'Count', type: 'number' },
+      { key: 'ready', label: 'Ready', type: 'boolean' },
+    ],
+    rows,
+    truncated: false,
+  });
+  expect(data.columns.map((column) => column.type)).toEqual(['text', 'text', 'text', 'number', 'boolean']);
+  expect(data.rows).toBe(rows);
+});
 const field = (id: number, editable: boolean) => ({
   id,
   name: `F${id}`,

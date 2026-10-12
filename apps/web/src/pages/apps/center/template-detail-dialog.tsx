@@ -82,7 +82,7 @@ export function TemplateDetailDialog({ templateKey, onClose }: { templateKey: st
                 .map((item) => (
                   <div key={item.version} className="space-y-2 text-xs text-fg-muted">
                     <p>{item.changelog}</p>
-                    <p className="break-all">SHA-256: {item.contentHash}</p>
+                    <p className="break-all">sha256: {item.contentHash}</p>
                     <p>
                       {t('apps.templates.scan')}: {item.scanStatus}
                     </p>

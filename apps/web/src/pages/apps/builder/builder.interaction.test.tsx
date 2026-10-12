@@ -295,7 +295,9 @@ describe('pages and cards', () => {
 
     await click(q('[data-testid="app-add-card"]'));
     // Every kind is offered; the board is available (Requests has a choice field).
-    expect(document.querySelectorAll('[data-testid="app-card-catalog"] button')).toHaveLength(10);
+    expect(document.querySelectorAll('[data-testid="app-card-catalog"] button')).toHaveLength(11);
+    expect(q('[data-testid="app-catalog-external"]')).not.toBeNull();
+    expect(document.querySelector('[data-testid="app-catalog-custom"]')).toBeNull();
     await click(q('[data-testid="app-catalog-kanban"]'));
     expect(q('[data-testid="app-save-state"]')?.dataset.state).toBe('pending');
     await autosave();

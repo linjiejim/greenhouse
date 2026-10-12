@@ -46,7 +46,7 @@ describe('template content', () => {
   it('rejects update/share/publish plans and payloads that target existing Bases', () => {
     const template = appTemplates().get('crm')!;
     const content = structuredClone(template) as TemplateContent;
-    content.plans.en.operations.push({ op: 'app.publish', appId: 123 });
+    content.plans.en.operations.push({ op: 'app.publish', appId: 123, notes: 'Test publish' });
     expect(() => checkTemplateContent(content)).toThrow(/permitted/);
   });
 });

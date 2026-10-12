@@ -26,9 +26,8 @@ import { TABLE_CARD_KINDS } from '@greenhouse/types/table-cards';
 import { APP_ACCENTS, APP_CARD_KINDS, APP_ICONS, APP_LIMITS } from '@greenhouse/types/apps';
 
 /**
- * The card kinds this reference documents. Phase 2's `custom` (slice S) and
- * `external` (slice SRC) join with their own lines — never name a kind the
- * model is not told how to fill.
+ * Every declared card kind has configuration guidance below. Custom cards
+ * support authoring and review; their HTML execution remains disabled.
  */
 const REFERENCED_CARD_KINDS = APP_CARD_KINDS;
 
@@ -467,32 +466,6 @@ const TOPIC_OPERATIONS: Readonly<Record<Exclude<BuilderReferenceTopic, 'plan'>, 
               },
             ],
           },
-          {
-            id: 'stats',
-            title: 'Stats',
-            icon: 'chart',
-            cards: [
-              {
-                id: 'approved',
-                kind: 'kpi',
-                title: 'Approved amount',
-                layout: { x: 0, y: 0, w: 4, h: 3 },
-                card: {
-                  kind: 'kpi',
-                  source: {
-                    tableId: '$table:deals',
-                    query: {
-                      where: {
-                        combinator: 'and',
-                        clauses: [{ fieldId: '$field:approval', operator: 'eq', value: 'approved' }],
-                      },
-                    },
-                  },
-                  aggregate: { operation: 'sum', valueFieldId: '$field:amount' },
-                },
-              },
-            ],
-          },
         ],
         roles: [
           {
@@ -579,13 +552,14 @@ const TOPIC_NOTES: Readonly<Record<Exclude<BuilderReferenceTopic, 'plan'>, strin
     'base.update sets visibility private|team and teamRole viewer|editor|custom (roleRef). Roles and access need the Base owner.',
   ],
   app: [
-    'custom {html <=200KB, bindings [{id, kind records|aggregate, source {tableId,query?}, fieldIds (records)|aggregate}], actions? [{...recordAction,bindingId}], create? {...createSpec,bindingId}}: authoring and review only; custom HTML execution is currently DISABLED pending network isolation. Do not promise a rendered component. Requires apps_custom_code to write; super review before sharing outside Base managers. greenhouse.query(bindingId,{cursor?}), greenhouse.action(actionId,{recordId,values?}), greenhouse.create(values) use role-scoped gateway; every write opens a host confirmation. No delete. Bindings must use tables in this Base.',
-    `spec {version:1, pages (1-${APP_LIMITS.pages}), roles (1-${APP_LIMITS.roles}), home?, nav? {layout tabs|sidebar}} over ONE Base. Ids: lowercase a-z 0-9 _ - (≤40), unique in scope; no page "edit".`,
-    `page {id, title, icon?, filters? (dashboard filter controls), cards}. card {id, title?, layout {x, y, w, h 1-24}, kind ${REFERENCED_CARD_KINDS.join('|')}}: records {source {tableId, query?}, fieldIds, detail?, create? {fieldIds, defaults?}, actions?}; kanban {source, groupFieldId, fieldIds, actions?, move?}; calendar {source, startFieldId, fieldIds}; gallery {source, coverFieldId?, fieldIds}; form {tableId, fieldIds, defaults?}; kpi|chart|pivot {card: topic=dashboard}; text {markdown}; buttons {buttons [{id, label, type open_page|open_url|create_record}]}; external {source {kind tool|connector, toolId (tool) or server+tool (connector), input {}, map {kind kpi,value JSON-pointer} or {kind chart,rows,group,value,series?} or {kind table,rows,columns [{key,label,path,type?}]}}}. External sources use each viewer’s own read permission; connector tools must advertise read-only.`,
-    'detail {fieldIds, editableFieldIds?, actions?, comments?}. action {id, label, roles?, when? (re-checked in the write), confirm?, do: set_fields {values ($me/$now/$today), inputFieldIds?, requiredInputFieldIds?} | run_automation {ruleId: a button rule} | delete}. set_fields keys must be editable for every role the action applies to.',
-    'Approval = one step per action (when pending AND created_by ≠ $me). Multi-level, parallel or routed approvals are NOT supported — never promise them. "Mine": {systemField:"created_by", operator:"eq", value:"$me"}; a page filter is "$page.<filterId>" in a clause value: eq/in = what the viewer picked, neq = anything else, dates also gte/lte (from start/to end), gt/lt (after/before).',
-    'role {key, name, pages "all"|[ids], tables [rules as topic=role], canComment?} — all a viewer gets; they need not be Base members.',
-    `icon ${APP_ICONS.join('|')}; accent ${APP_ACCENTS.join('|')}. app.create makes a DRAFT; app.update {appId|appRef, draftRevision, spec?, name?} replaces it; app.audience / app.publish need the Base owner. Existing apps: tables_query apps.list / apps.get.`,
+    'custom {html<=200KB,bindings:[{id,kind:records|aggregate,source:{tableId,query?},fieldIds|aggregate}],actions?:[{...action,bindingId}],create?:{...create,bindingId}}. Same-Base bindings; no delete. Requires apps_custom_code; super review to share beyond Base managers. HTML execution DISABLED pending network isolation: author/review only.',
+    `spec {version:1,pages:1-${APP_LIMITS.pages},roles:1-${APP_LIMITS.roles},home?,nav?:{layout:tabs|sidebar}}: ONE Base. IDs lowercase a-z/0-9/_/-, ≤40, unique in scope; page id "edit" reserved.`,
+    `page {id,title,icon?,filters?:dashboard controls,cards}; card {id,title?,layout:{x,y,w,h:1-24},kind:${REFERENCED_CARD_KINDS.join('|')}}. records {source:{tableId,query?},fieldIds,detail?,create?:{fieldIds,defaults?},actions?}; kanban {source,groupFieldId,fieldIds,actions?,move?}; calendar {source,startFieldId,fieldIds}; gallery {source,coverFieldId?,fieldIds}; form {tableId,fieldIds,defaults?}; kpi/chart/pivot {card:topic=dashboard}; text {markdown}; buttons {buttons:[{id,label,type:open_page|open_url|create_record}]}.`,
+    'external {source:{kind:tool|connector,toolId (tool) or server+tool (connector),input:{},map:{kind:kpi,value}|{kind:chart,rows,group,value,series?}|{kind:table,rows,columns:[{key,label,path,type?}]}}}. Map paths are JSON Pointers. Runs as viewer; connector must advertise read-only.',
+    'detail {fieldIds,editableFieldIds?,actions?,comments?}. action {id,label,roles?,when?,confirm?,do:set_fields {values ($me/$now/$today),inputFieldIds?,requiredInputFieldIds?}|run_automation {ruleId:button rule}|delete}. Preconditions rechecked; fields must be editable for every action role.',
+    'Approval: one step per action, pending AND created_by≠$me; NO multi-level/parallel/routed approvals. Mine: {systemField:"created_by",operator:"eq",value:"$me"}. Page filter value "$page.<id>": eq/in=selection, neq=others; date gte/lte=from/to, gt/lt=after/before.',
+    'role {key,name,pages:"all"|[ids],tables:topic=role rules,canComment?} grants all viewer access; no Base membership needed.',
+    `icon ${APP_ICONS.join('|')}; accent ${APP_ACCENTS.join('|')}. app.create → DRAFT; app.update {appId|appRef,draftRevision,spec?,name?}. app.audience/app.publish require Base owner. Read via tables_query apps.list/apps.get.`,
   ],
 };
 

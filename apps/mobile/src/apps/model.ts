@@ -26,7 +26,9 @@ import {
   type AppRecordAction,
   type AppRuntimeView,
   type AppSpec,
+  type AppSourceTableResult,
 } from '../shared/apps';
+import type { DataTableData } from '../shared/rich-output';
 import type { TableFieldValueEntry } from '../shared/tables';
 import { isComputed } from '../tables/model/fields';
 
@@ -39,6 +41,17 @@ export function isRecordsLike(card: AppCard): card is RecordsLikeCard {
 /** Card kinds this build draws; anything else is "open on the web". */
 export function isMobileCard(kind: string): kind is AppCardKind {
   return (MOBILE_APP_CARDS as readonly string[]).includes(kind);
+}
+
+/** The native grid renders external URLs and timestamps literally, without link activation or date coercion. */
+export function externalTableData(result: AppSourceTableResult): DataTableData {
+  return {
+    columns: result.columns.map((column) => ({
+      ...column,
+      type: column.type === 'url' || column.type === 'datetime' || column.type === 'date' ? 'text' : column.type,
+    })),
+    rows: result.rows,
+  };
 }
 
 /** The page to show: the asked one if I may see it, else the spec's home, else the first. */

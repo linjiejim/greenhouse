@@ -10,6 +10,9 @@ import type { BuilderSchema } from '../spec-model';
 import { PanelSection } from './common';
 
 type CustomCard = Extract<AppCard, { kind: 'custom' }>;
+function isObject(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
 function settings(card: CustomCard) {
   return JSON.stringify(
     { bindings: card.bindings, actions: card.actions ?? [], ...(card.create ? { create: card.create } : {}) },
@@ -34,15 +37,20 @@ export function CustomProperties({
   const apply = () => {
     try {
       const value: unknown = JSON.parse(json);
-      if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('object');
-      const config = value as Record<string, unknown>;
+      if (!isObject(value)) throw new Error('object');
+      const config = value;
       if (
         !Array.isArray(config.bindings) ||
-        (config.actions !== undefined && !Array.isArray(config.actions)) ||
+        config.bindings.some((binding) => !isObject(binding) || !isObject(binding.source)) ||
+        (config.actions !== undefined &&
+          (!Array.isArray(config.actions) ||
+            config.actions.some((action) => !isObject(action) || !isObject(action.do)))) ||
+        (config.create !== undefined && !isObject(config.create)) ||
         Object.keys(config).some((key) => !['bindings', 'actions', 'create'].includes(key))
       )
         throw new Error('shape');
-      // The draft endpoint validates every field, reference and role before storing it.
+      // Keep malformed objects out of local state. The draft endpoint validates
+      // every field, reference and role before storing the complete spec.
       const { create: _create, actions: _actions, ...base } = card;
       onChange({ ...base, ...config } as CustomCard);
       setError('');

@@ -173,9 +173,8 @@ export const CARD_SIZES: Readonly<Record<AppCardKind, { w: number; h: number }>>
 };
 
 /**
- * The kinds the catalog offers. Phase 2's `custom` (slice S) and `external`
- * (slice SRC) join when their editors do — until then a builder cannot add a
- * card nothing can configure.
+ * Every declared kind has an editor. The catalog separately feature-gates
+ * custom authoring; HTML execution remains disabled even after review.
  */
 export const CATALOG_CARD_KINDS: readonly AppCardKind[] = APP_CARD_KINDS;
 

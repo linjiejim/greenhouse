@@ -5,7 +5,7 @@
  * not). The implemented slices have separate gateway/worker/lifecycle suites.
  */
 
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Hono } from 'hono';
 import { _resetProvider, initDatabase, type DatabaseProvider, type UserRow } from '@greenhouse/db';
 import { TEST_DATABASE_URL } from '@greenhouse/db/test-config';
@@ -72,6 +72,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  vi.restoreAllMocks();
   resetPlatformRuntimeForTests();
   await db.close();
   _resetProvider();
@@ -120,6 +121,35 @@ function specWith(tableId: number, ...cards: AppCard[]): AppSpec {
 }
 
 describe('custom code is opt-in to write (apps_custom_code)', () => {
+  it.each(['save', 'restore'] as const)(
+    'rejects a future revision before %s can use the draft snapshot',
+    async (operation) => {
+      const { baseId, tableId, primaryId } = await base();
+      await db.userFeatures.upsert({ user_id: owner.id, feature: 'apps_custom_code', enabled: true });
+      const spec = specWith(tableId, customCard(tableId, primaryId));
+      const created = await json<AppDraftView>(
+        await send(owner, '/api/apps', 'POST', { baseId, name: 'Revision guard', spec }),
+        201,
+      );
+      await db.tables.publishApp(created.app.id, { draftRevision: 1, publishedBy: owner.id });
+      const targetLoad = vi.spyOn(db.tables, 'getAppVersion');
+      const save = vi.spyOn(db.tables, 'saveAppDraft');
+      // The builder keeps the snapshot's custom code, but guesses the next revision.
+      // Refuse before an awaited target load or write could make that guess current.
+      const response =
+        operation === 'save'
+          ? await send(builder, `/api/apps/${created.app.id}/draft`, 'PUT', { spec, draftRevision: 2 })
+          : await send(builder, `/api/apps/${created.app.id}/versions/1/restore`, 'POST', { draftRevision: 2 });
+      const refused = await json<{ details: Record<string, unknown> }>(response, 409);
+      expect(refused.details).toEqual({ reason: 'draft_conflict', currentRevision: 1 });
+      expect(targetLoad).not.toHaveBeenCalled();
+      expect(save).not.toHaveBeenCalled();
+      const stored = await db.tables.getApp(created.app.id);
+      expect(stored?.draft_revision).toBe(1);
+      expect(JSON.parse(stored!.draft_spec)).toEqual(created.spec);
+    },
+  );
+
   it('checks the custom-code grant when restoring a version into the draft', async () => {
     const { baseId, tableId, primaryId } = await base();
     await db.userFeatures.upsert({ user_id: owner.id, feature: 'apps_custom_code', enabled: true });

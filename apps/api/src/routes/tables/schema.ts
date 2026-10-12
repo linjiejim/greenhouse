@@ -4,6 +4,8 @@
  */
 
 import { Hono } from 'hono';
+import { validator } from 'hono/validator';
+import { z } from 'zod';
 import {
   getDb,
   type TableDefinitionRow,
@@ -24,6 +26,20 @@ import {
 } from '../../platform/tables/schema-plan.js';
 import { userHasFeature } from '../../auth/features.js';
 import { actionError, dispatch, jsonBody, numberParam } from './shared.js';
+
+const aiStatusQuery = z.object({
+  recordIds: z
+    .string()
+    .max(4000)
+    .refine((value) => {
+      if (value === '') return true;
+      const ids = value.split(',');
+      return (
+        ids.length <= 200 && ids.every((id) => /^\d+$/.test(id) && Number.isSafeInteger(Number(id)) && Number(id) > 0)
+      );
+    }, 'recordIds must contain at most 200 positive IDs')
+    .optional(),
+});
 
 export const schemaRoutes = new Hono<AppEnv>()
   .get('/bases/:baseId/tables', async (c) => {
@@ -102,16 +118,21 @@ export const schemaRoutes = new Hono<AppEnv>()
     if (!result.ok) return actionError(c, result);
     return c.json(result.data as TableAiFieldRunResult);
   })
-  .get('/fields/:fieldId/ai/status', async (c) => {
-    const fieldId = numberParam(c, 'fieldId');
-    const recordIds = (c.req.query('recordIds') ?? '')
-      .split(',')
-      .map(Number)
-      .filter((id) => Number.isInteger(id) && id > 0);
-    const result = await dispatch(c, 'getAiFieldStatus', { fieldId, recordIds }, { fieldId });
-    if (!result.ok) return actionError(c, result);
-    return c.json(result.data as TableAiFieldStatusView);
-  })
+  .get(
+    '/fields/:fieldId/ai/status',
+    validator('query', (value, c) => {
+      const parsed = aiStatusQuery.safeParse(value);
+      return parsed.success ? parsed.data : c.json({ error: 'Invalid AI status query' }, 400);
+    }),
+    async (c) => {
+      const fieldId = numberParam(c, 'fieldId');
+      const ids = c.req.valid('query').recordIds;
+      const recordIds = ids ? ids.split(',').map(Number) : [];
+      const result = await dispatch(c, 'getAiFieldStatus', { fieldId, recordIds }, { fieldId });
+      if (!result.ok) return actionError(c, result);
+      return c.json(result.data as TableAiFieldStatusView);
+    },
+  )
   /**
    * The confirm gate behind `tables_schema_plan`. The tool only drafts; this is
    * where a plan becomes real, and it is reachable only with the user's own

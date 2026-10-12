@@ -162,7 +162,7 @@ describe('Phase 2 card kinds', () => {
   it('are catalogued, but the phone does not claim to draw them yet', () => {
     expect(APP_CARD_KINDS).toEqual(expect.arrayContaining(['custom', 'external']));
     expect(MOBILE_APP_CARDS).not.toContain('custom');
-    expect(MOBILE_APP_CARDS).not.toContain('external');
+    expect(MOBILE_APP_CARDS).toContain('external');
     expect(MOBILE_APP_CARDS.every((kind) => APP_CARD_KINDS.includes(kind as never))).toBe(true);
   });
 

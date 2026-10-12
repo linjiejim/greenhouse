@@ -122,20 +122,21 @@ describe('Tables registration (manifest 1.5.0)', () => {
     expect(tablesResource('installAppTemplate', { appId: 7 }).recordId).toBeUndefined();
   });
 
-  it('answers not_implemented from every Phase 2 placeholder until its slice lands', async () => {
-    const placeholders = [
-      'listAppCustomReviews',
-      'reviewAppCustomCode',
-      'fillAiField',
-      'regenerateAiField',
-      'getAiFieldStatus',
-    ];
-    for (const id of placeholders) {
-      expect(await tablesRegistration.handlers[id]!(request(id, {}), { db: {} as DatabaseProvider }), id).toEqual({
+  it('guards implemented Phase 2 handlers before resource access', async () => {
+    for (const id of ['fillAiField', 'regenerateAiField', 'getAiFieldStatus']) {
+      expect(await tablesRegistration.handlers[id]!(request(id, {}), { db: {} as DatabaseProvider }), id).toMatchObject(
+        {
+          ok: false,
+          code: 'INVALID_INPUT',
+          message: 'fieldId is required',
+        },
+      );
+    }
+    const db = { users: { getById: async () => ({ role: 'team' }) } } as unknown as DatabaseProvider;
+    for (const id of ['listAppCustomReviews', 'reviewAppCustomCode']) {
+      expect(await tablesRegistration.handlers[id]!(request(id, {}), { db }), id).toMatchObject({
         ok: false,
-        code: 'INVALID_INPUT',
-        message: 'not_implemented',
-        details: { notImplemented: true },
+        code: 'FORBIDDEN',
       });
     }
   });

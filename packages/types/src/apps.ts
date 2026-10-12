@@ -272,9 +272,10 @@ export const APP_CARD_KINDS = [
  * Card kinds the mobile app draws natively. Requests from mobile declare this
  * list; an older build meeting a newer kind shows "open on the web" instead of
  * crashing. An explicit list (not `APP_CARD_KINDS`): a kind joins it when the
- * phone draws it (Phase 2 slice M adds `custom` / `external`).
+ * phone draws it. Custom HTML execution stays disabled on every client.
  */
 export const MOBILE_APP_CARDS: readonly AppCardKind[] = [
+  'external',
   'records',
   'kanban',
   'calendar',

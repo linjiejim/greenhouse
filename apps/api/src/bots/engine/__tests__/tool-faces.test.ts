@@ -504,6 +504,10 @@ describe('external connectors (mcp_call) in a Bots turn', () => {
           transport: 'streamable_http',
           auth_mode: 'none',
           enabled: true,
+          // The gateway rechecks current advertised tools and policy before consent.
+          tools,
+          allowed_tools: null,
+          read_only_tools: null,
         }),
       },
     } as unknown as DatabaseProvider;
