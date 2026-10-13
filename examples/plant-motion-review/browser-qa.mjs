@@ -231,7 +231,18 @@ try {
   await page.locator('#demo').click();
   await page.waitForTimeout(2700);
   check('continuous demo advances text and state', await page.evaluate(() => window.motionReview.state !== 'hello'));
-  await page.locator('#demo').click();
+  await page.evaluate(() => window.motionReview.openDetail(0));
+  await page.locator('#local-states [data-state=waiting]').click();
+  await page.waitForTimeout(2700);
+  check(
+    'manual detail state cancels the older continuous demo',
+    await page.evaluate(
+      () =>
+        window.motionReview.detail.filter((a) => !a.static).every((a) => a.state === 'waiting') &&
+        document.querySelector('#demo').textContent === '连续演示',
+    ),
+  );
+  await page.evaluate(() => window.motionReview.closeDetail());
   await page.evaluate(() => {
     Object.defineProperty(document, 'hidden', { configurable: true, value: true });
     document.dispatchEvent(new Event('visibilitychange'));

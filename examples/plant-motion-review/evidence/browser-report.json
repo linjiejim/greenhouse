@@ -38,6 +38,7 @@
     "mobile character 16 exposes 8 states",
     "reduced-motion responds to state and remains stationary",
     "continuous demo advances text and state",
+    "manual detail state cancels the older continuous demo",
     "visibility handler freezes the clock (synthetic event)",
     "visible animation draw p95 < 16ms",
     "no browser exceptions"
@@ -49,7 +50,7 @@
   ],
   "maxOverflow": 0,
   "minFaceContrast": 4.922909074191653,
-  "drawCostP95Ms": 1,
+  "drawCostP95Ms": 5.799999998882413,
   "instances": {
     "instances": 32,
     "visible": 32,
@@ -60,10 +61,10 @@
     "speed": 1,
     "theme": "light",
     "tint": "plant",
-    "time": 24.716243333333622,
-    "frames": 538,
-    "draws": 33067,
-    "lastCost": 0.6999999992549419
+    "time": 28.524269333333564,
+    "frames": 669,
+    "draws": 33397,
+    "lastCost": 2.699999999254942
   },
   "errors": []
 }

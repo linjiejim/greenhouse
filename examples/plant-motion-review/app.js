@@ -90,10 +90,14 @@ function setGlobal(state, fromDemo = false) {
   });
   press($('#global-states'), state);
   $('#status').textContent = '当前：' + LABELS[STATES.indexOf(state)];
-  if (dialog.open) setLocal(state);
+  if (dialog.open) setLocal(state, fromDemo);
 }
 function setLocal(state, fromSequence = false) {
-  if (!fromSequence) sequence = null;
+  if (!fromSequence) {
+    sequence = null;
+    demo = false;
+    $('#demo').textContent = '连续演示';
+  }
   localState = state;
   for (const a of detailAvatars) if (!a.static) a.setState(state);
   press($('#local-states'), state);
@@ -131,7 +135,7 @@ function openDetail(index) {
     detailAvatars.push(...pair(item.firstChild, plant, size, { state: 'idle', static: true, key: 'sample' + size }));
   }
   if (!dialog.open) dialog.showModal();
-  setLocal(globalState);
+  setLocal(globalState, true);
   visibility();
 }
 function closeDetail() {
