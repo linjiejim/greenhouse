@@ -24,6 +24,21 @@ async function setup(scripts: Parameters<typeof scriptedModel>[0], options?: Par
 }
 
 describe('the engine', () => {
+  it('teaches the rich blocks the sending screen draws, and only the defaults without a word', async () => {
+    const { call, services, model, lin, main } = await setup([text('One.'), text('Two.')]);
+    await call('POST', `/api/conversations/${main.id}/messages`, { token: lin.token, body: { content: 'Plain' } });
+    await services.engine.idle();
+    await call('POST', `/api/conversations/${main.id}/messages`, {
+      token: lin.token,
+      body: { content: 'Rich', rich_blocks: ['stats', 'not-a-block'] },
+    });
+    await services.engine.idle();
+    expect(systemText(model.prompts[0])).toContain('### 图表（chart）');
+    expect(systemText(model.prompts[0])).not.toContain('### 指标卡（stats）');
+    expect(systemText(model.prompts[1])).toContain('### 指标卡（stats）');
+    expect(systemText(model.prompts[1])).not.toContain('### 图表（chart）');
+  });
+
   it('answers a message in the main thread and keeps the whole exchange', async () => {
     const { call, services, model, lin, main } = await setup([text('Hello Lin, how can I help?')]);
     expect(main).toMatchObject({ kind: 'main', last_seq: 1 });

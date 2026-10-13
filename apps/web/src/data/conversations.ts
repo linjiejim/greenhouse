@@ -9,6 +9,7 @@ import type {
   UpdateConversationInput,
   UpdateNoteInput,
 } from '@greenhouse/contract';
+import { RICH_CAPABILITIES } from '@greenhouse/types/rich-output';
 import { api } from '../lib/api';
 import { saveBlob } from '../lib/save';
 import { keys } from './query';
@@ -52,10 +53,14 @@ export function useMessages(conversationId: string | undefined) {
   return { ...query, messages };
 }
 
+/** Sends a message, saying which rich blocks this app draws so replies may use them all. */
+export const sendMessage = (conversationId: string, input: SendMessageInput) =>
+  api.conversations.send(conversationId, { ...input, rich_blocks: [...RICH_CAPABILITIES] });
+
 export function useSendMessage(conversationId: string) {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: (input: SendMessageInput) => api.conversations.send(conversationId, input),
+    mutationFn: (input: SendMessageInput) => sendMessage(conversationId, input),
     onSuccess: (result) => addMessage(client, result.message),
   });
 }

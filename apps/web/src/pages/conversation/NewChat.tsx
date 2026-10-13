@@ -9,6 +9,7 @@ import { useNotify } from '../../app/notify';
 import { useMe } from '../../app/session';
 import { Composer, type Candidate, type ComposerSend } from '../../conversation/Composer';
 import { useAgents } from '../../data/agents';
+import { sendMessage } from '../../data/conversations';
 import { addMessage } from '../../data/realtime';
 import { api } from '../../lib/api';
 import { errorText } from '../../lib/errors';
@@ -52,7 +53,7 @@ export function NewChat({ agentId }: { agentId?: string }) {
         kind: 'chat',
         ...(answering && !answering.is_main ? { agent_id: answering.id } : {}),
       });
-      const result = await api.conversations.send(chat.id, input);
+      const result = await sendMessage(chat.id, input);
       client.setQueryData(keys.conversation(chat.id), chat);
       addMessage(client, result.message);
       void client.invalidateQueries({ queryKey: keys.conversations });

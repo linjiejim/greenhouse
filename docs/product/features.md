@@ -40,7 +40,7 @@ v2 决定
 | CONV-11 | `/`：调用技能，带变量时进入第一个字段 | 改造 | 规划 | W I | v1 的 Tasks 与 Skills 两套合并 |
 | CONV-12 | 语音输入（STT），没有服务商时回退到浏览器识别 | 新增 | 规划 | W I A E | PRV-06 |
 | CONV-13 | 朗读消息（TTS） | 新增 | 规划 | W I A | PRV-07 |
-| CONV-14 | 富结果：表格、图表、指标、卡片、步骤、Mermaid、网页预览 | 保留 | 进行中 | W I A E | #70：Web 渲染 chart（SVG）、datatable（导出 CSV）、stats、cards、steps、confirm（按下即发消息，显示已选）、mermaid（strict）、html-preview（沙箱 iframe，sendPrompt 填输入框）；生成中占位。客户端声明 `rich_blocks` 待接到发送接口 |
+| CONV-14 | 富结果：表格、图表、指标、卡片、步骤、Mermaid、网页预览 | 保留 | 进行中 | W I A E | #70：Web 渲染 chart（SVG）、datatable（导出 CSV）、stats、cards、steps、confirm（按下即发消息，显示已选）、mermaid（strict）、html-preview（沙箱 iframe，sendPrompt 填输入框）；生成中占位。客户端声明 `rich_blocks` 待接到发送接口；发送时声明 Web 能画的全部富块（`rich_blocks`），模型据此选用 |
 | CONV-15 | 富结果：图片、视频、音频、文件产物 | 改造 | 规划 | W I A | 视频和音频是新增 |
 | CONV-16 | 提问表单（ask_user） | 保留 | 进行中 | W I A E | #70：`ask_user` 工具与回答接口（文本、选项），回答后唤醒 Agent；Web 界面完成（#70） |
 | CONV-17 | 「需要你」卡片：批准、登录、接管、提问、提议 | 改造 | 进行中 | W I | #70：唯一的请求模型，只能从待处理决定一次，过期或已处理返回 409；批准、提问、提议、接管（交还）已通；登录随密码库（AGNT-21）；Web 界面完成（#70）：批准、拒绝、提问表单、提议、接管与交还；通知中心可直接处理 |

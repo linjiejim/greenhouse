@@ -10,7 +10,7 @@
 
 import { createHash, randomUUID } from 'node:crypto';
 import { generateText } from 'ai';
-import { and, asc, eq, gt, inArray, isNull, lt, ne, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, inArray, isNotNull, isNull, lt, ne, sql } from 'drizzle-orm';
 import {
   collect,
   createCollector,
@@ -51,7 +51,7 @@ import {
   type MessageStep,
   type Run,
 } from '@greenhouse/db';
-import { DEFAULT_CLIENT_BLOCKS } from '@greenhouse/types/rich-output';
+import { admitRichBlocks, DEFAULT_CLIENT_BLOCKS } from '@greenhouse/types/rich-output';
 import { toErrorMessage } from '@greenhouse/utils/error';
 import { logger } from '@greenhouse/utils/logger';
 import type { z } from 'zod';
@@ -769,6 +769,15 @@ export function createEngine(deps: EngineDeps) {
               ? { reason: 'mention', memberName: member.name }
               : { reason: 'message', memberName: member.name, count: Math.max(1, input.message_ids.length) };
       const has = (name: string) => turnTools.names.has(name);
+      // Teach the blocks the newest screen that wrote here can draw; without a word, the five every client draws.
+      const [declared] = await getDb()
+        .select({ richBlocks: messages.richBlocks })
+        .from(messages)
+        .where(
+          and(eq(messages.conversationId, conversation.id), eq(messages.role, 'user'), isNotNull(messages.richBlocks)),
+        )
+        .orderBy(desc(messages.seq))
+        .limit(1);
       const system = assembleSystem([
         buildRules(
           {
@@ -783,7 +792,7 @@ export function createEngine(deps: EngineDeps) {
           },
           locale,
           conversation.kind,
-          DEFAULT_CLIENT_BLOCKS,
+          declared?.richBlocks ?? DEFAULT_CLIENT_BLOCKS,
           !!shared,
         ),
         buildIdentity(
@@ -1219,6 +1228,7 @@ export function createEngine(deps: EngineDeps) {
             quote: input.quote ? { messageId: input.quote.message_id, text: input.quote.text } : null,
             mentions: input.mentions,
             skill: input.skill ? { skillId: input.skill.skill_id, variables: input.skill.variables } : null,
+            richBlocks: admitRichBlocks(input.rich_blocks) ?? null,
           });
           const dispatched = await dispatch(db, conversationId, {
             memberId,

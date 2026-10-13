@@ -108,6 +108,8 @@ export const messages = pgTable(
     quote: jsonOrNull<{ messageId: string; text: string }>('quote'),
     mentions: json<string[]>('mentions', []),
     skill: jsonOrNull<{ skillId: string; variables?: Record<string, string> }>('skill'),
+    /** The rich blocks the sender's screen draws; null when it did not say (the defaults apply). */
+    richBlocks: jsonOrNull<string[]>('rich_blocks'),
     citations: json<MessageCitation[]>('citations', []),
     steps: json<MessageStep[]>('steps', []),
     reasoning: text('reasoning'),

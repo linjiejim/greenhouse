@@ -1,5 +1,5 @@
 {
-  "id": "de6ccafa-16d5-49ae-829b-317e70e8d438",
+  "id": "adbba1a4-97a3-485a-91ed-3fad16062ba9",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -2501,6 +2501,12 @@
         },
         "skill": {
           "name": "skill",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "rich_blocks": {
+          "name": "rich_blocks",
           "type": "jsonb",
           "primaryKey": false,
           "notNull": false

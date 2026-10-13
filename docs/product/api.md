@@ -50,7 +50,7 @@ v2 和 v1 不兼容，不加 `/api/v2` 前缀，也不保留旧路由。`GET /ap
 | `/api/agents/:id/computer` · `POST …/start` · `…/stop` · `…/restart` · `GET …/processes` · `POST …/ticket` · `…/files[?path=]` · `GET …/files/content?path=` | 电脑：状态、启停、重启（进程结束、文件保留）、后台进程；公开 Agent 的使用者用自己的一台。`ticket` 换取画面（`view` / `control`）或终端（`terminal`）的一次性 ticket，一分钟内用一次；家目录文件按相对路径列出、下载（一律下载）、上传（multipart，最大 50 MB）、删除 |
 | `GET /api/conversations?kind=&q=&archived=` · `POST /api/conversations` | 对话列表与新建，`kind` 取 `main` / `direct` / `chat` / `room` |
 | `PATCH` / `DELETE /api/conversations/:id` | 改名、置顶、归档、删除 |
-| `GET` / `POST /api/conversations/:id/messages` | 分页读取；发送（附件、引用、技能调用、`@` 点名） |
+| `GET` / `POST /api/conversations/:id/messages` | 分页读取；发送（附件、引用、技能调用、`@` 点名，以及这个界面能画的富块 `rich_blocks`；不声明时只用五种通用块） |
 | `PATCH /api/conversations/:id/messages/:mid` · `POST …/:mid/regenerate` · `PUT …/:mid/feedback` | 编辑最后一条、重新生成、👍 / 👎 |
 | `POST /api/conversations/:id/stop` · `…/read` | 停止、已读 |
 | `/api/conversations/:id/members` · `/notes` · `/export` | 房间成员、共享笔记、导出 Markdown |

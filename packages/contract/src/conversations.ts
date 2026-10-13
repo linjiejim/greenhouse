@@ -146,6 +146,11 @@ export const sendMessageInputSchema = z.object({
   mentions: z.array(z.string()).max(20).default([]),
   /** A skill run from the composer with `/`. */
   skill: z.object({ skill_id: z.string(), variables: z.record(z.string(), z.string()).default({}) }).optional(),
+  /**
+   * The rich blocks this screen draws (RICH_CAPABILITIES in @greenhouse/types/rich-output);
+   * unknown names are ignored. Left out, replies use only the five blocks every client draws.
+   */
+  rich_blocks: z.array(z.string().max(40)).max(20).optional(),
 });
 export type SendMessageInput = z.input<typeof sendMessageInputSchema>;
 

@@ -271,6 +271,7 @@ CREATE TABLE "messages" (
 	"quote" jsonb,
 	"mentions" jsonb DEFAULT '[]'::jsonb NOT NULL,
 	"skill" jsonb,
+	"rich_blocks" jsonb,
 	"citations" jsonb DEFAULT '[]'::jsonb NOT NULL,
 	"steps" jsonb DEFAULT '[]'::jsonb NOT NULL,
 	"reasoning" text,
