@@ -88,6 +88,8 @@ export const zh = {
   'chat.members': '成员',
   'chat.starters': '可以这样开始',
   'chat.computerOf': '{name}的电脑',
+  'chat.model': '这个会话的模型',
+  'chat.modelFollow': '跟随 Agent',
 
   'agents.new': '新建 Agent',
   'agents.mine': '我的',

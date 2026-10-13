@@ -89,6 +89,8 @@ export const en: Record<MessageKey, string> = {
   'chat.members': 'Members',
   'chat.starters': 'Ways to start',
   'chat.computerOf': '{name}’s computer',
+  'chat.model': 'Model for this chat',
+  'chat.modelFollow': 'Same as the Agent',
 
   'agents.new': 'New Agent',
   'agents.mine': 'Mine',

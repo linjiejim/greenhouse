@@ -95,3 +95,23 @@ test('archive a chat, find it under 已归档, and bring it back', async ({ page
   await directory.getByRole('button', { name: '已归档' }).click();
   await expect(directory.locator(`a[href="#/c/${id}"]`)).toBeVisible();
 });
+
+test("a chat's own model: picked in 「⋯」 → 这个会话的模型, and kept", async ({ page }) => {
+  await open(page, '/#/c/new');
+  await composer(page).fill('pick a model');
+  await composer(page).press('Enter');
+  await expect(page).toHaveURL(/#\/c\/cnv_/);
+  const main = page.getByRole('main');
+  await main.getByRole('button', { name: '更多' }).click();
+  await page.getByRole('menuitem', { name: '这个会话的模型' }).click();
+  const dialog = page.getByRole('dialog', { name: '这个会话的模型' });
+  await expect(dialog.getByRole('combobox', { name: '这个会话的模型' })).toContainText('跟随 Agent');
+  await dialog.getByRole('combobox', { name: '这个会话的模型' }).click();
+  await page.getByRole('option', { name: /fake-strong/ }).click();
+  await dialog.getByRole('button', { name: '保存' }).click();
+  await expect(dialog).toBeHidden();
+
+  await main.getByRole('button', { name: '更多' }).click();
+  await page.getByRole('menuitem', { name: '这个会话的模型' }).click();
+  await expect(page.getByRole('dialog', { name: '这个会话的模型' }).getByRole('combobox')).toContainText('fake-strong');
+});

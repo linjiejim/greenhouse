@@ -8,6 +8,7 @@ import {
   Archive,
   BellOff,
   CheckCheck,
+  Cpu,
   Download,
   Info,
   Link2,
@@ -18,8 +19,18 @@ import {
   PinOff,
   Trash2,
 } from 'lucide-react';
-import { ComputerScreen } from '../../computer/ComputerScreen';
-import { ConfirmDialog, Empty, ErrorBox, IconButton, Overlay, Skeleton, type MenuEntry } from '@greenhouse/ui/kit';
+import {
+  Button,
+  ConfirmDialog,
+  Empty,
+  ErrorBox,
+  IconButton,
+  Overlay,
+  OverlayActions,
+  Select,
+  Skeleton,
+  type MenuEntry,
+} from '@greenhouse/ui/kit';
 import { icon } from '@greenhouse/ui/tokens';
 import type { Conversation, Message, NeedsYou } from '@greenhouse/contract';
 import { ApiClientError } from '@greenhouse/contract/client';
@@ -45,6 +56,7 @@ import {
   useStop,
   useUpdateConversation,
 } from '../../data/conversations';
+import { useModelOptions } from '../../data/models';
 import { usePeople } from '../../data/people';
 import { useRequests } from '../../data/requests';
 import { readStream } from '../../data/streams';
@@ -54,6 +66,7 @@ import { useVisible } from '../../lib/media';
 import { href, navigate } from '../../lib/router';
 import { AgentAvatar } from '../../shell/AgentAvatar';
 import { Page, PageHeader } from '../../shell/Page';
+import { ComputerTab } from '../agents/ComputerTab';
 import { InfoDrawer } from './InfoDrawer';
 import { NewChat } from './NewChat';
 
@@ -70,6 +83,39 @@ const authorKey = (message: Message) =>
     : message.agent_id
       ? `agent:${message.agent_id}`
       : `member:${message.author_member_id}`;
+
+/** A chat's own model (it follows its Agent until one is picked): shown in 「⋯」 when there is a choice. */
+function ModelDialog({
+  current,
+  onClose,
+  onSave,
+}: {
+  current: string | null;
+  onClose: () => void;
+  onSave: (model: string | null) => void;
+}) {
+  const { t } = useI18n();
+  const models = useModelOptions(current);
+  const [value, setValue] = useState(current ?? FOLLOW);
+  return (
+    <Overlay variant="dialog" title={t('chat.model')} onClose={onClose}>
+      <Select
+        label={t('chat.model')}
+        value={value}
+        options={[{ value: FOLLOW, label: t('chat.modelFollow') }, ...models.options]}
+        onChange={setValue}
+      />
+      <OverlayActions>
+        <Button onClick={onClose}>{t('common.cancel')}</Button>
+        <Button kind="primary" onClick={() => onSave(value === FOLLOW ? null : value)}>
+          {t('common.save')}
+        </Button>
+      </OverlayActions>
+    </Overlay>
+  );
+}
+
+const FOLLOW = 'follow-agent';
 
 export function ConversationPage({ id, agent }: { id: string; agent?: string }) {
   if (id === 'new') return <NewChat agentId={agent} />;
@@ -96,11 +142,13 @@ function ExistingConversation({ id }: { id: string }) {
   const edit = useEditMessage(conversationId ?? '');
   const regenerate = useRegenerate(conversationId ?? '');
   const memberActions = useMemberActions(conversationId ?? '');
+  const models = useModelOptions();
   const [leaving, setLeaving] = useState(false);
   const [quote, setQuote] = useState<{ message_id: string; text: string } | null>(null);
   const [seed, setSeed] = useState<{ text: string }>();
   const [info, setInfo] = useState(false);
-  const [screen, setScreen] = useState<null | { control: boolean }>(null);
+  const [computer, setComputer] = useState(false);
+  const [picking, setPicking] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
@@ -234,6 +282,9 @@ function ExistingConversation({ id }: { id: string }) {
           { label: t('row.rename'), icon: <Pencil size={icon.md} />, onClick: () => setRenaming(true) },
           { label: t('row.copyLink'), icon: <Link2 size={icon.md} />, onClick: copyLink },
           { label: t('row.export'), icon: <Download size={icon.md} />, onClick: exportIt },
+          ...(models.available
+            ? [{ label: t('chat.model'), icon: <Cpu size={icon.md} />, onClick: () => setPicking(true) }]
+            : []),
           {
             label: t('row.archive'),
             icon: <Archive size={icon.md} />,
@@ -322,11 +373,7 @@ function ExistingConversation({ id }: { id: string }) {
           actions={
             <>
               {answering && me.modules.computer && me.capabilities.sandbox && (
-                <IconButton
-                  label={t('agents.computer')}
-                  aria-pressed={!!screen}
-                  onClick={() => setScreen({ control: false })}
-                >
+                <IconButton label={t('agents.computer')} aria-pressed={computer} onClick={() => setComputer(true)}>
                   <MonitorPlay size={icon.md} />
                 </IconButton>
               )}
@@ -442,14 +489,22 @@ function ExistingConversation({ id }: { id: string }) {
         )}
       </div>
       {info && <InfoDrawer conversation={conversation} detail={detail.data} onClose={() => setInfo(false)} />}
-      {screen && answering && (
-        <Overlay title={t('chat.computerOf', { name: answering.name })} wide onClose={() => setScreen(null)}>
-          <ComputerScreen
-            agentId={answering.id}
-            control={screen.control}
-            onControlChange={(control) => setScreen({ control })}
-          />
+      {computer && answering && (
+        <Overlay title={t('chat.computerOf', { name: answering.name })} wide onClose={() => setComputer(false)}>
+          <ComputerTab agentId={answering.id} />
         </Overlay>
+      )}
+      {picking && (
+        <ModelDialog
+          current={conversation.model}
+          onClose={() => setPicking(false)}
+          onSave={(model) =>
+            update.mutate(
+              { id: conversation.id, input: { model } },
+              { onSuccess: () => setPicking(false), onError: (error) => notify(errorText(error, t)) },
+            )
+          }
+        />
       )}
       {leaving && (
         <ConfirmDialog

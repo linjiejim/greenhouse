@@ -7,7 +7,8 @@
 import { Select, Switch } from '@greenhouse/ui/kit';
 import type { AgentDetail } from '@greenhouse/contract';
 import { useNotify } from '../../app/notify';
-import { useModelChoices, useUpdateAgent } from '../../data/agents';
+import { useUpdateAgent } from '../../data/agents';
+import { useModelOptions } from '../../data/models';
 import { errorText } from '../../lib/errors';
 import { useI18n } from '../../lib/i18n';
 
@@ -15,25 +16,10 @@ export function AbilitiesTab({ agent }: { agent: AgentDetail }) {
   const { t } = useI18n();
   const notify = useNotify();
   const update = useUpdateAgent(agent.id);
-  const choices = useModelChoices().data?.items ?? [];
-  const aliases = [
-    { value: 'default', label: t('agents.modelDefault') },
-    { value: 'strong', label: t('agents.modelStrong') },
-    { value: 'fast', label: t('agents.modelFast') },
-  ];
-  const options = [
-    ...aliases,
-    ...choices.map((choice) => ({
-      value: choice.ref,
-      label: choice.label,
-      description: choice.personal ? t('agents.modelMine', { name: choice.instance }) : choice.instance,
-    })),
-  ];
-  // A model that went away still shows, so the picker never looks empty.
-  if (!options.some((option) => option.value === agent.model)) options.push({ value: agent.model, label: agent.model });
+  const models = useModelOptions(agent.model);
   return (
     <section className="app-settings-group" aria-label={t('agents.tabAbilities')}>
-      {choices.length > 1 && (
+      {models.available && (
         <div className="app-setting-row">
           <div className="app-setting-text">
             <strong>{t('agents.model')}</strong>
@@ -42,7 +28,7 @@ export function AbilitiesTab({ agent }: { agent: AgentDetail }) {
           <Select
             label={t('agents.model')}
             value={agent.model}
-            options={options}
+            options={models.options}
             disabled={!!agent.archived_at || update.isPending}
             onChange={(model) => update.mutate({ model }, { onError: (error) => notify(errorText(error, t)) })}
           />
