@@ -9,7 +9,7 @@ import { Plus } from 'lucide-react';
 import { AGENT_TEMPLATES, type AgentTemplate } from '@greenhouse/types/agent-templates';
 import { AGENT_INSTRUCTIONS_MAX, AGENT_NAME_MAX, AGENT_ROLE_MAX, type CreateAgentInput } from '@greenhouse/contract';
 import { ApiClientError } from '@greenhouse/contract/client';
-import { Button, Field, Input, Overlay, OverlayActions, TextArea } from '@greenhouse/ui/kit';
+import { Button, Field, FieldGroup, Input, Overlay, OverlayActions, TextArea } from '@greenhouse/ui/kit';
 import { icon } from '@greenhouse/ui/tokens';
 import { useNotify } from '../../app/notify';
 import { useMe } from '../../app/session';
@@ -145,14 +145,14 @@ export function NewAgentDrawer({ prefill, onClose }: { prefill?: Partial<CreateA
   return (
     <Overlay title={t('agents.new')} onClose={onClose}>
       <form id="new-agent" className="app-form" onSubmit={submit}>
-        <Field label={t('agents.avatar')}>
+        <FieldGroup label={t('agents.avatar')}>
           <PlantPicker
             agentId={draft.template_key ?? 'new'}
             plant={draft.plant}
             tint={draft.tint}
             onChange={(value) => setDraft({ ...draft, ...value })}
           />
-        </Field>
+        </FieldGroup>
         <Field label={t('agents.name')} required error={error || undefined}>
           <Input
             value={draft.name}

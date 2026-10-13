@@ -27,6 +27,7 @@ import { useI18n } from '../lib/i18n';
 import { fullTime, relativeTime } from '../lib/time';
 import { AgentAvatar } from '../shell/AgentAvatar';
 import { MemberAvatar } from '../shell/MemberAvatar';
+import { Attachments } from './Attachments';
 import { Markdown } from './Markdown';
 import { RichContent, type BlockContext } from './rich/RichContent';
 import { flattenRichOutput } from '@greenhouse/types/rich-output';
@@ -196,9 +197,12 @@ export const MessageView = memo(function MessageView({
     return (
       <article className="app-message is-mine" aria-label={t('message.you')}>
         {message.quote && <blockquote className="app-message-quote">{message.quote.text}</blockquote>}
-        <div className="app-bubble">
-          <Markdown text={text} />
-        </div>
+        {text && (
+          <div className="app-bubble">
+            <Markdown text={text} />
+          </div>
+        )}
+        <Attachments ids={message.attachments} mine />
         <div className="app-message-meta is-mine">
           <time dateTime={message.created_at} title={fullTime(message.created_at, { locale, timeZone })}>
             {time}
@@ -277,6 +281,7 @@ export const MessageView = memo(function MessageView({
           ) : (
             <Markdown text={text} />
           ))}
+        <Attachments ids={message.attachments} />
         {streaming && !text && !steps.length && <span className="app-typing" aria-label={t('common.loading')} />}
         {message.status === 'failed' && (
           <p className="app-message-note is-danger">

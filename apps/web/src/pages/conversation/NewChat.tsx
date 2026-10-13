@@ -4,7 +4,6 @@
  */
 
 import { useMemo, useState } from 'react';
-import { ApiClientError } from '@greenhouse/contract/client';
 import { AGENT_TEMPLATES, MAIN_AGENT_TEMPLATE } from '@greenhouse/types/agent-templates';
 import { useNotify } from '../../app/notify';
 import { useMe } from '../../app/session';
@@ -12,6 +11,7 @@ import { Composer, type Candidate, type ComposerSend } from '../../conversation/
 import { useAgents } from '../../data/agents';
 import { addMessage } from '../../data/realtime';
 import { api } from '../../lib/api';
+import { errorText } from '../../lib/errors';
 import { useI18n } from '../../lib/i18n';
 import { navigate } from '../../lib/router';
 import { AgentAvatar } from '../../shell/AgentAvatar';
@@ -58,7 +58,7 @@ export function NewChat({ agentId }: { agentId?: string }) {
       void client.invalidateQueries({ queryKey: keys.conversations });
       navigate({ page: 'conversation', id: chat.id }, { replace: true });
     } catch (error) {
-      notify(error instanceof ApiClientError ? error.message : t('common.error'));
+      notify(errorText(error, t));
       throw error;
     }
   };

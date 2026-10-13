@@ -4,8 +4,10 @@
  */
 
 import { useMemo, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import {
   Archive,
+  ArchiveRestore,
   BellOff,
   CheckCheck,
   Download,
@@ -62,6 +64,55 @@ function signalOf(conversation: Conversation | undefined): Signal {
     running: conversation.working,
     unread: conversation.unread > 0,
   };
+}
+
+/** 已归档 (CONV-25): archived chats and rooms on demand; each can come back. */
+function ArchivedChats({ query, isCurrent }: { query: string; isCurrent: (conversation: Conversation) => boolean }) {
+  const { t } = useI18n();
+  const update = useUpdateConversation();
+  const [open, setOpen] = useState(false);
+  const archived = useQuery({
+    queryKey: ['conversations', 'archived'],
+    queryFn: () => api.conversations.list({ archived: true, limit: 100 }),
+    enabled: open,
+  });
+  const items = (archived.data?.items ?? []).filter((item) => matches(query, item.title || t('chat.untitled')));
+  return (
+    <div className="app-directory-bottom">
+      <DirectoryRow
+        leading={glyph(Archive)}
+        title={t('directory.archived')}
+        expanded={open}
+        onClick={() => setOpen(!open)}
+      />
+      {open &&
+        items.map((item) => (
+          <DirectoryRow
+            key={item.id}
+            leading={glyph(item.kind === 'room' ? Hash : MessageSquare)}
+            title={item.title || t('chat.untitled')}
+            href={href({ page: 'conversation', id: item.id })}
+            active={isCurrent(item)}
+            indent={1}
+            menu={[
+              {
+                label: t('row.unarchive'),
+                icon: glyph(ArchiveRestore),
+                onClick: () =>
+                  update.mutate(
+                    { id: item.id, input: { archived: false } },
+                    { onSuccess: () => void archived.refetch() },
+                  ),
+              },
+            ]}
+            menuLabel={t('row.actionsFor', { name: item.title || t('chat.untitled') })}
+          />
+        ))}
+      {open && archived.isSuccess && !items.length && (
+        <p className="app-muted app-directory-note">{t('directory.noneArchived')}</p>
+      )}
+    </div>
+  );
 }
 
 export function ChatDirectory({ route, query }: { route: Route; query: string }) {
@@ -325,6 +376,8 @@ export function ChatDirectory({ route, query }: { route: Route; query: string })
           </>
         )}
       </DirectorySection>
+
+      <ArchivedChats query={query} isCurrent={isCurrent} />
 
       {leaving && (
         <ConfirmDialog

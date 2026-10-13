@@ -14,7 +14,7 @@ import {
   type AgentDetail,
 } from '@greenhouse/contract';
 import { ApiClientError } from '@greenhouse/contract/client';
-import { Button, Field, Input, Skeleton, TextArea } from '@greenhouse/ui/kit';
+import { Button, Field, FieldGroup, Input, Skeleton, TextArea } from '@greenhouse/ui/kit';
 import { useNotify } from '../../app/notify';
 import { useMe } from '../../app/session';
 import { useUpdateAgent, useVersions } from '../../data/agents';
@@ -129,14 +129,14 @@ export function ProfileTab({ agent }: { agent: AgentDetail }) {
   return (
     <>
       <form className="app-form" onSubmit={save} aria-label={t('agents.tabProfile')}>
-        <Field label={t('agents.avatar')}>
+        <FieldGroup label={t('agents.avatar')}>
           <PlantPicker
             agentId={agent.id}
             plant={draft.plant}
             tint={draft.tint}
             onChange={(value) => setDraft({ ...draft, ...value })}
           />
-        </Field>
+        </FieldGroup>
         <Field label={t('agents.name')} required error={error || undefined}>
           <Input
             value={draft.name}

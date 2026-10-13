@@ -18,6 +18,8 @@ import { navigate, type AgentTab } from '../../lib/router';
 import { AgentAvatar } from '../../shell/AgentAvatar';
 import { Page, PageHeader } from '../../shell/Page';
 import { AbilitiesTab } from './AbilitiesTab';
+import { ActivityTab } from './ActivityTab';
+import { PublishTab } from './PublishTab';
 import { ComputerTab } from './ComputerTab';
 import { MemoryTab } from './MemoryTab';
 import { ProfileTab } from './ProfileTab';
@@ -71,6 +73,8 @@ export function AgentPage({ id, tab }: { id: string; tab: AgentTab }) {
     'memory',
     'schedules',
     ...(computers ? (['computer'] as const) : []),
+    ...(data.is_main ? [] : (['publish'] as const)),
+    'activity',
   ];
   const current = tabs.includes(tab) ? tab : 'profile';
   const routeId = data.is_main ? 'main' : data.id;
@@ -136,6 +140,8 @@ export function AgentPage({ id, tab }: { id: string; tab: AgentTab }) {
       {current === 'memory' && <MemoryTab agentId={data.id} />}
       {current === 'schedules' && <SchedulesTab agentId={data.id} />}
       {current === 'computer' && <ComputerTab agentId={data.id} />}
+      {current === 'publish' && <PublishTab agent={data} />}
+      {current === 'activity' && <ActivityTab agentId={data.id} />}
       {archiving && (
         <ConfirmDialog
           title={t('agents.archiveTitle', { name: data.name })}

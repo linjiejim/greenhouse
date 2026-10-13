@@ -1,3 +1,5 @@
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { defineConfig, devices } from '@playwright/test';
 import { E2E } from './e2e/env';
 
@@ -18,6 +20,9 @@ const apiEnv = [
   `LLM_BASE_URL=http://127.0.0.1:${E2E.llmPort}/v1`,
   `LLM_API_KEY=sk-e2e`,
   `LLM_MODEL=fake`,
+  // Uploads go to a scratch folder, not the repo's data/files.
+  `STORAGE_PROVIDER=local`,
+  `STORAGE_ROOT=${join(tmpdir(), 'greenhouse-v2-e2e-files')}`,
   `LOG_LEVEL=warn`,
 ].join(' ');
 

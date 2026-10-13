@@ -72,3 +72,26 @@ test('a new chat becomes a conversation on its first message, and can be renamed
   await page.getByRole('alertdialog').getByRole('button', { name: '删除' }).click();
   await expect(renamed).toHaveCount(0);
 });
+
+test('archive a chat, find it under 已归档, and bring it back', async ({ page }) => {
+  await open(page, '/#/c/new');
+  await composer(page).fill('archive me');
+  await composer(page).press('Enter');
+  await expect(page).toHaveURL(/#\/c\/cnv_/);
+  const id = new URL(page.url()).hash.replace('#/c/', '');
+  const directory = page.getByRole('complementary', { name: '目录' });
+  const row = directory.locator(`a[href="#/c/${id}"]`);
+  await expect(row).toBeVisible();
+  await row.click({ button: 'right' });
+  await page.getByRole('menuitem', { name: '归档' }).click();
+  await expect(page.getByText(/已归档「/)).toBeVisible();
+  await expect(row).toHaveCount(0);
+
+  await directory.getByRole('button', { name: '已归档' }).click();
+  const archived = directory.locator(`a[href="#/c/${id}"]`);
+  await expect(archived).toBeVisible();
+  await archived.click({ button: 'right' });
+  await page.getByRole('menuitem', { name: '取消归档' }).click();
+  await directory.getByRole('button', { name: '已归档' }).click();
+  await expect(directory.locator(`a[href="#/c/${id}"]`)).toBeVisible();
+});

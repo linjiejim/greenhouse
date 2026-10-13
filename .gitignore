@@ -51,8 +51,9 @@ data/raw/blog/
 # Downloaded PDF manuals (large, regeneratable)
 data/raw/manuals/
 
-# User uploads (runtime data)
+# User uploads (runtime data; v2's local storage writes data/files)
 data/uploads/
+data/files/
 
 # Skill Center bundle store (runtime data, seeded from skillhub/ on boot)
 data/skills/

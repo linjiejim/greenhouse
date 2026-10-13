@@ -1,10 +1,12 @@
 /** 管理 → 品牌 (ADM-11): the workspace's name and main colour, shown on sign-in and in the app. */
 
 import { useState, type FormEvent } from 'react';
-import { Button, Field, Input } from '@greenhouse/ui/kit';
+import { Button, Field, FieldGroup, Input } from '@greenhouse/ui/kit';
 import { ApiClientError } from '@greenhouse/contract/client';
 import { useQueryClient } from '@tanstack/react-query';
+import { GreenhouseMark } from '@greenhouse/ui/components/brand';
 import { useNotify } from '../../app/notify';
+import { ImagePicker } from '../../shell/ImagePicker';
 import { useSession } from '../../app/session';
 import { keys } from '../../data/query';
 import { api } from '../../lib/api';
@@ -41,6 +43,23 @@ export function BrandingSection() {
 
   return (
     <form className="app-form" onSubmit={(event) => void submit(event)} aria-label={t('admin.branding')}>
+      <FieldGroup label={t('branding.logo')} description={t('branding.logoHint')}>
+        <ImagePicker
+          purpose="branding"
+          hasImage={!!bootstrap?.logo_url}
+          preview={
+            bootstrap?.logo_url ? (
+              <img className="app-logo-preview" src={bootstrap.logo_url} alt="" />
+            ) : (
+              <GreenhouseMark className="app-logo-preview" />
+            )
+          }
+          onPick={async (fileId) => {
+            const saved = await api.admin.branding({ logo_file_id: fileId });
+            client.setQueryData(keys.bootstrap, saved);
+          }}
+        />
+      </FieldGroup>
       <Field label={t('branding.name')} required error={error || undefined}>
         <Input
           value={name}

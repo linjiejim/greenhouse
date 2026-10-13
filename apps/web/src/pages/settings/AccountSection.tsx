@@ -4,10 +4,13 @@
  */
 
 import { useMemo, useState, type FormEvent } from 'react';
-import { Button, Field, Input, Segmented, Select, TextArea } from '@greenhouse/ui/kit';
+import { Button, Field, FieldGroup, Input, Segmented, Select, Skeleton, TextArea } from '@greenhouse/ui/kit';
 import { PASSWORD_MIN_LENGTH, type UpdateMeInput } from '@greenhouse/contract';
 import { ApiClientError } from '@greenhouse/contract/client';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { BudgetBar, formatCost, formatTokens } from '../../shell/usage';
+import { ImagePicker } from '../../shell/ImagePicker';
+import { MemberAvatar } from '../../shell/MemberAvatar';
 import { useNotify } from '../../app/notify';
 import { useMe } from '../../app/session';
 import { keys } from '../../data/query';
@@ -48,6 +51,14 @@ function Profile() {
   };
   return (
     <form className="app-form" onSubmit={submit} aria-label={t('account.profile')}>
+      <FieldGroup label={t('account.avatar')}>
+        <ImagePicker
+          purpose="avatar"
+          hasImage={!!me.avatar_url}
+          preview={<MemberAvatar name={me.name} url={me.avatar_url} size={56} />}
+          onPick={(fileId) => save.mutateAsync({ avatar_file_id: fileId })}
+        />
+      </FieldGroup>
       <Field label={t('activate.name')} required>
         <Input value={name} maxLength={80} onChange={(event) => setName(event.target.value)} />
       </Field>
@@ -178,6 +189,51 @@ function Password() {
   );
 }
 
+function MyUsage() {
+  const { t, locale } = useI18n();
+  const usage = useQuery({ queryKey: ['usage', 'mine'], queryFn: () => api.usage.mine('month') });
+  if (usage.isPending) return <Skeleton lines={3} />;
+  if (usage.isError) return null;
+  const data = usage.data;
+  return (
+    <section className="app-section" aria-label={t('usage.mine')}>
+      <h2 className="app-section-title">{t('usage.mine')}</h2>
+      <div className="app-stats-grid">
+        <div className="app-stat">
+          <span className="app-stat-label">{t('usage.tokens')}</span>
+          <span className="app-stat-value">{formatTokens(data.totals.tokens, locale)}</span>
+        </div>
+        <div className="app-stat">
+          <span className="app-stat-label">{t('usage.cost')}</span>
+          <span className="app-stat-value">{formatCost(data.totals.cost_micros, locale)}</span>
+          {data.totals.unpriced > 0 && (
+            <span className="app-stat-hint">{t('usage.unpriced', { count: data.totals.unpriced })}</span>
+          )}
+        </div>
+        <div className="app-stat">
+          <span className="app-stat-label">{t('usage.requests')}</span>
+          <span className="app-stat-value">{data.totals.requests.toLocaleString(locale)}</span>
+        </div>
+      </div>
+      {data.budgets.map((budget) => (
+        <BudgetBar key={budget.unit} spent={budget.spent} limit={budget.monthly_limit} unit={budget.unit} />
+      ))}
+      {data.by_agent.length > 0 && (
+        <ul className="app-list">
+          {data.by_agent.slice(0, 5).map((row) => (
+            <li key={row.agent_id ?? 'none'} className="app-list-row is-static">
+              <span className="app-list-main">
+                <span className="app-list-title">{row.agent_id ? row.name : t('usage.outsideAgents')}</span>
+              </span>
+              <span className="app-list-time">{formatTokens(row.tokens, locale)}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
 export function AccountSection() {
   return (
     <>
@@ -185,6 +241,7 @@ export function AccountSection() {
       <section className="app-section">
         <Preferences />
       </section>
+      <MyUsage />
       <section className="app-section">
         <Password />
       </section>

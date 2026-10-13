@@ -37,6 +37,10 @@ const LABELS: Record<string, MessageKey> = {
   voice: 'provider.field.voice',
   region: 'provider.field.region',
   bucket: 'provider.field.bucket',
+  price: 'provider.field.price',
+  input: 'provider.field.priceInput',
+  output: 'provider.field.priceOutput',
+  cachedInput: 'provider.field.priceCached',
 };
 
 const typeOf = (schema: JsonSchema) =>
@@ -95,6 +99,19 @@ function FieldFor({
           onChange={(event) => onChange(event.target.value === '' ? undefined : Number(event.target.value))}
         />
       </Field>
+    );
+  }
+  if (type === 'object' && schema.properties) {
+    const object = value && typeof value === 'object' ? (value as Value) : {};
+    return (
+      <fieldset className="app-fieldset">
+        <legend>{label}</legend>
+        <SchemaFields
+          schema={schema}
+          value={object}
+          onChange={(next) => onChange(Object.keys(next).length ? next : undefined)}
+        />
+      </fieldset>
     );
   }
   if (type === 'array' && schema.items && typeOf(schema.items) === 'object') {

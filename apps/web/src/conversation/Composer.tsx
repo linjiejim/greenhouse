@@ -189,6 +189,8 @@ export function Composer({
       setFiles([]);
       setMentions([]);
       onClearQuote?.();
+    } catch {
+      // The page said why; the text stays here to send again.
     } finally {
       setSending(false);
       textarea.current?.focus();

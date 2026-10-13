@@ -5,15 +5,59 @@
 
 import { Archive, Plus, Sparkles } from 'lucide-react';
 import { Button, Empty, ErrorBox, Skeleton } from '@greenhouse/ui/kit';
+import { ApiClientError } from '@greenhouse/contract/client';
+import { useQuery } from '@tanstack/react-query';
+import { useNotify } from '../../app/notify';
+import { useCreateConversation } from '../../data/conversations';
+import { api } from '../../lib/api';
 import { icon } from '@greenhouse/ui/tokens';
 import { useMe } from '../../app/session';
 import { useAgents } from '../../data/agents';
 import { useI18n } from '../../lib/i18n';
-import { href, type AgentScope } from '../../lib/router';
+import { href, navigate, type AgentScope } from '../../lib/router';
 import { relativeTime } from '../../lib/time';
 import { AgentAvatar } from '../../shell/AgentAvatar';
 import { useOpenOverlay } from '../../shell/overlays';
 import { Page, PageHeader } from '../../shell/Page';
+
+/** Other members' public Agents shared with me (AGNT-14): talk to one in its own thread. */
+function PublicAgents() {
+  const { t } = useI18n();
+  const notify = useNotify();
+  const create = useCreateConversation();
+  const shared = useQuery({ queryKey: ['agents', 'list', 'public'], queryFn: () => api.publication.shared() });
+  if (shared.isPending) return <Skeleton lines={4} />;
+  if (shared.isError) return <ErrorBox onRetry={() => void shared.refetch()}>{t('common.error')}</ErrorBox>;
+  if (!shared.data.items.length) return <Empty icon={<Sparkles />} title={t('agents.noPublic')} />;
+  return (
+    <ul className="app-card-grid" aria-label={t('agents.public')}>
+      {shared.data.items.map((agent) => (
+        <li key={agent.id}>
+          <button
+            type="button"
+            className="app-agent-card"
+            onClick={() =>
+              create.mutate(
+                { kind: 'direct', agent_id: agent.id },
+                {
+                  onSuccess: (conversation) => navigate({ page: 'conversation', id: conversation.id }),
+                  onError: (error) => notify(error instanceof ApiClientError ? error.message : t('common.error')),
+                },
+              )
+            }
+          >
+            <AgentAvatar agent={agent} size={48} />
+            <span className="app-agent-card-text">
+              <strong>{agent.name}</strong>
+              <span>{agent.role}</span>
+              <span className="app-agent-card-meta">{t('agents.byOwner', { name: agent.owner.name })}</span>
+            </span>
+          </button>
+        </li>
+      ))}
+    </ul>
+  );
+}
 
 export function AgentsPage({ scope }: { scope: AgentScope }) {
   const { t, locale } = useI18n();
@@ -29,7 +73,7 @@ export function AgentsPage({ scope }: { scope: AgentScope }) {
 
   let body;
   if (scope === 'public') {
-    body = <Empty icon={<Sparkles />} title={t('agents.noPublic')} />;
+    body = <PublicAgents />;
   } else if (agents.isPending) {
     body = <Skeleton lines={4} />;
   } else if (agents.isError) {

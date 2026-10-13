@@ -15,6 +15,7 @@ import {
   Plus,
   Search,
   Server,
+  Sparkles,
   User,
   Users,
   X,
@@ -44,6 +45,8 @@ export const SETTINGS: { id: SettingsSection; label: MessageKey; icon: LucideIco
 export const ADMIN: { id: AdminSection; label: MessageKey; icon: LucideIcon }[] = [
   { id: 'members', label: 'admin.members', icon: Users },
   { id: 'services', label: 'admin.services', icon: Server },
+  { id: 'usage', label: 'admin.usage', icon: Activity },
+  { id: 'public-agents', label: 'admin.public-agents', icon: Sparkles },
   { id: 'branding', label: 'admin.branding', icon: LayoutGrid },
 ];
 

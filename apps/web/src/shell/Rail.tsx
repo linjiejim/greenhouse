@@ -59,7 +59,7 @@ function RailButton({
 
 export function Rail({ module }: { module: ModuleId }) {
   const t = useT();
-  const { me, signOut } = useSession();
+  const { me, signOut, bootstrap } = useSession();
   const { openPalette } = useShell();
   const openOverlay = useOpenOverlay();
   const summary = useNotificationSummary();
@@ -100,7 +100,7 @@ export function Rail({ module }: { module: ModuleId }) {
     <nav className="app-rail" aria-label={t('nav.main')}>
       <Tooltip label={t('nav.home')} side="right">
         <button type="button" className="app-rail-mark" aria-label={t('nav.home')} onClick={() => navigate('#/c/main')}>
-          <GreenhouseMark />
+          {bootstrap?.logo_url ? <img className="app-rail-logo" src={bootstrap.logo_url} alt="" /> : <GreenhouseMark />}
         </button>
       </Tooltip>
       <div className="app-rail-group">

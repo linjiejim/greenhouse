@@ -48,6 +48,7 @@ import {
 import { usePeople } from '../../data/people';
 import { useRequests } from '../../data/requests';
 import { readStream } from '../../data/streams';
+import { errorText } from '../../lib/errors';
 import { useI18n } from '../../lib/i18n';
 import { useVisible } from '../../lib/media';
 import { href, navigate } from '../../lib/router';
@@ -204,7 +205,7 @@ function ExistingConversation({ id }: { id: string }) {
 
   const sendMessage = async (input: ComposerSend) => {
     const result = await send.mutateAsync(input).catch((error: unknown) => {
-      notify(error instanceof ApiClientError ? error.message : t('common.error'));
+      notify(errorText(error, t));
       throw error;
     });
     if (result.queued) notify(t('message.queued'));
@@ -282,7 +283,7 @@ function ExistingConversation({ id }: { id: string }) {
       ? lastSpoken.id
       : null;
   const busyReason = conversation.working ? t('message.busy') : undefined;
-  const failed = (error: unknown) => notify(error instanceof ApiClientError ? error.message : t('common.error'));
+  const failed = (error: unknown) => notify(errorText(error, t));
   const tail = last ? `${last.id}:${last.status}:${last.content.length}:${readStream(last.id)?.text.length ?? 0}` : '';
 
   return (
