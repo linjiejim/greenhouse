@@ -309,12 +309,12 @@ v2 决定
 | PRV-03 | 运行时配置：存数据库、加密、立即生效，不改 `process.env` | 新增 | 进行中 | W | #70：接口与加密存储完成，界面在 M1.5 |
 | PRV-04 | 个人 Key（BYOK）与按能力的策略 | 新增 | 进行中 | W | #70：接口完成；个人地址保存时与每次连接时都检查 |
 | PRV-05 | LLM：OpenAI（Chat / Responses）、Anthropic Messages、Gemini、OpenAI 兼容，以及厂商预设 | 改造 | 进行中 | — | #70：四个适配器、16 个预设；v1 只支持 DeepSeek 和 OpenAI 兼容 |
-| PRV-06 | 语音输入 STT | 新增 | 规划 | — | |
-| PRV-07 | 语音输出 TTS | 新增 | 规划 | — | |
-| PRV-08 | 图像生成与编辑 | 改造 | 规划 | — | v1 写死 gpt-image |
+| PRV-06 | 语音输入 STT | 新增 | 进行中 | — | #70：OpenAI 兼容（OpenAI、Groq、硅基流动预设）、Deepgram；不报时长的服务商用量记为未知，M3.1 补测音频时长 |
+| PRV-07 | 语音输出 TTS | 新增 | 进行中 | — | #70：OpenAI 兼容（OpenAI、硅基流动）、ElevenLabs、MiniMax（mp3 / wav） |
+| PRV-08 | 图像生成与编辑 | 改造 | 进行中 | — | #70：OpenAI Images（base64）；测试连接会生成一张图；v1 写死 gpt-image |
 | PRV-09 | 视频生成（异步任务） | 新增 | 规划 | — | 推迟到第一个视频工具（M3.2） |
 | PRV-10 | 沙箱：Docker（gVisor）、E2B 与兼容服务 | 改造 | 规划 | — | 基于 `ComputerHost` 泛化；随 M0.6 长任务探针一起做 |
-| PRV-11 | 搜索与网页读取：Tavily、Brave、Exa、Jina、Firecrawl、SearXNG、博查 | 改造 | 规划 | — | 基于 `SearchProvider` 泛化，读取服务可配置 |
+| PRV-11 | 搜索与网页读取：Tavily、Brave、Exa、Jina、Firecrawl、SearXNG、博查 | 改造 | 进行中 | — | #70：Tavily、Brave、Exa、Jina（含读取）、Firecrawl（含读取）、SearXNG、博查 |
 | PRV-12 | 存储：本地、S3 兼容（AWS、R2、MinIO、COS、OSS、OBS） | 改造 | 进行中 | — | #70：本地磁盘与 S3 SigV4（含预签名）；v1 主存储写死为腾讯 COS |
 | PRV-13 | 健康检查、测试连接、按服务记账 | 新增 | 进行中 | W | #70：测试连接、`/health`、每次调用一条 `usage_events` |
 | PRV-14 | 扩展可以注册 Provider 适配器 | 新增 | 规划 | — | |

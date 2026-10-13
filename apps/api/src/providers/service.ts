@@ -493,7 +493,10 @@ export function createProvidersService(deps: { config: AppConfig; fetch?: typeof
       if (!usable(instance)) throw new Error('Fill in the required keys first.');
       // A test is not usage: the client is not metered.
       const { adapter, config, created } = rawClient(instance);
-      await withTimeout(adapter.test ? adapter.test(created, config) : Promise.resolve(), TEST_TIMEOUT_MS);
+      await withTimeout(
+        adapter.test ? adapter.test(created, config) : Promise.resolve(),
+        adapter.testTimeoutMs ?? TEST_TIMEOUT_MS,
+      );
       check = { at: new Date().toISOString(), ok: true, latencyMs: Date.now() - started };
     } catch (error) {
       check = {

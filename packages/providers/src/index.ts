@@ -1,6 +1,7 @@
 export * from './types.js';
 export type { LanguageModelV4 } from '@ai-sdk/provider';
 export { pinnedFetch, EndpointViolation } from './pinned-fetch.js';
+export { ProviderRequestError } from './http.js';
 export { registerAdapter, getAdapter, listAdapters } from './registry.js';
 export {
   withAttempts,

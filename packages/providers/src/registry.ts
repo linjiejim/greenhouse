@@ -1,4 +1,7 @@
+import { IMAGE_ADAPTERS } from './image/adapters.js';
 import { LLM_ADAPTERS } from './llm/adapters.js';
+import { SEARCH_ADAPTERS } from './search/adapters.js';
+import { SPEECH_ADAPTERS } from './speech/adapters.js';
 import { localAdapter } from './storage/local.js';
 import { s3Adapter } from './storage/s3.js';
 import type { AnyAdapter, Capability } from './types.js';
@@ -24,4 +27,13 @@ export function listAdapters(capability?: Capability): AnyAdapter[] {
   return [...adapters.values()].filter((adapter) => !capability || adapter.capability === capability);
 }
 
-for (const adapter of [...LLM_ADAPTERS, localAdapter, s3Adapter] as AnyAdapter[]) registerAdapter(adapter);
+for (const adapter of [
+  ...LLM_ADAPTERS,
+  ...SEARCH_ADAPTERS,
+  ...SPEECH_ADAPTERS,
+  ...IMAGE_ADAPTERS,
+  localAdapter,
+  s3Adapter,
+] as AnyAdapter[]) {
+  registerAdapter(adapter);
+}

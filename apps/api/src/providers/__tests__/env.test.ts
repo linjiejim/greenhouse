@@ -47,6 +47,33 @@ describe('providers from env', () => {
     expect(llm!.secrets).toEqual({});
   });
 
+  it('reads speech, image and a search fallback order', () => {
+    const { instances } = providersFromEnv({
+      STT_PROVIDER: 'groq',
+      STT_API_KEY: 'gsk',
+      TTS_PROVIDER: 'minimax',
+      TTS_API_KEY: 'mm',
+      TTS_VOICE: 'female-shaonv',
+      IMAGE_PROVIDER: 'openai',
+      IMAGE_API_KEY: 'sk-img',
+      SEARCH_PROVIDER: 'tavily, brave, nope',
+      TAVILY_API_KEY: 'tv',
+      BRAVE_API_KEY: 'bv',
+    });
+    expect(instances.map((instance) => [instance.id, instance.kind, instance.preset])).toEqual([
+      ['env-stt', 'openai-compatible', 'groq'],
+      ['env-tts', 'minimax', null],
+      ['env-image', 'openai-compatible', 'openai'],
+      ['env-search-tavily', 'tavily', null],
+      ['env-search-brave', 'brave', null],
+    ]);
+    expect(instances[0]).toMatchObject({
+      config: { baseUrl: 'https://api.groq.com/openai/v1' },
+      secrets: { apiKey: 'gsk' },
+    });
+    expect(instances[1]!.config).toMatchObject({ voice: 'female-shaonv' });
+  });
+
   it('reads S3 and local storage', () => {
     const [s3] = providersFromEnv({
       STORAGE_PROVIDER: 's3',

@@ -119,7 +119,8 @@ export function meter<C extends Capability>(
       const metered: SttClient = {
         async transcribe(input) {
           const result = await stt.transcribe(input);
-          await record({ quantity: result.durationSeconds ?? 0, unit: 'second' });
+          // Not every vendor reports the audio length; unknown stays unknown rather than 0.
+          await record({ quantity: result.durationSeconds, unit: 'second' });
           return result;
         },
       };

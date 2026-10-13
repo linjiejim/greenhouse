@@ -145,6 +145,8 @@ export interface ProviderAdapter<C extends Capability = Capability, Config = Rec
   create(input: CreateInput<Config>): ClientByCapability[C];
   /** The cheapest real call that proves the instance works; throws on failure. */
   test?(client: ClientByCapability[C], config: Config): Promise<void>;
+  /** How long that call may take, when it is slower than the default 20 s (image generation). */
+  testTimeoutMs?: number;
 }
 
 export type AnyAdapter = ProviderAdapter<Capability, any>;
