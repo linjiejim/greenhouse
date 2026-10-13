@@ -58,7 +58,6 @@ const toMe = (row: Member, capabilities: Me['capabilities'], files: Pick<FilesSe
   theme: row.theme,
   about: row.about,
   modules: effectiveModules(row.modules),
-  notification_settings: row.notificationSettings,
   capabilities,
 });
 
@@ -107,7 +106,6 @@ export function createMembersService(deps: { auth: AuthService; providers: Provi
             ...(input.timezone !== undefined ? { timezone: input.timezone } : {}),
             ...(input.theme !== undefined ? { theme: input.theme } : {}),
             ...(input.about !== undefined ? { about: input.about } : {}),
-            ...(input.notification_settings !== undefined ? { notificationSettings: input.notification_settings } : {}),
             ...(input.avatar_file_id !== undefined ? { avatarFileId: input.avatar_file_id } : {}),
             updatedAt: sql`now()`,
           })

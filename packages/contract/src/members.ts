@@ -32,7 +32,6 @@ export const meSchema = memberSummarySchema.extend({
   theme: z.enum(THEMES),
   about: z.string(),
   modules: modulesSchema,
-  notification_settings: z.record(z.string(), z.unknown()),
   /**
    * Which services can serve me now, by configuration (my own keys included where allowed),
    * not by a live check. The apps hide what needs a missing one: no sandbox, no computer.
@@ -51,7 +50,6 @@ export const updateMeInputSchema = z
     timezone: z.string().min(1).max(64),
     theme: z.enum(THEMES),
     about: z.string().max(4000),
-    notification_settings: z.record(z.string(), z.unknown()),
     /** A picture I uploaded with purpose `avatar`; null removes mine. The one it replaces is deleted. */
     avatar_file_id: z.string().min(1).max(64).nullable(),
   })
