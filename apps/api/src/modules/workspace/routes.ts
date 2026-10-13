@@ -1,6 +1,6 @@
 /**
  * GET   /api/bootstrap          public: branding, api_version, login methods, setup_pending
- * PATCH /api/admin/branding     admin: name and primary color
+ * PATCH /api/admin/branding     admin: name, primary color and logo
  */
 
 import { Hono } from 'hono';

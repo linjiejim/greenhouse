@@ -28,6 +28,9 @@ export const usageEvents = pgTable(
   (t) => [
     index('usage_events_member_idx').on(t.memberId, t.createdAt),
     index('usage_events_provider_idx').on(t.providerId, t.createdAt),
+    index('usage_events_agent_idx').on(t.agentId, t.createdAt),
+    // Workspace totals and budgets read one month at a time.
+    index('usage_events_time_idx').on(t.createdAt),
   ],
 );
 

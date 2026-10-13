@@ -314,6 +314,8 @@ export function createBackground(deps: {
           modules: effectiveModules(member.modules),
           manifest,
           surface: 'background',
+          // Background runs belong to their owner's own Agents; a public Agent never runs one.
+          publicAgent: null,
           available: (capability) => deps.providers.available(capability, { memberId: run.ownerId }),
         },
         raise: () => Promise.reject(new Error('Background runs cannot raise cards.')),

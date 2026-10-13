@@ -40,21 +40,27 @@ export interface RuleFlags {
   background: boolean;
 }
 
-/** The rules: paragraphs about a tool appear only when the tool exists this turn. */
+/**
+ * The rules: paragraphs about a tool appear only when the tool exists this turn. `shared`: the
+ * Agent is someone else's public Agent talking with a member of its audience.
+ */
 export function buildRules(
   flags: RuleFlags,
   locale: Locale,
   kind: ConversationKind,
   richBlocks: readonly string[],
+  shared = false,
 ): string {
   const room = kind === 'room';
   const lines: string[] = [
     '# You are an Agent in Greenhouse',
-    kind === 'chat'
-      ? "You are one of a member's Agents: a long-lived colleague with a name, a job and a memory. This is a separate chat the member opened for one piece of work, with its own context; your memory is the same everywhere."
-      : room
-        ? "You are an Agent in a conversation between several people. You answer only when someone addresses you. You act for the person who addressed you: their permissions and their approvals. Everyone here reads your replies, so never bring up anyone's private information unless they ask you to share it here."
-        : "You are one of a member's Agents: a long-lived colleague with a name, a job and a memory, working with them in an ongoing conversation. There are no separate sessions; this thread continues for as long as the member uses it.",
+    shared
+      ? "You are a public Agent: your owner made you and shared you with colleagues. You are talking with one of them, the member, in their own conversation, which your owner cannot read. You act for this member with their permissions, and what you remember here is about them only. You have no access to your owner's conversations, memories or other private data: never claim to, and never guess at them."
+      : kind === 'chat'
+        ? "You are one of a member's Agents: a long-lived colleague with a name, a job and a memory. This is a separate chat the member opened for one piece of work, with its own context; your memory is the same everywhere."
+        : room
+          ? "You are an Agent in a conversation between several people. You answer only when someone addresses you. You act for the person who addressed you: their permissions and their approvals. Everyone here reads your replies, so never bring up anyone's private information unless they ask you to share it here."
+          : "You are one of a member's Agents: a long-lived colleague with a name, a job and a memory, working with them in an ongoing conversation. There are no separate sessions; this thread continues for as long as the member uses it.",
     '',
     '## Who is speaking',
     'Earlier messages from others start with a label:',
@@ -133,12 +139,26 @@ export function buildRules(
   return lines.join('\n');
 }
 
-export function buildIdentity(agent: { name: string; role: string; instructions: string }, memberName: string): string {
+/**
+ * Who the Agent is and whose instructions it follows: the member's own, or, for someone else's
+ * public Agent (`ownerName`), its owner's, while it talks with the member.
+ */
+export function buildIdentity(
+  agent: { name: string; role: string; instructions: string },
+  memberName: string,
+  ownerName?: string,
+): string {
   const role = agent.role.trim() ? `, ${sanitizeForPrompt(agent.role.trim())}` : '';
   const member = sanitizeForPrompt(memberName.trim() || 'the member');
-  const parts = ['## Who you are', `You are **${sanitizeForPrompt(agent.name)}**${role}. You work for ${member}.`];
+  const owner = ownerName === undefined ? member : sanitizeForPrompt(ownerName.trim() || 'your owner');
+  const parts = [
+    '## Who you are',
+    ownerName === undefined
+      ? `You are **${sanitizeForPrompt(agent.name)}**${role}. You work for ${member}.`
+      : `You are **${sanitizeForPrompt(agent.name)}**${role}. ${owner} made you and shared you with colleagues; you are talking with ${member}.`,
+  ];
   const instructions = agent.instructions.trim();
-  if (instructions) parts.push('', `## Your instructions (from ${member})`, sanitizeForPrompt(instructions));
+  if (instructions) parts.push('', `## Your instructions (from ${owner})`, sanitizeForPrompt(instructions));
   return parts.join('\n');
 }
 

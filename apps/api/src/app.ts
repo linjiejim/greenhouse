@@ -12,7 +12,7 @@ import { RateLimiter } from './security/rate-limit.js';
 import { requestSourceIp } from './security/request-ip.js';
 import { authRoutes } from './modules/auth/routes.js';
 import { createAuthService, type AuthService } from './modules/auth/service.js';
-import { adminMemberRoutes, directoryRoutes, meRoutes } from './modules/members/routes.js';
+import { adminMemberRoutes, directoryRoutes, groupDirectoryRoutes, meRoutes } from './modules/members/routes.js';
 import { createMembersService, type MembersService } from './modules/members/service.js';
 import { bootstrapRoutes, brandingRoutes } from './modules/workspace/routes.js';
 import { createWorkspaceService, type WorkspaceService } from './modules/workspace/service.js';
@@ -27,13 +27,14 @@ import type { ToolDef } from './engine/tools/define.js';
 import { runStartTool } from './engine/tools/run-start.js';
 import { scheduleTools } from './engine/tools/schedules.js';
 import { selfTool } from './engine/tools/self.js';
+import { requestTakeoverTool } from './engine/tools/takeover.js';
 import { webTools } from './engine/tools/web.js';
-import { agentRoutes } from './modules/agents/routes.js';
+import { adminPublicAgentRoutes, agentRoutes } from './modules/agents/routes.js';
 import { createAgentsService, type AgentsService } from './modules/agents/service.js';
 import { computerRoutes } from './modules/computers/routes.js';
 import { createComputersService, type ComputersService } from './modules/computers/service.js';
 import { conversationRoutes } from './modules/conversations/routes.js';
-import { fileRoutes } from './modules/files/routes.js';
+import { fileContentRoutes, fileRoutes } from './modules/files/routes.js';
 import { createFilesService, type FilesService } from './modules/files/service.js';
 import { notificationRoutes } from './modules/notifications/routes.js';
 import { createNotificationsService, type NotificationsService } from './modules/notifications/service.js';
@@ -46,6 +47,8 @@ import { createRequestsService, type RequestsService } from './modules/requests/
 import { createConversationsService, type ConversationsService } from './modules/conversations/service.js';
 import { searchRoutes } from './modules/search/routes.js';
 import { createSearchService, type SearchService } from './modules/search/service.js';
+import { adminUsageRoutes, agentUsageRoutes, myUsageRoutes } from './modules/usage/routes.js';
+import { createUsageService, type UsageService } from './modules/usage/service.js';
 import { createHub, type Hub } from './realtime/hub.js';
 import { adminProviderRoutes, myProviderRoutes } from './providers/routes.js';
 import { createProvidersService, type ProvidersService } from './providers/service.js';
@@ -66,6 +69,7 @@ export interface Services {
   runs: RunsService;
   schedules: SchedulesService;
   search: SearchService;
+  usage: UsageService;
   hub: Hub;
   engine: Engine;
   limiter: RateLimiter;
@@ -84,12 +88,18 @@ export function createServices(config: AppConfig, options: ServiceOptions = {}):
   const tokens = createTokens(config.tokenSigningKey);
   const auth = createAuthService({ tokens, publicUrl: config.PUBLIC_URL });
   const providers = createProvidersService({ config, fetch: options.fetch });
-  const agents = createAgentsService({ providers });
+  const files = createFilesService({ providers, sign: (data) => tokens.hashSecret(data, 'file') });
+  const agents = createAgentsService({ providers, files });
   const hub = createHub();
-  const conversations = createConversationsService({ agents, providers, hub });
-  const members = createMembersService({ auth, providers });
-  const files = createFilesService({ providers });
-  const computers = createComputersService({ providers, agents });
+  const conversations = createConversationsService({ agents, providers, hub, files });
+  const members = createMembersService({ auth, providers, files });
+  // A socket ticket is a one-time link: random, stored only as a keyed hash.
+  const computers = createComputersService({
+    providers,
+    agents,
+    hub,
+    secrets: { create: () => tokens.newSecret(), hash: (secret) => tokens.hashSecret(secret, 'link') },
+  });
   const notifications = createNotificationsService({ hub });
   const schedules = createSchedulesService({ agents, background: () => engine.background });
   const requests = createRequestsService({ hub, notifications });
@@ -108,6 +118,7 @@ export function createServices(config: AppConfig, options: ServiceOptions = {}):
       conversationTool(),
       readAttachmentTool(files),
       computerTool(computers),
+      requestTakeoverTool(),
       runStartTool(background),
       handoffTool(handOff),
       ...scheduleTools(schedules),
@@ -121,7 +132,7 @@ export function createServices(config: AppConfig, options: ServiceOptions = {}):
     config,
     tokens,
     auth,
-    workspace: createWorkspaceService(),
+    workspace: createWorkspaceService({ files }),
     members,
     providers,
     agents,
@@ -133,6 +144,7 @@ export function createServices(config: AppConfig, options: ServiceOptions = {}):
     runs,
     schedules,
     search: createSearchService({ members }),
+    usage: createUsageService({ agents, providers }),
     hub,
     engine,
     limiter: new RateLimiter(10, 60_000),
@@ -140,8 +152,9 @@ export function createServices(config: AppConfig, options: ServiceOptions = {}):
 }
 
 /**
- * The HTTP surface. Public: /health, /api/bootstrap, /api/auth/*, and the built web app at /.
- * Everything else under /api requires a member; /api/admin/* also requires an admin.
+ * The HTTP surface. Public: /health, /api/bootstrap, /api/auth/*, file content behind a signed URL
+ * (GET /api/files/:id/content?exp=&m=&sig=), and the built web app at /. Everything else under
+ * /api requires a member; /api/admin/* also requires an admin.
  */
 export function createApp(services: Services, options: { webDir?: string } = {}) {
   const { config } = services;
@@ -168,13 +181,18 @@ export function createApp(services: Services, options: { webDir?: string } = {})
     '/api/auth',
     authRoutes({ auth: services.auth, limiter: services.limiter, clientIp: (c) => requestSourceIp(c as never, trust) }),
   );
+  // An <img> or a link cannot send a bearer header: the URL's signature is the credential.
+  app.route('/api/files', fileContentRoutes(services.files));
 
   const signedIn = new Hono<AppEnv>();
   signedIn.use('*', member);
   signedIn.route('/me/providers', myProviderRoutes(services.providers));
+  signedIn.route('/me/usage', myUsageRoutes(services.usage));
   signedIn.route('/me', meRoutes(services.members));
   signedIn.route('/members', directoryRoutes(services.members));
+  signedIn.route('/groups', groupDirectoryRoutes(services.members));
   signedIn.route('/agents', agentRoutes(services.agents));
+  signedIn.route('/agents', agentUsageRoutes(services.usage));
   signedIn.route('/agents', computerRoutes(services.computers));
   signedIn.route('/conversations', conversationRoutes(services.conversations, services.engine));
   signedIn.route('/requests', requestRoutes(services.requests, services.engine));
@@ -187,6 +205,8 @@ export function createApp(services: Services, options: { webDir?: string } = {})
   signedIn.route('/admin', adminMemberRoutes(services.members));
   signedIn.route('/admin/branding', brandingRoutes(services.workspace));
   signedIn.route('/admin', adminProviderRoutes(services.providers));
+  signedIn.route('/admin', adminUsageRoutes(services.usage));
+  signedIn.route('/admin', adminPublicAgentRoutes(services.agents));
   app.route('/api', signedIn);
   app.route('/', webRoutes(options.webDir));
 

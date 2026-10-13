@@ -293,4 +293,39 @@ describe('the realtime socket', () => {
     const client = createApiClient({ baseUrl: '', tokens: memoryStore(pair(1)), fetch });
     await expect(client.me.get()).rejects.toMatchObject({ status: 502, code: 'unavailable', message: 'Bad Gateway' });
   });
+
+  it("reaches an Agent's computer: socket URLs with a fresh ticket, and files by their path in the home", async () => {
+    const fetch = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      const path = String(url);
+      if (path.endsWith('/computer/ticket')) {
+        return json(200, { ticket: `t-${JSON.parse(String(init!.body)).purpose}`, expires_at: 'soon' });
+      }
+      if (path.includes('/computer/files/content')) {
+        return new Response('bytes', {
+          headers: { 'content-disposition': `attachment; filename="a.txt"; filename*=UTF-8''%E6%8A%A5%E5%91%8A.txt` },
+        });
+      }
+      return init?.method === 'DELETE' ? new Response(null, { status: 204 }) : json(201, { name: 'a.txt' });
+    });
+    const client = createApiClient({ baseUrl: 'https://gh.test', tokens: memoryStore(pair(1)), fetch });
+    expect(await client.agents.computerSocket('agt_1', 'control')).toBe(
+      'wss://gh.test/api/ws/computer?ticket=t-control',
+    );
+    expect(await client.agents.computerSocket('agt_1', 'terminal')).toBe(
+      'wss://gh.test/api/ws/computer-terminal?ticket=t-terminal',
+    );
+
+    const file = await client.agents.file('agt_1', 'work/报告.txt');
+    expect(file.filename).toBe('报告.txt');
+    expect(await file.blob.text()).toBe('bytes');
+    await client.agents.uploadFile('agt_1', 'work', new File(['x'], 'a.txt'));
+    await client.agents.removeFile('agt_1', 'work/a.txt');
+    const calls = fetch.mock.calls.map(([url, init]) => [init?.method, String(url)]);
+    expect(calls.slice(2)).toEqual([
+      ['GET', 'https://gh.test/api/agents/agt_1/computer/files/content?path=work%2F%E6%8A%A5%E5%91%8A.txt'],
+      ['POST', 'https://gh.test/api/agents/agt_1/computer/files?path=work'],
+      ['DELETE', 'https://gh.test/api/agents/agt_1/computer/files?path=work%2Fa.txt'],
+    ]);
+    expect(fetch.mock.calls[3]![1]!.body).toBeInstanceOf(FormData);
+  });
 });

@@ -130,6 +130,10 @@ describe('members', () => {
     expect(created.body).toMatchObject({ name: '产品组', member_ids: [chen.id] });
     const clash = await call('POST', '/api/admin/groups', { token: admin.token, body: { name: '产品组' } });
     expect(clash.body.error.code).toBe('group_name_taken');
+    // Any member sees the groups for pickers, but cannot change them.
+    const listed = await call('GET', '/api/groups', { token: chen.token });
+    expect(listed.body.items).toEqual([expect.objectContaining({ name: '产品组', member_ids: [chen.id] })]);
+    expect((await call('POST', '/api/admin/groups', { token: chen.token, body: { name: 'x' } })).status).toBe(403);
     expect((await call('DELETE', `/api/admin/groups/${created.body.id}`, { token: admin.token })).status).toBe(204);
   });
 

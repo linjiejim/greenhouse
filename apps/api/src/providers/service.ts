@@ -49,6 +49,7 @@ import type { AppConfig } from '../config/index.js';
 import { ApiError, conflict, forbidden, invalidInput, notFound } from '../http/errors.js';
 import { assertPublicEndpoint } from '../security/network.js';
 import { publicFetch } from '../security/public-fetch.js';
+import { assertWithinBudgets } from './budgets.js';
 import { providersFromEnv, type EnvInstance } from './env.js';
 import { openSecrets, sealSecrets } from './secrets.js';
 import { meter, type UsageContext } from './usage.js';
@@ -279,8 +280,27 @@ export function createProvidersService(deps: { config: AppConfig; fetch?: typeof
     return { adapter, config, created };
   }
 
-  const client = <C extends Capability>(instance: Instance, ctx: UsageContext): ClientByCapability[C] =>
-    meter<C>(instance, rawClient(instance).created as ClientByCapability[C], ctx);
+  /** Capabilities whose personal-key usage counts toward workspace and member budgets. */
+  async function personalCounting(): Promise<Capability[]> {
+    return (await load()).filter((entry) => entry.policy.personalCountsTowardBudget).map((entry) => entry.capability);
+  }
+
+  /** A client that records usage, and refuses calls while a budget covering them is used up. */
+  const client = <C extends Capability>(
+    instance: Instance,
+    ctx: UsageContext,
+    policy: Required<ProviderPolicy>,
+  ): ClientByCapability[C] =>
+    meter<C>(instance, rawClient(instance).created as ClientByCapability[C], ctx, () =>
+      assertWithinBudgets({
+        capability: instance.capability,
+        instanceId: instance.id,
+        personal: instance.source === 'personal',
+        personalCounts: policy.personalCountsTowardBudget,
+        ...(ctx.memberId ? { memberId: ctx.memberId } : {}),
+        personalCounting,
+      }),
+    );
 
   const publicView = (instance: Instance): ProviderInstance => ({
     id: instance.id,
@@ -514,18 +534,20 @@ export function createProvidersService(deps: { config: AppConfig; fetch?: typeof
   return {
     /** The first instance that can serve the member, with a client that records usage; null when none. */
     async resolve<C extends Capability>(capability: C, ctx: UsageContext): Promise<Resolved<C> | null> {
-      const instance = chainFor(await viewOf(capability), ctx)[0];
+      const current = await viewOf(capability);
+      const instance = chainFor(current, ctx)[0];
       if (!instance) return null;
       return {
-        client: client<C>(instance, ctx),
+        client: client<C>(instance, ctx, current.policy),
         instance: { id: instance.id, kind: instance.kind, name: instance.name, source: instance.source },
       };
     },
 
     /** Every instance that can serve the member, in fallback order, each with a metered client. */
     async chain<C extends Capability>(capability: C, ctx: UsageContext): Promise<Resolved<C>[]> {
-      return chainFor(await viewOf(capability), ctx).map((instance) => ({
-        client: client<C>(instance, ctx),
+      const current = await viewOf(capability);
+      return chainFor(current, ctx).map((instance) => ({
+        client: client<C>(instance, ctx, current.policy),
         instance: { id: instance.id, kind: instance.kind, name: instance.name, source: instance.source },
       }));
     },
@@ -540,7 +562,7 @@ export function createProvidersService(deps: { config: AppConfig; fetch?: typeof
       if (!instance || !usable(instance)) return null;
       if (instance.source === 'personal' && instance.ownerId !== ctx.memberId) return null;
       return {
-        client: client<C>(instance, ctx),
+        client: client<C>(instance, ctx, current.policy),
         instance: { id: instance.id, kind: instance.kind, name: instance.name, source: instance.source },
       };
     },
@@ -576,7 +598,8 @@ export function createProvidersService(deps: { config: AppConfig; fetch?: typeof
       const current = await viewOf('llm');
       const chain = chainFor(current, ctx);
       if (!chain.length) throw new ApiError(503, 'llm_not_configured', 'No model service is configured yet.');
-      const model = (target: Target) => client<'llm'>(target.instance, ctx).languageModel(target.modelId);
+      const model = (target: Target) =>
+        client<'llm'>(target.instance, ctx, current.policy).languageModel(target.modelId);
       let targets: Target[];
       if ((LLM_ALIASES as readonly string[]).includes(ref)) {
         targets = aliasTargets(ref, chain, current.defaults);
@@ -606,6 +629,27 @@ export function createProvidersService(deps: { config: AppConfig; fetch?: typeof
     async modelAvailable(ref: string, ctx: UsageContext): Promise<boolean> {
       if ((LLM_ALIASES as readonly string[]).includes(ref)) return true;
       return !!explicitTarget(ref, chainFor(await viewOf('llm'), ctx));
+    },
+
+    personalCounting,
+
+    /**
+     * Every instance by id with its name, for usage and budget labels; `managed` is an instance an
+     * admin can budget (env and workspace, not a member's own key).
+     */
+    async instanceDirectory(): Promise<Map<string, { name: string; capability: Capability; managed: boolean }>> {
+      const views = await load();
+      const entries = views.flatMap((entry) => [...entry.all, ...entry.personal]);
+      return new Map(
+        entries.map((instance) => [
+          instance.id,
+          {
+            name: instance.name,
+            capability: instance.capability,
+            managed: instance.source === 'env' || instance.source === 'workspace',
+          },
+        ]),
+      );
     },
 
     async adminView(): Promise<AdminProviders> {

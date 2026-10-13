@@ -1,20 +1,62 @@
 /**
- * Agent computers: one sandbox per Agent, from the sandbox provider, with a home that outlives
- * restarts. Shell commands run as the `agent` user for at most two minutes; longer work runs
- * as a background process (gh-jobs in the image) that survives the API, and wakes its Agent
- * when it ends — or when it is lost because the computer restarted under it.
+ * Agent computers: one sandbox per Agent and member, from the sandbox provider, with a home that
+ * outlives restarts. The owner has the Agent's own computer; when a public Agent's publication
+ * grants one, each member who uses it gets their own copy, so nobody sees another's files.
+ * Shell commands run as the `agent` user for at most two minutes; longer work runs as a
+ * background process (gh-jobs in the image) that survives the API, and wakes its Agent when it
+ * ends — or when it is lost because the computer restarted under it.
+ *
+ * People reach a computer only as the member whose computer it is: its screen and terminal
+ * through one-time tickets (realtime/computer.ts), its home through the file routes. A pending
+ * take-over card keeps it awake, so the page the Agent needed help with is still there.
  */
 
-import { and, eq, inArray, lt, sql } from 'drizzle-orm';
-import type { ComputerJob, ComputerView } from '@greenhouse/contract';
-import { agentComputers, computerWatches, getDb, members, newId, type AgentComputer } from '@greenhouse/db';
-import type { SandboxClient } from '@greenhouse/providers';
+import { and, eq, gt, inArray, lt, sql } from 'drizzle-orm';
+import type {
+  ComputerFile,
+  ComputerFolder,
+  ComputerJob,
+  ComputerTicket,
+  ComputerTicketPurpose,
+  ComputerView,
+} from '@greenhouse/contract';
+import {
+  agentComputers,
+  computerWatches,
+  getDb,
+  idempotencyKeys,
+  members,
+  newId,
+  requests,
+  type AgentComputer,
+  type Agent as AgentRow,
+} from '@greenhouse/db';
+import type { SandboxClient, SandboxStream } from '@greenhouse/providers';
 import { toErrorMessage } from '@greenhouse/utils/error';
 import { logger } from '@greenhouse/utils/logger';
-import { ApiError, forbidden } from '../../http/errors.js';
+import { ApiError, conflict, forbidden, invalidInput, notFound } from '../../http/errors.js';
 import type { ProvidersService } from '../../providers/service.js';
+import type { Hub } from '../../realtime/hub.js';
 import type { AgentsService } from '../agents/service.js';
+import { MAX_UPLOAD_BYTES } from '../files/service.js';
 import { effectiveModules } from '../members/service.js';
+import {
+  AGENT_HOME,
+  DELETE_SCRIPT,
+  DOWNLOAD_MAX_BYTES,
+  DOWNLOAD_SCRIPT,
+  homePath,
+  LIST_MAX_ENTRIES,
+  LIST_SCRIPT,
+  parseListing,
+  parseUploaded,
+  scriptArgv,
+  scriptError,
+  UPLOAD_SCRIPT,
+  uploadName,
+} from './files.js';
+import { bodyOf, readSizeLine, runToEnd } from './streams.js';
+import { TERMINAL_ARGV, TERMINAL_CWD } from './terminal.js';
 
 export const SHELL_TIMEOUT_MS = 120_000;
 const OUTPUT_CAP = 64 * 1024;
@@ -22,6 +64,34 @@ const TOOL_OUTPUT_CHARS = 20_000;
 const WATCH_MS = 60_000;
 const WATCH_DAYS = 7;
 export const IDLE_STOP_MS = 30 * 60_000;
+/** A ticket is spent within a minute or never. */
+const TICKET_TTL_MS = 60_000;
+/** Tickets live in the replay table under this scope, as keyed hashes only. */
+const TICKETS = 'computer_ticket';
+/** A file transfer still running after this long is cut. */
+const TRANSFER_TIMEOUT_MS = 10 * 60_000;
+
+/** What a ticket grants, stored with its hash. */
+interface TicketGrant {
+  member_id: string;
+  computer_id: string;
+  purpose: ComputerTicketPurpose;
+  /** The member's sign-in generation when it was made: a password change spends it. */
+  auth_version: number;
+}
+
+/** A socket's way into a computer, from a spent ticket (realtime/computer.ts). */
+export interface ComputerSession {
+  memberId: string;
+  agentId: string;
+  purpose: ComputerTicketPurpose;
+  /** The screen (RFB) or the terminal (gh-term frames in, output out). */
+  stream: SandboxStream;
+  /** Activity: the idle stop leaves a computer alone while someone watches or types. */
+  touch(): Promise<void>;
+  /** Whether the member may still use it: active, the same sign-in, computers on. */
+  allowed(): Promise<boolean>;
+}
 
 /** The end of long output is usually what matters. */
 function tail(text: string, max = TOOL_OUTPUT_CHARS): string {
@@ -42,7 +112,13 @@ export type Deliver = (
   item: { agentId: string; memberId: string; note: string },
 ) => Promise<void>;
 
-export function createComputersService(deps: { providers: ProvidersService; agents: AgentsService }) {
+export function createComputersService(deps: {
+  providers: ProvidersService;
+  agents: AgentsService;
+  hub: Hub;
+  /** Ticket secrets: random, and the keyed hash they are stored as. */
+  secrets: { create(): string; hash(secret: string): string };
+}) {
   let ticker: NodeJS.Timeout | null = null;
 
   async function sandbox(memberId: string) {
@@ -58,13 +134,14 @@ export function createComputersService(deps: { providers: ProvidersService; agen
     return resolved.client;
   }
 
-  const setState = (
+  /** Records a state change and tells the member whose computer it is; their sockets close on a stop. */
+  async function setState(
     id: string,
     state: AgentComputer['state'],
     reason: string | null = null,
     extra: Record<string, unknown> = {},
-  ) =>
-    getDb()
+  ) {
+    const [row] = await getDb()
       .update(agentComputers)
       .set({
         state,
@@ -73,33 +150,82 @@ export function createComputersService(deps: { providers: ProvidersService; agen
         updatedAt: sql`now()`,
         ...extra,
       } as never)
-      .where(eq(agentComputers.id, id));
+      .where(eq(agentComputers.id, id))
+      .returning({ agentId: agentComputers.agentId, ownerId: agentComputers.ownerId });
+    if (row) deps.hub.publish([row.ownerId], { type: 'computer.updated', data: { agent_id: row.agentId, state } });
+  }
 
-  /** The computer of an Agent the member owns, started if it was not running. */
-  async function ensure(memberId: string, agentId: string): Promise<{ row: AgentComputer; client: SandboxClient }> {
+  const touch = async (id: string) => {
+    await getDb()
+      .update(agentComputers)
+      .set({ lastActiveAt: sql`now()` })
+      .where(eq(agentComputers.id, id));
+  };
+
+  /** The member, when computers are on for them. */
+  async function computerMember(memberId: string) {
     const [member] = await getDb().select().from(members).where(eq(members.id, memberId));
     if (!member || !effectiveModules(member.modules).computer) throw forbidden('Computers are turned off for you.');
-    const { agent } = await deps.agents.load(memberId, agentId);
+    return member;
+  }
+
+  async function stillAllowed(grant: TicketGrant): Promise<boolean> {
+    const [member] = await getDb()
+      .select({ status: members.status, authVersion: members.authVersion, modules: members.modules })
+      .from(members)
+      .where(eq(members.id, grant.member_id));
+    return (
+      member?.status === 'active' &&
+      member.authVersion === grant.auth_version &&
+      effectiveModules(member.modules).computer === true
+    );
+  }
+
+  /** The Agent whose computer the member uses: their own, or a public one that grants them a copy. */
+  async function agentFor(memberId: string, agentId: string): Promise<AgentRow> {
+    const own = await deps.agents.findOwn(memberId, agentId);
+    if (own) return own;
+    const usable = await deps.agents.openPublic(memberId, agentId);
+    if (!usable) throw notFound('Agent');
+    if (usable.agent.publication.computer !== true) throw forbidden('This Agent does not come with a computer.');
+    return usable.agent;
+  }
+
+  /** The member's computer for an Agent (theirs, or their copy of a public one), if it was ever made. */
+  async function rowOf(memberId: string, agentId: string): Promise<AgentComputer | undefined> {
+    const [row] = await getDb()
+      .select()
+      .from(agentComputers)
+      .where(and(eq(agentComputers.agentId, agentId), eq(agentComputers.ownerId, memberId)));
+    return row;
+  }
+
+  /** The member's computer for an Agent, started if it was not running. */
+  async function ensure(memberId: string, agentId: string): Promise<{ row: AgentComputer; client: SandboxClient }> {
+    const member = await computerMember(memberId);
+    const agent = await agentFor(memberId, agentId);
     const resolved = await sandbox(memberId);
+    const id = newId('computer');
     await getDb()
       .insert(agentComputers)
       .values({
-        id: newId('computer'),
+        id,
         agentId: agent.id,
-        ownerId: agent.ownerId,
+        ownerId: memberId,
         providerId: resolved.instance.id,
-        sandboxRef: `gh-cmp-${agent.id.toLowerCase()}`,
+        // The owner's computer is named after the Agent; a member's copy after its own row.
+        sandboxRef: `gh-cmp-${(agent.ownerId === memberId ? agent.id : id).toLowerCase()}`,
         timezone: member.timezone,
       })
       .onConflictDoNothing();
-    const [row] = await getDb().select().from(agentComputers).where(eq(agentComputers.agentId, agent.id));
+    const row = await rowOf(memberId, agent.id);
     const client = row!.providerId === resolved.instance.id ? resolved.client : await clientFor(row!, memberId);
     if (row!.state !== 'running' || (await client.status(row!.sandboxRef)) !== 'running') {
       await setState(row!.id, 'starting');
       try {
         await client.ensure({
           name: row!.sandboxRef,
-          labels: { 'greenhouse.computer': row!.id, 'greenhouse.agent': agent.id, 'greenhouse.owner': agent.ownerId },
+          labels: { 'greenhouse.computer': row!.id, 'greenhouse.agent': agent.id, 'greenhouse.owner': memberId },
           timezone: row!.timezone,
         });
         await setState(row!.id, 'running', null, { lastStartedAt: sql`now()`, lastActiveAt: sql`now()` });
@@ -120,7 +246,7 @@ export function createComputersService(deps: { providers: ProvidersService; agen
     memberId: string,
     agentId: string,
     argv: string[],
-    options: { timeoutMs?: number; cwd?: string } = {},
+    options: { timeoutMs?: number; cwd?: string; maxOutputBytes?: number } = {},
   ) {
     const { row, client } = await ensure(memberId, agentId);
     const result = await client.exec(row.sandboxRef, {
@@ -128,13 +254,21 @@ export function createComputersService(deps: { providers: ProvidersService; agen
       user: 'agent',
       ...(options.cwd ? { cwd: options.cwd } : {}),
       timeoutMs: options.timeoutMs ?? SHELL_TIMEOUT_MS,
-      maxOutputBytes: OUTPUT_CAP,
+      maxOutputBytes: options.maxOutputBytes ?? OUTPUT_CAP,
     });
-    await getDb()
-      .update(agentComputers)
-      .set({ lastActiveAt: sql`now()` })
-      .where(eq(agentComputers.id, row.id));
+    await touch(row.id);
     return { row, result };
+  }
+
+  /** One of the file scripts (files.ts) in the member's computer; its output, or the error its exit means. */
+  async function fileScript(memberId: string, agentId: string, script: string, args: string[]): Promise<string> {
+    const { result } = await run(memberId, agentId, scriptArgv(script, args), {
+      timeoutMs: 30_000,
+      cwd: AGENT_HOME,
+      maxOutputBytes: 1024 * 1024,
+    });
+    if (result.exitCode !== 0) throw scriptError(result.exitCode, result.stderr);
+    return result.stdout;
   }
 
   async function gh<T>(memberId: string, agentId: string, args: string[]): Promise<T> {
@@ -162,8 +296,8 @@ export function createComputersService(deps: { providers: ProvidersService; agen
     ensure,
 
     async view(memberId: string, agentId: string): Promise<ComputerView> {
-      const { agent } = await deps.agents.load(memberId, agentId);
-      const [row] = await getDb().select().from(agentComputers).where(eq(agentComputers.agentId, agent.id));
+      const agent = await agentFor(memberId, agentId);
+      const row = await rowOf(memberId, agent.id);
       return row
         ? toView(row)
         : { agent_id: agent.id, state: 'stopped', state_reason: null, last_active_at: null, last_started_at: null };
@@ -174,8 +308,8 @@ export function createComputersService(deps: { providers: ProvidersService; agen
     },
 
     async stop(memberId: string, agentId: string): Promise<ComputerView> {
-      const { agent } = await deps.agents.load(memberId, agentId);
-      const [row] = await getDb().select().from(agentComputers).where(eq(agentComputers.agentId, agent.id));
+      const agent = await agentFor(memberId, agentId);
+      const row = await rowOf(memberId, agent.id);
       if (!row) return service.view(memberId, agentId);
       await (await clientFor(row, memberId)).stop(row.sandboxRef);
       await setState(row.id, 'stopped', 'member');
@@ -185,9 +319,170 @@ export function createComputersService(deps: { providers: ProvidersService; agen
     /** Restarting ends every process; the home stays. */
     async restart(memberId: string, agentId: string): Promise<ComputerView> {
       const { row, client } = await ensure(memberId, agentId);
-      await client.restart(row.sandboxRef);
-      await setState(row.id, 'running', null, { lastStartedAt: sql`now()` });
+      await setState(row.id, 'starting');
+      try {
+        await client.restart(row.sandboxRef);
+      } catch (error) {
+        await setState(row.id, 'failed', toErrorMessage(error).slice(0, 500));
+        throw new ApiError(
+          503,
+          'computer_failed',
+          `The computer could not restart: ${toErrorMessage(error).slice(0, 300)}`,
+        );
+      }
+      await setState(row.id, 'running', null, { lastStartedAt: sql`now()`, lastActiveAt: sql`now()` });
       return service.view(memberId, agentId);
+    },
+
+    /**
+     * A one-time ticket for the screen (`view`, `control`) or the terminal of the member's own
+     * computer of this Agent. Taking over and the terminal start the computer; watching needs it
+     * running. Only its keyed hash is stored, for a minute.
+     */
+    async ticket(memberId: string, agentId: string, purpose: ComputerTicketPurpose): Promise<ComputerTicket> {
+      const member = await computerMember(memberId);
+      let row: AgentComputer;
+      if (purpose === 'view') {
+        const agent = await agentFor(memberId, agentId);
+        const found = await rowOf(memberId, agent.id);
+        if (
+          found?.state !== 'running' ||
+          (await (await clientFor(found, memberId)).status(found.sandboxRef)) !== 'running'
+        ) {
+          throw conflict('computer_not_running', 'The computer is not running. Start it first.');
+        }
+        row = found;
+      } else {
+        row = (await ensure(memberId, agentId)).row;
+      }
+      const ticket = deps.secrets.create();
+      const grant: TicketGrant = {
+        member_id: memberId,
+        computer_id: row.id,
+        purpose,
+        auth_version: member.authVersion,
+      };
+      const now = new Date().toISOString();
+      const expiresAt = new Date(Date.now() + TICKET_TTL_MS).toISOString();
+      await getDb()
+        .delete(idempotencyKeys)
+        .where(and(eq(idempotencyKeys.scope, TICKETS), lt(idempotencyKeys.expiresAt, now)));
+      await getDb()
+        .insert(idempotencyKeys)
+        .values({
+          scope: TICKETS,
+          key: deps.secrets.hash(ticket),
+          requestHash: purpose,
+          status: 'done',
+          response: grant,
+          expiresAt,
+        });
+      return { ticket, expires_at: expiresAt };
+    },
+
+    /**
+     * Spends a ticket on the socket it was made for and opens the stream: the screen for `view`
+     * and `control`, the terminal for `terminal`. Refused when the ticket is unknown, spent,
+     * expired or for the other socket (ticket_invalid), when its member may no longer use
+     * computers (forbidden), or when the computer stopped (computer_not_running).
+     */
+    async open(ticket: string, socket: 'screen' | 'terminal'): Promise<ComputerSession> {
+      const invalid = () => new ApiError(401, 'ticket_invalid', 'This ticket is not valid. Ask for a new one.');
+      if (!ticket || ticket.length > 200) throw invalid();
+      const [spent] = await getDb()
+        .delete(idempotencyKeys)
+        .where(
+          and(
+            eq(idempotencyKeys.scope, TICKETS),
+            eq(idempotencyKeys.key, deps.secrets.hash(ticket)),
+            gt(idempotencyKeys.expiresAt, new Date().toISOString()),
+          ),
+        )
+        .returning();
+      const grant = spent?.response as TicketGrant | undefined;
+      if (!grant || (grant.purpose === 'terminal') !== (socket === 'terminal')) throw invalid();
+      const allowed = () => stillAllowed(grant);
+      if (!(await allowed())) throw forbidden('You can no longer use this computer.');
+      const [row] = await getDb().select().from(agentComputers).where(eq(agentComputers.id, grant.computer_id));
+      if (row?.state !== 'running') throw conflict('computer_not_running', 'The computer is not running.');
+      const client = await clientFor(row, grant.member_id);
+      const stream =
+        socket === 'screen'
+          ? client.screen(row.sandboxRef)
+          : client.stream(row.sandboxRef, { argv: TERMINAL_ARGV, user: 'agent', cwd: TERMINAL_CWD });
+      await touch(row.id);
+      return {
+        memberId: grant.member_id,
+        agentId: row.agentId,
+        purpose: grant.purpose,
+        stream,
+        touch: () => touch(row.id),
+        allowed,
+      };
+    },
+
+    /** A folder of the home: folders first, then files, each by name; at most 500. */
+    async files(memberId: string, agentId: string, rawPath: string): Promise<ComputerFolder> {
+      const path = homePath(rawPath);
+      const listing = parseListing(
+        await fileScript(memberId, agentId, LIST_SCRIPT, [path.abs, String(LIST_MAX_ENTRIES)]),
+      );
+      return { path: path.rel, ...listing };
+    },
+
+    /** One file of the home, streamed: its name, its exact size and its bytes. */
+    async fileContent(memberId: string, agentId: string, rawPath: string) {
+      const path = homePath(rawPath);
+      if (!path.rel) throw invalidInput('Choose a file.');
+      const { row, client } = await ensure(memberId, agentId);
+      const stream = client.stream(row.sandboxRef, {
+        argv: scriptArgv(DOWNLOAD_SCRIPT, [path.abs, String(DOWNLOAD_MAX_BYTES)]),
+        user: 'agent',
+        cwd: AGENT_HOME,
+      });
+      stream.input.end();
+      const header = await readSizeLine(stream);
+      if ('code' in header) {
+        stream.kill();
+        throw scriptError(header.code, header.stderr);
+      }
+      await touch(row.id);
+      return {
+        name: path.rel.split('/').pop()!,
+        size: header.size,
+        body: bodyOf(stream, header.size, header.rest, () => void touch(row.id)),
+      };
+    },
+
+    /** Saves an upload into a folder of the home, under a free name: nothing is overwritten. */
+    async upload(
+      memberId: string,
+      agentId: string,
+      rawFolder: string,
+      file: { name: string; bytes: Uint8Array },
+    ): Promise<ComputerFile> {
+      const folder = homePath(rawFolder);
+      if (file.bytes.byteLength > MAX_UPLOAD_BYTES) throw new ApiError(413, 'too_large', 'Files can be up to 50 MB.');
+      const { base, ext } = uploadName(file.name);
+      const { row, client } = await ensure(memberId, agentId);
+      const stream = client.stream(row.sandboxRef, {
+        argv: scriptArgv(UPLOAD_SCRIPT, [folder.abs, base, ext, String(file.bytes.byteLength)]),
+        user: 'agent',
+        cwd: AGENT_HOME,
+      });
+      const result = await runToEnd(stream, file.bytes, { timeoutMs: TRANSFER_TIMEOUT_MS, maxOutputBytes: 4096 });
+      await touch(row.id);
+      if (result.code !== 0) throw scriptError(result.code, result.stderr);
+      const saved = parseUploaded(result.stdout);
+      if (!saved) throw new ApiError(502, 'computer_error', 'The computer did not say where it saved the file.');
+      return saved;
+    },
+
+    /** Deletes a file or a folder with everything in it; the home and the folders the computer needs stay. */
+    async removeFile(memberId: string, agentId: string, rawPath: string): Promise<void> {
+      const path = homePath(rawPath);
+      if (!path.rel) throw invalidInput('The home folder itself cannot be deleted.');
+      await fileScript(memberId, agentId, DELETE_SCRIPT, [path.abs]);
     },
 
     /** A shell command as the Agent, at most two minutes. */
@@ -241,7 +536,7 @@ export function createComputersService(deps: { providers: ProvidersService; agen
 
     /** The Agent is woken in this conversation when the process ends. */
     async watch(input: { memberId: string; agentId: string; conversationId: string; jobRef: string; name: string }) {
-      const [row] = await getDb().select().from(agentComputers).where(eq(agentComputers.agentId, input.agentId));
+      const row = await rowOf(input.memberId, input.agentId);
       if (!row) return;
       await getDb()
         .insert(computerWatches)
@@ -315,7 +610,10 @@ export function createComputersService(deps: { providers: ProvidersService; agen
       }
     },
 
-    /** Computers left idle stop; one with a running process never does. */
+    /**
+     * Computers left idle stop; one with a running process never does, nor one whose Agent
+     * waits for its member to take over (the page it needs help with would be gone).
+     */
     async stopIdle(): Promise<void> {
       const idle = await getDb()
         .select()
@@ -328,6 +626,19 @@ export function createComputersService(deps: { providers: ProvidersService; agen
         );
       for (const computer of idle) {
         try {
+          const [waiting] = await getDb()
+            .select({ id: requests.id })
+            .from(requests)
+            .where(
+              and(
+                eq(requests.kind, 'takeover'),
+                eq(requests.status, 'pending'),
+                eq(requests.agentId, computer.agentId),
+                eq(requests.memberId, computer.ownerId),
+              ),
+            )
+            .limit(1);
+          if (waiting) continue;
           const client = await clientFor(computer, computer.ownerId);
           const listed = await client.exec(computer.sandboxRef, {
             argv: ['gh-jobs', 'running'],

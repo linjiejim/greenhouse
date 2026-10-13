@@ -20,6 +20,7 @@ export const memberSummarySchema = z.object({
   id: z.string(),
   name: z.string(),
   email: z.string(),
+  /** Their picture, as a short-lived URL made for the reader (an `<img src>` needs no header). */
   avatar_url: z.string().nullable(),
 });
 export type MemberSummary = z.infer<typeof memberSummarySchema>;
@@ -51,6 +52,8 @@ export const updateMeInputSchema = z
     theme: z.enum(THEMES),
     about: z.string().max(4000),
     notification_settings: z.record(z.string(), z.unknown()),
+    /** A picture I uploaded with purpose `avatar`; null removes mine. The one it replaces is deleted. */
+    avatar_file_id: z.string().min(1).max(64).nullable(),
   })
   .partial();
 export type UpdateMeInput = z.infer<typeof updateMeInputSchema>;

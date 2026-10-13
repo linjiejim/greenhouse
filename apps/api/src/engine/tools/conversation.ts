@@ -16,6 +16,8 @@ export function conversationTool() {
     risk: 'read',
     private: true,
     surfaces: ['turn'],
+    // The asker's own conversation.
+    publicAgent: true,
     async execute(args, ctx) {
       if (!ctx.conversation) return { results: [] };
       const rows = await getDb()

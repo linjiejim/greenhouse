@@ -16,6 +16,14 @@ export const modelInfoSchema = z.object({
   tools: z.boolean().optional(),
   vision: z.boolean().optional(),
   reasoning: z.boolean().optional(),
+  /** US dollars per million tokens, set by an admin: what usage costs and USD budgets count. */
+  price: z
+    .object({
+      input: z.number().nonnegative(),
+      output: z.number().nonnegative(),
+      cachedInput: z.number().nonnegative().optional(),
+    })
+    .optional(),
 });
 
 export const llmConfigSchema = z.object({

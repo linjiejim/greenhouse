@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { COMPUTER_STATES } from './computers.js';
 import { conversationSchema, messageSchema, messageStepSchema } from './conversations.js';
 
 /**
@@ -65,6 +66,11 @@ export const realtimeEventSchema = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('notification.created'),
     data: z.object({ notification_id: z.string(), kind: z.string(), title: z.string() }),
+  }),
+  /** My computer of this Agent started, stopped or failed: refetch it. */
+  z.object({
+    type: z.literal('computer.updated'),
+    data: z.object({ agent_id: z.string(), state: z.enum(COMPUTER_STATES) }),
   }),
 ]);
 export type RealtimeEvent = z.infer<typeof realtimeEventSchema>;

@@ -611,7 +611,7 @@ CREATE INDEX "members_role_idx" ON "members" USING btree ("role");--> statement-
 CREATE UNIQUE INDEX "refresh_tokens_hash_key" ON "refresh_tokens" USING btree ("token_hash");--> statement-breakpoint
 CREATE INDEX "refresh_tokens_member_idx" ON "refresh_tokens" USING btree ("member_id");--> statement-breakpoint
 CREATE INDEX "shares_principal_idx" ON "shares" USING btree ("principal_type","principal_id");--> statement-breakpoint
-CREATE UNIQUE INDEX "agent_computers_agent_key" ON "agent_computers" USING btree ("agent_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "agent_computers_agent_key" ON "agent_computers" USING btree ("agent_id","owner_id");--> statement-breakpoint
 CREATE INDEX "agent_computers_state_idx" ON "agent_computers" USING btree ("state");--> statement-breakpoint
 CREATE INDEX "agent_memories_agent_idx" ON "agent_memories" USING btree ("agent_id","status");--> statement-breakpoint
 CREATE UNIQUE INDEX "agent_versions_version_key" ON "agent_versions" USING btree ("agent_id","version");--> statement-breakpoint
@@ -658,5 +658,7 @@ CREATE UNIQUE INDEX "budget_reservations_key" ON "budget_reservations" USING btr
 CREATE UNIQUE INDEX "budgets_scope_key" ON "budgets" USING btree ("scope_type","scope_id","unit");--> statement-breakpoint
 CREATE INDEX "usage_events_member_idx" ON "usage_events" USING btree ("member_id","created_at");--> statement-breakpoint
 CREATE INDEX "usage_events_provider_idx" ON "usage_events" USING btree ("provider_id","created_at");--> statement-breakpoint
+CREATE INDEX "usage_events_agent_idx" ON "usage_events" USING btree ("agent_id","created_at");--> statement-breakpoint
+CREATE INDEX "usage_events_time_idx" ON "usage_events" USING btree ("created_at");--> statement-breakpoint
 CREATE UNIQUE INDEX "jobs_dedupe_key" ON "jobs" USING btree ("dedupe_key");--> statement-breakpoint
 CREATE INDEX "jobs_claimable_idx" ON "jobs" USING btree ("available_at") WHERE "jobs"."status" = 'pending';

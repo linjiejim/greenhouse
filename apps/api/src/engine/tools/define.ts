@@ -17,6 +17,8 @@ export interface AvailabilityContext {
   modules: MemberModules;
   manifest: AgentManifest;
   surface: Surface;
+  /** Set in a turn of someone else's public Agent: what its publication grants the asker. */
+  publicAgent: { computer: boolean } | null;
   /** Whether the member can use a provider capability right now. */
   available(capability: Capability): Promise<boolean>;
 }
@@ -95,6 +97,11 @@ export interface ToolDef<I = any> {
   private?: boolean;
   /** Sends something out of Greenhouse (a search query, a URL). Unwatched runs stop using it after a private read. */
   outbound?: boolean;
+  /**
+   * Offered in a turn of someone else's public Agent (default: not). Only tools that act on the
+   * asker's own data or this conversation, with the asker's rights, may say yes.
+   */
+  publicAgent?: boolean;
   execute(input: I, ctx: ToolContext): Promise<unknown>;
   /** Applies the member's decision on a card this tool raised (proposals, questions). */
   decide?(request: NeedsYouRequest, ctx: DecisionContext): Promise<DecisionOutcome>;

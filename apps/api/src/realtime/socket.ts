@@ -20,26 +20,26 @@ const RECHECK_MS = 60_000;
 
 export const CLOSE_UNAUTHORIZED = REALTIME_SIGN_IN_AGAIN;
 
+/** Native clients send no Origin; a browser page must be one we serve or allow. Every socket checks it. */
+export function originAllowed(request: IncomingMessage, allowedOrigins: string[]): boolean {
+  const origin = request.headers.origin;
+  if (!origin) return true;
+  const host = request.headers.host;
+  try {
+    if (host && new URL(origin).host === host) return true;
+  } catch {
+    return false;
+  }
+  return allowedOrigins.includes(origin);
+}
+
 export function attachRealtime(server: Server, deps: { hub: Hub; tokens: Tokens; allowedOrigins: string[] }) {
   const wss = new WebSocketServer({ noServer: true, maxPayload: 16 * 1024 });
-
-  function originAllowed(request: IncomingMessage): boolean {
-    const origin = request.headers.origin;
-    // Native clients send no Origin; a browser page must be one we serve or allow.
-    if (!origin) return true;
-    const host = request.headers.host;
-    try {
-      if (host && new URL(origin).host === host) return true;
-    } catch {
-      return false;
-    }
-    return deps.allowedOrigins.includes(origin);
-  }
 
   const onUpgrade = (request: IncomingMessage, socket: Duplex, head: Buffer) => {
     const path = new URL(request.url ?? '/', 'http://localhost').pathname;
     if (path !== '/api/ws') return;
-    if (!originAllowed(request)) {
+    if (!originAllowed(request, deps.allowedOrigins)) {
       socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
       socket.destroy();
       return;

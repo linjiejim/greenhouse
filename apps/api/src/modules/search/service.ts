@@ -102,8 +102,8 @@ export function createSearchService(deps: { members: MembersService }) {
       }));
     },
 
-    async members(_memberId, q, limit) {
-      const people = await deps.members.directory({ q, limit });
+    async members(memberId, q, limit) {
+      const people = await deps.members.directory(memberId, { q, limit });
       return people.map((person) => ({ kind: 'members', id: person.id, title: person.name, snippet: person.email }));
     },
   };

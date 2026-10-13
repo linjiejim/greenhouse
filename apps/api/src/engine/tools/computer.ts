@@ -1,6 +1,13 @@
 import { z } from 'zod';
 import type { ComputersService } from '../../modules/computers/service.js';
-import { defineTool } from './define.js';
+import { defineTool, type AvailabilityContext } from './define.js';
+
+/**
+ * Whether the Agent has a computer this turn: the member has computers on and a sandbox is set
+ * up. A public Agent uses the asker's own copy of its computer, when its publication grants one.
+ */
+export const computerAvailable = async (ctx: AvailabilityContext) =>
+  ctx.modules.computer && (!ctx.publicAgent || ctx.publicAgent.computer) && (await ctx.available('sandbox'));
 
 /** The Agent's own computer: a shell, and background processes that wake it when they end. */
 export function computerTool(computers: ComputersService) {
@@ -31,7 +38,8 @@ export function computerTool(computers: ComputersService) {
     taints: true,
     outbound: true,
     surfaces: ['turn'],
-    available: async (ctx) => ctx.modules.computer && (await ctx.available('sandbox')),
+    publicAgent: true,
+    available: computerAvailable,
     async execute(args, ctx) {
       switch (args.action) {
         case 'shell':

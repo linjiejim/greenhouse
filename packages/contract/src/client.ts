@@ -5,18 +5,29 @@
  */
 
 import type {
+  AdminPublicAgent,
   Agent,
   AgentDetail,
   AgentMemory,
   AgentVersion,
   CreateAgentInput,
   MemoryInput,
+  Publication,
+  PublicationInput,
+  PublicAgent,
   UpdateAgentInput,
   UpdateMemoryInput,
 } from './agents.js';
 import type { CLIENT_KINDS, LinkInfo, TokenPair } from './auth.js';
 import type { Page } from './common.js';
-import type { ComputerJob, ComputerView } from './computers.js';
+import type {
+  ComputerFile,
+  ComputerFolder,
+  ComputerJob,
+  ComputerTicket,
+  ComputerTicketPurpose,
+  ComputerView,
+} from './computers.js';
 import type {
   AddMembersInput,
   Conversation,
@@ -65,6 +76,7 @@ import type { RunDetail, RunView } from './runs.js';
 import type { CreateScheduleInput, Schedule, UpdateScheduleInput } from './schedules.js';
 import type { SearchKind, SearchResult } from './search.js';
 import type { Bootstrap, BrandingInput } from './workspace.js';
+import type { AdminUsage, AgentActivity, AgentUsage, Budget, BudgetInput, MyUsage, UsagePeriod } from './usage.js';
 
 export class ApiClientError extends Error {
   constructor(
@@ -233,6 +245,13 @@ export function createApiClient(options: ApiClientOptions) {
     return { filename: filenameOf(response.headers.get('content-disposition')), text: await response.text() };
   }
 
+  /** The same for any bytes: its name and a Blob. */
+  async function downloadBlob(path: string, query?: Query): Promise<{ filename: string; blob: Blob }> {
+    const response = await authed('GET', path, undefined, { query });
+    if (!response.ok) return parse<never>(response);
+    return { filename: filenameOf(response.headers.get('content-disposition')), blob: await response.blob() };
+  }
+
   /**
    * The one realtime socket. It says hello with the access token, refreshes and reconnects
    * when told to sign in again, and reconnects with backoff after any other close.
@@ -375,7 +394,11 @@ export function createApiClient(options: ApiClientOptions) {
       testProvider: (id: string) => post<ProviderInstance>(`/api/me/providers/${id}/test`),
     },
 
-    members: { directory: (q?: string) => get<{ items: MemberSummary[] }>('/api/members', { q: q || undefined }) },
+    members: {
+      directory: (q?: string) => get<{ items: MemberSummary[] }>('/api/members', { q: q || undefined }),
+      /** Every group with its member ids, for pickers (publish, share). */
+      groups: () => get<{ items: Group[] }>('/api/groups'),
+    },
 
     /** `⌘K`: conversations, messages, my Agents and people, a few of each. */
     search: (query: { q: string; kinds?: SearchKind[]; limit?: number }) =>
@@ -402,6 +425,40 @@ export function createApiClient(options: ApiClientOptions) {
       restartComputer: (id: string) => post<ComputerView>(`/api/agents/${encodeURIComponent(id)}/computer/restart`),
       processes: (id: string) =>
         get<{ items: ComputerJob[] }>(`/api/agents/${encodeURIComponent(id)}/computer/processes`),
+      /** A one-time ticket for the screen (`view`, `control`) or the terminal socket, good for a minute. */
+      computerTicket: (id: string, purpose: ComputerTicketPurpose) =>
+        post<ComputerTicket>(`/api/agents/${encodeURIComponent(id)}/computer/ticket`, { purpose }),
+      /** The URL of the screen or terminal socket, with a fresh ticket in it: open it right away. */
+      async computerSocket(id: string, purpose: ComputerTicketPurpose): Promise<string> {
+        const { ticket } = await post<ComputerTicket>(`/api/agents/${encodeURIComponent(id)}/computer/ticket`, {
+          purpose,
+        });
+        const root = (options.baseUrl || globalThis.location.origin).replace(/\/$/, '');
+        const url = new URL(`${root}/api/ws/${purpose === 'terminal' ? 'computer-terminal' : 'computer'}`);
+        url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+        url.searchParams.set('ticket', ticket);
+        return url.toString();
+      },
+      /** A folder of the computer's home, by its path in the home ('' is the home itself). */
+      files: (id: string, path = '') =>
+        get<ComputerFolder>(`/api/agents/${encodeURIComponent(id)}/computer/files`, { path }),
+      /** A file of the computer's home, as a download. */
+      file: (id: string, path: string) =>
+        downloadBlob(`/api/agents/${encodeURIComponent(id)}/computer/files/content`, { path }),
+      /** Uploads into a folder of the home; a name already taken gets a number. */
+      uploadFile(id: string, folder: string, file: Blob & { name?: string }) {
+        const form = new FormData();
+        form.set('file', file, file.name ?? 'file');
+        return request<ComputerFile>('POST', `/api/agents/${encodeURIComponent(id)}/computer/files`, undefined, {
+          query: { path: folder },
+          raw: form,
+        });
+      },
+      /** Deletes a file, or a folder with everything in it. */
+      removeFile: (id: string, path: string) =>
+        request<void>('DELETE', `/api/agents/${encodeURIComponent(id)}/computer/files`, undefined, {
+          query: { path },
+        }),
     },
 
     conversations: {
@@ -452,6 +509,8 @@ export function createApiClient(options: ApiClientOptions) {
       reject: (id: string, reason?: string) => post<NeedsYou>(`/api/requests/${id}/reject`, reason ? { reason } : {}),
       answer: (id: string, answers: AnswerInput['answers']) =>
         post<NeedsYou>(`/api/requests/${id}/answer`, { answers }),
+      /** Hands the computer back after a take-over or a sign-in; the note is for the Agent. */
+      handback: (id: string, note?: string) => post<NeedsYou>(`/api/requests/${id}/handback`, note ? { note } : {}),
     },
 
     runs: {
@@ -477,6 +536,26 @@ export function createApiClient(options: ApiClientOptions) {
         get<Page<Notification>>('/api/notifications', { ...query, unread: query.unread ? 'true' : undefined }),
       summary: () => get<{ needs_you: number; unread: number }>('/api/notifications/summary'),
       read: (input: { ids: string[] } | { all: true }) => post<void>('/api/notifications/read', input),
+    },
+
+    usage: {
+      /** My usage: this UTC month or the last 30 days. */
+      mine: (period?: UsagePeriod['name']) => get<MyUsage>('/api/me/usage', { period }),
+      /** One of my Agents: replies, runs, tokens, cost and ratings, never content. */
+      agent: (id: string, period?: UsagePeriod['name']) =>
+        get<AgentUsage>(`/api/agents/${encodeURIComponent(id)}/usage`, { period }),
+      agentActivity: (id: string, query: { cursor?: string; limit?: number } = {}) =>
+        get<Page<AgentActivity>>(`/api/agents/${encodeURIComponent(id)}/activity`, query),
+    },
+
+    publication: {
+      /** Other members' public Agents shared with me; talk to one with conversations.create({ kind: 'direct' }). */
+      shared: () => get<{ items: PublicAgent[] }>('/api/agents', { scope: 'public' }),
+      get: (agentId: string) => get<Publication>(`/api/agents/${encodeURIComponent(agentId)}/publication`),
+      /** Publish a version (default: the current one) to an audience, or change it. */
+      publish: (agentId: string, input: PublicationInput) =>
+        put<Publication>(`/api/agents/${encodeURIComponent(agentId)}/publication`, input),
+      unpublish: (agentId: string) => del(`/api/agents/${encodeURIComponent(agentId)}/publication`),
     },
 
     files: {
@@ -516,6 +595,21 @@ export function createApiClient(options: ApiClientOptions) {
       saveGroup: (id: string, input: GroupInput) => put<Group>(`/api/admin/groups/${id}`, input),
       removeGroup: (id: string) => del(`/api/admin/groups/${id}`),
       branding: (input: BrandingInput) => patch<Bootstrap>('/api/admin/branding', input),
+      /** The workspace's usage, grouped by member, Agent, provider or capability. */
+      usage: (query: { period?: UsagePeriod['name']; group_by?: AdminUsage['group_by'] } = {}) =>
+        get<AdminUsage>('/api/admin/usage', query),
+      budgets: {
+        list: (query: { cursor?: string; limit?: number } = {}) => get<Page<Budget>>('/api/admin/budgets', query),
+        /** Creates or replaces the budget of one scope and unit. */
+        save: (input: BudgetInput) => put<Budget>('/api/admin/budgets', input),
+        remove: (id: string) => del(`/api/admin/budgets/${id}`),
+      },
+      publicAgents: {
+        list: (query: { cursor?: string; limit?: number } = {}) =>
+          get<Page<AdminPublicAgent>>('/api/admin/public-agents', query),
+        pause: (id: string) => post<AdminPublicAgent>(`/api/admin/public-agents/${id}/pause`),
+        resume: (id: string) => post<AdminPublicAgent>(`/api/admin/public-agents/${id}/resume`),
+      },
     },
   };
 }

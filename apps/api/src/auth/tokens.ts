@@ -23,7 +23,8 @@ export interface Tokens {
   createAccessToken(memberId: string, role: MemberRole, authVersion: number, now?: number): string;
   verifyAccessToken(token: string, now?: number): AccessClaims | null;
   newSecret(): string;
-  hashSecret(secret: string, purpose: 'refresh' | 'link'): string;
+  /** A keyed hash; `file` signs file URLs (modules/files). */
+  hashSecret(secret: string, purpose: 'refresh' | 'link' | 'file'): string;
 }
 
 export function createTokens(signingKey: string): Tokens {

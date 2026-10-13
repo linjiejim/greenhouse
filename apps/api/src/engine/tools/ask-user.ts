@@ -14,6 +14,7 @@ export function askUserTool() {
     }),
     risk: 'read',
     surfaces: ['turn'],
+    publicAgent: true,
     async execute(args, ctx) {
       const fields: QuestionField[] = args.fields.length
         ? args.fields

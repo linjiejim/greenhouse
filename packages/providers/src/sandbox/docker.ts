@@ -5,11 +5,14 @@
  * Hardening (always): read-only root, every capability dropped, no new privileges, bounded
  * pids, memory, swap, tmp and logs, no published port. Production uses the gVisor runtime
  * (`runsc`); `runc` is for development machines without it.
+ *
+ * Everything inside is reached through `docker exec`: commands and streams as `agent`, and the
+ * screen as `browser`, whose VNC socket in /tmp/browser (0700) the Agent's user cannot open.
  */
 
 import { spawn } from 'node:child_process';
 import { z } from 'zod';
-import type { ExecResult, ProviderAdapter, SandboxClient, SandboxSpec } from '../types.js';
+import type { ExecResult, ProviderAdapter, SandboxClient, SandboxSpec, SandboxStream } from '../types.js';
 
 export const dockerConfigSchema = z.object({
   image: z.string().min(1).max(200).default('greenhouse/computer:latest'),
@@ -92,6 +95,36 @@ async function control(args: string[]): Promise<string> {
     );
   }
   return result.stdout.trim();
+}
+
+/** The display's RFB socket inside the computer (apps/bot-computer, gh-computer). */
+const SCREEN_ARGV = ['socat', 'STDIO', 'UNIX-CONNECT:/tmp/browser/vnc.sock'];
+
+/** The `docker exec -i` arguments of a streaming process; pure, so a test pins them. */
+export function streamArgs(name: string, input: { argv: string[]; user: 'agent' | 'browser'; cwd?: string }) {
+  const cwd = input.cwd ?? (input.user === 'agent' ? '/home/agent' : '/');
+  return ['exec', '-i', '-u', input.user, '-w', cwd, name, ...input.argv];
+}
+
+/** The screen: a byte tunnel to the display's socket, as the only user that can open it. */
+export const screenArgs = (name: string) => streamArgs(name, { argv: SCREEN_ARGV, user: 'browser' });
+
+/** Runs `docker exec -i …` with its three streams attached. */
+function spawnStream(args: string[]): SandboxStream {
+  const child = spawn('docker', args, { stdio: ['pipe', 'pipe', 'pipe'] });
+  // Writing to a process that already ended is the reader's problem, never a crash.
+  child.stdin.on('error', () => undefined);
+  const exited = new Promise<number | null>((resolve) => {
+    child.on('error', () => resolve(null));
+    child.on('close', (code) => resolve(code));
+  });
+  return {
+    input: child.stdin,
+    output: child.stdout,
+    errors: child.stderr,
+    exited,
+    kill: () => void child.kill('SIGKILL'),
+  };
 }
 
 /** The exact `docker run` arguments of a computer; pure, so a test pins every hardening flag. */
@@ -177,6 +210,8 @@ export function createDockerSandbox(config: DockerConfig): SandboxClient {
       const result = await runDocker(args, { timeoutMs: input.timeoutMs, maxOutputBytes: input.maxOutputBytes });
       return result;
     },
+    stream: (name, input) => spawnStream(streamArgs(checkName(name), input)),
+    screen: (name) => spawnStream(screenArgs(checkName(name))),
     async stop(name) {
       if ((await client.status(name)) === 'running') await control(['stop', '--time', '10', checkName(name)]);
     },

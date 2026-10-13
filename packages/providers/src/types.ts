@@ -4,6 +4,7 @@
  * instance serves a capability for a member.
  */
 
+import type { Readable, Writable } from 'node:stream';
 import type { LanguageModelV4 } from '@ai-sdk/provider';
 import type { z } from 'zod';
 
@@ -29,6 +30,15 @@ export interface ModelInfo {
   tools?: boolean;
   vision?: boolean;
   reasoning?: boolean;
+  /** US dollars per million tokens; usage of a model without a price has no known cost. */
+  price?: ModelPrice;
+}
+
+export interface ModelPrice {
+  input: number;
+  output: number;
+  /** Input tokens read from the vendor's cache; the input price when not set. */
+  cachedInput?: number;
 }
 
 export interface LlmClient {
@@ -113,6 +123,23 @@ export interface ExecResult {
   timedOut: boolean;
 }
 
+/**
+ * A process or tunnel inside a computer that streams both ways: the member's terminal, the
+ * screen, a file transfer. It ends when its process exits or on kill.
+ */
+export interface SandboxStream {
+  /** Its stdin; ending it is an EOF. */
+  readonly input: Writable;
+  /** Its stdout, raw bytes. */
+  readonly output: Readable;
+  /** Its stderr, for diagnostics. */
+  readonly errors: Readable;
+  /** Its exit code once it ended; null when it was killed or could not start. */
+  readonly exited: Promise<number | null>;
+  /** Ends it now. */
+  kill(): void;
+}
+
 export interface SandboxClient {
   /** Starts the computer, creating it with an empty home the first time. Idempotent. */
   ensure(spec: SandboxSpec): Promise<void>;
@@ -122,6 +149,13 @@ export interface SandboxClient {
     name: string,
     input: { argv: string[]; user: 'agent' | 'root'; cwd?: string; timeoutMs: number; maxOutputBytes?: number },
   ): Promise<ExecResult>;
+  /** A long-lived process as `agent` with its input and output attached; the caller ends it. */
+  stream(name: string, input: { argv: string[]; user: 'agent'; cwd?: string }): SandboxStream;
+  /**
+   * The screen as a raw RFB byte stream. The display belongs to another user than the Agent's
+   * shell, which can never reach it; only the API opens it.
+   */
+  screen(name: string): SandboxStream;
   stop(name: string): Promise<void>;
   restart(name: string): Promise<void>;
   /** Removes the computer; its home stays unless asked. */

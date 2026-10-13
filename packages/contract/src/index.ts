@@ -13,3 +13,4 @@ export * from './schedules.js';
 export * from './files.js';
 export * from './computers.js';
 export * from './search.js';
+export * from './usage.js';

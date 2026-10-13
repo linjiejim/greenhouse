@@ -32,6 +32,7 @@ import { containing } from '../../http/like.js';
 import { toPage, decodeCursor } from '../../http/pagination.js';
 import type { ProvidersService } from '../../providers/service.js';
 import type { AuthService } from '../auth/service.js';
+import type { FilesService } from '../files/service.js';
 
 const DEFAULT_MODULES: MemberModules = { knowledge: true, tables: true, apps: true, computer: true };
 
@@ -39,18 +40,18 @@ export function effectiveModules(stored: StoredModules): MemberModules {
   return { ...DEFAULT_MODULES, ...stored };
 }
 
-const avatarUrl = (row: Pick<Member, 'avatarFileId'>) =>
-  row.avatarFileId ? `/api/files/${row.avatarFileId}/content` : null;
+/** What anyone may see about a member, for one reader: the avatar URL is signed for them. */
+export function summaryFor(files: Pick<FilesService, 'signedUrl'>, readerId: string) {
+  return (row: Member): MemberSummary => ({
+    id: row.id,
+    name: row.name,
+    email: row.email,
+    avatar_url: row.avatarFileId ? files.signedUrl(row.avatarFileId, readerId).url : null,
+  });
+}
 
-export const toSummary = (row: Member): MemberSummary => ({
-  id: row.id,
-  name: row.name,
-  email: row.email,
-  avatar_url: avatarUrl(row),
-});
-
-const toMe = (row: Member, capabilities: Me['capabilities']): Me => ({
-  ...toSummary(row),
+const toMe = (row: Member, capabilities: Me['capabilities'], files: Pick<FilesService, 'signedUrl'>): Me => ({
+  ...summaryFor(files, row.id)(row),
   role: row.role,
   locale: row.locale,
   timezone: row.timezone,
@@ -61,8 +62,8 @@ const toMe = (row: Member, capabilities: Me['capabilities']): Me => ({
   capabilities,
 });
 
-const toAdmin = (row: Member): MemberAdmin => ({
-  ...toSummary(row),
+const toAdmin = (row: Member, summary: (row: Member) => MemberSummary): MemberAdmin => ({
+  ...summary(row),
   role: row.role,
   status: row.status,
   modules: effectiveModules(row.modules),
@@ -84,31 +85,42 @@ async function activeAdminCount(db: Db, excluding: string): Promise<number> {
   return row?.n ?? 0;
 }
 
-export function createMembersService(deps: { auth: AuthService; providers: ProvidersService }) {
+export function createMembersService(deps: { auth: AuthService; providers: ProvidersService; files: FilesService }) {
   /** What the member can use now: their own keys where the policy allows, else the workspace's. */
   const capabilitiesOf = (memberId: string) => deps.providers.availability({ memberId });
 
   return {
     async me(memberId: string): Promise<Me> {
-      return toMe(await load(getDb(), memberId), await capabilitiesOf(memberId));
+      return toMe(await load(getDb(), memberId), await capabilitiesOf(memberId), deps.files);
     },
 
+    /** A new avatar must be my own picture uploaded as an avatar; the one it replaces is deleted. */
     async updateMe(memberId: string, input: UpdateMeInput): Promise<Me> {
-      const [row] = await getDb()
-        .update(members)
-        .set({
-          ...(input.name !== undefined ? { name: input.name } : {}),
-          ...(input.locale !== undefined ? { locale: input.locale } : {}),
-          ...(input.timezone !== undefined ? { timezone: input.timezone } : {}),
-          ...(input.theme !== undefined ? { theme: input.theme } : {}),
-          ...(input.about !== undefined ? { about: input.about } : {}),
-          ...(input.notification_settings !== undefined ? { notificationSettings: input.notification_settings } : {}),
-          updatedAt: sql`now()`,
-        })
-        .where(eq(members.id, memberId))
-        .returning();
-      if (!row) throw notFound('Member');
-      return toMe(row, await capabilitiesOf(memberId));
+      if (input.avatar_file_id) await deps.files.ownPicture(memberId, input.avatar_file_id, 'avatar');
+      const { row, replaced } = await transaction(async (db) => {
+        const before = await load(db, memberId);
+        const [row] = await db
+          .update(members)
+          .set({
+            ...(input.name !== undefined ? { name: input.name } : {}),
+            ...(input.locale !== undefined ? { locale: input.locale } : {}),
+            ...(input.timezone !== undefined ? { timezone: input.timezone } : {}),
+            ...(input.theme !== undefined ? { theme: input.theme } : {}),
+            ...(input.about !== undefined ? { about: input.about } : {}),
+            ...(input.notification_settings !== undefined ? { notificationSettings: input.notification_settings } : {}),
+            ...(input.avatar_file_id !== undefined ? { avatarFileId: input.avatar_file_id } : {}),
+            updatedAt: sql`now()`,
+          })
+          .where(eq(members.id, memberId))
+          .returning();
+        const replaced =
+          input.avatar_file_id !== undefined && before.avatarFileId && before.avatarFileId !== input.avatar_file_id
+            ? before.avatarFileId
+            : null;
+        return { row: row!, replaced };
+      });
+      if (replaced) await deps.files.discard(replaced);
+      return toMe(row, await capabilitiesOf(memberId), deps.files);
     },
 
     /** Bumps auth_version: every other session ends; the caller signs in again. */
@@ -130,7 +142,7 @@ export function createMembersService(deps: { auth: AuthService; providers: Provi
     },
 
     /** Everyone a member can pick when sharing or mentioning (no admin-only fields), by name or email. */
-    async directory(query: { q?: string; limit?: number } = {}): Promise<MemberSummary[]> {
+    async directory(readerId: string, query: { q?: string; limit?: number } = {}): Promise<MemberSummary[]> {
       const matching = getDb()
         .select()
         .from(members)
@@ -144,10 +156,10 @@ export function createMembersService(deps: { auth: AuthService; providers: Provi
         )
         .orderBy(asc(members.name), asc(members.id));
       const rows = query.limit ? await matching.limit(query.limit) : await matching;
-      return rows.map(toSummary);
+      return rows.map(summaryFor(deps.files, readerId));
     },
 
-    async list(query: { cursor?: string; limit: number }): Promise<Page<MemberAdmin>> {
+    async list(readerId: string, query: { cursor?: string; limit: number }): Promise<Page<MemberAdmin>> {
       const after = decodeCursor(query.cursor);
       const rows = await getDb()
         .select()
@@ -155,7 +167,8 @@ export function createMembersService(deps: { auth: AuthService; providers: Provi
         .where(after ? gt(members.id, after) : undefined)
         .orderBy(asc(members.id))
         .limit(query.limit + 1);
-      return toPage(rows, query.limit, toAdmin);
+      const summary = summaryFor(deps.files, readerId);
+      return toPage(rows, query.limit, (row) => toAdmin(row, summary));
     },
 
     async invite(actorId: string, input: InviteInput): Promise<InviteResult> {
@@ -174,7 +187,7 @@ export function createMembersService(deps: { auth: AuthService; providers: Provi
           resourceId: row!.id,
           summary: row!.role,
         });
-        return { member: toAdmin(row!), link };
+        return { member: toAdmin(row!, summaryFor(deps.files, actorId)), link };
       });
     },
 
@@ -214,7 +227,7 @@ export function createMembersService(deps: { auth: AuthService; providers: Provi
           resourceId: memberId,
           summary: changedFields(input),
         });
-        return toAdmin(updated!);
+        return toAdmin(updated!, summaryFor(deps.files, actorId));
       });
     },
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { dockerConfigSchema, runArgs, volumeOf } from '../sandbox/docker.js';
+import { dockerConfigSchema, runArgs, screenArgs, streamArgs, volumeOf } from '../sandbox/docker.js';
 
 describe('the docker computer', () => {
   it('always runs hardened, with its home on a named volume and no published port', () => {
@@ -26,6 +26,31 @@ describe('the docker computer', () => {
     expect(args).not.toContain('-p');
     expect(args).not.toContain('--publish');
     expect(args.at(-1)).toBe('greenhouse/computer:1');
+  });
+
+  it('streams through docker exec: the terminal as the agent, the screen as the display user only', () => {
+    expect(streamArgs('gh-cmp-agt_1', { argv: ['gh-term'], user: 'agent' })).toEqual([
+      'exec',
+      '-i',
+      '-u',
+      'agent',
+      '-w',
+      '/home/agent',
+      'gh-cmp-agt_1',
+      'gh-term',
+    ]);
+    expect(screenArgs('gh-cmp-agt_1')).toEqual([
+      'exec',
+      '-i',
+      '-u',
+      'browser',
+      '-w',
+      '/',
+      'gh-cmp-agt_1',
+      'socat',
+      'STDIO',
+      'UNIX-CONNECT:/tmp/browser/vnc.sock',
+    ]);
   });
 
   it('defaults to gVisor and checks its settings', () => {

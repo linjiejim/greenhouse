@@ -1,8 +1,9 @@
 /**
  * GET    /api/me                        the signed-in member
- * PATCH  /api/me                        name, locale, timezone, theme, about, notification settings
+ * PATCH  /api/me                        name, locale, timezone, theme, about, notification settings, avatar
  * POST   /api/me/password               change password (signs out other sessions)
  * GET    /api/members?q=                directory: active members (id, name, email, avatar), by name or email
+ * GET    /api/groups                    directory: groups with their member ids (pickers: publish, share)
  * GET    /api/admin/members             admin: all members, cursor paged
  * POST   /api/admin/members             admin: invite → member + one-time activation link
  * PATCH  /api/admin/members/:id         admin: role, status, modules, name
@@ -40,13 +41,17 @@ export function meRoutes(service: MembersService) {
 
 export function directoryRoutes(service: MembersService) {
   return new Hono<AppEnv>().get('/', async (c) =>
-    c.json({ items: await service.directory(readQuery(c, directoryQuerySchema)) }),
+    c.json({ items: await service.directory(c.get('member').id, readQuery(c, directoryQuerySchema)) }),
   );
+}
+
+export function groupDirectoryRoutes(service: MembersService) {
+  return new Hono<AppEnv>().get('/', async (c) => c.json({ items: await service.listGroups() }));
 }
 
 export function adminMemberRoutes(service: MembersService) {
   return new Hono<AppEnv>()
-    .get('/members', async (c) => c.json(await service.list(readQuery(c, pageQuerySchema))))
+    .get('/members', async (c) => c.json(await service.list(c.get('member').id, readQuery(c, pageQuerySchema))))
     .post('/members', async (c) =>
       c.json(await service.invite(c.get('member').id, await readJson(c, inviteInputSchema)), 201),
     )

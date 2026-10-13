@@ -15,7 +15,7 @@ v2 和 v1 不兼容，不加 `/api/v2` 前缀，也不保留旧路由。`GET /ap
 | 错误 | `{ error: { code, message, details? } }`；`code` 是稳定的 snake_case，客户端按它判断；`message` 给人看 |
 | 分页 | 游标分页：`?cursor=&limit=`，默认 50，最大 200。总数单独给（`?count=1`），不和列表混在一起 |
 | 时间与 ID | ISO 8601 UTC；ID 是「类型前缀 + ULID」的字符串（如 `agt_01J…`），见[数据模型](data-model.md#1-约定) |
-| 鉴权 | Web、移动端、扩展用 Bearer 访问令牌加刷新令牌；`/api/mcp` 用 OAuth 2.1；电脑画面和终端用一次性 ticket |
+| 鉴权 | Web、移动端、扩展用 Bearer 访问令牌加刷新令牌；`/api/mcp` 用 OAuth 2.1；电脑画面和终端用一次性 ticket；文件内容用按成员签发的短期签名 URL，因为 `<img>` 和下载链接带不了请求头 |
 | 实时 | 只有一个 WebSocket `/api/ws`，事件为 `{ type, data }`，类型定义在 contract 里。消息增量、运行进度、需要你、通知、在线状态都走它；发送消息仍用 `POST` |
 | 幂等 | 有副作用的 `POST` 接受 `Idempotency-Key` 头；卡片动作（批准、拒绝）天然幂等 |
 | 注册顺序 | 路由挂载顺序有安全含义，保持单链定义；公开路径白名单越小越好 |
@@ -32,7 +32,7 @@ v2 和 v1 不兼容，不加 `/api/v2` 前缀，也不保留旧路由。`GET /ap
 | `GET /api/auth/links/inspect` · `POST /api/auth/links/complete` | 一次性链接：查看用途；设密码完成激活或重置，随即登录 |
 | `GET /api/auth/feishu/*` | 飞书扫码登录 |
 | `GET` / `PATCH /api/me` | 我：名字、头像、语言、主题、「关于我」、模块权限与可用能力（只读） |
-| `GET /api/me/usage` | 我的用量 |
+| `GET /api/me/usage?period=month\|30d` | 我的用量：总计，按能力、Agent、天；我的成员预算 |
 | `/api/me/providers[/:id][/test]` | 我的服务，即个人 Key |
 | `/api/me/connections[/:id]` | 连接：MCP 连接器账号、飞书 / 企微、邮箱 |
 | `/api/me/vault[/:id]` · `/api/me/vault/log` | 密码库及其访问日志 |
@@ -45,8 +45,9 @@ v2 和 v1 不兼容，不加 `/api/v2` 前缀，也不保留旧路由。`GET /ap
 | --- | --- |
 | `GET /api/agents?scope=mine\|public\|archived` · `POST /api/agents` | Agent 目录、新建 |
 | `GET` / `PATCH` / `DELETE /api/agents/:id` · `POST …/restore` | 资料（`main` 可作 id）；`DELETE` 是归档，`restore` 恢复 |
-| `/api/agents/:id/versions` · `/memories` · `/schedules` · `/usage` · `/activity` · `/publication` | Agent 资料的各个分页 |
-| `/api/agents/:id/computer` · `POST …/start` · `…/stop` · `…/restart` · `GET …/processes` · `…/files` · `…/takeover` | 电脑：状态、启停、重启（进程结束、文件保留）、后台进程；文件与接管随 M1.3 |
+| `/api/agents/:id/versions` · `/memories` · `/schedules` · `/usage` · `/activity` · `/publication` | Agent 资料的各个分页；`/usage`、`/activity` 只给主人，只有计数、结果与评价，没有内容 |
+| `PUT` / `DELETE /api/agents/:id/publication` | 发布固定版本给受众（成员、分组、全员），附电脑与每人每日上限；再次 `PUT` 改版本或受众；`DELETE` 取消发布。主 Agent 不能发布 |
+| `/api/agents/:id/computer` · `POST …/start` · `…/stop` · `…/restart` · `GET …/processes` · `POST …/ticket` · `…/files[?path=]` · `GET …/files/content?path=` | 电脑：状态、启停、重启（进程结束、文件保留）、后台进程；公开 Agent 的使用者用自己的一台。`ticket` 换取画面（`view` / `control`）或终端（`terminal`）的一次性 ticket，一分钟内用一次；家目录文件按相对路径列出、下载（一律下载）、上传（multipart，最大 50 MB）、删除 |
 | `GET /api/conversations?kind=&q=&archived=` · `POST /api/conversations` | 对话列表与新建，`kind` 取 `main` / `direct` / `chat` / `room` |
 | `PATCH` / `DELETE /api/conversations/:id` | 改名、置顶、归档、删除 |
 | `GET` / `POST /api/conversations/:id/messages` | 分页读取；发送（附件、引用、技能调用、`@` 点名） |
@@ -67,7 +68,7 @@ v2 和 v1 不兼容，不加 `/api/v2` 前缀，也不保留旧路由。`GET /ap
 
 | 方法与路径 | 用途 |
 | --- | --- |
-| `POST /api/files` · `GET` / `DELETE /api/files/:id` · `GET …/:id/content` | 统一文件服务：multipart 上传（预签名直传随 M2），带用途与归属；网页与 SVG 一律下载；替代 v1 的 6 条上传路径 |
+| `POST /api/files` · `GET` / `DELETE /api/files/:id` · `GET …/:id/content?exp=&m=&sig=` | 统一文件服务：multipart 上传（预签名直传随 M2），带用途与归属；字节只经 `FileView.url` 读取，它为当前成员签发、一到两小时内有效，读取时重查权限；网页与 SVG 一律下载；替代 v1 的 6 条上传路径 |
 | `/api/knowledge/docs[/:id]` 及 `/versions` · `/comments` · `/share` · `/backlinks` · `/presence` · `/export` | 文档 |
 | `/api/knowledge/folders[/:id]` · `GET /api/knowledge/search` | 文件夹（文档与文件同树）、检索 |
 | `/api/tables/bases[/:id]/…` | 表格：数据表、字段、视图、记录、表单、自动化、评论、回收站、审计（沿用 #64 的结构） |
@@ -86,10 +87,11 @@ v2 和 v1 不兼容，不加 `/api/v2` 前缀，也不保留旧路由。`GET /ap
 | `/api/admin/providers[/:id][/test\|/copy]` · `PUT /api/admin/provider-bindings/:capability` | 服务：实例、测试连接、复制环境变量实例；能力的顺序、默认项与策略 |
 | `/api/admin/channels` | 渠道：SMTP、飞书、企微、推送 |
 | `/api/admin/computers[/:id]` | 电脑列表与容量 |
-| `/api/admin/usage` | 用量与预算 |
+| `GET /api/admin/usage?period=&group_by=member\|agent\|provider\|capability` | 工作区用量 |
+| `GET` / `PUT /api/admin/budgets` · `DELETE …/:id` | 预算：组织、服务实例、成员三级，token 或美元，按月；`PUT` 建立或替换一个范围与单位的预算；列表带本月已用 |
 | `/api/admin/connectors[/:id]` | 安装连接器（目录、Registry、URL） |
 | `/api/admin/clients[/:id]` | 外部访问客户端（交互与机器） |
-| `/api/admin/public-agents[/:id]` | 暂停与恢复 |
+| `GET /api/admin/public-agents` · `POST …/:id/pause` · `…/resume` | 公开 Agent：主人、受众人数、本月用量；暂停与恢复 |
 | `/api/admin/branding` | 名称、Logo、主色 |
 
 ### 2.6 对外与其他
@@ -98,7 +100,7 @@ v2 和 v1 不兼容，不加 `/api/v2` 前缀，也不保留旧路由。`GET /ap
 | --- | --- |
 | `/api/mcp` · `/oauth/*` · `/.well-known/*` | MCP 服务器与 OAuth 2.1，是唯一对外接口 |
 | `/api/connectors/oauth/callback` | 连接器 OAuth 回调（公开） |
-| `/api/ws` · `/api/ws/computer` · `/api/ws/computer-terminal` | 实时通道、电脑画面、终端 |
+| `/api/ws` · `/api/ws/computer?ticket=` · `/api/ws/computer-terminal?ticket=` | 实时通道、电脑画面（RFB，`view` ticket 的输入由服务端丢弃）、终端（二进制按键与输出，`resize` 文本消息） |
 | `/api/ext/<id>/*` | 扩展 |
 | `GET /health` | 健康检查：各能力是否可用（不含机密）；数据库不可用时返回 503 |
 

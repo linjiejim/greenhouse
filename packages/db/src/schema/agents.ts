@@ -12,8 +12,9 @@ export type AgentAvatar = {
 export type AgentPublication = {
   /** Knowledge folders the public Agent may read with its owner's rights. */
   folderIds?: string[];
+  /** Members who use it get their own copy of its computer. */
   computer?: boolean;
-  /** Replies per member per day; 0 means unlimited. */
+  /** Replies per member per day (their time zone); 0 means unlimited. */
   dailyCap?: number;
 };
 
@@ -107,7 +108,10 @@ export const agentMemories = pgTable(
 export const COMPUTER_STATES = ['stopped', 'starting', 'running', 'failed'] as const;
 export type ComputerState = (typeof COMPUTER_STATES)[number];
 
-/** Each Agent has one computer, a sandbox with a home that outlives restarts. */
+/**
+ * An Agent's computer: a sandbox with a home that outlives restarts. Its owner has one; when the
+ * Agent is public and its publication grants a computer, each member who uses it gets their own.
+ */
 export const agentComputers = pgTable(
   'agent_computers',
   {
@@ -115,6 +119,7 @@ export const agentComputers = pgTable(
     agentId: text('agent_id')
       .notNull()
       .references(() => agents.id, { onDelete: 'cascade' }),
+    /** Whose computer this is: the Agent's owner, or a member using the public Agent. */
     ownerId: text('owner_id').notNull(),
     /** The sandbox provider instance that runs it. */
     providerId: text('provider_id').notNull(),
@@ -129,7 +134,10 @@ export const agentComputers = pgTable(
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
-  (t) => [uniqueIndex('agent_computers_agent_key').on(t.agentId), index('agent_computers_state_idx').on(t.state)],
+  (t) => [
+    uniqueIndex('agent_computers_agent_key').on(t.agentId, t.ownerId),
+    index('agent_computers_state_idx').on(t.state),
+  ],
 );
 
 /** A background process on a computer that wakes its Agent when it ends. */

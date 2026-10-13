@@ -130,6 +130,7 @@ export function webTools(providers: ProvidersService, options: { fetch?: typeof 
     risk: 'read',
     taints: true,
     outbound: true,
+    publicAgent: true,
     available: (ctx) => ctx.available('search'),
     async execute(args, ctx) {
       const chain = await providers.chain('search', usage(ctx));
@@ -156,6 +157,7 @@ export function webTools(providers: ProvidersService, options: { fetch?: typeof 
     risk: 'read',
     taints: true,
     outbound: true,
+    publicAgent: true,
     available: (ctx) => ctx.available('search'),
     async execute(args, ctx) {
       const readers = (await providers.chain('search', usage(ctx))).filter((entry) => entry.client.read);

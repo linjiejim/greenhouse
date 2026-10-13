@@ -11,6 +11,7 @@ import { applyMigrations, assertNotV1Database, createDbClient, setDb } from '@gr
 import { logger } from '@greenhouse/utils/logger';
 import { createApp, createServices } from './app.js';
 import { loadConfig } from './config/index.js';
+import { attachComputerSockets } from './realtime/computer.js';
 import { pgTransport } from './realtime/pg.js';
 import { attachRealtime } from './realtime/socket.js';
 import { ensureFirstAdmin } from './security/first-admin.js';
@@ -44,11 +45,17 @@ async function main() {
     tokens: services.tokens,
     allowedOrigins: config.corsAllowedOrigins,
   });
+  const computerSockets = attachComputerSockets(server as Server, {
+    computers: services.computers,
+    hub: services.hub,
+    allowedOrigins: config.corsAllowedOrigins,
+  });
 
   const stop = async () => {
     services.schedules.stop();
     services.computers.stopWatching();
     await realtime.close();
+    await computerSockets.close();
     server.close();
     await services.engine.shutdown();
     await services.hub.close();

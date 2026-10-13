@@ -3,10 +3,17 @@
  * POST /api/requests/:id/approve                           approve an action or accept a proposal
  * POST /api/requests/:id/reject                            decline, with an optional reason
  * POST /api/requests/:id/answer                            answer a question
+ * POST /api/requests/:id/handback                          hand the computer back after a take-over or a sign-in
  */
 
 import { Hono } from 'hono';
-import { answerInputSchema, rejectInputSchema, requestListQuerySchema, type QuestionField } from '@greenhouse/contract';
+import {
+  answerInputSchema,
+  handbackInputSchema,
+  rejectInputSchema,
+  requestListQuerySchema,
+  type QuestionField,
+} from '@greenhouse/contract';
 import type { Engine } from '../../engine/engine.js';
 import { conflict, invalidInput } from '../../http/errors.js';
 import type { AppEnv } from '../../http/env.js';
@@ -58,6 +65,20 @@ export function requestRoutes(service: RequestsService, engine: Engine) {
       }
       const known = Object.fromEntries(fields.map((field) => [field.key, (answers[field.key] ?? '').trim()]));
       const settled = await service.settle(memberId, current.id, { status: 'answered', result: { answers: known } });
+      engine.decide(settled);
+      return c.json(toRequest(settled));
+    })
+    .post('/:id/handback', async (c) => {
+      const memberId = c.get('member').id;
+      const { note } = await readJson(c, handbackInputSchema);
+      const current = await service.get(memberId, c.req.param('id'));
+      if (current.kind !== 'takeover' && current.kind !== 'login') {
+        throw conflict('wrong_decision', 'Only a take-over or a sign-in is handed back.');
+      }
+      const settled = await service.settle(memberId, current.id, {
+        status: 'handed_back',
+        result: { decision: 'handed_back', ...(note ? { note } : {}) },
+      });
       engine.decide(settled);
       return c.json(toRequest(settled));
     });

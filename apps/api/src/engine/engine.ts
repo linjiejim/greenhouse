@@ -10,7 +10,7 @@
 
 import { createHash, randomUUID } from 'node:crypto';
 import { generateText } from 'ai';
-import { and, asc, eq, gt, inArray, isNull, lt, sql } from 'drizzle-orm';
+import { and, asc, eq, gt, inArray, isNull, lt, ne, sql } from 'drizzle-orm';
 import {
   collect,
   createCollector,
@@ -58,7 +58,7 @@ import type { z } from 'zod';
 import { ApiError, conflict, forbidden, invalidInput, notFound } from '../http/errors.js';
 import type { ProvidersService } from '../providers/service.js';
 import type { Hub } from '../realtime/hub.js';
-import type { AgentsService } from '../modules/agents/service.js';
+import type { AgentsService, TurnAgent } from '../modules/agents/service.js';
 import type { FilesService } from '../modules/files/service.js';
 import type { NotificationsService } from '../modules/notifications/service.js';
 import type { RequestsService } from '../modules/requests/service.js';
@@ -151,16 +151,32 @@ const FAILURE_TEXT: Record<Locale, Record<string, string>> = {
   zh: {
     llm_not_configured: '还没有可用的模型服务，请管理员在「管理 → 服务」里配置。',
     model_unavailable: '这段对话选的模型不可用了，请换一个模型。',
+    budget_exceeded: '本月的用量预算已经用完了，请联系管理员。',
+    agent_paused: '这个 Agent 已被管理员暂停。',
+    agent_unavailable: '这个 Agent 已经不再共享给你了。',
     interrupted: '回复被中断了，请再发一次。',
     default: '这次没能完成回复，请稍后再试。',
   },
   en: {
     llm_not_configured: 'No model service is set up yet. An admin can add one under Admin → Services.',
     model_unavailable: 'The model chosen for this conversation is no longer available. Pick another one.',
+    budget_exceeded: "This month's usage budget is used up. Ask an admin.",
+    agent_paused: 'An admin paused this Agent.',
+    agent_unavailable: 'This Agent is no longer shared with you.',
     interrupted: 'The reply was interrupted. Please send it again.',
     default: 'This reply could not be finished. Please try again later.',
   },
 };
+
+/** A time zone Postgres and Intl both know, else UTC. */
+function zoneOf(timezone: string | null | undefined): string {
+  try {
+    if (timezone) new Intl.DateTimeFormat('en', { timeZone: timezone });
+    return timezone || 'UTC';
+  } catch {
+    return 'UTC';
+  }
+}
 
 const localeOf = (value: string | null | undefined): Locale => (value === 'en' ? 'en' : 'zh');
 
@@ -341,6 +357,48 @@ export function createEngine(deps: EngineDeps) {
     const [row] = await db.select().from(conversations).where(eq(conversations.id, conversationId)).for('update');
     if (!row) throw notFound('Conversation');
     return row;
+  }
+
+  /**
+   * Someone else's public Agent takes a new message, edit or regenerate only while it is still
+   * shared with the asker, not paused, and under its daily cap for them: replies counted per asker
+   * and day in their time zone. Wake-ups of an exchange already under way are not counted out.
+   * The caller holds the conversation row lock, so two requests cannot both take the last one.
+   */
+  async function admit(db: Db, memberId: string, agentIds: readonly string[]): Promise<void> {
+    const others = agentIds.length
+      ? await db
+          .select({ id: agents.id })
+          .from(agents)
+          .where(and(inArray(agents.id, [...agentIds]), ne(agents.ownerId, memberId)))
+      : [];
+    for (const { id: agentId } of others) {
+      const loaded = await deps.agents.loadForTurn(memberId, agentId);
+      if (!loaded.public?.dailyCap) continue;
+      const [member] = await db.select({ timezone: members.timezone }).from(members).where(eq(members.id, memberId));
+      const zone = zoneOf(member?.timezone);
+      const [{ n }] = (await db
+        .select({ n: sql<number>`count(*)::int` })
+        .from(runs)
+        .where(
+          and(
+            eq(runs.kind, 'turn'),
+            eq(runs.agentId, agentId),
+            eq(runs.ownerId, memberId),
+            sql`${runs.createdAt} >= date_trunc('day', now() at time zone ${zone}) at time zone ${zone}`,
+            // A turn refused because the Agent was paused or unshared gave no reply.
+            sql`not (${runs.status} = 'failed' and coalesce(${runs.errorCode}, '') in ('agent_paused', 'agent_unavailable'))`,
+          ),
+        )) as [{ n: number }];
+      if (n >= loaded.public.dailyCap) {
+        throw new ApiError(
+          429,
+          'daily_cap_reached',
+          `You have used today's ${loaded.public.dailyCap} replies from ${loaded.agent.name}. Try again tomorrow.`,
+          { daily_cap: loaded.public.dailyCap },
+        );
+      }
+    }
   }
 
   /**
@@ -592,6 +650,7 @@ export function createEngine(deps: EngineDeps) {
     const locale = localeOf(member?.locale);
     let reply: MessageRow | null = null;
     let outcome: { status: Run['status']; errorCode?: string; errorMessage?: string } = { status: 'succeeded' };
+    let refusal: ApiError | undefined;
     const collector = createCollector();
     let defs = new Map<string, ToolDef>();
 
@@ -605,28 +664,32 @@ export function createEngine(deps: EngineDeps) {
         );
       // A turn acts for the member who asked: once they left the conversation, it does not run.
       if (!seat) throw new ApiError(403, 'not_in_conversation', 'The member who asked left this conversation.');
-      const loaded = await deps.agents.load(run.ownerId, run.agentId);
-      const { agent, manifest } = loaded;
-      await getDb()
-        .update(runs)
-        .set({ input: { ...(run.input as TurnInput), agent_version: loaded.version } })
-        .where(eq(runs.id, run.id));
+      // The reply exists before the Agent loads, so a public Agent paused meanwhile still says why.
       reply = await withConversation(conversation.id, () =>
         deps.conversations.append(conversation.id, {
           role: 'assistant',
-          agentId: agent.id,
+          agentId: run.agentId,
           runId: run.id,
           status: 'streaming',
         }),
       );
       await publish(conversation.id, { type: 'message.created', data: { message: toMessage(reply) } });
+      // Someone else's public Agent runs its published version, for the asker (engine/AGENTS.md).
+      const loaded: TurnAgent = await deps.agents.loadForTurn(run.ownerId, run.agentId);
+      const { agent, manifest } = loaded;
+      const shared = loaded.public;
+      await getDb()
+        .update(runs)
+        .set({ input: { ...(run.input as TurnInput), agent_version: loaded.version } })
+        .where(eq(runs.id, run.id));
 
+      // A personal key serves only its owner's own Agents.
       const resolved = await languageModel(conversation.model ?? manifest.model, {
         memberId: run.ownerId,
         agentId: agent.id,
         runId: run.id,
         conversationId: conversation.id,
-        personal: agent.ownerId === run.ownerId,
+        personal: !shared,
       });
 
       let tainted = false;
@@ -652,7 +715,8 @@ export function createEngine(deps: EngineDeps) {
           modules: effectiveModules(member.modules),
           manifest,
           surface: 'turn',
-          available: (capability) => deps.providers.available(capability, { memberId: run.ownerId }),
+          publicAgent: shared ? { computer: shared.computer } : null,
+          available: (capability) => deps.providers.available(capability, { memberId: run.ownerId, personal: !shared }),
         },
         raise: (card, stepId) =>
           deps.requests.create({
@@ -679,11 +743,14 @@ export function createEngine(deps: EngineDeps) {
         excludeMessageId: reply.id,
         contextWindow: resolved.contextWindow,
       });
+      // The asker's own memory partition: a public Agent never brings its owner's memories.
       const memories = await deps.agents.memories(run.ownerId, agent.id, 'active');
-      const roster = await getDb()
-        .select({ id: agents.id, name: agents.name, role: agents.role })
-        .from(agents)
-        .where(inArray(agents.id, await deps.conversations.presentAgentIds(conversation)));
+      const roster = (
+        await getDb()
+          .select({ id: agents.id, name: agents.name, role: agents.role })
+          .from(agents)
+          .where(inArray(agents.id, await deps.conversations.presentAgentIds(conversation)))
+      ).map((entry) => (entry.id === agent.id ? { id: entry.id, name: agent.name, role: agent.role } : entry));
       const input = run.input as TurnInput;
       const fromName = input.from_agent_id
         ? (await getDb().select({ name: agents.name }).from(agents).where(eq(agents.id, input.from_agent_id)))[0]?.name
@@ -717,8 +784,13 @@ export function createEngine(deps: EngineDeps) {
           locale,
           conversation.kind,
           DEFAULT_CLIENT_BLOCKS,
+          !!shared,
         ),
-        buildIdentity({ name: agent.name, role: agent.role, instructions: manifest.instructions }, member.name),
+        buildIdentity(
+          { name: agent.name, role: agent.role, instructions: manifest.instructions },
+          member.name,
+          shared?.ownerName,
+        ),
         buildAbout(member.name, member.about),
         buildDigest(
           (() => {
@@ -750,6 +822,8 @@ export function createEngine(deps: EngineDeps) {
       let flushedAt = Date.now();
       let flushedLength = 0;
       for await (const part of withFinalAnswer(result, loopInput)) {
+        // A refusal of ours (a budget used up) keeps its code for the reply and the run.
+        if (part.type === 'error' && part.error instanceof ApiError) refusal ??= part.error;
         const call = collect(part, collector);
         if (part.type === 'text-delta' && part.text) {
           await publish(conversation.id, {
@@ -792,7 +866,11 @@ export function createEngine(deps: EngineDeps) {
             ? { status: 'canceled' }
             : { status: 'failed', errorCode: 'timeout', errorMessage: 'The reply took too long.' };
       } else if (collector.error) {
-        outcome = { status: 'failed', errorCode: 'model_error', errorMessage: collector.error.slice(0, 500) };
+        outcome = {
+          status: 'failed',
+          errorCode: refusal?.code ?? 'model_error',
+          errorMessage: collector.error.slice(0, 500),
+        };
       } else if (turnTools.waiting()) {
         outcome = { status: 'waiting' };
       }
@@ -987,14 +1065,16 @@ export function createEngine(deps: EngineDeps) {
       return { line: zh ? `卡片已过期：${summary}` : `Card expired: ${summary}`, note: null };
     }
     const def = toolDefs().find((candidate) => candidate.name === payload.tool);
-    if (!def || !run) {
+    // The same Agent the turn ran on; a public Agent paused or unshared meanwhile does not act.
+    const loaded = run ? await deps.agents.loadForTurn(run.ownerId, run.agentId).catch(() => null) : null;
+    if (!def || !run || !loaded || (loaded.public && !def.publicAgent)) {
       await setStep({ status: 'failed', error: { code: 'tool_gone', message: 'The tool is no longer available.' } });
       return {
         line: zh ? `已批准：${summary}，但无法执行` : `Approved: ${summary}, but it could not run`,
         note: `The member approved "${summary}", but the tool is no longer available.`,
       };
     }
-    const { agent, manifest } = await deps.agents.load(run.ownerId, run.agentId);
+    const { agent, manifest } = loaded;
     const [conversation] = run.conversationId
       ? await getDb().select().from(conversations).where(eq(conversations.id, run.conversationId))
       : [];
@@ -1124,11 +1204,13 @@ export function createEngine(deps: EngineDeps) {
       const { conversation } = await deps.conversations.access(memberId, conversationId);
       if (conversation.readOnly) throw conflict('read_only', 'This conversation is read only.');
       if (!input.content.trim() && !input.attachments.length) throw invalidInput('Write a message or attach a file.');
-      await deps.files.attach(memberId, conversationId, input.attachments);
       const responders = await respondersFor(memberId, conversation, input.mentions);
 
       const result = await withConversation(conversationId, () =>
         transaction(async (db) => {
+          await lockConversation(db, conversationId);
+          await admit(db, memberId, responders);
+          await deps.files.attach(memberId, conversationId, input.attachments);
           const message = await deps.conversations.append(conversationId, {
             role: 'user',
             authorMemberId: memberId,
@@ -1182,6 +1264,7 @@ export function createEngine(deps: EngineDeps) {
           if (await activeTurn(db, conversationId)) {
             throw conflict('conversation_busy', 'An Agent is answering. Stop it first.');
           }
+          await admit(db, memberId, responders);
           const [current] = await db.select().from(messages).where(eq(messages.id, target.id));
           if (!current) throw notFound('Message');
           const after = await db
@@ -1261,6 +1344,7 @@ export function createEngine(deps: EngineDeps) {
             .where(eq(agents.id, turn.agentId));
           if (!agent) throw notRegenerable();
           if (agent.archivedAt) throw conflict('agent_archived', 'This Agent is archived.');
+          await admit(db, memberId, [turn.agentId]);
 
           const input = turn.input as TurnInput;
           const asking =

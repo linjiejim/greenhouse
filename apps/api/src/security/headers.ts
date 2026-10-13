@@ -6,7 +6,8 @@ export const securityHeaders: MiddlewareHandler = async (c, next) => {
   c.header('X-Content-Type-Options', 'nosniff');
   c.header('Referrer-Policy', 'no-referrer');
   c.header('X-Frame-Options', 'DENY');
-  if (c.req.path.startsWith('/api/')) c.header('Cache-Control', 'no-store');
+  // API answers are not cached, unless the route chose otherwise (signed file content).
+  if (c.req.path.startsWith('/api/') && !c.res.headers.has('Cache-Control')) c.header('Cache-Control', 'no-store');
 };
 
 /** Only configured origins may call the API from a browser. */

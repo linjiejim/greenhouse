@@ -39,6 +39,7 @@ import {
   requests,
   runs,
   transaction,
+  type Agent as AgentRow,
   type Conversation as ConversationRow,
   type ConversationMember,
   type ConversationNote,
@@ -53,8 +54,9 @@ import { conflict, invalidInput, notFound } from '../../http/errors.js';
 import { containing } from '../../http/like.js';
 import type { ProvidersService } from '../../providers/service.js';
 import type { Hub } from '../../realtime/hub.js';
-import type { AgentsService } from '../agents/service.js';
-import { toSummary } from '../members/service.js';
+import { agentIdOf, type AgentsService } from '../agents/service.js';
+import type { FilesService } from '../files/service.js';
+import { summaryFor } from '../members/service.js';
 import { exportFilename, renderConversationMarkdown, type ExportedMessage } from './export.js';
 
 type CreateInput = z.output<typeof createConversationInputSchema>;
@@ -155,7 +157,12 @@ function decodeSeq(cursor: string | undefined): number | null {
   throw invalidInput('The cursor is invalid.');
 }
 
-export function createConversationsService(deps: { agents: AgentsService; providers: ProvidersService; hub: Hub }) {
+export function createConversationsService(deps: {
+  agents: AgentsService;
+  providers: ProvidersService;
+  hub: Hub;
+  files: FilesService;
+}) {
   async function localeOf(memberId: string): Promise<'zh' | 'en'> {
     const [member] = await getDb().select({ locale: members.locale }).from(members).where(eq(members.id, memberId));
     return member?.locale === 'en' ? 'en' : 'zh';
@@ -166,8 +173,8 @@ export function createConversationsService(deps: { agents: AgentsService; provid
     if (conversation.readOnly) throw conflict('read_only', 'This conversation is read only.');
   }
 
-  /** The people and Agents of a conversation, as the info panel shows them. */
-  async function peopleOf(conversation: ConversationRow): Promise<ConversationMembers> {
+  /** The people and Agents of a conversation, as the info panel shows them to one reader. */
+  async function peopleOf(conversation: ConversationRow, readerId: string): Promise<ConversationMembers> {
     const db = getDb();
     const seats = await db
       .select({ seat: conversationMembers, member: members })
@@ -189,18 +196,24 @@ export function createConversationsService(deps: { agents: AgentsService; provid
           .where(inArray(agents.id, agentIds))
       : [];
     const byId = new Map(rows.map((row) => [row.id, row]));
+    // Someone else's public Agent shows its audience the published face.
+    const faces = await deps.agents.publishedFaces(
+      readerId,
+      rows.filter((row) => row.ownerId !== readerId).map((row) => row.id),
+    );
+    const summary = summaryFor(deps.files, readerId);
     return {
       members: seats.map(({ seat, member }) => ({
-        ...toSummary(member),
+        ...summary(member),
         role: seat.role,
         last_read_seq: seat.lastReadSeq,
         joined_at: seat.createdAt,
       })),
       agents: agentIds.flatMap((id) => {
         const agent = byId.get(id);
-        return agent
-          ? [{ id, name: agent.name, role: agent.role, avatar: agent.avatar as AgentAvatar, owner_id: agent.ownerId }]
-          : [];
+        if (!agent) return [];
+        const face = faces.get(id) ?? { name: agent.name, role: agent.role, avatar: agent.avatar as AgentAvatar };
+        return [{ id, ...face, owner_id: agent.ownerId }];
       }),
     };
   }
@@ -335,11 +348,11 @@ export function createConversationsService(deps: { agents: AgentsService; provid
     };
   }
 
-  /** Opens a conversation for a member, with the Agent's greeting as its first message. */
+  /** Opens a conversation for a member, with the Agent's greeting (as the member sees it) first. */
   async function open(
     memberId: string,
     values: Omit<typeof conversations.$inferInsert, 'id' | 'ownerId'>,
-    greetingAgentId: string | null,
+    greeting: Pick<AgentRow, 'id' | 'name' | 'role' | 'templateKey' | 'ownerId'> | null,
   ): Promise<ConversationRow | null> {
     return transaction(async (db) => {
       const [row] = await db
@@ -349,20 +362,17 @@ export function createConversationsService(deps: { agents: AgentsService; provid
         .returning();
       if (!row) return null;
       await db.insert(conversationMembers).values({ conversationId: row.id, memberId, role: 'owner' });
-      if (greetingAgentId) {
-        const [agent] = await db.select().from(agents).where(eq(agents.id, greetingAgentId));
-        if (agent) {
-          await service.append(row.id, {
-            role: 'assistant',
-            agentId: agent.id,
-            content: agentGreeting(
-              { name: agent.name, role: agent.role, templateKey: agent.templateKey },
-              await localeOf(memberId),
-              { computer: false, owned: agent.ownerId === memberId },
-            ),
-            event: { type: 'greeting' },
-          });
-        }
+      if (greeting) {
+        await service.append(row.id, {
+          role: 'assistant',
+          agentId: greeting.id,
+          content: agentGreeting(
+            { name: greeting.name, role: greeting.role, templateKey: greeting.templateKey },
+            await localeOf(memberId),
+            { computer: false, owned: greeting.ownerId === memberId },
+          ),
+          event: { type: 'greeting' },
+        });
       }
       const [fresh] = await db.select().from(conversations).where(eq(conversations.id, row.id));
       return fresh!;
@@ -382,14 +392,19 @@ export function createConversationsService(deps: { agents: AgentsService; provid
       const existing = await find();
       if (existing) return existing;
       const main = await deps.agents.ensureMain(memberId);
-      return (await open(memberId, { kind: 'main', agentId: main.id }, main.id)) ?? (await find())!;
+      return (await open(memberId, { kind: 'main', agentId: main.id }, main)) ?? (await find())!;
     },
 
-    /** The one Agent thread with an Agent of the member's. */
+    /**
+     * The one Agent thread with an Agent: one of the member's, or someone else's public Agent shared
+     * with them. A thread that exists stays theirs to read whatever became of the Agent; the engine
+     * refuses new turns it may no longer take.
+     */
     async ensureDirect(memberId: string, agentIdOrHandle: string): Promise<ConversationRow> {
-      const loaded = await deps.agents.load(memberId, agentIdOrHandle);
-      if (loaded.agent.isMain) return service.ensureMain(memberId);
-      if (loaded.agent.archivedAt) throw conflict('agent_archived', 'This Agent is archived.');
+      const own = await deps.agents.findOwn(memberId, agentIdOrHandle);
+      if (own?.isMain) return service.ensureMain(memberId);
+      if (own?.archivedAt) throw conflict('agent_archived', 'This Agent is archived.');
+      const agentId = own?.id ?? agentIdOf(agentIdOrHandle);
       const find = async () =>
         (
           await getDb()
@@ -399,13 +414,15 @@ export function createConversationsService(deps: { agents: AgentsService; provid
               and(
                 eq(conversations.ownerId, memberId),
                 eq(conversations.kind, 'direct'),
-                eq(conversations.agentId, loaded.agent.id),
+                eq(conversations.agentId, agentId),
               ),
             )
         )[0];
       const existing = await find();
       if (existing) return existing;
-      return (await open(memberId, { kind: 'direct', agentId: loaded.agent.id }, loaded.agent.id)) ?? (await find())!;
+      const agent = own ?? (await deps.agents.openPublic(memberId, agentId))?.agent;
+      if (!agent) throw notFound('Agent');
+      return (await open(memberId, { kind: 'direct', agentId }, agent)) ?? (await find())!;
     },
 
     /** Throws not_found unless the member is in the conversation. */
@@ -722,7 +739,7 @@ export function createConversationsService(deps: { agents: AgentsService; provid
     /** The people and Agents of a conversation. */
     async people(memberId: string, conversationId: string): Promise<ConversationMembers> {
       const { conversation } = await service.access(memberId, conversationId);
-      return peopleOf(conversation);
+      return peopleOf(conversation, memberId);
     },
 
     /** Anyone in a room may bring people in; an Agent comes in only with its owner's say. */
@@ -780,7 +797,7 @@ export function createConversationsService(deps: { agents: AgentsService; provid
         type: 'conversation.updated',
         data: { conversation_id: conversationId, changes: {} },
       });
-      return peopleOf(conversation);
+      return peopleOf(conversation, memberId);
     },
 
     /**

@@ -40,7 +40,7 @@ v2 从零建表：只有一份基线迁移，不继承 v1 的迁移链，也不�
   - 与 v1 不同：v1 的表达式索引必须和 service 里的表达式逐字一致，否则静默全表扫描；生成列让定义只有一份。
 - 文件与存储
   - 字节只经存储 Provider（`providers.resolve('storage')`）读写。数据库只存 `files` 元数据：存储实例 `provider_id`、中性的 `storage_key`、大小、MIME、sha256、状态 `pending → active → deleted`。
-  - 对象键由服务端生成（`<前缀>/<purpose>/<file_id>`），从不取自用户输入。没有公开读的对象：图片也有 `files` 行，`<img>` 用短期签名 URL。删除时先删对象、再删行，由后台任务完成。
+  - 对象键由服务端生成（`<前缀>/<purpose>/<file_id>`），从不取自用户输入。没有公开读的对象：图片也有 `files` 行。字节只经签名 URL 读取（`<img>` 与下载链接带不了请求头）：为一个成员签发，一到两小时内有效，读取时重查该成员仍是在职成员、仍可读这个文件；唯一不带成员的是工作区 Logo（登录页要显示）。头像和 Logo 只收真图片（按文件头判断），成为头像后所有成员可见。删除时先删对象、再删行，由后台任务完成。
   - 与 v1 不同：v1 有 6 条上传路径，写死腾讯 COS 的 `cos_key`，图片没有数据库行、靠公开读。
 - 机密
   - 只写不读。密文列以 `_enc` 结尾，AES-256-GCM，密文带密钥版本前缀以便轮换，AAD 绑定「表 : 行 id : 列」。任何读路径都不返回 `_enc` 列。
@@ -48,7 +48,7 @@ v2 从零建表：只有一份基线迁移，不继承 v1 的迁移链，也不�
   - 能哈希的就不加密：密码（自描述格式 `scrypt$…`）、刷新令牌、OAuth 授权码与令牌、激活链接只存哈希。
 - 审计与用量
   - `audit_events` 是唯一的只追加审计表。它记录谁（成员、Agent、外部客户端或系统）代表谁，对什么做了什么，结果如何；不记内容和机密。
-  - `usage_events` 每次 Provider 调用写一条（[providers.md §8](providers.md#8-用量与预算)），是用量和费用的唯一事实；预算表里的数字只是它的计数缓存。
+  - `usage_events` 每次 Provider 调用写一条（[providers.md §8](providers.md#8-用量与预算)），是用量和费用的唯一事实。预算的已用量按当月直接汇总它，管理页与调用前的检查用同一个求和；`budget_periods` 的计数缓存和 `budget_reservations` 的预留，等调用量大到需要时再启用。
   - 与 v1 不同：v1 的审计分散在 `platform_audit_events`、`api_audit_log`、`email_send_log` 三张表；用量分散在 `llm_usage` 和预算账本。
 - 迁移
   - 只有一份基线 `drizzle/0000_v2_baseline.sql`，之后照旧只 `generate` + `migrate`，不 `push`。生成列、GIN 和部分唯一索引都写进基线。
@@ -79,7 +79,7 @@ v2 从零建表：只有一份基线迁移，不继承 v1 的迁移链，也不�
 | `agents` | Agent 身份与可变状态 | `owner_id` → `members` `CASCADE`、`is_main`（每个成员恰好一个，部分唯一索引）、`name` / `name_key`（主人名下未归档的唯一）、`role`、`avatar`（植物头像）、`current_version`、`visibility`（private / public）、`published_version`、`paused_at`（管理员暂停）、`publication`（授权范围：知识文件夹、电脑、每人每日上限）、`template_key`、`last_active_at`、`archived_at` |
 | `agent_versions` | 不可变 manifest，每次保存追加一版 | `agent_id` `CASCADE`、`version`、`manifest`（text：名字、职责、说明、指令、头像、模型引用、技能、连接器、读写权限、工具过滤）、`manifest_hash`、`change_note`、`created_by`；唯一 `(agent_id, version)` |
 | `agent_memories` | Agent 的记忆 | `agent_id` `CASCADE`（必填；没有用户级记忆，共享信息写在 `members.about`）、`member_id`、`title`（召回索引，只有它进提示词）、`content`、`category`、`status`（active / dormant / archived / superseded）、`pinned`、`source`、`superseded_by`、`source_conversation_id`、`last_used_at` |
-| `agent_computers` | 每个 Agent 一台电脑的生命周期 | `agent_id`（唯一）`CASCADE`、`owner_id`、`provider_id`（沙箱实例）、`sandbox_ref`（适配器自己的容器、卷或沙箱 id）、`state`（stopped / starting / running / failed）、`state_reason`、`timezone`、`version`、`last_active_at`、`last_started_at`；接管租约与观看（`lease_controller`、`lease_epoch`、`viewer_heartbeat_at`）随 M1.3 的电脑界面加入 |
+| `agent_computers` | Agent 电脑的生命周期 | `agent_id` `CASCADE`、`owner_id`（这台电脑是谁的）、`provider_id`（沙箱实例）、`sandbox_ref`（适配器自己的容器、卷或沙箱 id）、`state`（stopped / starting / running / failed）、`state_reason`、`timezone`、`version`、`last_active_at`、`last_started_at`；唯一 `(agent_id, owner_id)`：主人一台，公开 Agent 的发布允许电脑时，使用它的成员各一台；观看、接管和终端用一次性 ticket，连接打开期间刷新 `last_active_at`；接管租约（`lease_controller`、`lease_epoch`）等 Agent 自己操作画面时（AGNT-22）再加 |
 | `computer_backups` | 电脑家目录的加密备份 | `computer_id`、`owner_id`（逻辑）、`status`、`reason`（idle / admin / migration）、`storage_prefix`、`key_enc`、`format`、`bytes`、`restored_at`；每台电脑最多一条 running；先删对象再删行 |
 | `computer_watches` | 电脑上的后台进程结束时唤醒 Agent | `computer_id` `CASCADE`、`agent_id`、`member_id`（以谁的权限唤醒）、`conversation_id`、`job_ref`（按电脑唯一）、`name`、`status`（watching / notified / gone，从 watching 单次认领，7 天无果作废） |
 
@@ -185,8 +185,8 @@ v2 从零建表：只有一份基线迁移，不继承 v1 的迁移链，也不�
 
 | 表 | 用途 | 关键列与关系 |
 | --- | --- | --- |
-| `usage_events` | 每次 Provider 调用一条 | `capability`、`provider_id`、`source`（env / workspace / personal / builtin）、`member_id`、`agent_id`、`run_id`、`conversation_id`、`model`、`input_tokens` / `output_tokens` / `cached_tokens`（llm）、`quantity` + `unit`（秒、字符、张、分钟、字节）、`cost_micros`（预估）、`estimated`（结果未知、按预留量计费）、`budget_key`、`created_at` |
-| `budgets` | 预算上限 | `scope_type`（workspace / provider / member / agent / field）、`scope_id`、`unit`（tokens / usd_micros …）、`monthly_limit`、`enabled`；唯一 `(scope_type, scope_id, unit)`。组织即 workspace，field 是 AI 字段的上限 |
+| `usage_events` | 每次 Provider 调用一条 | `capability`、`provider_id`、`source`（env / workspace / personal / builtin）、`member_id`（以谁的权限调用；公开 Agent 的回合记提问的人）、`agent_id`、`run_id`、`conversation_id`、`model`、`input_tokens` / `output_tokens` / `cached_tokens`（llm）、`quantity` + `unit`（秒、字符、张、分钟、字节）、`cost_micros`（按实例模型目录里的单价估算，没有单价为空）、`estimated`（结果未知、按预留量计费）、`budget_key`、`created_at`；按成员、实例、Agent 加时间建索引，另有时间索引 |
+| `budgets` | 预算上限 | `scope_type`（workspace / provider / member / agent / field）、`scope_id`、`unit`（tokens / usd_micros …）、`monthly_limit`、`enabled`；唯一 `(scope_type, scope_id, unit)`。组织即 workspace（`scope_id` 为 `default`），field 是 AI 字段的上限；管理接口目前只开放 workspace、provider、member 三级 |
 | `budget_periods` | 每个预算每月的计数 | 主键 `(budget_id, period_start)`、`period_end`、`reserved`、`spent`、`version`；周期是 UTC 自然月 |
 | `budget_reservations` | 调用前的预留 | `budget_id`、`period_start`、`idempotency_key`（同一次调用涉及的各级预算共用）、`estimated`、`actual`、`status`（reserved / settled / released / expired）、`expires_at`、`member_id`、`run_id`；唯一 `(budget_id, idempotency_key)` |
 | `audit_events` | 唯一的审计表 | `actor_type`（member / agent / client / system）、`actor_id`、`on_behalf_of`（成员）、`agent_id`、`client_id`、`request_id`、`action`、`resource_type` + `resource_id`、`scope_type` + `scope_id`（如所在表格）、`result`（success / denied / error）、`summary`（不含内容和机密）、`ip`、`created_at` |
@@ -199,7 +199,7 @@ v1 的预算账本不再保留：每次花费都对应一条 `usage_events`；�
 | --- | --- | --- |
 | `workspace` | 工作区，只有一行 | `id`（固定 `default`）、`name`、`logo_file_id`、`primary_color`、`settings`（新成员的默认模块权限等非机密设置）、`setup_completed_at`、`updated_by`；机密一律在 `providers` |
 | `jobs` | 通用后台任务队列 | `kind`（如 deliver_notification、base_automation、recompute、ai_field、video_poll、file_purge、computer_backup、export）、`dedupe_key`（唯一）、`payload`、`status`（pending / claimed / succeeded / failed / dead / suppressed）、`attempts` / `max_attempts`、`available_at`、`lease_owner` / `lease_expires_at`、`last_error`、`result`；和触发它的状态变更在同一事务里写入 |
-| `idempotency_keys` | 有副作用请求的幂等记录 | 主键 `(scope, key)`（scope 如成员 id 或 `feishu`）、`request_hash`、`status`（running / done）、`response`、`expires_at`；承接 `Idempotency-Key` 头、应用动作重放和飞书事件去重 |
+| `idempotency_keys` | 有副作用请求的幂等记录 | 主键 `(scope, key)`（scope 如成员 id 或 `feishu`）、`request_hash`、`status`（running / done）、`response`、`expires_at`；承接 `Idempotency-Key` 头、应用动作重放和飞书事件去重；电脑画面与终端的一次性 ticket 也在这里（scope `computer_ticket`，`key` 是 ticket 的 keyed hash，一分钟，用时删除） |
 | `extension_migrations` | 扩展迁移通道的记录 | 主键 `(extension_id, name)`、`checksum`、`applied_at` |
 
 v1 迁移工具的 ID 映射与检查点放在单独的 `migration` schema，不属于基线。

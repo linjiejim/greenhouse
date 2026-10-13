@@ -53,12 +53,13 @@ Greenhouse is an open-source, self-hosted platform where a team works with its o
 
 ## Auth and permissions
 - Roles are admin and member. Public endpoints are /health, /api/bootstrap and /api/auth/*; everything else under /api requires a member, and /api/admin/* an admin.
+- File bytes are read only through signed URLs (`GET /api/files/:id/content?exp=&m=&sig=`), because an `<img>` or a link cannot send a bearer header. A URL is minted per request for one member, ends within one to two hours, and serving it checks again that the member is active and may read the file. Only the workspace logo gets a URL that names no member.
 - requireMember re-reads role, status and auth_version on every request: disabling a member or changing a password ends their sessions at once.
 - Refresh tokens are single use; replaying a used one revokes all of that member's sessions. One-time links and refresh tokens are stored only as keyed hashes.
 - The first-admin bootstrap never promotes or revives an existing account and does nothing once an admin exists.
 - Keep at least one active admin; a member cannot disable themselves.
 - Enforce access in services, never only in the UI. Writes record the acting member.
-- Admin changes to members, groups, branding and providers call audit() (apps/api/src/audit.ts) in the same transaction. Summaries name fields, never values or secrets.
+- Admin changes to members, groups, branding, providers, budgets and public Agents call audit() (apps/api/src/audit.ts) in the same transaction, and so does publishing an Agent. Summaries name fields, never values or secrets.
 
 ## Database
 - Tables use text ids, timestamptz read as ISO strings, and jsonb that is never null unless null means something.

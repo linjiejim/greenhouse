@@ -30,6 +30,8 @@ export function memoryTool(agents: AgentsService) {
     // Notes in the Agent's own memory, which the member can review and delete at any time.
     risk: 'read',
     surfaces: ['turn'],
+    // A public Agent keeps one memory per asker: it reads and writes only theirs.
+    publicAgent: true,
     async execute(args, ctx) {
       const handle = ctx.agent.id;
       if (args.action === 'remember') {

@@ -16,6 +16,7 @@ export function readAttachmentTool(files: FilesService) {
     risk: 'read',
     private: true,
     surfaces: ['turn'],
+    publicAgent: true,
     async execute(args, ctx) {
       const { row, bytes } = await files.bytes(ctx.memberId, args.file_id);
       if (row.conversationId !== ctx.conversation?.id) {

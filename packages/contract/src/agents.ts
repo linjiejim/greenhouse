@@ -1,5 +1,7 @@
 import { z } from 'zod';
 import { isoTime } from './common.js';
+import { memberSummarySchema } from './members.js';
+import { usageTotalsSchema } from './usage.js';
 
 export const AGENT_NAME_MAX = 24;
 export const AGENT_ROLE_MAX = 40;
@@ -46,7 +48,13 @@ export const agentSchema = z.object({
   description: z.string(),
   avatar: agentAvatarSchema,
   is_main: z.boolean(),
+  owner_id: z.string(),
+  /** Public: published to an audience (AGNT-13). */
   visibility: z.enum(['private', 'public']),
+  /** The version its audience talks to; null while private. */
+  published_version: z.number().int().nullable(),
+  /** An admin paused it: its audience cannot talk to it; its owner still can. */
+  paused_at: isoTime.nullable(),
   template_key: z.string().nullable(),
   current_version: z.number().int(),
   archived_at: isoTime.nullable(),
@@ -69,9 +77,71 @@ export const agentDetailSchema = agentSchema.extend({
 });
 export type AgentDetail = z.infer<typeof agentDetailSchema>;
 
+/** `public`: other members' public Agents shared with me, not paused or archived. */
 export const agentListQuerySchema = z.object({
-  scope: z.enum(['mine', 'archived']).default('mine'),
+  scope: z.enum(['mine', 'public', 'archived']).default('mine'),
 });
+
+/**
+ * Someone else's public Agent as its audience sees it: the published version's name, role,
+ * description and avatar (`current_version` is that version), and who made it.
+ */
+export const publicAgentSchema = agentSchema.extend({
+  owner: memberSummarySchema,
+  /** Replies per member per day; 0 is no limit. */
+  daily_cap: z.number().int(),
+});
+export type PublicAgent = z.infer<typeof publicAgentSchema>;
+
+export const AUDIENCE_TYPES = ['member', 'group', 'workspace'] as const;
+
+/** Who may talk to a public Agent: members, groups, or the whole workspace (no id). */
+export const audienceEntrySchema = z
+  .object({ type: z.enum(AUDIENCE_TYPES), id: z.string().min(1).max(64).optional() })
+  .refine((entry) => (entry.type === 'workspace') === (entry.id === undefined), {
+    message: 'A member or group needs its id; the workspace has none.',
+  });
+
+/** Publishes a version (default: the current one) to an audience, or changes the pin or the audience. */
+export const publicationInputSchema = z.object({
+  version: z.number().int().min(1).optional(),
+  audience: z.array(audienceEntrySchema).min(1).max(500),
+  /** Each member who uses it gets their own copy of its computer. */
+  computer: z.boolean().default(false),
+  /** Replies per member per day, in their time zone; 0 is no limit. */
+  daily_cap: z.number().int().min(0).max(10_000).default(0),
+});
+export type PublicationInput = z.input<typeof publicationInputSchema>;
+
+/** The 发布 tab: the owner's view of a publication. */
+export const publicationSchema = z.object({
+  agent_id: z.string(),
+  published: z.boolean(),
+  /** The published version; null while private. */
+  version: z.number().int().nullable(),
+  current_version: z.number().int(),
+  audience: z.array(z.object({ type: z.enum(AUDIENCE_TYPES), id: z.string().nullable(), name: z.string() })),
+  computer: z.boolean(),
+  daily_cap: z.number().int(),
+  paused_at: isoTime.nullable(),
+});
+export type Publication = z.infer<typeof publicationSchema>;
+
+/** 管理 → 公开 Agents (archived ones serve nobody and are left out): never what anyone said. */
+export const adminPublicAgentSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  role: z.string(),
+  avatar: agentAvatarSchema,
+  owner: memberSummarySchema,
+  published_version: z.number().int(),
+  paused_at: isoTime.nullable(),
+  /** Active members who may talk to it, its owner not counted. */
+  audience_size: z.number().int(),
+  /** This UTC month, by its audience (not its owner): usage, replies and how many people. */
+  month: usageTotalsSchema.extend({ turns: z.number().int(), people: z.number().int() }),
+});
+export type AdminPublicAgent = z.infer<typeof adminPublicAgentSchema>;
 
 const manifestInput = agentManifestSchema.partial();
 
