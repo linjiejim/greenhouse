@@ -79,6 +79,9 @@ importers:
       '@greenhouse/agent-core':
         specifier: workspace:*
         version: link:../../packages/agent-core
+      '@greenhouse/contract':
+        specifier: workspace:*
+        version: link:../../packages/contract
       '@greenhouse/db':
         specifier: workspace:*
         version: link:../../packages/db
@@ -243,6 +246,16 @@ importers:
       ai:
         specifier: ^7.0.133
         version: 7.0.133(zod@4.4.3)
+    devDependencies:
+      typescript:
+        specifier: ^5.7.0
+        version: 5.9.3
+
+  packages/contract:
+    dependencies:
+      zod:
+        specifier: ^4.4.3
+        version: 4.4.3
     devDependencies:
       typescript:
         specifier: ^5.7.0

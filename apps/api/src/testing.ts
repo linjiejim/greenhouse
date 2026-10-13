@@ -1,0 +1,56 @@
+/** Test support: a configured app and members with tokens, inside the per-test transaction. */
+
+import { getDb, members, newId, type MemberRole } from '@greenhouse/db';
+import { createApp, createServices, type Services } from './app.js';
+import { hashPassword } from './auth/password.js';
+import { loadConfig } from './config/index.js';
+
+export const TEST_PASSWORD = 'correct horse battery';
+
+export function createTestServices(overrides: Record<string, string> = {}): Services {
+  return createServices(
+    loadConfig({
+      NODE_ENV: 'test',
+      DATABASE_URL: 'postgresql://unused/test',
+      TOKEN_SIGNING_KEY: 'a'.repeat(64),
+      PROVIDER_TOKEN_ENCRYPTION_KEY: 'b'.repeat(64),
+      PUBLIC_URL: 'http://greenhouse.test',
+      ...overrides,
+    }),
+  );
+}
+
+export function createTestApp(overrides?: Record<string, string>) {
+  const services = createTestServices(overrides);
+  const app = createApp(services);
+
+  async function call(method: string, path: string, options: { token?: string; body?: unknown } = {}) {
+    const response = await app.request(path, {
+      method,
+      headers: {
+        ...(options.body !== undefined ? { 'content-type': 'application/json' } : {}),
+        ...(options.token ? { authorization: `Bearer ${options.token}` } : {}),
+      },
+      body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
+    });
+    const text = await response.text();
+    return { status: response.status, body: text ? (JSON.parse(text) as any) : null };
+  }
+
+  async function member(role: MemberRole = 'member', email = `${newId('member').toLowerCase()}@example.com`) {
+    const [row] = await getDb()
+      .insert(members)
+      .values({
+        id: newId('member'),
+        email,
+        name: email.split('@')[0]!,
+        role,
+        status: 'active',
+        passwordHash: await hashPassword(TEST_PASSWORD),
+      })
+      .returning();
+    return { ...row!, token: services.tokens.createAccessToken(row!.id, role, row!.authVersion) };
+  }
+
+  return { app, services, call, member };
+}
