@@ -1,7 +1,7 @@
 /**
  * 能力 (AGNT-07, AGNT-12): the model it answers with (only when there is more than one to pick
- * from), and whether it may ask to change shared things; every change still waits for the
- * member's approval. Tool detail stays out of the way.
+ * from), whether it may ask to change shared things (every change still waits for the member's
+ * approval), and the connectors it may use. Tool detail stays out of the way.
  */
 
 import { Select, Switch } from '@greenhouse/ui/kit';
@@ -11,6 +11,7 @@ import { useUpdateAgent } from '../../data/agents';
 import { useModelOptions } from '../../data/models';
 import { errorText } from '../../lib/errors';
 import { useI18n } from '../../lib/i18n';
+import { AgentConnectors } from './AgentConnectors';
 
 export function AbilitiesTab({ agent }: { agent: AgentDetail }) {
   const { t } = useI18n();
@@ -46,6 +47,7 @@ export function AbilitiesTab({ agent }: { agent: AgentDetail }) {
           onChange={(write) => update.mutate({ write }, { onError: () => notify(t('common.error')) })}
         />
       </div>
+      <AgentConnectors agent={agent} />
       <div className="app-setting-row">
         <div className="app-setting-text">
           <strong>{t('agents.tools')}</strong>

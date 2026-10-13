@@ -17,6 +17,7 @@ The v2 web app. Product scope is docs/product/prd.md §6–7; layout and compone
 - Styles: src/styles/app.css for app layout only, tokens only. Anything reusable belongs in the kit.
 - Status words and tones follow docs/design-system/content.md; pass `tone` to StatusBadge (the kit only knows the Chinese words).
 - A mutation whose callback navigates or closes an overlay uses mutateAsync or runs in a component that stays mounted: useMutation callbacks are dropped after unmount.
+- The workspace remounts on every change of address (the Shell's ErrorBoundary key), its own query parameters too: a page that clears them keeps what must outlive that outside its components (pages/settings/oauth-return.ts).
 
 ## Tests
 - Unit tests next to the code in __tests__ (vitest unit project).

@@ -2546,3 +2546,52 @@ button.app-agent-card {
 .app-directory-note {
   padding: var(--gh-space-1) var(--gh-space-2) var(--gh-space-1) var(--gh-space-6);
 }
+
+/* ── Connectors and external access ───────────────────────────────────── */
+
+.app-overlay-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gh-space-4);
+}
+
+.app-inline-status,
+.app-heading-with-help {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--gh-space-2);
+}
+
+.app-toolbar > .gh-search-field,
+.app-setting-row.is-wide > .gh-select {
+  flex: 1;
+}
+
+.app-cell-stack {
+  display: flex;
+  flex-direction: column;
+}
+
+.app-catalog-retry {
+  margin-top: var(--gh-space-2);
+}
+
+.app-login-card.app-consent {
+  max-width: var(--gh-dialog-width);
+}
+
+.app-consent-who {
+  text-align: center;
+  color: var(--gh-secondary);
+  margin-top: calc(-1 * var(--gh-space-3));
+}
+
+.app-consent-actions {
+  display: flex;
+  gap: var(--gh-space-3);
+  margin-top: var(--gh-space-2);
+}
+
+.app-consent-actions > .gh-button {
+  flex: 1;
+}

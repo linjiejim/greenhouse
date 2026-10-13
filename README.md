@@ -554,15 +554,20 @@ client (Claude, Codex, Cursor, MCP Inspector, …) can connect to, as one member
   app: the result says `needs_you` with a link.
 - Revoking an authorization, rotating a secret, disabling a client, changing a password or
   disabling a member ends the tokens at once; a refresh token or code used twice ends them all.
+- **Where** — members create tokens, see the apps they authorized and approve machine clients
+  bound to them under Settings → External access; admins add, rename, disable, rotate and
+  delete clients under Administration → External access.
 
 ### Connectors (Greenhouse as an MCP client)
 
-Greenhouse is an MCP **client** too. A super installs remote MCP servers ("connectors") under
-Administration → MCP Servers — from the **official catalog** (`connectors/*.json`, vetted entries
+Greenhouse is an MCP **client** too. An admin installs remote MCP servers ("connectors") under
+Administration → Connectors — from the **official catalog** (`connectors/*.json`, vetted entries
 in the MCP Registry's own `server.json` format; see [connectors/README.md](connectors/README.md) to
-contribute one), by searching the **official MCP Registry**, or by URL (a *Detect* button tells
-whether the address wants no sign-in, a key, or OAuth). Members granted the **External MCP tools**
-(`mcp_call`) tool reach them from chat and from their Agents through that one gateway tool.
+contribute one), by searching the **official MCP Registry**, or by address (*Detect sign-in* tells
+whether the address wants no sign-in, a key, or OAuth). Agents reach them through one gateway
+tool, `mcp_call`: every connector their owner can use, or only the ones picked on the Agent's
+Abilities tab. Per tool, the admin decides whether Agents may call it and whether it runs without
+approval (never for a tool the server says may destroy data).
 
 Each connector authenticates one of four ways:
 
@@ -573,8 +578,8 @@ Each connector authenticates one of four ways:
 | Each member's own key | the member pastes it (header or query parameter) | GitHub (PAT), Amap |
 | Each member signs in (OAuth) | the member's own account, MCP authorization spec | Linear, Notion, Sentry, Atlassian |
 
-Members connect under Settings → **Connectors** (on the web and in the mobile app); a chat that
-needs a connector they have not connected shows a **Connect** card. OAuth follows the MCP authorization spec (protected-resource
+Members connect under Settings → **Connections**: a key is tried against the server before it is
+kept, and a sign-in comes back to that page to finish. OAuth follows the MCP authorization spec (protected-resource
 discovery, PKCE, resource indicators) and needs no setup at the provider when it supports dynamic
 client registration or client-id metadata documents — the instance registers itself, with the
 callback `PUBLIC_BASE_URL/api/connectors/oauth/callback` (for providers without either, such as

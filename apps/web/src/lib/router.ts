@@ -36,6 +36,8 @@ export type Route =
   | { page: 'settings'; section: SettingsSection }
   | { page: 'admin'; section: AdminSection }
   | { page: 'activate'; token: string }
+  /** AUTH-06: an outside app asks for access (`request`), or its link was bad (`error`). */
+  | { page: 'consent'; request: string; error: string }
   | { page: 'not-found'; path: string };
 
 export type Page = Route['page'];
@@ -80,6 +82,10 @@ export function parse(hash: string): Route {
       return { page: 'admin', section: pick(ADMIN_SECTIONS, id, 'members') };
     case 'activate':
       return { page: 'activate', token: query.get('token') ?? '' };
+    case 'oauth':
+      return id === 'consent'
+        ? { page: 'consent', request: query.get('request') ?? '', error: query.get('error') ?? '' }
+        : notFound;
     default:
       return notFound;
   }
@@ -105,6 +111,13 @@ export function href(route: Route): string {
       return `#/admin/${route.section}`;
     case 'activate':
       return `#/activate?token=${encodeURIComponent(route.token)}`;
+    case 'consent': {
+      const query = new URLSearchParams();
+      if (route.request) query.set('request', route.request);
+      if (route.error) query.set('error', route.error);
+      const text = query.toString();
+      return `#/oauth/consent${text ? `?${text}` : ''}`;
+    }
     case 'not-found':
       return `#/${route.path.replace(/^\//, '')}`;
   }

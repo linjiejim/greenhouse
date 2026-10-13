@@ -31,6 +31,7 @@ export function Workspace({ route }: { route: Route }) {
     case 'admin':
       return me?.role === 'admin' ? <AdminPage section={route.section} /> : <NotFoundPage />;
     case 'activate':
+    case 'consent':
     case 'not-found':
       return <NotFoundPage />;
   }

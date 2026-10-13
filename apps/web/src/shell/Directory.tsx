@@ -11,10 +11,13 @@ import {
   CheckCircle2,
   Inbox,
   LayoutGrid,
+  Link2,
   PanelLeftClose,
+  Plug,
   Plus,
   Search,
   Server,
+  Shield,
   Sparkles,
   User,
   Users,
@@ -39,13 +42,17 @@ const glyph = (Icon: LucideIcon) => <Icon size={icon.md} strokeWidth={icon.strok
 /** The sections this build has; the rest join when their features land (features.md). */
 export const SETTINGS: { id: SettingsSection; label: MessageKey; icon: LucideIcon }[] = [
   { id: 'account', label: 'settings.account', icon: User },
+  { id: 'connections', label: 'settings.connections', icon: Link2 },
   { id: 'services', label: 'settings.services', icon: Server },
+  { id: 'access', label: 'settings.access', icon: Shield },
 ];
 
 export const ADMIN: { id: AdminSection; label: MessageKey; icon: LucideIcon }[] = [
   { id: 'members', label: 'admin.members', icon: Users },
   { id: 'services', label: 'admin.services', icon: Server },
   { id: 'usage', label: 'admin.usage', icon: Activity },
+  { id: 'connectors', label: 'admin.connectors', icon: Plug },
+  { id: 'access', label: 'admin.access', icon: Shield },
   { id: 'public-agents', label: 'admin.public-agents', icon: Sparkles },
   { id: 'branding', label: 'admin.branding', icon: LayoutGrid },
 ];

@@ -18,6 +18,10 @@ const KNOWN: Record<string, MessageKey> = {
   computer_not_running: 'errors.computerOff',
   upload_incomplete: 'errors.uploadCut',
   model_unavailable: 'errors.modelUnavailable',
+  connector_disabled: 'errors.connectorOff',
+  connection_busy: 'errors.connectionBusy',
+  registry_unavailable: 'errors.registry',
+  too_many_tokens: 'errors.tooManyTokens',
 };
 
 export function errorText(error: unknown, t: Translate): string {
