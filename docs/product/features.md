@@ -60,21 +60,21 @@ v2 决定
 | CONV-31 | 断线保留已生成内容，自动重连 | 保留 | 进行中 | W I A E | #70：断线自动重连并重新拉取；流式按偏移拼接已保存的部分文本；断开超过 3 秒才提示；Web 完成 |
 | CONV-32 | 回复卡片统一布局：结果、过程、决定三类；标题行是图标、标题、元信息，状态标签固定在最右侧 | 改造 | 进行中 | W I A E | #70：kit 的 ChatCard，状态标签固定在标题行最右；过程卡片完成态用中性色；Web 完成 |
 | CONV-33 | 对话目录：Agent 区在最上方，无标题、不折叠；主 Agent 行更大；目录行不显示最新消息 | 改造 | 进行中 | W I A | #70：Web 完成（主 Agent 行高 52、头像 36，其他 Agent 行高 32） |
-| CONV-D1 | 旧 Chat 引擎、`ConversationPane`、`/api/chat` 旧流程 | 删除 | 待删 | W I A E | 由单引擎 SYS-01 替代 |
-| CONV-D2 | 会话标签 | 删除 | 待删 | W I | 改用置顶、归档、搜索 |
-| CONV-D3 | 会话文件夹（v1 叫「分组」）与拖拽排序 | 删除 | 待删 | W | |
-| CONV-D4 | 历史弹窗（状态、归属、评分筛选） | 删除 | 待删 | W | |
-| CONV-D5 | 会话评分（星级 / 拇指）与管理员评语 | 删除 | 待删 | W | 保留消息级 👍 / 👎 |
-| CONV-D6 | 会话分享链接、只读查看、「分享给我」 | 删除 | 待删 | W I | 协作改用房间；结果存入知识库 |
-| CONV-D7 | 消息翻译、单条导出 PDF、消息全屏 | 删除 | 待删 | W | |
-| CONV-D8 | 团队范围：管理员读成员对话，`SUPER_READS_CHATS` | 删除 | 待删 | W | |
-| CONV-D9 | 工作台：卡片、配方、模板、拖拽网格、对话编辑、`workbench_*` 工具 | 删除 | 待删 | W | |
-| CONV-D10 | 单条消息的 LLM 评测（`eval_message`、`chat_eval_results`） | 删除 | 待删 | W | v1 已隐藏 |
-| CONV-D11 | 会话批量选择（打标签、移动、归档、删除） | 删除 | 待删 | W | |
-| CONV-D12 | Agent 群聊的只读残留（`groups_retired`） | 删除 | 待删 | W I | |
-| CONV-D13 | 「Chat」与「Message」双入口 | 合并 | 待删 | W | 合并为「发消息」 |
-| CONV-D14 | 消息上仅超管可见的 token、耗时、流水线图 | 删除 | 待删 | W | 改到用量页 |
-| CONV-D15 | Mission 会话模式、子会话（`spawn_session`）、`call_llm` | 删除 | 待删 | W | |
+| CONV-D1 | 旧 Chat 引擎、`ConversationPane`、`/api/chat` 旧流程 | 删除 | 待删 | W I A E | 由单引擎 SYS-01 替代；#70：v2 里已不存在 |
+| CONV-D2 | 会话标签 | 删除 | 待删 | W I | 改用置顶、归档、搜索；#70：v2 里已不存在 |
+| CONV-D3 | 会话文件夹（v1 叫「分组」）与拖拽排序 | 删除 | 待删 | W | #70：v2 里已不存在 |
+| CONV-D4 | 历史弹窗（状态、归属、评分筛选） | 删除 | 待删 | W | #70：v2 里已不存在 |
+| CONV-D5 | 会话评分（星级 / 拇指）与管理员评语 | 删除 | 待删 | W | 保留消息级 👍 / 👎；#70：v2 里已不存在 |
+| CONV-D6 | 会话分享链接、只读查看、「分享给我」 | 删除 | 待删 | W I | 协作改用房间；结果存入知识库；#70：v2 里已不存在 |
+| CONV-D7 | 消息翻译、单条导出 PDF、消息全屏 | 删除 | 待删 | W | #70：v2 里已不存在 |
+| CONV-D8 | 团队范围：管理员读成员对话，`SUPER_READS_CHATS` | 删除 | 待删 | W | #70：v2 里已不存在 |
+| CONV-D9 | 工作台：卡片、配方、模板、拖拽网格、对话编辑、`workbench_*` 工具 | 删除 | 待删 | W | #70：v2 里已不存在 |
+| CONV-D10 | 单条消息的 LLM 评测（`eval_message`、`chat_eval_results`） | 删除 | 待删 | W | v1 已隐藏；#70：v2 里已不存在 |
+| CONV-D11 | 会话批量选择（打标签、移动、归档、删除） | 删除 | 待删 | W | #70：v2 里已不存在 |
+| CONV-D12 | Agent 群聊的只读残留（`groups_retired`） | 删除 | 待删 | W I | #70：v2 里已不存在 |
+| CONV-D13 | 「Chat」与「Message」双入口 | 合并 | 待删 | W | 合并为「发消息」；#70：v2 里已不存在 |
+| CONV-D14 | 消息上仅超管可见的 token、耗时、流水线图 | 删除 | 待删 | W | 改到用量页；#70：v2 里已不存在 |
+| CONV-D15 | Mission 会话模式、子会话（`spawn_session`）、`call_llm` | 删除 | 待删 | W | #70：v2 里已不存在 |
 
 ## 2. Agents AGNT
 
@@ -105,12 +105,12 @@ v2 决定
 | AGNT-23 | 外部 Agent 通过 MCP 找我的 Agent | 保留 | 进行中 | — | #70：接口完成。`agents_list`（我的与分享给我的公开 Agent）/ `agent_message`（写进该 Agent 的对话，按我的权限回答，最多等 50 秒）/ `agent_conversation_get`（之后再读或继续等）；要我批准的写操作留在 App 的卡片里，结果返回 `needs_you` 与链接 |
 | AGNT-24 | 在飞书里 `@名字` 找到对应 Agent | 保留 | 规划 | — | |
 | AGNT-25 | 「交给 Agent」：任意表格记录 | 改造 | 规划 | W I | 原来只能交项目任务 |
-| AGNT-D1 | 设置 → 我的 Agents 页 | 合并 | 待删 | W I | 去处 AGNT-16 |
-| AGNT-D2 | 浏览 Agents 弹窗 | 合并 | 待删 | W | 去处 AGNT-16 |
-| AGNT-D3 | 个人记忆设置页（Labs）与「共享记忆」 | 合并 | 待删 | W | 去处 AGNT-08、AGNT-09 |
-| AGNT-D4 | 界面上的最大步数等技术参数 | 删除 | 待删 | W | 改为系统默认值 |
-| AGNT-D5 | Agent 治理通知（`agent_review_due` / `agent_suspended`） | 删除 | 待删 | — | 已无产生方 |
-| AGNT-D6 | 旧句柄 `custom:`、退役 profile id 的映射、`eval-judge` profile | 删除 | 待删 | — | |
+| AGNT-D1 | 设置 → 我的 Agents 页 | 合并 | 待删 | W I | 去处 AGNT-16；#70：v2 里已不存在 |
+| AGNT-D2 | 浏览 Agents 弹窗 | 合并 | 待删 | W | 去处 AGNT-16；#70：v2 里已不存在 |
+| AGNT-D3 | 个人记忆设置页（Labs）与「共享记忆」 | 合并 | 待删 | W | 去处 AGNT-08、AGNT-09；#70：v2 里已不存在 |
+| AGNT-D4 | 界面上的最大步数等技术参数 | 删除 | 待删 | W | 改为系统默认值；#70：v2 里已不存在 |
+| AGNT-D5 | Agent 治理通知（`agent_review_due` / `agent_suspended`） | 删除 | 待删 | — | 已无产生方；#70：v2 里已不存在 |
+| AGNT-D6 | 旧句柄 `custom:`、退役 profile id 的映射、`eval-judge` profile | 删除 | 待删 | — | #70：v2 里已不存在 |
 
 ## 3. 运行 RUN
 
@@ -123,12 +123,12 @@ v2 决定
 | RUN-05 | 长任务在 Agent 的电脑（沙箱）里执行 | 改造 | 进行中 | — | #70：`computer` 工具的后台进程结束或丢失时唤醒 Agent；长任务探针（容器重启后从检查点续跑）通过；承接 Missions 的场景 |
 | RUN-06 | 表格自动化里的 Agent 步骤作为运行出现 | 改造 | 规划 | W | 来源标注「表格」 |
 | RUN-07 | 实时更新（WebSocket） | 保留 | 进行中 | W I | #70：`/api/ws` 推送运行状态 |
-| RUN-D1 | Missions：一次性沙箱、Pi 运行器、`agent-runner` 镜像、`/api/missions`、`mission_dispatch`、Mission 详情页 | 删除 | 待删 | W | 去处 RUN-03、RUN-05 |
-| RUN-D2 | Workflows：DAG 引擎、`workflow_plan`、`/api/workflows`、节点编辑器、人工关卡 | 删除 | 待删 | W | 以后有真实需求再以「流程」重新设计 |
-| RUN-D3 | Automations 独立页面、团队范围、webhook 通知 | 合并 | 待删 | W | 去处 RUN-04 |
-| RUN-D4 | 运行类型分类：Mission / Workflow / Automation / Subagent | 删除 | 待删 | W | |
-| RUN-D5 | 「复制为评测用例」 | 删除 | 待删 | W | |
-| RUN-D6 | 同一个 Mission 的两套详情页、三处任务坞（Task Dock） | 删除 | 待删 | W | |
+| RUN-D1 | Missions：一次性沙箱、Pi 运行器、`agent-runner` 镜像、`/api/missions`、`mission_dispatch`、Mission 详情页 | 删除 | 待删 | W | 去处 RUN-03、RUN-05；#70：v2 里已不存在 |
+| RUN-D2 | Workflows：DAG 引擎、`workflow_plan`、`/api/workflows`、节点编辑器、人工关卡 | 删除 | 待删 | W | 以后有真实需求再以「流程」重新设计；#70：v2 里已不存在 |
+| RUN-D3 | Automations 独立页面、团队范围、webhook 通知 | 合并 | 待删 | W | 去处 RUN-04；#70：v2 里已不存在 |
+| RUN-D4 | 运行类型分类：Mission / Workflow / Automation / Subagent | 删除 | 待删 | W | #70：v2 里已不存在 |
+| RUN-D5 | 「复制为评测用例」 | 删除 | 待删 | W | #70：v2 里已不存在 |
+| RUN-D6 | 同一个 Mission 的两套详情页、三处任务坞（Task Dock） | 删除 | 待删 | W | #70：v2 里已不存在 |
 
 ## 4. 知识库 KNOW
 
@@ -150,10 +150,10 @@ v2 决定
 | KNOW-14 | 文件上传、预览、下载 | 改造 | 规划 | W I | 走统一文件服务 |
 | KNOW-15 | 文档目录 | 保留 | 规划 | W | |
 | KNOW-16 | Agent 回答带出处 | 保留 | 规划 | W I | |
-| KNOW-D1 | 知识库 AI 生成、改写、补全接口（没有界面） | 删除 | 待删 | — | 改为在对话里让 Agent 做 |
-| KNOW-D2 | 阅读页的「常见问题 / 相关话题」面板 | 删除 | 待删 | W | 字段保留为检索元数据 |
-| KNOW-D3 | 知识库与技能的企微 / 飞书 webhook 推送 | 删除 | 待删 | — | 改走通知中心 NTF-03 |
-| KNOW-D4 | 单独的文件夹附件页（`#/knowledge/folder/:id` 的 Drive 视图） | 合并 | 待删 | W | 去处 KNOW-01 |
+| KNOW-D1 | 知识库 AI 生成、改写、补全接口（没有界面） | 删除 | 待删 | — | 改为在对话里让 Agent 做；#70：v2 里已不存在 |
+| KNOW-D2 | 阅读页的「常见问题 / 相关话题」面板 | 删除 | 待删 | W | 字段保留为检索元数据；#70：v2 里已不存在 |
+| KNOW-D3 | 知识库与技能的企微 / 飞书 webhook 推送 | 删除 | 待删 | — | 改走通知中心 NTF-03；#70：v2 里已不存在 |
+| KNOW-D4 | 单独的文件夹附件页（`#/knowledge/folder/:id` 的 Drive 视图） | 合并 | 待删 | W | 去处 KNOW-01；#70：v2 里已不存在 |
 
 ## 5. 表格 TBL
 
@@ -177,20 +177,20 @@ v2 决定
 | TBL-16 | 记录「交给 Agent」 | 新增 | 规划 | W I | 同 AGNT-25 |
 | TBL-17 | Agent 规划表结构，由人确认 | 保留 | 规划 | W | |
 | TBL-18 | 审计 | 保留 | 规划 | W | |
-| TBL-D1 | 表格自己的通知收件箱 | 删除 | 待删 | W | 统一到 NTF-03（#64 D10） |
-| TBL-D2 | 没有界面的结构版本与成员接口 | 删除 | 待删 | — | |
+| TBL-D1 | 表格自己的通知收件箱 | 删除 | 待删 | W | 统一到 NTF-03（#64 D10）；#70：v2 里已不存在 |
+| TBL-D2 | 没有界面的结构版本与成员接口 | 删除 | 待删 | — | #70：v2 里已不存在 |
 
 ## 6. 项目 PRJ（整体并入表格）
 
 | ID | 功能 | v2 | 状态 | 端 | 备注 |
 | --- | --- | --- | --- | --- | --- |
-| PRJ-D1 | 项目组合：卡片与全局甘特 | 合并 | 待删 | W I | 去处 TBL-15、TBL-04 |
-| PRJ-D2 | 项目详情：甘特、列表、看板 | 合并 | 待删 | W I | 去处表格视图 |
-| PRJ-D3 | 任务抽屉：字段、依赖、子任务、评论 | 合并 | 待删 | W I | 去处 TBL-07、TBL-08、TBL-09 |
-| PRJ-D4 | 项目成员与可见性 | 合并 | 待删 | W I | 去处 TBL-14 |
-| PRJ-D5 | 变更日志 | 合并 | 待删 | W I | 去处 TBL-09 |
-| PRJ-D6 | `project_query` / `project_mutation`、`/api/projects` | 删除 | 待删 | — | 改用表格工具 |
-| PRJ-D7 | 移动端项目模块 | 合并 | 待删 | I A | 去处移动端表格（#64） |
+| PRJ-D1 | 项目组合：卡片与全局甘特 | 合并 | 待删 | W I | 去处 TBL-15、TBL-04；#70：v2 里已不存在 |
+| PRJ-D2 | 项目详情：甘特、列表、看板 | 合并 | 待删 | W I | 去处表格视图；#70：v2 里已不存在 |
+| PRJ-D3 | 任务抽屉：字段、依赖、子任务、评论 | 合并 | 待删 | W I | 去处 TBL-07、TBL-08、TBL-09；#70：v2 里已不存在 |
+| PRJ-D4 | 项目成员与可见性 | 合并 | 待删 | W I | 去处 TBL-14；#70：v2 里已不存在 |
+| PRJ-D5 | 变更日志 | 合并 | 待删 | W I | 去处 TBL-09；#70：v2 里已不存在 |
+| PRJ-D6 | `project_query` / `project_mutation`、`/api/projects` | 删除 | 待删 | — | 改用表格工具；#70：v2 里已不存在 |
+| PRJ-D7 | 移动端项目模块 | 合并 | 待删 | I A | 去处移动端表格（#64）；#70：v2 里已不存在 |
 
 ## 7. 应用 APP（以 PR #64 为准）
 
@@ -221,10 +221,10 @@ v2 决定
 | SKL-08 | 把对话存为技能 | 改造 | 规划 | W | 原 `task_capture` |
 | SKL-09 | 声明运行要求，条件不满足时禁用并说明原因 | 改造 | 规划 | W I | |
 | SKL-10 | 官方技能包（`skillhub/`） | 保留 | 规划 | — | |
-| SKL-D1 | Tasks 页面、`/api/prompts`、`user_prompts` | 合并 | 待删 | W | 去处 SKL-05 |
-| SKL-D2 | 「全局 Prompt」 | 删除 | 待删 | W | 改用团队范围的技能 |
-| SKL-D3 | 用 `/技能` 启动 Mission | 删除 | 待删 | W | |
-| SKL-D4 | `check-updates` 接口（没有调用方） | 删除 | 待删 | — | |
+| SKL-D1 | Tasks 页面、`/api/prompts`、`user_prompts` | 合并 | 待删 | W | 去处 SKL-05；#70：v2 里已不存在 |
+| SKL-D2 | 「全局 Prompt」 | 删除 | 待删 | W | 改用团队范围的技能；#70：v2 里已不存在 |
+| SKL-D3 | 用 `/技能` 启动 Mission | 删除 | 待删 | W | #70：v2 里已不存在 |
+| SKL-D4 | `check-updates` 接口（没有调用方） | 删除 | 待删 | — | #70：v2 里已不存在 |
 
 ## 9. 通知与搜索 NTF / SRCH
 
@@ -238,9 +238,9 @@ v2 决定
 | NTF-06 | 同一来源去重；打开即回到来源 | 保留 | 规划 | W I | |
 | SRCH-01 | `⌘K`：全局搜索加命令（对话、文档、记录、应用、Agent、技能；新建、打开） | 改造 | 进行中 | W D | #70：接口完成（对话、消息、我的 Agent、成员；文档、记录、应用、技能随各自模块）。v1 的 `⌘P` 只能搜索；Web 界面完成（#70）：⌘K 命令、Agent、对话、消息、成员、设置 |
 | SRCH-02 | 模块目录内筛选 | 保留 | 规划 | W I | |
-| NTF-D1 | 通知里的「分享给我」页签 | 删除 | 待删 | W | |
-| NTF-D2 | 分散在各处的需要你角标、执行中心角标 | 合并 | 待删 | W | 去处 NTF-02 |
-| SRCH-D1 | 约 9 个各自实现的搜索框 | 合并 | 待删 | W | 去处 SRCH-01、SRCH-02 |
+| NTF-D1 | 通知里的「分享给我」页签 | 删除 | 待删 | W | #70：v2 里已不存在 |
+| NTF-D2 | 分散在各处的需要你角标、执行中心角标 | 合并 | 待删 | W | 去处 NTF-02；#70：v2 里已不存在 |
+| SRCH-D1 | 约 9 个各自实现的搜索框 | 合并 | 待删 | W | 去处 SRCH-01、SRCH-02；#70：v2 里已不存在 |
 
 ## 10. 设置 SET
 
@@ -255,10 +255,10 @@ v2 决定
 | SET-07 | 我的服务：个人 Key（管理员允许时） | 新增 | 进行中 | W | #70：接口完成，PRV-04；Web 界面完成（#70） |
 | SET-08 | 外部访问：撤销 OAuth 授权、个人访问令牌（CLI） | 改造 | 进行中 | W | #70：接口完成。`/api/me/grants`（列出、撤销即作废令牌、批准管理员绑定给我的机器客户端）、`/api/me/tokens`（名称、scope、有效期，只显示一次）；改密码或停用即全部失效；Web 界面未做。原 Agent Connections |
 | SET-09 | 桌面端：快捷键、系统权限、更新（只在桌面 App 内） | 改造 | 规划 | D | |
-| SET-D1 | 个人分组页 | 删除 | 待删 | W | 分组改由管理员维护 ADM-03 |
-| SET-D2 | 记忆页（Labs） | 合并 | 待删 | W | 去处 AGNT-08 |
-| SET-D3 | 我的 Agents 页 | 合并 | 待删 | W I | 去处 AGNT-16 |
-| SET-D4 | 账户菜单里的主题切换、发布说明、检查更新的重复入口 | 删除 | 待删 | W | 每样只留一处 |
+| SET-D1 | 个人分组页 | 删除 | 待删 | W | 分组改由管理员维护 ADM-03；#70：v2 里已不存在 |
+| SET-D2 | 记忆页（Labs） | 合并 | 待删 | W | 去处 AGNT-08；#70：v2 里已不存在 |
+| SET-D3 | 我的 Agents 页 | 合并 | 待删 | W I | 去处 AGNT-16；#70：v2 里已不存在 |
+| SET-D4 | 账户菜单里的主题切换、发布说明、检查更新的重复入口 | 删除 | 待删 | W | 每样只留一处；#70：v2 里已不存在 |
 
 ## 11. 管理 ADM
 
@@ -276,15 +276,15 @@ v2 决定
 | ADM-10 | 公开 Agents：暂停与恢复 | 保留 | 进行中 | W | #70：接口完成。列出主人、受众人数、本月用量；暂停只拦住受众，主人照常用；写审计；Web 界面完成（#70） |
 | ADM-11 | 品牌：名称、Logo、主色 | 改造 | 进行中 | W | #70：名称、主色、Logo（登录页与全局栏）；接口与 Web 完成 |
 | ADM-12 | 首次部署引导：没有可用模型时直接进入「服务」 | 新增 | 进行中 | W | #70：管理员登录时若没有可用的模型服务，先进入「管理 → 服务」（每次访问一次）；服务页顶部有横幅和「添加模型服务」 |
-| ADM-D1 | Feature Requests（页面、`feature_request` 工具、数据表） | 删除 | 待删 | W | |
-| ADM-D2 | Frictions（页面、`log_friction` 工具、每日挖掘任务、数据表） | 删除 | 待删 | W | |
-| ADM-D3 | Evaluation（页面、`/api/eval`、数据集、eval driver、`eval-judge`） | 删除 | 待删 | W | 保留人工场景库 `docs/evals/` |
-| ADM-D4 | AI Gateway、LLM 中继 `/api/llm`、中继 Key、`/api/auth/llm-keys`、`llm_calls` | 删除 | 待删 | W | |
-| ADM-D5 | Runtime Config 页 | 合并 | 待删 | W | 去处 ADM-04 |
-| ADM-D6 | 在线用户弹窗 | 删除 | 待删 | W | |
-| ADM-D7 | 没有界面的自定义角色 / 策略 / 审计接口 | 删除 | 待删 | — | 平台内核保留内部使用 |
-| ADM-D8 | 品牌工作室的高级 token 编辑：字体、圆角、缩放、语义色覆盖 | 删除 | 待删 | W | |
-| ADM-D9 | 共享团队邮箱（`SHARED_MAILBOX_*`） | 删除 | 待删 | — | 系统发信改走 ADM-05 |
+| ADM-D1 | Feature Requests（页面、`feature_request` 工具、数据表） | 删除 | 待删 | W | #70：v2 里已不存在 |
+| ADM-D2 | Frictions（页面、`log_friction` 工具、每日挖掘任务、数据表） | 删除 | 待删 | W | #70：v2 里已不存在 |
+| ADM-D3 | Evaluation（页面、`/api/eval`、数据集、eval driver、`eval-judge`） | 删除 | 待删 | W | 保留人工场景库 `docs/evals/`；#70：v2 里已不存在 |
+| ADM-D4 | AI Gateway、LLM 中继 `/api/llm`、中继 Key、`/api/auth/llm-keys`、`llm_calls` | 删除 | 待删 | W | #70：v2 里已不存在 |
+| ADM-D5 | Runtime Config 页 | 合并 | 待删 | W | 去处 ADM-04；#70：v2 里已不存在 |
+| ADM-D6 | 在线用户弹窗 | 删除 | 待删 | W | #70：v2 里已不存在 |
+| ADM-D7 | 没有界面的自定义角色 / 策略 / 审计接口 | 删除 | 待删 | — | 平台内核保留内部使用；#70：v2 里已不存在 |
+| ADM-D8 | 品牌工作室的高级 token 编辑：字体、圆角、缩放、语义色覆盖 | 删除 | 待删 | W | #70：v2 里已不存在 |
+| ADM-D9 | 共享团队邮箱（`SHARED_MAILBOX_*`） | 删除 | 待删 | — | 系统发信改走 ADM-05；#70：v2 里已不存在 |
 
 ## 12. 登录与账号 AUTH
 
@@ -297,8 +297,8 @@ v2 决定
 | AUTH-05 | 登录前加载品牌（`/api/bootstrap`） | 保留 | 进行中 | W I E | #70：`/api/bootstrap` 给出名称、主色、Logo；Web 登录前加载 |
 | AUTH-06 | OAuth 同意页（外部 Agent 接入） | 保留 | 进行中 | W | #70：接口完成。`/oauth/authorize` 把浏览器带到 `#/oauth/consent?request=`（一次性、十分钟、归第一个打开它的成员），页面用 `GET` / `POST /api/oauth/consent` 读取并决定（可少勾 scope）；Web 同意页未做 |
 | AUTH-07 | 旧客户端连上 v2 服务器时提示更新 | 新增 | 进行中 | I A E D | #70：`api_version` 比客户端新时，Web 顶部提示刷新 |
-| AUTH-D1 | `external` 角色残留、`profile_id='team'` 默认值 | 删除 | 待删 | — | |
-| AUTH-D2 | `/api/auth/status`（浏览器扩展还在调用，导致添加服务器总失败） | 删除 | 待删 | E | 扩展改用 `/api/bootstrap` |
+| AUTH-D1 | `external` 角色残留、`profile_id='team'` 默认值 | 删除 | 待删 | — | #70：v2 里已不存在 |
+| AUTH-D2 | `/api/auth/status`（浏览器扩展还在调用，导致添加服务器总失败） | 删除 | 待删 | E | 扩展改用 `/api/bootstrap`；#70：v2 里已不存在 |
 
 ## 13. 服务 PRV（详见 [providers.md](providers.md)）
 
@@ -328,10 +328,10 @@ v2 决定
 | OPEN-02 | MCP 客户端（连接器、`mcp_call`），写操作需确认 | 保留 | 进行中 | — | #70：接口完成。`mcp_call` 只列出 Agent 此刻能用的连接器（已启用、在 manifest 里、提问者已连接）；只读工具直接运行，其余工具弹批准卡（原样参数），批准后用提问者的连接执行；输出截断、去掉提示结构、隐去密钥；只在回合里，公开 Agent 不提供 |
 | OPEN-03 | 扩展：页面、设置、管理、实体详情、搜索来源、工具、Provider | 改造 | 规划 | W | |
 | OPEN-04 | CLI 改走 MCP | 改造 | 进行中 | — | #70：个人访问令牌可直接作 Bearer 调用 `/api/mcp`；CLI 本身未改 |
-| OPEN-D1 | `/api/agent` 工具代理 | 删除 | 待删 | — | |
-| OPEN-D2 | 扩展的 `workbenchRecipes` 扩展面 | 删除 | 待删 | — | |
-| OPEN-D3 | `@greenhouse/crud` 服务端（没有调用方） | 删除 | 待删 | — | |
-| OPEN-D4 | `/api/cloud-agent` 别名、`CLOUD_AGENT_*` 变量别名 | 删除 | 待删 | — | |
+| OPEN-D1 | `/api/agent` 工具代理 | 删除 | 待删 | — | #70：v2 里已不存在 |
+| OPEN-D2 | 扩展的 `workbenchRecipes` 扩展面 | 删除 | 待删 | — | #70：v2 里已不存在 |
+| OPEN-D3 | `@greenhouse/crud` 服务端（没有调用方） | 删除 | 待删 | — | #70：v2 里已不存在 |
+| OPEN-D4 | `/api/cloud-agent` 别名、`CLOUD_AGENT_*` 变量别名 | 删除 | 待删 | — | #70：v2 里已不存在 |
 | CHN-01 | 飞书机器人：在飞书里找 Agent | 改造 | 规划 | — | 迁到单引擎 |
 | CHN-02 | 飞书和企微消息送达 | 保留 | 规划 | — | |
 | CHN-03 | 系统发信（SMTP） | 改造 | 规划 | — | |

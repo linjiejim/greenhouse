@@ -23,7 +23,7 @@ export const CONVERSATION_FOCUS_RULE =
 // ─── Rich output rendering rules ─────────────────────────
 //
 // One section per block, composed per request: a client is taught only the
-// blocks it declared it can draw (`rich_blocks` on POST /api/chat, spec
+// blocks it declared it can draw (`rich_blocks` on POST /api/conversations/:id/messages, spec
 // docs/specs/20261008-rich-output-foundation.md). The keys mirror `ModelFence`
 // in @greenhouse/types/rich-output (this package does not depend on types; a
 // test holds the two lists together). Composition order is fixed so the
