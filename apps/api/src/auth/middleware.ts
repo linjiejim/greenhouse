@@ -2,7 +2,7 @@ import type { MiddlewareHandler } from 'hono';
 import { eq } from 'drizzle-orm';
 import { getDb, members } from '@greenhouse/db';
 import { forbidden, unauthorized } from '../http/errors.js';
-import type { AppEnv } from '../http/env.js';
+import type { AppEnv, AuthMember } from '../http/env.js';
 import type { Tokens } from './tokens.js';
 
 /**
@@ -14,24 +14,31 @@ export function requireMember(tokens: Tokens): MiddlewareHandler<AppEnv> {
   return async (c, next) => {
     const header = c.req.header('authorization') ?? '';
     const match = /^Bearer\s+(\S+)$/i.exec(header);
-    const claims = match ? tokens.verifyAccessToken(match[1]!) : null;
-    if (!claims) throw unauthorized();
-    const [row] = await getDb()
-      .select({
-        id: members.id,
-        role: members.role,
-        status: members.status,
-        authVersion: members.authVersion,
-        name: members.name,
-        email: members.email,
-      })
-      .from(members)
-      .where(eq(members.id, claims.sub))
-      .limit(1);
-    if (!row || row.status !== 'active' || row.authVersion !== claims.ver) throw unauthorized();
-    c.set('member', { id: row.id, role: row.role, name: row.name, email: row.email });
+    const member = match ? await authenticate(tokens, match[1]!) : null;
+    if (!member) throw unauthorized();
+    c.set('member', member);
     await next();
   };
+}
+
+/** The member an access token belongs to, if the token is valid and the member still active. */
+export async function authenticate(tokens: Tokens, token: string): Promise<AuthMember | null> {
+  const claims = tokens.verifyAccessToken(token);
+  if (!claims) return null;
+  const [row] = await getDb()
+    .select({
+      id: members.id,
+      role: members.role,
+      status: members.status,
+      authVersion: members.authVersion,
+      name: members.name,
+      email: members.email,
+    })
+    .from(members)
+    .where(eq(members.id, claims.sub))
+    .limit(1);
+  if (!row || row.status !== 'active' || row.authVersion !== claims.ver) return null;
+  return { id: row.id, role: row.role, name: row.name, email: row.email };
 }
 
 export const requireAdmin: MiddlewareHandler<AppEnv> = async (c, next) => {

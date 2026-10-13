@@ -3,6 +3,7 @@
  * workspace and first admin exist, then serve.
  */
 
+import type { Server } from 'node:http';
 import { fileURLToPath } from 'node:url';
 import { config as loadDotenv } from 'dotenv';
 import { serve } from '@hono/node-server';
@@ -11,6 +12,7 @@ import { logger } from '@greenhouse/utils/logger';
 import { createApp, createServices } from './app.js';
 import { loadConfig } from './config/index.js';
 import { pgTransport } from './realtime/pg.js';
+import { attachRealtime } from './realtime/socket.js';
 import { ensureFirstAdmin } from './security/first-admin.js';
 
 loadDotenv({ path: fileURLToPath(new URL('../../../.env', import.meta.url)) });
@@ -34,8 +36,14 @@ async function main() {
   const server = serve({ fetch: app.fetch, port: config.PORT }, (info) =>
     logger.info(`[api] Greenhouse v2 listening on http://localhost:${info.port}`),
   );
+  const realtime = attachRealtime(server as Server, {
+    hub: services.hub,
+    tokens: services.tokens,
+    allowedOrigins: config.corsAllowedOrigins,
+  });
 
   const stop = async () => {
+    await realtime.close();
     server.close();
     await services.engine.shutdown();
     await services.hub.close();
