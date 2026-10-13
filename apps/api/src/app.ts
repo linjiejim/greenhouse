@@ -16,10 +16,17 @@ import { createMembersService, type MembersService } from './modules/members/ser
 import { bootstrapRoutes, brandingRoutes } from './modules/workspace/routes.js';
 import { createWorkspaceService, type WorkspaceService } from './modules/workspace/service.js';
 import { createEngine, type Engine } from './engine/engine.js';
+import { askUserTool } from './engine/tools/ask-user.js';
 import { memoryTool } from './engine/tools/memory.js';
+import type { ToolDef } from './engine/tools/define.js';
+import { selfTool } from './engine/tools/self.js';
 import { agentRoutes } from './modules/agents/routes.js';
 import { createAgentsService, type AgentsService } from './modules/agents/service.js';
 import { conversationRoutes } from './modules/conversations/routes.js';
+import { notificationRoutes } from './modules/notifications/routes.js';
+import { createNotificationsService, type NotificationsService } from './modules/notifications/service.js';
+import { requestRoutes } from './modules/requests/routes.js';
+import { createRequestsService, type RequestsService } from './modules/requests/service.js';
 import { createConversationsService, type ConversationsService } from './modules/conversations/service.js';
 import { createHub, type Hub } from './realtime/hub.js';
 import { adminProviderRoutes, myProviderRoutes } from './providers/routes.js';
@@ -34,6 +41,8 @@ export interface Services {
   providers: ProvidersService;
   agents: AgentsService;
   conversations: ConversationsService;
+  notifications: NotificationsService;
+  requests: RequestsService;
   hub: Hub;
   engine: Engine;
   limiter: RateLimiter;
@@ -44,6 +53,8 @@ export interface ServiceOptions {
   fetch?: typeof fetch;
   /** Replaces model resolution in the engine (tests). */
   languageModel?: ProvidersService['languageModel'];
+  /** Tools added to the built-in ones (extensions, tests). */
+  tools?: readonly ToolDef[];
 }
 
 export function createServices(config: AppConfig, options: ServiceOptions = {}): Services {
@@ -53,12 +64,15 @@ export function createServices(config: AppConfig, options: ServiceOptions = {}):
   const agents = createAgentsService({ providers });
   const conversations = createConversationsService({ agents, providers });
   const hub = createHub();
+  const notifications = createNotificationsService({ hub });
+  const requests = createRequestsService({ hub, notifications });
   const engine = createEngine({
     agents,
     conversations,
     providers,
+    requests,
     hub,
-    tools: () => [memoryTool(agents)],
+    tools: () => [memoryTool(agents), askUserTool(), selfTool(agents), ...(options.tools ?? [])],
     ...(options.languageModel ? { languageModel: options.languageModel } : {}),
   });
   return {
@@ -70,6 +84,8 @@ export function createServices(config: AppConfig, options: ServiceOptions = {}):
     providers,
     agents,
     conversations,
+    notifications,
+    requests,
     hub,
     engine,
     limiter: new RateLimiter(10, 60_000),
@@ -113,6 +129,8 @@ export function createApp(services: Services) {
   signedIn.route('/members', directoryRoutes(services.members));
   signedIn.route('/agents', agentRoutes(services.agents));
   signedIn.route('/conversations', conversationRoutes(services.conversations, services.engine));
+  signedIn.route('/requests', requestRoutes(services.requests, services.engine));
+  signedIn.route('/notifications', notificationRoutes(services.notifications));
   signedIn.use('/admin/*', requireAdmin);
   signedIn.route('/admin', adminMemberRoutes(services.members));
   signedIn.route('/admin/branding', brandingRoutes(services.workspace));

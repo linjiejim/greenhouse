@@ -24,6 +24,8 @@ import type { RealtimeEvent, SendMessageResult, sendMessageInputSchema } from '@
 import {
   agents,
   conversationInbox,
+  requests as requestsTable,
+  runSteps,
   conversationMembers,
   conversations,
   files,
@@ -36,6 +38,7 @@ import {
   transaction,
   type Conversation,
   type Db,
+  type NeedsYouRequest,
   type Message as MessageRow,
   type MessageStep,
   type Run,
@@ -48,6 +51,7 @@ import { ApiError, conflict, forbidden, invalidInput } from '../http/errors.js';
 import type { ProvidersService } from '../providers/service.js';
 import type { Hub } from '../realtime/hub.js';
 import type { AgentsService } from '../modules/agents/service.js';
+import type { RequestsService } from '../modules/requests/service.js';
 import { toMessage, type ConversationsService } from '../modules/conversations/service.js';
 import { effectiveModules } from '../modules/members/service.js';
 import { projectHistory } from './history.js';
@@ -65,7 +69,7 @@ import {
   type TurnReason,
 } from './prompt.js';
 import { assembleTools } from './tools/assemble.js';
-import type { ToolDef } from './tools/define.js';
+import type { DecisionOutcome, ToolContext, ToolDef } from './tools/define.js';
 
 type SendInput = z.output<typeof sendMessageInputSchema>;
 
@@ -88,6 +92,7 @@ export interface EngineDeps {
   agents: AgentsService;
   conversations: ConversationsService;
   providers: ProvidersService;
+  requests: RequestsService;
   hub: Hub;
   tools: (engine: { deps: EngineDeps }) => readonly ToolDef[];
   /** Replaces model resolution (tests). */
@@ -360,6 +365,21 @@ export function createEngine(deps: EngineDeps) {
           surface: 'turn',
           available: (capability) => deps.providers.available(capability, { memberId: run.ownerId }),
         },
+        raise: (card, stepId) =>
+          deps.requests.create({
+            memberId: run.ownerId,
+            kind: card.kind,
+            subject: card.subject,
+            title: card.title,
+            payload: card.payload,
+            conversationId: conversation.id,
+            runId: run.id,
+            stepId,
+            agentId: agent.id,
+            ...(card.expiresInMs ? { expiresInMs: card.expiresInMs } : {}),
+          }),
+        approvalTitle: (summary) =>
+          locale === 'zh' ? `${agent.name} 请你批准：${summary}` : `${agent.name} asks to ${summary}`,
       });
       defs = turnTools.defs;
 
@@ -583,8 +603,162 @@ export function createEngine(deps: EngineDeps) {
     if (ok.length !== new Set(ids).size) throw invalidInput('Some attachments cannot be used here.');
   }
 
+  /** A result as a short line the Agent can read. */
+  function brief(value: unknown): string {
+    let text: string;
+    try {
+      text = typeof value === 'string' ? value : JSON.stringify(value);
+    } catch {
+      text = String(value);
+    }
+    return text.length > 1500 ? `${text.slice(0, 1500)}…` : text;
+  }
+
+  /** An approved write runs exactly the arguments the member saw, with the asker's rights. */
+  async function decideToolWrite(
+    request: NeedsYouRequest,
+    run: Run | undefined,
+    locale: Locale,
+  ): Promise<DecisionOutcome> {
+    const payload = request.payload as { tool?: string; input?: unknown; summary?: string };
+    const summary = payload.summary ?? payload.tool ?? '';
+    const zh = locale === 'zh';
+    const setStep = (values: Record<string, unknown>) =>
+      request.stepId
+        ? getDb()
+            .update(runSteps)
+            .set({ ...values, updatedAt: sql`now()` } as never)
+            .where(eq(runSteps.id, request.stepId))
+        : Promise.resolve();
+    if (request.status !== 'approved') {
+      await setStep({ status: 'skipped', finishedAt: sql`now()` });
+      if (request.status === 'rejected') {
+        const reason =
+          typeof request.result?.reason === 'string' && request.result.reason ? `: ${request.result.reason}` : '';
+        return {
+          line: zh ? `已拒绝：${summary}` : `Declined: ${summary}`,
+          note: `The member declined "${summary}"${reason}. Do not retry unless they ask.`,
+        };
+      }
+      return { line: zh ? `卡片已过期：${summary}` : `Card expired: ${summary}`, note: null };
+    }
+    const def = toolDefs().find((candidate) => candidate.name === payload.tool);
+    if (!def || !run) {
+      await setStep({ status: 'failed', error: { code: 'tool_gone', message: 'The tool is no longer available.' } });
+      return {
+        line: zh ? `已批准：${summary}，但无法执行` : `Approved: ${summary}, but it could not run`,
+        note: `The member approved "${summary}", but the tool is no longer available.`,
+      };
+    }
+    const { agent, manifest } = await deps.agents.load(run.ownerId, run.agentId);
+    const [conversation] = run.conversationId
+      ? await getDb().select().from(conversations).where(eq(conversations.id, run.conversationId))
+      : [];
+    const context: ToolContext = {
+      memberId: run.ownerId,
+      agent,
+      manifest,
+      conversation: conversation ?? null,
+      runId: run.id,
+      stepId: request.stepId ?? '',
+      locale,
+      surface: 'turn',
+      signal: new AbortController().signal,
+      taint: () => undefined,
+      tainted: () => false,
+      raise: () => Promise.reject(new Error('An approved action cannot raise another card.')),
+    };
+    const started = Date.now();
+    try {
+      const output = await def.execute(payload.input, context);
+      await setStep({
+        status: 'succeeded',
+        output: output ?? null,
+        durationMs: Date.now() - started,
+        finishedAt: sql`now()`,
+      });
+      return {
+        line: zh ? `已批准：${summary}` : `Approved: ${summary}`,
+        note: `The member approved "${summary}" and it ran. Result: ${brief(output)}`,
+      };
+    } catch (error) {
+      const message = toErrorMessage(error).slice(0, 500);
+      await setStep({ status: 'failed', error: { code: 'tool_failed', message }, finishedAt: sql`now()` });
+      return {
+        line: zh ? `已批准：${summary}，但没有成功` : `Approved: ${summary}, but it failed`,
+        note: `The member approved "${summary}", but it failed: ${message}`,
+      };
+    }
+  }
+
+  /**
+   * What a decision does: runs an approved write or lets the tool apply its proposal, writes one
+   * line in the transcript, ends the run that waited for it, and wakes the Agent with the outcome.
+   */
+  async function resolve(request: NeedsYouRequest): Promise<void> {
+    const [run] = request.runId ? await getDb().select().from(runs).where(eq(runs.id, request.runId)) : [];
+    const [member] = await getDb()
+      .select({ locale: members.locale })
+      .from(members)
+      .where(eq(members.id, request.memberId));
+    const locale = localeOf(member?.locale);
+    const agentId = request.agentId ?? run?.agentId ?? null;
+    let outcome: DecisionOutcome;
+    if (request.subject === 'tool_write') {
+      outcome = await decideToolWrite(request, run, locale);
+    } else {
+      const def = toolDefs().find((candidate) => candidate.name === request.payload.tool);
+      const [agent] = agentId ? await getDb().select().from(agents).where(eq(agents.id, agentId)) : [];
+      outcome =
+        def?.decide && agent
+          ? await def.decide(request, { memberId: request.memberId, agent, locale })
+          : { line: request.status, note: null };
+    }
+
+    if (request.conversationId) {
+      const line = await withConversation(request.conversationId, () =>
+        deps.conversations.append(request.conversationId!, {
+          role: 'event',
+          agentId,
+          content: outcome.line,
+          event: { type: 'decision', request_id: request.id, status: request.status },
+        }),
+      );
+      await publish(request.conversationId, { type: 'message.created', data: { message: toMessage(line) } });
+    }
+
+    // The run that waited is done once none of its cards is still open.
+    if (run?.status === 'waiting') {
+      const [open] = await getDb()
+        .select({ id: requestsTable.id })
+        .from(requestsTable)
+        .where(and(eq(requestsTable.runId, run.id), eq(requestsTable.status, 'pending')));
+      if (!open) {
+        await getDb()
+          .update(runs)
+          .set({ status: 'succeeded', waitReason: null, finishedAt: sql`now()`, updatedAt: sql`now()` })
+          .where(and(eq(runs.id, run.id), eq(runs.status, 'waiting')));
+        if (run.conversationId) {
+          await publish(run.conversationId, {
+            type: 'run.updated',
+            data: { run_id: run.id, status: 'succeeded', conversation_id: run.conversationId },
+          });
+        }
+      }
+    }
+
+    if (outcome.note && request.conversationId && agentId) {
+      await engine.deliver(request.conversationId, { agentId, memberId: request.memberId, note: outcome.note });
+    }
+  }
+
   const engine = {
     instance,
+
+    /** Carries out a decision the member just made on a card. */
+    decide(request: NeedsYouRequest): void {
+      track(resolve(request));
+    },
 
     /** A member's message. Starts a turn now, or queues behind the one answering. */
     async post(memberId: string, conversationId: string, input: SendInput): Promise<SendMessageResult> {
@@ -748,6 +922,7 @@ export function createEngine(deps: EngineDeps) {
      * their queue moves on. Queues left behind with no turn (a shutdown) start again.
      */
     async sweep(): Promise<void> {
+      for (const request of await deps.requests.expireDue()) track(resolve(request));
       const expired = await getDb()
         .select()
         .from(runs)

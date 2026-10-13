@@ -21,3 +21,10 @@ The one engine for conversations and runs. Read with the root AGENTS.md and docs
 - One file per tool with `defineTool` (tools/define.ts): description, zod input, risk, availability, and the service call. Routes and tools call the same services.
 - Every call is a `run_steps` row. Tools that read outside text set `taints`; after that a turn cannot change memories.
 - Read tools run in turns and background runs; write and external tools only in turns, and only for Agents whose manifest allows writing.
+
+## Needs you
+- Write and external tools never run when the model calls them: the call raises an approval card (`requests`, subject `tool_write`) holding the exact arguments, the step waits as `pending`, and the turn ends with the run `waiting`.
+- A decision is a compare-and-set from pending (requests service). The engine then runs exactly the approved arguments with the asker's rights, or skips the step, writes one event line in the transcript, closes the waiting run, and wakes the Agent through the inbox with the outcome.
+- A tool that raises its own card (ask_user, self) implements `decide`; return a null note to leave the Agent asleep.
+- Expired cards are swept: the step is skipped, the run closes, and the Agent is not woken.
+- Every card is a notification through `notifications.publish`, the one entry point for notifications.

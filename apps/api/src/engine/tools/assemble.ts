@@ -5,9 +5,9 @@
 
 import { tool, type ToolSet } from 'ai';
 import { and, eq, sql } from 'drizzle-orm';
-import { getDb, newId, runSteps } from '@greenhouse/db';
+import { getDb, newId, runSteps, type NeedsYouRequest } from '@greenhouse/db';
 import { toErrorMessage } from '@greenhouse/utils/error';
-import { surfacesOf, type AvailabilityContext, type ToolContext, type ToolDef } from './define.js';
+import { surfacesOf, type AvailabilityContext, type Card, type ToolContext, type ToolDef } from './define.js';
 
 const MAX_STORED_JSON = 20_000;
 
@@ -34,10 +34,36 @@ export interface TurnTools {
   markWaiting(): void;
 }
 
+const MAX_DETAIL_FIELDS = 12;
+const MAX_DETAIL_CHARS = 300;
+
+/** What an approval card shows when the tool does not describe itself: its arguments. */
+export function argumentDetails(args: unknown): { label: string; value: string }[] {
+  if (!args || typeof args !== 'object') return [];
+  const entries = Object.entries(args as Record<string, unknown>).filter(([, value]) => value !== undefined);
+  const rows = entries.slice(0, MAX_DETAIL_FIELDS).map(([label, value]) => {
+    const text = typeof value === 'string' ? value : JSON.stringify(value);
+    return {
+      label,
+      value:
+        text.length > MAX_DETAIL_CHARS
+          ? `${text.slice(0, MAX_DETAIL_CHARS)}…(+${text.length - MAX_DETAIL_CHARS} more characters)`
+          : text,
+    };
+  });
+  if (entries.length > MAX_DETAIL_FIELDS)
+    rows.push({ label: '…', value: `+${entries.length - MAX_DETAIL_FIELDS} more fields` });
+  return rows;
+}
+
 export async function assembleTools(input: {
   defs: readonly ToolDef[];
-  context: Omit<ToolContext, 'stepId'>;
+  context: Omit<ToolContext, 'stepId' | 'raise'>;
   availability: AvailabilityContext;
+  /** Records a card for the member, tied to this run and step. */
+  raise: (card: Card, stepId: string) => Promise<NeedsYouRequest>;
+  /** The card heading for an approval, in the member's language. */
+  approvalTitle: (summary: string) => string;
 }): Promise<TurnTools> {
   const { context, availability } = input;
   const allowed = context.manifest.tools ? new Set(context.manifest.tools) : null;
@@ -74,6 +100,36 @@ export async function assembleTools(input: {
           })
           .onConflictDoNothing();
         if (def.taints) context.taint();
+        const call: ToolContext = {
+          ...context,
+          stepId,
+          signal: options.abortSignal ?? context.signal,
+          raise: async (card) => {
+            const request = await input.raise({ ...card, payload: { tool: def.name, ...card.payload } }, stepId);
+            if (card.waits) waiting = true;
+            return request;
+          },
+        };
+        if (def.risk !== 'read' && (def.needsApproval ? def.needsApproval(args, call) : true)) {
+          // Nothing changes until the member approves; the engine runs exactly these arguments then.
+          const card = def.describe?.(args, call) ?? { summary: def.name, details: argumentDetails(args) };
+          const request = await call.raise({
+            kind: 'approval',
+            subject: 'tool_write',
+            title: input.approvalTitle(card.summary),
+            payload: { tool: def.name, input: args, summary: card.summary, details: card.details },
+            waits: true,
+          });
+          await getDb()
+            .update(runSteps)
+            .set({ status: 'pending', requestId: request.id, updatedAt: sql`now()` })
+            .where(eq(runSteps.id, stepId));
+          return {
+            status: 'needs_approval',
+            request_id: request.id,
+            note: 'The member sees an approval card. End your turn now; you will be told the outcome.',
+          };
+        }
         const finish = async (status: 'succeeded' | 'failed', output: unknown, error?: string) => {
           await getDb()
             .update(runSteps)
@@ -88,7 +144,7 @@ export async function assembleTools(input: {
             .where(and(eq(runSteps.id, stepId)));
         };
         try {
-          const output = await def.execute(args, { ...context, stepId, signal: options.abortSignal ?? context.signal });
+          const output = await def.execute(args, call);
           await finish('succeeded', output);
           return output;
         } catch (error) {

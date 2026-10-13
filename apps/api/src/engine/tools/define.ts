@@ -5,7 +5,7 @@
 
 import type { z } from 'zod';
 import type { AgentManifest, MemberModules } from '@greenhouse/contract';
-import type { Agent, Conversation } from '@greenhouse/db';
+import type { Agent, Conversation, NeedsYouRequest, RequestKind } from '@greenhouse/db';
 import type { Capability } from '@greenhouse/providers';
 
 export type ToolRisk = 'read' | 'write' | 'external';
@@ -19,6 +19,17 @@ export interface AvailabilityContext {
   surface: Surface;
   /** Whether the member can use a provider capability right now. */
   available(capability: Capability): Promise<boolean>;
+}
+
+/** A card a tool raises for the member. */
+export interface Card {
+  kind: RequestKind;
+  subject: string;
+  title: string;
+  payload: Record<string, unknown>;
+  /** The turn ends after this step and the Agent is woken with the outcome. */
+  waits: boolean;
+  expiresInMs?: number;
 }
 
 export interface ToolContext {
@@ -35,6 +46,22 @@ export interface ToolContext {
   /** The turn has read outside text (a page, another Agent, a file): some writes get stricter. */
   taint(): void;
   tainted(): boolean;
+  /** Raises a card in this conversation for the member. */
+  raise(card: Card): Promise<NeedsYouRequest>;
+}
+
+/** What a decision on a tool's card means for the conversation. */
+export interface DecisionOutcome {
+  /** One line in the transcript, in the member's language. */
+  line: string;
+  /** What the Agent is told when it is woken; null leaves it asleep. */
+  note: string | null;
+}
+
+export interface DecisionContext {
+  memberId: string;
+  agent: Agent;
+  locale: 'zh' | 'en';
 }
 
 export interface ApprovalCard {
@@ -59,6 +86,8 @@ export interface ToolDef<I = any> {
   /** Reading its result brings outside text into the turn. */
   taints?: boolean;
   execute(input: I, ctx: ToolContext): Promise<unknown>;
+  /** Applies the member's decision on a card this tool raised (proposals, questions). */
+  decide?(request: NeedsYouRequest, ctx: DecisionContext): Promise<DecisionOutcome>;
   /** One line for the steps under a reply. */
   summarize?(input: I, output: unknown, locale: 'zh' | 'en'): string;
 }
