@@ -20,6 +20,8 @@ const apiEnv = [
   `LLM_BASE_URL=http://127.0.0.1:${E2E.llmPort}/v1`,
   `LLM_API_KEY=sk-e2e`,
   `LLM_MODEL=fake`,
+  // A second model, so the Agent's model picker shows.
+  `LLM_MODEL_STRONG=fake-strong`,
   // Uploads go to a scratch folder, not the repo's data/files.
   `STORAGE_PROVIDER=local`,
   `STORAGE_ROOT=${join(tmpdir(), 'greenhouse-v2-e2e-files')}`,

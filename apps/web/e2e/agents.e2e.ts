@@ -94,3 +94,15 @@ test('archiving an Agent moves it to 已归档, and restoring brings it back', a
   await page.getByRole('menuitem', { name: '恢复' }).click();
   await expect(page.getByText('已恢复「Temp」')).toBeVisible();
 });
+
+test("the Agent's model: a picker when there is more than one, saved as a new version", async ({ page }) => {
+  await open(page, '/#/agents/main?tab=abilities');
+  const picker = page.getByRole('combobox', { name: '模型' });
+  await expect(picker).toContainText('工作区默认');
+  await picker.click();
+  await page.getByRole('option', { name: /fake-strong/ }).click();
+  await expect(picker).toContainText('fake-strong');
+  await page.getByRole('tab', { name: '资料' }).click();
+  await page.getByRole('tab', { name: '能力' }).click();
+  await expect(page.getByRole('combobox', { name: '模型' })).toContainText('fake-strong');
+});

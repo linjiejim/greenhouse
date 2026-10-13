@@ -26,6 +26,8 @@ export function useUpdateAgent(id: string) {
     mutationFn: (input: UpdateAgentInput) => api.agents.update(id, input),
     onSuccess: (agent) => {
       client.setQueryData(keys.agent(id), agent);
+      // The main Agent's page reads it as `main` too.
+      if (agent.is_main) client.setQueryData(keys.agent('main'), agent);
       void client.invalidateQueries({ queryKey: ['agents', 'list'] });
       void client.invalidateQueries({ queryKey: ['agents', 'versions', id] });
     },
