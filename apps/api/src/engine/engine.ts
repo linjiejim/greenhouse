@@ -271,16 +271,26 @@ export function createEngine(deps: EngineDeps) {
           .from(conversations)
           .where(eq(conversations.id, run.conversationId!))
           .for('update');
+        // A card can be decided before its turn got here (a quick hand-back); then nothing is left to wait for.
+        let status = outcome.status;
+        if (status === 'waiting') {
+          const [open] = await db
+            .select({ id: requestsTable.id })
+            .from(requestsTable)
+            .where(and(eq(requestsTable.runId, run.id), eq(requestsTable.status, 'pending')))
+            .limit(1);
+          if (!open) status = 'succeeded';
+        }
         await db
           .update(runs)
           .set({
-            status: outcome.status,
+            status,
             errorCode: outcome.errorCode ?? null,
             errorMessage: outcome.errorMessage ?? null,
             leaseOwner: null,
             leaseExpiresAt: null,
-            finishedAt: outcome.status === 'waiting' ? null : sql`now()`,
-            waitReason: outcome.status === 'waiting' ? 'request' : null,
+            finishedAt: status === 'waiting' ? null : sql`now()`,
+            waitReason: status === 'waiting' ? 'request' : null,
             updatedAt: sql`now()`,
           })
           .where(eq(runs.id, run.id));
@@ -1177,23 +1187,31 @@ export function createEngine(deps: EngineDeps) {
       await publish(request.conversationId, { type: 'message.created', data: { message: toMessage(line) } });
     }
 
-    // The run that waited is done once none of its cards is still open.
-    if (run?.status === 'waiting') {
-      const [open] = await getDb()
-        .select({ id: requestsTable.id })
-        .from(requestsTable)
-        .where(and(eq(requestsTable.runId, run.id), eq(requestsTable.status, 'pending')));
-      if (!open) {
-        await getDb()
-          .update(runs)
-          .set({ status: 'succeeded', waitReason: null, finishedAt: sql`now()`, updatedAt: sql`now()` })
-          .where(and(eq(runs.id, run.id), eq(runs.status, 'waiting')));
-        if (run.conversationId) {
-          await publish(run.conversationId, {
-            type: 'run.updated',
-            data: { run_id: run.id, status: 'succeeded', conversation_id: run.conversationId },
-          });
-        }
+    // The run that waited is done once none of its cards is still open. Under the conversation's
+    // row lock, like a turn's finish: whichever comes second sees what the other did.
+    if (run?.conversationId) {
+      const closed = await withConversation(run.conversationId, () =>
+        transaction(async (db) => {
+          await lockConversation(db, run.conversationId!);
+          const [open] = await db
+            .select({ id: requestsTable.id })
+            .from(requestsTable)
+            .where(and(eq(requestsTable.runId, run.id), eq(requestsTable.status, 'pending')))
+            .limit(1);
+          if (open) return false;
+          const updated = await db
+            .update(runs)
+            .set({ status: 'succeeded', waitReason: null, finishedAt: sql`now()`, updatedAt: sql`now()` })
+            .where(and(eq(runs.id, run.id), eq(runs.status, 'waiting')))
+            .returning({ id: runs.id });
+          return updated.length > 0;
+        }),
+      );
+      if (closed) {
+        await publish(run.conversationId, {
+          type: 'run.updated',
+          data: { run_id: run.id, status: 'succeeded', conversation_id: run.conversationId },
+        });
       }
     }
 
