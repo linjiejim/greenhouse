@@ -50,6 +50,10 @@ export interface ToolContext {
   tainted(): boolean;
   /** Raises a card in this conversation for the member. */
   raise(card: Card): Promise<NeedsYouRequest>;
+  /** Ends the turn after this step (a hand-off: the other Agent answers next). */
+  endTurn(): void;
+  /** The hand-offs this turn's request has gone through, for their limits. */
+  chain?: { key: string; path: string[] };
 }
 
 /** What a decision on a tool's card means for the conversation. */

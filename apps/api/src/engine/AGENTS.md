@@ -40,3 +40,7 @@ The one engine for conversations and runs. Read with the root AGENTS.md and docs
 ## Rolling summary
 - When a conversation goes idle and the text after its summary passes 24k estimated tokens, digest.ts folds older messages into `conversations.digest` (structured JSON, rendered within 1500 characters into the system prompt) and moves `digest_upto_seq`.
 - Cuts fall just before a member message and keep at least the last two exchanges; one call folds at most 30k tokens, oldest first. The write is a compare-and-set on the old boundary; failures back off.
+
+## Hand-offs
+- `handoff` brings another of the member's Agents into the conversation with a brief; the handing Agent's turn ends after that step and the other answers next through the inbox, with the same member's rights.
+- Every hand-off is a `handoffs` row in a chain (the member request it came from): at most 3 deep and 6 per chain, never back to an Agent already in the chain, and the same brief twice is refused.

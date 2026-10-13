@@ -8,7 +8,7 @@
  * the sweep marks that turn interrupted and carries on with the queue.
  */
 
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { generateText } from 'ai';
 import { and, asc, eq, inArray, isNull, lt, sql } from 'drizzle-orm';
 import {
@@ -24,12 +24,14 @@ import {
 import type { RealtimeEvent, SendMessageResult, sendMessageInputSchema } from '@greenhouse/contract';
 import {
   agents,
+  conversationAgents,
   conversationInbox,
   requests as requestsTable,
   runSteps,
   conversationMembers,
   conversations,
   getDb,
+  handoffs,
   members,
   messageReceipts,
   messages,
@@ -78,10 +80,20 @@ type SendInput = z.output<typeof sendMessageInputSchema>;
 
 /** What a turn is for, stored on its run. */
 export interface TurnInput {
-  reason: 'message' | 'mention' | 'continue';
+  reason: 'message' | 'mention' | 'continue' | 'handoff';
   message_ids: string[];
   note?: string;
+  /** A hand-off: who handed the work over, and the chain it belongs to (for the limits). */
+  handoff_id?: string;
+  from_agent_id?: string;
+  chain?: HandoffChain;
   [key: string]: unknown;
+}
+
+/** The hand-offs that started from one member request: the Agents it went through, in order. */
+export interface HandoffChain {
+  key: string;
+  path: string[];
 }
 
 interface InboxPayload {
@@ -89,7 +101,13 @@ interface InboxPayload {
   member_id: string;
   message_id?: string;
   note?: string;
+  handoff_id?: string;
+  from_agent_id?: string;
+  chain?: HandoffChain;
 }
+
+export const HANDOFF_MAX_DEPTH = 3;
+export const HANDOFF_MAX_PER_CHAIN = 6;
 
 export interface EngineDeps {
   agents: AgentsService;
@@ -99,8 +117,8 @@ export interface EngineDeps {
   files: FilesService;
   hub: Hub;
   notifications: NotificationsService;
-  /** Built on first use, with the engine's background runs at hand. */
-  tools: (engine: { background: Background }) => readonly ToolDef[];
+  /** Built on first use, with the engine's background runs and hand-offs at hand. */
+  tools: (engine: { background: Background; handOff: Engine['handOff'] }) => readonly ToolDef[];
   /** Replaces model resolution (tests). */
   languageModel?: ProvidersService['languageModel'];
 }
@@ -148,7 +166,8 @@ export function createEngine(deps: EngineDeps) {
   let stopping = false;
   let sweeper: NodeJS.Timeout | null = null;
 
-  const toolDefs = (): readonly ToolDef[] => (tools ??= deps.tools({ background }));
+  const toolDefs = (): readonly ToolDef[] =>
+    (tools ??= deps.tools({ background, handOff: (input) => engine.handOff(input) }));
   const digester = createDigester({ languageModel });
 
   async function audience(conversationId: string): Promise<string[]> {
@@ -279,7 +298,16 @@ export function createEngine(deps: EngineDeps) {
       );
     const input: TurnInput =
       first.kind === 'continue'
-        ? { reason: 'continue', message_ids: [], note: head.note ?? '' }
+        ? head.handoff_id
+          ? {
+              reason: 'handoff',
+              message_ids: [],
+              note: head.note ?? '',
+              handoff_id: head.handoff_id,
+              ...(head.from_agent_id ? { from_agent_id: head.from_agent_id } : {}),
+              ...(head.chain ? { chain: head.chain } : {}),
+            }
+          : { reason: 'continue', message_ids: [], note: head.note ?? '' }
         : {
             reason: first.kind === 'mention' ? 'mention' : 'message',
             message_ids: batch.map((item) => (item.payload as unknown as InboxPayload).message_id!).filter(Boolean),
@@ -366,6 +394,7 @@ export function createEngine(deps: EngineDeps) {
             tainted = true;
           },
           tainted: () => tainted,
+          chain: (run.input as TurnInput).chain ?? { key: run.id, path: [agent.id] },
         },
         availability: {
           memberId: run.ownerId,
@@ -405,16 +434,27 @@ export function createEngine(deps: EngineDeps) {
         .from(agents)
         .where(inArray(agents.id, await deps.conversations.presentAgentIds(conversation)));
       const input = run.input as TurnInput;
+      const fromName = input.from_agent_id
+        ? (await getDb().select({ name: agents.name }).from(agents).where(eq(agents.id, input.from_agent_id)))[0]?.name
+        : undefined;
       const reason: TurnReason =
-        input.reason === 'continue'
-          ? { reason: 'continue', note: input.note ?? '' }
-          : input.reason === 'mention'
-            ? { reason: 'mention', memberName: member.name }
-            : { reason: 'message', memberName: member.name, count: Math.max(1, input.message_ids.length) };
+        input.reason === 'handoff'
+          ? {
+              reason: 'handoff',
+              fromName: fromName ?? 'Another Agent',
+              memberName: member.name,
+              brief: input.note ?? '',
+            }
+          : input.reason === 'continue'
+            ? { reason: 'continue', note: input.note ?? '' }
+            : input.reason === 'mention'
+              ? { reason: 'mention', memberName: member.name }
+              : { reason: 'message', memberName: member.name, count: Math.max(1, input.message_ids.length) };
       const has = (name: string) => turnTools.names.has(name);
       const system = assembleSystem([
         buildRules(
           {
+            handoff: has('handoff'),
             memory: has('memory'),
             approvals: [...turnTools.defs.values()].some((def) => def.risk !== 'read'),
             ask: has('ask_user'),
@@ -455,7 +495,7 @@ export function createEngine(deps: EngineDeps) {
         ],
         tools: turnTools.tools,
         abortSignal: controller.signal,
-        stopWhen: [() => turnTools.waiting()],
+        stopWhen: [() => turnTools.waiting() || turnTools.ended()],
         timeContext: { timezone: member.timezone },
         traceId: run.id,
       };
@@ -545,6 +585,19 @@ export function createEngine(deps: EngineDeps) {
       run,
       outcome.status === 'canceled' ? 'canceled' : outcome.status === 'failed' ? 'failed' : 'answered',
     );
+    const handoffId = (run.input as TurnInput).handoff_id;
+    if (handoffId) {
+      await getDb()
+        .update(handoffs)
+        .set({
+          status: outcome.status === 'failed' ? 'failed' : outcome.status === 'canceled' ? 'canceled' : 'replied',
+          runId: run.id,
+          reply: collector.text.slice(0, 2000) || null,
+          returnedAt: sql`now()`,
+          updatedAt: sql`now()`,
+        })
+        .where(eq(handoffs.id, handoffId));
+    }
     const next = await finishAndTakeNext(run, outcome);
     if (conversation) {
       await publish(conversation.id, {
@@ -701,6 +754,7 @@ export function createEngine(deps: EngineDeps) {
       taint: () => undefined,
       tainted: () => false,
       raise: () => Promise.reject(new Error('An approved action cannot raise another card.')),
+      endTurn: () => undefined,
     };
     const started = Date.now();
     try {
@@ -893,10 +947,92 @@ export function createEngine(deps: EngineDeps) {
     },
 
     /**
+     * An Agent hands part of the work to another of the member's Agents in the same
+     * conversation: it joins, answers next with the member's rights, and the hand-off is kept
+     * with its chain so a request cannot bounce around forever.
+     */
+    async handOff(input: {
+      conversationId: string;
+      fromAgentId: string;
+      toAgentId: string;
+      memberId: string;
+      brief: string;
+      chain: HandoffChain;
+      locale: Locale;
+    }): Promise<{ handoffId: string }> {
+      if (input.chain.path.includes(input.toAgentId)) {
+        throw new Error('That Agent already worked on this request; hand-offs cannot go in a circle.');
+      }
+      if (input.chain.path.length > HANDOFF_MAX_DEPTH)
+        throw new Error('This request has been handed on too many times.');
+      const [{ n }] = (await getDb()
+        .select({ n: sql<number>`count(*)::int` })
+        .from(handoffs)
+        .where(eq(handoffs.chainKey, input.chain.key))) as [{ n: number }];
+      if (n >= HANDOFF_MAX_PER_CHAIN) throw new Error('This request has had too many hand-offs.');
+      const path = [...input.chain.path, input.toAgentId];
+      const dedupeKey = `${input.chain.key}:${input.fromAgentId}>${input.toAgentId}:${createHash('sha256').update(input.brief).digest('hex').slice(0, 16)}`;
+      const [row] = await getDb()
+        .insert(handoffs)
+        .values({
+          id: newId('handoff'),
+          requestedBy: input.memberId,
+          sourceConversationId: input.conversationId,
+          sourceAgentId: input.fromAgentId,
+          targetConversationId: input.conversationId,
+          targetAgentId: input.toAgentId,
+          chainKey: input.chain.key,
+          path,
+          dedupeKey,
+        })
+        .onConflictDoNothing()
+        .returning();
+      if (!row) throw new Error('This was already handed over.');
+      await getDb()
+        .insert(conversationAgents)
+        .values({ conversationId: input.conversationId, agentId: input.toAgentId, addedBy: input.memberId })
+        .onConflictDoNothing();
+      const names = new Map(
+        (
+          await getDb()
+            .select({ id: agents.id, name: agents.name })
+            .from(agents)
+            .where(inArray(agents.id, [input.fromAgentId, input.toAgentId]))
+        ).map((entry) => [entry.id, entry.name]),
+      );
+      const from = names.get(input.fromAgentId) ?? 'Agent';
+      const to = names.get(input.toAgentId) ?? 'Agent';
+      const line = await withConversation(input.conversationId, () =>
+        deps.conversations.append(input.conversationId, {
+          role: 'event',
+          agentId: input.fromAgentId,
+          content: input.locale === 'zh' ? `${from} 把工作交给了 ${to}` : `${from} handed the work to ${to}`,
+          event: { type: 'handoff', handoff_id: row.id, from: input.fromAgentId, to: input.toAgentId },
+        }),
+      );
+      await publish(input.conversationId, { type: 'message.created', data: { message: toMessage(line) } });
+      await engine.deliver(input.conversationId, {
+        agentId: input.toAgentId,
+        memberId: input.memberId,
+        note: input.brief,
+        handoff: { id: row.id, fromAgentId: input.fromAgentId, chain: { key: input.chain.key, path } },
+      });
+      return { handoffId: row.id };
+    },
+
+    /**
      * Wakes an Agent in a conversation without a member message: a decision on a card, a finished
      * background run, a process that ended. Queued behind a running turn like everything else.
      */
-    async deliver(conversationId: string, item: { agentId: string; memberId: string; note: string }) {
+    async deliver(
+      conversationId: string,
+      item: {
+        agentId: string;
+        memberId: string;
+        note: string;
+        handoff?: { id: string; fromAgentId: string; chain: HandoffChain };
+      },
+    ) {
       const run = await withConversation(conversationId, () =>
         transaction(async (db) => {
           await db
@@ -907,7 +1043,14 @@ export function createEngine(deps: EngineDeps) {
           await db.insert(conversationInbox).values({
             conversationId,
             kind: 'continue',
-            payload: { agent_id: item.agentId, member_id: item.memberId, note: item.note } satisfies InboxPayload,
+            payload: {
+              agent_id: item.agentId,
+              member_id: item.memberId,
+              note: item.note,
+              ...(item.handoff
+                ? { handoff_id: item.handoff.id, from_agent_id: item.handoff.fromAgentId, chain: item.handoff.chain }
+                : {}),
+            } satisfies InboxPayload,
           });
           return takeNext(db, conversationId);
         }),

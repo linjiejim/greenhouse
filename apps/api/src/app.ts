@@ -19,6 +19,7 @@ import { createEngine, type Engine } from './engine/engine.js';
 import { askUserTool } from './engine/tools/ask-user.js';
 import { readAttachmentTool } from './engine/tools/attachments.js';
 import { conversationTool } from './engine/tools/conversation.js';
+import { handoffTool } from './engine/tools/handoff.js';
 import { memoryTool } from './engine/tools/memory.js';
 import type { ToolDef } from './engine/tools/define.js';
 import { runStartTool } from './engine/tools/run-start.js';
@@ -90,13 +91,14 @@ export function createServices(config: AppConfig, options: ServiceOptions = {}):
     files,
     notifications,
     hub,
-    tools: ({ background }) => [
+    tools: ({ background, handOff }) => [
       memoryTool(agents),
       askUserTool(),
       selfTool(agents),
       conversationTool(),
       readAttachmentTool(files),
       runStartTool(background),
+      handoffTool(handOff),
       ...scheduleTools(schedules),
       ...webTools(providers, options.fetch ? { fetch: options.fetch } : {}),
       ...(options.tools ?? []),

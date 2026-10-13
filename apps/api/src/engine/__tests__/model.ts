@@ -24,6 +24,16 @@ export const toolCall = (toolName: string, input: unknown, id = 'call_1'): Part[
   { type: 'finish', finishReason: { unified: 'tool-calls', raw: undefined }, usage: USAGE },
 ];
 
+/** One step that says something and calls a tool, as models usually do before a hand-off. */
+export const textThenTool = (value: string, toolName: string, input: unknown, id = 'call_1'): Part[] => [
+  { type: 'stream-start', warnings: [] },
+  { type: 'text-start', id: 't' },
+  { type: 'text-delta', id: 't', delta: value },
+  { type: 'text-end', id: 't' },
+  { type: 'tool-call', toolCallId: id, toolName, input: JSON.stringify(input) },
+  { type: 'finish', finishReason: { unified: 'tool-calls', raw: undefined }, usage: USAGE },
+];
+
 export interface Script {
   parts: Part[];
   /** Holds the stream open until released (or aborted). */

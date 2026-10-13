@@ -30,9 +30,11 @@ export interface TurnTools {
   /** Names of the tools present, for the rules paragraphs. */
   names: Set<string>;
   defs: Map<string, ToolDef>;
-  /** True once a tool raised a card: the turn ends after this step. */
+  /** True once a tool raised a card: the turn ends after this step and its run waits. */
   waiting(): boolean;
   markWaiting(): void;
+  /** True once a tool ended the turn (a hand-off). */
+  ended(): boolean;
 }
 
 /** JSON with sorted keys: the same arguments always give the same text. */
@@ -71,7 +73,7 @@ export function argumentDetails(args: unknown): { label: string; value: string }
 
 export async function assembleTools(input: {
   defs: readonly ToolDef[];
-  context: Omit<ToolContext, 'stepId' | 'raise'>;
+  context: Omit<ToolContext, 'stepId' | 'raise' | 'endTurn'>;
   availability: AvailabilityContext;
   /** Records a card for the member, tied to this run and step. */
   raise: (card: Card, stepId: string) => Promise<NeedsYouRequest>;
@@ -90,6 +92,7 @@ export async function assembleTools(input: {
   }
 
   let waiting = false;
+  let ended = false;
   // Some servers reuse call ids across steps ("call_0"); a step key must still be unique.
   const usedKeys = new Map<string, number>();
   const stepKey = (callId: string) => {
@@ -168,6 +171,9 @@ export async function assembleTools(input: {
           ...context,
           stepId,
           signal: options.abortSignal ?? context.signal,
+          endTurn: () => {
+            ended = true;
+          },
           raise: async (card) => {
             const request = await input.raise({ ...card, payload: { tool: def.name, ...card.payload } }, stepId);
             if (card.waits) waiting = true;
@@ -226,5 +232,6 @@ export async function assembleTools(input: {
     markWaiting: () => {
       waiting = true;
     },
+    ended: () => ended,
   };
 }
