@@ -79,7 +79,11 @@ describe('hand-offs', () => {
     await app.services.engine.idle();
     const rows = await getDb().select().from(handoffs);
     expect(rows).toHaveLength(1);
-    const last = await getDb().select().from(messages).where(eq(messages.conversationId, main.id));
+    const last = await getDb()
+      .select()
+      .from(messages)
+      .where(eq(messages.conversationId, main.id))
+      .orderBy(asc(messages.seq));
     expect(last.at(-1)!.content).toBe('I will do it myself.');
   });
 });

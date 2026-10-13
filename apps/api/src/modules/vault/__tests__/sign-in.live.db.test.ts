@@ -144,7 +144,7 @@ describe.skipIf(!live)('the browser and the vault, live', () => {
     const everything = JSON.stringify([
       model.prompts,
       steps,
-      await getDb().select().from(messages).where(eq(messages.conversationId, main.id)),
+      await getDb().select().from(messages).where(eq(messages.conversationId, main.id)).orderBy(asc(messages.seq)),
       await getDb().select().from(vaultAccessLog),
     ]);
     expect(everything).toContain(proof!);

@@ -1,4 +1,4 @@
-import { and, eq } from 'drizzle-orm';
+import { and, asc, eq } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { agentVersions, getDb, messages, requests, runs, runSteps } from '@greenhouse/db';
@@ -80,7 +80,11 @@ describe('needs you', () => {
     expect(done).toMatchObject({ status: 'succeeded', output: { written: true } });
     const [finished] = await getDb().select().from(runs).where(eq(runs.id, sent.run_id));
     expect(finished!.status).toBe('succeeded');
-    const transcript = await getDb().select().from(messages).where(eq(messages.conversationId, main.id));
+    const transcript = await getDb()
+      .select()
+      .from(messages)
+      .where(eq(messages.conversationId, main.id))
+      .orderBy(asc(messages.seq));
     expect(transcript.map((m) => [m.role, m.content])).toEqual(
       expect.arrayContaining([
         ['event', '已批准：写一条笔记'],

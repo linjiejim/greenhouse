@@ -203,7 +203,11 @@ describe('signing in from the vault', () => {
     expect(env.chromium.typed.slice(0, 2)).toEqual([USERNAME, PASSWORD]);
     expect(env.chromium.current.url).toBe('https://app.example.com/home');
 
-    const transcript = await getDb().select().from(messages).where(eq(messages.conversationId, env.main.id));
+    const transcript = await getDb()
+      .select()
+      .from(messages)
+      .where(eq(messages.conversationId, env.main.id))
+      .orderBy(asc(messages.seq));
     expect(transcript.map((row) => [row.role, row.content])).toEqual(
       expect.arrayContaining([
         ['event', '已用「Example」登录 login.example.com'],
@@ -254,7 +258,9 @@ describe('signing in from the vault', () => {
     expect(lastUserText(env.model.prompts[3])).toContain(
       'The member signed in to https://login.example.com on your computer themselves and says: I typed it myself.',
     );
-    const lines = (await getDb().select().from(messages).where(eq(messages.conversationId, env.main.id)))
+    const lines = (
+      await getDb().select().from(messages).where(eq(messages.conversationId, env.main.id)).orderBy(asc(messages.seq))
+    )
       .filter((row) => row.role === 'event')
       .map((row) => row.content);
     expect(lines).toEqual(expect.arrayContaining(['已拒绝用「Example」登录', '已手动登录']));

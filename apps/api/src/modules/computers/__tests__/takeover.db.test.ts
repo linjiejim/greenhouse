@@ -3,7 +3,7 @@
  * waits, the computer stays awake for it, and handing the computer back wakes the Agent.
  */
 
-import { eq } from 'drizzle-orm';
+import { asc, eq } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import { agentComputers, getDb, messages, runs } from '@greenhouse/db';
 import { lastUserText, scriptedModel, text, toolCall } from '../../../engine/__tests__/model.js';
@@ -60,7 +60,11 @@ describe('taking over the computer', () => {
     });
     expect(handed.body).toMatchObject({ status: 'handed_back', result: { note: 'Passed it; the form is filled in.' } });
     await services.engine.idle();
-    const transcript = await getDb().select().from(messages).where(eq(messages.conversationId, main.id));
+    const transcript = await getDb()
+      .select()
+      .from(messages)
+      .where(eq(messages.conversationId, main.id))
+      .orderBy(asc(messages.seq));
     expect(transcript.map((row) => [row.role, row.content])).toEqual(
       expect.arrayContaining([
         ['event', '已交还电脑'],

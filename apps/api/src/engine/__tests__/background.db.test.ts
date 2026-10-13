@@ -1,4 +1,4 @@
-import { and, eq } from 'drizzle-orm';
+import { and, asc, eq } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { getDb, messages, notifications, runs, runSteps } from '@greenhouse/db';
@@ -126,7 +126,11 @@ describe('background runs', () => {
     expect(lastUserText(prompt)).toContain('Find the three biggest competitors.');
     expect(JSON.stringify(prompt)).not.toContain('scan the market');
 
-    const transcript = await getDb().select().from(messages).where(eq(messages.conversationId, main.id));
+    const transcript = await getDb()
+      .select()
+      .from(messages)
+      .where(eq(messages.conversationId, main.id))
+      .orderBy(asc(messages.seq));
     const report = transcript.find((m) => m.runId === list.body.items[0].id);
     expect(report).toMatchObject({ role: 'assistant', content: 'The three biggest are A, B and C.' });
     expect(report!.blocks).toEqual([expect.objectContaining({ type: 'run', status: 'succeeded' })]);

@@ -78,7 +78,11 @@ describe.skipIf(!live)('the long-run probe', () => {
     const other = createTestServices(ENV, { languageModel: model.languageModel });
     await other.computers.checkWatches((conversationId, item) => app.services.engine.deliver(conversationId, item));
     await app.services.engine.idle();
-    const woken = await getDb().select().from(messages).where(eq(messages.conversationId, main.id));
+    const woken = await getDb()
+      .select()
+      .from(messages)
+      .where(eq(messages.conversationId, main.id))
+      .orderBy(asc(messages.seq));
     expect(woken.map((row) => row.content)).toContain('Started it again.');
     expect(JSON.stringify(model.prompts.at(-1))).toContain('was lost: your computer restarted');
 
