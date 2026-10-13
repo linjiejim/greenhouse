@@ -295,12 +295,14 @@ export function Select({
 /**
  * Several values. The trigger shows the first `max` and "+N"; the list stays open for picking
  * more, with a search field and 清除; Backspace in the empty search removes the last value.
+ * Where a pick saves at once, save in `onClose`: one save for everything picked while it was open.
  */
 export function MultiSelect({
   label,
   value,
   options,
   onChange,
+  onClose,
   placeholder,
   disabled = false,
   max = 2,
@@ -310,6 +312,8 @@ export function MultiSelect({
   value: string[];
   options: readonly SelectOption[];
   onChange: (value: string[]) => void;
+  /** The list closed (Escape, Tab, the trigger, a press outside). */
+  onClose?: () => void;
   /** Chips shown before "+N". */
   max?: number;
 }) {
@@ -325,6 +329,7 @@ export function MultiSelect({
     setOpen(false);
     setQuery('');
     if (restore) trigger.current?.focus({ preventScroll: true });
+    onClose?.();
   };
   const toggle = (item: Item) =>
     onChange(value.includes(item.value) ? value.filter((entry) => entry !== item.value) : [...value, item.value]);
