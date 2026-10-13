@@ -5,6 +5,7 @@
  * stays out of the way.
  */
 
+import { useState } from 'react';
 import { MultiSelect, Select, Switch } from '@greenhouse/ui/kit';
 import type { AgentDetail } from '@greenhouse/contract';
 import { useNotify } from '../../app/notify';
@@ -20,6 +21,8 @@ export function AbilitiesTab({ agent }: { agent: AgentDetail }) {
   const notify = useNotify();
   const update = useUpdateAgent(agent.id);
   const models = useModelOptions(agent.model);
+  /** Skills picked while the list is open, saved when it closes. */
+  const [skillDraft, setSkillDraft] = useState<string[] | null>(null);
   // Judged for this Agent: a skill that needs a computer it lacks cannot be equipped.
   const skills = useSkills({ agent: agent.is_main ? 'main' : agent.id });
   const skillOptions = skills.items
@@ -54,10 +57,21 @@ export function AbilitiesTab({ agent }: { agent: AgentDetail }) {
         <MultiSelect
           label={t('agents.skills')}
           placeholder={t('agents.skillsNone')}
-          value={agent.skills}
+          value={skillDraft ?? agent.skills}
           options={skillOptions}
           disabled={!!agent.archived_at || update.isPending}
-          onChange={(next) => update.mutate({ skills: next }, { onError: (error) => notify(errorText(error, t)) })}
+          onChange={setSkillDraft}
+          onClose={() => {
+            // One new version for all the picks made while the list was open.
+            const changed =
+              skillDraft &&
+              (skillDraft.length !== agent.skills.length || skillDraft.some((id) => !agent.skills.includes(id)));
+            if (!changed) return setSkillDraft(null);
+            update.mutate(
+              { skills: skillDraft },
+              { onError: (error) => notify(errorText(error, t)), onSettled: () => setSkillDraft(null) },
+            );
+          }}
         />
       </div>
       <div className="app-setting-row">

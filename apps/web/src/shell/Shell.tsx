@@ -124,7 +124,7 @@ export function Shell() {
               </div>
             )}
             <ErrorBoundary
-              key={location.hash}
+              key={'id' in route ? `${route.page}:${route.id}` : route.page}
               fallback={(retry) => (
                 <div className="app-center">
                   <ErrorBox onRetry={retry}>{t('common.pageFailed')}</ErrorBox>
