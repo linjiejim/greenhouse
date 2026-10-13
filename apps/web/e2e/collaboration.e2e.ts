@@ -87,6 +87,8 @@ test('a room: Lin brings Mei and Greeny, Mei writes back, notes are shared, Mei 
   const other = await mei.newPage();
   await other.goto(roomUrl);
   await expect(other.getByText('@Greeny hello room', { exact: true })).toBeVisible();
+  // Mei has read it: Lin's message says so.
+  await expect(page.locator('.app-message.is-mine').last().getByText('已读 1')).toBeVisible();
   await other.getByRole('button', { name: '信息' }).click();
   await expect(other.getByRole('dialog', { name: '信息' }).getByText('Ship on Friday')).toBeVisible();
   await other.getByRole('dialog', { name: '信息' }).getByRole('button', { name: '关闭' }).click();

@@ -68,6 +68,7 @@ export function Composer({
   onClearQuote,
   conversationId,
   autoFocus = true,
+  seed,
   onSend,
   onStop,
 }: {
@@ -84,6 +85,8 @@ export function Composer({
   onClearQuote?: () => void;
   conversationId?: string;
   autoFocus?: boolean;
+  /** Text put in from outside (a starter); a new object each time. */
+  seed?: { text: string };
   onSend: (input: ComposerSend) => Promise<unknown>;
   onStop: () => void;
 }) {
@@ -105,6 +108,12 @@ export function Composer({
   useEffect(() => {
     if (quote) textarea.current?.focus();
   }, [quote]);
+
+  useEffect(() => {
+    if (!seed) return;
+    setValue(seed.text);
+    textarea.current?.focus();
+  }, [seed]);
 
   // Grow with the text up to 40% of the window, then scroll inside.
   useEffect(() => {

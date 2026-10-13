@@ -238,4 +238,27 @@ describe('the people of a conversation', () => {
         .where(and(eq(messages.conversationId, room.id), eq(messages.role, 'assistant'))),
     ).toEqual([]);
   });
+
+  it('tells the room who has read up to where, and keeps a read mark from going back', async () => {
+    const { call, services, lin, chen, room } = await setup();
+    const events: RealtimeEvent[] = [];
+    services.hub.subscribe(lin.id, (event) => events.push(event));
+    await call('POST', `/api/conversations/${room.id}/messages`, { token: lin.token, body: { content: 'hello' } });
+    const seq = (await call('GET', `/api/conversations/${room.id}`, { token: lin.token })).body.last_seq;
+    await call('POST', `/api/conversations/${room.id}/read`, { token: chen.token, body: { seq } });
+    expect(events.filter((event) => event.type === 'read.updated')).toEqual([
+      { type: 'read.updated', data: { conversation_id: room.id, member_id: chen.id, last_read_seq: seq } },
+    ]);
+    await call('POST', `/api/conversations/${room.id}/read`, { token: chen.token, body: { seq: 0 } });
+    const people = await call('GET', `/api/conversations/${room.id}/members`, { token: lin.token });
+    expect(people.body.members.find((m: { id: string }) => m.id === chen.id).last_read_seq).toBe(seq);
+
+    // Outside rooms nobody else is there: no event.
+    const main = (await call('GET', '/api/conversations', { token: lin.token })).body.items.find(
+      (c: { kind: string }) => c.kind === 'main',
+    );
+    events.length = 0;
+    await call('POST', `/api/conversations/${main.id}/read`, { token: lin.token, body: { seq: 1 } });
+    expect(events.filter((event) => event.type === 'read.updated')).toEqual([]);
+  });
 });

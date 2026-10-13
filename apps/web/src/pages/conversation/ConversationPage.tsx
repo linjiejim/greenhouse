@@ -362,6 +362,13 @@ function ExistingConversation({ id }: { id: string }) {
                   message.id === regenerableId ? () => regenerate.mutate(message.id, { onError: failed }) : undefined
                 }
                 busyReason={busyReason}
+                readBy={
+                  room && mine
+                    ? roomPeople.data?.members
+                        .filter((member) => member.id !== me.id && member.last_read_seq >= message.seq)
+                        .map((member) => member.name)
+                    : undefined
+                }
               />
             );
           })}

@@ -1009,10 +1009,18 @@ export function createConversationsService(deps: { agents: AgentsService; provid
 
     async markRead(memberId: string, conversationId: string, seq: number): Promise<void> {
       const { conversation } = await service.access(memberId, conversationId);
-      await getDb()
+      const [seat] = await getDb()
         .update(conversationMembers)
         .set({ lastReadSeq: sql`greatest(${conversationMembers.lastReadSeq}, ${Math.min(seq, conversation.lastSeq)})` })
-        .where(and(eq(conversationMembers.conversationId, conversationId), eq(conversationMembers.memberId, memberId)));
+        .where(and(eq(conversationMembers.conversationId, conversationId), eq(conversationMembers.memberId, memberId)))
+        .returning({ lastReadSeq: conversationMembers.lastReadSeq });
+      // Rooms show who has read what; elsewhere nobody else is there to see it.
+      if (seat && conversation.kind === 'room') {
+        await service.publish(conversationId, {
+          type: 'read.updated',
+          data: { conversation_id: conversationId, member_id: memberId, last_read_seq: seat.lastReadSeq },
+        });
+      }
     },
 
     /** Appends a message under the conversation lock: the only way a sequence number is given out. */

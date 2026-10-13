@@ -4,7 +4,15 @@
  */
 
 import type { InfiniteData, QueryClient, QueryKey } from '@tanstack/react-query';
-import type { Conversation, ConversationDetail, Message, MessageItem, Page, RealtimeEvent } from '@greenhouse/contract';
+import type {
+  Conversation,
+  ConversationDetail,
+  ConversationMembers,
+  Message,
+  MessageItem,
+  Page,
+  RealtimeEvent,
+} from '@greenhouse/contract';
 import { keys } from './query';
 import { appendDelta, endStream, forgetStream, upsertStep } from './streams';
 
@@ -132,6 +140,18 @@ export function applyEvent(client: QueryClient, event: Exclude<RealtimeEvent, { 
       return;
     case 'notes.updated':
       soon(client, keys.notes(event.data.conversation_id));
+      return;
+    case 'read.updated':
+      client.setQueryData<ConversationMembers>(keys.members(event.data.conversation_id), (data) =>
+        data
+          ? {
+              ...data,
+              members: data.members.map((member) =>
+                member.id === event.data.member_id ? { ...member, last_read_seq: event.data.last_read_seq } : member,
+              ),
+            }
+          : data,
+      );
       return;
     case 'run.updated':
       soon(client, ['runs']);

@@ -86,6 +86,7 @@ export const en: Record<MessageKey, string> = {
   'chat.remove': 'Remove',
   'chat.add': 'Add',
   'chat.members': 'Members',
+  'chat.starters': 'Ways to start',
 
   'agents.new': 'New Agent',
   'agents.mine': 'Mine',
@@ -257,6 +258,8 @@ export const en: Record<MessageKey, string> = {
   'message.retry': 'Retry',
   'message.busy': 'Stop the reply being written first',
   'message.saveEdit': 'Save and answer again',
+  'message.readByNames': 'Read by {names}',
+  'message.readBy': 'Read by {count}',
 
   'composer.placeholder': 'Message {name}',
   'composer.placeholderRoom': 'Message {name}',

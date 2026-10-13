@@ -1905,3 +1905,30 @@ button.app-list-row {
   grid-column: 2;
   grid-row: 1;
 }
+
+.app-starters {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--gh-space-2);
+  max-width: var(--gh-reading-max);
+}
+
+.app-starter {
+  padding: var(--gh-space-2) var(--gh-space-3);
+  border: var(--gh-stroke-hairline) solid var(--gh-line);
+  border-radius: var(--gh-radius-full);
+  background: var(--gh-surface);
+  color: var(--gh-text);
+  font: var(--gh-type-body-sm);
+  cursor: pointer;
+}
+
+.app-starter:hover {
+  background: var(--gh-hover);
+}
+
+.app-read-by {
+  color: var(--gh-tertiary);
+  cursor: default;
+}

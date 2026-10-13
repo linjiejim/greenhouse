@@ -48,6 +48,8 @@ test('a new chat becomes a conversation on its first message, and can be renamed
   await page.getByRole('button', { name: '新会话' }).click();
   await expect(page).toHaveURL(/#\/c\/new$/);
   await expect(page.getByText('你好，Lin')).toBeVisible();
+  await page.getByRole('listitem').filter({ hasText: '你能帮我做什么？' }).click();
+  await expect(composer(page)).toHaveValue('你能帮我做什么？');
   await composer(page).fill('plan a picnic');
   await composer(page).press('Enter');
   await expect(page).toHaveURL(/#\/c\/cnv_/);

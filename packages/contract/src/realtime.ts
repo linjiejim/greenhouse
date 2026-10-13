@@ -44,6 +44,11 @@ export const realtimeEventSchema = z.discriminatedUnion('type', [
     type: z.literal('conversation.updated'),
     data: z.object({ conversation_id: z.string(), changes: conversationSchema.partial() }),
   }),
+  /** Someone in a room read up to `last_read_seq` (read receipts, CONV-06). Rooms only. */
+  z.object({
+    type: z.literal('read.updated'),
+    data: z.object({ conversation_id: z.string(), member_id: z.string(), last_read_seq: z.number().int() }),
+  }),
   /** A shared note was added, changed or deleted: refetch the notes of this conversation. */
   z.object({
     type: z.literal('notes.updated'),

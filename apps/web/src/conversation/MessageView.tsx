@@ -17,7 +17,7 @@ import {
   Volume2,
   Wrench,
 } from 'lucide-react';
-import { Button, ChatCard, IconButton, TextArea } from '@greenhouse/ui/kit';
+import { Button, ChatCard, IconButton, TextArea, Tooltip } from '@greenhouse/ui/kit';
 import { icon } from '@greenhouse/ui/tokens';
 import type { Agent, MemberSummary, Message, NeedsYou } from '@greenhouse/contract';
 import { useNotify } from '../app/notify';
@@ -99,6 +99,7 @@ export const MessageView = memo(function MessageView({
   onEdit,
   onRegenerate,
   busyReason,
+  readBy,
 }: {
   message: Message;
   author: Author;
@@ -117,6 +118,8 @@ export const MessageView = memo(function MessageView({
   onRegenerate?: () => void;
   /** Why edit and regenerate wait (a reply is being written). */
   busyReason?: string;
+  /** In a room: the people who have read my message. */
+  readBy?: string[];
 }) {
   const { t, locale } = useI18n();
   const notify = useNotify();
@@ -194,6 +197,17 @@ export const MessageView = memo(function MessageView({
             {time}
           </time>
           {message.edited_at && <span>· {t('message.edited')}</span>}
+          {readBy && readBy.length > 0 && (
+            <Tooltip label={readBy.join('、')}>
+              <span
+                className="app-read-by"
+                tabIndex={0}
+                aria-label={t('message.readByNames', { names: readBy.join('、') })}
+              >
+                · {t('message.readBy', { count: readBy.length })}
+              </span>
+            </Tooltip>
+          )}
           <span className="app-message-actions">
             <IconButton label={t('message.copy')} size="sm" onClick={copy}>
               <Copy size={icon.sm} />

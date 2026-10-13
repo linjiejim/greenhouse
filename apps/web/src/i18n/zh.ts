@@ -85,6 +85,7 @@ export const zh = {
   'chat.remove': '移除',
   'chat.add': '添加',
   'chat.members': '成员',
+  'chat.starters': '可以这样开始',
 
   'agents.new': '新建 Agent',
   'agents.mine': '我的',
@@ -255,6 +256,8 @@ export const zh = {
   'message.retry': '重试',
   'message.busy': '先停止正在写的回复',
   'message.saveEdit': '保存并重新回答',
+  'message.readByNames': '{names} 已读',
+  'message.readBy': '已读 {count}',
 
   'composer.placeholder': '给 {name} 发消息',
   'composer.placeholderRoom': '在{name}里发消息',

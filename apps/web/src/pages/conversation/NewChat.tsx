@@ -5,6 +5,7 @@
 
 import { useMemo, useState } from 'react';
 import { ApiClientError } from '@greenhouse/contract/client';
+import { AGENT_TEMPLATES, MAIN_AGENT_TEMPLATE } from '@greenhouse/types/agent-templates';
 import { useNotify } from '../../app/notify';
 import { useMe } from '../../app/session';
 import { Composer, type Candidate, type ComposerSend } from '../../conversation/Composer';
@@ -19,7 +20,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { keys } from '../../data/query';
 
 export function NewChat({ agentId }: { agentId?: string }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const me = useMe();
   const notify = useNotify();
   const client = useQueryClient();
@@ -39,6 +40,11 @@ export function NewChat({ agentId }: { agentId?: string }) {
   const target = picked ?? preset ?? null;
   const main = agents.items.find((agent) => agent.is_main);
   const answering = target ? agents.items.find((agent) => agent.id === target.handle) : main;
+  const [seed, setSeed] = useState<{ text: string }>();
+  const template =
+    answering &&
+    (answering.is_main ? MAIN_AGENT_TEMPLATE : AGENT_TEMPLATES.find((item) => item.key === answering.template_key));
+  const starters = template?.copy[locale].starters.slice(0, 3) ?? [];
 
   const start = async (input: ComposerSend) => {
     try {
@@ -63,6 +69,21 @@ export function NewChat({ agentId }: { agentId?: string }) {
         <div className="app-new-chat">
           {answering && <AgentAvatar agent={answering} size={72} />}
           <h2>{t('chat.greeting', { name: me.name })}</h2>
+          {starters.length > 0 && (
+            <div className="app-starters" role="list" aria-label={t('chat.starters')}>
+              {starters.map((starter) => (
+                <button
+                  key={starter}
+                  type="button"
+                  role="listitem"
+                  className="app-starter"
+                  onClick={() => setSeed({ text: starter })}
+                >
+                  {starter}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
         <Composer
           placeholder={t('composer.placeholder', { name: answering?.name ?? 'Greeny' })}
@@ -71,6 +92,7 @@ export function NewChat({ agentId }: { agentId?: string }) {
           mode="switch"
           target={target && !answering?.is_main ? target : null}
           onTarget={setPicked}
+          seed={seed}
           onSend={start}
           onStop={() => undefined}
         />
