@@ -1,12 +1,13 @@
 /**
- * 电脑 (AGNT-18, AGNT-20): the Agent's own sandbox. Its state, start / stop / restart (files in
- * the home stay), and the background processes it runs. Watching and taking over come with the
- * computer view.
+ * 电脑 (AGNT-18, AGNT-19, AGNT-20): my computer of this Agent (its own, or my copy of a public
+ * one). Its state, start / stop / restart (files in the home stay), and while it runs: the
+ * screen (watch, take over), my terminal, the home's files and its background processes.
  */
 
 import { Power, RotateCw, Square } from 'lucide-react';
 import { Button, Empty, ErrorBox, Skeleton, StatusBadge, Tabs, type Tone } from '@greenhouse/ui/kit';
 import { useState } from 'react';
+import { ComputerFiles } from '../../computer/ComputerFiles';
 import { ComputerScreen } from '../../computer/ComputerScreen';
 import { ComputerTerminal } from '../../computer/ComputerTerminal';
 import { icon } from '@greenhouse/ui/tokens';
@@ -26,6 +27,15 @@ const STATE: Record<ComputerView['state'], { word: MessageKey; tone: Tone }> = {
   failed: { word: 'computer.failed', tone: 'danger' },
 };
 
+const PANES = ['screen', 'terminal', 'files', 'processes'] as const;
+type Pane = (typeof PANES)[number];
+const PANE_LABEL: Record<Pane, MessageKey> = {
+  screen: 'computer.screen',
+  terminal: 'computer.terminal',
+  files: 'computer.files',
+  processes: 'computer.processes',
+};
+
 const JOB: Record<ComputerJob['status'], { word: MessageKey; tone: Tone }> = {
   running: { word: 'status.running', tone: 'info' },
   exited: { word: 'status.done', tone: 'success' },
@@ -39,7 +49,7 @@ export function ComputerTab({ agentId }: { agentId: string }) {
   const computer = useComputer(agentId);
   const running = computer.data?.state === 'running';
   const processes = useProcesses(agentId, running);
-  const [pane, setPane] = useState<'screen' | 'terminal' | 'processes'>('screen');
+  const [pane, setPane] = useState<Pane>('screen');
   const [control, setControl] = useState(false);
   const action = useComputerAction(agentId);
   const run = (kind: 'start' | 'stop' | 'restart') =>
@@ -121,20 +131,13 @@ export function ComputerTab({ agentId }: { agentId: string }) {
         <>
           <Tabs
             label={t('agents.tabComputer')}
-            items={[t('computer.screen'), t('computer.terminal'), t('computer.processes')]}
-            value={t(`computer.${pane}`)}
-            onChange={(label) =>
-              setPane(
-                label === t('computer.terminal')
-                  ? 'terminal'
-                  : label === t('computer.processes')
-                    ? 'processes'
-                    : 'screen',
-              )
-            }
+            items={PANES.map((item) => t(PANE_LABEL[item]))}
+            value={t(PANE_LABEL[pane])}
+            onChange={(label) => setPane(PANES.find((item) => t(PANE_LABEL[item]) === label) ?? 'screen')}
           />
           {pane === 'screen' && <ComputerScreen agentId={agentId} control={control} onControlChange={setControl} />}
           {pane === 'terminal' && <ComputerTerminal agentId={agentId} />}
+          {pane === 'files' && <ComputerFiles agentId={agentId} />}
           {pane === 'processes' && processesList}
         </>
       ) : (

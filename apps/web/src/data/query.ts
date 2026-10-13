@@ -20,6 +20,8 @@ export const keys = {
   agents: (scope: 'mine' | 'archived' = 'mine') => ['agents', 'list', scope] as const,
   agent: (id: string) => ['agents', 'one', id] as const,
   computer: (agentId: string) => ['agents', 'computer', agentId] as const,
+  computerFiles: (agentId: string) => ['agents', 'files', agentId] as const,
+  computerFolder: (agentId: string, path: string) => ['agents', 'files', agentId, path] as const,
   conversations: ['conversations', 'list'] as const,
   conversation: (id: string) => ['conversations', 'one', id] as const,
   messages: (conversationId: string) => ['messages', conversationId] as const,

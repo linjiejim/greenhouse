@@ -10,8 +10,9 @@ export function requestStatus(request: Pick<NeedsYou, 'status'>): { word: Messag
     case 'approved':
       return { word: 'status.approved', tone: 'success' };
     case 'answered':
-    case 'handed_back':
       return { word: 'status.done', tone: 'success' };
+    case 'handed_back':
+      return { word: 'status.handedBack', tone: 'success' };
     case 'rejected':
       return { word: 'status.rejected', tone: 'neutral' };
     case 'expired':

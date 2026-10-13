@@ -10,6 +10,7 @@ import type {
   UpdateNoteInput,
 } from '@greenhouse/contract';
 import { api } from '../lib/api';
+import { saveBlob } from '../lib/save';
 import { keys } from './query';
 import { addMessage, patchConversation, patchMessage, type ConversationPages } from './realtime';
 
@@ -187,10 +188,5 @@ export function useNoteActions(conversationId: string) {
 /** Saves the conversation as a Markdown file in the browser. */
 export async function downloadConversation(id: string) {
   const { filename, markdown } = await api.conversations.export(id);
-  const url = URL.createObjectURL(new Blob([markdown], { type: 'text/markdown;charset=utf-8' }));
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = filename;
-  link.click();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  saveBlob(new Blob([markdown], { type: 'text/markdown;charset=utf-8' }), filename);
 }

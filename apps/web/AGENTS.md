@@ -21,5 +21,6 @@ The v2 web app. Product scope is docs/product/prd.md §6–7; layout and compone
 ## Tests
 - Unit tests next to the code in __tests__ (vitest unit project).
 - Browser tests are e2e/*.e2e.ts (not *.spec.ts, which vitest would collect): `pnpm test:web-e2e`. They reset the database named by E2E_DATABASE_URL (default greenhouse_v2_e2e on 127.0.0.1:55432; names must end in _e2e), start e2e/fake-llm.mjs, the API and Vite on 4590–4592, and sign people in once (e2e/auth.setup.ts) because sign-in is rate limited.
-- e2e/fake-llm.mjs answers by the member's words: "slow …" streams for seconds, "ask me …" asks a question, "remember X" stores a memory, anything else echoes.
-- `sh apps/web/e2e/stack.sh` starts the same stack on 4580–4582 for looking at the app by hand (the "web-v2" preview).
+- e2e/fake-llm.mjs answers by the member's words: "slow …" streams for seconds, "ask me …" asks a question, "remember X" stores a memory, "need a human …" asks for a take-over, "show chart|table|…" sends a rich block, anything else echoes.
+- In browser tests computers are on but their image cannot be pulled, so none starts; uploads go to a temp folder.
+- `sh apps/web/e2e/stack.sh` starts the same stack on 4580–4582 for looking at the app by hand (the "web-v2" preview). STACK_SANDBOX_IMAGE=greenhouse/bot-computer:latest gives it real computers ("web-v2-computer"); remove their containers and volumes (gh-cmp-*) afterwards, since every start reseeds the database.

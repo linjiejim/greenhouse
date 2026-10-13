@@ -8,8 +8,8 @@ import { RefreshCw } from 'lucide-react';
 import { Button } from '@greenhouse/ui/kit';
 import { icon } from '@greenhouse/ui/tokens';
 import '@xterm/xterm/css/xterm.css';
+import { api } from '../lib/api';
 import { useI18n } from '../lib/i18n';
-import { socketUrl } from './tickets';
 
 export function ComputerTerminal({ agentId }: { agentId: string }) {
   const { t } = useI18n();
@@ -26,7 +26,7 @@ export function ComputerTerminal({ agentId }: { agentId: string }) {
       const [{ Terminal }, { FitAddon }, url] = await Promise.all([
         import('@xterm/xterm'),
         import('@xterm/addon-fit'),
-        socketUrl(agentId, 'terminal'),
+        api.agents.computerSocket(agentId, 'terminal'),
       ]);
       if (!live || !host.current) return;
       const styles = getComputedStyle(document.documentElement);

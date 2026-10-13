@@ -80,6 +80,15 @@
         "apps/web/e2e/stack.sh"
       ],
       "port": 4580
+    },
+    {
+      "name": "web-v2-computer",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": [
+        "-c",
+        "STACK_SANDBOX_IMAGE=greenhouse/bot-computer:latest sh apps/web/e2e/stack.sh"
+      ],
+      "port": 4580
     }
   ]
 }

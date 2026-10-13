@@ -132,6 +132,8 @@ export function Composer({
   const uploading = files.some((file) => !file.file && !file.error);
   const ready = files.filter((file) => file.file);
   const canSend = !sending && !uploading && (value.trim().length > 0 || ready.length > 0);
+  /** Sending was asked for while files were still uploading: it goes once they are up. */
+  const [queued, setQueued] = useState(false);
 
   const upload = (list: File[]) => {
     const room = MAX_FILES - files.length;
@@ -173,6 +175,7 @@ export function Composer({
   };
 
   const send = async () => {
+    if (!sending && uploading) return setQueued(true);
     if (!canSend) return;
     setSending(true);
     // Only mentions still named in the text count.
@@ -196,6 +199,15 @@ export function Composer({
       textarea.current?.focus();
     }
   };
+
+  const latestSend = useRef(send);
+  latestSend.current = send;
+  useEffect(() => {
+    if (!queued || uploading) return;
+    setQueued(false);
+    // A file that failed waits for the member to remove or re-add it.
+    if (!files.some((file) => file.error)) void latestSend.current();
+  }, [queued, uploading, files]);
 
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (picker && options.length) {
@@ -368,11 +380,10 @@ export function Composer({
             <IconButton
               label={t('composer.send')}
               className="app-send"
-              disabled={!canSend}
-              disabledReason={uploading ? t('composer.waitUploads') : undefined}
+              disabled={!canSend && !(uploading && !queued)}
               onClick={() => void send()}
             >
-              {sending ? <Spinner size={icon.md} /> : <ArrowUp size={icon.md} strokeWidth={2} />}
+              {sending || queued ? <Spinner size={icon.md} /> : <ArrowUp size={icon.md} strokeWidth={2} />}
             </IconButton>
           )}
         </div>

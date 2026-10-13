@@ -9,8 +9,8 @@ import { MousePointer2, RefreshCw } from 'lucide-react';
 import { Button, ErrorBox, Spinner } from '@greenhouse/ui/kit';
 import { icon } from '@greenhouse/ui/tokens';
 import type RFB from '@novnc/novnc';
+import { api } from '../lib/api';
 import { useI18n } from '../lib/i18n';
-import { socketUrl } from './tickets';
 
 type State = 'connecting' | 'connected' | 'closed' | 'failed';
 
@@ -37,7 +37,7 @@ export function ComputerScreen({
       try {
         const [{ default: RFBClient }, url] = await Promise.all([
           import('@novnc/novnc'),
-          socketUrl(agentId, control ? 'control' : 'view'),
+          api.agents.computerSocket(agentId, control ? 'control' : 'view'),
         ]);
         if (!live || !host.current) return;
         const rfb = new RFBClient(host.current, url, { shared: true });

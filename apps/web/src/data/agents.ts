@@ -101,3 +101,24 @@ export function useComputerAction(agentId: string) {
     onSettled: () => client.invalidateQueries({ queryKey: ['agents', 'processes', agentId] }),
   });
 }
+
+/** A folder of the computer's home ('' is the home itself). */
+export function useComputerFiles(agentId: string, path: string, enabled = true) {
+  return useQuery({
+    queryKey: keys.computerFolder(agentId, path),
+    queryFn: () => api.agents.files(agentId, path),
+    enabled,
+  });
+}
+
+export function useComputerFileActions(agentId: string) {
+  const client = useQueryClient();
+  const settle = () => client.invalidateQueries({ queryKey: keys.computerFiles(agentId) });
+  return {
+    upload: useMutation({
+      mutationFn: ({ folder, file }: { folder: string; file: File }) => api.agents.uploadFile(agentId, folder, file),
+      onSettled: settle,
+    }),
+    remove: useMutation({ mutationFn: (path: string) => api.agents.removeFile(agentId, path), onSettled: settle }),
+  };
+}

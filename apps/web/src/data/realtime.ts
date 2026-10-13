@@ -5,6 +5,7 @@
 
 import type { InfiniteData, QueryClient, QueryKey } from '@tanstack/react-query';
 import type {
+  ComputerView,
   Conversation,
   ConversationDetail,
   ConversationMembers,
@@ -163,6 +164,14 @@ export function applyEvent(client: QueryClient, event: Exclude<RealtimeEvent, { 
       return;
     case 'notification.created':
       soon(client, ['notifications']);
+      return;
+    case 'computer.updated':
+      // My computer of this Agent started, stopped or failed; its sockets close on their own.
+      client.setQueryData<ComputerView>(keys.computer(event.data.agent_id), (data) =>
+        data ? { ...data, state: event.data.state } : data,
+      );
+      soon(client, keys.computer(event.data.agent_id));
+      soon(client, ['agents', 'processes', event.data.agent_id]);
       return;
   }
 }

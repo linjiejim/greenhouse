@@ -23,6 +23,9 @@ const apiEnv = [
   // Uploads go to a scratch folder, not the repo's data/files.
   `STORAGE_PROVIDER=local`,
   `STORAGE_ROOT=${join(tmpdir(), 'greenhouse-v2-e2e-files')}`,
+  // Computers are on, so their pages and cards show; the image cannot be pulled, so none starts.
+  `SANDBOX_PROVIDER=docker`,
+  `SANDBOX_IMAGE=localhost:1/greenhouse-e2e:absent`,
   `LOG_LEVEL=warn`,
 ].join(' ');
 

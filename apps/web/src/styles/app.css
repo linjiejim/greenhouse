@@ -2280,6 +2280,67 @@ button.app-list-row {
   background: var(--gh-canvas);
 }
 
+.app-files {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gh-space-2);
+}
+
+.app-crumbs {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--gh-space-1);
+  min-width: 0;
+  color: var(--gh-secondary);
+}
+
+.app-crumbs > button {
+  max-width: calc(6 * var(--gh-space-10));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: inherit;
+}
+
+.app-crumbs > button:hover {
+  color: var(--gh-text);
+}
+
+.app-crumbs > button[aria-current='location'] {
+  color: var(--gh-text);
+  font-weight: 600;
+}
+
+.app-crumb-sep {
+  flex-shrink: 0;
+  color: var(--gh-tertiary);
+}
+
+.app-file-open {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--gh-space-3);
+  font: inherit;
+}
+
+.app-file-icon {
+  flex-shrink: 0;
+  color: var(--gh-secondary);
+}
+
+.app-handback {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gh-space-3);
+}
+
+.app-handback > p {
+  margin: 0;
+}
+
 .app-offline {
   position: absolute;
   top: calc(var(--gh-header-height) + var(--gh-space-2));

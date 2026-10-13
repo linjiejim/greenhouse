@@ -26,6 +26,7 @@ import {
 import { useNotify } from '../../app/notify';
 import { cx } from '../../lib/cx';
 import { useI18n } from '../../lib/i18n';
+import { saveBlob } from '../../lib/save';
 import { Markdown } from '../Markdown';
 import { ChartView } from './Chart';
 
@@ -85,15 +86,6 @@ function toCsv(data: DataTableData): string {
   ].join('\n');
 }
 
-function download(name: string, text: string, type: string) {
-  const url = URL.createObjectURL(new Blob([text], { type }));
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = name;
-  link.click();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
-
 function TableBlock({ data }: { data: DataTableData }) {
   const { t, locale } = useI18n();
   return (
@@ -105,7 +97,9 @@ function TableBlock({ data }: { data: DataTableData }) {
         <Button
           kind="ghost"
           size="sm"
-          onClick={() => download(`${data.title ?? 'table'}.csv`, toCsv(data), 'text/csv;charset=utf-8')}
+          onClick={() =>
+            saveBlob(new Blob([toCsv(data)], { type: 'text/csv;charset=utf-8' }), `${data.title ?? 'table'}.csv`)
+          }
         >
           <Download size={icon.sm} />
           {t('rich.exportCsv')}
@@ -313,7 +307,7 @@ function HtmlPreviewBlock({ segment, context }: { segment: HtmlPreviewSegment; c
             <Button
               kind="ghost"
               size="sm"
-              onClick={() => download(`${title}.html`, segment.code, 'text/html;charset=utf-8')}
+              onClick={() => saveBlob(new Blob([segment.code], { type: 'text/html;charset=utf-8' }), `${title}.html`)}
             >
               <Download size={icon.sm} />
               {t('rich.download')}

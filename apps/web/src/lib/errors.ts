@@ -13,6 +13,10 @@ const KNOWN: Record<string, MessageKey> = {
   read_only: 'errors.readOnly',
   not_latest: 'errors.notLatest',
   rate_limited: 'login.tooMany',
+  too_large: 'errors.tooLarge',
+  path_outside_home: 'errors.outsideHome',
+  computer_not_running: 'errors.computerOff',
+  upload_incomplete: 'errors.uploadCut',
 };
 
 export function errorText(error: unknown, t: Translate): string {

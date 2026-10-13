@@ -4,6 +4,7 @@
  *   "slow …"      streams for about four seconds (to stop it)
  *   "ask me …"    calls ask_user with one question
  *   "remember X"  calls the memory tool, then confirms
+ *   "need a human …" asks the member to take over the computer (request_takeover)
  *   anything else "Echo: <message>", in a few chunks
  * Titles and summaries (non-streaming calls) get fixed answers.
  */
@@ -91,7 +92,7 @@ async function stream(response, request) {
   const last = messages[messages.length - 1];
   const said = lastUser(messages);
   // A turn woken by a decision (an answer, an approval) carries it in the closing context.
-  const woken = /answered your question|approved|rejected|dismissed/i.test(
+  const woken = /answered your question|approved|rejected|dismissed|handed your computer back/i.test(
     textOf(messages.filter((message) => message.role === 'user').at(-1)?.content ?? ''),
   );
   const afterTool = last?.role === 'tool' || woken;
@@ -125,6 +126,8 @@ async function stream(response, request) {
     tool('ask_user', { question: 'Which city?', fields: [{ key: 'city', label: 'City', type: 'text' }] });
   } else if (!afterTool && /^remember /i.test(said)) {
     tool('memory', { action: 'remember', title: said.slice(9).trim(), category: 'fact' });
+  } else if (!afterTool && /^need a human/i.test(said)) {
+    tool('request_takeover', { reason: 'Solve the human check on the sign-in page' });
   } else if (afterTool) {
     await say('Done.', 20);
   } else if (/^show (chart|table|choices|diagram|page|stats)/i.test(said)) {
