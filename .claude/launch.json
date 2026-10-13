@@ -46,6 +46,22 @@
       "port": 8096
     },
     {
+      "name": "design",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": [
+        "--filter",
+        "@greenhouse/design",
+        "exec",
+        "vite",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "4518",
+        "--strictPort"
+      ],
+      "port": 4518
+    },
+    {
       "name": "docs-landing",
       "runtimeExecutable": "python3",
       "runtimeArgs": [
