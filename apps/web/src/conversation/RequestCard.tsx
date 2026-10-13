@@ -33,6 +33,23 @@ const handsBack = (request: NeedsYou) => request.kind === 'takeover' || request.
 function Details({ request }: { request: NeedsYou }) {
   const { t } = useI18n();
   const payload = request.payload;
+  if (request.kind === 'login' && typeof payload.site === 'string') {
+    return (
+      <dl className="app-request-details">
+        <div>
+          <dt>{t('request.loginSite')}</dt>
+          <dd>{payload.site}</dd>
+        </div>
+        <div>
+          <dt>{t('request.loginItem')}</dt>
+          <dd>
+            {String(payload.item_label ?? '')}
+            {typeof payload.username_hint === 'string' && payload.username_hint ? ` · ${payload.username_hint}` : ''}
+          </dd>
+        </div>
+      </dl>
+    );
+  }
   if (handsBack(request)) {
     return typeof payload.reason === 'string' && payload.reason ? (
       <div className="app-request-body">
@@ -202,6 +219,25 @@ export function RequestCard({ request, showContext = false }: { request: NeedsYo
           onClick={() => decide.mutate({ id: request.id, action: 'approve' })}
         >
           {request.subject === 'run_start' ? t('request.startRun') : t('request.approve')}
+        </Button>
+      </>
+    ) : request.kind === 'login' && request.subject === 'vault_fill' ? (
+      <>
+        <Button
+          loading={decide.isPending && decide.variables?.action === 'reject'}
+          onClick={() => decide.mutate({ id: request.id, action: 'reject' })}
+        >
+          {t('request.reject')}
+        </Button>
+        {request.agent_id && me?.capabilities.sandbox && (
+          <Button onClick={() => setHanding('screen')}>{t('request.signInMyself')}</Button>
+        )}
+        <Button
+          kind="primary"
+          loading={decide.isPending && decide.variables?.action === 'approve'}
+          onClick={() => decide.mutate({ id: request.id, action: 'approve' })}
+        >
+          {t('request.allowLogin')}
         </Button>
       </>
     ) : handsBack(request) ? (

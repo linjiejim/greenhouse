@@ -2391,6 +2391,14 @@ button.app-list-row {
   color: var(--gh-secondary);
 }
 
+.app-value-kept {
+  display: flex;
+  align-items: center;
+  gap: var(--gh-space-2);
+  min-height: var(--gh-space-10);
+  color: var(--gh-secondary);
+}
+
 .app-handback {
   display: flex;
   flex-direction: column;

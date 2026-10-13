@@ -16,6 +16,7 @@ const apiEnv = [
   `DATABASE_URL=${E2E.databaseUrl}`,
   `TOKEN_SIGNING_KEY=${'a'.repeat(64)}`,
   `PROVIDER_TOKEN_ENCRYPTION_KEY=${'b'.repeat(64)}`,
+  `VAULT_ENCRYPTION_KEY=${'c'.repeat(64)}`,
   `LLM_PROVIDER=openai-compatible`,
   `LLM_BASE_URL=http://127.0.0.1:${E2E.llmPort}/v1`,
   `LLM_API_KEY=sk-e2e`,

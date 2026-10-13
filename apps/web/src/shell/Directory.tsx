@@ -10,6 +10,7 @@ import {
   CalendarClock,
   CheckCircle2,
   Inbox,
+  KeyRound,
   LayoutGrid,
   PanelLeftClose,
   Plus,
@@ -39,6 +40,7 @@ const glyph = (Icon: LucideIcon) => <Icon size={icon.md} strokeWidth={icon.strok
 /** The sections this build has; the rest join when their features land (features.md). */
 export const SETTINGS: { id: SettingsSection; label: MessageKey; icon: LucideIcon }[] = [
   { id: 'account', label: 'settings.account', icon: User },
+  { id: 'vault', label: 'settings.vault', icon: KeyRound },
   { id: 'services', label: 'settings.services', icon: Server },
 ];
 

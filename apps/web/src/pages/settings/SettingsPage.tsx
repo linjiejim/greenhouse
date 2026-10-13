@@ -5,6 +5,7 @@ import { Page, PageHeader } from '../../shell/Page';
 import { NotFoundPage } from '../NotFoundPage';
 import { AccountSection } from './AccountSection';
 import { MyServicesSection } from './MyServicesSection';
+import { VaultSection } from './VaultSection';
 
 /** 设置 (PRD §6.3): the sections this build has. */
 export function SettingsPage({ section }: { section: SettingsSection }) {
@@ -19,6 +20,7 @@ export function SettingsPage({ section }: { section: SettingsSection }) {
     >
       {section === 'account' && <AccountSection />}
       {section === 'services' && <MyServicesSection />}
+      {section === 'vault' && <VaultSection />}
     </Page>
   );
 }
