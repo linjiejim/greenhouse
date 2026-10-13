@@ -44,6 +44,8 @@ import { createSchedulesService, type SchedulesService } from './modules/schedul
 import { createRunsService, type RunsService } from './modules/runs/service.js';
 import { createRequestsService, type RequestsService } from './modules/requests/service.js';
 import { createConversationsService, type ConversationsService } from './modules/conversations/service.js';
+import { searchRoutes } from './modules/search/routes.js';
+import { createSearchService, type SearchService } from './modules/search/service.js';
 import { createHub, type Hub } from './realtime/hub.js';
 import { adminProviderRoutes, myProviderRoutes } from './providers/routes.js';
 import { createProvidersService, type ProvidersService } from './providers/service.js';
@@ -63,6 +65,7 @@ export interface Services {
   requests: RequestsService;
   runs: RunsService;
   schedules: SchedulesService;
+  search: SearchService;
   hub: Hub;
   engine: Engine;
   limiter: RateLimiter;
@@ -82,8 +85,9 @@ export function createServices(config: AppConfig, options: ServiceOptions = {}):
   const auth = createAuthService({ tokens, publicUrl: config.PUBLIC_URL });
   const providers = createProvidersService({ config, fetch: options.fetch });
   const agents = createAgentsService({ providers });
-  const conversations = createConversationsService({ agents, providers });
   const hub = createHub();
+  const conversations = createConversationsService({ agents, providers, hub });
+  const members = createMembersService({ auth, providers });
   const files = createFilesService({ providers });
   const computers = createComputersService({ providers, agents });
   const notifications = createNotificationsService({ hub });
@@ -118,7 +122,7 @@ export function createServices(config: AppConfig, options: ServiceOptions = {}):
     tokens,
     auth,
     workspace: createWorkspaceService(),
-    members: createMembersService({ auth }),
+    members,
     providers,
     agents,
     computers,
@@ -128,6 +132,7 @@ export function createServices(config: AppConfig, options: ServiceOptions = {}):
     requests,
     runs,
     schedules,
+    search: createSearchService({ members }),
     hub,
     engine,
     limiter: new RateLimiter(10, 60_000),
@@ -177,6 +182,7 @@ export function createApp(services: Services, options: { webDir?: string } = {})
   signedIn.route('/files', fileRoutes(services.files, services.conversations));
   signedIn.route('/schedules', scheduleRoutes(services.schedules));
   signedIn.route('/notifications', notificationRoutes(services.notifications));
+  signedIn.route('/search', searchRoutes(services.search));
   signedIn.use('/admin/*', requireAdmin);
   signedIn.route('/admin', adminMemberRoutes(services.members));
   signedIn.route('/admin/branding', brandingRoutes(services.workspace));

@@ -7,7 +7,7 @@
  * Opt-in: GREENHOUSE_LIVE_DOCKER=1, with the computer image built (apps/bot-computer).
  */
 
-import { eq } from 'drizzle-orm';
+import { asc, eq } from 'drizzle-orm';
 import { afterAll, describe, expect, it } from 'vitest';
 import { agentComputers, computerWatches, getDb, messages } from '@greenhouse/db';
 import { runDocker } from '@greenhouse/providers';
@@ -104,7 +104,11 @@ describe.skipIf(!live)('the long-run probe', () => {
     scripts.push(text('The probe finished.'));
     await other.computers.checkWatches((conversationId, item) => app.services.engine.deliver(conversationId, item));
     await app.services.engine.idle();
-    const final = await getDb().select().from(messages).where(eq(messages.conversationId, main.id));
+    const final = await getDb()
+      .select()
+      .from(messages)
+      .where(eq(messages.conversationId, main.id))
+      .orderBy(asc(messages.seq));
     expect(final.at(-1)!.content).toBe('The probe finished.');
     const [computer] = await getDb().select().from(agentComputers).where(eq(agentComputers.agentId, agent.id));
     expect(computer!.state).toBe('running');

@@ -45,6 +45,47 @@ describe('the API client against the app', () => {
     expect(stored).toBeNull();
   });
 
+  it('reaches every conversation action the web app uses', async () => {
+    const model = scriptedModel([text('First.'), text('Second.'), text('Third.')]);
+    const { app, services, member } = createTestApp({}, { languageModel: model.languageModel });
+    const lin = await member('member', 'lin@example.com');
+    const chen = await member('member', 'chen@example.com');
+    let stored: TokenPair | null = null;
+    const client = createApiClient({
+      baseUrl: '',
+      tokens: { get: () => stored, set: (tokens) => (stored = tokens) },
+      fetch: (input, init) => Promise.resolve(app.request(String(input), init)),
+    });
+    await client.auth.login('lin@example.com', TEST_PASSWORD);
+
+    const main = (await client.conversations.list({ kind: 'main' })).items[0]!;
+    const sent = await client.conversations.send(main.id, { content: 'hi' });
+    await services.engine.idle();
+    const reply = (await client.conversations.messages(main.id)).items.at(-1)!;
+    expect(await client.conversations.rate(main.id, reply.id, { rating: 1 })).toEqual({ rating: 1, comment: '' });
+    expect((await client.conversations.messages(main.id)).items.at(-1)!.my_rating).toBe(1);
+    const edited = await client.conversations.edit(main.id, sent.message.id, 'hello');
+    expect(edited.deleted_message_ids).toEqual([reply.id]);
+    await services.engine.idle();
+    const again = (await client.conversations.messages(main.id)).items.at(-1)!;
+    expect((await client.conversations.regenerate(main.id, again.id)).deleted_message_ids).toEqual([again.id]);
+    await services.engine.idle();
+    expect((await client.conversations.messages(main.id)).items.at(-1)!.content).toBe('Third.');
+
+    const room = await client.conversations.create({ kind: 'room', title: 'Plans' });
+    expect((await client.conversations.addMembers(room.id, { member_ids: [chen.id] })).members).toHaveLength(2);
+    await client.conversations.removeMember(room.id, chen.id);
+    expect((await client.conversations.members(room.id)).members.map((person) => person.id)).toEqual([lin.id]);
+    const note = await client.conversations.addNote(room.id, { title: 'Agenda' });
+    expect((await client.conversations.updateNote(room.id, note.id, { status: 'done' })).status).toBe('done');
+    expect((await client.conversations.notes(room.id)).items).toHaveLength(1);
+    await client.conversations.removeNote(room.id, note.id);
+    expect((await client.conversations.export(room.id)).filename).toBe('Plans.md');
+    expect((await client.search({ q: 'plans', kinds: ['conversations'] })).items[0]!.id).toBe(room.id);
+    expect((await client.members.directory('chen')).items.map((person) => person.id)).toEqual([chen.id]);
+    expect((await client.me.get()).capabilities.storage).toBe(true);
+  });
+
   it('keeps the realtime socket signed in across an expired access token', async () => {
     const model = scriptedModel([text('Over the socket.')]);
     const app = createTestApp({}, { languageModel: model.languageModel });

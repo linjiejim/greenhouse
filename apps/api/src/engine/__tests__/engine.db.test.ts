@@ -1,4 +1,4 @@
-import { and, eq } from 'drizzle-orm';
+import { and, asc, eq } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import type { RealtimeEvent } from '@greenhouse/contract';
 import {
@@ -95,7 +95,11 @@ describe('the engine', () => {
     await services.engine.idle();
     expect(model.calls()).toBe(2);
     expect(lastUserText(model.prompts[1])).toContain('sent 2 messages');
-    const all = await getDb().select().from(messages).where(eq(messages.conversationId, main.id));
+    const all = await getDb()
+      .select()
+      .from(messages)
+      .where(eq(messages.conversationId, main.id))
+      .orderBy(asc(messages.seq));
     expect(all.filter((m) => m.role === 'assistant').map((m) => m.content)).toEqual([
       expect.stringContaining('Greeny'),
       'First answer.',

@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { asc, eq } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import { conversationAgents, getDb, handoffs, messages, runs } from '@greenhouse/db';
 import { createTestApp } from '../../testing.js';
@@ -25,7 +25,11 @@ describe('hand-offs', () => {
     });
     await app.services.engine.idle();
 
-    const transcript = await getDb().select().from(messages).where(eq(messages.conversationId, main.id));
+    const transcript = await getDb()
+      .select()
+      .from(messages)
+      .where(eq(messages.conversationId, main.id))
+      .orderBy(asc(messages.seq));
     expect(
       transcript.slice(2).map((m) => [m.role, m.agentId === writer.body.id ? 'writer' : 'main', m.content]),
     ).toEqual([

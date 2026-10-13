@@ -111,6 +111,8 @@ export function scriptedModel(scripts: Array<Part[] | Script>, options: { title?
       return {
         stream: new ReadableStream({
           async start(controller) {
+            // Aborted before the call: fail at once, as a real request would.
+            if (call.abortSignal?.aborted) return controller.error(call.abortSignal.reason ?? new Error('aborted'));
             call.abortSignal?.addEventListener(
               'abort',
               () => {

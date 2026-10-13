@@ -10,7 +10,7 @@
 
 import { createHash, randomUUID } from 'node:crypto';
 import { generateText } from 'ai';
-import { and, asc, eq, inArray, isNull, lt, sql } from 'drizzle-orm';
+import { and, asc, eq, gt, inArray, isNull, lt, sql } from 'drizzle-orm';
 import {
   collect,
   createCollector,
@@ -21,7 +21,13 @@ import {
   type LoopInput,
   type ToolCallRecord,
 } from '@greenhouse/agent-core';
-import type { RealtimeEvent, SendMessageResult, sendMessageInputSchema } from '@greenhouse/contract';
+import type {
+  EditMessageResult,
+  RealtimeEvent,
+  RegenerateResult,
+  SendMessageResult,
+  sendMessageInputSchema,
+} from '@greenhouse/contract';
 import {
   agents,
   conversationAgents,
@@ -38,6 +44,7 @@ import {
   newId,
   runs,
   transaction,
+  type Conversation as ConversationRow,
   type Db,
   type NeedsYouRequest,
   type Message as MessageRow,
@@ -48,7 +55,7 @@ import { DEFAULT_CLIENT_BLOCKS } from '@greenhouse/types/rich-output';
 import { toErrorMessage } from '@greenhouse/utils/error';
 import { logger } from '@greenhouse/utils/logger';
 import type { z } from 'zod';
-import { ApiError, conflict, forbidden, invalidInput } from '../http/errors.js';
+import { ApiError, conflict, forbidden, invalidInput, notFound } from '../http/errors.js';
 import type { ProvidersService } from '../providers/service.js';
 import type { Hub } from '../realtime/hub.js';
 import type { AgentsService } from '../modules/agents/service.js';
@@ -87,7 +94,17 @@ export interface TurnInput {
   handoff_id?: string;
   from_agent_id?: string;
   chain?: HandoffChain;
+  /** The Agent version the turn ran on, recorded when it starts (feedback names it). */
+  agent_version?: number;
   [key: string]: unknown;
+}
+
+/** What an edit or a regenerate took out of the transcript, for the events after commit. */
+interface Removed {
+  ids: string[];
+  runIds: string[];
+  expired: NeedsYouRequest[];
+  closed: Run[];
 }
 
 /** The hand-offs that started from one member request: the Agents it went through, in order. */
@@ -170,17 +187,7 @@ export function createEngine(deps: EngineDeps) {
     (tools ??= deps.tools({ background, handOff: (input) => engine.handOff(input) }));
   const digester = createDigester({ languageModel });
 
-  async function audience(conversationId: string): Promise<string[]> {
-    const rows = await getDb()
-      .select({ id: conversationMembers.memberId })
-      .from(conversationMembers)
-      .where(eq(conversationMembers.conversationId, conversationId));
-    return rows.map((row) => row.id);
-  }
-
-  async function publish(conversationId: string, event: RealtimeEvent) {
-    deps.hub.publish(await audience(conversationId), event);
-  }
+  const publish = (conversationId: string, event: RealtimeEvent) => deps.conversations.publish(conversationId, event);
 
   function track(work: Promise<void>) {
     const tracked = work.catch((error: unknown) => {
@@ -329,6 +336,238 @@ export function createEngine(deps: EngineDeps) {
       .where(and(inArray(messageReceipts.messageId, ids), eq(messageReceipts.agentId, run.agentId)));
   }
 
+  /** Locks the conversation row, the lock every writer of a conversation takes, and returns it. */
+  async function lockConversation(db: Db, conversationId: string): Promise<ConversationRow> {
+    const [row] = await db.select().from(conversations).where(eq(conversations.id, conversationId)).for('update');
+    if (!row) throw notFound('Conversation');
+    return row;
+  }
+
+  /**
+   * The Agents that answer a member's message. In a room only the sender's own Agents, and only
+   * when named (`main` is the sender's main Agent); elsewhere the named ones present, else the
+   * conversation's own.
+   */
+  async function respondersFor(memberId: string, conversation: ConversationRow, mentions: string[]) {
+    const present = await deps.conversations.presentAgentIds(conversation);
+    const owned = present.length
+      ? await getDb()
+          .select({ id: agents.id, ownerId: agents.ownerId, archivedAt: agents.archivedAt, isMain: agents.isMain })
+          .from(agents)
+          .where(inArray(agents.id, present))
+      : [];
+    const byHandle = (handle: string) =>
+      owned.find(
+        (agent) =>
+          handle === agent.id ||
+          handle === `agent:${agent.id}` ||
+          (handle === 'main' && agent.isMain && agent.ownerId === memberId),
+      );
+    const mentioned = [
+      ...new Set(
+        mentions
+          .map(byHandle)
+          .filter((agent) => !!agent)
+          .map((agent) => agent!.id),
+      ),
+    ];
+    const responders =
+      conversation.kind === 'room'
+        ? mentioned.filter((id) => owned.find((agent) => agent.id === id)?.ownerId === memberId)
+        : mentioned.length
+          ? mentioned
+          : conversation.agentId
+            ? [conversation.agentId]
+            : [];
+    for (const id of responders) {
+      if (owned.find((agent) => agent.id === id)?.archivedAt)
+        throw conflict('agent_archived', 'This Agent is archived.');
+    }
+    return responders;
+  }
+
+  /**
+   * Hands a member's messages to the Agents that answer them, the same way for a new message and
+   * for one answered again: a queued receipt each, then a turn now or a place in the inbox. The
+   * caller holds the conversation row lock.
+   */
+  async function dispatch(
+    db: Db,
+    conversationId: string,
+    work: { memberId: string; messageIds: string[]; agentIds: string[]; kind: 'message' | 'mention' },
+  ): Promise<{ run: Run | null; queued: boolean }> {
+    let run: Run | null = null;
+    let queued = false;
+    for (const agentId of work.agentIds) {
+      for (const messageId of work.messageIds) {
+        await db
+          .insert(messageReceipts)
+          .values({ messageId, agentId, status: 'queued' })
+          .onConflictDoUpdate({
+            target: [messageReceipts.messageId, messageReceipts.agentId],
+            set: { status: 'queued', processedAt: null },
+          });
+      }
+      if (!run && !(await activeTurn(db, conversationId))) {
+        run = await createTurn(db, {
+          conversationId,
+          agentId,
+          ownerId: work.memberId,
+          input: { reason: work.kind, message_ids: work.messageIds },
+        });
+      } else {
+        await db.insert(conversationInbox).values(
+          work.messageIds.map((messageId) => ({
+            conversationId,
+            kind: work.kind,
+            payload: { message_id: messageId, agent_id: agentId, member_id: work.memberId } satisfies InboxPayload,
+          })),
+        );
+        queued = true;
+      }
+    }
+    return { run, queued };
+  }
+
+  /** A wake-up without a member message, into the inbox; it starts now if nothing answers. Under the row lock. */
+  async function enqueue(db: Db, conversationId: string, payload: InboxPayload): Promise<Run | null> {
+    await db.insert(conversationInbox).values({ conversationId, kind: 'continue', payload: { ...payload } });
+    return takeNext(db, conversationId);
+  }
+
+  /** Drops what a member queued in a conversation; the receipts of their messages say canceled. */
+  async function dropQueued(db: Db, conversationId: string, memberId: string) {
+    const queued = await db
+      .select()
+      .from(conversationInbox)
+      .where(and(eq(conversationInbox.conversationId, conversationId), isNull(conversationInbox.consumedAt)));
+    const mine = queued.filter((item) => (item.payload as unknown as InboxPayload).member_id === memberId);
+    if (!mine.length) return;
+    await db
+      .update(conversationInbox)
+      .set({ consumedAt: sql`now()` })
+      .where(
+        inArray(
+          conversationInbox.id,
+          mine.map((item) => item.id),
+        ),
+      );
+    const messageIds = mine
+      .map((item) => (item.payload as unknown as InboxPayload).message_id)
+      .filter((id): id is string => !!id);
+    if (messageIds.length) {
+      await db
+        .update(messageReceipts)
+        .set({ status: 'canceled', processedAt: sql`now()` })
+        .where(inArray(messageReceipts.messageId, messageIds));
+    }
+  }
+
+  /**
+   * Cards that expired outside the sweep: their steps are skipped and the runs that waited on them
+   * close, without waking the Agent. `runIds` are runs that will not continue in any case.
+   */
+  async function retire(db: Db, expired: NeedsYouRequest[], runIds: string[]): Promise<Run[]> {
+    const stepIds = expired.map((request) => request.stepId).filter((id): id is string => !!id);
+    if (stepIds.length) {
+      await db
+        .update(runSteps)
+        .set({ status: 'skipped', finishedAt: sql`now()`, updatedAt: sql`now()` })
+        .where(and(inArray(runSteps.id, stepIds), eq(runSteps.status, 'pending')));
+    }
+    const waiting = [
+      ...new Set([...runIds, ...expired.map((request) => request.runId).filter((id): id is string => !!id)]),
+    ];
+    if (!waiting.length) return [];
+    const open = new Set(
+      (
+        await db
+          .select({ runId: requestsTable.runId })
+          .from(requestsTable)
+          .where(and(inArray(requestsTable.runId, waiting), eq(requestsTable.status, 'pending')))
+      ).map((row) => row.runId),
+    );
+    const closable = waiting.filter((id) => !open.has(id));
+    if (!closable.length) return [];
+    return db
+      .update(runs)
+      .set({ status: 'canceled', waitReason: null, finishedAt: sql`now()`, updatedAt: sql`now()` })
+      .where(and(inArray(runs.id, closable), eq(runs.status, 'waiting')))
+      .returning();
+  }
+
+  const notLatest = () => conflict('not_latest', 'Only the latest exchange can be edited or regenerated.');
+
+  /**
+   * Edit and regenerate change only the member's own latest exchange: every message in `rows` must
+   * be a reply of a turn that answered them or an event line of one of their Agents. Anything
+   * from someone else (a person, another person's Agent, a background run report) means the
+   * conversation moved on.
+   */
+  async function assertOwnExchange(db: Db, memberId: string, rows: MessageRow[]) {
+    if (rows.some((row) => row.role === 'user')) throw notLatest();
+    const runIds = [...new Set(rows.map((row) => row.runId).filter((id): id is string => !!id))];
+    const agentIds = [...new Set(rows.filter((row) => !row.runId && row.agentId).map((row) => row.agentId!))];
+    const turns = runIds.length
+      ? await db
+          .select({ id: runs.id, kind: runs.kind, ownerId: runs.ownerId })
+          .from(runs)
+          .where(inArray(runs.id, runIds))
+      : [];
+    const owners = agentIds.length
+      ? await db.select({ id: agents.id, ownerId: agents.ownerId }).from(agents).where(inArray(agents.id, agentIds))
+      : [];
+    const mine = new Set([
+      ...turns.filter((run) => run.kind === 'turn' && run.ownerId === memberId).map((run) => run.id),
+      ...owners.filter((agent) => agent.ownerId === memberId).map((agent) => agent.id),
+    ]);
+    for (const row of rows) {
+      if (!mine.has(row.runId ?? row.agentId ?? '')) throw notLatest();
+    }
+  }
+
+  /**
+   * Deletes messages of the latest exchange. Their sequence numbers are never given out again,
+   * the cards their turns raised expire, and those turns, if waiting, close. Every later write to
+   * a reply is an UPDATE by id, so a stream still running somewhere cannot bring one back.
+   */
+  async function removeMessages(db: Db, rows: MessageRow[]): Promise<Removed> {
+    if (!rows.length) return { ids: [], runIds: [], expired: [], closed: [] };
+    const ids = rows.map((row) => row.id);
+    const runIds = [...new Set(rows.map((row) => row.runId).filter((id): id is string => !!id))];
+    await db.delete(messages).where(inArray(messages.id, ids));
+    const expired = await deps.requests.expireOpen({ runIds });
+    const closed = await retire(db, expired, runIds);
+    return { ids, runIds, expired, closed };
+  }
+
+  /** After the commit: what left the transcript, the cards that expired and the runs that closed. */
+  async function announceRemoved(conversationId: string, removed: Removed) {
+    const people = await deps.conversations.audience(conversationId);
+    for (const id of removed.ids) {
+      deps.hub.publish(people, { type: 'message.deleted', data: { conversation_id: conversationId, message_id: id } });
+    }
+    for (const request of removed.expired) deps.requests.announce(request);
+    for (const run of removed.closed) {
+      deps.hub.publish(people, {
+        type: 'run.updated',
+        data: { run_id: run.id, status: run.status, conversation_id: conversationId },
+      });
+    }
+    // A turn of a removed reply still streaming here (its lease was taken over) stops now.
+    for (const runId of removed.runIds) live.get(runId)?.abort();
+  }
+
+  /** A turn started by an edit, a regenerate or a new message: tell everyone, then run it. */
+  async function begin(conversationId: string, run: Run | null) {
+    if (!run) return;
+    await publish(conversationId, {
+      type: 'conversation.updated',
+      data: { conversation_id: conversationId, changes: { working: true } },
+    });
+    track(runChain(run));
+  }
+
   /** One turn: build the prompt, stream the reply, persist it, then hand over to the next. */
   async function runTurn(run: Run): Promise<Run | null> {
     const controller = new AbortController();
@@ -358,8 +597,20 @@ export function createEngine(deps: EngineDeps) {
 
     try {
       if (!conversation || !member) throw new ApiError(410, 'gone', 'The conversation or its member no longer exists.');
+      const [seat] = await getDb()
+        .select({ id: conversationMembers.memberId })
+        .from(conversationMembers)
+        .where(
+          and(eq(conversationMembers.conversationId, conversation.id), eq(conversationMembers.memberId, run.ownerId)),
+        );
+      // A turn acts for the member who asked: once they left the conversation, it does not run.
+      if (!seat) throw new ApiError(403, 'not_in_conversation', 'The member who asked left this conversation.');
       const loaded = await deps.agents.load(run.ownerId, run.agentId);
       const { agent, manifest } = loaded;
+      await getDb()
+        .update(runs)
+        .set({ input: { ...(run.input as TurnInput), agent_version: loaded.version } })
+        .where(eq(runs.id, run.id));
       reply = await withConversation(conversation.id, () =>
         deps.conversations.append(conversation.id, {
           role: 'assistant',
@@ -501,7 +752,7 @@ export function createEngine(deps: EngineDeps) {
       for await (const part of withFinalAnswer(result, loopInput)) {
         const call = collect(part, collector);
         if (part.type === 'text-delta' && part.text) {
-          deps.hub.publish(await audience(conversation.id), {
+          await publish(conversation.id, {
             type: 'message.delta',
             data: {
               conversation_id: conversation.id,
@@ -555,6 +806,9 @@ export function createEngine(deps: EngineDeps) {
       live.delete(run.id);
     }
 
+    // An edit or a regenerate removed the reply while it was still being written (its lease was
+    // taken over): the turn that answers again owns the receipts and the hand-off from here.
+    let superseded = false;
     if (reply && conversation) {
       const failed = outcome.status === 'failed';
       const steps: MessageStep[] = collector.calls
@@ -579,14 +833,17 @@ export function createEngine(deps: EngineDeps) {
         .where(eq(messages.id, reply.id))
         .returning();
       if (saved) await publish(conversation.id, { type: 'message.updated', data: { message: toMessage(saved) } });
+      else superseded = true;
       await deps.agents.touch(run.agentId);
     }
-    await finishReceipts(
-      run,
-      outcome.status === 'canceled' ? 'canceled' : outcome.status === 'failed' ? 'failed' : 'answered',
-    );
+    if (!superseded) {
+      await finishReceipts(
+        run,
+        outcome.status === 'canceled' ? 'canceled' : outcome.status === 'failed' ? 'failed' : 'answered',
+      );
+    }
     const handoffId = (run.input as TurnInput).handoff_id;
-    if (handoffId) {
+    if (handoffId && !superseded) {
       await getDb()
         .update(handoffs)
         .set({
@@ -604,7 +861,7 @@ export function createEngine(deps: EngineDeps) {
         type: 'run.updated',
         data: { run_id: run.id, status: outcome.status, conversation_id: conversation.id },
       });
-      if (!next) {
+      if (!next && !(await activeTurn(getDb(), conversation.id))) {
         await publish(conversation.id, {
           type: 'conversation.updated',
           data: { conversation_id: conversation.id, changes: { working: false } },
@@ -868,37 +1125,7 @@ export function createEngine(deps: EngineDeps) {
       if (conversation.readOnly) throw conflict('read_only', 'This conversation is read only.');
       if (!input.content.trim() && !input.attachments.length) throw invalidInput('Write a message or attach a file.');
       await deps.files.attach(memberId, conversationId, input.attachments);
-
-      const present = await deps.conversations.presentAgentIds(conversation);
-      const owned = present.length
-        ? await getDb()
-            .select({ id: agents.id, ownerId: agents.ownerId, archivedAt: agents.archivedAt, isMain: agents.isMain })
-            .from(agents)
-            .where(inArray(agents.id, present))
-        : [];
-      const byHandle = (handle: string) =>
-        owned.find(
-          (agent) => handle === agent.id || handle === `agent:${agent.id}` || (handle === 'main' && agent.isMain),
-        );
-      const mentioned = [
-        ...new Set(
-          input.mentions
-            .map(byHandle)
-            .filter((agent) => !!agent)
-            .map((agent) => agent!.id),
-        ),
-      ];
-      let responders: string[];
-      if (conversation.kind === 'room') {
-        // In a room an Agent answers only its owner, and only when named.
-        responders = mentioned.filter((id) => owned.find((agent) => agent.id === id)?.ownerId === memberId);
-      } else {
-        responders = mentioned.length ? mentioned : conversation.agentId ? [conversation.agentId] : [];
-      }
-      for (const id of responders) {
-        if (owned.find((agent) => agent.id === id)?.archivedAt)
-          throw conflict('agent_archived', 'This Agent is archived.');
-      }
+      const responders = await respondersFor(memberId, conversation, input.mentions);
 
       const result = await withConversation(conversationId, () =>
         transaction(async (db) => {
@@ -911,39 +1138,177 @@ export function createEngine(deps: EngineDeps) {
             mentions: input.mentions,
             skill: input.skill ? { skillId: input.skill.skill_id, variables: input.skill.variables } : null,
           });
-          let run: Run | null = null;
-          let queued = false;
-          const kind = conversation.kind === 'room' ? 'mention' : 'message';
-          for (const agentId of responders) {
-            await db.insert(messageReceipts).values({ messageId: message.id, agentId, status: 'queued' });
-            if (!run && !(await activeTurn(db, conversationId))) {
-              run = await createTurn(db, {
-                conversationId,
-                agentId,
-                ownerId: memberId,
-                input: { reason: kind, message_ids: [message.id] },
-              });
-            } else {
-              await db.insert(conversationInbox).values({
-                conversationId,
-                kind,
-                payload: { message_id: message.id, agent_id: agentId, member_id: memberId } satisfies InboxPayload,
-              });
-              queued = true;
-            }
-          }
-          return { message, run, queued };
+          const dispatched = await dispatch(db, conversationId, {
+            memberId,
+            messageIds: [message.id],
+            agentIds: responders,
+            kind: conversation.kind === 'room' ? 'mention' : 'message',
+          });
+          return { message, ...dispatched };
         }),
       );
       await publish(conversationId, { type: 'message.created', data: { message: toMessage(result.message) } });
-      if (result.run) {
-        await publish(conversationId, {
-          type: 'conversation.updated',
-          data: { conversation_id: conversationId, changes: { working: true } },
-        });
-        track(runChain(result.run));
-      }
+      await begin(conversationId, result.run);
       return { message: toMessage(result.message), run_id: result.run?.id ?? null, queued: result.queued };
+    },
+
+    /**
+     * Edits the member's last message, only while no turn answers (stop first) and only while
+     * everything after it is the answer to it. The replies leave the transcript, their cards
+     * expire, and the message is answered again through the same path as a new one.
+     */
+    async edit(
+      memberId: string,
+      conversationId: string,
+      messageId: string,
+      content: string,
+    ): Promise<EditMessageResult> {
+      const { conversation } = await deps.conversations.access(memberId, conversationId);
+      if (conversation.readOnly) throw conflict('read_only', 'This conversation is read only.');
+      const [target] = await getDb()
+        .select()
+        .from(messages)
+        .where(and(eq(messages.id, messageId), eq(messages.conversationId, conversationId)));
+      if (!target) throw notFound('Message');
+      if (target.role !== 'user' || target.authorMemberId !== memberId) {
+        throw conflict('not_editable', 'Only your own last message can be edited.');
+      }
+      if (!content.trim() && !target.attachments.length) throw invalidInput('Write a message or attach a file.');
+      const responders = await respondersFor(memberId, conversation, target.mentions);
+
+      const result = await withConversation(conversationId, () =>
+        transaction(async (db) => {
+          const locked = await lockConversation(db, conversationId);
+          if (await activeTurn(db, conversationId)) {
+            throw conflict('conversation_busy', 'An Agent is answering. Stop it first.');
+          }
+          const [current] = await db.select().from(messages).where(eq(messages.id, target.id));
+          if (!current) throw notFound('Message');
+          const after = await db
+            .select()
+            .from(messages)
+            .where(and(eq(messages.conversationId, conversationId), gt(messages.seq, current.seq)))
+            .orderBy(asc(messages.seq));
+          await assertOwnExchange(db, memberId, after);
+          // The summary never folds the last two exchanges; this keeps it from going stale if that changes.
+          if (current.seq <= locked.digestUptoSeq)
+            throw conflict('message_summarized', 'This part is already summarised.');
+          const removed = await removeMessages(db, after);
+          const [message] = await db
+            .update(messages)
+            .set({ content, editedAt: sql`now()` })
+            .where(eq(messages.id, current.id))
+            .returning();
+          await db.delete(messageReceipts).where(eq(messageReceipts.messageId, current.id));
+          const dispatched = await dispatch(db, conversationId, {
+            memberId,
+            messageIds: [current.id],
+            agentIds: responders,
+            kind: conversation.kind === 'room' ? 'mention' : 'message',
+          });
+          return { message: message!, removed, ...dispatched };
+        }),
+      );
+      await announceRemoved(conversationId, result.removed);
+      await publish(conversationId, { type: 'message.updated', data: { message: toMessage(result.message) } });
+      await begin(conversationId, result.run);
+      return {
+        message: toMessage(result.message),
+        deleted_message_ids: result.removed.ids,
+        run_id: result.run?.id ?? null,
+        queued: result.queued,
+      };
+    },
+
+    /**
+     * Writes the last reply to the member again: it (and the event lines after it) leaves the
+     * transcript, its cards expire, and what it answered (the member's messages, or the note
+     * that woke the Agent) is queued again for the same Agent.
+     */
+    async regenerate(memberId: string, conversationId: string, messageId: string): Promise<RegenerateResult> {
+      const { conversation } = await deps.conversations.access(memberId, conversationId);
+      if (conversation.readOnly) throw conflict('read_only', 'This conversation is read only.');
+      const notRegenerable = () =>
+        conflict('not_regenerable', 'Only a reply an Agent wrote for you can be regenerated.');
+
+      const result = await withConversation(conversationId, () =>
+        transaction(async (db) => {
+          const locked = await lockConversation(db, conversationId);
+          if (await activeTurn(db, conversationId)) {
+            throw conflict('conversation_busy', 'An Agent is answering. Stop it first.');
+          }
+          const [target] = await db
+            .select()
+            .from(messages)
+            .where(and(eq(messages.id, messageId), eq(messages.conversationId, conversationId)));
+          if (!target) throw notFound('Message');
+          const [turn] =
+            target.role === 'assistant' && target.runId
+              ? await db.select().from(runs).where(eq(runs.id, target.runId))
+              : [];
+          if (!turn || turn.kind !== 'turn' || turn.ownerId !== memberId) throw notRegenerable();
+          const after = await db
+            .select()
+            .from(messages)
+            .where(and(eq(messages.conversationId, conversationId), gt(messages.seq, target.seq)))
+            .orderBy(asc(messages.seq));
+          if (after.some((row) => row.role !== 'event')) throw notLatest();
+          await assertOwnExchange(db, memberId, after);
+          if (!(await deps.conversations.presentAgentIds(locked)).includes(turn.agentId)) throw notRegenerable();
+          const [agent] = await db
+            .select({ archivedAt: agents.archivedAt })
+            .from(agents)
+            .where(eq(agents.id, turn.agentId));
+          if (!agent) throw notRegenerable();
+          if (agent.archivedAt) throw conflict('agent_archived', 'This Agent is archived.');
+
+          const input = turn.input as TurnInput;
+          const asking =
+            input.reason === 'message' || input.reason === 'mention'
+              ? await db
+                  .select({ id: messages.id, seq: messages.seq })
+                  .from(messages)
+                  .where(and(eq(messages.conversationId, conversationId), inArray(messages.id, input.message_ids)))
+                  .orderBy(asc(messages.seq))
+              : [];
+          if ((input.reason === 'message' || input.reason === 'mention') && !asking.length) throw notRegenerable();
+          if ((asking[0]?.seq ?? target.seq) <= locked.digestUptoSeq) {
+            throw conflict('message_summarized', 'This part is already summarised.');
+          }
+          const removed = await removeMessages(db, [target, ...after]);
+          if (input.reason === 'message' || input.reason === 'mention') {
+            const { run, queued } = await dispatch(db, conversationId, {
+              memberId,
+              messageIds: asking.map((row) => row.id),
+              agentIds: [turn.agentId],
+              kind: input.reason,
+            });
+            return { removed, started: run, mine: run, queued };
+          }
+          // A turn woken without a message (a decision, a hand-off): the same note wakes it again.
+          const ahead = await db
+            .select({ id: conversationInbox.id })
+            .from(conversationInbox)
+            .where(and(eq(conversationInbox.conversationId, conversationId), isNull(conversationInbox.consumedAt)))
+            .limit(1);
+          const started = await enqueue(db, conversationId, {
+            agent_id: turn.agentId,
+            member_id: memberId,
+            note: input.note ?? '',
+            ...(input.handoff_id
+              ? {
+                  handoff_id: input.handoff_id,
+                  ...(input.from_agent_id ? { from_agent_id: input.from_agent_id } : {}),
+                  ...(input.chain ? { chain: input.chain } : {}),
+                }
+              : {}),
+          });
+          return { removed, started, mine: ahead.length ? null : started, queued: ahead.length > 0 };
+        }),
+      );
+      await announceRemoved(conversationId, result.removed);
+      await begin(conversationId, result.started);
+      return { deleted_message_ids: result.removed.ids, run_id: result.mine?.id ?? null, queued: result.queued };
     },
 
     /**
@@ -1040,28 +1405,17 @@ export function createEngine(deps: EngineDeps) {
             .from(conversations)
             .where(eq(conversations.id, conversationId))
             .for('update');
-          await db.insert(conversationInbox).values({
-            conversationId,
-            kind: 'continue',
-            payload: {
-              agent_id: item.agentId,
-              member_id: item.memberId,
-              note: item.note,
-              ...(item.handoff
-                ? { handoff_id: item.handoff.id, from_agent_id: item.handoff.fromAgentId, chain: item.handoff.chain }
-                : {}),
-            } satisfies InboxPayload,
+          return enqueue(db, conversationId, {
+            agent_id: item.agentId,
+            member_id: item.memberId,
+            note: item.note,
+            ...(item.handoff
+              ? { handoff_id: item.handoff.id, from_agent_id: item.handoff.fromAgentId, chain: item.handoff.chain }
+              : {}),
           });
-          return takeNext(db, conversationId);
         }),
       );
-      if (run) {
-        await publish(conversationId, {
-          type: 'conversation.updated',
-          data: { conversation_id: conversationId, changes: { working: true } },
-        });
-        track(runChain(run));
-      }
+      await begin(conversationId, run);
     },
 
     /** Stops the answering turn at once and drops what the member queued behind it. */
@@ -1078,34 +1432,37 @@ export function createEngine(deps: EngineDeps) {
             .update(runs)
             .set({ desiredState: 'cancel', updatedAt: sql`now()` })
             .where(eq(runs.id, active.id));
-          const queued = await db
-            .select()
-            .from(conversationInbox)
-            .where(and(eq(conversationInbox.conversationId, conversationId), isNull(conversationInbox.consumedAt)));
-          const mine = queued.filter((item) => (item.payload as unknown as InboxPayload).member_id === memberId);
-          if (mine.length) {
-            await db
-              .update(conversationInbox)
-              .set({ consumedAt: sql`now()` })
-              .where(
-                inArray(
-                  conversationInbox.id,
-                  mine.map((item) => item.id),
-                ),
-              );
-            const messageIds = mine
-              .map((item) => (item.payload as unknown as InboxPayload).message_id)
-              .filter((id): id is string => !!id);
-            if (messageIds.length) {
-              await db
-                .update(messageReceipts)
-                .set({ status: 'canceled', processedAt: sql`now()` })
-                .where(inArray(messageReceipts.messageId, messageIds));
-            }
-          }
+          await dropQueued(db, conversationId, memberId);
         }),
       );
       live.get(active.id)?.abort();
+    },
+
+    /**
+     * Someone left the conversation or was removed: the reply they asked for stops, what they
+     * queued is dropped, and their open cards here expire. (runTurn also refuses to answer anyone
+     * no longer in the conversation.)
+     */
+    async release(conversationId: string, memberId: string): Promise<void> {
+      const outcome = await withConversation(conversationId, () =>
+        transaction(async (db) => {
+          await lockConversation(db, conversationId);
+          const active = await activeTurn(db, conversationId);
+          const stopping = active?.ownerId === memberId ? active : null;
+          if (stopping) {
+            await db
+              .update(runs)
+              .set({ desiredState: 'cancel', updatedAt: sql`now()` })
+              .where(eq(runs.id, stopping.id));
+          }
+          await dropQueued(db, conversationId, memberId);
+          const expired = await deps.requests.expireOpen({ memberId, conversationId });
+          const closed = await retire(db, expired, []);
+          return { stopping, removed: { ids: [], runIds: [], expired, closed } satisfies Removed };
+        }),
+      );
+      if (outcome.stopping) live.get(outcome.stopping.id)?.abort();
+      await announceRemoved(conversationId, outcome.removed);
     },
 
     /**

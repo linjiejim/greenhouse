@@ -1,4 +1,4 @@
-import { and, asc, eq, gt, inArray, isNull, ne, sql } from 'drizzle-orm';
+import { and, asc, eq, gt, ilike, inArray, isNull, ne, or, sql } from 'drizzle-orm';
 import {
   getDb,
   groupMembers,
@@ -28,7 +28,9 @@ import type {
 } from '@greenhouse/contract';
 import { hashPassword, verifyPassword } from '../../auth/password.js';
 import { ApiError, conflict, notFound } from '../../http/errors.js';
+import { containing } from '../../http/like.js';
 import { toPage, decodeCursor } from '../../http/pagination.js';
+import type { ProvidersService } from '../../providers/service.js';
 import type { AuthService } from '../auth/service.js';
 
 const DEFAULT_MODULES: MemberModules = { knowledge: true, tables: true, apps: true, computer: true };
@@ -47,7 +49,7 @@ export const toSummary = (row: Member): MemberSummary => ({
   avatar_url: avatarUrl(row),
 });
 
-const toMe = (row: Member): Me => ({
+const toMe = (row: Member, capabilities: Me['capabilities']): Me => ({
   ...toSummary(row),
   role: row.role,
   locale: row.locale,
@@ -56,6 +58,7 @@ const toMe = (row: Member): Me => ({
   about: row.about,
   modules: effectiveModules(row.modules),
   notification_settings: row.notificationSettings,
+  capabilities,
 });
 
 const toAdmin = (row: Member): MemberAdmin => ({
@@ -81,10 +84,13 @@ async function activeAdminCount(db: Db, excluding: string): Promise<number> {
   return row?.n ?? 0;
 }
 
-export function createMembersService(deps: { auth: AuthService }) {
+export function createMembersService(deps: { auth: AuthService; providers: ProvidersService }) {
+  /** What the member can use now: their own keys where the policy allows, else the workspace's. */
+  const capabilitiesOf = (memberId: string) => deps.providers.availability({ memberId });
+
   return {
     async me(memberId: string): Promise<Me> {
-      return toMe(await load(getDb(), memberId));
+      return toMe(await load(getDb(), memberId), await capabilitiesOf(memberId));
     },
 
     async updateMe(memberId: string, input: UpdateMeInput): Promise<Me> {
@@ -102,7 +108,7 @@ export function createMembersService(deps: { auth: AuthService }) {
         .where(eq(members.id, memberId))
         .returning();
       if (!row) throw notFound('Member');
-      return toMe(row);
+      return toMe(row, await capabilitiesOf(memberId));
     },
 
     /** Bumps auth_version: every other session ends; the caller signs in again. */
@@ -123,9 +129,21 @@ export function createMembersService(deps: { auth: AuthService }) {
       });
     },
 
-    /** Everyone a member can pick when sharing or mentioning (no admin-only fields). */
-    async directory(): Promise<MemberSummary[]> {
-      const rows = await getDb().select().from(members).where(eq(members.status, 'active')).orderBy(asc(members.name));
+    /** Everyone a member can pick when sharing or mentioning (no admin-only fields), by name or email. */
+    async directory(query: { q?: string; limit?: number } = {}): Promise<MemberSummary[]> {
+      const matching = getDb()
+        .select()
+        .from(members)
+        .where(
+          and(
+            eq(members.status, 'active'),
+            query.q
+              ? or(ilike(members.name, containing(query.q)), ilike(members.email, containing(query.q)))
+              : undefined,
+          ),
+        )
+        .orderBy(asc(members.name), asc(members.id));
+      const rows = query.limit ? await matching.limit(query.limit) : await matching;
       return rows.map(toSummary);
     },
 

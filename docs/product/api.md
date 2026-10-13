@@ -31,7 +31,7 @@ v2 和 v1 不兼容，不加 `/api/v2` 前缀，也不保留旧路由。`GET /ap
 | `POST /api/auth/login` · `/refresh` · `/logout` | 登录、刷新、登出 |
 | `GET /api/auth/links/inspect` · `POST /api/auth/links/complete` | 一次性链接：查看用途；设密码完成激活或重置，随即登录 |
 | `GET /api/auth/feishu/*` | 飞书扫码登录 |
-| `GET` / `PATCH /api/me` | 我：名字、头像、语言、主题、「关于我」、模块权限（只读） |
+| `GET` / `PATCH /api/me` | 我：名字、头像、语言、主题、「关于我」、模块权限与可用能力（只读） |
 | `GET /api/me/usage` | 我的用量 |
 | `/api/me/providers[/:id][/test]` | 我的服务，即个人 Key |
 | `/api/me/connections[/:id]` | 连接：MCP 连接器账号、飞书 / 企微、邮箱 |

@@ -2,7 +2,7 @@
  * GET    /api/me                        the signed-in member
  * PATCH  /api/me                        name, locale, timezone, theme, about, notification settings
  * POST   /api/me/password               change password (signs out other sessions)
- * GET    /api/members                   directory: active members (id, name, email, avatar)
+ * GET    /api/members?q=                directory: active members (id, name, email, avatar), by name or email
  * GET    /api/admin/members             admin: all members, cursor paged
  * POST   /api/admin/members             admin: invite → member + one-time activation link
  * PATCH  /api/admin/members/:id         admin: role, status, modules, name
@@ -16,6 +16,7 @@
 import { Hono } from 'hono';
 import {
   changePasswordInputSchema,
+  directoryQuerySchema,
   groupInputSchema,
   inviteInputSchema,
   pageQuerySchema,
@@ -38,7 +39,9 @@ export function meRoutes(service: MembersService) {
 }
 
 export function directoryRoutes(service: MembersService) {
-  return new Hono<AppEnv>().get('/', async (c) => c.json({ items: await service.directory() }));
+  return new Hono<AppEnv>().get('/', async (c) =>
+    c.json({ items: await service.directory(readQuery(c, directoryQuerySchema)) }),
+  );
 }
 
 export function adminMemberRoutes(service: MembersService) {

@@ -4,7 +4,7 @@
  * decision does next (run the approved tool, wake the Agent) belongs to the engine.
  */
 
-import { and, desc, eq, gt, isNull, lt, or, sql } from 'drizzle-orm';
+import { and, desc, eq, gt, inArray, isNull, lt, or, sql } from 'drizzle-orm';
 import type { NeedsYou, Page } from '@greenhouse/contract';
 import { getDb, newId, requests, type NeedsYouRequest, type RequestKind, type RequestStatus } from '@greenhouse/db';
 import { conflict, notFound } from '../../http/errors.js';
@@ -165,18 +165,30 @@ export function createRequestsService(deps: { hub: Hub; notifications: Notificat
       return rows;
     },
 
-    /** Cards of a run that will not continue (stopped, failed) can no longer be decided. */
-    async cancelForRun(runId: string): Promise<void> {
+    /**
+     * Pending cards that can no longer be decided expire now: the reply that raised them was
+     * removed (runIds), or their member left the conversation. Joins the open transaction; the
+     * caller announces the returned rows once it commits.
+     */
+    async expireOpen(where: { runIds: string[] } | { memberId: string; conversationId: string }) {
+      if ('runIds' in where && !where.runIds.length) return [];
       const rows = await getDb()
         .update(requests)
-        .set({ status: 'canceled', updatedAt: sql`now()`, version: sql`${requests.version} + 1` })
-        .where(and(eq(requests.runId, runId), eq(requests.status, 'pending')))
+        .set({ status: 'expired', updatedAt: sql`now()`, version: sql`${requests.version} + 1` })
+        .where(
+          and(
+            eq(requests.status, 'pending'),
+            'runIds' in where
+              ? inArray(requests.runId, where.runIds)
+              : and(eq(requests.memberId, where.memberId), eq(requests.conversationId, where.conversationId)),
+          ),
+        )
         .returning();
-      for (const row of rows) {
-        await deps.notifications.markRequestRead(row.id);
-        announce(row);
-      }
+      for (const row of rows) await deps.notifications.markRequestRead(row.id);
+      return rows;
     },
+
+    announce,
   };
 }
 

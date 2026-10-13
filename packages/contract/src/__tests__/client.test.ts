@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { ApiClientError, createApiClient, type TokenStore } from '../client.js';
+import { ApiClientError, createApiClient, filenameOf, type TokenStore } from '../client.js';
 import type { TokenPair } from '../auth.js';
 
 const pair = (n: number): TokenPair => ({
@@ -129,6 +129,47 @@ describe('the API client', () => {
     const fetch = vi.fn(async () => new Response(null, { status: 204 }));
     const client = createApiClient({ baseUrl: '', tokens: memoryStore(pair(1)), fetch });
     expect(await client.conversations.stop('cnv_1')).toBeUndefined();
+  });
+
+  it('sends search kinds and the directory filter as query parameters', async () => {
+    const fetch = vi.fn(async () => json(200, { items: [] }));
+    const client = createApiClient({ baseUrl: '', tokens: memoryStore(pair(1)), fetch });
+    await client.search({ q: 'kyoto', kinds: ['messages', 'agents'], limit: 3 });
+    await client.members.directory('mei');
+    await client.members.directory();
+    expect(fetch.mock.calls.map((call) => (call as unknown as [string])[0])).toEqual([
+      '/api/search?q=kyoto&kinds=messages%2Cagents&limit=3',
+      '/api/members?q=mei',
+      '/api/members',
+    ]);
+  });
+
+  it('downloads an export with its file name, refreshing like any request, and reports errors the same way', async () => {
+    const tokens = memoryStore(pair(1));
+    const fetch = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      const path = String(url);
+      if (path.endsWith('/api/auth/refresh')) return json(200, pair(2));
+      if ((init!.headers as Record<string, string>).authorization !== 'Bearer access-2') {
+        return json(401, { error: { code: 'unauthorized', message: 'Expired.' } });
+      }
+      if (path.includes('cnv_gone')) return json(404, { error: { code: 'not_found', message: 'Gone.' } });
+      return new Response('# 京都\n', {
+        headers: {
+          'content-type': 'text/markdown; charset=utf-8',
+          'content-disposition': `attachment; filename="__.md"; filename*=UTF-8''${encodeURIComponent('京都.md')}`,
+        },
+      });
+    });
+    const client = createApiClient({ baseUrl: '', tokens, fetch });
+    expect(await client.conversations.export('cnv_1')).toEqual({ filename: '京都.md', markdown: '# 京都\n' });
+    await expect(client.conversations.export('cnv_gone')).rejects.toMatchObject({ status: 404, code: 'not_found' });
+  });
+
+  it('reads the file name of a download', () => {
+    expect(filenameOf('attachment; filename="plain.md"')).toBe('plain.md');
+    expect(filenameOf(`attachment; filename="_.md"; filename*=UTF-8''%E5%AF%B9%E8%AF%9D.md`)).toBe('对话.md');
+    expect(filenameOf(`attachment; filename*=UTF-8''%E0%A4%A`)).toBe('download');
+    expect(filenameOf(null, 'conversation.md')).toBe('conversation.md');
   });
 });
 

@@ -1,11 +1,17 @@
 import { z } from 'zod';
+import { agentAvatarSchema } from './agents.js';
 import { isoTime } from './common.js';
+import { memberSummarySchema } from './members.js';
 
 export const CONVERSATION_KINDS = ['main', 'direct', 'chat', 'room'] as const;
 export type ConversationKind = (typeof CONVERSATION_KINDS)[number];
 export const MESSAGE_ROLES = ['user', 'assistant', 'event'] as const;
 export const MESSAGE_STATUSES = ['complete', 'streaming', 'stopped', 'failed'] as const;
 export const MESSAGE_MAX = 32_000;
+export const FEEDBACK_COMMENT_MAX = 500;
+export const NOTE_TITLE_MAX = 200;
+export const NOTE_BODY_MAX = 20_000;
+export const NOTE_STATUSES = ['open', 'done'] as const;
 
 export const conversationSchema = z.object({
   id: z.string(),
@@ -117,6 +123,13 @@ export const messageSchema = z.object({
 });
 export type Message = z.infer<typeof messageSchema>;
 
+/** 👍 is 1, 👎 is -1. */
+export const ratingSchema = z.union([z.literal(1), z.literal(-1)]);
+
+/** A message as a page lists it: with the reader's own rating. Realtime events carry plain messages. */
+export const messageItemSchema = messageSchema.extend({ my_rating: ratingSchema.nullable() });
+export type MessageItem = z.infer<typeof messageItemSchema>;
+
 /** Newest first by default; `after` catches up from a sequence number (after a reconnect). */
 export const messageListQuerySchema = z.object({
   cursor: z.string().optional(),
@@ -145,3 +158,100 @@ export const sendMessageResultSchema = z.object({
 export type SendMessageResult = z.infer<typeof sendMessageResultSchema>;
 
 export const readInputSchema = z.object({ seq: z.number().int().min(0) });
+
+/** 👍 / 👎 on a reply from an Agent; 0 takes it back. The comment says why. */
+export const feedbackInputSchema = z.object({
+  rating: z.union([ratingSchema, z.literal(0)]),
+  comment: z.string().trim().max(FEEDBACK_COMMENT_MAX).optional(),
+});
+export type FeedbackInput = z.input<typeof feedbackInputSchema>;
+
+export const feedbackSchema = z.object({ rating: z.union([ratingSchema, z.literal(0)]), comment: z.string() });
+export type Feedback = z.infer<typeof feedbackSchema>;
+
+/** New text for my last message; the replies after it are removed and it is answered again. */
+export const editMessageInputSchema = z.object({ content: z.string().max(MESSAGE_MAX) });
+export type EditMessageInput = z.infer<typeof editMessageInputSchema>;
+
+/** After an edit or a regenerate: what left the transcript and the turn that answers again. */
+export const regenerateResultSchema = z.object({
+  /** Oldest first; everyone in the conversation also gets `message.deleted` for each. */
+  deleted_message_ids: z.array(z.string()),
+  /** The turn that answers again: started now, or null when it waits behind another. */
+  run_id: z.string().nullable(),
+  queued: z.boolean(),
+});
+export type RegenerateResult = z.infer<typeof regenerateResultSchema>;
+
+export const editMessageResultSchema = regenerateResultSchema.extend({ message: messageSchema });
+export type EditMessageResult = z.infer<typeof editMessageResultSchema>;
+
+/** A person in a conversation. */
+export const conversationPersonSchema = memberSummarySchema.extend({
+  role: z.enum(['owner', 'member']),
+  last_read_seq: z.number().int(),
+  joined_at: isoTime,
+});
+
+/** An Agent in a conversation: the one that answers it, or one somebody brought into the room. */
+export const conversationAgentSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  role: z.string(),
+  avatar: agentAvatarSchema,
+  owner_id: z.string(),
+});
+
+export const conversationMembersSchema = z.object({
+  members: z.array(conversationPersonSchema),
+  agents: z.array(conversationAgentSchema),
+});
+export type ConversationMembers = z.infer<typeof conversationMembersSchema>;
+
+/** Rooms only. Anyone in the room may add people; an Agent can be added only by its owner. */
+export const addMembersInputSchema = z
+  .object({
+    member_ids: z.array(z.string()).max(50).default([]),
+    /** Handles (`main`, `agent:<id>`) or ids of my own Agents. */
+    agent_ids: z.array(z.string()).max(10).default([]),
+  })
+  .refine((input) => input.member_ids.length + input.agent_ids.length > 0, {
+    message: 'Add at least one person or Agent.',
+  });
+export type AddMembersInput = z.input<typeof addMembersInputSchema>;
+
+/** A shared note of a conversation (CONV-24): anyone in the conversation reads and writes it. */
+export const noteSchema = z.object({
+  id: z.string(),
+  conversation_id: z.string(),
+  title: z.string(),
+  body: z.string(),
+  status: z.enum(NOTE_STATUSES),
+  pinned: z.boolean(),
+  /** Who wrote it first: a member, or an Agent. */
+  author_member_id: z.string().nullable(),
+  author_agent_id: z.string().nullable(),
+  created_at: isoTime,
+  updated_at: isoTime,
+});
+export type Note = z.infer<typeof noteSchema>;
+
+const noteFields = {
+  title: z.string().trim().max(NOTE_TITLE_MAX),
+  body: z.string().max(NOTE_BODY_MAX),
+  status: z.enum(NOTE_STATUSES),
+  pinned: z.boolean(),
+};
+
+export const createNoteInputSchema = z
+  .object({
+    title: noteFields.title.default(''),
+    body: noteFields.body.default(''),
+    status: noteFields.status.default('open'),
+    pinned: noteFields.pinned.default(false),
+  })
+  .refine((input) => !!(input.title || input.body.trim()), { message: 'Write a title or some text.' });
+export type CreateNoteInput = z.input<typeof createNoteInputSchema>;
+
+export const updateNoteInputSchema = z.object(noteFields).partial();
+export type UpdateNoteInput = z.infer<typeof updateNoteInputSchema>;

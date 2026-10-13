@@ -12,3 +12,4 @@ export * from './runs.js';
 export * from './schedules.js';
 export * from './files.js';
 export * from './computers.js';
+export * from './search.js';

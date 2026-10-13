@@ -6,20 +6,33 @@
 
 import { and, asc, desc, eq, gt, ilike, inArray, isNotNull, isNull, lt, notInArray, or, sql } from 'drizzle-orm';
 import type {
+  AgentAvatar,
   Conversation,
   ConversationDetail,
+  ConversationMembers,
+  Feedback,
   Message,
+  MessageItem,
+  Note,
   Page,
+  RealtimeEvent,
   UpdateConversationInput,
+  UpdateNoteInput,
+  addMembersInputSchema,
   createConversationInputSchema,
+  createNoteInputSchema,
+  feedbackInputSchema,
 } from '@greenhouse/contract';
 import {
   agents,
   conversationAgents,
   conversationMembers,
+  conversationNotes,
   conversations,
+  files,
   getDb,
   members,
+  messageFeedback,
   messages,
   newId,
   pins,
@@ -28,17 +41,26 @@ import {
   transaction,
   type Conversation as ConversationRow,
   type ConversationMember,
+  type ConversationNote,
   type Message as MessageRow,
   type NewMessage,
 } from '@greenhouse/db';
 import { agentGreeting } from '@greenhouse/types/agent-templates';
+import { audit } from '../../audit.js';
 import { parseStoredDigest, renderDigest } from '../../engine/digest.js';
 import type { z } from 'zod';
 import { conflict, invalidInput, notFound } from '../../http/errors.js';
+import { containing } from '../../http/like.js';
 import type { ProvidersService } from '../../providers/service.js';
+import type { Hub } from '../../realtime/hub.js';
 import type { AgentsService } from '../agents/service.js';
+import { toSummary } from '../members/service.js';
+import { exportFilename, renderConversationMarkdown, type ExportedMessage } from './export.js';
 
 type CreateInput = z.output<typeof createConversationInputSchema>;
+type AddMembersInput = z.output<typeof addMembersInputSchema>;
+type CreateNoteInput = z.output<typeof createNoteInputSchema>;
+type FeedbackInput = z.output<typeof feedbackInputSchema>;
 
 export interface Access {
   conversation: ConversationRow;
@@ -77,6 +99,19 @@ export const toMessage = (row: MessageRow): Message => ({
 
 const ACTIVE_TURN = ['queued', 'running'] as const;
 
+const toNote = (row: ConversationNote): Note => ({
+  id: row.id,
+  conversation_id: row.conversationId,
+  title: row.title,
+  body: row.body,
+  status: row.status,
+  pinned: row.pinned,
+  author_member_id: row.authorMemberId,
+  author_agent_id: row.authorAgentId,
+  created_at: row.createdAt,
+  updated_at: row.updatedAt,
+});
+
 /** Activity cursors carry the time and the id, so ties never skip or repeat a conversation. */
 function encodeActivity(row: { lastActivityAt: string; id: string }) {
   return Buffer.from(JSON.stringify({ at: row.lastActivityAt, id: row.id })).toString('base64url');
@@ -86,6 +121,21 @@ function decodeActivity(cursor: string | undefined): { at: string; id: string } 
   try {
     const value = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8')) as { at?: unknown; id?: unknown };
     if (typeof value.at === 'string' && typeof value.id === 'string') return { at: value.at, id: value.id };
+  } catch {
+    // fall through
+  }
+  throw invalidInput('The cursor is invalid.');
+}
+/** Notes are listed pinned first, then newest first; the cursor carries both. */
+function encodeNoteCursor(row: { pinned: boolean; id: string }) {
+  return Buffer.from(JSON.stringify({ pinned: row.pinned, id: row.id })).toString('base64url');
+}
+function decodeNoteCursor(cursor: string | undefined): { pinned: boolean; id: string } | null {
+  if (!cursor) return null;
+  try {
+    const value = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8')) as { pinned?: unknown; id?: unknown };
+    if (typeof value.pinned === 'boolean' && typeof value.id === 'string')
+      return { pinned: value.pinned, id: value.id };
   } catch {
     // fall through
   }
@@ -105,11 +155,77 @@ function decodeSeq(cursor: string | undefined): number | null {
   throw invalidInput('The cursor is invalid.');
 }
 
-export function createConversationsService(deps: { agents: AgentsService; providers: ProvidersService }) {
+export function createConversationsService(deps: { agents: AgentsService; providers: ProvidersService; hub: Hub }) {
   async function localeOf(memberId: string): Promise<'zh' | 'en'> {
     const [member] = await getDb().select({ locale: members.locale }).from(members).where(eq(members.id, memberId));
     return member?.locale === 'en' ? 'en' : 'zh';
   }
+
+  /** Writes that change what everyone in the conversation shares. */
+  function assertWritable(conversation: ConversationRow) {
+    if (conversation.readOnly) throw conflict('read_only', 'This conversation is read only.');
+  }
+
+  /** The people and Agents of a conversation, as the info panel shows them. */
+  async function peopleOf(conversation: ConversationRow): Promise<ConversationMembers> {
+    const db = getDb();
+    const seats = await db
+      .select({ seat: conversationMembers, member: members })
+      .from(conversationMembers)
+      .innerJoin(members, eq(members.id, conversationMembers.memberId))
+      .where(eq(conversationMembers.conversationId, conversation.id))
+      .orderBy(asc(conversationMembers.createdAt), asc(conversationMembers.memberId));
+    const agentIds = await service.presentAgentIds(conversation);
+    const rows = agentIds.length
+      ? await db
+          .select({
+            id: agents.id,
+            name: agents.name,
+            role: agents.role,
+            avatar: agents.avatar,
+            ownerId: agents.ownerId,
+          })
+          .from(agents)
+          .where(inArray(agents.id, agentIds))
+      : [];
+    const byId = new Map(rows.map((row) => [row.id, row]));
+    return {
+      members: seats.map(({ seat, member }) => ({
+        ...toSummary(member),
+        role: seat.role,
+        last_read_seq: seat.lastReadSeq,
+        joined_at: seat.createdAt,
+      })),
+      agents: agentIds.flatMap((id) => {
+        const agent = byId.get(id);
+        return agent
+          ? [{ id, name: agent.name, role: agent.role, avatar: agent.avatar as AgentAvatar, owner_id: agent.ownerId }]
+          : [];
+      }),
+    };
+  }
+
+  /** A room, for changing who is in it. */
+  async function room(memberId: string, conversationId: string): Promise<ConversationRow> {
+    const { conversation } = await service.access(memberId, conversationId);
+    if (conversation.kind !== 'room') throw conflict('not_a_room', 'Only a room has people and Agents to change.');
+    return conversation;
+  }
+
+  async function noteOf(conversationId: string, noteId: string): Promise<ConversationNote> {
+    const [row] = await getDb()
+      .select()
+      .from(conversationNotes)
+      .where(and(eq(conversationNotes.id, noteId), eq(conversationNotes.conversationId, conversationId)));
+    if (!row) throw notFound('Note');
+    return row;
+  }
+
+  const notesChanged = (conversationId: string, noteId: string) =>
+    service.publish(conversationId, {
+      type: 'notes.updated',
+      data: { conversation_id: conversationId, note_id: noteId },
+    });
 
   /** Reader state, pins, running turns and pending requests for a set of conversations. */
   async function views(memberId: string, rows: ConversationRow[]): Promise<Conversation[]> {
@@ -321,7 +437,7 @@ export function createConversationsService(deps: { agents: AgentsService; provid
       ).map((row) => row.id);
       const filters = and(
         query.kind ? eq(conversations.kind, query.kind) : undefined,
-        query.q ? ilike(conversations.title, `%${query.q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`) : undefined,
+        query.q ? ilike(conversations.title, containing(query.q)) : undefined,
         query.archived === 'true' ? isNotNull(conversationMembers.archivedAt) : isNull(conversationMembers.archivedAt),
       );
       const base = () =>
@@ -496,9 +612,24 @@ export function createConversationsService(deps: { agents: AgentsService; provid
       memberId: string,
       conversationId: string,
       query: { cursor?: string; after?: number; limit: number },
-    ): Promise<Page<Message>> {
+    ): Promise<Page<MessageItem>> {
       await service.access(memberId, conversationId);
       const db = getDb();
+      /** Each message with the reader's own rating. */
+      const withRatings = async (rows: MessageRow[]): Promise<MessageItem[]> => {
+        const replies = rows.filter((row) => row.role === 'assistant').map((row) => row.id);
+        const rated = replies.length
+          ? await db
+              .select({ id: messageFeedback.messageId, rating: messageFeedback.rating })
+              .from(messageFeedback)
+              .where(and(eq(messageFeedback.memberId, memberId), inArray(messageFeedback.messageId, replies)))
+          : [];
+        const ratings = new Map(rated.map((row) => [row.id, row.rating]));
+        return rows.map((row) => {
+          const rating = ratings.get(row.id);
+          return { ...toMessage(row), my_rating: rating === 1 || rating === -1 ? rating : null };
+        });
+      };
       if (query.after !== undefined) {
         const rows = await db
           .select()
@@ -508,7 +639,10 @@ export function createConversationsService(deps: { agents: AgentsService; provid
           .limit(query.limit + 1);
         const more = rows.length > query.limit;
         const items = more ? rows.slice(0, query.limit) : rows;
-        return { items: items.map(toMessage), next_cursor: more ? encodeSeq(items[items.length - 1]!.seq) : null };
+        return {
+          items: await withRatings(items),
+          next_cursor: more ? encodeSeq(items[items.length - 1]!.seq) : null,
+        };
       }
       const before = decodeSeq(query.cursor);
       const rows = await db
@@ -520,7 +654,357 @@ export function createConversationsService(deps: { agents: AgentsService; provid
       const more = rows.length > query.limit;
       const items = (more ? rows.slice(0, query.limit) : rows).reverse();
       // The page reads oldest to newest; the cursor points at older messages.
-      return { items: items.map(toMessage), next_cursor: more ? encodeSeq(items[0]!.seq) : null };
+      return { items: await withRatings(items), next_cursor: more ? encodeSeq(items[0]!.seq) : null };
+    },
+
+    /**
+     * 👍 / 👎 on a reply from an Agent, one per person; 0 takes it back. It keeps which Agent and
+     * which version wrote the reply: the version its turn ran on, else the Agent's current one.
+     */
+    async rate(memberId: string, conversationId: string, messageId: string, input: FeedbackInput): Promise<Feedback> {
+      await service.access(memberId, conversationId);
+      const db = getDb();
+      const [message] = await db
+        .select({ id: messages.id, role: messages.role, agentId: messages.agentId, runId: messages.runId })
+        .from(messages)
+        .where(and(eq(messages.id, messageId), eq(messages.conversationId, conversationId)));
+      if (!message) throw notFound('Message');
+      if (message.role !== 'assistant' || !message.agentId) {
+        throw conflict('not_a_reply', 'Only replies from an Agent can be rated.');
+      }
+      if (input.rating === 0) {
+        await db
+          .delete(messageFeedback)
+          .where(and(eq(messageFeedback.messageId, messageId), eq(messageFeedback.memberId, memberId)));
+        return { rating: 0, comment: '' };
+      }
+      let version: number | null = null;
+      if (message.runId) {
+        const [run] = await db.select({ input: runs.input }).from(runs).where(eq(runs.id, message.runId));
+        const recorded = run?.input.agent_version;
+        if (typeof recorded === 'number') version = recorded;
+      }
+      if (version === null) {
+        const [agent] = await db
+          .select({ version: agents.currentVersion })
+          .from(agents)
+          .where(eq(agents.id, message.agentId));
+        version = agent?.version ?? null;
+      }
+      const values = {
+        rating: input.rating,
+        comment: input.comment ?? '',
+        agentId: message.agentId,
+        agentVersion: version,
+      };
+      const [saved] = await db
+        .insert(messageFeedback)
+        .values({ messageId, memberId, ...values })
+        .onConflictDoUpdate({ target: [messageFeedback.messageId, messageFeedback.memberId], set: values })
+        .returning();
+      return { rating: saved!.rating === 1 ? 1 : -1, comment: saved!.comment };
+    },
+
+    /** Everyone who sees a conversation: its people. */
+    async audience(conversationId: string): Promise<string[]> {
+      const rows = await getDb()
+        .select({ id: conversationMembers.memberId })
+        .from(conversationMembers)
+        .where(eq(conversationMembers.conversationId, conversationId));
+      return rows.map((row) => row.id);
+    },
+
+    /** Tells everyone in the conversation (and anyone named in `also`, like a person who just left). */
+    async publish(conversationId: string, event: RealtimeEvent, also: string[] = []): Promise<void> {
+      deps.hub.publish([...(await service.audience(conversationId)), ...also], event);
+    },
+
+    /** The people and Agents of a conversation. */
+    async people(memberId: string, conversationId: string): Promise<ConversationMembers> {
+      const { conversation } = await service.access(memberId, conversationId);
+      return peopleOf(conversation);
+    },
+
+    /** Anyone in a room may bring people in; an Agent comes in only with its owner's say. */
+    async addMembers(memberId: string, conversationId: string, input: AddMembersInput): Promise<ConversationMembers> {
+      const conversation = await room(memberId, conversationId);
+      assertWritable(conversation);
+      const people = [...new Set(input.member_ids)];
+      if (people.length) {
+        const active = await getDb()
+          .select({ id: members.id })
+          .from(members)
+          .where(and(inArray(members.id, people), eq(members.status, 'active')));
+        if (active.length !== people.length) throw invalidInput('Some people cannot be added.');
+      }
+      const agentIds: string[] = [];
+      for (const handle of [...new Set(input.agent_ids)]) {
+        // Only the member's own Agents load; anyone else's is not found.
+        const loaded = await deps.agents.load(memberId, handle);
+        if (loaded.agent.archivedAt) throw conflict('agent_archived', `${loaded.agent.name} is archived.`);
+        agentIds.push(loaded.agent.id);
+      }
+      await transaction(async (db) => {
+        const joined = people.length
+          ? await db
+              .insert(conversationMembers)
+              .values(
+                people.map((id) => ({ conversationId, memberId: id, role: 'member' as const, addedBy: memberId })),
+              )
+              .onConflictDoNothing()
+              .returning({ id: conversationMembers.memberId })
+          : [];
+        if (agentIds.length) {
+          await db
+            .insert(conversationAgents)
+            .values(agentIds.map((id) => ({ conversationId, agentId: id, addedBy: memberId })))
+            .onConflictDoNothing();
+        }
+        // Joining opens the whole history to them: an access grant, so it is audited.
+        for (const { id } of joined) {
+          await audit({
+            actorId: memberId,
+            action: 'conversation.member_add',
+            resourceType: 'member',
+            resourceId: id,
+            scopeType: 'conversation',
+            scopeId: conversationId,
+          });
+        }
+        await db
+          .update(conversations)
+          .set({ updatedAt: sql`now()` })
+          .where(eq(conversations.id, conversationId));
+      });
+      await service.publish(conversationId, {
+        type: 'conversation.updated',
+        data: { conversation_id: conversationId, changes: {} },
+      });
+      return peopleOf(conversation);
+    },
+
+    /**
+     * The owner removes someone, or anyone leaves (removes themselves). Their Agents leave with
+     * them; when the owner leaves, the person who joined first after them owns the room. A room
+     * keeps at least one person. The engine then lets go of what was theirs here (engine.release).
+     */
+    async removeMember(memberId: string, conversationId: string, targetId: string): Promise<void> {
+      await room(memberId, conversationId);
+      await transaction(async (db) => {
+        const [locked] = await db
+          .select()
+          .from(conversations)
+          .where(eq(conversations.id, conversationId))
+          .for('update');
+        if (!locked) throw notFound('Conversation');
+        if (targetId !== memberId && locked.ownerId !== memberId) {
+          throw conflict('not_owner', 'Only the person who started the room can remove people.');
+        }
+        const seats = await db
+          .select()
+          .from(conversationMembers)
+          .where(eq(conversationMembers.conversationId, conversationId))
+          .orderBy(asc(conversationMembers.createdAt), asc(conversationMembers.memberId));
+        if (!seats.some((seat) => seat.memberId === targetId)) throw notFound('Member');
+        if (seats.length <= 1) {
+          throw conflict('last_member', 'A room keeps at least one person; delete it instead.');
+        }
+        await db
+          .delete(conversationMembers)
+          .where(
+            and(eq(conversationMembers.conversationId, conversationId), eq(conversationMembers.memberId, targetId)),
+          );
+        const theirs = db.select({ id: agents.id }).from(agents).where(eq(agents.ownerId, targetId));
+        await db
+          .delete(conversationAgents)
+          .where(
+            and(eq(conversationAgents.conversationId, conversationId), inArray(conversationAgents.agentId, theirs)),
+          );
+        await db
+          .delete(pins)
+          .where(
+            and(eq(pins.memberId, targetId), eq(pins.targetType, 'conversation'), eq(pins.targetId, conversationId)),
+          );
+        if (locked.ownerId === targetId) {
+          const next = seats.find((seat) => seat.memberId !== targetId)!;
+          await db
+            .update(conversationMembers)
+            .set({ role: 'owner' })
+            .where(
+              and(
+                eq(conversationMembers.conversationId, conversationId),
+                eq(conversationMembers.memberId, next.memberId),
+              ),
+            );
+          await db.update(conversations).set({ ownerId: next.memberId }).where(eq(conversations.id, conversationId));
+        }
+        await db
+          .update(conversations)
+          .set({ updatedAt: sql`now()` })
+          .where(eq(conversations.id, conversationId));
+        await audit({
+          actorId: memberId,
+          action: targetId === memberId ? 'conversation.leave' : 'conversation.member_remove',
+          resourceType: 'member',
+          resourceId: targetId,
+          scopeType: 'conversation',
+          scopeId: conversationId,
+        });
+      });
+      // The person who left hears it too, so their apps drop the conversation.
+      await service.publish(
+        conversationId,
+        { type: 'conversation.updated', data: { conversation_id: conversationId, changes: {} } },
+        [targetId],
+      );
+    },
+
+    /** Shared notes, pinned first, then newest first. */
+    async notes(
+      memberId: string,
+      conversationId: string,
+      query: { cursor?: string; limit: number },
+    ): Promise<Page<Note>> {
+      await service.access(memberId, conversationId);
+      const after = decodeNoteCursor(query.cursor);
+      const rows = await getDb()
+        .select()
+        .from(conversationNotes)
+        .where(
+          and(
+            eq(conversationNotes.conversationId, conversationId),
+            after
+              ? or(
+                  and(eq(conversationNotes.pinned, after.pinned), lt(conversationNotes.id, after.id)),
+                  after.pinned ? eq(conversationNotes.pinned, false) : undefined,
+                )
+              : undefined,
+          ),
+        )
+        .orderBy(desc(conversationNotes.pinned), desc(conversationNotes.id))
+        .limit(query.limit + 1);
+      const more = rows.length > query.limit;
+      const items = more ? rows.slice(0, query.limit) : rows;
+      return { items: items.map(toNote), next_cursor: more ? encodeNoteCursor(items[items.length - 1]!) : null };
+    },
+
+    async addNote(memberId: string, conversationId: string, input: CreateNoteInput): Promise<Note> {
+      const { conversation } = await service.access(memberId, conversationId);
+      assertWritable(conversation);
+      const [row] = await getDb()
+        .insert(conversationNotes)
+        .values({
+          id: newId('note'),
+          conversationId,
+          title: input.title,
+          body: input.body,
+          status: input.status,
+          pinned: input.pinned,
+          authorMemberId: memberId,
+        })
+        .returning();
+      await notesChanged(conversationId, row!.id);
+      return toNote(row!);
+    },
+
+    async updateNote(memberId: string, conversationId: string, noteId: string, input: UpdateNoteInput): Promise<Note> {
+      const { conversation } = await service.access(memberId, conversationId);
+      assertWritable(conversation);
+      const current = await noteOf(conversationId, noteId);
+      if (!(input.title ?? current.title) && !(input.body ?? current.body).trim()) {
+        throw invalidInput('Write a title or some text.');
+      }
+      const [row] = await getDb()
+        .update(conversationNotes)
+        .set({
+          ...(input.title !== undefined ? { title: input.title } : {}),
+          ...(input.body !== undefined ? { body: input.body } : {}),
+          ...(input.status !== undefined ? { status: input.status } : {}),
+          ...(input.pinned !== undefined ? { pinned: input.pinned } : {}),
+          updatedAt: sql`now()`,
+        })
+        .where(and(eq(conversationNotes.id, noteId), eq(conversationNotes.conversationId, conversationId)))
+        .returning();
+      if (!row) throw notFound('Note');
+      await notesChanged(conversationId, noteId);
+      return toNote(row);
+    },
+
+    async removeNote(memberId: string, conversationId: string, noteId: string): Promise<void> {
+      const { conversation } = await service.access(memberId, conversationId);
+      assertWritable(conversation);
+      const deleted = await getDb()
+        .delete(conversationNotes)
+        .where(and(eq(conversationNotes.id, noteId), eq(conversationNotes.conversationId, conversationId)))
+        .returning({ id: conversationNotes.id });
+      if (!deleted.length) throw notFound('Note');
+      await notesChanged(conversationId, noteId);
+    },
+
+    /** The whole conversation as Markdown, in the reader's language and time zone. */
+    async exportMarkdown(memberId: string, conversationId: string): Promise<{ filename: string; markdown: string }> {
+      const { conversation } = await service.access(memberId, conversationId);
+      const db = getDb();
+      const [reader] = await db
+        .select({ locale: members.locale, timezone: members.timezone })
+        .from(members)
+        .where(eq(members.id, memberId));
+      const locale = reader?.locale === 'en' ? 'en' : 'zh';
+      const rows = await db
+        .select()
+        .from(messages)
+        .where(eq(messages.conversationId, conversationId))
+        .orderBy(asc(messages.seq));
+      const memberIds = [...new Set(rows.map((row) => row.authorMemberId).filter((id): id is string => !!id))];
+      const agentIds = [
+        ...new Set([conversation.agentId, ...rows.map((row) => row.agentId)].filter((id): id is string => !!id)),
+      ];
+      const fileIds = [...new Set(rows.flatMap((row) => row.attachments))];
+      const [people, speakers, attached] = await Promise.all([
+        memberIds.length
+          ? db.select({ id: members.id, name: members.name }).from(members).where(inArray(members.id, memberIds))
+          : [],
+        agentIds.length
+          ? db.select({ id: agents.id, name: agents.name }).from(agents).where(inArray(agents.id, agentIds))
+          : [],
+        fileIds.length
+          ? db.select({ id: files.id, name: files.name }).from(files).where(inArray(files.id, fileIds))
+          : [],
+      ]);
+      const personName = new Map(people.map((row) => [row.id, row.name]));
+      const agentName = new Map(speakers.map((row) => [row.id, row.name]));
+      const fileName = new Map(attached.map((row) => [row.id, row.name]));
+      const unknown =
+        locale === 'zh'
+          ? { member: '成员', agent: 'Agent', file: '文件' }
+          : { member: 'Member', agent: 'Agent', file: 'file' };
+      const title =
+        conversation.title ||
+        (conversation.agentId ? agentName.get(conversation.agentId) : undefined) ||
+        (locale === 'zh' ? '对话' : 'Conversation');
+      const exported: ExportedMessage[] = rows.map((row) => ({
+        role: row.role,
+        author:
+          row.role === 'user'
+            ? (personName.get(row.authorMemberId ?? '') ?? unknown.member)
+            : (agentName.get(row.agentId ?? '') ?? unknown.agent),
+        createdAt: row.createdAt,
+        content: row.content,
+        quote: row.quote?.text ?? null,
+        steps: row.steps.map((step) => ({ summary: step.summary, failed: step.status === 'failed' })),
+        attachments: row.attachments.map((id) => fileName.get(id) ?? unknown.file),
+        status: row.status,
+      }));
+      return {
+        filename: exportFilename(title, locale === 'zh' ? '对话' : 'conversation'),
+        markdown: renderConversationMarkdown({
+          title,
+          locale,
+          timeZone: reader?.timezone || 'UTC',
+          exportedAt: new Date().toISOString(),
+          messages: exported,
+        }),
+      };
     },
 
     async markRead(memberId: string, conversationId: string, seq: number): Promise<void> {

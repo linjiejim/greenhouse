@@ -18,13 +18,22 @@ import type { CLIENT_KINDS, LinkInfo, TokenPair } from './auth.js';
 import type { Page } from './common.js';
 import type { ComputerJob, ComputerView } from './computers.js';
 import type {
+  AddMembersInput,
   Conversation,
   ConversationDetail,
+  ConversationMembers,
   CreateConversationInput,
-  Message,
+  CreateNoteInput,
+  EditMessageResult,
+  Feedback,
+  FeedbackInput,
+  MessageItem,
+  Note,
+  RegenerateResult,
   SendMessageInput,
   SendMessageResult,
   UpdateConversationInput,
+  UpdateNoteInput,
 } from './conversations.js';
 import type { FileView } from './files.js';
 import { REALTIME_SIGN_IN_AGAIN, type RealtimeEvent } from './realtime.js';
@@ -34,6 +43,7 @@ import type { AdminProviders, CapabilityState, MyProviders, ProviderInstance } f
 import type { AnswerInput, NeedsYou } from './requests.js';
 import type { RunDetail, RunView } from './runs.js';
 import type { CreateScheduleInput, Schedule, UpdateScheduleInput } from './schedules.js';
+import type { SearchKind, SearchResult } from './search.js';
 import type { Bootstrap } from './workspace.js';
 
 export class ApiClientError extends Error {
@@ -97,6 +107,19 @@ const queryString = (query?: Query) => {
 
 const runNow = <T>(run: () => Promise<T>) => run();
 
+/** The file name of a Content-Disposition header: the UTF-8 form first, else the plain one. */
+export function filenameOf(header: string | null, fallback = 'download'): string {
+  const encoded = header && /filename\*=UTF-8''([^;]+)/i.exec(header)?.[1];
+  if (encoded) {
+    try {
+      return decodeURIComponent(encoded);
+    } catch {
+      // fall back to the plain name
+    }
+  }
+  return (header && /filename="([^"]*)"/i.exec(header)?.[1]) || fallback;
+}
+
 export function createApiClient(options: ApiClientOptions) {
   const doFetch = options.fetch ?? ((input: RequestInfo | URL, init?: RequestInit) => fetch(input, init));
   let refreshing: Promise<boolean> | null = null;
@@ -151,12 +174,13 @@ export function createApiClient(options: ApiClientOptions) {
     return refreshing;
   }
 
-  async function request<T>(
+  /** Sends with the access token, refreshing it once when it expired. */
+  async function authed(
     method: string,
     path: string,
     body?: unknown,
     init: { query?: Query; raw?: BodyInit } = {},
-  ): Promise<T> {
+  ): Promise<Response> {
     const send = (token: string | undefined) => {
       const headers: Record<string, string> = {};
       if (token) headers.authorization = `Bearer ${token}`;
@@ -168,11 +192,25 @@ export function createApiClient(options: ApiClientOptions) {
       });
     };
     const token = options.tokens.get()?.access_token;
-    let response = await send(token);
-    if (response.status === 401 && token && (await refresh(token))) {
-      response = await send(options.tokens.get()?.access_token);
-    }
-    return parse<T>(response);
+    const response = await send(token);
+    if (response.status === 401 && token && (await refresh(token))) return send(options.tokens.get()?.access_token);
+    return response;
+  }
+
+  async function request<T>(
+    method: string,
+    path: string,
+    body?: unknown,
+    init: { query?: Query; raw?: BodyInit } = {},
+  ): Promise<T> {
+    return parse<T>(await authed(method, path, body, init));
+  }
+
+  /** A file the API sends as an attachment: its name and its text. */
+  async function download(path: string): Promise<{ filename: string; text: string }> {
+    const response = await authed('GET', path);
+    if (!response.ok) return parse<never>(response);
+    return { filename: filenameOf(response.headers.get('content-disposition')), text: await response.text() };
   }
 
   /**
@@ -311,7 +349,11 @@ export function createApiClient(options: ApiClientOptions) {
       providers: () => get<MyProviders>('/api/me/providers'),
     },
 
-    members: { directory: () => get<{ items: MemberSummary[] }>('/api/members') },
+    members: { directory: (q?: string) => get<{ items: MemberSummary[] }>('/api/members', { q: q || undefined }) },
+
+    /** `⌘K`: conversations, messages, my Agents and people, a few of each. */
+    search: (query: { q: string; kinds?: SearchKind[]; limit?: number }) =>
+      get<SearchResult>('/api/search', { q: query.q, kinds: query.kinds?.join(','), limit: query.limit }),
 
     agents: {
       list: (scope: 'mine' | 'archived' = 'mine') => get<{ items: Agent[] }>('/api/agents', { scope }),
@@ -346,11 +388,35 @@ export function createApiClient(options: ApiClientOptions) {
         patch<ConversationDetail>(`/api/conversations/${id}`, input),
       remove: (id: string) => del(`/api/conversations/${id}`),
       messages: (id: string, query: { cursor?: string; after?: number; limit?: number } = {}) =>
-        get<Page<Message>>(`/api/conversations/${id}/messages`, query),
+        get<Page<MessageItem>>(`/api/conversations/${id}/messages`, query),
       send: (id: string, input: SendMessageInput) =>
         post<SendMessageResult>(`/api/conversations/${id}/messages`, input),
+      /** My last message, new text; stop the reply first. */
+      edit: (id: string, messageId: string, content: string) =>
+        patch<EditMessageResult>(`/api/conversations/${id}/messages/${messageId}`, { content }),
+      regenerate: (id: string, messageId: string) =>
+        post<RegenerateResult>(`/api/conversations/${id}/messages/${messageId}/regenerate`),
+      /** 👍 1, 👎 -1, 0 takes it back. */
+      rate: (id: string, messageId: string, input: FeedbackInput) =>
+        put<Feedback>(`/api/conversations/${id}/messages/${messageId}/feedback`, input),
       stop: (id: string) => post<void>(`/api/conversations/${id}/stop`),
       read: (id: string, seq: number) => post<void>(`/api/conversations/${id}/read`, { seq }),
+      members: (id: string) => get<ConversationMembers>(`/api/conversations/${id}/members`),
+      addMembers: (id: string, input: AddMembersInput) =>
+        post<ConversationMembers>(`/api/conversations/${id}/members`, input),
+      /** The owner removes someone; my own id leaves the room. */
+      removeMember: (id: string, memberId: string) => del(`/api/conversations/${id}/members/${memberId}`),
+      notes: (id: string, query: { cursor?: string; limit?: number } = {}) =>
+        get<Page<Note>>(`/api/conversations/${id}/notes`, query),
+      addNote: (id: string, input: CreateNoteInput) => post<Note>(`/api/conversations/${id}/notes`, input),
+      updateNote: (id: string, noteId: string, input: UpdateNoteInput) =>
+        patch<Note>(`/api/conversations/${id}/notes/${noteId}`, input),
+      removeNote: (id: string, noteId: string) => del(`/api/conversations/${id}/notes/${noteId}`),
+      /** The conversation as a Markdown file. */
+      async export(id: string): Promise<{ filename: string; markdown: string }> {
+        const file = await download(`/api/conversations/${id}/export`);
+        return { filename: file.filename, markdown: file.text };
+      },
     },
 
     requests: {

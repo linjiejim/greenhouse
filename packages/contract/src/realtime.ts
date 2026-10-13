@@ -31,9 +31,23 @@ export const realtimeEventSchema = z.discriminatedUnion('type', [
     }),
   }),
   z.object({ type: z.literal('message.updated'), data: z.object({ message: messageSchema }) }),
+  /**
+   * A message left the transcript (an edit or a regenerate replaced the replies after it). Its
+   * sequence number is never given out again; deltas that still arrive for it are dropped.
+   */
+  z.object({
+    type: z.literal('message.deleted'),
+    data: z.object({ conversation_id: z.string(), message_id: z.string() }),
+  }),
+  /** Fields that changed. Empty `changes`: its people or Agents changed, so refetch it. */
   z.object({
     type: z.literal('conversation.updated'),
     data: z.object({ conversation_id: z.string(), changes: conversationSchema.partial() }),
+  }),
+  /** A shared note was added, changed or deleted: refetch the notes of this conversation. */
+  z.object({
+    type: z.literal('notes.updated'),
+    data: z.object({ conversation_id: z.string(), note_id: z.string() }),
   }),
   z.object({
     type: z.literal('run.updated'),

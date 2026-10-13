@@ -14,8 +14,17 @@ The one engine for conversations and runs. Read with the root AGENTS.md and docs
 - The model comes from services.providers.languageModel (pinned key, metering, fallback). Never build a client here.
 - A turn acts with the rights of the member who asked (`runs.owner_id`); a personal key serves only that member's own Agents.
 - The reply row exists from the first token (status `streaming`) and its text is flushed every second, so a reload or a crash keeps what was written.
+- After it exists, a reply is only written by UPDATE on its id, so a reply that was removed never comes back.
+- A turn runs only while the member who asked is in the conversation. Leaving or being removed (`release`) stops their reply, drops their queue and expires their cards there.
 - Prompt layout: rules, identity, about, digest in the system prompt; the transcript; one closing message rebuilt each turn (roster, memory index, the task). Anything written by models, pages or other people is fenced data (security/prompt.ts), never instructions.
 - Rule paragraphs describe a tool only when the tool exists this turn.
+
+## Edit and regenerate
+- Only the member's own latest exchange changes, and only while no turn answers (`conversation_busy`). Everything after the edited message, or from the regenerated reply on, must be their turns' replies or their Agents' event lines (`not_latest` otherwise).
+- Removed messages are deleted and announced as `message.deleted`; their sequence numbers are never reused. Their turns' cards expire: steps skipped, waiting runs canceled, nobody woken.
+- The message is answered again through `dispatch`, the path a new message takes. A regenerated turn that a note woke (a decision, a hand-off) gets the same note through the inbox.
+- A turn whose reply was removed while it streamed leaves receipts and hand-offs to the turn that answers again.
+- The summary never folds the last two exchanges, so an edit never makes it stale; a summarised message refuses (`message_summarized`).
 
 ## Tools
 - One file per tool with `defineTool` (tools/define.ts): description, zod input, risk, availability, and the service call. Routes and tools call the same services.

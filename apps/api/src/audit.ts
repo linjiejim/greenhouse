@@ -11,6 +11,9 @@ export interface AuditEntry {
   action: string;
   resourceType: string;
   resourceId: string;
+  /** Where it happened, e.g. the conversation a person was added to. */
+  scopeType?: string;
+  scopeId?: string;
   summary?: string;
 }
 
@@ -24,6 +27,8 @@ export async function audit(entry: AuditEntry): Promise<void> {
       action: entry.action,
       resourceType: entry.resourceType,
       resourceId: entry.resourceId,
+      scopeType: entry.scopeType ?? null,
+      scopeId: entry.scopeId ?? null,
       result: 'success',
       summary: entry.summary ?? '',
     });

@@ -25,6 +25,9 @@ export type CommonErrorCode = (typeof ERROR_CODES)[number];
 
 export const isoTime = z.string();
 
+/** An id in a path (`msg_01J…`): checked for size before any lookup. */
+export const idParamSchema = z.string().min(1).max(64);
+
 /** Cursor pagination: `?cursor=&limit=`, default 50, at most 200. */
 export const pageQuerySchema = z.object({
   cursor: z.string().optional(),

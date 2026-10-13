@@ -19,6 +19,64 @@ describe('members', () => {
     expect((await call('GET', '/api/me', { token: lin.token })).status).toBe(401);
   });
 
+  it('says which services I can use, from configuration and my own keys where allowed', async () => {
+    const { call, member } = createTestApp();
+    const admin = await member('admin');
+    const lin = await member();
+    const chen = await member();
+    const me = await call('GET', '/api/me', { token: lin.token });
+    // Nothing is configured but the built-in file storage.
+    expect(me.body.capabilities).toEqual({
+      llm: false,
+      stt: false,
+      tts: false,
+      image: false,
+      video: false,
+      sandbox: false,
+      search: false,
+      storage: true,
+      mail: false,
+      im: false,
+      push: false,
+    });
+
+    await call('PUT', '/api/admin/provider-bindings/llm', {
+      token: admin.token,
+      body: { instance_ids: [], policy: { allow_personal: true } },
+    });
+    const own = await call('POST', '/api/me/providers', {
+      token: lin.token,
+      body: {
+        capability: 'llm',
+        kind: 'openai-compatible',
+        preset: 'deepseek',
+        name: 'My DeepSeek',
+        config: { baseUrl: 'https://api.deepseek.com', defaultModel: 'deepseek-chat' },
+        secrets: { apiKey: 'sk-lin-own' },
+      },
+    });
+    expect(own.status).toBe(201);
+    expect((await call('GET', '/api/me', { token: lin.token })).body.capabilities.llm).toBe(true);
+    expect((await call('PATCH', '/api/me', { token: lin.token, body: { theme: 'dark' } })).body.capabilities.llm).toBe(
+      true,
+    );
+    // Someone else's key serves only them.
+    expect((await call('GET', '/api/me', { token: chen.token })).body.capabilities.llm).toBe(false);
+  });
+
+  it('finds people in the directory by name or email', async () => {
+    const { call, member } = createTestApp();
+    const lin = await member('member', 'lin.jie@example.com');
+    const chen = await member('member', 'chen@example.com');
+    await call('PATCH', '/api/me', { token: chen.token, body: { name: 'Chen Mei' } });
+    const ids = async (query: string) =>
+      (await call('GET', `/api/members${query}`, { token: lin.token })).body.items.map((m: { id: string }) => m.id);
+    expect(await ids('?q=mei')).toEqual([chen.id]);
+    expect(await ids('?q=LIN.JIE')).toEqual([lin.id]);
+    expect(await ids('?q=%25')).toEqual([]);
+    expect(await ids('')).toEqual(expect.arrayContaining([lin.id, chen.id]));
+  });
+
   it('keeps admin endpoints for admins', async () => {
     const { call, member } = createTestApp();
     const lin = await member();

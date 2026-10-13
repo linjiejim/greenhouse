@@ -1,16 +1,10 @@
 import { and, desc, eq, ilike, inArray } from 'drizzle-orm';
 import { z } from 'zod';
 import { getDb, messages } from '@greenhouse/db';
+import { containing, snippetAround } from '../../http/like.js';
 import { defineTool } from './define.js';
 
 const SNIPPET = 300;
-
-function snippet(text: string, query: string): string {
-  const at = text.toLowerCase().indexOf(query.toLowerCase());
-  if (at < 0 || text.length <= SNIPPET) return text.slice(0, SNIPPET);
-  const start = Math.max(0, at - SNIPPET / 3);
-  return `${start ? '…' : ''}${text.slice(start, start + SNIPPET)}…`;
-}
 
 /** Older parts of this conversation, beyond what fits in the context. */
 export function conversationTool() {
@@ -24,7 +18,6 @@ export function conversationTool() {
     surfaces: ['turn'],
     async execute(args, ctx) {
       if (!ctx.conversation) return { results: [] };
-      const pattern = `%${args.query.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
       const rows = await getDb()
         .select({ seq: messages.seq, role: messages.role, content: messages.content, createdAt: messages.createdAt })
         .from(messages)
@@ -32,7 +25,7 @@ export function conversationTool() {
           and(
             eq(messages.conversationId, ctx.conversation.id),
             inArray(messages.role, ['user', 'assistant']),
-            ilike(messages.content, pattern),
+            ilike(messages.content, containing(args.query)),
           ),
         )
         .orderBy(desc(messages.seq))
@@ -41,7 +34,7 @@ export function conversationTool() {
         results: rows.map((row) => ({
           seq: row.seq,
           role: row.role,
-          text: snippet(row.content, args.query),
+          text: snippetAround(row.content, args.query, SNIPPET),
           created_at: row.createdAt,
         })),
       };

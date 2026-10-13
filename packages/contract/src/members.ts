@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { isoTime } from './common.js';
+import { capabilitySchema } from './providers.js';
 
 export const MEMBER_ROLES = ['admin', 'member'] as const;
 export const MEMBER_STATUSES = ['invited', 'active', 'reset_required', 'disabled'] as const;
@@ -31,8 +32,16 @@ export const meSchema = memberSummarySchema.extend({
   about: z.string(),
   modules: modulesSchema,
   notification_settings: z.record(z.string(), z.unknown()),
+  /**
+   * Which services can serve me now, by configuration (my own keys included where allowed),
+   * not by a live check. The apps hide what needs a missing one: no sandbox, no computer.
+   */
+  capabilities: z.record(capabilitySchema, z.boolean()),
 });
 export type Me = z.infer<typeof meSchema>;
+
+/** The directory, narrowed by name or email. */
+export const directoryQuerySchema = z.object({ q: z.string().trim().max(100).optional() });
 
 export const updateMeInputSchema = z
   .object({

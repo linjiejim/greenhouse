@@ -550,6 +550,15 @@ export function createProvidersService(deps: { config: AppConfig; fetch?: typeof
       return chainFor(await viewOf(capability), ctx).length > 0;
     },
 
+    /** `available` for every capability at once, from configuration only: no network, no live check. */
+    async availability(ctx: UsageContext): Promise<Record<Capability, boolean>> {
+      const views = await load();
+      return Object.fromEntries(views.map((entry) => [entry.capability, chainFor(entry, ctx).length > 0])) as Record<
+        Capability,
+        boolean
+      >;
+    },
+
     /** For /health: which capabilities the workspace can serve, without personal keys. */
     async status(): Promise<Record<Capability, boolean>> {
       const views = await load();
