@@ -9,11 +9,17 @@ export type MemberStatus = (typeof MEMBER_STATUSES)[number];
 export const MEMBER_MODULES = ['knowledge', 'tables', 'apps', 'computer'] as const;
 export type MemberModule = (typeof MEMBER_MODULES)[number];
 export type MemberModules = Partial<Record<MemberModule, boolean>>;
+/** What a notification is about, as the member's delivery settings group it. */
+export const NOTIFICATION_CATEGORIES = ['needs_you', 'replies', 'runs', 'other'] as const;
+export type NotificationCategory = (typeof NOTIFICATION_CATEGORIES)[number];
+/** Where a notification goes besides the in-app center, which always has it. */
+export const DELIVERY_CHANNELS = ['email', 'feishu', 'wecom', 'push'] as const;
+export type DeliveryChannel = (typeof DELIVERY_CHANNELS)[number];
 export type NotificationSettings = {
-  channels?: Partial<Record<'email' | 'feishu' | 'wecom' | 'push', boolean>>;
-  /** Push and channel messages carry no content unless the member opts in. */
+  /** Per category, the channels that deliver it; what is not set follows the defaults. */
+  categories?: Partial<Record<NotificationCategory, Partial<Record<DeliveryChannel, boolean>>>>;
+  /** Push and channel messages name their subject only when on; content of sensitive categories never leaves. */
   previews?: boolean;
-  muted?: string[];
 };
 
 export const members = pgTable(
