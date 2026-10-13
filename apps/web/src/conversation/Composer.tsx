@@ -3,7 +3,8 @@
  * the line (never while an input method is composing). Attachments upload at once and show as
  * pills; sending waits for them. `@` names someone in a room, or picks the Agent of a new chat.
  * Send and stop share one place: while an Agent answers, an empty composer offers stop and a
- * filled one sends into the queue.
+ * filled one sends into the queue. `/` at the start picks a skill (CONV-11); its fields, if it has
+ * any, show above the text and the first one takes the focus.
  */
 
 import {
@@ -16,10 +17,10 @@ import {
   type DragEvent,
   type KeyboardEvent,
 } from 'react';
-import { ArrowUp, AtSign, FileText, Paperclip, Square, X } from 'lucide-react';
-import { IconButton, Spinner } from '@greenhouse/ui/kit';
+import { ArrowUp, AtSign, FileText, Paperclip, Square, Wand2, X } from 'lucide-react';
+import { Field, IconButton, Input, Select, Spinner } from '@greenhouse/ui/kit';
 import { icon } from '@greenhouse/ui/tokens';
-import type { FileView } from '@greenhouse/contract';
+import type { FileView, Skill } from '@greenhouse/contract';
 import { api } from '../lib/api';
 import { cx } from '../lib/cx';
 import { useT } from '../lib/i18n';
@@ -45,6 +46,8 @@ export interface ComposerSend {
   attachments: string[];
   mentions: string[];
   quote?: { message_id: string; text: string };
+  /** A skill run with `/`, with its fields filled in. */
+  skill?: { skill_id: string; variables: Record<string, string> };
 }
 
 const MAX_FILES = 10;
@@ -54,6 +57,22 @@ function mentionAt(value: string, caret: number): { start: number; query: string
   const before = value.slice(0, caret);
   const match = /(^|\s)@([^\s@]{0,30})$/.exec(before);
   return match ? { start: caret - match[2]!.length - 1, query: match[2]! } : null;
+}
+
+/** The `/word` being typed at the very start of the message, if any. */
+function slashAt(value: string, caret: number): string | null {
+  const match = /^\/([^\s/]{0,40})$/.exec(value.slice(0, caret));
+  return match ? match[1]! : null;
+}
+
+/** One row of the open list: a person or Agent for `@`, a skill for `/`. */
+interface Entry {
+  key: string;
+  label: string;
+  hint?: string;
+  leading?: React.ReactNode;
+  disabled?: boolean;
+  choose: () => void;
 }
 
 export function Composer({
@@ -69,6 +88,8 @@ export function Composer({
   conversationId,
   autoFocus = true,
   seed,
+  skills = [],
+  initialSkill,
   onSend,
   onStop,
 }: {
@@ -87,6 +108,10 @@ export function Composer({
   autoFocus?: boolean;
   /** Text put in from outside (a starter); a new object each time. */
   seed?: { text: string };
+  /** Skills `/` offers, judged for the Agent that answers; without any, `/` is plain text. */
+  skills?: Skill[];
+  /** A skill chosen from outside (its page's 在对话里使用), once it is in `skills`. */
+  initialSkill?: string;
   onSend: (input: ComposerSend) => Promise<unknown>;
   onStop: () => void;
 }) {
@@ -100,6 +125,33 @@ export function Composer({
   const textarea = useRef<HTMLTextAreaElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const listId = useId();
+  const [slash, setSlash] = useState<string | null>(null);
+  const [chosen, setChosen] = useState<Skill | null>(null);
+  const [fields, setFields] = useState<Record<string, string>>({});
+  const [fieldError, setFieldError] = useState('');
+  const fieldsBox = useRef<HTMLDivElement>(null);
+
+  const choose = (skill: Skill) => {
+    setChosen(skill);
+    setFields(Object.fromEntries(skill.variables.map((field) => [field.key, ''])));
+    setFieldError('');
+    setValue((current) => current.replace(/^\/\S*\s?/, ''));
+    setSlash(null);
+    requestAnimationFrame(() => {
+      const first = fieldsBox.current?.querySelector<HTMLElement>('input, button');
+      (first ?? textarea.current)?.focus();
+    });
+  };
+
+  // A skill chosen from outside, as soon as the list has it.
+  const startedWith = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    if (!initialSkill || startedWith.current === initialSkill) return;
+    const skill = skills.find((item) => item.id === initialSkill);
+    if (!skill) return;
+    startedWith.current = initialSkill;
+    choose(skill);
+  }, [initialSkill, skills]);
 
   useEffect(() => {
     if (autoFocus) textarea.current?.focus();
@@ -129,9 +181,35 @@ export function Composer({
     return candidates.filter((candidate) => candidate.name.toLowerCase().includes(query)).slice(0, 8);
   }, [picker, candidates]);
 
+  const entries: Entry[] = useMemo(() => {
+    if (slash !== null) {
+      const query = slash.toLowerCase();
+      return skills
+        .filter((skill) => skill.name.includes(query) || (skill.display_name || '').toLowerCase().includes(query))
+        .slice(0, 8)
+        .map((skill) => ({
+          key: skill.id,
+          label: `/${skill.name}`,
+          hint: skill.available ? skill.display_name || skill.description : (skill.unavailable?.message ?? ''),
+          leading: <Wand2 size={icon.sm} aria-hidden />,
+          disabled: !skill.available,
+          choose: () => choose(skill),
+        }));
+    }
+    return options.map((candidate) => ({
+      key: candidate.handle,
+      label: candidate.name,
+      hint: candidate.hint,
+      leading: candidate.leading,
+      choose: () => pick(candidate),
+    }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- choose and pick read this render's state
+  }, [slash, skills, options]);
+  const listOpen = (slash !== null || !!picker) && entries.length > 0;
+
   const uploading = files.some((file) => !file.file && !file.error);
   const ready = files.filter((file) => file.file);
-  const canSend = !sending && !uploading && (value.trim().length > 0 || ready.length > 0);
+  const canSend = !sending && !uploading && (value.trim().length > 0 || ready.length > 0 || !!chosen);
   /** Sending was asked for while files were still uploading: it goes once they are up. */
   const [queued, setQueued] = useState(false);
 
@@ -177,6 +255,11 @@ export function Composer({
   const send = async () => {
     if (!sending && uploading) return setQueued(true);
     if (!canSend) return;
+    const missing = chosen?.variables.find((field) => field.required !== false && !fields[field.key]?.trim());
+    if (missing) {
+      setFieldError(t('request.required', { name: missing.label }));
+      return;
+    }
     setSending(true);
     // Only mentions still named in the text count.
     const named = mentions.filter((candidate) => value.includes(`@${candidate.name}`)).map((item) => item.handle);
@@ -186,11 +269,14 @@ export function Composer({
         attachments: ready.map((item) => item.file!.id),
         mentions: named,
         ...(quote ? { quote } : {}),
+        ...(chosen ? { skill: { skill_id: chosen.id, variables: fields } } : {}),
       });
       for (const item of files) if (item.preview) URL.revokeObjectURL(item.preview);
       setValue('');
       setFiles([]);
       setMentions([]);
+      setChosen(null);
+      setFields({});
       onClearQuote?.();
     } catch {
       // The page said why; the text stays here to send again.
@@ -210,21 +296,23 @@ export function Composer({
   }, [queued, uploading, files]);
 
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (picker && options.length) {
+    if (listOpen) {
       if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
         event.preventDefault();
-        setActive((index) => (index + (event.key === 'ArrowDown' ? 1 : -1) + options.length) % options.length);
+        setActive((index) => (index + (event.key === 'ArrowDown' ? 1 : -1) + entries.length) % entries.length);
         return;
       }
       if (event.key === 'Enter' || event.key === 'Tab') {
         event.preventDefault();
-        pick(options[Math.min(active, options.length - 1)]!);
+        const entry = entries[Math.min(active, entries.length - 1)]!;
+        if (!entry.disabled) entry.choose();
         return;
       }
       if (event.key === 'Escape') {
         event.preventDefault();
         event.stopPropagation();
         setPicker(null);
+        setSlash(null);
         return;
       }
     }
@@ -257,8 +345,28 @@ export function Composer({
         onDragOver={(event) => event.dataTransfer.types.includes('Files') && event.preventDefault()}
         onDrop={onDrop}
       >
-        {(quote || target) && (
+        {(quote || target || chosen) && (
           <div className="app-composer-chips">
+            {chosen && (
+              <span className="app-chip is-skill">
+                <Wand2 size={icon.sm} aria-hidden />
+                <span className="app-chip-text">
+                  /{chosen.name}
+                  {chosen.display_name ? ` · ${chosen.display_name}` : ''}
+                </span>
+                <button
+                  type="button"
+                  aria-label={t('composer.clearSkill')}
+                  onClick={() => {
+                    setChosen(null);
+                    setFields({});
+                    textarea.current?.focus();
+                  }}
+                >
+                  <X size={icon.sm} />
+                </button>
+              </span>
+            )}
             {target && (
               <span className="app-chip">
                 {target.leading}
@@ -277,6 +385,44 @@ export function Composer({
                   <X size={icon.sm} />
                 </button>
               </span>
+            )}
+          </div>
+        )}
+        {chosen && chosen.variables.length > 0 && (
+          <div className="app-composer-fields" ref={fieldsBox}>
+            {chosen.variables.map((field) => (
+              <Field key={field.key} label={field.label} required={field.required !== false}>
+                {field.type === 'choice' && field.options?.length ? (
+                  <Select
+                    label={field.label}
+                    value={fields[field.key] ?? ''}
+                    options={field.options.map((option) => ({ value: option, label: option }))}
+                    onChange={(next: string) => {
+                      setFields({ ...fields, [field.key]: next });
+                      setFieldError('');
+                    }}
+                  />
+                ) : (
+                  <Input
+                    value={fields[field.key] ?? ''}
+                    onChange={(event) => {
+                      setFields({ ...fields, [field.key]: event.target.value });
+                      setFieldError('');
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' && !event.nativeEvent.isComposing) {
+                        event.preventDefault();
+                        void send();
+                      }
+                    }}
+                  />
+                )}
+              </Field>
+            ))}
+            {fieldError && (
+              <p className="app-request-error" role="alert">
+                {fieldError}
+              </p>
             )}
           </div>
         )}
@@ -307,36 +453,51 @@ export function Composer({
           value={value}
           placeholder={placeholder}
           aria-label={placeholder}
-          role={picker ? 'combobox' : undefined}
-          aria-expanded={picker ? options.length > 0 : undefined}
-          aria-controls={picker ? listId : undefined}
-          aria-autocomplete={picker ? 'list' : undefined}
+          role={picker || slash !== null ? 'combobox' : undefined}
+          aria-expanded={picker || slash !== null ? listOpen : undefined}
+          aria-controls={picker || slash !== null ? listId : undefined}
+          aria-autocomplete={picker || slash !== null ? 'list' : undefined}
           onChange={(event) => {
-            setValue(event.target.value);
+            const next = event.target.value;
+            const caret = event.target.selectionStart;
+            setValue(next);
+            const skill = skills.length && !chosen ? slashAt(next, caret) : null;
+            setSlash(skill);
             // Kept even while the candidates load: the list appears once they are there.
-            setPicker(mentionable ? mentionAt(event.target.value, event.target.selectionStart) : null);
+            setPicker(skill === null && mentionable ? mentionAt(next, caret) : null);
             setActive(0);
           }}
           onKeyDown={onKeyDown}
           onPaste={onPaste}
-          onBlur={() => setTimeout(() => setPicker(null), 150)}
+          onBlur={() =>
+            setTimeout(() => {
+              setPicker(null);
+              setSlash(null);
+            }, 150)
+          }
         />
-        {picker && options.length > 0 && (
-          <ul className="app-mention-list" id={listId} role="listbox" aria-label={t('composer.mention')}>
-            {options.map((candidate, index) => (
+        {listOpen && (
+          <ul
+            className="app-mention-list"
+            id={listId}
+            role="listbox"
+            aria-label={slash !== null ? t('composer.skills') : t('composer.mention')}
+          >
+            {entries.map((entry, index) => (
               <li
-                key={candidate.handle}
+                key={entry.key}
                 role="option"
                 aria-selected={index === active}
-                className={cx('app-mention-option', index === active && 'is-active')}
+                aria-disabled={entry.disabled || undefined}
+                className={cx('app-mention-option', index === active && 'is-active', entry.disabled && 'is-disabled')}
                 onPointerDown={(event) => {
                   event.preventDefault();
-                  pick(candidate);
+                  if (!entry.disabled) entry.choose();
                 }}
               >
-                {candidate.leading}
-                <span>{candidate.name}</span>
-                {candidate.hint && <span className="app-mention-hint">{candidate.hint}</span>}
+                {entry.leading}
+                <span>{entry.label}</span>
+                {entry.hint && <span className="app-mention-hint">{entry.hint}</span>}
               </li>
             ))}
           </ul>

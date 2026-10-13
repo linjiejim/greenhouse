@@ -28,7 +28,7 @@ import { useSession } from '../app/session';
 import { useNotificationSummary } from '../data/notifications';
 import { useRuns } from '../data/runs';
 import { useT } from '../lib/i18n';
-import { href, navigate, type AdminSection, type Route, type SettingsSection } from '../lib/router';
+import { href, navigate, SKILL_SCOPES, type AdminSection, type Route, type SettingsSection } from '../lib/router';
 import type { MessageKey } from '../i18n/zh';
 import { ChatDirectory } from './ChatDirectory';
 import { DirectoryRow } from './DirectoryRow';
@@ -128,7 +128,9 @@ export function Directory({
       ? { label: t('chat.newChat'), onClick: () => navigate('#/c/new') }
       : module === 'agents'
         ? { label: t('agents.new'), onClick: () => openOverlay({ type: 'new-agent' }) }
-        : null;
+        : module === 'skills'
+          ? { label: t('skills.new'), onClick: () => openOverlay({ type: 'new-skill' }) }
+          : null;
 
   return (
     <>
@@ -179,6 +181,15 @@ export function Directory({
             ))}
           </>
         )}
+        {module === 'skills' &&
+          SKILL_SCOPES.filter((scope) => scope !== 'review' || me?.role === 'admin').map((scope) => (
+            <DirectoryRow
+              key={scope}
+              title={t(`skills.scope.${scope}`)}
+              href={href({ page: 'skills', scope })}
+              active={route.page === 'skills' && route.scope === scope}
+            />
+          ))}
         {module === 'runs' && <RunsList route={route} />}
         {module === 'notifications' && <NotificationsList route={route} />}
         {module === 'settings' &&

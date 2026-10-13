@@ -57,6 +57,7 @@ import {
   useUpdateConversation,
 } from '../../data/conversations';
 import { useModelOptions } from '../../data/models';
+import { useSkills } from '../../data/skills';
 import { usePeople } from '../../data/people';
 import { useRequests } from '../../data/requests';
 import { readStream } from '../../data/streams';
@@ -117,8 +118,8 @@ function ModelDialog({
 
 const FOLLOW = 'follow-agent';
 
-export function ConversationPage({ id, agent }: { id: string; agent?: string }) {
-  if (id === 'new') return <NewChat agentId={agent} />;
+export function ConversationPage({ id, agent, skill }: { id: string; agent?: string; skill?: string }) {
+  if (id === 'new') return <NewChat agentId={agent} skillId={skill} />;
   return <ExistingConversation id={id} />;
 }
 
@@ -156,6 +157,8 @@ function ExistingConversation({ id }: { id: string }) {
   const row = conversations.items.find((item) => item.id === conversationId);
   const conversation: Conversation | undefined = row ?? detail.data;
   const answering = conversation?.agent_id ? people.agentById.get(conversation.agent_id) : undefined;
+  // `/` offers the skills that can run for the Agent that answers here.
+  const skills = useSkills({ agent: answering?.id ?? 'main' });
   const timeZone = me.timezone;
 
   // Reading marks the conversation read, once per new message.
@@ -482,6 +485,7 @@ function ExistingConversation({ id }: { id: string }) {
             mentionable={room}
             quote={quote}
             seed={seed}
+            skills={skills.items}
             onClearQuote={() => setQuote(null)}
             onSend={sendMessage}
             onStop={() => stop.mutate()}

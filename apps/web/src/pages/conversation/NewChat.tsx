@@ -1,6 +1,8 @@
 /**
- * A new chat (CONV-03, CONV-29): a greeting and the composer. `@` picks the Agent that answers
- * (the main Agent by default). The chat exists from the first message on.
+ * A new chat (CONV-03, CONV-29): a greeting, three starters and the composer. `@` picks the Agent
+ * that answers (the main Agent by default). Starters are my most-used skills for that Agent, else
+ * its template's opening lines; a skill's page can open a new chat with it chosen. The chat
+ * exists from the first message on.
  */
 
 import { useMemo, useState } from 'react';
@@ -10,6 +12,7 @@ import { useMe } from '../../app/session';
 import { Composer, type Candidate, type ComposerSend } from '../../conversation/Composer';
 import { useAgents } from '../../data/agents';
 import { sendMessage } from '../../data/conversations';
+import { useSkillStarters, useSkills } from '../../data/skills';
 import { addMessage } from '../../data/realtime';
 import { api } from '../../lib/api';
 import { errorText } from '../../lib/errors';
@@ -20,7 +23,7 @@ import { Page, PageHeader } from '../../shell/Page';
 import { useQueryClient } from '@tanstack/react-query';
 import { keys } from '../../data/query';
 
-export function NewChat({ agentId }: { agentId?: string }) {
+export function NewChat({ agentId, skillId }: { agentId?: string; skillId?: string }) {
   const { t, locale } = useI18n();
   const me = useMe();
   const notify = useNotify();
@@ -45,7 +48,12 @@ export function NewChat({ agentId }: { agentId?: string }) {
   const template =
     answering &&
     (answering.is_main ? MAIN_AGENT_TEMPLATE : AGENT_TEMPLATES.find((item) => item.key === answering.template_key));
-  const starters = template?.copy[locale].starters.slice(0, 3) ?? [];
+  const agentKey = answering && !answering.is_main ? answering.id : undefined;
+  const skills = useSkills({ agent: agentKey ?? 'main' });
+  const suggested = useSkillStarters(agentKey);
+  const [skillStart, setSkillStart] = useState<string | undefined>(skillId);
+  const skillStarters = suggested.data?.skills ?? [];
+  const starters = (suggested.data?.starters ?? template?.copy[locale].starters ?? []).slice(0, 3);
 
   const start = async (input: ComposerSend) => {
     try {
@@ -70,20 +78,37 @@ export function NewChat({ agentId }: { agentId?: string }) {
         <div className="app-new-chat">
           {answering && <AgentAvatar agent={answering} size={72} />}
           <h2>{t('chat.greeting', { name: me.name })}</h2>
-          {starters.length > 0 && (
+          {skillStarters.length > 0 ? (
             <div className="app-starters" role="list" aria-label={t('chat.starters')}>
-              {starters.map((starter) => (
+              {skillStarters.map((skill) => (
                 <button
-                  key={starter}
+                  key={skill.id}
                   type="button"
                   role="listitem"
                   className="app-starter"
-                  onClick={() => setSeed({ text: starter })}
+                  onClick={() => setSkillStart(skill.id)}
                 >
-                  {starter}
+                  <span className="app-mono">/{skill.name}</span>
+                  {skill.display_name ? ` · ${skill.display_name}` : ''}
                 </button>
               ))}
             </div>
+          ) : (
+            starters.length > 0 && (
+              <div className="app-starters" role="list" aria-label={t('chat.starters')}>
+                {starters.map((starter) => (
+                  <button
+                    key={starter}
+                    type="button"
+                    role="listitem"
+                    className="app-starter"
+                    onClick={() => setSeed({ text: starter })}
+                  >
+                    {starter}
+                  </button>
+                ))}
+              </div>
+            )
           )}
         </div>
         <Composer
@@ -94,6 +119,8 @@ export function NewChat({ agentId }: { agentId?: string }) {
           target={target && !answering?.is_main ? target : null}
           onTarget={setPicked}
           seed={seed}
+          skills={skills.items}
+          initialSkill={skillStart}
           onSend={start}
           onStop={() => undefined}
         />

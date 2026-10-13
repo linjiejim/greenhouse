@@ -15,15 +15,18 @@ import {
   ThumbsDown,
   ThumbsUp,
   Volume2,
+  Wand2,
   Wrench,
 } from 'lucide-react';
 import { Button, ChatCard, IconButton, TextArea, Tooltip } from '@greenhouse/ui/kit';
 import { icon } from '@greenhouse/ui/tokens';
 import type { Agent, MemberSummary, Message, NeedsYou } from '@greenhouse/contract';
 import { useNotify } from '../app/notify';
+import { useSkills } from '../data/skills';
 import { liveText, useStream, type LiveStep } from '../data/streams';
 import { cx } from '../lib/cx';
 import { useI18n } from '../lib/i18n';
+import { href } from '../lib/router';
 import { fullTime, relativeTime } from '../lib/time';
 import { AgentAvatar } from '../shell/AgentAvatar';
 import { MemberAvatar } from '../shell/MemberAvatar';
@@ -89,6 +92,20 @@ function readAloud(text: string, locale: 'zh' | 'en', onEnd: () => void): boolea
   synth.cancel();
   synth.speak(utterance);
   return true;
+}
+
+/** The skill a member ran with `/`, with the values they filled in. */
+function SkillTag({ id, variables }: { id: string; variables: Record<string, string> }) {
+  const { t } = useI18n();
+  const skill = useSkills().items.find((item) => item.id === id);
+  const filled = Object.values(variables).filter(Boolean);
+  return (
+    <a className="app-skill-tag" href={href({ page: 'skill', id })}>
+      <Wand2 size={icon.sm} aria-hidden />
+      {skill ? `/${skill.name}` : t('composer.skills')}
+      {filled.length > 0 && <span className="app-muted"> · {filled.join(' · ')}</span>}
+    </a>
+  );
 }
 
 export const MessageView = memo(function MessageView({
@@ -198,6 +215,7 @@ export const MessageView = memo(function MessageView({
     return (
       <article className="app-message is-mine" aria-label={t('message.you')}>
         {message.quote && <blockquote className="app-message-quote">{message.quote.text}</blockquote>}
+        {message.skill && <SkillTag id={message.skill.skill_id} variables={message.skill.variables} />}
         {text && (
           <div className="app-bubble">
             <Markdown text={text} />

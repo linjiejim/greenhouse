@@ -18,20 +18,25 @@ export const ADMIN_SECTIONS = [
 export const AGENT_SCOPES = ['mine', 'public', 'archived'] as const;
 export const AGENT_TABS = ['profile', 'abilities', 'memory', 'schedules', 'computer', 'publish', 'activity'] as const;
 export const RUN_VIEWS = ['active', 'scheduled', 'done'] as const;
+/** 技能: everything I can see, the team's, my own, those waiting for my review, archived. */
+export const SKILL_SCOPES = ['all', 'team', 'mine', 'review', 'archived'] as const;
 
 export type SettingsSection = (typeof SETTINGS_SECTIONS)[number];
 export type AdminSection = (typeof ADMIN_SECTIONS)[number];
 export type AgentScope = (typeof AGENT_SCOPES)[number];
 export type AgentTab = (typeof AGENT_TABS)[number];
 export type RunView = (typeof RUN_VIEWS)[number];
+export type SkillScope = (typeof SKILL_SCOPES)[number];
 
 export type Route =
-  /** `main`, `new` (optionally with the Agent to ask), or a conversation id. */
-  | { page: 'conversation'; id: string; agent?: string }
+  /** `main`, `new` (optionally with the Agent to ask and a skill to run), or a conversation id. */
+  | { page: 'conversation'; id: string; agent?: string; skill?: string }
   | { page: 'agents'; scope: AgentScope }
   | { page: 'agent'; id: string; tab: AgentTab }
   | { page: 'runs'; view: RunView }
   | { page: 'run'; id: string }
+  | { page: 'skills'; scope: SkillScope }
+  | { page: 'skill'; id: string }
   | { page: 'notifications'; view: 'needs' | 'all' }
   | { page: 'settings'; section: SettingsSection }
   | { page: 'admin'; section: AdminSection }
@@ -63,8 +68,10 @@ export function parse(hash: string): Route {
     case undefined:
       return { page: 'conversation', id: 'main' };
     case 'c': {
-      const agent = id === 'new' ? query.get('agent') : null;
-      return agent ? { page: 'conversation', id: 'new', agent } : { page: 'conversation', id: id ?? 'main' };
+      if (id !== 'new') return { page: 'conversation', id: id ?? 'main' };
+      const agent = query.get('agent');
+      const skill = query.get('skill');
+      return { page: 'conversation', id: 'new', ...(agent ? { agent } : {}), ...(skill ? { skill } : {}) };
     }
     case 'agents':
       return id
@@ -72,6 +79,8 @@ export function parse(hash: string): Route {
         : { page: 'agents', scope: pick(AGENT_SCOPES, query.get('scope'), 'mine') };
     case 'runs':
       return id ? { page: 'run', id } : { page: 'runs', view: pick(RUN_VIEWS, query.get('view'), 'active') };
+    case 'skills':
+      return id ? { page: 'skill', id } : { page: 'skills', scope: pick(SKILL_SCOPES, query.get('scope'), 'all') };
     case 'notifications':
       return id ? notFound : { page: 'notifications', view: query.get('view') === 'all' ? 'all' : 'needs' };
     case 'settings':
@@ -87,8 +96,13 @@ export function parse(hash: string): Route {
 
 export function href(route: Route): string {
   switch (route.page) {
-    case 'conversation':
-      return `#/c/${encodeURIComponent(route.id)}${route.agent ? `?agent=${encodeURIComponent(route.agent)}` : ''}`;
+    case 'conversation': {
+      const query = new URLSearchParams({
+        ...(route.agent ? { agent: route.agent } : {}),
+        ...(route.skill ? { skill: route.skill } : {}),
+      }).toString();
+      return `#/c/${encodeURIComponent(route.id)}${query ? `?${query}` : ''}`;
+    }
     case 'agents':
       return route.scope === 'mine' ? '#/agents' : `#/agents?scope=${route.scope}`;
     case 'agent':
@@ -97,6 +111,10 @@ export function href(route: Route): string {
       return route.view === 'active' ? '#/runs' : `#/runs?view=${route.view}`;
     case 'run':
       return `#/runs/${encodeURIComponent(route.id)}`;
+    case 'skills':
+      return route.scope === 'all' ? '#/skills' : `#/skills?scope=${route.scope}`;
+    case 'skill':
+      return `#/skills/${encodeURIComponent(route.id)}`;
     case 'notifications':
       return route.view === 'all' ? '#/notifications?view=all' : '#/notifications';
     case 'settings':

@@ -4,7 +4,7 @@
  */
 
 import type { ReactNode } from 'react';
-import { CheckCheck, Hash, LogOut, Plus, Settings, Shield, Sparkles, type LucideIcon } from 'lucide-react';
+import { CheckCheck, Hash, LogOut, Plus, Settings, Shield, Sparkles, Wand2, type LucideIcon } from 'lucide-react';
 import { GreenhouseMark } from '@greenhouse/ui/components/brand';
 import { Menu, Tooltip, useContextMenu, useTooltip, type MenuEntry } from '@greenhouse/ui/kit';
 import { icon } from '@greenhouse/ui/tokens';
@@ -114,6 +114,11 @@ export function Rail({ module }: { module: ModuleId }) {
               label: t('nav.agents'),
               icon: glyph(Sparkles),
               onClick: () => navigate({ page: 'agents', scope: 'mine' }),
+            },
+            {
+              label: t('nav.skills'),
+              icon: glyph(Wand2),
+              onClick: () => navigate({ page: 'skills', scope: 'all' }),
             },
             { label: t('search.placeholder'), shortcut: '⌘K', onClick: openPalette },
           ]}

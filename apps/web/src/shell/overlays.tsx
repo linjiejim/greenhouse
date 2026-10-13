@@ -9,6 +9,7 @@ import type { CreateAgentInput } from '@greenhouse/contract';
 export type OverlayRequest =
   | { type: 'new-agent'; prefill?: Partial<CreateAgentInput> & { template_key?: string } }
   | { type: 'new-room'; people?: string[] }
+  | { type: 'new-skill' }
   | { type: 'custom'; render: (close: () => void) => ReactNode };
 
 export const OverlayContext = createContext<(request: OverlayRequest | null) => void>(() => undefined);

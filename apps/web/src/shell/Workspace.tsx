@@ -9,17 +9,23 @@ import { NotificationsPage } from '../pages/notifications/NotificationsPage';
 import { RunPage } from '../pages/runs/RunPage';
 import { RunsPage } from '../pages/runs/RunsPage';
 import { SettingsPage } from '../pages/settings/SettingsPage';
+import { SkillPage } from '../pages/skills/SkillPage';
+import { SkillsPage } from '../pages/skills/SkillsPage';
 
 /** The page for the route. Admin pages need an admin. */
 export function Workspace({ route }: { route: Route }) {
   const { me } = useSession();
   switch (route.page) {
     case 'conversation':
-      return <ConversationPage key={route.id} id={route.id} agent={route.agent} />;
+      return <ConversationPage key={route.id} id={route.id} agent={route.agent} skill={route.skill} />;
     case 'agents':
       return <AgentsPage scope={route.scope} />;
     case 'agent':
       return <AgentPage key={route.id} id={route.id} tab={route.tab} />;
+    case 'skills':
+      return <SkillsPage scope={route.scope} />;
+    case 'skill':
+      return <SkillPage key={route.id} id={route.id} />;
     case 'runs':
       return <RunsPage view={route.view} />;
     case 'run':
