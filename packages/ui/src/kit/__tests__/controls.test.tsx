@@ -165,3 +165,20 @@ describe('Toast', () => {
     expect(onClose).toHaveBeenCalledTimes(2);
   });
 });
+
+describe('FieldGroup', () => {
+  it('names the group by its label and leaves the buttons inside their own names', async () => {
+    const { FieldGroup, Button } = await import('../controls');
+    render(
+      <FieldGroup label="Logo" description="Square pictures look best.">
+        <Button>Replace</Button>
+        <Button>Remove</Button>
+      </FieldGroup>,
+    );
+    const group = get('[role="group"]');
+    const labelId = group.getAttribute('aria-labelledby')!;
+    expect(document.getElementById(labelId)?.textContent).toBe('Logo');
+    expect(group.querySelector('label')).toBeNull();
+    expect([...group.querySelectorAll('button')].map((button) => button.textContent)).toEqual(['Replace', 'Remove']);
+  });
+});

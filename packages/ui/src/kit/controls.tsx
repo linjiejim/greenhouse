@@ -181,6 +181,40 @@ export function Field({
   );
 }
 
+/**
+ * A label over a composite control (a radio group, a picker, a row of buttons). Field wraps its
+ * control in a <label>, which names the FIRST button inside with the whole label text; a group
+ * is named by its heading instead, and its parts keep their own names.
+ */
+export function FieldGroup({
+  label,
+  description,
+  error,
+  children,
+}: {
+  label: string;
+  description?: string;
+  error?: string;
+  children: ReactNode;
+}) {
+  const id = useId();
+  return (
+    <div className="gh-field" role="group" aria-labelledby={`${id}-label`}>
+      <span className="gh-field-label-text" id={`${id}-label`}>
+        {label}
+      </span>
+      <div className="gh-field-group-body">{children}</div>
+      {error ? (
+        <span className="gh-field-error" role="alert">
+          {error}
+        </span>
+      ) : (
+        description && <span className="gh-field-description">{description}</span>
+      )}
+    </div>
+  );
+}
+
 export function Input({
   size = 'md',
   className,

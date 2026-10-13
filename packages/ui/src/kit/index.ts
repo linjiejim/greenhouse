@@ -13,6 +13,7 @@ export {
   Button,
   Checkbox,
   Field,
+  FieldGroup,
   IconButton,
   Input,
   Radio,

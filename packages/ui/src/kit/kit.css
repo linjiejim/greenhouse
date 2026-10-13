@@ -199,8 +199,10 @@ button.gh-chat-card-header:focus-visible {
   font: var(--gh-type-label);
   color: var(--gh-text);
 }
-.gh-field-label > :not(.gh-field-label-text) {
+.gh-field-label > :not(.gh-field-label-text),
+.gh-field-group-body {
   grid-column: 1 / -1;
+  min-width: 0;
 }
 .gh-field-required {
   color: var(--gh-secondary);
