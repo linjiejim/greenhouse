@@ -1,41 +1,37 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import {
-  BellOff,
-  Check,
-  ChevronRight,
-  CircleAlert,
-  Copy,
-  Hash,
-  LoaderCircle,
-  Pencil,
-  Pin,
-  Plus,
-  Trash2,
-} from 'lucide-react';
+import { BellOff, Check, ChevronRight, Copy, Hash, Lock, Pencil, Pin, Plus, Trash2, Upload } from 'lucide-react';
 import { GreenhouseMark } from '@greenhouse/ui/components/brand';
 import { PlantAvatar } from '@greenhouse/ui/components/plant-avatar';
 import { categorical, color, radius, space, type as typeScale } from '@greenhouse/ui/tokens';
 import {
-  ApprovalCard,
   Badge,
   Button,
+  Checkbox,
+  DatePicker,
+  DateRangePicker,
   Empty,
   ErrorBox,
   Field,
   HelpHint,
   IconButton,
   Input,
-  MiniChart,
-  PageFrame,
-  RequestCard,
+  KitProvider,
+  Menu,
+  MultiSelect,
+  Radio,
   SearchInput,
   SecretField,
   Segmented,
+  Select,
   Skeleton,
+  Spinner,
   StatusBadge,
   Switch,
   Tabs,
-} from './components';
+  TextArea,
+  useContextMenu,
+} from '@greenhouse/ui/kit';
+import { ApprovalCard, MiniChart, PageFrame, RequestCard } from './components';
 import { useDesign } from './context';
 import {
   ChatPage,
@@ -49,8 +45,6 @@ import {
   RunCard,
   ToolCard,
 } from './chat';
-import { DatePicker, DateRangePicker, MultiSelect, Select } from './pickers';
-import { Menu, useContextMenu } from './popover';
 import { TablePage } from './pages';
 import { labSections } from './shell';
 
@@ -90,13 +84,15 @@ function Sample({ label, children, wide = false }: { label: string; children: Re
 const kebab = (name: string) => name.replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase();
 
 export function ComponentLab() {
-  const { records, openRecord, openPanel, notify, theme, setTheme, density, setDensity } = useDesign();
+  const { records, openRecord, openPanel, confirm, notify, theme, setTheme, density, setDensity } = useDesign();
   const [checked, setChecked] = useState(false);
   const [switchOn, setSwitchOn] = useState(true);
-  const [selected, setSelected] = useState('概览');
+  const [selected, setSelected] = useState('表格');
   const [scope, setScope] = useState('团队');
   const [loading, setLoading] = useState(false);
   const [input, setInput] = useState('');
+  const [note, setNote] = useState('');
+  const [enDue, setEnDue] = useState('2026-10-16');
   const [radio, setRadio] = useState('团队');
   const [status, setStatus] = useState('进行中');
   const [owner, setOwner] = useState('');
@@ -289,18 +285,13 @@ export function ComponentLab() {
             <Button
               kind="danger"
               onClick={() =>
-                openPanel(
-                  '删除「完善成员邀请流程」？',
-                  <div className="stack">
-                    <p>记录会进入回收站，30 天内可以恢复。</p>
-                    <div className="row end">
-                      <Button kind="danger" onClick={() => notify('已删除')}>
-                        删除记录
-                      </Button>
-                    </div>
-                  </div>,
-                  true,
-                )
+                confirm({
+                  title: '删除「完善成员邀请流程」？',
+                  body: '记录会进入回收站，30 天内可以恢复。',
+                  confirmLabel: '删除记录',
+                  danger: true,
+                  onConfirm: () => notify('已删除'),
+                })
               }
             >
               <Trash2 size={15} />
@@ -315,10 +306,13 @@ export function ComponentLab() {
           <Sample label="焦点">
             <Button className="state-focus">继续</Button>
           </Sample>
-          <Sample label="禁用（说明原因）">
-            <span className="row">
+          <Sample label="禁用（旁边的「?」或悬停说明原因）">
+            <span className="row wrap">
               <Button disabled>发布</Button>
               <HelpHint label="发布">只有表格的拥有者可以发布应用。</HelpHint>
+              <Button disabled disabledReason="只有表格的拥有者可以导出。">
+                导出
+              </Button>
             </span>
           </Sample>
           <Sample label="等待">
@@ -336,13 +330,19 @@ export function ComponentLab() {
               {loading ? '保存中' : '点我保存'}
             </Button>
           </Sample>
-          <Sample label="图标按钮">
+          <Sample label="图标按钮（悬停 500ms 或键盘聚焦出现标签）">
             <div className="row">
               <IconButton label="添加" onClick={() => notify('已添加')}>
                 <Plus size={18} />
               </IconButton>
               <IconButton label="已选中" aria-pressed onClick={() => notify('切换')}>
                 <Check size={18} />
+              </IconButton>
+              <IconButton label="上传" disabled disabledReason="只有拥有者可以上传">
+                <Upload size={18} />
+              </IconButton>
+              <IconButton label="小号" size="sm" onClick={() => notify('小号图标按钮')}>
+                <Pencil size={14} />
               </IconButton>
             </div>
           </Sample>
@@ -380,6 +380,16 @@ export function ComponentLab() {
           </Sample>
           <Sample label="搜索">
             <SearchInput label="组件搜索" value={input} onChange={setInput} placeholder="搜索…" />
+          </Sample>
+          <Sample label="多行文本（随内容增高）">
+            <Field label="说明" description="最多 12 行，之后在框内滚动。">
+              <TextArea
+                rows={2}
+                value={note}
+                placeholder="写点什么"
+                onChange={(event) => setNote(event.target.value)}
+              />
+            </Field>
           </Sample>
           <Sample label="下拉">
             <Field label="状态">
@@ -427,7 +437,6 @@ export function ComponentLab() {
                   placeholder="选择分组"
                   options={['产品组', '设计组']}
                   onChange={() => {}}
-                  invalid
                 />
               </Field>
             </div>
@@ -442,22 +451,11 @@ export function ComponentLab() {
               />
             </Field>
           </Sample>
-          <Sample label="复选">
-            <div className="stack">
-              <label className="choice">
-                <input type="checkbox" checked={checked} onChange={(event) => setChecked(event.target.checked)} />
-                同步到团队
-              </label>
-              <label className="choice">
-                <input
-                  type="checkbox"
-                  aria-label="部分选择"
-                  ref={(node) => {
-                    if (node) node.indeterminate = true;
-                  }}
-                />
-                部分选择
-              </label>
+          <Sample label="复选（半选 / 禁用）">
+            <div className="stack tight">
+              <Checkbox label="同步到团队" checked={checked} onChange={setChecked} />
+              <Checkbox label="部分选择" checked={false} indeterminate onChange={() => notify('全选')} />
+              <Checkbox label="已归档 · 不可改" checked disabled onChange={() => {}} />
             </div>
           </Sample>
           <Sample label="开关（立即生效）">
@@ -468,18 +466,16 @@ export function ComponentLab() {
             </div>
           </Sample>
           <Sample label="单选">
-            <div className="stack">
+            <div className="stack tight">
               {['团队', '个人'].map((item) => (
-                <label className="choice" key={item}>
-                  <input
-                    type="radio"
-                    name="lab-scope"
-                    value={item}
-                    checked={radio === item}
-                    onChange={() => setRadio(item)}
-                  />
-                  {item}
-                </label>
+                <Radio
+                  key={item}
+                  name="lab-scope"
+                  value={item}
+                  label={item}
+                  checked={radio === item}
+                  onChange={() => setRadio(item)}
+                />
               ))}
             </div>
           </Sample>
@@ -503,6 +499,13 @@ export function ComponentLab() {
               <DatePicker label="只能选本周之后" value="" min="2026-10-19" onChange={() => {}} placeholder="下周起" />
               <DatePicker label="禁用的日期" value="2026-10-16" onChange={() => {}} disabled />
             </div>
+          </Sample>
+          <Sample label="英文（KitProvider locale=en）">
+            <KitProvider locale="en">
+              <Field label="Due date">
+                <DatePicker label="Due date" value={enDue} onChange={setEnDue} />
+              </Field>
+            </KitProvider>
           </Sample>
         </div>
       </Section>
@@ -541,9 +544,9 @@ export function ComponentLab() {
           <Sample label="骨架">
             <Skeleton lines={4} />
           </Sample>
-          <Sample label="进行中">
+          <Sample label="进行中（转圈只在按钮里和行内）">
             <div className="row">
-              <LoaderCircle size={18} className="spin" />
+              <Spinner />
               <span>保存中…</span>
             </div>
           </Sample>
@@ -551,11 +554,7 @@ export function ComponentLab() {
             <ErrorBox onRetry={() => notify('已重试')}>保存失败，你的输入已保留。</ErrorBox>
           </Sample>
           <Sample label="无权限" wide>
-            <div className="subtle-card">
-              <CircleAlert size={18} />
-              <h3>你没有访问权限</h3>
-              <p className="muted">向表格拥有者陈晨申请。</p>
-            </div>
+            <Empty icon={<Lock />} title="你没有访问权限" description="向表格拥有者陈晨申请。" />
           </Sample>
           <Sample label="成功提示">
             <Button onClick={() => notify('已保存')}>显示提示</Button>
@@ -572,21 +571,31 @@ export function ComponentLab() {
           <Sample label="记录：查看 → 编辑 → 保存">
             <Button onClick={() => openRecord(records[0])}>打开记录</Button>
           </Sample>
-          <Sample label="具体的确认">
+          <Sample label="具体的确认（最终确认用实红底）">
             <Button
               onClick={() =>
-                openPanel(
-                  '取消「整理客户访谈」？',
-                  <div className="stack">
-                    <p>运行会停止，已完成的步骤和产物会保留。</p>
-                    <div className="row end">
-                      <Button kind="danger" onClick={() => notify('已取消')}>
-                        取消运行
-                      </Button>
-                    </div>
-                  </div>,
-                  true,
-                )
+                confirm({
+                  title: '取消「整理客户访谈」？',
+                  body: '运行会停止，已完成的步骤和产物会保留。',
+                  confirmLabel: '取消运行',
+                  cancelLabel: '继续运行',
+                  danger: true,
+                  onConfirm: () => notify('已取消'),
+                })
+              }
+            >
+              打开确认
+            </Button>
+          </Sample>
+          <Sample label="普通确认">
+            <Button
+              onClick={() =>
+                confirm({
+                  title: '把陈晨设为管理员？',
+                  body: '管理员可以管理成员、服务、预算和连接器，但看不到成员的对话。',
+                  confirmLabel: '设为管理员',
+                  onConfirm: () => notify('角色已更新'),
+                })
               }
             >
               打开确认

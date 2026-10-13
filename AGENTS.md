@@ -19,7 +19,8 @@ Greenhouse is an open-source, self-hosted platform where a team works with its o
 - apps/design: prototype and component lab. apps/desktop: Tauri shell (apps/desktop/AGENTS.md). apps/bot-computer: the Agent computer image.
 - apps/mobile: v1 Expo app outside the pnpm workspace and the root checks until roadmap M4 (apps/mobile/AGENTS.md).
 - packages/agent-core: agent loop and stream collectors. packages/knowledge-editor: Tiptap schema and Markdown conversion.
-- packages/types: plant avatars, rich-output blocks, entity links, deployment config shape. packages/ui: tokens, brand mark, plant avatars, component kit. packages/utils: shared helpers.
+- packages/types: plant avatars, rich-output blocks, entity links, deployment config shape. packages/utils: shared helpers.
+- packages/ui: tokens, brand mark, plant avatars and the component kit (src/kit, imported as @greenhouse/ui/kit with @greenhouse/ui/kit/kit.css; docs/design-system/components.md). The kit's CSS uses tokens only and its words come from src/kit/strings.ts in zh and en.
 
 ## Commands
 - `pnpm typecheck`, `pnpm lint` (`pnpm lint:fix`) and `pnpm test` must pass before every commit.

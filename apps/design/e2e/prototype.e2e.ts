@@ -223,7 +223,7 @@ test('mentions, skills, attachments, read-only and retry are usable', async ({ p
   await expect(page.getByRole('textbox', { name: '消息', exact: true })).toHaveCount(0);
   await page.getByLabel('对话状态', { exact: true }).selectOption('工具与重试');
   await page.getByRole('button', { name: '重试', exact: true }).click();
-  await expect(page.locator('.chat-card-header').filter({ hasText: '8 条记录' })).toHaveCount(2);
+  await expect(page.locator('.gh-chat-card-header').filter({ hasText: '8 条记录' })).toHaveCount(2);
 });
 
 test('artifact exports an actual Markdown file and the sandboxed preview is interactive', async ({ page }) => {
@@ -249,6 +249,12 @@ test('modal traps focus and reduced motion still allows closing', async ({ page 
   await dialog.getByRole('button', { name: '编辑', exact: true }).focus();
   await page.keyboard.press('Tab');
   await expect(dialog.getByRole('button', { name: '关闭详情', exact: true })).toBeFocused();
+  // Keyboard focus shows the icon button's label; the first Escape dismisses only that tooltip.
+  const tooltip = page.locator('.gh-tooltip');
+  await expect(tooltip).toHaveText('关闭详情');
+  await page.keyboard.press('Escape');
+  await expect(tooltip).toHaveCount(0);
+  await expect(dialog).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(dialog).toHaveCount(0);
 });
@@ -376,13 +382,13 @@ test('Select and DatePicker are keyboard-first and Escape closes only the list',
 test('reply cards keep the status badge at the far right of the title row', async ({ page }) => {
   await page.goto('/#chat');
   await page.getByLabel('对话状态', { exact: true }).selectOption('需要你：其他类型');
-  const headers = page.locator('.chat-card-header');
+  const headers = page.locator('.gh-chat-card-header');
   await expect(headers).toHaveCount(4);
   for (const header of await headers.all()) {
     const box = (await header.boundingBox())!;
-    const badge = (await header.locator('.badge').boundingBox())!;
+    const badge = (await header.locator('.gh-badge').boundingBox())!;
     expect(box.x + box.width - (badge.x + badge.width)).toBeLessThanOrEqual(13);
-    await expect(header.locator('.badge')).toHaveText('需要你');
+    await expect(header.locator('.gh-badge')).toHaveText('需要你');
   }
 });
 
@@ -391,7 +397,7 @@ test('the detail drawer takes about 40% of the window; sign-in is one large butt
   await page.goto('/#tables');
   await page.getByRole('button', { name: '完善成员邀请流程', exact: true }).click();
   const window = (await page.getByTestId('product-window').boundingBox())!;
-  const panel = (await page.locator('.overlay-panel').boundingBox())!;
+  const panel = (await page.locator('.gh-overlay-panel').boundingBox())!;
   const share = panel.width / window.width;
   expect(panel.width >= 480 || share >= 0.38).toBeTruthy();
   expect(share).toBeLessThanOrEqual(0.42);

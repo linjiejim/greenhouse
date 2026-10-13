@@ -16,7 +16,6 @@ import {
   Hash,
   ImageIcon,
   Info,
-  LoaderCircle,
   LockKeyhole,
   Mic,
   MonitorPlay,
@@ -33,20 +32,19 @@ import {
 } from 'lucide-react';
 import { PlantAvatar } from '@greenhouse/ui/components/plant-avatar';
 import {
-  ApprovalCard,
   Button,
   ChatCard,
   ErrorBox,
   IconButton,
-  MiniChart,
-  RequestCard,
+  Menu,
   Skeleton,
+  Spinner,
   StatusBadge,
-  Steps,
-} from './components';
+  TextArea,
+} from '@greenhouse/ui/kit';
+import { avatar } from '@greenhouse/ui/tokens';
+import { ApprovalCard, MiniChart, NativeSelect, RequestCard, Steps } from './components';
 import { useDesign } from './context';
-import { NativeSelect } from './pickers';
-import { Menu } from './popover';
 import { useRowMenus } from './shell';
 import {
   agents,
@@ -299,7 +297,7 @@ export function ChatPage() {
       <header className="page-header chat-header">
         {headerLead}
         {counterpart.kind === 'room' ? (
-          <span className="file-icon small-icon">
+          <span className="file-icon">
             <Hash size={16} />
           </span>
         ) : (
@@ -330,7 +328,7 @@ export function ChatPage() {
                 <h3 className="small-title">摘要</h3>
                 <p className="muted">本周讨论了产品改版进度和导入检查的优先级。</p>
                 <h3 className="small-title">共享笔记</h3>
-                <textarea className="input" rows={3} defaultValue="导入检查先于移动端导航。" />
+                <TextArea rows={3} aria-label="共享笔记" defaultValue="导入检查先于移动端导航。" />
               </div>,
             )
           }
@@ -517,7 +515,7 @@ export function ChatPage() {
               )}
               {message.state === 'streaming' && !message.text && (
                 <div className="row muted small">
-                  <LoaderCircle size={15} className="spin" />
+                  <Spinner />
                   正在查找…
                 </div>
               )}
@@ -561,6 +559,7 @@ export function ChatPage() {
                   <div key={`${file.name}-${index}`}>
                     <Attachment {...file} />
                     <IconButton
+                      size="sm"
                       label={`移除 ${file.name}`}
                       onClick={() => setAttachments((value) => value.filter((_, itemIndex) => index !== itemIndex))}
                     >
@@ -772,7 +771,7 @@ export function MessageBubble({
     <article className={`message ${role}`}>
       {role === 'assistant' && (
         <div className="message-avatar">
-          <PlantAvatar plant={agent.plant} size={24} state={streaming ? 'speaking' : 'idle'} />
+          <PlantAvatar plant={agent.plant} size={avatar.md} state={streaming ? 'speaking' : 'idle'} />
         </div>
       )}
       <div className="message-body">
@@ -789,6 +788,7 @@ export function MessageBubble({
           <div className="message-actions">
             <IconButton
               label="复制"
+              size="sm"
               onClick={() => {
                 navigator.clipboard
                   ?.writeText(text)
@@ -798,20 +798,26 @@ export function MessageBubble({
             >
               <Copy size={14} />
             </IconButton>
-            <IconButton label="有帮助" aria-pressed={vote === 'up'} onClick={() => setVote(vote === 'up' ? '' : 'up')}>
+            <IconButton
+              label="有帮助"
+              size="sm"
+              aria-pressed={vote === 'up'}
+              onClick={() => setVote(vote === 'up' ? '' : 'up')}
+            >
               <ThumbsUp size={14} />
             </IconButton>
             <IconButton
               label="没帮助"
+              size="sm"
               aria-pressed={vote === 'down'}
               onClick={() => setVote(vote === 'down' ? '' : 'down')}
             >
               <ThumbsDown size={14} />
             </IconButton>
-            <IconButton label={speaking ? '停止朗读' : '朗读'} aria-pressed={speaking} onClick={readAloud}>
+            <IconButton label={speaking ? '停止朗读' : '朗读'} size="sm" aria-pressed={speaking} onClick={readAloud}>
               <Volume2 size={14} />
             </IconButton>
-            <IconButton label="从这里新开会话" onClick={() => navigate('chat', 'new')}>
+            <IconButton label="从这里新开会话" size="sm" onClick={() => navigate('chat', 'new')}>
               <Split size={14} />
             </IconButton>
           </div>
@@ -903,7 +909,7 @@ export function EntityCard({ record }: { record: RecordItem }) {
           {record.owner} · {record.date.slice(5).replace('-', ' 月 ')} 日截止
         </span>
       </span>
-      <StatusBadge status={record.status} tone={record.status === '待处理' ? 'neutral' : undefined} />
+      <StatusBadge status={record.status} />
       <ChevronRight size={15} className="muted" />
     </button>
   );
@@ -1031,7 +1037,7 @@ export function MediaResults() {
         }
       >
         <div className="media-video">
-          <LoaderCircle size={18} className="spin" />
+          <Spinner />
           <span className="small muted">约 1 分钟</span>
         </div>
       </ChatCard>
@@ -1127,6 +1133,7 @@ export function CodeBlock() {
         <span>TypeScript</span>
         <IconButton
           label="复制代码"
+          size="sm"
           onClick={() => {
             navigator.clipboard
               ?.writeText(code)

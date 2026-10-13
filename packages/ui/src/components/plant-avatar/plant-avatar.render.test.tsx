@@ -7,7 +7,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PLANT_SETTLE_MS, PlantAvatar, PlantAvatarStack, type PlantAvatarProps } from './plant-avatar';
 import { morphPlantAvatar } from './plant-morph';
-import { buildPlantAvatarSvg, ensurePlantAvatarStyles } from './plant-avatar-svg';
+import { buildPlantAvatarSvg, ensurePlantAvatarStyles, plantPalette } from './plant-avatar-svg';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -57,6 +57,22 @@ describe('<PlantAvatar/>', () => {
       expect(svg().getAttribute('width')).toBe(String(px));
     }
     expect(svg().outerHTML).toContain('var(--pa-body,');
+  });
+
+  it('paints the dark disc and body under a [data-theme="dark"] ancestor, the Native Haven theme switch', () => {
+    const { light, dark } = plantPalette('ivy');
+    const tone = (name: string) => getComputedStyle(svg()).getPropertyValue(`--pa-${name}`).trim();
+    host.setAttribute('data-theme', 'dark');
+    avatar({ plant: 'ivy', size: 'sm' });
+    expect(tone('disc')).toBe(dark.disc);
+    expect(tone('body')).toBe(dark.body);
+    act(() => root.unmount());
+    root = createRoot(host);
+    host.setAttribute('data-theme', 'light');
+    avatar({ plant: 'ivy', size: 'sm' });
+    // Unset in light: every paint falls back to its light hex.
+    expect(tone('disc')).toBe('');
+    expect(svg().outerHTML).toContain(`var(--pa-disc,${light.disc})`);
   });
 
   it('resolves stored avatars (plant > template > legacy colour) and forces the glyph LOD when compact', () => {

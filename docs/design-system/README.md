@@ -16,7 +16,7 @@
 ## 来源
 
 - tokens：packages/ui/src/tokens/haven.ts 是唯一来源。改完运行 pnpm tokens:build 生成 haven.css；单元测试检查文件是否最新和全部对比度。文档不抄写数值。
-- 组件：原型 apps/design 是当前实现（pnpm design:dev，#components 是组件页）；路线图 M0.2 把它们搬进 packages/ui。
+- 组件：packages/ui/src/kit 是实现（@greenhouse/ui/kit），新 Web 与原型共用；原型 apps/design 的组件页（pnpm design:dev，#components）演示每个状态。
 - 画稿：design/greenhouse-v2/greenhouse-v2.pen（本地，不进 git）。只放关键页面的布局、设计系统和组件状态；变量与 tokens 同名同值。
 - 原型、画稿、文档冲突时以文档为准，然后把另外两处改过来。
 
@@ -31,6 +31,6 @@
 
 ## 维护
 
-- 新组件或新状态：同时改 components.md、原型的组件页和画稿的组件板，检查浅色、深色和手机。
+- 新组件或新状态：同时改 components.md、packages/ui/src/kit（含单元测试）、原型的组件页和画稿的组件板，检查浅色、深色和手机。
 - 新 token：先确认现有角色表达不了，再只改 haven.ts。
 - 本目录是目标规范。新 Web 落地前，v1 代码的旧约定只对旧代码有效（apps/web/src/AGENTS.md）。

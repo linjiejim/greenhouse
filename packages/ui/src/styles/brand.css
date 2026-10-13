@@ -1,13 +1,19 @@
-/* One-shot Haven intro; the base frame is always the readable final mark. */
+/* One-shot Haven intro; the base frame is always the readable final mark. Colors: brandMark and
+   brandSeed in packages/ui/src/tokens/haven.ts, so the mark follows data-theme like everything else. */
 .greenhouse-mark {
   display: block;
   flex-shrink: 0;
   overflow: visible;
-  fill: var(--t-brand-mark);
+  fill: var(--gh-brand-mark);
 }
 
 .greenhouse-seed {
-  fill: var(--t-brand-seed);
+  fill: var(--gh-brand-seed);
+}
+
+/* The seal only closes the seam once the intro's halves meet; a static mark leaves it out. */
+.greenhouse-house-seal {
+  opacity: 0;
 }
 
 @media (prefers-reduced-motion: no-preference) {

@@ -65,7 +65,16 @@ import {
 } from 'lucide-react';
 import { GreenhouseMark } from '@greenhouse/ui/components/brand';
 import { PlantAvatar } from '@greenhouse/ui/components/plant-avatar';
-import { Button, IconButton, SearchInput, Segmented } from './components';
+import {
+  Button,
+  IconButton,
+  Menu,
+  SearchInput,
+  Segmented,
+  Tooltip,
+  useContextMenu,
+  type MenuEntry,
+} from '@greenhouse/ui/kit';
 import { useDesign } from './context';
 import {
   agents,
@@ -80,7 +89,6 @@ import {
   type AgentItem,
   type ModuleId,
 } from './data';
-import { Menu, useContextMenu, type MenuEntry } from './popover';
 
 export const railIcons: Record<'chat' | 'knowledge' | 'tables' | 'apps', LucideIcon> = {
   chat: MessageSquare,
@@ -295,17 +303,18 @@ function RailItem({
   const context = useContextMenu(menu ?? [], `${moduleLabel(id)}的快捷操作`);
   return (
     <>
-      <button
-        className={`rail-item ${module === id ? 'active' : ''}`}
-        aria-label={moduleLabel(id)}
-        title={moduleLabel(id)}
-        aria-current={module === id ? 'page' : undefined}
-        onClick={() => navigate(id)}
-        {...(menu ? context.handlers : {})}
-      >
-        <Icon size={20} strokeWidth={1.75} />
-        {badge}
-      </button>
+      <Tooltip label={moduleLabel(id)} side="right">
+        <button
+          className={`rail-item ${module === id ? 'active' : ''}`}
+          aria-label={moduleLabel(id)}
+          aria-current={module === id ? 'page' : undefined}
+          onClick={() => navigate(id)}
+          {...(menu ? context.handlers : {})}
+        >
+          <Icon size={20} strokeWidth={1.75} />
+          {badge}
+        </button>
+      </Tooltip>
       {context.menu}
     </>
   );
@@ -317,9 +326,11 @@ export function Rail({ onLogout }: { onLogout: () => void }) {
   const running = runs.some((run) => run.state === '运行中');
   return (
     <nav className="global-rail" aria-label="主导航">
-      <button className="logo-button" title="回到主线" aria-label="回到主线" onClick={() => navigate('chat', 'main')}>
-        <GreenhouseMark />
-      </button>
+      <Tooltip label="回到主线" side="right">
+        <button className="logo-button" aria-label="回到主线" onClick={() => navigate('chat', 'main')}>
+          <GreenhouseMark />
+        </button>
+      </Tooltip>
       <div className="rail-primary">
         {(['chat', 'knowledge', 'tables', 'apps'] as const).map((id) => (
           <RailItem key={id} id={id} Icon={railIcons[id]} menu={menus[id]} />
@@ -501,7 +512,7 @@ function ChatList({ query }: { query: string }) {
       <Section
         title="房间"
         actions={
-          <IconButton label="新建房间" onClick={() => select('room:new')}>
+          <IconButton label="新建房间" size="sm" onClick={() => select('room:new')}>
             <Plus size={14} />
           </IconButton>
         }
@@ -723,6 +734,7 @@ export function ModuleSidebar({ onCollapse, onClose }: { onCollapse: () => void;
           <h2>{moduleLabel(module)}</h2>
         )}
         <IconButton
+          size="sm"
           label={searching ? '关闭搜索' : `搜索${moduleLabel(module)}`}
           onClick={() => {
             setSearching(!searching);
@@ -732,11 +744,11 @@ export function ModuleSidebar({ onCollapse, onClose }: { onCollapse: () => void;
           {searching ? <X size={16} /> : <Search size={16} />}
         </IconButton>
         {mobile ? (
-          <IconButton label="关闭导航" onClick={onClose}>
+          <IconButton label="关闭导航" size="sm" onClick={onClose}>
             <X size={16} />
           </IconButton>
         ) : (
-          <IconButton label="收起目录" onClick={onCollapse}>
+          <IconButton label="收起目录" size="sm" onClick={onCollapse}>
             <PanelLeftClose size={16} />
           </IconButton>
         )}

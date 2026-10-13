@@ -1,13 +1,16 @@
 /**
- * Pickers drawn in the Haven style instead of the browser's own: Select, MultiSelect,
- * DatePicker and DateRangePicker (docs/design-system/components.md, 输入).
- * Each trigger is as tall as an input, opens one floating panel, and works with the
- * keyboard alone. NativeSelect is only for the prototype's own preview controls.
+ * Pickers drawn in the Haven style instead of the browser's own (docs/design-system/components.md,
+ * 输入): Select, MultiSelect, DatePicker and DateRangePicker. Each trigger is as tall as an input,
+ * opens one floating panel and works with the keyboard alone; Escape closes only the panel.
  */
 
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode, type RefObject } from 'react';
 import { CalendarDays, Check, ChevronDown, ChevronLeft, ChevronRight, Search, X } from 'lucide-react';
-import { useDismiss, useFloating } from './popover';
+import { icon } from '../tokens/haven';
+import { IconButton } from './controls';
+import { useDismiss, useFloating } from './floating';
+import { cx, useKitStrings } from './provider';
+import { kitStrings, weekdayIndex, type KitLocale, type KitStrings } from './strings';
 
 export type SelectOption =
   | string
@@ -20,6 +23,16 @@ const normalize = (options: readonly SelectOption[]): Item[] =>
 
 /** Lists longer than this get a search field. */
 const SEARCH_FROM = 8;
+
+type FieldProps = {
+  /** Accessible name of the trigger. */
+  label: string;
+  placeholder?: string;
+  disabled?: boolean;
+  'aria-invalid'?: boolean | 'true' | 'false';
+  'aria-describedby'?: string;
+};
+const invalid = (value: FieldProps['aria-invalid']) => value === true || value === 'true' || undefined;
 
 /** Keyboard model shared by Select and MultiSelect while the list is open. */
 function useListKeys(items: Item[], onPick: (item: Item) => void, onClose: () => void) {
@@ -70,11 +83,18 @@ function OptionList({
   onPick: (item: Item) => void;
   multiple?: boolean;
 }) {
+  const t = useKitStrings();
   useEffect(() => {
-    document.getElementById(`${id}-${active}`)?.scrollIntoView({ block: 'nearest' });
+    document.getElementById(`${id}-${active}`)?.scrollIntoView?.({ block: 'nearest' });
   }, [id, active]);
   return (
-    <div role="listbox" id={id} aria-label={label} aria-multiselectable={multiple || undefined} className="picker-list">
+    <div
+      role="listbox"
+      id={id}
+      aria-label={label}
+      aria-multiselectable={multiple || undefined}
+      className="gh-picker-list"
+    >
       {items.map((item, index) => (
         <div
           key={item.value}
@@ -82,25 +102,27 @@ function OptionList({
           role="option"
           aria-selected={isSelected(item)}
           aria-disabled={item.disabled || undefined}
-          className={`picker-option ${index === active ? 'active' : ''}`}
+          className={cx('gh-picker-option', index === active && 'is-active')}
           onPointerMove={() => !item.disabled && setActive(index)}
           onMouseDown={(event) => event.preventDefault()}
           onClick={() => !item.disabled && onPick(item)}
         >
           {multiple && (
-            <span className="check-box" aria-hidden>
-              {isSelected(item) && <Check size={12} />}
+            <span className={cx('gh-checkbox', isSelected(item) ? 'is-on' : 'is-off')} aria-hidden>
+              {isSelected(item) && <Check strokeWidth={3} />}
             </span>
           )}
-          {item.icon && <span className="picker-option-icon">{item.icon}</span>}
-          <span className="picker-option-text">
+          {item.icon && <span className="gh-picker-option-icon">{item.icon}</span>}
+          <span className="gh-picker-option-text">
             <span>{item.label}</span>
-            {item.description && <span className="picker-option-description">{item.description}</span>}
+            {item.description && <span className="gh-picker-option-description">{item.description}</span>}
           </span>
-          {!multiple && isSelected(item) && <Check size={15} className="picker-check" />}
+          {!multiple && isSelected(item) && (
+            <Check size={icon.md} strokeWidth={icon.stroke} className="gh-picker-check" />
+          )}
         </div>
       ))}
-      {!items.length && <div className="picker-empty">没有匹配的选项</div>}
+      {!items.length && <div className="gh-picker-empty">{t.noMatches}</div>}
     </div>
   );
 }
@@ -118,15 +140,16 @@ function SearchBox({
   listId: string;
   activeId?: string;
 }) {
+  const t = useKitStrings();
   return (
-    <div className="picker-search">
-      <Search size={14} />
+    <div className="gh-picker-search">
+      <Search size={icon.sm} strokeWidth={icon.stroke} />
       <input
         autoFocus
-        aria-label="搜索选项"
+        aria-label={t.searchOptions}
         aria-controls={listId}
         aria-activedescendant={activeId}
-        placeholder="搜索"
+        placeholder={t.search}
         value={value}
         onChange={(event) => onChange(event.target.value)}
         onKeyDown={onKeyDown}
@@ -138,29 +161,33 @@ function SearchBox({
 const matches = (item: Item, query: string) =>
   !query || `${item.label} ${item.description ?? ''}`.toLowerCase().includes(query.trim().toLowerCase());
 
+/**
+ * One value from a list. Arrow keys open it and move, Enter or Space picks, Escape closes only
+ * the list; closed, a letter jumps to the next option that starts with it. Lists longer than
+ * eight get a search field; options can carry a description and be disabled.
+ */
 export function Select({
   label,
   value,
   options,
   onChange,
-  placeholder = '请选择',
+  placeholder,
   disabled = false,
-  invalid = false,
   searchable,
   size = 'md',
-  className = '',
-}: {
-  label: string;
+  className,
+  'aria-invalid': ariaInvalid,
+  'aria-describedby': describedBy,
+}: FieldProps & {
   value: string;
   options: readonly SelectOption[];
   onChange: (value: string) => void;
-  placeholder?: string;
-  disabled?: boolean;
-  invalid?: boolean;
   searchable?: boolean;
+  /** sm 28 for table cells and compact toolbars. */
   size?: 'sm' | 'md';
   className?: string;
 }) {
+  const t = useKitStrings();
   const all = normalize(options);
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -185,18 +212,18 @@ export function Select({
   });
   useDismiss(open, () => close(false), [panel, trigger]);
   const show = () => {
-    keys.setActive(Math.max(0, all.indexOf(selected!)));
+    keys.setActive(Math.max(0, selected ? all.indexOf(selected) : 0));
     setOpen(true);
   };
   const typeahead = (key: string) => {
-    const start = Math.max(0, all.indexOf(selected!));
+    const start = selected ? all.indexOf(selected) : -1;
     const next = [...all.slice(start + 1), ...all.slice(0, start + 1)].find(
       (item) => !item.disabled && item.label.toLowerCase().startsWith(key.toLowerCase()),
     );
     if (next) onChange(next.value);
   };
   return (
-    <span className={`select ${size} ${className}`}>
+    <span className={cx('gh-select', size === 'sm' && 'gh-select-sm', className)}>
       <button
         ref={trigger}
         type="button"
@@ -206,31 +233,38 @@ export function Select({
         aria-expanded={open}
         aria-controls={open ? listId : undefined}
         aria-activedescendant={open && !search && items[keys.active] ? `${listId}-${keys.active}` : undefined}
-        aria-invalid={invalid || undefined}
+        aria-invalid={invalid(ariaInvalid)}
+        aria-describedby={describedBy}
         disabled={disabled}
-        className="picker-trigger"
-        // Enter and Space reach here as a click with detail 0: while open they pick the active option.
-        onClick={(event) => {
-          if (!open) show();
-          else if (event.detail === 0 && items[keys.active] && !items[keys.active].disabled) pick(items[keys.active]);
-          else close();
+        className="gh-picker-trigger"
+        // Keys are handled on keydown; preventing their default also stops the click a browser derives
+        // from Enter or Space, so onClick only sees pointers and assistive technology.
+        onClick={() => (open ? close() : show())}
+        onKeyUp={(event) => {
+          if (event.key === ' ') event.preventDefault();
         }}
         onKeyDown={(event) => {
           if (open && !search) {
-            if (event.key !== 'Enter' && event.key !== ' ') keys.onKeyDown(event);
-          } else if (!open && (event.key === 'ArrowDown' || event.key === 'ArrowUp')) {
+            if (event.key === ' ') {
+              event.preventDefault();
+              const item = items[keys.active];
+              if (item && !item.disabled) pick(item);
+            } else keys.onKeyDown(event);
+          } else if (!open && ['ArrowDown', 'ArrowUp', 'Enter', ' '].includes(event.key)) {
             event.preventDefault();
             show();
-          } else if (!open && event.key.length === 1 && event.key !== ' ' && !event.metaKey && !event.ctrlKey)
+          } else if (!open && event.key.length === 1 && !event.metaKey && !event.ctrlKey && !event.altKey)
             typeahead(event.key);
         }}
       >
         {selected?.icon}
-        <span className={`picker-value ${selected ? '' : 'placeholder'}`}>{selected?.label ?? placeholder}</span>
-        <ChevronDown size={14} className="picker-chevron" />
+        <span className={cx('gh-picker-value', !selected && 'is-placeholder')}>
+          {selected?.label ?? placeholder ?? t.choose}
+        </span>
+        <ChevronDown size={icon.sm} strokeWidth={icon.stroke} className="gh-picker-chevron" />
       </button>
       {open && (
-        <div ref={panel} className="picker-panel" style={style}>
+        <div ref={panel} className="gh-picker-panel" style={style}>
           {search && (
             <SearchBox
               value={query}
@@ -258,25 +292,28 @@ export function Select({
   );
 }
 
-/** Several values, shown as chips. Enter or a click toggles; the list stays open. */
+/**
+ * Several values. The trigger shows the first `max` and "+N"; the list stays open for picking
+ * more, with a search field and 清除; Backspace in the empty search removes the last value.
+ */
 export function MultiSelect({
   label,
   value,
   options,
   onChange,
-  placeholder = '请选择',
+  placeholder,
   disabled = false,
   max = 2,
-}: {
-  label: string;
+  'aria-invalid': ariaInvalid,
+  'aria-describedby': describedBy,
+}: FieldProps & {
   value: string[];
   options: readonly SelectOption[];
   onChange: (value: string[]) => void;
-  placeholder?: string;
-  disabled?: boolean;
   /** Chips shown before "+N". */
   max?: number;
 }) {
+  const t = useKitStrings();
   const all = normalize(options);
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -298,7 +335,7 @@ export function MultiSelect({
   });
   useDismiss(open, () => close(false), [panel, trigger]);
   return (
-    <span className="select multi">
+    <span className="gh-select gh-select-multi">
       <button
         ref={trigger}
         type="button"
@@ -307,30 +344,32 @@ export function MultiSelect({
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-controls={open ? listId : undefined}
+        aria-invalid={invalid(ariaInvalid)}
+        aria-describedby={describedBy}
         disabled={disabled}
-        className="picker-trigger"
+        className="gh-picker-trigger"
         onClick={() => (open ? close() : setOpen(true))}
         onKeyDown={(event) => {
-          if (!open && event.key === 'ArrowDown') {
+          if (!open && (event.key === 'ArrowDown' || event.key === 'ArrowUp')) {
             event.preventDefault();
             setOpen(true);
           }
         }}
       >
-        <span className={`picker-value chips ${chosen.length ? '' : 'placeholder'}`}>
+        <span className={cx('gh-picker-value', 'gh-picker-chips', !chosen.length && 'is-placeholder')}>
           {chosen.length
             ? chosen.slice(0, max).map((item) => (
-                <span key={item.value} className="chip">
+                <span key={item.value} className="gh-chip">
                   {item.label}
                 </span>
               ))
-            : placeholder}
-          {chosen.length > max && <span className="chip more">+{chosen.length - max}</span>}
+            : (placeholder ?? t.choose)}
+          {chosen.length > max && <span className="gh-chip is-more">+{chosen.length - max}</span>}
         </span>
-        <ChevronDown size={14} className="picker-chevron" />
+        <ChevronDown size={icon.sm} strokeWidth={icon.stroke} className="gh-picker-chevron" />
       </button>
       {open && (
-        <div ref={panel} className="picker-panel" style={style}>
+        <div ref={panel} className="gh-picker-panel" style={style}>
           <SearchBox
             value={query}
             listId={listId}
@@ -354,10 +393,10 @@ export function MultiSelect({
             onPick={toggle}
             multiple
           />
-          <div className="picker-footer">
-            <span className="muted small grow">已选 {value.length}</span>
-            <button type="button" className="text-button" disabled={!value.length} onClick={() => onChange([])}>
-              清除
+          <div className="gh-picker-footer">
+            <span className="gh-picker-footer-note">{t.selectedCount(value.length)}</span>
+            <button type="button" className="gh-text-button" disabled={!value.length} onClick={() => onChange([])}>
+              {t.clear}
             </button>
           </div>
         </div>
@@ -369,6 +408,7 @@ export function MultiSelect({
 // ─── Dates ───
 
 const pad = (value: number) => String(value).padStart(2, '0');
+/** YYYY-MM-DD in local time. */
 export const toISO = (date: Date) => `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 const fromISO = (value: string) => {
   const [year, month, day] = value.split('-').map(Number);
@@ -380,17 +420,16 @@ const addMonths = (date: Date, months: number) => {
   const last = new Date(target.getFullYear(), target.getMonth() + 1, 0).getDate();
   return new Date(target.getFullYear(), target.getMonth(), Math.min(date.getDate(), last));
 };
-const WEEKDAYS = ['一', '二', '三', '四', '五', '六', '日'];
-/** Monday-first index. */
-const weekday = (date: Date) => (date.getDay() + 6) % 7;
 
-/** 10 月 16 日 周五 this year; 2025 年 10 月 3 日 otherwise (docs/design-system/content.md). */
-export function formatDate(value: string) {
+const format = (strings: KitStrings, value: string) => {
   if (!value) return '';
   const date = fromISO(value);
-  return date.getFullYear() === new Date().getFullYear()
-    ? `${date.getMonth() + 1} 月 ${date.getDate()} 日 周${WEEKDAYS[weekday(date)]}`
-    : `${date.getFullYear()} 年 ${date.getMonth() + 1} 月 ${date.getDate()} 日`;
+  return strings.date(date, date.getFullYear() !== new Date().getFullYear());
+};
+
+/** "10 月 16 日 周五" this year, "2025 年 10 月 3 日" otherwise (docs/design-system/content.md). */
+export function formatDate(value: string, locale: KitLocale = 'zh') {
+  return format(kitStrings[locale], value);
 }
 
 function Calendar({
@@ -412,10 +451,11 @@ function Calendar({
   onHover?: (iso: string) => void;
   onClose: () => void;
 }) {
+  const t = useKitStrings();
   const grid = useRef<HTMLDivElement>(null);
   const today = toISO(new Date());
   const first = new Date(focus.getFullYear(), focus.getMonth(), 1);
-  const start = addDays(first, -weekday(first));
+  const start = addDays(first, -weekdayIndex(first));
   const days = Array.from({ length: 42 }, (_, index) => addDays(start, index));
   useEffect(() => {
     grid.current?.querySelector<HTMLElement>(`[data-date="${toISO(focus)}"]`)?.focus({ preventScroll: true });
@@ -426,14 +466,18 @@ function Calendar({
       ArrowRight: () => addDays(focus, 1),
       ArrowUp: () => addDays(focus, -7),
       ArrowDown: () => addDays(focus, 7),
-      Home: () => addDays(focus, -weekday(focus)),
-      End: () => addDays(focus, 6 - weekday(focus)),
+      Home: () => addDays(focus, -weekdayIndex(focus)),
+      End: () => addDays(focus, 6 - weekdayIndex(focus)),
       PageUp: () => addMonths(focus, -1),
       PageDown: () => addMonths(focus, 1),
     };
     if (moves[event.key]) {
       event.preventDefault();
       setFocus(moves[event.key]());
+    } else if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      const iso = toISO(focus);
+      if (!isDisabled(iso)) onPick(iso);
     } else if (event.key === 'Escape') {
       event.preventDefault();
       event.stopPropagation();
@@ -441,59 +485,47 @@ function Calendar({
     }
   };
   return (
-    <div className="calendar">
-      <div className="calendar-header">
-        <strong aria-live="polite">
-          {focus.getFullYear()} 年 {focus.getMonth() + 1} 月
-        </strong>
-        <span className="grow" />
-        <button
-          type="button"
-          className="calendar-nav"
-          aria-label="上个月"
-          onClick={() => setFocus(addMonths(focus, -1))}
-        >
-          <ChevronLeft size={16} />
-        </button>
-        <button
-          type="button"
-          className="calendar-nav"
-          aria-label="下个月"
-          onClick={() => setFocus(addMonths(focus, 1))}
-        >
-          <ChevronRight size={16} />
-        </button>
+    <div className="gh-calendar">
+      <div className="gh-calendar-header">
+        <strong aria-live="polite">{t.month(focus)}</strong>
+        <span className="gh-calendar-spacer" />
+        <IconButton label={t.previousMonth} size="sm" onClick={() => setFocus(addMonths(focus, -1))}>
+          <ChevronLeft size={icon.md} strokeWidth={icon.stroke} />
+        </IconButton>
+        <IconButton label={t.nextMonth} size="sm" onClick={() => setFocus(addMonths(focus, 1))}>
+          <ChevronRight size={icon.md} strokeWidth={icon.stroke} />
+        </IconButton>
       </div>
-      <div
-        className="calendar-grid"
-        role="grid"
-        aria-label={`${focus.getFullYear()} 年 ${focus.getMonth() + 1} 月`}
-        ref={grid}
-        onKeyDown={onKeyDown}
-      >
-        <div role="row" className="calendar-row">
-          {WEEKDAYS.map((day) => (
-            <span key={day} role="columnheader" className="calendar-weekday">
+      <div className="gh-calendar-grid" role="grid" aria-label={t.month(focus)} ref={grid} onKeyDown={onKeyDown}>
+        <div role="row" className="gh-calendar-row">
+          {t.weekdays.map((day) => (
+            <span key={day} role="columnheader" className="gh-calendar-weekday">
               {day}
             </span>
           ))}
         </div>
         {Array.from({ length: 6 }, (_, row) => (
-          <div role="row" className="calendar-row" key={row}>
+          <div role="row" className="gh-calendar-row" key={row}>
             {days.slice(row * 7, row * 7 + 7).map((day) => {
               const iso = toISO(day);
-              const outside = day.getMonth() !== focus.getMonth();
+              // Unavailable days stay focusable (aria-disabled), so the arrow keys can cross them.
+              const unavailable = isDisabled(iso);
               return (
                 <span role="gridcell" key={iso} aria-selected={isSelected(iso)}>
                   <button
                     type="button"
                     data-date={iso}
                     tabIndex={iso === toISO(focus) ? 0 : -1}
-                    disabled={isDisabled(iso)}
-                    aria-label={`${day.getMonth() + 1} 月 ${day.getDate()} 日 星期${WEEKDAYS[weekday(day)]}`}
+                    aria-disabled={unavailable || undefined}
+                    aria-label={t.day(day)}
                     aria-current={iso === today ? 'date' : undefined}
-                    className={`calendar-day ${outside ? 'outside' : ''} ${isSelected(iso) ? 'selected' : ''} ${inRange?.(iso) ? 'in-range' : ''}`}
-                    onClick={() => onPick(iso)}
+                    className={cx(
+                      'gh-calendar-day',
+                      day.getMonth() !== focus.getMonth() && 'is-outside',
+                      isSelected(iso) && 'is-selected',
+                      inRange?.(iso) && 'is-in-range',
+                    )}
+                    onClick={() => !unavailable && onPick(iso)}
                     onPointerEnter={() => onHover?.(iso)}
                   >
                     {day.getDate()}
@@ -514,7 +546,8 @@ function DateTrigger({
   placeholder,
   open,
   disabled,
-  invalid,
+  invalid: isInvalid,
+  describedBy,
   onToggle,
   onClear,
   trigger,
@@ -524,22 +557,25 @@ function DateTrigger({
   placeholder: string;
   open: boolean;
   disabled: boolean;
-  invalid: boolean;
+  invalid?: true;
+  describedBy?: string;
   onToggle: () => void;
   onClear?: () => void;
   trigger: RefObject<HTMLButtonElement | null>;
 }) {
+  const t = useKitStrings();
   return (
-    <span className="date-trigger">
+    <span className="gh-date-trigger">
       <button
         ref={trigger}
         type="button"
-        aria-label={text ? `${label}：${text}` : label}
+        aria-label={text ? t.labelWithValue(label, text) : label}
         aria-haspopup="dialog"
         aria-expanded={open}
-        aria-invalid={invalid || undefined}
+        aria-invalid={isInvalid}
+        aria-describedby={describedBy}
         disabled={disabled}
-        className="picker-trigger"
+        className="gh-picker-trigger"
         onClick={onToggle}
         onKeyDown={(event) => {
           if (event.key === 'ArrowDown' && !open) {
@@ -548,40 +584,43 @@ function DateTrigger({
           }
         }}
       >
-        <CalendarDays size={15} className="picker-leading" />
-        <span className={`picker-value ${text ? '' : 'placeholder'}`}>{text || placeholder}</span>
+        <CalendarDays size={icon.md} strokeWidth={icon.stroke} className="gh-picker-leading" />
+        <span className={cx('gh-picker-value', !text && 'is-placeholder')}>{text || placeholder}</span>
       </button>
       {onClear && text && !disabled && (
-        <button type="button" className="picker-clear" aria-label={`清除${label}`} onClick={onClear}>
-          <X size={13} />
+        <button type="button" className="gh-picker-clear" aria-label={t.clearValue(label)} onClick={onClear}>
+          <X size={icon.sm} strokeWidth={icon.stroke} />
         </button>
       )}
     </span>
   );
 }
 
+/**
+ * A date as YYYY-MM-DD. One month at a time, Monday first; today is outlined, the value filled,
+ * dates outside `min`/`max` struck through. Arrows move by day and week, PageUp and PageDown by
+ * month, Home and End to the week's ends, Enter picks, Escape closes.
+ */
 export function DatePicker({
   label,
   value,
   onChange,
-  placeholder = '选择日期',
+  placeholder,
   min,
   max,
   disabled = false,
-  invalid = false,
   clearable = true,
-}: {
-  label: string;
+  'aria-invalid': ariaInvalid,
+  'aria-describedby': describedBy,
+}: FieldProps & {
   /** YYYY-MM-DD or ''. */
   value: string;
   onChange: (value: string) => void;
-  placeholder?: string;
   min?: string;
   max?: string;
-  disabled?: boolean;
-  invalid?: boolean;
   clearable?: boolean;
 }) {
+  const t = useKitStrings();
   const [open, setOpen] = useState(false);
   const [focus, setFocus] = useState(() => (value ? fromISO(value) : new Date()));
   const trigger = useRef<HTMLButtonElement>(null);
@@ -597,14 +636,15 @@ export function DatePicker({
     close();
   };
   return (
-    <span className="date-picker">
+    <span className="gh-date-picker">
       <DateTrigger
         label={label}
-        text={formatDate(value)}
-        placeholder={placeholder}
+        text={format(t, value)}
+        placeholder={placeholder ?? t.chooseDate}
         open={open}
         disabled={disabled}
-        invalid={invalid}
+        invalid={invalid(ariaInvalid)}
+        describedBy={describedBy}
         trigger={trigger}
         onToggle={() => {
           setFocus(value ? fromISO(value) : new Date());
@@ -613,7 +653,7 @@ export function DatePicker({
         onClear={clearable ? () => onChange('') : undefined}
       />
       {open && (
-        <div ref={panel} role="dialog" aria-label={label} className="picker-panel calendar-panel" style={style}>
+        <div ref={panel} role="dialog" aria-label={label} className="gh-picker-panel gh-calendar-panel" style={style}>
           <Calendar
             focus={focus}
             setFocus={setFocus}
@@ -622,26 +662,26 @@ export function DatePicker({
             onPick={pick}
             onClose={close}
           />
-          <div className="picker-footer">
+          <div className="gh-picker-footer">
             <button
               type="button"
-              className="text-button"
+              className="gh-text-button"
               disabled={isDisabled(toISO(new Date()))}
               onClick={() => pick(toISO(new Date()))}
             >
-              今天
+              {t.today}
             </button>
-            <span className="grow" />
+            <span className="gh-picker-footer-note" />
             {clearable && value && (
               <button
                 type="button"
-                className="text-button"
+                className="gh-text-button"
                 onClick={() => {
                   onChange('');
                   close();
                 }}
               >
-                清除
+                {t.clear}
               </button>
             )}
           </div>
@@ -651,22 +691,22 @@ export function DatePicker({
   );
 }
 
-/** Start and end in one panel: the first click sets the start, the second the end. */
+/** Start and end in one panel: the first pick sets the start, the second the end; hovering previews the range. */
 export function DateRangePicker({
   label,
   start,
   end,
   onChange,
-  placeholder = '选择日期范围',
+  placeholder,
   disabled = false,
-}: {
-  label: string;
+  'aria-invalid': ariaInvalid,
+  'aria-describedby': describedBy,
+}: FieldProps & {
   start: string;
   end: string;
   onChange: (start: string, end: string) => void;
-  placeholder?: string;
-  disabled?: boolean;
 }) {
+  const t = useKitStrings();
   const [open, setOpen] = useState(false);
   const [focus, setFocus] = useState(() => (start ? fromISO(start) : new Date()));
   const [anchor, setAnchor] = useState('');
@@ -681,16 +721,17 @@ export function DateRangePicker({
   };
   useDismiss(open, () => close(false), [panel, trigger]);
   const [from, to] = anchor ? [anchor, hover || anchor].sort() : [start, end];
-  const text = start && end ? `${formatDate(start)} – ${formatDate(end)}` : '';
+  const text = start && end ? `${format(t, start)}${t.rangeSeparator}${format(t, end)}` : '';
   return (
-    <span className="date-picker">
+    <span className="gh-date-picker">
       <DateTrigger
         label={label}
         text={text}
-        placeholder={placeholder}
+        placeholder={placeholder ?? t.chooseRange}
         open={open}
         disabled={disabled}
-        invalid={false}
+        invalid={invalid(ariaInvalid)}
+        describedBy={describedBy}
         trigger={trigger}
         onToggle={() => {
           setFocus(start ? fromISO(start) : new Date());
@@ -699,10 +740,13 @@ export function DateRangePicker({
         }}
       />
       {open && (
-        <div ref={panel} role="dialog" aria-label={label} className="picker-panel calendar-panel" style={style}>
+        <div ref={panel} role="dialog" aria-label={label} className="gh-picker-panel gh-calendar-panel" style={style}>
           <Calendar
             focus={focus}
-            setFocus={setFocus}
+            setFocus={(date) => {
+              setFocus(date);
+              if (anchor) setHover(toISO(date));
+            }}
             isSelected={(iso) => iso === from || iso === to}
             inRange={(iso) => !!from && !!to && iso > from && iso < to}
             isDisabled={() => false}
@@ -719,35 +763,11 @@ export function DateRangePicker({
             }}
             onClose={close}
           />
-          <div className="picker-footer">
-            <span className="muted small">{anchor ? '再选结束日期' : '先选开始日期'}</span>
+          <div className="gh-picker-footer">
+            <span className="gh-picker-footer-note">{anchor ? t.pickEnd : t.pickStart}</span>
           </div>
         </div>
       )}
-    </span>
-  );
-}
-
-/** The prototype's own preview controls only; product UI uses Select. */
-export function NativeSelect({
-  label,
-  value,
-  options,
-  onChange,
-}: {
-  label: string;
-  value: string;
-  options: readonly string[];
-  onChange: (value: string) => void;
-}) {
-  return (
-    <span className="native-select">
-      <select aria-label={label} value={value} onChange={(event) => onChange(event.target.value)}>
-        {options.map((option) => (
-          <option key={option}>{option}</option>
-        ))}
-      </select>
-      <ChevronDown size={13} />
     </span>
   );
 }

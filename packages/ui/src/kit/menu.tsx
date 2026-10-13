@@ -1,16 +1,13 @@
 /**
- * Floating layers: the "⋯" menu, the right-click menu and the panel that Select and
- * DatePicker open (docs/design-system/components.md, Menu and ContextMenu).
- * Panels are `position: fixed`, kept inside the product window, and close on an outside
- * pointer, an outside scroll, Escape or Tab.
+ * The "⋯" menu and the right-click menu share one panel (docs/design-system/components.md, 菜单):
+ * raised surface, radius lg, shadow 2, kept inside the boundary. Arrows move, Enter runs an item,
+ * Escape closes and returns focus to the trigger, a letter jumps to the item that starts with it.
  */
 
 import {
   useEffect,
-  useLayoutEffect,
   useRef,
   useState,
-  type CSSProperties,
   type KeyboardEvent,
   type MouseEvent,
   type PointerEvent,
@@ -18,6 +15,10 @@ import {
   type RefObject,
 } from 'react';
 import { Check, MoreHorizontal } from 'lucide-react';
+import { icon } from '../tokens/haven';
+import { moveFocus, useDismiss, useFloating, type Placement } from './floating';
+import { cx, useKitStrings } from './provider';
+import { useTooltip } from './tooltip';
 
 export type MenuItem = {
   label: string;
@@ -32,84 +33,8 @@ export type MenuItem = {
 /** `'-'` draws a separator. Danger items go last, after a separator. */
 export type MenuEntry = MenuItem | '-';
 
-type Placement = { rect: () => DOMRect | null; align?: 'start' | 'end'; matchWidth?: boolean };
-
-/** Places a fixed panel under (or above) an anchor rectangle, inside the product window. */
-export function useFloating(open: boolean, placement: Placement) {
-  const panel = useRef<HTMLDivElement>(null);
-  const latest = useRef(placement);
-  latest.current = placement;
-  const [style, setStyle] = useState<CSSProperties>({ position: 'fixed', left: -9999, top: -9999 });
-  useLayoutEffect(() => {
-    if (!open) return;
-    const place = () => {
-      const { rect: anchor, align = 'start', matchWidth = false } = latest.current;
-      const rect = anchor();
-      const element = panel.current;
-      if (!rect || !element) return;
-      if (matchWidth) element.style.minWidth = `${rect.width}px`;
-      const frame = (element.closest('.product-window') ?? document.documentElement).getBoundingClientRect();
-      const width = element.offsetWidth;
-      const height = element.offsetHeight;
-      const margin = 8;
-      const gap = rect.height ? 4 : 0;
-      const left = Math.min(
-        Math.max(align === 'end' ? rect.right - width : rect.left, frame.left + margin),
-        frame.right - margin - width,
-      );
-      let top = rect.bottom + gap;
-      if (top + height > frame.bottom - margin && rect.top - gap - height >= frame.top + margin)
-        top = rect.top - gap - height;
-      top = Math.max(Math.min(top, frame.bottom - margin - height), frame.top + margin);
-      setStyle({ position: 'fixed', left, top, minWidth: matchWidth ? rect.width : undefined });
-    };
-    place();
-    const resize = new ResizeObserver(place);
-    if (panel.current) resize.observe(panel.current);
-    window.addEventListener('resize', place);
-    return () => {
-      resize.disconnect();
-      window.removeEventListener('resize', place);
-    };
-  }, [open]);
-  return { panel, style };
-}
-
-/** Closes a floating layer on a pointer or scroll outside the given elements. */
-export function useDismiss(open: boolean, close: () => void, inside: RefObject<HTMLElement | null>[]) {
-  const latest = useRef({ close, inside });
-  latest.current = { close, inside };
-  useEffect(() => {
-    if (!open) return;
-    const outside = (event: Event) => {
-      if (latest.current.inside.some((ref) => ref.current?.contains(event.target as Node))) return;
-      latest.current.close();
-    };
-    document.addEventListener('pointerdown', outside, true);
-    document.addEventListener('scroll', outside, true);
-    return () => {
-      document.removeEventListener('pointerdown', outside, true);
-      document.removeEventListener('scroll', outside, true);
-    };
-  }, [open]);
-}
-
-/** Arrow keys, Home and End move between the enabled items of a list. */
-export function moveFocus(container: HTMLElement | null, selector: string, key: string) {
-  const items = Array.from(container?.querySelectorAll<HTMLElement>(selector) ?? []);
-  if (!items.length) return;
-  const index = items.indexOf(document.activeElement as HTMLElement);
-  const next =
-    key === 'Home'
-      ? 0
-      : key === 'End'
-        ? items.length - 1
-        : key === 'ArrowDown'
-          ? (index + 1) % items.length
-          : (index - 1 + items.length) % items.length;
-  items[next].focus();
-}
-
+/** How long a touch press takes to open the right-click menu. */
+const LONG_PRESS = 500;
 const ITEM = '[role^="menuitem"]:not(:disabled)';
 
 function MenuPanel({
@@ -134,7 +59,7 @@ function MenuPanel({
     if (keyboard && first) first.focus({ preventScroll: true });
     else panel.current?.focus({ preventScroll: true });
   }, [keyboard, panel]);
-  const icons = items.some((item) => item !== '-' && (item.icon || item.checked !== undefined));
+  const withIcons = items.some((item) => item !== '-' && (item.icon || item.checked !== undefined));
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) {
       event.preventDefault();
@@ -143,7 +68,12 @@ function MenuPanel({
       event.preventDefault();
       event.stopPropagation();
       onClose(true);
-    } else if (event.key.length === 1) {
+    } else if (event.key === 'Enter' || event.key === ' ') {
+      const item = document.activeElement as HTMLElement | null;
+      if (!item?.matches(ITEM) || !panel.current?.contains(item)) return;
+      event.preventDefault();
+      item.click();
+    } else if (event.key.length === 1 && !event.metaKey && !event.ctrlKey) {
       const match = Array.from(panel.current?.querySelectorAll<HTMLElement>(ITEM) ?? []).find((item) =>
         item.textContent?.trim().toLowerCase().startsWith(event.key.toLowerCase()),
       );
@@ -156,14 +86,14 @@ function MenuPanel({
       role="menu"
       aria-label={label}
       tabIndex={-1}
-      className="menu-panel"
+      className="gh-menu-panel"
       style={style}
       onKeyDown={onKeyDown}
       onContextMenu={(event) => event.preventDefault()}
     >
       {items.map((item, index) =>
         item === '-' ? (
-          <div key={`separator-${index}`} role="separator" className="menu-separator" />
+          <div key={`separator-${index}`} role="separator" className="gh-menu-separator" />
         ) : (
           <button
             key={item.label}
@@ -172,15 +102,19 @@ function MenuPanel({
             role={item.checked === undefined ? 'menuitem' : 'menuitemcheckbox'}
             aria-checked={item.checked}
             disabled={item.disabled}
-            className={`menu-item ${item.danger ? 'danger' : ''}`}
+            className={cx('gh-menu-item', item.danger && 'is-danger')}
             onClick={() => {
               onClose(true);
               item.onClick();
             }}
           >
-            {icons && <span className="menu-item-icon">{item.checked ? <Check size={15} /> : item.icon}</span>}
-            <span className="menu-item-label">{item.label}</span>
-            {item.shortcut && <kbd className="menu-item-shortcut">{item.shortcut}</kbd>}
+            {withIcons && (
+              <span className="gh-menu-item-icon">
+                {item.checked ? <Check size={icon.md} strokeWidth={icon.stroke} /> : item.icon}
+              </span>
+            )}
+            <span className="gh-menu-item-label">{item.label}</span>
+            {item.shortcut && <kbd className="gh-menu-item-shortcut">{item.shortcut}</kbd>}
           </button>
         ),
       )}
@@ -188,14 +122,15 @@ function MenuPanel({
   );
 }
 
-/** A "⋯" (or custom) trigger that opens a menu below it. */
+/** A "⋯" (or custom) trigger that opens a menu below it. The trigger's name is also its tooltip. */
 export function Menu({
-  label = '更多',
+  label,
   items,
   trigger,
-  className = '',
+  className,
   align = 'end',
 }: {
+  /** Defaults to 更多 / More. */
   label?: string;
   items: MenuEntry[];
   /** Custom trigger content; defaults to "⋯". */
@@ -203,31 +138,37 @@ export function Menu({
   className?: string;
   align?: 'start' | 'end';
 }) {
+  const t = useKitStrings();
+  const name = label ?? t.more;
   const [open, setOpen] = useState<'pointer' | 'keyboard' | null>(null);
   const button = useRef<HTMLButtonElement>(null);
+  const tip = useTooltip(name, { enabled: !open });
   return (
-    <span className={`menu ${className}`}>
+    <span className={cx('gh-menu', className)}>
       <button
         ref={button}
         type="button"
-        className="menu-trigger"
-        aria-label={label}
-        title={label}
+        className="gh-button gh-button-ghost gh-icon-button gh-menu-trigger"
+        aria-label={name}
         aria-haspopup="menu"
         aria-expanded={!!open}
-        onClick={(event) => setOpen(open ? null : event.detail === 0 ? 'keyboard' : 'pointer')}
-        onKeyDown={(event) => {
-          if (event.key === 'ArrowDown') {
-            event.preventDefault();
-            setOpen('keyboard');
-          }
-        }}
+        {...tip.bind({
+          onClick: (event: MouseEvent<HTMLButtonElement>) =>
+            setOpen(open ? null : event.detail === 0 ? 'keyboard' : 'pointer'),
+          onKeyDown: (event: KeyboardEvent<HTMLButtonElement>) => {
+            if (event.key === 'ArrowDown') {
+              event.preventDefault();
+              setOpen('keyboard');
+            }
+          },
+        })}
       >
-        {trigger ?? <MoreHorizontal size={18} />}
+        {trigger ?? <MoreHorizontal size={icon.md} strokeWidth={icon.stroke} />}
       </button>
+      {tip.tooltip}
       {open && (
         <MenuPanel
-          label={label}
+          label={name}
           items={items}
           keyboard={open === 'keyboard'}
           inside={button}
@@ -243,11 +184,12 @@ export function Menu({
 }
 
 /**
- * Right-click, Shift F10 / the context-menu key, or a long press on touch.
- * Spread `handlers` on the row and render `menu` next to it. The same actions must
- * also be reachable from the item's own "⋯" (in its page header).
+ * Right-click, Shift F10 or the context-menu key, or a 500 ms touch press. Spread `handlers` on
+ * the row and render `menu` next to it; the same actions must also sit in the object's own "⋯".
+ * A long press that opened the menu does not also activate the row.
  */
-export function useContextMenu(items: MenuEntry[] | (() => MenuEntry[]), label = '操作') {
+export function useContextMenu(items: MenuEntry[] | (() => MenuEntry[]), label?: string) {
+  const t = useKitStrings();
   const [at, setAt] = useState<{ x: number; y: number; keyboard: boolean; origin: HTMLElement } | null>(null);
   const press = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pressed = useRef(false);
@@ -266,7 +208,7 @@ export function useContextMenu(items: MenuEntry[] | (() => MenuEntry[]), label =
       if ((event.shiftKey && event.key === 'F10') || event.key === 'ContextMenu') {
         event.preventDefault();
         const rect = event.currentTarget.getBoundingClientRect();
-        setAt({ x: rect.left + 16, y: rect.bottom, keyboard: true, origin: event.currentTarget });
+        setAt({ x: rect.left + rect.height / 2, y: rect.bottom, keyboard: true, origin: event.currentTarget });
       }
     },
     onPointerDown: (event: PointerEvent<HTMLElement>) => {
@@ -276,12 +218,11 @@ export function useContextMenu(items: MenuEntry[] | (() => MenuEntry[]), label =
       press.current = setTimeout(() => {
         pressed.current = true;
         setAt({ x: clientX, y: clientY, keyboard: false, origin: currentTarget });
-      }, 500);
+      }, LONG_PRESS);
     },
     onPointerUp: cancelPress,
     onPointerCancel: cancelPress,
     onPointerLeave: cancelPress,
-    // A long press opened the menu: the click that ends it must not also open the row.
     onClickCapture: (event: MouseEvent<HTMLElement>) => {
       if (!pressed.current) return;
       pressed.current = false;
@@ -291,7 +232,7 @@ export function useContextMenu(items: MenuEntry[] | (() => MenuEntry[]), label =
   };
   const menu = at && (
     <MenuPanel
-      label={label}
+      label={label ?? t.actions}
       items={typeof items === 'function' ? items() : items}
       keyboard={at.keyboard}
       placement={{ rect: () => new DOMRect(at.x, at.y, 0, 0) }}

@@ -14,7 +14,9 @@
     "@greenhouse/types": "workspace:*",
     "@greenhouse/ui": "workspace:*",
     "@tanstack/react-query": "^5.104.2",
+    "dompurify": "^3.4.16",
     "lucide-react": "^1.16.0",
+    "marked": "^18.0.3",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },

@@ -48,13 +48,20 @@ export const color = {
   onAccent: { light: '#FFFFFF', dark: '#10291F' }, // text on an accent fill
   focus: { light: '#235D4D', dark: '#B1D2BF' },
 
+  // The Greenhouse mark (packages/ui/src/assets/greenhouse-mark.svg). Fixed: a workspace brand color never changes it.
+  brandMark: { light: '#235D4D', dark: '#B1D2BF' }, // the house: ≥ 3:1 on canvas, chrome and rail
+  brandSeed: { light: '#B6CA68', dark: '#B6CA68' }, // the seed in the doorway: decorative; 3:1 only on dark surfaces
+
   // Status: foreground + soft fill pairs. Never the only signal — always with text or an icon.
   success: { light: '#1F7A4C', dark: '#6FD39C' },
   successFill: { light: '#E3F3E9', dark: '#1A3326' },
   warning: { light: '#9A5B08', dark: '#FFC46B' }, // "needs you"
   warningFill: { light: '#FFF2DE', dark: '#382B1B' },
   danger: { light: '#C23A34', dark: '#FF8A84' },
+  dangerHover: { light: '#A8302B', dark: '#FFA19C' }, // one step deeper: danger text and the solid danger fill on hover
   dangerFill: { light: '#FCEBE9', dark: '#43231F' },
+  dangerFillHover: { light: '#F8DAD6', dark: '#552B26' }, // one step deeper than dangerFill: the danger button on hover
+  onDanger: { light: '#FFFFFF', dark: '#111113' }, // text on a solid danger fill (the final destructive confirmation)
   info: { light: '#2A64AD', dark: '#8CBBF5' },
   infoFill: { light: '#E6EEF9', dark: '#1B2A3D' },
 } as const satisfies Record<string, ModeValue>;
@@ -141,12 +148,12 @@ export const radius = {
 } as const;
 
 export const shadow = {
-  /** Menus, popovers, toasts. */
+  /** Small raised items inside a surface: the selected segment, a tooltip. */
   '1': {
     light: '0 1px 2px rgba(17, 17, 19, 0.06), 0 4px 12px rgba(17, 17, 19, 0.08)',
     dark: '0 1px 2px rgba(0, 0, 0, 0.4), 0 6px 16px rgba(0, 0, 0, 0.45)',
   },
-  /** Dialogs, drawers, sheets. */
+  /** Floating layers: menus, popovers, dialogs, drawers, sheets, toasts. */
   '2': {
     light: '0 2px 8px rgba(17, 17, 19, 0.06), 0 12px 32px rgba(17, 17, 19, 0.12)',
     dark: '0 2px 8px rgba(0, 0, 0, 0.4), 0 16px 40px rgba(0, 0, 0, 0.55)',
@@ -158,6 +165,7 @@ export const motion = {
   durationBase: '200ms', // menus, popovers, fades, message appear
   durationSlow: '240ms', // drawer and sheet enter
   durationExit: '180ms', // anything leaving
+  durationLoop: '1000ms', // one cycle of a looping indicator: spinner, caret, pulse
   easeStandard: 'cubic-bezier(0.2, 0, 0, 1)',
   easeEnter: 'cubic-bezier(0.05, 0.7, 0.1, 1)',
   easeExit: 'cubic-bezier(0.3, 0, 1, 1)',
@@ -198,12 +206,23 @@ export const layout = {
   navRow: 32,
   navRowMain: 52, // the main Agent row at the top of the conversation list
   touchTarget: 44,
+  popoverMin: 192, // menus and picker panels
+  popoverMax: 320, // menus, picker lists, "?" bubbles
 } as const;
 
 /** Shares of the window in %, for panels that grow with it. */
 export const share = {
   drawer: 40, // detail drawer
   drawerWide: 60, // computer view, web previews
+  sheet: 92, // tallest a phone sheet gets
+} as const;
+
+/** Line widths in px: separators, control outlines, the selected-tab bar and the keyboard focus ring. */
+export const stroke = {
+  hairline: 1, // separators and control borders
+  control: 1.5, // checkbox and radio outlines
+  strong: 2, // the selected-tab bar and the focus ring
+  focusOffset: 3, // gap between a control and its focus ring
 } as const;
 
 /** Avatar sizes in px. */

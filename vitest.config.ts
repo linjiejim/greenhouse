@@ -29,6 +29,9 @@ export default defineConfig({
       '@greenhouse/types/profile-manifest': resolve(__dirname, 'packages/types/src/profile-manifest.ts'),
       '@greenhouse/types/entity-links': resolve(__dirname, 'packages/types/src/entity-links.ts'),
       '@greenhouse/types': resolve(__dirname, 'packages/types/src/index.ts'),
+      // The more specific key first: a string alias also matches everything below it.
+      '@greenhouse/ui/kit/kit.css': resolve(__dirname, 'packages/ui/src/kit/kit.css'),
+      '@greenhouse/ui/kit': resolve(__dirname, 'packages/ui/src/kit/index.ts'),
       '@greenhouse/utils/date': resolve(__dirname, 'packages/utils/src/date.ts'),
       '@greenhouse/utils/brand': resolve(__dirname, 'packages/utils/src/brand.ts'),
       '@greenhouse/utils/json': resolve(__dirname, 'packages/utils/src/json.ts'),

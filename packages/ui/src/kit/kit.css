@@ -1,0 +1,1427 @@
+/*
+ * Native Haven component kit — the implementation of docs/design-system/components.md.
+ * Import after @greenhouse/ui/tokens/haven.css. Every value is a token (or derived from tokens):
+ * colors, type, spacing, radius, strokes, shadows, motion, layers.
+ *
+ * Hooks set by the host on an ancestor (the app shell on <html>, a preview on its frame):
+ *   data-theme="light|dark"   tokens switch, so the kit does too;
+ *   data-narrow               the phone layout (< 768): sheets, centred toasts, 44 targets, 16px inputs;
+ *   data-floating-boundary    overlays and toasts cover this frame instead of the viewport.
+ * Touch devices (pointer: coarse) get 44 hit areas without changing what they see.
+ * Class names start with gh-; state classes are is-*.
+ */
+
+:where([class^='gh-'], [class*=' gh-']),
+:where([class^='gh-'], [class*=' gh-'])::before,
+:where([class^='gh-'], [class*=' gh-'])::after {
+  box-sizing: border-box;
+}
+
+/* ─── Focus: a 2px accent ring 3px out; fields glow instead; dense items hug their edge ─── */
+
+/* Class-specific on purpose, so a host's own :focus-visible rule cannot undo them. */
+.gh-button:focus-visible,
+.gh-segmented > button:focus-visible,
+.gh-switch:focus-visible,
+.gh-help-hint-button:focus-visible,
+.gh-picker-clear:focus-visible,
+.gh-text-button:focus-visible,
+.gh-sheet-handle:focus-visible,
+.gh-choice-control > input:focus-visible + .gh-checkbox,
+.gh-choice-control > input:focus-visible + .gh-radio {
+  outline: var(--gh-stroke-strong) solid var(--gh-focus);
+  outline-offset: var(--gh-stroke-focus-offset);
+}
+.gh-tabs > button:focus-visible,
+.gh-menu-item:focus-visible,
+.gh-calendar-day:focus-visible,
+button.gh-chat-card-header:focus-visible {
+  outline: var(--gh-stroke-strong) solid var(--gh-focus);
+  outline-offset: calc(-1 * var(--gh-stroke-strong));
+}
+.gh-input:focus,
+.gh-picker-trigger:focus-visible,
+.gh-picker-trigger[aria-expanded='true'],
+.gh-search-field:focus-within {
+  outline: none;
+  border-color: var(--gh-focus);
+  box-shadow: 0 0 0 var(--gh-stroke-focus-offset) color-mix(in srgb, var(--gh-focus) 16%, transparent);
+}
+.gh-search-input:focus-visible,
+.gh-picker-search input:focus-visible,
+.gh-choice-control > input:focus-visible,
+.gh-overlay-panel:focus-visible,
+.gh-menu-panel:focus-visible {
+  outline: none;
+}
+
+/* ─── Disabled: faded; a control disabled with a reason stays focusable ─── */
+
+.gh-button:disabled,
+.gh-button[aria-disabled='true']:not(.is-loading),
+.gh-input:disabled,
+.gh-picker-trigger:disabled,
+.gh-switch:disabled,
+.gh-choice.is-disabled {
+  opacity: 0.44;
+  cursor: default;
+}
+
+/* ─── Button ─── */
+
+.gh-button {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--gh-control-md);
+  padding: 0 var(--gh-space-3);
+  border: var(--gh-stroke-hairline) solid var(--gh-line);
+  border-radius: var(--gh-radius-md);
+  background: var(--gh-surface);
+  color: var(--gh-text);
+  font: var(--gh-type-label);
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition-property: background-color, color, border-color, box-shadow;
+  transition-duration: var(--gh-duration-fast);
+  transition-timing-function: var(--gh-ease-standard);
+}
+.gh-button-label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--gh-space-2);
+  min-width: 0;
+}
+.gh-button:hover:not(:disabled, [aria-disabled='true']) {
+  background: var(--gh-hover);
+}
+.gh-button:active:not(:disabled, [aria-disabled='true']) {
+  background: var(--gh-pressed);
+}
+.gh-button-primary {
+  border-color: transparent;
+  background: var(--gh-accent);
+  color: var(--gh-on-accent);
+}
+.gh-button-primary:hover:not(:disabled, [aria-disabled='true']) {
+  background: var(--gh-accent-hover);
+}
+.gh-button-primary:active:not(:disabled, [aria-disabled='true']) {
+  background: var(--gh-accent-pressed);
+}
+.gh-button-ghost {
+  border-color: transparent;
+  background: transparent;
+}
+/* Danger: light red; hover is one step deeper. The final confirmation (ConfirmDialog) is solid. */
+.gh-button-danger {
+  border-color: transparent;
+  background: var(--gh-danger-fill);
+  color: var(--gh-danger);
+}
+.gh-button-danger:is(:hover, :active):not(:disabled, [aria-disabled='true']) {
+  background: var(--gh-danger-fill-hover);
+  color: var(--gh-danger-hover);
+}
+.gh-button-danger.gh-button-solid {
+  background: var(--gh-danger);
+  color: var(--gh-on-danger);
+}
+.gh-button-danger.gh-button-solid:is(:hover, :active):not(:disabled, [aria-disabled='true']) {
+  background: var(--gh-danger-hover);
+  color: var(--gh-on-danger);
+}
+.gh-button-sm {
+  min-height: var(--gh-control-sm);
+  padding: 0 var(--gh-space-2);
+}
+.gh-button-lg {
+  min-height: var(--gh-control-lg);
+  padding: 0 var(--gh-space-4);
+  font: var(--gh-type-title-sm);
+}
+/* Loading keeps the width and the label (still the accessible name); the spinner sits on top. */
+.gh-button.is-loading {
+  cursor: progress;
+}
+.gh-button.is-loading .gh-button-label {
+  opacity: 0;
+}
+.gh-button-spinner {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+}
+
+/* ─── IconButton: visual 32 (sm 28) ─── */
+
+.gh-icon-button {
+  width: var(--gh-space-8);
+  min-width: var(--gh-space-8);
+  height: var(--gh-space-8);
+  min-height: var(--gh-space-8);
+  padding: 0;
+}
+.gh-icon-button-sm {
+  width: var(--gh-control-sm);
+  min-width: var(--gh-control-sm);
+  height: var(--gh-control-sm);
+  min-height: var(--gh-control-sm);
+}
+.gh-icon-button[aria-pressed='true'] {
+  background: var(--gh-selection);
+  color: var(--gh-accent-text);
+}
+
+.gh-spinner {
+  flex-shrink: 0;
+  animation: gh-spin var(--gh-duration-loop) linear infinite;
+}
+
+/* ─── Field ─── */
+
+.gh-field {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  column-gap: var(--gh-space-1);
+  row-gap: var(--gh-space-2);
+  min-width: 0;
+}
+.gh-field-label {
+  display: contents;
+}
+.gh-field-label-text {
+  grid-column: 1;
+  font: var(--gh-type-label);
+  color: var(--gh-text);
+}
+.gh-field-label > :not(.gh-field-label-text) {
+  grid-column: 1 / -1;
+}
+.gh-field-required {
+  color: var(--gh-secondary);
+  font-weight: 400;
+}
+.gh-field-help {
+  display: inline-flex;
+  grid-column: 2;
+  grid-row: 1;
+  justify-self: start;
+}
+.gh-field-error,
+.gh-field-description {
+  grid-column: 1 / -1;
+  font: var(--gh-type-body-sm);
+}
+.gh-field-error {
+  color: var(--gh-danger);
+}
+.gh-field-description {
+  color: var(--gh-secondary);
+}
+.gh-field .gh-select,
+.gh-field .gh-date-picker {
+  width: 100%;
+}
+
+/* ─── Input, TextArea, SearchInput ─── */
+
+.gh-input {
+  width: 100%;
+  min-width: 0;
+  min-height: var(--gh-control-md);
+  padding: 0 var(--gh-space-3);
+  border: var(--gh-stroke-hairline) solid var(--gh-control-line);
+  border-radius: var(--gh-radius-md);
+  background: var(--gh-surface);
+  color: var(--gh-text);
+  font: var(--gh-type-body);
+  transition-property: border-color, box-shadow;
+  transition-duration: var(--gh-duration-fast);
+  transition-timing-function: var(--gh-ease-standard);
+}
+.gh-input::placeholder {
+  color: var(--gh-tertiary);
+  opacity: 1;
+}
+.gh-input:hover:not(:disabled, :focus) {
+  border-color: var(--gh-secondary);
+}
+.gh-input[aria-invalid='true'] {
+  border-color: var(--gh-danger);
+}
+.gh-input:read-only:not(:disabled) {
+  background: var(--gh-fill);
+}
+.gh-input-lg {
+  min-height: var(--gh-control-lg);
+}
+.gh-textarea {
+  display: block;
+  min-height: calc(var(--gh-control-md) * 2);
+  padding: var(--gh-space-2) var(--gh-space-3);
+  resize: vertical;
+}
+.gh-search-field {
+  display: flex;
+  align-items: center;
+  gap: var(--gh-space-2);
+  height: var(--gh-control-md);
+  min-width: 0;
+  padding: 0 var(--gh-space-1) 0 var(--gh-space-3);
+  border: var(--gh-stroke-hairline) solid var(--gh-control-line);
+  border-radius: var(--gh-radius-md);
+  background: var(--gh-surface);
+  color: var(--gh-tertiary);
+  transition-property: border-color, box-shadow;
+  transition-duration: var(--gh-duration-fast);
+}
+.gh-search-icon {
+  flex-shrink: 0;
+}
+.gh-search-input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--gh-text);
+  font: var(--gh-type-body-sm);
+}
+.gh-search-input::placeholder {
+  color: var(--gh-tertiary);
+}
+
+/* ─── Segmented: 2–4 options; the selected one is a small raised item (shadow 1) ─── */
+
+.gh-segmented {
+  display: inline-flex;
+  gap: var(--gh-space-0_5);
+  padding: var(--gh-space-0_5);
+  border-radius: var(--gh-radius-md);
+  background: var(--gh-fill);
+}
+.gh-segmented > button {
+  height: var(--gh-control-sm);
+  padding: 0 var(--gh-space-3);
+  border: 0;
+  border-radius: var(--gh-radius-sm);
+  background: transparent;
+  color: var(--gh-secondary);
+  font: var(--gh-type-label);
+  white-space: nowrap;
+  cursor: pointer;
+  transition-property: background-color, color, box-shadow;
+  transition-duration: var(--gh-duration-fast);
+}
+.gh-segmented > button:hover {
+  color: var(--gh-text);
+}
+.gh-segmented > button[aria-checked='true'] {
+  background: var(--gh-raised);
+  color: var(--gh-text);
+  box-shadow: var(--gh-shadow-1);
+}
+
+/* ─── Switch: 40 × 24 track, 20 knob ─── */
+
+.gh-switch {
+  position: relative;
+  flex-shrink: 0;
+  width: var(--gh-space-10);
+  height: var(--gh-space-6);
+  padding: var(--gh-space-0_5);
+  border: 0;
+  border-radius: var(--gh-radius-full);
+  background: var(--gh-control-line);
+  cursor: pointer;
+  transition: background-color var(--gh-duration-fast) var(--gh-ease-standard);
+}
+.gh-switch[aria-checked='true'] {
+  background: var(--gh-accent);
+}
+.gh-switch-knob {
+  display: block;
+  width: var(--gh-space-5);
+  height: var(--gh-space-5);
+  border-radius: var(--gh-radius-full);
+  background: var(--gh-on-accent);
+  box-shadow: var(--gh-shadow-1);
+  transition: transform var(--gh-duration-fast) var(--gh-ease-standard);
+}
+.gh-switch[aria-checked='true'] .gh-switch-knob {
+  transform: translateX(var(--gh-space-4));
+}
+
+/* ─── Checkbox and Radio: a drawn 16 box over the native input; hit area 32 (touch 44) ─── */
+
+.gh-choice {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--gh-space-2);
+  min-height: var(--gh-space-8);
+  color: var(--gh-text);
+  font: var(--gh-type-body);
+  cursor: pointer;
+}
+.gh-choice-control {
+  position: relative;
+  display: inline-grid;
+  flex-shrink: 0;
+  padding: var(--gh-space-2);
+  margin: calc(-1 * var(--gh-space-2));
+}
+.gh-choice-control > input {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: inherit;
+}
+.gh-checkbox,
+.gh-radio {
+  display: inline-grid;
+  place-content: center;
+  width: var(--gh-space-4);
+  height: var(--gh-space-4);
+  border: var(--gh-stroke-control) solid var(--gh-control-line);
+  background: var(--gh-surface);
+  color: var(--gh-on-accent);
+}
+.gh-checkbox {
+  border-radius: var(--gh-radius-xs);
+}
+.gh-checkbox svg {
+  width: var(--gh-space-3);
+  height: var(--gh-space-3);
+}
+.gh-radio {
+  border-radius: var(--gh-radius-full);
+}
+.gh-checkbox:is(.is-on, .is-mixed),
+.gh-radio.is-on {
+  border-color: var(--gh-accent);
+  background: var(--gh-accent);
+}
+.gh-radio.is-on::after {
+  content: '';
+  width: var(--gh-space-2);
+  height: var(--gh-space-2);
+  border-radius: var(--gh-radius-full);
+  background: var(--gh-on-accent);
+}
+
+/* ─── Tabs: underlined views of one object ─── */
+
+.gh-tabs {
+  display: flex;
+  /* It scrolls sideways, so in a column it would otherwise shrink to nothing. */
+  flex-shrink: 0;
+  gap: var(--gh-space-5);
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  scrollbar-width: none;
+  border-bottom: var(--gh-stroke-hairline) solid var(--gh-line);
+}
+.gh-tabs > button {
+  flex-shrink: 0;
+  min-height: var(--gh-control-md);
+  margin-bottom: calc(-1 * var(--gh-stroke-hairline));
+  padding: 0;
+  border: 0;
+  border-bottom: var(--gh-stroke-strong) solid transparent;
+  background: none;
+  color: var(--gh-secondary);
+  font: var(--gh-type-label);
+  white-space: nowrap;
+  cursor: pointer;
+  transition-property: color, border-color;
+  transition-duration: var(--gh-duration-fast);
+}
+.gh-tabs > button:hover {
+  color: var(--gh-text);
+}
+.gh-tabs > button[aria-selected='true'] {
+  border-bottom-color: var(--gh-accent);
+  color: var(--gh-text);
+  font-weight: 600;
+}
+
+/* ─── Badge: 20 high, caption bold, a status pair with a dot ─── */
+
+.gh-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--gh-space-1);
+  height: var(--gh-space-5);
+  padding: 0 var(--gh-space-2);
+  border-radius: var(--gh-radius-sm);
+  background: var(--gh-fill);
+  color: var(--gh-secondary);
+  font: var(--gh-type-caption);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.gh-badge-success {
+  background: var(--gh-success-fill);
+  color: var(--gh-success);
+}
+.gh-badge-warning {
+  background: var(--gh-warning-fill);
+  color: var(--gh-warning);
+}
+.gh-badge-danger {
+  background: var(--gh-danger-fill);
+  color: var(--gh-danger);
+}
+.gh-badge-info {
+  background: var(--gh-info-fill);
+  color: var(--gh-info);
+}
+.gh-status-dot {
+  flex-shrink: 0;
+  width: calc(var(--gh-space-1) * 1.5);
+  height: calc(var(--gh-space-1) * 1.5);
+  border-radius: var(--gh-radius-full);
+  background: currentColor;
+}
+
+/* ─── Empty, Skeleton, ErrorBox ─── */
+
+.gh-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--gh-space-3);
+  padding: var(--gh-space-12) var(--gh-space-5);
+  color: var(--gh-secondary);
+  text-align: center;
+}
+.gh-empty-icon {
+  display: inline-flex;
+  color: var(--gh-tertiary);
+}
+.gh-empty-icon svg {
+  width: var(--gh-space-8);
+  height: var(--gh-space-8);
+}
+.gh-empty-title {
+  margin: 0;
+  color: var(--gh-text);
+  font: var(--gh-type-title-sm);
+}
+.gh-empty-description {
+  max-width: var(--gh-popover-max);
+  margin: 0;
+  font: var(--gh-type-body-sm);
+}
+.gh-empty > .gh-button {
+  margin-top: var(--gh-space-1);
+}
+.gh-skeleton-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gh-space-3);
+  padding: var(--gh-space-2) 0;
+}
+.gh-skeleton {
+  height: var(--gh-space-3);
+  border-radius: var(--gh-radius-xs);
+  background: var(--gh-fill);
+}
+.gh-error-box {
+  display: flex;
+  align-items: center;
+  gap: var(--gh-space-3);
+  padding: var(--gh-space-3) var(--gh-space-4);
+  border: var(--gh-stroke-hairline) solid color-mix(in srgb, var(--gh-danger) 16%, transparent);
+  border-radius: var(--gh-radius-md);
+  background: var(--gh-danger-fill);
+  color: var(--gh-danger);
+  font: var(--gh-type-body-sm);
+}
+.gh-error-box > svg {
+  flex-shrink: 0;
+}
+.gh-error-box-text {
+  flex: 1;
+  min-width: 0;
+}
+.gh-error-box .gh-button {
+  color: var(--gh-danger);
+}
+
+/* ─── Toast: inverted, bottom right (bottom centre when narrow) ─── */
+
+.gh-toast {
+  position: fixed;
+  right: var(--gh-space-6);
+  bottom: var(--gh-space-6);
+  z-index: var(--gh-z-toast);
+  display: flex;
+  align-items: center;
+  gap: var(--gh-space-2);
+  max-width: calc(100% - 2 * var(--gh-space-4));
+  padding: var(--gh-space-1) var(--gh-space-1) var(--gh-space-1) var(--gh-space-4);
+  border: var(--gh-stroke-hairline) solid color-mix(in srgb, var(--gh-canvas) 16%, transparent);
+  border-radius: var(--gh-radius-lg);
+  background: var(--gh-text);
+  color: var(--gh-canvas);
+  box-shadow: var(--gh-shadow-2);
+  font: var(--gh-type-body-sm);
+  animation: gh-rise var(--gh-duration-base) var(--gh-ease-enter);
+}
+.gh-toast-icon {
+  flex-shrink: 0;
+}
+.gh-toast-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.gh-toast .gh-button {
+  color: var(--gh-canvas);
+}
+.gh-toast .gh-button:hover:not(:disabled, [aria-disabled='true']) {
+  background: color-mix(in srgb, var(--gh-canvas) 12%, transparent);
+}
+
+/* ─── Tooltip and the "?" ─── */
+
+.gh-tooltip {
+  z-index: var(--gh-z-tooltip);
+  max-width: var(--gh-popover-max);
+  padding: var(--gh-space-1) var(--gh-space-2);
+  border-radius: var(--gh-radius-sm);
+  background: var(--gh-text);
+  color: var(--gh-canvas);
+  box-shadow: var(--gh-shadow-1);
+  font: var(--gh-type-caption);
+  pointer-events: none;
+  animation: gh-fade var(--gh-duration-fast) var(--gh-ease-standard);
+}
+.gh-help-hint {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  vertical-align: middle;
+  font-weight: 400;
+}
+.gh-help-hint-button {
+  display: inline-flex;
+  margin: calc((var(--gh-icon-sm) - var(--gh-space-6)) / 2) 0;
+  padding: calc((var(--gh-space-6) - var(--gh-icon-sm)) / 2);
+  border: 0;
+  border-radius: var(--gh-radius-full);
+  background: none;
+  color: var(--gh-tertiary);
+  cursor: pointer;
+}
+.gh-help-hint-button:is(:hover, :focus-visible, [aria-expanded='true']) {
+  color: var(--gh-secondary);
+}
+.gh-help-hint-bubble {
+  z-index: var(--gh-z-tooltip);
+  width: max-content;
+  max-width: var(--gh-popover-max);
+  padding: var(--gh-space-2) var(--gh-space-3);
+  border: var(--gh-stroke-hairline) solid var(--gh-line);
+  border-radius: var(--gh-radius-lg);
+  background: var(--gh-raised);
+  color: var(--gh-text);
+  box-shadow: var(--gh-shadow-2);
+  font: var(--gh-type-body-sm);
+  text-align: left;
+  white-space: normal;
+  animation: gh-fade var(--gh-duration-fast) var(--gh-ease-standard);
+}
+
+/* ─── Menu: one panel for "⋯" and right-click ─── */
+
+.gh-menu {
+  position: relative;
+  display: inline-flex;
+}
+.gh-menu-trigger[aria-expanded='true'] {
+  background: var(--gh-hover);
+}
+.gh-menu-panel {
+  z-index: var(--gh-z-popover);
+  min-width: var(--gh-popover-min);
+  max-width: var(--gh-popover-max);
+  padding: var(--gh-space-1);
+  border: var(--gh-stroke-hairline) solid var(--gh-line);
+  border-radius: var(--gh-radius-lg);
+  background: var(--gh-raised);
+  box-shadow: var(--gh-shadow-2);
+  animation: gh-pop var(--gh-duration-fast) var(--gh-ease-enter);
+}
+.gh-menu-item {
+  display: flex;
+  align-items: center;
+  gap: var(--gh-space-2);
+  width: 100%;
+  min-height: var(--gh-nav-row);
+  padding: 0 var(--gh-space-2);
+  border: 0;
+  border-radius: var(--gh-radius-sm);
+  background: none;
+  color: var(--gh-text);
+  font: var(--gh-type-body-sm);
+  text-align: left;
+  cursor: pointer;
+}
+.gh-menu-item:is(:hover, :focus-visible):not(:disabled) {
+  background: var(--gh-hover);
+}
+.gh-menu-item:disabled {
+  color: var(--gh-tertiary);
+  cursor: default;
+}
+.gh-menu-item.is-danger {
+  color: var(--gh-danger);
+}
+.gh-menu-item.is-danger:is(:hover, :focus-visible):not(:disabled) {
+  background: var(--gh-danger-fill);
+}
+.gh-menu-item-icon {
+  display: inline-flex;
+  justify-content: center;
+  width: var(--gh-icon-md);
+  color: var(--gh-secondary);
+}
+.gh-menu-item.is-danger .gh-menu-item-icon {
+  color: inherit;
+}
+.gh-menu-item-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.gh-menu-item-shortcut {
+  color: var(--gh-tertiary);
+  font: var(--gh-type-caption);
+}
+.gh-menu-separator {
+  height: var(--gh-stroke-hairline);
+  margin: var(--gh-space-1) var(--gh-space-2);
+  background: var(--gh-line);
+}
+
+/* ─── Pickers: Select, MultiSelect and the date pickers open the same panel ─── */
+
+.gh-select,
+.gh-date-picker {
+  position: relative;
+  display: inline-flex;
+  min-width: 0;
+}
+.gh-picker-trigger {
+  display: flex;
+  align-items: center;
+  gap: var(--gh-space-2);
+  width: 100%;
+  min-width: calc(var(--gh-control-md) * 3);
+  min-height: var(--gh-control-md);
+  padding: 0 var(--gh-space-2) 0 var(--gh-space-3);
+  border: var(--gh-stroke-hairline) solid var(--gh-control-line);
+  border-radius: var(--gh-radius-md);
+  background: var(--gh-surface);
+  color: var(--gh-text);
+  font: var(--gh-type-body);
+  text-align: left;
+  cursor: pointer;
+  transition-property: border-color, box-shadow;
+  transition-duration: var(--gh-duration-fast);
+  transition-timing-function: var(--gh-ease-standard);
+}
+.gh-picker-trigger:hover:not(:disabled) {
+  border-color: var(--gh-secondary);
+}
+.gh-picker-trigger[aria-invalid='true'] {
+  border-color: var(--gh-danger);
+}
+.gh-select-sm .gh-picker-trigger {
+  min-width: calc(var(--gh-control-sm) * 3);
+  min-height: var(--gh-control-sm);
+  font: var(--gh-type-body-sm);
+}
+.gh-picker-value {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.gh-picker-value.is-placeholder {
+  color: var(--gh-tertiary);
+}
+.gh-picker-chevron,
+.gh-picker-leading {
+  flex-shrink: 0;
+  color: var(--gh-secondary);
+  transition: transform var(--gh-duration-fast) var(--gh-ease-standard);
+}
+.gh-picker-trigger[aria-expanded='true'] .gh-picker-chevron {
+  transform: rotate(180deg);
+}
+.gh-picker-chips {
+  display: flex;
+  gap: var(--gh-space-1);
+}
+.gh-chip {
+  display: inline-flex;
+  align-items: center;
+  height: var(--gh-space-5);
+  padding: 0 var(--gh-space-2);
+  border-radius: var(--gh-radius-sm);
+  background: var(--gh-fill);
+  font: var(--gh-type-body-sm);
+}
+.gh-chip.is-more {
+  color: var(--gh-secondary);
+}
+.gh-picker-panel {
+  z-index: var(--gh-z-popover);
+  display: flex;
+  flex-direction: column;
+  max-height: var(--gh-popover-max);
+  padding: var(--gh-space-1);
+  border: var(--gh-stroke-hairline) solid var(--gh-line);
+  border-radius: var(--gh-radius-lg);
+  background: var(--gh-raised);
+  box-shadow: var(--gh-shadow-2);
+  animation: gh-pop var(--gh-duration-fast) var(--gh-ease-enter);
+}
+.gh-picker-list {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+.gh-picker-option {
+  display: flex;
+  align-items: center;
+  gap: var(--gh-space-2);
+  min-height: var(--gh-nav-row);
+  padding: var(--gh-space-1) var(--gh-space-2);
+  border-radius: var(--gh-radius-sm);
+  color: var(--gh-text);
+  font: var(--gh-type-body-sm);
+  cursor: pointer;
+}
+.gh-picker-option.is-active {
+  background: var(--gh-hover);
+}
+.gh-picker-option[aria-selected='true'] {
+  font-weight: 600;
+}
+.gh-picker-option[aria-disabled='true'] {
+  color: var(--gh-tertiary);
+  cursor: default;
+}
+.gh-picker-option-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+.gh-picker-option-description {
+  color: var(--gh-secondary);
+  font: var(--gh-type-caption);
+}
+.gh-picker-option[aria-selected='true'] .gh-picker-option-description {
+  font-weight: 400;
+}
+.gh-picker-option-icon {
+  display: inline-flex;
+  color: var(--gh-secondary);
+}
+.gh-picker-check {
+  flex-shrink: 0;
+  color: var(--gh-accent-text);
+}
+.gh-picker-search {
+  display: flex;
+  align-items: center;
+  gap: var(--gh-space-2);
+  height: var(--gh-control-md);
+  margin-bottom: var(--gh-space-1);
+  padding: 0 var(--gh-space-2);
+  border-bottom: var(--gh-stroke-hairline) solid var(--gh-line);
+  color: var(--gh-tertiary);
+}
+.gh-picker-search input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: var(--gh-text);
+  font: var(--gh-type-body-sm);
+}
+.gh-picker-search input::placeholder {
+  color: var(--gh-tertiary);
+}
+.gh-picker-empty {
+  padding: var(--gh-space-3) var(--gh-space-2);
+  color: var(--gh-secondary);
+  font: var(--gh-type-body-sm);
+}
+.gh-picker-footer {
+  display: flex;
+  align-items: center;
+  gap: var(--gh-space-2);
+  min-height: var(--gh-control-md);
+  margin-top: var(--gh-space-1);
+  padding: var(--gh-space-1) var(--gh-space-1) 0;
+  border-top: var(--gh-stroke-hairline) solid var(--gh-line);
+}
+.gh-picker-footer-note {
+  flex: 1;
+  color: var(--gh-secondary);
+  font: var(--gh-type-caption);
+}
+.gh-text-button {
+  min-height: var(--gh-control-sm);
+  padding: 0 var(--gh-space-2);
+  border: 0;
+  border-radius: var(--gh-radius-sm);
+  background: none;
+  color: var(--gh-accent-text);
+  font: var(--gh-type-label);
+  cursor: pointer;
+}
+.gh-text-button:hover:not(:disabled) {
+  background: var(--gh-hover);
+}
+.gh-text-button:disabled {
+  color: var(--gh-tertiary);
+  cursor: default;
+}
+.gh-date-trigger {
+  position: relative;
+  display: flex;
+  width: 100%;
+}
+.gh-picker-clear {
+  position: absolute;
+  top: 50%;
+  right: var(--gh-space-2);
+  display: inline-grid;
+  place-content: center;
+  width: var(--gh-space-5);
+  height: var(--gh-space-5);
+  padding: 0;
+  border: 0;
+  border-radius: var(--gh-radius-full);
+  background: var(--gh-fill);
+  color: var(--gh-secondary);
+  opacity: 0;
+  transform: translateY(-50%);
+  cursor: pointer;
+  transition: opacity var(--gh-duration-fast) var(--gh-ease-standard);
+}
+.gh-date-trigger:hover .gh-picker-clear,
+.gh-picker-clear:focus-visible {
+  opacity: 1;
+}
+
+/* ─── Calendar: one month, Monday first ─── */
+
+.gh-calendar-panel {
+  width: calc(7 * var(--gh-control-md) + 2 * var(--gh-space-3));
+  max-height: none;
+  padding: var(--gh-space-3);
+}
+.gh-calendar-header {
+  display: flex;
+  align-items: center;
+  gap: var(--gh-space-1);
+  margin-bottom: var(--gh-space-2);
+  font: var(--gh-type-title-sm);
+}
+.gh-calendar-spacer {
+  flex: 1;
+}
+.gh-calendar-row {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+}
+.gh-calendar-weekday {
+  display: grid;
+  place-content: center;
+  height: var(--gh-control-sm);
+  color: var(--gh-tertiary);
+  font: var(--gh-type-caption);
+}
+.gh-calendar-day {
+  width: 100%;
+  height: var(--gh-control-md);
+  padding: 0;
+  border: 0;
+  border-radius: var(--gh-radius-md);
+  background: none;
+  color: var(--gh-text);
+  font: var(--gh-type-body-sm);
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+.gh-calendar-day:hover:not([aria-disabled='true']) {
+  background: var(--gh-hover);
+}
+.gh-calendar-day.is-outside {
+  color: var(--gh-tertiary);
+}
+.gh-calendar-day[aria-current='date'] {
+  color: var(--gh-accent-text);
+  font-weight: 700;
+  box-shadow: inset 0 0 0 var(--gh-stroke-hairline) var(--gh-accent);
+}
+.gh-calendar-day.is-in-range {
+  border-radius: 0;
+  background: var(--gh-selection);
+}
+.gh-calendar-day.is-selected,
+.gh-calendar-day.is-selected:hover {
+  background: var(--gh-accent);
+  color: var(--gh-on-accent);
+  font-weight: 700;
+  box-shadow: none;
+}
+.gh-calendar-day.is-selected:focus-visible {
+  outline-color: var(--gh-on-accent);
+}
+.gh-calendar-day[aria-disabled='true'] {
+  color: var(--gh-tertiary);
+  text-decoration: line-through;
+  opacity: 0.6;
+  cursor: default;
+}
+
+/* ─── Overlay: drawer, dialog, and the sheet in the narrow layout ─── */
+
+.gh-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: var(--gh-z-drawer);
+  display: flex;
+  justify-content: flex-end;
+}
+[data-floating-boundary] .gh-overlay,
+[data-floating-boundary] .gh-toast {
+  position: absolute;
+}
+.gh-overlay-dialog {
+  z-index: var(--gh-z-modal);
+  align-items: center;
+  justify-content: center;
+}
+.gh-scrim {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: inherit;
+  background: var(--gh-scrim);
+  cursor: default;
+  animation: gh-fade var(--gh-duration-base) var(--gh-ease-standard);
+}
+.gh-overlay-panel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: clamp(var(--gh-drawer-min), var(--gh-drawer-share), var(--gh-drawer-max));
+  max-width: calc(100% - var(--gh-space-10));
+  height: 100%;
+  border-left: var(--gh-stroke-hairline) solid var(--gh-line);
+  background: var(--gh-raised);
+  color: var(--gh-text);
+  box-shadow: var(--gh-shadow-2);
+  animation: gh-drawer-in var(--gh-duration-slow) var(--gh-ease-enter);
+}
+.gh-overlay-panel.is-wide {
+  width: clamp(var(--gh-drawer-min), var(--gh-drawer-wide-share), var(--gh-drawer-wide-max));
+}
+.gh-overlay-dialog .gh-overlay-panel {
+  width: min(var(--gh-dialog-width), calc(100% - 2 * var(--gh-space-6)));
+  height: auto;
+  max-height: calc(100% - var(--gh-space-16));
+  border: var(--gh-stroke-hairline) solid var(--gh-line);
+  border-radius: var(--gh-radius-xl);
+  animation: gh-dialog-in var(--gh-duration-base) var(--gh-ease-enter);
+}
+.gh-overlay-dialog .gh-overlay-panel.is-wide {
+  width: min(var(--gh-dialog-wide), calc(100% - 2 * var(--gh-space-6)));
+}
+.gh-overlay-header {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: var(--gh-space-2);
+  min-height: var(--gh-header-height);
+  padding: 0 var(--gh-space-4) 0 var(--gh-space-6);
+  border-bottom: var(--gh-stroke-hairline) solid var(--gh-line);
+}
+.gh-overlay-title {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  font: var(--gh-type-title);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.gh-overlay-spacer {
+  flex: 1;
+}
+.gh-overlay-body {
+  flex: 1;
+  min-height: 0;
+  padding: var(--gh-space-6);
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+.gh-overlay-footer,
+.gh-overlay-actions {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--gh-space-2);
+}
+.gh-overlay-footer {
+  padding: var(--gh-space-4) var(--gh-space-6);
+  border-top: var(--gh-stroke-hairline) solid var(--gh-line);
+}
+.gh-overlay-footer:empty {
+  display: none;
+}
+.gh-confirm-body {
+  color: var(--gh-secondary);
+  font: var(--gh-type-body);
+}
+.gh-sheet-handle {
+  display: none;
+}
+.gh-overlay.is-leaving .gh-scrim {
+  animation: gh-fade-out var(--gh-duration-exit) var(--gh-ease-exit) forwards;
+}
+.gh-overlay.is-leaving .gh-overlay-panel {
+  animation: gh-drawer-out var(--gh-duration-exit) var(--gh-ease-exit) forwards;
+}
+.gh-overlay-dialog.is-leaving .gh-overlay-panel {
+  animation: gh-dialog-out var(--gh-duration-exit) var(--gh-ease-exit) forwards;
+}
+
+/* ─── ChatCard: one layout for results, process and decisions ─── */
+
+.gh-chat-card {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: var(--gh-stroke-hairline) solid var(--gh-line);
+  border-radius: var(--gh-radius-lg);
+  background: var(--gh-surface);
+}
+.gh-chat-card.is-attention {
+  border-color: color-mix(in srgb, var(--gh-warning) 45%, var(--gh-line));
+}
+.gh-chat-card-header {
+  display: flex;
+  align-items: center;
+  gap: var(--gh-space-2);
+  width: 100%;
+  min-height: var(--gh-row-height);
+  padding: 0 var(--gh-space-3);
+  border: 0;
+  background: none;
+  color: var(--gh-text);
+  font: var(--gh-type-body-sm);
+  text-align: left;
+}
+button.gh-chat-card-header {
+  cursor: pointer;
+}
+button.gh-chat-card-header:hover {
+  background: var(--gh-hover);
+}
+.gh-chat-card-icon {
+  display: inline-flex;
+  color: var(--gh-secondary);
+}
+.gh-chat-card.is-attention .gh-chat-card-icon {
+  color: var(--gh-warning);
+}
+.gh-chat-card-chevron {
+  flex-shrink: 0;
+  color: var(--gh-secondary);
+  transition: transform var(--gh-duration-fast) var(--gh-ease-standard);
+}
+.gh-chat-card-chevron.is-open {
+  transform: rotate(90deg);
+}
+.gh-chat-card-title {
+  min-width: 0;
+  overflow: hidden;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.gh-chat-card-meta {
+  flex-shrink: 0;
+  color: var(--gh-secondary);
+}
+.gh-chat-card-meta::before {
+  content: '·';
+  margin-right: var(--gh-space-2);
+  color: var(--gh-tertiary);
+}
+.gh-chat-card-spacer {
+  flex: 1;
+}
+.gh-chat-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gh-space-3);
+  padding: 0 var(--gh-space-3) var(--gh-space-3);
+}
+.gh-chat-card-footer {
+  display: flex;
+  align-items: center;
+  gap: var(--gh-space-2);
+  padding: 0 var(--gh-space-3) var(--gh-space-3) var(--gh-space-1);
+}
+.gh-chat-card-footer.is-end {
+  justify-content: flex-end;
+  padding-left: var(--gh-space-3);
+}
+.gh-chat-card-footer .gh-button-ghost {
+  min-height: var(--gh-control-sm);
+  padding: 0 var(--gh-space-2);
+  color: var(--gh-secondary);
+}
+
+/* ─── Touch: 44 hit areas without changing what is drawn ─── */
+
+@media (pointer: coarse) {
+  .gh-icon-button::after {
+    content: '';
+    position: absolute;
+    inset: min(0px, calc((100% - var(--gh-touch-target)) / 2));
+  }
+  .gh-switch::after {
+    content: '';
+    position: absolute;
+    inset: calc((var(--gh-space-6) - var(--gh-touch-target)) / 2)
+      calc((var(--gh-space-10) - var(--gh-touch-target)) / 2);
+  }
+  .gh-choice-control {
+    padding: calc((var(--gh-touch-target) - var(--gh-space-4)) / 2);
+    margin: calc((var(--gh-space-4) - var(--gh-touch-target)) / 2);
+  }
+  .gh-picker-clear {
+    opacity: 1;
+  }
+}
+
+/* ─── Narrow layout (< 768): sheets, a centred toast, 44 targets, 16px inputs ─── */
+
+[data-narrow] .gh-button,
+[data-narrow] .gh-chat-card-footer .gh-button-ghost,
+[data-narrow] .gh-text-button,
+[data-narrow] .gh-picker-trigger,
+[data-narrow] .gh-input,
+[data-narrow] .gh-tabs > button,
+[data-narrow] .gh-menu-item,
+[data-narrow] .gh-picker-option,
+[data-narrow] .gh-choice {
+  min-height: var(--gh-touch-target);
+}
+[data-narrow] .gh-icon-button {
+  width: var(--gh-touch-target);
+  min-width: var(--gh-touch-target);
+  height: var(--gh-touch-target);
+  min-height: var(--gh-touch-target);
+}
+[data-narrow] .gh-segmented > button,
+[data-narrow] .gh-search-field,
+[data-narrow] .gh-calendar-day {
+  height: var(--gh-touch-target);
+}
+[data-narrow] .gh-input,
+[data-narrow] .gh-search-input,
+[data-narrow] .gh-picker-search input {
+  font: var(--gh-type-body-lg);
+}
+[data-narrow] .gh-switch::after {
+  content: '';
+  position: absolute;
+  inset: calc((var(--gh-space-6) - var(--gh-touch-target)) / 2) calc((var(--gh-space-10) - var(--gh-touch-target)) / 2);
+}
+[data-narrow] .gh-choice-control {
+  padding: calc((var(--gh-touch-target) - var(--gh-space-4)) / 2);
+  margin: calc((var(--gh-space-4) - var(--gh-touch-target)) / 2);
+}
+[data-narrow] .gh-calendar-panel {
+  width: calc(7 * var(--gh-touch-target) + 2 * var(--gh-space-3));
+}
+[data-narrow] .gh-picker-clear {
+  opacity: 1;
+}
+[data-narrow] .gh-toast {
+  right: 0;
+  bottom: var(--gh-space-4);
+  left: 0;
+  width: max-content;
+  margin: 0 auto;
+}
+[data-narrow] .gh-overlay {
+  align-items: flex-end;
+  justify-content: center;
+}
+[data-narrow] .gh-overlay-panel,
+[data-narrow] .gh-overlay-dialog .gh-overlay-panel {
+  width: 100%;
+  max-width: 100%;
+  height: var(--gh-sheet-share);
+  max-height: var(--gh-sheet-share);
+  border: var(--gh-stroke-hairline) solid var(--gh-line);
+  border-bottom: 0;
+  border-radius: var(--gh-radius-sheet) var(--gh-radius-sheet) 0 0;
+  animation: gh-sheet-in var(--gh-duration-slow) var(--gh-ease-enter);
+}
+[data-narrow] .gh-overlay-dialog .gh-overlay-panel {
+  height: auto;
+}
+[data-narrow] .gh-overlay.is-leaving .gh-overlay-panel {
+  animation: gh-sheet-out var(--gh-duration-exit) var(--gh-ease-exit) forwards;
+}
+[data-narrow] .gh-sheet-handle {
+  position: relative;
+  display: block;
+  flex-shrink: 0;
+  align-self: center;
+  width: var(--gh-control-md);
+  height: var(--gh-space-1);
+  margin-top: var(--gh-space-2);
+  padding: 0;
+  border: 0;
+  border-radius: var(--gh-radius-full);
+  background: var(--gh-control-line);
+  cursor: grab;
+  touch-action: none;
+}
+[data-narrow] .gh-sheet-handle::after {
+  content: '';
+  position: absolute;
+  inset: calc(-1 * var(--gh-space-2)) calc(-1 * var(--gh-space-6)) calc(-1 * var(--gh-space-3));
+}
+[data-narrow] .gh-overlay-header {
+  padding: 0 var(--gh-space-2) 0 var(--gh-space-4);
+}
+[data-narrow] .gh-overlay-body {
+  padding: var(--gh-space-5);
+}
+[data-narrow] .gh-overlay-footer {
+  padding: var(--gh-space-3) var(--gh-space-4) calc(var(--gh-space-3) + env(safe-area-inset-bottom, 0px));
+}
+
+/* ─── Reduced motion: no movement and no loops, only the fades that carry meaning ─── */
+
+@media (prefers-reduced-motion: reduce) {
+  .gh-spinner {
+    animation: none;
+  }
+  .gh-menu-panel,
+  .gh-picker-panel,
+  .gh-toast,
+  .gh-overlay-panel,
+  .gh-overlay-dialog .gh-overlay-panel,
+  [data-narrow] .gh-overlay-panel,
+  [data-narrow] .gh-overlay-dialog .gh-overlay-panel {
+    animation: gh-fade var(--gh-duration-base) linear;
+  }
+  .gh-overlay.is-leaving .gh-overlay-panel,
+  .gh-overlay-dialog.is-leaving .gh-overlay-panel,
+  [data-narrow] .gh-overlay.is-leaving .gh-overlay-panel {
+    animation: gh-fade-out var(--gh-duration-exit) linear forwards;
+  }
+  .gh-switch-knob,
+  .gh-picker-chevron,
+  .gh-chat-card-chevron {
+    transition: none;
+  }
+}
+
+@keyframes gh-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes gh-fade {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes gh-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+@keyframes gh-pop {
+  from {
+    opacity: 0;
+    transform: translateY(calc(-1 * var(--gh-space-0_5))) scale(0.98);
+  }
+}
+@keyframes gh-rise {
+  from {
+    opacity: 0;
+    transform: translateY(var(--gh-space-2));
+  }
+}
+@keyframes gh-drawer-in {
+  from {
+    transform: translateX(100%);
+  }
+}
+@keyframes gh-drawer-out {
+  to {
+    transform: translateX(100%);
+  }
+}
+@keyframes gh-dialog-in {
+  from {
+    opacity: 0;
+    transform: translateY(var(--gh-space-2)) scale(0.97);
+  }
+}
+@keyframes gh-dialog-out {
+  to {
+    opacity: 0;
+    transform: translateY(var(--gh-space-2)) scale(0.97);
+  }
+}
+@keyframes gh-sheet-in {
+  from {
+    transform: translateY(100%);
+  }
+}
+@keyframes gh-sheet-out {
+  to {
+    transform: translateY(100%);
+  }
+}
