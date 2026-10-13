@@ -1,0 +1,358 @@
+/**
+ * A conversation (PRD §7.1): the main thread, an Agent's thread, a chat or a room. One header,
+ * the message column and the composer; the side panel opens over it.
+ */
+
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Info, Link2, Pencil, Pin, PinOff, Trash2, BellOff, CheckCheck, Archive } from 'lucide-react';
+import { ConfirmDialog, Empty, ErrorBox, IconButton, Skeleton, type MenuEntry } from '@greenhouse/ui/kit';
+import { icon } from '@greenhouse/ui/tokens';
+import type { Conversation, Message, NeedsYou } from '@greenhouse/contract';
+import { ApiClientError } from '@greenhouse/contract/client';
+import { useNotify } from '../../app/notify';
+import { useMe } from '../../app/session';
+import { Composer, type Candidate, type ComposerSend } from '../../conversation/Composer';
+import { MessageView, type Author } from '../../conversation/MessageView';
+import { RequestCard } from '../../conversation/RequestCard';
+import { Thread } from '../../conversation/Thread';
+import {
+  useConversation,
+  useConversations,
+  useDeleteConversation,
+  useMarkRead,
+  useMessages,
+  useSendMessage,
+  useStop,
+  useUpdateConversation,
+} from '../../data/conversations';
+import { usePeople } from '../../data/people';
+import { useRequests } from '../../data/requests';
+import { readStream } from '../../data/streams';
+import { useI18n } from '../../lib/i18n';
+import { useVisible } from '../../lib/media';
+import { href, navigate } from '../../lib/router';
+import { AgentAvatar } from '../../shell/AgentAvatar';
+import { Page, PageHeader } from '../../shell/Page';
+import { InfoDrawer } from './InfoDrawer';
+import { NewChat } from './NewChat';
+
+const GROUP_GAP_MS = 5 * 60_000;
+
+const authorKey = (message: Message) =>
+  message.role === 'event'
+    ? 'event'
+    : message.agent_id
+      ? `agent:${message.agent_id}`
+      : `member:${message.author_member_id}`;
+
+export function ConversationPage({ id, agent }: { id: string; agent?: string }) {
+  if (id === 'new') return <NewChat agentId={agent} />;
+  return <ExistingConversation id={id} />;
+}
+
+function ExistingConversation({ id }: { id: string }) {
+  const { t } = useI18n();
+  const me = useMe();
+  const notify = useNotify();
+  const conversations = useConversations();
+  const listed = id === 'main' ? conversations.items.find((item) => item.kind === 'main') : undefined;
+  const conversationId = id === 'main' ? listed?.id : id;
+  const detail = useConversation(conversationId);
+  const messages = useMessages(conversationId);
+  const requests = useRequests(conversationId, 'all', !!conversationId);
+  const people = usePeople();
+  const send = useSendMessage(conversationId ?? '');
+  const stop = useStop(conversationId ?? '');
+  const markRead = useMarkRead();
+  const update = useUpdateConversation();
+  const remove = useDeleteConversation();
+  const [quote, setQuote] = useState<{ message_id: string; text: string } | null>(null);
+  const [info, setInfo] = useState(false);
+  const [renaming, setRenaming] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  // The list row carries the live flags (working, unread); the detail adds members and digest.
+  const row = conversations.items.find((item) => item.id === conversationId);
+  const conversation: Conversation | undefined = row ?? detail.data;
+  const answering = conversation?.agent_id ? people.agentById.get(conversation.agent_id) : undefined;
+  const timeZone = me.timezone;
+
+  // Reading marks the conversation read, once per new message.
+  const lastSeq = conversation?.last_seq ?? 0;
+  const readSeq = conversation?.last_read_seq ?? 0;
+  const visible = useVisible();
+  const marking = useRef(0);
+  const { mutate: markReadNow } = markRead;
+  useEffect(() => {
+    if (!conversationId || !visible || lastSeq <= readSeq || marking.current >= lastSeq) return;
+    const timer = setTimeout(() => {
+      marking.current = lastSeq;
+      markReadNow({ id: conversationId, seq: lastSeq });
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [conversationId, visible, lastSeq, readSeq, markReadNow]);
+
+  const requestsByRun = useMemo(() => {
+    const map = new Map<string, NeedsYou[]>();
+    for (const request of requests.items) {
+      if (!request.run_id) continue;
+      map.set(request.run_id, [...(map.get(request.run_id) ?? []), request]);
+    }
+    return map;
+  }, [requests.items]);
+
+  const shownRuns = new Set(messages.messages.map((message) => message.run_id).filter(Boolean));
+  const looseRequests = requests.items.filter(
+    (request) => request.status === 'pending' && (!request.run_id || !shownRuns.has(request.run_id)),
+  );
+
+  const authorOf = useCallback(
+    (message: Message): Author => {
+      if (message.agent_id) {
+        const agent = people.agentById.get(message.agent_id);
+        return {
+          name: agent?.name ?? 'Agent',
+          agent: agent ?? { id: message.agent_id, avatar: {}, template_key: null },
+        };
+      }
+      if (message.author_member_id === me.id) return { name: me.name, member: { avatar_url: me.avatar_url } };
+      const member = message.author_member_id ? people.memberById.get(message.author_member_id) : undefined;
+      return { name: member?.name ?? '—', member: member ?? { avatar_url: null } };
+    },
+    [people.agentById, people.memberById, me],
+  );
+
+  const candidates: Candidate[] = useMemo(() => {
+    if (conversation?.kind !== 'room') return [];
+    return [
+      ...people.agents.map((agent) => ({
+        handle: agent.handle,
+        name: agent.name,
+        hint: agent.role,
+        leading: <AgentAvatar agent={agent} size={20} />,
+      })),
+      ...people.members
+        .filter((member) => member.id !== me.id)
+        .map((member) => ({ handle: member.id, name: member.name, hint: member.email })),
+    ];
+  }, [conversation?.kind, people.agents, people.members, me.id]);
+
+  if (id === 'main' && conversations.isPending) return <PageSkeleton />;
+  if (!conversationId || detail.isError) {
+    const missing = detail.error instanceof ApiClientError && detail.error.status === 404;
+    return (
+      <Page header={<PageHeader title={missing ? t('common.notFound') : t('common.error')} />} width="reading">
+        {missing ? (
+          <Empty title={t('chat.notFound')} />
+        ) : (
+          <ErrorBox onRetry={() => void detail.refetch()}>{t('common.error')}</ErrorBox>
+        )}
+      </Page>
+    );
+  }
+  if (!conversation) return <PageSkeleton />;
+
+  const kind = conversation.kind;
+  const title =
+    kind === 'main' || kind === 'direct'
+      ? (answering?.name ?? conversation.title)
+      : conversation.title || t('chat.untitled');
+  const status = conversation.working
+    ? t('status.running')
+    : kind === 'main'
+      ? t('chat.mainThread')
+      : kind === 'room'
+        ? t('chat.people', { count: detail.data?.members.length ?? 0 })
+        : (answering?.role ?? '');
+
+  const sendMessage = async (input: ComposerSend) => {
+    const result = await send.mutateAsync(input).catch((error: unknown) => {
+      notify(error instanceof ApiClientError ? error.message : t('common.error'));
+      throw error;
+    });
+    if (result.queued) notify(t('message.queued'));
+  };
+
+  const copyLink = () => {
+    void navigator.clipboard?.writeText(
+      `${location.origin}${location.pathname}${href({ page: 'conversation', id: conversation.id })}`,
+    );
+    notify(t('row.linkCopied'));
+  };
+
+  const menu: MenuEntry[] =
+    kind === 'chat'
+      ? [
+          {
+            label: conversation.pinned ? t('row.unpin') : t('row.pin'),
+            icon: conversation.pinned ? <PinOff size={icon.md} /> : <Pin size={icon.md} />,
+            onClick: () => update.mutate({ id: conversation.id, input: { pinned: !conversation.pinned } }),
+          },
+          { label: t('row.rename'), icon: <Pencil size={icon.md} />, onClick: () => setRenaming(true) },
+          { label: t('row.copyLink'), icon: <Link2 size={icon.md} />, onClick: copyLink },
+          {
+            label: t('row.archive'),
+            icon: <Archive size={icon.md} />,
+            onClick: () => update.mutate({ id: conversation.id, input: { archived: true } }),
+          },
+          '-',
+          { label: t('row.delete'), icon: <Trash2 size={icon.md} />, danger: true, onClick: () => setDeleting(true) },
+        ]
+      : [
+          {
+            label: t('row.mute'),
+            icon: <BellOff size={icon.md} />,
+            checked: conversation.muted,
+            onClick: () => update.mutate({ id: conversation.id, input: { muted: !conversation.muted } }),
+          },
+          {
+            label: t('row.markRead'),
+            icon: <CheckCheck size={icon.md} />,
+            disabled: conversation.unread === 0,
+            onClick: () => markRead.mutate({ id: conversation.id, seq: conversation.last_seq }),
+          },
+          ...(kind === 'room'
+            ? [
+                { label: t('row.rename'), icon: <Pencil size={icon.md} />, onClick: () => setRenaming(true) },
+                { label: t('row.copyLink'), icon: <Link2 size={icon.md} />, onClick: copyLink },
+              ]
+            : []),
+        ];
+
+  const list = messages.messages;
+  const last = list[list.length - 1];
+  const tail = last ? `${last.id}:${last.status}:${last.content.length}:${readStream(last.id)?.text.length ?? 0}` : '';
+
+  return (
+    <Page
+      className="app-conversation"
+      scroll={false}
+      header={
+        <PageHeader
+          leading={answering && <AgentAvatar agent={answering} size={28} />}
+          title={
+            renaming ? (
+              <input
+                className="app-title-input"
+                autoFocus
+                defaultValue={conversation.title}
+                aria-label={t('row.rename')}
+                maxLength={120}
+                onBlur={(event) => {
+                  setRenaming(false);
+                  const next = event.target.value.trim();
+                  if (next && next !== conversation.title)
+                    update.mutate({ id: conversation.id, input: { title: next } });
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') event.currentTarget.blur();
+                  if (event.key === 'Escape') setRenaming(false);
+                }}
+              />
+            ) : (
+              <span className="app-title-stack">
+                <span className="app-title-name">{title}</span>
+                {status && <span className="app-title-status">{status}</span>}
+              </span>
+            )
+          }
+          actions={
+            <IconButton label={t('chat.info')} aria-pressed={info} onClick={() => setInfo(true)}>
+              <Info size={icon.md} />
+            </IconButton>
+          }
+          menu={menu}
+        />
+      }
+    >
+      <div className="app-conversation-body">
+        <Thread
+          tail={tail}
+          hasOlder={!!messages.hasNextPage}
+          loadingOlder={messages.isFetchingNextPage}
+          onLoadOlder={() => void messages.fetchNextPage()}
+          header={
+            detail.data?.digest ? (
+              <button type="button" className="app-summary-notice" onClick={() => setInfo(true)}>
+                {t('message.summaryNotice')} · {t('message.viewSummary')}
+              </button>
+            ) : undefined
+          }
+        >
+          {messages.isPending && <Skeleton lines={6} />}
+          {messages.isError && <ErrorBox onRetry={() => void messages.refetch()}>{t('common.error')}</ErrorBox>}
+          {list.map((message, index) => {
+            const previous = list[index - 1];
+            const showAuthor =
+              !previous ||
+              authorKey(previous) !== authorKey(message) ||
+              new Date(message.created_at).getTime() - new Date(previous.created_at).getTime() > GROUP_GAP_MS;
+            const mine = message.author_member_id === me.id && message.role === 'user';
+            return (
+              <MessageView
+                key={message.id}
+                message={message}
+                author={authorOf(message)}
+                showAuthor={showAuthor}
+                mine={mine}
+                requests={
+                  message.run_id && message.role === 'assistant' ? (requestsByRun.get(message.run_id) ?? []) : []
+                }
+                timeZone={timeZone}
+                onQuote={(text) => setQuote({ message_id: message.id, text: text.slice(0, 2000) })}
+                onNewChat={() => navigate('#/c/new')}
+              />
+            );
+          })}
+          {looseRequests.map((request) => (
+            <RequestCard key={request.id} request={request} />
+          ))}
+        </Thread>
+        {conversation.read_only ? (
+          <div className="app-readonly" role="status">
+            {t('composer.readOnly')}
+          </div>
+        ) : (
+          <Composer
+            key={conversation.id}
+            conversationId={conversation.id}
+            placeholder={
+              kind === 'room'
+                ? t('composer.placeholderRoom', { name: title })
+                : t('composer.placeholder', { name: answering?.name ?? title })
+            }
+            working={conversation.working}
+            candidates={candidates}
+            quote={quote}
+            onClearQuote={() => setQuote(null)}
+            onSend={sendMessage}
+            onStop={() => stop.mutate()}
+          />
+        )}
+      </div>
+      {info && <InfoDrawer conversation={conversation} detail={detail.data} onClose={() => setInfo(false)} />}
+      {deleting && (
+        <ConfirmDialog
+          danger
+          title={t('chat.deleteTitle', { name: conversation.title || t('chat.untitled') })}
+          confirmLabel={t('row.delete')}
+          onCancel={() => setDeleting(false)}
+          onConfirm={() => {
+            setDeleting(false);
+            remove.mutate(conversation.id, { onSuccess: () => navigate('#/c/main', { replace: true }) });
+          }}
+        >
+          {t('chat.deleteBody')}
+        </ConfirmDialog>
+      )}
+    </Page>
+  );
+}
+
+function PageSkeleton() {
+  return (
+    <Page header={<PageHeader title="" />} width="reading">
+      <Skeleton lines={6} />
+    </Page>
+  );
+}

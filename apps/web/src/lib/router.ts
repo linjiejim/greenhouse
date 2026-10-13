@@ -26,13 +26,13 @@ export type AgentTab = (typeof AGENT_TABS)[number];
 export type RunView = (typeof RUN_VIEWS)[number];
 
 export type Route =
-  /** `main`, `new`, or a conversation id. */
-  | { page: 'conversation'; id: string }
+  /** `main`, `new` (optionally with the Agent to ask), or a conversation id. */
+  | { page: 'conversation'; id: string; agent?: string }
   | { page: 'agents'; scope: AgentScope }
   | { page: 'agent'; id: string; tab: AgentTab }
   | { page: 'runs'; view: RunView }
   | { page: 'run'; id: string }
-  | { page: 'notifications' }
+  | { page: 'notifications'; view: 'needs' | 'all' }
   | { page: 'settings'; section: SettingsSection }
   | { page: 'admin'; section: AdminSection }
   | { page: 'activate'; token: string }
@@ -62,8 +62,10 @@ export function parse(hash: string): Route {
   switch (head) {
     case undefined:
       return { page: 'conversation', id: 'main' };
-    case 'c':
-      return { page: 'conversation', id: id ?? 'main' };
+    case 'c': {
+      const agent = id === 'new' ? query.get('agent') : null;
+      return agent ? { page: 'conversation', id: 'new', agent } : { page: 'conversation', id: id ?? 'main' };
+    }
     case 'agents':
       return id
         ? { page: 'agent', id, tab: pick(AGENT_TABS, query.get('tab'), 'profile') }
@@ -71,7 +73,7 @@ export function parse(hash: string): Route {
     case 'runs':
       return id ? { page: 'run', id } : { page: 'runs', view: pick(RUN_VIEWS, query.get('view'), 'active') };
     case 'notifications':
-      return id ? notFound : { page: 'notifications' };
+      return id ? notFound : { page: 'notifications', view: query.get('view') === 'all' ? 'all' : 'needs' };
     case 'settings':
       return { page: 'settings', section: pick(SETTINGS_SECTIONS, id, 'account') };
     case 'admin':
@@ -86,7 +88,7 @@ export function parse(hash: string): Route {
 export function href(route: Route): string {
   switch (route.page) {
     case 'conversation':
-      return `#/c/${encodeURIComponent(route.id)}`;
+      return `#/c/${encodeURIComponent(route.id)}${route.agent ? `?agent=${encodeURIComponent(route.agent)}` : ''}`;
     case 'agents':
       return route.scope === 'mine' ? '#/agents' : `#/agents?scope=${route.scope}`;
     case 'agent':
@@ -96,7 +98,7 @@ export function href(route: Route): string {
     case 'run':
       return `#/runs/${encodeURIComponent(route.id)}`;
     case 'notifications':
-      return '#/notifications';
+      return route.view === 'all' ? '#/notifications?view=all' : '#/notifications';
     case 'settings':
       return `#/settings/${route.section}`;
     case 'admin':

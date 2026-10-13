@@ -19,6 +19,9 @@ interface Session {
   bootstrap: Bootstrap | undefined;
   /** Undefined until loaded, or while signed out. */
   me: Me | undefined;
+  /** Loading the member failed for a reason other than the session ending. */
+  meError: boolean;
+  retryMe(): void;
   signedIn: boolean;
   realtime: RealtimeStatus;
   /** The server speaks a newer API than this page. */
@@ -106,10 +109,13 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     };
   }, [ready, client]);
 
+  const { data: member, isError: memberFailed, refetch: refetchMe } = me;
   const value = useMemo<Session>(
     () => ({
       bootstrap: bootstrap.data,
-      me: signedIn ? me.data : undefined,
+      me: signedIn ? member : undefined,
+      meError: signedIn && memberFailed && !member,
+      retryMe: () => void refetchMe(),
       signedIn,
       realtime,
       outdated: bootstrap.data !== undefined && bootstrap.data.api_version > API_VERSION,
@@ -128,7 +134,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         setSignedIn(false);
       },
     }),
-    [bootstrap.data, me.data, signedIn, realtime, reset],
+    [bootstrap.data, member, memberFailed, refetchMe, signedIn, realtime, reset],
   );
 
   const locale: Locale = me.data ? asLocale(me.data.locale) : browserLocale();

@@ -23,6 +23,8 @@ const apiEnv = [
 
 export default defineConfig({
   testDir: './e2e',
+  // *.e2e.ts, not *.spec.ts: the vitest unit project collects every *.spec.ts.
+  testMatch: /.*\.e2e\.ts$/,
   fullyParallel: false,
   workers: 1,
   retries: 0,
@@ -33,7 +35,19 @@ export default defineConfig({
     locale: 'zh-CN',
     timezoneId: 'Asia/Shanghai',
   },
-  projects: [{ name: 'desktop', use: { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 900 } } }],
+  projects: [
+    { name: 'setup', testMatch: /auth\.setup\.ts$/ },
+    {
+      name: 'desktop',
+      dependencies: ['setup'],
+      use: {
+        ...devices['Desktop Chrome'],
+        viewport: { width: 1440, height: 900 },
+        // Signed in as Lin unless a test says otherwise (e2e/auth.setup.ts).
+        storageState: 'e2e/.auth/lin.json',
+      },
+    },
+  ],
   webServer: [
     {
       command: `node apps/web/e2e/fake-llm.mjs ${E2E.llmPort}`,

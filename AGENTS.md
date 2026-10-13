@@ -16,6 +16,7 @@ Greenhouse is an open-source, self-hosted platform where a team works with its o
 - packages/contract: zod schemas and types for every request and response; the web, mobile and extension clients import it.
 - packages/db: the v2 schema (data-model.md), ids, migrations and test support. drizzle/ holds the single baseline.
 - packages/providers: adapters per capability (llm, search, stt, tts, image, storage), presets, the adapter registry and pinnedFetch. apps/api/src/providers: env parsing, resolution order, sealed secrets, usage metering and the provider routes (docs/product/providers.md).
+- apps/web: the v2 web app (Vite, React 19, TanStack Query; apps/web/AGENTS.md). The API serves its build from public/.
 - apps/design: prototype and component lab. apps/desktop: Tauri shell (apps/desktop/AGENTS.md). apps/bot-computer: the Agent computer image.
 - apps/mobile: v1 Expo app outside the pnpm workspace and the root checks until roadmap M4 (apps/mobile/AGENTS.md).
 - packages/agent-core: agent loop and stream collectors. packages/knowledge-editor: Tiptap schema and Markdown conversion.
@@ -30,6 +31,7 @@ Greenhouse is an open-source, self-hosted platform where a team works with its o
 - BOOTSTRAP_ADMIN_EMAIL creates the first admin once and logs a one-time activation link. MIGRATE_ON_START=1 applies migrations at boot.
 - Schema change: edit packages/db/src/schema/*, then `pnpm db:baseline` to regenerate drizzle/0000_v2_baseline.sql (one baseline until v2.0) and recreate local dev databases.
 - drizzle.config.ts has no default URL, so drizzle-kit never reaches a shared database by accident.
+- `pnpm web:dev` (proxies /api to GREENHOUSE_API, default 127.0.0.1:3000), `pnpm web:build` and `pnpm test:web-e2e` (a real API and database with a fake model; apps/web/AGENTS.md).
 - `pnpm design:dev` (127.0.0.1:4518), `pnpm design:build` and `pnpm test:design-ui` for the prototype.
 - Commits run husky and lint-staged (eslint --fix, prettier --write on staged files).
 

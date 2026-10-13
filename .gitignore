@@ -12,6 +12,9 @@ node_modules/
 /test-results/
 /blob-report/
 tests/e2e-ui/.auth/
+apps/web/e2e/.auth/
+apps/web/test-results/
+apps/web/playwright-report/
 
 # Build output
 dist/

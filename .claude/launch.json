@@ -72,6 +72,14 @@
         "docs"
       ],
       "port": 4599
+    },
+    {
+      "name": "web-v2",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": [
+        "apps/web/e2e/stack.sh"
+      ],
+      "port": 4580
     }
   ]
 }

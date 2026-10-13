@@ -45,7 +45,11 @@ async function stream(response, request) {
   const messages = request.messages ?? [];
   const last = messages[messages.length - 1];
   const said = lastUser(messages);
-  const afterTool = last?.role === 'tool';
+  // A turn woken by a decision (an answer, an approval) carries it in the closing context.
+  const woken = /answered your question|approved|rejected|dismissed/i.test(
+    textOf(messages.filter((message) => message.role === 'user').at(-1)?.content ?? ''),
+  );
+  const afterTool = last?.role === 'tool' || woken;
   const tool = (name, args) => {
     chunk(response, {
       choices: [
@@ -73,7 +77,7 @@ async function stream(response, request) {
   };
 
   if (!afterTool && /^ask me/i.test(said)) {
-    tool('ask_user', { questions: [{ id: 'city', label: 'Which city?', kind: 'text' }] });
+    tool('ask_user', { question: 'Which city?', fields: [{ key: 'city', label: 'City', type: 'text' }] });
   } else if (!afterTool && /^remember /i.test(said)) {
     tool('memory', { action: 'remember', title: said.slice(9).trim(), category: 'fact' });
   } else if (afterTool) {
