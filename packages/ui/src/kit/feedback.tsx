@@ -1,10 +1,10 @@
 /**
  * Status and feedback (docs/design-system/components.md, 展示 and 反馈): badges in the one status
- * vocabulary, empty states, skeletons, inline errors and the toast.
+ * vocabulary, empty states, skeletons, inline errors, the banner and the toast.
  */
 
 import { useEffect, useRef, type ReactNode } from 'react';
-import { Check, CircleAlert, Inbox, X } from 'lucide-react';
+import { Check, CircleAlert, Inbox, Info, X } from 'lucide-react';
 import { icon } from '../tokens/haven';
 import { Button, IconButton } from './controls';
 import { useKitStrings } from './provider';
@@ -93,6 +93,36 @@ export function ErrorBox({ children, onRetry }: { children: ReactNode; onRetry?:
         <Button size="sm" onClick={onRetry}>
           {t.retry}
         </Button>
+      )}
+    </div>
+  );
+}
+
+/**
+ * At most one per screen, under the page header, about something the member can act on (the
+ * action goes in `action`). It closes only when acting is optional (`onClose`).
+ */
+export function Banner({
+  children,
+  tone = 'info',
+  action,
+  onClose,
+}: {
+  children: ReactNode;
+  tone?: 'info' | 'warning';
+  action?: ReactNode;
+  onClose?: () => void;
+}) {
+  const t = useKitStrings();
+  return (
+    <div className={`gh-banner gh-banner-${tone}`} role="status">
+      <Info size={icon.md} strokeWidth={icon.stroke} className="gh-banner-icon" />
+      <div className="gh-banner-text">{children}</div>
+      {action}
+      {onClose && (
+        <IconButton label={t.close} size="sm" onClick={onClose}>
+          <X size={icon.sm} strokeWidth={icon.stroke} />
+        </IconButton>
       )}
     </div>
   );

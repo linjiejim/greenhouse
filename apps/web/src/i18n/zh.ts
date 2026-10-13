@@ -395,6 +395,8 @@ export const zh = {
   'provider.notSetUp': '未配置',
   'provider.available': '可用',
   'provider.notConfigured': '未配置',
+  'provider.noModel': '还没有可用的模型服务。先添加一个，Agent 才能回答。',
+  'provider.addModel': '添加模型服务',
   'provider.help': '每类能力可以配多个实例，按顺序使用；环境变量里的实例只读，可以复制成可编辑的。',
   'provider.removeItem': '移除',
   'provider.addItem': '添加{name}',

@@ -540,6 +540,34 @@ button.gh-chat-card-header:focus-visible {
   border-radius: var(--gh-radius-xs);
   background: var(--gh-fill);
 }
+.gh-banner {
+  display: flex;
+  align-items: center;
+  gap: var(--gh-space-3);
+  padding: var(--gh-space-3) var(--gh-space-4);
+  border-radius: var(--gh-radius-md);
+  color: var(--gh-text);
+  font: var(--gh-type-body-sm);
+}
+.gh-banner-info {
+  background: var(--gh-info-fill);
+}
+.gh-banner-warning {
+  background: var(--gh-warning-fill);
+}
+.gh-banner-icon {
+  flex-shrink: 0;
+}
+.gh-banner-info .gh-banner-icon {
+  color: var(--gh-info);
+}
+.gh-banner-warning .gh-banner-icon {
+  color: var(--gh-warning);
+}
+.gh-banner-text {
+  flex: 1;
+  min-width: 0;
+}
 .gh-error-box {
   display: flex;
   align-items: center;

@@ -1,12 +1,14 @@
 /**
- * 管理 → 服务 (ADM-04): each capability with what serves it now. A capability opens its
+ * 管理 → 服务 (ADM-04, ADM-12): each capability with what serves it now. A capability opens its
  * instances in fallback order (move up / down), add, test, copy an env one to edit, turn off,
- * the personal-key policy and, for models, the default / strong / fast picks.
+ * the personal-key policy and, for models, the default / strong / fast picks. Without any model
+ * service a banner says so first: nothing answers until one exists.
  */
 
 import { useMemo, useState } from 'react';
 import { ArrowDown, ArrowUp, ChevronRight, Plus } from 'lucide-react';
 import {
+  Banner,
   Button,
   Empty,
   ErrorBox,
@@ -244,8 +246,21 @@ export function ServicesSection() {
   const [open, setOpen] = useState<ProviderCapability | null>(null);
   if (data.isPending) return <Skeleton lines={6} />;
   if (data.isError) return <ErrorBox onRetry={() => void data.refetch()}>{t('common.error')}</ErrorBox>;
+  const noModel = !data.data.capabilities.find((state) => state.capability === 'llm')?.effective.length;
   return (
     <>
+      {noModel && (
+        <Banner
+          tone="warning"
+          action={
+            <Button size="sm" kind="primary" onClick={() => setOpen('llm')}>
+              {t('provider.addModel')}
+            </Button>
+          }
+        >
+          {t('provider.noModel')}
+        </Banner>
+      )}
       <ul className="app-list app-bordered">
         {data.data.capabilities.map((state) => {
           const serving = state.effective

@@ -6,7 +6,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useSession } from '../app/session';
-import { useRoute } from '../lib/router';
+import { navigate, useRoute } from '../lib/router';
 import { MEDIUM, NARROW, store, stored, useMedia } from '../lib/media';
 import { cx } from '../lib/cx';
 import { useT } from '../lib/i18n';
@@ -22,6 +22,8 @@ import { ErrorBox } from '@greenhouse/ui/kit';
 import { Workspace } from './Workspace';
 import { OverlayHost } from './OverlayHost';
 
+const SETUP_SHOWN = 'greenhouse.setup-shown';
+
 export function Shell() {
   const t = useT();
   const route = useRoute();
@@ -33,7 +35,7 @@ export function Shell() {
   const [palette, setPalette] = useState(false);
   const [overlay, setOverlay] = useState<OverlayRequest | null>(null);
   const module = moduleOf(route);
-  const { realtime, bootstrap } = useSession();
+  const { realtime, bootstrap, me } = useSession();
   // Say so only when a live connection dropped, not while it first connects.
   const [lost, setLost] = useState(false);
   const wasOpen = useRef(false);
@@ -54,6 +56,13 @@ export function Shell() {
 
   // A new page closes the directory drawer.
   useEffect(() => setDrawer(false), [route]);
+
+  // First deploy (ADM-12): an admin with no model service starts at 管理 → 服务, once per visit.
+  useEffect(() => {
+    if (me?.role !== 'admin' || me.capabilities.llm || sessionStorage.getItem(SETUP_SHOWN)) return;
+    sessionStorage.setItem(SETUP_SHOWN, '1');
+    navigate({ page: 'admin', section: 'services' }, { replace: true });
+  }, [me]);
 
   useEffect(() => {
     document.documentElement.toggleAttribute('data-narrow', narrow);

@@ -28,7 +28,7 @@ export {
   type ButtonProps,
   type SegmentedItem,
 } from './controls';
-export { Badge, Empty, ErrorBox, Skeleton, StatusBadge, Toast, statusTone, type Tone } from './feedback';
+export { Badge, Banner, Empty, ErrorBox, Skeleton, StatusBadge, Toast, statusTone, type Tone } from './feedback';
 export { Menu, useContextMenu, type MenuEntry, type MenuItem } from './menu';
 export { DatePicker, DateRangePicker, MultiSelect, Select, formatDate, toISO, type SelectOption } from './pickers';
 export { ConfirmDialog, Overlay, OverlayActions, type OverlayProps } from './overlay';

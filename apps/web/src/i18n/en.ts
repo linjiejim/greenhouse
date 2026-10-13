@@ -397,6 +397,8 @@ export const en: Record<MessageKey, string> = {
   'provider.notSetUp': 'Not set up',
   'provider.available': 'Available',
   'provider.notConfigured': 'Not configured',
+  'provider.noModel': 'No model service yet. Add one so Agents can answer.',
+  'provider.addModel': 'Add a model service',
   'provider.help':
     'Each capability can have several instances, used in order. Instances from the environment are read-only; copy one to edit it.',
   'provider.removeItem': 'Remove',

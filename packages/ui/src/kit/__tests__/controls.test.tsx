@@ -4,7 +4,19 @@
 
 import { useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
-import { Button, Checkbox, Field, Input, SecretField, Segmented, StatusBadge, Tabs, Toast, statusTone } from '../index';
+import {
+  Banner,
+  Button,
+  Checkbox,
+  Field,
+  Input,
+  SecretField,
+  Segmented,
+  StatusBadge,
+  Tabs,
+  Toast,
+  statusTone,
+} from '../index';
 import { active, advance, byRole, click, get, key, render, setupKit } from './harness';
 
 setupKit();
@@ -180,5 +192,24 @@ describe('FieldGroup', () => {
     expect(document.getElementById(labelId)?.textContent).toBe('Logo');
     expect(group.querySelector('label')).toBeNull();
     expect([...group.querySelectorAll('button')].map((button) => button.textContent)).toEqual(['Replace', 'Remove']);
+  });
+});
+
+describe('Banner', () => {
+  it('is a status with its action, and closes only when given onClose', () => {
+    const onClose = vi.fn();
+    render(
+      <Banner action={<Button>去添加</Button>} onClose={onClose}>
+        先添加一个模型服务
+      </Banner>,
+    );
+    const banner = byRole('status');
+    expect(banner.textContent).toContain('先添加一个模型服务');
+    expect(byRole('button', '去添加')).toBeTruthy();
+    click(byRole('button', '关闭'));
+    expect(onClose).toHaveBeenCalledTimes(1);
+
+    render(<Banner tone="warning">没有可关的</Banner>);
+    expect(get('.gh-banner-warning').querySelector('button')).toBeNull();
   });
 });

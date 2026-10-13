@@ -5,6 +5,7 @@ import { PlantAvatar } from '@greenhouse/ui/components/plant-avatar';
 import { categorical, color, radius, space, type as typeScale } from '@greenhouse/ui/tokens';
 import {
   Badge,
+  Banner,
   Button,
   Checkbox,
   DatePicker,
@@ -552,6 +553,16 @@ export function ComponentLab() {
           </Sample>
           <Sample label="失败" wide>
             <ErrorBox onRetry={() => notify('已重试')}>保存失败，你的输入已保留。</ErrorBox>
+          </Sample>
+          <Sample label="横幅（一屏一条，能做点什么时才出现）" wide>
+            <Banner action={<Button size="sm">去添加</Button>}>
+              还没有可用的模型服务：先添加一个，Agent 才能回答。
+            </Banner>
+          </Sample>
+          <Sample label="可关的横幅" wide>
+            <Banner tone="warning" onClose={() => notify('已关闭')}>
+              本月预算已用 90%。
+            </Banner>
           </Sample>
           <Sample label="无权限" wide>
             <Empty icon={<Lock />} title="你没有访问权限" description="向表格拥有者陈晨申请。" />
