@@ -7,6 +7,7 @@
  * page can't race the rotation and revoke each other's fresh refresh token.
  */
 
+import type { WorkspaceBootstrap } from '@greenhouse/types/workspace-settings';
 import { getAuth, removeStation, updateStationAuth, type Station, type StationAuth } from './storage';
 
 // ─── Instance probing ────────────────────────────────────
@@ -17,15 +18,33 @@ export async function requestHostPermission(baseUrl: string): Promise<boolean> {
   return chrome.permissions.request({ origins: [`${baseUrl}/*`] });
 }
 
-/** GET /api/auth/status — reachability + auth-enabled probe (no auth needed). */
-export async function checkServer(baseUrl: string): Promise<{ ok: boolean; authEnabled?: boolean }> {
+/** One budget for the whole probe: connecting, the headers and the body (the mobile app uses the same). */
+export const SERVER_PROBE_TIMEOUT_MS = 10_000;
+
+/** The key every Greenhouse bootstrap answer carries (null when the workspace has no brand name). */
+const BOOTSTRAP_KEY = 'product_name' satisfies keyof WorkspaceBootstrap;
+
+/**
+ * Is there a Greenhouse API at this origin? Asks `GET /api/bootstrap`, the
+ * public, side-effect-free pre-login endpoint: a 2xx JSON object carrying
+ * `product_name` is a Greenhouse server. An error status, any other body
+ * (some other web server), a network failure or no complete answer within
+ * SERVER_PROBE_TIMEOUT_MS all mean "not reachable". Auth is always on, so
+ * there is nothing else to ask before sign-in.
+ */
+export async function checkServer(baseUrl: string): Promise<boolean> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), SERVER_PROBE_TIMEOUT_MS);
   try {
-    const res = await fetch(`${baseUrl}/api/auth/status`);
-    if (!res.ok) return { ok: false };
-    const body = (await res.json()) as { authEnabled?: boolean };
-    return { ok: typeof body.authEnabled === 'boolean', authEnabled: body.authEnabled };
+    // The signal also cancels a body that stops arriving halfway.
+    const res = await fetch(`${baseUrl}/api/bootstrap`, { signal: controller.signal });
+    if (!res.ok) return false;
+    const body: unknown = await res.json();
+    return typeof body === 'object' && body !== null && BOOTSTRAP_KEY in body;
   } catch {
-    return { ok: false };
+    return false;
+  } finally {
+    clearTimeout(timer);
   }
 }
 

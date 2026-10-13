@@ -52,6 +52,13 @@ see `logos/README.md`. UI uses shared Haven tokens, Nunito fonts and `Greenhouse
   header's status dot is the station switcher (`sidepanel/station-menu.tsx`);
   `ChatView` is keyed by station id so switching remounts chat state. Removing
   a station best-effort revokes its origin permission (`forgetStation`).
+- **Adding a station probes `GET /api/bootstrap`** (`checkServer` in
+  `src/lib/auth.ts`) once host permission is granted: a 2xx JSON object
+  carrying `product_name` within 10 s is a Greenhouse server; any other
+  status, body, network error or timeout is "unreachable". Every call made
+  before sign-in must use a route the server's `isPublicPath` accepts —
+  `tests/browser/server-probe.test.ts` runs the probe against the real guard
+  and handler.
 - **Client stations config** (`src/config.ts`): the `clients.stations` section
   of the repository's `greenhouse.config.ts` is bundled at build time —
   `mode: 'multi' | 'single'`, `defaults: [{id, name, url}]` (OSS default:

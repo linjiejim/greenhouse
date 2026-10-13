@@ -47,7 +47,6 @@ export const zh = {
     connecting: '连接中…',
     serverUnreachable: '无法在该地址访问到 Greenhouse API。',
     permissionDenied: '主机权限被拒绝——没有该权限扩展无法调用这台服务器。',
-    authDisabledHint: '该实例未开启认证（开发模式）。暂不支持免登录使用——请在服务器上配置 ACCESS_PASSWORD。',
 
     signIn: '登录',
     email: '邮箱',

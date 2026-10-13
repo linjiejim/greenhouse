@@ -6,6 +6,8 @@
  * instance yet). Served before auth so the login screen can brand itself and
  * explain a fresh install; therefore it must never expose secrets, user data
  * or feature configuration. Listed in PUBLIC_PATHS (auth/middleware.ts).
+ * The browser extension and the mobile app also probe it to recognize a
+ * Greenhouse server by the `product_name` key (tests/browser/server-probe.test.ts).
  */
 
 import { Hono } from 'hono';

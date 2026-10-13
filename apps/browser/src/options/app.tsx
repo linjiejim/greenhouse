@@ -2,8 +2,8 @@
  * Options page — manage stations (self-hosted Greenhouse instances) and sign in.
  *
  * The stations card lists every saved station (click a row to switch the
- * active one), hosts the add-station flow (validate/normalize the URL, probe
- * /api/auth/status, request host permission for that origin) and, when the
+ * active one), hosts the add-station flow (validate/normalize the URL, request
+ * host permission for that origin, probe the public /api/bootstrap) and, when the
  * active station is signed out, the email + password sign-in for it. Each
  * station keeps its own token pair, so switching never drops a session.
  *
@@ -179,13 +179,8 @@ function AddStationForm({ onDone, onCancel }: { onDone: () => void; onCancel: ()
         setError(t('options.permissionDenied'));
         return;
       }
-      const probe = await checkServer(baseUrl);
-      if (!probe.ok) {
+      if (!(await checkServer(baseUrl))) {
         setError(t('options.serverUnreachable'));
-        return;
-      }
-      if (probe.authEnabled === false) {
-        setError(t('options.authDisabledHint'));
         return;
       }
       // Saved signed-out and made active; the sign-in card takes over. Adding

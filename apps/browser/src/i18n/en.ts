@@ -51,8 +51,6 @@ export const en = {
     connecting: 'Connecting…',
     serverUnreachable: 'Could not reach a Greenhouse API at this address.',
     permissionDenied: 'Host permission was declined — the extension cannot call this server without it.',
-    authDisabledHint:
-      'This instance runs without authentication (dev mode). Continue without signing in is not supported yet — enable ACCESS_PASSWORD on the server.',
 
     // Login card
     signIn: 'Sign in',
