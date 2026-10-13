@@ -42,4 +42,7 @@ export const realtimeEventSchema = z.discriminatedUnion('type', [
 ]);
 export type RealtimeEvent = z.infer<typeof realtimeEventSchema>;
 
+/** The socket closes with this code when the token is missing or no longer good: refresh, then reconnect. */
+export const REALTIME_SIGN_IN_AGAIN = 4401;
+
 export const helloSchema = z.object({ type: z.literal('hello'), data: z.object({ token: z.string().min(1) }) });

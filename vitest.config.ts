@@ -40,6 +40,7 @@ export default defineConfig({
       '@greenhouse/utils/semver': resolve(__dirname, 'packages/utils/src/semver.ts'),
       '@greenhouse/utils/html': resolve(__dirname, 'packages/utils/src/html.ts'),
       '@greenhouse/agent-core': resolve(__dirname, 'packages/agent-core/src/index.ts'),
+      '@greenhouse/contract/client': resolve(__dirname, 'packages/contract/src/client.ts'),
       '@greenhouse/contract': resolve(__dirname, 'packages/contract/src/index.ts'),
       '@greenhouse/providers': resolve(__dirname, 'packages/providers/src/index.ts'),
       '@greenhouse/db/testing': resolve(__dirname, 'packages/db/src/testing.ts'),

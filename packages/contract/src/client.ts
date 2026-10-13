@@ -1,0 +1,418 @@
+/**
+ * The typed client of API v2, shared by the web app, the browser extension and the desktop
+ * shell. It attaches the access token, refreshes it once when it expires (one refresh at a
+ * time, however many requests failed), and turns the error envelope into ApiClientError.
+ */
+
+import type {
+  Agent,
+  AgentDetail,
+  AgentMemory,
+  AgentVersion,
+  CreateAgentInput,
+  MemoryInput,
+  UpdateAgentInput,
+  UpdateMemoryInput,
+} from './agents.js';
+import type { CLIENT_KINDS, LinkInfo, TokenPair } from './auth.js';
+import type { Page } from './common.js';
+import type { ComputerJob, ComputerView } from './computers.js';
+import type {
+  Conversation,
+  ConversationDetail,
+  CreateConversationInput,
+  Message,
+  SendMessageInput,
+  SendMessageResult,
+  UpdateConversationInput,
+} from './conversations.js';
+import type { FileView } from './files.js';
+import { REALTIME_SIGN_IN_AGAIN, type RealtimeEvent } from './realtime.js';
+import type { Me, MemberSummary, UpdateMeInput } from './members.js';
+import type { Notification } from './notifications.js';
+import type { AdminProviders, CapabilityState, MyProviders, ProviderInstance } from './providers.js';
+import type { AnswerInput, NeedsYou } from './requests.js';
+import type { RunDetail, RunView } from './runs.js';
+import type { CreateScheduleInput, Schedule, UpdateScheduleInput } from './schedules.js';
+import type { Bootstrap } from './workspace.js';
+
+export class ApiClientError extends Error {
+  constructor(
+    readonly status: number,
+    readonly code: string,
+    message: string,
+    readonly details?: unknown,
+  ) {
+    super(message);
+    this.name = 'ApiClientError';
+  }
+}
+
+/**
+ * Where the client keeps the session. `lock` serializes refreshes across tabs that share the
+ * store (a refresh token is single-use: two tabs spending the same one would end the session).
+ */
+export interface TokenStore {
+  get(): TokenPair | null;
+  set(tokens: TokenPair | null): void;
+  lock?<T>(run: () => Promise<T>): Promise<T>;
+}
+
+export interface ApiClientOptions {
+  /** Origin of the API, '' for the same origin. */
+  baseUrl: string;
+  tokens: TokenStore;
+  /** Recorded with the session; web by default. */
+  client?: (typeof CLIENT_KINDS)[number];
+  fetch?: typeof fetch;
+  /** The session ended (refresh refused): show sign-in. */
+  onSignedOut?: () => void;
+}
+
+export type RealtimeStatus = 'connecting' | 'open' | 'closed';
+
+export interface RealtimeHandlers {
+  onEvent(event: Exclude<RealtimeEvent, { type: 'ready' }>): void;
+  /** After every hello, the first and each reconnect: refetch what may have been missed. */
+  onReady?(info: { reconnected: boolean }): void;
+  onStatus?(status: RealtimeStatus): void;
+}
+
+export interface RealtimeOptions {
+  WebSocket?: typeof WebSocket;
+  minDelayMs?: number;
+  maxDelayMs?: number;
+}
+
+type Query = Record<string, string | number | boolean | undefined>;
+
+const queryString = (query?: Query) => {
+  const entries = Object.entries(query ?? {}).filter(
+    (entry): entry is [string, string | number | boolean] => entry[1] !== undefined,
+  );
+  return entries.length
+    ? `?${new URLSearchParams(entries.map(([key, value]) => [key, String(value)])).toString()}`
+    : '';
+};
+
+const runNow = <T>(run: () => Promise<T>) => run();
+
+export function createApiClient(options: ApiClientOptions) {
+  const doFetch = options.fetch ?? ((input: RequestInfo | URL, init?: RequestInit) => fetch(input, init));
+  let refreshing: Promise<boolean> | null = null;
+
+  async function parse<T>(response: Response): Promise<T> {
+    if (response.status === 204) return undefined as T;
+    const text = await response.text();
+    let body: unknown;
+    try {
+      body = text ? JSON.parse(text) : undefined;
+    } catch {
+      body = undefined;
+    }
+    if (!response.ok) {
+      const error = (body as { error?: { code?: string; message?: string; details?: unknown } } | undefined)?.error;
+      const code = error?.code ?? (response.status >= 500 ? 'unavailable' : 'internal');
+      throw new ApiClientError(response.status, code, error?.message ?? response.statusText, error?.details);
+    }
+    return body as T;
+  }
+
+  /**
+   * Gets a new access token, one refresh at a time. When another tab already replaced the
+   * token that failed, its pair is used as is. A refused refresh ends the session; a network
+   * failure or a busy server keeps it.
+   */
+  function refresh(failed?: string): Promise<boolean> {
+    refreshing ??= (options.tokens.lock ?? runNow)(async () => {
+      const current = options.tokens.get();
+      if (!current) return false;
+      if (failed && current.access_token !== failed) return true;
+      try {
+        const response = await doFetch(`${options.baseUrl}/api/auth/refresh`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ refresh_token: current.refresh_token }),
+        });
+        if (response.status === 400 || response.status === 401 || response.status === 403) {
+          options.tokens.set(null);
+          options.onSignedOut?.();
+          return false;
+        }
+        if (!response.ok) return false;
+        options.tokens.set((await response.json()) as TokenPair);
+        return true;
+      } catch {
+        return false;
+      }
+    }).finally(() => {
+      refreshing = null;
+    });
+    return refreshing;
+  }
+
+  async function request<T>(
+    method: string,
+    path: string,
+    body?: unknown,
+    init: { query?: Query; raw?: BodyInit } = {},
+  ): Promise<T> {
+    const send = (token: string | undefined) => {
+      const headers: Record<string, string> = {};
+      if (token) headers.authorization = `Bearer ${token}`;
+      if (body !== undefined) headers['content-type'] = 'application/json';
+      return doFetch(`${options.baseUrl}${path}${queryString(init.query)}`, {
+        method,
+        headers,
+        body: init.raw ?? (body !== undefined ? JSON.stringify(body) : undefined),
+      });
+    };
+    const token = options.tokens.get()?.access_token;
+    let response = await send(token);
+    if (response.status === 401 && token && (await refresh(token))) {
+      response = await send(options.tokens.get()?.access_token);
+    }
+    return parse<T>(response);
+  }
+
+  /**
+   * The one realtime socket. It says hello with the access token, refreshes and reconnects
+   * when told to sign in again, and reconnects with backoff after any other close.
+   */
+  function connect(handlers: RealtimeHandlers, realtime: RealtimeOptions = {}) {
+    const Socket = realtime.WebSocket ?? globalThis.WebSocket;
+    const minDelay = realtime.minDelayMs ?? 1_000;
+    const maxDelay = realtime.maxDelayMs ?? 30_000;
+    const root = (options.baseUrl || globalThis.location.origin).replace(/\/$/, '');
+    const url = new URL(`${root}/api/ws`);
+    url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+    let socket: WebSocket | null = null;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let attempts = 0;
+    let stopped = false;
+    let readyBefore = false;
+
+    const schedule = (delay?: number) => {
+      if (stopped) return;
+      const backoff = Math.min(maxDelay, minDelay * 2 ** attempts) * (0.5 + Math.random() / 2);
+      attempts += 1;
+      timer = setTimeout(open, delay ?? backoff);
+    };
+
+    function open() {
+      timer = null;
+      if (stopped) return;
+      const token = options.tokens.get()?.access_token;
+      if (!token) return handlers.onStatus?.('closed');
+      handlers.onStatus?.('connecting');
+      const ws = new Socket(url.toString());
+      socket = ws;
+      ws.onopen = () => ws.send(JSON.stringify({ type: 'hello', data: { token } }));
+      ws.onmessage = (message: MessageEvent) => {
+        let event: RealtimeEvent;
+        try {
+          event = JSON.parse(String(message.data)) as RealtimeEvent;
+        } catch {
+          return;
+        }
+        if (event.type !== 'ready') return handlers.onEvent(event);
+        attempts = 0;
+        handlers.onStatus?.('open');
+        handlers.onReady?.({ reconnected: readyBefore });
+        readyBefore = true;
+      };
+      ws.onclose = (close: CloseEvent) => {
+        if (socket !== ws) return;
+        socket = null;
+        handlers.onStatus?.('closed');
+        if (stopped) return;
+        if (close.code !== REALTIME_SIGN_IN_AGAIN) return schedule();
+        void refresh(token).then((ok) => {
+          if (ok) schedule(0);
+          else if (options.tokens.get()) schedule();
+        });
+      };
+    }
+
+    open();
+    return {
+      close() {
+        stopped = true;
+        if (timer) clearTimeout(timer);
+        const ws = socket;
+        socket = null;
+        ws?.close(1000);
+      },
+      /** Reconnect now if it is down (the network came back, the page became visible). */
+      retry() {
+        if (socket || stopped) return;
+        if (timer) clearTimeout(timer);
+        attempts = 0;
+        open();
+      },
+    };
+  }
+
+  const get = <T>(path: string, query?: Query) => request<T>('GET', path, undefined, { query });
+  const post = <T>(path: string, body?: unknown) => request<T>('POST', path, body ?? {});
+  const patch = <T>(path: string, body: unknown) => request<T>('PATCH', path, body);
+  const put = <T>(path: string, body: unknown) => request<T>('PUT', path, body);
+  const del = (path: string) => request<void>('DELETE', path);
+
+  return {
+    request,
+    refresh,
+    connect,
+
+    bootstrap: () => get<Bootstrap>('/api/bootstrap'),
+
+    auth: {
+      async login(email: string, password: string): Promise<TokenPair> {
+        const pair = await parse<TokenPair>(
+          await doFetch(`${options.baseUrl}/api/auth/login`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ email, password, client: options.client ?? 'web' }),
+          }),
+        );
+        options.tokens.set(pair);
+        return pair;
+      },
+      async logout(): Promise<void> {
+        const current = options.tokens.get();
+        options.tokens.set(null);
+        if (current) {
+          await doFetch(`${options.baseUrl}/api/auth/logout`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ refresh_token: current.refresh_token }),
+          }).catch(() => undefined);
+        }
+      },
+      inspectLink: (token: string) => get<LinkInfo>('/api/auth/links/inspect', { token }),
+      async completeLink(token: string, password: string, name?: string): Promise<TokenPair> {
+        const pair = await parse<TokenPair>(
+          await doFetch(`${options.baseUrl}/api/auth/links/complete`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ token, password, ...(name ? { name } : {}) }),
+          }),
+        );
+        options.tokens.set(pair);
+        return pair;
+      },
+    },
+
+    me: {
+      get: () => get<Me>('/api/me'),
+      update: (input: UpdateMeInput) => patch<Me>('/api/me', input),
+      changePassword: (current_password: string, new_password: string) =>
+        post<void>('/api/me/password', { current_password, new_password }),
+      providers: () => get<MyProviders>('/api/me/providers'),
+    },
+
+    members: { directory: () => get<{ items: MemberSummary[] }>('/api/members') },
+
+    agents: {
+      list: (scope: 'mine' | 'archived' = 'mine') => get<{ items: Agent[] }>('/api/agents', { scope }),
+      get: (id: string) => get<AgentDetail>(`/api/agents/${encodeURIComponent(id)}`),
+      create: (input: CreateAgentInput) => post<AgentDetail>('/api/agents', input),
+      update: (id: string, input: UpdateAgentInput) =>
+        patch<AgentDetail>(`/api/agents/${encodeURIComponent(id)}`, input),
+      archive: (id: string) => del(`/api/agents/${encodeURIComponent(id)}`),
+      restore: (id: string) => post<AgentDetail>(`/api/agents/${encodeURIComponent(id)}/restore`),
+      versions: (id: string) => get<{ items: AgentVersion[] }>(`/api/agents/${encodeURIComponent(id)}/versions`),
+      memories: (id: string) => get<{ items: AgentMemory[] }>(`/api/agents/${encodeURIComponent(id)}/memories`),
+      remember: (id: string, input: MemoryInput) =>
+        post<AgentMemory>(`/api/agents/${encodeURIComponent(id)}/memories`, input),
+      editMemory: (id: string, memoryId: string, input: UpdateMemoryInput) =>
+        patch<AgentMemory>(`/api/agents/${encodeURIComponent(id)}/memories/${memoryId}`, input),
+      forget: (id: string, memoryId: string) => del(`/api/agents/${encodeURIComponent(id)}/memories/${memoryId}`),
+      computer: (id: string) => get<ComputerView>(`/api/agents/${encodeURIComponent(id)}/computer`),
+      startComputer: (id: string) => post<ComputerView>(`/api/agents/${encodeURIComponent(id)}/computer/start`),
+      stopComputer: (id: string) => post<ComputerView>(`/api/agents/${encodeURIComponent(id)}/computer/stop`),
+      restartComputer: (id: string) => post<ComputerView>(`/api/agents/${encodeURIComponent(id)}/computer/restart`),
+      processes: (id: string) =>
+        get<{ items: ComputerJob[] }>(`/api/agents/${encodeURIComponent(id)}/computer/processes`),
+    },
+
+    conversations: {
+      list: (
+        query: { kind?: Conversation['kind']; q?: string; archived?: boolean; cursor?: string; limit?: number } = {},
+      ) => get<Page<Conversation>>('/api/conversations', { ...query, archived: query.archived ? 'true' : undefined }),
+      get: (id: string) => get<ConversationDetail>(`/api/conversations/${id}`),
+      create: (input: CreateConversationInput) => post<ConversationDetail>('/api/conversations', input),
+      update: (id: string, input: UpdateConversationInput) =>
+        patch<ConversationDetail>(`/api/conversations/${id}`, input),
+      remove: (id: string) => del(`/api/conversations/${id}`),
+      messages: (id: string, query: { cursor?: string; after?: number; limit?: number } = {}) =>
+        get<Page<Message>>(`/api/conversations/${id}/messages`, query),
+      send: (id: string, input: SendMessageInput) =>
+        post<SendMessageResult>(`/api/conversations/${id}/messages`, input),
+      stop: (id: string) => post<void>(`/api/conversations/${id}/stop`),
+      read: (id: string, seq: number) => post<void>(`/api/conversations/${id}/read`, { seq }),
+    },
+
+    requests: {
+      list: (query: { state?: 'pending' | 'all'; conversation_id?: string } = {}) =>
+        get<Page<NeedsYou>>('/api/requests', query),
+      approve: (id: string) => post<NeedsYou>(`/api/requests/${id}/approve`),
+      reject: (id: string, reason?: string) => post<NeedsYou>(`/api/requests/${id}/reject`, reason ? { reason } : {}),
+      answer: (id: string, answers: AnswerInput['answers']) =>
+        post<NeedsYou>(`/api/requests/${id}/answer`, { answers }),
+    },
+
+    runs: {
+      list: (query: { state?: 'active' | 'done' | 'all'; agent?: string; cursor?: string } = {}) =>
+        get<Page<RunView>>('/api/runs', query),
+      get: (id: string) => get<RunDetail>(`/api/runs/${id}`),
+      cancel: (id: string) => post<RunDetail>(`/api/runs/${id}/cancel`),
+      retry: (id: string) => post<RunDetail>(`/api/runs/${id}/retry`),
+    },
+
+    schedules: {
+      list: (agent?: string) => get<{ items: Schedule[] }>('/api/schedules', { agent }),
+      create: (input: CreateScheduleInput) => post<Schedule>('/api/schedules', input),
+      update: (id: string, input: UpdateScheduleInput) => patch<Schedule>(`/api/schedules/${id}`, input),
+      remove: (id: string) => del(`/api/schedules/${id}`),
+      pause: (id: string) => post<Schedule>(`/api/schedules/${id}/pause`),
+      resume: (id: string) => post<Schedule>(`/api/schedules/${id}/resume`),
+      runNow: (id: string) => post<Schedule>(`/api/schedules/${id}/run-now`),
+    },
+
+    notifications: {
+      list: (query: { unread?: boolean; cursor?: string } = {}) =>
+        get<Page<Notification>>('/api/notifications', { ...query, unread: query.unread ? 'true' : undefined }),
+      summary: () => get<{ needs_you: number; unread: number }>('/api/notifications/summary'),
+      read: (input: { ids: string[] } | { all: true }) => post<void>('/api/notifications/read', input),
+    },
+
+    files: {
+      upload(
+        file: Blob & { name?: string },
+        fields: { purpose?: 'attachment' | 'avatar' | 'branding'; conversation_id?: string } = {},
+      ) {
+        const form = new FormData();
+        form.set('file', file, file.name ?? 'file');
+        if (fields.purpose) form.set('purpose', fields.purpose);
+        if (fields.conversation_id) form.set('conversation_id', fields.conversation_id);
+        return request<FileView>('POST', '/api/files', undefined, { raw: form });
+      },
+      get: (id: string) => get<FileView>(`/api/files/${id}`),
+      remove: (id: string) => del(`/api/files/${id}`),
+    },
+
+    admin: {
+      providers: () => get<AdminProviders>('/api/admin/providers'),
+      createProvider: (input: unknown) => post<ProviderInstance>('/api/admin/providers', input),
+      updateProvider: (id: string, input: unknown) => patch<ProviderInstance>(`/api/admin/providers/${id}`, input),
+      removeProvider: (id: string) => del(`/api/admin/providers/${id}`),
+      testProvider: (id: string) => post<ProviderInstance>(`/api/admin/providers/${id}/test`),
+      copyProvider: (id: string) => post<ProviderInstance>(`/api/admin/providers/${id}/copy`),
+      setBinding: (capability: string, input: unknown) =>
+        put<CapabilityState>(`/api/admin/provider-bindings/${capability}`, input),
+    },
+  };
+}
+
+export type ApiClient = ReturnType<typeof createApiClient>;

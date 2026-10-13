@@ -7,7 +7,7 @@
 import type { IncomingMessage, Server } from 'node:http';
 import type { Duplex } from 'node:stream';
 import { WebSocketServer, type WebSocket } from 'ws';
-import { helloSchema } from '@greenhouse/contract';
+import { helloSchema, REALTIME_SIGN_IN_AGAIN } from '@greenhouse/contract';
 import { logger } from '@greenhouse/utils/logger';
 import { authenticate } from '../auth/middleware.js';
 import type { Tokens } from '../auth/tokens.js';
@@ -18,8 +18,7 @@ const PING_MS = 25_000;
 /** Disabling a member or changing a password ends their sockets within this long. */
 const RECHECK_MS = 60_000;
 
-/** Close codes clients can act on: 4401 = sign in again. */
-export const CLOSE_UNAUTHORIZED = 4401;
+export const CLOSE_UNAUTHORIZED = REALTIME_SIGN_IN_AGAIN;
 
 export function attachRealtime(server: Server, deps: { hub: Hub; tokens: Tokens; allowedOrigins: string[] }) {
   const wss = new WebSocketServer({ noServer: true, maxPayload: 16 * 1024 });

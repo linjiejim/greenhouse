@@ -6,6 +6,7 @@
  */
 
 import { and, eq, inArray, lt, sql } from 'drizzle-orm';
+import type { ComputerJob, ComputerView } from '@greenhouse/contract';
 import { agentComputers, computerWatches, getDb, members, newId, type AgentComputer } from '@greenhouse/db';
 import type { SandboxClient } from '@greenhouse/providers';
 import { toErrorMessage } from '@greenhouse/utils/error';
@@ -21,24 +22,6 @@ const TOOL_OUTPUT_CHARS = 20_000;
 const WATCH_MS = 60_000;
 const WATCH_DAYS = 7;
 export const IDLE_STOP_MS = 30 * 60_000;
-
-export interface JobView {
-  id: string;
-  name: string;
-  command: string;
-  status: 'running' | 'exited' | 'lost';
-  exit_code: number | null;
-  started_at: string | null;
-  ended_at: string | null;
-}
-
-export interface ComputerView {
-  agent_id: string;
-  state: AgentComputer['state'];
-  state_reason: string | null;
-  last_active_at: string | null;
-  last_started_at: string | null;
-}
 
 /** The end of long output is usually what matters. */
 function tail(text: string, max = TOOL_OUTPUT_CHARS): string {
@@ -226,8 +209,8 @@ export function createComputersService(deps: { providers: ProvidersService; agen
       return { exit_code: result.exitCode, timed_out: timedOut, output: tail(output) };
     },
 
-    async jobs(memberId: string, agentId: string): Promise<JobView[]> {
-      return gh<JobView[]>(memberId, agentId, ['list']);
+    async jobs(memberId: string, agentId: string): Promise<ComputerJob[]> {
+      return gh<ComputerJob[]>(memberId, agentId, ['list']);
     },
 
     async startJob(
@@ -307,7 +290,7 @@ export function createComputersService(deps: { providers: ProvidersService; agen
             user: 'agent',
             timeoutMs: 30_000,
           });
-          const jobs = listed.exitCode === 0 ? (parseJson<JobView[]>(listed.stdout) ?? []) : null;
+          const jobs = listed.exitCode === 0 ? (parseJson<ComputerJob[]>(listed.stdout) ?? []) : null;
           if (!jobs) continue;
           for (const watch of byComputer.get(computer.id) ?? []) {
             const job = jobs.find((entry) => entry.id === watch.jobRef);
