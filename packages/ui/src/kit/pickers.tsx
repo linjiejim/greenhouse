@@ -84,8 +84,16 @@ function OptionList({
   multiple?: boolean;
 }) {
   const t = useKitStrings();
+  // Only the list scrolls to the active option. scrollIntoView would also scroll whatever holds
+  // the panel (a drawer, the page), and a scroll that moves the anchor closes the picker.
   useEffect(() => {
-    document.getElementById(`${id}-${active}`)?.scrollIntoView?.({ block: 'nearest' });
+    const list = document.getElementById(id);
+    const option = document.getElementById(`${id}-${active}`);
+    if (!list || !option) return;
+    const box = list.getBoundingClientRect();
+    const rect = option.getBoundingClientRect();
+    if (rect.top < box.top) list.scrollTop -= box.top - rect.top;
+    else if (rect.bottom > box.bottom) list.scrollTop += rect.bottom - box.bottom;
   }, [id, active]);
   return (
     <div
