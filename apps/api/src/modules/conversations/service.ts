@@ -160,6 +160,13 @@ function decodeSeq(cursor: string | undefined): number | null {
   throw invalidInput('The cursor is invalid.');
 }
 
+/** Who joined first; people added together (a room's start) list its owner first. */
+const SEAT_ORDER = [
+  asc(conversationMembers.createdAt),
+  sql`(${conversationMembers.role} = 'owner') desc`,
+  asc(conversationMembers.memberId),
+] as const;
+
 export function createConversationsService(deps: {
   agents: AgentsService;
   providers: ProvidersService;
@@ -184,7 +191,7 @@ export function createConversationsService(deps: {
       .from(conversationMembers)
       .innerJoin(members, eq(members.id, conversationMembers.memberId))
       .where(eq(conversationMembers.conversationId, conversation.id))
-      .orderBy(asc(conversationMembers.createdAt), asc(conversationMembers.memberId));
+      .orderBy(...SEAT_ORDER);
     const agentIds = await service.presentAgentIds(conversation);
     const rows = agentIds.length
       ? await db
@@ -334,7 +341,7 @@ export function createConversationsService(deps: {
       .select()
       .from(conversationMembers)
       .where(eq(conversationMembers.conversationId, row.id))
-      .orderBy(asc(conversationMembers.createdAt));
+      .orderBy(...SEAT_ORDER);
     const present = await db
       .select({ id: conversationAgents.agentId })
       .from(conversationAgents)
@@ -824,7 +831,7 @@ export function createConversationsService(deps: {
           .select()
           .from(conversationMembers)
           .where(eq(conversationMembers.conversationId, conversationId))
-          .orderBy(asc(conversationMembers.createdAt), asc(conversationMembers.memberId));
+          .orderBy(...SEAT_ORDER);
         if (!seats.some((seat) => seat.memberId === targetId)) throw notFound('Member');
         if (seats.length <= 1) {
           throw conflict('last_member', 'A room keeps at least one person; delete it instead.');
