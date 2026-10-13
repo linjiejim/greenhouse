@@ -7,8 +7,9 @@ automatically by release-please (`release-type: node`) — it records the curren
 release, so **don't hand-edit it**. The per-workspace `package.json` `version` fields
 are placeholders (not maintained) — except `apps/mobile`, whose `package.json` +
 `app.json` versions release-please keeps in sync with the product version via
-`extra-files` (don't hand-edit those either). The runtime version still comes from
-the tag, injected as `APP_VERSION` (see below), not read from `package.json`.
+`extra-files` (don't hand-edit those either). The image carries the tag as
+`APP_VERSION` (see below); the web build stamps the root `package.json` version,
+which release-please keeps equal to the tag.
 
 ## Stable vs. edge — the promise
 

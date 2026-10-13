@@ -1,6 +1,6 @@
 /**
- * Bots API — the one client for every Bots resource (endpoint table in
- * apps/api/src/bots/AGENTS.md → HTTP contract):
+ * Bots API — the one client for every Bots resource (endpoints are listed at the top of
+ * apps/api/src/bots/routes.ts and its sibling route files):
  * - `/api/bots*`             Bots, conversations, shared notes, background
  *                            tasks and the "needs you" requests
  * - `/api/bots/computer/*`   an Agent's own computer (status, take over, type…);

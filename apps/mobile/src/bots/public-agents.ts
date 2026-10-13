@@ -1,6 +1,6 @@
 /**
  * Other members' public Agents on the phone (spec docs/specs/20261011-agent-first-class.md §5c P4,
- * D33–D41; server contract apps/api/src/bots/AGENTS.md「公开 Agent」). Someone publishes one of their
+ * D33–D41; server routes apps/api/src/bots/public-routes.ts). Someone publishes one of their
  * Agents to an audience; a member in it finds it under "Browse Agents" (`GET /api/agents`), talks to
  * it in their own DM (`POST /api/agents/:id/conversation`) and may rate its replies. Its owner never
  * reads that DM. Such a DM is a plain `kind: 'direct'` conversation whose `owner_bot_id` is not one

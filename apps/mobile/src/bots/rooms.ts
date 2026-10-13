@@ -1,7 +1,7 @@
 /**
  * Rooms on the phone — several people, and the Agents they bring, in one conversation
  * (`bot_conversations.kind = 'room'`; spec docs/specs/20261011-agent-first-class.md §5d, D42–D47;
- * server contract apps/api/src/bots/AGENTS.md「多人对话 room」). A room runs on the thread machinery
+ * server routes apps/api/src/bots/rooms.ts). A room runs on the thread machinery
  * (./thread/engine.ts, the `/?c=` route); what is the same on every client — what a room is called,
  * who is in it, whose each Agent is — is the web's, vendored (./vendor/room.ts). What only the phone
  * needs lives here, React-free so the root vitest pins it (./rooms.test.ts):

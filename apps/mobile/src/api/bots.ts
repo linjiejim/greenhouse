@@ -1,7 +1,7 @@
 /**
  * Bots API — the member's Bots, their conversations, background tasks and the
- * "needs you" requests (`/api/bots*`), and rooms with other people (`/api/rooms*`; endpoint table in
- * apps/api/src/bots/AGENTS.md → HTTP contract). Function names follow the web
+ * "needs you" requests (`/api/bots*`), and rooms with other people (`/api/rooms*`; endpoints listed at
+ * the top of apps/api/src/bots/routes.ts and rooms.ts). Function names follow the web
  * client (apps/web/src/lib/api/bots.ts); sending a message is `POST /api/chat`
  * (`openBotsChat` in ./chat.ts), not this module.
  *

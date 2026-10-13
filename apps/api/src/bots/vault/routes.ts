@@ -14,7 +14,7 @@
  * no usable vault key (crypto.ts); 400 `origin_invalid` / `origin_forbidden`
  * / `label_invalid` / `totp_invalid` / `invalid` for bad input.
  *
- * Design: docs/specs/20261005-personal-assistant-bots.md §8; HTTP contract in ../AGENTS.md.
+ * Design: docs/specs/20261005-personal-assistant-bots.md §8; types in packages/types/src/bots.ts.
  */
 
 import { Hono, type Context } from 'hono';

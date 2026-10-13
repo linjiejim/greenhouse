@@ -2,8 +2,8 @@
  * Quarantine notification for admins — WeCom group bot only.
  *
  * There is deliberately no in-app inbox here. A general unread inbox is
- * platform-level infrastructure filed as its own project (see the Automation
- * section of apps/api/src/AGENTS.md); building half of one for a single module
+ * platform-level infrastructure filed as its own project (docs/product/prd.md §7.8);
+ * building half of one for a single module
  * would leave the future inbox with a parallel implementation to migrate. The
  * second channel is the SkillHub UI itself, which already loads the whole
  * catalog and can therefore derive a "needs review" count client-side without

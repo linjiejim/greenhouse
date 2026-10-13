@@ -1,6 +1,6 @@
 /**
  * Which computer — one per Agent (spec docs/specs/20261011-agent-first-class.md P3a,
- * D28–D30; apps/api/src/bots/AGENTS.md「每个 Agent 一台电脑」). The member's main
+ * D28–D30; server routes apps/api/src/bots/computer/routes.ts). The member's main
  * Agent (Sprouty) has the computer every member had before 2026-10-12; any other
  * Agent has its own. The app names a computer by its Agent, as the routes do
  * (`?bot=`): null = the main Agent's.

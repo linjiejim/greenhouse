@@ -40,7 +40,7 @@
  * 群聊已退役（2026-10-09）：对话就是某个 Bot 的私聊，其他 Bot 以客串身份加入（成员手动邀请或 Bot 的
  * team.add），交接永远允许；旧群聊保留为只读历史（发消息 / 邀请 / 移出 / 处理卡片一律 409 group_closed）。
  * 静态路径先于 /:id 注册（Hono 按注册顺序匹配）。
- * 契约：bots/AGENTS.md「HTTP 契约」。
+ * 契约：本文件头的端点列表与 packages/types/src/bots.ts。
  */
 
 import { Hono } from 'hono';

@@ -9,7 +9,7 @@
  *
  * When the server-side types change, update this file to match. A CI parity
  * check (packages/contract asserting these shapes against the canonical types)
- * is a known follow-up — see apps/mobile/AGENTS.md.
+ * is still missing; v2 replaces this file with @greenhouse/contract (docs/product/roadmap.md M4).
  */
 
 // ─── Auth ────────────────────────────────────────────────

@@ -44,7 +44,7 @@
  * admin's job) rather than the member's own home.
  *
  * Design: docs/specs/20261005-personal-assistant-bots.md §6.4,
- * docs/specs/20261007-bots-computer-p0-p1.md §2; HTTP contract in ../AGENTS.md.
+ * docs/specs/20261007-bots-computer-p0-p1.md §2; types in packages/types/src/bots.ts.
  */
 
 import { Readable } from 'node:stream';

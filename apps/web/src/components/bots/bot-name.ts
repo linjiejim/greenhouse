@@ -1,6 +1,6 @@
 /**
  * Bot name rules on the client — the same rules the API enforces
- * (apps/api/src/bots/AGENTS.md → HTTP contract), checked while typing so the member
+ * (apps/api/src/bots/routes.ts), checked while typing so the member
  * learns them before pressing Create. The server stays authoritative.
  *
  * Why these rules: a Bot's name is a speaker tag in every other Bot's
