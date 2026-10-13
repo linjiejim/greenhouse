@@ -52,6 +52,15 @@ import { searchRoutes } from './modules/search/routes.js';
 import { createSearchService, type SearchService } from './modules/search/service.js';
 import { adminUsageRoutes, agentUsageRoutes, myUsageRoutes } from './modules/usage/routes.js';
 import { createUsageService, type UsageService } from './modules/usage/service.js';
+import { mcpRoutes } from './modules/mcp/routes.js';
+import {
+  adminClientRoutes,
+  grantRoutes,
+  oauthConsentRoutes,
+  oauthProtocolRoutes,
+  personalTokenRoutes,
+} from './modules/oauth/routes.js';
+import { createOAuthService, type OAuthService } from './modules/oauth/service.js';
 import { createHub, type Hub } from './realtime/hub.js';
 import { adminProviderRoutes, myModelRoutes, myProviderRoutes } from './providers/routes.js';
 import { createProvidersService, type ProvidersService } from './providers/service.js';
@@ -77,6 +86,7 @@ export interface Services {
   hub: Hub;
   engine: Engine;
   limiter: RateLimiter;
+  oauth: OAuthService;
 }
 
 export interface ServiceOptions {
@@ -157,13 +167,16 @@ export function createServices(config: AppConfig, options: ServiceOptions = {}):
     hub,
     engine,
     limiter: new RateLimiter(10, 60_000),
+    oauth: createOAuthService({ tokens, publicUrl: config.PUBLIC_URL }),
   };
 }
 
 /**
  * The HTTP surface. Public: /health, /api/bootstrap, /api/auth/*, file content behind a signed URL
  * (GET /api/files/:id/content?exp=&m=&sig=), the connector sign-in callback
- * (GET /api/connectors/oauth/callback, which changes nothing), and the built web app at /.
+ * (GET /api/connectors/oauth/callback, which changes nothing), the OAuth endpoints (/.well-known/*,
+ * /oauth/*), the MCP server /api/mcp (its own OAuth or personal bearer tokens), and the built web
+ * app at /.
  * Everything else under /api requires a member; /api/admin/* also requires an admin.
  */
 export function createApp(services: Services, options: { webDir?: string } = {}) {
@@ -195,6 +208,9 @@ export function createApp(services: Services, options: { webDir?: string } = {})
   app.route('/api/files', fileContentRoutes(services.files));
   // A provider sends the member's browser back here without a bearer header; the web app finishes it.
   app.route('/api/connectors', connectorCallbackRoutes(services.connectors));
+  // External access: OAuth 2.1 metadata and endpoints, and the MCP server with its own bearer tokens.
+  app.route('/', oauthProtocolRoutes({ oauth: services.oauth, clientIp: (c) => requestSourceIp(c as never, trust) }));
+  app.route('/api/mcp', mcpRoutes({ oauth: services.oauth, services }));
 
   const signedIn = new Hono<AppEnv>();
   signedIn.use('*', member);
@@ -202,6 +218,9 @@ export function createApp(services: Services, options: { webDir?: string } = {})
   signedIn.route('/me/models', myModelRoutes(services.providers));
   signedIn.route('/me/usage', myUsageRoutes(services.usage));
   signedIn.route('/me/connections', myConnectionRoutes(services.connectors));
+  signedIn.route('/me/tokens', personalTokenRoutes(services.oauth));
+  signedIn.route('/me/grants', grantRoutes(services.oauth));
+  signedIn.route('/oauth', oauthConsentRoutes(services.oauth));
   signedIn.route('/me', meRoutes(services.members));
   signedIn.route('/members', directoryRoutes(services.members));
   signedIn.route('/groups', groupDirectoryRoutes(services.members));
@@ -222,6 +241,7 @@ export function createApp(services: Services, options: { webDir?: string } = {})
   signedIn.route('/admin', adminUsageRoutes(services.usage));
   signedIn.route('/admin', adminPublicAgentRoutes(services.agents));
   signedIn.route('/admin/connectors', adminConnectorRoutes(services.connectors));
+  signedIn.route('/admin/clients', adminClientRoutes(services.oauth));
   app.route('/api', signedIn);
   app.route('/', webRoutes(options.webDir));
 

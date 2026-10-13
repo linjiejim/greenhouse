@@ -81,6 +81,61 @@ CREATE TABLE "shares" (
 	CONSTRAINT "shares_grant_key" UNIQUE NULLS NOT DISTINCT("resource_type","resource_id","principal_type","principal_id")
 );
 --> statement-breakpoint
+CREATE TABLE "oauth_clients" (
+	"id" text PRIMARY KEY NOT NULL,
+	"name" text NOT NULL,
+	"redirect_uris" jsonb DEFAULT '[]'::jsonb NOT NULL,
+	"auth_method" text DEFAULT 'none' NOT NULL,
+	"secret_hash" text,
+	"bound_member_id" text,
+	"allowed_scopes" jsonb,
+	"registration" text DEFAULT 'dynamic' NOT NULL,
+	"status" text DEFAULT 'active' NOT NULL,
+	"created_by" text,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "oauth_codes" (
+	"code_hash" text PRIMARY KEY NOT NULL,
+	"grant_id" text NOT NULL,
+	"redirect_uri" text NOT NULL,
+	"code_challenge" text NOT NULL,
+	"scopes" jsonb DEFAULT '[]'::jsonb NOT NULL,
+	"auth_version" integer NOT NULL,
+	"expires_at" timestamp with time zone NOT NULL,
+	"used_at" timestamp with time zone,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "oauth_grants" (
+	"id" text PRIMARY KEY NOT NULL,
+	"member_id" text NOT NULL,
+	"client_id" text NOT NULL,
+	"resource" text NOT NULL,
+	"scopes" jsonb DEFAULT '[]'::jsonb NOT NULL,
+	"status" text DEFAULT 'active' NOT NULL,
+	"revoked_at" timestamp with time zone,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "oauth_tokens" (
+	"id" text PRIMARY KEY NOT NULL,
+	"grant_id" text NOT NULL,
+	"kind" text NOT NULL,
+	"name" text,
+	"token_hash" text NOT NULL,
+	"resource" text NOT NULL,
+	"scopes" jsonb DEFAULT '[]'::jsonb NOT NULL,
+	"auth_version" integer NOT NULL,
+	"expires_at" timestamp with time zone NOT NULL,
+	"rotated_at" timestamp with time zone,
+	"revoked_at" timestamp with time zone,
+	"last_used_at" timestamp with time zone,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
 CREATE TABLE "agent_computers" (
 	"id" text PRIMARY KEY NOT NULL,
 	"agent_id" text NOT NULL,
@@ -622,6 +677,12 @@ ALTER TABLE "group_members" ADD CONSTRAINT "group_members_member_id_members_id_f
 ALTER TABLE "groups" ADD CONSTRAINT "groups_created_by_members_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."members"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "pins" ADD CONSTRAINT "pins_member_id_members_id_fk" FOREIGN KEY ("member_id") REFERENCES "public"."members"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "refresh_tokens" ADD CONSTRAINT "refresh_tokens_member_id_members_id_fk" FOREIGN KEY ("member_id") REFERENCES "public"."members"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "oauth_clients" ADD CONSTRAINT "oauth_clients_bound_member_id_members_id_fk" FOREIGN KEY ("bound_member_id") REFERENCES "public"."members"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "oauth_clients" ADD CONSTRAINT "oauth_clients_created_by_members_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."members"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "oauth_codes" ADD CONSTRAINT "oauth_codes_grant_id_oauth_grants_id_fk" FOREIGN KEY ("grant_id") REFERENCES "public"."oauth_grants"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "oauth_grants" ADD CONSTRAINT "oauth_grants_member_id_members_id_fk" FOREIGN KEY ("member_id") REFERENCES "public"."members"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "oauth_grants" ADD CONSTRAINT "oauth_grants_client_id_oauth_clients_id_fk" FOREIGN KEY ("client_id") REFERENCES "public"."oauth_clients"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "oauth_tokens" ADD CONSTRAINT "oauth_tokens_grant_id_oauth_grants_id_fk" FOREIGN KEY ("grant_id") REFERENCES "public"."oauth_grants"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "agent_computers" ADD CONSTRAINT "agent_computers_agent_id_agents_id_fk" FOREIGN KEY ("agent_id") REFERENCES "public"."agents"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "agent_memories" ADD CONSTRAINT "agent_memories_agent_id_agents_id_fk" FOREIGN KEY ("agent_id") REFERENCES "public"."agents"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "agent_memories" ADD CONSTRAINT "agent_memories_member_id_members_id_fk" FOREIGN KEY ("member_id") REFERENCES "public"."members"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
@@ -662,6 +723,12 @@ CREATE INDEX "members_role_idx" ON "members" USING btree ("role");--> statement-
 CREATE UNIQUE INDEX "refresh_tokens_hash_key" ON "refresh_tokens" USING btree ("token_hash");--> statement-breakpoint
 CREATE INDEX "refresh_tokens_member_idx" ON "refresh_tokens" USING btree ("member_id");--> statement-breakpoint
 CREATE INDEX "shares_principal_idx" ON "shares" USING btree ("principal_type","principal_id");--> statement-breakpoint
+CREATE INDEX "oauth_clients_bound_member_idx" ON "oauth_clients" USING btree ("bound_member_id");--> statement-breakpoint
+CREATE INDEX "oauth_codes_grant_idx" ON "oauth_codes" USING btree ("grant_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "oauth_grants_member_client_key" ON "oauth_grants" USING btree ("member_id","client_id","resource");--> statement-breakpoint
+CREATE INDEX "oauth_grants_client_idx" ON "oauth_grants" USING btree ("client_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "oauth_tokens_hash_key" ON "oauth_tokens" USING btree ("token_hash");--> statement-breakpoint
+CREATE INDEX "oauth_tokens_grant_idx" ON "oauth_tokens" USING btree ("grant_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "agent_computers_agent_key" ON "agent_computers" USING btree ("agent_id","owner_id");--> statement-breakpoint
 CREATE INDEX "agent_computers_state_idx" ON "agent_computers" USING btree ("state");--> statement-breakpoint
 CREATE INDEX "agent_memories_agent_idx" ON "agent_memories" USING btree ("agent_id","status");--> statement-breakpoint

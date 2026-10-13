@@ -77,6 +77,20 @@ import type {
 } from './members.js';
 import type { Notification } from './notifications.js';
 import type {
+  AdminClient,
+  ConsentDecisionInput,
+  ConsentRequest,
+  ConsentResult,
+  CreateClientInput,
+  CreatedClient,
+  CreatedPersonalToken,
+  CreatePersonalTokenInput,
+  Grant,
+  PersonalToken,
+  RotatedSecret,
+  UpdateClientInput,
+} from './oauth.js';
+import type {
   AdminProviders,
   BindingInput,
   CapabilityState,
@@ -423,6 +437,26 @@ export function createApiClient(options: ApiClientOptions) {
         test: (id: string) => post<ConnectionTest>(`/api/me/connections/${id}/test`),
         remove: (id: string) => del(`/api/me/connections/${id}`),
       },
+      /** Personal access tokens for `/api/mcp` (the CLI, scripts); the token itself is shown once. */
+      tokens: {
+        list: (query: { cursor?: string; limit?: number } = {}) => get<Page<PersonalToken>>('/api/me/tokens', query),
+        create: (input: CreatePersonalTokenInput) => post<CreatedPersonalToken>('/api/me/tokens', input),
+        revoke: (id: string) => del(`/api/me/tokens/${id}`),
+      },
+      /** Clients I authorized; revoking one ends its tokens. */
+      grants: {
+        list: (query: { cursor?: string; limit?: number } = {}) => get<Page<Grant>>('/api/me/grants', query),
+        /** A machine client an admin bound to me starts acting as me. */
+        approve: (id: string) => post<Grant>(`/api/me/grants/${id}/approve`),
+        revoke: (id: string) => del(`/api/me/grants/${id}`),
+      },
+    },
+
+    /** The OAuth consent page, `#/oauth/consent?request=` (an `error=` there means the link itself was bad). */
+    oauth: {
+      consent: (request: string) => get<ConsentRequest>('/api/oauth/consent', { request }),
+      /** Approve (fewer scopes if I untick some) or deny; then send the browser to `redirect_to`. */
+      decide: (input: ConsentDecisionInput) => post<ConsentResult>('/api/oauth/consent', input),
     },
 
     members: {
@@ -657,6 +691,17 @@ export function createApiClient(options: ApiClientOptions) {
           get<Page<AdminPublicAgent>>('/api/admin/public-agents', query),
         pause: (id: string) => post<AdminPublicAgent>(`/api/admin/public-agents/${id}/pause`),
         resume: (id: string) => post<AdminPublicAgent>(`/api/admin/public-agents/${id}/resume`),
+      },
+      /** External access: interactive and machine clients. */
+      clients: {
+        list: (query: { cursor?: string; limit?: number } = {}) => get<Page<AdminClient>>('/api/admin/clients', query),
+        get: (id: string) => get<AdminClient>(`/api/admin/clients/${id}`),
+        /** A machine client comes with its secret, shown once. */
+        create: (input: CreateClientInput) => post<CreatedClient>('/api/admin/clients', input),
+        /** Rename, disable (its tokens end at once) or enable. */
+        update: (id: string, input: UpdateClientInput) => patch<AdminClient>(`/api/admin/clients/${id}`, input),
+        rotateSecret: (id: string) => post<RotatedSecret>(`/api/admin/clients/${id}/rotate-secret`),
+        remove: (id: string) => del(`/api/admin/clients/${id}`),
       },
     },
   };

@@ -102,7 +102,7 @@ v2 决定
 | AGNT-20 | 电脑生命周期：按需启动、空闲停止、满额排队、备份 | 保留 | 进行中 | W | #70：按需启动、空闲 30 分钟停机（有后台进程或等待接管时不停）；满额排队、备份未做 |
 | AGNT-21 | 密码库：只写登录、TOTP、站点、限定 Agent、自动或询问、访问日志 | 保留 | 规划 | W | |
 | AGNT-22 | 电脑里的浏览器工具（Chromium） | 保留 | 规划 | — | |
-| AGNT-23 | 外部 Agent 通过 MCP 找我的 Agent | 保留 | 规划 | — | `agents_list` / `agent_message` / `agent_conversation_get` |
+| AGNT-23 | 外部 Agent 通过 MCP 找我的 Agent | 保留 | 进行中 | — | #70：接口完成。`agents_list`（我的与分享给我的公开 Agent）/ `agent_message`（写进该 Agent 的对话，按我的权限回答，最多等 50 秒）/ `agent_conversation_get`（之后再读或继续等）；要我批准的写操作留在 App 的卡片里，结果返回 `needs_you` 与链接 |
 | AGNT-24 | 在飞书里 `@名字` 找到对应 Agent | 保留 | 规划 | — | |
 | AGNT-25 | 「交给 Agent」：任意表格记录 | 改造 | 规划 | W I | 原来只能交项目任务 |
 | AGNT-D1 | 设置 → 我的 Agents 页 | 合并 | 待删 | W I | 去处 AGNT-16 |
@@ -253,7 +253,7 @@ v2 决定
 | SET-05 | 连接 · 个人邮箱（IMAP / SMTP） | 改造 | 规划 | W | |
 | SET-06 | 密码库 | 保留 | 规划 | W | |
 | SET-07 | 我的服务：个人 Key（管理员允许时） | 新增 | 进行中 | W | #70：接口完成，PRV-04；Web 界面完成（#70） |
-| SET-08 | 外部访问：撤销 OAuth 授权、个人访问令牌（CLI） | 改造 | 规划 | W | 原 Agent Connections |
+| SET-08 | 外部访问：撤销 OAuth 授权、个人访问令牌（CLI） | 改造 | 进行中 | W | #70：接口完成。`/api/me/grants`（列出、撤销即作废令牌、批准管理员绑定给我的机器客户端）、`/api/me/tokens`（名称、scope、有效期，只显示一次）；改密码或停用即全部失效；Web 界面未做。原 Agent Connections |
 | SET-09 | 桌面端：快捷键、系统权限、更新（只在桌面 App 内） | 改造 | 规划 | D | |
 | SET-D1 | 个人分组页 | 删除 | 待删 | W | 分组改由管理员维护 ADM-03 |
 | SET-D2 | 记忆页（Labs） | 合并 | 待删 | W | 去处 AGNT-08 |
@@ -272,7 +272,7 @@ v2 决定
 | ADM-06 | 服务 · 沙箱：电脑容量（空闲分钟、最大并发）、电脑列表（停止、重置、备份） | 改造 | 规划 | W | 原 Agent computers 页 |
 | ADM-07 | 用量与预算：按成员、Agent、服务；组织、服务、成员三级上限 | 改造 | 进行中 | W | #70：接口完成。`/api/admin/usage`（按成员、Agent、服务、能力）、`/api/admin/budgets`（token 或美元，本月已用与上限）；每次调用前检查，用完时拒绝；合并 v1 的约 8 个用量接口；Web 界面完成（#70） |
 | ADM-08 | 连接器：从目录、Registry 或 URL 安装；4 种鉴权；工具白名单；只读工具 | 保留 | 进行中 | W | #70：接口完成。`/api/admin/connectors`：内置目录（`connectors/*.json`）、Registry 搜索（缓存、超时）、URL（可先探测要哪种鉴权）；none / shared / per_member / oauth（动态注册或手填客户端）；工具缓存、刷新、测试、启用 / 停用；共享 Key 与客户端密钥只写不读；生产环境只连公网 https；写操作记审计 |
-| ADM-09 | 外部访问：交互客户端与机器客户端（轮换密钥、停用、活动） | 保留 | 规划 | W | 原 MCP Access |
+| ADM-09 | 外部访问：交互客户端与机器客户端（轮换密钥、停用、活动） | 保留 | 进行中 | W | #70：接口完成。`/api/admin/clients`：新建交互客户端（可设 scope 上限）或机器客户端（绑定一个成员，本人批准后才生效）、轮换密钥（只显示一次）、停用即作废全部令牌、删除、最近使用与令牌数；写审计；Web 界面未做。原 MCP Access |
 | ADM-10 | 公开 Agents：暂停与恢复 | 保留 | 进行中 | W | #70：接口完成。列出主人、受众人数、本月用量；暂停只拦住受众，主人照常用；写审计；Web 界面完成（#70） |
 | ADM-11 | 品牌：名称、Logo、主色 | 改造 | 进行中 | W | #70：名称、主色、Logo（登录页与全局栏）；接口与 Web 完成 |
 | ADM-12 | 首次部署引导：没有可用模型时直接进入「服务」 | 新增 | 进行中 | W | #70：管理员登录时若没有可用的模型服务，先进入「管理 → 服务」（每次访问一次）；服务页顶部有横幅和「添加模型服务」 |
@@ -295,7 +295,7 @@ v2 决定
 | AUTH-03 | 首个管理员：启动时生成邀请链接，或用 `admin:create` | 保留 | 进行中 | — | #70：`BOOTSTRAP_ADMIN_EMAIL` 启动时生成激活链接；Web 激活页 |
 | AUTH-04 | 成员邀请激活与重置密码，都用一次性链接 | 保留 | 进行中 | W | #70：邀请与重置都用一次性链接，Web 激活页设密码后直接进入 |
 | AUTH-05 | 登录前加载品牌（`/api/bootstrap`） | 保留 | 进行中 | W I E | #70：`/api/bootstrap` 给出名称、主色、Logo；Web 登录前加载 |
-| AUTH-06 | OAuth 同意页（外部 Agent 接入） | 保留 | 规划 | W | |
+| AUTH-06 | OAuth 同意页（外部 Agent 接入） | 保留 | 进行中 | W | #70：接口完成。`/oauth/authorize` 把浏览器带到 `#/oauth/consent?request=`（一次性、十分钟、归第一个打开它的成员），页面用 `GET` / `POST /api/oauth/consent` 读取并决定（可少勾 scope）；Web 同意页未做 |
 | AUTH-07 | 旧客户端连上 v2 服务器时提示更新 | 新增 | 进行中 | I A E D | #70：`api_version` 比客户端新时，Web 顶部提示刷新 |
 | AUTH-D1 | `external` 角色残留、`profile_id='team'` 默认值 | 删除 | 待删 | — | |
 | AUTH-D2 | `/api/auth/status`（浏览器扩展还在调用，导致添加服务器总失败） | 删除 | 待删 | E | 扩展改用 `/api/bootstrap` |
@@ -324,10 +324,10 @@ v2 决定
 
 | ID | 功能 | v2 | 状态 | 端 | 备注 |
 | --- | --- | --- | --- | --- | --- |
-| OPEN-01 | MCP 服务器 `/api/mcp`：OAuth 2.1，按资源组划分 scope | 保留 | 规划 | — | 唯一对外接口 |
+| OPEN-01 | MCP 服务器 `/api/mcp`：OAuth 2.1，按资源组划分 scope | 保留 | 进行中 | — | #70：接口完成。RFC 8414 / 9728 元数据、动态注册、PKCE S256、精确回调、令牌绑定 `/api/mcp`、刷新令牌轮换与重放作废、`client_credentials`；无状态 streamable HTTP；scope：agents:read、agents:ask、conversations:read、runs:read、memories:read；用 MCP SDK 客户端走通发现、注册、同意、换令牌、调工具。唯一对外接口 |
 | OPEN-02 | MCP 客户端（连接器、`mcp_call`），写操作需确认 | 保留 | 进行中 | — | #70：接口完成。`mcp_call` 只列出 Agent 此刻能用的连接器（已启用、在 manifest 里、提问者已连接）；只读工具直接运行，其余工具弹批准卡（原样参数），批准后用提问者的连接执行；输出截断、去掉提示结构、隐去密钥；只在回合里，公开 Agent 不提供 |
 | OPEN-03 | 扩展：页面、设置、管理、实体详情、搜索来源、工具、Provider | 改造 | 规划 | W | |
-| OPEN-04 | CLI 改走 MCP | 改造 | 规划 | — | |
+| OPEN-04 | CLI 改走 MCP | 改造 | 进行中 | — | #70：个人访问令牌可直接作 Bearer 调用 `/api/mcp`；CLI 本身未改 |
 | OPEN-D1 | `/api/agent` 工具代理 | 删除 | 待删 | — | |
 | OPEN-D2 | 扩展的 `workbenchRecipes` 扩展面 | 删除 | 待删 | — | |
 | OPEN-D3 | `@greenhouse/crud` 服务端（没有调用方） | 删除 | 待删 | — | |

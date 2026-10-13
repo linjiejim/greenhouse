@@ -179,7 +179,7 @@ Greenhouse 不是：
 | `#/skills` · `#/skills/:id` | 技能 |
 | `#/notifications` | 通知 |
 | `#/settings/:section` · `#/admin/:section` | 设置 · 管理 |
-| `#/activate?token=` · `?oauth_authorize=1` | 激活 · OAuth 同意 |
+| `#/activate?token=` · `#/oauth/consent?request=` | 激活 · OAuth 同意（`?error=` 表示链接本身无效） |
 | `#/desktop/quick` · `#/desktop/selection` | 桌面 App 专用窗口 |
 
 ## 7. 模块需求
