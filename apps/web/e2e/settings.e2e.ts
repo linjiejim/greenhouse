@@ -124,3 +124,32 @@ test('admin: computer capacity, and every computer with its state', async ({ pag
   // Personal keys are not a thing for computers.
   await expect(drawer.getByRole('switch', { name: '允许成员用自己的 Key' })).toHaveCount(0);
 });
+
+test('admin: email set up as a channel; a member picks what reaches them by email', async ({ page }) => {
+  await open(page, '/#/admin/services');
+  await page.getByRole('button', { name: /^邮件（SMTP）/ }).click();
+  const drawer = page.getByRole('dialog', { name: '邮件（SMTP）' });
+  await drawer.getByLabel('SMTP 主机').fill('127.0.0.1');
+  await drawer.getByLabel('端口').fill('2525');
+  await drawer.getByRole('radio', { name: '不加密' }).click();
+  await drawer.getByLabel('发件地址').fill('greenhouse@example.com');
+  await drawer.getByRole('button', { name: '保存' }).click();
+  await expect(drawer).toBeHidden();
+  await expect(page.getByRole('button', { name: /^邮件（SMTP）/ })).toContainText('可用');
+
+  await page.goto('/#/settings/notifications');
+  const cell = page.getByRole('checkbox', { name: '需要你：邮件' });
+  await expect(cell).not.toBeChecked();
+  await cell.click();
+  await expect(cell).toBeChecked();
+  await expect(page.getByRole('switch', { name: '显示内容摘要' })).toHaveAttribute('aria-checked', 'false');
+  await page.reload();
+  await expect(page.getByRole('checkbox', { name: '需要你：邮件' })).toBeChecked();
+
+  // Off again, so later tests send no mail.
+  await page.goto('/#/admin/services');
+  await page.getByRole('button', { name: /^邮件（SMTP）/ }).click();
+  await drawer.getByRole('switch', { name: '启用' }).click();
+  await drawer.getByRole('button', { name: '保存' }).click();
+  await expect(drawer).toBeHidden();
+});

@@ -29,6 +29,7 @@ import { useNotify } from '../../app/notify';
 import { api } from '../../lib/api';
 import { useI18n } from '../../lib/i18n';
 import { CAPABILITY_LABEL, InstanceDrawer, InstanceRow, type InstanceApi } from '../providers/Instances';
+import { ChannelsList } from './ChannelsPanel';
 import { ComputersPanel } from './ComputersPanel';
 
 const KEY = ['admin', 'providers'] as const;
@@ -291,6 +292,7 @@ export function ServicesSection() {
         })}
       </ul>
       {open && <CapabilityDrawer capability={open} onClose={() => setOpen(null)} />}
+      <ChannelsList />
     </>
   );
 }
