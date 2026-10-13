@@ -446,6 +446,44 @@ CREATE TABLE "files" (
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
+CREATE TABLE "skill_versions" (
+	"id" text PRIMARY KEY NOT NULL,
+	"skill_id" text NOT NULL,
+	"version" text NOT NULL,
+	"changelog" text DEFAULT '' NOT NULL,
+	"variables" jsonb DEFAULT '[]'::jsonb NOT NULL,
+	"body" text DEFAULT '' NOT NULL,
+	"bundle_file_id" text,
+	"files" jsonb DEFAULT '[]'::jsonb NOT NULL,
+	"file_count" integer DEFAULT 0 NOT NULL,
+	"size_bytes" bigint DEFAULT 0 NOT NULL,
+	"sha256" text NOT NULL,
+	"created_by" text,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "skills" (
+	"id" text PRIMARY KEY NOT NULL,
+	"name" text NOT NULL,
+	"display_name" text DEFAULT '' NOT NULL,
+	"description" text DEFAULT '' NOT NULL,
+	"kind" text NOT NULL,
+	"space" text NOT NULL,
+	"owner_id" text NOT NULL,
+	"tags" jsonb DEFAULT '[]'::jsonb NOT NULL,
+	"latest_version" text NOT NULL,
+	"requirements" jsonb DEFAULT '{}'::jsonb NOT NULL,
+	"scan_status" text DEFAULT 'pending' NOT NULL,
+	"scan_findings" jsonb DEFAULT '[]'::jsonb NOT NULL,
+	"scanned_at" timestamp with time zone,
+	"scan_reviewed_by" text,
+	"scan_note" text,
+	"download_count" integer DEFAULT 0 NOT NULL,
+	"archived_at" timestamp with time zone,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
 CREATE TABLE "connections" (
 	"id" text PRIMARY KEY NOT NULL,
 	"member_id" text NOT NULL,
@@ -709,6 +747,8 @@ ALTER TABLE "requests" ADD CONSTRAINT "requests_member_id_members_id_fk" FOREIGN
 ALTER TABLE "run_events" ADD CONSTRAINT "run_events_run_id_runs_id_fk" FOREIGN KEY ("run_id") REFERENCES "public"."runs"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "run_steps" ADD CONSTRAINT "run_steps_run_id_runs_id_fk" FOREIGN KEY ("run_id") REFERENCES "public"."runs"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "runs" ADD CONSTRAINT "runs_parent_run_id_runs_id_fk" FOREIGN KEY ("parent_run_id") REFERENCES "public"."runs"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "skill_versions" ADD CONSTRAINT "skill_versions_skill_id_skills_id_fk" FOREIGN KEY ("skill_id") REFERENCES "public"."skills"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "skills" ADD CONSTRAINT "skills_owner_id_members_id_fk" FOREIGN KEY ("owner_id") REFERENCES "public"."members"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "connections" ADD CONSTRAINT "connections_member_id_members_id_fk" FOREIGN KEY ("member_id") REFERENCES "public"."members"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "connections" ADD CONSTRAINT "connections_connector_id_connectors_id_fk" FOREIGN KEY ("connector_id") REFERENCES "public"."connectors"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "connectors" ADD CONSTRAINT "connectors_created_by_members_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."members"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
@@ -750,6 +790,7 @@ CREATE UNIQUE INDEX "handoffs_dedupe_key" ON "handoffs" USING btree ("dedupe_key
 CREATE INDEX "handoffs_chain_idx" ON "handoffs" USING btree ("chain_key");--> statement-breakpoint
 CREATE INDEX "message_feedback_agent_idx" ON "message_feedback" USING btree ("agent_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "messages_seq_key" ON "messages" USING btree ("conversation_id","seq");--> statement-breakpoint
+CREATE INDEX "messages_skill_runs_idx" ON "messages" USING btree ("author_member_id") WHERE "messages"."skill" IS NOT NULL;--> statement-breakpoint
 CREATE INDEX "requests_member_status_idx" ON "requests" USING btree ("member_id","status");--> statement-breakpoint
 CREATE INDEX "requests_conversation_idx" ON "requests" USING btree ("conversation_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "run_events_seq_key" ON "run_events" USING btree ("run_id","seq");--> statement-breakpoint
@@ -764,6 +805,11 @@ CREATE UNIQUE INDEX "files_storage_key" ON "files" USING btree ("storage_key");-
 CREATE INDEX "files_conversation_idx" ON "files" USING btree ("conversation_id");--> statement-breakpoint
 CREATE INDEX "files_folder_idx" ON "files" USING btree ("folder_id");--> statement-breakpoint
 CREATE INDEX "files_run_idx" ON "files" USING btree ("run_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "skill_versions_version_key" ON "skill_versions" USING btree ("skill_id","version");--> statement-breakpoint
+CREATE INDEX "skill_versions_bundle_idx" ON "skill_versions" USING btree ("bundle_file_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "skills_team_name_key" ON "skills" USING btree ("name") WHERE "skills"."space" = 'team';--> statement-breakpoint
+CREATE UNIQUE INDEX "skills_personal_name_key" ON "skills" USING btree ("owner_id","name") WHERE "skills"."space" = 'personal';--> statement-breakpoint
+CREATE INDEX "skills_owner_idx" ON "skills" USING btree ("owner_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "connections_member_connector_key" ON "connections" USING btree ("member_id","connector_id") WHERE "connections"."kind" = 'connector';--> statement-breakpoint
 CREATE UNIQUE INDEX "connections_external_key" ON "connections" USING btree ("kind","external_id") WHERE "connections"."kind" IN ('feishu', 'wecom');--> statement-breakpoint
 CREATE INDEX "connections_member_idx" ON "connections" USING btree ("member_id");--> statement-breakpoint

@@ -107,7 +107,8 @@ export const messages = pgTable(
     attachments: json<string[]>('attachments', []),
     quote: jsonOrNull<{ messageId: string; text: string }>('quote'),
     mentions: json<string[]>('mentions', []),
-    skill: jsonOrNull<{ skillId: string; variables?: Record<string, string> }>('skill'),
+    /** A skill run with `/`: which skill, the version that ran and the values filled in. */
+    skill: jsonOrNull<{ skillId: string; version?: string; variables?: Record<string, string> }>('skill'),
     /** The rich blocks the sender's screen draws; null when it did not say (the defaults apply). */
     richBlocks: jsonOrNull<string[]>('rich_blocks'),
     citations: json<MessageCitation[]>('citations', []),
@@ -121,7 +122,13 @@ export const messages = pgTable(
     editedAt: at('edited_at'),
     createdAt: createdAt(),
   },
-  (t) => [uniqueIndex('messages_seq_key').on(t.conversationId, t.seq)],
+  (t) => [
+    uniqueIndex('messages_seq_key').on(t.conversationId, t.seq),
+    // A member's most-used skills (the new chat's starters).
+    index('messages_skill_runs_idx')
+      .on(t.authorMemberId)
+      .where(sql`${t.skill} IS NOT NULL`),
+  ],
 );
 
 export const messageFeedback = pgTable(

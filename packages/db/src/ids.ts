@@ -36,6 +36,8 @@ export const ID_PREFIX = {
   job: 'job',
   computer: 'cmp',
   computerWatch: 'cwt',
+  skill: 'skl',
+  skillVersion: 'skv',
 } as const;
 export type IdKind = keyof typeof ID_PREFIX;
 
