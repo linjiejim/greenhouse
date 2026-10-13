@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { dockerConfigSchema, runArgs, screenArgs, streamArgs, volumeOf } from '../sandbox/docker.js';
+import { devtoolsArgs, dockerConfigSchema, runArgs, screenArgs, streamArgs, volumeOf } from '../sandbox/docker.js';
 
 describe('the docker computer', () => {
   it('always runs hardened, with its home on a named volume and no published port', () => {
@@ -28,7 +28,7 @@ describe('the docker computer', () => {
     expect(args.at(-1)).toBe('greenhouse/computer:1');
   });
 
-  it('streams through docker exec: the terminal as the agent, the screen as the display user only', () => {
+  it('streams through docker exec: the terminal as the agent, the screen and DevTools as the display user only', () => {
     expect(streamArgs('gh-cmp-agt_1', { argv: ['gh-term'], user: 'agent' })).toEqual([
       'exec',
       '-i',
@@ -50,6 +50,18 @@ describe('the docker computer', () => {
       'socat',
       'STDIO',
       'UNIX-CONNECT:/tmp/browser/vnc.sock',
+    ]);
+    expect(devtoolsArgs('gh-cmp-agt_1')).toEqual([
+      'exec',
+      '-i',
+      '-u',
+      'browser',
+      '-w',
+      '/',
+      'gh-cmp-agt_1',
+      'socat',
+      'STDIO',
+      'UNIX-CONNECT:/tmp/browser/cdp.sock',
     ]);
   });
 

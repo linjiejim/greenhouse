@@ -156,6 +156,12 @@ export interface SandboxClient {
    * shell, which can never reach it; only the API opens it.
    */
   screen(name: string): SandboxStream;
+  /**
+   * The browser's DevTools as a raw byte stream: JSON messages each ended by a NUL byte (the
+   * DevTools pipe protocol). Like the screen, it belongs to the browser's user, never the
+   * Agent's shell; one client at a time, and a new one replaces the last.
+   */
+  devtools(name: string): SandboxStream;
   stop(name: string): Promise<void>;
   restart(name: string): Promise<void>;
   /** Removes the computer; its home stays unless asked. */
