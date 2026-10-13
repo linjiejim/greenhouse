@@ -78,6 +78,13 @@ The one engine for conversations and runs. Read with the root AGENTS.md and docs
 ## Budgets
 - Every metered call (each model attempt too) is checked first against the enabled budgets that cover it (providers/budgets.ts); one used up refuses it with `budget_exceeded`, which a turn keeps as its error code and says in its reply. An instance over its own budget falls back to the next instance.
 
+## Knowledge
+- `knowledge_query` (search, read, list) and `knowledge_mutation` (create, edit, move, comment) call modules/knowledge with the asker's rights; someone else's public Agent has neither.
+- Reading is private and taints the turn: docs are other people's text. A doc read is a source under the reply (`kind: doc`, `#/knowledge/<id>`); a search hit only when the reply links it.
+- Writes raise the `tool_write` card, except inside the Agent's own private reference folder (`callRisk` answers read there). A doc the member cannot see is refused before any card.
+- An edit sends the version it read; a newer one refuses it. Versions and comments record the Agent next to the member (`agent_id`).
+- The private folder (`folders.agent_id`) is made on the first write, at the top of the owner's space; the owner's other Agents never see it and it is never shared.
+
 ## Computers
 - One computer per Agent and member from the sandbox provider (modules/computers): the owner's, or a member's own copy of a public Agent. The Docker adapter always runs hardened (read-only root, no capabilities, bounded resources, no published port) with the home on a named volume; production uses gVisor (`runsc`).
 - Shell commands run as `agent` with the deadline enforced inside the computer (`timeout`), at most 120 s. Longer work is a background process (`gh-jobs` in the image) in its own session: it outlives the turn, the API and a member's stop.

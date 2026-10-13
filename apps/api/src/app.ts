@@ -31,6 +31,7 @@ import { requestTakeoverTool } from './engine/tools/takeover.js';
 import { browserTool } from './engine/tools/browser.js';
 import { vaultTool } from './engine/tools/vault.js';
 import { webTools } from './engine/tools/web.js';
+import { knowledgeTools } from './engine/tools/knowledge.js';
 import { adminPublicAgentRoutes, agentRoutes } from './modules/agents/routes.js';
 import { createAgentsService, type AgentsService } from './modules/agents/service.js';
 import { adminComputerRoutes, computerRoutes } from './modules/computers/routes.js';
@@ -44,6 +45,8 @@ import { createVaultService, type VaultService } from './modules/vault/service.j
 import { conversationRoutes } from './modules/conversations/routes.js';
 import { fileContentRoutes, fileRoutes } from './modules/files/routes.js';
 import { createFilesService, type FilesService } from './modules/files/service.js';
+import { knowledgeRoutes } from './modules/knowledge/routes.js';
+import { createKnowledgeService, type KnowledgeService } from './modules/knowledge/service.js';
 import { notificationRoutes } from './modules/notifications/routes.js';
 import { createNotificationsService, type NotificationsService } from './modules/notifications/service.js';
 import { requestRoutes } from './modules/requests/routes.js';
@@ -84,6 +87,7 @@ export interface Services {
   vault: VaultService;
   conversations: ConversationsService;
   files: FilesService;
+  knowledge: KnowledgeService;
   notifications: NotificationsService;
   requests: RequestsService;
   runs: RunsService;
@@ -133,6 +137,7 @@ export function createServices(config: AppConfig, options: ServiceOptions = {}):
     forbiddenOrigins,
   });
   const notifications = createNotificationsService({ hub });
+  const knowledge = createKnowledgeService({ files, notifications, hub });
   const schedules = createSchedulesService({ agents, background: () => engine.background });
   const requests = createRequestsService({ hub, notifications });
   const engine = createEngine({
@@ -158,6 +163,7 @@ export function createServices(config: AppConfig, options: ServiceOptions = {}):
       ...scheduleTools(schedules),
       ...webTools(providers, options.fetch ? { fetch: options.fetch } : {}),
       connectorTool(connectors),
+      ...knowledgeTools(knowledge),
       ...(options.tools ?? []),
     ],
     ...(options.languageModel ? { languageModel: options.languageModel } : {}),
@@ -177,11 +183,12 @@ export function createServices(config: AppConfig, options: ServiceOptions = {}):
     vault,
     conversations,
     files,
+    knowledge,
     notifications,
     requests,
     runs,
     schedules,
-    search: createSearchService({ members }),
+    search: createSearchService({ members, knowledge }),
     usage: createUsageService({ agents, providers }),
     hub,
     engine,
@@ -254,6 +261,7 @@ export function createApp(services: Services, options: { webDir?: string } = {})
   signedIn.route('/schedules', scheduleRoutes(services.schedules));
   signedIn.route('/notifications', notificationRoutes(services.notifications));
   signedIn.route('/search', searchRoutes(services.search));
+  signedIn.route('/knowledge', knowledgeRoutes(services.knowledge));
   signedIn.use('/admin/*', requireAdmin);
   signedIn.route('/admin', adminMemberRoutes(services.members));
   signedIn.route('/admin/branding', brandingRoutes(services.workspace));

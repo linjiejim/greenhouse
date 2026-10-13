@@ -136,8 +136,13 @@ export function createFilesService(deps: {
     return !!row;
   }
 
+  /** Purposes whose files another module guards (knowledge files follow their folder or doc). */
+  const governed = new Map<FilePurpose, (memberId: string, row: FileRow) => Promise<boolean>>();
+
   async function canRead(memberId: string, row: FileRow): Promise<boolean> {
     if (row.status !== 'active') return false;
+    const guard = governed.get(row.purpose);
+    if (guard) return guard(memberId, row);
     if (row.ownerId === memberId) return true;
     // Anyone may see a picture once it is someone's avatar or the logo; nothing else of its owner's.
     if (row.purpose === 'avatar') return IMAGE_TYPES.includes(row.contentType) && (await isAvatar(row.id));
@@ -175,6 +180,11 @@ export function createFilesService(deps: {
   const service = {
     signedUrl,
 
+    /** Hands the read check for one purpose to the module that owns those files. */
+    govern(purpose: FilePurpose, guard: (memberId: string, row: FileRow) => Promise<boolean>): void {
+      governed.set(purpose, guard);
+    },
+
     /** Stores bytes for a member. The server writes run artifacts and exports through the same path. */
     async store(
       memberId: string,
@@ -185,6 +195,11 @@ export function createFilesService(deps: {
         purpose: FilePurpose;
         conversationId?: string | null;
         runId?: string | null;
+        /** Knowledge files: where in the tree, and whose space (null: the team's). */
+        folderId?: string | null;
+        space?: 'team' | 'personal';
+        ownerId?: string | null;
+        meta?: Record<string, unknown>;
       },
     ): Promise<FileView> {
       if (input.bytes.byteLength > MAX_UPLOAD_BYTES) throw invalidInput('Files can be up to 50 MB.');
@@ -215,9 +230,12 @@ export function createFilesService(deps: {
           sizeBytes: input.bytes.byteLength,
           sha256: createHash('sha256').update(input.bytes).digest('hex'),
           status: 'active',
-          ownerId: memberId,
+          ownerId: input.ownerId === undefined ? memberId : input.ownerId,
           conversationId: input.conversationId ?? null,
           runId: input.runId ?? null,
+          folderId: input.folderId ?? null,
+          space: input.space ?? null,
+          meta: input.meta ?? {},
         })
         .returning();
       return toFile(row!, memberId);
@@ -298,6 +316,7 @@ export function createFilesService(deps: {
     async remove(memberId: string, id: string): Promise<void> {
       const [row] = await getDb().select().from(files).where(eq(files.id, id));
       if (!row || row.status !== 'active' || row.ownerId !== memberId) throw notFound('File');
+      if (governed.has(row.purpose)) throw conflict('file_governed', 'Archive this file where it lives instead.');
       await getDb()
         .update(members)
         .set({ avatarFileId: null, updatedAt: sql`now()` })

@@ -17,3 +17,4 @@ export * from './computers.js';
 export * from './search.js';
 export * from './usage.js';
 export * from './vault.js';
+export * from './knowledge.js';
