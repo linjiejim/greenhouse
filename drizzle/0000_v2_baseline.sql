@@ -146,6 +146,9 @@ CREATE TABLE "agent_computers" (
 	"state_reason" text,
 	"timezone" text DEFAULT 'Asia/Shanghai' NOT NULL,
 	"version" integer DEFAULT 0 NOT NULL,
+	"lease_controller" text,
+	"lease_holder" text,
+	"lease_until" timestamp with time zone,
 	"last_active_at" timestamp with time zone,
 	"last_started_at" timestamp with time zone,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
@@ -671,6 +674,37 @@ CREATE TABLE "workspace" (
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
+CREATE TABLE "vault_access_log" (
+	"id" bigint PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "vault_access_log_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 9223372036854775807 START WITH 1 CACHE 1),
+	"member_id" text NOT NULL,
+	"item_id" text,
+	"item_label" text NOT NULL,
+	"agent_id" text,
+	"conversation_id" text,
+	"origin" text NOT NULL,
+	"action" text NOT NULL,
+	"outcome" text NOT NULL,
+	"approval" text,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "vault_items" (
+	"id" text PRIMARY KEY NOT NULL,
+	"member_id" text NOT NULL,
+	"label" text NOT NULL,
+	"origins" jsonb DEFAULT '[]'::jsonb NOT NULL,
+	"username_enc" text,
+	"password_enc" text,
+	"totp_enc" text,
+	"username_hint" text DEFAULT '' NOT NULL,
+	"policy" text DEFAULT 'ask' NOT NULL,
+	"always_origins" jsonb DEFAULT '[]'::jsonb NOT NULL,
+	"agent_ids" jsonb DEFAULT '[]'::jsonb NOT NULL,
+	"last_used_at" timestamp with time zone,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
 ALTER TABLE "auth_links" ADD CONSTRAINT "auth_links_member_id_members_id_fk" FOREIGN KEY ("member_id") REFERENCES "public"."members"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "group_members" ADD CONSTRAINT "group_members_group_id_groups_id_fk" FOREIGN KEY ("group_id") REFERENCES "public"."groups"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "group_members" ADD CONSTRAINT "group_members_member_id_members_id_fk" FOREIGN KEY ("member_id") REFERENCES "public"."members"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
@@ -714,6 +748,8 @@ ALTER TABLE "connections" ADD CONSTRAINT "connections_connector_id_connectors_id
 ALTER TABLE "connectors" ADD CONSTRAINT "connectors_created_by_members_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."members"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "providers" ADD CONSTRAINT "providers_owner_id_members_id_fk" FOREIGN KEY ("owner_id") REFERENCES "public"."members"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "schedules" ADD CONSTRAINT "schedules_agent_id_agents_id_fk" FOREIGN KEY ("agent_id") REFERENCES "public"."agents"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "vault_access_log" ADD CONSTRAINT "vault_access_log_item_id_vault_items_id_fk" FOREIGN KEY ("item_id") REFERENCES "public"."vault_items"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "vault_items" ADD CONSTRAINT "vault_items_member_id_members_id_fk" FOREIGN KEY ("member_id") REFERENCES "public"."members"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 CREATE UNIQUE INDEX "auth_links_hash_key" ON "auth_links" USING btree ("token_hash");--> statement-breakpoint
 CREATE UNIQUE INDEX "auth_links_live_key" ON "auth_links" USING btree ("member_id") WHERE "auth_links"."consumed_at" IS NULL AND "auth_links"."revoked_at" IS NULL;--> statement-breakpoint
 CREATE INDEX "group_members_member_idx" ON "group_members" USING btree ("member_id");--> statement-breakpoint
@@ -784,4 +820,6 @@ CREATE INDEX "usage_events_provider_idx" ON "usage_events" USING btree ("provide
 CREATE INDEX "usage_events_agent_idx" ON "usage_events" USING btree ("agent_id","created_at");--> statement-breakpoint
 CREATE INDEX "usage_events_time_idx" ON "usage_events" USING btree ("created_at");--> statement-breakpoint
 CREATE UNIQUE INDEX "jobs_dedupe_key" ON "jobs" USING btree ("dedupe_key");--> statement-breakpoint
-CREATE INDEX "jobs_claimable_idx" ON "jobs" USING btree ("available_at") WHERE "jobs"."status" = 'pending';
+CREATE INDEX "jobs_claimable_idx" ON "jobs" USING btree ("available_at") WHERE "jobs"."status" = 'pending';--> statement-breakpoint
+CREATE INDEX "vault_access_log_member_idx" ON "vault_access_log" USING btree ("member_id","id");--> statement-breakpoint
+CREATE INDEX "vault_items_member_idx" ON "vault_items" USING btree ("member_id");

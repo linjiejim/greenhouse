@@ -63,6 +63,8 @@ export interface ToolContext {
   chain?: { key: string; path: string[] };
   /** Set when the engine runs a call the member approved on its card. */
   approved?: boolean;
+  /** Present when the model sees images: shows it one (a screenshot) with its next step. */
+  attachImage?(image: Uint8Array, mediaType: string): void;
 }
 
 /** What a decision on a tool's card means for the conversation. */

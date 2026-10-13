@@ -72,6 +72,8 @@ export const realtimeEventSchema = z.discriminatedUnion('type', [
     type: z.literal('computer.updated'),
     data: z.object({ agent_id: z.string(), state: z.enum(COMPUTER_STATES) }),
   }),
+  /** My vault changed, or an Agent used it: refetch the item (null: all of them) and the log. */
+  z.object({ type: z.literal('vault.updated'), data: z.object({ item_id: z.string().nullable() }) }),
 ]);
 export type RealtimeEvent = z.infer<typeof realtimeEventSchema>;
 

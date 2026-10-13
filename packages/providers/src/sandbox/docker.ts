@@ -7,7 +7,8 @@
  * (`runsc`); `runc` is for development machines without it.
  *
  * Everything inside is reached through `docker exec`: commands and streams as `agent`, and the
- * screen as `browser`, whose VNC socket in /tmp/browser (0700) the Agent's user cannot open.
+ * screen and DevTools as `browser`, whose sockets in /tmp/browser (0700) the Agent's user cannot
+ * open.
  */
 
 import { spawn } from 'node:child_process';
@@ -99,6 +100,8 @@ async function control(args: string[]): Promise<string> {
 
 /** The display's RFB socket inside the computer (apps/bot-computer, gh-computer). */
 const SCREEN_ARGV = ['socat', 'STDIO', 'UNIX-CONNECT:/tmp/browser/vnc.sock'];
+/** The browser's DevTools pipe, relayed onto a socket by gh-cdp-relay. */
+const DEVTOOLS_ARGV = ['socat', 'STDIO', 'UNIX-CONNECT:/tmp/browser/cdp.sock'];
 
 /** The `docker exec -i` arguments of a streaming process; pure, so a test pins them. */
 export function streamArgs(name: string, input: { argv: string[]; user: 'agent' | 'browser'; cwd?: string }) {
@@ -108,6 +111,9 @@ export function streamArgs(name: string, input: { argv: string[]; user: 'agent' 
 
 /** The screen: a byte tunnel to the display's socket, as the only user that can open it. */
 export const screenArgs = (name: string) => streamArgs(name, { argv: SCREEN_ARGV, user: 'browser' });
+
+/** DevTools: the same kind of tunnel to the browser's DevTools socket. */
+export const devtoolsArgs = (name: string) => streamArgs(name, { argv: DEVTOOLS_ARGV, user: 'browser' });
 
 /** Runs `docker exec -i …` with its three streams attached. */
 function spawnStream(args: string[]): SandboxStream {
@@ -212,6 +218,7 @@ export function createDockerSandbox(config: DockerConfig): SandboxClient {
     },
     stream: (name, input) => spawnStream(streamArgs(checkName(name), input)),
     screen: (name) => spawnStream(screenArgs(checkName(name))),
+    devtools: (name) => spawnStream(devtoolsArgs(checkName(name))),
     async stop(name) {
       if ((await client.status(name)) === 'running') await control(['stop', '--time', '10', checkName(name)]);
     },

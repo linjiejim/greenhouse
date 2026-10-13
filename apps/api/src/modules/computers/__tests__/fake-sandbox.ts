@@ -18,7 +18,7 @@ export interface FakeStream extends SandboxStream {
   readonly input: PassThrough;
   readonly output: PassThrough;
   readonly errors: PassThrough;
-  kind: 'screen' | 'stream';
+  kind: 'screen' | 'stream' | 'devtools';
   name: string;
   argv: string[];
   cwd: string | undefined;
@@ -101,6 +101,12 @@ const client: SandboxClient = {
   },
   screen(name) {
     const stream = fakeStream('screen', name, []);
+    fake.streams.push(stream);
+    fake.onStream(stream);
+    return stream;
+  },
+  devtools(name) {
+    const stream = fakeStream('devtools', name, []);
     fake.streams.push(stream);
     fake.onStream(stream);
     return stream;

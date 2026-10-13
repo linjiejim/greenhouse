@@ -36,6 +36,7 @@ export const ID_PREFIX = {
   job: 'job',
   computer: 'cmp',
   computerWatch: 'cwt',
+  vaultItem: 'vlt',
 } as const;
 export type IdKind = keyof typeof ID_PREFIX;
 

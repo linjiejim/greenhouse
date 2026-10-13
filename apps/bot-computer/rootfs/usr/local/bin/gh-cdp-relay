@@ -8,7 +8,8 @@ pipe belongs to this process (uid `browser`), the socket is mode 0600 inside a
 0700 directory, so only `docker exec -u browser` (the API) can reach it.
 
 Protocol: the DevTools pipe protocol — JSON messages terminated by NUL. The API
-side converts it to the WebSocket framing Playwright's connectOverCDP expects.
+speaks it as is (apps/api/src/modules/computers/cdp.ts), one connection per
+browser action.
 
 One client at a time; a new connection replaces the old one. Chromium only ever
 sees ONE DevTools session (the pipe), so it never notices a client going away.

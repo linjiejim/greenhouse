@@ -14,6 +14,7 @@ export function createTestServices(overrides: Record<string, string> = {}, optio
       DATABASE_URL: 'postgresql://unused/test',
       TOKEN_SIGNING_KEY: 'a'.repeat(64),
       PROVIDER_TOKEN_ENCRYPTION_KEY: 'b'.repeat(64),
+      VAULT_ENCRYPTION_KEY: 'c'.repeat(64),
       PUBLIC_URL: 'http://greenhouse.test',
       ...overrides,
     }),

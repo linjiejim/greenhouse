@@ -28,6 +28,8 @@ import { runStartTool } from './engine/tools/run-start.js';
 import { scheduleTools } from './engine/tools/schedules.js';
 import { selfTool } from './engine/tools/self.js';
 import { requestTakeoverTool } from './engine/tools/takeover.js';
+import { browserTool } from './engine/tools/browser.js';
+import { vaultTool } from './engine/tools/vault.js';
 import { webTools } from './engine/tools/web.js';
 import { adminPublicAgentRoutes, agentRoutes } from './modules/agents/routes.js';
 import { createAgentsService, type AgentsService } from './modules/agents/service.js';
@@ -36,6 +38,9 @@ import { connectorTool } from './engine/tools/connectors.js';
 import { adminConnectorRoutes, connectorCallbackRoutes, myConnectionRoutes } from './modules/connectors/routes.js';
 import { createConnectorsService, type ConnectorsService } from './modules/connectors/service.js';
 import { createComputersService, type ComputersService } from './modules/computers/service.js';
+import { createBrowserService, ownOrigins, type BrowserService } from './modules/computers/browser.js';
+import { vaultRoutes } from './modules/vault/routes.js';
+import { createVaultService, type VaultService } from './modules/vault/service.js';
 import { conversationRoutes } from './modules/conversations/routes.js';
 import { fileContentRoutes, fileRoutes } from './modules/files/routes.js';
 import { createFilesService, type FilesService } from './modules/files/service.js';
@@ -75,6 +80,8 @@ export interface Services {
   agents: AgentsService;
   computers: ComputersService;
   connectors: ConnectorsService;
+  browser: BrowserService;
+  vault: VaultService;
   conversations: ConversationsService;
   files: FilesService;
   notifications: NotificationsService;
@@ -117,6 +124,14 @@ export function createServices(config: AppConfig, options: ServiceOptions = {}):
     secrets: { create: () => tokens.newSecret(), hash: (secret) => tokens.hashSecret(secret, 'link') },
   });
   const connectors = createConnectorsService({ config, ...options.connectors });
+  // The browser and the vault never reach Greenhouse itself; what a page shows is redacted against the vault.
+  const forbiddenOrigins = ownOrigins(config);
+  const vault = createVaultService({ config, hub, forbiddenOrigins });
+  const browser = createBrowserService({
+    computers,
+    secrets: (memberId) => vault.secretsOf(memberId),
+    forbiddenOrigins,
+  });
   const notifications = createNotificationsService({ hub });
   const schedules = createSchedulesService({ agents, background: () => engine.background });
   const requests = createRequestsService({ hub, notifications });
@@ -136,6 +151,8 @@ export function createServices(config: AppConfig, options: ServiceOptions = {}):
       readAttachmentTool(files),
       computerTool(computers),
       requestTakeoverTool(),
+      browserTool(browser),
+      vaultTool(vault, browser),
       runStartTool(background),
       handoffTool(handOff),
       ...scheduleTools(schedules),
@@ -156,6 +173,8 @@ export function createServices(config: AppConfig, options: ServiceOptions = {}):
     agents,
     computers,
     connectors,
+    browser,
+    vault,
     conversations,
     files,
     notifications,
@@ -221,6 +240,7 @@ export function createApp(services: Services, options: { webDir?: string } = {})
   signedIn.route('/me/tokens', personalTokenRoutes(services.oauth));
   signedIn.route('/me/grants', grantRoutes(services.oauth));
   signedIn.route('/oauth', oauthConsentRoutes(services.oauth));
+  signedIn.route('/me/vault', vaultRoutes(services.vault));
   signedIn.route('/me', meRoutes(services.members));
   signedIn.route('/members', directoryRoutes(services.members));
   signedIn.route('/groups', groupDirectoryRoutes(services.members));

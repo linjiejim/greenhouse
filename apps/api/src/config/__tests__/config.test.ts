@@ -21,4 +21,10 @@ describe('loadConfig', () => {
       /TOKEN_SIGNING_KEY.*PROVIDER_TOKEN_ENCRYPTION_KEY|PROVIDER_TOKEN_ENCRYPTION_KEY/,
     );
   });
+
+  it('keeps the vault off without its own key, and refuses a malformed one', () => {
+    expect(loadConfig(REQUIRED).vaultEncryptionKey).toBeNull();
+    expect(loadConfig({ ...REQUIRED, VAULT_ENCRYPTION_KEY: 'C'.repeat(64) }).vaultEncryptionKey).toBe('c'.repeat(64));
+    expect(() => loadConfig({ ...REQUIRED, VAULT_ENCRYPTION_KEY: 'not-hex' })).toThrow(/VAULT_ENCRYPTION_KEY/);
+  });
 });

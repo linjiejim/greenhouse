@@ -22,6 +22,11 @@ const schema = z.object({
   PROVIDER_TOKEN_ENCRYPTION_KEY: z
     .string()
     .regex(/^[0-9a-fA-F]{64}$/, 'PROVIDER_TOKEN_ENCRYPTION_KEY must be 64 hex characters'),
+  /** 32 bytes as hex: the password vault's own key. Without it the vault is off. */
+  VAULT_ENCRYPTION_KEY: z
+    .string()
+    .regex(/^[0-9a-fA-F]{64}$/, 'VAULT_ENCRYPTION_KEY must be 64 hex characters')
+    .optional(),
   BOOTSTRAP_ADMIN_EMAIL: z.string().email().optional(),
   MIGRATE_ON_START: booleanFlag,
   CORS_ALLOWED_ORIGINS: z.string().default(''),
@@ -32,12 +37,18 @@ const schema = z.object({
 
 export type AppConfig = Omit<
   z.infer<typeof schema>,
-  'CORS_ALLOWED_ORIGINS' | 'TRUSTED_PROXY_IPS' | 'TOKEN_SIGNING_KEY' | 'PROVIDER_TOKEN_ENCRYPTION_KEY'
+  | 'CORS_ALLOWED_ORIGINS'
+  | 'TRUSTED_PROXY_IPS'
+  | 'TOKEN_SIGNING_KEY'
+  | 'PROVIDER_TOKEN_ENCRYPTION_KEY'
+  | 'VAULT_ENCRYPTION_KEY'
 > & {
   corsAllowedOrigins: string[];
   trustedProxyIps: string[];
   tokenSigningKey: string;
   providerEncryptionKey: string;
+  /** Null when the vault is off. */
+  vaultEncryptionKey: string | null;
   /** Raw env, handed only to the provider bootstrap (LLM_*, STT_*, … per docs/product/providers.md). */
   providerEnv: Record<string, string | undefined>;
 };
@@ -58,14 +69,21 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     const problems = parsed.error.issues.map((issue) => `${issue.path.join('.')}: ${issue.message}`).join('; ');
     throw new Error(`Invalid configuration: ${problems}`);
   }
-  const { CORS_ALLOWED_ORIGINS, TRUSTED_PROXY_IPS, TOKEN_SIGNING_KEY, PROVIDER_TOKEN_ENCRYPTION_KEY, ...rest } =
-    parsed.data;
+  const {
+    CORS_ALLOWED_ORIGINS,
+    TRUSTED_PROXY_IPS,
+    TOKEN_SIGNING_KEY,
+    PROVIDER_TOKEN_ENCRYPTION_KEY,
+    VAULT_ENCRYPTION_KEY,
+    ...rest
+  } = parsed.data;
   return {
     ...rest,
     corsAllowedOrigins: list(CORS_ALLOWED_ORIGINS),
     trustedProxyIps: list(TRUSTED_PROXY_IPS),
     tokenSigningKey: TOKEN_SIGNING_KEY.toLowerCase(),
     providerEncryptionKey: PROVIDER_TOKEN_ENCRYPTION_KEY.toLowerCase(),
+    vaultEncryptionKey: VAULT_ENCRYPTION_KEY?.toLowerCase() ?? null,
     providerEnv: present,
   };
 }

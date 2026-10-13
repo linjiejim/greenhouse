@@ -36,7 +36,7 @@ v2 和 v1 不兼容，不加 `/api/v2` 前缀，也不保留旧路由。`GET /ap
 | `/api/me/providers[/:id][/test]` | 我的服务，即个人 Key |
 | `GET /api/me/models` | 我能给 Agent 选的模型：为我服务的各实例的模型，按顺序 |
 | `GET` / `POST /api/me/connections` · `POST …/oauth/start` · `…/oauth/finish` · `POST …/:id/test` · `DELETE …/:id` | 连接：MCP 连接器账号；飞书 / 企微、邮箱随渠道。`GET` 返回我的连接和我能用的连接器；`POST` 存我自己的 Key（服务器先验证，拒绝时 `key_rejected`）；OAuth：`start` 返回授权地址，回调把 `oauth_state`、`oauth_code` 交给 Web，由发起登录的同一成员 `finish`（别人是 `sign_in_not_yours`）；`test` 用我的连接列工具并记下状态；`DELETE` 断开，OAuth 同时撤销 |
-| `/api/me/vault[/:id]` · `/api/me/vault/log` | 密码库及其访问日志 |
+| `/api/me/vault[/:id]` · `GET /api/me/vault/log` | 密码库：列出、新建、读取、修改（留空的值不变，空字符串清除）、删除。用户名、密码、TOTP 密钥只写不读，响应只有标签、站点、掩码用户名和是否已设置；站点是精确 origin 或 `*.域名`，「总是允许」只能是其中的站点，`agent_ids` 只能是自己的 Agent（空 = 全部）。`log` 是本人的代填记录，新的在前，不含任何值。没配 `VAULT_ENCRYPTION_KEY` 时都返回 503 `vault_unavailable` |
 | `/api/me/grants[/:id]` · `POST …/:id/approve` | 外部访问：我授权过的客户端（不含个人令牌）；撤销即作废它的全部令牌；管理员绑定给我的机器客户端要我批准后才生效 |
 | `/api/me/tokens[/:id]` | 个人访问令牌：名称、scope、有效期（1–366 天），令牌只在创建时显示一次；只能调用 `/api/mcp` |
 | `GET` / `POST /api/oauth/consent` | OAuth 同意页 `#/oauth/consent?request=`：`GET ?request=` 看是谁要什么（请求归第一个打开它的成员）；`POST { request, decision, scopes? }` 批准（可少勾）或拒绝，返回 `{ redirect_to }` 交给浏览器 |
@@ -57,7 +57,7 @@ v2 和 v1 不兼容，不加 `/api/v2` 前缀，也不保留旧路由。`GET /ap
 | `PATCH /api/conversations/:id/messages/:mid` · `POST …/:mid/regenerate` · `PUT …/:mid/feedback` | 编辑最后一条、重新生成、👍 / 👎 |
 | `POST /api/conversations/:id/stop` · `…/read` | 停止、已读 |
 | `/api/conversations/:id/members` · `/notes` · `/export` | 房间成员、共享笔记、导出 Markdown |
-| `GET /api/requests?state=pending` · `POST /api/requests/:id/{approve,reject,answer,handback}` | 需要你：批准、拒绝、回答、交还 |
+| `GET /api/requests?state=pending` · `POST /api/requests/:id/{approve,reject,answer,handback}` | 需要你：批准、拒绝、回答、交还。登录卡片可以批准（服务端随即代填）、拒绝，或在成员手动登录后交还；接管卡片只能交还 |
 
 ### 2.3 运行
 
@@ -168,6 +168,8 @@ OAuth 2.1 与 MCP（公开路径，错误按 RFC 6749 返回 `{ error, error_des
 工具出现的条件：成员的模块权限允许，并且依赖的 Provider 可用。例如没有图像服务时就没有 `generate_image`，不会出现「未配置」的错误工具。
 
 `mcp_call` 是连接器的唯一工具（`list`、`describe`、`call`）。它的描述每个回合重建，只列出这个 Agent 此刻能为提问者用的连接器和工具：已启用、在 manifest 的 `connectors` 里（空值表示全部）、per_member / oauth 的已由提问者连接；不能写的 Agent 只看到只读工具。只读工具直接运行；其余工具弹出批准卡（`tool_write`，原样参数），批准后用提问者的 Key 或登录执行。只在回合里提供，公开 Agent 不提供。
+
+`browser` 与 `vault` 只在回合里，和 `computer` 同时出现。`browser` 经 DevTools 操作电脑里的 Chromium：`open`、`snapshot`（带 ref 的短行，可从 `from_line` 续读）、`read`、`click`、`type`、`press`、`scroll`、`wait`、`back`、`tabs`、`switch_tab`、`close_tab`、`screenshot`（模型能看图时，图片随下一步给模型，不入库）；只开 http 和 https，成员控制画面时不操作。`vault` 有 `find`（当前页面站点的条目，只有标签和掩码用户名）和 `fill {item_id, submit}`（服务端代填，`ask` 条目先发登录卡片）；公开 Agent 没有 `vault`。
 
 ## 5. 模块布局
 

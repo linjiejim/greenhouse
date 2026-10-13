@@ -8,10 +8,15 @@
  *
  * People reach a computer only as the member whose computer it is: its screen and terminal
  * through one-time tickets (realtime/computer.ts), its home through the file routes. A pending
- * take-over card keeps it awake, so the page the Agent needed help with is still there.
+ * take-over or sign-in card keeps it awake, so the page the Agent needed help with is still there.
+ *
+ * The screen has one controller at a time (the lease columns): a member's control screen holds
+ * it while open and always wins; the Agent's browser (browser.ts) holds it for one action at a
+ * time, and only when nobody else does.
  */
 
-import { and, eq, gt, inArray, lt, sql } from 'drizzle-orm';
+import { randomUUID } from 'node:crypto';
+import { and, eq, gt, inArray, isNull, lt, or, sql } from 'drizzle-orm';
 import type {
   ComputerFile,
   ComputerFolder,
@@ -70,6 +75,8 @@ const TICKET_TTL_MS = 60_000;
 const TICKETS = 'computer_ticket';
 /** A file transfer still running after this long is cut. */
 const TRANSFER_TIMEOUT_MS = 10 * 60_000;
+/** A member's hold on the screen lapses this long after their control socket last renewed it. */
+export const CONTROL_LEASE_MS = 60_000;
 
 /** What a ticket grants, stored with its hash. */
 interface TicketGrant {
@@ -91,6 +98,8 @@ export interface ComputerSession {
   touch(): Promise<void>;
   /** Whether the member may still use it: active, the same sign-in, computers on. */
   allowed(): Promise<boolean>;
+  /** A `control` screen holds the screen for the member: renew it while open, release it on close. */
+  control?: { renew(): Promise<void>; release(): Promise<void> };
 }
 
 /** The end of long output is usually what matters. */
@@ -411,6 +420,14 @@ export function createComputersService(deps: {
           ? client.screen(row.sandboxRef)
           : client.stream(row.sandboxRef, { argv: TERMINAL_ARGV, user: 'agent', cwd: TERMINAL_CWD });
       await touch(row.id);
+      // Taking over the screen takes it from the Agent: its browser waits until this closes.
+      let control: ComputerSession['control'];
+      if (socket === 'screen' && grant.purpose === 'control') {
+        const holder = `ctl_${randomUUID()}`;
+        const hold = () => service.claimScreen(row.id, holder, 'member', CONTROL_LEASE_MS).then(() => undefined);
+        await hold();
+        control = { renew: hold, release: () => service.releaseScreen(row.id, holder) };
+      }
       return {
         memberId: grant.member_id,
         agentId: row.agentId,
@@ -418,8 +435,71 @@ export function createComputersService(deps: {
         stream,
         touch: () => touch(row.id),
         allowed,
+        ...(control ? { control } : {}),
       };
     },
+
+    /**
+     * Claims the computer's screen for a holder. The member always gets it (a take-over wins);
+     * an Agent action only when nobody holds it, its hold lapsed, or it is the holder already.
+     * Refused, it says who holds it.
+     */
+    async claimScreen(
+      computerId: string,
+      holder: string,
+      who: 'member' | 'agent',
+      ttlMs: number,
+    ): Promise<'claimed' | 'member' | 'agent'> {
+      const now = new Date().toISOString();
+      const [claimed] = await getDb()
+        .update(agentComputers)
+        .set({ leaseController: who, leaseHolder: holder, leaseUntil: new Date(Date.now() + ttlMs).toISOString() })
+        .where(
+          and(
+            eq(agentComputers.id, computerId),
+            who === 'member'
+              ? undefined
+              : or(
+                  isNull(agentComputers.leaseUntil),
+                  lt(agentComputers.leaseUntil, now),
+                  eq(agentComputers.leaseHolder, holder),
+                ),
+          ),
+        )
+        .returning({ id: agentComputers.id });
+      if (claimed) return 'claimed';
+      const [current] = await getDb()
+        .select({ controller: agentComputers.leaseController })
+        .from(agentComputers)
+        .where(eq(agentComputers.id, computerId));
+      return current?.controller === 'member' ? 'member' : 'agent';
+    },
+
+    /** Whether this holder still has the screen: nobody took it over and the hold has not lapsed. */
+    async holdsScreen(computerId: string, holder: string): Promise<boolean> {
+      const [row] = await getDb()
+        .select({ id: agentComputers.id })
+        .from(agentComputers)
+        .where(
+          and(
+            eq(agentComputers.id, computerId),
+            eq(agentComputers.leaseHolder, holder),
+            gt(agentComputers.leaseUntil, new Date().toISOString()),
+          ),
+        );
+      return !!row;
+    },
+
+    /** Lets go of the screen, if this holder still has it. */
+    async releaseScreen(computerId: string, holder: string): Promise<void> {
+      await getDb()
+        .update(agentComputers)
+        .set({ leaseController: null, leaseHolder: null, leaseUntil: null })
+        .where(and(eq(agentComputers.id, computerId), eq(agentComputers.leaseHolder, holder)));
+    },
+
+    /** Counts as activity: the idle stop leaves the computer alone for another half hour. */
+    touch: (computerId: string) => touch(computerId),
 
     /** A folder of the home: folders first, then files, each by name; at most 500. */
     async files(memberId: string, agentId: string, rawPath: string): Promise<ComputerFolder> {
@@ -612,7 +692,7 @@ export function createComputersService(deps: {
 
     /**
      * Computers left idle stop; one with a running process never does, nor one whose Agent
-     * waits for its member to take over (the page it needs help with would be gone).
+     * waits for its member to take over or to approve a sign-in (the page would be gone).
      */
     async stopIdle(): Promise<void> {
       const idle = await getDb()
@@ -631,7 +711,8 @@ export function createComputersService(deps: {
             .from(requests)
             .where(
               and(
-                eq(requests.kind, 'takeover'),
+                // A take-over or a sign-in card: the page the member is asked about must still be there.
+                inArray(requests.kind, ['takeover', 'login']),
                 eq(requests.status, 'pending'),
                 eq(requests.agentId, computer.agentId),
                 eq(requests.memberId, computer.ownerId),
