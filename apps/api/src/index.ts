@@ -15,7 +15,8 @@ import { pgTransport } from './realtime/pg.js';
 import { attachRealtime } from './realtime/socket.js';
 import { ensureFirstAdmin } from './security/first-admin.js';
 
-loadDotenv({ path: fileURLToPath(new URL('../../../.env', import.meta.url)) });
+// GREENHOUSE_ENV_FILE picks another file (or /dev/null for none, as the browser tests do).
+loadDotenv({ path: process.env.GREENHOUSE_ENV_FILE ?? fileURLToPath(new URL('../../../.env', import.meta.url)) });
 
 async function main() {
   const config = loadConfig();

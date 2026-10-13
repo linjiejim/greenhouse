@@ -6,6 +6,7 @@ import { requireAdmin, requireMember } from './auth/middleware.js';
 import { createTokens, type Tokens } from './auth/tokens.js';
 import { handleError, handleNotFound } from './http/errors.js';
 import type { AppEnv } from './http/env.js';
+import { webRoutes } from './http/web.js';
 import { cors, securityHeaders } from './security/headers.js';
 import { RateLimiter } from './security/rate-limit.js';
 import { requestSourceIp } from './security/request-ip.js';
@@ -134,10 +135,10 @@ export function createServices(config: AppConfig, options: ServiceOptions = {}):
 }
 
 /**
- * The HTTP surface. Public: /health, /api/bootstrap, /api/auth/*. Everything else under
- * /api requires a member; /api/admin/* also requires an admin.
+ * The HTTP surface. Public: /health, /api/bootstrap, /api/auth/*, and the built web app at /.
+ * Everything else under /api requires a member; /api/admin/* also requires an admin.
  */
-export function createApp(services: Services) {
+export function createApp(services: Services, options: { webDir?: string } = {}) {
   const { config } = services;
   const member = requireMember(services.tokens);
   const trust = { trustedProxies: config.trustedProxyIps, proxyHops: config.TRUSTED_PROXY_HOPS };
@@ -181,6 +182,7 @@ export function createApp(services: Services) {
   signedIn.route('/admin/branding', brandingRoutes(services.workspace));
   signedIn.route('/admin', adminProviderRoutes(services.providers));
   app.route('/api', signedIn);
+  app.route('/', webRoutes(options.webDir));
 
   return app;
 }
