@@ -101,6 +101,8 @@ describe('rendering a delivered notification', () => {
     expect(linkPath({ targetType: 'request', targetId: 'req_1', runId: null })).toBe('/notifications');
     expect(linkPath({ targetType: null, targetId: null, runId: 'run_9' })).toBe('/runs/run_9');
     expect(linkPath({ targetType: 'agent', targetId: 'agt_1', runId: null })).toBe('/agents/agt_1');
+    expect(linkPath({ targetType: 'doc', targetId: 'doc_1', runId: null })).toBe('/knowledge/doc_1');
+    expect(linkPath({ targetType: 'folder', targetId: 'fld_1', runId: null })).toBe('/knowledge/folder/fld_1');
     expect(deepLink('https://gh.acme.com/', '/c/cnv_1')).toBe('https://gh.acme.com/#/c/cnv_1');
   });
 });

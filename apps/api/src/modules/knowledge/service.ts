@@ -626,7 +626,7 @@ export function createKnowledgeService(deps: { files: FilesService; notification
         targetType: 'doc',
         targetId: doc.id,
         ...(agentId ? { agentId } : {}),
-        payload: { category: 'mention' },
+        payload: { category: 'mention', from_member_id: actor.memberId },
         dedupeKey: `doc:${doc.id}:${doc.version}:mention`,
       });
     }
@@ -657,7 +657,7 @@ export function createKnowledgeService(deps: { files: FilesService; notification
         targetType: 'doc',
         targetId: doc.id,
         ...(agentId ? { agentId } : {}),
-        payload: { category: 'mention', comment_id: comment.id },
+        payload: { category: 'mention', comment_id: comment.id, from_member_id: actor.memberId },
         dedupeKey: `comment:${comment.id}:mention`,
       });
     }
@@ -691,7 +691,7 @@ export function createKnowledgeService(deps: { files: FilesService; notification
         targetType: 'doc',
         targetId: doc.id,
         ...(agentId ? { agentId } : {}),
-        payload: { category: 'comment', comment_id: comment.id },
+        payload: { category: 'comment', comment_id: comment.id, from_member_id: actor.memberId },
         dedupeKey: `comment:${comment.id}`,
       });
     }
@@ -2099,7 +2099,7 @@ export function createKnowledgeService(deps: { files: FilesService; notification
               : `${actor.name} shared "${name}" with you`,
           targetType: type,
           targetId: id,
-          payload: { category: 'share' },
+          payload: { category: 'share', from_member_id: actor.memberId },
           dedupeKey: `share:${share.id}`,
         });
       }
