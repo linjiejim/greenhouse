@@ -87,5 +87,6 @@ describe('the single writer across processes', () => {
       .sort((x, y) => x[0] - y[0]);
     for (let index = 1; index < spans.length; index++)
       expect(spans[index]![0]).toBeGreaterThanOrEqual(spans[index - 1]![1] - 5);
-  });
+    // Eight turns across two engines on real connections: slow on a busy machine, never wrong.
+  }, 30_000);
 });

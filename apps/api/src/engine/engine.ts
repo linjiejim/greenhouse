@@ -59,7 +59,7 @@ import { createBackground, type Background } from './background.js';
 import { toMessage, type ConversationsService } from '../modules/conversations/service.js';
 import { effectiveModules } from '../modules/members/service.js';
 import { createDigester, parseStoredDigest, renderDigest } from './digest.js';
-import { projectHistory } from './history.js';
+import { closeTranscript, projectHistory } from './history.js';
 import { createKeyedLock } from './locks.js';
 import {
   assembleSystem,
@@ -487,13 +487,7 @@ export function createEngine(deps: EngineDeps) {
       const loopInput: LoopInput = {
         model: { model: resolved.model, modelId: resolved.modelId, deepseek: resolved.deepseek },
         instructions: system,
-        messages: [
-          ...projection.messages,
-          {
-            role: 'user',
-            content: resolved.vision ? [{ type: 'text', text: tail }, ...(await imagesOf(run, input))] : tail,
-          },
-        ],
+        messages: closeTranscript(projection.messages, tail, resolved.vision ? await imagesOf(run, input) : []),
         tools: turnTools.tools,
         abortSignal: controller.signal,
         stopWhen: [() => turnTools.waiting() || turnTools.ended()],
@@ -509,7 +503,12 @@ export function createEngine(deps: EngineDeps) {
         if (part.type === 'text-delta' && part.text) {
           deps.hub.publish(await audience(conversation.id), {
             type: 'message.delta',
-            data: { conversation_id: conversation.id, message_id: reply.id, text: part.text },
+            data: {
+              conversation_id: conversation.id,
+              message_id: reply.id,
+              text: part.text,
+              offset: collector.text.length - part.text.length,
+            },
           });
           if (Date.now() - flushedAt > FLUSH_MS && collector.text.length > flushedLength) {
             // Partial text survives a reload and a crash.

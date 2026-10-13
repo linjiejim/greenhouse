@@ -114,6 +114,10 @@ describe('a real model over HTTP', () => {
       expect.arrayContaining(['memory', 'ask_user']),
     );
     expect(requests[1]!.messages.at(-1)).toMatchObject({ role: 'tool', tool_call_id: 'call_tea' });
+    // Roles alternate: the closing message joins the member's message instead of following it.
+    const roles = requests[0]!.messages.map((message) => message.role);
+    expect(roles.some((role, index) => role === 'user' && roles[index - 1] === 'user')).toBe(false);
+    expect(JSON.stringify(requests[0]!.messages.at(-1))).toContain('remember that I like tea');
 
     const [reply] = await getDb().select().from(messages).where(eq(messages.runId, sent.body.run_id));
     expect(reply).toMatchObject({ status: 'complete', content: 'Noted, Lin.' });
@@ -131,10 +135,10 @@ describe('a real model over HTTP', () => {
       outputTokens: 7,
     });
 
-    const streamed = events
-      .filter((event): event is Extract<RealtimeEvent, { type: 'message.delta' }> => event.type === 'message.delta')
-      .map((event) => event.data.text)
-      .join('');
-    expect(streamed).toBe('Noted, Lin.');
+    const deltas = events.filter(
+      (event): event is Extract<RealtimeEvent, { type: 'message.delta' }> => event.type === 'message.delta',
+    );
+    expect(deltas.map((event) => event.data.text).join('')).toBe('Noted, Lin.');
+    expect(deltas.map((event) => event.data.offset)).toEqual([0, 5, 7]);
   });
 });

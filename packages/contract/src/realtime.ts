@@ -8,10 +8,18 @@ import { conversationSchema, messageSchema, messageStepSchema } from './conversa
 export const realtimeEventSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('ready'), data: z.object({ member_id: z.string() }) }),
   z.object({ type: z.literal('message.created'), data: z.object({ message: messageSchema }) }),
-  /** Text appended to a streaming reply. */
+  /**
+   * Text appended to a streaming reply at `offset` (its length before this text). A client
+   * that fetched the partial reply mid-stream splices from there.
+   */
   z.object({
     type: z.literal('message.delta'),
-    data: z.object({ conversation_id: z.string(), message_id: z.string(), text: z.string() }),
+    data: z.object({
+      conversation_id: z.string(),
+      message_id: z.string(),
+      text: z.string(),
+      offset: z.number().int().min(0),
+    }),
   }),
   /** A tool step started or settled in a streaming reply. */
   z.object({

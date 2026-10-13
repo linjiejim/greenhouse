@@ -10,6 +10,7 @@ import {
   estimateTokens,
   resolveHistoryBudget,
   windowMessagesByBudget,
+  type EngineContentPart,
   type EngineMessage,
 } from '@greenhouse/agent-core';
 import { agents, getDb, members, messages, type Conversation, type Message } from '@greenhouse/db';
@@ -124,4 +125,22 @@ function render(row: Message): string {
   if (row.attachments.length) parts.push(`(attachments: ${row.attachments.join(', ')})`);
   if (row.status === 'stopped') parts.push('(stopped before finishing)');
   return parts.join('\n\n');
+}
+
+/**
+ * Appends the turn's closing message (and the images the member just sent). When the
+ * transcript already ends with a user message, the closing text joins it as one string:
+ * some vendors reject two user messages in a row, or a user message made of several parts.
+ */
+export function closeTranscript(
+  transcript: EngineMessage[],
+  tail: string,
+  images: EngineContentPart[] = [],
+): EngineMessage[] {
+  const content = (text: string) => (images.length ? [{ type: 'text' as const, text }, ...images] : text);
+  const last = transcript[transcript.length - 1];
+  if (last?.role === 'user' && typeof last.content === 'string') {
+    return [...transcript.slice(0, -1), { ...last, content: content(`${last.content}\n\n${tail}`) }];
+  }
+  return [...transcript, { role: 'user', content: content(tail) }];
 }
