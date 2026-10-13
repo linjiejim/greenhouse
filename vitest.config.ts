@@ -39,6 +39,8 @@ export default defineConfig({
       '@greenhouse/utils/semver': resolve(__dirname, 'packages/utils/src/semver.ts'),
       '@greenhouse/utils/html': resolve(__dirname, 'packages/utils/src/html.ts'),
       '@greenhouse/agent-core': resolve(__dirname, 'packages/agent-core/src/index.ts'),
+      '@greenhouse/db/testing': resolve(__dirname, 'packages/db/src/testing.ts'),
+      '@greenhouse/db': resolve(__dirname, 'packages/db/src/index.ts'),
       '@greenhouse/knowledge-editor/extensions': resolve(__dirname, 'packages/knowledge-editor/src/extensions.ts'),
       '@greenhouse/knowledge-editor/markdown': resolve(__dirname, 'packages/knowledge-editor/src/markdown.ts'),
       '@greenhouse/knowledge-editor/md-html': resolve(__dirname, 'packages/knowledge-editor/src/md-html.ts'),
@@ -52,7 +54,14 @@ export default defineConfig({
     // .claude/** holds agent worktrees (full repo copies) — never collect them.
     // skillhub/** ships in-bundle node:test files (*.test.mjs) that vitest
     // cannot parse; tests/skillhub/bundles.test.ts runs them via `node --test`.
-    exclude: ['apps/mobile/**', 'tests/e2e/**', 'tests/e2e-ui/**', '**/node_modules/**', '**/.claude/**', 'skillhub/**'],
+    exclude: [
+      'apps/mobile/**',
+      'tests/e2e/**',
+      'tests/e2e-ui/**',
+      '**/node_modules/**',
+      '**/.claude/**',
+      'skillhub/**',
+    ],
     // Silence app loggers so error-path tests don't spam the run output.
     // Override with LOG_LEVEL=debug when debugging a specific test.
     env: { LOG_LEVEL: process.env.LOG_LEVEL ?? 'silent' },
@@ -90,6 +99,19 @@ export default defineConfig({
           // Cost, measured: unit 17.1s -> 27.6s, full suite ~33s -> ~45s.
           pool: 'forks',
           sequence: { concurrent: false, groupOrder: 0 },
+        },
+      },
+      {
+        extends: true,
+        test: {
+          name: 'db',
+          include: ['**/*.db.test.ts'],
+          exclude: ['apps/mobile/**', '**/node_modules/**', '**/.claude/**'],
+          globalSetup: ['./tests/setup/db-global.ts'],
+          setupFiles: ['./tests/setup/db-transaction.ts'],
+          pool: 'forks',
+          hookTimeout: 20_000,
+          sequence: { concurrent: false, groupOrder: 1 },
         },
       },
     ],
