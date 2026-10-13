@@ -19,6 +19,7 @@ GREENHOUSE_ENV_FILE=/dev/null NODE_ENV=development PORT=$API PUBLIC_URL=http://1
   DATABASE_URL=$E2E_DATABASE_URL TOKEN_SIGNING_KEY=$(printf 'a%.0s' $(seq 64)) \
   PROVIDER_TOKEN_ENCRYPTION_KEY=$(printf 'b%.0s' $(seq 64)) LLM_PROVIDER=openai-compatible \
   LLM_BASE_URL=http://127.0.0.1:$LLM/v1 LLM_API_KEY=sk-e2e LLM_MODEL=fake LLM_MODEL_STRONG=fake-strong LOG_LEVEL=warn \
+  SEARCH_PROVIDER=searxng SEARXNG_URL=http://127.0.0.1:$LLM \
   STORAGE_PROVIDER=local STORAGE_ROOT="${TMPDIR:-/tmp}/greenhouse-v2-preview-files" \
   node --import tsx apps/api/src/index.ts &
 GREENHOUSE_API=http://127.0.0.1:$API WEB_PORT=$WEB pnpm --filter @greenhouse/web exec vite --host 127.0.0.1

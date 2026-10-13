@@ -43,7 +43,7 @@ describe('fetchPublicPage', () => {
 });
 
 describe('web tools in a turn', () => {
-  it('search through the configured provider, cite, and record usage; hidden when no search is set up', async () => {
+  it('search through the configured provider, cite the linked result, and record usage; hidden when no search is set up', async () => {
     const fetch = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url === 'https://api.tavily.com/search') {
@@ -84,6 +84,10 @@ describe('web tools in a turn', () => {
     });
     const [reply] = await getDb().select().from(messages).where(eq(messages.runId, sent.body.run_id));
     expect(reply!.steps).toEqual([expect.objectContaining({ tool: 'web_search', summary: '搜索：kyoto travel' })]);
+    // The search result the reply links to is its source.
+    expect(reply!.citations).toEqual([
+      { kind: 'web', id: 'https://kyoto.example/guide', title: 'Kyoto guide', url: 'https://kyoto.example/guide' },
+    ]);
     expect(lastUserText(model.prompts[1])).toBeTruthy();
 
     const bare = scriptedModel([text('no web here')]);

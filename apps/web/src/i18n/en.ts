@@ -504,6 +504,12 @@ export const en: Record<MessageKey, string> = {
   'rich.chart': 'Chart',
   'rich.diagram': 'Diagram',
 
+  'sources.label': 'Sources',
+  'sources.open': 'Source: {name}',
+  'sources.hint': 'The reply used this source. Open the page to check it, or ask a follow-up about it.',
+  'sources.visit': 'Open page',
+  'sources.ask': 'Ask about this',
+
   'computer.connecting': 'Connecting',
   'computer.controlling': 'You are in control',
   'computer.watching': 'Watching',

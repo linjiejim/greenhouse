@@ -68,6 +68,7 @@ import { effectiveModules } from '../modules/members/service.js';
 import { createDigester, parseStoredDigest, renderDigest } from './digest.js';
 import { closeTranscript, projectHistory } from './history.js';
 import { createKeyedLock } from './locks.js';
+import { createSources } from './sources.js';
 import {
   assembleSystem,
   buildAbout,
@@ -652,6 +653,7 @@ export function createEngine(deps: EngineDeps) {
     let outcome: { status: Run['status']; errorCode?: string; errorMessage?: string } = { status: 'succeeded' };
     let refusal: ApiError | undefined;
     const collector = createCollector();
+    const sources = createSources();
     let defs = new Map<string, ToolDef>();
 
     try {
@@ -708,6 +710,7 @@ export function createEngine(deps: EngineDeps) {
             tainted = true;
           },
           tainted: () => tainted,
+          cite: sources.cite,
           chain: (run.input as TurnInput).chain ?? { key: run.id, path: [agent.id] },
         },
         availability: {
@@ -914,6 +917,7 @@ export function createEngine(deps: EngineDeps) {
         .set({
           content,
           steps,
+          citations: failed ? [] : sources.citations(content),
           reasoning: collector.reasoning || null,
           status: outcome.status === 'canceled' ? 'stopped' : failed ? 'failed' : 'complete',
         })

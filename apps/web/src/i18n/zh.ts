@@ -501,6 +501,12 @@ export const zh = {
   'rich.chart': '图表',
   'rich.diagram': '图示',
 
+  'sources.label': '来源',
+  'sources.open': '查看来源：{name}',
+  'sources.hint': '回复用到了这个来源。可以打开原网页核对，或者就它继续追问。',
+  'sources.visit': '打开网页',
+  'sources.ask': '就此追问',
+
   'computer.connecting': '正在连接',
   'computer.controlling': '你在操作这台电脑',
   'computer.watching': '正在观看',

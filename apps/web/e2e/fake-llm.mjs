@@ -96,6 +96,7 @@ async function stream(response, request) {
     textOf(messages.filter((message) => message.role === 'user').at(-1)?.content ?? ''),
   );
   const afterTool = last?.role === 'tool' || woken;
+  const toolText = last?.role === 'tool' ? textOf(last.content) : '';
   const tool = (name, args) => {
     chunk(response, {
       choices: [
@@ -128,6 +129,10 @@ async function stream(response, request) {
     tool('memory', { action: 'remember', title: said.slice(9).trim(), category: 'fact' });
   } else if (!afterTool && /^need a human/i.test(said)) {
     tool('request_takeover', { reason: 'Solve the human check on the sign-in page' });
+  } else if (!afterTool && /^search the web/i.test(said)) {
+    tool('web_search', { query: said.slice(15).trim() || 'kyoto' });
+  } else if (afterTool && toolText.includes('kyoto.example')) {
+    await say('Found it: [Kyoto guide](https://kyoto.example/guide).', 10);
   } else if (afterTool) {
     await say('Done.', 20);
   } else if (/^show (chart|table|choices|diagram|page|stats)/i.test(said)) {
@@ -165,6 +170,17 @@ createServer((request, response) => {
   let raw = '';
   request.on('data', (part) => (raw += part));
   request.on('end', () => {
+    if (request.method === 'GET' && request.url?.startsWith('/search')) {
+      response.writeHead(200, { 'content-type': 'application/json' });
+      return response.end(
+        JSON.stringify({
+          results: [
+            { title: 'Kyoto guide', url: 'https://kyoto.example/guide', content: 'Temples and trains.' },
+            { title: 'Osaka food', url: 'https://osaka.example/food', content: 'Street food.' },
+          ],
+        }),
+      );
+    }
     if (request.method === 'GET') {
       response.writeHead(200, { 'content-type': 'application/json' });
       return response.end(JSON.stringify({ data: [{ id: 'fake', object: 'model' }] }));

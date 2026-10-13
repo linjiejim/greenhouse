@@ -34,6 +34,7 @@ import { flattenRichOutput } from '@greenhouse/types/rich-output';
 
 const NO_BLOCKS: BlockContext = {};
 import { RequestCard } from './RequestCard';
+import { Sources } from './Sources';
 
 export interface Author {
   name: string;
@@ -282,6 +283,12 @@ export const MessageView = memo(function MessageView({
             <Markdown text={text} />
           ))}
         <Attachments ids={message.attachments} />
+        {!streaming && message.citations.length > 0 && (
+          <Sources
+            items={message.citations}
+            onAsk={onQuote && ((source) => onQuote(`${source.title}${source.url ? ` — ${source.url}` : ''}`))}
+          />
+        )}
         {streaming && !text && !steps.length && <span className="app-typing" aria-label={t('common.loading')} />}
         {message.status === 'failed' && (
           <p className="app-message-note is-danger">

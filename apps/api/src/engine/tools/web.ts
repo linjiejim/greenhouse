@@ -118,6 +118,14 @@ export async function fetchPublicPage(
   throw new Error('Too many redirects.');
 }
 
+const hostOf = (url: string) => {
+  try {
+    return new URL(url).host;
+  } catch {
+    return url;
+  }
+};
+
 export function webTools(providers: ProvidersService, options: { fetch?: typeof fetch } = {}) {
   const webSearch = defineTool({
     name: 'web_search',
@@ -137,6 +145,9 @@ export function webTools(providers: ProvidersService, options: { fetch?: typeof 
       const results = await firstSuccess(
         chain.map((entry) => () => entry.client.search(args.query, { limit: args.limit })),
       );
+      for (const result of results) {
+        ctx.cite?.({ kind: 'web', id: result.url, title: result.title || hostOf(result.url), url: result.url }, 'seen');
+      }
       return {
         results: results.map((result) => ({
           title: result.title,
@@ -161,22 +172,17 @@ export function webTools(providers: ProvidersService, options: { fetch?: typeof 
     available: (ctx) => ctx.available('search'),
     async execute(args, ctx) {
       const readers = (await providers.chain('search', usage(ctx))).filter((entry) => entry.client.read);
-      if (readers.length) {
-        const page = await firstSuccess(readers.map((entry) => () => entry.client.read!(args.url)));
-        return { url: page.url, title: page.title, content: page.content.slice(0, MAX_PAGE_CHARS) };
-      }
-      return fetchPublicPage(args.url, options.fetch);
+      const page = readers.length
+        ? await firstSuccess(readers.map((entry) => () => entry.client.read!(args.url))).then((found) => ({
+            url: found.url,
+            title: found.title,
+            content: found.content.slice(0, MAX_PAGE_CHARS),
+          }))
+        : await fetchPublicPage(args.url, options.fetch);
+      ctx.cite?.({ kind: 'web', id: page.url, title: page.title || hostOf(page.url), url: page.url }, 'read');
+      return page;
     },
-    summarize: (args, _output, locale) => {
-      const host = (() => {
-        try {
-          return new URL(args.url).host;
-        } catch {
-          return args.url;
-        }
-      })();
-      return locale === 'zh' ? `阅读：${host}` : `Read: ${host}`;
-    },
+    summarize: (args, _output, locale) => (locale === 'zh' ? `阅读：${hostOf(args.url)}` : `Read: ${hostOf(args.url)}`),
   });
 
   return [webSearch, webFetch];

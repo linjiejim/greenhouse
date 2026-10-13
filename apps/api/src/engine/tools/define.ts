@@ -5,7 +5,7 @@
 
 import type { z } from 'zod';
 import type { AgentManifest, MemberModules } from '@greenhouse/contract';
-import type { Agent, Conversation, NeedsYouRequest, RequestKind } from '@greenhouse/db';
+import type { Agent, Conversation, MessageCitation, NeedsYouRequest, RequestKind } from '@greenhouse/db';
 import type { Capability } from '@greenhouse/providers';
 
 export type ToolRisk = 'read' | 'write' | 'external';
@@ -52,6 +52,11 @@ export interface ToolContext {
   tainted(): boolean;
   /** Raises a card in this conversation for the member. */
   raise(card: Card): Promise<NeedsYouRequest>;
+  /**
+   * Where a fact came from (engine/sources.ts): `read` shows under the reply, `seen` (a search
+   * result) only when the reply links it. Turns that write no reply leave it out.
+   */
+  cite?(source: MessageCitation, how: 'read' | 'seen'): void;
   /** Ends the turn after this step (a hand-off: the other Agent answers next). */
   endTurn(): void;
   /** The hand-offs this turn's request has gone through, for their limits. */

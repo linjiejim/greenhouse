@@ -23,7 +23,8 @@ test('stop ends a long reply; a message sent meanwhile is queued and answered af
 
   await composer(page).fill('slow again');
   await composer(page).press('Enter');
-  await expect(page.getByText('Thinking about it slowly.').last()).toBeVisible();
+  // The second slow reply is streaming (the first one's text is on the page too).
+  await expect(page.getByText('Thinking about it slowly.')).toHaveCount(2);
   await page.getByRole('button', { name: '停止' }).click();
   await expect(page.getByText('已停止')).toBeVisible();
   await expect(page.getByRole('button', { name: '发送' })).toBeVisible();
@@ -114,4 +115,19 @@ test("a chat's own model: picked in 「⋯」 → 这个会话的模型, and kep
   await main.getByRole('button', { name: '更多' }).click();
   await page.getByRole('menuitem', { name: '这个会话的模型' }).click();
   await expect(page.getByRole('dialog', { name: '这个会话的模型' }).getByRole('combobox')).toContainText('fake-strong');
+});
+
+test('a reply lists its sources; one opens in the drawer and can be quoted', async ({ page }) => {
+  await open(page, '/#/c/new');
+  await composer(page).fill('search the web for kyoto');
+  await composer(page).press('Enter');
+  await expect(page.getByText('Found it:')).toBeVisible();
+  // Only the result the reply links to is a source.
+  await expect(page.getByRole('button', { name: '查看来源：Osaka food' })).toHaveCount(0);
+  await page.getByRole('button', { name: '查看来源：Kyoto guide' }).click();
+  const drawer = page.getByRole('dialog', { name: 'Kyoto guide' });
+  await expect(drawer.getByText('https://kyoto.example/guide')).toBeVisible();
+  await drawer.getByRole('button', { name: '就此追问' }).click();
+  await expect(drawer).toBeHidden();
+  await expect(page.locator('.app-chip.is-quote')).toContainText('Kyoto guide — https://kyoto.example/guide');
 });
