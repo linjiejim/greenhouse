@@ -1,0 +1,100 @@
+/** A scripted model for engine tests: each call plays the next script, streaming or not. */
+
+import { MockLanguageModelV4 } from 'ai/test';
+import type { ResolvedModel } from '../../providers/service.js';
+
+type Part = Record<string, unknown> & { type: string };
+
+const USAGE = {
+  inputTokens: { total: 10, noCache: 10, cacheRead: 0, cacheWrite: 0 },
+  outputTokens: { total: 5, text: 5, reasoning: 0 },
+};
+
+export const text = (value: string): Part[] => [
+  { type: 'stream-start', warnings: [] },
+  { type: 'text-start', id: 't' },
+  ...value.split(/(?<= )/).map((delta) => ({ type: 'text-delta', id: 't', delta })),
+  { type: 'text-end', id: 't' },
+  { type: 'finish', finishReason: { unified: 'stop', raw: undefined }, usage: USAGE },
+];
+
+export const toolCall = (toolName: string, input: unknown, id = 'call_1'): Part[] => [
+  { type: 'stream-start', warnings: [] },
+  { type: 'tool-call', toolCallId: id, toolName, input: JSON.stringify(input) },
+  { type: 'finish', finishReason: { unified: 'tool-calls', raw: undefined }, usage: USAGE },
+];
+
+export interface Script {
+  parts: Part[];
+  /** Holds the stream open until released (or aborted). */
+  gate?: Promise<void>;
+}
+
+export function scriptedModel(scripts: Array<Part[] | Script>, options: { title?: string } = {}) {
+  const prompts: unknown[] = [];
+  let index = 0;
+  const model = new MockLanguageModelV4({
+    doGenerate: async () => ({
+      content: [{ type: 'text', text: options.title ?? 'A title' }],
+      finishReason: { unified: 'stop', raw: undefined },
+      usage: USAGE,
+      warnings: [],
+    }),
+    doStream: async (call) => {
+      prompts.push(call.prompt);
+      const next = scripts[Math.min(index++, scripts.length - 1)]!;
+      const script: Script = Array.isArray(next) ? { parts: next } : next;
+      return {
+        stream: new ReadableStream({
+          async start(controller) {
+            call.abortSignal?.addEventListener(
+              'abort',
+              () => {
+                try {
+                  controller.error(call.abortSignal?.reason ?? new Error('aborted'));
+                } catch {
+                  // already closed
+                }
+              },
+              { once: true },
+            );
+            const [head, ...rest] = script.parts;
+            controller.enqueue(head as never);
+            if (script.gate) await script.gate;
+            if (call.abortSignal?.aborted) return;
+            for (const part of rest) controller.enqueue(part as never);
+            controller.close();
+          },
+        }),
+      };
+    },
+  });
+  const languageModel = async (): Promise<ResolvedModel> => ({
+    model,
+    ref: 'test/m',
+    modelId: 'm',
+    deepseek: false,
+  });
+  return { languageModel, prompts, calls: () => index };
+}
+
+export function gate() {
+  let open!: () => void;
+  const promise = new Promise<void>((resolve) => (open = resolve));
+  return { promise, open };
+}
+
+/** The text of the last user message of a recorded prompt. */
+export function lastUserText(prompt: unknown): string {
+  const messages = prompt as Array<{ role: string; content: Array<{ type: string; text?: string }> }>;
+  const user = [...messages].reverse().find((message) => message.role === 'user');
+  return (user?.content ?? []).map((part) => part.text ?? '').join('');
+}
+
+export function systemText(prompt: unknown): string {
+  const messages = prompt as Array<{ role: string; content: unknown }>;
+  return messages
+    .filter((message) => message.role === 'system')
+    .map((message) => String(message.content))
+    .join('\n');
+}

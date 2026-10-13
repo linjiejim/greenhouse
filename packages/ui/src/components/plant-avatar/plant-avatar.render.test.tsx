@@ -63,8 +63,8 @@ describe('<PlantAvatar/>', () => {
     avatar({ avatar: { color: 'ocean' }, stableId: 'custom:1', size: 'xs' });
     expect(svg().getAttribute('class')).toContain('pa-echeveria');
     expect(svg().getAttribute('class')).toContain('pa-lod-avatar');
-    avatar({ avatar: { color: 'ocean' }, templateKey: 'chief', size: 'xs', compact: true });
-    expect(svg().getAttribute('class')).toContain('pa-ivy');
+    avatar({ avatar: { color: 'ocean' }, templateKey: 'researcher', size: 'xs', compact: true });
+    expect(svg().getAttribute('class')).toContain('pa-dandelion');
     expect(svg().getAttribute('class')).toContain('pa-lod-glyph');
     avatar({ plant: 'lotus', avatar: { color: 'ocean' }, size: 'sm', compact: true });
     expect(svg().getAttribute('class')).toContain('pa-lotus');

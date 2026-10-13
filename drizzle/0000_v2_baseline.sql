@@ -606,6 +606,7 @@ CREATE INDEX "runs_owner_status_idx" ON "runs" USING btree ("owner_id","status")
 CREATE INDEX "runs_agent_idx" ON "runs" USING btree ("agent_id","created_at");--> statement-breakpoint
 CREATE INDEX "runs_claimable_idx" ON "runs" USING btree ("status","lease_expires_at") WHERE "runs"."kind" = 'background';--> statement-breakpoint
 CREATE INDEX "runs_conversation_idx" ON "runs" USING btree ("conversation_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "runs_one_active_turn_key" ON "runs" USING btree ("conversation_id") WHERE "runs"."kind" = 'turn' AND "runs"."status" IN ('queued', 'running');--> statement-breakpoint
 CREATE UNIQUE INDEX "files_storage_key" ON "files" USING btree ("storage_key");--> statement-breakpoint
 CREATE INDEX "files_conversation_idx" ON "files" USING btree ("conversation_id");--> statement-breakpoint
 CREATE INDEX "files_folder_idx" ON "files" USING btree ("folder_id");--> statement-breakpoint

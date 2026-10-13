@@ -15,6 +15,13 @@ import { adminMemberRoutes, directoryRoutes, meRoutes } from './modules/members/
 import { createMembersService, type MembersService } from './modules/members/service.js';
 import { bootstrapRoutes, brandingRoutes } from './modules/workspace/routes.js';
 import { createWorkspaceService, type WorkspaceService } from './modules/workspace/service.js';
+import { createEngine, type Engine } from './engine/engine.js';
+import { memoryTool } from './engine/tools/memory.js';
+import { agentRoutes } from './modules/agents/routes.js';
+import { createAgentsService, type AgentsService } from './modules/agents/service.js';
+import { conversationRoutes } from './modules/conversations/routes.js';
+import { createConversationsService, type ConversationsService } from './modules/conversations/service.js';
+import { createHub, type Hub } from './realtime/hub.js';
 import { adminProviderRoutes, myProviderRoutes } from './providers/routes.js';
 import { createProvidersService, type ProvidersService } from './providers/service.js';
 
@@ -25,24 +32,46 @@ export interface Services {
   workspace: WorkspaceService;
   members: MembersService;
   providers: ProvidersService;
+  agents: AgentsService;
+  conversations: ConversationsService;
+  hub: Hub;
+  engine: Engine;
   limiter: RateLimiter;
 }
 
 export interface ServiceOptions {
   /** Replaces the network for provider calls (tests). */
   fetch?: typeof fetch;
+  /** Replaces model resolution in the engine (tests). */
+  languageModel?: ProvidersService['languageModel'];
 }
 
 export function createServices(config: AppConfig, options: ServiceOptions = {}): Services {
   const tokens = createTokens(config.tokenSigningKey);
   const auth = createAuthService({ tokens, publicUrl: config.PUBLIC_URL });
+  const providers = createProvidersService({ config, fetch: options.fetch });
+  const agents = createAgentsService({ providers });
+  const conversations = createConversationsService({ agents, providers });
+  const hub = createHub();
+  const engine = createEngine({
+    agents,
+    conversations,
+    providers,
+    hub,
+    tools: () => [memoryTool(agents)],
+    ...(options.languageModel ? { languageModel: options.languageModel } : {}),
+  });
   return {
     config,
     tokens,
     auth,
     workspace: createWorkspaceService(),
     members: createMembersService({ auth }),
-    providers: createProvidersService({ config, fetch: options.fetch }),
+    providers,
+    agents,
+    conversations,
+    hub,
+    engine,
     limiter: new RateLimiter(10, 60_000),
   };
 }
@@ -82,6 +111,8 @@ export function createApp(services: Services) {
   signedIn.route('/me/providers', myProviderRoutes(services.providers));
   signedIn.route('/me', meRoutes(services.members));
   signedIn.route('/members', directoryRoutes(services.members));
+  signedIn.route('/agents', agentRoutes(services.agents));
+  signedIn.route('/conversations', conversationRoutes(services.conversations, services.engine));
   signedIn.use('/admin/*', requireAdmin);
   signedIn.route('/admin', adminMemberRoutes(services.members));
   signedIn.route('/admin/branding', brandingRoutes(services.workspace));

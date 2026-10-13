@@ -22,6 +22,7 @@ export default defineConfig({
   resolve: {
     alias: {
       '@greenhouse/types/plant-avatar': resolve(__dirname, 'packages/types/src/plant-avatar.ts'),
+      '@greenhouse/types/agent-templates': resolve(__dirname, 'packages/types/src/agent-templates.ts'),
       '@greenhouse/types/config': resolve(__dirname, 'packages/types/src/config.ts'),
       '@greenhouse/types/config-schema': resolve(__dirname, 'packages/types/src/config-schema.ts'),
       '@greenhouse/types/rich-output': resolve(__dirname, 'packages/types/src/rich-output.ts'),
@@ -114,6 +115,20 @@ export default defineConfig({
           pool: 'forks',
           hookTimeout: 20_000,
           sequence: { concurrent: false, groupOrder: 1 },
+        },
+      },
+      {
+        extends: true,
+        test: {
+          // Real commits on a real pool: races between processes, which a per-test transaction hides.
+          name: 'db-commit',
+          include: ['**/*.db-commit.test.ts'],
+          exclude: ['apps/mobile/**', '**/node_modules/**', '**/.claude/**'],
+          globalSetup: ['./tests/setup/db-global.ts'],
+          setupFiles: ['./tests/setup/db-commit.ts'],
+          pool: 'forks',
+          hookTimeout: 20_000,
+          sequence: { concurrent: false, groupOrder: 2 },
         },
       },
     ],

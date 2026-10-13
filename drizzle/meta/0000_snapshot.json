@@ -1,5 +1,5 @@
 {
-  "id": "80d1734d-9f94-441a-81fa-c6c2e3a48969",
+  "id": "2df85427-0964-4678-bbe4-e2ddcdf28977",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -3099,6 +3099,22 @@
             }
           ],
           "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "runs_one_active_turn_key": {
+          "name": "runs_one_active_turn_key",
+          "columns": [
+            {
+              "expression": "conversation_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"runs\".\"kind\" = 'turn' AND \"runs\".\"status\" IN ('queued', 'running')",
           "concurrently": false,
           "method": "btree",
           "with": {}

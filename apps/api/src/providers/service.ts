@@ -567,6 +567,15 @@ export function createProvidersService(deps: { config: AppConfig; fetch?: typeof
       };
     },
 
+    /**
+     * Whether a model reference may be saved on an Agent or a conversation. Aliases always may:
+     * they resolve when a turn runs. `instance/model` must name a model the member can reach.
+     */
+    async modelAvailable(ref: string, ctx: UsageContext): Promise<boolean> {
+      if ((LLM_ALIASES as readonly string[]).includes(ref)) return true;
+      return !!explicitTarget(ref, chainFor(await viewOf('llm'), ctx));
+    },
+
     async adminView(): Promise<AdminProviders> {
       return { capabilities: (await load()).map(capabilityState), catalog: catalog() };
     },

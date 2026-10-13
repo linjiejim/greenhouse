@@ -110,14 +110,12 @@ export const PLANT_TINTS = Object.freeze(['plant', 'sky', 'violet', 'rose', 'cor
 export type PlantTint = (typeof PLANT_TINTS)[number];
 
 /**
- * Bot template key → species: the built-in Sprouty is the sprout; the gallery templates are named
- * after theirs (蒲蒲 Dandy, 仙仙 Cactus, 卷卷 Fern, 叶叶 Clover, 葵葵 Sunny, 薰薰 Lavender, 枫枫 Maple);
- * the retired chief of staff was ivy. Bots store their `plant`, so changing a row here only affects
- * new Bots — and template-keyed avatars that never stored one.
+ * Agent template key → species: the main Agent (Greeny) is the sprout; the gallery templates are
+ * named after theirs (蒲蒲 Dandy, 仙仙 Cactus, 卷卷 Fern, 叶叶 Clover, 葵葵 Sunny, 薰薰 Lavender,
+ * 枫枫 Maple). Agents store their `plant`, so changing a row here only affects new Agents.
  */
 export const TEMPLATE_PLANT = Object.freeze({
-  sprouty: 'sprout',
-  chief: 'ivy',
+  main: 'sprout',
   researcher: 'dandelion',
   operator: 'opuntia',
   writer: 'fern',

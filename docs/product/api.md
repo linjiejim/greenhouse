@@ -44,7 +44,7 @@ v2 和 v1 不兼容，不加 `/api/v2` 前缀，也不保留旧路由。`GET /ap
 | 方法与路径 | 用途 |
 | --- | --- |
 | `GET /api/agents?scope=mine\|public\|archived` · `POST /api/agents` | Agent 目录、新建 |
-| `GET` / `PATCH` / `DELETE /api/agents/:id` | 资料；`DELETE` 是归档 |
+| `GET` / `PATCH` / `DELETE /api/agents/:id` · `POST …/restore` | 资料（`main` 可作 id）；`DELETE` 是归档，`restore` 恢复 |
 | `/api/agents/:id/versions` · `/memories` · `/schedules` · `/usage` · `/activity` · `/publication` | Agent 资料的各个分页 |
 | `/api/agents/:id/computer` · `…/files` · `…/processes` · `…/takeover` | 电脑 |
 | `GET /api/conversations?kind=&q=&archived=` · `POST /api/conversations` | 对话列表与新建，`kind` 取 `main` / `direct` / `chat` / `room` |

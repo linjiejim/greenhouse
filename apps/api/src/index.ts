@@ -10,6 +10,7 @@ import { applyMigrations, assertNotV1Database, createDbClient, setDb } from '@gr
 import { logger } from '@greenhouse/utils/logger';
 import { createApp, createServices } from './app.js';
 import { loadConfig } from './config/index.js';
+import { pgTransport } from './realtime/pg.js';
 import { ensureFirstAdmin } from './security/first-admin.js';
 
 loadDotenv({ path: fileURLToPath(new URL('../../../.env', import.meta.url)) });
@@ -24,6 +25,10 @@ async function main() {
   const services = createServices(config);
   await services.workspace.row();
   await ensureFirstAdmin(config.BOOTSTRAP_ADMIN_EMAIL, services.auth);
+  await services.hub.connect(pgTransport(client.sql));
+  services.engine.start();
+  // Turns another process left behind (a restart, a crash) carry on here.
+  await services.engine.sweep();
 
   const app = createApp(services);
   const server = serve({ fetch: app.fetch, port: config.PORT }, (info) =>
@@ -32,6 +37,8 @@ async function main() {
 
   const stop = async () => {
     server.close();
+    await services.engine.shutdown();
+    await services.hub.close();
     await client.close();
     process.exit(0);
   };

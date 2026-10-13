@@ -12,7 +12,7 @@ Greenhouse is an open-source, self-hosted platform where a team works with its o
 - Specs for non-trivial cross-cutting work go in docs/specs/YYYYMMDD-name.md. That directory is gitignored, so committed files never link to it.
 
 ## Repo map
-- apps/api: the v2 API (Hono). app.ts composes services and routes; modules/<domain>/ holds routes.ts, service.ts and later tools.ts.
+- apps/api: the v2 API (Hono). app.ts composes services and routes; modules/<domain>/ holds routes.ts and service.ts; engine/ runs turns and tools (engine/AGENTS.md); realtime/ is the WebSocket hub.
 - packages/contract: zod schemas and types for every request and response; the web, mobile and extension clients import it.
 - packages/db: the v2 schema (data-model.md), ids, migrations and test support. drizzle/ holds the single baseline.
 - packages/providers: adapters per capability (llm, search, stt, tts, image, storage), presets, the adapter registry and pinnedFetch. apps/api/src/providers: env parsing, resolution order, sealed secrets, usage metering and the provider routes (docs/product/providers.md).
@@ -23,7 +23,8 @@ Greenhouse is an open-source, self-hosted platform where a team works with its o
 
 ## Commands
 - `pnpm typecheck`, `pnpm lint` (`pnpm lint:fix`) and `pnpm test` must pass before every commit.
-- `pnpm test` runs the unit and db projects. db tests need TEST_DATABASE_URL pointing at a loopback database whose name contains test; it is wiped and migrated once per run.
+- `pnpm test` runs the unit, db and db-commit projects. db tests need TEST_DATABASE_URL pointing at a loopback database whose name contains test; it is wiped and migrated once per run.
+- db tests run inside one rolled-back transaction each. Races between processes need real commits: write them as `*.db-commit.test.ts`, which run on a real pool and clean up after themselves.
 - `pnpm api` starts the API (port 3000). Give it its own DATABASE_URL; it refuses a v1 database. Required env: TOKEN_SIGNING_KEY and PROVIDER_TOKEN_ENCRYPTION_KEY (64 hex each, `openssl rand -hex 32`).
 - BOOTSTRAP_ADMIN_EMAIL creates the first admin once and logs a one-time activation link. MIGRATE_ON_START=1 applies migrations at boot.
 - Schema change: edit packages/db/src/schema/*, then `pnpm db:baseline` to regenerate drizzle/0000_v2_baseline.sql (one baseline until v2.0) and recreate local dev databases.

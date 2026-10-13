@@ -31,6 +31,10 @@
     "./plant-avatar": {
       "import": "./src/plant-avatar.ts",
       "types": "./src/plant-avatar.ts"
+    },
+    "./agent-templates": {
+      "import": "./src/agent-templates.ts",
+      "types": "./src/agent-templates.ts"
     }
   },
   "scripts": {
