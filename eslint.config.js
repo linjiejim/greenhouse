@@ -10,6 +10,8 @@ export default tseslint.config(
       'node_modules/',
       'dist/',
       '**/dist/',
+      'apps/design/playwright-report/',
+      'apps/design/test-results/',
       'public/',
       'drizzle/',
       'data/',

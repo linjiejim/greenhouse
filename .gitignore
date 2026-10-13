@@ -89,7 +89,7 @@ docs/local/
 
 # Experimental specs and sketches
 docs/specs/
-design/
+/design/
 docs/sketches/
 
 # Desktop shell (Tauri)
@@ -99,3 +99,7 @@ apps/desktop/src-tauri/gen/
 apps/desktop/.keys/
 # Release staging written by scripts/desktop/*.mjs
 apps/desktop/release/
+
+# Design prototype browser output
+apps/design/playwright-report/
+apps/design/test-results/
