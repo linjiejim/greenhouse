@@ -44,11 +44,13 @@ export function directoryRoutes(service: MembersService) {
 export function adminMemberRoutes(service: MembersService) {
   return new Hono<AppEnv>()
     .get('/members', async (c) => c.json(await service.list(readQuery(c, pageQuerySchema))))
-    .post('/members', async (c) => c.json(await service.invite(await readJson(c, inviteInputSchema)), 201))
+    .post('/members', async (c) =>
+      c.json(await service.invite(c.get('member').id, await readJson(c, inviteInputSchema)), 201),
+    )
     .patch('/members/:id', async (c) =>
       c.json(await service.update(c.get('member').id, c.req.param('id'), await readJson(c, updateMemberInputSchema))),
     )
-    .post('/members/:id/link', async (c) => c.json(await service.issueResetLink(c.req.param('id'))))
+    .post('/members/:id/link', async (c) => c.json(await service.issueResetLink(c.get('member').id, c.req.param('id'))))
     .get('/groups', async (c) => c.json({ items: await service.listGroups() }))
     .post('/groups', async (c) =>
       c.json(await service.saveGroup(c.get('member').id, await readJson(c, groupInputSchema)), 201),
@@ -57,7 +59,7 @@ export function adminMemberRoutes(service: MembersService) {
       c.json(await service.saveGroup(c.get('member').id, await readJson(c, groupInputSchema), c.req.param('id'))),
     )
     .delete('/groups/:id', async (c) => {
-      await service.deleteGroup(c.req.param('id'));
+      await service.deleteGroup(c.get('member').id, c.req.param('id'));
       return c.body(null, 204);
     });
 }

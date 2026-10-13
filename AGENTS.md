@@ -15,6 +15,7 @@ Greenhouse is an open-source, self-hosted platform where a team works with its o
 - apps/api: the v2 API (Hono). app.ts composes services and routes; modules/<domain>/ holds routes.ts, service.ts and later tools.ts.
 - packages/contract: zod schemas and types for every request and response; the web, mobile and extension clients import it.
 - packages/db: the v2 schema (data-model.md), ids, migrations and test support. drizzle/ holds the single baseline.
+- packages/providers: adapters per capability (llm, search, stt, tts, image, storage), presets, the adapter registry and pinnedFetch. apps/api/src/providers: env parsing, resolution order, sealed secrets, usage metering and the provider routes (docs/product/providers.md).
 - apps/design: prototype and component lab. apps/desktop: Tauri shell (apps/desktop/AGENTS.md). apps/bot-computer: the Agent computer image.
 - apps/mobile: v1 Expo app outside the pnpm workspace and the root checks until roadmap M4 (apps/mobile/AGENTS.md).
 - packages/agent-core: agent loop and stream collectors. packages/knowledge-editor: Tiptap schema and Markdown conversion.
@@ -36,6 +37,7 @@ Greenhouse is an open-source, self-hosted platform where a team works with its o
 - Declared capabilities must be real: tool descriptions, UI options and docs never claim what the code cannot do.
 - One source of truth per concept; extend the existing registry or schema instead of a parallel list.
 - Only apps/api/src/config reads process.env; everything else receives values from it.
+- External services come only from services.providers (resolve, languageModel). Never build a vendor SDK client or handle a vendor key anywhere else; the client it returns records usage and can only reach its configured address.
 - Routes parse input with the contract's zod schemas (readJson, readQuery) and call a service. Services own queries, transactions and permission checks; routes and Agent tools call the same service.
 - Fail with ApiError (http/errors.ts): every error leaves as `{ error: { code, message, details? } }` with a stable snake_case code.
 - JSON is snake_case and maps from rows through view functions in the service; never return a database row.
@@ -52,12 +54,13 @@ Greenhouse is an open-source, self-hosted platform where a team works with its o
 - The first-admin bootstrap never promotes or revives an existing account and does nothing once an admin exists.
 - Keep at least one active admin; a member cannot disable themselves.
 - Enforce access in services, never only in the UI. Writes record the acting member.
+- Admin changes to members, groups, branding and providers call audit() (apps/api/src/audit.ts) in the same transaction. Summaries name fields, never values or secrets.
 
 ## Database
 - Tables use text ids, timestamptz read as ISO strings, and jsonb that is never null unless null means something.
 - Owned children cascade; logs, audit, usage, notifications and run history keep logical references only.
-- Use getDb() inside services and getDb().transaction for multi-statement writes; a transaction satisfies the same Db type.
-- Tests run in a per-test transaction. A statement expected to fail must run in a savepoint (getDb().transaction), or it aborts the test transaction.
+- Use getDb() inside services and transaction(fn) from @greenhouse/db for multi-statement writes. Inside fn, getDb() returns the transaction, so services called from it join it.
+- Tests run in a per-test transaction. A statement expected to fail must run in transaction(fn) (a savepoint), or it aborts the test transaction.
 
 ## Brand and avatars
 - Brand geometry has one source, packages/ui/src/assets/greenhouse-mark.svg; regenerate icons with `python3 scripts/build-brand-assets.py`.

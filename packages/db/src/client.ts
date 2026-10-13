@@ -3,6 +3,7 @@
  * transaction also satisfies, so the same code runs inside and outside transactions.
  */
 
+import { AsyncLocalStorage } from 'node:async_hooks';
 import postgres from 'postgres';
 import { drizzle, type PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import * as schema from './schema/index.js';
@@ -27,11 +28,24 @@ export function createDbClient(url: string, options: { max?: number } = {}): DbC
 }
 
 let current: Db | null = null;
+const scoped = new AsyncLocalStorage<Db>();
 
-/** The database for this process (or, in a test, the test's own transaction). */
+/** The open transaction, else the database for this process (in a test, the test's own transaction). */
 export function getDb(): Db {
-  if (!current) throw new Error('Database not initialised: call setDb() at startup');
-  return current;
+  const db = scoped.getStore() ?? current;
+  if (!db) throw new Error('Database not initialised: call setDb() at startup');
+  return db;
+}
+
+/**
+ * Runs fn in one transaction (a savepoint when one is already open). getDb() inside fn returns
+ * the transaction, so any service fn calls joins it instead of reading around it.
+ */
+export function transaction<T>(fn: (db: Db) => Promise<T>): Promise<T> {
+  return getDb().transaction((tx) => {
+    const db = tx as unknown as Db;
+    return scoped.run(db, () => fn(db));
+  });
 }
 
 /** Install the process database. Tests swap in a transaction per test. */

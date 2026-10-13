@@ -6,10 +6,12 @@ import {
   members,
   newId,
   refreshTokens,
+  transaction,
   type Db,
   type Member,
   type MemberModules as StoredModules,
 } from '@greenhouse/db';
+import { audit, changedFields } from '../../audit.js';
 import type {
   Group,
   GroupInput,
@@ -105,8 +107,7 @@ export function createMembersService(deps: { auth: AuthService }) {
 
     /** Bumps auth_version: every other session ends; the caller signs in again. */
     async changePassword(memberId: string, current: string, next: string): Promise<void> {
-      await getDb().transaction(async (tx) => {
-        const db = tx as unknown as Db;
+      await transaction(async (db) => {
         const row = await load(db, memberId);
         if (!(await verifyPassword(current, row.passwordHash))) {
           throw new ApiError(400, 'invalid_credentials', 'The current password is incorrect.');
@@ -139,9 +140,8 @@ export function createMembersService(deps: { auth: AuthService }) {
       return toPage(rows, query.limit, toAdmin);
     },
 
-    async invite(input: InviteInput): Promise<InviteResult> {
-      return getDb().transaction(async (tx) => {
-        const db = tx as unknown as Db;
+    async invite(actorId: string, input: InviteInput): Promise<InviteResult> {
+      return transaction(async (db) => {
         const [existing] = await db.select({ id: members.id }).from(members).where(eq(members.email, input.email));
         if (existing) throw conflict('email_taken', 'Someone with this email is already a member.');
         const [row] = await db
@@ -149,13 +149,19 @@ export function createMembersService(deps: { auth: AuthService }) {
           .values({ id: newId('member'), email: input.email, name: input.name, role: input.role ?? 'member' })
           .returning();
         const link = await deps.auth.issueLink(db, row!, 'activate');
+        await audit({
+          actorId,
+          action: 'member.invite',
+          resourceType: 'member',
+          resourceId: row!.id,
+          summary: row!.role,
+        });
         return { member: toAdmin(row!), link };
       });
     },
 
     async update(actorId: string, memberId: string, input: UpdateMemberInput): Promise<MemberAdmin> {
-      return getDb().transaction(async (tx) => {
-        const db = tx as unknown as Db;
+      return transaction(async (db) => {
         const row = await load(db, memberId);
         const demotes = input.role === 'member' && row.role === 'admin';
         const disables = input.status === 'disabled' && row.status !== 'disabled';
@@ -183,16 +189,24 @@ export function createMembersService(deps: { auth: AuthService }) {
             .set({ consumedAt: sql`now()` })
             .where(and(eq(refreshTokens.memberId, memberId), isNull(refreshTokens.consumedAt)));
         }
+        await audit({
+          actorId,
+          action: 'member.update',
+          resourceType: 'member',
+          resourceId: memberId,
+          summary: changedFields(input),
+        });
         return toAdmin(updated!);
       });
     },
 
-    async issueResetLink(memberId: string): Promise<IssuedLink> {
-      return getDb().transaction(async (tx) => {
-        const db = tx as unknown as Db;
+    async issueResetLink(actorId: string, memberId: string): Promise<IssuedLink> {
+      return transaction(async (db) => {
         const row = await load(db, memberId);
         if (row.status === 'disabled') throw conflict('member_disabled', 'Reactivate the member first.');
-        return deps.auth.issueLink(db, row, row.passwordHash ? 'reset' : 'activate');
+        const purpose = row.passwordHash ? 'reset' : 'activate';
+        await audit({ actorId, action: 'member.link', resourceType: 'member', resourceId: memberId, summary: purpose });
+        return deps.auth.issueLink(db, row, purpose);
       });
     },
 
@@ -219,8 +233,7 @@ export function createMembersService(deps: { auth: AuthService }) {
     },
 
     async saveGroup(actorId: string, input: GroupInput, groupId?: string): Promise<Group> {
-      return getDb().transaction(async (tx) => {
-        const db = tx as unknown as Db;
+      return transaction(async (db) => {
         const id = groupId ?? newId('group');
         const [clash] = await db
           .select({ id: groups.id })
@@ -245,14 +258,23 @@ export function createMembersService(deps: { auth: AuthService }) {
           const known = await db.select({ id: members.id }).from(members).where(inArray(members.id, memberIds));
           await db.insert(groupMembers).values(known.map((member) => ({ groupId: id, memberId: member.id })));
         }
+        await audit({
+          actorId,
+          action: groupId ? 'group.update' : 'group.create',
+          resourceType: 'group',
+          resourceId: id,
+        });
         const all = await this.listGroups();
         return all.find((group) => group.id === id)!;
       });
     },
 
-    async deleteGroup(groupId: string): Promise<void> {
-      const deleted = await getDb().delete(groups).where(eq(groups.id, groupId)).returning({ id: groups.id });
-      if (!deleted.length) throw notFound('Group');
+    async deleteGroup(actorId: string, groupId: string): Promise<void> {
+      await transaction(async (db) => {
+        const deleted = await db.delete(groups).where(eq(groups.id, groupId)).returning({ id: groups.id });
+        if (!deleted.length) throw notFound('Group');
+        await audit({ actorId, action: 'group.delete', resourceType: 'group', resourceId: groupId });
+      });
     },
   };
 }

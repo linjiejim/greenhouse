@@ -1,4 +1,6 @@
+import { asc } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
+import { auditEvents, getDb } from '@greenhouse/db';
 import { createTestApp, TEST_PASSWORD } from '../../../testing.js';
 
 describe('members', () => {
@@ -71,5 +73,32 @@ describe('members', () => {
     const clash = await call('POST', '/api/admin/groups', { token: admin.token, body: { name: '产品组' } });
     expect(clash.body.error.code).toBe('group_name_taken');
     expect((await call('DELETE', `/api/admin/groups/${created.body.id}`, { token: admin.token })).status).toBe(204);
+  });
+
+  it('records who changed members and groups, naming fields but not values', async () => {
+    const { call, member } = createTestApp();
+    const admin = await member('admin');
+    const invited = await call('POST', '/api/admin/members', {
+      token: admin.token,
+      body: { email: 'wu@example.com', name: '吴' },
+    });
+    await call('PATCH', `/api/admin/members/${invited.body.member.id}`, {
+      token: admin.token,
+      body: { name: '吴二', modules: { computer: false } },
+    });
+    await call('POST', `/api/admin/members/${invited.body.member.id}/link`, { token: admin.token });
+    const group = await call('POST', '/api/admin/groups', { token: admin.token, body: { name: '设计组' } });
+    await call('DELETE', `/api/admin/groups/${group.body.id}`, { token: admin.token });
+
+    const events = await getDb().select().from(auditEvents).orderBy(asc(auditEvents.id));
+    expect(events.map((event) => [event.action, event.actorId])).toEqual([
+      ['member.invite', admin.id],
+      ['member.update', admin.id],
+      ['member.link', admin.id],
+      ['group.create', admin.id],
+      ['group.delete', admin.id],
+    ]);
+    expect(events[1]!.summary).toBe('modules, name');
+    expect(JSON.stringify(events)).not.toContain('吴二');
   });
 });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { getDb, type Db } from '../client.js';
+import { getDb, transaction, type Db } from '../client.js';
 import { newId } from '../ids.js';
 import { agents, conversations, members, shares } from '../schema/index.js';
 
@@ -19,18 +19,13 @@ async function agent(ownerId: string, name: string, isMain = false, db: Db = get
   return row!;
 }
 
-/** A failing statement aborts the test transaction, so expected violations run in a savepoint. */
-function inSavepoint<T>(fn: (db: Db) => Promise<T>): Promise<T> {
-  return getDb().transaction((sp) => fn(sp as unknown as Db));
-}
-
 describe('v2 baseline constraints', () => {
   it('allows one main Agent per member and unique names among live Agents', async () => {
     const owner = await member();
     await agent(owner.id, 'Greeny', true);
-    await expect(inSavepoint((db) => agent(owner.id, 'Second', true, db))).rejects.toThrow();
+    await expect(transaction((db) => agent(owner.id, 'Second', true, db))).rejects.toThrow();
     await agent(owner.id, 'Weekly');
-    await expect(inSavepoint((db) => agent(owner.id, 'weekly', false, db))).rejects.toThrow();
+    await expect(transaction((db) => agent(owner.id, 'weekly', false, db))).rejects.toThrow();
   });
 
   it('allows one main conversation per member', async () => {
@@ -41,7 +36,7 @@ describe('v2 baseline constraints', () => {
       .insert(conversations)
       .values({ id: newId('conversation'), ...values });
     await expect(
-      inSavepoint((db) => db.insert(conversations).values({ id: newId('conversation'), ...values })),
+      transaction((db) => db.insert(conversations).values({ id: newId('conversation'), ...values })),
     ).rejects.toThrow();
   });
 
@@ -55,7 +50,7 @@ describe('v2 baseline constraints', () => {
     await getDb()
       .insert(shares)
       .values({ id: newId('share'), ...grant });
-    await expect(inSavepoint((db) => db.insert(shares).values({ id: newId('share'), ...grant }))).rejects.toThrow();
+    await expect(transaction((db) => db.insert(shares).values({ id: newId('share'), ...grant }))).rejects.toThrow();
   });
 
   it('defaults new members to invited members with empty modules', async () => {

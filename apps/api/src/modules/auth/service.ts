@@ -1,5 +1,5 @@
 import { and, eq, gt, isNull, sql } from 'drizzle-orm';
-import { authLinks, getDb, members, newId, refreshTokens, type Db, type Member } from '@greenhouse/db';
+import { authLinks, getDb, members, newId, refreshTokens, transaction, type Db, type Member } from '@greenhouse/db';
 import type { CompleteLinkInput, IssuedLink, LinkInfo, TokenPair } from '@greenhouse/contract';
 import { hashPassword, verifyPassword } from '../../auth/password.js';
 import {
@@ -78,8 +78,7 @@ export function createAuthService(deps: { tokens: Tokens; publicUrl: string }) {
 
     /** Refresh tokens are single use; presenting a used one revokes all of that member's sessions. */
     async refresh(raw: string): Promise<TokenPair> {
-      const result = await getDb().transaction(async (tx): Promise<TokenPair | 'replayed' | 'invalid'> => {
-        const db = tx as unknown as Db;
+      const result = await transaction(async (db): Promise<TokenPair | 'replayed' | 'invalid'> => {
         const [row] = await db
           .select({ token: refreshTokens, member: members })
           .from(refreshTokens)
@@ -151,8 +150,7 @@ export function createAuthService(deps: { tokens: Tokens; publicUrl: string }) {
 
     /** Sets the password, activates the member, revokes older sessions and signs in. */
     async completeLink(input: CompleteLinkInput, client: Client = 'web'): Promise<TokenPair> {
-      return getDb().transaction(async (tx) => {
-        const db = tx as unknown as Db;
+      return transaction(async (db) => {
         const { link, member } = await findLiveLink(db, input.token, true);
         const authVersion = member.authVersion + 1;
         await db

@@ -1,5 +1,5 @@
 import { eq } from 'drizzle-orm';
-import { getDb, members, newId, type Db } from '@greenhouse/db';
+import { members, newId, transaction } from '@greenhouse/db';
 import { logger } from '@greenhouse/utils/logger';
 import type { AuthService } from '../modules/auth/service.js';
 
@@ -9,8 +9,7 @@ import type { AuthService } from '../modules/auth/service.js';
  */
 export async function ensureFirstAdmin(email: string | undefined, auth: AuthService): Promise<string | null> {
   if (!email) return null;
-  return getDb().transaction(async (tx) => {
-    const db = tx as unknown as Db;
+  return transaction(async (db) => {
     const [admin] = await db.select({ id: members.id }).from(members).where(eq(members.role, 'admin')).limit(1);
     if (admin) return null;
     const normalized = email.trim().toLowerCase();

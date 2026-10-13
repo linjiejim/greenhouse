@@ -1,6 +1,7 @@
 import { and, eq, sql } from 'drizzle-orm';
-import { getDb, members, workspace, type Db, type WorkspaceRow } from '@greenhouse/db';
+import { getDb, members, transaction, workspace, type Db, type WorkspaceRow } from '@greenhouse/db';
 import { API_VERSION, type Bootstrap, type BrandingInput } from '@greenhouse/contract';
+import { audit, changedFields } from '../../audit.js';
 
 export const WORKSPACE_ID = 'default';
 
@@ -35,15 +36,24 @@ export function createWorkspaceService() {
 
     async updateBranding(input: BrandingInput, memberId: string): Promise<Bootstrap> {
       await row();
-      await getDb()
-        .update(workspace)
-        .set({
-          ...(input.name !== undefined ? { name: input.name } : {}),
-          ...(input.primary_color !== undefined ? { primaryColor: input.primary_color } : {}),
-          updatedBy: memberId,
-          updatedAt: sql`now()`,
-        })
-        .where(eq(workspace.id, WORKSPACE_ID));
+      await transaction(async (db) => {
+        await db
+          .update(workspace)
+          .set({
+            ...(input.name !== undefined ? { name: input.name } : {}),
+            ...(input.primary_color !== undefined ? { primaryColor: input.primary_color } : {}),
+            updatedBy: memberId,
+            updatedAt: sql`now()`,
+          })
+          .where(eq(workspace.id, WORKSPACE_ID));
+        await audit({
+          actorId: memberId,
+          action: 'workspace.branding',
+          resourceType: 'workspace',
+          resourceId: WORKSPACE_ID,
+          summary: changedFields(input),
+        });
+      });
       return this.bootstrap();
     },
   };

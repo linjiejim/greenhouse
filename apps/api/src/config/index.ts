@@ -49,7 +49,11 @@ const list = (value: string) =>
     .filter(Boolean);
 
 export function loadConfig(env: Record<string, string | undefined> = process.env): AppConfig {
-  const parsed = schema.safeParse(env);
+  // `KEY=` in a .env file means unset, not an empty value.
+  const present = Object.fromEntries(
+    Object.entries(env).filter(([, value]) => value !== undefined && value.trim() !== ''),
+  );
+  const parsed = schema.safeParse(present);
   if (!parsed.success) {
     const problems = parsed.error.issues.map((issue) => `${issue.path.join('.')}: ${issue.message}`).join('; ');
     throw new Error(`Invalid configuration: ${problems}`);
@@ -62,6 +66,6 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     trustedProxyIps: list(TRUSTED_PROXY_IPS),
     tokenSigningKey: TOKEN_SIGNING_KEY.toLowerCase(),
     providerEncryptionKey: PROVIDER_TOKEN_ENCRYPTION_KEY.toLowerCase(),
-    providerEnv: { ...env },
+    providerEnv: present,
   };
 }
