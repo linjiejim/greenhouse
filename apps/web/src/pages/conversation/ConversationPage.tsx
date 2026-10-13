@@ -4,7 +4,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Info, Link2, Pencil, Pin, PinOff, Trash2, BellOff, CheckCheck, Archive } from 'lucide-react';
+import { Archive, BellOff, CheckCheck, Download, Info, Link2, LogOut, Pencil, Pin, PinOff, Trash2 } from 'lucide-react';
 import { ConfirmDialog, Empty, ErrorBox, IconButton, Skeleton, type MenuEntry } from '@greenhouse/ui/kit';
 import { icon } from '@greenhouse/ui/tokens';
 import type { Conversation, Message, NeedsYou } from '@greenhouse/contract';
@@ -16,11 +16,17 @@ import { MessageView, type Author } from '../../conversation/MessageView';
 import { RequestCard } from '../../conversation/RequestCard';
 import { Thread } from '../../conversation/Thread';
 import {
+  downloadConversation,
   useConversation,
+  useConversationMembers,
   useConversations,
   useDeleteConversation,
+  useEditMessage,
   useMarkRead,
+  useMemberActions,
   useMessages,
+  useRate,
+  useRegenerate,
   useSendMessage,
   useStop,
   useUpdateConversation,
@@ -37,6 +43,11 @@ import { InfoDrawer } from './InfoDrawer';
 import { NewChat } from './NewChat';
 
 const GROUP_GAP_MS = 5 * 60_000;
+
+function lastIndexWhere<T>(list: readonly T[], test: (item: T) => boolean): number {
+  for (let index = list.length - 1; index >= 0; index -= 1) if (test(list[index]!)) return index;
+  return -1;
+}
 
 const authorKey = (message: Message) =>
   message.role === 'event'
@@ -66,6 +77,11 @@ function ExistingConversation({ id }: { id: string }) {
   const markRead = useMarkRead();
   const update = useUpdateConversation();
   const remove = useDeleteConversation();
+  const rate = useRate(conversationId ?? '');
+  const edit = useEditMessage(conversationId ?? '');
+  const regenerate = useRegenerate(conversationId ?? '');
+  const memberActions = useMemberActions(conversationId ?? '');
+  const [leaving, setLeaving] = useState(false);
   const [quote, setQuote] = useState<{ message_id: string; text: string } | null>(null);
   const [info, setInfo] = useState(false);
   const [renaming, setRenaming] = useState(false);
@@ -122,20 +138,25 @@ function ExistingConversation({ id }: { id: string }) {
     [people.agentById, people.memberById, me],
   );
 
+  // In a room, @ names the people here and my own Agents that are here (only those answer me).
+  const room = conversation?.kind === 'room';
+  const roomPeople = useConversationMembers(conversationId, room);
   const candidates: Candidate[] = useMemo(() => {
-    if (conversation?.kind !== 'room') return [];
+    if (!room || !roomPeople.data) return [];
     return [
-      ...people.agents.map((agent) => ({
-        handle: agent.handle,
-        name: agent.name,
-        hint: agent.role,
-        leading: <AgentAvatar agent={agent} size={20} />,
-      })),
-      ...people.members
+      ...roomPeople.data.agents
+        .filter((agent) => agent.owner_id === me.id)
+        .map((agent) => ({
+          handle: `agent:${agent.id}`,
+          name: agent.name,
+          hint: agent.role,
+          leading: <AgentAvatar agent={{ id: agent.id, avatar: agent.avatar, template_key: null }} size={20} />,
+        })),
+      ...roomPeople.data.members
         .filter((member) => member.id !== me.id)
         .map((member) => ({ handle: member.id, name: member.name, hint: member.email })),
     ];
-  }, [conversation?.kind, people.agents, people.members, me.id]);
+  }, [room, roomPeople.data, me.id]);
 
   if (id === 'main' && conversations.isPending) return <PageSkeleton />;
   if (!conversationId || detail.isError) {
@@ -173,6 +194,11 @@ function ExistingConversation({ id }: { id: string }) {
     if (result.queued) notify(t('message.queued'));
   };
 
+  const exportIt = () =>
+    void downloadConversation(conversation.id).catch((error: unknown) =>
+      notify(error instanceof ApiClientError ? error.message : t('common.error')),
+    );
+
   const copyLink = () => {
     void navigator.clipboard?.writeText(
       `${location.origin}${location.pathname}${href({ page: 'conversation', id: conversation.id })}`,
@@ -190,6 +216,7 @@ function ExistingConversation({ id }: { id: string }) {
           },
           { label: t('row.rename'), icon: <Pencil size={icon.md} />, onClick: () => setRenaming(true) },
           { label: t('row.copyLink'), icon: <Link2 size={icon.md} />, onClick: copyLink },
+          { label: t('row.export'), icon: <Download size={icon.md} />, onClick: exportIt },
           {
             label: t('row.archive'),
             icon: <Archive size={icon.md} />,
@@ -211,16 +238,35 @@ function ExistingConversation({ id }: { id: string }) {
             disabled: conversation.unread === 0,
             onClick: () => markRead.mutate({ id: conversation.id, seq: conversation.last_seq }),
           },
+          { label: t('row.export'), icon: <Download size={icon.md} />, onClick: exportIt },
           ...(kind === 'room'
-            ? [
+            ? ([
                 { label: t('row.rename'), icon: <Pencil size={icon.md} />, onClick: () => setRenaming(true) },
                 { label: t('row.copyLink'), icon: <Link2 size={icon.md} />, onClick: copyLink },
-              ]
+                '-',
+                {
+                  label: t('chat.leave'),
+                  icon: <LogOut size={icon.md} />,
+                  danger: true,
+                  onClick: () => setLeaving(true),
+                },
+              ] as MenuEntry[])
             : []),
         ];
 
   const list = messages.messages;
   const last = list[list.length - 1];
+  // Edit and regenerate touch only my latest exchange (the server checks it too).
+  const lastOwn = lastIndexWhere(list, (message) => message.role === 'user' && message.author_member_id === me.id);
+  const editableId =
+    lastOwn >= 0 && list.slice(lastOwn + 1).every((message) => message.role !== 'user') ? list[lastOwn]!.id : null;
+  const lastSpoken = list[lastIndexWhere(list, (message) => message.role !== 'event')];
+  const regenerableId =
+    lastSpoken?.role === 'assistant' && lastSpoken.status !== 'streaming' && lastOwn >= 0 && editableId
+      ? lastSpoken.id
+      : null;
+  const busyReason = conversation.working ? t('message.busy') : undefined;
+  const failed = (error: unknown) => notify(error instanceof ApiClientError ? error.message : t('common.error'));
   const tail = last ? `${last.id}:${last.status}:${last.content.length}:${readStream(last.id)?.text.length ?? 0}` : '';
 
   return (
@@ -299,8 +345,23 @@ function ExistingConversation({ id }: { id: string }) {
                   message.run_id && message.role === 'assistant' ? (requestsByRun.get(message.run_id) ?? []) : []
                 }
                 timeZone={timeZone}
+                rating={message.my_rating}
+                onRate={
+                  message.role === 'assistant'
+                    ? (rating) => rate.mutate({ messageId: message.id, rating }, { onError: failed })
+                    : undefined
+                }
                 onQuote={(text) => setQuote({ message_id: message.id, text: text.slice(0, 2000) })}
                 onNewChat={() => navigate('#/c/new')}
+                onEdit={
+                  message.id === editableId
+                    ? (content) => edit.mutateAsync({ messageId: message.id, content }).catch(failed)
+                    : undefined
+                }
+                onRegenerate={
+                  message.id === regenerableId ? () => regenerate.mutate(message.id, { onError: failed }) : undefined
+                }
+                busyReason={busyReason}
               />
             );
           })}
@@ -323,6 +384,7 @@ function ExistingConversation({ id }: { id: string }) {
             }
             working={conversation.working}
             candidates={candidates}
+            mentionable={room}
             quote={quote}
             onClearQuote={() => setQuote(null)}
             onSend={sendMessage}
@@ -331,6 +393,23 @@ function ExistingConversation({ id }: { id: string }) {
         )}
       </div>
       {info && <InfoDrawer conversation={conversation} detail={detail.data} onClose={() => setInfo(false)} />}
+      {leaving && (
+        <ConfirmDialog
+          danger
+          title={t('chat.leaveTitle', { name: title })}
+          confirmLabel={t('chat.leave')}
+          onCancel={() => setLeaving(false)}
+          onConfirm={() => {
+            setLeaving(false);
+            memberActions.remove.mutate(me.id, {
+              onSuccess: () => navigate('#/c/main', { replace: true }),
+              onError: failed,
+            });
+          }}
+        >
+          {t('chat.leaveBody')}
+        </ConfirmDialog>
+      )}
       {deleting && (
         <ConfirmDialog
           danger

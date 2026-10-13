@@ -4,11 +4,11 @@
  */
 
 import type { InfiniteData, QueryClient, QueryKey } from '@tanstack/react-query';
-import type { Conversation, ConversationDetail, Message, Page, RealtimeEvent } from '@greenhouse/contract';
+import type { Conversation, ConversationDetail, Message, MessageItem, Page, RealtimeEvent } from '@greenhouse/contract';
 import { keys } from './query';
-import { appendDelta, endStream, upsertStep } from './streams';
+import { appendDelta, endStream, forgetStream, upsertStep } from './streams';
 
-export type MessagePages = InfiniteData<Page<Message>, string | undefined>;
+export type MessagePages = InfiniteData<Page<MessageItem>, string | undefined>;
 export type ConversationPages = InfiniteData<Page<Conversation>, string | undefined>;
 
 const timers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -34,18 +34,43 @@ export function addMessage(client: QueryClient, message: Message) {
       return replaceIn(data, message);
     }
     const [first, ...rest] = data.pages;
-    return { ...data, pages: [{ ...first!, items: [message, ...first!.items] }, ...rest] };
+    return { ...data, pages: [{ ...first!, items: [{ ...message, my_rating: null }, ...first!.items] }, ...rest] };
   });
 }
 
+/** Realtime messages do not carry the reader's own rating: keep the one we have. */
 function replaceIn(data: MessagePages, message: Message): MessagePages {
   return {
     ...data,
     pages: data.pages.map((page) => ({
       ...page,
-      items: page.items.map((item) => (item.id === message.id ? message : item)),
+      items: page.items.map((item) =>
+        item.id === message.id ? { ...message, my_rating: 'my_rating' in message ? (message as MessageItem).my_rating : item.my_rating } : item,
+      ),
     })),
   };
+}
+
+export function patchMessage(client: QueryClient, conversationId: string, id: string, changes: Partial<MessageItem>) {
+  client.setQueryData<MessagePages>(keys.messages(conversationId), (data) =>
+    data
+      ? {
+          ...data,
+          pages: data.pages.map((page) => ({
+            ...page,
+            items: page.items.map((item) => (item.id === id ? { ...item, ...changes } : item)),
+          })),
+        }
+      : data,
+  );
+}
+
+export function removeMessage(client: QueryClient, conversationId: string, id: string) {
+  client.setQueryData<MessagePages>(keys.messages(conversationId), (data) =>
+    data
+      ? { ...data, pages: data.pages.map((page) => ({ ...page, items: page.items.filter((item) => item.id !== id) })) }
+      : data,
+  );
 }
 
 export function replaceMessage(client: QueryClient, message: Message) {
@@ -90,9 +115,23 @@ export function applyEvent(client: QueryClient, event: Exclude<RealtimeEvent, { 
       replaceMessage(client, event.data.message);
       endStream(event.data.message.id);
       return;
+    case 'message.deleted':
+      forgetStream(event.data.message_id);
+      removeMessage(client, event.data.conversation_id, event.data.message_id);
+      return;
     case 'conversation.updated':
+      // No changes listed: its people or Agents changed (or I left it); refetch it.
+      if (!Object.keys(event.data.changes).length) {
+        soon(client, keys.conversation(event.data.conversation_id));
+        soon(client, keys.members(event.data.conversation_id));
+        soon(client, keys.conversations);
+        return;
+      }
       patchConversation(client, event.data.conversation_id, event.data.changes);
       if ('title' in event.data.changes || 'archived' in event.data.changes) soon(client, keys.conversations);
+      return;
+    case 'notes.updated':
+      soon(client, keys.notes(event.data.conversation_id));
       return;
     case 'run.updated':
       soon(client, ['runs']);

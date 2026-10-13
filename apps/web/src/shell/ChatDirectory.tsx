@@ -8,8 +8,10 @@ import {
   Archive,
   BellOff,
   CheckCheck,
+  Download,
   Hash,
   Link2,
+  LogOut,
   MessageSquare,
   MonitorPlay,
   Pencil,
@@ -27,12 +29,15 @@ import { useSession } from '../app/session';
 import { useNotify } from '../app/notify';
 import { useAgents, useArchiveAgent, useRestoreAgent } from '../data/agents';
 import {
+  downloadConversation,
   useConversations,
   useCreateConversation,
   useDeleteConversation,
   useMarkRead,
   useUpdateConversation,
 } from '../data/conversations';
+import { api } from '../lib/api';
+import { ApiClientError } from '@greenhouse/contract/client';
 import { useI18n } from '../lib/i18n';
 import { href, navigate, type Route } from '../lib/router';
 import { AgentAvatar } from './AgentAvatar';
@@ -75,6 +80,7 @@ export function ChatDirectory({ route, query }: { route: Route; query: string })
   const [earlier, setEarlier] = useState(false);
   const [renaming, setRenaming] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<Conversation | null>(null);
+  const [leaving, setLeaving] = useState<Conversation | null>(null);
 
   const current = route.page === 'conversation' ? route.id : null;
   const timeZone = me?.timezone ?? 'Asia/Shanghai';
@@ -101,6 +107,20 @@ export function ChatDirectory({ route, query }: { route: Route; query: string })
   const mainConversation = conversations.items.find((item) => item.kind === 'main');
   const isCurrent = (conversation: Conversation | undefined) =>
     !!conversation && (current === conversation.id || (conversation.kind === 'main' && current === 'main'));
+
+  const exportIt = (id: string) =>
+    void downloadConversation(id).catch((error: unknown) =>
+      notify(error instanceof ApiClientError ? error.message : t('common.error')),
+    );
+
+  const leave = (room: Conversation) =>
+    void api.conversations
+      .removeMember(room.id, me!.id)
+      .then(() => {
+        void conversations.refetch();
+        if (isCurrent(room)) navigate('#/c/main', { replace: true });
+      })
+      .catch((error: unknown) => notify(error instanceof ApiClientError ? error.message : t('common.error')));
 
   const copyLink = (id: string) => {
     void navigator.clipboard?.writeText(`${location.origin}${location.pathname}${href({ page: 'conversation', id })}`);
@@ -182,6 +202,9 @@ export function ChatDirectory({ route, query }: { route: Route; query: string })
     { label: t('row.copyLink'), icon: glyph(Link2), onClick: () => copyLink(room.id) },
     ...conversationToggles(room),
     { label: t('row.rename'), icon: glyph(Pencil), onClick: () => setRenaming(room.id) },
+    { label: t('row.export'), icon: glyph(Download), onClick: () => exportIt(room.id) },
+    '-',
+    { label: t('chat.leave'), icon: glyph(LogOut), danger: true, onClick: () => setLeaving(room) },
   ];
 
   const chatMenu = (chat: Conversation): MenuEntry[] => [
@@ -192,6 +215,7 @@ export function ChatDirectory({ route, query }: { route: Route; query: string })
     },
     { label: t('row.rename'), icon: glyph(Pencil), onClick: () => setRenaming(chat.id) },
     { label: t('row.copyLink'), icon: glyph(Link2), onClick: () => copyLink(chat.id) },
+    { label: t('row.export'), icon: glyph(Download), onClick: () => exportIt(chat.id) },
     {
       label: t('row.archive'),
       icon: glyph(Archive),
@@ -302,6 +326,20 @@ export function ChatDirectory({ route, query }: { route: Route; query: string })
         )}
       </DirectorySection>
 
+      {leaving && (
+        <ConfirmDialog
+          danger
+          title={t('chat.leaveTitle', { name: leaving.title || t('chat.untitled') })}
+          confirmLabel={t('chat.leave')}
+          onCancel={() => setLeaving(null)}
+          onConfirm={() => {
+            leave(leaving);
+            setLeaving(null);
+          }}
+        >
+          {t('chat.leaveBody')}
+        </ConfirmDialog>
+      )}
       {deleting && (
         <ConfirmDialog
           danger

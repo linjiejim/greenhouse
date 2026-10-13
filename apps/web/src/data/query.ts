@@ -23,6 +23,8 @@ export const keys = {
   conversations: ['conversations', 'list'] as const,
   conversation: (id: string) => ['conversations', 'one', id] as const,
   messages: (conversationId: string) => ['messages', conversationId] as const,
+  members: (conversationId: string) => ['conversations', 'members', conversationId] as const,
+  notes: (conversationId: string) => ['notes', conversationId] as const,
   requests: (conversationId?: string) => ['requests', conversationId ?? 'all'] as const,
   runs: (view: string) => ['runs', 'list', view] as const,
   run: (id: string) => ['runs', 'one', id] as const,

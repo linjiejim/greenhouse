@@ -53,15 +53,17 @@ test('a new chat becomes a conversation on its first message, and can be renamed
   await expect(page).toHaveURL(/#\/c\/cnv_/);
   await expect(page.getByText('Echo: plan a picnic')).toBeVisible();
 
-  const row = page.getByRole('complementary', { name: '目录' }).getByRole('link', { name: 'E2E chat' });
-  await expect(row).toBeVisible();
+  // Every chat the fake model names is "E2E chat": find this one by its address.
+  const id = new URL(page.url()).hash.replace('#/c/', '');
+  const row = page.getByRole('complementary', { name: '目录' }).locator(`a[href="#/c/${id}"]`);
+  await expect(row).toContainText('E2E chat');
   await row.click({ button: 'right' });
   await page.getByRole('menuitem', { name: '重命名' }).click();
   const input = page.getByRole('textbox', { name: '重命名' });
   await input.fill('Picnic');
   await input.press('Enter');
-  const renamed = page.getByRole('complementary', { name: '目录' }).getByRole('link', { name: 'Picnic' });
-  await expect(renamed).toBeVisible();
+  const renamed = page.getByRole('complementary', { name: '目录' }).locator(`a[href="#/c/${id}"]`);
+  await expect(renamed).toContainText('Picnic');
 
   await renamed.click({ button: 'right' });
   await page.getByRole('menuitem', { name: '删除' }).click();

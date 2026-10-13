@@ -4,9 +4,20 @@
  * → process. Events are one quiet line. Actions show on hover (long press on touch).
  */
 
-import { memo, useState, type ReactNode } from 'react';
-import { CircleAlert, Copy, Quote, Split, ThumbsDown, ThumbsUp, Volume2, Wrench } from 'lucide-react';
-import { ChatCard, IconButton } from '@greenhouse/ui/kit';
+import { memo, useState } from 'react';
+import {
+  CircleAlert,
+  Copy,
+  Pencil,
+  Quote,
+  RotateCcw,
+  Split,
+  ThumbsDown,
+  ThumbsUp,
+  Volume2,
+  Wrench,
+} from 'lucide-react';
+import { Button, ChatCard, IconButton, TextArea } from '@greenhouse/ui/kit';
 import { icon } from '@greenhouse/ui/tokens';
 import type { Agent, MemberSummary, Message, NeedsYou } from '@greenhouse/contract';
 import { useNotify } from '../app/notify';
@@ -85,7 +96,9 @@ export const MessageView = memo(function MessageView({
   onRate,
   onQuote,
   onNewChat,
-  extraActions,
+  onEdit,
+  onRegenerate,
+  busyReason,
 }: {
   message: Message;
   author: Author;
@@ -98,13 +111,19 @@ export const MessageView = memo(function MessageView({
   onRate?: (rating: 1 | -1 | 0) => void;
   onQuote?: (text: string) => void;
   onNewChat?: () => void;
-  /** Edit or regenerate, on the member's own last exchange. */
-  extraActions?: ReactNode;
+  /** The member's own last message: edit it in place. */
+  onEdit?: (content: string) => Promise<unknown>;
+  /** The last reply to the member: write it again. */
+  onRegenerate?: () => void;
+  /** Why edit and regenerate wait (a reply is being written). */
+  busyReason?: string;
 }) {
   const { t, locale } = useI18n();
   const notify = useNotify();
   const stream = useStream(message.id);
   const [speaking, setSpeaking] = useState(false);
+  const [editing, setEditing] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
   const streaming = message.status === 'streaming';
   const text = streaming ? liveText(message.content, stream) : message.content;
   const time = relativeTime(message.created_at, { locale, timeZone });
@@ -124,6 +143,46 @@ export const MessageView = memo(function MessageView({
       .catch(() => notify(t('message.copyFailed')));
 
   if (message.role === 'user' && mine) {
+    if (editing !== null) {
+      const save = async () => {
+        if (!editing.trim() || editing === message.content) return setEditing(null);
+        setSaving(true);
+        try {
+          await onEdit?.(editing.trim());
+          setEditing(null);
+        } finally {
+          setSaving(false);
+        }
+      };
+      return (
+        <article className="app-message is-mine" aria-label={t('message.you')}>
+          <div className="app-bubble is-editing">
+            <TextArea
+              aria-label={t('message.edit')}
+              value={editing}
+              maxRows={12}
+              autoFocus
+              onChange={(event) => setEditing(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Escape') setEditing(null);
+                if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
+                  event.preventDefault();
+                  void save();
+                }
+              }}
+            />
+            <div className="app-bubble-actions">
+              <Button size="sm" onClick={() => setEditing(null)}>
+                {t('common.cancel')}
+              </Button>
+              <Button size="sm" kind="primary" loading={saving} onClick={() => void save()}>
+                {t('message.saveEdit')}
+              </Button>
+            </div>
+          </div>
+        </article>
+      );
+    }
     return (
       <article className="app-message is-mine" aria-label={t('message.you')}>
         {message.quote && <blockquote className="app-message-quote">{message.quote.text}</blockquote>}
@@ -139,7 +198,17 @@ export const MessageView = memo(function MessageView({
             <IconButton label={t('message.copy')} size="sm" onClick={copy}>
               <Copy size={icon.sm} />
             </IconButton>
-            {extraActions}
+            {onEdit && (
+              <IconButton
+                label={t('message.edit')}
+                size="sm"
+                disabled={!!busyReason}
+                disabledReason={busyReason}
+                onClick={() => setEditing(message.content)}
+              >
+                <Pencil size={icon.sm} />
+              </IconButton>
+            )}
           </span>
         </div>
       </article>
@@ -247,7 +316,17 @@ export const MessageView = memo(function MessageView({
                 <Split size={icon.sm} />
               </IconButton>
             )}
-            {extraActions}
+            {onRegenerate && (
+              <IconButton
+                label={t('message.regenerate')}
+                size="sm"
+                disabled={!!busyReason}
+                disabledReason={busyReason}
+                onClick={onRegenerate}
+              >
+                <RotateCcw size={icon.sm} />
+              </IconButton>
+            )}
           </div>
         )}
       </div>

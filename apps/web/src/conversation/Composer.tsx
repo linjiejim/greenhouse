@@ -60,6 +60,7 @@ export function Composer({
   placeholder,
   working,
   candidates = [],
+  mentionable = candidates.length > 0,
   mode = 'mention',
   target,
   onTarget,
@@ -73,6 +74,8 @@ export function Composer({
   placeholder: string;
   working: boolean;
   candidates?: Candidate[];
+  /** `@` opens the picker (rooms, a new chat), even before the candidates have loaded. */
+  mentionable?: boolean;
   /** mention: `@` adds a mention. switch: `@` picks who answers (a new chat). */
   mode?: 'mention' | 'switch';
   target?: Candidate | null;
@@ -287,8 +290,8 @@ export function Composer({
           aria-autocomplete={picker ? 'list' : undefined}
           onChange={(event) => {
             setValue(event.target.value);
-            const next = mentionAt(event.target.value, event.target.selectionStart);
-            setPicker(candidates.length ? next : null);
+            // Kept even while the candidates load: the list appears once they are there.
+            setPicker(mentionable ? mentionAt(event.target.value, event.target.selectionStart) : null);
             setActive(0);
           }}
           onKeyDown={onKeyDown}
@@ -323,7 +326,7 @@ export function Composer({
           >
             <Paperclip size={icon.md} />
           </IconButton>
-          {candidates.length > 0 && (
+          {mentionable && (
             <IconButton
               label={mode === 'switch' ? t('composer.pickAgent') : t('composer.mention')}
               onClick={() => {

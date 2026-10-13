@@ -1,14 +1,17 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type {
+  AddMembersInput,
   Conversation,
   CreateConversationInput,
-  Message,
+  CreateNoteInput,
+  MessageItem,
   SendMessageInput,
   UpdateConversationInput,
+  UpdateNoteInput,
 } from '@greenhouse/contract';
 import { api } from '../lib/api';
 import { keys } from './query';
-import { addMessage, patchConversation, type ConversationPages } from './realtime';
+import { addMessage, patchConversation, patchMessage, type ConversationPages } from './realtime';
 
 const PAGE = 100;
 
@@ -42,7 +45,9 @@ export function useMessages(conversationId: string | undefined) {
     enabled: !!conversationId,
     staleTime: Infinity,
   });
-  const messages: Message[] = (query.data?.pages.flatMap((page) => page.items) ?? []).slice().sort((a, b) => a.seq - b.seq);
+  const messages: MessageItem[] = (query.data?.pages.flatMap((page) => page.items) ?? [])
+    .slice()
+    .sort((a, b) => a.seq - b.seq);
   return { ...query, messages };
 }
 
@@ -99,4 +104,93 @@ export function useMarkRead() {
     mutationFn: ({ id, seq }: { id: string; seq: number }) => api.conversations.read(id, seq),
     onMutate: ({ id, seq }) => patchConversation(client, id, { last_read_seq: seq, unread: 0 }),
   });
+}
+
+/** 👍 / 👎, shown at once. */
+export function useRate(conversationId: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ messageId, rating }: { messageId: string; rating: 1 | -1 | 0 }) =>
+      api.conversations.rate(conversationId, messageId, { rating }),
+    onMutate: ({ messageId, rating }) =>
+      patchMessage(client, conversationId, messageId, { my_rating: rating === 0 ? null : rating }),
+    onError: () => client.invalidateQueries({ queryKey: keys.messages(conversationId) }),
+  });
+}
+
+/** My last message, new text; the replies after it go and it is answered again. */
+export function useEditMessage(conversationId: string) {
+  return useMutation({
+    mutationFn: ({ messageId, content }: { messageId: string; content: string }) =>
+      api.conversations.edit(conversationId, messageId, content),
+  });
+}
+
+export function useRegenerate(conversationId: string) {
+  return useMutation({
+    mutationFn: (messageId: string) => api.conversations.regenerate(conversationId, messageId),
+  });
+}
+
+export function useConversationMembers(conversationId: string | undefined, enabled = true) {
+  return useQuery({
+    queryKey: keys.members(conversationId ?? ''),
+    queryFn: () => api.conversations.members(conversationId!),
+    enabled: enabled && !!conversationId,
+  });
+}
+
+export function useMemberActions(conversationId: string) {
+  const client = useQueryClient();
+  const settle = () => {
+    void client.invalidateQueries({ queryKey: keys.members(conversationId) });
+    void client.invalidateQueries({ queryKey: keys.conversation(conversationId) });
+  };
+  return {
+    add: useMutation({
+      mutationFn: (input: AddMembersInput) => api.conversations.addMembers(conversationId, input),
+      onSuccess: (members) => client.setQueryData(keys.members(conversationId), members),
+      onSettled: settle,
+    }),
+    remove: useMutation({
+      mutationFn: (memberId: string) => api.conversations.removeMember(conversationId, memberId),
+      onSettled: () => {
+        settle();
+        void client.invalidateQueries({ queryKey: keys.conversations });
+      },
+    }),
+  };
+}
+
+export function useNotes(conversationId: string) {
+  const query = useQuery({
+    queryKey: keys.notes(conversationId),
+    queryFn: () => api.conversations.notes(conversationId, { limit: 100 }),
+  });
+  return { ...query, items: query.data?.items ?? [] };
+}
+
+export function useNoteActions(conversationId: string) {
+  const client = useQueryClient();
+  const settle = () => client.invalidateQueries({ queryKey: keys.notes(conversationId) });
+  return {
+    add: useMutation({ mutationFn: (input: CreateNoteInput) => api.conversations.addNote(conversationId, input), onSettled: settle }),
+    update: useMutation({
+      mutationFn: ({ id, input }: { id: string; input: UpdateNoteInput }) =>
+        api.conversations.updateNote(conversationId, id, input),
+      onSettled: settle,
+    }),
+    remove: useMutation({ mutationFn: (id: string) => api.conversations.removeNote(conversationId, id), onSettled: settle }),
+  };
+}
+
+/** Saves the conversation as a Markdown file in the browser. */
+export async function downloadConversation(id: string) {
+  const { filename, markdown } = await api.conversations.export(id);
+  const url = URL.createObjectURL(new Blob([markdown], { type: 'text/markdown;charset=utf-8' }));
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }

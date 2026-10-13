@@ -3,13 +3,15 @@
  * and settings; arrows move, Enter goes, Escape closes.
  */
 
-import { useId, useMemo, useState, type ReactNode } from 'react';
-import { Hash, MessageSquare, Plus, Settings, Shield, Sparkles } from 'lucide-react';
+import { useEffect, useId, useMemo, useState, type ReactNode } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { Hash, MessageSquare, Plus, Settings, Shield, Sparkles, TextSearch, User } from 'lucide-react';
 import { Overlay } from '@greenhouse/ui/kit';
 import { icon } from '@greenhouse/ui/tokens';
 import { useSession } from '../app/session';
 import { useAgents } from '../data/agents';
 import { useConversations } from '../data/conversations';
+import { api } from '../lib/api';
 import { cx } from '../lib/cx';
 import { useT } from '../lib/i18n';
 import { navigate } from '../lib/router';
@@ -36,7 +38,19 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
   const conversations = useConversations();
   const [query, setQuery] = useState('');
   const [active, setActive] = useState(0);
+  const [debounced, setDebounced] = useState('');
   const listId = useId();
+  useEffect(() => {
+    const timer = setTimeout(() => setDebounced(query.trim()), 200);
+    return () => clearTimeout(timer);
+  }, [query]);
+  // Messages and people come from the server; commands, Agents and settings are already here.
+  const remote = useQuery({
+    queryKey: ['search', debounced],
+    queryFn: () => api.search({ q: debounced, kinds: ['conversations', 'messages', 'members'] }),
+    enabled: debounced.length > 0,
+    staleTime: 10_000,
+  });
 
   const items = useMemo<Item[]>(() => {
     const q = query.trim().toLowerCase();
@@ -88,6 +102,48 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
             run: () => navigate({ page: 'conversation', id: item.id }),
           }))
       : [];
+    const seen = new Set(conversationItems.map((item) => item.id));
+    const found = q && remote.data && debounced === query.trim() ? remote.data.items : [];
+    const remoteItems: Item[] = found.flatMap((item): Item[] => {
+      if (item.kind === 'conversations') {
+        if (seen.has(`conversation:${item.id}`)) return [];
+        return [
+          {
+            id: `conversation:${item.id}`,
+            group: t('nav.chat'),
+            label: item.title || t('chat.untitled'),
+            leading: small(<MessageSquare size={icon.md} />),
+            run: () => navigate({ page: 'conversation', id: item.conversation_id ?? item.id }),
+          },
+        ];
+      }
+      if (item.kind === 'messages') {
+        return [
+          {
+            id: `message:${item.id}`,
+            group: t('palette.messages'),
+            label: item.snippet ?? item.title,
+            hint: item.title,
+            leading: small(<TextSearch size={icon.md} />),
+            run: () => navigate({ page: 'conversation', id: item.conversation_id! }),
+          },
+        ];
+      }
+      if (item.kind === 'members') {
+        if (item.id === me?.id) return [];
+        return [
+          {
+            id: `member:${item.id}`,
+            group: t('palette.people'),
+            label: item.title,
+            hint: item.snippet,
+            leading: small(<User size={icon.md} />),
+            run: () => openOverlay({ type: 'new-room', people: [item.id] }),
+          },
+        ];
+      }
+      return [];
+    });
     const sections: Item[] = [
       ...SETTINGS.map((section) => ({
         id: `settings:${section.id}`,
@@ -106,8 +162,8 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
           }))
         : []),
     ].filter((item) => q && hit(item.label, item.group));
-    return [...commands, ...agentItems, ...conversationItems, ...sections];
-  }, [query, agents.items, conversations.items, me?.role, openOverlay, t]);
+    return [...commands, ...agentItems, ...conversationItems, ...remoteItems, ...sections];
+  }, [query, debounced, remote.data, agents.items, conversations.items, me?.role, me?.id, openOverlay, t]);
 
   const current = Math.min(active, Math.max(items.length - 1, 0));
   const go = (item: Item | undefined) => {

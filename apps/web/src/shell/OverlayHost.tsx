@@ -8,7 +8,7 @@ export function OverlayHost({ request, onClose }: { request: OverlayRequest; onC
     case 'new-agent':
       return <NewAgentDrawer prefill={request.prefill} onClose={onClose} />;
     case 'new-room':
-      return <NewRoomDialog onClose={onClose} />;
+      return <NewRoomDialog people={request.people} onClose={onClose} />;
     case 'custom':
       return <>{request.render(onClose)}</>;
   }

@@ -16,12 +16,15 @@ export interface Stream {
 
 const streams = new Map<string, Stream>();
 const listeners = new Map<string, Set<() => void>>();
+/** Replies removed by an edit or a regenerate: deltas that still arrive for them are dropped. */
+const removed = new Set<string>();
 
 function emit(messageId: string) {
   listeners.get(messageId)?.forEach((listener) => listener());
 }
 
 export function appendDelta(messageId: string, text: string, offset: number) {
+  if (removed.has(messageId)) return;
   const current = streams.get(messageId);
   if (!current || (current.text === '' && current.start === 0 && offset > 0)) {
     streams.set(messageId, { start: offset, text, steps: current?.steps ?? [] });
@@ -46,6 +49,7 @@ export function liveText(base: string, stream: Stream | undefined): string {
 }
 
 export function upsertStep(messageId: string, step: LiveStep) {
+  if (removed.has(messageId)) return;
   const current = streams.get(messageId) ?? { start: 0, text: '', steps: [] };
   const steps = current.steps.some((item) => item.id === step.id)
     ? current.steps.map((item) => (item.id === step.id ? step : item))
@@ -56,6 +60,13 @@ export function upsertStep(messageId: string, step: LiveStep) {
 
 export function endStream(messageId: string) {
   if (streams.delete(messageId)) emit(messageId);
+}
+
+/** The reply left the transcript: drop its stream and ignore anything still on its way. */
+export function forgetStream(messageId: string) {
+  removed.add(messageId);
+  if (removed.size > 500) removed.delete(removed.values().next().value!);
+  endStream(messageId);
 }
 
 export function clearStreams() {
