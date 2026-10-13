@@ -8,14 +8,6 @@
       "import": "./src/index.ts",
       "types": "./src/index.ts"
     },
-    "./api": {
-      "import": "./src/api.ts",
-      "types": "./src/api.ts"
-    },
-    "./features": {
-      "import": "./src/features.ts",
-      "types": "./src/features.ts"
-    },
     "./config": {
       "import": "./src/config.ts",
       "types": "./src/config.ts"
@@ -24,81 +16,13 @@
       "import": "./src/config-schema.ts",
       "types": "./src/config-schema.ts"
     },
-    "./mcp": {
-      "import": "./src/mcp.ts",
-      "types": "./src/mcp.ts"
-    },
-    "./mcp-servers": {
-      "import": "./src/mcp-servers.ts",
-      "types": "./src/mcp-servers.ts"
-    },
-    "./automation-tools": {
-      "import": "./src/automation-tools.ts",
-      "types": "./src/automation-tools.ts"
-    },
-    "./tables": {
-      "import": "./src/tables.ts",
-      "types": "./src/tables.ts"
-    },
-    "./email": {
-      "import": "./src/email.ts",
-      "types": "./src/email.ts"
-    },
-    "./session": {
-      "import": "./src/session.ts",
-      "types": "./src/session.ts"
-    },
-    "./eval": {
-      "import": "./src/eval.ts",
-      "types": "./src/eval.ts"
-    },
-    "./cloud-agent": {
-      "import": "./src/cloud-agent.ts",
-      "types": "./src/cloud-agent.ts"
-    },
-    "./agent-context": {
-      "import": "./src/agent-context.ts",
-      "types": "./src/agent-context.ts"
-    },
-    "./ws": {
-      "import": "./src/ws.ts",
-      "types": "./src/ws.ts"
-    },
-    "./workflow": {
-      "import": "./src/workflow.ts",
-      "types": "./src/workflow.ts"
-    },
     "./rich-output": {
       "import": "./src/rich-output.ts",
       "types": "./src/rich-output.ts"
     },
-    "./tasks": {
-      "import": "./src/tasks.ts",
-      "types": "./src/tasks.ts"
-    },
-    "./runtime": {
-      "import": "./src/runtime.ts",
-      "types": "./src/runtime.ts"
-    },
-    "./notification": {
-      "import": "./src/notification.ts",
-      "types": "./src/notification.ts"
-    },
-    "./push": {
-      "import": "./src/push.ts",
-      "types": "./src/push.ts"
-    },
     "./entity-links": {
       "import": "./src/entity-links.ts",
       "types": "./src/entity-links.ts"
-    },
-    "./search": {
-      "import": "./src/search.ts",
-      "types": "./src/search.ts"
-    },
-    "./workbench": {
-      "import": "./src/workbench.ts",
-      "types": "./src/workbench.ts"
     },
     "./profile-manifest": {
       "import": "./src/profile-manifest.ts",
@@ -107,14 +31,6 @@
     "./plant-avatar": {
       "import": "./src/plant-avatar.ts",
       "types": "./src/plant-avatar.ts"
-    },
-    "./workspace-settings": {
-      "import": "./src/workspace-settings.ts",
-      "types": "./src/workspace-settings.ts"
-    },
-    "./bots": {
-      "import": "./src/bots.ts",
-      "types": "./src/bots.ts"
     }
   },
   "scripts": {

@@ -23,6 +23,20 @@ import type {
   SproutyLeafStyleId,
 } from './profile-manifest.js';
 
+/** Avatar JSON as the API returns it (see `avatarConfigSchema`); render with `legacyToPlant`. */
+export interface ProfileAvatar {
+  /** Plant species id (PLANT_IDS); absent on legacy avatars. */
+  plant?: string;
+  /** Resting eyes (PLANT_MOODS). */
+  mood?: string;
+  color?: string;
+  accessories?: string[];
+  leafStyle?: 'normal' | 'big' | 'mini' | 'double';
+  eyeStyle?: 'classic' | 'dot' | 'soft' | 'focused';
+  faceStyle?: string;
+  palette?: { body: string; leaf: string };
+}
+
 /**
  * The sixteen species, in catalogue order. Never reorder, and only ever append: the first
  * fifteen also drive the legacy hash picks (IMPLICIT_POOL / COLOR_FAMILY).

@@ -32,8 +32,30 @@ import {
   type UsageTotals,
 } from './loop-shared.js';
 import type { EngineMessage } from './time-context.js';
-import type { PipelineStep, Reference } from '@greenhouse/types/session';
 import { toErrorMessage } from '@greenhouse/utils/error';
+
+/** One tool call as the engine reports it after a turn. */
+export interface PipelineStep {
+  step: number;
+  tool: string;
+  input: unknown;
+  output: unknown;
+  duration_ms: number;
+}
+
+/** A source the answer cites. */
+export interface Reference {
+  slug: string;
+  title: string;
+  type: 'kb_doc' | 'wiki' | 'source';
+  /** In-app link to the referenced record, when known. */
+  url?: string;
+  category?: string;
+  page_type?: string;
+  relevance?: number;
+  source_id?: string;
+  ref_docs?: Array<{ source_id: string; category: string; title: string }>;
+}
 
 export { CHAT_STREAM_TIMEOUT } from './loop-shared.js';
 export { FINAL_ANSWER_MAX_ATTEMPTS, requiresFinalAnswerGuarantee };

@@ -5,7 +5,6 @@
 import { act, createElement, type ReactElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { StreamingMessageBubble } from '../chat/streaming-message-bubble';
 import { PLANT_SETTLE_MS, PlantAvatar, PlantAvatarStack, type PlantAvatarProps } from './plant-avatar';
 import { morphPlantAvatar } from './plant-morph';
 import { buildPlantAvatarSvg, ensurePlantAvatarStyles } from './plant-avatar-svg';
@@ -264,14 +263,5 @@ describe('<PlantAvatarStack/>', () => {
     const chips = [...host.querySelector('[data-testid="plant-avatar-stack"]')!.children] as HTMLElement[];
     for (const chip of chips) expect(chip.className).toContain('ring-primary-subtle');
     expect(chips[0]!.className).not.toContain('ring-surface-raised');
-  });
-});
-
-describe('<StreamingMessageBubble/> initial wait', () => {
-  it('shows the built-in sprout thinking', () => {
-    render(createElement(StreamingMessageBubble, { text: '', reasoning: '', toolCalls: [], isStreaming: true }));
-    const el = host.querySelector('svg.pa')!;
-    expect(el.getAttribute('class')).toContain('pa-sprout');
-    expect(el.getAttribute('data-state')).toBe('thinking');
   });
 });

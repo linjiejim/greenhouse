@@ -25,7 +25,7 @@ import {
   type PlantState,
   type PlantStateInput,
 } from '@greenhouse/types';
-import type { ProfileAvatar } from '@greenhouse/types/api';
+import type { ProfileAvatar } from '@greenhouse/types';
 import { buildPlantAvatarSvg, ensurePlantAvatarStyles, poseFor } from './plant-avatar-svg';
 import { morphPlantAvatar } from './plant-morph';
 

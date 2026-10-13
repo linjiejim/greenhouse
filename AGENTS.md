@@ -4,38 +4,23 @@ Greenhouse is an open-source, self-hosted platform where a team works with its o
 It serves one internal team: every login and integration (web, chat, MCP, CLI) acts as a real internal account. There is no guest or anonymous access.
 
 ## Truth and v2
-- Product truth is docs/product/: prd.md (scope, objects, glossary in §5), features.md (one row per feature: ID, v2 decision, status), providers.md, api.md, data-model.md, migration-v1.md, roadmap.md.
-- v2 is a top-down rewrite with no backward compatibility: a fresh database baseline, bot→agent, super/team→admin/member, and every features.md row marked 删除 removed outright.
-- Deleted in v2: Missions, Workflows, the workbench, Eval, Frictions, Feature Requests, the LLM relay and AI gateway, /api/agent, session tags, folders, sharing and ratings, per-member feature switches.
-- Until v2 lands, v1 code keeps working under its current rules. Fix v1 bugs, but never extend a module whose features.md row says 删除 or 合并.
-- Branches, slice order and per-slice gates: docs/product/roadmap.md.
-- A new feature starts as a features.md row naming its object and why nothing existing can be reused. The PR that ships or deletes it updates that row's status.
-- Copy, docs and new v2 code use only the glossary. v1 code keeps its identifiers (bot, super, team) until the one-time v2 rename; never rename them piecemeal.
-- Design truth is docs/design-system/, the v2 target. v1 screens keep their module rules until rewritten; do not mix v2 tokens or patterns into them.
-- Tokens have one source, packages/ui/src/tokens/haven.ts. Run `pnpm tokens:build` after editing it; a unit test fails on a stale haven.css or a failing contrast pair.
-- apps/design is the v2 prototype on mock data only (rules in apps/design/AGENTS.md). Artboards and the prototype never prove a feature shipped.
+- This is the v2 branch: a top-down rewrite with no backward compatibility. The v1 application (API, database, web, browser extension, Missions runner, CRUD and platform-kernel packages, v1 tests) was removed here; v1 lives on main and is the reference to port from (`git show main:<path>`).
+- Product truth is docs/product/: prd.md (scope, objects, glossary in §5), features.md (one row per feature: ID, v2 decision, status), providers.md, api.md, data-model.md, migration-v1.md, roadmap.md (slice order and gates).
+- A new feature starts as a features.md row naming its object and why nothing existing can be reused. The change that ships or deletes it updates that row's status.
+- Copy, docs and code use only the glossary: agent, admin, member, conversation, run. Never reintroduce bot, super or team.
+- Design truth is docs/design-system/. Tokens have one source, packages/ui/src/tokens/haven.ts; run `pnpm tokens:build` after editing it.
+- apps/design is the prototype on mock data only (apps/design/AGENTS.md). Artboards and the prototype never prove a feature shipped.
 - Specs for non-trivial cross-cutting work go in docs/specs/YYYYMMDD-name.md. That directory is gitignored, so committed files never link to it.
 
 ## Repo map
-- apps/api: Hono API, agent runtime, scheduler and CLI; serves the built SPA. Rules: apps/api/src/AGENTS.md, apps/api/src/bots/AGENTS.md.
-- apps/web: v1 React SPA, rewritten in v2 (roadmap M1 to M3). Rules: apps/web/src/AGENTS.md.
-- apps/design: v2 interactive prototype and component lab; no backend. Rules: apps/design/AGENTS.md.
-- apps/mobile: Expo app outside the pnpm workspace (own lockfile, `pnpm mobile:install`). Rules: apps/mobile/AGENTS.md.
-- apps/desktop: Tauri shell around apps/web. Rules: apps/desktop/AGENTS.md.
-- apps/browser: MV3 browser extension. Rules: apps/browser/src/AGENTS.md.
-- apps/agent-runner: Mission sandbox runner (deleted in v2), built into an image only; server code never imports it.
-- apps/bot-computer: Agent computer image (desktop, Chromium, shell); image only.
-- packages/db: Drizzle schema and domain services. Rules: packages/db/src/AGENTS.md.
-- packages/agent-core: agent loop, model factory and provider quirks.
-- packages/platform-kernel: manifests, actor context and authorization; no DB, Hono or React.
-- packages/types: shared types and registries.
-- packages/utils: shared helpers.
-- packages/ui: shared presentational React kit and the v2 tokens; no stores or router.
-- packages/crud: low-code CRUD (defineCrud, CrudPage).
-- packages/knowledge-editor: Tiptap schema and Markdown conversion; Markdown is canonical.
-- packages/contract: typed API client. It imports only types from @greenhouse/api, because a value import starts the server.
-- drizzle/ core migrations, data/examples/ demo dataset, tests/ cross-app suites, scripts/ dev, CI and ops scripts.
-- skillhub/ skill pack format (skillhub/README.md), connectors/ official MCP connector catalog, .claude/skills/ recipes for common changes.
+- apps/api: the v2 API (Hono), rebuilt module by module under apps/api/src/modules/<domain>/ per docs/product/api.md.
+- apps/design: v2 prototype and component lab; no backend.
+- apps/desktop: Tauri shell (apps/desktop/AGENTS.md). apps/bot-computer: the Agent computer image.
+- apps/mobile: v1 Expo app outside the pnpm workspace and outside the root checks until roadmap M4 (apps/mobile/AGENTS.md).
+- packages/db: the v2 schema and data services per docs/product/data-model.md.
+- packages/agent-core: agent loop and stream collectors. packages/knowledge-editor: Tiptap schema and Markdown conversion.
+- packages/types: plant avatars, rich-output blocks, entity links, deployment config shape.
+- packages/ui: tokens, brand mark, plant avatars, and the v2 component kit. packages/utils: shared helpers.
 
 ## Commands
 - Run `pnpm typecheck` and `pnpm lint` after every change (`pnpm lint:fix` fixes) and `pnpm test` after functional changes. All must pass.
