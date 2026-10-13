@@ -35,7 +35,7 @@ v2 和 v1 不兼容，不加 `/api/v2` 前缀，也不保留旧路由。`GET /ap
 | `GET /api/me/usage?period=month\|30d` | 我的用量：总计，按能力、Agent、天；我的成员预算 |
 | `/api/me/providers[/:id][/test]` | 我的服务，即个人 Key |
 | `/api/me/connections[/:id]` | 连接：MCP 连接器账号、飞书 / 企微、邮箱 |
-| `/api/me/vault[/:id]` · `/api/me/vault/log` | 密码库及其访问日志 |
+| `/api/me/vault[/:id]` · `GET /api/me/vault/log` | 密码库：列出、新建、读取、修改（留空的值不变，空字符串清除）、删除。用户名、密码、TOTP 密钥只写不读，响应只有标签、站点、掩码用户名和是否已设置；站点是精确 origin 或 `*.域名`，「总是允许」只能是其中的站点，`agent_ids` 只能是自己的 Agent（空 = 全部）。`log` 是本人的代填记录，新的在前，不含任何值。没配 `VAULT_ENCRYPTION_KEY` 时都返回 503 `vault_unavailable` |
 | `/api/me/grants[/:id]` · `/api/me/tokens[/:id]` | 外部访问：OAuth 授权、个人访问令牌 |
 | `/api/me/notification-settings` · `/api/me/push-devices` | 通知送达设置、推送设备 |
 
@@ -54,7 +54,7 @@ v2 和 v1 不兼容，不加 `/api/v2` 前缀，也不保留旧路由。`GET /ap
 | `PATCH /api/conversations/:id/messages/:mid` · `POST …/:mid/regenerate` · `PUT …/:mid/feedback` | 编辑最后一条、重新生成、👍 / 👎 |
 | `POST /api/conversations/:id/stop` · `…/read` | 停止、已读 |
 | `/api/conversations/:id/members` · `/notes` · `/export` | 房间成员、共享笔记、导出 Markdown |
-| `GET /api/requests?state=pending` · `POST /api/requests/:id/{approve,reject,answer,handback}` | 需要你：批准、拒绝、回答、交还 |
+| `GET /api/requests?state=pending` · `POST /api/requests/:id/{approve,reject,answer,handback}` | 需要你：批准、拒绝、回答、交还。登录卡片可以批准（服务端随即代填）、拒绝，或在成员手动登录后交还；接管卡片只能交还 |
 
 ### 2.3 运行
 
@@ -144,6 +144,8 @@ v2 和 v1 不兼容，不加 `/api/v2` 前缀，也不保留旧路由。`GET /ap
 | 删除 | `workbench_*`、`project_*`、`mission_dispatch`、`workflow_plan`、`spawn_session`、`call_llm`、`task_capture`、`eval_*`、`manage_eval_dataset`、`query_eval_runs`、`feature_request`、`log_friction`、`automation_*`（改为 `schedule_*`）、`external_search`（改为 `web_search`）、`session_query`（改为 `conversation_query`） |
 
 工具出现的条件：成员的模块权限允许，并且依赖的 Provider 可用。例如没有图像服务时就没有 `generate_image`，不会出现「未配置」的错误工具。
+
+`browser` 与 `vault` 只在回合里，和 `computer` 同时出现。`browser` 经 DevTools 操作电脑里的 Chromium：`open`、`snapshot`（带 ref 的短行，可从 `from_line` 续读）、`read`、`click`、`type`、`press`、`scroll`、`wait`、`back`、`tabs`、`switch_tab`、`close_tab`、`screenshot`（模型能看图时，图片随下一步给模型，不入库）；只开 http 和 https，成员控制画面时不操作。`vault` 有 `find`（当前页面站点的条目，只有标签和掩码用户名）和 `fill {item_id, submit}`（服务端代填，`ask` 条目先发登录卡片）；公开 Agent 没有 `vault`。
 
 ## 5. 模块布局
 

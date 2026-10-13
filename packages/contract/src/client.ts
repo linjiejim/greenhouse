@@ -76,6 +76,7 @@ import type { RunDetail, RunView } from './runs.js';
 import type { CreateScheduleInput, Schedule, UpdateScheduleInput } from './schedules.js';
 import type { SearchKind, SearchResult } from './search.js';
 import type { Bootstrap, BrandingInput } from './workspace.js';
+import type { CreateVaultItemInput, UpdateVaultItemInput, VaultAccess, VaultItem } from './vault.js';
 import type { AdminUsage, AgentActivity, AgentUsage, Budget, BudgetInput, MyUsage, UsagePeriod } from './usage.js';
 
 export class ApiClientError extends Error {
@@ -392,6 +393,17 @@ export function createApiClient(options: ApiClientOptions) {
         patch<ProviderInstance>(`/api/me/providers/${id}`, input),
       removeProvider: (id: string) => del(`/api/me/providers/${id}`),
       testProvider: (id: string) => post<ProviderInstance>(`/api/me/providers/${id}/test`),
+      /** My logins for my Agents; values go in and never come back. */
+      vault: {
+        list: (query: { cursor?: string; limit?: number } = {}) => get<Page<VaultItem>>('/api/me/vault', query),
+        get: (id: string) => get<VaultItem>(`/api/me/vault/${id}`),
+        create: (input: CreateVaultItemInput) => post<VaultItem>('/api/me/vault', input),
+        /** A value left out stays; an empty one is removed. */
+        update: (id: string, input: UpdateVaultItemInput) => patch<VaultItem>(`/api/me/vault/${id}`, input),
+        remove: (id: string) => del(`/api/me/vault/${id}`),
+        /** What my Agents did with it, newest first. */
+        log: (query: { cursor?: string; limit?: number } = {}) => get<Page<VaultAccess>>('/api/me/vault/log', query),
+      },
     },
 
     members: {

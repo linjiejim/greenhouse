@@ -13,7 +13,9 @@
  * Per socket: pings every 25 s drop a browser that stopped answering; the computer counts as
  * active while it is open, so the idle stop leaves it alone; the member is checked again every
  * minute; a stop announced by any API process closes it with 4409; a slow browser pauses the
- * stream instead of buffering without bound. Close codes: COMPUTER_SOCKET_CLOSE in the contract.
+ * stream instead of buffering without bound. A `control` screen holds the screen for the member
+ * while it is open (the Agent's browser waits) and lets go when it closes. Close codes:
+ * COMPUTER_SOCKET_CLOSE in the contract.
  */
 
 import type { IncomingMessage, Server } from 'node:http';
@@ -37,6 +39,8 @@ const PATHS: Record<string, SocketKind> = {
 };
 const PING_MS = 25_000;
 const TOUCH_MS = 60_000;
+/** A control screen renews the member's hold on the screen well within its lease. */
+const CONTROL_RENEW_MS = 20_000;
 const RECHECK_MS = 60_000;
 /** One message at most: a paste, or a clipboard (RFB refuses more than 1 MB of it anyway). */
 const MAX_MESSAGE_BYTES = 1024 * 1024 + 64;
@@ -99,6 +103,8 @@ export function attachComputerSockets(
       unsubscribe?.();
       if (!session) return;
       const { stream } = session;
+      // The Agent's browser may act again once the member's control screen is gone.
+      void session.control?.release().catch(() => undefined);
       // Keys and buttons still held go up, so nothing stays pressed on the shared display.
       for (const message of filter?.releaseInput() ?? []) stream.input.write(message);
       stream.input.end();
@@ -184,6 +190,7 @@ export function attachComputerSockets(
       (open) => {
         if (closed) {
           open.stream.kill();
+          void open.control?.release().catch(() => undefined);
           return;
         }
         session = open;
@@ -201,6 +208,9 @@ export function attachComputerSockets(
             ws.ping();
           }, PING_MS),
           setInterval(() => void open.touch().catch(() => undefined), TOUCH_MS),
+          ...(open.control
+            ? [setInterval(() => void open.control!.renew().catch(() => undefined), CONTROL_RENEW_MS)]
+            : []),
           setInterval(() => {
             void open
               .allowed()

@@ -38,6 +38,8 @@ export interface RuleFlags {
   self: boolean;
   search: boolean;
   background: boolean;
+  browser?: boolean;
+  vault?: boolean;
 }
 
 /**
@@ -121,8 +123,15 @@ export function buildRules(
     lines.push(
       '- Search the web when the answer depends on current or specific facts, read the pages that matter, and cite what you used (title and link). Say plainly when you could not verify something.',
     );
+  } else if (flags.browser) {
+    lines.push('- You cannot search the web here; open the pages you need in your browser instead.');
   } else {
     lines.push('- You cannot search or open web pages here; never claim to have looked something up online.');
+  }
+  if (flags.browser) {
+    lines.push(
+      `- Your browser is on your computer's screen, which the member can watch or take over. Look (snapshot) before you act and after each step. Never type a password, a one-time code or a card number: ${flags.vault ? 'sign in with the vault, or ' : ''}ask the member to take over with request_takeover, also for any human check (CAPTCHA). Never try to get around one.`,
+    );
   }
   if (flags.background) {
     lines.push(

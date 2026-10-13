@@ -222,6 +222,9 @@ describe('talking to a public Agent', () => {
     await send(chen.token, thread.id, 'again');
     await services.engine.idle();
     expect(model.tools[1]).toContain('computer');
+    // The browser works on chen's own copy; the vault, a member's own logins, never comes with it.
+    expect(model.tools[1]).toContain('browser');
+    expect(model.tools[1]).not.toContain('vault');
     // Chen's own copy, not started yet; someone it is not shared with has none.
     expect((await call('GET', `/api/agents/${agentId}/computer`, { token: chen.token })).body).toMatchObject({
       agent_id: agentId,

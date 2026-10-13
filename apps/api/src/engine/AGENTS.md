@@ -34,7 +34,7 @@ The one engine for conversations and runs. Read with the root AGENTS.md and docs
 ## Needs you
 - Write and external tools never run when the model calls them: the call raises an approval card (`requests`, subject `tool_write`) holding the exact arguments, the step waits as `pending`, and the turn ends with the run `waiting`.
 - A decision is a compare-and-set from pending (requests service). The engine then runs exactly the approved arguments with the asker's rights, or skips the step, writes one event line in the transcript, closes the waiting run, and wakes the Agent through the inbox with the outcome.
-- A tool that raises its own card (ask_user, self, request_takeover) implements `decide`; return a null note to leave the Agent asleep.
+- A tool that raises its own card (ask_user, self, request_takeover, vault) implements `decide`; return a null note to leave the Agent asleep.
 - Expired cards are swept: the step is skipped, the run closes, and the Agent is not woken.
 - Every card is a notification through `notifications.publish`, the one entry point for notifications.
 
@@ -61,7 +61,7 @@ The one engine for conversations and runs. Read with the root AGENTS.md and docs
 - The turn acts with the asker's rights: cards go to the asker, approvals run as the asker, files and the transcript are the asker's.
 - Identity says who made it and who it talks with; its instructions are the owner's published ones. It reads the asker's "about me", never the owner's.
 - Memory is the asker's partition of `agent_memories` (member_id = asker). The owner's memories and conversations never enter its prompt, and the owner never reads the asker's.
-- Tools are default-deny: only a tool marked `publicAgent` is offered (memory, ask_user, conversation_query, read_attachment, the web tools, and the computer when its publication grants one). Never self, handoff, run_start or schedules; an approved write must be marked too.
+- Tools are default-deny: only a tool marked `publicAgent` is offered (memory, ask_user, conversation_query, read_attachment, the web tools, and computer, browser and request_takeover when its publication grants a computer). Never self, handoff, run_start, schedules or the vault; an approved write must be marked too.
 - The computer is the asker's own copy (agent_computers is unique per Agent and member), never the owner's.
 - No personal keys: neither the owner's nor the asker's. Usage is recorded for the asker and counts toward their budgets and the workspace's.
 - A new message, edit or regenerate is admitted under the conversation lock only while the Agent is usable and under its daily cap (turns per asker and day in their time zone; refused turns do not count): `daily_cap_reached`. A turn that starts after a pause or unpublish ends with a reply that says why.
@@ -74,9 +74,17 @@ The one engine for conversations and runs. Read with the root AGENTS.md and docs
 - One computer per Agent and member from the sandbox provider (modules/computers): the owner's, or a member's own copy of a public Agent. The Docker adapter always runs hardened (read-only root, no capabilities, bounded resources, no published port) with the home on a named volume; production uses gVisor (`runsc`).
 - Shell commands run as `agent` with the deadline enforced inside the computer (`timeout`), at most 120 s. Longer work is a background process (`gh-jobs` in the image) in its own session: it outlives the turn, the API and a member's stop.
 - `run_background` ends the turn and registers a watch. The watcher (every minute, any API process) asks running computers only, claims each ended or lost process once, and wakes the Agent through the inbox. A restart loses running processes but keeps the home, so long jobs should checkpoint to files.
-- Computers idle for 30 minutes stop, unless a process is running (or the count cannot be read) or a take-over card waits.
+- Computers idle for 30 minutes stop, unless a process is running (or the count cannot be read) or a take-over or sign-in card waits.
 - People reach a computer only as the member whose computer it is. The screen and terminal sockets open with a one-time ticket in the URL (`POST …/computer/ticket`: 60 s, single use, bound to member, computer and purpose, stored only as a keyed hash in `idempotency_keys`); nothing else carries one.
 - A `view` ticket is view-only on the server: the RFB filter (modules/computers/rfb.ts) drops keys, clicks and pastes; `control` passes them. Watching needs the computer running; control and the terminal start it. An open socket keeps the computer active and closes when it stops (`computer.updated` through the hub).
 - The terminal is gh-term (tmux as `agent`), so a reload returns to the same shell. File paths are relative to the home: `..` and absolute paths are refused on the string, links that leave the home inside the computer.
 - `request_takeover` (offered wherever the computer is) raises a `takeover` card the turn waits on; `POST /api/requests/:id/handback` settles it and wakes the Agent with the member's note.
-- Live tests against the real image (the long-run probe; screen, terminal and files): `GREENHOUSE_LIVE_DOCKER=1 pnpm test` runs them in seconds; `node --import tsx scripts/computer-probe.mts --minutes 62` runs the probe at full length.
+- Live tests against the real image (the long-run probe; screen, terminal and files; browser and vault): `GREENHOUSE_LIVE_DOCKER=1 pnpm test` runs them in seconds; `node --import tsx scripts/computer-probe.mts --minutes 62` runs the probe at full length.
+
+## Browser and vault
+- `browser` drives the computer's Chromium over DevTools: `SandboxClient.devtools`, the relay's socket that only the `browser` user opens, one connection per action. Turns only; a public Agent's asker uses their own copy.
+- One controller at a time (`agent_computers.lease_*`): a member's `control` screen holds the screen while open and always wins; each Agent action holds it briefly. While the member holds it the Agent does not act, and taken over mid-action, the next step stops and nothing it read comes back.
+- Only http(s) is opened or read; file:, chrome:, devtools:, javascript: and the like and Greenhouse's own origins are refused, and a tab that lands there goes back to a blank page. Our page scripts run in an isolated world.
+- The Agent never types into a password or card field. Everything read from a page is redacted against the member's vault first, and no screenshot is taken while a page shows a vault value. A screenshot reaches a model that sees images with its next step (`ToolContext.attachImage`) and is stored nowhere.
+- `vault` is never offered to a public Agent, and a login serves only the Agents in its `agent_ids` (empty = all the member's own). The page origin always comes from the browser. The server types the values (`Input.insertText`), so none is ever in a tool result, a card, a step, the transcript or a log line.
+- An `ask` login raises a `login` card first: approving fills on the site it named (even while the member holds the screen), rejecting tells the Agent, and handing back settles it after the member signed in by hand. `auto` logins and always-allowed sites fill directly. Every fill writes a `vault_access_log` row.

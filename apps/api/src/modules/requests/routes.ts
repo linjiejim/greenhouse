@@ -1,6 +1,6 @@
 /**
  * GET  /api/requests?state=pending|all&conversation_id=   what needs me
- * POST /api/requests/:id/approve                           approve an action or accept a proposal
+ * POST /api/requests/:id/approve                           approve an action or a sign-in, or accept a proposal
  * POST /api/requests/:id/reject                            decline, with an optional reason
  * POST /api/requests/:id/answer                            answer a question
  * POST /api/requests/:id/handback                          hand the computer back after a take-over or a sign-in
@@ -26,7 +26,7 @@ export function requestRoutes(service: RequestsService, engine: Engine) {
     .post('/:id/approve', async (c) => {
       const memberId = c.get('member').id;
       const current = await service.get(memberId, c.req.param('id'));
-      if (current.kind !== 'approval' && current.kind !== 'proposal') {
+      if (current.kind !== 'approval' && current.kind !== 'proposal' && current.kind !== 'login') {
         throw conflict('wrong_decision', 'This card is not decided by approving.');
       }
       const settled = await service.settle(memberId, current.id, {
@@ -40,9 +40,7 @@ export function requestRoutes(service: RequestsService, engine: Engine) {
       const memberId = c.get('member').id;
       const { reason } = await readJson(c, rejectInputSchema);
       const current = await service.get(memberId, c.req.param('id'));
-      if (current.kind === 'login' || current.kind === 'takeover') {
-        throw conflict('wrong_decision', 'Hand this back instead.');
-      }
+      if (current.kind === 'takeover') throw conflict('wrong_decision', 'Hand this back instead.');
       const settled = await service.settle(memberId, current.id, {
         status: 'rejected',
         result: { decision: 'rejected', ...(reason ? { reason } : {}) },

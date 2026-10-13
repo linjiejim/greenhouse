@@ -66,7 +66,7 @@ import { createBackground, type Background } from './background.js';
 import { toMessage, type ConversationsService } from '../modules/conversations/service.js';
 import { effectiveModules } from '../modules/members/service.js';
 import { createDigester, parseStoredDigest, renderDigest } from './digest.js';
-import { closeTranscript, projectHistory } from './history.js';
+import { closeTranscript, projectHistory, withShownImages } from './history.js';
 import { createKeyedLock } from './locks.js';
 import {
   assembleSystem,
@@ -693,6 +693,8 @@ export function createEngine(deps: EngineDeps) {
       });
 
       let tainted = false;
+      // Screenshots a tool showed, for the model's next step (only a model that sees images gets any).
+      const shown: EngineContentPart[] = [];
       const turnTools = await assembleTools({
         defs: toolDefs(),
         context: {
@@ -709,6 +711,12 @@ export function createEngine(deps: EngineDeps) {
           },
           tainted: () => tainted,
           chain: (run.input as TurnInput).chain ?? { key: run.id, path: [agent.id] },
+          ...(resolved.vision
+            ? {
+                attachImage: (image: Uint8Array, mediaType: string) =>
+                  void shown.push({ type: 'image', image, mediaType }),
+              }
+            : {}),
         },
         availability: {
           memberId: run.ownerId,
@@ -780,6 +788,8 @@ export function createEngine(deps: EngineDeps) {
             self: has('self'),
             search: has('web_search'),
             background: has('run_start'),
+            browser: has('browser'),
+            vault: has('vault'),
           },
           locale,
           conversation.kind,
@@ -814,6 +824,7 @@ export function createEngine(deps: EngineDeps) {
         tools: turnTools.tools,
         abortSignal: controller.signal,
         stopWhen: [() => turnTools.waiting() || turnTools.ended()],
+        prepareStepMessages: ({ messages: stepMessages }) => withShownImages(stepMessages, shown.splice(0)),
         timeContext: { timezone: member.timezone },
         traceId: run.id,
       };

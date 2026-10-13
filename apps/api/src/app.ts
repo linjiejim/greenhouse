@@ -28,11 +28,16 @@ import { runStartTool } from './engine/tools/run-start.js';
 import { scheduleTools } from './engine/tools/schedules.js';
 import { selfTool } from './engine/tools/self.js';
 import { requestTakeoverTool } from './engine/tools/takeover.js';
+import { browserTool } from './engine/tools/browser.js';
+import { vaultTool } from './engine/tools/vault.js';
 import { webTools } from './engine/tools/web.js';
 import { adminPublicAgentRoutes, agentRoutes } from './modules/agents/routes.js';
 import { createAgentsService, type AgentsService } from './modules/agents/service.js';
 import { computerRoutes } from './modules/computers/routes.js';
 import { createComputersService, type ComputersService } from './modules/computers/service.js';
+import { createBrowserService, ownOrigins, type BrowserService } from './modules/computers/browser.js';
+import { vaultRoutes } from './modules/vault/routes.js';
+import { createVaultService, type VaultService } from './modules/vault/service.js';
 import { conversationRoutes } from './modules/conversations/routes.js';
 import { fileContentRoutes, fileRoutes } from './modules/files/routes.js';
 import { createFilesService, type FilesService } from './modules/files/service.js';
@@ -62,6 +67,8 @@ export interface Services {
   providers: ProvidersService;
   agents: AgentsService;
   computers: ComputersService;
+  browser: BrowserService;
+  vault: VaultService;
   conversations: ConversationsService;
   files: FilesService;
   notifications: NotificationsService;
@@ -100,6 +107,14 @@ export function createServices(config: AppConfig, options: ServiceOptions = {}):
     hub,
     secrets: { create: () => tokens.newSecret(), hash: (secret) => tokens.hashSecret(secret, 'link') },
   });
+  // The browser and the vault never reach Greenhouse itself; what a page shows is redacted against the vault.
+  const forbiddenOrigins = ownOrigins(config);
+  const vault = createVaultService({ config, hub, forbiddenOrigins });
+  const browser = createBrowserService({
+    computers,
+    secrets: (memberId) => vault.secretsOf(memberId),
+    forbiddenOrigins,
+  });
   const notifications = createNotificationsService({ hub });
   const schedules = createSchedulesService({ agents, background: () => engine.background });
   const requests = createRequestsService({ hub, notifications });
@@ -119,6 +134,8 @@ export function createServices(config: AppConfig, options: ServiceOptions = {}):
       readAttachmentTool(files),
       computerTool(computers),
       requestTakeoverTool(),
+      browserTool(browser),
+      vaultTool(vault, browser),
       runStartTool(background),
       handoffTool(handOff),
       ...scheduleTools(schedules),
@@ -137,6 +154,8 @@ export function createServices(config: AppConfig, options: ServiceOptions = {}):
     providers,
     agents,
     computers,
+    browser,
+    vault,
     conversations,
     files,
     notifications,
@@ -188,6 +207,7 @@ export function createApp(services: Services, options: { webDir?: string } = {})
   signedIn.use('*', member);
   signedIn.route('/me/providers', myProviderRoutes(services.providers));
   signedIn.route('/me/usage', myUsageRoutes(services.usage));
+  signedIn.route('/me/vault', vaultRoutes(services.vault));
   signedIn.route('/me', meRoutes(services.members));
   signedIn.route('/members', directoryRoutes(services.members));
   signedIn.route('/groups', groupDirectoryRoutes(services.members));

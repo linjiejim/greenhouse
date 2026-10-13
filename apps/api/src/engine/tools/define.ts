@@ -56,6 +56,8 @@ export interface ToolContext {
   endTurn(): void;
   /** The hand-offs this turn's request has gone through, for their limits. */
   chain?: { key: string; path: string[] };
+  /** Present when the model sees images: shows it one (a screenshot) with its next step. */
+  attachImage?(image: Uint8Array, mediaType: string): void;
 }
 
 /** What a decision on a tool's card means for the conversation. */

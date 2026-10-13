@@ -129,6 +129,14 @@ export const agentComputers = pgTable(
     stateReason: text('state_reason'),
     timezone: text('timezone').notNull().default('Asia/Shanghai'),
     version: integer('version').notNull().default(0),
+    /**
+     * Who drives the screen: the member taking it over, or one Agent browser action; null when
+     * nobody does. Only the holder renews or releases it, and it lapses at `lease_until`, so a
+     * process that died never keeps the screen.
+     */
+    leaseController: text('lease_controller', { enum: ['member', 'agent'] }),
+    leaseHolder: text('lease_holder'),
+    leaseUntil: at('lease_until'),
     lastActiveAt: at('last_active_at'),
     lastStartedAt: at('last_started_at'),
     createdAt: createdAt(),
