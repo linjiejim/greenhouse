@@ -1,18 +1,20 @@
 /**
- * `⌘K` search, first version (SRCH-01): conversation titles and message text in the
- * conversations the member is in, the member's own Agents, and the people directory. Plain
- * ILIKE with the query's wildcards escaped; a few of each kind, newest first where time matters.
+ * `⌘K` search (SRCH-01): conversation titles and message text in the conversations the member is
+ * in, the member's own Agents, the people directory (plain ILIKE with the query's wildcards
+ * escaped; a few of each kind, newest first where time matters), and the docs they may read
+ * (the knowledge base's full-text search, best first).
  */
 
 import { and, asc, desc, eq, ilike, inArray, isNull, or } from 'drizzle-orm';
 import type { SearchItem, SearchKind, SearchResult } from '@greenhouse/contract';
 import { agents, conversationMembers, conversations, getDb, messages } from '@greenhouse/db';
 import { containing, snippetAround } from '../../http/like.js';
+import type { KnowledgeService } from '../knowledge/service.js';
 import type { MembersService } from '../members/service.js';
 
 const SNIPPET = 120;
 
-export function createSearchService(deps: { members: MembersService }) {
+export function createSearchService(deps: { members: MembersService; knowledge: KnowledgeService }) {
   /** Titles to show: a conversation's own, else the name of the Agent it is with. */
   async function agentNames(ids: (string | null)[]): Promise<Map<string, string>> {
     const wanted = [...new Set(ids.filter((id): id is string => !!id))];
@@ -105,6 +107,19 @@ export function createSearchService(deps: { members: MembersService }) {
     async members(memberId, q, limit) {
       const people = await deps.members.directory(memberId, { q, limit });
       return people.map((person) => ({ kind: 'members', id: person.id, title: person.name, snippet: person.email }));
+    },
+
+    async docs(memberId, q, limit) {
+      // Nothing when the knowledge base is turned off for the member.
+      const found = await deps.knowledge.search(memberId, { q, limit }).catch(() => ({ items: [] }));
+      return found.items
+        .filter((hit) => hit.type === 'doc')
+        .map((hit) => ({
+          kind: 'docs',
+          id: hit.id,
+          title: hit.title,
+          ...(hit.snippet ? { snippet: hit.snippet } : {}),
+        }));
     },
   };
 

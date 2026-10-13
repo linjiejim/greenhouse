@@ -157,10 +157,10 @@ function nodeToMarkdown(node: TiptapNode, depth = 0): string {
     case 'horizontalRule':
       return '\n---\n';
     case 'mention': {
-      // `[@label](user:<id>)` — the `user:<id>` target is what notifications parse.
+      // `[@label](member:<id>)`: the `member:<id>` target is what the server reads to notify them.
       const id = String(node.attrs?.id ?? '');
       const label = String(node.attrs?.label ?? id);
-      return id ? `[@${label}](user:${id})` : `@${label}`;
+      return id ? `[@${label.replace(/[\\[\]]/g, '\\$&')}](member:${id})` : `@${label}`;
     }
     default:
       return inner;

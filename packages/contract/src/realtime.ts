@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { COMPUTER_STATES } from './computers.js';
 import { conversationSchema, messageSchema, messageStepSchema } from './conversations.js';
+import { COMMENT_TARGETS, docPresenceSchema } from './knowledge.js';
 
 /**
  * Events on the one WebSocket, `/api/ws`: `{ type, data }`. The first frame a client sends is
@@ -76,6 +77,27 @@ export const realtimeEventSchema = z.discriminatedUnion('type', [
   }),
   /** My vault changed, or an Agent used it: refetch the item (null: all of them) and the log. */
   z.object({ type: z.literal('vault.updated'), data: z.object({ item_id: z.string().nullable() }) }),
+  /** A doc I have open was saved, renamed, moved, archived or restored. */
+  z.object({
+    type: z.literal('doc.updated'),
+    data: z.object({
+      doc_id: z.string(),
+      version: z.number().int(),
+      title: z.string(),
+      updated_by: z.string().nullable(),
+      archived: z.boolean(),
+    }),
+  }),
+  /** Who has a doc I have open, and who is editing it. */
+  z.object({
+    type: z.literal('doc.presence'),
+    data: z.object({ doc_id: z.string(), items: z.array(docPresenceSchema) }),
+  }),
+  /** A comment was added, edited or deleted on something I have open: refetch its comments. */
+  z.object({
+    type: z.literal('comments.updated'),
+    data: z.object({ target_type: z.enum(COMMENT_TARGETS), target_id: z.string(), comment_id: z.string() }),
+  }),
 ]);
 export type RealtimeEvent = z.infer<typeof realtimeEventSchema>;
 

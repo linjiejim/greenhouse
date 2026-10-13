@@ -64,6 +64,7 @@ import type {
   UpdateNoteInput,
 } from './conversations.js';
 import type { FileView } from './files.js';
+import { knowledgeApi } from './knowledge-client.js';
 import { REALTIME_SIGN_IN_AGAIN, type RealtimeEvent } from './realtime.js';
 import type {
   Group,
@@ -678,6 +679,8 @@ export function createApiClient(options: ApiClientOptions) {
         put<Publication>(`/api/agents/${encodeURIComponent(agentId)}/publication`, input),
       unpublish: (agentId: string) => del(`/api/agents/${encodeURIComponent(agentId)}/publication`),
     },
+
+    knowledge: knowledgeApi({ get, post, patch, put, del, request, download, downloadBlob }),
 
     files: {
       upload(

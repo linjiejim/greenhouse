@@ -73,8 +73,13 @@ v2 和 v1 不兼容，不加 `/api/v2` 前缀，也不保留旧路由。`GET /ap
 | 方法与路径 | 用途 |
 | --- | --- |
 | `POST /api/files` · `GET` / `DELETE /api/files/:id` · `GET …/:id/content?exp=&m=&sig=` | 统一文件服务：multipart 上传（预签名直传随 M2），带用途与归属；字节只经 `FileView.url` 读取，它为当前成员签发、一到两小时内有效，读取时重查权限；网页与 SVG 一律下载；替代 v1 的 6 条上传路径 |
-| `/api/knowledge/docs[/:id]` 及 `/versions` · `/comments` · `/share` · `/backlinks` · `/presence` · `/export` | 文档 |
-| `/api/knowledge/folders[/:id]` · `GET /api/knowledge/search` | 文件夹（文档与文件同树）、检索 |
+| `GET /api/knowledge/folders?space=team\|personal\|shared` · `POST /api/knowledge/folders` · `GET` / `PATCH` / `DELETE /api/knowledge/folders/:id` · `POST …/restore` · `GET` / `PUT …/share` · `GET …/export` | 文件夹树（文件夹、文档、文件同列，先按手动顺序再按名称）：空间根，或「分享给我」的最上层；文件夹带路径与内容（别人分享的东西，路径只含读者看得到的上层文件夹，检索结果与继承的分享同理）。`PATCH` 改名或移动：不能移进自己或下层（`folder_cycle`），个人的只能由主人移进团队空间，不能反向、不能跨主人（`cross_space_move`）。`DELETE` 连同其中全部归档，`restore` 只带回一起归档的。`share` 是自己的分享加上从上层继承的；`PUT` 整体替换，只有个人空间的主人（团队空间 `team_space`，Agent 文件夹 `agent_folder_private`）。`export` 是边写边下载的 ZIP |
+| `POST /api/knowledge/reorder` · `GET /api/knowledge/archived?space=` · `GET /api/knowledge/export?space=` | 同一层的手动顺序；已归档（只列最上层）；整个空间导出为 ZIP |
+| `GET /api/knowledge/docs?space=&template=` · `POST /api/knowledge/docs` · `GET` / `PATCH` / `DELETE /api/knowledge/docs/:id` · `POST …/restore` | 最近更新的文档（`template=true` 是模板）；新建（空白或 `template_id`）；读取时正文里的文件地址按读者签名。`PATCH` 改标题或正文要带读到的 `version`，旧的返回 409 `stale_version`（`details` 有当前版本、谁、何时）；标签、摘要、模板标记原地改；`folder_id` / `space` 移动 |
+| `…/docs/:id/versions` · `…/versions/:v` · `POST …/versions/:v/restore` · `GET …/diff?from=&to=&mode=line\|word` | 版本（新的在前）、某一版、恢复（带当前 `version`，写一个新版本）、对比（两行上下文的 hunks，长的未改动内容截短） |
+| `…/docs/:id/backlinks` · `…/comments[/:commentId]` · `…/share` · `…/presence` · `…/export` | 反向链接（按读者权限过滤）；评论（能读就能评，只改、删自己的）；分享（同文件夹）；在线：`PUT { state: viewing\|editing }` 是心跳，`DELETE` 是离开；导出 Markdown |
+| `POST /api/knowledge/files` · `GET` / `PATCH` / `DELETE /api/knowledge/files/:id` · `POST …/restore` | 知识库文件：multipart 传到 `folder_id`、`space` 根或 `doc_id`（贴进文档的图片，跟随文档）；返回预览方式（image / pdf / text / audio / video / none）与签名地址；改名、移动、归档。`DELETE /api/files/:id` 对它们返回 `file_governed` |
+| `GET /api/knowledge/search?q=&space=&folder_id=&limit=` | 中英文全文检索（文档与文件），只含读者能读的，分数高的在前，带片段和路径 |
 | `/api/tables/bases[/:id]/…` | 表格：数据表、字段、视图、记录、表单、自动化、评论、回收站、审计（沿用 #64 的结构） |
 | `/api/apps[/:id]/…` · `POST /api/forms/:id` | 应用、表单提交 |
 | `GET /api/skills?q=&space=&kind=&scan_status=&archived=&agent=` · `POST /api/skills` · `GET` / `PATCH` / `DELETE /api/skills/:id` · `POST …/restore` · `GET` / `POST …/versions` · `POST …/scan` · `GET …/download?version=` · `GET /api/skills/starters?agent=` | 技能：我看得到的技能，`available` 与原因按 `agent`（默认主 Agent）判断；新建模板，或用 purpose `skill` 上传的 ZIP 新建包；`PATCH` 改显示名、说明、标签，`DELETE` 是归档；新版本（新 ZIP，或模板的新正文、字段、要求）；`scan` 重扫，或审核（`safe` / `malicious`，团队技能由管理员、个人技能由主人）；下载返回包的签名链接；`starters` 是新会话的 3 个常用技能（没有时给模板开场） |
@@ -169,6 +174,10 @@ OAuth 2.1 与 MCP（公开路径，错误按 RFC 6749 返回 `{ error, error_des
 工具出现的条件：成员的模块权限允许，并且依赖的 Provider 可用。例如没有图像服务时就没有 `generate_image`，不会出现「未配置」的错误工具。
 
 `skill_query` 的描述每个回合重建，列出这个 Agent 装备的技能，不能运行的写明原因；它按提问者的权限读技能库，公开 Agent 也提供。成员用 `/` 运行的技能在发送时检查（看得到、扫描通过、未归档、回答的 Agent 满足运行要求、必填项已填），正文作为成员的请求进入回合。
+
+`knowledge_query`（`search`、`read`、`list`）以提问者的权限读知识库：读过的文档列为回复的出处（`kind: doc`，地址 `#/knowledge/<id>`），搜索到的文档在回复链接到时列出；`space: agent` 是这个 Agent 的私有参考文件夹。`knowledge_mutation`（`create`、`edit`、`move`、`comment`）改知识库：`edit` 带读到的 `version`，整体替换或给只出现一次的 find / replace；除了 Agent 自己的私有参考文件夹，写入都先弹出批准卡（`tool_write`）；版本和评论记下代写的 Agent。写入只在回合里，公开 Agent 两个都没有。
+
+知识库正文的约定：引用其他文档写作 `[标题](#/knowledge/<文档 id>)`（编辑器的 `[[`），提及写作 `[@名字](member:<成员 id>)`，图片与文件写作 `/api/files/<id>/content`，存储时去掉签名、读取时按读者签名。实时事件：`doc.updated`、`doc.presence`、`comments.updated`，发给打开着这篇文档的人。
 
 `mcp_call` 是连接器的唯一工具（`list`、`describe`、`call`）。它的描述每个回合重建，只列出这个 Agent 此刻能为提问者用的连接器和工具：已启用、在 manifest 的 `connectors` 里（空值表示全部）、per_member / oauth 的已由提问者连接；不能写的 Agent 只看到只读工具。只读工具直接运行；其余工具弹出批准卡（`tool_write`，原样参数），批准后用提问者的 Key 或登录执行。只在回合里提供，公开 Agent 不提供。
 

@@ -18,11 +18,28 @@
  * `marked.setOptions({ breaks: true })` for chat rendering, and inheriting that
  * here would turn every soft wrap inside a doc into a hard `<br>` the first time
  * it round-tripped through the editor.
+ *
+ * Mentions are links to `member:<id>` in Markdown (`[@Name](member:mbr_…)`). A
+ * link with that target becomes the mention node's own HTML, because the link
+ * mark refuses unknown schemes and the mention would otherwise turn into text.
  */
 
 import { Marked } from 'marked';
 
-const editorMarked = new Marked({ gfm: true, breaks: false });
+const escapeHtml = (text: string) => text.replace(/[&<>"']/g, (char) => `&#${char.charCodeAt(0)};`);
+
+const editorMarked = new Marked({
+  gfm: true,
+  breaks: false,
+  renderer: {
+    link(token) {
+      const id = /^member:([^\s]+)$/.exec(token.href)?.[1];
+      if (!id) return false;
+      const label = token.text.replace(/\\([\\[\]])/g, '$1').replace(/^@/, '');
+      return `<span data-type="mention" data-id="${escapeHtml(id)}" data-label="${escapeHtml(label)}">@${escapeHtml(label)}</span>`;
+    },
+  },
+});
 
 /** Parse canonical Markdown into HTML the knowledge editor schema can consume. */
 export function markdownToEditorHtml(markdown: string | null | undefined): string {

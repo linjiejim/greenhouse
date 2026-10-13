@@ -40,6 +40,10 @@ export const ID_PREFIX = {
   vaultItem: 'vlt',
   skill: 'skl',
   skillVersion: 'skv',
+  folder: 'fld',
+  doc: 'doc',
+  docVersion: 'dcv',
+  comment: 'cmt',
 } as const;
 export type IdKind = keyof typeof ID_PREFIX;
 

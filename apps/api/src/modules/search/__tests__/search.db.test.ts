@@ -75,7 +75,7 @@ describe('⌘K search', () => {
     const { search, call } = await setup();
     expect((await search('q=')).status).toBe(400);
     expect((await search(`q=${'x'.repeat(101)}`)).status).toBe(400);
-    expect((await search('q=kyoto&kinds=docs')).status).toBe(400);
+    expect((await search('q=kyoto&kinds=nothing')).status).toBe(400);
     expect((await search('q=kyoto&limit=50')).status).toBe(400);
     expect((await call('GET', '/api/search?q=kyoto')).status).toBe(401);
   });

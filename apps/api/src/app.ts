@@ -33,6 +33,7 @@ import { requestTakeoverTool } from './engine/tools/takeover.js';
 import { browserTool } from './engine/tools/browser.js';
 import { vaultTool } from './engine/tools/vault.js';
 import { webTools } from './engine/tools/web.js';
+import { knowledgeTools } from './engine/tools/knowledge.js';
 import { adminPublicAgentRoutes, agentRoutes } from './modules/agents/routes.js';
 import { createAgentsService, type AgentsService } from './modules/agents/service.js';
 import { adminComputerRoutes, computerRoutes } from './modules/computers/routes.js';
@@ -46,6 +47,8 @@ import { createVaultService, type VaultService } from './modules/vault/service.j
 import { conversationRoutes } from './modules/conversations/routes.js';
 import { fileContentRoutes, fileRoutes } from './modules/files/routes.js';
 import { createFilesService, type FilesService } from './modules/files/service.js';
+import { knowledgeRoutes } from './modules/knowledge/routes.js';
+import { createKnowledgeService, type KnowledgeService } from './modules/knowledge/service.js';
 import { notificationRoutes } from './modules/notifications/routes.js';
 import { createNotificationsService, type NotificationsService } from './modules/notifications/service.js';
 import { adminChannelRoutes, notificationSettingsRoutes, pushDeviceRoutes } from './modules/channels/routes.js';
@@ -90,6 +93,7 @@ export interface Services {
   vault: VaultService;
   conversations: ConversationsService;
   files: FilesService;
+  knowledge: KnowledgeService;
   notifications: NotificationsService;
   channels: ChannelsService;
   requests: RequestsService;
@@ -148,6 +152,7 @@ export function createServices(config: AppConfig, options: ServiceOptions = {}):
     forbiddenOrigins,
   });
   const skills = createSkillsService({ files, providers, agents, connectors, computers, notifications });
+  const knowledge = createKnowledgeService({ files, notifications, hub });
   const schedules = createSchedulesService({ agents, background: () => engine.background });
   const requests = createRequestsService({ hub, notifications });
   const engine = createEngine({
@@ -176,6 +181,7 @@ export function createServices(config: AppConfig, options: ServiceOptions = {}):
       connectorTool(connectors),
       skillQueryTool(skills),
       skillMutationTool(skills),
+      ...knowledgeTools(knowledge),
       ...(options.tools ?? []),
     ],
     ...(options.languageModel ? { languageModel: options.languageModel } : {}),
@@ -195,12 +201,13 @@ export function createServices(config: AppConfig, options: ServiceOptions = {}):
     vault,
     conversations,
     files,
+    knowledge,
     notifications,
     channels,
     requests,
     runs,
     schedules,
-    search: createSearchService({ members }),
+    search: createSearchService({ members, knowledge }),
     skills,
     usage: createUsageService({ agents, providers }),
     hub,
@@ -277,6 +284,7 @@ export function createApp(services: Services, options: { webDir?: string } = {})
   signedIn.route('/notifications', notificationRoutes(services.notifications));
   signedIn.route('/search', searchRoutes(services.search));
   signedIn.route('/skills', skillRoutes(services.skills));
+  signedIn.route('/knowledge', knowledgeRoutes(services.knowledge));
   signedIn.use('/admin/*', requireAdmin);
   signedIn.route('/admin', adminMemberRoutes(services.members));
   signedIn.route('/admin/branding', brandingRoutes(services.workspace));

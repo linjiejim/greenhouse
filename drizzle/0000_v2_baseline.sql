@@ -444,6 +444,10 @@ CREATE TABLE "files" (
 	"run_id" text,
 	"expires_at" timestamp with time zone,
 	"meta" jsonb DEFAULT '{}'::jsonb NOT NULL,
+	"search_a" text DEFAULT '' NOT NULL,
+	"search_b" text DEFAULT '' NOT NULL,
+	"search_c" text DEFAULT '' NOT NULL,
+	"search_tsv" "tsvector" GENERATED ALWAYS AS (setweight(to_tsvector('simple', search_a), 'A') || setweight(to_tsvector('simple', search_b), 'B') || setweight(to_tsvector('simple', search_c), 'C')) STORED,
 	"archived_at" timestamp with time zone,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
@@ -759,6 +763,77 @@ CREATE TABLE "vault_items" (
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
+CREATE TABLE "comments" (
+	"id" text PRIMARY KEY NOT NULL,
+	"target_type" text NOT NULL,
+	"target_id" text NOT NULL,
+	"base_id" text,
+	"created_by" text,
+	"agent_id" text,
+	"body" text NOT NULL,
+	"mentions" jsonb DEFAULT '[]'::jsonb NOT NULL,
+	"deleted_at" timestamp with time zone,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "doc_links" (
+	"from_doc_id" text NOT NULL,
+	"to_doc_id" text NOT NULL,
+	CONSTRAINT "doc_links_from_doc_id_to_doc_id_pk" PRIMARY KEY("from_doc_id","to_doc_id")
+);
+--> statement-breakpoint
+CREATE TABLE "doc_versions" (
+	"id" text PRIMARY KEY NOT NULL,
+	"doc_id" text NOT NULL,
+	"version" integer NOT NULL,
+	"title" text NOT NULL,
+	"content" text NOT NULL,
+	"change_note" text DEFAULT '' NOT NULL,
+	"created_by" text,
+	"agent_id" text,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "docs" (
+	"id" text PRIMARY KEY NOT NULL,
+	"folder_id" text,
+	"space" text NOT NULL,
+	"owner_id" text,
+	"title" text NOT NULL,
+	"content" text DEFAULT '' NOT NULL,
+	"is_template" boolean DEFAULT false NOT NULL,
+	"tags" jsonb DEFAULT '[]'::jsonb NOT NULL,
+	"meta" jsonb DEFAULT '{}'::jsonb NOT NULL,
+	"version" integer DEFAULT 1 NOT NULL,
+	"sort_order" integer DEFAULT 0 NOT NULL,
+	"search_a" text DEFAULT '' NOT NULL,
+	"search_b" text DEFAULT '' NOT NULL,
+	"search_c" text DEFAULT '' NOT NULL,
+	"search_tsv" "tsvector" GENERATED ALWAYS AS (setweight(to_tsvector('simple', search_a), 'A') || setweight(to_tsvector('simple', search_b), 'B') || setweight(to_tsvector('simple', search_c), 'C')) STORED,
+	"created_by" text,
+	"updated_by" text,
+	"archived_at" timestamp with time zone,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "docs_owner_by_space" CHECK (("docs"."space" = 'personal') = ("docs"."owner_id" IS NOT NULL))
+);
+--> statement-breakpoint
+CREATE TABLE "folders" (
+	"id" text PRIMARY KEY NOT NULL,
+	"parent_id" text,
+	"space" text NOT NULL,
+	"owner_id" text,
+	"agent_id" text,
+	"name" text NOT NULL,
+	"sort_order" integer DEFAULT 0 NOT NULL,
+	"created_by" text,
+	"archived_at" timestamp with time zone,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "folders_owner_by_space" CHECK (("folders"."space" = 'personal') = ("folders"."owner_id" IS NOT NULL))
+);
+--> statement-breakpoint
 ALTER TABLE "auth_links" ADD CONSTRAINT "auth_links_member_id_members_id_fk" FOREIGN KEY ("member_id") REFERENCES "public"."members"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "group_members" ADD CONSTRAINT "group_members_group_id_groups_id_fk" FOREIGN KEY ("group_id") REFERENCES "public"."groups"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "group_members" ADD CONSTRAINT "group_members_member_id_members_id_fk" FOREIGN KEY ("member_id") REFERENCES "public"."members"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
@@ -797,6 +872,7 @@ ALTER TABLE "requests" ADD CONSTRAINT "requests_member_id_members_id_fk" FOREIGN
 ALTER TABLE "run_events" ADD CONSTRAINT "run_events_run_id_runs_id_fk" FOREIGN KEY ("run_id") REFERENCES "public"."runs"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "run_steps" ADD CONSTRAINT "run_steps_run_id_runs_id_fk" FOREIGN KEY ("run_id") REFERENCES "public"."runs"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "runs" ADD CONSTRAINT "runs_parent_run_id_runs_id_fk" FOREIGN KEY ("parent_run_id") REFERENCES "public"."runs"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "files" ADD CONSTRAINT "files_folder_id_folders_id_fk" FOREIGN KEY ("folder_id") REFERENCES "public"."folders"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "skill_versions" ADD CONSTRAINT "skill_versions_skill_id_skills_id_fk" FOREIGN KEY ("skill_id") REFERENCES "public"."skills"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "skills" ADD CONSTRAINT "skills_owner_id_members_id_fk" FOREIGN KEY ("owner_id") REFERENCES "public"."members"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "connections" ADD CONSTRAINT "connections_member_id_members_id_fk" FOREIGN KEY ("member_id") REFERENCES "public"."members"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
@@ -807,6 +883,14 @@ ALTER TABLE "push_devices" ADD CONSTRAINT "push_devices_member_id_members_id_fk"
 ALTER TABLE "schedules" ADD CONSTRAINT "schedules_agent_id_agents_id_fk" FOREIGN KEY ("agent_id") REFERENCES "public"."agents"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "vault_access_log" ADD CONSTRAINT "vault_access_log_item_id_vault_items_id_fk" FOREIGN KEY ("item_id") REFERENCES "public"."vault_items"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "vault_items" ADD CONSTRAINT "vault_items_member_id_members_id_fk" FOREIGN KEY ("member_id") REFERENCES "public"."members"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "doc_links" ADD CONSTRAINT "doc_links_from_doc_id_docs_id_fk" FOREIGN KEY ("from_doc_id") REFERENCES "public"."docs"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "doc_links" ADD CONSTRAINT "doc_links_to_doc_id_docs_id_fk" FOREIGN KEY ("to_doc_id") REFERENCES "public"."docs"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "doc_versions" ADD CONSTRAINT "doc_versions_doc_id_docs_id_fk" FOREIGN KEY ("doc_id") REFERENCES "public"."docs"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "docs" ADD CONSTRAINT "docs_folder_id_folders_id_fk" FOREIGN KEY ("folder_id") REFERENCES "public"."folders"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "docs" ADD CONSTRAINT "docs_owner_id_members_id_fk" FOREIGN KEY ("owner_id") REFERENCES "public"."members"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "folders" ADD CONSTRAINT "folders_parent_id_folders_id_fk" FOREIGN KEY ("parent_id") REFERENCES "public"."folders"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "folders" ADD CONSTRAINT "folders_owner_id_members_id_fk" FOREIGN KEY ("owner_id") REFERENCES "public"."members"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "folders" ADD CONSTRAINT "folders_agent_id_agents_id_fk" FOREIGN KEY ("agent_id") REFERENCES "public"."agents"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 CREATE UNIQUE INDEX "auth_links_hash_key" ON "auth_links" USING btree ("token_hash");--> statement-breakpoint
 CREATE UNIQUE INDEX "auth_links_live_key" ON "auth_links" USING btree ("member_id") WHERE "auth_links"."consumed_at" IS NULL AND "auth_links"."revoked_at" IS NULL;--> statement-breakpoint
 CREATE INDEX "group_members_member_idx" ON "group_members" USING btree ("member_id");--> statement-breakpoint
@@ -860,6 +944,7 @@ CREATE UNIQUE INDEX "files_storage_key" ON "files" USING btree ("storage_key");-
 CREATE INDEX "files_conversation_idx" ON "files" USING btree ("conversation_id");--> statement-breakpoint
 CREATE INDEX "files_folder_idx" ON "files" USING btree ("folder_id");--> statement-breakpoint
 CREATE INDEX "files_run_idx" ON "files" USING btree ("run_id");--> statement-breakpoint
+CREATE INDEX "files_search_idx" ON "files" USING gin ("search_tsv");--> statement-breakpoint
 CREATE UNIQUE INDEX "skill_versions_version_key" ON "skill_versions" USING btree ("skill_id","version");--> statement-breakpoint
 CREATE INDEX "skill_versions_bundle_idx" ON "skill_versions" USING btree ("bundle_file_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "skills_team_name_key" ON "skills" USING btree ("name") WHERE "skills"."space" = 'team';--> statement-breakpoint
@@ -889,4 +974,14 @@ CREATE INDEX "usage_events_time_idx" ON "usage_events" USING btree ("created_at"
 CREATE UNIQUE INDEX "jobs_dedupe_key" ON "jobs" USING btree ("dedupe_key");--> statement-breakpoint
 CREATE INDEX "jobs_claimable_idx" ON "jobs" USING btree ("available_at") WHERE "jobs"."status" = 'pending';--> statement-breakpoint
 CREATE INDEX "vault_access_log_member_idx" ON "vault_access_log" USING btree ("member_id","id");--> statement-breakpoint
-CREATE INDEX "vault_items_member_idx" ON "vault_items" USING btree ("member_id");
+CREATE INDEX "vault_items_member_idx" ON "vault_items" USING btree ("member_id");--> statement-breakpoint
+CREATE INDEX "comments_target_idx" ON "comments" USING btree ("target_type","target_id","id");--> statement-breakpoint
+CREATE INDEX "doc_links_to_idx" ON "doc_links" USING btree ("to_doc_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "doc_versions_version_key" ON "doc_versions" USING btree ("doc_id","version");--> statement-breakpoint
+CREATE INDEX "docs_folder_idx" ON "docs" USING btree ("folder_id");--> statement-breakpoint
+CREATE INDEX "docs_owner_idx" ON "docs" USING btree ("owner_id");--> statement-breakpoint
+CREATE INDEX "docs_updated_idx" ON "docs" USING btree ("updated_at","id");--> statement-breakpoint
+CREATE INDEX "docs_search_idx" ON "docs" USING gin ("search_tsv");--> statement-breakpoint
+CREATE INDEX "folders_parent_idx" ON "folders" USING btree ("parent_id");--> statement-breakpoint
+CREATE INDEX "folders_owner_idx" ON "folders" USING btree ("owner_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "folders_agent_key" ON "folders" USING btree ("agent_id");

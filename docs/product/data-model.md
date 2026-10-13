@@ -35,7 +35,7 @@ v2 从零建表：只有一份基线迁移，不继承 v1 的迁移链，也不�
   - 与 v1 不同：v1 把 JSON 存成 text，只是因为改造全部读写路径代价太大；v2 从零开始，没有这个代价。
 - 并发：可多人编辑的对象带 `revision`，旧 revision 的写入被拒；有状态机的行带 `version`，每次迁移做 CAS；后台工作用 `jobs` 的租约领取（`FOR UPDATE SKIP LOCKED`）。沿用 v1。
 - 搜索
-  - 中英文全文检索沿用「应用层 jieba 分词 + PostgreSQL `simple` 配置」。分词结果写进 `search_a` / `search_b` / `search_c`（权重 A / B / C），`search_tsv` 是由这三列生成的 `STORED` 列，GIN 索引建在它上面。
+  - 中英文全文检索沿用「应用层 jieba 分词 + PostgreSQL `simple` 配置」。分词结果写进 `search_a` / `search_b` / `search_c`（权重 A / B / C），`search_tsv` 是由这三列生成的 `STORED` 列，GIN 索引建在它上面。入库与查询走同一个函数（`packages/db/src/search.ts`）：中文段落用 jieba，其余按字母数字分词，入库时另存长词里的短词。
   - 用在 `docs`、知识库里的 `files`、`base_records`。Agent、技能、应用、对话标题这类小集合用 `ILIKE`。v2.0 不做向量检索（[providers.md §2](providers.md#2-能力)）。
   - 与 v1 不同：v1 的表达式索引必须和 service 里的表达式逐字一致，否则静默全表扫描；生成列让定义只有一份。
 - 文件与存储
@@ -109,12 +109,12 @@ v2 从零建表：只有一份基线迁移，不继承 v1 的迁移链，也不�
 
 | 表 | 用途 | 关键列与关系 |
 | --- | --- | --- |
-| `folders` | 文件夹树，文档和文件在同一棵树里 | `parent_id` `CASCADE`、`space`（team / personal）、`owner_id`（个人空间必填）、`agent_id`（Agent 私有参考文件夹的根，唯一，随 Agent 删除）、`name`、`sort_order`（0 = 没手动排过）、`archived_at`；移动时拒绝成环 |
-| `docs` | 文档 | `folder_id` `SET NULL`、`space`、`owner_id`、`title`、`content`（Markdown，唯一事实源）、`is_template`、`tags`、`meta`（摘要、问题、话题，只作检索元数据）、`version`、`sort_order`、`search_*`、`created_by` / `updated_by`、`archived_at` |
-| `doc_versions` | 不可变版本 | `doc_id` `CASCADE`、`version`、`title`、`content`、`change_note`、`created_by`；唯一 `(doc_id, version)` |
+| `folders` | 文件夹树，文档和文件在同一棵树里 | `parent_id` `CASCADE`、`space`（team / personal）、`owner_id`（个人空间必填，团队为空，CHECK 约束）、`agent_id`（Agent 私有参考文件夹的根，唯一，随 Agent 删除）、`name`、`sort_order`（0 = 没手动排过）、`created_by`、`archived_at`（归档文件夹时其中所有内容盖同一时间戳，恢复只清这一批）；移动时拒绝成环 |
+| `docs` | 文档 | `folder_id` `SET NULL`、`space`、`owner_id`（同 `folders`）、`title`、`content`（Markdown，唯一事实源；文件地址存不带签名的形式）、`is_template`、`tags`、`meta`（摘要、问题、话题，只作检索元数据）、`version`（保存时比较并加一）、`sort_order`、`search_*`（A 标题与标签，B 元数据，C 正文）、`created_by` / `updated_by`、`archived_at` |
+| `doc_versions` | 不可变版本 | `doc_id` `CASCADE`、`version`、`title`、`content`、`change_note`、`created_by`、`agent_id`（Agent 代写时）；唯一 `(doc_id, version)`；新建是版本 1，恢复写一个新版本 |
 | `doc_links` | 反向链接 | 主键 `(from_doc_id, to_doc_id)`，两端 `CASCADE`；每次保存由正文重建，读反链时逐条过权限 |
-| `comments` | 文档和记录的评论 | `target_type`（doc / record）、`target_id`、`base_id`（记录评论）、`created_by`、`agent_id`（Agent 代写时）、`body`（Markdown）、`mentions`、`deleted_at`；读权限跟随目标，不进全文检索 |
-| `files` | 统一文件服务 | `purpose`（attachment / knowledge / record / artifact / export / import / skill / avatar / branding）、`provider_id`、`storage_key`（唯一）、`name`、`content_type`、`size_bytes`、`sha256`、`status`、`owner_id`、归属列按 purpose 填一个（`folder_id` + `space`、`conversation_id`、`base_id`、`run_id`；技能包、头像、品牌由引用它的行持有）、`expires_at`（导出）、`meta`、`search_*`（知识库文件的抽取文本）、`archived_at`；权限跟随归属 |
+| `comments` | 文档和记录的评论 | `target_type`（doc / record）、`target_id`、`base_id`（记录评论）、`created_by`、`agent_id`（Agent 代写时）、`body`（Markdown）、`mentions`（由正文里的 `[@名字](member:<id>)` 得出）、`deleted_at`、`updated_at`；读权限跟随目标，不进全文检索 |
+| `files` | 统一文件服务 | `purpose`（attachment / knowledge / record / artifact / export / import / skill / avatar / branding）、`provider_id`、`storage_key`（唯一）、`name`、`content_type`、`size_bytes`、`sha256`、`status`、`owner_id`、归属列按 purpose 填一个（`folder_id` + `space`、`conversation_id`、`base_id`、`run_id`；技能包、头像、品牌由引用它的行持有）、`expires_at`（导出）、`meta`、`search_*`（知识库文件：A 文件名，C 文本与 PDF 的文字）、`archived_at`；权限跟随归属。知识库文件的 `folder_id` → `folders` `SET NULL`，`owner_id` 同 `folders`；`meta.doc_id` 是贴进文档的图片（不在树里，权限跟随文档），`meta.sort_order` 是手动顺序 |
 
 「他人正在编辑」与在线状态放在进程内存里，不建表。
 
