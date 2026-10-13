@@ -25,7 +25,6 @@ export default defineConfig({
       '@greenhouse/types/plant-avatar': resolve(__dirname, 'packages/types/src/plant-avatar.ts'),
       '@greenhouse/types/session': resolve(__dirname, 'packages/types/src/session.ts'),
       '@greenhouse/types/eval': resolve(__dirname, 'packages/types/src/eval.ts'),
-      '@greenhouse/types/source': resolve(__dirname, 'packages/types/src/source.ts'),
       '@greenhouse/types/agent-context': resolve(__dirname, 'packages/types/src/agent-context.ts'),
       '@greenhouse/types/features': resolve(__dirname, 'packages/types/src/features.ts'),
       '@greenhouse/types/config': resolve(__dirname, 'packages/types/src/config.ts'),
