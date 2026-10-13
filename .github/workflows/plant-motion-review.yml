@@ -1,0 +1,24 @@
+name: Plant motion review
+on:
+  pull_request:
+    paths:
+      - examples/plant-motion-review/**
+      - .github/workflows/plant-motion-review.yml
+      - package.json
+      - pnpm-lock.yaml
+jobs:
+  browser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - run: pnpm typecheck:plant-motion && pnpm test:plant-motion
+      - run: pnpm exec playwright install --with-deps --only-shell chromium
+      - run: pnpm test:plant-motion:browser
+        env:
+          MOTION_QA_OUTPUT: ${{ runner.temp }}/plant-motion-evidence
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: plant-motion-browser-evidence
+          path: ${{ runner.temp }}/plant-motion-evidence

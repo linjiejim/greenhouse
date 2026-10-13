@@ -661,3 +661,7 @@ is parsed; the generic OpenAI client drops both (that is how auto-titles went bl
   `VITEST_UNIT_MAX_WORKERS` / `VITEST_DB_MAX_WORKERS` names remain aliases for that shared cap).
   Worker limits belong at the root config; project-level limits are ignored. The `db-commit`
   project uses `poolOptions.forks.singleFork` to keep its files serial.
+
+## Isolated plant motion review
+
+`examples/plant-motion-review/` is the user-requested V1/V2 comparison experiment. Read its local AGENTS.md before editing. Frozen V1 is intentionally retained alongside experimental V2; neither is imported by production. Keep the accepted V1 checksum, reuse its A geometry, and run the dedicated controller typecheck, unit tests, and real-browser QA in addition to the root required checks. A future production integration is separate work.

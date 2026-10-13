@@ -718,6 +718,9 @@ and the fork workflow are in [EXTENDING.md](./EXTENDING.md#extensions).
 
 ## Development
 
+Plant character motion experiment: [V1/V2 comparison and browser QA](examples/plant-motion-review/README.md). Run `pnpm plant-motion:dev` for the isolated local review; production avatar components are unchanged.
+
+
 ```bash
 pnpm dev            # Vite web (:3100) + API (:3000), proxied
 pnpm test           # every layer: unit + db (transaction-isolated) + db-commit

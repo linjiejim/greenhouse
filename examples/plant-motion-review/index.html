@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <title>Greenhouse · 动作手记</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <main>
+      <header>
+        <a class="brand" href="./">GREENHOUSE <span>角色实验室</span></a
+        ><a href="v1.html" target="_blank" rel="noopener">打开原始 V1 ↗</a>
+      </header>
+      <section class="intro">
+        <p class="eyebrow">A · 平面精修 / MOTION STUDY</p>
+        <h1>一点表情，<br />十六种性格。</h1>
+        <p>同一片叶子，不同的回应方式。并排看看 V1 与 V2，<br class="desktop" />从第一次对视，到慢慢安静下来。</p>
+        <span class="note">独立预览 · 不影响正式应用</span>
+      </section>
+      <section class="controls" aria-label="全局控制">
+        <div class="control-row">
+          <div id="versions" class="segmented" aria-label="版本">
+            <button data-version="v1">V1</button><button data-version="v2">V2</button
+            ><button data-version="compare" aria-pressed="true">并排比较</button>
+          </div>
+          <label
+            >背景
+            <select id="theme">
+              <option value="light">浅色</option>
+              <option value="dark">深色</option>
+            </select></label
+          ><label
+            >尺寸
+            <select id="size">
+              <option value="120">标准</option>
+              <option value="44">44 px</option>
+              <option value="32">32 px</option>
+              <option value="20">20 px</option>
+              <option value="16">16 px</option>
+            </select></label
+          ><label
+            >配色
+            <select id="tint">
+              <option value="plant">植物本色</option>
+              <option value="sky">天蓝</option>
+              <option value="violet">紫罗兰</option>
+              <option value="rose">玫瑰</option>
+              <option value="coral">珊瑚</option>
+              <option value="gold">金黄</option>
+              <option value="teal">青绿</option>
+            </select></label
+          >
+        </div>
+        <div id="global-states" class="states" aria-label="全部角色状态"></div>
+        <div class="control-row">
+          <button id="pause">暂停动画</button><button id="demo">连续演示</button
+          ><label
+            >速度
+            <select id="speed">
+              <option value="0.5">0.5×</option>
+              <option value="1" selected>1×</option>
+              <option value="1.5">1.5×</option>
+            </select></label
+          ><span id="status" role="status">当前：待机</span><span id="preference" class="muted"></span>
+        </div>
+      </section>
+      <div class="section-title">
+        <h2>十六位植物朋友</h2>
+        <span>点击角色，近距离看一看</span>
+      </div>
+      <section id="gallery" class="gallery" aria-label="角色画廊"></section>
+      <footer>
+        V1 保留原样 · V2 调整动作先后、停顿与收势<br />轮廓、配色和 SVG 骨架保持一致；减少动态效果随系统设置。
+      </footer>
+    </main>
+    <dialog id="detail" aria-labelledby="detail-title">
+      <div class="dialog-top">
+        <button id="previous" aria-label="上一个角色">←</button><span id="position"></span
+        ><button id="next" aria-label="下一个角色">→</button><button id="close">关闭 ✕</button>
+      </div>
+      <h2 id="detail-title"></h2>
+      <p id="personality"></p>
+      <div class="control-row">
+        <div id="local-versions" class="segmented">
+          <button data-version="v1">V1</button><button data-version="v2">V2</button
+          ><button data-version="compare" aria-pressed="true">并排比较</button>
+        </div>
+        <button id="local-pause">暂停动画</button
+        ><label
+          >速度
+          <select id="local-speed">
+            <option value="0.5">0.5×</option>
+            <option value="1" selected>1×</option>
+            <option value="1.5">1.5×</option>
+          </select></label
+        >
+      </div>
+      <div id="portraits" class="pair"></div>
+      <div id="local-states" class="states" aria-label="单个角色状态"></div>
+      <div class="scenarios">
+        <button data-scenario="wake">睡醒 → 说话</button><button data-scenario="finish">思考 → 完成</button
+        ><button data-scenario="interrupt">快速连续切换</button>
+      </div>
+      <p id="local-status" role="status"></p>
+      <h3>八种表情</h3>
+      <p class="muted">静态对照，点击表情可在上方播放</p>
+      <div id="state-sheet" class="state-sheet"></div>
+      <h3>小尺寸</h3>
+      <div id="samples" class="samples"></div>
+    </dialog>
+    <script type="module" src="app.js"></script>
+  </body>
+</html>
