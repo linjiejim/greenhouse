@@ -3,6 +3,7 @@ export * from './agents.js';
 export * from './conversations.js';
 export * from './runs.js';
 export * from './files.js';
+export * from './connections.js';
 export * from './providers.js';
 export * from './notifications.js';
 export * from './usage.js';
