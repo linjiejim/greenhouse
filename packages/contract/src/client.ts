@@ -36,6 +36,8 @@ import type {
   UpdateConnectorInput,
 } from './connectors.js';
 import type {
+  AdminComputers,
+  ComputerCapacity,
   ComputerFile,
   ComputerFolder,
   ComputerJob,
@@ -651,6 +653,13 @@ export function createApiClient(options: ApiClientOptions) {
     },
 
     admin: {
+      /** 管理 → 服务 · 沙箱: every computer and the capacity; stop or reset one. */
+      computers: {
+        list: () => get<AdminComputers>('/api/admin/computers'),
+        setCapacity: (input: ComputerCapacity) => put<ComputerCapacity>('/api/admin/computers/capacity', input),
+        stop: (id: string) => post<void>(`/api/admin/computers/${id}/stop`),
+        reset: (id: string) => del(`/api/admin/computers/${id}`),
+      },
       providers: () => get<AdminProviders>('/api/admin/providers'),
       createProvider: (input: CreateProviderInput) => post<ProviderInstance>('/api/admin/providers', input),
       updateProvider: (id: string, input: UpdateProviderInput) =>

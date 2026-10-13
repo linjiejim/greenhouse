@@ -91,3 +91,34 @@ export type ComputerFolder = z.infer<typeof computerFolderSchema>;
 /** Handing the computer back after a take-over: a note the Agent reads when it wakes. */
 export const handbackInputSchema = z.object({ note: z.string().trim().max(500).optional() });
 export type HandbackInput = z.infer<typeof handbackInputSchema>;
+
+/** 管理 → 服务 · 沙箱 (ADM-06): how computers are shared out. */
+export const computerCapacitySchema = z.object({
+  /** Minutes without use before a computer stops; one with a running process or a waiting card never does. */
+  idle_minutes: z.number().int().min(5).max(1440),
+  /** Computers running at once; 0 means no limit. A start beyond it is refused with `computers_full`. */
+  max_running: z.number().int().min(0).max(1000),
+});
+export type ComputerCapacity = z.infer<typeof computerCapacitySchema>;
+
+/** One computer as an admin sees it: whose, for which Agent, its state; never its files or screen. */
+export const adminComputerSchema = z.object({
+  id: z.string(),
+  agent_id: z.string(),
+  agent_name: z.string(),
+  owner_id: z.string(),
+  owner_name: z.string(),
+  state: z.enum(COMPUTER_STATES),
+  state_reason: z.string().nullable(),
+  last_active_at: isoTime.nullable(),
+  last_started_at: isoTime.nullable(),
+});
+export type AdminComputer = z.infer<typeof adminComputerSchema>;
+
+export const adminComputersSchema = z.object({
+  items: z.array(adminComputerSchema),
+  capacity: computerCapacitySchema,
+  /** Running or starting now. */
+  running: z.number().int(),
+});
+export type AdminComputers = z.infer<typeof adminComputersSchema>;

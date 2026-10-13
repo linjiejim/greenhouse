@@ -33,7 +33,7 @@ import { vaultTool } from './engine/tools/vault.js';
 import { webTools } from './engine/tools/web.js';
 import { adminPublicAgentRoutes, agentRoutes } from './modules/agents/routes.js';
 import { createAgentsService, type AgentsService } from './modules/agents/service.js';
-import { computerRoutes } from './modules/computers/routes.js';
+import { adminComputerRoutes, computerRoutes } from './modules/computers/routes.js';
 import { connectorTool } from './engine/tools/connectors.js';
 import { adminConnectorRoutes, connectorCallbackRoutes, myConnectionRoutes } from './modules/connectors/routes.js';
 import { createConnectorsService, type ConnectorsService } from './modules/connectors/service.js';
@@ -260,6 +260,7 @@ export function createApp(services: Services, options: { webDir?: string } = {})
   signedIn.route('/admin', adminProviderRoutes(services.providers));
   signedIn.route('/admin', adminUsageRoutes(services.usage));
   signedIn.route('/admin', adminPublicAgentRoutes(services.agents));
+  signedIn.route('/admin/computers', adminComputerRoutes(services.computers));
   signedIn.route('/admin/connectors', adminConnectorRoutes(services.connectors));
   signedIn.route('/admin/clients', adminClientRoutes(services.oauth));
   app.route('/api', signedIn);

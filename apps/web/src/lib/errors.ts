@@ -17,6 +17,7 @@ const KNOWN: Record<string, MessageKey> = {
   path_outside_home: 'errors.outsideHome',
   computer_not_running: 'errors.computerOff',
   upload_incomplete: 'errors.uploadCut',
+  computers_full: 'errors.computersFull',
   model_unavailable: 'errors.modelUnavailable',
 };
 

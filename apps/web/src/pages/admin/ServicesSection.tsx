@@ -29,8 +29,11 @@ import { useNotify } from '../../app/notify';
 import { api } from '../../lib/api';
 import { useI18n } from '../../lib/i18n';
 import { CAPABILITY_LABEL, InstanceDrawer, InstanceRow, type InstanceApi } from '../providers/Instances';
+import { ComputersPanel } from './ComputersPanel';
 
 const KEY = ['admin', 'providers'] as const;
+/** Capabilities a member may bring their own key for (the server refuses the rest). */
+const PERSONAL: readonly ProviderCapability[] = ['llm', 'stt', 'tts', 'image', 'video', 'search'];
 
 /** `instance/model` choices for the llm defaults: every model each instance lists. */
 function modelChoices(state: CapabilityState) {
@@ -207,25 +210,29 @@ function CapabilityDrawer({ capability, onClose }: { capability: ProviderCapabil
         </section>
       )}
 
-      <section className="app-section">
-        <div className="app-setting-row is-plain">
-          <span className="app-setting-text">
-            <strong>{t('provider.allowPersonal')}</strong>
-            <span>{t('provider.allowPersonalHint')}</span>
-          </span>
-          <Switch
-            label={t('provider.allowPersonal')}
-            checked={state.policy.allow_personal}
-            onChange={(allow) =>
-              bind.mutate({
-                instance_ids: order,
-                defaults: state.defaults,
-                policy: { ...state.policy, allow_personal: allow },
-              })
-            }
-          />
-        </div>
-      </section>
+      {capability === 'sandbox' && state.instances.length > 0 && <ComputersPanel />}
+
+      {PERSONAL.includes(capability) && (
+        <section className="app-section">
+          <div className="app-setting-row is-plain">
+            <span className="app-setting-text">
+              <strong>{t('provider.allowPersonal')}</strong>
+              <span>{t('provider.allowPersonalHint')}</span>
+            </span>
+            <Switch
+              label={t('provider.allowPersonal')}
+              checked={state.policy.allow_personal}
+              onChange={(allow) =>
+                bind.mutate({
+                  instance_ids: order,
+                  defaults: state.defaults,
+                  policy: { ...state.policy, allow_personal: allow },
+                })
+              }
+            />
+          </div>
+        </section>
+      )}
 
       {editing && (
         <InstanceDrawer

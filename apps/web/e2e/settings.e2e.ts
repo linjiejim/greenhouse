@@ -110,3 +110,17 @@ test('admin: groups and branding', async ({ page, browser }) => {
   await page.getByLabel('工作区名称').fill('Greenhouse');
   await page.getByRole('button', { name: '保存' }).click();
 });
+
+test('admin: computer capacity, and every computer with its state', async ({ page }) => {
+  await open(page, '/#/admin/services');
+  await page.getByRole('button', { name: /^电脑/ }).first().click();
+  const drawer = page.getByRole('dialog', { name: '电脑' });
+  await expect(drawer.getByRole('heading', { name: '电脑容量' })).toBeVisible();
+  await drawer.getByLabel('最多同时开机').fill('3');
+  await drawer.getByLabel('空闲多久后关机（分钟）').fill('20');
+  await drawer.getByRole('button', { name: '保存' }).click();
+  await expect(page.getByText('已保存')).toBeVisible();
+  await expect(drawer.getByRole('heading', { name: /电脑 · \d+ 台在运行，共 \d+ 台/ })).toBeVisible();
+  // Personal keys are not a thing for computers.
+  await expect(drawer.getByRole('switch', { name: '允许成员用自己的 Key' })).toHaveCount(0);
+});

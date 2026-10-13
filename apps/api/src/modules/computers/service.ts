@@ -16,8 +16,10 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import { and, eq, gt, inArray, isNull, lt, or, sql } from 'drizzle-orm';
+import { and, eq, gt, inArray, isNull, lt, ne, or, sql } from 'drizzle-orm';
 import type {
+  AdminComputers,
+  ComputerCapacity,
   ComputerFile,
   ComputerFolder,
   ComputerJob,
@@ -27,6 +29,7 @@ import type {
 } from '@greenhouse/contract';
 import {
   agentComputers,
+  agents as agentRows,
   computerWatches,
   getDb,
   idempotencyKeys,
@@ -39,6 +42,7 @@ import {
 import type { SandboxClient, SandboxStream } from '@greenhouse/providers';
 import { toErrorMessage } from '@greenhouse/utils/error';
 import { logger } from '@greenhouse/utils/logger';
+import { audit } from '../../audit.js';
 import { ApiError, conflict, forbidden, invalidInput, notFound } from '../../http/errors.js';
 import type { ProvidersService } from '../../providers/service.js';
 import type { Hub } from '../../realtime/hub.js';
@@ -68,7 +72,8 @@ const OUTPUT_CAP = 64 * 1024;
 const TOOL_OUTPUT_CHARS = 20_000;
 const WATCH_MS = 60_000;
 const WATCH_DAYS = 7;
-export const IDLE_STOP_MS = 30 * 60_000;
+/** Capacity when an admin set none: stop after 30 idle minutes, no limit on running computers. */
+const CAPACITY: ComputerCapacity = { idle_minutes: 30, max_running: 0 };
 /** A ticket is spent within a minute or never. */
 const TICKET_TTL_MS = 60_000;
 /** Tickets live in the replay table under this scope, as keyed hashes only. */
@@ -171,6 +176,24 @@ export function createComputersService(deps: {
       .where(eq(agentComputers.id, id));
   };
 
+  /** Stored with the sandbox capability's defaults (provider_bindings), else the defaults above. */
+  async function capacity(): Promise<ComputerCapacity> {
+    const stored = await deps.providers.defaultsOf('sandbox');
+    const idle = Number(stored.idle_minutes);
+    const max = Number(stored.max_running);
+    return {
+      idle_minutes: Number.isInteger(idle) && idle >= 5 ? idle : CAPACITY.idle_minutes,
+      max_running: Number.isInteger(max) && max >= 0 ? max : CAPACITY.max_running,
+    };
+  }
+
+  /** A computer by id, for an admin. */
+  async function byId(id: string): Promise<AgentComputer> {
+    const [row] = await getDb().select().from(agentComputers).where(eq(agentComputers.id, id));
+    if (!row) throw notFound('Computer');
+    return row;
+  }
+
   /** The member, when computers are on for them. */
   async function computerMember(memberId: string) {
     const [member] = await getDb().select().from(members).where(eq(members.id, memberId));
@@ -230,6 +253,17 @@ export function createComputersService(deps: {
     const row = await rowOf(memberId, agent.id);
     const client = row!.providerId === resolved.instance.id ? resolved.client : await clientFor(row!, memberId);
     if (row!.state !== 'running' || (await client.status(row!.sandboxRef)) !== 'running') {
+      // Two starts at once can pass the limit by one; it is a budget, not a lock.
+      const { max_running: max } = await capacity();
+      if (max > 0) {
+        const [busy] = await getDb()
+          .select({ count: sql<number>`count(*)::int` })
+          .from(agentComputers)
+          .where(and(inArray(agentComputers.state, ['running', 'starting']), ne(agentComputers.id, row!.id)));
+        if ((busy?.count ?? 0) >= max) {
+          throw new ApiError(503, 'computers_full', 'Every computer is in use. Try again in a few minutes.');
+        }
+      }
       await setState(row!.id, 'starting');
       try {
         await client.ensure({
@@ -690,18 +724,88 @@ export function createComputersService(deps: {
       }
     },
 
+    /** 管理 → 服务 · 沙箱: every computer, most recently used first, with the capacity. */
+    async adminList(): Promise<AdminComputers> {
+      const rows = await getDb()
+        .select({
+          computer: agentComputers,
+          agentName: agentRows.name,
+          ownerName: members.name,
+        })
+        .from(agentComputers)
+        .innerJoin(agentRows, eq(agentRows.id, agentComputers.agentId))
+        .innerJoin(members, eq(members.id, agentComputers.ownerId))
+        .orderBy(sql`${agentComputers.lastActiveAt} desc nulls last`);
+      const items = rows.map(({ computer, agentName, ownerName }) => ({
+        id: computer.id,
+        agent_id: computer.agentId,
+        agent_name: agentName,
+        owner_id: computer.ownerId,
+        owner_name: ownerName,
+        state: computer.state,
+        state_reason: computer.stateReason,
+        last_active_at: computer.lastActiveAt,
+        last_started_at: computer.lastStartedAt,
+      }));
+      return {
+        items,
+        capacity: await capacity(),
+        running: items.filter((item) => item.state === 'running' || item.state === 'starting').length,
+      };
+    },
+
+    async setCapacity(actorId: string, input: ComputerCapacity): Promise<ComputerCapacity> {
+      const stored = await deps.providers.defaultsOf('sandbox');
+      await deps.providers.setDefaults(actorId, 'sandbox', { ...stored, ...input });
+      await audit({
+        actorId,
+        action: 'computer.capacity',
+        resourceType: 'provider_binding',
+        resourceId: 'sandbox',
+        summary: 'idle_minutes, max_running',
+      });
+      return capacity();
+    },
+
+    /** An admin stops a member's computer; its home stays. */
+    async adminStop(actorId: string, id: string): Promise<void> {
+      const row = await byId(id);
+      await (await clientFor(row, row.ownerId)).stop(row.sandboxRef);
+      await setState(row.id, 'stopped', 'admin');
+      await audit({ actorId, action: 'computer.stop', resourceType: 'computer', resourceId: id, summary: 'stopped' });
+    },
+
+    /**
+     * An admin resets a member's computer: it is removed with its home, and the next use starts a
+     * new one. Background processes on it are gone too.
+     */
+    async adminReset(actorId: string, id: string): Promise<void> {
+      const row = await byId(id);
+      await (await clientFor(row, row.ownerId)).remove(row.sandboxRef, { keepHome: false });
+      await getDb().delete(agentComputers).where(eq(agentComputers.id, id));
+      deps.hub.publish([row.ownerId], { type: 'computer.updated', data: { agent_id: row.agentId, state: 'stopped' } });
+      await audit({
+        actorId,
+        action: 'computer.reset',
+        resourceType: 'computer',
+        resourceId: id,
+        summary: 'home removed',
+      });
+    },
+
     /**
      * Computers left idle stop; one with a running process never does, nor one whose Agent
      * waits for its member to take over or to approve a sign-in (the page would be gone).
      */
     async stopIdle(): Promise<void> {
+      const { idle_minutes: minutes } = await capacity();
       const idle = await getDb()
         .select()
         .from(agentComputers)
         .where(
           and(
             eq(agentComputers.state, 'running'),
-            lt(agentComputers.lastActiveAt, new Date(Date.now() - IDLE_STOP_MS).toISOString()),
+            lt(agentComputers.lastActiveAt, new Date(Date.now() - minutes * 60_000).toISOString()),
           ),
         );
       for (const computer of idle) {

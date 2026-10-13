@@ -623,6 +623,25 @@ export function createProvidersService(deps: { config: AppConfig; fetch?: typeof
       };
     },
 
+    /** A capability's defaults: the llm's model picks, the sandbox's computer capacity. */
+    async defaultsOf(capability: Capability): Promise<Record<string, unknown>> {
+      return (await viewOf(capability)).defaults;
+    },
+
+    /** Replaces a capability's defaults; its order and policy stay as they are. */
+    async setDefaults(actorId: string, capability: Capability, defaults: Record<string, unknown>): Promise<void> {
+      const current = await viewOf(capability);
+      await saveBinding(
+        capability,
+        {
+          instanceIds: current.binding?.instanceIds ?? current.order.map((instance) => instance.id),
+          defaults,
+          policy: current.policy,
+        },
+        actorId,
+      );
+    },
+
     /** The models a member may pick for an Agent: every model of the services that serve them, in order. */
     async models(ctx: UsageContext): Promise<ModelChoice[]> {
       return chainFor(await viewOf('llm'), ctx).flatMap((instance) =>

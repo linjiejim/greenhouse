@@ -525,6 +525,18 @@ export const en: Record<MessageKey, string> = {
   'computer.screen': 'Screen',
   'computer.terminal': 'Terminal',
   'computer.files': 'Files',
+  'computers.capacity': 'Capacity',
+  'computers.idleMinutes': 'Idle minutes before a stop',
+  'computers.idleMinutesHint':
+    'A computer with a running process, or one waiting for someone to take over or approve a sign-in, never stops',
+  'computers.maxRunning': 'Running at once',
+  'computers.maxRunningHint': '0 means no limit; past it a new start is refused until one stops',
+  'computers.list': 'Computers · {running} running of {count}',
+  'computers.none': 'No computers yet',
+  'computers.reset': 'Reset',
+  'computers.resetTitle': 'Reset the computer of “{name}”?',
+  'computers.resetBody':
+    'The computer is deleted with the files in its home and its background processes end; the next use starts a new one. This cannot be undone.',
   'computer.home': 'Home',
   'computer.path': 'Location',
   'computer.upload': 'Upload',
@@ -669,6 +681,7 @@ export const en: Record<MessageKey, string> = {
   'errors.outsideHome': 'Only files in the computer’s home folder can be reached',
   'errors.computerOff': 'The computer is off',
   'errors.uploadCut': 'The upload stopped. Try again',
+  'errors.computersFull': 'Every computer is in use. Try again in a few minutes',
   'errors.modelUnavailable': 'That model is not available now',
 
   'common.loading': 'Loading',

@@ -15,7 +15,7 @@
  */
 
 import { Hono } from 'hono';
-import { computerPathQuerySchema, computerTicketInputSchema } from '@greenhouse/contract';
+import { computerCapacitySchema, computerPathQuerySchema, computerTicketInputSchema } from '@greenhouse/contract';
 import { ApiError, invalidInput } from '../../http/errors.js';
 import type { AppEnv } from '../../http/env.js';
 import { readJson, readQuery } from '../../http/validate.js';
@@ -78,6 +78,29 @@ export function computerRoutes(service: ComputersService) {
     .delete('/:id/computer/files', async (c) => {
       const { path } = readQuery(c, computerPathQuerySchema);
       await service.removeFile(c.get('member').id, c.req.param('id'), path);
+      return c.body(null, 204);
+    });
+}
+
+/**
+ * 管理 → 服务 · 沙箱 (ADM-06), admins only:
+ * GET    /api/admin/computers              every computer, with the capacity and how many run
+ * PUT    /api/admin/computers/capacity     idle minutes before a stop, computers running at once
+ * POST   /api/admin/computers/:id/stop     stop one (its home stays)
+ * DELETE /api/admin/computers/:id          reset one: removed with its home; the next use starts afresh
+ */
+export function adminComputerRoutes(service: ComputersService) {
+  return new Hono<AppEnv>()
+    .get('/', async (c) => c.json(await service.adminList()))
+    .put('/capacity', async (c) =>
+      c.json(await service.setCapacity(c.get('member').id, await readJson(c, computerCapacitySchema))),
+    )
+    .post('/:id/stop', async (c) => {
+      await service.adminStop(c.get('member').id, c.req.param('id'));
+      return c.body(null, 204);
+    })
+    .delete('/:id', async (c) => {
+      await service.adminReset(c.get('member').id, c.req.param('id'));
       return c.body(null, 204);
     });
 }
