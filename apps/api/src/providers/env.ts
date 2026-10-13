@@ -159,28 +159,52 @@ function searchFromEnv(env: Env): EnvInstance[] {
   });
 }
 
-/** SANDBOX_PROVIDER=docker: the Agent computers run on this machine's Docker engine. */
+/**
+ * SANDBOX_PROVIDER=docker: the Agent computers run on this machine's Docker engine.
+ * SANDBOX_PROVIDER=e2b (or a preset, ppio): each one is a sandbox at an E2B-protocol provider.
+ */
 function sandboxFromEnv(env: Env): EnvInstance | null {
-  const kind = value(env, 'SANDBOX_PROVIDER');
-  if (!kind) return null;
-  const found = findAdapter('sandbox', kind);
+  const name = value(env, 'SANDBOX_PROVIDER');
+  if (!name) return null;
+  const found = findAdapter('sandbox', name);
   if (!found) {
-    logger.warn(`[providers] SANDBOX_PROVIDER=${kind} is not available; ignored`);
+    logger.warn(`[providers] SANDBOX_PROVIDER=${name} is not available; ignored`);
     return null;
   }
-  return {
-    id: 'env-sandbox',
-    capability: 'sandbox',
-    kind: found.adapter.kind,
-    preset: null,
-    name: found.adapter.label,
-    config: compact({
+  const { adapter, preset } = found;
+  let config: Record<string, unknown>;
+  if (adapter.kind === 'e2b') {
+    const timeout = value(env, 'SANDBOX_E2B_TIMEOUT_MINUTES');
+    config = {
+      ...compact({
+        domain: value(env, 'SANDBOX_E2B_DOMAIN'),
+        template: value(env, 'SANDBOX_E2B_TEMPLATE'),
+        namespace: value(env, 'SANDBOX_E2B_NAMESPACE'),
+      }),
+      ...(timeout ? { timeoutMinutes: Number(timeout) } : {}),
+    };
+    if (!config.template) {
+      logger.warn(
+        `[providers] SANDBOX_PROVIDER=${name} needs SANDBOX_E2B_TEMPLATE (scripts/e2b-template.mts builds it); ignored`,
+      );
+      return null;
+    }
+  } else {
+    config = compact({
       image: value(env, 'SANDBOX_IMAGE'),
       runtime: value(env, 'SANDBOX_DOCKER_RUNTIME'),
       network: value(env, 'SANDBOX_NETWORK'),
       memory: value(env, 'SANDBOX_MEMORY'),
       cpus: value(env, 'SANDBOX_CPUS'),
-    }),
+    });
+  }
+  return {
+    id: 'env-sandbox',
+    capability: 'sandbox',
+    kind: adapter.kind,
+    preset: preset?.id ?? null,
+    name: preset?.label ?? adapter.label,
+    config: { ...preset?.config, ...config },
     secrets: compact({ apiKey: value(env, 'SANDBOX_API_KEY') }),
   };
 }

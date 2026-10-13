@@ -86,9 +86,11 @@ STT_PROVIDER=openai-compatible   STT_API_KEY=…  STT_BASE_URL=…  STT_MODEL=wh
 TTS_PROVIDER=minimax             TTS_API_KEY=…  TTS_VOICE=female-shaonv
 IMAGE_PROVIDER=openai            IMAGE_API_KEY=…  IMAGE_MODEL=gpt-image-1
 VIDEO_PROVIDER=kling             VIDEO_API_KEY=…  VIDEO_SECRET=…
-SANDBOX_PROVIDER=docker          # docker（已实现）| e2b（待移植）
+SANDBOX_PROVIDER=docker          # docker | e2b | ppio（e2b 的预设）
 SANDBOX_IMAGE=greenhouse/computer:latest  SANDBOX_DOCKER_RUNTIME=runsc   # runsc = gVisor，生产必须；runc 只用于开发
 SANDBOX_NETWORK=bridge  SANDBOX_MEMORY=2g  SANDBOX_CPUS=2
+SANDBOX_API_KEY=e2b_…  SANDBOX_E2B_TEMPLATE=gh-computer-…   # e2b：模板名由 scripts/e2b-template.mts 构建后给出
+SANDBOX_E2B_DOMAIN=  SANDBOX_E2B_NAMESPACE=greenhouse  SANDBOX_E2B_TIMEOUT_MINUTES=60   # domain 留空 = 预设的
 SEARCH_PROVIDER=tavily,brave     # 多个用逗号分隔，就是回退顺序
 TAVILY_API_KEY=…  BRAVE_API_KEY=…
 STORAGE_PROVIDER=s3              # local | s3
@@ -163,7 +165,7 @@ interface SttClient     { transcribe(i: { audio: Blob; mimeType: string; languag
 interface TtsClient     { synthesize(i: { text: string; voice?: string; format?: AudioFormat; speed?: number }): Promise<AudioResult>; voices?(): Promise<Voice[]> }
 interface ImageClient   { generate(i: { prompt: string; size?: string; n?: number; references?: FileRef[]; mask?: FileRef }): Promise<MediaResult> }
 interface VideoClient   { submit(i: { prompt: string; seconds?: number; aspect?: string; image?: FileRef }): Promise<{ jobId: string }>; poll(jobId: string): Promise<VideoJob> }
-interface SandboxClient { create(s: SandboxSpec): Promise<SandboxHandle>; get(id: string): Promise<SandboxHandle | null> }   // 由 v1 的 ComputerHost 泛化
+interface SandboxClient { ensure(s: SandboxSpec); status(name); exec(name, i); stream(name, i); screen(name); devtools(name); stop(name); restart(name); remove(name, { keepHome }) }   // 由 v1 的 ComputerHost 泛化
 interface SearchClient  { search(q: string, o?: SearchOptions): Promise<SearchResult[]>; fetch?(url: string): Promise<PageContent> }
 interface StorageClient { put(key: string, body: Body, o?: PutOptions): Promise<void>; get(key: string): Promise<ReadableStream>; head(key: string): Promise<ObjectInfo | null>; delete(key: string): Promise<void>; presign?(key: string, o: PresignOptions): Promise<string> }
 ```
@@ -237,7 +239,20 @@ v2.0 表示首发；后续 表示接口已经留好，按需求再加。
 | 适配器 | v2.0 | 后续 |
 | --- | --- | --- |
 | `docker` | 本机 Docker + gVisor（`runsc`） | — |
-| `e2b` | E2B；E2B 协议兼容服务（PPIO 等，填写 domain） | Daytona、Modal、Kubernetes |
+| `e2b` | E2B；PPIO（预设）；其他 E2B 协议兼容服务填写 domain，须支持暂停与恢复 | Daytona、Modal、Kubernetes |
+
+E2B 与兼容服务（`packages/providers/src/sandbox/e2b/`，从 v1 移植）：
+
+- 每台电脑是服务商的一台微虚拟机，从 apps/bot-computer 构建的模板启动。`scripts/e2b-template.mts` 在服务商处构建模板并给出名字；名字随内容变化，镜像改了就重新构建、改配置。CPU 与内存在构建模板时决定，创建接口没有按台的规格。
+- 电脑按名字找：沙箱元数据里的命名空间 `gh_ns` 与名字 `gh_name`。同一个账号下的另一个部署（例如恢复出来的副本）要换命名空间。
+- 停止就是暂停：内存与磁盘都保留，下次启动约一秒恢复，家目录和所有进程（后台任务也在内）接着跑。没有单独的卷，暂停的沙箱就是家目录；重置（`keepHome: false`）销毁沙箱，家目录一起删除。E2B 与 PPIO 都会一直保留暂停的沙箱，直到删除。
+- 超时兜底：API 不再触达后 `timeoutMinutes`（默认 60）分钟，运行中的电脑自动暂停，从不销毁；服务商声明超时会销毁的，电脑不启用。使用时每 5 分钟续期一次，开着的画面和终端也续期。它要大于闲置分钟数。
+- 重启在原地进行：结束 agent 与 browser 两个账号的全部进程，清掉它们留在临时目录里的文件，再启动桌面；家目录保留。
+- 端口全部私有：创建时关闭公开访问，服务商的边缘只放行带这台沙箱流量 token 的请求；没有给 token 的服务商不启用。两个桥（gh-bridge）再各自校验本账号的密钥（API Key 对沙箱与账号的 HMAC）：browser 账号的桥管画面与 DevTools，agent 账号的桥管命令、终端与文件。VNC 与 DevTools 仍是 browser 账号 0600 的 Unix socket，只有它的桥能打开。
+- envd（服务商在沙箱里的代理）只做 root 的事：出口规则、启动脚本、重启、以 root 执行的命令。命令的时限在电脑里执行（`timeout`），API 另有兜底。
+- 出口：每次启动以 root 加载 nftables 规则，只管两个成员账号：不能访问链路本地网段（含元数据服务 169.254.169.254）、私网与保留网段、envd 与两个桥的端口；外网和 DNS 照常。新沙箱另由服务商在虚拟机外拒绝私网。规则加载后从两个账号各探测一次，有一个目标能连通，这台电脑就不启用。
+- API Key 只发往 `https://api.<domain>`；envd 与两个桥在 `<端口>-<沙箱>.<domain>`，各用自己的 token，固定 fetch 只放行这个域名下的地址。
+- 模板升级不搬家：已有的电脑继续用创建时的模板，新电脑用配置的模板。
 
 ### 搜索 `search`
 
@@ -340,7 +355,8 @@ packages/providers/          纯适配层：接口、注册表、通用适配器
                              只依赖 zod、AI SDK、fetch；不访问数据库，不定义 HTTP 路由
 apps/api/src/providers/      解析与管理：环境变量引导、数据库读写与加密、策略、回退、计量、版本广播
                              路由 /api/admin/providers*、/api/me/providers*
-apps/api/src/sandbox/        沙箱适配器（docker、e2b）：依赖 Docker CLI 与 E2B SDK，所以放在 API 里，实现 packages/providers 的接口
+packages/providers/src/sandbox/   沙箱适配器：docker（Docker CLI）、e2b（纯 HTTP 与 WebSocket，不用 E2B SDK）
+apps/api/src/providers/e2b-template.ts   用 E2B SDK 构建电脑模板，只给 scripts/e2b-template.mts 和实测用
 ```
 
 验收要求：

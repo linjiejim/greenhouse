@@ -86,6 +86,7 @@ The one engine for conversations and runs. Read with the root AGENTS.md and docs
 
 ## Computers
 - One computer per Agent and member from the sandbox provider (modules/computers): the owner's, or a member's own copy of a public Agent. The Docker adapter always runs hardened (read-only root, no capabilities, bounded resources, no published port) with the home on a named volume; production uses gVisor (`runsc`).
+- The E2B adapter (E2B and compatible hosts) stops a computer by pausing it: memory, processes and the home carry on at the next start, and removing it deletes the home. Its ports stay private (the provider's traffic token, then each account's bridge secret), envd does root work only, and every start loads the members' egress rules and probes them from both accounts; a computer that fails the probe is not used.
 - Shell commands run as `agent` with the deadline enforced inside the computer (`timeout`), at most 120 s. Longer work is a background process (`gh-jobs` in the image) in its own session: it outlives the turn, the API and a member's stop.
 - `run_background` ends the turn and registers a watch. The watcher (every minute, any API process) asks running computers only, claims each ended or lost process once, and wakes the Agent through the inbox. A restart loses running processes but keeps the home, so long jobs should checkpoint to files.
 - Computers idle for 30 minutes stop, unless a process is running (or the count cannot be read) or a take-over or sign-in card waits.

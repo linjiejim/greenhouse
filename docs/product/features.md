@@ -313,7 +313,7 @@ v2 决定
 | PRV-07 | 语音输出 TTS | 新增 | 进行中 | — | #70：OpenAI 兼容（OpenAI、硅基流动）、ElevenLabs、MiniMax（mp3 / wav） |
 | PRV-08 | 图像生成与编辑 | 改造 | 进行中 | — | #70：OpenAI Images（base64）；测试连接会生成一张图；v1 写死 gpt-image |
 | PRV-09 | 视频生成（异步任务） | 新增 | 规划 | — | 推迟到第一个视频工具（M3.2） |
-| PRV-10 | 沙箱：Docker（gVisor）、E2B 与兼容服务 | 改造 | 进行中 | — | #70：Docker 适配器（默认 gVisor、加固参数、家目录用命名卷）；E2B 与兼容服务待移植；基于 `ComputerHost` 泛化 |
+| PRV-10 | 沙箱：Docker（gVisor）、E2B 与兼容服务 | 改造 | 进行中 | — | #70：Docker 适配器（默认 gVisor、加固参数、家目录用命名卷）；E2B 适配器（E2B、PPIO 预设，其他兼容服务填 domain；停止即暂停，暂停的沙箱就是家目录；端口私有，两个按账号的桥；出口规则每次启动加载并探测；纯 HTTP，模板由 `scripts/e2b-template.mts` 构建），在真实服务商上的实测待跑（`E2B_API_KEY`）；基于 `ComputerHost` 泛化 |
 | PRV-11 | 搜索与网页读取：Tavily、Brave、Exa、Jina、Firecrawl、SearXNG、博查 | 改造 | 进行中 | — | #70：Tavily、Brave、Exa、Jina（含读取）、Firecrawl（含读取）、SearXNG、博查 |
 | PRV-12 | 存储：本地、S3 兼容（AWS、R2、MinIO、COS、OSS、OBS） | 改造 | 进行中 | — | #70：本地磁盘与 S3 SigV4（含预签名）；v1 主存储写死为腾讯 COS |
 | PRV-13 | 健康检查、测试连接、按服务记账 | 新增 | 进行中 | W | #70：测试连接、`/health`、每次调用一条 `usage_events`；模型目录写了单价（美元 / 百万 token）时记下估算费用 |

@@ -24,3 +24,4 @@ export {
   volumeOf as dockerVolumeOf,
   type DockerConfig,
 } from './sandbox/docker.js';
+export { e2bEndpoints, e2bTemplateState, type TemplateState as E2bTemplateState } from './sandbox/e2b/adapter.js';

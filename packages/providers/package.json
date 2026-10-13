@@ -21,9 +21,11 @@
     "@ai-sdk/provider": "^4.0.25",
     "@greenhouse/utils": "workspace:*",
     "ai": "^7.0.133",
+    "ws": "^8.21.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@types/ws": "^8.18.1",
     "typescript": "^5.7.0"
   }
 }
