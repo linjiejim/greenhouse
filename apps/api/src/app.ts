@@ -17,6 +17,7 @@ import { bootstrapRoutes, brandingRoutes } from './modules/workspace/routes.js';
 import { createWorkspaceService, type WorkspaceService } from './modules/workspace/service.js';
 import { createEngine, type Engine } from './engine/engine.js';
 import { askUserTool } from './engine/tools/ask-user.js';
+import { readAttachmentTool } from './engine/tools/attachments.js';
 import { conversationTool } from './engine/tools/conversation.js';
 import { memoryTool } from './engine/tools/memory.js';
 import type { ToolDef } from './engine/tools/define.js';
@@ -27,6 +28,8 @@ import { webTools } from './engine/tools/web.js';
 import { agentRoutes } from './modules/agents/routes.js';
 import { createAgentsService, type AgentsService } from './modules/agents/service.js';
 import { conversationRoutes } from './modules/conversations/routes.js';
+import { fileRoutes } from './modules/files/routes.js';
+import { createFilesService, type FilesService } from './modules/files/service.js';
 import { notificationRoutes } from './modules/notifications/routes.js';
 import { createNotificationsService, type NotificationsService } from './modules/notifications/service.js';
 import { requestRoutes } from './modules/requests/routes.js';
@@ -49,6 +52,7 @@ export interface Services {
   providers: ProvidersService;
   agents: AgentsService;
   conversations: ConversationsService;
+  files: FilesService;
   notifications: NotificationsService;
   requests: RequestsService;
   runs: RunsService;
@@ -74,6 +78,7 @@ export function createServices(config: AppConfig, options: ServiceOptions = {}):
   const agents = createAgentsService({ providers });
   const conversations = createConversationsService({ agents, providers });
   const hub = createHub();
+  const files = createFilesService({ providers });
   const notifications = createNotificationsService({ hub });
   const schedules = createSchedulesService({ agents, background: () => engine.background });
   const requests = createRequestsService({ hub, notifications });
@@ -82,6 +87,7 @@ export function createServices(config: AppConfig, options: ServiceOptions = {}):
     conversations,
     providers,
     requests,
+    files,
     notifications,
     hub,
     tools: ({ background }) => [
@@ -89,6 +95,7 @@ export function createServices(config: AppConfig, options: ServiceOptions = {}):
       askUserTool(),
       selfTool(agents),
       conversationTool(),
+      readAttachmentTool(files),
       runStartTool(background),
       ...scheduleTools(schedules),
       ...webTools(providers, options.fetch ? { fetch: options.fetch } : {}),
@@ -106,6 +113,7 @@ export function createServices(config: AppConfig, options: ServiceOptions = {}):
     providers,
     agents,
     conversations,
+    files,
     notifications,
     requests,
     runs,
@@ -155,6 +163,7 @@ export function createApp(services: Services) {
   signedIn.route('/conversations', conversationRoutes(services.conversations, services.engine));
   signedIn.route('/requests', requestRoutes(services.requests, services.engine));
   signedIn.route('/runs', runRoutes(services.runs));
+  signedIn.route('/files', fileRoutes(services.files, services.conversations));
   signedIn.route('/schedules', scheduleRoutes(services.schedules));
   signedIn.route('/notifications', notificationRoutes(services.notifications));
   signedIn.use('/admin/*', requireAdmin);

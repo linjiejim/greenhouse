@@ -530,6 +530,21 @@ export function createProvidersService(deps: { config: AppConfig; fetch?: typeof
       }));
     },
 
+    /**
+     * The client of one instance, whatever the current order: a stored file is read back from the
+     * storage instance that holds it. Null when that instance is gone or cannot serve.
+     */
+    async byId<C extends Capability>(capability: C, id: string, ctx: UsageContext): Promise<Resolved<C> | null> {
+      const current = await viewOf(capability);
+      const instance = [...current.all, ...current.personal].find((candidate) => candidate.id === id);
+      if (!instance || !usable(instance)) return null;
+      if (instance.source === 'personal' && instance.ownerId !== ctx.memberId) return null;
+      return {
+        client: client<C>(instance, ctx),
+        instance: { id: instance.id, kind: instance.kind, name: instance.name, source: instance.source },
+      };
+    },
+
     /** Whether a capability can serve at all, for hiding the tools and UI that need it. */
     async available(capability: Capability, ctx: UsageContext = {}): Promise<boolean> {
       return chainFor(await viewOf(capability), ctx).length > 0;

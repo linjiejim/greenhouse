@@ -67,7 +67,7 @@ v2 和 v1 不兼容，不加 `/api/v2` 前缀，也不保留旧路由。`GET /ap
 
 | 方法与路径 | 用途 |
 | --- | --- |
-| `POST /api/files` · `GET` / `DELETE /api/files/:id` | 统一文件服务：multipart 或预签名上传，带用途与归属；替代 v1 的 6 条上传路径 |
+| `POST /api/files` · `GET` / `DELETE /api/files/:id` · `GET …/:id/content` | 统一文件服务：multipart 上传（预签名直传随 M2），带用途与归属；网页与 SVG 一律下载；替代 v1 的 6 条上传路径 |
 | `/api/knowledge/docs[/:id]` 及 `/versions` · `/comments` · `/share` · `/backlinks` · `/presence` · `/export` | 文档 |
 | `/api/knowledge/folders[/:id]` · `GET /api/knowledge/search` | 文件夹（文档与文件同树）、检索 |
 | `/api/tables/bases[/:id]/…` | 表格：数据表、字段、视图、记录、表单、自动化、评论、回收站、审计（沿用 #64 的结构） |

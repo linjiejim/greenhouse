@@ -17,6 +17,7 @@ import {
   providerOptionsFor,
   streamLoop,
   withFinalAnswer,
+  type EngineContentPart,
   type LoopInput,
   type ToolCallRecord,
 } from '@greenhouse/agent-core';
@@ -28,7 +29,6 @@ import {
   runSteps,
   conversationMembers,
   conversations,
-  files,
   getDb,
   members,
   messageReceipts,
@@ -36,7 +36,6 @@ import {
   newId,
   runs,
   transaction,
-  type Conversation,
   type Db,
   type NeedsYouRequest,
   type Message as MessageRow,
@@ -51,6 +50,7 @@ import { ApiError, conflict, forbidden, invalidInput } from '../http/errors.js';
 import type { ProvidersService } from '../providers/service.js';
 import type { Hub } from '../realtime/hub.js';
 import type { AgentsService } from '../modules/agents/service.js';
+import type { FilesService } from '../modules/files/service.js';
 import type { NotificationsService } from '../modules/notifications/service.js';
 import type { RequestsService } from '../modules/requests/service.js';
 import { createBackground, type Background } from './background.js';
@@ -96,6 +96,7 @@ export interface EngineDeps {
   conversations: ConversationsService;
   providers: ProvidersService;
   requests: RequestsService;
+  files: FilesService;
   hub: Hub;
   notifications: NotificationsService;
   /** Built on first use, with the engine's background runs at hand. */
@@ -104,6 +105,8 @@ export interface EngineDeps {
   languageModel?: ProvidersService['languageModel'];
 }
 
+const MAX_INLINE_IMAGES = 4;
+const MAX_INLINE_IMAGE_BYTES = 5 * 1024 * 1024;
 const LEASE_MS = 60_000;
 const HEARTBEAT_MS = 10_000;
 const FLUSH_MS = 1_000;
@@ -443,7 +446,13 @@ export function createEngine(deps: EngineDeps) {
       const loopInput: LoopInput = {
         model: { model: resolved.model, modelId: resolved.modelId, deepseek: resolved.deepseek },
         instructions: system,
-        messages: [...projection.messages, { role: 'user', content: tail }],
+        messages: [
+          ...projection.messages,
+          {
+            role: 'user',
+            content: resolved.vision ? [{ type: 'text', text: tail }, ...(await imagesOf(run, input))] : tail,
+          },
+        ],
         tools: turnTools.tools,
         abortSignal: controller.signal,
         stopWhen: [() => turnTools.waiting()],
@@ -605,16 +614,27 @@ export function createEngine(deps: EngineDeps) {
       });
   }
 
-  async function checkAttachments(memberId: string, conversationId: string, ids: string[]) {
-    if (!ids.length) return;
+  /** Images sent with the messages this turn answers, for a model that can see them. */
+  async function imagesOf(run: Run, input: TurnInput): Promise<EngineContentPart[]> {
+    if (!input.message_ids.length) return [];
     const rows = await getDb()
-      .select({ id: files.id, ownerId: files.ownerId, conversationId: files.conversationId, status: files.status })
-      .from(files)
-      .where(inArray(files.id, ids));
-    const ok = rows.filter(
-      (row) => row.status === 'active' && (row.ownerId === memberId || row.conversationId === conversationId),
-    );
-    if (ok.length !== new Set(ids).size) throw invalidInput('Some attachments cannot be used here.');
+      .select({ attachments: messages.attachments })
+      .from(messages)
+      .where(inArray(messages.id, input.message_ids));
+    const ids = rows.flatMap((row) => row.attachments);
+    const parts: EngineContentPart[] = [];
+    for (const id of ids) {
+      if (parts.length >= MAX_INLINE_IMAGES) break;
+      try {
+        const file = await deps.files.get(run.ownerId, id);
+        if (!file.contentType.startsWith('image/') || file.sizeBytes > MAX_INLINE_IMAGE_BYTES) continue;
+        const { bytes } = await deps.files.bytes(run.ownerId, id);
+        parts.push({ type: 'image', image: bytes, mediaType: file.contentType });
+      } catch (error) {
+        logger.warn('[engine] could not inline an image', { file: id, error: toErrorMessage(error) });
+      }
+    }
+    return parts;
   }
 
   /** A result as a short line the Agent can read. */
@@ -793,7 +813,7 @@ export function createEngine(deps: EngineDeps) {
       const { conversation } = await deps.conversations.access(memberId, conversationId);
       if (conversation.readOnly) throw conflict('read_only', 'This conversation is read only.');
       if (!input.content.trim() && !input.attachments.length) throw invalidInput('Write a message or attach a file.');
-      await checkAttachments(memberId, conversationId, input.attachments);
+      await deps.files.attach(memberId, conversationId, input.attachments);
 
       const present = await deps.conversations.presentAgentIds(conversation);
       const owned = present.length
