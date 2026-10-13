@@ -40,7 +40,8 @@ v2 和 v1 不兼容，不加 `/api/v2` 前缀，也不保留旧路由。`GET /ap
 | `/api/me/grants[/:id]` · `POST …/:id/approve` | 外部访问：我授权过的客户端（不含个人令牌）；撤销即作废它的全部令牌；管理员绑定给我的机器客户端要我批准后才生效 |
 | `/api/me/tokens[/:id]` | 个人访问令牌：名称、scope、有效期（1–366 天），令牌只在创建时显示一次；只能调用 `/api/mcp` |
 | `GET` / `POST /api/oauth/consent` | OAuth 同意页 `#/oauth/consent?request=`：`GET ?request=` 看是谁要什么（请求归第一个打开它的成员）；`POST { request, decision, scopes? }` 批准（可少勾）或拒绝，返回 `{ redirect_to }` 交给浏览器 |
-| `/api/me/notification-settings` · `/api/me/push-devices` | 通知送达设置、推送设备 |
+| `GET` / `PUT /api/me/notification-settings` | 通知送达设置：`channels`（我此刻能用的渠道：管理员已配置，且对我已连接：邮箱地址、绑定的飞书 / 企微账号、装了应用的手机）、`categories`（`needs_you` / `replies` / `runs` / `other` 各自用哪些渠道，只含能用的渠道；站内总有）、`previews`（默认关）；`PUT` 只改给出的字段 |
+| `GET` / `PUT /api/me/push-devices` · `PATCH` / `DELETE …/:id` · `POST …/:id/test` | 推送设备，沿用 v1 的请求与应答形状（App 在 M4 只改路径）：`PUT { token, platform: ios \| android, project_id, client_ref?, prefs? }` 按 token 登记或刷新，返回 `{ device, enabled }`，本部署不推送时 `{ device: null, enabled: false }` 且什么都不存；`GET` 返回 `{ devices, enabled }`；`PATCH { prefs }` 改这台手机的开关（只能收窄我的设置）；`DELETE` 只停用不删除，返回 `{ ok: true }`；`test` 立刻发一条（每台 10 秒一次，错误码 `push_disabled`、`device_disabled`、`too_soon`、`device_not_registered`、`send_failed`）；token 从不返回 |
 
 ### 2.2 Agents 与对话
 
@@ -88,7 +89,7 @@ v2 和 v1 不兼容，不加 `/api/v2` 前缀，也不保留旧路由。`GET /ap
 | `/api/admin/members[/:id]` | 邀请、角色、停用、重置链接、模块权限、预算 |
 | `/api/admin/groups[/:id]` | 分组 |
 | `/api/admin/providers[/:id][/test\|/copy]` · `PUT /api/admin/provider-bindings/:capability` | 服务：实例、测试连接、复制环境变量实例；能力的顺序、默认项与策略 |
-| `/api/admin/channels` | 渠道：SMTP、飞书、企微、推送 |
+| `GET /api/admin/channels` · `PUT …/:channel` · `POST …/:channel/test` | 渠道 `email`（SMTP）、`feishu`、`wecom`、`push`（Expo）：`GET` 列出每个渠道能否送达（`configured`）、来源（`env` / `workspace`）、设置、哪些机密已填、最近一次成功与失败；`PUT` 保存一个渠道的设置（email：`host`、`port`、`security` tls / starttls / none、`username`、`from_address`、`from_name`、`password`；feishu：`base_url`、`app_id`、`app_secret`；wecom：`base_url`、`corp_id`、`agent_id`、`secret`；push：`base_url`、`access_token`；都可带 `enabled`），机密只写不读、省略即保留、`''` 清空，换主机或地址同时清空机密；第一次保存或改环境变量来的设置时生成工作区实例，排在同类之首；`test` 给管理员自己发一条（邮箱、绑定的账号、手机），没有可发的对象时只验证凭据，返回 `{ ok, delivered, latency_ms, error }` |
 | `GET /api/admin/computers` · `PUT …/capacity` · `POST …/:id/stop` · `DELETE …/:id` | 电脑：所有成员的电脑与状态（不含画面和文件）；容量（空闲多少分钟后关机、最多同时开机，0 为不限，超出时开机返回 `computers_full`）；停止；重置（连主目录删除，下次使用重开） |
 | `GET /api/admin/usage?period=&group_by=member\|agent\|provider\|capability` | 工作区用量 |
 | `GET` / `PUT /api/admin/budgets` · `DELETE …/:id` | 预算：组织、服务实例、成员三级，token 或美元，按月；`PUT` 建立或替换一个范围与单位的预算；列表带本月已用 |

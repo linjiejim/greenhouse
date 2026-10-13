@@ -51,6 +51,8 @@ Greenhouse is an open-source, self-hosted platform where a team works with its o
 - Check packages/utils/src/ before writing a helper. Server code logs through @greenhouse/utils/logger, never console.
 - Import other packages by name. Relative imports end in .js in Node-run code and omit it in Vite-bundled code.
 - Sync docs in the same change: README.md for humans, the nearest AGENTS.md for rules, features.md for status, data-model.md for the schema.
+- Background work goes through the one `jobs` queue (apps/api/src/jobs.ts): enqueue in the transaction that causes it, claim with a lease, settle only as the lease holder.
+- Notifications leave the server only as the delivery jobs `notifications.publish` queues; modules/channels sends them (email, Feishu, WeCom, push) through providers. Without the member's previews they name no subject, and never carry the body of a needs-you card or a reply.
 
 ## Auth and permissions
 - Roles are admin and member. Public endpoints are /health, /api/bootstrap and /api/auth/*; everything else under /api requires a member, and /api/admin/* an admin.

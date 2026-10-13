@@ -237,7 +237,6 @@ export function createBackground(deps: {
         targetId: conversationId,
         runId: run.id,
         agentId: run.agentId,
-        payload: { category: 'done' },
         dedupeKey: `run:${run.id}:${run.attempt}`,
       });
     }

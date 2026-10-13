@@ -79,7 +79,7 @@ export function createRequestsService(deps: { hub: Hub; notifications: Notificat
         requestId: row!.id,
         runId: input.runId ?? undefined,
         agentId: input.agentId ?? undefined,
-        payload: { category: 'needs_you', kind: input.kind },
+        payload: { kind: input.kind },
         dedupeKey: `request:${row!.id}`,
       });
       announce(row!);

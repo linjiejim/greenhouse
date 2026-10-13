@@ -31,9 +31,14 @@
 
 | 能力 | ID | 消费方 | 未配置时 |
 | --- | --- | --- | --- |
-| 邮件发送 | `mail` | 邀请、重置密码、通知送达（SMTP） | 邀请改为复制链接；邮件渠道不出现 |
-| 即时通讯 | `im` | 飞书、企微：扫码登录、机器人、通知送达 | 对应登录与渠道不出现 |
-| 推送 | `push` | 手机推送（Expo、APNs、FCM） | 不推送，只有站内通知 |
+| 邮件发送 | `mail` | 通知送达（SMTP）；以后也发邀请和重置密码 | 邀请改为复制链接；邮件渠道不出现 |
+| 即时通讯 | `im` | 飞书、企微：通知送达；以后也做扫码登录、机器人 | 对应登录与渠道不出现 |
+| 推送 | `push` | 手机推送（Expo 推送服务，它替官方 App 持有 APNs / FCM 凭据） | 不推送，只有站内通知 |
+
+渠道和 8 类能力有三处不同：
+- 一个渠道由同类实例（`smtp`、`feishu`、`wecom`、`expo`）在工作区顺序里的第一个提供，不回退到第二个：渠道关了就是关了。飞书和企微同属 `im`，按类型各取各的。
+- 「管理 → 服务 → 渠道」（`/api/admin/channels`）按渠道编辑：第一次保存生成工作区实例，环境变量来的设置先复制成可编辑的一份，再排到同类之首。
+- 渠道发送不计量，也不受预算限制：一封「需要你」的邮件不能因为模型预算用完而发不出去。
 
 以后可能加的能力：`embedding`（知识库语义检索；v1 明确用全文检索，暂不需要）。
 
@@ -89,6 +94,13 @@ TAVILY_API_KEY=…  BRAVE_API_KEY=…
 STORAGE_PROVIDER=s3              # local | s3
 STORAGE_ENDPOINT=https://cos.ap-shanghai.myqcloud.com  STORAGE_BUCKET=…  STORAGE_REGION=ap-shanghai
 STORAGE_ACCESS_KEY_ID=…  STORAGE_SECRET_ACCESS_KEY=…  STORAGE_PREFIX=greenhouse/  STORAGE_FORCE_PATH_STYLE=false
+
+# 渠道（通知送达）；设置不全的渠道启动时告警并忽略
+SMTP_HOST=smtp.example.com       SMTP_SECURITY=starttls   # tls | starttls（默认）| none；SMTP_PORT 默认 465 / 587 / 25
+SMTP_USER=…  SMTP_PASSWORD=…  SMTP_FROM=greenhouse@example.com  SMTP_FROM_NAME=Greenhouse
+FEISHU_APP_ID=cli_…  FEISHU_APP_SECRET=…  FEISHU_BASE_URL=   # 留空 = open.feishu.cn；Lark 填 https://open.larksuite.com
+WECOM_CORP_ID=ww…  WECOM_AGENT_ID=1000002  WECOM_APP_SECRET=…  WECOM_BASE_URL=   # 留空 = qyapi.weixin.qq.com
+PUSH_PROVIDER=expo               EXPO_ACCESS_TOKEN=        # 只有 Expo 项目开了 enhanced push security 才要
 ```
 
 ### 4.3 环境变量：文件形式
@@ -244,6 +256,14 @@ v1 的 Jina Reader 写死、不能关闭；v2 把它变成可选项。
 | `s3` | AWS S3、Cloudflare R2、MinIO、腾讯 COS、阿里 OSS、华为 OBS、七牛、Backblaze B2 | Azure Blob、GCS 原生 |
 
 v2 的存储层统一为一个接口：v1 的 COS SDK、`s3-lite`、技能存储和电脑备份四套实现合并。表结构里的厂商字段（如 `cos_key`）改为中性的 `storage_key`。
+
+### 渠道 `mail` / `im` / `push`
+
+| 能力 | 适配器 | v2.0 | 后续 |
+| --- | --- | --- | --- |
+| `mail` | `smtp` | 任意 SMTP 服务器（tls / starttls / none）；用 nodemailer，所以写在 API 里（`apps/api/src/modules/channels/smtp.ts`），像扩展一样注册；地址是 `smtp://主机:端口`，换地址清空密码 | 邮件服务商的 HTTP API |
+| `im` | `feishu`、`wecom` | 飞书（含 Lark 预设）与企微自建应用，纯文本私信；令牌按应用缓存 | 飞书消息卡片 |
+| `push` | `expo` | Expo 推送服务：按项目分组、每次最多 100 条，15 分钟后查回执 | 直连 APNs / FCM |
 
 ## 7. 界面
 

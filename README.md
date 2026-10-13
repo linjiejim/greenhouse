@@ -154,8 +154,10 @@ same script doubles as an end-to-end smoke tour (see [Development](#development)
   an Agent, "save as skill" proposals, and official packs published from `skillhub/`.
 - **Email** *(optional)* — personal IMAP/SMTP mailboxes and a shared team mailbox; search,
   read, draft and send with a server-side draft confirmation.
-- **Notifications** — an in-app notification center with durable delivery to email, WeCom and
-  Feishu.
+- **Notifications** — an in-app notification center with durable, retried delivery to email
+  (SMTP), Feishu, WeCom and phone pushes: each member picks channels per category (needs you,
+  replies, runs, other), a burst from one conversation makes one message, and nothing leaves
+  with its content unless the member turns previews on.
 - **Integrations** *(optional)* — WeCom and Feishu account binding, direct-message push, Feishu
   sign-in, and a Feishu bot that runs the agent from a chat.
 - **MCP server + agent tool-proxy** — OAuth 2.1 (PKCE for people, client credentials for
@@ -508,18 +510,21 @@ provider), external web search, email mailboxes, WeCom / Feishu, missions, Agent
 (`BOTS_COMPUTER_*`), usage budgets, and object storage. Uploads default to local disk (`data/uploads`); skill
 packages are files too and live wherever the storage provider keeps files.
 
-**Mobile push**: the iOS app's notifications (an Agent needs you, a background or scheduled task
-finished, an Agent replied after you left) are sent through the Expo Push Service at `exp.host`.
-The server stores only each phone's Expo push token (no Apple key — the official app's
+**Notification channels**: system email (`SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURITY`,
+`SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM`), Feishu (`FEISHU_APP_ID`, `FEISHU_APP_SECRET`), WeCom
+(`WECOM_CORP_ID`, `WECOM_AGENT_ID`, `WECOM_APP_SECRET`) and phone pushes (`PUSH_PROVIDER=expo`)
+are set from env or in Administration → Services → Channels, which shows each channel's last
+success and last error and sends the admin a test. Phone notifications (an Agent needs you, a
+background or scheduled run finished, a reply) go through the Expo Push Service at `exp.host`:
+the server stores only each phone's Expo push token (no Apple key — the official app's
 credentials live with Expo), and by default a notification says only who and what kind of thing
-("Sprouty · Needs your approval"); members can turn on previews per phone in the app's Settings →
-Notifications. It is on by default and inert until a member allows notifications on a phone; set
-`MOBILE_PUSH_ENABLED=false` to keep every request off `exp.host` (the app then hides its push
-settings). The server must be able to reach `https://exp.host` (honouring `HTTPS_PROXY`); the
-Settings page's "Send a test" checks that from the phone. With **Live Activities** switched on in
-the same page (experimental, iOS 17+, needs notifications on that station), a Bot's background
-task also counts up on the Lock Screen and in the Dynamic Island; the "task finished" push then
-wakes the app so it can clear the activity, and nothing else leaves the server for it.
+("Greeny · Needs your approval"); members turn on previews in Settings → Notifications. Pushes
+are off until `PUSH_PROVIDER=expo` (or the admin) turns them on; the server must then reach
+`https://exp.host`, and a phone's "Send a test" checks that. With **Live Activities** switched on
+in the app's notification settings (experimental, iOS 17+, needs notifications on that station),
+an Agent's background run also counts up on the Lock Screen and in the Dynamic Island; the "run
+finished" push then wakes the app so it can clear the activity, and nothing else leaves the
+server for it.
 
 **Admin-configurable at runtime**: the LLM / media / search credentials and the product name
 can also be set in **Administration → Runtime Config** (and branding in **Branding Studio**) —

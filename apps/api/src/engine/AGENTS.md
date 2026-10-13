@@ -37,7 +37,7 @@ The one engine for conversations and runs. Read with the root AGENTS.md and docs
 - A decision is a compare-and-set from pending (requests service). The engine then runs exactly the approved arguments with the asker's rights, or skips the step, writes one event line in the transcript, closes the waiting run, and wakes the Agent through the inbox with the outcome.
 - A tool that raises its own card (ask_user, self, request_takeover, vault) implements `decide`; return a null note to leave the Agent asleep.
 - Expired cards are swept: the step is skipped, the run closes, and the Agent is not woken.
-- Every card is a notification through `notifications.publish`, the one entry point for notifications.
+- Every card is a notification through `notifications.publish`, the one entry point for notifications; it also queues the card's email, Feishu, WeCom and push deliveries (modules/channels), which go out without what the card asks.
 
 ## Background runs
 - A background run starts only from a member's decision: an approved `run_start` proposal or a schedule they set up. The model can propose, never start.

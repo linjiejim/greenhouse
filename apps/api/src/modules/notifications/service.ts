@@ -1,13 +1,25 @@
 /**
  * In-app notifications: a pointer back to where something happened. Permanent and idempotent
- * (one per member and dedupe key); only the read state changes. Every source calls publish().
+ * (one per member and dedupe key); only the read state changes. Every source calls publish(),
+ * which also queues the delivery to the member's other channels in the same transaction.
  */
 
 import { and, count, desc, eq, inArray, isNull, lt, sql } from 'drizzle-orm';
 import type { Notification, Page } from '@greenhouse/contract';
-import { getDb, newId, notifications, requests, type NotificationKind, type NotificationRow } from '@greenhouse/db';
+import {
+  getDb,
+  newId,
+  notifications,
+  requests,
+  transaction,
+  type NotificationKind,
+  type NotificationRow,
+} from '@greenhouse/db';
+import { toErrorMessage } from '@greenhouse/utils/error';
+import { logger } from '@greenhouse/utils/logger';
 import { decodeCursor, toPage } from '../../http/pagination.js';
 import type { Hub } from '../../realtime/hub.js';
+import type { Deliveries } from '../channels/service.js';
 
 export interface PublishInput {
   memberId: string;
@@ -38,33 +50,49 @@ const toNotification = (row: NotificationRow): Notification => ({
   created_at: row.createdAt,
 });
 
-export function createNotificationsService(deps: { hub: Hub }) {
+export function createNotificationsService(deps: { hub: Hub; deliveries: Deliveries }) {
   return {
-    /** Records the notification once per dedupe key and tells the member's open screens. */
+    /**
+     * Records the notification once per dedupe key, with its deliveries to the member's other
+     * channels in the same transaction, and tells the member's open screens.
+     */
     async publish(input: PublishInput): Promise<Notification | null> {
-      const [row] = await getDb()
-        .insert(notifications)
-        .values({
-          id: newId('notification'),
-          memberId: input.memberId,
-          kind: input.kind,
-          title: input.title,
-          body: input.body ?? '',
-          targetType: input.targetType ?? null,
-          targetId: input.targetId ?? null,
-          requestId: input.requestId ?? null,
-          runId: input.runId ?? null,
-          agentId: input.agentId ?? null,
-          payload: input.payload ?? {},
-          dedupeKey: input.dedupeKey,
-        })
-        .onConflictDoNothing()
-        .returning();
+      const row = await transaction(async (db) => {
+        const [created] = await db
+          .insert(notifications)
+          .values({
+            id: newId('notification'),
+            memberId: input.memberId,
+            kind: input.kind,
+            title: input.title,
+            body: input.body ?? '',
+            targetType: input.targetType ?? null,
+            targetId: input.targetId ?? null,
+            requestId: input.requestId ?? null,
+            runId: input.runId ?? null,
+            agentId: input.agentId ?? null,
+            payload: input.payload ?? {},
+            dedupeKey: input.dedupeKey,
+          })
+          .onConflictDoNothing()
+          .returning();
+        // In a savepoint: a delivery that cannot be queued never costs the in-app notification.
+        if (created) {
+          await transaction(() => deps.deliveries.enqueue(created)).catch((error: unknown) =>
+            logger.warn('[notifications] could not queue the deliveries', {
+              notification: created.id,
+              error: toErrorMessage(error),
+            }),
+          );
+        }
+        return created ?? null;
+      });
       if (!row) return null;
       deps.hub.publish([input.memberId], {
         type: 'notification.created',
         data: { notification_id: row.id, kind: row.kind, title: row.title },
       });
+      deps.deliveries.wake();
       return toNotification(row);
     },
 
