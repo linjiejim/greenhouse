@@ -1,13 +1,13 @@
 /** Test support: a configured app and members with tokens, inside the per-test transaction. */
 
 import { getDb, members, newId, type MemberRole } from '@greenhouse/db';
-import { createApp, createServices, type Services } from './app.js';
+import { createApp, createServices, type ServiceOptions, type Services } from './app.js';
 import { hashPassword } from './auth/password.js';
 import { loadConfig } from './config/index.js';
 
 export const TEST_PASSWORD = 'correct horse battery';
 
-export function createTestServices(overrides: Record<string, string> = {}): Services {
+export function createTestServices(overrides: Record<string, string> = {}, options: ServiceOptions = {}): Services {
   return createServices(
     loadConfig({
       NODE_ENV: 'test',
@@ -17,11 +17,12 @@ export function createTestServices(overrides: Record<string, string> = {}): Serv
       PUBLIC_URL: 'http://greenhouse.test',
       ...overrides,
     }),
+    options,
   );
 }
 
-export function createTestApp(overrides?: Record<string, string>) {
-  const services = createTestServices(overrides);
+export function createTestApp(overrides?: Record<string, string>, options?: ServiceOptions) {
+  const services = createTestServices(overrides, options);
   const app = createApp(services);
 
   async function call(method: string, path: string, options: { token?: string; body?: unknown } = {}) {

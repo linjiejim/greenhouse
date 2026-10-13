@@ -1,0 +1,29 @@
+{
+  "name": "@greenhouse/providers",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "import": "./src/index.ts",
+      "types": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@ai-sdk/anthropic": "4.0.79",
+    "@ai-sdk/deepseek": "^3.0.62",
+    "@ai-sdk/google": "4.0.94",
+    "@ai-sdk/openai": "^4.0.89",
+    "@ai-sdk/openai-compatible": "3.0.68",
+    "@ai-sdk/provider": "^4.0.25",
+    "@greenhouse/utils": "workspace:*",
+    "ai": "^7.0.133",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0"
+  }
+}

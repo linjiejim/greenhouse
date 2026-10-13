@@ -40,6 +40,7 @@ export default defineConfig({
       '@greenhouse/utils/html': resolve(__dirname, 'packages/utils/src/html.ts'),
       '@greenhouse/agent-core': resolve(__dirname, 'packages/agent-core/src/index.ts'),
       '@greenhouse/contract': resolve(__dirname, 'packages/contract/src/index.ts'),
+      '@greenhouse/providers': resolve(__dirname, 'packages/providers/src/index.ts'),
       '@greenhouse/db/testing': resolve(__dirname, 'packages/db/src/testing.ts'),
       '@greenhouse/db': resolve(__dirname, 'packages/db/src/index.ts'),
       '@greenhouse/knowledge-editor/extensions': resolve(__dirname, 'packages/knowledge-editor/src/extensions.ts'),

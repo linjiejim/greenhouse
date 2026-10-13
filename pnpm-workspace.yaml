@@ -26,6 +26,11 @@ minimumReleaseAgeExclude:
   - '@earendil-works/pi-ai@0.83.0'
   - '@earendil-works/pi-coding-agent@0.83.0'
   - '@earendil-works/pi-tui@0.83.0'
+  - '@ai-sdk/anthropic@4.0.79'
+  - '@ai-sdk/google@4.0.94'
+  - '@ai-sdk/openai-compatible@3.0.68'
+  - '@ai-sdk/provider-utils@5.0.59'
+  - '@ai-sdk/provider@4.0.27'
 
 # @earendil-works/pi-ai (agent-runner) pins @aws-sdk/client-bedrock-runtime@3.1048.0,
 # whose transitive exact pins point at @aws-sdk/@smithy versions that are no longer

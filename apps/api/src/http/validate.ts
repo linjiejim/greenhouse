@@ -24,3 +24,10 @@ export function readQuery<T extends z.ZodType>(c: Context, schema: T): z.infer<T
   if (!parsed.success) throw invalidInput('Some query parameters are invalid.', issues(parsed.error));
   return parsed.data;
 }
+
+/** Parse one path parameter, or answer 400 invalid_input. */
+export function readParam<T extends z.ZodType>(c: Context, name: string, schema: T): z.infer<T> {
+  const parsed = schema.safeParse(c.req.param(name));
+  if (!parsed.success) throw invalidInput(`The ${name} in the path is invalid.`, issues(parsed.error));
+  return parsed.data;
+}

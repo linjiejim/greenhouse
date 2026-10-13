@@ -29,7 +29,7 @@ v2 和 v1 不兼容，不加 `/api/v2` 前缀，也不保留旧路由。`GET /ap
 | --- | --- |
 | `GET /api/bootstrap` | 公开接口：品牌、`api_version`、可用登录方式、`setup_pending` |
 | `POST /api/auth/login` · `/refresh` · `/logout` | 登录、刷新、登出 |
-| `POST /api/auth/activate` · `/password-reset` | 一次性链接：激活、重置密码 |
+| `GET /api/auth/links/inspect` · `POST /api/auth/links/complete` | 一次性链接：查看用途；设密码完成激活或重置，随即登录 |
 | `GET /api/auth/feishu/*` | 飞书扫码登录 |
 | `GET` / `PATCH /api/me` | 我：名字、头像、语言、主题、「关于我」、模块权限（只读） |
 | `GET /api/me/usage` | 我的用量 |
@@ -83,7 +83,7 @@ v2 和 v1 不兼容，不加 `/api/v2` 前缀，也不保留旧路由。`GET /ap
 | --- | --- |
 | `/api/admin/members[/:id]` | 邀请、角色、停用、重置链接、模块权限、预算 |
 | `/api/admin/groups[/:id]` | 分组 |
-| `/api/admin/providers[/:id][/test]` · `/api/admin/provider-bindings/:capability` | 服务 |
+| `/api/admin/providers[/:id][/test\|/copy]` · `PUT /api/admin/provider-bindings/:capability` | 服务：实例、测试连接、复制环境变量实例；能力的顺序、默认项与策略 |
 | `/api/admin/channels` | 渠道：SMTP、飞书、企微、推送 |
 | `/api/admin/computers[/:id]` | 电脑列表与容量 |
 | `/api/admin/usage` | 用量与预算 |
@@ -100,7 +100,7 @@ v2 和 v1 不兼容，不加 `/api/v2` 前缀，也不保留旧路由。`GET /ap
 | `/api/connectors/oauth/callback` | 连接器 OAuth 回调（公开） |
 | `/api/ws` · `/api/ws/computer` · `/api/ws/computer-terminal` | 实时通道、电脑画面、终端 |
 | `/api/ext/<id>/*` | 扩展 |
-| `GET /health` | 健康检查，含各服务状态（不含机密） |
+| `GET /health` | 健康检查：各能力是否可用（不含机密）；数据库不可用时返回 503 |
 
 ## 3. v1 → v2 去向
 

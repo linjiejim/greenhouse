@@ -55,12 +55,14 @@
 
 某个成员使用能力 C 时，按下面的顺序选择，用到第一个可用的为止：
 
-1. 个人实例：C 的策略允许个人 Key，且该成员为 C 启用了个人实例。
-2. 工作区绑定：数据库里 C 的有序实例。
-3. 环境变量实例：工作区还没有为 C 设置绑定时，按环境变量声明的顺序使用。
+1. 个人实例：C 的策略允许个人 Key，且该成员为 C 启用了个人实例。公开 Agent 和别人发起的运行不用个人实例。
+2. 工作区绑定：数据库里 C 的有序实例。空列表表示停用 C，环境变量实例也不用。
+3. 还没有保存绑定时：先环境变量实例（按声明顺序），再工作区实例（按添加顺序）。
 4. 内置默认：存储用本地磁盘；STT / TTS 退回客户端；其余能力视为不可用。
 
-改动立即生效：解析器缓存按版本号失效，多进程部署时通过数据库通知（`LISTEN/NOTIFY`）广播版本号。v1 那种「把数据库值回写到 `process.env`」的做法不再使用。
+- 已保存绑定时，新加的工作区实例自动排到末尾。
+- 停用的实例、缺少必填 Key 的实例不参与解析。
+- 每次解析都读取当前配置，改动立即生效，没有缓存。将来加缓存时按 `provider_bindings.version` 失效。v1 那种「把数据库值回写到 `process.env`」的做法不再使用。
 
 ### 4.2 环境变量：简单形式
 
@@ -70,7 +72,7 @@
 # 大模型：PROVIDER 写适配器或预设名
 LLM_PROVIDER=deepseek            # openai | anthropic | gemini | openai-compatible | deepseek | kimi | qwen | doubao | glm | minimax | siliconflow | openrouter | ollama …
 LLM_API_KEY=sk-…
-LLM_BASE_URL=                    # 留空 = 预设地址；填写后这个 Key 只会发往这里
+LLM_BASE_URL=                    # 留空 = 预设地址；填写后这个 Key 只会发往这里；只填它不填 PROVIDER 时按 openai-compatible
 LLM_MODEL=deepseek-chat          # 默认模型
 LLM_MODEL_STRONG=deepseek-reasoner   # 可选
 LLM_MODEL_FAST=                  # 可选，用于标题、摘要；为空时用默认模型
@@ -117,7 +119,7 @@ policy:
 | `providers` | `id`、`capability`、`kind`、`preset`、`name`、`scope`（`workspace` / `personal`）、`owner_id`、`config`（jsonb，非机密）、`secrets_enc`（AES-256-GCM，用 `PROVIDER_TOKEN_ENCRYPTION_KEY`）、`enabled`、`last_check`（时间、结果、耗时）、`created_by`、时间戳 |
 | `provider_bindings` | `capability`（主键）、`instance_ids`（有序）、`defaults`（jsonb）、`policy`（jsonb）、`version` |
 
-- 环境变量实例只在内存里，界面上标「来自环境变量」，只读。管理员可以在绑定里停用它，或「复制为可编辑」生成一个数据库实例。
+- 环境变量实例只在内存里，界面上标「来自环境变量」，只读。管理员可以在绑定里停用它，或「复制为可编辑」：生成一个数据库实例，它在顺序和默认项里替换原来的环境变量实例。
 - 修改 `base_url` 时清空已存的机密，必须重新填写 Key。
 
 ### 4.5 模型引用
@@ -279,7 +281,7 @@ v2 的存储层统一为一个接口：v1 的 COS SDK、`s3-lite`、技能存储
 | 风险 | 规则 |
 | --- | --- |
 | Key 外泄 | 机密加密存储，任何接口都不返回明文；Key 只发往它所在实例的 base URL；改 base URL 必须重填 Key；预设没有地址时报错，不会回退到别的实例或环境变量的地址 |
-| SSRF | 成员填写的个人实例只能用公网 https 地址或预设地址；内网、回环、链路本地地址一律拒绝。工作区实例可以由管理员显式允许私网（例如本地 Ollama） |
+| SSRF | 成员的个人实例只能用公网 https 地址或预设地址：保存时检查解析结果，每次连接时再检查一次（防 DNS 重绑定）；内网、回环、链路本地地址一律拒绝。工作区实例由管理员配置，可以用内网地址（例如本地 Ollama） |
 | 越权 | 个人实例只服务它的主人，不能用于公开 Agent 或别人发起的运行；工作区实例遵守成员的模块权限与预算 |
 | 审计 | 新增、修改、删除、启停实例都写审计记录（谁、何时、哪个字段，不含机密） |
 | 内容 | 发给 STT、TTS、图像、视频服务商的内容属于成员本人或其授权范围；界面「?」里写明「内容会发送给所选服务商」 |

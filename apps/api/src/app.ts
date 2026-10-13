@@ -15,6 +15,8 @@ import { adminMemberRoutes, directoryRoutes, meRoutes } from './modules/members/
 import { createMembersService, type MembersService } from './modules/members/service.js';
 import { bootstrapRoutes, brandingRoutes } from './modules/workspace/routes.js';
 import { createWorkspaceService, type WorkspaceService } from './modules/workspace/service.js';
+import { adminProviderRoutes, myProviderRoutes } from './providers/routes.js';
+import { createProvidersService, type ProvidersService } from './providers/service.js';
 
 export interface Services {
   config: AppConfig;
@@ -22,10 +24,16 @@ export interface Services {
   auth: AuthService;
   workspace: WorkspaceService;
   members: MembersService;
+  providers: ProvidersService;
   limiter: RateLimiter;
 }
 
-export function createServices(config: AppConfig): Services {
+export interface ServiceOptions {
+  /** Replaces the network for provider calls (tests). */
+  fetch?: typeof fetch;
+}
+
+export function createServices(config: AppConfig, options: ServiceOptions = {}): Services {
   const tokens = createTokens(config.tokenSigningKey);
   const auth = createAuthService({ tokens, publicUrl: config.PUBLIC_URL });
   return {
@@ -34,6 +42,7 @@ export function createServices(config: AppConfig): Services {
     auth,
     workspace: createWorkspaceService(),
     members: createMembersService({ auth }),
+    providers: createProvidersService({ config, fetch: options.fetch }),
     limiter: new RateLimiter(10, 60_000),
   };
 }
@@ -55,7 +64,13 @@ export function createApp(services: Services) {
     await next();
   });
 
-  app.get('/health', (c) => c.json({ ok: true, api_version: API_VERSION }));
+  app.get('/health', async (c) => {
+    try {
+      return c.json({ ok: true, api_version: API_VERSION, services: await services.providers.status() });
+    } catch {
+      return c.json({ ok: false, api_version: API_VERSION }, 503);
+    }
+  });
   app.route('/api/bootstrap', bootstrapRoutes(services.workspace));
   app.route(
     '/api/auth',
@@ -64,11 +79,13 @@ export function createApp(services: Services) {
 
   const signedIn = new Hono<AppEnv>();
   signedIn.use('*', member);
+  signedIn.route('/me/providers', myProviderRoutes(services.providers));
   signedIn.route('/me', meRoutes(services.members));
   signedIn.route('/members', directoryRoutes(services.members));
   signedIn.use('/admin/*', requireAdmin);
   signedIn.route('/admin', adminMemberRoutes(services.members));
   signedIn.route('/admin/branding', brandingRoutes(services.workspace));
+  signedIn.route('/admin', adminProviderRoutes(services.providers));
   app.route('/api', signedIn);
 
   return app;
