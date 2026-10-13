@@ -4,6 +4,7 @@
 
 import { describe, expect, it, vi } from 'vitest';
 import { Menu, useContextMenu, type MenuEntry } from '../index';
+import { act } from 'react';
 import { active, byRole, click, key, render, setupKit } from './harness';
 
 setupKit();
@@ -132,6 +133,40 @@ describe('useContextMenu', () => {
     key(row, 'ContextMenu');
     click(byRole('menuitem', '删除'));
     expect(log).toEqual(['删除']);
+    expect(menu()).toBeNull();
+  });
+});
+
+describe('dismissal on scroll', () => {
+  it('stays open when something else scrolls, and closes when its anchor scrolls away', () => {
+    render(
+      <div>
+        <div className="thread" style={{ overflow: 'auto' }}>
+          <p>a thread that pins itself to the bottom</p>
+        </div>
+        <div className="toolbar" style={{ overflow: 'auto' }}>
+          <Menu items={items([])} />
+        </div>
+      </div>,
+    );
+    const trigger = byRole('button', '更多');
+    trigger.focus();
+    key(trigger, 'ArrowDown');
+    expect(menu()).not.toBeNull();
+    act(() => {
+      document.querySelector('.thread')!.dispatchEvent(new Event('scroll'));
+    });
+    expect(menu()).not.toBeNull();
+    act(() => {
+      document.querySelector('.toolbar')!.dispatchEvent(new Event('scroll'));
+    });
+    expect(menu()).toBeNull();
+
+    key(trigger, 'ArrowDown');
+    expect(menu()).not.toBeNull();
+    act(() => {
+      document.dispatchEvent(new Event('scroll'));
+    });
     expect(menu()).toBeNull();
   });
 });

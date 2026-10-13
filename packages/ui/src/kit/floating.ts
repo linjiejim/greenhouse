@@ -2,7 +2,8 @@
  * Placement and dismissal for every floating layer of the kit: menus, picker panels, the "?"
  * bubble and tooltips (docs/design-system/components.md, 菜单). Panels are `position: fixed`
  * and stay inside the closest `[data-floating-boundary]` ancestor (a preview frame), else the
- * viewport. Menus and pickers close on an outside pointer, an outside scroll, Escape or Tab.
+ * viewport. Menus and pickers close on an outside pointer, a scroll that moves their anchor,
+ * Escape or Tab.
  */
 
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type RefObject } from 'react';
@@ -85,21 +86,34 @@ export function useFloating<T extends HTMLElement = HTMLDivElement>(open: boolea
   return { panel, style };
 }
 
-/** Closes a floating layer on a pointer press or a scroll outside the given elements. */
+/**
+ * Closes a floating layer on a pointer press outside the given elements, or on a scroll that
+ * carries them away. A scroll elsewhere (a thread pinning itself to its newest message) leaves
+ * the layer open: its anchor did not move.
+ */
 export function useDismiss(open: boolean, close: () => void, inside: RefObject<HTMLElement | null>[]) {
   const latest = useRef({ close, inside });
   latest.current = { close, inside };
   useEffect(() => {
     if (!open) return;
-    const outside = (event: Event) => {
-      if (latest.current.inside.some((ref) => ref.current?.contains(event.target as Node))) return;
+    const elements = () =>
+      latest.current.inside.map((ref) => ref.current).filter((element): element is HTMLElement => !!element);
+    const pointer = (event: Event) => {
+      if (elements().some((element) => element.contains(event.target as Node))) return;
       latest.current.close();
     };
-    document.addEventListener('pointerdown', outside, true);
-    document.addEventListener('scroll', outside, true);
+    const scroll = (event: Event) => {
+      const target = event.target instanceof Node ? event.target : null;
+      const scroller = !target || target === document ? document.documentElement : target;
+      const own = elements();
+      if (own.some((element) => element.contains(scroller))) return;
+      if (own.some((element) => scroller.contains(element))) latest.current.close();
+    };
+    document.addEventListener('pointerdown', pointer, true);
+    document.addEventListener('scroll', scroll, true);
     return () => {
-      document.removeEventListener('pointerdown', outside, true);
-      document.removeEventListener('scroll', outside, true);
+      document.removeEventListener('pointerdown', pointer, true);
+      document.removeEventListener('scroll', scroll, true);
     };
   }, [open]);
 }
