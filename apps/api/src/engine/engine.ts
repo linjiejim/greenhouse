@@ -56,6 +56,7 @@ import type { RequestsService } from '../modules/requests/service.js';
 import { createBackground, type Background } from './background.js';
 import { toMessage, type ConversationsService } from '../modules/conversations/service.js';
 import { effectiveModules } from '../modules/members/service.js';
+import { createDigester, parseStoredDigest, renderDigest } from './digest.js';
 import { projectHistory } from './history.js';
 import { createKeyedLock } from './locks.js';
 import {
@@ -145,6 +146,7 @@ export function createEngine(deps: EngineDeps) {
   let sweeper: NodeJS.Timeout | null = null;
 
   const toolDefs = (): readonly ToolDef[] => (tools ??= deps.tools({ background }));
+  const digester = createDigester({ languageModel });
 
   async function audience(conversationId: string): Promise<string[]> {
     const rows = await getDb()
@@ -423,7 +425,12 @@ export function createEngine(deps: EngineDeps) {
         ),
         buildIdentity({ name: agent.name, role: agent.role, instructions: manifest.instructions }, member.name),
         buildAbout(member.name, member.about),
-        buildDigest(conversation.digest),
+        buildDigest(
+          (() => {
+            const doc = parseStoredDigest(conversation.digest);
+            return doc ? renderDigest(doc, locale, new Map(roster.map((entry) => [entry.id, entry.name]))) : '';
+          })(),
+        ),
       ]);
       const tail = buildTail({
         roster: roster.map((entry) => ({ name: entry.name, role: entry.role, self: entry.id === agent.id })),
@@ -535,11 +542,14 @@ export function createEngine(deps: EngineDeps) {
         type: 'run.updated',
         data: { run_id: run.id, status: outcome.status, conversation_id: conversation.id },
       });
-      if (!next)
+      if (!next) {
         await publish(conversation.id, {
           type: 'conversation.updated',
           data: { conversation_id: conversation.id, changes: { working: false } },
         });
+        // The conversation is idle: fold older messages into the summary if it has grown long.
+        track(digester.run(conversation.id));
+      }
       if (conversation.kind === 'chat' && !conversation.title && outcome.status !== 'failed') {
         await nameChat(conversation.id, run).catch((error: unknown) =>
           logger.warn('[engine] could not name a chat', { error: toErrorMessage(error) }),

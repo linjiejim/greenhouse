@@ -36,3 +36,7 @@ The one engine for conversations and runs. Read with the root AGENTS.md and docs
 - Claiming uses FOR UPDATE SKIP LOCKED; at most 3 running per member and 4 per process; 20 minutes and 30 steps per attempt.
 - A run whose process died is requeued up to 3 attempts; a shutdown requeues without counting as a failure. A retry replays the brief, and a call with the same tool and arguments as a succeeded step returns the recorded output.
 - The timeline (`run_events`) is numbered per run and written in order. The end of a run is reported into its conversation (or the Agent's own thread) and notified.
+
+## Rolling summary
+- When a conversation goes idle and the text after its summary passes 24k estimated tokens, digest.ts folds older messages into `conversations.digest` (structured JSON, rendered within 1500 characters into the system prompt) and moves `digest_upto_seq`.
+- Cuts fall just before a member message and keep at least the last two exchanges; one call folds at most 30k tokens, oldest first. The write is a compare-and-set on the old boundary; failures back off.

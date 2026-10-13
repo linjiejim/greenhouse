@@ -32,6 +32,7 @@ import {
   type NewMessage,
 } from '@greenhouse/db';
 import { agentGreeting } from '@greenhouse/types/agent-templates';
+import { parseStoredDigest, renderDigest } from '../../engine/digest.js';
 import type { z } from 'zod';
 import { conflict, invalidInput, notFound } from '../../http/errors.js';
 import type { ProvidersService } from '../../providers/service.js';
@@ -183,6 +184,17 @@ export function createConversationsService(deps: { agents: AgentsService; provid
     });
   }
 
+  /** "What it remembers lately": the rolling summary as text, in the reader's language. */
+  async function renderedDigest(memberId: string, row: ConversationRow): Promise<string> {
+    const doc = parseStoredDigest(row.digest);
+    if (!doc) return '';
+    const owners = [...new Set(doc.open_items.map((item) => item.owner_agent_id).filter((id): id is string => !!id))];
+    const names = owners.length
+      ? await getDb().select({ id: agents.id, name: agents.name }).from(agents).where(inArray(agents.id, owners))
+      : [];
+    return renderDigest(doc, await localeOf(memberId), new Map(names.map((entry) => [entry.id, entry.name])));
+  }
+
   async function detail(memberId: string, row: ConversationRow): Promise<ConversationDetail> {
     const db = getDb();
     const [view] = await views(memberId, [row]);
@@ -203,7 +215,7 @@ export function createConversationsService(deps: { agents: AgentsService; provid
         last_read_seq: person.lastReadSeq,
       })),
       agent_ids: present.map((agent) => agent.id),
-      digest: row.digest,
+      digest: await renderedDigest(memberId, row),
     };
   }
 

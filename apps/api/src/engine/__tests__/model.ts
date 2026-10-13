@@ -30,7 +30,7 @@ export interface Script {
   gate?: Promise<void>;
 }
 
-export function scriptedModel(scripts: Array<Part[] | Script>, options: { title?: string } = {}) {
+export function scriptedModel(scripts: Array<Part[] | Script>, options: { title?: string; summary?: string } = {}) {
   const prompts: unknown[] = [];
   /** The tool names offered on each call. */
   const tools: string[][] = [];
@@ -42,9 +42,14 @@ export function scriptedModel(scripts: Array<Part[] | Script>, options: { title?
   const model = new MockLanguageModelV4({
     doGenerate: async (call) => {
       const system = JSON.stringify(call.prompt.filter((message) => message.role === 'system'));
-      if (system.includes('Write a title for this conversation')) {
+      const fixed = system.includes('Write a title for this conversation')
+        ? (options.title ?? 'A title')
+        : system.includes('You maintain the rolling summary')
+          ? (options.summary ?? '{}')
+          : null;
+      if (fixed !== null) {
         return {
-          content: [{ type: 'text', text: options.title ?? 'A title' }],
+          content: [{ type: 'text', text: fixed }],
           finishReason: { unified: 'stop', raw: undefined },
           usage: USAGE,
           warnings: [],
