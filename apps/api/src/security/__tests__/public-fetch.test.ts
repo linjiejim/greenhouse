@@ -24,6 +24,9 @@ describe('public-only network', () => {
       '::1',
       'fd00::1',
       '::ffff:10.0.0.1',
+      // The same address as a URL writes it: new URL('https://[::ffff:10.0.0.1]/').hostname.
+      '::ffff:a00:1',
+      '::ffff:a9fe:a9fe',
     ]) {
       expect(isPrivateAddress(ip)).toBe(true);
     }
