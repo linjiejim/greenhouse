@@ -121,7 +121,9 @@ what exists." These rules are as binding as the "add" rules:
   The test/e2e/e2e-ui jobs build the CI database via `migrate` (not push) so the whole migration
   chain is exercised on every run. The test job also installs the Playwright headless shell: the
   Bots browser-adapter suites drive a real Chromium and fail (not skip) without it under `CI` — a
-  fork CI that runs `pnpm test` needs the same step or `BOTS_BROWSER_TESTS=skip`.
+  fork CI that runs `pnpm test` needs the same step or `BOTS_BROWSER_TESTS=skip`. `apps/mobile` is
+  outside the workspace, so its own `typecheck` + `lint` run in
+  `.github/workflows/mobile-check.yml`, path-filtered to the app and the shared sources it vendors.
 - **Secret scanning**: the `secret-scan` job runs [gitleaks](https://github.com/gitleaks/gitleaks)
   over incoming commits. Rules + allowlist live in `.gitleaks.toml`. Never commit real
   credentials; if the scanner flags a **confirmed** non-secret (a token alphabet, a test JWT

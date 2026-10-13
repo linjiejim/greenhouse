@@ -753,7 +753,8 @@ the planned follow-up.
 
 A husky + lint-staged pre-commit hook runs `eslint --fix` + `prettier --write` on staged
 files. CI (`.github/workflows/ci.yml`) runs lint → typecheck → test → e2e → secret-scan on
-`main` and every PR.
+`main` and every PR. The mobile app sits outside the pnpm workspace, so changes to it run its own
+typecheck + lint in `.github/workflows/mobile-check.yml`.
 
 ### Database migrations
 

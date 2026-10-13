@@ -1,0 +1,69 @@
+# Typecheck + lint for the Expo app (apps/mobile).
+#
+# The app is not a pnpm workspace member (own lockfile, isolated install), so the root
+# `pnpm typecheck` / `pnpm lint` in ci.yml skip it, and mobile.yml only deploys it. This
+# runs the app's own scripts after the same isolated install mobile.yml does. It sits
+# outside ci.yml like desktop-check.yml: deploy.yml waits on ci.yml, and most PRs never
+# touch the app.
+#
+# Paths: the app; the root package.json (its packageManager picks the pnpm version); and
+# the shared sources the app vendors as verbatim copies (src/shared, src/bots/vendor,
+# src/ui/plant-avatar), whose drift the root vitest parity tests catch.
+name: Mobile app checks
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/mobile/**'
+      - 'package.json'
+      - '.github/workflows/mobile-check.yml'
+      - 'packages/types/src/**'
+      - 'packages/utils/src/mentions.ts'
+      - 'packages/ui/src/components/plant-avatar/**'
+      - 'apps/web/src/components/bots/**'
+      - 'apps/web/src/lib/api/bots.ts'
+      - 'apps/web/src/lib/plant-avatar.ts'
+      - 'apps/web/src/lib/session-manager.tsx'
+      - 'apps/web/src/lib/stream-events.ts'
+  pull_request:
+    paths:
+      - 'apps/mobile/**'
+      - 'package.json'
+      - '.github/workflows/mobile-check.yml'
+      - 'packages/types/src/**'
+      - 'packages/utils/src/mentions.ts'
+      - 'packages/ui/src/components/plant-avatar/**'
+      - 'apps/web/src/components/bots/**'
+      - 'apps/web/src/lib/api/bots.ts'
+      - 'apps/web/src/lib/plant-avatar.ts'
+      - 'apps/web/src/lib/session-manager.tsx'
+      - 'apps/web/src/lib/stream-events.ts'
+
+concurrency:
+  group: mobile-check-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    # Gated like ci.yml; a fork runs its own checks in fork-*.yml (EXTENDING.md).
+    if: github.repository == 'linjiejim/greenhouse'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/mobile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: apps/mobile/pnpm-lock.yaml
+      # Isolated install, own lockfile — never `npx expo install` (apps/mobile/AGENTS.md).
+      - name: Install mobile deps
+        run: pnpm install --frozen-lockfile --ignore-workspace
+      - run: pnpm typecheck
+      - run: pnpm lint
