@@ -168,6 +168,76 @@ export interface SandboxClient {
   remove(name: string, options: { keepHome: boolean }): Promise<void>;
 }
 
+/** One email: plain text, with an HTML alternative. */
+export interface MailMessage {
+  to: string;
+  /** Shown with the address in the To header. */
+  toName?: string;
+  subject: string;
+  text: string;
+  html?: string;
+}
+
+/** Channels throw it for a message that no retry can deliver: the recipient or the message is refused. */
+export class UndeliverableError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'UndeliverableError';
+  }
+}
+
+export interface MailClient {
+  send(message: MailMessage): Promise<void>;
+  /** Connects and signs in without sending anything. */
+  verify(): Promise<void>;
+}
+
+/** A workspace's app on an IM platform (Feishu, WeCom), messaging people one to one. */
+export interface ImClient {
+  /** Plain text to one person: a Feishu open_id, a WeCom userid. */
+  sendText(to: string, text: string): Promise<void>;
+  /** Gets an access token: proves the app's credentials. */
+  verify(): Promise<void>;
+}
+
+/** A push as the Expo push service takes it. `projectId` groups the requests and is not sent. */
+export interface PushMessage {
+  to: string;
+  projectId: string;
+  /** Without title and body (and sound), a push only wakes the app. */
+  title?: string;
+  body?: string;
+  data: Record<string, unknown>;
+  sound?: 'default' | null;
+  badge?: number;
+  /** Unix seconds after which the push is dropped. */
+  expiration?: number;
+  priority?: 'default' | 'normal' | 'high';
+  interruptionLevel?: 'active' | 'passive' | 'time-sensitive';
+  /** iOS: wake the app in the background. */
+  contentAvailable?: boolean;
+}
+
+/**
+ * How the push service took one message: accepted (a ticket to check later), refused (`code`
+ * such as DeviceNotRegistered), worth retrying (the whole request failed, maybe for now), or
+ * refused for good (the request itself was malformed or unauthorised).
+ */
+export type PushTicket =
+  | { status: 'ok'; id: string | null }
+  | { status: 'error'; code: string | null; message: string }
+  | { status: 'retry'; error: string }
+  | { status: 'fatal'; error: string };
+
+/** What happened to an accepted push; absent from the answer while not known yet. */
+export type PushReceipt = { status: 'ok' } | { status: 'error'; code: string | null; message: string };
+
+export interface PushClient {
+  /** One ticket per message, in order. */
+  send(messages: readonly PushMessage[]): Promise<PushTicket[]>;
+  receipts(ticketIds: readonly string[]): Promise<Record<string, PushReceipt>>;
+}
+
 export interface ClientByCapability {
   llm: LlmClient;
   stt: SttClient;
@@ -177,9 +247,9 @@ export interface ClientByCapability {
   storage: StorageClient;
   video: never;
   sandbox: SandboxClient;
-  mail: never;
-  im: never;
-  push: never;
+  mail: MailClient;
+  im: ImClient;
+  push: PushClient;
 }
 
 export interface ProviderPreset {

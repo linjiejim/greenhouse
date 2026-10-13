@@ -59,7 +59,7 @@ v2 从零建表：只有一份基线迁移，不继承 v1 的迁移链，也不�
 
 | 表 | 用途 | 关键列与关系 |
 | --- | --- | --- |
-| `members` | 成员账号 | `email`（唯一，小写）、`name`、`avatar_file_id`、`role`（admin / member）、`status`（invited / active / reset_required / disabled，只有 active 能登录）、`password_hash`、`auth_version`（改密码、停用时递增，令牌和推送设备都比对它）、`locale`、`timezone`、`theme`、`about`（「关于我」，所有 Agent 可读）、`modules`（knowledge / tables / apps / computer 开关）、`notification_settings`（渠道 × 类别，推送预览默认关）、`last_login_at` |
+| `members` | 成员账号 | `email`（唯一，小写）、`name`、`avatar_file_id`、`role`（admin / member）、`status`（invited / active / reset_required / disabled，只有 active 能登录）、`password_hash`、`auth_version`（改密码、停用时递增，令牌和推送设备都比对它）、`locale`、`timezone`、`theme`、`about`（「关于我」，所有 Agent 可读）、`modules`（knowledge / tables / apps / computer 开关）、`notification_settings`（`categories`：needs_you / replies / runs / other × email / feishu / wecom / push，没设的按默认；`previews` 默认关）、`last_login_at` |
 | `groups` | 管理员维护的分组 | `name`（唯一）、`description`、`created_by` |
 | `group_members` | 分组成员 | 主键 `(group_id, member_id)`，两端 `CASCADE` |
 | `refresh_tokens` | 刷新令牌 | `member_id` `CASCADE`、`token_hash`、`auth_version`、`client`（web / ios / android / extension / desktop）、`expires_at`、`last_used_at`；单次消费 |
@@ -177,8 +177,8 @@ v2 从零建表：只有一份基线迁移，不继承 v1 的迁移链，也不�
 
 | 表 | 用途 | 关键列与关系 |
 | --- | --- | --- |
-| `notifications` | 站内通知 | `member_id`、`kind`（request / run_done / run_failed / reply / mention / comment / share / automation / skill_scan / budget / system）、`title`、`body`、`target_type` + `target_id`（打开即回到来源）、`request_id`、`run_id`、`agent_id`、`payload`（推送路由信封，不含内容）、`dedupe_key`（每人唯一）、`read_at`；只有已读状态可改，外部送达是 `jobs` |
-| `push_devices` | 手机推送设备 | `member_id` `CASCADE`、`token`（唯一）、`platform`（ios / android）、`project_id`、`client_ref`（工作站 id）、`prefs`、`auth_version`、`last_seen_at`、`disabled_at` + `disabled_reason`；只停用不删除 |
+| `notifications` | 站内通知 | `member_id`、`kind`（request / run_done / run_failed / reply / mention / comment / share / automation / skill_scan / budget / system）、`title`、`body`、`target_type` + `target_id`（打开即回到来源）、`request_id`、`run_id`、`agent_id`、`payload`（来源附带的信息，不含内容；送达的路由取自 target、request、run 列）、`dedupe_key`（每人唯一）、`read_at`；只有已读状态可改；外部送达是 `jobs`（`deliver_notification`，每条通知每个渠道一条，和通知在同一事务里写入） |
+| `push_devices` | 手机推送设备 | `member_id` `CASCADE`、`token`（Expo push token，唯一，从不返回）、`platform`（ios / android）、`project_id`（按它分组发送）、`client_ref`（工作站 id，推送里原样带回）、`prefs`（needs_you / done / replies / preview / live_activity，只能收窄成员的设置）、`auth_version`（登记时的，改密码或停用后停推）、`last_seen_at`（90 天未见不推）、`disabled_at` + `disabled_reason`（unregistered / device_not_registered / device_limit，每人最多 10 台）；按 token 登记，换人即归新成员并重置开关；只停用不删除 |
 | `schedules` | 定时，只属于 Agent | `agent_id` `CASCADE`、`owner_id`、`name`、`brief`（每次运行的简报）、`skill_id`（可选：按技能运行）、`model`、`cron`、`timezone`、`status`（active / paused）、`next_run_at`、`last_run_at`、`last_run_id`、`last_status`、`run_count` |
 
 ## 10. 用量与审计
@@ -198,7 +198,7 @@ v1 的预算账本不再保留：每次花费都对应一条 `usage_events`；�
 | 表 | 用途 | 关键列与关系 |
 | --- | --- | --- |
 | `workspace` | 工作区，只有一行 | `id`（固定 `default`）、`name`、`logo_file_id`、`primary_color`、`settings`（新成员的默认模块权限等非机密设置）、`setup_completed_at`、`updated_by`；机密一律在 `providers` |
-| `jobs` | 通用后台任务队列 | `kind`（如 deliver_notification、base_automation、recompute、ai_field、video_poll、file_purge、computer_backup、export）、`dedupe_key`（唯一）、`payload`、`status`（pending / claimed / succeeded / failed / dead / suppressed）、`attempts` / `max_attempts`、`available_at`、`lease_owner` / `lease_expires_at`、`last_error`、`result`；和触发它的状态变更在同一事务里写入 |
+| `jobs` | 通用后台任务队列 | `kind`（如 deliver_notification、push_receipts、base_automation、recompute、ai_field、video_poll、file_purge、computer_backup、export）、`dedupe_key`（唯一）、`payload`、`status`（pending / claimed / succeeded / failed / dead / suppressed）、`attempts` / `max_attempts`、`available_at`、`lease_owner` / `lease_expires_at`、`last_error`、`result`；和触发它的状态变更在同一事务里写入；领取即算一次尝试，租约过期（进程死了）回到队列；`apps/api/src/jobs.ts` 是唯一的入队、领取与结算方式；送达任务结束 30 天后删除 |
 | `idempotency_keys` | 有副作用请求的幂等记录 | 主键 `(scope, key)`（scope 如成员 id 或 `feishu`）、`request_hash`、`status`（running / done）、`response`、`expires_at`；承接 `Idempotency-Key` 头、应用动作重放和飞书事件去重；电脑画面与终端的一次性 ticket 也在这里（scope `computer_ticket`，`key` 是 ticket 的 keyed hash，一分钟，用时删除）；OAuth 同意请求同理（scope `oauth_request`，十分钟，归第一个打开它的成员，做出决定时删除） |
 | `extension_migrations` | 扩展迁移通道的记录 | 主键 `(extension_id, name)`、`checksum`、`applied_at` |
 

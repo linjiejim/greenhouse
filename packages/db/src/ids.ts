@@ -30,6 +30,7 @@ export const ID_PREFIX = {
   connector: 'cnr',
   connection: 'cnx',
   notification: 'ntf',
+  pushDevice: 'pdv',
   schedule: 'sch',
   budget: 'bdg',
   reservation: 'brv',

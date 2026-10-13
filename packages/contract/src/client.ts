@@ -79,6 +79,20 @@ import type {
 } from './members.js';
 import type { Notification } from './notifications.js';
 import type {
+  AdminChannels,
+  ChannelInput,
+  ChannelStatus,
+  ChannelTest,
+  DeliveryChannel,
+  NotificationSettings,
+  PushDevice,
+  PushDeviceList,
+  PushDeviceRegistered,
+  PushPrefs,
+  RegisterPushDeviceInput,
+  UpdateNotificationSettingsInput,
+} from './channels.js';
+import type {
   AdminClient,
   ConsentDecisionInput,
   ConsentRequest,
@@ -439,6 +453,22 @@ export function createApiClient(options: ApiClientOptions) {
         patch<ProviderInstance>(`/api/me/providers/${id}`, input),
       removeProvider: (id: string) => del(`/api/me/providers/${id}`),
       testProvider: (id: string) => post<ProviderInstance>(`/api/me/providers/${id}/test`),
+      /** 设置 → 通知: only the channels I can use; fields left out of a save keep their value. */
+      notificationSettings: {
+        get: () => get<NotificationSettings>('/api/me/notification-settings'),
+        save: (input: UpdateNotificationSettingsInput) =>
+          put<NotificationSettings>('/api/me/notification-settings', input),
+      },
+      /** My phones (the apps register themselves; `enabled: false` means this deployment sends no pushes). */
+      pushDevices: {
+        list: () => get<PushDeviceList>('/api/me/push-devices'),
+        register: (input: RegisterPushDeviceInput) => put<PushDeviceRegistered>('/api/me/push-devices', input),
+        update: (id: string, prefs: Partial<PushPrefs>) =>
+          patch<{ device: PushDevice }>(`/api/me/push-devices/${id}`, { prefs }),
+        /** Disabled, never deleted: registering the phone again brings it back. */
+        unregister: (id: string) => request<{ ok: true }>('DELETE', `/api/me/push-devices/${id}`),
+        test: (id: string) => post<{ ok: true }>(`/api/me/push-devices/${id}/test`),
+      },
       connections: {
         /** My connections, and the connectors I can use. */
         list: () => get<MyConnections>('/api/me/connections'),
@@ -757,6 +787,14 @@ export function createApiClient(options: ApiClientOptions) {
           get<Page<AdminPublicAgent>>('/api/admin/public-agents', query),
         pause: (id: string) => post<AdminPublicAgent>(`/api/admin/public-agents/${id}/pause`),
         resume: (id: string) => post<AdminPublicAgent>(`/api/admin/public-agents/${id}/resume`),
+      },
+      /** 管理 → 服务 → 渠道: email (SMTP), Feishu, WeCom, push. Secrets are write-only. */
+      channels: {
+        list: () => get<AdminChannels>('/api/admin/channels'),
+        save: <C extends DeliveryChannel>(channel: C, input: ChannelInput[C]) =>
+          put<ChannelStatus>(`/api/admin/channels/${channel}`, input),
+        /** A test message to me: my email, my linked account, my phones. */
+        test: (channel: DeliveryChannel) => post<ChannelTest>(`/api/admin/channels/${channel}/test`),
       },
       /** External access: interactive and machine clients. */
       clients: {

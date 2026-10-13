@@ -48,6 +48,8 @@ import { fileContentRoutes, fileRoutes } from './modules/files/routes.js';
 import { createFilesService, type FilesService } from './modules/files/service.js';
 import { notificationRoutes } from './modules/notifications/routes.js';
 import { createNotificationsService, type NotificationsService } from './modules/notifications/service.js';
+import { adminChannelRoutes, notificationSettingsRoutes, pushDeviceRoutes } from './modules/channels/routes.js';
+import { createChannelsService, type ChannelsService } from './modules/channels/service.js';
 import { requestRoutes } from './modules/requests/routes.js';
 import { runRoutes } from './modules/runs/routes.js';
 import { scheduleRoutes } from './modules/schedules/routes.js';
@@ -89,6 +91,7 @@ export interface Services {
   conversations: ConversationsService;
   files: FilesService;
   notifications: NotificationsService;
+  channels: ChannelsService;
   requests: RequestsService;
   runs: RunsService;
   schedules: SchedulesService;
@@ -142,7 +145,8 @@ export function createServices(config: AppConfig, options: ServiceOptions = {}):
     secrets: (memberId) => vault.secretsOf(memberId),
     forbiddenOrigins,
   });
-  const notifications = createNotificationsService({ hub });
+  const channels = createChannelsService({ config, providers });
+  const notifications = createNotificationsService({ hub, deliveries: channels });
   const skills = createSkillsService({ files, providers, agents, connectors, computers, notifications });
   const schedules = createSchedulesService({ agents, background: () => engine.background });
   const requests = createRequestsService({ hub, notifications });
@@ -192,6 +196,7 @@ export function createServices(config: AppConfig, options: ServiceOptions = {}):
     conversations,
     files,
     notifications,
+    channels,
     requests,
     runs,
     schedules,
@@ -254,6 +259,8 @@ export function createApp(services: Services, options: { webDir?: string } = {})
   signedIn.route('/me/connections', myConnectionRoutes(services.connectors));
   signedIn.route('/me/tokens', personalTokenRoutes(services.oauth));
   signedIn.route('/me/grants', grantRoutes(services.oauth));
+  signedIn.route('/me/notification-settings', notificationSettingsRoutes(services.channels));
+  signedIn.route('/me/push-devices', pushDeviceRoutes(services.channels));
   signedIn.route('/oauth', oauthConsentRoutes(services.oauth));
   signedIn.route('/me/vault', vaultRoutes(services.vault));
   signedIn.route('/me', meRoutes(services.members));
@@ -279,6 +286,7 @@ export function createApp(services: Services, options: { webDir?: string } = {})
   signedIn.route('/admin/computers', adminComputerRoutes(services.computers));
   signedIn.route('/admin/connectors', adminConnectorRoutes(services.connectors));
   signedIn.route('/admin/clients', adminClientRoutes(services.oauth));
+  signedIn.route('/admin/channels', adminChannelRoutes(services.channels));
   app.route('/api', signedIn);
   app.route('/', webRoutes(options.webDir));
 

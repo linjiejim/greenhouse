@@ -111,6 +111,12 @@ interface Target {
   modelId: string;
 }
 
+/** A capability's workspace order, and every instance with whether it can serve now. */
+export interface Arrangement {
+  order: string[];
+  instances: (ProviderInstance & { usable: boolean })[];
+}
+
 export interface Resolved<C extends Capability> {
   client: ClientByCapability[C];
   instance: { id: string; kind: string; name: string; source: Source };
@@ -682,6 +688,23 @@ export function createProvidersService(deps: { config: AppConfig; fetch?: typeof
           },
         ]),
       );
+    },
+
+    /**
+     * Every capability as arranged: the workspace order and every instance an admin manages,
+     * each with whether it can serve now. Channels pick their instance by kind from it.
+     */
+    async arrangement(): Promise<Record<Capability, Arrangement>> {
+      const views = await load();
+      return Object.fromEntries(
+        views.map((current) => [
+          current.capability,
+          {
+            order: current.order.map((instance) => instance.id),
+            instances: current.all.map((instance) => ({ ...publicView(instance), usable: usable(instance) })),
+          },
+        ]),
+      ) as Record<Capability, Arrangement>;
     },
 
     async adminView(): Promise<AdminProviders> {

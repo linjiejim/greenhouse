@@ -578,6 +578,22 @@ CREATE TABLE "notifications" (
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
+CREATE TABLE "push_devices" (
+	"id" text PRIMARY KEY NOT NULL,
+	"member_id" text NOT NULL,
+	"token" text NOT NULL,
+	"platform" text NOT NULL,
+	"project_id" text NOT NULL,
+	"client_ref" text,
+	"prefs" jsonb DEFAULT '{}'::jsonb NOT NULL,
+	"auth_version" integer NOT NULL,
+	"last_seen_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"disabled_at" timestamp with time zone,
+	"disabled_reason" text,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
 CREATE TABLE "schedules" (
 	"id" text PRIMARY KEY NOT NULL,
 	"agent_id" text NOT NULL,
@@ -787,6 +803,7 @@ ALTER TABLE "connections" ADD CONSTRAINT "connections_member_id_members_id_fk" F
 ALTER TABLE "connections" ADD CONSTRAINT "connections_connector_id_connectors_id_fk" FOREIGN KEY ("connector_id") REFERENCES "public"."connectors"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "connectors" ADD CONSTRAINT "connectors_created_by_members_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."members"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "providers" ADD CONSTRAINT "providers_owner_id_members_id_fk" FOREIGN KEY ("owner_id") REFERENCES "public"."members"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "push_devices" ADD CONSTRAINT "push_devices_member_id_members_id_fk" FOREIGN KEY ("member_id") REFERENCES "public"."members"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "schedules" ADD CONSTRAINT "schedules_agent_id_agents_id_fk" FOREIGN KEY ("agent_id") REFERENCES "public"."agents"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "vault_access_log" ADD CONSTRAINT "vault_access_log_item_id_vault_items_id_fk" FOREIGN KEY ("item_id") REFERENCES "public"."vault_items"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "vault_items" ADD CONSTRAINT "vault_items_member_id_members_id_fk" FOREIGN KEY ("member_id") REFERENCES "public"."members"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
@@ -855,6 +872,8 @@ CREATE INDEX "providers_capability_idx" ON "providers" USING btree ("capability"
 CREATE INDEX "providers_owner_idx" ON "providers" USING btree ("owner_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "notifications_dedupe_key" ON "notifications" USING btree ("member_id","dedupe_key");--> statement-breakpoint
 CREATE INDEX "notifications_member_idx" ON "notifications" USING btree ("member_id","created_at");--> statement-breakpoint
+CREATE UNIQUE INDEX "push_devices_token_key" ON "push_devices" USING btree ("token");--> statement-breakpoint
+CREATE INDEX "push_devices_member_active_idx" ON "push_devices" USING btree ("member_id") WHERE "push_devices"."disabled_at" IS NULL;--> statement-breakpoint
 CREATE INDEX "schedules_due_idx" ON "schedules" USING btree ("status","next_run_at");--> statement-breakpoint
 CREATE INDEX "schedules_agent_idx" ON "schedules" USING btree ("agent_id");--> statement-breakpoint
 CREATE INDEX "audit_events_actor_idx" ON "audit_events" USING btree ("actor_type","actor_id","created_at");--> statement-breakpoint

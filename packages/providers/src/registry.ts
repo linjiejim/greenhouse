@@ -1,3 +1,6 @@
+import { expoAdapter } from './channels/expo.js';
+import { feishuAdapter } from './channels/feishu.js';
+import { wecomAdapter } from './channels/wecom.js';
 import { IMAGE_ADAPTERS } from './image/adapters.js';
 import { LLM_ADAPTERS } from './llm/adapters.js';
 import { dockerAdapter } from './sandbox/docker.js';
@@ -36,6 +39,9 @@ for (const adapter of [
   localAdapter,
   s3Adapter,
   dockerAdapter,
+  feishuAdapter,
+  wecomAdapter,
+  expoAdapter,
 ] as AnyAdapter[]) {
   registerAdapter(adapter);
 }

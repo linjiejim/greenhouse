@@ -222,6 +222,110 @@ function storageFromEnv(env: Env): EnvInstance | null {
   };
 }
 
+/** An env channel whose settings its adapter rejects is left out with a warning, not used half set up. */
+function channelInstance(entry: EnvInstance, variables: string): EnvInstance[] {
+  const adapter = listAdapters(entry.capability).find((candidate) => candidate.kind === entry.kind);
+  const parsed = adapter?.configSchema.safeParse(entry.config);
+  const problem = !adapter
+    ? 'this build has no adapter for it'
+    : parsed?.success
+      ? null
+      : (parsed?.error.issues.map((issue) => issue.path.join('.') || 'settings').join(', ') ?? 'settings');
+  if (problem) {
+    logger.warn(`[providers] ${variables} are incomplete (${problem}); ignored`);
+    return [];
+  }
+  return [entry];
+}
+
+/** SMTP_*, FEISHU_*, WECOM_*, PUSH_PROVIDER: the channels notifications go out through. */
+function channelsFromEnv(env: Env): EnvInstance[] {
+  const instances: EnvInstance[] = [];
+  const host = value(env, 'SMTP_HOST');
+  if (host) {
+    instances.push(
+      ...channelInstance(
+        {
+          id: 'env-mail',
+          capability: 'mail',
+          kind: 'smtp',
+          preset: null,
+          name: 'SMTP',
+          config: {
+            host,
+            ...compact({
+              port: value(env, 'SMTP_PORT'),
+              security: value(env, 'SMTP_SECURITY'),
+              username: value(env, 'SMTP_USER'),
+              fromAddress: value(env, 'SMTP_FROM'),
+              fromName: value(env, 'SMTP_FROM_NAME'),
+            }),
+          },
+          secrets: compact({ password: value(env, 'SMTP_PASSWORD') }),
+        },
+        'SMTP_*',
+      ),
+    );
+  }
+  const appId = value(env, 'FEISHU_APP_ID');
+  if (appId) {
+    instances.push(
+      ...channelInstance(
+        {
+          id: 'env-im-feishu',
+          capability: 'im',
+          kind: 'feishu',
+          preset: null,
+          name: '飞书',
+          config: { appId, ...compact({ baseUrl: value(env, 'FEISHU_BASE_URL') }) },
+          secrets: compact({ appSecret: value(env, 'FEISHU_APP_SECRET') }),
+        },
+        'FEISHU_*',
+      ),
+    );
+  }
+  const corpId = value(env, 'WECOM_CORP_ID');
+  if (corpId) {
+    instances.push(
+      ...channelInstance(
+        {
+          id: 'env-im-wecom',
+          capability: 'im',
+          kind: 'wecom',
+          preset: null,
+          name: '企业微信',
+          config: {
+            corpId,
+            ...compact({ agentId: value(env, 'WECOM_AGENT_ID'), baseUrl: value(env, 'WECOM_BASE_URL') }),
+          },
+          secrets: compact({ secret: value(env, 'WECOM_APP_SECRET') }),
+        },
+        'WECOM_*',
+      ),
+    );
+  }
+  const push = value(env, 'PUSH_PROVIDER');
+  if (push === 'expo') {
+    instances.push(
+      ...channelInstance(
+        {
+          id: 'env-push',
+          capability: 'push',
+          kind: 'expo',
+          preset: null,
+          name: 'Expo',
+          config: {},
+          secrets: compact({ accessToken: value(env, 'EXPO_ACCESS_TOKEN') }),
+        },
+        'PUSH_PROVIDER',
+      ),
+    );
+  } else if (push) {
+    logger.warn(`[providers] PUSH_PROVIDER=${push} is not available; ignored`);
+  }
+  return instances;
+}
+
 const camel = (key: string) => key.replace(/_([a-z])/g, (_, letter: string) => letter.toUpperCase());
 
 /** YAML is written in snake_case like the API; adapter config is camelCase. */
@@ -318,6 +422,7 @@ export function providersFromEnv(env: Env): EnvProviders {
   if (storage) instances.push(storage);
   const sandbox = sandboxFromEnv(env);
   if (sandbox) instances.push(sandbox);
+  instances.push(...channelsFromEnv(env));
   if (value(env, 'VIDEO_PROVIDER'))
     logger.warn('[providers] VIDEO_PROVIDER is not available in this build yet; ignored');
   return { instances, defaults, policies: {} };

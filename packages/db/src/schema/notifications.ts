@@ -1,6 +1,8 @@
+import { sql } from 'drizzle-orm';
 import { index, integer, pgTable, text, uniqueIndex } from 'drizzle-orm/pg-core';
 import { at, createdAt, id, json, updatedAt } from './_columns.js';
 import { agents } from './agents.js';
+import { members } from './identity.js';
 
 export const NOTIFICATION_KINDS = [
   'request',
@@ -43,6 +45,57 @@ export const notifications = pgTable(
   ],
 );
 
+export const PUSH_PLATFORMS = ['ios', 'android'] as const;
+export const PUSH_DISABLED_REASONS = ['unregistered', 'device_not_registered', 'device_limit'] as const;
+export type PushDisabledReason = (typeof PUSH_DISABLED_REASONS)[number];
+
+/** A phone's own switches. They only narrow what the member's settings allow on that phone. */
+export type PushPrefs = {
+  needs_you: boolean;
+  /** Runs and schedules that finished. */
+  done: boolean;
+  replies: boolean;
+  preview: boolean;
+  /** The phone shows background runs as Live Activities: a run's end also wakes the app. */
+  live_activity: boolean;
+};
+
+/**
+ * Phones that receive this deployment's pushes: an Expo push token, never an Apple key.
+ * Registering a token again refreshes its row; under another member the row moves there with
+ * fresh prefs. Rows are never deleted: unregistering and Expo's DeviceNotRegistered only disable
+ * them. `authVersion` is the member's at registration, so a password change or a disable stops
+ * pushes until the phone registers again.
+ */
+export const pushDevices = pgTable(
+  'push_devices',
+  {
+    id: id(),
+    memberId: text('member_id')
+      .notNull()
+      .references(() => members.id, { onDelete: 'cascade' }),
+    token: text('token').notNull(),
+    platform: text('platform', { enum: PUSH_PLATFORMS }).notNull(),
+    /** The Expo project the token belongs to; messages go out per project. */
+    projectId: text('project_id').notNull(),
+    /** The phone's own id for this workspace, echoed in every push. */
+    clientRef: text('client_ref'),
+    prefs: json<Partial<PushPrefs>>('prefs', {}),
+    authVersion: integer('auth_version').notNull(),
+    lastSeenAt: at('last_seen_at').notNull().defaultNow(),
+    disabledAt: at('disabled_at'),
+    disabledReason: text('disabled_reason', { enum: PUSH_DISABLED_REASONS }),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    uniqueIndex('push_devices_token_key').on(t.token),
+    index('push_devices_member_active_idx')
+      .on(t.memberId)
+      .where(sql`${t.disabledAt} IS NULL`),
+  ],
+);
+
 /** Schedules belong to an Agent; each firing starts a background run. */
 export const schedules = pgTable(
   'schedules',
@@ -73,4 +126,5 @@ export const schedules = pgTable(
 );
 
 export type NotificationRow = typeof notifications.$inferSelect;
+export type PushDeviceRow = typeof pushDevices.$inferSelect;
 export type ScheduleRow = typeof schedules.$inferSelect;

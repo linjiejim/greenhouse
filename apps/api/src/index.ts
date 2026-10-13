@@ -34,6 +34,7 @@ async function main() {
   await services.hub.connect(pgTransport(client.sql));
   services.engine.start();
   services.schedules.start();
+  services.channels.start();
   services.computers.startWatching((conversationId, item) => services.engine.deliver(conversationId, item));
   // Turns another process left behind (a restart, a crash) carry on here.
   await services.engine.sweep();
@@ -55,6 +56,7 @@ async function main() {
 
   const stop = async () => {
     services.schedules.stop();
+    await services.channels.stop();
     services.computers.stopWatching();
     await realtime.close();
     await computerSockets.close();
