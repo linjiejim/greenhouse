@@ -126,9 +126,10 @@ describe('the MCP server with a real MCP client', () => {
       needs_you: [],
       url: `${ISSUER}/#/c/${asked.conversation_id}`,
     });
-    // It is the member's own main thread: the app shows the exchange there.
+    // It is the member's own main thread: the app shows the exchange there, already read.
     const main = (await t.call('GET', '/api/conversations?kind=main', { token: lin.token })).body.items[0];
     expect(main.id).toBe(asked.conversation_id);
+    expect(main).toMatchObject({ unread: 0, last_read_seq: asked.replies[0].seq });
     const transcript = await t.call('GET', `/api/conversations/${main.id}/messages`, { token: lin.token });
     expect(transcript.body.items.map((message: { content: string }) => message.content).slice(-2)).toEqual([
       'Hello?',

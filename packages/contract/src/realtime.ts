@@ -67,6 +67,8 @@ export const realtimeEventSchema = z.discriminatedUnion('type', [
     type: z.literal('notification.created'),
     data: z.object({ notification_id: z.string(), kind: z.string(), title: z.string() }),
   }),
+  /** Some of my notifications were read (on another screen, or by reading their conversation): refetch them. */
+  z.object({ type: z.literal('notification.read'), data: z.object({ notification_ids: z.array(z.string()) }) }),
   /** My computer of this Agent started, stopped or failed: refetch it. */
   z.object({
     type: z.literal('computer.updated'),

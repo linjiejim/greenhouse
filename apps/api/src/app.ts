@@ -127,7 +127,9 @@ export function createServices(config: AppConfig, options: ServiceOptions = {}):
     equip: (memberId, manifest, added) => skills.assertEquippable(memberId, manifest, added),
   });
   const hub = createHub();
-  const conversations = createConversationsService({ agents, providers, hub, files });
+  const channels = createChannelsService({ config, providers });
+  const notifications = createNotificationsService({ hub, deliveries: channels });
+  const conversations = createConversationsService({ agents, providers, hub, files, notifications });
   const members = createMembersService({ auth, providers, files });
   // A socket ticket is a one-time link: random, stored only as a keyed hash.
   const computers = createComputersService({
@@ -145,8 +147,6 @@ export function createServices(config: AppConfig, options: ServiceOptions = {}):
     secrets: (memberId) => vault.secretsOf(memberId),
     forbiddenOrigins,
   });
-  const channels = createChannelsService({ config, providers });
-  const notifications = createNotificationsService({ hub, deliveries: channels });
   const skills = createSkillsService({ files, providers, agents, connectors, computers, notifications });
   const schedules = createSchedulesService({ agents, background: () => engine.background });
   const requests = createRequestsService({ hub, notifications });

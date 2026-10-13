@@ -843,6 +843,7 @@ CREATE UNIQUE INDEX "handoffs_dedupe_key" ON "handoffs" USING btree ("dedupe_key
 CREATE INDEX "handoffs_chain_idx" ON "handoffs" USING btree ("chain_key");--> statement-breakpoint
 CREATE INDEX "message_feedback_agent_idx" ON "message_feedback" USING btree ("agent_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "messages_seq_key" ON "messages" USING btree ("conversation_id","seq");--> statement-breakpoint
+CREATE INDEX "messages_run_idx" ON "messages" USING btree ("run_id") WHERE "messages"."run_id" IS NOT NULL;--> statement-breakpoint
 CREATE INDEX "messages_skill_runs_idx" ON "messages" USING btree ("author_member_id") WHERE "messages"."skill" IS NOT NULL;--> statement-breakpoint
 CREATE INDEX "requests_member_status_idx" ON "requests" USING btree ("member_id","status");--> statement-breakpoint
 CREATE INDEX "requests_conversation_idx" ON "requests" USING btree ("conversation_id");--> statement-breakpoint
@@ -853,6 +854,7 @@ CREATE INDEX "runs_owner_status_idx" ON "runs" USING btree ("owner_id","status")
 CREATE INDEX "runs_agent_idx" ON "runs" USING btree ("agent_id","created_at");--> statement-breakpoint
 CREATE INDEX "runs_claimable_idx" ON "runs" USING btree ("status","lease_expires_at") WHERE "runs"."kind" = 'background';--> statement-breakpoint
 CREATE INDEX "runs_conversation_idx" ON "runs" USING btree ("conversation_id");--> statement-breakpoint
+CREATE INDEX "runs_turns_finished_idx" ON "runs" USING btree ("finished_at") WHERE "runs"."kind" = 'turn' AND "runs"."status" = 'succeeded';--> statement-breakpoint
 CREATE UNIQUE INDEX "runs_one_active_turn_key" ON "runs" USING btree ("conversation_id") WHERE "runs"."kind" = 'turn' AND "runs"."status" IN ('queued', 'running');--> statement-breakpoint
 CREATE UNIQUE INDEX "files_storage_key" ON "files" USING btree ("storage_key");--> statement-breakpoint
 CREATE INDEX "files_conversation_idx" ON "files" USING btree ("conversation_id");--> statement-breakpoint

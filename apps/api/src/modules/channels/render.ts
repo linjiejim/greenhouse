@@ -22,7 +22,7 @@ export interface Rendering {
   kind: NotificationKind;
   /** A needs-you card's kind: approval, login, takeover, question, proposal. */
   requestKind?: string | null;
-  /** Who it is from: the Agent's name, else the workspace's. */
+  /** Who it is from: the Agent's name, the person's who mentioned the member, else the workspace's. */
   from: string;
   workspace: string;
   /** The notification's own title and body. */

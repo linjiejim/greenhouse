@@ -48,13 +48,11 @@ export const DEFAULT_CHANNELS: Readonly<Record<NotificationCategory, Readonly<Re
 /** What a needs-you card asks and what a reply says never leave the server, previews or not. */
 export const SENSITIVE: ReadonlySet<NotificationCategory> = new Set(['needs_you', 'replies']);
 
-/** Replies wait a minute: a member who reads it in the app meanwhile gets nothing more. */
-export const DELIVERY_DELAY_MS: Readonly<Record<NotificationCategory, number>> = {
-  needs_you: 0,
-  replies: 60_000,
-  runs: 0,
-  other: 0,
-};
+/**
+ * Mentions wait a minute: a member who reads the conversation in the app meanwhile gets nothing
+ * more. A reply is only written down once the member missed it for a minute, so it goes at once.
+ */
+export const deliveryDelayMs = (kind: NotificationKind): number => (kind === 'mention' ? 60_000 : 0);
 
 /** Notifications from the same source and category within this window make one message per channel. */
 export const COLLAPSE_WINDOW_MS = 5 * 60_000;

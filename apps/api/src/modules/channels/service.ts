@@ -81,7 +81,7 @@ import './smtp.js';
 import {
   categoryOf,
   COLLAPSE_WINDOW_MS,
-  DELIVERY_DELAY_MS,
+  deliveryDelayMs,
   effectiveSettings,
   kindsOf,
   mergeSettings,
@@ -348,7 +348,7 @@ export function createChannelsService(deps: { config: AppConfig; providers: Prov
           .limit(20);
         earlier = recent.map((entry) => entry.id);
       }
-      for (const channel of channels) await enqueueChannel(row, channel, earlier, DELIVERY_DELAY_MS[category]);
+      for (const channel of channels) await enqueueChannel(row, channel, earlier, deliveryDelayMs(row.kind));
     },
 
     wake(): void {

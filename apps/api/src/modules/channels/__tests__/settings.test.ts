@@ -3,7 +3,14 @@ import { NOTIFICATION_KINDS } from '@greenhouse/db';
 import { backoffMs } from '../../../jobs.js';
 import { prefsOf } from '../devices.js';
 import { isRunEnd, pushData, pushDecision, pushMessage, PUSH_TTL_MS } from '../push.js';
-import { categoryOf, DEFAULT_CHANNELS, effectiveSettings, kindsOf, mergeSettings } from '../settings.js';
+import {
+  categoryOf,
+  DEFAULT_CHANNELS,
+  deliveryDelayMs,
+  effectiveSettings,
+  kindsOf,
+  mergeSettings,
+} from '../settings.js';
 
 describe('delivery settings', () => {
   it('starts with email off and pushes for what needs the member, replies and runs', () => {
@@ -35,6 +42,12 @@ describe('delivery settings', () => {
     expect(categoryOf('budget')).toBe('other');
     const all = (['needs_you', 'replies', 'runs', 'other'] as const).flatMap(kindsOf);
     expect(all.sort()).toEqual([...NOTIFICATION_KINDS].sort());
+  });
+
+  it('holds a mention a minute; a reply was already missed for one, so it goes at once', () => {
+    expect(deliveryDelayMs('mention')).toBe(60_000);
+    expect(deliveryDelayMs('reply')).toBe(0);
+    expect(deliveryDelayMs('request')).toBe(0);
   });
 });
 

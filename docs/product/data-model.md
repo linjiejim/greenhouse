@@ -177,7 +177,7 @@ v2 从零建表：只有一份基线迁移，不继承 v1 的迁移链，也不�
 
 | 表 | 用途 | 关键列与关系 |
 | --- | --- | --- |
-| `notifications` | 站内通知 | `member_id`、`kind`（request / run_done / run_failed / reply / mention / comment / share / automation / skill_scan / budget / system）、`title`、`body`、`target_type` + `target_id`（打开即回到来源）、`request_id`、`run_id`、`agent_id`、`payload`（来源附带的信息，不含内容；送达的路由取自 target、request、run 列）、`dedupe_key`（每人唯一）、`read_at`；只有已读状态可改；外部送达是 `jobs`（`deliver_notification`，每条通知每个渠道一条，和通知在同一事务里写入） |
+| `notifications` | 站内通知 | `member_id`、`kind`（request / run_done / run_failed / reply / mention / comment / share / automation / skill_scan / budget / system）、`title`、`body`、`target_type` + `target_id`（打开即回到来源）、`request_id`、`run_id`、`agent_id`、`payload`（来源附带的信息，不含内容；送达的路由取自 target、request、run 列；回复与提及带 `message_id`、`seq`，提及另带 `from_member_id`，读会话到该 `seq` 即已读）、`dedupe_key`（每人唯一）、`read_at`；只有已读状态可改；外部送达是 `jobs`（`deliver_notification`，每条通知每个渠道一条，和通知在同一事务里写入） |
 | `push_devices` | 手机推送设备 | `member_id` `CASCADE`、`token`（Expo push token，唯一，从不返回）、`platform`（ios / android）、`project_id`（按它分组发送）、`client_ref`（工作站 id，推送里原样带回）、`prefs`（needs_you / done / replies / preview / live_activity，只能收窄成员的设置）、`auth_version`（登记时的，改密码或停用后停推）、`last_seen_at`（90 天未见不推）、`disabled_at` + `disabled_reason`（unregistered / device_not_registered / device_limit，每人最多 10 台）；按 token 登记，换人即归新成员并重置开关；只停用不删除 |
 | `schedules` | 定时，只属于 Agent | `agent_id` `CASCADE`、`owner_id`、`name`、`brief`（每次运行的简报）、`skill_id`（可选：按技能运行）、`model`、`cron`、`timezone`、`status`（active / paused）、`next_run_at`、`last_run_at`、`last_run_id`、`last_status`、`run_count` |
 

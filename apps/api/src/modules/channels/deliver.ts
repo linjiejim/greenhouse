@@ -225,13 +225,19 @@ export function createDeliverer(deps: { providers: ProvidersService; publicUrl: 
       const [agent] = notification.agentId
         ? await getDb().select({ name: agents.name }).from(agents).where(eq(agents.id, notification.agentId))
         : [];
+      // A mention is from the person who wrote it.
+      const authorId = notification.payload.from_member_id;
+      const [author] =
+        !agent && typeof authorId === 'string'
+          ? await getDb().select({ name: members.name }).from(members).where(eq(members.id, authorId))
+          : [];
       const workspaceName = await pass.workspaceName();
       const rendering: Rendering = {
         locale: localeOf(member),
         category,
         kind: notification.kind,
         requestKind: request?.kind ?? null,
-        from: agent?.name ?? workspaceName,
+        from: agent?.name ?? author?.name ?? workspaceName,
         workspace: workspaceName,
         title: notification.title,
         body: notification.body,

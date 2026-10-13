@@ -51,6 +51,15 @@ const toNotification = (row: NotificationRow): Notification => ({
 });
 
 export function createNotificationsService(deps: { hub: Hub; deliveries: Deliveries }) {
+  /** The member's other screens refresh their badge and list. */
+  function announceRead(memberId: string, read: Array<{ id: string }>) {
+    if (!read.length) return;
+    deps.hub.publish([memberId], {
+      type: 'notification.read',
+      data: { notification_ids: read.map((row) => row.id) },
+    });
+  }
+
   return {
     /**
      * Records the notification once per dedupe key, with its deliveries to the member's other
@@ -117,7 +126,7 @@ export function createNotificationsService(deps: { hub: Hub; deliveries: Deliver
     },
 
     async markRead(memberId: string, input: { ids: string[] } | { all: true }): Promise<void> {
-      await getDb()
+      const read = await getDb()
         .update(notifications)
         .set({ readAt: sql`now()` })
         .where(
@@ -126,7 +135,28 @@ export function createNotificationsService(deps: { hub: Hub; deliveries: Deliver
             isNull(notifications.readAt),
             'ids' in input ? inArray(notifications.id, input.ids) : undefined,
           ),
-        );
+        )
+        .returning({ id: notifications.id });
+      announceRead(memberId, read);
+    },
+
+    /** Reading a conversation reads its reply and mention notifications up to where the member read. */
+    async markConversationRead(memberId: string, conversationId: string, seq: number): Promise<void> {
+      const read = await getDb()
+        .update(notifications)
+        .set({ readAt: sql`now()` })
+        .where(
+          and(
+            eq(notifications.memberId, memberId),
+            eq(notifications.targetType, 'conversation'),
+            eq(notifications.targetId, conversationId),
+            inArray(notifications.kind, ['reply', 'mention']),
+            isNull(notifications.readAt),
+            sql`coalesce((${notifications.payload}->>'seq')::int, 0) <= ${seq}`,
+          ),
+        )
+        .returning({ id: notifications.id });
+      announceRead(memberId, read);
     },
 
     /** Notifications about a request are read once it is decided. */

@@ -73,6 +73,11 @@ test('a room: Lin brings Mei and Greeny, Mei writes back, notes are shared, Mei 
   await composer(page).pressSequentially('hello room');
   await composer(page).press('Enter');
   await expect(page.getByText(/Echo: .*hello room/)).toBeVisible();
+  await composer(page).fill('@');
+  await page.getByRole('option', { name: /Mei/ }).click();
+  await composer(page).pressSequentially('please review');
+  await composer(page).press('Enter');
+  await expect(page.getByText('@Mei please review', { exact: true })).toBeVisible();
 
   await page.getByRole('button', { name: '信息' }).click();
   const info = page.getByRole('dialog', { name: '信息' });
@@ -85,7 +90,12 @@ test('a room: Lin brings Mei and Greeny, Mei writes back, notes are shared, Mei 
 
   const mei = await browser.newContext({ storageState: as('mei'), locale: 'zh-CN', timezoneId: 'Asia/Shanghai' });
   const other = await mei.newPage();
-  await other.goto(roomUrl);
+  // Mei was named: her notifications lead back to the room, and reading it reads the notification.
+  await other.goto('/#/notifications?view=all');
+  const mention = other.getByRole('link', { name: /Lin 在「Launch」里提到了你/ }).first();
+  await expect(mention).toBeVisible();
+  await mention.click();
+  await expect(other).toHaveURL(roomUrl);
   await expect(other.getByText('@Greeny hello room', { exact: true })).toBeVisible();
   // Mei has read it: Lin's message says so.
   await expect(page.locator('.app-message.is-mine').last().getByText('已读 1')).toBeVisible();

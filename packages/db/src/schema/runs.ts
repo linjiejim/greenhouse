@@ -60,6 +60,10 @@ export const runs = pgTable(
       .on(t.status, t.leaseExpiresAt)
       .where(sql`${t.kind} = 'background'`),
     index('runs_conversation_idx').on(t.conversationId),
+    // The engine's sweep: replies a member may have missed.
+    index('runs_turns_finished_idx')
+      .on(t.finishedAt)
+      .where(sql`${t.kind} = 'turn' AND ${t.status} = 'succeeded'`),
     // The single writer of a conversation: at most one turn is answering at a time.
     uniqueIndex('runs_one_active_turn_key')
       .on(t.conversationId)

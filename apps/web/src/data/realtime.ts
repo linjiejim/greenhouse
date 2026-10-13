@@ -163,6 +163,7 @@ export function applyEvent(client: QueryClient, event: Exclude<RealtimeEvent, { 
       soon(client, keys.conversations);
       return;
     case 'notification.created':
+    case 'notification.read':
       soon(client, ['notifications']);
       return;
     case 'computer.updated':

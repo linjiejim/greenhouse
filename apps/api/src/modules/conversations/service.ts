@@ -57,6 +57,7 @@ import type { Hub } from '../../realtime/hub.js';
 import { agentIdOf, type AgentsService } from '../agents/service.js';
 import type { FilesService } from '../files/service.js';
 import { summaryFor } from '../members/service.js';
+import type { NotificationsService } from '../notifications/service.js';
 import { exportFilename, renderConversationMarkdown, type ExportedMessage } from './export.js';
 
 type CreateInput = z.output<typeof createConversationInputSchema>;
@@ -172,6 +173,7 @@ export function createConversationsService(deps: {
   providers: ProvidersService;
   hub: Hub;
   files: FilesService;
+  notifications: Pick<NotificationsService, 'markConversationRead'>;
 }) {
   async function localeOf(memberId: string): Promise<'zh' | 'en'> {
     const [member] = await getDb().select({ locale: members.locale }).from(members).where(eq(members.id, memberId));
@@ -1041,6 +1043,7 @@ export function createConversationsService(deps: {
         .set({ lastReadSeq: sql`greatest(${conversationMembers.lastReadSeq}, ${Math.min(seq, conversation.lastSeq)})` })
         .where(and(eq(conversationMembers.conversationId, conversationId), eq(conversationMembers.memberId, memberId)))
         .returning({ lastReadSeq: conversationMembers.lastReadSeq });
+      if (seat) await deps.notifications.markConversationRead(memberId, conversationId, seat.lastReadSeq);
       // Rooms show who has read what; elsewhere nobody else is there to see it.
       if (seat && conversation.kind === 'room') {
         await service.publish(conversationId, {

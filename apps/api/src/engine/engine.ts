@@ -63,6 +63,7 @@ import type { FilesService } from '../modules/files/service.js';
 import type { NotificationsService } from '../modules/notifications/service.js';
 import type { RequestsService } from '../modules/requests/service.js';
 import type { SkillsService } from '../modules/skills/service.js';
+import { notifyMentions, notifyMissedReplies } from './alerts.js';
 import { createBackground, type Background } from './background.js';
 import { toMessage, type ConversationsService } from '../modules/conversations/service.js';
 import { effectiveModules } from '../modules/members/service.js';
@@ -1283,6 +1284,9 @@ export function createEngine(deps: EngineDeps) {
         }),
       );
       await publish(conversationId, { type: 'message.created', data: { message: toMessage(result.message) } });
+      await notifyMentions(deps.notifications, { conversation, message: result.message, senderId: memberId }).catch(
+        (error: unknown) => logger.warn('[engine] could not tell the people named', { error: toErrorMessage(error) }),
+      );
       await begin(conversationId, result.run);
       return { message: toMessage(result.message), run_id: result.run?.id ?? null, queued: result.queued };
     },
@@ -1606,7 +1610,8 @@ export function createEngine(deps: EngineDeps) {
 
     /**
      * Turns whose process died (expired lease) end as interrupted, keeping what they wrote, and
-     * their queue moves on. Queues left behind with no turn (a shutdown) start again.
+     * their queue moves on. Queues left behind with no turn (a shutdown) start again. Members
+     * hear about the replies they missed.
      */
     async sweep(): Promise<void> {
       for (const request of await deps.requests.expireDue()) track(resolve(request));
@@ -1659,6 +1664,7 @@ export function createEngine(deps: EngineDeps) {
         );
         if (run) track(runChain(run));
       }
+      await notifyMissedReplies(deps.notifications);
     },
 
     start() {

@@ -144,8 +144,18 @@ export function createExchange(deps: ExchangeDeps) {
     };
   }
 
-  /** Looks again whenever something happens in the conversation, until it stops working or time is up. */
+  /**
+   * Looks again whenever something happens in the conversation, until it stops working or time is
+   * up. Replies handed to the caller count as read: the member has them, so nobody tells them again.
+   */
   async function settle(memberId: string, at: Thread, afterSeq: number, waitMs: number) {
+    const current = await wait(memberId, at, afterSeq, waitMs);
+    const seen = current.replies.filter((reply) => reply.status !== 'streaming').at(-1)?.seq;
+    if (seen) await deps.conversations.markRead(memberId, at.id, seen);
+    return current;
+  }
+
+  async function wait(memberId: string, at: Thread, afterSeq: number, waitMs: number) {
     let current = await snapshot(memberId, at, afterSeq);
     if (current.status !== 'working' || waitMs <= 0) return current;
     const deadline = Date.now() + waitMs;

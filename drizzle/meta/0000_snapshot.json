@@ -1,5 +1,5 @@
 {
-  "id": "b6569411-137b-433f-89c8-6a03f05aea6d",
+  "id": "b47242c3-3353-4fd2-bf03-30ec6494048d",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -3116,6 +3116,22 @@
           "method": "btree",
           "with": {}
         },
+        "messages_run_idx": {
+          "name": "messages_run_idx",
+          "columns": [
+            {
+              "expression": "run_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"messages\".\"run_id\" IS NOT NULL",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
         "messages_skill_runs_idx": {
           "name": "messages_skill_runs_idx",
           "columns": [
@@ -3926,6 +3942,22 @@
             }
           ],
           "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "runs_turns_finished_idx": {
+          "name": "runs_turns_finished_idx",
+          "columns": [
+            {
+              "expression": "finished_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"runs\".\"kind\" = 'turn' AND \"runs\".\"status\" = 'succeeded'",
           "concurrently": false,
           "method": "btree",
           "with": {}

@@ -124,6 +124,9 @@ export const messages = pgTable(
   },
   (t) => [
     uniqueIndex('messages_seq_key').on(t.conversationId, t.seq),
+    index('messages_run_idx')
+      .on(t.runId)
+      .where(sql`${t.runId} IS NOT NULL`),
     // A member's most-used skills (the new chat's starters).
     index('messages_skill_runs_idx')
       .on(t.authorMemberId)
