@@ -522,6 +522,14 @@ export function createProvidersService(deps: { config: AppConfig; fetch?: typeof
       };
     },
 
+    /** Every instance that can serve the member, in fallback order, each with a metered client. */
+    async chain<C extends Capability>(capability: C, ctx: UsageContext): Promise<Resolved<C>[]> {
+      return chainFor(await viewOf(capability), ctx).map((instance) => ({
+        client: client<C>(instance, ctx),
+        instance: { id: instance.id, kind: instance.kind, name: instance.name, source: instance.source },
+      }));
+    },
+
     /** Whether a capability can serve at all, for hiding the tools and UI that need it. */
     async available(capability: Capability, ctx: UsageContext = {}): Promise<boolean> {
       return chainFor(await viewOf(capability), ctx).length > 0;

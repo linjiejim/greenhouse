@@ -3,6 +3,7 @@
  * so every call is a recorded step and the turn knows when it read outside text.
  */
 
+import { createHash } from 'node:crypto';
 import { tool, type ToolSet } from 'ai';
 import { and, eq, sql } from 'drizzle-orm';
 import { getDb, newId, runSteps, type NeedsYouRequest } from '@greenhouse/db';
@@ -32,6 +33,18 @@ export interface TurnTools {
   /** True once a tool raised a card: the turn ends after this step. */
   waiting(): boolean;
   markWaiting(): void;
+}
+
+/** JSON with sorted keys: the same arguments always give the same text. */
+function stable(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stable).join(',')}]`;
+  if (value && typeof value === 'object') {
+    return `{${Object.keys(value)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${stable((value as Record<string, unknown>)[key])}`)
+      .join(',')}}`;
+  }
+  return JSON.stringify(value) ?? 'null';
 }
 
 const MAX_DETAIL_FIELDS = 12;
@@ -77,28 +90,79 @@ export async function assembleTools(input: {
   }
 
   let waiting = false;
+  // Some servers reuse call ids across steps ("call_0"); a step key must still be unique.
+  const usedKeys = new Map<string, number>();
+  const stepKey = (callId: string) => {
+    const seen = usedKeys.get(callId) ?? 0;
+    usedKeys.set(callId, seen + 1);
+    return seen ? `${callId}#${seen + 1}` : callId;
+  };
+  // Nobody watches a background run: once it has read private data it may not reach outside.
+  let readPrivate = false;
   const tools: ToolSet = {};
   for (const def of chosen) {
     tools[def.name] = tool({
       description: def.description,
       inputSchema: def.input,
       execute: async (args: unknown, options: { toolCallId: string; abortSignal?: AbortSignal }) => {
+        if (def.outbound && readPrivate && context.surface === 'background') {
+          throw new Error(
+            'This run has read private data, so it can no longer search or open web pages. Report what you have.',
+          );
+        }
+        if (def.private) readPrivate = true;
         const started = Date.now();
-        const stepId = newId('runStep');
-        await getDb()
+        const key = stepKey(options.toolCallId);
+        // A background run is replayed on retry: a call that already succeeded returns what it returned.
+        const idempotencyKey =
+          context.surface === 'background'
+            ? createHash('sha256')
+                .update(`${def.name}\n${stable(args)}`)
+                .digest('hex')
+            : null;
+        if (idempotencyKey) {
+          const [cached] = await getDb()
+            .select({ output: runSteps.output })
+            .from(runSteps)
+            .where(
+              and(
+                eq(runSteps.runId, context.runId),
+                eq(runSteps.idempotencyKey, idempotencyKey),
+                eq(runSteps.status, 'succeeded'),
+              ),
+            );
+          if (cached) return cached.output;
+        }
+        const [row] = await getDb()
           .insert(runSteps)
           .values({
-            id: stepId,
+            id: newId('runStep'),
             runId: context.runId,
-            key: options.toolCallId,
+            key,
+            attempt: context.attempt ?? 1,
             kind: 'tool',
             toolName: def.name,
             risk: def.risk,
+            idempotencyKey,
             status: 'running',
             input: (bounded(args) ?? {}) as Record<string, unknown>,
             startedAt: new Date(started).toISOString(),
           })
-          .onConflictDoNothing();
+          .onConflictDoUpdate({
+            target: [runSteps.runId, runSteps.idempotencyKey],
+            set: {
+              key,
+              attempt: context.attempt ?? 1,
+              status: 'running',
+              output: null,
+              error: null,
+              startedAt: new Date(started).toISOString(),
+              finishedAt: null,
+              updatedAt: sql`now()`,
+            },
+          })
+          .returning({ id: runSteps.id });
+        const stepId = row!.id;
         if (def.taints) context.taint();
         const call: ToolContext = {
           ...context,

@@ -32,18 +32,67 @@ export interface Script {
 
 export function scriptedModel(scripts: Array<Part[] | Script>, options: { title?: string } = {}) {
   const prompts: unknown[] = [];
+  /** The tool names offered on each call. */
+  const tools: string[][] = [];
   let index = 0;
+  const next = (): Script => {
+    const script = scripts[Math.min(index++, scripts.length - 1)]!;
+    return Array.isArray(script) ? { parts: script } : script;
+  };
   const model = new MockLanguageModelV4({
-    doGenerate: async () => ({
-      content: [{ type: 'text', text: options.title ?? 'A title' }],
-      finishReason: { unified: 'stop', raw: undefined },
-      usage: USAGE,
-      warnings: [],
-    }),
+    doGenerate: async (call) => {
+      const system = JSON.stringify(call.prompt.filter((message) => message.role === 'system'));
+      if (system.includes('Write a title for this conversation')) {
+        return {
+          content: [{ type: 'text', text: options.title ?? 'A title' }],
+          finishReason: { unified: 'stop', raw: undefined },
+          usage: USAGE,
+          warnings: [],
+        };
+      }
+      // Headless turns (background runs) play the same scripts as streaming ones.
+      prompts.push(call.prompt);
+      tools.push((call.tools ?? []).map((entry) => entry.name));
+      const script = next();
+      if (script.gate) {
+        await Promise.race([
+          script.gate,
+          new Promise((_, reject) =>
+            call.abortSignal?.addEventListener(
+              'abort',
+              () => reject(call.abortSignal?.reason ?? new Error('aborted')),
+              {
+                once: true,
+              },
+            ),
+          ),
+        ]);
+      }
+      const textOut = script.parts
+        .filter((part) => part.type === 'text-delta')
+        .map((part) => String(part.delta))
+        .join('');
+      const calls = script.parts.filter((part) => part.type === 'tool-call');
+      const finish = script.parts.find((part) => part.type === 'finish') as { finishReason: unknown } | undefined;
+      return {
+        content: [
+          ...(textOut ? [{ type: 'text' as const, text: textOut }] : []),
+          ...calls.map((part) => ({
+            type: 'tool-call' as const,
+            toolCallId: String(part.toolCallId),
+            toolName: String(part.toolName),
+            input: String(part.input),
+          })),
+        ],
+        finishReason: (finish?.finishReason ?? { unified: 'stop', raw: undefined }) as never,
+        usage: USAGE,
+        warnings: [],
+      };
+    },
     doStream: async (call) => {
       prompts.push(call.prompt);
-      const next = scripts[Math.min(index++, scripts.length - 1)]!;
-      const script: Script = Array.isArray(next) ? { parts: next } : next;
+      tools.push((call.tools ?? []).map((entry) => entry.name));
+      const script = next();
       return {
         stream: new ReadableStream({
           async start(controller) {
@@ -75,7 +124,7 @@ export function scriptedModel(scripts: Array<Part[] | Script>, options: { title?
     modelId: 'm',
     deepseek: false,
   });
-  return { languageModel, prompts, calls: () => index };
+  return { languageModel, prompts, tools, calls: () => index };
 }
 
 export function gate() {

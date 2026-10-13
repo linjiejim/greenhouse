@@ -28,3 +28,11 @@ The one engine for conversations and runs. Read with the root AGENTS.md and docs
 - A tool that raises its own card (ask_user, self) implements `decide`; return a null note to leave the Agent asleep.
 - Expired cards are swept: the step is skipped, the run closes, and the Agent is not woken.
 - Every card is a notification through `notifications.publish`, the one entry point for notifications.
+
+## Background runs
+- A background run starts only from a member's decision: an approved `run_start` proposal or a schedule they set up. The model can propose, never start.
+- Context is the approved brief plus the Agent's identity and instructions; no history, memories or "about me".
+- Tools: read tools only. Once a tool marked `private` ran, tools marked `outbound` refuse: nobody is watching, and a URL or a query can carry data out.
+- Claiming uses FOR UPDATE SKIP LOCKED; at most 3 running per member and 4 per process; 20 minutes and 30 steps per attempt.
+- A run whose process died is requeued up to 3 attempts; a shutdown requeues without counting as a failure. A retry replays the brief, and a call with the same tool and arguments as a succeeded step returns the recorded output.
+- The timeline (`run_events`) is numbered per run and written in order. The end of a run is reported into its conversation (or the Agent's own thread) and notified.

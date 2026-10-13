@@ -62,7 +62,7 @@ export async function startTestTransaction(url = TEST_DATABASE_URL): Promise<Tes
       if (error !== ROLLBACK) fail(error);
     });
   const db = await started;
-  setDb(db);
+  setDb(db, { serializeTransactions: true });
   let done = false;
   return {
     db,

@@ -38,17 +38,36 @@ export function getDb(): Db {
 }
 
 /**
+ * Set while a test transaction is installed: every connection is that one transaction, so two
+ * independent transaction() calls would interleave their savepoints. They take turns instead.
+ */
+let serialize: (<T>(work: () => Promise<T>) => Promise<T>) | null = null;
+
+/**
  * Runs fn in one transaction (a savepoint when one is already open). getDb() inside fn returns
  * the transaction, so any service fn calls joins it instead of reading around it.
  */
 export function transaction<T>(fn: (db: Db) => Promise<T>): Promise<T> {
-  return getDb().transaction((tx) => {
-    const db = tx as unknown as Db;
-    return scoped.run(db, () => fn(db));
-  });
+  const open = () =>
+    getDb().transaction((tx) => {
+      const db = tx as unknown as Db;
+      return scoped.run(db, () => fn(db));
+    });
+  // Nested calls run inside their parent's savepoint; only independent ones take turns.
+  return serialize && !scoped.getStore() ? serialize(open) : open();
 }
 
 /** Install the process database. Tests swap in a transaction per test. */
-export function setDb(db: Db | null): void {
+export function setDb(db: Db | null, options: { serializeTransactions?: boolean } = {}): void {
   current = db;
+  if (!db || !options.serializeTransactions) {
+    serialize = null;
+    return;
+  }
+  let tail: Promise<unknown> = Promise.resolve();
+  serialize = <T>(work: () => Promise<T>) => {
+    const result = tail.then(work, work);
+    tail = result.catch(() => undefined);
+    return result;
+  };
 }

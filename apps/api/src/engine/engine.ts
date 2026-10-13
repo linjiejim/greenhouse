@@ -51,7 +51,9 @@ import { ApiError, conflict, forbidden, invalidInput } from '../http/errors.js';
 import type { ProvidersService } from '../providers/service.js';
 import type { Hub } from '../realtime/hub.js';
 import type { AgentsService } from '../modules/agents/service.js';
+import type { NotificationsService } from '../modules/notifications/service.js';
 import type { RequestsService } from '../modules/requests/service.js';
+import { createBackground, type Background } from './background.js';
 import { toMessage, type ConversationsService } from '../modules/conversations/service.js';
 import { effectiveModules } from '../modules/members/service.js';
 import { projectHistory } from './history.js';
@@ -94,7 +96,9 @@ export interface EngineDeps {
   providers: ProvidersService;
   requests: RequestsService;
   hub: Hub;
-  tools: (engine: { deps: EngineDeps }) => readonly ToolDef[];
+  notifications: NotificationsService;
+  /** Built on first use, with the engine's background runs at hand. */
+  tools: (engine: { background: Background }) => readonly ToolDef[];
   /** Replaces model resolution (tests). */
   languageModel?: ProvidersService['languageModel'];
 }
@@ -140,7 +144,7 @@ export function createEngine(deps: EngineDeps) {
   let stopping = false;
   let sweeper: NodeJS.Timeout | null = null;
 
-  const toolDefs = () => (tools ??= deps.tools({ deps }));
+  const toolDefs = (): readonly ToolDef[] => (tools ??= deps.tools({ background }));
 
   async function audience(conversationId: string): Promise<string[]> {
     const rows = await getDb()
@@ -752,8 +756,22 @@ export function createEngine(deps: EngineDeps) {
     }
   }
 
+  const background = createBackground({
+    instance,
+    agents: deps.agents,
+    conversations: deps.conversations,
+    providers: deps.providers,
+    notifications: deps.notifications,
+    hub: deps.hub,
+    tools: () => toolDefs(),
+    languageModel,
+    withConversation,
+    publish,
+  });
+
   const engine = {
     instance,
+    background,
 
     /** Carries out a decision the member just made on a card. */
     decide(request: NeedsYouRequest): void {
@@ -923,6 +941,7 @@ export function createEngine(deps: EngineDeps) {
      */
     async sweep(): Promise<void> {
       for (const request of await deps.requests.expireDue()) track(resolve(request));
+      await background.sweep();
       const expired = await getDb()
         .select()
         .from(runs)
@@ -974,6 +993,7 @@ export function createEngine(deps: EngineDeps) {
     },
 
     start() {
+      background.start_worker();
       sweeper ??= setInterval(() => {
         void engine
           .sweep()
@@ -981,9 +1001,13 @@ export function createEngine(deps: EngineDeps) {
       }, SWEEP_MS);
     },
 
-    /** Resolves once no turn is running in this process (tests, shutdown). */
+    /** Resolves once no turn or background run is running in this process (tests, shutdown). */
     async idle(): Promise<void> {
-      while (inFlight.size) await Promise.all([...inFlight]);
+      while (inFlight.size) {
+        await Promise.all([...inFlight]);
+        await background.idle();
+      }
+      await background.idle();
     },
 
     /** Stops taking new work; running turns are stopped and recorded as such. */
@@ -992,6 +1016,7 @@ export function createEngine(deps: EngineDeps) {
       if (sweeper) clearInterval(sweeper);
       sweeper = null;
       for (const controller of live.values()) controller.abort();
+      await background.shutdown();
       await engine.idle();
     },
   };

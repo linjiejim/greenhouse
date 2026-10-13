@@ -40,6 +40,8 @@ export interface ToolContext {
   conversation: Conversation | null;
   runId: string;
   stepId: string;
+  /** Which attempt of the run this is; background runs can be retried. */
+  attempt?: number;
   locale: 'zh' | 'en';
   surface: Surface;
   signal: AbortSignal;
@@ -85,6 +87,10 @@ export interface ToolDef<I = any> {
   describe?(input: I, ctx: ToolContext): ApprovalCard;
   /** Reading its result brings outside text into the turn. */
   taints?: boolean;
+  /** Reads the member's own data (conversations, documents, memories). */
+  private?: boolean;
+  /** Sends something out of Greenhouse (a search query, a URL). Unwatched runs stop using it after a private read. */
+  outbound?: boolean;
   execute(input: I, ctx: ToolContext): Promise<unknown>;
   /** Applies the member's decision on a card this tool raised (proposals, questions). */
   decide?(request: NeedsYouRequest, ctx: DecisionContext): Promise<DecisionOutcome>;
