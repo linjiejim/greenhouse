@@ -66,6 +66,13 @@ function signalOf(conversation: Conversation | undefined): Signal {
   };
 }
 
+/** The plant's face (AGNT-04): it moves only while its Agent answers, and waits while it needs you. */
+function moodOf(conversation: Conversation | undefined): 'thinking' | 'waiting' | undefined {
+  if (conversation?.working) return 'thinking';
+  if (conversation?.pending_requests) return 'waiting';
+  return undefined;
+}
+
 /** 已归档 (CONV-25): archived chats and rooms on demand; each can come back. */
 function ArchivedChats({ query, isCurrent }: { query: string; isCurrent: (conversation: Conversation) => boolean }) {
   const { t } = useI18n();
@@ -317,7 +324,7 @@ export function ChatDirectory({ route, query }: { route: Route; query: string })
         {main && matches(query, main.name, t('chat.mainThread')) && (
           <DirectoryRow
             variant="main"
-            leading={<AgentAvatar agent={main} size={36} />}
+            leading={<AgentAvatar agent={main} size={36} state={moodOf(mainConversation)} />}
             title={main.name}
             href="#/c/main"
             active={current === 'main' || isCurrent(mainConversation)}
@@ -331,7 +338,7 @@ export function ChatDirectory({ route, query }: { route: Route; query: string })
           return (
             <DirectoryRow
               key={agent.id}
-              leading={<AgentAvatar agent={agent} size={20} />}
+              leading={<AgentAvatar agent={agent} size={20} state={moodOf(direct)} />}
               title={agent.name}
               href={direct ? href({ page: 'conversation', id: direct.id }) : undefined}
               active={isCurrent(direct)}
