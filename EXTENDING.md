@@ -293,16 +293,34 @@ belongs to Greenhouse itself.
 
 ## Recipe: a list/edit page with `@greenhouse/crud`
 
-The low-code CRUD framework turns one declarative schema into a list + filters + add/edit
-form + detail + delete.
+The low-code CRUD framework (`packages/crud`) turns one `defineCrud<Row>` schema into a list with
+filters, sorting and pagination, an add/edit form, a detail drawer and delete confirmation.
 
-- **Server:** `createTableCrudService(getDb(), myTable, opts)` (from `@greenhouse/db`) →
-  `createCrudRoutes(service, { filterable, sortable, guards, hooks, parseCreate, parseUpdate })`
-  (from `@greenhouse/crud/server`) → mount in `index.ts` (or in an extension's `routes`).
-  Filter/sort keys are whitelisted fail-loud (unknown key → 400).
-- **Client:** `defineCrud<Row>({ dataSource: createRestDataSource('/api/…', authFetch), columns,
-  filters, formFields, access, … })` then render `<CrudPage schema={…} />`. Reference
-  implementations: `apps/web/src/pages/administration/users.tsx`, `skills.tsx`, `mcp-keys.tsx`.
-- **Escape hatches, narrow → wide:** column/field `type: 'custom'` (render fn) → `slots` +
-  `tableActions` / `pageActions` → use `CrudPage` / `CrudForm` / `CrudDetail` standalone in a
-  bespoke page (`installCrudUi` wires the host's UI kit once, in `app.tsx`).
+- **Import from the web binding** `apps/web/src/pages/settings/crud.ts` (from
+  `apps/web/src/extensions/<id>/`: `../../pages/settings/crud`), never from `@greenhouse/crud`
+  directly. It calls `installCrudUi()` (`packages/crud/src/client/ui.ts`) at module scope to hand the
+  framework the app's UI kit, translations and toasts; a CRUD component rendered without it throws.
+- **Client:** `defineCrud<Row>({ name, dataSource, columns, filters, formFields, access, … })`, then
+  `<CrudPage schema={schema} />` (inside `<ModulePage moduleId=… layout="list">` when the page is a
+  registered module). A `CrudDataSource<Row>` is `list` plus optional `get` / `create` / `update` /
+  `remove`; every page so far adapts a client it already had. References in `apps/web/src/pages/`:
+  `settings/oauth-grants.tsx` (smallest: list + revoke), `tasks.tsx` (form, custom fields, per-row
+  access), `settings/groups.tsx` (`toolbar` and `rowExpand` slots), `automations.tsx` (toggle
+  column, `tableActions`), `administration/frictions.tsx` (adapter over plain `authFetch`).
+- **Declare `access`:** every permission defaults to false and row actions exist only for granted
+  ones, so a data source with `update` / `remove` but no `canEdit` / `canDelete` ships an inert page.
+  `tests/web/crud-write-access.test.ts` checks pages under `apps/web/src/pages`, not extensions.
+- **A brand-new REST resource:** implement `CrudService<Row>` (`list` / `get` / `create` / `update` /
+  `remove` over your own queries) and wrap it in `createCrudRoutes(service, { filterable, sortable,
+  guards, hooks, parseCreate, parseUpdate })` from `@greenhouse/crud/server`: filter or sort keys
+  missing from `filterable` / `sortable` get a 400, `guards` take `requireInternal()` /
+  `requireSuper()` per read / write / delete, and `hooks.scopeFilter` (list) with `hooks.canAccess`
+  (get / update / delete) isolate rows. Mount the returned Hono app as an extension `routes` entry
+  (in core: outside the typed `mountRoutes` chain, next to `mountExtensionRoutes`) and read it with
+  `createRestDataSource('/api/ext/<id>/<things>', authFetch)`. `apps/api` does not depend on the
+  package yet: add `"@greenhouse/crud": "workspace:*"` to `apps/api/package.json` first (an upstream
+  change; a fork's overlay guard rejects that file). Nothing in the repo calls this pair yet;
+  `packages/crud/src/__tests__/routes.test.ts` runs it over an in-memory service.
+- **Escape hatches, narrow → wide:** column/field `type: 'custom'` (render fn) → `slots` (`toolbar`,
+  `banner`, `empty`, `rowExpand`, `renderCard`) + `tableActions` / `pageActions` / `detailTabs` →
+  `CrudForm` / `CrudDetail` standalone in a bespoke page.

@@ -30,12 +30,12 @@
 ### 列表 / 记录页范式（新页一律走 @greenhouse/crud）
 **settings 新增页面或大改一律用 `@greenhouse/crud`**：一份 `defineCrud<Row>` schema 驱动 `<CrudPage>`——工具栏/筛选/排序/分页、新增/编辑 Dialog、详情 Drawer、删除确认、空态全部由框架统一；手写 `<table>` 页面属于 legacy（存量不强迁）。
 - **必须从 `./crud`（本目录的绑定模块）import**，不要直接 import `@greenhouse/crud`——绑定模块负责 `installCrudUi()`（框架渲染前注入 app 的 ui.tsx 组件与 toast）
-- 数据源：页面已有 hc/typed client 时写 `CrudDataSource` 适配器（零服务端改动；参考 `prompts`、`groups`、`automations`、`oauth-grants`、`skills` 等已迁页面）；全新资源可用服务端 `createCrudRoutes`（`@greenhouse/crud/server`，guard 直接传 `requireInternal()`/`requireSuper()`）+ 客户端 `createRestDataSource`
+- 数据源：页面已有 hc/typed client 时写 `CrudDataSource` 适配器（零服务端改动；参考 `tasks`、`groups`、`automations`、`oauth-grants`、`frictions` 等已迁页面）；全新资源可用服务端 `createCrudRoutes`（`@greenhouse/crud/server`，guard 直接传 `requireInternal()`/`requireSuper()`；`apps/api` 还没依赖 `@greenhouse/crud`，先在其 `package.json` 加 `"@greenhouse/crud": "workspace:*"`）+ 客户端 `createRestDataSource`
 - **能写就必须显式声明 `access`**：`defineCrud` 把 `canView`/`canAdd`/`canEdit`/`canDelete` **全部默认 false**，而权限为假时框架**根本不构建行操作列**——于是 `dataSource.update`/`remove`、`formFields`、`deleteConfirm` 全成了触达不到的死配置。类型、lint、端点测试、页面渲染**全都不会报**（Frictions 面板就这样上线了一版只能看不能处理的队列，v0.40.0）。护栏在 `tests/web/crud-write-access.test.ts`：写了 `update`/`remove` 却没写对应 `canEdit`/`canDelete` 的页面直接红。
 - bespoke 需求走 escape hatch：`type:'custom'` 列/字段、`slots`（toolbar/banner/empty/rowExpand/renderCard）、`tableActions`/`pageActions`、`deleteConfirm`（按行定制删除确认文案）
 - 表单字段的次要解释用 `help`，由字段标题旁的信息图标按需展示；`comment` 只保留给禁用原因、校验后果等必须常驻的状态/行动提示，禁止把普通说明堆在输入框下方。
 - 框架 chrome 通过 `pages/settings/crud.ts` 注入宿主 `useT()`，必须随当前语言切换；schema 的 name/label/empty/delete 文案同样传页面自己的 `t()` 结果，禁止恢复 English-only 约定
-- 参考实现：`prompts.tsx`（表格 + 表单 + custom 字段）、`groups.tsx`（toolbar/rowExpand slot + 行内创建）、`automations.tsx`（toggle 列 + tableActions + cron builder custom 字段）；完整模式另见 OSS greenhouse 的 `crud-example.tsx`
+- 参考实现：`pages/tasks.tsx`（表格 + 表单 + custom 字段）、`pages/settings/groups.tsx`（toolbar/rowExpand slot + 行内创建）、`pages/automations.tsx`（toggle 列 + tableActions + cron builder custom 字段）；增改删齐全（`canAdd`/`canEdit`/`canDelete` + `formFields` + `tableActions` + `testId`）见 `pages/settings/email-accounts.tsx`
 - e2e：给 schema 设 `testId`，框架自动派生 `{testId}-add`/`-field-{key}`/`-submit`/`-delete` 等选择器
 
 下面的手写 `<table>` 规范仅作为 CrudPage 底层形态参考 / 极特殊自定义页使用：

@@ -533,7 +533,7 @@ stores/
 - 每页数量用 `const [pageSize, setPageSize] = usePersistedPageSize('<scope>', 20)` 持久化到 localStorage（key 如 `projects.list`、`tables.records`）；**改变 pageSize 时调用方负责把 `page` 重置为 0**。
 - 数据加载的 `limit/offset`（或 `page_size`）一律取自 `pageSize`，并把 `pageSize` 加入 `loadData` 依赖。
 - 1-based 的旧页码（如 `eval/datasets`）在调用处做 `page={page-1}` / `onPageChange={(p)=>setPage(p+1)}` 适配，不改内部约定。
-- 参考：`packages/crud/src/client/`、`pages/administration/users.tsx`。
+- 参考：`packages/crud/src/client/`、`pages/tables/grid-view.tsx`。
 
 ### 标签 Tag 规范
 
