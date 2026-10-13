@@ -37,6 +37,10 @@ export const ID_PREFIX = {
   computer: 'cmp',
   computerWatch: 'cwt',
   vaultItem: 'vlt',
+  folder: 'fld',
+  doc: 'doc',
+  docVersion: 'dcv',
+  comment: 'cmt',
 } as const;
 export type IdKind = keyof typeof ID_PREFIX;
 

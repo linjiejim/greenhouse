@@ -1,5 +1,6 @@
 import { bigint, index, pgTable, text, uniqueIndex } from 'drizzle-orm/pg-core';
-import { at, createdAt, id, json, updatedAt } from './_columns.js';
+import { at, createdAt, id, json, searchColumns, updatedAt } from './_columns.js';
+import { folders } from './knowledge.js';
 
 export const FILE_PURPOSES = [
   'attachment',
@@ -35,13 +36,16 @@ export const files = pgTable(
       .notNull()
       .default('pending'),
     ownerId: text('owner_id'),
-    folderId: text('folder_id'),
+    /** Knowledge files: the folder they are in (null at the root of `space`). */
+    folderId: text('folder_id').references(() => folders.id, { onDelete: 'set null' }),
     space: text('space', { enum: ['team', 'personal'] }),
     conversationId: text('conversation_id'),
     baseId: text('base_id'),
     runId: text('run_id'),
     expiresAt: at('expires_at'),
     meta: json<Record<string, unknown>>('meta', {}),
+    /** Knowledge files: the name and the text read from it, for search. */
+    ...searchColumns(),
     archivedAt: at('archived_at'),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
@@ -51,6 +55,7 @@ export const files = pgTable(
     index('files_conversation_idx').on(t.conversationId),
     index('files_folder_idx').on(t.folderId),
     index('files_run_idx').on(t.runId),
+    index('files_search_idx').using('gin', t.searchTsv),
   ],
 );
 

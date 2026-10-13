@@ -10,3 +10,4 @@ export * from './notifications.js';
 export * from './usage.js';
 export * from './workspace.js';
 export * from './vault.js';
+export * from './knowledge.js';

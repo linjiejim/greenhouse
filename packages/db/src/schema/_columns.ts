@@ -1,4 +1,5 @@
-import { jsonb, text, timestamp } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
+import { customType, jsonb, text, timestamp } from 'drizzle-orm/pg-core';
 
 /** Text primary key; the application assigns `newId(kind)`. */
 export const id = () => text('id').primaryKey();
@@ -21,3 +22,19 @@ export function json<T>(name: string, fallback: T) {
 export function jsonOrNull<T>(name: string) {
   return jsonb(name).$type<T>();
 }
+
+const tsvector = customType<{ data: string }>({ dataType: () => 'tsvector' });
+
+/**
+ * Full-text search for Chinese and English (data-model.md §1): the application writes segmented
+ * tokens (`searchTokens` in search.ts) into three weighted columns and the vector is generated
+ * from them, so its definition exists once. Titles go in A, summaries in B, bodies in C.
+ */
+export const searchColumns = () => ({
+  searchA: text('search_a').notNull().default(''),
+  searchB: text('search_b').notNull().default(''),
+  searchC: text('search_c').notNull().default(''),
+  searchTsv: tsvector('search_tsv').generatedAlwaysAs(
+    sql`setweight(to_tsvector('simple', search_a), 'A') || setweight(to_tsvector('simple', search_b), 'B') || setweight(to_tsvector('simple', search_c), 'C')`,
+  ),
+});
