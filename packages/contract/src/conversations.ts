@@ -111,6 +111,10 @@ export const messageSchema = z.object({
   attachments: z.array(z.string()),
   quote: z.object({ message_id: z.string(), text: z.string() }).nullable(),
   mentions: z.array(z.string()),
+  /** The skill the member ran with `/`: the version that ran and the values filled in. */
+  skill: z
+    .object({ skill_id: z.string(), version: z.string().nullable(), variables: z.record(z.string(), z.string()) })
+    .nullable(),
   citations: z.array(z.object({ kind: z.string(), id: z.string(), title: z.string(), url: z.string().optional() })),
   steps: z.array(messageStepSchema),
   reasoning: z.string().nullable(),

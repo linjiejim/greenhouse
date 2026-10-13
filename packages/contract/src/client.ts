@@ -105,6 +105,18 @@ import type { AnswerInput, NeedsYou } from './requests.js';
 import type { RunDetail, RunView } from './runs.js';
 import type { CreateScheduleInput, Schedule, UpdateScheduleInput } from './schedules.js';
 import type { SearchKind, SearchResult } from './search.js';
+import type {
+  CreateSkillInput,
+  NewSkillVersionInput,
+  Skill,
+  SkillDetail,
+  SkillDownload,
+  SkillListQuery,
+  SkillScanDecisionInput,
+  SkillStarters,
+  SkillVersion,
+  UpdateSkillInput,
+} from './skills.js';
 import type { Bootstrap, BrandingInput } from './workspace.js';
 import type { AdminUsage, AgentActivity, AgentUsage, Budget, BudgetInput, MyUsage, UsagePeriod } from './usage.js';
 
@@ -626,7 +638,7 @@ export function createApiClient(options: ApiClientOptions) {
     files: {
       upload(
         file: Blob & { name?: string },
-        fields: { purpose?: 'attachment' | 'avatar' | 'branding'; conversation_id?: string } = {},
+        fields: { purpose?: 'attachment' | 'avatar' | 'branding' | 'skill'; conversation_id?: string } = {},
       ) {
         const form = new FormData();
         form.set('file', file, file.name ?? 'file');
@@ -636,6 +648,39 @@ export function createApiClient(options: ApiClientOptions) {
       },
       get: (id: string) => get<FileView>(`/api/files/${id}`),
       remove: (id: string) => del(`/api/files/${id}`),
+    },
+
+    /** The skill library: team and personal skills, their versions, scan review and `/` runs. */
+    skills: {
+      /** `agent` (default: the main Agent) decides `available`: the `/` menu passes the answering Agent. */
+      list: (query: Omit<SkillListQuery, 'archived' | 'limit'> & { archived?: boolean; limit?: number } = {}) =>
+        get<Page<Skill>>('/api/skills', { ...query, archived: query.archived ? 'true' : undefined }),
+      get: (id: string) => get<SkillDetail>(`/api/skills/${id}`),
+      /** A template, or a package from a ZIP already uploaded with purpose `skill` (see `upload`). */
+      create: (input: CreateSkillInput) => post<SkillDetail>('/api/skills', input),
+      /** Uploads a ZIP with SKILL.md at its root and makes a package skill of it. */
+      async upload(
+        zip: Blob & { name?: string },
+        input: Omit<Extract<CreateSkillInput, { kind: 'package' }>, 'kind' | 'file_id'> = {},
+      ): Promise<SkillDetail> {
+        const form = new FormData();
+        form.set('file', zip, zip.name ?? 'skill.zip');
+        form.set('purpose', 'skill');
+        const file = await request<FileView>('POST', '/api/files', undefined, { raw: form });
+        return post<SkillDetail>('/api/skills', { ...input, kind: 'package', file_id: file.id });
+      },
+      update: (id: string, input: UpdateSkillInput) => patch<Skill>(`/api/skills/${id}`, input),
+      archive: (id: string) => del(`/api/skills/${id}`),
+      restore: (id: string) => post<SkillDetail>(`/api/skills/${id}/restore`),
+      versions: (id: string) => get<{ items: SkillVersion[] }>(`/api/skills/${id}/versions`),
+      /** A new version: `file_id` of a new ZIP for a package; body, variables or requirements for a template. */
+      addVersion: (id: string, input: NewSkillVersionInput) => post<SkillDetail>(`/api/skills/${id}/versions`, input),
+      /** Rescan, or a reviewer's decision: safe or malicious. */
+      scan: (id: string, input: SkillScanDecisionInput) => post<Skill>(`/api/skills/${id}/scan`, input),
+      /** A signed URL to the package's ZIP (the latest version by default). */
+      download: (id: string, version?: string) => get<SkillDownload>(`/api/skills/${id}/download`, { version }),
+      /** The new chat's empty state: my three most-used skills for this Agent, else its template's starters. */
+      starters: (agent?: string) => get<SkillStarters>('/api/skills/starters', { agent }),
     },
 
     admin: {
