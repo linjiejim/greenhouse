@@ -2279,3 +2279,16 @@ button.app-list-row {
   border-radius: var(--gh-radius-lg);
   background: var(--gh-canvas);
 }
+
+.app-offline {
+  position: absolute;
+  top: calc(var(--gh-header-height) + var(--gh-space-2));
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: var(--gh-z-toast);
+  padding: var(--gh-space-1) var(--gh-space-3);
+  border-radius: var(--gh-radius-full);
+  background: var(--gh-warning-fill);
+  color: var(--gh-warning);
+  font: var(--gh-type-label);
+}

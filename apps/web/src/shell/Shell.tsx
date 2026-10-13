@@ -4,7 +4,8 @@
  * gives way to the module bar inside that drawer and details open as sheets.
  */
 
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useSession } from '../app/session';
 import { useRoute } from '../lib/router';
 import { MEDIUM, NARROW, store, stored, useMedia } from '../lib/media';
 import { cx } from '../lib/cx';
@@ -13,7 +14,7 @@ import { ShellContext } from './context';
 import { CommandPalette } from './CommandPalette';
 import { Directory } from './Directory';
 import { ModuleBar } from './ModuleBar';
-import { moduleOf } from './modules';
+import { MODULES, moduleOf } from './modules';
 import { OverlayContext, type OverlayRequest } from './overlays';
 import { Rail } from './Rail';
 import { ErrorBoundary } from './ErrorBoundary';
@@ -32,6 +33,24 @@ export function Shell() {
   const [palette, setPalette] = useState(false);
   const [overlay, setOverlay] = useState<OverlayRequest | null>(null);
   const module = moduleOf(route);
+  const { realtime, bootstrap } = useSession();
+  // Say so only when a live connection dropped, not while it first connects.
+  const [lost, setLost] = useState(false);
+  const wasOpen = useRef(false);
+  useEffect(() => {
+    if (realtime === 'open') {
+      wasOpen.current = true;
+      setLost(false);
+      return;
+    }
+    if (!wasOpen.current) return;
+    const timer = setTimeout(() => setLost(true), 3000);
+    return () => clearTimeout(timer);
+  }, [realtime]);
+
+  useEffect(() => {
+    document.title = `${t(MODULES[module].label)} · ${bootstrap?.name || t('app.name')}`;
+  }, [module, bootstrap?.name, t]);
 
   // A new page closes the directory drawer.
   useEffect(() => setDrawer(false), [route]);
@@ -90,6 +109,11 @@ export function Shell() {
           {floating && drawer && <div className="app-directory-scrim" onClick={() => setDrawer(false)} aria-hidden />}
           {directory}
           <main className="app-workspace">
+            {lost && (
+              <div className="app-offline" role="status">
+                {t('common.offline')}
+              </div>
+            )}
             <ErrorBoundary
               key={location.hash}
               fallback={(retry) => (
