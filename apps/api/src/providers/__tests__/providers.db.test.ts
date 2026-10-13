@@ -91,7 +91,7 @@ describe('providers', () => {
     expect(record!.summary).not.toContain('sk-qwen');
 
     await generateText({
-      model: await services.providers.languageModel('default', { memberId: admin.id }),
+      model: (await services.providers.languageModel('default', { memberId: admin.id })).model,
       prompt: 'hi',
     });
     expect(net.calls.at(-1)!.url.origin).toBe('https://api.deepseek.com');
@@ -103,14 +103,14 @@ describe('providers', () => {
     });
     expect(bound.body).toMatchObject({ order: ['corp-qwen'], effective: ['corp-qwen'], bound: true });
     await generateText({
-      model: await services.providers.languageModel('default', { memberId: admin.id }),
+      model: (await services.providers.languageModel('default', { memberId: admin.id })).model,
       prompt: 'hi',
     });
     expect(net.calls.at(-1)).toMatchObject({ authorization: 'Bearer sk-qwen-secret-0002', model: 'qwen-max' });
     expect(net.calls.at(-1)!.url.origin).toBe('https://dashscope.aliyuncs.com');
     // strong has no default of its own: it follows default.
     await generateText({
-      model: await services.providers.languageModel('strong', { memberId: admin.id }),
+      model: (await services.providers.languageModel('strong', { memberId: admin.id })).model,
       prompt: 'hi',
     });
     expect(net.calls.at(-1)!.model).toBe('qwen-max');
@@ -128,11 +128,12 @@ describe('providers', () => {
   it('records usage for every model call and refuses models an instance does not list', async () => {
     const { member, services } = setup();
     const lin = await member();
-    const model = await services.providers.languageModel('env-llm/deepseek-reasoner', {
+    const resolved = await services.providers.languageModel('env-llm/deepseek-reasoner', {
       memberId: lin.id,
       conversationId: 'cnv_1',
     });
-    await generateText({ model, prompt: 'hi' });
+    expect(resolved).toMatchObject({ ref: 'env-llm/deepseek-reasoner', modelId: 'deepseek-reasoner', deepseek: true });
+    await generateText({ model: resolved.model, prompt: 'hi' });
     const [usage] = await getDb().select().from(usageEvents).where(eq(usageEvents.memberId, lin.id));
     expect(usage).toMatchObject({
       capability: 'llm',
@@ -156,7 +157,7 @@ describe('providers', () => {
     const admin = await member('admin');
     await call('POST', '/api/admin/providers', { token: admin.token, body: corpQwen });
     const result = await generateText({
-      model: await services.providers.languageModel('default', { memberId: admin.id }),
+      model: (await services.providers.languageModel('default', { memberId: admin.id })).model,
       prompt: 'hi',
       maxRetries: 0,
     });
@@ -204,18 +205,18 @@ describe('providers', () => {
     expect(view.body.catalog.every((adapter: { capability: string }) => adapter.capability === 'llm')).toBe(true);
 
     await generateText({
-      model: await services.providers.languageModel('default', { memberId: lin.id }),
+      model: (await services.providers.languageModel('default', { memberId: lin.id })).model,
       prompt: 'hi',
     });
     expect(net.calls.at(-1)!.authorization).toBe('Bearer sk-lin-own-0003');
     // Someone else, or a run that must not use personal keys, gets the workspace key.
     await generateText({
-      model: await services.providers.languageModel('default', { memberId: admin.id }),
+      model: (await services.providers.languageModel('default', { memberId: admin.id })).model,
       prompt: 'hi',
     });
     expect(net.calls.at(-1)!.authorization).toBe(`Bearer ${ENV_KEY}`);
     await generateText({
-      model: await services.providers.languageModel('default', { memberId: lin.id, personal: false }),
+      model: (await services.providers.languageModel('default', { memberId: lin.id, personal: false })).model,
       prompt: 'hi',
     });
     expect(net.calls.at(-1)!.authorization).toBe(`Bearer ${ENV_KEY}`);
@@ -326,7 +327,7 @@ describe('providers', () => {
       defaults: { default: 'deepseek/deepseek-chat', strong: 'deepseek/deepseek-reasoner' },
     });
     await generateText({
-      model: await services.providers.languageModel('strong', { memberId: admin.id }),
+      model: (await services.providers.languageModel('strong', { memberId: admin.id })).model,
       prompt: 'hi',
     });
     expect(net.calls.at(-1)).toMatchObject({ authorization: `Bearer ${ENV_KEY}`, model: 'deepseek-reasoner' });

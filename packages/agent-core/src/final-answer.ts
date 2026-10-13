@@ -1,69 +1,41 @@
 /**
- * Final-answer guarantee — the DeepSeek-only "never end a turn with no answer"
- * fallback, shared by the streaming host (withFinalAnswerGuarantee in
- * chat-engine.ts) and the headless one (runAgentLoop in agent-loop.ts).
+ * The DeepSeek final-answer guarantee: a turn that ran tools but produced no text (the model
+ * kept searching, or leaked a DSML call on the forced last step) gets one more generation,
+ * with tools off, on the conversation plus a plain-text digest of what the tools returned.
  *
- * The agent loop occasionally exhausts `max_steps` calling tools without ever
- * emitting an assistant answer (the model keeps searching, or leaks a DSML tool
- * call on the forced final step). When a host detects that (no text produced
- * but tools did run), it runs ONE more generation — the original conversation
- * plus a PLAIN-TEXT digest of the tool results already gathered, tools disabled
- * — so the consumer never gets an empty assistant turn.
- *
- * The gathered evidence is flattened to plain text rather than replayed as
- * structured tool-call/tool-result messages on purpose: replaying that history
- * primes the model to keep calling tools (and leak DSML), which is exactly the
- * loop we're escaping. Thinking is disabled for speed; `toolChoice: 'none'`
- * keeps the DSML interceptor from recovering any residual leak.
- *
- * Everything here is gated on `resolvesToDeepSeek`, so the whole workaround is
- * removable in one place once DeepSeek fixes their parser: delete
- * dsml-interceptor.ts + this file, then revert each host's one-line swap.
+ * The evidence is flattened to text on purpose: replaying the tool messages primes the model
+ * to keep calling tools, which is the loop being escaped. Thinking is off for speed. Removing
+ * the workaround means deleting this file and dsml-interceptor.ts.
  */
 
-import { streamText, wrapLanguageModel } from 'ai';
-import type { ModelMessage } from 'ai';
-import { createDsmlInterceptor } from './dsml-interceptor.js';
-import {
-  createModelFromConfig,
-  buildProviderOptions,
-  resolveModelConfig,
-  resolvesToDeepSeek,
-  type ModelConfig,
-  type ProviderAttemptHook,
-} from './model.js';
-import {
-  applyTimeContext,
-  CHAT_STREAM_TIMEOUT,
-  type AgentStreamResult,
-  type EngineProfile,
-  type TimeContextOption,
-} from './loop-shared.js';
-import type { EngineMessage } from './time-context.js';
+import { streamText, type ModelMessage } from 'ai';
 import { logger } from '@greenhouse/utils/logger';
+import { guardedModel, LOOP_TIMEOUT, providerOptionsFor, type LoopModel } from './settings.js';
+import { applyTimeContext, type EngineMessage, type TimeContextOption } from './time-context.js';
 
 export interface FinalAnswerInput {
-  profile: EngineProfile;
-  systemPrompt: string;
-  /** The original conversation the primary loop ran on. */
+  model: LoopModel;
+  instructions: string;
+  /** The conversation the primary loop ran on. */
   baseMessages: EngineMessage[];
-  /** The primary loop's response messages — its tool results become the digest. */
+  /** The primary loop's response messages; their tool results become the digest. */
   gatheredMessages: ModelMessage[];
-  providerAttemptHook?: ProviderAttemptHook;
-  /** Same time-context choice as the primary loop (see AgentLoopInput.timeContext). */
   timeContext?: TimeContextOption;
 }
 
-export type FinalAnswerStreamFactory = (input: FinalAnswerInput) => Promise<AgentStreamResult>;
+export type FinalAnswerStream = { stream: AsyncIterable<{ type: string; text?: string }> };
+export type FinalAnswerStreamFactory = (input: FinalAnswerInput) => Promise<FinalAnswerStream>;
 
-/** Flatten the prior turn's tool-result messages into a plain-text evidence digest. */
-function digestToolResults(priorTurn: ModelMessage[]): string {
+export const FINAL_ANSWER_MAX_ATTEMPTS = 3;
+
+/** Flatten the tool results of a turn into a plain-text digest. */
+function digestToolResults(messages: ModelMessage[]): string {
   const MAX_PER_RESULT = 2000;
   const MAX_TOTAL = 16000;
   const blocks: string[] = [];
-  for (const m of priorTurn as Array<{ role: string; content: unknown }>) {
-    if (m.role !== 'tool' || !Array.isArray(m.content)) continue;
-    for (const part of m.content as Array<{ type?: string; toolName?: string; output?: unknown }>) {
+  for (const message of messages as Array<{ role: string; content: unknown }>) {
+    if (message.role !== 'tool' || !Array.isArray(message.content)) continue;
+    for (const part of message.content as Array<{ type?: string; toolName?: string; output?: unknown }>) {
       if (part?.type !== 'tool-result') continue;
       const raw = (part.output as { value?: unknown })?.value ?? part.output;
       let text: string;
@@ -78,90 +50,52 @@ function digestToolResults(priorTurn: ModelMessage[]): string {
   return blocks.join('\n\n').slice(0, MAX_TOTAL);
 }
 
-async function createFinalAnswerStreamAsync(input: FinalAnswerInput): Promise<AgentStreamResult> {
-  const { profile, systemPrompt, baseMessages, gatheredMessages, providerAttemptHook } = input;
-
-  const modelConfig = resolveModelConfig({
-    ...profile.model,
-    options: { ...profile.model.options, thinking: false },
-  });
-  const rawModel = await createModelFromConfig(
-    modelConfig,
-    providerAttemptHook ? { onProviderAttempt: providerAttemptHook } : {},
-  );
-  const model = resolvesToDeepSeek(modelConfig)
-    ? wrapLanguageModel({
-        model: rawModel as Parameters<typeof wrapLanguageModel>[0]['model'],
-        middleware: createDsmlInterceptor(),
-      })
-    : rawModel;
-
-  const digest = digestToolResults(gatheredMessages);
-  const messages: ModelMessage[] = [
-    ...applyTimeContext(baseMessages, input.timeContext),
-    {
-      role: 'user',
-      content:
-        `[Information already gathered from the knowledge base:]\n\n${digest || '(no results)'}\n\n` +
-        `[Tool use is now disabled. Using only the information above, answer my most recent question in plain text. ` +
-        `If the information is insufficient, say so briefly. Do not call any tools.]`,
-    },
-  ];
-
-  const providerOptions = buildProviderOptions(modelConfig);
-  const maxOutputTokens = modelConfig.options?.max_tokens;
-
+async function finalAnswerStream(input: FinalAnswerInput): Promise<FinalAnswerStream> {
+  const digest = digestToolResults(input.gatheredMessages);
+  const providerOptions = providerOptionsFor(input.model, false);
   return streamText({
-    model,
-    instructions: systemPrompt,
-    messages,
+    model: guardedModel(input.model),
+    instructions: input.instructions,
+    messages: [
+      ...applyTimeContext(input.baseMessages, input.timeContext),
+      {
+        role: 'user',
+        content:
+          `[Information already gathered:]\n\n${digest || '(no results)'}\n\n` +
+          '[Tool use is now disabled. Using only the information above, answer my most recent message in plain text. ' +
+          'If the information is insufficient, say so briefly. Do not call any tools.]',
+      },
+    ],
     tools: {},
     toolChoice: 'none',
-    timeout: CHAT_STREAM_TIMEOUT,
+    timeout: LOOP_TIMEOUT,
     ...(providerOptions ? { providerOptions } : {}),
-    ...(maxOutputTokens !== undefined ? { maxOutputTokens } : {}),
   });
 }
 
-export const FINAL_ANSWER_MAX_ATTEMPTS = 3;
-
 /**
- * One final-answer pass, emitted as synthetic fullStream `text-delta` parts and
- * retried up to `maxAttempts` if a pass yields nothing. A pass can come back
- * empty when the model leaks DSML even here (the interceptor strips it); leaks
- * are intermittent per generation so a retry almost always lands a clean answer.
- * Empty passes yield nothing, so retrying never duplicates content.
+ * One final-answer pass as text-delta parts, retried while a pass yields nothing (a pass can
+ * come back empty when even this generation leaks DSML). Empty passes yield nothing, so a retry
+ * never duplicates text.
  */
 export async function* finalAnswerParts(
   input: FinalAnswerInput,
-  onUsage: (usage: unknown) => void,
+  createStream: FinalAnswerStreamFactory = finalAnswerStream,
   maxAttempts = FINAL_ANSWER_MAX_ATTEMPTS,
-  createStream: FinalAnswerStreamFactory = createFinalAnswerStreamAsync,
 ): AsyncGenerator<{ type: 'text-delta'; text: string }> {
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     let produced = '';
-    let fallbackStream: AgentStreamResult | undefined;
     try {
-      fallbackStream = await createStream(input);
-      for await (const part of fallbackStream.stream) {
+      const { stream } = await createStream(input);
+      for await (const part of stream) {
         if (part.type === 'text-delta' && part.text) {
           produced += part.text;
           yield { type: 'text-delta', text: part.text };
         }
       }
-    } catch (err) {
-      logger.warn('[agent-loop] final-answer attempt failed', { attempt, err: String(err) });
-    } finally {
-      if (fallbackStream) {
-        const usage = await Promise.resolve(fallbackStream.usage).catch(() => null);
-        onUsage(usage);
-      }
+    } catch (error) {
+      logger.warn('[agent-loop] final-answer attempt failed', { attempt, error: String(error) });
     }
     if (produced.trim()) return;
   }
-}
-
-/** Whether this model can enter the DeepSeek-only fallback path. */
-export function requiresFinalAnswerGuarantee(modelConfig: ModelConfig): boolean {
-  return resolvesToDeepSeek(modelConfig);
 }

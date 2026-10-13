@@ -231,18 +231,9 @@ importers:
 
   packages/agent-core:
     dependencies:
-      '@ai-sdk/deepseek':
-        specifier: ^3.0.62
-        version: 3.0.62(zod@4.4.3)
-      '@ai-sdk/openai':
-        specifier: ^4.0.89
-        version: 4.0.89(zod@4.4.3)
       '@ai-sdk/provider':
         specifier: ^4.0.25
         version: 4.0.25
-      '@greenhouse/types':
-        specifier: workspace:*
-        version: link:../types
       '@greenhouse/utils':
         specifier: workspace:*
         version: link:../utils

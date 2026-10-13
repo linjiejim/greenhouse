@@ -32,6 +32,7 @@ import {
 import {
   CAPABILITIES,
   getAdapter,
+  isDeepSeekFamily,
   listAdapters,
   pinnedFetch,
   withFallback,
@@ -39,6 +40,7 @@ import {
   type Capability,
   type ClientByCapability,
   type LanguageModelV4,
+  type ModelInfo,
 } from '@greenhouse/providers';
 import { isUniqueViolation, toErrorMessage } from '@greenhouse/utils/error';
 import { logger } from '@greenhouse/utils/logger';
@@ -110,6 +112,18 @@ interface Target {
 export interface Resolved<C extends Capability> {
   client: ClientByCapability[C];
   instance: { id: string; kind: string; name: string; source: Source };
+}
+
+/** A language model plus what the agent loop needs to know about the first model it tries. */
+export interface ResolvedModel {
+  model: LanguageModelV4;
+  /** `instance/model` of the first target. */
+  ref: string;
+  modelId: string;
+  deepseek: boolean;
+  reasoning?: boolean;
+  vision?: boolean;
+  contextWindow?: number;
 }
 
 function slug(text: string): string {
@@ -320,6 +334,9 @@ export function createProvidersService(deps: { config: AppConfig; fetch?: typeof
       }));
   }
 
+  const modelInfo = (instance: Instance, modelId: string): ModelInfo | undefined =>
+    ((instance.config.models as ModelInfo[] | undefined) ?? []).find((model) => model.id === modelId);
+
   const modelsOf = (instance: Instance): string[] => {
     const listed = ((instance.config.models as { id: string }[] | undefined) ?? []).map((model) => model.id);
     const preferred = instance.config.defaultModel as string | undefined;
@@ -520,19 +537,31 @@ export function createProvidersService(deps: { config: AppConfig; fetch?: typeof
      * A language model for `instance/model` or an alias (default, strong, fast). An explicit
      * reference must name a model the instance lists; an alias falls back across the chain.
      */
-    async languageModel(ref: string, ctx: UsageContext): Promise<LanguageModelV4> {
+    async languageModel(ref: string, ctx: UsageContext): Promise<ResolvedModel> {
       const current = await viewOf('llm');
       const chain = chainFor(current, ctx);
       if (!chain.length) throw new ApiError(503, 'llm_not_configured', 'No model service is configured yet.');
       const model = (target: Target) => client<'llm'>(target.instance, ctx).languageModel(target.modelId);
-      if (!(LLM_ALIASES as readonly string[]).includes(ref)) {
+      let targets: Target[];
+      if ((LLM_ALIASES as readonly string[]).includes(ref)) {
+        targets = aliasTargets(ref, chain, current.defaults);
+        if (!targets.length) throw new ApiError(503, 'llm_not_configured', 'The model service has no model set.');
+      } else {
         const target = explicitTarget(ref, chain);
         if (!target) throw new ApiError(400, 'model_unavailable', `The model "${ref}" is not available.`);
-        return model(target);
+        targets = [target];
       }
-      const targets = aliasTargets(ref, chain, current.defaults);
-      if (!targets.length) throw new ApiError(503, 'llm_not_configured', 'The model service has no model set.');
-      return withFallback(targets.map(model));
+      const first = targets[0]!;
+      const info = modelInfo(first.instance, first.modelId);
+      return {
+        model: withFallback(targets.map(model)),
+        ref: `${first.instance.id}/${first.modelId}`,
+        modelId: first.modelId,
+        deepseek: isDeepSeekFamily(first.modelId, first.instance.config.baseUrl as string | undefined),
+        ...(info?.reasoning !== undefined ? { reasoning: info.reasoning } : {}),
+        ...(info?.vision !== undefined ? { vision: info.vision } : {}),
+        ...(info?.contextWindow !== undefined ? { contextWindow: info.contextWindow } : {}),
+      };
     },
 
     async adminView(): Promise<AdminProviders> {
