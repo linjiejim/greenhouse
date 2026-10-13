@@ -19,12 +19,14 @@ export interface AccessClaims {
   exp: number;
 }
 
+export type HashPurpose = 'refresh' | 'link' | 'file' | 'oauth_code' | 'oauth_token' | 'oauth_secret' | 'oauth_request';
+
 export interface Tokens {
   createAccessToken(memberId: string, role: MemberRole, authVersion: number, now?: number): string;
   verifyAccessToken(token: string, now?: number): AccessClaims | null;
   newSecret(): string;
-  /** A keyed hash; `file` signs file URLs (modules/files). */
-  hashSecret(secret: string, purpose: 'refresh' | 'link' | 'file'): string;
+  /** A keyed hash; `file` signs file URLs (modules/files), `oauth_*` the external-access credentials (modules/oauth). */
+  hashSecret(secret: string, purpose: HashPurpose): string;
 }
 
 export function createTokens(signingKey: string): Tokens {

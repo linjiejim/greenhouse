@@ -15,7 +15,7 @@ v2 和 v1 不兼容，不加 `/api/v2` 前缀，也不保留旧路由。`GET /ap
 | 错误 | `{ error: { code, message, details? } }`；`code` 是稳定的 snake_case，客户端按它判断；`message` 给人看 |
 | 分页 | 游标分页：`?cursor=&limit=`，默认 50，最大 200。总数单独给（`?count=1`），不和列表混在一起 |
 | 时间与 ID | ISO 8601 UTC；ID 是「类型前缀 + ULID」的字符串（如 `agt_01J…`），见[数据模型](data-model.md#1-约定) |
-| 鉴权 | Web、移动端、扩展用 Bearer 访问令牌加刷新令牌；`/api/mcp` 用 OAuth 2.1；电脑画面和终端用一次性 ticket；文件内容用按成员签发的短期签名 URL，因为 `<img>` 和下载链接带不了请求头 |
+| 鉴权 | Web、移动端、扩展用 Bearer 访问令牌加刷新令牌；`/api/mcp` 只认 OAuth 2.1 访问令牌或个人访问令牌（不认 App 的令牌）；电脑画面和终端用一次性 ticket；文件内容用按成员签发的短期签名 URL，因为 `<img>` 和下载链接带不了请求头 |
 | 实时 | 只有一个 WebSocket `/api/ws`，事件为 `{ type, data }`，类型定义在 contract 里。消息增量、运行进度、需要你、通知、在线状态都走它；发送消息仍用 `POST` |
 | 幂等 | 有副作用的 `POST` 接受 `Idempotency-Key` 头；卡片动作（批准、拒绝）天然幂等 |
 | 注册顺序 | 路由挂载顺序有安全含义，保持单链定义；公开路径白名单越小越好 |
@@ -36,7 +36,9 @@ v2 和 v1 不兼容，不加 `/api/v2` 前缀，也不保留旧路由。`GET /ap
 | `/api/me/providers[/:id][/test]` | 我的服务，即个人 Key |
 | `/api/me/connections[/:id]` | 连接：MCP 连接器账号、飞书 / 企微、邮箱 |
 | `/api/me/vault[/:id]` · `/api/me/vault/log` | 密码库及其访问日志 |
-| `/api/me/grants[/:id]` · `/api/me/tokens[/:id]` | 外部访问：OAuth 授权、个人访问令牌 |
+| `/api/me/grants[/:id]` · `POST …/:id/approve` | 外部访问：我授权过的客户端（不含个人令牌）；撤销即作废它的全部令牌；管理员绑定给我的机器客户端要我批准后才生效 |
+| `/api/me/tokens[/:id]` | 个人访问令牌：名称、scope、有效期（1–366 天），令牌只在创建时显示一次；只能调用 `/api/mcp` |
+| `GET` / `POST /api/oauth/consent` | OAuth 同意页 `#/oauth/consent?request=`：`GET ?request=` 看是谁要什么（请求归第一个打开它的成员）；`POST { request, decision, scopes? }` 批准（可少勾）或拒绝，返回 `{ redirect_to }` 交给浏览器 |
 | `/api/me/notification-settings` · `/api/me/push-devices` | 通知送达设置、推送设备 |
 
 ### 2.2 Agents 与对话
@@ -90,7 +92,7 @@ v2 和 v1 不兼容，不加 `/api/v2` 前缀，也不保留旧路由。`GET /ap
 | `GET /api/admin/usage?period=&group_by=member\|agent\|provider\|capability` | 工作区用量 |
 | `GET` / `PUT /api/admin/budgets` · `DELETE …/:id` | 预算：组织、服务实例、成员三级，token 或美元，按月；`PUT` 建立或替换一个范围与单位的预算；列表带本月已用 |
 | `/api/admin/connectors[/:id]` | 安装连接器（目录、Registry、URL） |
-| `/api/admin/clients[/:id]` | 外部访问客户端（交互与机器） |
+| `/api/admin/clients[/:id]` · `POST …/:id/rotate-secret` | 外部访问客户端：交互客户端（自行注册或管理员添加，可设 scope 上限）与机器客户端（绑定一个成员，本人批准后生效；密钥只显示一次）；停用即作废全部令牌；列表带最近使用、在用授权与令牌数；变更写审计 |
 | `GET /api/admin/public-agents` · `POST …/:id/pause` · `…/resume` | 公开 Agent：主人、受众人数、本月用量；暂停与恢复 |
 | `/api/admin/branding` | 名称、Logo、主色 |
 
@@ -98,11 +100,30 @@ v2 和 v1 不兼容，不加 `/api/v2` 前缀，也不保留旧路由。`GET /ap
 
 | 路径 | 用途 |
 | --- | --- |
-| `/api/mcp` · `/oauth/*` · `/.well-known/*` | MCP 服务器与 OAuth 2.1，是唯一对外接口 |
+| `/api/mcp` · `/oauth/*` · `/.well-known/*` | MCP 服务器与 OAuth 2.1，是唯一对外接口，见下 |
 | `/api/connectors/oauth/callback` | 连接器 OAuth 回调（公开） |
 | `/api/ws` · `/api/ws/computer?ticket=` · `/api/ws/computer-terminal?ticket=` | 实时通道、电脑画面（RFB，`view` ticket 的输入由服务端丢弃）、终端（二进制按键与输出，`resize` 文本消息） |
 | `/api/ext/<id>/*` | 扩展 |
 | `GET /health` | 健康检查：各能力是否可用（不含机密）；数据库不可用时返回 503 |
+
+OAuth 2.1 与 MCP（公开路径，错误按 RFC 6749 返回 `{ error, error_description }`，不用 API 信封；元数据、注册、令牌、撤销与 `/api/mcp` 对任意来源开放 CORS，因为它们不读 cookie）：
+
+| 路径 | 规则 |
+| --- | --- |
+| `GET /.well-known/oauth-authorization-server` · `/.well-known/oauth-protected-resource[/api/mcp]` | RFC 8414、RFC 9728 元数据；issuer 是 `PUBLIC_URL`，资源是 `PUBLIC_URL/api/mcp` |
+| `POST /oauth/register` | RFC 7591：只注册交互（公开）客户端，PKCE、无密钥；回调须是 https、回环 http 或 App 私有 scheme，不带 fragment；按 IP 每小时 20 次 |
+| `GET /oauth/authorize` | 只收 `response_type=code` 与 S256；回调精确匹配（回环地址可换端口）；不认识的 scope 忽略，一个都没有就请求全部；`resource` 只能是 `/api/mcp`；通过后浏览器去 `#/oauth/consent?request=`（一次性，十分钟）；客户端或回调不对时去 `#/oauth/consent?error=`；其他错误只对管理员添加的客户端跳回它的回调，自行注册的同样留在 `?error=`，不做开放跳转 |
+| `POST /oauth/token` | `authorization_code`（两分钟、一次性；再出现即作废这次授权的全部令牌）、`refresh_token`（每次轮换；旧的再出现同样全部作废；`scope` 只能收窄）、`client_credentials`（机器客户端，`client_secret_post` 或 Basic，只发访问令牌）；访问令牌一小时，刷新令牌 30 天；令牌带成员的 `auth_version`，改密码或停用即失效 |
+| `POST /oauth/revoke` | RFC 7009：吊销自己的令牌；吊销刷新令牌连同这次授权的全部令牌 |
+| `POST /api/mcp` | 无状态 streamable HTTP（JSON 应答；`GET` / `DELETE` 返回 405）；没有有效令牌时 401 加 `WWW-Authenticate: Bearer resource_metadata=…, scope=…`；每个授权每分钟 120 次 |
+
+| scope | MCP 工具 |
+| --- | --- |
+| `agents:read` | `agents_list`：我的 Agents 与分享给我的公开 Agents |
+| `agents:ask` | `agents_list`、`agent_message`（写进该 Agent 的对话，最多等 50 秒）、`agent_conversation_get`（读之后的回复，可再等）；需要我批准的写操作留在 App 的卡片里，结果为 `needs_you` 并附链接 |
+| `conversations:read` | `conversations_list`、`conversations_search`、`conversation_get` |
+| `runs:read` | `runs_list`、`run_get`、`schedules_list` |
+| `memories:read` | `memories_list`：Agent 关于我的记忆 |
 
 ## 3. v1 → v2 去向
 
@@ -157,7 +178,7 @@ apps/api/src/
   modules/
     auth/ me/ agents/ conversations/ requests/ runs/ files/
     knowledge/ tables/ apps/ skills/ notifications/ search/
-    connections/ admin/ mcp/ channels/
+    connections/ admin/ oauth/ mcp/ channels/
 ```
 
 每个模块都附测试：service 单元测试、路由 API 测试、关键流程端到端测试。删除模块时，按 [功能清单](features.md) 的维护规则同步清理。

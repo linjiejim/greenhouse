@@ -6,7 +6,12 @@
 import { auditEvents, getDb } from '@greenhouse/db';
 
 export interface AuditEntry {
+  /** A member by default; `client` when an outside client acted on a member's behalf. */
+  actorType?: 'member' | 'client' | 'system';
   actorId: string;
+  onBehalfOf?: string;
+  clientId?: string;
+  result?: 'success' | 'denied' | 'error';
   /** `<resource>.<verb>`, e.g. `provider.create`. */
   action: string;
   resourceType: string;
@@ -22,14 +27,16 @@ export async function audit(entry: AuditEntry): Promise<void> {
   await getDb()
     .insert(auditEvents)
     .values({
-      actorType: 'member',
+      actorType: entry.actorType ?? 'member',
       actorId: entry.actorId,
+      onBehalfOf: entry.onBehalfOf ?? null,
+      clientId: entry.clientId ?? null,
       action: entry.action,
       resourceType: entry.resourceType,
       resourceId: entry.resourceId,
       scopeType: entry.scopeType ?? null,
       scopeId: entry.scopeId ?? null,
-      result: 'success',
+      result: entry.result ?? 'success',
       summary: entry.summary ?? '',
     });
 }

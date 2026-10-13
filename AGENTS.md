@@ -53,6 +53,9 @@ Greenhouse is an open-source, self-hosted platform where a team works with its o
 
 ## Auth and permissions
 - Roles are admin and member. Public endpoints are /health, /api/bootstrap and /api/auth/*; everything else under /api requires a member, and /api/admin/* an admin.
+- External access (modules/oauth, modules/mcp): /.well-known/*, /oauth/* and /api/mcp are public routes with their own credentials. /api/mcp accepts only OAuth access tokens and personal access tokens, never the app's tokens, and every tool calls the same service as the HTTP route, as that member. The OAuth endpoints answer errors as RFC 6749 `{ error, error_description }`, not the API envelope.
+- OAuth codes, access, refresh and personal tokens and client secrets are stored only as keyed hashes and carry the member's auth_version. A spent code or refresh token presented again revokes every token of its grant. A grant keeps the scopes exactly as approved, and a token never reaches beyond its grant and its client's cap.
+- A machine client an admin binds to another member acts as them only after that member approves it, so an admin can never read a member's data through a client.
 - File bytes are read only through signed URLs (`GET /api/files/:id/content?exp=&m=&sig=`), because an `<img>` or a link cannot send a bearer header. A URL is minted per request for one member, ends within one to two hours, and serving it checks again that the member is active and may read the file. Only the workspace logo gets a URL that names no member.
 - requireMember re-reads role, status and auth_version on every request: disabling a member or changing a password ends their sessions at once.
 - Refresh tokens are single use; replaying a used one revokes all of that member's sessions. One-time links and refresh tokens are stored only as keyed hashes.

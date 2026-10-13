@@ -534,25 +534,26 @@ list per deployment.
 
 ## MCP & agent access
 
-Every capability is reachable three ways from the same tool layer:
+`/api/mcp` is the one outside interface: a stateless MCP server (Streamable HTTP) that any MCP
+client (Claude, Codex, Cursor, MCP Inspector, …) can connect to, as one member.
 
-- **Chat** — tools the user is entitled to are passed to the model in `/api/chat`.
-- **`/api/agent`** — structured tool proxy for programmatic clients: `GET /runtime-manifest`
-  lists the caller's available tools (with input schemas), `POST /tools/:id/call` invokes one.
-  Read tools run freely; write tools are deny-by-default and require `confirm: true`.
-- **`/api/mcp`** — the same proxy wrapped in the standard MCP protocol (Streamable HTTP), so
-  any MCP client (Claude, Cursor, …) can connect. Auth is **OAuth 2.1**: people authorize with
-  Authorization Code + PKCE from their own account; automation uses machine clients
-  (client credentials) that a super binds to a least-privilege internal user under
-  Administration → MCP Access. Scopes combine an action (`mcp:read` / `mcp:write`) with
-  resource groups (`mcp:knowledge`, `mcp:projects`, `mcp:tables`, …).
-- **Your Agents from outside** — the `mcp:agents` group gives an MCP client (or a machine client,
-  or the CLI) three tools: `agents_list`, `agent_message` (a write: needs `mcp:write` and
-  `confirm: true`) and `agent_conversation_get`. A message opens a new chat with that Agent in
-  the member's Greenhouse list (marked with where it came from), waits up to ~55 s for the
-  reply and otherwise hands back the conversation id to read later. Approvals and sign-ins the
-  Agent asks for stay in the app. In Feishu, start a message with `@AgentName` to hand the
-  thread to that Agent; `/agents` lists who you can reach.
+- **Sign-in** — OAuth 2.1. A client discovers the server (RFC 9728 and RFC 8414 metadata),
+  registers itself (RFC 7591) and signs a member in with Authorization Code + PKCE: the browser
+  lands on the consent page (`#/oauth/consent`), which shows the app, where it sends the member
+  back, and the scopes it asks for; the member can untick some. Automation uses machine clients
+  an admin creates (client credentials; the secret is shown once). One bound to another member
+  acts as them only after that member approves it.
+- **Personal access tokens** — a token with a name, scopes and an expiry, sent as a plain bearer
+  token to `/api/mcp` (the CLI, scripts). Shown once.
+- **Scopes** — `agents:read`, `agents:ask`, `conversations:read`, `runs:read`, `memories:read`.
+  The tool list is exactly what was granted, and every tool runs as the member with the same
+  checks as the app.
+- **Your Agents from outside** — `agents_list`, `agent_message` (writes into that Agent's thread
+  and waits up to 50 s for the reply) and `agent_conversation_get` (read on later, or wait
+  again). Anything the Agent wants to change still waits for the member's approval card in the
+  app: the result says `needs_you` with a link.
+- Revoking an authorization, rotating a secret, disabling a client, changing a password or
+  disabling a member ends the tokens at once; a refresh token or code used twice ends them all.
 
 ### Connectors (Greenhouse as an MCP client)
 

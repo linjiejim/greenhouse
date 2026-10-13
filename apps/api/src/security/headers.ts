@@ -20,7 +20,8 @@ export function cors(allowedOrigins: string[]): MiddlewareHandler {
       return c.body(null, 204, {
         'Access-Control-Allow-Origin': origin,
         'Access-Control-Allow-Methods': 'GET, POST, PATCH, PUT, DELETE, OPTIONS',
-        'Access-Control-Allow-Headers': 'Authorization, Content-Type, Idempotency-Key',
+        'Access-Control-Allow-Headers':
+          'Authorization, Content-Type, Idempotency-Key, Accept, Mcp-Protocol-Version, Mcp-Session-Id, Last-Event-ID',
         'Access-Control-Max-Age': '600',
         Vary: 'Origin',
       });
@@ -32,3 +33,27 @@ export function cors(allowedOrigins: string[]): MiddlewareHandler {
     }
   };
 }
+
+const PROTOCOL_EXPOSED = 'WWW-Authenticate, Mcp-Session-Id, Mcp-Protocol-Version';
+
+/**
+ * The OAuth and MCP protocol endpoints (`/.well-known/*`, `/oauth/register|token|revoke`,
+ * `/api/mcp`) answer any origin, because browser-based MCP clients (MCP Inspector) call them
+ * directly. Safe: none of them reads a cookie; every credential travels in a header or the body.
+ * A preflight from a configured origin is answered by `cors` above, before this runs.
+ */
+export const openCors: MiddlewareHandler = async (c, next) => {
+  if (c.req.method === 'OPTIONS') {
+    return c.body(null, 204, {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
+      'Access-Control-Allow-Headers':
+        'Authorization, Content-Type, Accept, Mcp-Protocol-Version, Mcp-Session-Id, Last-Event-ID',
+      'Access-Control-Expose-Headers': PROTOCOL_EXPOSED,
+      'Access-Control-Max-Age': '600',
+    });
+  }
+  await next();
+  c.header('Access-Control-Allow-Origin', '*');
+  c.header('Access-Control-Expose-Headers', PROTOCOL_EXPOSED);
+};
