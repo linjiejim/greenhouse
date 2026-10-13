@@ -32,6 +32,9 @@ import { webTools } from './engine/tools/web.js';
 import { adminPublicAgentRoutes, agentRoutes } from './modules/agents/routes.js';
 import { createAgentsService, type AgentsService } from './modules/agents/service.js';
 import { computerRoutes } from './modules/computers/routes.js';
+import { connectorTool } from './engine/tools/connectors.js';
+import { adminConnectorRoutes, connectorCallbackRoutes, myConnectionRoutes } from './modules/connectors/routes.js';
+import { createConnectorsService, type ConnectorsService } from './modules/connectors/service.js';
 import { createComputersService, type ComputersService } from './modules/computers/service.js';
 import { conversationRoutes } from './modules/conversations/routes.js';
 import { fileContentRoutes, fileRoutes } from './modules/files/routes.js';
@@ -62,6 +65,7 @@ export interface Services {
   providers: ProvidersService;
   agents: AgentsService;
   computers: ComputersService;
+  connectors: ConnectorsService;
   conversations: ConversationsService;
   files: FilesService;
   notifications: NotificationsService;
@@ -82,6 +86,8 @@ export interface ServiceOptions {
   languageModel?: ProvidersService['languageModel'];
   /** Tools added to the built-in ones (extensions, tests). */
   tools?: readonly ToolDef[];
+  /** Replaces the connector catalog and the MCP Registry address (tests). */
+  connectors?: Omit<Parameters<typeof createConnectorsService>[0], 'config'>;
 }
 
 export function createServices(config: AppConfig, options: ServiceOptions = {}): Services {
@@ -100,6 +106,7 @@ export function createServices(config: AppConfig, options: ServiceOptions = {}):
     hub,
     secrets: { create: () => tokens.newSecret(), hash: (secret) => tokens.hashSecret(secret, 'link') },
   });
+  const connectors = createConnectorsService({ config, ...options.connectors });
   const notifications = createNotificationsService({ hub });
   const schedules = createSchedulesService({ agents, background: () => engine.background });
   const requests = createRequestsService({ hub, notifications });
@@ -123,6 +130,7 @@ export function createServices(config: AppConfig, options: ServiceOptions = {}):
       handoffTool(handOff),
       ...scheduleTools(schedules),
       ...webTools(providers, options.fetch ? { fetch: options.fetch } : {}),
+      connectorTool(connectors),
       ...(options.tools ?? []),
     ],
     ...(options.languageModel ? { languageModel: options.languageModel } : {}),
@@ -137,6 +145,7 @@ export function createServices(config: AppConfig, options: ServiceOptions = {}):
     providers,
     agents,
     computers,
+    connectors,
     conversations,
     files,
     notifications,
@@ -153,8 +162,9 @@ export function createServices(config: AppConfig, options: ServiceOptions = {}):
 
 /**
  * The HTTP surface. Public: /health, /api/bootstrap, /api/auth/*, file content behind a signed URL
- * (GET /api/files/:id/content?exp=&m=&sig=), and the built web app at /. Everything else under
- * /api requires a member; /api/admin/* also requires an admin.
+ * (GET /api/files/:id/content?exp=&m=&sig=), the connector sign-in callback
+ * (GET /api/connectors/oauth/callback, which changes nothing), and the built web app at /.
+ * Everything else under /api requires a member; /api/admin/* also requires an admin.
  */
 export function createApp(services: Services, options: { webDir?: string } = {}) {
   const { config } = services;
@@ -183,12 +193,15 @@ export function createApp(services: Services, options: { webDir?: string } = {})
   );
   // An <img> or a link cannot send a bearer header: the URL's signature is the credential.
   app.route('/api/files', fileContentRoutes(services.files));
+  // A provider sends the member's browser back here without a bearer header; the web app finishes it.
+  app.route('/api/connectors', connectorCallbackRoutes(services.connectors));
 
   const signedIn = new Hono<AppEnv>();
   signedIn.use('*', member);
   signedIn.route('/me/providers', myProviderRoutes(services.providers));
   signedIn.route('/me/models', myModelRoutes(services.providers));
   signedIn.route('/me/usage', myUsageRoutes(services.usage));
+  signedIn.route('/me/connections', myConnectionRoutes(services.connectors));
   signedIn.route('/me', meRoutes(services.members));
   signedIn.route('/members', directoryRoutes(services.members));
   signedIn.route('/groups', groupDirectoryRoutes(services.members));
@@ -208,6 +221,7 @@ export function createApp(services: Services, options: { webDir?: string } = {})
   signedIn.route('/admin', adminProviderRoutes(services.providers));
   signedIn.route('/admin', adminUsageRoutes(services.usage));
   signedIn.route('/admin', adminPublicAgentRoutes(services.agents));
+  signedIn.route('/admin/connectors', adminConnectorRoutes(services.connectors));
   app.route('/api', signedIn);
   app.route('/', webRoutes(options.webDir));
 

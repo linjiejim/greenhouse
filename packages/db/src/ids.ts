@@ -24,6 +24,8 @@ export const ID_PREFIX = {
   run: 'run',
   runStep: 'stp',
   file: 'fil',
+  connector: 'cnr',
+  connection: 'cnx',
   notification: 'ntf',
   schedule: 'sch',
   budget: 'bdg',

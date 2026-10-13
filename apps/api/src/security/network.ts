@@ -24,6 +24,12 @@ export function isPrivateAddress(ip: string): boolean {
   if (lower === '::' || lower === '::1') return true;
   const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/.exec(lower);
   if (mapped) return ipv4Private(mapped[1]!);
+  // The same IPv4-mapped address as a URL writes it: [::ffff:10.0.0.1] becomes [::ffff:a00:1].
+  const hex = /^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/.exec(lower);
+  if (hex) {
+    const [high, low] = [parseInt(hex[1]!, 16), parseInt(hex[2]!, 16)];
+    return ipv4Private(`${high >> 8}.${high & 255}.${low >> 8}.${low & 255}`);
+  }
   return /^(fc|fd|fe8|fe9|fea|feb)/.test(lower);
 }
 

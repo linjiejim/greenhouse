@@ -35,7 +35,7 @@ v2 和 v1 不兼容，不加 `/api/v2` 前缀，也不保留旧路由。`GET /ap
 | `GET /api/me/usage?period=month\|30d` | 我的用量：总计，按能力、Agent、天；我的成员预算 |
 | `/api/me/providers[/:id][/test]` | 我的服务，即个人 Key |
 | `GET /api/me/models` | 我能给 Agent 选的模型：为我服务的各实例的模型，按顺序 |
-| `/api/me/connections[/:id]` | 连接：MCP 连接器账号、飞书 / 企微、邮箱 |
+| `GET` / `POST /api/me/connections` · `POST …/oauth/start` · `…/oauth/finish` · `POST …/:id/test` · `DELETE …/:id` | 连接：MCP 连接器账号；飞书 / 企微、邮箱随渠道。`GET` 返回我的连接和我能用的连接器；`POST` 存我自己的 Key（服务器先验证，拒绝时 `key_rejected`）；OAuth：`start` 返回授权地址，回调把 `oauth_state`、`oauth_code` 交给 Web，由发起登录的同一成员 `finish`（别人是 `sign_in_not_yours`）；`test` 用我的连接列工具并记下状态；`DELETE` 断开，OAuth 同时撤销 |
 | `/api/me/vault[/:id]` · `/api/me/vault/log` | 密码库及其访问日志 |
 | `/api/me/grants[/:id]` · `/api/me/tokens[/:id]` | 外部访问：OAuth 授权、个人访问令牌 |
 | `/api/me/notification-settings` · `/api/me/push-devices` | 通知送达设置、推送设备 |
@@ -90,7 +90,7 @@ v2 和 v1 不兼容，不加 `/api/v2` 前缀，也不保留旧路由。`GET /ap
 | `/api/admin/computers[/:id]` | 电脑列表与容量 |
 | `GET /api/admin/usage?period=&group_by=member\|agent\|provider\|capability` | 工作区用量 |
 | `GET` / `PUT /api/admin/budgets` · `DELETE …/:id` | 预算：组织、服务实例、成员三级，token 或美元，按月；`PUT` 建立或替换一个范围与单位的预算；列表带本月已用 |
-| `/api/admin/connectors[/:id]` | 安装连接器（目录、Registry、URL） |
+| `/api/admin/connectors[/:id]` · `GET …/catalog` · `GET …/registry?q=` · `POST …/probe` · `POST …/:id/refresh` · `…/test` | 安装连接器：内置目录（`{ catalog_id }`）、Registry 搜索（慢，服务端缓存）、URL（`probe` 先看要哪种鉴权）；鉴权 none / shared / per_member / oauth，共享 Key 与 OAuth 客户端密钥只写不读；工具缓存（`refresh` 重列，per_member / oauth 用管理员自己的连接）、白名单、只读工具；启用 / 停用；改地址或鉴权方式会断开所有成员的连接 |
 | `/api/admin/clients[/:id]` | 外部访问客户端（交互与机器） |
 | `GET /api/admin/public-agents` · `POST …/:id/pause` · `…/resume` | 公开 Agent：主人、受众人数、本月用量；暂停与恢复 |
 | `/api/admin/branding` | 名称、Logo、主色 |
@@ -100,7 +100,7 @@ v2 和 v1 不兼容，不加 `/api/v2` 前缀，也不保留旧路由。`GET /ap
 | 路径 | 用途 |
 | --- | --- |
 | `/api/mcp` · `/oauth/*` · `/.well-known/*` | MCP 服务器与 OAuth 2.1，是唯一对外接口 |
-| `/api/connectors/oauth/callback` | 连接器 OAuth 回调（公开） |
+| `GET /api/connectors/oauth/callback` | 连接器 OAuth 回调（公开）：不改任何数据，302 到 `#/settings/connections?connector=&oauth_state=&oauth_code=`（失败时带 `oauth_error`），Web 用成员自己的会话调用 `finish`。不在 `/api/mcp` 下，那是 Greenhouse 自己的 MCP 服务器 |
 | `/api/ws` · `/api/ws/computer?ticket=` · `/api/ws/computer-terminal?ticket=` | 实时通道、电脑画面（RFB，`view` ticket 的输入由服务端丢弃）、终端（二进制按键与输出，`resize` 文本消息） |
 | `/api/ext/<id>/*` | 扩展 |
 | `GET /health` | 健康检查：各能力是否可用（不含机密）；数据库不可用时返回 503 |
@@ -146,6 +146,8 @@ v2 和 v1 不兼容，不加 `/api/v2` 前缀，也不保留旧路由。`GET /ap
 
 工具出现的条件：成员的模块权限允许，并且依赖的 Provider 可用。例如没有图像服务时就没有 `generate_image`，不会出现「未配置」的错误工具。
 
+`mcp_call` 是连接器的唯一工具（`list`、`describe`、`call`）。它的描述每个回合重建，只列出这个 Agent 此刻能为提问者用的连接器和工具：已启用、在 manifest 的 `connectors` 里（空值表示全部）、per_member / oauth 的已由提问者连接；不能写的 Agent 只看到只读工具。只读工具直接运行；其余工具弹出批准卡（`tool_write`，原样参数），批准后用提问者的 Key 或登录执行。只在回合里提供，公开 Agent 不提供。
+
 ## 5. 模块布局
 
 ```
@@ -158,7 +160,7 @@ apps/api/src/
   modules/
     auth/ me/ agents/ conversations/ requests/ runs/ files/
     knowledge/ tables/ apps/ skills/ notifications/ search/
-    connections/ admin/ mcp/ channels/
+    connectors/ admin/ mcp/ channels/
 ```
 
 每个模块都附测试：service 单元测试、路由 API 测试、关键流程端到端测试。删除模块时，按 [功能清单](features.md) 的维护规则同步清理。

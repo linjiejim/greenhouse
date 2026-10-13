@@ -61,6 +61,8 @@ export interface ToolContext {
   endTurn(): void;
   /** The hand-offs this turn's request has gone through, for their limits. */
   chain?: { key: string; path: string[] };
+  /** Set when the engine runs a call the member approved on its card. */
+  approved?: boolean;
 }
 
 /** What a decision on a tool's card means for the conversation. */
@@ -92,10 +94,22 @@ export interface ToolDef<I = any> {
   surfaces?: readonly Surface[];
   /** Hidden unless this holds: a module the member has, a provider that is configured. */
   available?(ctx: AvailabilityContext): boolean | Promise<boolean>;
+  /**
+   * The description for this turn, when it depends on the member and the Agent (the connectors
+   * they can use); null leaves the tool out.
+   */
+  descriptionFor?(ctx: AvailabilityContext): Promise<string | null>;
+  /**
+   * The risk of one call, when it depends on the arguments (a connector tool that only reads).
+   * `risk` is the lowest and decides where the tool is offered; a call classed above read waits
+   * for the member's approval like a write tool. Class a call above read only when this turn may
+   * make it with approval; the tool refuses the rest itself.
+   */
+  callRisk?(input: I, ctx: Omit<ToolContext, 'stepId' | 'raise' | 'endTurn'>): Promise<ToolRisk>;
   /** Write and external tools wait for the member's approval unless this returns false. */
   needsApproval?(input: I, ctx: ToolContext): boolean;
   /** The approval card. */
-  describe?(input: I, ctx: ToolContext): ApprovalCard;
+  describe?(input: I, ctx: ToolContext): ApprovalCard | Promise<ApprovalCard>;
   /** Reading its result brings outside text into the turn. */
   taints?: boolean;
   /** Reads the member's own data (conversations, documents, memories). */

@@ -1105,6 +1105,7 @@ export function createEngine(deps: EngineDeps) {
       tainted: () => false,
       raise: () => Promise.reject(new Error('An approved action cannot raise another card.')),
       endTurn: () => undefined,
+      approved: true,
     };
     const started = Date.now();
     try {
