@@ -29,6 +29,7 @@ async function main() {
   await ensureFirstAdmin(config.BOOTSTRAP_ADMIN_EMAIL, services.auth);
   await services.hub.connect(pgTransport(client.sql));
   services.engine.start();
+  services.schedules.start();
   // Turns another process left behind (a restart, a crash) carry on here.
   await services.engine.sweep();
 
@@ -43,6 +44,7 @@ async function main() {
   });
 
   const stop = async () => {
+    services.schedules.stop();
     await realtime.close();
     server.close();
     await services.engine.shutdown();

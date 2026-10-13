@@ -21,6 +21,7 @@ import { conversationTool } from './engine/tools/conversation.js';
 import { memoryTool } from './engine/tools/memory.js';
 import type { ToolDef } from './engine/tools/define.js';
 import { runStartTool } from './engine/tools/run-start.js';
+import { scheduleTools } from './engine/tools/schedules.js';
 import { selfTool } from './engine/tools/self.js';
 import { webTools } from './engine/tools/web.js';
 import { agentRoutes } from './modules/agents/routes.js';
@@ -30,6 +31,8 @@ import { notificationRoutes } from './modules/notifications/routes.js';
 import { createNotificationsService, type NotificationsService } from './modules/notifications/service.js';
 import { requestRoutes } from './modules/requests/routes.js';
 import { runRoutes } from './modules/runs/routes.js';
+import { scheduleRoutes } from './modules/schedules/routes.js';
+import { createSchedulesService, type SchedulesService } from './modules/schedules/service.js';
 import { createRunsService, type RunsService } from './modules/runs/service.js';
 import { createRequestsService, type RequestsService } from './modules/requests/service.js';
 import { createConversationsService, type ConversationsService } from './modules/conversations/service.js';
@@ -49,6 +52,7 @@ export interface Services {
   notifications: NotificationsService;
   requests: RequestsService;
   runs: RunsService;
+  schedules: SchedulesService;
   hub: Hub;
   engine: Engine;
   limiter: RateLimiter;
@@ -71,6 +75,7 @@ export function createServices(config: AppConfig, options: ServiceOptions = {}):
   const conversations = createConversationsService({ agents, providers });
   const hub = createHub();
   const notifications = createNotificationsService({ hub });
+  const schedules = createSchedulesService({ agents, background: () => engine.background });
   const requests = createRequestsService({ hub, notifications });
   const engine = createEngine({
     agents,
@@ -85,6 +90,7 @@ export function createServices(config: AppConfig, options: ServiceOptions = {}):
       selfTool(agents),
       conversationTool(),
       runStartTool(background),
+      ...scheduleTools(schedules),
       ...webTools(providers, options.fetch ? { fetch: options.fetch } : {}),
       ...(options.tools ?? []),
     ],
@@ -103,6 +109,7 @@ export function createServices(config: AppConfig, options: ServiceOptions = {}):
     notifications,
     requests,
     runs,
+    schedules,
     hub,
     engine,
     limiter: new RateLimiter(10, 60_000),
@@ -148,6 +155,7 @@ export function createApp(services: Services) {
   signedIn.route('/conversations', conversationRoutes(services.conversations, services.engine));
   signedIn.route('/requests', requestRoutes(services.requests, services.engine));
   signedIn.route('/runs', runRoutes(services.runs));
+  signedIn.route('/schedules', scheduleRoutes(services.schedules));
   signedIn.route('/notifications', notificationRoutes(services.notifications));
   signedIn.use('/admin/*', requireAdmin);
   signedIn.route('/admin', adminMemberRoutes(services.members));

@@ -61,7 +61,7 @@ v2 和 v1 不兼容，不加 `/api/v2` 前缀，也不保留旧路由。`GET /ap
 | --- | --- |
 | `GET /api/runs?state=active\|done&agent=&source=` · `GET /api/runs/:id` | 运行列表与详情（步骤、产物） |
 | `POST /api/runs/:id/cancel` · `…/retry` | 取消；只重试失败的步骤 |
-| `/api/schedules[/:id]` · `POST …/:id/run-now` · `…/pause` | 定时，都属于某个 Agent |
+| `/api/schedules[/:id]` · `POST …/:id/run-now` · `…/pause` · `…/resume` | 定时，都属于某个 Agent；五段 cron 加时区，最短 15 分钟 |
 
 ### 2.4 工作底座
 

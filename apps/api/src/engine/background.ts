@@ -22,6 +22,7 @@ import {
   runEvents,
   runs,
   runSteps,
+  schedules,
   transaction,
   type Run,
   type RunSource,
@@ -399,6 +400,12 @@ export function createBackground(deps: {
       })
       .where(eq(runs.id, run.id));
     await record(outcome.status, outcome.errorMessage ? { error: outcome.errorMessage } : {});
+    if (run.source === 'schedule' && run.sourceId) {
+      await getDb()
+        .update(schedules)
+        .set({ lastStatus: outcome.status, updatedAt: sql`now()` })
+        .where(and(eq(schedules.id, run.sourceId), eq(schedules.lastRunId, run.id)));
+    }
     await report(run, outcome, locale).catch((error: unknown) =>
       logger.warn('[runs] could not report', { run: run.id, error: toErrorMessage(error) }),
     );
