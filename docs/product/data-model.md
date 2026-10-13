@@ -1,0 +1,221 @@
+# 数据模型（v2）
+
+更新 2026-10-13 · 状态：草案，M0.3 按此实现，改表时同步本文 · 配套 [PRD](prd.md)、[API v2](api.md)、[服务 Provider](providers.md)、[v1 数据迁移](migration-v1.md)
+
+v2 从零建表：只有一份基线迁移，不继承 v1 的迁移链，也不在 v1 库上原地升级。v1 的历史数据以后用离线 ETL 搬进来，见 [migration-v1.md](migration-v1.md)。
+
+本文写到能照着实现的程度，列不求全。实现以 Drizzle schema 为准，改表时同步本文。共 75 张表，分 10 个领域；v1 加上 PR #64 是 137 张。
+
+## 1. 约定
+
+- 命名
+  - 表名用复数 snake_case，词汇只取[术语表](prd.md#5-术语表唯一词汇)；子表带父对象前缀（`agent_versions`、`base_fields`）。
+  - 外键列写 `<对象>_id`。资源的主人一律 `owner_id`，作者 `created_by` / `updated_by`，都指向 `members.id`。
+  - 表名、列名、枚举值里不再出现 `bot`、`super`、`team`（指角色时）、`session`、`profile`。改名在基线里一次做完。
+- 主键
+  - `text`，由应用生成「类型前缀 + ULID」，如 `mbr_01J…`、`agt_…`、`cnv_…`。
+  - 与 v1 不同（v1 混用自增整数和各式字符串），原因有四：API 只认字符串 ID；ULID 按时间排序，可直接做游标；ID 不可枚举（v1 出过凭递增 ID 打开别人私有记忆的漏洞）；迁移时能由 v1 主键确定性生成。
+  - 例外：只追加的流水表和内部队列（`run_events`、`usage_events`、`audit_events`、`vault_access_log`、`base_record_events`、`conversation_inbox`）用 `bigint` identity；纯关联表用复合主键；`providers.id` 是可读 slug，因为模型引用写成 `实例/模型`。
+- 时间
+  - 时间点一律 `timestamptz`（Drizzle `mode: 'string'`，API 输出 ISO 8601 UTC）。`created_at` / `updated_at` 默认 `now()`。
+  - 只有日期的值（如记录里的截止日）以 `YYYY-MM-DD` 存在 JSON 里。时区存 IANA 名称（成员、定时、电脑）。
+- 外键：同一领域内的强所有权用 FK，写明 `CASCADE` 或 `SET NULL`。日志、审计、用量、通知、运行历史对成员和业务对象只存逻辑引用，不设 FK，生命周期独立（沿用 v1）。
+- 归属与共享：只有一套模型。
+  - 每个可共享的对象有且只有一个主人 `owner_id`。主人之外的权限只来自 `shares` 一张表，主体是成员、分组或全员。
+  - 继承：文件夹的权限传给其中的文档、文件和子文件夹；表格的权限传给数据表、视图、记录和表单。应用的受众只作用于应用本身。
+  - 有效权限 = 主人 ∪ 分享 ∪ 继承，再与成员的模块权限求交；Agent 再与它的授权范围求交（[PRD §8.2](prd.md#82-权限与隐私)）。管理员角色本身不带任何私有内容的读权。
+  - 与 v1 不同：v1 每类对象各有一套共享方式和自己的查询、界面：知识库的 visibility 加 `group:<id>` 字符串、Drive 的 visibility / owner、Base 的 team_role 与成员和分组成员、应用受众、会话分享、项目成员、Bot 发布受众 JSON。合成一张表后，鉴权、「分享给我」和审计各只有一条路径。
+- 归档与删除
+  - `archived_at` 表示用户可见、可恢复的归档：Agent、文件夹、文档、文件、表格、数据表、应用、技能；对话按成员归档，记在 `conversation_members`。
+  - `deleted_at` 只用在有回收站的地方：记录和评论。其余「删除」都是确认后的硬删除，按 FK 级联。审计、用量、运行时间线、通知永不删除。
+  - 与 v1 不同：v1 用 `status='archived'`、`status='deleted'`、`archived_at` 三种写法表达同一件事。
+- JSON
+  - 一律 `jsonb NOT NULL`，默认 `'{}'` 或 `'[]'`，用 `.$type<T>()` 标注；zod schema 放在 `@greenhouse/contract`。
+  - 要算哈希的内容（Agent manifest、应用 spec、模板内容）存 `text`，保证存下的字节就是算哈希的字节（#64 D7）。
+  - 与 v1 不同：v1 把 JSON 存成 text，只是因为改造全部读写路径代价太大；v2 从零开始，没有这个代价。
+- 并发：可多人编辑的对象带 `revision`，旧 revision 的写入被拒；有状态机的行带 `version`，每次迁移做 CAS；后台工作用 `jobs` 的租约领取（`FOR UPDATE SKIP LOCKED`）。沿用 v1。
+- 搜索
+  - 中英文全文检索沿用「应用层 jieba 分词 + PostgreSQL `simple` 配置」。分词结果写进 `search_a` / `search_b` / `search_c`（权重 A / B / C），`search_tsv` 是由这三列生成的 `STORED` 列，GIN 索引建在它上面。
+  - 用在 `docs`、知识库里的 `files`、`base_records`。Agent、技能、应用、对话标题这类小集合用 `ILIKE`。v2.0 不做向量检索（[providers.md §2](providers.md#2-能力)）。
+  - 与 v1 不同：v1 的表达式索引必须和 service 里的表达式逐字一致，否则静默全表扫描；生成列让定义只有一份。
+- 文件与存储
+  - 字节只经存储 Provider（`providers.resolve('storage')`）读写。数据库只存 `files` 元数据：存储实例 `provider_id`、中性的 `storage_key`、大小、MIME、sha256、状态 `pending → active → deleted`。
+  - 对象键由服务端生成（`<前缀>/<purpose>/<file_id>`），从不取自用户输入。没有公开读的对象：图片也有 `files` 行，`<img>` 用短期签名 URL。删除时先删对象、再删行，由后台任务完成。
+  - 与 v1 不同：v1 有 6 条上传路径，写死腾讯 COS 的 `cos_key`，图片没有数据库行、靠公开读。
+- 机密
+  - 只写不读。密文列以 `_enc` 结尾，AES-256-GCM，密文带密钥版本前缀以便轮换，AAD 绑定「表 : 行 id : 列」。任何读路径都不返回 `_enc` 列。
+  - 两把钥匙：`PROVIDER_TOKEN_ENCRYPTION_KEY` 管服务、连接、连接器和自动化密钥；`VAULT_ENCRYPTION_KEY` 管密码库和电脑备份密钥。
+  - 能哈希的就不加密：密码（自描述格式 `scrypt$…`）、刷新令牌、OAuth 授权码与令牌、激活链接只存哈希。
+- 审计与用量
+  - `audit_events` 是唯一的只追加审计表。它记录谁（成员、Agent、外部客户端或系统）代表谁，对什么做了什么，结果如何；不记内容和机密。
+  - `usage_events` 每次 Provider 调用写一条（[providers.md §8](providers.md#8-用量与预算)），是用量和费用的唯一事实；预算表里的数字只是它的计数缓存。
+  - 与 v1 不同：v1 的审计分散在 `platform_audit_events`、`api_audit_log`、`email_send_log` 三张表；用量分散在 `llm_usage` 和预算账本。
+- 迁移
+  - 只有一份基线 `drizzle/0000_v2_baseline.sql`，之后照旧只 `generate` + `migrate`，不 `push`。生成列、GIN 和部分唯一索引都写进基线。
+  - v2 启动时如果发现库里有 v1 的迁移记录，就拒绝启动并指向 [migration-v1.md](migration-v1.md)。
+  - 扩展保留自己的迁移通道（`extension_migrations`），表名用 `ext_<扩展 id>_` 前缀。
+
+## 2. 身份与权限
+
+| 表 | 用途 | 关键列与关系 |
+| --- | --- | --- |
+| `members` | 成员账号 | `email`（唯一，小写）、`name`、`avatar_file_id`、`role`（admin / member）、`status`（invited / active / reset_required / disabled，只有 active 能登录）、`password_hash`、`auth_version`（改密码、停用时递增，令牌和推送设备都比对它）、`locale`、`timezone`、`theme`、`about`（「关于我」，所有 Agent 可读）、`modules`（knowledge / tables / apps / computer 开关）、`notification_settings`（渠道 × 类别，推送预览默认关）、`last_login_at` |
+| `groups` | 管理员维护的分组 | `name`（唯一）、`description`、`created_by` |
+| `group_members` | 分组成员 | 主键 `(group_id, member_id)`，两端 `CASCADE` |
+| `refresh_tokens` | 刷新令牌 | `member_id` `CASCADE`、`token_hash`、`auth_version`、`client`（web / ios / android / extension / desktop）、`expires_at`、`last_used_at`；单次消费 |
+| `auth_links` | 激活与重置密码的一次性链接 | `member_id` `CASCADE`、`purpose`（activate / reset）、`token_hash`（唯一）、`issued_auth_version`、`expires_at`、`consumed_at`、`revoked_at`、`delivery_status`；每人最多一条有效 |
+| `shares` | 唯一的分享表 | `resource_type`（folder / doc / file / base / form / app / agent）、`resource_id`、`principal_type`（member / group / workspace）、`principal_id`（workspace 时为空）、`role`、`custom_role_id`（→ `base_roles`）、`created_by`；唯一 `(resource_type, resource_id, principal_type, principal_id)` |
+| `pins` | 成员自己的置顶 | 主键 `(member_id, target_type, target_id)`、`position`；目标是对话、表格、应用或文档 |
+
+`shares.role` 按对象取值：
+- 知识库：viewer / editor。团队空间的条目对全员可编辑，不需要分享行。
+- 表格：owner / builder / editor / viewer / custom；分组不能是 builder。
+- 表单：submitter。应用：已发布 spec 里的角色键。公开 Agent：只有 user。
+
+## 3. Agents
+
+| 表 | 用途 | 关键列与关系 |
+| --- | --- | --- |
+| `agents` | Agent 身份与可变状态 | `owner_id` → `members` `CASCADE`、`is_main`（每个成员恰好一个，部分唯一索引）、`name` / `name_key`（主人名下未归档的唯一）、`role`、`avatar`（植物头像）、`current_version`、`visibility`（private / public）、`published_version`、`paused_at`（管理员暂停）、`publication`（授权范围：知识文件夹、电脑、每人每日上限）、`template_key`、`last_active_at`、`archived_at` |
+| `agent_versions` | 不可变 manifest，每次保存追加一版 | `agent_id` `CASCADE`、`version`、`manifest`（text：名字、职责、说明、指令、头像、模型引用、技能、连接器、读写权限、工具过滤）、`manifest_hash`、`change_note`、`created_by`；唯一 `(agent_id, version)` |
+| `agent_memories` | Agent 的记忆 | `agent_id` `CASCADE`（必填；没有用户级记忆，共享信息写在 `members.about`）、`member_id`、`title`（召回索引，只有它进提示词）、`content`、`category`、`status`（active / dormant / archived / superseded）、`pinned`、`source`、`superseded_by`、`source_conversation_id`、`last_used_at` |
+| `agent_computers` | 每个 Agent 一台电脑的生命周期 | `agent_id`（唯一）`CASCADE`、`owner_id`、`provider_id`（沙箱实例）、`sandbox_ref`（适配器自己的容器、卷或沙箱 id）、`state`、`state_reason`、`version`（CAS）、`lease_controller`（agent / member）、`lease_epoch`、`viewer_heartbeat_at`、`last_active_at`、`disk_bytes`、`timezone` |
+| `computer_backups` | 电脑家目录的加密备份 | `computer_id`、`owner_id`（逻辑）、`status`、`reason`（idle / admin / migration）、`storage_prefix`、`key_enc`、`format`、`bytes`、`restored_at`；每台电脑最多一条 running；先删对象再删行 |
+| `computer_watches` | 电脑上的后台进程结束时唤醒 Agent | `computer_id`、`agent_id`、`conversation_id`、`job_ref`（按电脑唯一）、`status`（watching / notified / gone） |
+
+句柄：主 Agent 是 `main`，按成员解析，与显示名无关（默认名 Greeny，可改）。其他 Agent 是 `agent:<id>`，固定版本写 `agent:<id>@<version>`。v1 的 `sprouty`、`bot:`、`custom:` 句柄不再解析。
+
+## 4. 对话与运行
+
+| 表 | 用途 | 关键列与关系 |
+| --- | --- | --- |
+| `conversations` | 所有消息流 | `kind`（main / direct / chat / room）、`owner_id`、`agent_id`（room 与 v1 归档为空）、`title`、`model`（会话选的模型）、`origin`（web / ios / android / extension / desktop / feishu / assistant / v1）、`external_key`（飞书话题键，唯一）、`context`（页面助手带来的上下文）、`read_only`（v1 归档）、`forked_from_message_id`、`digest` + `digest_upto_seq`（滚动摘要）、`last_seq`、`last_activity_at`；部分唯一：每人一个 main，每个（成员，Agent）一个 direct |
+| `conversation_members` | 对话里的人和各自的状态 | `conversation_id` / `member_id` `CASCADE`、`role`（owner / member）、`last_read_seq`（已读回执）、`archived_at`、`added_by`；非房间对话只有主人一行。可见性只看这张表 |
+| `conversation_agents` | 对话里额外在场的 Agent | `conversation_id` / `agent_id` `CASCADE`、`added_by`（成员）；房间里各人带来的、被拉进对话的 Agent |
+| `messages` | 消息 | `conversation_id` `CASCADE`、`seq`（锁定对话行后分配，唯一 `(conversation_id, seq)`）、`role`（user / assistant / event）、`author_member_id`、`agent_id`、`content`（Markdown）、`blocks`（富结果）、`attachments`（file id）、`quote`、`mentions`、`skill`（调用的技能与变量）、`citations`、`steps`（工具摘要）、`reasoning`、`event`（加入、转交、交还等系统事件）、`run_id`、`status`（complete / stopped / failed）、`edited_at` |
+| `message_feedback` | 对一条回复的赞或踩 | `message_id` `CASCADE`、`member_id`、`rating`（1 / -1）、`comment`、`agent_id`、`agent_version`；唯一 `(message_id, member_id)`；公开 Agent 的主人只读这张表，读不到消息 |
+| `message_receipts` | Agent 对消息的处理回执 | `message_id` `CASCADE`、`agent_id`、`status`（queued / processing / answered / skipped / failed / canceled）、`processed_at`；唯一 `(message_id, agent_id)` |
+| `conversation_notes` | 对话的共享笔记 | `conversation_id` `CASCADE`、`title`、`body`、`author_member_id` 或 `author_agent_id`、`status`（open / done）、`pinned` |
+| `conversation_inbox` | 单写者队列 | `conversation_id` `CASCADE`、`kind`（event / continue / run_report / message / mention / handback）、`payload`、`consumed_at`；回合进行中到达的事件先进这里，由持有回合的引擎排空 |
+| `handoffs` | Agent 之间的转交 | `requested_by`（成员，权限来源）、`source_conversation_id` / `source_agent_id`、`target_conversation_id` / `target_agent_id`、`run_id`、`chain_key` + `path`（深度、次数、循环限制）、`dedupe_key`（唯一）、`status`、`reply`、`returned_at` |
+| `requests` | 「需要你」，唯一的请求模型 | `member_id`（由谁决定）、`kind`（approval / login / takeover / question / proposal）、`subject`（如 tool_write、app_action、agent_create、instructions_update、run_start、tables_plan）、`status`（pending / approved / rejected / answered / handed_back / expired / canceled）、`conversation_id`、`run_id`、`step_id`、`agent_id`、`payload`（不含机密）、`result`、`expires_at`、`decided_by`、`decided_at`、`version`；只从 pending 单次 CAS 结算 |
+| `runs` | 运行：Agent 做的一件事 | `agent_id`、`owner_id`（权限来自谁）、`requested_by`、`kind`（background / turn；turn 是前台回合，不进运行列表）、`source`（conversation / schedule / automation / record / handoff / app）+ `source_id`、`conversation_id`、`parent_run_id` `CASCADE`、`root_run_id`、`title`、`brief`、`status`、`desired_state`、`wait_reason`、租约（`lease_owner`、`lease_expires_at`、`heartbeat_at`）、`attempt`、`deadline_at`、`checkpoint`（长任务的续跑点）、`input`、`output`、`error_code`、`version` |
+| `run_steps` | 步骤，重试的最小单位；工具调用是一种步骤 | `run_id` `CASCADE`、`parent_step_id`、`key` + `attempt`（唯一）、`kind`（model / tool / handoff / computer / wait）、`tool_name`、`risk`、`idempotency_key`（运行内唯一）、`request_id`、`status`（含 uncertain：外部结果未知，不自动重放）、`input`、`output`、`error`、`tokens`、`duration_ms`、租约 |
+| `run_events` | 只追加的运行时间线 | `run_id` `CASCADE`、`seq`（唯一）、`type`、`payload`、`actor`；运行详情和 WebSocket 进度都读它 |
+
+产物不单独建表：运行产生的文件就是 `files` 里 `run_id` 非空、`purpose=artifact` 的行。
+
+## 5. 知识库与文件
+
+| 表 | 用途 | 关键列与关系 |
+| --- | --- | --- |
+| `folders` | 文件夹树，文档和文件在同一棵树里 | `parent_id` `CASCADE`、`space`（team / personal）、`owner_id`（个人空间必填）、`agent_id`（Agent 私有参考文件夹的根，唯一，随 Agent 删除）、`name`、`sort_order`（0 = 没手动排过）、`archived_at`；移动时拒绝成环 |
+| `docs` | 文档 | `folder_id` `SET NULL`、`space`、`owner_id`、`title`、`content`（Markdown，唯一事实源）、`is_template`、`tags`、`meta`（摘要、问题、话题，只作检索元数据）、`version`、`sort_order`、`search_*`、`created_by` / `updated_by`、`archived_at` |
+| `doc_versions` | 不可变版本 | `doc_id` `CASCADE`、`version`、`title`、`content`、`change_note`、`created_by`；唯一 `(doc_id, version)` |
+| `doc_links` | 反向链接 | 主键 `(from_doc_id, to_doc_id)`，两端 `CASCADE`；每次保存由正文重建，读反链时逐条过权限 |
+| `comments` | 文档和记录的评论 | `target_type`（doc / record）、`target_id`、`base_id`（记录评论）、`created_by`、`agent_id`（Agent 代写时）、`body`（Markdown）、`mentions`、`deleted_at`；读权限跟随目标，不进全文检索 |
+| `files` | 统一文件服务 | `purpose`（attachment / knowledge / record / artifact / export / import / skill / avatar / branding）、`provider_id`、`storage_key`（唯一）、`name`、`content_type`、`size_bytes`、`sha256`、`status`、`owner_id`、归属列按 purpose 填一个（`folder_id` + `space`、`conversation_id`、`base_id`、`run_id`；技能包、头像、品牌由引用它的行持有）、`expires_at`（导出）、`meta`、`search_*`（知识库文件的抽取文本）、`archived_at`；权限跟随归属 |
+
+「他人正在编辑」与在线状态放在进程内存里，不建表。
+
+## 6. 表格与应用
+
+结构沿用 PR #64 阶段 0–2，表名从 `table_*` 改为 `base_*`，ID 改为文本。
+
+| 表 | 用途 | 关键列与关系 |
+| --- | --- | --- |
+| `bases` | 表格 | `name`、`description`、`icon`、`owner_id`、`template_key` + `template_version`（从模板创建时）、`archived_at`；团队可见、成员和分组的权限都在 `shares` |
+| `base_roles` | 表格的自定义角色 | `base_id` `CASCADE`、`name`、`rules`（按数据表的行级、列级规则）、`position`、`revision` |
+| `base_tables` | 数据表 | `base_id` `CASCADE`、`name`（表格内唯一）、`description`、`position`、`schema_revision`、`archived_at` |
+| `base_fields` | 字段 | `table_id` `CASCADE`、`name`、`type`（text / long_text / number / checkbox / date / datetime / single_select / multi_select / member / url / email / phone / attachment / relation / lookup / formula / rollup / ai / parent / dependency）、`required`、`is_primary`（每表一个）、`config`、`position`、`archived_at` |
+| `base_field_deps` | 公式、汇总、lookup、AI 字段的依赖边 | 主键 `(field_id, depends_on_field_id)`、`kind`；用于反查影响和级联重算 |
+| `base_views` | 视图，含仪表盘 | `base_id` / `table_id` `CASCADE`（仪表盘的 `table_id` 为空）、`name`、`type`（grid / kanban / calendar / gallery / timeline / dashboard）、`owner_id`（空 = 共享视图）、`config`（筛选、排序、分组、列宽；仪表盘的卡片与应用共用一套 schema）、`position`、`revision` |
+| `base_forms` | 内部表单 | `table_id` `CASCADE`、`name`、`status`（draft / published）、`config`、`revision`；谁能提交由 `shares` 决定，默认是有新建权限的成员 |
+| `base_form_submissions` | 表单提交 | `form_id` `CASCADE`、`member_id`、`record_id` `SET NULL`、`single_submit`；只允许提交一次的表单靠部分唯一索引 |
+| `base_records` | 记录 | `table_id` `CASCADE`、`values`（按字段 id）、`computed`（公式、汇总、AI 字段）、`revision`、`computed_revision`、`search_*`、`created_by` / `updated_by`、`deleted_at`（回收站） |
+| `base_record_links` | 关联、父记录、依赖的规范边 | `field_id` `CASCADE`、`source_record_id` / `target_record_id` `CASCADE`、`position`；唯一 `(field_id, source_record_id, target_record_id)` |
+| `base_record_files` | 记录附件 | `record_id` `CASCADE`、`field_id`、`file_id` → `files`、`position` |
+| `base_record_events` | 记录历史 | `record_id` `CASCADE`、`table_id`、`actor_type`（member / agent / automation / form / import / app / system）、`actor_id`、`type`（created / updated / deleted / restored）、`changes`（字段前后值）、`meta` |
+| `base_automations` | 自动化规则 | `base_id` / `table_id` `CASCADE`、`name`、`status`、`trigger`（record_created / record_updated / record_matched / schedule / date_reached / button）、`config`（条件与动作：通知成员、Agent 步骤、webhook）、`run_as`（成员）、`secrets_enc`（webhook 签名密钥）、`revision`、`next_fire_at`、`swept_until` |
+| `base_automation_runs` | 自动化执行记录 | `automation_id` `CASCADE`、`record_id`（逻辑）、`trigger`、`status`、`steps`、`run_id`（Agent 步骤对应的运行）、`error`、`started_at`、`finished_at` |
+| `base_imports` | CSV 导入 | `table_id` `CASCADE`、`member_id`、`file_id`、`mapping`、`status`、`committed_rows`（重试从这里继续）、`result`、`expires_at` |
+| `apps` | 应用 | `base_id` `CASCADE`、`name`、`description`、`icon`、`accent`、`owner_id`、`status`（draft / published）、`draft_spec`（text）、`draft_revision`、`published_version`、`featured`、`archived_at`；受众在 `shares` |
+| `app_versions` | 已发布的不可变版本 | `app_id` `CASCADE`、`version`、`spec`（text）、`spec_hash`、`draft_revision`、`notes`、`custom_review`、`published_by`、`published_at` |
+| `base_templates` | 表格模板，可带应用；「项目」是内置模板 | `key`（唯一）、`source`（builtin / published）、`name`、`description`、`owner_id`、`latest_version`、`source_app_id`、`source_base_id`、`archived_at` |
+| `base_template_versions` | 模板的不可变版本 | `template_id` `CASCADE`、`version`（semver）、`changelog`、`content`（text：表结构、可选的应用 spec、示例行）、`content_hash`、`custom_cards`、`automations`、`scan_status`、`review_status`、`reviewed_by`、`reviewed_at` |
+
+与 #64 的差别：
+- `table_dashboards` / `table_dashboard_widgets` 并入 `base_views`。
+- `table_automation_outbox`、`table_recompute_jobs` 由 `jobs` 承接；`table_app_action_requests` 由 `idempotency_keys` 承接。
+- `table_notifications` 删除，自动化通知走 `notifications`。
+
+## 7. 技能
+
+| 表 | 用途 | 关键列与关系 |
+| --- | --- | --- |
+| `skills` | 技能 | `name`（`/` 调用名；团队空间内唯一，个人技能在主人名下唯一）、`display_name`、`description`、`kind`（package / template）、`space`（team / personal）、`owner_id`、`tags`、`latest_version`、`requirements`（需要电脑、某个连接器）、`scan_status`（pending / clean / suspicious / blocked）、`scan_findings`、`scanned_at`、`scan_reviewed_by`、`scan_note`、`download_count`、`archived_at` |
+| `skill_versions` | 不可变版本 | `skill_id` `CASCADE`、`version`（semver）、`changelog`、`variables`（模板的填空字段）、`body`（模板技能的说明正文）、`bundle_file_id`（SKILL.md 包，→ `files`）、`file_count`、`size_bytes`、`sha256`、`created_by`；唯一 `(skill_id, version)` |
+
+技能装备给哪些 Agent，写在 Agent 的 manifest 里（技能 id 列表），不另建关联表。
+
+## 8. 连接、密码库与服务
+
+| 表 | 用途 | 关键列与关系 |
+| --- | --- | --- |
+| `connectors` | 管理员安装的 MCP 服务器 | `slug`（唯一，模型调用时用）、`name`、`description`、`url`（不含凭据）、`transport`、`auth_mode`（none / shared / per_member / oauth）、`auth_header` 或 `auth_query_param`、`auth_enc`（共享凭据）、`oauth_client_enc`、`oauth_discovery`、`allowed_tools`、`read_only_tools`、`catalog_id`、`tools`（最近一次刷新的工具缓存）、`tools_refreshed_at`、`last_error`、`enabled`、`created_by` `SET NULL` |
+| `connections` | 成员接入的外部账号 | `member_id` `CASCADE`、`kind`（connector / feishu / wecom / email）、`connector_id` `CASCADE`、`external_id`（飞书 open_id、企微 userid、邮箱地址）、`display_name`、`config`（邮箱的 IMAP / SMTP 主机、端口等明文设置）、`secrets_enc`（OAuth 令牌、个人 Key、邮箱密码）、`scopes`、`expires_at`、`status`（active / needs_reauth / error）、`last_error`、`last_verified_at`；飞书和企微的 `(kind, external_id)` 唯一，扫码登录按它找成员 |
+| `vault_items` | 密码库条目 | `member_id` `CASCADE`、`label`、`origins`、`username_enc` / `password_enc` / `totp_enc`、`username_hint`、`policy`（ask / auto）、`always_origins`、`agent_ids`（空 = 所有 Agent）、`last_used_at` |
+| `vault_access_log` | 代填日志，只给成员本人看 | `member_id`、`item_id` `SET NULL`、`item_label`、`agent_id`、`conversation_id`、`origin`、`action`、`outcome`、`approval`；不记录任何值。不并入 `audit_events`，因为管理员不读密码库 |
+| `providers` | 服务实例（[providers.md §4.4](providers.md#44-运行时数据库)） | `id`、`capability`、`kind`、`preset`、`name`、`scope`（workspace / personal）、`owner_id`、`config`（非机密）、`secrets_enc`、`enabled`、`last_check`、`created_by`、时间戳；环境变量实例只在内存里 |
+| `provider_bindings` | 每个能力用哪些实例 | `capability`（主键）、`instance_ids`（有序，第一个出错时依次回退）、`defaults`（默认、强、快模型，音色，电脑容量）、`policy`（是否允许个人 Key，个人用量是否计入组织预算）、`version`（解析缓存按它失效） |
+| `oauth_clients` | 外部访问的客户端 | `name`、`redirect_uris`、`auth_method`（none = 交互客户端 / client_secret_post = 机器客户端）、`secret_hash`、`bound_member_id` `CASCADE`、`allowed_scopes`、`status`、`created_by` |
+| `oauth_grants` | 成员对客户端的授权 | `member_id` / `client_id` `CASCADE`、`resource`、`scopes`（实际授予的，读出不加工）、`status`、`revoked_at`；唯一 `(member_id, client_id, resource)` |
+| `oauth_codes` | 授权码（PKCE S256） | 主键 `code_hash`、`grant_id` `CASCADE`、`redirect_uri`、`code_challenge`、`scopes`、`expires_at`、`used_at` |
+| `oauth_tokens` | 访问令牌、刷新令牌、个人访问令牌 | `grant_id` `CASCADE`、`kind`（access / refresh / personal）、`name`（个人令牌）、`token_hash`（唯一）、`resource`、`scopes`、`expires_at`、`revoked_at`、`last_used_at` |
+
+## 9. 通知与定时
+
+| 表 | 用途 | 关键列与关系 |
+| --- | --- | --- |
+| `notifications` | 站内通知 | `member_id`、`kind`（request / run_done / run_failed / reply / mention / comment / share / automation / skill_scan / budget / system）、`title`、`body`、`target_type` + `target_id`（打开即回到来源）、`request_id`、`run_id`、`agent_id`、`payload`（推送路由信封，不含内容）、`dedupe_key`（每人唯一）、`read_at`；只有已读状态可改，外部送达是 `jobs` |
+| `push_devices` | 手机推送设备 | `member_id` `CASCADE`、`token`（唯一）、`platform`（ios / android）、`project_id`、`client_ref`（工作站 id）、`prefs`、`auth_version`、`last_seen_at`、`disabled_at` + `disabled_reason`；只停用不删除 |
+| `schedules` | 定时，只属于 Agent | `agent_id` `CASCADE`、`owner_id`、`name`、`brief`（每次运行的简报）、`skill_id`（可选：按技能运行）、`model`、`cron`、`timezone`、`status`（active / paused）、`next_run_at`、`last_run_at`、`last_run_id`、`last_status`、`run_count` |
+
+## 10. 用量与审计
+
+| 表 | 用途 | 关键列与关系 |
+| --- | --- | --- |
+| `usage_events` | 每次 Provider 调用一条 | `capability`、`provider_id`、`source`（env / workspace / personal / builtin）、`member_id`、`agent_id`、`run_id`、`conversation_id`、`model`、`input_tokens` / `output_tokens` / `cached_tokens`（llm）、`quantity` + `unit`（秒、字符、张、分钟、字节）、`cost_micros`（预估）、`estimated`（结果未知、按预留量计费）、`budget_key`、`created_at` |
+| `budgets` | 预算上限 | `scope_type`（workspace / provider / member / agent / field）、`scope_id`、`unit`（tokens / usd_micros …）、`monthly_limit`、`enabled`；唯一 `(scope_type, scope_id, unit)`。组织即 workspace，field 是 AI 字段的上限 |
+| `budget_periods` | 每个预算每月的计数 | 主键 `(budget_id, period_start)`、`period_end`、`reserved`、`spent`、`version`；周期是 UTC 自然月 |
+| `budget_reservations` | 调用前的预留 | `budget_id`、`period_start`、`idempotency_key`（同一次调用涉及的各级预算共用）、`estimated`、`actual`、`status`（reserved / settled / released / expired）、`expires_at`、`member_id`、`run_id`；唯一 `(budget_id, idempotency_key)` |
+| `audit_events` | 唯一的审计表 | `actor_type`（member / agent / client / system）、`actor_id`、`on_behalf_of`（成员）、`agent_id`、`client_id`、`request_id`、`action`、`resource_type` + `resource_id`、`scope_type` + `scope_id`（如所在表格）、`result`（success / denied / error）、`summary`（不含内容和机密）、`ip`、`created_at` |
+
+v1 的预算账本不再保留：每次花费都对应一条 `usage_events`；预留过期按估算计费时也写一条（`estimated=true`）。
+
+## 11. 工作区设置与基础设施
+
+| 表 | 用途 | 关键列与关系 |
+| --- | --- | --- |
+| `workspace` | 工作区，只有一行 | `id`（固定 `default`）、`name`、`logo_file_id`、`primary_color`、`settings`（新成员的默认模块权限等非机密设置）、`setup_completed_at`、`updated_by`；机密一律在 `providers` |
+| `jobs` | 通用后台任务队列 | `kind`（如 deliver_notification、base_automation、recompute、ai_field、video_poll、file_purge、computer_backup、export）、`dedupe_key`（唯一）、`payload`、`status`（pending / claimed / succeeded / failed / dead / suppressed）、`attempts` / `max_attempts`、`available_at`、`lease_owner` / `lease_expires_at`、`last_error`、`result`；和触发它的状态变更在同一事务里写入 |
+| `idempotency_keys` | 有副作用请求的幂等记录 | 主键 `(scope, key)`（scope 如成员 id 或 `feishu`）、`request_hash`、`status`（running / done）、`response`、`expires_at`；承接 `Idempotency-Key` 头、应用动作重放和飞书事件去重 |
+| `extension_migrations` | 扩展迁移通道的记录 | 主键 `(extension_id, name)`、`checksum`、`applied_at` |
+
+v1 迁移工具的 ID 映射与检查点放在单独的 `migration` schema，不属于基线。
+
+## 12. 细节决定
+
+2026-10-13 按建议采用；实现中发现不成立再改，并在 PRD 变更记录里写一行。
+
+1. 知识库分享沿文件夹向下继承；子项可以加分享，但不能收窄，要收窄就移出这个文件夹。
+2. 文档只存 Markdown，不存编辑器 JSON。M2.1 先验证编辑器对表格、提及、图片能无损往返，做不到再加 `content_json` 作缓存。
+3. 用一个通用 `jobs` 队列，取代 v1 各自实现的租约队列（`runtime_outbox`、`notification_delivery_attempts`、`table_automation_outbox`、`table_recompute_jobs`）；领域事实仍留在各自的表里。
+4. 前台回合也记一条 run（`kind=turn`，不进运行列表）。恢复、计量和「需要你」只有一条路径，代价是 `runs` 的行数随回复增长。
+5. 渠道（SMTP、飞书、企微、推送）存进 `providers`，capability 取 mail / im / push，见 [providers.md](providers.md#2-能力)。
+6. 个人访问令牌复用 `oauth_tokens`（`kind=personal`），挂在内置客户端 `personal` 的授权下，吊销与审计走同一条路。
+7. 仪表盘并入 `base_views`（`type=dashboard`），卡片与应用共用一套 schema。
+8. 「项目」模板的里程碑放进任务表，用单选字段「类型」区分；依赖和父记录都在同一张表内，时间线只读一张表。
+9. 技能 v2.0 只有团队和个人两种空间；需要时再给 `shares` 加 `resource_type=skill`。
+10. 消息上不存 token 用量，只在 `usage_events` 里按 run 记。管理员读不到消息，消息上的用量没有读者。
+11. 成员默认只停用；硬删除时必须指定接收人，共享对象转给接收人，私有数据随之删除。

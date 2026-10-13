@@ -193,6 +193,7 @@ greenhouse/
 │   ├── api/                  # Hono backend — routes, agent runtime, platform kernel, auth,
 │   │                         #   scheduler, runtime kernel, CLI; also serves the web SPA at `/`
 │   ├── web/                  # React + Vite single-page app (hash router)
+│   ├── design/               # Native Haven V2 interactive mock prototype + component lab; no backend
 │   ├── agent-runner/         # Mission sandbox runner — built into the greenhouse/agent-runtime
 │   │                         #   image; the API never imports it
 │   ├── bot-computer/         # Agent computer image (desktop + Chromium + shell, zero published ports)
@@ -717,6 +718,21 @@ in CI so a commit outside the seam fails instead of drifting from upstream. The 
 and the fork workflow are in [EXTENDING.md](./EXTENDING.md#extensions).
 
 ## Development
+
+Greenhouse v2 is being redesigned top-down. The [product docs](docs/product/README.md) hold
+the v2 PRD, the complete feature list (every feature with an ID, the v2 decision — keep,
+change, merge, add or delete — and its status), the pluggable Provider architecture (LLM,
+speech-to-text, text-to-speech, image, video, sandbox, search and storage — configured from
+env at boot or at runtime, with optional per-member keys), the API v2 conventions, the v2 data
+model (a fresh database baseline), a guide for migrating v1 data later, and the roadmap. The
+[Native Haven design system](docs/design-system/README.md) is the v2 UI spec; its
+tokens live in `packages/ui/src/tokens/haven.ts` (`pnpm tokens:build` regenerates the CSS).
+The current application has not adopted v2 yet.
+
+Try the standalone [interactive prototype](apps/design/README.md) with `pnpm design:dev`
+(http://127.0.0.1:4518). It includes desktop / mobile, light / dark, module previews and an
+interactive component lab. `pnpm design:build` exports `apps/design/dist` for static hosting;
+mock writes, login, connections and Agent replies never call the business backend.
 
 ```bash
 pnpm dev            # Vite web (:3100) + API (:3000), proxied
