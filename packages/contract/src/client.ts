@@ -37,14 +37,34 @@ import type {
 } from './conversations.js';
 import type { FileView } from './files.js';
 import { REALTIME_SIGN_IN_AGAIN, type RealtimeEvent } from './realtime.js';
-import type { Me, MemberSummary, UpdateMeInput } from './members.js';
+import type {
+  Group,
+  GroupInput,
+  InviteInput,
+  InviteResult,
+  IssuedLink,
+  Me,
+  MemberAdmin,
+  MemberSummary,
+  UpdateMeInput,
+  UpdateMemberInput,
+} from './members.js';
 import type { Notification } from './notifications.js';
-import type { AdminProviders, CapabilityState, MyProviders, ProviderInstance } from './providers.js';
+import type {
+  AdminProviders,
+  BindingInput,
+  CapabilityState,
+  CreateProviderInput,
+  MyProviders,
+  ProviderCapability,
+  ProviderInstance,
+  UpdateProviderInput,
+} from './providers.js';
 import type { AnswerInput, NeedsYou } from './requests.js';
 import type { RunDetail, RunView } from './runs.js';
 import type { CreateScheduleInput, Schedule, UpdateScheduleInput } from './schedules.js';
 import type { SearchKind, SearchResult } from './search.js';
-import type { Bootstrap } from './workspace.js';
+import type { Bootstrap, BrandingInput } from './workspace.js';
 
 export class ApiClientError extends Error {
   constructor(
@@ -347,6 +367,12 @@ export function createApiClient(options: ApiClientOptions) {
       changePassword: (current_password: string, new_password: string) =>
         post<void>('/api/me/password', { current_password, new_password }),
       providers: () => get<MyProviders>('/api/me/providers'),
+      /** My own key for a capability whose policy allows it. */
+      addProvider: (input: CreateProviderInput) => post<ProviderInstance>('/api/me/providers', input),
+      updateProvider: (id: string, input: UpdateProviderInput) =>
+        patch<ProviderInstance>(`/api/me/providers/${id}`, input),
+      removeProvider: (id: string) => del(`/api/me/providers/${id}`),
+      testProvider: (id: string) => post<ProviderInstance>(`/api/me/providers/${id}/test`),
     },
 
     members: { directory: (q?: string) => get<{ items: MemberSummary[] }>('/api/members', { q: q || undefined }) },
@@ -470,13 +496,26 @@ export function createApiClient(options: ApiClientOptions) {
 
     admin: {
       providers: () => get<AdminProviders>('/api/admin/providers'),
-      createProvider: (input: unknown) => post<ProviderInstance>('/api/admin/providers', input),
-      updateProvider: (id: string, input: unknown) => patch<ProviderInstance>(`/api/admin/providers/${id}`, input),
+      createProvider: (input: CreateProviderInput) => post<ProviderInstance>('/api/admin/providers', input),
+      updateProvider: (id: string, input: UpdateProviderInput) =>
+        patch<ProviderInstance>(`/api/admin/providers/${id}`, input),
       removeProvider: (id: string) => del(`/api/admin/providers/${id}`),
       testProvider: (id: string) => post<ProviderInstance>(`/api/admin/providers/${id}/test`),
       copyProvider: (id: string) => post<ProviderInstance>(`/api/admin/providers/${id}/copy`),
-      setBinding: (capability: string, input: unknown) =>
+      setBinding: (capability: ProviderCapability, input: BindingInput) =>
         put<CapabilityState>(`/api/admin/provider-bindings/${capability}`, input),
+      /** Everyone, newest first. */
+      members: (query: { cursor?: string; limit?: number } = {}) => get<Page<MemberAdmin>>('/api/admin/members', query),
+      /** Invite by email: the member and a one-time activation link to hand over. */
+      invite: (input: InviteInput) => post<InviteResult>('/api/admin/members', input),
+      updateMember: (id: string, input: UpdateMemberInput) => patch<MemberAdmin>(`/api/admin/members/${id}`, input),
+      /** A fresh activation link (invited) or reset link (active). */
+      memberLink: (id: string) => post<IssuedLink>(`/api/admin/members/${id}/link`),
+      groups: () => get<{ items: Group[] }>('/api/admin/groups'),
+      createGroup: (input: GroupInput) => post<Group>('/api/admin/groups', input),
+      saveGroup: (id: string, input: GroupInput) => put<Group>(`/api/admin/groups/${id}`, input),
+      removeGroup: (id: string) => del(`/api/admin/groups/${id}`),
+      branding: (input: BrandingInput) => patch<Bootstrap>('/api/admin/branding', input),
     },
   };
 }

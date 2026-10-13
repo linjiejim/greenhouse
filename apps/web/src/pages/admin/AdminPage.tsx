@@ -1,13 +1,26 @@
 import type { AdminSection } from '../../lib/router';
-import { useT } from '../../lib/i18n';
+import { useI18n } from '../../lib/i18n';
+import { ADMIN } from '../../shell/Directory';
 import { Page, PageHeader } from '../../shell/Page';
+import { NotFoundPage } from '../NotFoundPage';
+import { BrandingSection } from './BrandingSection';
+import { MembersSection } from './MembersSection';
+import { ServicesSection } from './ServicesSection';
 
-/** Admin sections (M1.5). */
+/** 管理 (PRD §6.3): the sections this build has. */
 export function AdminPage({ section }: { section: AdminSection }) {
-  const t = useT();
+  const { t } = useI18n();
+  if (!ADMIN.some((item) => item.id === section)) return <NotFoundPage />;
   return (
-    <Page width="form" header={<PageHeader title={t(`admin.${section}`)} />}>
-      {null}
+    <Page
+      width={section === 'members' ? 'list' : 'form'}
+      header={
+        <PageHeader title={t(`admin.${section}`)} help={section === 'services' ? t('provider.help') : undefined} />
+      }
+    >
+      {section === 'members' && <MembersSection />}
+      {section === 'services' && <ServicesSection />}
+      {section === 'branding' && <BrandingSection />}
     </Page>
   );
 }

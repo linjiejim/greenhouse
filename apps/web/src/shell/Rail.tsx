@@ -94,11 +94,6 @@ export function Rail({ module }: { module: ModuleId }) {
       icon: glyph(CheckCheck),
       onClick: () => markNotifications.mutate({ all: true }),
     },
-    {
-      label: t('notifications.settings'),
-      icon: glyph(Settings),
-      onClick: () => navigate({ page: 'settings', section: 'notifications' }),
-    },
   ];
 
   return (

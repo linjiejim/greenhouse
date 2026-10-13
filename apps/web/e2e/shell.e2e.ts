@@ -38,11 +38,11 @@ test('⌘K finds commands, Agents and settings and goes there', async ({ page })
   const search = page.getByRole('combobox', { name: '搜索对话、Agent 和设置' });
   await expect(search).toBeFocused();
   await expect(page.getByRole('option', { name: '新会话' })).toBeVisible();
-  await search.fill('密码');
-  await expect(page.getByRole('option', { name: '密码库' })).toBeVisible();
+  await search.fill('我的服务');
+  await expect(page.getByRole('option', { name: '我的服务' })).toBeVisible();
   await page.keyboard.press('Enter');
-  await expect(page).toHaveURL(/#\/settings\/vault$/);
-  await expect(page.getByRole('heading', { name: '密码库', level: 1 })).toBeVisible();
+  await expect(page).toHaveURL(/#\/settings\/services$/);
+  await expect(page.getByRole('heading', { name: '我的服务', level: 1 })).toBeVisible();
 });
 
 test('the rail: notifications, runs and the account menu; admins see 管理', async ({ page }) => {

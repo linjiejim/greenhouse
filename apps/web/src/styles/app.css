@@ -1766,3 +1766,142 @@ button.app-list-row {
   text-decoration: line-through;
   color: var(--gh-tertiary);
 }
+
+/* ── Runs ─────────────────────────────────────────────────────────────── */
+
+.app-toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--gh-space-2);
+}
+
+.app-toolbar .gh-picker-trigger {
+  min-width: var(--gh-popover-min);
+}
+
+.app-run {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gh-space-4);
+}
+
+.app-run-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--gh-space-2);
+  color: var(--gh-secondary);
+  font: var(--gh-type-body-sm);
+}
+
+.app-run-error,
+.app-step-error {
+  color: var(--gh-danger);
+}
+
+.app-run-error {
+  font: var(--gh-type-body-sm);
+}
+
+.app-muted {
+  color: var(--gh-secondary);
+  font: var(--gh-type-body-sm);
+}
+
+.app-disclosure {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--gh-space-1);
+  border: 0;
+  padding: 0;
+  background: none;
+  color: var(--gh-secondary);
+  font: var(--gh-type-label);
+  cursor: pointer;
+}
+
+.app-steps.is-run .app-step {
+  min-height: var(--gh-control-sm);
+}
+
+/* ── Settings and admin ───────────────────────────────────────────────── */
+
+.app-setting-row.is-plain {
+  padding: 0;
+}
+
+.app-list.app-bordered {
+  border: var(--gh-stroke-hairline) solid var(--gh-line);
+  border-radius: var(--gh-radius-lg);
+  padding: var(--gh-space-1);
+}
+
+.app-order {
+  width: var(--gh-space-5);
+  height: var(--gh-space-5);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border-radius: var(--gh-radius-full);
+  background: var(--gh-fill);
+  color: var(--gh-secondary);
+  font: var(--gh-type-caption);
+  font-variant-numeric: tabular-nums;
+}
+
+.app-copy-row,
+.app-color-row {
+  display: flex;
+  align-items: center;
+  gap: var(--gh-space-2);
+}
+
+.app-copy-row .gh-input {
+  flex: 1;
+  min-width: 0;
+  font: var(--gh-type-code);
+}
+
+.app-color-swatch {
+  width: var(--gh-control-md);
+  height: var(--gh-control-md);
+  padding: 0;
+  border: var(--gh-stroke-hairline) solid var(--gh-line);
+  border-radius: var(--gh-radius-md);
+  background: none;
+  cursor: pointer;
+}
+
+.app-fieldset {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gh-space-3);
+  margin: 0;
+  padding: var(--gh-space-3);
+  border: var(--gh-stroke-hairline) solid var(--gh-line);
+  border-radius: var(--gh-radius-lg);
+}
+
+.app-fieldset legend {
+  padding: 0 var(--gh-space-1);
+  font: var(--gh-type-label);
+}
+
+.app-fieldset-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--gh-space-3);
+  align-items: start;
+  padding-bottom: var(--gh-space-3);
+  border-bottom: var(--gh-stroke-hairline) solid var(--gh-line);
+}
+
+.app-fieldset-item > :not(:last-child) {
+  grid-column: 1;
+}
+
+.app-fieldset-item > :last-child {
+  grid-column: 2;
+  grid-row: 1;
+}

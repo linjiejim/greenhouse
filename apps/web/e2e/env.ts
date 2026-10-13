@@ -10,4 +10,6 @@ export const E2E = {
 export const PEOPLE = {
   lin: { email: 'lin@example.com', name: 'Lin', role: 'admin' as const, password: 'correct horse battery' },
   mei: { email: 'mei@example.com', name: 'Mei', role: 'member' as const, password: 'correct horse battery' },
+  /** For tests that change the account itself (password, language). */
+  kai: { email: 'kai@example.com', name: 'Kai', role: 'member' as const, password: 'correct horse battery' },
 };
