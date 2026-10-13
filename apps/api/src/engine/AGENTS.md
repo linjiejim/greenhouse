@@ -62,7 +62,7 @@ The one engine for conversations and runs. Read with the root AGENTS.md and docs
 - The turn acts with the asker's rights: cards go to the asker, approvals run as the asker, files and the transcript are the asker's.
 - Identity says who made it and who it talks with; its instructions are the owner's published ones. It reads the asker's "about me", never the owner's.
 - Memory is the asker's partition of `agent_memories` (member_id = asker). The owner's memories and conversations never enter its prompt, and the owner never reads the asker's.
-- Tools are default-deny: only a tool marked `publicAgent` is offered (memory, ask_user, conversation_query, read_attachment, the web tools, and the computer when its publication grants one). Never self, handoff, run_start, schedules or mcp_call; an approved write must be marked too.
+- Tools are default-deny: only a tool marked `publicAgent` is offered (memory, ask_user, conversation_query, read_attachment, skill_query on the asker's library, the web tools, and the computer when its publication grants one). Never self, handoff, run_start, schedules, skill_mutation or mcp_call; an approved write must be marked too.
 - The computer is the asker's own copy (agent_computers is unique per Agent and member), never the owner's.
 - No personal keys: neither the owner's nor the asker's. Usage is recorded for the asker and counts toward their budgets and the workspace's.
 - A new message, edit or regenerate is admitted under the conversation lock only while the Agent is usable and under its daily cap (turns per asker and day in their time zone; refused turns do not count): `daily_cap_reached`. A turn that starts after a pause or unpublish ends with a reply that says why.
@@ -74,6 +74,12 @@ The one engine for conversations and runs. Read with the root AGENTS.md and docs
 - Only in turns, never in someone else's public Agent: its owner's instructions could read the asker's accounts and send them elsewhere.
 - What a connector returns is outside text: the tool `taints` and is `outbound`; results are cut to 20 000 characters, stripped of prompt structure, and keys and tokens are taken out.
 - Servers are reached only through modules/connectors (network.ts): https, public addresses in production, a deadline on every request.
+
+## Skills
+- A message's `skill` (a `/` run) is checked when it is sent (`skills.prepareRun`): a skill the sender sees, clean and not archived, whose requirements (computer, connectors) every answering Agent meets, with its required fields filled. The message records the version that runs.
+- history.ts puts the sender's own run inside their message as `<skill_run>`: the template's filled text, or SKILL.md and the package's file list, fenced as the member's request. Someone else's run is only named; one blocked or archived since is named with why and its text leaves later turns. Typed text cannot pose as a block.
+- `skill_query` lists the Agent's equipped skills (manifest `skills`) in its description, rebuilt each turn, with why one cannot run; `load` and `read_file` read the asker's library with the asker's rights; `install` copies a package to `~/skills/<name>/` on the computer, in turns only.
+- `skill_mutation` only proposes a template (card subject `skill_save`); accepting it saves the skill as the member. Equipping goes through the same requirement check (`skill_unavailable`).
 
 ## Budgets
 - Every metered call (each model attempt too) is checked first against the enabled budgets that cover it (providers/budgets.ts); one used up refuses it with `budget_exceeded`, which a turn keeps as its error code and says in its reply. An instance over its own budget falls back to the next instance.

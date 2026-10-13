@@ -38,6 +38,10 @@ export interface RuleFlags {
   self: boolean;
   search: boolean;
   background: boolean;
+  /** skill_query: the member's skills, and the Agent's equipped ones. */
+  skills?: boolean;
+  /** skill_mutation: proposing to save a way of working as a template skill. */
+  saveSkill?: boolean;
 }
 
 /**
@@ -123,6 +127,16 @@ export function buildRules(
     );
   } else {
     lines.push('- You cannot search or open web pages here; never claim to have looked something up online.');
+  }
+  if (flags.skills) {
+    lines.push(
+      "- Skills are reusable ways of working from the member's library. Yours are listed in skill_query: when a request matches one, load it and follow it. A skill the member runs with `/` arrives in their message as <skill_run>: that text is their request for this turn.",
+    );
+  }
+  if (flags.saveSkill) {
+    lines.push(
+      '- When you and the member worked out a way of doing something they will want again, offer to save it as a template skill with skill_mutation; it is saved only if they accept.',
+    );
   }
   if (flags.background) {
     lines.push(

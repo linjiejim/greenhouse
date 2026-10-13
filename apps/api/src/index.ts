@@ -29,6 +29,8 @@ async function main() {
   const services = createServices(config);
   await services.workspace.row();
   await ensureFirstAdmin(config.BOOTSTRAP_ADMIN_EMAIL, services.auth);
+  // The official skills of skillhub/ become team skills; never fatal, skipped until an admin exists.
+  await services.skills.seedOfficial();
   await services.hub.connect(pgTransport(client.sql));
   services.engine.start();
   services.schedules.start();

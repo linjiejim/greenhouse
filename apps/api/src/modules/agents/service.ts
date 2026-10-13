@@ -219,7 +219,12 @@ const toMemory = (row: MemoryRow): AgentMemory => ({
   updated_at: row.updatedAt,
 });
 
-export function createAgentsService(deps: { providers: ProvidersService; files: FilesService }) {
+export function createAgentsService(deps: {
+  providers: ProvidersService;
+  files: FilesService;
+  /** Refuses skills being equipped that this Agent cannot run, with why (modules/skills). */
+  equip?: (memberId: string, manifest: AgentManifest, added: string[]) => Promise<void>;
+}) {
   async function memberOf(memberId: string) {
     const [member] = await getDb().select().from(members).where(eq(members.id, memberId));
     if (!member) throw notFound('Member');
@@ -852,6 +857,7 @@ export function createAgentsService(deps: { providers: ProvidersService; files: 
       });
       await assertName(memberId, manifest.name);
       await assertModel(manifest.model, memberId);
+      await deps.equip?.(memberId, manifest, manifest.skills);
       await service.ensureMain(memberId);
       try {
         const row = await transaction(async (db) => {
@@ -901,6 +907,8 @@ export function createAgentsService(deps: { providers: ProvidersService; files: 
       if (canonical(next) === canonical(current)) return detail(memberId, row);
       if (next.name !== current.name) await assertName(memberId, next.name, row.id);
       if (next.model !== current.model) await assertModel(next.model, memberId);
+      const added = next.skills.filter((id) => !current.skills.includes(id));
+      if (added.length) await deps.equip?.(memberId, next, added);
       try {
         const updated = await transaction(async (db) => {
           // The version check makes concurrent saves append one after the other, never the same number twice.

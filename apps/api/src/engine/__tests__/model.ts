@@ -44,6 +44,17 @@ export function scriptedModel(scripts: Array<Part[] | Script>, options: { title?
   const prompts: unknown[] = [];
   /** The tool names offered on each call. */
   const tools: string[][] = [];
+  /** The tools offered on each call, with the descriptions the model read. */
+  const toolSpecs: Array<Array<{ name: string; description: string }>> = [];
+  const record = (offered: ReadonlyArray<{ name: string }> | undefined) => {
+    tools.push((offered ?? []).map((entry) => entry.name));
+    toolSpecs.push(
+      (offered ?? []).map((entry) => ({
+        name: entry.name,
+        description: (entry as { description?: string }).description ?? '',
+      })),
+    );
+  };
   let index = 0;
   const next = (): Script => {
     const script = scripts[Math.min(index++, scripts.length - 1)]!;
@@ -67,7 +78,7 @@ export function scriptedModel(scripts: Array<Part[] | Script>, options: { title?
       }
       // Headless turns (background runs) play the same scripts as streaming ones.
       prompts.push(call.prompt);
-      tools.push((call.tools ?? []).map((entry) => entry.name));
+      record(call.tools);
       const script = next();
       if (script.gate) {
         await Promise.race([
@@ -106,7 +117,7 @@ export function scriptedModel(scripts: Array<Part[] | Script>, options: { title?
     },
     doStream: async (call) => {
       prompts.push(call.prompt);
-      tools.push((call.tools ?? []).map((entry) => entry.name));
+      record(call.tools);
       const script = next();
       return {
         stream: new ReadableStream({
@@ -141,7 +152,7 @@ export function scriptedModel(scripts: Array<Part[] | Script>, options: { title?
     modelId: 'm',
     deepseek: false,
   });
-  return { languageModel, prompts, tools, calls: () => index };
+  return { languageModel, prompts, tools, toolSpecs, calls: () => index };
 }
 
 export function gate() {

@@ -76,7 +76,7 @@ v2 和 v1 不兼容，不加 `/api/v2` 前缀，也不保留旧路由。`GET /ap
 | `/api/knowledge/folders[/:id]` · `GET /api/knowledge/search` | 文件夹（文档与文件同树）、检索 |
 | `/api/tables/bases[/:id]/…` | 表格：数据表、字段、视图、记录、表单、自动化、评论、回收站、审计（沿用 #64 的结构） |
 | `/api/apps[/:id]/…` · `POST /api/forms/:id` | 应用、表单提交 |
-| `/api/skills[/:id]` · `…/versions` · `…/scan` · `…/download` | 技能 |
+| `GET /api/skills?q=&space=&kind=&scan_status=&archived=&agent=` · `POST /api/skills` · `GET` / `PATCH` / `DELETE /api/skills/:id` · `POST …/restore` · `GET` / `POST …/versions` · `POST …/scan` · `GET …/download?version=` · `GET /api/skills/starters?agent=` | 技能：我看得到的技能，`available` 与原因按 `agent`（默认主 Agent）判断；新建模板，或用 purpose `skill` 上传的 ZIP 新建包；`PATCH` 改显示名、说明、标签，`DELETE` 是归档；新版本（新 ZIP，或模板的新正文、字段、要求）；`scan` 重扫，或审核（`safe` / `malicious`，团队技能由管理员、个人技能由主人）；下载返回包的签名链接；`starters` 是新会话的 3 个常用技能（没有时给模板开场） |
 | `GET /api/notifications` · `POST …/read` | 通知 |
 | `GET /api/search?q=&kinds=` | `⌘K` 全局搜索 |
 | `GET /api/members?q=` · `GET /api/groups` | 成员与分组选择器（只读） |
@@ -159,13 +159,15 @@ OAuth 2.1 与 MCP（公开路径，错误按 RFC 6749 返回 `{ error, error_des
 | 运行 | `run_start`（后台运行，需要先确认简报）、`schedule_query`、`schedule_mutation` |
 | 知识库 | `knowledge_query`、`knowledge_mutation` |
 | 表格与应用 | `tables_query`、`tables_mutation`、`tables_schema_plan`、`apps_query`、`apps_action` |
-| 技能 | `skill_query`、`skill_mutation`（含「存为技能」） |
+| 技能 | `skill_query`（search、load、read_file，有电脑时 install）、`skill_mutation`（只提议「存为技能」，成员接受后保存为模板） |
 | 多媒体（来自 Provider） | `web_search`、`web_fetch`、`generate_image`、`generate_video`、`speak`（TTS 生成音频）、`transcribe`（STT）、`analyze_image` |
 | 其他 | `compute`（isolated-vm）、`read_attachment`、`export_data`、`memory`、`mcp_call`、`email_query`、`email_mutation` |
 | 只在 Agent 内使用 | `browser`、`computer`、`request_takeover`、`vault` |
 | 删除 | `workbench_*`、`project_*`、`mission_dispatch`、`workflow_plan`、`spawn_session`、`call_llm`、`task_capture`、`eval_*`、`manage_eval_dataset`、`query_eval_runs`、`feature_request`、`log_friction`、`automation_*`（改为 `schedule_*`）、`external_search`（改为 `web_search`）、`session_query`（改为 `conversation_query`） |
 
 工具出现的条件：成员的模块权限允许，并且依赖的 Provider 可用。例如没有图像服务时就没有 `generate_image`，不会出现「未配置」的错误工具。
+
+`skill_query` 的描述每个回合重建，列出这个 Agent 装备的技能，不能运行的写明原因；它按提问者的权限读技能库，公开 Agent 也提供。成员用 `/` 运行的技能在发送时检查（看得到、扫描通过、未归档、回答的 Agent 满足运行要求、必填项已填），正文作为成员的请求进入回合。
 
 `mcp_call` 是连接器的唯一工具（`list`、`describe`、`call`）。它的描述每个回合重建，只列出这个 Agent 此刻能为提问者用的连接器和工具：已启用、在 manifest 的 `connectors` 里（空值表示全部）、per_member / oauth 的已由提问者连接；不能写的 Agent 只看到只读工具。只读工具直接运行；其余工具弹出批准卡（`tool_write`，原样参数），批准后用提问者的 Key 或登录执行。只在回合里提供，公开 Agent 不提供。
 

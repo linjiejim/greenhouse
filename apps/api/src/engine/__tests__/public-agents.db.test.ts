@@ -69,8 +69,14 @@ describe('talking to a public Agent', () => {
     expect(system).toContain('Answer in haiku.');
     expect(system).not.toContain('Secret draft.');
     expect(lastUserText(model.prompts[0])).not.toContain('Lin owner secret');
-    // Only tools that act on the asker's own things: no instructions, hand-offs, runs or schedules.
-    expect([...model.tools[0]!].sort()).toEqual(['ask_user', 'conversation_query', 'memory', 'read_attachment']);
+    // Only tools that act on the asker's own things: no instructions, hand-offs, runs, schedules or saved skills.
+    expect([...model.tools[0]!].sort()).toEqual([
+      'ask_user',
+      'conversation_query',
+      'memory',
+      'read_attachment',
+      'skill_query',
+    ]);
 
     const [run] = await getDb().select().from(runs).where(eq(runs.id, sent.body.run_id));
     expect(run).toMatchObject({ ownerId: chen.id, agentId, status: 'succeeded' });

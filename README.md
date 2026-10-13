@@ -148,8 +148,10 @@ same script doubles as an end-to-end smoke tour (see [Development](#development)
   pause / retry per node) that the agent can plan from a conversation.
 - **Memory** — per-user memories with titles, pinning and lifecycle, plus the friction signals
   the agent logs when tooling gets in its way.
-- **Skill Center** — an org-wide library of agent skills (SKILL.md bundles) with immutable
-  versions, changelogs, security scanning, and first-party packs shipped from `skillhub/`.
+- **Skills** — team and personal skills: SKILL.md packages (instructions, files, scripts) and
+  templates (instructions with fields), with immutable versions, changelogs, a security scan
+  and its review, requirements (a computer, connectors), `/` in the composer, equipping on
+  an Agent, "save as skill" proposals, and official packs published from `skillhub/`.
 - **Email** *(optional)* — personal IMAP/SMTP mailboxes and a shared team mailbox; search,
   read, draft and send with a server-side draft confirmation.
 - **Notifications** — an in-app notification center with durable delivery to email, WeCom and
@@ -214,7 +216,7 @@ greenhouse/
 │   ├── crud/                 # Low-code CRUD framework (one schema → list / form / detail)
 │   ├── ui/                   # Shared React UI kit (atoms, markdown, tool-call cards, plant avatars, tokens)
 │   └── contract/             # Typed API contract — re-exports the API's AppType + hc
-├── skillhub/                 # First-party skill packs (synced into the Skill Center on boot)
+├── skillhub/                 # Official skill packs (published as team skills on boot)
 ├── drizzle/                  # Migration files (the single source of truth for the schema)
 ├── scripts/                  # gen-secrets, backup-db, run-dev, e2e-ci, agent-runtime build
 └── tests/                    # unit / db / e2e (API) / e2e-ui (Playwright)
@@ -503,8 +505,8 @@ its payload. Set `LLM_VISION=false` when `LLM_MODEL` is text-only, and images go
 Optional: media (vision `analyze_image` + `generate_image` through `MEDIA_*`, falling back to
 the LLM endpoint; `IMAGE_BASE_URL` + `IMAGE_API_KEY` move generation alone to an image
 provider), external web search, email mailboxes, WeCom / Feishu, missions, Agent computers
-(`BOTS_COMPUTER_*`), usage budgets, and object storage. Uploads default to local disk (`data/uploads`), Skill Center
-bundles to `data/skills` — set `SKILLS_S3_*` to keep bundles in S3-compatible storage.
+(`BOTS_COMPUTER_*`), usage budgets, and object storage. Uploads default to local disk (`data/uploads`); skill
+packages are files too and live wherever the storage provider keeps files.
 
 **Mobile push**: the iOS app's notifications (an Agent needs you, a background or scheduled task
 finished, an Agent replied after you left) are sent through the Expo Push Service at `exp.host`.
