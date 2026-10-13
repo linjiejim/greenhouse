@@ -12,6 +12,51 @@ import { writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 
 const port = Number(process.argv[2] ?? process.env.FAKE_LLM_PORT ?? 4592);
+
+/** Replies with one rich block each (packages/types rich-output), for "show …". */
+const fence = (name, body) => '```' + name + '\n' + body + '\n```';
+const RICH = {
+  chart: `Sales this week:\n\n${fence('chart', JSON.stringify({ type: 'bar', title: 'Sales', labels: ['Mon', 'Tue', 'Wed'], datasets: [{ label: 'Orders', data: [3, 5, 2] }] }))}`,
+  table: `Here is the table.\n\n${fence(
+    'datatable',
+    JSON.stringify({
+      title: 'Tasks',
+      columns: [
+        { key: 'name', label: 'Name' },
+        { key: 'hours', label: 'Hours', type: 'number' },
+      ],
+      rows: [
+        { name: 'Design', hours: 4 },
+        { name: 'Build', hours: 9 },
+      ],
+    }),
+  )}`,
+  choices: `Pick one.\n\n${fence(
+    'confirm',
+    JSON.stringify({
+      text: 'Which plan?',
+      actions: [
+        { label: 'Plan A', value: 'go with plan A', variant: 'primary' },
+        { label: 'Plan B', value: 'go with plan B' },
+      ],
+    }),
+  )}`,
+  diagram: fence('mermaid', 'graph TD\n  A[Start] --> B[Done]'),
+  page: fence(
+    'html-preview',
+    '<!doctype html><html><head><title>Picker</title></head><body><button id="go" onclick="window.greenhouse.sendPrompt(\'from the page\')">Send</button></body></html>',
+  ),
+  stats: fence(
+    'stats',
+    JSON.stringify({
+      title: 'This week',
+      items: [
+        { label: 'Orders', value: 128, delta: '+12%', trend: 'up', tone: 'positive' },
+        { label: 'Refunds', value: 3 },
+      ],
+    }),
+  ),
+};
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const textOf = (content) =>
@@ -82,6 +127,8 @@ async function stream(response, request) {
     tool('memory', { action: 'remember', title: said.slice(9).trim(), category: 'fact' });
   } else if (afterTool) {
     await say('Done.', 20);
+  } else if (/^show (chart|table|choices|diagram|page|stats)/i.test(said)) {
+    await say(RICH[said.split(' ')[1].toLowerCase()], 5);
   } else if (/^slow/i.test(said)) {
     await say(`Thinking about it slowly. ${'More words keep coming. '.repeat(12)}`, 80);
   } else {

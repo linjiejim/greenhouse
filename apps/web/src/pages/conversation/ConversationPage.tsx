@@ -4,8 +4,22 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Archive, BellOff, CheckCheck, Download, Info, Link2, LogOut, Pencil, Pin, PinOff, Trash2 } from 'lucide-react';
-import { ConfirmDialog, Empty, ErrorBox, IconButton, Skeleton, type MenuEntry } from '@greenhouse/ui/kit';
+import {
+  Archive,
+  BellOff,
+  CheckCheck,
+  Download,
+  Info,
+  Link2,
+  LogOut,
+  MonitorPlay,
+  Pencil,
+  Pin,
+  PinOff,
+  Trash2,
+} from 'lucide-react';
+import { ComputerScreen } from '../../computer/ComputerScreen';
+import { ConfirmDialog, Empty, ErrorBox, IconButton, Overlay, Skeleton, type MenuEntry } from '@greenhouse/ui/kit';
 import { icon } from '@greenhouse/ui/tokens';
 import type { Conversation, Message, NeedsYou } from '@greenhouse/contract';
 import { ApiClientError } from '@greenhouse/contract/client';
@@ -83,7 +97,9 @@ function ExistingConversation({ id }: { id: string }) {
   const memberActions = useMemberActions(conversationId ?? '');
   const [leaving, setLeaving] = useState(false);
   const [quote, setQuote] = useState<{ message_id: string; text: string } | null>(null);
+  const [seed, setSeed] = useState<{ text: string }>();
   const [info, setInfo] = useState(false);
+  const [screen, setScreen] = useState<null | { control: boolean }>(null);
   const [renaming, setRenaming] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
@@ -303,9 +319,20 @@ function ExistingConversation({ id }: { id: string }) {
             )
           }
           actions={
-            <IconButton label={t('chat.info')} aria-pressed={info} onClick={() => setInfo(true)}>
-              <Info size={icon.md} />
-            </IconButton>
+            <>
+              {answering && me.modules.computer && me.capabilities.sandbox && (
+                <IconButton
+                  label={t('agents.computer')}
+                  aria-pressed={!!screen}
+                  onClick={() => setScreen({ control: false })}
+                >
+                  <MonitorPlay size={icon.md} />
+                </IconButton>
+              )}
+              <IconButton label={t('chat.info')} aria-pressed={info} onClick={() => setInfo(true)}>
+                <Info size={icon.md} />
+              </IconButton>
+            </>
           }
           menu={menu}
         />
@@ -362,6 +389,19 @@ function ExistingConversation({ id }: { id: string }) {
                   message.id === regenerableId ? () => regenerate.mutate(message.id, { onError: failed }) : undefined
                 }
                 busyReason={busyReason}
+                blockContext={
+                  message.role === 'assistant'
+                    ? {
+                        onAction: conversation.read_only
+                          ? undefined
+                          : (value) => void sendMessage({ content: value, attachments: [], mentions: [] }),
+                        onPrompt: (text) => setSeed({ text }),
+                        followUp: list
+                          .slice(index + 1)
+                          .find((next) => next.role === 'user' && next.author_member_id === me.id)?.content,
+                      }
+                    : undefined
+                }
                 readBy={
                   room && mine
                     ? roomPeople.data?.members
@@ -393,6 +433,7 @@ function ExistingConversation({ id }: { id: string }) {
             candidates={candidates}
             mentionable={room}
             quote={quote}
+            seed={seed}
             onClearQuote={() => setQuote(null)}
             onSend={sendMessage}
             onStop={() => stop.mutate()}
@@ -400,6 +441,15 @@ function ExistingConversation({ id }: { id: string }) {
         )}
       </div>
       {info && <InfoDrawer conversation={conversation} detail={detail.data} onClose={() => setInfo(false)} />}
+      {screen && answering && (
+        <Overlay title={t('chat.computerOf', { name: answering.name })} wide onClose={() => setScreen(null)}>
+          <ComputerScreen
+            agentId={answering.id}
+            control={screen.control}
+            onControlChange={(control) => setScreen({ control })}
+          />
+        </Overlay>
+      )}
       {leaving && (
         <ConfirmDialog
           danger

@@ -5,7 +5,10 @@
  */
 
 import { Power, RotateCw, Square } from 'lucide-react';
-import { Button, Empty, ErrorBox, Skeleton, StatusBadge, type Tone } from '@greenhouse/ui/kit';
+import { Button, Empty, ErrorBox, Skeleton, StatusBadge, Tabs, type Tone } from '@greenhouse/ui/kit';
+import { useState } from 'react';
+import { ComputerScreen } from '../../computer/ComputerScreen';
+import { ComputerTerminal } from '../../computer/ComputerTerminal';
 import { icon } from '@greenhouse/ui/tokens';
 import type { ComputerJob, ComputerView } from '@greenhouse/contract';
 import { ApiClientError } from '@greenhouse/contract/client';
@@ -36,11 +39,41 @@ export function ComputerTab({ agentId }: { agentId: string }) {
   const computer = useComputer(agentId);
   const running = computer.data?.state === 'running';
   const processes = useProcesses(agentId, running);
+  const [pane, setPane] = useState<'screen' | 'terminal' | 'processes'>('screen');
+  const [control, setControl] = useState(false);
   const action = useComputerAction(agentId);
   const run = (kind: 'start' | 'stop' | 'restart') =>
     action.mutate(kind, {
       onError: (caught) => notify(caught instanceof ApiClientError ? caught.message : t('common.error')),
     });
+
+  const processesList = (
+    <>
+      {processes.isPending ? (
+        <Skeleton lines={2} />
+      ) : !(processes.data?.items ?? []).length ? (
+        <Empty title={t('computer.noProcesses')} />
+      ) : (
+        <ul className="app-list">
+          {processes.data!.items.map((job) => {
+            const status = JOB[job.status];
+            return (
+              <li key={job.id} className="app-list-row is-static">
+                <span className="app-list-main">
+                  <span className="app-list-title">{job.name || job.command}</span>
+                  <span className="app-list-meta app-mono">{job.command}</span>
+                </span>
+                {job.exit_code !== null && job.exit_code !== 0 && (
+                  <span className="app-list-time">{t('computer.exitCode', { code: job.exit_code })}</span>
+                )}
+                <StatusBadge status={t(status.word)} tone={status.tone} />
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </>
+  );
 
   if (computer.isPending) return <Skeleton lines={3} />;
   if (computer.isError) return <ErrorBox onRetry={() => void computer.refetch()}>{t('common.error')}</ErrorBox>;
@@ -84,31 +117,28 @@ export function ComputerTab({ agentId }: { agentId: string }) {
         </div>
       </div>
 
-      <h2 className="app-section-title">{t('computer.processes')}</h2>
-      {!running ? (
-        <Empty title={t('computer.offlineProcesses')} />
-      ) : processes.isPending ? (
-        <Skeleton lines={2} />
-      ) : !(processes.data?.items ?? []).length ? (
-        <Empty title={t('computer.noProcesses')} />
+      {running ? (
+        <>
+          <Tabs
+            label={t('agents.tabComputer')}
+            items={[t('computer.screen'), t('computer.terminal'), t('computer.processes')]}
+            value={t(`computer.${pane}`)}
+            onChange={(label) =>
+              setPane(
+                label === t('computer.terminal')
+                  ? 'terminal'
+                  : label === t('computer.processes')
+                    ? 'processes'
+                    : 'screen',
+              )
+            }
+          />
+          {pane === 'screen' && <ComputerScreen agentId={agentId} control={control} onControlChange={setControl} />}
+          {pane === 'terminal' && <ComputerTerminal agentId={agentId} />}
+          {pane === 'processes' && processesList}
+        </>
       ) : (
-        <ul className="app-list">
-          {processes.data!.items.map((job) => {
-            const status = JOB[job.status];
-            return (
-              <li key={job.id} className="app-list-row is-static">
-                <span className="app-list-main">
-                  <span className="app-list-title">{job.name || job.command}</span>
-                  <span className="app-list-meta app-mono">{job.command}</span>
-                </span>
-                {job.exit_code !== null && job.exit_code !== 0 && (
-                  <span className="app-list-time">{t('computer.exitCode', { code: job.exit_code })}</span>
-                )}
-                <StatusBadge status={t(status.word)} tone={status.tone} />
-              </li>
-            );
-          })}
-        </ul>
+        <Empty title={t('computer.offlineProcesses')} />
       )}
     </section>
   );

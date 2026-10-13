@@ -28,6 +28,10 @@ import { fullTime, relativeTime } from '../lib/time';
 import { AgentAvatar } from '../shell/AgentAvatar';
 import { MemberAvatar } from '../shell/MemberAvatar';
 import { Markdown } from './Markdown';
+import { RichContent, type BlockContext } from './rich/RichContent';
+import { flattenRichOutput } from '@greenhouse/types/rich-output';
+
+const NO_BLOCKS: BlockContext = {};
 import { RequestCard } from './RequestCard';
 
 export interface Author {
@@ -100,6 +104,7 @@ export const MessageView = memo(function MessageView({
   onRegenerate,
   busyReason,
   readBy,
+  blockContext,
 }: {
   message: Message;
   author: Author;
@@ -120,6 +125,8 @@ export const MessageView = memo(function MessageView({
   busyReason?: string;
   /** In a room: the people who have read my message. */
   readBy?: string[];
+  /** What a reply's block buttons and page previews can do. */
+  blockContext?: BlockContext;
 }) {
   const { t, locale } = useI18n();
   const notify = useNotify();
@@ -141,7 +148,7 @@ export const MessageView = memo(function MessageView({
 
   const copy = () =>
     void navigator.clipboard
-      ?.writeText(text)
+      ?.writeText(message.role === 'assistant' ? flattenRichOutput(text) : text)
       .then(() => notify(t('message.copied')))
       .catch(() => notify(t('message.copyFailed')));
 
@@ -259,16 +266,17 @@ export const MessageView = memo(function MessageView({
           </header>
         )}
         {message.quote && <blockquote className="app-message-quote">{message.quote.text}</blockquote>}
-        {text && (
-          <Markdown
-            text={text}
-            className={cx(
-              assistant && 'is-reply-text',
-              streaming && 'is-streaming',
-              message.status === 'failed' && 'is-failed',
-            )}
-          />
-        )}
+        {text &&
+          (assistant ? (
+            <RichContent
+              text={text}
+              streaming={streaming}
+              failed={message.status === 'failed'}
+              context={blockContext ?? NO_BLOCKS}
+            />
+          ) : (
+            <Markdown text={text} />
+          ))}
         {streaming && !text && !steps.length && <span className="app-typing" aria-label={t('common.loading')} />}
         {message.status === 'failed' && (
           <p className="app-message-note is-danger">
