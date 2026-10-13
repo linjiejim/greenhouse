@@ -50,8 +50,8 @@ export function knowledgeEditorExtensions(opts?: KnowledgeEditorOptions): Extens
     TableCell,
     Image.configure({ inline: false }),
     // @-mention NODE is shared so content_json round-trips; the suggestion
-    // dropdown is UI-only and injected by the web editor. Attrs: id (user id) +
-    // label (nickname). Serialized to Markdown as `[@label](user:<id>)`.
+    // dropdown is UI-only and injected by the web editor. Attrs: id (member id) +
+    // label (name). Serialized to Markdown as `[@label](member:<id>)`.
     Mention.configure({
       HTMLAttributes: { class: 'kb-mention' },
       renderText: ({ node }) => `@${node.attrs.label ?? node.attrs.id}`,

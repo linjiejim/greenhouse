@@ -183,3 +183,45 @@ describe('existing constructs still round-trip', () => {
     expect(roundTrip(out)).toBe(out);
   });
 });
+
+describe('knowledge base constructs round-trip (M2.1: Markdown stays the source of truth)', () => {
+  const member = 'mbr_01JABCDEFGHJKMNPQRSTVWXYZ0';
+  const doc = 'doc_01JABCDEFGHJKMNPQRSTVWXYZ0';
+  const file = 'fil_01JABCDEFGHJKMNPQRSTVWXYZ0';
+
+  it('keeps a mention as a mention node and writes it back as a member link', () => {
+    const md = `Ask [@Ann Lee](member:${member}) about it.`;
+    const json = JSON.parse(markdownToTiptapJson(md)) as TiptapNode;
+    const paragraph = json.content?.[0];
+    expect(paragraph?.content?.find((node) => node.type === 'mention')?.attrs).toMatchObject({
+      id: member,
+      label: 'Ann Lee',
+    });
+    expect(roundTrip(md)).toBe(md);
+  });
+
+  it('keeps brackets inside a mention name', () => {
+    const md = `Hi [@Ann \\[ops\\]](member:${member})`;
+    expect(roundTrip(md)).toBe(md);
+    expect(roundTrip(roundTrip(md))).toBe(md);
+  });
+
+  it('keeps a doc reference (what `[[` inserts) as a link to the doc', () => {
+    const md = `See [Onboarding](#/knowledge/${doc}) first.`;
+    expect(roundTrip(md)).toBe(md);
+  });
+
+  it('keeps pictures of the file service, signed or not', () => {
+    const plain = `![chart](/api/files/${file}/content)`;
+    expect(roundTrip(plain)).toBe(plain);
+    const signed = `![chart](/api/files/${file}/content?exp=1791914560&m=${member}&sig=abc_DEF-123)`;
+    expect(roundTrip(signed)).toBe(signed);
+  });
+
+  it('keeps a table with a mention and a doc link in its cells', () => {
+    const md = ['| Owner | Doc |', '| --- | --- |', `| [@Ann](member:${member}) | [Plan](#/knowledge/${doc}) |`].join(
+      '\n',
+    );
+    expect(roundTrip(md)).toBe(md);
+  });
+});
