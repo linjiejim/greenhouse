@@ -122,3 +122,8 @@ export function useComputerFileActions(agentId: string) {
     remove: useMutation({ mutationFn: (path: string) => api.agents.removeFile(agentId, path), onSettled: settle }),
   };
 }
+
+/** The models I may pick for an Agent; the picker shows only when there is a choice. */
+export function useModelChoices() {
+  return useQuery({ queryKey: ['me', 'models'], queryFn: () => api.me.models(), staleTime: 60_000 });
+}

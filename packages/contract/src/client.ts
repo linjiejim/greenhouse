@@ -66,6 +66,7 @@ import type {
   BindingInput,
   CapabilityState,
   CreateProviderInput,
+  ModelChoice,
   MyProviders,
   ProviderCapability,
   ProviderInstance,
@@ -386,6 +387,8 @@ export function createApiClient(options: ApiClientOptions) {
       changePassword: (current_password: string, new_password: string) =>
         post<void>('/api/me/password', { current_password, new_password }),
       providers: () => get<MyProviders>('/api/me/providers'),
+      /** The models I may pick for an Agent, besides default, strong and fast. */
+      models: () => get<{ items: ModelChoice[] }>('/api/me/models'),
       /** My own key for a capability whose policy allows it. */
       addProvider: (input: CreateProviderInput) => post<ProviderInstance>('/api/me/providers', input),
       updateProvider: (id: string, input: UpdateProviderInput) =>

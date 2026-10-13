@@ -124,3 +124,15 @@ export const myProvidersSchema = z.object({
   catalog: z.array(catalogAdapterSchema),
 });
 export type MyProviders = z.infer<typeof myProvidersSchema>;
+
+/** A model a member may pick for an Agent (AGNT-12), from the services that serve them. */
+export const modelChoiceSchema = z.object({
+  /** `instance/model`: what an Agent saves. */
+  ref: z.string(),
+  label: z.string(),
+  /** The service it comes from. */
+  instance: z.string(),
+  /** It comes from my own key. */
+  personal: z.boolean(),
+});
+export type ModelChoice = z.infer<typeof modelChoiceSchema>;

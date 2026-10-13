@@ -13,6 +13,7 @@ import type {
   AdminProviders,
   CapabilityState,
   CatalogAdapter,
+  ModelChoice,
   MyProviders,
   ProviderInstance,
   bindingInputSchema,
@@ -620,6 +621,18 @@ export function createProvidersService(deps: { config: AppConfig; fetch?: typeof
         ...(info?.vision !== undefined ? { vision: info.vision } : {}),
         ...(info?.contextWindow !== undefined ? { contextWindow: info.contextWindow } : {}),
       };
+    },
+
+    /** The models a member may pick for an Agent: every model of the services that serve them, in order. */
+    async models(ctx: UsageContext): Promise<ModelChoice[]> {
+      return chainFor(await viewOf('llm'), ctx).flatMap((instance) =>
+        modelsOf(instance).map((modelId) => ({
+          ref: `${instance.id}/${modelId}`,
+          label: modelInfo(instance, modelId)?.label ?? modelId,
+          instance: instance.name,
+          personal: instance.source === 'personal',
+        })),
+      );
     },
 
     /**

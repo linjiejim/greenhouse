@@ -50,7 +50,7 @@ import { createSearchService, type SearchService } from './modules/search/servic
 import { adminUsageRoutes, agentUsageRoutes, myUsageRoutes } from './modules/usage/routes.js';
 import { createUsageService, type UsageService } from './modules/usage/service.js';
 import { createHub, type Hub } from './realtime/hub.js';
-import { adminProviderRoutes, myProviderRoutes } from './providers/routes.js';
+import { adminProviderRoutes, myModelRoutes, myProviderRoutes } from './providers/routes.js';
 import { createProvidersService, type ProvidersService } from './providers/service.js';
 
 export interface Services {
@@ -187,6 +187,7 @@ export function createApp(services: Services, options: { webDir?: string } = {})
   const signedIn = new Hono<AppEnv>();
   signedIn.use('*', member);
   signedIn.route('/me/providers', myProviderRoutes(services.providers));
+  signedIn.route('/me/models', myModelRoutes(services.providers));
   signedIn.route('/me/usage', myUsageRoutes(services.usage));
   signedIn.route('/me', meRoutes(services.members));
   signedIn.route('/members', directoryRoutes(services.members));

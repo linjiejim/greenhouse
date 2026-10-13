@@ -81,3 +81,10 @@ export function myProviderRoutes(service: ProvidersService) {
     })
     .post('/:id/test', async (c) => c.json(await service.test(c.get('member').id, 'personal', c.req.param('id'))));
 }
+
+/** GET /api/me/models: what I may pick as an Agent's model. */
+export function myModelRoutes(service: ProvidersService) {
+  return new Hono<AppEnv>().get('/', async (c) =>
+    c.json({ items: await service.models({ memberId: c.get('member').id }) }),
+  );
+}

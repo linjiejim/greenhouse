@@ -34,6 +34,7 @@ v2 和 v1 不兼容，不加 `/api/v2` 前缀，也不保留旧路由。`GET /ap
 | `GET` / `PATCH /api/me` | 我：名字、头像、语言、主题、「关于我」、模块权限与可用能力（只读） |
 | `GET /api/me/usage?period=month\|30d` | 我的用量：总计，按能力、Agent、天；我的成员预算 |
 | `/api/me/providers[/:id][/test]` | 我的服务，即个人 Key |
+| `GET /api/me/models` | 我能给 Agent 选的模型：为我服务的各实例的模型，按顺序 |
 | `/api/me/connections[/:id]` | 连接：MCP 连接器账号、飞书 / 企微、邮箱 |
 | `/api/me/vault[/:id]` · `/api/me/vault/log` | 密码库及其访问日志 |
 | `/api/me/grants[/:id]` · `/api/me/tokens[/:id]` | 外部访问：OAuth 授权、个人访问令牌 |

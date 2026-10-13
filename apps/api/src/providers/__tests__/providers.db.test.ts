@@ -229,6 +229,27 @@ describe('providers', () => {
     expect((await call('DELETE', `/api/me/providers/${created.body.id}`, { token: lin.token })).status).toBe(204);
   });
 
+  it('lists the models a member may pick for an Agent, in the order they are served', async () => {
+    const { call, member } = setup();
+    const admin = await member('admin');
+    const lin = await member();
+    const env = await call('GET', '/api/me/models', { token: lin.token });
+    expect(env.status).toBe(200);
+    expect(env.body.items.map((item: { ref: string }) => item.ref)).toContain('env-llm/deepseek-reasoner');
+
+    const qwen = await call('POST', '/api/admin/providers', { token: admin.token, body: corpQwen });
+    await call('PUT', '/api/admin/provider-bindings/llm', {
+      token: admin.token,
+      body: { instance_ids: [qwen.body.id] },
+    });
+    const listed = await call('GET', '/api/me/models', { token: lin.token });
+    expect(listed.body.items).toEqual([
+      { ref: `${qwen.body.id}/qwen-plus`, label: 'qwen-plus', instance: 'Corp Qwen', personal: false },
+      { ref: `${qwen.body.id}/qwen-max`, label: 'qwen-max', instance: 'Corp Qwen', personal: false },
+    ]);
+    expect((await call('GET', '/api/me/models')).status).toBe(401);
+  });
+
   it('keeps member endpoints on the public internet', async () => {
     const { call, member } = setup();
     const admin = await member('admin');
