@@ -83,6 +83,7 @@ export async function assembleTools(input: {
   const { context, availability } = input;
   const allowed = context.manifest.tools ? new Set(context.manifest.tools) : null;
   const chosen: ToolDef[] = [];
+  const descriptions = new Map<string, string>();
   for (const def of input.defs) {
     if (!surfacesOf(def).includes(context.surface)) continue;
     // Someone else's public Agent gets only the tools that act on the asker's own things.
@@ -90,7 +91,10 @@ export async function assembleTools(input: {
     if (allowed && !allowed.has(def.name)) continue;
     if (def.risk !== 'read' && !context.manifest.write) continue;
     if (def.available && !(await def.available(availability))) continue;
+    const description = def.descriptionFor ? await def.descriptionFor(availability) : def.description;
+    if (description === null) continue;
     chosen.push(def);
+    descriptions.set(def.name, description);
   }
 
   let waiting = false;
@@ -107,7 +111,7 @@ export async function assembleTools(input: {
   const tools: ToolSet = {};
   for (const def of chosen) {
     tools[def.name] = tool({
-      description: def.description,
+      description: descriptions.get(def.name) ?? def.description,
       inputSchema: def.input,
       execute: async (args: unknown, options: { toolCallId: string; abortSignal?: AbortSignal }) => {
         if (def.outbound && readPrivate && context.surface === 'background') {
@@ -118,6 +122,7 @@ export async function assembleTools(input: {
         if (def.private) readPrivate = true;
         const started = Date.now();
         const key = stepKey(options.toolCallId);
+        const risk = def.callRisk ? await def.callRisk(args, context) : def.risk;
         // A background run is replayed on retry: a call that already succeeded returns what it returned.
         const idempotencyKey =
           context.surface === 'background'
@@ -147,7 +152,7 @@ export async function assembleTools(input: {
             attempt: context.attempt ?? 1,
             kind: 'tool',
             toolName: def.name,
-            risk: def.risk,
+            risk,
             idempotencyKey,
             status: 'running',
             input: (bounded(args) ?? {}) as Record<string, unknown>,
@@ -182,9 +187,9 @@ export async function assembleTools(input: {
             return request;
           },
         };
-        if (def.risk !== 'read' && (def.needsApproval ? def.needsApproval(args, call) : true)) {
+        if (risk !== 'read' && (def.needsApproval ? def.needsApproval(args, call) : true)) {
           // Nothing changes until the member approves; the engine runs exactly these arguments then.
-          const card = def.describe?.(args, call) ?? { summary: def.name, details: argumentDetails(args) };
+          const card = (await def.describe?.(args, call)) ?? { summary: def.name, details: argumentDetails(args) };
           const request = await call.raise({
             kind: 'approval',
             subject: 'tool_write',

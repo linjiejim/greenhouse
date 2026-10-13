@@ -1,9 +1,8 @@
 # Connector catalog
 
-The official, vetted list of remote MCP servers a Greenhouse administrator can install with one click
-(Administration → MCP Servers → **Add from catalog**). Members then use them from chat and from their
-Bots — public ones right away, the ones that work with each member's own account after the member
-connects (Settings → **Connectors**).
+The official, vetted list of remote MCP servers a Greenhouse admin can install with one click
+(管理 → 连接器). Members' Agents then use them through `mcp_call`: public ones right away, the ones
+that work with each member's own account after the member connects it (设置 → 连接).
 
 Each file here is one connector. Adding a file is how you contribute one.
 
@@ -42,19 +41,21 @@ plus Greenhouse's fields under its own `_meta` key, the way a downstream registr
 |---|---|---|
 | `none` | A public server: nothing is sent. | — |
 | `oauth` | Each member signs in with their own account (MCP authorization spec: OAuth 2.1 + PKCE). | `scope` (optional) |
-| `per_user` | Each member pastes their own key or token. | `header` **or** `query_param`, optional `prefix` (e.g. `"Bearer "`), `help` + `help_zh` (what to paste), `help_url` |
+| `per_member` | Each member pastes their own key or token. | `header` **or** `query_param`, optional `prefix` (e.g. `"Bearer "`), `help` + `help_zh` (what to paste), `help_url` |
 
-`zero_config` is `true` when members can connect without the administrator registering anything at
-the provider: always for `none` and `per_user`; for `oauth` only when the provider supports dynamic
-client registration or client-id metadata documents. GitHub, for example, supports neither — its entry
-uses `per_user` with a personal access token instead.
+A key the admin holds for everyone (`shared`) is never in the catalog: an admin sets that up from a URL.
+
+`zero_config` is `true` when members can connect without the admin registering anything at the
+provider: always for `none` and `per_member`; for `oauth` only when the provider supports dynamic
+client registration. GitHub, for example, does not: its entry uses `per_member` with a personal access
+token instead (an admin can still switch it to `oauth` with a client registered by hand).
 
 ### `read_only_tools`
 
-Tools not marked read-only (`readOnlyHint`) by their server ask before they run: a confirmation in
-chat, an approval card in Bots. List a tool here only if you verified that it never changes anything
-(DeepWiki's tools, for instance, only read public repositories but carry no annotation). A server that
-calls a tool destructive overrides this list.
+Tools not marked read-only (`readOnlyHint`) by their server ask before they run: the member approves
+each call on a card. List a tool here only if you verified that it never changes anything (DeepWiki's
+tools, for instance, only read public repositories but carry no annotation). A server that calls a
+tool destructive overrides this list.
 
 ### `verification`
 
@@ -74,7 +75,7 @@ Say how far you checked the entry against the live server — the catalog never 
    look-alikes of a well-known service — they do not belong here.
 3. Use the Registry `name` when the server is listed there; otherwise the vendor's reverse domain.
 4. Fill in `verification` honestly and give the date you checked.
-5. Run the catalog check: `pnpm vitest run apps/api/src/mcp-client/__tests__/catalog.test.ts`.
+5. Run the catalog check: `npx vitest run apps/api/src/modules/connectors/__tests__/catalog.test.ts`.
 
 Credentials never go in a catalog file — per-member keys are pasted by each member in Greenhouse, and
 OAuth clients are registered by each Greenhouse instance for itself.

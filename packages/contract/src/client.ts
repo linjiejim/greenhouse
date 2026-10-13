@@ -21,6 +21,21 @@ import type {
 import type { CLIENT_KINDS, LinkInfo, TokenPair } from './auth.js';
 import type { Page } from './common.js';
 import type {
+  CatalogEntry,
+  ConnectKeyInput,
+  Connection,
+  ConnectionTest,
+  Connector,
+  ConnectorTest,
+  CreateConnectorInput,
+  MyConnections,
+  OAuthFinishInput,
+  OAuthStart,
+  ProbeResult,
+  RegistryResult,
+  UpdateConnectorInput,
+} from './connectors.js';
+import type {
   ComputerFile,
   ComputerFolder,
   ComputerJob,
@@ -392,6 +407,19 @@ export function createApiClient(options: ApiClientOptions) {
         patch<ProviderInstance>(`/api/me/providers/${id}`, input),
       removeProvider: (id: string) => del(`/api/me/providers/${id}`),
       testProvider: (id: string) => post<ProviderInstance>(`/api/me/providers/${id}/test`),
+      connections: {
+        /** My connections, and the connectors I can use. */
+        list: () => get<MyConnections>('/api/me/connections'),
+        /** My own key for a per_member connector; the server checks it first (`key_rejected`). */
+        connect: (input: ConnectKeyInput) => post<Connection>('/api/me/connections', input),
+        /** Sign in to an oauth connector: open `authorization_url`; the provider comes back to 设置 → 连接. */
+        startOAuth: (connectorId: string) =>
+          post<OAuthStart>('/api/me/connections/oauth/start', { connector_id: connectorId }),
+        /** With `oauth_state` and `oauth_code` from the hash route the callback sent the browser to. */
+        finishOAuth: (input: OAuthFinishInput) => post<Connection>('/api/me/connections/oauth/finish', input),
+        test: (id: string) => post<ConnectionTest>(`/api/me/connections/${id}/test`),
+        remove: (id: string) => del(`/api/me/connections/${id}`),
+      },
     },
 
     members: {
@@ -603,6 +631,23 @@ export function createApiClient(options: ApiClientOptions) {
         /** Creates or replaces the budget of one scope and unit. */
         save: (input: BudgetInput) => put<Budget>('/api/admin/budgets', input),
         remove: (id: string) => del(`/api/admin/budgets/${id}`),
+      },
+      connectors: {
+        list: () => get<{ items: Connector[] }>('/api/admin/connectors'),
+        get: (id: string) => get<Connector>(`/api/admin/connectors/${id}`),
+        /** The built-in catalog, with the slug each entry is installed under. */
+        catalog: () => get<{ items: CatalogEntry[] }>('/api/admin/connectors/catalog'),
+        /** The official MCP Registry: slow, so answers are cached on the server. */
+        registry: (q = '') => get<{ items: RegistryResult[] }>('/api/admin/connectors/registry', { q }),
+        /** What an address asks for before it is installed. */
+        probe: (url: string, transport?: Connector['transport']) =>
+          post<ProbeResult>('/api/admin/connectors/probe', { url, ...(transport ? { transport } : {}) }),
+        /** From the catalog (`{ catalog_id }`) or from a URL; its tools are listed at once. */
+        create: (input: CreateConnectorInput) => post<Connector>('/api/admin/connectors', input),
+        update: (id: string, input: UpdateConnectorInput) => patch<Connector>(`/api/admin/connectors/${id}`, input),
+        remove: (id: string) => del(`/api/admin/connectors/${id}`),
+        refresh: (id: string) => post<Connector>(`/api/admin/connectors/${id}/refresh`),
+        test: (id: string) => post<ConnectorTest>(`/api/admin/connectors/${id}/test`),
       },
       publicAgents: {
         list: (query: { cursor?: string; limit?: number } = {}) =>

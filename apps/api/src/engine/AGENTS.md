@@ -30,6 +30,7 @@ The one engine for conversations and runs. Read with the root AGENTS.md and docs
 - One file per tool with `defineTool` (tools/define.ts): description, zod input, risk, availability, and the service call. Routes and tools call the same services.
 - Every call is a `run_steps` row. Tools that read outside text set `taints`; after that a turn cannot change memories.
 - Read tools run in turns and background runs; write and external tools only in turns, and only for Agents whose manifest allows writing.
+- A description that depends on the member and the Agent comes from `descriptionFor` (null leaves the tool out). A risk that depends on the arguments comes from `callRisk`: a call classed above read waits for approval like a write tool, and the engine marks the approved run `ctx.approved`.
 
 ## Needs you
 - Write and external tools never run when the model calls them: the call raises an approval card (`requests`, subject `tool_write`) holding the exact arguments, the step waits as `pending`, and the turn ends with the run `waiting`.
@@ -61,11 +62,18 @@ The one engine for conversations and runs. Read with the root AGENTS.md and docs
 - The turn acts with the asker's rights: cards go to the asker, approvals run as the asker, files and the transcript are the asker's.
 - Identity says who made it and who it talks with; its instructions are the owner's published ones. It reads the asker's "about me", never the owner's.
 - Memory is the asker's partition of `agent_memories` (member_id = asker). The owner's memories and conversations never enter its prompt, and the owner never reads the asker's.
-- Tools are default-deny: only a tool marked `publicAgent` is offered (memory, ask_user, conversation_query, read_attachment, the web tools, and the computer when its publication grants one). Never self, handoff, run_start or schedules; an approved write must be marked too.
+- Tools are default-deny: only a tool marked `publicAgent` is offered (memory, ask_user, conversation_query, read_attachment, the web tools, and the computer when its publication grants one). Never self, handoff, run_start, schedules or mcp_call; an approved write must be marked too.
 - The computer is the asker's own copy (agent_computers is unique per Agent and member), never the owner's.
 - No personal keys: neither the owner's nor the asker's. Usage is recorded for the asker and counts toward their budgets and the workspace's.
 - A new message, edit or regenerate is admitted under the conversation lock only while the Agent is usable and under its daily cap (turns per asker and day in their time zone; refused turns do not count): `daily_cap_reached`. A turn that starts after a pause or unpublish ends with a reply that says why.
 - The owner sees counts, outcomes, tokens, cost and ratings with comments (`/usage`, `/activity`), never content or who asked.
+
+## Connectors
+- `mcp_call` (tools/connectors.ts) is the one tool for connectors: `list`, `describe`, `call`. Its description, rebuilt each turn, lists only what this Agent may use for the asker: enabled connectors in the manifest's `connectors` (null: all), connected by the asker when the connector works with each member's account, and only the read-only tools when the manifest may not write.
+- A tool declared read-only, or vouched read-only by an admin and not destructive, runs at once. Any other call is classed `external`: it raises the `tool_write` card with the exact arguments and runs only as the approved call, with the asker's key or sign-in, everything checked again then.
+- Only in turns, never in someone else's public Agent: its owner's instructions could read the asker's accounts and send them elsewhere.
+- What a connector returns is outside text: the tool `taints` and is `outbound`; results are cut to 20 000 characters, stripped of prompt structure, and keys and tokens are taken out.
+- Servers are reached only through modules/connectors (network.ts): https, public addresses in production, a deadline on every request.
 
 ## Budgets
 - Every metered call (each model attempt too) is checked first against the enabled budgets that cover it (providers/budgets.ts); one used up refuses it with `budget_exceeded`, which a turn keeps as its error code and says in its reply. An instance over its own budget falls back to the next instance.

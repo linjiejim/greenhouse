@@ -3,6 +3,7 @@ export * from './auth.js';
 export * from './members.js';
 export * from './workspace.js';
 export * from './providers.js';
+export * from './connectors.js';
 export * from './agents.js';
 export * from './conversations.js';
 export * from './realtime.js';
