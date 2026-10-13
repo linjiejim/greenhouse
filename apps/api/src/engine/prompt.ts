@@ -40,6 +40,10 @@ export interface RuleFlags {
   background: boolean;
   browser?: boolean;
   vault?: boolean;
+  /** skill_query: the member's skills, and the Agent's equipped ones. */
+  skills?: boolean;
+  /** skill_mutation: proposing to save a way of working as a template skill. */
+  saveSkill?: boolean;
 }
 
 /**
@@ -131,6 +135,16 @@ export function buildRules(
   if (flags.browser) {
     lines.push(
       `- Your browser is on your computer's screen, which the member can watch or take over. Look (snapshot) before you act and after each step. Never type a password, a one-time code or a card number: ${flags.vault ? 'sign in with the vault, or ' : ''}ask the member to take over with request_takeover, also for any human check (CAPTCHA). Never try to get around one.`,
+    );
+  }
+  if (flags.skills) {
+    lines.push(
+      "- Skills are reusable ways of working from the member's library. Yours are listed in skill_query: when a request matches one, load it and follow it. A skill the member runs with `/` arrives in their message as <skill_run>: that text is their request for this turn.",
+    );
+  }
+  if (flags.saveSkill) {
+    lines.push(
+      '- When you and the member worked out a way of doing something they will want again, offer to save it as a template skill with skill_mutation; it is saved only if they accept.',
     );
   }
   if (flags.background) {

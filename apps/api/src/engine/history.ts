@@ -15,6 +15,7 @@ import {
   type EngineMessage,
 } from '@greenhouse/agent-core';
 import { agents, getDb, members, messages, type Conversation, type Message } from '@greenhouse/db';
+import { skillRuns } from '../modules/skills/turn.js';
 import { sanitizeForPrompt } from '../security/prompt.js';
 import { SPEAKER } from './prompt.js';
 
@@ -72,10 +73,12 @@ export async function projectHistory(input: {
   const personName = new Map(people.map((row) => [row.id, row.name]));
   const agentName = new Map(speakers.map((row) => [row.id, row.name]));
   const room = input.conversation.kind === 'room';
+  // The asker's `/` runs carry their skill's text; anyone else's are only named.
+  const runs = await skillRuns(rows, input.askerId);
 
   const projected: Array<EngineMessage & { seq: number }> = [];
   for (const row of rows) {
-    const text = render(row);
+    const text = render(row, runs.get(row.id));
     if (!text) continue;
     if (row.role === 'assistant' && row.agentId === input.agentId) {
       projected.push({ role: 'assistant', content: text, seq: row.seq });
@@ -118,11 +121,13 @@ export async function projectHistory(input: {
   };
 }
 
-/** A message as text: its content, the quote it answers and the files it carries. */
-function render(row: Message): string {
+/** A message as text: its content, the quote it answers, the skill it ran and the files it carries. */
+function render(row: Message, skillRun?: string): string {
   const parts: string[] = [];
   if (row.quote?.text) parts.push(`> ${row.quote.text.replace(/\n/g, '\n> ')}`);
-  if (row.content.trim()) parts.push(row.content);
+  // Only a real run carries a <skill_run> block; typed text cannot pose as one.
+  if (row.content.trim()) parts.push(row.content.replace(/<(\/?)skill_run/gi, '‹$1skill_run'));
+  if (skillRun) parts.push(skillRun);
   if (row.attachments.length) parts.push(`(attachments: ${row.attachments.join(', ')})`);
   if (row.status === 'stopped') parts.push('(stopped before finishing)');
   return parts.join('\n\n');

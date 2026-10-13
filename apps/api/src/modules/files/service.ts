@@ -2,8 +2,9 @@
  * The one file service. Bytes only ever go through the storage provider; the object key is
  * generated here and never taken from input. A file remembers the storage instance that holds
  * it, so changing the storage order later does not lose it. Who may read a file follows what
- * it belongs to: its owner, the people of its conversation, the owner of its run; a member's
- * current avatar is visible to every member, and the workspace logo to everyone.
+ * it belongs to: its owner, the people of its conversation, the owner of its run, whoever sees
+ * the skill a package belongs to; a member's current avatar is visible to every member, and the
+ * workspace logo to everyone.
  *
  * Bytes are read through signed URLs, so an `<img>` or a link works without a bearer header. A
  * URL is made for one member (`m`) and ends within one to two hours; serving it checks the
@@ -29,6 +30,7 @@ import { toErrorMessage } from '@greenhouse/utils/error';
 import { logger } from '@greenhouse/utils/logger';
 import { ApiError, conflict, invalidInput, notFound } from '../../http/errors.js';
 import type { ProvidersService } from '../../providers/service.js';
+import { bundleHeld, bundleReadable } from '../skills/access.js';
 
 export const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
 const MAX_AVATAR_BYTES = 5 * 1024 * 1024;
@@ -142,6 +144,8 @@ export function createFilesService(deps: {
     // Anyone may see a picture once it is someone's avatar or the logo; nothing else of its owner's.
     if (row.purpose === 'avatar') return IMAGE_TYPES.includes(row.contentType) && (await isAvatar(row.id));
     if (row.purpose === 'branding') return IMAGE_TYPES.includes(row.contentType) && (await isLogo(row.id));
+    // A package's ZIP is for whoever sees the skill version that holds it.
+    if (row.purpose === 'skill') return bundleReadable(memberId, row.id);
     if (row.conversationId) {
       const [seat] = await getDb()
         .select({ id: conversationMembers.memberId })
@@ -294,10 +298,16 @@ export function createFilesService(deps: {
       if (row && row.status === 'active') await discard(row);
     },
 
-    /** Deleting is the owner's: the row is marked and the bytes removed; an avatar or logo it was goes too. */
+    /**
+     * Deleting is the owner's: the row is marked and the bytes removed; an avatar or logo it was
+     * goes too. A skill version's package stays: versions are immutable.
+     */
     async remove(memberId: string, id: string): Promise<void> {
       const [row] = await getDb().select().from(files).where(eq(files.id, id));
       if (!row || row.status !== 'active' || row.ownerId !== memberId) throw notFound('File');
+      if (row.purpose === 'skill' && (await bundleHeld(row.id))) {
+        throw conflict('file_in_use', 'This file is a version of a skill; archive the skill instead.');
+      }
       await getDb()
         .update(members)
         .set({ avatarFileId: null, updatedAt: sql`now()` })

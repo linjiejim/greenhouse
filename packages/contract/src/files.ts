@@ -12,8 +12,8 @@ export const FILE_PURPOSES = [
   'avatar',
   'branding',
 ] as const;
-/** Purposes a member may upload directly; the rest are written by the server. */
-export const UPLOAD_PURPOSES = ['attachment', 'avatar', 'branding'] as const;
+/** Purposes a member may upload directly; the rest are written by the server. A `skill` upload is a ZIP for `POST /api/skills`. */
+export const UPLOAD_PURPOSES = ['attachment', 'avatar', 'branding', 'skill'] as const;
 
 export const fileSchema = z.object({
   id: z.string(),

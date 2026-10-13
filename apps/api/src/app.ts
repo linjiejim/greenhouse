@@ -27,6 +27,8 @@ import type { ToolDef } from './engine/tools/define.js';
 import { runStartTool } from './engine/tools/run-start.js';
 import { scheduleTools } from './engine/tools/schedules.js';
 import { selfTool } from './engine/tools/self.js';
+import { skillMutationTool } from './engine/tools/skill-mutation.js';
+import { skillQueryTool } from './engine/tools/skill-query.js';
 import { requestTakeoverTool } from './engine/tools/takeover.js';
 import { browserTool } from './engine/tools/browser.js';
 import { vaultTool } from './engine/tools/vault.js';
@@ -54,6 +56,8 @@ import { createRunsService, type RunsService } from './modules/runs/service.js';
 import { createRequestsService, type RequestsService } from './modules/requests/service.js';
 import { createConversationsService, type ConversationsService } from './modules/conversations/service.js';
 import { searchRoutes } from './modules/search/routes.js';
+import { skillRoutes } from './modules/skills/routes.js';
+import { createSkillsService, type SkillsService } from './modules/skills/service.js';
 import { createSearchService, type SearchService } from './modules/search/service.js';
 import { adminUsageRoutes, agentUsageRoutes, myUsageRoutes } from './modules/usage/routes.js';
 import { createUsageService, type UsageService } from './modules/usage/service.js';
@@ -89,6 +93,7 @@ export interface Services {
   runs: RunsService;
   schedules: SchedulesService;
   search: SearchService;
+  skills: SkillsService;
   usage: UsageService;
   hub: Hub;
   engine: Engine;
@@ -112,7 +117,12 @@ export function createServices(config: AppConfig, options: ServiceOptions = {}):
   const auth = createAuthService({ tokens, publicUrl: config.PUBLIC_URL });
   const providers = createProvidersService({ config, fetch: options.fetch });
   const files = createFilesService({ providers, sign: (data) => tokens.hashSecret(data, 'file') });
-  const agents = createAgentsService({ providers, files });
+  // Equipping a skill checks it can run for the Agent (the skills service is made below).
+  const agents = createAgentsService({
+    providers,
+    files,
+    equip: (memberId, manifest, added) => skills.assertEquippable(memberId, manifest, added),
+  });
   const hub = createHub();
   const conversations = createConversationsService({ agents, providers, hub, files });
   const members = createMembersService({ auth, providers, files });
@@ -133,6 +143,7 @@ export function createServices(config: AppConfig, options: ServiceOptions = {}):
     forbiddenOrigins,
   });
   const notifications = createNotificationsService({ hub });
+  const skills = createSkillsService({ files, providers, agents, connectors, computers, notifications });
   const schedules = createSchedulesService({ agents, background: () => engine.background });
   const requests = createRequestsService({ hub, notifications });
   const engine = createEngine({
@@ -143,6 +154,7 @@ export function createServices(config: AppConfig, options: ServiceOptions = {}):
     files,
     notifications,
     hub,
+    skills,
     tools: ({ background, handOff }) => [
       memoryTool(agents),
       askUserTool(),
@@ -158,6 +170,8 @@ export function createServices(config: AppConfig, options: ServiceOptions = {}):
       ...scheduleTools(schedules),
       ...webTools(providers, options.fetch ? { fetch: options.fetch } : {}),
       connectorTool(connectors),
+      skillQueryTool(skills),
+      skillMutationTool(skills),
       ...(options.tools ?? []),
     ],
     ...(options.languageModel ? { languageModel: options.languageModel } : {}),
@@ -182,6 +196,7 @@ export function createServices(config: AppConfig, options: ServiceOptions = {}):
     runs,
     schedules,
     search: createSearchService({ members }),
+    skills,
     usage: createUsageService({ agents, providers }),
     hub,
     engine,
@@ -254,6 +269,7 @@ export function createApp(services: Services, options: { webDir?: string } = {})
   signedIn.route('/schedules', scheduleRoutes(services.schedules));
   signedIn.route('/notifications', notificationRoutes(services.notifications));
   signedIn.route('/search', searchRoutes(services.search));
+  signedIn.route('/skills', skillRoutes(services.skills));
   signedIn.use('/admin/*', requireAdmin);
   signedIn.route('/admin', adminMemberRoutes(services.members));
   signedIn.route('/admin/branding', brandingRoutes(services.workspace));

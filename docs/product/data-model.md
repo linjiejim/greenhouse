@@ -92,7 +92,7 @@ v2 从零建表：只有一份基线迁移，不继承 v1 的迁移链，也不�
 | `conversations` | 所有消息流 | `kind`（main / direct / chat / room）、`owner_id`、`agent_id`（room 与 v1 归档为空）、`title`、`model`（会话选的模型）、`origin`（web / ios / android / extension / desktop / feishu / assistant / v1）、`external_key`（飞书话题键，唯一）、`context`（页面助手带来的上下文）、`read_only`（v1 归档）、`forked_from_message_id`、`digest` + `digest_upto_seq`（滚动摘要）、`last_seq`、`last_activity_at`；部分唯一：每人一个 main，每个（成员，Agent）一个 direct |
 | `conversation_members` | 对话里的人和各自的状态 | `conversation_id` / `member_id` `CASCADE`、`role`（owner / member）、`last_read_seq`（已读回执）、`archived_at`、`added_by`；非房间对话只有主人一行。可见性只看这张表 |
 | `conversation_agents` | 对话里额外在场的 Agent | `conversation_id` / `agent_id` `CASCADE`、`added_by`（成员）；房间里各人带来的、被拉进对话的 Agent |
-| `messages` | 消息 | `conversation_id` `CASCADE`、`seq`（锁定对话行后分配，唯一 `(conversation_id, seq)`）、`role`（user / assistant / event）、`author_member_id`、`agent_id`、`content`（Markdown）、`blocks`（富结果）、`attachments`（file id）、`quote`、`mentions`、`skill`（调用的技能与变量）、`rich_blocks`（发送端声明能画的富块，空表示未声明）、`citations`、`steps`（工具摘要）、`reasoning`、`event`（加入、转交、交还等系统事件）、`run_id`、`status`（complete / stopped / failed）、`edited_at` |
+| `messages` | 消息 | `conversation_id` `CASCADE`、`seq`（锁定对话行后分配，唯一 `(conversation_id, seq)`）、`role`（user / assistant / event）、`author_member_id`、`agent_id`、`content`（Markdown）、`blocks`（富结果）、`attachments`（file id）、`quote`、`mentions`、`skill`（`/` 调用的技能、运行的版本与填的变量；部分索引 `messages_skill_runs_idx` 用来找成员最常用的技能）、`rich_blocks`（发送端声明能画的富块，空表示未声明）、`citations`、`steps`（工具摘要）、`reasoning`、`event`（加入、转交、交还等系统事件）、`run_id`、`status`（complete / stopped / failed）、`edited_at` |
 | `message_feedback` | 对一条回复的赞或踩 | `message_id` `CASCADE`、`member_id`、`rating`（1 / -1）、`comment`、`agent_id`、`agent_version`；唯一 `(message_id, member_id)`；公开 Agent 的主人只读这张表，读不到消息 |
 | `message_receipts` | Agent 对消息的处理回执 | `message_id` `CASCADE`、`agent_id`、`status`（queued / processing / answered / skipped / failed / canceled）、`processed_at`；唯一 `(message_id, agent_id)` |
 | `conversation_notes` | 对话的共享笔记 | `conversation_id` `CASCADE`、`title`、`body`、`author_member_id` 或 `author_agent_id`、`status`（open / done）、`pinned` |
@@ -153,10 +153,10 @@ v2 从零建表：只有一份基线迁移，不继承 v1 的迁移链，也不�
 
 | 表 | 用途 | 关键列与关系 |
 | --- | --- | --- |
-| `skills` | 技能 | `name`（`/` 调用名；团队空间内唯一，个人技能在主人名下唯一）、`display_name`、`description`、`kind`（package / template）、`space`（team / personal）、`owner_id`、`tags`、`latest_version`、`requirements`（需要电脑、某个连接器）、`scan_status`（pending / clean / suspicious / blocked）、`scan_findings`、`scanned_at`、`scan_reviewed_by`、`scan_note`、`download_count`、`archived_at` |
-| `skill_versions` | 不可变版本 | `skill_id` `CASCADE`、`version`（semver）、`changelog`、`variables`（模板的填空字段）、`body`（模板技能的说明正文）、`bundle_file_id`（SKILL.md 包，→ `files`）、`file_count`、`size_bytes`、`sha256`、`created_by`；唯一 `(skill_id, version)` |
+| `skills` | 技能 | `name`（`/` 调用名：小写字母（任何文字）、数字、连字符；团队空间内唯一，个人技能在主人名下唯一，归档后名字仍占用）、`display_name`、`description`、`kind`（package / template）、`space`（team / personal）、`owner_id` → `members` `CASCADE`、`tags`（`official` 只属于 skillhub/ 的官方技能）、`latest_version`、`requirements`（最新版本的运行要求：`{ computer, connectors }`，连接器写 slug）、`scan_status`（pending / clean / suspicious / blocked；只有 clean 能运行）、`scan_findings`、`scanned_at`、`scan_reviewed_by`（审核人，新的扫描结论会清空）、`scan_note`、`download_count`、`archived_at` |
+| `skill_versions` | 不可变版本 | `skill_id` `CASCADE`、`version`（semver）、`changelog`、`variables`（模板的填空字段，与 ask_user 的字段相同）、`body`（说明正文：模板的正文，或包的 SKILL.md 去掉 frontmatter）、`bundle_file_id`（规范 ZIP，→ `files`，用途 `skill`）、`files`（包里的文件路径与大小）、`file_count`、`size_bytes`、`sha256`（按内容计算：包的文件，或模板的正文、字段与要求；不是 ZIP 字节的 hash）、`created_by`；唯一 `(skill_id, version)` |
 
-技能装备给哪些 Agent，写在 Agent 的 manifest 里（技能 id 列表），不另建关联表。
+技能装备给哪些 Agent，写在 Agent 的 manifest 里（技能 id 列表），不另建关联表。谁能看到技能只有一条规则（modules/skills/access.ts）：个人技能只有主人；团队技能扫描通过后全员可见，否则只有主人和管理员。技能包的文件按同一规则读取。
 
 ## 8. 连接、密码库与服务
 

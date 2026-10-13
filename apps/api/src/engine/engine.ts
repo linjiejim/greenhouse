@@ -62,6 +62,7 @@ import type { AgentsService, TurnAgent } from '../modules/agents/service.js';
 import type { FilesService } from '../modules/files/service.js';
 import type { NotificationsService } from '../modules/notifications/service.js';
 import type { RequestsService } from '../modules/requests/service.js';
+import type { SkillsService } from '../modules/skills/service.js';
 import { createBackground, type Background } from './background.js';
 import { toMessage, type ConversationsService } from '../modules/conversations/service.js';
 import { effectiveModules } from '../modules/members/service.js';
@@ -135,6 +136,8 @@ export interface EngineDeps {
   files: FilesService;
   hub: Hub;
   notifications: NotificationsService;
+  /** Checks a skill run with `/` before its message is sent. */
+  skills: Pick<SkillsService, 'prepareRun'>;
   /** Built on first use, with the engine's background runs and hand-offs at hand. */
   tools: (engine: { background: Background; handOff: Engine['handOff'] }) => readonly ToolDef[];
   /** Replaces model resolution (tests). */
@@ -812,6 +815,8 @@ export function createEngine(deps: EngineDeps) {
             background: has('run_start'),
             browser: has('browser'),
             vault: has('vault'),
+            skills: has('skill_query'),
+            saveSkill: has('skill_mutation'),
           },
           locale,
           conversation.kind,
@@ -1246,8 +1251,12 @@ export function createEngine(deps: EngineDeps) {
     async post(memberId: string, conversationId: string, input: SendInput): Promise<SendMessageResult> {
       const { conversation } = await deps.conversations.access(memberId, conversationId);
       if (conversation.readOnly) throw conflict('read_only', 'This conversation is read only.');
-      if (!input.content.trim() && !input.attachments.length) throw invalidInput('Write a message or attach a file.');
+      if (!input.content.trim() && !input.attachments.length && !input.skill) {
+        throw invalidInput('Write a message or attach a file.');
+      }
       const responders = await respondersFor(memberId, conversation, input.mentions);
+      // A `/` run: a skill that can run for every Agent answering, its fields filled in, pinned to its version.
+      const skill = input.skill ? await deps.skills.prepareRun(memberId, input.skill, responders) : null;
 
       const result = await withConversation(conversationId, () =>
         transaction(async (db) => {
@@ -1261,7 +1270,7 @@ export function createEngine(deps: EngineDeps) {
             attachments: input.attachments,
             quote: input.quote ? { messageId: input.quote.message_id, text: input.quote.text } : null,
             mentions: input.mentions,
-            skill: input.skill ? { skillId: input.skill.skill_id, variables: input.skill.variables } : null,
+            skill,
             richBlocks: admitRichBlocks(input.rich_blocks) ?? null,
           });
           const dispatched = await dispatch(db, conversationId, {
@@ -1299,7 +1308,9 @@ export function createEngine(deps: EngineDeps) {
       if (target.role !== 'user' || target.authorMemberId !== memberId) {
         throw conflict('not_editable', 'Only your own last message can be edited.');
       }
-      if (!content.trim() && !target.attachments.length) throw invalidInput('Write a message or attach a file.');
+      if (!content.trim() && !target.attachments.length && !target.skill) {
+        throw invalidInput('Write a message or attach a file.');
+      }
       const responders = await respondersFor(memberId, conversation, target.mentions);
 
       const result = await withConversation(conversationId, () =>

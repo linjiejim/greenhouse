@@ -84,6 +84,9 @@ export const toMessage = (row: MessageRow): Message => ({
   attachments: row.attachments,
   quote: row.quote ? { message_id: row.quote.messageId, text: row.quote.text } : null,
   mentions: row.mentions,
+  skill: row.skill
+    ? { skill_id: row.skill.skillId, version: row.skill.version ?? null, variables: row.skill.variables ?? {} }
+    : null,
   citations: row.citations,
   steps: row.steps.map((step) => ({
     tool: step.tool,

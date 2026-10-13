@@ -63,7 +63,7 @@ Greenhouse is an open-source, self-hosted platform where a team works with its o
 - The first-admin bootstrap never promotes or revives an existing account and does nothing once an admin exists.
 - Keep at least one active admin; a member cannot disable themselves.
 - Enforce access in services, never only in the UI. Writes record the acting member.
-- Admin changes to members, groups, branding, providers, budgets and public Agents call audit() (apps/api/src/audit.ts) in the same transaction, and so does publishing an Agent. Summaries name fields, never values or secrets.
+- Admin changes to members, groups, branding, providers, budgets, public Agents and team skill reviews call audit() (apps/api/src/audit.ts) in the same transaction, and so does publishing an Agent. Summaries name fields, never values or secrets.
 
 ## Database
 - Tables use text ids, timestamptz read as ISO strings, and jsonb that is never null unless null means something.
