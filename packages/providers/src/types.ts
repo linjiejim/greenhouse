@@ -98,6 +98,36 @@ export interface ImageClient {
   generate(input: { prompt: string; size?: string; n?: number }): Promise<{ images: GeneratedImage[] }>;
 }
 
+export interface SandboxSpec {
+  /** One sandbox per name; the same name always reaches the same home. */
+  name: string;
+  labels: Record<string, string>;
+  /** IANA zone the computer's clock shows. */
+  timezone: string;
+}
+
+export interface ExecResult {
+  exitCode: number;
+  stdout: string;
+  stderr: string;
+  timedOut: boolean;
+}
+
+export interface SandboxClient {
+  /** Starts the computer, creating it with an empty home the first time. Idempotent. */
+  ensure(spec: SandboxSpec): Promise<void>;
+  status(name: string): Promise<'running' | 'stopped' | 'missing'>;
+  /** Runs argv inside as `user`; output past the cap is cut, and a command past its time is killed. */
+  exec(
+    name: string,
+    input: { argv: string[]; user: 'agent' | 'root'; cwd?: string; timeoutMs: number; maxOutputBytes?: number },
+  ): Promise<ExecResult>;
+  stop(name: string): Promise<void>;
+  restart(name: string): Promise<void>;
+  /** Removes the computer; its home stays unless asked. */
+  remove(name: string, options: { keepHome: boolean }): Promise<void>;
+}
+
 export interface ClientByCapability {
   llm: LlmClient;
   stt: SttClient;
@@ -106,7 +136,7 @@ export interface ClientByCapability {
   search: SearchClient;
   storage: StorageClient;
   video: never;
-  sandbox: never;
+  sandbox: SandboxClient;
   mail: never;
   im: never;
   push: never;

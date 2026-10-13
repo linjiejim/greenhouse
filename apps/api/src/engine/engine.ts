@@ -454,6 +454,7 @@ export function createEngine(deps: EngineDeps) {
       const system = assembleSystem([
         buildRules(
           {
+            computer: has('computer'),
             handoff: has('handoff'),
             memory: has('memory'),
             approvals: [...turnTools.defs.values()].some((def) => def.risk !== 'read'),

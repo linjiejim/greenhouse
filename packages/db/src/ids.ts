@@ -29,6 +29,8 @@ export const ID_PREFIX = {
   budget: 'bdg',
   reservation: 'brv',
   job: 'job',
+  computer: 'cmp',
+  computerWatch: 'cwt',
 } as const;
 export type IdKind = keyof typeof ID_PREFIX;
 

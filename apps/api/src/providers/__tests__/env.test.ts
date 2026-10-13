@@ -74,6 +74,21 @@ describe('providers from env', () => {
     expect(instances[1]!.config).toMatchObject({ voice: 'female-shaonv' });
   });
 
+  it('reads the sandbox for Agent computers', () => {
+    const [sandbox] = providersFromEnv({
+      SANDBOX_PROVIDER: 'docker',
+      SANDBOX_DOCKER_RUNTIME: 'runc',
+      SANDBOX_IMAGE: 'img:1',
+    }).instances;
+    expect(sandbox).toMatchObject({
+      id: 'env-sandbox',
+      capability: 'sandbox',
+      kind: 'docker',
+      config: { runtime: 'runc', image: 'img:1' },
+    });
+    expect(providersFromEnv({ SANDBOX_PROVIDER: 'nope' }).instances).toEqual([]);
+  });
+
   it('reads S3 and local storage', () => {
     const [s3] = providersFromEnv({
       STORAGE_PROVIDER: 's3',

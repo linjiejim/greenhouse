@@ -18,6 +18,7 @@ import { createWorkspaceService, type WorkspaceService } from './modules/workspa
 import { createEngine, type Engine } from './engine/engine.js';
 import { askUserTool } from './engine/tools/ask-user.js';
 import { readAttachmentTool } from './engine/tools/attachments.js';
+import { computerTool } from './engine/tools/computer.js';
 import { conversationTool } from './engine/tools/conversation.js';
 import { handoffTool } from './engine/tools/handoff.js';
 import { memoryTool } from './engine/tools/memory.js';
@@ -28,6 +29,8 @@ import { selfTool } from './engine/tools/self.js';
 import { webTools } from './engine/tools/web.js';
 import { agentRoutes } from './modules/agents/routes.js';
 import { createAgentsService, type AgentsService } from './modules/agents/service.js';
+import { computerRoutes } from './modules/computers/routes.js';
+import { createComputersService, type ComputersService } from './modules/computers/service.js';
 import { conversationRoutes } from './modules/conversations/routes.js';
 import { fileRoutes } from './modules/files/routes.js';
 import { createFilesService, type FilesService } from './modules/files/service.js';
@@ -52,6 +55,7 @@ export interface Services {
   members: MembersService;
   providers: ProvidersService;
   agents: AgentsService;
+  computers: ComputersService;
   conversations: ConversationsService;
   files: FilesService;
   notifications: NotificationsService;
@@ -80,6 +84,7 @@ export function createServices(config: AppConfig, options: ServiceOptions = {}):
   const conversations = createConversationsService({ agents, providers });
   const hub = createHub();
   const files = createFilesService({ providers });
+  const computers = createComputersService({ providers, agents });
   const notifications = createNotificationsService({ hub });
   const schedules = createSchedulesService({ agents, background: () => engine.background });
   const requests = createRequestsService({ hub, notifications });
@@ -97,6 +102,7 @@ export function createServices(config: AppConfig, options: ServiceOptions = {}):
       selfTool(agents),
       conversationTool(),
       readAttachmentTool(files),
+      computerTool(computers),
       runStartTool(background),
       handoffTool(handOff),
       ...scheduleTools(schedules),
@@ -114,6 +120,7 @@ export function createServices(config: AppConfig, options: ServiceOptions = {}):
     members: createMembersService({ auth }),
     providers,
     agents,
+    computers,
     conversations,
     files,
     notifications,
@@ -162,6 +169,7 @@ export function createApp(services: Services) {
   signedIn.route('/me', meRoutes(services.members));
   signedIn.route('/members', directoryRoutes(services.members));
   signedIn.route('/agents', agentRoutes(services.agents));
+  signedIn.route('/agents', computerRoutes(services.computers));
   signedIn.route('/conversations', conversationRoutes(services.conversations, services.engine));
   signedIn.route('/requests', requestRoutes(services.requests, services.engine));
   signedIn.route('/runs', runRoutes(services.runs));

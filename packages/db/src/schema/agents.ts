@@ -104,7 +104,63 @@ export const agentMemories = pgTable(
   (t) => [index('agent_memories_agent_idx').on(t.agentId, t.status)],
 );
 
+export const COMPUTER_STATES = ['stopped', 'starting', 'running', 'failed'] as const;
+export type ComputerState = (typeof COMPUTER_STATES)[number];
+
+/** Each Agent has one computer, a sandbox with a home that outlives restarts. */
+export const agentComputers = pgTable(
+  'agent_computers',
+  {
+    id: id(),
+    agentId: text('agent_id')
+      .notNull()
+      .references(() => agents.id, { onDelete: 'cascade' }),
+    ownerId: text('owner_id').notNull(),
+    /** The sandbox provider instance that runs it. */
+    providerId: text('provider_id').notNull(),
+    /** The adapter's own name for it (container, sandbox id). */
+    sandboxRef: text('sandbox_ref').notNull(),
+    state: text('state', { enum: COMPUTER_STATES }).notNull().default('stopped'),
+    stateReason: text('state_reason'),
+    timezone: text('timezone').notNull().default('Asia/Shanghai'),
+    version: integer('version').notNull().default(0),
+    lastActiveAt: at('last_active_at'),
+    lastStartedAt: at('last_started_at'),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [uniqueIndex('agent_computers_agent_key').on(t.agentId), index('agent_computers_state_idx').on(t.state)],
+);
+
+/** A background process on a computer that wakes its Agent when it ends. */
+export const computerWatches = pgTable(
+  'computer_watches',
+  {
+    id: id(),
+    computerId: text('computer_id')
+      .notNull()
+      .references(() => agentComputers.id, { onDelete: 'cascade' }),
+    agentId: text('agent_id').notNull(),
+    memberId: text('member_id').notNull(),
+    conversationId: text('conversation_id').notNull(),
+    /** The process id the computer gave it. */
+    jobRef: text('job_ref').notNull(),
+    name: text('name').notNull().default(''),
+    status: text('status', { enum: ['watching', 'notified', 'gone'] })
+      .notNull()
+      .default('watching'),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    uniqueIndex('computer_watches_job_key').on(t.computerId, t.jobRef),
+    index('computer_watches_status_idx').on(t.status),
+  ],
+);
+
 export type Agent = typeof agents.$inferSelect;
 export type NewAgent = typeof agents.$inferInsert;
 export type AgentVersion = typeof agentVersions.$inferSelect;
 export type AgentMemory = typeof agentMemories.$inferSelect;
+export type AgentComputer = typeof agentComputers.$inferSelect;
+export type ComputerWatch = typeof computerWatches.$inferSelect;

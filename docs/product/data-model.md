@@ -79,9 +79,9 @@ v2 从零建表：只有一份基线迁移，不继承 v1 的迁移链，也不�
 | `agents` | Agent 身份与可变状态 | `owner_id` → `members` `CASCADE`、`is_main`（每个成员恰好一个，部分唯一索引）、`name` / `name_key`（主人名下未归档的唯一）、`role`、`avatar`（植物头像）、`current_version`、`visibility`（private / public）、`published_version`、`paused_at`（管理员暂停）、`publication`（授权范围：知识文件夹、电脑、每人每日上限）、`template_key`、`last_active_at`、`archived_at` |
 | `agent_versions` | 不可变 manifest，每次保存追加一版 | `agent_id` `CASCADE`、`version`、`manifest`（text：名字、职责、说明、指令、头像、模型引用、技能、连接器、读写权限、工具过滤）、`manifest_hash`、`change_note`、`created_by`；唯一 `(agent_id, version)` |
 | `agent_memories` | Agent 的记忆 | `agent_id` `CASCADE`（必填；没有用户级记忆，共享信息写在 `members.about`）、`member_id`、`title`（召回索引，只有它进提示词）、`content`、`category`、`status`（active / dormant / archived / superseded）、`pinned`、`source`、`superseded_by`、`source_conversation_id`、`last_used_at` |
-| `agent_computers` | 每个 Agent 一台电脑的生命周期 | `agent_id`（唯一）`CASCADE`、`owner_id`、`provider_id`（沙箱实例）、`sandbox_ref`（适配器自己的容器、卷或沙箱 id）、`state`、`state_reason`、`version`（CAS）、`lease_controller`（agent / member）、`lease_epoch`、`viewer_heartbeat_at`、`last_active_at`、`disk_bytes`、`timezone` |
+| `agent_computers` | 每个 Agent 一台电脑的生命周期 | `agent_id`（唯一）`CASCADE`、`owner_id`、`provider_id`（沙箱实例）、`sandbox_ref`（适配器自己的容器、卷或沙箱 id）、`state`（stopped / starting / running / failed）、`state_reason`、`timezone`、`version`、`last_active_at`、`last_started_at`；接管租约与观看（`lease_controller`、`lease_epoch`、`viewer_heartbeat_at`）随 M1.3 的电脑界面加入 |
 | `computer_backups` | 电脑家目录的加密备份 | `computer_id`、`owner_id`（逻辑）、`status`、`reason`（idle / admin / migration）、`storage_prefix`、`key_enc`、`format`、`bytes`、`restored_at`；每台电脑最多一条 running；先删对象再删行 |
-| `computer_watches` | 电脑上的后台进程结束时唤醒 Agent | `computer_id`、`agent_id`、`conversation_id`、`job_ref`（按电脑唯一）、`status`（watching / notified / gone） |
+| `computer_watches` | 电脑上的后台进程结束时唤醒 Agent | `computer_id` `CASCADE`、`agent_id`、`member_id`（以谁的权限唤醒）、`conversation_id`、`job_ref`（按电脑唯一）、`name`、`status`（watching / notified / gone，从 watching 单次认领，7 天无果作废） |
 
 句柄：主 Agent 是 `main`，按成员解析，与显示名无关（默认名 Greeny，可改）。其他 Agent 是 `agent:<id>`，固定版本写 `agent:<id>@<version>`。v1 的 `sprouty`、`bot:`、`custom:` 句柄不再解析。
 

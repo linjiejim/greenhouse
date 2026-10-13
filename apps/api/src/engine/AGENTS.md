@@ -44,3 +44,10 @@ The one engine for conversations and runs. Read with the root AGENTS.md and docs
 ## Hand-offs
 - `handoff` brings another of the member's Agents into the conversation with a brief; the handing Agent's turn ends after that step and the other answers next through the inbox, with the same member's rights.
 - Every hand-off is a `handoffs` row in a chain (the member request it came from): at most 3 deep and 6 per chain, never back to an Agent already in the chain, and the same brief twice is refused.
+
+## Computers
+- One computer per Agent from the sandbox provider (modules/computers). The Docker adapter always runs hardened (read-only root, no capabilities, bounded resources, no published port) with the home on a named volume; production uses gVisor (`runsc`).
+- Shell commands run as `agent` with the deadline enforced inside the computer (`timeout`), at most 120 s. Longer work is a background process (`gh-jobs` in the image) in its own session: it outlives the turn, the API and a member's stop.
+- `run_background` ends the turn and registers a watch. The watcher (every minute, any API process) asks running computers only, claims each ended or lost process once, and wakes the Agent through the inbox. A restart loses running processes but keeps the home, so long jobs should checkpoint to files.
+- Computers idle for 30 minutes stop, unless a process is running (or the count cannot be read).
+- The long-run probe: `GREENHOUSE_LIVE_DOCKER=1 pnpm test` runs it in seconds; `node --import tsx scripts/computer-probe.mts --minutes 62` runs it at full length.

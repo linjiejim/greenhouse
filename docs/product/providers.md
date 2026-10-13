@@ -81,7 +81,9 @@ STT_PROVIDER=openai-compatible   STT_API_KEY=…  STT_BASE_URL=…  STT_MODEL=wh
 TTS_PROVIDER=minimax             TTS_API_KEY=…  TTS_VOICE=female-shaonv
 IMAGE_PROVIDER=openai            IMAGE_API_KEY=…  IMAGE_MODEL=gpt-image-1
 VIDEO_PROVIDER=kling             VIDEO_API_KEY=…  VIDEO_SECRET=…
-SANDBOX_PROVIDER=docker          # docker | e2b；e2b 需要 SANDBOX_API_KEY，SANDBOX_DOMAIN 可填兼容服务的域名
+SANDBOX_PROVIDER=docker          # docker（已实现）| e2b（待移植）
+SANDBOX_IMAGE=greenhouse/computer:latest  SANDBOX_DOCKER_RUNTIME=runsc   # runsc = gVisor，生产必须；runc 只用于开发
+SANDBOX_NETWORK=bridge  SANDBOX_MEMORY=2g  SANDBOX_CPUS=2
 SEARCH_PROVIDER=tavily,brave     # 多个用逗号分隔，就是回退顺序
 TAVILY_API_KEY=…  BRAVE_API_KEY=…
 STORAGE_PROVIDER=s3              # local | s3

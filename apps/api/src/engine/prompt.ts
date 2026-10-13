@@ -30,6 +30,7 @@ export const SPEAKER = {
 } as const;
 
 export interface RuleFlags {
+  computer: boolean;
   handoff: boolean;
   memory: boolean;
   approvals: boolean;
@@ -81,6 +82,13 @@ export function buildRules(
     lines.push(
       '- Tools that change shared data show the member an approval card before they run, so do not ask for confirmation in chat first. Your turn ends when a card is raised; you are told the outcome. If the member declines, do not retry unless they ask.',
     );
+  }
+  if (flags.computer) {
+    lines.push(
+      '- Your computer is your own: files in your home stay between turns. Check the result of each command before the next. A long command runs with run_background; you are woken here when it ends, so tell the member it is running and end your turn instead of polling.',
+    );
+  } else {
+    lines.push('- You have no computer here: you cannot run commands; never claim to have run one.');
   }
   if (flags.handoff) {
     lines.push(

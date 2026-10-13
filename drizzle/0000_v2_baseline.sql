@@ -81,6 +81,22 @@ CREATE TABLE "shares" (
 	CONSTRAINT "shares_grant_key" UNIQUE NULLS NOT DISTINCT("resource_type","resource_id","principal_type","principal_id")
 );
 --> statement-breakpoint
+CREATE TABLE "agent_computers" (
+	"id" text PRIMARY KEY NOT NULL,
+	"agent_id" text NOT NULL,
+	"owner_id" text NOT NULL,
+	"provider_id" text NOT NULL,
+	"sandbox_ref" text NOT NULL,
+	"state" text DEFAULT 'stopped' NOT NULL,
+	"state_reason" text,
+	"timezone" text DEFAULT 'Asia/Shanghai' NOT NULL,
+	"version" integer DEFAULT 0 NOT NULL,
+	"last_active_at" timestamp with time zone,
+	"last_started_at" timestamp with time zone,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
 CREATE TABLE "agent_memories" (
 	"id" text PRIMARY KEY NOT NULL,
 	"agent_id" text NOT NULL,
@@ -125,6 +141,19 @@ CREATE TABLE "agents" (
 	"template_key" text,
 	"last_active_at" timestamp with time zone,
 	"archived_at" timestamp with time zone,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "computer_watches" (
+	"id" text PRIMARY KEY NOT NULL,
+	"computer_id" text NOT NULL,
+	"agent_id" text NOT NULL,
+	"member_id" text NOT NULL,
+	"conversation_id" text NOT NULL,
+	"job_ref" text NOT NULL,
+	"name" text DEFAULT '' NOT NULL,
+	"status" text DEFAULT 'watching' NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
@@ -545,10 +574,12 @@ ALTER TABLE "group_members" ADD CONSTRAINT "group_members_member_id_members_id_f
 ALTER TABLE "groups" ADD CONSTRAINT "groups_created_by_members_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."members"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "pins" ADD CONSTRAINT "pins_member_id_members_id_fk" FOREIGN KEY ("member_id") REFERENCES "public"."members"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "refresh_tokens" ADD CONSTRAINT "refresh_tokens_member_id_members_id_fk" FOREIGN KEY ("member_id") REFERENCES "public"."members"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "agent_computers" ADD CONSTRAINT "agent_computers_agent_id_agents_id_fk" FOREIGN KEY ("agent_id") REFERENCES "public"."agents"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "agent_memories" ADD CONSTRAINT "agent_memories_agent_id_agents_id_fk" FOREIGN KEY ("agent_id") REFERENCES "public"."agents"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "agent_memories" ADD CONSTRAINT "agent_memories_member_id_members_id_fk" FOREIGN KEY ("member_id") REFERENCES "public"."members"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "agent_versions" ADD CONSTRAINT "agent_versions_agent_id_agents_id_fk" FOREIGN KEY ("agent_id") REFERENCES "public"."agents"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "agents" ADD CONSTRAINT "agents_owner_id_members_id_fk" FOREIGN KEY ("owner_id") REFERENCES "public"."members"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "computer_watches" ADD CONSTRAINT "computer_watches_computer_id_agent_computers_id_fk" FOREIGN KEY ("computer_id") REFERENCES "public"."agent_computers"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "conversation_agents" ADD CONSTRAINT "conversation_agents_conversation_id_conversations_id_fk" FOREIGN KEY ("conversation_id") REFERENCES "public"."conversations"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "conversation_agents" ADD CONSTRAINT "conversation_agents_agent_id_agents_id_fk" FOREIGN KEY ("agent_id") REFERENCES "public"."agents"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "conversation_inbox" ADD CONSTRAINT "conversation_inbox_conversation_id_conversations_id_fk" FOREIGN KEY ("conversation_id") REFERENCES "public"."conversations"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
@@ -580,12 +611,16 @@ CREATE INDEX "members_role_idx" ON "members" USING btree ("role");--> statement-
 CREATE UNIQUE INDEX "refresh_tokens_hash_key" ON "refresh_tokens" USING btree ("token_hash");--> statement-breakpoint
 CREATE INDEX "refresh_tokens_member_idx" ON "refresh_tokens" USING btree ("member_id");--> statement-breakpoint
 CREATE INDEX "shares_principal_idx" ON "shares" USING btree ("principal_type","principal_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "agent_computers_agent_key" ON "agent_computers" USING btree ("agent_id");--> statement-breakpoint
+CREATE INDEX "agent_computers_state_idx" ON "agent_computers" USING btree ("state");--> statement-breakpoint
 CREATE INDEX "agent_memories_agent_idx" ON "agent_memories" USING btree ("agent_id","status");--> statement-breakpoint
 CREATE UNIQUE INDEX "agent_versions_version_key" ON "agent_versions" USING btree ("agent_id","version");--> statement-breakpoint
 CREATE UNIQUE INDEX "agents_one_main_key" ON "agents" USING btree ("owner_id") WHERE "agents"."is_main";--> statement-breakpoint
 CREATE UNIQUE INDEX "agents_owner_name_key" ON "agents" USING btree ("owner_id","name_key") WHERE "agents"."archived_at" IS NULL;--> statement-breakpoint
 CREATE INDEX "agents_owner_idx" ON "agents" USING btree ("owner_id");--> statement-breakpoint
 CREATE INDEX "agents_visibility_idx" ON "agents" USING btree ("visibility");--> statement-breakpoint
+CREATE UNIQUE INDEX "computer_watches_job_key" ON "computer_watches" USING btree ("computer_id","job_ref");--> statement-breakpoint
+CREATE INDEX "computer_watches_status_idx" ON "computer_watches" USING btree ("status");--> statement-breakpoint
 CREATE INDEX "conversation_inbox_pending_idx" ON "conversation_inbox" USING btree ("conversation_id","id") WHERE "conversation_inbox"."consumed_at" IS NULL;--> statement-breakpoint
 CREATE INDEX "conversation_members_member_idx" ON "conversation_members" USING btree ("member_id");--> statement-breakpoint
 CREATE INDEX "conversation_notes_conversation_idx" ON "conversation_notes" USING btree ("conversation_id");--> statement-breakpoint

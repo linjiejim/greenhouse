@@ -17,3 +17,10 @@ export { LLM_PRESETS, type LlmPreset } from './llm/presets.js';
 export { llmConfigSchema, type LlmConfig } from './llm/adapters.js';
 export { s3ConfigSchema, type S3Config } from './storage/s3.js';
 export { localConfigSchema, type LocalConfig } from './storage/local.js';
+export {
+  dockerConfigSchema,
+  runArgs as dockerRunArgs,
+  runDocker,
+  volumeOf as dockerVolumeOf,
+  type DockerConfig,
+} from './sandbox/docker.js';

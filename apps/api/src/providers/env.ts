@@ -159,6 +159,32 @@ function searchFromEnv(env: Env): EnvInstance[] {
   });
 }
 
+/** SANDBOX_PROVIDER=docker: the Agent computers run on this machine's Docker engine. */
+function sandboxFromEnv(env: Env): EnvInstance | null {
+  const kind = value(env, 'SANDBOX_PROVIDER');
+  if (!kind) return null;
+  const found = findAdapter('sandbox', kind);
+  if (!found) {
+    logger.warn(`[providers] SANDBOX_PROVIDER=${kind} is not available; ignored`);
+    return null;
+  }
+  return {
+    id: 'env-sandbox',
+    capability: 'sandbox',
+    kind: found.adapter.kind,
+    preset: null,
+    name: found.adapter.label,
+    config: compact({
+      image: value(env, 'SANDBOX_IMAGE'),
+      runtime: value(env, 'SANDBOX_DOCKER_RUNTIME'),
+      network: value(env, 'SANDBOX_NETWORK'),
+      memory: value(env, 'SANDBOX_MEMORY'),
+      cpus: value(env, 'SANDBOX_CPUS'),
+    }),
+    secrets: compact({ apiKey: value(env, 'SANDBOX_API_KEY') }),
+  };
+}
+
 function storageFromEnv(env: Env): EnvInstance | null {
   const kind = value(env, 'STORAGE_PROVIDER');
   if (!kind) return null;
@@ -290,8 +316,9 @@ export function providersFromEnv(env: Env): EnvProviders {
   instances.push(...searchFromEnv(env));
   const storage = storageFromEnv(env);
   if (storage) instances.push(storage);
-  for (const later of ['VIDEO_PROVIDER', 'SANDBOX_PROVIDER']) {
-    if (value(env, later)) logger.warn(`[providers] ${later} is not available in this build yet; ignored`);
-  }
+  const sandbox = sandboxFromEnv(env);
+  if (sandbox) instances.push(sandbox);
+  if (value(env, 'VIDEO_PROVIDER'))
+    logger.warn('[providers] VIDEO_PROVIDER is not available in this build yet; ignored');
   return { instances, defaults, policies: {} };
 }

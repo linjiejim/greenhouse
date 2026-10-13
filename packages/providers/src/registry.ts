@@ -1,5 +1,6 @@
 import { IMAGE_ADAPTERS } from './image/adapters.js';
 import { LLM_ADAPTERS } from './llm/adapters.js';
+import { dockerAdapter } from './sandbox/docker.js';
 import { SEARCH_ADAPTERS } from './search/adapters.js';
 import { SPEECH_ADAPTERS } from './speech/adapters.js';
 import { localAdapter } from './storage/local.js';
@@ -34,6 +35,7 @@ for (const adapter of [
   ...IMAGE_ADAPTERS,
   localAdapter,
   s3Adapter,
+  dockerAdapter,
 ] as AnyAdapter[]) {
   registerAdapter(adapter);
 }
