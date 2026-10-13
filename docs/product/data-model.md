@@ -168,10 +168,10 @@ v2 从零建表：只有一份基线迁移，不继承 v1 的迁移链，也不�
 | `vault_access_log` | 代填日志，只给成员本人看 | `member_id`、`item_id` `SET NULL`、`item_label`、`agent_id`、`conversation_id`、`origin`、`action`、`outcome`、`approval`；不记录任何值。不并入 `audit_events`，因为管理员不读密码库 |
 | `providers` | 服务实例（[providers.md §4.4](providers.md#44-运行时数据库)） | `id`、`capability`、`kind`、`preset`、`name`、`scope`（workspace / personal）、`owner_id`、`config`（非机密）、`secrets_enc`、`enabled`、`last_check`、`created_by`、时间戳；环境变量实例只在内存里 |
 | `provider_bindings` | 每个能力用哪些实例 | `capability`（主键）、`instance_ids`（有序，第一个出错时依次回退）、`defaults`（默认、强、快模型，音色，电脑容量）、`policy`（是否允许个人 Key，个人用量是否计入组织预算）、`version`（解析缓存按它失效） |
-| `oauth_clients` | 外部访问的客户端 | `name`、`redirect_uris`、`auth_method`（none = 交互客户端 / client_secret_post = 机器客户端）、`secret_hash`、`bound_member_id` `CASCADE`、`allowed_scopes`、`status`、`created_by` |
-| `oauth_grants` | 成员对客户端的授权 | `member_id` / `client_id` `CASCADE`、`resource`、`scopes`（实际授予的，读出不加工）、`status`、`revoked_at`；唯一 `(member_id, client_id, resource)` |
-| `oauth_codes` | 授权码（PKCE S256） | 主键 `code_hash`、`grant_id` `CASCADE`、`redirect_uri`、`code_challenge`、`scopes`、`expires_at`、`used_at` |
-| `oauth_tokens` | 访问令牌、刷新令牌、个人访问令牌 | `grant_id` `CASCADE`、`kind`（access / refresh / personal）、`name`（个人令牌）、`token_hash`（唯一）、`resource`、`scopes`、`expires_at`、`revoked_at`、`last_used_at` |
+| `oauth_clients` | 外部访问的客户端 | `name`、`redirect_uris`（精确匹配，回环地址可换端口）、`auth_method`（none = 交互客户端 / client_secret_post = 机器客户端，密钥放请求体或 HTTP Basic）、`secret_hash`、`bound_member_id` `CASCADE`、`allowed_scopes`（能授予的上限，null 为不设）、`registration`（dynamic = 自行注册 / admin / builtin = 个人令牌的内置客户端，id 固定为 `personal`）、`status`（active / disabled）、`created_by` `SET NULL`；自行注册后 30 天没人授权的会被清掉 |
+| `oauth_grants` | 成员对客户端的授权 | `member_id` / `client_id` `CASCADE`、`resource`、`scopes`（实际授予的，读出不加工）、`status`（pending = 管理员绑定给别人的机器客户端，等本人批准 / active / revoked）、`revoked_at`；唯一 `(member_id, client_id, resource)`；scope 变化或撤销后再授权，旧令牌和未用的授权码一并作废 |
+| `oauth_codes` | 授权码（PKCE S256） | 主键 `code_hash`、`grant_id` `CASCADE`、`redirect_uri`、`code_challenge`、`scopes`、`auth_version`、`expires_at`（两分钟）、`used_at`；同一个码再次出现时，这次授权的令牌全部作废 |
+| `oauth_tokens` | 访问令牌、刷新令牌、个人访问令牌 | `grant_id` `CASCADE`、`kind`（access / refresh / personal）、`name`（个人令牌）、`token_hash`（唯一）、`resource`、`scopes`、`auth_version`（与成员的不同即失效：改密码、停用）、`expires_at`、`rotated_at`（刷新令牌已换新；再出现即当作被盗，这次授权的令牌全部作废）、`revoked_at`、`last_used_at` |
 
 ## 9. 通知与定时
 
@@ -199,7 +199,7 @@ v1 的预算账本不再保留：每次花费都对应一条 `usage_events`；�
 | --- | --- | --- |
 | `workspace` | 工作区，只有一行 | `id`（固定 `default`）、`name`、`logo_file_id`、`primary_color`、`settings`（新成员的默认模块权限等非机密设置）、`setup_completed_at`、`updated_by`；机密一律在 `providers` |
 | `jobs` | 通用后台任务队列 | `kind`（如 deliver_notification、base_automation、recompute、ai_field、video_poll、file_purge、computer_backup、export）、`dedupe_key`（唯一）、`payload`、`status`（pending / claimed / succeeded / failed / dead / suppressed）、`attempts` / `max_attempts`、`available_at`、`lease_owner` / `lease_expires_at`、`last_error`、`result`；和触发它的状态变更在同一事务里写入 |
-| `idempotency_keys` | 有副作用请求的幂等记录 | 主键 `(scope, key)`（scope 如成员 id 或 `feishu`）、`request_hash`、`status`（running / done）、`response`、`expires_at`；承接 `Idempotency-Key` 头、应用动作重放和飞书事件去重；电脑画面与终端的一次性 ticket 也在这里（scope `computer_ticket`，`key` 是 ticket 的 keyed hash，一分钟，用时删除） |
+| `idempotency_keys` | 有副作用请求的幂等记录 | 主键 `(scope, key)`（scope 如成员 id 或 `feishu`）、`request_hash`、`status`（running / done）、`response`、`expires_at`；承接 `Idempotency-Key` 头、应用动作重放和飞书事件去重；电脑画面与终端的一次性 ticket 也在这里（scope `computer_ticket`，`key` 是 ticket 的 keyed hash，一分钟，用时删除）；OAuth 同意请求同理（scope `oauth_request`，十分钟，归第一个打开它的成员，做出决定时删除） |
 | `extension_migrations` | 扩展迁移通道的记录 | 主键 `(extension_id, name)`、`checksum`、`applied_at` |
 
 v1 迁移工具的 ID 映射与检查点放在单独的 `migration` schema，不属于基线。
@@ -213,7 +213,7 @@ v1 迁移工具的 ID 映射与检查点放在单独的 `migration` schema，不
 3. 用一个通用 `jobs` 队列，取代 v1 各自实现的租约队列（`runtime_outbox`、`notification_delivery_attempts`、`table_automation_outbox`、`table_recompute_jobs`）；领域事实仍留在各自的表里。
 4. 前台回合也记一条 run（`kind=turn`，不进运行列表）。恢复、计量和「需要你」只有一条路径，代价是 `runs` 的行数随回复增长。
 5. 渠道（SMTP、飞书、企微、推送）存进 `providers`，capability 取 mail / im / push，见 [providers.md](providers.md#2-能力)。
-6. 个人访问令牌复用 `oauth_tokens`（`kind=personal`），挂在内置客户端 `personal` 的授权下，吊销与审计走同一条路。
+6. 个人访问令牌复用 `oauth_tokens`（`kind=personal`），挂在内置客户端 `personal` 的授权下，吊销与审计走同一条路；它只能调用 `/api/mcp`。
 7. 仪表盘并入 `base_views`（`type=dashboard`），卡片与应用共用一套 schema。
 8. 「项目」模板的里程碑放进任务表，用单选字段「类型」区分；依赖和父记录都在同一张表内，时间线只读一张表。
 9. 技能 v2.0 只有团队和个人两种空间；需要时再给 `shares` 加 `resource_type=skill`。

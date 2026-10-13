@@ -1,4 +1,5 @@
 export * from './identity.js';
+export * from './oauth.js';
 export * from './agents.js';
 export * from './conversations.js';
 export * from './runs.js';
