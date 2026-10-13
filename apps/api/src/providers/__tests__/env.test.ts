@@ -89,6 +89,43 @@ describe('providers from env', () => {
     expect(providersFromEnv({ SANDBOX_PROVIDER: 'nope' }).instances).toEqual([]);
   });
 
+  it('reads an E2B sandbox, a compatible host by its preset, and skips one without a template', () => {
+    const [e2b] = providersFromEnv({
+      SANDBOX_PROVIDER: 'e2b',
+      SANDBOX_API_KEY: 'e2b_key',
+      SANDBOX_E2B_TEMPLATE: 'gh-computer-abc',
+      SANDBOX_E2B_NAMESPACE: 'staging',
+      SANDBOX_E2B_TIMEOUT_MINUTES: '45',
+    }).instances;
+    expect(e2b).toEqual({
+      id: 'env-sandbox',
+      capability: 'sandbox',
+      kind: 'e2b',
+      preset: null,
+      name: 'E2B',
+      config: { template: 'gh-computer-abc', namespace: 'staging', timeoutMinutes: 45 },
+      secrets: { apiKey: 'e2b_key' },
+    });
+    const [ppio] = providersFromEnv({
+      SANDBOX_PROVIDER: 'ppio',
+      SANDBOX_API_KEY: 'sk_ppio',
+      SANDBOX_E2B_TEMPLATE: 'gh-computer-abc',
+    }).instances;
+    expect(ppio).toMatchObject({
+      kind: 'e2b',
+      preset: 'ppio',
+      config: { domain: 'cn-beijing-1.sandbox.ppio.com', template: 'gh-computer-abc' },
+    });
+    expect(
+      providersFromEnv({
+        SANDBOX_PROVIDER: 'ppio',
+        SANDBOX_E2B_DOMAIN: 'sandbox.example.cn',
+        SANDBOX_E2B_TEMPLATE: 't',
+      }).instances[0]!.config,
+    ).toMatchObject({ domain: 'sandbox.example.cn' });
+    expect(providersFromEnv({ SANDBOX_PROVIDER: 'e2b', SANDBOX_API_KEY: 'k' }).instances).toEqual([]);
+  });
+
   it('reads S3 and local storage', () => {
     const [s3] = providersFromEnv({
       STORAGE_PROVIDER: 's3',
