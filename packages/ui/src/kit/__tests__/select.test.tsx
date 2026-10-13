@@ -175,4 +175,35 @@ describe('MultiSelect', () => {
     expect(listbox()).toBeNull();
     expect(active()).toBe(multi());
   });
+
+  it('says when the list closes, with everything picked while it was open', () => {
+    const closed: string[][] = [];
+    function Saving() {
+      const [value, setValue] = useState<string[]>([]);
+      return (
+        <MultiSelect
+          label="成员"
+          value={value}
+          options={['林杰', '陈晨']}
+          onChange={setValue}
+          onClose={() => closed.push(value)}
+        />
+      );
+    }
+    render(<Saving />);
+    click(multi());
+    const search = get<HTMLInputElement>('.gh-picker-search input');
+    key(search, 'Enter');
+    key(search, 'ArrowDown');
+    key(search, 'Enter');
+    expect(closed).toEqual([]);
+    key(search, 'Escape');
+    expect(closed).toEqual([['林杰', '陈晨']]);
+    click(multi());
+    click(multi());
+    expect(closed).toEqual([
+      ['林杰', '陈晨'],
+      ['林杰', '陈晨'],
+    ]);
+  });
 });

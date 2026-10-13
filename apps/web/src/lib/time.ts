@@ -37,6 +37,21 @@ export function relativeTime(iso: string, options: { locale: TimeLocale; timeZon
   }).format(date);
 }
 
+/** A day without the time, past or future (an expiry): 「11 月 13 日」, 「2027 年 1 月 3 日」 outside this year. */
+export function calendarDay(iso: string, options: { locale: TimeLocale; timeZone: string; now?: Date }): string {
+  const { locale, timeZone } = options;
+  const day = dayKey(new Date(iso), timeZone);
+  const sameYear = day.slice(0, 4) === dayKey(options.now ?? new Date(), timeZone).slice(0, 4);
+  const [year, month, dayOfMonth] = day.split('-').map(Number) as [number, number, number];
+  if (locale === 'zh') return sameYear ? `${month} 月 ${dayOfMonth} 日` : `${year} 年 ${month} 月 ${dayOfMonth} 日`;
+  return new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    month: 'short',
+    day: 'numeric',
+    ...(sameYear ? {} : { year: 'numeric' }),
+  }).format(new Date(iso));
+}
+
 /** The full time, for a hover title. */
 export function fullTime(iso: string, options: { locale: TimeLocale; timeZone: string }): string {
   return new Intl.DateTimeFormat(options.locale === 'zh' ? 'zh-CN' : 'en-US', {

@@ -6,11 +6,13 @@
  *   "remember X"  calls the memory tool, then confirms
  *   "need a human …" asks the member to take over the computer (request_takeover)
  *   anything else "Echo: <message>", in a few chunks
- * Titles and summaries (non-streaming calls) get fixed answers.
+ * Titles and summaries (non-streaming calls) get fixed answers. The same server is the
+ * connectors' MCP servers and their sign-in (fake-mcp.mjs).
  */
 
 import { writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
+import { handleMcp } from './fake-mcp.mjs';
 
 const port = Number(process.argv[2] ?? process.env.FAKE_LLM_PORT ?? 4592);
 
@@ -170,6 +172,8 @@ createServer((request, response) => {
   let raw = '';
   request.on('data', (part) => (raw += part));
   request.on('end', () => {
+    // The connectors' MCP servers and their sign-in (fake-mcp.mjs).
+    if (handleMcp(request, response, raw, `http://127.0.0.1:${port}`)) return;
     if (request.method === 'GET' && request.url?.startsWith('/search')) {
       response.writeHead(200, { 'content-type': 'application/json' });
       return response.end(

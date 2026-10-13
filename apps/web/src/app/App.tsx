@@ -3,20 +3,25 @@ import { Button, ErrorBox, KitProvider, Spinner } from '@greenhouse/ui/kit';
 import { useI18n } from '../lib/i18n';
 import { useRoute } from '../lib/router';
 import { ActivatePage } from '../pages/ActivatePage';
+import { ConsentPage } from '../pages/ConsentPage';
 import { LoginPage } from '../pages/LoginPage';
 import { Shell } from '../shell/Shell';
 import { NotifyProvider } from './notify';
 import { useSession } from './session';
 
-/** Sign-in, activation, or the app; a banner when the server speaks a newer API. */
+/**
+ * Sign-in, activation, the OAuth consent page, or the app; a banner when the server speaks a
+ * newer API. Consent needs a member: signed out, sign-in shows first and the same address follows.
+ */
 export function App() {
   const { locale, t } = useI18n();
   const route = useRoute();
   const { signedIn, me, meError, retryMe, outdated } = useSession();
   let body;
   if (route.page === 'activate') body = <ActivatePage token={route.token} />;
+  else if (route.page === 'consent' && route.error) body = <ConsentPage request="" error={route.error} />;
   else if (!signedIn) body = <LoginPage />;
-  else if (me) body = <Shell />;
+  else if (me) body = route.page === 'consent' ? <ConsentPage request={route.request} error="" /> : <Shell />;
   else if (meError)
     body = (
       <div className="app-center">
