@@ -42,6 +42,7 @@ import {
   getDb,
   groupMembers,
   groups,
+  MAX_INDEXED_CHARS,
   members,
   newId,
   queryWords,
@@ -87,6 +88,7 @@ import { exportCopy, notesEntry, planExport, safeSegment, zipStream, type Export
 import {
   canonicalFileLinks,
   docLinkIds,
+  docSnippet,
   fileLinkIds,
   markdownText,
   mentionIds,
@@ -167,7 +169,8 @@ function docSearchColumns(fields: { title: string; tags: string[]; meta: DocMeta
       (fields.meta.questions ?? []).join('\n'),
       (fields.meta.topics ?? []).join(' '),
     ),
-    searchC: searchTokens(markdownText(fields.content)),
+    // Only what gets indexed is cleaned: a long doc costs no more than the index keeps.
+    searchC: searchTokens(markdownText(fields.content.slice(0, MAX_INDEXED_CHARS))),
   };
 }
 
@@ -640,7 +643,7 @@ export function createKnowledgeService(deps: { files: FilesService; notification
     agentId: string | null | undefined,
   ) {
     const who = await actorName(actor, agentId);
-    const body = markdownText(comment.body).replace(/\s+/g, ' ').slice(0, 140);
+    const body = markdownText(comment.body.slice(0, 1_000)).replace(/\s+/g, ' ').slice(0, 140);
     const earlier = new Set(previous ?? []);
     const mentioned = comment.mentions.filter((id) => !earlier.has(id) && id !== actor.memberId).slice(0, MAX_TOLD);
     for (const memberId of mentioned) {
@@ -1869,7 +1872,7 @@ export function createKnowledgeService(deps: { files: FilesService; notification
           type: 'doc',
           id: row.id,
           title: row.title,
-          snippet: snippetFor(markdownText(row.content), words),
+          snippet: docSnippet(row.content, words),
           space: row.space,
           folder_id: row.folderId,
           score: Number(row.score),

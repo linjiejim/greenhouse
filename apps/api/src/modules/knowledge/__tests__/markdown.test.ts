@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
+import { DOC_CONTENT_MAX } from '@greenhouse/contract';
 import {
   canonicalFileLinks,
   docLinkIds,
+  docSnippet,
   fileLinkIds,
   markdownText,
   mentionIds,
@@ -66,10 +68,11 @@ describe('plain text', () => {
       '| x | y |',
       '',
       '![chart](/api/files/x/content)',
-      'Escaped \\*star\\*',
+      'Escaped \\*star\\* and [see \\[1\\]](https://example.com/notes)',
     ].join('\n');
     const text = markdownText(md);
     expect(text).toContain('Title');
+    expect(text).toContain('see [1]');
     expect(text).toContain('Bold and italic with code and a link.');
     expect(text).toContain('item one');
     expect(text).toContain('chart');
@@ -85,5 +88,55 @@ describe('plain text', () => {
     expect(snippet.endsWith('…')).toBe(true);
     expect(snippetFor('short text', ['missing'])).toBe('short text');
     expect(snippetFor('x'.repeat(300), ['missing'], 10)).toBe(`${'x'.repeat(10)}…`);
+  });
+
+  it('reads only the Markdown around the match for a doc snippet', () => {
+    const doc = `${'Intro **bold**. '.repeat(500)}The [pump](#/knowledge/${DOC_A}) alarm.${' Tail.'.repeat(500)}`;
+    const snippet = docSnippet(doc, ['alarm'], 40);
+    expect(snippet).toContain('pump alarm.');
+    expect(snippet).not.toMatch(/\*\*|\]\(/);
+    expect(snippet.startsWith('…')).toBe(true);
+    expect(snippet.endsWith('…')).toBe(true);
+    expect(docSnippet('# Short\n\nNothing here.', ['missing'])).toBe('Short Nothing here.');
+  });
+});
+
+describe('hostile input', () => {
+  // Everything here runs on saves, comments and search hits, on text anyone may write: a doc
+  // as long as it may be must never cost more than a moment.
+  const longest = DOC_CONTENT_MAX;
+  const fill = (unit: string, tail = '') => unit.repeat(Math.floor((longest - tail.length) / unit.length)) + tail;
+  const cases: Record<string, string> = {
+    'a rule line that ends in a letter': fill('-|:', 'x'),
+    'rule lines that never end': fill(`${'-'.repeat(200)} |\n`),
+    'opening brackets': fill('['),
+    'images that never close': fill('!['),
+    'link targets that never close': fill('[a]('),
+    'escaped brackets': fill('[\\['),
+    'angle brackets': fill('<'),
+    'tags that never close': fill('<a '),
+    'wide spaces without a newline': fill('　 \t', 'x'),
+    'spaces around newlines': fill(' \n　'),
+    'digits without a list mark': fill('1'),
+    'mentions that never close': fill('[@'),
+    'escapes in mentions': fill('[@\\]'),
+    fences: fill('```\n~~~\n'),
+    backticks: fill('`'),
+    'doc links that never finish': fill('#/knowledge/doc_'),
+    'link targets before a doc link': fill('](x'),
+    'file links that never finish': fill('/api/files/fil_'),
+  };
+  it.each(Object.entries(cases))('stays fast on %s', (_name, text) => {
+    expect(text.length).toBeGreaterThan(longest - 1_000);
+    const started = performance.now();
+    markdownText(text);
+    mentionIds(text);
+    docLinkIds(text);
+    fileLinkIds(text);
+    canonicalFileLinks(text);
+    replaceDocLinks(text, () => 'x.md');
+    docSnippet(text, ['missing']);
+    snippetFor(text, ['missing']);
+    expect(performance.now() - started).toBeLessThan(1_500);
   });
 });
