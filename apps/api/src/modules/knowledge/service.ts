@@ -1102,12 +1102,15 @@ export function createKnowledgeService(deps: {
         if (!found.doc.isTemplate) throw invalidInput('That doc is not a template.');
         template = found.doc;
       }
-      const place = await placeFor(reader, { folderId: input.folder_id, space: input.space });
       const title = input.title ?? template!.title;
       const content = links.canonical(input.content ?? template?.content ?? '');
       const tags = input.tags ?? template?.tags ?? [];
       const meta = input.meta ?? {};
-      const doc = await transaction(async () => {
+      const { doc, place } = await transaction(async () => {
+        // Where it goes is read under the tree lock: a folder moving into the team space meanwhile
+        // takes the new doc along, or the new doc lands where the folder is now.
+        await lockTree('place');
+        const place = await placeFor(reader, { folderId: input.folder_id, space: input.space });
         const [row] = await getDb()
           .insert(docs)
           .values({
@@ -1139,7 +1142,7 @@ export function createKnowledgeService(deps: {
             agentId: as?.agentId ?? null,
           });
         await relink(row!.id, content);
-        return row!;
+        return { doc: row!, place };
       });
       await tellMentioned(reader, doc, '', content, as?.agentId);
       return docView(reader, doc, place.chain, roleAt(reader, place));
@@ -1162,8 +1165,17 @@ export function createKnowledgeService(deps: {
       need(role, 'editor', 'You can read this doc but not change it.');
       if (doc.archivedAt) throw conflict('archived', 'This doc is archived. Restore it first.');
       const before = doc.content;
+      const moving = input.folder_id !== undefined || input.space !== undefined;
       const saved = await transaction(async () => {
-        let row = doc;
+        let current = { doc, role };
+        if (moving) {
+          // Moves take the tree lock alone; the doc and where it goes are read again under it.
+          await lockTree('move');
+          current = await docAt(reader, id);
+          need(current.role, 'editor', 'You can read this doc but not change it.');
+          if (current.doc.archivedAt) throw conflict('archived', 'This doc is archived. Restore it first.');
+        }
+        let row = current.doc;
         if (input.title !== undefined || input.content !== undefined) {
           row = await saveContent(reader, row, { ...input, version: input.version! }, as);
         }
@@ -1182,7 +1194,7 @@ export function createKnowledgeService(deps: {
             }),
           );
         }
-        const place = await moveTarget(reader, role, doc, input);
+        const place = await moveTarget(reader, current.role, current.doc, input);
         if (place) {
           if (place.agentId && (await hasShares('doc', [doc.id]))) {
             throw conflict('agent_folder_private', "An Agent's folder is private: stop sharing this doc first.");
@@ -1190,7 +1202,7 @@ export function createKnowledgeService(deps: {
           changes.folderId = place.folder?.id ?? null;
           changes.space = place.space;
           changes.ownerId = place.ownerId;
-          if (place.space === 'team' && doc.space === 'personal') {
+          if (place.space === 'team' && current.doc.space === 'personal') {
             await getDb()
               .delete(shares)
               .where(and(eq(shares.resourceType, 'doc'), eq(shares.resourceId, doc.id)));
@@ -1207,7 +1219,7 @@ export function createKnowledgeService(deps: {
         return row;
       });
       await tellMentioned(reader, saved, before, saved.content, as?.agentId);
-      if (saved !== doc) docUpdated(saved);
+      if (saved.version !== doc.version || saved.updatedAt !== doc.updatedAt) docUpdated(saved);
       return service.getDoc(memberId, id, { as: as ?? {} });
     },
 
@@ -1471,14 +1483,18 @@ export function createKnowledgeService(deps: {
     /** Replaces an item's own shares. Only the owner of a personal item shares it. */
     async share(memberId: string, type: 'folder' | 'doc', id: string, input: ShareInput): Promise<KnowledgeShares> {
       const reader = await readerFor(memberId);
-      const found = type === 'folder' ? await folderAt(reader, id) : await docAt(reader, id);
-      const item = type === 'folder' ? (found as { folder: FolderRow }).folder : (found as { doc: DocRow }).doc;
-      if (item.space === 'team') throw conflict('team_space', 'Everyone already reads and changes the team space.');
-      if (found.role !== 'owner') throw forbidden('Only its owner can share it.');
-      if (agentOfChain(found.chain)) {
-        throw conflict('agent_folder_private', "An Agent's folder is private to the Agent and its owner.");
-      }
-      if (item.archivedAt) throw conflict('archived', 'Restore it before sharing it.');
+      const shareable = async () => {
+        const found = type === 'folder' ? await folderAt(reader, id) : await docAt(reader, id);
+        const item = type === 'folder' ? (found as { folder: FolderRow }).folder : (found as { doc: DocRow }).doc;
+        if (item.space === 'team') throw conflict('team_space', 'Everyone already reads and changes the team space.');
+        if (found.role !== 'owner') throw forbidden('Only its owner can share it.');
+        if (agentOfChain(found.chain)) {
+          throw conflict('agent_folder_private', "An Agent's folder is private to the Agent and its owner.");
+        }
+        if (item.archivedAt) throw conflict('archived', 'Restore it before sharing it.');
+        return item;
+      };
+      const item = await shareable();
       // One entry per member, group or the workspace; the last one wins.
       const wanted = new Map<string, { type: 'member' | 'group' | 'workspace'; id: string | null; role: string }>();
       for (const entry of input.items) {
@@ -1498,6 +1514,10 @@ export function createKnowledgeService(deps: {
         throw invalidInput('Some members or groups do not exist.');
       }
       const added = await transaction(async () => {
+        // Checked again under the tree lock: a move into an Agent's folder or the team space
+        // cannot slip in between the check and the shares.
+        await lockTree('place');
+        await shareable();
         const existing = await getDb()
           .select()
           .from(shares)
@@ -1583,29 +1603,50 @@ export function createKnowledgeService(deps: {
       },
     ): Promise<KnowledgeFile> {
       const reader = await readerFor(memberId);
-      let place: { folderId: string | null; space: KnowledgeSpace; ownerId: string | null };
-      let role: Role;
-      const meta: Record<string, unknown> = { uploaded_by: memberId };
-      if (input.docId) {
-        const found = await docAt(reader, input.docId);
-        need(found.role, 'editor', 'You can read this doc but not change it.');
-        if (found.doc.archivedAt) throw conflict('archived', 'This doc is archived. Restore it first.');
-        place = { folderId: found.doc.folderId, space: found.doc.space, ownerId: found.doc.ownerId };
-        role = found.role;
-        meta.doc_id = found.doc.id;
-      } else {
+      const meta: Record<string, unknown> = { uploaded_by: memberId, ...(input.docId ? { doc_id: input.docId } : {}) };
+      /** Where the file goes, and the uploader's role there. */
+      const placeNow = async (): Promise<{
+        place: { folderId: string | null; space: KnowledgeSpace; ownerId: string | null };
+        role: Role;
+      }> => {
+        if (input.docId) {
+          const found = await docAt(reader, input.docId);
+          need(found.role, 'editor', 'You can read this doc but not change it.');
+          if (found.doc.archivedAt) throw conflict('archived', 'This doc is archived. Restore it first.');
+          return {
+            place: { folderId: found.doc.folderId, space: found.doc.space, ownerId: found.doc.ownerId },
+            role: found.role,
+          };
+        }
         const target = await placeFor(reader, { folderId: input.folderId, space: input.space });
-        place = { folderId: target.folder?.id ?? null, space: target.space, ownerId: target.ownerId };
-        role = roleAt(reader, target);
-      }
+        return {
+          place: { folderId: target.folder?.id ?? null, space: target.space, ownerId: target.ownerId },
+          role: roleAt(reader, target),
+        };
+      };
+      const first = await placeNow();
       const stored = await deps.files.store(memberId, {
         name: input.name,
         contentType: input.contentType,
         bytes: input.bytes,
         purpose: 'knowledge',
-        ...place,
+        ...first.place,
         meta,
       });
+      let role: Role;
+      try {
+        // The bytes are stored outside the tree lock; where the file sits is settled under it, so
+        // a folder that moved into the team space meanwhile takes the new file along.
+        role = await transaction(async () => {
+          await lockTree('place');
+          const now = await placeNow();
+          await getDb().update(files).set(now.place).where(eq(files.id, stored.id));
+          return now.role;
+        });
+      } catch (error) {
+        await deps.files.discard(stored.id);
+        throw error;
+      }
       if (!input.docId) {
         // The name and the text inside go into search.
         let text: string | null = null;
@@ -1636,29 +1677,39 @@ export function createKnowledgeService(deps: {
 
     async updateFile(memberId: string, id: string, input: UpdateFileInput): Promise<KnowledgeFile> {
       const reader = await readerFor(memberId);
-      const { file, role, docId } = await fileAt(reader, id);
-      need(role, 'editor', 'You can read this file but not change it.');
-      if (file.archivedAt) throw conflict('archived', 'This file is archived. Restore it first.');
-      const changes: Partial<typeof files.$inferInsert> = {};
-      if (input.name !== undefined) {
-        changes.name = input.name;
-        if (!docId) changes.searchA = searchTokens(input.name);
-      }
-      if (input.folder_id !== undefined || input.space !== undefined) {
-        if (docId) throw conflict('doc_file', 'This file belongs to a doc and moves with it.');
-        const place = await moveTarget(reader, role, { space: file.space ?? 'team', ownerId: file.ownerId }, input);
+      const moving = input.folder_id !== undefined || input.space !== undefined;
+      const check = async () => {
+        const found = await fileAt(reader, id);
+        need(found.role, 'editor', 'You can read this file but not change it.');
+        if (found.file.archivedAt) throw conflict('archived', 'This file is archived. Restore it first.');
+        if (moving && found.docId) throw conflict('doc_file', 'This file belongs to a doc and moves with it.');
+        return found;
+      };
+      await check();
+      await transaction(async () => {
+        // Moves take the tree lock alone; the file and where it goes are read again under it.
+        if (moving) await lockTree('move');
+        const { file, role, docId } = moving ? await check() : await fileAt(reader, id);
+        const changes: Partial<typeof files.$inferInsert> = {};
+        if (input.name !== undefined) {
+          changes.name = input.name;
+          if (!docId) changes.searchA = searchTokens(input.name);
+        }
+        const place = moving
+          ? await moveTarget(reader, role, { space: file.space ?? 'team', ownerId: file.ownerId }, input)
+          : null;
         if (place) {
           changes.folderId = place.folder?.id ?? null;
           changes.space = place.space;
           changes.ownerId = place.ownerId;
         }
-      }
-      if (Object.keys(changes).length) {
-        await getDb()
-          .update(files)
-          .set({ ...changes, updatedAt: sql`now()` })
-          .where(eq(files.id, id));
-      }
+        if (Object.keys(changes).length) {
+          await getDb()
+            .update(files)
+            .set({ ...changes, updatedAt: sql`now()` })
+            .where(eq(files.id, id));
+        }
+      });
       return service.file(memberId, id);
     },
 

@@ -17,6 +17,7 @@ import {
   members,
   newId,
   notifications,
+  shares,
 } from '@greenhouse/db';
 import { createTestApp } from '../../../testing.js';
 import { MAX_FOLDER_DEPTH } from '../access.js';
@@ -474,6 +475,52 @@ describe('sharing', () => {
     await as(lin).put(`/api/knowledge/docs/${brief.id}/share`, { items: [{ type: 'workspace', role: 'viewer' }] });
     expect((await as(chen).get(`/api/knowledge/docs/${brief.id}`)).body.access).toBe('viewer');
     expect(app).toBeTruthy();
+  });
+
+  it('opens nothing in an Agent’s private folder through a share, even one written past the checks', async () => {
+    const { app, lin, chen, as } = await setup();
+    const main = await app.services.agents.ensureMain(lin.id);
+    const own = (await app.services.knowledge.agentFolder(main, true))!;
+    const sub = (await as(lin).post('/api/knowledge/folders', { name: 'Notes', folder_id: own.id })).body;
+    const doc = (
+      await as(lin).post('/api/knowledge/docs', { title: 'About Chen', content: 'secret plans', folder_id: sub.id })
+    ).body;
+    const refused = await as(lin).put(`/api/knowledge/docs/${doc.id}/share`, {
+      items: [{ type: 'member', id: chen.id, role: 'viewer' }],
+    });
+    expect(refused.body.error.code).toBe('agent_folder_private');
+    // Rows a race or a hand could leave behind still open nothing.
+    await getDb()
+      .insert(shares)
+      .values([
+        {
+          id: newId('share'),
+          resourceType: 'folder',
+          resourceId: sub.id,
+          principalType: 'member',
+          principalId: chen.id,
+          role: 'editor',
+          createdBy: lin.id,
+        },
+        {
+          id: newId('share'),
+          resourceType: 'doc',
+          resourceId: doc.id,
+          principalType: 'workspace',
+          principalId: null,
+          role: 'viewer',
+          createdBy: lin.id,
+        },
+      ]);
+    expect((await as(chen).get(`/api/knowledge/docs/${doc.id}`)).status).toBe(404);
+    expect((await as(chen).get(`/api/knowledge/folders/${sub.id}`)).status).toBe(404);
+    expect((await as(chen).get('/api/knowledge/folders?space=shared')).body.items).toEqual([]);
+    expect((await as(chen).get('/api/knowledge/docs?space=shared')).body.items).toEqual([]);
+    expect((await as(chen).get('/api/knowledge/search?q=secret')).body.items).toEqual([]);
+    // The owner still has it all.
+    expect((await as(lin).get('/api/knowledge/search?q=secret')).body.items.map((hit: any) => hit.id)).toEqual([
+      doc.id,
+    ]);
   });
 
   it('never shows the owner’s folders above what was shared', async () => {

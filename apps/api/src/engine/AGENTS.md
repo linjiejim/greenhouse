@@ -89,7 +89,8 @@ The one engine for conversations and runs. Read with the root AGENTS.md and docs
 - Reading is private and taints the turn: docs are other people's text. A doc read is a source under the reply (`kind: doc`, `#/knowledge/<id>`); a search hit only when the reply links it.
 - Writes raise the `tool_write` card, except inside the Agent's own private reference folder (`callRisk` answers read there). A doc the member cannot see is refused before any card.
 - An edit sends the version it read; a newer one refuses it. Versions and comments record the Agent next to the member (`agent_id`).
-- The private folder (`folders.agent_id`) is made on the first write, at the top of the owner's space; the owner's other Agents never see it and it is never shared.
+- The private folder (`folders.agent_id`) is made on the first write, at the top of the owner's space; the owner's other Agents never see it and it is never shared. As a backstop, share reach, listings and search ignore any share inside one.
+- The tree lock (an advisory lock in service.ts): folder, doc and file moves hold it alone; creating, uploading and sharing hold it shared and read the place again under it. Folders nest at most 32 deep; tree walks fail on a loop or anything deeper instead of stopping short.
 - File links in docs and comments are stored unsigned and signed per reader on read (modules/knowledge/markdown.ts): only with no origin or PUBLIC_URL's, and only as the whole target of a Markdown link or image that nothing around can extend. Another host's path, raw HTML, autolinks and bare addresses stay unsigned; a doc with `<base>` gets no signature.
 - Doc Markdown reaches a page only through the editor's ProseMirror parser or a sanitiser: md-html's HTML is raw.
 

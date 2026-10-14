@@ -8,9 +8,9 @@
  * - all of it only while the member's knowledge module is on. Admins get nothing extra.
  */
 
-import { and, eq, inArray, isNull, notInArray, or, sql, type SQL, type SQLWrapper } from 'drizzle-orm';
+import { and, eq, inArray, isNotNull, isNull, notInArray, or, sql, type SQL, type SQLWrapper } from 'drizzle-orm';
 import type { KnowledgeAccess } from '@greenhouse/contract';
-import { folders, getDb, groupMembers, members, shares, type FolderRow } from '@greenhouse/db';
+import { docs, folders, getDb, groupMembers, members, shares, type FolderRow } from '@greenhouse/db';
 import { forbidden } from '../../http/errors.js';
 import { effectiveModules } from '../members/service.js';
 
@@ -63,6 +63,11 @@ export interface Reader {
   sharedFolders(): Promise<Map<string, Role>>;
   /** In an Agent's turn, the owner's other Agents' private folders and all below them. */
   hiddenFolders(): Promise<string[]>;
+  /**
+   * Docs shared with the reader one by one that sit in an Agent's private folder. Sharing refuses
+   * those, so this is a backstop: such a share opens nothing.
+   */
+  privateSharedDocs(): Promise<string[]>;
 }
 
 /** `column IN (…)`, false for an empty list. */
@@ -86,14 +91,25 @@ export async function subtree(rootIds: readonly string[]): Promise<string[]> {
   return (await walkDown(rootIds)).map((row) => row.id);
 }
 
-/** Shared folders and everything below them, each with the best role any share above gives. */
+/**
+ * Shared folders and everything below them, each with the best role any share above gives. A
+ * share never reaches into an Agent's private folder, even one a race or a hand-written row made.
+ */
 async function reachOf(reader: Pick<Reader, 'memberId' | 'groupIds'>): Promise<Map<string, Role>> {
+  const granted = await getDb()
+    .select({ id: shares.resourceId })
+    .from(shares)
+    .where(and(eq(shares.resourceType, 'folder'), principalMatch(reader)));
+  if (!granted.length) return new Map();
+  const blocked = [...(await insideAgentFolders(granted.map((row) => row.id)))];
   const rows = await getDb().execute<{ id: string; rank: number; depth: number; looped: boolean }>(sql`
     WITH RECURSIVE reach(id, rank, depth) AS (
       SELECT ${shares.resourceId}, CASE WHEN ${shares.role} = 'editor' THEN 2 ELSE 1 END, 0
         FROM ${shares} WHERE ${shares.resourceType} = 'folder' AND ${principalMatch(reader)}
+          AND ${blocked.length ? notInArray(shares.resourceId, blocked) : sql`true`}
       UNION ALL
-      SELECT f.id, r.rank, r.depth + 1 FROM folders f JOIN reach r ON f.parent_id = r.id WHERE r.depth < ${MAX_FOLDER_DEPTH}
+      SELECT f.id, r.rank, r.depth + 1 FROM folders f JOIN reach r ON f.parent_id = r.id
+        WHERE r.depth < ${MAX_FOLDER_DEPTH} AND f.agent_id IS NULL
     ) CYCLE id SET looped USING trail
     SELECT id, rank, depth, looped FROM reach`);
   const reach = new Map<string, Role>();
@@ -117,6 +133,7 @@ export async function loadReader(memberId: string, agentId: string | null = null
   ).map((row) => row.id);
   let shared: Promise<Map<string, Role>> | null = null;
   let hidden: Promise<string[]> | null = null;
+  let privateDocs: Promise<string[]> | null = null;
   return {
     memberId,
     name: member.name,
@@ -124,6 +141,16 @@ export async function loadReader(memberId: string, agentId: string | null = null
     groupIds,
     agentId,
     sharedFolders: () => (shared ??= reachOf({ memberId, groupIds })),
+    privateSharedDocs: () =>
+      (privateDocs ??= getDb()
+        .select({ id: docs.id, folderId: docs.folderId })
+        .from(shares)
+        .innerJoin(docs, eq(docs.id, shares.resourceId))
+        .where(and(eq(shares.resourceType, 'doc'), principalMatch({ memberId, groupIds }), isNotNull(docs.folderId)))
+        .then(async (rows) => {
+          const inside = await insideAgentFolders([...new Set(rows.map((row) => row.folderId!))]);
+          return rows.filter((row) => inside.has(row.folderId!)).map((row) => row.id);
+        })),
     hiddenFolders: () =>
       (hidden ??= agentId
         ? getDb()
@@ -144,20 +171,32 @@ export async function loadReader(memberId: string, agentId: string | null = null
 /** Each folder's ancestors up to the root, the folder itself at depth 0, by where the walk started. */
 export async function walkUp(
   folderIds: readonly string[],
-): Promise<Array<{ start: string; id: string; name: string; depth: number }>> {
+): Promise<Array<{ start: string; id: string; name: string; agentId: string | null; depth: number }>> {
   if (!folderIds.length) return [];
-  const rows = await getDb().execute<{ start: string; id: string; name: string; depth: number; looped: boolean }>(sql`
-    WITH RECURSIVE up(start, id, parent_id, name, depth) AS (
-      SELECT id, id, parent_id, name, 0 FROM folders WHERE ${inList(folders.id, folderIds)}
+  const rows = await getDb().execute<{
+    start: string;
+    id: string;
+    name: string;
+    agent_id: string | null;
+    depth: number;
+    looped: boolean;
+  }>(sql`
+    WITH RECURSIVE up(start, id, parent_id, name, agent_id, depth) AS (
+      SELECT id, id, parent_id, name, agent_id, 0 FROM folders WHERE ${inList(folders.id, folderIds)}
       UNION ALL
-      SELECT u.start, f.id, f.parent_id, f.name, u.depth + 1 FROM folders f JOIN up u ON f.id = u.parent_id WHERE u.depth < ${MAX_FOLDER_DEPTH}
+      SELECT u.start, f.id, f.parent_id, f.name, f.agent_id, u.depth + 1 FROM folders f JOIN up u ON f.id = u.parent_id WHERE u.depth < ${MAX_FOLDER_DEPTH}
     ) CYCLE id SET looped USING trail
-    SELECT start, id, name, depth, looped FROM up`);
+    SELECT start, id, name, agent_id, depth, looped FROM up`);
   return [...rows].map((row) => {
     const depth = Number(row.depth);
     if (row.looped || depth >= MAX_FOLDER_DEPTH) brokenTree();
-    return { start: row.start, id: row.id, name: row.name, depth };
+    return { start: row.start, id: row.id, name: row.name, agentId: row.agent_id, depth };
   });
+}
+
+/** Of these folders, the ones in an Agent's private folder (its top folder included). */
+export async function insideAgentFolders(folderIds: readonly string[]): Promise<Set<string>> {
+  return new Set((await walkUp(folderIds)).filter((row) => row.agentId).map((row) => row.start));
 }
 
 /** The folder and the folders above it, the folder first. */
@@ -222,27 +261,31 @@ export async function roleIn(
 /**
  * The same for many items of one listing at once (their chains are not needed: an item in the
  * team space is everyone's, one in the reader's own space theirs, the rest comes from shares).
- * `hidden` holds the folders out of an Agent's sight.
+ * `hidden` holds the folders out of an Agent's sight. What a share would open inside an Agent's
+ * private folder stays closed (a backstop: sharing refuses it).
  */
 export async function rolesOf(reader: Reader, items: readonly Placed[]): Promise<Map<string, Role>> {
-  const [reach, hidden, docShares] = await Promise.all([
+  const throughShares = items.filter((item) => item.space !== 'team' && item.ownerId !== reader.memberId);
+  const placeOf = (item: Placed) => (item.type === 'folder' ? item.id : item.folderId);
+  const [reach, hidden, docShares, privateFolders] = await Promise.all([
     reader.sharedFolders(),
     reader.hiddenFolders(),
     docShareRoles(
       reader,
-      items.filter((item) => item.type === 'doc').map((item) => item.id),
+      throughShares.filter((item) => item.type === 'doc').map((item) => item.id),
     ),
+    insideAgentFolders([...new Set(throughShares.flatMap((item) => placeOf(item) ?? []))]),
   ]);
   const hiddenSet = new Set(hidden);
   const roles = new Map<string, Role>();
   for (const item of items) {
     let role: Role | null;
+    const inside = placeOf(item);
     if (item.space === 'team') role = 'editor';
-    else if (item.ownerId === reader.memberId) {
-      const inside = item.type === 'folder' ? item.id : item.folderId;
-      role = inside && hiddenSet.has(inside) ? null : 'owner';
-    } else {
-      const inherited = item.type === 'folder' ? reach.get(item.id) : item.folderId ? reach.get(item.folderId) : null;
+    else if (item.ownerId === reader.memberId) role = inside && hiddenSet.has(inside) ? null : 'owner';
+    else if (inside && privateFolders.has(inside)) role = null;
+    else {
+      const inherited = inside ? reach.get(inside) : null;
       role = best(inherited, item.type === 'doc' ? docShares.get(item.id) : null);
     }
     if (role) roles.set(item.id, role);
@@ -252,14 +295,19 @@ export async function rolesOf(reader: Reader, items: readonly Placed[]): Promise
 
 /**
  * A condition for rows of docs or files the reader may read: the team space, their own space
- * (minus other Agents' folders in an Agent's turn), and what shares reach.
+ * (minus other Agents' folders in an Agent's turn), and what shares reach (never inside an
+ * Agent's private folder).
  */
 export async function readableWhere(
   reader: Reader,
   table: { id: SQLWrapper; space: SQLWrapper; ownerId: SQLWrapper; folderId: SQLWrapper },
   type: 'doc' | 'file',
 ): Promise<SQL> {
-  const [reach, hidden] = await Promise.all([reader.sharedFolders(), reader.hiddenFolders()]);
+  const [reach, hidden, privateDocs] = await Promise.all([
+    reader.sharedFolders(),
+    reader.hiddenFolders(),
+    type === 'doc' ? reader.privateSharedDocs() : Promise.resolve([]),
+  ]);
   const shared = [...reach.keys()];
   return or(
     sql`${table.space} = 'team'`,
@@ -269,7 +317,10 @@ export async function readableWhere(
     ),
     shared.length ? inArray(table.folderId as never, shared) : undefined,
     type === 'doc'
-      ? sql`EXISTS (SELECT 1 FROM ${shares} WHERE ${shares.resourceType} = 'doc' AND ${shares.resourceId} = ${table.id} AND ${principalMatch(reader)})`
+      ? and(
+          sql`EXISTS (SELECT 1 FROM ${shares} WHERE ${shares.resourceType} = 'doc' AND ${shares.resourceId} = ${table.id} AND ${principalMatch(reader)})`,
+          privateDocs.length ? notInArray(table.id as never, privateDocs) : undefined,
+        )
       : undefined,
   )!;
 }
