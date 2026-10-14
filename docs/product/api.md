@@ -58,6 +58,8 @@ v2 和 v1 不兼容，不加 `/api/v2` 前缀，也不保留旧路由。`GET /ap
 | `PATCH /api/conversations/:id/messages/:mid` · `POST …/:mid/regenerate` · `PUT …/:mid/feedback` | 编辑最后一条、重新生成、👍 / 👎 |
 | `POST /api/conversations/:id/stop` · `…/read` | 停止、已读 |
 | `/api/conversations/:id/members` · `/notes` · `/export` | 房间成员、共享笔记、导出 Markdown |
+| `POST /api/voice/transcriptions` | 语音输入：multipart `file`（录音，最大 25 MB；能从容器读出时长时最长 10 分钟，超出 `audio_too_large` / `audio_too_long`）和可选 `language`，返回 `{ text, duration_seconds }`；没有为我服务的 STT 时 503 `stt_not_configured`，服务商出错 502 `provider_failed` |
+| `POST /api/voice/speech` | 朗读：`{ text（纯文本，最多 4000 字）, format?, voice?, speed? }`，返回音频；没有 TTS 时 503 `tts_not_configured`。客户端去掉 Markdown 后分段请求 |
 | `GET /api/requests?state=pending` · `POST /api/requests/:id/{approve,reject,answer,handback}` | 需要你：批准、拒绝、回答、交还。登录卡片可以批准（服务端随即代填）、拒绝，或在成员手动登录后交还；接管卡片只能交还 |
 
 ### 2.3 运行

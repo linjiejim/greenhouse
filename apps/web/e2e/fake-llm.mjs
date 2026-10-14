@@ -9,7 +9,9 @@
  *   "keep a note …" writes a doc into the Agent's own reference folder (knowledge_mutation)
  *   anything else "Echo: <message>", in a few chunks
  * Titles and summaries (non-streaming calls) get fixed answers. The same server is the
- * connectors' MCP servers and their sign-in (fake-mcp.mjs).
+ * connectors' MCP servers and their sign-in (fake-mcp.mjs), and an OpenAI-compatible speech
+ * service for the voice tests: any recording is SPOKEN (/v1/audio/transcriptions), any text a
+ * short silence (/v1/audio/speech).
  */
 
 import { writeFileSync } from 'node:fs';
@@ -17,6 +19,28 @@ import { createServer } from 'node:http';
 import { handleMcp } from './fake-mcp.mjs';
 
 const port = Number(process.argv[2] ?? process.env.FAKE_LLM_PORT ?? 4592);
+
+/** What every recording says. */
+const SPOKEN = '帮我把本周进度整理成周报';
+
+/** `seconds` of 8 kHz 16-bit mono silence as a WAV file. */
+function silence(seconds) {
+  const data = Math.round(seconds * 8000) * 2;
+  const wav = Buffer.alloc(44 + data);
+  wav.write('RIFF', 0, 'ascii');
+  wav.writeUInt32LE(36 + data, 4);
+  wav.write('WAVEfmt ', 8, 'ascii');
+  wav.writeUInt32LE(16, 16);
+  wav.writeUInt16LE(1, 20);
+  wav.writeUInt16LE(1, 22);
+  wav.writeUInt32LE(8000, 24);
+  wav.writeUInt32LE(16000, 28);
+  wav.writeUInt16LE(2, 32);
+  wav.writeUInt16LE(16, 34);
+  wav.write('data', 36, 'ascii');
+  wav.writeUInt32LE(data, 40);
+  return wav;
+}
 
 /** Replies with one rich block each (packages/types rich-output), for "show …". */
 const fence = (name, body) => '```' + name + '\n' + body + '\n```';
@@ -199,6 +223,16 @@ createServer((request, response) => {
     if (request.method === 'GET') {
       response.writeHead(200, { 'content-type': 'application/json' });
       return response.end(JSON.stringify({ data: [{ id: 'fake', object: 'model' }] }));
+    }
+    // Speech, before the model: a recording is multipart, not JSON.
+    if (request.url === '/v1/audio/transcriptions') {
+      response.writeHead(200, { 'content-type': 'application/json' });
+      return response.end(JSON.stringify({ text: SPOKEN }));
+    }
+    if (request.url === '/v1/audio/speech') {
+      response.writeHead(200, { 'content-type': 'audio/wav' });
+      // Long enough to still be playing when a test clicks another reply.
+      return response.end(silence(3));
     }
     const body = raw ? JSON.parse(raw) : {};
     if (process.env.FAKE_LLM_LOG) writeFileSync(process.env.FAKE_LLM_LOG, JSON.stringify(body, null, 2));

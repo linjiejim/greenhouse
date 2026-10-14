@@ -1251,6 +1251,80 @@ a {
   flex: 1;
 }
 
+/* 语音输入: while listening the recording strip stands where the text was. */
+.app-mic.is-on {
+  background: var(--gh-danger-fill);
+  color: var(--gh-danger);
+}
+
+.app-recording {
+  display: flex;
+  align-items: center;
+  gap: var(--gh-space-2);
+  min-height: var(--gh-space-6);
+  padding: 0 var(--gh-space-1);
+}
+
+.app-recording-dot {
+  flex-shrink: 0;
+  width: var(--gh-space-2);
+  height: var(--gh-space-2);
+  border-radius: var(--gh-radius-full);
+  background: var(--gh-danger);
+  animation: app-recording-blink var(--gh-duration-loop) ease-in-out infinite alternate;
+}
+
+.app-recording-bars {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: var(--gh-space-0_5);
+  height: var(--gh-space-6);
+}
+
+.app-recording-bars i {
+  width: var(--gh-space-0_5);
+  height: 100%;
+  border-radius: var(--gh-radius-full);
+  background: var(--gh-accent);
+  /* The level of that moment, never quite flat. */
+  transform: scaleY(calc(0.12 + var(--level, 0) * 0.88));
+  transition: transform var(--gh-duration-fast) var(--gh-ease-standard);
+}
+
+.app-recording-time {
+  flex-shrink: 0;
+  color: var(--gh-secondary);
+  font: var(--gh-type-label);
+  font-variant-numeric: tabular-nums;
+}
+
+.app-recording-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--gh-secondary);
+  font: var(--gh-type-body);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@keyframes app-recording-blink {
+  to {
+    opacity: 0.25;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-recording-dot {
+    animation: none;
+  }
+
+  .app-recording-bars i {
+    transition: none;
+  }
+}
+
 .app-send.gh-icon-button {
   border-radius: var(--gh-radius-full);
   background: var(--gh-accent);
