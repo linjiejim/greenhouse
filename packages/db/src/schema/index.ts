@@ -14,3 +14,5 @@ export * from './workspace.js';
 export * from './vault.js';
 export * from './knowledge.js';
 export * from './tables.js';
+
+export * from './apps.js';

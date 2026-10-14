@@ -1,3 +1,6 @@
+import { AppsHome } from '../pages/apps/AppsHome';
+import { AppBuilder } from '../pages/apps/AppBuilder';
+import { AppRuntime } from '../pages/apps/AppRuntime';
 import { useSession } from '../app/session';
 import type { Route } from '../lib/router';
 import { AdminPage } from '../pages/admin/AdminPage';
@@ -43,6 +46,12 @@ export function Workspace({ route }: { route: Route }) {
       return <SkillsPage scope={route.scope} />;
     case 'skill':
       return <SkillPage key={route.id} id={route.id} />;
+    case 'apps':
+      return me?.modules.apps ? <AppsHome newApp={route.newApp} /> : <NotFoundPage />;
+    case 'app':
+      return me?.modules.apps ? <AppRuntime id={route.id} pageId={route.appPage} /> : <NotFoundPage />;
+    case 'app-edit':
+      return me?.modules.apps ? <AppBuilder id={route.id} /> : <NotFoundPage />;
     case 'tables':
       return me?.modules.tables ? <TablesHome /> : <NotFoundPage />;
     case 'base':

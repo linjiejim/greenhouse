@@ -1,8 +1,10 @@
+import { appsEn } from './apps.en';
 import { mailEn } from './mail.en';
 import { tablesEn } from './tables.en';
 import type { MessageKey } from './zh';
 
 export const en: Record<MessageKey, string> = {
+  ...appsEn,
   'app.name': 'Greenhouse',
 
   'login.email': 'Email',

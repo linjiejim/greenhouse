@@ -145,11 +145,11 @@ v2 从零建表：只有一份基线迁移，不继承 v1 的迁移链，也不�
 | `base_automation_runs` | 自动化执行记录 | `automation_id` `CASCADE`、`record_id`（逻辑）、`trigger`、`status`、`steps`、`run_id`（Agent 步骤对应的运行）、`error`、`started_at`、`finished_at` |
 | `base_imports` | CSV 导入 | `base_id` / `table_id` `CASCADE`、`member_id`、`file_id`（用途 `import`，导入结束即删除）、`mapping`（`{ header, columns, first, samples }`）、`status`（draft / queued / running / done / failed / cancelled）、`total_rows`、`committed_rows`（重试从这里继续）、`result`（`{ created, skipped, errors（最多 100 条）, more_errors, failure }`）、`expires_at`（草稿 24 小时）；后台任务 `base_import`，去重键 `base_import:<id>:<起始行>` |
 | `apps` | 应用 | `base_id` `CASCADE`、`name`、`description`、`icon`、`accent`、`owner_id`、`status`（draft / published）、`draft_spec`（text）、`draft_revision`、`published_version`、`featured`、`archived_at`；受众在 `shares` |
-| `app_versions` | 已发布的不可变版本 | `app_id` `CASCADE`、`version`、`spec`（text）、`spec_hash`、`draft_revision`、`notes`、`custom_review`、`published_by`、`published_at` |
+| `app_versions` | 已发布的不可变版本 | `app_id` `CASCADE`、`version`、`spec`（text）、`spec_hash`、`draft_revision`、`notes`、`published_by`、`published_at` |
 | `base_templates` | 表格模板，可带应用；「项目」是内置模板 | `key`（唯一）、`source`（builtin / published）、`name`、`description`、`owner_id`、`latest_version`、`source_app_id`、`source_base_id`、`archived_at` |
-| `base_template_versions` | 模板的不可变版本 | `template_id` `CASCADE`、`version`（semver）、`changelog`、`content`（text：表结构、可选的应用 spec、示例行）、`content_hash`、`custom_cards`、`automations`、`scan_status`、`review_status`、`reviewed_by`、`reviewed_at` |
+| `base_template_versions` | 模板的不可变版本 | `template_id` `CASCADE`、`version`（semver）、`changelog`、`content`（text：表结构、可选的应用 spec、示例行）、`content_hash`、`scan_status`（passed / blocked）、`review_status`（pending / approved / rejected）、`reviewed_by`、`reviewed_at` |
 
-已建（M2.2 第一、二阶段）：`bases`、`base_roles`、`base_tables`、`base_fields`（全部类型）、`base_field_deps`、`base_views`（含仪表盘）、`base_forms`、`base_form_submissions`、`base_records`、`base_record_links`、`base_record_files`、`base_record_events`、`base_imports`；表格的分享在 `shares`，记录评论在 `comments`，置顶在 `pins`。自动化与应用随第三阶段。「项目」内置模板仍写在代码里（apps/api/src/modules/tables/templates.ts），`base_templates` 随应用模板一起建。
+已建（M2.2 第一、二阶段）：`bases`、`base_roles`、`base_tables`、`base_fields`（全部类型）、`base_field_deps`、`base_views`（含仪表盘）、`base_forms`、`base_form_submissions`、`base_records`、`base_record_links`、`base_record_files`、`base_record_events`、`base_imports`；表格的分享在 `shares`，记录评论在 `comments`，置顶在 `pins`。应用人用部分（#70）已建 `apps`、`app_versions`、`base_templates`、`base_template_versions`；自动化后续。「项目」定义仍写在代码里（apps/api/src/modules/tables/templates.ts），并登记为内置模板，复用现有安装器。
 
 后台任务（都在 `jobs`，apps/api/src/modules/tables/worker.ts）：`base_recompute`（记录写入时先在同一事务里算好它自己的计算字段，读到它的别处记录排进这个任务，按块重算并继续向下游传播；关联记录的标题变了、被删除或恢复时，读这些关联的记录也重算；字段新建、修改、删除、恢复后整表重算）、`base_ai_field`（快速模型生成 AI 字段的值，按字段创建者计量与预算，旧任务被新任务取代时不写入）、`base_import`、`base_purge`（每天一次：回收站 30 天以上的记录、过期导入、没挂上的附件）、`base_discard`（提交后删除文件字节）。
 
@@ -157,6 +157,8 @@ v2 从零建表：只有一份基线迁移，不继承 v1 的迁移链，也不�
 - `table_dashboards` / `table_dashboard_widgets` 并入 `base_views`。
 - `table_automation_outbox`、`table_recompute_jobs` 由 `jobs` 承接；`table_app_action_requests` 由 `idempotency_keys` 承接。
 - `table_notifications` 删除，自动化通知走 `notifications`。
+
+应用的人用部分（#70）：草稿 spec 为声明式 JSON（页面、复用仪表盘 schema 的卡片、记录／表单／按钮、角色）；每个应用最多 20 页、每页 30 张卡、20 个角色，spec 最多 1 MB。受众存 `shares(app)`，role 为 `use`（沿用表格权限）或 spec 的角色 id。发布和替换受众同一事务，发布消耗 draft_revision；已发布 spec 不修改。应用角色与底层表格权限取交集，多个应用角色的可见行取并集，再与表格规则及卡片查询相交。卡片字段是显示投影，计算依赖的禁读仍由角色规则决定；关联标题按目标数据表的权限裁剪。模板内容仅保留表结构、共享视图、字段依赖和发布 spec；管理员审核后才能安装。模板不包含自动化；自定义 HTML 的运行仍禁用，独立的版本代码审核后续。
 
 ## 7. 技能
 

@@ -11,6 +11,7 @@
  * (records), viewer (read, comment, personal views).
  */
 
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { and, eq, inArray, isNull, or, sql, type SQL } from 'drizzle-orm';
 import { BASE_ROLES, roleAtLeast, roleRulesSchema, type BaseRole, type Filter } from '@greenhouse/contract';
 import { baseRoles, bases, getDb, groupMembers, members, shares, type BaseRow } from '@greenhouse/db';
@@ -33,6 +34,12 @@ export interface CustomTableRules {
   rows: Filter[];
   /** Fields not seen (computed fields that read them are hidden too, see scope.ts). */
   hidden: ReadonlySet<string>;
+  /** Additional restrictions, intersected with the role's rows (application runtime). */
+  constraints?: Filter[];
+  /** Each group allows any of its filters; the groups intersect. */
+  rowGroups?: Filter[][];
+  /** Card columns are a projection, not an extra permission rule on computed dependencies. */
+  presentation?: ReadonlySet<string>;
 }
 
 /** The reader's custom roles in a base, added up; tables not in `tables` are not seen. */
@@ -116,7 +123,7 @@ export function combineRoles(rows: Array<{ id: string; name: string; rules: unkn
 }
 
 /** The reader's access to each of these bases (missing: none). */
-export async function accessOn(
+async function baseAccessOn(
   reader: TablesReader,
   rows: readonly Pick<BaseRow, 'id' | 'ownerId'>[],
 ): Promise<Map<string, BaseAccess>> {
@@ -173,6 +180,46 @@ export async function accessOn(
       const edits = [...custom.tables.values()].some((rules) => rules.access === 'edit');
       access.set(baseId, { role: edits ? 'editor' : 'viewer', custom });
     }
+  }
+  return access;
+}
+
+/** Applications narrow the existing access compiler for the lifetime of one request. */
+const restrictions = new AsyncLocalStorage<{ baseId: string; rules: CustomAccess | null }>();
+export function withBaseRestriction<T>(baseId: string, rules: CustomAccess | null, work: () => Promise<T>): Promise<T> {
+  return restrictions.run({ baseId, rules }, work);
+}
+
+export async function accessOn(
+  reader: TablesReader,
+  rows: readonly Pick<BaseRow, 'id' | 'ownerId'>[],
+): Promise<Map<string, BaseAccess>> {
+  const access = await baseAccessOn(reader, rows);
+  const limit = restrictions.getStore();
+  if (!limit) return access;
+  for (const [id, original] of access) {
+    if (id !== limit.baseId) {
+      access.delete(id);
+      continue;
+    }
+    if (!limit.rules) continue;
+    const tables = new Map<string, CustomTableRules>();
+    for (const [tableId, rule] of limit.rules.tables) {
+      const own = original.custom?.tables.get(tableId);
+      if (original.custom && !own) continue;
+      tables.set(tableId, {
+        access: original.role === 'viewer' || own?.access === 'read' || rule.access === 'read' ? 'read' : 'edit',
+        rows: own?.rows ?? [],
+        hidden: new Set([...(own?.hidden ?? []), ...rule.hidden]),
+        constraints: [...(own?.constraints ?? []), ...(rule.constraints ?? [])],
+        presentation: rule.presentation,
+        rowGroups: [...(own?.rowGroups ?? []), ...(rule.rows.length ? [rule.rows] : []), ...(rule.rowGroups ?? [])],
+      });
+    }
+    access.set(id, {
+      role: [...tables.values()].some((t) => t.access === 'edit') ? 'editor' : 'viewer',
+      custom: { roles: limit.rules.roles, tables },
+    });
   }
   return access;
 }

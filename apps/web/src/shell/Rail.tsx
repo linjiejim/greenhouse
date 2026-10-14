@@ -154,6 +154,14 @@ export function Rail({ module }: { module: ModuleId }) {
             onClick={() => navigate(lastBase())}
           />
         )}
+        {me?.modules.apps && (
+          <RailButton
+            id="apps"
+            active={module === 'apps'}
+            menu={[{ label: t('apps.new'), onClick: () => navigate({ page: 'apps', newApp: true }) }]}
+            onClick={() => navigate({ page: 'apps' })}
+          />
+        )}
         <Menu
           className="app-rail-more"
           label={t('nav.more')}

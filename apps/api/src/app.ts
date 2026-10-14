@@ -1,3 +1,5 @@
+import { appsRoutes } from './modules/apps/routes.js';
+import { createAppsService, type AppsService } from './modules/apps/service.js';
 import { randomUUID } from 'node:crypto';
 import { Hono } from 'hono';
 import { API_VERSION } from '@greenhouse/contract';
@@ -106,6 +108,7 @@ export interface Services {
   voice: VoiceService;
   knowledge: KnowledgeService;
   tables: TablesService;
+  apps: AppsService;
   notifications: NotificationsService;
   channels: ChannelsService;
   mail: MailService;
@@ -170,6 +173,7 @@ export function createServices(config: AppConfig, options: ServiceOptions = {}):
   const skills = createSkillsService({ files, providers, agents, connectors, computers, notifications });
   const knowledge = createKnowledgeService({ files, notifications, hub, publicUrl: config.PUBLIC_URL });
   const tables = createTablesService({ files, notifications, hub, providers });
+  const apps = createAppsService({ tables, notifications });
   // Who sees a base is cached a few seconds; a change of groups, modules or status forgets it at once.
   members.onAccessChange(() => tables.forgetAudiences());
   const schedules = createSchedulesService({ agents, background: () => engine.background });
@@ -226,13 +230,14 @@ export function createServices(config: AppConfig, options: ServiceOptions = {}):
     voice,
     knowledge,
     tables,
+    apps,
     notifications,
     channels,
     mail,
     requests,
     runs,
     schedules,
-    search: createSearchService({ members, knowledge, tables }),
+    search: createSearchService({ members, knowledge, tables, apps }),
     skills,
     usage: createUsageService({ agents, providers }),
     hub,
@@ -315,6 +320,7 @@ export function createApp(services: Services, options: { webDir?: string } = {})
   signedIn.route('/search', searchRoutes(services.search));
   signedIn.route('/skills', skillRoutes(services.skills));
   signedIn.route('/knowledge', knowledgeRoutes(services.knowledge));
+  signedIn.route('/apps', appsRoutes(services.apps));
   signedIn.route('/tables', tablesRoutes(services.tables));
   signedIn.route('/tables', formsRoutes(services.tables.forms));
   signedIn.route('/tables', importsRoutes(services.tables.imports));

@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 /** What `⌘K` searches; an item's `kind` is the group it belongs to. */
-export const SEARCH_KINDS = ['conversations', 'messages', 'agents', 'members', 'docs', 'records'] as const;
+export const SEARCH_KINDS = ['conversations', 'messages', 'agents', 'members', 'docs', 'records', 'apps'] as const;
 export type SearchKind = (typeof SEARCH_KINDS)[number];
 
 export const searchQuerySchema = z.object({

@@ -96,7 +96,11 @@ v2 和 v1 不兼容，不加 `/api/v2` 前缀，也不保留旧路由。`GET /ap
 | `POST` / `GET /api/tables/tables/:id/imports` · `GET` / `PATCH /api/tables/imports/:id` · `POST …/start` · `…/cancel` | CSV 导入（编辑者）：上传成为草稿（24 小时，最多 20 MB、5 万行、500 列），按列名对应字段可改，开始后由后台任务分批写入，失败重试从已写入的行继续；读不出或被拒的行跳过，结果报告行号、列和原因；只有导入者看得到自己的导入 |
 | `GET` / `PATCH` / `DELETE /api/tables/records/:id` · `POST …/restore` · `…/purge` · `GET …/activity` · `…/comments[/:commentId]` | 一条记录（带子记录）；修改要带读到的 `revision`，旧的返回 409 `stale_revision`（`details.record` 是现在的记录）；删除进回收站，恢复，彻底删除（搭建者）；活动是评论和变更历史，新的在前；评论（能读就能评，提及的人和记录创建者收到通知；只改自己的，拥有者能删任何一条） |
 | `GET /api/search?q=&kinds=` | `⌘K` 全局搜索；`records` 是我能读的表格里的记录（中英文全文检索），带 `base_id`、`table_id`；只凭自定义角色看的表格里只搜角色看得到的字段和记录 |
-| `/api/apps[/:id]/…` | 应用 |
+| `GET` / `POST /api/apps` | 应用目录（游标、名称搜索）与新建（表格搭建者）；目录包含我可用的发布应用和我搭建的草稿。应用开关和底层表格权限每次复核 |
+| `GET` / `PUT /api/apps/:id/draft` · `POST …/publish` · `GET …/versions` · `POST …/restore` | 搭建者只能修改自己的应用。草稿保存、发布、恢复带 `revision`，旧的 409 `stale_revision`；发布事务写不可变 spec/hash 和受众，并消耗 revision。恢复只改变草稿，旧发布继续生效；版本列表使用游标 |
+| `GET /api/apps/:id` · `POST …/cards/query` · `POST …/cards/:card/records/:record` · `POST …/actions` | 发布运行页面、保存的卡片求值／记录详情、固定动作与内部表单。数据按底层权限 ∩ 应用角色 ∩ 卡片查询／字段；应用永不扩大表格权限。动作带 `version` 和保存的 card/action id，旧发布版 409 `stale_version`；按钮不接收覆盖值。写入者是成员，记录历史 actor_type=app、meta.app_id。卡片记录查询支持游标；搭建者可用 `preview_role` 只读预览草稿，卡片查询带 version=0 和相同 preview_role，不允许预览动作；自定义 HTML 不执行且不返回源码 |
+| `PUT /api/apps/:id/pin` · `…/featured` | 本人置顶；管理员精选（管理员也需有应用和表格访问权，写审计） |
+| `GET /api/apps/templates[/:id]` · `POST /api/apps/:id/templates` · `POST /api/apps/templates/:id/review` · `…/install` | 查看可用／自己的模板（管理员可看待审结构）、从发布应用存结构模板、管理员审核、安装到新表格与应用草稿。只有审核通过的版本可安装；不复制线上记录、受众或自动化。未通过的模板对其他成员不可见。项目内置模板复用表格安装器 |
 | `GET /api/skills?q=&space=&kind=&scan_status=&archived=&agent=` · `POST /api/skills` · `GET` / `PATCH` / `DELETE /api/skills/:id` · `POST …/restore` · `GET` / `POST …/versions` · `POST …/scan` · `GET …/download?version=` · `GET /api/skills/starters?agent=` | 技能：我看得到的技能，`available` 与原因按 `agent`（默认主 Agent）判断；新建模板，或用 purpose `skill` 上传的 ZIP 新建包；`PATCH` 改显示名、说明、标签，`DELETE` 是归档；新版本（新 ZIP，或模板的新正文、字段、要求）；`scan` 重扫，或审核（`safe` / `malicious`，团队技能由管理员、个人技能由主人）；下载返回包的签名链接；`starters` 是新会话的 3 个常用技能（没有时给模板开场） |
 | `GET /api/notifications` · `POST …/read` | 通知 |
 | `GET /api/members?q=` · `GET /api/groups` | 成员与分组选择器（只读） |

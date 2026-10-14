@@ -14,6 +14,7 @@ export function ModuleBar({ module }: { module: ModuleId }) {
   const { me } = useSession();
   const Chat = MODULES.chat.icon;
   const Knowledge = MODULES.knowledge.icon;
+  const Apps = MODULES.apps.icon;
   const Tables = MODULES.tables.icon;
   return (
     <nav className="app-module-bar" aria-label={t('nav.main')}>
@@ -39,6 +40,16 @@ export function ModuleBar({ module }: { module: ModuleId }) {
         >
           <Tables size={icon.lg} strokeWidth={icon.stroke} />
           <span>{t('nav.tables')}</span>
+        </button>
+      )}
+      {me?.modules.apps && (
+        <button
+          type="button"
+          aria-current={module === 'apps' ? 'page' : undefined}
+          onClick={() => navigate({ page: 'apps' })}
+        >
+          <Apps size={icon.lg} strokeWidth={icon.stroke} />
+          <span>{t('nav.apps')}</span>
         </button>
       )}
       <Menu

@@ -4,6 +4,7 @@
  * time, however many requests failed), and turns the error envelope into ApiClientError.
  */
 
+import { appsApi } from './apps-client.js';
 import type {
   AdminPublicAgent,
   Agent,
@@ -720,6 +721,7 @@ export function createApiClient(options: ApiClientOptions) {
     },
 
     knowledge: knowledgeApi({ get, post, patch, put, del, request, download, downloadBlob }),
+    apps: appsApi({ get, post, patch, put, del, request, download, downloadBlob }),
     tables: tablesApi({ get, post, patch, put, del, request, download, downloadBlob }),
 
     files: {

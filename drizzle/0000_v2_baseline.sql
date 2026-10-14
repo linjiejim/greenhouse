@@ -1049,6 +1049,67 @@ CREATE TABLE "bases" (
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
+CREATE TABLE "app_versions" (
+	"id" text PRIMARY KEY NOT NULL,
+	"app_id" text NOT NULL,
+	"version" integer NOT NULL,
+	"spec" text NOT NULL,
+	"spec_hash" text NOT NULL,
+	"draft_revision" integer NOT NULL,
+	"notes" text DEFAULT '' NOT NULL,
+	"published_by" text NOT NULL,
+	"published_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "app_versions_number_key" UNIQUE("app_id","version")
+);
+--> statement-breakpoint
+CREATE TABLE "apps" (
+	"id" text PRIMARY KEY NOT NULL,
+	"base_id" text NOT NULL,
+	"name" text NOT NULL,
+	"description" text DEFAULT '' NOT NULL,
+	"icon" text DEFAULT 'layout-grid' NOT NULL,
+	"accent" text DEFAULT 'green' NOT NULL,
+	"owner_id" text NOT NULL,
+	"status" text DEFAULT 'draft' NOT NULL,
+	"draft_spec" text NOT NULL,
+	"draft_revision" integer DEFAULT 1 NOT NULL,
+	"published_version" integer,
+	"featured" boolean DEFAULT false NOT NULL,
+	"archived_at" timestamp with time zone,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "base_template_versions" (
+	"id" text PRIMARY KEY NOT NULL,
+	"template_id" text NOT NULL,
+	"version" text NOT NULL,
+	"changelog" text DEFAULT '' NOT NULL,
+	"content" text NOT NULL,
+	"content_hash" text NOT NULL,
+	"scan_status" text DEFAULT 'passed' NOT NULL,
+	"review_status" text DEFAULT 'pending' NOT NULL,
+	"reviewed_by" text,
+	"reviewed_at" timestamp with time zone,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "base_template_versions_number_key" UNIQUE("template_id","version")
+);
+--> statement-breakpoint
+CREATE TABLE "base_templates" (
+	"id" text PRIMARY KEY NOT NULL,
+	"key" text NOT NULL,
+	"source" text NOT NULL,
+	"name" text NOT NULL,
+	"description" text DEFAULT '' NOT NULL,
+	"owner_id" text NOT NULL,
+	"latest_version" text NOT NULL,
+	"source_app_id" text,
+	"source_base_id" text,
+	"archived_at" timestamp with time zone,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "base_templates_key_unique" UNIQUE("key")
+);
+--> statement-breakpoint
 ALTER TABLE "auth_links" ADD CONSTRAINT "auth_links_member_id_members_id_fk" FOREIGN KEY ("member_id") REFERENCES "public"."members"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "group_members" ADD CONSTRAINT "group_members_group_id_groups_id_fk" FOREIGN KEY ("group_id") REFERENCES "public"."groups"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "group_members" ADD CONSTRAINT "group_members_member_id_members_id_fk" FOREIGN KEY ("member_id") REFERENCES "public"."members"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
@@ -1133,6 +1194,10 @@ ALTER TABLE "base_views" ADD CONSTRAINT "base_views_base_id_bases_id_fk" FOREIGN
 ALTER TABLE "base_views" ADD CONSTRAINT "base_views_table_id_base_tables_id_fk" FOREIGN KEY ("table_id") REFERENCES "public"."base_tables"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "base_views" ADD CONSTRAINT "base_views_owner_id_members_id_fk" FOREIGN KEY ("owner_id") REFERENCES "public"."members"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "bases" ADD CONSTRAINT "bases_owner_id_members_id_fk" FOREIGN KEY ("owner_id") REFERENCES "public"."members"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "app_versions" ADD CONSTRAINT "app_versions_app_id_apps_id_fk" FOREIGN KEY ("app_id") REFERENCES "public"."apps"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "apps" ADD CONSTRAINT "apps_base_id_bases_id_fk" FOREIGN KEY ("base_id") REFERENCES "public"."bases"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "apps" ADD CONSTRAINT "apps_owner_id_members_id_fk" FOREIGN KEY ("owner_id") REFERENCES "public"."members"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "base_template_versions" ADD CONSTRAINT "base_template_versions_template_id_base_templates_id_fk" FOREIGN KEY ("template_id") REFERENCES "public"."base_templates"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 CREATE UNIQUE INDEX "auth_links_hash_key" ON "auth_links" USING btree ("token_hash");--> statement-breakpoint
 CREATE UNIQUE INDEX "auth_links_live_key" ON "auth_links" USING btree ("member_id") WHERE "auth_links"."consumed_at" IS NULL AND "auth_links"."revoked_at" IS NULL;--> statement-breakpoint
 CREATE INDEX "group_members_member_idx" ON "group_members" USING btree ("member_id");--> statement-breakpoint
@@ -1254,4 +1319,7 @@ CREATE INDEX "base_tables_base_idx" ON "base_tables" USING btree ("base_id","pos
 CREATE UNIQUE INDEX "base_tables_name_key" ON "base_tables" USING btree ("base_id","name") WHERE "base_tables"."archived_at" IS NULL;--> statement-breakpoint
 CREATE INDEX "base_views_table_idx" ON "base_views" USING btree ("table_id","position");--> statement-breakpoint
 CREATE INDEX "base_views_base_idx" ON "base_views" USING btree ("base_id");--> statement-breakpoint
-CREATE INDEX "bases_owner_idx" ON "bases" USING btree ("owner_id");
+CREATE INDEX "bases_owner_idx" ON "bases" USING btree ("owner_id");--> statement-breakpoint
+CREATE INDEX "apps_base_idx" ON "apps" USING btree ("base_id");--> statement-breakpoint
+CREATE INDEX "apps_owner_idx" ON "apps" USING btree ("owner_id");--> statement-breakpoint
+CREATE INDEX "base_templates_owner_idx" ON "base_templates" USING btree ("owner_id");

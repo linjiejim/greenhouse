@@ -14,12 +14,15 @@ import type { KnowledgeService } from '../knowledge/service.js';
 import type { MembersService } from '../members/service.js';
 import type { TablesService } from '../tables/service.js';
 
+import type { AppsService } from '../apps/service.js';
+
 const SNIPPET = 120;
 
 export function createSearchService(deps: {
   members: MembersService;
   knowledge: KnowledgeService;
   tables: TablesService;
+  apps: AppsService;
 }) {
   /** Titles to show: a conversation's own, else the name of the Agent it is with. */
   async function agentNames(ids: (string | null)[]): Promise<Map<string, string>> {
@@ -126,6 +129,11 @@ export function createSearchService(deps: {
           title: hit.title,
           ...(hit.snippet ? { snippet: hit.snippet } : {}),
         }));
+    },
+
+    async apps(memberId, q, limit) {
+      const found = await deps.apps.list(memberId, { q, limit }).catch(() => ({ items: [] }));
+      return found.items.map((a) => ({ kind: 'apps', id: a.id, title: a.name, snippet: a.description }));
     },
 
     async records(memberId, q, limit) {
