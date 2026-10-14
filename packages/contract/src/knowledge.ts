@@ -39,7 +39,7 @@ export const COMMENT_BODY_MAX = 10_000;
  */
 export const docHref = (docId: string) => `#/knowledge/${docId}`;
 /** A member mentioned in Markdown: `[@Name](member:<member id>)`; a new mention notifies them. */
-export const mentionHref = (memberId: string) => `member:${memberId}`;
+export const mentionHref = (id: string) => `${id.startsWith('agt_') ? 'agent' : 'member'}:${id}`;
 
 export const memberRefSchema = z.object({ id: z.string(), name: z.string() });
 export type MemberRef = z.infer<typeof memberRefSchema>;

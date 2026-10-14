@@ -36,6 +36,7 @@ import {
   members,
   newId,
   requests,
+  runs,
   type AgentComputer,
   type Agent as AgentRow,
 } from '@greenhouse/db';
@@ -123,7 +124,7 @@ function parseJson<T>(text: string): T | null {
 /** Wakes an Agent in a conversation (the engine's deliver). */
 export type Deliver = (
   conversationId: string,
-  item: { agentId: string; memberId: string; note: string },
+  item: { agentId: string; memberId: string; note: string; kind?: 'event'; dedupeKey?: string; computer?: boolean },
 ) => Promise<void>;
 
 export function createComputersService(deps: {
@@ -282,6 +283,21 @@ export function createComputersService(deps: {
       }
     }
     const [fresh] = await getDb().select().from(agentComputers).where(eq(agentComputers.id, row!.id));
+    if (fresh?.backgroundRunId) {
+      const [run] = await getDb().select().from(runs).where(eq(runs.id, fresh.backgroundRunId));
+      if (!run || !['running', 'waiting', 'queued'].includes(run.status)) {
+        throw conflict('computer_background_busy', 'The computer is reserved for background work.');
+      }
+      if (!client.setEgress)
+        throw conflict('background_network_unavailable', 'This sandbox cannot restrict background networking.');
+      await client.setEgress(
+        fresh.sandboxRef,
+        run.checkpoint?.read_private ? [] : ((run.input.domains as string[]) ?? []),
+      );
+    } else if (fresh?.egressRestricted) {
+      await client.setEgress?.(fresh.sandboxRef, null);
+      await getDb().update(agentComputers).set({ egressRestricted: false }).where(eq(agentComputers.id, fresh.id));
+    }
     return { row: fresh!, client };
   }
 
@@ -337,6 +353,57 @@ export function createComputersService(deps: {
 
   const service = {
     ensure,
+
+    async assertRunAccess(memberId: string, agentId: string, runId: string) {
+      await agentFor(memberId, agentId);
+      const row = await rowOf(memberId, agentId);
+      if (row?.backgroundRunId && row.backgroundRunId !== runId)
+        throw conflict('computer_background_busy', 'Another run is using this computer.');
+    },
+
+    async reserveBackground(memberId: string, agentId: string, runId: string) {
+      const { row, client } = await ensure(memberId, agentId);
+      if (!client.setEgress)
+        throw conflict('background_network_unavailable', 'This sandbox cannot restrict background networking.');
+      if (row.leaseController === 'member' && Date.parse(row.leaseUntil ?? '') > Date.now())
+        throw conflict('computer_background_busy', 'The member is controlling this computer.');
+      if (
+        row.backgroundRunId !== runId &&
+        (await service.jobs(memberId, agentId)).some((job) => job.status === 'running')
+      )
+        throw conflict('computer_background_busy', 'A process is already using this computer.');
+      const [reserved] = await getDb()
+        .update(agentComputers)
+        .set({ backgroundRunId: runId, egressRestricted: true })
+        .where(
+          and(
+            eq(agentComputers.id, row.id),
+            or(isNull(agentComputers.backgroundRunId), eq(agentComputers.backgroundRunId, runId)),
+          ),
+        )
+        .returning();
+      if (!reserved) throw conflict('computer_background_busy', 'Another background run is using this computer.');
+      await ensure(memberId, agentId);
+    },
+    async sealBackground(memberId: string, agentId: string, runId: string) {
+      const row = await rowOf(memberId, agentId);
+      if (row?.backgroundRunId !== runId) return;
+      const client = await clientFor(row, memberId);
+      await client.setEgress?.(row.sandboxRef, []);
+    },
+    async releaseBackground(memberId: string, agentId: string, runId: string) {
+      const row = await rowOf(memberId, agentId);
+      if (row?.backgroundRunId !== runId) return;
+      const client = await clientFor(row, memberId);
+      // Stop processes before normal network access can be restored by a later foreground turn.
+      await client.restart(row.sandboxRef);
+      await client.stop(row.sandboxRef);
+      await getDb()
+        .update(agentComputers)
+        .set({ backgroundRunId: null })
+        .where(and(eq(agentComputers.id, row.id), eq(agentComputers.backgroundRunId, runId)));
+      await setState(row.id, 'stopped');
+    },
 
     async view(memberId: string, agentId: string): Promise<ComputerView> {
       const agent = await agentFor(memberId, agentId);
@@ -398,6 +465,8 @@ export function createComputersService(deps: {
       } else {
         row = (await ensure(memberId, agentId)).row;
       }
+      if (row.backgroundRunId && purpose !== 'view')
+        throw conflict('computer_background_busy', 'Background work is using this computer.');
       const ticket = deps.secrets.create();
       const grant: TicketGrant = {
         member_id: memberId,
@@ -716,7 +785,14 @@ export function createComputersService(deps: {
               : job.status === 'exited'
                 ? `The background process "${label}" (${watch.jobRef}) ended with exit code ${job.exit_code}. Read its output with process_log and tell the member the result.`
                 : `The background process "${label}" (${watch.jobRef}) was lost: your computer restarted while it ran. Your files are kept; if the command can resume from what it already wrote, start it again with run_background.`;
-            await deliver(watch.conversationId, { agentId: watch.agentId, memberId: watch.memberId, note });
+            await deliver(watch.conversationId, {
+              agentId: watch.agentId,
+              memberId: watch.memberId,
+              note,
+              kind: 'event',
+              dedupeKey: `computer-process:${watch.id}`,
+              computer: true,
+            });
           }
         } catch (error) {
           logger.warn('[computers] could not check processes', { computer: computer.id, error: toErrorMessage(error) });

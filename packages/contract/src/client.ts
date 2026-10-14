@@ -64,6 +64,7 @@ import type {
   UpdateNoteInput,
 } from './conversations.js';
 import type { FileView } from './files.js';
+import type { StandingApproval } from './approvals.js';
 import type { SpeechInput, Transcription } from './voice.js';
 import { knowledgeApi } from './knowledge-client.js';
 import { tablesApi } from './tables-client.js';
@@ -543,6 +544,10 @@ export function createApiClient(options: ApiClientOptions) {
       get<SearchResult>('/api/search', { q: query.q, kinds: query.kinds?.join(','), limit: query.limit }),
 
     agents: {
+      standingApprovals: (id: string, cursor?: string) =>
+        get<Page<StandingApproval>>(`/api/agents/${encodeURIComponent(id)}/standing-approvals`, { cursor }),
+      revokeStandingApproval: (id: string, approvalId: string) =>
+        del(`/api/agents/${encodeURIComponent(id)}/standing-approvals/${encodeURIComponent(approvalId)}`),
       list: (scope: 'mine' | 'archived' = 'mine') => get<{ items: Agent[] }>('/api/agents', { scope }),
       get: (id: string) => get<AgentDetail>(`/api/agents/${encodeURIComponent(id)}`),
       create: (input: CreateAgentInput) => post<AgentDetail>('/api/agents', input),
@@ -666,7 +671,11 @@ export function createApiClient(options: ApiClientOptions) {
     requests: {
       list: (query: { state?: 'pending' | 'all'; conversation_id?: string } = {}) =>
         get<Page<NeedsYou>>('/api/requests', query),
-      approve: (id: string) => post<NeedsYou>(`/api/requests/${id}/approve`),
+      approve: (id: string, standing = false, continueAfter?: boolean) =>
+        post<NeedsYou>(`/api/requests/${id}/approve`, {
+          standing,
+          ...(continueAfter !== undefined ? { continue_after: continueAfter } : {}),
+        }),
       reject: (id: string, reason?: string) => post<NeedsYou>(`/api/requests/${id}/reject`, reason ? { reason } : {}),
       answer: (id: string, answers: AnswerInput['answers']) =>
         post<NeedsYou>(`/api/requests/${id}/answer`, { answers }),
@@ -675,6 +684,7 @@ export function createApiClient(options: ApiClientOptions) {
     },
 
     runs: {
+      undoWrite: (stepId: string) => post<void>(`/api/runs/steps/${encodeURIComponent(stepId)}/undo`),
       list: (query: { state?: 'active' | 'done' | 'all'; agent?: string; cursor?: string } = {}) =>
         get<Page<RunView>>('/api/runs', query),
       get: (id: string) => get<RunDetail>(`/api/runs/${id}`),

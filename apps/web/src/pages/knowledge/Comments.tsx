@@ -57,7 +57,17 @@ function CommentBox({
   }, [text]);
   const people = useQuery({
     queryKey: ['members', 'directory', at?.query ?? ''],
-    queryFn: () => api.members.directory(at?.query || undefined),
+    queryFn: async () => {
+      const [people, agents] = await Promise.all([api.members.directory(at?.query || undefined), api.agents.list()]);
+      return {
+        items: [
+          ...people.items,
+          ...agents.items
+            .filter((agent) => agent.name.toLowerCase().includes((at?.query ?? '').toLowerCase()))
+            .map((agent) => ({ id: agent.id, name: agent.name, email: agent.role, avatar_url: null })),
+        ],
+      };
+    },
     enabled: at !== null,
     staleTime: 60_000,
   });
@@ -182,11 +192,11 @@ function CommentBox({
 /** A comment as typed again: mention links back to `@Name`, so editing keeps them. */
 const editable = (comment: KnowledgeComment) =>
   comment.body.replace(
-    /\[@((?:\\.|[^\]\\])*)\]\(member:[^)\s]+\)/g,
+    /\[@((?:\\.|[^\]\\])*)\]\((?:member|agent):[^)\s]+\)/g,
     (_m, name: string) => `@${name.replace(/\\([\\[\]])/g, '$1')}`,
   );
 const mentionedIn = (comment: KnowledgeComment): MemberRef[] =>
-  [...comment.body.matchAll(/\[@((?:\\.|[^\]\\])*)\]\(member:([^)\s]+)\)/g)].map((match) => ({
+  [...comment.body.matchAll(/\[@((?:\\.|[^\]\\])*)\]\((?:member|agent):([^)\s]+)\)/g)].map((match) => ({
     id: match[2]!,
     name: match[1]!.replace(/\\([\\[\]])/g, '$1'),
   }));

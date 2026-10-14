@@ -19,6 +19,7 @@ import {
   Skeleton,
   StatusBadge,
   TextArea,
+  Switch,
 } from '@greenhouse/ui/kit';
 import { icon } from '@greenhouse/ui/tokens';
 import type { Schedule } from '@greenhouse/contract';
@@ -47,6 +48,7 @@ function ScheduleForm({
   const actions = useScheduleActions();
   const [name, setName] = useState(schedule?.name ?? '');
   const [brief, setBrief] = useState(schedule?.brief ?? '');
+  const [quiet, setQuiet] = useState(schedule?.quiet ?? false);
   const [frequency, setFrequency] = useState<Frequency>(
     schedule ? fromCron(schedule.cron) : { kind: 'daily', hour: 9, minute: 0 },
   );
@@ -69,7 +71,7 @@ function ScheduleForm({
     event.preventDefault();
     if (!name.trim()) return setError(t('request.required', { name: t('schedules.name') }));
     if (!brief.trim()) return setError(t('request.required', { name: t('schedules.brief') }));
-    const input = { name: name.trim(), brief: brief.trim(), cron: toCron(frequency), timezone };
+    const input = { name: name.trim(), brief: brief.trim(), cron: toCron(frequency), timezone, quiet };
     const done = {
       onSuccess: () => onClose(),
       onError: (caught: Error) => setError(caught instanceof ApiClientError ? caught.message : t('common.error')),
@@ -152,6 +154,10 @@ function ScheduleForm({
         <Field label={t('schedules.timezone')}>
           <Input value={timezone} maxLength={64} onChange={(event) => setTimezone(event.target.value)} />
         </Field>
+        <div className="app-setting-row is-plain">
+          <span className="app-setting-text">{t('approvals.quiet')}</span>
+          <Switch checked={quiet} onChange={setQuiet} label={t('approvals.quiet')} />
+        </div>
         {error && (
           <p className="app-form-error" role="alert">
             {error}

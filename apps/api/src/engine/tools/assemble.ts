@@ -6,10 +6,12 @@
 import { createHash } from 'node:crypto';
 import { tool, type ToolSet } from 'ai';
 import { and, eq, inArray, sql } from 'drizzle-orm';
-import { getDb, newId, runSteps, type NeedsYouRequest } from '@greenhouse/db';
+import { getDb, members, newId, runSteps, runs, transaction, type NeedsYouRequest } from '@greenhouse/db';
+import type { ApprovalsService } from '../../modules/agents/approvals.js';
 import { toErrorMessage } from '@greenhouse/utils/error';
 import { surfacesOf, type AvailabilityContext, type Card, type ToolContext, type ToolDef } from './define.js';
 import { toolInputSchema } from './schema.js';
+import { createKeyedLock } from '../locks.js';
 
 const MAX_STORED_JSON = 20_000;
 
@@ -120,6 +122,9 @@ export async function assembleTools(input: {
   raise: (card: Card, stepId: string) => Promise<NeedsYouRequest>;
   /** The card heading for an approval, in the member's language. */
   approvalTitle: (summary: string) => string;
+  approvals?: ApprovalsService;
+  receipt?: (stepId: string, summary: string) => Promise<void>;
+  privateRead?: () => Promise<void>;
 }): Promise<TurnTools> {
   const { context, availability } = input;
   const allowed = context.manifest.tools ? new Set(context.manifest.tools) : null;
@@ -149,133 +154,201 @@ export async function assembleTools(input: {
     return seen ? `${callId}#${seen + 1}` : callId;
   };
   // Nobody watches a background run: once it has read private data it may not reach outside.
-  let readPrivate = false;
+  const [savedRun] = await getDb().select({ checkpoint: runs.checkpoint }).from(runs).where(eq(runs.id, context.runId));
+  let readPrivate = savedRun?.checkpoint?.read_private === true;
+  if (savedRun?.checkpoint?.tainted === true) context.taint();
   const tools: ToolSet = {};
+  const serialize = createKeyedLock();
   for (const def of chosen) {
     tools[def.name] = tool({
       description: def.description,
       inputSchema: toolInputSchema(def.input),
-      execute: async (args: unknown, options: { toolCallId: string; abortSignal?: AbortSignal }) => {
-        if (def.outbound && readPrivate && context.surface === 'background') {
-          throw new Error(
-            'This run has read private data, so it can no longer search or open web pages. Report what you have.',
-          );
-        }
-        if (def.private) readPrivate = true;
-        const started = Date.now();
-        const key = stepKey(options.toolCallId);
-        const attempt = context.attempt ?? 1;
-        const risk = def.callRisk ? await def.callRisk(args, context) : def.risk;
-        // A background run can be retried: the same call (tool and arguments) is the same step.
-        const idempotencyKey = context.surface === 'background' ? callKey(def.name, args) : null;
-        if (idempotencyKey) {
-          const [earlier] = await getDb()
-            .select({ id: runSteps.id, status: runSteps.status, attempt: runSteps.attempt, output: runSteps.output })
-            .from(runSteps)
-            .where(and(eq(runSteps.runId, context.runId), eq(runSteps.idempotencyKey, idempotencyKey)));
-          // A call that already succeeded returns what it returned.
-          if (earlier?.status === 'succeeded') return earlier.output;
-          // An earlier attempt died while making this call: with effects outside, it is not made
-          // again blindly. The Agent is told once per attempt; calling it again after that runs it.
-          if (
-            earlier &&
-            !def.idempotent &&
-            (earlier.status === 'running' || earlier.status === 'uncertain') &&
-            earlier.attempt < attempt
-          ) {
-            await getDb()
-              .update(runSteps)
-              .set({ key, attempt, status: 'uncertain', finishedAt: sql`now()`, updatedAt: sql`now()` })
-              .where(eq(runSteps.id, earlier.id));
-            return UNCERTAIN_RESULT;
+      execute: (args: unknown, options: { toolCallId: string; abortSignal?: AbortSignal }) =>
+        serialize(context.runId, async () => {
+          if (context.signal.aborted || options.abortSignal?.aborted) throw new Error('Stopped.');
+          const [member] = await getDb()
+            .select({ status: members.status })
+            .from(members)
+            .where(eq(members.id, context.memberId));
+          if (member?.status !== 'active') throw new Error('The member is no longer active.');
+          if (def.outbound && def.name !== 'computer' && readPrivate && context.surface === 'background') {
+            throw new Error(
+              'This run has read private data, so it can no longer search or open web pages. Report what you have.',
+            );
           }
-        }
-        const [row] = await getDb()
-          .insert(runSteps)
-          .values({
-            id: newId('runStep'),
-            runId: context.runId,
-            key,
-            attempt,
-            kind: 'tool',
-            toolName: def.name,
-            risk,
-            idempotencyKey,
-            status: 'running',
-            input: (bounded(args) ?? {}) as Record<string, unknown>,
-            startedAt: new Date(started).toISOString(),
-          })
-          .onConflictDoUpdate({
-            target: [runSteps.runId, runSteps.idempotencyKey],
-            set: {
+          if (def.private) {
+            readPrivate = true;
+            await input.privateRead?.();
+          }
+          const started = Date.now();
+          const key = stepKey(options.toolCallId);
+          const attempt = context.attempt ?? 1;
+          let risk = def.callRisk
+            ? await def.callRisk(args, context)
+            : def.risk === 'read'
+              ? 'read'
+              : def.risk === 'external'
+                ? 'tier3'
+                : 'tier2';
+          if (risk !== 'read' && !context.manifest.write) throw new Error('Writing is disabled for this Agent.');
+          // A background run can be retried: the same call (tool and arguments) is the same step.
+          const idempotencyKey = context.surface === 'background' ? callKey(def.name, args) : null;
+          if (idempotencyKey) {
+            const [earlier] = await getDb()
+              .select({ id: runSteps.id, status: runSteps.status, attempt: runSteps.attempt, output: runSteps.output })
+              .from(runSteps)
+              .where(and(eq(runSteps.runId, context.runId), eq(runSteps.idempotencyKey, idempotencyKey)));
+            // A call that already succeeded returns what it returned.
+            if (earlier?.status === 'succeeded' || earlier?.status === 'skipped')
+              return earlier.output ?? { status: 'declined', note: 'The member declined this call. Do not repeat it.' };
+            if (earlier?.status === 'pending') {
+              waiting = true;
+              return { status: 'needs_approval', note: 'This call still waits for the member.' };
+            }
+            // An earlier attempt died while making this call: with effects outside, it is not made
+            // again blindly. The Agent is told once per attempt; calling it again after that runs it.
+            if (
+              earlier &&
+              !def.idempotent &&
+              (earlier.status === 'running' || earlier.status === 'uncertain') &&
+              earlier.attempt < attempt
+            ) {
+              await getDb()
+                .update(runSteps)
+                .set({ key, attempt, status: 'uncertain', finishedAt: sql`now()`, updatedAt: sql`now()` })
+                .where(eq(runSteps.id, earlier.id));
+              return UNCERTAIN_RESULT;
+            }
+          }
+          const [row] = await getDb()
+            .insert(runSteps)
+            .values({
+              id: newId('runStep'),
+              runId: context.runId,
               key,
               attempt,
+              kind: 'tool',
+              toolName: def.name,
+              risk,
+              idempotencyKey,
               status: 'running',
-              output: null,
-              error: null,
+              input: (bounded(args) ?? {}) as Record<string, unknown>,
               startedAt: new Date(started).toISOString(),
-              finishedAt: null,
-              updatedAt: sql`now()`,
-            },
-          })
-          .returning({ id: runSteps.id });
-        const stepId = row!.id;
-        if (def.taints) context.taint();
-        const call: ToolContext = {
-          ...context,
-          stepId,
-          signal: options.abortSignal ?? context.signal,
-          endTurn: () => {
-            ended = true;
-          },
-          raise: async (card) => {
-            const request = await input.raise({ ...card, payload: { tool: def.name, ...card.payload } }, stepId);
-            if (card.waits) waiting = true;
-            return request;
-          },
-        };
-        if (risk !== 'read' && (def.needsApproval ? def.needsApproval(args, call) : true)) {
-          // Nothing changes until the member approves; the engine runs exactly these arguments then.
-          const card = (await def.describe?.(args, call)) ?? { summary: def.name, details: argumentDetails(args) };
-          const request = await call.raise({
-            kind: 'approval',
-            subject: 'tool_write',
-            title: input.approvalTitle(card.summary),
-            payload: { tool: def.name, input: args, summary: card.summary, details: card.details },
-            waits: true,
-          });
-          await getDb()
-            .update(runSteps)
-            .set({ status: 'pending', requestId: request.id, updatedAt: sql`now()` })
-            .where(eq(runSteps.id, stepId));
-          return {
-            status: 'needs_approval',
-            request_id: request.id,
-            note: 'The member sees an approval card. End your turn now; you will be told the outcome.',
-          };
-        }
-        const finish = async (status: 'succeeded' | 'failed', output: unknown, error?: string) => {
-          await getDb()
-            .update(runSteps)
-            .set({
-              status,
-              output: bounded(output),
-              error: error ? { code: 'tool_failed', message: error.slice(0, 1000) } : null,
-              durationMs: Date.now() - started,
-              finishedAt: sql`now()`,
-              updatedAt: sql`now()`,
             })
-            .where(and(eq(runSteps.id, stepId)));
-        };
-        try {
-          const output = await def.execute(args, call);
-          await finish('succeeded', output);
-          return output;
-        } catch (error) {
-          await finish('failed', undefined, toErrorMessage(error));
-          throw error;
-        }
-      },
+            .onConflictDoUpdate({
+              target: [runSteps.runId, runSteps.idempotencyKey],
+              set: {
+                key,
+                attempt,
+                status: 'running',
+                output: null,
+                error: null,
+                startedAt: new Date(started).toISOString(),
+                finishedAt: null,
+                updatedAt: sql`now()`,
+              },
+            })
+            .returning({ id: runSteps.id });
+          const stepId = row!.id;
+          if (def.taints) context.taint();
+          await getDb()
+            .update(runs)
+            .set({
+              checkpoint: sql`coalesce(${runs.checkpoint}, '{}'::jsonb) || ${JSON.stringify({ read_private: readPrivate, tainted: context.tainted() })}::jsonb`,
+            })
+            .where(eq(runs.id, context.runId));
+          const call: ToolContext = {
+            ...context,
+            stepId,
+            signal: options.abortSignal ?? context.signal,
+            endTurn: () => {
+              ended = true;
+            },
+            raise: async (card) => {
+              const request = await input.raise({ ...card, payload: { tool: def.name, ...card.payload } }, stepId);
+              if (card.waits) waiting = true;
+              return request;
+            },
+          };
+          const finish = async (status: 'succeeded' | 'failed', output: unknown, error?: string) => {
+            await getDb()
+              .update(runSteps)
+              .set({
+                status,
+                output: bounded(output),
+                error: error ? { code: 'tool_failed', message: error.slice(0, 1000) } : null,
+                durationMs: Date.now() - started,
+                finishedAt: sql`now()`,
+                updatedAt: sql`now()`,
+              })
+              .where(and(eq(runSteps.id, stepId)));
+          };
+          const perform = async () => {
+            if (call.signal.aborted) throw new Error('Stopped.');
+            await def.guard?.(args, call);
+            if (risk !== 'read' && def.callRisk) {
+              risk = await def.callRisk(args, context);
+              await getDb().update(runSteps).set({ risk }).where(eq(runSteps.id, stepId));
+            }
+            const scope = risk === 'tier2' ? ((await def.approvalScope?.(args, call)) ?? null) : null;
+            const standing =
+              scope && !context.tainted() && (await input.approvals?.allows(context.agent.id, context.memberId, scope));
+            if (risk === 'tier3' || (risk === 'tier2' && !standing)) {
+              // Nothing changes until the member approves; the engine runs exactly these arguments then.
+              const card = (await def.describe?.(args, call)) ?? { summary: def.name, details: argumentDetails(args) };
+              const request = await call.raise({
+                kind: 'approval',
+                subject: 'tool_write',
+                title: input.approvalTitle(card.summary),
+                payload: {
+                  tool: def.name,
+                  input: args,
+                  summary: card.summary,
+                  details: card.details,
+                  tier: risk,
+                  ...(scope ? { standing_scope: scope } : {}),
+                },
+                waits: true,
+              });
+              await getDb()
+                .update(runSteps)
+                .set({ status: 'pending', requestId: request.id, updatedAt: sql`now()` })
+                .where(eq(runSteps.id, stepId));
+              return {
+                status: 'needs_approval',
+                request_id: request.id,
+                note: 'The member sees an approval card. End your turn now; you will be told the outcome.',
+              };
+            }
+            if (def.before && risk !== 'read') {
+              const before = await def.before(args, call);
+              await getDb().update(runSteps).set({ undoState: before }).where(eq(runSteps.id, stepId));
+            }
+            const output = await def.execute(args, call);
+            if (def.undo && risk !== 'read') {
+              const [saved] = await getDb()
+                .select({ before: runSteps.undoState })
+                .from(runSteps)
+                .where(eq(runSteps.id, stepId));
+              await getDb()
+                .update(runSteps)
+                .set({ undoState: { before: saved?.before, output: def.undoResult?.(output) ?? output } })
+                .where(eq(runSteps.id, stepId));
+            }
+            await finish('succeeded', output);
+            if ((risk === 'tier1' || standing) && def.undo && input.receipt) {
+              const summary = def.summarize?.(args, output, context.locale) ?? def.name;
+              await input.receipt(stepId, summary);
+            }
+            return output;
+          };
+          try {
+            return risk === 'read' ? await perform() : await transaction(perform);
+          } catch (error) {
+            await finish('failed', undefined, toErrorMessage(error));
+            throw error;
+          }
+        }),
     } as never);
   }
   return {

@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { index, integer, pgTable, text, uniqueIndex } from 'drizzle-orm/pg-core';
+import { boolean, index, integer, pgTable, text, uniqueIndex } from 'drizzle-orm/pg-core';
 import { at, createdAt, id, json, updatedAt } from './_columns.js';
 import { agents } from './agents.js';
 import { members } from './identity.js';
@@ -107,6 +107,10 @@ export const schedules = pgTable(
     ownerId: text('owner_id').notNull(),
     name: text('name').notNull(),
     brief: text('brief').notNull(),
+    quiet: boolean('quiet').notNull().default(false),
+    computer: boolean('computer').notNull().default(false),
+    domains: json<string[]>('domains', []),
+    continueAfter: boolean('continue_after').notNull().default(false),
     skillId: text('skill_id'),
     model: text('model'),
     cron: text('cron').notNull(),

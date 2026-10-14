@@ -25,6 +25,7 @@ import { handoffTool } from './engine/tools/handoff.js';
 import { memoryTool } from './engine/tools/memory.js';
 import type { ToolDef } from './engine/tools/define.js';
 import { runStartTool } from './engine/tools/run-start.js';
+import { runFinishTool } from './engine/tools/run-finish.js';
 import { scheduleTools } from './engine/tools/schedules.js';
 import { selfTool } from './engine/tools/self.js';
 import { skillMutationTool } from './engine/tools/skill-mutation.js';
@@ -35,8 +36,10 @@ import { vaultTool } from './engine/tools/vault.js';
 import { mailTool } from './engine/tools/mail.js';
 import { webTools } from './engine/tools/web.js';
 import { knowledgeTools } from './engine/tools/knowledge.js';
+import { tableTools } from './engine/tools/tables.js';
 import { adminPublicAgentRoutes, agentRoutes } from './modules/agents/routes.js';
 import { createAgentsService, type AgentsService } from './modules/agents/service.js';
+import { createApprovalsService, type ApprovalsService } from './modules/agents/approvals.js';
 import { adminComputerRoutes, computerRoutes } from './modules/computers/routes.js';
 import { connectorTool } from './engine/tools/connectors.js';
 import { adminConnectorRoutes, connectorCallbackRoutes, myConnectionRoutes } from './modules/connectors/routes.js';
@@ -97,6 +100,7 @@ export interface Services {
   members: MembersService;
   providers: ProvidersService;
   agents: AgentsService;
+  approvals: ApprovalsService;
   computers: ComputersService;
   connectors: ConnectorsService;
   browser: BrowserService;
@@ -168,14 +172,25 @@ export function createServices(config: AppConfig, options: ServiceOptions = {}):
     forbiddenOrigins,
   });
   const skills = createSkillsService({ files, providers, agents, connectors, computers, notifications });
-  const knowledge = createKnowledgeService({ files, notifications, hub, publicUrl: config.PUBLIC_URL });
+  const knowledge = createKnowledgeService({
+    files,
+    notifications,
+    hub,
+    publicUrl: config.PUBLIC_URL,
+    engine: () => engine,
+  });
   const tables = createTablesService({ files, notifications, hub, providers });
   // Who sees a base is cached a few seconds; a change of groups, modules or status forgets it at once.
   members.onAccessChange(() => tables.forgetAudiences());
   const schedules = createSchedulesService({ agents, background: () => engine.background });
   // A committed decision wakes the engine's worker (made below) rather than waiting for its poll.
-  const requests = createRequestsService({ hub, notifications, decided: () => engine.wakeDecisions() });
+  const approvals = createApprovalsService(agents, knowledge, tables);
+  const requests = createRequestsService({ hub, notifications, approvals, decided: () => engine.wakeDecisions() });
   const engine = createEngine({
+    eventWakeLimit: config.AGENT_EVENT_WAKES_PER_DAY,
+    eventMergeMs: config.AGENT_EVENT_MERGE_MS,
+    approvals,
+    computers,
     agents,
     conversations,
     providers,
@@ -188,13 +203,14 @@ export function createServices(config: AppConfig, options: ServiceOptions = {}):
       memoryTool(agents),
       askUserTool(),
       selfTool(agents),
-      conversationTool(),
+      conversationTool(conversations),
       readAttachmentTool(files, voice),
       computerTool(computers),
       requestTakeoverTool(),
       browserTool(browser),
       vaultTool(vault, browser),
       runStartTool(background),
+      runFinishTool(computers),
       handoffTool(handOff),
       ...scheduleTools(schedules),
       ...webTools(providers, options.fetch ? { fetch: options.fetch } : {}),
@@ -203,6 +219,7 @@ export function createServices(config: AppConfig, options: ServiceOptions = {}):
       skillQueryTool(skills),
       skillMutationTool(skills),
       ...knowledgeTools(knowledge),
+      ...tableTools(tables),
       ...(options.tools ?? []),
     ],
     ...(options.languageModel ? { languageModel: options.languageModel } : {}),
@@ -218,6 +235,7 @@ export function createServices(config: AppConfig, options: ServiceOptions = {}):
     providers,
     agents,
     computers,
+    approvals,
     connectors,
     browser,
     vault,
@@ -301,13 +319,13 @@ export function createApp(services: Services, options: { webDir?: string } = {})
   signedIn.route('/me', meRoutes(services.members));
   signedIn.route('/members', directoryRoutes(services.members));
   signedIn.route('/groups', groupDirectoryRoutes(services.members));
-  signedIn.route('/agents', agentRoutes(services.agents));
+  signedIn.route('/agents', agentRoutes(services.agents, services.approvals));
   signedIn.route('/agents', agentUsageRoutes(services.usage));
   signedIn.route('/agents', computerRoutes(services.computers));
   signedIn.route('/agents', agentMailRoutes(services.mail));
   signedIn.route('/conversations', conversationRoutes(services.conversations, services.engine));
   signedIn.route('/requests', requestRoutes(services.requests));
-  signedIn.route('/runs', runRoutes(services.runs));
+  signedIn.route('/runs', runRoutes(services.runs, services.engine));
   signedIn.route('/files', fileRoutes(services.files, services.conversations));
   signedIn.route('/voice', voiceRoutes(services.voice));
   signedIn.route('/schedules', scheduleRoutes(services.schedules));

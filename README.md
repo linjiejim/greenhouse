@@ -803,7 +803,11 @@ env at boot or at runtime, with optional per-member keys), the API v2 convention
 model (a fresh database baseline), a guide for migrating v1 data later, and the roadmap. The
 [Native Haven design system](docs/design-system/README.md) is the v2 UI spec; its
 tokens live in `packages/ui/src/tokens/haven.ts` (`pnpm tokens:build` regenerates the CSS).
-The current application has not adopted v2 yet.
+The v2 web and API now include approval tiers, reversible write receipts, standing approvals,
+background work that pauses for a decision and resumes from recorded steps, event wakes and
+quiet schedules. Background computer use must be declared in its brief: local Docker computers
+stay offline; E2B uses a domain allowlist. Event wakes merge for two minutes and default to 50
+per Agent per UTC day (`AGENT_EVENT_WAKES_PER_DAY`). Mobile UI adoption is a separate slice.
 
 Try the standalone [interactive prototype](apps/design/README.md) with `pnpm design:dev`
 (http://127.0.0.1:4518). It includes desktop / mobile, light / dark, module previews and an

@@ -29,10 +29,43 @@ export function memoryTool(agents: AgentsService) {
     input,
     // Notes in the Agent's own memory, which the member can review and delete at any time.
     risk: 'read',
-    surfaces: ['turn'],
+    surfaces: ['turn', 'background'],
     // A public Agent keeps one memory per asker: it reads and writes only theirs.
     publicAgent: true,
+    private: true,
+    async callRisk(args, ctx) {
+      if (args.action === 'recall' || ctx.surface === 'background' || ctx.tainted()) return 'read';
+      return args.action === 'forget' ? 'tier3' : 'tier1';
+    },
+    async guard(args, ctx) {
+      if (ctx.surface !== 'background' && !ctx.tainted() && (args.action === 'update' || args.action === 'forget'))
+        await agents.lockMemory(ctx.memberId, ctx.agent.id, args.id);
+    },
+    async before(args, ctx) {
+      return {
+        input: { action: args.action, ...('id' in args ? { id: args.id } : {}) },
+        ...(args.action === 'update' ? { previous: await agents.lockMemory(ctx.memberId, ctx.agent.id, args.id) } : {}),
+      };
+    },
+    async undo(_args, output, before, ctx) {
+      const result = output as { remembered?: string; updated?: string; updated_at: string };
+      await agents.undoMemory(
+        ctx.memberId,
+        ctx.agent.id,
+        (result.remembered ?? result.updated)!,
+        result.updated_at,
+        (before as { previous?: { title: string; content: string } }).previous,
+      );
+    },
+    describe: (args, ctx) => ({
+      summary: ctx.locale === 'zh' ? '彻底删除一条记忆' : 'permanently delete a memory',
+      details: 'id' in args ? [{ label: ctx.locale === 'zh' ? '记忆' : 'Memory', value: args.id }] : [],
+    }),
     async execute(args, ctx) {
+      if (ctx.surface === 'background' && args.action !== 'recall')
+        throw new Error('Background runs may only recall memories.');
+      if (args.action !== 'recall' && ctx.tainted())
+        return { error: 'Memories cannot be changed after reading outside content in the same turn. Ask the member.' };
       const handle = ctx.agent.id;
       if (args.action === 'remember') {
         const saved = await agents.remember(
@@ -41,7 +74,7 @@ export function memoryTool(agents: AgentsService) {
           { title: args.title, content: args.content, category: args.category, pinned: false },
           { source: 'agent', conversationId: ctx.conversation?.id },
         );
-        return { remembered: saved.id };
+        return { remembered: saved.id, updated_at: saved.updated_at };
       }
       if (args.action === 'recall') {
         const query = args.query.toLowerCase();
@@ -62,11 +95,11 @@ export function memoryTool(agents: AgentsService) {
         return { error: 'Memories cannot be changed after reading outside content in the same turn. Ask the member.' };
       }
       if (args.action === 'update') {
-        await agents.updateMemory(ctx.memberId, handle, args.id, {
+        const saved = await agents.updateMemory(ctx.memberId, handle, args.id, {
           ...(args.title !== undefined ? { title: args.title } : {}),
           ...(args.content !== undefined ? { content: args.content } : {}),
         });
-        return { updated: args.id };
+        return { updated: args.id, updated_at: saved.updated_at };
       }
       await agents.forget(ctx.memberId, handle, args.id);
       return { forgotten: args.id };

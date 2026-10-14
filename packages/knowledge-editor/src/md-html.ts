@@ -52,7 +52,7 @@ const editorMarked = new Marked({
   breaks: false,
   renderer: {
     link(token) {
-      const id = /^member:([^\s]+)$/.exec(token.href)?.[1];
+      const id = /^(?:member|agent):([^\s]+)$/.exec(token.href)?.[1];
       if (!id) return false;
       const label = token.text.replace(/\\([\\[\]])/g, '$1').replace(/^@/, '');
       return `<span data-type="mention" data-id="${escapeHtml(id)}" data-label="${escapeHtml(label)}">@${escapeHtml(label)}</span>`;

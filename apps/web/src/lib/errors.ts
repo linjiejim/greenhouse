@@ -4,6 +4,14 @@ import type { Translate } from './i18n';
 
 /** Codes the member can act on get the dictionary's words; anything else shows the server's. */
 const KNOWN: Record<string, MessageKey> = {
+  undo_conflict: 'errors.undoConflict',
+  already_undone: 'errors.alreadyUndone',
+  undo_unavailable: 'errors.undoUnavailable',
+  standing_not_allowed: 'errors.standingNotAllowed',
+  request_building: 'errors.requestBuilding',
+  computer_background_busy: 'errors.computerBackgroundBusy',
+  background_network_unavailable: 'errors.backgroundNetworkUnavailable',
+
   agent_paused: 'errors.agentPaused',
   agent_unavailable: 'errors.agentUnavailable',
   agent_archived: 'errors.agentArchived',

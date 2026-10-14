@@ -7,7 +7,10 @@ import { defineTool, type AvailabilityContext } from './define.js';
  * up. A public Agent uses the asker's own copy of its computer, when its publication grants one.
  */
 export const computerAvailable = async (ctx: AvailabilityContext) =>
-  ctx.modules.computer && (!ctx.publicAgent || ctx.publicAgent.computer) && (await ctx.available('sandbox'));
+  ctx.modules.computer &&
+  (ctx.surface !== 'background' || ctx.backgroundComputer === true) &&
+  (!ctx.publicAgent || ctx.publicAgent.computer) &&
+  (await ctx.available('sandbox'));
 
 /** The Agent's own computer: a shell, and background processes that wake it when they end. */
 export function computerTool(computers: ComputersService) {
@@ -37,16 +40,21 @@ export function computerTool(computers: ComputersService) {
     risk: 'read',
     taints: true,
     outbound: true,
-    surfaces: ['turn'],
+    surfaces: ['turn', 'background'],
     publicAgent: true,
     available: computerAvailable,
     async execute(args, ctx) {
+      await computers.assertRunAccess(ctx.memberId, ctx.agent.id, ctx.runId);
+      if (ctx.eventWoken && !['processes', 'process_log'].includes(args.action))
+        throw new Error('An event can inspect process output. New computer work needs an approved brief.');
+      if (ctx.surface === 'background' && !ctx.backgroundComputer)
+        throw new Error('The brief did not declare a computer.');
       switch (args.action) {
         case 'shell':
           return computers.shell(ctx.memberId, ctx.agent.id, args.command, args.timeout_s * 1000);
         case 'run_background': {
           const job = await computers.startJob(ctx.memberId, ctx.agent.id, args.command, args.name);
-          if (ctx.conversation) {
+          if (ctx.conversation && ctx.surface === 'turn') {
             await computers.watch({
               memberId: ctx.memberId,
               agentId: ctx.agent.id,
@@ -56,8 +64,14 @@ export function computerTool(computers: ComputersService) {
             });
           }
           // Polling would only burn steps: the turn ends here and the Agent is woken when it ends.
-          ctx.endTurn();
-          return { id: job.id, note: 'It is running. You are woken here when it ends.' };
+          if (ctx.surface === 'turn') ctx.endTurn();
+          return {
+            id: job.id,
+            note:
+              ctx.surface === 'background'
+                ? 'It is running. Check processes and its log until it finishes before reporting this run complete.'
+                : 'It is running. You are woken here when it ends.',
+          };
         }
         case 'processes':
           return { processes: await computers.jobs(ctx.memberId, ctx.agent.id) };

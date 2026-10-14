@@ -685,6 +685,34 @@ export function createTablesService(deps: {
     });
 
   const service = {
+    async lockWriteScope(memberId: string, tableId: string) {
+      const { base } = await tableAt(await loadReader(memberId), tableId, 'editor');
+      await getDb().select({ id: bases.id }).from(bases).where(eq(bases.id, base.id)).for('update');
+    },
+    async lockRecord(memberId: string, recordId: string) {
+      await records.get(memberId, recordId);
+      await getDb().select({ id: baseRecords.id }).from(baseRecords).where(eq(baseRecords.id, recordId)).for('update');
+    },
+    async undoDeletedRecord(memberId: string, recordId: string, revision: number) {
+      const [row] = await getDb().select().from(baseRecords).where(eq(baseRecords.id, recordId)).for('update');
+      if (!row?.deletedAt || row.revision !== revision)
+        throw conflict('undo_conflict', 'This record changed after the write.');
+      return records.restore(memberId, recordId);
+    },
+    async scopeLabel(memberId: string, tableId: string) {
+      const { base, table } = await tableAt(await loadReader(memberId), tableId, 'viewer');
+      return { name: table.name, href: `#/tables/${base.id}/${table.id}` };
+    },
+    async writeScope(memberId: string, tableId: string) {
+      const reader = await loadReader(memberId);
+      const { base } = await tableAt(reader, tableId, 'editor');
+      const [shared] = await getDb()
+        .select({ id: shares.id })
+        .from(shares)
+        .where(and(eq(shares.resourceType, 'base'), eq(shares.resourceId, base.id)))
+        .limit(1);
+      return { tier: base.ownerId === memberId && !shared ? ('tier1' as const) : ('tier2' as const), baseId: base.id };
+    },
     records,
     forms,
     imports,

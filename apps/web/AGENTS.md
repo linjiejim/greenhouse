@@ -33,6 +33,11 @@ The v2 web app. Product scope is docs/product/prd.md §6–7; layout and compone
 - Tables: a view's records are one query per view settings (useViewRecords, every page up to MAX_VIEW_RECORDS); writes put the server's records into every cached view of the table (putRecords) and records.changed refetches only views that are behind. Grid and timeline draw only the rows in view: 1000 records must scroll smoothly.
 - Tables: what a view works out (columns, groups, spans, days) lives in model.ts, boards-model.ts and timeline-model.ts with unit tests; components draw and handle input.
 
+## Always-on
+- Write receipts render from write_receipt message events; only their acting member sees Undo. Server conflicts preserve later edits.
+- Standing scopes are chosen on tier2 cards only, listed by name/actions in Abilities and revoked through the contract client. Disable approval while batch_ready is false.
+- Run proposals show declared computer/domain access and optional completion follow-up. Schedule quiet defaults off; event messages remain quiet thread lines.
+
 ## Tests
 - Unit tests next to the code in __tests__ (vitest unit project).
 - Browser tests are e2e/*.e2e.ts (not *.spec.ts, which vitest would collect): `pnpm test:web-e2e`. They reset the database named by E2E_DATABASE_URL (default greenhouse_v2_e2e on 127.0.0.1:55432; names must end in _e2e), start e2e/fake-llm.mjs, the API and Vite on 4590–4592, and sign people in once (e2e/auth.setup.ts) because sign-in is rate limited. When another run holds those ports, E2E_WEB_PORT, E2E_API_PORT and E2E_LLM_PORT with another E2E_DATABASE_URL run beside it.

@@ -51,6 +51,7 @@ export const runEventSchema = z.object({
 });
 
 export const runDetailSchema = runSchema.extend({
+  findings: z.array(z.string()).default([]),
   brief: z.string(),
   /** The report text of a finished run. */
   output: z.string().nullable(),

@@ -7,7 +7,7 @@
 
 import { useState, type FormEvent } from 'react';
 import { CircleHelp, KeyRound, MonitorPlay, MousePointer2, ShieldCheck, Sparkles } from 'lucide-react';
-import { Button, ChatCard, Field, Input, Overlay, OverlayActions, Select } from '@greenhouse/ui/kit';
+import { Button, ChatCard, Field, Input, Overlay, OverlayActions, Select, Switch } from '@greenhouse/ui/kit';
 import { icon } from '@greenhouse/ui/tokens';
 import type { NeedsYou, QuestionField } from '@greenhouse/contract';
 import { useNotify } from '../app/notify';
@@ -71,6 +71,15 @@ function Details({ request }: { request: NeedsYou }) {
       <div className="app-request-body">
         <div className="app-request-label">{String(payload.run_title ?? '')}</div>
         <pre className="app-request-text">{String(payload.brief ?? '')}</pre>
+        {payload.computer === true && (
+          <p>
+            {t('approvals.computer')} · {t('approvals.domains')}:{' '}
+            {Array.isArray(payload.domains) ? payload.domains.join(' · ') || '—' : '—'}
+            <br />
+            {t('approvals.offline')}
+          </p>
+        )}
+        {payload.continue_after === true && <p>{t('approvals.continue')}</p>}
       </div>
     );
   }
@@ -195,6 +204,8 @@ export function RequestCard({ request, showContext = false }: { request: NeedsYo
   const { me } = useSession();
   const decide = useDecide();
   const [handing, setHanding] = useState<'screen' | 'note' | null>(null);
+  const [standing, setStanding] = useState(false);
+  const [continueAfter, setContinueAfter] = useState(request.payload.continue_after === true);
   const status = requestStatus(request);
   const pending = request.status === 'pending';
   const Icon = KIND_ICON[request.kind];
@@ -215,8 +226,16 @@ export function RequestCard({ request, showContext = false }: { request: NeedsYo
         </Button>
         <Button
           kind="primary"
+          disabled={request.payload.batch_ready === false}
           loading={decide.isPending && decide.variables?.action === 'approve'}
-          onClick={() => decide.mutate({ id: request.id, action: 'approve' })}
+          onClick={() =>
+            decide.mutate({
+              id: request.id,
+              action: 'approve',
+              standing,
+              ...(request.subject === 'run_start' ? { continue_after: continueAfter } : {}),
+            })
+          }
         >
           {request.subject === 'run_start' ? t('request.startRun') : t('request.approve')}
         </Button>
@@ -276,6 +295,32 @@ export function RequestCard({ request, showContext = false }: { request: NeedsYo
       footerEnd
     >
       <Details request={request} />
+      {pending && request.subject === 'run_start' && (
+        <div className="app-setting-row is-plain">
+          <span className="app-setting-text">{t('approvals.continue')}</span>
+          <Switch checked={continueAfter} onChange={setContinueAfter} label={t('approvals.continue')} />
+        </div>
+      )}
+      {pending && request.payload.tier === 'tier2' && !!request.payload.standing_scope && (
+        <div className="app-setting-row is-plain">
+          <span className="app-setting-text">
+            {t(
+              (request.payload.standing_scope as { type: string }).type === 'folder'
+                ? 'approvals.allowFolder'
+                : 'approvals.allowTable',
+            )}
+          </span>
+          <Switch
+            checked={standing}
+            onChange={setStanding}
+            label={t(
+              (request.payload.standing_scope as { type: string }).type === 'folder'
+                ? 'approvals.allowFolder'
+                : 'approvals.allowTable',
+            )}
+          />
+        </div>
+      )}
       {request.kind === 'question' && <QuestionForm request={request} disabled={!pending} />}
       {handing && pending && <HandBack request={request} mode={handing} onClose={() => setHanding(null)} />}
     </ChatCard>

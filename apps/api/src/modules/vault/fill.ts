@@ -245,6 +245,12 @@ export async function signIn(
             remember: (value) => deps.browser.remember(input.memberId, value),
           });
           await record(origin, 'filled', approval);
+          if (!typed.submitted)
+            await page
+              .run(
+                `{ const form = document.activeElement?.form; globalThis.__greenhouseApprovedLoginForm = form ? { form, action: form.action, method: form.method } : null; }`,
+              )
+              .catch(() => undefined);
           return { status: 'filled', site: origin, ...typed };
         } catch (error) {
           if (error instanceof FillStop) {

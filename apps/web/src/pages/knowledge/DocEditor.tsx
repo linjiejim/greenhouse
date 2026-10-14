@@ -204,8 +204,16 @@ export function DocEditor({
           .map((hit) => ({ id: hit.id, title: hit.title, hint: hit.path.map((entry) => entry.name).join(' / ') }));
       },
       findMembers: async (query) => {
-        const found = await api.members.directory(query.trim() || undefined);
-        return found.items.map((member) => ({ id: member.id, name: member.name, hint: member.email }));
+        const [found, agents] = await Promise.all([
+          api.members.directory(query.trim() || undefined),
+          api.agents.list(),
+        ]);
+        return [
+          ...found.items.map((member) => ({ id: member.id, name: member.name, hint: member.email })),
+          ...agents.items
+            .filter((agent) => agent.name.toLowerCase().includes(query.trim().toLowerCase()))
+            .map((agent) => ({ id: agent.id, name: agent.name, hint: agent.role })),
+        ];
       },
       uploadImage: async (file) => {
         try {

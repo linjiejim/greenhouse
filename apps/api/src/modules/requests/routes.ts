@@ -9,6 +9,7 @@
 import { Hono } from 'hono';
 import {
   answerInputSchema,
+  approveInputSchema,
   handbackInputSchema,
   rejectInputSchema,
   requestListQuerySchema,
@@ -24,13 +25,22 @@ export function requestRoutes(service: RequestsService) {
     .get('/', async (c) => c.json(await service.list(c.get('member').id, readQuery(c, requestListQuerySchema))))
     .post('/:id/approve', async (c) => {
       const memberId = c.get('member').id;
+      const input = c.req.header('content-type')?.includes('application/json')
+        ? await readJson(c, approveInputSchema)
+        : { standing: false };
       const current = await service.get(memberId, c.req.param('id'));
       if (current.kind !== 'approval' && current.kind !== 'proposal' && current.kind !== 'login') {
         throw conflict('wrong_decision', 'This card is not decided by approving.');
       }
       const settled = await service.settle(memberId, current.id, {
         status: 'approved',
-        result: { decision: 'approved' },
+        result: {
+          decision: 'approved',
+          standing: input.standing,
+          ...('continue_after' in input && current.subject === 'run_start'
+            ? { continue_after: input.continue_after }
+            : {}),
+        },
       });
       return c.json(toRequest(settled));
     })

@@ -200,6 +200,8 @@ export const conversationInbox = pgTable(
       .notNull()
       .references(() => conversations.id, { onDelete: 'cascade' }),
     kind: text('kind', { enum: ['event', 'continue', 'run_report', 'message', 'mention', 'handback'] }).notNull(),
+    dedupeKey: text('dedupe_key'),
+    readyAt: at('ready_at').notNull().defaultNow(),
     payload: json<Record<string, unknown>>('payload', {}),
     consumedAt: at('consumed_at'),
     createdAt: createdAt(),
@@ -208,6 +210,7 @@ export const conversationInbox = pgTable(
     index('conversation_inbox_pending_idx')
       .on(t.conversationId, t.id)
       .where(sql`${t.consumedAt} IS NULL`),
+    uniqueIndex('conversation_inbox_dedupe_key').on(t.conversationId, t.dedupeKey),
   ],
 );
 

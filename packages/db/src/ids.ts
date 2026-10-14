@@ -24,6 +24,7 @@ export const ID_PREFIX = {
   note: 'nte',
   handoff: 'hof',
   request: 'req',
+  standingApproval: 'sap',
   run: 'run',
   runStep: 'stp',
   file: 'fil',

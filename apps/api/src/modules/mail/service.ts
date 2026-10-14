@@ -83,10 +83,9 @@ import {
 // Registers the smtp adapter before any mail instance is resolved.
 import './smtp.js';
 import { inviteMail, resetMail, testMail, type Locale, type SystemMail } from './templates.js';
-import { wakeForMail } from './wake.js';
+import { mailNote } from './wake.js';
 
 /** Mail that wakes one Agent in a day; past it, mail still lands in the thread but waits for a look. */
-export const MAIL_WAKES_PER_DAY = 50;
 /** Mail one Agent may send in a day, each approved by its owner. */
 export const MAIL_SENDS_PER_DAY = 50;
 /** Recipients of one mail an Agent sends, To and Cc together. */
@@ -438,16 +437,6 @@ export function createMailService(deps: {
 
   /** Wakes the Agent once for these mails, unless it was woken by mail too often today. */
   async function wake(agent: AgentRow, conversationId: string, rows: MailMessageRow[], released: boolean) {
-    const [{ n }] = (await getDb()
-      .select({ n: sql<number>`count(*)::int` })
-      .from(mailMessages)
-      .where(and(eq(mailMessages.agentId, agent.id), gt(mailMessages.wokeAt, sql`now() - interval '1 day'`)))) as [
-      { n: number },
-    ];
-    if (n >= MAIL_WAKES_PER_DAY) {
-      logger.warn('[mail] an Agent reached its daily mail wake-ups; mail waits in its thread', { agent: agent.id });
-      return;
-    }
     await getDb()
       .update(mailMessages)
       .set({ wokeAt: sql`now()` })
@@ -457,13 +446,14 @@ export function createMailService(deps: {
           rows.map((row) => row.id),
         ),
       );
-    await wakeForMail(deps.engine(), {
-      conversationId,
-      agentId: agent.id,
-      memberId: agent.ownerId,
-      mails: rows.map((row) => ({ id: row.id, from: row.fromAddress, subject: row.subject })),
-      released,
-    });
+    for (const row of rows)
+      await deps.engine().deliver(conversationId, {
+        agentId: agent.id,
+        memberId: agent.ownerId,
+        kind: 'event',
+        dedupeKey: `mail:${row.id}`,
+        note: mailNote({ mails: [{ id: row.id, from: row.fromAddress, subject: row.subject }], released }),
+      });
   }
 
   /** One received mail for one Agent: kept once, then delivered with a wake or screened. */

@@ -226,7 +226,12 @@ describe('the people of a conversation', () => {
     const chensMain = (await call('GET', '/api/agents/main', { token: chen.token })).body;
     await call('DELETE', `/api/conversations/${room.id}/members/${chen.id}`, { token: lin.token });
     // Something left behind for Chen (a wake-up from elsewhere) still reaches the queue.
-    await services.engine.deliver(room.id, { agentId: chensMain.id, memberId: chen.id, note: 'a process ended' });
+    await services.engine.deliver(room.id, {
+      agentId: chensMain.id,
+      memberId: chen.id,
+      note: 'a process ended',
+      kind: 'handback',
+    });
     await services.engine.idle();
     expect(model.calls()).toBe(0);
     const [turn] = await getDb().select().from(runs).where(eq(runs.conversationId, room.id));

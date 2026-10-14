@@ -125,7 +125,11 @@ function pieces(nodes: readonly TiptapNode[]): Piece[] {
       const label = String(node.attrs?.label ?? id);
       out.push(
         id
-          ? { kind: 'atom', text: `[@${label.replace(/[\\[\]]/g, '\\$&')}](member:${id})`, marks: ordered(node.marks) }
+          ? {
+              kind: 'atom',
+              text: `[@${label.replace(/[\\[\]]/g, '\\$&')}](${id.startsWith('agt_') ? 'agent' : 'member'}:${id})`,
+              marks: ordered(node.marks),
+            }
           : { kind: 'text', text: `@${label}`, marks: ordered(node.marks) },
       );
     } else {

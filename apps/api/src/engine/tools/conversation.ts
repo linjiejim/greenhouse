@@ -3,11 +3,12 @@ import { z } from 'zod';
 import { getDb, messages } from '@greenhouse/db';
 import { containing, snippetAround } from '../../http/like.js';
 import { defineTool } from './define.js';
+import type { ConversationsService } from '../../modules/conversations/service.js';
 
 const SNIPPET = 300;
 
 /** Older parts of this conversation, beyond what fits in the context. */
-export function conversationTool() {
+export function conversationTool(conversations: ConversationsService) {
   return defineTool({
     name: 'conversation_query',
     description:
@@ -16,11 +17,12 @@ export function conversationTool() {
     risk: 'read',
     idempotent: true,
     private: true,
-    surfaces: ['turn'],
+    surfaces: ['turn', 'background'],
     // The asker's own conversation.
     publicAgent: true,
     async execute(args, ctx) {
       if (!ctx.conversation) return { results: [] };
+      await conversations.access(ctx.memberId, ctx.conversation.id);
       const rows = await getDb()
         .select({ seq: messages.seq, role: messages.role, content: messages.content, createdAt: messages.createdAt })
         .from(messages)

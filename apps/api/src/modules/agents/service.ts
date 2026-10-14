@@ -1023,11 +1023,41 @@ export function createAgentsService(deps: {
       return toMemory(created!);
     },
 
+    async lockMemory(memberId: string, idOrHandle: string, memoryId: string) {
+      const agent = await memoryAgent(memberId, idOrHandle, false);
+      const [row] = await getDb()
+        .select()
+        .from(agentMemories)
+        .where(
+          and(
+            eq(agentMemories.id, memoryId),
+            eq(agentMemories.agentId, agent.id),
+            eq(agentMemories.memberId, memberId),
+          ),
+        )
+        .for('update');
+      if (!row) throw notFound('Memory');
+      return toMemory(row);
+    },
+
+    async undoMemory(
+      memberId: string,
+      idOrHandle: string,
+      memoryId: string,
+      updatedAt: string,
+      previous?: { title: string; content: string },
+    ) {
+      const current = await service.lockMemory(memberId, idOrHandle, memoryId);
+      if (current.updated_at !== updatedAt) throw conflict('undo_conflict', 'This memory changed after the write.');
+      if (previous) await service.updateMemory(memberId, idOrHandle, memoryId, previous);
+      else await service.forget(memberId, idOrHandle, memoryId);
+    },
+
     async updateMemory(memberId: string, idOrHandle: string, memoryId: string, input: UpdateMemoryInput) {
       const row = await memoryAgent(memberId, idOrHandle, false);
       const [updated] = await getDb()
         .update(agentMemories)
-        .set({ ...input, updatedAt: sql`now()` })
+        .set({ ...input, updatedAt: sql`clock_timestamp()` })
         .where(
           and(eq(agentMemories.id, memoryId), eq(agentMemories.agentId, row.id), eq(agentMemories.memberId, memberId)),
         )

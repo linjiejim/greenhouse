@@ -107,6 +107,7 @@ function lastUser(messages) {
     if (messages[i].role !== 'user') continue;
     const text = textOf(messages[i].content)
       .split('<turn_context')[0]
+      .replace(/\[event\][^\n]*\n\n/g, '')
       .replace(/^(\s*\[[^\]]*\])+\s*/, '')
       .trim();
     if (text) return text;
@@ -181,6 +182,18 @@ async function stream(response, request) {
     tool('web_search', { query: said.slice(15).trim() || 'kyoto' });
   } else if (afterTool && toolText.includes('kyoto.example')) {
     await say('Found it: [Kyoto guide](https://kyoto.example/guide).', 10);
+  } else if (!afterTool && /^background draft in /i.test(said)) {
+    const folder = /background draft in (fld_[0-9A-HJKMNP-TV-Z]{26})/i.exec(said)?.[1];
+    tool('run_start', {
+      title: 'E2E always-on background',
+      brief: `AO_E2E_GATE ${folder}`,
+      computer: false,
+      domains: [],
+      continue_after: false,
+    });
+  } else if (!afterTool && /^shared draft in /i.test(said)) {
+    const folder = /shared draft in (fld_[0-9A-HJKMNP-TV-Z]{26})/i.exec(said)?.[1];
+    tool('knowledge_mutation', { action: 'create', title: 'Shared agent draft', content: said, folder_id: folder });
   } else if (!afterTool && /^keep a note/i.test(said)) {
     tool('knowledge_mutation', { action: 'create', title: 'Agent note', content: said, space: 'agent' });
   } else if (!afterTool && /^look up /i.test(said)) {
@@ -202,6 +215,46 @@ async function stream(response, request) {
 }
 
 function complete(response, request) {
+  const gate = /AO_E2E_GATE (fld_[0-9A-HJKMNP-TV-Z]{26})/.exec(JSON.stringify(request.messages));
+  if (
+    gate &&
+    JSON.stringify(request.messages?.filter((message) => message.role === 'system')).includes(
+      'working in the background',
+    )
+  ) {
+    const count = (request.messages ?? []).filter((message) => message.role === 'tool').length;
+    const name = count < 2 ? 'knowledge_mutation' : 'run_finish';
+    const args =
+      count === 0
+        ? { action: 'create', title: 'E2E background private draft', content: 'Draft', space: 'agent' }
+        : count === 1
+          ? { action: 'create', title: 'E2E background shared draft', content: 'Shared draft', folder_id: gate[1] }
+          : { report: 'Background finished.', findings: ['Shared draft'] };
+    response.writeHead(200, { 'content-type': 'application/json' });
+    response.end(
+      JSON.stringify({
+        id: 'chatcmpl-bg-e2e',
+        object: 'chat.completion',
+        created: 1,
+        model: 'fake',
+        choices: [
+          {
+            index: 0,
+            message: {
+              role: 'assistant',
+              content: null,
+              tool_calls: [
+                { id: `bg_${count}`, type: 'function', function: { name, arguments: JSON.stringify(args) } },
+              ],
+            },
+            finish_reason: 'tool_calls',
+          },
+        ],
+        usage: { prompt_tokens: 20, completion_tokens: 5, total_tokens: 25 },
+      }),
+    );
+    return;
+  }
   const system = JSON.stringify(request.messages?.filter((message) => message.role === 'system') ?? []);
   const text = system.includes('Write a title for this conversation')
     ? 'E2E chat'

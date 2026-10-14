@@ -10,6 +10,7 @@ export const TEST_PASSWORD = 'correct horse battery';
 export function createTestServices(overrides: Record<string, string> = {}, options: ServiceOptions = {}): Services {
   return createServices(
     loadConfig({
+      AGENT_EVENT_MERGE_MS: '0',
       NODE_ENV: 'test',
       DATABASE_URL: 'postgresql://unused/test',
       TOKEN_SIGNING_KEY: 'a'.repeat(64),

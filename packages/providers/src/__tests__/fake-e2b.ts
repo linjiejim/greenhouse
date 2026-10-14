@@ -59,6 +59,7 @@ function kindOf(argv: string[]): RootKind {
 }
 
 export class FakeE2b {
+  readonly networks: Array<{ id: string; allowOut?: string[]; denyOut: string[] }> = [];
   readonly sandboxes = new Map<string, FakeSandbox>();
   readonly requests: Array<{ method: string; url: URL; headers: Headers }> = [];
   readonly creates: Array<Record<string, any>> = [];
@@ -187,6 +188,10 @@ export class FakeE2b {
     }
     if (method === 'POST' && action === '/timeout') {
       this.timeouts.push({ id: sandbox.id, seconds: body.timeout });
+      return new Response(null, { status: 204 });
+    }
+    if (method === 'PUT' && action === '/network') {
+      this.networks.push({ id: sandbox.id, ...(body as { allowOut?: string[]; denyOut: string[] }) });
       return new Response(null, { status: 204 });
     }
     if (method === 'DELETE' && !action) {
