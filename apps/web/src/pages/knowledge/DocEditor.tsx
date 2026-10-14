@@ -65,6 +65,8 @@ const BLOCK_WORDS: Record<BlockId, { label: MessageKey; keywords: string; icon: 
 
 export interface DocEditorHandle {
   markdown(): string;
+  /** Whether the content differs from what the editor loaded (a save sends it only then). */
+  changed(): boolean;
   focus(): void;
 }
 
@@ -154,12 +156,15 @@ export function DocEditor({
   docId,
   markdown,
   onChange,
+  onUploads,
   handle,
 }: {
   docId: string;
   /** The content to start from; the editor keeps the draft from then on. */
   markdown: string;
   onChange: () => void;
+  /** Pictures still uploading: they are not in the Markdown until they land. */
+  onUploads: (count: number) => void;
   handle: { current: DocEditorHandle | null };
 }) {
   const { t } = useI18n();
@@ -170,8 +175,8 @@ export function DocEditor({
   const [, setTick] = useState(0);
   const [pictureError, setPictureError] = useState('');
   const [linking, setLinking] = useState<string | null>(null);
-  const latest = useRef({ onChange, t, docId });
-  latest.current = { onChange, t, docId };
+  const latest = useRef({ onChange, onUploads, t, docId });
+  latest.current = { onChange, onUploads, t, docId };
 
   useLayoutEffect(() => {
     const element = host.current;
@@ -185,6 +190,7 @@ export function DocEditor({
       label: translate('knowledge.body'),
       placeholder: translate('knowledge.editorPlaceholder'),
       uploadingLabel: translate('knowledge.uploadingPicture'),
+      taskLabel: (words) => words.trim() || latest.current.t('knowledge.emptyItem'),
       blocks: BLOCKS.map((id) => ({ id, label: translate(BLOCK_WORDS[id].label), keywords: BLOCK_WORDS[id].keywords })),
       findDocs: async (query) => {
         const own = latest.current.docId;
@@ -214,13 +220,21 @@ export function DocEditor({
       requestImage: () => picker.current?.click(),
       onSuggest: setMenu,
       onChange: () => latest.current.onChange(),
+      onUploads: (count) => latest.current.onUploads(count),
       onSelection: () => {
         cancelAnimationFrame(frame);
         frame = requestAnimationFrame(() => setTick((value) => value + 1));
       },
     });
     setInstance(created);
-    handle.current = { markdown: created.markdown, focus: () => created.editor.commands.focus() };
+    // What the doc reads as in the editor before any change: Markdown written another way (`*`
+    // bullets, say) is only rewritten when someone changes the body.
+    const loaded = created.markdown();
+    handle.current = {
+      markdown: created.markdown,
+      changed: () => created.markdown() !== loaded,
+      focus: () => created.editor.commands.focus(),
+    };
     return () => {
       cancelAnimationFrame(frame);
       handle.current = null;

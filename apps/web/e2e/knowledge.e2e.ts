@@ -140,6 +140,45 @@ test('two tabs edit one doc: leaving asks first, and the later save says who sav
   await second.close();
 });
 
+test('discarding after Back goes back, and Back after that does not return to the editor', async ({
+  page,
+  request,
+}) => {
+  const notes = await doc(request, { title: 'Back and forth', content: 'Kept as is.', space: 'team' });
+  await open(page, '/#/knowledge');
+  await page.goto(`/#/knowledge/${notes.id}`);
+  await expect(page.getByRole('heading', { level: 1, name: 'Back and forth' })).toBeVisible();
+  await page.getByRole('main').getByRole('button', { name: '编辑' }).click();
+  await expect(page).toHaveURL(/\?edit=1$/);
+  await editorBody(page).click();
+  await page.keyboard.type('Draft ');
+
+  await page.goBack();
+  await page.getByRole('alertdialog', { name: '放弃未保存的更改？' }).getByRole('button', { name: '放弃更改' }).click();
+  await expect(page).toHaveURL(new RegExp(`#/knowledge/${notes.id}$`));
+  await expect(docText(page)).toContainText('Kept as is.');
+  await page.goBack();
+  await expect(page).toHaveURL(/#\/knowledge$/);
+});
+
+test('a title-only save leaves the body exactly as it was written', async ({ page, request }) => {
+  const written = '* one\n* two\n\nWritten by hand, with a [link][ref].\n\n[ref]: https://example.com';
+  const notes = await doc(request, { title: 'As written', content: written, space: 'team' });
+  await open(page, `/#/knowledge/${notes.id}?edit=1`);
+  await expect(editorBody(page)).toContainText('Written by hand');
+  await page.getByRole('textbox', { name: '标题', exact: true }).fill('As written, renamed');
+  await page.getByRole('button', { name: '保存', exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`#/knowledge/${notes.id}$`));
+  const saved = await apiAs<{ title: string; content: string }>(
+    request,
+    'lin',
+    'GET',
+    `/api/knowledge/docs/${notes.id}`,
+  );
+  expect(saved.title).toBe('As written, renamed');
+  expect(saved.content).toBe(written);
+});
+
 test('versions: compare by line, then restore an older one as a new version', async ({ page, request }) => {
   const notes = await doc(request, { title: 'Meeting notes', content: 'First take.', space: 'team' });
   await apiAs(request, 'lin', 'PATCH', `/api/knowledge/docs/${notes.id}`, {
@@ -470,6 +509,8 @@ test('a hostile doc stays inert: no scripts, handlers or script links survive, i
       '<iframe src="javascript:window.__pwned=6"></iframe><form action="/x"><button>go</button></form>',
       '',
       '<p style="color:red" onmouseover="window.__pwned=7">styled</p>',
+      '',
+      '<div class="gh-overlay" id="root">a fake dialog</div>',
     ].join('\n'),
   });
   await apiAs(request, 'lin', 'POST', `/api/knowledge/docs/${hostile.id}/comments`, {
@@ -491,6 +532,9 @@ test('a hostile doc stays inert: no scripts, handlers or script links survive, i
       .count(),
   ).toBe(0);
   expect(await rendered.locator('.app-doc-content [style]').count()).toBe(0);
+  // Nor can it borrow the app's classes (a full-screen overlay) or ids.
+  await expect(rendered.getByText('a fake dialog')).toBeVisible();
+  expect(await rendered.locator('.app-doc-content .gh-overlay, .app-doc-content [id]').count()).toBe(0);
   const hrefs = await rendered
     .locator('.app-doc-content a')
     .evaluateAll((links) => links.map((link) => link.getAttribute('href')));

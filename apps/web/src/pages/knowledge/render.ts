@@ -56,6 +56,7 @@ export function docHtml(markdown: string): string {
   return instance().sanitize(markdownToEditorHtml(markdown), {
     USE_PROFILES: { html: true },
     FORBID_TAGS: ['style', 'form', 'input', 'textarea', 'button', 'select', 'option', 'iframe', 'object', 'embed'],
-    FORBID_ATTR: ['style'],
+    // No classes or ids either: a doc must not dress up as the app (its overlays, its buttons).
+    FORBID_ATTR: ['style', 'class', 'id'],
   });
 }

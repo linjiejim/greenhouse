@@ -34,7 +34,7 @@ import { api } from '../../lib/api';
 import { errorText } from '../../lib/errors';
 import { useI18n } from '../../lib/i18n';
 import { useMedia } from '../../lib/media';
-import { holdNavigation, href, navigate } from '../../lib/router';
+import { holdNavigation, href, leaveTo, navigate, type Attempt } from '../../lib/router';
 import { fullTime, relativeTime } from '../../lib/time';
 import { MemberAvatar } from '../../shell/MemberAvatar';
 import { Page, PageHeader } from '../../shell/Page';
@@ -124,11 +124,17 @@ const parentOf = (doc: Pick<KnowledgeDoc, 'folder_id' | 'space' | 'owner_id'>, m
     ? ({ page: 'folder', id: doc.folder_id } as const)
     : ({ page: 'knowledge', space: scopeOf({ space: doc.space, owner_id: doc.owner_id }, me) } as const);
 
-function DocRead({ doc }: { doc: KnowledgeDoc }) {
+/** The page's doc and who has it open; `gone` when a refresh found it removed or no longer shared. */
+interface DocView {
+  doc: KnowledgeDoc;
+  presence: readonly DocPresence[];
+  gone: boolean;
+}
+
+function DocRead({ doc, presence, gone }: DocView) {
   const { t } = useI18n();
   const me = useMe();
   const { menuFor, restore } = useItemMenu();
-  const presence = usePresence(doc.id, 'viewing');
   const others = presence.filter((entry) => entry.member_id !== me.id);
   const [versions, setVersions] = useState(false);
   const { headings, onHeadings } = useHeadings();
@@ -142,7 +148,7 @@ function DocRead({ doc }: { doc: KnowledgeDoc }) {
   const { agentById } = usePeople();
   const agent = doc.agent_id ? agentById.get(doc.agent_id) : undefined;
   const go = (index: number) => goToHeading(content.current, index);
-  const editable = canEdit(item);
+  const editable = canEdit(item) && !gone;
 
   return (
     <Page
@@ -189,6 +195,7 @@ function DocRead({ doc }: { doc: KnowledgeDoc }) {
               <Badge>{t('knowledge.agentFolderOf', { name: agent?.name ?? doc.path[0]?.name ?? '' })}</Badge>
             )}
           </div>
+          {gone && <Banner tone="warning">{t('knowledge.docGone')}</Banner>}
           {doc.archived_at && (
             <Banner
               tone="warning"
@@ -235,7 +242,7 @@ function DocRead({ doc }: { doc: KnowledgeDoc }) {
 
 type SaveState = 'idle' | 'saving' | 'failed';
 
-function DocEdit({ doc }: { doc: KnowledgeDoc }) {
+function DocEdit({ doc, presence, gone }: DocView) {
   const { t, locale } = useI18n();
   const me = useMe();
   const notify = useNotify();
@@ -246,15 +253,16 @@ function DocEdit({ doc }: { doc: KnowledgeDoc }) {
   const [title, setTitle] = useState(doc.title);
   const [note, setNote] = useState('');
   const [changed, setChanged] = useState(false);
+  const [uploads, setUploads] = useState(0);
   const [state, setState] = useState<SaveState>('idle');
   const [failure, setFailure] = useState('');
   const [conflict, setConflict] = useState<ReturnType<typeof staleDetails>>(null);
-  const [leaving, setLeaving] = useState<string | null>(null);
+  const [leaving, setLeaving] = useState<Attempt | null>(null);
   const [reloading, setReloading] = useState(false);
   const editor = useRef<DocEditorHandle | null>(null);
-  const presence = usePresence(doc.id, 'editing');
   const othersEditing = presence.filter((entry) => entry.member_id !== me.id && entry.state === 'editing');
-  const dirty = changed || title !== start.title;
+  // A picture still uploading is work in progress too: it lands in the draft when it's done.
+  const dirty = changed || title !== start.title || uploads > 0;
   const readRoute = { page: 'doc', id: doc.id } as const;
 
   useEffect(() => (dirty ? holdNavigation(setLeaving) : undefined), [dirty]);
@@ -262,10 +270,24 @@ function DocEdit({ doc }: { doc: KnowledgeDoc }) {
   const timeOf = (iso: string) => relativeTime(iso, { locale, timeZone: me.timezone });
 
   const save = async (basedOn = start.version) => {
+    if (uploads > 0) {
+      setState('failed');
+      setFailure(t('knowledge.waitForPictures'));
+      return;
+    }
     const nextTitle = title.trim();
     if (!nextTitle) {
       setState('failed');
       setFailure(t('knowledge.titleRequired'));
+      return;
+    }
+    // Only what changed is sent: a title-only save leaves the body exactly as it was written.
+    const content = editor.current?.changed() ? editor.current.markdown() : undefined;
+    const retitled = nextTitle !== start.title;
+    if (content === undefined && !retitled) {
+      setChanged(false);
+      notify(t('knowledge.nothingToSave'));
+      navigate(readRoute, { replace: true, force: true });
       return;
     }
     setState('saving');
@@ -273,13 +295,14 @@ function DocEdit({ doc }: { doc: KnowledgeDoc }) {
     try {
       const saved = await api.knowledge.docs.update(doc.id, {
         version: basedOn,
-        title: nextTitle,
-        content: editor.current?.markdown() ?? start.content,
+        ...(retitled ? { title: nextTitle } : {}),
+        ...(content !== undefined ? { content } : {}),
         ...(note.trim() ? { change_note: note.trim() } : {}),
       });
       client.setQueryData(keys.doc(doc.id), saved);
       void client.invalidateQueries({ queryKey: keys.docVersions(doc.id) });
-      void client.invalidateQueries({ queryKey: keys.docBacklinks(doc.id) });
+      // The links in it may have changed: other docs gain or lose a backlink.
+      void client.invalidateQueries({ queryKey: keys.backlinks });
       void refreshTree(client);
       setChanged(false);
       notify(saved.version === start.version ? t('knowledge.nothingToSave') : t('knowledge.saved'));
@@ -320,12 +343,15 @@ function DocEdit({ doc }: { doc: KnowledgeDoc }) {
     setStart({ version: latest.version, title: latest.title, content: latest.content });
     setTitle(latest.title);
     setChanged(false);
+    // The new editor starts without the old one's pictures in flight.
+    setUploads(0);
     setConflict(null);
     setState('idle');
     setFailure('');
   };
 
-  const cancel = () => (dirty ? setLeaving(href(readRoute)) : navigate(readRoute, { replace: true, force: true }));
+  const cancel = () =>
+    dirty ? setLeaving({ to: href(readRoute), back: false }) : navigate(readRoute, { replace: true, force: true });
 
   const savedBy = (id: string | null) =>
     id ? (memberById.get(id)?.name ?? t('knowledge.someone')) : t('knowledge.someone');
@@ -335,6 +361,8 @@ function DocEdit({ doc }: { doc: KnowledgeDoc }) {
       <StatusBadge status={t('knowledge.state.saving')} tone="info" />
     ) : state === 'failed' ? (
       <StatusBadge status={t('knowledge.state.failed')} tone="danger" />
+    ) : uploads > 0 ? (
+      <StatusBadge status={t('knowledge.uploadingPicture')} tone="info" />
     ) : dirty ? (
       <StatusBadge status={t('knowledge.state.unsaved')} tone="neutral" />
     ) : null;
@@ -351,6 +379,7 @@ function DocEdit({ doc }: { doc: KnowledgeDoc }) {
         />
       }
     >
+      {gone && <Banner tone="warning">{t('knowledge.docGoneEditing')}</Banner>}
       {conflict ? (
         <Banner
           tone="warning"
@@ -411,6 +440,7 @@ function DocEdit({ doc }: { doc: KnowledgeDoc }) {
           markdown={start.content}
           handle={editor}
           onChange={() => setChanged(true)}
+          onUploads={setUploads}
         />
       </Suspense>
       <div className="app-save-bar app-doc-save-bar">
@@ -429,7 +459,7 @@ function DocEdit({ doc }: { doc: KnowledgeDoc }) {
         )}
         <span className="app-inline-actions">
           <Button onClick={cancel}>{t('common.cancel')}</Button>
-          <Button kind="primary" loading={state === 'saving'} onClick={() => void save()}>
+          <Button kind="primary" loading={state === 'saving'} disabled={uploads > 0} onClick={() => void save()}>
             {t('common.save')}
           </Button>
         </span>
@@ -442,10 +472,10 @@ function DocEdit({ doc }: { doc: KnowledgeDoc }) {
           cancelLabel={t('knowledge.keepEditing')}
           onCancel={() => setLeaving(null)}
           onConfirm={() => {
-            const to = leaving;
+            const attempt = leaving;
             setLeaving(null);
             setChanged(false);
-            navigate(to, { force: true, replace: to === href(readRoute) });
+            leaveTo(attempt, { replace: attempt.to === href(readRoute) });
           }}
         >
           {t('knowledge.discardBody')}
@@ -477,6 +507,13 @@ export function DocPage({ id, edit }: { id: string; edit: boolean }) {
   const [editing, setEditing] = useState(false);
   const mayEdit = !!data && canEdit(docItem(data));
   useEffect(() => setEditing(edit && (editing || mayEdit)), [edit, editing, mayEdit]);
+  const inEditor = !!data && edit && (editing || mayEdit);
+  // One presence for the page: going between reading and editing changes what it says, it isn't leaving.
+  const presence = usePresence(id, data ? (inEditor ? 'editing' : 'viewing') : null);
+  // A refresh that fails keeps the doc on screen (and the draft in the editor); only a doc that
+  // never loaded shows the error page.
+  const gone =
+    doc.isError && doc.error instanceof ApiClientError && (doc.error.status === 404 || doc.error.status === 403);
 
   // Show where it lives in the directory: its space, the folders above it open.
   const pathKey = data?.path.map((entry) => entry.id).join('/');
@@ -494,11 +531,10 @@ export function DocPage({ id, edit }: { id: string; edit: boolean }) {
       </Page>
     );
   }
-  if (doc.isError || !data) {
-    const missing = doc.error instanceof ApiClientError && (doc.error.status === 404 || doc.error.status === 403);
+  if (!data) {
     return (
       <Page width="reading" header={<PageHeader title={t('nav.knowledge')} />}>
-        {missing ? (
+        {gone ? (
           <Empty
             icon={<FileQuestion />}
             title={t('knowledge.docMissing')}
@@ -511,6 +547,6 @@ export function DocPage({ id, edit }: { id: string; edit: boolean }) {
       </Page>
     );
   }
-  if (edit && (editing || mayEdit)) return <DocEdit doc={data} />;
-  return <DocRead doc={data} />;
+  if (inEditor) return <DocEdit doc={data} presence={presence} gone={gone} />;
+  return <DocRead doc={data} presence={presence} gone={gone} />;
 }

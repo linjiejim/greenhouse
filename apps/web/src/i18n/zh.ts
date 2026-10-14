@@ -1240,6 +1240,9 @@ export const zh = {
   'knowledge.docArchived': '这篇文档已归档。',
   'knowledge.docMissing': '找不到这篇文档',
   'knowledge.docMissingHint': '它可能已被移走，或者没有分享给你。',
+  'knowledge.docGone': '这篇文档现在打不开了：可能已被移走，或者不再分享给你。',
+  'knowledge.docGoneEditing':
+    '这篇文档现在打不开了：可能已被移走，或者不再分享给你。你的修改还在这里，可以先复制出来。',
   'knowledge.backToKnowledge': '回到知识库',
   'knowledge.edit': '编辑',
   'knowledge.emptyDoc': '这篇文档还是空的',
@@ -1271,6 +1274,8 @@ export const zh = {
   'knowledge.editorPlaceholder': '输入 / 插入块，[[ 引用文档，@ 提及成员',
   'knowledge.uploadingPicture': '图片上传中…',
   'knowledge.pictureFailed': '图片没有传上去 · {reason}',
+  'knowledge.waitForPictures': '图片还在上传，传完再保存。',
+  'knowledge.emptyItem': '空的一项',
   'knowledge.body': '正文',
   'knowledge.formatting': '格式',
   'knowledge.blocks': '插入块',

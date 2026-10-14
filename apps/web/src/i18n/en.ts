@@ -1272,6 +1272,9 @@ export const en: Record<MessageKey, string> = {
   'knowledge.docArchived': 'This doc is archived.',
   'knowledge.docMissing': 'This doc can’t be found',
   'knowledge.docMissingHint': 'It may have moved, or it isn’t shared with you.',
+  'knowledge.docGone': 'This doc can’t be opened any more: it may have moved, or it’s no longer shared with you.',
+  'knowledge.docGoneEditing':
+    'This doc can’t be opened any more: it may have moved, or it’s no longer shared with you. Your changes are still here; copy them before you leave.',
   'knowledge.backToKnowledge': 'Back to knowledge',
   'knowledge.edit': 'Edit',
   'knowledge.emptyDoc': 'This doc is empty',
@@ -1303,6 +1306,8 @@ export const en: Record<MessageKey, string> = {
   'knowledge.editorPlaceholder': 'Type / for blocks, [[ to link a doc, @ to mention',
   'knowledge.uploadingPicture': 'Uploading picture…',
   'knowledge.pictureFailed': 'The picture did not upload · {reason}',
+  'knowledge.waitForPictures': 'Pictures are still uploading. Save once they’re done.',
+  'knowledge.emptyItem': 'Empty item',
   'knowledge.body': 'Body',
   'knowledge.formatting': 'Formatting',
   'knowledge.blocks': 'Insert a block',

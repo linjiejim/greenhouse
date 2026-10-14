@@ -50,6 +50,8 @@ export const keys = {
   docVersion: (id: string, version: number) => ['docs', 'version', id, version] as const,
   docDiff: (id: string, from: number, to: number, mode: 'line' | 'word') =>
     ['docs', 'diff', id, from, to, mode] as const,
+  /** Every doc's backlinks: a save can add or drop a link to any doc. */
+  backlinks: ['docs', 'backlinks'] as const,
   docBacklinks: (id: string) => ['docs', 'backlinks', id] as const,
   docComments: (id: string) => ['docs', 'comments', id] as const,
   docPresence: (id: string) => ['docs', 'presence', id] as const,

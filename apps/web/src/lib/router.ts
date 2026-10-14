@@ -179,17 +179,25 @@ export function href(route: Route): string {
   }
 }
 
+/**
+ * Where a held move was going. `back` is true for Back and Forward, which were undone by adding the
+ * page again: leaving goes back through history (leaveTo) rather than adding another entry.
+ */
+export interface Attempt {
+  to: string;
+  back: boolean;
+}
+
 /** A page holding unsaved work (holdNavigation): where it is, and what to ask before leaving it. */
-let hold: { at: string; attempt: (to: string) => void } | null = null;
+let hold: { at: string; attempt: (attempt: Attempt) => void } | null = null;
 
 /**
  * Holds navigation while a page has unsaved work: links, navigate(), Back and Forward ask
- * `onAttempt` with where they were going instead of leaving, and closing or reloading the tab asks
- * the browser's own question. The page decides, then releases and navigates with `force`.
- * Returns the release.
+ * `onAttempt` where they were going instead of leaving, and closing or reloading the tab asks
+ * the browser's own question. The page decides, then leaves with leaveTo. Returns the release.
  */
-export function holdNavigation(onAttempt: (to: string) => void): () => void {
-  const mine = { at: location.hash, attempt: (to: string) => onAttempt(to) };
+export function holdNavigation(onAttempt: (attempt: Attempt) => void): () => void {
+  const mine = { at: location.hash, attempt: onAttempt };
   hold = mine;
   const onClick = (event: MouseEvent) => {
     if (hold !== mine || event.defaultPrevented || event.button !== 0) return;
@@ -199,7 +207,7 @@ export function holdNavigation(onAttempt: (to: string) => void): () => void {
     const to = link.getAttribute('href') ?? '';
     if (to === mine.at) return;
     event.preventDefault();
-    mine.attempt(to);
+    mine.attempt({ to, back: false });
   };
   const onBeforeUnload = (event: BeforeUnloadEvent) => {
     event.preventDefault();
@@ -217,7 +225,7 @@ export function holdNavigation(onAttempt: (to: string) => void): () => void {
 export function navigate(to: Route | string, options: { replace?: boolean; force?: boolean } = {}) {
   const target = typeof to === 'string' ? to : href(to);
   if (target === location.hash) return;
-  if (hold && !options.force) return hold.attempt(target);
+  if (hold && !options.force) return hold.attempt({ to: target, back: false });
   // Leaving anyway: the hold lets this one through.
   if (options.force) hold = null;
   if (options.replace) {
@@ -236,8 +244,18 @@ function held(): boolean {
   if (!hold || location.hash === hold.at) return false;
   const to = location.hash;
   history.pushState(history.state, '', hold.at);
-  hold.attempt(to);
+  hold.attempt({ to, back: true });
   return true;
+}
+
+/**
+ * Leaves a held page for where the attempt was going. After Back or Forward the page sits on top
+ * of that place in history, so going back reaches it and Back afterwards doesn't return to the page.
+ */
+export function leaveTo(attempt: Attempt, options: { replace?: boolean } = {}) {
+  if (!attempt.back) return navigate(attempt.to, { ...options, force: true });
+  hold = null;
+  history.back();
 }
 
 function subscribe(onChange: () => void) {

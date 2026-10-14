@@ -4,7 +4,7 @@
  * not here: the doc page sends them with the version it started from (DocEditor).
  */
 
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import type {
   CreateDocInput,
@@ -159,9 +159,12 @@ export function usePresence(id: string, state: PresenceState | null) {
     queryKey: keys.docPresence(id),
     queryFn: () => api.knowledge.docs.presence(id),
     staleTime: Infinity,
+    enabled: state !== null,
   });
+  const joined = useRef(false);
   useEffect(() => {
     if (!state) return;
+    joined.current = true;
     const beat = () =>
       void api.knowledge.docs
         .beat(id, state)
@@ -172,7 +175,14 @@ export function usePresence(id: string, state: PresenceState | null) {
     return () => clearInterval(timer);
   }, [client, id, state]);
   // Leaving is once per page, not per state: going from editing back to viewing is not leaving.
-  useEffect(() => () => void api.knowledge.docs.leave(id).catch(() => undefined), [id]);
+  useEffect(
+    () => () => {
+      if (!joined.current) return;
+      joined.current = false;
+      void api.knowledge.docs.leave(id).catch(() => undefined);
+    },
+    [id],
+  );
   return (query.data?.items ?? []) as DocPresence[];
 }
 
