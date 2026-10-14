@@ -1,10 +1,11 @@
 /**
- * 设置 → 连接 (SET-03): the connectors I can use and my connections to them. A key is checked
- * against the server before it is kept (a refusal shows under the field); a sign-in goes to the
- * provider and comes back here with `oauth_state` and `oauth_code`, which this page finishes
- * with my own session and then clears from the address (what became of it is kept in
+ * 设置 → 连接 (SET-03, SET-05): the connectors I can use and my connections to them. A key is
+ * checked against the server before it is kept (a refusal shows under the field); a sign-in goes
+ * to the provider and comes back here with `oauth_state` and `oauth_code`, which this page
+ * finishes with my own session and then clears from the address (what became of it is kept in
  * oauth-return.ts, since clearing the address remounts the page). Connectors that need no
- * connection (none, shared) are ready as they are.
+ * connection (none, shared) are ready as they are. The built-in mailbox connects my own mailbox
+ * with its IMAP and SMTP settings (MailboxDialog).
  */
 
 import { useEffect, useState, type FormEvent } from 'react';
@@ -37,6 +38,7 @@ import { api } from '../../lib/api';
 import { errorText } from '../../lib/errors';
 import { useI18n, type Translate } from '../../lib/i18n';
 import { navigate, useRoute } from '../../lib/router';
+import { MailboxDialog } from './MailboxDialog';
 import { readOAuthReturn, setSignInOutcome, useSignInOutcome, type OAuthReturn } from './oauth-return';
 
 /** Sign-ins being finished: a code is spent once, and React runs a mount effect twice in development. */
@@ -51,11 +53,12 @@ interface Row {
   connection: Connection | null;
 }
 
-function rowsOf(data: MyConnections): Row[] {
-  const mine = data.items.filter((item) => item.kind === 'connector' && item.connector);
+function rowsOf(data: MyConnections, t: Translate): Row[] {
+  // A mailbox connection belongs to the built-in mailbox connector.
+  const mine = data.items.filter((item) => (item.kind === 'connector' || item.kind === 'email') && item.connector);
   const rows: Row[] = data.connectors.map((connector) => ({
     id: connector.id,
-    name: connector.name,
+    name: connector.builtin === 'mailbox' ? t('connections.mailbox') : connector.name,
     connector,
     connection: mine.find((item) => item.connector!.id === connector.id) ?? null,
   }));
@@ -86,6 +89,14 @@ function statusOf(row: Row): { word: MessageKey; tone: Tone } {
 function metaOf(row: Row, t: Translate): string {
   if (!row.connector) return t('connections.offHint');
   if (row.connection?.last_error && row.connection.status !== 'active') return row.connection.last_error;
+  if (row.connector.builtin === 'mailbox') {
+    const mailbox = row.connection?.mailbox;
+    const tools = t('connections.tools', {
+      count: row.connector.tool_count,
+      readOnly: row.connector.read_only_tool_count,
+    });
+    return mailbox ? `${mailbox.address} · ${mailbox.imap.host} · ${tools}` : t('connections.mailboxMeta');
+  }
   const { auth_mode, tool_count, read_only_tool_count, needs_connection } = row.connector;
   const tools = tool_count
     ? t('connections.tools', { count: tool_count, readOnly: read_only_tool_count })
@@ -194,13 +205,15 @@ export function ConnectionsSection() {
   const route = useRoute();
   const data = useMyConnections();
   const [keyFor, setKeyFor] = useState<AvailableConnector | null>(null);
+  /** The mailbox dialog: open with my current connection (null for a new one). */
+  const [mailboxFor, setMailboxFor] = useState<{ connection: Connection | null } | null>(null);
   const [disconnecting, setDisconnecting] = useState<Row | null>(null);
   /** The connector whose sign-in is starting: the browser is about to leave for the provider. */
   const [starting, setStarting] = useState<string | null>(null);
   const outcome = useSignInOutcome();
   const refresh = () => client.invalidateQueries({ queryKey: connectorKeys.mine });
   const nameOf = (connectorId: string | null) =>
-    (data.data && rowsOf(data.data).find((row) => row.id === connectorId)?.name) || t('connections.thisConnector');
+    (data.data && rowsOf(data.data, t).find((row) => row.id === connectorId)?.name) || t('connections.thisConnector');
 
   // Back from a provider: finish the sign-in with my session, or say why it did not happen; then
   // take it out of the address.
@@ -254,12 +267,23 @@ export function ConnectionsSection() {
 
   if (data.isPending) return <Skeleton lines={4} />;
   if (data.isError) return <ErrorBox onRetry={() => void data.refetch()}>{t('common.error')}</ErrorBox>;
-  const rows = rowsOf(data.data);
+  const rows = rowsOf(data.data, t);
 
   const actionFor = (row: Row) => {
     const connector = row.connector;
     if (!connector?.needs_connection) return null;
     if (row.connection && row.connection.status !== 'needs_reauth') return null;
+    if (connector.builtin === 'mailbox') {
+      return (
+        <Button
+          size="sm"
+          kind={row.connection ? 'primary' : 'secondary'}
+          onClick={() => setMailboxFor({ connection: row.connection })}
+        >
+          {row.connection ? t('connections.reconnect') : t('connections.connect')}
+        </Button>
+      );
+    }
     const oauth = connector.auth_mode === 'oauth';
     return (
       <Button
@@ -277,14 +301,16 @@ export function ConnectionsSection() {
     if (!row.connection) return [];
     const connector = row.connector;
     const renew: MenuEntry[] =
-      connector && row.connection.status !== 'needs_reauth'
-        ? [
-            {
-              label: connector.auth_mode === 'oauth' ? t('connections.signInAgain') : t('connections.replaceKey'),
-              onClick: () => (connector.auth_mode === 'oauth' ? void signIn(row.id) : setKeyFor(connector)),
-            },
-          ]
-        : [];
+      connector?.builtin === 'mailbox'
+        ? [{ label: t('connections.mailboxChange'), onClick: () => setMailboxFor({ connection: row.connection }) }]
+        : connector && row.connection.status !== 'needs_reauth'
+          ? [
+              {
+                label: connector.auth_mode === 'oauth' ? t('connections.signInAgain') : t('connections.replaceKey'),
+                onClick: () => (connector.auth_mode === 'oauth' ? void signIn(row.id) : setKeyFor(connector)),
+              },
+            ]
+          : [];
     const others: MenuEntry[] = [
       ...(connector ? [{ label: t('connections.test'), onClick: () => test(row) }] : []),
       ...renew,
@@ -342,6 +368,7 @@ export function ConnectionsSection() {
         />
       )}
       {keyFor && <KeyDialog connector={keyFor} onClose={() => setKeyFor(null)} />}
+      {mailboxFor && <MailboxDialog current={mailboxFor.connection} onClose={() => setMailboxFor(null)} />}
       {disconnecting && (
         <ConfirmDialog
           danger

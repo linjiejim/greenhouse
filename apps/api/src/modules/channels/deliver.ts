@@ -26,6 +26,7 @@ import {
   type NotificationRow,
 } from '@greenhouse/db';
 import { UndeliverableError, type Capability, type PushMessage } from '@greenhouse/providers';
+import type { AdminChannel } from '@greenhouse/contract';
 import { toErrorMessage } from '@greenhouse/utils/error';
 import { logger } from '@greenhouse/utils/logger';
 import { enqueueJob, type JobOutcome } from '../../jobs.js';
@@ -94,10 +95,34 @@ export async function linkedAccount(memberId: string, channel: 'feishu' | 'wecom
 }
 
 export function createDeliverer(deps: { providers: ProvidersService; publicUrl: string }) {
-  async function clientOf<C extends 'mail' | 'im' | 'push'>(pass: Pass, channel: DeliveryChannel, capability: C) {
+  async function clientOf<C extends 'im' | 'push'>(pass: Pass, channel: AdminChannel, capability: C) {
     const found = channelInstance(await pass.arranged(), channel);
     if (!configured(found)) return null;
     return (await deps.providers.byId(capability, found!.instance.id, {}))?.client ?? null;
+  }
+
+  /**
+   * An email through the mail capability: each instance in its order until one sends. Refused for
+   * good only when every instance refused it (a recipient no server takes); else a retry may pass.
+   */
+  async function sendEmail(member: Member, rendering: Rendering): Promise<JobOutcome> {
+    const chain = await deps.providers.chain('mail', { personal: false });
+    if (!chain.length) return suppressed('not_configured');
+    const content = renderEmail(rendering);
+    const failures: unknown[] = [];
+    for (const entry of chain) {
+      try {
+        await entry.client.send({ to: [{ address: member.email, name: member.name }], ...content });
+        return { status: 'succeeded', result: { instance: entry.instance.id } };
+      } catch (error) {
+        failures.push(error);
+      }
+    }
+    const refused = failures.every((error) => error instanceof UndeliverableError);
+    return failed(
+      refused ? failures[0] : (failures.find((error) => !(error instanceof UndeliverableError)) ?? failures[0]),
+      'Mail',
+    );
   }
 
   async function sendPush(
@@ -248,12 +273,8 @@ export function createDeliverer(deps: { providers: ProvidersService; publicUrl: 
 
       try {
         switch (channel) {
-          case 'email': {
-            const mail = await clientOf(pass, 'email', 'mail');
-            if (!mail) return suppressed('not_configured');
-            await mail.send({ to: member.email, toName: member.name, ...renderEmail(rendering) });
-            return { status: 'succeeded' };
-          }
+          case 'email':
+            return await sendEmail(member, rendering);
           case 'feishu':
           case 'wecom': {
             const im = await clientOf(pass, channel, 'im');
@@ -272,7 +293,7 @@ export function createDeliverer(deps: { providers: ProvidersService; publicUrl: 
             });
         }
       } catch (error) {
-        return failed(error, CHANNEL_PROVIDER[channel].name);
+        return failed(error, channel === 'email' ? 'Mail' : CHANNEL_PROVIDER[channel].name);
       }
     },
 

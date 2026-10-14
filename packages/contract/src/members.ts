@@ -79,7 +79,12 @@ export const inviteInputSchema = z.object({
 export type InviteInput = z.input<typeof inviteInputSchema>;
 
 /** A one-time link the admin hands over (shown once; it is never stored in plain text). */
-export const issuedLinkSchema = z.object({ url: z.string(), expires_at: isoTime });
+export const issuedLinkSchema = z.object({
+  url: z.string(),
+  expires_at: isoTime,
+  /** emailed: the mail service sent it; failed: it could not; shown: no mail service, hand the link over. */
+  delivery: z.enum(['shown', 'emailed', 'failed']),
+});
 export type IssuedLink = z.infer<typeof issuedLinkSchema>;
 
 export const inviteResultSchema = z.object({ member: memberAdminSchema, link: issuedLinkSchema });

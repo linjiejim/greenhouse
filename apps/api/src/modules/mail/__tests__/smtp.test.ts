@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { pinnedFetch, UndeliverableError } from '@greenhouse/providers';
 import { smtpAdapter, smtpPort } from '../smtp.js';
-import { readMail, startFakeSmtp, type FakeSmtp } from './fakes.js';
+import { readMail, startFakeSmtp, type FakeSmtp } from '../../channels/__tests__/fakes.js';
 
 let server: FakeSmtp | null = null;
 afterEach(async () => {
@@ -33,13 +33,14 @@ describe('the SMTP adapter', () => {
       'app-password',
     );
     await mail.verify();
-    await mail.send({
-      to: 'lin@acme.com',
-      toName: 'Lin',
+    const sent = await mail.send({
+      to: [{ address: 'lin@acme.com', name: 'Lin' }],
       subject: 'Greeny：请你批准一个操作',
       text: '打开查看: https://gh.acme.com/#/c/cnv_1',
       html: '<p><a href="https://gh.acme.com/#/c/cnv_1">打开查看</a></p>',
     });
+    expect(sent.messageId).toMatch(/^<.+@.+>$/);
+    expect(sent.providerId).toBe(sent.messageId);
     expect(server.mails).toHaveLength(1);
     const [received] = server.mails;
     expect(received).toMatchObject({ from: 'bot@acme.com', to: ['lin@acme.com'], auth: 'bot@acme.com:app-password' });
@@ -53,11 +54,31 @@ describe('the SMTP adapter', () => {
   it('sends without signing in to a relay that needs none', async () => {
     server = await startFakeSmtp();
     await client({ host: '127.0.0.1', port: server.port, security: 'none', fromAddress: 'gh@acme.com' }).send({
-      to: 'lin@acme.com',
+      to: [{ address: 'lin@acme.com' }],
       subject: 'Hi',
       text: 'Hello',
     });
     expect(server.mails[0]).toMatchObject({ auth: null, from: 'gh@acme.com' });
+  });
+
+  it('sends from another address when told, with the threading headers and no header injection', async () => {
+    server = await startFakeSmtp();
+    await client({ host: '127.0.0.1', port: server.port, security: 'none', fromAddress: 'gh@acme.com' }).send({
+      from: { address: 'greeny-k3v9@agents.acme.com', name: 'Greeny\r\nBcc: evil@x.com' },
+      to: [{ address: 'lin@acme.com' }, { address: 'mei@acme.com' }],
+      cc: [{ address: 'kai@acme.com' }],
+      subject: 'Re: plan\r\nBcc: evil@x.com',
+      text: 'Agreed.',
+      inReplyTo: '<a1@mail.acme.com>',
+      references: ['<a0@mail.acme.com>', '<a1@mail.acme.com>'],
+    });
+    const [received] = server.mails;
+    expect(received).toMatchObject({ from: 'greeny-k3v9@agents.acme.com' });
+    expect(received!.to.sort()).toEqual(['kai@acme.com', 'lin@acme.com', 'mei@acme.com']);
+    expect(received!.raw).toMatch(/^In-Reply-To: <a1@mail\.acme\.com>/m);
+    expect(received!.raw).toMatch(/^References: <a0@mail\.acme\.com> <a1@mail\.acme\.com>/m);
+    expect(received!.raw).not.toMatch(/^Bcc:/im);
+    expect((await readMail(received!)).subject).toBe('Re: plan Bcc: evil@x.com');
   });
 
   it('tells a refused recipient apart from a passing failure, without the password', async () => {
@@ -67,11 +88,15 @@ describe('the SMTP adapter', () => {
       { host: '127.0.0.1', port: server.port, security: 'none', username: 'bot', fromAddress: 'bot@acme.com' },
       'app-password',
     );
-    const refused = await mail.send({ to: 'gone@acme.com', subject: 'x', text: 'y' }).catch((error: unknown) => error);
+    const refused = await mail
+      .send({ to: [{ address: 'gone@acme.com' }], subject: 'x', text: 'y' })
+      .catch((error: unknown) => error);
     expect(refused).toBeInstanceOf(UndeliverableError);
 
     server.answers.push('451 4.3.0 try again later');
-    const later = await mail.send({ to: 'lin@acme.com', subject: 'x', text: 'y' }).catch((error: unknown) => error);
+    const later = await mail
+      .send({ to: [{ address: 'lin@acme.com' }], subject: 'x', text: 'y' })
+      .catch((error: unknown) => error);
     expect(later).toBeInstanceOf(Error);
     expect(later).not.toBeInstanceOf(UndeliverableError);
     expect(String(later)).toContain('451');

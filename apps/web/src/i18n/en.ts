@@ -1,3 +1,4 @@
+import { mailEn } from './mail.en';
 import { tablesEn } from './tables.en';
 import type { MessageKey } from './zh';
 
@@ -381,7 +382,7 @@ export const en: Record<MessageKey, string> = {
   'provider.sandbox': 'Computers (sandbox)',
   'provider.search': 'Web search',
   'provider.storage': 'File storage',
-  'provider.mail': 'Email',
+  'provider.mail': 'Mail',
   'provider.im': 'Messaging',
   'provider.push': 'Push',
   'provider.off': 'Off',
@@ -969,22 +970,12 @@ export const en: Record<MessageKey, string> = {
   'notify.turnOff': 'Stop pushing',
 
   'channels.title': 'Notification channels',
-  'channels.email': 'Email (SMTP)',
   'channels.feishu': 'Feishu',
   'channels.wecom': 'WeCom',
   'channels.push': 'Phone push',
   'channels.secretKept': 'Saved; leave empty to keep it, fill in to replace it',
   'channels.secretSaved': 'Saved',
   'channels.fromEnv': 'This channel comes from the server’s environment; it is read-only here.',
-  'channels.host': 'SMTP host',
-  'channels.port': 'Port',
-  'channels.portHint': 'Empty uses the usual port for the security (465, 587 or 25)',
-  'channels.security': 'Security',
-  'channels.securityNone': 'None',
-  'channels.username': 'User name',
-  'channels.password': 'Password',
-  'channels.fromAddress': 'From address',
-  'channels.fromName': 'From name',
   'channels.baseUrl': 'Service address',
   'channels.appId': 'App ID',
   'channels.appSecret': 'App Secret',
@@ -1430,4 +1421,5 @@ export const en: Record<MessageKey, string> = {
   'common.pageFailed': 'This page hit an error · try again',
 
   ...tablesEn,
+  ...mailEn,
 };

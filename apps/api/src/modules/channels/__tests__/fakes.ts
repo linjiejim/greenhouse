@@ -141,6 +141,27 @@ export async function startFakeSmtp(): Promise<FakeSmtp> {
   };
 }
 
+/**
+ * Sets up the mail capability with an SMTP instance, as an admin does in 管理 → 服务 → 邮箱;
+ * email notifications go out through it. Returns its id.
+ */
+export async function smtpInstance(
+  call: (
+    method: string,
+    path: string,
+    options: { token?: string; body?: unknown },
+  ) => Promise<{ status: number; body: any }>,
+  token: string,
+  config: { host: string; port?: number; security?: 'tls' | 'starttls' | 'none'; fromAddress: string },
+): Promise<string> {
+  const created = await call('POST', '/api/admin/providers', {
+    token,
+    body: { capability: 'mail', kind: 'smtp', name: 'SMTP', config, secrets: {} },
+  });
+  if (created.status !== 201) throw new Error(`Could not set up mail: ${JSON.stringify(created.body)}`);
+  return created.body.id as string;
+}
+
 /** A received message, decoded. */
 export async function readMail(mail: ReceivedMail) {
   const parsed = await simpleParser(mail.raw);

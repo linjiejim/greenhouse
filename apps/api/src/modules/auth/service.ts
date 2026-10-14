@@ -138,8 +138,10 @@ export function createAuthService(deps: { tokens: Tokens; publicUrl: string }) {
       });
       const base = deps.publicUrl.replace(/\/+$/, '');
       return {
-        url: `${base}/#/${purpose === 'activate' ? 'activate' : 'reset'}?token=${token}`,
+        // One page takes both: it asks the link what it is for (#/activate, PRD §6.4).
+        url: `${base}/#/activate?token=${token}`,
         expires_at: expiresAt,
+        delivery: 'shown',
       };
     },
 

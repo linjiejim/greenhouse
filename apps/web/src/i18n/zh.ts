@@ -1,3 +1,4 @@
+import { mailZh } from './mail.zh';
 import { tablesZh } from './tables.zh';
 
 /** Chinese: the source dictionary. Keys are grouped by where the words appear; a module may keep its own in <module>.zh.ts. */
@@ -379,7 +380,7 @@ export const zh = {
   'provider.sandbox': '电脑（沙箱）',
   'provider.search': '网页搜索',
   'provider.storage': '文件存储',
-  'provider.mail': '邮件',
+  'provider.mail': '邮箱',
   'provider.im': '消息渠道',
   'provider.push': '推送',
   'provider.off': '已关闭',
@@ -944,22 +945,12 @@ export const zh = {
   'notify.turnOff': '不再推送',
 
   'channels.title': '通知渠道',
-  'channels.email': '邮件（SMTP）',
   'channels.feishu': '飞书',
   'channels.wecom': '企业微信',
   'channels.push': '手机推送',
   'channels.secretKept': '已保存；留空不变，填写则替换',
   'channels.secretSaved': '已保存',
   'channels.fromEnv': '这个渠道由服务器的环境变量配置，这里只读。',
-  'channels.host': 'SMTP 主机',
-  'channels.port': '端口',
-  'channels.portHint': '留空按安全方式用默认端口（465、587 或 25）',
-  'channels.security': '安全方式',
-  'channels.securityNone': '不加密',
-  'channels.username': '用户名',
-  'channels.password': '密码',
-  'channels.fromAddress': '发件地址',
-  'channels.fromName': '发件人名称',
   'channels.baseUrl': '服务地址',
   'channels.appId': 'App ID',
   'channels.appSecret': 'App Secret',
@@ -1397,6 +1388,7 @@ export const zh = {
   'common.pageFailed': '这个页面出错了 · 可以重试',
 
   ...tablesZh,
+  ...mailZh,
 } as const;
 
 export type MessageKey = keyof typeof zh;

@@ -9,6 +9,7 @@ import {
   fakeNetwork,
   PROJECT_ID,
   readMail,
+  smtpInstance,
   startFakeSmtp,
   type FakeSmtp,
 } from '../../modules/channels/__tests__/fakes.js';
@@ -47,9 +48,11 @@ describe('a needs-you card', () => {
     );
     const admin = await member('admin');
     const lin = await member('member', 'lin@acme.com');
-    await call('PUT', '/api/admin/channels/email', {
-      token: admin.token,
-      body: { host: '127.0.0.1', port: smtp.port, security: 'none', from_address: 'gh@acme.com' },
+    await smtpInstance(call, admin.token, {
+      host: '127.0.0.1',
+      port: smtp.port,
+      security: 'none',
+      fromAddress: 'gh@acme.com',
     });
     // Lin opts in to email; push is on by default once the phone is registered.
     await call('PUT', '/api/me/notification-settings', {

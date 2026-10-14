@@ -77,9 +77,10 @@ export const CONNECTION_STATUSES = ['active', 'needs_reauth', 'error'] as const;
 export type ConnectionStatus = (typeof CONNECTION_STATUSES)[number];
 
 /**
- * A member's external account: a connector key or sign-in, and later their Feishu, WeCom and
- * mailboxes. `secretsEnc` (tokens, a key, a mailbox password) is write-only; `config` holds only
- * plain settings (a mailbox's hosts and ports).
+ * A member's external account: a connector key or sign-in, their own mailbox (kind `email`, the
+ * built-in mailbox connector), and later their Feishu and WeCom accounts. `secretsEnc` (tokens, a
+ * key, a mailbox password) is write-only; `config` holds only plain settings (a mailbox's hosts
+ * and ports).
  */
 export const connections = pgTable(
   'connections',
@@ -110,6 +111,10 @@ export const connections = pgTable(
     uniqueIndex('connections_member_connector_key')
       .on(t.memberId, t.connectorId)
       .where(sql`${t.kind} = 'connector'`),
+    // One mailbox per member through the built-in mailbox connector.
+    uniqueIndex('connections_member_email_key')
+      .on(t.memberId)
+      .where(sql`${t.kind} = 'email'`),
     // Feishu and WeCom sign-in find the member by their account.
     uniqueIndex('connections_external_key')
       .on(t.kind, t.externalId)

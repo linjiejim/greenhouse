@@ -7,15 +7,19 @@
  *   "need a human …" asks the member to take over the computer (request_takeover)
  *   "look up …"   searches the knowledge base (knowledge_query), then links the first doc found
  *   "keep a note …" writes a doc into the Agent's own reference folder (knowledge_mutation)
+ *   mail arrived (the wake note)  reads it with the mail tool, then says its subject
+ *   "reply to the mail …" replies to the newest mail in the conversation (an approval card)
+ *   "check my mailbox …"  searches the member's own mailbox (mcp_call, the built-in connector)
  *   anything else "Echo: <message>", in a few chunks
  * Titles and summaries (non-streaming calls) get fixed answers. The same server is the
- * connectors' MCP servers and their sign-in (fake-mcp.mjs), and an OpenAI-compatible speech
- * service for the voice tests: any recording is SPOKEN (/v1/audio/transcriptions), any text a
- * short silence (/v1/audio/speech).
+ * connectors' MCP servers and their sign-in (fake-mcp.mjs), Resend and a member's mailbox
+ * (fake-mail.mjs), and an OpenAI-compatible speech service for the voice tests: any recording
+ * is SPOKEN (/v1/audio/transcriptions), any text a short silence (/v1/audio/speech).
  */
 
 import { writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
+import { handleMail } from './fake-mail.mjs';
 import { handleMcp } from './fake-mcp.mjs';
 
 const port = Number(process.argv[2] ?? process.env.FAKE_LLM_PORT ?? 4592);
@@ -127,6 +131,9 @@ async function stream(response, request) {
   );
   const afterTool = last?.role === 'tool' || woken;
   const toolText = last?.role === 'tool' ? textOf(last.content) : '';
+  // Mail at the Agent's address wakes it with a note naming the mail (modules/mail/wake.ts).
+  const closing = textOf(messages.filter((message) => message.role === 'user').at(-1)?.content ?? '');
+  const mailWake = /New mail arrived in your mailbox|let in mail that had been held back/.test(closing);
   const tool = (name, args) => {
     chunk(response, {
       choices: [
@@ -153,7 +160,18 @@ async function stream(response, request) {
     chunk(response, { choices: [{ index: 0, delta: {}, finish_reason: 'stop' }] });
   };
 
-  if (!afterTool && /^ask me/i.test(said)) {
+  if (!afterTool && mailWake) {
+    tool('mail', { action: 'read', id: /\bmal_[0-9A-Z]{26}\b/.exec(closing)?.[0] ?? '' });
+  } else if (afterTool && toolText.includes('mail_body')) {
+    await say(`Read the mail: ${/"subject":\s*"((?:[^"\\]|\\.)*)"/.exec(toolText)?.[1] ?? ''}`, 10);
+  } else if (!afterTool && /^reply to the mail/i.test(said)) {
+    const ids = [...JSON.stringify(messages).matchAll(/\bmal_[0-9A-Z]{26}\b/g)].map((match) => match[0]);
+    tool('mail', { action: 'reply', id: ids.at(-1) ?? '', body: 'Thanks, we got it.' });
+  } else if (!afterTool && /^check my mailbox/i.test(said)) {
+    tool('mcp_call', { action: 'call', connector: 'mailbox', tool: 'search_messages', arguments: {} });
+  } else if (afterTool && toolText.includes('search_messages')) {
+    await say(`Found mail: ${/subject\\?":\s*\\?"([^"\\]+)/.exec(toolText)?.[1] ?? 'nothing'}`, 10);
+  } else if (!afterTool && /^ask me/i.test(said)) {
     tool('ask_user', { question: 'Which city?', fields: [{ key: 'city', label: 'City', type: 'text' }] });
   } else if (!afterTool && /^remember /i.test(said)) {
     tool('memory', { action: 'remember', title: said.slice(9).trim(), category: 'fact' });
@@ -209,6 +227,7 @@ createServer((request, response) => {
   request.on('end', () => {
     // The connectors' MCP servers and their sign-in (fake-mcp.mjs).
     if (handleMcp(request, response, raw, `http://127.0.0.1:${port}`)) return;
+    if (handleMail(request, response, raw, `http://127.0.0.1:${port}`)) return;
     if (request.method === 'GET' && request.url?.startsWith('/search')) {
       response.writeHead(200, { 'content-type': 'application/json' });
       return response.end(

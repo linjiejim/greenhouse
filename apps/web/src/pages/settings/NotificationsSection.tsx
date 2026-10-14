@@ -1,7 +1,7 @@
 /**
  * 设置 → 通知 (SET-02, NTF-04, NTF-05): which kinds of notification reach me where. The
- * notification center always has them; email, Feishu, WeCom and my phones only when an admin set
- * them up and they reach me. Previews stay off unless I turn them on: then messages name what
+ * notification center always has them; email and my phones only when an admin set them up and
+ * they reach me (Feishu and WeCom stay hidden until the IM channels, CHN-05). Previews stay off unless I turn them on: then messages name what
  * they are about, never the content of a card or a reply. My phones register themselves from
  * the app; here they can be tested or switched off.
  */
@@ -34,6 +34,8 @@ const CHANNEL: Record<DeliveryChannel, MessageKey> = {
   wecom: 'notify.wecom',
   push: 'notify.push',
 };
+/** Back with the IM channels (CHN-05). */
+const HIDDEN: ReadonlySet<DeliveryChannel> = new Set(['feishu', 'wecom']);
 
 function Devices() {
   const { t, locale } = useI18n();
@@ -107,7 +109,8 @@ export function NotificationsSection() {
   if (settings.isError) {
     return <ErrorBox onRetry={() => void settings.refetch()}>{errorText(settings.error, t)}</ErrorBox>;
   }
-  const { channels, categories, previews } = settings.data;
+  const { categories, previews } = settings.data;
+  const channels = settings.data.channels.filter((channel) => !HIDDEN.has(channel));
   const toggle = (category: NotificationCategory, channel: DeliveryChannel, on: boolean) =>
     save.mutate({ categories: { [category]: { ...categories[category], [channel]: on } } });
 

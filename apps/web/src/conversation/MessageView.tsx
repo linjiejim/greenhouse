@@ -33,6 +33,7 @@ import { fullTime, relativeTime } from '../lib/time';
 import { AgentAvatar } from '../shell/AgentAvatar';
 import { MemberAvatar } from '../shell/MemberAvatar';
 import { Attachments } from './Attachments';
+import { isMailEvent, MailCard } from './MailCard';
 import { Markdown } from './Markdown';
 import { RichContent, type BlockContext } from './rich/RichContent';
 import { flattenRichOutput } from '@greenhouse/types/rich-output';
@@ -151,6 +152,8 @@ export const MessageView = memo(function MessageView({
   const time = relativeTime(message.created_at, { locale, timeZone });
 
   if (message.role === 'event') {
+    // A mail that arrived at the Agent's address, or one it sent: a card that opens the mail.
+    if (isMailEvent(message.event)) return <MailCard message={message as Message & { event: typeof message.event }} />;
     return (
       <div className="app-event-line" role="note">
         {message.content}

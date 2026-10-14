@@ -62,6 +62,8 @@ describe('the API client', () => {
       ['desk', false],
       ['own', true],
       ['sso', true],
+      // The built-in one: each member connects their own mailbox.
+      ['mailbox', true],
     ]);
     await expect(asLin.me.connections.connect({ connector_id: own.id, key: 'wrong-key' })).rejects.toMatchObject({
       status: 400,

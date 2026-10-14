@@ -1,4 +1,4 @@
-/** The shared API client against the real app: notification settings, phones and channels. */
+/** The shared API client against the real app: notification settings, phones, channels and mail. */
 
 import { describe, expect, it } from 'vitest';
 import type { TokenPair } from '@greenhouse/contract';
@@ -7,7 +7,7 @@ import { EXPO_TOKEN, fakeNetwork, PROJECT_ID } from '../modules/channels/__tests
 import { createTestApp, TEST_PASSWORD } from '../testing.js';
 
 describe('the API client', () => {
-  it('reaches notification settings, push devices and 管理 → 渠道', async () => {
+  it('reaches notification settings, push devices, 管理 → 渠道 and 管理 → 服务 → 邮箱', async () => {
     const net = fakeNetwork();
     const { app, member } = createTestApp({}, { fetch: net.fetch });
     await member('admin', 'admin@example.com');
@@ -26,27 +26,34 @@ describe('the API client', () => {
     const asLin = await clientFor('lin@example.com');
 
     expect((await asAdmin.admin.channels.list()).items.map((item) => item.channel)).toEqual([
-      'email',
       'feishu',
       'wecom',
       'push',
     ]);
+    expect(await asAdmin.admin.mail.get()).toMatchObject({ can_send: false, mailboxes: false, receivers: [] });
     expect(
       await asLin.me.pushDevices.register({ token: EXPO_TOKEN(), platform: 'ios', project_id: PROJECT_ID }),
     ).toEqual({ device: null, enabled: false });
 
     const push = await asAdmin.admin.channels.save('push', {});
     expect(push).toMatchObject({ channel: 'push', configured: true });
-    const email = await asAdmin.admin.channels.save('email', {
-      host: 'smtp.example.com',
-      port: null,
-      security: 'tls',
-      username: null,
-      from_address: 'gh@example.com',
-      from_name: null,
+    // Email goes out through the mail service: any instance of it.
+    await asAdmin.admin.createProvider({
+      capability: 'mail',
+      kind: 'smtp',
+      name: 'SMTP',
+      config: { host: 'smtp.example.com', security: 'tls', fromAddress: 'gh@example.com' },
+      secrets: {},
     });
-    expect(email).toMatchObject({ configured: true, settings: { port: 465, security: 'tls' } });
+    expect(await asAdmin.admin.mail.get()).toMatchObject({ can_send: true, mailboxes: false });
+    expect(await asAdmin.admin.mail.save({ agent_domain: 'agents.example.com' })).toMatchObject({
+      agent_domain: 'agents.example.com',
+      agent_domain_source: 'workspace',
+      // SMTP only sends: no Agent mailboxes until an instance that receives comes first.
+      mailboxes: false,
+    });
     await expect(asLin.admin.channels.list()).rejects.toMatchObject({ status: 403, code: 'forbidden' });
+    await expect(asLin.admin.mail.get()).rejects.toMatchObject({ status: 403, code: 'forbidden' });
 
     const registered = await asLin.me.pushDevices.register({
       token: EXPO_TOKEN(),

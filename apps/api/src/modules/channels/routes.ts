@@ -6,7 +6,7 @@
  * PATCH  /api/me/push-devices/:id               change this phone's switches
  * DELETE /api/me/push-devices/:id               unregister it: disabled, never deleted
  * POST   /api/me/push-devices/:id/test          one test push now (one per phone every 10 seconds)
- * GET    /api/admin/channels                    email, Feishu, WeCom, push: set up?, settings, last success and error
+ * GET    /api/admin/channels                    Feishu, WeCom, push: set up?, settings, last success and error
  * PUT    /api/admin/channels/:channel           save one channel's settings; secrets are write-only
  * POST   /api/admin/channels/:channel/test      a test message to me
  */
@@ -14,8 +14,8 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import {
+  ADMIN_CHANNELS,
   channelInputSchemas,
-  DELIVERY_CHANNELS,
   idParamSchema,
   registerPushDeviceInputSchema,
   updateNotificationSettingsInputSchema,
@@ -25,7 +25,7 @@ import type { AppEnv } from '../../http/env.js';
 import { readJson, readParam } from '../../http/validate.js';
 import type { ChannelsService } from './service.js';
 
-const channelParamSchema = z.enum(DELIVERY_CHANNELS);
+const channelParamSchema = z.enum(ADMIN_CHANNELS);
 
 export function notificationSettingsRoutes(service: ChannelsService) {
   return new Hono<AppEnv>()

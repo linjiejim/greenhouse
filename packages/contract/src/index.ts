@@ -11,6 +11,7 @@ export * from './realtime.js';
 export * from './requests.js';
 export * from './notifications.js';
 export * from './channels.js';
+export * from './mail.js';
 export * from './runs.js';
 export * from './schedules.js';
 export * from './files.js';

@@ -1,7 +1,8 @@
 /**
- * System mail over SMTP, as the `mail` capability's `smtp` adapter. It lives in the API because
- * it needs nodemailer (MIME encoding, STARTTLS, the auth methods servers really use), which the
- * provider package does not carry; it registers itself like an extension adapter.
+ * Mail over SMTP, as the `mail` capability's `smtp` adapter: it only sends (an SMTP server cannot
+ * tell us about mail it received). It lives in the API because it needs nodemailer (MIME
+ * encoding, STARTTLS, the auth methods servers really use), which the provider package does not
+ * carry; it registers itself like an extension adapter.
  *
  * - `security`: `tls` connects over TLS (465), `starttls` must upgrade (587), `none` stays plain
  *   (a local relay; never offered an upgrade it could be tricked out of).
@@ -14,11 +15,12 @@
 import { createTransport } from 'nodemailer';
 import type SMTPTransport from 'nodemailer/lib/smtp-transport/index.js';
 import { z } from 'zod';
-import { SMTP_SECURITY } from '@greenhouse/contract';
+import { MAIL_SECURITY } from '@greenhouse/contract';
 import {
   getAdapter,
   registerAdapter,
   UndeliverableError,
+  type MailAddress,
   type MailClient,
   type ProviderAdapter,
 } from '@greenhouse/providers';
@@ -31,13 +33,17 @@ const HOST = /^[A-Za-z0-9](?:[A-Za-z0-9.-]{0,253}[A-Za-z0-9])?$/;
 const configSchema = z.object({
   host: z.string().trim().regex(HOST, { message: 'Use a host name or an IPv4 address.' }),
   port: z.coerce.number().int().min(1).max(65_535).optional(),
-  security: z.enum(SMTP_SECURITY).default('starttls'),
+  security: z.enum(MAIL_SECURITY).default('starttls'),
   /** Absent for a relay that takes mail without signing in. */
   username: z.string().trim().min(1).max(255).optional(),
   fromAddress: z.string().trim().email(),
   fromName: z.string().trim().min(1).max(100).optional(),
 });
 export type SmtpConfig = z.infer<typeof configSchema>;
+
+/** nodemailer encodes a name itself (RFC 2047); a line break in it would be a header of its own. */
+const party = (entry: MailAddress) =>
+  entry.name ? { name: entry.name.replace(/[\r\n]+/g, ' ').trim(), address: entry.address } : entry.address;
 
 export const smtpPort = (config: Pick<SmtpConfig, 'port' | 'security'>) => config.port ?? DEFAULT_PORT[config.security];
 
@@ -78,7 +84,7 @@ export const smtpAdapter: ProviderAdapter<'mail', SmtpConfig> = {
       disableFileAccess: true,
       disableUrlAccess: true,
     };
-    const from = config.fromName ? { name: config.fromName, address: config.fromAddress } : config.fromAddress;
+    const sender = { address: config.fromAddress, ...(config.fromName ? { name: config.fromName } : {}) };
 
     async function withTransport<T>(work: (transport: ReturnType<typeof createTransport>) => Promise<T>) {
       const transport = createTransport(options);
@@ -92,15 +98,21 @@ export const smtpAdapter: ProviderAdapter<'mail', SmtpConfig> = {
     }
 
     const client: MailClient = {
-      send: (message) =>
+      send: (mail) =>
         withTransport(async (transport) => {
-          await transport.sendMail({
-            from,
-            to: message.toName ? { name: message.toName, address: message.to } : message.to,
-            subject: message.subject,
-            text: message.text,
-            ...(message.html ? { html: message.html } : {}),
-          });
+          const info = (await transport.sendMail({
+            from: party(mail.from ?? sender),
+            to: mail.to.map(party),
+            ...(mail.cc?.length ? { cc: mail.cc.map(party) } : {}),
+            ...(mail.replyTo ? { replyTo: party(mail.replyTo) } : {}),
+            subject: mail.subject.replace(/[\r\n]+/g, ' '),
+            text: mail.text,
+            ...(mail.html ? { html: mail.html } : {}),
+            ...(mail.inReplyTo ? { inReplyTo: mail.inReplyTo } : {}),
+            ...(mail.references?.length ? { references: mail.references } : {}),
+          })) as { messageId?: string };
+          const id = typeof info.messageId === 'string' ? info.messageId : null;
+          return { providerId: id, messageId: id };
         }),
       verify: () =>
         withTransport(async (transport) => {
