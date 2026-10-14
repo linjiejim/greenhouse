@@ -10,7 +10,14 @@ const input = z.discriminatedUnion('action', [
     content: z.string().max(4000).default('').describe('Detail you can read back with recall.'),
     category: z.enum(MEMORY_CATEGORIES).default('fact'),
   }),
-  z.object({ action: z.literal('recall'), query: z.string().min(1).max(200).describe('Words to look for.') }),
+  z
+    .object({
+      action: z.literal('recall'),
+      query: z.string().max(200).optional().describe('Words to look for; omit for a date range.'),
+      from: z.iso.date().optional().describe('Inclusive UTC date, YYYY-MM-DD.'),
+      to: z.iso.date().optional().describe('Inclusive UTC date, YYYY-MM-DD.'),
+    })
+    .refine((args) => !!args.query || !!args.from || !!args.to, { message: 'Give words or a date range.' }),
   z.object({
     action: z.literal('update'),
     id: z.string(),
@@ -77,10 +84,16 @@ export function memoryTool(agents: AgentsService) {
         return { remembered: saved.id, updated_at: saved.updated_at };
       }
       if (args.action === 'recall') {
-        const query = args.query.toLowerCase();
+        if (!args.query && !args.from && !args.to) throw new Error('Give words or a date range to recall.');
+        const query = (args.query ?? '').toLowerCase();
         const all = await agents.memories(ctx.memberId, handle, 'active');
         const hits = all
-          .filter((memory) => `${memory.title}\n${memory.content}`.toLowerCase().includes(query))
+          .filter(
+            (memory) =>
+              `${memory.title}\n${memory.content}`.toLowerCase().includes(query) &&
+              (!args.from || memory.created_at.slice(0, 10) >= args.from) &&
+              (!args.to || memory.created_at.slice(0, 10) <= args.to),
+          )
           .slice(0, 10)
           .map((memory) => ({
             id: memory.id,
@@ -88,6 +101,8 @@ export function memoryTool(agents: AgentsService) {
             content: memory.content,
             category: memory.category,
           }));
+        // Completion logs can summarize outside sources; reading their detail taints this turn.
+        if (hits.some((memory) => memory.category === 'log')) ctx.taint();
         return { results: hits };
       }
       // Text read this turn could be steering the change; old memories stay as they are.

@@ -312,6 +312,7 @@ export const zh = {
   'composer.voiceFailed': '语音没有转成文字 · {reason}',
   'composer.voiceUnavailable': '这台设备上不能用语音输入',
 
+  'memory.log': '工作日志',
   'memory.fact': '事实',
   'memory.preference': '偏好',
   'memory.person': '人',
@@ -1084,6 +1085,10 @@ export const zh = {
   'publicAgents.pause': '暂停',
   'publicAgents.resume': '恢复',
 
+  'publish.clearKnowledge': '清除全部知识授权',
+  'publish.knowledge': '知识授权',
+  'publish.knowledgeHint':
+    '仅允许读取选中文件夹及其子文件夹。移出的文档立即结束授权；不会公开你的其他知识或 Agent 参考文件夹。',
   'publish.version': '发布的版本',
   'publish.audience': '谁能用',
   'publish.some': '指定成员或分组',

@@ -22,3 +22,8 @@ export function useRunAction() {
     onSettled: () => client.invalidateQueries({ queryKey: ['runs'] }),
   });
 }
+
+export function useHelperRuns(parent: string | null) {
+  const query = useQuery({ queryKey: ['runs', 'helpers', parent ?? ''], queryFn: () => api.runs.list({ parent: parent!, state: 'all' }), enabled: !!parent });
+  return { ...query, items: query.data?.items ?? [] };
+}

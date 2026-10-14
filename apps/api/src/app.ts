@@ -24,6 +24,8 @@ import { bootstrapRoutes, brandingRoutes } from './modules/workspace/routes.js';
 import { createWorkspaceService, type WorkspaceService } from './modules/workspace/service.js';
 import { createEngine, type Engine } from './engine/engine.js';
 import { askUserTool } from './engine/tools/ask-user.js';
+import { helperRunTool } from './engine/tools/helper-run.js';
+import { toolOutputReadTool } from './engine/tools/output.js';
 import { readAttachmentTool } from './engine/tools/attachments.js';
 import { computerTool } from './engine/tools/computer.js';
 import { conversationTool } from './engine/tools/conversation.js';
@@ -215,11 +217,13 @@ export function createServices(config: AppConfig, options: ServiceOptions = {}):
       selfTool(agents),
       conversationTool(conversations),
       readAttachmentTool(files, voice),
+      toolOutputReadTool(files),
       computerTool(computers),
       requestTakeoverTool(),
       browserTool(browser),
       vaultTool(vault, browser),
       runStartTool(background),
+      helperRunTool(background),
       runFinishTool(computers),
       handoffTool(handOff),
       ...scheduleTools(schedules),

@@ -197,6 +197,7 @@ export function knowledgeTools(knowledge: KnowledgeService) {
 
   const query = defineTool({
     name: 'knowledge_query',
+    publicAgent: true,
     description:
       'Read the knowledge base the member can read: search (full text, Chinese and English, best first), read a doc (Markdown, with its version), or list a folder or the root of a space. Docs you read are shown under your reply as sources. Link docs in your reply as [Title](#/knowledge/<doc id>). Your private reference folder is space "agent".',
     input: queryInput,
@@ -205,7 +206,7 @@ export function knowledgeTools(knowledge: KnowledgeService) {
     private: true,
     // Docs are written by other people: their text is information, never instructions.
     taints: true,
-    available: (ctx) => ctx.modules.knowledge,
+    available: (ctx) => ctx.modules.knowledge && (!ctx.publicAgent || ctx.publicAgent.folderIds.length > 0),
     async execute(args, ctx) {
       markNameable(args, ctx);
       if (args.action === 'search') {
@@ -254,6 +255,16 @@ export function knowledgeTools(knowledge: KnowledgeService) {
           content: doc.content.slice(args.offset, end),
           ...(end < doc.content.length ? { next_offset: end, length: doc.content.length } : {}),
         };
+      }
+      const reader = await knowledge.reader(ctx.memberId, as(ctx));
+      if (reader.publicationFolders && !args.folder_id) {
+        const items = [];
+        for (const id of ctx.agent.publication.folderIds ?? []) {
+          if (!reader.publicationFolders.includes(id)) continue;
+          const folder = await knowledge.folder(ctx.memberId, id, as(ctx));
+          items.push({ type: 'folder', id: folder.id, name: folder.name, access: 'viewer' });
+        }
+        return { items };
       }
       const place = await target(args, ctx, false);
       if (args.space === 'agent' && !args.folder_id && !place.folderId) {

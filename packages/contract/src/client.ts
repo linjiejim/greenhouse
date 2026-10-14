@@ -686,7 +686,7 @@ export function createApiClient(options: ApiClientOptions) {
 
     runs: {
       undoWrite: (stepId: string) => post<void>(`/api/runs/steps/${encodeURIComponent(stepId)}/undo`),
-      list: (query: { state?: 'active' | 'done' | 'all'; agent?: string; cursor?: string } = {}) =>
+      list: (query: { state?: 'active' | 'done' | 'all'; agent?: string; parent?: string; cursor?: string } = {}) =>
         get<Page<RunView>>('/api/runs', query),
       get: (id: string) => get<RunDetail>(`/api/runs/${id}`),
       cancel: (id: string) => post<RunDetail>(`/api/runs/${id}/cancel`),

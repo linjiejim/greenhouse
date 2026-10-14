@@ -845,13 +845,18 @@ smoke test. Re-run it after visible UI changes so the README and landing page st
 
 ### Agent evaluation
 
-Two layers. **Administration → Evaluation** (`pnpm cli eval`) replays single-question regression
-cases against the live agent and an LLM judge scores each answer against its expected facts; the
-starter set (`pnpm cli eval seed`) asks about the example dataset's knowledge base. The
-**[Agent scenario bank](docs/evals/README.md)** — 43 end-to-end tasks across chats, Agents and mobile,
-scored by a reviewer on process, deliverable and safety — covers what one turn can't (approval
-cards, permissions, Agent computers, attachments). It is run by hand today; a scenario runner is
-the planned follow-up.
+On v2, Eval is a local engineering loop: `pnpm cli eval export <run-id|message-id>` exports
+prompt layers, canonical tool definition hashes and recorded steps into `fixtures/eval/`.
+Set the v2 `DATABASE_URL` and signing/encryption configuration for export. Review the fixture
+for private material before committing it; credentials and signed links are redacted automatically.
+`TEST_DATABASE_URL=postgresql://…/greenhouse_v2_test pnpm eval` replays the fixtures with a
+scripted model through the current prompt builders, tool registry, input validation and approval
+gate. It makes no model calls. Nightly real-model cases remain planned for M3.6.
+
+The v2 main Agent can delegate up to three read-only helper runs per turn and receive their summaries
+in its process card. Published Agents can read only the knowledge folders their owner selects.
+Long tool results become private temporary files, and background completion logs appear separately
+on the Agent memory page.
 
 A husky + lint-staged pre-commit hook runs `eslint --fix` + `prettier --write` on staged
 files. CI (`.github/workflows/ci.yml`) runs lint → typecheck → test → e2e → secret-scan on

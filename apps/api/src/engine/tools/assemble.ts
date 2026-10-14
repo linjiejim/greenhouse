@@ -124,6 +124,7 @@ export async function assembleTools(input: {
   /** The card heading for an approval, in the member's language. */
   approvalTitle: (summary: string) => string;
   approvals?: ApprovalsService;
+  output?: (value: unknown, ctx: ToolContext) => Promise<unknown>;
   receipt?: (stepId: string, summary: string) => Promise<void>;
   privateRead?: () => Promise<void>;
 }): Promise<TurnTools> {
@@ -139,6 +140,8 @@ export async function assembleTools(input: {
     if (availability.publicAgent && !def.publicAgent) continue;
     if (allowed && !allowed.has(def.name)) continue;
     if (def.risk !== 'read' && !context.manifest.write) continue;
+    if (context.readOnly && !def.idempotent && !['memory', 'conversation_query', 'mcp_call'].includes(def.name))
+      continue;
     if (def.available && !(await def.available(availability))) continue;
     chosen.push(def);
     const section = def.turnContext ? await def.turnContext(availability) : null;
@@ -194,6 +197,7 @@ export async function assembleTools(input: {
               : def.risk === 'external'
                 ? 'tier3'
                 : 'tier2';
+          if (context.readOnly && risk !== 'read') throw new Error('Helper runs are read-only.');
           if (risk !== 'read' && !context.manifest.write) throw new Error('Writing is disabled for this Agent.');
           // A background run can be retried: the same call (tool and arguments) is the same step.
           const idempotencyKey = context.surface === 'background' ? callKey(def.name, args) : null;
@@ -265,6 +269,9 @@ export async function assembleTools(input: {
             ...context,
             stepId,
             signal: options.abortSignal ?? context.signal,
+            waitForRuns: () => {
+              waiting = true;
+            },
             endTurn: () => {
               ended = true;
             },
@@ -339,12 +346,14 @@ export async function assembleTools(input: {
                 .set({ undoState: { before: saved?.before, output: def.undoResult?.(output) ?? output } })
                 .where(eq(runSteps.id, stepId));
             }
-            await finish('succeeded', output);
+            const evidence =
+              input.output && def.name !== 'tool_output_read' ? await input.output(output, call) : output;
+            await finish('succeeded', evidence);
             if ((risk === 'tier1' || standing) && def.undo && input.receipt) {
               const summary = def.summarize?.(args, output, context.locale) ?? def.name;
               await input.receipt(stepId, summary);
             }
-            return output;
+            return evidence;
           };
           try {
             return risk === 'read'

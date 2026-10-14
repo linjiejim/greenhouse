@@ -155,7 +155,16 @@ The one engine for conversations and runs. Read with the root AGENTS.md and docs
 - A run's final state and run_report job commit together. Reporting, notification and optional follow-up are idempotent; quiet empty findings skip both the completion notification and follow-up. Failures notify.
 - Undo metadata is separate from bounded display results. Lock the target and compare versions/revisions; never overwrite a later member edit. The member and service permissions are checked again when carrying out a card.
 
+## M2.4
+- Public knowledge reads use the live publication subtree in knowledge/access.ts; they never become member shares. Source filtering rechecks the grant.
+- Helpers are background runs of the main Agent, at most three per turn, with a clean brief, read-only calls, eight steps and budget reservations. Claim only after the parent waits; summaries return through run_report with one batch dedupe key and taint the parent continuation. That continuation cannot delegate another batch; only a new member turn resets the limit.
+- New tool results over 8,000 characters become owner-only tool_output files, with 30-day expiry and ranged reads. Never rewrite old transcript results.
+- Completion logs are system-written memory data, never model instructions. Only seven days of log titles enter the index; recalling log detail taints the turn.
+- Eval snapshots use the production prompt recipe and canonical tool hashes. Export strips credentials; fixtures use synthetic real-model acceptance conversations.
+- The daily engine_retention job prunes terminal model context after 90 days and expired output bytes; edit/regenerate remove their old model context immediately.
+
 ## Table and app work
 - Table citations are permission-filtered per recipient. Table reads use the same records and aggregate compiler; app reads/actions use immutable publications and intersected roles.
 - Record handoffs and automation output use table_mutation, including result revision checks and approval cards. Inline record/event context starts tainted and private.
+- Result writebacks use the same output-file wrapper as model calls; undo state keeps the full result.
 - Table automation events use deliver, then create background runs under the wake cap. Their tools default to none; same_base_read is table_query confined to the source base. Carry tableEventChain through normal and approved writes.
