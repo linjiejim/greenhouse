@@ -7,8 +7,8 @@ The one engine for conversations and runs. Read with the root AGENTS.md and docs
 - A message, a decision or a finished run that arrives while a turn answers goes to `conversation_inbox`. The next turn answers everything queued from the same person to the same Agent at once.
 - Ending a turn and taking the next inbox item happen in one transaction under the conversation row lock (`for('update')`). Posting a message takes the same lock before it checks for an active turn. Keep both, or a message can be left with no turn to answer it.
 - In one process, `withConversation` (locks.ts) queues writes per conversation. Across processes the row lock does it. The test transaction cannot model two connections; races between processes are tested in `*.db-commit.test.ts`.
-- Every turn holds a lease (60 s, renewed every 10 s). `sweep()` ends turns whose lease expired as `interrupted`, keeps the text they wrote, and starts queues left without a turn. It runs at boot and every 15 s.
-- A process that is shutting down starts no new turn (`takeNext`): what waits in the inbox is left for another process's sweep.
+- Every turn holds a lease (60 s, renewed every 10 s). API sweeps claim expired turns under the conversation lock: resume within ten minutes only when the active asker remains and the last model/tool step completed; otherwise interrupt and keep the text. Recheck the lease under the lock before touching steps or the reply. API sweeps also take orphaned inbox work, at boot and every 15 s.
+- A draining process starts no new turn or job: inbox work waits for another API. SIGTERM drains for 60 s, then aborts model calls and expires owned leases; shutdown never counts as member cancellation. Worker processes never claim turns; API processes never claim background runs or jobs.
 - Stop sets `desired_state = cancel`; the process running the turn aborts at once or at its next heartbeat. Stop drops what the stopping member queued.
 
 ## Turns
@@ -63,7 +63,7 @@ The one engine for conversations and runs. Read with the root AGENTS.md and docs
 - Claiming uses FOR UPDATE SKIP LOCKED; at most 3 running per member and 4 per process; 20 minutes and 30 steps per attempt.
 - A run is created queued in the transaction of what causes it (`background.create`) and kicked after the commit; any process takes it from the queue. A schedule's firing claims the schedule, moves it to its next time after now and queues the run in one transaction, so firings missed while no process ran collapse into one run.
 - A run whose process died is requeued up to 3 attempts; a shutdown requeues without counting as a failure.
-- Every model step, as it ends, records what it added (the model's message, then the tool results) as a `run_steps` row of kind `model` (steps.ts, about 20k characters, long results cut first). Turns record them too, for resuming them later (M3.6); the run detail never lists them.
+- Every model step, as it ends, records what it added (the model's message, then the tool results) as a `run_steps` row of kind `model` (steps.ts, about 20k characters, long results cut first). Turns atomically record their step, reply id and completed text length too; recovery reuses that message and discards only the unfinished suffix; the run detail never lists them.
 - A retry continues from the recorded steps after the brief, never from scratch; a call with the same tool and arguments as a succeeded step returns the recorded output. A run whose last recorded step was its answer ends with it.
 - The timeline (`run_events`) is numbered per run and written in order. The end of a run is reported into its conversation (or the Agent's own thread) and notified.
 
@@ -106,7 +106,7 @@ The one engine for conversations and runs. Read with the root AGENTS.md and docs
 - Every metered call (each model attempt too) is checked first against the enabled budgets that cover it (providers/budgets.ts); one used up refuses it with `budget_exceeded`, which a turn keeps as its error code and says in its reply. An instance over its own budget falls back to the next instance.
 
 ## Knowledge
-- `knowledge_query` (search, read, list) and `knowledge_mutation` (create, edit, move, comment) call modules/knowledge with the asker's rights; someone else's public Agent has neither.
+- `knowledge_query` (search, read, list) and `knowledge_mutation` (create, edit, move, comment) call modules/knowledge with the asker's rights. Public Agents may read only their live publication grant; they never mutate knowledge.
 - Reading is private and taints the turn: docs are other people's text. A doc read is a source under the reply (`kind: doc`, `#/knowledge/<id>`); a search hit only when the reply links it.
 - Each person sees a `kind: doc` source only while they may read the doc: the conversations service filters sources per reader when it lists and publishes messages (knowledge `readableDocs`).
 - In a room the knowledge tools' step lines and card summaries (which the decision line repeats) name no doc or folder; the card's details, which only the asker sees, and `run_steps` keep them.
@@ -168,3 +168,19 @@ The one engine for conversations and runs. Read with the root AGENTS.md and docs
 - Record handoffs and automation output use table_mutation, including result revision checks and approval cards. Inline record/event context starts tainted and private.
 - Result writebacks use the same output-file wrapper as model calls; undo state keeps the full result.
 - Table automation events use deliver, then create background runs under the wake cap. Their tools default to none; same_base_read is table_query confined to the source base. Carry tableEventChain through normal and approved writes.
+
+- Page conversations resolve their saved object reference with the asker’s current rights on each turn. Page data is fenced in the closing message and taints the turn from the start.
+
+- At a model step boundary, consume only this turn’s asker/Agent inbox entries under the conversation lock and live lease. End the previous reply, keep member seq, and append a continuation in the same run. Others queue; Stop wins under the same lock. Keep the existing total step cap across continuations and resumed attempts. Wait for the durable model boundary before consuming input; consumption, the injected model step and the new reply checkpoint commit together. During drain, new messages remain queued for another API.
+- After incorporating new input, skip DeepSeek's old-context final-answer recovery. Eval capability snapshots use the provider registry, including image and video.
+- generate_image uses the image provider and attaches artifacts. generate_video requires approval, then queues media_video jobs; media runs never enter the model worker. Completion uses the existing run_report job.
+
+- The asker may interject without repeating @ in a room, including while a decision follow-up answers. Other named Agents queue. Freeze the initial history before the reply seq; later messages enter only at boundaries.
+
+## Release runtime
+- Digests are conversation_digest jobs, queued after an idle reply; only workers consume them.
+- Turn recovery sends a small message.resumed frame before the full reply/update or deltas, so cross-replica clients discard unfinished live text even when the prefix needs resync. It preserves taint, tool evidence and completed text. A tool started after the last
+  recorded model boundary makes a turn ineligible, even when its effect might have succeeded.
+- Background shutdown requeues without spending a crash retry. Expired processes spend one.
+- Nightly Eval uses the same synthetic fixtures with real provider resolution and bounded calls;
+  service outputs are fixture data and shared writes must still stop at approval.

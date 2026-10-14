@@ -79,6 +79,9 @@
 - Live Activities: keep the two BotTaskAttributes.swift copies identical and NSSupportsLiveActivities in app.json, encode times as integer Unix seconds, and keep images no larger than their display size.
 - Never commit development: true in getExpoPushTokenAsync; simulator push payloads put PushData under the top-level body key.
 
+- message.resumed clears unfinished live text and truncates only a streaming cached reply to the
+  completed offset. Keep the generated contract and realtime parser in sync when adding events.
+
 ## API v2 modules
 
 - app/knowledge: spaces and folders, native Markdown reading and editing, versions, member mentions in comments, sharing and signed file previews. Docs, versions and comments use Markdown safe mode: executable rich previews remain code.

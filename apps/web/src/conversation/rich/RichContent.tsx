@@ -39,6 +39,7 @@ export interface BlockContext {
   onPrompt?: (text: string) => void;
   /** The member's message after this reply: which button was pressed. */
   followUp?: string | null;
+  onDownload?: () => void;
 }
 
 function Actions({ actions, context }: { actions?: BlockAction[]; context: BlockContext }) {
@@ -86,7 +87,7 @@ function toCsv(data: DataTableData): string {
   ].join('\n');
 }
 
-function TableBlock({ data }: { data: DataTableData }) {
+function TableBlock({ data, context }: { data: DataTableData; context: BlockContext }) {
   const { t, locale } = useI18n();
   return (
     <ChatCard
@@ -97,9 +98,10 @@ function TableBlock({ data }: { data: DataTableData }) {
         <Button
           kind="ghost"
           size="sm"
-          onClick={() =>
-            saveBlob(new Blob([toCsv(data)], { type: 'text/csv;charset=utf-8' }), `${data.title ?? 'table'}.csv`)
-          }
+          onClick={() => {
+            saveBlob(new Blob([toCsv(data)], { type: 'text/csv;charset=utf-8' }), `${data.title ?? 'table'}.csv`);
+            context.onDownload?.();
+          }}
         >
           <Download size={icon.sm} />
           {t('rich.exportCsv')}
@@ -307,7 +309,10 @@ function HtmlPreviewBlock({ segment, context }: { segment: HtmlPreviewSegment; c
             <Button
               kind="ghost"
               size="sm"
-              onClick={() => saveBlob(new Blob([segment.code], { type: 'text/html;charset=utf-8' }), `${title}.html`)}
+              onClick={() => {
+                saveBlob(new Blob([segment.code], { type: 'text/html;charset=utf-8' }), `${title}.html`);
+                context.onDownload?.();
+              }}
             >
               <Download size={icon.sm} />
               {t('rich.download')}
@@ -390,7 +395,7 @@ export const RichContent = memo(function RichContent({
               </ChatCard>
             );
           case 'datatable':
-            return <TableBlock key={key} data={segment.data} />;
+            return <TableBlock key={key} data={segment.data} context={context} />;
           case 'stats':
             return <StatsBlock key={key} data={segment.data} context={context} />;
           case 'cards':

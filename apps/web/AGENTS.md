@@ -13,6 +13,7 @@ The v2 web app. Product scope is docs/product/prd.md §6–7; layout and compone
 
 ## Rules
 - Server state lives in the query cache; realtime events patch it (messages, conversation flags) or mark queries stale. Never keep a second copy in component state.
+- message.resumed clears the live suffix and truncates a streaming cached reply to its completed offset before continuation. The small event crosses replicas even when the full prefix needs resync; never truncate an already complete reply.
 - Streaming text never goes through the cache: streams.ts holds it per message and joins it to the saved partial text by offset.
 - A conversation that missed events catches up with `?after=` (realtime.ts `catchUp`): on `conversation.resync`, and after a reconnect for the conversations on screen. A reconnect refetches only those conversations' own queries and the needs-you badge, and marks every other query stale; never refetch everything at once (a server restart reconnects every client together).
 - Catching up never removes what arrived after the answer it got, and never takes a finished reply back to a partial one.
@@ -55,3 +56,10 @@ The v2 web app. Product scope is docs/product/prd.md §6–7; layout and compone
 - Publish knowledge grants with the owner's personal folder tree, excluding Agent reference folders. Helper runs render inside their parent process card; completion logs have a separate group on the Agent memory page.
 
 - Tables: record handoffs select an owned Agent and brief; automation editors use the shared filter editor and hold navigation. Run history opens the linked Agent run; both record and automation runs are labelled Tables.
+
+- ⌘J/Ctrl+J opens PageConversation with a server-resolved page reference. Reuse ConversationPage and the kit Overlay; chats remain in the conversation list.
+
+- Artifact result cards use signed file URLs, fetch before counting a successful download, and save through client.media to knowledge. Hide Save when knowledge is disabled. Video progress and files come from the run detail.
+- Admin usage shows count-only UTC weekly metrics; zero denominators are unknown, not zero. Interjection event state labels are server-owned.
+
+- An initial message-page fetch preserves realtime rows that arrived after its snapshot and completed replies. Receive events while that query is fetching, even before its first page exists.

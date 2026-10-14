@@ -214,6 +214,7 @@ v1 的预算账本不再保留：每次花费都对应一条 `usage_events`；�
 | 表 | 用途 | 关键列与关系 |
 | --- | --- | --- |
 | `workspace` | 工作区，只有一行 | `id`（固定 `default`）、`name`、`logo_file_id`、`primary_color`、`settings`（新成员的默认模块权限等非机密设置）、`setup_completed_at`、`updated_by`；机密一律在 `providers` |
+| `rate_limits` | 多 API 副本共用的固定窗口限流（可选，默认内存） | `key`（命名空间与请求键的 SHA-256 主键，不存邮箱、IP 或凭据）、`count`、`reset_at`（带索引）；UPSERT 按数据库时钟原子计数，worker 每日清理过期窗口 |
 | `jobs` | 通用后台任务队列 | `kind`（如 request_decided、deliver_notification、push_receipts、base_automation、recompute、ai_field、video_poll、file_purge、computer_backup、export）、`dedupe_key`（唯一）、`payload`、`status`（pending / claimed / succeeded / failed / dead / suppressed）、`attempts` / `max_attempts`、`available_at`、`lease_owner` / `lease_expires_at`、`last_error`、`result`（处理中途记下的进度，接手的进程据此不重复执行）；和触发它的状态变更在同一事务里写入；领取即算一次尝试，租约过期（进程死了）回到队列，处理期间持有者续租；`apps/api/src/jobs.ts` 是唯一的入队、领取、续租与结算方式。`request_decided`：每张卡片一条，和批准、拒绝、回答、交还或过期在同一事务里写入，结束 7 天后删除；送达任务结束 30 天后删除 |
 | `idempotency_keys` | 有副作用请求的幂等记录 | 主键 `(scope, key)`（scope 如成员 id 或 `feishu`）、`request_hash`、`status`（running / done）、`response`、`expires_at`；承接 `Idempotency-Key` 头、应用动作重放和飞书事件去重；电脑画面与终端的一次性 ticket 也在这里（scope `computer_ticket`，`key` 是 ticket 的 keyed hash，一分钟，用时删除）；OAuth 同意请求同理（scope `oauth_request`，十分钟，归第一个打开它的成员，做出决定时删除）；邮件服务商通知的 nonce 也在这里（scope `mail_notice`，处理成功后记下，Resend 两天、Mailgun 13 小时，同一个 nonce 不再处理） |
 | `extension_migrations` | 扩展迁移通道的记录 | 主键 `(extension_id, name)`、`checksum`、`applied_at` |
@@ -238,12 +239,25 @@ v1 迁移工具的 ID 映射与检查点放在单独的 `migration` schema，不
 
 M1.7：运行检查点保存 `tainted`、`read_private` 与决定结果，后台审批后用已记录的模型步骤及已完成的工具结果重建上下文。结果 `output` 带 `text` 和 `findings`。运行结束和 `run_report` 汇报任务同事务，汇报消息与通知按运行 / 尝试去重；只有选择 `continue_after` 才产生唤醒事件，静默无发现时跳过跟进。事件唤醒仍是 turn 运行，以后台工具规则执行。
 
+M3 页面会话：`conversations.context` 保存有界对象引用，不保存页面 HTML、密钥或客户端快照。每轮重新验证对象读取权限。
+
+M3.4 计数（#70）：`metric_events` 仅存 identity id、member_id（逻辑引用）、kind（active／assigned／adopted／activated）、key（UTC 日期或产出逻辑引用）和 created_at；唯一 `(member_id,kind,key)`。active 为交办、处理卡片或采纳；assigned 仅成员发送请求，首日激活必须先交办后采纳。首次登录／邀请激活只记一次。同一 run 的 👍、引用、下载和成功的逐次／预批准写入合并计一次；无 run 的欢迎消息／文件使用对象键；撤回评分不抹除已经发生的采纳。管理员读聚合，无内容列、任意 metadata 或新增内容副本。
+
+视频复用 runs（kind background、source conversation、input.media=video）、files（purpose artifact）、jobs（media_video 与 run_report）。checkpoint 保留提交中标记、厂商 ID、进度和轮询序号；提交中断没有已知 ID 时标为结果未知，不再购买生成。原引擎的模型运行领取／清扫排除媒体运行，媒体 worker 按 jobs 租约写状态；完成状态与报告排队同一事务提交。
+
 ### 12.7 M2.4 引擎补充（#70）
 
 - `agents.publication.folderIds` 保存公开 Agent 的知识授权根。只接受主人未归档的个人文件夹，排除所有 Agent 私有参考文件夹及其后代。每次知识读取重查发布、受众、主人模块与当前子树；授权不变成成员对文档或文件的直接分享。
 - 子运行仍是 `runs.kind=background`，`parent_run_id` 指父回合，`input.helper=true`，`input.model_ref` 固定本次工作区模型；父回合以 `wait_reason=helpers` 等待。每回合最多 3 个，完成只经同一个 `run_report` 唤醒层回传摘要；不单独通知。每个子运行预留 100,000 tokens 的估算额度，成本预算按模型价格计算；没有覆盖预算时仍留预留凭证。
 - `files.purpose=tool_output` 的文件始终仅 owner 可读，即使带有 run_id 也不继承对话受众；模型读区间按字符偏移。每日 `engine_retention` jobs 清理过期字节，并删除终态运行 90 天以前的 model 步骤及 Eval 提示快照；工具证据保留。编辑或重新生成删除旧回复时同时清除其模型上下文。
 - `runs.checkpoint.eval` 保存当时的提示组装配方、实际工具定义、成员模块与模型输入，供本地 Eval 导出。夹具导出清除凭据字段、Bearer、已知 key 形式和文件签名；导出前仍应使用不含私有业务材料的验收对话。
+
+### 12.8 M3.6 发布形态（#70）
+
+- 回合的 `runs.checkpoint` 增加 `turn_step`、`turn_tools`（已记录的工具数）、`turn_ended` / `turn_waiting`、`reply_id`、`reply_chars`、`sources`：和对应 model 步骤、回复的完整文字在同一事务提交；model 上下文仍有 2 万字上限，界面文字不截断。恢复保留同一 message id，把后续未完成步骤的零散文字截回这个边界；tainted / read_private 继续保留。恢复领取与终止都在对话行锁下重查租约，双副本不会同时续跑。插话的收件消费、成员消息标记、新回复、注入的 model 步骤及检查点也在同一事务提交；恢复沿用新回复 id，已结束的旧回复不变，步骤总上限跨插话和恢复累计。
+- 前台租约过期不到十分钟、成员仍有效且仍在对话、最后模型步骤完整、其后没有新工具步骤时才自动续跑。其余保持 interrupted；遗留 running 工具按幂等性记为 failed 或 uncertain。
+- `conversation_digest` 是回复结束后写入的摘要任务；`mail_inbound` 只保存已验证的实例 id 和通知引用，由 worker 经 providers 拉信，任务去重并保留接手进度；不把签名、Key 或整封信塞进队列。后台运行和其他 jobs 在排空后交还租约，不消耗停机重试次数；后台 `checkpoint.crashes` 单独累计意外进程中断，成员手动重试归零，`attempt` 仍为模型步骤分代。
+- `rate_limits` 仅在 RATE_LIMIT_STORE=postgres 时使用；窗口是所有 API 副本共享的，拒绝请求返回 429，存储故障不会退回单机放行。
 
 ### 移动端 phase 2（#70）
 

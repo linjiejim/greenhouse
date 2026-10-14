@@ -2,8 +2,8 @@ import { QueryClient, QueryObserver } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { MessageItem } from '@greenhouse/contract';
 import { keys } from '../query';
-import { afterReconnect, applyEvent, type MessagePages } from '../realtime';
-import { appendDelta, clearStreams, readStream } from '../streams';
+import { afterReconnect, applyEvent, fetchMessagePage, type MessagePages } from '../realtime';
+import { appendDelta, clearStreams, liveText, readStream } from '../streams';
 
 const messages = vi.hoisted(() => vi.fn());
 vi.mock('../../lib/api', () => ({ api: { conversations: { messages } } }));
@@ -116,4 +116,46 @@ describe('catching up', () => {
       [3, 'next one', 'complete'],
     ]);
   });
+});
+
+describe('a conversation opened while messages arrive', () => {
+  it('keeps realtime replies when the initial page returns an older snapshot', async () => {
+    let finish!: (value: { items: MessageItem[]; next_cursor: null }) => void;
+    messages.mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
+    const observer = new QueryObserver(client, { queryKey: keys.messages('cnv_1'), queryFn: async () => page((await fetchMessagePage(client, 'cnv_1')).items) });
+    const stop = observer.subscribe(() => undefined);
+    await vi.waitFor(() => expect(messages).toHaveBeenCalled());
+    applyEvent(client, { type: 'message.created', data: { message: item(2, '', 'streaming') } });
+    applyEvent(client, { type: 'message.updated', data: { message: item(2, 'Finished') } });
+    finish({ items: [item(1, 'Question')], next_cursor: null });
+    await vi.waitFor(() => expect(client.getQueryState(keys.messages('cnv_1'))?.fetchStatus).toBe('idle'));
+    expect(shown(client)).toEqual([[1, 'Question', 'complete'], [2, 'Finished', 'complete']]);
+    stop();
+  });
+  it('keeps an interjection already incorporated while its page was in flight', async () => {
+    const before = { ...item(3, 'More context'), event: { type: 'interjection', state: 'queued' } };
+    let finish!: (value: { items: MessageItem[]; next_cursor: null }) => void;
+    messages.mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
+    client.setQueryData(keys.messages('cnv_1'), page([before]));
+    const fetch = fetchMessagePage(client, 'cnv_1');
+    applyEvent(client, { type: 'message.updated', data: { message: { ...before, event: { type: 'interjection', state: 'incorporated' } } } });
+    finish({ items: [before], next_cursor: null });
+    expect((await fetch).items[0]?.event?.state).toBe('incorporated');
+  });
+
+});
+
+it('discards an unfinished suffix before resumed deltas, even for a prefix too large for NOTIFY', () => {
+  const prefix = 'saved '.repeat(2000);
+  client.setQueryData(keys.messages('cnv_1'), page([item(2, prefix + 'unfinished', 'streaming')]));
+  appendDelta('msg_2', 'unfinished', prefix.length);
+  applyEvent(client, {type:'message.resumed', data:{conversation_id:'cnv_1',message_id:'msg_2',offset:prefix.length}});
+  expect(readStream('msg_2')).toBeUndefined();
+  expect(shown(client)).toEqual([[2,prefix,'streaming']]);
+  applyEvent(client,{type:'message.delta',data:{conversation_id:'cnv_1',message_id:'msg_2',offset:prefix.length,text:'continued'}});
+  expect(liveText(prefix,readStream('msg_2'))).toBe(prefix+'continued');
+  applyEvent(client,{type:'message.updated',data:{message:item(2,prefix+'continued')}});
+  // A delayed resume hint never takes an answer that is already complete back to a partial one.
+  applyEvent(client, {type:'message.resumed', data:{conversation_id:'cnv_1',message_id:'msg_2',offset:prefix.length}});
+  expect(shown(client)).toEqual([[2,prefix+'continued','complete']]);
 });

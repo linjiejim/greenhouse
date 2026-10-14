@@ -60,6 +60,7 @@ const EVENT_TYPES: ReadonlySet<string> = new Set<RealtimeEvent['type']>([
   'message.delta',
   'message.step',
   'message.updated',
+  'message.resumed',
   'message.deleted',
   'conversation.resync',
   'conversation.updated',

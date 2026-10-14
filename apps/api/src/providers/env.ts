@@ -99,7 +99,7 @@ function llmFromEnv(env: Env): { instance: EnvInstance; defaults: Record<string,
 }
 
 /** STT_*, TTS_*, IMAGE_*: one instance each. */
-function simpleFromEnv(env: Env, capability: 'stt' | 'tts' | 'image', prefix: string): EnvInstance | null {
+function simpleFromEnv(env: Env, capability: 'stt' | 'tts' | 'image' | 'video', prefix: string): EnvInstance | null {
   const name = value(env, `${prefix}_PROVIDER`);
   if (!name) return null;
   const found = findAdapter(capability, name);
@@ -120,6 +120,8 @@ function simpleFromEnv(env: Env, capability: 'stt' | 'tts' | 'image', prefix: st
         baseUrl: value(env, `${prefix}_BASE_URL`),
         model: value(env, `${prefix}_MODEL`),
         voice: value(env, `${prefix}_VOICE`),
+        size: value(env, `${prefix}_SIZE`),
+        quality: value(env, `${prefix}_QUALITY`),
       }),
     },
     secrets: compact({ apiKey: value(env, `${prefix}_API_KEY`) }),
@@ -521,6 +523,7 @@ export function providersFromEnv(env: Env): EnvProviders {
     ['stt', 'STT'],
     ['tts', 'TTS'],
     ['image', 'IMAGE'],
+    ['video', 'VIDEO'],
   ] as const) {
     const instance = simpleFromEnv(env, capability, prefix);
     if (instance) instances.push(instance);
@@ -534,7 +537,5 @@ export function providersFromEnv(env: Env): EnvProviders {
   const mail = mailDefaultsFromEnv(env);
   if (mail) defaults.mail = mail;
   instances.push(...channelsFromEnv(env));
-  if (value(env, 'VIDEO_PROVIDER'))
-    logger.warn('[providers] VIDEO_PROVIDER is not available in this build yet; ignored');
   return { instances, defaults, policies: {} };
 }

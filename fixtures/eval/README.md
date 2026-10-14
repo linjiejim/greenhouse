@@ -5,3 +5,5 @@
 用 `TEST_DATABASE_URL=postgresql://…/greenhouse_v2_test pnpm eval` 回放。脚本模型固定实际模型输出，检查当前提示组装、工具集合和定义、action 参数校验、审批门；不判断真实模型答案质量。工具定义或可用性有意改变后，应审阅差异并从合成真实对话重新导出，不能为让测试通过盲目改期望。
 
 本地导出：配置 v2 数据库和应用签名/加密环境后，`pnpm cli eval export <run|message id>`。导出会过滤常见凭据形式；人工确认其中没有业务私密内容后再提交。带图片的输入只保留文字与媒体省略标记，避免夹具携带附件字节。
+
+M3.6 的夜间工作流 `.github/workflows/eval-nightly.yml` 使用同一组合成夹具：普通回放之外，GREENHOUSE_EVAL_REAL=1 会通过已配置的 LLM_* 服务重新生成输出，检查工具调用、必要参数和审批，工具的业务输出用夹具替代，不接触外部业务服务。只在主仓库且有 GREENHOUSE_EVAL_MODEL_KEY secret 时执行；可用 GREENHOUSE_EVAL_PROVIDER / BASE_URL / MODEL 仓库变量选择服务。每个用例最多 90 秒、模型调用最多 60 秒与 2000 输出 token。不要将真实 Key 写进夹具或日志。

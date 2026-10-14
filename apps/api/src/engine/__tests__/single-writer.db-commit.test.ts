@@ -4,13 +4,13 @@
  */
 
 import { asc, eq, inArray } from 'drizzle-orm';
-import { afterAll, describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it, vi } from 'vitest';
 import { getDb, members, messageReceipts, messages, newId, runs } from '@greenhouse/db';
 import { createApp, createServices } from '../../app.js';
 import { hashPassword } from '../../auth/password.js';
 import { loadConfig } from '../../config/index.js';
 import { TEST_PASSWORD } from '../../testing.js';
-import { scriptedModel, text } from './model.js';
+import { gate, scriptedModel, text } from './model.js';
 
 const created: string[] = [];
 
@@ -89,4 +89,33 @@ describe('the single writer across processes', () => {
       expect(spans[index]![0]).toBeGreaterThanOrEqual(spans[index - 1]![1] - 5);
     // Eight turns across two engines on real connections: slow on a busy machine, never wrong.
   }, 30_000);
+  it('incorporates an asker message posted by another process in the same leased turn', async () => {
+    const hold = gate();
+    const model = scriptedModel([{ parts: text('Before.'), gate: hold.promise }, text('After.')]);
+    const a = apiProcess(model.languageModel);
+    const b = apiProcess(model.languageModel);
+    const id = newId('member');
+    created.push(id);
+    await getDb()
+      .insert(members)
+      .values({ id, email: `${id.toLowerCase()}@example.com`, name: 'Lin', status: 'active' });
+    const main = await a.services.conversations.ensureMain(id);
+    const first = await a.services.engine.post(id, main.id, { content: 'Start', attachments: [], mentions: [] });
+    await vi.waitFor(() => expect(model.calls()).toBe(1));
+    const extra = await b.services.engine.post(id, main.id, { content: 'More context', attachments: [], mentions: [] });
+    hold.open();
+    await a.services.engine.idle();
+    const transcript = await a.services.conversations.messages(id, main.id, { limit: 50 });
+    const inserted = transcript.items.find((message) => message.id === extra.message.id)!;
+    expect(inserted.seq).toBe(extra.message.seq);
+    expect(inserted.event).toMatchObject({ state: 'incorporated', run_id: first.run_id });
+    expect(
+      transcript.items
+        .filter((message) => message.role === 'assistant' && message.run_id === first.run_id)
+        .map((message) => message.content),
+    ).toEqual(['Before.', 'After.']);
+    await b.services.engine.sweep();
+    await b.services.engine.idle();
+    expect(model.calls()).toBe(2);
+  });
 });

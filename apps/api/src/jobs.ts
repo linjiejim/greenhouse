@@ -170,3 +170,18 @@ export async function pruneJobs(kinds: readonly string[], olderThanMs: number): 
     .returning({ id: jobs.id });
   return rows.length;
 }
+
+/** Releases this process's unfinished claims on shutdown without spending a retry. */
+export async function releaseOwnedClaims(owner: string): Promise<void> {
+  await getDb()
+    .update(jobs)
+    .set({
+      status: 'pending',
+      leaseOwner: null,
+      leaseExpiresAt: null,
+      attempts: sql`greatest(0, ${jobs.attempts} - 1)`,
+      availableAt: sql`now()`,
+      updatedAt: sql`now()`,
+    })
+    .where(and(eq(jobs.leaseOwner, owner), eq(jobs.status, 'claimed')));
+}

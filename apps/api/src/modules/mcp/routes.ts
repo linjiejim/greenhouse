@@ -20,7 +20,7 @@ import { logger } from '@greenhouse/utils/logger';
 import { ApiError, errorBody } from '../../http/errors.js';
 import type { AppEnv } from '../../http/env.js';
 import { openCors } from '../../security/headers.js';
-import { RateLimiter } from '../../security/rate-limit.js';
+import { RateLimiter, type RateLimitStore } from '../../security/rate-limit.js';
 import { bearerChallenge } from '../oauth/protocol.js';
 import type { Caller, OAuthService } from '../oauth/service.js';
 import { toolContext, toolsFor, type McpServices, type McpTool } from './tools.js';
@@ -89,8 +89,8 @@ function buildServer(caller: Caller, services: McpServices, issuer: string): Ser
   return server;
 }
 
-export function mcpRoutes(deps: { oauth: OAuthService; services: McpServices }) {
-  const limiter = new RateLimiter(PER_MINUTE, 60_000);
+export function mcpRoutes(deps: { oauth: OAuthService; services: McpServices; store?: RateLimitStore }) {
+  const limiter = new RateLimiter(PER_MINUTE, 60_000, deps.store, 'mcp');
   const { endpoints } = deps.oauth;
 
   return new Hono<AppEnv>()
@@ -114,7 +114,7 @@ export function mcpRoutes(deps: { oauth: OAuthService; services: McpServices }) 
         c.header('Allow', 'POST');
         return c.json(errorBody('method_not_allowed', 'Send JSON-RPC with POST.'), 405);
       }
-      const wait = limiter.hit(caller.grantId);
+      const wait = await limiter.hit(caller.grantId);
       if (wait) {
         c.header('Retry-After', String(wait));
         return c.json(errorBody('rate_limited', `Too many requests. Try again in ${wait} seconds.`), 429);

@@ -1,3 +1,4 @@
+import { countActive } from '../usage/counts.js';
 /**
  * "Needs you": the one request model. A request is decided once, by the member it is for, with
  * a compare-and-set from pending; a second decision or an expired card answers 409. What the
@@ -226,6 +227,7 @@ export function createRequestsService(deps: {
           )
           .returning();
         if (!settled) return null;
+        await countActive(memberId);
         if (outcome.status === 'approved' && outcome.result.standing === true) {
           if (!deps.approvals) throw conflict('standing_not_allowed', 'Standing approvals are unavailable.');
           await deps.approvals.grant(settled);

@@ -51,7 +51,7 @@ test('publish an Agent to Mei: she talks to it, a pause stops her, usage counts 
 
 test('admin usage shows tokens, and a workspace budget can be added', async ({ page }) => {
   await open(page, '/#/admin/usage');
-  await expect(page.locator('.app-stat').first()).toContainText('tokens');
+  await expect(page.locator('.app-stat').filter({ hasText: 'tokens' }).first()).toContainText('tokens');
   await page.getByRole('button', { name: '添加预算' }).click();
   const dialog = page.getByRole('dialog', { name: '添加预算' });
   await dialog.getByLabel('每月上限').fill('5000000');

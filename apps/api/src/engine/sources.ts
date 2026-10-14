@@ -9,11 +9,21 @@ const MAX_CITATIONS = 8;
 
 export type CiteHow = 'read' | 'seen';
 
-export function createSources() {
+export interface SourceState {
+  read: MessageCitation[];
+  seen: MessageCitation[];
+}
+
+export function createSources(initial?: SourceState) {
   const read = new Map<string, MessageCitation>();
   const seen = new Map<string, MessageCitation>();
   const keyOf = (source: MessageCitation) => source.url ?? `${source.kind}:${source.id}`;
+  for (const source of initial?.read ?? []) read.set(keyOf(source), source);
+  for (const source of initial?.seen ?? []) seen.set(keyOf(source), source);
   return {
+    snapshot(): SourceState {
+      return { read: [...read.values()].slice(0, MAX_CITATIONS), seen: [...seen.values()].slice(0, 64) };
+    },
     cite(source: MessageCitation, how: CiteHow) {
       const key = keyOf(source);
       if (how === 'read') {

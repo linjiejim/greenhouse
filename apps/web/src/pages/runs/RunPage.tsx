@@ -1,3 +1,4 @@
+import { Attachments } from '../../conversation/Attachments';
 /**
  * A run's detail (RUN-02) opens as a drawer over its list: status, the brief, what needs the
  * member, the steps, the result and where it came from. Cancel while it runs; retry the failed
@@ -52,6 +53,8 @@ function Detail({ run }: { run: RunDetail }) {
           {run.attempt > 1 && ` · ${t('runs.attempt', { count: run.attempt })}`}
         </span>
       </div>
+      {run.progress !== null && <p role="status">{t('media.progress', { count: run.progress })}</p>}
+      <Attachments ids={run.file_ids} />
       {run.error && (
         <p className="app-run-error" role="alert">
           {run.error.message}

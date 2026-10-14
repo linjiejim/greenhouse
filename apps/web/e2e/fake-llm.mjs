@@ -17,7 +17,7 @@
  * is SPOKEN (/v1/audio/transcriptions), any text a short silence (/v1/audio/speech).
  */
 
-import { writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { handleMail } from './fake-mail.mjs';
 import { handleMcp } from './fake-mcp.mjs';
@@ -180,7 +180,7 @@ async function stream(response, request) {
       values: { [field_id]: 'Approved record' },
     });
   } else if (!afterTool && /^read table record /i.test(said)) {
-    tool('table_query', { action: 'read', record_id: said.split(' ').at(-1) });
+    tool('table_query', { action: 'read', record_id: /^read table record (\S+)/i.exec(said)?.[1] });
   } else if (!afterTool && mailWake) {
     tool('mail', { action: 'read', id: /\bmal_[0-9A-Z]{26}\b/.exec(closing)?.[0] ?? '' });
   } else if (afterTool && toolText.includes('mail_body')) {
@@ -194,6 +194,13 @@ async function stream(response, request) {
     await say(`Found mail: ${/subject\\?":\s*\\?"([^"\\]+)/.exec(toolText)?.[1] ?? 'nothing'}`, 10);
   } else if (!afterTool && /^ask me/i.test(said)) {
     tool('ask_user', { question: 'Which city?', fields: [{ key: 'city', label: 'City', type: 'text' }] });
+  } else if (!afterTool && /^make image/i.test(said)) {
+    tool('generate_image', {
+      prompt: said,
+      ...(said.match(/fil_[0-9A-Z]{26}/) ? { reference_file_id: said.match(/fil_[0-9A-Z]{26}/)[0] } : {}),
+    });
+  } else if (!afterTool && /^make video/i.test(said)) {
+    tool('generate_video', { prompt: said, seconds: 4 });
   } else if (!afterTool && /^remember /i.test(said)) {
     tool('memory', { action: 'remember', title: said.slice(9).trim(), category: 'fact' });
   } else if (!afterTool && /^need a human/i.test(said)) {
@@ -224,7 +231,7 @@ async function stream(response, request) {
   } else if (afterTool) {
     await say('Done.', 20);
   } else if (/^show (chart|table|choices|diagram|page|stats)/i.test(said)) {
-    await say(RICH[said.split(' ')[1].toLowerCase()], 5);
+    await say(RICH[/^show (chart|table|choices|diagram|page|stats)/i.exec(said)[1].toLowerCase()], 5);
   } else if (/^slow/i.test(said)) {
     await say(`Thinking about it slowly. ${'More words keep coming. '.repeat(12)}`, 80);
   } else {
@@ -300,6 +307,32 @@ createServer((request, response) => {
   let raw = '';
   request.on('data', (part) => (raw += part));
   request.on('end', () => {
+    if (request.url?.startsWith('/v1/images/')) {
+      response.writeHead(200, { 'content-type': 'application/json' });
+      return response.end(
+        JSON.stringify({
+          data: [
+            {
+              b64_json: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jX1sAAAAASUVORK5CYII=',
+            },
+          ],
+        }),
+      );
+    }
+    if (request.url?.startsWith('/openai/v1/videos')) {
+      if (request.url.endsWith('/content')) {
+        response.writeHead(200, { 'content-type': 'video/mp4' });
+        return response.end(readFileSync(new URL('./fixtures/media.mp4', import.meta.url)));
+      }
+      response.writeHead(200, { 'content-type': 'application/json' });
+      return response.end(
+        JSON.stringify({
+          id: 'video_e2e',
+          status: request.method === 'POST' ? 'queued' : 'completed',
+          progress: request.method === 'POST' ? 0 : 100,
+        }),
+      );
+    }
     // The connectors' MCP servers and their sign-in (fake-mcp.mjs).
     if (handleMcp(request, response, raw, `http://127.0.0.1:${port}`)) return;
     if (handleMail(request, response, raw, `http://127.0.0.1:${port}`)) return;

@@ -1,3 +1,4 @@
+import { WeeklyMetrics } from './WeeklyMetrics';
 /**
  * 管理 → 用量 (ADM-07): the workspace's usage this month or the last 30 days, grouped by
  * member, Agent, service or capability, and the monthly budgets at the three levels (calls a
@@ -219,6 +220,7 @@ export function UsageSection() {
   });
   return (
     <>
+      <WeeklyMetrics />
       <div className="app-toolbar">
         <Segmented
           label={t('usage.period')}

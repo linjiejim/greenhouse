@@ -8,6 +8,16 @@ const REQUIRED = {
 };
 
 describe('loadConfig', () => {
+  it('defaults to all and memory, and validates release configuration', () => {
+    expect(loadConfig(REQUIRED)).toMatchObject({ GREENHOUSE_ROLE: 'all', RATE_LIMIT_STORE: 'memory' });
+    expect(loadConfig({ ...REQUIRED, GREENHOUSE_ROLE: 'worker', RATE_LIMIT_STORE: 'postgres' })).toMatchObject({
+      GREENHOUSE_ROLE: 'worker',
+      RATE_LIMIT_STORE: 'postgres',
+    });
+    expect(() => loadConfig({ ...REQUIRED, GREENHOUSE_ROLE: 'other' })).toThrow(/GREENHOUSE_ROLE/);
+    expect(() => loadConfig({ ...REQUIRED, RATE_LIMIT_STORE: 'redis' })).toThrow(/RATE_LIMIT_STORE/);
+  });
+
   it('treats empty variables from a .env file as unset', () => {
     const config = loadConfig({ ...REQUIRED, BOOTSTRAP_ADMIN_EMAIL: '', PUBLIC_URL: ' ', LLM_PROVIDER: '' });
     expect(config.BOOTSTRAP_ADMIN_EMAIL).toBeUndefined();

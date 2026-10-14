@@ -741,6 +741,14 @@ CREATE TABLE "budgets" (
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
+CREATE TABLE "metric_events" (
+	"id" bigint PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "metric_events_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 9223372036854775807 START WITH 1 CACHE 1),
+	"member_id" text NOT NULL,
+	"kind" text NOT NULL,
+	"key" text NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
 CREATE TABLE "usage_events" (
 	"id" bigint PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "usage_events_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 9223372036854775807 START WITH 1 CACHE 1),
 	"capability" text NOT NULL,
@@ -1165,6 +1173,12 @@ CREATE TABLE "base_automations" (
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
+CREATE TABLE "rate_limits" (
+	"key" text PRIMARY KEY NOT NULL,
+	"count" integer NOT NULL,
+	"reset_at" timestamp with time zone NOT NULL
+);
+--> statement-breakpoint
 ALTER TABLE "auth_links" ADD CONSTRAINT "auth_links_member_id_members_id_fk" FOREIGN KEY ("member_id") REFERENCES "public"."members"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "group_members" ADD CONSTRAINT "group_members_group_id_groups_id_fk" FOREIGN KEY ("group_id") REFERENCES "public"."groups"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "group_members" ADD CONSTRAINT "group_members_member_id_members_id_fk" FOREIGN KEY ("member_id") REFERENCES "public"."members"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
@@ -1342,6 +1356,9 @@ CREATE INDEX "audit_events_actor_idx" ON "audit_events" USING btree ("actor_type
 CREATE INDEX "audit_events_resource_idx" ON "audit_events" USING btree ("resource_type","resource_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "budget_reservations_key" ON "budget_reservations" USING btree ("budget_id","idempotency_key");--> statement-breakpoint
 CREATE UNIQUE INDEX "budgets_scope_key" ON "budgets" USING btree ("scope_type","scope_id","unit");--> statement-breakpoint
+CREATE UNIQUE INDEX "metric_events_fact_key" ON "metric_events" USING btree ("member_id","kind","key");--> statement-breakpoint
+CREATE INDEX "metric_events_time_idx" ON "metric_events" USING btree ("created_at");--> statement-breakpoint
+CREATE INDEX "metric_events_member_time_idx" ON "metric_events" USING btree ("member_id","created_at");--> statement-breakpoint
 CREATE INDEX "usage_events_member_idx" ON "usage_events" USING btree ("member_id","created_at");--> statement-breakpoint
 CREATE INDEX "usage_events_provider_idx" ON "usage_events" USING btree ("provider_id","created_at");--> statement-breakpoint
 CREATE INDEX "usage_events_agent_idx" ON "usage_events" USING btree ("agent_id","created_at");--> statement-breakpoint
@@ -1388,4 +1405,5 @@ CREATE INDEX "base_templates_owner_idx" ON "base_templates" USING btree ("owner_
 CREATE UNIQUE INDEX "base_automation_runs_dedupe_key" ON "base_automation_runs" USING btree ("dedupe_key");--> statement-breakpoint
 CREATE INDEX "base_automation_runs_automation_idx" ON "base_automation_runs" USING btree ("automation_id","id");--> statement-breakpoint
 CREATE INDEX "base_automations_table_idx" ON "base_automations" USING btree ("table_id");--> statement-breakpoint
-CREATE INDEX "base_automations_due_idx" ON "base_automations" USING btree ("status","next_fire_at");
+CREATE INDEX "base_automations_due_idx" ON "base_automations" USING btree ("status","next_fire_at");--> statement-breakpoint
+CREATE INDEX "rate_limits_reset_idx" ON "rate_limits" USING btree ("reset_at");

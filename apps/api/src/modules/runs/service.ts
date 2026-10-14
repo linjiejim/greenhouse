@@ -31,7 +31,10 @@ const toRun = (row: Run): RunView => ({
   created_at: row.createdAt,
 });
 
-export function createRunsService(deps: { background: () => Background }) {
+export function createRunsService(deps: {
+  background: () => Background;
+  cancelMedia: (memberId: string, runId: string) => Promise<void>;
+}) {
   async function own(memberId: string, runId: string): Promise<Run> {
     const [row] = await getDb()
       .select()
@@ -96,6 +99,10 @@ export function createRunsService(deps: { background: () => Background }) {
       return {
         ...toRun(row),
         brief: row.brief,
+        progress: typeof row.checkpoint?.progress === 'number' ? row.checkpoint.progress : null,
+        file_ids: Array.isArray(row.output?.file_ids)
+          ? row.output.file_ids.filter((id): id is string => typeof id === 'string')
+          : [],
         findings: Array.isArray(row.output?.findings)
           ? row.output.findings.filter((value): value is string => typeof value === 'string')
           : [],
@@ -127,7 +134,8 @@ export function createRunsService(deps: { background: () => Background }) {
       const row = await own(memberId, runId);
       if (!(ACTIVE as readonly string[]).includes(row.status))
         throw conflict('run_finished', 'This run has already ended.');
-      await deps.background().cancel(runId, memberId);
+      if (row.input.media) await deps.cancelMedia(memberId, runId);
+      else await deps.background().cancel(runId, memberId);
       return this.get(memberId, runId);
     },
 
@@ -138,6 +146,11 @@ export function createRunsService(deps: { background: () => Background }) {
       if (row.status !== 'failed' && row.status !== 'canceled') {
         throw conflict('run_not_retryable', 'Only a failed or stopped run can be run again.');
       }
+      if (row.input.media)
+        throw conflict(
+          'media_not_retryable',
+          'Start a new render after checking the service; submissions are never replayed.',
+        );
       await deps.background().retry(runId, memberId);
       return this.get(memberId, runId);
     },

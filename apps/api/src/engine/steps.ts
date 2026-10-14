@@ -1,8 +1,8 @@
 /**
  * Model steps: what each step of a run added to the model's context (its message, then the
  * results of the tools it called), recorded as a `run_steps` row of kind `model` as the step
- * ends. A retried background run continues from them instead of starting over, and a turn will
- * resume the same way (M3.6). A step keeps about 20 000 characters, like the other step rows:
+ * ends. A retried background run continues from them instead of starting over, and a turn
+ * resumes its existing reply from that boundary. A step keeps about 20 000 characters, like the other step rows:
  * long tool results are cut first, then long texts; the structure always stays whole.
  */
 
@@ -90,8 +90,8 @@ export async function recordModelStep(input: {
         output: step.usage.outputTokens ?? 0,
         cached: step.usage.cachedInputTokens ?? 0,
       },
-      startedAt: sql`now()`,
-      finishedAt: sql`now()`,
+      startedAt: sql`clock_timestamp()`,
+      finishedAt: sql`clock_timestamp()`,
     })
     .onConflictDoNothing();
 }

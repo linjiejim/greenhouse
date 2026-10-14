@@ -32,5 +32,7 @@ export * from './apps.js';
 export * from './approvals.js';
 
 export * from './tables-automations.js';
+export * from './metrics.js';
+export * from './media.js';
 
 export type { AppCardAnswer } from './apps-client.js';

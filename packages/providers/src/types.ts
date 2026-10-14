@@ -105,7 +105,24 @@ export interface GeneratedImage {
 }
 
 export interface ImageClient {
-  generate(input: { prompt: string; size?: string; n?: number }): Promise<{ images: GeneratedImage[] }>;
+  generate(input: {
+    prompt: string;
+    size?: string;
+    n?: number;
+    reference?: GeneratedImage;
+  }): Promise<{ images: GeneratedImage[] }>;
+}
+
+export interface VideoState {
+  id: string;
+  status: 'queued' | 'in_progress' | 'completed' | 'failed';
+  progress: number;
+  error?: string;
+}
+export interface VideoClient {
+  create(input: { prompt: string; seconds: number; size?: string }): Promise<VideoState>;
+  retrieve(id: string): Promise<VideoState>;
+  content(id: string): Promise<{ data: Uint8Array; mimeType: string }>;
 }
 
 export interface SandboxSpec {
@@ -350,7 +367,7 @@ export interface ClientByCapability {
   image: ImageClient;
   search: SearchClient;
   storage: StorageClient;
-  video: never;
+  video: VideoClient;
   sandbox: SandboxClient;
   mail: MailClient;
   im: ImClient;

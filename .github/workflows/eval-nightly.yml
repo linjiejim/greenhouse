@@ -1,0 +1,62 @@
+name: Nightly model evaluation
+
+on:
+  schedule:
+    - cron: '17 19 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: eval-nightly
+  cancel-in-progress: false
+
+jobs:
+  configured:
+    if: github.repository == 'linjiejim/greenhouse'
+    runs-on: ubuntu-latest
+    outputs:
+      enabled: ${{ steps.key.outputs.enabled }}
+    steps:
+      - id: key
+        env:
+          MODEL_KEY: ${{ secrets.GREENHOUSE_EVAL_MODEL_KEY }}
+        run: |
+          if [ -n "$MODEL_KEY" ]; then
+            echo 'enabled=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'enabled=false' >> "$GITHUB_OUTPUT"
+          fi
+
+  eval:
+    needs: configured
+    if: github.repository == 'linjiejim/greenhouse' && needs.configured.outputs.enabled == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: greenhouse_eval_test
+          POSTGRES_USER: greenhouse
+          POSTGRES_PASSWORD: greenhouse
+        ports:
+          - 55432:5432
+        options: >-
+          --health-cmd "pg_isready -U greenhouse -d greenhouse_eval_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - name: Replay and real-model fixtures
+        env:
+          TEST_DATABASE_URL: postgresql://greenhouse:greenhouse@localhost:55432/greenhouse_eval_test
+          GREENHOUSE_EVAL_REAL: '1'
+          LLM_API_KEY: ${{ secrets.GREENHOUSE_EVAL_MODEL_KEY }}
+          LLM_PROVIDER: ${{ vars.GREENHOUSE_EVAL_PROVIDER || 'openai-compatible' }}
+          LLM_BASE_URL: ${{ vars.GREENHOUSE_EVAL_BASE_URL || 'https://api.openai.com/v1' }}
+          LLM_MODEL: ${{ vars.GREENHOUSE_EVAL_MODEL || 'gpt-4.1-mini' }}
+        run: pnpm eval
