@@ -13,7 +13,7 @@ import { RICH_CAPABILITIES } from '@greenhouse/types/rich-output';
 import { api } from '../lib/api';
 import { saveBlob } from '../lib/save';
 import { keys } from './query';
-import { addMessage, patchConversation, patchMessage, type ConversationPages } from './realtime';
+import { addMessage, fetchMessagePage, patchConversation, patchMessage, type ConversationPages } from './realtime';
 
 const PAGE = 100;
 
@@ -39,9 +39,10 @@ export function useConversation(id: string | undefined) {
 
 /** Messages newest first, a page at a time; the page shows them oldest first. */
 export function useMessages(conversationId: string | undefined) {
+  const client = useQueryClient();
   const query = useInfiniteQuery({
     queryKey: keys.messages(conversationId ?? ''),
-    queryFn: ({ pageParam }) => api.conversations.messages(conversationId!, { cursor: pageParam, limit: 50 }),
+    queryFn: ({ pageParam }) => fetchMessagePage(client, conversationId!, pageParam),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (page) => page.next_cursor ?? undefined,
     enabled: !!conversationId,

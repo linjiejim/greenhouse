@@ -114,3 +114,20 @@ export const auditEvents = pgTable(
 export type UsageEventRow = typeof usageEvents.$inferSelect;
 export type BudgetRow = typeof budgets.$inferSelect;
 export type AuditEventRow = typeof auditEvents.$inferSelect;
+
+/** Count-only product facts; logical ids survive deleted conversations and accounts. */
+export const metricEvents = pgTable(
+  'metric_events',
+  {
+    id: bigint('id', { mode: 'number' }).primaryKey().generatedAlwaysAsIdentity(),
+    memberId: text('member_id').notNull(),
+    kind: text('kind', { enum: ['active', 'assigned', 'adopted', 'activated'] }).notNull(),
+    key: text('key').notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    uniqueIndex('metric_events_fact_key').on(t.memberId, t.kind, t.key),
+    index('metric_events_time_idx').on(t.createdAt),
+    index('metric_events_member_time_idx').on(t.memberId, t.createdAt),
+  ],
+);

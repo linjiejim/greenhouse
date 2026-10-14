@@ -85,7 +85,7 @@ LLM_MODEL_FAST=                  # 可选，用于标题、摘要；为空时用
 STT_PROVIDER=openai-compatible   STT_API_KEY=…  STT_BASE_URL=…  STT_MODEL=whisper-1
 TTS_PROVIDER=minimax             TTS_API_KEY=…  TTS_VOICE=female-shaonv
 IMAGE_PROVIDER=openai            IMAGE_API_KEY=…  IMAGE_MODEL=gpt-image-1
-VIDEO_PROVIDER=kling             VIDEO_API_KEY=…  VIDEO_SECRET=…
+VIDEO_PROVIDER=302ai             VIDEO_API_KEY=…  VIDEO_MODEL=sora-2  VIDEO_BASE_URL=
 SANDBOX_PROVIDER=docker          # docker | e2b | ppio（e2b 的预设）
 SANDBOX_IMAGE=greenhouse/computer:latest  SANDBOX_DOCKER_RUNTIME=runsc   # runsc = gVisor，生产必须；runc 只用于开发
 SANDBOX_NETWORK=bridge  SANDBOX_MEMORY=2g  SANDBOX_CPUS=2
@@ -224,6 +224,8 @@ v2.0 表示首发；后续 表示接口已经留好，按需求再加。
 
 ### 图像 `image`
 
+当前实现（#70）为 OpenAI 兼容协议及 OpenAI／302ai 预设，生成与参考图编辑均要求返回 base64；下面其他图像厂商是规划，尚未进入服务目录。
+
 | 适配器 | v2.0 | 后续 |
 | --- | --- | --- |
 | `openai-compatible`（Images API） | OpenAI gpt-image、302.AI 等聚合、硅基流动、Together | — |
@@ -233,9 +235,11 @@ v2.0 表示首发；后续 表示接口已经留好，按需求再加。
 
 ### 视频 `video`（全部是异步任务）
 
+当前实现（#70）为 `openai-compatible` 与 `302ai` 预设（OpenAI 官方格式的异步协议）；下面的厂商直连适配器仍是规划，尚未进入服务目录。
+
 | 适配器 | v2.0 | 后续 |
 | --- | --- | --- |
-| `openai` | Sora 2 | — |
+| `openai-compatible` | 302.AI 官方格式、可配置模型 | — |
 | `gemini` | Veo 3 | — |
 | `kling` | 可灵 | — |
 | `aliyun` | 通义万相 Wan | — |
@@ -392,3 +396,9 @@ apps/api/src/providers/e2b-template.ts   用 E2B SDK 构建电脑模板，只给
 - 业务代码里 `grep process.env` 只能出现在 `apps/api/src/config/`。
 - 每个适配器都有一份测试（模拟 HTTP），覆盖「Key 只发往配置的地址」。
 - 「测试连接」在界面上可以用。
+
+### M3 图像与视频（#70）
+
+- `IMAGE_PROVIDER=302ai`：OpenAI Images 协议，默认 gpt-image-2、low。`IMAGE_BASE_URL`、`IMAGE_API_KEY`、`IMAGE_MODEL`、`IMAGE_SIZE`、`IMAGE_QUALITY` 覆盖预设；编辑用 `/images/edits` multipart，参考图片经成员文件权限读取，最大 10 MB。生成与编辑均计 image 数量，结果保留为 artifact。
+- `VIDEO_PROVIDER=302ai`：默认 `https://api.302.ai/openai/v1`、sora-2；可用 `VIDEO_BASE_URL`、`VIDEO_API_KEY`、`VIDEO_MODEL`、`VIDEO_SIZE` 覆盖。适配器经 `/videos` 提交，再查询 `/videos/:id`，通过 `/videos/:id/content` 取回 MP4；302 返回下载 URL 时仅允许配置的 contentOrigins（预设 file.302.ai），下载不带 API Key。协议依据 [302.AI 提交](https://doc.302.ai/358575764e0)与[内容](https://doc.302.ai/358660466e0)。
+- 视频只在原会话中提出审批，批准后写入唯一 jobs 队列与后台 run；提交成功按秒计量，查询／取回不重复收费。20 分钟截止，进程恢复只继续已知 ID 的查询；提交结果未知禁止自动重放与普通重试。取消停止本地轮询，厂商已经开始的生成可能继续，计费不撤销。

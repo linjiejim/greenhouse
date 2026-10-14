@@ -236,7 +236,14 @@ export type CreateConversationInput =
       agent_id?: string | undefined;
       title?: string | undefined;
       model?: string | undefined;
-      context?: Record<string, unknown> | undefined;
+      context?:
+        | { kind: 'doc'; id: string }
+        | { kind: 'record'; id: string }
+        | { kind: 'run'; id: string }
+        | { kind: 'agent'; id: string }
+        | { kind: 'app'; id: string; page_id?: string | undefined }
+        | { kind: 'page'; name: string }
+        | undefined;
     }
   | {
       kind: 'room';
@@ -625,7 +632,7 @@ export type RunView = {
   summary: string | null;
   title: string;
   status: 'failed' | 'queued' | 'running' | 'canceled' | 'waiting' | 'succeeded';
-  source: 'record' | 'conversation' | 'schedule' | 'automation' | 'handoff' | 'app';
+  source: 'record' | 'app' | 'conversation' | 'schedule' | 'automation' | 'handoff';
   source_id: string | null;
   conversation_id: string | null;
   attempt: number;
@@ -642,7 +649,7 @@ export type RunDetail = {
   summary: string | null;
   title: string;
   status: 'failed' | 'queued' | 'running' | 'canceled' | 'waiting' | 'succeeded';
-  source: 'record' | 'conversation' | 'schedule' | 'automation' | 'handoff' | 'app';
+  source: 'record' | 'app' | 'conversation' | 'schedule' | 'automation' | 'handoff';
   source_id: string | null;
   conversation_id: string | null;
   attempt: number;
@@ -650,6 +657,8 @@ export type RunDetail = {
   started_at: string | null;
   finished_at: string | null;
   created_at: string;
+  progress: number | null;
+  file_ids: Array<string>;
   findings: Array<string>;
   brief: string;
   output: string | null;

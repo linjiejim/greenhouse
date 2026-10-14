@@ -2,7 +2,7 @@ import { fork } from 'node:child_process';
 import { once } from 'node:events';
 import { fileURLToPath } from 'node:url';
 import { and, eq, inArray, sql } from 'drizzle-orm';
-import { afterAll, expect, it } from 'vitest';
+import { afterAll, expect, it, vi } from 'vitest';
 import { agentMemories, conversationMembers, getDb, jobs, members, messages, runs, runSteps } from '@greenhouse/db';
 import { TEST_DATABASE_URL } from '@greenhouse/db/testing';
 import { createTestApp, createTestServices } from '../../testing.js';
@@ -87,6 +87,116 @@ it('resumes a killed process in one reply and only one of two replicas owns reco
       ['model:2', 2],
     ]);
     await b.engine.shutdown();
+  } finally {
+    if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL');
+    await a.services.engine.shutdown({ graceMs: 0 });
+  }
+}, 30_000);
+
+it('recovers an interjected reply after a crash and admits another interjection', async () => {
+  const hold = gate();
+  const model = scriptedModel([
+    {
+      parts: textThenTool('Resumed prefix. ', 'knowledge_query', { action: 'search', query: 'no match' }),
+      gate: hold.promise,
+    },
+    text('Final with both details.'),
+  ]);
+  const a = createTestApp({ GREENHOUSE_ROLE: 'api' }, { languageModel: model.languageModel });
+  const person = await a.member();
+  created.push(person.id);
+  const main = await a.services.conversations.ensureMain(person.id);
+  const child = fork(
+    fileURLToPath(new URL('./fixtures/turn-process.mts', import.meta.url)),
+    [TEST_DATABASE_URL, person.id, main.id, 'interjection'],
+    { execArgv: ['--import', 'tsx'], stdio: ['ignore', 'ignore', 'pipe', 'ipc'] },
+  );
+  try {
+    const [started] = (await once(child, 'message')) as [{ runId: string }];
+    const first = await a.services.engine.post(person.id, main.id, {
+      content: 'first-detail',
+      mentions: [],
+      attachments: [],
+    });
+    const checkpoint = once(child, 'message');
+    child.send('release');
+    await checkpoint;
+    const before = await getDb()
+      .select()
+      .from(messages)
+      .where(and(eq(messages.runId, started.runId), eq(messages.role, 'assistant')))
+      .orderBy(messages.seq);
+    expect(before).toHaveLength(2);
+    expect(before[0]).toMatchObject({ status: 'complete', content: 'I checked alpha. ' });
+    expect(before[1]).toMatchObject({ status: 'streaming', content: 'With extra detail. ' });
+    const [firstRow] = await getDb().select().from(messages).where(eq(messages.id, first.message.id));
+    expect(firstRow!.event).toMatchObject({ state: 'incorporated', run_id: started.runId });
+    child.kill('SIGKILL');
+    await once(child, 'exit');
+    await getDb()
+      .update(runs)
+      .set({ leaseExpiresAt: sql`now() - interval '1 second'` })
+      .where(eq(runs.id, started.runId));
+    await getDb()
+      .update(messages)
+      .set({ content: before[1]!.content + 'unfinished fragment' })
+      .where(eq(messages.id, before[1]!.id));
+    await a.services.engine.sweep();
+    await vi.waitFor(() => expect(model.calls()).toBe(1));
+    const second = await a.services.engine.post(person.id, main.id, {
+      content: 'second-detail',
+      mentions: [],
+      attachments: [],
+    });
+    hold.open();
+    await a.services.engine.idle();
+    const [done] = await getDb().select().from(runs).where(eq(runs.id, started.runId));
+    expect(done).toMatchObject({ status: 'succeeded', attempt: 2, checkpoint: { tainted: true } });
+    const replies = await getDb()
+      .select()
+      .from(messages)
+      .where(and(eq(messages.runId, started.runId), eq(messages.role, 'assistant')))
+      .orderBy(messages.seq);
+    expect(replies).toHaveLength(3);
+    expect(replies[0]).toMatchObject({ id: before[0]!.id, content: 'I checked alpha. ', status: 'complete' });
+    expect(replies[1]).toMatchObject({
+      id: before[1]!.id,
+      content: 'With extra detail. Resumed prefix. ',
+      status: 'complete',
+    });
+    expect(replies[2]).toMatchObject({ content: 'Final with both details.', status: 'complete' });
+    expect(replies[0]!.steps.map((step) => step.tool)).toEqual(['lookup']);
+    expect(replies[1]!.steps.map((step) => step.tool)).toEqual(['lookup', 'knowledge_query']);
+    expect(replies[2]!.steps).toEqual([]);
+    expect(replies[2]!.citations).toContainEqual({
+      kind: 'web',
+      url: 'https://example.test/alpha',
+      title: 'Alpha evidence',
+    });
+    expect(await getDb().select().from(agentMemories).where(eq(agentMemories.memberId, person.id))).toHaveLength(2);
+    const additions = await getDb()
+      .select()
+      .from(messages)
+      .where(inArray(messages.id, [first.message.id, second.message.id]))
+      .orderBy(messages.seq);
+    expect(additions[0]).toMatchObject({ seq: firstRow!.seq, event: { state: 'incorporated', run_id: started.runId } });
+    expect(additions[1]!.event).toMatchObject({ state: 'incorporated', run_id: started.runId });
+    expect(JSON.stringify(model.prompts[0]).match(/first-detail/g)).toHaveLength(1);
+    expect(JSON.stringify(model.prompts[1]).match(/first-detail/g)).toHaveLength(1);
+    expect(JSON.stringify(model.prompts[1]).match(/second-detail/g)).toHaveLength(1);
+    const steps = await getDb()
+      .select()
+      .from(runSteps)
+      .where(and(eq(runSteps.runId, started.runId), eq(runSteps.kind, 'model')))
+      .orderBy(runSteps.key);
+    expect(steps.map((step) => [step.key, step.attempt])).toEqual([
+      ['model:1', 1],
+      ['model:2', 1],
+      ['model:3', 1],
+      ['model:4', 2],
+      ['model:5', 2],
+      ['model:6', 2],
+    ]);
   } finally {
     if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL');
     await a.services.engine.shutdown({ graceMs: 0 });

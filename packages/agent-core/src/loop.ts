@@ -154,11 +154,13 @@ export function streamLoop(input: LoopInput): PreparedLoop & { result: LoopStrea
  * The stream of a turn that never ends without an answer: every part passes through, and for
  * DeepSeek a turn that ran tools but wrote nothing gets the final-answer parts spliced in
  * before `finish`. A stopped turn gets no extra calls.
+ * A caller continuing with newer member input can suppress recovery from the old step.
  */
 export async function* withFinalAnswer(
   result: LoopStream,
   input: LoopInput,
   createStream?: FinalAnswerStreamFactory,
+  allowRecovery?: () => boolean,
 ): AsyncGenerator<any> {
   if (!input.model.deepseek) {
     yield* result.stream as AsyncIterable<any>;
@@ -178,7 +180,7 @@ export async function* withFinalAnswer(
     }
     yield part;
   }
-  if (!sawText && toolRan && !aborted) {
+  if (!sawText && toolRan && !aborted && (allowRecovery?.() ?? true)) {
     const gatheredMessages = [
       ...(input.resume ?? []),
       ...((await Promise.resolve(result.responseMessages).catch(() => null)) ?? []),

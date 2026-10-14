@@ -1,3 +1,4 @@
+import { PageConversation } from './PageConversation';
 /**
  * The signed-in app (PRD §6, layout.md): rail 64, directory 256 (collapsible), the workspace,
  * and at most one drawer over it. Below 1024 the directory is a drawer; below 768 the rail
@@ -6,7 +7,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useSession } from '../app/session';
-import { navigate, useRoute } from '../lib/router';
+import { navigate, useRoute, type Route } from '../lib/router';
 import { MEDIUM, NARROW, store, stored, useMedia } from '../lib/media';
 import { cx } from '../lib/cx';
 import { useT } from '../lib/i18n';
@@ -34,6 +35,8 @@ export function Shell() {
   const [drawer, setDrawer] = useState(false);
   const [palette, setPalette] = useState(false);
   const [overlay, setOverlay] = useState<OverlayRequest | null>(null);
+  const [pageConversation, setPageConversation] = useState<Route | null>(null);
+  const [pageChats, setPageChats] = useState<Record<string, string>>({});
   const module = moduleOf(route);
   const { realtime, bootstrap, me } = useSession();
   // Say so only when a live connection dropped, not while it first connects.
@@ -70,6 +73,11 @@ export function Shell() {
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'j') {
+        event.preventDefault();
+        setOverlay(null);
+        setPageConversation((open) => (open ? null : route));
+      }
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
         event.preventDefault();
         setPalette((open) => !open);
@@ -77,7 +85,7 @@ export function Shell() {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, []);
+  }, [route]);
 
   const hide = useCallback(() => {
     if (floating) return setDrawer(false);
@@ -99,6 +107,11 @@ export function Shell() {
     [narrow, floating, drawer, collapsed],
   );
 
+  const openOverlay = useCallback((request: OverlayRequest | null) => {
+    setPageConversation(null);
+    setOverlay(request);
+  }, []);
+
   const showDirectory = floating ? drawer : !collapsed;
   let directory: ReactNode = null;
   if (showDirectory) {
@@ -112,7 +125,7 @@ export function Shell() {
 
   return (
     <ShellContext.Provider value={shell}>
-      <OverlayContext.Provider value={setOverlay}>
+      <OverlayContext.Provider value={openOverlay}>
         <div className="app-shell" data-floating-boundary>
           {!narrow && <Rail module={module} />}
           {floating && drawer && <div className="app-directory-scrim" onClick={() => setDrawer(false)} aria-hidden />}
@@ -134,6 +147,15 @@ export function Shell() {
               <Workspace route={route} />
             </ErrorBoundary>
           </main>
+          {pageConversation && (
+            <PageConversation
+              key={JSON.stringify(pageConversation)}
+              route={pageConversation}
+              chatId={pageChats[JSON.stringify(pageConversation)]}
+              onCreated={(id) => setPageChats((chats) => ({ ...chats, [JSON.stringify(pageConversation)]: id }))}
+              onClose={() => setPageConversation(null)}
+            />
+          )}
           {palette && <CommandPalette onClose={() => setPalette(false)} />}
           {overlay && <OverlayHost request={overlay} onClose={() => setOverlay(null)} />}
         </div>

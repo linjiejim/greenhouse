@@ -24,6 +24,12 @@ const apiEnv = [
   `LLM_MODEL=fake`,
   // A second model, so the Agent's model picker shows.
   `LLM_MODEL_STRONG=fake-strong`,
+  `IMAGE_PROVIDER=302ai`,
+  `IMAGE_BASE_URL=http://127.0.0.1:${E2E.llmPort}/v1`,
+  `IMAGE_API_KEY=e2e-media`,
+  `VIDEO_PROVIDER=302ai`,
+  `VIDEO_BASE_URL=http://127.0.0.1:${E2E.llmPort}/openai/v1`,
+  `VIDEO_API_KEY=e2e-media`,
   // Web search through the fake server, which also answers like SearXNG.
   `SEARCH_PROVIDER=searxng`,
   `SEARXNG_URL=http://127.0.0.1:${E2E.llmPort}`,

@@ -1,3 +1,4 @@
+import { api } from '../lib/api';
 /**
  * One message (conversation.md): the member's own words in a light bubble on the right; an
  * Agent's reply without a bubble in bodyLg, in the order conclusion → result cards → decisions
@@ -234,6 +235,17 @@ export const MessageView = memo(function MessageView({
           </div>
         )}
         <Attachments ids={message.attachments} mine />
+        {message.event?.type === 'interjection' && (
+          <span className="app-message-queue" role="status">
+            {t(
+              message.event.state === 'incorporated'
+                ? 'message.incorporated'
+                : message.event.state === 'canceled'
+                  ? 'message.stopped'
+                  : 'message.waiting',
+            )}
+          </span>
+        )}
         <div className="app-message-meta is-mine">
           <time dateTime={message.created_at} title={fullTime(message.created_at, { locale, timeZone })}>
             {time}
@@ -307,7 +319,12 @@ export const MessageView = memo(function MessageView({
               text={text}
               streaming={streaming}
               failed={message.status === 'failed'}
-              context={blockContext ?? NO_BLOCKS}
+              context={{
+                ...(blockContext ?? NO_BLOCKS),
+                onDownload: () => {
+                  void api.metrics.adopt({ kind: 'download', message_id: message.id }).catch(() => undefined);
+                },
+              }}
             />
           ) : (
             <Markdown text={text} />
@@ -316,7 +333,13 @@ export const MessageView = memo(function MessageView({
         {!streaming && message.citations.length > 0 && (
           <Sources
             items={message.citations}
-            onAsk={onQuote && ((source) => onQuote(`${source.title}${source.url ? ` — ${source.url}` : ''}`))}
+            onAsk={
+              onQuote &&
+              ((source) => {
+                void api.metrics.adopt({ kind: 'citation', message_id: message.id }).catch(() => undefined);
+                onQuote(`${source.title}${source.url ? ` — ${source.url}` : ''}`);
+              })
+            }
           />
         )}
         {streaming && !text && !steps.length && <span className="app-typing" aria-label={t('common.loading')} />}
@@ -372,7 +395,14 @@ export const MessageView = memo(function MessageView({
               </IconButton>
             )}
             {onQuote && (
-              <IconButton label={t('message.quote')} size="sm" onClick={() => onQuote(text)}>
+              <IconButton
+                label={t('message.quote')}
+                size="sm"
+                onClick={() => {
+                  void api.metrics.adopt({ kind: 'citation', message_id: message.id }).catch(() => undefined);
+                  onQuote(text);
+                }}
+              >
                 <Quote size={icon.sm} />
               </IconButton>
             )}

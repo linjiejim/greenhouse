@@ -254,6 +254,15 @@ apps/api/src/
 - `table_query` 发现表格、数据表、视图，按成员的自定义角色筛选记录与聚合；读取的记录引用会再次按接收者权限裁剪。`table_mutation` 支持记录批量修改、回收、评论和彻底删除；私有可逆操作有回执与撤销、共享按数据表动作批准、彻底删除逐次批准。`table_schema_plan` 的精确结构计划逐次确认后才落库。
 - `apps_query` 读取已发布应用与卡片，`apps_action` 只执行已保存的动作，按查看者的应用与表格权限交集。MCP 对应独立的 `apps:read` / `apps:write`，不扩大其他已授权范围；共享动作返回 `needs_you`，外部客户端不能代替成员批准。
 
+页面会话（CONV-28）：`POST /api/conversations` 的 chat.context 只接受引用 `{kind: doc|record|run|agent, id}`、`{kind: app, id, page_id?}` 或 `{kind: page, name}`。服务端验证对象访问，每轮按当前权限读取并作为不可信数据带入；不接受客户端内容快照。
+
+M3 媒体与计数（#70）：
+- `POST /api/media/files/:id/save`，`{space?: personal|team, folder_id?}`：按成员权限将已有 artifact 复制到知识库，不改变原会话文件。
+- `GET /api/runs/:id` 增加 `progress`（0–100 或 null）和 `file_ids`；视频后台运行也走既有 list/cancel 接口，取消停止本地检查，普通 retry 拒绝 `media_not_retryable`。
+- `POST /api/metrics/adopt`，只接受 `{kind: download, file_id} 或 {kind: download, message_id}` 或 `{kind: citation, message_id}`；读权限在服务层复查，同一成员对同一产出只计一次。
+- `GET /api/admin/usage/metrics?weeks=8`（1–12）：仅管理员，返回每周计数与比例，不返回任何成员／对话／产物 ID 或内容。无分母时为 null。
+- 排队成员消息的 event 为 `{type: interjection, state: queued}`；步骤边界带入后更新为 `{type: interjection, state: incorporated, run_id}`，原 seq 不变，新的 assistant 行沿用 run_id。停止仍丢弃排队项。
+
 ## 6. M2.4 引擎接口（#70）
 
 - `PUT /api/agents/:id/publication` 新增 `folder_ids`（最多 100 个，默认空）；读取发布设置也返回它。只能选主人当前可用的个人知识文件夹，排除 Agent 私有参考文件夹。
@@ -262,6 +271,8 @@ apps/api/src/
 - 工具输出超过约 8,000 字符时返回 `{ file: { id, name }, head, length, note }`。`tool_output_read { file_id, offset?, length? }` 返回字符区间、总长度与 `next_offset`（默认 4,000，最多 6,000 字符），每次检查成员的文件权限。文件到期或无权读取均返回 `not_found`。若动作已完成但输出存储失败，步骤仍成功，结果明确返回 `storage_error`、开头与长度，不虚构文件，也不诱发重复写入。
 - `memory.recall` 支持 `from` / `to`（UTC 日期 YYYY-MM-DD，含两端）；至少给查询词或日期范围。后台只允许 recall；系统在后台运行结束时写工作日志，不接受运行结果中的记忆指令。
 - 工程命令：`pnpm cli eval export <run|message id>` 在本地连接的 v2 数据库导出 `fixtures/eval/*.json`；成员消息会找到当前对应的回合，多个 Agent 同时回答时返回 `eval_ambiguous`，应指定回复或运行 id；`TEST_DATABASE_URL=... pnpm eval` 用脚本模型回放，不请求真实模型。夜间真实模型用例留 M3.6。
+
+插话与恢复（#70）：已带入的消息、后续模型上下文和新回复检查点同事务持久化；进程崩溃后接着写当前回复，不重复已完成工具，也可继续插话。排空中的 API 不再带入新消息，由其他 API 接手队列。
 
 ### M3.6 进程与限流（#70）
 

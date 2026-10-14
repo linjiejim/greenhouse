@@ -1,3 +1,4 @@
+import { openaiCompatibleVideoAdapter } from './video/adapters.js';
 import { expoAdapter } from './channels/expo.js';
 import { feishuAdapter } from './channels/feishu.js';
 import { wecomAdapter } from './channels/wecom.js';
@@ -39,6 +40,7 @@ for (const adapter of [
   ...SEARCH_ADAPTERS,
   ...SPEECH_ADAPTERS,
   ...IMAGE_ADAPTERS,
+  openaiCompatibleVideoAdapter,
   localAdapter,
   s3Adapter,
   dockerAdapter,

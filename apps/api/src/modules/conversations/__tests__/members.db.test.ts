@@ -197,7 +197,7 @@ describe('the people of a conversation', () => {
       .select({ content: messages.content })
       .from(messages)
       .where(and(eq(messages.conversationId, room.id), eq(messages.role, 'assistant')))
-      .orderBy(messages.seq);
+      .orderBy(asc(messages.seq));
     expect(replies.map((row) => row.content)).toEqual(['', "Lin's answer."]);
   });
 

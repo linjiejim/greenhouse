@@ -16,7 +16,7 @@ Greenhouse is an open-source, self-hosted platform where a team works with its o
 - apps/api/src/modules/apps: human app builder/runtime, immutable publications and reviewed base templates (its AGENTS.md). Application roles narrow the tables access compiler; all writes use tables records as the member.
 - packages/contract: zod schemas and types for every request and response; the web, mobile and extension clients import it.
 - packages/db: the v2 schema (data-model.md), ids, migrations and test support. drizzle/ holds the single baseline.
-- packages/providers: adapters per capability (llm, search, stt, tts, image, storage, sandbox: docker and e2b, mail: resend and mailgun; smtp is registered from apps/api/src/modules/mail), presets, the adapter registry and pinnedFetch (an instance's origins; `https://*.<domain>` allows every name under a domain, as E2B serves each sandbox under its own). apps/api/src/providers: env parsing, resolution order, sealed secrets, usage metering and the provider routes (docs/product/providers.md).
+- packages/providers: adapters per capability (llm, search, stt, tts, image, video, storage, sandbox: docker and e2b, mail: resend and mailgun; smtp is registered from apps/api/src/modules/mail), presets, the adapter registry and pinnedFetch (an instance's origins; `https://*.<domain>` allows every name under a domain, as E2B serves each sandbox under its own). apps/api/src/providers: env parsing, resolution order, sealed secrets, usage metering and the provider routes (docs/product/providers.md).
 - apps/web: the v2 web app (Vite, React 19, TanStack Query; apps/web/AGENTS.md). The API serves its build from public/.
 - apps/design: prototype and component lab. apps/desktop: Tauri shell (apps/desktop/AGENTS.md). apps/bot-computer: the Agent computer image (e2b/ is its hosted layer for the E2B template: the two bridges, their units, boot and hardening).
 - apps/mobile: v1 Expo app outside the pnpm workspace and the root checks until roadmap M4 (apps/mobile/AGENTS.md).
@@ -92,3 +92,5 @@ Greenhouse is an open-source, self-hosted platform where a team works with its o
 - Releases are cut from main only (RELEASING.md); the v2 branch publishes nothing until it merges back at v2.0.
 - Every commit that lands on main is a Conventional Commit; release-please derives the version and changelog from them.
 - Workflows that publish or deploy run only in linjiejim/greenhouse. Nightly pnpm eval also requires GREENHOUSE_EVAL_MODEL_KEY; local replay never reaches real providers unless GREENHOUSE_EVAL_REAL=1.
+
+- Product metrics reuse requests/runs/usage facts; metric_events holds only enum counts, dates and logical ids. Weekly aggregates recheck admin access in the service.

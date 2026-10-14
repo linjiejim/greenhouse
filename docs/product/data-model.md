@@ -239,6 +239,12 @@ v1 迁移工具的 ID 映射与检查点放在单独的 `migration` schema，不
 
 M1.7：运行检查点保存 `tainted`、`read_private` 与决定结果，后台审批后用已记录的模型步骤及已完成的工具结果重建上下文。结果 `output` 带 `text` 和 `findings`。运行结束和 `run_report` 汇报任务同事务，汇报消息与通知按运行 / 尝试去重；只有选择 `continue_after` 才产生唤醒事件，静默无发现时跳过跟进。事件唤醒仍是 turn 运行，以后台工具规则执行。
 
+M3 页面会话：`conversations.context` 保存有界对象引用，不保存页面 HTML、密钥或客户端快照。每轮重新验证对象读取权限。
+
+M3.4 计数（#70）：`metric_events` 仅存 identity id、member_id（逻辑引用）、kind（active／assigned／adopted／activated）、key（UTC 日期或产出逻辑引用）和 created_at；唯一 `(member_id,kind,key)`。active 为交办、处理卡片或采纳；assigned 仅成员发送请求，首日激活必须先交办后采纳。首次登录／邀请激活只记一次。同一 run 的 👍、引用、下载和成功的逐次／预批准写入合并计一次；无 run 的欢迎消息／文件使用对象键；撤回评分不抹除已经发生的采纳。管理员读聚合，无内容列、任意 metadata 或新增内容副本。
+
+视频复用 runs（kind background、source conversation、input.media=video）、files（purpose artifact）、jobs（media_video 与 run_report）。checkpoint 保留提交中标记、厂商 ID、进度和轮询序号；提交中断没有已知 ID 时标为结果未知，不再购买生成。原引擎的模型运行领取／清扫排除媒体运行，媒体 worker 按 jobs 租约写状态；完成状态与报告排队同一事务提交。
+
 ### 12.7 M2.4 引擎补充（#70）
 
 - `agents.publication.folderIds` 保存公开 Agent 的知识授权根。只接受主人未归档的个人文件夹，排除所有 Agent 私有参考文件夹及其后代。每次知识读取重查发布、受众、主人模块与当前子树；授权不变成成员对文档或文件的直接分享。
@@ -248,7 +254,7 @@ M1.7：运行检查点保存 `tainted`、`read_private` 与决定结果，后台
 
 ### 12.8 M3.6 发布形态（#70）
 
-- 回合的 `runs.checkpoint` 增加 `turn_step`、`turn_tools`（已记录的工具数）、`turn_ended` / `turn_waiting`、`reply_id`、`reply_chars`、`sources`：和对应 model 步骤、回复的完整文字在同一事务提交；model 上下文仍有 2 万字上限，界面文字不截断。恢复保留同一 message id，把后续未完成步骤的零散文字截回这个边界；tainted / read_private 继续保留。恢复领取与终止都在对话行锁下重查租约，双副本不会同时续跑。
+- 回合的 `runs.checkpoint` 增加 `turn_step`、`turn_tools`（已记录的工具数）、`turn_ended` / `turn_waiting`、`reply_id`、`reply_chars`、`sources`：和对应 model 步骤、回复的完整文字在同一事务提交；model 上下文仍有 2 万字上限，界面文字不截断。恢复保留同一 message id，把后续未完成步骤的零散文字截回这个边界；tainted / read_private 继续保留。恢复领取与终止都在对话行锁下重查租约，双副本不会同时续跑。插话的收件消费、成员消息标记、新回复、注入的 model 步骤及检查点也在同一事务提交；恢复沿用新回复 id，已结束的旧回复不变，步骤总上限跨插话和恢复累计。
 - 前台租约过期不到十分钟、成员仍有效且仍在对话、最后模型步骤完整、其后没有新工具步骤时才自动续跑。其余保持 interrupted；遗留 running 工具按幂等性记为 failed 或 uncertain。
 - `conversation_digest` 是回复结束后写入的摘要任务；`mail_inbound` 只保存已验证的实例 id 和通知引用，由 worker 经 providers 拉信，任务去重并保留接手进度；不把签名、Key 或整封信塞进队列。后台运行和其他 jobs 在排空后交还租约，不消耗停机重试次数；后台 `checkpoint.crashes` 单独累计意外进程中断，成员手动重试归零，`attempt` 仍为模型步骤分代。
 - `rate_limits` 仅在 RATE_LIMIT_STORE=postgres 时使用；窗口是所有 API 副本共享的，拒绝请求返回 429，存储故障不会退回单机放行。

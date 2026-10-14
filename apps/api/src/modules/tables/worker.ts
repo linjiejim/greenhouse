@@ -29,6 +29,7 @@ export const TABLES_JOB_KINDS = [
   'base_purge',
   'base_discard',
   'base_automation',
+  'media_video',
   'mail_inbound',
 ] as const;
 export type TablesJobKind = (typeof TABLES_JOB_KINDS)[number];

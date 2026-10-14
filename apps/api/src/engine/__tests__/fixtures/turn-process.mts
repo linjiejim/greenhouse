@@ -1,4 +1,5 @@
 /** A real process killed by the recovery test only after a model/tool boundary committed. */
+import { once } from 'node:events';
 import { eq } from 'drizzle-orm';
 import { z } from 'zod';
 import { agentMemories, createDbClient, getDb, newId, runs, setDb } from '@greenhouse/db';
@@ -6,11 +7,17 @@ import { createTestServices } from '../../../testing.js';
 import { defineTool } from '../../tools/define.js';
 import { gate, scriptedModel, text, textThenTool } from '../model.js';
 
-const [databaseUrl, memberId, conversationId] = process.argv.slice(2) as [string, string, string];
+const [databaseUrl, memberId, conversationId, mode] = process.argv.slice(2) as [string, string, string, string?];
+const interjection = mode === 'interjection';
+const first = gate();
 const client = createDbClient(databaseUrl);
 setDb(client.db);
 const model = scriptedModel([
-  textThenTool('I checked alpha. ', 'lookup', { q: 'alpha' }),
+  {
+    parts: textThenTool('I checked alpha. ', 'lookup', { q: 'alpha' }),
+    ...(interjection ? { gate: first.promise } : {}),
+  },
+  ...(interjection ? [textThenTool('With extra detail. ', 'lookup', { q: 'beta' })] : []),
   { parts: text('Never completed'), gate: gate().promise },
 ]);
 const services = createTestServices(
@@ -46,7 +53,13 @@ const sent = await services.engine.post(memberId, conversationId, {
   mentions: [],
   attachments: [],
 });
-while (model.calls() < 2) await new Promise((resolve) => setTimeout(resolve, 10));
+if (interjection) {
+  while (model.calls() < 1) await new Promise((resolve) => setTimeout(resolve, 10));
+  process.send?.({ runId: sent.run_id, phase: 'started' });
+  await once(process, 'message');
+  first.open();
+}
+while (model.calls() < (interjection ? 3 : 2)) await new Promise((resolve) => setTimeout(resolve, 10));
 const [run] = await getDb().select().from(runs).where(eq(runs.id, sent.run_id!));
-if (run?.checkpoint?.turn_step !== 1) throw new Error('No completed checkpoint');
-process.send?.({ runId: run.id });
+if (run?.checkpoint?.turn_step !== (interjection ? 3 : 1)) throw new Error('No completed checkpoint');
+process.send?.({ runId: run.id, phase: 'checkpoint' });

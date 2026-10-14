@@ -56,3 +56,10 @@ The v2 web app. Product scope is docs/product/prd.md §6–7; layout and compone
 - Publish knowledge grants with the owner's personal folder tree, excluding Agent reference folders. Helper runs render inside their parent process card; completion logs have a separate group on the Agent memory page.
 
 - Tables: record handoffs select an owned Agent and brief; automation editors use the shared filter editor and hold navigation. Run history opens the linked Agent run; both record and automation runs are labelled Tables.
+
+- ⌘J/Ctrl+J opens PageConversation with a server-resolved page reference. Reuse ConversationPage and the kit Overlay; chats remain in the conversation list.
+
+- Artifact result cards use signed file URLs, fetch before counting a successful download, and save through client.media to knowledge. Hide Save when knowledge is disabled. Video progress and files come from the run detail.
+- Admin usage shows count-only UTC weekly metrics; zero denominators are unknown, not zero. Interjection event state labels are server-owned.
+
+- An initial message-page fetch preserves realtime rows that arrived after its snapshot and completed replies. Receive events while that query is fetching, even before its first page exists.

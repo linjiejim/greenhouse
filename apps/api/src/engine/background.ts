@@ -30,7 +30,7 @@ import {
   type Run,
   type RunSource,
 } from '@greenhouse/db';
-import { CACHE_BREAKPOINT } from '@greenhouse/providers';
+import { CAPABILITIES, CACHE_BREAKPOINT } from '@greenhouse/providers';
 import { toErrorMessage } from '@greenhouse/utils/error';
 import { logger } from '@greenhouse/utils/logger';
 import type { ProvidersService } from '../providers/service.js';
@@ -164,6 +164,7 @@ export function createBackground(deps: {
         .where(
           and(
             eq(runs.kind, 'background'),
+            sql`${runs.input}->>'media' IS NULL`,
             eq(runs.status, 'queued'),
             eq(runs.desiredState, 'run'),
             sql`(${runs.input}->>'helper' IS DISTINCT FROM 'true' OR EXISTS (SELECT 1 FROM runs parent WHERE parent.id = ${runs.parentRunId} AND parent.status = 'waiting' AND parent.desired_state = 'run'))`,
@@ -290,6 +291,9 @@ export function createBackground(deps: {
             agentId: run.agentId,
             runId: run.id,
             content,
+            attachments: Array.isArray(run.output?.file_ids)
+              ? run.output.file_ids.filter((id): id is string => typeof id === 'string')
+              : [],
             blocks: [{ type: 'run', run_id: run.id, title: run.title, status: outcome.status }],
             event: { type: 'run_report', run_id: run.id, status: outcome.status, attempt: run.attempt },
           }));
@@ -534,9 +538,9 @@ export function createBackground(deps: {
             readOnly: helper,
             tainted,
             capabilities: await Promise.all(
-              ['search', 'storage', 'sandbox'].map(async (capability) => [
+              CAPABILITIES.map(async (capability) => [
                 capability,
-                await deps.providers.available(capability as 'search' | 'storage' | 'sandbox', {
+                await deps.providers.available(capability, {
                   memberId: run.ownerId,
                 }),
               ]),
@@ -1000,6 +1004,7 @@ export function createBackground(deps: {
         .where(
           and(
             eq(runs.kind, 'background'),
+            sql`${runs.input}->>'media' IS NULL`,
             eq(runs.status, 'running'),
             lt(runs.leaseExpiresAt, new Date().toISOString()),
           ),

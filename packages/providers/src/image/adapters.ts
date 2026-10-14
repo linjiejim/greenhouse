@@ -6,7 +6,16 @@
 
 import { z } from 'zod';
 import type { GeneratedImage, ImageClient, ProviderAdapter } from '../types.js';
-import { ProviderRequestError, bearer, hostOf, postJson, withoutTrailingSlash, type CallContext } from '../http.js';
+import {
+  ProviderRequestError,
+  bearer,
+  hostOf,
+  postJson,
+  withoutTrailingSlash,
+  send,
+  readJson,
+  type CallContext,
+} from '../http.js';
 
 /** Low-quality renders take 20–30 s; a wedged request still fails before a client gives up. */
 const IMAGE_TIMEOUT_MS = 180_000;
@@ -76,6 +85,12 @@ export const openaiCompatibleImageAdapter: ProviderAdapter<'image', ImageConfig>
       label: 'OpenAI',
       config: { baseUrl: 'https://api.openai.com/v1', model: 'gpt-image-2', quality: 'low' },
     },
+    {
+      id: '302ai',
+      label: '302.AI',
+      config: { baseUrl: 'https://api.302.ai/v1', model: 'gpt-image-2', quality: 'low' },
+      docsUrl: 'https://doc.302.ai/288853817e0',
+    },
   ],
   endpoints: (config) => [config.baseUrl],
   create: ({ config, secrets, fetch }) => {
@@ -86,6 +101,29 @@ export const openaiCompatibleImageAdapter: ProviderAdapter<'image', ImageConfig>
     };
     return {
       async generate(input) {
+        if (input.reference) {
+          const form = new FormData();
+          form.set('model', config.model);
+          form.set('prompt', input.prompt);
+          form.set('n', String(Math.min(Math.max(Math.trunc(input.n ?? 1), 1), 10)));
+          if (input.size ?? config.size) form.set('size', (input.size ?? config.size)!);
+          if (config.quality) form.set('quality', config.quality);
+          if (!alwaysBase64(config.model)) form.set('response_format', 'b64_json');
+          form.set(
+            'image',
+            new Blob([new Uint8Array(input.reference.data)], { type: input.reference.mimeType }),
+            'reference.png',
+          );
+          const response = await send(
+            fetch,
+            `${withoutTrailingSlash(config.baseUrl)}/images/edits`,
+            { method: 'POST', headers: bearer(secrets.apiKey), body: form },
+            call,
+          );
+          const body = await readJson<ImagesResponse>(response, call);
+          if (!body.data?.length) throw new ProviderRequestError(`${call.label} returned no image.`);
+          return { images: body.data.map((item) => decode(item, call)) };
+        }
         const size = input.size ?? config.size;
         const payload = {
           model: config.model,
