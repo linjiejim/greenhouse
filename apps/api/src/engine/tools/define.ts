@@ -97,10 +97,11 @@ export interface ToolDef<I = any> {
   /** Hidden unless this holds: a module the member has, a provider that is configured. */
   available?(ctx: AvailabilityContext): boolean | Promise<boolean>;
   /**
-   * The description for this turn, when it depends on the member and the Agent (the connectors
-   * they can use); null leaves the tool out.
+   * What the tool adds to the turn's closing message (<turn_context>): a list that changes from
+   * turn to turn (the connectors the asker can use, the Agent's skills), so that the description
+   * stays fixed and the prompt prefix cacheable. Fence what others wrote. Null adds nothing.
    */
-  descriptionFor?(ctx: AvailabilityContext): Promise<string | null>;
+  turnContext?(ctx: AvailabilityContext): Promise<string | null>;
   /**
    * The risk of one call, when it depends on the arguments (a connector tool that only reads).
    * `risk` is the lowest and decides where the tool is offered; a call classed above read waits

@@ -122,7 +122,10 @@ describe('running a skill with /', () => {
     expect(request).toContain('Tidy these notes');
     expect(request).toContain('Use the house style in ref/style.md.');
     expect(request).toContain('Files of this package: ref/style.md.');
-    const [step] = await getDb().select().from(runSteps).where(eq(runSteps.runId, sent.body.run_id));
+    const [step] = await getDb()
+      .select()
+      .from(runSteps)
+      .where(and(eq(runSteps.runId, sent.body.run_id), eq(runSteps.kind, 'tool')));
     expect(step).toMatchObject({ toolName: 'skill_query', status: 'succeeded' });
     expect(step!.output).toMatchObject({ path: 'ref/style.md', content: '# House style\n\nShort sentences.' });
   });
@@ -187,19 +190,20 @@ describe('equipped skills and requirements', () => {
     });
 
     await send({ content: 'hello' });
+    // The equipped skills are listed in the turn's closing message; the tool's description is fixed.
+    const tail = lastUserText(model.prompts[0]);
+    expect(tail).toContain('## Your skills');
+    expect(tail).toContain('- tone-guide: House tone.');
+    expect(tail).toContain('- gh-triage: Triages issues.');
+    expect(tail).not.toContain('deploy-kit');
     const query = model.toolSpecs[0]!.find((tool) => tool.name === 'skill_query')!;
-    expect(query.description).toContain('Your skills');
-    expect(query.description).toContain('- tone-guide: House tone.');
-    expect(query.description).toContain('- gh-triage: Triages issues.');
-    expect(query.description).not.toContain('deploy-kit');
-    expect(query.description).not.toContain('`install`');
+    expect(query.description).not.toContain('tone-guide');
     expect(systemText(model.prompts[0])).toContain('Skills are reusable ways of working');
     // A skill archived after it was equipped shows as unavailable.
     await call('DELETE', `/api/skills/${triage.id}`, { token: lin.token });
     await send({ content: 'again' });
-    expect(model.toolSpecs[1]!.find((tool) => tool.name === 'skill_query')!.description).toContain(
-      '- gh-triage: Triages issues. [unavailable here: archived]',
-    );
+    expect(lastUserText(model.prompts[1])).toContain('- gh-triage: Triages issues. [unavailable here: archived]');
+    expect(model.toolSpecs[1]!.find((tool) => tool.name === 'skill_query')).toEqual(query);
   });
 
   it('runs a skill that needs a computer where there is one, and installs its files there', async () => {
@@ -217,7 +221,10 @@ describe('equipped skills and requirements', () => {
     ).toBe(200);
     const sent = await send({ content: '', skill: { skill_id: kit.body.id, variables: {} } });
     expect(sent.status).toBe(201);
-    const [step] = await getDb().select().from(runSteps).where(eq(runSteps.runId, sent.body.run_id));
+    const [step] = await getDb()
+      .select()
+      .from(runSteps)
+      .where(and(eq(runSteps.runId, sent.body.run_id), eq(runSteps.kind, 'tool')));
     expect(step).toMatchObject({ toolName: 'skill_query', status: 'succeeded' });
     expect(step!.output).toMatchObject({ path: '~/skills/deploy-kit', files: ['SKILL.md', 'scripts/deploy.sh'] });
     const install = fake.streams.find((stream) => stream.argv.includes('/home/agent/skills/deploy-kit'))!;

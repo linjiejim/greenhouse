@@ -27,6 +27,7 @@ import {
   type Run,
   type RunSource,
 } from '@greenhouse/db';
+import { CACHE_BREAKPOINT } from '@greenhouse/providers';
 import { REPLY_STYLE_RULE } from '@greenhouse/utils/prompts';
 import { toErrorMessage } from '@greenhouse/utils/error';
 import { logger } from '@greenhouse/utils/logger';
@@ -37,6 +38,7 @@ import { toMessage, type ConversationsService } from '../modules/conversations/s
 import { effectiveModules } from '../modules/members/service.js';
 import type { NotificationsService } from '../modules/notifications/service.js';
 import { fence } from '../security/prompt.js';
+import { cacheBreakpoints } from './history.js';
 import { assembleSystem, buildIdentity, type Locale } from './prompt.js';
 import { finalAnswer, recordedSteps, recordModelStep } from './steps.js';
 import { abandonSteps, assembleTools } from './tools/assemble.js';
@@ -314,15 +316,25 @@ export function createBackground(deps: {
           '<brief note="Approved by the member.">',
           fence(run.brief, 4000),
           '</brief>',
+          // What the tools offer (the Agent's skills), as a turn's closing message lists it.
+          ...(toolset.context.length
+            ? ['', '<run_context note="Rebuilt by the system for this run.">', ...toolset.context, '</run_context>']
+            : []),
         ].join('\n');
         const result = await runLoop({
           model: { model: resolved.model, modelId: resolved.modelId, deepseek: resolved.deepseek },
-          instructions: assembleSystem([
-            backgroundRules(locale, { web: toolset.names.has('web_search') }),
-            buildIdentity({ name: agent.name, role: agent.role, instructions: manifest.instructions }, member.name),
-          ]),
+          instructions: {
+            role: 'system',
+            content: assembleSystem([
+              backgroundRules(locale, { web: toolset.names.has('web_search') }),
+              buildIdentity({ name: agent.name, role: agent.role, instructions: manifest.instructions }, member.name),
+            ]),
+            providerOptions: CACHE_BREAKPOINT,
+          },
           messages: [{ role: 'user', content: brief }],
           resume: steps.flat(),
+          // Each step reads the ones before it from the cache.
+          prepareStepMessages: ({ messages }) => cacheBreakpoints(messages, -1),
           tools: toolset.tools,
           maxSteps: RUN_MAX_STEPS,
           abortSignal: controller.signal,

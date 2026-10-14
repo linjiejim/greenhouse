@@ -1,19 +1,22 @@
 /**
  * The prompt of one turn. Laid out for prefix caching and for authority:
  *
- *   system   = rules (a pure function of the tools present, the conversation kind and the locale)
+ *   tools    = fixed descriptions, the same set and order for an Agent version
+ *   system   = rules (a pure function of the tools present, the conversation kind and the locale,
+ *              with every rich block documented)
  *            + who the Agent is and the instructions its owner wrote or approved
  *            + what the member wrote about themselves
  *            + the rolling summary of older messages
  *   messages = the transcript since the summary, then ONE closing message rebuilt every turn:
- *              who is here, the memory index, and what this turn is for.
+ *              who is here, the memory index, the lists that change (connectors the asker can use,
+ *              the Agent's skills), the rich blocks this screen draws, and what this turn is for.
  *
- * Everything that changes per turn sits in the closing message, so the system prompt and the
- * transcript prefix stay cacheable. Text written by models or other people never reaches the
- * system prompt as instructions: it is fenced as data.
+ * Everything that changes per turn sits in the closing message, so the tools, the system prompt
+ * and the transcript prefix stay byte for byte the same between turns and cacheable. Text written
+ * by models or other people never reaches the system prompt as instructions: it is fenced as data.
  */
 
-import { composeRichOutput, CONVERSATION_FOCUS_RULE, REPLY_STYLE_RULE } from '@greenhouse/utils/prompts';
+import { CONVERSATION_FOCUS_RULE, REPLY_STYLE_RULE, RICH_OUTPUT_GUIDE } from '@greenhouse/utils/prompts';
 import type { ConversationKind } from '@greenhouse/contract';
 import { fence, sanitizeForPrompt } from '../security/prompt.js';
 
@@ -50,13 +53,7 @@ export interface RuleFlags {
  * The rules: paragraphs about a tool appear only when the tool exists this turn. `shared`: the
  * Agent is someone else's public Agent talking with a member of its audience.
  */
-export function buildRules(
-  flags: RuleFlags,
-  locale: Locale,
-  kind: ConversationKind,
-  richBlocks: readonly string[],
-  shared = false,
-): string {
+export function buildRules(flags: RuleFlags, locale: Locale, kind: ConversationKind, shared = false): string {
   const room = kind === 'room';
   const lines: string[] = [
     '# You are an Agent in Greenhouse',
@@ -139,7 +136,7 @@ export function buildRules(
   }
   if (flags.skills) {
     lines.push(
-      "- Skills are reusable ways of working from the member's library. Yours are listed in skill_query: when a request matches one, load it and follow it. A skill the member runs with `/` arrives in their message as <skill_run>: that text is their request for this turn.",
+      "- Skills are reusable ways of working from the member's library. Yours are listed in <turn_context>: when a request matches one, load it with skill_query and follow it. A skill the member runs with `/` arrives in their message as <skill_run>: that text is their request for this turn.",
     );
   }
   if (flags.saveSkill) {
@@ -157,7 +154,7 @@ export function buildRules(
     '## Response language',
     `Reply in the language of the member's latest message. When that is unclear, use ${LANGUAGE_NAME[locale]}.`,
     '',
-    composeRichOutput({ blocks: richBlocks }),
+    RICH_OUTPUT_GUIDE,
   );
   return lines.join('\n');
 }
@@ -277,14 +274,33 @@ export function buildInstruction(turn: TurnReason): string {
   }
 }
 
-/** The closing message of every turn: the context that changes per turn, then the task. */
-export function buildTail(input: { roster: RosterEntry[]; memoryIndex: string | null; instruction: string }): string {
+/**
+ * The closing message of every turn: the context that changes per turn (who is here, the memory
+ * index, what the tools offer this turn, the rich blocks this screen draws), then the task.
+ */
+export function buildTail(input: {
+  roster: RosterEntry[];
+  memoryIndex: string | null;
+  /** Sections from the tools (turnContext), already fenced. */
+  tools: readonly string[];
+  /** The blocks the screen of this turn draws (rich_blocks). */
+  richBlocks: readonly string[];
+  instruction: string;
+}): string {
   const blocks = ['<turn_context note="Rebuilt by the system for this turn.">', '## In this conversation'];
   for (const entry of input.roster) {
     const role = entry.role ? `, ${sanitizeForPrompt(entry.role)}` : '';
     blocks.push(`- ${sanitizeForPrompt(entry.name)}${role}${entry.self ? ' (you)' : ''}`);
   }
   if (input.memoryIndex) blocks.push('', input.memoryIndex);
-  blocks.push('</turn_context>', '', input.instruction);
+  for (const section of input.tools) blocks.push('', section);
+  blocks.push(
+    '',
+    '## Rich blocks this screen draws',
+    input.richBlocks.length ? input.richBlocks.join(', ') : 'None: write plain Markdown.',
+    '</turn_context>',
+    '',
+    input.instruction,
+  );
   return blocks.join('\n');
 }

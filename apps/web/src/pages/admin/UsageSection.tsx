@@ -29,7 +29,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNotify } from '../../app/notify';
 import { api } from '../../lib/api';
 import { useI18n } from '../../lib/i18n';
-import { BudgetBar, formatCost, formatTokens } from '../../shell/usage';
+import { BudgetBar, formatCost, formatHitRate, formatTokens } from '../../shell/usage';
 
 const BUDGETS = ['admin', 'budgets'] as const;
 
@@ -263,6 +263,10 @@ export function UsageSection() {
               <span className="app-stat-label">{t('usage.requests')}</span>
               <span className="app-stat-value">{usage.data.totals.requests.toLocaleString(locale)}</span>
             </div>
+            <div className="app-stat">
+              <span className="app-stat-label">{t('usage.cacheHitRate')}</span>
+              <span className="app-stat-value">{formatHitRate(usage.data.totals.cache_hit_rate, locale)}</span>
+            </div>
           </div>
           {usage.data.groups.length ? (
             <div className="app-table-wrap">
@@ -273,6 +277,7 @@ export function UsageSection() {
                     <th className="is-number">{t('usage.tokens')}</th>
                     <th className="is-number">{t('usage.cost')}</th>
                     <th className="is-number">{t('usage.requests')}</th>
+                    <th className="is-number">{t('usage.cacheHitRate')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -285,6 +290,7 @@ export function UsageSection() {
                       <td className="is-number">{row.tokens.toLocaleString(locale)}</td>
                       <td className="is-number">{formatCost(row.cost_micros, locale)}</td>
                       <td className="is-number">{row.requests.toLocaleString(locale)}</td>
+                      <td className="is-number">{formatHitRate(row.cache_hit_rate, locale)}</td>
                     </tr>
                   ))}
                 </tbody>

@@ -186,6 +186,7 @@ export function createServices(config: AppConfig, options: ServiceOptions = {}):
       ...(options.tools ?? []),
     ],
     ...(options.languageModel ? { languageModel: options.languageModel } : {}),
+    development: config.NODE_ENV === 'development',
   });
   const runs = createRunsService({ background: () => engine.background });
   return {

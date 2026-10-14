@@ -48,8 +48,11 @@ export function scriptedModel(scripts: Array<Part[] | Script>, options: { title?
   const tools: string[][] = [];
   /** The tools offered on each call, with the descriptions the model read. */
   const toolSpecs: Array<Array<{ name: string; description: string }>> = [];
+  /** The tool definitions of each call exactly as the model got them (names, descriptions, schemas). */
+  const toolsJson: string[] = [];
   const record = (offered: ReadonlyArray<{ name: string }> | undefined) => {
     tools.push((offered ?? []).map((entry) => entry.name));
+    toolsJson.push(JSON.stringify(offered ?? []));
     toolSpecs.push(
       (offered ?? []).map((entry) => ({
         name: entry.name,
@@ -156,7 +159,7 @@ export function scriptedModel(scripts: Array<Part[] | Script>, options: { title?
     modelId: 'm',
     deepseek: false,
   });
-  return { languageModel, prompts, tools, toolSpecs, calls: () => index };
+  return { languageModel, prompts, tools, toolSpecs, toolsJson, calls: () => index };
 }
 
 export function gate() {

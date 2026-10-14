@@ -64,15 +64,21 @@ describe('usage', () => {
       input_tokens: 110,
       output_tokens: 25,
       cached_tokens: 40,
+      cache_hit_rate: 40 / 110,
       tokens: 135,
       cost_micros: 500,
       unpriced: 2,
     });
     expect(
-      month.body.by_capability.map((row: { capability: string; requests: number }) => [row.capability, row.requests]),
+      month.body.by_capability.map((row: { capability: string; requests: number; cache_hit_rate: number | null }) => [
+        row.capability,
+        row.requests,
+        row.cache_hit_rate,
+      ]),
     ).toEqual([
-      ['llm', 2],
-      ['search', 1],
+      ['llm', 2, 40 / 110],
+      // Nothing to cache without a prompt.
+      ['search', 1, null],
     ]);
     expect(month.body.by_agent).toEqual([
       expect.objectContaining({ agent_id: main.id, name: 'Greeny', tokens: 135 }),

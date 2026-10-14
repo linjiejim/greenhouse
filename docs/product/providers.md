@@ -198,6 +198,8 @@ v2.0 表示首发；后续 表示接口已经留好，按需求再加。
 | `gemini` | Google Gemini（AI Studio） | Vertex AI |
 | `openai-compatible` | DeepSeek、Kimi、通义千问（百炼）、豆包（火山方舟）、智谱 GLM、MiniMax、阶跃星辰、硅基流动、OpenRouter、Groq、xAI、Mistral、Together；本地 Ollama、vLLM、LM Studio、LiteLLM | 百度千帆、腾讯混元 |
 
+提示缓存：引擎只在消息上做中性的缓存断点标记（`CACHE_BREAKPOINT`：system 末尾、下一轮仍保留的对话末尾、每次调用的最新一条）。`anthropic` 适配器把它翻译成 `cacheControl`；OpenAI、OpenAI 兼容服务和 DeepSeek 自动缓存重复的前缀，只需要前缀稳定，标记在请求里被忽略。厂商特有的写法只在适配器里。
+
 ### 语音输入 `stt`
 
 | 适配器 | v2.0 | 后续 |
@@ -328,6 +330,7 @@ v2 的存储层统一为一个接口：v1 的 COS SDK、`s3-lite`、技能存储
 - 每次调用前（模型的每次尝试也算）检查覆盖它的预算，已用完就拒绝（`budget_exceeded`）；某个实例自己的预算用完时，回退到下一个实例。已用量直接汇总当月的 `usage_events`，正在进行的调用可能略微超出。
 - 公开 Agent 的回合记在提问的成员名下，计入这位成员的预算和组织预算；发布设置另有每人每日上限。
 - v1 的约 8 个用量接口合并为两个：`/api/me/usage` 和 `/api/admin/usage`；Agent 的主人另有 `/api/agents/:id/usage`。
+- 每组用量都带缓存命中率 `cache_hit_rate`（缓存 token ÷ 输入 token，没有输入时为空）；「我的用量」和管理里的用量页显示它。
 
 ## 9. 安全
 

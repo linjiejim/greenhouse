@@ -7,7 +7,7 @@
  */
 
 import { generateText, isStepCount, NoSuchToolError, streamText } from 'ai';
-import type { ModelMessage, StepResult, StopCondition, ToolCallRepairFunction, ToolSet } from 'ai';
+import type { ModelMessage, StepResult, StopCondition, SystemModelMessage, ToolCallRepairFunction, ToolSet } from 'ai';
 import { logger } from '@greenhouse/utils/logger';
 import type { DsmlRecoveryEvent } from './dsml-interceptor.js';
 import { finalAnswerParts, type FinalAnswerStreamFactory } from './final-answer.js';
@@ -27,7 +27,8 @@ export interface LoopStepEnd {
 
 export interface LoopInput {
   model: LoopModel;
-  instructions: string;
+  /** The system prompt; a message when it carries provider options (a cache breakpoint). */
+  instructions: string | SystemModelMessage;
   /** Plain strings, except user messages that carry image parts for a vision model. */
   messages: EngineMessage[];
   /** The messages of steps an earlier attempt already took (as recorded), continued from as they were. */
@@ -58,7 +59,7 @@ type GenerateParams = Parameters<typeof generateText>[0];
 /** The settings streamText and generateText both receive. */
 export interface LoopSettings {
   model: GenerateParams['model'];
-  instructions: string;
+  instructions: string | SystemModelMessage;
   messages: ModelMessage[];
   tools: ToolSet;
   stopWhen: GenerateParams['stopWhen'];

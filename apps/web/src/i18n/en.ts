@@ -1071,6 +1071,7 @@ export const en: Record<MessageKey, string> = {
   'usage.tokens': 'Tokens',
   'usage.cost': 'Estimated cost',
   'usage.requests': 'Calls',
+  'usage.cacheHitRate': 'Cache hits',
   'usage.unpriced': '{count} calls have no price and are not in the cost',
   'usage.outsideAgents': 'Outside Agents (titles, summaries)',
   'usage.budget': 'Budget this month',

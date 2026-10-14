@@ -1044,6 +1044,7 @@ export const zh = {
   'usage.tokens': 'Token',
   'usage.cost': '估算费用',
   'usage.requests': '调用次数',
+  'usage.cacheHitRate': '缓存命中',
   'usage.unpriced': '{count} 次调用没有定价，没算进费用',
   'usage.outsideAgents': 'Agent 之外（标题、摘要）',
   'usage.budget': '本月预算',

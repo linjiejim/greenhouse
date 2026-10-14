@@ -18,7 +18,11 @@ The one engine for conversations and runs. Read with the root AGENTS.md and docs
 - The hub splits long recipient lists across NOTIFY payloads; an event too big for one (a long final reply) reaches other processes as `conversation.resync`, and their clients catch up with `?after=`. NOTIFYs leave on one connection, in order.
 - After it exists, a reply is only written by UPDATE on its id, so a reply that was removed never comes back.
 - A turn runs only while the member who asked is in the conversation. Leaving or being removed (`release`) stops their reply, drops their queue and expires their cards there.
-- Prompt layout: rules, identity, about, digest in the system prompt; the transcript; one closing message rebuilt each turn (roster, memory index, the task). Anything written by models, pages or other people is fenced data (security/prompt.ts), never instructions.
+- Prompt layout: fixed tool descriptions; rules (every rich block documented), identity, about, digest in the system prompt; the transcript; one closing message rebuilt each turn (`<turn_context>`: roster, memory index, the tools' `turnContext` lists, the rich blocks this screen draws; then the task). Anything written by models, pages or other people is fenced data (security/prompt.ts), never instructions.
+- Between two turns without a summary fold the tool definitions and the system prompt are byte for byte the same: what changes per turn (connections, equipped skills, the screen's rich blocks, memories) goes in the closing message only.
+- The tools offered depend on the Agent version and the member's access (modules, configured services, connectors an admin enabled, a second Agent for handoff), never on per-turn data; their order is the registry's.
+- Cache breakpoints are neutral marks (`CACHE_BREAKPOINT` from @greenhouse/providers): the system prompt, the end of the transcript the next turn keeps, and the newest message of each call (history.ts `cacheBreakpoints` moves it, never adds up). Only adapters translate them (Anthropic `cacheControl`); OpenAI-compatible services and DeepSeek cache a stable prefix themselves.
+- In development, a later turn of a conversation that read nothing from the cache logs a warning: the prefix moved.
 - Rule paragraphs describe a tool only when the tool exists this turn.
 
 ## Edit and regenerate
@@ -35,7 +39,7 @@ The one engine for conversations and runs. Read with the root AGENTS.md and docs
 - In a background retry a call with the same tool and arguments is the same step: a succeeded one returns its recorded output; a non-idempotent one an earlier attempt left running becomes `uncertain`, is not made, and the model is told to check first (calling it again in that attempt makes it).
 - Steps a dead process left running are marked by the sweeps: reads failed (`interrupted`), anything else `uncertain`.
 - Read tools run in turns and background runs; write and external tools only in turns, and only for Agents whose manifest allows writing.
-- A description that depends on the member and the Agent comes from `descriptionFor` (null leaves the tool out). A risk that depends on the arguments comes from `callRisk`: a call classed above read waits for approval like a write tool, and the engine marks the approved run `ctx.approved`.
+- Descriptions are fixed text. A list that depends on the member and the turn (the connectors they can use, the Agent's skills) comes from `turnContext` and goes in the closing message, fenced. A risk that depends on the arguments comes from `callRisk`: a call classed above read waits for approval like a write tool, and the engine marks the approved run `ctx.approved`.
 
 ## Needs you
 - Write and external tools never run when the model calls them: the call raises an approval card (`requests`, subject `tool_write`) holding the exact arguments, the step waits as `pending`, and the turn ends with the run `waiting`.
@@ -59,8 +63,8 @@ The one engine for conversations and runs. Read with the root AGENTS.md and docs
 - The timeline (`run_events`) is numbered per run and written in order. The end of a run is reported into its conversation (or the Agent's own thread) and notified.
 
 ## Rolling summary
-- When a conversation goes idle and the text after its summary passes 24k estimated tokens, digest.ts folds older messages into `conversations.digest` (structured JSON, rendered within 1500 characters into the system prompt) and moves `digest_upto_seq`.
-- Cuts fall just before a member message and keep at least the last two exchanges; one call folds at most 30k tokens, oldest first. The write is a compare-and-set on the old boundary; failures back off.
+- When a conversation goes idle and the text after its summary passes a quarter of the answering model's context window (24k estimated tokens when unknown), digest.ts folds older messages into `conversations.digest` (structured JSON, rendered within 1500 characters into the system prompt) and moves `digest_upto_seq`. History windowing (half the window) is only the last resort of a conversation that never idles; it logs when it drops messages.
+- Cuts fall just before a member message and keep at least the last two exchanges, and as much more as fits in a third of the trigger; one call folds at most 30k tokens, oldest first. The write is a compare-and-set on the old boundary; failures back off.
 
 ## Hand-offs
 - `handoff` brings another of the member's Agents into the conversation with a brief; the handing Agent's turn ends after that step and the other answers next through the inbox, with the same member's rights.
@@ -80,7 +84,7 @@ The one engine for conversations and runs. Read with the root AGENTS.md and docs
 - The owner sees counts, outcomes, tokens, cost and ratings with comments (`/usage`, `/activity`), never content or who asked.
 
 ## Connectors
-- `mcp_call` (tools/connectors.ts) is the one tool for connectors: `list`, `describe`, `call`. Its description, rebuilt each turn, lists only what this Agent may use for the asker: enabled connectors in the manifest's `connectors` (null: all), connected by the asker when the connector works with each member's account, and only the read-only tools when the manifest may not write.
+- `mcp_call` (tools/connectors.ts) is the one tool for connectors: `list`, `describe`, `call`. It is offered when an enabled connector in the manifest's `connectors` (null: all) has a tool the Agent may call (or none listed yet), connected or not. The closing message lists only what this Agent may use for the asker: connected by the asker when the connector works with each member's account, and only the read-only tools when the manifest may not write.
 - A tool declared read-only, or vouched read-only by an admin and not destructive, runs at once. Any other call is classed `external`: it raises the `tool_write` card with the exact arguments and runs only as the approved call, with the asker's key or sign-in, everything checked again then.
 - Only in turns, never in someone else's public Agent: its owner's instructions could read the asker's accounts and send them elsewhere.
 - What a connector returns is outside text: the tool `taints` and is `outbound`; results are cut to 20 000 characters, stripped of prompt structure, and keys and tokens are taken out.
@@ -89,7 +93,7 @@ The one engine for conversations and runs. Read with the root AGENTS.md and docs
 ## Skills
 - A message's `skill` (a `/` run) is checked when it is sent (`skills.prepareRun`): a skill the sender sees, clean and not archived, whose requirements (computer, connectors) every answering Agent meets, with its required fields filled. The message records the version that runs.
 - history.ts puts the sender's own run inside their message as `<skill_run>`: the template's filled text, or SKILL.md and the package's file list, fenced as the member's request. Someone else's run is only named; one blocked or archived since is named with why and its text leaves later turns. Typed text cannot pose as a block.
-- `skill_query` lists the Agent's equipped skills (manifest `skills`) in its description, rebuilt each turn, with why one cannot run; `load` and `read_file` read the asker's library with the asker's rights; `install` copies a package to `~/skills/<name>/` on the computer, in turns only.
+- `skill_query` lists the Agent's equipped skills (manifest `skills`) in the closing message, with why one cannot run; `load` and `read_file` read the asker's library with the asker's rights; `install` copies a package to `~/skills/<name>/` on the computer, in turns only.
 - `skill_mutation` only proposes a template (card subject `skill_save`); accepting it saves the skill as the member. Equipping goes through the same requirement check (`skill_unavailable`).
 
 ## Budgets

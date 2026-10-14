@@ -13,6 +13,10 @@ export function formatTokens(tokens: number, locale: string): string {
 export const formatCost = (micros: number, locale: string) =>
   `$${(micros / 1_000_000).toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
+/** The share of prompt tokens read from the vendor's cache; a dash before any model call. */
+export const formatHitRate = (rate: number | null, locale: string) =>
+  rate === null ? '—' : rate.toLocaleString(locale, { style: 'percent', maximumFractionDigits: 0 });
+
 export function BudgetBar({ spent, limit, unit }: { spent: number; limit: number; unit: 'tokens' | 'usd_micros' }) {
   const { t, locale } = useI18n();
   const share = limit > 0 ? Math.min(1, spent / limit) : 0;

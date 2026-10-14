@@ -22,34 +22,18 @@ export const CONVERSATION_FOCUS_RULE =
 
 // ─── Rich output rendering rules ─────────────────────────
 //
-// One section per block, composed per request: a client is taught only the
-// blocks it declared it can draw (`rich_blocks` on POST /api/conversations/:id/messages, spec
-// docs/specs/20261008-rich-output-foundation.md). The keys mirror `ModelFence`
+// One section per block, all of them in the system prompt, the same for every
+// turn so it stays cacheable. Which blocks the screen of this turn draws (the
+// `rich_blocks` a client declares on POST /api/conversations/:id/messages) is
+// named in the turn's closing message, never here. The keys mirror `ModelFence`
 // in @greenhouse/types/rich-output (this package does not depend on types; a
-// test holds the two lists together). Composition order is fixed so the
-// default set reproduces the pre-capability guide byte for byte
-// (__fixtures__/rich-output-guide.default.txt).
+// test holds the two lists together).
 
-const RICH_INTRO_HEADING = `
-## 富文本输出格式`;
+const RICH_INTRO = `
+## 富文本输出格式
 
-/**
- * The opening line names only what this screen can actually draw: a screen
- * that declared `['mermaid']` (or nothing) must not be told charts and tables
- * work. With both chart and datatable taught it is the pre-capability wording,
- * which the golden fixture pins.
- */
-function richIntro(taught: ReadonlySet<string>): string {
-  if (taught.has('chart') && taught.has('datatable')) {
-    return `${RICH_INTRO_HEADING}
-
-前端支持在 Markdown 中嵌入特殊 code block 来渲染图表和数据表格。当内容适合可视化或交互呈现时，优先使用这些格式而非纯文本。`;
-  }
-  if (!Object.keys(RICH_BLOCK_GUIDES).some((block) => taught.has(block))) return RICH_INTRO_HEADING;
-  return `${RICH_INTRO_HEADING}
-
-前端支持在 Markdown 中嵌入下列特殊 code block 来渲染富内容。当内容适合可视化或交互呈现时，优先使用这些格式而非纯文本。`;
-}
+前端支持在 Markdown 中嵌入下列特殊 code block 来渲染富内容。当内容适合可视化或交互呈现时，优先使用这些格式而非纯文本。
+不是每块屏幕都能画每一种：每轮的 <turn_context> 会列出「这块屏幕能画的富块」。只用列出的块；没列出的块在这块屏幕上只会显示成一段代码。`;
 
 /** The how-to for each model-authored block, keyed by fence name. */
 export const RICH_BLOCK_GUIDES: Readonly<Record<string, string>> = {
@@ -131,7 +115,7 @@ flowchart LR
 仅在需要用户明确授权的操作前使用（如修改 Wiki、删除数据）。`,
 };
 
-/** Buttons under stats / cards / steps — taught once, when any of them is. */
+/** Buttons under stats / cards / steps. */
 const RICH_BLOCK_ACTIONS = `### 块按钮（actions）
 stats、cards、steps 的 JSON 里可以带一个 \`actions\` 字段，和 \`items\` 并列（最多 4 个），显示在块的底部：
 \`{"items":[…],"actions":[{"label":"按行业拆开","value":"把 10 月新增客户按行业拆开看"}]}\`
@@ -141,9 +125,9 @@ stats、cards、steps 的 JSON 里可以带一个 \`actions\` 字段，和 \`ite
 - 只放真正可能的下一步，不要为了凑数加按钮。按钮不会直接执行任何操作，后续改动照常走工具与确认。
 - stats / cards / steps 至少要有一项；没有内容就不要开块，绝不在答案末尾留一个空块。`;
 
-/** Taught after html-preview when the screen declares `html-preview-bridge`. */
+/** The preview's way back to the composer; usable only where the screen lists `html-preview-bridge`. */
 const RICH_HTML_BRIDGE = `### 网页预览里的回传按钮
-这个界面上的网页预览可以调用 \`window.greenhouse?.sendPrompt(文字)\`，把一段文字放进用户的输入框——
+<turn_context> 列出 html-preview-bridge 时，这块屏幕上的网页预览可以调用 \`window.greenhouse?.sendPrompt(文字)\`，把一段文字放进用户的输入框——
 用户确认后才会发送，页面自己不能替用户发消息：
 - 用在「算完 / 选完还要继续问」的场景，比如报价计算器的「用这组参数生成报价单」；按钮文案写清楚是「放进输入框」。
 - 传回的文字写成用户会说的一句完整请求（如「按以下参数生成报价单：3 台 × ¥4,200，含税」）。
@@ -166,7 +150,7 @@ Markdown 链接：\`[深圳某某科技](#/crm/companies/42)\`。用户点击后
 - 同一条记录在一段回答里链接一次即可（首次提到时），不要每次出现都重复链接。
 - 链接是行文的一部分，不要在末尾另起一段罗列裸 URL。`;
 
-/** Only meaningful when a JSON block (data written in one go) is taught. */
+/** For the blocks whose data is JSON written in one go. */
 const RICH_BLOCK_DISCIPLINE = `### 富块写作纪律（硬约束）
 
 这些 block 里放的是**一次写成的完整数据**，不是可以边写边改的草稿。前端逐块解析，
@@ -183,34 +167,23 @@ const RICH_BLOCK_DISCIPLINE = `### 富块写作纪律（硬约束）
 - **拿不准就用普通 Markdown 表格。** 它永远是安全的。datatable 是给需要排序/搜索的
   成规模数据用的；三五行的对照、边说明边列举的场合，普通表格更合适。`;
 
-/** Blocks whose payload is JSON written in one go — the discipline section applies to them. */
-const JSON_BLOCKS = new Set(['chart', 'datatable', 'stats', 'cards', 'steps', 'confirm']);
-
-/** Blocks that can carry buttons. */
-const ACTION_BLOCKS = new Set(['stats', 'cards', 'steps']);
-
 /**
- * Prompt order. Data blocks come first, then diagrams and pages; confirm is
- * last because it is about acting, not presenting.
+ * The rich-output guide of the system prompt: every model-authored block, in prompt order (data
+ * blocks first, then diagrams and pages; confirm last, because it is about acting, not presenting).
  */
-const GUIDE_ORDER = ['chart', 'datatable', 'stats', 'cards', 'steps', 'mermaid', 'html-preview'] as const;
-
-/**
- * Compose the rich-output guide for the blocks a client can draw. Unknown names
- * are ignored; pass the server's admitted list (defaults applied by the caller).
- */
-export function composeRichOutput(opts: { blocks: readonly string[] }): string {
-  const taught = new Set(opts.blocks);
-  const sections = [richIntro(taught)];
-  for (const block of GUIDE_ORDER) {
-    if (taught.has(block)) sections.push(RICH_BLOCK_GUIDES[block]!);
-    if (block === 'steps' && [...taught].some((name) => ACTION_BLOCKS.has(name))) sections.push(RICH_BLOCK_ACTIONS);
-    if (block === 'html-preview' && taught.has('html-preview') && taught.has('html-preview-bridge')) {
-      sections.push(RICH_HTML_BRIDGE);
-    }
-  }
-  sections.push(RICH_TASK_VARIABLES, RICH_ENTITY_LINKS);
-  if ([...taught].some((block) => JSON_BLOCKS.has(block))) sections.push(RICH_BLOCK_DISCIPLINE);
-  if (taught.has('confirm')) sections.push(RICH_BLOCK_GUIDES.confirm!);
-  return sections.join('\n\n');
-}
+export const RICH_OUTPUT_GUIDE = [
+  RICH_INTRO,
+  RICH_BLOCK_GUIDES.chart!,
+  RICH_BLOCK_GUIDES.datatable!,
+  RICH_BLOCK_GUIDES.stats!,
+  RICH_BLOCK_GUIDES.cards!,
+  RICH_BLOCK_GUIDES.steps!,
+  RICH_BLOCK_ACTIONS,
+  RICH_BLOCK_GUIDES.mermaid!,
+  RICH_BLOCK_GUIDES['html-preview']!,
+  RICH_HTML_BRIDGE,
+  RICH_TASK_VARIABLES,
+  RICH_ENTITY_LINKS,
+  RICH_BLOCK_DISCIPLINE,
+  RICH_BLOCK_GUIDES.confirm!,
+].join('\n\n');

@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { describe, expect, it, vi } from 'vitest';
 import { getDb, messages, runSteps, usageEvents } from '@greenhouse/db';
 import { createTestApp } from '../../testing.js';
@@ -72,7 +72,10 @@ describe('web tools in a turn', () => {
     });
     await app.services.engine.idle();
     expect(model.tools[0]).toEqual(expect.arrayContaining(['web_search', 'web_fetch', 'conversation_query']));
-    const [step] = await getDb().select().from(runSteps).where(eq(runSteps.runId, sent.body.run_id));
+    const [step] = await getDb()
+      .select()
+      .from(runSteps)
+      .where(and(eq(runSteps.runId, sent.body.run_id), eq(runSteps.kind, 'tool')));
     expect(step).toMatchObject({ toolName: 'web_search', status: 'succeeded' });
     expect(JSON.stringify(step!.output)).toContain('kyoto.example/guide');
     const [usage] = await getDb().select().from(usageEvents).where(eq(usageEvents.capability, 'search'));

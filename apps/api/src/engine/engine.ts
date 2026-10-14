@@ -53,6 +53,7 @@ import {
   type Run,
   type RunStep,
 } from '@greenhouse/db';
+import { CACHE_BREAKPOINT } from '@greenhouse/providers';
 import { admitRichBlocks, DEFAULT_CLIENT_BLOCKS } from '@greenhouse/types/rich-output';
 import { toErrorMessage } from '@greenhouse/utils/error';
 import { logger } from '@greenhouse/utils/logger';
@@ -79,7 +80,7 @@ import { createBackground, type Background } from './background.js';
 import { toMessage, type ConversationsService } from '../modules/conversations/service.js';
 import { effectiveModules } from '../modules/members/service.js';
 import { createDigester, parseStoredDigest, renderDigest } from './digest.js';
-import { closeTranscript, projectHistory, withShownImages } from './history.js';
+import { cacheBreakpoints, closeTranscript, projectHistory, withShownImages } from './history.js';
 import { createKeyedLock } from './locks.js';
 import { createSources } from './sources.js';
 import { recordModelStep } from './steps.js';
@@ -155,11 +156,15 @@ export interface EngineDeps {
   tools: (engine: { background: Background; handOff: Engine['handOff'] }) => readonly ToolDef[];
   /** Replaces model resolution (tests). */
   languageModel?: ProvidersService['languageModel'];
+  /** Development: warn when a later turn reads nothing from the prompt cache. */
+  development?: boolean;
 }
 
 /** A reply's text goes out as one frame every FRAME_MS, at most FRAME_MAX_CHARS each. */
 const FRAME_MS = 75;
 const FRAME_MAX_CHARS = 1000;
+/** Vendors cache prompts from about this size; below it no cache read is expected. */
+const CACHEABLE_TOKENS = 2048;
 const MAX_INLINE_IMAGES = 4;
 const MAX_INLINE_IMAGE_BYTES = 5 * 1024 * 1024;
 const LEASE_MS = 60_000;
@@ -737,6 +742,8 @@ export function createEngine(deps: EngineDeps) {
     const sources = createSources();
     let defs = new Map<string, ToolDef>();
     let frames: ReturnType<typeof deltaFrames> | null = null;
+    let contextWindow: number | undefined;
+    const usage = { input: 0, cached: 0 };
 
     try {
       if (!conversation || !member) throw new ApiError(410, 'gone', 'The conversation or its member no longer exists.');
@@ -870,7 +877,7 @@ export function createEngine(deps: EngineDeps) {
               ? { reason: 'mention', memberName: member.name }
               : { reason: 'message', memberName: member.name, count: Math.max(1, input.message_ids.length) };
       const has = (name: string) => turnTools.names.has(name);
-      // Teach the blocks the newest screen that wrote here can draw; without a word, the five every client draws.
+      // The blocks the newest screen that wrote here draws; without a word, the five every client draws.
       const [declared] = await getDb()
         .select({ richBlocks: messages.richBlocks })
         .from(messages)
@@ -897,7 +904,6 @@ export function createEngine(deps: EngineDeps) {
           },
           locale,
           conversation.kind,
-          declared?.richBlocks ?? DEFAULT_CLIENT_BLOCKS,
           !!shared,
         ),
         buildIdentity(
@@ -919,24 +925,33 @@ export function createEngine(deps: EngineDeps) {
           memories.map((memory) => ({ id: memory.id, title: memory.title, pinned: memory.pinned })),
           locale,
         ),
+        tools: turnTools.context,
+        richBlocks: declared?.richBlocks ?? DEFAULT_CLIENT_BLOCKS,
         instruction: buildInstruction(reason),
       });
+      contextWindow = resolved.contextWindow;
+      const transcript = closeTranscript(projection.messages, tail, resolved.vision ? await imagesOf(run, input) : []);
       const loopInput: LoopInput = {
         model: { model: resolved.model, modelId: resolved.modelId, deepseek: resolved.deepseek },
-        instructions: system,
-        messages: closeTranscript(projection.messages, tail, resolved.vision ? await imagesOf(run, input) : []),
+        // Cached up to here; the transcript the next turn keeps and the newest message are the other breakpoints.
+        instructions: { role: 'system', content: system, providerOptions: CACHE_BREAKPOINT },
+        messages: transcript,
         tools: turnTools.tools,
         abortSignal: controller.signal,
         stopWhen: [() => turnTools.waiting() || turnTools.ended()],
-        prepareStepMessages: ({ messages: stepMessages }) => withShownImages(stepMessages, shown.splice(0)),
+        prepareStepMessages: ({ messages: stepMessages }) =>
+          cacheBreakpoints(withShownImages(stepMessages, shown.splice(0)) ?? stepMessages, transcript.length - 2),
         timeContext: { timezone: member.timezone },
         traceId: run.id,
         // What each step added, so the turn can be resumed from its last finished step.
-        onStepEnd: (step) =>
-          recordModelStep({ runId: run.id, attempt: run.attempt || 1, index: step.stepNumber, step }).catch(
+        onStepEnd: async (step) => {
+          usage.input += step.usage.inputTokens ?? 0;
+          usage.cached += step.usage.cachedInputTokens ?? 0;
+          await recordModelStep({ runId: run.id, attempt: run.attempt || 1, index: step.stepNumber, step }).catch(
             (error: unknown) =>
               logger.warn('[engine] could not record a step', { run: run.id, error: toErrorMessage(error) }),
-          ),
+          );
+        },
       };
 
       const { result } = streamLoop(loopInput);
@@ -1050,6 +1065,7 @@ export function createEngine(deps: EngineDeps) {
         .where(eq(handoffs.id, handoffId));
     }
     const next = await finishAndTakeNext(run, outcome);
+    if (conversation && deps.development) await warnUncached(run, usage);
     if (conversation) {
       await send({
         type: 'run.updated',
@@ -1061,7 +1077,7 @@ export function createEngine(deps: EngineDeps) {
           data: { conversation_id: conversation.id, changes: { working: false } },
         });
         // The conversation is idle: fold older messages into the summary if it has grown long.
-        track(digester.run(conversation.id));
+        track(digester.run(conversation.id, contextWindow));
       }
       if (conversation.kind === 'chat' && !conversation.title && outcome.status !== 'failed') {
         await nameChat(conversation.id, run, send).catch((error: unknown) =>
@@ -1070,6 +1086,34 @@ export function createEngine(deps: EngineDeps) {
       }
     }
     return next;
+  }
+
+  /**
+   * Development only: a later turn of a conversation that read nothing from the prompt cache
+   * means the prefix moved (a tool description, the system prompt or an early message changed).
+   */
+  async function warnUncached(run: Run, usage: { input: number; cached: number }) {
+    if (usage.cached > 0 || usage.input < CACHEABLE_TOKENS) return;
+    const [earlier] = await getDb()
+      .select({ id: runs.id })
+      .from(runs)
+      .where(
+        and(
+          eq(runs.conversationId, run.conversationId!),
+          eq(runs.agentId, run.agentId),
+          eq(runs.kind, 'turn'),
+          eq(runs.status, 'succeeded'),
+          ne(runs.id, run.id),
+        ),
+      )
+      .limit(1);
+    if (earlier) {
+      logger.warn('[engine] a later turn of a conversation read nothing from the prompt cache', {
+        conversation: run.conversationId,
+        run: run.id,
+        inputTokens: usage.input,
+      });
+    }
   }
 
   /** A new chat gets a short title from its first exchange, written by the fast model. */

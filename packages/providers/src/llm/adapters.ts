@@ -6,6 +6,7 @@ import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
 import { generateText } from 'ai';
 import { z } from 'zod';
 import type { LlmClient, ModelInfo, ProviderAdapter } from '../types.js';
+import { withAnthropicCache } from './cache.js';
 import { isDeepSeekFamily } from './models.js';
 import { LLM_PRESETS } from './presets.js';
 
@@ -110,7 +111,8 @@ export const anthropicAdapter = llmAdapter(
   'https://api.anthropic.com/v1',
   ({ baseUrl, apiKey, fetch }) => {
     const provider = createAnthropic({ apiKey, baseURL: baseUrl, fetch });
-    return (modelId) => provider(modelId);
+    // Anthropic caches only up to the blocks it is told to: the engine's breakpoints become those.
+    return (modelId) => withAnthropicCache(provider(modelId));
   },
 );
 

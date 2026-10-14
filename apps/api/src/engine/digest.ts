@@ -3,11 +3,15 @@
  * messages are folded into a structured summary (goals, decisions, facts, open items,
  * artifacts) that the prompt carries instead of them; the newest stay verbatim.
  *
- * - Trigger: after a conversation goes idle, when the text after the summary passes 24k
- *   estimated tokens (the same for every model, so Agents on different models share it).
+ * - Trigger: after a conversation goes idle, when the text after the summary passes a quarter
+ *   of the context window of the model that just answered (24k estimated tokens when the
+ *   window is unknown). That stays well under the history budget (half the window), so
+ *   dropping the oldest messages is only the last resort of a conversation that never idles.
+ *   Each fold changes the system prompt, which ends the prompt cache once: the trigger is not
+ *   lower than it has to be.
  * - Cut: always just before a member message, keeping at least the last two exchanges and
- *   otherwise as much as fits in 8k. One call folds at most 30k; a bigger backlog is folded
- *   oldest first, chunk by chunk, so nothing is skipped.
+ *   otherwise as much as fits in a third of the trigger. One call folds at most 30k; a bigger
+ *   backlog is folded oldest first, chunk by chunk, so nothing is skipped.
  * - Writes are compare-and-set on the old boundary; one job per conversation; failures back off.
  */
 
@@ -22,8 +26,10 @@ import type { ProvidersService } from '../providers/service.js';
 import { fence } from '../security/prompt.js';
 import type { Locale } from './prompt.js';
 
+/** The share of the model's context window the text after the summary may take before a fold. */
+export const DIGEST_TRIGGER_SHARE = 0.25;
+/** The trigger for a model whose window is unknown. */
 export const DIGEST_TRIGGER_TOKENS = 24_000;
-export const DIGEST_KEEP_TOKENS = 8_000;
 export const DIGEST_MIN_KEPT_EXCHANGES = 2;
 export const DIGEST_CHUNK_TOKENS = 30_000;
 export const DIGEST_RENDER_MAX_CHARS = 1500;
@@ -141,16 +147,21 @@ export interface DigestRow {
 
 const tokensOf = (rows: readonly DigestRow[]) => rows.reduce((sum, row) => sum + estimateTokens(row.content), 0);
 
+/** When to fold: a share of the answering model's context window. */
+export function digestTrigger(contextWindow?: number): number {
+  return contextWindow ? Math.floor(contextWindow * DIGEST_TRIGGER_SHARE) : DIGEST_TRIGGER_TOKENS;
+}
+
 /**
  * Where to cut: just before a member message, keeping at least the last two exchanges and as
- * much more raw text as fits in the keep budget. Null when nothing can be folded.
+ * much more raw text as fits in `keep` tokens. Null when nothing can be folded.
  */
-export function chooseCut(rows: readonly DigestRow[]): DigestRow[] | null {
+export function chooseCut(rows: readonly DigestRow[], keep = digestTrigger() / 3): DigestRow[] | null {
   const starts = rows.map((row, index) => (row.role === 'user' ? index : -1)).filter((index) => index >= 0);
   if (starts.length <= DIGEST_MIN_KEPT_EXCHANGES) return null;
   let cut = starts[starts.length - DIGEST_MIN_KEPT_EXCHANGES]!;
   for (let i = starts.length - DIGEST_MIN_KEPT_EXCHANGES - 1; i > 0; i -= 1) {
-    if (tokensOf(rows.slice(starts[i]!)) > DIGEST_KEEP_TOKENS) break;
+    if (tokensOf(rows.slice(starts[i]!)) > keep) break;
     cut = starts[i]!;
   }
   if (cut <= 0) return null;
@@ -231,12 +242,12 @@ export function createDigester(deps: { languageModel: ProvidersService['language
   }
 
   /** One fold: summary plus the oldest unsummarised chunk. Returns false when there is nothing to do. */
-  async function fold(conversationId: string): Promise<boolean> {
+  async function fold(conversationId: string, trigger: number): Promise<boolean> {
     const [conversation] = await getDb().select().from(conversations).where(eq(conversations.id, conversationId));
     if (!conversation) return false;
     const rows = await rowsAfter(conversationId, conversation.digestUptoSeq);
-    if (tokensOf(rows) <= DIGEST_TRIGGER_TOKENS) return false;
-    const chunk = chooseCut(rows);
+    if (tokensOf(rows) <= trigger) return false;
+    const chunk = chooseCut(rows, trigger / 3);
     if (!chunk?.length) return false;
     const previous = parseStoredDigest(conversation.digest) ?? digestSchema.parse({});
     const resolved = await deps.languageModel('fast', {
@@ -271,14 +282,17 @@ export function createDigester(deps: { languageModel: ProvidersService['language
   }
 
   return {
-    /** Folds what is due, in the background of the caller. One job per conversation at a time. */
-    async run(conversationId: string): Promise<void> {
+    /**
+     * Folds what is due, in the background of the caller. One job per conversation at a time.
+     * `contextWindow`: of the model that just answered there.
+     */
+    async run(conversationId: string, contextWindow?: number): Promise<void> {
       const wait = backoff.get(conversationId);
       if (running.has(conversationId) || (wait && wait.until > Date.now())) return;
       running.add(conversationId);
       try {
         for (let pass = 0; pass < MAX_FOLDS_PER_JOB; pass++) {
-          if (!(await fold(conversationId))) break;
+          if (!(await fold(conversationId, digestTrigger(contextWindow)))) break;
         }
         backoff.delete(conversationId);
       } catch (error) {

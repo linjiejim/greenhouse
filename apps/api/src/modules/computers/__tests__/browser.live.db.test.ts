@@ -6,7 +6,7 @@
  * Opt-in: GREENHOUSE_LIVE_DOCKER=1, with the computer image built (apps/bot-computer).
  */
 
-import { asc, eq } from 'drizzle-orm';
+import { and, asc, eq } from 'drizzle-orm';
 import { afterAll, describe, expect, it } from 'vitest';
 import { getDb, runSteps } from '@greenhouse/db';
 import { runDocker } from '@greenhouse/providers';
@@ -89,7 +89,7 @@ describe.skipIf(!live)('the browser, live', () => {
       const steps = await getDb()
         .select()
         .from(runSteps)
-        .where(eq(runSteps.runId, sent.body.run_id))
+        .where(and(eq(runSteps.runId, sent.body.run_id), eq(runSteps.kind, 'tool')))
         .orderBy(asc(runSteps.startedAt));
       return steps.map((step) => step.output as any);
     };

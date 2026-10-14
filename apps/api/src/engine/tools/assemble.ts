@@ -60,6 +60,8 @@ export interface TurnTools {
   tools: ToolSet;
   /** Names of the tools present, for the rules paragraphs. */
   names: Set<string>;
+  /** What the tools add to the closing message (turnContext), in tool order. */
+  context: string[];
   defs: Map<string, ToolDef>;
   /** True once a tool raised a card: the turn ends after this step and its run waits. */
   waiting(): boolean;
@@ -120,8 +122,10 @@ export async function assembleTools(input: {
 }): Promise<TurnTools> {
   const { context, availability } = input;
   const allowed = context.manifest.tools ? new Set(context.manifest.tools) : null;
+  // Which tools and in what order depends on the Agent version and the member's access, never on
+  // anything that changes between turns: the definitions stay byte for byte the same.
   const chosen: ToolDef[] = [];
-  const descriptions = new Map<string, string>();
+  const turnContext: string[] = [];
   for (const def of input.defs) {
     if (!surfacesOf(def).includes(context.surface)) continue;
     // Someone else's public Agent gets only the tools that act on the asker's own things.
@@ -129,10 +133,9 @@ export async function assembleTools(input: {
     if (allowed && !allowed.has(def.name)) continue;
     if (def.risk !== 'read' && !context.manifest.write) continue;
     if (def.available && !(await def.available(availability))) continue;
-    const description = def.descriptionFor ? await def.descriptionFor(availability) : def.description;
-    if (description === null) continue;
     chosen.push(def);
-    descriptions.set(def.name, description);
+    const section = def.turnContext ? await def.turnContext(availability) : null;
+    if (section) turnContext.push(section);
   }
 
   let waiting = false;
@@ -149,7 +152,7 @@ export async function assembleTools(input: {
   const tools: ToolSet = {};
   for (const def of chosen) {
     tools[def.name] = tool({
-      description: descriptions.get(def.name) ?? def.description,
+      description: def.description,
       inputSchema: def.input,
       execute: async (args: unknown, options: { toolCallId: string; abortSignal?: AbortSignal }) => {
         if (def.outbound && readPrivate && context.surface === 'background') {
@@ -277,6 +280,7 @@ export async function assembleTools(input: {
   return {
     tools,
     names: new Set(chosen.map((def) => def.name)),
+    context: turnContext,
     defs: new Map(chosen.map((def) => [def.name, def])),
     waiting: () => waiting,
     markWaiting: () => {

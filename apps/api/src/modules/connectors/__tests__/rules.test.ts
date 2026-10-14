@@ -141,13 +141,11 @@ describe('what the model sees', () => {
     },
   ];
 
-  it('lists the connectors and marks what runs at once; says when only reading is allowed', () => {
-    const writer = describeConnectors(usable, true);
-    expect(writer).toContain(
+  it('lists the connectors and marks what runs at once, and says when none is connected yet', () => {
+    expect(describeConnectors(usable)).toContain(
       '- desk (Order desk): Orders and tickets\n  tools: lookup_order [read-only], create_ticket',
     );
-    expect(writer).toContain('approval card');
-    expect(describeConnectors(usable, false)).toContain('You may only read here');
+    expect(describeConnectors([])).toContain('None is connected for the member yet');
   });
 
   it('cuts long results and strips anything that could pose as prompt structure', () => {

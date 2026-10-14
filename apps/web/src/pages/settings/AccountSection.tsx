@@ -8,7 +8,7 @@ import { Button, Field, FieldGroup, Input, Segmented, Select, Skeleton, TextArea
 import { PASSWORD_MIN_LENGTH, type UpdateMeInput } from '@greenhouse/contract';
 import { ApiClientError } from '@greenhouse/contract/client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { BudgetBar, formatCost, formatTokens } from '../../shell/usage';
+import { BudgetBar, formatCost, formatHitRate, formatTokens } from '../../shell/usage';
 import { ImagePicker } from '../../shell/ImagePicker';
 import { MemberAvatar } from '../../shell/MemberAvatar';
 import { useNotify } from '../../app/notify';
@@ -213,6 +213,10 @@ function MyUsage() {
         <div className="app-stat">
           <span className="app-stat-label">{t('usage.requests')}</span>
           <span className="app-stat-value">{data.totals.requests.toLocaleString(locale)}</span>
+        </div>
+        <div className="app-stat">
+          <span className="app-stat-label">{t('usage.cacheHitRate')}</span>
+          <span className="app-stat-value">{formatHitRate(data.totals.cache_hit_rate, locale)}</span>
         </div>
       </div>
       {data.budgets.map((budget) => (

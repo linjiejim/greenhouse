@@ -69,7 +69,10 @@ describe('needs you', () => {
       unread: 1,
     });
     expect((await call('GET', `/api/conversations/${main.id}`, { token: lin.token })).body.pending_requests).toBe(1);
-    const [step] = await getDb().select().from(runSteps).where(eq(runSteps.runId, sent.run_id));
+    const [step] = await getDb()
+      .select()
+      .from(runSteps)
+      .where(and(eq(runSteps.runId, sent.run_id), eq(runSteps.kind, 'tool')));
     expect(step).toMatchObject({ status: 'pending', requestId: card.id });
 
     const approved = await call('POST', `/api/requests/${card.id}/approve`, { token: lin.token });
