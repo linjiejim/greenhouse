@@ -143,7 +143,7 @@ function VersionDetail({ doc, version, onBack }: { doc: KnowledgeDoc; version: D
         </span>
       </div>
       {version.change_note && <p className="app-version-note">{version.change_note}</p>}
-      <div className="app-toolbar">
+      <div className="app-toolbar app-knowledge-toolbar">
         {version.version > 1 && (
           <Segmented
             label={t('knowledge.versionView')}

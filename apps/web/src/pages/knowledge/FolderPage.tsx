@@ -41,7 +41,7 @@ import { useOpenOverlay } from '../../shell/overlays';
 import { useItemMenu } from './actions';
 import { useKnowledgeDnd } from './dnd';
 import { FilePreview } from './FilePreview';
-import { canArchive, canEdit, itemKey, routeOf, scopeOf, SORTS, sortItems, type Sort } from './helpers';
+import { canArchive, canEdit, itemKey, oneFolder, routeOf, scopeOf, SORTS, sortItems, type Sort } from './helpers';
 import type { KnowledgeTarget } from './NewItemDialog';
 import { Crumbs, ItemIcon, UploadList, useSpaceName } from './parts';
 import { revealFolders, setKnowledgeScope } from './scope';
@@ -299,10 +299,11 @@ export function FolderPage({
         onDragLeave={(event) => {
           if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDropping(false);
         }}
+        // A row that takes a drop stops it there: the page still lets go of its outline.
+        onDropCapture={() => setDropping(false)}
         onDrop={(event) => {
-          if (!dropping) return;
+          if (!canAdd || archived || !Array.from(event.dataTransfer.types).includes('Files')) return;
           event.preventDefault();
-          setDropping(false);
           upload(Array.from(event.dataTransfer.files));
         }}
       >
@@ -322,7 +323,7 @@ export function FolderPage({
             {t('knowledge.folderArchived')}
           </Banner>
         )}
-        <div className="app-toolbar">
+        <div className="app-toolbar app-knowledge-toolbar">
           <SearchInput
             label={t('knowledge.searchIn', { name: title })}
             placeholder={t('knowledge.searchIn', { name: title })}
@@ -409,7 +410,10 @@ export function FolderPage({
                 item={item}
                 view={view}
                 menu={menuFor(item, sort === 'manual' ? { siblings: sorted } : {})}
-                dnd={{ ...dnd.source(item), ...dnd.target(item, sort === 'manual' ? sorted : undefined) }}
+                dnd={{
+                  ...dnd.source(item),
+                  ...dnd.target(item, sort === 'manual' && oneFolder(sorted) ? sorted : undefined),
+                }}
                 dropAt={dnd.over?.key === itemKey(item) ? dnd.over.position : null}
               />
             ))}

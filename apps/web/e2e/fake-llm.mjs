@@ -6,6 +6,7 @@
  *   "remember X"  calls the memory tool, then confirms
  *   "need a human …" asks the member to take over the computer (request_takeover)
  *   "look up …"   searches the knowledge base (knowledge_query), then links the first doc found
+ *   "keep a note …" writes a doc into the Agent's own reference folder (knowledge_mutation)
  *   anything else "Echo: <message>", in a few chunks
  * Titles and summaries (non-streaming calls) get fixed answers. The same server is the
  * connectors' MCP servers and their sign-in (fake-mcp.mjs).
@@ -138,6 +139,8 @@ async function stream(response, request) {
     tool('web_search', { query: said.slice(15).trim() || 'kyoto' });
   } else if (afterTool && toolText.includes('kyoto.example')) {
     await say('Found it: [Kyoto guide](https://kyoto.example/guide).', 10);
+  } else if (!afterTool && /^keep a note/i.test(said)) {
+    tool('knowledge_mutation', { action: 'create', title: 'Agent note', content: said, space: 'agent' });
   } else if (!afterTool && /^look up /i.test(said)) {
     tool('knowledge_query', { action: 'search', query: said.slice(8).trim() });
   } else if (afterTool && DOC_HIT.test(toolText)) {

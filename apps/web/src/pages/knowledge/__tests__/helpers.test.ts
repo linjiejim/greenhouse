@@ -7,6 +7,7 @@ import {
   dropPosition,
   fileKind,
   mentionAt,
+  oneFolder,
   reorderAround,
   routeOf,
   scopeOf,
@@ -88,6 +89,13 @@ describe('order, drops and reorders', () => {
     expect(sortItems(items, 'manual', 'zh').map((entry) => entry.id)).toEqual(['b', 'f', 'a']);
     expect(sortItems(items, 'name', 'zh').map((entry) => entry.id)).toEqual(['f', 'a', 'b']);
     expect(sortItems(items, 'updated', 'zh').map((entry) => entry.id)).toEqual(['a', 'b', 'f']);
+  });
+
+  it('puts in order only rows of one folder (分享给我 mixes owners)', () => {
+    expect(oneFolder(items)).toBe(true);
+    expect(oneFolder([])).toBe(true);
+    expect(oneFolder([item({ owner_id: 'mbr_lin' }), item({ owner_id: 'mbr_mei' })])).toBe(false);
+    expect(oneFolder([item({ folder_id: 'fld_1' }), item({})])).toBe(false);
   });
 
   it('drops into the middle of a folder and beside anything else', () => {

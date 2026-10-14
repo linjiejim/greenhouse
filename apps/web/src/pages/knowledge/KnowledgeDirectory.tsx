@@ -21,7 +21,7 @@ import { href, type Route } from '../../lib/router';
 import { DirectoryRow } from '../../shell/DirectoryRow';
 import { useItemMenu } from './actions';
 import { useKnowledgeDnd } from './dnd';
-import { canEdit, itemKey, matchesName, routeOf } from './helpers';
+import { canEdit, itemKey, matchesName, oneFolder, routeOf } from './helpers';
 import type { KnowledgeTarget } from './NewItemDialog';
 import { ItemIcon, useSpaceName } from './parts';
 import { setKnowledgeScope, toggleFolder, useKnowledgeScope, useOpenFolders } from './scope';
@@ -88,7 +88,8 @@ function TreeRow({
   tools,
 }: {
   item: KnowledgeItem;
-  siblings: KnowledgeItem[];
+  /** Its folder's rows in order, when they can be put in order together. */
+  siblings: KnowledgeItem[] | undefined;
   depth: number;
   route: Route;
   query: string;
@@ -166,6 +167,8 @@ function TreeLevel({
   tools: Tools;
 }) {
   const client = useQueryClient();
+  // 分享给我 lists what several people own: nothing there is put in order together.
+  const ordered = oneFolder(items) ? items : undefined;
   const visible = query
     ? items.filter((item) =>
         item.type === 'folder' ? folderMatches(client, item, query) : matchesName(item.name, query),
@@ -177,7 +180,7 @@ function TreeLevel({
         <TreeRow
           key={itemKey(item)}
           item={item}
-          siblings={items}
+          siblings={ordered}
           depth={depth}
           route={route}
           query={query}

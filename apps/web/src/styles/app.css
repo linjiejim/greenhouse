@@ -2840,7 +2840,16 @@ button.app-agent-card {
 }
 
 [data-narrow] .app-knowledge-grid {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/* Search first; the sort and the view wrap below it when the page is narrow. */
+.app-knowledge-toolbar {
+  flex-wrap: wrap;
+}
+
+.app-knowledge-toolbar > .gh-search-field {
+  flex: 1 1 calc(6 * var(--gh-space-10));
 }
 
 .app-uploads {
@@ -3527,4 +3536,8 @@ button.app-agent-card {
 .app-doc-save-bar .app-form-error {
   flex-basis: 100%;
   order: 3;
+}
+
+.app-doc-save-bar > .app-inline-actions {
+  margin-left: auto;
 }

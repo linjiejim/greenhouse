@@ -391,6 +391,34 @@ test('an Agent that used a doc lists it as a source, and the source and the link
   await expect(page).toHaveURL(new RegExp(`#/knowledge/${policy.id}$`));
 });
 
+test('an Agent keeps notes in its own folder: its owner sees it under the Agent, and it cannot be shared or moved', async ({
+  page,
+}) => {
+  await open(page, '/#/c/new');
+  await composer(page).fill('keep a note: lunch is at noon');
+  await composer(page).press('Enter');
+  await expect(page.getByText('Done.')).toBeVisible();
+
+  await page.goto('/#/knowledge?space=personal');
+  const folderRow = page.getByRole('main').getByRole('listitem').filter({ hasText: 'Greeny' });
+  await expect(folderRow.locator('.pa-root')).toBeVisible();
+  await folderRow.getByRole('button', { name: 'Greeny的操作' }).click();
+  await expect(page.getByRole('menuitem', { name: '分享' })).toHaveCount(0);
+  await expect(page.getByRole('menuitem', { name: '移动到…' })).toHaveCount(0);
+  await page.keyboard.press('Escape');
+  await folderRow.getByRole('link', { name: /Greeny/ }).click();
+  await expect(page.getByText('Agent 的参考文件夹：只有这个 Agent 和你能看到。')).toBeVisible();
+  await page
+    .getByRole('main')
+    .getByRole('link', { name: /Agent note/ })
+    .click();
+  await expect(page.getByRole('main').getByText('Greeny 的参考资料')).toBeVisible();
+  await expect(docText(page)).toContainText('lunch is at noon');
+  await page.getByRole('main').getByRole('button', { name: '更多' }).click();
+  await expect(page.getByRole('menuitem', { name: '分享' })).toHaveCount(0);
+  await page.keyboard.press('Escape');
+});
+
 test('a hostile doc stays inert: no scripts, handlers or script links survive, in the doc or its comments', async ({
   page,
   request,

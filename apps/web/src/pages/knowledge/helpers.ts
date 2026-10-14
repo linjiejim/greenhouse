@@ -79,6 +79,13 @@ export function sortItems(items: readonly KnowledgeItem[], sort: Sort, locale: s
   );
 }
 
+/** Rows that sit in one folder (or one space root): only those can be put in order together. */
+export const oneFolder = (items: readonly Pick<KnowledgeItem, 'folder_id' | 'space' | 'owner_id'>[]) =>
+  items.every(
+    (item) =>
+      item.folder_id === items[0]?.folder_id && item.space === items[0]?.space && item.owner_id === items[0]?.owner_id,
+  );
+
 export const matchesName = (name: string, query: string) =>
   !query.trim() || name.toLowerCase().includes(query.trim().toLowerCase());
 
