@@ -158,8 +158,12 @@ describe('the browser tool', () => {
   it('says so when the model cannot see a screenshot', async () => {
     const env = await setup();
     const [shot] = await env.turn({ action: 'screenshot' });
+    expect(shot.status).toBe('unsupported');
+    expect(shot.note).toContain('No screenshot was taken');
     expect(shot.note).toContain('cannot see images');
     expect(env.chromium.methods).not.toContain('Page.captureScreenshot');
+    const transcript = await env.call('GET', `/api/conversations/${env.main.id}/messages`, { token: env.lin.token });
+    expect(transcript.body.items.at(-1).steps[0].summary).toBe('模型不支持查看截图');
   });
 
   it('keeps tabs numbered, switches and closes them', async () => {

@@ -9,6 +9,7 @@ import { and, eq, inArray, sql } from 'drizzle-orm';
 import { getDb, newId, runSteps, type NeedsYouRequest } from '@greenhouse/db';
 import { toErrorMessage } from '@greenhouse/utils/error';
 import { surfacesOf, type AvailabilityContext, type Card, type ToolContext, type ToolDef } from './define.js';
+import { toolInputSchema } from './schema.js';
 
 const MAX_STORED_JSON = 20_000;
 
@@ -153,7 +154,7 @@ export async function assembleTools(input: {
   for (const def of chosen) {
     tools[def.name] = tool({
       description: def.description,
-      inputSchema: def.input,
+      inputSchema: toolInputSchema(def.input),
       execute: async (args: unknown, options: { toolCallId: string; abortSignal?: AbortSignal }) => {
         if (def.outbound && readPrivate && context.surface === 'background') {
           throw new Error(

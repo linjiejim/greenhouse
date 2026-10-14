@@ -901,8 +901,9 @@ export function createBrowserService(deps: {
           const main = await guard(page);
           if (!call.attachImage) {
             return {
+              status: 'unsupported',
               url: redact(main.url),
-              note: 'Your model cannot see images here. Use snapshot or read to see the page.',
+              note: 'No screenshot was taken: your model cannot see images here. Use snapshot or read to see the page.',
             };
           }
           // A picture cannot be redacted: none is taken while the page shows a saved secret.

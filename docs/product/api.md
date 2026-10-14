@@ -175,12 +175,14 @@ OAuth 2.1 与 MCP（公开路径，错误按 RFC 6749 返回 `{ error, error_des
 
 工具和 HTTP 共用 service，元数据与实现写在同一个文件里（沿用 `defineTool`），并按 v2 词汇改名。
 
+#70：发给所有模型服务的工具参数都是顶层 `type: object` 与 `properties`，顶层不含 `anyOf`、`oneOf` 或 `allOf`。按 action 分支的 Zod 输入合并成一个对象（action 枚举、分支字段可选），Schema 说明各分支的必填项；调用返回后仍用原 Zod 输入校验必填项、长度、默认值与分支，再计算风险或执行。真实 DeepSeek 与会拒绝旧格式的模拟服务均已验证。
+
 | 领域 | 工具 |
 | --- | --- |
 | 对话与协作 | `ask_user`、`conversation_query`、`handoff`（转交给 Agent）、`self`（修改自己指令的提议） |
 | 运行 | `run_start`（后台运行，需要先确认简报）、`schedule_query`、`schedule_mutation` |
 | 知识库 | `knowledge_query`、`knowledge_mutation` |
-| 表格与应用 | `tables_query`、`tables_mutation`、`tables_schema_plan`、`apps_query`、`apps_action` |
+| 表格与应用（规划，当前未提供） | `tables_query`、`tables_mutation`、`tables_schema_plan`、`apps_query`、`apps_action` |
 | 技能 | `skill_query`（search、load、read_file，有电脑时 install）、`skill_mutation`（只提议「存为技能」，成员接受后保存为模板） |
 | 多媒体（来自 Provider） | `web_search`、`web_fetch`、`generate_image`、`generate_video`、`speak`（TTS 生成音频）、`transcribe`（STT）、`analyze_image` |
 | 其他 | `compute`（isolated-vm）、`read_attachment`、`export_data`、`memory`、`mcp_call`（成员自己的邮箱经内置连接器 `mailbox`）、`mail`（Agent 自己的邮箱） |
@@ -199,7 +201,7 @@ OAuth 2.1 与 MCP（公开路径，错误按 RFC 6749 返回 `{ error, error_des
 
 `mcp_call` 是连接器的唯一工具（`list`、`describe`、`call`）。它的描述每个回合重建，只列出这个 Agent 此刻能为提问者用的连接器和工具：已启用、在 manifest 的 `connectors` 里（空值表示全部）、per_member / oauth 的已由提问者连接；不能写的 Agent 只看到只读工具。只读工具直接运行；其余工具弹出批准卡（`tool_write`，原样参数），批准后用提问者的 Key 或登录执行。只在回合里提供，公开 Agent 不提供。
 
-`browser` 与 `vault` 只在回合里，和 `computer` 同时出现。`browser` 经 DevTools 操作电脑里的 Chromium：`open`、`snapshot`（带 ref 的短行，可从 `from_line` 续读）、`read`、`click`、`type`、`press`、`scroll`、`wait`、`back`、`tabs`、`switch_tab`、`close_tab`、`screenshot`（模型能看图时，图片随下一步给模型，不入库）；只开 http 和 https，成员控制画面时不操作。`vault` 有 `find`（当前页面站点的条目，只有标签和掩码用户名）和 `fill {item_id, submit}`（服务端代填，`ask` 条目先发登录卡片）；公开 Agent 没有 `vault`。
+`browser` 与 `vault` 只在回合里，和 `computer` 同时出现。`browser` 经 DevTools 操作电脑里的 Chromium：`open`、`snapshot`（带 ref 的短行，可从 `from_line` 续读）、`read`、`click`、`type`、`press`、`scroll`、`wait`、`back`、`tabs`、`switch_tab`、`close_tab`、`screenshot`（模型能看图时，图片随下一步给模型，不入库；不能看图时返回 `status: unsupported`，不截图，改用 snapshot / read）；只开 http 和 https，成员控制画面时不操作。`vault` 有 `find`（当前页面站点的条目，只有标签和掩码用户名）和 `fill {item_id, submit}`（服务端代填，`ask` 条目先发登录卡片）；公开 Agent 没有 `vault`。
 
 ## 5. 模块布局
 

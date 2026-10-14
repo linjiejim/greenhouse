@@ -36,6 +36,8 @@ The one engine for conversations and runs. Read with the root AGENTS.md and docs
 
 ## Tools
 - One file per tool with `defineTool` (tools/define.ts): description, zod input, risk, availability, and the service call. Routes and tools call the same services.
+- Provider inputs go through tools/schema.ts: root object only, no root union combinators. Object unions merge their fields and action enums for providers; the original Zod schema validates and applies defaults before risk checks, cards or execution. The browser-test model enforces the same root rules.
+- Tool results are evidence of actions; replies cannot perform a hand-off or another write. A screenshot without vision returns `unsupported` and explicitly says none was taken.
 - Every call is a `run_steps` row. Tools that read outside text set `taints`; after that a turn cannot change memories.
 - What a web page or a connector returns reaches the model through `outsideText` (security/prompt.ts): cut to size with a note of what was left out, stripped of anything that could pose as prompt structure; titles and snippets are sanitized too.
 - A tool is `idempotent` only when the same call twice does what it does once (pure reads: web, knowledge and skill reads, conversation search, attachments). Computer, browser, vault, memory and every write are not.

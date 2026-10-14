@@ -78,6 +78,9 @@ export function browserTool(browser: BrowserService) {
     },
     summarize: (args, output, locale) => {
       const zh = locale === 'zh';
+      if ((output as { status?: string } | undefined)?.status === 'unsupported') {
+        return zh ? '模型不支持查看截图' : 'The model cannot view screenshots';
+      }
       if ((output as BrowserResult | undefined)?.error) {
         return zh ? `浏览器操作没有完成（${args.action}）` : `The browser could not ${args.action}`;
       }
