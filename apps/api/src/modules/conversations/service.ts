@@ -117,10 +117,10 @@ const citedDocs = (citations: readonly Citation[]) =>
  * Sources as one person may see them: a doc they cannot read now is left out, so a reply in a
  * room never shows the others the title of what only the asker may read.
  */
-async function sourcesFor(memberId: string, docIds: readonly string[]) {
+async function sourcesFor(memberId: string, docIds: readonly string[], agentId: string | null = null) {
   const unique = [...new Set(docIds)];
   if (!unique.length) return (citations: Citation[]) => citations;
-  const readable = await readableDocs(memberId, unique);
+  const readable = await readableDocs(memberId, unique, agentId);
   return (citations: Citation[]) =>
     citations.filter((citation) => citation.kind !== 'doc' || readable.has(citation.id));
 }
@@ -424,7 +424,7 @@ export function createConversationsService(deps: {
     }
     const seeing = new Map<string, { citations: Citation[]; members: string[] }>();
     for (const memberId of audience) {
-      const citations = (await sourcesFor(memberId, docIds))(message.citations);
+      const citations = (await sourcesFor(memberId, docIds, message.agent_id))(message.citations);
       const key = citations.map((citation) => `${citation.kind}:${citation.id}`).join('\n');
       const same = seeing.get(key) ?? { citations, members: [] };
       same.members.push(memberId);
@@ -701,17 +701,14 @@ export function createConversationsService(deps: {
                 .from(messageFeedback)
                 .where(and(eq(messageFeedback.memberId, memberId), inArray(messageFeedback.messageId, replies)))
             : [],
-          sourcesFor(
-            memberId,
-            rows.flatMap((row) => citedDocs(row.citations)),
-          ),
+          Promise.all(rows.map((row) => sourcesFor(memberId, citedDocs(row.citations), row.agentId))),
         ]);
         const ratings = new Map(rated.map((row) => [row.id, row.rating]));
-        return rows.map((row) => {
+        return rows.map((row, index) => {
           const rating = ratings.get(row.id);
           return {
             ...toMessage(row),
-            citations: visible(row.citations),
+            citations: visible[index]!(row.citations),
             my_rating: rating === 1 || rating === -1 ? rating : null,
           };
         });

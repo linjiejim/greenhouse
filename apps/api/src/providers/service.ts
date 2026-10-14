@@ -307,6 +307,7 @@ export function createProvidersService(deps: { config: AppConfig; fetch?: typeof
         personalCounts: policy.personalCountsTowardBudget,
         ...(ctx.memberId ? { memberId: ctx.memberId } : {}),
         personalCounting,
+        runId: ctx.runId,
       }),
     );
 
@@ -627,6 +628,18 @@ export function createProvidersService(deps: { config: AppConfig; fetch?: typeof
         ...(info?.reasoning !== undefined ? { reasoning: info.reasoning } : {}),
         ...(info?.vision !== undefined ? { vision: info.vision } : {}),
         ...(info?.contextWindow !== undefined ? { contextWindow: info.contextWindow } : {}),
+      };
+    },
+
+    /** A helper pins the first workspace model and reserves a conservative bounded token estimate. */
+    async helperEstimate(ref: string, ctx: UsageContext, tokens: number) {
+      const chain = chainFor(await viewOf('llm'), { ...ctx, personal: false });
+      const target = explicitTarget(ref, chain);
+      if (!target) throw new ApiError(400, 'model_unavailable', 'The helper model is unavailable.');
+      const price = modelInfo(target.instance, target.modelId)?.price;
+      return {
+        providerId: target.instance.id,
+        cost: price ? Math.ceil(tokens * Math.max(price.input, price.output)) : null,
       };
     },
 

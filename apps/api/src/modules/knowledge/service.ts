@@ -490,7 +490,7 @@ export function createKnowledgeService(deps: {
 
   async function docAt(reader: Reader, id: string) {
     const [doc] = await getDb().select().from(docs).where(eq(docs.id, id));
-    if (!doc) throw notFound('Doc');
+    if (!doc || (reader.publicationFolders && doc.archivedAt)) throw notFound('Doc');
     const chain = await chainOf(doc.folderId);
     const direct =
       doc.space === 'personal' && doc.ownerId !== reader.memberId
@@ -715,7 +715,7 @@ export function createKnowledgeService(deps: {
    * the owner's folders above it.
    */
   async function folderVisible(reader: Reader, item: { space: KnowledgeSpace; ownerId: string | null }) {
-    if (item.space === 'team' || item.ownerId === reader.memberId) return () => true;
+    if (!reader.publicationFolders && (item.space === 'team' || item.ownerId === reader.memberId)) return () => true;
     const reach = await reader.sharedFolders();
     return (folderId: string) => reach.has(folderId);
   }
@@ -2485,7 +2485,7 @@ export function createKnowledgeService(deps: {
       return {
         items: ranked.map((hit) => {
           const path = hit.folder_id ? (paths.get(hit.folder_id) ?? []) : [];
-          const all = hit.space === 'team' || owners.get(hit.id) === memberId;
+          const all = !reader.publicationFolders && (hit.space === 'team' || owners.get(hit.id) === memberId);
           return { ...hit, path: all ? path : path.filter((entry) => reach.has(entry.id)) };
         }),
       };

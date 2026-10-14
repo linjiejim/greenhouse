@@ -161,7 +161,16 @@ async function stream(response, request) {
     chunk(response, { choices: [{ index: 0, delta: {}, finish_reason: 'stop' }] });
   };
 
-  if (!afterTool && mailWake) {
+  if (/M24 source one: succeeded/.test(closing)) {
+    await say('Helper reports combined.', 10);
+  } else if (!afterTool && !mailWake && /^delegate helpers/i.test(said)) {
+    tool('helper_run', {
+      briefs: [
+        { title: 'M24 source one', brief: 'Summarize source one.' },
+        { title: 'M24 source two', brief: 'Summarize source two.' },
+      ],
+    });
+  } else if (!afterTool && mailWake) {
     tool('mail', { action: 'read', id: /\bmal_[0-9A-Z]{26}\b/.exec(closing)?.[0] ?? '' });
   } else if (afterTool && toolText.includes('mail_body')) {
     await say(`Read the mail: ${/"subject":\s*"((?:[^"\\]|\\.)*)"/.exec(toolText)?.[1] ?? ''}`, 10);
@@ -256,11 +265,13 @@ function complete(response, request) {
     return;
   }
   const system = JSON.stringify(request.messages?.filter((message) => message.role === 'system') ?? []);
-  const text = system.includes('Write a title for this conversation')
-    ? 'E2E chat'
-    : system.includes('You maintain the rolling summary')
-      ? '{}'
-      : `Echo: ${lastUser(request.messages ?? [])}`;
+  const text = system.includes('read-only helper run')
+    ? 'A bounded helper summary.'
+    : system.includes('Write a title for this conversation')
+      ? 'E2E chat'
+      : system.includes('You maintain the rolling summary')
+        ? '{}'
+        : `Echo: ${lastUser(request.messages ?? [])}`;
   response.writeHead(200, { 'content-type': 'application/json' });
   response.end(
     JSON.stringify({

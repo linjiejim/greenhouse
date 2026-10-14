@@ -76,6 +76,7 @@ describe('talking to a public Agent', () => {
       'memory',
       'read_attachment',
       'skill_query',
+      'tool_output_read',
     ]);
 
     const [run] = await getDb().select().from(runs).where(eq(runs.id, sent.body.run_id));

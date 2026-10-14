@@ -13,6 +13,7 @@ export const FILE_PURPOSES = [
   'avatar',
   'branding',
   'mail',
+  'tool_output',
 ] as const;
 export type FilePurpose = (typeof FILE_PURPOSES)[number];
 

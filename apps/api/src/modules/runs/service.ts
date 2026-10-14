@@ -17,6 +17,8 @@ const MAX_DETAIL_ROWS = 200;
 const toRun = (row: Run): RunView => ({
   id: row.id,
   agent_id: row.agentId,
+  parent_run_id: row.parentRunId,
+  summary: row.input.helper === true && typeof row.output?.text === 'string' ? row.output.text : null,
   title: row.title,
   status: row.status,
   source: row.source,
@@ -42,7 +44,14 @@ export function createRunsService(deps: { background: () => Background }) {
   return {
     async list(
       memberId: string,
-      query: { state: 'active' | 'done' | 'all'; agent?: string; source?: RunSource; cursor?: string; limit: number },
+      query: {
+        state: 'active' | 'done' | 'all';
+        agent?: string;
+        parent?: string;
+        source?: RunSource;
+        cursor?: string;
+        limit: number;
+      },
     ): Promise<Page<RunView>> {
       const before = decodeCursor(query.cursor);
       const rows = await getDb()
@@ -55,6 +64,7 @@ export function createRunsService(deps: { background: () => Background }) {
             query.state === 'active' ? inArray(runs.status, [...ACTIVE]) : undefined,
             query.state === 'done' ? inArray(runs.status, [...DONE]) : undefined,
             query.agent ? eq(runs.agentId, query.agent) : undefined,
+            query.parent ? eq(runs.parentRunId, query.parent) : undefined,
             query.source ? eq(runs.source, query.source) : undefined,
             before ? lt(runs.id, before) : undefined,
           ),
@@ -124,6 +134,7 @@ export function createRunsService(deps: { background: () => Background }) {
     /** Runs it again; steps that already succeeded are reused. */
     async retry(memberId: string, runId: string): Promise<RunDetail> {
       const row = await own(memberId, runId);
+      if (row.input.helper === true) throw conflict('helper_retry', 'Ask your main Agent for a new helper run.');
       if (row.status !== 'failed' && row.status !== 'canceled') {
         throw conflict('run_not_retryable', 'Only a failed or stopped run can be run again.');
       }

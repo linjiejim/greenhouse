@@ -154,3 +154,11 @@ The one engine for conversations and runs. Read with the root AGENTS.md and docs
 - Event turns and their decision follow-ups use background rules, taint from the start, and cannot treat event text as approval. A process-end event may inspect its computer offline, but cannot start new commands without a brief.
 - A run's final state and run_report job commit together. Reporting, notification and optional follow-up are idempotent; quiet empty findings skip both the completion notification and follow-up. Failures notify.
 - Undo metadata is separate from bounded display results. Lock the target and compare versions/revisions; never overwrite a later member edit. The member and service permissions are checked again when carrying out a card.
+
+## M2.4
+- Public knowledge reads use the live publication subtree in knowledge/access.ts; they never become member shares. Source filtering rechecks the grant.
+- Helpers are background runs of the main Agent, at most three per turn, with a clean brief, read-only calls, eight steps and budget reservations. Claim only after the parent waits; summaries return through run_report with one batch dedupe key and taint the parent continuation. That continuation cannot delegate another batch; only a new member turn resets the limit.
+- New tool results over 8,000 characters become owner-only tool_output files, with 30-day expiry and ranged reads. Never rewrite old transcript results.
+- Completion logs are system-written memory data, never model instructions. Only seven days of log titles enter the index; recalling log detail taints the turn.
+- Eval snapshots use the production prompt recipe and canonical tool hashes. Export strips credentials; fixtures use synthetic real-model acceptance conversations.
+- The daily engine_retention job prunes terminal model context after 90 days and expired output bytes; edit/regenerate remove their old model context immediately.

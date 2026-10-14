@@ -37,7 +37,14 @@ export function catalogEntry(url: string, over: Partial<CatalogItem> = {}): Cata
 
 export async function connectorApp(options: ServiceOptions = {}) {
   // Plain http to this machine is allowed in development only: the fake servers listen on 127.0.0.1.
-  const app = createTestApp({ NODE_ENV: 'development' }, options);
+  const app = createTestApp(
+    {
+      NODE_ENV: 'development',
+      STORAGE_PROVIDER: 'local',
+      STORAGE_ROOT: `${process.cwd()}/node_modules/.cache/tool-output-tests`,
+    },
+    options,
+  );
   const admin = await app.member('admin');
   const lin = await app.member();
   const chen = await app.member();

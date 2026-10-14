@@ -48,7 +48,7 @@ v2 从零建表：只有一份基线迁移，不继承 v1 的迁移链，也不�
   - 能哈希的就不加密：密码（自描述格式 `scrypt$…`）、刷新令牌、OAuth 授权码与令牌、激活链接只存哈希。
 - 审计与用量
   - `audit_events` 是唯一的只追加审计表。它记录谁（成员、Agent、外部客户端或系统）代表谁，对什么做了什么，结果如何；不记内容和机密。
-  - `usage_events` 每次 Provider 调用写一条（[providers.md §8](providers.md#8-用量与预算)），是用量和费用的唯一事实。预算的已用量按当月直接汇总它，管理页与调用前的检查用同一个求和；`budget_periods` 的计数缓存和 `budget_reservations` 的预留，等调用量大到需要时再启用。
+  - `usage_events` 每次 Provider 调用写一条（[providers.md §8](providers.md#8-用量与预算)），是用量和费用的唯一事实。预算的已用量按当月直接汇总它，管理页与调用前的检查用同一个求和；`budget_periods` 的计数缓存尚未启用。M2.4 子运行已启用 `budget_reservations`：按当前 UTC 月在覆盖预算的行锁下预留，调用检查计入其他运行的未过期预留，结束按 usage_events 结算或释放。
   - 与 v1 不同：v1 的审计分散在 `platform_audit_events`、`api_audit_log`、`email_send_log` 三张表；用量分散在 `llm_usage` 和预算账本。
 - 迁移
   - 只有一份基线 `drizzle/0000_v2_baseline.sql`，之后照旧只 `generate` + `migrate`，不 `push`。生成列、GIN 和部分唯一索引都写进基线。
@@ -78,7 +78,7 @@ v2 从零建表：只有一份基线迁移，不继承 v1 的迁移链，也不�
 | --- | --- | --- |
 | `agents` | Agent 身份与可变状态 | `owner_id` → `members` `CASCADE`、`is_main`（每个成员恰好一个，部分唯一索引）、`name` / `name_key`（主人名下未归档的唯一）、`role`、`avatar`（植物头像）、`current_version`、`visibility`（private / public）、`published_version`、`paused_at`（管理员暂停）、`publication`（授权范围：知识文件夹、电脑、每人每日上限）、`template_key`、`last_active_at`、`archived_at` |
 | `agent_versions` | 不可变 manifest，每次保存追加一版 | `agent_id` `CASCADE`、`version`、`manifest`（text：名字、职责、说明、指令、头像、模型引用、技能、连接器、读写权限、工具过滤）、`manifest_hash`、`change_note`、`created_by`；唯一 `(agent_id, version)` |
-| `agent_memories` | Agent 的记忆 | `agent_id` `CASCADE`（必填；没有用户级记忆，共享信息写在 `members.about`）、`member_id`、`title`（召回索引，只有它进提示词）、`content`、`category`、`status`（active / dormant / archived / superseded）、`pinned`、`source`、`superseded_by`、`source_conversation_id`、`last_used_at` |
+| `agent_memories` | Agent 的记忆 | `agent_id` `CASCADE`（必填；没有用户级记忆，共享信息写在 `members.about`）、`member_id`、`title`（召回索引，只有它进提示词）、`content`、`category`（含 log：后台运行完成日志，索引只放最近 7 天标题）、`status`（active / dormant / archived / superseded）、`pinned`、`source`、`superseded_by`、`source_conversation_id`、`last_used_at` |
 | `standing_approvals` | 成员在卡片上授予的预先授权 | `id`（sap 前缀）、`agent_id` / `member_id`（CASCADE）、`scope_type`（folder / table）、`scope_id`（逻辑引用）、`actions`、`granted_at`、`revoked_at`；未撤销的 `(agent_id, member_id, scope_type, scope_id)` 唯一；第 3 档不能授予，taint 后不能使用，撤销记录保留 |
 | `agent_computers` | Agent 电脑的生命周期 | `agent_id` `CASCADE`、`owner_id`（这台电脑是谁的）、`provider_id`（沙箱实例）、`sandbox_ref`（适配器自己的容器、卷或沙箱 id）、`state`（stopped / starting / running / failed）、`state_reason`、`timezone`、`version`、`last_active_at`、`last_started_at`；唯一 `(agent_id, owner_id)`：主人一台，公开 Agent 的发布允许电脑时，使用它的成员各一台；观看、接管和终端用一次性 ticket，连接打开期间刷新 `last_active_at`；后台占用 `background_run_id`（逻辑运行引用）及 `egress_restricted`（退出后直到正常网络恢复）；画面租约 `lease_controller`（member / agent，空 = 无人）、`lease_holder`（持有它的控制画面或浏览器动作）、`lease_until`：成员的控制画面打开期间一直持有并续期，Agent 的每个浏览器动作短暂持有；成员总能拿到，Agent 只在无人持有或已过期时拿到（AGNT-22） |
 | `computer_backups` | 电脑家目录的加密备份 | `computer_id`、`owner_id`（逻辑）、`status`、`reason`（idle / admin / migration）、`storage_prefix`、`key_enc`、`format`、`bytes`、`restored_at`；每台电脑最多一条 running；先删对象再删行 |
@@ -118,7 +118,7 @@ v2 从零建表：只有一份基线迁移，不继承 v1 的迁移链，也不�
 | `doc_versions` | 不可变版本 | `doc_id` `CASCADE`、`version`、`title`、`content`、`change_note`、`created_by`、`agent_id`（Agent 代写时）；唯一 `(doc_id, version)`；新建是版本 1，恢复写一个新版本 |
 | `doc_links` | 反向链接 | 主键 `(from_doc_id, to_doc_id)`，两端 `CASCADE`；每次保存由正文重建，读反链时逐条过权限 |
 | `comments` | 文档和记录的评论 | `target_type`（doc / record）、`target_id`、`base_id`（记录评论）、`created_by`、`agent_id`（Agent 代写时）、`body`（Markdown）、`mentions`（由正文里的 `[@名字](member:<id>)` 得出）、`deleted_at`、`updated_at`；读权限跟随目标，不进全文检索 |
-| `files` | 统一文件服务 | `purpose`（attachment / knowledge / record / artifact / export / import / skill / avatar / branding / mail）、`provider_id`、`storage_key`（唯一）、`name`、`content_type`、`size_bytes`、`sha256`、`status`、`owner_id`、归属列按 purpose 填一个（`folder_id` + `space`、`conversation_id`、`base_id`、`run_id`；技能包、头像、品牌由引用它的行持有）、`expires_at`（导出）、`meta`、`search_*`（知识库文件：A 文件名，C 文本与 PDF 的文字）、`archived_at`；权限跟随归属。知识库文件的 `folder_id` → `folders` `SET NULL`，`owner_id` 同 `folders`；`meta.doc_id` 是贴进文档的图片（不在树里，权限跟随文档），`meta.sort_order` 是手动顺序 |
+| `files` | 统一文件服务 | `purpose`（attachment / knowledge / record / artifact / export / import / skill / avatar / branding / mail / tool_output）、`provider_id`、`storage_key`（唯一）、`name`、`content_type`、`size_bytes`、`sha256`、`status`、`owner_id`、归属列按 purpose 填一个（`folder_id` + `space`、`conversation_id`、`base_id`、`run_id`；技能包、头像、品牌由引用它的行持有）、`expires_at`（导出；tool_output 在 30 天后到期）、`meta`、`search_*`（知识库文件：A 文件名，C 文本与 PDF 的文字）、`archived_at`；权限跟随归属。知识库文件的 `folder_id` → `folders` `SET NULL`，`owner_id` 同 `folders`；`meta.doc_id` 是贴进文档的图片（不在树里，权限跟随文档），`meta.sort_order` 是手动顺序 |
 
 「他人正在编辑」与在线状态放在进程内存里，不建表；有多个 API 进程时，各自只看得到连在本进程的人。
 
@@ -237,3 +237,10 @@ v1 迁移工具的 ID 映射与检查点放在单独的 `migration` schema，不
 11. 成员默认只停用；硬删除时必须指定接收人，共享对象转给接收人，私有数据随之删除。
 
 M1.7：运行检查点保存 `tainted`、`read_private` 与决定结果，后台审批后用已记录的模型步骤及已完成的工具结果重建上下文。结果 `output` 带 `text` 和 `findings`。运行结束和 `run_report` 汇报任务同事务，汇报消息与通知按运行 / 尝试去重；只有选择 `continue_after` 才产生唤醒事件，静默无发现时跳过跟进。事件唤醒仍是 turn 运行，以后台工具规则执行。
+
+### 12.7 M2.4 引擎补充（#70）
+
+- `agents.publication.folderIds` 保存公开 Agent 的知识授权根。只接受主人未归档的个人文件夹，排除所有 Agent 私有参考文件夹及其后代。每次知识读取重查发布、受众、主人模块与当前子树；授权不变成成员对文档或文件的直接分享。
+- 子运行仍是 `runs.kind=background`，`parent_run_id` 指父回合，`input.helper=true`，`input.model_ref` 固定本次工作区模型；父回合以 `wait_reason=helpers` 等待。每回合最多 3 个，完成只经同一个 `run_report` 唤醒层回传摘要；不单独通知。每个子运行预留 100,000 tokens 的估算额度，成本预算按模型价格计算；没有覆盖预算时仍留预留凭证。
+- `files.purpose=tool_output` 的文件始终仅 owner 可读，即使带有 run_id 也不继承对话受众；模型读区间按字符偏移。每日 `engine_retention` jobs 清理过期字节，并删除终态运行 90 天以前的 model 步骤及 Eval 提示快照；工具证据保留。编辑或重新生成删除旧回复时同时清除其模型上下文。
+- `runs.checkpoint.eval` 保存当时的提示组装配方、实际工具定义、成员模块与模型输入，供本地 Eval 导出。夹具导出清除凭据字段、Bearer、已知 key 形式和文件签名；导出前仍应使用不含私有业务材料的验收对话。

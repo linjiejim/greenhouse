@@ -10,7 +10,7 @@
 
 import { and, eq, inArray, isNotNull, isNull, notInArray, or, sql, type SQL, type SQLWrapper } from 'drizzle-orm';
 import type { KnowledgeAccess } from '@greenhouse/contract';
-import { docs, folders, getDb, groupMembers, members, shares, type FolderRow } from '@greenhouse/db';
+import { agents, docs, folders, getDb, groupMembers, members, shares, type FolderRow } from '@greenhouse/db';
 import { forbidden } from '../../http/errors.js';
 import { effectiveModules } from '../members/service.js';
 
@@ -59,6 +59,8 @@ export interface Reader {
   groupIds: string[];
   /** In an Agent's turn: that Agent. Its owner's other Agents' private folders are out of its sight. */
   agentId: string | null;
+  /** Public Agent reads are confined to these live publication folders, with viewer access. */
+  publicationFolders?: string[];
   /** Every folder a share reaches for this reader (shared ones and all below), with the best role. */
   sharedFolders(): Promise<Map<string, Role>>;
   /** In an Agent's turn, the owner's other Agents' private folders and all below them. */
@@ -131,6 +133,58 @@ export async function loadReader(memberId: string, agentId: string | null = null
   const groupIds = (
     await getDb().select({ id: groupMembers.groupId }).from(groupMembers).where(eq(groupMembers.memberId, memberId))
   ).map((row) => row.id);
+  let publicationFolders: string[] | undefined;
+  if (agentId) {
+    const [agent] = await getDb().select().from(agents).where(eq(agents.id, agentId));
+    if (!agent) throw forbidden('This Agent is unavailable.');
+    if (agent.ownerId !== memberId) {
+      const [grant] = await getDb()
+        .select({ id: shares.id })
+        .from(shares)
+        .where(
+          and(eq(shares.resourceType, 'agent'), eq(shares.resourceId, agentId), principalMatch({ memberId, groupIds })),
+        )
+        .limit(1);
+      const [owner] = await getDb().select().from(members).where(eq(members.id, agent.ownerId));
+      publicationFolders = [];
+      if (
+        grant &&
+        agent.visibility === 'public' &&
+        agent.publishedVersion !== null &&
+        !agent.pausedAt &&
+        !agent.archivedAt &&
+        owner?.status === 'active' &&
+        effectiveModules(owner.modules).knowledge
+      ) {
+        const roots = await getDb()
+          .select()
+          .from(folders)
+          .where(
+            and(
+              inList(folders.id, agent.publication.folderIds ?? []),
+              eq(folders.ownerId, agent.ownerId),
+              eq(folders.space, 'personal'),
+              isNull(folders.archivedAt),
+            ),
+          );
+        const privateRoots = await insideAgentFolders(roots.map((row) => row.id));
+        const below = await subtree(roots.filter((row) => !privateRoots.has(row.id)).map((row) => row.id));
+        const live = await getDb()
+          .select()
+          .from(folders)
+          .where(
+            and(
+              inList(folders.id, below),
+              eq(folders.ownerId, agent.ownerId),
+              eq(folders.space, 'personal'),
+              isNull(folders.archivedAt),
+            ),
+          );
+        const privateFolders = await insideAgentFolders(live.map((row) => row.id));
+        publicationFolders = live.filter((row) => !privateFolders.has(row.id)).map((row) => row.id);
+      }
+    }
+  }
   let shared: Promise<Map<string, Role>> | null = null;
   let hidden: Promise<string[]> | null = null;
   let privateDocs: Promise<string[]> | null = null;
@@ -140,7 +194,11 @@ export async function loadReader(memberId: string, agentId: string | null = null
     locale: member.locale === 'en' ? 'en' : 'zh',
     groupIds,
     agentId,
-    sharedFolders: () => (shared ??= reachOf({ memberId, groupIds })),
+    ...(publicationFolders ? { publicationFolders } : {}),
+    sharedFolders: () =>
+      (shared ??= publicationFolders
+        ? Promise.resolve(new Map(publicationFolders.map((id) => [id, 'viewer' as const])))
+        : reachOf({ memberId, groupIds })),
     privateSharedDocs: () =>
       (privateDocs ??= getDb()
         .select({ id: docs.id, folderId: docs.folderId })
@@ -203,14 +261,27 @@ export async function insideAgentFolders(folderIds: readonly string[]): Promise<
  * Of these docs, the ones a member may read now, as themselves (none while their knowledge
  * module is off). Conversations use it so a source under a reply reaches only who may open it.
  */
-export async function readableDocs(memberId: string, docIds: readonly string[]): Promise<Set<string>> {
+export async function readableDocs(
+  memberId: string,
+  docIds: readonly string[],
+  agentId: string | null = null,
+): Promise<Set<string>> {
   if (!docIds.length) return new Set();
   const reader = await loadReader(memberId).catch(() => null);
   if (!reader) return new Set();
+  const grant = agentId ? await loadReader(memberId, agentId).catch(() => null) : null;
   const rows = await getDb()
     .select({ id: docs.id })
     .from(docs)
-    .where(and(inList(docs.id, docIds), await readableWhere(reader, docs, 'doc')));
+    .where(
+      and(
+        inList(docs.id, docIds),
+        or(
+          await readableWhere(reader, docs, 'doc'),
+          grant?.publicationFolders ? and(isNull(docs.archivedAt), await readableWhere(grant, docs, 'doc')) : undefined,
+        ),
+      ),
+    );
   return new Set(rows.map((row) => row.id));
 }
 
@@ -261,6 +332,10 @@ export async function roleIn(
   chain: readonly FolderRow[],
   docShare: Role | null = null,
 ): Promise<Role | null> {
+  if (reader.publicationFolders) {
+    const placed = item.type === 'folder' ? item.id : item.folderId;
+    return placed && reader.publicationFolders.includes(placed) && !agentOfChain(chain) ? 'viewer' : null;
+  }
   if (item.space === 'team') return 'editor';
   const agentId = agentOfChain(chain);
   if (item.ownerId === reader.memberId) {
@@ -280,6 +355,13 @@ export async function roleIn(
  * private folder stays closed (a backstop: sharing refuses it).
  */
 export async function rolesOf(reader: Reader, items: readonly Placed[]): Promise<Map<string, Role>> {
+  if (reader.publicationFolders)
+    return new Map(
+      items.flatMap((item) => {
+        const placed = item.type === 'folder' ? item.id : item.folderId;
+        return placed && reader.publicationFolders!.includes(placed) ? [[item.id, 'viewer' as const]] : [];
+      }),
+    );
   const throughShares = items.filter((item) => item.space !== 'team' && item.ownerId !== reader.memberId);
   const placeOf = (item: Placed) => (item.type === 'folder' ? item.id : item.folderId);
   const [reach, hidden, docShares, privateFolders] = await Promise.all([
@@ -318,6 +400,7 @@ export async function readableWhere(
   table: { id: SQLWrapper; space: SQLWrapper; ownerId: SQLWrapper; folderId: SQLWrapper },
   type: 'doc' | 'file',
 ): Promise<SQL> {
+  if (reader.publicationFolders) return inList(table.folderId, reader.publicationFolders);
   const [reach, hidden, privateDocs] = await Promise.all([
     reader.sharedFolders(),
     reader.hiddenFolders(),

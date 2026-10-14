@@ -8,6 +8,8 @@ export const RUN_SOURCES = ['conversation', 'schedule', 'automation', 'record', 
 export const runSchema = z.object({
   id: z.string(),
   agent_id: z.string(),
+  parent_run_id: z.string().nullable(),
+  summary: z.string().nullable(),
   title: z.string(),
   status: z.enum(RUN_STATUSES),
   source: z.enum(RUN_SOURCES),
@@ -63,6 +65,7 @@ export type RunDetail = z.infer<typeof runDetailSchema>;
 export const runListQuerySchema = z.object({
   state: z.enum(['active', 'done', 'all']).default('all'),
   agent: z.string().optional(),
+  parent: z.string().max(64).optional(),
   source: z.enum(RUN_SOURCES).optional(),
   cursor: z.string().optional(),
   limit: z.coerce.number().int().min(1).max(200).default(50),

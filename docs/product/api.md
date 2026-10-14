@@ -200,7 +200,7 @@ OAuth 2.1 与 MCP（公开路径，错误按 RFC 6749 返回 `{ error, error_des
 
 `skill_query` 的描述每个回合重建，列出这个 Agent 装备的技能，不能运行的写明原因；它按提问者的权限读技能库，公开 Agent 也提供。成员用 `/` 运行的技能在发送时检查（看得到、扫描通过、未归档、回答的 Agent 满足运行要求、必填项已填），正文作为成员的请求进入回合。
 
-`knowledge_query`（`search`、`read`、`list`）以提问者的权限读知识库：读过的文档列为回复的出处（`kind: doc`，地址 `#/knowledge/<id>`），搜索到的文档在回复链接到时列出；`space: agent` 是这个 Agent 的私有参考文件夹。`knowledge_mutation`（`create`、`edit`、`move`、`comment`）改知识库：`edit` 带读到的 `version`，整体替换或给只出现一次的 find / replace；成员独享的可撤销写入直接执行并留回执；共享写入发批准卡（`tool_write`）或使用该范围及动作的预先授权；taint 后不用预先授权；版本和评论记下代写的 Agent。读写可在回合和后台运行中使用；后台卡片暂停运行，决定后按步骤续跑；公开 Agent 两个都没有。
+`knowledge_query`（`search`、`read`、`list`）以提问者的权限读知识库：读过的文档列为回复的出处（`kind: doc`，地址 `#/knowledge/<id>`），搜索到的文档在回复链接到时列出；`space: agent` 是这个 Agent 的私有参考文件夹。`knowledge_mutation`（`create`、`edit`、`move`、`comment`）改知识库：`edit` 带读到的 `version`，整体替换或给只出现一次的 find / replace；成员独享的可撤销写入直接执行并留回执；共享写入发批准卡（`tool_write`）或使用该范围及动作的预先授权；taint 后不用预先授权；版本和评论记下代写的 Agent。读写可在回合和后台运行中使用；后台卡片暂停运行，决定后按步骤续跑；公开 Agent 仅提供 knowledge_query，范围固定为主人发布时授权文件夹的当前子树；不提供 knowledge_mutation，也不读取使用者或主人的其他知识。引用按使用者直接权限或当前发布授权过滤。
 
 知识库正文的约定：引用其他文档写作 `[标题](#/knowledge/<文档 id>)`（编辑器的 `[[`），提及成员写作 `[@名字](member:<成员 id>)`，主人提及自己的 Agent 写作 `[@名字](agent:<Agent id>)`，文档与评论经唤醒层送到其 Agent 对话，图片与文件写作 `/api/files/<id>/content`，存储时去掉签名、读取时按读者签名。实时事件：`doc.updated`、`doc.presence`、`comments.updated`，发给打开着这篇文档的人；`knowledge.changed`（不带任何内容）在新建、改名、移动、排序、保存、分享、归档、恢复之后发给看得到那个位置的人（团队空间是所有开着知识库的成员，个人空间是主人和分享覆盖到的人，取消分享时也告诉原来覆盖到的人；归档或恢复文件夹时，分享到其中任何文件夹或文档的人也会收到），各端据此刷新屏幕上的知识库列表。保存分享时只校验新加的成员和分组：已有的分享即使对象已停用或已删除也原样保留。
 
@@ -241,3 +241,12 @@ apps/api/src/
 - `AGENT_EVENT_WAKES_PER_DAY` 配置每日上限（1–1000，默认 50）；`AGENT_EVENT_MERGE_MS` 默认 120000，测试夹具使用较短窗口。客户端新增字段均有默认值，旧调用可以继续省略。
 
 `memory` 的 recall 可用于后台；前台私有记忆 remember/update 按第 1 档留下可撤销回执，forget 为彻底删除、按第 3 档审批且不能预批；读过外部内容后不改记忆。
+
+## 6. M2.4 引擎接口（#70）
+
+- `PUT /api/agents/:id/publication` 新增 `folder_ids`（最多 100 个，默认空）；读取发布设置也返回它。只能选主人当前可用的个人知识文件夹，排除 Agent 私有参考文件夹。
+- `GET /api/runs?parent=<run id>` 仅返回当前成员拥有的子运行；运行视图带 `parent_run_id` 和子运行的 `summary`。子运行仍经已有详情与取消接口查看，不允许直接重试（`helper_retry`），由新的主 Agent 回合重新安排。
+- `helper_run { briefs: [{ title, brief }] }` 仅在主 Agent 的个人回合提供。一个回合最多 3 个、每个 8 步、仅只读后台工具，父回合暂停后经 `run_report` 一次收齐最多三个摘要（总上限 8,000 字符）；摘要续回不能再开一批，只有新的成员消息重置上限。摘要和工作日志正文均按不可信数据处理。拒绝码包括 `helper_limit`、`helper_forbidden`、`parent_unavailable`、`budget_exceeded`、`budget_estimate_unavailable`。
+- 工具输出超过约 8,000 字符时返回 `{ file: { id, name }, head, length, note }`。`tool_output_read { file_id, offset?, length? }` 返回字符区间、总长度与 `next_offset`（默认 4,000，最多 6,000 字符），每次检查成员的文件权限。文件到期或无权读取均返回 `not_found`。
+- `memory.recall` 支持 `from` / `to`（UTC 日期 YYYY-MM-DD，含两端）；至少给查询词或日期范围。后台只允许 recall；系统在后台运行结束时写工作日志，不接受运行结果中的记忆指令。
+- 工程命令：`pnpm cli eval export <run|message id>` 在本地连接的 v2 数据库导出 `fixtures/eval/*.json`；`TEST_DATABASE_URL=... pnpm eval` 用脚本模型回放，不请求真实模型。夜间真实模型用例留 M3.6。
