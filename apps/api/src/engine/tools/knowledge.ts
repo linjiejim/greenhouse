@@ -16,6 +16,8 @@ import { defineTool, type ToolContext } from './define.js';
 const READ_CHARS = 20_000;
 /** What the agent writes in one call. */
 const WRITE_CHARS = 200_000;
+/** The change an edit card shows. */
+const PREVIEW_CHARS = 1_200;
 
 const where = z
   .enum(['team', 'personal', 'shared', 'agent'])
@@ -164,18 +166,22 @@ export function knowledgeTools(knowledge: KnowledgeService) {
 
   /** The change as a few lines, for the approval card. */
   function preview(before: string, after: string): string {
+    // The diff refuses fine work past its budget (a big rewrite shows as counts only), and the
+    // lines stop once the card has enough.
     const { hunks, added, removed } = diffText(before, after, 'line');
-    const lines: string[] = [`+${added} −${removed}`];
-    for (const hunk of hunks) {
-      for (const part of hunk.parts) {
-        if (part.op === 'equal') continue;
-        for (const line of part.text.replace(/\n$/, '').split('\n'))
-          lines.push(`${part.op === 'insert' ? '+' : '-'} ${line}`);
-      }
-      if (lines.join('\n').length > 1200) break;
+    let text = `+${added} −${removed}`;
+    for (const part of hunks.flatMap((hunk) => hunk.parts)) {
+      if (text.length > PREVIEW_CHARS) break;
+      if (part.op === 'equal') continue;
+      const sign = part.op === 'insert' ? '+' : '-';
+      text += part.text
+        .slice(0, PREVIEW_CHARS)
+        .replace(/\n$/, '')
+        .split('\n')
+        .map((line) => `\n${sign} ${line}`)
+        .join('');
     }
-    const text = lines.join('\n');
-    return text.length > 1200 ? `${text.slice(0, 1200)}…` : text;
+    return text.length > PREVIEW_CHARS ? `${text.slice(0, PREVIEW_CHARS)}…` : text;
   }
 
   const query = defineTool({
