@@ -145,7 +145,7 @@ export function Directory({
           ? { label: t('agents.new'), onClick: () => openOverlay({ type: 'new-agent' }) }
           : module === 'skills'
             ? { label: t('skills.new'), onClick: () => openOverlay({ type: 'new-skill' }) }
-            : module === 'tables'
+            : module === 'tables' && route.page !== 'tables'
               ? { label: t('tables.new'), onClick: () => openNewBase(openOverlay) }
               : module === 'apps'
                 ? { label: t('apps.new'), onClick: () => navigate({ page: 'apps', newApp: true }) }

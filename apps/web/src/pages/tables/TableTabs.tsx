@@ -201,17 +201,21 @@ export function TableTabs({
           </button>
         ))}
       </div>
-      {canBuild && (
+      {!base.archived_at && (
         <Menu
           label={t('tables.addTableOrDashboard')}
           trigger={<Plus size={icon.md} strokeWidth={icon.stroke} />}
           align="start"
           items={[
-            {
-              label: t('tables.addTable'),
-              icon: <Table2 size={icon.md} strokeWidth={icon.stroke} />,
-              onClick: () => setNaming('new'),
-            },
+            ...(canBuild
+              ? [
+                  {
+                    label: t('tables.addTable'),
+                    icon: <Table2 size={icon.md} strokeWidth={icon.stroke} />,
+                    onClick: () => setNaming('new'),
+                  },
+                ]
+              : []),
             {
               label: t('tables.addDashboard'),
               icon: <LayoutDashboard size={icon.md} strokeWidth={icon.stroke} />,

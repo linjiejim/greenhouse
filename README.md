@@ -114,8 +114,10 @@ same script doubles as an end-to-end smoke tour (see [Development](#development)
   records and dependencies); grid, board, calendar, gallery and timeline views (a gantt with
   dependency arrows and milestones, dragged to change dates), each with its filters, sorts and
   groups, shared or personal; editing in cells or a record drawer, pasting blocks, comments and
-  history, a recycle bin, CSV export, sharing with four roles, and a Projects template. Forms, CSV
-  import, formulas, dashboards, automations and Agent tools are the next phases.
+  history, a recycle bin, forms, CSV import/export, shared or personal dashboards, and a Projects
+  template. Formula, lookup, rollup and AI fields have editors and read-only results; AI values can
+  be regenerated. Owners share with four built-in roles or custom table, row and column rules.
+  Readers can create personal dashboards from the table tabs. Automations and Agent tools follow.
 - **Home workbench** — a personal dashboard of live cards backed by the same tools (recipes and
   templates), editable by drag-and-drop or by asking the agent; it is the empty state of a new chat.
 - **Execution center** — one surface for every durable run: automations (cron), missions,

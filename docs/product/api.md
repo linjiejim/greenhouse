@@ -152,6 +152,9 @@ OAuth 2.1 与 MCP（公开路径，错误按 RFC 6749 返回 `{ error, error_des
 | `runs:read` | `runs_list`、`run_get`、`schedules_list` |
 | `memories:read` | `memories_list`：Agent 关于我的记忆 |
 
+表格 Web（#70，T3）直接消费上述计算字段与角色接口：公式错误 `details` 的 `code/start/end/params` 用于本地化提示和标记；`records.changed` 中的 `computed_revision` 与编辑 revision 分开比较。字段生成仍通过 `POST /api/tables/fields/:id/generate`；标签栏为非搭建者创建仪表盘时固定 `personal: true`。
+
+
 ## 3. v1 → v2 去向
 
 | v1 | v2 |

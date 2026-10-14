@@ -6,6 +6,7 @@
 
 import {
   isEmptyValue,
+  isComputedType,
   zonedParts,
   type Field,
   type FieldType,
@@ -238,7 +239,7 @@ export function moveByDays(
   days: number,
   timeZone: string,
 ): RecordValues | null {
-  if (!days) return null;
+  if (!days || isComputedType(start.type) || (end && isComputedType(end.type))) return null;
   const values: RecordValues = {};
   for (const field of end ? [start, end] : [start]) {
     const value = record.values[field.id];
@@ -249,7 +250,7 @@ export function moveByDays(
 
 /** The values of a record added on a day: its start on that day (09:00 for a date-time). */
 export const newOnDay = (start: Field, day: string, timeZone: string): RecordValues => ({
-  [start.id]: valueForDay(start, day, undefined, timeZone),
+  ...(!isComputedType(start.type) ? { [start.id]: valueForDay(start, day, undefined, timeZone) } : {}),
 });
 
 /** A date-time value's time of day in the reader's zone (HH:mm); '' for dates and empty values. */

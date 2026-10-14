@@ -550,17 +550,17 @@ test('an Agent keeps notes in its own folder: its owner sees it under the Agent,
   await folderRow.getByRole('link', { name: /Greeny/ }).click();
   await expect(page.getByText('Agent 的参考文件夹：只有这个 Agent 和你能看到。')).toBeVisible();
   // What is inside does not say it is in an Agent's folder; its menu offers no 分享 all the same.
-  await page
+  // A retried generation can leave another note with the same title in the shared fixture.
+  const noteRow = page
     .getByRole('main')
-    .getByRole('button', { name: /^Agent note.*的操作$/ })
-    .click();
+    .getByRole('listitem')
+    .filter({ hasText: /Agent note/ })
+    .first();
+  await noteRow.getByRole('button', { name: /^Agent note.*的操作$/ }).click();
   await expect(page.getByRole('menuitem', { name: '移动到…' })).toBeVisible();
   await expect(page.getByRole('menuitem', { name: '分享' })).toHaveCount(0);
   await page.keyboard.press('Escape');
-  await page
-    .getByRole('main')
-    .getByRole('link', { name: /Agent note/ })
-    .click();
+  await noteRow.getByRole('link', { name: /Agent note/ }).click();
   await expect(page.getByRole('main').getByText('Greeny 的参考资料')).toBeVisible();
   await expect(docText(page)).toContainText('lunch is at noon');
   await page.getByRole('main').getByRole('button', { name: '更多' }).click();
