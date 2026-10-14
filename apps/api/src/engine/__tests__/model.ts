@@ -86,6 +86,8 @@ export function scriptedModel(scripts: Array<Part[] | Script>, options: { title?
       record(call.tools);
       const script = next();
       if (script.error) throw new Error(script.error);
+      // Aborted before the call: fail at once, as a real request would.
+      if (call.abortSignal?.aborted) throw call.abortSignal.reason ?? new Error('aborted');
       if (script.gate) {
         await Promise.race([
           script.gate,
