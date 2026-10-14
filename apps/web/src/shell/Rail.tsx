@@ -14,6 +14,7 @@ import { useNotificationSummary, useMarkNotificationsRead } from '../data/notifi
 import { useRuns } from '../data/runs';
 import { useT } from '../lib/i18n';
 import { navigate } from '../lib/router';
+import { lastBase, tablesMenu } from '../pages/tables/entry';
 import { MODULES, type ModuleId } from './modules';
 import { useOpenOverlay } from './overlays';
 import { useShell } from './context';
@@ -105,6 +106,14 @@ export function Rail({ module }: { module: ModuleId }) {
       </Tooltip>
       <div className="app-rail-group">
         <RailButton id="chat" active={module === 'chat'} menu={chatMenu} onClick={() => navigate('#/c/main')} />
+        {me?.modules.tables && (
+          <RailButton
+            id="tables"
+            active={module === 'tables'}
+            menu={tablesMenu(t, openOverlay)}
+            onClick={() => navigate(lastBase())}
+          />
+        )}
         <Menu
           className="app-rail-more"
           label={t('nav.more')}

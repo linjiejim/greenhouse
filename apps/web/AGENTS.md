@@ -7,7 +7,8 @@ The v2 web app. Product scope is docs/product/prd.md §6–7; layout and compone
 - src/lib: the API client instance, the browser token store, hash routes (router.ts is the route table of PRD §6.4), the dictionary, times, media queries.
 - src/data: TanStack Query hooks per domain, query keys (query.ts), realtime events into the cache (realtime.ts) and the store for replies being written (streams.ts).
 - src/shell: rail, directory, page frame, ⌘K, drawers opened by request (overlays.tsx). src/conversation: thread, messages, composer, cards. src/pages: one folder per module.
-- src/i18n: zh.ts is the source dictionary; en.ts must have the same keys. Every word on screen comes from there.
+- src/i18n: zh.ts is the source dictionary; en.ts must have the same keys. Every word on screen comes from there. A large module keeps its words in <module>.zh.ts and <module>.en.ts, spread into both (tables does).
+- src/styles: app.css for the app's layout; a module's own styles in <module>*.css, imported by its pages (tables.css, tables-boards.css, tables-timeline.css).
 
 ## Rules
 - Server state lives in the query cache; realtime events patch it (messages, conversation flags) or mark queries stale. Never keep a second copy in component state.
@@ -18,6 +19,9 @@ The v2 web app. Product scope is docs/product/prd.md §6–7; layout and compone
 - Status words and tones follow docs/design-system/content.md; pass `tone` to StatusBadge (the kit only knows the Chinese words).
 - A mutation whose callback navigates or closes an overlay uses mutateAsync or runs in a component that stays mounted: useMutation callbacks are dropped after unmount.
 - The workspace remounts when the page or the object it shows changes (the Shell's ErrorBoundary key is page and id), not when only its query parameters change; tab and scope changes re-render the page with new props.
+- A button that becomes another button in place (编辑 → 保存) gets its own key: React reuses the element, and one that turns into a submit while its click runs submits the form.
+- Tables: a view's records are one query per view settings (useViewRecords, every page up to MAX_VIEW_RECORDS); writes put the server's records into every cached view of the table (putRecords) and records.changed refetches only views that are behind. Grid and timeline draw only the rows in view: 1000 records must scroll smoothly.
+- Tables: what a view works out (columns, groups, spans, days) lives in model.ts, boards-model.ts and timeline-model.ts with unit tests; components draw and handle input.
 
 ## Tests
 - Unit tests next to the code in __tests__ (vitest unit project).

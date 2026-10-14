@@ -1,3 +1,4 @@
+import { tablesEn } from './tables.en';
 import type { MessageKey } from './zh';
 
 export const en: Record<MessageKey, string> = {
@@ -1161,4 +1162,6 @@ export const en: Record<MessageKey, string> = {
   'common.updateRequired': 'The server was updated. Refresh the page',
   'common.refresh': 'Refresh',
   'common.pageFailed': 'This page hit an error · try again',
+
+  ...tablesEn,
 };
