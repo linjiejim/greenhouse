@@ -306,7 +306,7 @@ export function createBackground(deps: {
         approvalTitle: (summary) => summary,
       });
       // A retry continues from the steps earlier attempts recorded, and never makes those calls again.
-      const steps = await recordedSteps(run.id);
+      const { steps, last } = await recordedSteps(run.id);
       const answered = finalAnswer(steps);
       if (answered !== null) {
         outcome = { status: 'succeeded', text: answered };
@@ -341,7 +341,7 @@ export function createBackground(deps: {
           timeContext: { timezone: member.timezone },
           traceId: run.id,
           onStepEnd: async (step) => {
-            const index = steps.length + step.stepNumber;
+            const index = last + step.stepNumber;
             await recordModelStep({ runId: run.id, attempt: run.attempt, index, step }).catch((error: unknown) =>
               logger.warn('[runs] could not record a step', { run: run.id, error: toErrorMessage(error) }),
             );

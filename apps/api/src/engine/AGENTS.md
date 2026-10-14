@@ -8,6 +8,7 @@ The one engine for conversations and runs. Read with the root AGENTS.md and docs
 - Ending a turn and taking the next inbox item happen in one transaction under the conversation row lock (`for('update')`). Posting a message takes the same lock before it checks for an active turn. Keep both, or a message can be left with no turn to answer it.
 - In one process, `withConversation` (locks.ts) queues writes per conversation. Across processes the row lock does it. The test transaction cannot model two connections; races between processes are tested in `*.db-commit.test.ts`.
 - Every turn holds a lease (60 s, renewed every 10 s). `sweep()` ends turns whose lease expired as `interrupted`, keeps the text they wrote, and starts queues left without a turn. It runs at boot and every 15 s.
+- A process that is shutting down starts no new turn (`takeNext`): what waits in the inbox is left for another process's sweep.
 - Stop sets `desired_state = cancel`; the process running the turn aborts at once or at its next heartbeat. Stop drops what the stopping member queued.
 
 ## Turns
@@ -45,8 +46,8 @@ The one engine for conversations and runs. Read with the root AGENTS.md and docs
 ## Needs you
 - Write and external tools never run when the model calls them: the call raises an approval card (`requests`, subject `tool_write`) holding the exact arguments, the step waits as `pending`, and the turn ends with the run `waiting`.
 - A decision is a compare-and-set from pending (requests service). The engine then runs exactly the approved arguments with the asker's rights, or skips the step, writes one event line in the transcript, closes the waiting run, and wakes the Agent through the inbox with the outcome.
-- Settling and expiring write a `request_decided` job in the same transaction; any process's decision worker carries it out (the settling process is woken after commit, every process polls, dead claims are taken over).
-- An approval runs once: its step moves pending → running by compare-and-set and only the winner executes. A step found running (its process died mid-call) becomes `uncertain` and is never run again; the Agent is told to check. A proposal is applied once: the job records `applying`, then the outcome.
+- Settling and expiring write a `request_decided` job in the same transaction; any process's decision worker carries it out (the settling process is woken after commit, every process polls, dead claims are taken over), up to 10 at once, each on its own. An approved call is told to stop after 5 minutes.
+- An approval runs once: its step moves pending → running by compare-and-set and only the winner executes. A step found running (its process died mid-call) becomes `uncertain` and is never run again; the Agent is told to check. An approved proposal is applied once: the job records `applying`, then the outcome. Answers, hand-backs, rejections and expiries change nothing but what the Agent is told, and are simply worked out again.
 - The follow-up (the event line, closing the run, the wake-up) is one transaction under the conversation lock and happens once: the line, keyed by `request_id`, records it.
 - A tool that raises its own card (ask_user, self, request_takeover, vault) implements `decide`; return a null note to leave the Agent asleep.
 - Expired cards are swept: the step is skipped, the run closes, and the Agent is not woken.

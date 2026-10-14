@@ -95,14 +95,22 @@ export async function recordModelStep(input: {
     .onConflictDoNothing();
 }
 
-/** The messages of every step a run recorded, in order: what a retry continues from. */
-export async function recordedSteps(runId: string): Promise<ModelMessage[][]> {
+/**
+ * The messages of every step a run recorded, in order: what a retry continues from. `last` is the
+ * highest step number; the next attempt numbers its steps after it (a step whose record failed
+ * leaves a gap, never a clash).
+ */
+export async function recordedSteps(runId: string): Promise<{ steps: ModelMessage[][]; last: number }> {
+  const step = sql<number>`(${runSteps.input}->>'step')::int`;
   const rows = await getDb()
-    .select({ output: runSteps.output })
+    .select({ step, output: runSteps.output })
     .from(runSteps)
     .where(and(eq(runSteps.runId, runId), eq(runSteps.kind, 'model')))
-    .orderBy(sql`(${runSteps.input}->>'step')::int`);
-  return rows.map((row) => ((row.output as { messages?: ModelMessage[] } | null)?.messages ?? []) as ModelMessage[]);
+    .orderBy(step, runSteps.attempt);
+  return {
+    steps: rows.map((row) => ((row.output as { messages?: ModelMessage[] } | null)?.messages ?? []) as ModelMessage[]),
+    last: rows.reduce((highest, row) => Math.max(highest, Number(row.step)), 0),
+  };
 }
 
 /** The answer a run already wrote, when its last recorded step was that answer (no tool calls). */

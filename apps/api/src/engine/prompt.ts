@@ -289,8 +289,9 @@ export function buildTail(input: {
 }): string {
   const blocks = ['<turn_context note="Rebuilt by the system for this turn.">', '## In this conversation'];
   for (const entry of input.roster) {
-    const role = entry.role ? `, ${sanitizeForPrompt(entry.role)}` : '';
-    blocks.push(`- ${sanitizeForPrompt(entry.name)}${role}${entry.self ? ' (you)' : ''}`);
+    // Names and roles are written by people: inside <turn_context> nothing may open or close a tag.
+    const role = entry.role ? `, ${fence(entry.role, 200)}` : '';
+    blocks.push(`- ${fence(entry.name, 120)}${role}${entry.self ? ' (you)' : ''}`);
   }
   if (input.memoryIndex) blocks.push('', input.memoryIndex);
   for (const section of input.tools) blocks.push('', section);

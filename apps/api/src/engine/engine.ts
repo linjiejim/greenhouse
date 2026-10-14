@@ -175,7 +175,10 @@ const SWEEP_MS = 15_000;
 const DECISION_LEASE_MS = 60_000;
 const DECISION_RENEW_MS = 20_000;
 const DECISION_POLL_MS = 5_000;
-const DECISION_BATCH = 10;
+/** Decisions carried out at once in one process. */
+const DECISION_CONCURRENCY = 10;
+/** An approved call that runs longer is told to stop (its tool's own deadline is usually shorter). */
+const DECISION_EXECUTE_MS = 5 * 60_000;
 const DECISION_PRUNE_EVERY_MS = 60 * 60_000;
 /** Settled decision jobs are kept a week. */
 const DECISION_KEEP_MS = 7 * 24 * 60 * 60_000;
@@ -262,8 +265,9 @@ export function createEngine(deps: EngineDeps) {
   let stopping = false;
   let sweeper: NodeJS.Timeout | null = null;
   let decisionPoll: NodeJS.Timeout | null = null;
-  let decisionPass: Promise<void> | null = null;
-  let decisionAgain = false;
+  let claiming: Promise<void> | null = null;
+  let claimAgain = false;
+  const carrying = new Set<Promise<void>>();
   let decisionsPrunedAt = 0;
 
   const toolDefs = (): readonly ToolDef[] =>
@@ -360,15 +364,17 @@ export function createEngine(deps: EngineDeps) {
             updatedAt: sql`now()`,
           })
           .where(eq(runs.id, run.id));
-        if (stopping) return null;
         return takeNext(db, run.conversationId!);
       }),
     );
   }
 
-  /** Starts the next turn from the inbox, if any. The caller holds the conversation row lock. */
+  /**
+   * Starts the next turn from the inbox, if any. The caller holds the conversation row lock. A
+   * process going away starts none: what waits is left for another one's sweep.
+   */
   async function takeNext(db: Db, conversationId: string): Promise<Run | null> {
-    if (await activeTurn(db, conversationId)) return null;
+    if (stopping || (await activeTurn(db, conversationId))) return null;
     const pending = await db
       .select()
       .from(conversationInbox)
@@ -693,13 +699,18 @@ export function createEngine(deps: EngineDeps) {
     for (const runId of removed.runIds) live.get(runId)?.abort();
   }
 
-  /** A turn started by an edit, a regenerate or a new message: tell everyone, then run it. */
+  /**
+   * A turn started by an edit, a regenerate, a new message or a wake-up: tell everyone, then run
+   * it. It is committed and leased to this process, so it runs even when telling people fails.
+   */
   async function begin(conversationId: string, run: Run | null) {
     if (!run) return;
     await publish(conversationId, {
       type: 'conversation.updated',
       data: { conversation_id: conversationId, changes: { working: true } },
-    });
+    }).catch((error: unknown) =>
+      logger.warn('[engine] could not announce a turn', { run: run.id, error: toErrorMessage(error) }),
+    );
     track(runChain(run));
   }
 
@@ -1208,14 +1219,14 @@ export function createEngine(deps: EngineDeps) {
     const payload = request.payload as { tool?: string; input?: unknown; summary?: string };
     const summary = payload.summary ?? payload.tool ?? '';
     const zh = locale === 'zh';
-    /** Moves the step on, only from the state given: the first to move it wins. */
-    const moveStep = async (from: RunStep['status'], values: Record<string, unknown>) =>
+    /** Moves the step on, only from the states given: the first to move it wins. */
+    const moveStep = async (from: RunStep['status'][], values: Record<string, unknown>) =>
       request.stepId
         ? (
             await getDb()
               .update(runSteps)
               .set({ ...values, updatedAt: sql`now()` } as never)
-              .where(and(eq(runSteps.id, request.stepId), eq(runSteps.status, from)))
+              .where(and(eq(runSteps.id, request.stepId), inArray(runSteps.status, from)))
               .returning({ id: runSteps.id })
           ).length > 0
         : false;
@@ -1224,7 +1235,7 @@ export function createEngine(deps: EngineDeps) {
       note: `The member approved "${summary}", but running it was interrupted, so it is unknown whether it took effect. Check the current state before you do it again.`,
     };
     if (request.status !== 'approved') {
-      await moveStep('pending', { status: 'skipped', finishedAt: sql`now()` });
+      await moveStep(['pending'], { status: 'skipped', finishedAt: sql`now()` });
       if (request.status === 'rejected') {
         const reason =
           typeof request.result?.reason === 'string' && request.result.reason ? `: ${request.result.reason}` : '';
@@ -1245,8 +1256,8 @@ export function createEngine(deps: EngineDeps) {
     const loaded = run ? await deps.agents.loadForTurn(run.ownerId, run.agentId).catch(() => null) : null;
     const ready = def && run && loaded && !(loaded.public && !def.publicAgent) ? { def, run, loaded } : null;
     const moved = ready
-      ? await moveStep('pending', { status: 'running', startedAt: sql`now()` })
-      : await moveStep('pending', {
+      ? await moveStep(['pending'], { status: 'running', startedAt: sql`now()` })
+      : await moveStep(['pending'], {
           status: 'failed',
           error: { code: 'tool_gone', message: 'The tool is no longer available.' },
           finishedAt: sql`now()`,
@@ -1268,7 +1279,7 @@ export function createEngine(deps: EngineDeps) {
         };
       }
       if (step?.status === 'running') {
-        await moveStep('running', { status: 'uncertain', finishedAt: sql`now()` });
+        await moveStep(['running'], { status: 'uncertain', finishedAt: sql`now()` });
         return unknown;
       }
       if (step?.status === 'uncertain') return unknown;
@@ -1292,7 +1303,7 @@ export function createEngine(deps: EngineDeps) {
       stepId: request.stepId,
       locale,
       surface: 'turn',
-      signal: new AbortController().signal,
+      signal: AbortSignal.timeout(DECISION_EXECUTE_MS),
       taint: () => undefined,
       tainted: () => false,
       raise: () => Promise.reject(new Error('An approved action cannot raise another card.')),
@@ -1302,7 +1313,8 @@ export function createEngine(deps: EngineDeps) {
     const started = Date.now();
     try {
       const output = await ready.def.execute(payload.input, context);
-      await moveStep('running', {
+      // Recorded even when a sweep took the step for abandoned meanwhile: it did run.
+      await moveStep(['running', 'uncertain'], {
         status: 'succeeded',
         output: output ?? null,
         durationMs: Date.now() - started,
@@ -1314,7 +1326,7 @@ export function createEngine(deps: EngineDeps) {
       };
     } catch (error) {
       const message = toErrorMessage(error).slice(0, 500);
-      await moveStep('running', {
+      await moveStep(['running', 'uncertain'], {
         status: 'failed',
         error: { code: 'tool_failed', message },
         durationMs: Date.now() - started,
@@ -1354,7 +1366,9 @@ export function createEngine(deps: EngineDeps) {
   /**
    * What a decision does, from its job: runs an approved write or lets the tool apply the
    * decision, then follows it up. The job records how far it got, so the claim that takes it over
-   * after a crash never applies a decision twice: a write by its step, anything else by the job.
+   * after a crash never applies a decision twice: a write by its step, an approved proposal by the
+   * job. Answers, hand-backs, rejections and expiries change nothing but what the Agent is told,
+   * so they are simply worked out again.
    */
   async function resolve(request: NeedsYouRequest, job: JobRow): Promise<void> {
     const [run] = request.runId ? await getDb().select().from(runs).where(eq(runs.id, request.runId)) : [];
@@ -1377,7 +1391,10 @@ export function createEngine(deps: EngineDeps) {
         note: `Carrying out the member's decision on "${title}" was interrupted, so it is unknown whether it took effect. Check before you rely on it.`,
       };
     } else {
-      if (!(await recordJobProgress(job, instance, { applying: true }))) throw new Error(LEASE_LOST);
+      // An approval applies something (starts a run, saves a skill, signs in): it happens once.
+      if (request.status === 'approved' && !(await recordJobProgress(job, instance, { applying: true }))) {
+        throw new Error(LEASE_LOST);
+      }
       outcome = await decideOwnCard(request, agentId, locale);
     }
     if (!progress.outcome && !(await recordJobProgress(job, instance, { outcome }))) throw new Error(LEASE_LOST);
@@ -1448,12 +1465,17 @@ export function createEngine(deps: EngineDeps) {
       }),
     );
     if (!done) return;
-    await publish(conversationId, { type: 'message.created', data: { message: toMessage(done.line) } });
-    if (done.closed && run) {
-      await publish(conversationId, {
-        type: 'run.updated',
-        data: { run_id: run.id, status: 'succeeded', conversation_id: conversationId },
-      });
+    // Committed: the turn it woke starts whatever happens to the announcements.
+    try {
+      await publish(conversationId, { type: 'message.created', data: { message: toMessage(done.line) } });
+      if (done.closed && run) {
+        await publish(conversationId, {
+          type: 'run.updated',
+          data: { run_id: run.id, status: 'succeeded', conversation_id: conversationId },
+        });
+      }
+    } catch (error) {
+      logger.warn('[engine] could not announce a decision', { request: request.id, error: toErrorMessage(error) });
     }
     await begin(conversationId, done.next);
   }
@@ -1482,13 +1504,28 @@ export function createEngine(deps: EngineDeps) {
       logger.warn('[engine] gave up on a decision', { job: job.id });
   }
 
-  /** One pass: claims of dead processes back in the queue, then every ready decision. */
-  async function decisionsOnce(): Promise<void> {
+  /**
+   * Claims ready decisions while fewer than DECISION_CONCURRENCY run here, and starts each on its
+   * own: one slow approved write never holds up the others. Claims of dead processes go back to
+   * the queue first.
+   */
+  async function claimDecisions(): Promise<void> {
     await releaseExpiredClaims([DECISION_JOB]);
-    for (;;) {
-      const claimed = await claimJobs([DECISION_JOB], instance, { limit: DECISION_BATCH, leaseMs: DECISION_LEASE_MS });
-      await Promise.all(claimed.map(carryOut));
-      if (claimed.length < DECISION_BATCH || stopping) break;
+    while (!stopping && carrying.size < DECISION_CONCURRENCY) {
+      const claimed = await claimJobs([DECISION_JOB], instance, {
+        limit: DECISION_CONCURRENCY - carrying.size,
+        leaseMs: DECISION_LEASE_MS,
+      });
+      if (!claimed.length) break;
+      for (const job of claimed) {
+        const work: Promise<void> = carryOut(job).finally(() => {
+          carrying.delete(work);
+          // A slot is free: take what waited for one.
+          wakeDecisions();
+        });
+        carrying.add(work);
+        track(work);
+      }
     }
     if (Date.now() - decisionsPrunedAt > DECISION_PRUNE_EVERY_MS) {
       decisionsPrunedAt = Date.now();
@@ -1496,22 +1533,22 @@ export function createEngine(deps: EngineDeps) {
     }
   }
 
-  /** Takes the decisions that are ready now; a wake during a pass runs one more pass after it. */
+  /** Takes the decisions that are ready now; a wake while claiming claims once more after it. */
   function wakeDecisions(): void {
     if (stopping) return;
-    if (decisionPass) {
-      decisionAgain = true;
+    if (claiming) {
+      claimAgain = true;
       return;
     }
-    decisionAgain = false;
-    decisionPass = decisionsOnce()
-      .catch((error: unknown) => logger.warn('[engine] a decision pass failed', { error: toErrorMessage(error) }))
+    claimAgain = false;
+    claiming = claimDecisions()
+      .catch((error: unknown) => logger.warn('[engine] claiming decisions failed', { error: toErrorMessage(error) }))
       .finally(() => {
-        decisionPass = null;
-        // Its decision may have committed after this pass looked.
-        if (decisionAgain) wakeDecisions();
+        claiming = null;
+        // Its decision may have committed after this claim looked.
+        if (claimAgain) wakeDecisions();
       });
-    track(decisionPass);
+    track(claiming);
   }
 
   const background = createBackground({
