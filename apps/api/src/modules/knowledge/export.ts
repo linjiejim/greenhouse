@@ -4,14 +4,22 @@
  * and files the docs show under `assets/`. Links between exported docs and to exported files
  * become relative paths, so the archive reads offline. Nothing is skipped silently: what was
  * left out is listed in EXPORT-NOTES.md.
+ *
+ * Memory stays bounded: the plan holds only names and paths; docs' Markdown is read a batch at a
+ * time while the archive is written, and every list has a cap.
  */
 
 import { Zip, ZipDeflate, ZipPassThrough } from 'fflate';
 import { replaceDocLinks, type FileLinks } from './markdown.js';
 
 export const MAX_EXPORT_DOCS = 5_000;
+export const MAX_EXPORT_FOLDERS = 5_000;
+/** Files of the tree packed at most; the files the docs show have the same cap. */
+export const MAX_EXPORT_FILES = 5_000;
 /** Files and pictures together; past this they are listed instead of packed. */
 export const MAX_EXPORT_FILE_BYTES = 1024 * 1024 * 1024;
+/** Docs whose Markdown is read at once. */
+export const EXPORT_BATCH = 100;
 /** Directory nesting kept in paths; deeper folders are flattened into the last level. */
 const MAX_DEPTH = 32;
 
@@ -20,11 +28,11 @@ export interface ExportFolder {
   parentId: string | null;
   name: string;
 }
+/** A doc as the plan sees it: its Markdown is read later, when it is written. */
 export interface ExportDoc {
   id: string;
   folderId: string | null;
   title: string;
-  content: string;
   version: number;
   updatedAt: string;
 }
@@ -39,11 +47,14 @@ export interface ExportInput {
   /** The folder being exported (its contents become the archive root); null for a whole space. */
   rootId: string | null;
   folders: ExportFolder[];
+  /** Up to one more than MAX_EXPORT_DOCS: the rest is noted as left out. */
   docs: ExportDoc[];
   /** Files in the tree. */
   files: ExportFile[];
   /** Other files the docs show that the reader may open (pictures pasted into docs). */
   assets: ExportFile[];
+  /** There were more folders, files or shown files than an export packs. */
+  more?: { folders?: boolean; files?: boolean; assets?: boolean };
   locale: 'zh' | 'en';
   label: string;
   exportedAt: string;
@@ -52,6 +63,17 @@ export interface ExportInput {
 }
 
 export type ExportEntry = { path: string; text: string } | { path: string; fileId: string; sizeBytes: number };
+
+export interface ExportPlan {
+  /** The README, then the files and pictures to pack. */
+  entries: ExportEntry[];
+  /** Each doc and where it goes, in order; its Markdown comes from `render` once read. */
+  docs: Array<{ doc: ExportDoc; path: string }>;
+  /** What was left out; `render` adds to it. */
+  notes: string[];
+  /** A doc's file in the archive: front matter, then its Markdown with links made relative. */
+  render(doc: ExportDoc, path: string, content: string): string;
+}
 
 /**
  * One path segment that every system accepts: no separators or control characters, no trailing
@@ -93,6 +115,9 @@ const COPY = {
     notesTitle: '# 导出说明',
     notesIntro: '以下内容没有完整打包：',
     tooManyDocs: (limit: number) => `文档超过 ${limit} 篇，其余没有导出。`,
+    tooManyFolders: (limit: number) => `文件夹超过 ${limit} 个，其余文件夹和其中的内容没有导出。`,
+    tooManyFiles: (limit: number) => `文件超过 ${limit} 个，其余没有打包。`,
+    tooManyAssets: (limit: number) => `文档里引用的文件超过 ${limit} 个，其余保留了原链接。`,
     tooBig: (name: string) => `文件总量超过上限，没有打包：${name}`,
     missing: (name: string) => `存储里找不到这个文件：${name}`,
     unreadable: (doc: string) => `《${doc}》引用的文件你无法打开，保留了原链接。`,
@@ -107,6 +132,9 @@ const COPY = {
     notesTitle: '# Export notes',
     notesIntro: 'These were not packed in full:',
     tooManyDocs: (limit: number) => `More than ${limit} docs: the rest were left out.`,
+    tooManyFolders: (limit: number) => `More than ${limit} folders: the rest, and what is in them, were left out.`,
+    tooManyFiles: (limit: number) => `More than ${limit} files: the rest were not packed.`,
+    tooManyAssets: (limit: number) => `The docs show more than ${limit} files: the rest kept their links.`,
     tooBig: (name: string) => `Over the size limit, not packed: ${name}`,
     missing: (name: string) => `Not found in storage: ${name}`,
     unreadable: (doc: string) => `"${doc}" shows a file you cannot open; its link was kept.`,
@@ -117,10 +145,13 @@ export function exportCopy(locale: 'zh' | 'en') {
   return COPY[locale];
 }
 
-/** Where everything goes in the archive, and the Markdown of each doc with its links rewritten. */
-export function planExport(input: ExportInput): { entries: ExportEntry[]; notes: string[] } {
+/** Where everything goes in the archive, and how a doc's Markdown is rewritten once read. */
+export function planExport(input: ExportInput): ExportPlan {
   const copy = COPY[input.locale];
   const notes: string[] = [];
+  if (input.more?.folders) notes.push(copy.tooManyFolders(MAX_EXPORT_FOLDERS));
+  if (input.more?.files) notes.push(copy.tooManyFiles(MAX_EXPORT_FILES));
+  if (input.more?.assets) notes.push(copy.tooManyAssets(MAX_EXPORT_FILES));
   const byId = new Map(input.folders.map((folder) => [folder.id, folder]));
   /** Names taken in each directory (case-insensitive: some systems are). */
   const taken = new Map<string, Set<string>>();
@@ -181,12 +212,11 @@ export function planExport(input: ExportInput): { entries: ExportEntry[]; notes:
   for (const file of input.files) pack(file, dirOf(file.folderId));
   for (const file of input.assets) if (!filePaths.has(file.id)) pack(file, 'assets');
 
-  for (const doc of docs) {
-    const path = docPaths.get(doc.id)!;
+  function render(doc: ExportDoc, path: string, content: string): string {
     const dir = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '';
-    const missing = input.links.ids(doc.content).some((id) => !filePaths.has(id));
+    const missing = input.links.ids(content).some((id) => !filePaths.has(id));
     if (missing) notes.push(copy.unreadable(doc.title));
-    let body = input.links.replace(doc.content, (id) => {
+    let body = input.links.replace(content, (id) => {
       const target = filePaths.get(id);
       return target ? relativePath(dir, target) : null;
     });
@@ -203,7 +233,7 @@ export function planExport(input: ExportInput): { entries: ExportEntry[]; notes:
       '---',
       '',
     ].join('\n');
-    entries.push({ path, text: `${front}${body.endsWith('\n') || !body ? body : `${body}\n`}` });
+    return `${front}${body.endsWith('\n') || !body ? body : `${body}\n`}`;
   }
 
   const readme = [
@@ -217,7 +247,14 @@ export function planExport(input: ExportInput): { entries: ExportEntry[]; notes:
     '',
   ].join('\n');
   entries.unshift({ path: 'README.md', text: readme });
-  return { entries, notes };
+  return { entries, docs: docs.map((doc) => ({ doc, path: docPaths.get(doc.id)! })), notes, render };
+}
+
+/** Lists cut into runs of `size`, for reading a batch at a time. */
+export function inBatches<T>(items: readonly T[], size = EXPORT_BATCH): T[][] {
+  const batches: T[][] = [];
+  for (let start = 0; start < items.length; start += size) batches.push(items.slice(start, start + size));
+  return batches;
 }
 
 /** The notes file, when anything was left out. */

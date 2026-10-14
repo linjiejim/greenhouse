@@ -86,7 +86,18 @@ import {
   type Role,
 } from './access.js';
 import { diffText } from './diff.js';
-import { exportCopy, notesEntry, planExport, safeSegment, zipStream, type ExportFile } from './export.js';
+import {
+  exportCopy,
+  inBatches,
+  MAX_EXPORT_DOCS,
+  MAX_EXPORT_FILES,
+  MAX_EXPORT_FOLDERS,
+  notesEntry,
+  planExport,
+  safeSegment,
+  zipStream,
+  type ExportFile,
+} from './export.js';
 import { docLinkIds, docSnippet, fileLinks, markdownText, mentionIds, snippetFor } from './markdown.js';
 import { createPresence } from './presence.js';
 import {
@@ -1778,15 +1789,23 @@ export function createKnowledgeService(deps: {
       let label: string;
       let rootId: string | null;
       let folderRows: FolderRow[];
+      let moreFolders: boolean;
       if ('folderId' in root) {
         const { folder } = await folderAt(reader, root.folderId);
+        // The walk goes level by level, so the cap keeps the folders nearest the top.
         const inside = await subtree([folder.id]);
+        moreFolders = inside.length > MAX_EXPORT_FOLDERS;
         label = folder.name;
         rootId = folder.id;
         folderRows = await getDb()
           .select()
           .from(folders)
-          .where(and(inList(folders.id, inside), folder.archivedAt ? undefined : isNull(folders.archivedAt)));
+          .where(
+            and(
+              inList(folders.id, [folder.id, ...inside.filter((id) => id !== folder.id)].slice(0, MAX_EXPORT_FOLDERS)),
+              folder.archivedAt ? undefined : isNull(folders.archivedAt),
+            ),
+          );
       } else {
         label =
           root.space === 'team'
@@ -1806,7 +1825,11 @@ export function createKnowledgeService(deps: {
               root.space === 'personal' ? eq(folders.ownerId, memberId) : isNull(folders.ownerId),
               isNull(folders.archivedAt),
             ),
-          );
+          )
+          .orderBy(asc(folders.id))
+          .limit(MAX_EXPORT_FOLDERS + 1);
+        moreFolders = folderRows.length > MAX_EXPORT_FOLDERS;
+        folderRows = folderRows.slice(0, MAX_EXPORT_FOLDERS);
       }
       const folderIds = folderRows.map((row) => row.id);
       const inSpace = (table: typeof docs | typeof files) =>
@@ -1818,13 +1841,13 @@ export function createKnowledgeService(deps: {
             )
           : undefined;
       const archivedToo = 'folderId' in root && folderRows.some((row) => row.id === rootId && row.archivedAt);
+      // Names and sizes only, capped: a doc's Markdown is read while the archive is written.
       const [docRows, fileRows] = await Promise.all([
         getDb()
           .select({
             id: docs.id,
             folderId: docs.folderId,
             title: docs.title,
-            content: docs.content,
             version: docs.version,
             updatedAt: docs.updatedAt,
           })
@@ -1832,7 +1855,8 @@ export function createKnowledgeService(deps: {
           .where(
             and(or(inList(docs.folderId, folderIds), inSpace(docs)), archivedToo ? undefined : isNull(docs.archivedAt)),
           )
-          .orderBy(asc(docs.id)),
+          .orderBy(asc(docs.id))
+          .limit(MAX_EXPORT_DOCS + 1),
         getDb()
           .select({ id: files.id, folderId: files.folderId, name: files.name, sizeBytes: files.sizeBytes })
           .from(files)
@@ -1843,29 +1867,44 @@ export function createKnowledgeService(deps: {
               archivedToo ? undefined : isNull(files.archivedAt),
             ),
           )
-          .orderBy(asc(files.id)),
+          .orderBy(asc(files.id))
+          .limit(MAX_EXPORT_FILES + 1),
       ]);
-      // Pictures and files the docs show, when the member may open them.
-      const inTree = new Set(fileRows.map((row) => row.id));
-      const shown = [...new Set(docRows.flatMap((doc) => links.ids(doc.content)))].filter((id) => !inTree.has(id));
-      const assets: ExportFile[] = [];
-      for (const id of shown) {
-        const row = await deps.files.get(memberId, id).catch(() => null);
-        if (row) assets.push({ id: row.id, folderId: null, name: row.name, sizeBytes: row.sizeBytes });
-      }
       const exportedAt = new Date().toISOString();
-      const plan = planExport({
-        rootId,
-        folders: folderRows.map((row) => ({ id: row.id, parentId: row.parentId, name: row.name })),
-        docs: docRows,
-        files: fileRows,
-        assets,
-        locale: reader.locale,
-        label,
-        exportedAt,
-        links,
-      });
+      const contentsOf = (ids: string[]) =>
+        getDb()
+          .select({ id: docs.id, content: docs.content })
+          .from(docs)
+          .where(inList(docs.id, ids))
+          .then((rows) => new Map(rows.map((row) => [row.id, row.content])));
       const body = zipStream(async (zip) => {
+        const exported = docRows.slice(0, MAX_EXPORT_DOCS);
+        const treeFiles = fileRows.slice(0, MAX_EXPORT_FILES);
+        // Pictures and files the docs show, found a batch of docs at a time.
+        const inTree = new Set(treeFiles.map((row) => row.id));
+        const shown = new Set<string>();
+        let moreShown = false;
+        for (const batch of inBatches(exported.map((doc) => doc.id))) {
+          for (const content of (await contentsOf(batch)).values()) {
+            for (const id of links.ids(content)) {
+              if (inTree.has(id) || shown.has(id)) continue;
+              if (shown.size < MAX_EXPORT_FILES) shown.add(id);
+              else moreShown = true;
+            }
+          }
+        }
+        const plan = planExport({
+          rootId,
+          folders: folderRows.map((row) => ({ id: row.id, parentId: row.parentId, name: row.name })),
+          docs: docRows,
+          files: treeFiles,
+          assets: await exportAssets(memberId, [...shown], new Set(exported.map((doc) => doc.id))),
+          more: { folders: moreFolders, files: fileRows.length > MAX_EXPORT_FILES, assets: moreShown },
+          locale: reader.locale,
+          label,
+          exportedAt,
+          links,
+        });
         for (const entry of plan.entries) {
           if ('text' in entry) {
             await zip.text(entry.path, entry.text);
@@ -1874,6 +1913,10 @@ export function createKnowledgeService(deps: {
           const content = await deps.files.content(memberId, entry.fileId).catch(() => null);
           if (!content) plan.notes.push(copy.missing(entry.path));
           else await zip.stream(entry.path, content.body);
+        }
+        for (const batch of inBatches(plan.docs)) {
+          const contents = await contentsOf(batch.map((entry) => entry.doc.id));
+          for (const { doc, path } of batch) await zip.text(path, plan.render(doc, path, contents.get(doc.id) ?? ''));
         }
         const notes = notesEntry(reader.locale, plan.notes);
         if (notes && 'text' in notes) await zip.text(notes.path, notes.text);
@@ -2106,6 +2149,34 @@ export function createKnowledgeService(deps: {
       return agentOfChain(await chainOf(folderId)) === agentId;
     },
   };
+
+  /**
+   * Of the files exported docs show, the ones the member may open, looked up in batches: a
+   * picture of an exported doc follows the doc; anything else is checked as the member.
+   */
+  async function exportAssets(memberId: string, ids: string[], exportedDocs: ReadonlySet<string>) {
+    const assets: ExportFile[] = [];
+    for (const batch of inBatches(ids, 500)) {
+      const rows = await getDb()
+        .select()
+        .from(files)
+        .where(and(inList(files.id, batch), eq(files.status, 'active')));
+      const byId = new Map(rows.map((row) => [row.id, row]));
+      for (const id of batch) {
+        const row = byId.get(id);
+        if (!row) continue;
+        const docId = row.purpose === 'knowledge' ? row.meta.doc_id : undefined;
+        const readable =
+          (typeof docId === 'string' && exportedDocs.has(docId)) ||
+          (await deps.files.get(memberId, row.id).then(
+            () => true,
+            () => false,
+          ));
+        if (readable) assets.push({ id: row.id, folderId: null, name: row.name, sizeBytes: row.sizeBytes });
+      }
+    }
+    return assets;
+  }
 
   /** Comments as the reader sees them: with names, and file links signed for them. */
   async function commentViews(memberId: string, rows: CommentRow[]) {

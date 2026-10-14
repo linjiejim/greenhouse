@@ -1,6 +1,15 @@
 import { strFromU8, unzipSync } from 'fflate';
 import { describe, expect, it } from 'vitest';
-import { notesEntry, planExport, relativePath, safeSegment, zipStream, type ExportInput } from '../export.js';
+import {
+  MAX_EXPORT_DOCS,
+  notesEntry,
+  planExport,
+  relativePath,
+  safeSegment,
+  zipStream,
+  type ExportInput,
+  type ExportPlan,
+} from '../export.js';
 import { fileLinks } from '../markdown.js';
 
 const DOC_A = 'doc_01JAAAAAAAAAAAAAAAAAAAAAAA';
@@ -19,23 +28,9 @@ function input(overrides: Partial<ExportInput> = {}): ExportInput {
       { id: 'fld_deep', parentId: 'fld_hr', name: 'Leave' },
     ],
     docs: [
-      {
-        id: DOC_A,
-        folderId: 'fld_root',
-        title: 'Welcome',
-        content: `Start with [Leave](#/knowledge/${DOC_B}) and [elsewhere](#/knowledge/${DOC_C}).\n\n![chart](/api/files/${PIC}/content)\n`,
-        version: 3,
-        updatedAt: '2026-10-14T00:00:00Z',
-      },
-      {
-        id: DOC_B,
-        folderId: 'fld_deep',
-        title: 'Leave policy',
-        content: `Back to [Welcome](#/knowledge/${DOC_A}); the form is [here](/api/files/${PDF}/content); missing ![x](/api/files/${GONE}/content)`,
-        version: 1,
-        updatedAt: '2026-10-14T00:00:00Z',
-      },
-      { id: 'doc_dup', folderId: 'fld_deep', title: 'Leave policy', content: '', version: 1, updatedAt: 'x' },
+      { id: DOC_A, folderId: 'fld_root', title: 'Welcome', version: 3, updatedAt: '2026-10-14T00:00:00Z' },
+      { id: DOC_B, folderId: 'fld_deep', title: 'Leave policy', version: 1, updatedAt: '2026-10-14T00:00:00Z' },
+      { id: 'doc_dup', folderId: 'fld_deep', title: 'Leave policy', version: 1, updatedAt: 'x' },
     ],
     files: [{ id: PDF, folderId: 'fld_hr', name: 'form.pdf', sizeBytes: 10 }],
     assets: [{ id: PIC, folderId: null, name: 'chart.png', sizeBytes: 5 }],
@@ -47,10 +42,24 @@ function input(overrides: Partial<ExportInput> = {}): ExportInput {
   };
 }
 
+/** The docs' Markdown, read only when they are written. */
+const CONTENTS: Record<string, string> = {
+  [DOC_A]: `Start with [Leave](#/knowledge/${DOC_B}) and [elsewhere](#/knowledge/${DOC_C}).\n\n![chart](/api/files/${PIC}/content)\n`,
+  [DOC_B]: `Back to [Welcome](#/knowledge/${DOC_A}); the form is [here](/api/files/${PDF}/content); missing ![x](/api/files/${GONE}/content)`,
+};
+
+/** Every path the archive gets, and the text of each doc, as the writer produces them. */
+function written(plan: ExportPlan) {
+  const texts = new Map(plan.docs.map(({ doc, path }) => [path, plan.render(doc, path, CONTENTS[doc.id] ?? '')]));
+  return {
+    paths: [...plan.entries.map((entry) => entry.path), ...texts.keys()],
+    text: (path: string) => texts.get(path)!,
+  };
+}
+
 describe('the export layout', () => {
   it('mirrors the tree under the exported folder, with safe and unique names', () => {
-    const { entries } = planExport(input());
-    expect(entries.map((entry) => entry.path)).toEqual([
+    expect(written(planExport(input())).paths).toEqual([
       'README.md',
       '人事 - HR/form.pdf',
       'assets/chart.png',
@@ -61,8 +70,9 @@ describe('the export layout', () => {
   });
 
   it('rewrites links to exported docs and files as relative paths, and keeps the rest', () => {
-    const { entries, notes } = planExport(input());
-    const text = (path: string) => (entries.find((entry) => entry.path === path) as { text: string }).text;
+    const plan = planExport(input());
+    const { text } = written(plan);
+    const { notes } = plan;
     const welcome = text('Welcome.md');
     expect(welcome).toMatch(/^---\ntitle: "Welcome"\nid: doc_01JA+\nversion: 3\n/);
     expect(welcome).toContain('[Leave](<人事 - HR/Leave/Leave policy.md>)');
@@ -76,7 +86,7 @@ describe('the export layout', () => {
   });
 
   it('packs a whole space from its root and lists what was too big', () => {
-    const { entries, notes } = planExport(
+    const plan = planExport(
       input({
         rootId: null,
         files: [{ id: PDF, folderId: null, name: 'huge.bin', sizeBytes: 2 * 1024 ** 3 }],
@@ -84,11 +94,32 @@ describe('the export layout', () => {
         locale: 'zh',
       }),
     );
-    expect(entries.map((entry) => entry.path)).toContain('Handbook/Welcome.md');
-    expect(entries.some((entry) => entry.path.endsWith('huge.bin'))).toBe(false);
+    const { paths } = written(plan);
+    const { notes } = plan;
+    expect(paths).toContain('Handbook/Welcome.md');
+    expect(paths.some((path) => path.endsWith('huge.bin'))).toBe(false);
     expect(notes).toContain('文件总量超过上限，没有打包：huge.bin');
     expect(notesEntry('zh', notes)?.path).toBe('EXPORT-NOTES.md');
     expect(notesEntry('zh', [])).toBeNull();
+  });
+
+  it('plans names and paths only, and says what the caps left out', () => {
+    const many = Array.from({ length: MAX_EXPORT_DOCS + 1 }, (_, index) => ({
+      id: `doc_${String(index).padStart(26, '0')}`,
+      folderId: null,
+      title: `Doc ${index}`,
+      version: 1,
+      updatedAt: 'x',
+    }));
+    const plan = planExport(input({ docs: many, more: { folders: true, files: true, assets: true } }));
+    expect(plan.docs).toHaveLength(MAX_EXPORT_DOCS);
+    expect(plan.entries.every((entry) => !('text' in entry) || entry.path === 'README.md')).toBe(true);
+    expect(plan.notes).toEqual([
+      'More than 5000 folders: the rest, and what is in them, were left out.',
+      'More than 5000 files: the rest were not packed.',
+      'The docs show more than 5000 files: the rest kept their links.',
+      'More than 5000 docs: the rest were left out.',
+    ]);
   });
 
   it('makes names every system accepts and paths between directories', () => {

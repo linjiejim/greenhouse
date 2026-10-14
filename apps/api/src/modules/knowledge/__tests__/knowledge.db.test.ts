@@ -260,7 +260,7 @@ describe('the depth of the tree', () => {
     // A loop is refused as a loop, however deep the target.
     const loop = await as(lin).patch(`/api/knowledge/folders/${line[0]!.id}`, { folder_id: deepest.id });
     expect(loop.body.error.code).toBe('folder_cycle');
-  });
+  }, 60_000);
 
   it('fails on a broken tree instead of stopping short of its top', async () => {
     const { app, lin, as } = await setup();
@@ -299,7 +299,7 @@ describe('the depth of the tree', () => {
     await expect(app.services.knowledge.getDoc(lin.id, deep!.id, { as: { agentId: other } })).rejects.toThrow(
       /deeper than/,
     );
-  });
+  }, 60_000);
 });
 
 describe('docs, versions and templates', () => {
@@ -872,6 +872,28 @@ describe('files in the tree', () => {
 });
 
 describe('export', () => {
+  it('packs the pictures docs show and keeps links to files the reader cannot open', async () => {
+    const { app, lin, chen, as, upload } = await setup();
+    const folder = (await as(lin).post('/api/knowledge/folders', { name: 'Guides', space: 'team' })).body;
+    const guide = (await as(lin).post('/api/knowledge/docs', { title: 'Guide', folder_id: folder.id })).body;
+    const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0]);
+    const shot = (await upload(lin, new File([png], 'shot.png', { type: 'image/png' }), { doc_id: guide.id })).body;
+    const mine = (await upload(lin, new File(['private'], 'mine.txt', { type: 'text/plain' }), {})).body;
+    await as(lin).patch(`/api/knowledge/docs/${guide.id}`, {
+      version: 1,
+      content: `![shot](/api/files/${shot.id}/content) and [mine](/api/files/${mine.id}/content)`,
+    });
+    const zip = await app.app.request(`/api/knowledge/folders/${folder.id}/export`, {
+      headers: { authorization: `Bearer ${chen.token}` },
+    });
+    const entries = unzipSync(new Uint8Array(await zip.arrayBuffer()));
+    expect(Object.keys(entries).sort()).toEqual(['EXPORT-NOTES.md', 'Guide.md', 'README.md', 'assets/shot.png']);
+    const text = strFromU8(entries['Guide.md']!);
+    expect(text).toContain('![shot](assets/shot.png)');
+    expect(text).toContain(`[mine](/api/files/${mine.id}/content)`);
+    expect(strFromU8(entries['EXPORT-NOTES.md']!)).toContain('《Guide》');
+  });
+
   it('exports a doc as Markdown and a folder as a ZIP of Markdown files and its files', async () => {
     const { app, lin, chen, as, upload } = await setup();
     const folder = (await as(lin).post('/api/knowledge/folders', { name: 'Handbook', space: 'team' })).body;

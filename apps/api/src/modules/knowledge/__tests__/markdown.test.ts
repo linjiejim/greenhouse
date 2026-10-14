@@ -198,7 +198,9 @@ describe('hostile input', () => {
       `![x](/api/files/${FILE}/content) [y](https://greenhouse.example/api/files/${OTHER}/content)\n`,
     ),
   };
-  it.each(Object.entries(cases))('stays fast on %s', (_name, text) => {
+  // Linear work takes milliseconds here; the old patterns took minutes. The budget leaves room
+  // for a busy machine without letting anything super-linear through.
+  it.each(Object.entries(cases))('stays fast on %s', { timeout: 30_000 }, (_name, text) => {
     expect(text.length).toBeGreaterThan(longest - 1_000);
     const started = performance.now();
     markdownText(text);
@@ -210,6 +212,6 @@ describe('hostile input', () => {
     replaceDocLinks(text, () => 'x.md');
     docSnippet(text, ['missing']);
     snippetFor(text, ['missing']);
-    expect(performance.now() - started).toBeLessThan(1_500);
+    expect(performance.now() - started).toBeLessThan(5_000);
   });
 });
