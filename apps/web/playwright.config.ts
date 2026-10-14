@@ -59,6 +59,9 @@ export default defineConfig({
         viewport: { width: 1440, height: 900 },
         // Signed in as Lin unless a test says otherwise (e2e/auth.setup.ts).
         storageState: 'e2e/.auth/lin.json',
+        // A microphone that is always allowed and plays a tone, for the voice tests.
+        launchOptions: { args: ['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream'] },
+        permissions: ['microphone'],
       },
     },
   ],

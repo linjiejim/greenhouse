@@ -101,6 +101,9 @@ same script doubles as an end-to-end smoke tour (see [Development](#development)
   with tool-call traces, attachments of any file type (the agent reads text / CSV / JSON / xlsx /
   docx / PDF), per-turn model switching from a config catalog, a side pane for artifacts and
   records, session forking, background runs, sharing / grouping / tagging, and a global ⌘P search.
+  Voice input fills the composer (your speech-to-text service, else the browser's own
+  recognition) and replies can be read aloud (text-to-speech, else the browser's voice); audio
+  attachments are transcribed for the agent.
 - **Knowledge Base** — team, personal and shared docs and files in one folder tree, a Tiptap editor
   (`/` blocks, `[[` doc links, @-mentions, pasted pictures, tables) over Markdown-first storage,
   who-is-viewing and who-is-editing, saves that never overwrite someone else's, version history

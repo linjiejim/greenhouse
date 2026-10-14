@@ -46,6 +46,8 @@ import { vaultRoutes } from './modules/vault/routes.js';
 import { createVaultService, type VaultService } from './modules/vault/service.js';
 import { conversationRoutes } from './modules/conversations/routes.js';
 import { fileContentRoutes, fileRoutes } from './modules/files/routes.js';
+import { voiceRoutes } from './modules/voice/routes.js';
+import { createVoiceService, type VoiceService } from './modules/voice/service.js';
 import { createFilesService, type FilesService } from './modules/files/service.js';
 import { knowledgeRoutes } from './modules/knowledge/routes.js';
 import { createKnowledgeService, type KnowledgeService } from './modules/knowledge/service.js';
@@ -95,6 +97,7 @@ export interface Services {
   vault: VaultService;
   conversations: ConversationsService;
   files: FilesService;
+  voice: VoiceService;
   knowledge: KnowledgeService;
   tables: TablesService;
   notifications: NotificationsService;
@@ -127,6 +130,7 @@ export function createServices(config: AppConfig, options: ServiceOptions = {}):
   const auth = createAuthService({ tokens, publicUrl: config.PUBLIC_URL });
   const providers = createProvidersService({ config, fetch: options.fetch });
   const files = createFilesService({ providers, sign: (data) => tokens.hashSecret(data, 'file') });
+  const voice = createVoiceService({ providers, files });
   // Equipping a skill checks it can run for the Agent (the skills service is made below).
   const agents = createAgentsService({
     providers,
@@ -173,7 +177,7 @@ export function createServices(config: AppConfig, options: ServiceOptions = {}):
       askUserTool(),
       selfTool(agents),
       conversationTool(),
-      readAttachmentTool(files),
+      readAttachmentTool(files, voice),
       computerTool(computers),
       requestTakeoverTool(),
       browserTool(browser),
@@ -205,6 +209,7 @@ export function createServices(config: AppConfig, options: ServiceOptions = {}):
     vault,
     conversations,
     files,
+    voice,
     knowledge,
     tables,
     notifications,
@@ -285,6 +290,7 @@ export function createApp(services: Services, options: { webDir?: string } = {})
   signedIn.route('/requests', requestRoutes(services.requests, services.engine));
   signedIn.route('/runs', runRoutes(services.runs));
   signedIn.route('/files', fileRoutes(services.files, services.conversations));
+  signedIn.route('/voice', voiceRoutes(services.voice));
   signedIn.route('/schedules', scheduleRoutes(services.schedules));
   signedIn.route('/notifications', notificationRoutes(services.notifications));
   signedIn.route('/search', searchRoutes(services.search));

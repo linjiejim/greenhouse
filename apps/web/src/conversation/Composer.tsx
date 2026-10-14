@@ -4,26 +4,33 @@
  * pills; sending waits for them. `@` names someone in a room, or picks the Agent of a new chat.
  * Send and stop share one place: while an Agent answers, an empty composer offers stop and a
  * filled one sends into the queue. `/` at the start picks a skill (CONV-11); its fields, if it has
- * any, show above the text and the first one takes the focus.
+ * any, show above the text and the first one takes the focus. The microphone (CONV-12) records
+ * while the composer shows the levels and a timer; the words land where the caret was, never sent
+ * by themselves.
  */
 
 import {
   useEffect,
   useId,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
   type ClipboardEvent,
+  type CSSProperties,
   type DragEvent,
   type KeyboardEvent,
 } from 'react';
-import { ArrowUp, AtSign, FileText, Paperclip, Square, Wand2, X } from 'lucide-react';
-import { Field, IconButton, Input, Select, Spinner } from '@greenhouse/ui/kit';
+import { ArrowUp, AtSign, FileText, Mic, Paperclip, Square, Wand2, X } from 'lucide-react';
+import { Button, Field, IconButton, Input, Select, Spinner } from '@greenhouse/ui/kit';
 import { icon } from '@greenhouse/ui/tokens';
 import type { FileView, Skill } from '@greenhouse/contract';
+import { useSession } from '../app/session';
 import { api } from '../lib/api';
 import { cx } from '../lib/cx';
-import { useT } from '../lib/i18n';
+import { errorText } from '../lib/errors';
+import { useI18n } from '../lib/i18n';
+import { useVoiceInput, voiceMode, type VoiceFailure } from './voiceInput';
 
 export interface Candidate {
   /** What goes into `mentions`: `main`, `agent:<id>` or a member id. */
@@ -58,6 +65,12 @@ function mentionAt(value: string, caret: number): { start: number; query: string
   const match = /(^|\s)@([^\s@]{0,30})$/.exec(before);
   return match ? { start: caret - match[2]!.length - 1, query: match[2]! } : null;
 }
+
+/** A space between spoken words and the text around them only where both sides are Latin words. */
+const spaced = (before: string, after: string) => /[A-Za-z0-9]$/.test(before) && /^[A-Za-z0-9]/.test(after);
+
+/** 0:07, 1:23: the time spent listening. */
+const clock = (seconds: number) => `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
 
 /** The `/word` being typed at the very start of the message, if any. */
 function slashAt(value: string, caret: number): string | null {
@@ -115,7 +128,8 @@ export function Composer({
   onSend: (input: ComposerSend) => Promise<unknown>;
   onStop: () => void;
 }) {
-  const t = useT();
+  const { t, locale } = useI18n();
+  const { me } = useSession();
   const [value, setValue] = useState('');
   const [files, setFiles] = useState<Pending[]>([]);
   const [mentions, setMentions] = useState<Candidate[]>([]);
@@ -129,6 +143,66 @@ export function Composer({
   const [chosen, setChosen] = useState<Skill | null>(null);
   const [fields, setFields] = useState<Record<string, string>>({});
   const [fieldError, setFieldError] = useState('');
+  /** Why the microphone stopped short, shown in the composer until the next try or keystroke. */
+  const [voiceError, setVoiceError] = useState('');
+  /** Where the caret was when listening started: the words land there. */
+  const spokenAt = useRef<number | null>(null);
+  /** The caret after the words landed, put back once the text is on screen. */
+  const caretAfter = useRef<number | null>(null);
+  const stt = !!me?.capabilities.stt;
+  const microphone = useMemo(() => voiceMode(stt), [stt]);
+  const voice = useVoiceInput({
+    mode: microphone,
+    locale,
+    onText: (spoken) => {
+      const at = Math.min(spokenAt.current ?? value.length, value.length);
+      const before = value.slice(0, at);
+      const after = value.slice(at);
+      const lead = spaced(before, spoken) ? ' ' : '';
+      const trail = spaced(spoken, after) ? ' ' : '';
+      setValue(`${before}${lead}${spoken}${trail}${after}`);
+      caretAfter.current = at + lead.length + spoken.length;
+    },
+    onError: (failure: VoiceFailure | Error) =>
+      setVoiceError(
+        failure instanceof Error
+          ? t('composer.voiceFailed', { reason: errorText(failure, t) })
+          : failure === 'denied'
+            ? t('composer.voiceDenied')
+            : failure === 'no-mic'
+              ? t('composer.voiceNoMic')
+              : failure === 'nothing-heard'
+                ? t('composer.voiceNothing')
+                : t('composer.voiceFailed', { reason: t('common.error') }),
+      ),
+  });
+  const listening = voice.phase === 'listening';
+  const voiceBusy = voice.phase !== 'idle';
+  useLayoutEffect(() => {
+    const caret = caretAfter.current;
+    if (caret === null || voiceBusy) return;
+    caretAfter.current = null;
+    textarea.current?.focus();
+    textarea.current?.setSelectionRange(caret, caret);
+  }, [value, voiceBusy]);
+  // Esc cancels listening (and a transcription on its way), before anything around it closes.
+  const cancelVoice = voice.cancel;
+  useEffect(() => {
+    if (!voiceBusy) return;
+    const onKey = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      event.stopPropagation();
+      cancelVoice();
+    };
+    document.addEventListener('keydown', onKey, true);
+    return () => document.removeEventListener('keydown', onKey, true);
+  }, [voiceBusy, cancelVoice]);
+  const startVoice = () => {
+    spokenAt.current = textarea.current?.selectionStart ?? value.length;
+    setVoiceError('');
+    voice.start();
+  };
   const fieldsBox = useRef<HTMLDivElement>(null);
 
   const choose = (skill: Skill) => {
@@ -446,9 +520,42 @@ export function Composer({
             ))}
           </ul>
         )}
+        {voiceBusy && (
+          <div className="app-recording">
+            {voice.phase === 'transcribing' ? (
+              <Spinner size={icon.sm} />
+            ) : (
+              <>
+                <span className="app-recording-dot" aria-hidden />
+                <span className="app-recording-bars" aria-hidden>
+                  {voice.levels.map((level, index) => (
+                    <i key={index} style={{ '--level': level } as CSSProperties} />
+                  ))}
+                </span>
+                <span className="app-recording-time" aria-hidden>
+                  {clock(voice.seconds)}
+                </span>
+              </>
+            )}
+            <span className="app-recording-text" role="status">
+              {voice.phase === 'transcribing'
+                ? t('composer.voiceTranscribing')
+                : voice.heard || `${t('composer.voiceListening')} ${t('composer.voiceHint')}`}
+            </span>
+            <Button kind="ghost" size="sm" onClick={voice.cancel}>
+              {t('common.cancel')}
+            </Button>
+          </div>
+        )}
+        {voiceError && !voiceBusy && (
+          <p className="app-request-error" role="alert">
+            {voiceError}
+          </p>
+        )}
         <textarea
           ref={textarea}
           className="app-composer-input"
+          hidden={voiceBusy}
           rows={1}
           value={value}
           placeholder={placeholder}
@@ -461,6 +568,7 @@ export function Composer({
             const next = event.target.value;
             const caret = event.target.selectionStart;
             setValue(next);
+            setVoiceError('');
             const skill = skills.length && !chosen ? slashAt(next, caret) : null;
             setSlash(skill);
             // Kept even while the candidates load: the list appears once they are there.
@@ -533,6 +641,17 @@ export function Composer({
             </IconButton>
           )}
           <span className="app-composer-spacer" />
+          {microphone && (
+            <IconButton
+              label={listening ? t('composer.voiceFinish') : t('composer.voice')}
+              aria-pressed={listening}
+              className={cx('app-mic', listening && 'is-on')}
+              disabled={voice.phase === 'starting' || voice.phase === 'transcribing'}
+              onClick={() => (listening ? voice.finish() : startVoice())}
+            >
+              <Mic size={icon.md} />
+            </IconButton>
+          )}
           {showStop ? (
             <IconButton label={t('composer.stop')} className="app-send is-stop" onClick={onStop}>
               <Square size={icon.sm} fill="currentColor" />
@@ -541,7 +660,7 @@ export function Composer({
             <IconButton
               label={t('composer.send')}
               className="app-send"
-              disabled={!canSend && !(uploading && !queued)}
+              disabled={voiceBusy || (!canSend && !(uploading && !queued))}
               onClick={() => void send()}
             >
               {sending || queued ? <Spinner size={icon.md} /> : <ArrowUp size={icon.md} strokeWidth={2} />}
