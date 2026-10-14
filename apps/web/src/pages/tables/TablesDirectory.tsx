@@ -8,6 +8,7 @@ import {
   Columns3,
   GanttChart,
   CalendarDays,
+  LayoutDashboard,
   LayoutGrid,
   Pin,
   PinOff,
@@ -35,6 +36,7 @@ const VIEW_ICONS: Record<ViewType, typeof Table2> = {
   calendar: CalendarDays,
   gallery: Images,
   timeline: GanttChart,
+  dashboard: LayoutDashboard,
 };
 
 export const viewIcon = (type: ViewType, size: number = icon.md) => {

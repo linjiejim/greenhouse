@@ -20,7 +20,9 @@ import {
   type MenuEntry,
 } from '@greenhouse/ui/kit';
 import { icon } from '@greenhouse/ui/tokens';
-import { VIEW_TYPES, type Base, type BaseTable, type View, type ViewConfig, type ViewType } from '@greenhouse/contract';
+import { TABLE_VIEW_TYPES, type Base, type BaseTable, type View, type ViewConfig } from '@greenhouse/contract';
+
+type ViewType = (typeof TABLE_VIEW_TYPES)[number];
 import { useNotify } from '../../app/notify';
 import { putView, refreshBase } from '../../data/tables';
 import { api } from '../../lib/api';
@@ -91,7 +93,7 @@ export function NewViewDialog({
         {!config && (
           <FieldGroup label={t('tables.viewType')}>
             <div className="app-tb-view-types" role="radiogroup" aria-label={t('tables.viewType')}>
-              {VIEW_TYPES.map((entry) => (
+              {TABLE_VIEW_TYPES.map((entry) => (
                 <button
                   key={entry}
                   type="button"
@@ -241,7 +243,11 @@ export function ViewBar({
             canBuild={canBuild}
             onRename={() => setRenaming(view)}
             onDuplicate={() =>
-              setCreating({ type: view.type, config: view.config, name: t('tables.copyName', { name: view.name }) })
+              setCreating({
+                type: view.type as ViewType,
+                config: view.config,
+                name: t('tables.copyName', { name: view.name }),
+              })
             }
             onDelete={() => setDeleting(view)}
           />
@@ -255,7 +261,7 @@ export function ViewBar({
           </>
         }
         align="start"
-        items={VIEW_TYPES.map((type) => ({
+        items={TABLE_VIEW_TYPES.map((type) => ({
           label: t(`tables.view.${type}`),
           icon: viewIcon(type),
           onClick: () => setCreating({ type }),
@@ -264,7 +270,10 @@ export function ViewBar({
       {draft && (
         <span className="app-tb-draft" role="status">
           <span className="app-tb-draft-note">{t('tables.draft')}</span>
-          <Button size="sm" onClick={() => setCreating({ type: current.type, config: draft, name: current.name })}>
+          <Button
+            size="sm"
+            onClick={() => setCreating({ type: current.type as ViewType, config: draft, name: current.name })}
+          >
             {t('tables.saveAsView')}
           </Button>
           <Button size="sm" kind="ghost" onClick={onDraftDone}>

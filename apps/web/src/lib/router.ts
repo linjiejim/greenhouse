@@ -39,8 +39,13 @@ export type Route =
   | { page: 'skill'; id: string }
   /** 表格: my bases. */
   | { page: 'tables' }
-  /** A base (`id`), one of its data tables and views, and an open record: `#/tables/:base/:table/:view?record=`. */
-  | { page: 'base'; id: string; table?: string; view?: string; record?: string }
+  /**
+   * A base (`id`), one of its data tables and views, and an open record: `#/tables/:base/:table/:view?record=`;
+   * or one of its dashboards: `#/tables/:base?dashboard=`.
+   */
+  | { page: 'base'; id: string; table?: string; view?: string; record?: string; dashboard?: string }
+  /** An internal form to fill in: `#/forms/:id`. */
+  | { page: 'form'; id: string }
   | { page: 'notifications'; view: 'needs' | 'all' }
   | { page: 'settings'; section: SettingsSection }
   | { page: 'admin'; section: AdminSection }
@@ -73,6 +78,8 @@ export function parse(hash: string): Route {
     const [, base, table, view, beyond] = parts;
     if (beyond !== undefined) return notFound;
     if (!base) return { page: 'tables' };
+    const dashboard = query.get('dashboard');
+    if (dashboard && !table) return { page: 'base', id: base, dashboard };
     const record = query.get('record');
     return {
       page: 'base',
@@ -81,6 +88,10 @@ export function parse(hash: string): Route {
       ...(view ? { view } : {}),
       ...(record ? { record } : {}),
     };
+  }
+  if (head === 'forms') {
+    if (!id || extra !== undefined) return notFound;
+    return { page: 'form', id };
   }
   if (extra !== undefined) return notFound;
   switch (head) {
@@ -140,7 +151,12 @@ export function href(route: Route): string {
       return `#/skills/${encodeURIComponent(route.id)}`;
     case 'tables':
       return '#/tables';
+    case 'form':
+      return `#/forms/${encodeURIComponent(route.id)}`;
     case 'base': {
+      if (route.dashboard) {
+        return `#/tables/${encodeURIComponent(route.id)}?dashboard=${encodeURIComponent(route.dashboard)}`;
+      }
       const path = [route.id, route.table, route.table ? route.view : undefined]
         .filter((part): part is string => !!part)
         .map(encodeURIComponent)

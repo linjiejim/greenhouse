@@ -834,6 +834,13 @@ CREATE TABLE "folders" (
 	CONSTRAINT "folders_owner_by_space" CHECK (("folders"."space" = 'personal') = ("folders"."owner_id" IS NOT NULL))
 );
 --> statement-breakpoint
+CREATE TABLE "base_field_deps" (
+	"field_id" text NOT NULL,
+	"depends_on_field_id" text NOT NULL,
+	"kind" text NOT NULL,
+	CONSTRAINT "base_field_deps_field_id_depends_on_field_id_pk" PRIMARY KEY("field_id","depends_on_field_id")
+);
+--> statement-breakpoint
 CREATE TABLE "base_fields" (
 	"id" text PRIMARY KEY NOT NULL,
 	"table_id" text NOT NULL,
@@ -845,6 +852,45 @@ CREATE TABLE "base_fields" (
 	"position" integer DEFAULT 0 NOT NULL,
 	"created_by" text,
 	"archived_at" timestamp with time zone,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "base_form_submissions" (
+	"id" text PRIMARY KEY NOT NULL,
+	"form_id" text NOT NULL,
+	"member_id" text NOT NULL,
+	"record_id" text,
+	"single_submit" boolean DEFAULT false NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "base_forms" (
+	"id" text PRIMARY KEY NOT NULL,
+	"base_id" text NOT NULL,
+	"table_id" text NOT NULL,
+	"name" text NOT NULL,
+	"description" text DEFAULT '' NOT NULL,
+	"status" text DEFAULT 'draft' NOT NULL,
+	"config" jsonb DEFAULT '{}'::jsonb NOT NULL,
+	"revision" integer DEFAULT 1 NOT NULL,
+	"created_by" text,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "base_imports" (
+	"id" text PRIMARY KEY NOT NULL,
+	"base_id" text NOT NULL,
+	"table_id" text NOT NULL,
+	"member_id" text NOT NULL,
+	"file_id" text,
+	"mapping" jsonb DEFAULT '{}'::jsonb NOT NULL,
+	"status" text DEFAULT 'draft' NOT NULL,
+	"total_rows" integer DEFAULT 0 NOT NULL,
+	"committed_rows" integer DEFAULT 0 NOT NULL,
+	"result" jsonb DEFAULT '{}'::jsonb NOT NULL,
+	"expires_at" timestamp with time zone,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
@@ -881,9 +927,12 @@ CREATE TABLE "base_record_links" (
 --> statement-breakpoint
 CREATE TABLE "base_records" (
 	"id" text PRIMARY KEY NOT NULL,
+	"seq" bigint GENERATED ALWAYS AS IDENTITY (sequence name "base_records_seq_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 9223372036854775807 START WITH 1 CACHE 1),
 	"table_id" text NOT NULL,
 	"values" jsonb DEFAULT '{}'::jsonb NOT NULL,
+	"computed" jsonb DEFAULT '{}'::jsonb NOT NULL,
 	"revision" integer DEFAULT 1 NOT NULL,
+	"computed_revision" integer DEFAULT 0 NOT NULL,
 	"search_a" text DEFAULT '' NOT NULL,
 	"search_b" text DEFAULT '' NOT NULL,
 	"search_c" text DEFAULT '' NOT NULL,
@@ -892,6 +941,19 @@ CREATE TABLE "base_records" (
 	"updated_by" text,
 	"deleted_at" timestamp with time zone,
 	"deleted_by" text,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "base_roles" (
+	"id" text PRIMARY KEY NOT NULL,
+	"base_id" text NOT NULL,
+	"name" text NOT NULL,
+	"description" text DEFAULT '' NOT NULL,
+	"rules" jsonb DEFAULT '{}'::jsonb NOT NULL,
+	"position" integer DEFAULT 0 NOT NULL,
+	"revision" integer DEFAULT 1 NOT NULL,
+	"created_by" text,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
@@ -912,7 +974,7 @@ CREATE TABLE "base_tables" (
 CREATE TABLE "base_views" (
 	"id" text PRIMARY KEY NOT NULL,
 	"base_id" text NOT NULL,
-	"table_id" text NOT NULL,
+	"table_id" text,
 	"name" text NOT NULL,
 	"type" text NOT NULL,
 	"owner_id" text,
@@ -995,7 +1057,16 @@ ALTER TABLE "docs" ADD CONSTRAINT "docs_owner_id_members_id_fk" FOREIGN KEY ("ow
 ALTER TABLE "folders" ADD CONSTRAINT "folders_parent_id_folders_id_fk" FOREIGN KEY ("parent_id") REFERENCES "public"."folders"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "folders" ADD CONSTRAINT "folders_owner_id_members_id_fk" FOREIGN KEY ("owner_id") REFERENCES "public"."members"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "folders" ADD CONSTRAINT "folders_agent_id_agents_id_fk" FOREIGN KEY ("agent_id") REFERENCES "public"."agents"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "base_field_deps" ADD CONSTRAINT "base_field_deps_field_id_base_fields_id_fk" FOREIGN KEY ("field_id") REFERENCES "public"."base_fields"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "base_field_deps" ADD CONSTRAINT "base_field_deps_depends_on_field_id_base_fields_id_fk" FOREIGN KEY ("depends_on_field_id") REFERENCES "public"."base_fields"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "base_fields" ADD CONSTRAINT "base_fields_table_id_base_tables_id_fk" FOREIGN KEY ("table_id") REFERENCES "public"."base_tables"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "base_form_submissions" ADD CONSTRAINT "base_form_submissions_form_id_base_forms_id_fk" FOREIGN KEY ("form_id") REFERENCES "public"."base_forms"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "base_form_submissions" ADD CONSTRAINT "base_form_submissions_record_id_base_records_id_fk" FOREIGN KEY ("record_id") REFERENCES "public"."base_records"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "base_forms" ADD CONSTRAINT "base_forms_base_id_bases_id_fk" FOREIGN KEY ("base_id") REFERENCES "public"."bases"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "base_forms" ADD CONSTRAINT "base_forms_table_id_base_tables_id_fk" FOREIGN KEY ("table_id") REFERENCES "public"."base_tables"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "base_imports" ADD CONSTRAINT "base_imports_base_id_bases_id_fk" FOREIGN KEY ("base_id") REFERENCES "public"."bases"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "base_imports" ADD CONSTRAINT "base_imports_table_id_base_tables_id_fk" FOREIGN KEY ("table_id") REFERENCES "public"."base_tables"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "base_imports" ADD CONSTRAINT "base_imports_file_id_files_id_fk" FOREIGN KEY ("file_id") REFERENCES "public"."files"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "base_record_events" ADD CONSTRAINT "base_record_events_record_id_base_records_id_fk" FOREIGN KEY ("record_id") REFERENCES "public"."base_records"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "base_record_files" ADD CONSTRAINT "base_record_files_record_id_base_records_id_fk" FOREIGN KEY ("record_id") REFERENCES "public"."base_records"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "base_record_files" ADD CONSTRAINT "base_record_files_field_id_base_fields_id_fk" FOREIGN KEY ("field_id") REFERENCES "public"."base_fields"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
@@ -1004,6 +1075,7 @@ ALTER TABLE "base_record_links" ADD CONSTRAINT "base_record_links_field_id_base_
 ALTER TABLE "base_record_links" ADD CONSTRAINT "base_record_links_source_record_id_base_records_id_fk" FOREIGN KEY ("source_record_id") REFERENCES "public"."base_records"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "base_record_links" ADD CONSTRAINT "base_record_links_target_record_id_base_records_id_fk" FOREIGN KEY ("target_record_id") REFERENCES "public"."base_records"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "base_records" ADD CONSTRAINT "base_records_table_id_base_tables_id_fk" FOREIGN KEY ("table_id") REFERENCES "public"."base_tables"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "base_roles" ADD CONSTRAINT "base_roles_base_id_bases_id_fk" FOREIGN KEY ("base_id") REFERENCES "public"."bases"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "base_tables" ADD CONSTRAINT "base_tables_base_id_bases_id_fk" FOREIGN KEY ("base_id") REFERENCES "public"."bases"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "base_views" ADD CONSTRAINT "base_views_base_id_bases_id_fk" FOREIGN KEY ("base_id") REFERENCES "public"."bases"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "base_views" ADD CONSTRAINT "base_views_table_id_base_tables_id_fk" FOREIGN KEY ("table_id") REFERENCES "public"."base_tables"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
@@ -1103,16 +1175,23 @@ CREATE INDEX "docs_search_idx" ON "docs" USING gin ("search_tsv");--> statement-
 CREATE INDEX "folders_parent_idx" ON "folders" USING btree ("parent_id");--> statement-breakpoint
 CREATE INDEX "folders_owner_idx" ON "folders" USING btree ("owner_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "folders_agent_key" ON "folders" USING btree ("agent_id");--> statement-breakpoint
+CREATE INDEX "base_field_deps_source_idx" ON "base_field_deps" USING btree ("depends_on_field_id");--> statement-breakpoint
 CREATE INDEX "base_fields_table_idx" ON "base_fields" USING btree ("table_id","position");--> statement-breakpoint
 CREATE UNIQUE INDEX "base_fields_name_key" ON "base_fields" USING btree ("table_id","name") WHERE "base_fields"."archived_at" IS NULL;--> statement-breakpoint
 CREATE UNIQUE INDEX "base_fields_primary_key" ON "base_fields" USING btree ("table_id") WHERE "base_fields"."is_primary";--> statement-breakpoint
+CREATE INDEX "base_form_submissions_form_idx" ON "base_form_submissions" USING btree ("form_id","created_at");--> statement-breakpoint
+CREATE UNIQUE INDEX "base_form_submissions_single_key" ON "base_form_submissions" USING btree ("form_id","member_id") WHERE "base_form_submissions"."single_submit";--> statement-breakpoint
+CREATE INDEX "base_forms_table_idx" ON "base_forms" USING btree ("table_id");--> statement-breakpoint
+CREATE INDEX "base_forms_base_idx" ON "base_forms" USING btree ("base_id");--> statement-breakpoint
+CREATE INDEX "base_imports_table_idx" ON "base_imports" USING btree ("table_id","created_at");--> statement-breakpoint
 CREATE INDEX "base_record_events_record_idx" ON "base_record_events" USING btree ("record_id","id");--> statement-breakpoint
-CREATE INDEX "base_record_files_file_idx" ON "base_record_files" USING btree ("file_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "base_record_files_file_key" ON "base_record_files" USING btree ("file_id");--> statement-breakpoint
 CREATE INDEX "base_record_links_source_idx" ON "base_record_links" USING btree ("source_record_id");--> statement-breakpoint
 CREATE INDEX "base_record_links_target_idx" ON "base_record_links" USING btree ("target_record_id");--> statement-breakpoint
-CREATE INDEX "base_records_table_idx" ON "base_records" USING btree ("table_id","id") WHERE "base_records"."deleted_at" IS NULL;--> statement-breakpoint
+CREATE INDEX "base_records_table_idx" ON "base_records" USING btree ("table_id","seq") WHERE "base_records"."deleted_at" IS NULL;--> statement-breakpoint
 CREATE INDEX "base_records_trash_idx" ON "base_records" USING btree ("table_id","deleted_at") WHERE "base_records"."deleted_at" IS NOT NULL;--> statement-breakpoint
 CREATE INDEX "base_records_search_idx" ON "base_records" USING gin ("search_tsv");--> statement-breakpoint
+CREATE UNIQUE INDEX "base_roles_name_key" ON "base_roles" USING btree ("base_id","name");--> statement-breakpoint
 CREATE INDEX "base_tables_base_idx" ON "base_tables" USING btree ("base_id","position");--> statement-breakpoint
 CREATE UNIQUE INDEX "base_tables_name_key" ON "base_tables" USING btree ("base_id","name") WHERE "base_tables"."archived_at" IS NULL;--> statement-breakpoint
 CREATE INDEX "base_views_table_idx" ON "base_views" USING btree ("table_id","position");--> statement-breakpoint

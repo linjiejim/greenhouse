@@ -49,6 +49,7 @@ const record = (id: string, values: TableRecord['values'] = {}): TableRecord => 
   table_id: 'tbl',
   values,
   revision: 1,
+  computed_revision: 0,
   created_by: null,
   created_at: '2026-10-01T00:00:00.000Z',
   updated_by: null,

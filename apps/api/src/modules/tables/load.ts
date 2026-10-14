@@ -79,10 +79,19 @@ export async function fieldAt(
   return { ...(await tableAt(reader, field.tableId, needed, options)), field };
 }
 
-/** A view the reader sees: shared, or their own personal one. */
-export async function viewAt(reader: TablesReader, viewId: string): Promise<TableAt & { view: BaseViewRow }> {
+/** A view or dashboard the reader sees, with its table (none for a dashboard). */
+export interface ViewAt {
+  base: BaseRow;
+  role: BaseRole;
+  table: BaseTableRow | null;
+  view: BaseViewRow;
+}
+
+/** A view the reader sees: shared, or their own personal one. A dashboard has no table. */
+export async function viewAt(reader: TablesReader, viewId: string): Promise<ViewAt> {
   const [view] = await getDb().select().from(baseViews).where(eq(baseViews.id, viewId));
   if (!view || (view.ownerId && view.ownerId !== reader.memberId)) throw notFound('View');
+  if (!view.tableId) return { ...(await baseAt(reader, view.baseId, 'viewer')), table: null, view };
   return { ...(await tableAt(reader, view.tableId, 'viewer')), view };
 }
 
@@ -121,6 +130,7 @@ export const toTable = (row: BaseTableRow, fields: readonly BaseFieldRow[]): Bas
   name: row.name,
   description: row.description,
   position: row.position,
+  schema_revision: row.schemaRevision,
   fields: fields.filter((field) => field.tableId === row.id).map(toField),
 });
 
@@ -142,16 +152,39 @@ export const toView = (row: BaseViewRow, reader: TablesReader, role: BaseRole): 
   editable: canEditView(reader, role, row),
 });
 
-export const toRecord = (row: BaseRecordRow, values: Record<string, unknown>): TableRecord => ({
+/**
+ * A record as the API answers it: `values` are its stored values (links and files filled in)
+ * and what its computed fields worked out, for the fields given (the reader's).
+ */
+export const toRecord = (
+  row: BaseRecordRow,
+  values: Record<string, unknown>,
+  fields?: readonly Pick<BaseFieldRow, 'id' | 'type'>[],
+): TableRecord => ({
   id: row.id,
   table_id: row.tableId,
-  values,
+  values: withComputed(row, values, fields),
   revision: row.revision,
+  computed_revision: row.computedRevision,
   created_by: row.createdBy,
   created_at: row.createdAt,
   updated_by: row.updatedBy,
   updated_at: row.updatedAt,
 });
+
+/** Stored values plus computed ones, keeping only `fields` when given. */
+export function withComputed(
+  row: Pick<BaseRecordRow, 'computed'>,
+  values: Record<string, unknown>,
+  fields?: readonly Pick<BaseFieldRow, 'id' | 'type'>[],
+): Record<string, unknown> {
+  const merged: Record<string, unknown> = { ...values };
+  for (const [key, value] of Object.entries(row.computed ?? {})) merged[key] = value;
+  if (!fields) return merged;
+  const kept: Record<string, unknown> = {};
+  for (const field of fields) if (field.id in merged) kept[field.id] = merged[field.id];
+  return kept;
+}
 
 export interface Filled {
   /** Values with links and files filled in, by record id. */

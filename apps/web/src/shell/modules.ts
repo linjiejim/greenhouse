@@ -36,6 +36,7 @@ export function moduleOf(route: Route): ModuleId {
       return 'skills';
     case 'tables':
     case 'base':
+    case 'form':
       return 'tables';
     case 'runs':
     case 'run':

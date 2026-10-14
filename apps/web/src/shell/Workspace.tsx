@@ -12,6 +12,7 @@ import { SettingsPage } from '../pages/settings/SettingsPage';
 import { SkillPage } from '../pages/skills/SkillPage';
 import { SkillsPage } from '../pages/skills/SkillsPage';
 import { BasePage } from '../pages/tables/BasePage';
+import { FormPage } from '../pages/tables/forms/FormPage';
 import { TablesHome } from '../pages/tables/TablesHome';
 
 /** The page for the route. Admin pages need an admin. */
@@ -32,10 +33,19 @@ export function Workspace({ route }: { route: Route }) {
       return me?.modules.tables ? <TablesHome /> : <NotFoundPage />;
     case 'base':
       return me?.modules.tables ? (
-        <BasePage key={route.id} id={route.id} table={route.table} view={route.view} record={route.record} />
+        <BasePage
+          key={route.id}
+          id={route.id}
+          table={route.table}
+          view={route.view}
+          record={route.record}
+          dashboard={route.dashboard}
+        />
       ) : (
         <NotFoundPage />
       );
+    case 'form':
+      return <FormPage key={route.id} id={route.id} />;
     case 'runs':
       return <RunsPage view={route.view} />;
     case 'run':

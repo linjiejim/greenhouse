@@ -42,6 +42,7 @@ import {
   baseRecordFiles,
   baseRecordLinks,
   baseRecords,
+  baseRoles,
   baseTables,
   baseViews,
   bases,
@@ -68,7 +69,13 @@ import type { FilesService } from '../files/service.js';
 import { inList } from '../knowledge/access.js';
 import { memberNames, refOf, shareViews } from '../knowledge/views.js';
 import type { NotificationsService } from '../notifications/service.js';
+import type { ProvidersService } from '../../providers/service.js';
 import { audienceOf, baseAt, canRead, loadReader, readableBases, rolesOn, type TablesReader } from './access.js';
+import { createCards } from './cards.js';
+import { createForms } from './forms.js';
+import { createImports } from './imports.js';
+import type { TablesKit } from './kit.js';
+import { createTablesWorker } from './worker.js';
 import {
   canEditView,
   configOf,
@@ -83,7 +90,7 @@ import {
   viewAt,
 } from './load.js';
 import { compileFilter, compileOrder, recordsWhere } from './query.js';
-import { createRecords, purgeRecords, recordId } from './records.js';
+import { createRecords, purgeRecords } from './records.js';
 import { projectTemplate, TEMPLATE_VERSIONS, type TemplatePlan } from './templates.js';
 import { canChangeType, convertValue, normalizeConfig, normalizeValue, emptyRefs, searchOf } from './values.js';
 import { cleanConfig, defaultConfig } from './views.js';
@@ -107,8 +114,14 @@ function addDays(day: string, days: number): string {
   return date.toISOString().slice(0, 10);
 }
 
-export function createTablesService(deps: { files: FilesService; notifications: NotificationsService; hub: Hub }) {
+export function createTablesService(deps: {
+  files: FilesService;
+  notifications: NotificationsService;
+  hub: Hub;
+  providers: ProvidersService;
+}) {
   const audiences = new Map<string, { at: number; ids: Promise<string[]> }>();
+  const worker = createTablesWorker();
 
   function audience(base: Pick<BaseRow, 'id' | 'ownerId'>): Promise<string[]> {
     const cached = audiences.get(base.id);
@@ -153,6 +166,21 @@ export function createTablesService(deps: { files: FilesService; notifications: 
     },
   });
 
+  const kit: TablesKit = {
+    files: deps.files,
+    notifications: deps.notifications,
+    hub: deps.hub,
+    providers: deps.providers,
+    records,
+    worker,
+    audience,
+    baseChanged,
+    touch,
+  };
+  const forms = createForms(kit);
+  const imports = createImports(kit);
+  const cards = createCards(kit);
+
   // ── Reading bases ────────────────────────────────────
 
   async function pinnedOf(memberId: string, baseIds: readonly string[]) {
@@ -188,14 +216,32 @@ export function createTablesService(deps: { files: FilesService; notifications: 
       .orderBy(asc(baseTables.position), asc(baseTables.id));
   }
 
+  /** The dashboards of these bases a reader sees: shared ones and their own. */
+  async function dashboardsOf(reader: TablesReader, baseIds: readonly string[]) {
+    if (!baseIds.length) return [];
+    return getDb()
+      .select()
+      .from(baseViews)
+      .where(
+        and(
+          inArray(baseViews.baseId, [...baseIds]),
+          isNull(baseViews.tableId),
+          or(isNull(baseViews.ownerId), eq(baseViews.ownerId, reader.memberId)),
+        ),
+      )
+      .orderBy(asc(baseViews.position), asc(baseViews.id));
+  }
+
   async function detail(reader: TablesReader, base: BaseRow, role: BaseRole): Promise<Base> {
     const tables = await liveTables([base.id]);
     const ids = tables.map((table) => table.id);
-    const [fields, views, pinned, owner] = await Promise.all([
+    const [fields, views, dashboards, pinned, owner, ai] = await Promise.all([
       fieldsOf(ids),
       viewsOf(reader, ids),
+      dashboardsOf(reader, [base.id]),
       pinnedOf(reader.memberId, [base.id]),
       memberNames([base.ownerId]),
+      deps.providers.available('llm', { memberId: reader.memberId }).catch(() => false),
     ]);
     return {
       id: base.id,
@@ -211,7 +257,9 @@ export function createTablesService(deps: { files: FilesService; notifications: 
       created_at: base.createdAt,
       updated_at: base.updatedAt,
       tables: tables.map((table) => toTable(table, fields)),
-      views: views.map((view) => toView(view, reader, role)),
+      views: [...views, ...dashboards].map((view) => toView(view, reader, role)),
+      custom_role: null,
+      ai_fields: ai,
     };
   }
 
@@ -340,7 +388,7 @@ export function createTablesService(deps: { files: FilesService; notifications: 
     for (const spec of plan.tables) {
       const fields = fieldIds.get(spec.ref)!;
       const ordered = [...fields.values()];
-      for (const row of spec.rows) rowIds.set(row.ref, recordId());
+      for (const row of spec.rows) rowIds.set(row.ref, newId('record'));
       for (const row of spec.rows) {
         const values: Record<string, unknown> = {};
         for (const [ref, raw] of Object.entries(row.values)) {
@@ -485,6 +533,11 @@ export function createTablesService(deps: { files: FilesService; notifications: 
 
   const service = {
     records,
+    forms,
+    imports,
+    cards,
+    /** The background work: started by the process (index.ts), drained by tests. */
+    worker,
 
     // ── Bases ──────────────────────────────────────────
 
@@ -499,11 +552,12 @@ export function createTablesService(deps: { files: FilesService; notifications: 
       const visible = rows.filter((row) => roles.has(row.id) && (!query.archived || roles.get(row.id) === 'owner'));
       const ids = visible.map((row) => row.id);
       const tables = await liveTables(ids);
-      const [views, pinned] = await Promise.all([
+      const [views, dashboards, pinned] = await Promise.all([
         viewsOf(
           reader,
           tables.map((table) => table.id),
         ),
+        dashboardsOf(reader, ids),
         pinnedOf(memberId, ids),
       ]);
       const items = visible
@@ -528,6 +582,10 @@ export function createTablesService(deps: { files: FilesService; notifications: 
                   .filter((view) => view.tableId === table.id)
                   .map((view) => ({ id: view.id, name: view.name, type: view.type, personal: !!view.ownerId })),
               })),
+            dashboards: dashboards
+              .filter((view) => view.baseId === row.id)
+              .map((view) => ({ id: view.id, name: view.name, personal: !!view.ownerId })),
+            custom_role: null,
           }),
         )
         .sort((a, b) => a.name.localeCompare(b.name, 'zh-Hans-CN', { numeric: true }) || a.id.localeCompare(b.id));
@@ -671,12 +729,19 @@ export function createTablesService(deps: { files: FilesService; notifications: 
       const [views, owner] = await Promise.all([shareViews(rows), memberNames([base.ownerId])]);
       return {
         owner: refOf(owner, base.ownerId)!,
-        items: views.map((view, index) => ({
-          ...view,
-          role: (BASE_ROLES as readonly string[]).includes(rows[index]!.role)
-            ? (rows[index]!.role as BaseRole)
-            : 'viewer',
-        })),
+        items: views.map((view, index) => {
+          const row = rows[index]!;
+          const custom = row.role === 'custom' && row.customRoleId ? row.customRoleId : null;
+          return {
+            ...view,
+            role: custom
+              ? 'custom'
+              : (BASE_ROLES as readonly string[]).includes(row.role)
+                ? (row.role as BaseRole)
+                : 'viewer',
+            custom_role_id: custom,
+          };
+        }),
       };
     },
 
@@ -684,10 +749,31 @@ export function createTablesService(deps: { files: FilesService; notifications: 
     async share(memberId: string, baseId: string, input: BaseShareInput): Promise<BaseShares> {
       const reader = await loadReader(memberId);
       const { base } = await baseAt(reader, baseId, 'owner');
-      const wanted = new Map<string, { type: 'member' | 'group' | 'workspace'; id: string | null; role: BaseRole }>();
+      type Wanted = {
+        type: 'member' | 'group' | 'workspace';
+        id: string | null;
+        role: BaseRole | 'custom';
+        customRoleId: string | null;
+      };
+      const wanted = new Map<string, Wanted>();
       for (const entry of input.items) {
         if (entry.type === 'member' && entry.id === base.ownerId) continue;
-        wanted.set(`${entry.type}:${entry.id ?? ''}`, { type: entry.type, id: entry.id ?? null, role: entry.role });
+        wanted.set(`${entry.type}:${entry.id ?? ''}`, {
+          type: entry.type,
+          id: entry.id ?? null,
+          role: entry.role,
+          customRoleId: entry.custom_role_id ?? null,
+        });
+      }
+      const customIds = [
+        ...new Set([...wanted.values()].flatMap((entry) => (entry.customRoleId ? [entry.customRoleId] : []))),
+      ];
+      if (customIds.length) {
+        const known = await getDb()
+          .select({ id: baseRoles.id })
+          .from(baseRoles)
+          .where(and(eq(baseRoles.baseId, baseId), inList(baseRoles.id, customIds)));
+        if (known.length !== customIds.length) throw invalidInput('Some custom roles are not roles of this base.');
       }
       const memberIds = [...wanted.values()].filter((entry) => entry.type === 'member').map((entry) => entry.id!);
       const groupIds = [...wanted.values()].filter((entry) => entry.type === 'group').map((entry) => entry.id!);
@@ -718,14 +804,17 @@ export function createTablesService(deps: { files: FilesService; notifications: 
                 gone.map((row) => row.id),
               ),
             );
-        const fresh: Array<{ id: string; type: string; principal: string | null; role: BaseRole }> = [];
+        const fresh: Array<{ id: string; type: string; principal: string | null; role: BaseRole | 'custom' }> = [];
         let changed = gone.length;
         for (const [key, entry] of wanted) {
           const before = existing.find((row) => keyOf(row) === key);
           if (before) {
-            if (before.role !== entry.role) {
+            if (before.role !== entry.role || (before.customRoleId ?? null) !== entry.customRoleId) {
               changed++;
-              await getDb().update(shares).set({ role: entry.role }).where(eq(shares.id, before.id));
+              await getDb()
+                .update(shares)
+                .set({ role: entry.role, customRoleId: entry.customRoleId })
+                .where(eq(shares.id, before.id));
             }
             continue;
           }
@@ -737,6 +826,7 @@ export function createTablesService(deps: { files: FilesService; notifications: 
             principalType: entry.type,
             principalId: entry.id,
             role: entry.role,
+            customRoleId: entry.customRoleId,
             createdBy: memberId,
           });
           changed++;
@@ -916,6 +1006,18 @@ export function createTablesService(deps: { files: FilesService; notifications: 
         await checkFieldConfig(at, type, config, fieldId);
       }
       const updated = await transaction(async () => {
+        // Field changes go one at a time per table, each based on the schema it was made against;
+        // record writes hold the same row shared, so none lands halfway through a type change.
+        const [table] = await getDb()
+          .select({ revision: baseTables.schemaRevision })
+          .from(baseTables)
+          .where(eq(baseTables.id, field.tableId))
+          .for('update');
+        if (table?.revision !== input.schema_revision) {
+          throw new ApiError(409, 'stale_schema', 'Someone changed the fields of this data table. Reload it first.', {
+            schema_revision: table?.revision ?? null,
+          });
+        }
         if (type !== field.type && (field.type === 'single_select' || field.type === 'date')) {
           const rows = await getDb()
             .select({ id: baseRecords.id, values: baseRecords.values })
@@ -1041,7 +1143,11 @@ export function createTablesService(deps: { files: FilesService; notifications: 
       if (!canEditView(reader, at.role, view)) {
         throw forbidden('Only builders change shared views. Save it as a personal view instead.');
       }
-      const config = input.config ? cleanConfig(view.type, input.config, await fieldsOf(view.tableId)) : undefined;
+      const config = input.config
+        ? view.tableId
+          ? cleanConfig(view.type, input.config, await fieldsOf(view.tableId))
+          : await cards.cleanDashboard(at.base.id, input.config)
+        : undefined;
       const [row] = await getDb()
         .update(baseViews)
         .set({
@@ -1068,14 +1174,19 @@ export function createTablesService(deps: { files: FilesService; notifications: 
       const at = await viewAt(reader, viewId);
       const { view } = at;
       if (!canEditView(reader, at.role, view)) throw forbidden('Only builders delete shared views.');
-      if (!view.ownerId) {
-        const [{ n } = { n: 0 }] = await getDb()
-          .select({ n: sql<number>`count(*)::int` })
-          .from(baseViews)
-          .where(and(eq(baseViews.tableId, view.tableId), isNull(baseViews.ownerId)));
-        if (n <= 1) throw conflict('last_view', 'A data table keeps at least one shared view.');
-      }
-      await getDb().delete(baseViews).where(eq(baseViews.id, viewId));
+      const tableId = view.tableId;
+      await transaction(async () => {
+        if (tableId && !view.ownerId) {
+          // Under the table's row lock, so two deletes cannot both leave it without a shared view.
+          await getDb().select({ id: baseTables.id }).from(baseTables).where(eq(baseTables.id, tableId)).for('update');
+          const [{ n } = { n: 0 }] = await getDb()
+            .select({ n: sql<number>`count(*)::int` })
+            .from(baseViews)
+            .where(and(eq(baseViews.tableId, tableId), isNull(baseViews.ownerId)));
+          if (n <= 1) throw conflict('last_view', 'A data table keeps at least one shared view.');
+        }
+        await getDb().delete(baseViews).where(eq(baseViews.id, viewId));
+      });
       await baseChanged(at.base, view.ownerId ? memberId : undefined);
     },
 
@@ -1226,7 +1337,7 @@ export function createTablesService(deps: { files: FilesService; notifications: 
       let config: ViewConfig = {};
       if (viewId) {
         const found = await viewAt(reader, viewId);
-        if (found.table.id !== tableId) throw notFound('View');
+        if (found.table?.id !== tableId) throw notFound('View');
         config = configOf(found.view);
       }
       const hidden = new Set(config.hidden ?? []);

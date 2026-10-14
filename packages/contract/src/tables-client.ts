@@ -3,6 +3,9 @@
 import type { Page } from './common.js';
 import type { KnowledgeComment } from './knowledge.js';
 import type { KnowledgeHttp } from './knowledge-client.js';
+import { cardsApi } from './tables-cards-client.js';
+import { formsApi } from './tables-forms-client.js';
+import { importsApi } from './tables-imports-client.js';
 import type {
   Base,
   BaseAuditEntry,
@@ -120,5 +123,9 @@ export function tablesApi(http: KnowledgeHttp) {
       removeComment: (id: string, commentId: string) =>
         http.del(path('records', id, `/comments/${encodeURIComponent(commentId)}`)),
     },
+
+    forms: formsApi(http),
+    imports: importsApi(http),
+    cards: cardsApi(http),
   };
 }

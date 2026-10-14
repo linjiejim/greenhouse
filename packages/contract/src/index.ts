@@ -22,3 +22,7 @@ export * from './vault.js';
 export * from './knowledge.js';
 export * from './tables.js';
 export * from './tables-cells.js';
+export * from './tables-forms.js';
+export * from './tables-imports.js';
+export * from './tables-cards.js';
+export * from './tables-formula.js';

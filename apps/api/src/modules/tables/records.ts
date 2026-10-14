@@ -60,28 +60,10 @@ import {
 } from './query.js';
 import { changesBetween, emptyRefs, keptApart, normalizeValue, searchOf, titleOf, type ValueRefs } from './values.js';
 
-const CROCKFORD = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
-let lastRecordId = '';
-
-/**
- * A new record's id. Records list in the order they were made (ids ascending), but a ULID tells
- * only the millisecond: ids made in the same one (a template, a pasted block) count up from the
- * last one instead.
- */
-export function recordId(): string {
-  const next = newId('record');
-  if (next > lastRecordId) return (lastRecordId = next);
-  const chars = [...lastRecordId];
-  for (let index = chars.length - 1; index >= 0; index--) {
-    const digit = CROCKFORD.indexOf(chars[index]!);
-    if (digit < 0) break;
-    if (digit < 31) {
-      chars[index] = CROCKFORD[digit + 1]!;
-      return (lastRecordId = chars.join(''));
-    }
-    chars[index] = '0';
-  }
-  return (lastRecordId = next);
+/** Who a record's history names for a write: a form or an import (the member is kept apart). */
+export interface RecordActor {
+  type: 'form' | 'import';
+  id: string;
 }
 
 /** Most people told about one comment. */
@@ -235,9 +217,10 @@ export function createRecords(deps: RecordsDeps) {
 
   /**
    * Writes one record: new (`row` null) or a change to `row`. A change that changes nothing
-   * writes nothing. Runs inside the caller's transaction.
+   * writes nothing. Runs inside the caller's transaction. `actor` is who the history names: the
+   * member, or the form or import they used.
    */
-  async function write(ctx: Writing, row: BaseRecordRow | null, input: RecordValues) {
+  async function write(ctx: Writing, row: BaseRecordRow | null, input: RecordValues, actor?: RecordActor) {
     const keys = Object.keys(input);
     if (keys.length > 300) throw invalidInput('Too many fields in one change.');
     const refs = emptyRefs();
@@ -255,6 +238,8 @@ export function createRecords(deps: RecordsDeps) {
       after,
     ).filter((change) => row || !isEmptyValue(change.after) || change.after === true);
     if (row && !changes.length) return { row, changed: false };
+    // A field change (a type change converting values) holds this row for update until it commits.
+    await getDb().select({ id: baseTables.id }).from(baseTables).where(eq(baseTables.id, ctx.table.id)).for('share');
     await checkRefs(ctx, refs, row?.id ?? null, before, patch);
     for (const field of ctx.fields) {
       if (field.required && isEmptyValue(after[field.id]) && (!row || field.id in patch)) {
@@ -285,7 +270,7 @@ export function createRecords(deps: RecordsDeps) {
       : await getDb()
           .insert(baseRecords)
           .values({
-            id: recordId(),
+            id: newId('record'),
             tableId: ctx.table.id,
             values: stored,
             ...search,
@@ -330,19 +315,28 @@ export function createRecords(deps: RecordsDeps) {
         }
       }
     }
-    await event(saved!, row ? 'updated' : 'created', memberId, changes);
+    await event(saved!, row ? 'updated' : 'created', memberId, changes, actor);
     return { row: saved!, changed: true };
   }
 
-  async function event(row: BaseRecordRow, type: RecordEventType, memberId: string, changes: BaseRecordChange[] = []) {
-    await getDb().insert(baseRecordEvents).values({
-      recordId: row.id,
-      tableId: row.tableId,
-      actorType: 'member',
-      actorId: memberId,
-      type,
-      changes,
-    });
+  async function event(
+    row: BaseRecordRow,
+    type: RecordEventType,
+    memberId: string,
+    changes: BaseRecordChange[] = [],
+    actor?: RecordActor,
+  ) {
+    await getDb()
+      .insert(baseRecordEvents)
+      .values({
+        recordId: row.id,
+        tableId: row.tableId,
+        actorType: actor?.type ?? 'member',
+        actorId: memberId,
+        type,
+        changes,
+        meta: actor ? { [`${actor.type}_id`]: actor.id } : {},
+      });
   }
 
   async function detail(
@@ -360,7 +354,7 @@ export function createRecords(deps: RecordsDeps) {
             and(eq(baseRecords.id, baseRecordLinks.sourceRecordId), isNull(baseRecords.deletedAt)),
           )
           .where(and(eq(baseRecordLinks.fieldId, parent.id), eq(baseRecordLinks.targetRecordId, row.id)))
-          .orderBy(asc(baseRecords.id))
+          .orderBy(asc(baseRecords.seq))
           .limit(200)
       : [];
     const primary = ctx.fields.find((field) => field.isPrimary);
@@ -500,6 +494,27 @@ export function createRecords(deps: RecordsDeps) {
   }
 
   return {
+    /**
+     * A record made through a form or an import, as `writer` (the member who submitted or
+     * imported), checked like any write. Runs inside the caller's transaction; call `announce`
+     * after it commits.
+     */
+    async insertFrom(
+      at: TableAt,
+      writer: TablesReader,
+      values: RecordValues,
+      actor: RecordActor,
+    ): Promise<BaseRecordRow> {
+      const ctx = await writing(writer, at);
+      const { row } = await write(ctx, null, values, actor);
+      return row;
+    },
+
+    /** Tells the base's people about records written by `insertFrom` (after the commit). */
+    async announce(at: Pick<TableAt, 'base' | 'table'>, rows: readonly BaseRecordRow[]) {
+      await tellChanged(at, [...rows]);
+    },
+
     /** A page of a table's records that match, in order, with linked titles and files. */
     async query(memberId: string, tableId: string, input: RecordsQuery): Promise<RecordPage> {
       const reader = await loadReader(memberId);
