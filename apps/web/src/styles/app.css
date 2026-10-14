@@ -330,6 +330,16 @@ a {
   color: var(--gh-tertiary);
 }
 
+.app-row-chevron.is-leaf {
+  width: var(--gh-icon-sm);
+  flex-shrink: 0;
+}
+
+/* PRD §6.2: rows people tap on a phone are at least 44 tall. */
+[data-narrow] .app-row:not(.is-main) {
+  min-height: var(--gh-touch-target);
+}
+
 .app-row-title {
   flex: 1;
   min-width: 0;
@@ -2664,4 +2674,973 @@ button.app-agent-card {
 
 .app-consent-actions > .gh-button {
   flex: 1;
+}
+
+/* ── Knowledge ────────────────────────────────────────────────────────── */
+
+.app-knowledge-scope {
+  flex-shrink: 0;
+  padding: var(--gh-space-1) 0 var(--gh-space-2);
+}
+
+.app-knowledge-scope .gh-segmented {
+  width: 100%;
+}
+
+.app-knowledge-scope .gh-segmented > button {
+  flex: 1;
+}
+
+.app-knowledge-tree {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gh-space-0_5);
+}
+
+.app-tree-empty {
+  min-height: var(--gh-nav-row);
+  display: flex;
+  align-items: center;
+  font: var(--gh-type-caption);
+}
+
+.app-tree-loading {
+  padding-top: var(--gh-space-1);
+  padding-bottom: var(--gh-space-1);
+}
+
+.app-row.is-drop-into {
+  background: var(--gh-selection);
+  box-shadow: inset 0 0 0 var(--gh-stroke-control) var(--gh-focus);
+}
+
+.app-row.is-drop-before,
+.app-knowledge-row.is-drop-before {
+  box-shadow: inset 0 var(--gh-stroke-strong) 0 var(--gh-focus);
+}
+
+.app-row.is-drop-after,
+.app-knowledge-row.is-drop-after {
+  box-shadow: inset 0 calc(-1 * var(--gh-stroke-strong)) 0 var(--gh-focus);
+}
+
+.app-knowledge-row.is-drop-into,
+.app-knowledge-card.is-drop-into {
+  background: var(--gh-selection);
+  box-shadow: inset 0 0 0 var(--gh-stroke-control) var(--gh-focus);
+}
+
+.app-knowledge-row.is-menu-open,
+.app-knowledge-card.is-menu-open {
+  background: var(--gh-hover);
+}
+
+.app-crumbs > a {
+  max-width: calc(6 * var(--gh-space-10));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-crumbs > a:hover {
+  color: var(--gh-text);
+  text-decoration: underline;
+}
+
+.app-crumbs > [aria-current='location'] {
+  color: var(--gh-text);
+  font-weight: 600;
+}
+
+.app-knowledge-crumbs {
+  font: var(--gh-type-body-sm);
+}
+
+.app-knowledge-drop {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gh-space-4);
+  min-height: 100%;
+  border-radius: var(--gh-radius-lg);
+}
+
+.app-knowledge-drop.is-dropping {
+  outline: var(--gh-stroke-strong) dashed var(--gh-focus);
+  outline-offset: var(--gh-space-2);
+}
+
+.app-knowledge-drop-hint {
+  color: var(--gh-accent-text);
+  font: var(--gh-type-label);
+}
+
+.app-knowledge-row {
+  gap: var(--gh-space-2);
+}
+
+.app-knowledge-open {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--gh-space-3);
+  color: inherit;
+}
+
+.app-knowledge-icon {
+  width: var(--gh-control-md);
+  height: var(--gh-control-md);
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--gh-radius-md);
+  background: var(--gh-chrome);
+  color: var(--gh-secondary);
+}
+
+.app-knowledge-snippet {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  white-space: normal;
+}
+
+.app-knowledge-grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(calc(5 * var(--gh-space-10)), 1fr));
+  gap: var(--gh-space-3);
+}
+
+/* 显示更多 under a folder's list or grid, while the server has another page. */
+.app-knowledge-more {
+  display: flex;
+  justify-content: center;
+  margin-top: var(--gh-space-2);
+}
+
+.app-knowledge-card {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--gh-space-2);
+  padding: var(--gh-space-4);
+  border: var(--gh-stroke-hairline) solid var(--gh-line);
+  border-radius: var(--gh-radius-lg);
+  background: var(--gh-surface);
+}
+
+.app-knowledge-card:hover {
+  background: var(--gh-hover);
+}
+
+.app-knowledge-card .app-knowledge-open {
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.app-knowledge-card .app-list-main {
+  width: 100%;
+}
+
+[data-narrow] .app-knowledge-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/* Search first; the sort and the view wrap below it when the page is narrow. */
+.app-knowledge-toolbar {
+  flex-wrap: wrap;
+}
+
+.app-knowledge-toolbar > .gh-search-field {
+  flex: 1 1 calc(6 * var(--gh-space-10));
+}
+
+.app-uploads {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--gh-space-1);
+}
+
+.app-uploads li {
+  display: flex;
+  align-items: center;
+  gap: var(--gh-space-2);
+  min-height: var(--gh-control-md);
+  padding: 0 var(--gh-space-2);
+  border-radius: var(--gh-radius-md);
+  background: var(--gh-fill);
+  color: var(--gh-secondary);
+}
+
+.app-uploads li.is-failed {
+  background: var(--gh-danger-fill);
+  color: var(--gh-danger);
+}
+
+.app-uploads-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--gh-text);
+  font: var(--gh-type-body-sm);
+}
+
+.app-uploads-meta {
+  font: var(--gh-type-caption);
+}
+
+/* Moving: a folder picker. */
+
+.app-picker {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gh-space-0_5);
+  max-height: 50dvh;
+  overflow-y: auto;
+}
+
+.app-picker-row {
+  display: flex;
+  align-items: center;
+  gap: var(--gh-space-1);
+}
+
+.app-picker-toggle {
+  width: var(--gh-control-sm);
+  height: var(--gh-control-sm);
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: var(--gh-radius-sm);
+  background: none;
+  color: var(--gh-tertiary);
+  cursor: pointer;
+}
+
+.app-picker-toggle:hover {
+  background: var(--gh-hover);
+}
+
+.app-picker-choice {
+  flex: 1;
+  min-width: 0;
+  min-height: var(--gh-nav-row);
+  display: flex;
+  align-items: center;
+  gap: var(--gh-space-2);
+  padding: 0 var(--gh-space-2);
+  border: 0;
+  border-radius: var(--gh-radius-md);
+  background: none;
+  color: var(--gh-text);
+  font: var(--gh-type-body);
+  text-align: left;
+  cursor: pointer;
+}
+
+.app-picker-choice:hover {
+  background: var(--gh-hover);
+}
+
+.app-picker-choice.is-selected {
+  background: var(--gh-selection);
+  font-weight: 600;
+}
+
+.app-picker-choice > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-picker-heading {
+  padding: var(--gh-space-2) var(--gh-space-2) 0;
+  color: var(--gh-tertiary);
+  font: var(--gh-type-caption);
+  font-weight: 600;
+}
+
+.app-picker-note {
+  padding-left: var(--gh-space-10);
+}
+
+/* Sharing. */
+
+.app-share-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gh-space-2);
+}
+
+.app-share-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.app-share-list li {
+  display: flex;
+  align-items: center;
+  gap: var(--gh-space-3);
+  min-height: var(--gh-row-height);
+  border-bottom: var(--gh-stroke-hairline) solid var(--gh-line);
+}
+
+.app-share-list li:last-child {
+  border-bottom: 0;
+}
+
+.app-share-list .gh-select {
+  width: calc(3 * var(--gh-space-10));
+}
+
+.app-share-add {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--gh-space-2);
+}
+
+.app-share-add > .gh-select {
+  width: auto;
+}
+
+.app-share-add > .gh-select-multi {
+  flex: 1 1 calc(6 * var(--gh-space-10));
+  min-width: 0;
+}
+
+/* A doc: reading, contents, comments. */
+
+.app-doc-layout {
+  display: grid;
+  grid-template-columns: minmax(0, var(--gh-reading-max));
+  justify-content: center;
+  gap: var(--gh-space-10);
+}
+
+.app-doc-layout.has-toc {
+  grid-template-columns: minmax(0, var(--gh-reading-max)) var(--gh-sidebar-min);
+}
+
+.app-doc-main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--gh-space-4);
+}
+
+.app-doc-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--gh-space-1) var(--gh-space-3);
+}
+
+.app-doc-content {
+  font: var(--gh-type-body-lg);
+}
+
+.app-doc-content h1 {
+  font: var(--gh-type-title-lg);
+}
+
+.app-doc-content h1,
+.app-doc-content h2,
+.app-doc-content h3 {
+  margin-top: var(--gh-space-6);
+  scroll-margin-top: var(--gh-space-4);
+}
+
+.app-doc-content > :first-child {
+  margin-top: 0;
+}
+
+.app-doc-content img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border-radius: var(--gh-radius-md);
+}
+
+.app-doc-content pre {
+  margin: 0;
+  padding: var(--gh-space-3);
+  overflow-x: auto;
+  border-radius: var(--gh-radius-md);
+  background: var(--gh-fill);
+  font: var(--gh-type-code);
+}
+
+.app-doc-content hr {
+  border: 0;
+  border-top: var(--gh-stroke-hairline) solid var(--gh-line);
+}
+
+.app-doc-content [data-type='mention'] {
+  padding: 0 var(--gh-space-1);
+  border-radius: var(--gh-radius-sm);
+  background: var(--gh-selection);
+  color: var(--gh-accent-text);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* Task lists (`- [ ]`): a box like the kit's checkbox. Reading draws it; the editor's is a real one. */
+.app-doc-content ul[data-type='taskList'] {
+  padding-left: 0;
+  list-style: none;
+}
+
+.app-doc-content:not(.app-editor-surface) ul[data-type='taskList'] > li {
+  position: relative;
+  padding-left: calc(var(--gh-space-4) + var(--gh-space-2));
+}
+
+.app-doc-content:not(.app-editor-surface) ul[data-type='taskList'] > li::before,
+.app-editor-surface ul[data-type='taskList'] > li > label > span {
+  box-sizing: border-box;
+  width: var(--gh-space-4);
+  height: var(--gh-space-4);
+  border: var(--gh-stroke-control) solid var(--gh-control-line);
+  border-radius: var(--gh-radius-xs);
+  background: var(--gh-surface);
+}
+
+.app-doc-content:not(.app-editor-surface) ul[data-type='taskList'] > li::before {
+  content: '';
+  position: absolute;
+  top: calc((1lh - var(--gh-space-4)) / 2);
+  left: 0;
+}
+
+.app-doc-content:not(.app-editor-surface) ul[data-type='taskList'] > li[data-checked='true']::before,
+.app-editor-surface ul[data-type='taskList'] > li[data-checked='true'] > label > span {
+  border-color: var(--gh-accent);
+  background: var(--gh-accent);
+}
+
+/* The tick: a turned corner. */
+.app-doc-content:not(.app-editor-surface) ul[data-type='taskList'] > li[data-checked='true']::after,
+.app-editor-surface ul[data-type='taskList'] > li[data-checked='true'] > label > span::after {
+  content: '';
+  position: absolute;
+  box-sizing: border-box;
+  width: calc(var(--gh-space-4) * 0.3);
+  height: calc(var(--gh-space-4) * 0.55);
+  border: solid var(--gh-on-accent);
+  border-width: 0 var(--gh-stroke-strong) var(--gh-stroke-strong) 0;
+  transform: rotate(45deg);
+}
+
+.app-doc-content:not(.app-editor-surface) ul[data-type='taskList'] > li[data-checked='true']::after {
+  top: calc((1lh - var(--gh-space-4)) / 2 + var(--gh-space-4) * 0.15);
+  left: calc(var(--gh-space-4) * 0.35);
+}
+
+.app-editor-surface ul[data-type='taskList'] > li {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--gh-space-2);
+}
+
+.app-editor-surface ul[data-type='taskList'] > li > label {
+  position: relative;
+  display: inline-grid;
+  flex: none;
+  margin-top: calc((1lh - var(--gh-space-4)) / 2);
+}
+
+.app-editor-surface ul[data-type='taskList'] > li > label > input {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.app-editor-surface ul[data-type='taskList'] > li > label > span {
+  position: relative;
+  display: block;
+}
+
+.app-editor-surface ul[data-type='taskList'] > li > label > span::after {
+  top: calc(var(--gh-space-4) * 0.15);
+  left: calc(var(--gh-space-4) * 0.35);
+}
+
+.app-editor-surface ul[data-type='taskList'] > li > label > input:focus-visible + span {
+  outline: var(--gh-stroke-strong) solid var(--gh-focus);
+  outline-offset: var(--gh-stroke-focus-offset);
+}
+
+.app-editor-surface ul[data-type='taskList'] > li > div {
+  flex: 1;
+  min-width: 0;
+}
+
+.app-doc-content h1:focus,
+.app-doc-content h2:focus,
+.app-doc-content h3:focus {
+  outline: none;
+}
+
+.app-doc-aside {
+  position: relative;
+}
+
+.app-doc-toc {
+  position: sticky;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--gh-space-2);
+}
+
+.app-doc-toc.is-inline {
+  position: static;
+}
+
+.app-doc-toc-title {
+  color: var(--gh-tertiary);
+  font: var(--gh-type-caption);
+  font-weight: 600;
+}
+
+.app-doc-toc ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--gh-space-0_5);
+  border-left: var(--gh-stroke-hairline) solid var(--gh-line);
+}
+
+.app-doc-toc li > button {
+  width: 100%;
+  padding: var(--gh-space-1) var(--gh-space-3);
+  border: 0;
+  background: none;
+  color: var(--gh-secondary);
+  font: var(--gh-type-body-sm);
+  text-align: left;
+  cursor: pointer;
+}
+
+.app-doc-toc li > button:hover {
+  color: var(--gh-text);
+}
+
+.app-doc-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gh-space-3);
+  padding-top: var(--gh-space-6);
+  border-top: var(--gh-stroke-hairline) solid var(--gh-line);
+}
+
+.app-doc-section > .app-section-title {
+  display: flex;
+  align-items: center;
+  gap: var(--gh-space-2);
+}
+
+.app-empty-line {
+  display: flex;
+  align-items: center;
+  gap: var(--gh-space-2);
+}
+
+.app-presence {
+  display: flex;
+  align-items: center;
+}
+
+.app-presence-face {
+  display: inline-flex;
+  border: var(--gh-stroke-control) solid var(--gh-canvas);
+  border-radius: var(--gh-radius-full);
+}
+
+.app-presence-face + .app-presence-face {
+  margin-left: calc(-1 * var(--gh-space-2));
+}
+
+.app-presence-face.is-editing {
+  border-color: var(--gh-accent);
+}
+
+.app-comments {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--gh-space-4);
+}
+
+.app-comment {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--gh-space-3);
+}
+
+.app-comment-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--gh-space-1);
+}
+
+.app-comment-head {
+  display: flex;
+  align-items: center;
+  gap: var(--gh-space-2);
+  min-height: var(--gh-control-sm);
+}
+
+.app-comment-head time {
+  color: var(--gh-secondary);
+  font: var(--gh-type-caption);
+}
+
+.app-comment-head .gh-menu {
+  margin-left: auto;
+}
+
+.app-comment-body.app-doc-content {
+  font: var(--gh-type-body);
+}
+
+.app-comment-box {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gh-space-2);
+}
+
+.app-comment-input {
+  position: relative;
+}
+
+.app-comment-input .app-mention-list {
+  left: 0;
+  bottom: auto;
+  top: calc(100% + var(--gh-space-1));
+}
+
+.app-comment-box > .app-inline-actions {
+  justify-content: flex-end;
+}
+
+/* Versions and changes. */
+
+.app-version-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--gh-space-2);
+}
+
+.app-version-note {
+  color: var(--gh-secondary);
+}
+
+.app-version-title {
+  font: var(--gh-type-title);
+}
+
+.app-diff {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gh-space-3);
+}
+
+.app-diff-summary {
+  display: flex;
+  align-items: center;
+  gap: var(--gh-space-2);
+  font: var(--gh-type-label);
+  font-variant-numeric: tabular-nums;
+}
+
+.app-diff .is-insert,
+.app-diff ins {
+  color: var(--gh-success);
+}
+
+.app-diff .is-delete,
+.app-diff del {
+  color: var(--gh-danger);
+}
+
+.app-diff ins,
+.app-diff del {
+  text-decoration: none;
+}
+
+.app-diff-words ins {
+  background: var(--gh-success-fill);
+}
+
+.app-diff-words del {
+  background: var(--gh-danger-fill);
+  text-decoration: line-through;
+}
+
+.app-diff-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--gh-space-1);
+}
+
+.app-diff-hunk {
+  overflow: hidden;
+  border: var(--gh-stroke-hairline) solid var(--gh-line);
+  border-radius: var(--gh-radius-md);
+}
+
+.app-diff-where {
+  padding: var(--gh-space-1) var(--gh-space-3);
+  background: var(--gh-fill);
+  color: var(--gh-secondary);
+  font: var(--gh-type-caption);
+}
+
+.app-diff-lines {
+  overflow-x: auto;
+  font: var(--gh-type-code);
+}
+
+.app-diff-line {
+  display: flex;
+  gap: var(--gh-space-2);
+  padding: 0 var(--gh-space-3);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.app-diff-line.is-insert {
+  background: var(--gh-success-fill);
+}
+
+.app-diff-line.is-delete {
+  background: var(--gh-danger-fill);
+}
+
+.app-diff-line.is-equal {
+  color: var(--gh-secondary);
+}
+
+.app-diff-mark {
+  flex-shrink: 0;
+  width: var(--gh-space-3);
+}
+
+.app-diff-words {
+  padding: var(--gh-space-2) var(--gh-space-3);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* Files. */
+
+.app-file-image {
+  display: block;
+  max-width: 100%;
+  max-height: 70dvh;
+  margin: 0 auto;
+  object-fit: contain;
+  border-radius: var(--gh-radius-md);
+}
+
+.app-file-text {
+  margin: 0;
+  max-height: 70dvh;
+  overflow: auto;
+  padding: var(--gh-space-3);
+  border-radius: var(--gh-radius-md);
+  background: var(--gh-fill);
+  font: var(--gh-type-code);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.app-file-media {
+  width: 100%;
+}
+
+/* The editor. */
+
+.app-doc-editing .app-page-body {
+  gap: var(--gh-space-3);
+}
+
+.app-doc-title-input.gh-input {
+  height: auto;
+  padding: var(--gh-space-1) 0;
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+  font: var(--gh-type-title-lg);
+}
+
+.app-doc-title-input.gh-input:hover,
+.app-doc-title-input.gh-input:focus {
+  border-color: transparent;
+  box-shadow: none;
+}
+
+.app-editor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gh-space-3);
+}
+
+.app-editor-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: var(--gh-z-sticky);
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--gh-space-0_5);
+  padding: var(--gh-space-1);
+  border: var(--gh-stroke-hairline) solid var(--gh-line);
+  border-radius: var(--gh-radius-lg);
+  background: var(--gh-raised);
+}
+
+[data-narrow] .app-editor-toolbar {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.app-editor-tool.is-active {
+  background: var(--gh-selection);
+  color: var(--gh-accent);
+}
+
+.app-editor-sep {
+  width: var(--gh-stroke-hairline);
+  height: var(--gh-space-5);
+  margin: 0 var(--gh-space-1);
+  flex-shrink: 0;
+  background: var(--gh-line);
+}
+
+.app-editor-surface {
+  min-height: 40dvh;
+}
+
+.app-editor-surface .ProseMirror {
+  min-height: 40dvh;
+  outline: none;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+.app-editor-surface .ProseMirror > * + * {
+  margin-top: var(--gh-space-3);
+}
+
+.app-editor-surface .is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  color: var(--gh-tertiary);
+  pointer-events: none;
+}
+
+.app-editor-surface .ProseMirror-selectednode {
+  outline: var(--gh-stroke-strong) solid var(--gh-focus);
+}
+
+.app-editor-surface table {
+  display: table;
+  width: 100%;
+  table-layout: fixed;
+}
+
+.app-editor-surface td,
+.app-editor-surface th {
+  position: relative;
+  vertical-align: top;
+  border: var(--gh-stroke-hairline) solid var(--gh-line);
+}
+
+.app-editor-surface .selectedCell::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--gh-selection);
+  pointer-events: none;
+}
+
+.app-editor-surface .kb-uploading {
+  display: inline-block;
+  padding: var(--gh-space-1) var(--gh-space-2);
+  border-radius: var(--gh-radius-sm);
+  background: var(--gh-info-fill);
+  color: var(--gh-info);
+  font: var(--gh-type-label);
+}
+
+.app-editor-surface .kb-mention {
+  padding: 0 var(--gh-space-1);
+  border-radius: var(--gh-radius-sm);
+  background: var(--gh-selection);
+  color: var(--gh-accent-text);
+  font-weight: 600;
+}
+
+.app-editor-menu.app-mention-list {
+  bottom: auto;
+  max-height: calc(7 * var(--gh-control-md));
+  overflow-y: auto;
+  z-index: var(--gh-z-popover);
+}
+
+.app-editor-menu .app-mention-option > span:not(.app-mention-hint) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-doc-save-bar {
+  flex-wrap: wrap;
+}
+
+.app-doc-save-bar .app-doc-note {
+  flex: 1 1 calc(5 * var(--gh-space-10));
+  min-width: 0;
+}
+
+.app-doc-save-bar .app-form-error {
+  flex-basis: 100%;
+  order: 3;
+}
+
+.app-doc-save-bar > .app-inline-actions {
+  margin-left: auto;
 }

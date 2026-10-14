@@ -77,7 +77,8 @@ test('a room: Lin brings Mei and Greeny, Mei writes back, notes are shared, Mei 
   await page.getByRole('option', { name: /Mei/ }).click();
   await composer(page).pressSequentially('please review');
   await composer(page).press('Enter');
-  await expect(page.getByText('@Mei please review', { exact: true })).toBeVisible();
+  // The composer keeps the text until the send returns, so look in the transcript.
+  await expect(page.locator('.app-message.is-mine').last()).toContainText('@Mei please review');
 
   await page.getByRole('button', { name: '信息' }).click();
   const info = page.getByRole('dialog', { name: '信息' });

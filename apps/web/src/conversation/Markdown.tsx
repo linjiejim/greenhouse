@@ -1,7 +1,7 @@
 /**
  * A reply's Markdown: GFM through `marked`, then DOMPurify, so nothing a model writes can run.
- * Links open in a new tab without the opener; code blocks get a language line and a copy button
- * (conversation.md: 代码块不算卡片).
+ * Links open in a new tab without the opener (the app's own `#/` addresses open in place); code
+ * blocks get a language line and a copy button (conversation.md: 代码块不算卡片).
  */
 
 import { memo, useMemo, type MouseEvent } from 'react';
@@ -41,10 +41,14 @@ function sanitize(html: string): string {
   if (!hooked) {
     hooked = true;
     DOMPurify.addHook('afterSanitizeAttributes', (node) => {
-      if (node.tagName === 'A') {
-        node.setAttribute('target', '_blank');
-        node.setAttribute('rel', 'noopener noreferrer');
+      if (node.tagName !== 'A') return;
+      // The app's own addresses (a doc an Agent linked, `#/knowledge/<id>`) open in place.
+      if (node.getAttribute('href')?.startsWith('#/')) {
+        node.removeAttribute('target');
+        return;
       }
+      node.setAttribute('target', '_blank');
+      node.setAttribute('rel', 'noopener noreferrer');
     });
   }
   return DOMPurify.sanitize(html, { ADD_ATTR: ['data-copy'], FORBID_TAGS: ['style', 'form', 'input', 'textarea'] });

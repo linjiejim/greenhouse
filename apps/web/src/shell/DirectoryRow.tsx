@@ -4,12 +4,26 @@
  * as the object's own "⋯". Renaming happens in place.
  */
 
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import {
+  useEffect,
+  useRef,
+  useState,
+  type HTMLAttributes,
+  type KeyboardEvent,
+  type MouseEvent,
+  type ReactNode,
+} from 'react';
 import { BellOff, ChevronDown, ChevronRight } from 'lucide-react';
 import { useContextMenu, type MenuEntry } from '@greenhouse/ui/kit';
 import { icon } from '@greenhouse/ui/tokens';
 import { cx } from '../lib/cx';
 import { useT } from '../lib/i18n';
+
+/** Extra handlers for a row: dragging, dropping and keys (merged with the right-click menu's). */
+export type RowProps = Pick<
+  HTMLAttributes<HTMLElement>,
+  'draggable' | 'onDragStart' | 'onDragEnd' | 'onDragOver' | 'onDragLeave' | 'onDrop' | 'onKeyDown'
+>;
 
 export interface Signal {
   needs?: number;
@@ -36,12 +50,15 @@ export function DirectoryRow({
   count,
   indent = 0,
   expanded,
+  leaf = false,
   variant,
   menu,
   menuLabel,
   renaming = false,
   onRename,
   onClick,
+  rowProps,
+  dropAt,
 }: {
   leading?: ReactNode;
   title: string;
@@ -54,6 +71,8 @@ export function DirectoryRow({
   indent?: number;
   /** Only rows that expand get a chevron. */
   expanded?: boolean;
+  /** A row in a tree that does not expand: room where the chevron would be, so names line up. */
+  leaf?: boolean;
   /** main: the main Agent, larger. */
   variant?: 'main';
   menu?: MenuEntry[] | (() => MenuEntry[]);
@@ -61,7 +80,10 @@ export function DirectoryRow({
   renaming?: boolean;
   /** Called with the new name, or null when renaming was abandoned. */
   onRename?: (name: string | null) => void;
-  onClick?: () => void;
+  onClick?: (event: MouseEvent<HTMLElement>) => void;
+  rowProps?: RowProps;
+  /** A drop over this row would land before it, after it or into it (a folder). */
+  dropAt?: 'before' | 'after' | 'into' | null;
 }) {
   const t = useT();
   const context = useContextMenu(menu ?? [], menuLabel ?? t('row.rename'));
@@ -79,6 +101,7 @@ export function DirectoryRow({
     variant === 'main' && 'is-main',
     active && 'is-active',
     context.open && 'is-menu-open',
+    dropAt && `is-drop-${dropAt}`,
   );
   const style = indent ? { paddingLeft: `calc(var(--gh-space-2) + ${indent} * var(--gh-space-4))` } : undefined;
   const body = (
@@ -88,6 +111,7 @@ export function DirectoryRow({
           {expanded ? <ChevronDown size={icon.sm} /> : <ChevronRight size={icon.sm} />}
         </span>
       )}
+      {expanded === undefined && leaf && <span className="app-row-chevron is-leaf" aria-hidden />}
       {leading && <span className="app-row-leading">{leading}</span>}
       <span className="app-row-title">{title}</span>
       {signal && <SignalMark signal={signal} />}
@@ -120,7 +144,15 @@ export function DirectoryRow({
     );
   }
 
-  const handlers = menu ? context.handlers : {};
+  const own: Partial<typeof context.handlers> = menu ? context.handlers : {};
+  const handlers = {
+    ...rowProps,
+    ...own,
+    onKeyDown: (event: KeyboardEvent<HTMLElement>) => {
+      rowProps?.onKeyDown?.(event);
+      if (!event.defaultPrevented) own.onKeyDown?.(event);
+    },
+  };
   return (
     <>
       {href ? (

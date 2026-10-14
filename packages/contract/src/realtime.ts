@@ -115,6 +115,11 @@ export const realtimeEventSchema = z.discriminatedUnion('type', [
     type: z.literal('comments.updated'),
     data: z.object({ target_type: z.enum(COMMENT_TARGETS), target_id: z.string(), comment_id: z.string() }),
   }),
+  /**
+   * Something in the knowledge base I can see was made, renamed, moved, reordered, saved, shared,
+   * archived or restored: refetch the knowledge lists on screen. It names nothing.
+   */
+  z.object({ type: z.literal('knowledge.changed'), data: z.object({}) }),
 ]);
 export type RealtimeEvent = z.infer<typeof realtimeEventSchema>;
 
