@@ -402,7 +402,7 @@ function BaseScreen({
             ) : undefined
           }
           primary={
-            canEdit && table ? (
+            canEdit && table && !dashboard ? (
               <Button kind="primary" onClick={() => setCreating({})}>
                 {t('tables.addRecord')}
               </Button>

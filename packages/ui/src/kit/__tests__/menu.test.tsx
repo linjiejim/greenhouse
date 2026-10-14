@@ -191,4 +191,29 @@ describe('dismissal on scroll', () => {
     });
     expect(menu()).toBeNull();
   });
+
+  it('stays open when a scroll moves its anchor but keeps it in view (an option brought into view)', () => {
+    render(
+      <div className="drawer" style={{ overflow: 'auto' }}>
+        <Menu items={items([])} />
+      </div>,
+    );
+    const drawer = document.querySelector('.drawer')!;
+    drawer.getBoundingClientRect = () => new DOMRect(0, 100, 400, 500);
+    const trigger = byRole('button', '更多');
+    let top = 300;
+    trigger.getBoundingClientRect = () => new DOMRect(10, top, 32, 32);
+    trigger.focus();
+    key(trigger, 'ArrowDown');
+    top = 200;
+    act(() => {
+      drawer.dispatchEvent(new Event('scroll'));
+    });
+    expect(menu()).not.toBeNull();
+    top = 40;
+    act(() => {
+      drawer.dispatchEvent(new Event('scroll'));
+    });
+    expect(menu()).toBeNull();
+  });
 });
