@@ -132,7 +132,7 @@ v2 从零建表：只有一份基线迁移，不继承 v1 的迁移链，也不�
 | `base_views` | 视图，含仪表盘 | `base_id` / `table_id` `CASCADE`（仪表盘的 `table_id` 为空）、`name`、`type`（grid / kanban / calendar / gallery / timeline / dashboard）、`owner_id`（空 = 共享视图）、`config`（筛选、排序、分组、列宽；仪表盘的卡片与应用共用一套 schema）、`position`、`revision` |
 | `base_forms` | 内部表单 | `table_id` `CASCADE`、`name`、`status`（draft / published）、`config`、`revision`；谁能提交由 `shares` 决定，默认是有新建权限的成员 |
 | `base_form_submissions` | 表单提交 | `form_id` `CASCADE`、`member_id`、`record_id` `SET NULL`、`single_submit`；只允许提交一次的表单靠部分唯一索引 |
-| `base_records` | 记录 | `table_id` `CASCADE`、`values`（按字段 id，只有标量字段；关联类和附件在下面两张表）、`computed`（公式、汇总、AI 字段）、`revision`、`computed_revision`、`search_*`（A 主字段，B 选项名，C 其他文本）、`created_by` / `updated_by`、`deleted_at` + `deleted_by`（回收站，30 天后彻底删除） |
+| `base_records` | 记录 | `table_id` `CASCADE`、`values`（按字段 id，只有标量字段；关联类和附件在下面两张表）、`computed`（公式、汇总、AI 字段）、`revision`、`computed_revision`、`search_*`（A 主字段，B 选项名，C 其他文本）、`created_by` / `updated_by`、`deleted_at` + `deleted_by`（回收站，30 天后彻底删除）；没有排序的视图按 id 排，即创建顺序（一次建多条时 id 依次递增） |
 | `base_record_links` | 关联、父记录、依赖的规范边 | 主键 `(field_id, source_record_id, target_record_id)`，三列都 `CASCADE`、`position`；指向回收站里记录的边保留，记录恢复时链接跟着回来；父记录与依赖不能成环 |
 | `base_record_files` | 记录附件 | 主键 `(record_id, field_id, file_id)`，`record_id` / `field_id` `CASCADE`、`file_id` → `files`（用途 `record`，`files.base_id` 是所在表格）、`position`；只能挂自己上传到这个表格、还没挂在别的记录上的文件 |
 | `base_record_events` | 记录历史 | `record_id` `CASCADE`、`table_id`、`actor_type`（member / agent / automation / form / import / app / system）、`actor_id`、`type`（created / updated / deleted / restored）、`changes`（字段前后值）、`meta` |

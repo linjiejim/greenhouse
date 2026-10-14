@@ -83,7 +83,7 @@ import {
   viewAt,
 } from './load.js';
 import { compileFilter, compileOrder, recordsWhere } from './query.js';
-import { createRecords, purgeRecords } from './records.js';
+import { createRecords, purgeRecords, recordId } from './records.js';
 import { projectTemplate, TEMPLATE_VERSIONS, type TemplatePlan } from './templates.js';
 import { canChangeType, convertValue, normalizeConfig, normalizeValue, emptyRefs, searchOf } from './values.js';
 import { cleanConfig, defaultConfig } from './views.js';
@@ -340,7 +340,7 @@ export function createTablesService(deps: { files: FilesService; notifications: 
     for (const spec of plan.tables) {
       const fields = fieldIds.get(spec.ref)!;
       const ordered = [...fields.values()];
-      for (const row of spec.rows) rowIds.set(row.ref, newId('record'));
+      for (const row of spec.rows) rowIds.set(row.ref, recordId());
       for (const row of spec.rows) {
         const values: Record<string, unknown> = {};
         for (const [ref, raw] of Object.entries(row.values)) {

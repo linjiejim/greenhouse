@@ -60,6 +60,30 @@ import {
 } from './query.js';
 import { changesBetween, emptyRefs, keptApart, normalizeValue, searchOf, titleOf, type ValueRefs } from './values.js';
 
+const CROCKFORD = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
+let lastRecordId = '';
+
+/**
+ * A new record's id. Records list in the order they were made (ids ascending), but a ULID tells
+ * only the millisecond: ids made in the same one (a template, a pasted block) count up from the
+ * last one instead.
+ */
+export function recordId(): string {
+  const next = newId('record');
+  if (next > lastRecordId) return (lastRecordId = next);
+  const chars = [...lastRecordId];
+  for (let index = chars.length - 1; index >= 0; index--) {
+    const digit = CROCKFORD.indexOf(chars[index]!);
+    if (digit < 0) break;
+    if (digit < 31) {
+      chars[index] = CROCKFORD[digit + 1]!;
+      return (lastRecordId = chars.join(''));
+    }
+    chars[index] = '0';
+  }
+  return (lastRecordId = next);
+}
+
 /** Most people told about one comment. */
 const MAX_TOLD = 50;
 /** Deepest chain of parents or dependencies walked when checking for a loop. */
@@ -261,7 +285,7 @@ export function createRecords(deps: RecordsDeps) {
       : await getDb()
           .insert(baseRecords)
           .values({
-            id: newId('record'),
+            id: recordId(),
             tableId: ctx.table.id,
             values: stored,
             ...search,

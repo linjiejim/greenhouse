@@ -31,19 +31,30 @@ export class CellParseError extends Error {
 
 const pad = (value: number) => String(value).padStart(2, '0');
 
+/** One formatter per time zone: making one costs far more than using it (a timeline reads thousands of values). */
+const clocks = new Map<string, Intl.DateTimeFormat>();
+function clockOf(timeZone: string): Intl.DateTimeFormat {
+  let clock = clocks.get(timeZone);
+  if (!clock) {
+    clock = new Intl.DateTimeFormat('en-US', {
+      timeZone,
+      hourCycle: 'h23',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+    clocks.set(timeZone, clock);
+  }
+  return clock;
+}
+
 /** The calendar day and wall-clock time of an instant in a time zone. */
 export function zonedParts(iso: string, timeZone: string) {
   const date = new Date(iso);
   if (Number.isNaN(date.valueOf())) return null;
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone,
-    hourCycle: 'h23',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  }).formatToParts(date);
+  const parts = clockOf(timeZone).formatToParts(date);
   const pick = (type: string) => Number(parts.find((part) => part.type === type)?.value);
   return { year: pick('year'), month: pick('month'), day: pick('day'), hour: pick('hour'), minute: pick('minute') };
 }
