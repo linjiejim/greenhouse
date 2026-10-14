@@ -166,6 +166,19 @@ function SearchBox({
   );
 }
 
+/** An editor that opens where a value is being changed: focus its trigger once, then run `ready`. */
+function useOpenOnMount(open: boolean, trigger: RefObject<HTMLButtonElement | null>, ready?: () => void) {
+  const latest = useRef(ready);
+  latest.current = ready;
+  useEffect(() => {
+    if (!open) return;
+    trigger.current?.focus({ preventScroll: true });
+    latest.current?.();
+    // Only on mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+}
+
 const matches = (item: Item, query: string) =>
   !query || `${item.label} ${item.description ?? ''}`.toLowerCase().includes(query.trim().toLowerCase());
 
@@ -184,6 +197,8 @@ export function Select({
   searchable,
   size = 'md',
   className,
+  defaultOpen = false,
+  onClose,
   'aria-invalid': ariaInvalid,
   'aria-describedby': describedBy,
 }: FieldProps & {
@@ -194,10 +209,14 @@ export function Select({
   /** sm 28 for table cells and compact toolbars. */
   size?: 'sm' | 'md';
   className?: string;
+  /** Open on mount with the trigger focused (an editor that appears where a value is being changed). */
+  defaultOpen?: boolean;
+  /** The list closed: a pick, Escape, Tab or a press outside. */
+  onClose?: () => void;
 }) {
   const t = useKitStrings();
   const all = normalize(options);
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(defaultOpen);
   const [query, setQuery] = useState('');
   const trigger = useRef<HTMLButtonElement>(null);
   const listId = useId();
@@ -208,12 +227,14 @@ export function Select({
     setOpen(false);
     setQuery('');
     if (restore) trigger.current?.focus({ preventScroll: true });
+    onClose?.();
   };
   const pick = (item: Item) => {
     onChange(item.value);
     close();
   };
   const keys = useListKeys(items, pick, close);
+  useOpenOnMount(defaultOpen, trigger, () => keys.setActive(Math.max(0, selected ? all.indexOf(selected) : 0)));
   const { panel, style } = useFloating(open, {
     rect: () => trigger.current?.getBoundingClientRect() ?? null,
     matchWidth: true,
@@ -314,6 +335,7 @@ export function MultiSelect({
   placeholder,
   disabled = false,
   max = 2,
+  defaultOpen = false,
   'aria-invalid': ariaInvalid,
   'aria-describedby': describedBy,
 }: FieldProps & {
@@ -324,10 +346,12 @@ export function MultiSelect({
   onClose?: () => void;
   /** Chips shown before "+N". */
   max?: number;
+  /** Open on mount (an editor that appears where a value is being changed). */
+  defaultOpen?: boolean;
 }) {
   const t = useKitStrings();
   const all = normalize(options);
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(defaultOpen);
   const [query, setQuery] = useState('');
   const trigger = useRef<HTMLButtonElement>(null);
   const listId = useId();
@@ -623,6 +647,8 @@ export function DatePicker({
   max,
   disabled = false,
   clearable = true,
+  defaultOpen = false,
+  onClose,
   'aria-invalid': ariaInvalid,
   'aria-describedby': describedBy,
 }: FieldProps & {
@@ -632,15 +658,20 @@ export function DatePicker({
   min?: string;
   max?: string;
   clearable?: boolean;
+  /** Open on mount (an editor that appears where a value is being changed). */
+  defaultOpen?: boolean;
+  /** The calendar closed: a pick, Escape or a press outside. */
+  onClose?: () => void;
 }) {
   const t = useKitStrings();
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(defaultOpen);
   const [focus, setFocus] = useState(() => (value ? fromISO(value) : new Date()));
   const trigger = useRef<HTMLButtonElement>(null);
   const { panel, style } = useFloating(open, { rect: () => trigger.current?.getBoundingClientRect() ?? null });
   const close = (restore = true) => {
     setOpen(false);
     if (restore) trigger.current?.focus({ preventScroll: true });
+    onClose?.();
   };
   useDismiss(open, () => close(false), [panel, trigger]);
   const isDisabled = (iso: string) => (!!min && iso < min) || (!!max && iso > max);

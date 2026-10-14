@@ -169,4 +169,26 @@ describe('dismissal on scroll', () => {
     });
     expect(menu()).toBeNull();
   });
+
+  it('stays open for a scroll that left its anchor in place (one reported late), and closes when it moves', () => {
+    render(
+      <div className="drawer" style={{ overflow: 'auto' }}>
+        <Menu items={items([])} />
+      </div>,
+    );
+    const trigger = byRole('button', '更多');
+    let top = 300;
+    trigger.getBoundingClientRect = () => new DOMRect(10, top, 32, 32);
+    trigger.focus();
+    key(trigger, 'ArrowDown');
+    act(() => {
+      document.querySelector('.drawer')!.dispatchEvent(new Event('scroll'));
+    });
+    expect(menu()).not.toBeNull();
+    top = 260;
+    act(() => {
+      document.querySelector('.drawer')!.dispatchEvent(new Event('scroll'));
+    });
+    expect(menu()).toBeNull();
+  });
 });
