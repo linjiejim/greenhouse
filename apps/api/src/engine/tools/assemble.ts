@@ -13,7 +13,7 @@ import { surfacesOf, type AvailabilityContext, type Card, type ToolContext, type
 const MAX_STORED_JSON = 20_000;
 
 /** What the model reads instead of a result when an earlier attempt left the same call unfinished. */
-export const UNCERTAIN_RESULT = {
+const UNCERTAIN_RESULT = {
   status: 'uncertain',
   note: 'An earlier attempt of this run made this exact call and stopped before it finished, so whether it took effect is unknown. Check the current state first, and make the call again only if it did not happen.',
 };

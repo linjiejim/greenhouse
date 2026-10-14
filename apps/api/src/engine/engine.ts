@@ -1503,15 +1503,13 @@ export function createEngine(deps: EngineDeps) {
       decisionAgain = true;
       return;
     }
-    decisionPass = (async () => {
-      do {
-        decisionAgain = false;
-        await decisionsOnce();
-      } while (decisionAgain && !stopping);
-    })()
+    decisionAgain = false;
+    decisionPass = decisionsOnce()
       .catch((error: unknown) => logger.warn('[engine] a decision pass failed', { error: toErrorMessage(error) }))
       .finally(() => {
         decisionPass = null;
+        // Its decision may have committed after this pass looked.
+        if (decisionAgain) wakeDecisions();
       });
     track(decisionPass);
   }
