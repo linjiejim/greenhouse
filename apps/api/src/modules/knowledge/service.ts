@@ -1780,8 +1780,19 @@ export function createKnowledgeService(deps: {
         if (entry.type === 'member' && entry.id === memberId) continue;
         wanted.set(`${entry.type}:${entry.id ?? ''}`, { type: entry.type, id: entry.id ?? null, role: entry.role });
       }
-      const memberIds = [...wanted.values()].filter((entry) => entry.type === 'member').map((entry) => entry.id!);
-      const groupIds = [...wanted.values()].filter((entry) => entry.type === 'group').map((entry) => entry.id!);
+      // Only who is new must exist: a share kept as it was may name a member since disabled or a
+      // group since deleted, and the dialog sends every share back.
+      const kept = new Set(
+        (
+          await getDb()
+            .select({ type: shares.principalType, id: shares.principalId })
+            .from(shares)
+            .where(and(eq(shares.resourceType, type), eq(shares.resourceId, id)))
+        ).map((row) => `${row.type}:${row.id ?? ''}`),
+      );
+      const newcomers = [...wanted].filter(([key]) => !kept.has(key)).map(([, entry]) => entry);
+      const memberIds = newcomers.filter((entry) => entry.type === 'member').map((entry) => entry.id!);
+      const groupIds = newcomers.filter((entry) => entry.type === 'group').map((entry) => entry.id!);
       const [people, teams] = await Promise.all([
         getDb()
           .select({ id: members.id })
