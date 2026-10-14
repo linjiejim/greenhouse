@@ -4,7 +4,20 @@
  */
 
 import type { ReactNode } from 'react';
-import { CheckCheck, Hash, LogOut, Plus, Settings, Shield, Sparkles, Wand2, type LucideIcon } from 'lucide-react';
+import {
+  CheckCheck,
+  FilePlus,
+  FolderPlus,
+  Hash,
+  LogOut,
+  Plus,
+  Settings,
+  Shield,
+  Sparkles,
+  Upload,
+  Wand2,
+  type LucideIcon,
+} from 'lucide-react';
 import { GreenhouseMark } from '@greenhouse/ui/components/brand';
 import { Menu, Tooltip, useContextMenu, useTooltip, type MenuEntry } from '@greenhouse/ui/kit';
 import { icon } from '@greenhouse/ui/tokens';
@@ -13,7 +26,9 @@ import { useConversations, useMarkRead } from '../data/conversations';
 import { useNotificationSummary, useMarkNotificationsRead } from '../data/notifications';
 import { useRuns } from '../data/runs';
 import { useT } from '../lib/i18n';
-import { navigate } from '../lib/router';
+import { navigate, useRoute } from '../lib/router';
+import { useNewTarget } from '../pages/knowledge/KnowledgeDirectory';
+import { lastBase, tablesMenu } from '../pages/tables/entry';
 import { MODULES, type ModuleId } from './modules';
 import { useOpenOverlay } from './overlays';
 import { useShell } from './context';
@@ -67,6 +82,7 @@ export function Rail({ module }: { module: ModuleId }) {
   const conversations = useConversations();
   const markRead = useMarkRead();
   const markNotifications = useMarkNotificationsRead();
+  const newTarget = useNewTarget(useRoute());
   const needsYou = summary.data?.needs_you ?? 0;
   const unread = summary.data?.unread ?? 0;
 
@@ -82,6 +98,23 @@ export function Rail({ module }: { module: ModuleId }) {
     { label: t('agents.new'), icon: glyph(Sparkles), onClick: () => openOverlay({ type: 'new-agent' }) },
     '-',
     { label: t('chat.markAllRead'), icon: glyph(CheckCheck), onClick: markAllRead },
+  ];
+  const knowledgeMenu: MenuEntry[] = [
+    {
+      label: t('knowledge.newDoc'),
+      icon: glyph(FilePlus),
+      onClick: () => openOverlay({ type: 'new-knowledge', kind: 'doc', target: newTarget() }),
+    },
+    {
+      label: t('knowledge.upload'),
+      icon: glyph(Upload),
+      onClick: () => openOverlay({ type: 'new-knowledge', kind: 'upload', target: newTarget() }),
+    },
+    {
+      label: t('knowledge.newFolder'),
+      icon: glyph(FolderPlus),
+      onClick: () => openOverlay({ type: 'new-knowledge', kind: 'folder', target: newTarget() }),
+    },
   ];
   const runsMenu: MenuEntry[] = [
     { label: t('runs.active'), onClick: () => navigate({ page: 'runs', view: 'active' }) },
@@ -105,6 +138,22 @@ export function Rail({ module }: { module: ModuleId }) {
       </Tooltip>
       <div className="app-rail-group">
         <RailButton id="chat" active={module === 'chat'} menu={chatMenu} onClick={() => navigate('#/c/main')} />
+        {me?.modules.knowledge && (
+          <RailButton
+            id="knowledge"
+            active={module === 'knowledge'}
+            menu={knowledgeMenu}
+            onClick={() => navigate({ page: 'knowledge' })}
+          />
+        )}
+        {me?.modules.tables && (
+          <RailButton
+            id="tables"
+            active={module === 'tables'}
+            menu={tablesMenu(t, openOverlay)}
+            onClick={() => navigate(lastBase())}
+          />
+        )}
         <Menu
           className="app-rail-more"
           label={t('nav.more')}

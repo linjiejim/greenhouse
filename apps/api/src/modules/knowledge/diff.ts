@@ -20,6 +20,11 @@ const MAX_TEXT = 30_000;
 const MAX_EQUAL = 300;
 /** Past this many edits the two texts are reported as replaced wholesale. */
 const MAX_EDITS = 2_000;
+/**
+ * Lines or words a fine diff compares at most once their common ends are set aside: its cost
+ * grows with their number times the edits. Past it, the middle is reported as replaced.
+ */
+export const MAX_DIFF_TOKENS = 20_000;
 
 /** Lines, each with its newline (the last may have none). */
 export function splitLines(text: string): string[] {
@@ -33,7 +38,8 @@ export function splitWords(text: string): string[] {
 
 /**
  * The shortest edit script from `a` to `b` (Myers, O((N+M)·D)), as runs of equal, deleted and
- * inserted tokens. Common ends are trimmed first; a very different pair is one delete and one insert.
+ * inserted tokens. Common ends are trimmed first; a very different pair, or a middle longer than
+ * MAX_DIFF_TOKENS, is one delete and one insert.
  */
 export function diffTokens(a: readonly string[], b: readonly string[]): Array<{ op: DiffOp; tokens: string[] }> {
   let start = 0;
@@ -51,8 +57,13 @@ export function diffTokens(a: readonly string[], b: readonly string[]): Array<{ 
     else out.push({ op, tokens: [token] });
   };
   for (let index = 0; index < start; index++) push('equal', a[index]!);
-  const middle = myers(a.slice(start, endA), b.slice(start, endB));
-  for (const [op, token] of middle) push(op, token);
+  if (endA - start + (endB - start) > MAX_DIFF_TOKENS) {
+    // Too much to compare finely: the middle was replaced.
+    for (let index = start; index < endA; index++) push('delete', a[index]!);
+    for (let index = start; index < endB; index++) push('insert', b[index]!);
+  } else {
+    for (const [op, token] of myers(a.slice(start, endA), b.slice(start, endB))) push(op, token);
+  }
   for (let index = endA; index < a.length; index++) push('equal', a[index]!);
   return out;
 }
@@ -196,8 +207,9 @@ export function diffText(
     };
     for (let at = index; at <= end; at++) {
       const run = lined[at]!;
-      if (run.op === 'delete') deleted.push(...run.lines);
-      else if (run.op === 'insert') inserted.push(...run.lines);
+      // Runs can hold a whole doc's lines: appended one by one, never spread into a call.
+      if (run.op === 'delete') for (const line of run.lines) deleted.push(line);
+      else if (run.op === 'insert') for (const line of run.lines) inserted.push(line);
       else {
         flush();
         pushPart(parts, 'equal', shorten(run.lines.join('')));

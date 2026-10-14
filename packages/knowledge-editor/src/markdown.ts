@@ -1,16 +1,13 @@
 /**
- * Server-side Markdown → Tiptap (ProseMirror) JSON conversion.
+ * Markdown → Tiptap (ProseMirror) JSON in Node, with the editor's own schema.
  *
- * Markdown is the canonical content for knowledge-base docs; `content_json` is
- * the editor state the web UI renders. When a writer (e.g. the agent
- * knowledge_mutation tool) only supplies Markdown, we derive `content_json` here
- * so the two never drift — using the SAME schema the editor uses
- * (`knowledgeEditorExtensions`), so the result round-trips cleanly.
+ * Docs store only Markdown (data-model §12.2); there is no stored editor JSON. This builds the
+ * document the web editor would build from the same Markdown, so the round-trip tests
+ * (Markdown → editor → Markdown) can run without a browser.
  *
  * Pipeline: Markdown --(md-html)--> HTML --(@tiptap/html generateJSON)--> Tiptap JSON.
- * Runs in Node via @tiptap/html's server export (happy-dom backed). The
- * Markdown→HTML half is shared with the browser editor (see md-html.ts) so both
- * loaders build the same document from the same source.
+ * Runs in Node via @tiptap/html's server export (happy-dom backed). The Markdown→HTML half is
+ * the browser editor's loader too (see md-html.ts).
  */
 
 import { generateJSON } from '@tiptap/html';
@@ -20,11 +17,9 @@ import { markdownToEditorHtml } from './md-html.js';
 export const EMPTY_TIPTAP_DOC = '{}';
 
 /**
- * Convert canonical Markdown to a Tiptap JSON string ready to store in
- * knowledge_base.content_json.
+ * Convert canonical Markdown to a Tiptap JSON string: the document the editor builds from it.
  *
- * Returns '{}' for blank input or on any failure, so callers can store the
- * result unconditionally and let the editor fall back to rendering Markdown.
+ * Returns '{}' for blank input or on any failure.
  */
 export function markdownToTiptapJson(markdown: string | null | undefined): string {
   const md = (markdown ?? '').trim();

@@ -1,4 +1,5 @@
 import { QueryClient } from '@tanstack/react-query';
+import type { KnowledgeScope, KnowledgeSpace } from '@greenhouse/contract';
 import { ApiClientError } from '@greenhouse/contract/client';
 
 export const queryClient = new QueryClient({
@@ -33,4 +34,25 @@ export const keys = {
   schedules: (agentId?: string) => ['schedules', agentId ?? 'all'] as const,
   notifications: ['notifications', 'list'] as const,
   summary: ['notifications', 'summary'] as const,
+  /** Everything the knowledge tree lists: one `knowledge.changed` refetches it all. */
+  knowledge: ['knowledge'] as const,
+  knowledgeRoots: (scope: KnowledgeScope) => ['knowledge', 'roots', scope] as const,
+  knowledgeFolder: (id: string) => ['knowledge', 'folder', id] as const,
+  knowledgeRecent: ['knowledge', 'recent'] as const,
+  knowledgeTemplates: ['knowledge', 'templates'] as const,
+  knowledgeArchived: (space: KnowledgeSpace) => ['knowledge', 'archived', space] as const,
+  knowledgeSearch: (q: string, scope?: KnowledgeScope, folderId?: string) =>
+    ['knowledge', 'search', q, scope ?? '', folderId ?? ''] as const,
+  knowledgeShares: (type: 'folder' | 'doc', id: string) => ['knowledge', 'shares', type, id] as const,
+  knowledgeFile: (id: string) => ['knowledge', 'file', id] as const,
+  doc: (id: string) => ['docs', 'one', id] as const,
+  docVersions: (id: string) => ['docs', 'versions', id] as const,
+  docVersion: (id: string, version: number) => ['docs', 'version', id, version] as const,
+  docDiff: (id: string, from: number, to: number, mode: 'line' | 'word') =>
+    ['docs', 'diff', id, from, to, mode] as const,
+  /** Every doc's backlinks: a save can add or drop a link to any doc. */
+  backlinks: ['docs', 'backlinks'] as const,
+  docBacklinks: (id: string) => ['docs', 'backlinks', id] as const,
+  docComments: (id: string) => ['docs', 'comments', id] as const,
+  docPresence: (id: string) => ['docs', 'presence', id] as const,
 };

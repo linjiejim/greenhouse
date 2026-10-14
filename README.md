@@ -101,12 +101,18 @@ same script doubles as an end-to-end smoke tour (see [Development](#development)
   with tool-call traces, attachments of any file type (the agent reads text / CSV / JSON / xlsx /
   docx / PDF), per-turn model switching from a config catalog, a side pane for artifacts and
   records, session forking, background runs, sharing / grouping / tagging, and a global ⌘P search.
-- **Knowledge Base** — team, personal and shared documents with a Tiptap editor, Markdown-first
-  storage, folders plus a file cabinet, backlinks, comments and @-mentions, templates, version
-  history, fine-grained sharing via groups, and segmented full-text search (CJK-aware).
+- **Knowledge Base** — team, personal and shared docs and files in one folder tree, a Tiptap editor
+  (`/` blocks, `[[` doc links, @-mentions, pasted pictures, tables) over Markdown-first storage,
+  who-is-viewing and who-is-editing, saves that never overwrite someone else's, version history
+  with line and word diffs, backlinks, comments, templates, sharing with members, groups or
+  everyone, Markdown and ZIP export, and segmented full-text search (CJK-aware).
 - **Projects** — projects, tasks (board / gantt / tree views), members, comments, activity log.
-- **Tables** — multidimensional bases: typed fields, views, forms, record links, dashboards,
-  rule automations, and conversational schema planning (the agent drafts a base, you confirm).
+- **Tables** — bases of data tables with typed fields (text to attachments, record links, parent
+  records and dependencies); grid, board, calendar, gallery and timeline views (a gantt with
+  dependency arrows and milestones, dragged to change dates), each with its filters, sorts and
+  groups, shared or personal; editing in cells or a record drawer, pasting blocks, comments and
+  history, a recycle bin, CSV export, sharing with four roles, and a Projects template. Forms, CSV
+  import, formulas, dashboards, automations and Agent tools are the next phases.
 - **Home workbench** — a personal dashboard of live cards backed by the same tools (recipes and
   templates), editable by drag-and-drop or by asking the agent; it is the empty state of a new chat.
 - **Execution center** — one surface for every durable run: automations (cron), missions,
@@ -214,7 +220,7 @@ greenhouse/
 │   ├── types/                # Shared TypeScript types (feature flags, workspace settings, …)
 │   ├── utils/                # Shared helpers (date, json, crypto, logger, semver, webhooks)
 │   ├── db/                   # Database layer — Drizzle schema + domain services
-│   ├── knowledge-editor/     # Tiptap schema + server-side Markdown ↔ Tiptap JSON
+│   ├── knowledge-editor/     # Tiptap schema, Markdown ↔ Tiptap JSON and the browser editor
 │   ├── crud/                 # Low-code CRUD framework (one schema → list / form / detail)
 │   ├── ui/                   # Shared React UI kit (atoms, markdown, tool-call cards, plant avatars, tokens)
 │   └── contract/             # Typed API contract — re-exports the API's AppType + hc

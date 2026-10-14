@@ -16,7 +16,7 @@ v2 和 v1 不兼容，不加 `/api/v2` 前缀，也不保留旧路由。`GET /ap
 | 分页 | 游标分页：`?cursor=&limit=`，默认 50，最大 200。总数单独给（`?count=1`），不和列表混在一起 |
 | 时间与 ID | ISO 8601 UTC；ID 是「类型前缀 + ULID」的字符串（如 `agt_01J…`），见[数据模型](data-model.md#1-约定) |
 | 鉴权 | Web、移动端、扩展用 Bearer 访问令牌加刷新令牌；`/api/mcp` 只认 OAuth 2.1 访问令牌或个人访问令牌（不认 App 的令牌）；电脑画面和终端用一次性 ticket；文件内容用按成员签发的短期签名 URL，因为 `<img>` 和下载链接带不了请求头 |
-| 实时 | 只有一个 WebSocket `/api/ws`，事件为 `{ type, data }`，类型定义在 contract 里。消息增量、运行进度、需要你、通知、在线状态都走它；发送消息仍用 `POST`。回复的文字增量每 75 ms 合成一帧（`message.delta`，`offset` 是这一帧开头在回复里的位置）。进程之间经 PostgreSQL NOTIFY 转发；一条事件大到转不过去时（长回复的最终消息），另一个进程上的客户端收到 `conversation.resync { conversation_id, after_seq }`，用 `GET /api/conversations/:id/messages?after=<after_seq>` 补拉。重连后只补拉屏幕上打开的对话（和「需要你」的计数），其余查询标为过期，下次显示时再取 |
+| 实时 | 只有一个 WebSocket `/api/ws`，事件为 `{ type, data }`，类型定义在 contract 里。消息增量、运行进度、需要你、通知、在线状态、表格的记录变更（`records.changed`，带每条记录现在的 revision）和结构变更（`base.updated`）都走它；发送消息仍用 `POST`。回复的文字增量每 75 ms 合成一帧（`message.delta`，`offset` 是这一帧开头在回复里的位置）。进程之间经 PostgreSQL NOTIFY 转发；一条事件大到转不过去时（长回复的最终消息），另一个进程上的客户端收到 `conversation.resync { conversation_id, after_seq }`，用 `GET /api/conversations/:id/messages?after=<after_seq>` 补拉。重连后只补拉屏幕上打开的对话（和「需要你」的计数），其余查询标为过期，下次显示时再取 |
 | 幂等 | 有副作用的 `POST` 接受 `Idempotency-Key` 头；卡片动作（批准、拒绝）天然幂等 |
 | 注册顺序 | 路由挂载顺序有安全含义，保持单链定义；公开路径白名单越小越好 |
 | 配置 | 只有 `apps/api/src/config/` 可以读 `process.env`；外部服务一律通过 `providers.resolve()` 获取 |
@@ -73,18 +73,26 @@ v2 和 v1 不兼容，不加 `/api/v2` 前缀，也不保留旧路由。`GET /ap
 | 方法与路径 | 用途 |
 | --- | --- |
 | `POST /api/files` · `GET` / `DELETE /api/files/:id` · `GET …/:id/content?exp=&m=&sig=` | 统一文件服务：multipart 上传（预签名直传随 M2），带用途与归属；字节只经 `FileView.url` 读取，它为当前成员签发、一到两小时内有效，读取时重查权限；网页与 SVG 一律下载；替代 v1 的 6 条上传路径 |
-| `GET /api/knowledge/folders?space=team\|personal\|shared` · `POST /api/knowledge/folders` · `GET` / `PATCH` / `DELETE /api/knowledge/folders/:id` · `POST …/restore` · `GET` / `PUT …/share` · `GET …/export` | 文件夹树（文件夹、文档、文件同列，先按手动顺序再按名称）：空间根，或「分享给我」的最上层；文件夹带路径与内容（别人分享的东西，路径只含读者看得到的上层文件夹，检索结果与继承的分享同理）。`PATCH` 改名或移动：不能移进自己或下层（`folder_cycle`），个人的只能由主人移进团队空间，不能反向、不能跨主人（`cross_space_move`）。`DELETE` 连同其中全部归档，`restore` 只带回一起归档的。`share` 是自己的分享加上从上层继承的；`PUT` 整体替换，只有个人空间的主人（团队空间 `team_space`，Agent 文件夹 `agent_folder_private`）。`export` 是边写边下载的 ZIP |
-| `POST /api/knowledge/reorder` · `GET /api/knowledge/archived?space=` · `GET /api/knowledge/export?space=` | 同一层的手动顺序；已归档（只列最上层）；整个空间导出为 ZIP |
+| `GET /api/knowledge/folders?space=team\|personal\|shared` · `POST /api/knowledge/folders` · `GET` / `PATCH` / `DELETE /api/knowledge/folders/:id` · `POST …/restore` · `GET` / `PUT …/share` · `GET …/export` | 文件夹树（文件夹、文档、文件同列，先按手动顺序，再文件夹在前，再按名称；名称按数据库的排序规则，顺序和分页都在库里做）：空间根，或「分享给我」的最上层；文件夹带路径与内容。列表和文件夹的内容都分页：`cursor`、`limit`（默认 200，最多 1000），文件夹的下一页在 `next_cursor`（别人分享的东西，路径只含读者看得到的上层文件夹，检索结果与继承的分享同理）。文件夹最多 32 层，新建或移动超过时返回 `folder_too_deep`。`PATCH` 改名或移动：不能移进自己或下层（`folder_cycle`），个人的只能由主人移进团队空间，不能反向、不能跨主人（`cross_space_move`）。`DELETE` 连同其中全部归档，`restore` 只带回一起归档的。`share` 是自己的分享加上从上层继承的；`PUT` 整体替换，只有个人空间的主人（团队空间 `team_space`，Agent 文件夹 `agent_folder_private`）。`export` 是边写边下载的 ZIP |
+| `POST /api/knowledge/reorder` · `GET /api/knowledge/archived?space=` · `GET /api/knowledge/export?space=` | 同一层的手动顺序；已归档（只列最上层，新的在前，分页同上）；整个空间导出为 ZIP |
 | `GET /api/knowledge/docs?space=&template=` · `POST /api/knowledge/docs` · `GET` / `PATCH` / `DELETE /api/knowledge/docs/:id` · `POST …/restore` | 最近更新的文档（`template=true` 是模板）；新建（空白或 `template_id`）；读取时正文里的文件地址按读者签名。`PATCH` 改标题或正文要带读到的 `version`，旧的返回 409 `stale_version`（`details` 有当前版本、谁、何时）；标签、摘要、模板标记原地改；`folder_id` / `space` 移动 |
 | `…/docs/:id/versions` · `…/versions/:v` · `POST …/versions/:v/restore` · `GET …/diff?from=&to=&mode=line\|word` | 版本（新的在前）、某一版、恢复（带当前 `version`，写一个新版本）、对比（两行上下文的 hunks，长的未改动内容截短） |
 | `…/docs/:id/backlinks` · `…/comments[/:commentId]` · `…/share` · `…/presence` · `…/export` | 反向链接（按读者权限过滤）；评论（能读就能评，只改、删自己的）；分享（同文件夹）；在线：`PUT { state: viewing\|editing }` 是心跳，`DELETE` 是离开；导出 Markdown |
 | `POST /api/knowledge/files` · `GET` / `PATCH` / `DELETE /api/knowledge/files/:id` · `POST …/restore` | 知识库文件：multipart 传到 `folder_id`、`space` 根或 `doc_id`（贴进文档的图片，跟随文档）；返回预览方式（image / pdf / text / audio / video / none）与签名地址；改名、移动、归档。`DELETE /api/files/:id` 对它们返回 `file_governed` |
 | `GET /api/knowledge/search?q=&space=&folder_id=&limit=` | 中英文全文检索（文档与文件），只含读者能读的，分数高的在前，带片段和路径 |
-| `/api/tables/bases[/:id]/…` | 表格：数据表、字段、视图、记录、表单、自动化、评论、回收站、审计（沿用 #64 的结构） |
+| `GET /api/tables/bases?archived=` · `POST /api/tables/bases` · `GET` / `PATCH /api/tables/bases/:id` · `POST …/archive` · `…/restore` · `…/delete` | 表格：我的和分享给我的（带数据表与我看得到的视图；`archived=true` 是我拥有的已归档表格）；新建空白表格（一张数据表、一个表格视图）或从模板新建（`template: project`）；详情是数据表、字段、视图和我的角色；`PATCH` 改名、说明（搭建者）或给自己置顶；归档、恢复、彻底删除只有拥有者，彻底删除要再输一遍名称（`{ name }`） |
+| `GET` / `PUT /api/tables/bases/:id/share` | 分享：拥有者加分享列表；`PUT` 整体替换，只有拥有者。角色是 owner / builder / editor / viewer，分组和全员只能是 editor / viewer；新加的人收到通知；写审计 |
+| `GET /api/tables/bases/:id/trash` · `…/audit` · `POST …/files` · `POST …/tables` | 回收站：删除的记录、字段和数据表，新的在前（编辑者；超过 30 天的记录先彻底删除）；审计：分享、归档、删除（拥有者）；附件字段的上传（multipart `file`，编辑者，记录引用它时才挂上）；新建数据表（带主字段和表格视图，搭建者） |
+| `PATCH` / `DELETE /api/tables/tables/:id` · `POST …/restore` · `…/purge` · `GET …/titles?q=` · `GET …/export?view_id=` | 数据表：改名、说明、顺序；删除进回收站；恢复；彻底删除（连同记录和附件）；记录标题（选择器用）；导出某个视图（筛选、排序、显示的字段）或整张表的 CSV（带 BOM） |
+| `POST /api/tables/tables/:id/fields` · `PATCH` / `DELETE /api/tables/fields/:id` · `POST …/restore` · `…/purge` | 字段（搭建者）：文本、长文本、数字、勾选、日期、日期时间、单选、多选、成员、链接、邮箱、电话、附件、关联、父记录、依赖；名称在表内唯一（`name_taken`）；每张表一个父记录字段和一个依赖字段（`one_per_table`）；类型只在值能保留时可改（文本类之间、单选到多选、日期到日期时间，否则 `type_change_unsupported`）；主字段不能删；删除进回收站，所有视图里去掉它，值留到彻底删除 |
+| `POST /api/tables/tables/:id/views` · `PATCH` / `DELETE /api/tables/views/:id` | 视图：表格、看板、日历、画册、时间线；个人视图任何能看的人都能建，共享视图要搭建者；配置是筛选、排序、分组、字段顺序、隐藏、列宽、冻结列、行高和各类型的设置；改动带 `revision`，旧的返回 409 `stale_revision`；每张表至少留一个共享视图（`last_view`） |
+| `POST /api/tables/tables/:id/records/query` | 查询记录：`{ filter, sorts, group, search, cursor, limit, count }`，筛选里 `$me` 是读者，`$today` 等按读者时区；分组先于排序；游标是带查询指纹的偏移；返回记录（关联、依赖、父记录、附件填好 id）、关联记录的标题、附件的签名地址，`count` 时带总数 |
+| `POST /api/tables/tables/:id/records` · `…/records/bulk` · `…/records/delete` | 新建记录；批量粘贴（每条各自成功或失败：`stale_revision`、`invalid_input`、`not_found`）；批量删除进回收站（编辑者） |
+| `GET` / `PATCH` / `DELETE /api/tables/records/:id` · `POST …/restore` · `…/purge` · `GET …/activity` · `…/comments[/:commentId]` | 一条记录（带子记录）；修改要带读到的 `revision`，旧的返回 409 `stale_revision`（`details.record` 是现在的记录）；删除进回收站，恢复，彻底删除（搭建者）；活动是评论和变更历史，新的在前；评论（能读就能评，提及的人和记录创建者收到通知；只改自己的，拥有者能删任何一条） |
+| `GET /api/search?q=&kinds=` | `⌘K` 全局搜索；`records` 是我能读的表格里的记录（中英文全文检索），带 `base_id`、`table_id` |
 | `/api/apps[/:id]/…` · `POST /api/forms/:id` | 应用、表单提交 |
 | `GET /api/skills?q=&space=&kind=&scan_status=&archived=&agent=` · `POST /api/skills` · `GET` / `PATCH` / `DELETE /api/skills/:id` · `POST …/restore` · `GET` / `POST …/versions` · `POST …/scan` · `GET …/download?version=` · `GET /api/skills/starters?agent=` | 技能：我看得到的技能，`available` 与原因按 `agent`（默认主 Agent）判断；新建模板，或用 purpose `skill` 上传的 ZIP 新建包；`PATCH` 改显示名、说明、标签，`DELETE` 是归档；新版本（新 ZIP，或模板的新正文、字段、要求）；`scan` 重扫，或审核（`safe` / `malicious`，团队技能由管理员、个人技能由主人）；下载返回包的签名链接；`starters` 是新会话的 3 个常用技能（没有时给模板开场） |
 | `GET /api/notifications` · `POST …/read` | 通知 |
-| `GET /api/search?q=&kinds=` | `⌘K` 全局搜索 |
 | `GET /api/members?q=` · `GET /api/groups` | 成员与分组选择器（只读） |
 
 ### 2.5 管理（仅管理员）
@@ -177,7 +185,7 @@ OAuth 2.1 与 MCP（公开路径，错误按 RFC 6749 返回 `{ error, error_des
 
 `knowledge_query`（`search`、`read`、`list`）以提问者的权限读知识库：读过的文档列为回复的出处（`kind: doc`，地址 `#/knowledge/<id>`），搜索到的文档在回复链接到时列出；`space: agent` 是这个 Agent 的私有参考文件夹。`knowledge_mutation`（`create`、`edit`、`move`、`comment`）改知识库：`edit` 带读到的 `version`，整体替换或给只出现一次的 find / replace；除了 Agent 自己的私有参考文件夹，写入都先弹出批准卡（`tool_write`）；版本和评论记下代写的 Agent。写入只在回合里，公开 Agent 两个都没有。
 
-知识库正文的约定：引用其他文档写作 `[标题](#/knowledge/<文档 id>)`（编辑器的 `[[`），提及写作 `[@名字](member:<成员 id>)`，图片与文件写作 `/api/files/<id>/content`，存储时去掉签名、读取时按读者签名。实时事件：`doc.updated`、`doc.presence`、`comments.updated`，发给打开着这篇文档的人。
+知识库正文的约定：引用其他文档写作 `[标题](#/knowledge/<文档 id>)`（编辑器的 `[[`），提及写作 `[@名字](member:<成员 id>)`，图片与文件写作 `/api/files/<id>/content`，存储时去掉签名、读取时按读者签名。实时事件：`doc.updated`、`doc.presence`、`comments.updated`，发给打开着这篇文档的人；`knowledge.changed`（不带任何内容）在新建、改名、移动、排序、保存、分享、归档、恢复之后发给看得到那个位置的人（团队空间是所有开着知识库的成员，个人空间是主人和分享覆盖到的人，取消分享时也告诉原来覆盖到的人；归档或恢复文件夹时，分享到其中任何文件夹或文档的人也会收到），各端据此刷新屏幕上的知识库列表。保存分享时只校验新加的成员和分组：已有的分享即使对象已停用或已删除也原样保留。
 
 `mcp_call` 是连接器的唯一工具（`list`、`describe`、`call`）。它的描述每个回合重建，只列出这个 Agent 此刻能为提问者用的连接器和工具：已启用、在 manifest 的 `connectors` 里（空值表示全部）、per_member / oauth 的已由提问者连接；不能写的 Agent 只看到只读工具。只读工具直接运行；其余工具弹出批准卡（`tool_write`，原样参数），批准后用提问者的 Key 或登录执行。只在回合里提供，公开 Agent 不提供。
 

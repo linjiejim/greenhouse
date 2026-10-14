@@ -8,8 +8,9 @@
  */
 
 import { Hono } from 'hono';
+import { bodyLimit } from 'hono/body-limit';
 import { fileContentQuerySchema, idParamSchema, uploadFieldsSchema } from '@greenhouse/contract';
-import { forbidden, invalidInput } from '../../http/errors.js';
+import { errorBody, forbidden, invalidInput } from '../../http/errors.js';
 import type { AppEnv } from '../../http/env.js';
 import { readParam, readQuery } from '../../http/validate.js';
 import { dispositionFor, MAX_UPLOAD_BYTES, type FilesService } from './service.js';
@@ -18,11 +19,18 @@ import type { ConversationsService } from '../conversations/service.js';
 /** Multipart overhead on top of the file itself. */
 const FORM_SLACK_BYTES = 64 * 1024;
 
+/**
+ * An upload's body may be the largest file plus form overhead, whether or not it says how long
+ * it is: a body without Content-Length is counted as it arrives and refused past the cap.
+ */
+export const uploadLimit = bodyLimit({
+  maxSize: MAX_UPLOAD_BYTES + FORM_SLACK_BYTES,
+  onError: (c) => c.json(errorBody('too_large', 'Files can be up to 50 MB.'), 413),
+});
+
 export function fileRoutes(service: FilesService, conversations: ConversationsService) {
   return new Hono<AppEnv>()
-    .post('/', async (c) => {
-      const declared = Number(c.req.header('content-length') ?? 0);
-      if (declared > MAX_UPLOAD_BYTES + FORM_SLACK_BYTES) throw invalidInput('Files can be up to 50 MB.');
+    .post('/', uploadLimit, async (c) => {
       if (!c.req.header('content-type')?.startsWith('multipart/form-data')) {
         throw invalidInput('Upload the file as multipart/form-data.');
       }

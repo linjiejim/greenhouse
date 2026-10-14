@@ -6,7 +6,14 @@
  */
 
 import { z } from 'zod';
-import { CHANGE_NOTE_MAX, COMMENT_BODY_MAX, DOC_TITLE_MAX, docHref, type PathEntry } from '@greenhouse/contract';
+import {
+  CHANGE_NOTE_MAX,
+  COMMENT_BODY_MAX,
+  DOC_CONTENT_MAX,
+  DOC_TITLE_MAX,
+  docHref,
+  type PathEntry,
+} from '@greenhouse/contract';
 import { ApiError } from '../../http/errors.js';
 import type { As, KnowledgeService } from '../../modules/knowledge/service.js';
 import { diffText } from '../../modules/knowledge/diff.js';
@@ -16,6 +23,8 @@ import { defineTool, type ToolContext } from './define.js';
 const READ_CHARS = 20_000;
 /** What the agent writes in one call. */
 const WRITE_CHARS = 200_000;
+/** The change an edit card shows. */
+const PREVIEW_CHARS = 1_200;
 
 const where = z
   .enum(['team', 'personal', 'shared', 'agent'])
@@ -88,6 +97,22 @@ const staleMessage = (current: number, read: number) =>
   `Someone saved version ${current} after the version ${read} you read. Read it again and redo the change.`;
 const as = (ctx: Pick<ToolContext, 'agent'>): As => ({ agentId: ctx.agent.id });
 
+/**
+ * A room is read by people who may not read what the asker's Agent reads for them. There the
+ * lines everyone sees (steps under the reply, a card's summary that the decision line repeats)
+ * name no doc and no folder; the step rows and the card's details, which only the asker sees,
+ * keep them.
+ */
+const inRoom = (ctx: Pick<ToolContext, 'conversation'>) => ctx.conversation?.kind === 'room';
+/**
+ * Calls made outside a room, whose step lines may name the doc. `summarize` gets no context, so
+ * the call's input marks it; a call not marked (in a room, or not run yet) is summarised without.
+ */
+const nameable = new WeakSet<object>();
+const markNameable = (args: object, ctx: Pick<ToolContext, 'conversation'>) => {
+  if (!inRoom(ctx)) nameable.add(args);
+};
+
 /** The Agent's own folder answers only for the Agent's owner (no public Agent reaches it). */
 function ownAgent(ctx: Pick<ToolContext, 'agent' | 'memberId'>) {
   if (ctx.agent.ownerId !== ctx.memberId) throw new Error("Only your owner's turns can use your reference folder.");
@@ -148,18 +173,22 @@ export function knowledgeTools(knowledge: KnowledgeService) {
 
   /** The change as a few lines, for the approval card. */
   function preview(before: string, after: string): string {
+    // The diff refuses fine work past its budget (a big rewrite shows as counts only), and the
+    // lines stop once the card has enough.
     const { hunks, added, removed } = diffText(before, after, 'line');
-    const lines: string[] = [`+${added} −${removed}`];
-    for (const hunk of hunks) {
-      for (const part of hunk.parts) {
-        if (part.op === 'equal') continue;
-        for (const line of part.text.replace(/\n$/, '').split('\n'))
-          lines.push(`${part.op === 'insert' ? '+' : '-'} ${line}`);
-      }
-      if (lines.join('\n').length > 1200) break;
+    let text = `+${added} −${removed}`;
+    for (const part of hunks.flatMap((hunk) => hunk.parts)) {
+      if (text.length > PREVIEW_CHARS) break;
+      if (part.op === 'equal') continue;
+      const sign = part.op === 'insert' ? '+' : '-';
+      text += part.text
+        .slice(0, PREVIEW_CHARS)
+        .replace(/\n$/, '')
+        .split('\n')
+        .map((line) => `\n${sign} ${line}`)
+        .join('');
     }
-    const text = lines.join('\n');
-    return text.length > 1200 ? `${text.slice(0, 1200)}…` : text;
+    return text.length > PREVIEW_CHARS ? `${text.slice(0, PREVIEW_CHARS)}…` : text;
   }
 
   const query = defineTool({
@@ -174,6 +203,7 @@ export function knowledgeTools(knowledge: KnowledgeService) {
     taints: true,
     available: (ctx) => ctx.modules.knowledge,
     async execute(args, ctx) {
+      markNameable(args, ctx);
       if (args.action === 'search') {
         let folderId = args.folder_id;
         let space: 'team' | 'personal' | 'shared' | undefined = args.space === 'agent' ? undefined : args.space;
@@ -238,7 +268,8 @@ export function knowledgeTools(knowledge: KnowledgeService) {
       if (args.action === 'search')
         return zh ? `搜索知识库：${args.query}` : `Searched the knowledge base: ${args.query}`;
       if (args.action === 'read') {
-        const title = (output as { title?: string } | undefined)?.title ?? '';
+        const title = nameable.has(args) ? (output as { title?: string } | undefined)?.title : undefined;
+        if (!title) return zh ? '读了一篇文档' : 'Read a doc';
         return zh ? `读了《${title}》` : `Read "${title}"`;
       }
       return zh ? '看了知识库目录' : 'Looked through the knowledge base';
@@ -256,9 +287,13 @@ export function knowledgeTools(knowledge: KnowledgeService) {
     const doc = await knowledge.getDoc(ctx.memberId, args.doc_id, { as: as(ctx), signed: false });
     if (args.action === 'edit') {
       if (doc.version !== args.version) throw new Error(staleMessage(doc.version, args.version));
-      if (args.edits) applyEdits(doc.content, args.edits);
-      else if (args.content === undefined && args.title === undefined)
-        throw new Error('Send content, edits or a title.');
+      const after = args.edits ? applyEdits(doc.content, args.edits) : args.content;
+      if (after === undefined && args.title === undefined) throw new Error('Send content, edits or a title.');
+      if (after !== undefined && after.length > DOC_CONTENT_MAX) {
+        throw new Error(
+          `The doc would be ${after.length} characters, over the limit of ${DOC_CONTENT_MAX}. Change less of it, or split it into more docs.`,
+        );
+      }
     }
     const inside =
       ctx.agent.ownerId === ctx.memberId && (await knowledge.inAgentFolder('doc', args.doc_id, ctx.agent.id));
@@ -274,6 +309,7 @@ export function knowledgeTools(knowledge: KnowledgeService) {
     risk: 'write',
     available: (ctx) => ctx.modules.knowledge,
     async callRisk(args, ctx) {
+      markNameable(args, ctx);
       try {
         return (await ownFolderOnly(args, ctx)) ? 'read' : 'write';
       } catch (error) {
@@ -284,22 +320,40 @@ export function knowledgeTools(knowledge: KnowledgeService) {
     },
     async describe(args, ctx) {
       const zh = ctx.locale === 'zh';
+      // In a room the summary (repeated in the decision line everyone sees) names nothing; the
+      // details, on the asker's own card, say what and where.
+      const room = inRoom(ctx);
       if (args.action === 'create') {
         const place = await placeName(await target(args, ctx, false), ctx);
         return {
-          summary: zh ? `在${place}新建文档《${args.title}》` : `create the doc "${args.title}" in ${place}`,
+          summary: room
+            ? zh
+              ? '新建一篇文档'
+              : 'create a doc'
+            : zh
+              ? `在${place}新建文档《${args.title}》`
+              : `create the doc "${args.title}" in ${place}`,
           details: [
+            ...(room ? [{ label: zh ? '标题' : 'Title', value: args.title }] : []),
             { label: zh ? '位置' : 'Where', value: place },
             { label: zh ? '内容' : 'Content', value: args.content.slice(0, 1200) },
           ],
         };
       }
       const doc = await knowledge.getDoc(ctx.memberId, args.doc_id, { as: as(ctx), signed: false });
+      const titled = room ? [{ label: zh ? '文档' : 'Doc', value: doc.title }] : [];
       if (args.action === 'edit') {
         const after = args.edits ? applyEdits(doc.content, args.edits) : (args.content ?? doc.content);
         return {
-          summary: zh ? `修改文档《${doc.title}》` : `edit the doc "${doc.title}"`,
+          summary: room
+            ? zh
+              ? '修改一篇文档'
+              : 'edit a doc'
+            : zh
+              ? `修改文档《${doc.title}》`
+              : `edit the doc "${doc.title}"`,
           details: [
+            ...titled,
             ...(args.title && args.title !== doc.title
               ? [{ label: zh ? '新标题' : 'New title', value: args.title }]
               : []),
@@ -311,13 +365,25 @@ export function knowledgeTools(knowledge: KnowledgeService) {
       if (args.action === 'move') {
         const place = await placeName(await target(args, ctx, false), ctx);
         return {
-          summary: zh ? `把《${doc.title}》移到${place}` : `move "${doc.title}" to ${place}`,
-          details: [{ label: zh ? '移到' : 'To', value: place }],
+          summary: room
+            ? zh
+              ? '移动一篇文档'
+              : 'move a doc'
+            : zh
+              ? `把《${doc.title}》移到${place}`
+              : `move "${doc.title}" to ${place}`,
+          details: [...titled, { label: zh ? '移到' : 'To', value: place }],
         };
       }
       return {
-        summary: zh ? `评论《${doc.title}》` : `comment on "${doc.title}"`,
-        details: [{ label: zh ? '评论' : 'Comment', value: args.body.slice(0, 1200) }],
+        summary: room
+          ? zh
+            ? '评论一篇文档'
+            : 'comment on a doc'
+          : zh
+            ? `评论《${doc.title}》`
+            : `comment on "${doc.title}"`,
+        details: [...titled, { label: zh ? '评论' : 'Comment', value: args.body.slice(0, 1200) }],
       };
     },
     async execute(args, ctx) {
@@ -374,9 +440,13 @@ export function knowledgeTools(knowledge: KnowledgeService) {
     },
     summarize: (args, output, locale) => {
       const zh = locale === 'zh';
-      const title = (output as { title?: string } | undefined)?.title ?? ('title' in args ? (args.title ?? '') : '');
-      if (args.action === 'create') return zh ? `新建了《${title}》` : `Created "${title}"`;
-      if (args.action === 'edit') return zh ? `修改了《${title}》` : `Edited "${title}"`;
+      const title = nameable.has(args)
+        ? ((output as { title?: string } | undefined)?.title ?? ('title' in args ? args.title : undefined))
+        : undefined;
+      if (args.action === 'create')
+        return title ? (zh ? `新建了《${title}》` : `Created "${title}"`) : zh ? '新建了一篇文档' : 'Created a doc';
+      if (args.action === 'edit')
+        return title ? (zh ? `修改了《${title}》` : `Edited "${title}"`) : zh ? '修改了一篇文档' : 'Edited a doc';
       if (args.action === 'move') return zh ? '移动了一篇文档' : 'Moved a doc';
       return zh ? '评论了一篇文档' : 'Commented on a doc';
     },

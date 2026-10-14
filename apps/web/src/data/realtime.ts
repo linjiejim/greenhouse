@@ -19,6 +19,7 @@ import type {
 import { api } from '../lib/api';
 import { keys } from './query';
 import { appendDelta, endStream, forgetStream, upsertStep } from './streams';
+import { applyTablesEvent } from './tables';
 
 export type MessagePages = InfiniteData<Page<MessageItem>, string | undefined>;
 export type ConversationPages = InfiniteData<Page<Conversation>, string | undefined>;
@@ -185,6 +186,7 @@ export function patchConversation(client: QueryClient, id: string, changes: Part
 }
 
 export function applyEvent(client: QueryClient, event: Exclude<RealtimeEvent, { type: 'ready' }>) {
+  if (applyTablesEvent(client, event)) return;
   switch (event.type) {
     case 'message.created':
       addMessage(client, event.data.message);
@@ -261,6 +263,21 @@ export function applyEvent(client: QueryClient, event: Exclude<RealtimeEvent, { 
       );
       soon(client, keys.computer(event.data.agent_id));
       soon(client, ['agents', 'processes', event.data.agent_id]);
+      return;
+    case 'doc.updated':
+      // A doc I have open was saved, renamed, moved, archived or restored. An editing page compares
+      // the new version with the one it started from; a draft is never replaced by this.
+      soon(client, keys.doc(event.data.doc_id), 100);
+      soon(client, keys.docVersions(event.data.doc_id));
+      return;
+    case 'doc.presence':
+      client.setQueryData(keys.docPresence(event.data.doc_id), { items: event.data.items });
+      return;
+    case 'comments.updated':
+      if (event.data.target_type === 'doc') soon(client, keys.docComments(event.data.target_id));
+      return;
+    case 'knowledge.changed':
+      soon(client, keys.knowledge);
       return;
   }
 }

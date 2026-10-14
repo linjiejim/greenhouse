@@ -11,6 +11,7 @@ import { useSession } from '../../app/session';
 import { RequestCard } from '../../conversation/RequestCard';
 import { useMarkNotificationsRead, useNotifications } from '../../data/notifications';
 import { useRequests } from '../../data/requests';
+import { api } from '../../lib/api';
 import { cx } from '../../lib/cx';
 import { useI18n } from '../../lib/i18n';
 import { href, navigate, type Route } from '../../lib/router';
@@ -24,7 +25,19 @@ function targetOf(notification: Notification): Route | null {
     return { page: 'conversation', id: notification.target_id };
   if (notification.target_type === 'agent' && notification.target_id)
     return { page: 'agent', id: notification.target_id, tab: 'profile' };
+  // Knowledge: a mention, a comment or a share opens the doc or the folder.
+  if (notification.target_type === 'doc' && notification.target_id) return { page: 'doc', id: notification.target_id };
+  if (notification.target_type === 'folder' && notification.target_id)
+    return { page: 'folder', id: notification.target_id };
+  if (notification.target_type === 'base' && notification.target_id)
+    return { page: 'base', id: notification.target_id };
   return null;
+}
+
+/** A record's notification names only the record: its base and table come from the record. */
+async function openRecord(id: string) {
+  const detail = await api.tables.records.get(id).catch(() => null);
+  if (detail) navigate({ page: 'base', id: detail.base_id, table: detail.table_id, record: id });
 }
 
 function NeedsYou() {
@@ -61,6 +74,7 @@ function All() {
         const open = () => {
           if (!item.read_at) markRead.mutate({ ids: [item.id] });
           if (target) navigate(target);
+          else if (item.target_type === 'record' && item.target_id) void openRecord(item.target_id);
         };
         return (
           <li key={item.id}>

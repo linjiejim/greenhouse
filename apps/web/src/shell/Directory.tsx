@@ -33,6 +33,9 @@ import { useRuns } from '../data/runs';
 import { useT } from '../lib/i18n';
 import { href, navigate, SKILL_SCOPES, type AdminSection, type Route, type SettingsSection } from '../lib/router';
 import type { MessageKey } from '../i18n/zh';
+import { KnowledgeDirectory, useNewTarget } from '../pages/knowledge/KnowledgeDirectory';
+import { openNewBase } from '../pages/tables/entry';
+import { TablesDirectory } from '../pages/tables/TablesDirectory';
 import { ChatDirectory } from './ChatDirectory';
 import { DirectoryRow } from './DirectoryRow';
 import { MODULES, type ModuleId } from './modules';
@@ -130,15 +133,20 @@ export function Directory({
   const openOverlay = useOpenOverlay();
   const [searching, setSearching] = useState(false);
   const [query, setQuery] = useState('');
+  const newTarget = useNewTarget(route);
   const name = t(MODULES[module].label);
   const primary =
     module === 'chat'
       ? { label: t('chat.newChat'), onClick: () => navigate('#/c/new') }
-      : module === 'agents'
-        ? { label: t('agents.new'), onClick: () => openOverlay({ type: 'new-agent' }) }
-        : module === 'skills'
-          ? { label: t('skills.new'), onClick: () => openOverlay({ type: 'new-skill' }) }
-          : null;
+      : module === 'knowledge'
+        ? { label: t('knowledge.new'), onClick: () => openOverlay({ type: 'new-knowledge', target: newTarget() }) }
+        : module === 'agents'
+          ? { label: t('agents.new'), onClick: () => openOverlay({ type: 'new-agent' }) }
+          : module === 'skills'
+            ? { label: t('skills.new'), onClick: () => openOverlay({ type: 'new-skill' }) }
+            : module === 'tables'
+              ? { label: t('tables.new'), onClick: () => openNewBase(openOverlay) }
+              : null;
 
   return (
     <>
@@ -154,7 +162,7 @@ export function Directory({
         ) : (
           <h2>{name}</h2>
         )}
-        {(module === 'chat' || module === 'agents') && (
+        {(module === 'chat' || module === 'agents' || module === 'knowledge' || module === 'tables') && (
           <IconButton
             label={searching ? t('directory.closeSearch') : t('directory.searchIn', { name })}
             onClick={() => {
@@ -177,6 +185,8 @@ export function Directory({
       )}
       <div className="app-directory-list">
         {module === 'chat' && <ChatDirectory route={route} query={query} />}
+        {module === 'knowledge' && <KnowledgeDirectory route={route} query={query} />}
+        {module === 'tables' && <TablesDirectory route={route} query={query} />}
         {module === 'agents' && (
           <>
             {(['mine', 'public', 'archived'] as const).map((scope) => (

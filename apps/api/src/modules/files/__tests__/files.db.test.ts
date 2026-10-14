@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 import { files, getDb, runSteps } from '@greenhouse/db';
 import { scriptedModel, text, toolCall } from '../../../engine/__tests__/model.js';
 import { createTestApp } from '../../../testing.js';
+import { streamedUpload } from './streamed-upload.js';
 
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0]);
 
@@ -31,6 +32,26 @@ async function upload(
 }
 
 describe('files', () => {
+  it('caps an upload whether or not it says how long it is', async () => {
+    const app = createTestApp(storageEnv());
+    const lin = await app.member();
+    const send = (size: number) => {
+      const { body, type } = streamedUpload(size);
+      return app.app.request('/api/files', {
+        method: 'POST',
+        headers: { authorization: `Bearer ${lin.token}`, 'content-type': type },
+        body,
+        duplex: 'half',
+      } as RequestInit);
+    };
+    const small = await send(1024);
+    expect(small.status).toBe(201);
+    expect(((await small.json()) as any).size_bytes).toBe(1024);
+    const huge = await send(51 * 1024 * 1024);
+    expect(huge.status).toBe(413);
+    expect(((await huge.json()) as any).error.code).toBe('too_large');
+  });
+
   it('stores through the storage provider and serves only to who may read it', async () => {
     const app = createTestApp(storageEnv());
     const lin = await app.member();

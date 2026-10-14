@@ -48,6 +48,7 @@ export default defineConfig({
       '@greenhouse/providers': resolve(__dirname, 'packages/providers/src/index.ts'),
       '@greenhouse/db/testing': resolve(__dirname, 'packages/db/src/testing.ts'),
       '@greenhouse/db': resolve(__dirname, 'packages/db/src/index.ts'),
+      '@greenhouse/knowledge-editor/editor': resolve(__dirname, 'packages/knowledge-editor/src/editor.ts'),
       '@greenhouse/knowledge-editor/extensions': resolve(__dirname, 'packages/knowledge-editor/src/extensions.ts'),
       '@greenhouse/knowledge-editor/markdown': resolve(__dirname, 'packages/knowledge-editor/src/markdown.ts'),
       '@greenhouse/knowledge-editor/md-html': resolve(__dirname, 'packages/knowledge-editor/src/md-html.ts'),

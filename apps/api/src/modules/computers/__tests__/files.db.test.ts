@@ -7,6 +7,7 @@
 import { describe, expect, it } from 'vitest';
 import { DELETE_SCRIPT, DOWNLOAD_SCRIPT, LIST_SCRIPT, UPLOAD_SCRIPT } from '../files.js';
 import { createTestApp } from '../../../testing.js';
+import { streamedUpload } from '../../files/__tests__/streamed-upload.js';
 import { fake, fakeSandboxEnv } from './fake-sandbox.js';
 
 async function setup() {
@@ -93,7 +94,7 @@ describe('files in the computer home', () => {
   });
 
   it('uploads into a folder under a free name, and caps the size', async () => {
-    const { raw } = await setup();
+    const { raw, app, lin } = await setup();
     let received: Buffer = Buffer.alloc(0);
     let args: string[] = [];
     fake.onStream = (stream) => {
@@ -123,6 +124,15 @@ describe('files in the computer home', () => {
       headers: { 'content-type': 'multipart/form-data; boundary=x', 'content-length': String(60 * 1024 * 1024) },
     });
     expect(huge.status).toBe(413);
+    // Without a length the body is counted as it arrives.
+    const streamed = streamedUpload(51 * 1024 * 1024);
+    const unsized = await app.request('/api/agents/main/computer/files?path=work', {
+      method: 'POST',
+      headers: { authorization: `Bearer ${lin.token}`, 'content-type': streamed.type },
+      body: streamed.body,
+      duplex: 'half',
+    } as RequestInit);
+    expect(unsized.status).toBe(413);
   });
 
   it('deletes a file or a folder, never the home itself', async () => {

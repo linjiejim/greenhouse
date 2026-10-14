@@ -58,6 +58,7 @@ import type { ProvidersService } from '../../providers/service.js';
 import type { Hub } from '../../realtime/hub.js';
 import { agentIdOf, type AgentsService } from '../agents/service.js';
 import type { FilesService } from '../files/service.js';
+import { readableDocs } from '../knowledge/access.js';
 import { summaryFor } from '../members/service.js';
 import type { NotificationsService } from '../notifications/service.js';
 import { exportFilename, renderConversationMarkdown, type ExportedMessage } from './export.js';
@@ -106,6 +107,23 @@ export const toMessage = (row: MessageRow): Message => ({
 });
 
 const ACTIVE_TURN = ['queued', 'running'] as const;
+
+type Citation = Message['citations'][number];
+/** The knowledge docs a message names as sources. */
+const citedDocs = (citations: readonly Citation[]) =>
+  citations.filter((citation) => citation.kind === 'doc').map((citation) => citation.id);
+
+/**
+ * Sources as one person may see them: a doc they cannot read now is left out, so a reply in a
+ * room never shows the others the title of what only the asker may read.
+ */
+async function sourcesFor(memberId: string, docIds: readonly string[]) {
+  const unique = [...new Set(docIds)];
+  if (!unique.length) return (citations: Citation[]) => citations;
+  const readable = await readableDocs(memberId, unique);
+  return (citations: Citation[]) =>
+    citations.filter((citation) => citation.kind !== 'doc' || readable.has(citation.id));
+}
 
 const toNote = (row: ConversationNote): Note => ({
   id: row.id,
@@ -646,19 +664,29 @@ export function createConversationsService(deps: {
     ): Promise<Page<MessageItem>> {
       await service.access(memberId, conversationId);
       const db = getDb();
-      /** Each message with the reader's own rating. */
+      /** Each message with the reader's own rating, and only the sources they may open. */
       const withRatings = async (rows: MessageRow[]): Promise<MessageItem[]> => {
         const replies = rows.filter((row) => row.role === 'assistant').map((row) => row.id);
-        const rated = replies.length
-          ? await db
-              .select({ id: messageFeedback.messageId, rating: messageFeedback.rating })
-              .from(messageFeedback)
-              .where(and(eq(messageFeedback.memberId, memberId), inArray(messageFeedback.messageId, replies)))
-          : [];
+        const [rated, visible] = await Promise.all([
+          replies.length
+            ? db
+                .select({ id: messageFeedback.messageId, rating: messageFeedback.rating })
+                .from(messageFeedback)
+                .where(and(eq(messageFeedback.memberId, memberId), inArray(messageFeedback.messageId, replies)))
+            : [],
+          sourcesFor(
+            memberId,
+            rows.flatMap((row) => citedDocs(row.citations)),
+          ),
+        ]);
         const ratings = new Map(rated.map((row) => [row.id, row.rating]));
         return rows.map((row) => {
           const rating = ratings.get(row.id);
-          return { ...toMessage(row), my_rating: rating === 1 || rating === -1 ? rating : null };
+          return {
+            ...toMessage(row),
+            citations: visible(row.citations),
+            my_rating: rating === 1 || rating === -1 ? rating : null,
+          };
         });
       };
       if (query.after !== undefined) {
@@ -745,9 +773,32 @@ export function createConversationsService(deps: {
       return rows.map((row) => row.id);
     },
 
-    /** Tells everyone in the conversation (and anyone named in `also`, like a person who just left). */
+    /**
+     * Tells everyone in the conversation (and anyone named in `also`, like a person who just
+     * left). A message that cites docs reaches each person with only the sources they may open.
+     */
     async publish(conversationId: string, event: RealtimeEvent, also: string[] = []): Promise<void> {
-      deps.hub.publish([...(await service.audience(conversationId)), ...also], event);
+      const audience = [...new Set([...(await service.audience(conversationId)), ...also])];
+      const message = event.type === 'message.created' || event.type === 'message.updated' ? event.data.message : null;
+      const docIds = message ? citedDocs(message.citations) : [];
+      if (!message || !docIds.length) {
+        deps.hub.publish(audience, event);
+        return;
+      }
+      const seeing = new Map<string, { citations: Citation[]; members: string[] }>();
+      for (const memberId of audience) {
+        const citations = (await sourcesFor(memberId, docIds))(message.citations);
+        const key = citations.map((citation) => `${citation.kind}:${citation.id}`).join('\n');
+        const same = seeing.get(key) ?? { citations, members: [] };
+        same.members.push(memberId);
+        seeing.set(key, same);
+      }
+      for (const { citations, members: people } of seeing.values()) {
+        deps.hub.publish(people, {
+          type: event.type,
+          data: { message: { ...message, citations } },
+        } as RealtimeEvent);
+      }
     },
 
     /**

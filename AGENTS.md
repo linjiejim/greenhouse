@@ -19,7 +19,7 @@ Greenhouse is an open-source, self-hosted platform where a team works with its o
 - apps/web: the v2 web app (Vite, React 19, TanStack Query; apps/web/AGENTS.md). The API serves its build from public/.
 - apps/design: prototype and component lab. apps/desktop: Tauri shell (apps/desktop/AGENTS.md). apps/bot-computer: the Agent computer image (e2b/ is its hosted layer for the E2B template: the two bridges, their units, boot and hardening).
 - apps/mobile: v1 Expo app outside the pnpm workspace and the root checks until roadmap M4 (apps/mobile/AGENTS.md).
-- packages/agent-core: agent loop and stream collectors. packages/knowledge-editor: Tiptap schema and Markdown conversion.
+- packages/agent-core: agent loop and stream collectors. packages/knowledge-editor: Tiptap schema, Markdown conversion and the browser editor (editor.ts: `/` blocks, `[[` doc links, `@` mentions, pictures; the app draws the menus).
 - packages/types: plant avatars, rich-output blocks, entity links, deployment config shape. packages/utils: shared helpers.
 - packages/ui: tokens, brand mark, plant avatars and the component kit (src/kit, imported as @greenhouse/ui/kit with @greenhouse/ui/kit/kit.css; docs/design-system/components.md). The kit's CSS uses tokens only and its words come from src/kit/strings.ts in zh and en.
 

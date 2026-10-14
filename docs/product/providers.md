@@ -282,10 +282,11 @@ v2 的存储层统一为一个接口：v1 的 COS SDK、`s3-lite`、技能存储
 | 适配器 | v2.0 | 说明 |
 | --- | --- | --- |
 | `smtp` | 只发 | 任意 SMTP 服务器（tls / starttls / none）；nodemailer，写在 API 里（`apps/api/src/modules/channels/smtp.ts`），像扩展一样注册；换地址清空密码 |
-| `mailgun` | 收发 | 发信走 HTTP API；收信由 Mailgun Routes 转发到 Greenhouse，按签名校验 |
-| 第二个云服务 | 收发 | Postmark 或 Resend，实现时按收信能力和签名校验选定 |
+| `resend` | 收发 | 发信走 HTTP API。收信：`email.received` webhook（Svix 签名，覆盖请求体）只当通知，正文与附件再用 Key 从 Resend 的接收 API 拉取 |
+| `mailgun` | 收发 | 发信走 HTTP API。收信：Route 的 `store(notify=…)` 通知（时间戳加令牌的 HMAC，令牌只用一次），正文与附件再用 Key 从存储的消息地址拉取 |
 
-- 能收信的适配器实现 `receive`：把服务商的入站请求验签、解析成统一的邮件（发件人、收件人、主题、正文、附件、Message-ID、In-Reply-To、SPF / DKIM 结论）。入站地址是 `/api/mail/inbound/:instance`，验签失败一律拒收。
+- 不选 Postmark：它的入站 webhook 不签名，只能靠 URL 里的基本认证和 IP 名单。
+- 能收信的适配器实现 `receive`：先验签，再把通知换成服务商 API 里的那封信，解析成统一的邮件（发件人、收件人、主题、正文、附件、Message-ID、In-Reply-To、SPF / DKIM 结论）。通知只是「去取」的信号，伪造的通知取不到不存在的信。入站地址是 `/api/mail/inbound/:instance`，验签失败一律拒收；按服务商的邮件 id 去重。
 - Agent 邮箱的域名由 `MAIL_AGENT_DOMAIN` 或管理界面设置，MX 记录指向服务商；地址默认是「名字-随机 4 位@域名」，主人可以改前缀。
 - 来信是不可信输入：正文和附件存进存储服务，进对话时用 fence 隔开；附件和正文有大小上限。
 - 只有能收信的实例在顺序之首时，Agent 邮箱才出现。

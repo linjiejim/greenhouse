@@ -69,7 +69,7 @@ v2 从零建表：只有一份基线迁移，不继承 v1 的迁移链，也不�
 
 `shares.role` 按对象取值：
 - 知识库：viewer / editor。团队空间的条目对全员可编辑，不需要分享行。
-- 表格：owner / builder / editor / viewer / custom；分组不能是 builder。
+- 表格：owner / builder / editor / viewer（custom 随自定义角色）；分组和全员只能是 editor 或 viewer。
 - 表单：submitter。应用：已发布 spec 里的角色键。公开 Agent：只有 user。
 
 ## 3. Agents
@@ -109,14 +109,16 @@ v2 从零建表：只有一份基线迁移，不继承 v1 的迁移链，也不�
 
 | 表 | 用途 | 关键列与关系 |
 | --- | --- | --- |
-| `folders` | 文件夹树，文档和文件在同一棵树里 | `parent_id` `CASCADE`、`space`（team / personal）、`owner_id`（个人空间必填，团队为空，CHECK 约束）、`agent_id`（Agent 私有参考文件夹的根，唯一，随 Agent 删除）、`name`、`sort_order`（0 = 没手动排过）、`created_by`、`archived_at`（归档文件夹时其中所有内容盖同一时间戳，恢复只清这一批）；移动时拒绝成环 |
+| `folders` | 文件夹树，文档和文件在同一棵树里 | `parent_id` `CASCADE`、`space`（team / personal）、`owner_id`（个人空间必填，团队为空，CHECK 约束）、`agent_id`（Agent 私有参考文件夹的根，唯一；外键不级联：文件夹还在时删不掉这个 Agent，删 Agent 的路径先删掉其中的文档和文件，删成员则一并删掉）、`name`、`sort_order`（0 = 没手动排过）、`created_by`、`archived_at`（归档文件夹时其中所有内容盖同一时间戳，恢复只清这一批）；移动时拒绝成环；最多 32 层，新建和移动在树锁下检查，遍历遇到更深或成环就报错而不是截断 |
 | `docs` | 文档 | `folder_id` `SET NULL`、`space`、`owner_id`（同 `folders`）、`title`、`content`（Markdown，唯一事实源；文件地址存不带签名的形式）、`is_template`、`tags`、`meta`（摘要、问题、话题，只作检索元数据）、`version`（保存时比较并加一）、`sort_order`、`search_*`（A 标题与标签，B 元数据，C 正文）、`created_by` / `updated_by`、`archived_at` |
 | `doc_versions` | 不可变版本 | `doc_id` `CASCADE`、`version`、`title`、`content`、`change_note`、`created_by`、`agent_id`（Agent 代写时）；唯一 `(doc_id, version)`；新建是版本 1，恢复写一个新版本 |
 | `doc_links` | 反向链接 | 主键 `(from_doc_id, to_doc_id)`，两端 `CASCADE`；每次保存由正文重建，读反链时逐条过权限 |
 | `comments` | 文档和记录的评论 | `target_type`（doc / record）、`target_id`、`base_id`（记录评论）、`created_by`、`agent_id`（Agent 代写时）、`body`（Markdown）、`mentions`（由正文里的 `[@名字](member:<id>)` 得出）、`deleted_at`、`updated_at`；读权限跟随目标，不进全文检索 |
 | `files` | 统一文件服务 | `purpose`（attachment / knowledge / record / artifact / export / import / skill / avatar / branding）、`provider_id`、`storage_key`（唯一）、`name`、`content_type`、`size_bytes`、`sha256`、`status`、`owner_id`、归属列按 purpose 填一个（`folder_id` + `space`、`conversation_id`、`base_id`、`run_id`；技能包、头像、品牌由引用它的行持有）、`expires_at`（导出）、`meta`、`search_*`（知识库文件：A 文件名，C 文本与 PDF 的文字）、`archived_at`；权限跟随归属。知识库文件的 `folder_id` → `folders` `SET NULL`，`owner_id` 同 `folders`；`meta.doc_id` 是贴进文档的图片（不在树里，权限跟随文档），`meta.sort_order` 是手动顺序 |
 
-「他人正在编辑」与在线状态放在进程内存里，不建表。
+「他人正在编辑」与在线状态放在进程内存里，不建表；有多个 API 进程时，各自只看得到连在本进程的人。
+
+已知待办：`files.owner_id` 没有外键，硬删成员、删 Agent 的路径都还没有。到时先由后台任务删存储里的对象再删行；知识库文件不会随 `folders` / `docs` 的级联一起走，要显式处理。知识库文件的 `space` 为空时谁都读不到（不当作团队空间）。
 
 ## 6. 表格与应用
 
@@ -124,17 +126,17 @@ v2 从零建表：只有一份基线迁移，不继承 v1 的迁移链，也不�
 
 | 表 | 用途 | 关键列与关系 |
 | --- | --- | --- |
-| `bases` | 表格 | `name`、`description`、`icon`、`owner_id`、`template_key` + `template_version`（从模板创建时）、`archived_at`；团队可见、成员和分组的权限都在 `shares` |
+| `bases` | 表格 | `name`、`description`、`icon`、`owner_id`、`template_key` + `template_version`（从模板创建时）、`created_by`、`archived_at`；团队可见、成员和分组的权限都在 `shares` |
 | `base_roles` | 表格的自定义角色 | `base_id` `CASCADE`、`name`、`rules`（按数据表的行级、列级规则）、`position`、`revision` |
-| `base_tables` | 数据表 | `base_id` `CASCADE`、`name`（表格内唯一）、`description`、`position`、`schema_revision`、`archived_at` |
-| `base_fields` | 字段 | `table_id` `CASCADE`、`name`、`type`（text / long_text / number / checkbox / date / datetime / single_select / multi_select / member / url / email / phone / attachment / relation / lookup / formula / rollup / ai / parent / dependency）、`required`、`is_primary`（每表一个）、`config`、`position`、`archived_at` |
+| `base_tables` | 数据表 | `base_id` `CASCADE`、`name`（表格内未删除的唯一，部分唯一索引）、`description`、`position`、`schema_revision`（字段每变一次加一）、`created_by`、`archived_at`（回收站：记录、字段、视图随它回来） |
+| `base_fields` | 字段 | `table_id` `CASCADE`、`name`（表内未删除的唯一）、`type`（text / long_text / number / checkbox / date / datetime / single_select / multi_select / member / url / email / phone / attachment / relation / lookup / formula / rollup / ai / parent / dependency）、`required`、`is_primary`（每表一个，部分唯一索引）、`config`（选项、小数位、成员和关联是否多个、关联的目标数据表）、`position`、`created_by`、`archived_at`（回收站：值留在记录里，彻底删除时才去掉）；每表最多一个父记录字段和一个依赖字段 |
 | `base_field_deps` | 公式、汇总、lookup、AI 字段的依赖边 | 主键 `(field_id, depends_on_field_id)`、`kind`；用于反查影响和级联重算 |
 | `base_views` | 视图，含仪表盘 | `base_id` / `table_id` `CASCADE`（仪表盘的 `table_id` 为空）、`name`、`type`（grid / kanban / calendar / gallery / timeline / dashboard）、`owner_id`（空 = 共享视图）、`config`（筛选、排序、分组、列宽；仪表盘的卡片与应用共用一套 schema）、`position`、`revision` |
 | `base_forms` | 内部表单 | `table_id` `CASCADE`、`name`、`status`（draft / published）、`config`、`revision`；谁能提交由 `shares` 决定，默认是有新建权限的成员 |
 | `base_form_submissions` | 表单提交 | `form_id` `CASCADE`、`member_id`、`record_id` `SET NULL`、`single_submit`；只允许提交一次的表单靠部分唯一索引 |
-| `base_records` | 记录 | `table_id` `CASCADE`、`values`（按字段 id）、`computed`（公式、汇总、AI 字段）、`revision`、`computed_revision`、`search_*`、`created_by` / `updated_by`、`deleted_at`（回收站） |
-| `base_record_links` | 关联、父记录、依赖的规范边 | `field_id` `CASCADE`、`source_record_id` / `target_record_id` `CASCADE`、`position`；唯一 `(field_id, source_record_id, target_record_id)` |
-| `base_record_files` | 记录附件 | `record_id` `CASCADE`、`field_id`、`file_id` → `files`、`position` |
+| `base_records` | 记录 | `table_id` `CASCADE`、`values`（按字段 id，只有标量字段；关联类和附件在下面两张表）、`computed`（公式、汇总、AI 字段）、`revision`、`computed_revision`、`search_*`（A 主字段，B 选项名，C 其他文本）、`created_by` / `updated_by`、`deleted_at` + `deleted_by`（回收站，30 天后彻底删除）；没有排序的视图按 id 排，即创建顺序（一次建多条时 id 依次递增） |
+| `base_record_links` | 关联、父记录、依赖的规范边 | 主键 `(field_id, source_record_id, target_record_id)`，三列都 `CASCADE`、`position`；指向回收站里记录的边保留，记录恢复时链接跟着回来；父记录与依赖不能成环 |
+| `base_record_files` | 记录附件 | 主键 `(record_id, field_id, file_id)`，`record_id` / `field_id` `CASCADE`、`file_id` → `files`（用途 `record`，`files.base_id` 是所在表格）、`position`；只能挂自己上传到这个表格、还没挂在别的记录上的文件 |
 | `base_record_events` | 记录历史 | `record_id` `CASCADE`、`table_id`、`actor_type`（member / agent / automation / form / import / app / system）、`actor_id`、`type`（created / updated / deleted / restored）、`changes`（字段前后值）、`meta` |
 | `base_automations` | 自动化规则 | `base_id` / `table_id` `CASCADE`、`name`、`status`、`trigger`（record_created / record_updated / record_matched / schedule / date_reached / button）、`config`（条件与动作：通知成员、Agent 步骤、webhook）、`run_as`（成员）、`secrets_enc`（webhook 签名密钥）、`revision`、`next_fire_at`、`swept_until` |
 | `base_automation_runs` | 自动化执行记录 | `automation_id` `CASCADE`、`record_id`（逻辑）、`trigger`、`status`、`steps`、`run_id`（Agent 步骤对应的运行）、`error`、`started_at`、`finished_at` |
@@ -143,6 +145,8 @@ v2 从零建表：只有一份基线迁移，不继承 v1 的迁移链，也不�
 | `app_versions` | 已发布的不可变版本 | `app_id` `CASCADE`、`version`、`spec`（text）、`spec_hash`、`draft_revision`、`notes`、`custom_review`、`published_by`、`published_at` |
 | `base_templates` | 表格模板，可带应用；「项目」是内置模板 | `key`（唯一）、`source`（builtin / published）、`name`、`description`、`owner_id`、`latest_version`、`source_app_id`、`source_base_id`、`archived_at` |
 | `base_template_versions` | 模板的不可变版本 | `template_id` `CASCADE`、`version`（semver）、`changelog`、`content`（text：表结构、可选的应用 spec、示例行）、`content_hash`、`custom_cards`、`automations`、`scan_status`、`review_status`、`reviewed_by`、`reviewed_at` |
+
+已建（M2.2 第一阶段）：`bases`、`base_tables`、`base_fields`（公式、汇总、lookup、AI 以外的类型）、`base_views`（仪表盘以外的类型）、`base_records`（还没有 `computed`、`computed_revision`）、`base_record_links`、`base_record_files`、`base_record_events`；表格的分享在 `shares`，记录评论在 `comments`，置顶在 `pins`。其余各表随后续阶段加入。「项目」内置模板先写在代码里（apps/api/src/modules/tables/templates.ts），`base_templates` 随应用模板一起建。
 
 与 #64 的差别：
 - `table_dashboards` / `table_dashboard_widgets` 并入 `base_views`。

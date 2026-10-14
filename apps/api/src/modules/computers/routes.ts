@@ -16,14 +16,12 @@
 
 import { Hono } from 'hono';
 import { computerCapacitySchema, computerPathQuerySchema, computerTicketInputSchema } from '@greenhouse/contract';
-import { ApiError, invalidInput } from '../../http/errors.js';
+import { invalidInput } from '../../http/errors.js';
 import type { AppEnv } from '../../http/env.js';
 import { readJson, readQuery } from '../../http/validate.js';
-import { dispositionFor, MAX_UPLOAD_BYTES } from '../files/service.js';
+import { uploadLimit } from '../files/routes.js';
+import { dispositionFor } from '../files/service.js';
 import type { ComputersService } from './service.js';
-
-/** Multipart overhead on top of the file itself. */
-const FORM_SLACK_BYTES = 64 * 1024;
 
 export function computerRoutes(service: ComputersService) {
   return new Hono<AppEnv>()
@@ -57,12 +55,8 @@ export function computerRoutes(service: ComputersService) {
         },
       });
     })
-    .post('/:id/computer/files', async (c) => {
+    .post('/:id/computer/files', uploadLimit, async (c) => {
       const { path } = readQuery(c, computerPathQuerySchema);
-      const declared = Number(c.req.header('content-length') ?? 0);
-      if (declared > MAX_UPLOAD_BYTES + FORM_SLACK_BYTES) {
-        throw new ApiError(413, 'too_large', 'Files can be up to 50 MB.');
-      }
       if (!c.req.header('content-type')?.startsWith('multipart/form-data')) {
         throw invalidInput('Upload the file as multipart/form-data.');
       }

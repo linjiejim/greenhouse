@@ -33,8 +33,14 @@ export const folders = pgTable(
     parentId: text('parent_id').references((): AnyPgColumn => folders.id, { onDelete: 'cascade' }),
     space: text('space', { enum: KNOWLEDGE_SPACES }).notNull(),
     ownerId: text('owner_id').references(() => members.id, { onDelete: 'cascade' }),
-    /** Set on the root of an Agent's private reference folder; it goes with the Agent. */
-    agentId: text('agent_id').references(() => agents.id, { onDelete: 'cascade' }),
+    /**
+     * Set on the root of an Agent's private reference folder. While it exists the Agent cannot
+     * be deleted (no action): a cascade would drop the folder and move what is in it to its
+     * owner's root, where the owner's other Agents see it. Whatever deletes an Agent first deletes
+     * the folder's docs and files (bytes through the storage job). Deleting the owner still takes
+     * all of it, both rows going with them.
+     */
+    agentId: text('agent_id').references(() => agents.id),
     name: text('name').notNull(),
     /** 0 until someone put it in order by hand. */
     sortOrder: integer('sort_order').notNull().default(0),
