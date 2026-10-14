@@ -26,6 +26,8 @@ export type ConversationPages = InfiniteData<Page<Conversation>, string | undefi
 const timers = new Map<string, ReturnType<typeof setTimeout>>();
 /** Catching up reads at most this many pages of 200; further behind, the list is fetched again. */
 const CATCH_UP_PAGES = 5;
+/** A reconnect also reads back this many of the newest messages: an edit elsewhere changes the latest exchange. */
+const RECONNECT_TAIL = 20;
 
 /** Invalidates once for a burst of events. */
 function soon(client: QueryClient, queryKey: QueryKey, delay = 300) {
@@ -93,19 +95,31 @@ export function replaceMessage(client: QueryClient, message: Message) {
   );
 }
 
-/** Messages from `?after=` into the cache, replacing what it had of them, with the reader's own ratings. */
-function mergeMessages(client: QueryClient, conversationId: string, items: MessageItem[]) {
+/**
+ * Messages from `?after=` into the cache, replacing what it had of them, with the reader's own
+ * ratings. A cached message in the range read (`after` < seq ≤ `upTo`) that did not come back was
+ * deleted meanwhile.
+ */
+function mergeMessages(
+  client: QueryClient,
+  conversationId: string,
+  items: MessageItem[],
+  range: { after: number; upTo: number },
+) {
   client.setQueryData<MessagePages>(keys.messages(conversationId), (data) => {
-    if (!data?.pages.length || !items.length) return data;
+    if (!data?.pages.length) return data;
     const fresh = new Map(items.map((item) => [item.id, item]));
+    const gone = (item: MessageItem) => item.seq > range.after && item.seq <= range.upTo && !fresh.has(item.id);
     const pages = data.pages.map((page) => ({
       ...page,
-      items: page.items.map((item) => {
-        const next = fresh.get(item.id);
-        if (!next) return item;
-        fresh.delete(item.id);
-        return next;
-      }),
+      items: page.items
+        .filter((item) => !gone(item))
+        .map((item) => {
+          const next = fresh.get(item.id);
+          if (!next) return item;
+          fresh.delete(item.id);
+          return next;
+        }),
     }));
     const [first, ...rest] = pages;
     return { ...data, pages: [{ ...first!, items: [...fresh.values(), ...first!.items] }, ...rest] };
@@ -121,12 +135,15 @@ export async function catchUp(client: QueryClient, conversationId: string, after
   let after = afterSeq;
   for (let page = 0; page < CATCH_UP_PAGES; page++) {
     const { items, next_cursor } = await api.conversations.messages(conversationId, { after, limit: 200 });
-    mergeMessages(client, conversationId, items);
+    const last = items.at(-1);
+    mergeMessages(client, conversationId, items, {
+      after,
+      upTo: next_cursor && last ? last.seq : Number.POSITIVE_INFINITY,
+    });
     // A reply that is done replaces its live piece; one still being written goes on from deltas.
     for (const item of items) if (item.status !== 'streaming') endStream(item.id);
-    const last = items.at(-1);
     if (!next_cursor || !last) {
-      if (items.length) soon(client, keys.conversations);
+      soon(client, keys.conversations);
       return;
     }
     after = last.seq;
@@ -135,9 +152,10 @@ export async function catchUp(client: QueryClient, conversationId: string, after
 }
 
 /**
- * The socket came back. The conversations on screen catch up from their newest message (or the
- * oldest reply that was still being written) and refetch what else is theirs; every other query
- * is only marked stale and refetches when it is next shown, instead of everything at once.
+ * The socket came back. The conversations on screen catch up from just before their newest
+ * messages (and the oldest reply that was still being written) and refetch what else is theirs;
+ * every other query is only marked stale and refetches when it is next shown, instead of
+ * everything at once.
  */
 export function afterReconnect(client: QueryClient): void {
   const open = client.getQueryCache().findAll({ queryKey: ['messages'], type: 'active' });
@@ -149,8 +167,9 @@ export function afterReconnect(client: QueryClient): void {
   for (const query of open) {
     const items = (query.state.data as MessagePages | undefined)?.pages.flatMap((page) => page.items) ?? [];
     if (!items.length) continue;
+    const newest = Math.max(...items.map((item) => item.seq));
     const writing = items.filter((item) => item.status === 'streaming').map((item) => item.seq);
-    const after = writing.length ? Math.min(...writing) - 1 : Math.max(...items.map((item) => item.seq));
+    const after = Math.max(0, Math.min(newest - RECONNECT_TAIL, ...writing.map((seq) => seq - 1)));
     void catchUp(client, String(query.queryKey[1]), after).catch(() =>
       client.invalidateQueries({ queryKey: query.queryKey }),
     );

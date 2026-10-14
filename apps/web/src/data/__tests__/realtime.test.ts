@@ -73,12 +73,22 @@ describe('catching up', () => {
     const others = new QueryObserver(client, { queryKey: keys.conversations, queryFn: list, staleTime: Infinity });
     const stopOthers = others.subscribe(() => undefined);
     await vi.waitFor(() => expect(client.getQueryState(keys.conversations)?.status).toBe('success'));
-    messages.mockResolvedValue({ items: [item(2, 'Thinking done.'), item(3, 'more')], next_cursor: null });
+    // Meanwhile the reply finished, and an edit elsewhere replaced the latest one.
+    messages.mockResolvedValue({
+      items: [item(1, 'hi'), item(2, 'Thinking done.'), item(4, 'the new answer')],
+      next_cursor: null,
+    });
 
     afterReconnect(client);
-    // From just before the reply that was still being written.
-    await vi.waitFor(() => expect(messages).toHaveBeenCalledWith('cnv_1', { after: 1, limit: 200 }));
-    await vi.waitFor(() => expect(shown(client)[1]).toEqual([2, 'Thinking done.', 'complete']));
+    // From before the newest messages and the reply that was still being written.
+    await vi.waitFor(() => expect(messages).toHaveBeenCalledWith('cnv_1', { after: 0, limit: 200 }));
+    await vi.waitFor(() =>
+      expect(shown(client)).toEqual([
+        [1, 'hi', 'complete'],
+        [2, 'Thinking done.', 'complete'],
+        [4, 'the new answer', 'complete'],
+      ]),
+    );
     // The open conversation's own queries refetch; the rest are stale, not refetched.
     await vi.waitFor(() => expect(conversation).toHaveBeenCalledTimes(2));
     expect(list).toHaveBeenCalledTimes(1);

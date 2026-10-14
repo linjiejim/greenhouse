@@ -13,14 +13,17 @@ export function pgTransport(sql: DbClient['sql']): NotifyTransport {
   return {
     async notify(channel, payload) {
       const current = (sender ??= sql.reserve());
-      const connection = await current;
       try {
+        const connection = await current;
         await connection`select pg_notify(${channel}, ${payload})`;
       } catch (error) {
         // A broken connection is replaced for the next NOTIFY.
         if (sender === current) {
           sender = null;
-          connection.release();
+          void current.then(
+            (connection) => connection.release(),
+            () => undefined,
+          );
         }
         throw error;
       }
@@ -31,7 +34,10 @@ export function pgTransport(sql: DbClient['sql']): NotifyTransport {
         await subscription.unlisten();
         const current = sender;
         sender = null;
-        (await current)?.release();
+        await current?.then(
+          (connection) => connection.release(),
+          () => undefined,
+        );
       };
     },
   };
