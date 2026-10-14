@@ -61,7 +61,12 @@ describe('web tools in a turn', () => {
       text('Kyoto has temples [Kyoto guide](https://kyoto.example/guide).'),
     ]);
     const app = createTestApp(
-      { SEARCH_PROVIDER: 'tavily', TAVILY_API_KEY: 'tvly-test-0001' },
+      {
+        SEARCH_PROVIDER: 'tavily',
+        TAVILY_API_KEY: 'tvly-test-0001',
+        STORAGE_PROVIDER: 'local',
+        STORAGE_ROOT: `${process.cwd()}/node_modules/.cache/tool-output-tests`,
+      },
       { languageModel: model.languageModel, fetch: fetch as unknown as typeof globalThis.fetch },
     );
     const lin = await app.member();
@@ -114,7 +119,12 @@ describe('web tools in a turn', () => {
     );
     const model = scriptedModel([toolCall('web_fetch', { url: 'https://evil.example/page' }), text('Read it.')]);
     const app = createTestApp(
-      { SEARCH_PROVIDER: 'tavily', TAVILY_API_KEY: 'tvly-test-0001' },
+      {
+        SEARCH_PROVIDER: 'tavily',
+        TAVILY_API_KEY: 'tvly-test-0001',
+        STORAGE_PROVIDER: 'local',
+        STORAGE_ROOT: `${process.cwd()}/node_modules/.cache/tool-output-tests`,
+      },
       { languageModel: model.languageModel, fetch: fetch as unknown as typeof globalThis.fetch },
     );
     const lin = await app.member();
@@ -135,6 +145,9 @@ describe('web tools in a turn', () => {
     expect(read).not.toContain('<tool_call>');
     expect(read).not.toMatch(/\\nsystem:/);
     expect(read).not.toContain('\u200b');
-    expect(read).toMatch(/\[cut: \d+ more characters\]/);
+    const output = step!.output as { file: { id: string }; length: number };
+    expect(output.length).toBeGreaterThan(8000);
+    const stored = Buffer.from((await app.services.files.bytes(lin.id, output.file.id)).bytes).toString('utf8');
+    expect(stored).toMatch(/\[cut: \d+ more characters\]/);
   });
 });

@@ -106,7 +106,7 @@ The one engine for conversations and runs. Read with the root AGENTS.md and docs
 - Every metered call (each model attempt too) is checked first against the enabled budgets that cover it (providers/budgets.ts); one used up refuses it with `budget_exceeded`, which a turn keeps as its error code and says in its reply. An instance over its own budget falls back to the next instance.
 
 ## Knowledge
-- `knowledge_query` (search, read, list) and `knowledge_mutation` (create, edit, move, comment) call modules/knowledge with the asker's rights; someone else's public Agent has neither.
+- `knowledge_query` (search, read, list) and `knowledge_mutation` (create, edit, move, comment) call modules/knowledge with the asker's rights. Public Agents may read only their live publication grant; they never mutate knowledge.
 - Reading is private and taints the turn: docs are other people's text. A doc read is a source under the reply (`kind: doc`, `#/knowledge/<id>`); a search hit only when the reply links it.
 - Each person sees a `kind: doc` source only while they may read the doc: the conversations service filters sources per reader when it lists and publishes messages (knowledge `readableDocs`).
 - In a room the knowledge tools' step lines and card summaries (which the decision line repeats) name no doc or folder; the card's details, which only the asker sees, and `run_steps` keep them.
@@ -155,14 +155,24 @@ The one engine for conversations and runs. Read with the root AGENTS.md and docs
 - A run's final state and run_report job commit together. Reporting, notification and optional follow-up are idempotent; quiet empty findings skip both the completion notification and follow-up. Failures notify.
 - Undo metadata is separate from bounded display results. Lock the target and compare versions/revisions; never overwrite a later member edit. The member and service permissions are checked again when carrying out a card.
 
+## M2.4
+- Public knowledge reads use the live publication subtree in knowledge/access.ts; they never become member shares. Source filtering rechecks the grant.
+- Helpers are background runs of the main Agent, at most three per turn, with a clean brief, read-only calls, eight steps and budget reservations. Claim only after the parent waits; summaries return through run_report with one batch dedupe key and taint the parent continuation. That continuation cannot delegate another batch; only a new member turn resets the limit.
+- New tool results over 8,000 characters become owner-only tool_output files, with 30-day expiry and ranged reads. Never rewrite old transcript results.
+- Completion logs are system-written memory data, never model instructions. Only seven days of log titles enter the index; recalling log detail taints the turn.
+- Eval snapshots use the production prompt recipe and canonical tool hashes. Export strips credentials; fixtures use synthetic real-model acceptance conversations.
+- The daily engine_retention job prunes terminal model context after 90 days and expired output bytes; edit/regenerate remove their old model context immediately.
+
 ## Table and app work
 - Table citations are permission-filtered per recipient. Table reads use the same records and aggregate compiler; app reads/actions use immutable publications and intersected roles.
 - Record handoffs and automation output use table_mutation, including result revision checks and approval cards. Inline record/event context starts tainted and private.
+- Result writebacks use the same output-file wrapper as model calls; undo state keeps the full result.
 - Table automation events use deliver, then create background runs under the wake cap. Their tools default to none; same_base_read is table_query confined to the source base. Carry tableEventChain through normal and approved writes.
 
 - Page conversations resolve their saved object reference with the asker’s current rights on each turn. Page data is fenced in the closing message and taints the turn from the start.
 
 - At a model step boundary, consume only this turn’s asker/Agent inbox entries under the conversation lock and live lease. End the previous reply, keep member seq, and append a continuation in the same run. Others queue; Stop wins under the same lock. Keep the existing total step cap across continuations.
+- After incorporating new input, skip DeepSeek's old-context final-answer recovery. Eval capability snapshots use the provider registry, including image and video.
 - generate_image uses the image provider and attaches artifacts. generate_video requires approval, then queues media_video jobs; media runs never enter the model worker. Completion uses the existing run_report job.
 
 - The asker may interject without repeating @ in a room, including while a decision follow-up answers. Other named Agents queue. Freeze the initial history before the reply seq; later messages enter only at boundaries.

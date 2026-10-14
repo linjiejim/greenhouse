@@ -1,4 +1,5 @@
 import { ProviderRequestError } from '@greenhouse/providers';
+import type { SaveMediaInput } from '@greenhouse/contract';
 /** Generated media are artifacts. Video submissions and polls use the one jobs queue. */
 import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { z } from 'zod';
@@ -23,10 +24,6 @@ export const videoInput = z.object({
   prompt: z.string().min(1).max(4000),
   seconds: z.union([z.literal(4), z.literal(8), z.literal(12)]).default(4),
   size: z.enum(['1280x720', '720x1280', '1792x1024', '1024x1792']).optional(),
-});
-export const saveMediaInput = z.object({
-  space: z.enum(['personal', 'team']).default('personal'),
-  folder_id: z.string().max(100).optional(),
 });
 const POLL_MS = 5000;
 const DEADLINE_MS = 20 * 60_000;
@@ -219,14 +216,14 @@ export function createMediaService(deps: {
         note: 'Video generation is queued. Progress appears in Runs; completion will report here.',
       };
     },
-    async save(memberId: string, fileId: string, input: z.infer<typeof saveMediaInput>) {
+    async save(memberId: string, fileId: string, input: SaveMediaInput) {
       const { row, bytes } = await deps.files.bytes(memberId, fileId);
       if (row.purpose !== 'artifact') throw invalidInput('Only generated artifacts can be saved here.');
       return deps.knowledge.upload(memberId, {
         name: row.name,
         contentType: row.contentType,
         bytes,
-        space: input.space,
+        space: input.space ?? 'personal',
         folderId: input.folder_id,
       });
     },

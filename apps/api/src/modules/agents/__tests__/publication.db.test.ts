@@ -31,6 +31,7 @@ describe('publishing an Agent', () => {
       version: 1,
       current_version: 1,
       audience: [{ type: 'member', id: chen.id, name: chen.name }],
+      folder_ids: [],
       computer: false,
       daily_cap: 5,
       paused_at: null,

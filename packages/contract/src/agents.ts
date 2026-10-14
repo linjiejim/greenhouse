@@ -104,6 +104,11 @@ export const audienceEntrySchema = z
 
 /** Publishes a version (default: the current one) to an audience, or changes the pin or the audience. */
 export const publicationInputSchema = z.object({
+  folder_ids: z
+    .array(z.string().max(64))
+    .max(100)
+    .default([])
+    .transform((ids) => [...new Set(ids)]),
   version: z.number().int().min(1).optional(),
   audience: z.array(audienceEntrySchema).min(1).max(500),
   /** Each member who uses it gets their own copy of its computer. */
@@ -115,6 +120,7 @@ export type PublicationInput = z.input<typeof publicationInputSchema>;
 
 /** The 发布 tab: the owner's view of a publication. */
 export const publicationSchema = z.object({
+  folder_ids: z.array(z.string()),
   agent_id: z.string(),
   published: z.boolean(),
   /** The published version; null while private. */
@@ -166,7 +172,7 @@ export const agentVersionSchema = z.object({
 });
 export type AgentVersion = z.infer<typeof agentVersionSchema>;
 
-export const MEMORY_CATEGORIES = ['fact', 'preference', 'person', 'project', 'procedure'] as const;
+export const MEMORY_CATEGORIES = ['fact', 'preference', 'person', 'project', 'procedure', 'log'] as const;
 
 export const agentMemorySchema = z.object({
   id: z.string(),

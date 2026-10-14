@@ -1,8 +1,41 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createTestApp } from '../../testing.js';
-import { gate, lastUserText, scriptedModel, text } from './model.js';
+import { gate, lastUserText, scriptedModel, text, toolCall } from './model.js';
 
 describe('step-boundary interjections', () => {
+  it('incorporates new information while the answer to a decided question is streaming', async () => {
+    const hold = gate();
+    const model = scriptedModel([
+      toolCall('ask_user', { question: 'Which city?', fields: [{ key: 'city', label: 'City', type: 'text' }] }),
+      { parts: text('Kyoto.'), gate: hold.promise },
+      text('Kyoto with the new detail.'),
+    ]);
+    const app = createTestApp({}, { languageModel: model.languageModel });
+    const member = await app.member();
+    const main = await app.services.conversations.ensureMain(member.id);
+    await app.services.engine.post(member.id, main.id, { content: 'Plan a trip', attachments: [], mentions: [] });
+    await app.services.engine.idle();
+    const card = (await app.call('GET', '/api/requests', { token: member.token })).body.items[0];
+    await app.call('POST', `/api/requests/${card.id}/answer`, {
+      token: member.token,
+      body: { answers: { city: 'Kyoto' } },
+    });
+    await vi.waitFor(() => expect(model.calls()).toBe(2));
+    const extra = await app.services.engine.post(member.id, main.id, {
+      content: 'We have only one day',
+      attachments: [],
+      mentions: [],
+    });
+    hold.open();
+    await app.services.engine.idle();
+    const page = await app.services.conversations.messages(member.id, main.id, { limit: 50 });
+    const inserted = page.items.find((message) => message.id === extra.message.id)!;
+    expect(inserted.event?.state).toBe('incorporated');
+    expect(
+      page.items.filter((message) => message.role === 'assistant' && message.run_id === inserted.event?.run_id),
+    ).toHaveLength(2);
+    expect(lastUserText(model.prompts[2])).toContain('We have only one day');
+  });
   it('splits the reply without changing the member’s seq and continues in the same run', async () => {
     const hold = gate();
     const model = scriptedModel([

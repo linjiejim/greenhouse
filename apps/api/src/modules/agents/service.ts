@@ -61,6 +61,8 @@ import type { z } from 'zod';
 import { audit, changedFields } from '../../audit.js';
 import { ApiError, conflict, invalidInput, notFound } from '../../http/errors.js';
 import { decodeCursor, encodeCursor } from '../../http/pagination.js';
+import { insideAgentFolders, loadReader } from '../knowledge/access.js';
+import { folders } from '@greenhouse/db';
 import { currentMonth } from '../../providers/budgets.js';
 import type { ProvidersService } from '../../providers/service.js';
 import type { FilesService } from '../files/service.js';
@@ -80,6 +82,7 @@ export interface LoadedAgent {
 
 /** A turn of someone else's public Agent: whose it is, and what its publication allows. */
 export interface PublicTurn {
+  folderIds: string[];
   ownerId: string;
   ownerName: string;
   /** The asker gets their own copy of its computer. */
@@ -379,6 +382,7 @@ export function createAgentsService(deps: {
         name:
           grant.principalType === 'workspace' ? (space?.name ?? 'Greenhouse') : (names.get(grant.principalId!) ?? ''),
       })),
+      folder_ids: published ? (row.publication.folderIds ?? []) : [],
       computer: published && row.publication.computer === true,
       daily_cap: published ? (row.publication.dailyCap ?? 0) : 0,
       paused_at: row.pausedAt,
@@ -658,6 +662,7 @@ export function createAgentsService(deps: {
         manifest: usable.manifest,
         version: usable.version,
         public: {
+          folderIds: usable.agent.publication.folderIds ?? [],
           ownerId: usable.owner.id,
           ownerName: usable.owner.name,
           computer: usable.agent.publication.computer === true,
@@ -740,12 +745,33 @@ export function createAgentsService(deps: {
         if (known.length !== groupIds.length) throw invalidInput('Some groups do not exist.');
       }
       const saved = await transaction(async (db) => {
+        if (input.folder_ids.length) {
+          await loadReader(memberId);
+          const chosen = await db
+            .select()
+            .from(folders)
+            .where(
+              and(
+                inArray(folders.id, input.folder_ids),
+                eq(folders.ownerId, memberId),
+                eq(folders.space, 'personal'),
+                isNull(folders.archivedAt),
+              ),
+            );
+          if (chosen.length !== input.folder_ids.length || (await insideAgentFolders(input.folder_ids)).size)
+            throw invalidInput('Choose your own active knowledge folders outside Agent reference folders.');
+        }
         const [updated] = await db
           .update(agents)
           .set({
             visibility: 'public',
             publishedVersion: version,
-            publication: { ...row.publication, computer: input.computer, dailyCap: input.daily_cap },
+            publication: {
+              ...row.publication,
+              computer: input.computer,
+              dailyCap: input.daily_cap,
+              folderIds: input.folder_ids,
+            },
             updatedAt: sql`now()`,
           })
           .where(eq(agents.id, row.id))
@@ -997,6 +1023,39 @@ export function createAgentsService(deps: {
         )
         .orderBy(desc(agentMemories.pinned), desc(agentMemories.updatedAt));
       return rows.map(toMemory);
+    },
+
+    /** System-written completion log, never instructions from an untrusted run result. */
+    async workLog(
+      memberId: string,
+      agentId: string,
+      input: { title: string; text: string; status: string; date: string; conversationId: string },
+    ) {
+      const [agent] = await getDb()
+        .select()
+        .from(agents)
+        .where(and(eq(agents.id, agentId), eq(agents.ownerId, memberId)));
+      if (!agent) return;
+      const [member] = await getDb().select({ locale: members.locale }).from(members).where(eq(members.id, memberId));
+      const labels: Record<string, string> =
+        member?.locale === 'en'
+          ? { succeeded: 'Completed', failed: 'Failed', canceled: 'Canceled' }
+          : { succeeded: '已完成', failed: '失败', canceled: '已取消' };
+      const state = labels[input.status] ?? input.status;
+      await getDb()
+        .insert(agentMemories)
+        .values({
+          id: newId('memory'),
+          agentId,
+          memberId,
+          category: 'log',
+          source: 'run',
+          title: `${input.date} ${input.title}`.slice(0, 120),
+          content: [`${input.date} · ${state} · ${input.title}`, input.text.replace(/\s+/g, ' ').slice(0, 1200)]
+            .filter(Boolean)
+            .join('\n'),
+          sourceConversationId: input.conversationId,
+        });
     },
 
     async remember(

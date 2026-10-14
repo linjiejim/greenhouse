@@ -113,18 +113,19 @@ export const toMessage = (row: MessageRow): Message => ({
 const ACTIVE_TURN = ['queued', 'running'] as const;
 
 type Citation = Message['citations'][number];
-/** The knowledge docs a message names as sources. */
-const citedDocs = (citations: readonly Citation[]) =>
+/** The docs and table records a message names as sources. */
+const citedSources = (citations: readonly Citation[]) =>
   citations.filter((citation) => citation.kind === 'doc' || citation.kind === 'record');
 
 /**
  * Sources as one person may see them: a doc they cannot read now is left out, so a reply in a
  * room never shows the others the title of what only the asker may read.
  */
-async function sourcesFor(memberId: string, sources: readonly Citation[]) {
+async function sourcesFor(memberId: string, sources: readonly Citation[], agentId: string | null = null) {
   const readable = await readableDocs(
     memberId,
     sources.filter((s) => s.kind === 'doc').map((s) => s.id),
+    agentId,
   );
   const records = new Set<string>();
   if (sources.some((s) => s.kind === 'record')) {
@@ -437,14 +438,14 @@ export function createConversationsService(deps: {
    */
   async function deliver(audience: readonly string[], event: RealtimeEvent): Promise<void> {
     const message = event.type === 'message.created' || event.type === 'message.updated' ? event.data.message : null;
-    const docIds = message ? citedDocs(message.citations) : [];
-    if (!message || !docIds.length) {
+    const sources = message ? citedSources(message.citations) : [];
+    if (!message || !sources.length) {
       deps.hub.publish(audience, event);
       return;
     }
     const seeing = new Map<string, { citations: Citation[]; members: string[] }>();
     for (const memberId of audience) {
-      const citations = (await sourcesFor(memberId, docIds))(message.citations);
+      const citations = (await sourcesFor(memberId, sources, message.agent_id))(message.citations);
       const key = citations.map((citation) => `${citation.kind}:${citation.id}`).join('\n');
       const same = seeing.get(key) ?? { citations, members: [] };
       same.members.push(memberId);
@@ -728,17 +729,14 @@ export function createConversationsService(deps: {
                 .from(messageFeedback)
                 .where(and(eq(messageFeedback.memberId, memberId), inArray(messageFeedback.messageId, replies)))
             : [],
-          sourcesFor(
-            memberId,
-            rows.flatMap((row) => citedDocs(row.citations)),
-          ),
+          Promise.all(rows.map((row) => sourcesFor(memberId, citedSources(row.citations), row.agentId))),
         ]);
         const ratings = new Map(rated.map((row) => [row.id, row.rating]));
-        return rows.map((row) => {
+        return rows.map((row, index) => {
           const rating = ratings.get(row.id);
           return {
             ...toMessage(row),
-            citations: visible(row.citations),
+            citations: visible[index]!(row.citations),
             my_rating: rating === 1 || rating === -1 ? rating : null,
           };
         });

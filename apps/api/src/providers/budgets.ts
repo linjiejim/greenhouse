@@ -11,7 +11,7 @@
  */
 
 import { and, eq, gte, inArray, ne, or, sql, type SQL } from 'drizzle-orm';
-import { budgets, getDb, usageEvents, type BudgetRow } from '@greenhouse/db';
+import { budgetReservations, budgets, getDb, usageEvents, type BudgetRow } from '@greenhouse/db';
 import { ApiError } from '../http/errors.js';
 
 export const WORKSPACE_BUDGET_ID = 'default';
@@ -41,6 +41,7 @@ export function measure(unit: BudgetUnit) {
 }
 
 function covers(budget: Pick<BudgetRow, 'scopeType' | 'scopeId'>, personalCounting: readonly string[]): SQL {
+  if (budget.scopeType === 'agent') return eq(usageEvents.agentId, budget.scopeId);
   if (budget.scopeType === 'provider') return eq(usageEvents.providerId, budget.scopeId);
   if (budget.scopeType === 'member')
     return and(eq(usageEvents.memberId, budget.scopeId), countedUsage(personalCounting))!;
@@ -68,6 +69,7 @@ export interface BudgetCheck {
   /** This capability's personal-key usage counts toward workspace and member budgets. */
   personalCounts: boolean;
   memberId?: string;
+  runId?: string;
   /** Every capability whose personal usage counts, for the sums; read only when a budget applies. */
   personalCounting: () => Promise<readonly string[]>;
 }
@@ -94,7 +96,19 @@ export async function assertWithinBudgets(check: BudgetCheck): Promise<void> {
   if (!rows.length) return;
   const personalCounting = await check.personalCounting();
   for (const budget of rows) {
-    if ((await spentOf(budget, personalCounting)) < budget.monthlyLimit) continue;
+    const [held] = await getDb()
+      .select({ total: sql<string>`coalesce(sum(${budgetReservations.estimated}), 0)` })
+      .from(budgetReservations)
+      .where(
+        and(
+          eq(budgetReservations.budgetId, budget.id),
+          eq(budgetReservations.status, 'reserved'),
+          eq(budgetReservations.periodStart, currentMonth().start),
+          sql`${budgetReservations.expiresAt} > now()`,
+          check.runId ? ne(budgetReservations.runId, check.runId) : undefined,
+        ),
+      );
+    if ((await spentOf(budget, personalCounting)) + Number(held?.total ?? 0) < budget.monthlyLimit) continue;
     const whose: Partial<Record<BudgetScope, string>> = {
       workspace: 'the workspace',
       provider: 'this service',

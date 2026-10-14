@@ -1,4 +1,5 @@
 import type { AdoptInput, Metrics } from './metrics.js';
+import type { SaveMediaInput } from './media.js';
 import type { KnowledgeFile } from './knowledge.js';
 /**
  * The typed client of API v2, shared by the web app, the browser extension and the desktop
@@ -688,7 +689,7 @@ export function createApiClient(options: ApiClientOptions) {
 
     runs: {
       undoWrite: (stepId: string) => post<void>(`/api/runs/steps/${encodeURIComponent(stepId)}/undo`),
-      list: (query: { state?: 'active' | 'done' | 'all'; agent?: string; cursor?: string } = {}) =>
+      list: (query: { state?: 'active' | 'done' | 'all'; agent?: string; parent?: string; cursor?: string } = {}) =>
         get<Page<RunView>>('/api/runs', query),
       get: (id: string) => get<RunDetail>(`/api/runs/${id}`),
       cancel: (id: string) => post<RunDetail>(`/api/runs/${id}/cancel`),
@@ -741,8 +742,7 @@ export function createApiClient(options: ApiClientOptions) {
       adopt: (input: AdoptInput) => post<void>('/api/metrics/adopt', input),
     },
     media: {
-      save: (id: string, input: { space?: 'personal' | 'team'; folder_id?: string } = {}) =>
-        post<KnowledgeFile>(`/api/media/files/${id}/save`, input),
+      save: (id: string, input: SaveMediaInput = {}) => post<KnowledgeFile>(`/api/media/files/${id}/save`, input),
     },
     files: {
       upload(

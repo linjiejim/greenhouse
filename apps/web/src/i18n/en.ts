@@ -335,6 +335,7 @@ export const en: Record<MessageKey, string> = {
   'composer.voiceFailed': 'The recording didn’t turn into text · {reason}',
   'composer.voiceUnavailable': 'Voice input isn’t available on this device',
 
+  'memory.log': 'Work log',
   'memory.fact': 'Fact',
   'memory.preference': 'Preference',
   'memory.person': 'Person',
@@ -1132,6 +1133,10 @@ export const en: Record<MessageKey, string> = {
   'publicAgents.pause': 'Pause',
   'publicAgents.resume': 'Resume',
 
+  'publish.clearKnowledge': 'Clear knowledge access',
+  'publish.knowledge': 'Knowledge access',
+  'publish.knowledgeHint':
+    'Allow reads in these folders and their children. Moving a doc out ends access. Other knowledge and Agent reference folders stay private.',
   'publish.version': 'Version to publish',
   'publish.audience': 'Who can use it',
   'publish.some': 'Chosen people or groups',

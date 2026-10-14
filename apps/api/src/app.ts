@@ -29,6 +29,8 @@ import { bootstrapRoutes, brandingRoutes } from './modules/workspace/routes.js';
 import { createWorkspaceService, type WorkspaceService } from './modules/workspace/service.js';
 import { createEngine, type Engine } from './engine/engine.js';
 import { askUserTool } from './engine/tools/ask-user.js';
+import { helperRunTool } from './engine/tools/helper-run.js';
+import { toolOutputReadTool } from './engine/tools/output.js';
 import { readAttachmentTool } from './engine/tools/attachments.js';
 import { computerTool } from './engine/tools/computer.js';
 import { conversationTool } from './engine/tools/conversation.js';
@@ -181,10 +183,8 @@ export function createServices(config: AppConfig, options: ServiceOptions = {}):
           return { kind: context.kind, ...(await tables.records.get(memberId, context.id)) };
         case 'run':
           return { kind: context.kind, ...(await runs.get(memberId, context.id)) };
-        case 'agent': {
-          const { agent } = await agents.load(memberId, context.id);
-          return { kind: context.kind, id: agent.id, name: agent.name, role: agent.role };
-        }
+        case 'agent':
+          return { kind: context.kind, ...(await agents.get(memberId, context.id)) };
         case 'app': {
           const runtime = await apps.runtime(memberId, context.id);
           const page = runtime.pages.find((page) => page.id === context.page_id) ?? runtime.pages[0];
@@ -264,11 +264,13 @@ export function createServices(config: AppConfig, options: ServiceOptions = {}):
       selfTool(agents),
       conversationTool(conversations),
       readAttachmentTool(files, voice),
+      toolOutputReadTool(files),
       computerTool(computers),
       requestTakeoverTool(),
       browserTool(browser),
       vaultTool(vault, browser),
       runStartTool(background),
+      helperRunTool(background),
       runFinishTool(computers),
       handoffTool(handOff),
       ...scheduleTools(schedules),

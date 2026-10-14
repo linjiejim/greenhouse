@@ -20,12 +20,13 @@ export type Surface = 'turn' | 'background';
 
 export interface AvailabilityContext {
   runKind?: 'turn' | 'background';
+  mainAgent?: boolean;
   memberId: string;
   modules: MemberModules;
   manifest: AgentManifest;
   surface: Surface;
   /** Set in a turn of someone else's public Agent: what its publication grants the asker. */
-  publicAgent: { computer: boolean } | null;
+  publicAgent: { computer: boolean; folderIds: string[] } | null;
   backgroundComputer?: boolean;
   /** Whether the member can use a provider capability right now. */
   available(capability: Capability): Promise<boolean>;
@@ -69,6 +70,9 @@ export interface ToolContext {
   cite?(source: MessageCitation, how: 'read' | 'seen'): void;
   /** Ends the turn after this step (a hand-off: the other Agent answers next). */
   endTurn(): void;
+  /** Pause this turn without a request; helper summaries wake it through the inbox. */
+  waitForRuns?(): void;
+  readOnly?: boolean;
   /** The hand-offs this turn's request has gone through, for their limits. */
   chain?: { key: string; path: string[] };
   /** Set when the engine runs a call the member approved on its card. */

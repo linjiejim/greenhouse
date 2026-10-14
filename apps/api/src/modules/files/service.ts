@@ -142,7 +142,8 @@ export function createFilesService(deps: {
   const governed = new Map<FilePurpose, (memberId: string, row: FileRow) => Promise<boolean>>();
 
   async function canRead(memberId: string, row: FileRow): Promise<boolean> {
-    if (row.status !== 'active') return false;
+    if (row.status !== 'active' || (row.expiresAt && Date.parse(row.expiresAt) <= Date.now())) return false;
+    if (row.purpose === 'tool_output') return row.ownerId === memberId;
     const guard = governed.get(row.purpose);
     if (guard) return guard(memberId, row);
     if (row.ownerId === memberId) return true;
@@ -206,6 +207,7 @@ export function createFilesService(deps: {
         space?: 'team' | 'personal';
         ownerId?: string | null;
         meta?: Record<string, unknown>;
+        expiresAt?: string;
       },
     ): Promise<FileView> {
       if (input.bytes.byteLength > MAX_UPLOAD_BYTES) throw invalidInput('Files can be up to 50 MB.');
@@ -243,6 +245,7 @@ export function createFilesService(deps: {
           folderId: input.folderId ?? null,
           space: input.space ?? null,
           meta: input.meta ?? {},
+          expiresAt: input.expiresAt ?? null,
         })
         .returning();
       return toFile(row!, memberId);
@@ -252,6 +255,29 @@ export function createFilesService(deps: {
       const [row] = await getDb().select().from(files).where(eq(files.id, id));
       if (!row || !(await canRead(memberId, row))) throw notFound('File');
       return row;
+    },
+
+    /** Expired tool outputs are private temporary evidence. Storage failures keep the row retryable. */
+    async pruneToolOutputs(): Promise<number> {
+      const rows = await getDb()
+        .select()
+        .from(files)
+        .where(and(eq(files.purpose, 'tool_output'), eq(files.status, 'active'), sql`${files.expiresAt} <= now()`))
+        .limit(200);
+      for (const row of rows) {
+        const storage = await deps.providers.byId(
+          'storage',
+          row.providerId,
+          row.ownerId ? { memberId: row.ownerId } : {},
+        );
+        if (!storage) throw new ApiError(503, 'storage_unavailable', 'Tool output storage is unavailable.');
+        await storage.client.delete(row.storageKey);
+        await getDb()
+          .update(files)
+          .set({ status: 'deleted', updatedAt: sql`now()` })
+          .where(eq(files.id, row.id));
+      }
+      return rows.length;
     },
 
     /** What it is, with a fresh URL for this member. */

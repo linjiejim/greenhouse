@@ -627,6 +627,8 @@ export type RegisterPushDeviceInput = {
 export type RunView = {
   id: string;
   agent_id: string;
+  parent_run_id: string | null;
+  summary: string | null;
   title: string;
   status: 'failed' | 'queued' | 'running' | 'canceled' | 'waiting' | 'succeeded';
   source: 'record' | 'app' | 'conversation' | 'schedule' | 'automation' | 'handoff';
@@ -642,6 +644,8 @@ export type RunView = {
 export type RunDetail = {
   id: string;
   agent_id: string;
+  parent_run_id: string | null;
+  summary: string | null;
   title: string;
   status: 'failed' | 'queued' | 'running' | 'canceled' | 'waiting' | 'succeeded';
   source: 'record' | 'app' | 'conversation' | 'schedule' | 'automation' | 'handoff';
@@ -694,7 +698,8 @@ export type FileView = {
     | 'artifact'
     | 'export'
     | 'import'
-    | 'branding';
+    | 'branding'
+    | 'tool_output';
   owner_id: string | null;
   conversation_id: string | null;
   run_id: string | null;

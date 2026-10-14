@@ -107,3 +107,8 @@ apps/desktop/release/
 # Design prototype browser output
 apps/design/playwright-report/
 apps/design/test-results/
+
+# Local review output from agents and test runs
+artifacts/
+.t*-artifacts/
+REPORT.md

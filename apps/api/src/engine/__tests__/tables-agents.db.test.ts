@@ -32,10 +32,10 @@ it('discovers bases, queries filters, aggregates and cites records with the aske
   expect(result.body.items.at(-1).citations).toEqual([expect.objectContaining({ kind: 'record', title: 'Visible' })]);
 });
 
-async function workspace() {
+async function workspace(config: Record<string, string> = {}) {
   const scripts: Parameters<typeof scriptedModel>[0] = [];
   const model = scriptedModel(scripts);
-  const app = createTestApp({}, { languageModel: model.languageModel });
+  const app = createTestApp(config, { languageModel: model.languageModel });
   const member = await app.member();
   const other = await app.member();
   const base = await app.services.tables.create(member.id, { name: 'Work' });
@@ -52,6 +52,40 @@ async function workspace() {
   };
   return { ...app, member, other, base, table, field, main, scripts, model, send };
 }
+
+it('stores a long handoff field result privately and keeps the field write undoable', async () => {
+  const app = await workspace({
+    STORAGE_PROVIDER: 'local',
+    STORAGE_ROOT: `${process.cwd()}/node_modules/.cache/tool-output-tests`,
+  });
+  const notes = await app.services.tables.createField(app.member.id, app.table.id, {
+    name: 'Notes',
+    type: 'long_text',
+  });
+  const source = await app.services.tables.records.create(app.member.id, app.table.id, {
+    [app.field.id]: 'Source',
+  });
+  const report = 'Long result. '.repeat(700);
+  app.scripts.push(text(report));
+  const run = await app.services.recordAgents.handoff(app.member.id, source.record.id, {
+    agent_id: app.main.agent_id,
+    brief: 'Review this',
+    output_field_id: notes.id,
+  });
+  await app.services.engine.background.idle();
+  const detail = await app.services.runs.get(app.member.id, run.run_id);
+  expect(detail.status).toBe('succeeded');
+  const step = detail.steps.find((step) => step.tool === 'table_mutation')!;
+  const output = step.output as { file: { id: string }; length: number };
+  expect(output.length).toBeGreaterThan(8000);
+  expect((await app.services.files.get(app.member.id, output.file.id)).purpose).toBe('tool_output');
+  await expect(app.services.files.get(app.other.id, output.file.id)).rejects.toMatchObject({ status: 404 });
+  expect((await app.services.tables.records.get(app.member.id, source.record.id)).record.values[notes.id]).toBe(report);
+  await app.services.engine.undoWrite(app.member.id, step.id);
+  expect((await app.services.tables.records.get(app.member.id, source.record.id)).record.values).toEqual(
+    source.record.values,
+  );
+});
 
 it('hands off a record to its member’s Agent, returns a tiered comment and keeps the member as owner', async () => {
   const app = await workspace();

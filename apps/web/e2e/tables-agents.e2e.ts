@@ -78,9 +78,12 @@ test('build a notify automation and an Agent automation and inspect their histor
   const agent = rules.items.find((r) => r.name === 'T6 Agent step')!;
   await expect
     .poll(
-      async () =>
-        (await apiAs<CursorPage<AutomationRun>>(request, 'lin', 'GET', `/api/tables/automations/${agent.id}/runs`))
-          .items[0]?.status,
+      async () => {
+        const run = (
+          await apiAs<CursorPage<AutomationRun>>(request, 'lin', 'GET', `/api/tables/automations/${agent.id}/runs`)
+        ).items[0];
+        return run?.run_id ? run.status : 'queued';
+      },
       { timeout: 15000 },
     )
     .toBe('succeeded');

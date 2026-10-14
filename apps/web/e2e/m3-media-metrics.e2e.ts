@@ -35,10 +35,13 @@ test('approved video appears in Runs with progress and returns as a playable art
   await approval.getByRole('button', { name: '批准', exact: true }).click();
   const video = page.locator('video');
   await expect(video).toBeVisible({ timeout: 20000 });
-  await expect.poll(() => video.evaluate((element: HTMLVideoElement) => element.readyState)).toBeGreaterThan(0);
+  await video.evaluate((element: HTMLVideoElement) => element.play());
+  await expect.poll(() => video.evaluate((element: HTMLVideoElement) => element.currentTime)).toBeGreaterThan(0);
+  await video.evaluate((element: HTMLVideoElement) => element.pause());
   const chat = page.url();
   for (const theme of ['light', 'dark']) {
     await page.evaluate((theme) => document.documentElement.setAttribute('data-theme', theme), theme);
+    await page.waitForTimeout(400);
     await page.screenshot({ path: testInfo.outputPath(`video-${theme}.png`) });
   }
   await page.setViewportSize({ width: 390, height: 844 });
@@ -50,6 +53,13 @@ test('approved video appears in Runs with progress and returns as a playable art
   await expect(page.getByRole('dialog').getByText('视频进度：100%')).toBeVisible();
   await expect(page.getByRole('dialog').locator('video')).toBeVisible();
   await page.goto(chat);
+  const card = page.locator('.gh-chat-card').filter({ has: page.locator('video') });
+  const download = page.waitForEvent('download');
+  await card.getByRole('button', { name: '下载', exact: true }).click();
+  expect((await download).suggestedFilename()).toBe('video.mp4');
+  await card.getByRole('button', { name: '保存到知识库' }).click();
+  await expect(page).toHaveURL(/#\/knowledge\?space=personal&file=fil_/);
+  await expect(page.locator('video')).toBeVisible();
 });
 
 test('an asker’s interjection splits the reply at a boundary and is marked incorporated', async ({ page }) => {

@@ -289,4 +289,33 @@ describe('streamLoop', () => {
     // The finish comes after the spliced answer.
     expect(parts.at(-1)).toBe('finish');
   });
+  it('DeepSeek: keeps an externally paused step from answering with its old context', async () => {
+    const model = streaming([
+      [
+        { type: 'stream-start', warnings: [] },
+        { type: 'tool-call', toolCallId: 'c1', toolName: 'lookup', input: '{"query":"a"}' },
+        finishPart('tool-calls'),
+      ],
+    ]);
+    const turn = input(model, {
+      tools: lookupTool([]),
+      model: { model, modelId: 'deepseek-chat', deepseek: true },
+      stopWhen: [() => true],
+    });
+    const { result } = streamLoop(turn);
+    const recover = vi.fn(async () => ({
+      stream: (async function* () {
+        yield { type: 'text-delta', text: 'Old context' };
+      })(),
+    }));
+    let paused = false;
+    const collector = createCollector();
+    for await (const part of withFinalAnswer(result, turn, recover, () => !paused)) {
+      if (part.type === 'finish-step') paused = true;
+      collect(part, collector);
+    }
+    expect(recover).not.toHaveBeenCalled();
+    expect(collector.text).toBe('');
+    expect(collector.finished).toBe(true);
+  });
 });
