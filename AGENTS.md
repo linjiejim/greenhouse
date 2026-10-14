@@ -13,12 +13,12 @@ Greenhouse is an open-source, self-hosted platform where a team works with its o
 
 ## Repo map
 - apps/api: the v2 API (Hono). app.ts composes services and routes; modules/<domain>/ holds routes.ts and service.ts; engine/ runs turns and tools (engine/AGENTS.md); realtime/ is the WebSocket hub.
-- packages/contract: zod schemas and types for every request and response; the web, mobile and extension clients import it.
+- packages/contract: zod schemas and types for every request and response; web and extension import it, while mobile vendors its subset with parity tests.
 - packages/db: the v2 schema (data-model.md), ids, migrations and test support. drizzle/ holds the single baseline.
 - packages/providers: adapters per capability (llm, search, stt, tts, image, storage, sandbox: docker and e2b, mail: resend and mailgun; smtp is registered from apps/api/src/modules/mail), presets, the adapter registry and pinnedFetch (an instance's origins; `https://*.<domain>` allows every name under a domain, as E2B serves each sandbox under its own). apps/api/src/providers: env parsing, resolution order, sealed secrets, usage metering and the provider routes (docs/product/providers.md).
 - apps/web: the v2 web app (Vite, React 19, TanStack Query; apps/web/AGENTS.md). The API serves its build from public/.
 - apps/design: prototype and component lab. apps/desktop: Tauri shell (apps/desktop/AGENTS.md). apps/bot-computer: the Agent computer image (e2b/ is its hosted layer for the E2B template: the two bridges, their units, boot and hardening).
-- apps/mobile: v1 Expo app outside the pnpm workspace and the root checks until roadmap M4 (apps/mobile/AGENTS.md).
+- apps/mobile: API v2 Expo app outside the pnpm workspace and root type/lint checks; native checks run separately (apps/mobile/AGENTS.md).
 - packages/agent-core: agent loop and stream collectors. packages/knowledge-editor: Tiptap schema, Markdown conversion and the browser editor (editor.ts: `/` blocks, `[[` doc links, `@` mentions, pictures; the app draws the menus).
 - packages/types: plant avatars, rich-output blocks, entity links, deployment config shape. packages/utils: shared helpers.
 - packages/ui: tokens, brand mark, plant avatars and the component kit (src/kit, imported as @greenhouse/ui/kit with @greenhouse/ui/kit/kit.css; docs/design-system/components.md). The kit's CSS uses tokens only and its words come from src/kit/strings.ts in zh and en.

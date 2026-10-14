@@ -185,11 +185,19 @@ export function DrawerContent({ navigation }: DrawerContentComponentProps) {
           await update(conversation, { muted: id === 'mute' });
           return;
         case 'markRead':
-          useWorkspace.getState().patchConversation(conversation.id, { last_read_seq: conversation.last_seq, unread: 0 });
-          void markRead(conversation.id, conversation.last_seq).then(() => void useWorkspace.getState().refreshSummary());
+          useWorkspace
+            .getState()
+            .patchConversation(conversation.id, { last_read_seq: conversation.last_seq, unread: 0 });
+          void markRead(conversation.id, conversation.last_seq).then(
+            () => void useWorkspace.getState().refreshSummary(),
+          );
           return;
         case 'rename': {
-          const nextTitle = await promptText({ title: t('row.renameTitle'), defaultValue: conversation.title, confirmLabel: t('common.save') });
+          const nextTitle = await promptText({
+            title: t('row.renameTitle'),
+            defaultValue: conversation.title,
+            confirmLabel: t('common.save'),
+          });
           if (nextTitle && nextTitle !== conversation.title) await update(conversation, { title: nextTitle });
           return;
         }
@@ -261,7 +269,10 @@ export function DrawerContent({ navigation }: DrawerContentComponentProps) {
       switch (id) {
         case 'newChat':
           close();
-          openNewChat(router, { agent: 'is_main' in row.agent && row.agent.is_main ? undefined : row.agent.id, compose: true });
+          openNewChat(router, {
+            agent: 'is_main' in row.agent && row.agent.is_main ? undefined : row.agent.id,
+            compose: true,
+          });
           return;
         case 'profile':
           close();
@@ -303,7 +314,9 @@ export function DrawerContent({ navigation }: DrawerContentComponentProps) {
             conversation.muted
               ? { id: 'unmute', title: t('row.unmute'), icon: 'bell' }
               : { id: 'mute', title: t('row.mute'), icon: 'bellSlash' },
-            ...(conversation.unread > 0 ? [{ id: 'markRead', title: t('row.markRead'), icon: 'checkCircle' as const }] : []),
+            ...(conversation.unread > 0
+              ? [{ id: 'markRead', title: t('row.markRead'), icon: 'checkCircle' as const }]
+              : []),
           ]
         : [];
     return {
@@ -322,13 +335,19 @@ export function DrawerContent({ navigation }: DrawerContentComponentProps) {
       },
       room: (room: Conversation): MenuItem[] =>
         menuSections([
-          [...toggles(room), { id: 'rename', title: t('row.rename'), icon: 'pen' }, { id: 'export', title: t('row.export'), icon: 'share' }],
+          [
+            ...toggles(room),
+            { id: 'rename', title: t('row.rename'), icon: 'pen' },
+            { id: 'export', title: t('row.export'), icon: 'share' },
+          ],
           [{ id: 'leave', title: t('conversation.leave'), icon: 'logout', destructive: true }],
         ]),
       chat: (chat: Conversation): MenuItem[] =>
         menuSections([
           [
-            chat.pinned ? { id: 'unpin', title: t('row.unpin'), icon: 'pinOff' } : { id: 'pin', title: t('row.pin'), icon: 'pin' },
+            chat.pinned
+              ? { id: 'unpin', title: t('row.unpin'), icon: 'pinOff' }
+              : { id: 'pin', title: t('row.pin'), icon: 'pin' },
             { id: 'rename', title: t('row.rename'), icon: 'pen' },
             { id: 'export', title: t('row.export'), icon: 'share' },
             { id: 'archive', title: t('row.archive'), icon: 'archive' },
@@ -395,7 +414,11 @@ export function DrawerContent({ navigation }: DrawerContentComponentProps) {
       <ScrollView style={styles.list} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
         {agents === null && !loadFailed ? <Spinner style={styles.loading} /> : null}
         {loadFailed && agents === null ? (
-          <Touchable onPress={() => void useWorkspace.getState().refresh()} style={styles.failed} accessibilityRole="button">
+          <Touchable
+            onPress={() => void useWorkspace.getState().refresh()}
+            style={styles.failed}
+            accessibilityRole="button"
+          >
             <Icon name="alert" size={15} color={c.red} />
             <Text style={styles.failedText}>{t('directory.loadFailed')}</Text>
             <Text style={styles.retry}>{t('common.retry')}</Text>
@@ -492,13 +515,22 @@ export function DrawerContent({ navigation }: DrawerContentComponentProps) {
             ))
           : null}
         {showEarlier && next ? (
-          <PlainRow icon="chevD" label={t('directory.showEarlier')} indent onPress={() => void useWorkspace.getState().loadMoreConversations()} />
+          <PlainRow
+            icon="chevD"
+            label={t('directory.showEarlier')}
+            indent
+            onPress={() => void useWorkspace.getState().loadMoreConversations()}
+          />
         ) : null}
         {!anyChat && conversations && !searching ? <Text style={styles.empty}>{t('directory.noChats')}</Text> : null}
         {nothingFound ? <Text style={styles.empty}>{t('directory.noMatches')}</Text> : null}
 
         {!searching || archivedRows.length ? (
-          <FoldRow label={t('directory.archived')} open={archivedOpen} onPress={() => setArchivedOpen((value) => !value)} />
+          <FoldRow
+            label={t('directory.archived')}
+            open={archivedOpen}
+            onPress={() => setArchivedOpen((value) => !value)}
+          />
         ) : null}
         {archivedOpen
           ? archivedRows.map((item) => (
@@ -524,6 +556,26 @@ export function DrawerContent({ navigation }: DrawerContentComponentProps) {
       {/* the module bar: 对话 · 更多 (知识库, 表格 and 应用 join it with their screens) */}
       <View key={fontKey} style={[styles.bar, { paddingBottom: Math.max(insets.bottom, space.sm) }]}>
         <BarItem icon="msgs" label={t('nav.chat')} current onPress={close} />
+        {me?.modules.knowledge ? (
+          <BarItem
+            icon="book"
+            label={t('work.title')}
+            onPress={() => {
+              close();
+              router.push('/knowledge');
+            }}
+          />
+        ) : null}
+        {me?.modules.tables ? (
+          <BarItem
+            icon="table"
+            label={t('work.tables')}
+            onPress={() => {
+              close();
+              router.push('/tables');
+            }}
+          />
+        ) : null}
         <NativeMenu
           items={[
             { id: '/agents', title: t('nav.agents'), icon: 'sparkle' },
@@ -598,7 +650,13 @@ function AgentRowView({
         key={fontKey}
         onPress={onPress}
         accessibilityRole="button"
-        accessibilityLabel={[row.agent.name, owner ? t('directory.sharedBy', { name: owner }) : '', signalLabel(t, signal)].filter(Boolean).join(t('common.listSep'))}
+        accessibilityLabel={[
+          row.agent.name,
+          owner ? t('directory.sharedBy', { name: owner }) : '',
+          signalLabel(t, signal),
+        ]
+          .filter(Boolean)
+          .join(t('common.listSep'))}
         accessibilityState={{ selected: current }}
         style={({ pressed }) => [
           styles.row,
@@ -684,7 +742,12 @@ function SectionHead({ title, action }: { title: string; action?: { label: strin
         {title}
       </Text>
       {action ? (
-        <Touchable onPress={action.onPress} style={styles.sectionAction} accessibilityRole="button" accessibilityLabel={action.label}>
+        <Touchable
+          onPress={action.onPress}
+          style={styles.sectionAction}
+          accessibilityRole="button"
+          accessibilityLabel={action.label}
+        >
           <Icon name="plus" size={16} color={c.secondaryLabel} />
         </Touchable>
       ) : null}
@@ -692,7 +755,17 @@ function SectionHead({ title, action }: { title: string; action?: { label: strin
   );
 }
 
-function FoldRow({ label, count, open, onPress }: { label: string; count?: number; open: boolean; onPress: () => void }) {
+function FoldRow({
+  label,
+  count,
+  open,
+  onPress,
+}: {
+  label: string;
+  count?: number;
+  open: boolean;
+  onPress: () => void;
+}) {
   const { colors: c } = useTheme();
   const styles = useStyles(c);
   const fontKey = useFontScaleKey();
@@ -714,14 +787,29 @@ function FoldRow({ label, count, open, onPress }: { label: string; count?: numbe
   );
 }
 
-function PlainRow({ icon, label, indent, onPress }: { icon: IconName; label: string; indent?: boolean; onPress: () => void }) {
+function PlainRow({
+  icon,
+  label,
+  indent,
+  onPress,
+}: {
+  icon: IconName;
+  label: string;
+  indent?: boolean;
+  onPress: () => void;
+}) {
   const { colors: c } = useTheme();
   const styles = useStyles(c);
   return (
     <Pressable
       onPress={onPress}
       accessibilityRole="button"
-      style={({ pressed }) => [styles.rowSlot, styles.row, indent && styles.indent, pressed && { backgroundColor: c.fill }]}
+      style={({ pressed }) => [
+        styles.rowSlot,
+        styles.row,
+        indent && styles.indent,
+        pressed && { backgroundColor: c.fill },
+      ]}
     >
       <Icon name={icon} size={15} color={c.secondaryLabel} />
       <Text numberOfLines={1} style={[styles.rowText, styles.grow, { color: c.secondaryLabel }]}>
@@ -731,7 +819,17 @@ function PlainRow({ icon, label, indent, onPress }: { icon: IconName; label: str
   );
 }
 
-function BarItem({ icon, label, current, onPress }: { icon: IconName; label: string; current?: boolean; onPress?: () => void }) {
+function BarItem({
+  icon,
+  label,
+  current,
+  onPress,
+}: {
+  icon: IconName;
+  label: string;
+  current?: boolean;
+  onPress?: () => void;
+}) {
   const { colors: c } = useTheme();
   const styles = useStyles(c);
   const content = (
@@ -762,7 +860,13 @@ function BarItem({ icon, label, current, onPress }: { icon: IconName; label: str
 
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.background },
-  topRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm, paddingHorizontal: space.md, paddingBottom: space.sm },
+  topRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.sm,
+    paddingHorizontal: space.md,
+    paddingBottom: space.sm,
+  },
   search: {
     flex: 1,
     flexDirection: 'row',

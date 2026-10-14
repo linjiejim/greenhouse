@@ -17,6 +17,9 @@ export type AppRoute =
   | { kind: 'run'; id: string }
   | { kind: 'notifications' }
   | { kind: 'settings' }
+  | { kind: 'knowledge'; id?: string; folder?: string }
+  | { kind: 'tables'; base?: string; table?: string; view?: string; record?: string }
+  | { kind: 'form'; id: string }
   /** A route of the web app this app has no screen for yet (knowledge, tables, apps, skills). */
   | { kind: 'web'; path: string };
 
@@ -42,6 +45,7 @@ export function parseAppPath(href: string): AppRoute | null {
   const [head, id, extra] = segments;
   if (!head) return { kind: 'main' };
   if (head === 'api') return null;
+  if (segments.slice(1).some((segment) => !ID.test(segment))) return null;
   if (extra !== undefined && head !== 'knowledge' && head !== 'tables' && head !== 'apps') return null;
   switch (head) {
     case 'c':
@@ -59,9 +63,19 @@ export function parseAppPath(href: string): AppRoute | null {
     case 'settings':
       return { kind: 'settings' };
     case 'knowledge':
-    case 'tables':
-    case 'apps':
+      if (!id) return { kind: 'knowledge' };
+      if (id === 'folder' && extra && ID.test(extra)) return { kind: 'knowledge', folder: extra };
+      return !extra && ID.test(id) ? { kind: 'knowledge', id } : null;
+    case 'tables': {
+      const ids = segments.slice(1);
+      if (ids.some((value) => !ID.test(value)) || ids.length > 3) return null;
+      const record = new URLSearchParams(path.split('?')[1] ?? '').get('record') ?? undefined;
+      if (record && !ID.test(record)) return null;
+      return { kind: 'tables', base: id, table: extra, view: segments[3], record };
+    }
     case 'forms':
+      return id && !extra && ID.test(id) ? { kind: 'form', id } : null;
+    case 'apps':
     case 'skills':
     case 'admin':
       return { kind: 'web', path: pathname! };

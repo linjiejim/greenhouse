@@ -37,8 +37,10 @@ function androidBar(background: ThemeColors[keyof ThemeColors]): NativeStackNavi
 }
 
 /** Shared defaults for every native stack in the app. */
-export function stackDefaults(c: ThemeColors, hex: HexPalette): NativeStackNavigationOptions {
+export function stackDefaults(c: ThemeColors, hex: HexPalette, isDark: boolean): NativeStackNavigationOptions {
   return {
+    statusBarStyle: isDark ? 'light' : 'dark',
+    statusBarHidden: false,
     // navigation options take color strings — use the hex mirror. Android's
     // top app bar icons are onSurface (Material), iOS bar buttons the tint.
     headerTintColor: ANDROID ? hex.label : hex.accent,

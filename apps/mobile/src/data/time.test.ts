@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { dayKey, parseMs, relativeTime, type TimeWords } from './time';
+import { calendarDate, dayKey, parseMs, relativeTime, type TimeWords } from './time';
 
 const zh: TimeWords = {
   justNow: '刚刚',
@@ -19,6 +19,14 @@ const en: TimeWords = {
 
 const TZ = 'Asia/Shanghai';
 const now = Date.parse('2026-10-14T06:30:00.000Z'); // 14:30 in Shanghai
+
+it('formats calendar dates with the app dictionary and preserves date-only days', () => {
+  expect(calendarDate('2026-10-15', zh, 'Pacific/Honolulu', now)).toBe('10 月 15 日');
+  expect(calendarDate('2026-10-15T20:00:00Z', zh, TZ, now)).toBe('10 月 16 日');
+  expect(calendarDate('2026-10-15', en, TZ, now)).toBe('Oct 15');
+  expect(calendarDate('2027-01-02', zh, TZ, now)).toBe('2027 年 1 月 2 日');
+  expect(calendarDate('unreadable', zh, TZ, now)).toBe('');
+});
 
 describe('parseMs', () => {
   it('reads the Postgres shapes the API sends, which Hermes would refuse', () => {

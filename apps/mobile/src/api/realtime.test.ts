@@ -218,7 +218,9 @@ describe('helpers', () => {
   });
 
   it('reads only well-formed frames of known types', () => {
-    expect(parseFrame('{"type":"run.updated","data":{"run_id":"r","status":"running","conversation_id":null}}')).toEqual({
+    expect(
+      parseFrame('{"type":"run.updated","data":{"run_id":"r","status":"running","conversation_id":null}}'),
+    ).toEqual({
       type: 'run.updated',
       data: { run_id: 'r', status: 'running', conversation_id: null },
     });
@@ -228,5 +230,20 @@ describe('helpers', () => {
     });
     expect(parseFrame('{"type":"run.updated"}')).toBeNull();
     expect(parseFrame(42)).toBeNull();
+  });
+});
+
+// Module invalidations are part of the socket contract, not just conversation events.
+describe('knowledge and table events', () => {
+  it('accepts module changes and comments', () => {
+    for (const type of [
+      'knowledge.changed',
+      'doc.updated',
+      'doc.presence',
+      'comments.updated',
+      'records.changed',
+      'base.updated',
+    ])
+      expect(parseFrame(JSON.stringify({ type, data: {} }))?.type).toBe(type);
   });
 });

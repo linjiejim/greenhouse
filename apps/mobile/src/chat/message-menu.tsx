@@ -86,8 +86,8 @@ export function MessageMenu({
   const width = widthProp ?? windowW;
   const excerpt = useMemo(() => {
     const plain = plainText(text);
-    return plain.length > PREVIEW_CHARS ? `${plain.slice(0, PREVIEW_CHARS)}…` : plain;
-  }, [text]);
+    return plain.length > PREVIEW_CHARS ? `${plain.slice(0, PREVIEW_CHARS)}…` : plain || t('work.result');
+  }, [text, t]);
 
   if (nativeFlow && Platform.OS === 'ios') {
     const flat = items.flatMap((item) => item.children ?? [item]).filter((item) => !item.disabled);

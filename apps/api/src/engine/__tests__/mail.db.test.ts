@@ -87,7 +87,10 @@ describe('the mail tool', () => {
     });
     aim(forget, { action: 'forget', id: remembered.body.id });
     const reading = await send('read it and forget the old note');
-    const [opened, memory] = await steps(reading.run_id);
+    const readingSteps = await steps(reading.run_id);
+    expect(readingSteps).toHaveLength(2);
+    const opened = readingSteps.find((step) => step.toolName === 'mail');
+    const memory = readingSteps.find((step) => step.toolName === 'memory');
     expect(opened).toMatchObject({ toolName: 'mail', risk: 'read', status: 'succeeded' });
     const body = (opened!.output as { body: string }).body;
     expect(body).toMatch(/^<mail_body untrusted="true">\n/);

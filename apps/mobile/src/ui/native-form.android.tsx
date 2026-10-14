@@ -44,7 +44,6 @@ import {
   type TextFieldImeAction,
   type TextFieldKeyboardType,
   type TextFieldRef,
-  useNativeState,
   Box,
 } from '@expo/ui/jetpack-compose';
 import {
@@ -53,6 +52,8 @@ import {
   clip,
   combinedClickable,
   fillMaxSize,
+  imePadding,
+  onGloballyPositioned,
   fillMaxWidth,
   padding,
   semantics,
@@ -65,6 +66,7 @@ import { M3Host, useM3 } from './m3';
 // the Android table explicitly: TypeScript resolves the bare path to the iOS one (SF names)
 import { toolbarIcon } from './toolbar-icon.android';
 
+import { useNativeState, useTextBinding } from './text-state.android';
 export { useNativeState };
 
 /** SwiftUI's locale environment has no Compose counterpart (shared modules import it). */
@@ -81,7 +83,7 @@ export function NativeForm({ children, style }: { children: React.ReactNode; sty
       <LazyColumn
         verticalArrangement={{ spacedBy: 20 }}
         contentPadding={{ start: 16, end: 16, top: 12, bottom: 40 }}
-        modifiers={[fillMaxSize(), background(m.surface)]}
+        modifiers={[fillMaxSize(), imePadding(), background(m.surface)]}
       >
         {children}
       </LazyColumn>
@@ -588,6 +590,7 @@ export function FormTextField({
 }) {
   const m = useM3();
   const note = error || supporting;
+  const { onReady, ...binding } = useTextBinding(state, fieldRef, onChangeText);
   const submit = onSubmit
     ? imeAction === 'next'
       ? { onNext: onSubmit }
@@ -601,9 +604,7 @@ export function FormTextField({
     : undefined;
   return (
     <OutlinedTextField
-      ref={fieldRef}
-      value={state}
-      onValueChange={onChangeText}
+      {...binding}
       textStyle={{ fontFamily: 'Nunito' }}
       singleLine={!multiline}
       minLines={multiline ? 3 : undefined}
@@ -618,7 +619,11 @@ export function FormTextField({
         capitalization: 'none',
       }}
       keyboardActions={submit}
-      modifiers={[fillMaxWidth(), ...(autofill ? [semantics({ contentType: autofill })] : [])]}
+      modifiers={[
+        fillMaxWidth(),
+        onGloballyPositioned(onReady),
+        ...(autofill ? [semantics({ contentType: autofill })] : []),
+      ]}
     >
       <OutlinedTextField.Label>
         <Text>{label}</Text>

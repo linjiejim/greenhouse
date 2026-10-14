@@ -56,7 +56,8 @@ export default function ComputerPage() {
   const agentId = params.agent ?? '';
   const agentName = useWorkspace(
     (s) =>
-      s.agents?.find((agent) => agent.id === agentId)?.name ?? s.publicAgents.find((agent) => agent.id === agentId)?.name,
+      s.agents?.find((agent) => agent.id === agentId)?.name ??
+      s.publicAgents.find((agent) => agent.id === agentId)?.name,
   );
   const name = agentName ?? t('conversation.anAgent');
   const { computer, failed, busy, refresh, act } = useComputer(agentId);
@@ -68,7 +69,8 @@ export default function ComputerPage() {
   const [hintAt, setHintAt] = useState(0);
 
   // The card a hand-back settles: from the threads (live) or the pending list.
-  const fromThreads = useThreads((s) => Object.values(s.threads).flatMap((entry) => entry.requests));
+  const threads = useThreads((s) => s.threads);
+  const fromThreads = useMemo(() => Object.values(threads).flatMap((entry) => entry.requests), [threads]);
   const [pending, setPending] = useState<NeedsYou[]>([]);
   const loadPending = useCallback(async () => {
     const result = await listRequests({ state: 'pending', limit: 200 });
@@ -131,11 +133,12 @@ export default function ComputerPage() {
       {
         text: t('computer.handBackWithNote'),
         onPress: () =>
-          void promptText({ title: t('computer.noteTitle', { name }), placeholder: t('computer.notePlaceholder') }).then(
-            (note) => {
-              if (note) void handBack(note);
-            },
-          ),
+          void promptText({
+            title: t('computer.noteTitle', { name }),
+            placeholder: t('computer.notePlaceholder'),
+          }).then((note) => {
+            if (note) void handBack(note);
+          }),
       },
       { text: t('computer.handBack'), onPress: () => void handBack() },
     ]);
@@ -187,7 +190,15 @@ export default function ComputerPage() {
   ];
   const stateWord = computer ? t(`computer.state.${computer.state}`) : t('common.loading');
   const stateColor =
-    computer?.state === 'running' ? (control ? c.accent : c.green) : computer?.state === 'failed' ? c.red : computer?.state === 'starting' ? c.blue : c.gray;
+    computer?.state === 'running'
+      ? control
+        ? c.accent
+        : c.green
+      : computer?.state === 'failed'
+        ? c.red
+        : computer?.state === 'starting'
+          ? c.blue
+          : c.gray;
 
   return (
     <View style={[styles.root, { paddingTop: headerInset }]}>
@@ -197,7 +208,10 @@ export default function ComputerPage() {
         <View style={styles.status} accessible accessibilityRole="text">
           <View style={[styles.dot, { backgroundColor: stateColor }]} />
           <Text style={styles.statusText} numberOfLines={1}>
-            {[running && control ? t('computer.controlling') : running ? t('computer.watching') : stateWord, computer?.last_active_at ? relativeTimeNow(computer.last_active_at) : '']
+            {[
+              running && control ? t('computer.controlling') : running ? t('computer.watching') : stateWord,
+              computer?.last_active_at ? relativeTimeNow(computer.last_active_at) : '',
+            ]
               .filter(Boolean)
               .join(' · ')}
           </Text>
@@ -211,7 +225,9 @@ export default function ComputerPage() {
             <Text style={styles.bannerReason}>{card.payload.reason}</Text>
           ) : null}
           <View style={styles.bannerButtons}>
-            {!control && running ? <NativeButton label={t('computer.takeOver')} size="small" onPress={takeOver} /> : null}
+            {!control && running ? (
+              <NativeButton label={t('computer.takeOver')} size="small" onPress={takeOver} />
+            ) : null}
             <NativeButton
               label={t('computer.handBack')}
               size="small"
@@ -224,7 +240,12 @@ export default function ComputerPage() {
       ) : null}
       <View style={styles.body}>
         {failed && !computer ? (
-          <EmptyState icon="alertCircle" title={failed.message || t('computer.loadFailed')} onRetry={() => void refresh()} style={styles.fill} />
+          <EmptyState
+            icon="alertCircle"
+            title={failed.message || t('computer.loadFailed')}
+            onRetry={() => void refresh()}
+            style={styles.fill}
+          />
         ) : !computer ? (
           <LoadingState style={styles.fill} />
         ) : tab === 'files' ? (
@@ -234,13 +255,25 @@ export default function ComputerPage() {
         ) : running ? (
           <ComputerScreenView screen={screen} hintAt={hintAt} onTakeOver={takeOver} />
         ) : computer.state === 'starting' ? (
-          <EmptyState icon="computer" title={t('computer.state.starting')} message={t('computer.startingDesc')} style={styles.fill} />
+          <EmptyState
+            icon="computer"
+            title={t('computer.state.starting')}
+            message={t('computer.startingDesc')}
+            style={styles.fill}
+          />
         ) : (
           <EmptyState
             icon={computer.state === 'failed' ? 'alertCircle' : 'sleep'}
             title={stateWord}
             message={computer.state_reason ?? t('computer.stoppedDesc', { name })}
-            action={<NativeButton label={t('computer.start')} variant="prominent" loading={busy === 'start'} onPress={() => void start()} />}
+            action={
+              <NativeButton
+                label={t('computer.start')}
+                variant="prominent"
+                loading={busy === 'start'}
+                onPress={() => void start()}
+              />
+            }
             style={styles.fill}
           />
         )}

@@ -217,3 +217,7 @@ apps/api/src/
 ```
 
 每个模块都附测试：service 单元测试、路由 API 测试、关键流程端到端测试。删除模块时，按 [功能清单](features.md) 的维护规则同步清理。
+
+### 原生移动端 phase 2（#70）
+
+移动端复用知识库、表格、语音和 Agent 邮箱接口，不增加原生专用接口。文档修改发送编辑开始时的 `version`，记录修改发送起始 `revision` 和变化字段；409 时保留草稿，明确重新载入。文件预览仍用签名 URL。转写只填入输入框，朗读使用 `/api/voice/speech` 或设备语音。原生页接收 `knowledge.changed`、`doc.updated`、`doc.presence`、`comments.updated`、`records.changed`、`base.updated`，重连和回到前台时重新读取。邮件正文用原生纯文本呈现，附件使用签名链接。

@@ -32,6 +32,8 @@ type AndroidSymbolName = Exclude<Extract<SymbolViewProps['name'], object>['andro
 
 /** Semantic icon name → [SF Symbol (iOS), Material Symbol (Android/web)]. */
 const ICONS = {
+  mic: ['mic', 'mic'],
+  speaker: ['speaker.wave.2', 'volume_up'],
   plus: ['plus', 'add'],
   up: ['arrow.up', 'arrow_upward'],
   stop: ['stop.fill', 'stop'],

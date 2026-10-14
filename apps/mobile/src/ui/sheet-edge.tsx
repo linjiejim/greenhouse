@@ -18,6 +18,8 @@ import React, { useEffect, useState } from 'react';
 import { Platform, StyleSheet, View } from 'react-native';
 import type { NativeStackNavigationOptions } from 'expo-router/build/react-navigation/native-stack';
 import { useTheme } from '../theme';
+import { useAuth } from '../store/auth';
+import { useStations } from '../store/stations';
 
 /** What the sheet's glass resolves to over the dimmed app (sampled on iOS 26), as `r, g, b`. */
 const GLASS_RGB = { light: '230, 230, 230', dark: '33, 33, 33' } as const;
@@ -28,7 +30,21 @@ interface DetentEvents {
 }
 
 /** `screenLayout` for the root stack: partial-detent form sheets get the soft bottom edge. */
-export function sheetEdgeLayout({
+export function sheetEdgeLayout(props: {
+  children: React.ReactElement;
+  navigation: unknown;
+  options: NativeStackNavigationOptions;
+}): React.ReactElement {
+  return <IdentityScreen>{sheetContent(props)}</IdentityScreen>;
+}
+
+function IdentityScreen({ children }: { children: React.ReactElement }) {
+  const station = useStations((s) => s.activeId);
+  const member = useAuth((s) => s.user?.id);
+  return <React.Fragment key={`${station ?? ''}:${member ?? ''}`}>{children}</React.Fragment>;
+}
+
+function sheetContent({
   children,
   navigation,
   options,
@@ -40,7 +56,8 @@ export function sheetEdgeLayout({
   const detents = options.sheetAllowedDetents;
   if (Platform.OS !== 'ios' || options.presentation !== 'formSheet' || !Array.isArray(detents)) return children;
   if (!detents.some((d) => d < 1)) return children;
-  const initial = typeof options.sheetInitialDetentIndex === 'number' ? options.sheetInitialDetentIndex : detents.length - 1;
+  const initial =
+    typeof options.sheetInitialDetentIndex === 'number' ? options.sheetInitialDetentIndex : detents.length - 1;
   return (
     <SheetEdge navigation={navigation as DetentEvents} detents={detents} initial={initial}>
       {children}
@@ -80,7 +97,9 @@ function SheetEdge({
           pointerEvents="none"
           style={[
             styles.fade,
-            { experimental_backgroundImage: `linear-gradient(to bottom, rgba(${rgb}, 0), rgba(${rgb}, 0.7) 55%, rgba(${rgb}, 1))` },
+            {
+              experimental_backgroundImage: `linear-gradient(to bottom, rgba(${rgb}, 0), rgba(${rgb}, 0.7) 55%, rgba(${rgb}, 1))`,
+            },
           ]}
         />
       ) : null}

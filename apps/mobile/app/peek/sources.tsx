@@ -1,7 +1,6 @@
 /**
  * 出处 (CONV-19; a form sheet from a reply's row of sources): what the reply used. A web page
- * opens in the in-app Safari view; a document of the knowledge base opens in the web app for
- * now (its screen comes with the knowledge base). 「就此追问」 quotes a source in the composer.
+ * opens in the in-app Safari view; a document of the knowledge base opens natively. 「就此追问」 quotes a source in the composer.
  * Payload `{ citations, readOnly }` arrives via the handoff store (`?k=`).
  */
 
@@ -20,7 +19,7 @@ import { alertError } from '../../src/ui/dialogs';
 import { EmptyState } from '../../src/ui/empty';
 import { ListRow, ListSection } from '../../src/ui/list';
 import { NativeMenu } from '../../src/ui/menu';
-import { SheetClose } from '../../src/ui/sheet-chrome';
+import { SheetClose, useLeaveSheetTo } from '../../src/ui/sheet-chrome';
 
 type Citation = Message['citations'][number];
 
@@ -30,8 +29,9 @@ export default function SourcesPeek() {
   const { colors: c, hex } = useTheme();
   const t = useT();
   const router = useRouter();
+  const leaveTo = useLeaveSheetTo();
   const { k } = useLocalSearchParams<{ k?: string }>();
-  const data = getHandoff<{ citations: Citation[]; readOnly?: boolean }>(k);
+  const data = getHandoff<{ citations: Citation[]; readOnly?: boolean }>(k, 'sources');
   const citations = data?.citations ?? [];
 
   const ask = (source: Citation) => {
@@ -60,7 +60,7 @@ export default function SourcesPeek() {
                   onPress={() =>
                     web
                       ? void openLink(source.url!, hex.accent).catch(() => alertError(t('conversation.linkFailed')))
-                      : alertError(t('sources.webOnly'))
+                      : leaveTo({ pathname: '/knowledge/doc', params: { id: source.id } })
                   }
                   accessibilityActions={data?.readOnly ? undefined : [{ name: 'ask', label: t('sources.ask') }]}
                   onAccessibilityAction={(e) => {

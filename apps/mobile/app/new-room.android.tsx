@@ -5,7 +5,6 @@
 
 import React from 'react';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useNativeState } from '@expo/ui/jetpack-compose';
 import { useT } from '../src/lib/i18n';
 import { agentHandle, useNewRoom } from '../src/rooms/use-new-room';
 import { openConversation } from '../src/shell/nav';
@@ -17,6 +16,7 @@ import {
   FormTextField,
   FormValueRow,
   NativeForm,
+  useNativeState,
 } from '../src/ui/native-form.android';
 import { FormChrome } from '../src/ui/sheet-chrome';
 
@@ -57,9 +57,17 @@ export default function NewRoom() {
               supporting={t('rooms.nameFooter')}
             />
           )}
-          <FormTextField label={t('directory.search')} state={searchText} onChangeText={r.setQuery} imeAction="search" />
+          <FormTextField
+            label={t('directory.search')}
+            state={searchText}
+            onChangeText={r.setQuery}
+            imeAction="search"
+          />
         </FormFields>
-        <FormSection title={t('rooms.people')} footer={r.picked.length ? t('rooms.picked', { n: r.picked.length }) : undefined}>
+        <FormSection
+          title={t('rooms.people')}
+          footer={r.picked.length ? t('rooms.picked', { n: r.picked.length }) : undefined}
+        >
           {r.people === null && !r.failed ? (
             <FormValueRow label={t('common.loading')} value="" />
           ) : r.failed ? (

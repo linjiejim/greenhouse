@@ -76,12 +76,14 @@ expose to Claude, Cursor, or any MCP client.
   <img src="docs/assets/screens/chat-knowledge-answer-dark.webp" alt="Dark theme" width="66%" />
   <img src="docs/assets/screens/mobile-chat.webp" alt="Mobile layout" width="19%" />
 </p>
-<p align="center"><sub>Light / dark / system themes and a responsive layout; the <a href="apps/mobile">Expo app</a> covers chat (with the same rich replies as the web — data tables, charts (Swift Charts on iOS), stat tiles, record cards, step timelines, Mermaid diagrams, HTML previews, question forms (a chat card opens a native bottom sheet on iOS, with clear selection states and optional fields / supporting context collapsed) and reply buttons — and a "connect your account" card when a connector needs your sign-in or key), your Agents (on iOS: the app opens on your main thread with Sprouty, and the drawer lists it first, then your other Agents' threads, then your chats — one ongoing thread per Agent, other Agents join it when a hand-off helps — with live per-Agent replies, @-mentions, "needs you" cards that open into a sheet to decide, background tasks that report back; your computer one tap away on a thread's bar — watch it live, take over with touch and native typing (pass a human check right from the card), preview its files in-app and share them when needed, see its background processes; an Agent's profile gathers its instructions, memory, shared notes, schedules and separate chats in tabs; new Agents are made from the Agents heading’s +, by asking Sprouty, or in Settings → My Agents; routine replies lead with a short result and follow topic changes without reviving unrelated old work, with reasoning, tool calls and sources one ⋯ → Show toggle away; durable memories use compact plain-text notes; selected images stay in the draft until every upload is ready, with retry for failures; a home-screen widget highlights your main Agent with compact shortcuts to other Agents and unread and "needs you" badges — one tap into an Agent's thread, or a new chat with Sprouty; notifications when an Agent needs you, a task finishes or a reply comes in after you left — content-free unless you turn previews on, one tap into the card or the conversation, on every station you are signed in to; and, experimentally, a running background task as a Live Activity on the Lock Screen and in the Dynamic Island), Settings → Connectors for your own keys and sign-ins, knowledge and projects with a native UI on both platforms — on iOS system navigation, Liquid Glass, native sheets, menus and SwiftUI forms; on Android Material 3 (Jetpack Compose forms, menus and dialogs).</sub></p>
+<p align="center"><sub>Light / dark / system themes and a responsive layout. The <a href="apps/mobile">native API v2 app</a> opens your main thread with Greeny, conversations, Agents, runs, needs-you cards, notifications and the live computer. iOS uses system navigation, SwiftUI forms and Liquid Glass controls; Android uses Material 3 forms, menus and dialogs.</sub></p>
+
+The native v2 app opens knowledge spaces and folders, reads and edits Markdown, and shows versions, comments, sharing, signed file previews and search. Tables use phone record lists (with a grid switch), kanban, agendas and read-only timelines; records and internal forms use native sheets. Agent mailboxes show allowed senders and held mail, with mail cards in conversations. Configured transcription fills the composer without sending; read-aloud uses the speech service or device voice.
 
 The mobile launch cover leaves as soon as authentication, fonts and the focused page are ready;
 the 650 ms logo animation adds no minimum wait. Unsettled content gets up to 900 ms before
 the page’s loading or retry state is shown. Wide mobile tables offer a vertical record view
-as well as the complete grid. On iOS, chat and computer files open in native Quick Look
+as well as a grid of the view's first six visible fields; each record opens all readable fields. On iOS, chat and computer files open in native Quick Look
 (PDF, images and system-supported document formats); sharing/saving remains available.
 
 Every image above is produced by `node scripts/capture-screens.mjs` against a seeded dev stack — the
@@ -214,7 +216,7 @@ greenhouse/
 │   ├── bot-computer/         # Agent computer image (desktop + Chromium + shell, zero published ports)
 │   ├── browser/              # Chrome extension (MV3) — side-panel companion; connects to your
 │   │                         #   instances via saved multi-server "stations"
-│   └── mobile/               # Expo (React Native) app — chat, Agents (iOS), knowledge, projects, settings;
+│   └── mobile/               # Expo (React Native) API v2 app — conversations, Agents, knowledge, tables, settings;
 │                             #   native UI: iOS SwiftUI forms + Liquid Glass, Android Material 3
 │                             #   (both via @expo/ui); isolated install (pnpm mobile:install,
 │                             #   then pnpm mobile)

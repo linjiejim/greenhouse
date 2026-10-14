@@ -17,7 +17,8 @@
 - Releases follow the native fingerprint: JS-only changes ship as OTA; native changes (native modules such as react-native-webview, new ICONS entries, app icon, fonts, entitlements, app.json, widget Swift or PNGs) need an EAS build. Runbook: RELEASING.md.
 - Never hand-edit the version in app.json or package.json; release-please bumps it and fingerprint.config.js keeps it out of the fingerprint.
 - eas init and eas build can append a duplicate App Group to ios.entitlements (@bacons/apple-targets); dedupe it before committing app.json.
-- The first build with a new entitlement must run locally and interactively (`cd apps/mobile && eas build -p ios --profile production --auto-submit`) so EAS can update the App ID and re-sign app and widget.
+- iOS status bars are owned by native controllers (`UIViewControllerBasedStatusBarAppearance=true`); all stacks pass the app theme to stackDefaults. Expo StatusBar is Android-only.
+- Native development is verified with local dev-client builds on dedicated simulators. Release signing follows RELEASING.md; do not publish during development.
 - After pod install, stale .last_build_configuration flavor markers cause Debug link errors (BaseViewProps typeinfo) or a launch SIGSEGV in Props::Props(); write the opposite configuration into the markers so the next build re-extracts.
 - pod install can silently fall back to building React Native from source ("No prebuilt artifacts found") and crash at launch on React.framework; rerun it until it reports "Building from source: false".
 - Mermaid loads from a CDN with SRI: change version and sha384 together in MERMAID (src/chat/markdown/blocks/mermaid.tsx).
@@ -32,31 +33,34 @@
 - Give every icon-only button an accessibilityLabel; Icon is hidden from VoiceOver unless it stands alone.
 - Declare presentation only in app/_layout.tsx with the src/ui/nav.ts presets; screens set their own title and toolbar; the back button is always the system's.
 - Sheets are routes; take their chrome from src/ui/sheet-chrome.tsx (SheetClose, FormChrome, useLeaveSheetTo, which dismisses before pushing).
-- Pass structured params with putHandoff (src/lib/handoff.ts) and handle an expired key; return results through a zustand store, never callbacks.
+- Pass structured params with putHandoff (src/lib/handoff.ts), read with the matching kind and handle an expired key; return results through a zustand store, never callbacks.
 - Never pin buttons to the bottom of a half-height sheet; the root layout fades that edge.
 - A failed user action shows alertError (raw provider text goes in detail); toast is for success only; a failed load shows EmptyState with retry; login errors stay inline.
 - Forms use NativeForm with FormNavRow and FormCheckRow; content buttons use NativeButton, never Pressable plus Text.
 - Every SwiftUI Host you create gets the useLocaleEnv() modifier, and inline hosts in RN content get ignoreSafeArea="all"; format dates with useLocale() or localeOf().
 - Lists use src/ui/list.tsx; virtualized rows pass position instead of sitting in ListSection; show LoadingState and EmptyState.
-- Open web pages with openLink() (in-app Safari), never Linking.openURL; attach the token only to this station's /api/chat-files paths (chatFilePath).
+- Open web pages with openLink() (in-app Safari), never Linking.openURL; file bytes use signed /api/files links; api() attaches tokens only to the active station origin.
 - Use the native search bar (Stack.SearchBar) and react-native-keyboard-controller; never KeyboardAvoidingView.
 
 ## Native pitfalls
 - RN overlays render below native sheets: UI that must cover them (toast) uses FullWindowOverlay, mounted only while shown.
-- The root Stack starts at (drawer) and threads live on the home route (/?c=): go home with router.dismissTo or navigate using homeParams() (src/bots/nav.ts), never `<Redirect>`, router.replace or a sibling screen under (main).
+- The root Stack starts at (drawer) and threads live on the home route (/?c=): go home with router.dismissTo or navigate using homeParams() (src/shell/nav.ts), never `<Redirect>`, router.replace or a sibling screen under (main).
 - Mount a SwiftUI Form in a sheet on the first frame and swap its children when data arrives, or its first untitled Section slides under the nav bar; never nest Sections in a DisclosureGroup.
 - Never remove a Form section while one of its inputs has focus (UIKit crash); call Keyboard.dismiss() in beforeRemove.
 - iOS treats a TextField plus SecureField as a login and offers to save the password; clear such fields in beforeRemove when the form signs in elsewhere.
 - Changing the system font size at runtime does not relayout (RN 0.86 bug): key stateless text containers with useFontScaleKey(), never screens, lists, navigators or forms.
-- Hermes rejects Postgres timestamps; parse them with parseMs() (src/lib/format.ts).
+- Hermes rejects Postgres timestamps; parse them with parseMs() (src/data/time.ts).
+- Android Intl may have only English locale data; calendarDateLabel uses the date dictionary and member time zone, preserving date-only values.
 - Only the root layout's auth gate navigates on sign-in and sign-out (routes reachable signed out go in SIGNED_OUT_ROUTES); startup readiness may hold the splash but never block route mounting.
 
 ## Android
 - Rendering @expo/ui/swift-ui crashes on Android: every module that renders it needs a `*.android.tsx` sibling with the same extension as its base file, with behavior in a shared hook.
 - Android files import platform siblings with the explicit .android suffix; restart Metro after adding a platform file.
+- SDK 57 Compose ObservableState ids fail in text-field value props on Android. text-state.android.ts mirrors input/AutoFill and applies initial values after native layout, then explicit changes through TextFieldRef; import useNativeState from native-form.android, never directly from Expo UI.
 - Compose islands use M3Host (src/ui/m3.tsx), never a bare Host; never wrap list rows in Compose hosts.
 - Offset content with useHeaderInset(), never useHeaderHeight().
-- Bots are iOS-only; gate new Bots entries with src/bots/availability.ts and BotsRouteGate.
+- WebView passes iOS-only props through Android Fabric too: pass dataDetectorTypes as an array, never a string.
+- Conversation, knowledge and tables screens run on both platforms; entries follow me.modules.
 
 ## Data, i18n and widgets
 - API reads return null or a discriminated miss on failure; writes return booleans or results and never throw; resolve the base with getApiBase() at call time.
@@ -68,3 +72,14 @@
 - Never hand-edit widget PNGs; rerun `node --import tsx apps/mobile/scripts/render-widget-art.mjs` from the repo root.
 - Live Activities: keep the two BotTaskAttributes.swift copies identical and NSSupportsLiveActivities in app.json, encode times as integer Unix seconds, and keep images no larger than their display size.
 - Never commit development: true in getExpoPushTokenAsync; simulator push payloads put PushData under the top-level body key.
+
+## API v2 modules
+- app/knowledge: spaces and folders, native Markdown reading and editing, versions, member mentions in comments, sharing and signed file previews. Docs, versions and comments use Markdown safe mode: executable rich previews remain code.
+- app/tables: bases and views, phone record lists with a grid switch, kanban, agenda and a read-only timeline. Record and form routes are native sheets; computed fields are read-only.
+- Doc edits keep the starting version; record edits keep the revision and send only changed values. Conflicts retain the draft and require explicit reload; never retry silently against a newer version. Failed reloads keep the draft.
+- src/data/use-resource.ts owns focused-screen reads, relevant realtime invalidations and reconnect catch-up; late answers after focus or identity changes are dropped. Keep dirty drafts separate from refreshed server data.
+- Root layout uses Expo fetch for multipart Files so they send bytes, retaining native fetch for JSON requests. Unit tests retain the default transport and require no native install.
+- Root screen content is keyed by station/member identity so private sheets and drafts cannot survive an account switch. Keep the navigator mounted: remounting it breaks Android focus; theme and font size never change the content key.
+- src/voice: configured STT records into the composer without sending; read-aloud uses configured TTS or device speech. Cancel when leaving or backgrounding; never speak raw rich JSON.
+- Agent mail is owner-only. Mail cards open native sheets; show plain text, never untrusted HTML or automatic remote images. Release only verified mail held for an unknown sender.
+- Homebrew Ruby may inherit incompatible RVM gem paths: run pod install with GEM_HOME/GEM_PATH unset and confirm Building from source: false.

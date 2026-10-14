@@ -1,3 +1,4 @@
+import { useNativeState, useTextBinding } from './text-state.android';
 import { BrandText as Text } from './brand-text.android';
 /**
  * Dialogs as promises — Android: Material 3 dialogs (Jetpack Compose
@@ -11,8 +12,8 @@ import { BrandText as Text } from './brand-text.android';
 
 import React from 'react';
 import { create } from 'zustand';
-import { AlertDialog, OutlinedTextField, TextButton, useNativeState } from '@expo/ui/jetpack-compose';
-import { fillMaxWidth } from '@expo/ui/jetpack-compose/modifiers';
+import { AlertDialog, OutlinedTextField, TextButton } from '@expo/ui/jetpack-compose';
+import { fillMaxWidth, onGloballyPositioned } from '@expo/ui/jetpack-compose/modifiers';
 import { translate } from '../lib/i18n';
 import { usePrefs } from '../store/prefs';
 import { M3Host, useM3 } from './m3';
@@ -105,6 +106,7 @@ export function DialogHost() {
 function Dialog({ request: r }: { request: Request }) {
   const m = useM3();
   const field = useNativeState(r.kind === 'prompt' ? (r.defaultValue ?? '') : '');
+  const { onReady, ...binding } = useTextBinding(field);
 
   const cancel = () => {
     close(r.id);
@@ -135,13 +137,13 @@ function Dialog({ request: r }: { request: Request }) {
         <AlertDialog.Text>
           {r.kind === 'prompt' ? (
             <OutlinedTextField
-              value={field}
+              {...binding}
               autoFocus
               singleLine
               keyboardOptions={{ imeAction: 'done', ...(r.secure ? { keyboardType: 'password' as const } : null) }}
               {...(r.secure ? { visualTransformation: 'password' as const } : null)}
               keyboardActions={{ onDone: confirm }}
-              modifiers={[fillMaxWidth()]}
+              modifiers={[fillMaxWidth(), onGloballyPositioned(onReady)]}
             >
               {r.message || r.placeholder ? (
                 <OutlinedTextField.Label>

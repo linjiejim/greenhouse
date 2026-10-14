@@ -74,6 +74,9 @@ const EVENT_TYPES: ReadonlySet<string> = new Set<RealtimeEvent['type']>([
   'doc.updated',
   'doc.presence',
   'comments.updated',
+  'knowledge.changed',
+  'records.changed',
+  'base.updated',
 ]);
 
 /** A frame as one of the server's events, or null (malformed, or a type this app does not know). */

@@ -55,7 +55,7 @@ export interface HeaderModel {
   agent: AgentFace | null;
   agentMood?: 'thinking' | 'waiting';
   /** A room's first people (faces). */
-  people?: { name: string; avatarUrl: string | null }[];
+  people?: { name: string; avatarUrl: string | null; agent?: AgentFace }[];
   kind: 'main' | 'direct' | 'chat' | 'room' | 'new';
   pinned: boolean;
   muted: boolean;
@@ -96,11 +96,19 @@ export const ConversationHeader = memo(function ConversationHeader({
         <TitleView model={model} onPress={onTitle} />
       </Stack.Title>
       <Stack.Toolbar placement="left">
-        <Stack.Toolbar.Button icon={toolbarIcon('menu')} accessibilityLabel={t('shell.openDrawer')} onPress={onDrawer} />
+        <Stack.Toolbar.Button
+          icon={toolbarIcon('menu')}
+          accessibilityLabel={t('shell.openDrawer')}
+          onPress={onDrawer}
+        />
       </Stack.Toolbar>
       <Stack.Toolbar placement="right">
         {model.computer ? (
-          <Stack.Toolbar.Button icon={toolbarIcon('computer')} accessibilityLabel={t('computer.open')} onPress={onComputer} />
+          <Stack.Toolbar.Button
+            icon={toolbarIcon('computer')}
+            accessibilityLabel={t('computer.open')}
+            onPress={onComputer}
+          />
         ) : null}
         <Stack.Toolbar.Button
           icon={toolbarIcon(model.badge?.kind === 'dot' ? 'bellBadge' : 'bell')}
@@ -206,15 +214,21 @@ function TitleView({ model, onPress }: { model: HeaderModel; onPress: () => void
       disabled={!openable}
       accessibilityRole="button"
       accessibilityLabel={model.status ? `${model.title}, ${model.status}` : model.title}
-      accessibilityHint={openable ? t(model.kind === 'room' ? 'conversation.titleHintRoom' : 'conversation.titleHint') : undefined}
+      accessibilityHint={
+        openable ? t(model.kind === 'room' ? 'conversation.titleHintRoom' : 'conversation.titleHint') : undefined
+      }
       style={({ pressed }) => [styles.title, { maxWidth: width - BAR_BUTTONS_W }, pressed && styles.pressed]}
     >
       {model.kind === 'room' ? (
-        model.people?.length ? (
+        (model.people?.length ?? 0) > 1 ? (
           <View style={styles.people}>
-            {model.people.slice(0, 2).map((person, index) => (
+            {model.people!.slice(0, 2).map((person, index) => (
               <View key={`${person.name}-${index}`} style={index ? styles.overlap : null}>
-                <MemberAvatar name={person.name} url={person.avatarUrl} size={22} />
+                {person.agent ? (
+                  <AgentAvatar agent={person.agent} size={22} />
+                ) : (
+                  <MemberAvatar name={person.name} url={person.avatarUrl} size={22} />
+                )}
               </View>
             ))}
           </View>

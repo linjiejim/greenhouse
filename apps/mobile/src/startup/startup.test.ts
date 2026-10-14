@@ -104,6 +104,8 @@ vi.mock('react-native', () => {
     };
   });
   return {
+    Platform: { OS: 'ios' },
+    Keyboard: { dismiss: vi.fn() },
     View,
     Text: ({ children }: any) => test.React.createElement('span', null, children),
     StyleSheet: { create: (styles: unknown) => styles, absoluteFill: {} },
@@ -121,6 +123,7 @@ vi.mock('react-native-svg', () => ({
   default: ({ children }: any) => test.React.createElement('svg', null, children),
   Path: ({ d, fill }: any) => test.React.createElement('path', { d, fill }),
 }));
+vi.mock('expo/fetch', () => ({ fetch: vi.fn() }));
 vi.mock('expo-font', () => ({ useFonts: () => test.fonts }));
 vi.mock('expo-router', () => ({
   Stack: Object.assign(() => test.renderRoute(), { Screen: () => null }),
@@ -137,14 +140,22 @@ vi.mock('../theme', () => ({
   useTheme: () => ({ colors: { background: 'white', label: 'black' }, hex: { accent: 'green' } }),
   typo: { title2: {} },
 }));
-vi.mock('../store/auth', () => ({ useAuth: (selector: (state: typeof test.auth) => unknown) => selector(test.auth) }));
+vi.mock('../store/auth', () => ({
+  useAuth: Object.assign((selector: (state: typeof test.auth) => unknown) => selector(test.auth), {
+    getState: () => test.auth,
+    subscribe: vi.fn(),
+  }),
+}));
 vi.mock('../store/prefs', () => ({
   usePrefs: (selector: (state: typeof test.prefs) => unknown) => selector(test.prefs),
 }));
 vi.mock('../store/stations', () => ({
-  useStations: (selector: (state: typeof test.station) => unknown) => selector(test.station),
+  useStations: Object.assign((selector: (state: typeof test.station) => unknown) => selector(test.station), {
+    getState: () => test.station,
+    subscribe: vi.fn(),
+  }),
 }));
-vi.mock('../api/client', () => ({ setOnUnauthorized: vi.fn() }));
+vi.mock('../api/client', () => ({ setOnUnauthorized: vi.fn(), setTransport: vi.fn() }));
 vi.mock('../widget/snapshot', () => ({ useWidgetSnapshot: () => {} }));
 vi.mock('../settings/account-language', () => ({ useAccountLanguage: () => {} }));
 vi.mock('../push/use-push', () => ({ usePushBridge: () => {} }));
@@ -382,20 +393,19 @@ describe('root startup reveal', () => {
     expect(covered()).toBe(false);
   });
 
-  it.each([
-    ['agents', '[id]'],
-    ['settings', 'notifications'],
-    ['request'],
-  ])('a deep-linked %s page does not wait for the hidden home underneath', async (...segments) => {
-    test.auth.loading = false;
-    test.fonts = [true, null];
-    test.segments = segments;
-    await render(h(RootLayout));
-    await advance(MARK_BUILD_MS);
-    expect(fadeCalls()).toHaveLength(1);
-    await advance(FADE_TOTAL_MS);
-    expect(covered()).toBe(false);
-  });
+  it.each([['agents', '[id]'], ['settings', 'notifications'], ['request']])(
+    'a deep-linked %s page does not wait for the hidden home underneath',
+    async (...segments) => {
+      test.auth.loading = false;
+      test.fonts = [true, null];
+      test.segments = segments;
+      await render(h(RootLayout));
+      await advance(MARK_BUILD_MS);
+      expect(fadeCalls()).toHaveLength(1);
+      await advance(FADE_TOTAL_MS);
+      expect(covered()).toBe(false);
+    },
+  );
 });
 
 describe('splash deadline and animation lifecycle', () => {

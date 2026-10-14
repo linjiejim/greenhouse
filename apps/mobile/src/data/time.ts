@@ -22,7 +22,10 @@ export function parseMs(iso?: string | null): number {
 }
 
 /** The calendar parts of an instant in a time zone (the device's when the zone is unknown). */
-export function zonedParts(ms: number, timeZone?: string): { year: number; month: number; day: number; hour: number; minute: number } {
+export function zonedParts(
+  ms: number,
+  timeZone?: string,
+): { year: number; month: number; day: number; hour: number; minute: number } {
   try {
     const parts = new Intl.DateTimeFormat('en-US', {
       timeZone,
@@ -34,7 +37,13 @@ export function zonedParts(ms: number, timeZone?: string): { year: number; month
       hourCycle: 'h23',
     }).formatToParts(new Date(ms));
     const part = (type: string) => Number(parts.find((p) => p.type === type)?.value ?? 0);
-    return { year: part('year'), month: part('month'), day: part('day'), hour: part('hour') % 24, minute: part('minute') };
+    return {
+      year: part('year'),
+      month: part('month'),
+      day: part('day'),
+      hour: part('hour') % 24,
+      minute: part('minute'),
+    };
   } catch {
     const date = new Date(ms);
     return {
@@ -69,6 +78,15 @@ export interface TimeWords {
 
 const fill = (template: string, vars: Record<string, string | number>) =>
   template.replace(/\{(\w+)\}/g, (match, name: string) => (name in vars ? String(vars[name]) : match));
+
+/** Calendar dates use the dictionary even on devices with only English Intl data. */
+export function calendarDate(iso: string, words: TimeWords, timeZone?: string, now = Date.now()): string {
+  const ms = parseMs(iso.length === 10 ? `${iso}T12:00:00Z` : iso);
+  if (!Number.isFinite(ms)) return '';
+  const date = zonedParts(ms, iso.length === 10 ? 'UTC' : timeZone);
+  const template = date.year === zonedParts(now, timeZone).year ? words.monthDay : words.yearMonthDay;
+  return fill(template, { ...date, monthName: words.monthNames?.[date.month - 1] ?? date.month });
+}
 
 /** content.md's relative time, '' for an unreadable time. */
 export function relativeTime(iso: string | null | undefined, words: TimeWords, now: number, timeZone?: string): string {
