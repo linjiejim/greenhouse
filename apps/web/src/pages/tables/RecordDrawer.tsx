@@ -1,3 +1,4 @@
+import { HandoffDialog } from './HandoffDialog';
 /**
  * A record in the drawer (TBL-07; a bottom sheet on phones): its fields, its children, then
  * comments and history. 「编辑」 turns the same drawer into a form with 取消 / 保存
@@ -128,6 +129,7 @@ export function RecordDrawer({
   const formId = useId();
   const detail = useRecord(recordId);
   const creating = !recordId;
+  const [handingOff, setHandingOff] = useState(false);
   const [editing, setEditing] = useState(creating);
   const [draft, setDraft] = useState<RecordValues>(initial ?? {});
   const [files, setFiles] = useState<Record<string, RecordFile>>({});
@@ -383,82 +385,86 @@ export function RecordDrawer({
     );
   }
 
+  if (handingOff && recordId) return <HandoffDialog recordId={recordId} onClose={() => setHandingOff(false)} />;
   return (
-    <Overlay
-      title={title}
-      onClose={onClose}
-      beforeClose={() => {
-        if (!dirty) return true;
-        navigation.ask();
-        return false;
-      }}
-    >
-      {body}
-      <OverlayActions>
-        {editing ? (
-          <>
-            <Button
-              onClick={() => {
-                if (creating) return onClose();
-                setDraft(record?.values ?? {});
-                setEditing(false);
-                setStale(null);
-                setErrors({});
-              }}
-            >
-              {t('tables.record.cancel')}
-            </Button>
-            {/* Keyed apart from 编辑: a reused button would turn into this submit while 编辑's click runs. */}
-            <Button key="save" kind="primary" type="submit" form={formId} loading={busy}>
-              {creating ? t('tables.record.create') : t('tables.record.save')}
-            </Button>
-          </>
-        ) : record ? (
-          <>
-            <Menu
-              label={t('tables.record.more')}
-              items={[
-                {
-                  label: t('tables.record.copyLink'),
-                  icon: <Copy size={icon.md} />,
-                  onClick: () =>
-                    void navigator.clipboard
-                      ?.writeText(location.href)
-                      .then(() => notify(t('tables.record.linkCopied')))
-                      .catch(() => undefined),
-                },
-                ...(canEdit
-                  ? [
-                      '-' as const,
-                      {
-                        label: t('tables.record.delete'),
-                        icon: <Trash2 size={icon.md} />,
-                        danger: true,
-                        onClick: () => void remove(),
-                      },
-                    ]
-                  : []),
-              ]}
-            />
-            {canEdit && (
-              <Button key="edit" kind="primary" onClick={() => setEditing(true)}>
-                {t('tables.record.edit')}
+    <>
+      <Overlay
+        title={title}
+        onClose={onClose}
+        beforeClose={() => {
+          if (!dirty) return true;
+          navigation.ask();
+          return false;
+        }}
+      >
+        {body}
+        <OverlayActions>
+          {!editing && recordId && <Button onClick={() => setHandingOff(true)}>{t('tables.handoff')}</Button>}
+          {editing ? (
+            <>
+              <Button
+                onClick={() => {
+                  if (creating) return onClose();
+                  setDraft(record?.values ?? {});
+                  setEditing(false);
+                  setStale(null);
+                  setErrors({});
+                }}
+              >
+                {t('tables.record.cancel')}
               </Button>
-            )}
-          </>
-        ) : null}
-      </OverlayActions>
-      {navigation.asking && (
-        <ConfirmDialog
-          title={t('tables.record.discardTitle')}
-          confirmLabel={t('tables.record.discard')}
-          danger
-          onCancel={navigation.cancel}
-          onConfirm={navigation.discard}
-        >
-          {t('tables.record.discardBody')}
-        </ConfirmDialog>
-      )}
-    </Overlay>
+              {/* Keyed apart from 编辑: a reused button would turn into this submit while 编辑's click runs. */}
+              <Button key="save" kind="primary" type="submit" form={formId} loading={busy}>
+                {creating ? t('tables.record.create') : t('tables.record.save')}
+              </Button>
+            </>
+          ) : record ? (
+            <>
+              <Menu
+                label={t('tables.record.more')}
+                items={[
+                  {
+                    label: t('tables.record.copyLink'),
+                    icon: <Copy size={icon.md} />,
+                    onClick: () =>
+                      void navigator.clipboard
+                        ?.writeText(location.href)
+                        .then(() => notify(t('tables.record.linkCopied')))
+                        .catch(() => undefined),
+                  },
+                  ...(canEdit
+                    ? [
+                        '-' as const,
+                        {
+                          label: t('tables.record.delete'),
+                          icon: <Trash2 size={icon.md} />,
+                          danger: true,
+                          onClick: () => void remove(),
+                        },
+                      ]
+                    : []),
+                ]}
+              />
+              {canEdit && (
+                <Button key="edit" kind="primary" onClick={() => setEditing(true)}>
+                  {t('tables.record.edit')}
+                </Button>
+              )}
+            </>
+          ) : null}
+        </OverlayActions>
+        {navigation.asking && (
+          <ConfirmDialog
+            title={t('tables.record.discardTitle')}
+            confirmLabel={t('tables.record.discard')}
+            danger
+            onCancel={navigation.cancel}
+            onConfirm={navigation.discard}
+          >
+            {t('tables.record.discardBody')}
+          </ConfirmDialog>
+        )}
+      </Overlay>
+    </>
   );
 }

@@ -1,3 +1,4 @@
+import { automationsApi } from './tables-automations-client.js';
 /** The 表格 calls of the typed client (`client.tables`). */
 
 import type { Page } from './common.js';
@@ -45,6 +46,7 @@ const path = (kind: 'bases' | 'tables' | 'fields' | 'views' | 'records' | 'roles
 
 export function tablesApi(http: KnowledgeHttp) {
   return {
+    automations: automationsApi(http),
     bases: {
       /**
        * A page of mine and those shared with me (by name), with their tables and the views I see;

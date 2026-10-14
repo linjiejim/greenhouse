@@ -22,6 +22,8 @@ the side. Chat, the knowledge base, projects, tables, automations, missions and 
 one tool layer and one permission model; the same tools your team uses in chat are the ones you
 expose to Claude, Cursor, or any MCP client.
 
+> 当前 `v2` 分支仍在开发。v2 表格中的记录可交给自己的 Agent 在后台处理；评论和字段结果遵守写入审批。表格内的自动化支持记录、日期、间隔和按钮触发，统一通知成员、唤醒 Agent，或向公网 HTTPS 地址发送签名 webhook。Agent 也能按成员权限查询和操作已发布应用；外部客户端需要单独授权 `apps:read` / `apps:write`。
+
 ## A quick look
 
 <p align="center">
@@ -617,7 +619,7 @@ client (Claude, Codex, Cursor, MCP Inspector, …) can connect to, as one member
   acts as them only after that member approves it.
 - **Personal access tokens** — a token with a name, scopes and an expiry, sent as a plain bearer
   token to `/api/mcp` (the CLI, scripts). Shown once.
-- **Scopes** — `agents:read`, `agents:ask`, `conversations:read`, `runs:read`, `memories:read`.
+- **Scopes** — `agents:read`, `agents:ask`, `conversations:read`, `runs:read`, `memories:read`, `apps:read`, `apps:write`.
   The tool list is exactly what was granted, and every tool runs as the member with the same
   checks as the app.
 - **Your Agents from outside** — `agents_list`, `agent_message` (writes into that Agent's thread

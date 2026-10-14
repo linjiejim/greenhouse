@@ -1248,3 +1248,13 @@ button.app-tb-record-chip:hover {
 .app-tb-list-value > :first-child {
   flex: none;
 }
+
+.app-tb-automation {
+  padding: var(--gh-space-3);
+  border: 1px solid var(--gh-border);
+  border-radius: var(--gh-radius-md);
+}
+.app-tb-webhook-secret {
+  overflow-wrap: anywhere;
+  user-select: all;
+}

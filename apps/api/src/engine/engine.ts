@@ -1,3 +1,5 @@
+import { tableEventChain } from '../modules/tables/event-context.js';
+import { baseAutomationRuns } from '@greenhouse/db';
 /**
  * The one engine for conversations. A conversation has a single writer: at most one turn answers
  * at a time (runs_one_active_turn_key), and what arrives meanwhile waits in conversation_inbox.
@@ -131,7 +133,18 @@ export interface HandoffChain {
   path: string[];
 }
 
+export interface TableWake {
+  source: 'automation';
+  sourceId: string;
+  automationRunId: string;
+  title: string;
+  tools: string[];
+  baseId: string;
+  result?: { table_id: string; record_id: string; field_id?: string; revision: number };
+}
+
 interface InboxPayload {
+  background?: TableWake;
   event_woken?: boolean;
   event_chain?: string[];
   agent_id: string;
@@ -433,13 +446,16 @@ export function createEngine(deps: EngineDeps) {
     if (!first) return null;
     const head = first.payload as unknown as InboxPayload;
     const isEvent = first.kind === 'event' || first.kind === 'run_report';
-    const batch =
-      first.kind === 'continue' || first.kind === 'handback'
+    const batch = head.background
+      ? [first]
+      : first.kind === 'continue' || first.kind === 'handback'
         ? [first]
         : pending.filter((item) => {
             const payload = item.payload as unknown as InboxPayload;
             return (
-              (isEvent ? ['event', 'run_report'].includes(item.kind) : item.kind === first.kind) &&
+              (isEvent
+                ? ['event', 'run_report'].includes(item.kind) && !payload.background
+                : item.kind === first.kind) &&
               payload.agent_id === head.agent_id &&
               payload.member_id === head.member_id
             );
@@ -466,6 +482,11 @@ export function createEngine(deps: EngineDeps) {
           ),
         );
       if (count >= (deps.eventWakeLimit ?? 50)) {
+        if (head.background)
+          await db
+            .update(baseAutomationRuns)
+            .set({ status: 'suppressed', error: 'daily_cap', finishedAt: sql`now()` })
+            .where(eq(baseAutomationRuns.id, head.background.automationRunId));
         await deps.notifications.publish({
           memberId: head.member_id,
           kind: 'automation',
@@ -484,6 +505,30 @@ export function createEngine(deps: EngineDeps) {
               batch.map((item) => item.id),
             ),
           );
+        return takeNext(db, conversationId);
+      }
+      if (head.background) {
+        const wake = head.background;
+        const run = await background.create({
+          agentId: head.agent_id,
+          ownerId: head.member_id,
+          requestedBy: head.member_id,
+          title: wake.title,
+          brief: head.note ?? '',
+          source: wake.source,
+          sourceId: wake.sourceId,
+          conversationId,
+          event_chain: head.event_chain,
+          event_woken: true,
+          tools: wake.tools,
+          table_base_id: wake.baseId,
+          automation_run_id: wake.automationRunId,
+          result_target: wake.result,
+        });
+        await db
+          .update(baseAutomationRuns)
+          .set({ runId: run.id })
+          .where(eq(baseAutomationRuns.id, wake.automationRunId));
         return takeNext(db, conversationId);
       }
       return createTurn(db, {
@@ -1467,7 +1512,9 @@ export function createEngine(deps: EngineDeps) {
     };
     const started = Date.now();
     try {
-      const output = await ready.def.execute(payload.input, context);
+      const output = await tableEventChain.run((run?.input.event_chain as string[] | undefined) ?? [], () =>
+        ready.def.execute(payload.input, context),
+      );
       // Recorded even when a sweep took the step for abandoned meanwhile: it did run.
       await moveStep(['running', 'uncertain'], {
         status: 'succeeded',
@@ -1761,7 +1808,6 @@ export function createEngine(deps: EngineDeps) {
   const engine = {
     instance,
     background,
-    backgroundConversation: (memberId: string, agentId: string) => deps.conversations.ensureDirect(memberId, agentId),
 
     async undoWrite(memberId: string, stepId: string): Promise<void> {
       await transaction(async (db) => {
@@ -2105,6 +2151,85 @@ export function createEngine(deps: EngineDeps) {
      * Wakes an Agent in a conversation without a member message: a decision on a card, a finished
      * background run, a process that ended. Queued behind a running turn like everything else.
      */
+    /** An external app action uses the same tool wrapper, cards and private-write receipts. */
+    async externalAppAction(memberId: string, args: Record<string, unknown>) {
+      return transaction(async () => {
+        const { agent, manifest } = await deps.agents.load(memberId, 'main');
+        const [member] = await getDb().select().from(members).where(eq(members.id, memberId));
+        if (!member || member.status !== 'active') throw forbidden('The member is no longer active.');
+        const conversation = await deps.conversations.ensureDirect(memberId, agent.id);
+        const run = await background.create({
+          agentId: agent.id,
+          ownerId: memberId,
+          requestedBy: memberId,
+          source: 'app',
+          sourceId: String(args.app_id),
+          title: 'App action',
+          brief: 'Execute the saved app action.',
+          conversationId: conversation.id,
+        });
+        const tools = await assembleTools({
+          defs: toolDefs().filter((t) => t.name === 'apps_action'),
+          approvals: deps.approvals,
+          receipt: (stepId, summary) => receipt(run, stepId, summary),
+          context: {
+            memberId,
+            agent,
+            manifest,
+            conversation,
+            runId: run.id,
+            locale: localeOf(member.locale),
+            surface: 'turn',
+            signal: AbortSignal.timeout(DECISION_EXECUTE_MS),
+            taint: () => undefined,
+            tainted: () => true,
+          },
+          availability: {
+            memberId,
+            modules: effectiveModules(member.modules),
+            manifest,
+            surface: 'turn',
+            publicAgent: null,
+            available: (capability) => deps.providers.available(capability, { memberId }),
+          },
+          raise: (card, stepId) =>
+            deps.requests.create({
+              memberId,
+              kind: card.kind,
+              subject: card.subject,
+              title: card.title,
+              payload: card.payload,
+              runId: run.id,
+              conversationId: conversation.id,
+              stepId,
+              agentId: agent.id,
+            }),
+          approvalTitle: (summary) => summary,
+        });
+        const tool = tools.tools.apps_action;
+        if (!tool?.execute) throw forbidden('This Agent cannot execute app actions.');
+        const result = await tool.execute(args, {
+          toolCallId: 'external-app-action',
+          messages: [],
+          context: undefined,
+        });
+        await deps.requests.ready(run.id);
+        await getDb()
+          .update(runs)
+          .set({
+            status: tools.waiting() ? 'waiting' : 'succeeded',
+            output: { text: 'App action processed. See the recorded step for its result.', findings: [] },
+            ...(tools.waiting() ? { waitReason: 'request' } : { finishedAt: sql`now()` }),
+          })
+          .where(eq(runs.id, run.id));
+        return tools.waiting()
+          ? { status: 'needs_you', run_id: run.id, result, url: `#/runs/${run.id}` }
+          : { status: 'succeeded', run_id: run.id, result };
+      });
+    },
+
+    backgroundConversation: (memberId: string, agentId: string) => deps.conversations.ensureDirect(memberId, agentId),
+
     async deliver(
       conversationId: string,
       item: {
@@ -2116,6 +2241,7 @@ export function createEngine(deps: EngineDeps) {
         dedupeKey?: string;
         eventChain?: string[];
         computer?: boolean;
+        background?: TableWake;
       },
     ) {
       let eventLine: MessageRow | null = null;
@@ -2145,7 +2271,10 @@ export function createEngine(deps: EngineDeps) {
             .from(members)
             .where(eq(members.id, item.memberId));
           const zh = owner?.locale !== 'en';
-          const chain = [...(item.eventChain ?? []), item.dedupeKey ?? newId('run')];
+          const chain = [
+            ...(item.eventChain ?? []),
+            item.background ? `automation:${item.background.sourceId}` : (item.dedupeKey ?? newId('run')),
+          ];
           const [first] = await db
             .select({ readyAt: conversationInbox.readyAt })
             .from(conversationInbox)
@@ -2172,6 +2301,7 @@ export function createEngine(deps: EngineDeps) {
                 note: item.note.slice(0, 4000),
                 event_chain: chain,
                 computer: item.computer ?? false,
+                ...(item.background ? { background: item.background } : {}),
                 ...(chain.length > 3 ? { suppressed: 'chain_depth' } : {}),
               },
             })

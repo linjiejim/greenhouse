@@ -1,3 +1,4 @@
+import { OAUTH_SCOPES } from '@greenhouse/contract';
 import { expect, test, type Browser } from '@playwright/test';
 import {
   APP_CALLBACK,
@@ -110,7 +111,7 @@ test('consent: signed out signs in first; denying tells the app; a used, taken o
   await page.getByRole('button', { name: /登录|Sign in/ }).click();
   // The same request, now as Mei; it asked for nothing in particular, so everything is listed.
   await expect(page.getByRole('heading', { name: '「Stranger」想访问你的 Greenhouse' })).toBeVisible();
-  await expect(page.getByRole('checkbox')).toHaveCount(5);
+  await expect(page.getByRole('checkbox')).toHaveCount(OAUTH_SCOPES.length);
   await page.getByRole('button', { name: '拒绝' }).click();
   await page.waitForURL(`${APP_CALLBACK}**`);
   expect(new URL(page.url()).searchParams.get('error')).toBe('access_denied');

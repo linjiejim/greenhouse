@@ -30,3 +30,5 @@ export * from './tables-cards.js';
 export * from './tables-formula.js';
 export * from './apps.js';
 export * from './approvals.js';
+
+export * from './tables-automations.js';

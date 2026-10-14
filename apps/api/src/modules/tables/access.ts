@@ -65,10 +65,17 @@ const asRole = (role: string): BaseRole | null =>
 /** The member as tables sees them; refused when their tables module is off. */
 export async function loadReader(memberId: string): Promise<TablesReader> {
   const [member] = await getDb()
-    .select({ name: members.name, locale: members.locale, timezone: members.timezone, modules: members.modules })
+    .select({
+      status: members.status,
+      name: members.name,
+      locale: members.locale,
+      timezone: members.timezone,
+      modules: members.modules,
+    })
     .from(members)
     .where(eq(members.id, memberId));
-  if (!member || !effectiveModules(member.modules).tables) throw forbidden('Tables are turned off for you.');
+  if (!member || member.status !== 'active' || !effectiveModules(member.modules).tables)
+    throw forbidden('Tables are turned off for you.');
   const groupIds = (
     await getDb().select({ id: groupMembers.groupId }).from(groupMembers).where(eq(groupMembers.memberId, memberId))
   ).map((row) => row.id);

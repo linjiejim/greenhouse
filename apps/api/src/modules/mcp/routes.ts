@@ -10,7 +10,7 @@
 
 import { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
-import { z } from 'zod';
+import { toolInputSchema } from '../../engine/tools/schema.js';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
@@ -34,10 +34,8 @@ const INSTRUCTIONS =
 const PER_MINUTE = 120;
 
 /** The JSON Schema MCP shows for a tool's input. */
-function inputSchema(tool: McpTool): { type: 'object'; [key: string]: unknown } {
-  const schema = z.toJSONSchema(tool.input, { io: 'input' }) as Record<string, unknown>;
-  delete schema.$schema;
-  return { ...schema, type: 'object' };
+async function inputSchema(tool: McpTool): Promise<{ type: 'object'; [key: string]: unknown }> {
+  return (await toolInputSchema(tool.input).jsonSchema) as { type: 'object'; [key: string]: unknown };
 }
 
 function toolResult(value: unknown, isError = false) {
@@ -53,12 +51,14 @@ function buildServer(caller: Caller, services: McpServices, issuer: string): Ser
   const ctx = toolContext(caller, services, issuer);
 
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
-    tools: tools.map((tool) => ({
-      name: tool.name,
-      description: tool.description,
-      inputSchema: inputSchema(tool),
-      annotations: { readOnlyHint: tool.readOnly, openWorldHint: false },
-    })),
+    tools: await Promise.all(
+      tools.map(async (tool) => ({
+        name: tool.name,
+        description: tool.description,
+        inputSchema: await inputSchema(tool),
+        annotations: { readOnlyHint: tool.readOnly, openWorldHint: false },
+      })),
+    ),
   }));
 
   server.setRequestHandler(CallToolRequestSchema, async (request) => {

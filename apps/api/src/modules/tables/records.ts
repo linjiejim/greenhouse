@@ -1,3 +1,4 @@
+import type { AutomationHooks } from './automations.js';
 /**
  * Records (TBL-07 to TBL-10): query a view, read one, create, change with a revision check,
  * paste many, delete to the recycle bin, restore, delete for good; comments and history. Every
@@ -90,6 +91,7 @@ const MAX_TOLD = 50;
 const MAX_CUSTOM_SEARCH_BASES = 20;
 
 export interface RecordsDeps {
+  automations(): AutomationHooks | null;
   files: FilesService;
   notifications: NotificationsService;
   computed: ComputedPart;
@@ -243,6 +245,7 @@ export function createRecords(deps: RecordsDeps) {
    * member, or the form or import they used.
    */
   async function write(ctx: Writing, row: BaseRecordRow | null, input: RecordValues, actor?: RecordActor) {
+    const captured = await deps.automations()?.before(ctx.table.id, row?.id ?? null);
     const keys = Object.keys(input);
     if (keys.length > 300) throw invalidInput('Too many fields in one change.');
     const refs = emptyRefs();
@@ -353,6 +356,7 @@ export function createRecords(deps: RecordsDeps) {
       throw forbidden('Your role cannot put a record outside the records it sees.');
     }
     await event(computed, row ? 'updated' : 'created', memberId, changes, actor);
+    if (captured) await deps.automations()?.after(captured, computed.id, computed.revision, Object.keys(patch), !row);
     return { row: computed, changed: true };
   }
 

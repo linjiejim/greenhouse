@@ -1,3 +1,5 @@
+import { recordAt as sourceRecordAt } from '../tables/load.js';
+import { loadReader as sourceReader } from '../tables/access.js';
 /**
  * Conversations and their messages. Who may see a conversation is decided only by
  * conversation_members. Messages get their sequence number under the conversation row lock,
@@ -111,18 +113,33 @@ const ACTIVE_TURN = ['queued', 'running'] as const;
 type Citation = Message['citations'][number];
 /** The knowledge docs a message names as sources. */
 const citedDocs = (citations: readonly Citation[]) =>
-  citations.filter((citation) => citation.kind === 'doc').map((citation) => citation.id);
+  citations.filter((citation) => citation.kind === 'doc' || citation.kind === 'record');
 
 /**
  * Sources as one person may see them: a doc they cannot read now is left out, so a reply in a
  * room never shows the others the title of what only the asker may read.
  */
-async function sourcesFor(memberId: string, docIds: readonly string[]) {
-  const unique = [...new Set(docIds)];
-  if (!unique.length) return (citations: Citation[]) => citations;
-  const readable = await readableDocs(memberId, unique);
+async function sourcesFor(memberId: string, sources: readonly Citation[]) {
+  const readable = await readableDocs(
+    memberId,
+    sources.filter((s) => s.kind === 'doc').map((s) => s.id),
+  );
+  const records = new Set<string>();
+  if (sources.some((s) => s.kind === 'record')) {
+    const reader = await sourceReader(memberId).catch(() => null);
+    if (reader)
+      for (const id of new Set(sources.filter((s) => s.kind === 'record').map((s) => s.id))) {
+        if (
+          await sourceRecordAt(reader, id, 'viewer').then(
+            () => true,
+            () => false,
+          )
+        )
+          records.add(id);
+      }
+  }
   return (citations: Citation[]) =>
-    citations.filter((citation) => citation.kind !== 'doc' || readable.has(citation.id));
+    citations.filter((s) => (s.kind === 'doc' ? readable.has(s.id) : s.kind === 'record' ? records.has(s.id) : true));
 }
 
 const toNote = (row: ConversationNote): Note => ({

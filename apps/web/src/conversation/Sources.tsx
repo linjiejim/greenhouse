@@ -41,10 +41,17 @@ export function Sources({ items, onAsk }: { items: Source[]; onAsk?: (source: So
               className="app-source"
               title={source.title}
               aria-label={t('sources.open', { name: source.title })}
-              onClick={() => setOpen(source)}
+              onClick={() => {
+                const record =
+                  source.kind === 'record' && source.url?.match(/^#\/tables\/([^/?]+)\/([^/?]+)\?record=([^&]+)$/);
+                if (record) navigate({ page: 'base', id: record[1]!, table: record[2]!, record: record[3]! });
+                else setOpen(source);
+              }}
             >
               {isDoc(source) ? <FileText size={icon.sm} aria-hidden /> : <Globe size={icon.sm} aria-hidden />}
-              <span>{source.url && !isDoc(source) ? hostOf(source.url) : source.title}</span>
+              <span>
+                {source.url && !isDoc(source) && source.kind !== 'record' ? hostOf(source.url) : source.title}
+              </span>
             </button>
           </li>
         ))}

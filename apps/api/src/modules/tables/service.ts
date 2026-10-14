@@ -1,3 +1,4 @@
+import type { AutomationHooks } from './automations.js';
 /**
  * 表格 (TBL-01 to TBL-18): bases with data tables, fields, views and records; sharing with
  * members, groups or everyone in four roles; a recycle bin; CSV export; the 「项目」 template;
@@ -65,7 +66,7 @@ import { enqueueJob } from '../../jobs.js';
 import { isUniqueViolation, toErrorMessage } from '@greenhouse/utils/error';
 import { logger } from '@greenhouse/utils/logger';
 import { audit } from '../../audit.js';
-import { ApiError, conflict, forbidden, invalidInput } from '../../http/errors.js';
+import { ApiError, conflict, forbidden, invalidInput, notFound } from '../../http/errors.js';
 import type { Hub } from '../../realtime/hub.js';
 import type { FilesService } from '../files/service.js';
 import { inList } from '../knowledge/access.js';
@@ -138,6 +139,7 @@ export function createTablesService(deps: {
 }) {
   const audiences = new Map<string, { at: number; who: Promise<Audience> }>();
   const worker = createTablesWorker();
+  let automationHooks: AutomationHooks | null = null;
 
   /** Who sees a base now, kept a few seconds; forgotten at once when shares, groups or modules change. */
   function audienceAll(base: Pick<BaseRow, 'id' | 'ownerId'>): Promise<Audience> {
@@ -203,6 +205,7 @@ export function createTablesService(deps: {
   });
 
   const records = createRecords({
+    automations: () => automationHooks,
     files: deps.files,
     notifications: deps.notifications,
     computed,
@@ -686,8 +689,11 @@ export function createTablesService(deps: {
     });
 
   const service = {
-    async lockWriteScope(memberId: string, tableId: string) {
-      const { base } = await tableAt(await loadReader(memberId), tableId, 'editor');
+    installAutomationHooks(hooks: AutomationHooks) {
+      automationHooks = hooks;
+    },
+    async lockWriteScope(memberId: string, tableId: string, comment = false) {
+      const { base } = await tableAt(await loadReader(memberId), tableId, comment ? 'viewer' : 'editor');
       await getDb().select({ id: bases.id }).from(bases).where(eq(bases.id, base.id)).for('update');
     },
     async lockRecord(memberId: string, recordId: string) {
@@ -702,17 +708,28 @@ export function createTablesService(deps: {
     },
     async scopeLabel(memberId: string, tableId: string) {
       const { base, table } = await tableAt(await loadReader(memberId), tableId, 'viewer');
-      return { name: table.name, href: `#/tables/${base.id}/${table.id}` };
+      return {
+        base_id: base.id,
+        primary_id: (await fieldsOf(tableId)).find((f) => f.isPrimary)?.id,
+        name: table.name,
+        href: `#/tables/${base.id}/${table.id}`,
+      };
     },
-    async writeScope(memberId: string, tableId: string) {
+    async writeScope(memberId: string, tableId: string, comment = false) {
       const reader = await loadReader(memberId);
-      const { base } = await tableAt(reader, tableId, 'editor');
+      const { base } = await tableAt(reader, tableId, comment ? 'viewer' : 'editor');
       const [shared] = await getDb()
         .select({ id: shares.id })
         .from(shares)
         .where(and(eq(shares.resourceType, 'base'), eq(shares.resourceId, base.id)))
         .limit(1);
       return { tier: base.ownerId === memberId && !shared ? ('tier1' as const) : ('tier2' as const), baseId: base.id };
+    },
+    async purgeScope(memberId: string, recordId: string) {
+      const [record] = await getDb().select().from(baseRecords).where(eq(baseRecords.id, recordId));
+      if (!record?.deletedAt) throw notFound('Deleted record');
+      const at = await tableAt(await loadReader(memberId), record.tableId, 'builder');
+      return { table_id: record.tableId, base_id: at.base.id };
     },
     records,
     forms,

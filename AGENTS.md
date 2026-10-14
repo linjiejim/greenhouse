@@ -44,6 +44,7 @@ Greenhouse is an open-source, self-hosted platform where a team works with its o
 - Only apps/api/src/config reads process.env; everything else receives values from it.
 - External services come only from services.providers (resolve, languageModel). Never build a vendor SDK client or handle a vendor key anywhere else; the client it returns records usage and can only reach its configured address.
 - The one other way out is connectors, the MCP servers an admin installs: only modules/connectors reaches them, through its guarded fetch (https, public addresses in production, deadlines). Its built-in mailbox connector reaches a member's own IMAP and SMTP servers the same way: resolved and checked first (never a private network; loopback only outside production), connected to the checked address.
+- Explicitly configured table webhooks use the existing publicFetch guard: public HTTPS, connect-time DNS checks, no redirects, bounded deadlines and encrypted signing keys. They never use an Agent tool to send data.
 - Routes parse input with the contract's zod schemas (readJson, readQuery) and call a service. Services own queries, transactions and permission checks; routes and Agent tools call the same service.
 - Fail with ApiError (http/errors.ts): every error leaves as `{ error: { code, message, details? } }` with a stable snake_case code.
 - JSON is snake_case and maps from rows through view functions in the service; never return a database row.
