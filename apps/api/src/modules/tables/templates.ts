@@ -7,7 +7,7 @@
 
 import type { FieldConfig, FieldType, ViewConfig, ViewType } from '@greenhouse/contract';
 
-export const TEMPLATE_VERSIONS = { project: '1' } as const;
+export const TEMPLATE_VERSIONS = { project: '1.0.0' } as const;
 
 export interface TemplateField {
   ref: string;

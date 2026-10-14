@@ -1,4 +1,5 @@
 import {
+  LayoutGrid,
   Activity,
   Bell,
   BookOpen,
@@ -13,10 +14,11 @@ import {
 import type { MessageKey } from '../i18n/zh';
 import type { Route } from '../lib/router';
 
-/** The modules this build has. Apps join in M2. */
+/** The modules this build has. */
 export type ModuleId =
   | 'chat'
   | 'knowledge'
+  | 'apps'
   | 'tables'
   | 'agents'
   | 'skills'
@@ -28,6 +30,7 @@ export type ModuleId =
 export const MODULES: Record<ModuleId, { label: MessageKey; icon: LucideIcon }> = {
   chat: { label: 'nav.chat', icon: MessageSquare },
   knowledge: { label: 'nav.knowledge', icon: BookOpen },
+  apps: { label: 'nav.apps', icon: LayoutGrid },
   tables: { label: 'nav.tables', icon: Table2 },
   agents: { label: 'nav.agents', icon: Sparkles },
   skills: { label: 'nav.skills', icon: Wand2 },
@@ -49,6 +52,10 @@ export function moduleOf(route: Route): ModuleId {
     case 'skills':
     case 'skill':
       return 'skills';
+    case 'apps':
+    case 'app':
+    case 'app-edit':
+      return 'apps';
     case 'tables':
     case 'base':
     case 'form':

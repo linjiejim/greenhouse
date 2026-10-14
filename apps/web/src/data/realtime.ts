@@ -186,6 +186,7 @@ export function patchConversation(client: QueryClient, id: string, changes: Part
 }
 
 export function applyEvent(client: QueryClient, event: Exclude<RealtimeEvent, { type: 'ready' }>) {
+  if (event.type === 'records.changed' || event.type === 'base.updated') soon(client, ['apps']);
   if (applyTablesEvent(client, event)) return;
   switch (event.type) {
     case 'message.created':

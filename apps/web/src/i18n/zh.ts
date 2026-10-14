@@ -1,8 +1,10 @@
+import { appsZh } from './apps.zh';
 import { mailZh } from './mail.zh';
 import { tablesZh } from './tables.zh';
 
 /** Chinese: the source dictionary. Keys are grouped by where the words appear; a module may keep its own in <module>.zh.ts. */
 export const zh = {
+  ...appsZh,
   'app.name': 'Greenhouse',
 
   'login.email': '邮箱',

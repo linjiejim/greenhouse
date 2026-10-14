@@ -6,6 +6,7 @@
 import { useEffect, useId, useMemo, useState, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
+  LayoutGrid,
   FilePlus,
   FileText,
   Hash,
@@ -53,6 +54,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
   const conversations = useConversations();
   const newTarget = useNewTarget(useRoute());
   const knowledge = !!me?.modules.knowledge;
+  const appsOn = !!me?.modules.apps;
   const tablesOn = !!me?.modules.tables;
   const bases = useBases(false, tablesOn);
   const [query, setQuery] = useState('');
@@ -65,7 +67,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
   }, [query]);
   // Messages, people and docs come from the server; commands, Agents and settings are already here.
   const remote = useQuery({
-    queryKey: ['search', debounced, knowledge, tablesOn],
+    queryKey: ['search', debounced, knowledge, tablesOn, appsOn],
     queryFn: () =>
       api.search({
         q: debounced,
@@ -75,6 +77,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
           'messages',
           'members',
           ...(tablesOn ? (['records'] as const) : []),
+          ...(appsOn ? (['apps'] as const) : []),
         ],
       }),
     enabled: debounced.length > 0,
@@ -126,6 +129,17 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
               label: t('tables.new'),
               leading: small(<Table2 size={icon.md} />),
               run: () => openNewBase(openOverlay),
+            },
+          ]
+        : []),
+      ...(appsOn
+        ? [
+            {
+              id: 'new-app',
+              group: t('palette.commands'),
+              label: t('apps.new'),
+              leading: small(<LayoutGrid size={icon.md} />),
+              run: () => navigate({ page: 'apps', newApp: true }),
             },
           ]
         : []),
@@ -217,6 +231,16 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
           },
         ];
       }
+      if (item.kind === 'apps')
+        return [
+          {
+            id: `app:${item.id}`,
+            group: t('nav.apps'),
+            label: item.title,
+            leading: small(<LayoutGrid size={icon.md} />),
+            run: () => navigate({ page: 'app', id: item.id }),
+          },
+        ];
       if (item.kind === 'members') {
         if (item.id === me?.id) return [];
         return [
@@ -259,6 +283,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
     conversations.items,
     bases.items,
     tablesOn,
+    appsOn,
     me?.role,
     me?.id,
     openOverlay,

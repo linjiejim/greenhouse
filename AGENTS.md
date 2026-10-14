@@ -13,6 +13,7 @@ Greenhouse is an open-source, self-hosted platform where a team works with its o
 
 ## Repo map
 - apps/api: the v2 API (Hono). app.ts composes services and routes; modules/<domain>/ holds routes.ts and service.ts; engine/ runs turns and tools (engine/AGENTS.md); realtime/ is the WebSocket hub.
+- apps/api/src/modules/apps: human app builder/runtime, immutable publications and reviewed base templates (its AGENTS.md). Application roles narrow the tables access compiler; all writes use tables records as the member.
 - packages/contract: zod schemas and types for every request and response; the web, mobile and extension clients import it.
 - packages/db: the v2 schema (data-model.md), ids, migrations and test support. drizzle/ holds the single baseline.
 - packages/providers: adapters per capability (llm, search, stt, tts, image, storage, sandbox: docker and e2b, mail: resend and mailgun; smtp is registered from apps/api/src/modules/mail), presets, the adapter registry and pinnedFetch (an instance's origins; `https://*.<domain>` allows every name under a domain, as E2B serves each sandbox under its own). apps/api/src/providers: env parsing, resolution order, sealed secrets, usage metering and the provider routes (docs/product/providers.md).

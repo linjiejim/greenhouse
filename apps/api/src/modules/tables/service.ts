@@ -37,6 +37,7 @@ import {
   type ViewConfig,
 } from '@greenhouse/contract';
 import {
+  apps,
   auditEvents,
   baseFields,
   baseRecordEvents,
@@ -883,6 +884,22 @@ export function createTablesService(deps: {
         .where(eq(baseTables.baseId, baseId));
       await transaction(async () => {
         await forms.dropShares({ baseId });
+        // Publication and app actions lock the app first; deletion takes those locks before its grants.
+        const linkedApps = await getDb()
+          .select({ id: apps.id })
+          .from(apps)
+          .where(eq(apps.baseId, baseId))
+          .orderBy(asc(apps.id))
+          .for('update');
+        const appIds = linkedApps.map((app) => app.id);
+        if (appIds.length) {
+          await getDb()
+            .delete(shares)
+            .where(and(eq(shares.resourceType, 'app'), inArray(shares.resourceId, appIds)));
+          await getDb()
+            .delete(pins)
+            .where(and(eq(pins.targetType, 'app'), inArray(pins.targetId, appIds)));
+        }
         await getDb().delete(bases).where(eq(bases.id, baseId));
         await getDb()
           .delete(shares)

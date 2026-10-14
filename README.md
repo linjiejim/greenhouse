@@ -796,6 +796,8 @@ model (a fresh database baseline), a guide for migrating v1 data later, and the 
 tokens live in `packages/ui/src/tokens/haven.ts` (`pnpm tokens:build` regenerates the CSS).
 The current application has not adopted v2 yet.
 
+The v2 branch includes an Apps entry: build pages and forms on a base, publish a fixed version to members or groups, and save a published app as a template for admin review. App roles narrow each member’s base access; record actions run as the member and keep record history. The built-in Projects template is also available in the app center. Agent app tools are a later v2 slice.
+
 Try the standalone [interactive prototype](apps/design/README.md) with `pnpm design:dev`
 (http://127.0.0.1:4518). It includes desktop / mobile, light / dark, module previews and an
 interactive component lab. `pnpm design:build` exports `apps/design/dist` for static hosting;
