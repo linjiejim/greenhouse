@@ -31,7 +31,9 @@ async function main() {
   await ensureFirstAdmin(config.BOOTSTRAP_ADMIN_EMAIL, services.auth);
   // The official skills of skillhub/ become team skills; never fatal, skipped until an admin exists.
   await services.skills.seedOfficial();
-  await services.hub.connect(pgTransport(client.sql));
+  // NOTIFYs leave on a connection of their own, in order (realtime/pg.ts).
+  const notifier = createDbClient(config.DATABASE_URL, { max: 1 });
+  await services.hub.connect(pgTransport(client.sql, notifier.sql));
   services.engine.start();
   services.schedules.start();
   services.channels.start();
@@ -63,6 +65,7 @@ async function main() {
     server.close();
     await services.engine.shutdown();
     await services.hub.close();
+    await notifier.close();
     await client.close();
     process.exit(0);
   };

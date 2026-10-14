@@ -4,7 +4,7 @@
  * them as a resync hint they catch up from with `?after=`.
  */
 
-import { inArray } from 'drizzle-orm';
+import { inArray, sql } from 'drizzle-orm';
 import { afterAll, describe, expect, it } from 'vitest';
 import type { RealtimeEvent } from '@greenhouse/contract';
 import { createDbClient, getDb, members, newId, runs, type DbClient } from '@greenhouse/db';
@@ -37,9 +37,10 @@ async function apiProcess(languageModel: ReturnType<typeof scriptedModel>['langu
     { languageModel },
   );
   const client = createDbClient(TEST_DATABASE_URL, { max: 2 });
-  clients.push(client);
-  await services.hub.connect(pgTransport(client.sql));
-  return services;
+  const notifier = createDbClient(TEST_DATABASE_URL, { max: 1 });
+  clients.push(client, notifier);
+  await services.hub.connect(pgTransport(client.sql, notifier.sql));
+  return { services, notifier };
 }
 
 const until = async (done: () => boolean, ms = 5000) => {
@@ -50,9 +51,9 @@ describe('realtime across processes', () => {
   it('brings a long final reply to a member on the other process', async () => {
     // About 12 KB as JSON: far over what one NOTIFY carries.
     const long = '长 '.repeat(3000).trim();
-    const model = scriptedModel([text(long)]);
-    const a = await apiProcess(model.languageModel);
-    const b = await apiProcess(model.languageModel);
+    const model = scriptedModel([text(long), text('Still here.')]);
+    const { services: a, notifier } = await apiProcess(model.languageModel);
+    const { services: b } = await apiProcess(model.languageModel);
     const lin = newId('member');
     created.push(lin);
     await getDb()
@@ -87,6 +88,18 @@ describe('realtime across processes', () => {
     expect(hint?.data.conversation_id).toBe(main.id);
     const page = await b.conversations.messages(lin, main.id, { after: hint!.data.after_seq, limit: 50 });
     expect(page.items[0]).toMatchObject({ role: 'assistant', status: 'complete', content: long });
+
+    // The database drops the connection NOTIFYs leave on (a restart, a failover): the next ones
+    // go out on a new connection, and the process carries on.
+    const [{ pid }] = await notifier.sql<{ pid: number }[]>`select pg_backend_pid() as pid`;
+    await getDb().execute(sql`select pg_terminate_backend(${pid})`);
+    seen.length = 0;
+    await a.engine.post(lin, main.id, { content: 'still there?', attachments: [], mentions: [] });
+    await a.engine.idle();
+    await until(() => seen.some((event) => event.type === 'message.updated'));
+    expect(seen.some((event) => event.type === 'message.updated' && event.data.message.content === 'Still here.')).toBe(
+      true,
+    );
 
     await Promise.all([a.engine.shutdown(), b.engine.shutdown(), a.hub.close(), b.hub.close()]);
   }, 30_000);
