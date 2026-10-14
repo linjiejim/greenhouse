@@ -1,166 +1,36 @@
 /**
- * Composer — the floating Liquid Glass control layer at the bottom of the
- * conversation (iOS 26 Messages-style): one `GlassGroup` row of
+ * Composer — the floating Liquid Glass control layer at the bottom of a conversation (iOS 26
+ * Messages-style): one `GlassGroup` row of
  *
- *   [+]  [ glass capsule: attachments · quote chips · growing text field ]  [↑ / ■]
+ *   [+]  [ glass capsule: skill · quote · files · growing text field ]  [↑ / ■]
  *
- * `+` opens a native menu (拍照 / 照片图库 — images only, the upload API
- * rejects other types); the field grows to ~6 lines then scrolls; the send
- * button is the accent-tinted glass button and turns into stop while a reply
- * streams. No agent picker above it (2026-10-09): a new chat starts with
- * Sprouty, and a chat with one Bot starts from that Bot
- * (the drawer, its profile, "New Chat" in its thread). Pure view:
- * the screen owns the draft, attachments and keyboard placement (it wraps this
- * in a KeyboardStickyView) and gets the control layer's height through
- * `onHeight` to pad the message list.
+ * `+` opens a native menu: Camera, Photos, Files, and what the screen adds (`menuExtra`: @ in a
+ * room, `/` skills). The field grows to ~6 lines then scrolls. Send and stop share one place
+ * (docs/design-system/conversation.md): while an Agent answers, an empty composer offers stop,
+ * and anything typed sends into the queue. Sending waits for every file to finish uploading.
  *
- * The Bots thread adds optional pieces (none given = the conversation's
- * composer, unchanged):
- *  - `stop` — a separate Stop between the capsule and Send while a run is
- *    live, so sending stays possible (Send never turns into Stop and never
- *    moves; the capsule narrows as Stop slides in): tap = the caller's
- *    `onPress` (soft, then hard), long press = a system menu of the two;
- *    while a hard stop winds down it's a disabled spinner;
- *  - `accessory` — a row above the input row (the task dock, the @-mention
- *    strip);
- *  - `onSelectionChange` — the caret (the mention picker reads the token
- *    before it);
- *  - `menuExtra` — more items in the `+` menu (a group's "Mention ▸").
+ * Pure view: the screen owns the draft, the files and keyboard placement (it wraps this in a
+ * KeyboardStickyView) and gets the control layer's height through `onHeight` to pad the list.
+ * `accessory` sits above the input row (the @ strip, the skill list, a skill's fields).
  */
 
-import React, { forwardRef, memo, useEffect, useMemo, useRef, useState } from 'react';
+import React, { forwardRef, memo } from 'react';
 import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Image } from 'expo-image';
-import Animated, {
-  FadeIn,
-  LinearTransition,
-  useAnimatedStyle,
-  useReducedMotion,
-  useSharedValue,
-  withTiming,
-} from 'react-native-reanimated';
+import Animated, { FadeIn, LinearTransition } from 'react-native-reanimated';
 import { useT } from '../lib/i18n';
 import { HIT, makeStyles, radius, space, squircle, typo, useTheme } from '../theme';
 import { NativeButton } from '../ui/button';
 import { Icon, Spinner, Touchable } from '../ui/core';
-import { Glass, GlassGroup, GlassIconButton, LIQUID_GLASS } from '../ui/glass';
+import { Glass, GlassGroup, GlassIconButton } from '../ui/glass';
 import { NativeMenu, menuSections, type MenuItem } from '../ui/menu';
-import type { Annotation } from './model';
-import { canSendMessage, type ComposerImage } from './composer-images';
-
-/**
- * The Bots composer's Stop (a run is live). `phase`: `running` — tap asks for
- * a soft stop (finish this step); `soft` — asked, tap again to stop now;
- * `hard` — stopping now (disabled spinner). Haptics are the caller's (it
- * knows which stop a tap became).
- */
-export interface ComposerStop {
-  phase: 'running' | 'soft' | 'hard';
-  onPress(): void;
-  /** The long-press menu's pick. */
-  onMenu(choice: 'soft' | 'hard'): void;
-  /** Says what a tap does in this phase. */
-  accessibilityLabel: string;
-  menuLabels: { soft: string; hard: string };
-}
+import { MAX_FILES, canSendMessage, type ComposerFile } from './composer-files';
+import { fileIcon } from './file-card';
+import type { AttachSource } from './use-composer-files';
 
 /** Field height cap ≈ 6 lines of body text. */
 const MAX_INPUT_HEIGHT = 6 * 22 + 22;
-/** The `+` menu's own item ids (`menuExtra` items must use others). */
-const ATTACH_IDS = new Set(['camera', 'library']);
-/** The Stop slot: the button plus the row gap it brings along. */
-const STOP_SLOT = HIT + space.sm;
-const STOP_MS = 180;
-/** A little past the slide-out, so the button leaves the tree only once nothing of it is drawn. */
-const STOP_GONE_MS = STOP_MS + 60;
-const PRESSED_DIM = { opacity: 0.6 };
-
-/**
- * Stop, between the capsule and Send. Once a stop has been offered the slot
- * stays mounted and animates its width (0 ↔ button + gap), so the capsule
- * narrows / widens smoothly and Send never moves; the last stop is kept
- * on screen while it slides out. The button itself leaves the tree once it
- * has slid out: a zero-width, clipped, transparent button still has its full
- * 44-pt frame, and VoiceOver could focus (and a tap reach) an invisible Stop.
- * While sliding out it is already hidden from both.
- */
-const StopSlot = memo(function StopSlot({ stop }: { stop?: ComposerStop }) {
-  const { colors: c } = useTheme();
-  const styles = useStyles(c);
-  const reduceMotion = useReducedMotion();
-  const last = useRef(stop);
-  if (stop) last.current = stop;
-  const shown = stop ?? last.current;
-  const live = !!stop;
-  // the button is in the tree while offered and while it slides out — then not at all
-  const [present, setPresent] = useState(live);
-  if (live && !present) setPresent(true);
-  const open = useSharedValue(0);
-  useEffect(() => {
-    open.value = reduceMotion ? (live ? 1 : 0) : withTiming(live ? 1 : 0, { duration: STOP_MS });
-    if (live) return;
-    const timer = setTimeout(() => setPresent(false), reduceMotion ? 0 : STOP_GONE_MS);
-    return () => clearTimeout(timer);
-  }, [live, open, reduceMotion]);
-  const slide = useAnimatedStyle(() => ({ width: open.value * STOP_SLOT, opacity: open.value }));
-  const phase = shown?.phase;
-  const soft = shown?.menuLabels.soft ?? '';
-  const hard = shown?.menuLabels.hard ?? '';
-  const items = useMemo<MenuItem[]>(() => {
-    const now: MenuItem = { id: 'hard', title: hard, icon: 'stop', destructive: true };
-    return phase === 'running' ? [{ id: 'soft', title: soft, icon: 'stopCircle' }, now] : [now];
-  }, [phase, soft, hard]);
-  if (!shown) return null;
-  return (
-    <Animated.View
-      style={[styles.stopSlot, slide]}
-      pointerEvents={live ? 'auto' : 'none'}
-      accessibilityElementsHidden={!live}
-      importantForAccessibility={live ? 'auto' : 'no-hide-descendants'}
-    >
-      {!present ? null : shown.phase === 'hard' ? (
-        <View
-          accessible
-          accessibilityRole="button"
-          accessibilityState={{ disabled: true, busy: true }}
-          accessibilityLabel={shown.accessibilityLabel}
-        >
-          <Glass style={styles.stopButton}>
-            <Spinner />
-          </Glass>
-        </View>
-      ) : (
-        <NativeMenu
-          trigger="longPress"
-          fill={false}
-          items={items}
-          onSelect={(id) => shown.onMenu(id === 'soft' ? 'soft' : 'hard')}
-        >
-          <Touchable
-            onPress={shown.onPress}
-            // interactive glass answers the touch itself (as GlassIconButton)
-            pressedStyle={LIQUID_GLASS ? {} : PRESSED_DIM}
-            accessibilityRole="button"
-            accessibilityLabel={shown.accessibilityLabel}
-          >
-            <Glass interactive style={styles.stopButton}>
-              <Icon
-                name={shown.phase === 'soft' ? 'stopCircle' : 'stop'}
-                size={Math.round(HIT * 0.42)}
-                weight="semibold"
-                color={c.label}
-                // asked to stop: the symbol pulses until the run winds down
-                animationSpec={
-                  shown.phase === 'soft' && !reduceMotion ? { effect: { type: 'pulse' }, repeating: true } : undefined
-                }
-              />
-            </Glass>
-          </Touchable>
-        </NativeMenu>
-      )}
-    </Animated.View>
-  );
-});
+const ATTACH_IDS = new Set<string>(['camera', 'library', 'files']);
 
 export const Composer = memo(
   forwardRef<
@@ -169,29 +39,31 @@ export const Composer = memo(
       value: string;
       onChangeText: (v: string) => void;
       onSend: () => void;
-      streaming?: boolean;
+      /** An Agent answers here now: with nothing typed, the button stops it. */
+      working?: boolean;
       onStop?: () => void;
-      onAttach: (from: 'camera' | 'library') => void;
-      annotations: Annotation[];
-      onRemoveAnnotation: (id: string) => void;
-      images: ComposerImage[];
-      onRemoveImage: (id: string) => void;
-      onRetryImages: () => void;
-      /** Image cap per message — at the cap the `+` menu explains it and disables its items. */
-      maxImages?: number;
+      /** A send is on its way: the button waits. */
+      sending?: boolean;
+      onAttach: (from: AttachSource) => void;
+      quote: string | null;
+      onClearQuote: () => void;
+      files: ComposerFile[];
+      onRemoveFile: (id: string) => void;
+      onRetryFiles: () => void;
+      /** The skill chosen with `/` ("/weekly-report · Weekly report"). */
+      skill?: string | null;
+      onClearSkill?: () => void;
       placeholder: string;
       autoFocus?: boolean;
       /** Height of the control layer (excluding the bottom safe-area pad). */
       onHeight?: (h: number) => void;
-      /** A Stop beside Send while a run is live (Bots); given → `streaming` / `onStop` are ignored. */
-      stop?: ComposerStop;
-      /** A row above the input row (Bots: the task dock or the @-mention strip). */
+      /** A row above the input row (the @ strip, the skill list or a skill's fields). */
       accessory?: React.ReactNode;
       /** The text field's selection (the caret) as it moves. */
       onSelectionChange?: (sel: { start: number; end: number }) => void;
-      /** More `+` menu items, in their own section (ids other than `camera` / `library`). */
+      /** More `+` menu items, in their own section. */
       menuExtra?: { items: MenuItem[]; onSelect(id: string): void };
-      /** Images can't be added now (editing a sent message): the `+` menu says why and its picks are off. */
+      /** Files can't be added now (editing a sent message): the `+` menu says why. */
       attachNote?: string;
     }
   >(function Composer(
@@ -199,19 +71,20 @@ export const Composer = memo(
       value,
       onChangeText,
       onSend,
-      streaming = false,
+      working = false,
       onStop,
+      sending = false,
       onAttach,
-      annotations,
-      onRemoveAnnotation,
-      images,
-      onRemoveImage,
-      onRetryImages,
-      maxImages = Infinity,
+      quote,
+      onClearQuote,
+      files,
+      onRemoveFile,
+      onRetryFiles,
+      skill,
+      onClearSkill,
       placeholder,
       autoFocus = false,
       onHeight,
-      stop,
       accessory,
       onSelectionChange,
       menuExtra,
@@ -222,19 +95,15 @@ export const Composer = memo(
     const { colors: c } = useTheme();
     const styles = useStyles(c);
     const t = useT();
-    const canSend = canSendMessage(value, images);
-    const failedImages = images.some((im) => im.status === 'error');
-    const hasAttachments = images.length > 0 || annotations.length > 0;
-    const full = images.length >= maxImages || !!attachNote;
-    // A single agent is no choice — no capsule (and no empty row) for it.
-    // A separate Stop takes over from the in-place one (Send stays Send).
-    const stopInPlace = streaming && !stop;
-    // Mounted from the first stop on, so it can slide in and out.
-    const [stopSeen, setStopSeen] = useState(false);
-    if (stop && !stopSeen) setStopSeen(true);
+    const canSend = !sending && canSendMessage(value, files, !!skill);
+    const failed = files.some((file) => file.status === 'error');
+    const hasChips = files.length > 0 || !!quote || !!skill;
+    const full = files.length >= MAX_FILES || !!attachNote;
+    const showStop = working && !!onStop && !value.trim() && !files.length && !skill;
     const attachItems: MenuItem[] = [
-      { id: 'camera', title: t('chat.attachCamera'), icon: 'camera', disabled: full },
-      { id: 'library', title: t('chat.attachPhotos'), icon: 'photos', disabled: full },
+      { id: 'camera', title: t('composer.camera'), icon: 'camera', disabled: full },
+      { id: 'library', title: t('composer.photos'), icon: 'photos', disabled: full },
+      { id: 'files', title: t('composer.files'), icon: 'attach', disabled: full },
     ];
 
     return (
@@ -243,32 +112,77 @@ export const Composer = memo(
 
         <GlassGroup spacing={8} style={styles.row}>
           <NativeMenu
-            title={attachNote ?? (full ? t('chat.maxImages', { n: maxImages }) : undefined)}
+            title={attachNote ?? (files.length >= MAX_FILES ? t('composer.maxFiles', { n: MAX_FILES }) : undefined)}
             items={menuExtra ? menuSections([attachItems, menuExtra.items]) : attachItems}
             onSelect={(id) => {
               if (menuExtra && !ATTACH_IDS.has(id)) menuExtra.onSelect(id);
-              else onAttach(id === 'camera' ? 'camera' : 'library');
+              else onAttach(id as AttachSource);
             }}
           >
-            <GlassIconButton icon="plus" accessibilityLabel={t('chat.attachTitle')} />
+            <GlassIconButton icon="plus" accessibilityLabel={t('composer.add')} />
           </NativeMenu>
 
           <Glass interactive style={styles.capsule}>
-            {hasAttachments ? (
-              <Animated.View layout={LinearTransition.duration(180)} style={styles.attachments}>
-                {images.length ? (
+            {hasChips ? (
+              <Animated.View layout={LinearTransition.duration(180)} style={styles.chips}>
+                {skill ? (
+                  <View style={styles.skill}>
+                    <Icon name="wand" size={13} color={c.accent} />
+                    <Text numberOfLines={1} style={styles.skillText}>
+                      {skill}
+                    </Text>
+                    <Touchable
+                      onPress={onClearSkill}
+                      style={styles.chipRemove}
+                      accessibilityRole="button"
+                      accessibilityLabel={t('composer.clearSkill')}
+                    >
+                      <Icon name="x" size={12} weight="semibold" color={c.secondaryLabel} />
+                    </Touchable>
+                  </View>
+                ) : null}
+                {quote ? (
+                  <View style={styles.quote}>
+                    <View style={styles.quoteBar} />
+                    <Text numberOfLines={2} style={styles.quoteText}>
+                      {quote}
+                    </Text>
+                    <Touchable
+                      onPress={onClearQuote}
+                      style={styles.chipRemove}
+                      accessibilityRole="button"
+                      accessibilityLabel={t('composer.clearQuote')}
+                    >
+                      <Icon name="x" size={13} weight="semibold" color={c.secondaryLabel} />
+                    </Touchable>
+                  </View>
+                ) : null}
+                {files.length ? (
                   <ScrollView
                     horizontal
                     keyboardShouldPersistTaps="always"
                     showsHorizontalScrollIndicator={false}
                     contentContainerStyle={styles.thumbs}
                   >
-                    {images.map((im) => (
-                      <Animated.View key={im.id} entering={FadeIn.duration(180)} style={styles.thumb}>
-                        <Image source={{ uri: im.uri }} style={StyleSheet.absoluteFill} contentFit="cover" />
-                        {im.status !== 'done' ? (
+                    {files.map((file) => (
+                      <Animated.View
+                        key={file.id}
+                        entering={FadeIn.duration(180)}
+                        style={file.kind === 'image' ? styles.thumb : styles.fileTile}
+                      >
+                        {file.kind === 'image' ? (
+                          <Image source={{ uri: file.uri }} style={StyleSheet.absoluteFill} contentFit="cover" />
+                        ) : (
+                          <View style={styles.fileInner}>
+                            <Icon name={fileIcon(file.name)} size={16} color={c.secondaryLabel} />
+                            <Text numberOfLines={2} ellipsizeMode="middle" style={styles.fileName}>
+                              {file.name}
+                            </Text>
+                          </View>
+                        )}
+                        {file.status !== 'done' ? (
                           <View style={styles.thumbOverlay}>
-                            {im.status === 'uploading' ? (
+                            {file.status === 'uploading' ? (
                               <Spinner />
                             ) : (
                               <Icon name="alert" size={18} weight="semibold" color={c.red} />
@@ -276,10 +190,10 @@ export const Composer = memo(
                           </View>
                         ) : null}
                         <Touchable
-                          onPress={() => onRemoveImage(im.id)}
+                          onPress={() => onRemoveFile(file.id)}
                           style={styles.thumbX}
                           accessibilityRole="button"
-                          accessibilityLabel={t('chat.removeAttachment')}
+                          accessibilityLabel={t('composer.removeFile', { name: file.name })}
                         >
                           <View style={styles.thumbXDot}>
                             <Icon name="x" size={9} weight="bold" color={c.background} />
@@ -289,28 +203,12 @@ export const Composer = memo(
                     ))}
                   </ScrollView>
                 ) : null}
-                {failedImages ? (
+                {failed ? (
                   <View style={styles.uploadError}>
-                    <Text style={styles.uploadErrorText}>{t('upload.failed')}</Text>
-                    <NativeButton label={t('common.retry')} size="small" onPress={onRetryImages} />
+                    <Text style={styles.uploadErrorText}>{t('composer.uploadFailed')}</Text>
+                    <NativeButton label={t('common.retry')} size="small" onPress={onRetryFiles} />
                   </View>
                 ) : null}
-                {annotations.map((a) => (
-                  <View key={a.id} style={styles.quote}>
-                    <View style={styles.quoteBar} />
-                    <Text numberOfLines={2} style={styles.quoteText}>
-                      {a.text}
-                    </Text>
-                    <Touchable
-                      onPress={() => onRemoveAnnotation(a.id)}
-                      style={styles.quoteRemove}
-                      accessibilityRole="button"
-                      accessibilityLabel={t('chat.removeAttachment')}
-                    >
-                      <Icon name="x" size={13} weight="semibold" color={c.secondaryLabel} />
-                    </Touchable>
-                  </View>
-                ))}
               </Animated.View>
             ) : null}
             <TextInput
@@ -325,20 +223,20 @@ export const Composer = memo(
               scrollEnabled
               style={styles.input}
               testID="composer-input"
+              accessibilityLabel={placeholder}
               onSelectionChange={onSelectionChange ? (e) => onSelectionChange(e.nativeEvent.selection) : undefined}
             />
           </Glass>
 
-          {stopSeen ? <StopSlot stop={stop} /> : null}
-          {stopInPlace ? (
-            <GlassIconButton icon="stop" prominent onPress={onStop} accessibilityLabel={t('chat.stop')} />
+          {showStop ? (
+            <GlassIconButton icon="stop" prominent onPress={onStop} accessibilityLabel={t('composer.stop')} />
           ) : (
             <GlassIconButton
               icon="up"
               prominent
               disabled={!canSend}
               onPress={onSend}
-              accessibilityLabel={t('chat.send')}
+              accessibilityLabel={t('composer.send')}
             />
           )}
         </GlassGroup>
@@ -347,42 +245,24 @@ export const Composer = memo(
   }),
 );
 
-/**
- * The quiet bar that replaces the composer in a shared (read-only)
- * conversation — or, with a `message` (and optionally an `action`), wherever
- * nobody can be written to (a Bots thread whose Bot is archived, a group
- * with no one left to reply).
- */
+/** In place of the composer where nobody can write: why, and the one way out. */
 export function ReadOnlyBar({
   onHeight,
   message,
   action,
 }: {
   onHeight?: (h: number) => void;
-  /** Says why there is no composer (default: shared · read-only). */
-  message?: string;
-  /** One way out, beside the message (e.g. "View Profile"). */
+  message: string;
   action?: { label: string; onPress(): void };
 }) {
   const { colors: c } = useTheme();
   const styles = useStyles(c);
-  const t = useT();
   return (
     <View style={styles.wrap} onLayout={(e) => onHeight?.(e.nativeEvent.layout.height)}>
-      {message == null ? (
-        <Glass style={styles.readOnly}>
-          {/* one VoiceOver element: "Shared · read-only" */}
-          <View accessible accessibilityLabel={t('chat.sharedReadOnly')} style={styles.readOnlyInner}>
-            <Icon name="users" size={15} color={c.secondaryLabel} />
-            <Text style={styles.readOnlyText}>{t('chat.sharedReadOnly')}</Text>
-          </View>
-        </Glass>
-      ) : (
-        <Glass style={styles.readOnlyNote}>
-          <Text style={styles.readOnlyNoteText}>{message}</Text>
-          {action ? <NativeButton label={action.label} size="small" onPress={action.onPress} /> : null}
-        </Glass>
-      )}
+      <Glass style={styles.readOnly}>
+        <Text style={styles.readOnlyText}>{message}</Text>
+        {action ? <NativeButton label={action.label} size="small" onPress={action.onPress} /> : null}
+      </Glass>
     </View>
   );
 }
@@ -399,7 +279,7 @@ const useStyles = makeStyles((c) => ({
     paddingBottom: 11,
     maxHeight: MAX_INPUT_HEIGHT,
   },
-  attachments: { paddingTop: space.sm, paddingHorizontal: space.sm, gap: space.xs + 2 },
+  chips: { paddingTop: space.sm, paddingHorizontal: space.sm, gap: space.xs + 2 },
   thumbs: { gap: space.sm, paddingRight: space.xs },
   thumb: {
     width: 60,
@@ -409,6 +289,16 @@ const useStyles = makeStyles((c) => ({
     backgroundColor: c.tertiaryFill,
     ...squircle,
   },
+  fileTile: {
+    width: 112,
+    height: 60,
+    borderRadius: radius.md,
+    overflow: 'hidden',
+    backgroundColor: c.tertiaryFill,
+    ...squircle,
+  },
+  fileInner: { flex: 1, padding: space.sm, gap: 2 },
+  fileName: { ...typo.caption2, color: c.label },
   thumbOverlay: {
     ...StyleSheet.absoluteFill,
     alignItems: 'center',
@@ -417,8 +307,6 @@ const useStyles = makeStyles((c) => ({
     opacity: 0.7,
   },
   thumbX: { position: 'absolute', top: 0, right: 0, width: HIT, height: HIT, alignItems: 'flex-end', padding: 4 },
-  uploadError: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', paddingLeft: space.xs, gap: space.xs },
-  uploadErrorText: { ...typo.footnote, color: c.red, flexShrink: 1 },
   // label-on-background inverts per scheme: dark dot + light ✕ in light mode, and vice versa
   thumbXDot: {
     width: 20,
@@ -429,25 +317,34 @@ const useStyles = makeStyles((c) => ({
     backgroundColor: c.label,
     opacity: 0.72,
   },
+  uploadError: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', paddingLeft: space.xs, gap: space.xs },
+  uploadErrorText: { ...typo.footnote, color: c.red, flexShrink: 1 },
+  skill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: space.xs,
+    maxWidth: '100%',
+    paddingLeft: space.sm,
+    borderRadius: radius.full,
+    backgroundColor: c.accentFill,
+  },
+  skillText: { flexShrink: 1, ...typo.footnote, color: c.accent },
   quote: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: space.sm,
     paddingVertical: space.xs + 2,
     paddingLeft: space.xs + 2,
-    paddingRight: space.sm + 2,
     borderRadius: radius.md,
     backgroundColor: c.quaternaryFill,
     ...squircle,
   },
   quoteBar: { width: 3, alignSelf: 'stretch', borderRadius: 2, backgroundColor: c.accent },
   quoteText: { flex: 1, ...typo.footnote, color: c.secondaryLabel },
-  quoteRemove: { width: HIT, minHeight: HIT, alignItems: 'center', justifyContent: 'center' },
-  readOnly: { height: 44, borderRadius: 22, justifyContent: 'center' },
-  readOnlyInner: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: space.sm },
-  readOnlyText: { ...typo.subheadline, color: c.secondaryLabel },
+  chipRemove: { width: 36, minHeight: 32, alignItems: 'center', justifyContent: 'center' },
   // grows with Dynamic Type (the message may wrap; the action sits beside it)
-  readOnlyNote: {
+  readOnly: {
     minHeight: 44,
     borderRadius: 22,
     flexDirection: 'row',
@@ -457,14 +354,6 @@ const useStyles = makeStyles((c) => ({
     paddingVertical: space.sm,
     paddingHorizontal: space.lg,
   },
-  readOnlyNoteText: { flexShrink: 1, ...typo.subheadline, color: c.secondaryLabel, textAlign: 'center' },
+  readOnlyText: { flexShrink: 1, ...typo.subheadline, color: c.secondaryLabel, textAlign: 'center' },
   accessory: { paddingBottom: space.sm },
-  stopSlot: {
-    // the slot carries its own share of the row gap, so at width 0 it takes no room at all
-    marginLeft: -space.sm,
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    overflow: 'hidden',
-  },
-  stopButton: { width: HIT, height: HIT, borderRadius: HIT / 2, alignItems: 'center', justifyContent: 'center' },
 }));

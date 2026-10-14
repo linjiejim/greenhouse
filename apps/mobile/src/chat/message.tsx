@@ -1,152 +1,132 @@
 /**
- * Conversation turns (content layer — solid system colors, never glass):
+ * Messages of a conversation (content layer — solid system colors, never glass), in the order
+ * docs/design-system/conversation.md sets for a reply: conclusion → result cards → decisions →
+ * sources → process.
  *
- *  - `UserMessage` — a right-aligned bubble (`bubble` fill, squircle 20) with
- *    any quoted context above it, its text with inline marks (bold, links,
- *    code — web parity), an image grid (tap → full size) and the
- *    files attached to the turn as chips (the server's ```attachments fence,
- *    lifted out of the text); the context menu (long press, native lifted
- *    preview) offers 复制 / 编辑后重发.
- *  - `AiMessage`   — full-width plain text (no bubble), iOS reading typography:
- *    a thinking Sprouty until the first token (showing the reasoning's latest
- *    headline once there is one), a reasoning row (→ /peek/reasoning sheet)
- *    and one compact row for the tool pipeline (→ /peek/tools sheet) — both
- *    tappable while the turn runs, their sheets follow it live
- *    (src/chat/live-turn.ts) — tool results that are cards (files, generated
- *    images, sub-sessions; src/chat/artifacts.tsx), the reply markdown
- *    (unfolding block by block while streaming; its ```confirm buttons reply
- *    through `onReply`), the ask_user form below it once the turn is done, a
- *    references row (→ /peek/refs sheet), a quiet metrics caption (or
- *    "已停止生成" for a reply the user stopped), and inline errors with 重试.
- *    Context menu (src/chat/message-menu.tsx — bounded excerpt preview, not
- *    the whole reply): 复制 / 分享 / 引用 / 重新生成 (latest reply only).
- *    The reasoning row, the tools row (with the metrics caption) and the
- *    references row show only when the member switched them on (⋯ → 显示,
- *    global, all off by default — src/chat/reply-details-menu.tsx); a live
- *    reply with nothing else to show keeps the thinking row until its text.
+ *  - `MemberMessage` — a person's words. Mine sit on the right in a light bubble; another
+ *    person's (a room) on the left under their face and name, shown on the first of a run.
+ *    Above the bubble: the quoted piece and the skill run with `/`; below: the files (pictures
+ *    inline, the rest as chips that open), the time, "edited", and in a room who has read it.
+ *    Long press: copy, and on my last message edit.
+ *  - `AgentReply` — an Agent's reply, without a bubble: its author line (plant, name, time) on
+ *    the first of a run; while it is being written the text grows from ../data/streams.ts and
+ *    the plant thinks until the first words; rich blocks (../chat/markdown); its files; the
+ *    「需要你」 cards of its run; a row of sources; the process (all its tool steps) folded into
+ *    one line that opens them; "stopped" or "failed" notes. Long press: copy, share, quote,
+ *    👍 / 👎, new chat from here, and on my latest exchange regenerate.
+ *  - `EventLine` — a quiet centred line (a hand-off, someone joining).
  *
- * Both are memoised on the message object — during streaming only the turn
- * being patched re-renders. Menu ids come back through `onAction(msg, id)`.
- *
- * The Bots thread (src/bots/thread) reuses both with a few optional props —
- * all off by default, so the conversation renders exactly as described above:
- * `thinkingAvatar` (the speaking Bot's plant instead of Sprouty, or none),
- * `allowRegenerate={false}` (Bots replies can't be regenerated),
- * `allowEdit={false}` (nor sent messages edited) and a `footer` under a
- * bubble (a pending send's "Delivered · …" caption). In a room (several
- * people) another person's message is a `UserMessage` with an `author`: on the
- * left, their initial and name over the first of their messages in a row.
+ * Rows are memoised on their message: while a reply streams only its own row re-renders (it
+ * subscribes to its stream). Menu picks come back through `onAction(message, action)`.
  */
 
 import React, { memo, useEffect, useMemo } from 'react';
-import { Pressable, Text, View, type ColorValue } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 import { Image } from 'expo-image';
 import Animated, { FadeIn, useAnimatedStyle, useSharedValue, withRepeat, withTiming } from 'react-native-reanimated';
-import { uploadUrl } from '../api/upload';
-import { compactNumber } from '../lib/format';
+import { fileUrl } from '../api/files';
+import { liveText } from '../data/streams';
+import { useStream } from '../data/use-stream';
+import { formatBytes } from '../lib/format';
 import { translate, useT } from '../lib/i18n';
 import { openLink } from '../lib/links';
-import { splitAttachments } from '../shared/rich-output';
+import type { MessageItem } from '../shared/contract';
+import { isImage, useFiles } from '../store/files';
 import { usePrefs } from '../store/prefs';
-import { HIT, makeStyles, radius, space, squircle, typo, useTheme, weight } from '../theme';
-import { InitialAvatar } from '../ui/avatar';
+import { makeStyles, radius, space, squircle, typo, useTheme, weight } from '../theme';
+import { AgentAvatar, MemberAvatar, type AgentFace } from '../ui/agent-avatar';
 import { NativeButton } from '../ui/button';
 import { showErrorDetails } from '../ui/dialogs';
 import { Icon, type IconName, Spinner, Touchable } from '../ui/core';
 import { useFontScaleKey } from '../ui/font-scale';
 import { NativeMenu, menuSections, type MenuItem } from '../ui/menu';
-import { PlantAvatar } from '../ui/plant-avatar';
-import { ArtifactCards, isBelowProse, replacesRow } from './artifacts';
-import { AttachmentChip } from './file-card';
+import { fileIcon, saveFile } from './file-card';
 import { Markdown, RichContext, type RichEnv } from './markdown';
 import { Inline } from './markdown/inline';
 import { MessageMenu } from './message-menu';
-import type { ChatMessage, Metrics, ToolStep } from './model';
 
-/** `rateUp` / `rateDown` — 👍 / 👎 on a reply of someone else's public Agent (a Bots thread only). */
-export type MessageAction = 'copy' | 'share' | 'quote' | 'regenerate' | 'edit' | 'rateUp' | 'rateDown';
+export type MessageAction =
+  | 'copy'
+  | 'share'
+  | 'quote'
+  | 'edit'
+  | 'regenerate'
+  | 'rateUp'
+  | 'rateDown'
+  | 'newChat';
 
-/* ----------------------------- shared row ----------------------------- */
+/** A tool step as a reply shows it: settled ones from the message, live ones from the stream. */
+export interface StepView {
+  id: string;
+  tool: string;
+  summary: string;
+  status: 'running' | 'done' | 'failed';
+  duration_ms?: number;
+}
 
-/** A quiet tappable line (icon · label · chevron) for tools / references / reasoning — each opens a sheet. */
-function DisclosureRow({
+/** The text and steps a reply shows right now (its stream while it is being written). */
+export function useReplyContent(message: MessageItem): { text: string; steps: StepView[]; live: boolean } {
+  const live = message.status === 'streaming';
+  const stream = useStream(message.id);
+  return useMemo(() => {
+    if (!live) {
+      return {
+        text: message.content,
+        steps: message.steps.map((step, index) => ({ id: `s${index}`, ...step })),
+        live,
+      };
+    }
+    return { text: liveText(message.content, stream), steps: stream?.steps ?? [], live };
+  }, [live, message.content, message.steps, stream]);
+}
+
+/* ----------------------------- shared rows ----------------------------- */
+
+/** A quiet tappable line (icon · label · chevron) that opens a sheet: the process, the reasoning. */
+export function DisclosureRow({
   icon,
   busy,
   label,
   detail,
+  tone,
   onPress,
-  accessibilityHint,
 }: {
   icon: IconName;
-  /** A spinner instead of the icon (the step is still running). */
+  /** A spinner instead of the icon (a step is still running). */
   busy?: boolean;
   label: string;
-  /** A faint trailing line (the reasoning's latest headline). */
+  /** A faint trailing line. */
   detail?: string;
+  tone?: 'danger';
   onPress?: () => void;
-  accessibilityHint?: string;
 }) {
   const { colors: c } = useTheme();
   const styles = useStyles(c);
+  const color = tone === 'danger' ? c.red : c.secondaryLabel;
   return (
     <Pressable
       onPress={onPress}
       hitSlop={{ top: 6, bottom: 6 }}
       accessibilityRole="button"
       accessibilityLabel={detail ? `${label}, ${detail}` : label}
-      accessibilityHint={accessibilityHint}
-      style={({ pressed }) => [styles.disclosure, detail ? styles.disclosureWide : null, pressed && { opacity: 0.5 }]}
+      style={({ pressed }) => [styles.disclosure, pressed && { opacity: 0.5 }]}
     >
-      {busy ? (
-        <Spinner style={styles.disclosureSpinner} />
-      ) : (
-        <Icon name={icon} size={14} weight="medium" color={c.secondaryLabel} />
-      )}
-      <Text style={styles.disclosureText}>{label}</Text>
-      <Icon name="chevR" size={11} weight="semibold" color={c.tertiaryLabel} />
+      {busy ? <Spinner style={styles.disclosureSpinner} /> : <Icon name={icon} size={14} weight="medium" color={color} />}
+      <Text numberOfLines={1} style={[styles.disclosureText, { color }]}>
+        {label}
+      </Text>
       {detail ? (
         <Text numberOfLines={1} style={styles.disclosureDetail}>
           {detail}
         </Text>
       ) : null}
+      <Icon name="chevR" size={11} weight="semibold" color={c.tertiaryLabel} />
     </Pressable>
   );
 }
 
-/**
- * The first line of the most recently *completed* reasoning paragraph — the
- * one still streaming would flicker on every token (web: reasoningHeadline).
- */
-function reasoningHeadline(reasoning: string): string {
-  const firsts = reasoning
-    .split(/\n\s*\n/)
-    .map(
-      (p) =>
-        p
-          .split('\n')
-          .find((l) => l.trim())
-          ?.trim() ?? '',
-    )
-    .filter(Boolean);
-  return (firsts.at(-2) ?? '')
-    .replace(/[*_#`]/g, '')
-    .trim()
-    .slice(0, 160);
-}
-
-/* ----------------------------- assistant ----------------------------- */
-
-/** The thinking Sprouty; with reasoning streaming in, it shows the latest headline and opens the live sheet. */
-function Thinking({
-  headline,
-  onOpen,
-  avatar,
-}: {
-  headline?: string;
-  onOpen?: () => void;
-  /** In place of the Sprouty (undefined); null = no avatar. */
-  avatar?: React.ReactNode | null;
-}) {
+/** The plant thinking until the first words arrive. */
+function Thinking({ agent }: { agent: AgentFace | null }) {
   const { colors: c } = useTheme();
   const styles = useStyles(c);
   const t = useT();
@@ -156,422 +136,161 @@ function Thinking({
   }, [pulse]);
   const fade = useAnimatedStyle(() => ({ opacity: pulse.value }));
   return (
-    <Pressable
-      onPress={onOpen}
-      disabled={!onOpen}
-      accessibilityRole={onOpen ? 'button' : undefined}
-      accessibilityLabel={headline ? `${t('chat.thinking')}, ${headline}` : t('chat.thinking')}
-      style={({ pressed }) => [styles.thinking, pressed && { opacity: 0.6 }]}
-    >
-      {avatar === undefined ? <PlantAvatar state="thinking" size={34} /> : avatar}
-      <View style={styles.thinkingTexts}>
-        <View style={styles.thinkingLine}>
-          <Animated.Text style={[styles.thinkingText, fade]}>{t('chat.thinking')}</Animated.Text>
-          {onOpen ? <Icon name="chevR" size={11} weight="semibold" color={c.tertiaryLabel} /> : null}
-        </View>
-        {headline ? (
-          <Animated.Text
-            key={headline}
-            entering={FadeIn.duration(200)}
-            numberOfLines={1}
-            style={styles.thinkingHeadline}
-          >
-            {headline}
-          </Animated.Text>
-        ) : null}
-      </View>
-    </Pressable>
+    <View style={styles.thinking} accessible accessibilityLabel={t('conversation.thinking')}>
+      <AgentAvatar agent={agent} size={28} state="thinking" />
+      <Animated.Text style={[styles.thinkingText, fade]}>{t('conversation.thinking')}</Animated.Text>
+    </View>
   );
 }
 
-function ToolsRow({ steps, live, onOpen }: { steps: ToolStep[]; live: boolean; onOpen: () => void }) {
-  const t = useT();
-  const done = steps.filter((s) => s.status !== 'running').length;
-  // While the turn streams the row counts the calls as they run (its sheet follows them live).
-  if (live && done < steps.length) {
-    return (
-      <DisclosureRow
-        icon="wrench"
-        busy
-        label={t('chat.toolsRunning', { done, total: steps.length })}
-        onPress={onOpen}
-      />
-    );
-  }
-  const failed = steps.some((s) => s.status === 'error');
-  return (
-    <DisclosureRow
-      icon={failed ? 'alert' : 'wrench'}
-      label={steps.length === 1 ? t('chat.toolUsed') : t('chat.toolsUsed', { n: steps.length })}
-      onPress={onOpen}
-    />
-  );
-}
-
-/** Reasoning → its sheet (live while the model is still thinking: spinner + latest headline). */
-function ReasoningRow({ text, active, onOpen }: { text: string; active: boolean; onOpen: () => void }) {
-  const t = useT();
-  return active ? (
-    <DisclosureRow
-      icon="brain"
-      busy
-      label={t('chat.thinking')}
-      detail={reasoningHeadline(text) || undefined}
-      onPress={onOpen}
-    />
-  ) : (
-    <DisclosureRow icon="brain" label={t('chat.reasoning')} onPress={onOpen} />
-  );
-}
-
-function MetricsCaption({ m }: { m: Metrics }) {
-  const { colors: c } = useTheme();
-  const styles = useStyles(c);
-  const t = useT();
-  const parts: string[] = [];
-  if (m.seconds != null) parts.push(t('chat.seconds', { s: m.seconds.toFixed(1) }));
-  if (m.tokensIn != null && m.tokensOut != null) {
-    parts.push(t('chat.metricsTokens', { in: compactNumber(m.tokensIn), out: compactNumber(m.tokensOut) }));
-  }
-  if (!parts.length) return null;
-  return <Text style={styles.metrics}>{parts.join(' · ')}</Text>;
-}
-
-export function ReplyError({
-  error,
-  onRetry,
-  onDismiss,
-}: {
-  error: string;
-  onRetry?: () => void;
-  onDismiss?: () => void;
-}) {
+export function ReplyError({ detail, onRetry }: { detail?: string; onRetry?: () => void }) {
   const { colors: c } = useTheme();
   const styles = useStyles(c);
   const t = useT();
   return (
     <View style={styles.error}>
       <Icon name="alert" size={15} weight="semibold" color={c.red} />
-      <Text style={styles.errorText}>{t('chat.replyFailed')}</Text>
-      <NativeButton label={t('common.details')} size="small" onPress={() => showErrorDetails(error)} />
+      <Text style={styles.errorText}>{t('conversation.replyFailed')}</Text>
+      {detail ? <NativeButton label={t('common.details')} size="small" onPress={() => showErrorDetails(detail)} /> : null}
       {onRetry ? <NativeButton label={t('common.retry')} icon="refresh" size="small" onPress={onRetry} /> : null}
-      {onDismiss ? (
-        <Touchable
-          onPress={onDismiss}
-          style={styles.errorClose}
-          accessibilityRole="button"
-          accessibilityLabel={t('common.close')}
-        >
-          <Icon name="x" size={13} weight="semibold" color={c.red} />
-        </Touchable>
-      ) : null}
     </View>
   );
 }
 
-export const AiMessage = memo(function AiMessage({
-  msg,
-  isLatest,
-  readOnly,
-  followUp,
-  onOpenTools,
-  onOpenReasoning,
-  onOpenRefs,
+/* ----------------------------- files ----------------------------- */
+
+/** A message's files: pictures inline (tap: full size), the rest as chips that open. */
+export const MessageFiles = memo(function MessageFiles({ ids, align }: { ids: string[]; align: 'start' | 'end' }) {
+  const { colors: c, hex } = useTheme();
+  const styles = useStyles(c);
+  const t = useT();
+  const { files, loading } = useFiles(ids);
+  if (!ids.length) return null;
+  const images = files.filter(isImage);
+  const others = files.filter((file) => !isImage(file));
+  const justify = align === 'end' ? 'flex-end' : 'flex-start';
+  return (
+    <View style={[styles.files, { justifyContent: justify }]}>
+      {images.map((file) => (
+        <Touchable
+          key={file.id}
+          onPress={() => void openLink(fileUrl(file.url), hex.accent).catch(() => {})}
+          accessibilityRole="imagebutton"
+          accessibilityLabel={file.name || t('conversation.image')}
+        >
+          <Image
+            source={{ uri: fileUrl(file.url) }}
+            style={[styles.thumb, images.length === 1 && styles.thumbSingle]}
+            contentFit="cover"
+            transition={150}
+          />
+        </Touchable>
+      ))}
+      {others.map((file) => (
+        <Touchable
+          key={file.id}
+          onPress={() => saveFile(fileUrl(file.url), file.name)}
+          style={styles.chip}
+          accessibilityRole="button"
+          accessibilityLabel={t('conversation.openFile', { name: file.name })}
+        >
+          <Icon name={fileIcon(file.name)} size={13} color={c.secondaryLabel} />
+          <Text numberOfLines={1} ellipsizeMode="middle" style={styles.chipName}>
+            {file.name}
+          </Text>
+          <Text style={styles.chipSize}>{formatBytes(file.size_bytes)}</Text>
+        </Touchable>
+      ))}
+      {loading && !files.length ? <View style={[styles.chip, styles.chipLoading]} /> : null}
+    </View>
+  );
+});
+
+/* ----------------------------- a person ----------------------------- */
+
+export const MemberMessage = memo(function MemberMessage({
+  message,
+  mine,
+  author,
+  showAuthor,
+  time,
+  readBy,
+  editable,
+  skillName,
   onAction,
-  onRetry,
-  onReply,
-  thinkingAvatar,
-  allowRegenerate = true,
-  quiet = false,
-  header,
-  rating,
 }: {
-  msg: ChatMessage;
-  /** The newest reply — the only one that can be regenerated / retried. */
-  isLatest: boolean;
-  readOnly: boolean;
-  /** The user message that followed this reply (answers an ask_user form / a ```confirm). */
-  followUp?: string;
-  onOpenTools: (msg: ChatMessage) => void;
-  onOpenReasoning: (msg: ChatMessage) => void;
-  onOpenRefs: (msg: ChatMessage) => void;
-  onAction: (msg: ChatMessage, action: MessageAction) => void;
-  onRetry: () => void;
-  /** Send a follow-up message from a card in the reply (resolves false if it didn't go). */
-  onReply: (text: string) => Promise<boolean>;
-  /**
-   * The avatar of the thinking row: undefined = the Sprouty, null = none (a
-   * speaker line above already shows who it is). Keep it referentially stable
-   * — the row is memoised.
-   */
-  thinkingAvatar?: React.ReactNode | null;
-  /** Offer 重新生成 in the menu (latest reply only; 重试 on an error is `onRetry`'s). */
-  allowRegenerate?: boolean;
-  /**
-   * No thinking row: draw nothing — `header` included — until the reply has
-   * something to show (the screen's title carries "Thinking…"). A Bots thread.
-   */
-  quiet?: boolean;
-  /** Above the reply, only when it shows (a Bots speaker line). Keep it stable — the row is memoised. */
-  header?: React.ReactNode;
-  /**
-   * 👍 / 👎 in the menu (`rateUp` / `rateDown`): a reply of someone else's public Agent. The member's
-   * rating (null = none) fills its thumb — choosing that one again takes it back; undefined = not rateable.
-   */
-  rating?: 1 | -1 | null;
+  message: MessageItem;
+  mine: boolean;
+  /** Who wrote it (another person: their face and name lead the first of their messages). */
+  author: { name: string; avatarUrl: string | null };
+  showAuthor: boolean;
+  /** Its time as people read it (content.md). */
+  time: string;
+  /** A room, my message: who has read it. */
+  readBy?: string[];
+  /** My last message, while nobody has answered past it: it can be edited. */
+  editable: boolean;
+  /** The skill it ran with `/`, by name. */
+  skillName?: string;
+  onAction: (message: MessageItem, action: MessageAction) => void;
 }) {
   const { colors: c } = useTheme();
   const styles = useStyles(c);
   const t = useT();
-  const live = msg.status !== 'done';
-  const refCount = (msg.sources?.length ?? 0) + (msg.web?.length ?? 0);
-  const canRerun = isLatest && !live && !readOnly;
-  const reply = readOnly ? undefined : onReply;
-  // tool calls: rows in the sheet vs. cards in the reply (src/chat/artifacts.tsx)
-  const tools = msg.tools;
-  const trace = useMemo(() => (tools ?? []).filter((s) => !replacesRow(s)), [tools]);
-  const cardsAbove = useMemo(() => (tools ?? []).filter((s) => !isBelowProse(s)), [tools]);
-  const cardsBelow = useMemo(() => (tools ?? []).filter(isBelowProse), [tools]);
-  const rich = useMemo<RichEnv>(() => ({ reply, followUp }), [reply, followUp]);
-  // What else shows besides the answer (⋯ → 显示; global, all off by default — src/store/prefs.ts).
-  const details = usePrefs((s) => s.details);
-  const fontKey = useFontScaleKey();
-  const showReasoning = details.reasoning && !!msg.reasoning;
-  const showTrace = details.tools && trace.length > 0;
-  // Until the first text, a live reply always shows that it is working: the thinking row
-  // stays up while the rows it would otherwise hand over to are switched off.
-  const thinking =
-    !quiet &&
-    (msg.status === 'thinking' ||
-      (live && !msg.text && !msg.error && !msg.stopped && !showReasoning && !showTrace && !cardsAbove.length));
-
-  // Keyed on the language (not `t`, which is new every render) so a streaming
-  // reply doesn't rebuild its native menu on every tick.
-  const lang = usePrefs((s) => s.lang);
-  const items = useMemo<MenuItem[]>(
-    () =>
-      menuSections([
-        [
-          { id: 'copy', title: translate(lang, 'chat.actionCopy'), icon: 'copy' },
-          { id: 'share', title: translate(lang, 'chat.actionShare'), icon: 'share' },
-          ...(readOnly ? [] : [{ id: 'quote', title: translate(lang, 'chat.actionQuote'), icon: 'quote' as const }]),
-        ],
-        canRerun && allowRegenerate
-          ? [{ id: 'regenerate', title: translate(lang, 'chat.actionRegenerate'), icon: 'refresh' }]
-          : [],
-        rating === undefined
-          ? []
-          : [
-              {
-                id: 'rateUp',
-                title: translate(lang, 'bots.thread.rateUp'),
-                icon: rating === 1 ? ('thumbUpFill' as const) : ('thumbUp' as const),
-              },
-              {
-                id: 'rateDown',
-                title: translate(lang, 'bots.thread.rateDown'),
-                icon: rating === -1 ? ('thumbDownFill' as const) : ('thumbDown' as const),
-              },
-            ],
-      ]),
-    [lang, readOnly, canRerun, allowRegenerate, rating],
-  );
-
-  const body = (
-    <View style={styles.aiBody}>
-      {thinking ? (
-        <Thinking
-          headline={showReasoning ? reasoningHeadline(msg.reasoning!) || undefined : undefined}
-          onOpen={showReasoning ? () => onOpenReasoning(msg) : undefined}
-          avatar={thinkingAvatar}
-        />
-      ) : null}
-      {/* with the first text / tool, not at the end — appearing then would push the whole reply down */}
-      {showReasoning && !thinking ? (
-        <ReasoningRow text={msg.reasoning!} active={live && !msg.text} onOpen={() => onOpenReasoning(msg)} />
-      ) : null}
-      {showTrace && !thinking ? <ToolsRow steps={trace} live={live} onOpen={() => onOpenTools(msg)} /> : null}
-      {!thinking && cardsAbove.length ? <ArtifactCards steps={cardsAbove} text={msg.text} live={live} /> : null}
-      {!thinking && msg.text ? (
-        <RichContext.Provider value={rich}>
-          <Markdown source={msg.text} animated={live} />
-        </RichContext.Provider>
-      ) : null}
-    </View>
-  );
-
-  // Outside the long-press menu: the ask_user form has text fields (a long
-  // press there places the caret, it mustn't lift the reply), and the rest is
-  // status, not content.
-  const tailItems = [
-    cardsBelow.length && !live ? (
-      <ArtifactCards key="cards" steps={cardsBelow} text={msg.text} live={live} followUp={followUp} onReply={reply} />
-    ) : null,
-    msg.error ? <ReplyError key="error" error={msg.error} onRetry={canRerun ? onRetry : undefined} /> : null,
-    !live && refCount && details.sources ? (
-      <DisclosureRow
-        key="refs"
-        icon="book"
-        label={t('chat.referencesCount', { n: refCount })}
-        onPress={() => onOpenRefs(msg)}
-      />
-    ) : null,
-    !live && msg.stopped && !msg.error ? (
-      <Text key="stopped" style={styles.metrics}>
-        {t('chat.stopped')}
-      </Text>
-    ) : !live && msg.metrics && !msg.error && details.tools ? (
-      <MetricsCaption key="metrics" m={msg.metrics} />
-    ) : null,
-  ];
-  const tail = tailItems.some(Boolean) ? <View style={styles.aiTail}>{tailItems}</View> : null;
-  // quiet: nothing on screen yet (or ever — a turn that only raised a card) → no row, no header
-  const blank = !thinking && !showReasoning && !showTrace && !cardsAbove.length && !msg.text && !tail;
-  if (quiet && blank) return null;
-  const entering = msg.fresh ? FadeIn.duration(220) : undefined;
-
-  const row = (
-    // keyed on the text size: mounted text re-measures when Dynamic Type changes (src/ui/font-scale.ts)
-    <Animated.View key={fontKey} entering={entering} style={styles.aiRow}>
-      {/* nothing to act on until text arrives */}
-      {msg.text ? (
-        <MessageMenu
-          streaming={live}
-          items={items}
-          text={msg.text}
-          onSelect={(id) => onAction(msg, id as MessageAction)}
-        >
-          {body}
-        </MessageMenu>
-      ) : (
-        body
-      )}
-      {tail}
-    </Animated.View>
-  );
-  return header ? (
-    <>
-      <Animated.View entering={entering}>{header}</Animated.View>
-      {row}
-    </>
-  ) : (
-    row
-  );
-});
-
-/* ----------------------------- user ----------------------------- */
-
-export const UserMessage = memo(function UserMessage({
-  msg,
-  readOnly,
-  onAction,
-  allowEdit = true,
-  footer,
-  author,
-}: {
-  msg: ChatMessage;
-  readOnly: boolean;
-  onAction: (msg: ChatMessage, action: MessageAction) => void;
-  /** Offer 编辑后重发 in the menu. */
-  allowEdit?: boolean;
-  /** Under the bubble, outside its menu (a pending send's status caption). Keep it stable — the row is memoised. */
-  footer?: React.ReactNode;
-  /**
-   * Someone else wrote it (a room): it sits on the left, and `header` puts their initial (in their
-   * `tint`) and name over it — the first of their messages in a row. Copy is all its menu offers.
-   */
-  author?: { name: string; tint: ColorValue; header: boolean };
-}) {
-  const { colors: c, hex } = useTheme();
-  const styles = useStyles(c);
-  const t = useT();
   const lang = usePrefs((s) => s.lang);
   const fontKey = useFontScaleKey();
-  // a turn's attached files ride in the text as a server-written fence
-  const { text, attachments } = useMemo(() => splitAttachments(msg.text), [msg.text]);
+  const text = message.content;
   const items = useMemo<MenuItem[]>(
     () => [
-      ...(text ? [{ id: 'copy', title: translate(lang, 'chat.actionCopy'), icon: 'copy' as const }] : []),
-      ...(readOnly || !text || !allowEdit || author
-        ? []
-        : [{ id: 'edit', title: translate(lang, 'chat.actionEditResend'), icon: 'pen' as const }]),
+      ...(text ? [{ id: 'copy', title: translate(lang, 'conversation.copy'), icon: 'copy' as const }] : []),
+      ...(text ? [{ id: 'quote', title: translate(lang, 'conversation.quote'), icon: 'quote' as const }] : []),
+      ...(editable ? [{ id: 'edit', title: translate(lang, 'conversation.edit'), icon: 'pen' as const }] : []),
     ],
-    [lang, readOnly, text, allowEdit, author],
+    [lang, text, editable],
   );
-  const images = msg.images ?? [];
-  const theirs = !!author;
+  const variables = message.skill ? Object.values(message.skill.variables).filter(Boolean) : [];
+  const meta = [
+    time,
+    message.edited_at ? t('conversation.edited') : '',
+    readBy?.length ? t('conversation.readBy', { n: readBy.length }) : '',
+  ]
+    .filter(Boolean)
+    .join(' · ');
 
   const content = (
-    <View style={[styles.userCol, theirs && styles.theirCol]}>
-      {images.length ? (
-        <View style={[styles.userImages, theirs && styles.theirWrap]}>
-          {images.map((im, i) =>
-            im.url ? (
-              <Touchable
-                key={im.id || i}
-                onPress={() => void openLink(uploadUrl(im.url!), hex.accent).catch(() => {})}
-                accessibilityRole="imagebutton"
-                accessibilityLabel={t('chat.image')}
-              >
-                <Image
-                  source={{ uri: uploadUrl(im.url) }}
-                  style={[styles.userThumb, images.length === 1 && styles.userThumbSingle]}
-                  contentFit="cover"
-                  transition={150}
-                />
-              </Touchable>
-            ) : (
-              <View key={im.id || i} style={[styles.userThumb, styles.userThumbEmpty]}>
-                <Icon name="image" size={22} color={c.tertiaryLabel} />
-              </View>
-            ),
-          )}
+    <View style={[styles.memberCol, !mine && styles.theirCol]}>
+      {message.quote ? (
+        <View style={styles.quote}>
+          <View style={styles.quoteBar} />
+          <Text numberOfLines={3} style={styles.quoteText}>
+            {message.quote.text}
+          </Text>
         </View>
       ) : null}
-      {msg.annotation ? (
-        <View style={styles.userQuote}>
-          <View style={styles.userQuoteBar} />
-          <Text numberOfLines={3} style={styles.userQuoteText}>
-            {msg.annotation}
+      {message.skill ? (
+        <View style={styles.skillTag}>
+          <Icon name="wand" size={12} color={c.accent} />
+          <Text numberOfLines={1} style={styles.skillText}>
+            {skillName ? `/${skillName}` : t('conversation.skill')}
+            {variables.length ? ` · ${variables.join(' · ')}` : ''}
           </Text>
         </View>
       ) : null}
       {text ? (
-        <View style={[styles.bubble, theirs && styles.theirBubble]}>
-          {/* inline marks like the web's bubble (an ask_user answer's **labels**, links, `code`) */}
-          <Text style={styles.userText}>
+        <View style={[styles.bubble, !mine && styles.theirBubble]}>
+          <Text style={styles.bubbleText}>
             <Inline text={text} />
           </Text>
-        </View>
-      ) : null}
-      {attachments.length ? (
-        <View style={[styles.userFiles, theirs && styles.theirWrap]}>
-          {attachments.map((f) => (
-            <AttachmentChip
-              key={f.id ?? f.key}
-              name={f.name}
-              size={f.size_bytes}
-              path={
-                f.id
-                  ? `/api/chat-files/${encodeURIComponent(f.id)}/content`
-                  : `/api/missions/attachments/download?key=${encodeURIComponent(f.key!)}`
-              }
-            />
-          ))}
         </View>
       ) : null}
     </View>
   );
 
   return (
-    <Animated.View
-      key={fontKey}
-      entering={msg.fresh ? FadeIn.duration(200) : undefined}
-      style={[styles.userRow, theirs && styles.theirRow, theirs && !author.header && styles.theirFollow]}
-    >
-      {author?.header ? (
+    <Animated.View key={fontKey} style={[styles.memberRow, !mine && styles.theirRow]}>
+      {!mine && showAuthor ? (
         <View style={styles.authorLine} accessibilityRole="header">
-          <InitialAvatar name={author.name} size={22} tint={author.tint} />
+          <MemberAvatar name={author.name} url={author.avatarUrl} size={22} />
           <Text style={styles.authorName} numberOfLines={1}>
             {author.name}
           </Text>
@@ -581,53 +300,246 @@ export const UserMessage = memo(function UserMessage({
         <NativeMenu
           trigger="longPress"
           items={items}
-          onSelect={(id) => onAction(msg, id as MessageAction)}
-          style={[styles.userMenu, theirs && styles.theirMenu]}
+          onSelect={(id) => onAction(message, id as MessageAction)}
+          style={[styles.memberMenu, !mine && styles.theirMenu]}
         >
           {content}
         </NativeMenu>
       ) : (
         content
       )}
-      {footer}
+      <MessageFiles ids={message.attachments} align={mine ? 'end' : 'start'} />
+      {meta ? (
+        <Text style={[styles.meta, mine ? styles.metaMine : null]} accessibilityLabel={readBy?.length ? t('conversation.readByNames', { names: readBy.join(t('common.listSep')) }) : undefined}>
+          {meta}
+        </Text>
+      ) : null}
     </Animated.View>
   );
 });
 
+/* ----------------------------- an Agent ----------------------------- */
+
+export const AgentReply = memo(function AgentReply({
+  message,
+  author,
+  showAuthor,
+  time,
+  canRegenerate,
+  readOnly,
+  followUp,
+  cards,
+  onAction,
+  onReply,
+  onOpenSteps,
+  onOpenSources,
+}: {
+  message: MessageItem;
+  author: { name: string; agent: AgentFace | null };
+  showAuthor: boolean;
+  time: string;
+  /** The settled reply of my latest exchange: it can be written again. */
+  canRegenerate: boolean;
+  readOnly: boolean;
+  /** My message that followed this reply (a ```confirm shows which choice was sent). */
+  followUp?: string;
+  /** The 「需要你」 cards of its run (already rendered — the screen owns them). */
+  cards?: React.ReactNode;
+  onAction: (message: MessageItem, action: MessageAction) => void;
+  /** Send a follow-up from a block in the reply (a ```confirm pick); false when it did not go. */
+  onReply: (text: string) => Promise<boolean>;
+  onOpenSteps: (message: MessageItem) => void;
+  onOpenSources: (message: MessageItem) => void;
+}) {
+  const { colors: c } = useTheme();
+  const styles = useStyles(c);
+  const t = useT();
+  const lang = usePrefs((s) => s.lang);
+  const fontKey = useFontScaleKey();
+  const { text, steps, live } = useReplyContent(message);
+  const rich = useMemo<RichEnv>(() => ({ reply: readOnly ? undefined : onReply, followUp }), [readOnly, onReply, followUp]);
+  const rating = message.my_rating;
+  const thinking = live && !text && !steps.length;
+  const failedSteps = steps.filter((step) => step.status === 'failed').length;
+  const runningSteps = steps.filter((step) => step.status === 'running').length;
+
+  const items = useMemo<MenuItem[]>(
+    () =>
+      menuSections([
+        [
+          { id: 'copy', title: translate(lang, 'conversation.copy'), icon: 'copy' },
+          { id: 'share', title: translate(lang, 'conversation.share'), icon: 'share' },
+          ...(readOnly ? [] : [{ id: 'quote', title: translate(lang, 'conversation.quote'), icon: 'quote' as const }]),
+        ],
+        [
+          {
+            id: 'rateUp',
+            title: translate(lang, 'conversation.helpful'),
+            icon: rating === 1 ? ('thumbUpFill' as const) : ('thumbUp' as const),
+          },
+          {
+            id: 'rateDown',
+            title: translate(lang, 'conversation.notHelpful'),
+            icon: rating === -1 ? ('thumbDownFill' as const) : ('thumbDown' as const),
+          },
+        ],
+        [
+          { id: 'newChat', title: translate(lang, 'conversation.newChatFromHere'), icon: 'branch' },
+          ...(canRegenerate && !readOnly
+            ? [{ id: 'regenerate', title: translate(lang, 'conversation.regenerate'), icon: 'refresh' as const }]
+            : []),
+        ],
+      ]),
+    [lang, readOnly, canRegenerate, rating],
+  );
+
+  const body = (
+    <View style={styles.replyBody}>
+      {thinking ? <Thinking agent={author.agent} /> : null}
+      {text ? (
+        <RichContext.Provider value={rich}>
+          <Markdown source={text} animated={live} />
+        </RichContext.Provider>
+      ) : null}
+    </View>
+  );
+
+  const sources = !live && message.citations.length ? message.citations : null;
+  return (
+    <Animated.View key={fontKey} entering={live ? FadeIn.duration(200) : undefined} style={styles.replyRow}>
+      {showAuthor ? (
+        <View style={styles.replyAuthor} accessibilityRole="header">
+          <AgentAvatar agent={author.agent} size={22} state={live ? 'thinking' : undefined} />
+          <Text style={styles.authorName} numberOfLines={1}>
+            {author.name}
+          </Text>
+          {time ? <Text style={styles.authorTime}>{time}</Text> : null}
+        </View>
+      ) : null}
+      {text && !live ? (
+        <MessageMenu items={items} text={text} onSelect={(id) => onAction(message, id as MessageAction)}>
+          {body}
+        </MessageMenu>
+      ) : (
+        body
+      )}
+      <View style={styles.replyTail}>
+        <MessageFiles ids={message.attachments} align="start" />
+        {cards}
+        {sources ? (
+          <Pressable
+            onPress={() => onOpenSources(message)}
+            accessibilityRole="button"
+            accessibilityLabel={t('conversation.sourcesCount', { n: sources.length })}
+            style={({ pressed }) => [styles.sources, pressed && { opacity: 0.5 }]}
+          >
+            <Text style={styles.sourcesLabel}>{t('conversation.sources')}</Text>
+            {sources.slice(0, 3).map((source) => (
+              <View key={`${source.kind}:${source.id}`} style={styles.sourceChip}>
+                <Icon name={source.kind === 'doc' ? 'book' : 'globe'} size={11} color={c.secondaryLabel} />
+                <Text numberOfLines={1} style={styles.sourceText}>
+                  {sourceLabel(source)}
+                </Text>
+              </View>
+            ))}
+            {sources.length > 3 ? <Text style={styles.sourcesMore}>+{sources.length - 3}</Text> : null}
+          </Pressable>
+        ) : null}
+        {steps.length ? (
+          <DisclosureRow
+            icon={failedSteps ? 'alert' : 'wrench'}
+            busy={live && runningSteps > 0}
+            tone={failedSteps ? 'danger' : undefined}
+            label={stepsLabel(t, steps)}
+            onPress={() => onOpenSteps(message)}
+          />
+        ) : null}
+        {message.status === 'failed' ? <ReplyError /> : null}
+        {message.status === 'stopped' ? <Text style={styles.note}>{t('conversation.stopped')}</Text> : null}
+        {rating ? (
+          <View style={styles.rated} accessible accessibilityLabel={t(rating === 1 ? 'conversation.ratedUp' : 'conversation.ratedDown')}>
+            <Icon name={rating === 1 ? 'thumbUpFill' : 'thumbDownFill'} size={13} color={c.tertiaryLabel} />
+          </View>
+        ) : null}
+      </View>
+    </Animated.View>
+  );
+});
+
+/** One line for a reply's process: the step that ran, or the first of several and their count. */
+function stepsLabel(t: ReturnType<typeof useT>, steps: readonly StepView[]): string {
+  const first = steps[0]!.summary || steps[0]!.tool;
+  return steps.length === 1 ? first : t('conversation.stepsMore', { first, n: steps.length });
+}
+
+/** A source as its label: a web page by its host, anything else by its title. */
+export function sourceLabel(source: { title: string; url?: string }): string {
+  if (source.url && /^https?:\/\//i.test(source.url)) {
+    try {
+      return new URL(source.url).host.replace(/^www\./, '');
+    } catch {
+      return source.title;
+    }
+  }
+  return source.title;
+}
+
+/* ----------------------------- an event ----------------------------- */
+
+export const EventLine = memo(function EventLine({ text }: { text: string }) {
+  const { colors: c } = useTheme();
+  const styles = useStyles(c);
+  if (!text.trim()) return null;
+  return (
+    <View style={styles.event} accessibilityRole="text">
+      <Text style={styles.eventText}>
+        <Inline text={text} />
+      </Text>
+    </View>
+  );
+});
+
 const useStyles = makeStyles((c) => ({
-  /* assistant */
-  aiRow: { paddingTop: space.xs, paddingBottom: space.lg, gap: space.xs },
-  aiBody: { paddingHorizontal: space.margin, gap: space.xs },
-  aiTail: { paddingHorizontal: space.margin, gap: space.xs },
-  thinking: {
+  /* an Agent */
+  replyRow: { paddingTop: space.xs, paddingBottom: space.lg, gap: space.xs },
+  replyAuthor: {
     flexDirection: 'row',
     alignItems: 'center',
-    alignSelf: 'flex-start',
     gap: space.sm,
-    paddingVertical: space.xs,
+    paddingHorizontal: space.margin,
+    paddingTop: space.sm,
   },
-  thinkingTexts: { flexShrink: 1 },
-  thinkingLine: { flexDirection: 'row', alignItems: 'center', gap: space.xs + 2 },
+  replyBody: { paddingHorizontal: space.margin, gap: space.xs },
+  replyTail: { paddingHorizontal: space.margin, gap: space.sm, alignItems: 'flex-start' },
+  authorName: { flexShrink: 1, ...typo.subheadline, fontWeight: weight.semibold, color: c.label },
+  authorTime: { ...typo.caption1, color: c.tertiaryLabel },
+  thinking: { flexDirection: 'row', alignItems: 'center', gap: space.sm, paddingVertical: space.xs },
   thinkingText: { ...typo.subheadline, color: c.secondaryLabel },
-  thinkingHeadline: { ...typo.footnote, color: c.tertiaryLabel, marginTop: 1 },
-  disclosure: {
+  disclosure: { flexDirection: 'row', alignItems: 'center', gap: space.xs + 2, minHeight: 30, maxWidth: '100%' },
+  disclosureSpinner: { transform: [{ scale: 0.8 }] },
+  disclosureText: { flexShrink: 1, ...typo.subheadline },
+  disclosureDetail: { flexShrink: 1, ...typo.footnote, color: c.tertiaryLabel },
+  sources: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: space.xs + 2, minHeight: 30 },
+  sourcesLabel: { ...typo.footnote, color: c.secondaryLabel },
+  sourceChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    alignSelf: 'flex-start',
-    gap: space.xs + 2,
-    minHeight: 30,
+    gap: 4,
+    maxWidth: 180,
+    paddingVertical: 3,
+    paddingHorizontal: space.sm,
+    borderRadius: radius.full,
+    backgroundColor: c.tertiaryFill,
   },
-  // a row with a trailing detail spans the width (the detail truncates)
-  disclosureWide: { alignSelf: 'stretch' },
-  disclosureSpinner: { transform: [{ scale: 0.8 }] },
-  disclosureText: { ...typo.subheadline, color: c.secondaryLabel },
-  disclosureDetail: { flex: 1, ...typo.footnote, color: c.tertiaryLabel, marginLeft: space.xs },
-  metrics: { ...typo.caption1, color: c.tertiaryLabel, marginTop: space.xs, fontVariant: ['tabular-nums'] },
+  sourceText: { flexShrink: 1, ...typo.caption1, color: c.label },
+  sourcesMore: { ...typo.caption1, color: c.secondaryLabel },
+  note: { ...typo.footnote, color: c.tertiaryLabel },
+  rated: { paddingVertical: 2 },
   error: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: space.sm,
-    marginTop: space.xs,
+    alignSelf: 'stretch',
     paddingVertical: space.sm + 2,
     paddingHorizontal: space.md,
     borderRadius: radius.md,
@@ -635,20 +547,44 @@ const useStyles = makeStyles((c) => ({
     ...squircle,
   },
   errorText: { flex: 1, ...typo.footnote, color: c.red },
-  errorClose: { width: HIT, minHeight: HIT, alignItems: 'center', justifyContent: 'center' },
 
-  /* user */
-  userRow: { paddingHorizontal: space.margin, paddingTop: space.xs, paddingBottom: space.md, alignItems: 'flex-end' },
-  userMenu: { alignSelf: 'flex-end', maxWidth: '84%' },
-  userCol: { alignItems: 'flex-end', gap: space.xs + 2 },
-  userImages: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'flex-end', gap: space.xs + 2 },
-  userThumb: { width: 96, height: 96, borderRadius: radius.lg, backgroundColor: c.tertiaryFill, ...squircle },
-  userThumbSingle: { width: 200, height: 200 },
-  userThumbEmpty: { alignItems: 'center', justifyContent: 'center' },
-  userQuote: { flexDirection: 'row', gap: space.sm, maxWidth: '100%', paddingRight: space.xs },
-  userQuoteBar: { width: 3, borderRadius: 1.5, backgroundColor: c.accent },
-  userQuoteText: { flexShrink: 1, ...typo.footnote, color: c.secondaryLabel },
-  userFiles: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'flex-end', gap: space.xs + 2 },
+  /* files */
+  files: { flexDirection: 'row', flexWrap: 'wrap', gap: space.xs + 2, alignSelf: 'stretch' },
+  thumb: { width: 96, height: 96, borderRadius: radius.lg, backgroundColor: c.tertiaryFill, ...squircle },
+  thumbSingle: { width: 200, height: 200 },
+  chip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.xs + 1,
+    maxWidth: '100%',
+    minHeight: 32,
+    paddingVertical: space.xs + 1,
+    paddingHorizontal: space.sm + 2,
+    borderRadius: radius.full,
+    backgroundColor: c.tertiaryFill,
+  },
+  chipLoading: { width: 120 },
+  chipName: { ...typo.footnote, color: c.label, flexShrink: 1 },
+  chipSize: { ...typo.caption1, color: c.secondaryLabel },
+
+  /* a person */
+  memberRow: { paddingHorizontal: space.margin, paddingTop: space.xs, paddingBottom: space.md, alignItems: 'flex-end', gap: space.xs },
+  memberMenu: { alignSelf: 'flex-end', maxWidth: '84%' },
+  memberCol: { alignItems: 'flex-end', gap: space.xs + 2 },
+  quote: { flexDirection: 'row', gap: space.sm, maxWidth: '100%', paddingRight: space.xs },
+  quoteBar: { width: 3, borderRadius: 1.5, backgroundColor: c.accent },
+  quoteText: { flexShrink: 1, ...typo.footnote, color: c.secondaryLabel },
+  skillTag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.xs,
+    maxWidth: '100%',
+    paddingVertical: 3,
+    paddingHorizontal: space.sm,
+    borderRadius: radius.full,
+    backgroundColor: c.accentFill,
+  },
+  skillText: { flexShrink: 1, ...typo.footnote, color: c.accent },
   bubble: {
     backgroundColor: c.bubble,
     borderRadius: radius.bubble,
@@ -656,15 +592,16 @@ const useStyles = makeStyles((c) => ({
     paddingHorizontal: space.md + 2,
     ...squircle,
   },
-  userText: { ...typo.body, color: c.label },
-  /* someone else's message (a room) */
+  bubbleText: { ...typo.body, color: c.label },
+  meta: { ...typo.caption1, color: c.tertiaryLabel },
+  metaMine: { textAlign: 'right' },
   theirRow: { alignItems: 'flex-start' },
-  // the next of their messages in a row sits closer under the one before
-  theirFollow: { paddingTop: 0 },
   theirMenu: { alignSelf: 'flex-start' },
   theirCol: { alignItems: 'flex-start' },
-  theirWrap: { justifyContent: 'flex-start' },
   theirBubble: { backgroundColor: c.tertiaryFill },
-  authorLine: { flexDirection: 'row', alignItems: 'center', gap: space.sm, paddingTop: space.sm, paddingBottom: space.xs },
-  authorName: { flexShrink: 1, ...typo.subheadline, fontWeight: weight.semibold, color: c.label },
+  authorLine: { flexDirection: 'row', alignItems: 'center', gap: space.sm, paddingTop: space.sm },
+
+  /* an event */
+  event: { paddingHorizontal: space.xxl, paddingVertical: space.sm, alignItems: 'center' },
+  eventText: { ...typo.footnote, color: c.secondaryLabel, textAlign: 'center' },
 }));
