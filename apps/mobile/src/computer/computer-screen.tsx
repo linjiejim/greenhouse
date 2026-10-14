@@ -11,10 +11,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Text, View } from 'react-native';
 import { WebView } from 'react-native-webview';
-import { useT } from '../../lib/i18n';
-import { makeStyles, radius, space, typo, useTheme } from '../../theme';
-import { NativeButton } from '../../ui/button';
-import { Icon, Spinner } from '../../ui/core';
+import { useT } from '../lib/i18n';
+import { makeStyles, radius, space, typo, useTheme } from '../theme';
+import { NativeButton } from '../ui/button';
+import { Icon, Spinner } from '../ui/core';
 import type { ComputerScreenState } from './use-computer-screen';
 import { viewerHtml } from './viewer-html';
 
@@ -48,22 +48,22 @@ export function ComputerScreenView({
     connection === 'connected' ? null : connection === 'failed' ? (
       <View style={styles.center}>
         <Icon name="alertCircle" size={22} color={c.secondaryLabel} />
-        <Text style={styles.overlayText}>{t('bots.computer.connectFailed')}</Text>
-        <NativeButton label={t('bots.computer.reconnect')} onPress={screen.reconnect} />
+        <Text style={styles.overlayText}>{t('computer.connectFailed')}</Text>
+        <NativeButton label={t('computer.reconnect')} onPress={screen.reconnect} />
       </View>
     ) : connection === 'paused' ? (
-      <Text style={styles.overlayText}>{t('bots.computer.paused')}</Text>
+      <Text style={styles.overlayText}>{t('computer.paused')}</Text>
     ) : (
       <View style={styles.row}>
         <Spinner />
         <Text style={styles.overlayText}>
-          {t(connection === 'reconnecting' ? 'bots.computer.reconnecting' : 'bots.computer.connecting')}
+          {t(connection === 'reconnecting' ? 'computer.reconnecting' : 'computer.connecting')}
         </Text>
       </View>
     );
 
   return (
-    <View style={styles.root} testID="computer-screen" accessibilityLabel={t('bots.computer.tabScreen')}>
+    <View style={styles.root} testID="computer-screen" accessibilityLabel={t('computer.tabScreen')}>
       <WebView
         ref={screen.webRef}
         source={source}
@@ -86,9 +86,9 @@ export function ComputerScreenView({
       {hint ? (
         <View style={styles.hint} accessibilityRole="alert">
           <Text style={styles.hintText} numberOfLines={2}>
-            {t('bots.computer.viewOnlyHint')}
+            {t('computer.viewOnlyHint')}
           </Text>
-          {onTakeOver ? <NativeButton label={t('bots.computer.takeOver')} size="small" variant="prominent" onPress={onTakeOver} /> : null}
+          {onTakeOver ? <NativeButton label={t('computer.takeOver')} size="small" variant="prominent" onPress={onTakeOver} /> : null}
         </View>
       ) : null}
     </View>

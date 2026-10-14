@@ -1,29 +1,22 @@
 /**
- * The live screen's connection, owned by the app (the page in ./viewer-html.ts
- * only draws): mint a one-time view ticket with the member's bearer token, hand
- * the page the socket URL, and keep it honest —
+ * The live screen's connection, owned by the app (the page in ./viewer-html.ts only draws):
+ * mint a one-time ticket with the member's bearer token (`view` to watch, `control` to take
+ * over — the server drops input on a view ticket), hand the page the socket URL, and keep it
+ * honest:
  *
- * - every (re)connect mints a fresh ticket (60 s, single use), so a dropped
- *   socket never retries with a spent one;
- * - unexpected drops back off 1 s → 15 s, and after MAX_RETRIES the member
- *   gets "Reconnect" (the web's numbers: computer-screen.tsx, pinned by a
- *   tripwire in vendor.parity.test.ts);
- * - the app in the background drops the socket at once (iOS suspends the
- *   WebView anyway); back in front it reconnects. A member who held the
- *   computer and stayed away over three minutes comes back watching — the
- *   server returned the lease, and the status hook follows it;
- * - the lease is followed without reconnecting (the server re-checks every
- *   input message; `viewOnly` keeps the page honest);
- * - the ticket is for one computer — `bot`'s (one per Agent, null = the main
- *   Agent's): another `bot` is another connection.
+ * - every (re)connect mints a fresh ticket (one minute, one socket), so a dropped socket never
+ *   retries with a spent one;
+ * - watching and taking over are the same picture: switching reconnects with the other ticket;
+ * - unexpected drops back off 1 s → 15 s, and after MAX_RETRIES the member gets "Reconnect";
+ * - the app in the background drops the socket at once (iOS suspends the WebView anyway); back
+ *   in front it reconnects.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AppState } from 'react-native';
 import type { WebView, WebViewMessageEvent } from 'react-native-webview';
-import { computerViewToken, computerViewerUrl } from '../../api/bots';
-import { getApiBase } from '../../store/stations';
-import type { ComputerBot } from './target';
+import { computerSocketUrl, computerTicket } from '../api/computer';
+import { getApiBase } from '../store/stations';
 import { readViewerMessage, viewerCommand, type HelperKey } from './viewer-html';
 
 /** Reconnect attempts before the member gets a manual "Reconnect". */
@@ -45,21 +38,23 @@ export interface ComputerScreenState {
   /** After "failed": start over. */
   reconnect: () => void;
   sendKey: (key: HelperKey) => void;
+  /** Types text into whatever has the focus on the computer (key by key). */
+  type: (text: string) => void;
   setZoom: (to: 'fit' | 'in' | 'out') => void;
 }
 
 export function useComputerScreen({
-  bot,
+  agentId,
   enabled,
-  viewOnly,
+  control,
   onTapWhileWatching,
   onDisconnected,
 }: {
-  /** Whose computer (null = the main Agent's). */
-  bot: ComputerBot;
+  agentId: string;
   /** The computer runs and this screen is on view. */
   enabled: boolean;
-  viewOnly: boolean;
+  /** Taken over: input goes to the computer. */
+  control: boolean;
   onTapWhileWatching?: () => void;
   /** The socket dropped — the computer may have stopped; refresh its status. */
   onDisconnected?: () => void;
@@ -70,7 +65,6 @@ export function useComputerScreen({
   const [ready, setReady] = useState(false);
   const [active, setActive] = useState(AppState.currentState === 'active');
   const [generation, setGeneration] = useState(0);
-  const viewOnlyRef = useRef(viewOnly);
   const handlers = useRef({ onTapWhileWatching, onDisconnected });
   handlers.current = { onTapWhileWatching, onDisconnected };
   /** The live attempt's callbacks for page messages (null between attempts). */
@@ -106,16 +100,16 @@ export function useComputerScreen({
     };
 
     const connect = async () => {
-      const ticket = await computerViewToken(bot);
+      const ticket = await computerTicket(agentId, control ? 'control' : 'view');
       if (cancelled) return;
       if (!ticket.ok) {
-        // Refused (computer stopped, Bots off) or offline: same recovery — refresh, back off, retry.
+        // Refused (the computer stopped, no access) or offline: refresh, back off, retry.
         handlers.current.onDisconnected?.();
         retry();
         return;
       }
-      inject(viewerCommand('viewOnly', viewOnlyRef.current));
-      inject(viewerCommand('connect', computerViewerUrl(getApiBase(), ticket.value.token)));
+      inject(viewerCommand('viewOnly', !control));
+      inject(viewerCommand('connect', computerSocketUrl(getApiBase(), ticket.data.ticket)));
     };
 
     attempt.current = {
@@ -136,13 +130,7 @@ export function useComputerScreen({
       clearTimeout(timer);
       inject(viewerCommand('disconnect'));
     };
-  }, [ready, enabled, active, generation, inject, bot]);
-
-  // Follow the lease without reconnecting.
-  useEffect(() => {
-    viewOnlyRef.current = viewOnly;
-    if (ready) inject(viewerCommand('viewOnly', viewOnly));
-  }, [viewOnly, ready, inject]);
+  }, [ready, enabled, active, generation, inject, agentId, control]);
 
   const onMessage = useCallback((event: WebViewMessageEvent) => {
     const message = readViewerMessage(event.nativeEvent.data);
@@ -169,7 +157,8 @@ export function useComputerScreen({
 
   const reconnect = useCallback(() => setGeneration((n) => n + 1), []);
   const sendKey = useCallback((key: HelperKey) => inject(viewerCommand('key', key)), [inject]);
+  const type = useCallback((text: string) => inject(viewerCommand('type', text)), [inject]);
   const setZoom = useCallback((to: 'fit' | 'in' | 'out') => inject(viewerCommand('zoom', to)), [inject]);
 
-  return { connection, zoom, webRef, onMessage, reconnect, sendKey, setZoom };
+  return { connection, zoom, webRef, onMessage, reconnect, sendKey, type, setZoom };
 }

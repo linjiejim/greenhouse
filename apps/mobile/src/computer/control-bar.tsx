@@ -7,20 +7,20 @@
 
 import React, { useEffect, useState } from 'react';
 import { ScrollView, Text, View } from 'react-native';
-import { useT, type TranslationKey } from '../../lib/i18n';
-import { makeStyles, radius, space, typo, useTheme, weight } from '../../theme';
-import { NativeButton } from '../../ui/button';
-import { Icon, Touchable, type IconName } from '../../ui/core';
+import { useT, type TranslationKey } from '../lib/i18n';
+import { makeStyles, radius, space, typo, useTheme, weight } from '../theme';
+import { NativeButton } from '../ui/button';
+import { Icon, Touchable, type IconName } from '../ui/core';
 import { heldFor } from './model';
 import type { HelperKey } from './viewer-html';
 
 const KEYS: ReadonlyArray<[HelperKey, TranslationKey]> = [
-  ['escape', 'bots.computer.keyEscape'],
-  ['tab', 'bots.computer.keyTab'],
-  ['backspace', 'bots.computer.keyBackspace'],
-  ['enter', 'bots.computer.keyEnter'],
-  ['pageUp', 'bots.computer.keyPageUp'],
-  ['pageDown', 'bots.computer.keyPageDown'],
+  ['escape', 'computer.keyEscape'],
+  ['tab', 'computer.keyTab'],
+  ['backspace', 'computer.keyBackspace'],
+  ['enter', 'computer.keyEnter'],
+  ['pageUp', 'computer.keyPageUp'],
+  ['pageDown', 'computer.keyPageDown'],
 ];
 
 function IconButton({ icon, label, onPress }: { icon: IconName; label: string; onPress: () => void }) {
@@ -45,8 +45,8 @@ export function ControlBar({
   onZoom,
 }: {
   inControl: boolean;
-  /** When the member took the computer (ISO). */
-  since: string | null;
+  /** When the member took the computer (ms). */
+  since: number | null;
   busy: 'takeover' | 'handback' | 'type' | null;
   bottomInset: number;
   onTakeOver: () => void;
@@ -67,9 +67,9 @@ export function ControlBar({
 
   const zoom = (
     <View style={styles.zoom}>
-      <IconButton icon="zoomOut" label={t('bots.computer.zoomOut')} onPress={() => onZoom('out')} />
-      <IconButton icon="expand" label={t('bots.computer.zoomFit')} onPress={() => onZoom('fit')} />
-      <IconButton icon="zoomIn" label={t('bots.computer.zoomIn')} onPress={() => onZoom('in')} />
+      <IconButton icon="zoomOut" label={t('computer.zoomOut')} onPress={() => onZoom('out')} />
+      <IconButton icon="expand" label={t('computer.zoomFit')} onPress={() => onZoom('fit')} />
+      <IconButton icon="zoomIn" label={t('computer.zoomIn')} onPress={() => onZoom('in')} />
     </View>
   );
 
@@ -92,14 +92,14 @@ export function ControlBar({
           </ScrollView>
           <View style={styles.row}>
             <Text style={styles.held} numberOfLines={1}>
-              {t('bots.computer.inControlFor', { time: heldFor(since, now) })}
+              {t('computer.inControlFor', { time: heldFor(since, now) })}
             </Text>
             {zoom}
           </View>
           <View style={styles.row}>
             <View style={styles.half}>
               <NativeButton
-                label={t('bots.computer.type')}
+                label={t('computer.type')}
                 icon="keyboard"
                 size="large"
                 fullWidth
@@ -110,7 +110,7 @@ export function ControlBar({
             </View>
             <View style={styles.half}>
               <NativeButton
-                label={t('bots.computer.handBack')}
+                label={t('computer.handBack')}
                 icon="hand"
                 variant="prominent"
                 size="large"
@@ -126,12 +126,12 @@ export function ControlBar({
         <>
           <View style={styles.row}>
             <Text style={styles.hint} numberOfLines={2}>
-              {t('bots.computer.watchHint')}
+              {t('computer.watchHint')}
             </Text>
             {zoom}
           </View>
           <NativeButton
-            label={t('bots.computer.takeOver')}
+            label={t('computer.takeOver')}
             icon="hand"
             variant="prominent"
             size="large"

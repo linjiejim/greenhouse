@@ -1,14 +1,13 @@
 /**
- * The page the computer screen's WebView runs (spec
- * docs/specs/20261011-mobile-computer.md §3.1): noVNC (./novnc.generated.ts,
+ * The page the computer screen's WebView runs: noVNC (./novnc.generated.ts,
  * built from the web's own @novnc/novnc) and a small viewer around it. Pure —
  * no React — so the root vitest can read the page and the message shapes.
  *
  * Who does what:
  * - The app (./use-computer-screen.ts) owns the connection: it mints each
- *   one-time view ticket with the member's bearer token and hands the page only
- *   the `wss://…?token=` URL; it backs off, pauses in the background and
- *   follows the take-over lease.
+ *   one-time ticket (`view` or `control`) with the member's bearer token and
+ *   hands the page only the `wss://…?ticket=` URL; it backs off and pauses in
+ *   the background.
  * - The page owns the pixels and the fingers. noVNC's own touch handling is
  *   kept away from the canvas (it calls preventDefault on every touch, and a
  *   pinch would zoom the remote browser): the viewer captures touches on the
@@ -78,6 +77,7 @@ export function readViewerMessage(data: string): ViewerMessage | null {
 export function viewerCommand(name: 'connect', url: string): string;
 export function viewerCommand(name: 'viewOnly', on: boolean): string;
 export function viewerCommand(name: 'key', key: HelperKey): string;
+export function viewerCommand(name: 'type', text: string): string;
 export function viewerCommand(name: 'zoom', to: 'fit' | 'in' | 'out'): string;
 export function viewerCommand(name: 'disconnect'): string;
 export function viewerCommand(name: string, arg?: unknown): string {
@@ -293,6 +293,16 @@ const VIEWER_JS = String.raw`
     key: function (name) {
       var k = KEYS[name];
       if (rfb && k) rfb.sendKey(k[0], k[1]);
+    },
+    // Text into whatever has the focus, key by key: Latin-1 as itself, the rest as Unicode
+    // keysyms (0x1000000 + code point), a line break as Enter.
+    type: function (text) {
+      if (!rfb || viewOnly) return;
+      Array.from(String(text)).forEach(function (ch) {
+        if (ch === '\n') { rfb.sendKey(0xff0d, 'Enter'); return; }
+        var cp = ch.codePointAt(0);
+        rfb.sendKey(cp < 0x100 ? cp : 0x1000000 + cp, null);
+      });
     },
     zoom: function (to) {
       var cx = stage.clientWidth / 2, cy = stage.clientHeight / 2;
