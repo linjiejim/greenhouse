@@ -99,7 +99,10 @@ test('two tabs edit one doc: leaving asks first, and the later save says who sav
   const plan = await doc(request, { title: 'Release plan', content: 'Ship on Monday.', space: 'team' });
   const second = await context.newPage();
   await open(page, `/#/knowledge/${plan.id}?edit=1`);
-  await open(second, `/#/knowledge/${plan.id}?edit=1`);
+  // The second tab reads first and then edits, so Back has somewhere to go inside the app.
+  await open(second, `/#/knowledge/${plan.id}`);
+  await second.getByRole('main').getByRole('button', { name: '编辑' }).click();
+  await expect(second).toHaveURL(/\?edit=1$/);
 
   await editorBody(page).click();
   await page.keyboard.press('End');
@@ -117,6 +120,10 @@ test('two tabs edit one doc: leaving asks first, and the later save says who sav
   // Unsaved work: leaving asks, and staying keeps the draft.
   await second.getByRole('button', { name: '知识库', exact: true }).click();
   const leave = second.getByRole('alertdialog', { name: '放弃未保存的更改？' });
+  await leave.getByRole('button', { name: '继续编辑' }).click();
+  await expect(second).toHaveURL(/\?edit=1$/);
+  await expect(editorBody(second)).toContainText('Or Wednesday.');
+  await second.goBack();
   await leave.getByRole('button', { name: '继续编辑' }).click();
   await expect(second).toHaveURL(/\?edit=1$/);
   await expect(editorBody(second)).toContainText('Or Wednesday.');

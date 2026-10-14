@@ -179,8 +179,8 @@ export function href(route: Route): string {
   }
 }
 
-/** A page holding unsaved work: in-app moves ask it first (holdNavigation). */
-let holder: ((to: string) => void) | null = null;
+/** A page holding unsaved work (holdNavigation): where it is, and what to ask before leaving it. */
+let hold: { at: string; attempt: (to: string) => void } | null = null;
 
 /**
  * Holds navigation while a page has unsaved work: links, navigate(), Back and Forward ask
@@ -189,47 +189,37 @@ let holder: ((to: string) => void) | null = null;
  * Returns the release.
  */
 export function holdNavigation(onAttempt: (to: string) => void): () => void {
-  const heldAt = location.hash;
-  const attempt = (to: string) => onAttempt(to);
-  holder = attempt;
+  const mine = { at: location.hash, attempt: (to: string) => onAttempt(to) };
+  hold = mine;
   const onClick = (event: MouseEvent) => {
-    if (holder !== attempt || event.defaultPrevented || event.button !== 0) return;
+    if (hold !== mine || event.defaultPrevented || event.button !== 0) return;
     if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
     const link = (event.target as Element | null)?.closest?.('a[href^="#"]');
     if (!link || link.closest('[contenteditable="true"]') || link.getAttribute('target')) return;
     const to = link.getAttribute('href') ?? '';
-    if (to === heldAt) return;
+    if (to === mine.at) return;
     event.preventDefault();
-    attempt(to);
-  };
-  // Back and Forward cannot be stopped, only undone: put the page back and ask.
-  const onHashChange = () => {
-    if (holder !== attempt || location.hash === heldAt) return;
-    const to = location.hash;
-    history.pushState(history.state, '', heldAt);
-    attempt(to);
+    mine.attempt(to);
   };
   const onBeforeUnload = (event: BeforeUnloadEvent) => {
     event.preventDefault();
     event.returnValue = '';
   };
   document.addEventListener('click', onClick, true);
-  window.addEventListener('hashchange', onHashChange);
   window.addEventListener('beforeunload', onBeforeUnload);
   return () => {
     document.removeEventListener('click', onClick, true);
-    window.removeEventListener('hashchange', onHashChange);
     window.removeEventListener('beforeunload', onBeforeUnload);
-    if (holder === attempt) holder = null;
+    if (hold === mine) hold = null;
   };
 }
 
 export function navigate(to: Route | string, options: { replace?: boolean; force?: boolean } = {}) {
   const target = typeof to === 'string' ? to : href(to);
   if (target === location.hash) return;
-  if (holder && !options.force) return holder(target);
+  if (hold && !options.force) return hold.attempt(target);
   // Leaving anyway: the hold lets this one through.
-  if (options.force) holder = null;
+  if (options.force) hold = null;
   if (options.replace) {
     history.replaceState(history.state, '', target);
     window.dispatchEvent(new HashChangeEvent('hashchange'));
@@ -238,19 +228,30 @@ export function navigate(to: Route | string, options: { replace?: boolean; force
   }
 }
 
+/**
+ * Back and Forward cannot be stopped, only undone: while a page holds, the address goes back to it
+ * before anyone reads the new route, and the page is asked. True when it was held.
+ */
+function held(): boolean {
+  if (!hold || location.hash === hold.at) return false;
+  const to = location.hash;
+  history.pushState(history.state, '', hold.at);
+  hold.attempt(to);
+  return true;
+}
+
 function subscribe(onChange: () => void) {
-  window.addEventListener('hashchange', onChange);
-  return () => window.removeEventListener('hashchange', onChange);
+  const listener = () => {
+    if (!held()) onChange();
+  };
+  window.addEventListener('hashchange', listener);
+  return () => window.removeEventListener('hashchange', listener);
 }
 
 let cached: { hash: string; route: Route } | null = null;
-/** The route before: a move that holdNavigation undid gets the very same object back, so nothing re-renders. */
-let before: { hash: string; route: Route } | null = null;
 function snapshot(): Route {
-  if (cached?.hash === location.hash) return cached.route;
-  if (before?.hash === location.hash) [cached, before] = [before, cached];
-  else [cached, before] = [{ hash: location.hash, route: parse(location.hash) }, cached];
-  return cached!.route;
+  if (cached?.hash !== location.hash) cached = { hash: location.hash, route: parse(location.hash) };
+  return cached.route;
 }
 
 export function useRoute(): Route {
