@@ -137,6 +137,8 @@ export const agentComputers = pgTable(
     leaseController: text('lease_controller', { enum: ['member', 'agent'] }),
     leaseHolder: text('lease_holder'),
     leaseUntil: at('lease_until'),
+    backgroundRunId: text('background_run_id'),
+    egressRestricted: boolean('egress_restricted').notNull().default(false),
     lastActiveAt: at('last_active_at'),
     lastStartedAt: at('last_started_at'),
     createdAt: createdAt(),

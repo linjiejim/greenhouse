@@ -183,6 +183,22 @@ export default function AgentProfile() {
             />
           </ListSection>
         ) : null}
+        {mine && !archived ? (
+          <ListSection>
+            <ListRow
+              title={t('integration.schedules')}
+              icon="clock"
+              accessory="chevron"
+              onPress={() => router.push({ pathname: '/agents/schedules', params: { id: agent.id } })}
+            />
+            <ListRow
+              title={t('integration.standing')}
+              icon="shieldCheck"
+              accessory="chevron"
+              onPress={() => router.push({ pathname: '/agents/standing', params: { id: agent.id } })}
+            />
+          </ListSection>
+        ) : null}
         <ListSection header={t('agents.instructions')}>
           <View style={styles.instructions}>
             <Text style={styles.instructionsText} selectable numberOfLines={showAll || !long ? undefined : 8}>

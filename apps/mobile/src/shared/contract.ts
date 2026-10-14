@@ -620,6 +620,8 @@ export type RegisterPushDeviceInput = {
 export type RunView = {
   id: string;
   agent_id: string;
+  parent_run_id: string | null;
+  summary: string | null;
   title: string;
   status: 'failed' | 'queued' | 'running' | 'canceled' | 'waiting' | 'succeeded';
   source: 'record' | 'conversation' | 'schedule' | 'automation' | 'handoff' | 'app';
@@ -635,6 +637,8 @@ export type RunView = {
 export type RunDetail = {
   id: string;
   agent_id: string;
+  parent_run_id: string | null;
+  summary: string | null;
   title: string;
   status: 'failed' | 'queued' | 'running' | 'canceled' | 'waiting' | 'succeeded';
   source: 'record' | 'conversation' | 'schedule' | 'automation' | 'handoff' | 'app';
@@ -645,6 +649,7 @@ export type RunDetail = {
   started_at: string | null;
   finished_at: string | null;
   created_at: string;
+  findings: Array<string>;
   brief: string;
   output: string | null;
   steps: Array<{
@@ -684,7 +689,8 @@ export type FileView = {
     | 'artifact'
     | 'export'
     | 'import'
-    | 'branding';
+    | 'branding'
+    | 'tool_output';
   owner_id: string | null;
   conversation_id: string | null;
   run_id: string | null;
@@ -813,6 +819,10 @@ export type Schedule = {
   agent_id: string;
   name: string;
   brief: string;
+  quiet: boolean;
+  computer: boolean;
+  domains: Array<string>;
+  continue_after: boolean;
   cron: string;
   timezone: string;
   status: 'active' | 'paused';
@@ -823,6 +833,500 @@ export type Schedule = {
   run_count: number;
   created_at: string;
 };
+
+export type CreateScheduleInput = {
+  agent_id: string;
+  name: string;
+  brief: string;
+  cron: string;
+  quiet?: boolean | undefined;
+  computer?: boolean | undefined;
+  domains?: Array<string> | undefined;
+  continue_after?: boolean | undefined;
+  timezone?: string | undefined;
+};
+
+export type UpdateScheduleInput = {
+  quiet?: boolean | undefined;
+  computer?: boolean | undefined;
+  domains?: Array<string> | undefined;
+  continue_after?: boolean | undefined;
+  name?: string | undefined;
+  brief?: string | undefined;
+  cron?: string | undefined;
+  timezone?: string | undefined;
+};
+
+export type StandingApproval = {
+  id: string;
+  agent_id: string;
+  scope_type: 'folder' | 'table';
+  scope_id: string;
+  actions: Array<string>;
+  granted_at: string;
+  revoked_at: string | null;
+  scope_name?: string | null | undefined;
+  scope_href?: string | null | undefined;
+};
+
+export type AppSummary = {
+  id: string;
+  base_id: string;
+  name: string;
+  description: string;
+  owner_id: string;
+  status: 'draft' | 'published';
+  published_version: number | null;
+  editable: boolean;
+  pinned: boolean;
+  featured: boolean;
+};
+
+export type AppRuntime = {
+  app: AppSummary;
+  version: number;
+  pages: Array<{
+    id: string;
+    name: string;
+    cards: Array<
+      | {
+          id: string;
+          kind: 'number' | 'bar' | 'line' | 'pie' | 'list';
+          title: string;
+          table_id: string;
+          filter?:
+            | {
+                mode: 'and' | 'or';
+                clauses: Array<{
+                  field: string;
+                  op:
+                    | 'eq'
+                    | 'neq'
+                    | 'contains'
+                    | 'not_contains'
+                    | 'gt'
+                    | 'gte'
+                    | 'lt'
+                    | 'lte'
+                    | 'is_empty'
+                    | 'is_not_empty';
+                  value?: string | number | boolean | Array<string | number> | null | undefined;
+                }>;
+              }
+            | undefined;
+          measure?: { aggregate: 'count' | 'sum' | 'avg' | 'min' | 'max'; field?: string | undefined } | undefined;
+          group?:
+            | {
+                field: string;
+                bucket?: 'day' | 'week' | 'month' | 'quarter' | 'year' | undefined;
+                limit?: number | undefined;
+              }
+            | undefined;
+          list?:
+            | {
+                fields: Array<string>;
+                sorts?: Array<{ field: string; desc?: boolean | undefined }> | undefined;
+                limit?: number | undefined;
+              }
+            | undefined;
+          size?: 'medium' | 'small' | 'large' | undefined;
+        }
+      | {
+          id: string;
+          kind: 'records' | 'table' | 'kanban' | 'form';
+          title: string;
+          table_id: string;
+          fields: Array<string>;
+          actions: Array<{ id: string; name: string; type: 'create' | 'update'; values: Record<string, unknown> }>;
+          detail_fields?: Array<string> | undefined;
+          group_field?: string | undefined;
+          filter?:
+            | {
+                mode: 'and' | 'or';
+                clauses: Array<{
+                  field: string;
+                  op:
+                    | 'eq'
+                    | 'neq'
+                    | 'contains'
+                    | 'not_contains'
+                    | 'gt'
+                    | 'gte'
+                    | 'lt'
+                    | 'lte'
+                    | 'is_empty'
+                    | 'is_not_empty';
+                  value?: string | number | boolean | Array<string | number> | null | undefined;
+                }>;
+              }
+            | undefined;
+        }
+      | {
+          id: string;
+          kind: 'button';
+          title: string;
+          table_id: string;
+          action: { id: string; name: string; type: 'create' | 'update'; values: Record<string, unknown> };
+        }
+      | { id: string; kind: 'custom'; title: string; html: string }
+    >;
+  }>;
+  base: {
+    name: string;
+    id: string;
+    updated_at: string;
+    description: string;
+    owner_id: string;
+    template_key: string | null;
+    archived_at: string | null;
+    pinned: boolean;
+    access: 'owner' | 'builder' | 'editor' | 'viewer';
+    icon: string;
+    custom_role: { id: string; name: string } | null;
+    owner: { id: string; name: string };
+    created_at: string;
+    tables: Array<{
+      id: string;
+      base_id: string;
+      name: string;
+      description: string;
+      position: number;
+      schema_revision: number;
+      fields: Array<{
+        id: string;
+        table_id: string;
+        name: string;
+        type:
+          | 'number'
+          | 'date'
+          | 'email'
+          | 'member'
+          | 'text'
+          | 'url'
+          | 'attachment'
+          | 'long_text'
+          | 'checkbox'
+          | 'datetime'
+          | 'single_select'
+          | 'multi_select'
+          | 'phone'
+          | 'relation'
+          | 'parent'
+          | 'dependency'
+          | 'formula'
+          | 'lookup'
+          | 'rollup'
+          | 'ai';
+        config: {
+          options?:
+            | Array<{
+                id: string;
+                label: string;
+                color: 'gray' | 'blue' | 'teal' | 'green' | 'amber' | 'orange' | 'red' | 'pink' | 'purple';
+              }>
+            | undefined;
+          precision?: number | undefined;
+          multiple?: boolean | undefined;
+          table_id?: string | undefined;
+          formula_text?: string | undefined;
+          formula?: unknown;
+          result?: 'number' | 'date' | 'text' | 'checkbox' | 'datetime' | undefined;
+          link_field?: string | undefined;
+          target_field?: string | undefined;
+          aggregate?: 'count' | 'sum' | 'avg' | 'min' | 'max' | 'count_values' | 'count_unique' | 'join' | undefined;
+          prompt?: string | undefined;
+          inputs?: Array<string> | undefined;
+          auto_update?: boolean | undefined;
+        };
+        required: boolean;
+        is_primary: boolean;
+        position: number;
+      }>;
+      access?: 'edit' | 'read' | undefined;
+    }>;
+    views: Array<{
+      id: string;
+      table_id: string | null;
+      name: string;
+      type: 'kanban' | 'grid' | 'calendar' | 'gallery' | 'timeline' | 'dashboard';
+      personal: boolean;
+      config: {
+        filter?:
+          | {
+              mode: 'and' | 'or';
+              clauses: Array<{
+                field: string;
+                op:
+                  | 'eq'
+                  | 'neq'
+                  | 'contains'
+                  | 'not_contains'
+                  | 'gt'
+                  | 'gte'
+                  | 'lt'
+                  | 'lte'
+                  | 'is_empty'
+                  | 'is_not_empty';
+                value?: string | number | boolean | Array<string | number> | null | undefined;
+              }>;
+            }
+          | undefined;
+        sorts?: Array<{ field: string; desc?: boolean | undefined }> | undefined;
+        group?: { field: string; desc?: boolean | undefined } | null | undefined;
+        order?: Array<string> | undefined;
+        hidden?: Array<string> | undefined;
+        widths?: Record<string, number> | undefined;
+        frozen?: number | undefined;
+        row_height?: 'medium' | 'short' | 'tall' | undefined;
+        kanban?: { field: string; hide_empty?: boolean | undefined } | undefined;
+        calendar?: { start: string; end?: string | undefined } | undefined;
+        gallery?: { cover?: string | undefined } | undefined;
+        timeline?:
+          | {
+              start: string;
+              end?: string | undefined;
+              dependency?: string | undefined;
+              milestone?: { field: string; option?: string | undefined } | undefined;
+              scale?: 'day' | 'week' | 'month' | undefined;
+            }
+          | undefined;
+        cards?:
+          | Array<{
+              id: string;
+              kind: 'number' | 'bar' | 'line' | 'pie' | 'list';
+              title: string;
+              table_id: string;
+              filter?:
+                | {
+                    mode: 'and' | 'or';
+                    clauses: Array<{
+                      field: string;
+                      op:
+                        | 'eq'
+                        | 'neq'
+                        | 'contains'
+                        | 'not_contains'
+                        | 'gt'
+                        | 'gte'
+                        | 'lt'
+                        | 'lte'
+                        | 'is_empty'
+                        | 'is_not_empty';
+                      value?: string | number | boolean | Array<string | number> | null | undefined;
+                    }>;
+                  }
+                | undefined;
+              measure?: { aggregate: 'count' | 'sum' | 'avg' | 'min' | 'max'; field?: string | undefined } | undefined;
+              group?:
+                | {
+                    field: string;
+                    bucket?: 'day' | 'week' | 'month' | 'quarter' | 'year' | undefined;
+                    limit?: number | undefined;
+                  }
+                | undefined;
+              list?:
+                | {
+                    fields: Array<string>;
+                    sorts?: Array<{ field: string; desc?: boolean | undefined }> | undefined;
+                    limit?: number | undefined;
+                  }
+                | undefined;
+              size?: 'medium' | 'small' | 'large' | undefined;
+            }>
+          | undefined;
+      };
+      position: number;
+      revision: number;
+      editable: boolean;
+    }>;
+    ai_fields: boolean;
+  };
+  preview: boolean;
+  preview_role: string | null;
+};
+
+export type AppCard =
+  | {
+      id: string;
+      kind: 'number' | 'bar' | 'line' | 'pie' | 'list';
+      title: string;
+      table_id: string;
+      filter?:
+        | {
+            mode: 'and' | 'or';
+            clauses: Array<{
+              field: string;
+              op:
+                | 'eq'
+                | 'neq'
+                | 'contains'
+                | 'not_contains'
+                | 'gt'
+                | 'gte'
+                | 'lt'
+                | 'lte'
+                | 'is_empty'
+                | 'is_not_empty';
+              value?: string | number | boolean | Array<string | number> | null | undefined;
+            }>;
+          }
+        | undefined;
+      measure?: { aggregate: 'count' | 'sum' | 'avg' | 'min' | 'max'; field?: string | undefined } | undefined;
+      group?:
+        | {
+            field: string;
+            bucket?: 'day' | 'week' | 'month' | 'quarter' | 'year' | undefined;
+            limit?: number | undefined;
+          }
+        | undefined;
+      list?:
+        | {
+            fields: Array<string>;
+            sorts?: Array<{ field: string; desc?: boolean | undefined }> | undefined;
+            limit?: number | undefined;
+          }
+        | undefined;
+      size?: 'medium' | 'small' | 'large' | undefined;
+    }
+  | {
+      id: string;
+      kind: 'records' | 'table' | 'kanban' | 'form';
+      title: string;
+      table_id: string;
+      fields: Array<string>;
+      actions: Array<{ id: string; name: string; type: 'create' | 'update'; values: Record<string, unknown> }>;
+      detail_fields?: Array<string> | undefined;
+      group_field?: string | undefined;
+      filter?:
+        | {
+            mode: 'and' | 'or';
+            clauses: Array<{
+              field: string;
+              op:
+                | 'eq'
+                | 'neq'
+                | 'contains'
+                | 'not_contains'
+                | 'gt'
+                | 'gte'
+                | 'lt'
+                | 'lte'
+                | 'is_empty'
+                | 'is_not_empty';
+              value?: string | number | boolean | Array<string | number> | null | undefined;
+            }>;
+          }
+        | undefined;
+    }
+  | {
+      id: string;
+      kind: 'button';
+      title: string;
+      table_id: string;
+      action: { id: string; name: string; type: 'create' | 'update'; values: Record<string, unknown> };
+    }
+  | { id: string; kind: 'custom'; title: string; html: string };
+
+export type AppAction = { id: string; name: string; type: 'create' | 'update'; values: Record<string, unknown> };
+
+export type AppCardAnswer =
+  | {
+      kind: 'chart';
+      data:
+        | { kind: 'number'; value: number | null; records: number }
+        | {
+            kind: 'groups';
+            key_type: 'number' | 'date' | 'member' | 'text' | 'checkbox' | 'option';
+            groups: Array<{
+              key: string | null;
+              label: string;
+              value: number | null;
+              records: number;
+              color?: 'gray' | 'blue' | 'teal' | 'green' | 'amber' | 'orange' | 'red' | 'pink' | 'purple' | undefined;
+            }>;
+            other: { value: number | null; records: number } | null;
+            records: number;
+            bucket?: 'day' | 'week' | 'month' | 'quarter' | 'year' | undefined;
+          }
+        | {
+            kind: 'list';
+            title_field: string | null;
+            fields: Array<string>;
+            items: Array<{
+              id: string;
+              table_id: string;
+              values: Record<string, unknown>;
+              revision: number;
+              computed_revision: number;
+              created_by: string | null;
+              created_at: string;
+              updated_by: string | null;
+              updated_at: string;
+            }>;
+            linked: Record<string, { title: string; table_id: string }>;
+            files: Record<string, { id: string; name: string; content_type: string; size_bytes: number; url: string }>;
+            records: number;
+          }
+        | { kind: 'error'; code: 'failed' | 'table_hidden' | 'field_hidden' | 'incomplete' };
+    }
+  | {
+      kind: 'records';
+      data: {
+        items: Array<{
+          id: string;
+          table_id: string;
+          values: Record<string, unknown>;
+          revision: number;
+          computed_revision: number;
+          created_by: string | null;
+          created_at: string;
+          updated_by: string | null;
+          updated_at: string;
+        }>;
+        next_cursor: string | null;
+        linked: Record<string, { title: string; table_id: string }>;
+        files: Record<string, { id: string; name: string; content_type: string; size_bytes: number; url: string }>;
+        total?: number | undefined;
+      };
+    }
+  | { kind: 'empty' };
+
+export type CardData =
+  | { kind: 'number'; value: number | null; records: number }
+  | {
+      kind: 'groups';
+      key_type: 'number' | 'date' | 'member' | 'text' | 'checkbox' | 'option';
+      groups: Array<{
+        key: string | null;
+        label: string;
+        value: number | null;
+        records: number;
+        color?: 'gray' | 'blue' | 'teal' | 'green' | 'amber' | 'orange' | 'red' | 'pink' | 'purple' | undefined;
+      }>;
+      other: { value: number | null; records: number } | null;
+      records: number;
+      bucket?: 'day' | 'week' | 'month' | 'quarter' | 'year' | undefined;
+    }
+  | {
+      kind: 'list';
+      title_field: string | null;
+      fields: Array<string>;
+      items: Array<{
+        id: string;
+        table_id: string;
+        values: Record<string, unknown>;
+        revision: number;
+        computed_revision: number;
+        created_by: string | null;
+        created_at: string;
+        updated_by: string | null;
+        updated_at: string;
+      }>;
+      linked: Record<string, { title: string; table_id: string }>;
+      files: Record<string, { id: string; name: string; content_type: string; size_bytes: number; url: string }>;
+      records: number;
+    }
+  | { kind: 'error'; code: 'failed' | 'table_hidden' | 'field_hidden' | 'incomplete' };
 
 export type KnowledgeScope = 'team' | 'personal' | 'shared';
 
@@ -924,7 +1428,7 @@ export type KnowledgeFile = {
   archived_at: string | null;
   updated_at: string;
   doc_id: string | null;
-  preview: 'image' | 'video' | 'text' | 'pdf' | 'audio' | 'none';
+  preview: 'image' | 'video' | 'text' | 'none' | 'pdf' | 'audio';
   url: string;
   expires_at: string;
   created_at: string;
@@ -993,7 +1497,7 @@ export type View = {
   id: string;
   table_id: string | null;
   name: string;
-  type: 'grid' | 'kanban' | 'calendar' | 'gallery' | 'timeline' | 'dashboard';
+  type: 'kanban' | 'grid' | 'calendar' | 'gallery' | 'timeline' | 'dashboard';
   personal: boolean;
   config: {
     filter?:
@@ -1084,7 +1588,7 @@ export type Base = {
   template_key: string | null;
   archived_at: string | null;
   pinned: boolean;
-  access: 'owner' | 'editor' | 'viewer' | 'builder';
+  access: 'owner' | 'builder' | 'editor' | 'viewer';
   icon: string;
   custom_role: { id: string; name: string } | null;
   owner: { id: string; name: string };
@@ -1108,7 +1612,6 @@ export type Base = {
         | 'text'
         | 'url'
         | 'attachment'
-        | 'dependency'
         | 'long_text'
         | 'checkbox'
         | 'datetime'
@@ -1117,6 +1620,7 @@ export type Base = {
         | 'phone'
         | 'relation'
         | 'parent'
+        | 'dependency'
         | 'formula'
         | 'lookup'
         | 'rollup'
@@ -1146,13 +1650,13 @@ export type Base = {
       is_primary: boolean;
       position: number;
     }>;
-    access?: 'read' | 'edit' | undefined;
+    access?: 'edit' | 'read' | undefined;
   }>;
   views: Array<{
     id: string;
     table_id: string | null;
     name: string;
-    type: 'grid' | 'kanban' | 'calendar' | 'gallery' | 'timeline' | 'dashboard';
+    type: 'kanban' | 'grid' | 'calendar' | 'gallery' | 'timeline' | 'dashboard';
     personal: boolean;
     config: {
       filter?:
@@ -1252,7 +1756,7 @@ export type BaseSummary = {
   description: string;
   icon: string;
   owner_id: string;
-  access: 'owner' | 'editor' | 'viewer' | 'builder';
+  access: 'owner' | 'builder' | 'editor' | 'viewer';
   pinned: boolean;
   template_key: string | null;
   archived_at: string | null;
@@ -1263,7 +1767,7 @@ export type BaseSummary = {
     views: Array<{
       id: string;
       name: string;
-      type: 'grid' | 'kanban' | 'calendar' | 'gallery' | 'timeline' | 'dashboard';
+      type: 'kanban' | 'grid' | 'calendar' | 'gallery' | 'timeline' | 'dashboard';
       personal: boolean;
     }>;
   }>;
@@ -1290,7 +1794,6 @@ export type BaseTable = {
       | 'text'
       | 'url'
       | 'attachment'
-      | 'dependency'
       | 'long_text'
       | 'checkbox'
       | 'datetime'
@@ -1299,6 +1802,7 @@ export type BaseTable = {
       | 'phone'
       | 'relation'
       | 'parent'
+      | 'dependency'
       | 'formula'
       | 'lookup'
       | 'rollup'
@@ -1328,7 +1832,7 @@ export type BaseTable = {
     is_primary: boolean;
     position: number;
   }>;
-  access?: 'read' | 'edit' | undefined;
+  access?: 'edit' | 'read' | undefined;
 };
 
 export type Field = {
@@ -1343,7 +1847,6 @@ export type Field = {
     | 'text'
     | 'url'
     | 'attachment'
-    | 'dependency'
     | 'long_text'
     | 'checkbox'
     | 'datetime'
@@ -1352,6 +1855,7 @@ export type Field = {
     | 'phone'
     | 'relation'
     | 'parent'
+    | 'dependency'
     | 'formula'
     | 'lookup'
     | 'rollup'
@@ -1502,7 +2006,6 @@ export type FormFill = {
       | 'text'
       | 'url'
       | 'attachment'
-      | 'dependency'
       | 'long_text'
       | 'checkbox'
       | 'datetime'
@@ -1511,6 +2014,7 @@ export type FormFill = {
       | 'phone'
       | 'relation'
       | 'parent'
+      | 'dependency'
       | 'formula'
       | 'lookup'
       | 'rollup'
@@ -1557,7 +2061,6 @@ export type FormFillField = {
     | 'text'
     | 'url'
     | 'attachment'
-    | 'dependency'
     | 'long_text'
     | 'checkbox'
     | 'datetime'
@@ -1566,6 +2069,7 @@ export type FormFillField = {
     | 'phone'
     | 'relation'
     | 'parent'
+    | 'dependency'
     | 'formula'
     | 'lookup'
     | 'rollup'

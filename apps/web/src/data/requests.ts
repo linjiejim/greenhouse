@@ -17,19 +17,20 @@ export function useDecide() {
   return useMutation({
     mutationFn: (
       input:
-        | { id: string; action: 'approve' }
+        | { id: string; action: 'approve'; standing?: boolean; continue_after?: boolean }
         | { id: string; action: 'reject'; reason?: string }
         | { id: string; action: 'answer'; answers: Record<string, string> }
         | { id: string; action: 'handback'; note?: string },
     ) =>
       input.action === 'approve'
-        ? api.requests.approve(input.id)
+        ? api.requests.approve(input.id, input.standing, input.continue_after)
         : input.action === 'reject'
           ? api.requests.reject(input.id, input.reason)
           : input.action === 'answer'
             ? api.requests.answer(input.id, input.answers)
             : api.requests.handback(input.id, input.note),
     onSettled: () => {
+      void client.invalidateQueries({ queryKey: ['standing-approvals'] });
       void client.invalidateQueries({ queryKey: ['requests'] });
       void client.invalidateQueries({ queryKey: keys.summary });
     },

@@ -1,3 +1,9 @@
+import { createAutomationsService, type AutomationsService } from './modules/tables/automations.js';
+import { createRecordAgents, type RecordAgentsService } from './modules/tables/agents.js';
+import { automationsRoutes } from './modules/tables/automations-routes.js';
+import { appTools } from './engine/tools/apps.js';
+import { appsRoutes } from './modules/apps/routes.js';
+import { createAppsService, type AppsService } from './modules/apps/service.js';
 import { randomUUID } from 'node:crypto';
 import { Hono } from 'hono';
 import { API_VERSION } from '@greenhouse/contract';
@@ -18,6 +24,8 @@ import { bootstrapRoutes, brandingRoutes } from './modules/workspace/routes.js';
 import { createWorkspaceService, type WorkspaceService } from './modules/workspace/service.js';
 import { createEngine, type Engine } from './engine/engine.js';
 import { askUserTool } from './engine/tools/ask-user.js';
+import { helperRunTool } from './engine/tools/helper-run.js';
+import { toolOutputReadTool } from './engine/tools/output.js';
 import { readAttachmentTool } from './engine/tools/attachments.js';
 import { computerTool } from './engine/tools/computer.js';
 import { conversationTool } from './engine/tools/conversation.js';
@@ -25,6 +33,7 @@ import { handoffTool } from './engine/tools/handoff.js';
 import { memoryTool } from './engine/tools/memory.js';
 import type { ToolDef } from './engine/tools/define.js';
 import { runStartTool } from './engine/tools/run-start.js';
+import { runFinishTool } from './engine/tools/run-finish.js';
 import { scheduleTools } from './engine/tools/schedules.js';
 import { selfTool } from './engine/tools/self.js';
 import { skillMutationTool } from './engine/tools/skill-mutation.js';
@@ -35,8 +44,10 @@ import { vaultTool } from './engine/tools/vault.js';
 import { mailTool } from './engine/tools/mail.js';
 import { webTools } from './engine/tools/web.js';
 import { knowledgeTools } from './engine/tools/knowledge.js';
+import { tableTools } from './engine/tools/tables.js';
 import { adminPublicAgentRoutes, agentRoutes } from './modules/agents/routes.js';
 import { createAgentsService, type AgentsService } from './modules/agents/service.js';
+import { createApprovalsService, type ApprovalsService } from './modules/agents/approvals.js';
 import { adminComputerRoutes, computerRoutes } from './modules/computers/routes.js';
 import { connectorTool } from './engine/tools/connectors.js';
 import { adminConnectorRoutes, connectorCallbackRoutes, myConnectionRoutes } from './modules/connectors/routes.js';
@@ -97,6 +108,7 @@ export interface Services {
   members: MembersService;
   providers: ProvidersService;
   agents: AgentsService;
+  approvals: ApprovalsService;
   computers: ComputersService;
   connectors: ConnectorsService;
   browser: BrowserService;
@@ -106,6 +118,9 @@ export interface Services {
   voice: VoiceService;
   knowledge: KnowledgeService;
   tables: TablesService;
+  automations: AutomationsService;
+  recordAgents: RecordAgentsService;
+  apps: AppsService;
   notifications: NotificationsService;
   channels: ChannelsService;
   mail: MailService;
@@ -168,14 +183,26 @@ export function createServices(config: AppConfig, options: ServiceOptions = {}):
     forbiddenOrigins,
   });
   const skills = createSkillsService({ files, providers, agents, connectors, computers, notifications });
-  const knowledge = createKnowledgeService({ files, notifications, hub, publicUrl: config.PUBLIC_URL });
+  const knowledge = createKnowledgeService({
+    files,
+    notifications,
+    hub,
+    publicUrl: config.PUBLIC_URL,
+    engine: () => engine,
+  });
   const tables = createTablesService({ files, notifications, hub, providers });
+  const apps = createAppsService({ tables, notifications });
   // Who sees a base is cached a few seconds; a change of groups, modules or status forgets it at once.
   members.onAccessChange(() => tables.forgetAudiences());
   const schedules = createSchedulesService({ agents, background: () => engine.background });
   // A committed decision wakes the engine's worker (made below) rather than waiting for its poll.
-  const requests = createRequestsService({ hub, notifications, decided: () => engine.wakeDecisions() });
+  const approvals = createApprovalsService(agents, knowledge, tables);
+  const requests = createRequestsService({ hub, notifications, approvals, decided: () => engine.wakeDecisions() });
   const engine = createEngine({
+    eventWakeLimit: config.AGENT_EVENT_WAKES_PER_DAY,
+    eventMergeMs: config.AGENT_EVENT_MERGE_MS,
+    approvals,
+    computers,
     agents,
     conversations,
     providers,
@@ -188,13 +215,16 @@ export function createServices(config: AppConfig, options: ServiceOptions = {}):
       memoryTool(agents),
       askUserTool(),
       selfTool(agents),
-      conversationTool(),
+      conversationTool(conversations),
       readAttachmentTool(files, voice),
+      toolOutputReadTool(files),
       computerTool(computers),
       requestTakeoverTool(),
       browserTool(browser),
       vaultTool(vault, browser),
       runStartTool(background),
+      helperRunTool(background),
+      runFinishTool(computers),
       handoffTool(handOff),
       ...scheduleTools(schedules),
       ...webTools(providers, options.fetch ? { fetch: options.fetch } : {}),
@@ -203,11 +233,25 @@ export function createServices(config: AppConfig, options: ServiceOptions = {}):
       skillQueryTool(skills),
       skillMutationTool(skills),
       ...knowledgeTools(knowledge),
+      ...tableTools(tables),
+      ...appTools(apps, tables),
       ...(options.tools ?? []),
     ],
     ...(options.languageModel ? { languageModel: options.languageModel } : {}),
     development: config.NODE_ENV === 'development',
   });
+  const recordAgents = createRecordAgents({ tables, agents, engine: () => engine });
+  const automations = createAutomationsService({
+    tables,
+    agents,
+    engine: () => engine,
+    notifications,
+    key: Buffer.from(config.providerEncryptionKey, 'hex'),
+    ...(options.fetch ? { fetch: options.fetch } : {}),
+  });
+  tables.installAutomationHooks(automations.hooks);
+  tables.worker.register('base_automation', automations.handle);
+  tables.worker.every(automations.sweep);
   const runs = createRunsService({ background: () => engine.background });
   return {
     config,
@@ -218,6 +262,7 @@ export function createServices(config: AppConfig, options: ServiceOptions = {}):
     providers,
     agents,
     computers,
+    approvals,
     connectors,
     browser,
     vault,
@@ -226,13 +271,16 @@ export function createServices(config: AppConfig, options: ServiceOptions = {}):
     voice,
     knowledge,
     tables,
+    automations,
+    recordAgents,
+    apps,
     notifications,
     channels,
     mail,
     requests,
     runs,
     schedules,
-    search: createSearchService({ members, knowledge, tables }),
+    search: createSearchService({ members, knowledge, tables, apps }),
     skills,
     usage: createUsageService({ agents, providers }),
     hub,
@@ -301,13 +349,13 @@ export function createApp(services: Services, options: { webDir?: string } = {})
   signedIn.route('/me', meRoutes(services.members));
   signedIn.route('/members', directoryRoutes(services.members));
   signedIn.route('/groups', groupDirectoryRoutes(services.members));
-  signedIn.route('/agents', agentRoutes(services.agents));
+  signedIn.route('/agents', agentRoutes(services.agents, services.approvals));
   signedIn.route('/agents', agentUsageRoutes(services.usage));
   signedIn.route('/agents', computerRoutes(services.computers));
   signedIn.route('/agents', agentMailRoutes(services.mail));
   signedIn.route('/conversations', conversationRoutes(services.conversations, services.engine));
   signedIn.route('/requests', requestRoutes(services.requests));
-  signedIn.route('/runs', runRoutes(services.runs));
+  signedIn.route('/runs', runRoutes(services.runs, services.engine));
   signedIn.route('/files', fileRoutes(services.files, services.conversations));
   signedIn.route('/voice', voiceRoutes(services.voice));
   signedIn.route('/schedules', scheduleRoutes(services.schedules));
@@ -315,7 +363,9 @@ export function createApp(services: Services, options: { webDir?: string } = {})
   signedIn.route('/search', searchRoutes(services.search));
   signedIn.route('/skills', skillRoutes(services.skills));
   signedIn.route('/knowledge', knowledgeRoutes(services.knowledge));
+  signedIn.route('/apps', appsRoutes(services.apps));
   signedIn.route('/tables', tablesRoutes(services.tables));
+  signedIn.route('/tables', automationsRoutes(services.automations, services.recordAgents));
   signedIn.route('/tables', formsRoutes(services.tables.forms));
   signedIn.route('/tables', importsRoutes(services.tables.imports));
   signedIn.route('/tables', cardsRoutes(services.tables.cards));

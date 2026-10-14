@@ -31,7 +31,16 @@ The v2 web app. Product scope is docs/product/prd.md §6–7; layout and compone
 - Put kit pickers (Select, MultiSelect) in a FieldGroup, not a Field: Field's <label> re-activates the trigger after a pointer pick and the list opens again.
 - A button that becomes another button in place (编辑 → 保存) gets its own key: React reuses the element, and one that turns into a submit while its click runs submits the form.
 - Tables: a view's records are one query per view settings (useViewRecords, every page up to MAX_VIEW_RECORDS); writes put the server's records into every cached view of the table (putRecords) and records.changed refetches only views that are behind. Grid and timeline draw only the rows in view: 1000 records must scroll smoothly.
+- Apps: src/pages/apps composes the kit and table fields/charts. Runtime queries and actions go through client.apps with the published version, never direct record writes; builder drafts hold navigation and save with their original revision.
+- Tables: computed fields use the contract catalog and references; never send them in record edits, paste or clear. Compare both revision and computed_revision in realtime and cached writes. Custom readers edit only tables with access=edit; render only the fields/records the API returns. Owners manage custom roles with the existing filter editor. Non-builders can create personal dashboards from tabs. URL cells link only http(s); encode the entire email address in mailto.
+- Tables: draft overlays use useDraftNavigation over holdNavigation; Back, Forward and links ask before discarding.
+- Tables: a view's save queue holds pending configs as drafts against base refetches. Start with the viewed revision, then each save's returned revision; on conflict abandon that view's remaining queue.
 - Tables: what a view works out (columns, groups, spans, days) lives in model.ts, boards-model.ts and timeline-model.ts with unit tests; components draw and handle input.
+
+## Always-on
+- Write receipts render from write_receipt message events; only their acting member sees Undo. Server conflicts preserve later edits.
+- Standing scopes are chosen on tier2 cards only, listed by name/actions in Abilities and revoked through the contract client. Disable approval while batch_ready is false.
+- Run proposals show declared computer/domain access and optional completion follow-up. Schedule quiet defaults off; event messages remain quiet thread lines.
 
 ## Tests
 - Unit tests next to the code in __tests__ (vitest unit project).
@@ -40,4 +49,9 @@ The v2 web app. Product scope is docs/product/prd.md §6–7; layout and compone
 - The same server is the connectors' MCP servers (e2e/fake-mcp.mjs, allowed because the e2e API runs in development): /mcp/open needs nothing, /mcp/key wants X-Api-Key e2e-good-key, /mcp/signin wants a sign-in at /fake-oauth, which approves at once. e2e/api.ts calls the API as a saved person and plays an outside app (register, authorize, trade a code, call /api/mcp).
 - It is also Resend and a member's mailbox (e2e/fake-mail.mjs): Resend under /resend with key re_e2e_0123456789, /resend/_inbound to "receive" a mail and /resend/_sent for what went out; an IMAP and SMTP mailbox (e2e/fake-mailbox.mjs) on the ports /mailbox/_ports gives. e2e/mail.e2e.ts signs Resend's notices itself and removes the mail service when done.
 - In browser tests computers are on but their image cannot be pulled, so none starts; uploads go to a temp folder.
+- The fake model rejects tool parameters without a root object and properties, or with root anyOf/oneOf/allOf, like strict real providers. Keep this gate when adding scripted replies.
 - `sh apps/web/e2e/stack.sh` starts the same stack on 4580–4582 for looking at the app by hand (the "web-v2" preview). STACK_SANDBOX_IMAGE=greenhouse/bot-computer:latest gives it real computers ("web-v2-computer"); remove their containers and volumes (gh-cmp-*) afterwards, since every start reseeds the database.
+
+- Publish knowledge grants with the owner's personal folder tree, excluding Agent reference folders. Helper runs render inside their parent process card; completion logs have a separate group on the Agent memory page.
+
+- Tables: record handoffs select an owned Agent and brief; automation editors use the shared filter editor and hold navigation. Run history opens the linked Agent run; both record and automation runs are labelled Tables.

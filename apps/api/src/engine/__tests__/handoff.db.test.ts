@@ -39,6 +39,7 @@ describe('hand-offs', () => {
     ]);
     // The first turn stopped right after the hand-off.
     expect(model.calls()).toBe(2);
+    expect(systemText(model.prompts[0])).toContain('Only a successful tool result transfers the work');
     expect(systemText(model.prompts[1])).toContain('You are **卷卷**');
     expect(lastUserText(model.prompts[1])).toContain('Greeny handed this to you');
     expect(lastUserText(model.prompts[1])).toContain('Polish this paragraph');

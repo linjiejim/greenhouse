@@ -26,6 +26,7 @@ function targetOf(notification: Notification): Route | null {
   if (notification.target_type === 'agent' && notification.target_id)
     return { page: 'agent', id: notification.target_id, tab: 'profile' };
   // Knowledge: a mention, a comment or a share opens the doc or the folder.
+  if (notification.target_type === 'app' && notification.target_id) return { page: 'app', id: notification.target_id };
   if (notification.target_type === 'doc' && notification.target_id) return { page: 'doc', id: notification.target_id };
   if (notification.target_type === 'folder' && notification.target_id)
     return { page: 'folder', id: notification.target_id };

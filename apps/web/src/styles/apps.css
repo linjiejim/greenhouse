@@ -1,0 +1,140 @@
+/* Applications compose the same fields, cards and chart bodies as tables. */
+.app-ap-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr));
+  gap: var(--gh-space-4);
+  padding-block: var(--gh-space-4);
+}
+.app-ap-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--gh-space-3);
+  min-width: 0;
+  padding: var(--gh-space-4);
+  border: var(--gh-stroke-hairline) solid var(--gh-line);
+  border-radius: var(--gh-radius-lg);
+  background: var(--gh-surface);
+}
+.app-ap-tile h2,
+.app-ap-tile h3 {
+  margin: 0;
+  font: var(--gh-type-title-sm);
+  overflow-wrap: anywhere;
+}
+.app-ap-tile p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.app-ap-tile > form,
+.app-ap-tile > div {
+  width: 100%;
+}
+.app-ap-title,
+.app-ap-actions,
+.app-ap-builder-head,
+.app-ap-page-tools {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--gh-space-2);
+}
+.app-ap-title h2 {
+  flex: 1;
+}
+.app-ap-builder-head {
+  padding-block: var(--gh-space-3);
+}
+.app-ap-builder-head > .gh-field {
+  flex: 1;
+}
+.app-ap-builder {
+  display: grid;
+  grid-template-columns: 180px minmax(0, 1fr);
+  gap: var(--gh-space-4);
+  padding-block: var(--gh-space-4);
+}
+.app-ap-pages {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--gh-space-2);
+}
+.app-ap-pages button {
+  justify-content: flex-start;
+}
+.app-ap-canvas {
+  min-width: 0;
+}
+.app-ap-action-edit {
+  padding: var(--gh-space-3);
+  border: var(--gh-stroke-hairline) solid var(--gh-line);
+  border-radius: var(--gh-radius-md);
+  display: flex;
+  flex-direction: column;
+  gap: var(--gh-space-3);
+}
+.app-ap-record {
+  padding-block: var(--gh-space-3);
+  border-bottom: var(--gh-stroke-hairline) solid var(--gh-line);
+}
+.app-ap-values {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--gh-space-2);
+  padding-block: var(--gh-space-2);
+}
+.app-ap-detail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gh-space-4);
+}
+.app-ap-detail dt {
+  color: var(--gh-secondary);
+}
+.app-ap-detail dd {
+  margin: var(--gh-space-2) 0 0;
+}
+.app-ap-table,
+.app-ap-board {
+  max-width: 100%;
+  overflow-x: auto;
+}
+.app-ap-table table {
+  border-collapse: collapse;
+  min-width: 100%;
+}
+.app-ap-table th,
+.app-ap-table td {
+  padding: var(--gh-space-2);
+  text-align: start;
+  border-bottom: var(--gh-stroke-hairline) solid var(--gh-line);
+}
+.app-ap-board {
+  display: flex;
+  gap: var(--gh-space-3);
+}
+.app-ap-board > section {
+  min-width: 220px;
+  flex: 1;
+}
+.app-ap-json {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: var(--gh-type-code);
+}
+@media (max-width: 767px) {
+  .app-ap-builder {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .app-ap-pages {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+  .app-ap-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .app-ap-tile {
+    padding: var(--gh-space-3);
+  }
+}

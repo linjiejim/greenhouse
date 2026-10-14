@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { SchedulesService } from '../../modules/schedules/service.js';
 import { defineTool } from './define.js';
+import { backgroundOptionsSchema } from './run-start.js';
 
 /** The Agent's own schedules: reading them is free, changing them waits for the member. */
 export function scheduleTools(schedules: SchedulesService) {
@@ -22,6 +23,7 @@ export function scheduleTools(schedules: SchedulesService) {
           status: item.status,
           next_run_at: item.next_run_at,
           last_status: item.last_status,
+          quiet: item.quiet,
         })),
       };
     },
@@ -35,6 +37,8 @@ export function scheduleTools(schedules: SchedulesService) {
     input: z.discriminatedUnion('action', [
       z.object({
         action: z.literal('create'),
+        ...backgroundOptionsSchema.shape,
+        quiet: z.boolean().default(false),
         name: z.string().min(1).max(80),
         brief: z.string().min(1).max(2000),
         cron: z.string().min(9).max(100),
@@ -42,6 +46,8 @@ export function scheduleTools(schedules: SchedulesService) {
       }),
       z.object({
         action: z.literal('update'),
+        ...backgroundOptionsSchema.partial().shape,
+        quiet: z.boolean().optional(),
         id: z.string(),
         name: z.string().min(1).max(80).optional(),
         brief: z.string().min(1).max(2000).optional(),
@@ -50,6 +56,7 @@ export function scheduleTools(schedules: SchedulesService) {
       z.object({ action: z.enum(['pause', 'resume', 'delete']), id: z.string() }),
     ]),
     risk: 'write',
+    callRisk: async (args) => (args.action === 'delete' ? 'tier3' : 'tier2'),
     describe: (args, ctx) => {
       const zh = ctx.locale === 'zh';
       const summary = {
@@ -74,6 +81,10 @@ export function scheduleTools(schedules: SchedulesService) {
             name: args.name,
             brief: args.brief,
             cron: args.cron,
+            quiet: args.quiet,
+            computer: args.computer,
+            domains: args.domains,
+            continue_after: args.continue_after,
             ...(args.timezone ? { timezone: args.timezone } : {}),
           });
           return { created: created.id, next_run_at: created.next_run_at };

@@ -107,6 +107,7 @@ function lastUser(messages) {
     if (messages[i].role !== 'user') continue;
     const text = textOf(messages[i].content)
       .split('<turn_context')[0]
+      .replace(/\[event\][^\n]*\n\n/g, '')
       .replace(/^(\s*\[[^\]]*\])+\s*/, '')
       .trim();
     if (text) return text;
@@ -160,7 +161,27 @@ async function stream(response, request) {
     chunk(response, { choices: [{ index: 0, delta: {}, finish_reason: 'stop' }] });
   };
 
-  if (!afterTool && mailWake) {
+  if (/M24 source one: succeeded/.test(closing)) {
+    await say('Helper reports combined.', 10);
+  } else if (!afterTool && !mailWake && /^delegate helpers/i.test(said)) {
+    tool('helper_run', {
+      briefs: [
+        { title: 'M24 source one', brief: 'Summarize source one.' },
+        { title: 'M24 source two', brief: 'Summarize source two.' },
+      ],
+    });
+  } else if (!afterTool && /^change table record /i.test(said)) {
+    const [, table_id, record_id, field_id] = /^change table record (\S+) (\S+) (\S+)/i.exec(said) ?? [];
+    tool('table_mutation', {
+      action: 'update',
+      table_id,
+      record_id,
+      revision: 1,
+      values: { [field_id]: 'Approved record' },
+    });
+  } else if (!afterTool && /^read table record /i.test(said)) {
+    tool('table_query', { action: 'read', record_id: said.split(' ').at(-1) });
+  } else if (!afterTool && mailWake) {
     tool('mail', { action: 'read', id: /\bmal_[0-9A-Z]{26}\b/.exec(closing)?.[0] ?? '' });
   } else if (afterTool && toolText.includes('mail_body')) {
     await say(`Read the mail: ${/"subject":\s*"((?:[^"\\]|\\.)*)"/.exec(toolText)?.[1] ?? ''}`, 10);
@@ -181,6 +202,18 @@ async function stream(response, request) {
     tool('web_search', { query: said.slice(15).trim() || 'kyoto' });
   } else if (afterTool && toolText.includes('kyoto.example')) {
     await say('Found it: [Kyoto guide](https://kyoto.example/guide).', 10);
+  } else if (!afterTool && /^background draft in /i.test(said)) {
+    const folder = /background draft in (fld_[0-9A-HJKMNP-TV-Z]{26})/i.exec(said)?.[1];
+    tool('run_start', {
+      title: 'E2E always-on background',
+      brief: `AO_E2E_GATE ${folder}`,
+      computer: false,
+      domains: [],
+      continue_after: false,
+    });
+  } else if (!afterTool && /^shared draft in /i.test(said)) {
+    const folder = /shared draft in (fld_[0-9A-HJKMNP-TV-Z]{26})/i.exec(said)?.[1];
+    tool('knowledge_mutation', { action: 'create', title: 'Shared agent draft', content: said, folder_id: folder });
   } else if (!afterTool && /^keep a note/i.test(said)) {
     tool('knowledge_mutation', { action: 'create', title: 'Agent note', content: said, space: 'agent' });
   } else if (!afterTool && /^look up /i.test(said)) {
@@ -202,12 +235,54 @@ async function stream(response, request) {
 }
 
 function complete(response, request) {
+  const gate = /AO_E2E_GATE (fld_[0-9A-HJKMNP-TV-Z]{26})/.exec(JSON.stringify(request.messages));
+  if (
+    gate &&
+    JSON.stringify(request.messages?.filter((message) => message.role === 'system')).includes(
+      'working in the background',
+    )
+  ) {
+    const count = (request.messages ?? []).filter((message) => message.role === 'tool').length;
+    const name = count < 2 ? 'knowledge_mutation' : 'run_finish';
+    const args =
+      count === 0
+        ? { action: 'create', title: 'E2E background private draft', content: 'Draft', space: 'agent' }
+        : count === 1
+          ? { action: 'create', title: 'E2E background shared draft', content: 'Shared draft', folder_id: gate[1] }
+          : { report: 'Background finished.', findings: ['Shared draft'] };
+    response.writeHead(200, { 'content-type': 'application/json' });
+    response.end(
+      JSON.stringify({
+        id: 'chatcmpl-bg-e2e',
+        object: 'chat.completion',
+        created: 1,
+        model: 'fake',
+        choices: [
+          {
+            index: 0,
+            message: {
+              role: 'assistant',
+              content: null,
+              tool_calls: [
+                { id: `bg_${count}`, type: 'function', function: { name, arguments: JSON.stringify(args) } },
+              ],
+            },
+            finish_reason: 'tool_calls',
+          },
+        ],
+        usage: { prompt_tokens: 20, completion_tokens: 5, total_tokens: 25 },
+      }),
+    );
+    return;
+  }
   const system = JSON.stringify(request.messages?.filter((message) => message.role === 'system') ?? []);
-  const text = system.includes('Write a title for this conversation')
-    ? 'E2E chat'
-    : system.includes('You maintain the rolling summary')
-      ? '{}'
-      : `Echo: ${lastUser(request.messages ?? [])}`;
+  const text = system.includes('read-only helper run')
+    ? 'A bounded helper summary.'
+    : system.includes('Write a title for this conversation')
+      ? 'E2E chat'
+      : system.includes('You maintain the rolling summary')
+        ? '{}'
+        : `Echo: ${lastUser(request.messages ?? [])}`;
   response.writeHead(200, { 'content-type': 'application/json' });
   response.end(
     JSON.stringify({
@@ -254,6 +329,22 @@ createServer((request, response) => {
       return response.end(silence(3));
     }
     const body = raw ? JSON.parse(raw) : {};
+    const invalid = body.tools?.find(
+      ({ function: fn }) =>
+        fn.parameters?.type !== 'object' ||
+        !fn.parameters.properties ||
+        ['anyOf', 'oneOf', 'allOf'].some((key) => key in fn.parameters),
+    );
+    if (invalid) {
+      response.writeHead(400, { 'content-type': 'application/json' });
+      return response.end(
+        JSON.stringify({
+          error: {
+            message: `Invalid schema for function '${invalid.function.name}': parameters must be a root object.`,
+          },
+        }),
+      );
+    }
     if (process.env.FAKE_LLM_LOG) writeFileSync(process.env.FAKE_LLM_LOG, JSON.stringify(body, null, 2));
     if (body.stream) void stream(response, body);
     else complete(response, body);

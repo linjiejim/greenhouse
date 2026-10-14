@@ -58,6 +58,9 @@ export type Route =
   /** A doc, read or (`edit`) being changed. */
   | { page: 'doc'; id: string; edit?: boolean }
   /** 表格: my bases. */
+  | { page: 'apps'; newApp?: boolean }
+  | { page: 'app'; id: string; appPage?: string }
+  | { page: 'app-edit'; id: string }
   | { page: 'tables' }
   /**
    * A base (`id`), one of its data tables and views, and an open record: `#/tables/:base/:table/:view?record=`;
@@ -123,6 +126,12 @@ export function parse(hash: string): Route {
       ...(view ? { view } : {}),
       ...(record ? { record } : {}),
     };
+  }
+  if (head === 'apps') {
+    if (parts.length > 3 || (!id && extra !== undefined)) return notFound;
+    if (!id) return { page: 'apps', ...(query.get('new') === '1' ? { newApp: true } : {}) };
+    if (extra === 'edit') return { page: 'app-edit', id };
+    return { page: 'app', id, ...(extra ? { appPage: extra } : {}) };
   }
   if (head === 'forms') {
     if (!id || extra !== undefined) return notFound;
@@ -196,6 +205,12 @@ export function href(route: Route): string {
       return `#/knowledge/folder/${encodeURIComponent(route.id)}${route.file ? `?file=${encodeURIComponent(route.file)}` : ''}`;
     case 'doc':
       return `#/knowledge/${encodeURIComponent(route.id)}${route.edit ? '?edit=1' : ''}`;
+    case 'apps':
+      return route.newApp ? '#/apps?new=1' : '#/apps';
+    case 'app':
+      return `#/apps/${encodeURIComponent(route.id)}${route.appPage ? `/${encodeURIComponent(route.appPage)}` : ''}`;
+    case 'app-edit':
+      return `#/apps/${encodeURIComponent(route.id)}/edit`;
     case 'tables':
       return '#/tables';
     case 'form':

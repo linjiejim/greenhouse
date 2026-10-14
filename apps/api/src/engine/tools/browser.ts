@@ -64,6 +64,14 @@ export function browserTool(browser: BrowserService) {
     // It acts on the asker's own copy of the computer.
     publicAgent: true,
     available: computerAvailable,
+    async callRisk(args, ctx) {
+      return (await browser.needsApproval(
+        { memberId: ctx.memberId, agentId: ctx.agent.id, runId: ctx.runId, signal: ctx.signal },
+        args,
+      ))
+        ? 'tier3'
+        : 'read';
+    },
     async execute(args, ctx) {
       return browser.act(
         {
@@ -71,6 +79,7 @@ export function browserTool(browser: BrowserService) {
           agentId: ctx.agent.id,
           runId: ctx.runId,
           signal: ctx.signal,
+          approved: ctx.approved,
           ...(ctx.attachImage ? { attachImage: ctx.attachImage } : {}),
         },
         args,
@@ -78,6 +87,9 @@ export function browserTool(browser: BrowserService) {
     },
     summarize: (args, output, locale) => {
       const zh = locale === 'zh';
+      if ((output as { status?: string } | undefined)?.status === 'unsupported') {
+        return zh ? '模型不支持查看截图' : 'The model cannot view screenshots';
+      }
       if ((output as BrowserResult | undefined)?.error) {
         return zh ? `浏览器操作没有完成（${args.action}）` : `The browser could not ${args.action}`;
       }

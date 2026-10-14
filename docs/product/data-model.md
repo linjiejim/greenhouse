@@ -48,7 +48,7 @@ v2 从零建表：只有一份基线迁移，不继承 v1 的迁移链，也不�
   - 能哈希的就不加密：密码（自描述格式 `scrypt$…`）、刷新令牌、OAuth 授权码与令牌、激活链接只存哈希。
 - 审计与用量
   - `audit_events` 是唯一的只追加审计表。它记录谁（成员、Agent、外部客户端或系统）代表谁，对什么做了什么，结果如何；不记内容和机密。
-  - `usage_events` 每次 Provider 调用写一条（[providers.md §8](providers.md#8-用量与预算)），是用量和费用的唯一事实。预算的已用量按当月直接汇总它，管理页与调用前的检查用同一个求和；`budget_periods` 的计数缓存和 `budget_reservations` 的预留，等调用量大到需要时再启用。
+  - `usage_events` 每次 Provider 调用写一条（[providers.md §8](providers.md#8-用量与预算)），是用量和费用的唯一事实。预算的已用量按当月直接汇总它，管理页与调用前的检查用同一个求和；`budget_periods` 的计数缓存尚未启用。M2.4 子运行已启用 `budget_reservations`：按当前 UTC 月在覆盖预算的行锁下预留，调用检查计入其他运行的未过期预留，结束按 usage_events 结算或释放。
   - 与 v1 不同：v1 的审计分散在 `platform_audit_events`、`api_audit_log`、`email_send_log` 三张表；用量分散在 `llm_usage` 和预算账本。
 - 迁移
   - 只有一份基线 `drizzle/0000_v2_baseline.sql`，之后照旧只 `generate` + `migrate`，不 `push`。生成列、GIN 和部分唯一索引都写进基线。
@@ -78,8 +78,9 @@ v2 从零建表：只有一份基线迁移，不继承 v1 的迁移链，也不�
 | --- | --- | --- |
 | `agents` | Agent 身份与可变状态 | `owner_id` → `members` `CASCADE`、`is_main`（每个成员恰好一个，部分唯一索引）、`name` / `name_key`（主人名下未归档的唯一）、`role`、`avatar`（植物头像）、`current_version`、`visibility`（private / public）、`published_version`、`paused_at`（管理员暂停）、`publication`（授权范围：知识文件夹、电脑、每人每日上限）、`template_key`、`last_active_at`、`archived_at` |
 | `agent_versions` | 不可变 manifest，每次保存追加一版 | `agent_id` `CASCADE`、`version`、`manifest`（text：名字、职责、说明、指令、头像、模型引用、技能、连接器、读写权限、工具过滤）、`manifest_hash`、`change_note`、`created_by`；唯一 `(agent_id, version)` |
-| `agent_memories` | Agent 的记忆 | `agent_id` `CASCADE`（必填；没有用户级记忆，共享信息写在 `members.about`）、`member_id`、`title`（召回索引，只有它进提示词）、`content`、`category`、`status`（active / dormant / archived / superseded）、`pinned`、`source`、`superseded_by`、`source_conversation_id`、`last_used_at` |
-| `agent_computers` | Agent 电脑的生命周期 | `agent_id` `CASCADE`、`owner_id`（这台电脑是谁的）、`provider_id`（沙箱实例）、`sandbox_ref`（适配器自己的容器、卷或沙箱 id）、`state`（stopped / starting / running / failed）、`state_reason`、`timezone`、`version`、`last_active_at`、`last_started_at`；唯一 `(agent_id, owner_id)`：主人一台，公开 Agent 的发布允许电脑时，使用它的成员各一台；观看、接管和终端用一次性 ticket，连接打开期间刷新 `last_active_at`；画面租约 `lease_controller`（member / agent，空 = 无人）、`lease_holder`（持有它的控制画面或浏览器动作）、`lease_until`：成员的控制画面打开期间一直持有并续期，Agent 的每个浏览器动作短暂持有；成员总能拿到，Agent 只在无人持有或已过期时拿到（AGNT-22） |
+| `agent_memories` | Agent 的记忆 | `agent_id` `CASCADE`（必填；没有用户级记忆，共享信息写在 `members.about`）、`member_id`、`title`（召回索引，只有它进提示词）、`content`、`category`（含 log：后台运行完成日志，索引只放最近 7 天标题）、`status`（active / dormant / archived / superseded）、`pinned`、`source`、`superseded_by`、`source_conversation_id`、`last_used_at` |
+| `standing_approvals` | 成员在卡片上授予的预先授权 | `id`（sap 前缀）、`agent_id` / `member_id`（CASCADE）、`scope_type`（folder / table）、`scope_id`（逻辑引用）、`actions`、`granted_at`、`revoked_at`；未撤销的 `(agent_id, member_id, scope_type, scope_id)` 唯一；第 3 档不能授予，taint 后不能使用，撤销记录保留 |
+| `agent_computers` | Agent 电脑的生命周期 | `agent_id` `CASCADE`、`owner_id`（这台电脑是谁的）、`provider_id`（沙箱实例）、`sandbox_ref`（适配器自己的容器、卷或沙箱 id）、`state`（stopped / starting / running / failed）、`state_reason`、`timezone`、`version`、`last_active_at`、`last_started_at`；唯一 `(agent_id, owner_id)`：主人一台，公开 Agent 的发布允许电脑时，使用它的成员各一台；观看、接管和终端用一次性 ticket，连接打开期间刷新 `last_active_at`；后台占用 `background_run_id`（逻辑运行引用）及 `egress_restricted`（退出后直到正常网络恢复）；画面租约 `lease_controller`（member / agent，空 = 无人）、`lease_holder`（持有它的控制画面或浏览器动作）、`lease_until`：成员的控制画面打开期间一直持有并续期，Agent 的每个浏览器动作短暂持有；成员总能拿到，Agent 只在无人持有或已过期时拿到（AGNT-22） |
 | `computer_backups` | 电脑家目录的加密备份 | `computer_id`、`owner_id`（逻辑）、`status`、`reason`（idle / admin / migration）、`storage_prefix`、`key_enc`、`format`、`bytes`、`restored_at`；每台电脑最多一条 running；先删对象再删行 |
 | `computer_watches` | 电脑上的后台进程结束时唤醒 Agent | `computer_id` `CASCADE`、`agent_id`、`member_id`（以谁的权限唤醒）、`conversation_id`、`job_ref`（按电脑唯一）、`name`、`status`（watching / notified / gone，从 watching 单次认领，7 天无果作废） |
 | `agent_mailboxes` | Agent 邮箱（AGNT-30） | `agent_id` `CASCADE`（唯一）、`local_part`（工作区内唯一，小写；默认「名字-随机 4 位」）、`allow_members`（工作区成员的来信能叫醒它，默认开）；域名是 `mail` 能力的默认项 `agent_domain`，改域名就改了所有地址；主人第一次查看时建立 |
@@ -99,11 +100,11 @@ v2 从零建表：只有一份基线迁移，不继承 v1 的迁移链，也不�
 | `message_feedback` | 对一条回复的赞或踩 | `message_id` `CASCADE`、`member_id`、`rating`（1 / -1）、`comment`、`agent_id`、`agent_version`；唯一 `(message_id, member_id)`；公开 Agent 的主人只读这张表，读不到消息 |
 | `message_receipts` | Agent 对消息的处理回执 | `message_id` `CASCADE`、`agent_id`、`status`（queued / processing / answered / skipped / failed / canceled）、`processed_at`；唯一 `(message_id, agent_id)` |
 | `conversation_notes` | 对话的共享笔记 | `conversation_id` `CASCADE`、`title`、`body`、`author_member_id` 或 `author_agent_id`、`status`（open / done）、`pinned` |
-| `conversation_inbox` | 单写者队列 | `conversation_id` `CASCADE`、`kind`（event / continue / run_report / message / mention / handback）、`payload`、`consumed_at`；回合进行中到达的事件先进这里，由持有回合的引擎排空 |
+| `conversation_inbox` | 单写者队列与事件合并 | `conversation_id` `CASCADE`、`kind`（event / continue / run_report / message / mention / handback）、`dedupe_key`（对话内唯一，已消费的也去重）、`ready_at`（默认首条事件到达后二分钟）、`payload`（Agent、成员、来源链、深度超限 / 每日上限的抑制原因）、`consumed_at`；消息 > 决定 > 事件，超限事件照样保留 |
 | `handoffs` | Agent 之间的转交 | `requested_by`（成员，权限来源）、`source_conversation_id` / `source_agent_id`、`target_conversation_id` / `target_agent_id`、`run_id`、`chain_key` + `path`（深度、次数、循环限制）、`dedupe_key`（唯一）、`status`、`reply`、`returned_at` |
 | `requests` | 「需要你」，唯一的请求模型 | `member_id`（由谁决定）、`kind`（approval / login / takeover / question / proposal）、`subject`（如 tool_write、app_action、agent_create、instructions_update、run_start、tables_plan）、`status`（pending / approved / rejected / answered / handed_back / expired / canceled）、`conversation_id`、`run_id`、`step_id`、`agent_id`、`payload`（不含机密）、`result`、`expires_at`、`decided_by`、`decided_at`、`version`；只从 pending 单次 CAS 结算，结算与执行它的 `request_decided` 任务同一事务写入 |
 | `runs` | 运行：Agent 做的一件事。每段对话同时最多一个进行中的回合（部分唯一索引 `runs_one_active_turn_key`），这就是单写者 | `agent_id`、`owner_id`（权限来自谁）、`requested_by`、`kind`（background / turn；turn 是前台回合，不进运行列表）、`source`（conversation / schedule / automation / record / handoff / app）+ `source_id`、`conversation_id`、`parent_run_id` `CASCADE`、`root_run_id`、`title`、`brief`、`status`、`desired_state`、`wait_reason`、租约（`lease_owner`、`lease_expires_at`、`heartbeat_at`）、`attempt`、`deadline_at`、`checkpoint`（长任务的续跑点）、`input`、`output`、`error_code`、`version` |
-| `run_steps` | 步骤，重试的最小单位；工具调用是一种步骤 | `run_id` `CASCADE`、`parent_step_id`、`key` + `attempt`（唯一）、`kind`（model / tool / handoff / computer / wait；model 是模型步骤结束时记下的新增回复片段与工具结果，`output.messages`，每步约 2 万字，键 `model:<序号>`，重试从这里接着做，运行详情不列出）、`tool_name`、`risk`、`idempotency_key`（运行内唯一）、`request_id`、`status`（含 uncertain：外部结果未知，不自动重放）、`input`、`output`、`error`、`tokens`、`duration_ms`、租约 |
+| `run_steps` | 步骤，重试的最小单位；工具调用是一种步骤 | `run_id` `CASCADE`、`parent_step_id`、`key` + `attempt`（唯一）、`kind`（model / tool / handoff / computer / wait；model 是模型步骤结束时记下的新增回复片段与工具结果，`output.messages`，每步约 2 万字，键 `model:<序号>`，重试从这里接着做，运行详情不列出）、`tool_name`、`risk`（read / tier1 / tier2 / tier3）、`undo_state`（撤销前状态及不受展示截断影响的结果引用）、`undone_at`、`idempotency_key`（运行内唯一）、`request_id`、`status`（含 uncertain：外部结果未知，不自动重放）、`input`、`output`、`error`、`tokens`、`duration_ms`、租约 |
 | `run_events` | 只追加的运行时间线 | `run_id` `CASCADE`、`seq`（唯一）、`type`、`payload`、`actor`；运行详情和 WebSocket 进度都读它 |
 
 产物不单独建表：运行产生的文件就是 `files` 里 `run_id` 非空、`purpose=artifact` 的行。
@@ -117,7 +118,7 @@ v2 从零建表：只有一份基线迁移，不继承 v1 的迁移链，也不�
 | `doc_versions` | 不可变版本 | `doc_id` `CASCADE`、`version`、`title`、`content`、`change_note`、`created_by`、`agent_id`（Agent 代写时）；唯一 `(doc_id, version)`；新建是版本 1，恢复写一个新版本 |
 | `doc_links` | 反向链接 | 主键 `(from_doc_id, to_doc_id)`，两端 `CASCADE`；每次保存由正文重建，读反链时逐条过权限 |
 | `comments` | 文档和记录的评论 | `target_type`（doc / record）、`target_id`、`base_id`（记录评论）、`created_by`、`agent_id`（Agent 代写时）、`body`（Markdown）、`mentions`（由正文里的 `[@名字](member:<id>)` 得出）、`deleted_at`、`updated_at`；读权限跟随目标，不进全文检索 |
-| `files` | 统一文件服务 | `purpose`（attachment / knowledge / record / artifact / export / import / skill / avatar / branding / mail）、`provider_id`、`storage_key`（唯一）、`name`、`content_type`、`size_bytes`、`sha256`、`status`、`owner_id`、归属列按 purpose 填一个（`folder_id` + `space`、`conversation_id`、`base_id`、`run_id`；技能包、头像、品牌由引用它的行持有）、`expires_at`（导出）、`meta`、`search_*`（知识库文件：A 文件名，C 文本与 PDF 的文字）、`archived_at`；权限跟随归属。知识库文件的 `folder_id` → `folders` `SET NULL`，`owner_id` 同 `folders`；`meta.doc_id` 是贴进文档的图片（不在树里，权限跟随文档），`meta.sort_order` 是手动顺序 |
+| `files` | 统一文件服务 | `purpose`（attachment / knowledge / record / artifact / export / import / skill / avatar / branding / mail / tool_output）、`provider_id`、`storage_key`（唯一）、`name`、`content_type`、`size_bytes`、`sha256`、`status`、`owner_id`、归属列按 purpose 填一个（`folder_id` + `space`、`conversation_id`、`base_id`、`run_id`；技能包、头像、品牌由引用它的行持有）、`expires_at`（导出；tool_output 在 30 天后到期）、`meta`、`search_*`（知识库文件：A 文件名，C 文本与 PDF 的文字）、`archived_at`；权限跟随归属。知识库文件的 `folder_id` → `folders` `SET NULL`，`owner_id` 同 `folders`；`meta.doc_id` 是贴进文档的图片（不在树里，权限跟随文档），`meta.sort_order` 是手动顺序 |
 
 「他人正在编辑」与在线状态放在进程内存里，不建表；有多个 API 进程时，各自只看得到连在本进程的人。
 
@@ -142,21 +143,25 @@ v2 从零建表：只有一份基线迁移，不继承 v1 的迁移链，也不�
 | `base_record_files` | 记录附件 | 主键 `(record_id, field_id, file_id)`，`record_id` / `field_id` `CASCADE`、`file_id` → `files`（用途 `record`，`files.base_id` 是所在表格，`file_id` 唯一）、`position`；只能挂自己上传到这个表格、还没挂在别的记录上的文件；记录在回收站里时附件打不开；彻底删除后文件字节在提交后由 `base_discard` 任务删除，一天没挂上的上传由每天的清理删除 |
 | `base_record_events` | 记录历史 | `record_id` `CASCADE`、`table_id`、`actor_type`（member / agent / automation / form / import / app / system）、`actor_id`、`type`（created / updated / deleted / restored）、`changes`（字段前后值）、`meta` |
 | `base_automations` | 自动化规则 | `base_id` / `table_id` `CASCADE`、`name`、`status`、`trigger`（record_created / record_updated / record_matched / schedule / date_reached / button）、`config`（条件与动作：通知成员、Agent 步骤、webhook）、`run_as`（成员）、`secrets_enc`（webhook 签名密钥）、`revision`、`next_fire_at`、`swept_until` |
-| `base_automation_runs` | 自动化执行记录 | `automation_id` `CASCADE`、`record_id`（逻辑）、`trigger`、`status`、`steps`、`run_id`（Agent 步骤对应的运行）、`error`、`started_at`、`finished_at` |
+| `base_automation_runs` | 自动化执行记录 | `automation_id` `CASCADE`、`record_id`（逻辑）、`trigger`、`status`、`dedupe_key`（唯一）、`revision`（固定的规则修订）、`event_chain`（随 Agent 写入继续传递）、`steps`、`run_id`（Agent 步骤对应的后台运行，逻辑引用）、`error`、`started_at`、`finished_at`；发送中断标记结果未知，旧修订或来源链循环标记停止 |
 | `base_imports` | CSV 导入 | `base_id` / `table_id` `CASCADE`、`member_id`、`file_id`（用途 `import`，导入结束即删除）、`mapping`（`{ header, columns, first, samples }`）、`status`（draft / queued / running / done / failed / cancelled）、`total_rows`、`committed_rows`（重试从这里继续）、`result`（`{ created, skipped, errors（最多 100 条）, more_errors, failure }`）、`expires_at`（草稿 24 小时）；后台任务 `base_import`，去重键 `base_import:<id>:<起始行>` |
 | `apps` | 应用 | `base_id` `CASCADE`、`name`、`description`、`icon`、`accent`、`owner_id`、`status`（draft / published）、`draft_spec`（text）、`draft_revision`、`published_version`、`featured`、`archived_at`；受众在 `shares` |
-| `app_versions` | 已发布的不可变版本 | `app_id` `CASCADE`、`version`、`spec`（text）、`spec_hash`、`draft_revision`、`notes`、`custom_review`、`published_by`、`published_at` |
+| `app_versions` | 已发布的不可变版本 | `app_id` `CASCADE`、`version`、`spec`（text）、`spec_hash`、`draft_revision`、`notes`、`published_by`、`published_at` |
 | `base_templates` | 表格模板，可带应用；「项目」是内置模板 | `key`（唯一）、`source`（builtin / published）、`name`、`description`、`owner_id`、`latest_version`、`source_app_id`、`source_base_id`、`archived_at` |
-| `base_template_versions` | 模板的不可变版本 | `template_id` `CASCADE`、`version`（semver）、`changelog`、`content`（text：表结构、可选的应用 spec、示例行）、`content_hash`、`custom_cards`、`automations`、`scan_status`、`review_status`、`reviewed_by`、`reviewed_at` |
+| `base_template_versions` | 模板的不可变版本 | `template_id` `CASCADE`、`version`（semver）、`changelog`、`content`（text：表结构、可选的应用 spec、示例行）、`content_hash`、`scan_status`（passed / blocked）、`review_status`（pending / approved / rejected）、`reviewed_by`、`reviewed_at` |
 
-已建（M2.2 第一、二阶段）：`bases`、`base_roles`、`base_tables`、`base_fields`（全部类型）、`base_field_deps`、`base_views`（含仪表盘）、`base_forms`、`base_form_submissions`、`base_records`、`base_record_links`、`base_record_files`、`base_record_events`、`base_imports`；表格的分享在 `shares`，记录评论在 `comments`，置顶在 `pins`。自动化与应用随第三阶段。「项目」内置模板仍写在代码里（apps/api/src/modules/tables/templates.ts），`base_templates` 随应用模板一起建。
+已建（M2.2 第一、二阶段）：`bases`、`base_roles`、`base_tables`、`base_fields`（全部类型）、`base_field_deps`、`base_views`（含仪表盘）、`base_forms`、`base_form_submissions`、`base_records`、`base_record_links`、`base_record_files`、`base_record_events`、`base_imports`；表格的分享在 `shares`，记录评论在 `comments`，置顶在 `pins`。应用人用部分（#70）已建 `apps`、`app_versions`、`base_templates`、`base_template_versions`；#70 新增 `base_automations`、`base_automation_runs`，规则与执行记录通过 `jobs` 串起触发与动作。「项目」定义仍写在代码里（apps/api/src/modules/tables/templates.ts），并登记为内置模板，复用现有安装器。
 
-后台任务（都在 `jobs`，apps/api/src/modules/tables/worker.ts）：`base_recompute`（记录写入时先在同一事务里算好它自己的计算字段，读到它的别处记录排进这个任务，按块重算并继续向下游传播；关联记录的标题变了、被删除或恢复时，读这些关联的记录也重算；字段新建、修改、删除、恢复后整表重算）、`base_ai_field`（快速模型生成 AI 字段的值，按字段创建者计量与预算，旧任务被新任务取代时不写入）、`base_import`、`base_purge`（每天一次：回收站 30 天以上的记录、过期导入、没挂上的附件）、`base_discard`（提交后删除文件字节）。
+后台任务（都在 `jobs`，apps/api/src/modules/tables/worker.ts）：`base_recompute`（记录写入时先在同一事务里算好它自己的计算字段，读到它的别处记录排进这个任务，按块重算并继续向下游传播；关联记录的标题变了、被删除或恢复时，读这些关联的记录也重算；字段新建、修改、删除、恢复后整表重算）、`base_ai_field`（快速模型生成 AI 字段的值，按字段创建者计量与预算，旧任务被新任务取代时不写入）、`base_automation`（与记录变化同事务入队，固定规则修订，通知/webhook/Agent 事件逐步记录进度；来源链和每日唤醒限额交给单引擎）、`base_import`、`base_purge`（每天一次：回收站 30 天以上的记录、过期导入、没挂上的附件）、`base_discard`（提交后删除文件字节）。
 
 与 #64 的差别：
 - `table_dashboards` / `table_dashboard_widgets` 并入 `base_views`。
 - `table_automation_outbox`、`table_recompute_jobs` 由 `jobs` 承接；`table_app_action_requests` 由 `idempotency_keys` 承接。
 - `table_notifications` 删除，自动化通知走 `notifications`。
+
+应用的人用部分（#70）：草稿 spec 为声明式 JSON（页面、复用仪表盘 schema 的卡片、记录／表单／按钮、角色）；每个应用最多 20 页、每页 30 张卡、20 个角色，spec 最多 1 MB。受众存 `shares(app)`，role 为 `use`（沿用表格权限）或 spec 的角色 id。发布和替换受众同一事务，发布消耗 draft_revision；已发布 spec 不修改。应用角色与底层表格权限取交集，多个应用角色的可见行取并集，再与表格规则及卡片查询相交。卡片字段是显示投影，计算依赖的禁读仍由角色规则决定；关联标题按目标数据表的权限裁剪。模板内容仅保留表结构、共享视图、字段依赖和发布 spec；管理员审核后才能安装。模板不包含自动化；自定义 HTML 的运行仍禁用，独立的版本代码审核后续。
+
+表格 Web（#70，T3）不增加存储：公式与提示词草稿只在字段抽屉内；角色抽屉写已有 `base_roles.rules`，分享写已有自定义角色引用；计算值由 API 返回，缓存按 `computed_revision` 更新，客户端不把计算字段放进记录写入。
 
 ## 7. 技能
 
@@ -188,7 +193,7 @@ v2 从零建表：只有一份基线迁移，不继承 v1 的迁移链，也不�
 | --- | --- | --- |
 | `notifications` | 站内通知 | `member_id`、`kind`（request / run_done / run_failed / reply / mention / comment / share / automation / skill_scan / budget / system）、`title`、`body`、`target_type` + `target_id`（打开即回到来源）、`request_id`、`run_id`、`agent_id`、`payload`（来源附带的信息，不含内容；送达的路由取自 target、request、run 列；回复与提及带 `message_id`、`seq`，提及另带 `from_member_id`，读会话到该 `seq` 即已读）、`dedupe_key`（每人唯一）、`read_at`；只有已读状态可改；外部送达是 `jobs`（`deliver_notification`，每条通知每个渠道一条，和通知在同一事务里写入） |
 | `push_devices` | 手机推送设备 | `member_id` `CASCADE`、`token`（Expo push token，唯一，从不返回）、`platform`（ios / android）、`project_id`（按它分组发送）、`client_ref`（工作站 id，推送里原样带回）、`prefs`（needs_you / done / replies / preview / live_activity，只能收窄成员的设置）、`auth_version`（登记时的，改密码或停用后停推）、`last_seen_at`（90 天未见不推）、`disabled_at` + `disabled_reason`（unregistered / device_not_registered / device_limit，每人最多 10 台）；按 token 登记，换人即归新成员并重置开关；只停用不删除 |
-| `schedules` | 定时，只属于 Agent | `agent_id` `CASCADE`、`owner_id`、`name`、`brief`（每次运行的简报）、`skill_id`（可选：按技能运行）、`model`、`cron`、`timezone`、`status`（active / paused）、`next_run_at`、`last_run_at`、`last_run_id`、`last_status`、`run_count` |
+| `schedules` | 定时，只属于 Agent | `agent_id` `CASCADE`、`owner_id`、`name`、`brief`（每次运行的简报）、`quiet`（默认 false）、`computer`、`domains`、`continue_after`（默认 false；触发时四项复制到运行 input）、`skill_id`（可选：按技能运行）、`model`、`cron`、`timezone`、`status`（active / paused）、`next_run_at`、`last_run_at`、`last_run_id`、`last_status`、`run_count` |
 
 ## 10. 用量与审计
 
@@ -199,6 +204,8 @@ v2 从零建表：只有一份基线迁移，不继承 v1 的迁移链，也不�
 | `budget_periods` | 每个预算每月的计数 | 主键 `(budget_id, period_start)`、`period_end`、`reserved`、`spent`、`version`；周期是 UTC 自然月 |
 | `budget_reservations` | 调用前的预留 | `budget_id`、`period_start`、`idempotency_key`（同一次调用涉及的各级预算共用）、`estimated`、`actual`、`status`（reserved / settled / released / expired）、`expires_at`、`member_id`、`run_id`；唯一 `(budget_id, idempotency_key)` |
 | `audit_events` | 唯一的审计表 | `actor_type`（member / agent / client / system）、`actor_id`、`on_behalf_of`（成员）、`agent_id`、`client_id`、`request_id`、`action`、`resource_type` + `resource_id`、`scope_type` + `scope_id`（如所在表格）、`result`（success / denied / error）、`summary`（不含内容和机密）、`ip`、`created_at` |
+
+#70：真实 DeepSeek 对话已验证 `input_tokens`、`output_tokens` 与 `cached_tokens` 按模型调用入账；缓存命中率由缓存 token ÷ 输入 token 汇总，不新增缓存计数表。模型目录没有单价时 `cost_micros` 为空，界面单列未定价调用。
 
 v1 的预算账本不再保留：每次花费都对应一条 `usage_events`；预留过期按估算计费时也写一条（`estimated=true`）。
 
@@ -229,6 +236,19 @@ v1 迁移工具的 ID 映射与检查点放在单独的 `migration` schema，不
 10. 消息上不存 token 用量，只在 `usage_events` 里按 run 记。管理员读不到消息，消息上的用量没有读者。
 11. 成员默认只停用；硬删除时必须指定接收人，共享对象转给接收人，私有数据随之删除。
 
+M1.7：运行检查点保存 `tainted`、`read_private` 与决定结果，后台审批后用已记录的模型步骤及已完成的工具结果重建上下文。结果 `output` 带 `text` 和 `findings`。运行结束和 `run_report` 汇报任务同事务，汇报消息与通知按运行 / 尝试去重；只有选择 `continue_after` 才产生唤醒事件，静默无发现时跳过跟进。事件唤醒仍是 turn 运行，以后台工具规则执行。
+
+### 12.7 M2.4 引擎补充（#70）
+
+- `agents.publication.folderIds` 保存公开 Agent 的知识授权根。只接受主人未归档的个人文件夹，排除所有 Agent 私有参考文件夹及其后代。每次知识读取重查发布、受众、主人模块与当前子树；授权不变成成员对文档或文件的直接分享。
+- 子运行仍是 `runs.kind=background`，`parent_run_id` 指父回合，`input.helper=true`，`input.model_ref` 固定本次工作区模型；父回合以 `wait_reason=helpers` 等待。每回合最多 3 个，完成只经同一个 `run_report` 唤醒层回传摘要；不单独通知。每个子运行预留 100,000 tokens 的估算额度，成本预算按模型价格计算；没有覆盖预算时仍留预留凭证。
+- `files.purpose=tool_output` 的文件始终仅 owner 可读，即使带有 run_id 也不继承对话受众；模型读区间按字符偏移。每日 `engine_retention` jobs 清理过期字节，并删除终态运行 90 天以前的 model 步骤及 Eval 提示快照；工具证据保留。编辑或重新生成删除旧回复时同时清除其模型上下文。
+- `runs.checkpoint.eval` 保存当时的提示组装配方、实际工具定义、成员模块与模型输入，供本地 Eval 导出。夹具导出清除凭据字段、Bearer、已知 key 形式和文件签名；导出前仍应使用不含私有业务材料的验收对话。
+
 ### 移动端 phase 2（#70）
 
 知识库、表格、评论、表单和 Agent 邮箱共用现有 v2 对象与权限，不新增数据表或迁移。移动端复用 `version` / `revision` 做并发检查；Markdown 与字段值由服务端保存，未保存的输入只暂存在当前原生表单。
+
+### 移动端最新 v2 集成（#70）
+
+移动端只消费既有审批范围、步骤回执、日程 `quiet`、记录交办、应用及不可变发布、运行摘要与发现，不新增数据表或迁移。预先授权由成员在当前 tier2 卡片明确选择，授权和撤销均以服务端对象为准。应用卡片的字段范围和发布版本不由原生草稿扩大；未保存字段只留在当前成员／工作站及该对象的原生表单，身份变化清空。

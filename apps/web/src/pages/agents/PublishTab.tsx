@@ -25,6 +25,7 @@ import { useNotify } from '../../app/notify';
 import { useMe } from '../../app/session';
 import { useVersions } from '../../data/agents';
 import { api } from '../../lib/api';
+import { KnowledgeGrant } from './KnowledgeGrant';
 import { useI18n } from '../../lib/i18n';
 
 export function PublishTab({ agent }: { agent: AgentDetail }) {
@@ -41,6 +42,7 @@ export function PublishTab({ agent }: { agent: AgentDetail }) {
   const [audience, setAudience] = useState<string[]>([]);
   const [version, setVersion] = useState('');
   const [computer, setComputer] = useState(false);
+  const [folderIds, setFolderIds] = useState<string[]>([]);
   const [cap, setCap] = useState('0');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
@@ -54,6 +56,7 @@ export function PublishTab({ agent }: { agent: AgentDetail }) {
     setAudience(current.audience.filter((entry) => entry.id).map((entry) => `${entry.type}:${entry.id}`));
     setVersion(String(current.version ?? current.current_version));
     setComputer(current.computer);
+    setFolderIds(current.folder_ids);
     setCap(String(current.daily_cap));
   }, [publication.data]);
 
@@ -82,6 +85,7 @@ export function PublishTab({ agent }: { agent: AgentDetail }) {
             return { type, id };
           }),
       computer,
+      folder_ids: me.modules.knowledge ? folderIds : [],
       daily_cap: Math.max(0, Math.floor(Number(cap) || 0)),
     };
     setSaving(true);
@@ -162,6 +166,11 @@ export function PublishTab({ agent }: { agent: AgentDetail }) {
               setError('');
             }}
           />
+        )}
+        {me.modules.knowledge && (
+          <FieldGroup label={t('publish.knowledge')} description={t('publish.knowledgeHint')}>
+            <KnowledgeGrant selected={folderIds} onChange={setFolderIds} />
+          </FieldGroup>
         )}
         {me.capabilities.sandbox && (
           <div className="app-setting-row is-plain">

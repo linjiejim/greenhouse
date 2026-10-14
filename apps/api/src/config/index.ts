@@ -13,6 +13,8 @@ const booleanFlag = z
 const schema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().int().min(1).max(65_535).default(3000),
+  AGENT_EVENT_MERGE_MS: z.coerce.number().int().min(0).max(120_000).default(120_000),
+  AGENT_EVENT_WAKES_PER_DAY: z.coerce.number().int().min(1).max(1000).default(50),
   /** Public origin of this deployment, used in links we hand out. */
   PUBLIC_URL: z.string().url().default('http://localhost:3000'),
   DATABASE_URL: z.string().min(1),

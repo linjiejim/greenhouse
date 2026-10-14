@@ -7,7 +7,15 @@ import { isoTime } from './common.js';
  * opens a fixed set of MCP tools (apps/api/src/modules/mcp/tools.ts). The consent page, the token
  * form and the client form list them in this order.
  */
-export const OAUTH_SCOPES = ['agents:read', 'agents:ask', 'conversations:read', 'runs:read', 'memories:read'] as const;
+export const OAUTH_SCOPES = [
+  'agents:read',
+  'agents:ask',
+  'conversations:read',
+  'runs:read',
+  'memories:read',
+  'apps:read',
+  'apps:write',
+] as const;
 export const oauthScopeSchema = z.enum(OAUTH_SCOPES);
 export type OAuthScope = (typeof OAUTH_SCOPES)[number];
 

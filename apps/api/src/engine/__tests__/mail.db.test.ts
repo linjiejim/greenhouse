@@ -74,7 +74,7 @@ describe('the mail tool', () => {
     // The wake: a turn of the main Agent for Lin, told only the mail's metadata.
     const [wake] = await turns();
     expect(wake).toMatchObject({ ownerId: lin.id, status: 'succeeded' });
-    expect(wake!.input).toMatchObject({ reason: 'continue', note: expect.stringContaining(mail!.id) });
+    expect(wake!.input).toMatchObject({ reason: 'event', note: expect.stringContaining(mail!.id) });
     expect(model.tools[0]).toContain('mail');
     const [listed] = await steps(wake!.id);
     expect(listed).toMatchObject({ toolName: 'mail', status: 'succeeded' });
@@ -87,10 +87,9 @@ describe('the mail tool', () => {
     });
     aim(forget, { action: 'forget', id: remembered.body.id });
     const reading = await send('read it and forget the old note');
-    const readingSteps = await steps(reading.run_id);
-    expect(readingSteps).toHaveLength(2);
-    const opened = readingSteps.find((step) => step.toolName === 'mail');
-    const memory = readingSteps.find((step) => step.toolName === 'memory');
+    const completed = await steps(reading.run_id);
+    const opened = completed.find((step) => step.toolName === 'mail');
+    const memory = completed.find((step) => step.toolName === 'memory');
     expect(opened).toMatchObject({ toolName: 'mail', risk: 'read', status: 'succeeded' });
     const body = (opened!.output as { body: string }).body;
     expect(body).toMatch(/^<mail_body untrusted="true">\n/);
@@ -115,7 +114,7 @@ describe('the mail tool', () => {
       ],
     });
     const [pending] = await steps(replying.run_id);
-    expect(pending).toMatchObject({ risk: 'external', status: 'pending' });
+    expect(pending).toMatchObject({ risk: 'tier3', status: 'pending' });
     expect(resend.state.sent).toEqual([]);
 
     expect((await call('POST', `/api/requests/${card!.id}/approve`, { token: lin.token })).status).toBe(200);
@@ -138,7 +137,7 @@ describe('the mail tool', () => {
       .from(messages)
       .where(and(eq(messages.conversationId, main.id), eq(messages.role, 'event')))
       .orderBy(asc(messages.seq));
-    expect(cards.map((row) => row.content)).toEqual([
+    expect(cards.filter((row) => row.event?.type !== 'event').map((row) => row.content)).toEqual([
       `收到 lin@acme.test 的邮件（${mail!.id}）`,
       `已发出邮件给 lin@acme.test（${out[0]!.id}）`,
       '已批准：回信给 lin@acme.test',

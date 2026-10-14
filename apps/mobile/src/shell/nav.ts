@@ -138,6 +138,9 @@ export function openAppRoute(
     case 'form':
       router.push({ pathname: '/tables/form', params: { id: route.id } });
       return true;
+    case 'apps':
+      router.push(route.id ? { pathname: '/apps/runtime', params: { id: route.id, page: route.page ?? '' } } : '/apps');
+      return true;
     case 'web':
       return false;
   }

@@ -11,6 +11,7 @@ import { Button, DatePicker, IconButton, Input, Segmented, Select, type SelectOp
 import { icon } from '@greenhouse/ui/tokens';
 import {
   FILTER_TOKENS,
+  MAX_FILTER_CLAUSES,
   SYSTEM_FIELDS,
   isLinkType,
   operatorsFor,
@@ -54,7 +55,9 @@ function ClauseValue({
   fields,
   clause,
   onChange,
+  immediate,
 }: {
+  immediate: boolean;
   fields: readonly Field[];
   clause: FilterClause;
   onChange: (value: FilterClause['value']) => void;
@@ -151,6 +154,10 @@ function ClauseValue({
             const next = event.target.value;
             setText(next);
             if (timer.current) clearTimeout(timer.current);
+            if (immediate) {
+              onChange(kind === 'number' ? (next.trim() ? Number(next) : undefined) : next);
+              return;
+            }
             timer.current = setTimeout(
               () => onChange(kind === 'number' ? (next.trim() ? Number(next) : undefined) : next),
               400,
@@ -163,9 +170,11 @@ function ClauseValue({
 
 export function CardFilter({
   fields,
+  immediate = false,
   filter,
   onChange,
 }: {
+  immediate?: boolean;
   /** The fields of the card's table that I see. */
   fields: readonly Field[];
   filter: Filter | undefined;
@@ -225,6 +234,7 @@ export function CardFilter({
             />
             <ClauseValue
               key={`${clause.field}:${clause.op}`}
+              immediate={immediate}
               fields={fields}
               clause={clause}
               onChange={(value) => set(index, { value })}
@@ -243,6 +253,7 @@ export function CardFilter({
         <Button
           size="sm"
           kind="ghost"
+          disabled={current.clauses.length >= MAX_FILTER_CLAUSES}
           onClick={() => {
             const first = fields[0];
             if (!first) return;

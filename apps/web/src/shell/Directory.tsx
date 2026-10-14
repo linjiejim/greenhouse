@@ -3,6 +3,7 @@
  * primary action, the list, and low-traffic entries at the bottom. Search opens in place.
  */
 
+import { AppsDirectory } from '../pages/apps/AppsDirectory';
 import { useState } from 'react';
 import {
   Activity,
@@ -144,9 +145,11 @@ export function Directory({
           ? { label: t('agents.new'), onClick: () => openOverlay({ type: 'new-agent' }) }
           : module === 'skills'
             ? { label: t('skills.new'), onClick: () => openOverlay({ type: 'new-skill' }) }
-            : module === 'tables'
+            : module === 'tables' && route.page !== 'tables'
               ? { label: t('tables.new'), onClick: () => openNewBase(openOverlay) }
-              : null;
+              : module === 'apps'
+                ? { label: t('apps.new'), onClick: () => navigate({ page: 'apps', newApp: true }) }
+                : null;
 
   return (
     <>
@@ -162,7 +165,11 @@ export function Directory({
         ) : (
           <h2>{name}</h2>
         )}
-        {(module === 'chat' || module === 'agents' || module === 'knowledge' || module === 'tables') && (
+        {(module === 'chat' ||
+          module === 'agents' ||
+          module === 'knowledge' ||
+          module === 'tables' ||
+          module === 'apps') && (
           <IconButton
             label={searching ? t('directory.closeSearch') : t('directory.searchIn', { name })}
             onClick={() => {
@@ -186,6 +193,7 @@ export function Directory({
       <div className="app-directory-list">
         {module === 'chat' && <ChatDirectory route={route} query={query} />}
         {module === 'knowledge' && <KnowledgeDirectory route={route} query={query} />}
+        {module === 'apps' && <AppsDirectory route={route} query={query} />}
         {module === 'tables' && <TablesDirectory route={route} query={query} />}
         {module === 'agents' && (
           <>

@@ -196,6 +196,13 @@ export default function RootLayout() {
                 <Stack.Screen name="knowledge/shares" options={detailScreen(c, { grouped: true })} />
                 <Stack.Screen name="knowledge/file" options={detailScreen(c)} />
                 <Stack.Screen name="knowledge/edit" options={sheetScreen([1], { header: true })} />
+                <Stack.Screen name="apps/index" options={pageScreen(c, { grouped: true })} />
+                <Stack.Screen name="apps/runtime" options={detailScreen(c, { grouped: true })} />
+                <Stack.Screen name="apps/card" options={sheetScreen([1], { header: true })} />
+                <Stack.Screen name="agents/standing" options={detailScreen(c, { grouped: true })} />
+                <Stack.Screen name="agents/schedules" options={detailScreen(c, { grouped: true })} />
+                <Stack.Screen name="agents/schedule" options={sheetScreen([1], { header: true })} />
+                <Stack.Screen name="tables/handoff" options={sheetScreen([1], { header: true })} />
                 <Stack.Screen name="tables/index" options={pageScreen(c, { grouped: true })} />
                 <Stack.Screen name="tables/forms" options={detailScreen(c, { grouped: true })} />
                 <Stack.Screen name="comments" options={detailScreen(c, { grouped: true })} />

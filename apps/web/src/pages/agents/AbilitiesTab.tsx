@@ -15,6 +15,7 @@ import { useSkills } from '../../data/skills';
 import { errorText } from '../../lib/errors';
 import { useI18n } from '../../lib/i18n';
 import { AgentConnectors } from './AgentConnectors';
+import { StandingApprovals } from './StandingApprovals';
 
 export function AbilitiesTab({ agent }: { agent: AgentDetail }) {
   const { t } = useI18n();
@@ -87,6 +88,7 @@ export function AbilitiesTab({ agent }: { agent: AgentDetail }) {
         />
       </div>
       <AgentConnectors agent={agent} />
+      <StandingApprovals agentId={agent.id} />
       <div className="app-setting-row">
         <div className="app-setting-text">
           <strong>{t('agents.tools')}</strong>

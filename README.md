@@ -22,6 +22,8 @@ the side. Chat, the knowledge base, projects, tables, automations, missions and 
 one tool layer and one permission model; the same tools your team uses in chat are the ones you
 expose to Claude, Cursor, or any MCP client.
 
+> 当前 `v2` 分支仍在开发。v2 表格中的记录可交给自己的 Agent 在后台处理；评论和字段结果遵守写入审批。表格内的自动化支持记录、日期、间隔和按钮触发，统一通知成员、唤醒 Agent，或向公网 HTTPS 地址发送签名 webhook。Agent 也能按成员权限查询和操作已发布应用；外部客户端需要单独授权 `apps:read` / `apps:write`。
+
 ## A quick look
 
 <p align="center">
@@ -116,8 +118,10 @@ same script doubles as an end-to-end smoke tour (see [Development](#development)
   records and dependencies); grid, board, calendar, gallery and timeline views (a gantt with
   dependency arrows and milestones, dragged to change dates), each with its filters, sorts and
   groups, shared or personal; editing in cells or a record drawer, pasting blocks, comments and
-  history, a recycle bin, CSV export, sharing with four roles, and a Projects template. Forms, CSV
-  import, formulas, dashboards, automations and Agent tools are the next phases.
+  history, a recycle bin, forms, CSV import/export, shared or personal dashboards, and a Projects
+  template. Formula, lookup, rollup and AI fields have editors and read-only results; AI values can
+  be regenerated. Owners share with four built-in roles or custom table, row and column rules.
+  Readers can create personal dashboards from the table tabs. Automations and Agent tools follow.
 - **Home workbench** — a personal dashboard of live cards backed by the same tools (recipes and
   templates), editable by drag-and-drop or by asking the agent; it is the empty state of a new chat.
 - **Execution center** — one surface for every durable run: automations (cron), missions,
@@ -244,6 +248,15 @@ Node.js 22 (ESM, run via `tsx`).
 Full package conventions live in [AGENTS.md](./AGENTS.md).
 
 ## Quick start (local development)
+
+On the v2 branch, `sh scripts/dev-real.sh` runs the web and API against real model/search
+services and local Docker computers. Set `REAL_ENV_FILE`, `REAL_DATABASE_URL`,
+`REAL_WEB_PORT` and `REAL_API_PORT` for your checkout; its database persists between runs.
+Tool inputs are normalized to root objects for strict providers such as DeepSeek and
+validated with their original Zod schemas before execution. A text-only model uses browser
+`read` / `snapshot`; it cannot view screenshots. Cached tokens appear under Settings → Account
+and Admin → Usage. Calls without configured model prices are shown as unpriced.
+
 
 Prerequisites: Node.js ≥ 22, pnpm ≥ 11, Docker (for PostgreSQL).
 
@@ -608,7 +621,7 @@ client (Claude, Codex, Cursor, MCP Inspector, …) can connect to, as one member
   acts as them only after that member approves it.
 - **Personal access tokens** — a token with a name, scopes and an expiry, sent as a plain bearer
   token to `/api/mcp` (the CLI, scripts). Shown once.
-- **Scopes** — `agents:read`, `agents:ask`, `conversations:read`, `runs:read`, `memories:read`.
+- **Scopes** — `agents:read`, `agents:ask`, `conversations:read`, `runs:read`, `memories:read`, `apps:read`, `apps:write`.
   The tool list is exactly what was granted, and every tool runs as the member with the same
   checks as the app.
 - **Your Agents from outside** — `agents_list`, `agent_message` (writes into that Agent's thread
@@ -796,7 +809,13 @@ env at boot or at runtime, with optional per-member keys), the API v2 convention
 model (a fresh database baseline), a guide for migrating v1 data later, and the roadmap. The
 [Native Haven design system](docs/design-system/README.md) is the v2 UI spec; its
 tokens live in `packages/ui/src/tokens/haven.ts` (`pnpm tokens:build` regenerates the CSS).
-The current application has not adopted v2 yet.
+The v2 web and API now include approval tiers, reversible write receipts, standing approvals,
+background work that pauses for a decision and resumes from recorded steps, event wakes and
+quiet schedules. Background computer use must be declared in its brief: local Docker computers
+stay offline; E2B uses a domain allowlist. Event wakes merge for two minutes and default to 50
+per Agent per UTC day (`AGENT_EVENT_WAKES_PER_DAY`). The native mobile app includes write receipts with undo, tier2 standing approvals, quiet schedules, record handoffs and event lines.
+
+The v2 branch includes an Apps entry: build pages and forms on a base, publish a fixed version to members or groups, and save a published app as a template for admin review. App roles narrow each member’s base access; record actions run as the member and keep record history. The built-in Projects template is also available in the app center. Agents and MCP clients use the same scoped app tools. On phones, the Apps module lists published apps and opens native runtime pages, record details, forms, charts and confirmed actions; building and publishing stay on the web.
 
 Try the standalone [interactive prototype](apps/design/README.md) with `pnpm design:dev`
 (http://127.0.0.1:4518). It includes desktop / mobile, light / dark, module previews and an
@@ -828,13 +847,18 @@ smoke test. Re-run it after visible UI changes so the README and landing page st
 
 ### Agent evaluation
 
-Two layers. **Administration → Evaluation** (`pnpm cli eval`) replays single-question regression
-cases against the live agent and an LLM judge scores each answer against its expected facts; the
-starter set (`pnpm cli eval seed`) asks about the example dataset's knowledge base. The
-**[Agent scenario bank](docs/evals/README.md)** — 43 end-to-end tasks across chats, Agents and mobile,
-scored by a reviewer on process, deliverable and safety — covers what one turn can't (approval
-cards, permissions, Agent computers, attachments). It is run by hand today; a scenario runner is
-the planned follow-up.
+On v2, Eval is a local engineering loop: `pnpm cli eval export <run-id|message-id>` exports
+prompt layers, canonical tool definition hashes and recorded steps into `fixtures/eval/`.
+Set the v2 `DATABASE_URL` and signing/encryption configuration for export. Review the fixture
+for private material before committing it; credentials and signed links are redacted automatically.
+`TEST_DATABASE_URL=postgresql://…/greenhouse_v2_test pnpm eval` replays the fixtures with a
+scripted model through the current prompt builders, tool registry, input validation and approval
+gate. It makes no model calls. Nightly real-model cases remain planned for M3.6.
+
+The v2 main Agent can delegate up to three read-only helper runs per turn and receive their summaries
+in its process card. Published Agents can read only the knowledge folders their owner selects.
+Long tool results become private temporary files, and background completion logs appear separately
+on the Agent memory page.
 
 A husky + lint-staged pre-commit hook runs `eslint --fix` + `prettier --write` on staged
 files. CI (`.github/workflows/ci.yml`) runs lint → typecheck → test → e2e → secret-scan on

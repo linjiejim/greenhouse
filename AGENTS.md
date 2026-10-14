@@ -13,6 +13,7 @@ Greenhouse is an open-source, self-hosted platform where a team works with its o
 
 ## Repo map
 - apps/api: the v2 API (Hono). app.ts composes services and routes; modules/<domain>/ holds routes.ts and service.ts; engine/ runs turns and tools (engine/AGENTS.md); realtime/ is the WebSocket hub.
+- apps/api/src/modules/apps: human app builder/runtime, immutable publications and reviewed base templates (its AGENTS.md). Application roles narrow the tables access compiler; all writes use tables records as the member.
 - packages/contract: zod schemas and types for every request and response; web and extension import it, while mobile vendors its subset with parity tests.
 - packages/db: the v2 schema (data-model.md), ids, migrations and test support. drizzle/ holds the single baseline.
 - packages/providers: adapters per capability (llm, search, stt, tts, image, storage, sandbox: docker and e2b, mail: resend and mailgun; smtp is registered from apps/api/src/modules/mail), presets, the adapter registry and pinnedFetch (an instance's origins; `https://*.<domain>` allows every name under a domain, as E2B serves each sandbox under its own). apps/api/src/providers: env parsing, resolution order, sealed secrets, usage metering and the provider routes (docs/product/providers.md).
@@ -43,6 +44,7 @@ Greenhouse is an open-source, self-hosted platform where a team works with its o
 - Only apps/api/src/config reads process.env; everything else receives values from it.
 - External services come only from services.providers (resolve, languageModel). Never build a vendor SDK client or handle a vendor key anywhere else; the client it returns records usage and can only reach its configured address.
 - The one other way out is connectors, the MCP servers an admin installs: only modules/connectors reaches them, through its guarded fetch (https, public addresses in production, deadlines). Its built-in mailbox connector reaches a member's own IMAP and SMTP servers the same way: resolved and checked first (never a private network; loopback only outside production), connected to the checked address.
+- Explicitly configured table webhooks use the existing publicFetch guard: public HTTPS, connect-time DNS checks, no redirects, bounded deadlines and encrypted signing keys. They never use an Agent tool to send data.
 - Routes parse input with the contract's zod schemas (readJson, readQuery) and call a service. Services own queries, transactions and permission checks; routes and Agent tools call the same service.
 - Fail with ApiError (http/errors.ts): every error leaves as `{ error: { code, message, details? } }` with a stable snake_case code.
 - JSON is snake_case and maps from rows through view functions in the service; never return a database row.
@@ -51,6 +53,9 @@ Greenhouse is an open-source, self-hosted platform where a team works with its o
 - Check packages/utils/src/ before writing a helper. Server code logs through @greenhouse/utils/logger, never console.
 - Import other packages by name. Relative imports end in .js in Node-run code and omit it in Vite-bundled code.
 - Sync docs in the same change: README.md for humans, the nearest AGENTS.md for rules, features.md for status, data-model.md for the schema.
+- Background timers start from the worker's context, never from a request's open transaction.
+- Agent writes use read / tier1 / tier2 / tier3 per call. Standing approvals come only from a member's tier2 card and stop applying after taint; hold scope and grant locks until a reversible write commits. Receipts undo through the same services and refuse newer revisions.
+- Event sources call engine.deliver with a dedupe key and source chain. Events collect for two minutes, respect the daily cap, and never stand for consent. Background completion queues run_report with its final state.
 - Background work goes through the one `jobs` queue (apps/api/src/jobs.ts): enqueue in the transaction that causes it, claim with a lease, settle only as the lease holder.
 - Notifications leave the server only as the delivery jobs `notifications.publish` queues; modules/channels sends them through providers: email through the mail capability (its order, with fallback) and push. Feishu and WeCom keep their code but stay out of the UI until the IM channels. Without the member's previews they name no subject, and never carry the body of a needs-you card or a reply.
 - Mail (modules/mail): system mail and every Agent's mailbox go through the `mail` capability. A vendor's notice at the public `/api/mail/inbound/:instance` is verified first and is only a signal: the mail is fetched from the vendor with the instance's key. Received mail is untrusted input: stored once, its HTML and attachments as files, and it wakes an Agent only from a sender it may hear from whose From domain the receiving server verified.

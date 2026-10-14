@@ -37,6 +37,20 @@ const MAX_TABS = 20;
 /** The isolated world our page scripts run in. */
 const WORLD = '__greenhouse';
 
+/** Runs in our isolated world; a vault fill authorizes only that exact login form. */
+export const SUBMIT_RISK = `function (submit) {
+  const element = this.closest('button,input,a,[role="button"]') || this;
+  const form = element.form || element.closest('form');
+  const label = [element.textContent, element.getAttribute('aria-label'), element.getAttribute('value')].join(' ');
+  const destructive = /send|pay|purchase|buy|delete|remove|publish|post|checkout|authorize|grant|授权|发送|支付|付款|购买|删除|发布|下单/i.test(label);
+  const submitLabel = /submit|confirm|approve|accept|allow|提交|确认|同意|允许/i.test(label);
+  const submits = submit || (element.tagName === 'BUTTON' && form && element.type !== 'button' && element.type !== 'reset') ||
+    (element.tagName === 'INPUT' && /submit|image/i.test(element.type));
+  const approved = globalThis.__greenhouseApprovedLoginForm;
+  if (form && form === approved?.form && form.action === approved.action && form.method === approved.method && !destructive) return false;
+  return !!(submits || submitLabel || destructive);
+}`;
+
 export type BrowserInput =
   | { action: 'open'; url: string; new_tab?: boolean }
   | { action: 'snapshot'; from_line?: number }
@@ -53,6 +67,7 @@ export type BrowserInput =
   | { action: 'screenshot' };
 
 export interface BrowserCall {
+  approved?: boolean;
   memberId: string;
   agentId: string;
   /** The turn: element refs belong to its run. */
@@ -419,6 +434,8 @@ export function createBrowserService(deps: {
     }) => Promise<T>,
   ): Promise<T> {
     const { row, client } = await deps.computers.ensure(memberId, agentId);
+    if (row.backgroundRunId)
+      throw new BrowserRefusal('computer_background_busy', 'Background work is using this computer.');
     const holder = `act_${randomUUID()}`;
     const claimed = await claim(row.id, holder, options.approved === true, options.signal);
     const stillOurs = async () => !claimed || (await deps.computers.holdsScreen(row.id, holder));
@@ -645,6 +662,34 @@ export function createBrowserService(deps: {
     return described?.node.nodeName?.toUpperCase() === 'SELECT' ? 'select' : 'text';
   }
 
+  async function submitRisk(page: Page, runId: string, input: BrowserInput): Promise<boolean> {
+    const pressing = input.action === 'press' && /(?:Enter|Return|Space| )$/i.test(input.key);
+    if (input.action !== 'click' && !(input.action === 'type' && input.submit) && !pressing) return false;
+    const object =
+      input.action === 'click' || input.action === 'type'
+        ? (
+            await page.send<{ object: { objectId?: string } }>('DOM.resolveNode', {
+              backendNodeId: await nodeOf(page, runId, input.ref),
+              executionContextId: await page.world(),
+            })
+          ).object
+        : (
+            await page.send<{ result: { objectId?: string } }>('Runtime.evaluate', {
+              expression: 'document.activeElement',
+              contextId: await page.world(),
+            })
+          ).result;
+    await guard(page);
+    if (!object.objectId) return true;
+    const result = await page.send<{ result: { value?: unknown } }>('Runtime.callFunctionOn', {
+      objectId: object.objectId,
+      functionDeclaration: SUBMIT_RISK,
+      arguments: [{ value: input.action === 'type' || (pressing && /Enter|Return/i.test(input.key)) }],
+      returnByValue: true,
+    });
+    return result.result.value !== false;
+  }
+
   /** Everything after an action that changes the page: guards, takes it back if taken over, observes. */
   async function after(
     page: Page,
@@ -690,6 +735,12 @@ export function createBrowserService(deps: {
       const page = await ctx.current();
       if (input.action === 'tabs') return { tabs: await tabsView(page?.targetId ?? null) };
       if (!page) return { note: 'No tab is open. Use open {url}.' };
+
+      if (!call.approved && (await submitRisk(page, call.runId, input)))
+        throw new BrowserRefusal(
+          'approval_required',
+          'Submitting, sending, paying, deleting or publishing needs the member’s approval.',
+        );
 
       switch (input.action) {
         case 'open': {
@@ -901,8 +952,9 @@ export function createBrowserService(deps: {
           const main = await guard(page);
           if (!call.attachImage) {
             return {
+              status: 'unsupported',
               url: redact(main.url),
-              note: 'Your model cannot see images here. Use snapshot or read to see the page.',
+              note: 'No screenshot was taken: your model cannot see images here. Use snapshot or read to see the page.',
             };
           }
           // A picture cannot be redacted: none is taken while the page shows a saved secret.
@@ -928,6 +980,22 @@ export function createBrowserService(deps: {
   }
 
   const service = {
+    async needsApproval(call: BrowserCall, input: BrowserInput): Promise<boolean> {
+      if (
+        input.action !== 'click' &&
+        !(input.action === 'type' && input.submit) &&
+        !(input.action === 'press' && /Enter|Return|Space| $/i.test(input.key))
+      )
+        return false;
+      return session(call.memberId, call.agentId, { signal: call.signal }, async (ctx) => {
+        const page = await ctx.current();
+        if (!page) return true;
+        return submitRisk(page, call.runId, input).catch((error: unknown) => {
+          if (error instanceof BrowserRefusal) return false;
+          throw error;
+        });
+      });
+    },
     /**
      * One browser action for the Agent's turn. Refusals and failures come back as `error` and
      * `code` with what to do next; their text is redacted like everything read from a page.

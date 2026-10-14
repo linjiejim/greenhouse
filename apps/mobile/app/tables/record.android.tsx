@@ -1,6 +1,6 @@
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { NativeForm, FormNavRow, FormSection, FormValueRow } from '../../src/ui/native-form.android';
-import { FormChrome, SheetClose } from '../../src/ui/sheet-chrome';
+import { FormChrome, SheetClose, useLeaveSheetTo } from '../../src/ui/sheet-chrome';
 import { FieldEditor } from '../../src/tables/fields.android';
 import { useRecordEditor } from '../../src/tables/use-record-editor';
 import { useT } from '../../src/lib/i18n';
@@ -10,6 +10,7 @@ export default function Record() {
   const f = useRecordEditor(id);
   const t = useT();
   const router = useRouter();
+  const leaveTo = useLeaveSheetTo();
   return (
     <>
       {f.editing ? (
@@ -48,6 +49,12 @@ export default function Record() {
               />
             ))}
             <FormSection>
+              {!f.editing ? (
+                <FormNavRow
+                  label={t('integration.handoff')}
+                  onPress={() => leaveTo({ pathname: '/tables/handoff', params: { id } })}
+                />
+              ) : null}
               <FormNavRow
                 label={t('work.comments')}
                 onPress={() => router.push({ pathname: '/comments', params: { id, kind: 'record' } })}

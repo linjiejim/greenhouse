@@ -1,3 +1,4 @@
+import { integration } from './integration.en';
 import { work } from './work.en';
 /**
  * English catalog — the source of the keys (zh.ts must match). Words follow the glossary (PRD §5):
@@ -6,6 +7,7 @@ import { work } from './work.en';
 
 export const en = {
   work,
+  integration,
   common: {
     loading: 'Loading…',
     cancel: 'Cancel',

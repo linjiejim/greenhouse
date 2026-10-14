@@ -9,16 +9,25 @@ import type { Agent, Conversation, MessageCitation, NeedsYouRequest, RequestKind
 import type { Capability } from '@greenhouse/providers';
 
 export type ToolRisk = 'read' | 'write' | 'external';
+export type CallRisk = 'read' | 'tier1' | 'tier2' | 'tier3';
+export interface ApprovalScope {
+  type: 'folder' | 'table';
+  id: string;
+  actions: string[];
+}
 /** `turn`: a reply someone is waiting for. `background`: a run nobody watches. */
 export type Surface = 'turn' | 'background';
 
 export interface AvailabilityContext {
+  runKind?: 'turn' | 'background';
+  mainAgent?: boolean;
   memberId: string;
   modules: MemberModules;
   manifest: AgentManifest;
   surface: Surface;
   /** Set in a turn of someone else's public Agent: what its publication grants the asker. */
-  publicAgent: { computer: boolean } | null;
+  publicAgent: { computer: boolean; folderIds: string[] } | null;
+  backgroundComputer?: boolean;
   /** Whether the member can use a provider capability right now. */
   available(capability: Capability): Promise<boolean>;
 }
@@ -47,6 +56,8 @@ export interface ToolContext {
   locale: 'zh' | 'en';
   surface: Surface;
   signal: AbortSignal;
+  backgroundComputer?: boolean;
+  eventWoken?: boolean;
   /** The turn has read outside text (a page, another Agent, a file): some writes get stricter. */
   taint(): void;
   tainted(): boolean;
@@ -59,6 +70,9 @@ export interface ToolContext {
   cite?(source: MessageCitation, how: 'read' | 'seen'): void;
   /** Ends the turn after this step (a hand-off: the other Agent answers next). */
   endTurn(): void;
+  /** Pause this turn without a request; helper summaries wake it through the inbox. */
+  waitForRuns?(): void;
+  readOnly?: boolean;
   /** The hand-offs this turn's request has gone through, for their limits. */
   chain?: { key: string; path: string[] };
   /** Set when the engine runs a call the member approved on its card. */
@@ -108,9 +122,14 @@ export interface ToolDef<I = any> {
    * for the member's approval like a write tool. Class a call above read only when this turn may
    * make it with approval; the tool refuses the rest itself.
    */
-  callRisk?(input: I, ctx: Omit<ToolContext, 'stepId' | 'raise' | 'endTurn'>): Promise<ToolRisk>;
-  /** Write and external tools wait for the member's approval unless this returns false. */
-  needsApproval?(input: I, ctx: ToolContext): boolean;
+  callRisk?(input: I, ctx: Omit<ToolContext, 'stepId' | 'raise' | 'endTurn'>): Promise<CallRisk>;
+  approvalScope?(input: I, ctx: ToolContext): Promise<ApprovalScope | null>;
+  /** State needed to undo a reversible write, captured before it executes. */
+  before?(input: I, ctx: ToolContext): Promise<unknown>;
+  /** Holds scope changes still while risk is checked again and a reversible write commits. */
+  guard?(input: I, ctx: ToolContext): Promise<void>;
+  undo?(input: I, output: unknown, before: unknown, ctx: ToolContext): Promise<void>;
+  undoResult?(output: unknown): unknown;
   /** The approval card. */
   describe?(input: I, ctx: ToolContext): ApprovalCard | Promise<ApprovalCard>;
   /** Reading its result brings outside text into the turn. */
@@ -137,7 +156,11 @@ export interface ToolDef<I = any> {
 }
 
 export function defineTool<I>(def: ToolDef<I>): ToolDef<I> {
-  return def;
+  return {
+    ...def,
+    callRisk:
+      def.callRisk ?? (async () => (def.risk === 'read' ? 'read' : def.risk === 'external' ? 'tier3' : 'tier2')),
+  };
 }
 
 export const surfacesOf = (def: ToolDef): readonly Surface[] =>

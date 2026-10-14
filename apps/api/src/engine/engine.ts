@@ -1,3 +1,5 @@
+import { tableEventChain } from '../modules/tables/event-context.js';
+import { baseAutomationRuns } from '@greenhouse/db';
 /**
  * The one engine for conversations. A conversation has a single writer: at most one turn answers
  * at a time (runs_one_active_turn_key), and what arrives meanwhile waits in conversation_inbox.
@@ -63,6 +65,7 @@ import {
   claimJobs,
   extendJobLease,
   pruneJobs,
+  enqueueJob,
   recordJobProgress,
   releaseExpiredClaims,
   settleJob,
@@ -71,12 +74,17 @@ import {
 import type { ProvidersService } from '../providers/service.js';
 import type { Hub } from '../realtime/hub.js';
 import type { AgentsService, TurnAgent } from '../modules/agents/service.js';
+import type { ApprovalsService } from '../modules/agents/approvals.js';
+import type { ComputersService } from '../modules/computers/service.js';
 import type { FilesService } from '../modules/files/service.js';
 import type { NotificationsService } from '../modules/notifications/service.js';
 import { DECISION_JOB, type RequestsService } from '../modules/requests/service.js';
 import type { SkillsService } from '../modules/skills/service.js';
 import { notifyMentions, notifyMissedReplies } from './alerts.js';
-import { createBackground, type Background } from './background.js';
+import { recordHarness } from './eval.js';
+import { pruneModelSteps, RETENTION_JOB } from './retention.js';
+import { storeToolOutput } from './tools/output.js';
+import { createBackground, RUN_REPORT_JOB, type Background } from './background.js';
 import { toMessage, type ConversationsService } from '../modules/conversations/service.js';
 import { effectiveModules } from '../modules/members/service.js';
 import { createDigester, parseStoredDigest, renderDigest } from './digest.js';
@@ -85,13 +93,9 @@ import { createKeyedLock } from './locks.js';
 import { createSources } from './sources.js';
 import { recordModelStep } from './steps.js';
 import {
-  assembleSystem,
-  buildAbout,
-  buildDigest,
-  buildIdentity,
   buildInstruction,
-  buildRules,
-  buildTail,
+  assembleTurnPrompt,
+  type TurnPromptRecipe,
   renderMemoryIndex,
   type Locale,
   type TurnReason,
@@ -103,7 +107,7 @@ type SendInput = z.output<typeof sendMessageInputSchema>;
 
 /** What a turn is for, stored on its run. */
 export interface TurnInput {
-  reason: 'message' | 'mention' | 'continue' | 'handoff';
+  reason: 'message' | 'mention' | 'continue' | 'handoff' | 'event';
   message_ids: string[];
   note?: string;
   /** A hand-off: who handed the work over, and the chain it belongs to (for the limits). */
@@ -129,7 +133,21 @@ export interface HandoffChain {
   path: string[];
 }
 
+export interface TableWake {
+  source: 'automation';
+  sourceId: string;
+  automationRunId: string;
+  title: string;
+  tools: string[];
+  baseId: string;
+  result?: { table_id: string; record_id: string; field_id?: string; revision: number };
+}
+
 interface InboxPayload {
+  helper_parent?: string;
+  background?: TableWake;
+  event_woken?: boolean;
+  event_chain?: string[];
   agent_id: string;
   member_id: string;
   message_id?: string;
@@ -143,6 +161,10 @@ export const HANDOFF_MAX_DEPTH = 3;
 export const HANDOFF_MAX_PER_CHAIN = 6;
 
 export interface EngineDeps {
+  eventWakeLimit?: number;
+  eventMergeMs?: number;
+  approvals?: ApprovalsService;
+  computers?: ComputersService;
   agents: AgentsService;
   conversations: ConversationsService;
   providers: ProvidersService;
@@ -258,6 +280,7 @@ function stepSummary(call: ToolCallRecord, defs: Map<string, ToolDef>, locale: L
 export function createEngine(deps: EngineDeps) {
   const instance = `api-${randomUUID().slice(0, 8)}`;
   const live = new Map<string, AbortController>();
+  const eventTimers = new Map<string, NodeJS.Timeout>();
   const inFlight = new Set<Promise<void>>();
   const withConversation = createKeyedLock();
   const languageModel = deps.languageModel ?? deps.providers.languageModel;
@@ -275,6 +298,32 @@ export function createEngine(deps: EngineDeps) {
   const digester = createDigester({ languageModel });
 
   const publish = (conversationId: string, event: RealtimeEvent) => deps.conversations.publish(conversationId, event);
+
+  async function receipt(run: Run, stepId: string, summary: string) {
+    if (!run.conversationId) return;
+    const row = await withConversation(run.conversationId, () =>
+      transaction(async (db) => {
+        await db
+          .select({ id: conversations.id })
+          .from(conversations)
+          .where(eq(conversations.id, run.conversationId!))
+          .for('update');
+        const [seen] = await db
+          .select({ id: messages.id })
+          .from(messages)
+          .where(and(eq(messages.conversationId, run.conversationId!), sql`${messages.event}->>'step_id' = ${stepId}`));
+        if (seen) return null;
+        return deps.conversations.append(run.conversationId!, {
+          role: 'event',
+          agentId: run.agentId,
+          runId: run.id,
+          content: summary,
+          event: { type: 'write_receipt', step_id: stepId, member_id: run.ownerId },
+        });
+      }),
+    );
+    if (row) await publish(run.conversationId, { type: 'message.created', data: { message: toMessage(row) } });
+  }
 
   function track(work: Promise<void>) {
     const tracked = work.catch((error: unknown) => {
@@ -321,6 +370,10 @@ export function createEngine(deps: EngineDeps) {
         heartbeatAt: new Date(now).toISOString(),
         startedAt: new Date(now).toISOString(),
         input: values.input,
+        checkpoint:
+          values.input.reason === 'event' || values.input.event_woken === true
+            ? { tainted: true, read_private: true }
+            : null,
       })
       .returning();
     return row!;
@@ -343,13 +396,26 @@ export function createEngine(deps: EngineDeps) {
           .for('update');
         // A card can be decided before its turn got here (a quick hand-back); then nothing is left to wait for.
         let status = outcome.status;
+        let helpers = false;
         if (status === 'waiting') {
+          const [child] = await db
+            .select({ id: runs.id })
+            .from(runs)
+            .where(
+              and(
+                eq(runs.parentRunId, run.id),
+                sql`${runs.input}->>'helper' = 'true'`,
+                inArray(runs.status, ['queued', 'running', 'waiting']),
+              ),
+            )
+            .limit(1);
+          helpers = !!child;
           const [open] = await db
             .select({ id: requestsTable.id })
             .from(requestsTable)
             .where(and(eq(requestsTable.runId, run.id), eq(requestsTable.status, 'pending')))
             .limit(1);
-          if (!open) status = 'succeeded';
+          if (!open && !helpers) status = 'succeeded';
         }
         await db
           .update(runs)
@@ -360,7 +426,7 @@ export function createEngine(deps: EngineDeps) {
             leaseOwner: null,
             leaseExpiresAt: null,
             finishedAt: status === 'waiting' ? null : sql`now()`,
-            waitReason: status === 'waiting' ? 'request' : null,
+            waitReason: status === 'waiting' ? (helpers ? 'helpers' : 'request') : null,
             updatedAt: sql`now()`,
           })
           .where(eq(runs.id, run.id));
@@ -378,19 +444,34 @@ export function createEngine(deps: EngineDeps) {
     const pending = await db
       .select()
       .from(conversationInbox)
-      .where(and(eq(conversationInbox.conversationId, conversationId), isNull(conversationInbox.consumedAt)))
-      .orderBy(asc(conversationInbox.id))
+      .where(
+        and(
+          eq(conversationInbox.conversationId, conversationId),
+          isNull(conversationInbox.consumedAt),
+          sql`${conversationInbox.readyAt} <= clock_timestamp()`,
+        ),
+      )
+      .orderBy(
+        sql`case when ${conversationInbox.kind} in ('message','mention') then 0 when ${conversationInbox.kind} in ('continue','handback') then 1 else 2 end`,
+        asc(conversationInbox.id),
+      )
       .limit(50);
     const first = pending[0];
     if (!first) return null;
     const head = first.payload as unknown as InboxPayload;
-    const batch =
-      first.kind === 'continue'
+    const isEvent = first.kind === 'event' || first.kind === 'run_report';
+    const batch = head.background
+      ? [first]
+      : first.kind === 'continue' || first.kind === 'handback'
         ? [first]
         : pending.filter((item) => {
             const payload = item.payload as unknown as InboxPayload;
             return (
-              item.kind === first.kind && payload.agent_id === head.agent_id && payload.member_id === head.member_id
+              (isEvent
+                ? ['event', 'run_report'].includes(item.kind) && !payload.background
+                : item.kind === first.kind) &&
+              payload.agent_id === head.agent_id &&
+              payload.member_id === head.member_id
             );
           });
     await db
@@ -402,8 +483,94 @@ export function createEngine(deps: EngineDeps) {
           batch.map((item) => item.id),
         ),
       );
+    if (isEvent && head.helper_parent)
+      return createTurn(db, {
+        conversationId,
+        agentId: head.agent_id,
+        ownerId: head.member_id,
+        input: { reason: 'continue', message_ids: [], note: head.note ?? '', helper_parent: head.helper_parent },
+      });
+    if (isEvent) {
+      await db.select({ id: agents.id }).from(agents).where(eq(agents.id, head.agent_id)).for('update');
+      const [{ count }] = await db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(runs)
+        .where(
+          and(
+            eq(runs.agentId, head.agent_id),
+            sql`${runs.input}->>'reason' = 'event'`,
+            sql`${runs.createdAt} >= date_trunc('day', now() at time zone 'UTC') at time zone 'UTC'`,
+          ),
+        );
+      if (count >= (deps.eventWakeLimit ?? 50)) {
+        if (head.background)
+          await db
+            .update(baseAutomationRuns)
+            .set({ status: 'suppressed', error: 'daily_cap', finishedAt: sql`now()` })
+            .where(eq(baseAutomationRuns.id, head.background.automationRunId));
+        await deps.notifications.publish({
+          memberId: head.member_id,
+          kind: 'automation',
+          title: 'Agent 今日事件唤醒已达上限，事件仍保留在对话中',
+          targetType: 'conversation',
+          targetId: conversationId,
+          agentId: head.agent_id,
+          dedupeKey: `wake-cap:${head.agent_id}:${new Date().toISOString().slice(0, 10)}`,
+        });
+        await db
+          .update(conversationInbox)
+          .set({ payload: sql`${conversationInbox.payload} || '{"suppressed":"daily_cap"}'::jsonb` })
+          .where(
+            inArray(
+              conversationInbox.id,
+              batch.map((item) => item.id),
+            ),
+          );
+        return takeNext(db, conversationId);
+      }
+      if (head.background) {
+        const wake = head.background;
+        const run = await background.create({
+          agentId: head.agent_id,
+          ownerId: head.member_id,
+          requestedBy: head.member_id,
+          title: wake.title,
+          brief: head.note ?? '',
+          source: wake.source,
+          sourceId: wake.sourceId,
+          conversationId,
+          event_chain: head.event_chain,
+          event_woken: true,
+          tools: wake.tools,
+          table_base_id: wake.baseId,
+          automation_run_id: wake.automationRunId,
+          result_target: wake.result,
+        });
+        await db
+          .update(baseAutomationRuns)
+          .set({ runId: run.id })
+          .where(eq(baseAutomationRuns.id, wake.automationRunId));
+        return takeNext(db, conversationId);
+      }
+      return createTurn(db, {
+        conversationId,
+        agentId: head.agent_id,
+        ownerId: head.member_id,
+        input: {
+          reason: 'event',
+          message_ids: [],
+          note: `There are ${batch.length} events.\n${batch.map((item) => (item.payload as unknown as InboxPayload).note ?? '').join('\n\n')}`,
+          event_chain: batch.reduce<string[]>((longest, item) => {
+            const chain = (item.payload as unknown as InboxPayload).event_chain ?? [];
+            return chain.length > longest.length ? chain : longest;
+          }, []),
+          computer: batch.some((item) => item.payload.computer === true),
+          domains: [],
+        },
+      });
+    }
     const input: TurnInput =
-      first.kind === 'continue'
+      first.kind === 'continue' || first.kind === 'handback'
         ? head.handoff_id
           ? {
               reason: 'handoff',
@@ -413,7 +580,13 @@ export function createEngine(deps: EngineDeps) {
               ...(head.from_agent_id ? { from_agent_id: head.from_agent_id } : {}),
               ...(head.chain ? { chain: head.chain } : {}),
             }
-          : { reason: 'continue', message_ids: [], note: head.note ?? '' }
+          : {
+              reason: 'continue',
+              message_ids: [],
+              note: head.note ?? '',
+              event_woken: head.event_woken ?? false,
+              event_chain: head.event_chain ?? [],
+            }
         : {
             reason: first.kind === 'mention' ? 'mention' : 'message',
             message_ids: batch.map((item) => (item.payload as unknown as InboxPayload).message_id!).filter(Boolean),
@@ -572,7 +745,7 @@ export function createEngine(deps: EngineDeps) {
 
   /** A wake-up without a member message, into the inbox; it starts now if nothing answers. Under the row lock. */
   async function enqueue(db: Db, conversationId: string, payload: InboxPayload): Promise<Run | null> {
-    await db.insert(conversationInbox).values({ conversationId, kind: 'continue', payload: { ...payload } });
+    await db.insert(conversationInbox).values({ conversationId, kind: 'handback', payload: { ...payload } });
     return takeNext(db, conversationId);
   }
 
@@ -677,6 +850,32 @@ export function createEngine(deps: EngineDeps) {
     const ids = rows.map((row) => row.id);
     const runIds = [...new Set(rows.map((row) => row.runId).filter((id): id is string => !!id))];
     await db.delete(messages).where(inArray(messages.id, ids));
+    if (runIds.length) {
+      await db.delete(runSteps).where(and(inArray(runSteps.runId, runIds), eq(runSteps.kind, 'model')));
+      await db
+        .update(runs)
+        .set({ checkpoint: sql`${runs.checkpoint} - 'eval'` })
+        .where(inArray(runs.id, runIds));
+      const canceledHelpers = await db
+        .update(runs)
+        .set({ desiredState: 'cancel', status: 'canceled', finishedAt: sql`now()`, waitReason: null })
+        .where(
+          and(inArray(runs.parentRunId, runIds), sql`${runs.input}->>'helper' = 'true'`, eq(runs.status, 'queued')),
+        )
+        .returning({ id: runs.id, attempt: runs.attempt });
+      for (const child of canceledHelpers)
+        await enqueueJob({
+          kind: RUN_REPORT_JOB,
+          dedupeKey: `run-report:${child.id}:${child.attempt}`,
+          payload: { run_id: child.id, attempt: child.attempt },
+        });
+      await db
+        .update(runs)
+        .set({ desiredState: 'cancel' })
+        .where(
+          and(inArray(runs.parentRunId, runIds), sql`${runs.input}->>'helper' = 'true'`, eq(runs.status, 'running')),
+        );
+    }
     const expired = await deps.requests.expireOpen({ runIds });
     const closed = await retire(db, expired, runIds);
     return { ids, runIds, expired, closed };
@@ -802,10 +1001,20 @@ export function createEngine(deps: EngineDeps) {
         personal: !shared,
       });
 
-      let tainted = false;
+      let tainted =
+        run.input.reason === 'event' || run.input.event_woken === true || typeof run.input.helper_parent === 'string';
+      const eventComputer = tainted && run.input.computer === true;
+      if (eventComputer) await deps.computers?.reserveBackground(run.ownerId, run.agentId, run.id);
       // Screenshots a tool showed, for the model's next step (only a model that sees images gets any).
       const shown: EngineContentPart[] = [];
       const turnTools = await assembleTools({
+        output: (value, ctx) => storeToolOutput(deps.files, value, ctx),
+        approvals: deps.approvals,
+        receipt: (stepId, summary) => receipt(run, stepId, summary),
+        privateRead: () =>
+          eventComputer
+            ? (deps.computers?.sealBackground(run.ownerId, run.agentId, run.id) ?? Promise.resolve())
+            : Promise.resolve(),
         defs: toolDefs(),
         context: {
           memberId: run.ownerId,
@@ -814,7 +1023,9 @@ export function createEngine(deps: EngineDeps) {
           conversation,
           runId: run.id,
           locale,
-          surface: 'turn',
+          surface: run.input.reason === 'event' || run.input.event_woken === true ? 'background' : 'turn',
+          backgroundComputer: eventComputer,
+          eventWoken: tainted,
           signal: controller.signal,
           taint: () => {
             tainted = true;
@@ -830,11 +1041,14 @@ export function createEngine(deps: EngineDeps) {
             : {}),
         },
         availability: {
+          runKind: 'turn',
+          mainAgent: agent.isMain,
           memberId: run.ownerId,
           modules: effectiveModules(member.modules),
           manifest,
-          surface: 'turn',
-          publicAgent: shared ? { computer: shared.computer } : null,
+          surface: run.input.reason === 'event' || run.input.event_woken === true ? 'background' : 'turn',
+          backgroundComputer: eventComputer,
+          publicAgent: shared ? { computer: shared.computer, folderIds: shared.folderIds } : null,
           available: (capability) => deps.providers.available(capability, { memberId: run.ownerId, personal: !shared }),
         },
         raise: (card, stepId) =>
@@ -882,11 +1096,13 @@ export function createEngine(deps: EngineDeps) {
               memberName: member.name,
               brief: input.note ?? '',
             }
-          : input.reason === 'continue'
-            ? { reason: 'continue', note: input.note ?? '' }
-            : input.reason === 'mention'
-              ? { reason: 'mention', memberName: member.name }
-              : { reason: 'message', memberName: member.name, count: Math.max(1, input.message_ids.length) };
+          : input.reason === 'event' || input.event_woken === true
+            ? { reason: 'event', note: input.note ?? '' }
+            : input.reason === 'continue'
+              ? { reason: typeof input.helper_parent === 'string' ? 'helpers' : 'continue', note: input.note ?? '' }
+              : input.reason === 'mention'
+                ? { reason: 'mention', memberName: member.name }
+                : { reason: 'message', memberName: member.name, count: Math.max(1, input.message_ids.length) };
       const has = (name: string) => turnTools.names.has(name);
       // The blocks the newest screen that wrote here draws; without a word, the five every client draws.
       const [declared] = await getDb()
@@ -897,9 +1113,10 @@ export function createEngine(deps: EngineDeps) {
         )
         .orderBy(desc(messages.seq))
         .limit(1);
-      const system = assembleSystem([
-        buildRules(
-          {
+      const recipe: TurnPromptRecipe = {
+        event: input.reason === 'event' || input.event_woken === true,
+        rules: {
+          flags: {
             computer: has('computer'),
             handoff: has('handoff'),
             memory: has('memory'),
@@ -914,34 +1131,47 @@ export function createEngine(deps: EngineDeps) {
             saveSkill: has('skill_mutation'),
           },
           locale,
-          conversation.kind,
-          !!shared,
-        ),
-        buildIdentity(
-          { name: agent.name, role: agent.role, instructions: manifest.instructions },
-          member.name,
-          shared?.ownerName,
-        ),
-        buildAbout(member.name, member.about),
-        buildDigest(
-          (() => {
-            const doc = parseStoredDigest(conversation.digest);
-            return doc ? renderDigest(doc, locale, new Map(roster.map((entry) => [entry.id, entry.name]))) : '';
-          })(),
-        ),
-      ]);
-      const tail = buildTail({
-        roster: roster.map((entry) => ({ name: entry.name, role: entry.role, self: entry.id === agent.id })),
-        memoryIndex: renderMemoryIndex(
-          memories.map((memory) => ({ id: memory.id, title: memory.title, pinned: memory.pinned })),
-          locale,
-        ),
-        tools: turnTools.context,
-        richBlocks: declared?.richBlocks ?? DEFAULT_CLIENT_BLOCKS,
-        instruction: buildInstruction(reason),
-      });
+          kind: conversation.kind,
+          publicAgent: !!shared,
+        },
+        identity: {
+          agent: { name: agent.name, role: agent.role, instructions: manifest.instructions },
+          memberName: member.name,
+          ...(shared ? { ownerName: shared.ownerName } : {}),
+        },
+        about: { name: member.name, text: member.about },
+        digest: (() => {
+          const doc = parseStoredDigest(conversation.digest);
+          return doc ? renderDigest(doc, locale, new Map(roster.map((entry) => [entry.id, entry.name]))) : '';
+        })(),
+        tail: {
+          roster: roster.map((entry) => ({ name: entry.name, role: entry.role, self: entry.id === agent.id })),
+          memoryIndex: renderMemoryIndex(memories, locale),
+          tools: turnTools.context,
+          richBlocks: declared?.richBlocks ?? DEFAULT_CLIENT_BLOCKS,
+          instruction: buildInstruction(reason),
+        },
+      };
+      const { system, tail } = assembleTurnPrompt(recipe);
       contextWindow = resolved.contextWindow;
       const transcript = closeTranscript(projection.messages, tail, resolved.vision ? await imagesOf(run, input) : []);
+      await recordHarness(run.id, {
+        recipe,
+        tainted,
+        transcript,
+        definitions: [...turnTools.defs.values()],
+        manifest,
+        modules: effectiveModules(member.modules),
+        mainAgent: agent.isMain,
+        surface: input.reason === 'event' || input.event_woken === true ? 'background' : 'turn',
+        publicAgent: shared ? { computer: shared.computer, folderIds: shared.folderIds } : null,
+        capabilities: await Promise.all(
+          ['search', 'storage', 'sandbox'].map(async (capability) => [
+            capability,
+            await deps.providers.available(capability as 'search' | 'storage' | 'sandbox', { memberId: run.ownerId }),
+          ]),
+        ),
+      });
       const loopInput: LoopInput = {
         model: { model: resolved.model, modelId: resolved.modelId, deepseek: resolved.deepseek },
         // Cached up to here; the transcript the next turn keeps and the newest message are the other breakpoints.
@@ -956,6 +1186,7 @@ export function createEngine(deps: EngineDeps) {
         traceId: run.id,
         // What each step added, so the turn can be resumed from its last finished step.
         onStepEnd: async (step) => {
+          await deps.requests.ready(run.id);
           usage.input += step.usage.inputTokens ?? 0;
           usage.cached += step.usage.cachedInputTokens ?? 0;
           await recordModelStep({ runId: run.id, attempt: run.attempt || 1, index: step.stepNumber, step }).catch(
@@ -1023,6 +1254,17 @@ export function createEngine(deps: EngineDeps) {
       clearInterval(heartbeat);
       live.delete(run.id);
       frames?.flush();
+      if (run.input.computer === true && (run.input.reason === 'event' || run.input.event_woken === true)) {
+        try {
+          await deps.computers?.releaseBackground(run.ownerId, run.agentId, run.id);
+        } catch (error) {
+          outcome = {
+            status: 'failed',
+            errorCode: 'computer_cleanup_failed',
+            errorMessage: toErrorMessage(error).slice(0, 500),
+          };
+        }
+      }
     }
 
     // An edit or a regenerate removed the reply while it was still being written (its lease was
@@ -1076,6 +1318,7 @@ export function createEngine(deps: EngineDeps) {
         .where(eq(handoffs.id, handoffId));
     }
     const next = await finishAndTakeNext(run, outcome);
+    if (outcome.status === 'waiting') await background.kickHelpers(run.id);
     if (conversation && deps.development) await warnUncached(run, usage);
     if (conversation) {
       await send({
@@ -1254,7 +1497,21 @@ export function createEngine(deps: EngineDeps) {
     const def = toolDefs().find((candidate) => candidate.name === payload.tool);
     // The same Agent the turn ran on; a public Agent paused or unshared meanwhile does not act.
     const loaded = run ? await deps.agents.loadForTurn(run.ownerId, run.agentId).catch(() => null) : null;
-    const ready = def && run && loaded && !(loaded.public && !def.publicAgent) ? { def, run, loaded } : null;
+    const [actor] = await getDb()
+      .select({ status: members.status })
+      .from(members)
+      .where(eq(members.id, request.memberId));
+    const ready =
+      def &&
+      run &&
+      run.desiredState !== 'cancel' &&
+      actor?.status === 'active' &&
+      loaded &&
+      loaded.manifest.write &&
+      (!loaded.manifest.tools || loaded.manifest.tools.includes(def.name)) &&
+      !(loaded.public && !def.publicAgent)
+        ? { def, run, loaded }
+        : null;
     const moved = ready
       ? await moveStep(['pending'], { status: 'running', startedAt: sql`now()` })
       : await moveStep(['pending'], {
@@ -1302,7 +1559,10 @@ export function createEngine(deps: EngineDeps) {
       runId: ready.run.id,
       stepId: request.stepId,
       locale,
-      surface: 'turn',
+      surface:
+        ready.run.kind === 'background' || ready.run.input.reason === 'event' || ready.run.input.event_woken === true
+          ? 'background'
+          : 'turn',
       signal: AbortSignal.timeout(DECISION_EXECUTE_MS),
       taint: () => undefined,
       tainted: () => false,
@@ -1312,7 +1572,10 @@ export function createEngine(deps: EngineDeps) {
     };
     const started = Date.now();
     try {
-      const output = await ready.def.execute(payload.input, context);
+      const raw = await tableEventChain.run((run?.input.event_chain as string[] | undefined) ?? [], () =>
+        ready.def.execute(payload.input, context),
+      );
+      const output = await storeToolOutput(deps.files, raw, context);
       // Recorded even when a sweep took the step for abandoned meanwhile: it did run.
       await moveStep(['running', 'uncertain'], {
         status: 'succeeded',
@@ -1383,7 +1646,20 @@ export function createEngine(deps: EngineDeps) {
     if (progress.outcome) {
       outcome = progress.outcome;
     } else if (request.subject === 'tool_write') {
-      outcome = await decideToolWrite(request, run, locale);
+      const calls = request.payload.calls as Array<{ step_id: string; [key: string]: unknown }> | undefined;
+      if (calls?.length) {
+        const outcomes: DecisionOutcome[] = [];
+        for (const call of calls)
+          outcomes.push(await decideToolWrite({ ...request, stepId: call.step_id, payload: call }, run, locale));
+        outcome = {
+          line: outcomes.map((entry) => entry.line).join('；'),
+          note:
+            outcomes
+              .map((entry) => entry.note)
+              .filter(Boolean)
+              .join('\n') || null,
+        };
+      } else outcome = await decideToolWrite(request, run, locale);
     } else if (progress.applying) {
       const title = cardTitle(request);
       outcome = {
@@ -1451,27 +1727,44 @@ export function createEngine(deps: EngineDeps) {
           if (!open) {
             const updated = await db
               .update(runs)
-              .set({ status: 'succeeded', waitReason: null, finishedAt: sql`now()`, updatedAt: sql`now()` })
+              .set({
+                status: run.kind === 'background' ? 'queued' : 'succeeded',
+                waitReason: null,
+                finishedAt: run.kind === 'background' ? null : sql`now()`,
+                updatedAt: sql`now()`,
+                checkpoint: sql`coalesce(${runs.checkpoint}, '{}'::jsonb) || ${JSON.stringify({ decision_note: outcome.note, event_woken: run?.input.reason === 'event' || run?.input.event_woken === true, event_chain: run?.input.event_chain as string[] | undefined })}::jsonb`,
+              })
               .where(and(eq(runs.id, run.id), eq(runs.status, 'waiting')))
               .returning({ id: runs.id });
             closed = updated.length > 0;
           }
         }
         const next =
-          outcome.note && agentId
-            ? await enqueue(db, conversationId, { agent_id: agentId, member_id: request.memberId, note: outcome.note })
+          outcome.note && agentId && run?.kind !== 'background'
+            ? await enqueue(db, conversationId, {
+                agent_id: agentId,
+                member_id: request.memberId,
+                note: outcome.note,
+                event_woken: run?.input.reason === 'event' || run?.input.event_woken === true,
+                event_chain: run?.input.event_chain as string[] | undefined,
+              })
             : null;
         return { line, closed, next };
       }),
     );
     if (!done) return;
+    if (done.closed && run?.kind === 'background') background.kick(run);
     // Committed: the turn it woke starts whatever happens to the announcements.
     try {
       await publish(conversationId, { type: 'message.created', data: { message: toMessage(done.line) } });
       if (done.closed && run) {
         await publish(conversationId, {
           type: 'run.updated',
-          data: { run_id: run.id, status: 'succeeded', conversation_id: conversationId },
+          data: {
+            run_id: run.id,
+            status: run.kind === 'background' ? 'queued' : 'succeeded',
+            conversation_id: conversationId,
+          },
         });
       }
     } catch (error) {
@@ -1489,11 +1782,20 @@ export function createEngine(deps: EngineDeps) {
     }, DECISION_RENEW_MS);
     let outcome: JobOutcome = { status: 'succeeded' };
     try {
-      const [request] = await getDb()
-        .select()
-        .from(requestsTable)
-        .where(eq(requestsTable.id, String(job.payload.request_id)));
-      if (request) await resolve(request, job);
+      if (job.kind === RETENTION_JOB) {
+        await pruneModelSteps();
+        while ((await deps.files.pruneToolOutputs()) === 200) {
+          /* Finish this bounded batch before settling. */
+        }
+      } else if (job.kind === RUN_REPORT_JOB) {
+        await background.reportCompleted(String(job.payload.run_id), Number(job.payload.attempt));
+      } else {
+        const [request] = await getDb()
+          .select()
+          .from(requestsTable)
+          .where(eq(requestsTable.id, String(job.payload.request_id)));
+        if (request) await resolve(request, job);
+      }
     } catch (error) {
       logger.warn('[engine] a decision could not be carried out', { job: job.id, error: toErrorMessage(error) });
       outcome = { status: 'retry', error: toErrorMessage(error).slice(0, 500) };
@@ -1510,9 +1812,14 @@ export function createEngine(deps: EngineDeps) {
    * the queue first.
    */
   async function claimDecisions(): Promise<void> {
-    await releaseExpiredClaims([DECISION_JOB]);
+    await enqueueJob({
+      kind: RETENTION_JOB,
+      dedupeKey: `engine-retention:${new Date().toISOString().slice(0, 10)}`,
+      payload: {},
+    });
+    await releaseExpiredClaims([DECISION_JOB, RUN_REPORT_JOB, RETENTION_JOB]);
     while (!stopping && carrying.size < DECISION_CONCURRENCY) {
-      const claimed = await claimJobs([DECISION_JOB], instance, {
+      const claimed = await claimJobs([DECISION_JOB, RUN_REPORT_JOB, RETENTION_JOB], instance, {
         limit: DECISION_CONCURRENCY - carrying.size,
         leaseMs: DECISION_LEASE_MS,
       });
@@ -1529,7 +1836,7 @@ export function createEngine(deps: EngineDeps) {
     }
     if (Date.now() - decisionsPrunedAt > DECISION_PRUNE_EVERY_MS) {
       decisionsPrunedAt = Date.now();
-      await pruneJobs([DECISION_JOB], DECISION_KEEP_MS);
+      await pruneJobs([DECISION_JOB, RUN_REPORT_JOB, RETENTION_JOB], DECISION_KEEP_MS);
     }
   }
 
@@ -1552,6 +1859,12 @@ export function createEngine(deps: EngineDeps) {
   }
 
   const background = createBackground({
+    files: deps.files,
+    requests: deps.requests,
+    approvals: deps.approvals,
+    computers: deps.computers,
+    receipt,
+    deliver: (conversationId, item) => engine.deliver(conversationId, item),
     instance,
     agents: deps.agents,
     conversations: deps.conversations,
@@ -1565,8 +1878,64 @@ export function createEngine(deps: EngineDeps) {
   });
 
   const engine = {
+    toolsForEvaluation: toolDefs,
     instance,
     background,
+
+    async undoWrite(memberId: string, stepId: string): Promise<void> {
+      await transaction(async (db) => {
+        const [step] = await db.select().from(runSteps).where(eq(runSteps.id, stepId)).for('update');
+        const [run] = step ? await db.select().from(runs).where(eq(runs.id, step.runId)) : [];
+        if (!step || !run || run.ownerId !== memberId) throw notFound('Receipt');
+        if (step.undoneAt) throw conflict('already_undone', 'This write was already undone.');
+        const def = toolDefs().find((candidate) => candidate.name === step.toolName);
+        if (step.status !== 'succeeded' || !def?.undo || step.undoState === null)
+          throw conflict('undo_unavailable', 'This write cannot be undone.');
+        const { agent, manifest } = await deps.agents.loadForTurn(memberId, run.agentId);
+        const conversation = run.conversationId
+          ? (await deps.conversations.access(memberId, run.conversationId)).conversation
+          : null;
+        const inverse = step.undoState as { before: { input: unknown }; output: unknown };
+        await def.guard?.(inverse.before.input, {
+          memberId,
+          agent,
+          manifest,
+          conversation,
+          runId: run.id,
+          stepId,
+          locale: 'zh',
+          surface: 'turn',
+          signal: AbortSignal.timeout(DECISION_EXECUTE_MS),
+          taint: () => undefined,
+          tainted: () => true,
+          raise: () => Promise.reject(new Error('Undo cannot raise cards.')),
+          endTurn: () => undefined,
+        });
+        await def.undo(inverse.before.input, inverse.output, inverse.before, {
+          memberId,
+          agent,
+          manifest,
+          conversation,
+          runId: run.id,
+          stepId,
+          locale: 'zh',
+          surface: run.kind === 'background' ? 'background' : 'turn',
+          signal: AbortSignal.timeout(DECISION_EXECUTE_MS),
+          taint: () => undefined,
+          tainted: () => true,
+          raise: () => Promise.reject(new Error('Undo cannot raise cards.')),
+          endTurn: () => undefined,
+        });
+        await db
+          .update(runSteps)
+          .set({ undoneAt: sql`now()` })
+          .where(eq(runSteps.id, stepId));
+        await db
+          .update(messages)
+          .set({ event: sql`${messages.event} || '{"undone":true}'::jsonb` })
+          .where(sql`${messages.event}->>'step_id' = ${stepId}`);
+      });
+    },
 
     /** A decision committed: carry it out now (every process also polls, and takes over dead claims). */
     wakeDecisions,
@@ -1855,6 +2224,85 @@ export function createEngine(deps: EngineDeps) {
      * Wakes an Agent in a conversation without a member message: a decision on a card, a finished
      * background run, a process that ended. Queued behind a running turn like everything else.
      */
+    /** An external app action uses the same tool wrapper, cards and private-write receipts. */
+    async externalAppAction(memberId: string, args: Record<string, unknown>) {
+      return transaction(async () => {
+        const { agent, manifest } = await deps.agents.load(memberId, 'main');
+        const [member] = await getDb().select().from(members).where(eq(members.id, memberId));
+        if (!member || member.status !== 'active') throw forbidden('The member is no longer active.');
+        const conversation = await deps.conversations.ensureDirect(memberId, agent.id);
+        const run = await background.create({
+          agentId: agent.id,
+          ownerId: memberId,
+          requestedBy: memberId,
+          source: 'app',
+          sourceId: String(args.app_id),
+          title: 'App action',
+          brief: 'Execute the saved app action.',
+          conversationId: conversation.id,
+        });
+        const tools = await assembleTools({
+          defs: toolDefs().filter((t) => t.name === 'apps_action'),
+          approvals: deps.approvals,
+          receipt: (stepId, summary) => receipt(run, stepId, summary),
+          context: {
+            memberId,
+            agent,
+            manifest,
+            conversation,
+            runId: run.id,
+            locale: localeOf(member.locale),
+            surface: 'turn',
+            signal: AbortSignal.timeout(DECISION_EXECUTE_MS),
+            taint: () => undefined,
+            tainted: () => true,
+          },
+          availability: {
+            memberId,
+            modules: effectiveModules(member.modules),
+            manifest,
+            surface: 'turn',
+            publicAgent: null,
+            available: (capability) => deps.providers.available(capability, { memberId }),
+          },
+          raise: (card, stepId) =>
+            deps.requests.create({
+              memberId,
+              kind: card.kind,
+              subject: card.subject,
+              title: card.title,
+              payload: card.payload,
+              runId: run.id,
+              conversationId: conversation.id,
+              stepId,
+              agentId: agent.id,
+            }),
+          approvalTitle: (summary) => summary,
+        });
+        const tool = tools.tools.apps_action;
+        if (!tool?.execute) throw forbidden('This Agent cannot execute app actions.');
+        const result = await tool.execute(args, {
+          toolCallId: 'external-app-action',
+          messages: [],
+          context: undefined,
+        });
+        await deps.requests.ready(run.id);
+        await getDb()
+          .update(runs)
+          .set({
+            status: tools.waiting() ? 'waiting' : 'succeeded',
+            output: { text: 'App action processed. See the recorded step for its result.', findings: [] },
+            ...(tools.waiting() ? { waitReason: 'request' } : { finishedAt: sql`now()` }),
+          })
+          .where(eq(runs.id, run.id));
+        return tools.waiting()
+          ? { status: 'needs_you', run_id: run.id, result, url: `#/runs/${run.id}` }
+          : { status: 'succeeded', run_id: run.id, result };
+      });
+    },
+
+    backgroundConversation: (memberId: string, agentId: string) => deps.conversations.ensureDirect(memberId, agentId),
+
     async deliver(
       conversationId: string,
       item: {
@@ -1862,8 +2310,16 @@ export function createEngine(deps: EngineDeps) {
         memberId: string;
         note: string;
         handoff?: { id: string; fromAgentId: string; chain: HandoffChain };
+        kind?: 'event' | 'run_report' | 'handback';
+        dedupeKey?: string;
+        eventChain?: string[];
+        computer?: boolean;
+        parentRunId?: string;
+        background?: TableWake;
       },
     ) {
+      let eventLine: MessageRow | null = null;
+      let readyAt: string | null = null;
       const run = await withConversation(conversationId, () =>
         transaction(async (db) => {
           await db
@@ -1871,23 +2327,150 @@ export function createEngine(deps: EngineDeps) {
             .from(conversations)
             .where(eq(conversations.id, conversationId))
             .for('update');
-          return enqueue(db, conversationId, {
-            agent_id: item.agentId,
-            member_id: item.memberId,
-            note: item.note,
-            ...(item.handoff
-              ? { handoff_id: item.handoff.id, from_agent_id: item.handoff.fromAgentId, chain: item.handoff.chain }
-              : {}),
-          });
+          if (item.parentRunId) {
+            const [parent] = await db
+              .select()
+              .from(runs)
+              .where(
+                and(
+                  eq(runs.id, item.parentRunId),
+                  eq(runs.ownerId, item.memberId),
+                  eq(runs.conversationId, conversationId),
+                ),
+              )
+              .for('update');
+            if (!parent || parent.status === 'canceled' || parent.desiredState === 'cancel') return null;
+            await db
+              .update(runs)
+              .set({ status: 'succeeded', waitReason: null, finishedAt: sql`now()` })
+              .where(and(eq(runs.id, parent.id), eq(runs.status, 'waiting')));
+          }
+          if (item.handoff || item.kind === 'handback')
+            return enqueue(db, conversationId, {
+              agent_id: item.agentId,
+              member_id: item.memberId,
+              note: item.note,
+              ...(item.handoff
+                ? { handoff_id: item.handoff.id, from_agent_id: item.handoff.fromAgentId, chain: item.handoff.chain }
+                : {}),
+            });
+          const { conversation } = await deps.conversations.access(item.memberId, conversationId);
+          const { agent } = await deps.agents.load(item.memberId, item.agentId);
+          if (conversation.agentId !== agent.id || conversation.ownerId !== item.memberId)
+            throw forbidden('Events belong in the owner’s Agent conversation.');
+          const [owner] = await db
+            .select({ locale: members.locale })
+            .from(members)
+            .where(eq(members.id, item.memberId));
+          const zh = owner?.locale !== 'en';
+          const chain = [
+            ...(item.eventChain ?? []),
+            item.background ? `automation:${item.background.sourceId}` : (item.dedupeKey ?? newId('run')),
+          ];
+          const [first] = await db
+            .select({ readyAt: conversationInbox.readyAt })
+            .from(conversationInbox)
+            .where(
+              and(
+                eq(conversationInbox.conversationId, conversationId),
+                isNull(conversationInbox.consumedAt),
+                inArray(conversationInbox.kind, ['event', 'run_report']),
+              ),
+            )
+            .orderBy(asc(conversationInbox.id))
+            .limit(1);
+          const [recorded] = await db
+            .insert(conversationInbox)
+            .values({
+              conversationId,
+              kind: item.kind ?? 'event',
+              dedupeKey: item.dedupeKey ?? null,
+              readyAt: item.parentRunId
+                ? new Date().toISOString()
+                : (first?.readyAt ?? new Date(Date.now() + (deps.eventMergeMs ?? 120_000)).toISOString()),
+              consumedAt: chain.length > 3 ? sql`now()` : null,
+              payload: {
+                ...(item.parentRunId ? { helper_parent: item.parentRunId } : {}),
+                agent_id: agent.id,
+                member_id: item.memberId,
+                note: item.note.slice(0, item.parentRunId ? 8000 : 4000),
+                event_chain: chain,
+                computer: item.computer ?? false,
+                ...(item.background ? { background: item.background } : {}),
+                ...(chain.length > 3 ? { suppressed: 'chain_depth' } : {}),
+              },
+            })
+            .onConflictDoNothing()
+            .returning();
+          if (recorded) readyAt = recorded.consumedAt ? null : recorded.readyAt;
+          if (recorded)
+            eventLine = await deps.conversations.append(conversationId, {
+              role: 'event',
+              agentId: agent.id,
+              content:
+                item.kind === 'run_report'
+                  ? zh
+                    ? '后台运行结果已到达'
+                    : 'Background run reported'
+                  : item.dedupeKey?.startsWith('mail:')
+                    ? zh
+                      ? '收到新邮件'
+                      : 'New mail received'
+                    : item.dedupeKey?.startsWith('computer-process:')
+                      ? zh
+                        ? '电脑进程已结束'
+                        : 'Computer process ended'
+                      : zh
+                        ? '有新事件'
+                        : 'New event',
+              event: {
+                type: item.kind ?? 'event',
+                inbox_id: recorded.id,
+                ...(chain.length > 3 ? { suppressed: 'chain_depth' } : {}),
+              },
+            });
+          return takeNext(db, conversationId);
         }),
       );
+      if (eventLine)
+        await publish(conversationId, { type: 'message.created', data: { message: toMessage(eventLine) } });
+      if (readyAt && !run && !eventTimers.has(conversationId) && !stopping) {
+        const timer = setTimeout(
+          () => {
+            eventTimers.delete(conversationId);
+            void engine
+              .sweep()
+              .catch((error: unknown) => logger.warn('[engine] event wake failed', { error: toErrorMessage(error) }));
+          },
+          Math.max(1, Date.parse(readyAt) - Date.now()),
+        );
+        timer.unref();
+        eventTimers.set(conversationId, timer);
+      }
       await begin(conversationId, run);
     },
 
     /** Stops the answering turn at once and drops what the member queued behind it. */
     async stop(memberId: string, conversationId: string): Promise<void> {
       const { conversation } = await deps.conversations.access(memberId, conversationId);
-      const active = await activeTurn(getDb(), conversationId);
+      const active =
+        (await activeTurn(getDb(), conversationId)) ??
+        (
+          await getDb()
+            .select()
+            .from(runs)
+            .where(
+              and(
+                eq(runs.conversationId, conversationId),
+                eq(runs.ownerId, memberId),
+                eq(runs.kind, 'turn'),
+                eq(runs.status, 'waiting'),
+                eq(runs.waitReason, 'helpers'),
+              ),
+            )
+            .orderBy(desc(runs.id))
+            .limit(1)
+        )[0];
       if (!active) return;
       if (conversation.kind === 'room' && active.ownerId !== memberId) {
         throw forbidden('Only the person who asked can stop this reply.');
@@ -1898,10 +2481,26 @@ export function createEngine(deps: EngineDeps) {
             .update(runs)
             .set({ desiredState: 'cancel', updatedAt: sql`now()` })
             .where(eq(runs.id, active.id));
+          if (active.status === 'waiting')
+            await db
+              .update(runs)
+              .set({ status: 'canceled', finishedAt: sql`now()`, waitReason: null })
+              .where(eq(runs.id, active.id));
           await dropQueued(db, conversationId, memberId);
         }),
       );
       live.get(active.id)?.abort();
+      const children = await getDb()
+        .select({ id: runs.id })
+        .from(runs)
+        .where(
+          and(
+            eq(runs.parentRunId, active.id),
+            sql`${runs.input}->>'helper' = 'true'`,
+            inArray(runs.status, ['queued', 'running']),
+          ),
+        );
+      for (const child of children) await background.cancel(child.id, memberId);
     },
 
     /**
@@ -2005,16 +2604,17 @@ export function createEngine(deps: EngineDeps) {
 
     /** Resolves once no turn or background run is running in this process (tests, shutdown). */
     async idle(): Promise<void> {
-      while (inFlight.size) {
+      do {
         await Promise.all([...inFlight]);
         await background.idle();
-      }
-      await background.idle();
+      } while (inFlight.size);
     },
 
     /** Stops taking new work; running turns are stopped and recorded as such. */
     async shutdown(): Promise<void> {
       stopping = true;
+      for (const timer of eventTimers.values()) clearTimeout(timer);
+      eventTimers.clear();
       if (sweeper) clearInterval(sweeper);
       sweeper = null;
       if (decisionPoll) clearInterval(decisionPoll);

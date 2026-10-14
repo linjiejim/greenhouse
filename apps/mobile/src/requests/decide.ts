@@ -6,6 +6,7 @@
  * carry out keeps the card pending and says why in a system alert.
  */
 
+import { captureIdentity } from '../data/identity';
 import { answerRequest, approveRequest, handBack, rejectRequest } from '../api/requests';
 import type { ApiResult } from '../api/client';
 import { t } from '../lib/i18n';
@@ -16,7 +17,7 @@ import { alertError } from '../ui/dialogs';
 import { notifySuccess } from '../ui/haptics';
 
 export type Decision =
-  | { action: 'approve' }
+  | { action: 'approve'; standing?: boolean; continueAfter?: boolean }
   | { action: 'reject'; reason?: string }
   | { action: 'answer'; answers: Record<string, string> }
   | { action: 'handBack'; note?: string };
@@ -24,10 +25,11 @@ export type Decision =
 export type DecideOutcome = 'done' | 'stale' | 'failed';
 
 export async function decide(request: NeedsYou, decision: Decision): Promise<DecideOutcome> {
+  const current = captureIdentity();
   let result: ApiResult<NeedsYou>;
   switch (decision.action) {
     case 'approve':
-      result = await approveRequest(request.id);
+      result = await approveRequest(request.id, decision.standing, decision.continueAfter);
       break;
     case 'reject':
       result = await rejectRequest(request.id, decision.reason);
@@ -39,6 +41,7 @@ export async function decide(request: NeedsYou, decision: Decision): Promise<Dec
       result = await handBack(request.id, decision.note);
       break;
   }
+  if (!current()) return 'stale';
   const conversation = request.conversation_id;
   const settle = () => {
     void useWorkspace.getState().refreshSummary();

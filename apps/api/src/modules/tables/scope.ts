@@ -15,7 +15,7 @@ import { isComputedType, isLinkType, roleAtLeast } from '@greenhouse/contract';
 import { baseFieldDeps, baseFields, baseRecords, getDb, type BaseFieldRow } from '@greenhouse/db';
 import type { CustomAccess, TablesReader } from './access.js';
 import { fieldsOf, type TableAt } from './load.js';
-import { compileRoleFilters, inIds, type QueryContext } from './query.js';
+import { compileFilter, compileRoleFilters, inIds, type QueryContext } from './query.js';
 
 export interface TableScope {
   /** The live fields the reader sees, in the table's order. */
@@ -78,7 +78,7 @@ async function hiddenAll(access: CustomAccess): Promise<Map<string, Set<string>>
     );
   const fullySeen = (tableId: string | undefined) => {
     const rules = tableId ? access.tables.get(tableId) : undefined;
-    return !!rules && rules.rows.length === 0;
+    return !!rules && rules.rows.length === 0 && !rules.constraints?.length && !rules.rowGroups?.length;
   };
   /** A link's titles are readable when the role sees every record of the table it links to. */
   const titlesOpen = (dep: (typeof deps)[number]) =>
@@ -111,14 +111,19 @@ export async function rowsOf(
   reader: TablesReader,
   at: { table: { id: string }; custom: TableAt['custom'] },
 ): Promise<SQL | undefined> {
-  if (!at.custom?.rows.length) return undefined;
+  if (!at.custom || (!at.custom.rows.length && !at.custom.constraints?.length && !at.custom.rowGroups?.length))
+    return undefined;
   const fields = await fieldsOf(at.table.id);
   const ctx: QueryContext = {
     fields: new Map(fields.map((field) => [field.id, field])),
     memberId: reader.memberId,
     timeZone: reader.timeZone,
   };
-  return compileRoleFilters(at.custom.rows, ctx);
+  return and(
+    compileRoleFilters(at.custom.rows, ctx),
+    ...(at.custom.constraints ?? []).map((filter) => compileFilter(filter, ctx)),
+    ...(at.custom.rowGroups ?? []).map((filters) => compileRoleFilters(filters, ctx)),
+  );
 }
 
 /** Whether a custom role sees this record (always, for the four roles). */
@@ -145,7 +150,9 @@ export async function scopeOf(reader: TablesReader, at: TableAt): Promise<TableS
   }
   const hidden = await hiddenFields(at.access, at.table.id);
   return {
-    fields: fields.filter((field) => !hidden.has(field.id)),
+    fields: fields.filter(
+      (field) => !hidden.has(field.id) && (!at.custom!.presentation || at.custom!.presentation.has(field.id)),
+    ),
     hidden,
     rows: await rowsOf(reader, at),
     canEdit: canEditBase && at.custom.access === 'edit',

@@ -7,10 +7,11 @@
  * (`kick`). Tests call `drain` to run every ready job at once.
  */
 
+import { AsyncResource } from 'node:async_hooks';
 import type { JobRow } from '@greenhouse/db';
 import { toErrorMessage } from '@greenhouse/utils/error';
 import { logger } from '@greenhouse/utils/logger';
-import { claimJobs, pruneJobs, releaseExpiredClaims, settleJob, type JobOutcome } from '../../jobs.js';
+import { claimJobs, extendJobLease, pruneJobs, releaseExpiredClaims, settleJob, type JobOutcome } from '../../jobs.js';
 import { newId } from '@greenhouse/db';
 
 export const TABLES_JOB_KINDS = [
@@ -19,6 +20,7 @@ export const TABLES_JOB_KINDS = [
   'base_import',
   'base_purge',
   'base_discard',
+  'base_automation',
 ] as const;
 export type TablesJobKind = (typeof TABLES_JOB_KINDS)[number];
 export type TablesJobHandler = (job: JobRow) => Promise<JobOutcome>;
@@ -31,6 +33,8 @@ const PRUNE_EVERY_MS = 60 * 60_000;
 const KEEP_JOBS_MS = 7 * 24 * 60 * 60_000;
 
 export function createTablesWorker() {
+  // Background timers start in the service context, never a request's open transaction.
+  const workerContext = new AsyncResource('tables-worker');
   const handlers = new Map<string, TablesJobHandler>();
   /** Runs before each pass: work that is due on a schedule enqueues itself (the daily purge). */
   const beforePass: Array<() => Promise<void>> = [];
@@ -52,6 +56,7 @@ export function createTablesWorker() {
     const claimed = await claimJobs(kinds, owner, { limit: BATCH, leaseMs: LEASE_MS });
     // One at a time: jobs of one table touch the same records.
     for (const job of claimed) {
+      if (!(await extendJobLease(job, owner, LEASE_MS))) continue;
       let outcome: JobOutcome;
       try {
         outcome = await handlers.get(job.kind)!(job);
@@ -80,18 +85,20 @@ export function createTablesWorker() {
   function schedule(delay: number) {
     if (!started || running) return;
     if (timer) clearTimeout(timer);
-    timer = setTimeout(() => {
-      timer = null;
-      running = (async () => {
-        // A full batch means more may be waiting.
-        while (started && (await runOnce()) === BATCH);
-      })()
-        .catch((error: unknown) => logger.warn('[tables] a job pass failed', { error: toErrorMessage(error) }))
-        .finally(() => {
-          running = null;
-          schedule(POLL_MS);
-        });
-    }, delay);
+    timer = workerContext.runInAsyncScope(() =>
+      setTimeout(() => {
+        timer = null;
+        running = (async () => {
+          // A full batch means more may be waiting.
+          while (started && (await runOnce()) === BATCH);
+        })()
+          .catch((error: unknown) => logger.warn('[tables] a job pass failed', { error: toErrorMessage(error) }))
+          .finally(() => {
+            running = null;
+            schedule(POLL_MS);
+          });
+      }, delay),
+    );
     timer.unref?.();
   }
 

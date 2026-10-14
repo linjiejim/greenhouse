@@ -142,7 +142,7 @@ export function DrawerContent({ navigation }: DrawerContentComponentProps) {
     later(() => router.push('/new-room'));
   }, [close, later, router]);
   const go = useCallback(
-    (path: '/agents' | '/runs' | '/settings') => {
+    (path: '/agents' | '/runs' | '/settings' | '/apps') => {
       close();
       later(() => router.push(path));
     },
@@ -576,13 +576,23 @@ export function DrawerContent({ navigation }: DrawerContentComponentProps) {
             }}
           />
         ) : null}
+        {me?.modules.apps ? (
+          <BarItem
+            icon="form"
+            label={t('integration.apps')}
+            onPress={() => {
+              close();
+              router.push('/apps');
+            }}
+          />
+        ) : null}
         <NativeMenu
           items={[
             { id: '/agents', title: t('nav.agents'), icon: 'sparkle' },
             { id: '/runs', title: t('nav.runs'), icon: 'runs' },
             { id: '/settings', title: t('nav.settings'), icon: 'gear' },
           ]}
-          onSelect={(id) => go(id as '/agents' | '/runs' | '/settings')}
+          onSelect={(id) => go(id as '/agents' | '/runs' | '/settings' | '/apps')}
           style={styles.barSlot}
         >
           <BarItem icon="more" label={t('nav.more')} />

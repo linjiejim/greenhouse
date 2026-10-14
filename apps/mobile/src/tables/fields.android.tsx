@@ -20,8 +20,20 @@ import {
 import { useT } from '../lib/i18n';
 import { computed, cellText, choiceValue } from './model';
 import type { FieldProps } from './fields';
-export function FieldEditor({ field, value, change, readonly, options, uploadPath, files }: FieldProps) {
+export function FieldEditor({
+  field,
+  value,
+  change: onChange,
+  readonly,
+  disabled: inactive = false,
+  options,
+  uploadPath,
+  files,
+}: FieldProps) {
   const t = useT();
+  const change = (value: unknown) => {
+    if (!inactive) onChange(value);
+  };
   const locale = useLocale();
   const [dateOpen, setDateOpen] = useState(false);
   const [timeOpen, setTimeOpen] = useState(false);
@@ -29,7 +41,7 @@ export function FieldEditor({ field, value, change, readonly, options, uploadPat
   const knownFiles = { ...files, ...attachments.files };
   const state = useNativeState(value == null ? '' : String(value));
   const label = `${field.name}${field.required ? ' *' : ''}`;
-  const choicesResource = useFieldChoices(field);
+  const choicesResource = useFieldChoices(field, !readonly && options === undefined);
   const choices = field.config.options ?? options ?? choicesResource.data ?? [];
   if (field.type === 'attachment')
     return (
@@ -62,7 +74,9 @@ export function FieldEditor({ field, value, change, readonly, options, uploadPat
       <FormSection title={label} footer={computed(field.type) ? t('work.computed') : t('work.readonly')}>
         <FormValueRow
           label={
-            cellText(field, value, undefined, Object.fromEntries(choices.map((o) => [o.id, o.label]))) ||
+            (field.type === 'checkbox' && typeof value === 'boolean'
+              ? t(value ? 'common.yes' : 'common.no')
+              : cellText(field, value, undefined, Object.fromEntries(choices.map((o) => [o.id, o.label])))) ||
             t('work.emptyValue')
           }
         />
@@ -71,7 +85,7 @@ export function FieldEditor({ field, value, change, readonly, options, uploadPat
   if (field.type === 'checkbox')
     return (
       <FormSection>
-        <FormSwitchRow label={label} value={!!value} onValueChange={change} />
+        <FormSwitchRow enabled={!inactive} label={label} value={!!value} onValueChange={change} />
       </FormSection>
     );
   if (['single_select', 'multi_select', 'member', 'relation', 'parent', 'dependency'].includes(field.type)) {
@@ -108,7 +122,9 @@ export function FieldEditor({ field, value, change, readonly, options, uploadPat
         <FormNavRow
           label={label}
           value={typeof value === 'string' ? calendarDateLabel(value) : t('work.emptyValue')}
-          onPress={() => setDateOpen(true)}
+          onPress={() => {
+            if (!inactive) setDateOpen(true);
+          }}
         />
         {field.type === 'datetime' ? (
           <FormNavRow
@@ -118,7 +134,9 @@ export function FieldEditor({ field, value, change, readonly, options, uploadPat
                 ? new Date(parseMs(value)).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' })
                 : t('work.emptyValue')
             }
-            onPress={() => setTimeOpen(true)}
+            onPress={() => {
+              if (!inactive) setTimeOpen(true);
+            }}
           />
         ) : null}
         {timeOpen ? (
@@ -163,6 +181,7 @@ export function FieldEditor({ field, value, change, readonly, options, uploadPat
     );
   return (
     <FormTextField
+      enabled={!inactive}
       label={label}
       state={state}
       onChangeText={(s) => change(field.type === 'number' ? (s.trim() ? Number(s) : null) : s)}

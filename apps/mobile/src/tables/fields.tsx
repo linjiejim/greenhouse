@@ -2,7 +2,7 @@ import { useAttachments } from './use-attachments';
 import { saveFile } from '../chat/file-card';
 import { useFieldChoices } from './field-choices';
 import { Section, TextField, Toggle, Picker, Text, DatePicker, useNativeState } from '@expo/ui/swift-ui';
-import { pickerStyle, tag, keyboardType } from '@expo/ui/swift-ui/modifiers';
+import { disabled, pickerStyle, tag, keyboardType } from '@expo/ui/swift-ui/modifiers';
 import { FormNavRow, FormCheckRow } from '../ui/native-form';
 import { useT } from '../lib/i18n';
 import { parseMs } from '../data/time';
@@ -12,21 +12,31 @@ export interface FieldProps {
   value: unknown;
   change: (value: unknown) => void;
   readonly?: boolean;
+  disabled?: boolean;
   uploadPath?: string;
   files?: Record<string, { name: string; url?: string }>;
   options?: { id: string; label: string }[];
 }
-export function FieldEditor({ field, value, change, readonly, options, uploadPath, files }: FieldProps) {
+export function FieldEditor({
+  field,
+  value,
+  change,
+  readonly,
+  disabled: inactive = false,
+  options,
+  uploadPath,
+  files,
+}: FieldProps) {
   const t = useT();
   const attachments = useAttachments(uploadPath);
   const knownFiles = { ...files, ...attachments.files };
   const text = useNativeState(value == null ? '' : String(value));
   const label = `${field.name}${field.required ? ' *' : ''}`;
-  const choicesResource = useFieldChoices(field);
+  const choicesResource = useFieldChoices(field, !readonly && options === undefined);
   const choices = field.config.options ?? options ?? choicesResource.data ?? [];
   if (field.type === 'attachment')
     return (
-      <Section title={label}>
+      <Section modifiers={[disabled(inactive)]} title={label}>
         {(Array.isArray(value) ? value : []).map((id) => (
           <FormNavRow
             key={String(id)}
@@ -51,16 +61,22 @@ export function FieldEditor({ field, value, change, readonly, options, uploadPat
     );
   if (readonly || computed(field.type))
     return (
-      <Section title={label} footer={<Text>{computed(field.type) ? t('work.computed') : t('work.readonly')}</Text>}>
+      <Section
+        modifiers={[disabled(inactive)]}
+        title={label}
+        footer={<Text>{computed(field.type) ? t('work.computed') : t('work.readonly')}</Text>}
+      >
         <Text>
-          {cellText(field, value, undefined, Object.fromEntries(choices.map((o) => [o.id, o.label]))) ||
+          {(field.type === 'checkbox' && typeof value === 'boolean'
+            ? t(value ? 'common.yes' : 'common.no')
+            : cellText(field, value, undefined, Object.fromEntries(choices.map((o) => [o.id, o.label])))) ||
             t('work.emptyValue')}
         </Text>
       </Section>
     );
   if (field.type === 'checkbox')
     return (
-      <Section>
+      <Section modifiers={[disabled(inactive)]}>
         <Toggle label={label} isOn={!!value} onIsOnChange={change} />
       </Section>
     );
@@ -68,7 +84,7 @@ export function FieldEditor({ field, value, change, readonly, options, uploadPat
     const multi = field.type === 'multi_select' || !!field.config.multiple || field.type === 'dependency';
     const picked = Array.isArray(value) ? value : value ? [value] : [];
     return (
-      <Section title={label}>
+      <Section modifiers={[disabled(inactive)]} title={label}>
         {multi ? (
           choices.map((o) => (
             <FormCheckRow
@@ -101,7 +117,7 @@ export function FieldEditor({ field, value, change, readonly, options, uploadPat
     const parsed = typeof value === 'string' ? parseMs(field.type === 'date' ? `${value}T12:00:00` : value) : NaN;
     const date = new Date(Number.isFinite(parsed) ? parsed : Date.now());
     return (
-      <Section title={label}>
+      <Section modifiers={[disabled(inactive)]} title={label}>
         <DatePicker
           title={label}
           selection={date}
@@ -119,7 +135,7 @@ export function FieldEditor({ field, value, change, readonly, options, uploadPat
     );
   }
   return (
-    <Section title={label}>
+    <Section modifiers={[disabled(inactive)]} title={label}>
       <TextField
         text={text}
         placeholder={label}

@@ -1,3 +1,4 @@
+import type { AutomationHooks } from './automations.js';
 /**
  * Records (TBL-07 to TBL-10): query a view, read one, create, change with a revision check,
  * paste many, delete to the recycle bin, restore, delete for good; comments and history. Every
@@ -71,9 +72,9 @@ import {
 import { hiddenFields, rowsOf, scopeOf, type TableScope } from './scope.js';
 import { changesBetween, emptyRefs, keptApart, normalizeValue, searchOf, titleOf, type ValueRefs } from './values.js';
 
-/** Who a record's history names for a write: a form or an import (the member is kept apart). */
+/** Who a record's history names for a write: a form, import or app (the member is kept apart). */
 export interface RecordActor {
-  type: 'form' | 'import';
+  type: 'form' | 'import' | 'app';
   id: string;
 }
 
@@ -90,6 +91,7 @@ const MAX_TOLD = 50;
 const MAX_CUSTOM_SEARCH_BASES = 20;
 
 export interface RecordsDeps {
+  automations(): AutomationHooks | null;
   files: FilesService;
   notifications: NotificationsService;
   computed: ComputedPart;
@@ -243,6 +245,7 @@ export function createRecords(deps: RecordsDeps) {
    * member, or the form or import they used.
    */
   async function write(ctx: Writing, row: BaseRecordRow | null, input: RecordValues, actor?: RecordActor) {
+    const captured = await deps.automations()?.before(ctx.table.id, row?.id ?? null);
     const keys = Object.keys(input);
     if (keys.length > 300) throw invalidInput('Too many fields in one change.');
     const refs = emptyRefs();
@@ -353,6 +356,7 @@ export function createRecords(deps: RecordsDeps) {
       throw forbidden('Your role cannot put a record outside the records it sees.');
     }
     await event(computed, row ? 'updated' : 'created', memberId, changes, actor);
+    if (captured) await deps.automations()?.after(captured, computed.id, computed.revision, Object.keys(patch), !row);
     return { row: computed, changed: true };
   }
 
@@ -638,6 +642,26 @@ export function createRecords(deps: RecordsDeps) {
       const ctx = await writing(writer, at);
       const { row } = await write(ctx, null, values, actor);
       return row;
+    },
+
+    /** An app write inside its publication lock; the caller announces only after the outer commit. */
+    async changeFrom(
+      memberId: string,
+      tableId: string,
+      values: RecordValues,
+      actor: RecordActor,
+      target?: { id: string; revision: number },
+    ) {
+      const reader = await loadReader(memberId);
+      const at = target ? await recordAt(reader, target.id, 'editor') : await tableAt(reader, tableId, 'editor');
+      if (at.table.id !== tableId) throw notFound('Record');
+      const ctx = await writing(reader, at);
+      const old = target ? await lockRow(target.id) : null;
+      if (target && (!old || old.deletedAt)) throw notFound('Record');
+      if (target && old!.revision !== target.revision) throw stale((await detail(ctx, old!)).record);
+      const { row } = await write(ctx, old, values, actor);
+      await deps.touch(ctx.base.id);
+      return { at, row, detail: await detail(ctx, row) };
     },
 
     /** Tells the base's people about records written by `insertFrom` (after the commit). */

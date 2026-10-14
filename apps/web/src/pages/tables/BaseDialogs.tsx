@@ -1,5 +1,5 @@
 /**
- * A base's own panels: sharing (owners; members, groups or everyone in four roles, saved
+ * A base's own panels: sharing (owners; members, groups or everyone in built-in or custom roles, saved
  * together), the recycle bin (restore, or delete for good), the audit log and renaming.
  */
 
@@ -39,9 +39,10 @@ import { useI18n } from '../../lib/i18n';
 import { relativeTime } from '../../lib/time';
 import { MemberAvatar } from '../../shell/MemberAvatar';
 import { tablesError } from './errors';
+import { useDraftNavigation } from './useDraftNavigation';
 import { NameDialog } from './TableTabs';
 
-type Entry = Pick<BaseShare, 'type' | 'id' | 'name' | 'role'>;
+type Entry = Pick<BaseShare, 'type' | 'id' | 'name' | 'role' | 'custom_role_id'>;
 const keyOf = (entry: Pick<Entry, 'type' | 'id'>) => `${entry.type}:${entry.id ?? ''}`;
 
 export function ShareDialog({ base, onClose }: { base: Base; onClose: () => void }) {
@@ -56,17 +57,25 @@ export function ShareDialog({ base, onClose }: { base: Base; onClose: () => void
   });
   const [items, setItems] = useState<Entry[] | null>(null);
   const [adding, setAdding] = useState('');
-  const [role, setRole] = useState<BaseRole>('viewer');
+  const [role, setRole] = useState('viewer');
+  const roles = useQuery({ queryKey: tablesKeys.roles(base.id), queryFn: () => api.tables.bases.roles(base.id) });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const navigation = useDraftNavigation(items !== null, busy, onClose);
   const current = items ?? shares.data?.items ?? [];
   const taken = new Set(current.map(keyOf));
-  const roleOptions = (type: Entry['type']): SelectOption[] =>
-    (type === 'member' ? BASE_ROLES : GROUP_SHARE_ROLES).map((value) => ({
+  const roleOptions = (type: Entry['type']): SelectOption[] => [
+    ...(type === 'member' ? BASE_ROLES : GROUP_SHARE_ROLES).map((value) => ({
       value,
       label: t(`tables.share.role.${value}`),
       description: t(`tables.share.hint.${value}`),
-    }));
+    })),
+    ...(roles.data?.items ?? []).map((entry) => ({
+      value: entry.id,
+      label: entry.name,
+      description: entry.description,
+    })),
+  ];
   const candidates: SelectOption[] = [
     ...(taken.has('workspace:') ? [] : [{ value: 'workspace:', label: t('tables.share.everyone') }]),
     ...(groups.data?.items ?? [])
@@ -90,16 +99,32 @@ export function ShareDialog({ base, onClose }: { base: Base; onClose: () => void
         : type === 'group'
           ? (groups.data?.items.find((group) => group.id === id)?.name ?? '')
           : (memberById.get(id)?.name ?? '');
-    const allowed = type === 'member' || (GROUP_SHARE_ROLES as readonly string[]).includes(role);
-    setItems([...current, { type, id: type === 'workspace' ? null : id, name, role: allowed ? role : 'viewer' }]);
+    const custom = roles.data?.items.some((entry) => entry.id === role);
+    const allowed = custom || type === 'member' || (GROUP_SHARE_ROLES as readonly string[]).includes(role);
+    setItems([
+      ...current,
+      {
+        type,
+        id: type === 'workspace' ? null : id,
+        name,
+        role: custom ? 'custom' : allowed ? (role as BaseRole) : 'viewer',
+        custom_role_id: custom ? role : null,
+      },
+    ]);
     setAdding('');
   };
   const save = async () => {
+    if (busy) return;
     setBusy(true);
     setError('');
     try {
       const saved = await api.tables.bases.share(base.id, {
-        items: current.map((entry) => ({ type: entry.type, ...(entry.id ? { id: entry.id } : {}), role: entry.role })),
+        items: current.map((entry) => ({
+          type: entry.type,
+          ...(entry.id ? { id: entry.id } : {}),
+          role: entry.role,
+          ...(entry.role === 'custom' && entry.custom_role_id ? { custom_role_id: entry.custom_role_id } : {}),
+        })),
       });
       queryClient.setQueryData(tablesKeys.shares(base.id), saved);
       void refreshBase(base.id);
@@ -112,11 +137,24 @@ export function ShareDialog({ base, onClose }: { base: Base; onClose: () => void
   };
   const nameOf = (entry: Entry) => (entry.type === 'workspace' ? t('tables.share.everyone') : entry.name);
   return (
-    <Overlay variant="dialog" wide title={t('tables.share.title', { name: base.name })} onClose={onClose}>
-      {shares.isPending ? (
+    <Overlay
+      variant="dialog"
+      wide
+      title={t('tables.share.title', { name: base.name })}
+      onClose={onClose}
+      beforeClose={() => {
+        if (busy) return false;
+        if (!items) return true;
+        navigation.ask();
+        return false;
+      }}
+    >
+      {shares.isPending || roles.isPending ? (
         <Skeleton lines={3} />
-      ) : shares.isError ? (
-        <ErrorBox onRetry={() => void shares.refetch()}>{tablesError(shares.error, t)}</ErrorBox>
+      ) : shares.isError || roles.isError ? (
+        <ErrorBox onRetry={() => void Promise.all([shares.refetch(), roles.refetch()])}>
+          {tablesError(shares.error ?? roles.error, t)}
+        </ErrorBox>
       ) : (
         <div className="app-tb-share">
           <div className="app-tb-share-add">
@@ -161,12 +199,20 @@ export function ShareDialog({ base, onClose }: { base: Base; onClose: () => void
                 <Select
                   label={t('tables.share.roleOf', { name: nameOf(entry) })}
                   size="sm"
-                  value={entry.role}
+                  value={entry.custom_role_id ?? entry.role}
                   options={roleOptions(entry.type)}
                   onChange={(next) =>
                     setItems(
                       current.map((item) =>
-                        keyOf(item) === keyOf(entry) ? { ...item, role: next as BaseRole } : item,
+                        keyOf(item) === keyOf(entry)
+                          ? {
+                              ...item,
+                              role: roles.data?.items.some((entry) => entry.id === next)
+                                ? 'custom'
+                                : (next as BaseRole),
+                              custom_role_id: roles.data?.items.some((entry) => entry.id === next) ? next : null,
+                            }
+                          : item,
                       ),
                     )
                   }
@@ -190,11 +236,30 @@ export function ShareDialog({ base, onClose }: { base: Base; onClose: () => void
         </div>
       )}
       <OverlayActions>
-        <Button onClick={onClose}>{t('common.cancel')}</Button>
+        <Button
+          disabled={busy}
+          onClick={() => {
+            if (items) navigation.ask();
+            else onClose();
+          }}
+        >
+          {t('common.cancel')}
+        </Button>
         <Button kind="primary" loading={busy} disabled={!items} onClick={() => void save()}>
           {t('tables.share.save')}
         </Button>
       </OverlayActions>
+      {navigation.asking && (
+        <ConfirmDialog
+          danger
+          title={t('tables.record.discardTitle')}
+          confirmLabel={t('tables.record.discard')}
+          onCancel={navigation.cancel}
+          onConfirm={navigation.discard}
+        >
+          {t('tables.record.discardBody')}
+        </ConfirmDialog>
+      )}
     </Overlay>
   );
 }

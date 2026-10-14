@@ -1,3 +1,4 @@
+import { AutomationsDrawer } from './AutomationsDrawer';
 /**
  * A base (TBL-01 to TBL-10): its data tables as tabs, the table's views with their toolbar, the
  * view itself, and the record drawer (`?record=`). Toolbar changes save to the view when the
@@ -15,6 +16,7 @@ import {
   Pin,
   PinOff,
   Share2,
+  ShieldCheck,
   Trash2,
   Upload,
 } from 'lucide-react';
@@ -66,6 +68,7 @@ import { KanbanView } from './Kanban';
 import { type CellLookups } from './model';
 import { RecordDrawer } from './RecordDrawer';
 import { AuditDrawer, RenameBaseDialog, ShareDialog, TrashDrawer } from './BaseDialogs';
+import { RolesDrawer } from './RolesDrawer';
 import { TableTabs } from './TableTabs';
 import { TimelineView } from './Timeline';
 import { Toolbar } from './Toolbar';
@@ -73,7 +76,7 @@ import type { ViewProps } from './types';
 import { ViewBar } from './ViewBar';
 import '../../styles/tables.css';
 
-type Panel = 'share' | 'trash' | 'audit' | 'rename' | 'forms' | 'import' | null;
+type Panel = 'automations' | 'roles' | 'share' | 'trash' | 'audit' | 'rename' | 'forms' | 'import' | null;
 
 export function BasePage({
   id,
@@ -156,7 +159,7 @@ function BaseScreen({
   const table = base.tables.find((entry) => entry.id === tableId) ?? base.tables[0];
   const views = table ? viewsOf(base, table.id) : [];
   const view = views.find((entry) => entry.id === viewId) ?? views[0];
-  const canEdit = roleAtLeast(base.access, 'editor') && !base.archived_at;
+  const canEdit = (table?.access ? table.access === 'edit' : roleAtLeast(base.access, 'editor')) && !base.archived_at;
   const canBuild = roleAtLeast(base.access, 'builder') && !base.archived_at;
   const isOwner = base.access === 'owner';
 
@@ -182,28 +185,46 @@ function BaseScreen({
   const query = useMemo(() => queryOf(config, search), [config, search]);
   const records = useViewRecords(table?.id ?? '', query, !!table && !!view);
 
-  // Saves to a view go one after another, each with the revision the one before left; the view
-  // shows each change at once, and only the last save puts the server's view back in.
+  // Keep each pending config as a draft: a realtime base refresh may return an earlier save.
+  // The queue uses the revision it started from, then each write's answer, never a refreshed
+  // revision that would silently overwrite another member's change.
   const saving = useRef(Promise.resolve());
-  const pending = useRef(0);
+  const pending = useRef(new Map<string, number>());
+  const revisions = useRef(new Map<string, number>());
   const saveView = useCallback(
     (target: View, change: { config?: ViewConfig; name?: string; position?: number }) => {
-      const cachedView = () =>
-        queryClient.getQueryData<Base>(tablesKeys.base(base.id))?.views.find((entry) => entry.id === target.id);
-      const now = cachedView() ?? target;
-      putView(base.id, { ...now, ...change, config: change.config ?? now.config });
-      pending.current += 1;
+      const cached =
+        queryClient.getQueryData<Base>(tablesKeys.base(base.id))?.views.find((entry) => entry.id === target.id) ??
+        target;
+      const count = pending.current.get(target.id) ?? 0;
+      if (!count) revisions.current.set(target.id, target.revision);
+      pending.current.set(target.id, count + 1);
+      if (change.config) setDrafts((current) => ({ ...current, [target.id]: change.config! }));
+      putView(base.id, { ...cached, ...change, config: change.config ?? cached.config });
       saving.current = saving.current.then(async () => {
         try {
-          const latest = cachedView() ?? target;
-          const saved = await api.tables.views.update(target.id, { revision: latest.revision, ...change });
-          pending.current -= 1;
-          const shown = cachedView();
-          putView(base.id, pending.current > 0 && shown ? { ...shown, revision: saved.revision } : saved);
+          const revision = revisions.current.get(target.id);
+          // An earlier write failed: abandon the rest of this view's queue, not the other views.
+          if (revision === undefined) return;
+          const saved = await api.tables.views.update(target.id, { revision, ...change });
+          revisions.current.set(target.id, saved.revision);
+          putView(base.id, saved);
         } catch (error) {
-          pending.current -= 1;
+          revisions.current.delete(target.id);
           notify(tablesError(error, t));
           void refreshBase(base.id);
+        } finally {
+          const remaining = (pending.current.get(target.id) ?? 1) - 1;
+          if (remaining) pending.current.set(target.id, remaining);
+          else {
+            pending.current.delete(target.id);
+            revisions.current.delete(target.id);
+            setDrafts((current) => {
+              const next = { ...current };
+              delete next[target.id];
+              return next;
+            });
+          }
         }
       });
     },
@@ -300,16 +321,24 @@ function BaseScreen({
     ...(isOwner && !base.archived_at
       ? [{ label: t('tables.share'), icon: <Share2 size={icon.md} />, onClick: () => setPanel('share') }]
       : []),
-    ...(canEdit
+    ...(canEdit && !table?.access
       ? [{ label: t('tables.trash'), icon: <Trash2 size={icon.md} />, onClick: () => setPanel('trash') }]
       : []),
     ...(canBuild && table && !dashboard
-      ? [{ label: t('tables.forms'), icon: <ClipboardList size={icon.md} />, onClick: () => setPanel('forms') }]
+      ? [
+          { label: t('tables.automations'), onClick: () => setPanel('automations') },
+          { label: t('tables.forms'), icon: <ClipboardList size={icon.md} />, onClick: () => setPanel('forms') },
+        ]
       : []),
     ...(canEdit && table && !dashboard
       ? [{ label: t('tables.importCsv'), icon: <Upload size={icon.md} />, onClick: () => setPanel('import') }]
       : []),
-    { label: t('tables.exportCsv'), icon: <Download size={icon.md} />, onClick: () => void exportCsv() },
+    ...(!dashboard && table
+      ? [{ label: t('tables.exportCsv'), icon: <Download size={icon.md} />, onClick: () => void exportCsv() }]
+      : []),
+    ...(isOwner && !base.archived_at
+      ? [{ label: t('tables.roles.title'), icon: <ShieldCheck size={icon.md} />, onClick: () => setPanel('roles') }]
+      : []),
     base.pinned
       ? {
           label: t('tables.unpin'),
@@ -397,12 +426,12 @@ function BaseScreen({
           badge={
             base.archived_at ? (
               <Badge>{t('tables.archivedBadge')}</Badge>
-            ) : base.access === 'viewer' ? (
+            ) : !canEdit && !dashboard ? (
               <Badge>{t('tables.readOnly')}</Badge>
             ) : undefined
           }
           primary={
-            canEdit && table && !dashboard ? (
+            canEdit && table && !dashboard && !(view?.type === 'grid' && records.data?.items.length === 0) ? (
               <Button kind="primary" onClick={() => setCreating({})}>
                 {t('tables.addRecord')}
               </Button>
@@ -451,7 +480,7 @@ function BaseScreen({
               views={views}
               current={view}
               canBuild={canBuild}
-              draft={drafts[view.id] ?? null}
+              draft={view.editable ? null : (drafts[view.id] ?? null)}
               onDraftDone={() =>
                 setDrafts((current) => {
                   const next = { ...current };
@@ -480,6 +509,20 @@ function BaseScreen({
               <ErrorBox onRetry={() => void records.refetch()}>{tablesError(records.error, t)}</ErrorBox>
             ) : !props ? (
               <Skeleton lines={8} />
+            ) : props.data.items.length === 0 && (search.trim() || config.filter?.clauses.length) ? (
+              <Empty
+                title={t('tables.grid.noMatch')}
+                action={
+                  <Button
+                    onClick={() => {
+                      setSearch('');
+                      onConfig({ ...config, filter: undefined });
+                    }}
+                  >
+                    {t('tables.grid.clearFilters')}
+                  </Button>
+                }
+              />
             ) : (
               <>
                 {props.data.truncated && (
@@ -503,6 +546,7 @@ function BaseScreen({
           recordId={recordId}
           initial={creating ?? undefined}
           canEdit={canEdit}
+          canGenerate={!!me?.capabilities.llm}
           lookups={lookups}
           onOpen={openRecord}
           onCreated={(created) => {
@@ -520,6 +564,10 @@ function BaseScreen({
           onClose={() => setEditingField(null)}
         />
       )}
+      {panel === 'automations' && table && (
+        <AutomationsDrawer base={base} table={table} onClose={() => setPanel(null)} />
+      )}
+      {panel === 'roles' && <RolesDrawer base={base} onClose={() => setPanel(null)} />}
       {panel === 'share' && <ShareDialog base={base} onClose={() => setPanel(null)} />}
       {panel === 'trash' && <TrashDrawer base={base} onClose={() => setPanel(null)} />}
       {panel === 'audit' && <AuditDrawer base={base} onClose={() => setPanel(null)} />}

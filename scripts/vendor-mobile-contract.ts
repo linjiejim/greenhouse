@@ -74,6 +74,15 @@ export const TYPES = [
   'Skill',
   'SkillStarters',
   'Schedule',
+  'CreateScheduleInput',
+  'UpdateScheduleInput',
+  'StandingApproval',
+  'AppSummary',
+  'AppRuntime',
+  'AppCard',
+  'AppAction',
+  'AppCardAnswer',
+  'CardData',
   'KnowledgeScope',
   'KnowledgeItem',
   'KnowledgeFolder',
@@ -174,7 +183,18 @@ export async function render(): Promise<string> {
     if (!symbol) throw new Error(`packages/contract exports no type ${name}`);
     if (symbol.flags & ts.SymbolFlags.Alias) symbol = checker.getAliasedSymbol(symbol);
     const type = checker.getDeclaredTypeOfSymbol(symbol);
-    const text = checker.typeToString(type, undefined, flags);
+    let text = checker.typeToString(type, undefined, flags);
+    // Interfaces keep their own name even with InTypeAlias; emit their properties instead.
+    if (text === name) {
+      text = `{ ${checker
+        .getPropertiesOfType(type)
+        .map((property) => {
+          const at = property.valueDeclaration ?? property.declarations?.[0] ?? source!;
+          const value = checker.typeToString(checker.getTypeOfSymbolAtLocation(property, at), undefined, flags);
+          return `${JSON.stringify(property.name)}${property.flags & ts.SymbolFlags.Optional ? '?' : ''}: ${value};`;
+        })
+        .join(' ')} }`;
+    }
     if (/\bz\.|Zod/.test(text)) throw new Error(`${name} still names zod: ${text.slice(0, 200)}`);
     blocks.push(`export type ${name} = ${text};`);
   }

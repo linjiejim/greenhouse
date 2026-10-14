@@ -24,6 +24,7 @@ export const ID_PREFIX = {
   note: 'nte',
   handoff: 'hof',
   request: 'req',
+  standingApproval: 'sap',
   run: 'run',
   runStep: 'stp',
   file: 'fil',
@@ -46,6 +47,10 @@ export const ID_PREFIX = {
   doc: 'doc',
   docVersion: 'dcv',
   comment: 'cmt',
+  app: 'app',
+  appVersion: 'apv',
+  baseTemplate: 'btp',
+  baseTemplateVersion: 'btv',
   base: 'bas',
   baseTable: 'tbl',
   baseField: 'col',
@@ -55,6 +60,8 @@ export const ID_PREFIX = {
   form: 'frm',
   formSubmission: 'sub',
   baseImport: 'imp',
+  baseAutomation: 'atm',
+  baseAutomationRun: 'amr',
 } as const;
 export type IdKind = keyof typeof ID_PREFIX;
 

@@ -222,7 +222,7 @@ describe('an Agent with the mailbox', () => {
       .where(and(eq(requests.runId, sending.run_id), eq(requests.status, 'pending')));
     expect(sendCard!.payload).toMatchObject({ summary: expect.stringContaining('send_message') });
     const [pending] = await steps(sending.run_id);
-    expect(pending).toMatchObject({ risk: 'external', status: 'pending' });
+    expect(pending).toMatchObject({ risk: 'tier3', status: 'pending' });
     expect(box.state.sent).toEqual([]);
     await request('POST', `/api/requests/${sendCard!.id}/approve`, { token: lin.token });
     await services.engine.idle();

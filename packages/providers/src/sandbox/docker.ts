@@ -189,6 +189,20 @@ export function createDockerSandbox(config: DockerConfig): SandboxClient {
     return name;
   };
   const client: SandboxClient = {
+    async setEgress(name, domains) {
+      const target = checkName(name);
+      const inspected = await runDocker(['inspect', '--format', '{{json .NetworkSettings.Networks}}', target]);
+      if (inspected.exitCode !== 0) throw new DockerError('The computer could not be inspected.', inspected.exitCode);
+      const networks = Object.keys(JSON.parse(inspected.stdout) as Record<string, unknown>);
+      if (domains === null) {
+        if (config.network !== 'none' && !networks.includes(config.network))
+          await control(['network', 'connect', config.network, target]);
+      } else {
+        // Docker has no domain firewall: fail closed even when the brief lists domains.
+        for (const network of networks)
+          if (network !== 'none') await control(['network', 'disconnect', '--force', network, target]);
+      }
+    },
     async status(name) {
       const result = await runDocker(['inspect', '--format', '{{.State.Running}}', checkName(name)]);
       if (result.exitCode !== 0) return 'missing';

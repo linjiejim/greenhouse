@@ -96,7 +96,11 @@ v2 和 v1 不兼容，不加 `/api/v2` 前缀，也不保留旧路由。`GET /ap
 | `POST` / `GET /api/tables/tables/:id/imports` · `GET` / `PATCH /api/tables/imports/:id` · `POST …/start` · `…/cancel` | CSV 导入（编辑者）：上传成为草稿（24 小时，最多 20 MB、5 万行、500 列），按列名对应字段可改，开始后由后台任务分批写入，失败重试从已写入的行继续；读不出或被拒的行跳过，结果报告行号、列和原因；只有导入者看得到自己的导入 |
 | `GET` / `PATCH` / `DELETE /api/tables/records/:id` · `POST …/restore` · `…/purge` · `GET …/activity` · `…/comments[/:commentId]` | 一条记录（带子记录）；修改要带读到的 `revision`，旧的返回 409 `stale_revision`（`details.record` 是现在的记录）；删除进回收站，恢复，彻底删除（搭建者）；活动是评论和变更历史，新的在前；评论（能读就能评，提及的人和记录创建者收到通知；只改自己的，拥有者能删任何一条） |
 | `GET /api/search?q=&kinds=` | `⌘K` 全局搜索；`records` 是我能读的表格里的记录（中英文全文检索），带 `base_id`、`table_id`；只凭自定义角色看的表格里只搜角色看得到的字段和记录 |
-| `/api/apps[/:id]/…` | 应用 |
+| `GET` / `POST /api/apps` | 应用目录（游标、名称搜索）与新建（表格搭建者）；目录包含我可用的发布应用和我搭建的草稿。应用开关和底层表格权限每次复核 |
+| `GET` / `PUT /api/apps/:id/draft` · `POST …/publish` · `GET …/versions` · `POST …/restore` | 搭建者只能修改自己的应用。草稿保存、发布、恢复带 `revision`，旧的 409 `stale_revision`；发布事务写不可变 spec/hash 和受众，并消耗 revision。恢复只改变草稿，旧发布继续生效；版本列表使用游标 |
+| `GET /api/apps/:id` · `POST …/cards/query` · `POST …/cards/:card/records/:record` · `POST …/actions` | 发布运行页面、保存的卡片求值／记录详情、固定动作与内部表单。数据按底层权限 ∩ 应用角色 ∩ 卡片查询／字段；应用永不扩大表格权限。动作带 `version` 和保存的 card/action id，旧发布版 409 `stale_version`；按钮不接收覆盖值。写入者是成员，记录历史 actor_type=app、meta.app_id。卡片记录查询支持游标；搭建者可用 `preview_role` 只读预览草稿，卡片查询带 version=0 和相同 preview_role，不允许预览动作；自定义 HTML 不执行且不返回源码 |
+| `PUT /api/apps/:id/pin` · `…/featured` | 本人置顶；管理员精选（管理员也需有应用和表格访问权，写审计） |
+| `GET /api/apps/templates[/:id]` · `POST /api/apps/:id/templates` · `POST /api/apps/templates/:id/review` · `…/install` | 查看可用／自己的模板（管理员可看待审结构）、从发布应用存结构模板、管理员审核、安装到新表格与应用草稿。只有审核通过的版本可安装；不复制线上记录、受众或自动化。未通过的模板对其他成员不可见。项目内置模板复用表格安装器 |
 | `GET /api/skills?q=&space=&kind=&scan_status=&archived=&agent=` · `POST /api/skills` · `GET` / `PATCH` / `DELETE /api/skills/:id` · `POST …/restore` · `GET` / `POST …/versions` · `POST …/scan` · `GET …/download?version=` · `GET /api/skills/starters?agent=` | 技能：我看得到的技能，`available` 与原因按 `agent`（默认主 Agent）判断；新建模板，或用 purpose `skill` 上传的 ZIP 新建包；`PATCH` 改显示名、说明、标签，`DELETE` 是归档；新版本（新 ZIP，或模板的新正文、字段、要求）；`scan` 重扫，或审核（`safe` / `malicious`，团队技能由管理员、个人技能由主人）；下载返回包的签名链接；`starters` 是新会话的 3 个常用技能（没有时给模板开场） |
 | `GET /api/notifications` · `POST …/read` | 通知 |
 | `GET /api/members?q=` · `GET /api/groups` | 成员与分组选择器（只读） |
@@ -147,6 +151,11 @@ OAuth 2.1 与 MCP（公开路径，错误按 RFC 6749 返回 `{ error, error_des
 | `conversations:read` | `conversations_list`、`conversations_search`、`conversation_get` |
 | `runs:read` | `runs_list`、`run_get`、`schedules_list` |
 | `memories:read` | `memories_list`：Agent 关于我的记忆 |
+| `apps:read` | `apps_query`：按我的应用与表格角色读发布页面、卡片及记录 |
+| `apps:write` | `apps_action`：执行已保存动作；共享写入等我在 Greenhouse 批准 |
+
+表格 Web（#70，T3）直接消费上述计算字段与角色接口：公式错误 `details` 的 `code/start/end/params` 用于本地化提示和标记；`records.changed` 中的 `computed_revision` 与编辑 revision 分开比较。字段生成仍通过 `POST /api/tables/fields/:id/generate`；标签栏为非搭建者创建仪表盘时固定 `personal: true`。
+
 
 ## 3. v1 → v2 去向
 
@@ -175,12 +184,14 @@ OAuth 2.1 与 MCP（公开路径，错误按 RFC 6749 返回 `{ error, error_des
 
 工具和 HTTP 共用 service，元数据与实现写在同一个文件里（沿用 `defineTool`），并按 v2 词汇改名。
 
+#70：发给所有模型服务的工具参数都是顶层 `type: object` 与 `properties`，顶层不含 `anyOf`、`oneOf` 或 `allOf`。按 action 分支的 Zod 输入合并成一个对象（action 枚举、分支字段可选），Schema 说明各分支的必填项；调用返回后仍用原 Zod 输入校验必填项、长度、默认值与分支，再计算风险或执行。真实 DeepSeek 与会拒绝旧格式的模拟服务均已验证。
+
 | 领域 | 工具 |
 | --- | --- |
 | 对话与协作 | `ask_user`、`conversation_query`、`handoff`（转交给 Agent）、`self`（修改自己指令的提议） |
 | 运行 | `run_start`（后台运行，需要先确认简报）、`schedule_query`、`schedule_mutation` |
 | 知识库 | `knowledge_query`、`knowledge_mutation` |
-| 表格与应用 | `tables_query`、`tables_mutation`、`tables_schema_plan`、`apps_query`、`apps_action` |
+| 表格与应用（规划，当前未提供） | `tables_query`、`tables_mutation`、`tables_schema_plan`、`apps_query`、`apps_action` |
 | 技能 | `skill_query`（search、load、read_file，有电脑时 install）、`skill_mutation`（只提议「存为技能」，成员接受后保存为模板） |
 | 多媒体（来自 Provider） | `web_search`、`web_fetch`、`generate_image`、`generate_video`、`speak`（TTS 生成音频）、`transcribe`（STT）、`analyze_image` |
 | 其他 | `compute`（isolated-vm）、`read_attachment`、`export_data`、`memory`、`mcp_call`（成员自己的邮箱经内置连接器 `mailbox`）、`mail`（Agent 自己的邮箱） |
@@ -191,15 +202,15 @@ OAuth 2.1 与 MCP（公开路径，错误按 RFC 6749 返回 `{ error, error_des
 
 `skill_query` 的描述每个回合重建，列出这个 Agent 装备的技能，不能运行的写明原因；它按提问者的权限读技能库，公开 Agent 也提供。成员用 `/` 运行的技能在发送时检查（看得到、扫描通过、未归档、回答的 Agent 满足运行要求、必填项已填），正文作为成员的请求进入回合。
 
-`knowledge_query`（`search`、`read`、`list`）以提问者的权限读知识库：读过的文档列为回复的出处（`kind: doc`，地址 `#/knowledge/<id>`），搜索到的文档在回复链接到时列出；`space: agent` 是这个 Agent 的私有参考文件夹。`knowledge_mutation`（`create`、`edit`、`move`、`comment`）改知识库：`edit` 带读到的 `version`，整体替换或给只出现一次的 find / replace；除了 Agent 自己的私有参考文件夹，写入都先弹出批准卡（`tool_write`）；版本和评论记下代写的 Agent。写入只在回合里，公开 Agent 两个都没有。
+`knowledge_query`（`search`、`read`、`list`）以提问者的权限读知识库：读过的文档列为回复的出处（`kind: doc`，地址 `#/knowledge/<id>`），搜索到的文档在回复链接到时列出；`space: agent` 是这个 Agent 的私有参考文件夹。`knowledge_mutation`（`create`、`edit`、`move`、`comment`）改知识库：`edit` 带读到的 `version`，整体替换或给只出现一次的 find / replace；成员独享的可撤销写入直接执行并留回执；共享写入发批准卡（`tool_write`）或使用该范围及动作的预先授权；taint 后不用预先授权；版本和评论记下代写的 Agent。读写可在回合和后台运行中使用；后台卡片暂停运行，决定后按步骤续跑；公开 Agent 仅提供 knowledge_query，范围固定为主人发布时授权文件夹的当前子树；不提供 knowledge_mutation，也不读取使用者或主人的其他知识。引用按使用者直接权限或当前发布授权过滤。
 
-知识库正文的约定：引用其他文档写作 `[标题](#/knowledge/<文档 id>)`（编辑器的 `[[`），提及写作 `[@名字](member:<成员 id>)`，图片与文件写作 `/api/files/<id>/content`，存储时去掉签名、读取时按读者签名。实时事件：`doc.updated`、`doc.presence`、`comments.updated`，发给打开着这篇文档的人；`knowledge.changed`（不带任何内容）在新建、改名、移动、排序、保存、分享、归档、恢复之后发给看得到那个位置的人（团队空间是所有开着知识库的成员，个人空间是主人和分享覆盖到的人，取消分享时也告诉原来覆盖到的人；归档或恢复文件夹时，分享到其中任何文件夹或文档的人也会收到），各端据此刷新屏幕上的知识库列表。保存分享时只校验新加的成员和分组：已有的分享即使对象已停用或已删除也原样保留。
+知识库正文的约定：引用其他文档写作 `[标题](#/knowledge/<文档 id>)`（编辑器的 `[[`），提及成员写作 `[@名字](member:<成员 id>)`，主人提及自己的 Agent 写作 `[@名字](agent:<Agent id>)`，文档与评论经唤醒层送到其 Agent 对话，图片与文件写作 `/api/files/<id>/content`，存储时去掉签名、读取时按读者签名。实时事件：`doc.updated`、`doc.presence`、`comments.updated`，发给打开着这篇文档的人；`knowledge.changed`（不带任何内容）在新建、改名、移动、排序、保存、分享、归档、恢复之后发给看得到那个位置的人（团队空间是所有开着知识库的成员，个人空间是主人和分享覆盖到的人，取消分享时也告诉原来覆盖到的人；归档或恢复文件夹时，分享到其中任何文件夹或文档的人也会收到），各端据此刷新屏幕上的知识库列表。保存分享时只校验新加的成员和分组：已有的分享即使对象已停用或已删除也原样保留。
 
-`mail` 是 Agent 自己的邮箱（AGNT-30）：`list`（收件箱或已发送）、`search`、`read` 只读，读信让回合 taint，正文用 fence 隔开；留存（screened）的信读不到；`send`、`reply` 是第 3 档：每次都弹出批准卡（收件人、主题、正文摘录），批准后从 Agent 的地址发出，回信带 In-Reply-To 与 References。只在主人自己的回合里发信，不在房间、后台运行里；不能写的 Agent 只能读；公开 Agent 没有这个工具。
+`mail` 是 Agent 自己的邮箱（AGNT-30）：`list`（收件箱或已发送）、`search`、`read` 只读，读信让回合 taint，正文用 fence 隔开；留存（screened）的信读不到；`send`、`reply` 是第 3 档：每次都弹出批准卡（收件人、主题、正文摘录），批准后从 Agent 的地址发出，回信带 In-Reply-To 与 References。只为主人自己的 Agent 发信，不在房间里；后台与事件回合同样每次要求人批；不能写的 Agent 只能读；公开 Agent 没有这个工具。
 
-`mcp_call` 是连接器的唯一工具（`list`、`describe`、`call`）。它的描述每个回合重建，只列出这个 Agent 此刻能为提问者用的连接器和工具：已启用、在 manifest 的 `connectors` 里（空值表示全部）、per_member / oauth 的已由提问者连接；不能写的 Agent 只看到只读工具。只读工具直接运行；其余工具弹出批准卡（`tool_write`，原样参数），批准后用提问者的 Key 或登录执行。只在回合里提供，公开 Agent 不提供。
+`mcp_call` 是连接器的唯一工具（`list`、`describe`、`call`）。它的描述每个回合重建，只列出这个 Agent 此刻能为提问者用的连接器和工具：已启用、在 manifest 的 `connectors` 里（空值表示全部）、per_member / oauth 的已由提问者连接；不能写的 Agent 只看到只读工具。只读工具直接运行；其余工具弹出批准卡（`tool_write`，原样参数），批准后用提问者的 Key 或登录执行。回合里提供，后台只允许只读调用；公开 Agent 不提供。
 
-`browser` 与 `vault` 只在回合里，和 `computer` 同时出现。`browser` 经 DevTools 操作电脑里的 Chromium：`open`、`snapshot`（带 ref 的短行，可从 `from_line` 续读）、`read`、`click`、`type`、`press`、`scroll`、`wait`、`back`、`tabs`、`switch_tab`、`close_tab`、`screenshot`（模型能看图时，图片随下一步给模型，不入库）；只开 http 和 https，成员控制画面时不操作。`vault` 有 `find`（当前页面站点的条目，只有标签和掩码用户名）和 `fill {item_id, submit}`（服务端代填，`ask` 条目先发登录卡片）；公开 Agent 没有 `vault`。
+`browser` 与 `vault` 只在回合里，和 `computer` 同时出现。`browser` 经 DevTools 操作电脑里的 Chromium：`open`、`snapshot`（带 ref 的短行，可从 `from_line` 续读）、`read`、`click`、`type`、`press`、`scroll`、`wait`、`back`、`tabs`、`switch_tab`、`close_tab`、`screenshot`（模型能看图时，图片随下一步给模型，不入库；不能看图时返回 `status: unsupported`，不截图，改用 snapshot / read）；只开 http 和 https，成员控制画面时不操作。`vault` 有 `find`（当前页面站点的条目，只有标签和掩码用户名）和 `fill {item_id, submit}`（服务端代填，`ask` 条目先发登录卡片）；公开 Agent 没有 `vault`。
 
 ## 5. 模块布局
 
@@ -218,6 +229,48 @@ apps/api/src/
 
 每个模块都附测试：service 单元测试、路由 API 测试、关键流程端到端测试。删除模块时，按 [功能清单](features.md) 的维护规则同步清理。
 
+
+## 5. 常驻（M1.7）
+
+- `POST /api/requests/:id/approve` 的可选正文：`{ standing: false, continue_after?: boolean }`。省略正文仍可批准。`standing: true` 只能授予卡片展示的第 2 档范围和动作；其他卡片返回 409 `standing_not_allowed`。`continue_after` 只用于后台简报卡。多写卡片 `payload.calls` 展示全部写入，`batch_ready` 为 false 时不能批准（409 `request_building`）。
+- `GET /api/agents/:id/standing-approvals?cursor=&limit=`：拥有者的分页列表，`items` 含 `id`、`agent_id`、`scope_type`、`scope_id`、`actions`、`granted_at`、`revoked_at`，仍可读时附 `scope_name` 和 `scope_href`；权限失去时不泄露对象名。
+- `DELETE /api/agents/:id/standing-approvals/:approval_id`：撤销自己的授权，204。
+- `POST /api/runs/steps/:step_id/undo`：撤销自己回执的写入，204；`already_undone` / `undo_conflict` / `undo_unavailable` 为 409。撤销与 成员 的服务权限相同，文档版本或记录修订改变后不覆盖。
+- `run_start` 简报参数新增 `computer`（默认 false）、`domains`（明确域名，最多 20 个，不接受 URL 或通配符）、`continue_after`（默认 false）。卡片显示电脑与域名，成员可以勾选「完成后继续」。Docker 后台期间断网；E2B 通过网络更新接口限制域名，不支持该接口的兼容服务拒绝后台电脑。
+- `schedule_mutation` 与定时的 POST / PATCH 新增 `quiet`（默认 false）及同样的电脑 / 域名 / 跟进参数。后台用 `run_finish { report, findings }` 结束；`GET /api/runs/:id` 新增 `findings`。静默且无发现时不发完成通知，也不再唤醒跟进；失败总是通知。
+- `table_query`（list / read）和 `table_mutation`（create / update / delete / bulk）调用同一个表格服务；bulk 最多 20 项，一张卡；delete 是移入回收站，彻底删除不提供给它。表格和知识库按三档，move 改变范围不能获得预先授权。
+- `engine.deliver` 不是对外 HTTP 接口。事件必须送到 Agent 与主人的对话；来源键去重，默认两分钟合并，每 UTC 日默认 50 次事件回合，深度最多三层。事件是 untrusted 数据，不能代替成员批准。进程结束的事件可离线检查原进程输出，新电脑工作仍要批准简报。
+- `AGENT_EVENT_WAKES_PER_DAY` 配置每日上限（1–1000，默认 50）；`AGENT_EVENT_MERGE_MS` 默认 120000，测试夹具使用较短窗口。客户端新增字段均有默认值，旧调用可以继续省略。
+
+`memory` 的 recall 可用于后台；前台私有记忆 remember/update 按第 1 档留下可撤销回执，forget 为彻底删除、按第 3 档审批且不能预批；读过外部内容后不改记忆。
+
+
+### 表格与 Agent（#70）
+
+- `POST /api/tables/records/:id/handoff`：`{ agent_id, brief, output_field_id? }`，仅自己的 Agent；读取成员可见记录，响应 `{ run_id }`。负责人仍是成员，来源为 `record`；默认结果作为评论，经 `table_mutation` 分档写回；可选文字字段使用交办时的修订，不能覆盖后来的修改。
+- `GET /api/tables/bases/:id/automations`（游标分页）、`POST`（创建），`PATCH /api/tables/automations/:id`（完整规则与 `revision`）、`DELETE`：需要搭建者权限，执行者为保存规则的成员。触发为 `record_created / record_updated / record_matched / schedule / date_reached / button`；`config` 含筛选、限定更新字段、间隔分钟或日期字段与动作列表。
+- `GET /api/tables/automations/:id/runs`（游标分页）给出步骤、状态与 Agent `run_id`；`POST /api/tables/automations/:id/run` 显式执行按钮规则（可附 `record_id`）。执行前复核执行者与通知收件人的权限。
+- 通知动作 `{type:"notify",members,title}` 统一经通知服务；Agent 动作 `{type:"agent",agent_id,brief,tools:"none"|"same_base_read",output_field_id?}` 经事件唤醒入口，默认无工具；可选回写仍需按档批准。webhook `{type:"webhook",url}` 仅公网 HTTPS、拒绝重定向、连接时复核 DNS、10 秒超时。创建含 webhook 的规则或首次添加 webhook 时仅一次返回 `webhook_secret`，后续不读取；请求头 `x-greenhouse-id` 为执行 id、`x-greenhouse-timestamp` 为 Unix 秒、`x-greenhouse-signature` 为 `v1=` 加 HMAC-SHA256(secret, timestamp + "." + 原始请求体)。接收方应校验时间窗口并按 id 去重；发送结果未知不会自动重发。
+- `table_query` 发现表格、数据表、视图，按成员的自定义角色筛选记录与聚合；读取的记录引用会再次按接收者权限裁剪。`table_mutation` 支持记录批量修改、回收、评论和彻底删除；私有可逆操作有回执与撤销、共享按数据表动作批准、彻底删除逐次批准。`table_schema_plan` 的精确结构计划逐次确认后才落库。
+- `apps_query` 读取已发布应用与卡片，`apps_action` 只执行已保存的动作，按查看者的应用与表格权限交集。MCP 对应独立的 `apps:read` / `apps:write`，不扩大其他已授权范围；共享动作返回 `needs_you`，外部客户端不能代替成员批准。
+
+## 6. M2.4 引擎接口（#70）
+
+- `PUT /api/agents/:id/publication` 新增 `folder_ids`（最多 100 个，默认空）；读取发布设置也返回它。只能选主人当前可用的个人知识文件夹，排除 Agent 私有参考文件夹。
+- `GET /api/runs?parent=<run id>` 仅返回当前成员拥有的子运行；运行视图带 `parent_run_id` 和子运行的 `summary`。子运行仍经已有详情与取消接口查看，不允许直接重试（`helper_retry`），由新的主 Agent 回合重新安排。
+- `helper_run { briefs: [{ title, brief }] }` 仅在主 Agent 的个人回合提供。一个回合最多 3 个、每个 8 步、仅只读后台工具，父回合暂停后经 `run_report` 一次收齐最多三个摘要（总上限 8,000 字符）；摘要续回不能再开一批，只有新的成员消息重置上限。摘要和工作日志正文均按不可信数据处理。拒绝码包括 `helper_limit`、`helper_forbidden`、`parent_unavailable`、`budget_exceeded`、`budget_estimate_unavailable`。
+- 工具输出超过约 8,000 字符时返回 `{ file: { id, name }, head, length, note }`。`tool_output_read { file_id, offset?, length? }` 返回字符区间、总长度与 `next_offset`（默认 4,000，最多 6,000 字符），每次检查成员的文件权限。文件到期或无权读取均返回 `not_found`。若动作已完成但输出存储失败，步骤仍成功，结果明确返回 `storage_error`、开头与长度，不虚构文件，也不诱发重复写入。
+- `memory.recall` 支持 `from` / `to`（UTC 日期 YYYY-MM-DD，含两端）；至少给查询词或日期范围。后台只允许 recall；系统在后台运行结束时写工作日志，不接受运行结果中的记忆指令。
+- 工程命令：`pnpm cli eval export <run|message id>` 在本地连接的 v2 数据库导出 `fixtures/eval/*.json`；成员消息会找到当前对应的回合，多个 Agent 同时回答时返回 `eval_ambiguous`，应指定回复或运行 id；`TEST_DATABASE_URL=... pnpm eval` 用脚本模型回放，不请求真实模型。夜间真实模型用例留 M3.6。
+
 ### 原生移动端 phase 2（#70）
 
 移动端复用知识库、表格、语音和 Agent 邮箱接口，不增加原生专用接口。文档修改发送编辑开始时的 `version`，记录修改发送起始 `revision` 和变化字段；409 时保留草稿，明确重新载入。文件预览仍用签名 URL。转写只填入输入框，朗读使用 `/api/voice/speech` 或设备语音。原生页接收 `knowledge.changed`、`doc.updated`、`doc.presence`、`comments.updated`、`records.changed`、`base.updated`，重连和回到前台时重新读取。邮件正文用原生纯文本呈现，附件使用签名链接。
+
+### 原生移动端最新 v2 集成（#70）
+
+移动端继续复用标准接口：批准发送 `standing`，运行提议可发送 `continue_after`；仅 tier2 且有明确范围的卡片提供预先授权，`batch_ready=false` 时禁止批准。写入回执按 `step_id` 调用 `POST /api/runs/steps/:id/undo`，由服务检查本人和当前修订。主人可分页读取／撤销 Agent 的预先授权，并通过 `/api/schedules` 保存 `quiet`；日程修改只发送本次变化的字段，避免覆盖另一端的无关配置。记录交办使用 `POST /api/tables/records/:id/handoff`。
+
+应用列表与运行页、卡片查询、限定字段详情、表单提交和固定动作全部走 `/api/apps`；查询及写入钉住 `version`，记录动作携带 `revision`，不经更宽的表格接口读写应用记录。`stale_version` 保留原生表单草稿，只有明确重新载入才采用新的发布版本。搭建与发布仍在网页端，自定义 HTML 在手机端也禁用。没有新增接口或更改错误码。
+
+应用关联选项只查询当前发布的记录卡片，复用卡片筛选与应用权限；没有对应候选卡片时提供网页填写入口，不查询完整表格目录。成员候选使用成员目录，附件沿用受控上传与签名文件链接。

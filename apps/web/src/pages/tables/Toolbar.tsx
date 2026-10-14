@@ -36,6 +36,7 @@ import {
   canSortBy,
   isSystemField,
   operatorsFor,
+  valueTypeOf,
   type Field,
   type FieldType,
   type Filter,
@@ -52,15 +53,18 @@ import { FieldIcon, memberOptions } from './cells';
 import { linkTable, moveField, orderedFields } from './model';
 
 type Kind = FieldType | SystemField;
-const kindOf = (fields: readonly Field[], ref: string): Kind | undefined =>
-  isSystemField(ref) ? ref : fields.find((field) => field.id === ref)?.type;
+const kindOf = (fields: readonly Field[], ref: string): Kind | undefined => {
+  if (isSystemField(ref)) return ref;
+  const field = fields.find((entry) => entry.id === ref);
+  return field ? valueTypeOf(field) : undefined;
+};
 
 /** Fields and the system fields as picker options. */
 function useFieldOptions(fields: readonly Field[], keep: (kind: Kind) => boolean): SelectOption[] {
   const { t } = useI18n();
   return [
     ...fields
-      .filter((field) => keep(field.type))
+      .filter((field) => keep(valueTypeOf(field)))
       .map((field) => ({ value: field.id, label: field.name, icon: <FieldIcon type={field.type} /> })),
     ...SYSTEM_FIELDS.filter(keep).map((field) => ({ value: field, label: t(`tables.system.${field}`) })),
   ];
@@ -306,7 +310,10 @@ function FilterPanel({
           onClick={() => {
             const first = fields[0];
             if (!first) return;
-            save({ ...filter, clauses: [...filter.clauses, { field: first.id, op: operatorsFor(first.type)[0]! }] });
+            save({
+              ...filter,
+              clauses: [...filter.clauses, { field: first.id, op: operatorsFor(valueTypeOf(first))[0]! }],
+            });
           }}
         >
           <Plus size={icon.sm} strokeWidth={icon.stroke} />

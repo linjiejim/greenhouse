@@ -6,7 +6,7 @@
 
 import { and, asc, eq } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
-import { agentComputers, getDb, runSteps } from '@greenhouse/db';
+import { agentComputers, getDb, requests, runSteps } from '@greenhouse/db';
 import { SHOWN_IMAGE_TEXT } from '../../../engine/history.js';
 import { scriptedModel, text, toolCall } from '../../../engine/__tests__/model.js';
 import { createTestApp } from '../../../testing.js';
@@ -17,6 +17,12 @@ const SHOP = 'https://shop.example.com/';
 const PASSWORD = 'Tr0ub4dor&3-horse-staple';
 
 const PAGES: Record<string, FakePage> = {
+  'https://shop.example.com/pay': {
+    title: 'Checkout',
+    text: 'Pay',
+    ax: axPage('Checkout', [{ role: 'button', name: 'Pay', node: 26 }]),
+    approvalNodes: [26],
+  },
   [SHOP]: {
     title: 'Shop',
     text: 'Shop home',
@@ -83,6 +89,21 @@ async function setup(start = SHOP, options: { vision?: boolean } = {}) {
 }
 
 describe('the browser tool', () => {
+  it('waits for a tier 3 card before a payment click and refuses standing approval', async () => {
+    const env = await setup('https://shop.example.com/pay');
+    await env.turn({ action: 'snapshot' }, { action: 'click', ref: 'e1' });
+    expect(env.chromium.clicks).toBe(0);
+    const [card] = await getDb().select().from(requests);
+    expect(card!.payload).toMatchObject({ tier: 'tier3' });
+    expect(card!.payload.standing_scope).toBeUndefined();
+    expect(
+      (await env.call('POST', `/api/requests/${card!.id}/approve`, { token: env.lin.token, body: { standing: true } }))
+        .status,
+    ).toBe(409);
+    expect((await env.call('POST', `/api/requests/${card!.id}/approve`, { token: env.lin.token })).status).toBe(200);
+    await env.services.engine.idle();
+    expect(env.chromium.clicks).toBe(1);
+  });
   it('opens a page, reads it with refs, types and clicks, and never types a password', async () => {
     const env = await setup('about:blank');
     const [opened, password, typed, clicked, read] = await env.turn(
@@ -108,7 +129,7 @@ describe('the browser tool', () => {
     expect(read).toEqual({ url: 'https://shop.example.com/orders', text: 'Order 1001 shipped' });
     expect(env.chromium.clicks).toBe(1);
     // Each action is its own connection, and the screen is free again afterwards.
-    expect(env.chromium.connections).toBe(5);
+    expect(env.chromium.connections).toBe(6);
     expect((await env.computer()).leaseHolder).toBeNull();
   });
 
@@ -158,8 +179,12 @@ describe('the browser tool', () => {
   it('says so when the model cannot see a screenshot', async () => {
     const env = await setup();
     const [shot] = await env.turn({ action: 'screenshot' });
+    expect(shot.status).toBe('unsupported');
+    expect(shot.note).toContain('No screenshot was taken');
     expect(shot.note).toContain('cannot see images');
     expect(env.chromium.methods).not.toContain('Page.captureScreenshot');
+    const transcript = await env.call('GET', `/api/conversations/${env.main.id}/messages`, { token: env.lin.token });
+    expect(transcript.body.items.at(-1).steps[0].summary).toBe('模型不支持查看截图');
   });
 
   it('keeps tabs numbered, switches and closes them', async () => {

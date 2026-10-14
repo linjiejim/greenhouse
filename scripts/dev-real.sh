@@ -5,6 +5,7 @@
 # people (apps/web/e2e/env.ts). Ctrl-C stops all of it.
 #   sh scripts/dev-real.sh                       (web on 4570, API on 4571)
 #   REAL_ENV_FILE=/path/.env sh scripts/dev-real.sh
+#   REAL_RESET=1 sh scripts/dev-real.sh          (start over: needed after the baseline changes)
 set -e
 cd "$(dirname "$0")/.."
 WEB=${REAL_WEB_PORT:-4570}
@@ -14,6 +15,9 @@ DB=${REAL_DATABASE_URL:-postgresql://greenhouse:greenhouse@localhost:55432/green
 [ -f "$ENV_FILE" ] || { echo "No env file at $ENV_FILE"; exit 1; }
 trap 'kill 0' INT TERM EXIT
 name=${DB##*/}
+if [ -n "$REAL_RESET" ]; then
+  docker exec greenhouse-v2-pg dropdb -U greenhouse --if-exists --force "$name"
+fi
 if ! docker exec greenhouse-v2-pg psql -U greenhouse -lqt | cut -d'|' -f1 | grep -qw "$name"; then
   E2E_DATABASE_URL=$DB node --import tsx apps/web/e2e/seed.mts
 fi

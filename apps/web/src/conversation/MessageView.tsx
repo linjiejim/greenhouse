@@ -5,6 +5,7 @@
  */
 
 import { memo, useState } from 'react';
+import { WriteReceipt } from './WriteReceipt';
 import {
   CircleAlert,
   Copy,
@@ -23,6 +24,8 @@ import { icon } from '@greenhouse/ui/tokens';
 import type { Agent, MemberSummary, Message, NeedsYou } from '@greenhouse/contract';
 import { useNotify } from '../app/notify';
 import { useSession } from '../app/session';
+import { RUN_STATUS } from '../pages/runs/status';
+import { useHelperRuns } from '../data/runs';
 import { useSkills } from '../data/skills';
 import { liveText, useStream, type LiveStep } from '../data/streams';
 import { cx } from '../lib/cx';
@@ -52,8 +55,9 @@ export interface Author {
 type Step = { tool: string; summary: string; status: 'running' | 'done' | 'failed'; duration_ms?: number };
 
 /** All tool calls of a reply folded into one process card; failed ones open by default. */
-function ProcessCard({ steps }: { steps: Step[] }) {
+function ProcessCard({ steps, runId }: { steps: Step[]; runId: string | null }) {
   const { t } = useI18n();
+  const helpers = useHelperRuns(steps.some((step) => step.tool === 'helper_run') ? runId : null);
   if (!steps.length) return null;
   const running = steps.some((step) => step.status === 'running');
   const failed = steps.some((step) => step.status === 'failed');
@@ -76,6 +80,17 @@ function ProcessCard({ steps }: { steps: Step[] }) {
             {step.duration_ms !== undefined && (
               <span className="app-step-time">{(step.duration_ms / 1000).toFixed(1)}s</span>
             )}
+          </li>
+        ))}
+        {helpers.items.map((run) => (
+          <li key={run.id} className="app-step">
+            <span className="app-step-dot" aria-hidden />
+            <span className="app-step-summary">
+              <a href={href({ page: 'run', id: run.id })}>{run.title}</a>
+              {' · '}
+              {t(RUN_STATUS[run.status].word)}
+              {run.summary && <p className="app-muted">{run.summary}</p>}
+            </span>
           </li>
         ))}
       </ol>
@@ -152,6 +167,7 @@ export const MessageView = memo(function MessageView({
   const time = relativeTime(message.created_at, { locale, timeZone });
 
   if (message.role === 'event') {
+    if (message.event?.type === 'write_receipt') return <WriteReceipt message={message} />;
     // A mail that arrived at the Agent's address, or one it sent: a card that opens the mail.
     if (isMailEvent(message.event)) return <MailCard message={message as Message & { event: typeof message.event }} />;
     return (
@@ -313,7 +329,7 @@ export const MessageView = memo(function MessageView({
         {requests.map((request) => (
           <RequestCard key={request.id} request={request} />
         ))}
-        <ProcessCard steps={steps} />
+        <ProcessCard steps={steps} runId={message.run_id} />
         {!streaming && assistant && text && (
           <div className="app-message-actions is-reply">
             <IconButton label={t('message.copy')} size="sm" onClick={copy}>

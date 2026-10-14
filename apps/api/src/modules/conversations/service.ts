@@ -1,3 +1,5 @@
+import { recordAt as sourceRecordAt } from '../tables/load.js';
+import { loadReader as sourceReader } from '../tables/access.js';
 /**
  * Conversations and their messages. Who may see a conversation is decided only by
  * conversation_members. Messages get their sequence number under the conversation row lock,
@@ -109,20 +111,36 @@ export const toMessage = (row: MessageRow): Message => ({
 const ACTIVE_TURN = ['queued', 'running'] as const;
 
 type Citation = Message['citations'][number];
-/** The knowledge docs a message names as sources. */
-const citedDocs = (citations: readonly Citation[]) =>
-  citations.filter((citation) => citation.kind === 'doc').map((citation) => citation.id);
+/** The docs and table records a message names as sources. */
+const citedSources = (citations: readonly Citation[]) =>
+  citations.filter((citation) => citation.kind === 'doc' || citation.kind === 'record');
 
 /**
  * Sources as one person may see them: a doc they cannot read now is left out, so a reply in a
  * room never shows the others the title of what only the asker may read.
  */
-async function sourcesFor(memberId: string, docIds: readonly string[]) {
-  const unique = [...new Set(docIds)];
-  if (!unique.length) return (citations: Citation[]) => citations;
-  const readable = await readableDocs(memberId, unique);
+async function sourcesFor(memberId: string, sources: readonly Citation[], agentId: string | null = null) {
+  const readable = await readableDocs(
+    memberId,
+    sources.filter((s) => s.kind === 'doc').map((s) => s.id),
+    agentId,
+  );
+  const records = new Set<string>();
+  if (sources.some((s) => s.kind === 'record')) {
+    const reader = await sourceReader(memberId).catch(() => null);
+    if (reader)
+      for (const id of new Set(sources.filter((s) => s.kind === 'record').map((s) => s.id))) {
+        if (
+          await sourceRecordAt(reader, id, 'viewer').then(
+            () => true,
+            () => false,
+          )
+        )
+          records.add(id);
+      }
+  }
   return (citations: Citation[]) =>
-    citations.filter((citation) => citation.kind !== 'doc' || readable.has(citation.id));
+    citations.filter((s) => (s.kind === 'doc' ? readable.has(s.id) : s.kind === 'record' ? records.has(s.id) : true));
 }
 
 const toNote = (row: ConversationNote): Note => ({
@@ -417,14 +435,14 @@ export function createConversationsService(deps: {
    */
   async function deliver(audience: readonly string[], event: RealtimeEvent): Promise<void> {
     const message = event.type === 'message.created' || event.type === 'message.updated' ? event.data.message : null;
-    const docIds = message ? citedDocs(message.citations) : [];
-    if (!message || !docIds.length) {
+    const sources = message ? citedSources(message.citations) : [];
+    if (!message || !sources.length) {
       deps.hub.publish(audience, event);
       return;
     }
     const seeing = new Map<string, { citations: Citation[]; members: string[] }>();
     for (const memberId of audience) {
-      const citations = (await sourcesFor(memberId, docIds))(message.citations);
+      const citations = (await sourcesFor(memberId, sources, message.agent_id))(message.citations);
       const key = citations.map((citation) => `${citation.kind}:${citation.id}`).join('\n');
       const same = seeing.get(key) ?? { citations, members: [] };
       same.members.push(memberId);
@@ -701,17 +719,14 @@ export function createConversationsService(deps: {
                 .from(messageFeedback)
                 .where(and(eq(messageFeedback.memberId, memberId), inArray(messageFeedback.messageId, replies)))
             : [],
-          sourcesFor(
-            memberId,
-            rows.flatMap((row) => citedDocs(row.citations)),
-          ),
+          Promise.all(rows.map((row) => sourcesFor(memberId, citedSources(row.citations), row.agentId))),
         ]);
         const ratings = new Map(rated.map((row) => [row.id, row.rating]));
-        return rows.map((row) => {
+        return rows.map((row, index) => {
           const rating = ratings.get(row.id);
           return {
             ...toMessage(row),
-            citations: visible(row.citations),
+            citations: visible[index]!(row.citations),
             my_rating: rating === 1 || rating === -1 ? rating : null,
           };
         });

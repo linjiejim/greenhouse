@@ -1,3 +1,4 @@
+import { HandoffDialog } from './HandoffDialog';
 /**
  * A record in the drawer (TBL-07; a bottom sheet on phones): its fields, its children, then
  * comments and history. 「编辑」 turns the same drawer into a form with 取消 / 保存
@@ -23,6 +24,7 @@ import {
 import { icon } from '@greenhouse/ui/tokens';
 import {
   isEmptyValue,
+  isComputedType,
   type Base,
   type BaseTable,
   type Field,
@@ -40,6 +42,7 @@ import { navigate } from '../../lib/router';
 import { Activity } from './Activity';
 import { CellValue, FieldInput, fromText } from './cells';
 import { tablesError } from './errors';
+import { useDraftNavigation } from './useDraftNavigation';
 import { titleOf, type CellLookups } from './model';
 
 const same = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
@@ -103,6 +106,7 @@ export function RecordDrawer({
   recordId,
   initial,
   canEdit,
+  canGenerate = false,
   lookups,
   onOpen,
   onCreated,
@@ -114,6 +118,7 @@ export function RecordDrawer({
   /** A new record with these values; opens in the form. */
   initial?: RecordValues;
   canEdit: boolean;
+  canGenerate?: boolean;
   lookups: CellLookups;
   onOpen: (id: string) => void;
   onCreated: (record: TableRecord) => void;
@@ -124,6 +129,7 @@ export function RecordDrawer({
   const formId = useId();
   const detail = useRecord(recordId);
   const creating = !recordId;
+  const [handingOff, setHandingOff] = useState(false);
   const [editing, setEditing] = useState(creating);
   const [draft, setDraft] = useState<RecordValues>(initial ?? {});
   const [files, setFiles] = useState<Record<string, RecordFile>>({});
@@ -131,7 +137,7 @@ export function RecordDrawer({
   const [failure, setFailure] = useState('');
   const [stale, setStale] = useState<TableRecord | null>(null);
   const [busy, setBusy] = useState(false);
-  const [asking, setAsking] = useState(false);
+  const [generating, setGenerating] = useState<string | null>(null);
   const record = detail.data?.record;
   const fields = table.fields;
 
@@ -162,12 +168,19 @@ export function RecordDrawer({
     const base = record?.values ?? {};
     const out: RecordValues = {};
     for (const field of fields) {
+      if (isComputedType(field.type)) continue;
       const value = fromText(field, draft[field.id]);
       if (!same(value, base[field.id]) && !(isEmptyValue(value) && isEmptyValue(base[field.id]))) out[field.id] = value;
     }
     return out;
   }, [draft, record, fields]);
   const dirty = editing && Object.keys(changed).length > 0;
+
+  const navigation = useDraftNavigation(dirty, busy, (navigating) => {
+    setEditing(false);
+    setDraft(record?.values ?? {});
+    if (!navigating || creating) onClose();
+  });
 
   const save = async (over?: TableRecord) => {
     if (!creating && !over && !Object.keys(changed).length) {
@@ -187,7 +200,6 @@ export function RecordDrawer({
       const target = over ?? record!;
       const saved = await api.tables.records.update(target.id, target.revision, changed);
       putRecords(table.id, [saved.record], saved);
-      queryClient.setQueryData(tablesKeys.record(target.id), saved);
       void queryClient.invalidateQueries({ queryKey: tablesKeys.activity(target.id) });
       setStale(null);
       setEditing(false);
@@ -306,6 +318,31 @@ export function RecordDrawer({
                 ) : (
                   <CellValue field={field} value={record.values[field.id]} lookups={merged} onOpenRecord={onOpen} />
                 )}
+                {field.type === 'ai' && canEdit && canGenerate && (
+                  <Button
+                    size="sm"
+                    kind="ghost"
+                    loading={generating === field.id}
+                    disabled={generating !== null && generating !== field.id}
+                    onClick={async () => {
+                      setGenerating(field.id);
+                      setFailure('');
+                      try {
+                        await api.tables.fields.generate(field.id, [record.id]);
+                        await Promise.all([
+                          detail.refetch(),
+                          queryClient.invalidateQueries({ queryKey: tablesKeys.records(table.id) }),
+                        ]);
+                      } catch (error) {
+                        setFailure(tablesError(error, t));
+                      } finally {
+                        setGenerating(null);
+                      }
+                    }}
+                  >
+                    {t('tables.computed.regenerate')}
+                  </Button>
+                )}
               </dd>
             </div>
           ))}
@@ -348,87 +385,86 @@ export function RecordDrawer({
     );
   }
 
+  if (handingOff && recordId) return <HandoffDialog recordId={recordId} onClose={() => setHandingOff(false)} />;
   return (
-    <Overlay
-      title={title}
-      onClose={onClose}
-      beforeClose={() => {
-        if (!dirty) return true;
-        setAsking(true);
-        return false;
-      }}
-    >
-      {body}
-      <OverlayActions>
-        {editing ? (
-          <>
-            <Button
-              onClick={() => {
-                if (creating) return onClose();
-                setDraft(record?.values ?? {});
-                setEditing(false);
-                setStale(null);
-                setErrors({});
-              }}
-            >
-              {t('tables.record.cancel')}
-            </Button>
-            {/* Keyed apart from 编辑: a reused button would turn into this submit while 编辑's click runs. */}
-            <Button key="save" kind="primary" type="submit" form={formId} loading={busy}>
-              {creating ? t('tables.record.create') : t('tables.record.save')}
-            </Button>
-          </>
-        ) : record ? (
-          <>
-            <Menu
-              label={t('tables.record.more')}
-              items={[
-                {
-                  label: t('tables.record.copyLink'),
-                  icon: <Copy size={icon.md} />,
-                  onClick: () =>
-                    void navigator.clipboard
-                      ?.writeText(location.href)
-                      .then(() => notify(t('tables.record.linkCopied')))
-                      .catch(() => undefined),
-                },
-                ...(canEdit
-                  ? [
-                      '-' as const,
-                      {
-                        label: t('tables.record.delete'),
-                        icon: <Trash2 size={icon.md} />,
-                        danger: true,
-                        onClick: () => void remove(),
-                      },
-                    ]
-                  : []),
-              ]}
-            />
-            {canEdit && (
-              <Button key="edit" kind="primary" onClick={() => setEditing(true)}>
-                {t('tables.record.edit')}
+    <>
+      <Overlay
+        title={title}
+        onClose={onClose}
+        beforeClose={() => {
+          if (!dirty) return true;
+          navigation.ask();
+          return false;
+        }}
+      >
+        {body}
+        <OverlayActions>
+          {!editing && recordId && <Button onClick={() => setHandingOff(true)}>{t('tables.handoff')}</Button>}
+          {editing ? (
+            <>
+              <Button
+                onClick={() => {
+                  if (creating) return onClose();
+                  setDraft(record?.values ?? {});
+                  setEditing(false);
+                  setStale(null);
+                  setErrors({});
+                }}
+              >
+                {t('tables.record.cancel')}
               </Button>
-            )}
-          </>
-        ) : null}
-      </OverlayActions>
-      {asking && (
-        <ConfirmDialog
-          title={t('tables.record.discardTitle')}
-          confirmLabel={t('tables.record.discard')}
-          danger
-          onCancel={() => setAsking(false)}
-          onConfirm={() => {
-            setAsking(false);
-            setEditing(false);
-            setDraft(record?.values ?? {});
-            onClose();
-          }}
-        >
-          {t('tables.record.discardBody')}
-        </ConfirmDialog>
-      )}
-    </Overlay>
+              {/* Keyed apart from 编辑: a reused button would turn into this submit while 编辑's click runs. */}
+              <Button key="save" kind="primary" type="submit" form={formId} loading={busy}>
+                {creating ? t('tables.record.create') : t('tables.record.save')}
+              </Button>
+            </>
+          ) : record ? (
+            <>
+              <Menu
+                label={t('tables.record.more')}
+                items={[
+                  {
+                    label: t('tables.record.copyLink'),
+                    icon: <Copy size={icon.md} />,
+                    onClick: () =>
+                      void navigator.clipboard
+                        ?.writeText(location.href)
+                        .then(() => notify(t('tables.record.linkCopied')))
+                        .catch(() => undefined),
+                  },
+                  ...(canEdit
+                    ? [
+                        '-' as const,
+                        {
+                          label: t('tables.record.delete'),
+                          icon: <Trash2 size={icon.md} />,
+                          danger: true,
+                          onClick: () => void remove(),
+                        },
+                      ]
+                    : []),
+                ]}
+              />
+              {canEdit && (
+                <Button key="edit" kind="primary" onClick={() => setEditing(true)}>
+                  {t('tables.record.edit')}
+                </Button>
+              )}
+            </>
+          ) : null}
+        </OverlayActions>
+        {navigation.asking && (
+          <ConfirmDialog
+            title={t('tables.record.discardTitle')}
+            confirmLabel={t('tables.record.discard')}
+            danger
+            onCancel={navigation.cancel}
+            onConfirm={navigation.discard}
+          >
+            {t('tables.record.discardBody')}
+          </ConfirmDialog>
+        )}
+      </Overlay>
+    </>
   );
 }

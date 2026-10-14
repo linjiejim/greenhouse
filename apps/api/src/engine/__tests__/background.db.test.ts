@@ -204,7 +204,7 @@ describe('background runs', () => {
     expect(model.tools[0]).toEqual(expect.arrayContaining(['secret_read', 'web_peek', 'lookup']));
     expect(model.tools[0]).not.toContain('note_write');
     expect(model.tools[0]).not.toContain('ask_user');
-    expect(model.tools[0]).not.toContain('memory');
+    expect(model.tools[0]).toContain('memory');
     const steps = await getDb()
       .select()
       .from(runSteps)

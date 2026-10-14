@@ -159,6 +159,7 @@ export function linkPath(target: { targetType: string | null; targetId: string |
   if (id && target.targetType === 'conversation') return `/c/${id}`;
   if (id && target.targetType === 'run') return `/runs/${id}`;
   if (id && target.targetType === 'agent') return `/agents/${id}`;
+  if (id && target.targetType === 'app') return `/apps/${id}`;
   if (id && target.targetType === 'doc') return `/knowledge/${id}`;
   if (id && target.targetType === 'folder') return `/knowledge/folder/${id}`;
   if (target.runId) return `/runs/${encodeURIComponent(target.runId)}`;

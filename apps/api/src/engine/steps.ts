@@ -10,6 +10,7 @@ import type { ModelMessage } from 'ai';
 import { and, eq, sql } from 'drizzle-orm';
 import type { LoopStepEnd } from '@greenhouse/agent-core';
 import { getDb, newId, runSteps } from '@greenhouse/db';
+import { callKey } from './tools/assemble.js';
 
 export const MAX_STEP_CHARS = 20_000;
 /** A cut piece keeps at least this much. */
@@ -107,8 +108,53 @@ export async function recordedSteps(runId: string): Promise<{ steps: ModelMessag
     .from(runSteps)
     .where(and(eq(runSteps.runId, runId), eq(runSteps.kind, 'model')))
     .orderBy(step, runSteps.attempt);
+  const calls = await getDb()
+    .select()
+    .from(runSteps)
+    .where(and(eq(runSteps.runId, runId), eq(runSteps.kind, 'tool')));
+  const results = new Map(calls.filter((call) => call.idempotencyKey).map((call) => [call.idempotencyKey!, call]));
+  const refresh = (messages: ModelMessage[]): ModelMessage[] => {
+    const byId = new Map<string, (typeof calls)[number]>();
+    for (const message of messages)
+      if (Array.isArray(message.content))
+        for (const part of message.content) {
+          if (part.type === 'tool-call') {
+            const call = results.get(callKey(part.toolName, part.input));
+            if (call) byId.set(part.toolCallId, call);
+          }
+        }
+    return messages.map((message) =>
+      !Array.isArray(message.content)
+        ? message
+        : ({
+            ...message,
+            content: message.content.map((part) => {
+              if (part.type !== 'tool-result') return part;
+              const call = byId.get(part.toolCallId);
+              if (!call?.requestId || !['succeeded', 'failed', 'skipped', 'uncertain'].includes(call.status))
+                return part;
+              return {
+                ...part,
+                output: {
+                  type: 'json',
+                  value:
+                    call.status === 'succeeded'
+                      ? call.output
+                      : {
+                          status: call.status,
+                          error: call.error,
+                          note: 'The member decided this call. Do not repeat a declined action.',
+                        },
+                },
+              };
+            }),
+          } as ModelMessage),
+    );
+  };
   return {
-    steps: rows.map((row) => ((row.output as { messages?: ModelMessage[] } | null)?.messages ?? []) as ModelMessage[]),
+    steps: rows.map((row) =>
+      refresh(((row.output as { messages?: ModelMessage[] } | null)?.messages ?? []) as ModelMessage[]),
+    ),
     last: rows.reduce((highest, row) => Math.max(highest, Number(row.step)), 0),
   };
 }

@@ -227,7 +227,10 @@ describe('the engine', () => {
     await services.engine.idle();
     const [run] = await getDb().select().from(runs).where(eq(runs.id, sent.body.run_id));
     expect(run).toMatchObject({ status: 'canceled', desiredState: 'cancel' });
-    const [reply] = await getDb().select().from(messages).where(eq(messages.runId, sent.body.run_id));
+    const [reply] = await getDb()
+      .select()
+      .from(messages)
+      .where(and(eq(messages.runId, sent.body.run_id), eq(messages.role, 'assistant')));
     expect(reply!.status).toBe('stopped');
     const [receipt] = await getDb()
       .select()
@@ -301,7 +304,10 @@ describe('the engine', () => {
       body: { content: 'hi' },
     });
     await app.services.engine.idle();
-    const [reply] = await getDb().select().from(messages).where(eq(messages.runId, sent.body.run_id));
+    const [reply] = await getDb()
+      .select()
+      .from(messages)
+      .where(and(eq(messages.runId, sent.body.run_id), eq(messages.role, 'assistant')));
     expect(reply).toMatchObject({ status: 'failed', content: expect.stringContaining('管理 → 服务') });
     const [run] = await getDb().select().from(runs).where(eq(runs.id, sent.body.run_id));
     expect(run).toMatchObject({ status: 'failed', errorCode: 'llm_not_configured' });
@@ -327,7 +333,10 @@ describe('the engine', () => {
       .from(runSteps)
       .where(and(eq(runSteps.runId, sent.body.run_id), eq(runSteps.kind, 'tool')));
     expect(step).toMatchObject({ toolName: 'memory', status: 'succeeded', kind: 'tool' });
-    const [reply] = await getDb().select().from(messages).where(eq(messages.runId, sent.body.run_id));
+    const [reply] = await getDb()
+      .select()
+      .from(messages)
+      .where(and(eq(messages.runId, sent.body.run_id), eq(messages.role, 'assistant')));
     expect(reply!.steps).toEqual([
       expect.objectContaining({ tool: 'memory', status: 'done', summary: '记住了一件事' }),
     ]);

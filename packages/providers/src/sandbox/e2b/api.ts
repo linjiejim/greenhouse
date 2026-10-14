@@ -80,7 +80,7 @@ export function createE2bApi(domain: string, apiKey: string, fetchImpl: typeof f
 
   /** One request; null when the status is one of `absent` (a 404 that means "not there"). */
   async function request(
-    method: 'GET' | 'POST' | 'DELETE',
+    method: 'GET' | 'POST' | 'DELETE' | 'PUT',
     url: string,
     label: string,
     options: { body?: unknown; timeoutMs?: number; absent?: number[] } = {},
@@ -108,6 +108,11 @@ export function createE2bApi(domain: string, apiKey: string, fetchImpl: typeof f
   };
 
   return {
+    async network(id: string, rules: { allowOut?: string[]; denyOut: string[] }) {
+      await done(
+        await request('PUT', `/sandboxes/${path(id)}/network`, 'Restricting computer networking', { body: rules }),
+      );
+    },
     /** Running and paused sandboxes whose metadata has every one of these pairs. */
     async list(metadata: Record<string, string>): Promise<SandboxInfo[]> {
       const items: SandboxInfo[] = [];

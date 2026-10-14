@@ -3,9 +3,10 @@ import { get, seg } from '../api/client';
 import { memberDirectory } from '../api/me';
 import { useResource } from '../data/use-resource';
 import type { EditableField } from './model';
-export function useFieldChoices(field: EditableField) {
+export function useFieldChoices(field: EditableField, enabled = true) {
   const target = field.config.table_id ?? field.table_id;
   const load = useCallback(async () => {
+    if (!enabled) return { ok: true as const, data: [] as { id: string; label: string }[] };
     if (field.type === 'member') {
       const result = await memberDirectory();
       return result.ok
@@ -21,6 +22,6 @@ export function useFieldChoices(field: EditableField) {
         : result;
     }
     return { ok: true as const, data: [] as { id: string; label: string }[] };
-  }, [field.type, target]);
+  }, [field.type, target, enabled]);
   return useResource(load, ['base.updated', 'records.changed']);
 }

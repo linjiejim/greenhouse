@@ -15,6 +15,7 @@
  *   and push instances, which the providers service audits.
  */
 
+import { AsyncResource } from 'node:async_hooks';
 import { randomUUID } from 'node:crypto';
 import { hostname } from 'node:os';
 import { and, desc, eq, gte, inArray, ne, sql } from 'drizzle-orm';
@@ -115,6 +116,8 @@ const testText = (locale: 'zh' | 'en', workspace: string) =>
     : `This is a test message: ${workspace} can reach you here.`;
 
 export function createChannelsService(deps: { config: AppConfig; providers: ProvidersService }) {
+  // Background timers start in the service context, never a request's open transaction.
+  const workerContext = new AsyncResource('channels-worker');
   const deliverer = createDeliverer({ providers: deps.providers, publicUrl: deps.config.PUBLIC_URL });
   const owner = `${hostname()}:${process.pid}:${randomUUID().slice(0, 8)}`;
   const testLimiter = new RateLimiter(1, 10_000);
@@ -302,18 +305,20 @@ export function createChannelsService(deps: { config: AppConfig; providers: Prov
   function schedule(delay: number) {
     if (!started || running) return;
     if (timer) clearTimeout(timer);
-    timer = setTimeout(() => {
-      timer = null;
-      running = (async () => {
-        // A full batch means more may be waiting.
-        while (started && (await runOnce()) === BATCH);
-      })()
-        .catch((error: unknown) => logger.warn('[channels] a delivery pass failed', { error: toErrorMessage(error) }))
-        .finally(() => {
-          running = null;
-          schedule(POLL_MS);
-        });
-    }, delay);
+    timer = workerContext.runInAsyncScope(() =>
+      setTimeout(() => {
+        timer = null;
+        running = (async () => {
+          // A full batch means more may be waiting.
+          while (started && (await runOnce()) === BATCH);
+        })()
+          .catch((error: unknown) => logger.warn('[channels] a delivery pass failed', { error: toErrorMessage(error) }))
+          .finally(() => {
+            running = null;
+            schedule(POLL_MS);
+          });
+      }, delay),
+    );
     timer.unref?.();
   }
 

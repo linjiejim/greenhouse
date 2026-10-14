@@ -1,4 +1,5 @@
 import { stopReading } from '../voice/read-aloud';
+import { WriteReceipt } from './write-receipt';
 import { MailCard } from '../mail/card';
 /**
  * A conversation (PRD §7.1): the main thread, an Agent thread, a chat or a room — one screen on
@@ -679,7 +680,9 @@ function MemberConversationScreen({
     const previous = messages[index - 1];
     const showAuthor = startsGroup(message, previous);
     if (message.role === 'event')
-      return message.event?.type === 'mail' ? (
+      return message.event?.type === 'write_receipt' ? (
+        <WriteReceipt key={message.id} message={message} />
+      ) : message.event?.type === 'mail' ? (
         <MailCard key={message.id} message={message} />
       ) : (
         <EventLine key={message.id} text={message.content} />

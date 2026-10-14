@@ -9,6 +9,7 @@ import type { AxNode } from '../snapshot.js';
 import type { FakeStream } from './fake-sandbox.js';
 
 export interface FakePage {
+  approvalNodes?: number[];
   title: string;
   /** What `read` finds. */
   text?: string;
@@ -191,8 +192,15 @@ export class FakeChromium {
       case 'Page.handleJavaScriptDialog':
       case 'DOM.scrollIntoViewIfNeeded':
       case 'DOM.focus':
-      case 'Runtime.callFunctionOn':
         return {};
+      case 'Runtime.callFunctionOn':
+        return String(params.functionDeclaration).includes('__greenhouseApprovedLoginForm')
+          ? {
+              result: {
+                value: (need().page.approvalNodes ?? []).includes(Number(String(params.objectId).replace('O-', ''))),
+              },
+            }
+          : {};
       case 'Page.getFrameTree': {
         const own = need();
         return { frameTree: { frame: { id: `F-${own.targetId}`, loaderId: own.loaderId, url: own.url } } };

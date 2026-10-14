@@ -37,6 +37,7 @@ const CATEGORY_LABEL: Record<Category, MessageKey> = {
   person: 'memory.person',
   project: 'memory.project',
   procedure: 'memory.procedure',
+  log: 'memory.log',
 };
 
 function MemoryForm({
@@ -131,6 +132,8 @@ export function MemoryTab({ agentId }: { agentId: string }) {
   const [editing, setEditing] = useState<AgentMemory | 'new' | null>(null);
   const [forgetting, setForgetting] = useState<AgentMemory | null>(null);
   const active = memories.items.filter((memory) => memory.status === 'active');
+  const notes = active.filter((memory) => memory.category !== 'log');
+  const logs = active.filter((memory) => memory.category === 'log');
 
   return (
     <section className="app-section" aria-label={t('agents.tabMemory')}>
@@ -148,23 +151,32 @@ export function MemoryTab({ agentId }: { agentId: string }) {
       ) : !active.length ? (
         <Empty title={t('memory.none')} />
       ) : (
-        <ul className="app-list">
-          {active.map((memory) => (
-            <li key={memory.id}>
-              <button type="button" className="app-list-row" onClick={() => setEditing(memory)}>
-                {memory.pinned && <Pin size={icon.sm} className="app-row-muted" aria-label={t('memory.pinned')} />}
-                <span className="app-list-main">
-                  <span className="app-list-title">{memory.title}</span>
-                  {memory.content && <span className="app-list-meta">{memory.content}</span>}
-                </span>
-                <Badge>{t(CATEGORY_LABEL[memory.category as Category] ?? 'memory.fact')}</Badge>
-                <time className="app-list-time" dateTime={memory.updated_at}>
-                  {relativeTime(memory.updated_at, { locale, timeZone: me.timezone })}
-                </time>
-              </button>
-            </li>
+        <>
+          {['notes', 'logs'].map((section) => (
+            <div key={section}>
+              {section === 'logs' && logs.length > 0 && <h3 className="app-section-title">{t('memory.log')}</h3>}
+              <ul className="app-list">
+                {(section === 'notes' ? notes : logs).map((memory) => (
+                  <li key={memory.id}>
+                    <button type="button" className="app-list-row" onClick={() => setEditing(memory)}>
+                      {memory.pinned && (
+                        <Pin size={icon.sm} className="app-row-muted" aria-label={t('memory.pinned')} />
+                      )}
+                      <span className="app-list-main">
+                        <span className="app-list-title">{memory.title}</span>
+                        {memory.content && <span className="app-list-meta">{memory.content}</span>}
+                      </span>
+                      <Badge>{t(CATEGORY_LABEL[memory.category as Category] ?? 'memory.fact')}</Badge>
+                      <time className="app-list-time" dateTime={memory.updated_at}>
+                        {relativeTime(memory.updated_at, { locale, timeZone: me.timezone })}
+                      </time>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
           ))}
-        </ul>
+        </>
       )}
       {editing && (
         <MemoryForm

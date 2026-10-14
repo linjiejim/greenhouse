@@ -20,7 +20,8 @@ export type AppRoute =
   | { kind: 'knowledge'; id?: string; folder?: string }
   | { kind: 'tables'; base?: string; table?: string; view?: string; record?: string }
   | { kind: 'form'; id: string }
-  /** A route of the web app this app has no screen for yet (knowledge, tables, apps, skills). */
+  | { kind: 'apps'; id?: string; page?: string }
+  /** Web-only routes, including the app builder, skills and administration. */
   | { kind: 'web'; path: string };
 
 /** An id: starts with a letter or digit, so `.` and `..` never pass as one. */
@@ -76,6 +77,8 @@ export function parseAppPath(href: string): AppRoute | null {
     case 'forms':
       return id && !extra && ID.test(id) ? { kind: 'form', id } : null;
     case 'apps':
+      if (extra === 'edit') return { kind: 'web', path: pathname! };
+      return segments.length <= 3 ? { kind: 'apps', id, page: extra } : null;
     case 'skills':
     case 'admin':
       return { kind: 'web', path: pathname! };

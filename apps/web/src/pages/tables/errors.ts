@@ -5,8 +5,18 @@ import { errorText } from '../../lib/errors';
 import type { Translate } from '../../lib/i18n';
 
 const CODES: Record<string, MessageKey> = {
+  automation_webhook_invalid: 'tables.automation.invalidWebhook',
+  automation_recipient_unavailable: 'tables.automation.recipientUnavailable',
+  invalid_prompt: 'tables.computed.invalidPrompt',
+  invalid_formula: 'tables.error.invalid_formula',
+  computed_field: 'tables.error.computed_field',
+  field_cycle: 'tables.error.field_cycle',
+  no_model: 'tables.error.no_model',
+  ai_unavailable: 'tables.error.no_model',
+  too_many_roles: 'tables.error.too_many_roles',
   name_taken: 'tables.error.name_taken',
   stale_revision: 'tables.error.stale_revision',
+  stale_schema: 'tables.error.stale_revision',
   link_cycle: 'tables.error.link_cycle',
   one_per_table: 'tables.error.one_per_table',
   view_needs_field: 'tables.error.view_needs_field',

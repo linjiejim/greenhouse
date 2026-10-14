@@ -1190,3 +1190,71 @@ button.app-tb-record-chip:hover {
 .app-tb-trash-row {
   gap: var(--gh-space-2);
 }
+
+.app-tb-computed-error {
+  color: var(--gh-danger);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-tb-expression {
+  font-family: var(--gh-font-mono);
+}
+
+.app-tb-error-excerpt {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.app-tb-error-excerpt mark {
+  background: var(--gh-danger-fill);
+  color: var(--gh-danger);
+}
+
+.app-tb-role-table {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gh-space-4);
+  padding-top: var(--gh-space-6);
+  border-top: 1px solid var(--gh-line);
+}
+
+.app-tb-role-columns {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--gh-space-2);
+}
+
+[data-narrow] .app-tb-role-columns {
+  grid-template-columns: 1fr;
+}
+
+[data-narrow] .app-tb-share-list > li {
+  flex-wrap: wrap;
+}
+
+[data-narrow] .app-tb-share-list .gh-select {
+  flex: 1;
+  min-width: 0;
+}
+
+.app-tb-list-value {
+  display: inline-flex;
+  gap: var(--gh-space-1);
+  min-width: 0;
+}
+
+.app-tb-list-value > :first-child {
+  flex: none;
+}
+
+.app-tb-automation {
+  padding: var(--gh-space-3);
+  border: 1px solid var(--gh-border);
+  border-radius: var(--gh-radius-md);
+}
+.app-tb-webhook-secret {
+  overflow-wrap: anywhere;
+  user-select: all;
+}
