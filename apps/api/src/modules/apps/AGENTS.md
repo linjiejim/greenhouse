@@ -5,4 +5,4 @@
 - Runtime accepts saved card/action ids and a published version, never client specs or button values. Writes lock the app against publication and use tables.records with the member and `app_id` history.
 - Published specs are immutable. Publishing consumes the draft revision; restoring changes only the draft.
 - Templates contain schema and published pages, no live records, shares or automations. Install through tables services with fresh references and computed dependencies. Only approved versions install; admin review is audited.
-- Custom HTML is stored as text and never executed or returned to runtime readers. Agent tools and external sources are later slices.
+- Custom HTML is stored as text and never executed or returned to runtime readers. Agent tools and the scoped MCP apps group reuse this service; external sources remain a later slice.

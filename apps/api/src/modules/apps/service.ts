@@ -195,6 +195,42 @@ export function createAppsService(deps: { tables: TablesService; notifications: 
     const rules: CustomAccess = { roles: ctx.rules?.roles ?? [], tables };
     return withBaseRestriction(ctx.app.baseId, rules, work);
   }
+  type ActionInput = {
+    version: number;
+    card: string;
+    action: string;
+    record_id?: string;
+    revision?: number;
+    values: RecordValues;
+  };
+  async function resolveAction(ctx: Awaited<ReturnType<typeof session>>, input: ActionInput) {
+    const memberId = ctx.reader.memberId;
+    const { card, scope } = await visibleCard(ctx, input.card);
+    if (card.kind === 'custom') throw forbidden('Custom HTML cards do not run.');
+    const form = card.kind === 'form' && input.action === 'submit';
+    const action = actionsIn(card).find((a) => a.id === input.action);
+    if (!form && !action) throw notFound('Action');
+    if (!form && Object.keys(input.values).length) throw invalidInput('A button uses only its saved action values.');
+    if (form && Object.keys(input.values).some((id) => !card.fields.includes(id)))
+      throw forbidden('This field is not in the form.');
+    const values = form
+      ? input.values
+      : Object.fromEntries(
+          Object.entries(action!.values).map(([id, v]) => [
+            id,
+            v === '$me' && scope.fields.find((f) => f.id === id)?.type === 'member' ? [memberId] : v,
+          ]),
+        );
+    const updating = !form && action!.type === 'update';
+    if (updating && (!input.record_id || !input.revision))
+      throw invalidInput('An update needs a record and its revision.');
+    if (updating)
+      await inCard(ctx, card, async () => {
+        const detail = await deps.tables.records.get(memberId, input.record_id!);
+        if (detail.table_id !== card.table_id) throw notFound('Record');
+      });
+    return { card, values, updating, label: form ? card.title : action!.name };
+  }
   async function validateAudience(spec: AppSpec, audience: AppAudience[]) {
     const keys = new Set<string>();
     for (const grant of audience) {
@@ -495,6 +531,43 @@ export function createAppsService(deps: { tables: TablesService; notifications: 
         input.preview_role,
       );
     },
+    async inActionScope<T>(
+      memberId: string,
+      appId: string,
+      version: number,
+      cardId: string,
+      work: (tableId: string) => Promise<T>,
+    ) {
+      await getDb().select({ id: apps.id }).from(apps).where(eq(apps.id, appId)).for('update');
+      return inSession(memberId, appId, version, async (ctx) => {
+        const { card } = await visibleCard(ctx, cardId);
+        if (card.kind === 'custom') throw forbidden('Custom HTML cards do not run.');
+        return inCard(ctx, card, () => work(card.table_id), false);
+      });
+    },
+    async actionPlan(
+      memberId: string,
+      appId: string,
+      input: {
+        version: number;
+        card: string;
+        action: string;
+        record_id?: string;
+        revision?: number;
+        values: RecordValues;
+      },
+    ) {
+      return inSession(memberId, appId, input.version, async (ctx) => {
+        const { card, values, updating, label } = await resolveAction(ctx, input);
+        return {
+          action: updating ? ('update' as const) : ('create' as const),
+          table_id: card.table_id,
+          values,
+          ...(updating ? { record_id: input.record_id!, revision: input.revision! } : {}),
+          label,
+        };
+      });
+    },
     async execute(
       memberId: string,
       appId: string,
@@ -510,31 +583,7 @@ export function createAppsService(deps: { tables: TablesService; notifications: 
       const result = await transaction(async () => {
         await getDb().select({ id: apps.id }).from(apps).where(eq(apps.id, appId)).for('update');
         return inSession(memberId, appId, input.version, async (ctx) => {
-          const { card, scope } = await visibleCard(ctx, input.card);
-          if (card.kind === 'custom') throw forbidden('Custom HTML cards do not run.');
-          const form = card.kind === 'form' && input.action === 'submit';
-          const action = actionsIn(card).find((a) => a.id === input.action);
-          if (!form && !action) throw notFound('Action');
-          if (!form && Object.keys(input.values).length)
-            throw invalidInput('A button uses only its saved action values.');
-          if (form && Object.keys(input.values).some((id) => !card.fields.includes(id)))
-            throw forbidden('This field is not in the form.');
-          const values = form
-            ? input.values
-            : Object.fromEntries(
-                Object.entries(action!.values).map(([id, v]) => [
-                  id,
-                  v === '$me' && scope.fields.find((f) => f.id === id)?.type === 'member' ? [memberId] : v,
-                ]),
-              );
-          const updating = !form && action!.type === 'update';
-          if (updating && (!input.record_id || !input.revision))
-            throw invalidInput('An update needs a record and its revision.');
-          if (updating)
-            await inCard(ctx, card, async () => {
-              const detail = await deps.tables.records.get(memberId, input.record_id!);
-              if (detail.table_id !== card.table_id) throw notFound('Record');
-            });
+          const { card, values, updating } = await resolveAction(ctx, input);
           // An action can move a record out of this card's query, but never out of the member's role.
           return inCard(
             ctx,

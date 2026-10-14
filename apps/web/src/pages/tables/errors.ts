@@ -5,6 +5,8 @@ import { errorText } from '../../lib/errors';
 import type { Translate } from '../../lib/i18n';
 
 const CODES: Record<string, MessageKey> = {
+  automation_webhook_invalid: 'tables.automation.invalidWebhook',
+  automation_recipient_unavailable: 'tables.automation.recipientUnavailable',
   invalid_prompt: 'tables.computed.invalidPrompt',
   invalid_formula: 'tables.error.invalid_formula',
   computed_field: 'tables.error.computed_field',

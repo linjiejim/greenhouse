@@ -1,3 +1,4 @@
+import { tableEventChain } from '../../modules/tables/event-context.js';
 /**
  * The tools of one turn: the definitions that exist for this member, Agent and surface, wrapped
  * so every call is a recorded step and the turn knows when it read outside text.
@@ -154,7 +155,10 @@ export async function assembleTools(input: {
     return seen ? `${callId}#${seen + 1}` : callId;
   };
   // Nobody watches a background run: once it has read private data it may not reach outside.
-  const [savedRun] = await getDb().select({ checkpoint: runs.checkpoint }).from(runs).where(eq(runs.id, context.runId));
+  const [savedRun] = await getDb()
+    .select({ checkpoint: runs.checkpoint, input: runs.input })
+    .from(runs)
+    .where(eq(runs.id, context.runId));
   let readPrivate = savedRun?.checkpoint?.read_private === true;
   if (savedRun?.checkpoint?.tainted === true) context.taint();
   const tools: ToolSet = {};
@@ -343,7 +347,11 @@ export async function assembleTools(input: {
             return output;
           };
           try {
-            return risk === 'read' ? await perform() : await transaction(perform);
+            return risk === 'read'
+              ? await perform()
+              : await tableEventChain.run((savedRun?.input.event_chain as string[] | undefined) ?? [], () =>
+                  transaction(perform),
+                );
           } catch (error) {
             await finish('failed', undefined, toErrorMessage(error));
             throw error;

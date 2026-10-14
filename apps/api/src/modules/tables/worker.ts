@@ -11,7 +11,7 @@ import { AsyncResource } from 'node:async_hooks';
 import type { JobRow } from '@greenhouse/db';
 import { toErrorMessage } from '@greenhouse/utils/error';
 import { logger } from '@greenhouse/utils/logger';
-import { claimJobs, pruneJobs, releaseExpiredClaims, settleJob, type JobOutcome } from '../../jobs.js';
+import { claimJobs, extendJobLease, pruneJobs, releaseExpiredClaims, settleJob, type JobOutcome } from '../../jobs.js';
 import { newId } from '@greenhouse/db';
 
 export const TABLES_JOB_KINDS = [
@@ -20,6 +20,7 @@ export const TABLES_JOB_KINDS = [
   'base_import',
   'base_purge',
   'base_discard',
+  'base_automation',
 ] as const;
 export type TablesJobKind = (typeof TABLES_JOB_KINDS)[number];
 export type TablesJobHandler = (job: JobRow) => Promise<JobOutcome>;
@@ -55,6 +56,7 @@ export function createTablesWorker() {
     const claimed = await claimJobs(kinds, owner, { limit: BATCH, leaseMs: LEASE_MS });
     // One at a time: jobs of one table touch the same records.
     for (const job of claimed) {
+      if (!(await extendJobLease(job, owner, LEASE_MS))) continue;
       let outcome: JobOutcome;
       try {
         outcome = await handlers.get(job.kind)!(job);

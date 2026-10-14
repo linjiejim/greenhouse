@@ -13,6 +13,8 @@ export const SCOPE_WORDS: Record<OAuthScope, { label: MessageKey; hint: MessageK
   'agents:ask': { label: 'scope.agentsAsk', hint: 'scope.agentsAskHint' },
   'conversations:read': { label: 'scope.conversationsRead', hint: 'scope.conversationsReadHint' },
   'runs:read': { label: 'scope.runsRead', hint: 'scope.runsReadHint' },
+  'apps:read': { label: 'scope.appsRead', hint: 'scope.appsReadHint' },
+  'apps:write': { label: 'scope.appsWrite', hint: 'scope.appsWriteHint' },
   'memories:read': { label: 'scope.memoriesRead', hint: 'scope.memoriesReadHint' },
 };
 

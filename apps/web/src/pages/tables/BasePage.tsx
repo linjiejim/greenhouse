@@ -1,3 +1,4 @@
+import { AutomationsDrawer } from './AutomationsDrawer';
 /**
  * A base (TBL-01 to TBL-10): its data tables as tabs, the table's views with their toolbar, the
  * view itself, and the record drawer (`?record=`). Toolbar changes save to the view when the
@@ -75,7 +76,7 @@ import type { ViewProps } from './types';
 import { ViewBar } from './ViewBar';
 import '../../styles/tables.css';
 
-type Panel = 'roles' | 'share' | 'trash' | 'audit' | 'rename' | 'forms' | 'import' | null;
+type Panel = 'automations' | 'roles' | 'share' | 'trash' | 'audit' | 'rename' | 'forms' | 'import' | null;
 
 export function BasePage({
   id,
@@ -324,7 +325,10 @@ function BaseScreen({
       ? [{ label: t('tables.trash'), icon: <Trash2 size={icon.md} />, onClick: () => setPanel('trash') }]
       : []),
     ...(canBuild && table && !dashboard
-      ? [{ label: t('tables.forms'), icon: <ClipboardList size={icon.md} />, onClick: () => setPanel('forms') }]
+      ? [
+          { label: t('tables.automations'), onClick: () => setPanel('automations') },
+          { label: t('tables.forms'), icon: <ClipboardList size={icon.md} />, onClick: () => setPanel('forms') },
+        ]
       : []),
     ...(canEdit && table && !dashboard
       ? [{ label: t('tables.importCsv'), icon: <Upload size={icon.md} />, onClick: () => setPanel('import') }]
@@ -559,6 +563,9 @@ function BaseScreen({
           field={editingField === 'new' ? undefined : editingField}
           onClose={() => setEditingField(null)}
         />
+      )}
+      {panel === 'automations' && table && (
+        <AutomationsDrawer base={base} table={table} onClose={() => setPanel(null)} />
       )}
       {panel === 'roles' && <RolesDrawer base={base} onClose={() => setPanel(null)} />}
       {panel === 'share' && <ShareDialog base={base} onClose={() => setPanel(null)} />}

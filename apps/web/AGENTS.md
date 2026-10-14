@@ -51,3 +51,5 @@ The v2 web app. Product scope is docs/product/prd.md §6–7; layout and compone
 - In browser tests computers are on but their image cannot be pulled, so none starts; uploads go to a temp folder.
 - The fake model rejects tool parameters without a root object and properties, or with root anyOf/oneOf/allOf, like strict real providers. Keep this gate when adding scripted replies.
 - `sh apps/web/e2e/stack.sh` starts the same stack on 4580–4582 for looking at the app by hand (the "web-v2" preview). STACK_SANDBOX_IMAGE=greenhouse/bot-computer:latest gives it real computers ("web-v2-computer"); remove their containers and volumes (gh-cmp-*) afterwards, since every start reseeds the database.
+
+- Tables: record handoffs select an owned Agent and brief; automation editors use the shared filter editor and hold navigation. Run history opens the linked Agent run; both record and automation runs are labelled Tables.
