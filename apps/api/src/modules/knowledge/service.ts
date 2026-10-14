@@ -129,8 +129,11 @@ const lockTree = (mode: 'move' | 'place') =>
 const tooDeep = () => conflict('folder_too_deep', `Folders nest at most ${MAX_FOLDER_DEPTH} levels deep.`);
 /** A folder shows at most this many items of each kind. */
 const MAX_CHILDREN = 1000;
-/** Text read from an uploaded file that goes into search. */
-const MAX_FILE_TEXT = 20_000;
+/**
+ * Reading an uploaded file for search, inside the upload request: only the text search keeps,
+ * at most 50 PDF pages, at most 5 seconds.
+ */
+const FILE_TEXT_LIMITS = { maxChars: 20_000, maxPages: 50, deadlineMs: 5_000 };
 /** Mentions and comment followers told about one change. */
 const MAX_TOLD = 50;
 
@@ -1666,19 +1669,20 @@ export function createKnowledgeService(deps: {
         throw error;
       }
       if (!input.docId) {
-        // The name and the text inside go into search.
+        // The name and the text inside go into search. Reading stops at what search keeps
+        // (a few pages of a PDF, a deadline): it runs inside the upload request.
         let text: string | null = null;
         try {
-          text = await fileText({ contentType: stored.content_type, name: stored.name }, input.bytes);
+          text = await fileText({ contentType: stored.content_type, name: stored.name }, input.bytes, FILE_TEXT_LIMITS);
         } catch (error) {
           logger.warn('[knowledge] could not read an uploaded file', { file: stored.id, error: toErrorMessage(error) });
         }
-        const excerpt = text?.replace(/\s+/g, ' ').trim().slice(0, 300);
+        const excerpt = text?.slice(0, 1_000).replace(/\s+/g, ' ').trim().slice(0, 300);
         await getDb()
           .update(files)
           .set({
             searchA: searchTokens(stored.name),
-            searchC: searchTokens(text?.slice(0, MAX_FILE_TEXT)),
+            searchC: searchTokens(text),
             ...(excerpt ? { meta: { ...meta, excerpt } } : {}),
           })
           .where(eq(files.id, stored.id));
