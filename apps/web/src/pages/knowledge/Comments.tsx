@@ -3,7 +3,7 @@
  * told through the notification center. Only who wrote a comment edits or deletes it.
  */
 
-import { useRef, useState, type KeyboardEvent } from 'react';
+import { useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { MessageSquare } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button, ConfirmDialog, ErrorBox, Menu, Skeleton, TextArea } from '@greenhouse/ui/kit';
@@ -45,6 +45,16 @@ function CommentBox({
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const input = useRef<HTMLTextAreaElement>(null);
+  /** Where the caret goes once a picked mention is in the text. */
+  const caretAfterPick = useRef<number | null>(null);
+  // Before the browser takes the next key: a caret placed a frame later lands behind what was typed.
+  useLayoutEffect(() => {
+    const caret = caretAfterPick.current;
+    if (caret === null) return;
+    caretAfterPick.current = null;
+    input.current?.focus();
+    input.current?.setSelectionRange(caret, caret);
+  }, [text]);
   const people = useQuery({
     queryKey: ['members', 'directory', at?.query ?? ''],
     queryFn: () => api.members.directory(at?.query || undefined),
@@ -61,11 +71,7 @@ function CommentBox({
     setText(next);
     setPicked((list) => [...list.filter((other) => other.id !== member.id), { id: member.id, name: member.name }]);
     setAt(null);
-    requestAnimationFrame(() => {
-      const caret = before.length + member.name.length + 2;
-      input.current?.focus();
-      input.current?.setSelectionRange(caret, caret);
-    });
+    caretAfterPick.current = before.length + member.name.length + 2;
   };
 
   const submit = async () => {
