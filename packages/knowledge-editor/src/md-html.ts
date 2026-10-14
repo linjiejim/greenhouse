@@ -22,11 +22,37 @@
  * Mentions are links to `member:<id>` in Markdown (`[@Name](member:mbr_…)`). A
  * link with that target becomes the mention node's own HTML, because the link
  * mark refuses unknown schemes and the mention would otherwise turn into text.
+ *
+ * A list whose items are all tasks (`- [ ] …`, `- [x] …`) becomes the task list
+ * nodes' HTML (`ul[data-type=taskList]`, `li[data-type=taskItem][data-checked]`).
+ * A task in a list that also has plain items keeps its box as the text it was
+ * written as, so nothing is lost on the way through the editor.
  */
 
-import { Marked } from 'marked';
+import { Marked, type Token, type Tokens } from 'marked';
 
 const escapeHtml = (text: string) => text.replace(/[&<>"']/g, (char) => `&#${char.charCodeAt(0)};`);
+
+/** A task item's blocks without its checkbox (marked puts it first, or first in the first paragraph). */
+function withoutCheckbox(tokens: readonly Token[]): Token[] {
+  const out: Token[] = [];
+  for (const token of tokens) {
+    if (token.type === 'checkbox') continue;
+    if (
+      out.length === 0 &&
+      (token.type === 'paragraph' || token.type === 'text') &&
+      'tokens' in token &&
+      token.tokens
+    ) {
+      const inner = token.tokens.filter((child) => child.type !== 'checkbox');
+      if (!inner.length && token.type === 'paragraph') continue;
+      out.push({ ...token, tokens: inner } as Token);
+      continue;
+    }
+    out.push(token);
+  }
+  return out;
+}
 
 const editorMarked = new Marked({
   gfm: true,
@@ -37,6 +63,19 @@ const editorMarked = new Marked({
       if (!id) return false;
       const label = token.text.replace(/\\([\\[\]])/g, '$1').replace(/^@/, '');
       return `<span data-type="mention" data-id="${escapeHtml(id)}" data-label="${escapeHtml(label)}">@${escapeHtml(label)}</span>`;
+    },
+    list(token: Tokens.List) {
+      if (token.ordered || !token.items.length || !token.items.every((entry) => entry.task)) return false;
+      const items = token.items
+        .map(
+          (entry) =>
+            `<li data-type="taskItem" data-checked="${entry.checked ? 'true' : 'false'}">${this.parser.parse(withoutCheckbox(entry.tokens))}</li>\n`,
+        )
+        .join('');
+      return `<ul data-type="taskList">\n${items}</ul>\n`;
+    },
+    checkbox({ checked }) {
+      return checked ? '[x] ' : '[ ] ';
     },
   },
 });

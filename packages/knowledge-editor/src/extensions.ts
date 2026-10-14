@@ -13,6 +13,7 @@
 import StarterKit from '@tiptap/starter-kit';
 import Typography from '@tiptap/extension-typography';
 import { Table, TableRow, TableHeader, TableCell } from '@tiptap/extension-table';
+import { TaskItem, TaskList } from '@tiptap/extension-list';
 import Image from '@tiptap/extension-image';
 import Mention from '@tiptap/extension-mention';
 import type { Extensions } from '@tiptap/core';
@@ -24,6 +25,8 @@ export interface KnowledgeEditorOptions {
    * editor. The server-side converter omits it; only the NODE schema is shared.
    */
   mentionSuggestion?: Omit<SuggestionOptions, 'editor'>;
+  /** The accessible name of a task's checkbox, from the task's text. UI-only. */
+  taskLabel?: (text: string, checked: boolean) => string;
 }
 
 export function knowledgeEditorExtensions(opts?: KnowledgeEditorOptions): Extensions {
@@ -50,6 +53,14 @@ export function knowledgeEditorExtensions(opts?: KnowledgeEditorOptions): Extens
     TableRow,
     TableHeader,
     TableCell,
+    // GFM task lists (`- [ ] …`): without them a save wrote every task back as a plain item.
+    TaskList,
+    TaskItem.configure({
+      nested: true,
+      ...(opts?.taskLabel
+        ? { a11y: { checkboxLabel: (node, checked) => opts.taskLabel!(node.textContent, checked) } }
+        : {}),
+    }),
     Image.configure({ inline: false }),
     // @-mention NODE is shared so content_json round-trips; the suggestion
     // dropdown is UI-only and injected by the web editor. Attrs: id (member id) +

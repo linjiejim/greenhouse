@@ -14,6 +14,7 @@ import { Plugin, PluginKey, type EditorState } from '@tiptap/pm/state';
 import { Decoration, DecorationSet, type EditorView } from '@tiptap/pm/view';
 import {
   Suggestion,
+  findSuggestionMatch,
   type SuggestionKeyDownProps,
   type SuggestionOptions,
   type SuggestionProps,
@@ -81,6 +82,8 @@ export interface DocEditorOptions {
   placeholder?: string;
   /** Shown where a picture is uploading. */
   uploadingLabel?: string;
+  /** The accessible name of a task's checkbox, from the task's text. */
+  taskLabel?: (text: string, checked: boolean) => string;
   blocks: readonly BlockChoice[];
   findDocs(query: string, signal: AbortSignal): Promise<DocChoice[]>;
   findMembers(query: string, signal: AbortSignal): Promise<MemberChoice[]>;
@@ -93,12 +96,16 @@ export interface DocEditorOptions {
   onChange?(): void;
   /** Selection or marks moved: toolbars refresh. */
   onSelection?(): void;
+  /** How many pictures are still uploading; they are not in `markdown()` until they land. */
+  onUploads?(count: number): void;
 }
 
 export interface DocEditor {
   editor: Editor;
   /** The content as canonical Markdown. */
   markdown(): string;
+  /** Pictures still uploading. */
+  uploading(): number;
   /** Picks an item of the open menu. */
   choose(index: number): void;
   /** Moves the menu's highlight (pointer hover). */
@@ -110,6 +117,23 @@ export interface DocEditor {
 
 const IMAGE = /^image\/(png|jpe?g|gif|webp)$/i;
 const MAX_ITEMS = 8;
+/** A `[[` query longer than this is a sentence, not a doc being looked for. */
+const MAX_DOC_QUERY = 40;
+
+/** No menus inside code: `/`, `[[` and `@` there are code. */
+export function outsideCode({ state, range }: { state: EditorState; range: Range }): boolean {
+  if (state.doc.resolve(range.from).parent.type.spec.code) return false;
+  const code = state.schema.marks.code;
+  return !code || !state.doc.rangeHasMark(range.from, range.to, code);
+}
+
+/** `[[` ends at `]]`, at a new `[[`, or once the query is too long to be a title. */
+export const findDocMatch: typeof findSuggestionMatch = (config) => {
+  const match = findSuggestionMatch(config);
+  if (!match) return null;
+  if (match.query.length > MAX_DOC_QUERY || match.query.includes(']]') || match.query.includes('[[')) return null;
+  return match;
+};
 
 /** The blocks whose label, id or keywords contain the query. */
 export function filterBlocks(blocks: readonly BlockChoice[], query: string): BlockChoice[] {
@@ -224,7 +248,13 @@ interface Menu {
 
 export function createDocEditor(options: DocEditorOptions): DocEditor {
   let open: { kind: SuggestionKind; menu: Menu } | null = null;
+  /** Numbers the uploads; `pending` counts the ones not landed yet. */
   let uploads = 0;
+  let pending = 0;
+  const setPending = (count: number) => {
+    pending = count;
+    options.onUploads?.(count);
+  };
 
   const caret = (props: SuggestionProps<SuggestionChoice, SuggestionChoice>): DOMRect | null => {
     try {
@@ -271,7 +301,8 @@ export function createDocEditor(options: DocEditorOptions): DocEditor {
         onKeyDown: ({ event }: SuggestionKeyDownProps) => {
           const items = menu.props?.items ?? [];
           if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-            if (!items.length) return true;
+            // Nothing to move through (the menu isn't showing): the caret moves instead.
+            if (!items.length) return false;
             const step = event.key === 'ArrowDown' ? 1 : -1;
             menu.active = (menu.active + step + items.length) % items.length;
             report();
@@ -297,6 +328,7 @@ export function createDocEditor(options: DocEditorOptions): DocEditor {
           editor: this.editor,
           pluginKey: new PluginKey('ghBlockMenu'),
           char: '/',
+          allow: outsideCode,
           items: ({ query }) => filterBlocks(options.blocks, query),
           command: ({ editor, range, props }) => {
             const id = (props as BlockChoice).id;
@@ -319,6 +351,8 @@ export function createDocEditor(options: DocEditorOptions): DocEditor {
           char: '[[',
           allowSpaces: true,
           allowedPrefixes: null,
+          allow: outsideCode,
+          findSuggestionMatch: findDocMatch,
           debounce: 150,
           items: async ({ query, signal }) => (await options.findDocs(query, signal)).slice(0, MAX_ITEMS),
           command: ({ editor, range, props }) => {
@@ -344,11 +378,13 @@ export function createDocEditor(options: DocEditorOptions): DocEditor {
       const view = editor.view;
       const pos = at ?? view.state.selection.from;
       view.dispatch(view.state.tr.setMeta(uploadKey, { add: { id, pos } }));
+      setPending(pending + 1);
       void options
         .uploadImage(file)
         .catch(() => null)
         .then((src) => {
           if (editor.isDestroyed) return;
+          setPending(pending - 1);
           const where = uploadPosition(editor.state, id);
           editor.view.dispatch(editor.state.tr.setMeta(uploadKey, { remove: id }));
           if (src && where !== null) {
@@ -369,8 +405,10 @@ export function createDocEditor(options: DocEditorOptions): DocEditor {
     content: markdownToEditorHtml(options.markdown),
     extensions: [
       ...knowledgeEditorExtensions({
+        ...(options.taskLabel ? { taskLabel: options.taskLabel } : {}),
         mentionSuggestion: {
           char: '@',
+          allow: outsideCode,
           debounce: 150,
           items: async ({ query, signal }) =>
             (await options.findMembers(query, signal)).slice(0, MAX_ITEMS).map((member) => ({ ...member })),
@@ -398,7 +436,10 @@ export function createDocEditor(options: DocEditorOptions): DocEditor {
         'aria-multiline': 'true',
         ...(options.label ? { 'aria-label': options.label } : {}),
       },
-      handlePaste: (_view: EditorView, event: ClipboardEvent) => insertImages(filesOf(event.clipboardData?.files)),
+      // A picture on its own uploads. With words too (cells from a sheet, a passage from a document,
+      // which also carry a picture of themselves) the words are what was meant.
+      handlePaste: (_view: EditorView, event: ClipboardEvent) =>
+        !event.clipboardData?.getData('text/plain').trim() && insertImages(filesOf(event.clipboardData?.files)),
       handleDrop: (view: EditorView, event: DragEvent, _slice, moved: boolean) => {
         if (moved) return false;
         const files = filesOf(event.dataTransfer?.files);
@@ -416,6 +457,7 @@ export function createDocEditor(options: DocEditorOptions): DocEditor {
   return {
     editor,
     markdown: () => tiptapJsonToMarkdown(editor.getJSON() as TiptapNode),
+    uploading: () => pending,
     choose(index) {
       const props = open?.menu.props;
       const item = props?.items[index];

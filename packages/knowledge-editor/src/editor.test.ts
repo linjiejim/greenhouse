@@ -8,11 +8,13 @@
  */
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { Slice } from '@tiptap/pm/model';
 import { BLOCKS, createDocEditor, filterBlocks, type DocEditor, type SuggestionView } from './editor.js';
 
 const member = 'mbr_01JABCDEFGHJKMNPQRSTVWXYZ0';
 const doc = 'doc_01JABCDEFGHJKMNPQRSTVWXYZ0';
 const file = 'fil_01JABCDEFGHJKMNPQRSTVWXYZ0';
+const png = () => new File([new Uint8Array([1])], 'x.png', { type: 'image/png' });
 
 const blocks = BLOCKS.map((id) => ({ id, label: id === 'heading2' ? '标题 2' : id, keywords: id }));
 
@@ -143,6 +145,101 @@ describe('createDocEditor', () => {
     await settle();
     expect(failing.editor.markdown()).toBe('Text');
     expect(failing.element.querySelector('.kb-uploading')).toBeNull();
+  });
+
+  it('counts the pictures still uploading, which are not in the Markdown yet', async () => {
+    let finish: (src: string | null) => void = () => {};
+    const counts: number[] = [];
+    const { editor } = make('Text', {
+      uploadImage: () => new Promise<string | null>((resolve) => (finish = resolve)),
+      onUploads: (count) => counts.push(count),
+    });
+    editor.editor.commands.focus('end');
+    editor.insertImages([png()]);
+    expect(editor.uploading()).toBe(1);
+    expect(editor.markdown()).toBe('Text');
+    finish(`/api/files/${file}/content`);
+    await settle();
+    expect(editor.uploading()).toBe(0);
+    expect(counts).toEqual([1, 0]);
+    expect(editor.markdown()).toBe(`Text\n\n![x](/api/files/${file}/content)`);
+  });
+
+  it('pastes words as words even when a picture of them comes along, and a picture alone as a picture', () => {
+    const uploadImage = vi.fn(async () => `/api/files/${file}/content`);
+    const { editor } = make('', { uploadImage });
+    const view = editor.editor.view;
+    const paste = (text: string) => {
+      const event = {
+        clipboardData: { getData: (type: string) => (type === 'text/plain' ? text : ''), files: [png()] },
+      } as unknown as ClipboardEvent;
+      return view.someProp('handlePaste', (handler) => handler(view, event, Slice.empty));
+    };
+    expect(paste('A1\tB1')).toBeFalsy();
+    expect(uploadImage).not.toHaveBeenCalled();
+    expect(paste('')).toBe(true);
+    expect(uploadImage).toHaveBeenCalledOnce();
+  });
+
+  it('opens no menu inside code', async () => {
+    const { editor, last, menus } = make('```\nx\n```');
+    editor.editor.chain().setTextSelection(2).insertContent(' /[[a @m').run();
+    const inline = make('Text');
+    inline.editor.editor
+      .chain()
+      .focus('end')
+      .insertContent({ type: 'text', text: ' /x', marks: [{ type: 'code' }] })
+      .run();
+    await settle();
+    expect(menus.filter(Boolean)).toEqual([]);
+    expect(last()).toBeNull();
+    expect(inline.menus.filter(Boolean)).toEqual([]);
+  });
+
+  it('`[[` lets go at ]] and when the words get too long to be a title', async () => {
+    const { editor, last } = make('See');
+    editor.editor.commands.focus('end');
+    editor.editor.commands.insertContent(' [[road');
+    await settle();
+    expect(last()).toMatchObject({ kind: 'doc', query: 'road' });
+    editor.editor.commands.insertContent(']]');
+    await settle();
+    expect(last()).toBeNull();
+    editor.editor.commands.insertContent(' [[road');
+    await settle();
+    expect(last()).toMatchObject({ kind: 'doc' });
+    editor.editor.commands.insertContent(' and then a whole sentence that is clearly not a title');
+    await settle();
+    expect(last()).toBeNull();
+    expect(editor.markdown()).toContain('not a title');
+  });
+
+  it('lets the arrows move the caret when the menu has nothing in it', async () => {
+    const { editor, last } = make('');
+    editor.editor.commands.insertContent('/nothing-is-called-this');
+    await settle();
+    expect(last()).toMatchObject({ kind: 'block', items: [] });
+    const view = editor.editor.view;
+    const handled = view.someProp('handleKeyDown', (handler) =>
+      handler(view, new KeyboardEvent('keydown', { key: 'ArrowDown' })),
+    );
+    expect(handled).toBeFalsy();
+  });
+
+  it('keeps tasks, and ticking one is a change', () => {
+    const changes = vi.fn();
+    const { editor, element } = make('- [ ] Book the room\n- [x] Write the plan', {
+      taskLabel: (words, checked) => `${checked ? 'Done' : 'Open'}: ${words}`,
+      onChange: changes,
+    });
+    expect(editor.markdown()).toBe('- [ ] Book the room\n- [x] Write the plan');
+    const box = element.querySelector<HTMLInputElement>('ul[data-type="taskList"] > li input[type="checkbox"]')!;
+    // Set through ARIA reflection, which browsers turn into aria-label and happy-dom keeps as a property.
+    expect(box.ariaLabel).toBe('Open: Book the room');
+    box.checked = true;
+    box.dispatchEvent(new Event('change'));
+    expect(editor.markdown()).toBe('- [x] Book the room\n- [x] Write the plan');
+    expect(changes).toHaveBeenCalled();
   });
 });
 
