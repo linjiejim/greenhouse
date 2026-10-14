@@ -46,22 +46,33 @@ import {
   transaction,
   type Conversation as ConversationRow,
   type Db,
+  type JobRow,
   type NeedsYouRequest,
   type Message as MessageRow,
   type MessageStep,
   type Run,
+  type RunStep,
 } from '@greenhouse/db';
 import { admitRichBlocks, DEFAULT_CLIENT_BLOCKS } from '@greenhouse/types/rich-output';
 import { toErrorMessage } from '@greenhouse/utils/error';
 import { logger } from '@greenhouse/utils/logger';
 import type { z } from 'zod';
 import { ApiError, conflict, forbidden, invalidInput, notFound } from '../http/errors.js';
+import {
+  claimJobs,
+  extendJobLease,
+  pruneJobs,
+  recordJobProgress,
+  releaseExpiredClaims,
+  settleJob,
+  type JobOutcome,
+} from '../jobs.js';
 import type { ProvidersService } from '../providers/service.js';
 import type { Hub } from '../realtime/hub.js';
 import type { AgentsService, TurnAgent } from '../modules/agents/service.js';
 import type { FilesService } from '../modules/files/service.js';
 import type { NotificationsService } from '../modules/notifications/service.js';
-import type { RequestsService } from '../modules/requests/service.js';
+import { DECISION_JOB, type RequestsService } from '../modules/requests/service.js';
 import type { SkillsService } from '../modules/skills/service.js';
 import { notifyMentions, notifyMissedReplies } from './alerts.js';
 import { createBackground, type Background } from './background.js';
@@ -151,6 +162,15 @@ const LEASE_MS = 60_000;
 const HEARTBEAT_MS = 10_000;
 const FLUSH_MS = 1_000;
 const SWEEP_MS = 15_000;
+/** Decisions: a lease kept alive while one is carried out, and a poll for what other processes left. */
+const DECISION_LEASE_MS = 60_000;
+const DECISION_RENEW_MS = 20_000;
+const DECISION_POLL_MS = 5_000;
+const DECISION_BATCH = 10;
+const DECISION_PRUNE_EVERY_MS = 60 * 60_000;
+/** Settled decision jobs are kept a week. */
+const DECISION_KEEP_MS = 7 * 24 * 60 * 60_000;
+const LEASE_LOST = 'The lease on this decision was lost.';
 
 const FAILURE_TEXT: Record<Locale, Record<string, string>> = {
   zh: {
@@ -203,6 +223,10 @@ export function createEngine(deps: EngineDeps) {
   let tools: readonly ToolDef[] | null = null;
   let stopping = false;
   let sweeper: NodeJS.Timeout | null = null;
+  let decisionPoll: NodeJS.Timeout | null = null;
+  let decisionPass: Promise<void> | null = null;
+  let decisionAgain = false;
+  let decisionsPrunedAt = 0;
 
   const toolDefs = (): readonly ToolDef[] =>
     (tools ??= deps.tools({ background, handOff: (input) => engine.handOff(input) }));
@@ -1076,7 +1100,13 @@ export function createEngine(deps: EngineDeps) {
     return text.length > 1500 ? `${text.slice(0, 1500)}…` : text;
   }
 
-  /** An approved write runs exactly the arguments the member saw, with the asker's rights. */
+  /**
+   * An approved write runs exactly the arguments the member saw, with the asker's rights, and runs
+   * once: its step moves pending → running by compare-and-set, and only the call that moved it
+   * executes. A step found running was being executed when its process died: its outcome is
+   * unknown, so it becomes uncertain and is never run again by itself. A finished step gives the
+   * outcome it recorded, so the decision can be followed up again after a crash.
+   */
   async function decideToolWrite(
     request: NeedsYouRequest,
     run: Run | undefined,
@@ -1085,15 +1115,23 @@ export function createEngine(deps: EngineDeps) {
     const payload = request.payload as { tool?: string; input?: unknown; summary?: string };
     const summary = payload.summary ?? payload.tool ?? '';
     const zh = locale === 'zh';
-    const setStep = (values: Record<string, unknown>) =>
+    /** Moves the step on, only from the state given: the first to move it wins. */
+    const moveStep = async (from: RunStep['status'], values: Record<string, unknown>) =>
       request.stepId
-        ? getDb()
-            .update(runSteps)
-            .set({ ...values, updatedAt: sql`now()` } as never)
-            .where(eq(runSteps.id, request.stepId))
-        : Promise.resolve();
+        ? (
+            await getDb()
+              .update(runSteps)
+              .set({ ...values, updatedAt: sql`now()` } as never)
+              .where(and(eq(runSteps.id, request.stepId), eq(runSteps.status, from)))
+              .returning({ id: runSteps.id })
+          ).length > 0
+        : false;
+    const unknown = {
+      line: zh ? `已批准：${summary}，结果未知` : `Approved: ${summary}, outcome unknown`,
+      note: `The member approved "${summary}", but running it was interrupted, so it is unknown whether it took effect. Check the current state before you do it again.`,
+    };
     if (request.status !== 'approved') {
-      await setStep({ status: 'skipped', finishedAt: sql`now()` });
+      await moveStep('pending', { status: 'skipped', finishedAt: sql`now()` });
       if (request.status === 'rejected') {
         const reason =
           typeof request.result?.reason === 'string' && request.result.reason ? `: ${request.result.reason}` : '';
@@ -1104,27 +1142,61 @@ export function createEngine(deps: EngineDeps) {
       }
       return { line: zh ? `卡片已过期：${summary}` : `Card expired: ${summary}`, note: null };
     }
+    const gone = {
+      line: zh ? `已批准：${summary}，但无法执行` : `Approved: ${summary}, but it could not run`,
+      note: `The member approved "${summary}", but the tool is no longer available.`,
+    };
+    if (!request.stepId) return gone;
     const def = toolDefs().find((candidate) => candidate.name === payload.tool);
     // The same Agent the turn ran on; a public Agent paused or unshared meanwhile does not act.
     const loaded = run ? await deps.agents.loadForTurn(run.ownerId, run.agentId).catch(() => null) : null;
-    if (!def || !run || !loaded || (loaded.public && !def.publicAgent)) {
-      await setStep({ status: 'failed', error: { code: 'tool_gone', message: 'The tool is no longer available.' } });
+    const ready = def && run && loaded && !(loaded.public && !def.publicAgent) ? { def, run, loaded } : null;
+    const moved = ready
+      ? await moveStep('pending', { status: 'running', startedAt: sql`now()` })
+      : await moveStep('pending', {
+          status: 'failed',
+          error: { code: 'tool_gone', message: 'The tool is no longer available.' },
+          finishedAt: sql`now()`,
+        });
+    if (!moved) {
+      // An earlier attempt of this decision got here first.
+      const [step] = await getDb().select().from(runSteps).where(eq(runSteps.id, request.stepId));
+      if (step?.status === 'succeeded') {
+        return {
+          line: zh ? `已批准：${summary}` : `Approved: ${summary}`,
+          note: `The member approved "${summary}" and it ran. Result: ${brief(step.output)}`,
+        };
+      }
+      if (step?.status === 'failed') {
+        if (step.error?.code === 'tool_gone') return gone;
+        return {
+          line: zh ? `已批准：${summary}，但没有成功` : `Approved: ${summary}, but it failed`,
+          note: `The member approved "${summary}", but it failed: ${step.error?.message ?? 'unknown error'}`,
+        };
+      }
+      if (step?.status === 'running') {
+        await moveStep('running', { status: 'uncertain', finishedAt: sql`now()` });
+        return unknown;
+      }
+      if (step?.status === 'uncertain') return unknown;
+      // Skipped: the reply that asked for it was removed meanwhile.
       return {
-        line: zh ? `已批准：${summary}，但无法执行` : `Approved: ${summary}, but it could not run`,
-        note: `The member approved "${summary}", but the tool is no longer available.`,
+        line: zh ? `已批准：${summary}，但已不再需要` : `Approved: ${summary}, but it is no longer needed`,
+        note: null,
       };
     }
-    const { agent, manifest } = loaded;
-    const [conversation] = run.conversationId
-      ? await getDb().select().from(conversations).where(eq(conversations.id, run.conversationId))
+    if (!ready) return gone;
+    const { agent, manifest } = ready.loaded;
+    const [conversation] = ready.run.conversationId
+      ? await getDb().select().from(conversations).where(eq(conversations.id, ready.run.conversationId))
       : [];
     const context: ToolContext = {
-      memberId: run.ownerId,
+      memberId: ready.run.ownerId,
       agent,
       manifest,
       conversation: conversation ?? null,
-      runId: run.id,
-      stepId: request.stepId ?? '',
+      runId: ready.run.id,
+      stepId: request.stepId,
       locale,
       surface: 'turn',
       signal: new AbortController().signal,
@@ -1136,8 +1208,8 @@ export function createEngine(deps: EngineDeps) {
     };
     const started = Date.now();
     try {
-      const output = await def.execute(payload.input, context);
-      await setStep({
+      const output = await ready.def.execute(payload.input, context);
+      await moveStep('running', {
         status: 'succeeded',
         output: output ?? null,
         durationMs: Date.now() - started,
@@ -1149,7 +1221,12 @@ export function createEngine(deps: EngineDeps) {
       };
     } catch (error) {
       const message = toErrorMessage(error).slice(0, 500);
-      await setStep({ status: 'failed', error: { code: 'tool_failed', message }, finishedAt: sql`now()` });
+      await moveStep('running', {
+        status: 'failed',
+        error: { code: 'tool_failed', message },
+        durationMs: Date.now() - started,
+        finishedAt: sql`now()`,
+      });
       return {
         line: zh ? `已批准：${summary}，但没有成功` : `Approved: ${summary}, but it failed`,
         note: `The member approved "${summary}", but it failed: ${message}`,
@@ -1157,11 +1234,36 @@ export function createEngine(deps: EngineDeps) {
     }
   }
 
+  const cardTitle = (request: NeedsYouRequest) =>
+    typeof request.payload.title === 'string' && request.payload.title ? request.payload.title : request.subject;
+
+  /** A card a tool raised itself (a question, a proposal, a take-over): the tool applies the decision. */
+  async function decideOwnCard(
+    request: NeedsYouRequest,
+    agentId: string | null,
+    locale: Locale,
+  ): Promise<DecisionOutcome> {
+    const def = toolDefs().find((candidate) => candidate.name === request.payload.tool);
+    const [agent] = agentId ? await getDb().select().from(agents).where(eq(agents.id, agentId)) : [];
+    if (!def?.decide || !agent) return { line: request.status, note: null };
+    try {
+      return await def.decide(request, { memberId: request.memberId, agent, locale });
+    } catch (error) {
+      const message = toErrorMessage(error).slice(0, 500);
+      const title = cardTitle(request);
+      return {
+        line: locale === 'zh' ? `没能处理：${title}` : `Could not be carried out: ${title}`,
+        note: `Carrying out the member's decision on "${title}" failed: ${message}`,
+      };
+    }
+  }
+
   /**
-   * What a decision does: runs an approved write or lets the tool apply its proposal, writes one
-   * line in the transcript, ends the run that waited for it, and wakes the Agent with the outcome.
+   * What a decision does, from its job: runs an approved write or lets the tool apply the
+   * decision, then follows it up. The job records how far it got, so the claim that takes it over
+   * after a crash never applies a decision twice: a write by its step, anything else by the job.
    */
-  async function resolve(request: NeedsYouRequest): Promise<void> {
+  async function resolve(request: NeedsYouRequest, job: JobRow): Promise<void> {
     const [run] = request.runId ? await getDb().select().from(runs).where(eq(runs.id, request.runId)) : [];
     const [member] = await getDb()
       .select({ locale: members.locale })
@@ -1169,61 +1271,156 @@ export function createEngine(deps: EngineDeps) {
       .where(eq(members.id, request.memberId));
     const locale = localeOf(member?.locale);
     const agentId = request.agentId ?? run?.agentId ?? null;
+    const progress = (job.result ?? {}) as { applying?: boolean; outcome?: DecisionOutcome };
     let outcome: DecisionOutcome;
-    if (request.subject === 'tool_write') {
+    if (progress.outcome) {
+      outcome = progress.outcome;
+    } else if (request.subject === 'tool_write') {
       outcome = await decideToolWrite(request, run, locale);
+    } else if (progress.applying) {
+      const title = cardTitle(request);
+      outcome = {
+        line: locale === 'zh' ? `结果未知：${title}` : `Outcome unknown: ${title}`,
+        note: `Carrying out the member's decision on "${title}" was interrupted, so it is unknown whether it took effect. Check before you rely on it.`,
+      };
     } else {
-      const def = toolDefs().find((candidate) => candidate.name === request.payload.tool);
-      const [agent] = agentId ? await getDb().select().from(agents).where(eq(agents.id, agentId)) : [];
-      outcome =
-        def?.decide && agent
-          ? await def.decide(request, { memberId: request.memberId, agent, locale })
-          : { line: request.status, note: null };
+      if (!(await recordJobProgress(job, instance, { applying: true }))) throw new Error(LEASE_LOST);
+      outcome = await decideOwnCard(request, agentId, locale);
     }
+    if (!progress.outcome && !(await recordJobProgress(job, instance, { outcome }))) throw new Error(LEASE_LOST);
+    await followUp(request, run, agentId, outcome);
+  }
 
-    if (request.conversationId) {
-      const line = await withConversation(request.conversationId, () =>
-        deps.conversations.append(request.conversationId!, {
+  /**
+   * One line in the transcript, the waiting run closed once none of its cards is open, and the
+   * Agent woken with the outcome: one transaction under the conversation lock (the lock a turn's
+   * finish takes, so whichever comes second sees what the other did), done once, as the line
+   * records.
+   */
+  async function followUp(
+    request: NeedsYouRequest,
+    run: Run | undefined,
+    agentId: string | null,
+    outcome: DecisionOutcome,
+  ): Promise<void> {
+    const conversationId = request.conversationId;
+    if (!conversationId) return;
+    const done = await withConversation(conversationId, () =>
+      transaction(async (db) => {
+        const [locked] = await db
+          .select({ id: conversations.id })
+          .from(conversations)
+          .where(eq(conversations.id, conversationId))
+          .for('update');
+        if (!locked) return null;
+        const [seen] = await db
+          .select({ id: messages.id })
+          .from(messages)
+          .where(
+            and(
+              eq(messages.conversationId, conversationId),
+              eq(messages.role, 'event'),
+              sql`${messages.event}->>'request_id' = ${request.id}`,
+            ),
+          )
+          .limit(1);
+        if (seen) return null;
+        const line = await deps.conversations.append(conversationId, {
           role: 'event',
           agentId,
           content: outcome.line,
           event: { type: 'decision', request_id: request.id, status: request.status },
-        }),
-      );
-      await publish(request.conversationId, { type: 'message.created', data: { message: toMessage(line) } });
-    }
-
-    // The run that waited is done once none of its cards is still open. Under the conversation's
-    // row lock, like a turn's finish: whichever comes second sees what the other did.
-    if (run?.conversationId) {
-      const closed = await withConversation(run.conversationId, () =>
-        transaction(async (db) => {
-          await lockConversation(db, run.conversationId!);
+        });
+        let closed = false;
+        if (run?.conversationId === conversationId) {
           const [open] = await db
             .select({ id: requestsTable.id })
             .from(requestsTable)
             .where(and(eq(requestsTable.runId, run.id), eq(requestsTable.status, 'pending')))
             .limit(1);
-          if (open) return false;
-          const updated = await db
-            .update(runs)
-            .set({ status: 'succeeded', waitReason: null, finishedAt: sql`now()`, updatedAt: sql`now()` })
-            .where(and(eq(runs.id, run.id), eq(runs.status, 'waiting')))
-            .returning({ id: runs.id });
-          return updated.length > 0;
-        }),
-      );
-      if (closed) {
-        await publish(run.conversationId, {
-          type: 'run.updated',
-          data: { run_id: run.id, status: 'succeeded', conversation_id: run.conversationId },
-        });
-      }
+          if (!open) {
+            const updated = await db
+              .update(runs)
+              .set({ status: 'succeeded', waitReason: null, finishedAt: sql`now()`, updatedAt: sql`now()` })
+              .where(and(eq(runs.id, run.id), eq(runs.status, 'waiting')))
+              .returning({ id: runs.id });
+            closed = updated.length > 0;
+          }
+        }
+        const next =
+          outcome.note && agentId
+            ? await enqueue(db, conversationId, { agent_id: agentId, member_id: request.memberId, note: outcome.note })
+            : null;
+        return { line, closed, next };
+      }),
+    );
+    if (!done) return;
+    await publish(conversationId, { type: 'message.created', data: { message: toMessage(done.line) } });
+    if (done.closed && run) {
+      await publish(conversationId, {
+        type: 'run.updated',
+        data: { run_id: run.id, status: 'succeeded', conversation_id: conversationId },
+      });
     }
+    await begin(conversationId, done.next);
+  }
 
-    if (outcome.note && request.conversationId && agentId) {
-      await engine.deliver(request.conversationId, { agentId, memberId: request.memberId, note: outcome.note });
+  /** One decision job, under a lease kept alive while it works. */
+  async function carryOut(job: JobRow): Promise<void> {
+    const renew = setInterval(() => {
+      void extendJobLease(job, instance, DECISION_LEASE_MS).catch((error: unknown) =>
+        logger.warn('[engine] could not renew a decision lease', { job: job.id, error: toErrorMessage(error) }),
+      );
+    }, DECISION_RENEW_MS);
+    let outcome: JobOutcome = { status: 'succeeded' };
+    try {
+      const [request] = await getDb()
+        .select()
+        .from(requestsTable)
+        .where(eq(requestsTable.id, String(job.payload.request_id)));
+      if (request) await resolve(request, job);
+    } catch (error) {
+      logger.warn('[engine] a decision could not be carried out', { job: job.id, error: toErrorMessage(error) });
+      outcome = { status: 'retry', error: toErrorMessage(error).slice(0, 500) };
+    } finally {
+      clearInterval(renew);
     }
+    if ((await settleJob(job, instance, outcome)) === 'dead')
+      logger.warn('[engine] gave up on a decision', { job: job.id });
+  }
+
+  /** One pass: claims of dead processes back in the queue, then every ready decision. */
+  async function decisionsOnce(): Promise<void> {
+    await releaseExpiredClaims([DECISION_JOB]);
+    for (;;) {
+      const claimed = await claimJobs([DECISION_JOB], instance, { limit: DECISION_BATCH, leaseMs: DECISION_LEASE_MS });
+      await Promise.all(claimed.map(carryOut));
+      if (claimed.length < DECISION_BATCH || stopping) break;
+    }
+    if (Date.now() - decisionsPrunedAt > DECISION_PRUNE_EVERY_MS) {
+      decisionsPrunedAt = Date.now();
+      await pruneJobs([DECISION_JOB], DECISION_KEEP_MS);
+    }
+  }
+
+  /** Takes the decisions that are ready now; a wake during a pass runs one more pass after it. */
+  function wakeDecisions(): void {
+    if (stopping) return;
+    if (decisionPass) {
+      decisionAgain = true;
+      return;
+    }
+    decisionPass = (async () => {
+      do {
+        decisionAgain = false;
+        await decisionsOnce();
+      } while (decisionAgain && !stopping);
+    })()
+      .catch((error: unknown) => logger.warn('[engine] a decision pass failed', { error: toErrorMessage(error) }))
+      .finally(() => {
+        decisionPass = null;
+      });
+    track(decisionPass);
   }
 
   const background = createBackground({
@@ -1243,10 +1440,8 @@ export function createEngine(deps: EngineDeps) {
     instance,
     background,
 
-    /** Carries out a decision the member just made on a card. */
-    decide(request: NeedsYouRequest): void {
-      track(resolve(request));
-    },
+    /** A decision committed: carry it out now (every process also polls, and takes over dead claims). */
+    wakeDecisions,
 
     /** A member's message. Starts a turn now, or queues behind the one answering. */
     async post(memberId: string, conversationId: string, input: SendInput): Promise<SendMessageResult> {
@@ -1614,7 +1809,9 @@ export function createEngine(deps: EngineDeps) {
      * hear about the replies they missed.
      */
     async sweep(): Promise<void> {
-      for (const request of await deps.requests.expireDue()) track(resolve(request));
+      // Expired cards are followed up by the decision worker, like decisions.
+      await deps.requests.expireDue();
+      wakeDecisions();
       await background.sweep();
       const expired = await getDb()
         .select()
@@ -1669,6 +1866,7 @@ export function createEngine(deps: EngineDeps) {
 
     start() {
       background.start_worker();
+      decisionPoll ??= setInterval(wakeDecisions, DECISION_POLL_MS);
       sweeper ??= setInterval(() => {
         void engine
           .sweep()
@@ -1690,6 +1888,8 @@ export function createEngine(deps: EngineDeps) {
       stopping = true;
       if (sweeper) clearInterval(sweeper);
       sweeper = null;
+      if (decisionPoll) clearInterval(decisionPoll);
+      decisionPoll = null;
       for (const controller of live.values()) controller.abort();
       await background.shutdown();
       await engine.idle();

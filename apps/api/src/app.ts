@@ -154,7 +154,8 @@ export function createServices(config: AppConfig, options: ServiceOptions = {}):
   const skills = createSkillsService({ files, providers, agents, connectors, computers, notifications });
   const knowledge = createKnowledgeService({ files, notifications, hub });
   const schedules = createSchedulesService({ agents, background: () => engine.background });
-  const requests = createRequestsService({ hub, notifications });
+  // A committed decision wakes the engine's worker (made below) rather than waiting for its poll.
+  const requests = createRequestsService({ hub, notifications, decided: () => engine.wakeDecisions() });
   const engine = createEngine({
     agents,
     conversations,
@@ -277,7 +278,7 @@ export function createApp(services: Services, options: { webDir?: string } = {})
   signedIn.route('/agents', agentUsageRoutes(services.usage));
   signedIn.route('/agents', computerRoutes(services.computers));
   signedIn.route('/conversations', conversationRoutes(services.conversations, services.engine));
-  signedIn.route('/requests', requestRoutes(services.requests, services.engine));
+  signedIn.route('/requests', requestRoutes(services.requests));
   signedIn.route('/runs', runRoutes(services.runs));
   signedIn.route('/files', fileRoutes(services.files, services.conversations));
   signedIn.route('/schedules', scheduleRoutes(services.schedules));

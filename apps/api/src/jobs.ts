@@ -118,6 +118,29 @@ export async function settleJob(job: JobRow, owner: string, outcome: JobOutcome)
   return row?.status ?? null;
 }
 
+/** Keeps a claim alive while its owner still works on it. False when the lease was lost meanwhile. */
+export async function extendJobLease(job: JobRow, owner: string, leaseMs: number): Promise<boolean> {
+  const [row] = await getDb()
+    .update(jobs)
+    .set({ leaseExpiresAt: later(leaseMs), updatedAt: sql`now()` })
+    .where(and(eq(jobs.id, job.id), eq(jobs.status, 'claimed'), eq(jobs.leaseOwner, owner)))
+    .returning({ id: jobs.id });
+  return !!row;
+}
+
+/**
+ * Notes how far a claimed job got (in `result`), so the claim that takes it over after a crash
+ * knows. False when the lease was lost meanwhile: the owner must stop.
+ */
+export async function recordJobProgress(job: JobRow, owner: string, result: Record<string, unknown>): Promise<boolean> {
+  const [row] = await getDb()
+    .update(jobs)
+    .set({ result, updatedAt: sql`now()` })
+    .where(and(eq(jobs.id, job.id), eq(jobs.status, 'claimed'), eq(jobs.leaseOwner, owner)))
+    .returning({ id: jobs.id });
+  return !!row;
+}
+
 /** Claims whose process stopped before settling them go back to the queue (or die out of attempts). */
 export async function releaseExpiredClaims(kinds: readonly string[]): Promise<number> {
   const rows = await getDb()

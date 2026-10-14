@@ -4,7 +4,7 @@
  * private reference folder (no card, out of sight of everyone but the Agent and its owner).
  */
 
-import { and, eq } from 'drizzle-orm';
+import { and, asc, eq } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import { docs, docVersions, folders, getDb, messages, requests, runSteps } from '@greenhouse/db';
 import { createTestApp } from '../../testing.js';
@@ -25,7 +25,8 @@ async function setup() {
     await app.services.engine.idle();
     return sent.body as { run_id: string };
   }
-  const steps = (runId: string) => getDb().select().from(runSteps).where(eq(runSteps.runId, runId));
+  const steps = (runId: string) =>
+    getDb().select().from(runSteps).where(eq(runSteps.runId, runId)).orderBy(asc(runSteps.startedAt));
   const reply = async (runId: string) =>
     (
       await getDb()
