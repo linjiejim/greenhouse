@@ -1,11 +1,12 @@
 /** Replay recorded model steps through the current prompt builders, registry, schema and approval gate. */
-import { readdir, readFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, readFile, rm } from 'node:fs/promises';
 import { resolve } from 'node:path';
+import { and, eq } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
-import { getDb, newId, runs } from '@greenhouse/db';
+import { getDb, messages, newId, runs, runSteps } from '@greenhouse/db';
 import { runLoop } from '@greenhouse/agent-core';
 import { createTestApp } from '../../testing.js';
-import { assembleHarness, digest, toolDefinition, type Harness } from '../eval.js';
+import { assembleHarness, digest, exportFixture, toolDefinition, type Harness } from '../eval.js';
 import { assembleTools } from '../tools/assemble.js';
 import { scriptedModel, text, toolCall, systemText } from './model.js';
 import type { ModelMessage } from 'ai';
@@ -140,4 +141,45 @@ describe('Eval fixtures', () => {
           expect.objectContaining({ kind: 'approval', payload: expect.objectContaining({ tool: step.tool }) }),
         );
     });
+});
+
+it('exports member and reply messages, then removes old model context on edit', async () => {
+  const model = scriptedModel([text('Before edit'), text('After edit')]);
+  const app = createTestApp({}, { languageModel: model.languageModel });
+  const member = await app.member();
+  const main = (await app.call('GET', '/api/conversations', { token: member.token })).body.items[0];
+  const sent = await app.call('POST', `/api/conversations/${main.id}/messages`, {
+    token: member.token,
+    body: { content: 'Before' },
+  });
+  await app.services.engine.idle();
+  const [reply] = await getDb()
+    .select()
+    .from(messages)
+    .where(and(eq(messages.runId, sent.body.run_id), eq(messages.role, 'assistant')));
+  await mkdir(resolve('node_modules/.cache'), { recursive: true });
+  const target = await mkdtemp(resolve('node_modules/.cache/eval-export-'));
+  try {
+    const original = await exportFixture(sent.body.run_id, target);
+    expect(await exportFixture(reply!.id, target)).toBe(original);
+    expect(await exportFixture(sent.body.message.id, target)).toBe(original);
+    const edited = await app.call('PATCH', `/api/conversations/${main.id}/messages/${sent.body.message.id}`, {
+      token: member.token,
+      body: { content: 'After' },
+    });
+    expect(edited.status).toBe(200);
+    await app.services.engine.idle();
+    const latest = await exportFixture(sent.body.message.id, target);
+    expect(latest).not.toBe(original);
+    expect(JSON.parse(await readFile(latest, 'utf8')).source.run_id).toBe(edited.body.run_id);
+    expect(
+      await getDb()
+        .select()
+        .from(runSteps)
+        .where(and(eq(runSteps.runId, sent.body.run_id), eq(runSteps.kind, 'model'))),
+    ).toEqual([]);
+    await expect(exportFixture(sent.body.run_id, target)).rejects.toMatchObject({ code: 'eval_unavailable' });
+  } finally {
+    await rm(target, { recursive: true, force: true });
+  }
 });

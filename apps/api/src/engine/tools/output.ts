@@ -15,14 +15,25 @@ export async function storeToolOutput(
 ) {
   const text = typeof value === 'string' ? value : JSON.stringify(value);
   if (!text || text.length <= TOOL_OUTPUT_CHARS) return value;
-  const file = await files.store(ctx.memberId, {
-    purpose: 'tool_output',
-    name: 'tool-output.txt',
-    contentType: 'text/plain',
-    bytes: Buffer.from(text),
-    runId: ctx.runId,
-    expiresAt: new Date(Date.now() + 30 * 86400_000).toISOString(),
-  });
+  let file;
+  try {
+    file = await files.store(ctx.memberId, {
+      purpose: 'tool_output',
+      name: 'tool-output.txt',
+      contentType: 'text/plain',
+      bytes: Buffer.from(text),
+      runId: ctx.runId,
+      expiresAt: new Date(Date.now() + 30 * 86400_000).toISOString(),
+    });
+  } catch (error) {
+    return {
+      head: text.slice(0, TOOL_OUTPUT_HEAD),
+      length: text.length,
+      storage_error: error instanceof ApiError ? error.code : 'storage_unavailable',
+      note: 'The tool finished successfully, but its full output could not be stored. Only this head is available. Do not repeat a write just to obtain its output.',
+    };
+  }
+
   return {
     file: { id: file.id, name: file.name },
     head: text.slice(0, TOOL_OUTPUT_HEAD),

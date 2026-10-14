@@ -1,5 +1,5 @@
 import { and, eq, sql } from 'drizzle-orm';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import {
   agentMemories,
@@ -10,11 +10,13 @@ import {
   getDb,
   messages,
   newId,
+  requests,
   runs,
   runSteps,
   transaction,
 } from '@greenhouse/db';
 import { createTestApp } from '../../testing.js';
+import { ApiError } from '../../http/errors.js';
 import { scriptedModel, gate, text, toolCall, lastUserText, systemText } from './model.js';
 import { defineTool } from '../tools/define.js';
 import { renderMemoryIndex } from '../prompt.js';
@@ -350,5 +352,53 @@ describe('M2.4 engine additions', () => {
     ).toEqual([]);
     expect(JSON.stringify(s.model.prompts.at(-1))).toContain('Memories cannot be changed');
     expect(await getDb().select().from(runs).where(eq(runs.kind, 'background'))).toHaveLength(1);
+  });
+  it('keeps successful action evidence when long-output storage is unavailable', async () => {
+    let effects = 0;
+    const model = scriptedModel([toolCall('large_effect', {}), text('The action finished.')]);
+    const app = createTestApp(
+      {},
+      {
+        languageModel: model.languageModel,
+        tools: [
+          defineTool({
+            name: 'large_effect',
+            description: 'An external test action with a long receipt.',
+            input: z.object({}),
+            risk: 'external',
+            async execute() {
+              effects++;
+              return 'receipt'.repeat(1500);
+            },
+          }),
+        ],
+      },
+    );
+    const member = await app.member();
+    const main = (await app.call('GET', '/api/conversations', { token: member.token })).body.items[0];
+    const sent = await app.call('POST', `/api/conversations/${main.id}/messages`, {
+      token: member.token,
+      body: { content: 'Perform the action' },
+    });
+    await app.services.engine.idle();
+    const [card] = await getDb().select().from(requests).where(eq(requests.runId, sent.body.run_id));
+    expect(effects).toBe(0);
+    const storage = vi
+      .spyOn(app.services.files, 'store')
+      .mockRejectedValueOnce(new ApiError(503, 'storage_unavailable', 'Test storage outage.'));
+    await app.call('POST', `/api/requests/${card!.id}/approve`, { token: member.token });
+    await app.services.engine.idle();
+    expect(storage).toHaveBeenCalledTimes(1);
+    storage.mockRestore();
+    expect(effects).toBe(1);
+    const [step] = await getDb()
+      .select()
+      .from(runSteps)
+      .where(and(eq(runSteps.runId, sent.body.run_id), eq(runSteps.kind, 'tool')));
+    expect(step).toMatchObject({
+      status: 'succeeded',
+      output: { length: 10500, storage_error: 'storage_unavailable' },
+    });
+    expect(JSON.stringify(model.prompts.at(-1))).toContain('Do not repeat a write');
   });
 });
