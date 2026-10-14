@@ -174,5 +174,20 @@ export function applyEvent(client: QueryClient, event: Exclude<RealtimeEvent, { 
       soon(client, keys.computer(event.data.agent_id));
       soon(client, ['agents', 'processes', event.data.agent_id]);
       return;
+    case 'doc.updated':
+      // A doc I have open was saved, renamed, moved, archived or restored. An editing page compares
+      // the new version with the one it started from; a draft is never replaced by this.
+      soon(client, keys.doc(event.data.doc_id), 100);
+      soon(client, keys.docVersions(event.data.doc_id));
+      return;
+    case 'doc.presence':
+      client.setQueryData(keys.docPresence(event.data.doc_id), { items: event.data.items });
+      return;
+    case 'comments.updated':
+      if (event.data.target_type === 'doc') soon(client, keys.docComments(event.data.target_id));
+      return;
+    case 'knowledge.changed':
+      soon(client, keys.knowledge);
+      return;
   }
 }

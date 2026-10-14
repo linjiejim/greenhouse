@@ -5,6 +5,7 @@
  *   "ask me …"    calls ask_user with one question
  *   "remember X"  calls the memory tool, then confirms
  *   "need a human …" asks the member to take over the computer (request_takeover)
+ *   "look up …"   searches the knowledge base (knowledge_query), then links the first doc found
  *   anything else "Echo: <message>", in a few chunks
  * Titles and summaries (non-streaming calls) get fixed answers. The same server is the
  * connectors' MCP servers and their sign-in (fake-mcp.mjs).
@@ -61,6 +62,8 @@ const RICH = {
   ),
 };
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+/** The first doc in a knowledge_query search result. */
+const DOC_HIT = /"type":"doc","id":"(doc_\w+)","title":"([^"]*)"/;
 
 const textOf = (content) =>
   typeof content === 'string'
@@ -135,6 +138,11 @@ async function stream(response, request) {
     tool('web_search', { query: said.slice(15).trim() || 'kyoto' });
   } else if (afterTool && toolText.includes('kyoto.example')) {
     await say('Found it: [Kyoto guide](https://kyoto.example/guide).', 10);
+  } else if (!afterTool && /^look up /i.test(said)) {
+    tool('knowledge_query', { action: 'search', query: said.slice(8).trim() });
+  } else if (afterTool && DOC_HIT.test(toolText)) {
+    const [, id, title] = DOC_HIT.exec(toolText);
+    await say(`Found it in [${title}](#/knowledge/${id}).`, 10);
   } else if (afterTool) {
     await say('Done.', 20);
   } else if (/^show (chart|table|choices|diagram|page|stats)/i.test(said)) {

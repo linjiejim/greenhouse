@@ -1,11 +1,22 @@
 /**
- * ⌘K (SRCH-01): go anywhere or start something. Typing filters commands, Agents, conversations
- * and settings; arrows move, Enter goes, Escape closes.
+ * ⌘K (SRCH-01): go anywhere or start something. Typing filters commands, Agents, conversations,
+ * docs (with the knowledge base on) and settings; arrows move, Enter goes, Escape closes.
  */
 
 import { useEffect, useId, useMemo, useState, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Hash, MessageSquare, Plus, Settings, Shield, Sparkles, TextSearch, User } from 'lucide-react';
+import {
+  FilePlus,
+  FileText,
+  Hash,
+  MessageSquare,
+  Plus,
+  Settings,
+  Shield,
+  Sparkles,
+  TextSearch,
+  User,
+} from 'lucide-react';
 import { Overlay } from '@greenhouse/ui/kit';
 import { icon } from '@greenhouse/ui/tokens';
 import { useSession } from '../app/session';
@@ -14,7 +25,8 @@ import { useConversations } from '../data/conversations';
 import { api } from '../lib/api';
 import { cx } from '../lib/cx';
 import { useT } from '../lib/i18n';
-import { navigate } from '../lib/router';
+import { navigate, useRoute } from '../lib/router';
+import { useNewTarget } from '../pages/knowledge/KnowledgeDirectory';
 import { AgentAvatar } from './AgentAvatar';
 import { ADMIN, SETTINGS } from './Directory';
 import { useOpenOverlay } from './overlays';
@@ -36,6 +48,8 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
   const openOverlay = useOpenOverlay();
   const agents = useAgents('mine');
   const conversations = useConversations();
+  const newTarget = useNewTarget(useRoute());
+  const knowledge = !!me?.modules.knowledge;
   const [query, setQuery] = useState('');
   const [active, setActive] = useState(0);
   const [debounced, setDebounced] = useState('');
@@ -44,10 +58,14 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
     const timer = setTimeout(() => setDebounced(query.trim()), 200);
     return () => clearTimeout(timer);
   }, [query]);
-  // Messages and people come from the server; commands, Agents and settings are already here.
+  // Messages, people and docs come from the server; commands, Agents and settings are already here.
   const remote = useQuery({
-    queryKey: ['search', debounced],
-    queryFn: () => api.search({ q: debounced, kinds: ['conversations', 'messages', 'members'] }),
+    queryKey: ['search', debounced, knowledge],
+    queryFn: () =>
+      api.search({
+        q: debounced,
+        kinds: knowledge ? ['conversations', 'docs', 'messages', 'members'] : ['conversations', 'messages', 'members'],
+      }),
     enabled: debounced.length > 0,
     staleTime: 10_000,
   });
@@ -78,6 +96,17 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
         leading: small(<Sparkles size={icon.md} />),
         run: () => openOverlay({ type: 'new-agent' }),
       },
+      ...(knowledge
+        ? [
+            {
+              id: 'new-doc',
+              group: t('palette.commands'),
+              label: t('knowledge.newDoc'),
+              leading: small(<FilePlus size={icon.md} />),
+              run: () => openOverlay({ type: 'new-knowledge', kind: 'doc', target: newTarget() }),
+            },
+          ]
+        : []),
     ].filter((item) => hit(item.label));
     const agentItems: Item[] = agents.items
       .filter((agent) => hit(agent.name, agent.role))
@@ -114,6 +143,18 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
             label: item.title || t('chat.untitled'),
             leading: small(<MessageSquare size={icon.md} />),
             run: () => navigate({ page: 'conversation', id: item.conversation_id ?? item.id }),
+          },
+        ];
+      }
+      if (item.kind === 'docs') {
+        return [
+          {
+            id: `doc:${item.id}`,
+            group: t('palette.docs'),
+            label: item.title,
+            hint: item.snippet,
+            leading: small(<FileText size={icon.md} />),
+            run: () => navigate({ page: 'doc', id: item.id }),
           },
         ];
       }
@@ -163,7 +204,19 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
         : []),
     ].filter((item) => q && hit(item.label, item.group));
     return [...commands, ...agentItems, ...conversationItems, ...remoteItems, ...sections];
-  }, [query, debounced, remote.data, agents.items, conversations.items, me?.role, me?.id, openOverlay, t]);
+  }, [
+    query,
+    debounced,
+    remote.data,
+    agents.items,
+    conversations.items,
+    me?.role,
+    me?.id,
+    openOverlay,
+    t,
+    knowledge,
+    newTarget,
+  ]);
 
   const current = Math.min(active, Math.max(items.length - 1, 0));
   const go = (item: Item | undefined) => {

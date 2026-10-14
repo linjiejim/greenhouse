@@ -234,6 +234,9 @@ importers:
       '@greenhouse/contract':
         specifier: workspace:*
         version: link:../../packages/contract
+      '@greenhouse/knowledge-editor':
+        specifier: workspace:*
+        version: link:../../packages/knowledge-editor
       '@greenhouse/types':
         specifier: workspace:*
         version: link:../../packages/types

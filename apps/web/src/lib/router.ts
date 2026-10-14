@@ -4,6 +4,7 @@
  */
 
 import { useSyncExternalStore } from 'react';
+import type { KnowledgeScope } from '@greenhouse/contract';
 
 export const SETTINGS_SECTIONS = ['account', 'notifications', 'connections', 'vault', 'services', 'access'] as const;
 export const ADMIN_SECTIONS = [
@@ -20,6 +21,8 @@ export const AGENT_TABS = ['profile', 'abilities', 'memory', 'schedules', 'compu
 export const RUN_VIEWS = ['active', 'scheduled', 'done'] as const;
 /** 技能: everything I can see, the team's, my own, those waiting for my review, archived. */
 export const SKILL_SCOPES = ['all', 'team', 'mine', 'review', 'archived'] as const;
+/** 知识库 spaces: the team's, mine, and what others shared with me. */
+export const KNOWLEDGE_SCOPES = ['team', 'personal', 'shared'] as const;
 
 export type SettingsSection = (typeof SETTINGS_SECTIONS)[number];
 export type AdminSection = (typeof ADMIN_SECTIONS)[number];
@@ -37,6 +40,14 @@ export type Route =
   | { page: 'run'; id: string }
   | { page: 'skills'; scope: SkillScope }
   | { page: 'skill'; id: string }
+  /**
+   * 知识库 (KNOW-01): the recent docs without `space`; the root of a space with it; what was
+   * archived in a space (team or personal) with `archived`. `file` previews a file over the list.
+   */
+  | { page: 'knowledge'; space?: KnowledgeScope; archived?: boolean; file?: string }
+  | { page: 'folder'; id: string; file?: string }
+  /** A doc, read or (`edit`) being changed. */
+  | { page: 'doc'; id: string; edit?: boolean }
   | { page: 'notifications'; view: 'needs' | 'all' }
   | { page: 'settings'; section: SettingsSection }
   | { page: 'admin'; section: AdminSection }
@@ -65,6 +76,21 @@ export function parse(hash: string): Route {
     });
   const [head, id, extra] = parts;
   const notFound = { page: 'not-found', path } as const;
+  const file = query.get('file');
+  if (head === 'knowledge') {
+    if (parts.length > 3 || (extra !== undefined && id !== 'folder')) return notFound;
+    if (id === 'folder') return extra ? { page: 'folder', id: extra, ...(file ? { file } : {}) } : notFound;
+    if (id) return query.get('edit') === '1' ? { page: 'doc', id, edit: true } : { page: 'doc', id };
+    const space = query.get('space');
+    if (!KNOWLEDGE_SCOPES.includes(space as KnowledgeScope)) return { page: 'knowledge' };
+    const archived = query.get('view') === 'archived' && space !== 'shared';
+    return {
+      page: 'knowledge',
+      space: space as KnowledgeScope,
+      ...(archived ? { archived } : {}),
+      ...(file ? { file } : {}),
+    };
+  }
   if (extra !== undefined) return notFound;
   switch (head) {
     case undefined:
@@ -121,6 +147,18 @@ export function href(route: Route): string {
       return route.scope === 'all' ? '#/skills' : `#/skills?scope=${route.scope}`;
     case 'skill':
       return `#/skills/${encodeURIComponent(route.id)}`;
+    case 'knowledge': {
+      const query = new URLSearchParams({
+        ...(route.space ? { space: route.space } : {}),
+        ...(route.space && route.archived ? { view: 'archived' } : {}),
+        ...(route.space && route.file ? { file: route.file } : {}),
+      }).toString();
+      return `#/knowledge${query ? `?${query}` : ''}`;
+    }
+    case 'folder':
+      return `#/knowledge/folder/${encodeURIComponent(route.id)}${route.file ? `?file=${encodeURIComponent(route.file)}` : ''}`;
+    case 'doc':
+      return `#/knowledge/${encodeURIComponent(route.id)}${route.edit ? '?edit=1' : ''}`;
     case 'notifications':
       return route.view === 'all' ? '#/notifications?view=all' : '#/notifications';
     case 'settings':
@@ -141,9 +179,57 @@ export function href(route: Route): string {
   }
 }
 
-export function navigate(to: Route | string, options: { replace?: boolean } = {}) {
+/** A page holding unsaved work: in-app moves ask it first (holdNavigation). */
+let holder: ((to: string) => void) | null = null;
+
+/**
+ * Holds navigation while a page has unsaved work: links, navigate(), Back and Forward ask
+ * `onAttempt` with where they were going instead of leaving, and closing or reloading the tab asks
+ * the browser's own question. The page decides, then releases and navigates with `force`.
+ * Returns the release.
+ */
+export function holdNavigation(onAttempt: (to: string) => void): () => void {
+  const heldAt = location.hash;
+  const attempt = (to: string) => onAttempt(to);
+  holder = attempt;
+  const onClick = (event: MouseEvent) => {
+    if (holder !== attempt || event.defaultPrevented || event.button !== 0) return;
+    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    const link = (event.target as Element | null)?.closest?.('a[href^="#"]');
+    if (!link || link.closest('[contenteditable="true"]') || link.getAttribute('target')) return;
+    const to = link.getAttribute('href') ?? '';
+    if (to === heldAt) return;
+    event.preventDefault();
+    attempt(to);
+  };
+  // Back and Forward cannot be stopped, only undone: put the page back and ask.
+  const onHashChange = () => {
+    if (holder !== attempt || location.hash === heldAt) return;
+    const to = location.hash;
+    history.pushState(history.state, '', heldAt);
+    attempt(to);
+  };
+  const onBeforeUnload = (event: BeforeUnloadEvent) => {
+    event.preventDefault();
+    event.returnValue = '';
+  };
+  document.addEventListener('click', onClick, true);
+  window.addEventListener('hashchange', onHashChange);
+  window.addEventListener('beforeunload', onBeforeUnload);
+  return () => {
+    document.removeEventListener('click', onClick, true);
+    window.removeEventListener('hashchange', onHashChange);
+    window.removeEventListener('beforeunload', onBeforeUnload);
+    if (holder === attempt) holder = null;
+  };
+}
+
+export function navigate(to: Route | string, options: { replace?: boolean; force?: boolean } = {}) {
   const target = typeof to === 'string' ? to : href(to);
   if (target === location.hash) return;
+  if (holder && !options.force) return holder(target);
+  // Leaving anyway: the hold lets this one through.
+  if (options.force) holder = null;
   if (options.replace) {
     history.replaceState(history.state, '', target);
     window.dispatchEvent(new HashChangeEvent('hashchange'));
@@ -158,9 +244,13 @@ function subscribe(onChange: () => void) {
 }
 
 let cached: { hash: string; route: Route } | null = null;
+/** The route before: a move that holdNavigation undid gets the very same object back, so nothing re-renders. */
+let before: { hash: string; route: Route } | null = null;
 function snapshot(): Route {
-  if (cached?.hash !== location.hash) cached = { hash: location.hash, route: parse(location.hash) };
-  return cached.route;
+  if (cached?.hash === location.hash) return cached.route;
+  if (before?.hash === location.hash) [cached, before] = [before, cached];
+  else [cached, before] = [{ hash: location.hash, route: parse(location.hash) }, cached];
+  return cached!.route;
 }
 
 export function useRoute(): Route {
