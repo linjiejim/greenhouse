@@ -156,7 +156,7 @@ describe('decisions across processes', () => {
       .set({
         status: 'claimed',
         leaseOwner: 'api-dead',
-        leaseExpiresAt: new Date(Date.now() - 1000).toISOString(),
+        leaseExpiresAt: new Date(Date.now() - 60_000).toISOString(),
         attempts: 1,
       })
       .where(eq(jobs.dedupeKey, `${DECISION_JOB}:${again!.id}`));

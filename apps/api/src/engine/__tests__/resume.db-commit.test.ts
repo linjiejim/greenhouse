@@ -85,7 +85,7 @@ describe('a background run across processes', () => {
     await a.engine.shutdown();
     await getDb()
       .update(runs)
-      .set({ status: 'running', leaseOwner: 'api-dead', leaseExpiresAt: new Date(Date.now() - 1000).toISOString() })
+      .set({ status: 'running', leaseOwner: 'api-dead', leaseExpiresAt: new Date(Date.now() - 60_000).toISOString() })
       .where(eq(runs.id, run.id));
 
     await b.engine.background.sweep();
