@@ -16,9 +16,12 @@ import {
   Hash,
   Link2,
   List,
+  ListTree,
   Paperclip,
   Phone,
   Plus,
+  Sigma,
+  Sparkles,
   Spline,
   Text,
   Type,
@@ -75,6 +78,10 @@ const TYPE_ICONS: Record<FieldType, LucideIcon> = {
   relation: Spline,
   parent: GitBranch,
   dependency: Spline,
+  formula: Sigma,
+  lookup: ListTree,
+  rollup: Sigma,
+  ai: Sparkles,
 };
 
 export function FieldIcon({ type, size = icon.sm }: { type: FieldType; size?: number }) {

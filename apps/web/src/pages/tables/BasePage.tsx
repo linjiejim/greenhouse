@@ -5,7 +5,19 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Archive, ArchiveRestore, Download, History, Pencil, Pin, PinOff, Share2, Trash2 } from 'lucide-react';
+import {
+  Archive,
+  ArchiveRestore,
+  ClipboardList,
+  Download,
+  History,
+  Pencil,
+  Pin,
+  PinOff,
+  Share2,
+  Trash2,
+  Upload,
+} from 'lucide-react';
 import { Badge, Banner, Button, Empty, ErrorBox, Skeleton, type MenuEntry } from '@greenhouse/ui/kit';
 import { icon } from '@greenhouse/ui/tokens';
 import {
@@ -41,7 +53,10 @@ import { saveBlob } from '../../lib/save';
 import { Page, PageHeader } from '../../shell/Page';
 import { useOpenOverlay } from '../../shell/overlays';
 import { CalendarView } from './Calendar';
+import { DashboardView } from './dashboards/DashboardView';
 import { DeleteBaseDialog } from './DeleteBaseDialog';
+import { FormsDrawer } from './forms/FormsDrawer';
+import { ImportDialog } from './imports/ImportDialog';
 import { forgetBase, rememberBase } from './entry';
 import { tablesError } from './errors';
 import { FieldDialog } from './FieldDialog';
@@ -58,9 +73,21 @@ import type { ViewProps } from './types';
 import { ViewBar } from './ViewBar';
 import '../../styles/tables.css';
 
-type Panel = 'share' | 'trash' | 'audit' | 'rename' | null;
+type Panel = 'share' | 'trash' | 'audit' | 'rename' | 'forms' | 'import' | null;
 
-export function BasePage({ id, table, view, record }: { id: string; table?: string; view?: string; record?: string }) {
+export function BasePage({
+  id,
+  table,
+  view,
+  record,
+  dashboard,
+}: {
+  id: string;
+  table?: string;
+  view?: string;
+  record?: string;
+  dashboard?: string;
+}) {
   const { t } = useI18n();
   const base = useBase(id);
   const missing = base.error instanceof ApiClientError && (base.error.status === 404 || base.error.status === 403);
@@ -95,7 +122,7 @@ export function BasePage({ id, table, view, record }: { id: string; table?: stri
       </Page>
     );
   }
-  return <BaseScreen base={base.data} tableId={table} viewId={view} recordId={record} />;
+  return <BaseScreen base={base.data} tableId={table} viewId={view} recordId={record} dashboardId={dashboard} />;
 }
 
 /** The views of a table in order: shared ones by place, then my personal ones. */
@@ -109,11 +136,13 @@ function BaseScreen({
   tableId,
   viewId,
   recordId,
+  dashboardId,
 }: {
   base: Base;
   tableId?: string;
   viewId?: string;
   recordId?: string;
+  dashboardId?: string;
 }) {
   const { t } = useI18n();
   const { me } = useSession();
@@ -121,6 +150,9 @@ function BaseScreen({
   const openOverlay = useOpenOverlay();
   const narrow = useMedia(NARROW);
   const { memberById } = usePeople();
+  const dashboard = dashboardId
+    ? base.views.find((entry) => entry.id === dashboardId && entry.type === 'dashboard')
+    : undefined;
   const table = base.tables.find((entry) => entry.id === tableId) ?? base.tables[0];
   const views = table ? viewsOf(base, table.id) : [];
   const view = views.find((entry) => entry.id === viewId) ?? views[0];
@@ -128,16 +160,16 @@ function BaseScreen({
   const canBuild = roleAtLeast(base.access, 'builder') && !base.archived_at;
   const isOwner = base.access === 'owner';
 
-  // The address always names the table and view on screen.
+  // The address always names the table and view on screen (or the dashboard).
   useEffect(() => {
-    if (!table || !view) return;
+    if (dashboard || !table || !view) return;
     if (table.id !== tableId || view.id !== viewId) {
       navigate(
         { page: 'base', id: base.id, table: table.id, view: view.id, ...(recordId ? { record: recordId } : {}) },
         { replace: true },
       );
     }
-  }, [base.id, table, view, tableId, viewId, recordId]);
+  }, [base.id, table, view, tableId, viewId, recordId, dashboard]);
 
   const [drafts, setDrafts] = useState<Record<string, ViewConfig>>({});
   const [search, setSearch] = useState('');
@@ -271,6 +303,12 @@ function BaseScreen({
     ...(canEdit
       ? [{ label: t('tables.trash'), icon: <Trash2 size={icon.md} />, onClick: () => setPanel('trash') }]
       : []),
+    ...(canBuild && table && !dashboard
+      ? [{ label: t('tables.forms'), icon: <ClipboardList size={icon.md} />, onClick: () => setPanel('forms') }]
+      : []),
+    ...(canEdit && table && !dashboard
+      ? [{ label: t('tables.importCsv'), icon: <Upload size={icon.md} />, onClick: () => setPanel('import') }]
+      : []),
     { label: t('tables.exportCsv'), icon: <Download size={icon.md} />, onClick: () => void exportCsv() },
     base.pinned
       ? {
@@ -364,7 +402,7 @@ function BaseScreen({
             ) : undefined
           }
           primary={
-            canEdit && table ? (
+            canEdit && table && !dashboard ? (
               <Button kind="primary" onClick={() => setCreating({})}>
                 {t('tables.addRecord')}
               </Button>
@@ -390,8 +428,17 @@ function BaseScreen({
           {t('tables.archivedBadge')}
         </Banner>
       )}
-      <TableTabs base={base} current={table?.id} canBuild={canBuild} />
-      {!table ? (
+      <TableTabs
+        base={base}
+        current={dashboard ? undefined : table?.id}
+        dashboard={dashboard?.id}
+        canBuild={canBuild}
+      />
+      {dashboard ? (
+        <div className="app-tb-body">
+          <DashboardView key={dashboard.id} base={base} view={dashboard} canBuild={canBuild} narrow={narrow} />
+        </div>
+      ) : !table ? (
         <div className="app-tb-body">
           <Empty title={t('tables.noTables')} />
         </div>
@@ -477,6 +524,8 @@ function BaseScreen({
       {panel === 'trash' && <TrashDrawer base={base} onClose={() => setPanel(null)} />}
       {panel === 'audit' && <AuditDrawer base={base} onClose={() => setPanel(null)} />}
       {panel === 'rename' && <RenameBaseDialog base={base} onClose={() => setPanel(null)} />}
+      {panel === 'forms' && table && <FormsDrawer base={base} table={table} onClose={() => setPanel(null)} />}
+      {panel === 'import' && table && <ImportDialog base={base} table={table} onClose={() => setPanel(null)} />}
     </Page>
   );
 }

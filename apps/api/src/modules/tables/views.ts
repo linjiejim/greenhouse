@@ -56,6 +56,8 @@ export function defaultConfig(type: ViewType, fields: readonly BaseFieldRow[]): 
         hidden,
       };
     }
+    case 'dashboard':
+      return { cards: [] };
   }
 }
 

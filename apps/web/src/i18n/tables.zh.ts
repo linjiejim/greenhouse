@@ -1,5 +1,12 @@
-/** 表格的词（spread into zh.ts）. */
+import { tablesDashboardsZh } from './tables-dashboards.zh';
+import { tablesFormsZh } from './tables-forms.zh';
+import { tablesImportZh } from './tables-import.zh';
+
+/** 表格的词（spread into zh.ts）; forms, import and dashboards keep theirs apart. */
 export const tablesZh = {
+  ...tablesFormsZh,
+  ...tablesImportZh,
+  ...tablesDashboardsZh,
   'tables.new': '新建表格',
   'tables.newTitle': '新建表格',
   'tables.fromTemplate': '从「项目」模板新建',
@@ -30,6 +37,8 @@ export const tablesZh = {
   'tables.share': '分享',
   'tables.trash': '回收站',
   'tables.exportCsv': '导出 CSV',
+  'tables.importCsv': '导入 CSV',
+  'tables.forms': '表单',
   'tables.exported': '已导出「{name}」',
   'tables.rename': '重命名',
   'tables.pin': '置顶',
@@ -50,6 +59,8 @@ export const tablesZh = {
   'tables.save': '保存',
 
   'tables.addTable': '新建数据表',
+  'tables.addDashboard': '新建仪表盘',
+  'tables.addTableOrDashboard': '新建数据表或仪表盘',
   'tables.tableName': '数据表名称',
   'tables.tableDefault': '数据表 {n}',
   'tables.renameTable': '重命名数据表',
@@ -67,6 +78,7 @@ export const tablesZh = {
   'tables.view.calendar': '日历',
   'tables.view.gallery': '画册',
   'tables.view.timeline': '时间线',
+  'tables.view.dashboard': '仪表盘',
   'tables.viewName': '视图名称',
   'tables.viewType': '类型',
   'tables.viewScope': '谁能看到',
@@ -192,6 +204,10 @@ export const tablesZh = {
   'tables.type.relation': '关联',
   'tables.type.parent': '父记录',
   'tables.type.dependency': '依赖',
+  'tables.type.formula': '公式',
+  'tables.type.lookup': '查找引用',
+  'tables.type.rollup': '汇总',
+  'tables.type.ai': 'AI 字段',
 
   'tables.field.new': '添加字段',
   'tables.field.edit': '编辑字段',

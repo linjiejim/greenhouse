@@ -78,9 +78,12 @@ export function useFloating<T extends HTMLElement = HTMLDivElement>(open: boolea
     const resize = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(place);
     if (panel.current) resize?.observe(panel.current);
     window.addEventListener('resize', place);
+    // A scroll that carries the panel with its anchor (both inside it) keeps the panel by the anchor.
+    window.addEventListener('scroll', place, true);
     return () => {
       resize?.disconnect();
       window.removeEventListener('resize', place);
+      window.removeEventListener('scroll', place, true);
     };
   }, [open]);
   return { panel, style };
@@ -91,7 +94,8 @@ export function useFloating<T extends HTMLElement = HTMLDivElement>(open: boolea
  * carries them away. `inside` is the layer first, then its anchor (a trigger). A scroll elsewhere
  * (a thread pinning itself to its newest message) leaves the layer open, and so does a scroll that
  * left the anchor where it was: the browser reports a scroll a frame late, so a click right after
- * scrolling a field into view would otherwise close the list it just opened.
+ * scrolling a field into view would otherwise close the list it just opened. A scroll that moves
+ * the anchor but leaves it in view keeps the layer open, next to it (useFloating follows).
  */
 export function useDismiss(open: boolean, close: () => void, inside: RefObject<HTMLElement | null>[]) {
   const latest = useRef({ close, inside });
@@ -112,6 +116,22 @@ export function useDismiss(open: boolean, close: () => void, inside: RefObject<H
         return Math.abs(after.top - before.top) >= 1 || Math.abs(after.left - before.left) >= 1;
       });
     };
+    /**
+     * Whether an anchor left what the scroller shows. A scroll that only nudges it (the browser
+     * or a test runner bringing an option into view) keeps the layer, which follows it.
+     */
+    const anchorAway = (scroller: Element) => {
+      const frame =
+        scroller === document.documentElement
+          ? { top: 0, left: 0, bottom: window.innerHeight, right: window.innerWidth }
+          : scroller.getBoundingClientRect();
+      return anchors().some((rect) => {
+        if (!rect || (!rect.width && !rect.height) || frame.bottom - frame.top <= 0) return true;
+        return (
+          rect.bottom <= frame.top || rect.top >= frame.bottom || rect.right <= frame.left || rect.left >= frame.right
+        );
+      });
+    };
     const pointer = (event: Event) => {
       if (elements().some((element) => element.contains(event.target as Node))) return;
       latest.current.close();
@@ -121,7 +141,9 @@ export function useDismiss(open: boolean, close: () => void, inside: RefObject<H
       const scroller = !target || target === document ? document.documentElement : target;
       const own = elements();
       if (own.some((element) => element.contains(scroller))) return;
-      if (own.some((element) => scroller.contains(element)) && anchorMoved()) latest.current.close();
+      if (own.some((element) => scroller.contains(element)) && anchorMoved() && anchorAway(scroller as Element)) {
+        latest.current.close();
+      }
     };
     document.addEventListener('pointerdown', pointer, true);
     document.addEventListener('scroll', scroll, true);

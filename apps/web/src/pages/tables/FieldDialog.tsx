@@ -20,6 +20,7 @@ import {
 import { icon } from '@greenhouse/ui/tokens';
 import {
   FIELD_TYPES,
+  isComputedType,
   OPTION_COLORS,
   type Base,
   type BaseTable,
@@ -73,7 +74,11 @@ export function FieldDialog({
   const [required, setRequired] = useState(field?.required ?? false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const types = field ? (field.is_primary ? [field.type] : typesFrom(field.type)) : [...FIELD_TYPES];
+  const types = field
+    ? field.is_primary
+      ? [field.type]
+      : typesFrom(field.type)
+    : FIELD_TYPES.filter((entry) => !isComputedType(entry));
   const hasParent = table.fields.some((entry) => entry.type === 'parent' && entry.id !== field?.id);
   const hasDependency = table.fields.some((entry) => entry.type === 'dependency' && entry.id !== field?.id);
 
@@ -103,6 +108,7 @@ export function FieldDialog({
     try {
       if (field) {
         await api.tables.fields.update(field.id, {
+          schema_revision: table.schema_revision,
           name: name.trim(),
           ...(type !== field.type ? { type } : {}),
           config: config(),

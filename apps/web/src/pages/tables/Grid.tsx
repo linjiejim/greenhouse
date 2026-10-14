@@ -70,6 +70,10 @@ const DEFAULT_WIDTH: Record<Field['type'], number> = {
   relation: 200,
   parent: 180,
   dependency: 200,
+  formula: 150,
+  lookup: 200,
+  rollup: 130,
+  ai: 240,
 };
 
 export const widthOf = (field: Field, widths: Record<string, number> | undefined) =>

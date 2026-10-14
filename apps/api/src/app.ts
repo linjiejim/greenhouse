@@ -52,6 +52,9 @@ import { createVoiceService, type VoiceService } from './modules/voice/service.j
 import { createFilesService, type FilesService } from './modules/files/service.js';
 import { knowledgeRoutes } from './modules/knowledge/routes.js';
 import { createKnowledgeService, type KnowledgeService } from './modules/knowledge/service.js';
+import { cardsRoutes } from './modules/tables/cards-routes.js';
+import { formsRoutes } from './modules/tables/forms-routes.js';
+import { importsRoutes } from './modules/tables/imports-routes.js';
 import { tablesRoutes } from './modules/tables/routes.js';
 import { createTablesService, type TablesService } from './modules/tables/service.js';
 import { notificationRoutes } from './modules/notifications/routes.js';
@@ -166,7 +169,9 @@ export function createServices(config: AppConfig, options: ServiceOptions = {}):
   });
   const skills = createSkillsService({ files, providers, agents, connectors, computers, notifications });
   const knowledge = createKnowledgeService({ files, notifications, hub, publicUrl: config.PUBLIC_URL });
-  const tables = createTablesService({ files, notifications, hub });
+  const tables = createTablesService({ files, notifications, hub, providers });
+  // Who sees a base is cached a few seconds; a change of groups, modules or status forgets it at once.
+  members.onAccessChange(() => tables.forgetAudiences());
   const schedules = createSchedulesService({ agents, background: () => engine.background });
   const requests = createRequestsService({ hub, notifications });
   const engine = createEngine({
@@ -309,6 +314,9 @@ export function createApp(services: Services, options: { webDir?: string } = {})
   signedIn.route('/skills', skillRoutes(services.skills));
   signedIn.route('/knowledge', knowledgeRoutes(services.knowledge));
   signedIn.route('/tables', tablesRoutes(services.tables));
+  signedIn.route('/tables', formsRoutes(services.tables.forms));
+  signedIn.route('/tables', importsRoutes(services.tables.imports));
+  signedIn.route('/tables', cardsRoutes(services.tables.cards));
   signedIn.use('/admin/*', requireAdmin);
   signedIn.route('/admin', adminMemberRoutes(services.members));
   signedIn.route('/admin/branding', brandingRoutes(services.workspace));
