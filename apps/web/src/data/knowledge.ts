@@ -5,11 +5,19 @@
  */
 
 import { useEffect, useRef } from 'react';
-import { useInfiniteQuery, useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
+import {
+  useInfiniteQuery,
+  useMutation,
+  useQuery,
+  useQueryClient,
+  type InfiniteData,
+  type QueryClient,
+} from '@tanstack/react-query';
 import type {
   CreateDocInput,
   CreateFolderInput,
   DocPresence,
+  KnowledgeFolder,
   KnowledgeItem,
   KnowledgeScope,
   KnowledgeSpace,
@@ -27,19 +35,43 @@ import { keys } from './query';
 /** Every list of the tree: folders, roots, recent docs, templates, archived, search, shares, files. */
 export const refreshTree = (client: QueryClient) => client.invalidateQueries({ queryKey: keys.knowledge });
 
+/** The tree comes a page at a time (200 rows): a list shows 显示更多 while there is a next page. */
+const nextPage = (page: { next_cursor: string | null }) => page.next_cursor ?? undefined;
+
 export function useKnowledgeRoots(scope: KnowledgeScope, enabled = true) {
-  const query = useQuery({
+  const query = useInfiniteQuery({
     queryKey: keys.knowledgeRoots(scope),
-    queryFn: () => api.knowledge.folders.roots(scope),
+    queryFn: ({ pageParam }) => api.knowledge.folders.roots(scope, pageParam ? { cursor: pageParam } : {}),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: nextPage,
     enabled,
   });
-  return { ...query, items: query.data?.items ?? [] };
+  return { ...query, items: query.data?.pages.flatMap((page) => page.items) ?? [] };
 }
 
+type FolderPages = InfiniteData<KnowledgeFolder, string | undefined>;
+
+/** A folder's pages as one folder: the first page's details, every page's children. */
+function joinPages(data: FolderPages): KnowledgeFolder {
+  const first = data.pages[0]!;
+  const last = data.pages[data.pages.length - 1]!;
+  return { ...first, children: data.pages.flatMap((page) => page.children), next_cursor: last.next_cursor };
+}
+
+/** A folder already in the cache (all its loaded pages), without asking the server. */
+export function cachedFolder(client: QueryClient, id: string): KnowledgeFolder | undefined {
+  const data = client.getQueryData<FolderPages>(keys.knowledgeFolder(id));
+  return data?.pages.length ? joinPages(data) : undefined;
+}
+
+/** A folder and what is in it, as one folder however many pages are loaded (`fetchNextPage` for more). */
 export function useFolder(id: string | null, enabled = true) {
-  return useQuery({
+  return useInfiniteQuery({
     queryKey: keys.knowledgeFolder(id ?? ''),
-    queryFn: () => api.knowledge.folders.get(id!),
+    queryFn: ({ pageParam }) => api.knowledge.folders.get(id!, pageParam ? { cursor: pageParam } : {}),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: nextPage,
+    select: joinPages,
     enabled: !!id && enabled,
   });
 }
@@ -65,8 +97,13 @@ export function useTemplates(enabled = true) {
 }
 
 export function useArchived(space: KnowledgeSpace) {
-  const query = useQuery({ queryKey: keys.knowledgeArchived(space), queryFn: () => api.knowledge.archived(space) });
-  return { ...query, items: query.data?.items ?? [] };
+  const query = useInfiniteQuery({
+    queryKey: keys.knowledgeArchived(space),
+    queryFn: ({ pageParam }) => api.knowledge.archived(space, pageParam ? { cursor: pageParam } : {}),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: nextPage,
+  });
+  return { ...query, items: query.data?.pages.flatMap((page) => page.items) ?? [] };
 }
 
 /** Full text over what I may read (KNOW-13), in a scope or inside a folder. */

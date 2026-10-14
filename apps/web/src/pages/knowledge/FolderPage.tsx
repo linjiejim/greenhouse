@@ -3,7 +3,8 @@
  * files and folders together, as a list or a grid, in hand order, by name or by the latest change;
  * search inside it; new docs (blank or from a template), folders and uploads (several at once,
  * also dropped from the computer); the folder's own actions in "⋯" (share, export, rename, move,
- * archive). A file opens in a preview over the list (`?file=`).
+ * archive). A file opens in a preview over the list (`?file=`). The list comes a page at a time
+ * and ends with 显示更多.
  */
 
 import { useEffect, useMemo, useRef, useState, type DragEvent } from 'react';
@@ -161,6 +162,9 @@ export function FolderPage({
   const scope: KnowledgeScope = space ?? 'team';
   const folder = useFolder(folderId);
   const roots = useKnowledgeRoots(scope, !folderId);
+  // An Agent's private folder sits at the top of its owner's space; what is below it never shares.
+  const above = folder.data?.path[0]?.id;
+  const personal = useKnowledgeRoots('personal', !!above && folder.data?.space === 'personal');
   const { menuFor, restore } = useItemMenu();
   const uploads = useUploads();
   const picker = useRef<HTMLInputElement>(null);
@@ -181,10 +185,14 @@ export function FolderPage({
   );
   const loading = folderId ? folder.isPending : roots.isPending;
   const error = folderId ? folder.error : roots.error;
+  const list = folderId ? folder : roots;
   const archived = !!data?.archived_at;
   const title = folderId ? (data?.name ?? '') : spaceName(scope);
   const itemScope: KnowledgeScope = data ? scopeOf(data, me.id) : scope;
   const canAdd = folderId ? !!data && canEdit(data) : scope !== 'shared';
+  const inAgent = !!data && (!!data.agent_id || personal.items.some((root) => root.id === above && !!root.agent_id));
+  // Hand order is changed where the folder (or space root) may be changed, and never in 分享给我.
+  const orderable = sort === 'manual' && canAdd;
   const target: KnowledgeTarget | null = folderId
     ? data
       ? { space: data.space, folderId: data.id, folderName: data.name }
@@ -241,6 +249,7 @@ export function FolderPage({
   if (folderId && data) {
     const own = menuFor(data, {
       create: false,
+      inAgentFolder: inAgent,
       afterArchive: () =>
         navigate(data.folder_id ? { page: 'folder', id: data.folder_id } : { page: 'knowledge', space: itemScope }),
     });
@@ -403,21 +412,30 @@ export function FolderPage({
             }
           />
         ) : (
-          <ul className={view === 'grid' ? 'app-knowledge-grid' : 'app-list'} aria-label={title}>
-            {sorted.map((item) => (
-              <ItemRow
-                key={itemKey(item)}
-                item={item}
-                view={view}
-                menu={menuFor(item, sort === 'manual' ? { siblings: sorted } : {})}
-                dnd={{
-                  ...dnd.source(item),
-                  ...dnd.target(item, sort === 'manual' && oneFolder(sorted) ? sorted : undefined),
-                }}
-                dropAt={dnd.over?.key === itemKey(item) ? dnd.over.position : null}
-              />
-            ))}
-          </ul>
+          <>
+            <ul className={view === 'grid' ? 'app-knowledge-grid' : 'app-list'} aria-label={title}>
+              {sorted.map((item) => (
+                <ItemRow
+                  key={itemKey(item)}
+                  item={item}
+                  view={view}
+                  menu={menuFor(item, { inAgentFolder: inAgent, ...(orderable ? { siblings: sorted } : {}) })}
+                  dnd={{
+                    ...dnd.source(item),
+                    ...dnd.target(item, orderable && oneFolder(sorted) ? sorted : undefined),
+                  }}
+                  dropAt={dnd.over?.key === itemKey(item) ? dnd.over.position : null}
+                />
+              ))}
+            </ul>
+            {list.hasNextPage && (
+              <div className="app-knowledge-more">
+                <Button kind="ghost" loading={list.isFetchingNextPage} onClick={() => void list.fetchNextPage()}>
+                  {t('knowledge.showMore')}
+                </Button>
+              </div>
+            )}
+          </>
         )}
       </div>
       <input

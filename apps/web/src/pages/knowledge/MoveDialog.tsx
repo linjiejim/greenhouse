@@ -22,6 +22,19 @@ import { useI18n } from '../../lib/i18n';
 type Spot = { folder: string | null; space: KnowledgeSpace; name: string };
 const spotKey = (spot: Pick<Spot, 'folder' | 'space'>) => spot.folder ?? `root:${spot.space}`;
 
+/** 显示更多 in the picker: the next page of a folder or a space root. */
+function PickerMore({ depth, loading, onMore }: { depth: number; loading: boolean; onMore: () => void }) {
+  const { t } = useI18n();
+  return (
+    <div className="app-picker-row" style={{ paddingLeft: `calc(${depth} * var(--gh-space-4))` }}>
+      <span className="app-picker-toggle" aria-hidden />
+      <Button kind="ghost" size="sm" loading={loading} onClick={onMore}>
+        {t('knowledge.showMore')}
+      </Button>
+    </div>
+  );
+}
+
 function Branch({
   id,
   name,
@@ -84,6 +97,9 @@ function Branch({
             onSelect={onSelect}
           />
         ))}
+      {open && folder.hasNextPage && (
+        <PickerMore depth={depth + 1} loading={folder.isFetchingNextPage} onMore={() => void folder.fetchNextPage()} />
+      )}
     </>
   );
 }
@@ -149,6 +165,9 @@ function Root({
           onSelect={onSelect}
         />
       ))}
+      {roots.hasNextPage && (
+        <PickerMore depth={1} loading={roots.isFetchingNextPage} onMore={() => void roots.fetchNextPage()} />
+      )}
     </>
   );
 }

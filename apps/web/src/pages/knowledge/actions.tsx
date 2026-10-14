@@ -121,8 +121,13 @@ export function useItemMenu() {
       open?: boolean;
       create?: boolean;
       download?: boolean;
-      /** The rows of its folder in hand order: 上移 / 下移, the keyboard's way to reorder. */
+      /**
+       * The rows of its folder in hand order: 上移 / 下移, the keyboard's way to reorder. Only where
+       * the folder (or space root) may be put in order: never 分享给我, never a read-only folder.
+       */
       siblings?: readonly KnowledgeItem[];
+      /** It sits in an Agent's private folder, which nothing in is shared. */
+      inAgentFolder?: boolean;
     } = {},
   ): MenuEntry[] {
     if (item.archived_at) {
@@ -171,7 +176,7 @@ export function useItemMenu() {
       (other) => other.folder_id === item.folder_id && other.space === item.space && other.owner_id === item.owner_id,
     );
     const at = together?.findIndex((other) => other.type === item.type && other.id === item.id) ?? -1;
-    if (together && together.length === options.siblings?.length && at >= 0 && canEdit(item)) {
+    if (together && together.length === options.siblings?.length && at >= 0) {
       if (at > 0)
         entries.push({ label: t('knowledge.moveUp'), icon: glyph(ArrowUp), onClick: () => nudge(item, together, -1) });
       if (at < together.length - 1)
@@ -181,7 +186,7 @@ export function useItemMenu() {
           onClick: () => nudge(item, together, 1),
         });
     }
-    if (item.type !== 'file' && canShare(item)) {
+    if (item.type !== 'file' && canShare(item) && !options.inAgentFolder) {
       entries.push({
         label: t('knowledge.share'),
         icon: glyph(Share2),

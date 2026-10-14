@@ -2815,6 +2815,13 @@ button.app-agent-card {
   gap: var(--gh-space-3);
 }
 
+/* 显示更多 under a folder's list or grid, while the server has another page. */
+.app-knowledge-more {
+  display: flex;
+  justify-content: center;
+  margin-top: var(--gh-space-2);
+}
+
 .app-knowledge-card {
   position: relative;
   display: flex;

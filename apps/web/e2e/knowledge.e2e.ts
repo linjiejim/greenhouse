@@ -352,6 +352,53 @@ test('move a doc with 移动到… and by dragging it onto a folder', async ({ p
   await filed.getByRole('button', { name: 'Invoice的操作' }).click();
   await page.getByRole('menuitem', { name: '下移' }).click();
   await expect(filed.getByRole('link')).toHaveText([/Receipt/, /Invoice/]);
+
+  // My own doc dragged into the team space: that is for good, so the drop asks first.
+  await doc(request, { title: 'Private memo', content: 'Mine.', space: 'personal' });
+  await page.goto('/#/knowledge?space=personal');
+  const mine = page.getByRole('main').getByRole('list', { name: '个人' });
+  await directory(page).getByRole('radio', { name: '团队' }).click();
+  const memo = mine.getByRole('link', { name: /Private memo/ });
+  await memo.dragTo(directory(page).getByRole('link', { name: 'Filed folder' }));
+  const ask = page.getByRole('alertdialog', { name: '把「Private memo」移进团队知识库？' });
+  await ask.getByRole('button', { name: '取消' }).click();
+  await expect(memo).toBeVisible();
+  await memo.dragTo(directory(page).getByRole('link', { name: 'Filed folder' }));
+  await ask.getByRole('button', { name: '移进团队知识库' }).click();
+  await expect(page.getByText('已把「Private memo」移到「Filed folder」')).toBeVisible();
+  await expect(memo).toHaveCount(0);
+});
+
+test('a folder with more than a page of items shows them all through 显示更多', async ({ page, request }) => {
+  const big = await folder(request, 'Big folder');
+  const titles = Array.from({ length: 205 }, (_, index) => `Note ${String(index + 1).padStart(3, '0')}`);
+  for (let start = 0; start < titles.length; start += 25) {
+    await Promise.all(
+      titles.slice(start, start + 25).map((title) => doc(request, { title, folder_id: big.id, content: title })),
+    );
+  }
+  await open(page, `/#/knowledge/folder/${big.id}`);
+  const list = page.getByRole('main').getByRole('list', { name: 'Big folder' });
+  const tree = directory(page);
+  await expect(list.getByRole('link')).toHaveCount(200);
+  await expect(tree.getByRole('link', { name: 'Note 200' })).toBeVisible();
+  await expect(tree.getByRole('link', { name: 'Note 201' })).toHaveCount(0);
+
+  // The page and the tree show the same folder: the next page loads for both.
+  await page.getByRole('main').getByRole('button', { name: '显示更多' }).click();
+  await expect(list.getByRole('link')).toHaveCount(205);
+  await expect(tree.getByRole('link', { name: 'Note 205' })).toBeVisible();
+  await expect(page.getByRole('button', { name: '显示更多' })).toHaveCount(0);
+
+  // The tree has its own 显示更多 for a folder opened only there.
+  await page.goto('/#/knowledge?space=team');
+  await expect(tree.getByRole('button', { name: '显示更多' })).toHaveCount(0);
+  await page.reload();
+  await tree.getByRole('link', { name: 'Big folder' }).click();
+  await page.goto('/#/knowledge?space=team');
+  await expect(tree.getByRole('link', { name: 'Note 200' })).toBeVisible();
+  await tree.getByRole('button', { name: '显示更多' }).click();
+  await expect(tree.getByRole('link', { name: 'Note 205' })).toBeVisible();
 });
 
 test('export a doc as Markdown and a folder as a ZIP', async ({ page, request }) => {
@@ -479,6 +526,14 @@ test('an Agent keeps notes in its own folder: its owner sees it under the Agent,
   await page.keyboard.press('Escape');
   await folderRow.getByRole('link', { name: /Greeny/ }).click();
   await expect(page.getByText('Agent 的参考文件夹：只有这个 Agent 和你能看到。')).toBeVisible();
+  // What is inside does not say it is in an Agent's folder; its menu offers no 分享 all the same.
+  await page
+    .getByRole('main')
+    .getByRole('button', { name: /^Agent note.*的操作$/ })
+    .click();
+  await expect(page.getByRole('menuitem', { name: '移动到…' })).toBeVisible();
+  await expect(page.getByRole('menuitem', { name: '分享' })).toHaveCount(0);
+  await page.keyboard.press('Escape');
   await page
     .getByRole('main')
     .getByRole('link', { name: /Agent note/ })

@@ -67,11 +67,20 @@ export function ArchivedPage({ space }: { space: KnowledgeSpace }) {
       ) : !archived.items.length ? (
         <Empty icon={<Archive />} title={t('knowledge.noneArchived')} />
       ) : (
-        <ul className="app-list" aria-label={t('directory.archived')}>
-          {archived.items.map((item) => (
-            <ArchivedRow key={`${item.type}:${item.id}`} item={item} />
-          ))}
-        </ul>
+        <>
+          <ul className="app-list" aria-label={t('directory.archived')}>
+            {archived.items.map((item) => (
+              <ArchivedRow key={`${item.type}:${item.id}`} item={item} />
+            ))}
+          </ul>
+          {archived.hasNextPage && (
+            <div className="app-knowledge-more">
+              <Button kind="ghost" loading={archived.isFetchingNextPage} onClick={() => void archived.fetchNextPage()}>
+                {t('knowledge.showMore')}
+              </Button>
+            </div>
+          )}
+        </>
       )}
     </Page>
   );

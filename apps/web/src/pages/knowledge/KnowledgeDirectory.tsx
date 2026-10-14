@@ -2,18 +2,19 @@
  * The knowledge directory (PRD §6.1): the space switch (团队 / 个人 / 分享给我), the folder tree with
  * docs and files in it, and 已归档 at the bottom. Folders open in place (the chevron, or the arrow
  * keys) and on their own page (the row); every row has the right-click menu of its "⋯", renames
- * in place, and can be dragged into a folder or between rows to put it in order. The directory's
- * search filters the rows it has loaded.
+ * in place, and can be dragged into a folder or between rows to put it in order (where the folder
+ * may be changed; never in 分享给我). Folders load a page at a time and end with 显示更多. The
+ * directory's search filters the rows it has loaded.
  */
 
 import { useCallback, useState, type KeyboardEvent, type MouseEvent } from 'react';
-import { Archive } from 'lucide-react';
+import { Archive, MoreHorizontal } from 'lucide-react';
 import { useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { Segmented, Skeleton } from '@greenhouse/ui/kit';
 import { icon } from '@greenhouse/ui/tokens';
-import type { KnowledgeDoc, KnowledgeFolder, KnowledgeItem, KnowledgeScope } from '@greenhouse/contract';
+import type { KnowledgeDoc, KnowledgeItem, KnowledgeScope } from '@greenhouse/contract';
 import { useNotify } from '../../app/notify';
-import { useFolder, useKnowledgeRoots } from '../../data/knowledge';
+import { cachedFolder, useFolder, useKnowledgeRoots } from '../../data/knowledge';
 import { keys } from '../../data/query';
 import { errorText } from '../../lib/errors';
 import { useI18n } from '../../lib/i18n';
@@ -46,7 +47,7 @@ export function useNewTarget(route: Route): () => KnowledgeTarget {
       return route.space === 'team' || route.space === 'personal' ? { space: route.space } : root;
     }
     if (route.page === 'folder') {
-      const folder = client.getQueryData<KnowledgeFolder>(keys.knowledgeFolder(route.id));
+      const folder = cachedFolder(client, route.id);
       return folder && canEdit(folder) ? { space: folder.space, folderId: folder.id, folderName: folder.name } : root;
     }
     if (route.page === 'doc') {
@@ -68,7 +69,7 @@ export function useNewTarget(route: Route): () => KnowledgeTarget {
 function folderMatches(client: QueryClient, folder: KnowledgeItem, query: string, depth = 0): boolean {
   if (matchesName(folder.name, query)) return true;
   if (depth > 8) return false;
-  const loaded = client.getQueryData<KnowledgeFolder>(keys.knowledgeFolder(folder.id));
+  const loaded = cachedFolder(client, folder.id);
   return (loaded?.children ?? []).some((child) =>
     child.type === 'folder' ? folderMatches(client, child, query, depth + 1) : matchesName(child.name, query),
   );
@@ -82,6 +83,7 @@ function current(route: Route): string | null {
 function TreeRow({
   item,
   siblings,
+  inAgent,
   depth,
   route,
   query,
@@ -90,6 +92,8 @@ function TreeRow({
   item: KnowledgeItem;
   /** Its folder's rows in order, when they can be put in order together. */
   siblings: KnowledgeItem[] | undefined;
+  /** Inside an Agent's private folder (the rows there don't say so themselves). */
+  inAgent: boolean;
   depth: number;
   route: Route;
   query: string;
@@ -137,7 +141,7 @@ function TreeRow({
         indent={depth}
         expanded={isFolder ? expanded : undefined}
         leaf={!isFolder}
-        menu={() => menuFor(item, { onRename: () => setRenaming(true), siblings })}
+        menu={() => menuFor(item, { onRename: () => setRenaming(true), siblings, inAgentFolder: inAgent })}
         menuLabel={t('row.actionsFor', { name: item.name })}
         renaming={renaming}
         onRename={(name) => {
@@ -148,27 +152,49 @@ function TreeRow({
         rowProps={{ ...dnd.source(item), ...dnd.target(item, siblings), onKeyDown }}
         dropAt={dnd.over?.key === itemKey(item) ? dnd.over.position : null}
       />
-      {isFolder && expanded && <TreeFolder id={item.id} depth={depth + 1} route={route} query={query} tools={tools} />}
+      {isFolder && expanded && (
+        <TreeFolder
+          id={item.id}
+          inAgent={inAgent || !!item.agent_id}
+          depth={depth + 1}
+          route={route}
+          query={query}
+          tools={tools}
+        />
+      )}
     </>
   );
 }
 
+/** The next page of a folder or a space root, on demand. */
+interface More {
+  load: () => void;
+  loading: boolean;
+}
+
 function TreeLevel({
   items,
+  orderable,
+  inAgent,
+  more,
   depth,
   route,
   query,
   tools,
 }: {
   items: KnowledgeItem[];
+  /** The folder (or root) may be put in order: it can be changed, and isn't 分享给我. */
+  orderable: boolean;
+  inAgent: boolean;
+  more: More | null;
   depth: number;
   route: Route;
   query: string;
   tools: Tools;
 }) {
+  const { t } = useI18n();
   const client = useQueryClient();
-  // 分享给我 lists what several people own: nothing there is put in order together.
-  const ordered = oneFolder(items) ? items : undefined;
+  const ordered = orderable && oneFolder(items) ? items : undefined;
   const visible = query
     ? items.filter((item) =>
         item.type === 'folder' ? folderMatches(client, item, query) : matchesName(item.name, query),
@@ -181,24 +207,36 @@ function TreeLevel({
           key={itemKey(item)}
           item={item}
           siblings={ordered}
+          inAgent={inAgent}
           depth={depth}
           route={route}
           query={query}
           tools={tools}
         />
       ))}
+      {more && (
+        <DirectoryRow
+          leading={<MoreHorizontal size={icon.md} strokeWidth={icon.stroke} />}
+          title={more.loading ? t('common.loading') : t('knowledge.showMore')}
+          indent={depth}
+          leaf
+          onClick={() => !more.loading && more.load()}
+        />
+      )}
     </>
   );
 }
 
 function TreeFolder({
   id,
+  inAgent,
   depth,
   route,
   query,
   tools,
 }: {
   id: string;
+  inAgent: boolean;
   depth: number;
   route: Route;
   query: string;
@@ -224,7 +262,18 @@ function TreeFolder({
       </p>
     );
   }
-  return <TreeLevel items={items} depth={depth} route={route} query={query} tools={tools} />;
+  return (
+    <TreeLevel
+      items={items}
+      orderable={canEdit(folder.data)}
+      inAgent={inAgent}
+      more={folder.hasNextPage ? { load: () => void folder.fetchNextPage(), loading: folder.isFetchingNextPage } : null}
+      depth={depth}
+      route={route}
+      query={query}
+      tools={tools}
+    />
+  );
 }
 
 export function KnowledgeDirectory({ route, query }: { route: Route; query: string }) {
@@ -268,7 +317,18 @@ export function KnowledgeDirectory({ route, query }: { route: Route; query: stri
         ) : roots.isError ? (
           <p className="app-muted app-directory-note">{errorText(roots.error, t)}</p>
         ) : roots.items.length ? (
-          <TreeLevel items={roots.items} depth={0} route={route} query={query} tools={tools} />
+          <TreeLevel
+            items={roots.items}
+            orderable={scope !== 'shared'}
+            inAgent={false}
+            more={
+              roots.hasNextPage ? { load: () => void roots.fetchNextPage(), loading: roots.isFetchingNextPage } : null
+            }
+            depth={0}
+            route={route}
+            query={query}
+            tools={tools}
+          />
         ) : (
           <p className="app-muted app-directory-note">
             {scope === 'shared'

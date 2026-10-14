@@ -95,8 +95,11 @@ export function ShareDialog({
     { value: 'viewer', label: t('knowledge.canView') },
     { value: 'editor', label: t('knowledge.canEdit') },
   ];
+  // A group deleted since it was shared has no name any more; the share stays until removed here.
   const nameOf = (entry: Pick<Entry, 'type' | 'name'>) =>
-    entry.type === 'workspace' ? t('knowledge.everyone') : entry.name;
+    entry.type === 'workspace'
+      ? t('knowledge.everyone')
+      : entry.name || (entry.type === 'group' ? t('knowledge.deletedGroup') : t('knowledge.someone'));
   const taken = new Set((draft ?? []).map(keyOf));
   const options = [
     ...(taken.has('workspace:')

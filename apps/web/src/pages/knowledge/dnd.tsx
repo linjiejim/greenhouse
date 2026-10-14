@@ -2,17 +2,20 @@
  * Dragging in the knowledge tree and lists (KNOW-01): onto the middle of a folder moves an item
  * into it; onto the top or bottom edge of a row puts it before or after that row (moving it to
  * that row's folder first when it came from another). Files from the computer dropped on a folder
- * upload into it. The server has the last word (cycles, spaces, rights) and says why in a toast.
+ * upload into it. Moving my own item into the team space is for good, so the drop asks first, as
+ * 移动到… says. The server has the last word (cycles, spaces, rights) and says why in a toast.
  */
 
 import { useState, type DragEvent } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
+import { ConfirmDialog } from '@greenhouse/ui/kit';
 import type { KnowledgeItem } from '@greenhouse/contract';
 import { useNotify } from '../../app/notify';
 import { refreshTree } from '../../data/knowledge';
 import { api } from '../../lib/api';
 import { errorText } from '../../lib/errors';
 import { useI18n } from '../../lib/i18n';
+import { useOpenOverlay } from '../../shell/overlays';
 import { canEdit, canMove, dropPosition, itemKey, reorderAround, type DropPosition } from './helpers';
 
 const DRAG_TYPE = 'application/x-greenhouse-knowledge';
@@ -26,6 +29,7 @@ export function useKnowledgeDnd(options: { onFiles?: (files: File[], folder: Kno
   const { t } = useI18n();
   const notify = useNotify();
   const client = useQueryClient();
+  const openOverlay = useOpenOverlay();
   const [over, setOver] = useState<{ key: string; position: DropPosition } | null>(null);
 
   const move = async (item: KnowledgeItem, input: { folder_id: string | null; space?: KnowledgeItem['space'] }) => {
@@ -129,7 +133,25 @@ export function useKnowledgeDnd(options: { onFiles?: (files: File[], folder: Kno
           }
           const moving = dragging;
           dragging = null;
-          if (moving) void land(moving, item, position, siblings ?? []);
+          if (!moving) return;
+          const go = () => void land(moving, item, position, siblings ?? []);
+          if (moving.space !== 'personal' || item.space !== 'team') return go();
+          openOverlay({
+            type: 'custom',
+            render: (close) => (
+              <ConfirmDialog
+                title={t('knowledge.toTeamTitle', { name: moving.name })}
+                confirmLabel={t('knowledge.toTeamConfirm')}
+                onCancel={close}
+                onConfirm={() => {
+                  close();
+                  go();
+                }}
+              >
+                {t('knowledge.toTeamHint')}
+              </ConfirmDialog>
+            ),
+          });
         },
       };
     },
