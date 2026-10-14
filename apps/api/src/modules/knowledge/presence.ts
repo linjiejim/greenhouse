@@ -65,10 +65,11 @@ export function createPresence(now: () => number = Date.now) {
       return { items: list(docId), changed };
     },
 
+    /** `left` when they had it open: only then does their leaving change anything. */
     leave(docId: string, memberId: string) {
       const { pruned } = prune(docId);
       const left = docs.get(docId)?.delete(memberId) ?? false;
-      return { items: list(docId), changed: pruned || left };
+      return { items: list(docId), changed: pruned || left, left };
     },
 
     /** The members who have it open, to tell about changes to it. */

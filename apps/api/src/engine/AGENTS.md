@@ -95,6 +95,7 @@ The one engine for conversations and runs. Read with the root AGENTS.md and docs
 - The tree lock (an advisory lock in service.ts): folder, doc and file moves hold it alone; creating, uploading and sharing hold it shared and read the place again under it. Folders nest at most 32 deep; tree walks fail on a loop or anything deeper instead of stopping short.
 - File links in docs and comments are stored unsigned and signed per reader on read (modules/knowledge/markdown.ts): only with no origin or PUBLIC_URL's, and only as the whole target of a Markdown link or image that nothing around can extend. Another host's path, raw HTML, autolinks and bare addresses stay unsigned; a doc with `<base>` gets no signature.
 - Doc Markdown reaches a page only through the editor's ProseMirror parser or a sanitiser: md-html's HTML is raw.
+- Presence ("who has it open", KNOW-06) lives in each API process's memory, so with several processes people see only those on the same one. A heartbeat that fails its access check takes the member off the list at once; leaving tells only those still there, and only when the leaver was there.
 
 ## Computers
 - One computer per Agent and member from the sandbox provider (modules/computers): the owner's, or a member's own copy of a public Agent. The Docker adapter always runs hardened (read-only root, no capabilities, bounded resources, no published port) with the home on a named volume; production uses gVisor (`runsc`).

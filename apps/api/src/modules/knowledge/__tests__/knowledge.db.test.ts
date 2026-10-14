@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { strFromU8, unzipSync } from 'fflate';
 import { and, eq } from 'drizzle-orm';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { RealtimeEvent } from '@greenhouse/contract';
 import {
   comments,
@@ -22,6 +22,7 @@ import {
 import { createTestApp } from '../../../testing.js';
 import { streamedUpload } from '../../files/__tests__/streamed-upload.js';
 import { MAX_FOLDER_DEPTH } from '../access.js';
+import { PRESENCE_TTL_MS } from '../presence.js';
 
 type App = ReturnType<typeof createTestApp>;
 type Who = Awaited<ReturnType<App['member']>>;
@@ -686,6 +687,48 @@ describe('presence and realtime', () => {
       items: [{ type: 'member', id: chen.id, role: 'viewer' }],
     });
     expect((await as(chen).put(`/api/knowledge/docs/${mine.id}/presence`, { state: 'editing' })).status).toBe(403);
+  });
+
+  it('tells only who still has a doc open, and drops a reader who lost access', async () => {
+    const { lin, chen, person, as, listen } = await setup();
+    const wu = await person('Wu');
+    const doc = (await as(lin).post('/api/knowledge/docs', { title: 'Mine', content: 'a' })).body;
+    await as(lin).put(`/api/knowledge/docs/${doc.id}/share`, {
+      items: [{ type: 'member', id: chen.id, role: 'viewer' }],
+    });
+    const linHears = listen(lin);
+    const chenHears = listen(chen);
+    const wuHears = listen(wu);
+    await as(lin).put(`/api/knowledge/docs/${doc.id}/presence`, { state: 'editing' });
+    await as(chen).put(`/api/knowledge/docs/${doc.id}/presence`, { state: 'viewing' });
+
+    // Leaving a doc one never had open (here one Wu may not read, after the others timed out)
+    // changes nothing and tells nobody, Wu included.
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + PRESENCE_TTL_MS + 5_000 });
+    try {
+      expect((await as(wu).del(`/api/knowledge/docs/${doc.id}/presence`)).status).toBe(204);
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(wuHears).toEqual([]);
+
+    // Both open it again; then Chen loses access. Chen's next heartbeat fails and takes Chen off
+    // the list, so the doc's live updates stop reaching Chen.
+    await as(lin).put(`/api/knowledge/docs/${doc.id}/presence`, { state: 'editing' });
+    await as(chen).put(`/api/knowledge/docs/${doc.id}/presence`, { state: 'viewing' });
+    await as(lin).put(`/api/knowledge/docs/${doc.id}/share`, { items: [] });
+    expect((await as(chen).put(`/api/knowledge/docs/${doc.id}/presence`, { state: 'viewing' })).status).toBe(404);
+    expect(linHears.at(-1)).toEqual({
+      type: 'doc.presence',
+      data: { doc_id: doc.id, items: [expect.objectContaining({ member_id: lin.id })] },
+    });
+    const heard = chenHears.length;
+    await as(lin).patch(`/api/knowledge/docs/${doc.id}`, { version: 1, content: 'b' });
+    await as(lin).post(`/api/knowledge/docs/${doc.id}/comments`, { body: 'Saved.' });
+    expect(chenHears.length).toBe(heard);
+    expect((await as(lin).get(`/api/knowledge/docs/${doc.id}/presence`)).body.items).toEqual([
+      expect.objectContaining({ member_id: lin.id }),
+    ]);
   });
 });
 

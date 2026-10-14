@@ -1570,22 +1570,29 @@ export function createKnowledgeService(deps: {
       return { items: presence.list(docId) };
     },
 
-    /** A heartbeat from an open doc; editing needs the right to change it. */
+    /**
+     * A heartbeat from an open doc; editing needs the right to change it. Someone who may no
+     * longer read it leaves the list at once, so live updates stop reaching them.
+     */
     async beat(memberId: string, docId: string, state: PresenceState): Promise<{ items: DocPresence[] }> {
-      const reader = await readerFor(memberId);
-      const { role } = await docAt(reader, docId);
-      if (state === 'editing') need(role, 'editor', 'You can read this doc but not change it.');
-      const { items, changed } = presence.beat(docId, { id: memberId, name: reader.name }, state);
+      let found: { reader: Reader; role: Role };
+      try {
+        const reader = await readerFor(memberId);
+        found = { reader, role: (await docAt(reader, docId)).role };
+      } catch (error) {
+        service.leave(memberId, docId);
+        throw error;
+      }
+      if (state === 'editing') need(found.role, 'editor', 'You can read this doc but not change it.');
+      const { items, changed } = presence.beat(docId, { id: memberId, name: found.reader.name }, state);
       if (changed) tell(docId, { type: 'doc.presence', data: { doc_id: docId, items } });
       return { items };
     },
 
+    /** I closed it. Only someone who had it open changes the list, and only those left are told. */
     leave(memberId: string, docId: string): void {
-      const { items, changed } = presence.leave(docId, memberId);
-      if (changed) {
-        const watchers = [...new Set([...presence.watchers(docId), memberId])];
-        deps.hub.publish(watchers, { type: 'doc.presence', data: { doc_id: docId, items } });
-      }
+      const { items, left } = presence.leave(docId, memberId);
+      if (left) tell(docId, { type: 'doc.presence', data: { doc_id: docId, items } });
     },
 
     // ── Files ────────────────────────────────────────────
