@@ -1,3 +1,4 @@
+import { recordCount } from '../usage/counts.js';
 import { and, eq, gt, isNull, sql } from 'drizzle-orm';
 import { authLinks, getDb, members, newId, refreshTokens, transaction, type Db, type Member } from '@greenhouse/db';
 import type { CompleteLinkInput, IssuedLink, LinkInfo, TokenPair } from '@greenhouse/contract';
@@ -73,6 +74,7 @@ export function createAuthService(deps: { tokens: Tokens; publicUrl: string }) {
         .update(members)
         .set({ lastLoginAt: sql`now()` })
         .where(eq(members.id, member.id));
+      if (member.lastLoginAt === null) await recordCount(member.id, 'activated', 'first-login');
       return issueSession(db, member, input.client);
     },
 
@@ -173,6 +175,7 @@ export function createAuthService(deps: { tokens: Tokens; publicUrl: string }) {
           .update(refreshTokens)
           .set({ consumedAt: sql`now()` })
           .where(and(eq(refreshTokens.memberId, member.id), isNull(refreshTokens.consumedAt)));
+        if (member.status === 'invited') await recordCount(member.id, 'activated', 'first-login');
         return issueSession(db, { id: member.id, role: member.role, authVersion }, client);
       });
     },

@@ -1,3 +1,4 @@
+import { MediaCard } from './MediaCard';
 /** A message's files (CONV-08): pictures inline, the rest as chips that download. */
 
 import { Download, FileText } from 'lucide-react';
@@ -9,10 +10,15 @@ export function Attachments({ ids, mine = false }: { ids: string[]; mine?: boole
   const { locale, t } = useI18n();
   const { files, loading } = useFiles(ids);
   if (!ids.length) return null;
-  const images = files.filter(isImage);
-  const others = files.filter((file) => !isImage(file));
+  const images = files.filter((file) => isImage(file) && file.purpose !== 'artifact');
+  const others = files.filter((file) => !isImage(file) && file.purpose !== 'artifact');
   return (
     <div className={cx('app-message-files', mine && 'is-mine')}>
+      {files
+        .filter((file) => file.purpose === 'artifact')
+        .map((file) => (
+          <MediaCard key={file.id} file={file} />
+        ))}
       {images.map((file) => (
         <a key={file.id} className="app-message-image" href={file.url} target="_blank" rel="noopener noreferrer">
           <img src={file.url} alt={file.name} loading="lazy" />

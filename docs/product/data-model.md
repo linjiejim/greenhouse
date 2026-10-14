@@ -237,3 +237,9 @@ v1 迁移工具的 ID 映射与检查点放在单独的 `migration` schema，不
 11. 成员默认只停用；硬删除时必须指定接收人，共享对象转给接收人，私有数据随之删除。
 
 M1.7：运行检查点保存 `tainted`、`read_private` 与决定结果，后台审批后用已记录的模型步骤及已完成的工具结果重建上下文。结果 `output` 带 `text` 和 `findings`。运行结束和 `run_report` 汇报任务同事务，汇报消息与通知按运行 / 尝试去重；只有选择 `continue_after` 才产生唤醒事件，静默无发现时跳过跟进。事件唤醒仍是 turn 运行，以后台工具规则执行。
+
+M3 页面会话：`conversations.context` 保存有界对象引用，不保存页面 HTML、密钥或客户端快照。每轮重新验证对象读取权限。
+
+M3.4 计数（#70）：`metric_events` 仅存 identity id、member_id（逻辑引用）、kind（active／assigned／adopted／activated）、key（UTC 日期或产出逻辑引用）和 created_at；唯一 `(member_id,kind,key)`。active 为交办、处理卡片或采纳；assigned 仅成员发送请求，首日激活必须先交办后采纳。首次登录／邀请激活只记一次。同一 run 的 👍、引用、下载和成功的批准写入合并计一次；无 run 的欢迎消息／文件使用对象键；撤回评分不抹除已经发生的采纳。管理员读聚合，无内容列、任意 metadata 或新增内容副本。
+
+视频复用 runs（kind background、source conversation、input.media=video）、files（purpose artifact）、jobs（media_video 与 run_report）。checkpoint 保留提交中标记、厂商 ID、进度和轮询序号；提交中断没有已知 ID 时标为结果未知，不再购买生成。原引擎的模型运行领取／清扫排除媒体运行，媒体 worker 按 jobs 租约写状态；完成状态与报告排队同一事务提交。

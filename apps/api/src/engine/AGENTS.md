@@ -159,3 +159,10 @@ The one engine for conversations and runs. Read with the root AGENTS.md and docs
 - Table citations are permission-filtered per recipient. Table reads use the same records and aggregate compiler; app reads/actions use immutable publications and intersected roles.
 - Record handoffs and automation output use table_mutation, including result revision checks and approval cards. Inline record/event context starts tainted and private.
 - Table automation events use deliver, then create background runs under the wake cap. Their tools default to none; same_base_read is table_query confined to the source base. Carry tableEventChain through normal and approved writes.
+
+- Page conversations resolve their saved object reference with the asker’s current rights on each turn. Page data is fenced in the closing message and taints the turn from the start.
+
+- At a model step boundary, consume only this turn’s asker/Agent inbox entries under the conversation lock and live lease. End the previous reply, keep member seq, and append a continuation in the same run. Others queue; Stop wins under the same lock. Keep the existing total step cap across continuations.
+- generate_image uses the image provider and attaches artifacts. generate_video requires approval, then queues media_video jobs; media runs never enter the model worker. Completion uses the existing run_report job.
+
+- The asker may interject without repeating @ in a room, including while a decision follow-up answers. Other named Agents queue. Freeze the initial history before the reply seq; later messages enter only at boundaries.

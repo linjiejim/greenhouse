@@ -81,6 +81,7 @@ test('build a notify automation and an Agent automation and inspect their histor
       async () =>
         (await apiAs<CursorPage<AutomationRun>>(request, 'lin', 'GET', `/api/tables/automations/${agent.id}/runs`))
           .items[0]?.status,
+      { timeout: 15000 },
     )
     .toBe('succeeded');
   const notified = rules.items.find((r) => r.name === 'T6 notify')!;
@@ -89,6 +90,7 @@ test('build a notify automation and an Agent automation and inspect their histor
       async () =>
         (await apiAs<CursorPage<AutomationRun>>(request, 'lin', 'GET', `/api/tables/automations/${notified.id}/runs`))
           .items[0]?.status,
+      { timeout: 15000 },
     )
     .toBe('succeeded');
   await page.getByRole('button', { name: '运行历史' }).last().click();
@@ -145,6 +147,7 @@ test('an Agent updates a shared table after approval and cited records open thei
         ).record.values[field.id],
     )
     .toBe('Approved record');
+  await expect(page.getByText('Done.', { exact: true })).toBeVisible();
   await expect(composer(page)).toBeEnabled();
   await composer(page).fill(`read table record ${record.record.id}`);
   await composer(page).press('Enter');

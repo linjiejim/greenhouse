@@ -188,6 +188,11 @@ function ExistingConversation({ id }: { id: string }) {
     return map;
   }, [requests.items]);
 
+  const latestReplyByRun = new Map<string, string>();
+  for (const message of messages.messages) {
+    if (message.role === 'assistant' && message.run_id) latestReplyByRun.set(message.run_id, message.id);
+  }
+
   const shownRuns = new Set(
     messages.messages
       .filter((message) => message.role === 'assistant')
@@ -428,7 +433,9 @@ function ExistingConversation({ id }: { id: string }) {
                 showAuthor={showAuthor}
                 mine={mine}
                 requests={
-                  message.run_id && message.role === 'assistant' ? (requestsByRun.get(message.run_id) ?? []) : []
+                  message.run_id && message.role === 'assistant' && latestReplyByRun.get(message.run_id) === message.id
+                    ? (requestsByRun.get(message.run_id) ?? [])
+                    : []
                 }
                 timeZone={timeZone}
                 rating={message.my_rating}

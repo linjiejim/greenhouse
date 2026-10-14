@@ -60,6 +60,17 @@ export const conversationListQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(200).default(50),
 });
 
+/** Page references are resolved by the server with the asker's current permissions. */
+export const pageContextSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('doc'), id: z.string().max(100) }).strict(),
+  z.object({ kind: z.literal('record'), id: z.string().max(100) }).strict(),
+  z.object({ kind: z.literal('run'), id: z.string().max(100) }).strict(),
+  z.object({ kind: z.literal('agent'), id: z.string().max(100) }).strict(),
+  z.object({ kind: z.literal('app'), id: z.string().max(100), page_id: z.string().max(100).optional() }).strict(),
+  z.object({ kind: z.literal('page'), name: z.string().max(80) }).strict(),
+]);
+export type PageContext = z.infer<typeof pageContextSchema>;
+
 export const createConversationInputSchema = z.discriminatedUnion('kind', [
   /** The one Agent thread with an Agent; returns the existing one when there is one. */
   z.object({ kind: z.literal('direct'), agent_id: z.string() }),
@@ -70,7 +81,7 @@ export const createConversationInputSchema = z.discriminatedUnion('kind', [
     title: z.string().trim().max(120).optional(),
     model: z.string().trim().max(160).optional(),
     /** Page context brought by the page assistant. */
-    context: z.record(z.string(), z.unknown()).optional(),
+    context: pageContextSchema.optional(),
   }),
   z.object({
     kind: z.literal('room'),

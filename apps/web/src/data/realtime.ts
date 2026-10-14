@@ -43,10 +43,32 @@ function soon(client: QueryClient, queryKey: QueryKey, delay = 300) {
   );
 }
 
+/** A page may finish after realtime added newer rows or completed one of its partial replies. */
+export async function fetchMessagePage(client: QueryClient, conversationId: string, cursor?: string) {
+  const page = await api.conversations.messages(conversationId, { cursor, limit: 50 });
+  const cached = client.getQueryData<MessagePages>(keys.messages(conversationId));
+  const known = new Map(cached?.pages.flatMap((entry) => entry.items).map((item) => [item.id, item]) ?? []);
+  const items = page.items.map((item) => {
+    const current = known.get(item.id);
+    if (current && current.status !== 'streaming' && item.status === 'streaming') return current;
+    if (current?.event?.type === 'interjection' && current.event.state !== 'queued' && item.event?.state === 'queued') return { ...item, event: current.event };
+    return item;
+  });
+  if (!cursor) {
+    const newest = Math.max(0, ...page.items.map((item) => item.seq));
+    const later = cached?.pages[0]?.items.filter((item) => item.seq > newest) ?? [];
+    items.push(...later);
+  }
+  return { ...page, items };
+}
+
 /** Newest page first, newest message first inside a page (the API's order). */
 export function addMessage(client: QueryClient, message: Message) {
   client.setQueryData<MessagePages>(keys.messages(message.conversation_id), (data) => {
-    if (!data?.pages.length) return data;
+    if (!data?.pages.length) {
+      if (client.getQueryState(keys.messages(message.conversation_id))?.fetchStatus !== 'fetching') return data;
+      return { pages: [{ items: [{ ...message, my_rating: null }], next_cursor: null }], pageParams: [undefined] };
+    }
     if (data.pages.some((page) => page.items.some((item) => item.id === message.id))) {
       return replaceIn(data, message);
     }

@@ -66,3 +66,36 @@ test('after the connection drops, the open conversation catches up without fetch
   expect(fetched.length).toBeGreaterThan(0);
   expect(fetched.every((search) => search.includes('after='))).toBe(true);
 });
+
+test('an older initial page cannot remove a live reply or its decided card', async ({ page, request }) => {
+  const chat = await apiAs<{ id: string }>(request, 'lin', 'POST', '/api/conversations', { kind: 'chat' });
+  let release!: () => void;
+  let snapshot!: () => void;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const ready = new Promise<void>((resolve) => {
+    snapshot = resolve;
+  });
+  let intercepted = false;
+  await page.route(`**/api/conversations/${chat.id}/messages?*`, async (route) => {
+    if (intercepted || route.request().method() !== 'GET') return route.continue();
+    intercepted = true;
+    const response = await route.fetch();
+    snapshot();
+    await held;
+    await route.fulfill({ response });
+  });
+  await open(page, `/#/c/${chat.id}`);
+  await ready;
+  await composer(page).fill('need a human while the page is loading');
+  await composer(page).press('Enter');
+  const card = page.locator('.gh-chat-card', { hasText: '需要你接管电脑' });
+  await expect(card.getByText('需要你', { exact: true })).toBeVisible();
+  await card.getByRole('button', { name: '交还电脑' }).click();
+  await page.getByRole('dialog', { name: '交还电脑' }).getByRole('button', { name: '交还电脑' }).click();
+  await expect(page.getByText('Done.', { exact: true })).toBeVisible();
+  release();
+  await expect(card.getByText('已交还', { exact: true })).toBeVisible();
+  await expect(page.getByText('Done.', { exact: true })).toBeVisible();
+});

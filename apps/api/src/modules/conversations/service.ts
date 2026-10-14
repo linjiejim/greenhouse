@@ -1,3 +1,4 @@
+import { countAdoption, adoptedOutputKey } from '../usage/counts.js';
 import { recordAt as sourceRecordAt } from '../tables/load.js';
 import { loadReader as sourceReader } from '../tables/access.js';
 /**
@@ -17,6 +18,7 @@ import type {
   MessageItem,
   Note,
   Page,
+  PageContext,
   RealtimeEvent,
   UpdateConversationInput,
   UpdateNoteInput,
@@ -211,6 +213,7 @@ export function createConversationsService(deps: {
   hub: Hub;
   files: FilesService;
   notifications: Pick<NotificationsService, 'markConversationRead'>;
+  pageContext: (memberId: string, context: PageContext) => Promise<unknown>;
 }) {
   async function localeOf(memberId: string): Promise<'zh' | 'en'> {
     const [member] = await getDb().select({ locale: members.locale }).from(members).where(eq(members.id, memberId));
@@ -576,9 +579,16 @@ export function createConversationsService(deps: {
       return detail(memberId, conversation);
     },
 
+    async pageContext(memberId: string, conversation: ConversationRow): Promise<unknown> {
+      if (!conversation.context) return null;
+      // A saved reference cannot keep reading an object after its access was revoked.
+      return deps.pageContext(memberId, conversation.context as PageContext).catch(() => ({ unavailable: true }));
+    },
+
     async create(memberId: string, input: CreateInput): Promise<ConversationDetail> {
       if (input.kind === 'direct') return detail(memberId, await service.ensureDirect(memberId, input.agent_id));
       if (input.kind === 'chat') {
+        if (input.context) await deps.pageContext(memberId, input.context);
         const loaded = await deps.agents.load(memberId, input.agent_id ?? 'main');
         if (loaded.agent.archivedAt) throw conflict('agent_archived', 'This Agent is archived.');
         if (input.model && !(await deps.providers.modelAvailable(input.model, { memberId }))) {
@@ -805,6 +815,7 @@ export function createConversationsService(deps: {
         .values({ messageId, memberId, ...values })
         .onConflictDoUpdate({ target: [messageFeedback.messageId, messageFeedback.memberId], set: values })
         .returning();
+      if (input.rating === 1) await countAdoption(memberId, adoptedOutputKey(message.runId, 'message', messageId));
       return { rating: saved!.rating === 1 ? 1 : -1, comment: saved!.comment };
     },
 

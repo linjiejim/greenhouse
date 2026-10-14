@@ -1,3 +1,5 @@
+import type { AdoptInput, Metrics } from './metrics.js';
+import type { KnowledgeFile } from './knowledge.js';
 /**
  * The typed client of API v2, shared by the web app, the browser extension and the desktop
  * shell. It attaches the access token, refreshes it once when it expires (one refresh at a
@@ -734,6 +736,14 @@ export function createApiClient(options: ApiClientOptions) {
     apps: appsApi({ get, post, patch, put, del, request, download, downloadBlob }),
     tables: tablesApi({ get, post, patch, put, del, request, download, downloadBlob }),
 
+    metrics: {
+      weekly: (weeks = 8) => get<Metrics>('/api/admin/usage/metrics', { weeks }),
+      adopt: (input: AdoptInput) => post<void>('/api/metrics/adopt', input),
+    },
+    media: {
+      save: (id: string, input: { space?: 'personal' | 'team'; folder_id?: string } = {}) =>
+        post<KnowledgeFile>(`/api/media/files/${id}/save`, input),
+    },
     files: {
       upload(
         file: Blob & { name?: string },

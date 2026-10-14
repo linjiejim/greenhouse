@@ -21,6 +21,7 @@ export const TABLES_JOB_KINDS = [
   'base_purge',
   'base_discard',
   'base_automation',
+  'media_video',
 ] as const;
 export type TablesJobKind = (typeof TABLES_JOB_KINDS)[number];
 export type TablesJobHandler = (job: JobRow) => Promise<JobOutcome>;

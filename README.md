@@ -890,3 +890,7 @@ issue — see [SECURITY.md](./SECURITY.md).
 ## License
 
 [MIT](./LICENSE) — © Greenhouse contributors.
+
+在 v2 Web 任意页面按 ⌘J（Windows/Linux：Ctrl+J）打开页面会话；它带入当前对象并保存在会话列表，窄屏显示为 Sheet。
+
+配置图像服务后，Agent 可生成图片或编辑有权限的参考文件；配置视频服务后，批准生成即可在「运行」查看进度。产物卡片提供预览、下载及保存到个人知识库。302.AI 可用 `IMAGE_PROVIDER=302ai`、`VIDEO_PROVIDER=302ai` 和各自的 `*_API_KEY`／`*_BASE_URL` 配置，详见 docs/product/providers.md。回复中插话会在下一模型步骤带入；管理 → 用量可查看每周采纳与运行指标。

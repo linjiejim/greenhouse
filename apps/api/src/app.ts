@@ -1,3 +1,8 @@
+import { createMetricsService, type MetricsService } from './modules/usage/metrics.js';
+import { metricRoutes, adminMetricRoutes } from './modules/usage/metrics-routes.js';
+import { createMediaService, type MediaService } from './modules/media/service.js';
+import { mediaRoutes } from './modules/media/routes.js';
+import { mediaTools } from './engine/tools/media.js';
 import { createAutomationsService, type AutomationsService } from './modules/tables/automations.js';
 import { createRecordAgents, type RecordAgentsService } from './modules/tables/agents.js';
 import { automationsRoutes } from './modules/tables/automations-routes.js';
@@ -114,6 +119,7 @@ export interface Services {
   conversations: ConversationsService;
   files: FilesService;
   voice: VoiceService;
+  media: MediaService;
   knowledge: KnowledgeService;
   tables: TablesService;
   automations: AutomationsService;
@@ -128,6 +134,7 @@ export interface Services {
   search: SearchService;
   skills: SkillsService;
   usage: UsageService;
+  metrics: MetricsService;
   hub: Hub;
   engine: Engine;
   limiter: RateLimiter;
@@ -160,7 +167,46 @@ export function createServices(config: AppConfig, options: ServiceOptions = {}):
   const hub = createHub();
   const channels = createChannelsService({ config, providers });
   const notifications = createNotificationsService({ hub, deliveries: channels });
-  const conversations = createConversationsService({ agents, providers, hub, files, notifications });
+  const conversations = createConversationsService({
+    agents,
+    providers,
+    hub,
+    files,
+    notifications,
+    pageContext: async (memberId, context) => {
+      switch (context.kind) {
+        case 'doc':
+          return { kind: context.kind, ...(await knowledge.getDoc(memberId, context.id, { signed: false })) };
+        case 'record':
+          return { kind: context.kind, ...(await tables.records.get(memberId, context.id)) };
+        case 'run':
+          return { kind: context.kind, ...(await runs.get(memberId, context.id)) };
+        case 'agent': {
+          const { agent } = await agents.load(memberId, context.id);
+          return { kind: context.kind, id: agent.id, name: agent.name, role: agent.role };
+        }
+        case 'app': {
+          const runtime = await apps.runtime(memberId, context.id);
+          const page = runtime.pages.find((page) => page.id === context.page_id) ?? runtime.pages[0];
+          const cards = [];
+          for (const card of page?.cards.slice(0, 6) ?? []) {
+            const result = await apps
+              .card(memberId, context.id, { version: runtime.version, card: card.id })
+              .catch(() => null);
+            cards.push({
+              id: card.id,
+              ...(result?.kind === 'records'
+                ? { ...result, data: { ...result.data, items: result.data.items.slice(0, 5) } }
+                : result),
+            });
+          }
+          return { kind: context.kind, app: runtime.app, page, cards };
+        }
+        case 'page':
+          return context;
+      }
+    },
+  });
   // Mail wakes Agents through the engine, which is made below.
   const mail = createMailService({ config, providers, files, agents, conversations, engine: () => engine });
   const members = createMembersService({ auth, providers, files, mail });
@@ -196,6 +242,9 @@ export function createServices(config: AppConfig, options: ServiceOptions = {}):
   // A committed decision wakes the engine's worker (made below) rather than waiting for its poll.
   const approvals = createApprovalsService(agents, knowledge, tables);
   const requests = createRequestsService({ hub, notifications, approvals, decided: () => engine.wakeDecisions() });
+  const media = createMediaService({ providers, files, knowledge, conversations, hub });
+  tables.worker.register('media_video', media.handle);
+  tables.worker.every(media.sweep);
   const engine = createEngine({
     eventWakeLimit: config.AGENT_EVENT_WAKES_PER_DAY,
     eventMergeMs: config.AGENT_EVENT_MERGE_MS,
@@ -229,6 +278,7 @@ export function createServices(config: AppConfig, options: ServiceOptions = {}):
       skillQueryTool(skills),
       skillMutationTool(skills),
       ...knowledgeTools(knowledge),
+      ...mediaTools(media),
       ...tableTools(tables),
       ...appTools(apps, tables),
       ...(options.tools ?? []),
@@ -248,7 +298,7 @@ export function createServices(config: AppConfig, options: ServiceOptions = {}):
   tables.installAutomationHooks(automations.hooks);
   tables.worker.register('base_automation', automations.handle);
   tables.worker.every(automations.sweep);
-  const runs = createRunsService({ background: () => engine.background });
+  const runs = createRunsService({ background: () => engine.background, cancelMedia: media.cancel });
   return {
     config,
     tokens,
@@ -265,6 +315,7 @@ export function createServices(config: AppConfig, options: ServiceOptions = {}):
     conversations,
     files,
     voice,
+    media,
     knowledge,
     tables,
     automations,
@@ -279,6 +330,7 @@ export function createServices(config: AppConfig, options: ServiceOptions = {}):
     search: createSearchService({ members, knowledge, tables, apps }),
     skills,
     usage: createUsageService({ agents, providers }),
+    metrics: createMetricsService({ files, conversations }),
     hub,
     engine,
     limiter: new RateLimiter(10, 60_000),
@@ -334,6 +386,7 @@ export function createApp(services: Services, options: { webDir?: string } = {})
   signedIn.use('*', member);
   signedIn.route('/me/providers', myProviderRoutes(services.providers));
   signedIn.route('/me/models', myModelRoutes(services.providers));
+  signedIn.route('/metrics', metricRoutes(services.metrics));
   signedIn.route('/me/usage', myUsageRoutes(services.usage));
   signedIn.route('/me/connections', myConnectionRoutes(services.connectors));
   signedIn.route('/me/tokens', personalTokenRoutes(services.oauth));
@@ -353,6 +406,7 @@ export function createApp(services: Services, options: { webDir?: string } = {})
   signedIn.route('/requests', requestRoutes(services.requests));
   signedIn.route('/runs', runRoutes(services.runs, services.engine));
   signedIn.route('/files', fileRoutes(services.files, services.conversations));
+  signedIn.route('/media', mediaRoutes(services.media));
   signedIn.route('/voice', voiceRoutes(services.voice));
   signedIn.route('/schedules', scheduleRoutes(services.schedules));
   signedIn.route('/notifications', notificationRoutes(services.notifications));
@@ -369,6 +423,7 @@ export function createApp(services: Services, options: { webDir?: string } = {})
   signedIn.route('/admin', adminMemberRoutes(services.members));
   signedIn.route('/admin/branding', brandingRoutes(services.workspace));
   signedIn.route('/admin', adminProviderRoutes(services.providers));
+  signedIn.route('/admin', adminMetricRoutes(services.metrics));
   signedIn.route('/admin', adminUsageRoutes(services.usage));
   signedIn.route('/admin', adminPublicAgentRoutes(services.agents));
   signedIn.route('/admin/computers', adminComputerRoutes(services.computers));

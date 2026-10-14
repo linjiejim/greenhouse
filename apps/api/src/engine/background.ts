@@ -177,6 +177,7 @@ export function createBackground(deps: {
         .where(
           and(
             eq(runs.kind, 'background'),
+            sql`${runs.input}->>'media' IS NULL`,
             eq(runs.status, 'queued'),
             eq(runs.desiredState, 'run'),
             sql`(${runs.input}->>'computer' IS DISTINCT FROM 'true' OR NOT EXISTS (SELECT 1 FROM runs active WHERE active.agent_id = ${runs.agentId} AND active.kind = 'turn' AND active.status IN ('queued','running')))`,
@@ -255,6 +256,9 @@ export function createBackground(deps: {
             agentId: run.agentId,
             runId: run.id,
             content,
+            attachments: Array.isArray(run.output?.file_ids)
+              ? run.output.file_ids.filter((id): id is string => typeof id === 'string')
+              : [],
             blocks: [{ type: 'run', run_id: run.id, title: run.title, status: outcome.status }],
             event: { type: 'run_report', run_id: run.id, status: outcome.status, attempt: run.attempt },
           }));
@@ -815,6 +819,7 @@ export function createBackground(deps: {
         .where(
           and(
             eq(runs.kind, 'background'),
+            sql`${runs.input}->>'media' IS NULL`,
             eq(runs.status, 'running'),
             lt(runs.leaseExpiresAt, new Date().toISOString()),
           ),

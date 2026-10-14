@@ -17,6 +17,7 @@ import {
   type SearchClient,
   type SttClient,
   type TtsClient,
+  type VideoClient,
 } from '@greenhouse/providers';
 import { audioSeconds } from '@greenhouse/utils/audio';
 import { toErrorMessage } from '@greenhouse/utils/error';
@@ -167,6 +168,20 @@ export function meter<C extends Capability>(
           await record({ quantity: [...input.text].length, unit: 'character' });
           return result;
         },
+      };
+      return metered as ClientByCapability[C];
+    }
+    case 'video': {
+      const video = client as VideoClient;
+      const metered: VideoClient = {
+        async create(input) {
+          await before();
+          const result = await video.create(input);
+          await record({ quantity: input.seconds, unit: 'second' });
+          return result;
+        },
+        retrieve: (id) => video.retrieve(id),
+        content: (id) => video.content(id),
       };
       return metered as ClientByCapability[C];
     }

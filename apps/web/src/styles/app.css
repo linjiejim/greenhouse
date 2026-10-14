@@ -3782,3 +3782,59 @@ button.app-agent-card {
 .app-doc-save-bar > .app-inline-actions {
   margin-left: auto;
 }
+
+.app-page-conversation {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  gap: var(--gh-space-2);
+}
+.app-page-conversation > .app-page {
+  flex: 1;
+  min-height: 0;
+}
+.app-page-conversation .app-page-header {
+  padding-inline: var(--gh-space-3);
+}
+.app-page-conversation .app-composer {
+  margin-inline: var(--gh-space-2);
+}
+
+.app-media-preview {
+  display: block;
+  width: 100%;
+  max-height: 420px;
+  object-fit: contain;
+  border-radius: var(--gh-radius-md);
+  background: var(--gh-surface);
+}
+.app-media-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--gh-space-3);
+  margin-top: var(--gh-space-3);
+}
+.app-message-files > .gh-chat-card {
+  width: 100%;
+}
+
+.app-message-queue {
+  font: var(--gh-type-caption);
+  color: var(--gh-text-muted);
+  margin-top: var(--gh-space-1);
+}
+
+.gh-overlay-body:has(> .app-page-conversation) {
+  padding: var(--gh-space-3);
+  overflow: hidden;
+}
+[data-narrow] .gh-overlay-panel:has(.app-page-conversation) {
+  height: calc(100% - var(--gh-space-6));
+  max-height: calc(100% - var(--gh-space-6));
+}
+
+.app-stat dd {
+  margin: 0;
+}

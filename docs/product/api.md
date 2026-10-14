@@ -253,3 +253,12 @@ apps/api/src/
 - 通知动作 `{type:"notify",members,title}` 统一经通知服务；Agent 动作 `{type:"agent",agent_id,brief,tools:"none"|"same_base_read",output_field_id?}` 经事件唤醒入口，默认无工具；可选回写仍需按档批准。webhook `{type:"webhook",url}` 仅公网 HTTPS、拒绝重定向、连接时复核 DNS、10 秒超时。创建含 webhook 的规则或首次添加 webhook 时仅一次返回 `webhook_secret`，后续不读取；请求头 `x-greenhouse-id` 为执行 id、`x-greenhouse-timestamp` 为 Unix 秒、`x-greenhouse-signature` 为 `v1=` 加 HMAC-SHA256(secret, timestamp + "." + 原始请求体)。接收方应校验时间窗口并按 id 去重；发送结果未知不会自动重发。
 - `table_query` 发现表格、数据表、视图，按成员的自定义角色筛选记录与聚合；读取的记录引用会再次按接收者权限裁剪。`table_mutation` 支持记录批量修改、回收、评论和彻底删除；私有可逆操作有回执与撤销、共享按数据表动作批准、彻底删除逐次批准。`table_schema_plan` 的精确结构计划逐次确认后才落库。
 - `apps_query` 读取已发布应用与卡片，`apps_action` 只执行已保存的动作，按查看者的应用与表格权限交集。MCP 对应独立的 `apps:read` / `apps:write`，不扩大其他已授权范围；共享动作返回 `needs_you`，外部客户端不能代替成员批准。
+
+页面会话（CONV-28）：`POST /api/conversations` 的 chat.context 只接受引用 `{kind: doc|record|run|agent, id}`、`{kind: app, id, page_id?}` 或 `{kind: page, name}`。服务端验证对象访问，每轮按当前权限读取并作为不可信数据带入；不接受客户端内容快照。
+
+M3 媒体与计数（#70）：
+- `POST /api/media/files/:id/save`，`{space?: personal|team, folder_id?}`：按成员权限将已有 artifact 复制到知识库，不改变原会话文件。
+- `GET /api/runs/:id` 增加 `progress`（0–100 或 null）和 `file_ids`；视频后台运行也走既有 list/cancel 接口，取消停止本地检查，普通 retry 拒绝 `media_not_retryable`。
+- `POST /api/metrics/adopt`，只接受 `{kind: download, file_id} 或 {kind: download, message_id}` 或 `{kind: citation, message_id}`；读权限在服务层复查，同一成员对同一产出只计一次。
+- `GET /api/admin/usage/metrics?weeks=8`（1–12）：仅管理员，返回每周计数与比例，不返回任何成员／对话／产物 ID 或内容。无分母时为 null。
+- 排队成员消息的 event 为 `{type: interjection, state: queued}`；步骤边界带入后更新为 `{type: interjection, state: incorporated, run_id}`，原 seq 不变，新的 assistant 行沿用 run_id。停止仍丢弃排队项。

@@ -10,6 +10,18 @@ const base64 = (bytes: Uint8Array) => Buffer.from(bytes).toString('base64');
 const gateway = { baseUrl: 'https://images.example.com/v1', model: 'flux-schnell', size: '1024x1024' };
 
 describe('image adapters', () => {
+  it('edits a reference image as multipart without forwarding a reference URL', async () => {
+    const { client, fake } = connect(openaiCompatibleImageAdapter, { ...gateway, model: 'gpt-image-2' }, () =>
+      json({ data: [{ b64_json: base64(PNG) }] }),
+    );
+    await client.generate({ prompt: 'make it green', reference: { data: PNG, mimeType: 'image/png' } });
+    const [url, init] = fake.mock.calls[0]!;
+    expect(String(url)).toBe('https://images.example.com/v1/images/edits');
+    const form = init?.body as FormData;
+    expect(form.get('prompt')).toBe('make it green');
+    expect(form.get('image')).toBeInstanceOf(Blob);
+  });
+
   it('asks a GPT image model for base64 without response_format and decodes the bytes', async () => {
     const openai = openaiCompatibleImageAdapter.presets!.find((preset) => preset.id === 'openai')!;
     const { client, fake } = connect(openaiCompatibleImageAdapter, openai.config, () =>

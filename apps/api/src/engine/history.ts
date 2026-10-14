@@ -6,7 +6,7 @@
  */
 
 import type { ModelMessage } from 'ai';
-import { and, asc, eq, gt, inArray, ne } from 'drizzle-orm';
+import { and, asc, eq, gt, inArray, lt, ne } from 'drizzle-orm';
 import {
   estimateTokens,
   resolveHistoryBudget,
@@ -48,6 +48,7 @@ export async function projectHistory(input: {
   agentId: string;
   askerId: string;
   excludeMessageId?: string;
+  beforeSeq?: number;
   contextWindow?: number;
 }): Promise<Projection> {
   const db = getDb();
@@ -59,6 +60,7 @@ export async function projectHistory(input: {
         eq(messages.conversationId, input.conversation.id),
         gt(messages.seq, input.conversation.digestUptoSeq),
         input.excludeMessageId ? ne(messages.id, input.excludeMessageId) : undefined,
+        input.beforeSeq !== undefined ? lt(messages.seq, input.beforeSeq) : undefined,
       ),
     )
     .orderBy(asc(messages.seq));
@@ -206,4 +208,10 @@ export function withShownImages(messages: ModelMessage[], images: EngineContentP
       ],
     },
   ];
+}
+
+/** The asker's newly consumed messages, with the same quotes, files and skill fences as history. */
+export async function interjectionText(rows: Message[], askerId: string): Promise<string> {
+  const runs = await skillRuns(rows, askerId);
+  return rows.map((row) => neutralise(render(row, runs.get(row.id)))).join('\n\n');
 }

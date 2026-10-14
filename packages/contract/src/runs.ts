@@ -51,6 +51,8 @@ export const runEventSchema = z.object({
 });
 
 export const runDetailSchema = runSchema.extend({
+  progress: z.number().min(0).max(100).nullable().default(null),
+  file_ids: z.array(z.string()).default([]),
   findings: z.array(z.string()).default([]),
   brief: z.string(),
   /** The report text of a finished run. */
