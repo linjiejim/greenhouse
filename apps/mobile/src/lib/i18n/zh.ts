@@ -511,6 +511,7 @@ export const zh: Catalog = {
     noPeople: '没有可以添加的人',
     loadFailed: '成员加载失败',
     agents: '带上我的 Agent',
+    agentsHere: '房间里的 Agent',
     agentsFooter: '在房间里 @ 你的 Agent，它会回应你。',
     agentOf: '{name}的 Agent',
     owner: '创建者',

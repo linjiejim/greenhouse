@@ -514,6 +514,7 @@ export const en = {
     noPeople: 'Nobody else to add',
     loadFailed: 'Couldn’t load people',
     agents: 'My Agents',
+    agentsHere: 'Agents in the room',
     agentsFooter: 'Your Agents answer you when you @ them in the room.',
     agentOf: '{name}’s Agent',
     owner: 'Started the room',

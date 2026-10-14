@@ -87,7 +87,7 @@ export default function RoomPeople() {
             })}
           </ListSection>
           {members.agents.length ? (
-            <ListSection header={t('rooms.agents')}>
+            <ListSection header={t('rooms.agentsHere')}>
               {members.agents.map((agent) => {
                 const ownerName = members.members.find((person) => person.id === agent.owner_id)?.name ?? '';
                 return (

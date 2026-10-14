@@ -161,7 +161,12 @@ export default function RequestSheet() {
     <>
       <Stack.Screen options={{ title: t('requests.title') }} />
       <SheetClose />
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive">
+      <ScrollView
+        contentInsetAdjustmentBehavior="automatic"
+        contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="interactive"
+      >
         <View style={styles.head}>
           <Icon name={KIND_ICON[request.kind]} size={20} color={request.status === 'pending' ? c.orange : c.secondaryLabel} />
           <Text style={styles.title}>{request.title}</Text>

@@ -242,12 +242,24 @@ export function ConversationScreen({
   } = anchor;
   const anchorId = useRef<string | null>(null);
   const rowY = useRef(new Map<string, number>());
+  /** Every row's box: a sent message's row may lay out (its realtime copy) before the send answers. */
+  const rowBox = useRef(new Map<string, { y: number; height: number }>());
   const onRowLayout = useCallback(
     (rowId: string, e: LayoutChangeEvent) => {
-      rowY.current.set(rowId, e.nativeEvent.layout.y);
+      const { y, height } = e.nativeEvent.layout;
+      rowY.current.set(rowId, y);
+      rowBox.current.set(rowId, { y, height });
       if (rowId === anchorId.current) onAnchorRowLayout(rowId, e);
     },
     [onAnchorRowLayout],
+  );
+  /** Anchor the next turn to this message's row (now, when it is already laid out). */
+  const anchorTurn = useCallback(
+    (rowId: string) => {
+      anchorId.current = rowId;
+      anchorNext(rowId, rowBox.current.get(rowId));
+    },
+    [anchorNext],
   );
 
   // Older pages: hold the reading position while one lands.
@@ -343,8 +355,7 @@ export function ConversationScreen({
       setEditing(null);
       useThreads.getState().dropMessages(id, edited.data.deleted_message_ids);
       useThreads.getState().addMessages(id, [edited.data.message]);
-      anchorId.current = edited.data.message.id;
-      anchorNext(edited.data.message.id);
+      anchorTurn(edited.data.message.id);
       return;
     }
     const result = await sendMessage(id, built.input);
@@ -356,10 +367,9 @@ export function ConversationScreen({
       return;
     }
     useThreads.getState().addMessages(id, [result.data.message]);
-    anchorId.current = result.data.message.id;
-    anchorNext(result.data.message.id);
+    anchorTurn(result.data.message.id);
     if (result.data.queued) toast(t('conversation.queued'), 'clock');
-  }, [sending, build, take, restore, holdForTurn, cancelTurn, anchorNext, editing, id, t]);
+  }, [sending, build, take, restore, holdForTurn, cancelTurn, anchorTurn, editing, id, t]);
 
   /** A follow-up from a block in a reply (a ```confirm pick, an answer). */
   const reply = useCallback(
@@ -373,11 +383,10 @@ export function ConversationScreen({
         return false;
       }
       useThreads.getState().addMessages(id, [result.data.message]);
-      anchorId.current = result.data.message.id;
-      anchorNext(result.data.message.id);
+      anchorTurn(result.data.message.id);
       return true;
     },
-    [id, holdForTurn, cancelTurn, anchorNext, t],
+    [id, holdForTurn, cancelTurn, anchorTurn, t],
   );
 
   const stop = useCallback(() => {

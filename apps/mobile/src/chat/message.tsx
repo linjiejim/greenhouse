@@ -298,6 +298,8 @@ export const MemberMessage = memo(function MemberMessage({
       ) : null}
       {items.length ? (
         <NativeMenu
+          // the menu pins the width it measured first: an edit (new words) measures again
+          key={message.edited_at ?? 'original'}
           trigger="longPress"
           items={items}
           onSelect={(id) => onAction(message, id as MessageAction)}

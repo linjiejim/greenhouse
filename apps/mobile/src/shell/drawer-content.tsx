@@ -341,10 +341,13 @@ export function DrawerContent({ navigation }: DrawerContentComponentProps) {
 
   const agentRows = [...sections.agents, ...sections.shared];
   const visibleAgents = searching ? agentRows : agentRows.slice(0, AGENTS_SHOWN);
+  const anyChat = sections.pinned.length + sections.today.length + sections.earlier.length > 0;
   const showEarlier = earlierOpen || searching;
   const archivedRows = (archived ?? []).filter((item) =>
     !searching ? true : (item.title || t('conversation.untitled')).toLowerCase().includes(search.trim().toLowerCase()),
   );
+  const nothingFound =
+    searching && !sections.main && !agentRows.length && !sections.rooms.length && !anyChat && !archivedRows.length;
 
   return (
     <View style={[styles.root, { paddingTop: insets.top + space.sm }]}>
@@ -424,7 +427,9 @@ export function DrawerContent({ navigation }: DrawerContentComponentProps) {
           <PlainRow icon="sparkle" label={t('directory.allAgents')} onPress={() => go('/agents')} />
         ) : null}
 
-        <SectionHead title={t('directory.rooms')} action={{ label: t('directory.newRoom'), onPress: newRoom }} />
+        {!searching || sections.rooms.length ? (
+          <SectionHead title={t('directory.rooms')} action={{ label: t('directory.newRoom'), onPress: newRoom }} />
+        ) : null}
         {sections.rooms.map((room) => (
           <ConversationRowView
             key={room.id}
@@ -438,7 +443,7 @@ export function DrawerContent({ navigation }: DrawerContentComponentProps) {
           />
         ))}
 
-        <SectionHead title={t('directory.chats')} />
+        {!searching || anyChat ? <SectionHead title={t('directory.chats')} /> : null}
         {sections.pinned.map((chat) => (
           <ConversationRowView
             key={chat.id}
@@ -489,11 +494,12 @@ export function DrawerContent({ navigation }: DrawerContentComponentProps) {
         {showEarlier && next ? (
           <PlainRow icon="chevD" label={t('directory.showEarlier')} indent onPress={() => void useWorkspace.getState().loadMoreConversations()} />
         ) : null}
-        {!sections.pinned.length && !sections.today.length && !sections.earlier.length && conversations ? (
-          <Text style={styles.empty}>{searching ? t('directory.noMatches') : t('directory.noChats')}</Text>
-        ) : null}
+        {!anyChat && conversations && !searching ? <Text style={styles.empty}>{t('directory.noChats')}</Text> : null}
+        {nothingFound ? <Text style={styles.empty}>{t('directory.noMatches')}</Text> : null}
 
-        <FoldRow label={t('directory.archived')} open={archivedOpen} onPress={() => setArchivedOpen((value) => !value)} />
+        {!searching || archivedRows.length ? (
+          <FoldRow label={t('directory.archived')} open={archivedOpen} onPress={() => setArchivedOpen((value) => !value)} />
+        ) : null}
         {archivedOpen
           ? archivedRows.map((item) => (
               <ConversationRowView
@@ -509,7 +515,7 @@ export function DrawerContent({ navigation }: DrawerContentComponentProps) {
               />
             ))
           : null}
-        {archivedOpen && archived && !archivedRows.length ? (
+        {archivedOpen && archived && !archivedRows.length && !searching ? (
           <Text style={styles.empty}>{t('directory.noneArchived')}</Text>
         ) : null}
         <View style={{ height: space.lg }} />
