@@ -1,37 +1,40 @@
 /**
- * A Bot's background tasks as Live Activities — the pure rules (spec
+ * An Agent's background runs as Live Activities — the pure rules (spec
  * docs/specs/20261010-mobile-live-activity.md §2.2, §3.1, §3.3). No React, no Expo: the root
  * vitest pins them (./model.test.ts), and ./attributes.parity.test.ts holds the shapes below
  * to the Swift `BotTaskAttributes` (two byte-identical copies, targets/widget and
- * modules/widget-bridge), which decodes exactly this JSON.
+ * modules/widget-bridge), which decodes exactly this JSON. The Swift names still say "task"
+ * and "bot"; what the activity shows says run and Agent.
  *
- * - `planActivities`: the member's tasks + the activities on the phone → what to start,
- *   update and end. One activity per task; a task the phone has already shown is never
- *   shown again (the member may have swiped it away); another station's or account's
- *   activity, or the switch turned off, ends at once.
+ * - Which runs: the member's runs started from a conversation (`source: 'conversation'`, the
+ *   ones a member starts and waits for); schedules and automations stay off the lock screen.
+ * - `planActivities`: those runs + the activities on the phone → what to start, update and
+ *   end. One activity per run; a run the phone has already shown is never shown again (the
+ *   member may have swiped it away); another station's or account's activity, or the switch
+ *   turned off, ends at once.
  * - Time is whole Unix seconds (never `Date`, never fractions): the timer runs from
- *   `started_at` (else `created_at`) and the view caps it at the task limit; `staleDate` is a
+ *   `started_at` (else `created_at`) and the view caps it at the run limit; `staleDate` is a
  *   minute past the limit.
- * - An ended activity stays on the lock screen for 15 minutes after the task ended (D5), or goes
+ * - An ended activity stays on the lock screen for 15 minutes after the run ended (D5), or goes
  *   at once when that time has passed.
- * - Faces: the Bot's plant, drawn by the app into the App Group at the sizes the activity shows
- *   them (`activityArt`) — an image larger than its presentation can keep it from starting.
+ * - Faces: the Agent's plant, drawn by the app into the App Group at the sizes the activity
+ *   shows them (`activityArt`) — an image larger than its presentation can keep it from starting.
  */
 
-import type { BotTaskView } from '../shared/bots';
+import type { RunView } from '../shared/contract';
 import { buildPlantAvatarSvg } from '../ui/plant-avatar/plant-avatar-svg';
 import { forSvgXml } from '../ui/plant-avatar/plant-avatar-native';
 import { resolvePlantAvatar } from '../ui/plant-avatar/plant-ids';
 import { artKey, type ArtJob, type AvatarSource } from '../widget/model';
 
 export const LIVE_ACTIVITY_SCHEMA = 1;
-/** The task limit (apps/api BOT_TASK_TIMEOUT_MS): the view's timer stops there. */
-export const TASK_LIMIT_S = 20 * 60;
+/** The run limit (apps/api RUN_TIMEOUT_MS): the view's timer stops there. */
+export const RUN_LIMIT_S = 20 * 60;
 /** No news by a minute past the limit: the activity says "may have finished". */
-export const STALE_AFTER_S = TASK_LIMIT_S + 60;
-/** An ended activity lingers this long after the task ended (D5; the HIG suggests 15–30 min). */
+export const STALE_AFTER_S = RUN_LIMIT_S + 60;
+/** An ended activity lingers this long after the run ended (D5; the HIG suggests 15–30 min). */
 export const ENDED_LINGER_S = 15 * 60;
-/** A shown run is remembered this long (no task lives anywhere near it). */
+/** A shown run is remembered this long (no run lives anywhere near it). */
 export const SHOWN_KEEP_MS = 24 * 60 * 60 * 1000;
 const NAME_MAX = 40;
 const TITLE_MAX = 40;
@@ -43,7 +46,7 @@ export const ART_SMALL_POINTS = 36;
 
 /** `BotTaskAttributes.ContentState`. */
 export interface TaskActivityState {
-  /** BotTaskView.status. */
+  /** RunView.status. */
   status: string;
   /** Whole Unix seconds. */
   startedAt: number;
@@ -56,9 +59,12 @@ export interface TaskActivityAttributes {
   v: number;
   station: string;
   user: string;
+  /** The run's conversation; '' opens the run itself. */
   session: string;
   run: string;
+  /** The Agent's name. */
   botName: string;
+  /** The main Agent. */
   sprouty: boolean;
   art: string;
   lang: 'zh' | 'en';
@@ -129,8 +135,13 @@ export function parseActivities(json: string): ActivityInfo[] {
 
 const ACTIVE: ReadonlySet<string> = new Set(['queued', 'running', 'waiting']);
 
-export function isActiveTask(task: Pick<BotTaskView, 'status'>): boolean {
-  return ACTIVE.has(task.status);
+export function isActiveRun(run: Pick<RunView, 'status'>): boolean {
+  return ACTIVE.has(run.status);
+}
+
+/** A run the lock screen follows: started from a conversation. */
+export function followsRun(run: Pick<RunView, 'source'>): boolean {
+  return run.source === 'conversation';
 }
 
 /** ISO → whole Unix seconds (null when it doesn't parse). */
@@ -142,14 +153,14 @@ function seconds(iso: string | null | undefined, parseMs: ParseMs): number | nul
   return Number.isFinite(ms) ? Math.floor(ms / 1000) : null;
 }
 
-/** A task's state for its activity. */
-export function contentFor(task: BotTaskView, now: number, parseMs: ParseMs): TaskActivityState {
+/** A run's state for its activity. */
+export function contentFor(run: RunView, now: number, parseMs: ParseMs): TaskActivityState {
   const nowS = Math.floor(now / 1000);
-  const startedAt = seconds(task.started_at, parseMs) ?? seconds(task.created_at, parseMs) ?? nowS;
+  const startedAt = seconds(run.started_at, parseMs) ?? seconds(run.created_at, parseMs) ?? nowS;
   return {
-    status: task.status,
+    status: run.status,
     startedAt,
-    endedAt: isActiveTask(task) ? null : (seconds(task.ended_at, parseMs) ?? nowS),
+    endedAt: isActiveRun(run) ? null : (seconds(run.finished_at, parseMs) ?? nowS),
   };
 }
 
@@ -158,7 +169,7 @@ export function staleAt(state: TaskActivityState): number {
   return state.startedAt + STALE_AFTER_S;
 }
 
-/** When an ended activity leaves the lock screen: 15 min after the task ended, or 0 = at once. */
+/** When an ended activity leaves the lock screen: 15 min after the run ended, or 0 = at once. */
 export function dismissAt(endedAt: number | null, now: number): number {
   const at = (endedAt ?? Math.floor(now / 1000)) + ENDED_LINGER_S;
   return at * 1000 > now ? at : 0;
@@ -170,26 +181,24 @@ function clip(text: string, max: number): string {
 }
 
 export function attributesFor(input: {
-  task: BotTaskView;
-  /** The conversation (the task's own `conversation_id`, else the one it was started from). */
-  session: string;
+  run: RunView;
   station: string;
   user: string;
-  bot: { name: string; sprouty: boolean } | null;
+  agent: { name: string; main: boolean } | null;
   art: string;
   lang: 'zh' | 'en';
   /** The device shows previews (push D3): only then the title. */
   preview: boolean;
 }): TaskActivityAttributes {
-  const title = input.preview ? clip(input.task.title, TITLE_MAX) : '';
+  const title = input.preview ? clip(input.run.title, TITLE_MAX) : '';
   return {
     v: LIVE_ACTIVITY_SCHEMA,
     station: input.station,
     user: input.user,
-    session: input.session,
-    run: input.task.run_id,
-    botName: clip(input.bot?.name ?? '', NAME_MAX) || 'Bot',
-    sprouty: input.bot?.sprouty ?? false,
+    session: input.run.conversation_id ?? '',
+    run: input.run.id,
+    botName: clip(input.agent?.name ?? '', NAME_MAX) || 'Agent',
+    sprouty: input.agent?.main ?? false,
     art: input.art,
     lang: input.lang,
     title: title || null,
@@ -202,32 +211,33 @@ export interface PlanContext {
   user: string | null;
   /** The member's switch (off: every activity ends at once). */
   switchOn: boolean;
-  /** New activities may start: the switch, the OS, a push registration on this station, Bots. */
+  /** New activities may start: the switch, the OS, a push registration on this station. */
   canStart: boolean;
-  /** `tasks` is the member's whole list (the member-wide endpoint), not only some conversations. */
+  /** `runs` holds every active run of the member, not only some. */
   complete: boolean;
   /** Runs this phone has already shown. */
   shown: ReadonlySet<string>;
 }
 
 export type Action =
-  | { kind: 'start'; task: BotTaskView; session: string; state: TaskActivityState; staleAt: number; relevance: number }
+  | { kind: 'start'; run: RunView; state: TaskActivityState; staleAt: number; relevance: number }
   | { kind: 'update'; id: string; state: TaskActivityState; staleAt: number }
   | { kind: 'end'; id: string; state: TaskActivityState | null; dismissAt: number };
 
 /**
- * The member's tasks (`null` = they could not be listed) + the activities on the phone → what
- * to do. Starts never repeat a run the phone has shown; ends name the final state.
+ * The member's runs (`null` = they could not be listed; the active ones, plus the latest state of
+ * the runs the phone shows) + the activities on the phone → what to do. Starts never repeat a run
+ * the phone has shown; ends name the final state.
  */
 export function planActivities(input: {
-  tasks: readonly BotTaskView[] | null;
+  runs: readonly RunView[] | null;
   activities: readonly ActivityInfo[];
   ctx: PlanContext;
   parseMs: ParseMs;
 }): Action[] {
-  const { tasks, activities, ctx, parseMs } = input;
+  const { runs, activities, ctx, parseMs } = input;
   const actions: Action[] = [];
-  const byRun = new Map((tasks ?? []).map((task) => [task.run_id, task]));
+  const byId = new Map((runs ?? []).map((run) => [run.id, run]));
   const onPhone = new Set(activities.map((activity) => activity.run));
 
   for (const activity of activities) {
@@ -236,36 +246,27 @@ export function planActivities(input: {
       actions.push({ kind: 'end', id: activity.id, state: null, dismissAt: 0 });
       continue;
     }
-    if (activity.ended || tasks === null) continue;
-    const task = byRun.get(activity.run);
-    if (!task) {
+    if (activity.ended || runs === null) continue;
+    const run = byId.get(activity.run);
+    if (!run) {
       // gone from the whole list: it ended long ago (or was removed) — nothing left to say
       if (ctx.complete) actions.push({ kind: 'end', id: activity.id, state: null, dismissAt: 0 });
       continue;
     }
-    const state = contentFor(task, ctx.now, parseMs);
-    if (!isActiveTask(task)) {
+    const state = contentFor(run, ctx.now, parseMs);
+    if (!isActiveRun(run)) {
       actions.push({ kind: 'end', id: activity.id, state, dismissAt: dismissAt(state.endedAt, ctx.now) });
     } else if (state.status !== activity.status || state.startedAt !== activity.startedAt) {
       actions.push({ kind: 'update', id: activity.id, state, staleAt: staleAt(state) });
     }
   }
 
-  if (ctx.canStart && ctx.switchOn && ctx.station && ctx.user && tasks) {
-    for (const task of tasks) {
-      if (!isActiveTask(task) || onPhone.has(task.run_id) || ctx.shown.has(task.run_id)) continue;
-      const session = task.conversation_id;
-      if (!session) continue;
-      const state = contentFor(task, ctx.now, parseMs);
-      actions.push({
-        kind: 'start',
-        task,
-        session,
-        state,
-        staleAt: staleAt(state),
-        // the newest task leads the Dynamic Island
-        relevance: state.startedAt,
-      });
+  if (ctx.canStart && ctx.switchOn && ctx.station && ctx.user && runs) {
+    for (const run of runs) {
+      if (!isActiveRun(run) || !followsRun(run) || onPhone.has(run.id) || ctx.shown.has(run.id)) continue;
+      const state = contentFor(run, ctx.now, parseMs);
+      // the newest run leads the Dynamic Island
+      actions.push({ kind: 'start', run, state, staleAt: staleAt(state), relevance: state.startedAt });
     }
   }
   return actions;
@@ -286,7 +287,7 @@ export function pruneShown(shown: Record<string, number>, now: number): Record<s
  * The faces an activity shows, as App Group files `<art>L` / `<art>D` (52 pt, light / dark)
  * and `<art>M` (36 pt, dark — the island is always black). The resting (`idle`) face only:
  * the end states put an SF Symbol on it, and nothing can be drawn when a push ends one in
- * the background. `art` is the light face's key, so a Bot is drawn once.
+ * the background. `art` is the light face's key, so an Agent is drawn once.
  */
 export function activityArt(source: AvatarSource | null): { art: string; jobs: ArtJob[] } {
   const { plant, tint } = source
@@ -310,7 +311,7 @@ export function activityArt(source: AvatarSource | null): { art: string; jobs: A
 // ─── Diagnostics ─────────────────────────────────────────
 
 export interface BackgroundEndTally {
-  /** Task pushes the background end saw. */
+  /** Run-end pushes the background end saw. */
   total: number;
   /** …that ended an activity (or found it already ended). */
   ended: number;
