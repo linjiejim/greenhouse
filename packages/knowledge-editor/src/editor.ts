@@ -75,6 +75,8 @@ export interface SuggestionView {
 export interface DocEditorOptions {
   element: HTMLElement;
   markdown: string;
+  /** The editor's accessible name (it is a multi-line text box). */
+  label?: string;
   /** Shown while the doc is empty. */
   placeholder?: string;
   /** Shown where a picture is uploading. */
@@ -391,6 +393,11 @@ export function createDocEditor(options: DocEditorOptions): DocEditor {
       placeholder,
     ],
     editorProps: {
+      attributes: {
+        role: 'textbox',
+        'aria-multiline': 'true',
+        ...(options.label ? { 'aria-label': options.label } : {}),
+      },
       handlePaste: (_view: EditorView, event: ClipboardEvent) => insertImages(filesOf(event.clipboardData?.files)),
       handleDrop: (view: EditorView, event: DragEvent, _slice, moved: boolean) => {
         if (moved) return false;

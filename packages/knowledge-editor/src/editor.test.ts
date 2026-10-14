@@ -58,10 +58,17 @@ describe('createDocEditor', () => {
       '| --- | --- |',
       '| Mei | Friday |',
       '',
+      '```bash',
+      'pnpm install',
+      '```',
+      '',
       `![chart](/api/files/${file}/content)`,
     ].join('\n');
     const { editor } = make(markdown);
     expect(editor.markdown()).toBe(markdown);
+    // And again: saving twice changes nothing.
+    const again = make(editor.markdown());
+    expect(again.editor.markdown()).toBe(markdown);
   });
 
   it('shows the placeholder only while the doc is empty', () => {

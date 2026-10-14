@@ -143,7 +143,9 @@ function nodeToMarkdown(node: TiptapNode, depth = 0): string {
         .join('\n')}\n`;
     case 'codeBlock': {
       const language = typeof node.attrs?.language === 'string' ? node.attrs.language : '';
-      return `\`\`\`${language}\n${rawText(node)}\n\`\`\`\n`;
+      // A browser keeps the newline that ends the code in Markdown; without dropping it here
+      // every save would add an empty line at the end of the block.
+      return `\`\`\`${language}\n${rawText(node).replace(/\n$/, '')}\n\`\`\`\n`;
     }
     case 'table':
       return `${tableToMarkdown(node)}`;
