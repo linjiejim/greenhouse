@@ -5,7 +5,24 @@
  * service, and it checks access on every call (access.ts).
  */
 
-import { and, asc, desc, eq, gt, ilike, inArray, isNull, lt, ne, or, sql, type SQL } from 'drizzle-orm';
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  gt,
+  ilike,
+  inArray,
+  isNotNull,
+  isNull,
+  lt,
+  ne,
+  or,
+  sql,
+  type SQL,
+  type SQLWrapper,
+} from 'drizzle-orm';
+import { DOC_CONTENT_MAX } from '@greenhouse/contract';
 import type {
   CreateDocInput,
   CreateFolderInput,
@@ -42,6 +59,7 @@ import {
   getDb,
   groupMembers,
   groups,
+  MAX_INDEXED_CHARS,
   members,
   newId,
   queryWords,
@@ -74,26 +92,31 @@ import {
   docShareRoles,
   inList,
   loadReader,
-  MAX_DEPTH,
+  MAX_FOLDER_DEPTH,
   principalMatch,
   readableWhere,
   roleIn,
   rolesOf,
   subtree,
+  walkDown,
+  walkUp,
   type Reader,
   type Role,
 } from './access.js';
 import { diffText } from './diff.js';
-import { exportCopy, notesEntry, planExport, safeSegment, zipStream, type ExportFile } from './export.js';
 import {
-  canonicalFileLinks,
-  docLinkIds,
-  fileLinkIds,
-  markdownText,
-  mentionIds,
-  signFileLinks,
-  snippetFor,
-} from './markdown.js';
+  exportCopy,
+  inBatches,
+  MAX_EXPORT_DOCS,
+  MAX_EXPORT_FILES,
+  MAX_EXPORT_FOLDERS,
+  notesEntry,
+  planExport,
+  safeSegment,
+  zipStream,
+  type ExportFile,
+} from './export.js';
+import { docLinkIds, docSnippet, fileLinks, markdownText, mentionIds, snippetFor } from './markdown.js';
 import { createPresence } from './presence.js';
 import {
   agentNames,
@@ -104,16 +127,42 @@ import {
   refOf,
   shareViews,
   toItem,
-  treeOrder,
   type Source,
 } from './views.js';
 
-/** Held while a folder moves (any process): the cycle check sees every move before it. */
-const FOLDER_MOVE_LOCK = 74_192_101;
-/** A folder shows at most this many items of each kind. */
-const MAX_CHILDREN = 1000;
-/** Text read from an uploaded file that goes into search. */
-const MAX_FILE_TEXT = 20_000;
+/**
+ * The tree's lock, in any process and only inside a transaction. A folder move holds it alone,
+ * so the cycle and depth checks see every move before it; whatever depends on where a folder
+ * sits (creating in it, uploading to it, sharing it, moving a doc or file) holds it shared and
+ * reads the place again under it.
+ */
+const TREE_LOCK = 74_192_101;
+const lockTree = (mode: 'move' | 'place') =>
+  getDb().execute(
+    mode === 'move'
+      ? sql`SELECT pg_advisory_xact_lock(${TREE_LOCK})`
+      : sql`SELECT pg_advisory_xact_lock_shared(${TREE_LOCK})`,
+  );
+const tooDeep = () => conflict('folder_too_deep', `Folders nest at most ${MAX_FOLDER_DEPTH} levels deep.`);
+
+/**
+ * A doc's Markdown as it will be stored, refused past the limit whoever writes it: the route's
+ * schema checks what a member sends, this also covers what an Agent's edits add up to.
+ */
+function withinLimit(content: string): string {
+  if (content.length > DOC_CONTENT_MAX) {
+    throw invalidInput(`A doc can be up to ${DOC_CONTENT_MAX.toLocaleString('en')} characters.`);
+  }
+  return content;
+}
+
+/** Backlinks listed at most, newest first. */
+const MAX_BACKLINKS = 1000;
+/**
+ * Reading an uploaded file for search, inside the upload request: only the text search keeps,
+ * at most 50 PDF pages, at most 5 seconds.
+ */
+const FILE_TEXT_LIMITS = { maxChars: 20_000, maxPages: 50, deadlineMs: 5_000 };
 /** Mentions and comment followers told about one change. */
 const MAX_TOLD = 50;
 /** Members per realtime publish, so each stays inside one NOTIFY payload. */
@@ -123,9 +172,9 @@ const TELL_CHUNK = 100;
 interface TreePlace {
   space: KnowledgeSpace;
   ownerId: string | null;
-  folderIds: string[];
-  /** A doc that changed: its own shares count too. */
-  docId?: string;
+  folderIds: readonly string[];
+  /** Docs that changed: their own shares count too. */
+  docIds?: readonly string[];
 }
 
 const placeOf = (
@@ -136,7 +185,7 @@ const placeOf = (
   space: item.space ?? 'team',
   ownerId: item.ownerId,
   folderIds: chain.map((folder) => folder.id),
-  ...(docId ? { docId } : {}),
+  ...(docId ? { docIds: [docId] } : {}),
 });
 
 /** In an Agent's turn: the Agent that reads or writes for the member. */
@@ -180,7 +229,12 @@ const fileListColumns = {
 
 /** Knowledge files of the tree: not the pictures that belong to a doc. */
 const treeFile = () =>
-  and(eq(files.purpose, 'knowledge'), eq(files.status, 'active'), sql`${files.meta}->>'doc_id' IS NULL`);
+  and(
+    eq(files.purpose, 'knowledge'),
+    eq(files.status, 'active'),
+    isNotNull(files.space),
+    sql`${files.meta}->>'doc_id' IS NULL`,
+  );
 
 function docSearchColumns(fields: { title: string; tags: string[]; meta: DocMeta; content: string }) {
   return {
@@ -190,7 +244,8 @@ function docSearchColumns(fields: { title: string; tags: string[]; meta: DocMeta
       (fields.meta.questions ?? []).join('\n'),
       (fields.meta.topics ?? []).join(' '),
     ),
-    searchC: searchTokens(markdownText(fields.content)),
+    // Only what gets indexed is cleaned: a long doc costs no more than the index keeps.
+    searchC: searchTokens(markdownText(fields.content.slice(0, MAX_INDEXED_CHARS))),
   };
 }
 
@@ -207,11 +262,19 @@ export function previewOf(contentType: string): KnowledgeFile['preview'] {
 const recentCursor = (row: { updatedAt: string; id: string }) =>
   Buffer.from(JSON.stringify({ u: row.updatedAt, id: row.id })).toString('base64url');
 
+/** A timestamp as the database writes it (or as ISO 8601): anything else never reaches a query. */
+const TIMESTAMP = /^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|[+-]\d{2}(?::?\d{2})?)$/;
+
 function decodeRecent(cursor: string | undefined): { u: string; id: string } | null {
   if (!cursor) return null;
   try {
     const value = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8')) as { u?: unknown; id?: unknown };
-    if (typeof value.u === 'string' && typeof value.id === 'string' && value.id.length <= 64) {
+    if (
+      typeof value.u === 'string' &&
+      TIMESTAMP.test(value.u) &&
+      typeof value.id === 'string' &&
+      value.id.length <= 64
+    ) {
       return { u: value.u, id: value.id };
     }
   } catch {
@@ -220,8 +283,106 @@ function decodeRecent(cursor: string | undefined): { u: string; id: string } | n
   throw invalidInput('The cursor is invalid.');
 }
 
-export function createKnowledgeService(deps: { files: FilesService; notifications: NotificationsService; hub: Hub }) {
+/** A page of the tree, as the routes ask for it (treePageQuerySchema). */
+type TreePage = { cursor?: string | undefined; limit: number };
+/** A tree row by what orders it: hand order first, folders before the rest, then the name; the id breaks ties. */
+interface TreeKey {
+  type: 'folder' | 'doc' | 'file';
+  id: string;
+  sortOrder: number;
+  rank: number;
+  name: string;
+}
+/** The page a list starts with when nobody asked for another. */
+const FIRST_PAGE: TreePage = { limit: 200 };
+
+/** A file's hand order, kept in its meta. */
+const fileSortOrder = sql`COALESCE(CASE WHEN jsonb_typeof(${files.meta}->'sort_order') = 'number' THEN (${files.meta}->>'sort_order')::numeric::int END, 0)`;
+
+const encodeTreeCursor = (key: TreeKey) =>
+  Buffer.from(JSON.stringify({ s: key.sortOrder, r: key.rank, n: key.name, id: key.id })).toString('base64url');
+
+function decodeTreeCursor(cursor: string | undefined): Omit<TreeKey, 'type'> | null {
+  if (!cursor) return null;
+  try {
+    const value = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8')) as Record<string, unknown>;
+    if (
+      Number.isInteger(value.s) &&
+      (value.r === 0 || value.r === 1) &&
+      typeof value.n === 'string' &&
+      typeof value.id === 'string' &&
+      value.id.length <= 64
+    ) {
+      return { sortOrder: value.s as number, rank: value.r, name: value.n, id: value.id };
+    }
+  } catch {
+    // fall through
+  }
+  throw invalidInput('The cursor is invalid.');
+}
+
+function decodeArchivedCursor(cursor: string | undefined): { at: string; id: string } | null {
+  if (!cursor) return null;
+  try {
+    const value = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8')) as { at?: unknown; id?: unknown };
+    if (
+      typeof value.at === 'string' &&
+      TIMESTAMP.test(value.at) &&
+      typeof value.id === 'string' &&
+      value.id.length <= 64
+    ) {
+      return { at: value.at, id: value.id };
+    }
+  } catch {
+    // fall through
+  }
+  throw invalidInput('The cursor is invalid.');
+}
+
+/**
+ * One page of tree rows, ordered by the database (hand-ordered first, by that order; then
+ * folders before docs and files; then by name and id), from SELECTs of
+ * `type, id, sort_order, rank, name`. Only the keys are read here; the rows follow by id.
+ */
+async function treePage(parts: SQL[], page: TreePage): Promise<{ keys: TreeKey[]; next: string | null }> {
+  const after = decodeTreeCursor(page.cursor);
+  const rows = await getDb().execute<{
+    type: TreeKey['type'];
+    id: string;
+    sort_order: number;
+    rank: number;
+    name: string;
+  }>(sql`
+    SELECT type, id, sort_order, rank, name FROM (${sql.join(parts, sql` UNION ALL `)}) AS tree
+    WHERE ${
+      after
+        ? sql`(sort_order <= 0, sort_order, rank, name, id) > (${after.sortOrder <= 0}::boolean, ${after.sortOrder}::int, ${after.rank}::int, ${after.name}::text, ${after.id}::text)`
+        : sql`true`
+    }
+    ORDER BY sort_order <= 0, sort_order, rank, name, id
+    LIMIT ${page.limit + 1}`);
+  const keys = [...rows].slice(0, page.limit).map((row) => ({
+    type: row.type,
+    id: row.id,
+    sortOrder: Number(row.sort_order),
+    rank: Number(row.rank),
+    name: row.name,
+  }));
+  return { keys, next: rows.length > page.limit ? encodeTreeCursor(keys[keys.length - 1]!) : null };
+}
+
+export function createKnowledgeService(deps: {
+  files: FilesService;
+  notifications: NotificationsService;
+  hub: Hub;
+  /** This server's address: file links with its origin are ours, any other host's are not. */
+  publicUrl: string;
+}) {
   const presence = createPresence();
+  const links = fileLinks(deps.publicUrl);
+  /** File links signed for one reader. */
+  const signedFor = (markdown: string, memberId: string) =>
+    links.sign(markdown, (fileId) => deps.files.signedUrl(fileId, memberId).url);
 
   const readerFor = (memberId: string, as?: As) => loadReader(memberId, as?.agentId ?? null);
 
@@ -262,7 +423,7 @@ export function createKnowledgeService(deps: { files: FilesService; notification
     if (places.some((place) => place.space === 'team')) return everyone();
     const people = new Set(places.flatMap((place) => (place.ownerId ? [place.ownerId] : [])));
     const folderIds = [...new Set(places.flatMap((place) => place.folderIds))];
-    const docIds = [...new Set(places.flatMap((place) => (place.docId ? [place.docId] : [])))];
+    const docIds = [...new Set(places.flatMap((place) => place.docIds ?? []))];
     const grants =
       folderIds.length || docIds.length
         ? await getDb()
@@ -290,17 +451,28 @@ export function createKnowledgeService(deps: { files: FilesService; notification
 
   /**
    * Tells whoever sees these places (and `also`: those a share just stopped reaching) that the
-   * tree changed, so the lists on their screens refetch. A hint only: it never fails the change.
+   * tree changed, so the lists on their screens refetch. A hint only: it never fails the change,
+   * so places that need reading (the folders above) are given as a function and read in here.
    */
-  async function treeChanged(places: readonly TreePlace[], also: readonly string[] = []) {
+  async function treeChanged(
+    places: readonly TreePlace[] | (() => Promise<readonly TreePlace[]>),
+    also: readonly string[] = [],
+  ) {
     try {
-      const memberIds = [...new Set([...(await audienceOf(places)), ...also])];
+      const where = typeof places === 'function' ? await places() : places;
+      const memberIds = [...new Set([...(await audienceOf(where)), ...also])];
       for (let start = 0; start < memberIds.length; start += TELL_CHUNK) {
         deps.hub.publish(memberIds.slice(start, start + TELL_CHUNK), { type: 'knowledge.changed', data: {} });
       }
     } catch (error) {
       logger.warn('[knowledge] could not tell screens about a change', { error: toErrorMessage(error) });
     }
+  }
+
+  /** A folder that was archived or restored with what is in it: its place, and every folder and doc inside. */
+  async function withInside(folder: FolderRow, inside: readonly { id: string }[]): Promise<TreePlace[]> {
+    const [chain, folderIds] = await Promise.all([chainOf(folder.id), subtree([folder.id])]);
+    return [placeOf(folder, chain), { ...placeOf(folder, []), folderIds, docIds: inside.map((doc) => doc.id) }];
   }
 
   // ── Loading with access ─────────────────────────────────
@@ -328,11 +500,13 @@ export function createKnowledgeService(deps: { files: FilesService; notification
   }
 
   async function fileAt(reader: Reader, id: string) {
-    const [file] = await getDb()
+    const [found] = await getDb()
       .select()
       .from(files)
       .where(and(eq(files.id, id), eq(files.purpose, 'knowledge'), eq(files.status, 'active')));
-    if (!file) throw notFound('File');
+    // A knowledge file with no space is broken: nobody reads it, rather than everybody.
+    if (!found?.space) throw notFound('File');
+    const file = { ...found, space: found.space };
     const docId = typeof file.meta.doc_id === 'string' ? file.meta.doc_id : null;
     if (docId) {
       const owner = await docAt(reader, docId).catch(() => null);
@@ -421,123 +595,105 @@ export function createKnowledgeService(deps: { files: FilesService; notification
     });
   }
 
-  /** What is in a folder (or at the root of a space), in tree order. */
-  async function contents(
-    reader: Reader,
-    at: { folderId: string | null; space: KnowledgeSpace; ownerId: string | null },
-    archived: boolean,
-  ): Promise<KnowledgeItem[]> {
-    const live = (column: Parameters<typeof isNull>[0]) => (archived ? undefined : isNull(column));
-    const root = (space: SQL, owner: SQL) => and(space, owner);
+  /** The rows of one page of the tree, read in full, in the page's order. */
+  async function sourcesOf(keys: readonly TreeKey[]): Promise<Source[]> {
+    const ids = (type: TreeKey['type']) => keys.filter((key) => key.type === type).map((key) => key.id);
     const [folderRows, docRows, fileRows] = await Promise.all([
       getDb()
         .select()
         .from(folders)
-        .where(
-          and(
-            at.folderId
-              ? eq(folders.parentId, at.folderId)
-              : root(
-                  and(isNull(folders.parentId), eq(folders.space, at.space))!,
-                  at.ownerId ? eq(folders.ownerId, at.ownerId) : isNull(folders.ownerId),
-                ),
-            live(folders.archivedAt),
-          ),
-        )
-        .limit(MAX_CHILDREN),
+        .where(inList(folders.id, ids('folder'))),
       getDb()
         .select(docListColumns)
         .from(docs)
-        .where(
-          and(
-            at.folderId
-              ? eq(docs.folderId, at.folderId)
-              : root(
-                  and(isNull(docs.folderId), eq(docs.space, at.space))!,
-                  at.ownerId ? eq(docs.ownerId, at.ownerId) : isNull(docs.ownerId),
-                ),
-            live(docs.archivedAt),
-          ),
-        )
-        .limit(MAX_CHILDREN),
+        .where(inList(docs.id, ids('doc'))),
       getDb()
         .select(fileListColumns)
         .from(files)
-        .where(
-          and(
-            treeFile(),
-            at.folderId
-              ? eq(files.folderId, at.folderId)
-              : root(
-                  and(isNull(files.folderId), eq(files.space, at.space))!,
-                  at.ownerId ? eq(files.ownerId, at.ownerId) : isNull(files.ownerId),
-                ),
-            live(files.archivedAt),
-          ),
-        )
-        .limit(MAX_CHILDREN),
+        .where(inList(files.id, ids('file'))),
     ]);
-    const sources = [...folderRows.map(folderSource), ...docRows.map(docSource), ...fileRows.map(fileSource)];
-    sources.sort(treeOrder);
-    return itemsOf(reader, sources.slice(0, MAX_CHILDREN));
+    const byKey = new Map(
+      [...folderRows.map(folderSource), ...docRows.map(docSource), ...fileRows.map(fileSource)].map((source) => [
+        `${source.type}:${source.id}`,
+        source,
+      ]),
+    );
+    return keys.flatMap((key) => byKey.get(`${key.type}:${key.id}`) ?? []);
   }
 
-  /** The topmost folders and docs others shared with the reader. */
-  async function sharedRoots(reader: Reader): Promise<KnowledgeItem[]> {
-    const grants = await getDb()
-      .select({ type: shares.resourceType, id: shares.resourceId })
-      .from(shares)
-      .where(and(inArray(shares.resourceType, ['folder', 'doc']), principalMatch(reader)));
-    const folderIds = grants.filter((grant) => grant.type === 'folder').map((grant) => grant.id);
-    const docIds = grants.filter((grant) => grant.type === 'doc').map((grant) => grant.id);
-    const others = (space: SQL, owner: SQL) => and(space, owner);
-    const [reach, folderRows, docRows] = await Promise.all([
+  /** What is in a folder (or at the root of a space): a page in tree order. */
+  async function contents(
+    reader: Reader,
+    at: { folderId: string | null; space: KnowledgeSpace; ownerId: string | null },
+    archived: boolean,
+    page: TreePage,
+  ): Promise<Page<KnowledgeItem>> {
+    const live = (column: SQLWrapper) => (archived ? undefined : isNull(column as never));
+    const owner = (column: SQLWrapper) => (at.ownerId ? eq(column as never, at.ownerId) : isNull(column as never));
+    const placed = (table: typeof docs | typeof files) =>
+      at.folderId
+        ? eq(table.folderId, at.folderId)
+        : and(isNull(table.folderId), eq(table.space, at.space), owner(table.ownerId));
+    const { keys, next } = await treePage(
+      [
+        sql`SELECT 'folder' AS type, ${folders.id} AS id, ${folders.sortOrder} AS sort_order, 0 AS rank, ${folders.name} AS name
+          FROM ${folders} WHERE ${and(
+            at.folderId
+              ? eq(folders.parentId, at.folderId)
+              : and(isNull(folders.parentId), eq(folders.space, at.space), owner(folders.ownerId)),
+            live(folders.archivedAt),
+          )}`,
+        sql`SELECT 'doc', ${docs.id}, ${docs.sortOrder}, 1, ${docs.title}
+          FROM ${docs} WHERE ${and(placed(docs), live(docs.archivedAt))}`,
+        sql`SELECT 'file', ${files.id}, ${fileSortOrder}, 1, ${files.name}
+          FROM ${files} WHERE ${and(treeFile(), placed(files), live(files.archivedAt))}`,
+      ],
+      page,
+    );
+    return { items: await itemsOf(reader, await sourcesOf(keys)), next_cursor: next };
+  }
+
+  /**
+   * The topmost folders and docs others shared with the reader, a page in tree order. One inside
+   * another shared folder is reached by opening that one, so a page may hold fewer rows.
+   */
+  async function sharedRoots(reader: Reader, page: TreePage): Promise<Page<KnowledgeItem>> {
+    const granted = (type: 'folder' | 'doc', id: SQLWrapper) =>
+      sql`${id} IN (SELECT ${shares.resourceId} FROM ${shares} WHERE ${shares.resourceType} = ${type} AND ${principalMatch(reader)})`;
+    const [reach, { keys, next }] = await Promise.all([
       reader.sharedFolders(),
-      getDb()
-        .select()
-        .from(folders)
-        .where(
-          and(
-            inList(folders.id, folderIds),
-            isNull(folders.archivedAt),
-            others(eq(folders.space, 'personal'), ne(folders.ownerId, reader.memberId)),
-          ),
-        ),
-      getDb()
-        .select(docListColumns)
-        .from(docs)
-        .where(
-          and(
-            inList(docs.id, docIds),
-            isNull(docs.archivedAt),
-            others(eq(docs.space, 'personal'), ne(docs.ownerId, reader.memberId)),
-          ),
-        ),
+      treePage(
+        [
+          sql`SELECT 'folder' AS type, ${folders.id} AS id, ${folders.sortOrder} AS sort_order, 0 AS rank, ${folders.name} AS name
+            FROM ${folders} WHERE ${and(
+              granted('folder', folders.id),
+              isNull(folders.archivedAt),
+              eq(folders.space, 'personal'),
+              ne(folders.ownerId, reader.memberId),
+            )}`,
+          sql`SELECT 'doc', ${docs.id}, ${docs.sortOrder}, 1, ${docs.title}
+            FROM ${docs} WHERE ${and(
+              granted('doc', docs.id),
+              isNull(docs.archivedAt),
+              eq(docs.space, 'personal'),
+              ne(docs.ownerId, reader.memberId),
+            )}`,
+        ],
+        page,
+      ),
     ]);
-    // Inside another shared folder: reached by opening that one.
-    const sources = [
-      ...folderRows.filter((row) => !(row.parentId && reach.has(row.parentId))).map(folderSource),
-      ...docRows.filter((row) => !(row.folderId && reach.has(row.folderId))).map(docSource),
-    ];
-    sources.sort(treeOrder);
-    return itemsOf(reader, sources);
+    const sources = (await sourcesOf(keys)).filter((source) => !(source.folderId && reach.has(source.folderId)));
+    return { items: await itemsOf(reader, sources), next_cursor: next };
   }
 
   /** Each folder's path from the root of its space down to it. */
   async function pathsOf(folderIds: readonly string[]): Promise<Map<string, PathEntry[]>> {
     const wanted = [...new Set(folderIds)];
     if (!wanted.length) return new Map();
-    const rows = await getDb().execute<{ start: string; id: string; name: string; depth: number }>(sql`
-      WITH RECURSIVE up(start, id, parent_id, name, depth) AS (
-        SELECT id, id, parent_id, name, 0 FROM folders WHERE ${inList(folders.id, wanted)}
-        UNION ALL
-        SELECT u.start, f.id, f.parent_id, f.name, u.depth + 1 FROM folders f JOIN up u ON f.id = u.parent_id WHERE u.depth < ${MAX_DEPTH}
-      )
-      SELECT start, id, name, depth FROM up`);
     const paths = new Map<string, Array<{ id: string; name: string; depth: number }>>();
-    for (const row of rows) {
+    for (const row of await walkUp(wanted)) {
       const list = paths.get(row.start) ?? [];
-      list.push({ id: row.id, name: row.name, depth: Number(row.depth) });
+      list.push({ id: row.id, name: row.name, depth: row.depth });
       paths.set(row.start, list);
     }
     return new Map(
@@ -578,9 +734,15 @@ export function createKnowledgeService(deps: { files: FilesService; notification
     folder: FolderRow,
     chain: FolderRow[],
     role: Role,
+    page: TreePage = FIRST_PAGE,
   ): Promise<KnowledgeFolder> {
     const [children, names, shared, path] = await Promise.all([
-      contents(reader, { folderId: folder.id, space: folder.space, ownerId: folder.ownerId }, !!folder.archivedAt),
+      contents(
+        reader,
+        { folderId: folder.id, space: folder.space, ownerId: folder.ownerId },
+        !!folder.archivedAt,
+        page,
+      ),
       memberNames([folder.createdBy]),
       sharedIds([folder.id]),
       visiblePath(reader, folder, chain.slice(1)),
@@ -588,7 +750,8 @@ export function createKnowledgeService(deps: { files: FilesService; notification
     return {
       ...toItem(folderSource(folder), role, shared.has(folder.id)),
       path,
-      children,
+      children: children.items,
+      next_cursor: children.next_cursor,
       created_by: refOf(names, folder.createdBy),
       created_at: folder.createdAt,
     };
@@ -614,10 +777,7 @@ export function createKnowledgeService(deps: { files: FilesService; notification
     return {
       id: doc.id,
       title: doc.title,
-      content:
-        options.signed === false
-          ? doc.content
-          : signFileLinks(doc.content, (id) => deps.files.signedUrl(id, reader.memberId).url),
+      content: options.signed === false ? doc.content : signedFor(doc.content, reader.memberId),
       space: doc.space,
       folder_id: doc.folderId,
       owner_id: doc.ownerId,
@@ -723,7 +883,7 @@ export function createKnowledgeService(deps: { files: FilesService; notification
     agentId: string | null | undefined,
   ) {
     const who = await actorName(actor, agentId);
-    const body = markdownText(comment.body).replace(/\s+/g, ' ').slice(0, 140);
+    const body = markdownText(comment.body.slice(0, 1_000)).replace(/\s+/g, ' ').slice(0, 140);
     const earlier = new Set(previous ?? []);
     const mentioned = comment.mentions.filter((id) => !earlier.has(id) && id !== actor.memberId).slice(0, MAX_TOLD);
     for (const memberId of mentioned) {
@@ -804,7 +964,7 @@ export function createKnowledgeService(deps: { files: FilesService; notification
   ): Promise<DocRow> {
     if (input.version !== doc.version) stale(doc);
     const title = input.title ?? doc.title;
-    const content = input.content === undefined ? doc.content : canonicalFileLinks(input.content);
+    const content = input.content === undefined ? doc.content : withinLimit(links.canonical(input.content));
     if (title === doc.title && content === doc.content) return doc;
     const [saved] = await getDb()
       .update(docs)
@@ -859,40 +1019,51 @@ export function createKnowledgeService(deps: { files: FilesService; notification
     reader: readerFor,
 
     /** The root of a space, or the topmost items others shared with the member. */
-    async roots(memberId: string, scope: KnowledgeScope, as?: As): Promise<{ items: KnowledgeItem[] }> {
+    /** The root of a space, or the topmost items others shared with the member: a page in tree order. */
+    async roots(
+      memberId: string,
+      scope: KnowledgeScope,
+      as?: As,
+      page: TreePage = FIRST_PAGE,
+    ): Promise<Page<KnowledgeItem>> {
       const reader = await readerFor(memberId, as);
-      if (scope === 'shared') return { items: await sharedRoots(reader) };
-      return {
-        items: await contents(
-          reader,
-          { folderId: null, space: scope, ownerId: scope === 'personal' ? memberId : null },
-          false,
-        ),
-      };
+      if (scope === 'shared') return sharedRoots(reader, page);
+      return contents(
+        reader,
+        { folderId: null, space: scope, ownerId: scope === 'personal' ? memberId : null },
+        false,
+        page,
+      );
     },
 
-    async folder(memberId: string, id: string, as?: As): Promise<KnowledgeFolder> {
+    /** The folder with a page of what is in it. */
+    async folder(memberId: string, id: string, as?: As, page: TreePage = FIRST_PAGE): Promise<KnowledgeFolder> {
       const reader = await readerFor(memberId, as);
       const { folder, chain, role } = await folderAt(reader, id);
-      return folderView(reader, folder, chain, role);
+      return folderView(reader, folder, chain, role, page);
     },
 
     async createFolder(memberId: string, input: CreateFolderInput, as?: As): Promise<KnowledgeFolder> {
       const reader = await readerFor(memberId, as);
-      const place = await placeFor(reader, { folderId: input.folder_id, space: input.space });
-      const [folder] = await getDb()
-        .insert(folders)
-        .values({
-          id: newId('folder'),
-          parentId: place.folder?.id ?? null,
-          space: place.space,
-          ownerId: place.ownerId,
-          name: input.name,
-          createdBy: memberId,
-        })
-        .returning();
+      const { folder, place } = await transaction(async () => {
+        await lockTree('place');
+        const place = await placeFor(reader, { folderId: input.folder_id, space: input.space });
+        if (place.chain.length + 1 > MAX_FOLDER_DEPTH) throw tooDeep();
+        const [folder] = await getDb()
+          .insert(folders)
+          .values({
+            id: newId('folder'),
+            parentId: place.folder?.id ?? null,
+            space: place.space,
+            ownerId: place.ownerId,
+            name: input.name,
+            createdBy: memberId,
+          })
+          .returning();
+        return { folder: folder!, place };
+      });
       await treeChanged([placeOf(place, place.chain)]);
-      return folderView(reader, folder!, [folder!, ...place.chain], roleAt(reader, place));
+      return folderView(reader, folder, [folder, ...place.chain], roleAt(reader, place));
     },
 
     /** Rename or move a folder; moving never goes into itself or below. */
@@ -909,8 +1080,12 @@ export function createKnowledgeService(deps: { files: FilesService; notification
         const changes: Partial<typeof folders.$inferInsert> = {};
         if (input.name !== undefined) changes.name = input.name;
         if (moving) {
-          // Folder moves take turns, so two at once cannot close a loop the other did not see.
-          await getDb().execute(sql`SELECT pg_advisory_xact_lock(${FOLDER_MOVE_LOCK})`);
+          // Folder moves take turns, so two at once cannot close a loop or pass the depth limit
+          // the other did not see; the folder and its place are read again under the lock.
+          await lockTree('move');
+          const { folder, role } = await folderAt(reader, id);
+          need(role, 'editor', 'You can read this folder but not change it.');
+          if (folder.archivedAt) throw conflict('archived', 'This folder is archived. Restore it first.');
           const place = await placeFor(
             reader,
             { folderId: input.folder_id ?? null, space: input.space },
@@ -920,7 +1095,10 @@ export function createKnowledgeService(deps: { files: FilesService; notification
           if (place.chain.some((above) => above.id === folder.id)) {
             throw conflict('folder_cycle', 'A folder cannot move into itself or below it.');
           }
-          const inside = await subtree([folder.id]);
+          const below = await walkDown([folder.id]);
+          const height = 1 + below.reduce((deepest, row) => Math.max(deepest, row.depth), 0);
+          if (place.chain.length + height > MAX_FOLDER_DEPTH) throw tooDeep();
+          const inside = below.map((row) => row.id);
           if (place.agentId) {
             const docIds = (await getDb().select({ id: docs.id }).from(docs).where(inList(docs.folderId, inside))).map(
               (row) => row.id,
@@ -964,8 +1142,10 @@ export function createKnowledgeService(deps: { files: FilesService; notification
             .where(eq(folders.id, folder.id));
         }
       });
-      const now = await chainOf(folder.id);
-      await treeChanged([placeOf(folder, await chainOf(folder.parentId)), placeOf(now[0] ?? folder, now)]);
+      await treeChanged(async () => {
+        const [before, now] = await Promise.all([chainOf(folder.parentId), chainOf(folder.id)]);
+        return [placeOf(folder, before), placeOf(now[0] ?? folder, now)];
+      });
       return service.folder(memberId, id);
     },
 
@@ -993,7 +1173,7 @@ export function createKnowledgeService(deps: { files: FilesService; notification
           .returning();
       });
       for (const doc of archivedDocs) docUpdated(doc);
-      await treeChanged([placeOf(folder, await chainOf(folder.id))]);
+      await treeChanged(() => withInside(folder, archivedDocs));
     },
 
     /** Brings back exactly what was archived with the folder; to the root when its parent stays archived. */
@@ -1025,7 +1205,7 @@ export function createKnowledgeService(deps: { files: FilesService; notification
           .returning();
       });
       for (const doc of restoredDocs) docUpdated(doc);
-      await treeChanged([placeOf(folder, await chainOf(folder.id))]);
+      await treeChanged(() => withInside(folder, restoredDocs));
       return service.folder(memberId, id);
     },
 
@@ -1088,37 +1268,47 @@ export function createKnowledgeService(deps: { files: FilesService; notification
           }
         }
       });
-      await treeChanged([placeOf({ space, ownerId }, await chainOf(input.folder_id))]);
+      await treeChanged(async () => [placeOf({ space, ownerId }, await chainOf(input.folder_id))]);
     },
 
-    /** What was archived in a space, topmost first; an archived folder opens to the rest. */
-    async archived(memberId: string, space: KnowledgeSpace): Promise<{ items: KnowledgeItem[] }> {
+    /**
+     * What was archived in a space, topmost and newest first, a page at a time; an archived
+     * folder opens to the rest. The order and the page are the database's.
+     */
+    async archived(memberId: string, space: KnowledgeSpace, page: TreePage = FIRST_PAGE): Promise<Page<KnowledgeItem>> {
       const reader = await readerFor(memberId);
       const ownerId = space === 'personal' ? memberId : null;
-      const owned = (column: Parameters<typeof eq>[0]) => (ownerId ? eq(column, ownerId) : isNull(column));
-      const [folderRows, docRows, fileRows] = await Promise.all([
-        getDb()
-          .select()
-          .from(folders)
-          .where(and(eq(folders.space, space), owned(folders.ownerId), sql`${folders.archivedAt} IS NOT NULL`)),
-        getDb()
-          .select(docListColumns)
-          .from(docs)
-          .where(and(eq(docs.space, space), owned(docs.ownerId), sql`${docs.archivedAt} IS NOT NULL`)),
-        getDb()
-          .select(fileListColumns)
-          .from(files)
-          .where(and(treeFile(), eq(files.space, space), owned(files.ownerId), sql`${files.archivedAt} IS NOT NULL`)),
-      ]);
-      const stamps = new Map(folderRows.map((row) => [row.id, row.archivedAt]));
-      // Archived together with the folder above: reached by opening it.
-      const topmost = (parent: string | null, stamp: string | null) => !parent || stamps.get(parent) !== stamp;
-      const sources = [
-        ...folderRows.filter((row) => topmost(row.parentId, row.archivedAt)).map(folderSource),
-        ...docRows.filter((row) => topmost(row.folderId, row.archivedAt)).map(docSource),
-        ...fileRows.filter((row) => topmost(row.folderId, row.archivedAt)).map(fileSource),
-      ].sort((a, b) => (b.archivedAt ?? '').localeCompare(a.archivedAt ?? '') || treeOrder(a, b));
-      return { items: await itemsOf(reader, sources.slice(0, MAX_CHILDREN)) };
+      const owned = (column: SQLWrapper) => (ownerId ? eq(column as never, ownerId) : isNull(column as never));
+      const after = decodeArchivedCursor(page.cursor);
+      // Archived together with the folder above it: reached by opening that one.
+      const topmost = (parent: SQLWrapper, stamp: SQLWrapper) =>
+        sql`NOT EXISTS (SELECT 1 FROM folders above WHERE above.id = ${parent} AND above.archived_at = ${stamp})`;
+      const rows = await getDb().execute<{ type: TreeKey['type']; id: string; at: string }>(sql`
+        SELECT type, id, stamp::text AS at FROM (
+          SELECT 'folder' AS type, ${folders.id} AS id, ${folders.archivedAt} AS stamp FROM ${folders}
+            WHERE ${and(eq(folders.space, space), owned(folders.ownerId), sql`${folders.archivedAt} IS NOT NULL`, topmost(folders.parentId, folders.archivedAt))}
+          UNION ALL
+          SELECT 'doc', ${docs.id}, ${docs.archivedAt} FROM ${docs}
+            WHERE ${and(eq(docs.space, space), owned(docs.ownerId), sql`${docs.archivedAt} IS NOT NULL`, topmost(docs.folderId, docs.archivedAt))}
+          UNION ALL
+          SELECT 'file', ${files.id}, ${files.archivedAt} FROM ${files}
+            WHERE ${and(treeFile(), eq(files.space, space), owned(files.ownerId), sql`${files.archivedAt} IS NOT NULL`, topmost(files.folderId, files.archivedAt))}
+        ) AS archived
+        WHERE ${after ? sql`(stamp, id) < (${after.at}::timestamptz, ${after.id}::text)` : sql`true`}
+        ORDER BY stamp DESC, id DESC
+        LIMIT ${page.limit + 1}`);
+      const keys = [...rows].slice(0, page.limit);
+      const sources = await sourcesOf(
+        keys.map((row) => ({ type: row.type, id: row.id, sortOrder: 0, rank: 0, name: '' })),
+      );
+      const last = keys[keys.length - 1];
+      return {
+        items: await itemsOf(reader, sources),
+        next_cursor:
+          rows.length > page.limit && last
+            ? Buffer.from(JSON.stringify({ at: last.at, id: last.id })).toString('base64url')
+            : null,
+      };
     },
 
     /** Recently updated docs the member may read, newest first; templates with `template`. */
@@ -1171,12 +1361,15 @@ export function createKnowledgeService(deps: { files: FilesService; notification
         if (!found.doc.isTemplate) throw invalidInput('That doc is not a template.');
         template = found.doc;
       }
-      const place = await placeFor(reader, { folderId: input.folder_id, space: input.space });
       const title = input.title ?? template!.title;
-      const content = canonicalFileLinks(input.content ?? template?.content ?? '');
+      const content = withinLimit(links.canonical(input.content ?? template?.content ?? ''));
       const tags = input.tags ?? template?.tags ?? [];
       const meta = input.meta ?? {};
-      const doc = await transaction(async () => {
+      const { doc, place } = await transaction(async () => {
+        // Where it goes is read under the tree lock: a folder moving into the team space meanwhile
+        // takes the new doc along, or the new doc lands where the folder is now.
+        await lockTree('place');
+        const place = await placeFor(reader, { folderId: input.folder_id, space: input.space });
         const [row] = await getDb()
           .insert(docs)
           .values({
@@ -1208,7 +1401,7 @@ export function createKnowledgeService(deps: { files: FilesService; notification
             agentId: as?.agentId ?? null,
           });
         await relink(row!.id, content);
-        return row!;
+        return { doc: row!, place };
       });
       await tellMentioned(reader, doc, '', content, as?.agentId);
       await treeChanged([placeOf(place, place.chain)]);
@@ -1232,8 +1425,17 @@ export function createKnowledgeService(deps: { files: FilesService; notification
       need(role, 'editor', 'You can read this doc but not change it.');
       if (doc.archivedAt) throw conflict('archived', 'This doc is archived. Restore it first.');
       const before = doc.content;
+      const moving = input.folder_id !== undefined || input.space !== undefined;
       const saved = await transaction(async () => {
-        let row = doc;
+        let current = { doc, role };
+        if (moving) {
+          // Moves take the tree lock alone; the doc and where it goes are read again under it.
+          await lockTree('move');
+          current = await docAt(reader, id);
+          need(current.role, 'editor', 'You can read this doc but not change it.');
+          if (current.doc.archivedAt) throw conflict('archived', 'This doc is archived. Restore it first.');
+        }
+        let row = current.doc;
         if (input.title !== undefined || input.content !== undefined) {
           row = await saveContent(reader, row, { ...input, version: input.version! }, as);
         }
@@ -1252,7 +1454,7 @@ export function createKnowledgeService(deps: { files: FilesService; notification
             }),
           );
         }
-        const place = await moveTarget(reader, role, doc, input);
+        const place = await moveTarget(reader, current.role, current.doc, input);
         if (place) {
           if (place.agentId && (await hasShares('doc', [doc.id]))) {
             throw conflict('agent_folder_private', "An Agent's folder is private: stop sharing this doc first.");
@@ -1260,7 +1462,7 @@ export function createKnowledgeService(deps: { files: FilesService; notification
           changes.folderId = place.folder?.id ?? null;
           changes.space = place.space;
           changes.ownerId = place.ownerId;
-          if (place.space === 'team' && doc.space === 'personal') {
+          if (place.space === 'team' && current.doc.space === 'personal') {
             await getDb()
               .delete(shares)
               .where(and(eq(shares.resourceType, 'doc'), eq(shares.resourceId, doc.id)));
@@ -1277,10 +1479,12 @@ export function createKnowledgeService(deps: { files: FilesService; notification
         return row;
       });
       await tellMentioned(reader, saved, before, saved.content, as?.agentId);
-      if (saved !== doc) docUpdated(saved);
-      if (saved !== doc) {
-        const [before, now] = await Promise.all([chainOf(doc.folderId), chainOf(saved.folderId)]);
-        await treeChanged([placeOf(doc, before, doc.id), placeOf(saved, now, saved.id)]);
+      if (saved.version !== doc.version || saved.updatedAt !== doc.updatedAt) {
+        docUpdated(saved);
+        await treeChanged(async () => {
+          const [before, now] = await Promise.all([chainOf(doc.folderId), chainOf(saved.folderId)]);
+          return [placeOf(doc, before, doc.id), placeOf(saved, now, saved.id)];
+        });
       }
       return service.getDoc(memberId, id, { as: as ?? {} });
     },
@@ -1296,7 +1500,7 @@ export function createKnowledgeService(deps: { files: FilesService; notification
         .where(eq(docs.id, id))
         .returning();
       docUpdated(archived!);
-      await treeChanged([placeOf(doc, await chainOf(doc.folderId), doc.id)]);
+      await treeChanged(async () => [placeOf(doc, await chainOf(doc.folderId), doc.id)]);
     },
 
     /** Back where it was; to the root of its space when its folder is archived. */
@@ -1311,7 +1515,7 @@ export function createKnowledgeService(deps: { files: FilesService; notification
           .where(eq(docs.id, id))
           .returning();
         docUpdated(restored!);
-        await treeChanged([placeOf(restored!, await chainOf(restored!.folderId), doc.id)]);
+        await treeChanged(async () => [placeOf(restored!, await chainOf(restored!.folderId), doc.id)]);
       }
       return service.getDoc(memberId, id);
     },
@@ -1364,7 +1568,7 @@ export function createKnowledgeService(deps: { files: FilesService; notification
         created_by: refOf(people, row.createdBy),
         agent: row.agentId ? { id: row.agentId, name: writers.get(row.agentId) ?? '' } : null,
         created_at: row.createdAt,
-        content: signFileLinks(row.content, (fileId) => deps.files.signedUrl(fileId, memberId).url),
+        content: signedFor(row.content, memberId),
       };
     },
 
@@ -1426,7 +1630,7 @@ export function createKnowledgeService(deps: { files: FilesService; notification
         .innerJoin(docs, eq(docs.id, docLinks.fromDocId))
         .where(and(eq(docLinks.toDocId, id), isNull(docs.archivedAt), await readableWhere(reader, docs, 'doc')))
         .orderBy(desc(docs.updatedAt))
-        .limit(MAX_CHILDREN);
+        .limit(MAX_BACKLINKS);
       return { items: await itemsOf(reader, rows.map(docSource)) };
     },
 
@@ -1470,7 +1674,7 @@ export function createKnowledgeService(deps: { files: FilesService; notification
           targetId: docId,
           createdBy: memberId,
           agentId: as?.agentId ?? null,
-          body,
+          body: links.canonical(body),
           mentions: mentionIds(body),
         })
         .returning();
@@ -1479,23 +1683,34 @@ export function createKnowledgeService(deps: { files: FilesService; notification
       return (await commentViews(memberId, [row!]))(row!);
     },
 
+    /**
+     * The member's own edit: from now on the text is theirs, so the Agent that wrote the first
+     * one is no longer named on it, and new mentions are told in the member's name.
+     */
     async editComment(memberId: string, docId: string, commentId: string, body: string): Promise<KnowledgeComment> {
       const reader = await readerFor(memberId);
       const { doc } = await docAt(reader, docId);
+      if (doc.archivedAt) throw conflict('archived', 'This doc is archived. Restore it first.');
       const own = await ownComment(memberId, docId, commentId);
       const [row] = await getDb()
         .update(comments)
-        .set({ body, mentions: mentionIds(body), updatedAt: new Date().toISOString() })
+        .set({
+          body: links.canonical(body),
+          mentions: mentionIds(body),
+          agentId: null,
+          updatedAt: new Date().toISOString(),
+        })
         .where(eq(comments.id, own.id))
         .returning();
-      await tellComment(reader, doc, row!, own.mentions, own.agentId);
+      await tellComment(reader, doc, row!, own.mentions, null);
       tell(docId, { type: 'comments.updated', data: { target_type: 'doc', target_id: docId, comment_id: row!.id } });
       return (await commentViews(memberId, [row!]))(row!);
     },
 
     async removeComment(memberId: string, docId: string, commentId: string): Promise<void> {
       const reader = await readerFor(memberId);
-      await docAt(reader, docId);
+      const { doc } = await docAt(reader, docId);
+      if (doc.archivedAt) throw conflict('archived', 'This doc is archived. Restore it first.');
       const own = await ownComment(memberId, docId, commentId);
       await getDb()
         .update(comments)
@@ -1547,14 +1762,18 @@ export function createKnowledgeService(deps: { files: FilesService; notification
     /** Replaces an item's own shares. Only the owner of a personal item shares it. */
     async share(memberId: string, type: 'folder' | 'doc', id: string, input: ShareInput): Promise<KnowledgeShares> {
       const reader = await readerFor(memberId);
-      const found = type === 'folder' ? await folderAt(reader, id) : await docAt(reader, id);
-      const item = type === 'folder' ? (found as { folder: FolderRow }).folder : (found as { doc: DocRow }).doc;
-      if (item.space === 'team') throw conflict('team_space', 'Everyone already reads and changes the team space.');
-      if (found.role !== 'owner') throw forbidden('Only its owner can share it.');
-      if (agentOfChain(found.chain)) {
-        throw conflict('agent_folder_private', "An Agent's folder is private to the Agent and its owner.");
-      }
-      if (item.archivedAt) throw conflict('archived', 'Restore it before sharing it.');
+      const shareable = async () => {
+        const found = type === 'folder' ? await folderAt(reader, id) : await docAt(reader, id);
+        const item = type === 'folder' ? (found as { folder: FolderRow }).folder : (found as { doc: DocRow }).doc;
+        if (item.space === 'team') throw conflict('team_space', 'Everyone already reads and changes the team space.');
+        if (found.role !== 'owner') throw forbidden('Only its owner can share it.');
+        if (agentOfChain(found.chain)) {
+          throw conflict('agent_folder_private', "An Agent's folder is private to the Agent and its owner.");
+        }
+        if (item.archivedAt) throw conflict('archived', 'Restore it before sharing it.');
+        return { item, chain: found.chain };
+      };
+      const { item, chain } = await shareable();
       // One entry per member, group or the workspace; the last one wins.
       const wanted = new Map<string, { type: 'member' | 'group' | 'workspace'; id: string | null; role: string }>();
       for (const entry of input.items) {
@@ -1574,9 +1793,13 @@ export function createKnowledgeService(deps: { files: FilesService; notification
         throw invalidInput('Some members or groups do not exist.');
       }
       // Whoever the old shares reached refreshes too: a removed share takes the item off their list.
-      const place = placeOf(item, found.chain, type === 'doc' ? id : undefined);
+      const place = placeOf(item, chain, type === 'doc' ? id : undefined);
       const reachedBefore = await audienceOf([place]).catch(() => [] as string[]);
       const added = await transaction(async () => {
+        // Checked again under the tree lock: a move into an Agent's folder or the team space
+        // cannot slip in between the check and the shares.
+        await lockTree('place');
+        await shareable();
         const existing = await getDb()
           .select()
           .from(shares)
@@ -1630,22 +1853,29 @@ export function createKnowledgeService(deps: { files: FilesService; notification
       return { items: presence.list(docId) };
     },
 
-    /** A heartbeat from an open doc; editing needs the right to change it. */
+    /**
+     * A heartbeat from an open doc; editing needs the right to change it. Someone who may no
+     * longer read it leaves the list at once, so live updates stop reaching them.
+     */
     async beat(memberId: string, docId: string, state: PresenceState): Promise<{ items: DocPresence[] }> {
-      const reader = await readerFor(memberId);
-      const { role } = await docAt(reader, docId);
-      if (state === 'editing') need(role, 'editor', 'You can read this doc but not change it.');
-      const { items, changed } = presence.beat(docId, { id: memberId, name: reader.name }, state);
+      let found: { reader: Reader; role: Role };
+      try {
+        const reader = await readerFor(memberId);
+        found = { reader, role: (await docAt(reader, docId)).role };
+      } catch (error) {
+        service.leave(memberId, docId);
+        throw error;
+      }
+      if (state === 'editing') need(found.role, 'editor', 'You can read this doc but not change it.');
+      const { items, changed } = presence.beat(docId, { id: memberId, name: found.reader.name }, state);
       if (changed) tell(docId, { type: 'doc.presence', data: { doc_id: docId, items } });
       return { items };
     },
 
+    /** I closed it. Only someone who had it open changes the list, and only those left are told. */
     leave(memberId: string, docId: string): void {
-      const { items, changed } = presence.leave(docId, memberId);
-      if (changed) {
-        const watchers = [...new Set([...presence.watchers(docId), memberId])];
-        deps.hub.publish(watchers, { type: 'doc.presence', data: { doc_id: docId, items } });
-      }
+      const { items, left } = presence.leave(docId, memberId);
+      if (left) tell(docId, { type: 'doc.presence', data: { doc_id: docId, items } });
     },
 
     // ── Files ────────────────────────────────────────────
@@ -1663,50 +1893,72 @@ export function createKnowledgeService(deps: { files: FilesService; notification
       },
     ): Promise<KnowledgeFile> {
       const reader = await readerFor(memberId);
-      let place: { folderId: string | null; space: KnowledgeSpace; ownerId: string | null };
-      let role: Role;
-      const meta: Record<string, unknown> = { uploaded_by: memberId };
-      if (input.docId) {
-        const found = await docAt(reader, input.docId);
-        need(found.role, 'editor', 'You can read this doc but not change it.');
-        if (found.doc.archivedAt) throw conflict('archived', 'This doc is archived. Restore it first.');
-        place = { folderId: found.doc.folderId, space: found.doc.space, ownerId: found.doc.ownerId };
-        role = found.role;
-        meta.doc_id = found.doc.id;
-      } else {
+      const meta: Record<string, unknown> = { uploaded_by: memberId, ...(input.docId ? { doc_id: input.docId } : {}) };
+      /** Where the file goes, and the uploader's role there. */
+      const placeNow = async (): Promise<{
+        place: { folderId: string | null; space: KnowledgeSpace; ownerId: string | null };
+        role: Role;
+      }> => {
+        if (input.docId) {
+          const found = await docAt(reader, input.docId);
+          need(found.role, 'editor', 'You can read this doc but not change it.');
+          if (found.doc.archivedAt) throw conflict('archived', 'This doc is archived. Restore it first.');
+          return {
+            place: { folderId: found.doc.folderId, space: found.doc.space, ownerId: found.doc.ownerId },
+            role: found.role,
+          };
+        }
         const target = await placeFor(reader, { folderId: input.folderId, space: input.space });
-        place = { folderId: target.folder?.id ?? null, space: target.space, ownerId: target.ownerId };
-        role = roleAt(reader, target);
-      }
+        return {
+          place: { folderId: target.folder?.id ?? null, space: target.space, ownerId: target.ownerId },
+          role: roleAt(reader, target),
+        };
+      };
+      const first = await placeNow();
       const stored = await deps.files.store(memberId, {
         name: input.name,
         contentType: input.contentType,
         bytes: input.bytes,
         purpose: 'knowledge',
-        ...place,
+        ...first.place,
         meta,
       });
+      let role: Role;
+      try {
+        // The bytes are stored outside the tree lock; where the file sits is settled under it, so
+        // a folder that moved into the team space meanwhile takes the new file along.
+        role = await transaction(async () => {
+          await lockTree('place');
+          const now = await placeNow();
+          await getDb().update(files).set(now.place).where(eq(files.id, stored.id));
+          return now.role;
+        });
+      } catch (error) {
+        await deps.files.discard(stored.id);
+        throw error;
+      }
       if (!input.docId) {
-        // The name and the text inside go into search.
+        // The name and the text inside go into search. Reading stops at what search keeps
+        // (a few pages of a PDF, a deadline): it runs inside the upload request.
         let text: string | null = null;
         try {
-          text = await fileText({ contentType: stored.content_type, name: stored.name }, input.bytes);
+          text = await fileText({ contentType: stored.content_type, name: stored.name }, input.bytes, FILE_TEXT_LIMITS);
         } catch (error) {
           logger.warn('[knowledge] could not read an uploaded file', { file: stored.id, error: toErrorMessage(error) });
         }
-        const excerpt = text?.replace(/\s+/g, ' ').trim().slice(0, 300);
+        const excerpt = text?.slice(0, 1_000).replace(/\s+/g, ' ').trim().slice(0, 300);
         await getDb()
           .update(files)
           .set({
             searchA: searchTokens(stored.name),
-            searchC: searchTokens(text?.slice(0, MAX_FILE_TEXT)),
+            searchC: searchTokens(text),
             ...(excerpt ? { meta: { ...meta, excerpt } } : {}),
           })
           .where(eq(files.id, stored.id));
       }
       const [row] = await getDb().select().from(files).where(eq(files.id, stored.id));
       // A file of the tree (a picture pasted into a doc is not in it).
-      if (!input.docId) await treeChanged([placeOf(place, await chainOf(place.folderId))]);
+      if (!input.docId) await treeChanged(async () => [placeOf(row!, await chainOf(row!.folderId))]);
       return fileView(reader, row!, role);
     },
 
@@ -1718,34 +1970,47 @@ export function createKnowledgeService(deps: { files: FilesService; notification
 
     async updateFile(memberId: string, id: string, input: UpdateFileInput): Promise<KnowledgeFile> {
       const reader = await readerFor(memberId);
-      const { file, role, docId } = await fileAt(reader, id);
-      need(role, 'editor', 'You can read this file but not change it.');
-      if (file.archivedAt) throw conflict('archived', 'This file is archived. Restore it first.');
-      const changes: Partial<typeof files.$inferInsert> = {};
-      if (input.name !== undefined) {
-        changes.name = input.name;
-        if (!docId) changes.searchA = searchTokens(input.name);
-      }
-      if (input.folder_id !== undefined || input.space !== undefined) {
-        if (docId) throw conflict('doc_file', 'This file belongs to a doc and moves with it.');
-        const place = await moveTarget(reader, role, { space: file.space ?? 'team', ownerId: file.ownerId }, input);
+      const moving = input.folder_id !== undefined || input.space !== undefined;
+      const check = async () => {
+        const found = await fileAt(reader, id);
+        need(found.role, 'editor', 'You can read this file but not change it.');
+        if (found.file.archivedAt) throw conflict('archived', 'This file is archived. Restore it first.');
+        if (moving && found.docId) throw conflict('doc_file', 'This file belongs to a doc and moves with it.');
+        return found;
+      };
+      await check();
+      const { file, docId, changes } = await transaction(async () => {
+        // Moves take the tree lock alone; the file and where it goes are read again under it.
+        if (moving) await lockTree('move');
+        const { file, role, docId } = moving ? await check() : await fileAt(reader, id);
+        const changes: Partial<typeof files.$inferInsert> = {};
+        if (input.name !== undefined) {
+          changes.name = input.name;
+          if (!docId) changes.searchA = searchTokens(input.name);
+        }
+        const place = moving
+          ? await moveTarget(reader, role, { space: file.space, ownerId: file.ownerId }, input)
+          : null;
         if (place) {
           changes.folderId = place.folder?.id ?? null;
           changes.space = place.space;
           changes.ownerId = place.ownerId;
         }
-      }
-      if (Object.keys(changes).length) {
-        await getDb()
-          .update(files)
-          .set({ ...changes, updatedAt: sql`now()` })
-          .where(eq(files.id, id));
-      }
+        if (Object.keys(changes).length) {
+          await getDb()
+            .update(files)
+            .set({ ...changes, updatedAt: sql`now()` })
+            .where(eq(files.id, id));
+        }
+        return { file, docId, changes };
+      });
       if (Object.keys(changes).length && !docId) {
-        const folderId = changes.folderId === undefined ? file.folderId : changes.folderId;
-        const [before, now] = await Promise.all([chainOf(file.folderId), chainOf(folderId)]);
-        const after = { space: changes.space ?? file.space, ownerId: changes.ownerId ?? file.ownerId };
-        await treeChanged([placeOf(file, before), placeOf(after, now)]);
+        await treeChanged(async () => {
+          const folderId = changes.folderId === undefined ? file.folderId : changes.folderId;
+          const [before, now] = await Promise.all([chainOf(file.folderId), chainOf(folderId)]);
+          const after = { space: changes.space ?? file.space, ownerId: changes.ownerId ?? file.ownerId };
+          return [placeOf(file, before), placeOf(after, now)];
+        });
       }
       return service.file(memberId, id);
     },
@@ -1754,19 +2019,19 @@ export function createKnowledgeService(deps: { files: FilesService; notification
       const reader = await readerFor(memberId);
       const { file, role, docId } = await fileAt(reader, id);
       if (docId) throw conflict('doc_file', 'This file belongs to a doc: take it out of the doc instead.');
-      needArchive(role, file.space ?? 'team');
+      needArchive(role, file.space);
       if (!file.archivedAt)
         await getDb()
           .update(files)
           .set({ archivedAt: sql`now()` })
           .where(eq(files.id, id));
-      if (!file.archivedAt) await treeChanged([placeOf(file, await chainOf(file.folderId))]);
+      if (!file.archivedAt) await treeChanged(async () => [placeOf(file, await chainOf(file.folderId))]);
     },
 
     async restoreFile(memberId: string, id: string): Promise<KnowledgeFile> {
       const reader = await readerFor(memberId);
       const { file, chain, role } = await fileAt(reader, id);
-      needArchive(role, file.space ?? 'team');
+      needArchive(role, file.space);
       if (file.archivedAt) {
         await getDb()
           .update(files)
@@ -1810,15 +2075,23 @@ export function createKnowledgeService(deps: { files: FilesService; notification
       let label: string;
       let rootId: string | null;
       let folderRows: FolderRow[];
+      let moreFolders: boolean;
       if ('folderId' in root) {
         const { folder } = await folderAt(reader, root.folderId);
+        // The walk goes level by level, so the cap keeps the folders nearest the top.
         const inside = await subtree([folder.id]);
+        moreFolders = inside.length > MAX_EXPORT_FOLDERS;
         label = folder.name;
         rootId = folder.id;
         folderRows = await getDb()
           .select()
           .from(folders)
-          .where(and(inList(folders.id, inside), folder.archivedAt ? undefined : isNull(folders.archivedAt)));
+          .where(
+            and(
+              inList(folders.id, [folder.id, ...inside.filter((id) => id !== folder.id)].slice(0, MAX_EXPORT_FOLDERS)),
+              folder.archivedAt ? undefined : isNull(folders.archivedAt),
+            ),
+          );
       } else {
         label =
           root.space === 'team'
@@ -1838,7 +2111,11 @@ export function createKnowledgeService(deps: { files: FilesService; notification
               root.space === 'personal' ? eq(folders.ownerId, memberId) : isNull(folders.ownerId),
               isNull(folders.archivedAt),
             ),
-          );
+          )
+          .orderBy(asc(folders.id))
+          .limit(MAX_EXPORT_FOLDERS + 1);
+        moreFolders = folderRows.length > MAX_EXPORT_FOLDERS;
+        folderRows = folderRows.slice(0, MAX_EXPORT_FOLDERS);
       }
       const folderIds = folderRows.map((row) => row.id);
       const inSpace = (table: typeof docs | typeof files) =>
@@ -1850,13 +2127,13 @@ export function createKnowledgeService(deps: { files: FilesService; notification
             )
           : undefined;
       const archivedToo = 'folderId' in root && folderRows.some((row) => row.id === rootId && row.archivedAt);
+      // Names and sizes only, capped: a doc's Markdown is read while the archive is written.
       const [docRows, fileRows] = await Promise.all([
         getDb()
           .select({
             id: docs.id,
             folderId: docs.folderId,
             title: docs.title,
-            content: docs.content,
             version: docs.version,
             updatedAt: docs.updatedAt,
           })
@@ -1864,7 +2141,8 @@ export function createKnowledgeService(deps: { files: FilesService; notification
           .where(
             and(or(inList(docs.folderId, folderIds), inSpace(docs)), archivedToo ? undefined : isNull(docs.archivedAt)),
           )
-          .orderBy(asc(docs.id)),
+          .orderBy(asc(docs.id))
+          .limit(MAX_EXPORT_DOCS + 1),
         getDb()
           .select({ id: files.id, folderId: files.folderId, name: files.name, sizeBytes: files.sizeBytes })
           .from(files)
@@ -1875,28 +2153,44 @@ export function createKnowledgeService(deps: { files: FilesService; notification
               archivedToo ? undefined : isNull(files.archivedAt),
             ),
           )
-          .orderBy(asc(files.id)),
+          .orderBy(asc(files.id))
+          .limit(MAX_EXPORT_FILES + 1),
       ]);
-      // Pictures and files the docs show, when the member may open them.
-      const inTree = new Set(fileRows.map((row) => row.id));
-      const shown = [...new Set(docRows.flatMap((doc) => fileLinkIds(doc.content)))].filter((id) => !inTree.has(id));
-      const assets: ExportFile[] = [];
-      for (const id of shown) {
-        const row = await deps.files.get(memberId, id).catch(() => null);
-        if (row) assets.push({ id: row.id, folderId: null, name: row.name, sizeBytes: row.sizeBytes });
-      }
       const exportedAt = new Date().toISOString();
-      const plan = planExport({
-        rootId,
-        folders: folderRows.map((row) => ({ id: row.id, parentId: row.parentId, name: row.name })),
-        docs: docRows,
-        files: fileRows,
-        assets,
-        locale: reader.locale,
-        label,
-        exportedAt,
-      });
+      const contentsOf = (ids: string[]) =>
+        getDb()
+          .select({ id: docs.id, content: docs.content })
+          .from(docs)
+          .where(inList(docs.id, ids))
+          .then((rows) => new Map(rows.map((row) => [row.id, row.content])));
       const body = zipStream(async (zip) => {
+        const exported = docRows.slice(0, MAX_EXPORT_DOCS);
+        const treeFiles = fileRows.slice(0, MAX_EXPORT_FILES);
+        // Pictures and files the docs show, found a batch of docs at a time.
+        const inTree = new Set(treeFiles.map((row) => row.id));
+        const shown = new Set<string>();
+        let moreShown = false;
+        for (const batch of inBatches(exported.map((doc) => doc.id))) {
+          for (const content of (await contentsOf(batch)).values()) {
+            for (const id of links.ids(content)) {
+              if (inTree.has(id) || shown.has(id)) continue;
+              if (shown.size < MAX_EXPORT_FILES) shown.add(id);
+              else moreShown = true;
+            }
+          }
+        }
+        const plan = planExport({
+          rootId,
+          folders: folderRows.map((row) => ({ id: row.id, parentId: row.parentId, name: row.name })),
+          docs: docRows,
+          files: treeFiles,
+          assets: await exportAssets(memberId, [...shown], new Set(exported.map((doc) => doc.id))),
+          more: { folders: moreFolders, files: fileRows.length > MAX_EXPORT_FILES, assets: moreShown },
+          locale: reader.locale,
+          label,
+          exportedAt,
+          links,
+        });
         for (const entry of plan.entries) {
           if ('text' in entry) {
             await zip.text(entry.path, entry.text);
@@ -1905,6 +2199,10 @@ export function createKnowledgeService(deps: { files: FilesService; notification
           const content = await deps.files.content(memberId, entry.fileId).catch(() => null);
           if (!content) plan.notes.push(copy.missing(entry.path));
           else await zip.stream(entry.path, content.body);
+        }
+        for (const batch of inBatches(plan.docs)) {
+          const contents = await contentsOf(batch.map((entry) => entry.doc.id));
+          for (const { doc, path } of batch) await zip.text(path, plan.render(doc, path, contents.get(doc.id) ?? ''));
         }
         const notes = notesEntry(reader.locale, plan.notes);
         if (notes && 'text' in notes) await zip.text(notes.path, notes.text);
@@ -1979,7 +2277,7 @@ export function createKnowledgeService(deps: { files: FilesService; notification
           type: 'doc',
           id: row.id,
           title: row.title,
-          snippet: snippetFor(markdownText(row.content), words),
+          snippet: docSnippet(row.content, words),
           space: row.space,
           folder_id: row.folderId,
           score: Number(row.score),
@@ -2002,7 +2300,7 @@ export function createKnowledgeService(deps: { files: FilesService; notification
           id: row.id,
           title: row.name,
           snippet: typeof row.meta.excerpt === 'string' ? snippetFor(row.meta.excerpt, words) : '',
-          space: row.space ?? 'team',
+          space: row.space ?? 'personal',
           folder_id: row.folderId,
           score: Number(row.score),
           updated_at: row.updatedAt,
@@ -2139,7 +2437,35 @@ export function createKnowledgeService(deps: { files: FilesService; notification
     },
   };
 
-  /** Comments as the reader sees them, with names. */
+  /**
+   * Of the files exported docs show, the ones the member may open, looked up in batches: a
+   * picture of an exported doc follows the doc; anything else is checked as the member.
+   */
+  async function exportAssets(memberId: string, ids: string[], exportedDocs: ReadonlySet<string>) {
+    const assets: ExportFile[] = [];
+    for (const batch of inBatches(ids, 500)) {
+      const rows = await getDb()
+        .select()
+        .from(files)
+        .where(and(inList(files.id, batch), eq(files.status, 'active')));
+      const byId = new Map(rows.map((row) => [row.id, row]));
+      for (const id of batch) {
+        const row = byId.get(id);
+        if (!row) continue;
+        const docId = row.purpose === 'knowledge' ? row.meta.doc_id : undefined;
+        const readable =
+          (typeof docId === 'string' && exportedDocs.has(docId)) ||
+          (await deps.files.get(memberId, row.id).then(
+            () => true,
+            () => false,
+          ));
+        if (readable) assets.push({ id: row.id, folderId: null, name: row.name, sizeBytes: row.sizeBytes });
+      }
+    }
+    return assets;
+  }
+
+  /** Comments as the reader sees them: with names, and file links signed for them. */
   async function commentViews(memberId: string, rows: CommentRow[]) {
     const [people, writers] = await Promise.all([
       memberNames(rows.map((row) => row.createdBy)),
@@ -2149,7 +2475,7 @@ export function createKnowledgeService(deps: { files: FilesService; notification
       id: row.id,
       target_type: row.targetType,
       target_id: row.targetId,
-      body: row.body,
+      body: signedFor(row.body, memberId),
       mentions: row.mentions,
       created_by: refOf(people, row.createdBy),
       agent: row.agentId ? { id: row.agentId, name: writers.get(row.agentId) ?? '' } : null,

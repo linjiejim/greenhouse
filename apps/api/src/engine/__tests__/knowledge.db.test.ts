@@ -6,6 +6,7 @@
 
 import { and, eq } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
+import { DOC_CONTENT_MAX, type RealtimeEvent } from '@greenhouse/contract';
 import { docs, docVersions, folders, getDb, messages, requests, runSteps } from '@greenhouse/db';
 import { createTestApp } from '../../testing.js';
 import { scriptedModel, text, toolCall } from './model.js';
@@ -25,7 +26,8 @@ async function setup() {
     await app.services.engine.idle();
     return sent.body as { run_id: string };
   }
-  const steps = (runId: string) => getDb().select().from(runSteps).where(eq(runSteps.runId, runId));
+  const steps = (runId: string) =>
+    getDb().select().from(runSteps).where(eq(runSteps.runId, runId)).orderBy(runSteps.id);
   const reply = async (runId: string) =>
     (
       await getDb()
@@ -144,6 +146,30 @@ describe('knowledge tools in a turn', () => {
     expect(version).toMatchObject({ agentId: main.agent_id, createdBy: lin.id, changeNote: 'New date' });
   });
 
+  it('refuse an edit that would make a doc longer than the limit, before any card', async () => {
+    const { scripts, model, app, lin, main, send, reply } = await setup();
+    const big = await app.services.knowledge.createDoc(lin.id, {
+      title: 'Big',
+      content: `START\n${'b'.repeat(DOC_CONTENT_MAX - 100_000)}`,
+      space: 'team',
+    });
+    scripts.push(
+      toolCall('knowledge_mutation', {
+        action: 'edit',
+        doc_id: big.id,
+        version: 1,
+        edits: [{ find: 'START', replace: 'x'.repeat(150_000) }],
+      }),
+      text('That was too much.'),
+    );
+    const sent = await send(main.id, 'pad the doc');
+    expect((await reply(sent.run_id)).steps).toEqual([expect.objectContaining({ status: 'failed' })]);
+    // The Agent is told why; nobody is asked to approve an edit that cannot be saved.
+    expect(JSON.stringify(model.prompts.at(-1))).toContain('over the limit');
+    expect(await getDb().select().from(requests).where(eq(requests.runId, sent.run_id))).toEqual([]);
+    expect((await app.services.knowledge.getDoc(lin.id, big.id)).version).toBe(1);
+  });
+
   it('keep the Agent’s private folder to the Agent and its owner, and write there without a card', async () => {
     const { scripts, app, lin, chen, main, send, steps } = await setup();
     const writer = (await app.call('POST', '/api/agents', { token: lin.token, body: { template_key: 'writer' } })).body;
@@ -209,5 +235,77 @@ describe('knowledge tools in a turn', () => {
     expect(found!.output).toMatchObject({ results: [expect.objectContaining({ id: docId, where: 'Greeny' })] });
     expect(edited).toMatchObject({ risk: 'read', status: 'succeeded' });
     expect(await getDb().select().from(requests).where(eq(requests.runId, own.run_id))).toEqual([]);
+  });
+
+  it('in a room, show the others no title, place or source of a doc only the asker may read', async () => {
+    const { scripts, app, lin, chen, steps } = await setup();
+    const folder = await app.services.knowledge.createFolder(lin.id, { name: 'HR private' });
+    const secret = await app.services.knowledge.createDoc(lin.id, {
+      title: 'Salary review',
+      content: 'Numbers.',
+      folder_id: folder.id,
+    });
+    const handbook = await app.services.knowledge.createDoc(lin.id, {
+      title: 'Handbook',
+      content: 'Hi.',
+      space: 'team',
+    });
+    const room = (
+      await app.call('POST', '/api/conversations', {
+        token: lin.token,
+        body: { kind: 'room', title: 'Launch', member_ids: [chen.id], agent_ids: ['main'] },
+      })
+    ).body;
+    const heard: RealtimeEvent[] = [];
+    app.services.hub.subscribe(chen.id, (event) => heard.push(event));
+    scripts.push(
+      toolCall('knowledge_query', { action: 'read', doc_id: secret.id }),
+      toolCall('knowledge_query', { action: 'read', doc_id: handbook.id }, 'call_2'),
+      text('Found it.'),
+      toolCall('knowledge_mutation', { action: 'comment', doc_id: secret.id, body: 'Checked.' }, 'call_3'),
+      text('Commented.'),
+    );
+    const ask = async (content: string) => {
+      const sent = await app.call('POST', `/api/conversations/${room.id}/messages`, {
+        token: lin.token,
+        body: { content, mentions: ['main'] },
+      });
+      await app.services.engine.idle();
+      return sent.body.run_id as string;
+    };
+    const read = await ask('@Greeny check the numbers');
+    const asked = await ask('@Greeny leave a comment');
+    const [card] = await getDb().select().from(requests).where(eq(requests.runId, asked));
+    // The card is the asker's: its details name the doc; its summary, which the decision line
+    // repeats for everyone, does not.
+    expect(card!.payload).toMatchObject({
+      summary: '评论一篇文档',
+      details: [
+        { label: '文档', value: 'Salary review' },
+        { label: '评论', value: 'Checked.' },
+      ],
+    });
+    expect((await app.call('POST', `/api/requests/${card!.id}/approve`, { token: lin.token })).status).toBe(200);
+    await app.services.engine.idle();
+
+    const transcript = async (token: string) =>
+      (await app.call('GET', `/api/conversations/${room.id}/messages`, { token })).body.items as any[];
+    const forChen = await transcript(chen.token);
+    const chenReply = forChen.find((message) => message.run_id === read && message.role === 'assistant');
+    expect(chenReply.citations).toEqual([
+      { kind: 'doc', id: handbook.id, title: 'Handbook', url: `#/knowledge/${handbook.id}` },
+    ]);
+    expect(chenReply.steps.map((step: any) => step.summary)).toEqual(['读了一篇文档', '读了一篇文档']);
+    expect(forChen.map((message) => message.content)).toContain('已批准：评论一篇文档');
+    expect(JSON.stringify(forChen)).not.toMatch(/Salary review|HR private/);
+    expect(heard.length).toBeGreaterThan(0);
+    expect(JSON.stringify(heard)).not.toMatch(/Salary review|HR private/);
+
+    // The asker still sees the source, and the step rows keep what was read.
+    const linReply = (await transcript(lin.token)).find(
+      (message) => message.run_id === read && message.role === 'assistant',
+    );
+    expect(linReply.citations.map((citation: any) => citation.id)).toEqual([secret.id, handbook.id]);
+    expect((await steps(read))[0]!.output).toMatchObject({ title: 'Salary review', where: 'HR private' });
   });
 });

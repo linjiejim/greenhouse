@@ -1,32 +1,25 @@
 /**
- * Markdown → HTML, the one entry point both editor loaders go through.
+ * Markdown → HTML for the knowledge editor.
  *
- * Two callers, and they MUST agree or documents change shape as they move
- * between them:
- * - server: `markdown.ts` pipes this HTML into `generateJSON` to derive
- *   `content_json` for docs written as plain Markdown (agent tools, CLI import).
- * - browser: the Tiptap editor feeds this HTML to `setContent` when a doc has no
- *   usable `content_json`, so ProseMirror parses it against the same schema.
- *
- * The browser side used to own a hand-rolled line-based converter that only knew
- * headings, lists and blockquotes; everything else — tables, images, bold, inline
- * code — arrived as literal `<p>` text and the next save serialized that back
- * over the canonical Markdown, escaped. Full `marked` is what keeps the
- * round-trip lossless.
+ * Docs store only Markdown (data-model §12.2). The web editor loads a doc by feeding this HTML
+ * to Tiptap's `setContent`, so ProseMirror parses it against the editor schema; `markdown.ts`
+ * does the same in Node for the round-trip tests. The HTML is NOT sanitised: raw HTML in the
+ * Markdown passes through. It is only safe as input to ProseMirror's parser, which keeps nothing
+ * but schema nodes; never put it into a page as HTML (a read-only view sanitises its own).
  *
  * A private `Marked` instance, not the module-level singleton: apps/web calls
- * `marked.setOptions({ breaks: true })` for chat rendering, and inheriting that
- * here would turn every soft wrap inside a doc into a hard `<br>` the first time
- * it round-tripped through the editor.
+ * `marked.setOptions({ breaks: true })` for chat rendering, and inheriting that here would turn
+ * every soft wrap inside a doc into a hard `<br>` the first time it round-tripped through the
+ * editor. Full `marked` (GFM) is what keeps the round-trip lossless.
  *
- * Mentions are links to `member:<id>` in Markdown (`[@Name](member:mbr_…)`). A
- * link with that target becomes the mention node's own HTML, because the link
- * mark refuses unknown schemes and the mention would otherwise turn into text.
+ * Mentions are links to `member:<id>` in Markdown (`[@Name](member:mbr_…)`). A link with that
+ * target becomes the mention node's own HTML, because the link mark refuses unknown schemes and
+ * the mention would otherwise turn into text.
  *
- * A list whose items are all tasks (`- [ ] …`, `- [x] …`) becomes the task list
- * nodes' HTML (`ul[data-type=taskList]`, `li[data-type=taskItem][data-checked]`).
- * A task in a list that also has plain items keeps its box as the text it was
- * written as, so nothing is lost on the way through the editor.
+ * A list whose items are all tasks (`- [ ] …`, `- [x] …`) becomes the task list nodes' HTML
+ * (`ul[data-type=taskList]`, `li[data-type=taskItem][data-checked]`). A task in a list that also
+ * has plain items keeps its box as the text it was written as, so nothing is lost on the way
+ * through the editor.
  */
 
 import { Marked, type Token, type Tokens } from 'marked';

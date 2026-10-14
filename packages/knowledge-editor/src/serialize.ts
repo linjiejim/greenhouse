@@ -2,7 +2,8 @@
  * Tiptap (ProseMirror) JSON → canonical Markdown.
  *
  * The inverse of md-html: what the editor holds is written back as Markdown that parses (marked,
- * GFM) into the same document, so opening a doc and saving it never changes what it says.
+ * GFM) into the same document, so opening a doc and saving it never changes what it says. Both
+ * directions of the Markdown ⇄ editor round-trip live in this package and share one schema.
  *
  * - Blocks are separated by a blank line; what sits inside a list item is indented by the width
  *   of its marker, so nested lists stay nested under `1.` as well as under `-`.

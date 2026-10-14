@@ -85,6 +85,32 @@ describe('knowledge.changed', () => {
     expect(toLin()).toHaveLength(4);
   });
 
+  it('tells whoever a share inside reaches when a folder is archived or restored with it', async () => {
+    const { as, heard, lin, chen, kai } = await setup();
+    const drafts = (await as(lin).post('/api/knowledge/folders', { name: 'Drafts' })).body;
+    const inner = (await as(lin).post('/api/knowledge/folders', { name: 'Inner', folder_id: drafts.id })).body;
+    const plan = (await as(lin).post('/api/knowledge/docs', { title: 'Plan', folder_id: inner.id })).body;
+    const memo = (await as(lin).post('/api/knowledge/docs', { title: 'Memo', folder_id: drafts.id })).body;
+    await as(lin).put(`/api/knowledge/docs/${plan.id}/share`, {
+      items: [{ type: 'member', id: chen.id, role: 'viewer' }],
+    });
+    await as(lin).put(`/api/knowledge/folders/${inner.id}/share`, {
+      items: [{ type: 'member', id: kai.id, role: 'viewer' }],
+    });
+    const [toChen, toKai] = [heard(chen), heard(kai)];
+    // Memo is not shared: changing it tells neither.
+    await as(lin).patch(`/api/knowledge/docs/${memo.id}`, { version: 1, content: 'Mine.' });
+    expect(toChen()).toHaveLength(0);
+    expect(toKai()).toHaveLength(0);
+
+    await as(lin).del(`/api/knowledge/folders/${drafts.id}`);
+    expect(toChen()).toHaveLength(1);
+    expect(toKai()).toHaveLength(1);
+    await as(lin).post(`/api/knowledge/folders/${drafts.id}/restore`);
+    expect(toChen()).toHaveLength(1);
+    expect(toKai()).toHaveLength(1);
+  });
+
   it('reaches group members and, through a workspace share, everyone', async () => {
     const { as, heard, lin, chen, kai } = await setup();
     const group = newId('group');

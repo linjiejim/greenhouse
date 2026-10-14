@@ -26,6 +26,8 @@ import type {
 } from './knowledge.js';
 
 type Query = Record<string, string | number | boolean | undefined>;
+/** A page of the tree: 200 rows by default, at most 1000. */
+type TreePage = { cursor?: string; limit?: number };
 
 /** The client's own transport: bearer token, one refresh, the error envelope. */
 export interface KnowledgeHttp {
@@ -47,17 +49,23 @@ export function knowledgeApi(http: KnowledgeHttp) {
     /** Full text over titles and content I may read, best first, with snippets. */
     search: (query: { q: string; space?: KnowledgeScope; folder_id?: string; limit?: number }) =>
       http.get<{ items: KnowledgeSearchHit[] }>('/api/knowledge/search', query),
-    /** What was archived in a space, topmost first: opening an archived folder shows the rest. */
-    archived: (space: KnowledgeSpace) => http.get<{ items: KnowledgeItem[] }>('/api/knowledge/archived', { space }),
+    /**
+     * What was archived in a space, topmost and newest first, a page at a time: opening an
+     * archived folder shows the rest.
+     */
+    archived: (space: KnowledgeSpace, page: TreePage = {}) =>
+      http.get<Page<KnowledgeItem>>('/api/knowledge/archived', { space, ...page }),
     /** Hand order for some items of one folder (or the root of a space). */
     reorder: (input: ReorderInput) => http.post<void>('/api/knowledge/reorder', input),
     /** A whole space as a ZIP of Markdown files and its files. */
     exportSpace: (space: KnowledgeSpace) => http.downloadBlob('/api/knowledge/export', { space }),
 
     folders: {
-      /** The root of a space, or the folders and docs others shared with me. */
-      roots: (space: KnowledgeScope) => http.get<{ items: KnowledgeItem[] }>('/api/knowledge/folders', { space }),
-      get: (id: string) => http.get<KnowledgeFolder>(at('folders', id)),
+      /** The root of a space, or the folders and docs others shared with me: a page in tree order. */
+      roots: (space: KnowledgeScope, page: TreePage = {}) =>
+        http.get<Page<KnowledgeItem>>('/api/knowledge/folders', { space, ...page }),
+      /** The folder with a page of what is in it; `next_cursor` asks for the next one. */
+      get: (id: string, page: TreePage = {}) => http.get<KnowledgeFolder>(at('folders', id), page),
       create: (input: CreateFolderInput) => http.post<KnowledgeFolder>('/api/knowledge/folders', input),
       /** Rename, or move (into a folder, or to a space root with `folder_id: null`). */
       update: (id: string, input: UpdateFolderInput) => http.patch<KnowledgeFolder>(at('folders', id), input),

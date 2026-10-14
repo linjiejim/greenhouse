@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { diffText, diffTokens, splitLines, splitWords } from '../diff.js';
+import { DOC_CONTENT_MAX } from '@greenhouse/contract';
+import { diffText, diffTokens, MAX_DIFF_TOKENS, splitLines, splitWords } from '../diff.js';
 
 describe('diffTokens', () => {
   it('finds the shortest edit between two token lists', () => {
@@ -74,6 +75,27 @@ describe('diffText', () => {
     expect(context.text.length).toBeLessThanOrEqual(300);
     expect(context.text).toContain(' … ');
     expect(diffText('same\n', 'same\n', 'word')).toEqual({ hunks: [], added: 0, removed: 0, truncated: false });
+  });
+
+  it('reports a change too large to compare finely as replaced, whatever the size', () => {
+    // The largest doc, one character a line, changed all over: the middle is past the budget.
+    let seed = 7;
+    const coin = () => ((seed = (seed * 1103515245 + 12345) & 0x7fffffff) & 1 ? 'x' : 'y');
+    const base = Array.from({ length: DOC_CONTENT_MAX / 2 }, coin);
+    const a = base.join('\n');
+    const b = base.map((line, index) => (index % 200 === 0 ? (line === 'x' ? 'y' : 'x') : line)).join('\n');
+    for (const mode of ['line', 'word'] as const) {
+      const started = performance.now();
+      const result = diffText(a, b, mode);
+      expect(performance.now() - started).toBeLessThan(5_000);
+      expect(result.truncated).toBe(true);
+      expect(result.removed).toBeGreaterThan(MAX_DIFF_TOKENS);
+    }
+    const middle = diffTokens(Array(MAX_DIFF_TOKENS).fill('a'), Array(MAX_DIFF_TOKENS).fill('b'));
+    expect(middle.map((run) => [run.op, run.tokens.length])).toEqual([
+      ['delete', MAX_DIFF_TOKENS],
+      ['insert', MAX_DIFF_TOKENS],
+    ]);
   });
 
   it('reports a wholesale rewrite of a large doc without hanging', () => {
