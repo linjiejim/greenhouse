@@ -68,7 +68,8 @@ export const fileSource = (row: FileListRow): Source => ({
   type: 'file',
   id: row.id,
   name: row.name,
-  space: row.space ?? 'team',
+  // Tree queries never return a file without a space; were one to slip through, it is nobody's.
+  space: row.space ?? 'personal',
   folderId: row.folderId,
   ownerId: row.ownerId,
   sortOrder: typeof row.meta.sort_order === 'number' ? row.meta.sort_order : 0,

@@ -384,6 +384,16 @@ describe('docs, versions and templates', () => {
     expect(third).toMatchObject({ changeNote: '恢复到版本 1', createdBy: chen.id, content: 'one\ntwo\n' });
   });
 
+  it('answers a cursor it did not make with 400, never a database error', async () => {
+    const { lin, as } = await setup();
+    const cursor = (value: unknown) => Buffer.from(JSON.stringify(value)).toString('base64url');
+    for (const bad of [cursor({ u: 'not a time', id: 'doc_x' }), cursor(null), 'garbage']) {
+      const answer = await as(lin).get(`/api/knowledge/docs?cursor=${bad}`);
+      expect(answer.status).toBe(400);
+      expect(answer.body.error.code).toBe('invalid_input');
+    }
+  });
+
   it('starts new docs from templates and lists recent docs', async () => {
     const { lin, chen, as } = await setup();
     const template = (
@@ -650,6 +660,26 @@ describe('comments and mentions', () => {
     expect((await as(wu).get(`/api/knowledge/docs/${doc.id}/comments`)).status).toBe(404);
   });
 
+  it('makes an edited Agent comment the member’s, and keeps comments of archived docs as they are', async () => {
+    const { app, lin, chen, as, notified } = await setup();
+    const main = await app.services.agents.ensureMain(lin.id);
+    const doc = (await as(lin).post('/api/knowledge/docs', { title: 'Plan', content: 'x', space: 'team' })).body;
+    const written = await app.services.knowledge.addComment(lin.id, doc.id, 'Looks fine.', { agentId: main.id });
+    expect(written.agent).toEqual({ id: main.id, name: main.name });
+    const edited = await as(lin).patch(`/api/knowledge/docs/${doc.id}/comments/${written.id}`, {
+      body: `Looks fine, [@Chen](member:${chen.id}).`,
+    });
+    expect(edited.body).toMatchObject({ agent: null, mentions: [chen.id] });
+    expect((await notified(chen)).map((row) => row.title)).toEqual(['Lin 在《Plan》的评论里提到了你']);
+
+    await as(lin).del(`/api/knowledge/docs/${doc.id}`);
+    const change = await as(lin).patch(`/api/knowledge/docs/${doc.id}/comments/${written.id}`, { body: 'Later.' });
+    expect(change.body.error.code).toBe('archived');
+    expect((await as(lin).del(`/api/knowledge/docs/${doc.id}/comments/${written.id}`)).body.error.code).toBe(
+      'archived',
+    );
+  });
+
   it('tells members newly mentioned in a doc when it is saved', async () => {
     const { lin, chen, as, notified } = await setup();
     const doc = (
@@ -747,6 +777,25 @@ describe('presence and realtime', () => {
 });
 
 describe('files in the tree', () => {
+  it('keeps a knowledge file that has no space from everyone', async () => {
+    const { app, lin, chen, as } = await setup();
+    const folder = (await as(lin).post('/api/knowledge/folders', { name: 'Shared', space: 'team' })).body;
+    // A row no upload writes (a knowledge file with no space): denied, not taken for the team's.
+    const stray = await app.services.files.store(chen.id, {
+      name: 'stray report.txt',
+      contentType: 'text/plain',
+      bytes: new TextEncoder().encode('stray'),
+      purpose: 'knowledge',
+      folderId: folder.id,
+    });
+    for (const who of [lin, chen]) {
+      expect((await as(who).get(`/api/knowledge/files/${stray.id}`)).status).toBe(404);
+      expect((await app.app.request(app.services.files.signedUrl(stray.id, who.id).url)).status).toBe(404);
+    }
+    expect((await as(lin).get(`/api/knowledge/folders/${folder.id}`)).body.children).toEqual([]);
+    expect((await as(lin).get('/api/knowledge/search?q=stray')).body.items).toEqual([]);
+  });
+
   it('uploads into a folder and serves the bytes only to who may read it', async () => {
     const { app, lin, chen, as, upload } = await setup();
     const folder = (await as(lin).post('/api/knowledge/folders', { name: 'Specs' })).body;

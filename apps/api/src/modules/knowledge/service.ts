@@ -5,7 +5,7 @@
  * service, and it checks access on every call (access.ts).
  */
 
-import { and, asc, desc, eq, gt, ilike, inArray, isNull, lt, ne, or, sql, type SQL } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, ilike, inArray, isNotNull, isNull, lt, ne, or, sql, type SQL } from 'drizzle-orm';
 import { DOC_CONTENT_MAX } from '@greenhouse/contract';
 import type {
   CreateDocInput,
@@ -190,7 +190,12 @@ const fileListColumns = {
 
 /** Knowledge files of the tree: not the pictures that belong to a doc. */
 const treeFile = () =>
-  and(eq(files.purpose, 'knowledge'), eq(files.status, 'active'), sql`${files.meta}->>'doc_id' IS NULL`);
+  and(
+    eq(files.purpose, 'knowledge'),
+    eq(files.status, 'active'),
+    isNotNull(files.space),
+    sql`${files.meta}->>'doc_id' IS NULL`,
+  );
 
 function docSearchColumns(fields: { title: string; tags: string[]; meta: DocMeta; content: string }) {
   return {
@@ -218,11 +223,19 @@ export function previewOf(contentType: string): KnowledgeFile['preview'] {
 const recentCursor = (row: { updatedAt: string; id: string }) =>
   Buffer.from(JSON.stringify({ u: row.updatedAt, id: row.id })).toString('base64url');
 
+/** A timestamp as the database writes it (or as ISO 8601): anything else never reaches a query. */
+const TIMESTAMP = /^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|[+-]\d{2}(?::?\d{2})?)$/;
+
 function decodeRecent(cursor: string | undefined): { u: string; id: string } | null {
   if (!cursor) return null;
   try {
     const value = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8')) as { u?: unknown; id?: unknown };
-    if (typeof value.u === 'string' && typeof value.id === 'string' && value.id.length <= 64) {
+    if (
+      typeof value.u === 'string' &&
+      TIMESTAMP.test(value.u) &&
+      typeof value.id === 'string' &&
+      value.id.length <= 64
+    ) {
       return { u: value.u, id: value.id };
     }
   } catch {
@@ -289,11 +302,13 @@ export function createKnowledgeService(deps: {
   }
 
   async function fileAt(reader: Reader, id: string) {
-    const [file] = await getDb()
+    const [found] = await getDb()
       .select()
       .from(files)
       .where(and(eq(files.id, id), eq(files.purpose, 'knowledge'), eq(files.status, 'active')));
-    if (!file) throw notFound('File');
+    // A knowledge file with no space is broken: nobody reads it, rather than everybody.
+    if (!found?.space) throw notFound('File');
+    const file = { ...found, space: found.space };
     const docId = typeof file.meta.doc_id === 'string' ? file.meta.doc_id : null;
     if (docId) {
       const owner = await docAt(reader, docId).catch(() => null);
@@ -1441,23 +1456,34 @@ export function createKnowledgeService(deps: {
       return (await commentViews(memberId, [row!]))(row!);
     },
 
+    /**
+     * The member's own edit: from now on the text is theirs, so the Agent that wrote the first
+     * one is no longer named on it, and new mentions are told in the member's name.
+     */
     async editComment(memberId: string, docId: string, commentId: string, body: string): Promise<KnowledgeComment> {
       const reader = await readerFor(memberId);
       const { doc } = await docAt(reader, docId);
+      if (doc.archivedAt) throw conflict('archived', 'This doc is archived. Restore it first.');
       const own = await ownComment(memberId, docId, commentId);
       const [row] = await getDb()
         .update(comments)
-        .set({ body: links.canonical(body), mentions: mentionIds(body), updatedAt: new Date().toISOString() })
+        .set({
+          body: links.canonical(body),
+          mentions: mentionIds(body),
+          agentId: null,
+          updatedAt: new Date().toISOString(),
+        })
         .where(eq(comments.id, own.id))
         .returning();
-      await tellComment(reader, doc, row!, own.mentions, own.agentId);
+      await tellComment(reader, doc, row!, own.mentions, null);
       tell(docId, { type: 'comments.updated', data: { target_type: 'doc', target_id: docId, comment_id: row!.id } });
       return (await commentViews(memberId, [row!]))(row!);
     },
 
     async removeComment(memberId: string, docId: string, commentId: string): Promise<void> {
       const reader = await readerFor(memberId);
-      await docAt(reader, docId);
+      const { doc } = await docAt(reader, docId);
+      if (doc.archivedAt) throw conflict('archived', 'This doc is archived. Restore it first.');
       const own = await ownComment(memberId, docId, commentId);
       await getDb()
         .update(comments)
@@ -1730,7 +1756,7 @@ export function createKnowledgeService(deps: {
           if (!docId) changes.searchA = searchTokens(input.name);
         }
         const place = moving
-          ? await moveTarget(reader, role, { space: file.space ?? 'team', ownerId: file.ownerId }, input)
+          ? await moveTarget(reader, role, { space: file.space, ownerId: file.ownerId }, input)
           : null;
         if (place) {
           changes.folderId = place.folder?.id ?? null;
@@ -1751,7 +1777,7 @@ export function createKnowledgeService(deps: {
       const reader = await readerFor(memberId);
       const { file, role, docId } = await fileAt(reader, id);
       if (docId) throw conflict('doc_file', 'This file belongs to a doc: take it out of the doc instead.');
-      needArchive(role, file.space ?? 'team');
+      needArchive(role, file.space);
       if (!file.archivedAt)
         await getDb()
           .update(files)
@@ -1762,7 +1788,7 @@ export function createKnowledgeService(deps: {
     async restoreFile(memberId: string, id: string): Promise<KnowledgeFile> {
       const reader = await readerFor(memberId);
       const { file, chain, role } = await fileAt(reader, id);
-      needArchive(role, file.space ?? 'team');
+      needArchive(role, file.space);
       if (file.archivedAt) {
         await getDb()
           .update(files)
@@ -2030,7 +2056,7 @@ export function createKnowledgeService(deps: {
           id: row.id,
           title: row.name,
           snippet: typeof row.meta.excerpt === 'string' ? snippetFor(row.meta.excerpt, words) : '',
-          space: row.space ?? 'team',
+          space: row.space ?? 'personal',
           folder_id: row.folderId,
           score: Number(row.score),
           updated_at: row.updatedAt,
