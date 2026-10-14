@@ -42,6 +42,8 @@ export function knowledgeEditorExtensions(opts?: KnowledgeEditorOptions): Extens
       // doesn't know gets silently demoted to a paragraph on the way in.
       heading: { levels: [1, 2, 3, 4] },
       link: { openOnClick: false, autolink: true, linkOnPaste: true },
+      // Markdown has no underline: a mark the save would silently drop is not offered at all.
+      underline: false,
     }),
     Typography,
     Table.configure({ resizable: false }),

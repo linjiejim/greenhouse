@@ -4,6 +4,10 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./editor": {
+      "import": "./src/editor.ts",
+      "types": "./src/editor.ts"
+    },
     "./extensions": {
       "import": "./src/extensions.ts",
       "types": "./src/extensions.ts"

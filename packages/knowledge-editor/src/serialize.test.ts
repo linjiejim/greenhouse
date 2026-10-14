@@ -225,3 +225,21 @@ describe('knowledge base constructs round-trip (M2.1: Markdown stays the source 
     expect(roundTrip(md)).toBe(md);
   });
 });
+
+describe('marks Markdown can hold', () => {
+  it('keeps strikethrough, and literal tildes stay text', () => {
+    expect(roundTrip('Ship ~~Friday~~ Monday.')).toBe('Ship ~~Friday~~ Monday.');
+    expect(roundTrip('About ~5 minutes.')).toBe('About ~5 minutes.');
+    const literal: TiptapNode = {
+      type: 'doc',
+      content: [{ type: 'paragraph', content: [{ type: 'text', text: 'a ~~b~~ c' }] }],
+    };
+    const out = tiptapJsonToMarkdown(literal);
+    expect(roundTrip(out)).toBe(out);
+    expect(markdownToTiptapJson(out)).not.toContain('strike');
+  });
+
+  it('offers no underline, which Markdown cannot store', () => {
+    expect(markdownToTiptapJson('<u>under</u> line')).not.toContain('underline');
+  });
+});

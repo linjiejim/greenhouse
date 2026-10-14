@@ -26,7 +26,7 @@ export interface TiptapNode {
 
 /** Characters that can trigger markdown syntax anywhere inside a line. */
 function escapeInline(text: string): string {
-  return text.replace(/[\\`*_[]/g, '\\$&');
+  return text.replace(/[\\`*_[]/g, '\\$&').replace(/~~/g, '\\~\\~');
 }
 
 /**
@@ -57,6 +57,7 @@ function renderTextMarks(text: string, marks?: TiptapNode['marks']): string {
   for (const mark of marks ?? []) {
     if (mark.type === 'bold') out = `**${out}**`;
     if (mark.type === 'italic') out = `*${out}*`;
+    if (mark.type === 'strike') out = `~~${out}~~`;
     if (mark.type === 'code') out = `\`${out}\``;
     if (mark.type === 'link') out = `[${out}](${String(mark.attrs?.href || '')})`;
   }
