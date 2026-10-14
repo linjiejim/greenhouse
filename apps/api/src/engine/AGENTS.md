@@ -35,6 +35,7 @@ The one engine for conversations and runs. Read with the root AGENTS.md and docs
 ## Tools
 - One file per tool with `defineTool` (tools/define.ts): description, zod input, risk, availability, and the service call. Routes and tools call the same services.
 - Every call is a `run_steps` row. Tools that read outside text set `taints`; after that a turn cannot change memories.
+- What a web page or a connector returns reaches the model through `outsideText` (security/prompt.ts): cut to size with a note of what was left out, stripped of anything that could pose as prompt structure; titles and snippets are sanitized too.
 - A tool is `idempotent` only when the same call twice does what it does once (pure reads: web, knowledge and skill reads, conversation search, attachments). Computer, browser, vault, memory and every write are not.
 - In a background retry a call with the same tool and arguments is the same step: a succeeded one returns its recorded output; a non-idempotent one an earlier attempt left running becomes `uncertain`, is not made, and the model is told to check first (calling it again in that attempt makes it).
 - Steps a dead process left running are marked by the sweeps: reads failed (`interrupted`), anything else `uncertain`.

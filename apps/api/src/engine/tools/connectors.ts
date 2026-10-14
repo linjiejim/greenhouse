@@ -14,7 +14,7 @@
 
 import { z } from 'zod';
 import type { ConnectorsService, UsableConnector } from '../../modules/connectors/service.js';
-import { fence, sanitizeForPrompt } from '../../security/prompt.js';
+import { fence, outsideText, sanitizeForPrompt } from '../../security/prompt.js';
 import { argumentDetails } from './assemble.js';
 import { defineTool } from './define.js';
 
@@ -68,11 +68,7 @@ export function describeConnectors(usable: readonly UsableConnector[]): string {
 
 /** The tool's text, cut to size and stripped of anything that could pose as prompt structure. */
 export function externalText(text: string): string {
-  const cut =
-    text.length > MAX_RESULT_CHARS
-      ? `${text.slice(0, MAX_RESULT_CHARS)}\n…[cut: ${text.length - MAX_RESULT_CHARS} more characters]`
-      : text;
-  return sanitizeForPrompt(cut || '(the tool returned nothing)', MAX_RESULT_CHARS + 100);
+  return outsideText(text || '(the tool returned nothing)', MAX_RESULT_CHARS);
 }
 
 export function connectorTool(connectors: ConnectorsService) {
