@@ -65,11 +65,10 @@ import {
 import { invalidInput } from '../../http/errors.js';
 import type { AppEnv } from '../../http/env.js';
 import { readJson, readParam, readQuery } from '../../http/validate.js';
-import { dispositionFor, MAX_UPLOAD_BYTES } from '../files/service.js';
+import { uploadLimit } from '../files/routes.js';
+import { dispositionFor } from '../files/service.js';
 import type { KnowledgeService } from './service.js';
 
-/** Multipart overhead on top of the file itself. */
-const FORM_SLACK_BYTES = 64 * 1024;
 const versionParam = z.coerce.number().int().positive();
 
 function attachment(body: ReadableStream<Uint8Array> | string, filename: string, contentType: string) {
@@ -184,9 +183,7 @@ export function knowledgeRoutes(service: KnowledgeService) {
       const { filename, markdown } = await service.exportDoc(c.get('member').id, id(c));
       return attachment(markdown, filename, 'text/markdown; charset=utf-8');
     })
-    .post('/files', async (c) => {
-      const declared = Number(c.req.header('content-length') ?? 0);
-      if (declared > MAX_UPLOAD_BYTES + FORM_SLACK_BYTES) throw invalidInput('Files can be up to 50 MB.');
+    .post('/files', uploadLimit, async (c) => {
       if (!c.req.header('content-type')?.startsWith('multipart/form-data')) {
         throw invalidInput('Upload the file as multipart/form-data.');
       }

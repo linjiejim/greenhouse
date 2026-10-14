@@ -20,6 +20,7 @@ import {
   shares,
 } from '@greenhouse/db';
 import { createTestApp } from '../../../testing.js';
+import { streamedUpload } from '../../files/__tests__/streamed-upload.js';
 import { MAX_FOLDER_DEPTH } from '../access.js';
 
 type App = ReturnType<typeof createTestApp>;
@@ -743,6 +744,23 @@ describe('files in the tree', () => {
     ]);
     const back = await as(lin).post(`/api/knowledge/files/${stored.body.id}/restore`);
     expect(back.body.archived_at).toBeNull();
+  });
+
+  it('caps an upload whether or not it says how long it is', async () => {
+    const { app, lin } = await setup();
+    const send = (size: number) => {
+      const { body, type } = streamedUpload(size);
+      return app.app.request('/api/knowledge/files', {
+        method: 'POST',
+        headers: { authorization: `Bearer ${lin.token}`, 'content-type': type },
+        body,
+        duplex: 'half',
+      } as RequestInit);
+    };
+    expect((await send(2048)).status).toBe(201);
+    const huge = await send(51 * 1024 * 1024);
+    expect(huge.status).toBe(413);
+    expect(((await huge.json()) as any).error.code).toBe('too_large');
   });
 
   it('keeps pictures pasted into a doc with the doc and signs them for each reader', async () => {
