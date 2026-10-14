@@ -308,6 +308,31 @@ test('move a doc with 移动到… and by dragging it onto a folder', async ({ p
   await expect(filed.getByRole('link')).toHaveText([/Receipt/, /Invoice/]);
 });
 
+test('export a doc as Markdown and a folder as a ZIP', async ({ page, request }) => {
+  const handbook = await folder(request, 'Exported folder');
+  const guide = await doc(request, { title: 'Exported guide', folder_id: handbook.id, content: 'Read me first.' });
+
+  await open(page, `/#/knowledge/${guide.id}`);
+  await page.getByRole('main').getByRole('button', { name: '更多' }).click();
+  const markdown = page.waitForEvent('download');
+  await page.getByRole('menuitem', { name: '导出 Markdown' }).click();
+  const file = await markdown;
+  expect(file.suggestedFilename()).toMatch(/\.md$/);
+  const text = Buffer.concat(await (await file.createReadStream()).toArray()).toString('utf8');
+  expect(text).toContain('# Exported guide');
+  expect(text).toContain('Read me first.');
+
+  await page.goto(`/#/knowledge/folder/${handbook.id}`);
+  await expect(page.getByRole('heading', { level: 1, name: 'Exported folder' })).toBeVisible();
+  await page.getByRole('main').getByRole('button', { name: '更多' }).click();
+  const zip = page.waitForEvent('download');
+  await page.getByRole('menuitem', { name: '导出 ZIP' }).click();
+  const archive = await zip;
+  expect(archive.suggestedFilename()).toMatch(/\.zip$/);
+  const bytes = Buffer.concat(await (await archive.createReadStream()).toArray());
+  expect(bytes.subarray(0, 2).toString('latin1')).toBe('PK');
+});
+
 test('search finds a doc by the words in it, and so does ⌘K', async ({ page, request }) => {
   const pricing = await doc(request, {
     title: 'Pricing FAQ',
