@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { MessageItem } from '@greenhouse/contract';
 import { keys } from '../query';
 import { afterReconnect, applyEvent, fetchMessagePage, type MessagePages } from '../realtime';
-import { appendDelta, clearStreams, readStream } from '../streams';
+import { appendDelta, clearStreams, liveText, readStream } from '../streams';
 
 const messages = vi.hoisted(() => vi.fn());
 vi.mock('../../lib/api', () => ({ api: { conversations: { messages } } }));
@@ -143,4 +143,19 @@ describe('a conversation opened while messages arrive', () => {
     expect((await fetch).items[0]?.event?.state).toBe('incorporated');
   });
 
+});
+
+it('discards an unfinished suffix before resumed deltas, even for a prefix too large for NOTIFY', () => {
+  const prefix = 'saved '.repeat(2000);
+  client.setQueryData(keys.messages('cnv_1'), page([item(2, prefix + 'unfinished', 'streaming')]));
+  appendDelta('msg_2', 'unfinished', prefix.length);
+  applyEvent(client, {type:'message.resumed', data:{conversation_id:'cnv_1',message_id:'msg_2',offset:prefix.length}});
+  expect(readStream('msg_2')).toBeUndefined();
+  expect(shown(client)).toEqual([[2,prefix,'streaming']]);
+  applyEvent(client,{type:'message.delta',data:{conversation_id:'cnv_1',message_id:'msg_2',offset:prefix.length,text:'continued'}});
+  expect(liveText(prefix,readStream('msg_2'))).toBe(prefix+'continued');
+  applyEvent(client,{type:'message.updated',data:{message:item(2,prefix+'continued')}});
+  // A delayed resume hint never takes an answer that is already complete back to a partial one.
+  applyEvent(client, {type:'message.resumed', data:{conversation_id:'cnv_1',message_id:'msg_2',offset:prefix.length}});
+  expect(shown(client)).toEqual([[2,prefix+'continued','complete']]);
 });

@@ -421,6 +421,7 @@ export type RealtimeEvent =
         };
       };
     }
+  | { type: 'message.resumed'; data: { conversation_id: string; message_id: string; offset: number } }
   | {
       type: 'message.updated';
       data: {

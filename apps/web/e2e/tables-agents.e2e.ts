@@ -150,6 +150,7 @@ test('an Agent updates a shared table after approval and cited records open thei
         ).record.values[field.id],
     )
     .toBe('Approved record');
+  // The row write precedes the decision follow-up; wait for that reply before the next request.
   await expect(page.getByText('Done.', { exact: true })).toBeVisible();
   await expect(composer(page)).toBeEnabled();
   await composer(page).fill(`read table record ${record.record.id}`);

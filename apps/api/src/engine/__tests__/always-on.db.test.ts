@@ -409,7 +409,13 @@ describe('quiet schedules', () => {
     });
     await getDb()
       .update(runs)
-      .set({ status: 'running', attempt: 3, leaseOwner: 'dead', leaseExpiresAt: '2000-01-01T00:00:00Z' })
+      .set({
+        status: 'running',
+        attempt: 3,
+        checkpoint: { crashes: 2 },
+        leaseOwner: 'dead',
+        leaseExpiresAt: '2000-01-01T00:00:00Z',
+      })
       .where(eq(runs.id, queued.id));
     await app.services.engine.background.sweep();
     await app.services.engine.sweep();

@@ -28,6 +28,9 @@ Greenhouse is an open-source, self-hosted platform where a team works with its o
 - `pnpm typecheck`, `pnpm lint` (`pnpm lint:fix`) and `pnpm test` must pass before every commit.
 - `pnpm test` runs the unit, db and db-commit projects. db tests need TEST_DATABASE_URL pointing at a loopback database whose name contains test; it is wiped and migrated once per run.
 - db tests run inside one rolled-back transaction each. Races between processes need real commits: write them as `*.db-commit.test.ts`, which run on a real pool, one file at a time (their engines share the job and run queues), and clean up after themselves.
+- `GREENHOUSE_ROLE=all|api|worker` (default all) selects the same image’s work: api serves HTTP/WebSocket and foreground turns; worker runs jobs, schedules, background runs, watches, cleanup and digests. API replicas poll foreground leases/inboxes; workers never answer foreground turns. Shared storage and keys are required.
+- SIGTERM stops admission synchronously and drains for 60 s before releasing leases. Keep Compose stop_grace_period above that deadline.
+- `RATE_LIMIT_STORE=memory|postgres` defaults to memory; all API replicas use postgres for shared auth/OAuth/MCP/upload limits. Keys are hashed and expired windows are pruned by engine_retention.
 - `pnpm api` starts the API (port 3000). Give it its own DATABASE_URL; it refuses a v1 database. Required env: TOKEN_SIGNING_KEY and PROVIDER_TOKEN_ENCRYPTION_KEY (64 hex each, `openssl rand -hex 32`); VAULT_ENCRYPTION_KEY (the same form) turns the password vault on.
 - BOOTSTRAP_ADMIN_EMAIL creates the first admin once and logs a one-time activation link. MIGRATE_ON_START=1 applies migrations at boot.
 - Schema change: edit packages/db/src/schema/*, then `pnpm db:baseline` to regenerate drizzle/0000_v2_baseline.sql (one baseline until v2.0) and recreate local dev databases.
@@ -56,6 +59,7 @@ Greenhouse is an open-source, self-hosted platform where a team works with its o
 - Background timers start from the worker's context, never from a request's open transaction.
 - Agent writes use read / tier1 / tier2 / tier3 per call. Standing approvals come only from a member's tier2 card and stop applying after taint; hold scope and grant locks until a reversible write commits. Receipts undo through the same services and refuse newer revisions.
 - Event sources call engine.deliver with a dedupe key and source chain. Events collect for two minutes, respect the daily cap, and never stand for consent. Background completion queues run_report with its final state.
+- Inbound mail notices are verified before mail_inbound jobs are queued; workers fetch the mail with the configured guarded receiver. Public acknowledgement means queued, not delivered.
 - Background work goes through the one `jobs` queue (apps/api/src/jobs.ts): enqueue in the transaction that causes it, claim with a lease, settle only as the lease holder.
 - Notifications leave the server only as the delivery jobs `notifications.publish` queues; modules/channels sends them through providers: email through the mail capability (its order, with fallback) and push. Feishu and WeCom keep their code but stay out of the UI until the IM channels. Without the member's previews they name no subject, and never carry the body of a needs-you card or a reply.
 - Mail (modules/mail): system mail and every Agent's mailbox go through the `mail` capability. A vendor's notice at the public `/api/mail/inbound/:instance` is verified first and is only a signal: the mail is fetched from the vendor with the instance's key. Received mail is untrusted input: stored once, its HTML and attachments as files, and it wakes an Agent only from a sender it may hear from whose From domain the receiving server verified.
@@ -87,6 +91,6 @@ Greenhouse is an open-source, self-hosted platform where a team works with its o
 ## Release and deploy
 - Releases are cut from main only (RELEASING.md); the v2 branch publishes nothing until it merges back at v2.0.
 - Every commit that lands on main is a Conventional Commit; release-please derives the version and changelog from them.
-- Workflows that publish or deploy run only in linjiejim/greenhouse.
+- Workflows that publish or deploy run only in linjiejim/greenhouse. Nightly pnpm eval also requires GREENHOUSE_EVAL_MODEL_KEY; local replay never reaches real providers unless GREENHOUSE_EVAL_REAL=1.
 
 - Product metrics reuse requests/runs/usage facts; metric_events holds only enum counts, dates and logical ids. Weekly aggregates recheck admin access in the service.

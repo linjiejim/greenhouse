@@ -128,7 +128,7 @@ v2 和 v1 不兼容，不加 `/api/v2` 前缀，也不保留旧路由。`GET /ap
 | --- | --- |
 | `/api/mcp` · `/oauth/*` · `/.well-known/*` | MCP 服务器与 OAuth 2.1，是唯一对外接口，见下 |
 | `GET /api/connectors/oauth/callback` | 连接器 OAuth 回调（公开）：不改任何数据，302 到 `#/settings/connections?connector=&oauth_state=&oauth_code=`（失败时带 `oauth_error`），Web 用成员自己的会话调用 `finish`。不在 `/api/mcp` 下，那是 Greenhouse 自己的 MCP 服务器 |
-| `POST /api/mail/inbound/:instance` | 邮件服务商的收信通知（公开，凭服务商的签名）：Resend 的 Svix 签名 webhook、Mailgun `store(notify=…)` 的 HMAC；先验签（失败 401 `invalid_signature`），再用实例的 Key 从服务商拉取那封信；nonce 一次性，同一封信只存一次；拉取失败 502 让服务商重试；过大的通知 413 |
+| `POST /api/mail/inbound/:instance` | 邮件服务商的收信通知（公开，凭服务商的签名）：Resend 的 Svix 签名 webhook、Mailgun `store(notify=…)` 的 HMAC；先验签（失败 401 `invalid_signature`），再持久写入 mail_inbound 任务并应答 200 `{ status: queued, job_id, delivered: 0, screened: 0 }`；worker 用实例的 Key 拉信，失败按 jobs 退避重试，不能把 queued 当作已投递；重复通知 status=duplicate、无关通知 status=ignored；同一封信只存一次；过大的通知 413 |
 | `/api/ws` · `/api/ws/computer?ticket=` · `/api/ws/computer-terminal?ticket=` | 实时通道、电脑画面（RFB，`view` ticket 的输入由服务端丢弃）、终端（二进制按键与输出，`resize` 文本消息） |
 | `/api/ext/<id>/*` | 扩展 |
 | `GET /health` | 健康检查：各能力是否可用（不含机密）；数据库不可用时返回 503 |
@@ -271,3 +271,11 @@ M3 媒体与计数（#70）：
 - 工具输出超过约 8,000 字符时返回 `{ file: { id, name }, head, length, note }`。`tool_output_read { file_id, offset?, length? }` 返回字符区间、总长度与 `next_offset`（默认 4,000，最多 6,000 字符），每次检查成员的文件权限。文件到期或无权读取均返回 `not_found`。若动作已完成但输出存储失败，步骤仍成功，结果明确返回 `storage_error`、开头与长度，不虚构文件，也不诱发重复写入。
 - `memory.recall` 支持 `from` / `to`（UTC 日期 YYYY-MM-DD，含两端）；至少给查询词或日期范围。后台只允许 recall；系统在后台运行结束时写工作日志，不接受运行结果中的记忆指令。
 - 工程命令：`pnpm cli eval export <run|message id>` 在本地连接的 v2 数据库导出 `fixtures/eval/*.json`；成员消息会找到当前对应的回合，多个 Agent 同时回答时返回 `eval_ambiguous`，应指定回复或运行 id；`TEST_DATABASE_URL=... pnpm eval` 用脚本模型回放，不请求真实模型。夜间真实模型用例留 M3.6。
+
+插话与恢复（#70）：已带入的消息、后续模型上下文和新回复检查点同事务持久化；进程崩溃后接着写当前回复，不重复已完成工具，也可继续插话。排空中的 API 不再带入新消息，由其他 API 接手队列。
+
+### M3.6 进程与限流（#70）
+
+`GREENHOUSE_ROLE=all`（默认）提供全部能力；`api` 提供 HTTP、WebSocket 和前台回合，`worker` 不监听 HTTP，运行后台任务与清扫。收到 SIGTERM 后停止领取新回合 / 任务，进行中的回复最多等待 60 秒。符合十分钟、成员仍在、步骤完成条件的回合由另一个 API 接着写原 message id；续跑先发送小的 `message.resumed { conversation_id, message_id, offset }`，客户端丢弃未完成的增量并把 streaming 文字截回 offset；随后按 message.updated 与增量 offset 同步，不产生第二条回复。这个小事件可跨副本传递，即使长回复全文需要 resync 补拉。
+
+`RATE_LIMIT_STORE=memory|postgres` 控制现有限流的计数位置。多副本应全部设为 postgres：登录的 IP 与邮箱窗口每分钟各 10 次；OAuth 注册每 IP 每小时 20 次、授权每分钟 30 次、令牌 / 作废每分钟 60 次、客户端凭据尝试每分钟 10 次；MCP 每 grant 的窗口沿用每分钟 120 次；成员 multipart 上传（文件、知识库、表格与语音）每分钟 30 次，在读取正文前检查。超过返回 429 `rate_limited`；OAuth 保持 RFC 6749 错误形状，其余保持 API 错误包，OAuth / MCP / 上传带 Retry-After。成功登录只重置邮箱计数，不重置 IP。

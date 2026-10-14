@@ -226,6 +226,15 @@ export function applyEvent(client: QueryClient, event: Exclude<RealtimeEvent, { 
     case 'message.step':
       upsertStep(event.data.message_id, event.data.step);
       return;
+    case 'message.resumed':
+      endStream(event.data.message_id);
+      client.setQueryData<MessagePages>(keys.messages(event.data.conversation_id), data => data ? {
+        ...data, pages: data.pages.map(page => ({...page, items: page.items.map(item =>
+          item.id === event.data.message_id && item.status === 'streaming'
+            ? {...item, content: item.content.slice(0, event.data.offset)} : item,
+        )})),
+      } : data);
+      return;
     case 'message.updated':
       replaceMessage(client, event.data.message);
       endStream(event.data.message.id);

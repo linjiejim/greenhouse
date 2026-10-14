@@ -66,6 +66,7 @@ export function nextFiring(cron: string, timezone: string, from = new Date()): D
 
 export function createSchedulesService(deps: { agents: AgentsService; background: () => Background }) {
   let ticker: NodeJS.Timeout | null = null;
+  let stopping = false;
 
   async function own(memberId: string, id: string): Promise<ScheduleRow> {
     const [row] = await getDb()
@@ -223,7 +224,7 @@ export function createSchedulesService(deps: { agents: AgentsService; background
      */
     async tick(now = new Date()): Promise<number> {
       let fired = 0;
-      for (;;) {
+      for (; !stopping; ) {
         const claimed = await transaction(async (db) => {
           const [due] = await db
             .select()
@@ -254,6 +255,7 @@ export function createSchedulesService(deps: { agents: AgentsService; background
         deps.background().kick(claimed.run);
         fired += 1;
       }
+      return fired;
     },
 
     start() {
@@ -265,6 +267,7 @@ export function createSchedulesService(deps: { agents: AgentsService; background
     },
 
     stop() {
+      stopping = true;
       if (ticker) clearInterval(ticker);
       ticker = null;
     },

@@ -382,18 +382,37 @@ pulls `ghcr.io/linjiejim/greenhouse` (no Node/pnpm toolchain needed):
 docker compose -f docker-compose.ghcr.yml up -d    # tracks :latest; pin via GREENHOUSE_IMAGE in .env
 ```
 
+The default `GREENHOUSE_ROLE=all` keeps the one-line installer and single-container setup.
+For a separate worker, use either Compose file with the optional `worker` profile:
+
+```bash
+GREENHOUSE_ROLE=api RATE_LIMIT_STORE=postgres docker compose --profile worker up -d --build
+# Published image:
+GREENHOUSE_ROLE=api RATE_LIMIT_STORE=postgres docker compose -f docker-compose.ghcr.yml --profile worker up -d
+```
+
+The API serves HTTP, WebSocket and foreground replies. The worker has no listening port and
+handles background runs, schedules, deliveries, decisions, imports, automations, received mail,
+computer watches, cleanup and conversation summaries. Both processes need the same database,
+signing/encryption keys, provider settings and storage (`app_data` in Compose). Set
+`RATE_LIMIT_STORE=postgres` on every API replica to share sign-in, OAuth, MCP and upload limits;
+`memory` remains the default for one API. The shared limiter uses PostgreSQL only.
+
+On SIGTERM, admission stops immediately and replies may finish for up to 60 seconds. Remaining
+leases are released for takeover. Another API resumes a reply in the same message when the
+lease expired less than ten minutes ago, its asker remains active in the conversation and the
+last model/tool step completed. It keeps text through that checkpoint and continues from the
+recorded tool results. An incomplete tool step ends as interrupted, with unknown effects marked
+`uncertain`. Compose allows 70 seconds for drain and connection cleanup.
+
 ### The first administrator
 
 Set `BOOTSTRAP_ADMIN_EMAIL` and start the app: while nobody has activated an administrator
 yet, every boot makes sure that account exists and logs a one-time activation link (the same
-link member invites use — single use, valid 72 hours; a restart prints a fresh one). Open it,
-choose a password, and you are signed in as the super admin. The variable does nothing once
+link member invites use — single use, valid 7 days; a restart prints a fresh one). Open it,
+choose a password, and you are signed in as the admin. The variable does nothing once
 an administrator exists, and it never promotes an existing account. Until then the login page
-says where to look. With a shell in the container, `pnpm admin:create` works too.
-
-Missions need one more piece on the host: Docker with the gVisor runtime, a dedicated bridge
-network, and the sandbox image (`bash scripts/build-agent-runtime.sh`). They stay off until
-`MISSION_ENABLED=1` and every preflight passes — see `.env.example`.
+says where to look. Set `BOOTSTRAP_ADMIN_EMAIL` before the first boot; the activation link is the bootstrap entry point.
 
 Agents work in any deployment. Their computers run in one of two places:
 
@@ -851,7 +870,14 @@ Set the v2 `DATABASE_URL` and signing/encryption configuration for export. Revie
 for private material before committing it; credentials and signed links are redacted automatically.
 `TEST_DATABASE_URL=postgresql://…/greenhouse_v2_test pnpm eval` replays the fixtures with a
 scripted model through the current prompt builders, tool registry, input validation and approval
-gate. It makes no model calls. Nightly real-model cases remain planned for M3.6.
+gate. Normal replay makes no model calls.
+
+The nightly model evaluation workflow runs only in `linjiejim/greenhouse`, and skips model
+execution unless `GREENHOUSE_EVAL_MODEL_KEY` is configured as a repository secret. Set repository
+variables `GREENHOUSE_EVAL_PROVIDER`, `GREENHOUSE_EVAL_BASE_URL` and `GREENHOUSE_EVAL_MODEL` for
+the chosen service. It runs `pnpm eval` with `GREENHOUSE_EVAL_REAL=1`: the same synthetic corpus
+runs through the configured provider and current tool/approval gates, with fixture outputs at
+the service boundary. Normal `pnpm eval` stays offline. No workflow is triggered by local tests.
 
 The v2 main Agent can delegate up to three read-only helper runs per turn and receive their summaries
 in its process card. Published Agents can read only the knowledge folders their owner selects.
@@ -864,11 +890,11 @@ files. CI (`.github/workflows/ci.yml`) runs lint → typecheck → test → e2e 
 
 ### Database migrations
 
-Migration files (`drizzle-kit generate` → `migrate`) are the single source of truth for the
-schema. Edit `packages/db/src/schema/*.ts`, run `pnpm drizzle-kit generate`, review the
-generated SQL, and commit it. **On persistent / shared databases use `migrate` only — never
-`push`** (`push` is for throwaway local scratch DBs). See
-[packages/db/src/AGENTS.md](./packages/db/src/AGENTS.md).
+v2 keeps one baseline until v2.0. Edit `packages/db/src/schema/*.ts`, run `pnpm db:baseline`,
+review the SQL and recreate your disposable v2 development/test database. Never apply that
+baseline to v1 data. Compose runs `node --import tsx apps/api/src/migrate.ts`: it refuses a v1
+database and serializes migration under a PostgreSQL advisory lock. `MIGRATE_ON_START=1` uses
+the same guarded migrator when running the app directly. See [AGENTS.md](./AGENTS.md).
 
 ### Backups
 
@@ -898,4 +924,4 @@ issue — see [SECURITY.md](./SECURITY.md).
 
 在 v2 Web 任意页面按 ⌘J（Windows/Linux：Ctrl+J）打开页面会话；它带入当前对象并保存在会话列表，窄屏显示为 Sheet。
 
-配置图像服务后，Agent 可生成图片或编辑有权限的参考文件；配置视频服务后，批准生成即可在「运行」查看进度。产物卡片提供预览、下载及保存到个人知识库。302.AI 可用 `IMAGE_PROVIDER=302ai`、`VIDEO_PROVIDER=302ai` 和各自的 `*_API_KEY`／`*_BASE_URL` 配置，详见 docs/product/providers.md。回复中插话会在下一模型步骤带入；管理 → 用量可查看每周采纳与运行指标。
+配置图像服务后，Agent 可生成图片或编辑有权限的参考文件；配置视频服务后，批准生成即可在「运行」查看进度。产物卡片提供预览、下载及保存到个人知识库。302.AI 可用 `IMAGE_PROVIDER=302ai`、`VIDEO_PROVIDER=302ai` 和各自的 `*_API_KEY`／`*_BASE_URL` 配置，详见 docs/product/providers.md。回复中插话会在下一模型步骤带入，崩溃恢复后仍保留该上下文并接着写当前回复；管理 → 用量可查看每周采纳与运行指标。

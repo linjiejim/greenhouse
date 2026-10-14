@@ -1,3 +1,5 @@
+import { eq } from 'drizzle-orm';
+import { getDb, jobs } from '@greenhouse/db';
 /**
  * Mail test support: Resend as the fetch the providers layer is given (its sending, Receiving and
  * attachments APIs and its CDN), Svix-signed notices for the inbound route, and an app with the
@@ -168,7 +170,14 @@ export async function mailApp(options: { env?: Record<string, string>; services?
       body: notice.body,
     });
     const text = await response.text();
-    return { status: response.status, body: text ? (JSON.parse(text) as any) : null };
+    let body = text ? (JSON.parse(text) as any) : null;
+    // The public acknowledgement is durable before the worker fetches the mail.
+    if (body?.status === 'queued') {
+      await app.services.tables.worker.drain();
+      const [job] = await getDb().select().from(jobs).where(eq(jobs.id, body.job_id));
+      body = job!.result;
+    }
+    return { status: response.status, body };
   };
   /** Delivers one mail through the route: Resend received it and notified us. */
   const deliver = async (mail: FakeMail) => {
