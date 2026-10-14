@@ -22,8 +22,35 @@ export const best = (a: Role | null | undefined, b: Role | null | undefined): Ro
   !a ? (b ?? null) : !b ? a : RANK[a] >= RANK[b] ? a : b;
 const shareRoleOf = (role: string): Role => (role === 'editor' ? 'editor' : 'viewer');
 
-/** How deep the tree may go; walking further means a cycle, which moves refuse. */
-export const MAX_DEPTH = 64;
+/**
+ * How many folders deep the tree may go (a folder at the root is 1). Creating and moving check
+ * it under the move lock; a walk that finds more, or a loop, fails instead of stopping short.
+ */
+export const MAX_FOLDER_DEPTH = 32;
+
+/** A tree walk that reached past the deepest level or went round in a loop: the data is broken. */
+function brokenTree(): never {
+  throw new Error(`The folder tree is deeper than ${MAX_FOLDER_DEPTH} levels or loops.`);
+}
+
+/** Folders and everything below them, each with how far below its root it is. */
+export async function walkDown(rootIds: readonly string[]): Promise<Array<{ id: string; depth: number }>> {
+  if (!rootIds.length) return [];
+  const rows = await getDb().execute<{ id: string; depth: number; looped: boolean }>(sql`
+    WITH RECURSIVE sub(id, depth) AS (
+      SELECT id, 0 FROM folders WHERE ${inList(folders.id, rootIds)}
+      UNION ALL
+      SELECT f.id, s.depth + 1 FROM folders f JOIN sub s ON f.parent_id = s.id WHERE s.depth < ${MAX_FOLDER_DEPTH}
+    ) CYCLE id SET looped USING trail
+    SELECT id, depth, looped FROM sub`);
+  const found = new Map<string, number>();
+  for (const row of rows) {
+    const depth = Number(row.depth);
+    if (row.looped || depth >= MAX_FOLDER_DEPTH) brokenTree();
+    found.set(row.id, Math.max(found.get(row.id) ?? 0, depth));
+  }
+  return [...found].map(([id, depth]) => ({ id, depth }));
+}
 
 export interface Reader {
   memberId: string;
@@ -56,28 +83,25 @@ export function principalMatch(reader: Pick<Reader, 'memberId' | 'groupIds'>): S
 
 /** Folders and everything below them, as ids. */
 export async function subtree(rootIds: readonly string[]): Promise<string[]> {
-  if (!rootIds.length) return [];
-  const rows = await getDb().execute<{ id: string }>(sql`
-    WITH RECURSIVE sub(id, depth) AS (
-      SELECT id, 0 FROM folders WHERE ${inList(folders.id, rootIds)}
-      UNION ALL
-      SELECT f.id, s.depth + 1 FROM folders f JOIN sub s ON f.parent_id = s.id WHERE s.depth < ${MAX_DEPTH}
-    )
-    SELECT DISTINCT id FROM sub`);
-  return [...rows].map((row) => row.id);
+  return (await walkDown(rootIds)).map((row) => row.id);
 }
 
 /** Shared folders and everything below them, each with the best role any share above gives. */
 async function reachOf(reader: Pick<Reader, 'memberId' | 'groupIds'>): Promise<Map<string, Role>> {
-  const rows = await getDb().execute<{ id: string; rank: number }>(sql`
+  const rows = await getDb().execute<{ id: string; rank: number; depth: number; looped: boolean }>(sql`
     WITH RECURSIVE reach(id, rank, depth) AS (
       SELECT ${shares.resourceId}, CASE WHEN ${shares.role} = 'editor' THEN 2 ELSE 1 END, 0
         FROM ${shares} WHERE ${shares.resourceType} = 'folder' AND ${principalMatch(reader)}
       UNION ALL
-      SELECT f.id, r.rank, r.depth + 1 FROM folders f JOIN reach r ON f.parent_id = r.id WHERE r.depth < ${MAX_DEPTH}
-    )
-    SELECT id, max(rank) AS rank FROM reach GROUP BY id`);
-  return new Map([...rows].map((row) => [row.id, Number(row.rank) === 2 ? 'editor' : 'viewer']));
+      SELECT f.id, r.rank, r.depth + 1 FROM folders f JOIN reach r ON f.parent_id = r.id WHERE r.depth < ${MAX_FOLDER_DEPTH}
+    ) CYCLE id SET looped USING trail
+    SELECT id, rank, depth, looped FROM reach`);
+  const reach = new Map<string, Role>();
+  for (const row of rows) {
+    if (row.looped || Number(row.depth) >= MAX_FOLDER_DEPTH) brokenTree();
+    if (Number(row.rank) === 2 || !reach.has(row.id)) reach.set(row.id, Number(row.rank) === 2 ? 'editor' : 'viewer');
+  }
+  return reach;
 }
 
 export async function loadReader(memberId: string, agentId: string | null = null): Promise<Reader> {
@@ -117,17 +141,30 @@ export async function loadReader(memberId: string, agentId: string | null = null
   };
 }
 
+/** Each folder's ancestors up to the root, the folder itself at depth 0, by where the walk started. */
+export async function walkUp(
+  folderIds: readonly string[],
+): Promise<Array<{ start: string; id: string; name: string; depth: number }>> {
+  if (!folderIds.length) return [];
+  const rows = await getDb().execute<{ start: string; id: string; name: string; depth: number; looped: boolean }>(sql`
+    WITH RECURSIVE up(start, id, parent_id, name, depth) AS (
+      SELECT id, id, parent_id, name, 0 FROM folders WHERE ${inList(folders.id, folderIds)}
+      UNION ALL
+      SELECT u.start, f.id, f.parent_id, f.name, u.depth + 1 FROM folders f JOIN up u ON f.id = u.parent_id WHERE u.depth < ${MAX_FOLDER_DEPTH}
+    ) CYCLE id SET looped USING trail
+    SELECT start, id, name, depth, looped FROM up`);
+  return [...rows].map((row) => {
+    const depth = Number(row.depth);
+    if (row.looped || depth >= MAX_FOLDER_DEPTH) brokenTree();
+    return { start: row.start, id: row.id, name: row.name, depth };
+  });
+}
+
 /** The folder and the folders above it, the folder first. */
 export async function chainOf(folderId: string | null): Promise<FolderRow[]> {
   if (!folderId) return [];
-  const steps = await getDb().execute<{ id: string; depth: number }>(sql`
-    WITH RECURSIVE chain(id, parent_id, depth) AS (
-      SELECT id, parent_id, 0 FROM folders WHERE id = ${folderId}
-      UNION ALL
-      SELECT f.id, f.parent_id, c.depth + 1 FROM folders f JOIN chain c ON f.id = c.parent_id WHERE c.depth < ${MAX_DEPTH}
-    )
-    SELECT id, depth FROM chain`);
-  const order = new Map([...steps].map((step) => [step.id, Number(step.depth)]));
+  const steps = await walkUp([folderId]);
+  const order = new Map(steps.map((step) => [step.id, step.depth]));
   if (!order.size) return [];
   const rows = await getDb()
     .select()

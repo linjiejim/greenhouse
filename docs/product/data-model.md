@@ -109,7 +109,7 @@ v2 从零建表：只有一份基线迁移，不继承 v1 的迁移链，也不�
 
 | 表 | 用途 | 关键列与关系 |
 | --- | --- | --- |
-| `folders` | 文件夹树，文档和文件在同一棵树里 | `parent_id` `CASCADE`、`space`（team / personal）、`owner_id`（个人空间必填，团队为空，CHECK 约束）、`agent_id`（Agent 私有参考文件夹的根，唯一，随 Agent 删除）、`name`、`sort_order`（0 = 没手动排过）、`created_by`、`archived_at`（归档文件夹时其中所有内容盖同一时间戳，恢复只清这一批）；移动时拒绝成环 |
+| `folders` | 文件夹树，文档和文件在同一棵树里 | `parent_id` `CASCADE`、`space`（team / personal）、`owner_id`（个人空间必填，团队为空，CHECK 约束）、`agent_id`（Agent 私有参考文件夹的根，唯一，随 Agent 删除）、`name`、`sort_order`（0 = 没手动排过）、`created_by`、`archived_at`（归档文件夹时其中所有内容盖同一时间戳，恢复只清这一批）；移动时拒绝成环；最多 32 层，新建和移动在树锁下检查，遍历遇到更深或成环就报错而不是截断 |
 | `docs` | 文档 | `folder_id` `SET NULL`、`space`、`owner_id`（同 `folders`）、`title`、`content`（Markdown，唯一事实源；文件地址存不带签名的形式）、`is_template`、`tags`、`meta`（摘要、问题、话题，只作检索元数据）、`version`（保存时比较并加一）、`sort_order`、`search_*`（A 标题与标签，B 元数据，C 正文）、`created_by` / `updated_by`、`archived_at` |
 | `doc_versions` | 不可变版本 | `doc_id` `CASCADE`、`version`、`title`、`content`、`change_note`、`created_by`、`agent_id`（Agent 代写时）；唯一 `(doc_id, version)`；新建是版本 1，恢复写一个新版本 |
 | `doc_links` | 反向链接 | 主键 `(from_doc_id, to_doc_id)`，两端 `CASCADE`；每次保存由正文重建，读反链时逐条过权限 |

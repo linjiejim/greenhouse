@@ -148,7 +148,8 @@ export type CreateFolderInput = z.infer<typeof createFolderInputSchema>;
 
 /**
  * Rename or move. A move goes into `folder_id`, or to the root of `space` with `folder_id: null`.
- * Never into itself or below; personal items move into the team space, never back.
+ * Never into itself or below (`folder_cycle`), never deeper than 32 folders (`folder_too_deep`); personal
+ * items move into the team space, never back.
  */
 export const updateFolderInputSchema = z.object({
   name: z.string().trim().min(1).max(FOLDER_NAME_MAX).optional(),

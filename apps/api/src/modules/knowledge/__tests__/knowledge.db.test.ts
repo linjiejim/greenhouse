@@ -8,7 +8,9 @@ import type { RealtimeEvent } from '@greenhouse/contract';
 import {
   comments,
   docLinks,
+  docs,
   docVersions,
+  folders,
   getDb,
   groupMembers,
   groups,
@@ -17,6 +19,7 @@ import {
   notifications,
 } from '@greenhouse/db';
 import { createTestApp } from '../../../testing.js';
+import { MAX_FOLDER_DEPTH } from '../access.js';
 
 type App = ReturnType<typeof createTestApp>;
 type Who = Awaited<ReturnType<App['member']>>;
@@ -210,6 +213,89 @@ describe('spaces and the tree', () => {
     await as(lin).post('/api/knowledge/docs', { title: 'Team plan', space: 'team' });
     const found = await as(chen).get('/api/search?q=plan&kinds=docs');
     expect(found.body.items).toEqual([]);
+  });
+});
+
+describe('the depth of the tree', () => {
+  /** Folders nested in a line, the first at the root of the space; the deepest last. */
+  async function nest(
+    as: (who: Who) => { post: (path: string, body?: unknown) => Promise<any> },
+    who: Who,
+    count: number,
+    name = 'level',
+  ) {
+    const made: Array<{ id: string }> = [];
+    for (let level = 1; level <= count; level++) {
+      const created = await as(who).post('/api/knowledge/folders', {
+        name: `${name} ${level}`,
+        ...(made.length ? { folder_id: made[made.length - 1]!.id } : { space: 'team' }),
+      });
+      expect(created.status).toBe(201);
+      made.push(created.body);
+    }
+    return made;
+  }
+
+  it('refuses folders deeper than the limit, created or moved, and loops before that', async () => {
+    const { lin, as } = await setup();
+    const line = await nest(as, lin, MAX_FOLDER_DEPTH);
+    const deepest = line[line.length - 1]!;
+    const tooDeep = await as(lin).post('/api/knowledge/folders', { name: 'one more', folder_id: deepest.id });
+    expect(tooDeep.status).toBe(409);
+    expect(tooDeep.body.error.code).toBe('folder_too_deep');
+    // A doc still goes in the deepest folder: only folders count.
+    expect((await as(lin).post('/api/knowledge/docs', { title: 'Leaf', folder_id: deepest.id })).status).toBe(201);
+
+    // A branch two deep fits under level 30, not under level 31.
+    const branch = await nest(as, lin, 2, 'branch');
+    const under31 = await as(lin).patch(`/api/knowledge/folders/${branch[0]!.id}`, { folder_id: line[30]!.id });
+    expect(under31.body.error.code).toBe('folder_too_deep');
+    const under30 = await as(lin).patch(`/api/knowledge/folders/${branch[0]!.id}`, { folder_id: line[29]!.id });
+    expect(under30.status).toBe(200);
+    expect(under30.body.path).toHaveLength(30);
+
+    // A loop is refused as a loop, however deep the target.
+    const loop = await as(lin).patch(`/api/knowledge/folders/${line[0]!.id}`, { folder_id: deepest.id });
+    expect(loop.body.error.code).toBe('folder_cycle');
+  });
+
+  it('fails on a broken tree instead of stopping short of its top', async () => {
+    const { app, lin, as } = await setup();
+    const [top, middle, bottom] = await nest(as, lin, 3);
+    const doc = (await as(lin).post('/api/knowledge/docs', { title: 'Inside', folder_id: bottom!.id })).body;
+    expect((await as(lin).get(`/api/knowledge/docs/${doc.id}`)).status).toBe(200);
+    // Folders that loop (no move makes one; here the rows are written by hand).
+    await getDb().update(folders).set({ parentId: bottom!.id }).where(eq(folders.id, top!.id));
+    expect((await as(lin).get(`/api/knowledge/docs/${doc.id}`)).status).toBe(500);
+    expect((await as(lin).del(`/api/knowledge/folders/${middle!.id}`)).status).toBe(500);
+
+    // A chain deeper than the limit under an Agent's private folder: the owner's other Agent
+    // never gets to read what sits at its bottom.
+    const main = (await app.call('GET', '/api/conversations', { token: lin.token })).body.items[0].agent_id as string;
+    const other = (await app.call('POST', '/api/agents', { token: lin.token, body: { template_key: 'writer' } })).body
+      .id as string;
+    let parentId: string | null = null;
+    for (let level = 0; level < 70; level++) {
+      const [row]: Array<{ id: string }> = await getDb()
+        .insert(folders)
+        .values({
+          id: newId('folder'),
+          parentId,
+          space: 'personal',
+          ownerId: lin.id,
+          agentId: level === 0 ? main : null,
+          name: `deep ${level}`,
+        })
+        .returning({ id: folders.id });
+      parentId = row!.id;
+    }
+    const [deep] = await getDb()
+      .insert(docs)
+      .values({ id: newId('doc'), folderId: parentId, space: 'personal', ownerId: lin.id, title: 'Notes' })
+      .returning();
+    await expect(app.services.knowledge.getDoc(lin.id, deep!.id, { as: { agentId: other } })).rejects.toThrow(
+      /deeper than/,
+    );
   });
 });
 

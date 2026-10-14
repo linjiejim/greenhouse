@@ -74,12 +74,14 @@ import {
   docShareRoles,
   inList,
   loadReader,
-  MAX_DEPTH,
+  MAX_FOLDER_DEPTH,
   principalMatch,
   readableWhere,
   roleIn,
   rolesOf,
   subtree,
+  walkDown,
+  walkUp,
   type Reader,
   type Role,
 } from './access.js';
@@ -100,8 +102,20 @@ import {
   type Source,
 } from './views.js';
 
-/** Held while a folder moves (any process): the cycle check sees every move before it. */
-const FOLDER_MOVE_LOCK = 74_192_101;
+/**
+ * The tree's lock, in any process and only inside a transaction. A folder move holds it alone,
+ * so the cycle and depth checks see every move before it; whatever depends on where a folder
+ * sits (creating in it, uploading to it, sharing it, moving a doc or file) holds it shared and
+ * reads the place again under it.
+ */
+const TREE_LOCK = 74_192_101;
+const lockTree = (mode: 'move' | 'place') =>
+  getDb().execute(
+    mode === 'move'
+      ? sql`SELECT pg_advisory_xact_lock(${TREE_LOCK})`
+      : sql`SELECT pg_advisory_xact_lock_shared(${TREE_LOCK})`,
+  );
+const tooDeep = () => conflict('folder_too_deep', `Folders nest at most ${MAX_FOLDER_DEPTH} levels deep.`);
 /** A folder shows at most this many items of each kind. */
 const MAX_CHILDREN = 1000;
 /** Text read from an uploaded file that goes into search. */
@@ -448,17 +462,10 @@ export function createKnowledgeService(deps: {
   async function pathsOf(folderIds: readonly string[]): Promise<Map<string, PathEntry[]>> {
     const wanted = [...new Set(folderIds)];
     if (!wanted.length) return new Map();
-    const rows = await getDb().execute<{ start: string; id: string; name: string; depth: number }>(sql`
-      WITH RECURSIVE up(start, id, parent_id, name, depth) AS (
-        SELECT id, id, parent_id, name, 0 FROM folders WHERE ${inList(folders.id, wanted)}
-        UNION ALL
-        SELECT u.start, f.id, f.parent_id, f.name, u.depth + 1 FROM folders f JOIN up u ON f.id = u.parent_id WHERE u.depth < ${MAX_DEPTH}
-      )
-      SELECT start, id, name, depth FROM up`);
     const paths = new Map<string, Array<{ id: string; name: string; depth: number }>>();
-    for (const row of rows) {
+    for (const row of await walkUp(wanted)) {
       const list = paths.get(row.start) ?? [];
-      list.push({ id: row.id, name: row.name, depth: Number(row.depth) });
+      list.push({ id: row.id, name: row.name, depth: row.depth });
       paths.set(row.start, list);
     }
     return new Map(
@@ -797,19 +804,24 @@ export function createKnowledgeService(deps: {
 
     async createFolder(memberId: string, input: CreateFolderInput, as?: As): Promise<KnowledgeFolder> {
       const reader = await readerFor(memberId, as);
-      const place = await placeFor(reader, { folderId: input.folder_id, space: input.space });
-      const [folder] = await getDb()
-        .insert(folders)
-        .values({
-          id: newId('folder'),
-          parentId: place.folder?.id ?? null,
-          space: place.space,
-          ownerId: place.ownerId,
-          name: input.name,
-          createdBy: memberId,
-        })
-        .returning();
-      return folderView(reader, folder!, [folder!, ...place.chain], roleAt(reader, place));
+      const { folder, place } = await transaction(async () => {
+        await lockTree('place');
+        const place = await placeFor(reader, { folderId: input.folder_id, space: input.space });
+        if (place.chain.length + 1 > MAX_FOLDER_DEPTH) throw tooDeep();
+        const [folder] = await getDb()
+          .insert(folders)
+          .values({
+            id: newId('folder'),
+            parentId: place.folder?.id ?? null,
+            space: place.space,
+            ownerId: place.ownerId,
+            name: input.name,
+            createdBy: memberId,
+          })
+          .returning();
+        return { folder: folder!, place };
+      });
+      return folderView(reader, folder, [folder, ...place.chain], roleAt(reader, place));
     },
 
     /** Rename or move a folder; moving never goes into itself or below. */
@@ -826,8 +838,12 @@ export function createKnowledgeService(deps: {
         const changes: Partial<typeof folders.$inferInsert> = {};
         if (input.name !== undefined) changes.name = input.name;
         if (moving) {
-          // Folder moves take turns, so two at once cannot close a loop the other did not see.
-          await getDb().execute(sql`SELECT pg_advisory_xact_lock(${FOLDER_MOVE_LOCK})`);
+          // Folder moves take turns, so two at once cannot close a loop or pass the depth limit
+          // the other did not see; the folder and its place are read again under the lock.
+          await lockTree('move');
+          const { folder, role } = await folderAt(reader, id);
+          need(role, 'editor', 'You can read this folder but not change it.');
+          if (folder.archivedAt) throw conflict('archived', 'This folder is archived. Restore it first.');
           const place = await placeFor(
             reader,
             { folderId: input.folder_id ?? null, space: input.space },
@@ -837,7 +853,10 @@ export function createKnowledgeService(deps: {
           if (place.chain.some((above) => above.id === folder.id)) {
             throw conflict('folder_cycle', 'A folder cannot move into itself or below it.');
           }
-          const inside = await subtree([folder.id]);
+          const below = await walkDown([folder.id]);
+          const height = 1 + below.reduce((deepest, row) => Math.max(deepest, row.depth), 0);
+          if (place.chain.length + height > MAX_FOLDER_DEPTH) throw tooDeep();
+          const inside = below.map((row) => row.id);
           if (place.agentId) {
             const docIds = (await getDb().select({ id: docs.id }).from(docs).where(inList(docs.folderId, inside))).map(
               (row) => row.id,
