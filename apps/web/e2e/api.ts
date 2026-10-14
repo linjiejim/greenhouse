@@ -29,7 +29,7 @@ function tokenOf(person: keyof typeof PEOPLE): string {
 export async function apiAs<T = Record<string, unknown>>(
   request: APIRequestContext,
   person: keyof typeof PEOPLE,
-  method: 'GET' | 'POST' | 'PATCH' | 'DELETE',
+  method: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE',
   path: string,
   data?: unknown,
 ): Promise<T> {

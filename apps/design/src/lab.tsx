@@ -18,6 +18,7 @@ import {
   Input,
   KitProvider,
   Menu,
+  Popover,
   MultiSelect,
   Radio,
   SearchInput,
@@ -528,6 +529,15 @@ export function ComponentLab() {
           </Sample>
           <Sample label="图表">
             <MiniChart />
+          </Sample>
+          <Sample label="浮层面板（筛选）">
+            <Popover label="筛选" trigger="筛选" wide>
+              <div className="row wrap">
+                <Select label="字段" value="状态" options={['状态', '负责人', '截止日期']} onChange={() => {}} />
+                <Select label="条件" value="是" options={['是', '不是', '为空']} onChange={() => {}} />
+                <Select label="值" value={status} options={['待处理', '进行中', '已完成']} onChange={setStatus} />
+              </div>
+            </Popover>
           </Sample>
         </div>
         <div className="lab-table">

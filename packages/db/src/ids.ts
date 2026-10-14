@@ -44,6 +44,11 @@ export const ID_PREFIX = {
   doc: 'doc',
   docVersion: 'dcv',
   comment: 'cmt',
+  base: 'bas',
+  baseTable: 'tbl',
+  baseField: 'col',
+  baseView: 'viw',
+  record: 'rec',
 } as const;
 export type IdKind = keyof typeof ID_PREFIX;
 

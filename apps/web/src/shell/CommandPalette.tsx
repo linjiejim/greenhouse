@@ -5,12 +5,14 @@
 
 import { useEffect, useId, useMemo, useState, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Hash, MessageSquare, Plus, Settings, Shield, Sparkles, TextSearch, User } from 'lucide-react';
+import { Hash, MessageSquare, Plus, Settings, Shield, Sparkles, Table2, TextSearch, User } from 'lucide-react';
 import { Overlay } from '@greenhouse/ui/kit';
 import { icon } from '@greenhouse/ui/tokens';
 import { useSession } from '../app/session';
 import { useAgents } from '../data/agents';
 import { useConversations } from '../data/conversations';
+import { useBases } from '../data/tables';
+import { openNewBase } from '../pages/tables/entry';
 import { api } from '../lib/api';
 import { cx } from '../lib/cx';
 import { useT } from '../lib/i18n';
@@ -36,6 +38,8 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
   const openOverlay = useOpenOverlay();
   const agents = useAgents('mine');
   const conversations = useConversations();
+  const tablesOn = !!me?.modules.tables;
+  const bases = useBases(false, tablesOn);
   const [query, setQuery] = useState('');
   const [active, setActive] = useState(0);
   const [debounced, setDebounced] = useState('');
@@ -47,7 +51,11 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
   // Messages and people come from the server; commands, Agents and settings are already here.
   const remote = useQuery({
     queryKey: ['search', debounced],
-    queryFn: () => api.search({ q: debounced, kinds: ['conversations', 'messages', 'members'] }),
+    queryFn: () =>
+      api.search({
+        q: debounced,
+        kinds: ['conversations', 'messages', 'members', ...(tablesOn ? (['records'] as const) : [])],
+      }),
     enabled: debounced.length > 0,
     staleTime: 10_000,
   });
@@ -78,7 +86,31 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
         leading: small(<Sparkles size={icon.md} />),
         run: () => openOverlay({ type: 'new-agent' }),
       },
+      ...(tablesOn
+        ? [
+            {
+              id: 'new-base',
+              group: t('palette.commands'),
+              label: t('tables.new'),
+              leading: small(<Table2 size={icon.md} />),
+              run: () => openNewBase(openOverlay),
+            },
+          ]
+        : []),
     ].filter((item) => hit(item.label));
+    const baseItems: Item[] = q
+      ? bases.items
+          .filter((base) => hit(base.name, ...base.tables.map((table) => table.name)))
+          .slice(0, LIMIT)
+          .map((base) => ({
+            id: `base:${base.id}`,
+            group: t('nav.tables'),
+            label: base.name,
+            hint: base.tables.map((table) => table.name).join(' · '),
+            leading: small(<Table2 size={icon.md} />),
+            run: () => navigate({ page: 'base', id: base.id }),
+          }))
+      : [];
     const agentItems: Item[] = agents.items
       .filter((agent) => hit(agent.name, agent.role))
       .slice(0, LIMIT)
@@ -129,6 +161,18 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
           },
         ];
       }
+      if (item.kind === 'records' && item.base_id && item.table_id) {
+        return [
+          {
+            id: `record:${item.id}`,
+            group: t('tables.palette.records'),
+            label: item.title || t('tables.record.untitled'),
+            hint: item.snippet,
+            leading: small(<Table2 size={icon.md} />),
+            run: () => navigate({ page: 'base', id: item.base_id!, table: item.table_id!, record: item.id }),
+          },
+        ];
+      }
       if (item.kind === 'members') {
         if (item.id === me?.id) return [];
         return [
@@ -162,8 +206,20 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
           }))
         : []),
     ].filter((item) => q && hit(item.label, item.group));
-    return [...commands, ...agentItems, ...conversationItems, ...remoteItems, ...sections];
-  }, [query, debounced, remote.data, agents.items, conversations.items, me?.role, me?.id, openOverlay, t]);
+    return [...commands, ...agentItems, ...conversationItems, ...baseItems, ...remoteItems, ...sections];
+  }, [
+    query,
+    debounced,
+    remote.data,
+    agents.items,
+    conversations.items,
+    bases.items,
+    tablesOn,
+    me?.role,
+    me?.id,
+    openOverlay,
+    t,
+  ]);
 
   const current = Math.min(active, Math.max(items.length - 1, 0));
   const go = (item: Item | undefined) => {

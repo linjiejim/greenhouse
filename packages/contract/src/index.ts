@@ -20,3 +20,5 @@ export * from './search.js';
 export * from './usage.js';
 export * from './vault.js';
 export * from './knowledge.js';
+export * from './tables.js';
+export * from './tables-cells.js';

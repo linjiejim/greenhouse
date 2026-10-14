@@ -16,6 +16,7 @@ import type {
 } from '@greenhouse/contract';
 import { keys } from './query';
 import { appendDelta, endStream, forgetStream, upsertStep } from './streams';
+import { applyTablesEvent } from './tables';
 
 export type MessagePages = InfiniteData<Page<MessageItem>, string | undefined>;
 export type ConversationPages = InfiniteData<Page<Conversation>, string | undefined>;
@@ -104,6 +105,7 @@ export function patchConversation(client: QueryClient, id: string, changes: Part
 }
 
 export function applyEvent(client: QueryClient, event: Exclude<RealtimeEvent, { type: 'ready' }>) {
+  if (applyTablesEvent(client, event)) return;
   switch (event.type) {
     case 'message.created':
       addMessage(client, event.data.message);

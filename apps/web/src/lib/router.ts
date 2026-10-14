@@ -37,6 +37,10 @@ export type Route =
   | { page: 'run'; id: string }
   | { page: 'skills'; scope: SkillScope }
   | { page: 'skill'; id: string }
+  /** 表格: my bases. */
+  | { page: 'tables' }
+  /** A base (`id`), one of its data tables and views, and an open record: `#/tables/:base/:table/:view?record=`. */
+  | { page: 'base'; id: string; table?: string; view?: string; record?: string }
   | { page: 'notifications'; view: 'needs' | 'all' }
   | { page: 'settings'; section: SettingsSection }
   | { page: 'admin'; section: AdminSection }
@@ -65,6 +69,19 @@ export function parse(hash: string): Route {
     });
   const [head, id, extra] = parts;
   const notFound = { page: 'not-found', path } as const;
+  if (head === 'tables') {
+    const [, base, table, view, beyond] = parts;
+    if (beyond !== undefined) return notFound;
+    if (!base) return { page: 'tables' };
+    const record = query.get('record');
+    return {
+      page: 'base',
+      id: base,
+      ...(table ? { table } : {}),
+      ...(view ? { view } : {}),
+      ...(record ? { record } : {}),
+    };
+  }
   if (extra !== undefined) return notFound;
   switch (head) {
     case undefined:
@@ -121,6 +138,15 @@ export function href(route: Route): string {
       return route.scope === 'all' ? '#/skills' : `#/skills?scope=${route.scope}`;
     case 'skill':
       return `#/skills/${encodeURIComponent(route.id)}`;
+    case 'tables':
+      return '#/tables';
+    case 'base': {
+      const path = [route.id, route.table, route.table ? route.view : undefined]
+        .filter((part): part is string => !!part)
+        .map(encodeURIComponent)
+        .join('/');
+      return `#/tables/${path}${route.record ? `?record=${encodeURIComponent(route.record)}` : ''}`;
+    }
     case 'notifications':
       return route.view === 'all' ? '#/notifications?view=all' : '#/notifications';
     case 'settings':

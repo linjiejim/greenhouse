@@ -1,4 +1,6 @@
-/** Chinese: the source dictionary. Keys are grouped by where the words appear. */
+import { tablesZh } from './tables.zh';
+
+/** Chinese: the source dictionary. Keys are grouped by where the words appear; a module may keep its own in <module>.zh.ts. */
 export const zh = {
   'app.name': 'Greenhouse',
 
@@ -1133,6 +1135,8 @@ export const zh = {
   'common.updateRequired': '服务器已更新，请刷新页面',
   'common.refresh': '刷新',
   'common.pageFailed': '这个页面出错了 · 可以重试',
+
+  ...tablesZh,
 } as const;
 
 export type MessageKey = keyof typeof zh;

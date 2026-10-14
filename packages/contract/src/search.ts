@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 /** What `⌘K` searches; an item's `kind` is the group it belongs to. */
-export const SEARCH_KINDS = ['conversations', 'messages', 'agents', 'members', 'docs'] as const;
+export const SEARCH_KINDS = ['conversations', 'messages', 'agents', 'members', 'docs', 'records'] as const;
 export type SearchKind = (typeof SEARCH_KINDS)[number];
 
 export const searchQuerySchema = z.object({
@@ -20,7 +20,7 @@ export type SearchQuery = z.input<typeof searchQuerySchema>;
 export const searchItemSchema = z.object({
   kind: z.enum(SEARCH_KINDS),
   id: z.string(),
-  /** A conversation's title (or its Agent's name), an Agent's or a member's name, a doc's title. */
+  /** A conversation's title (or its Agent's name), an Agent's or a member's name, a doc's or a record's title. */
   title: z.string(),
   /** The text around a match in a message or a doc, an Agent's role, a member's email. */
   snippet: z.string().optional(),
@@ -30,6 +30,9 @@ export const searchItemSchema = z.object({
   seq: z.number().int().optional(),
   /** The Agent of a conversation, or the one that wrote a message. */
   agent_id: z.string().optional(),
+  /** Where a record opens: its base and data table. */
+  base_id: z.string().optional(),
+  table_id: z.string().optional(),
 });
 export type SearchItem = z.infer<typeof searchItemSchema>;
 
