@@ -114,12 +114,13 @@ const RAW_TEXT = /^(?:script|style|textarea|title|xmp|iframe|noembed|noframes|no
 
 /**
  * Where the target of a Markdown link or image starts, for each link nothing around it can turn
- * into part of a longer address: its text is plain (no bracket, backtick, `<` or line break),
- * and the run of characters before it holds no other address (`](`, `]:`, `://`, `www.`) and no
- * raw HTML, autolink or angle-bracket target. A `<` reaches as far as a browser reads a tag
- * (quoted values may hold anything, across lines) or as far as the parser reads an angle-bracket
- * target, whichever is longer. One pass, so a hostile text costs no more than a plain one; in
- * doubt a picture stays unsigned, and a signature never lands inside someone else's address.
+ * into part of a longer address. Its text is plain (no bracket, backtick, `<` or line break), and
+ * its `[` is outside every other link's target, and outside any run of characters (up to an ASCII
+ * space) that holds a bare address (`://`, `www.`), a reference definition (`]:`), raw HTML, an
+ * autolink or an angle-bracket target. A `<` reaches as far as a browser reads a tag (quoted
+ * values may hold anything, across lines) or as far as the parser reads an angle-bracket target,
+ * whichever is longer. One pass, so a hostile text costs no more than a plain one; in doubt a
+ * picture stays unsigned, and a signature never lands inside someone else's address.
  */
 function wholeTargets(text: string): Set<number> {
   const starts = new Set<number>();
