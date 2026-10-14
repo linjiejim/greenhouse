@@ -9,7 +9,7 @@ import { useMemo, useRef, useState, type DragEvent } from 'react';
 import { CalendarDays, ChevronLeft, ChevronRight, Plus } from 'lucide-react';
 import { Button, Empty, IconButton, Popover, formatDate } from '@greenhouse/ui/kit';
 import { icon } from '@greenhouse/ui/tokens';
-import type { Field, TableRecord } from '@greenhouse/contract';
+import { isComputedType, type Field, type TableRecord } from '@greenhouse/contract';
 import { useNotify } from '../../app/notify';
 import { cx } from '../../lib/cx';
 import { useI18n } from '../../lib/i18n';
@@ -55,7 +55,8 @@ export function CalendarView(props: ViewProps) {
 }
 
 function Month(props: ViewProps & { start: Field; end?: Field }) {
-  const { start, end, fields, config, data, lookups, canEdit, narrow, onOpen, onChange, onCreate } = props;
+  const { start, end, fields, config, data, lookups, narrow, onOpen, onChange, onCreate } = props;
+  const canEdit = props.canEdit && !isComputedType(start.type) && !(end && isComputedType(end.type));
   const { t, locale } = useI18n();
   const notify = useNotify();
   const timeZone = lookups.timeZone;

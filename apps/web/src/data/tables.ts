@@ -32,6 +32,7 @@ export const tablesKeys = {
   record: (id: string) => ['tables', 'record', id] as const,
   activity: (id: string) => ['tables', 'activity', id] as const,
   trash: (baseId: string) => ['tables', 'trash', baseId] as const,
+  roles: (baseId: string) => ['tables', 'roles', baseId] as const,
   shares: (baseId: string) => ['tables', 'shares', baseId] as const,
   titles: (tableId: string) => ['tables', 'titles', tableId] as const,
 };
@@ -136,7 +137,7 @@ export function putRecords(
       const next = byId.get(item.id);
       if (!next) return item;
       byId.delete(item.id);
-      return next.revision >= item.revision ? next : item;
+      return next.revision >= item.revision && next.computed_revision >= item.computed_revision ? next : item;
     });
     return {
       ...data,
@@ -147,7 +148,7 @@ export function putRecords(
   });
   for (const record of records) {
     client.setQueryData<RecordDetail>(tablesKeys.record(record.id), (data) =>
-      data && record.revision >= data.record.revision
+      data && record.revision >= data.record.revision && record.computed_revision >= data.record.computed_revision
         ? { ...data, record, linked: { ...data.linked, ...extra.linked }, files: { ...data.files, ...extra.files } }
         : data,
     );
@@ -181,7 +182,10 @@ export async function createRecord(tableId: string, values: TableRecord['values'
   return made;
 }
 
-export async function bulkRecords(tableId: string, items: Parameters<typeof api.tables.tables.bulk>[1]['items']): Promise<BulkResult> {
+export async function bulkRecords(
+  tableId: string,
+  items: Parameters<typeof api.tables.tables.bulk>[1]['items'],
+): Promise<BulkResult> {
   const result = await api.tables.tables.bulk(tableId, { items });
   putRecords(
     tableId,
@@ -252,16 +256,29 @@ export function applyTablesEvent(client: QueryClient, event: Exclude<RealtimeEve
       const views = client.getQueriesData<ViewRecords>({ queryKey: tablesKeys.records(tableId) });
       for (const [key, data] of views) {
         if (!data) continue;
-        const cached = new Map(data.items.map((item) => [item.id, item.revision]));
-        const behind = !records.length || records.some((record) => (cached.get(record.id) ?? 0) < record.revision);
+        const cached = new Map(data.items.map((item) => [item.id, item]));
+        const behind =
+          !records.length ||
+          records.some(
+            (record) =>
+              !cached.has(record.id) ||
+              cached.get(record.id)!.revision < record.revision ||
+              cached.get(record.id)!.computed_revision < (record.computed_revision ?? 0),
+          );
         if (behind) soon(client, key);
       }
       for (const record of records) {
         const detail = client.getQueryData<RecordDetail>(tablesKeys.record(record.id));
-        if (detail && detail.record.revision < record.revision) soon(client, tablesKeys.record(record.id));
+        if (
+          detail &&
+          (detail.record.revision < record.revision ||
+            detail.record.computed_revision < (record.computed_revision ?? 0))
+        )
+          soon(client, tablesKeys.record(record.id));
         soon(client, tablesKeys.activity(record.id));
       }
       soon(client, tablesKeys.titles(tableId));
+      soon(client, ['tables', 'cards', event.data.base_id]);
       return true;
     }
     case 'base.updated':
@@ -269,6 +286,14 @@ export function applyTablesEvent(client: QueryClient, event: Exclude<RealtimeEve
       soon(client, ['tables', 'bases'], 200);
       soon(client, tablesKeys.trash(event.data.base_id));
       soon(client, tablesKeys.shares(event.data.base_id));
+      soon(client, tablesKeys.roles(event.data.base_id));
+      // Shares and row/column rules can revoke access without changing record revisions.
+      void client.resetQueries({ queryKey: ['tables', 'records'] });
+      void client.resetQueries({ queryKey: ['tables', 'record'] });
+      void client.resetQueries({ queryKey: ['tables', 'titles'] });
+      void client.resetQueries({ queryKey: ['tables', 'activity'] });
+      void client.resetQueries({ queryKey: ['tables', 'cards'] });
+      void client.resetQueries({ queryKey: ['search'] });
       return true;
     case 'comments.updated':
       if (event.data.target_type !== 'record') return false;

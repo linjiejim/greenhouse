@@ -26,6 +26,8 @@ import {
   CellParseError,
   canGroupBy,
   isEmptyValue,
+  isComputedType,
+  valueTypeOf,
   operatorsFor,
   parseCell,
   parseClipboard,
@@ -214,6 +216,7 @@ const Row = memo(function Row({
             key={field.id}
             id={`${gridId}-${row}-${col}`}
             role="gridcell"
+            aria-readonly={!canEdit || isComputedType(field.type)}
             aria-colindex={col + 2}
             aria-selected={active || inRange || undefined}
             className={cx(
@@ -222,7 +225,7 @@ const Row = memo(function Row({
               col === frozen - 1 && 'is-frozen-edge',
               active && 'is-active',
               inRange && !active && 'is-in-range',
-              field.type === 'number' && 'is-number',
+              valueTypeOf(field) === 'number' && 'is-number',
             )}
             style={{ width: widths[col], ...(col < frozen ? { left: lefts[col] } : {}) }}
             onMouseDown={(event) => {
@@ -340,7 +343,10 @@ function RecordList({ props }: { props: ViewProps }) {
             <span className="app-tb-list-title">{titleOf(props.fields, record) || t('tables.record.untitled')}</span>
             <span className="app-tb-list-meta">
               {columns.map((field) => (
-                <CellValue key={field.id} field={field} value={record.values[field.id]} lookups={props.lookups} />
+                <span key={field.id} className="app-tb-list-value">
+                  <span>{field.name}: </span>
+                  <CellValue field={field} value={record.values[field.id]} lookups={props.lookups} />
+                </span>
               ))}
             </span>
           </button>
@@ -543,7 +549,7 @@ function Grid(props: ViewProps) {
   const startEdit = (cell: Cell, typed?: string) => {
     const record = records[cell.row];
     const field = columns[cell.col];
-    if (!record || !field || !canEdit) return;
+    if (!record || !field || !canEdit || isComputedType(field.type)) return;
     if (field.type === 'checkbox') {
       void save(record, field, record.values[field.id] !== true, cell);
       return;
@@ -643,7 +649,7 @@ function Grid(props: ViewProps) {
       const values: RecordValues = {};
       cells.forEach((raw, c) => {
         const field = columns[start.col + c];
-        if (!field) return;
+        if (!field || isComputedType(field.type)) return;
         try {
           values[field.id] = parseCell(field, raw, context);
         } catch (error) {
@@ -681,7 +687,8 @@ function Grid(props: ViewProps) {
       const values: RecordValues = {};
       for (let col = range.cols[0]; col <= range.cols[1]; col++) {
         const field = columns[col]!;
-        if (!isEmptyValue(record.values[field.id])) values[field.id] = field.type === 'checkbox' ? false : null;
+        if (!isComputedType(field.type) && !isEmptyValue(record.values[field.id]))
+          values[field.id] = field.type === 'checkbox' ? false : null;
       }
       if (Object.keys(values).length) items.push({ id: record.id, revision: record.revision, values });
     }

@@ -158,6 +158,8 @@ v2 从零建表：只有一份基线迁移，不继承 v1 的迁移链，也不�
 - `table_automation_outbox`、`table_recompute_jobs` 由 `jobs` 承接；`table_app_action_requests` 由 `idempotency_keys` 承接。
 - `table_notifications` 删除，自动化通知走 `notifications`。
 
+表格 Web（#70，T3）不增加存储：公式与提示词草稿只在字段抽屉内；角色抽屉写已有 `base_roles.rules`，分享写已有自定义角色引用；计算值由 API 返回，缓存按 `computed_revision` 更新，客户端不把计算字段放进记录写入。
+
 ## 7. 技能
 
 | 表 | 用途 | 关键列与关系 |

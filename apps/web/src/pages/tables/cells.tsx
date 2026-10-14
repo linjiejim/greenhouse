@@ -43,6 +43,10 @@ import {
 import { icon } from '@greenhouse/ui/tokens';
 import {
   isEmptyValue,
+  isComputedType,
+  isComputedError,
+  isComputedPending,
+  valueTypeOf,
   zonedInstant,
   zonedParts,
   type Field,
@@ -140,12 +144,33 @@ export function CellValue({
   /** Links open the linked record. */
   onOpenRecord?: (id: string) => void;
 }) {
-  const { locale } = useI18n();
-  if (field.type === 'checkbox') {
+  const { locale, t } = useI18n();
+  if (isComputedError(value))
+    return (
+      <span className="app-tb-computed-error" role="status">
+        {t(`tables.computed.${value.error}`)}
+      </span>
+    );
+  if (isComputedPending(value))
+    return (
+      <span className="app-muted" role="status">
+        {t('tables.computed.pending')}
+      </span>
+    );
+  if (field.type === 'lookup')
+    return (
+      <span className="app-tb-text">
+        {Array.isArray(value)
+          ? value.map((entry) => (Array.isArray(entry) ? entry.join(', ') : String(entry ?? ''))).join(', ')
+          : ''}
+      </span>
+    );
+  const kind = valueTypeOf(field);
+  if (kind === 'checkbox') {
     return value === true ? <CheckSquare size={icon.md} strokeWidth={icon.stroke} className="app-tb-check" /> : null;
   }
   if (isEmptyValue(value)) return null;
-  switch (field.type) {
+  switch (kind) {
     case 'number': {
       if (typeof value !== 'number') return null;
       const digits = field.config.precision;
@@ -184,6 +209,7 @@ export function CellValue({
         </span>
       );
     case 'url':
+      if (!/^https?:\/\//i.test(String(value).trim())) return <span className="app-tb-text">{String(value)}</span>;
       return (
         <a className="app-tb-link" href={String(value)} target="_blank" rel="noreferrer noopener">
           {String(value)}
@@ -191,7 +217,7 @@ export function CellValue({
       );
     case 'email':
       return (
-        <a className="app-tb-link" href={`mailto:${String(value)}`}>
+        <a className="app-tb-link" href={`mailto:${encodeURIComponent(String(value))}`}>
           {String(value)}
         </a>
       );
@@ -433,6 +459,7 @@ export function FieldInput({
   const { members } = usePeople();
   const name = label ?? field.name;
   const text = typeof value === 'string' ? value : value === null || value === undefined ? '' : String(value);
+  if (isComputedType(field.type)) return <CellValue field={field} value={value} lookups={lookups} />;
   switch (field.type) {
     case 'text':
     case 'url':

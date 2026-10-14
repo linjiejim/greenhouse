@@ -5,7 +5,14 @@
  * since 1970-01-01 (model.ts dayNumber); x is pixels from the left edge of the time area.
  */
 
-import type { Field, RecordValues, TableRecord, TimelineScale, ViewConfig } from '@greenhouse/contract';
+import {
+  isComputedType,
+  type Field,
+  type RecordValues,
+  type TableRecord,
+  type TimelineScale,
+  type ViewConfig,
+} from '@greenhouse/contract';
 import { layout, space } from '@greenhouse/ui/tokens';
 import { dayNumber, dayOf, dayOfValue, spanOf, valueForDay, type Span, type TimelineRow } from './model';
 
@@ -396,6 +403,7 @@ export function spanValues(
   timeZone: string,
 ): RecordValues {
   const values: RecordValues = {};
+  if (isComputedType(start.type) || (end && isComputedType(end.type))) return values;
   const startDay = dayOf(target.start);
   const endDay = dayOf(target.end);
   const startValue = record.values[start.id];

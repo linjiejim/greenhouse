@@ -55,9 +55,11 @@ export function TablesHome() {
         <PageHeader
           title={t('nav.tables')}
           primary={
-            <Button kind="primary" onClick={create}>
-              {t('tables.new')}
-            </Button>
+            items.length > 0 || scope === 'archived' ? (
+              <Button kind="primary" onClick={create}>
+                {t('tables.new')}
+              </Button>
+            ) : undefined
           }
         />
       }

@@ -25,7 +25,7 @@ import {
 import { ChartGantt, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Button, Empty, IconButton, Segmented } from '@greenhouse/ui/kit';
 import { icon, space } from '@greenhouse/ui/tokens';
-import { TIMELINE_SCALES, type TableRecord, type TimelineScale } from '@greenhouse/contract';
+import { isComputedType, TIMELINE_SCALES, type TableRecord, type TimelineScale } from '@greenhouse/contract';
 import { useNotify } from '../../app/notify';
 import { cx } from '../../lib/cx';
 import { useI18n } from '../../lib/i18n';
@@ -202,7 +202,8 @@ const byAttribute = (root: HTMLElement | null, name: string, id: string, inner =
   root?.querySelector<HTMLElement>(`[${name}="${CSS.escape(id)}"]${inner}`) ?? null;
 
 function Timeline(props: ViewProps & { setup: TimelineSetup }) {
-  const { setup, data, fields, config, lookups, canEdit, narrow, onConfig, onOpen } = props;
+  const { setup, data, fields, config, lookups, narrow, onConfig, onOpen } = props;
+  const canEdit = props.canEdit && !isComputedType(setup.start.type) && !(setup.end && isComputedType(setup.end.type));
   const { t, locale } = useI18n();
   const notify = useNotify();
   const timeZone = lookups.timeZone;

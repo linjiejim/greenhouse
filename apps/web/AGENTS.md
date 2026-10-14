@@ -31,6 +31,9 @@ The v2 web app. Product scope is docs/product/prd.md §6–7; layout and compone
 - Put kit pickers (Select, MultiSelect) in a FieldGroup, not a Field: Field's <label> re-activates the trigger after a pointer pick and the list opens again.
 - A button that becomes another button in place (编辑 → 保存) gets its own key: React reuses the element, and one that turns into a submit while its click runs submits the form.
 - Tables: a view's records are one query per view settings (useViewRecords, every page up to MAX_VIEW_RECORDS); writes put the server's records into every cached view of the table (putRecords) and records.changed refetches only views that are behind. Grid and timeline draw only the rows in view: 1000 records must scroll smoothly.
+- Tables: computed fields use the contract catalog and references; never send them in record edits, paste or clear. Compare both revision and computed_revision in realtime and cached writes. Custom readers edit only tables with access=edit; render only the fields/records the API returns. Owners manage custom roles with the existing filter editor. Non-builders can create personal dashboards from tabs. URL cells link only http(s); encode the entire email address in mailto.
+- Tables: draft overlays use useDraftNavigation over holdNavigation; Back, Forward and links ask before discarding.
+- Tables: a view's save queue holds pending configs as drafts against base refetches. Start with the viewed revision, then each save's returned revision; on conflict abandon that view's remaining queue.
 - Tables: what a view works out (columns, groups, spans, days) lives in model.ts, boards-model.ts and timeline-model.ts with unit tests; components draw and handle input.
 
 ## Tests
