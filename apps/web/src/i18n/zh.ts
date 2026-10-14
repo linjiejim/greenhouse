@@ -1,3 +1,4 @@
+import { mailZh } from './mail.zh';
 import { tablesZh } from './tables.zh';
 
 /** Chinese: the source dictionary. Keys are grouped by where the words appear; a module may keep its own in <module>.zh.ts. */
@@ -369,7 +370,7 @@ export const zh = {
   'provider.sandbox': '电脑（沙箱）',
   'provider.search': '网页搜索',
   'provider.storage': '文件存储',
-  'provider.mail': '邮件',
+  'provider.mail': '邮箱',
   'provider.im': '消息渠道',
   'provider.push': '推送',
   'provider.off': '已关闭',
@@ -1372,6 +1373,7 @@ export const zh = {
   'common.pageFailed': '这个页面出错了 · 可以重试',
 
   ...tablesZh,
+  ...mailZh,
 } as const;
 
 export type MessageKey = keyof typeof zh;

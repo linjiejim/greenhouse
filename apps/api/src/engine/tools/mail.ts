@@ -186,8 +186,12 @@ export function mailTool(mail: MailService) {
         }
       }
     },
-    summarize: (args, _output, locale) => {
+    summarize: (args, output, locale) => {
       const zh = locale === 'zh';
+      // A send or reply that raised its card has not gone out yet.
+      const waiting = (output as { status?: unknown } | undefined)?.status === 'needs_approval';
+      if (waiting && args.action === 'reply') return zh ? '写好了回信，等你批准' : 'Wrote a reply for your approval';
+      if (waiting && args.action === 'send') return zh ? '写好了邮件，等你批准' : 'Wrote a mail for your approval';
       switch (args.action) {
         case 'list':
           return zh ? '看了邮箱' : 'Checked the mailbox';

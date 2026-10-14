@@ -1005,6 +1005,66 @@ a {
   text-align: center;
 }
 
+/* A mail in a thread (AGNT-30): a card in the middle, like the event lines around it. */
+.app-mail-event {
+  align-self: center;
+  width: min(100%, 560px);
+}
+
+.app-mail-head {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: var(--gh-space-1) var(--gh-space-3);
+  margin: 0 0 var(--gh-space-4);
+  font: var(--gh-type-body);
+}
+
+.app-mail-head dt {
+  color: var(--gh-secondary);
+}
+
+.app-mail-head dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+/* What a sender wrote, after the purifier: no styles of its own reach the page. */
+.app-mail-html,
+.app-mail-text {
+  margin: 0 0 var(--gh-space-4);
+  padding: var(--gh-space-4);
+  border: var(--gh-stroke-hairline) solid var(--gh-line);
+  border-radius: var(--gh-radius-md);
+  font: var(--gh-type-body);
+  overflow-wrap: anywhere;
+  overflow-x: auto;
+}
+
+.app-mail-text {
+  white-space: pre-wrap;
+  font-family: inherit;
+}
+
+.app-mail-html a[href] {
+  color: var(--gh-accent-text);
+  text-decoration: underline;
+  text-underline-offset: var(--gh-space-0_5);
+}
+
+.app-mail-html img {
+  max-width: 100%;
+  height: auto;
+}
+
+/* An image held back (remote, not asked for yet) takes no room. */
+.app-mail-html img:not([src]) {
+  display: none;
+}
+
+.app-mail-html table {
+  max-width: 100%;
+}
+
 .app-typing {
   width: var(--gh-space-8);
   height: var(--gh-space-2);

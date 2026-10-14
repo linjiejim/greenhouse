@@ -1,3 +1,4 @@
+import { mailEn } from './mail.en';
 import { tablesEn } from './tables.en';
 import type { MessageKey } from './zh';
 
@@ -370,7 +371,7 @@ export const en: Record<MessageKey, string> = {
   'provider.sandbox': 'Computers (sandbox)',
   'provider.search': 'Web search',
   'provider.storage': 'File storage',
-  'provider.mail': 'Email',
+  'provider.mail': 'Mail',
   'provider.im': 'Messaging',
   'provider.push': 'Push',
   'provider.off': 'Off',
@@ -1404,4 +1405,5 @@ export const en: Record<MessageKey, string> = {
   'common.pageFailed': 'This page hit an error · try again',
 
   ...tablesEn,
+  ...mailEn,
 };

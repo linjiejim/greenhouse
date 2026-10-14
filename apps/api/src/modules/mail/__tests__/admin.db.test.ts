@@ -16,6 +16,7 @@ describe('管理 → 服务 → 邮箱', () => {
       can_send: false,
       agent_domain: null,
       agent_domain_source: null,
+      agent_domain_env: null,
       mailboxes: false,
       receivers: [],
     });
@@ -30,6 +31,7 @@ describe('管理 → 服务 → 邮箱', () => {
       can_send: true,
       agent_domain: AGENT_DOMAIN,
       agent_domain_source: 'env',
+      agent_domain_env: AGENT_DOMAIN,
       mailboxes: true,
       receivers: [
         {
@@ -46,7 +48,11 @@ describe('管理 → 服务 → 邮箱', () => {
       token: admin.token,
       body: { agent_domain: 'Bots.Acme.Test' },
     });
-    expect(saved.body).toMatchObject({ agent_domain: 'bots.acme.test', agent_domain_source: 'workspace' });
+    expect(saved.body).toMatchObject({
+      agent_domain: 'bots.acme.test',
+      agent_domain_source: 'workspace',
+      agent_domain_env: AGENT_DOMAIN,
+    });
     const [entry] = await getDb()
       .select()
       .from(auditEvents)

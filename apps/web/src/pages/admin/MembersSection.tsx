@@ -1,5 +1,6 @@
 /**
- * 管理 → 成员与分组 (ADM-01, ADM-02, ADM-03): invite by email (a one-time link to hand over),
+ * 管理 → 成员与分组 (ADM-01, ADM-02, ADM-03): invite by email (a one-time link, mailed when the
+ * mail service can send and always there to hand over),
  * change role and modules, disable or re-enable, issue a reset link; groups with their people.
  */
 
@@ -33,7 +34,7 @@ import { useMe } from '../../app/session';
 import type { MessageKey } from '../../i18n/zh';
 import { api } from '../../lib/api';
 import { useI18n } from '../../lib/i18n';
-import { relativeTime } from '../../lib/time';
+import { calendarDay, relativeTime } from '../../lib/time';
 import { MemberAvatar } from '../../shell/MemberAvatar';
 
 const MEMBERS = ['admin', 'members'] as const;
@@ -58,8 +59,24 @@ function LinkDialog({ link, email, onClose }: { link: IssuedLink; email: string;
   const me = useMe();
   const notify = useNotify();
   return (
-    <Overlay variant="dialog" title={t('members.linkTitle')} onClose={onClose}>
-      <p className="app-muted">{t('members.linkBody', { email })}</p>
+    <Overlay
+      variant="dialog"
+      title={
+        link.delivery === 'emailed'
+          ? t('members.linkEmailedTitle')
+          : link.delivery === 'failed'
+            ? t('members.linkFailedTitle')
+            : t('members.linkTitle')
+      }
+      onClose={onClose}
+    >
+      <p className="app-muted">
+        {link.delivery === 'emailed'
+          ? t('members.linkEmailedBody', { email })
+          : link.delivery === 'failed'
+            ? t('members.linkFailedBody', { email })
+            : t('members.linkBody', { email })}
+      </p>
       <div className="app-copy-row">
         <Input readOnly value={link.url} aria-label={t('members.link')} onFocus={(event) => event.target.select()} />
         <Button onClick={() => void navigator.clipboard?.writeText(link.url).then(() => notify(t('row.linkCopied')))}>
@@ -68,7 +85,7 @@ function LinkDialog({ link, email, onClose }: { link: IssuedLink; email: string;
         </Button>
       </div>
       <p className="app-muted">
-        {t('members.linkExpires', { time: relativeTime(link.expires_at, { locale, timeZone: me.timezone }) })}
+        {t('members.linkExpires', { time: calendarDay(link.expires_at, { locale, timeZone: me.timezone }) })}
       </p>
       <OverlayActions>
         <Button kind="primary" onClick={onClose}>

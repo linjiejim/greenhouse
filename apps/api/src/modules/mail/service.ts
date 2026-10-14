@@ -114,6 +114,8 @@ interface MailState {
   canSend: boolean;
   domain: string | null;
   domainSource: 'env' | 'workspace' | null;
+  /** MAIL_AGENT_DOMAIN: what clearing the saved domain goes back to. */
+  envDomain: string | null;
   /** A receiving instance is first and the domain is set. */
   mailboxes: boolean;
 }
@@ -181,6 +183,7 @@ export function createMailService(deps: {
       canSend: order.length > 0,
       domain,
       domainSource: savedDomain ? 'workspace' : envDomain ? 'env' : null,
+      envDomain,
       mailboxes: !!domain && !!order[0]?.receives,
     };
   }
@@ -670,6 +673,7 @@ export function createMailService(deps: {
         can_send: current.canSend,
         agent_domain: current.domain,
         agent_domain_source: current.domainSource,
+        agent_domain_env: current.envDomain,
         mailboxes: current.mailboxes,
         receivers: current.order
           .filter((instance) => instance.receives)

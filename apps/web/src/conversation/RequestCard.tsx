@@ -17,7 +17,7 @@ import { useDecide } from '../data/requests';
 import { errorText } from '../lib/errors';
 import { useI18n } from '../lib/i18n';
 import { relativeTime } from '../lib/time';
-import { requestStatus } from './status';
+import { detailRows, requestStatus } from './status';
 
 const KIND_ICON = {
   approval: ShieldCheck,
@@ -74,14 +74,14 @@ function Details({ request }: { request: NeedsYou }) {
       </div>
     );
   }
-  const details = payload.details;
-  if (request.kind === 'approval' && details && typeof details === 'object') {
+  const rows = request.kind === 'approval' ? detailRows(payload.details) : [];
+  if (rows.length) {
     return (
       <dl className="app-request-details">
-        {Object.entries(details as Record<string, unknown>).map(([key, value]) => (
-          <div key={key}>
-            <dt>{key}</dt>
-            <dd>{typeof value === 'string' ? value : JSON.stringify(value)}</dd>
+        {rows.map(([label, value], index) => (
+          <div key={`${index}-${label}`}>
+            <dt>{label}</dt>
+            <dd>{value}</dd>
           </div>
         ))}
       </dl>

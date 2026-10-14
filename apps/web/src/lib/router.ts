@@ -17,7 +17,16 @@ export const ADMIN_SECTIONS = [
   'branding',
 ] as const;
 export const AGENT_SCOPES = ['mine', 'public', 'archived'] as const;
-export const AGENT_TABS = ['profile', 'abilities', 'memory', 'schedules', 'computer', 'publish', 'activity'] as const;
+export const AGENT_TABS = [
+  'profile',
+  'abilities',
+  'memory',
+  'schedules',
+  'computer',
+  'mailbox',
+  'publish',
+  'activity',
+] as const;
 export const RUN_VIEWS = ['active', 'scheduled', 'done'] as const;
 /** 技能: everything I can see, the team's, my own, those waiting for my review, archived. */
 export const SKILL_SCOPES = ['all', 'team', 'mine', 'review', 'archived'] as const;

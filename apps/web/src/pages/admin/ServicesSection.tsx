@@ -1,8 +1,10 @@
 /**
  * 管理 → 服务 (ADM-04, ADM-12): each capability with what serves it now. A capability opens its
  * instances in fallback order (move up / down), add, test, copy an env one to edit, turn off,
- * the personal-key policy and, for models, the default / strong / fast picks. Without any model
- * service a banner says so first: nothing answers until one exists.
+ * the personal-key policy and, for models, the default / strong / fast picks; mail adds the
+ * Agent domain and the inbound addresses. Push is set up under the channels below; `im` waits for
+ * the IM channels. Without any model service a banner says so first: nothing answers until one
+ * exists.
  */
 
 import { useMemo, useState } from 'react';
@@ -31,10 +33,13 @@ import { useI18n } from '../../lib/i18n';
 import { CAPABILITY_LABEL, InstanceDrawer, InstanceRow, type InstanceApi } from '../providers/Instances';
 import { ChannelsList } from './ChannelsPanel';
 import { ComputersPanel } from './ComputersPanel';
+import { MailPanel } from './MailPanel';
 
 const KEY = ['admin', 'providers'] as const;
 /** Capabilities a member may bring their own key for (the server refuses the rest). */
 const PERSONAL: readonly ProviderCapability[] = ['llm', 'stt', 'tts', 'image', 'video', 'search'];
+/** Not rows of their own: push has its channel below, `im` waits for the IM channels (CHN-05). */
+const NOT_LISTED: readonly ProviderCapability[] = ['im', 'push'];
 
 /** `instance/model` choices for the llm defaults: every model each instance lists. */
 function modelChoices(state: CapabilityState) {
@@ -213,6 +218,8 @@ function CapabilityDrawer({ capability, onClose }: { capability: ProviderCapabil
 
       {capability === 'sandbox' && state.instances.length > 0 && <ComputersPanel />}
 
+      {capability === 'mail' && <MailPanel />}
+
       {PERSONAL.includes(capability) && (
         <section className="app-section">
           <div className="app-setting-row is-plain">
@@ -270,26 +277,30 @@ export function ServicesSection() {
         </Banner>
       )}
       <ul className="app-list app-bordered">
-        {data.data.capabilities.map((state) => {
-          const serving = state.effective
-            .map((id) => state.instances.find((instance) => instance.id === id)?.name)
-            .filter(Boolean);
-          return (
-            <li key={state.capability}>
-              <button type="button" className="app-list-row" onClick={() => setOpen(state.capability)}>
-                <span className="app-list-main">
-                  <span className="app-list-title">{t(CAPABILITY_LABEL[state.capability])}</span>
-                  <span className="app-list-meta">{serving.length ? serving.join(' → ') : t('provider.notSetUp')}</span>
-                </span>
-                <StatusBadge
-                  status={serving.length ? t('provider.available') : t('provider.notConfigured')}
-                  tone={serving.length ? 'success' : 'neutral'}
-                />
-                <ChevronRight size={icon.md} className="app-row-muted" />
-              </button>
-            </li>
-          );
-        })}
+        {data.data.capabilities
+          .filter((state) => !NOT_LISTED.includes(state.capability))
+          .map((state) => {
+            const serving = state.effective
+              .map((id) => state.instances.find((instance) => instance.id === id)?.name)
+              .filter(Boolean);
+            return (
+              <li key={state.capability}>
+                <button type="button" className="app-list-row" onClick={() => setOpen(state.capability)}>
+                  <span className="app-list-main">
+                    <span className="app-list-title">{t(CAPABILITY_LABEL[state.capability])}</span>
+                    <span className="app-list-meta">
+                      {serving.length ? serving.join(' → ') : t('provider.notSetUp')}
+                    </span>
+                  </span>
+                  <StatusBadge
+                    status={serving.length ? t('provider.available') : t('provider.notConfigured')}
+                    tone={serving.length ? 'success' : 'neutral'}
+                  />
+                  <ChevronRight size={icon.md} className="app-row-muted" />
+                </button>
+              </li>
+            );
+          })}
       </ul>
       {open && <CapabilityDrawer capability={open} onClose={() => setOpen(null)} />}
       <ChannelsList />

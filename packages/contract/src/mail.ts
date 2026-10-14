@@ -42,6 +42,8 @@ export const adminMailSchema = z.object({
   agent_domain: z.string().nullable(),
   /** Where it comes from: the environment (read-only until saved here) or this workspace. */
   agent_domain_source: z.enum(['env', 'workspace']).nullable(),
+  /** MAIL_AGENT_DOMAIN, when set: what clearing the saved domain goes back to. */
+  agent_domain_env: z.string().nullable(),
   /** Agent mailboxes exist: a receiving instance is first in the order and the domain is set. */
   mailboxes: z.boolean(),
   receivers: z.array(mailReceiverSchema),
