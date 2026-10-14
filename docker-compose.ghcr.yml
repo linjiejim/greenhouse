@@ -18,6 +18,12 @@
 #
 # Run from the same directory as docker-compose.yml and the `pg_data` volume is
 # shared (same compose project) — switching between the two files keeps your data.
+#
+# Agent computers: a compose deployment uses hosted sandboxes (E2B or an E2B-protocol host):
+# set SANDBOX_PROVIDER=e2b, SANDBOX_API_KEY and SANDBOX_E2B_TEMPLATE in .env (see .env.example).
+# Never mount the Docker socket (/var/run/docker.sock) into the api service: whoever got into
+# the API would own the host. Computers on this server's own Docker need the API running on the
+# host itself (README, "Agent computers").
 
 services:
   postgres:

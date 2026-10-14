@@ -331,12 +331,15 @@ server to look after:
 
 Choose the model afterwards under **Administration → Runtime Config** (or set `LLM_BASE_URL`
 / `LLM_API_KEY` / `LLM_MODEL` as variables). For Agent computers, enter an [E2B](https://e2b.dev) key
-in the same place (Agent computers), or set `BOTS_COMPUTER_E2B_API_KEY` — see Agents below.
+in the same place (Agent computers), or set `SANDBOX_PROVIDER=e2b` and `SANDBOX_API_KEY` — see Agents below.
 
 ### Docker Compose by hand
 
 The bundled `docker-compose.yml` runs Postgres, a one-shot migration job, and the API
-(which serves the SPA) as a single self-contained image.
+(which serves the SPA) as a single self-contained image. Agent computers in a compose
+deployment run as hosted sandboxes at E2B (`SANDBOX_PROVIDER=e2b`, `SANDBOX_API_KEY`,
+`SANDBOX_E2B_TEMPLATE`); the compose files never mount the Docker socket into the API, and you
+should not add it: whoever got into the API would own the host.
 
 ```bash
 cp .env.example .env && ./scripts/gen-secrets.sh   # fills required secrets
@@ -371,10 +374,10 @@ network, and the sandbox image (`bash scripts/build-agent-runtime.sh`). They sta
 Agents work in any deployment. Their computers run in one of two places:
 
 - **Hosted sandboxes (no server work)** — a provider key, entered under Administration → Runtime
-  Config → Agent computers (or `BOTS_COMPUTER_E2B_API_KEY`): each member's computer is a sandbox
+  Config → Agent computers (or `SANDBOX_PROVIDER=e2b` with `SANDBOX_API_KEY`): each member's computer is a sandbox
   (one microVM) at an E2B-protocol provider — [E2B](https://e2b.dev) abroad, PPIO in mainland
-  China (`BOTS_COMPUTER_E2B_DOMAIN=cn-beijing-1.sandbox.ppio.com`; not yet verified end to end).
-  Works from Railway, the installer or compose. On first boot the API builds the computer
+  China (`SANDBOX_PROVIDER=ppio`; not yet verified end to end).
+  Works from Railway, the installer or compose, and is the one way for a compose deployment. On first boot the API builds the computer
   template at the provider (a few minutes); a computer then starts in seconds, sleeps
   (pauses — memory, files and logins kept, no cost while asleep) when idle and resumes where
   it left off. After a greenhouse upgrade changes the template, each computer moves its home
@@ -384,7 +387,7 @@ Agents work in any deployment. Their computers run in one of two places:
   service, its agent, private networks or the computer's own bridges — checked from both accounts at
   every start (a computer that fails the check is not used).
 - **This server's Docker** — the API must run **on the Docker host itself** (bare metal / PM2,
-  not the compose image — computers are reached through `docker exec` and publish no ports),
+  not the compose image, which never gets the Docker socket — computers are reached through `docker exec` and publish no ports),
   plus gVisor, a hardened bridge
   (`sudo BOTS_COMPUTER_NETWORK=bots bash scripts/cloud-agent-net.sh --profile bots`) and the
   computer image (`bash scripts/build-bot-computer.sh`; add organisation-wide Debian packages
