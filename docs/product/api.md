@@ -52,6 +52,7 @@ v2 和 v1 不兼容，不加 `/api/v2` 前缀，也不保留旧路由。`GET /ap
 | `/api/agents/:id/versions` · `/memories` · `/schedules` · `/usage` · `/activity` · `/publication` | Agent 资料的各个分页；`/usage`、`/activity` 只给主人，只有计数、结果与评价，没有内容 |
 | `PUT` / `DELETE /api/agents/:id/publication` | 发布固定版本给受众（成员、分组、全员），附电脑与每人每日上限；再次 `PUT` 改版本或受众；`DELETE` 取消发布。主 Agent 不能发布 |
 | `/api/agents/:id/computer` · `POST …/start` · `…/stop` · `…/restart` · `GET …/processes` · `POST …/ticket` · `…/files[?path=]` · `GET …/files/content?path=` | 电脑：状态、启停、重启（进程结束、文件保留）、后台进程；公开 Agent 的使用者用自己的一台。`ticket` 换取画面（`view` / `control`）或终端（`terminal`）的一次性 ticket，一分钟内用一次；家目录文件按相对路径列出、下载（一律下载）、上传（multipart，最大 50 MB）、删除 |
+| `GET` / `PATCH /api/agents/:id/mailbox` · `POST …/mailbox/senders` · `DELETE …/mailbox/senders/:address` · `GET /api/agents/:id/mail?status=` · `GET …/mail/:mailId` · `POST …/mail/:mailId/release` | Agent 邮箱，只给主人：`GET` 第一次查看时建立地址，邮箱不可用时返回 `{ available: false, reason }`（not_configured / public_agent / archived）；`PATCH` 改前缀（`mailbox_taken`、`mailbox_reserved`）或成员能否叫醒它；发件人名单；邮件列表（新的在前，`status` 可筛 screened 等）与详情（纯文本、原样的 HTML 由客户端净化、附件的签名链接）；`release` 放行一封留存邮件的发件人，他留存的信全部送进对话，Agent 被叫醒一次（`mail_not_screened`） |
 | `GET /api/conversations?kind=&q=&archived=` · `POST /api/conversations` | 对话列表与新建，`kind` 取 `main` / `direct` / `chat` / `room` |
 | `PATCH` / `DELETE /api/conversations/:id` | 改名、置顶、归档、删除 |
 | `GET` / `POST /api/conversations/:id/messages` | 分页读取；发送（附件、引用、技能调用、`@` 点名，以及这个界面能画的富块 `rich_blocks`；不声明时只用五种通用块） |
@@ -99,10 +100,11 @@ v2 和 v1 不兼容，不加 `/api/v2` 前缀，也不保留旧路由。`GET /ap
 
 | 路径 | 用途 |
 | --- | --- |
-| `/api/admin/members[/:id]` | 邀请、角色、停用、重置链接、模块权限、预算 |
+| `/api/admin/members[/:id]` | 邀请、角色、停用、重置链接、模块权限、预算；邀请和 `POST …/:id/link` 返回的链接带 `delivery`（emailed：已由邮箱服务发出 / failed / shown：没有邮箱服务），链接都可复制 |
 | `/api/admin/groups[/:id]` | 分组 |
 | `/api/admin/providers[/:id][/test\|/copy]` · `PUT /api/admin/provider-bindings/:capability` | 服务：实例、测试连接、复制环境变量实例；能力的顺序、默认项与策略 |
-| `GET /api/admin/channels` · `PUT …/:channel` · `POST …/:channel/test` | 渠道 `email`（SMTP）、`feishu`、`wecom`、`push`（Expo）：`GET` 列出每个渠道能否送达（`configured`）、来源（`env` / `workspace`）、设置、哪些机密已填、最近一次成功与失败；`PUT` 保存一个渠道的设置（email：`host`、`port`、`security` tls / starttls / none、`username`、`from_address`、`from_name`、`password`；feishu：`base_url`、`app_id`、`app_secret`；wecom：`base_url`、`corp_id`、`agent_id`、`secret`；push：`base_url`、`access_token`；都可带 `enabled`），机密只写不读、省略即保留、`''` 清空，换主机或地址同时清空机密；第一次保存或改环境变量来的设置时生成工作区实例，排在同类之首；`test` 给管理员自己发一条（邮箱、绑定的账号、手机），没有可发的对象时只验证凭据，返回 `{ ok, delivered, latency_ms, error }` |
+| `GET /api/admin/channels` · `PUT …/:channel` · `POST …/:channel/test` | 渠道 `feishu`、`wecom`、`push`（Expo；飞书、企微在界面隐藏，随 IM 渠道开放）：`GET` 列出每个渠道能否送达（`configured`）、来源（`env` / `workspace`）、设置、哪些机密已填、最近一次成功与失败；`PUT` 保存一个渠道的设置（feishu：`base_url`、`app_id`、`app_secret`；wecom：`base_url`、`corp_id`、`agent_id`、`secret`；push：`base_url`、`access_token`；都可带 `enabled`），机密只写不读、省略即保留、`''` 清空，换地址同时清空机密；第一次保存或改环境变量来的设置时生成工作区实例，排在同类之首；`test` 给管理员自己发一条（绑定的账号、手机），没有可发的对象时只验证凭据，返回 `{ ok, delivered, latency_ms, error }`。邮件不在这里：它是邮箱服务 |
+| `GET` / `PUT /api/admin/mail` · `POST /api/admin/mail/test` | 邮箱服务：能否发信、Agent 邮箱的域名（来源 env / workspace；`PUT { agent_domain }`，null 回到 `MAIL_AGENT_DOMAIN`，写审计）、Agent 邮箱是否开通、每个能收信的实例要填到服务商那里的入站地址；`test` 经第一个能发的实例给管理员自己发一封（`mail_not_configured`） |
 | `GET /api/admin/computers` · `PUT …/capacity` · `POST …/:id/stop` · `DELETE …/:id` | 电脑：所有成员的电脑与状态（不含画面和文件）；容量（空闲多少分钟后关机、最多同时开机，0 为不限，超出时开机返回 `computers_full`）；停止；重置（连主目录删除，下次使用重开） |
 | `GET /api/admin/usage?period=&group_by=member\|agent\|provider\|capability` | 工作区用量 |
 | `GET` / `PUT /api/admin/budgets` · `DELETE …/:id` | 预算：组织、服务实例、成员三级，token 或美元，按月；`PUT` 建立或替换一个范围与单位的预算；列表带本月已用 |
@@ -117,6 +119,7 @@ v2 和 v1 不兼容，不加 `/api/v2` 前缀，也不保留旧路由。`GET /ap
 | --- | --- |
 | `/api/mcp` · `/oauth/*` · `/.well-known/*` | MCP 服务器与 OAuth 2.1，是唯一对外接口，见下 |
 | `GET /api/connectors/oauth/callback` | 连接器 OAuth 回调（公开）：不改任何数据，302 到 `#/settings/connections?connector=&oauth_state=&oauth_code=`（失败时带 `oauth_error`），Web 用成员自己的会话调用 `finish`。不在 `/api/mcp` 下，那是 Greenhouse 自己的 MCP 服务器 |
+| `POST /api/mail/inbound/:instance` | 邮件服务商的收信通知（公开，凭服务商的签名）：Resend 的 Svix 签名 webhook、Mailgun `store(notify=…)` 的 HMAC；先验签（失败 401 `invalid_signature`），再用实例的 Key 从服务商拉取那封信；nonce 一次性，同一封信只存一次；拉取失败 502 让服务商重试；过大的通知 413 |
 | `/api/ws` · `/api/ws/computer?ticket=` · `/api/ws/computer-terminal?ticket=` | 实时通道、电脑画面（RFB，`view` ticket 的输入由服务端丢弃）、终端（二进制按键与输出，`resize` 文本消息） |
 | `/api/ext/<id>/*` | 扩展 |
 | `GET /health` | 健康检查：各能力是否可用（不含机密）；数据库不可用时返回 503 |
@@ -175,7 +178,7 @@ OAuth 2.1 与 MCP（公开路径，错误按 RFC 6749 返回 `{ error, error_des
 | 表格与应用 | `tables_query`、`tables_mutation`、`tables_schema_plan`、`apps_query`、`apps_action` |
 | 技能 | `skill_query`（search、load、read_file，有电脑时 install）、`skill_mutation`（只提议「存为技能」，成员接受后保存为模板） |
 | 多媒体（来自 Provider） | `web_search`、`web_fetch`、`generate_image`、`generate_video`、`speak`（TTS 生成音频）、`transcribe`（STT）、`analyze_image` |
-| 其他 | `compute`（isolated-vm）、`read_attachment`、`export_data`、`memory`、`mcp_call`、`email_query`、`email_mutation` |
+| 其他 | `compute`（isolated-vm）、`read_attachment`、`export_data`、`memory`、`mcp_call`（成员自己的邮箱经内置连接器 `mailbox`）、`mail`（Agent 自己的邮箱） |
 | 只在 Agent 内使用 | `browser`、`computer`、`request_takeover`、`vault` |
 | 删除 | `workbench_*`、`project_*`、`mission_dispatch`、`workflow_plan`、`spawn_session`、`call_llm`、`task_capture`、`eval_*`、`manage_eval_dataset`、`query_eval_runs`、`feature_request`、`log_friction`、`automation_*`（改为 `schedule_*`）、`external_search`（改为 `web_search`）、`session_query`（改为 `conversation_query`） |
 
@@ -186,6 +189,8 @@ OAuth 2.1 与 MCP（公开路径，错误按 RFC 6749 返回 `{ error, error_des
 `knowledge_query`（`search`、`read`、`list`）以提问者的权限读知识库：读过的文档列为回复的出处（`kind: doc`，地址 `#/knowledge/<id>`），搜索到的文档在回复链接到时列出；`space: agent` 是这个 Agent 的私有参考文件夹。`knowledge_mutation`（`create`、`edit`、`move`、`comment`）改知识库：`edit` 带读到的 `version`，整体替换或给只出现一次的 find / replace；除了 Agent 自己的私有参考文件夹，写入都先弹出批准卡（`tool_write`）；版本和评论记下代写的 Agent。写入只在回合里，公开 Agent 两个都没有。
 
 知识库正文的约定：引用其他文档写作 `[标题](#/knowledge/<文档 id>)`（编辑器的 `[[`），提及写作 `[@名字](member:<成员 id>)`，图片与文件写作 `/api/files/<id>/content`，存储时去掉签名、读取时按读者签名。实时事件：`doc.updated`、`doc.presence`、`comments.updated`，发给打开着这篇文档的人。
+
+`mail` 是 Agent 自己的邮箱（AGNT-30）：`list`（收件箱或已发送）、`search`、`read` 只读，读信让回合 taint，正文用 fence 隔开；留存（screened）的信读不到；`send`、`reply` 是第 3 档：每次都弹出批准卡（收件人、主题、正文摘录），批准后从 Agent 的地址发出，回信带 In-Reply-To 与 References。只在主人自己的回合里发信，不在房间、后台运行里；不能写的 Agent 只能读；公开 Agent 没有这个工具。
 
 `mcp_call` 是连接器的唯一工具（`list`、`describe`、`call`）。它的描述每个回合重建，只列出这个 Agent 此刻能为提问者用的连接器和工具：已启用、在 manifest 的 `connectors` 里（空值表示全部）、per_member / oauth 的已由提问者连接；不能写的 Agent 只看到只读工具。只读工具直接运行；其余工具弹出批准卡（`tool_write`，原样参数），批准后用提问者的 Key 或登录执行。只在回合里提供，公开 Agent 不提供。
 

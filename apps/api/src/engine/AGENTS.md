@@ -37,7 +37,7 @@ The one engine for conversations and runs. Read with the root AGENTS.md and docs
 - A decision is a compare-and-set from pending (requests service). The engine then runs exactly the approved arguments with the asker's rights, or skips the step, writes one event line in the transcript, closes the waiting run, and wakes the Agent through the inbox with the outcome.
 - A tool that raises its own card (ask_user, self, request_takeover, vault) implements `decide`; return a null note to leave the Agent asleep.
 - Expired cards are swept: the step is skipped, the run closes, and the Agent is not woken.
-- Every card is a notification through `notifications.publish`, the one entry point for notifications; it also queues the card's email, Feishu, WeCom and push deliveries (modules/channels), which go out without what the card asks.
+- Every card is a notification through `notifications.publish`, the one entry point for notifications; it also queues the card's email and push deliveries (modules/channels), which go out without what the card asks.
 
 ## Background runs
 - A background run starts only from a member's decision: an approved `run_start` proposal or a schedule they set up. The model can propose, never start.
@@ -118,3 +118,10 @@ The one engine for conversations and runs. Read with the root AGENTS.md and docs
 - The Agent never types into a password or card field. Everything read from a page is redacted against the member's vault first, and no screenshot is taken while a page shows a vault value. A screenshot reaches a model that sees images with its next step (`ToolContext.attachImage`) and is stored nowhere.
 - `vault` is never offered to a public Agent, and a login serves only the Agents in its `agent_ids` (empty = all the member's own). The page origin always comes from the browser. The server types the values (`Input.insertText`), so none is ever in a tool result, a card, a step, the transcript or a log line.
 - An `ask` login raises a `login` card first: approving fills on the site it named (even while the member holds the screen), rejecting tells the Agent, and handing back settles it after the member signed in by hand. `auto` logins and always-allowed sites fill directly. Every fill writes a `vault_access_log` row.
+
+## Mail
+- `mail` (tools/mail.ts) is the Agent's own mailbox (modules/mail): `list`, `search` and `read` read it; they taint the turn and a mail's text comes back fenced as untrusted input. Screened mail is never readable here.
+- `send` and `reply` are external (tier 3, never pre-approved): `callRisk` answers external only in the owner's own turn, outside a room, for an Agent that may write; the card shows the recipients, the subject and the start of the body. The approved call sends from the Agent's address; a reply carries In-Reply-To and References. Anywhere else the tool refuses to send.
+- Never offered to someone else's public Agent; a public Agent has no mailbox.
+- Mail wakes an Agent only through `wakeForMail` (modules/mail/wake.ts), which calls `deliver` with a note of metadata only (the mail's id, the sender's address, a cut fenced subject). M1.7's wake layer replaces that one function.
+- It wakes only for a sender the Agent may hear from (its owner, active members unless turned off, addresses let in) whose From domain passed DMARC, or SPF or DKIM aligned with it; at most 50 wakes a day. Anything else is screened; letting a sender in delivers what waited and wakes the Agent once.

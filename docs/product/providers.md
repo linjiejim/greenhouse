@@ -26,7 +26,7 @@
 | 沙箱 | `sandbox` | Agent 电脑、长时间运行、`compute` 之外的命令执行 | 隐藏电脑相关入口；后台运行只用无沙箱工具 |
 | 搜索 | `search` | `web_search`；`web_fetch`（网页读取） | 工具不提供；`web_fetch` 退回到内置的安全抓取 |
 | 存储 | `storage` | 所有文件：上传、附件、产物、导出、技能包、电脑备份 | 本地磁盘 `data/` |
-| 邮箱 | `mail` | 系统发信（邀请、重置密码、通知邮件）；Agent 邮箱的收信与发信（M1.8） | 不发邮件：邀请与重置改为复制链接；Agent 没有邮箱；邮件通知不出现 |
+| 邮箱 | `mail` | 系统发信（邀请、重置密码、通知邮件）；Agent 邮箱的收信与发信 | 不发邮件：邀请与重置改为复制链接；Agent 没有邮箱；邮件通知不出现 |
 
 渠道也是 Provider，和上面 9 类用同一张表、同一套解析与安全规则，在「管理 → 服务」里配置：
 
@@ -97,10 +97,13 @@ STORAGE_PROVIDER=s3              # local | s3
 STORAGE_ENDPOINT=https://cos.ap-shanghai.myqcloud.com  STORAGE_BUCKET=…  STORAGE_REGION=ap-shanghai
 STORAGE_ACCESS_KEY_ID=…  STORAGE_SECRET_ACCESS_KEY=…  STORAGE_PREFIX=greenhouse/  STORAGE_FORCE_PATH_STYLE=false
 
-# 邮箱：系统发信与 Agent 邮箱；设置不全时启动告警并忽略（云服务的变量随适配器，M1.8）
-SMTP_HOST=smtp.example.com       SMTP_SECURITY=starttls   # tls | starttls（默认）| none；SMTP_PORT 默认 465 / 587 / 25
+# 邮箱：系统发信与 Agent 邮箱；设置不全时启动告警并忽略。顺序固定：Resend、Mailgun、SMTP（能收信的在前）
+MAIL_FROM="Greenhouse <greenhouse@example.com>"   # 系统邮件的发件人；Resend、Mailgun 必填，SMTP 没有 SMTP_FROM 时也用它
+RESEND_API_KEY=re_…  RESEND_WEBHOOK_SECRET=whsec_…   # 有 webhook 密钥才收信；RESEND_BASE_URL 留空 = api.resend.com
+MAILGUN_API_KEY=…  MAILGUN_WEBHOOK_SIGNING_KEY=…  MAILGUN_DOMAIN=agents.example.com  MAILGUN_REGION=us   # us | eu；有签名密钥才收信
+SMTP_HOST=smtp.example.com       SMTP_SECURITY=starttls   # tls | starttls（默认）| none；SMTP_PORT 默认 465 / 587 / 25；只发
 SMTP_USER=…  SMTP_PASSWORD=…  SMTP_FROM=greenhouse@example.com  SMTP_FROM_NAME=Greenhouse
-MAIL_AGENT_DOMAIN=agents.example.com   # Agent 邮箱的域名；MX 指向能收信的邮件服务
+MAIL_AGENT_DOMAIN=agents.example.com   # Agent 邮箱的域名；MX 指向能收信的服务；管理界面保存后以界面为准
 
 # 渠道（通知送达）；设置不全的渠道启动时告警并忽略
 FEISHU_APP_ID=cli_…  FEISHU_APP_SECRET=…  FEISHU_BASE_URL=   # 留空 = open.feishu.cn；Lark 填 https://open.larksuite.com
@@ -279,15 +282,19 @@ v2 的存储层统一为一个接口：v1 的 COS SDK、`s3-lite`、技能存储
 
 | 适配器 | v2.0 | 说明 |
 | --- | --- | --- |
-| `smtp` | 只发 | 任意 SMTP 服务器（tls / starttls / none）；nodemailer，写在 API 里（`apps/api/src/modules/channels/smtp.ts`），像扩展一样注册；换地址清空密码 |
-| `resend` | 收发 | 发信走 HTTP API。收信：`email.received` webhook（Svix 签名，覆盖请求体）只当通知，正文与附件再用 Key 从 Resend 的接收 API 拉取 |
-| `mailgun` | 收发 | 发信走 HTTP API。收信：Route 的 `store(notify=…)` 通知（时间戳加令牌的 HMAC，令牌只用一次），正文与附件再用 Key 从存储的消息地址拉取 |
+| `smtp` | 只发 | 任意 SMTP 服务器（tls / starttls / none）；nodemailer，写在 API 里（`apps/api/src/modules/mail/smtp.ts`），像扩展一样注册；换地址清空密码 |
+| `resend` | 收发 | 发信：`POST /emails`。收信：`email.received` webhook（Svix 签名，覆盖原始请求体，5 分钟内有效）只当通知；信和收信服务器算出的 SPF / DKIM / DMARC 结论用 Key 从接收 API（`/emails/receiving/:id`）拉取，附件从 Resend 的签名链接下载（`inbound-cdn.resend.com`，不带 Key） |
+| `mailgun` | 收发 | 发信：`POST /v3/<domain>/messages`。收信：Route 的 `store(notify=…)` 通知，签名是时间戳加令牌的 HMAC（12 小时内有效，令牌只用一次）；签名不覆盖通知里的其他字段，所以只取 `message-url`，它必须是本实例域名在 Mailgun 存储地址上的信，再用 Key 拉取；Mailgun 加的 `X-Mailgun-Spf`、`X-Mailgun-Dkim-Check-Result` 各出现一次才算数（发件人能在信里写同名的头） |
 
 - 不选 Postmark：它的入站 webhook 不签名，只能靠 URL 里的基本认证和 IP 名单。
-- 能收信的适配器实现 `receive`：先验签，再把通知换成服务商 API 里的那封信，解析成统一的邮件（发件人、收件人、主题、正文、附件、Message-ID、In-Reply-To、SPF / DKIM 结论）。通知只是「去取」的信号，伪造的通知取不到不存在的信。入站地址是 `/api/mail/inbound/:instance`，验签失败一律拒收；按服务商的邮件 id 去重。
-- Agent 邮箱的域名由 `MAIL_AGENT_DOMAIN` 或管理界面设置，MX 记录指向服务商；地址默认是「名字-随机 4 位@域名」，主人可以改前缀。
-- 来信是不可信输入：正文和附件存进存储服务，进对话时用 fence 隔开；附件和正文有大小上限。
-- 只有能收信的实例在顺序之首时，Agent 邮箱才出现。
+- 实例配一个系统发件人（`fromAddress`、`fromName`）；Agent 的信从它自己的地址发出。
+- 能收信的适配器声明收信密钥（`receiveSecret`），实例填了它才收信。入站地址是 `/api/mail/inbound/<实例 id>`（公开）：先验签，验签失败、过期或格式不对一律 401；验签前按服务商的上限拒收过大的请求（Resend 256 KB，Mailgun 40 MB）。
+- 通知只是「去取」的信号：信从服务商 API 拉取，解析成统一的邮件（发件人、收件人、抄送、Reply-To、信封收件人与发件人、主题、正文、HTML、附件、Message-ID、In-Reply-To、References、SPF / DKIM / DMARC 结论、DKIM 签名域）。伪造的通知取不到不存在的信；Key 只发往本实例的地址（`pinnedFetch`），通知里的地址指向别处时不发请求。
+- 一次性：通知的 nonce（Svix 的 id、Mailgun 的令牌）成功处理后记在 `idempotency_keys`（scope `mail_notice`）；同一封信按「Agent、实例、服务商的信 id」只存一次。处理失败（拉信失败）返回 502，由服务商重试。
+- 上限：主题 500 字，纯文本 20 万字，HTML 2 MB（超出只留纯文本），附件单个 15 MB、合计 25 MB、最多 20 个，超出的记下名字和原因、不下载。
+- Agent 邮箱的域名由 `MAIL_AGENT_DOMAIN` 或「管理 → 服务 → 邮箱」设置，MX 记录指向服务商；地址默认是「名字-随机 4 位@域名」，主人可以改前缀；保留 postmaster、abuse 等名字和系统发件人的名字。
+- 来信是不可信输入：HTML 正文和附件存进存储服务（文件用途 `mail`，属于 Agent 的主人），纯文本留在库里供阅读和搜索；Agent 读到的正文用 fence 隔开。
+- 只有能收信的实例在顺序之首、且设了域名时，Agent 邮箱才出现。系统发信与 Agent 发信都按顺序回退。
 
 ### 渠道 `im` / `push`
 
@@ -300,7 +307,7 @@ v2 的存储层统一为一个接口：v1 的 COS SDK、`s3-lite`、技能存储
 
 管理 → 服务
 
-- 9 行能力加 1 行推送，每行显示：能力名、浅色「?」（能力用在哪里）、当前实例与来源标签、状态点、「配置」。
+- 9 行能力加 1 行推送，每行显示：能力名、浅色「?」（能力用在哪里）、当前实例与来源标签、状态点、「配置」。`im` 在 IM 渠道之前不出现。
 - 点「配置」在右侧抽屉里管理这个能力：
   - 实例列表：可以拖动排序，顺序就是回退顺序。
   - 添加实例：先选厂商预设；表单由 `configSchema` 生成，Key 只写不读。
@@ -308,6 +315,7 @@ v2 的存储层统一为一个接口：v1 的 COS SDK、`s3-lite`、技能存储
   - 默认项：模型、音色、尺寸。
   - 策略：一个开关「允许成员使用自己的 Key」。
 - 沙箱的抽屉里额外有：电脑容量（空闲分钟数、最大并发）、电脑列表（停止、重置、备份）。
+- 邮箱的抽屉里额外有：Agent 邮箱的域名、每个能收信的实例要填到服务商那里的入站地址、「发测试邮件给我」。
 - 初次部署没有可用 LLM 时，登录后直接进入这一页。
 
 设置 → 我的服务
@@ -338,6 +346,7 @@ v2 的存储层统一为一个接口：v1 的 COS SDK、`s3-lite`、技能存储
 | SSRF | 成员的个人实例只能用公网 https 地址或预设地址：保存时检查解析结果，每次连接时再检查一次（防 DNS 重绑定）；内网、回环、链路本地地址一律拒绝。工作区实例由管理员配置，可以用内网地址（例如本地 Ollama） |
 | 越权 | 个人实例只服务它的主人，不能用于公开 Agent 或别人发起的运行；工作区实例遵守成员的模块权限与预算 |
 | 审计 | 新增、修改、删除、启停实例都写审计记录（谁、何时、哪个字段，不含机密） |
+| 入站邮件 | `/api/mail/inbound/:instance` 先验签再做任何事；通知只是信号，信用实例的 Key 从服务商拉取；nonce 一次性；来信按发件人名单与对齐的 SPF / DKIM / DMARC 决定是否叫醒 Agent（见 PRD §8.4） |
 | 内容 | 发给 STT、TTS、图像、视频服务商的内容属于成员本人或其授权范围；界面「?」里写明「内容会发送给所选服务商」 |
 
 ## 10. 扩展
@@ -372,6 +381,7 @@ packages/providers/          纯适配层：接口、注册表、通用适配器
 apps/api/src/providers/      解析与管理：环境变量引导、数据库读写与加密、策略、回退、计量、版本广播
                              路由 /api/admin/providers*、/api/me/providers*
 packages/providers/src/sandbox/   沙箱适配器：docker（Docker CLI）、e2b（纯 HTTP 与 WebSocket，不用 E2B SDK）
+packages/providers/src/mail/      邮箱适配器：resend、mailgun（收发，纯 HTTP）；smtp 在 apps/api/src/modules/mail/smtp.ts
 apps/api/src/providers/e2b-template.ts   用 E2B SDK 构建电脑模板，只给 scripts/e2b-template.mts 和实测用
 ```
 

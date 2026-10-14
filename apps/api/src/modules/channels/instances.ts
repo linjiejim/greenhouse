@@ -1,46 +1,41 @@
 /**
- * Channels are provider instances (docs/product/providers.md §2): email is `mail` over `smtp`,
- * Feishu and WeCom are `im` (`feishu`, `wecom`), push is `push` over `expo`. A channel is served
- * by the first instance of its kind in the capability's workspace order: env settings until an
- * admin saves their own, which then take the first place. No fallback to a second instance: a
- * channel turned off is off.
+ * Channels are provider instances (docs/product/providers.md §2). Email is the `mail` capability:
+ * any of its instances, in its order with fallback (mailReady). Feishu and WeCom are `im`
+ * (`feishu`, `wecom`), push is `push` over `expo`: such a channel is served by the first instance
+ * of its kind in the capability's workspace order, env settings until an admin saves their own,
+ * which then take the first place. No fallback to a second instance: a channel turned off is off.
  *
  * Admin settings are snake_case here and camelCase in the adapter config; this file translates.
  */
 
-import type { ChannelInput, ChannelStatus, DeliveryChannel } from '@greenhouse/contract';
+import type { AdminChannel, ChannelInput, ChannelStatus } from '@greenhouse/contract';
 import { getAdapter, type Capability } from '@greenhouse/providers';
 import { invalidInput } from '../../http/errors.js';
 import type { Arrangement } from '../../providers/service.js';
-import { smtpPort, type SmtpConfig } from './smtp.js';
 
 export const CHANNEL_PROVIDER: Readonly<
-  Record<DeliveryChannel, { capability: Extract<Capability, 'mail' | 'im' | 'push'>; kind: string; name: string }>
+  Record<AdminChannel, { capability: Extract<Capability, 'im' | 'push'>; kind: string; name: string }>
 > = {
-  email: { capability: 'mail', kind: 'smtp', name: 'SMTP' },
   feishu: { capability: 'im', kind: 'feishu', name: '飞书' },
   wecom: { capability: 'im', kind: 'wecom', name: '企业微信' },
   push: { capability: 'push', kind: 'expo', name: 'Expo' },
 };
 
+/** Email can go out: some mail instance in the order can serve (each one sends). */
+export const mailReady = (arranged: Record<Capability, Arrangement>) => {
+  const { order, instances } = arranged.mail;
+  return order.some((id) => instances.find((instance) => instance.id === id)?.usable);
+};
+
 /** The write-only field of each channel, as the admin API names it and as the adapter does. */
-const SECRET: Readonly<Record<DeliveryChannel, { field: string; key: string }>> = {
-  email: { field: 'password', key: 'password' },
+const SECRET: Readonly<Record<AdminChannel, { field: string; key: string }>> = {
   feishu: { field: 'app_secret', key: 'appSecret' },
   wecom: { field: 'secret', key: 'secret' },
   push: { field: 'access_token', key: 'accessToken' },
 };
 
 /** Adapter config keys by API field. */
-const FIELDS: Readonly<Record<DeliveryChannel, Readonly<Record<string, string>>>> = {
-  email: {
-    host: 'host',
-    port: 'port',
-    security: 'security',
-    username: 'username',
-    from_address: 'fromAddress',
-    from_name: 'fromName',
-  },
+const FIELDS: Readonly<Record<AdminChannel, Readonly<Record<string, string>>>> = {
   feishu: { base_url: 'baseUrl', app_id: 'appId' },
   wecom: { base_url: 'baseUrl', corp_id: 'corpId', agent_id: 'agentId' },
   push: { base_url: 'baseUrl' },
@@ -51,7 +46,7 @@ export type ChannelInstance = Arrangement['instances'][number];
 /** The instance serving a channel (or, when none is in the order, the workspace one an admin left out of it). */
 export function channelInstance(
   arranged: Record<Capability, Arrangement>,
-  channel: DeliveryChannel,
+  channel: AdminChannel,
 ): { instance: ChannelInstance; inOrder: boolean } | null {
   const { capability, kind } = CHANNEL_PROVIDER[channel];
   const { order, instances } = arranged[capability];
@@ -66,32 +61,22 @@ export function channelInstance(
 export const configured = (found: ReturnType<typeof channelInstance>) => !!found?.inOrder && found.instance.usable;
 
 /** The adapter's view of a stored config: defaults filled, strings from env read as numbers. */
-function parsed(channel: DeliveryChannel, config: Record<string, unknown>): Record<string, unknown> | null {
+function parsed(channel: AdminChannel, config: Record<string, unknown>): Record<string, unknown> | null {
   const { capability, kind } = CHANNEL_PROVIDER[channel];
   const result = getAdapter(capability, kind)?.configSchema.safeParse(config);
   return result?.success ? (result.data as Record<string, unknown>) : null;
 }
 
 const text = (value: unknown) => (typeof value === 'string' ? value : '');
-const textOrNull = (value: unknown) => (typeof value === 'string' && value ? value : null);
 
 /** The settings an admin sees; null when nothing is set up or the stored settings no longer parse. */
 export function channelSettings(
-  channel: DeliveryChannel,
+  channel: AdminChannel,
   config: Record<string, unknown> | undefined,
 ): ChannelStatus['settings'] {
   const value = config && parsed(channel, config);
   if (!value) return null;
   switch (channel) {
-    case 'email':
-      return {
-        host: text(value.host),
-        port: smtpPort(value as SmtpConfig),
-        security: (value as SmtpConfig).security,
-        username: textOrNull(value.username),
-        from_address: text(value.fromAddress),
-        from_name: textOrNull(value.fromName),
-      };
     case 'feishu':
       return { base_url: text(value.baseUrl), app_id: text(value.appId) };
     case 'wecom':
@@ -106,7 +91,7 @@ export function channelSettings(
  * write-only field ('' clears it) and the switch. The merged config must satisfy the adapter;
  * its complaints name the API's fields.
  */
-export function providerChange<C extends DeliveryChannel>(
+export function providerChange<C extends AdminChannel>(
   channel: C,
   input: ChannelInput[C],
   stored: Record<string, unknown> | undefined,
@@ -119,7 +104,7 @@ export function providerChange<C extends DeliveryChannel>(
     config = { ...stored };
     for (const field of touched) {
       const value = given[field];
-      // null means "not set" (the default port, no username, no display name).
+      // null means "not set".
       if (value === null) delete config[fields[field]!];
       else config[fields[field]!] = value;
     }
@@ -145,5 +130,5 @@ export function providerChange<C extends DeliveryChannel>(
 }
 
 /** The API's names for the write-only fields an instance holds. */
-export const secretsSet = (channel: DeliveryChannel, keys: readonly string[]) =>
+export const secretsSet = (channel: AdminChannel, keys: readonly string[]) =>
   keys.includes(SECRET[channel].key) ? [SECRET[channel].field] : [];

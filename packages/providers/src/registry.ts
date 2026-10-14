@@ -3,6 +3,8 @@ import { feishuAdapter } from './channels/feishu.js';
 import { wecomAdapter } from './channels/wecom.js';
 import { IMAGE_ADAPTERS } from './image/adapters.js';
 import { LLM_ADAPTERS } from './llm/adapters.js';
+import { mailgunAdapter } from './mail/mailgun.js';
+import { resendAdapter } from './mail/resend.js';
 import { dockerAdapter } from './sandbox/docker.js';
 import { e2bAdapter } from './sandbox/e2b/adapter.js';
 import { SEARCH_ADAPTERS } from './search/adapters.js';
@@ -44,6 +46,8 @@ for (const adapter of [
   wecomAdapter,
   expoAdapter,
   e2bAdapter,
+  resendAdapter,
+  mailgunAdapter,
 ] as AnyAdapter[]) {
   registerAdapter(adapter);
 }

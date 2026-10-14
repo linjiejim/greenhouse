@@ -29,6 +29,8 @@ export const ID_PREFIX = {
   file: 'fil',
   connector: 'cnr',
   connection: 'cnx',
+  mailbox: 'mbx',
+  mail: 'mal',
   notification: 'ntf',
   pushDevice: 'pdv',
   schedule: 'sch',

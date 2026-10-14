@@ -6,6 +6,7 @@ export * from './runs.js';
 export * from './files.js';
 export * from './skills.js';
 export * from './connections.js';
+export * from './mail.js';
 export * from './providers.js';
 export * from './notifications.js';
 export * from './usage.js';

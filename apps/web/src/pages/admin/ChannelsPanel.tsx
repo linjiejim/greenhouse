@@ -1,8 +1,8 @@
 /**
- * 管理 → 服务 · 渠道 (ADM-05): where notifications go besides the app. Email through the
- * workspace's SMTP server, the Feishu and WeCom apps, and push to the phone apps. Settings that
- * come from the environment are read-only here; keys are write-only (left empty, a saved key
- * stays); 测试 sends a message to me.
+ * 管理 → 服务 · 渠道 (ADM-05): where notifications go besides the app and email (which is the mail
+ * service). Push to the phone apps; the Feishu and WeCom apps stay hidden until the IM channels
+ * (CHN-05) bring them back. Settings that come from the environment are read-only here; keys
+ * are write-only (left empty, a saved key stays); 测试 sends a message to me.
  */
 
 import { useState, type FormEvent } from 'react';
@@ -11,17 +11,15 @@ import {
   Button,
   ErrorBox,
   Field,
-  FieldGroup,
   Input,
   Overlay,
   OverlayActions,
-  Segmented,
   Skeleton,
   StatusBadge,
   Switch,
 } from '@greenhouse/ui/kit';
 import { icon } from '@greenhouse/ui/tokens';
-import type { ChannelStatus, DeliveryChannel } from '@greenhouse/contract';
+import type { AdminChannel, ChannelStatus } from '@greenhouse/contract';
 import { ApiClientError } from '@greenhouse/contract/client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNotify } from '../../app/notify';
@@ -34,15 +32,17 @@ import { relativeTime } from '../../lib/time';
 
 const KEY = ['admin', 'channels'] as const;
 
-const LABEL: Record<DeliveryChannel, MessageKey> = {
-  email: 'channels.email',
+const LABEL: Record<AdminChannel, MessageKey> = {
   feishu: 'channels.feishu',
   wecom: 'channels.wecom',
   push: 'channels.push',
 };
 
+/** Feishu and WeCom come back with the IM channels (CHN-05); their code stays. */
+const HIDDEN: ReadonlySet<AdminChannel> = new Set(['feishu', 'wecom']);
+
 /** The default address of each vendor, for a new set-up. */
-const BASE_URL: Partial<Record<DeliveryChannel, string>> = {
+const BASE_URL: Partial<Record<AdminChannel, string>> = {
   feishu: 'https://open.feishu.cn',
   wecom: 'https://qyapi.weixin.qq.com',
   push: 'https://exp.host',
@@ -84,12 +84,6 @@ function ChannelDrawer({ status, onClose }: { status: ChannelStatus; onClose: ()
   const settings = (status.settings ?? {}) as Record<string, unknown>;
   const text = (key: string, fallback = '') => String(settings[key] ?? fallback);
   const [form, setForm] = useState<Record<string, string>>({
-    host: text('host'),
-    port: settings.port ? String(settings.port) : '',
-    security: text('security', 'tls'),
-    username: text('username'),
-    from_address: text('from_address'),
-    from_name: text('from_name'),
     base_url: text('base_url', BASE_URL[status.channel] ?? ''),
     app_id: text('app_id'),
     corp_id: text('corp_id'),
@@ -111,22 +105,11 @@ function ChannelDrawer({ status, onClose }: { status: ChannelStatus; onClose: ()
       />
     </Field>
   );
-  const secretKey = { email: 'password', feishu: 'app_secret', wecom: 'secret', push: 'access_token' }[status.channel];
+  const secretKey = { feishu: 'app_secret', wecom: 'secret', push: 'access_token' }[status.channel];
 
   const input = (): Record<string, unknown> => {
     const secret = form.secret ? { [secretKey]: form.secret } : {};
     switch (status.channel) {
-      case 'email':
-        return {
-          host: form.host!.trim(),
-          port: form.port ? Number(form.port) : null,
-          security: form.security,
-          username: form.username!.trim() || null,
-          from_address: form.from_address!.trim(),
-          from_name: form.from_name!.trim() || null,
-          enabled,
-          ...secret,
-        };
       case 'feishu':
         return { base_url: form.base_url!.trim(), app_id: form.app_id!.trim(), enabled, ...secret };
       case 'wecom':
@@ -181,34 +164,6 @@ function ChannelDrawer({ status, onClose }: { status: ChannelStatus; onClose: ()
     <Overlay title={t(LABEL[status.channel])} onClose={onClose}>
       <form id="channel-form" className="app-form" onSubmit={(event) => void submit(event)}>
         {readOnly && <p className="app-muted">{t('channels.fromEnv')}</p>}
-        {status.channel === 'email' && (
-          <>
-            {field('host', 'channels.host')}
-            {field('port', 'channels.port', { type: 'number', description: 'channels.portHint' })}
-            <FieldGroup label={t('channels.security')}>
-              <Segmented
-                label={t('channels.security')}
-                items={[
-                  { value: 'tls', label: 'TLS' },
-                  { value: 'starttls', label: 'STARTTLS' },
-                  { value: 'none', label: t('channels.securityNone') },
-                ]}
-                value={form.security!}
-                onChange={(value) => !readOnly && set('security')(value)}
-              />
-            </FieldGroup>
-            {field('username', 'channels.username')}
-            <SecretInput
-              label={t('channels.password')}
-              saved={status.secrets_set.includes('password')}
-              value={form.secret!}
-              onChange={set('secret')}
-              disabled={readOnly}
-            />
-            {field('from_address', 'channels.fromAddress', { type: 'email' })}
-            {field('from_name', 'channels.fromName')}
-          </>
-        )}
         {status.channel === 'feishu' && (
           <>
             {field('base_url', 'channels.baseUrl')}
@@ -285,15 +240,16 @@ export function ChannelsList() {
   const { t, locale } = useI18n();
   const me = useMe();
   const data = useQuery({ queryKey: KEY, queryFn: () => api.admin.channels.list() });
-  const [open, setOpen] = useState<DeliveryChannel | null>(null);
+  const [open, setOpen] = useState<AdminChannel | null>(null);
   if (data.isPending) return <Skeleton lines={4} />;
   if (data.isError) return <ErrorBox onRetry={() => void data.refetch()}>{errorText(data.error, t)}</ErrorBox>;
   const current = data.data.items.find((item) => item.channel === open);
+  const shown = data.data.items.filter((item) => !HIDDEN.has(item.channel));
   return (
     <section className="app-section">
       <h2 className="app-section-title">{t('channels.title')}</h2>
       <ul className="app-list app-bordered">
-        {data.data.items.map((item) => (
+        {shown.map((item) => (
           <li key={item.channel}>
             <button type="button" className="app-list-row" onClick={() => setOpen(item.channel)}>
               <span className="app-list-main">

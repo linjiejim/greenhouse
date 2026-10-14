@@ -8,10 +8,14 @@ import { parse as parseYaml } from 'yaml';
 import {
   CAPABILITIES,
   listAdapters,
+  MAILGUN_API,
+  MAILGUN_EU_API,
+  parseAddress,
   type AnyAdapter,
   type Capability,
   type ProviderPreset,
 } from '@greenhouse/providers';
+import { MAIL_DOMAIN } from '@greenhouse/contract';
 import type { ProviderPolicy } from '@greenhouse/db';
 import { logger } from '@greenhouse/utils/logger';
 
@@ -262,27 +266,85 @@ function channelInstance(entry: EnvInstance, variables: string): EnvInstance[] {
   return [entry];
 }
 
-/** SMTP_*, FEISHU_*, WECOM_*, PUSH_PROVIDER: the channels notifications go out through. */
-function channelsFromEnv(env: Env): EnvInstance[] {
+/** `Name <address>` or a bare address, as MAIL_FROM and SMTP_FROM take it. */
+function sender(raw: string | undefined): { fromAddress?: string; fromName?: string } {
+  if (!raw) return {};
+  const parsed = parseAddress(raw);
+  if (!parsed) return { fromAddress: raw };
+  return { fromAddress: parsed.address, ...(parsed.name ? { fromName: parsed.name } : {}) };
+}
+
+/**
+ * The mail capability: RESEND_*, MAILGUN_* and SMTP_*, in that order (the ones that can receive
+ * first, so Agent mailboxes use them). MAIL_FROM is the sender of system mail; SMTP_FROM still
+ * names SMTP's own. MAIL_AGENT_DOMAIN is a default of the capability (mailDefaultsFromEnv).
+ */
+function mailFromEnv(env: Env): EnvInstance[] {
   const instances: EnvInstance[] = [];
-  const host = value(env, 'SMTP_HOST');
-  if (host) {
+  const from = sender(value(env, 'MAIL_FROM'));
+  const resendKey = value(env, 'RESEND_API_KEY');
+  if (resendKey) {
     instances.push(
       ...channelInstance(
         {
-          id: 'env-mail',
+          id: 'env-mail-resend',
+          capability: 'mail',
+          kind: 'resend',
+          preset: 'resend',
+          name: 'Resend',
+          config: { ...from, ...compact({ baseUrl: value(env, 'RESEND_BASE_URL') }) },
+          secrets: compact({ apiKey: resendKey, webhookSecret: value(env, 'RESEND_WEBHOOK_SECRET') }),
+        },
+        'RESEND_* and MAIL_FROM',
+      ),
+    );
+  }
+  const mailgunKey = value(env, 'MAILGUN_API_KEY');
+  if (mailgunKey) {
+    const region = value(env, 'MAILGUN_REGION')?.toLowerCase();
+    if (region && region !== 'us' && region !== 'eu') {
+      logger.warn(`[providers] MAILGUN_REGION=${region} is not us or eu; using us`);
+    }
+    const eu = region === 'eu';
+    instances.push(
+      ...channelInstance(
+        {
+          id: 'env-mail-mailgun',
+          capability: 'mail',
+          kind: 'mailgun',
+          preset: eu ? 'mailgun-eu' : 'mailgun',
+          name: eu ? 'Mailgun (EU)' : 'Mailgun',
+          config: {
+            ...from,
+            baseUrl: value(env, 'MAILGUN_BASE_URL') ?? (eu ? MAILGUN_EU_API : MAILGUN_API),
+            ...compact({ domain: value(env, 'MAILGUN_DOMAIN') }),
+          },
+          secrets: compact({ apiKey: mailgunKey, webhookSigningKey: value(env, 'MAILGUN_WEBHOOK_SIGNING_KEY') }),
+        },
+        'MAILGUN_* and MAIL_FROM',
+      ),
+    );
+  }
+  const host = value(env, 'SMTP_HOST');
+  if (host) {
+    const smtpFrom = sender(value(env, 'SMTP_FROM'));
+    instances.push(
+      ...channelInstance(
+        {
+          id: 'env-mail-smtp',
           capability: 'mail',
           kind: 'smtp',
           preset: null,
           name: 'SMTP',
           config: {
             host,
+            ...from,
+            ...smtpFrom,
             ...compact({
               port: value(env, 'SMTP_PORT'),
               security: value(env, 'SMTP_SECURITY'),
               username: value(env, 'SMTP_USER'),
-              fromAddress: value(env, 'SMTP_FROM'),
-              fromName: value(env, 'SMTP_FROM_NAME'),
+              fromName: value(env, 'SMTP_FROM_NAME') ?? smtpFrom.fromName ?? from.fromName,
             }),
           },
           secrets: compact({ password: value(env, 'SMTP_PASSWORD') }),
@@ -291,6 +353,23 @@ function channelsFromEnv(env: Env): EnvInstance[] {
       ),
     );
   }
+  return instances;
+}
+
+/** MAIL_AGENT_DOMAIN: the domain of Agent addresses, until an admin saves another. */
+function mailDefaultsFromEnv(env: Env): Record<string, unknown> | null {
+  const domain = value(env, 'MAIL_AGENT_DOMAIN')?.toLowerCase();
+  if (!domain) return null;
+  if (!MAIL_DOMAIN.test(domain)) {
+    logger.warn(`[providers] MAIL_AGENT_DOMAIN=${domain} is not a domain name; ignored`);
+    return null;
+  }
+  return { agent_domain: domain };
+}
+
+/** FEISHU_*, WECOM_*, PUSH_PROVIDER: the channels notifications go out through besides mail. */
+function channelsFromEnv(env: Env): EnvInstance[] {
+  const instances: EnvInstance[] = [];
   const appId = value(env, 'FEISHU_APP_ID');
   if (appId) {
     instances.push(
@@ -425,7 +504,12 @@ function fromFile(env: Env, path: string): EnvProviders {
 
 export function providersFromEnv(env: Env): EnvProviders {
   const file = value(env, 'PROVIDERS_FILE');
-  if (file) return fromFile(env, file);
+  if (file) {
+    const declared = fromFile(env, file);
+    const mail = mailDefaultsFromEnv(env);
+    if (mail && !declared.defaults.mail) declared.defaults.mail = mail;
+    return declared;
+  }
   const instances: EnvInstance[] = [];
   const defaults: EnvProviders['defaults'] = {};
   const llm = llmFromEnv(env);
@@ -446,6 +530,9 @@ export function providersFromEnv(env: Env): EnvProviders {
   if (storage) instances.push(storage);
   const sandbox = sandboxFromEnv(env);
   if (sandbox) instances.push(sandbox);
+  instances.push(...mailFromEnv(env));
+  const mail = mailDefaultsFromEnv(env);
+  if (mail) defaults.mail = mail;
   instances.push(...channelsFromEnv(env));
   if (value(env, 'VIDEO_PROVIDER'))
     logger.warn('[providers] VIDEO_PROVIDER is not available in this build yet; ignored');

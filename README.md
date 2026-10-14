@@ -156,10 +156,12 @@ same script doubles as an end-to-end smoke tour (see [Development](#development)
   templates (instructions with fields), with immutable versions, changelogs, a security scan
   and its review, requirements (a computer, connectors), `/` in the composer, equipping on
   an Agent, "save as skill" proposals, and official packs published from `skillhub/`.
-- **Email** *(optional)* — personal IMAP/SMTP mailboxes and a shared team mailbox; search,
-  read, draft and send with a server-side draft confirmation.
+- **Mail** *(optional)* — one mail service (Resend or Mailgun to send and receive, SMTP to send
+  only) for invitations, password resets and notification emails, and a mailbox for every Agent:
+  mail from senders it may hear from lands in its thread and wakes it, everything else waits for
+  the owner, and every mail it sends waits for the owner's approval.
 - **Notifications** — an in-app notification center with durable, retried delivery to email
-  (SMTP), Feishu, WeCom and phone pushes: each member picks channels per category (needs you,
+  (through the mail service) and phone pushes: each member picks channels per category (needs you,
   replies, runs, other), a burst from one conversation makes one message, and nothing leaves
   with its content unless the member turns previews on.
 - **Integrations** *(optional)* — WeCom and Feishu account binding, direct-message push, Feishu
@@ -514,10 +516,8 @@ provider), external web search, email mailboxes, WeCom / Feishu, missions, Agent
 (`BOTS_COMPUTER_*`), usage budgets, and object storage. Uploads default to local disk (`data/uploads`); skill
 packages are files too and live wherever the storage provider keeps files.
 
-**Notification channels**: system email (`SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURITY`,
-`SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM`), Feishu (`FEISHU_APP_ID`, `FEISHU_APP_SECRET`), WeCom
-(`WECOM_CORP_ID`, `WECOM_AGENT_ID`, `WECOM_APP_SECRET`) and phone pushes (`PUSH_PROVIDER=expo`)
-are set from env or in Administration → Services → Channels, which shows each channel's last
+**Notification channels**: email goes through the mail service (below); phone pushes
+(`PUSH_PROVIDER=expo`) are set from env or in Administration → Services → Channels, which shows the channel's last
 success and last error and sends the admin a test. Phone notifications (an Agent needs you, a
 background or scheduled run finished, a reply) go through the Expo Push Service at `exp.host`:
 the server stores only each phone's Expo push token (no Apple key — the official app's
@@ -542,6 +542,48 @@ stations. In the mobile station picker, a connection check runs before switching
 check keeps the current station. Startup authentication is capped at 10 seconds, with retry
 and station selection on failure. `GREENHOUSE_EXTENSIONS=crm,example` overrides the extension
 list per deployment.
+
+### Mail: system mail and Agent mailboxes
+
+Set the mail service from env or in Administration → Services → Mail; the first one that can
+send sends, the next ones are fallbacks.
+
+| Variable | What it is |
+| --- | --- |
+| `MAIL_FROM` | Sender of system mail, e.g. `Greenhouse <greenhouse@example.com>` (Resend and Mailgun need it) |
+| `RESEND_API_KEY`, `RESEND_WEBHOOK_SECRET` | Resend: a full-access key (receiving reads mail back with it) and the webhook's signing secret (`whsec_…`) |
+| `MAILGUN_API_KEY`, `MAILGUN_WEBHOOK_SIGNING_KEY`, `MAILGUN_DOMAIN`, `MAILGUN_REGION` | Mailgun: the private API key, the HTTP webhook signing key, the domain set up there, `us` or `eu` |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURITY`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM` | Any SMTP server; it only sends |
+| `MAIL_AGENT_DOMAIN` | Domain of Agent addresses, e.g. `agents.example.com` |
+
+Each Agent gets `<name>-<4 characters>@<MAIL_AGENT_DOMAIN>` (its owner can change the part
+before `@`). Agent mailboxes exist only while a service that receives (Resend or Mailgun with its
+webhook secret) is first in the order and the domain is set. Use a subdomain, so the domain's own
+mail keeps its MX records. Point it at the service:
+
+- **Resend**: Domains → add `agents.example.com` and the DNS records it shows (sending), turn
+  receiving on and add the MX record it shows (it must have the lowest priority). Webhooks → add an
+  endpoint for the event `email.received` at `https://<your PUBLIC_URL>/api/mail/inbound/<instance
+  id>` and copy its signing secret into `RESEND_WEBHOOK_SECRET`. The instance id is
+  `env-mail-resend` for the env settings; Administration → Services → Mail shows the exact address
+  for each instance that receives.
+- **Mailgun**: add `agents.example.com` as a domain (US or EU) with its DNS records: SPF and DKIM,
+  and MX `mxa.mailgun.org` and `mxb.mailgun.org` (EU: `mxa.eu.mailgun.org`, `mxb.eu.mailgun.org`),
+  priority 10. Receiving → Routes → create a route with the expression
+  `match_recipient(".*@agents.example.com")` and the actions
+  `store(notify="https://<your PUBLIC_URL>/api/mail/inbound/env-mail-mailgun")` and `stop()`.
+  Copy the HTTP webhook signing key into `MAILGUN_WEBHOOK_SIGNING_KEY`, and set the domain's inbound
+  spam filter to deliver with headers, so Mailgun adds its SPF and DKIM verdicts to each mail.
+
+A notice from the service is checked against its signature and only tells Greenhouse where to
+fetch the mail, which it then reads from the service with the key. Mail wakes the Agent only when
+its sender is the owner, a workspace member (the owner can turn members off) or someone the owner
+let in, and the receiving service verified the sender's domain (DMARC, or SPF or DKIM aligned with
+the From address). Other mail waits on the Agent's Mailbox tab until the owner lets the sender in.
+Everything an Agent sends, and every reply, waits for the owner's approval on a card.
+
+Without any mail service, invitations and password resets show a link to copy, and email
+notifications are not offered.
 
 ## MCP & agent access
 

@@ -15,7 +15,7 @@ Greenhouse is an open-source, self-hosted platform where a team works with its o
 - apps/api: the v2 API (Hono). app.ts composes services and routes; modules/<domain>/ holds routes.ts and service.ts; engine/ runs turns and tools (engine/AGENTS.md); realtime/ is the WebSocket hub.
 - packages/contract: zod schemas and types for every request and response; the web, mobile and extension clients import it.
 - packages/db: the v2 schema (data-model.md), ids, migrations and test support. drizzle/ holds the single baseline.
-- packages/providers: adapters per capability (llm, search, stt, tts, image, storage, sandbox: docker and e2b), presets, the adapter registry and pinnedFetch (an instance's origins; `https://*.<domain>` allows every name under a domain, as E2B serves each sandbox under its own). apps/api/src/providers: env parsing, resolution order, sealed secrets, usage metering and the provider routes (docs/product/providers.md).
+- packages/providers: adapters per capability (llm, search, stt, tts, image, storage, sandbox: docker and e2b, mail: resend and mailgun; smtp is registered from apps/api/src/modules/mail), presets, the adapter registry and pinnedFetch (an instance's origins; `https://*.<domain>` allows every name under a domain, as E2B serves each sandbox under its own). apps/api/src/providers: env parsing, resolution order, sealed secrets, usage metering and the provider routes (docs/product/providers.md).
 - apps/web: the v2 web app (Vite, React 19, TanStack Query; apps/web/AGENTS.md). The API serves its build from public/.
 - apps/design: prototype and component lab. apps/desktop: Tauri shell (apps/desktop/AGENTS.md). apps/bot-computer: the Agent computer image (e2b/ is its hosted layer for the E2B template: the two bridges, their units, boot and hardening).
 - apps/mobile: v1 Expo app outside the pnpm workspace and the root checks until roadmap M4 (apps/mobile/AGENTS.md).
@@ -52,7 +52,8 @@ Greenhouse is an open-source, self-hosted platform where a team works with its o
 - Import other packages by name. Relative imports end in .js in Node-run code and omit it in Vite-bundled code.
 - Sync docs in the same change: README.md for humans, the nearest AGENTS.md for rules, features.md for status, data-model.md for the schema.
 - Background work goes through the one `jobs` queue (apps/api/src/jobs.ts): enqueue in the transaction that causes it, claim with a lease, settle only as the lease holder.
-- Notifications leave the server only as the delivery jobs `notifications.publish` queues; modules/channels sends them (email, Feishu, WeCom, push) through providers. Without the member's previews they name no subject, and never carry the body of a needs-you card or a reply.
+- Notifications leave the server only as the delivery jobs `notifications.publish` queues; modules/channels sends them through providers: email through the mail capability (its order, with fallback) and push. Feishu and WeCom keep their code but stay out of the UI until the IM channels. Without the member's previews they name no subject, and never carry the body of a needs-you card or a reply.
+- Mail (modules/mail): system mail and every Agent's mailbox go through the `mail` capability. A vendor's notice at the public `/api/mail/inbound/:instance` is verified first and is only a signal: the mail is fetched from the vendor with the instance's key. Received mail is untrusted input: stored once, its HTML and attachments as files, and it wakes an Agent only from a sender it may hear from whose From domain the receiving server verified.
 
 ## Auth and permissions
 - Roles are admin and member. Public endpoints are /health, /api/bootstrap and /api/auth/*; everything else under /api requires a member, and /api/admin/* an admin.

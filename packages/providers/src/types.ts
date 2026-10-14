@@ -168,14 +168,33 @@ export interface SandboxClient {
   remove(name: string, options: { keepHome: boolean }): Promise<void>;
 }
 
-/** One email: plain text, with an HTML alternative. */
-export interface MailMessage {
-  to: string;
-  /** Shown with the address in the To header. */
-  toName?: string;
+/** An email address with the name shown beside it. */
+export interface MailAddress {
+  address: string;
+  name?: string;
+}
+
+/** One email to send: plain text, with an HTML alternative. */
+export interface OutgoingMail {
+  /** The sender; left out, the instance's own (its configured from address). */
+  from?: MailAddress;
+  to: MailAddress[];
+  cc?: MailAddress[];
+  replyTo?: MailAddress;
   subject: string;
   text: string;
   html?: string;
+  /** The Message-ID this mail answers, and the chain before it (RFC 5322), so replies thread. */
+  inReplyTo?: string;
+  references?: string[];
+  /** Sent along where the vendor takes one, so a retried call never sends twice. */
+  idempotencyKey?: string;
+}
+
+/** What the vendor said about a mail it took: its own id, and the Message-ID when it tells. */
+export interface SentMail {
+  providerId: string | null;
+  messageId: string | null;
 }
 
 /** Channels throw it for a message that no retry can deliver: the recipient or the message is refused. */
@@ -186,10 +205,94 @@ export class UndeliverableError extends Error {
   }
 }
 
+/** A notice whose signature does not verify (or is too old, or malformed): it is refused, never read. */
+export class MailSignatureError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'MailSignatureError';
+  }
+}
+
+/** A receiving server's verdict on one check (SPF, DKIM, DMARC); `unknown` when it said nothing usable. */
+export type MailVerdict = 'pass' | 'fail' | 'softfail' | 'neutral' | 'none' | 'temperror' | 'permerror' | 'unknown';
+
+export interface InboundAttachment {
+  filename: string;
+  contentType: string;
+  size: number;
+  /** Null when it was left out: larger than the limit, past the count or the total, or not where it may be read. */
+  content: Uint8Array | null;
+  skipped?: 'too_large' | 'too_many' | 'unavailable';
+  inline: boolean;
+  /** The Content-ID an inline image is referenced by (`cid:` in the HTML). */
+  contentId?: string;
+}
+
+/** A received mail in one shape whatever the vendor, fetched from the vendor's API (never from the notice). */
+export interface InboundMail {
+  /** The vendor's own id for it: repeated notices of the same mail dedupe on it. */
+  providerMessageId: string;
+  /** Message-ID, In-Reply-To and References as written, angle brackets included. */
+  messageId: string | null;
+  inReplyTo: string | null;
+  references: string[];
+  from: MailAddress;
+  replyTo: MailAddress[];
+  to: MailAddress[];
+  cc: MailAddress[];
+  /** The envelope recipients the vendor delivered it for (a Bcc lands here only). */
+  recipients: string[];
+  /** The envelope sender (Return-Path, MAIL FROM): what SPF checked. */
+  envelopeFrom: string | null;
+  subject: string;
+  text: string;
+  /** Unsanitised, as the sender wrote it; null when there is none or it was too large. */
+  html: string | null;
+  attachments: InboundAttachment[];
+  /** Verdicts of the vendor's receiving server, which a sender cannot write. */
+  auth: { spf: MailVerdict; dkim: MailVerdict; dmarc: MailVerdict };
+  /** The domains (d=) of the DKIM signatures in the mail, to align a DKIM pass with the From domain. */
+  dkimDomains: string[];
+  /** ISO time the vendor received it. */
+  receivedAt: string;
+}
+
+/** A webhook request as it arrived: signatures cover the exact bytes. */
+export interface InboundRequest {
+  headers: Headers;
+  body: Uint8Array;
+  /** Unix seconds; tests pin it. */
+  now?: number;
+}
+
+/** What a verified notice points at. The notice is only a signal: the mail itself is fetched. */
+export interface InboundNotice {
+  /** The vendor's id of the mail, or the address of the stored mail at the vendor. */
+  ref: string;
+  /** A value the vendor sends once per notice; the API refuses to act on it twice. */
+  nonce: string;
+  /** How long the nonce must be remembered: notices older than this are refused anyway. */
+  nonceTtlSeconds: number;
+}
+
+export interface MailReceiver {
+  /** The largest notice body this vendor sends; the route refuses bigger ones unread. */
+  readonly maxNoticeBytes: number;
+  /**
+   * Checks the vendor's signature over the raw request first; throws MailSignatureError. Null for
+   * a verified notice that is not about a received mail (another event on the same webhook).
+   */
+  verify(request: InboundRequest): Promise<InboundNotice | null>;
+  /** Fetches and normalises the mail a verified notice named, with the instance's key. */
+  fetch(notice: InboundNotice): Promise<InboundMail>;
+}
+
 export interface MailClient {
-  send(message: MailMessage): Promise<void>;
+  send(mail: OutgoingMail): Promise<SentMail>;
   /** Connects and signs in without sending anything. */
   verify(): Promise<void>;
+  /** Present when the instance can receive: its adapter receives and its notice secret is set. */
+  receive?: MailReceiver;
 }
 
 /** A workspace's app on an IM platform (Feishu, WeCom), messaging people one to one. */
@@ -283,6 +386,11 @@ export interface ProviderAdapter<C extends Capability = Capability, Config = Rec
    */
   endpoints(config: Config): string[] | null;
   create(input: CreateInput<Config>): ClientByCapability[C];
+  /**
+   * Mail adapters that can receive: the secret that verifies the vendor's notices. An instance
+   * receives once that secret is set (its client then has `receive`).
+   */
+  receiveSecret?: string;
   /** The cheapest real call that proves the instance works; throws on failure. */
   test?(client: ClientByCapability[C], config: Config): Promise<void>;
   /** How long that call may take, when it is slower than the default 20 s (image generation). */

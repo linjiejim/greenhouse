@@ -4,7 +4,7 @@
 
 v2 从零建表：只有一份基线迁移，不继承 v1 的迁移链，也不在 v1 库上原地升级。v1 的历史数据以后用离线 ETL 搬进来，见 [migration-v1.md](migration-v1.md)。
 
-本文写到能照着实现的程度，列不求全。实现以 Drizzle schema 为准，改表时同步本文。共 75 张表，分 10 个领域；v1 加上 PR #64 是 137 张。
+本文写到能照着实现的程度，列不求全。实现以 Drizzle schema 为准，改表时同步本文。共 78 张表，分 10 个领域；v1 加上 PR #64 是 137 张。
 
 ## 1. 约定
 
@@ -63,7 +63,7 @@ v2 从零建表：只有一份基线迁移，不继承 v1 的迁移链，也不�
 | `groups` | 管理员维护的分组 | `name`（唯一）、`description`、`created_by` |
 | `group_members` | 分组成员 | 主键 `(group_id, member_id)`，两端 `CASCADE` |
 | `refresh_tokens` | 刷新令牌 | `member_id` `CASCADE`、`token_hash`、`auth_version`、`client`（web / ios / android / extension / desktop）、`expires_at`、`last_used_at`；单次消费 |
-| `auth_links` | 激活与重置密码的一次性链接 | `member_id` `CASCADE`、`purpose`（activate / reset）、`token_hash`（唯一）、`issued_auth_version`、`expires_at`、`consumed_at`、`revoked_at`、`delivery_status`；每人最多一条有效 |
+| `auth_links` | 激活与重置密码的一次性链接 | `member_id` `CASCADE`、`purpose`（activate / reset）、`token_hash`（唯一）、`issued_auth_version`、`expires_at`、`consumed_at`、`revoked_at`、`delivery_status`（shown：只给管理员复制 / emailed：邮箱服务发出 / failed：没发出）；每人最多一条有效 |
 | `shares` | 唯一的分享表 | `resource_type`（folder / doc / file / base / form / app / agent）、`resource_id`、`principal_type`（member / group / workspace）、`principal_id`（workspace 时为空）、`role`、`custom_role_id`（→ `base_roles`）、`created_by`；唯一 `(resource_type, resource_id, principal_type, principal_id)` |
 | `pins` | 成员自己的置顶 | 主键 `(member_id, target_type, target_id)`、`position`；目标是对话、表格、应用或文档 |
 
@@ -82,6 +82,9 @@ v2 从零建表：只有一份基线迁移，不继承 v1 的迁移链，也不�
 | `agent_computers` | Agent 电脑的生命周期 | `agent_id` `CASCADE`、`owner_id`（这台电脑是谁的）、`provider_id`（沙箱实例）、`sandbox_ref`（适配器自己的容器、卷或沙箱 id）、`state`（stopped / starting / running / failed）、`state_reason`、`timezone`、`version`、`last_active_at`、`last_started_at`；唯一 `(agent_id, owner_id)`：主人一台，公开 Agent 的发布允许电脑时，使用它的成员各一台；观看、接管和终端用一次性 ticket，连接打开期间刷新 `last_active_at`；画面租约 `lease_controller`（member / agent，空 = 无人）、`lease_holder`（持有它的控制画面或浏览器动作）、`lease_until`：成员的控制画面打开期间一直持有并续期，Agent 的每个浏览器动作短暂持有；成员总能拿到，Agent 只在无人持有或已过期时拿到（AGNT-22） |
 | `computer_backups` | 电脑家目录的加密备份 | `computer_id`、`owner_id`（逻辑）、`status`、`reason`（idle / admin / migration）、`storage_prefix`、`key_enc`、`format`、`bytes`、`restored_at`；每台电脑最多一条 running；先删对象再删行 |
 | `computer_watches` | 电脑上的后台进程结束时唤醒 Agent | `computer_id` `CASCADE`、`agent_id`、`member_id`（以谁的权限唤醒）、`conversation_id`、`job_ref`（按电脑唯一）、`name`、`status`（watching / notified / gone，从 watching 单次认领，7 天无果作废） |
+| `agent_mailboxes` | Agent 邮箱（AGNT-30） | `agent_id` `CASCADE`（唯一）、`local_part`（工作区内唯一，小写；默认「名字-随机 4 位」）、`allow_members`（工作区成员的来信能叫醒它，默认开）；域名是 `mail` 能力的默认项 `agent_domain`，改域名就改了所有地址；主人第一次查看时建立 |
+| `mail_senders` | 主人放行的发件人 | 主键 `(agent_id, address)`、`agent_id` `CASCADE`、`address`（小写）、`added_by`；主人自己总在名单里，成员按 `allow_members` |
+| `mail_messages` | Agent 的来信与发信 | `agent_id` `CASCADE`、`owner_id`（逻辑）、`direction`（in / out）、`status`（screened / delivered；sending / sent / failed）、`screen_reason`（sender / unverified / public_agent / archived）、`provider_id` + `provider_message_id`（来信按 `(agent_id, provider_id, provider_message_id)` 唯一）、`message_id` / `in_reply_to` / `references`、`from_address` / `from_name`、`to` / `cc` / `reply_to`、`subject`、`text`（有上限，供阅读与搜索）、`html_file_id`（HTML 正文存进存储服务）、`attachments`（文件 id、名字、类型、大小、被略过的原因）、`auth`（收信服务器的 SPF / DKIM / DMARC 结论）、`verified`（与发件域对齐通过）、`conversation_id`（卡片所在的对话）、`run_id`（发信的那次批准）、`error`、`woke_at`、`at` |
 
 句柄：主 Agent 是 `main`，按成员解析，与显示名无关（默认名 Greeny，可改）。其他 Agent 是 `agent:<id>`，固定版本写 `agent:<id>@<version>`。v1 的 `sprouty`、`bot:`、`custom:` 句柄不再解析。
 
@@ -114,7 +117,7 @@ v2 从零建表：只有一份基线迁移，不继承 v1 的迁移链，也不�
 | `doc_versions` | 不可变版本 | `doc_id` `CASCADE`、`version`、`title`、`content`、`change_note`、`created_by`、`agent_id`（Agent 代写时）；唯一 `(doc_id, version)`；新建是版本 1，恢复写一个新版本 |
 | `doc_links` | 反向链接 | 主键 `(from_doc_id, to_doc_id)`，两端 `CASCADE`；每次保存由正文重建，读反链时逐条过权限 |
 | `comments` | 文档和记录的评论 | `target_type`（doc / record）、`target_id`、`base_id`（记录评论）、`created_by`、`agent_id`（Agent 代写时）、`body`（Markdown）、`mentions`（由正文里的 `[@名字](member:<id>)` 得出）、`deleted_at`、`updated_at`；读权限跟随目标，不进全文检索 |
-| `files` | 统一文件服务 | `purpose`（attachment / knowledge / record / artifact / export / import / skill / avatar / branding）、`provider_id`、`storage_key`（唯一）、`name`、`content_type`、`size_bytes`、`sha256`、`status`、`owner_id`、归属列按 purpose 填一个（`folder_id` + `space`、`conversation_id`、`base_id`、`run_id`；技能包、头像、品牌由引用它的行持有）、`expires_at`（导出）、`meta`、`search_*`（知识库文件：A 文件名，C 文本与 PDF 的文字）、`archived_at`；权限跟随归属。知识库文件的 `folder_id` → `folders` `SET NULL`，`owner_id` 同 `folders`；`meta.doc_id` 是贴进文档的图片（不在树里，权限跟随文档），`meta.sort_order` 是手动顺序 |
+| `files` | 统一文件服务 | `purpose`（attachment / knowledge / record / artifact / export / import / skill / avatar / branding / mail）、`provider_id`、`storage_key`（唯一）、`name`、`content_type`、`size_bytes`、`sha256`、`status`、`owner_id`、归属列按 purpose 填一个（`folder_id` + `space`、`conversation_id`、`base_id`、`run_id`；技能包、头像、品牌由引用它的行持有）、`expires_at`（导出）、`meta`、`search_*`（知识库文件：A 文件名，C 文本与 PDF 的文字）、`archived_at`；权限跟随归属。知识库文件的 `folder_id` → `folders` `SET NULL`，`owner_id` 同 `folders`；`meta.doc_id` 是贴进文档的图片（不在树里，权限跟随文档），`meta.sort_order` 是手动顺序 |
 
 「他人正在编辑」与在线状态放在进程内存里，不建表；有多个 API 进程时，各自只看得到连在本进程的人。
 
@@ -167,7 +170,7 @@ v2 从零建表：只有一份基线迁移，不继承 v1 的迁移链，也不�
 | 表 | 用途 | 关键列与关系 |
 | --- | --- | --- |
 | `connectors` | 管理员安装的 MCP 服务器 | `slug`（唯一，模型调用时用，不可改）、`name`、`description`、`url`（不含凭据）、`transport`（streamable_http / sse）、`auth_mode`（none / shared / per_member / oauth）、`auth_header` 或 `auth_query_param`、`auth_prefix`（如 `Bearer `）、`auth_enc`（共享 Key）、`key_help` / `key_help_url`（per_member：成员该粘贴什么）、`oauth_scope`、`oauth_client_enc`（本工作区在对方授权服务器的客户端：动态注册或管理员手填）、`oauth_discovery`（公开元数据缓存）、`allowed_tools`（null 表示全部）、`read_only_tools`（管理员担保只读；服务器标为 destructive 的不算）、`catalog_id`、`tools`（最近一次刷新的工具缓存；失败时保留上一份）、`tools_refreshed_at`、`last_error`、`enabled`、`created_by` `SET NULL` |
-| `connections` | 成员接入的外部账号 | `member_id` `CASCADE`、`kind`（connector / feishu / wecom / email）、`connector_id` `CASCADE`（只有 connector 有）、`external_id`（飞书 open_id、企微 userid、邮箱地址）、`display_name`、`config`（邮箱的 IMAP / SMTP 主机、端口等明文设置）、`secrets_enc`（OAuth 令牌、个人 Key、邮箱密码）、`scopes`、`expires_at`（访问令牌到期）、`status`（active / needs_reauth / error）、`last_error`、`last_verified_at`；每个成员每个连接器一条（`kind = connector` 时 `(member_id, connector_id)` 唯一）；飞书和企微的 `(kind, external_id)` 唯一，扫码登录按它找成员。刷新令牌只覆盖它读到的那份密文，并发刷新时轮换后的令牌不会被旧的覆盖 |
+| `connections` | 成员接入的外部账号 | `member_id` `CASCADE`、`kind`（connector / feishu / wecom / email）、`connector_id` `CASCADE`（只有 connector 有）、`external_id`（飞书 open_id、企微 userid、邮箱地址）、`display_name`、`config`（邮箱的 IMAP / SMTP 主机、端口等明文设置）、`secrets_enc`（OAuth 令牌、个人 Key、邮箱密码）、`scopes`、`expires_at`（访问令牌到期）、`status`（active / needs_reauth / error）、`last_error`、`last_verified_at`；每个成员每个连接器一条（`kind = connector` 时 `(member_id, connector_id)` 唯一）；`kind = email` 是内置连接器「邮箱」的连接，每个成员一条；飞书和企微的 `(kind, external_id)` 唯一，扫码登录按它找成员。刷新令牌只覆盖它读到的那份密文，并发刷新时轮换后的令牌不会被旧的覆盖 |
 | `vault_items` | 密码库条目 | `member_id` `CASCADE`、`label`、`origins`（精确 origin 或 `*.域名`）、`username_enc` / `password_enc` / `totp_enc`（`VAULT_ENCRYPTION_KEY`）、`username_hint`（掩码用户名）、`policy`（ask / auto）、`always_origins`（`ask` 条目不发卡片的站点，只能是 `origins` 里的精确站点）、`agent_ids`（自己的 Agent，空 = 所有 Agent）、`last_used_at` |
 | `vault_access_log` | 代填日志，只给成员本人看 | `member_id`、`item_id` `SET NULL`、`item_label`、`agent_id`、`conversation_id`、`origin`（浏览器报告的页面站点）、`action`（fill）、`outcome`（requested / filled / declined / origin_mismatch / no_fields / failed）、`approval`（auto / always / member）；不记录任何值。不并入 `audit_events`，因为管理员不读密码库 |
 | `providers` | 服务实例（[providers.md §4.4](providers.md#44-运行时数据库)） | `id`、`capability`、`kind`、`preset`、`name`、`scope`（workspace / personal）、`owner_id`、`config`（非机密）、`secrets_enc`、`enabled`、`last_check`、`created_by`、时间戳；环境变量实例只在内存里 |
@@ -203,7 +206,7 @@ v1 的预算账本不再保留：每次花费都对应一条 `usage_events`；�
 | --- | --- | --- |
 | `workspace` | 工作区，只有一行 | `id`（固定 `default`）、`name`、`logo_file_id`、`primary_color`、`settings`（新成员的默认模块权限等非机密设置）、`setup_completed_at`、`updated_by`；机密一律在 `providers` |
 | `jobs` | 通用后台任务队列 | `kind`（如 deliver_notification、push_receipts、base_automation、recompute、ai_field、video_poll、file_purge、computer_backup、export）、`dedupe_key`（唯一）、`payload`、`status`（pending / claimed / succeeded / failed / dead / suppressed）、`attempts` / `max_attempts`、`available_at`、`lease_owner` / `lease_expires_at`、`last_error`、`result`；和触发它的状态变更在同一事务里写入；领取即算一次尝试，租约过期（进程死了）回到队列；`apps/api/src/jobs.ts` 是唯一的入队、领取与结算方式；送达任务结束 30 天后删除 |
-| `idempotency_keys` | 有副作用请求的幂等记录 | 主键 `(scope, key)`（scope 如成员 id 或 `feishu`）、`request_hash`、`status`（running / done）、`response`、`expires_at`；承接 `Idempotency-Key` 头、应用动作重放和飞书事件去重；电脑画面与终端的一次性 ticket 也在这里（scope `computer_ticket`，`key` 是 ticket 的 keyed hash，一分钟，用时删除）；OAuth 同意请求同理（scope `oauth_request`，十分钟，归第一个打开它的成员，做出决定时删除） |
+| `idempotency_keys` | 有副作用请求的幂等记录 | 主键 `(scope, key)`（scope 如成员 id 或 `feishu`）、`request_hash`、`status`（running / done）、`response`、`expires_at`；承接 `Idempotency-Key` 头、应用动作重放和飞书事件去重；电脑画面与终端的一次性 ticket 也在这里（scope `computer_ticket`，`key` 是 ticket 的 keyed hash，一分钟，用时删除）；OAuth 同意请求同理（scope `oauth_request`，十分钟，归第一个打开它的成员，做出决定时删除）；邮件服务商通知的 nonce 也在这里（scope `mail_notice`，处理成功后记下，Resend 两天、Mailgun 13 小时，同一个 nonce 不再处理） |
 | `extension_migrations` | 扩展迁移通道的记录 | 主键 `(extension_id, name)`、`checksum`、`applied_at` |
 
 v1 迁移工具的 ID 映射与检查点放在单独的 `migration` schema，不属于基线。
@@ -216,7 +219,7 @@ v1 迁移工具的 ID 映射与检查点放在单独的 `migration` schema，不
 2. 文档只存 Markdown，不存编辑器 JSON。M2.1 先验证编辑器对表格、提及、图片能无损往返，做不到再加 `content_json` 作缓存。
 3. 用一个通用 `jobs` 队列，取代 v1 各自实现的租约队列（`runtime_outbox`、`notification_delivery_attempts`、`table_automation_outbox`、`table_recompute_jobs`）；领域事实仍留在各自的表里。
 4. 前台回合也记一条 run（`kind=turn`，不进运行列表）。恢复、计量和「需要你」只有一条路径，代价是 `runs` 的行数随回复增长。
-5. 渠道（SMTP、飞书、企微、推送）存进 `providers`，capability 取 mail / im / push，见 [providers.md](providers.md#2-能力)。
+5. 邮箱服务与渠道（Resend、Mailgun、SMTP、飞书、企微、推送）存进 `providers`，capability 取 mail / im / push，见 [providers.md](providers.md#2-能力)。
 6. 个人访问令牌复用 `oauth_tokens`（`kind=personal`），挂在内置客户端 `personal` 的授权下，吊销与审计走同一条路；它只能调用 `/api/mcp`。
 7. 仪表盘并入 `base_views`（`type=dashboard`），卡片与应用共用一套 schema。
 8. 「项目」模板的里程碑放进任务表，用单选字段「类型」区分；依赖和父记录都在同一张表内，时间线只读一张表。

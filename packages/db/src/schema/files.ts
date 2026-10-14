@@ -12,6 +12,7 @@ export const FILE_PURPOSES = [
   'skill',
   'avatar',
   'branding',
+  'mail',
 ] as const;
 export type FilePurpose = (typeof FILE_PURPOSES)[number];
 

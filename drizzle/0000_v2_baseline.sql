@@ -538,6 +538,55 @@ CREATE TABLE "connectors" (
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
+CREATE TABLE "agent_mailboxes" (
+	"id" text PRIMARY KEY NOT NULL,
+	"agent_id" text NOT NULL,
+	"local_part" text NOT NULL,
+	"allow_members" boolean DEFAULT true NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "mail_messages" (
+	"id" text PRIMARY KEY NOT NULL,
+	"agent_id" text NOT NULL,
+	"owner_id" text NOT NULL,
+	"direction" text NOT NULL,
+	"status" text NOT NULL,
+	"screen_reason" text,
+	"provider_id" text,
+	"provider_message_id" text,
+	"message_id" text,
+	"in_reply_to" text,
+	"references" jsonb DEFAULT '[]'::jsonb NOT NULL,
+	"from_address" text NOT NULL,
+	"from_name" text,
+	"to" jsonb DEFAULT '[]'::jsonb NOT NULL,
+	"cc" jsonb DEFAULT '[]'::jsonb NOT NULL,
+	"reply_to" jsonb DEFAULT '[]'::jsonb NOT NULL,
+	"subject" text DEFAULT '' NOT NULL,
+	"text" text DEFAULT '' NOT NULL,
+	"html_file_id" text,
+	"attachments" jsonb DEFAULT '[]'::jsonb NOT NULL,
+	"auth" jsonb DEFAULT '{"spf":"unknown","dkim":"unknown","dmarc":"unknown"}'::jsonb NOT NULL,
+	"verified" boolean DEFAULT false NOT NULL,
+	"conversation_id" text,
+	"run_id" text,
+	"error" text,
+	"woke_at" timestamp with time zone,
+	"at" timestamp with time zone DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "mail_senders" (
+	"agent_id" text NOT NULL,
+	"address" text NOT NULL,
+	"added_by" text,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "mail_senders_agent_id_address_pk" PRIMARY KEY("agent_id","address")
+);
+--> statement-breakpoint
 CREATE TABLE "provider_bindings" (
 	"capability" text PRIMARY KEY NOT NULL,
 	"instance_ids" jsonb DEFAULT '[]'::jsonb NOT NULL,
@@ -982,6 +1031,9 @@ ALTER TABLE "skills" ADD CONSTRAINT "skills_owner_id_members_id_fk" FOREIGN KEY 
 ALTER TABLE "connections" ADD CONSTRAINT "connections_member_id_members_id_fk" FOREIGN KEY ("member_id") REFERENCES "public"."members"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "connections" ADD CONSTRAINT "connections_connector_id_connectors_id_fk" FOREIGN KEY ("connector_id") REFERENCES "public"."connectors"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "connectors" ADD CONSTRAINT "connectors_created_by_members_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."members"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "agent_mailboxes" ADD CONSTRAINT "agent_mailboxes_agent_id_agents_id_fk" FOREIGN KEY ("agent_id") REFERENCES "public"."agents"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "mail_messages" ADD CONSTRAINT "mail_messages_agent_id_agents_id_fk" FOREIGN KEY ("agent_id") REFERENCES "public"."agents"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "mail_senders" ADD CONSTRAINT "mail_senders_agent_id_agents_id_fk" FOREIGN KEY ("agent_id") REFERENCES "public"."agents"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "providers" ADD CONSTRAINT "providers_owner_id_members_id_fk" FOREIGN KEY ("owner_id") REFERENCES "public"."members"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "push_devices" ADD CONSTRAINT "push_devices_member_id_members_id_fk" FOREIGN KEY ("member_id") REFERENCES "public"."members"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "schedules" ADD CONSTRAINT "schedules_agent_id_agents_id_fk" FOREIGN KEY ("agent_id") REFERENCES "public"."agents"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
@@ -1069,10 +1121,16 @@ CREATE UNIQUE INDEX "skills_team_name_key" ON "skills" USING btree ("name") WHER
 CREATE UNIQUE INDEX "skills_personal_name_key" ON "skills" USING btree ("owner_id","name") WHERE "skills"."space" = 'personal';--> statement-breakpoint
 CREATE INDEX "skills_owner_idx" ON "skills" USING btree ("owner_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "connections_member_connector_key" ON "connections" USING btree ("member_id","connector_id") WHERE "connections"."kind" = 'connector';--> statement-breakpoint
+CREATE UNIQUE INDEX "connections_member_email_key" ON "connections" USING btree ("member_id") WHERE "connections"."kind" = 'email';--> statement-breakpoint
 CREATE UNIQUE INDEX "connections_external_key" ON "connections" USING btree ("kind","external_id") WHERE "connections"."kind" IN ('feishu', 'wecom');--> statement-breakpoint
 CREATE INDEX "connections_member_idx" ON "connections" USING btree ("member_id");--> statement-breakpoint
 CREATE INDEX "connections_connector_idx" ON "connections" USING btree ("connector_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "connectors_slug_key" ON "connectors" USING btree ("slug");--> statement-breakpoint
+CREATE UNIQUE INDEX "agent_mailboxes_agent_key" ON "agent_mailboxes" USING btree ("agent_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "agent_mailboxes_local_part_key" ON "agent_mailboxes" USING btree ("local_part");--> statement-breakpoint
+CREATE UNIQUE INDEX "mail_messages_received_key" ON "mail_messages" USING btree ("agent_id","provider_id","provider_message_id") WHERE "mail_messages"."direction" = 'in';--> statement-breakpoint
+CREATE INDEX "mail_messages_agent_idx" ON "mail_messages" USING btree ("agent_id","id");--> statement-breakpoint
+CREATE INDEX "mail_messages_agent_status_idx" ON "mail_messages" USING btree ("agent_id","status");--> statement-breakpoint
 CREATE INDEX "providers_capability_idx" ON "providers" USING btree ("capability");--> statement-breakpoint
 CREATE INDEX "providers_owner_idx" ON "providers" USING btree ("owner_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "notifications_dedupe_key" ON "notifications" USING btree ("member_id","dedupe_key");--> statement-breakpoint
