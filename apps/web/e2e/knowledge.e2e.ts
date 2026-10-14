@@ -161,6 +161,29 @@ test('discarding after Back goes back, and Back after that does not return to th
   await expect(page).toHaveURL(/#\/knowledge$/);
 });
 
+test('a refresh that fails keeps the draft on screen and says why', async ({ page, request }) => {
+  const notes = await doc(request, { title: 'Shared notes', content: 'First line.', space: 'team' });
+  await open(page, `/#/knowledge/${notes.id}?edit=1`);
+  await editorBody(page).click();
+  await page.keyboard.press('End');
+  await page.keyboard.type(' My draft.');
+  // From now on the doc can't be read here (a share taken away, say).
+  await page.route(`**/api/knowledge/docs/${notes.id}`, (route) =>
+    route.request().method() === 'GET'
+      ? route.fulfill({
+          status: 404,
+          contentType: 'application/json',
+          body: JSON.stringify({ error: { code: 'not_found', message: 'Doc not found.' } }),
+        })
+      : route.continue(),
+  );
+  // Mei saves: the page hears doc.updated and refreshes the doc, which fails.
+  await apiAs(request, 'mei', 'PATCH', `/api/knowledge/docs/${notes.id}`, { version: 1, content: 'Mei was here.' });
+  await expect(page.getByRole('status').filter({ hasText: '这篇文档现在打不开了' })).toBeVisible();
+  await expect(editorBody(page)).toContainText('My draft.');
+  await expect(page.getByRole('button', { name: '保存', exact: true })).toBeVisible();
+});
+
 test('a title-only save leaves the body exactly as it was written', async ({ page, request }) => {
   const written = '* one\n* two\n\nWritten by hand, with a [link][ref].\n\n[ref]: https://example.com';
   const notes = await doc(request, { title: 'As written', content: written, space: 'team' });
