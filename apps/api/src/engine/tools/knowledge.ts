@@ -6,7 +6,14 @@
  */
 
 import { z } from 'zod';
-import { CHANGE_NOTE_MAX, COMMENT_BODY_MAX, DOC_TITLE_MAX, docHref, type PathEntry } from '@greenhouse/contract';
+import {
+  CHANGE_NOTE_MAX,
+  COMMENT_BODY_MAX,
+  DOC_CONTENT_MAX,
+  DOC_TITLE_MAX,
+  docHref,
+  type PathEntry,
+} from '@greenhouse/contract';
 import { ApiError } from '../../http/errors.js';
 import type { As, KnowledgeService } from '../../modules/knowledge/service.js';
 import { diffText } from '../../modules/knowledge/diff.js';
@@ -279,9 +286,13 @@ export function knowledgeTools(knowledge: KnowledgeService) {
     const doc = await knowledge.getDoc(ctx.memberId, args.doc_id, { as: as(ctx), signed: false });
     if (args.action === 'edit') {
       if (doc.version !== args.version) throw new Error(staleMessage(doc.version, args.version));
-      if (args.edits) applyEdits(doc.content, args.edits);
-      else if (args.content === undefined && args.title === undefined)
-        throw new Error('Send content, edits or a title.');
+      const after = args.edits ? applyEdits(doc.content, args.edits) : args.content;
+      if (after === undefined && args.title === undefined) throw new Error('Send content, edits or a title.');
+      if (after !== undefined && after.length > DOC_CONTENT_MAX) {
+        throw new Error(
+          `The doc would be ${after.length} characters, over the limit of ${DOC_CONTENT_MAX}. Change less of it, or split it into more docs.`,
+        );
+      }
     }
     const inside =
       ctx.agent.ownerId === ctx.memberId && (await knowledge.inAgentFolder('doc', args.doc_id, ctx.agent.id));

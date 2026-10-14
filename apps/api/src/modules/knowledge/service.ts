@@ -6,6 +6,7 @@
  */
 
 import { and, asc, desc, eq, gt, ilike, inArray, isNull, lt, ne, or, sql, type SQL } from 'drizzle-orm';
+import { DOC_CONTENT_MAX } from '@greenhouse/contract';
 import type {
   CreateDocInput,
   CreateFolderInput,
@@ -127,6 +128,17 @@ const lockTree = (mode: 'move' | 'place') =>
       : sql`SELECT pg_advisory_xact_lock_shared(${TREE_LOCK})`,
   );
 const tooDeep = () => conflict('folder_too_deep', `Folders nest at most ${MAX_FOLDER_DEPTH} levels deep.`);
+
+/**
+ * A doc's Markdown as it will be stored, refused past the limit whoever writes it: the route's
+ * schema checks what a member sends, this also covers what an Agent's edits add up to.
+ */
+function withinLimit(content: string): string {
+  if (content.length > DOC_CONTENT_MAX) {
+    throw invalidInput(`A doc can be up to ${DOC_CONTENT_MAX.toLocaleString('en')} characters.`);
+  }
+  return content;
+}
 /** A folder shows at most this many items of each kind. */
 const MAX_CHILDREN = 1000;
 /**
@@ -743,7 +755,7 @@ export function createKnowledgeService(deps: {
   ): Promise<DocRow> {
     if (input.version !== doc.version) stale(doc);
     const title = input.title ?? doc.title;
-    const content = input.content === undefined ? doc.content : links.canonical(input.content);
+    const content = input.content === undefined ? doc.content : withinLimit(links.canonical(input.content));
     if (title === doc.title && content === doc.content) return doc;
     const [saved] = await getDb()
       .update(docs)
@@ -1117,7 +1129,7 @@ export function createKnowledgeService(deps: {
         template = found.doc;
       }
       const title = input.title ?? template!.title;
-      const content = links.canonical(input.content ?? template?.content ?? '');
+      const content = withinLimit(links.canonical(input.content ?? template?.content ?? ''));
       const tags = input.tags ?? template?.tags ?? [];
       const meta = input.meta ?? {};
       const { doc, place } = await transaction(async () => {

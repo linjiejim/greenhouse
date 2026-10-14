@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { strFromU8, unzipSync } from 'fflate';
 import { and, eq } from 'drizzle-orm';
 import { describe, expect, it, vi } from 'vitest';
-import type { RealtimeEvent } from '@greenhouse/contract';
+import { DOC_CONTENT_MAX, type RealtimeEvent } from '@greenhouse/contract';
 import {
   comments,
   docLinks,
@@ -303,6 +303,20 @@ describe('the depth of the tree', () => {
 });
 
 describe('docs, versions and templates', () => {
+  it('refuses a doc longer than the limit, however it is written', async () => {
+    const { app, lin } = await setup();
+    const tooLong = 'x'.repeat(DOC_CONTENT_MAX + 1);
+    // The service is what Agents call: it checks the length itself, not only the route's schema.
+    await expect(app.services.knowledge.createDoc(lin.id, { title: 'Big', content: tooLong })).rejects.toMatchObject({
+      code: 'invalid_input',
+    });
+    const doc = await app.services.knowledge.createDoc(lin.id, { title: 'Big', content: 'x' });
+    await expect(
+      app.services.knowledge.updateDoc(lin.id, doc.id, { version: 1, content: tooLong }),
+    ).rejects.toMatchObject({ code: 'invalid_input' });
+    expect((await app.services.knowledge.getDoc(lin.id, doc.id)).version).toBe(1);
+  });
+
   it('refuses a stale save and keeps every version', async () => {
     const { lin, chen, as } = await setup();
     const doc = (await as(lin).post('/api/knowledge/docs', { title: 'Plan', content: 'one\ntwo\n', space: 'team' }))

@@ -6,7 +6,7 @@
 
 import { and, eq } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
-import type { RealtimeEvent } from '@greenhouse/contract';
+import { DOC_CONTENT_MAX, type RealtimeEvent } from '@greenhouse/contract';
 import { docs, docVersions, folders, getDb, messages, requests, runSteps } from '@greenhouse/db';
 import { createTestApp } from '../../testing.js';
 import { scriptedModel, text, toolCall } from './model.js';
@@ -144,6 +144,30 @@ describe('knowledge tools in a turn', () => {
       .from(docVersions)
       .where(and(eq(docVersions.docId, plan.id), eq(docVersions.version, 2)));
     expect(version).toMatchObject({ agentId: main.agent_id, createdBy: lin.id, changeNote: 'New date' });
+  });
+
+  it('refuse an edit that would make a doc longer than the limit, before any card', async () => {
+    const { scripts, model, app, lin, main, send, reply } = await setup();
+    const big = await app.services.knowledge.createDoc(lin.id, {
+      title: 'Big',
+      content: `START\n${'b'.repeat(DOC_CONTENT_MAX - 100_000)}`,
+      space: 'team',
+    });
+    scripts.push(
+      toolCall('knowledge_mutation', {
+        action: 'edit',
+        doc_id: big.id,
+        version: 1,
+        edits: [{ find: 'START', replace: 'x'.repeat(150_000) }],
+      }),
+      text('That was too much.'),
+    );
+    const sent = await send(main.id, 'pad the doc');
+    expect((await reply(sent.run_id)).steps).toEqual([expect.objectContaining({ status: 'failed' })]);
+    // The Agent is told why; nobody is asked to approve an edit that cannot be saved.
+    expect(JSON.stringify(model.prompts.at(-1))).toContain('over the limit');
+    expect(await getDb().select().from(requests).where(eq(requests.runId, sent.run_id))).toEqual([]);
+    expect((await app.services.knowledge.getDoc(lin.id, big.id)).version).toBe(1);
   });
 
   it('keep the Agent’s private folder to the Agent and its owner, and write there without a card', async () => {
