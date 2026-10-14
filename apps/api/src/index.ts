@@ -4,20 +4,18 @@
  */
 
 import type { Server } from 'node:http';
-import { fileURLToPath } from 'node:url';
-import { config as loadDotenv } from 'dotenv';
 import { serve } from '@hono/node-server';
 import { applyMigrations, assertNotV1Database, createDbClient, setDb } from '@greenhouse/db';
 import { logger } from '@greenhouse/utils/logger';
 import { createApp, createServices } from './app.js';
-import { loadConfig } from './config/index.js';
+import { loadConfig, loadEnvironment } from './config/index.js';
 import { attachComputerSockets } from './realtime/computer.js';
 import { pgTransport } from './realtime/pg.js';
 import { attachRealtime } from './realtime/socket.js';
 import { ensureFirstAdmin } from './security/first-admin.js';
 
 // GREENHOUSE_ENV_FILE picks another file (or /dev/null for none, as the browser tests do).
-loadDotenv({ path: process.env.GREENHOUSE_ENV_FILE ?? fileURLToPath(new URL('../../../.env', import.meta.url)) });
+loadEnvironment();
 
 async function main() {
   const config = loadConfig();
@@ -28,49 +26,74 @@ async function main() {
 
   const services = createServices(config);
   await services.workspace.row();
-  await ensureFirstAdmin(config.BOOTSTRAP_ADMIN_EMAIL, services.auth);
-  // The official skills of skillhub/ become team skills; never fatal, skipped until an admin exists.
-  await services.skills.seedOfficial();
+  if (config.GREENHOUSE_ROLE !== 'worker') {
+    await ensureFirstAdmin(config.BOOTSTRAP_ADMIN_EMAIL, services.auth);
+    // Official skills seed after an admin exists.
+    await services.skills.seedOfficial();
+  }
   // NOTIFYs leave on a connection of their own, in order (realtime/pg.ts).
   const notifier = createDbClient(config.DATABASE_URL, { max: 1 });
   await services.hub.connect(pgTransport(client.sql, notifier.sql));
   services.engine.start();
-  services.schedules.start();
-  services.channels.start();
-  services.tables.worker.start();
-  services.computers.startWatching((conversationId, item) => services.engine.deliver(conversationId, item));
-  // Turns another process left behind (a restart, a crash) carry on here.
+  if (config.GREENHOUSE_ROLE !== 'api') {
+    services.schedules.start();
+    services.channels.start();
+    services.tables.worker.start();
+    services.computers.startWatching((conversationId, item) => services.engine.deliver(conversationId, item));
+  }
   await services.engine.sweep();
 
-  const app = createApp(services);
-  const server = serve({ fetch: app.fetch, port: config.PORT }, (info) =>
-    logger.info(`[api] Greenhouse v2 listening on http://localhost:${info.port}`),
-  );
-  const realtime = attachRealtime(server as Server, {
-    hub: services.hub,
-    tokens: services.tokens,
-    allowedOrigins: config.corsAllowedOrigins,
-  });
-  const computerSockets = attachComputerSockets(server as Server, {
-    computers: services.computers,
-    hub: services.hub,
-    allowedOrigins: config.corsAllowedOrigins,
-  });
+  let server: ReturnType<typeof serve> | undefined;
+  let realtime: ReturnType<typeof attachRealtime> | undefined;
+  let computerSockets: ReturnType<typeof attachComputerSockets> | undefined;
+  if (config.GREENHOUSE_ROLE !== 'worker') {
+    const app = createApp(services);
+    server = serve({ fetch: app.fetch, port: config.PORT }, (info) =>
+      logger.info(`[api] Greenhouse v2 (${config.GREENHOUSE_ROLE}) listening on http://localhost:${info.port}`),
+    );
+    realtime = attachRealtime(server as Server, {
+      hub: services.hub,
+      tokens: services.tokens,
+      allowedOrigins: config.corsAllowedOrigins,
+    });
+    computerSockets = attachComputerSockets(server as Server, {
+      computers: services.computers,
+      hub: services.hub,
+      allowedOrigins: config.corsAllowedOrigins,
+    });
+  } else logger.info('[worker] Greenhouse v2 background worker started');
 
-  const stop = async () => {
-    services.schedules.stop();
-    await services.channels.stop();
-    await services.tables.worker.stop();
-    services.computers.stopWatching();
-    await realtime.close();
-    await computerSockets.close();
-    server.close();
-    await services.engine.shutdown();
-    await services.hub.close();
-    await notifier.close();
-    await client.close();
-    process.exit(0);
-  };
+  let stopped: Promise<void> | undefined;
+  const stop = () =>
+    (stopped ??= (async () => {
+      // Stop admission before waiting on a socket, model or job. Keep reply sockets open while draining.
+      services.engine.drain();
+      services.schedules.stop();
+      services.computers.stopWatching();
+      server?.close();
+      let deadline: NodeJS.Timeout | undefined;
+      await Promise.all([
+        services.engine.shutdown(),
+        Promise.race([
+          Promise.all([services.channels.stop(), services.tables.worker.stop()]),
+          new Promise<void>((resolve) => {
+            deadline = setTimeout(resolve, 60_000);
+          }),
+        ]),
+      ]);
+      clearTimeout(deadline);
+      await Promise.all([services.channels.release(), services.tables.worker.release()]);
+      await realtime?.close();
+      await computerSockets?.close();
+      (server as Server | undefined)?.closeAllConnections();
+      await services.hub.close();
+      await notifier.close();
+      await client.close();
+      process.exit(0);
+    })().catch((error: unknown) => {
+      logger.error('[runtime] shutdown failed', error);
+      process.exit(1);
+    }));
   process.on('SIGINT', stop);
   process.on('SIGTERM', stop);
 }

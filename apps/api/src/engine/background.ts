@@ -122,6 +122,7 @@ export function createBackground(deps: {
   languageModel: ProvidersService['languageModel'];
   withConversation: <T>(key: string, work: () => Promise<T>) => Promise<T>;
   publish: (conversationId: string, event: RealtimeEvent) => Promise<void>;
+  enabled?: boolean;
 }) {
   const live = new Map<string, AbortController>();
   const inFlight = new Set<Promise<void>>();
@@ -649,7 +650,7 @@ export function createBackground(deps: {
         if (writer.waiting()) outcome.status = 'waiting';
       }
     } catch (error) {
-      if (stopping) {
+      if (stopping && controller.signal.aborted) {
         // This process is going away: the run goes back to the queue for another one.
         outcome = { status: 'queued', text: '' };
       } else if (controller.signal.aborted && !timedOut) {
@@ -762,9 +763,16 @@ export function createBackground(deps: {
   }
 
   async function tick(): Promise<void> {
-    while (!stopping && live.size < MAX_CONCURRENT_RUNS) {
+    while (deps.enabled !== false && !stopping && live.size < MAX_CONCURRENT_RUNS) {
       const run = await claim();
       if (!run) return;
+      if (stopping) {
+        await getDb()
+          .update(runs)
+          .set({ status: 'queued', leaseOwner: null, leaseExpiresAt: null })
+          .where(and(eq(runs.id, run.id), eq(runs.leaseOwner, deps.instance)));
+        return;
+      }
       track(execute(run).then(() => tick()));
     }
   }
@@ -972,6 +980,7 @@ export function createBackground(deps: {
           desiredState: 'run',
           errorCode: null,
           errorMessage: null,
+          checkpoint: sql`coalesce(${runs.checkpoint}, '{}'::jsonb) || '{"crashes":0}'::jsonb`,
           finishedAt: null,
           updatedAt: sql`now()`,
         })
@@ -997,13 +1006,23 @@ export function createBackground(deps: {
         );
       for (const run of expired) {
         if (live.has(run.id)) continue;
-        await abandonSteps(run.id, deps.tools());
-        const giveUp = run.attempt >= RUN_MAX_ATTEMPTS;
         const changed = await transaction(async (db) => {
+          const [locked] = await db
+            .select()
+            .from(runs)
+            .where(
+              and(eq(runs.id, run.id), eq(runs.status, 'running'), lt(runs.leaseExpiresAt, sql`clock_timestamp()`)),
+            )
+            .for('update');
+          if (!locked) return null;
+          await abandonSteps(run.id, deps.tools());
+          const crashes = Number(locked.checkpoint?.crashes ?? 0) + 1;
+          const giveUp = crashes >= RUN_MAX_ATTEMPTS;
           const [row] = await db
             .update(runs)
-            .set(
-              giveUp
+            .set({
+              checkpoint: sql`coalesce(${runs.checkpoint}, '{}'::jsonb) || ${JSON.stringify({ crashes })}::jsonb`,
+              ...(giveUp
                 ? {
                     status: 'failed',
                     errorCode: 'interrupted',
@@ -1011,8 +1030,8 @@ export function createBackground(deps: {
                     leaseOwner: null,
                     finishedAt: sql`now()`,
                   }
-                : { status: 'queued', leaseOwner: null, leaseExpiresAt: null },
-            )
+                : { status: 'queued', leaseOwner: null, leaseExpiresAt: null }),
+            })
             .where(
               and(eq(runs.id, run.id), eq(runs.status, 'running'), lt(runs.leaseExpiresAt, new Date().toISOString())),
             )
@@ -1023,11 +1042,11 @@ export function createBackground(deps: {
               dedupeKey: `run-report:${run.id}:${run.attempt}`,
               payload: { run_id: run.id, attempt: run.attempt },
             });
-          return row;
+          return row ? { row, giveUp } : null;
         });
         if (!changed) continue;
-        if (giveUp) await deps.computers?.releaseBackground(run.ownerId, run.agentId, run.id);
-        await event(run.id, giveUp ? 'failed' : 'requeued', { reason: 'interrupted' });
+        if (changed.giveUp) await deps.computers?.releaseBackground(run.ownerId, run.agentId, run.id);
+        await event(run.id, changed.giveUp ? 'failed' : 'requeued', { reason: 'interrupted' });
       }
       await tick();
     },
@@ -1042,11 +1061,19 @@ export function createBackground(deps: {
       while (inFlight.size) await Promise.all([...inFlight]);
     },
 
-    async shutdown(): Promise<void> {
+    drain(): void {
       stopping = true;
       if (ticker) clearInterval(ticker);
       ticker = null;
+    },
+
+    abort(): void {
+      background.drain();
       for (const controller of live.values()) controller.abort();
+    },
+
+    async shutdown(): Promise<void> {
+      background.abort();
       await background.idle();
     },
   };

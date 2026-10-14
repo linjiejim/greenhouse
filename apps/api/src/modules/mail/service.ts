@@ -1,3 +1,5 @@
+import { enqueueJob, type JobOutcome } from '../../jobs.js';
+import type { InboundNotice } from '@greenhouse/providers';
 /**
  * Mail (PRV-16, AGNT-30; providers.md §6 邮箱): system mail and every Agent's own mailbox through
  * the `mail` capability.
@@ -861,7 +863,7 @@ export function createMailService(deps: {
     async receive(
       instanceId: string,
       request: { headers: Headers; body: Uint8Array },
-    ): Promise<{ status: 'ok' | 'ignored' | 'duplicate'; delivered: number; screened: number }> {
+    ): Promise<{ status: 'queued' | 'ignored' | 'duplicate'; delivered: number; screened: number; job_id?: string }> {
       const current = await state();
       if (!current.order.some((instance) => instance.id === instanceId && instance.receives)) {
         throw notFound('Mail receiver');
@@ -889,6 +891,32 @@ export function createMailService(deps: {
         await rememberNotice(key, notice.nonceTtlSeconds);
         return { status: 'ignored', delivered: 0, screened: 0 };
       }
+      const job = await transaction(() =>
+        enqueueJob({
+          kind: 'mail_inbound',
+          dedupeKey: `mail-inbound:${key}`,
+          payload: { instance_id: instanceId, notice },
+        }),
+      );
+      return job
+        ? { status: 'queued', delivered: 0, screened: 0, job_id: job.id }
+        : { status: 'duplicate', delivered: 0, screened: 0 };
+    },
+
+    /** Only verified notices enter the durable queue. Fetch with the instance's current guarded client. */
+    async receiveNotice(instanceId: string, notice: InboundNotice): Promise<JobOutcome> {
+      const current = await state();
+      const receiver = (await deps.providers.byId('mail', instanceId, {}))?.client.receive;
+      if (
+        !current.order.some((instance) => instance.id === instanceId && instance.receives) ||
+        !receiver ||
+        !current.mailboxes ||
+        !current.domain
+      )
+        return { status: 'suppressed', result: { status: 'ignored', delivered: 0, screened: 0 } };
+      const key = hash(`${instanceId}\n${notice.nonce}`);
+      if (await noticeSeen(key))
+        return { status: 'succeeded', result: { status: 'duplicate', delivered: 0, screened: 0 } };
       let mail: InboundMail;
       try {
         mail = await receiver.fetch(notice);
@@ -923,7 +951,7 @@ export function createMailService(deps: {
       }
       if (!boxes.length) logger.info('[mail] a mail named no Agent mailbox', { instance: instanceId });
       await rememberNotice(key, notice.nonceTtlSeconds);
-      return { status: duplicate ? 'duplicate' : 'ok', delivered, screened };
+      return { status: 'succeeded', result: { status: duplicate ? 'duplicate' : 'ok', delivered, screened } };
     },
 
     // ─── the mail tool ──────────────────────────────────

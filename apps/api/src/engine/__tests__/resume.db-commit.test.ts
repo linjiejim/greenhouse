@@ -82,7 +82,7 @@ describe('a background run across processes', () => {
     // Process A looks alpha up, records the step, and is waiting on the model when it dies.
     for (let wait = 0; wait < 100 && model.calls() < 2; wait++) await new Promise((r) => setTimeout(r, 20));
     expect(model.calls()).toBe(2);
-    await a.engine.shutdown();
+    await a.engine.shutdown({ graceMs: 0 });
     await getDb()
       .update(runs)
       .set({ status: 'running', leaseOwner: 'api-dead', leaseExpiresAt: new Date(Date.now() - 60_000).toISOString() })

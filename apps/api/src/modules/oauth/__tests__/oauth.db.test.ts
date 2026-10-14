@@ -631,7 +631,8 @@ describe('admin clients', () => {
     const audited = await getDb()
       .select()
       .from(auditEvents)
-      .where(and(eq(auditEvents.actorId, admin.id), sql`${auditEvents.action} like 'oauth_client.%'`));
+      .where(and(eq(auditEvents.actorId, admin.id), sql`${auditEvents.action} like 'oauth_client.%'`))
+      .orderBy(auditEvents.id);
     expect(audited.map((event) => [event.action, event.summary])).toEqual([
       ['oauth_client.create', 'interactive'],
       ['oauth_client.update', 'name, status'],

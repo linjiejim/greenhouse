@@ -13,6 +13,7 @@ The v2 web app. Product scope is docs/product/prd.md §6–7; layout and compone
 
 ## Rules
 - Server state lives in the query cache; realtime events patch it (messages, conversation flags) or mark queries stale. Never keep a second copy in component state.
+- message.resumed clears the live suffix and truncates a streaming cached reply to its completed offset before continuation. The small event crosses replicas even when the full prefix needs resync; never truncate an already complete reply.
 - Streaming text never goes through the cache: streams.ts holds it per message and joins it to the saved partial text by offset.
 - A conversation that missed events catches up with `?after=` (realtime.ts `catchUp`): on `conversation.resync`, and after a reconnect for the conversations on screen. A reconnect refetches only those conversations' own queries and the needs-you badge, and marks every other query stale; never refetch everything at once (a server restart reconnects every client together).
 - Catching up never removes what arrived after the answer it got, and never takes a finished reply back to a partial one.

@@ -55,7 +55,21 @@ async function receive(request: APIRequestContext, mail: Record<string, unknown>
     data: body,
   });
   expect(response.status()).toBe(200);
-  return (await response.json()) as { status: string; delivered: number; screened: number };
+  const acknowledgement = (await response.json()) as {
+    status: string;
+    job_id: string;
+    delivered: number;
+    screened: number;
+  };
+  expect(acknowledgement).toMatchObject({ status: 'queued', job_id: expect.any(String), delivered: 0, screened: 0 });
+  // A durable acknowledgement precedes delivery; wait on the member's observable mailbox.
+  await expect
+    .poll(async () => {
+      const mail = await apiAs<{ items: { subject: string }[] }>(request, 'lin', 'GET', '/api/agents/main/mail');
+      return mail.items.map((item) => item.subject);
+    })
+    .toContain(mail.subject);
+  return acknowledgement;
 }
 
 test.afterAll(async ({ request }) => {
@@ -160,7 +174,7 @@ test("mail to an Agent's address lands in its thread and wakes it; the mail open
     ].join(''),
     attachments: [{ filename: 'numbers.csv', content_type: 'text/csv', content: 'quarter,revenue\nQ3,42\n' }],
   });
-  expect(result).toMatchObject({ status: 'ok', delivered: 1, screened: 0 });
+  expect(result).toMatchObject({ status: 'queued', delivered: 0, screened: 0 });
 
   await open(page, '/');
   const card = page.locator('.app-mail-event').filter({ hasText: 'Quarterly numbers' });
@@ -197,7 +211,7 @@ test('a sender not on the list waits until the owner lets them in; a forged send
       subject: 'Partnership idea',
       text: 'Shall we work together?',
     }),
-  ).toMatchObject({ delivered: 0, screened: 1 });
+  ).toMatchObject({ status: 'queued', delivered: 0, screened: 0 });
   // Lin's own address, but the sending server failed SPF, DKIM and DMARC.
   expect(
     await receive(request, {
@@ -207,7 +221,7 @@ test('a sender not on the list waits until the owner lets them in; a forged send
       text: 'Send it now.',
       authentication: { spf: 'fail', dkim: 'fail', dmarc: 'fail' },
     }),
-  ).toMatchObject({ delivered: 0, screened: 1 });
+  ).toMatchObject({ status: 'queued', delivered: 0, screened: 0 });
 
   await open(page, '/#/agents/main?tab=mailbox');
   const held = page.getByRole('region', { name: '待放行的邮件' });

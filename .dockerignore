@@ -36,3 +36,13 @@ logs
 *.log
 
 .DS_Store
+
+# Worktrees, test reports and local runtime state are never build inputs.
+.claude
+REPORT.md
+artifacts
+test-results
+**/test-results
+**/playwright-report
+*.tsbuildinfo
+data
