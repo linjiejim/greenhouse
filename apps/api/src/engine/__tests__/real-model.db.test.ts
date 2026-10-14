@@ -7,16 +7,16 @@
 import { createServer, type IncomingMessage, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { eq } from 'drizzle-orm';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { RealtimeEvent } from '@greenhouse/contract';
-import { agentMemories, getDb, messages, usageEvents } from '@greenhouse/db';
+import { agentMemories, getDb, messages, runSteps, usageEvents } from '@greenhouse/db';
 import { createTestApp } from '../../testing.js';
 
 interface ChatRequest {
   model: string;
   stream?: boolean;
   messages: Array<{ role: string; content: unknown; tool_call_id?: string }>;
-  tools?: Array<{ function: { name: string } }>;
+  tools?: Array<{ function: { name: string; parameters: Record<string, unknown> } }>;
 }
 
 const requests: ChatRequest[] = [];
@@ -38,6 +38,18 @@ beforeAll(async () => {
     void readBody(request).then((raw) => {
       const body = JSON.parse(raw) as ChatRequest;
       requests.push(body);
+      if (
+        body.tools?.some(
+          ({ function: fn }) =>
+            fn.parameters.type !== 'object' ||
+            !fn.parameters.properties ||
+            ['anyOf', 'oneOf', 'allOf'].some((key) => key in fn.parameters),
+        )
+      ) {
+        response.writeHead(400, { 'content-type': 'application/json' });
+        response.end(JSON.stringify({ error: { message: 'Tool parameters must be a root object.' } }));
+        return;
+      }
       if (request.headers.authorization !== 'Bearer sk-loopback') {
         response.writeHead(401, { 'content-type': 'application/json' });
         response.end(JSON.stringify({ error: { message: 'bad key' } }));
@@ -46,7 +58,8 @@ beforeAll(async () => {
       response.writeHead(200, { 'content-type': 'text/event-stream' });
       const last = body.messages[body.messages.length - 1]!;
       const asked = JSON.stringify(body.messages).includes('remember that I like tea');
-      if (asked && last.role !== 'tool') {
+      const invalid = JSON.stringify(body.messages).includes('invalid memory probe');
+      if ((asked || invalid) && last.role !== 'tool') {
         response.write(
           chunk({
             choices: [
@@ -61,7 +74,11 @@ beforeAll(async () => {
                       type: 'function',
                       function: {
                         name: 'memory',
-                        arguments: JSON.stringify({ action: 'remember', title: 'Likes tea', category: 'preference' }),
+                        arguments: JSON.stringify(
+                          invalid
+                            ? { action: 'remember', query: 'Tea' }
+                            : { action: 'remember', title: 'Likes tea', category: 'preference' },
+                        ),
                       },
                     },
                   ],
@@ -93,8 +110,32 @@ beforeAll(async () => {
 });
 
 afterAll(() => new Promise<void>((resolve) => server.close(() => resolve())));
+beforeEach(() => {
+  requests.length = 0;
+});
 
 describe('a real model over HTTP', () => {
+  it('rejects missing action-specific fields before recording or executing a tool', async () => {
+    const app = createTestApp({
+      LLM_PROVIDER: 'openai-compatible',
+      LLM_BASE_URL: baseUrl,
+      LLM_API_KEY: 'sk-loopback',
+      LLM_MODEL: 'fake-model',
+    });
+    const lin = await app.member();
+    const main = (await app.call('GET', '/api/conversations', { token: lin.token })).body.items[0];
+    const sent = await app.call('POST', `/api/conversations/${main.id}/messages`, {
+      token: lin.token,
+      body: { content: 'invalid memory probe' },
+    });
+    await app.services.engine.idle();
+    expect(requests).toHaveLength(2);
+    expect(requests[1]!.messages.at(-1)).toMatchObject({ role: 'tool', tool_call_id: 'call_tea' });
+    expect(JSON.stringify(requests[1]!.messages.at(-1))).toContain('title');
+    expect(await getDb().select().from(agentMemories).where(eq(agentMemories.memberId, lin.id))).toHaveLength(0);
+    const steps = await getDb().select().from(runSteps).where(eq(runSteps.runId, sent.body.run_id));
+    expect(steps.filter((step) => step.kind === 'tool')).toHaveLength(0);
+  });
   it('streams a reply, runs a tool call and records usage per call', async () => {
     const app = createTestApp({
       LLM_PROVIDER: 'openai-compatible',

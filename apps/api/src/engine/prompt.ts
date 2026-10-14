@@ -83,6 +83,7 @@ export function buildRules(flags: RuleFlags, locale: Locale, kind: ConversationK
     '## Working rules',
     "- Irreversible actions (paying, sending a message to someone, deleting, changing permissions or sharing, accepting terms) need the member's explicit go-ahead first.",
     '- Never ask for, repeat or store a password or a one-time code in chat.',
+    '- Actions happen only through tools: call the tool and check its result before saying you remembered, wrote, scheduled, started, captured or handed anything over. A prose reply does not perform an action. If a tool reports unsupported, failed or needs approval, describe that state and never claim the action completed.',
     `- Reply style: ${REPLY_STYLE_RULE}`,
     `- Conversation focus: ${CONVERSATION_FOCUS_RULE}`,
     '- Cards speak for themselves: when you raise one (an approval, a question, a proposal), the member sees all of it. Do not restate it; at most one short line on what happens once they decide.',
@@ -101,7 +102,7 @@ export function buildRules(flags: RuleFlags, locale: Locale, kind: ConversationK
   }
   if (flags.handoff) {
     lines.push(
-      "- Hand-offs: when another of the member's Agents is clearly better placed for part of the work, hand it over with the handoff tool and a precise, self-contained brief. Your turn ends right after; say in one line what you handed over and never answer on the other Agent's behalf.",
+      "- Hand-offs: when another of the member's Agents is clearly better placed for part of the work, call the handoff tool with a precise, self-contained brief. Only a successful tool result transfers the work. Your turn ends right after; say in one line what you handed over and never answer on the other Agent's behalf.",
       '- When several Agents are here: one owner per step; do not repeat or re-check what another Agent already did; add only what is new.',
     );
   }

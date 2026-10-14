@@ -243,6 +243,15 @@ Full package conventions live in [AGENTS.md](./AGENTS.md).
 
 ## Quick start (local development)
 
+On the v2 branch, `sh scripts/dev-real.sh` runs the web and API against real model/search
+services and local Docker computers. Set `REAL_ENV_FILE`, `REAL_DATABASE_URL`,
+`REAL_WEB_PORT` and `REAL_API_PORT` for your checkout; its database persists between runs.
+Tool inputs are normalized to root objects for strict providers such as DeepSeek and
+validated with their original Zod schemas before execution. A text-only model uses browser
+`read` / `snapshot`; it cannot view screenshots. Cached tokens appear under Settings → Account
+and Admin → Usage. Calls without configured model prices are shown as unpriced.
+
+
 Prerequisites: Node.js ≥ 22, pnpm ≥ 11, Docker (for PostgreSQL).
 
 ```bash

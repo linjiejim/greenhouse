@@ -200,6 +200,8 @@ v2 从零建表：只有一份基线迁移，不继承 v1 的迁移链，也不�
 | `budget_reservations` | 调用前的预留 | `budget_id`、`period_start`、`idempotency_key`（同一次调用涉及的各级预算共用）、`estimated`、`actual`、`status`（reserved / settled / released / expired）、`expires_at`、`member_id`、`run_id`；唯一 `(budget_id, idempotency_key)` |
 | `audit_events` | 唯一的审计表 | `actor_type`（member / agent / client / system）、`actor_id`、`on_behalf_of`（成员）、`agent_id`、`client_id`、`request_id`、`action`、`resource_type` + `resource_id`、`scope_type` + `scope_id`（如所在表格）、`result`（success / denied / error）、`summary`（不含内容和机密）、`ip`、`created_at` |
 
+#70：真实 DeepSeek 对话已验证 `input_tokens`、`output_tokens` 与 `cached_tokens` 按模型调用入账；缓存命中率由缓存 token ÷ 输入 token 汇总，不新增缓存计数表。模型目录没有单价时 `cost_micros` 为空，界面单列未定价调用。
+
 v1 的预算账本不再保留：每次花费都对应一条 `usage_events`；预留过期按估算计费时也写一条（`estimated=true`）。
 
 ## 11. 工作区设置与基础设施

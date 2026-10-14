@@ -254,6 +254,22 @@ createServer((request, response) => {
       return response.end(silence(3));
     }
     const body = raw ? JSON.parse(raw) : {};
+    const invalid = body.tools?.find(
+      ({ function: fn }) =>
+        fn.parameters?.type !== 'object' ||
+        !fn.parameters.properties ||
+        ['anyOf', 'oneOf', 'allOf'].some((key) => key in fn.parameters),
+    );
+    if (invalid) {
+      response.writeHead(400, { 'content-type': 'application/json' });
+      return response.end(
+        JSON.stringify({
+          error: {
+            message: `Invalid schema for function '${invalid.function.name}': parameters must be a root object.`,
+          },
+        }),
+      );
+    }
     if (process.env.FAKE_LLM_LOG) writeFileSync(process.env.FAKE_LLM_LOG, JSON.stringify(body, null, 2));
     if (body.stream) void stream(response, body);
     else complete(response, body);

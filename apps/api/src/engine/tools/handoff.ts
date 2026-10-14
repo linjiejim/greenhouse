@@ -9,7 +9,7 @@ export function handoffTool(handOff: Engine['handOff']) {
   return defineTool({
     name: 'handoff',
     description:
-      "Hand part of the work to another of the member's Agents (by name or id) with a precise, self-contained brief. It joins this conversation if it is not here, answers next where the member can see it, and your turn ends right away: say in one line what you handed over and never answer on its behalf.",
+      "Call this tool to hand part of the work to another of the member's Agents (by name or id) with a precise, self-contained brief. Saying you handed it over does not transfer anything. On success it joins this conversation if it is not here, answers next where the member can see it, and your turn ends right away: say in one line what you handed over and never answer on its behalf.",
     input: z.object({
       agent: z.string().min(1).max(80),
       brief: z.string().min(1).max(2000),
