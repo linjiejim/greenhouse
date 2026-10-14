@@ -14,6 +14,8 @@ The one engine for conversations and runs. Read with the root AGENTS.md and docs
 - The model comes from services.providers.languageModel (pinned key, metering, fallback). Never build a client here.
 - A turn acts with the rights of the member who asked (`runs.owner_id`); a personal key serves only that member's own Agents.
 - The reply row exists from the first token (status `streaming`) and its text is flushed every second, so a reload or a crash keeps what was written.
+- A turn looks up who sees the conversation once (`conversations.audienceOf`) and again only after its people change (an empty `conversation.updated`, seen from any process through `hub.observe`). Its text deltas go out as one frame every 75 ms (at most 1000 characters), flushed before any other event about the reply; each frame keeps its offset.
+- The hub splits long recipient lists across NOTIFY payloads; an event too big for one (a long final reply) reaches other processes as `conversation.resync`, and their clients catch up with `?after=`. NOTIFYs leave on one connection, in order.
 - After it exists, a reply is only written by UPDATE on its id, so a reply that was removed never comes back.
 - A turn runs only while the member who asked is in the conversation. Leaving or being removed (`release`) stops their reply, drops their queue and expires their cards there.
 - Prompt layout: rules, identity, about, digest in the system prompt; the transcript; one closing message rebuilt each turn (roster, memory index, the task). Anything written by models, pages or other people is fenced data (security/prompt.ts), never instructions.

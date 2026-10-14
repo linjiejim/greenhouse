@@ -47,6 +47,8 @@ import {
   type NewMessage,
 } from '@greenhouse/db';
 import { agentGreeting } from '@greenhouse/types/agent-templates';
+import { toErrorMessage } from '@greenhouse/utils/error';
+import { logger } from '@greenhouse/utils/logger';
 import { audit } from '../../audit.js';
 import { parseStoredDigest, renderDigest } from '../../engine/digest.js';
 import type { z } from 'zod';
@@ -746,6 +748,38 @@ export function createConversationsService(deps: {
     /** Tells everyone in the conversation (and anyone named in `also`, like a person who just left). */
     async publish(conversationId: string, event: RealtimeEvent, also: string[] = []): Promise<void> {
       deps.hub.publish([...(await service.audience(conversationId)), ...also], event);
+    },
+
+    /**
+     * A publisher for one conversation that looks its people up once and keeps them until they
+     * change (an empty `conversation.updated`, from any process): a turn sends a frame every
+     * 75 ms and must not query the members for each. Events leave in the order given. Close it
+     * when done.
+     */
+    audienceOf(conversationId: string) {
+      let people: Promise<string[]> | null = null;
+      let order: Promise<void> = Promise.resolve();
+      const stop = deps.hub.observe((event) => {
+        if (
+          event.type === 'conversation.updated' &&
+          event.data.conversation_id === conversationId &&
+          !Object.keys(event.data.changes).length
+        ) {
+          people = null;
+        }
+      });
+      return {
+        publish(event: RealtimeEvent): Promise<void> {
+          order = order
+            .then(async () => deps.hub.publish(await (people ??= service.audience(conversationId)), event))
+            .catch((error: unknown) => {
+              people = null;
+              logger.warn('[conversations] could not publish an event', { error: toErrorMessage(error) });
+            });
+          return order;
+        },
+        close: stop,
+      };
     },
 
     /** The people and Agents of a conversation. */

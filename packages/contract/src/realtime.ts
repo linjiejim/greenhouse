@@ -41,6 +41,14 @@ export const realtimeEventSchema = z.discriminatedUnion('type', [
     type: z.literal('message.deleted'),
     data: z.object({ conversation_id: z.string(), message_id: z.string() }),
   }),
+  /**
+   * Messages after `after_seq` changed and their event could not reach this socket (it was too
+   * big to pass between server processes): catch up with `GET …/messages?after=<after_seq>`.
+   */
+  z.object({
+    type: z.literal('conversation.resync'),
+    data: z.object({ conversation_id: z.string(), after_seq: z.number().int().min(0) }),
+  }),
   /** Fields that changed. Empty `changes`: its people or Agents changed, so refetch it. */
   z.object({
     type: z.literal('conversation.updated'),

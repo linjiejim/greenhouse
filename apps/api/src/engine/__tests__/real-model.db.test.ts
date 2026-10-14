@@ -139,6 +139,11 @@ describe('a real model over HTTP', () => {
       (event): event is Extract<RealtimeEvent, { type: 'message.delta' }> => event.type === 'message.delta',
     );
     expect(deltas.map((event) => event.data.text).join('')).toBe('Noted, Lin.');
-    expect(deltas.map((event) => event.data.offset)).toEqual([0, 5, 7]);
+    // Deltas go out as frames; each frame starts where the text before it ends.
+    let offset = 0;
+    for (const delta of deltas) {
+      expect(delta.data.offset).toBe(offset);
+      offset += delta.data.text.length;
+    }
   });
 });

@@ -1,5 +1,5 @@
 import { and, asc, eq } from 'drizzle-orm';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { RealtimeEvent } from '@greenhouse/contract';
 import {
   agentMemories,
@@ -37,6 +37,34 @@ describe('the engine', () => {
     expect(systemText(model.prompts[0])).not.toContain('### 指标卡（stats）');
     expect(systemText(model.prompts[1])).toContain('### 指标卡（stats）');
     expect(systemText(model.prompts[1])).not.toContain('### 图表（chart）');
+  });
+
+  it('looks up who sees the conversation a fixed number of times per turn, and sends a reply in frames', async () => {
+    const long = Array.from({ length: 400 }, (_, index) => `word${index} `).join('');
+    const { call, services, lin, main } = await setup([text('Hi.'), text(long)]);
+    const events: RealtimeEvent[] = [];
+    services.hub.subscribe(lin.id, (event) => events.push(event));
+    const audience = vi.spyOn(services.conversations, 'audience');
+    const say = async (content: string) => {
+      audience.mockClear();
+      await call('POST', `/api/conversations/${main.id}/messages`, { token: lin.token, body: { content } });
+      await services.engine.idle();
+      return audience.mock.calls.length;
+    };
+    const short = await say('one');
+    events.length = 0;
+    expect(await say('two')).toBe(short);
+    expect(short).toBeGreaterThan(0);
+    expect(short).toBeLessThanOrEqual(3);
+    // 400 deltas went out as a handful of frames that still join into the reply.
+    const deltas = events.filter(
+      (event): event is Extract<RealtimeEvent, { type: 'message.delta' }> => event.type === 'message.delta',
+    );
+    expect(deltas.length).toBeLessThan(20);
+    expect(deltas.map((delta) => delta.data.text).join('')).toBe(long);
+    expect(events.at(-1)!.type).toBe('conversation.updated');
+    const final = events.findIndex((event) => event.type === 'message.updated');
+    expect(events.slice(final).some((event) => event.type === 'message.delta')).toBe(false);
   });
 
   it('answers a message in the main thread and keeps the whole exchange', async () => {

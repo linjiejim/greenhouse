@@ -157,6 +157,9 @@ export interface EngineDeps {
   languageModel?: ProvidersService['languageModel'];
 }
 
+/** A reply's text goes out as one frame every FRAME_MS, at most FRAME_MAX_CHARS each. */
+const FRAME_MS = 75;
+const FRAME_MAX_CHARS = 1000;
 const MAX_INLINE_IMAGES = 4;
 const MAX_INLINE_IMAGE_BYTES = 5 * 1024 * 1024;
 const LEASE_MS = 60_000;
@@ -205,6 +208,35 @@ function zoneOf(timezone: string | null | undefined): string {
 }
 
 const localeOf = (value: string | null | undefined): Locale => (value === 'en' ? 'en' : 'zh');
+
+/**
+ * The text deltas of one reply, sent as one frame every FRAME_MS and before anything else about
+ * the reply (flush). Each frame keeps the offset of its first delta, so a client joins them as
+ * it joined single deltas.
+ */
+function deltaFrames(send: (text: string, offset: number) => void) {
+  let pending = '';
+  let start = 0;
+  let timer: NodeJS.Timeout | null = null;
+  const flush = () => {
+    if (timer) clearTimeout(timer);
+    timer = null;
+    while (pending) {
+      const text = pending.slice(0, FRAME_MAX_CHARS);
+      send(text, start);
+      start += text.length;
+      pending = pending.slice(text.length);
+    }
+  };
+  return {
+    push(text: string, offset: number) {
+      if (!pending) start = offset;
+      pending += text;
+      timer ??= setTimeout(flush, FRAME_MS);
+    },
+    flush,
+  };
+}
 
 function stepSummary(call: ToolCallRecord, defs: Map<string, ToolDef>, locale: Locale): string {
   const def = defs.get(call.tool);
@@ -668,6 +700,16 @@ export function createEngine(deps: EngineDeps) {
 
   /** One turn: build the prompt, stream the reply, persist it, then hand over to the next. */
   async function runTurn(run: Run): Promise<Run | null> {
+    // The conversation's people are looked up once for the turn, and again only when they change.
+    const audience = deps.conversations.audienceOf(run.conversationId!);
+    try {
+      return await answer(run, (event) => audience.publish(event));
+    } finally {
+      audience.close();
+    }
+  }
+
+  async function answer(run: Run, send: (event: RealtimeEvent) => Promise<void>): Promise<Run | null> {
     const controller = new AbortController();
     live.set(run.id, controller);
     const heartbeat = setInterval(() => {
@@ -694,6 +736,7 @@ export function createEngine(deps: EngineDeps) {
     const collector = createCollector();
     const sources = createSources();
     let defs = new Map<string, ToolDef>();
+    let frames: ReturnType<typeof deltaFrames> | null = null;
 
     try {
       if (!conversation || !member) throw new ApiError(410, 'gone', 'The conversation or its member no longer exists.');
@@ -714,7 +757,15 @@ export function createEngine(deps: EngineDeps) {
           status: 'streaming',
         }),
       );
-      await publish(conversation.id, { type: 'message.created', data: { message: toMessage(reply) } });
+      await send({ type: 'message.created', data: { message: toMessage(reply) } });
+      const replyId = reply.id;
+      frames = deltaFrames(
+        (text, offset) =>
+          void send({
+            type: 'message.delta',
+            data: { conversation_id: conversation.id, message_id: replyId, text, offset },
+          }),
+      );
       // Someone else's public Agent runs its published version, for the asker (engine/AGENTS.md).
       const loaded: TurnAgent = await deps.agents.loadForTurn(run.ownerId, run.agentId);
       const { agent, manifest } = loaded;
@@ -896,15 +947,7 @@ export function createEngine(deps: EngineDeps) {
         if (part.type === 'error' && part.error instanceof ApiError) refusal ??= part.error;
         const call = collect(part, collector);
         if (part.type === 'text-delta' && part.text) {
-          await publish(conversation.id, {
-            type: 'message.delta',
-            data: {
-              conversation_id: conversation.id,
-              message_id: reply.id,
-              text: part.text,
-              offset: collector.text.length - part.text.length,
-            },
-          });
+          frames.push(part.text, collector.text.length - part.text.length);
           if (Date.now() - flushedAt > FLUSH_MS && collector.text.length > flushedLength) {
             // Partial text survives a reload and a crash.
             flushedAt = Date.now();
@@ -913,7 +956,8 @@ export function createEngine(deps: EngineDeps) {
           }
         }
         if (call) {
-          await publish(conversation.id, {
+          frames.flush();
+          await send({
             type: 'message.step',
             data: {
               conversation_id: conversation.id,
@@ -952,6 +996,7 @@ export function createEngine(deps: EngineDeps) {
     } finally {
       clearInterval(heartbeat);
       live.delete(run.id);
+      frames?.flush();
     }
 
     // An edit or a regenerate removed the reply while it was still being written (its lease was
@@ -981,7 +1026,7 @@ export function createEngine(deps: EngineDeps) {
         })
         .where(eq(messages.id, reply.id))
         .returning();
-      if (saved) await publish(conversation.id, { type: 'message.updated', data: { message: toMessage(saved) } });
+      if (saved) await send({ type: 'message.updated', data: { message: toMessage(saved) } });
       else superseded = true;
       await deps.agents.touch(run.agentId);
     }
@@ -1006,12 +1051,12 @@ export function createEngine(deps: EngineDeps) {
     }
     const next = await finishAndTakeNext(run, outcome);
     if (conversation) {
-      await publish(conversation.id, {
+      await send({
         type: 'run.updated',
         data: { run_id: run.id, status: outcome.status, conversation_id: conversation.id },
       });
       if (!next && !(await activeTurn(getDb(), conversation.id))) {
-        await publish(conversation.id, {
+        await send({
           type: 'conversation.updated',
           data: { conversation_id: conversation.id, changes: { working: false } },
         });
@@ -1019,7 +1064,7 @@ export function createEngine(deps: EngineDeps) {
         track(digester.run(conversation.id));
       }
       if (conversation.kind === 'chat' && !conversation.title && outcome.status !== 'failed') {
-        await nameChat(conversation.id, run).catch((error: unknown) =>
+        await nameChat(conversation.id, run, send).catch((error: unknown) =>
           logger.warn('[engine] could not name a chat', { error: toErrorMessage(error) }),
         );
       }
@@ -1028,7 +1073,7 @@ export function createEngine(deps: EngineDeps) {
   }
 
   /** A new chat gets a short title from its first exchange, written by the fast model. */
-  async function nameChat(conversationId: string, run: Run) {
+  async function nameChat(conversationId: string, run: Run, send: (event: RealtimeEvent) => Promise<void>) {
     const rows = await getDb()
       .select({ role: messages.role, content: messages.content })
       .from(messages)
@@ -1067,10 +1112,7 @@ export function createEngine(deps: EngineDeps) {
       .where(and(eq(conversations.id, conversationId), eq(conversations.title, '')))
       .returning({ id: conversations.id });
     if (updated)
-      await publish(conversationId, {
-        type: 'conversation.updated',
-        data: { conversation_id: conversationId, changes: { title } },
-      });
+      await send({ type: 'conversation.updated', data: { conversation_id: conversationId, changes: { title } } });
   }
 
   /** Images sent with the messages this turn answers, for a model that can see them. */
