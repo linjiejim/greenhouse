@@ -51,6 +51,7 @@ Greenhouse is an open-source, self-hosted platform where a team works with its o
 - Check packages/utils/src/ before writing a helper. Server code logs through @greenhouse/utils/logger, never console.
 - Import other packages by name. Relative imports end in .js in Node-run code and omit it in Vite-bundled code.
 - Sync docs in the same change: README.md for humans, the nearest AGENTS.md for rules, features.md for status, data-model.md for the schema.
+- Background timers start from the worker's context, never from a request's open transaction.
 - Background work goes through the one `jobs` queue (apps/api/src/jobs.ts): enqueue in the transaction that causes it, claim with a lease, settle only as the lease holder.
 - Notifications leave the server only as the delivery jobs `notifications.publish` queues; modules/channels sends them through providers: email through the mail capability (its order, with fallback) and push. Feishu and WeCom keep their code but stay out of the UI until the IM channels. Without the member's previews they name no subject, and never carry the body of a needs-you card or a reply.
 - Mail (modules/mail): system mail and every Agent's mailbox go through the `mail` capability. A vendor's notice at the public `/api/mail/inbound/:instance` is verified first and is only a signal: the mail is fetched from the vendor with the instance's key. Received mail is untrusted input: stored once, its HTML and attachments as files, and it wakes an Agent only from a sender it may hear from whose From domain the receiving server verified.
