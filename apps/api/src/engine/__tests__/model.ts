@@ -38,6 +38,8 @@ export interface Script {
   parts: Part[];
   /** Holds the stream open until released (or aborted). */
   gate?: Promise<void>;
+  /** The call fails with this message, as a vendor error would. */
+  error?: string;
 }
 
 export function scriptedModel(scripts: Array<Part[] | Script>, options: { title?: string; summary?: string } = {}) {
@@ -80,6 +82,7 @@ export function scriptedModel(scripts: Array<Part[] | Script>, options: { title?
       prompts.push(call.prompt);
       record(call.tools);
       const script = next();
+      if (script.error) throw new Error(script.error);
       if (script.gate) {
         await Promise.race([
           script.gate,
@@ -119,6 +122,7 @@ export function scriptedModel(scripts: Array<Part[] | Script>, options: { title?
       prompts.push(call.prompt);
       record(call.tools);
       const script = next();
+      if (script.error) throw new Error(script.error);
       return {
         stream: new ReadableStream({
           async start(controller) {

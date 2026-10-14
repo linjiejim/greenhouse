@@ -10,6 +10,7 @@ export {
   withFinalAnswer,
   type LoopInput,
   type LoopRunResult,
+  type LoopStepEnd,
   type LoopSettings,
   type LoopStream,
   type PreparedLoop,

@@ -3,7 +3,7 @@
  * (kind `turn`) are runs too but never listed here. Cancel and retry go through the engine.
  */
 
-import { and, asc, desc, eq, inArray, lt } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, lt, ne } from 'drizzle-orm';
 import type { Page, RunDetail, RunView } from '@greenhouse/contract';
 import { getDb, runEvents, runs, runSteps, type Run, type RunSource } from '@greenhouse/db';
 import type { Background } from '../../engine/background.js';
@@ -68,10 +68,11 @@ export function createRunsService(deps: { background: () => Background }) {
       const row = await own(memberId, runId);
       const db = getDb();
       const [steps, events] = await Promise.all([
+        // The tool calls and cards; model steps are the run's context, not something it did.
         db
           .select()
           .from(runSteps)
-          .where(eq(runSteps.runId, runId))
+          .where(and(eq(runSteps.runId, runId), ne(runSteps.kind, 'model')))
           .orderBy(asc(runSteps.createdAt))
           .limit(MAX_DETAIL_ROWS),
         db

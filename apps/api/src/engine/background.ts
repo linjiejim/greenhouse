@@ -8,12 +8,13 @@
  * the brief the member approved and the Agent's own instructions: no history, no memories.
  *
  * Runs are claimed from the queue with FOR UPDATE SKIP LOCKED, hold a lease, and are requeued
- * when their process dies. A retry replays the brief; tool calls that already succeeded return
- * their recorded output instead of running again.
+ * when their process dies. Every step records what it added to the context (steps.ts); a retry
+ * continues from there with the brief, and a call that already succeeded returns its recorded
+ * output instead of running again.
  */
 
 import { runLoop } from '@greenhouse/agent-core';
-import { and, asc, eq, isNotNull, lt, sql } from 'drizzle-orm';
+import { and, asc, eq, lt, sql } from 'drizzle-orm';
 import type { RealtimeEvent } from '@greenhouse/contract';
 import {
   getDb,
@@ -21,7 +22,6 @@ import {
   newId,
   runEvents,
   runs,
-  runSteps,
   schedules,
   transaction,
   type Run,
@@ -38,6 +38,7 @@ import { effectiveModules } from '../modules/members/service.js';
 import type { NotificationsService } from '../modules/notifications/service.js';
 import { fence } from '../security/prompt.js';
 import { assembleSystem, buildIdentity, type Locale } from './prompt.js';
+import { finalAnswer, recordedSteps, recordModelStep } from './steps.js';
 import { abandonSteps, assembleTools } from './tools/assemble.js';
 import type { ToolDef } from './tools/define.js';
 
@@ -168,24 +169,6 @@ export function createBackground(deps: {
         .returning();
       return claimed ?? null;
     });
-  }
-
-  /** What earlier attempts already found, so a retry does not start from nothing. */
-  async function progressOf(run: Run): Promise<string | null> {
-    if (run.attempt <= 1) return null;
-    const done = await getDb()
-      .select({ tool: runSteps.toolName, input: runSteps.input, output: runSteps.output })
-      .from(runSteps)
-      .where(and(eq(runSteps.runId, run.id), eq(runSteps.status, 'succeeded'), isNotNull(runSteps.idempotencyKey)))
-      .orderBy(asc(runSteps.createdAt))
-      .limit(20);
-    if (!done.length) return null;
-    return done
-      .map(
-        (step) =>
-          `- ${step.tool} ${JSON.stringify(step.input).slice(0, 200)} → ${JSON.stringify(step.output).slice(0, 600)}`,
-      )
-      .join('\n');
   }
 
   async function report(
@@ -320,42 +303,41 @@ export function createBackground(deps: {
         raise: () => Promise.reject(new Error('Background runs cannot raise cards.')),
         approvalTitle: (summary) => summary,
       });
-      const progress = await progressOf(run);
-      const brief = [
-        `# ${fence(run.title, 200)}`,
-        '<brief note="Approved by the member.">',
-        fence(run.brief, 4000),
-        '</brief>',
-        ...(progress
-          ? [
-              '',
-              '<progress note="What an earlier attempt of this run already found. Do not repeat it.">',
-              fence(progress, 8000),
-              '</progress>',
-            ]
-          : []),
-      ].join('\n');
-      const result = await runLoop(
-        {
+      // A retry continues from the steps earlier attempts recorded, and never makes those calls again.
+      const steps = await recordedSteps(run.id);
+      const answered = finalAnswer(steps);
+      if (answered !== null) {
+        outcome = { status: 'succeeded', text: answered };
+      } else {
+        const brief = [
+          `# ${fence(run.title, 200)}`,
+          '<brief note="Approved by the member.">',
+          fence(run.brief, 4000),
+          '</brief>',
+        ].join('\n');
+        const result = await runLoop({
           model: { model: resolved.model, modelId: resolved.modelId, deepseek: resolved.deepseek },
           instructions: assembleSystem([
             backgroundRules(locale, { web: toolset.names.has('web_search') }),
             buildIdentity({ name: agent.name, role: agent.role, instructions: manifest.instructions }, member.name),
           ]),
           messages: [{ role: 'user', content: brief }],
+          resume: steps.flat(),
           tools: toolset.tools,
           maxSteps: RUN_MAX_STEPS,
           abortSignal: controller.signal,
           timeContext: { timezone: member.timezone },
           traceId: run.id,
-        },
-        {
-          onStepEnd: (info) => {
-            void record('step', info);
+          onStepEnd: async (step) => {
+            const index = steps.length + step.stepNumber;
+            await recordModelStep({ runId: run.id, attempt: run.attempt, index, step }).catch((error: unknown) =>
+              logger.warn('[runs] could not record a step', { run: run.id, error: toErrorMessage(error) }),
+            );
+            void record('step', { stepNumber: index, toolNames: step.toolNames });
           },
-        },
-      );
-      outcome = { status: 'succeeded', text: result.text };
+        });
+        outcome = { status: 'succeeded', text: result.text };
+      }
     } catch (error) {
       if (stopping) {
         // This process is going away: the run goes back to the queue for another one.

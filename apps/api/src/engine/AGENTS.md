@@ -51,7 +51,9 @@ The one engine for conversations and runs. Read with the root AGENTS.md and docs
 - Tools: read tools only. Once a tool marked `private` ran, tools marked `outbound` refuse: nobody is watching, and a URL or a query can carry data out.
 - Claiming uses FOR UPDATE SKIP LOCKED; at most 3 running per member and 4 per process; 20 minutes and 30 steps per attempt.
 - A run is created queued in the transaction of what causes it (`background.create`) and kicked after the commit; any process takes it from the queue. A schedule's firing claims the schedule, moves it to its next time after now and queues the run in one transaction, so firings missed while no process ran collapse into one run.
-- A run whose process died is requeued up to 3 attempts; a shutdown requeues without counting as a failure. A retry replays the brief, and a call with the same tool and arguments as a succeeded step returns the recorded output.
+- A run whose process died is requeued up to 3 attempts; a shutdown requeues without counting as a failure.
+- Every model step, as it ends, records what it added (the model's message, then the tool results) as a `run_steps` row of kind `model` (steps.ts, about 20k characters, long results cut first). Turns record them too, for resuming them later (M3.6); the run detail never lists them.
+- A retry continues from the recorded steps after the brief, never from scratch; a call with the same tool and arguments as a succeeded step returns the recorded output. A run whose last recorded step was its answer ends with it.
 - The timeline (`run_events`) is numbered per run and written in order. The end of a run is reported into its conversation (or the Agent's own thread) and notified.
 
 ## Rolling summary

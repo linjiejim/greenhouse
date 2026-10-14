@@ -7,7 +7,7 @@ import { jsonSchema, tool, type ModelMessage, type StopCondition, type ToolSet }
 import { MockLanguageModelV4 } from 'ai/test';
 import { describe, expect, it, vi } from 'vitest';
 import { collect, createCollector } from '../collect.js';
-import { prepareLoop, runLoop, streamLoop, withFinalAnswer, type LoopInput } from '../loop.js';
+import { prepareLoop, runLoop, streamLoop, withFinalAnswer, type LoopInput, type LoopStepEnd } from '../loop.js';
 
 type GenerateResult = Awaited<ReturnType<MockLanguageModelV4['doGenerate']>>;
 type StreamPart = { type: string; [key: string]: unknown };
@@ -124,17 +124,37 @@ describe('runLoop', () => {
     expect(calls[1]!.toolChoice).toEqual({ type: 'none' });
   });
 
-  it('reports each finished step with the tools it ran', async () => {
+  it('reports each finished step with the tools it ran, what it added and its usage', async () => {
     const { model } = scripted([
       step([{ type: 'tool-call', toolCallId: 'c1', toolName: 'lookup', input: '{"query":"a"}' }], 'tool-calls'),
       step([{ type: 'text', text: 'done' }], 'stop'),
     ]);
-    const steps: unknown[] = [];
-    await runLoop(input(model, { tools: lookupTool([]) }), { onStepEnd: (info) => steps.push(info) });
-    expect(steps).toEqual([
-      { stepNumber: 1, toolNames: ['lookup'] },
-      { stepNumber: 2, toolNames: [] },
+    const steps: LoopStepEnd[] = [];
+    await runLoop(input(model, { tools: lookupTool([]), onStepEnd: (info) => void steps.push(info) }));
+    expect(steps.map((info) => [info.stepNumber, info.toolNames])).toEqual([
+      [1, ['lookup']],
+      [2, []],
     ]);
+    expect(steps[0]!.messages.map((message) => message.role)).toEqual(['assistant', 'tool']);
+    expect(steps[1]!.messages).toEqual([expect.objectContaining({ role: 'assistant' })]);
+    expect(steps[0]!.usage).toEqual({ inputTokens: 100, outputTokens: 10, cachedInputTokens: 20 });
+  });
+
+  it('continues from the steps an earlier attempt recorded, as they were', async () => {
+    const first = scripted([
+      step([{ type: 'tool-call', toolCallId: 'c1', toolName: 'lookup', input: '{"query":"a"}' }], 'tool-calls'),
+      step([], 'stop'),
+    ]);
+    const recorded: ModelMessage[] = [];
+    await runLoop(
+      input(first.model, { tools: lookupTool([]), onStepEnd: (info) => void recorded.push(...info.messages) }),
+    );
+    const looked: string[] = [];
+    const second = scripted([step([{ type: 'text', text: 'Found it.' }], 'stop')]);
+    const result = await runLoop(input(second.model, { tools: lookupTool(looked), resume: recorded }));
+    expect(result.text).toBe('Found it.');
+    expect(looked).toEqual([]);
+    expect(second.calls[0]!.prompt.map((message) => message.role)).toEqual(['system', 'user', 'assistant', 'tool']);
   });
 
   it('DeepSeek: tools ran but no text came back, so the final-answer pass answers', async () => {

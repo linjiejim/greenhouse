@@ -30,7 +30,11 @@ async function setup(scripts: Parameters<typeof scriptedModel>[0]) {
     return sent.body;
   };
   const steps = (runId: string) =>
-    getDb().select().from(runSteps).where(eq(runSteps.runId, runId)).orderBy(asc(runSteps.createdAt));
+    getDb()
+      .select()
+      .from(runSteps)
+      .where(and(eq(runSteps.runId, runId), eq(runSteps.kind, 'tool')))
+      .orderBy(asc(runSteps.createdAt));
   const transcript = async (conversationId: string = main.id) =>
     (
       await getDb()

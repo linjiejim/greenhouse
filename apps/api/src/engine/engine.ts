@@ -82,6 +82,7 @@ import { createDigester, parseStoredDigest, renderDigest } from './digest.js';
 import { closeTranscript, projectHistory, withShownImages } from './history.js';
 import { createKeyedLock } from './locks.js';
 import { createSources } from './sources.js';
+import { recordModelStep } from './steps.js';
 import {
   assembleSystem,
   buildAbout,
@@ -879,6 +880,12 @@ export function createEngine(deps: EngineDeps) {
         prepareStepMessages: ({ messages: stepMessages }) => withShownImages(stepMessages, shown.splice(0)),
         timeContext: { timezone: member.timezone },
         traceId: run.id,
+        // What each step added, so the turn can be resumed from its last finished step.
+        onStepEnd: (step) =>
+          recordModelStep({ runId: run.id, attempt: run.attempt || 1, index: step.stepNumber, step }).catch(
+            (error: unknown) =>
+              logger.warn('[engine] could not record a step', { run: run.id, error: toErrorMessage(error) }),
+          ),
       };
 
       const { result } = streamLoop(loopInput);

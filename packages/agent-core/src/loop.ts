@@ -7,7 +7,7 @@
  */
 
 import { generateText, isStepCount, NoSuchToolError, streamText } from 'ai';
-import type { ModelMessage, StopCondition, ToolCallRepairFunction, ToolSet } from 'ai';
+import type { ModelMessage, StepResult, StopCondition, ToolCallRepairFunction, ToolSet } from 'ai';
 import { logger } from '@greenhouse/utils/logger';
 import type { DsmlRecoveryEvent } from './dsml-interceptor.js';
 import { finalAnswerParts, type FinalAnswerStreamFactory } from './final-answer.js';
@@ -15,11 +15,25 @@ import { repairJsonArguments } from './repair-tool-json.js';
 import { DEFAULT_MAX_STEPS, guardedModel, LOOP_TIMEOUT, providerOptionsFor, type LoopModel } from './settings.js';
 import { applyTimeContext, type EngineMessage, type TimeContextOption } from './time-context.js';
 
+/** One finished step, for the host to record before the next step starts. */
+export interface LoopStepEnd {
+  /** 1 for the first step of this call. */
+  stepNumber: number;
+  toolNames: string[];
+  /** What the step added: the model's message (text, reasoning, tool calls), then the tool results. */
+  messages: ModelMessage[];
+  usage: { inputTokens?: number; outputTokens?: number; cachedInputTokens?: number };
+}
+
 export interface LoopInput {
   model: LoopModel;
   instructions: string;
   /** Plain strings, except user messages that carry image parts for a vision model. */
   messages: EngineMessage[];
+  /** The messages of steps an earlier attempt already took (as recorded), continued from as they were. */
+  resume?: ModelMessage[];
+  /** Called as each step ends, before the next one starts; the step is the unit a retry resumes from. */
+  onStepEnd?: (step: LoopStepEnd) => void | Promise<void>;
   tools?: ToolSet;
   /** Default DEFAULT_MAX_STEPS; the last step is always text only. */
   maxSteps?: number;
@@ -54,6 +68,7 @@ export interface LoopSettings {
   providerOptions?: GenerateParams['providerOptions'];
   maxOutputTokens?: number;
   abortSignal?: AbortSignal;
+  onStepEnd?: GenerateParams['onStepEnd'];
 }
 
 export interface PreparedLoop {
@@ -76,7 +91,7 @@ export function prepareLoop(input: LoopInput): PreparedLoop {
       });
     }),
     instructions: input.instructions,
-    messages: applyTimeContext(input.messages, input.timeContext),
+    messages: [...applyTimeContext(input.messages, input.timeContext), ...(input.resume ?? [])],
     tools: input.tools ?? {},
     repairToolCall: repairToolCall(input.traceId),
     stopWhen: input.stopWhen?.length ? [isStepCount(maxSteps), ...input.stopWhen] : isStepCount(maxSteps),
@@ -91,8 +106,22 @@ export function prepareLoop(input: LoopInput): PreparedLoop {
     ...(providerOptions ? { providerOptions: providerOptions as GenerateParams['providerOptions'] } : {}),
     ...(input.maxOutputTokens !== undefined ? { maxOutputTokens: input.maxOutputTokens } : {}),
     ...(input.abortSignal ? { abortSignal: input.abortSignal } : {}),
+    ...(input.onStepEnd ? { onStepEnd: (step: StepResult<ToolSet>) => input.onStepEnd!(stepEnd(step)) } : {}),
   };
   return { settings, maxSteps, dsmlRecoveries };
+}
+
+function stepEnd(step: StepResult<ToolSet>): LoopStepEnd {
+  return {
+    stepNumber: step.stepNumber + 1,
+    toolNames: step.toolCalls.map((call) => call.toolName),
+    messages: step.response.messages,
+    usage: {
+      inputTokens: step.usage.inputTokens,
+      outputTokens: step.usage.outputTokens,
+      cachedInputTokens: step.usage.inputTokenDetails?.cacheReadTokens,
+    },
+  };
 }
 
 /**
@@ -135,7 +164,7 @@ export async function* withFinalAnswer(
     return;
   }
   let sawText = false;
-  let toolRan = false;
+  let toolRan = (input.resume ?? []).some((message) => message.role === 'tool');
   let aborted = false;
   let finish: unknown = null;
   for await (const part of result.stream as AsyncIterable<any>) {
@@ -149,7 +178,10 @@ export async function* withFinalAnswer(
     yield part;
   }
   if (!sawText && toolRan && !aborted) {
-    const gatheredMessages = (await Promise.resolve(result.responseMessages).catch(() => null)) ?? [];
+    const gatheredMessages = [
+      ...(input.resume ?? []),
+      ...((await Promise.resolve(result.responseMessages).catch(() => null)) ?? []),
+    ];
     yield* finalAnswerParts(
       {
         model: input.model,
@@ -182,36 +214,18 @@ export interface LoopRunResult {
  */
 export async function runLoop(
   input: LoopInput,
-  options: {
-    onStepEnd?: (info: { stepNumber: number; toolNames: string[] }) => void;
-    finalAnswerStream?: FinalAnswerStreamFactory;
-  } = {},
+  options: { finalAnswerStream?: FinalAnswerStreamFactory } = {},
 ): Promise<LoopRunResult> {
   const prepared = prepareLoop(input);
   // chunkMs and firstChunkMs bound a stream; generateText warns about them on every step.
   const { totalMs, stepMs } = LOOP_TIMEOUT;
-  let stepNumber = 0;
-  const result = await generateText({
-    ...prepared.settings,
-    timeout: { totalMs, stepMs },
-    ...(options.onStepEnd
-      ? {
-          onStepEnd: (step: { toolCalls?: Array<{ toolName: string }> }) => {
-            stepNumber += 1;
-            try {
-              options.onStepEnd!({ stepNumber, toolNames: (step.toolCalls ?? []).map((call) => call.toolName) });
-            } catch (error) {
-              // Progress is cosmetic; it must never break the turn.
-              logger.warn('[agent-loop] onStepEnd threw', { error: String(error) });
-            }
-          },
-        }
-      : {}),
-  });
+  const result = await generateText({ ...prepared.settings, timeout: { totalMs, stepMs } });
 
   let text = result.text ?? '';
   let finalAnswerRecovered = false;
-  const toolRan = result.steps.some((step) => (step.toolResults?.length ?? 0) > 0);
+  const toolRan =
+    result.steps.some((step) => (step.toolResults?.length ?? 0) > 0) ||
+    (input.resume ?? []).some((message) => message.role === 'tool');
   // generateText throws on abort, so an empty answer here means the loop ended on its own.
   if (!text.trim() && toolRan && input.model.deepseek) {
     for await (const part of finalAnswerParts(
@@ -219,7 +233,7 @@ export async function runLoop(
         model: input.model,
         instructions: input.instructions,
         baseMessages: input.messages,
-        gatheredMessages: result.responseMessages,
+        gatheredMessages: [...(input.resume ?? []), ...result.responseMessages],
         ...(input.timeContext !== undefined ? { timeContext: input.timeContext } : {}),
       },
       options.finalAnswerStream,

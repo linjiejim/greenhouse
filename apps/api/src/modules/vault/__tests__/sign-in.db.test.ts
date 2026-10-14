@@ -6,7 +6,7 @@
  * back after signing in by hand settles it too.
  */
 
-import { asc, eq } from 'drizzle-orm';
+import { and, asc, eq } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   agentComputers,
@@ -95,9 +95,13 @@ async function setup() {
       })
     ).body as { id: string };
   const stepOutputs = async (runId: string) =>
-    (await getDb().select().from(runSteps).where(eq(runSteps.runId, runId)).orderBy(asc(runSteps.startedAt))).map(
-      (row) => row.output as any,
-    );
+    (
+      await getDb()
+        .select()
+        .from(runSteps)
+        .where(and(eq(runSteps.runId, runId), eq(runSteps.kind, 'tool')))
+        .orderBy(asc(runSteps.startedAt))
+    ).map((row) => row.output as any);
   const log = async () =>
     (await getDb().select().from(vaultAccessLog).where(eq(vaultAccessLog.memberId, lin.id))).map((row) => [
       row.outcome,
