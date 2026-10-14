@@ -38,7 +38,7 @@ import { effectiveModules } from '../modules/members/service.js';
 import type { NotificationsService } from '../modules/notifications/service.js';
 import { fence } from '../security/prompt.js';
 import { assembleSystem, buildIdentity, type Locale } from './prompt.js';
-import { assembleTools } from './tools/assemble.js';
+import { abandonSteps, assembleTools } from './tools/assemble.js';
 import type { ToolDef } from './tools/define.js';
 
 export const MAX_CONCURRENT_RUNS = 4;
@@ -380,6 +380,8 @@ export function createBackground(deps: {
     }
 
     if (outcome.status === 'queued') {
+      // A call the shutdown cut short may have had its effect.
+      await abandonSteps(run.id, deps.tools());
       await getDb()
         .update(runs)
         .set({ status: 'queued', leaseOwner: null, leaseExpiresAt: null, updatedAt: sql`now()` })
@@ -499,6 +501,7 @@ export function createBackground(deps: {
         );
       for (const run of expired) {
         if (live.has(run.id)) continue;
+        await abandonSteps(run.id, deps.tools());
         const giveUp = run.attempt >= RUN_MAX_ATTEMPTS;
         await getDb()
           .update(runs)

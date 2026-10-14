@@ -239,6 +239,7 @@ export const zh = {
   'status.running': '运行中',
   'status.queued': '排队中',
   'status.failed': '失败',
+  'status.uncertain': '结果未知',
   'request.approve': '批准',
   'request.reject': '拒绝',
   'request.answer': '提交回答',

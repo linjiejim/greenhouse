@@ -9,6 +9,7 @@ export function scheduleTools(schedules: SchedulesService) {
     description: 'List your schedules: what you run on a timer, when, and how the last run went.',
     input: z.object({}),
     risk: 'read',
+    idempotent: true,
     surfaces: ['turn'],
     async execute(_args, ctx) {
       const items = await schedules.list(ctx.memberId, ctx.agent.id);

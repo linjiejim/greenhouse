@@ -75,6 +75,8 @@ export function skillQueryTool(skills: SkillsService) {
     description: "Find and read skills from the member's library.",
     input,
     risk: 'read',
+    // Reads; `install` copies the same files again.
+    idempotent: true,
     // Team skills are other people's text.
     taints: true,
     publicAgent: true,

@@ -22,11 +22,17 @@ export const runSchema = z.object({
 });
 export type RunView = z.infer<typeof runSchema>;
 
+/**
+ * `pending`: waits for the member's approval. `uncertain`: it was running when its process died
+ * and it has effects outside, so whether it took effect is unknown; it is never run again by itself.
+ */
+export const RUN_STEP_STATUSES = ['pending', 'running', 'succeeded', 'failed', 'skipped', 'uncertain'] as const;
+
 export const runStepSchema = z.object({
   id: z.string(),
   tool: z.string().nullable(),
   kind: z.string(),
-  status: z.string(),
+  status: z.enum(RUN_STEP_STATUSES),
   attempt: z.number().int(),
   input: z.unknown(),
   output: z.unknown(),

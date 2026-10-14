@@ -94,7 +94,7 @@ import {
   type Locale,
   type TurnReason,
 } from './prompt.js';
-import { assembleTools } from './tools/assemble.js';
+import { abandonSteps, assembleTools } from './tools/assemble.js';
 import type { DecisionOutcome, ToolContext, ToolDef } from './tools/define.js';
 
 type SendInput = z.output<typeof sendMessageInputSchema>;
@@ -1821,6 +1821,7 @@ export function createEngine(deps: EngineDeps) {
         );
       for (const run of expired) {
         if (live.has(run.id)) continue;
+        await abandonSteps(run.id, toolDefs());
         const [streaming] = await getDb()
           .update(messages)
           .set({ status: 'failed' })

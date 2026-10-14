@@ -17,12 +17,13 @@ export function Badge({ children, tone = 'neutral' }: { children: ReactNode; ton
 
 /**
  * Colors of the status vocabulary (docs/design-system/content.md, 状态词): yellow only for what
- * needs you, red only for failure. Every other word — 已过期, 已取消, 已拒绝, 未配置 — is neutral.
+ * needs you (to decide, take over or check), red only for failure. Every other word — 已过期,
+ * 已取消, 已拒绝, 未配置 — is neutral.
  */
 const TONE_OF_WORD: Record<string, Tone> = Object.fromEntries(
   (
     [
-      ['warning', ['需要你', '等你接管']],
+      ['warning', ['需要你', '等你接管', '结果未知']],
       ['danger', ['失败', '不可用', '部分不可用', '保存失败']],
       ['info', ['排队中', '排队', '运行中', '进行中', '启动中', '生成中', '保存中']],
       ['success', ['已完成', '已连接', '已批准', '可用', '已发布', '已保存']],

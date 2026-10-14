@@ -13,6 +13,7 @@ export function readAttachmentTool(files: FilesService) {
       'Read the text of a file attached in this conversation (its id appears with the message, like fil_…). Works for text, Markdown, CSV, JSON and PDF.',
     input: z.object({ file_id: z.string().min(1).max(64) }),
     risk: 'read',
+    idempotent: true,
     private: true,
     surfaces: ['turn'],
     publicAgent: true,

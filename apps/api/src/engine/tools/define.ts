@@ -114,6 +114,11 @@ export interface ToolDef<I = any> {
   describe?(input: I, ctx: ToolContext): ApprovalCard | Promise<ApprovalCard>;
   /** Reading its result brings outside text into the turn. */
   taints?: boolean;
+  /**
+   * The same call twice does what it does once: a pure read. A call of any other tool that an
+   * earlier attempt left unfinished is not made again by itself: its outcome is unknown.
+   */
+  idempotent?: boolean;
   /** Reads the member's own data (conversations, documents, memories). */
   private?: boolean;
   /** Sends something out of Greenhouse (a search query, a URL). Unwatched runs stop using it after a private read. */

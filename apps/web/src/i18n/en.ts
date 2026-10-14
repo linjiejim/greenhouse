@@ -241,6 +241,7 @@ export const en: Record<MessageKey, string> = {
   'status.running': 'Running',
   'status.queued': 'Queued',
   'status.failed': 'Failed',
+  'status.uncertain': 'Outcome unknown',
   'request.approve': 'Approve',
   'request.reject': 'Reject',
   'request.answer': 'Send answer',
