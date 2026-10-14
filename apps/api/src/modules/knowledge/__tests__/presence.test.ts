@@ -22,8 +22,8 @@ describe('presence', () => {
     const next = presence.beat('doc_1', { id: 'mbr_b', name: 'Bo' }, 'editing');
     expect(next).toMatchObject({ changed: true, items: [expect.objectContaining({ member_id: 'mbr_b' })] });
 
-    expect(presence.leave('doc_1', 'mbr_b')).toEqual({ items: [], changed: true });
-    expect(presence.leave('doc_1', 'mbr_b').changed).toBe(false);
+    expect(presence.leave('doc_1', 'mbr_b')).toEqual({ items: [], changed: true, left: true });
+    expect(presence.leave('doc_1', 'mbr_b')).toMatchObject({ changed: false, left: false });
     expect(presence.list('doc_2')).toEqual([]);
   });
 });

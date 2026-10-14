@@ -29,7 +29,7 @@ const RUNS =
 const WORDS = /[\p{L}\p{N}]+/gu;
 const NOT_WORD = /[^\p{L}\p{N}]/gu;
 /** Text beyond this is not indexed: it bounds the work per save and the size of the vector. */
-const MAX_INDEXED_CHARS = 100_000;
+export const MAX_INDEXED_CHARS = 100_000;
 
 /**
  * The words of a text, lower-cased. `index` adds the shorter words jieba finds inside long

@@ -1,7 +1,8 @@
+import { eq } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import { getDb, transaction, type Db } from '../client.js';
 import { newId } from '../ids.js';
-import { agents, conversations, members, shares } from '../schema/index.js';
+import { agents, conversations, docs, folders, members, shares } from '../schema/index.js';
 
 async function member(db: Db = getDb()) {
   const [row] = await db
@@ -51,6 +52,25 @@ describe('v2 baseline constraints', () => {
       .insert(shares)
       .values({ id: newId('share'), ...grant });
     await expect(transaction((db) => db.insert(shares).values({ id: newId('share'), ...grant }))).rejects.toThrow();
+  });
+
+  it('keeps an Agent while its private folder exists, and lets its owner take both', async () => {
+    const owner = await member();
+    const main = await agent(owner.id, 'Greeny', true);
+    const [folder] = await getDb()
+      .insert(folders)
+      .values({ id: newId('folder'), space: 'personal', ownerId: owner.id, agentId: main.id, name: 'Greeny' })
+      .returning();
+    const [doc] = await getDb()
+      .insert(docs)
+      .values({ id: newId('doc'), folderId: folder!.id, space: 'personal', ownerId: owner.id, title: 'Notes' })
+      .returning();
+    // Deleting the Agent alone would drop the folder and leave its docs at the owner's root.
+    await expect(transaction((db) => db.delete(agents).where(eq(agents.id, main.id)))).rejects.toThrow();
+    expect(await getDb().select().from(docs).where(eq(docs.folderId, folder!.id))).toHaveLength(1);
+    await getDb().delete(members).where(eq(members.id, owner.id));
+    expect(await getDb().select().from(folders).where(eq(folders.id, folder!.id))).toEqual([]);
+    expect(await getDb().select().from(docs).where(eq(docs.id, doc!.id))).toEqual([]);
   });
 
   it('defaults new members to invited members with empty modules', async () => {

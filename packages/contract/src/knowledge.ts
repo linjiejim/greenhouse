@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { AUDIENCE_TYPES } from './agents.js';
-import { isoTime } from './common.js';
+import { isoTime, pageSchema } from './common.js';
 
 /**
  * The knowledge base (KNOW-01 to KNOW-16): one tree per space with folders, docs and files.
@@ -79,14 +79,27 @@ export const knowledgeItemSchema = z.object({
 export type KnowledgeItem = z.infer<typeof knowledgeItemSchema>;
 
 export const knowledgeItemsSchema = z.object({ items: z.array(knowledgeItemSchema) });
+/**
+ * A page of tree rows, in tree order: hand-ordered items first, then folders, then docs and
+ * files by name (as the database orders names), the id breaking ties. `next_cursor` continues.
+ */
+export const knowledgeItemPageSchema = pageSchema(knowledgeItemSchema);
+
+/** A page of a folder's contents, a space root or what was archived: 200 rows by default, at most 1000. */
+export const treePageQuerySchema = z.object({
+  cursor: z.string().optional(),
+  limit: z.coerce.number().int().min(1).max(1000).default(200),
+});
 
 export const knowledgeFolderSchema = knowledgeItemSchema.extend({
   path: z.array(pathEntrySchema),
   /**
-   * What is in it, in tree order: hand-ordered items first, then folders, then docs and files by
-   * name (at most 1000). An archived folder shows what was archived with it.
+   * The first page of what is in it (or the page `cursor` asked for), in tree order. An archived
+   * folder shows what was archived with it.
    */
   children: z.array(knowledgeItemSchema),
+  /** More children: ask for the folder again with this cursor. */
+  next_cursor: z.string().nullable(),
   created_by: memberRefSchema.nullable(),
   created_at: isoTime,
 });
@@ -103,7 +116,10 @@ export type DocMeta = z.infer<typeof docMetaSchema>;
 export const knowledgeDocSchema = z.object({
   id: z.string(),
   title: z.string(),
-  /** Markdown, the source of truth. File links are signed for the reader; saves may send them back as they are. */
+  /**
+   * Markdown, the source of truth. Links and pictures of this server's files (`[a](/api/files/<id>/content)`)
+   * are signed for the reader; saves may send them back as they are.
+   */
   content: z.string(),
   space: z.enum(KNOWLEDGE_SPACES),
   folder_id: z.string().nullable(),
@@ -132,8 +148,10 @@ export type KnowledgeDoc = z.infer<typeof knowledgeDocSchema>;
 const idField = z.string().min(1).max(64);
 const tagsField = z.array(z.string().trim().min(1).max(40)).max(20);
 
-export const rootQuerySchema = z.object({ space: z.enum(KNOWLEDGE_SCOPES) });
+export const rootQuerySchema = treePageQuerySchema.extend({ space: z.enum(KNOWLEDGE_SCOPES) });
 export const spaceQuerySchema = z.object({ space: z.enum(KNOWLEDGE_SPACES) });
+/** What was archived in a space, newest first, a page at a time. */
+export const archivedQuerySchema = treePageQuerySchema.extend({ space: z.enum(KNOWLEDGE_SPACES) });
 
 export const createFolderInputSchema = z.object({
   name: z.string().trim().min(1).max(FOLDER_NAME_MAX),
@@ -145,7 +163,8 @@ export type CreateFolderInput = z.infer<typeof createFolderInputSchema>;
 
 /**
  * Rename or move. A move goes into `folder_id`, or to the root of `space` with `folder_id: null`.
- * Never into itself or below; personal items move into the team space, never back.
+ * Never into itself or below (`folder_cycle`), never deeper than 32 folders (`folder_too_deep`); personal
+ * items move into the team space, never back.
  */
 export const updateFolderInputSchema = z.object({
   name: z.string().trim().min(1).max(FOLDER_NAME_MAX).optional(),
@@ -263,7 +282,7 @@ export const commentSchema = z.object({
   id: z.string(),
   target_type: z.enum(COMMENT_TARGETS),
   target_id: z.string(),
-  /** Markdown; `[@Name](member:<id>)` mentions. */
+  /** Markdown; `[@Name](member:<id>)` mentions. File links are signed for the reader, as in a doc. */
   body: z.string(),
   /** The members it mentions. */
   mentions: z.array(z.string()),

@@ -3,10 +3,26 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { strFromU8, unzipSync } from 'fflate';
 import { and, eq } from 'drizzle-orm';
-import { describe, expect, it } from 'vitest';
-import type { RealtimeEvent } from '@greenhouse/contract';
-import { docLinks, docVersions, getDb, groupMembers, groups, members, newId, notifications } from '@greenhouse/db';
+import { describe, expect, it, vi } from 'vitest';
+import { DOC_CONTENT_MAX, type RealtimeEvent } from '@greenhouse/contract';
+import {
+  comments,
+  docLinks,
+  docs,
+  docVersions,
+  folders,
+  getDb,
+  groupMembers,
+  groups,
+  members,
+  newId,
+  notifications,
+  shares,
+} from '@greenhouse/db';
 import { createTestApp } from '../../../testing.js';
+import { streamedUpload } from '../../files/__tests__/streamed-upload.js';
+import { MAX_FOLDER_DEPTH } from '../access.js';
+import { PRESENCE_TTL_MS } from '../presence.js';
 
 type App = ReturnType<typeof createTestApp>;
 type Who = Awaited<ReturnType<App['member']>>;
@@ -129,6 +145,65 @@ describe('spaces and the tree', () => {
     expect(moved.body).toMatchObject({ name: 'Deep', folder_id: null, path: [] });
   });
 
+  it('pages folders, space roots, shared roots and the archive in the order the database keeps', async () => {
+    const { lin, chen, as, upload } = await setup();
+    const top = (await as(lin).post('/api/knowledge/folders', { name: 'Top' })).body;
+    for (const name of ['d', 'b', 'e']) await as(lin).post('/api/knowledge/docs', { title: name, folder_id: top.id });
+    await as(lin).post('/api/knowledge/folders', { name: 'z', folder_id: top.id });
+    await upload(lin, new File(['x'], 'a.txt', { type: 'text/plain' }), { folder_id: top.id });
+    /** Every page of a list, following next_cursor. */
+    async function pages(path: string, take: (body: any) => any[]) {
+      const seen: string[][] = [];
+      let cursor: string | null = null;
+      do {
+        const answer = await as(lin).get(
+          `${path}${path.includes('?') ? '&' : '?'}limit=2${cursor ? `&cursor=${cursor}` : ''}`,
+        );
+        const body: any = answer.body;
+        seen.push(take(body).map((item: any) => item.name));
+        cursor = body.next_cursor;
+      } while (cursor);
+      return seen;
+    }
+    expect(await pages(`/api/knowledge/folders/${top.id}`, (body) => body.children)).toEqual([
+      ['z', 'a.txt'],
+      ['b', 'd'],
+      ['e'],
+    ]);
+    for (const name of ['p', 'q', 'r']) await as(lin).post('/api/knowledge/docs', { title: name });
+    expect((await pages('/api/knowledge/folders?space=personal', (body) => body.items)).flat()).toEqual([
+      'Top',
+      'p',
+      'q',
+      'r',
+    ]);
+
+    // What others shared, and what was archived, page the same way.
+    for (const title of ['s1', 's2', 's3']) {
+      const doc = (await as(lin).post('/api/knowledge/docs', { title })).body;
+      await as(lin).put(`/api/knowledge/docs/${doc.id}/share`, {
+        items: [{ type: 'member', id: chen.id, role: 'viewer' }],
+      });
+    }
+    const shared = await as(chen).get('/api/knowledge/folders?space=shared&limit=2');
+    expect(shared.body.items.map((item: any) => item.name)).toEqual(['s1', 's2']);
+    const rest = await as(chen).get(`/api/knowledge/folders?space=shared&limit=2&cursor=${shared.body.next_cursor}`);
+    expect(rest.body).toMatchObject({ items: [expect.objectContaining({ name: 's3' })], next_cursor: null });
+
+    for (const name of ['p', 'q', 'r']) {
+      const found = (await as(lin).get(`/api/knowledge/search?q=${name}&space=personal`)).body.items[0];
+      await as(lin).del(`/api/knowledge/docs/${found.id}`);
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+    expect(await pages('/api/knowledge/archived?space=personal', (body) => body.items)).toEqual([['r', 'q'], ['p']]);
+
+    // A cursor the server did not make is refused, not passed to the database.
+    expect((await as(lin).get(`/api/knowledge/folders/${top.id}?cursor=bogus`)).body.error.code).toBe('invalid_input');
+    expect((await as(lin).get('/api/knowledge/archived?space=personal&cursor=bogus')).body.error.code).toBe(
+      'invalid_input',
+    );
+  });
+
   it('moves personal items into the team space with what is in them, never back', async () => {
     const { lin, chen, as } = await setup();
     const drafts = (await as(lin).post('/api/knowledge/folders', { name: 'Drafts' })).body;
@@ -203,7 +278,104 @@ describe('spaces and the tree', () => {
   });
 });
 
+describe('the depth of the tree', () => {
+  /** Folders nested in a line, the first at the root of the space; the deepest last. */
+  async function nest(
+    as: (who: Who) => { post: (path: string, body?: unknown) => Promise<any> },
+    who: Who,
+    count: number,
+    name = 'level',
+  ) {
+    const made: Array<{ id: string }> = [];
+    for (let level = 1; level <= count; level++) {
+      const created = await as(who).post('/api/knowledge/folders', {
+        name: `${name} ${level}`,
+        ...(made.length ? { folder_id: made[made.length - 1]!.id } : { space: 'team' }),
+      });
+      expect(created.status).toBe(201);
+      made.push(created.body);
+    }
+    return made;
+  }
+
+  it('refuses folders deeper than the limit, created or moved, and loops before that', async () => {
+    const { lin, as } = await setup();
+    const line = await nest(as, lin, MAX_FOLDER_DEPTH);
+    const deepest = line[line.length - 1]!;
+    const tooDeep = await as(lin).post('/api/knowledge/folders', { name: 'one more', folder_id: deepest.id });
+    expect(tooDeep.status).toBe(409);
+    expect(tooDeep.body.error.code).toBe('folder_too_deep');
+    // A doc still goes in the deepest folder: only folders count.
+    expect((await as(lin).post('/api/knowledge/docs', { title: 'Leaf', folder_id: deepest.id })).status).toBe(201);
+
+    // A branch two deep fits under level 30, not under level 31.
+    const branch = await nest(as, lin, 2, 'branch');
+    const under31 = await as(lin).patch(`/api/knowledge/folders/${branch[0]!.id}`, { folder_id: line[30]!.id });
+    expect(under31.body.error.code).toBe('folder_too_deep');
+    const under30 = await as(lin).patch(`/api/knowledge/folders/${branch[0]!.id}`, { folder_id: line[29]!.id });
+    expect(under30.status).toBe(200);
+    expect(under30.body.path).toHaveLength(30);
+
+    // A loop is refused as a loop, however deep the target.
+    const loop = await as(lin).patch(`/api/knowledge/folders/${line[0]!.id}`, { folder_id: deepest.id });
+    expect(loop.body.error.code).toBe('folder_cycle');
+  }, 60_000);
+
+  it('fails on a broken tree instead of stopping short of its top', async () => {
+    const { app, lin, as } = await setup();
+    const [top, middle, bottom] = await nest(as, lin, 3);
+    const doc = (await as(lin).post('/api/knowledge/docs', { title: 'Inside', folder_id: bottom!.id })).body;
+    expect((await as(lin).get(`/api/knowledge/docs/${doc.id}`)).status).toBe(200);
+    // Folders that loop (no move makes one; here the rows are written by hand).
+    await getDb().update(folders).set({ parentId: bottom!.id }).where(eq(folders.id, top!.id));
+    expect((await as(lin).get(`/api/knowledge/docs/${doc.id}`)).status).toBe(500);
+    expect((await as(lin).del(`/api/knowledge/folders/${middle!.id}`)).status).toBe(500);
+
+    // A chain deeper than the limit under an Agent's private folder: the owner's other Agent
+    // never gets to read what sits at its bottom.
+    const main = (await app.call('GET', '/api/conversations', { token: lin.token })).body.items[0].agent_id as string;
+    const other = (await app.call('POST', '/api/agents', { token: lin.token, body: { template_key: 'writer' } })).body
+      .id as string;
+    let parentId: string | null = null;
+    for (let level = 0; level < 70; level++) {
+      const [row]: Array<{ id: string }> = await getDb()
+        .insert(folders)
+        .values({
+          id: newId('folder'),
+          parentId,
+          space: 'personal',
+          ownerId: lin.id,
+          agentId: level === 0 ? main : null,
+          name: `deep ${level}`,
+        })
+        .returning({ id: folders.id });
+      parentId = row!.id;
+    }
+    const [deep] = await getDb()
+      .insert(docs)
+      .values({ id: newId('doc'), folderId: parentId, space: 'personal', ownerId: lin.id, title: 'Notes' })
+      .returning();
+    await expect(app.services.knowledge.getDoc(lin.id, deep!.id, { as: { agentId: other } })).rejects.toThrow(
+      /deeper than/,
+    );
+  }, 60_000);
+});
+
 describe('docs, versions and templates', () => {
+  it('refuses a doc longer than the limit, however it is written', async () => {
+    const { app, lin } = await setup();
+    const tooLong = 'x'.repeat(DOC_CONTENT_MAX + 1);
+    // The service is what Agents call: it checks the length itself, not only the route's schema.
+    await expect(app.services.knowledge.createDoc(lin.id, { title: 'Big', content: tooLong })).rejects.toMatchObject({
+      code: 'invalid_input',
+    });
+    const doc = await app.services.knowledge.createDoc(lin.id, { title: 'Big', content: 'x' });
+    await expect(
+      app.services.knowledge.updateDoc(lin.id, doc.id, { version: 1, content: tooLong }),
+    ).rejects.toMatchObject({ code: 'invalid_input' });
+    expect((await app.services.knowledge.getDoc(lin.id, doc.id)).version).toBe(1);
+  });
+
   it('refuses a stale save and keeps every version', async () => {
     const { lin, chen, as } = await setup();
     const doc = (await as(lin).post('/api/knowledge/docs', { title: 'Plan', content: 'one\ntwo\n', space: 'team' }))
@@ -269,6 +441,16 @@ describe('docs, versions and templates', () => {
       .from(docVersions)
       .where(and(eq(docVersions.docId, doc.id), eq(docVersions.version, 3)));
     expect(third).toMatchObject({ changeNote: '恢复到版本 1', createdBy: chen.id, content: 'one\ntwo\n' });
+  });
+
+  it('answers a cursor it did not make with 400, never a database error', async () => {
+    const { lin, as } = await setup();
+    const cursor = (value: unknown) => Buffer.from(JSON.stringify(value)).toString('base64url');
+    for (const bad of [cursor({ u: 'not a time', id: 'doc_x' }), cursor(null), 'garbage']) {
+      const answer = await as(lin).get(`/api/knowledge/docs?cursor=${bad}`);
+      expect(answer.status).toBe(400);
+      expect(answer.body.error.code).toBe('invalid_input');
+    }
   });
 
   it('starts new docs from templates and lists recent docs', async () => {
@@ -378,6 +560,52 @@ describe('sharing', () => {
     await as(lin).put(`/api/knowledge/docs/${brief.id}/share`, { items: [{ type: 'workspace', role: 'viewer' }] });
     expect((await as(chen).get(`/api/knowledge/docs/${brief.id}`)).body.access).toBe('viewer');
     expect(app).toBeTruthy();
+  });
+
+  it('opens nothing in an Agent’s private folder through a share, even one written past the checks', async () => {
+    const { app, lin, chen, as } = await setup();
+    const main = await app.services.agents.ensureMain(lin.id);
+    const own = (await app.services.knowledge.agentFolder(main, true))!;
+    const sub = (await as(lin).post('/api/knowledge/folders', { name: 'Notes', folder_id: own.id })).body;
+    const doc = (
+      await as(lin).post('/api/knowledge/docs', { title: 'About Chen', content: 'secret plans', folder_id: sub.id })
+    ).body;
+    const refused = await as(lin).put(`/api/knowledge/docs/${doc.id}/share`, {
+      items: [{ type: 'member', id: chen.id, role: 'viewer' }],
+    });
+    expect(refused.body.error.code).toBe('agent_folder_private');
+    // Rows a race or a hand could leave behind still open nothing.
+    await getDb()
+      .insert(shares)
+      .values([
+        {
+          id: newId('share'),
+          resourceType: 'folder',
+          resourceId: sub.id,
+          principalType: 'member',
+          principalId: chen.id,
+          role: 'editor',
+          createdBy: lin.id,
+        },
+        {
+          id: newId('share'),
+          resourceType: 'doc',
+          resourceId: doc.id,
+          principalType: 'workspace',
+          principalId: null,
+          role: 'viewer',
+          createdBy: lin.id,
+        },
+      ]);
+    expect((await as(chen).get(`/api/knowledge/docs/${doc.id}`)).status).toBe(404);
+    expect((await as(chen).get(`/api/knowledge/folders/${sub.id}`)).status).toBe(404);
+    expect((await as(chen).get('/api/knowledge/folders?space=shared')).body.items).toEqual([]);
+    expect((await as(chen).get('/api/knowledge/docs?space=shared')).body.items).toEqual([]);
+    expect((await as(chen).get('/api/knowledge/search?q=secret')).body.items).toEqual([]);
+    // The owner still has it all.
+    expect((await as(lin).get('/api/knowledge/search?q=secret')).body.items.map((hit: any) => hit.id)).toEqual([
+      doc.id,
+    ]);
   });
 
   it('never shows the owner’s folders above what was shared', async () => {
@@ -491,6 +719,26 @@ describe('comments and mentions', () => {
     expect((await as(wu).get(`/api/knowledge/docs/${doc.id}/comments`)).status).toBe(404);
   });
 
+  it('makes an edited Agent comment the member’s, and keeps comments of archived docs as they are', async () => {
+    const { app, lin, chen, as, notified } = await setup();
+    const main = await app.services.agents.ensureMain(lin.id);
+    const doc = (await as(lin).post('/api/knowledge/docs', { title: 'Plan', content: 'x', space: 'team' })).body;
+    const written = await app.services.knowledge.addComment(lin.id, doc.id, 'Looks fine.', { agentId: main.id });
+    expect(written.agent).toEqual({ id: main.id, name: main.name });
+    const edited = await as(lin).patch(`/api/knowledge/docs/${doc.id}/comments/${written.id}`, {
+      body: `Looks fine, [@Chen](member:${chen.id}).`,
+    });
+    expect(edited.body).toMatchObject({ agent: null, mentions: [chen.id] });
+    expect((await notified(chen)).map((row) => row.title)).toEqual(['Lin 在《Plan》的评论里提到了你']);
+
+    await as(lin).del(`/api/knowledge/docs/${doc.id}`);
+    const change = await as(lin).patch(`/api/knowledge/docs/${doc.id}/comments/${written.id}`, { body: 'Later.' });
+    expect(change.body.error.code).toBe('archived');
+    expect((await as(lin).del(`/api/knowledge/docs/${doc.id}/comments/${written.id}`)).body.error.code).toBe(
+      'archived',
+    );
+  });
+
   it('tells members newly mentioned in a doc when it is saved', async () => {
     const { lin, chen, as, notified } = await setup();
     const doc = (
@@ -543,9 +791,70 @@ describe('presence and realtime', () => {
     });
     expect((await as(chen).put(`/api/knowledge/docs/${mine.id}/presence`, { state: 'editing' })).status).toBe(403);
   });
+
+  it('tells only who still has a doc open, and drops a reader who lost access', async () => {
+    const { lin, chen, person, as, listen } = await setup();
+    const wu = await person('Wu');
+    const doc = (await as(lin).post('/api/knowledge/docs', { title: 'Mine', content: 'a' })).body;
+    await as(lin).put(`/api/knowledge/docs/${doc.id}/share`, {
+      items: [{ type: 'member', id: chen.id, role: 'viewer' }],
+    });
+    const linHears = listen(lin);
+    const chenHears = listen(chen);
+    const wuHears = listen(wu);
+    await as(lin).put(`/api/knowledge/docs/${doc.id}/presence`, { state: 'editing' });
+    await as(chen).put(`/api/knowledge/docs/${doc.id}/presence`, { state: 'viewing' });
+
+    // Leaving a doc one never had open (here one Wu may not read, after the others timed out)
+    // changes nothing and tells nobody, Wu included.
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + PRESENCE_TTL_MS + 5_000 });
+    try {
+      expect((await as(wu).del(`/api/knowledge/docs/${doc.id}/presence`)).status).toBe(204);
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(wuHears).toEqual([]);
+
+    // Both open it again; then Chen loses access. Chen's next heartbeat fails and takes Chen off
+    // the list, so the doc's live updates stop reaching Chen.
+    await as(lin).put(`/api/knowledge/docs/${doc.id}/presence`, { state: 'editing' });
+    await as(chen).put(`/api/knowledge/docs/${doc.id}/presence`, { state: 'viewing' });
+    await as(lin).put(`/api/knowledge/docs/${doc.id}/share`, { items: [] });
+    expect((await as(chen).put(`/api/knowledge/docs/${doc.id}/presence`, { state: 'viewing' })).status).toBe(404);
+    expect(linHears.at(-1)).toEqual({
+      type: 'doc.presence',
+      data: { doc_id: doc.id, items: [expect.objectContaining({ member_id: lin.id })] },
+    });
+    const heard = chenHears.length;
+    await as(lin).patch(`/api/knowledge/docs/${doc.id}`, { version: 1, content: 'b' });
+    await as(lin).post(`/api/knowledge/docs/${doc.id}/comments`, { body: 'Saved.' });
+    expect(chenHears.length).toBe(heard);
+    expect((await as(lin).get(`/api/knowledge/docs/${doc.id}/presence`)).body.items).toEqual([
+      expect.objectContaining({ member_id: lin.id }),
+    ]);
+  });
 });
 
 describe('files in the tree', () => {
+  it('keeps a knowledge file that has no space from everyone', async () => {
+    const { app, lin, chen, as } = await setup();
+    const folder = (await as(lin).post('/api/knowledge/folders', { name: 'Shared', space: 'team' })).body;
+    // A row no upload writes (a knowledge file with no space): denied, not taken for the team's.
+    const stray = await app.services.files.store(chen.id, {
+      name: 'stray report.txt',
+      contentType: 'text/plain',
+      bytes: new TextEncoder().encode('stray'),
+      purpose: 'knowledge',
+      folderId: folder.id,
+    });
+    for (const who of [lin, chen]) {
+      expect((await as(who).get(`/api/knowledge/files/${stray.id}`)).status).toBe(404);
+      expect((await app.app.request(app.services.files.signedUrl(stray.id, who.id).url)).status).toBe(404);
+    }
+    expect((await as(lin).get(`/api/knowledge/folders/${folder.id}`)).body.children).toEqual([]);
+    expect((await as(lin).get('/api/knowledge/search?q=stray')).body.items).toEqual([]);
+  });
+
   it('uploads into a folder and serves the bytes only to who may read it', async () => {
     const { app, lin, chen, as, upload } = await setup();
     const folder = (await as(lin).post('/api/knowledge/folders', { name: 'Specs' })).body;
@@ -602,6 +911,23 @@ describe('files in the tree', () => {
     expect(back.body.archived_at).toBeNull();
   });
 
+  it('caps an upload whether or not it says how long it is', async () => {
+    const { app, lin } = await setup();
+    const send = (size: number) => {
+      const { body, type } = streamedUpload(size);
+      return app.app.request('/api/knowledge/files', {
+        method: 'POST',
+        headers: { authorization: `Bearer ${lin.token}`, 'content-type': type },
+        body,
+        duplex: 'half',
+      } as RequestInit);
+    };
+    expect((await send(2048)).status).toBe(201);
+    const huge = await send(51 * 1024 * 1024);
+    expect(huge.status).toBe(413);
+    expect(((await huge.json()) as any).error.code).toBe('too_large');
+  });
+
   it('keeps pictures pasted into a doc with the doc and signs them for each reader', async () => {
     const { app, lin, chen, as, upload } = await setup();
     const doc = (await as(lin).post('/api/knowledge/docs', { title: 'Diagram', content: 'x', space: 'team' })).body;
@@ -628,10 +954,68 @@ describe('files in the tree', () => {
     expect(url).toContain(`m=${chen.id}`);
     expect((await app.app.request(url)).status).toBe(200);
     expect((await as(chen).del(`/api/knowledge/files/${picture.body.id}`)).body.error.code).toBe('doc_file');
+
+    // Only this server's links are signed: the same path on another host, or inside another
+    // address, stays as written, so a reader's signature never goes anywhere else.
+    const outside = `https://outside.example/api/files/${picture.body.id}/content`;
+    const nested = `[x](https://outside.example/(/api/files/${picture.body.id}/content))`;
+    await as(lin).patch(`/api/knowledge/docs/${doc.id}`, {
+      version: 2,
+      content: `![ours](http://greenhouse.test/api/files/${picture.body.id}/content)\n\n![theirs](${outside})\n\n${nested}`,
+    });
+    const read = (await as(chen).get(`/api/knowledge/docs/${doc.id}`)).body.content as string;
+    expect(read).toContain(`![ours](http://greenhouse.test/api/files/${picture.body.id}/content?exp=`);
+    expect(read).toContain(`![theirs](${outside})`);
+    expect(read).toContain(nested);
+    expect(read.match(/sig=/g)).toHaveLength(1);
+    const version = (await as(chen).get(`/api/knowledge/docs/${doc.id}/versions/3`)).body.content as string;
+    expect(version.match(/sig=/g)).toHaveLength(1);
+    expect(version).toContain(`m=${chen.id}`);
+  });
+
+  it('keeps comments free of signatures and signs their pictures for each reader', async () => {
+    const { app, lin, chen, as, upload } = await setup();
+    const doc = (await as(lin).post('/api/knowledge/docs', { title: 'Review', content: 'x', space: 'team' })).body;
+    const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0]);
+    const picture = (await upload(lin, new File([png], 'shot.png', { type: 'image/png' }), { doc_id: doc.id })).body;
+    const outside = `https://outside.example/api/files/${picture.id}/content?sig=theirs`;
+    const posted = await as(lin).post(`/api/knowledge/docs/${doc.id}/comments`, {
+      body: `Look: ![shot](${picture.url}) and [elsewhere](${outside})`,
+    });
+    const [stored] = await getDb().select().from(comments).where(eq(comments.id, posted.body.id));
+    expect(stored!.body).toBe(`Look: ![shot](/api/files/${picture.id}/content) and [elsewhere](${outside})`);
+    expect(posted.body.body).toContain(`m=${lin.id}`);
+    const forChen = (await as(chen).get(`/api/knowledge/docs/${doc.id}/comments`)).body.items[0];
+    const url = /\((\/api\/files\/[^)]+)\)/.exec(forChen.body)![1]!;
+    expect(url).toContain(`m=${chen.id}`);
+    expect(forChen.body).toContain(`[elsewhere](${outside})`);
+    expect((await app.app.request(url)).status).toBe(200);
   });
 });
 
 describe('export', () => {
+  it('packs the pictures docs show and keeps links to files the reader cannot open', async () => {
+    const { app, lin, chen, as, upload } = await setup();
+    const folder = (await as(lin).post('/api/knowledge/folders', { name: 'Guides', space: 'team' })).body;
+    const guide = (await as(lin).post('/api/knowledge/docs', { title: 'Guide', folder_id: folder.id })).body;
+    const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0]);
+    const shot = (await upload(lin, new File([png], 'shot.png', { type: 'image/png' }), { doc_id: guide.id })).body;
+    const mine = (await upload(lin, new File(['private'], 'mine.txt', { type: 'text/plain' }), {})).body;
+    await as(lin).patch(`/api/knowledge/docs/${guide.id}`, {
+      version: 1,
+      content: `![shot](/api/files/${shot.id}/content) and [mine](/api/files/${mine.id}/content)`,
+    });
+    const zip = await app.app.request(`/api/knowledge/folders/${folder.id}/export`, {
+      headers: { authorization: `Bearer ${chen.token}` },
+    });
+    const entries = unzipSync(new Uint8Array(await zip.arrayBuffer()));
+    expect(Object.keys(entries).sort()).toEqual(['EXPORT-NOTES.md', 'Guide.md', 'README.md', 'assets/shot.png']);
+    const text = strFromU8(entries['Guide.md']!);
+    expect(text).toContain('![shot](assets/shot.png)');
+    expect(text).toContain(`[mine](/api/files/${mine.id}/content)`);
+    expect(strFromU8(entries['EXPORT-NOTES.md']!)).toContain('《Guide》');
+  });
+
   it('exports a doc as Markdown and a folder as a ZIP of Markdown files and its files', async () => {
     const { app, lin, chen, as, upload } = await setup();
     const folder = (await as(lin).post('/api/knowledge/folders', { name: 'Handbook', space: 'team' })).body;

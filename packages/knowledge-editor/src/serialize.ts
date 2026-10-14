@@ -2,7 +2,7 @@
  * Tiptap (ProseMirror) JSON → canonical Markdown serialization.
  *
  * The inverse of markdown.ts — lives in this package so both directions of the
- * Markdown ⇄ content_json round-trip share one schema and one home (it was
+ * Markdown ⇄ editor round-trip share one schema and one home (it was
  * previously handwritten inside the web editor component, where it dropped
  * tables/images and escaped text so aggressively that "LPH-Max" became
  * "LPH\-Max"; audit 2026-06-10 defect #5).
