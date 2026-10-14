@@ -11,7 +11,15 @@ import { AsyncResource } from 'node:async_hooks';
 import type { JobRow } from '@greenhouse/db';
 import { toErrorMessage } from '@greenhouse/utils/error';
 import { logger } from '@greenhouse/utils/logger';
-import { claimJobs, extendJobLease, pruneJobs, releaseExpiredClaims, settleJob, type JobOutcome } from '../../jobs.js';
+import {
+  claimJobs,
+  extendJobLease,
+  pruneJobs,
+  releaseExpiredClaims,
+  releaseOwnedClaims,
+  settleJob,
+  type JobOutcome,
+} from '../../jobs.js';
 import { newId } from '@greenhouse/db';
 
 export const TABLES_JOB_KINDS = [
@@ -21,6 +29,7 @@ export const TABLES_JOB_KINDS = [
   'base_purge',
   'base_discard',
   'base_automation',
+  'mail_inbound',
 ] as const;
 export type TablesJobKind = (typeof TABLES_JOB_KINDS)[number];
 export type TablesJobHandler = (job: JobRow) => Promise<JobOutcome>;
@@ -42,9 +51,11 @@ export function createTablesWorker() {
   let timer: NodeJS.Timeout | null = null;
   let running: Promise<void> | null = null;
   let started = false;
+  let stopping = false;
   let prunedAt = 0;
 
   async function runOnce(): Promise<number> {
+    if (stopping) return 0;
     const kinds = [...handlers.keys()];
     if (!kinds.length) return 0;
     for (const step of beforePass) {
@@ -53,9 +64,11 @@ export function createTablesWorker() {
       );
     }
     await releaseExpiredClaims(kinds);
+    if (stopping) return 0;
     const claimed = await claimJobs(kinds, owner, { limit: BATCH, leaseMs: LEASE_MS });
     // One at a time: jobs of one table touch the same records.
     for (const job of claimed) {
+      if (stopping) break;
       if (!(await extendJobLease(job, owner, LEASE_MS))) continue;
       let outcome: JobOutcome;
       try {
@@ -135,7 +148,12 @@ export function createTablesWorker() {
       started = false;
       if (timer) clearTimeout(timer);
       timer = null;
+      stopping = true;
       await running;
+      await releaseOwnedClaims(owner);
+    },
+    async release() {
+      await releaseOwnedClaims(owner);
     },
   };
 }

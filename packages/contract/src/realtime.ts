@@ -32,6 +32,11 @@ export const realtimeEventSchema = z.discriminatedUnion('type', [
       step: messageStepSchema.extend({ id: z.string(), status: z.enum(['running', 'done', 'failed']) }),
     }),
   }),
+  /** Resume the same reply from a completed boundary; discard its unfinished live suffix. */
+  z.object({
+    type: z.literal('message.resumed'),
+    data: z.object({ conversation_id: z.string(), message_id: z.string(), offset: z.number().int().min(0) }),
+  }),
   z.object({ type: z.literal('message.updated'), data: z.object({ message: messageSchema }) }),
   /**
    * A message left the transcript (an edit or a regenerate replaced the replies after it). Its

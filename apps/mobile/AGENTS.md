@@ -68,3 +68,6 @@
 - Never hand-edit widget PNGs; rerun `node --import tsx apps/mobile/scripts/render-widget-art.mjs` from the repo root.
 - Live Activities: keep the two BotTaskAttributes.swift copies identical and NSSupportsLiveActivities in app.json, encode times as integer Unix seconds, and keep images no larger than their display size.
 - Never commit development: true in getExpoPushTokenAsync; simulator push payloads put PushData under the top-level body key.
+
+- message.resumed clears unfinished live text and truncates only a streaming cached reply to the
+  completed offset. Keep the generated contract and realtime parser in sync when adding events.

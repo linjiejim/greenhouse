@@ -1165,6 +1165,12 @@ CREATE TABLE "base_automations" (
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
+CREATE TABLE "rate_limits" (
+	"key" text PRIMARY KEY NOT NULL,
+	"count" integer NOT NULL,
+	"reset_at" timestamp with time zone NOT NULL
+);
+--> statement-breakpoint
 ALTER TABLE "auth_links" ADD CONSTRAINT "auth_links_member_id_members_id_fk" FOREIGN KEY ("member_id") REFERENCES "public"."members"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "group_members" ADD CONSTRAINT "group_members_group_id_groups_id_fk" FOREIGN KEY ("group_id") REFERENCES "public"."groups"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "group_members" ADD CONSTRAINT "group_members_member_id_members_id_fk" FOREIGN KEY ("member_id") REFERENCES "public"."members"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
@@ -1388,4 +1394,5 @@ CREATE INDEX "base_templates_owner_idx" ON "base_templates" USING btree ("owner_
 CREATE UNIQUE INDEX "base_automation_runs_dedupe_key" ON "base_automation_runs" USING btree ("dedupe_key");--> statement-breakpoint
 CREATE INDEX "base_automation_runs_automation_idx" ON "base_automation_runs" USING btree ("automation_id","id");--> statement-breakpoint
 CREATE INDEX "base_automations_table_idx" ON "base_automations" USING btree ("table_id");--> statement-breakpoint
-CREATE INDEX "base_automations_due_idx" ON "base_automations" USING btree ("status","next_fire_at");
+CREATE INDEX "base_automations_due_idx" ON "base_automations" USING btree ("status","next_fire_at");--> statement-breakpoint
+CREATE INDEX "rate_limits_reset_idx" ON "rate_limits" USING btree ("reset_at");

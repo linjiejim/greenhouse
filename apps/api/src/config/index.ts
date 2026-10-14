@@ -4,6 +4,8 @@
  */
 
 import { z } from 'zod';
+import { fileURLToPath } from 'node:url';
+import { config as loadDotenv } from 'dotenv';
 
 const booleanFlag = z
   .enum(['1', '0', 'true', 'false', ''])
@@ -13,6 +15,8 @@ const booleanFlag = z
 const schema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().int().min(1).max(65_535).default(3000),
+  GREENHOUSE_ROLE: z.enum(['all', 'api', 'worker']).default('all'),
+  RATE_LIMIT_STORE: z.enum(['memory', 'postgres']).default('memory'),
   AGENT_EVENT_MERGE_MS: z.coerce.number().int().min(0).max(120_000).default(120_000),
   AGENT_EVENT_WAKES_PER_DAY: z.coerce.number().int().min(1).max(1000).default(50),
   /** Public origin of this deployment, used in links we hand out. */
@@ -88,4 +92,13 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     vaultEncryptionKey: VAULT_ENCRYPTION_KEY?.toLowerCase() ?? null,
     providerEnv: present,
   };
+}
+
+/** The one-shot migrator needs only a database URL, never model or signing keys. */
+export function loadDatabaseUrl(env: Record<string, string | undefined> = process.env): string {
+  return schema.shape.DATABASE_URL.parse(env.DATABASE_URL);
+}
+
+export function loadEnvironment(): void {
+  loadDotenv({ path: process.env.GREENHOUSE_ENV_FILE ?? fileURLToPath(new URL('../../../../.env', import.meta.url)) });
 }

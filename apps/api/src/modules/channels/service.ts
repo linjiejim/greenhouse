@@ -51,7 +51,15 @@ import { toErrorMessage } from '@greenhouse/utils/error';
 import { logger } from '@greenhouse/utils/logger';
 import type { AppConfig } from '../../config/index.js';
 import { ApiError, notFound } from '../../http/errors.js';
-import { claimJobs, enqueueJob, pruneJobs, releaseExpiredClaims, settleJob, type JobOutcome } from '../../jobs.js';
+import {
+  claimJobs,
+  enqueueJob,
+  pruneJobs,
+  releaseExpiredClaims,
+  releaseOwnedClaims,
+  settleJob,
+  type JobOutcome,
+} from '../../jobs.js';
 import type { Arrangement, ProvidersService } from '../../providers/service.js';
 import { RateLimiter } from '../../security/rate-limit.js';
 import {
@@ -422,7 +430,7 @@ export function createChannelsService(deps: { config: AppConfig; providers: Prov
       const device = await ownDevice(memberId, id);
       if (!device) throw notFound('Push device');
       if (device.disabledAt) throw new ApiError(409, 'device_disabled', 'This phone is unregistered.');
-      const wait = testLimiter.hit(device.id);
+      const wait = await testLimiter.hit(device.id);
       if (wait) throw new ApiError(429, 'too_soon', 'One test every 10 seconds per phone.', { retry_after: wait });
       const push = (await deps.providers.byId('push', found!.instance.id, {}))?.client;
       if (!push) throw new ApiError(503, 'push_disabled', 'This deployment sends no pushes.');
@@ -572,6 +580,10 @@ export function createChannelsService(deps: { config: AppConfig; providers: Prov
       if (timer) clearTimeout(timer);
       timer = null;
       await running;
+      await releaseOwnedClaims(owner);
+    },
+    async release() {
+      await releaseOwnedClaims(owner);
     },
   };
 }

@@ -40,7 +40,7 @@ import {
 import type { AppEnv } from '../../http/env.js';
 import { readJson, readParam, readQuery } from '../../http/validate.js';
 import { openCors } from '../../security/headers.js';
-import { RateLimiter } from '../../security/rate-limit.js';
+import { RateLimiter, type RateLimitStore } from '../../security/rate-limit.js';
 import { OAuthError, resourceMetadata, serverMetadata } from './protocol.js';
 import type { ClientAuth, OAuthService } from './service.js';
 
@@ -91,14 +91,18 @@ function readBasic(c: Context): { id: string; secret: string } | null {
   return { id: decode(decoded.slice(0, at)), secret: decode(decoded.slice(at + 1)) };
 }
 
-export function oauthProtocolRoutes(deps: { oauth: OAuthService; clientIp: (c: Context) => string }) {
+export function oauthProtocolRoutes(deps: {
+  oauth: OAuthService;
+  store?: RateLimitStore;
+  clientIp: (c: Context) => string;
+}) {
   const { oauth } = deps;
-  const registrations = new RateLimiter(20, 60 * 60_000);
-  const authorizations = new RateLimiter(30, 60_000);
-  const tokenCalls = new RateLimiter(60, 60_000);
-  const secretAttempts = new RateLimiter(10, 60_000);
-  const limited = (c: Context, limiter: RateLimiter, key: string) => {
-    const wait = limiter.hit(key);
+  const registrations = new RateLimiter(20, 60 * 60_000, deps.store, 'oauth:registrations');
+  const authorizations = new RateLimiter(30, 60_000, deps.store, 'oauth:authorizations');
+  const tokenCalls = new RateLimiter(60, 60_000, deps.store, 'oauth:tokenCalls');
+  const secretAttempts = new RateLimiter(10, 60_000, deps.store, 'oauth:secretAttempts');
+  const limited = async (c: Context, limiter: RateLimiter, key: string) => {
+    const wait = await limiter.hit(key);
     if (!wait) return null;
     noStore(c);
     c.header('Retry-After', String(wait));
@@ -130,7 +134,7 @@ export function oauthProtocolRoutes(deps: { oauth: OAuthService; clientIp: (c: C
     .get('/.well-known/oauth-protected-resource', protectedResource)
     .get('/.well-known/oauth-protected-resource/*', protectedResource)
     .post('/oauth/register', async (c) => {
-      const blocked = limited(c, registrations, `register:${deps.clientIp(c)}`);
+      const blocked = await limited(c, registrations, `register:${deps.clientIp(c)}`);
       if (blocked) return blocked;
       let body: unknown;
       try {
@@ -151,7 +155,7 @@ export function oauthProtocolRoutes(deps: { oauth: OAuthService; clientIp: (c: C
       }
     })
     .get('/oauth/authorize', async (c) => {
-      const blocked = limited(c, authorizations, `authorize:${deps.clientIp(c)}`);
+      const blocked = await limited(c, authorizations, `authorize:${deps.clientIp(c)}`);
       if (blocked) return blocked;
       noStore(c);
       return c.redirect(await oauth.authorize(c.req.query()), 302);
@@ -162,7 +166,7 @@ export function oauthProtocolRoutes(deps: { oauth: OAuthService; clientIp: (c: C
         const auth = await clientAuth(c, basic);
         if (auth instanceof Response) return auth;
         const tokens = await oauth.token(auth);
-        secretAttempts.reset(`secret:${basic?.id ?? auth.form.client_id}`);
+        await secretAttempts.reset(`secret:${basic?.id ?? auth.form.client_id}`);
         noStore(c);
         return c.json(tokens);
       } catch (error) {
@@ -186,12 +190,12 @@ export function oauthProtocolRoutes(deps: { oauth: OAuthService; clientIp: (c: C
 
   /** The request's client credentials, once the address and (with a secret) the client are under their limits. */
   async function clientAuth(c: Context, basic: ClientAuth['basic']): Promise<ClientAuth | Response> {
-    const blocked = limited(c, tokenCalls, `token:${deps.clientIp(c)}`);
+    const blocked = await limited(c, tokenCalls, `token:${deps.clientIp(c)}`);
     if (blocked) return blocked;
     const form = await readForm(c);
     const clientId = basic?.id ?? form.client_id;
     if ((basic || form.client_secret) && clientId) {
-      const guessing = limited(c, secretAttempts, `secret:${clientId}`);
+      const guessing = await limited(c, secretAttempts, `secret:${clientId}`);
       if (guessing) return guessing;
     }
     return { basic, form };

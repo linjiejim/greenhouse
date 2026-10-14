@@ -7,12 +7,12 @@
  * Opt-in: GREENHOUSE_LIVE_DOCKER=1, with the computer image built (apps/bot-computer).
  */
 
-import { asc, eq } from 'drizzle-orm';
+import { and, asc, eq } from 'drizzle-orm';
 import { afterAll, describe, expect, it } from 'vitest';
 import { agentComputers, computerWatches, getDb, messages } from '@greenhouse/db';
 import { runDocker } from '@greenhouse/providers';
 import { createTestApp, createTestServices } from '../../../testing.js';
-import { scriptedModel, text, textThenTool } from '../../../engine/__tests__/model.js';
+import { gate, scriptedModel, text, textThenTool } from '../../../engine/__tests__/model.js';
 
 const live = process.env.GREENHOUSE_LIVE_DOCKER === '1';
 const IMAGE = process.env.GREENHOUSE_COMPUTER_IMAGE ?? 'greenhouse/bot-computer:latest';
@@ -70,21 +70,54 @@ describe.skipIf(!live)('the long-run probe', () => {
     expect(reached).toBeGreaterThanOrEqual(3);
     expect(reached).toBeLessThan(STEPS);
 
+    // Restart the answering API in the middle of a foreground progress check. The completed
+    // process-list step and its text survive; the running computer job is never started twice.
+    const hold = gate();
+    scripts.push(
+      textThenTool('Checking the probe. ', 'computer', { action: 'processes' }),
+      { parts: text('unfinished'), gate: hold.promise },
+      text('It is still running.'),
+    );
+    const checking = await app.call('POST', `/api/conversations/${main.id}/messages`, {
+      token: lin.token,
+      body: { content: 'Check progress' },
+    });
+    for (let wait = 0; wait < 500 && model.calls() < 3; wait++) await sleep(10);
+    expect(model.calls()).toBe(3);
+    const [partial] = await getDb()
+      .select()
+      .from(messages)
+      .where(and(eq(messages.runId, checking.body.run_id), eq(messages.role, 'assistant')));
+    await app.services.engine.shutdown({ graceMs: 0 });
+    const other = createTestServices(ENV, { languageModel: model.languageModel });
+    await other.engine.sweep();
+    await other.engine.idle();
+    const [continued] = await getDb().select().from(messages).where(eq(messages.id, partial!.id));
+    expect(continued).toMatchObject({ status: 'complete', content: 'Checking the probe. It is still running.' });
+    expect((await other.computers.jobs(lin.id, agent.id)).filter((job) => job.name === 'probe')).toHaveLength(1);
+
     // 3. The container restarts under it: the job is lost, and the Agent is woken to start it again.
     await app.services.computers.restart(lin.id, agent.id);
-    scripts.push(
-      textThenTool('Started it again.', 'computer', { action: 'run_background', command: PROBE, name: 'probe again' }),
-    );
-    const other = createTestServices(ENV, { languageModel: model.languageModel });
-    await other.computers.checkWatches((conversationId, item) => app.services.engine.deliver(conversationId, item));
-    await app.services.engine.idle();
+    scripts.push(text('The probe stopped; please restart it.'));
+    await other.computers.checkWatches((conversationId, item) => other.engine.deliver(conversationId, item));
+    await other.engine.idle();
     const woken = await getDb()
       .select()
       .from(messages)
       .where(eq(messages.conversationId, main.id))
       .orderBy(asc(messages.seq));
-    expect(woken.map((row) => row.content)).toContain('Started it again.');
+    expect(woken.map((row) => row.content)).toContain('The probe stopped; please restart it.');
     expect(JSON.stringify(model.prompts.at(-1))).toContain('was lost: your computer restarted');
+    // An event is not consent to start a command; the member explicitly resumes it.
+    scripts.push(
+      textThenTool('Started it again.', 'computer', { action: 'run_background', command: PROBE, name: 'probe again' }),
+    );
+    await other.engine.post(lin.id, main.id, {
+      content: 'Resume the probe from its checkpoint.',
+      mentions: [],
+      attachments: [],
+    });
+    await other.engine.idle();
 
     // 4. It resumes from the checkpoint in the home and finishes.
     const deadline = Date.now() + 60_000;
@@ -106,8 +139,8 @@ describe.skipIf(!live)('the long-run probe', () => {
 
     // 5. Its end wakes the Agent once more, whichever process notices.
     scripts.push(text('The probe finished.'));
-    await other.computers.checkWatches((conversationId, item) => app.services.engine.deliver(conversationId, item));
-    await app.services.engine.idle();
+    await other.computers.checkWatches((conversationId, item) => other.engine.deliver(conversationId, item));
+    await other.engine.idle();
     const final = await getDb()
       .select()
       .from(messages)
@@ -115,6 +148,8 @@ describe.skipIf(!live)('the long-run probe', () => {
       .orderBy(asc(messages.seq));
     expect(final.at(-1)!.content).toBe('The probe finished.');
     const [computer] = await getDb().select().from(agentComputers).where(eq(agentComputers.agentId, agent.id));
-    expect(computer!.state).toBe('running');
+    // The final event releases its offline computer reservation after reporting.
+    expect(computer!.state).toBe('stopped');
+    await other.engine.shutdown();
   }, 180_000);
 });

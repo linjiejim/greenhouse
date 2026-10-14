@@ -56,6 +56,13 @@ export function applyEvent(event: ClientEvent): void {
     case 'message.step':
       upsertStep(event.data.message_id, event.data.step);
       return;
+    case 'message.resumed': {
+      const {conversation_id, message_id, offset} = event.data;
+      endStream(message_id);
+      const message = threads().threads[conversation_id]?.messages.find(item => item.id === message_id);
+      if (message?.status === 'streaming') threads().patchMessage(conversation_id, message_id, {content: message.content.slice(0, offset)});
+      return;
+    }
     case 'message.updated':
       threads().addMessages(event.data.message.conversation_id, [event.data.message]);
       endStream(event.data.message.id);

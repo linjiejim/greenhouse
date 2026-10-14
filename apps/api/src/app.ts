@@ -10,11 +10,16 @@ import { API_VERSION } from '@greenhouse/contract';
 import type { AppConfig } from './config/index.js';
 import { requireAdmin, requireMember } from './auth/middleware.js';
 import { createTokens, type Tokens } from './auth/tokens.js';
-import { handleError, handleNotFound } from './http/errors.js';
+import { ApiError, handleError, handleNotFound } from './http/errors.js';
 import type { AppEnv } from './http/env.js';
 import { webRoutes } from './http/web.js';
 import { cors, securityHeaders } from './security/headers.js';
-import { RateLimiter } from './security/rate-limit.js';
+import {
+  MemoryRateLimitStore,
+  PostgresRateLimitStore,
+  RateLimiter,
+  type RateLimitStore,
+} from './security/rate-limit.js';
 import { requestSourceIp } from './security/request-ip.js';
 import { authRoutes } from './modules/auth/routes.js';
 import { createAuthService, type AuthService } from './modules/auth/service.js';
@@ -133,6 +138,7 @@ export interface Services {
   hub: Hub;
   engine: Engine;
   limiter: RateLimiter;
+  rateLimitStore: RateLimitStore;
   oauth: OAuthService;
 }
 
@@ -148,6 +154,8 @@ export interface ServiceOptions {
 }
 
 export function createServices(config: AppConfig, options: ServiceOptions = {}): Services {
+  const rateLimitStore =
+    config.RATE_LIMIT_STORE === 'postgres' ? new PostgresRateLimitStore() : new MemoryRateLimitStore();
   const tokens = createTokens(config.tokenSigningKey);
   const auth = createAuthService({ tokens, publicUrl: config.PUBLIC_URL });
   const providers = createProvidersService({ config, fetch: options.fetch });
@@ -199,6 +207,7 @@ export function createServices(config: AppConfig, options: ServiceOptions = {}):
   const approvals = createApprovalsService(agents, knowledge, tables);
   const requests = createRequestsService({ hub, notifications, approvals, decided: () => engine.wakeDecisions() });
   const engine = createEngine({
+    role: config.GREENHOUSE_ROLE,
     eventWakeLimit: config.AGENT_EVENT_WAKES_PER_DAY,
     eventMergeMs: config.AGENT_EVENT_MERGE_MS,
     approvals,
@@ -251,6 +260,12 @@ export function createServices(config: AppConfig, options: ServiceOptions = {}):
   });
   tables.installAutomationHooks(automations.hooks);
   tables.worker.register('base_automation', automations.handle);
+  tables.worker.register('mail_inbound', (job) =>
+    mail.receiveNotice(
+      String(job.payload.instance_id),
+      job.payload.notice as import('@greenhouse/providers').InboundNotice,
+    ),
+  );
   tables.worker.every(automations.sweep);
   const runs = createRunsService({ background: () => engine.background });
   return {
@@ -285,7 +300,8 @@ export function createServices(config: AppConfig, options: ServiceOptions = {}):
     usage: createUsageService({ agents, providers }),
     hub,
     engine,
-    limiter: new RateLimiter(10, 60_000),
+    rateLimitStore,
+    limiter: new RateLimiter(10, 60_000, rateLimitStore, 'auth'),
     oauth: createOAuthService({ tokens, publicUrl: config.PUBLIC_URL }),
   };
 }
@@ -331,11 +347,32 @@ export function createApp(services: Services, options: { webDir?: string } = {})
   // A mail vendor's notice: its own signature is the credential, and the mail is fetched from the vendor.
   app.route('/api/mail', mailInboundRoutes(services.mail));
   // External access: OAuth 2.1 metadata and endpoints, and the MCP server with its own bearer tokens.
-  app.route('/', oauthProtocolRoutes({ oauth: services.oauth, clientIp: (c) => requestSourceIp(c as never, trust) }));
-  app.route('/api/mcp', mcpRoutes({ oauth: services.oauth, services }));
+  app.route(
+    '/',
+    oauthProtocolRoutes({
+      oauth: services.oauth,
+      store: services.rateLimitStore,
+      clientIp: (c) => requestSourceIp(c as never, trust),
+    }),
+  );
+  app.route('/api/mcp', mcpRoutes({ oauth: services.oauth, services, store: services.rateLimitStore }));
 
   const signedIn = new Hono<AppEnv>();
   signedIn.use('*', member);
+  const uploads = new RateLimiter(30, 60_000, services.rateLimitStore, 'uploads');
+  signedIn.use('*', async (c, next) => {
+    if (
+      c.req.method === 'POST' &&
+      (c.req.header('content-type')?.startsWith('multipart/form-data') || c.req.path === '/api/files')
+    ) {
+      const wait = await uploads.hit(c.get('member').id);
+      if (wait) {
+        c.header('Retry-After', String(wait));
+        throw new ApiError(429, 'rate_limited', `Too many uploads. Try again in ${wait} seconds.`);
+      }
+    }
+    await next();
+  });
   signedIn.route('/me/providers', myProviderRoutes(services.providers));
   signedIn.route('/me/models', myModelRoutes(services.providers));
   signedIn.route('/me/usage', myUsageRoutes(services.usage));

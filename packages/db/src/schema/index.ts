@@ -19,3 +19,4 @@ export * from './tables.js';
 export * from './apps.js';
 
 export * from './automations.js';
+export * from './rate-limits.js';

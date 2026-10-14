@@ -5,9 +5,9 @@
 #
 # Fresh install:
 #   1) cp .env.example .env && ./scripts/gen-secrets.sh   # fills required secrets
-#   2) edit .env — set LLM_BASE_URL / LLM_API_KEY / LLM_MODEL
+#   2) edit .env — set BOOTSTRAP_ADMIN_EMAIL and LLM_BASE_URL / LLM_API_KEY / LLM_MODEL
 #   3) docker compose -f docker-compose.ghcr.yml up -d
-#   4) docker compose -f docker-compose.ghcr.yml exec api pnpm admin:create
+#   4) open the activation link from: docker compose -f docker-compose.ghcr.yml logs api
 #
 # Upgrade (new DB migrations are applied automatically before the API starts):
 #   docker compose -f docker-compose.ghcr.yml pull
@@ -49,15 +49,17 @@ services:
   # The API waits for it, so an upgraded image never runs against an old schema.
   migrate:
     image: ${GREENHOUSE_IMAGE:-ghcr.io/linjiejim/greenhouse:latest}
-    command: ['./node_modules/.bin/drizzle-kit', 'migrate']
+    command: ['node', '--import', 'tsx', 'apps/api/src/migrate.ts']
     restart: 'no'
     depends_on:
       postgres:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgresql://greenhouse:greenhouse@postgres:5432/greenhouse
+      DATABASE_URL: postgresql://${POSTGRES_USER:-greenhouse}:${POSTGRES_PASSWORD:-greenhouse}@postgres:5432/${POSTGRES_DB:-greenhouse}
 
   api:
+    init: true
+    stop_grace_period: 70s
     image: ${GREENHOUSE_IMAGE:-ghcr.io/linjiejim/greenhouse:latest}
     restart: unless-stopped
     depends_on:
@@ -69,8 +71,10 @@ services:
       - .env
     environment:
       # In-network DB host is the `postgres` service (overrides .env's localhost value).
-      DATABASE_URL: postgresql://greenhouse:greenhouse@postgres:5432/greenhouse
-      API_PORT: '3000'
+      DATABASE_URL: postgresql://${POSTGRES_USER:-greenhouse}:${POSTGRES_PASSWORD:-greenhouse}@postgres:5432/${POSTGRES_DB:-greenhouse}
+      PORT: '3000'
+      GREENHOUSE_ROLE: ${GREENHOUSE_ROLE:-all}
+      RATE_LIMIT_STORE: ${RATE_LIMIT_STORE:-memory}
     ports:
       - '${PORT:-3000}:3000'
     volumes:
@@ -82,11 +86,33 @@ services:
       test:
         [
           'CMD-SHELL',
-          "node -e \"fetch('http://localhost:3000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\"",
+          'node -e "fetch(''http://localhost:3000/health'').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"',
         ]
       interval: 10s
       timeout: 5s
       retries: 12
+
+  # Optional split: GREENHOUSE_ROLE=api RATE_LIMIT_STORE=postgres docker compose --profile worker up -d
+  # Same image, shared storage and credentials; no HTTP port or Docker socket.
+  worker:
+    profiles: ['worker']
+    init: true
+    stop_grace_period: 70s
+    image: ${GREENHOUSE_IMAGE:-ghcr.io/linjiejim/greenhouse:latest}
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-greenhouse}:${POSTGRES_PASSWORD:-greenhouse}@postgres:5432/${POSTGRES_DB:-greenhouse}
+      GREENHOUSE_ROLE: worker
+      RATE_LIMIT_STORE: ${RATE_LIMIT_STORE:-memory}
+    volumes:
+      - app_data:/app/data
 
 volumes:
   pg_data:
