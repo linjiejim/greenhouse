@@ -4,7 +4,7 @@ Greenhouse is an open-source, self-hosted platform where a team works with its o
 
 ## Truth and v2
 - This is the v2 branch: a top-down rewrite with no backward compatibility. v1 lives on main and is the reference to port from (`git show main:<path>`).
-- Product truth is docs/product/: prd.md (scope, objects, glossary in §5), features.md (one row per feature: ID, v2 decision, status), providers.md, api.md, data-model.md, migration-v1.md, roadmap.md (slice order and gates).
+- Product truth is docs/product/: prd.md (scope, objects, glossary in §5), features.md (one row per feature: ID, v2 decision, status), always-on.md (wake-ups, approval tiers, background work, reliability and cost), providers.md, api.md, data-model.md, migration-v1.md, roadmap.md (slice order and gates).
 - A new feature starts as a features.md row naming its object and why nothing existing can be reused. The change that ships or deletes it updates that row's status.
 - Copy, docs and code use only the glossary: agent, admin, member, conversation, run, request. Never reintroduce bot, super or team.
 - Design truth is docs/design-system/. Tokens have one source, packages/ui/src/tokens/haven.ts; run `pnpm tokens:build` after editing it.

@@ -1,10 +1,10 @@
 # 服务 Provider 体系
 
-更新 2026-10-13 · 状态：设计已定，待实现（[功能清单](features.md) PRV-01…15）· 配套 [PRD §8.1](prd.md#81-服务provider)
+更新 2026-10-14 · 状态：设计已定，大部分已实现（[功能清单](features.md) PRV-01…16）· 配套 [PRD §8.1](prd.md#81-服务provider)
 
 ## 1. 目标
 
-- 能力和厂商解耦。 8 类外部能力都可以换厂商；业务代码只依赖能力接口，不出现厂商名。
+- 能力和厂商解耦。 9 类外部能力都可以换厂商；业务代码只依赖能力接口，不出现厂商名。
 - 两种配置入口。 部署时用环境变量初始化；运行时由管理员在界面上改，改完立即生效，不需要重启。
 - 个人 Key。 管理员允许时，成员可以用自己的 Key，用量记在自己名下。
 - 兼容主流厂商。 优先按协议适配，国内外主流厂商都用「预设」覆盖。
@@ -26,17 +26,17 @@
 | 沙箱 | `sandbox` | Agent 电脑、长时间运行、`compute` 之外的命令执行 | 隐藏电脑相关入口；后台运行只用无沙箱工具 |
 | 搜索 | `search` | `web_search`；`web_fetch`（网页读取） | 工具不提供；`web_fetch` 退回到内置的安全抓取 |
 | 存储 | `storage` | 所有文件：上传、附件、产物、导出、技能包、电脑备份 | 本地磁盘 `data/` |
+| 邮箱 | `mail` | 系统发信（邀请、重置密码、通知邮件）；Agent 邮箱的收信与发信（M1.8） | 不发邮件：邀请与重置改为复制链接；Agent 没有邮箱；邮件通知不出现 |
 
-渠道也是 Provider，和上面 8 类用同一张表、同一套解析与安全规则，在「管理 → 服务 → 渠道」里配置：
+渠道也是 Provider，和上面 9 类用同一张表、同一套解析与安全规则，在「管理 → 服务」里配置：
 
 | 能力 | ID | 消费方 | 未配置时 |
 | --- | --- | --- | --- |
-| 邮件发送 | `mail` | 通知送达（SMTP）；以后也发邀请和重置密码 | 邀请改为复制链接；邮件渠道不出现 |
-| 即时通讯 | `im` | 飞书、企微：通知送达；以后也做扫码登录、机器人 | 对应登录与渠道不出现 |
+| 即时通讯 | `im` | 飞书、企微：通知送达。v2.0 不在界面出现，以后和 Slack、Discord、Telegram 一起作为 IM 渠道统一设计（账号、机器人、送达、扫码登录） | 对应登录与渠道不出现 |
 | 推送 | `push` | 手机推送（Expo 推送服务，它替官方 App 持有 APNs / FCM 凭据） | 不推送，只有站内通知 |
 
-渠道和 8 类能力有三处不同：
-- 一个渠道由同类实例（`smtp`、`feishu`、`wecom`、`expo`）在工作区顺序里的第一个提供，不回退到第二个：渠道关了就是关了。飞书和企微同属 `im`，按类型各取各的。
+渠道和 9 类能力有三处不同：
+- 一个渠道由同类实例（`feishu`、`wecom`、`expo`）在工作区顺序里的第一个提供，不回退到第二个：渠道关了就是关了。邮件通知走邮箱能力（`mail`），按能力的顺序回退。飞书和企微同属 `im`，按类型各取各的。
 - 「管理 → 服务 → 渠道」（`/api/admin/channels`）按渠道编辑：第一次保存生成工作区实例，环境变量来的设置先复制成可编辑的一份，再排到同类之首。
 - 渠道发送不计量，也不受预算限制：一封「需要你」的邮件不能因为模型预算用完而发不出去。
 
@@ -97,9 +97,12 @@ STORAGE_PROVIDER=s3              # local | s3
 STORAGE_ENDPOINT=https://cos.ap-shanghai.myqcloud.com  STORAGE_BUCKET=…  STORAGE_REGION=ap-shanghai
 STORAGE_ACCESS_KEY_ID=…  STORAGE_SECRET_ACCESS_KEY=…  STORAGE_PREFIX=greenhouse/  STORAGE_FORCE_PATH_STYLE=false
 
-# 渠道（通知送达）；设置不全的渠道启动时告警并忽略
+# 邮箱：系统发信与 Agent 邮箱；设置不全时启动告警并忽略（云服务的变量随适配器，M1.8）
 SMTP_HOST=smtp.example.com       SMTP_SECURITY=starttls   # tls | starttls（默认）| none；SMTP_PORT 默认 465 / 587 / 25
 SMTP_USER=…  SMTP_PASSWORD=…  SMTP_FROM=greenhouse@example.com  SMTP_FROM_NAME=Greenhouse
+MAIL_AGENT_DOMAIN=agents.example.com   # Agent 邮箱的域名；MX 指向能收信的邮件服务
+
+# 渠道（通知送达）；设置不全的渠道启动时告警并忽略
 FEISHU_APP_ID=cli_…  FEISHU_APP_SECRET=…  FEISHU_BASE_URL=   # 留空 = open.feishu.cn；Lark 填 https://open.larksuite.com
 WECOM_CORP_ID=ww…  WECOM_AGENT_ID=1000002  WECOM_APP_SECRET=…  WECOM_BASE_URL=   # 留空 = qyapi.weixin.qq.com
 PUSH_PROVIDER=expo               EXPO_ACCESS_TOKEN=        # 只有 Expo 项目开了 enhanced push security 才要
@@ -272,19 +275,31 @@ v1 的 Jina Reader 写死、不能关闭；v2 把它变成可选项。
 
 v2 的存储层统一为一个接口：v1 的 COS SDK、`s3-lite`、技能存储和电脑备份四套实现合并。表结构里的厂商字段（如 `cos_key`）改为中性的 `storage_key`。
 
-### 渠道 `mail` / `im` / `push`
+### 邮箱 `mail`
+
+| 适配器 | v2.0 | 说明 |
+| --- | --- | --- |
+| `smtp` | 只发 | 任意 SMTP 服务器（tls / starttls / none）；nodemailer，写在 API 里（`apps/api/src/modules/channels/smtp.ts`），像扩展一样注册；换地址清空密码 |
+| `mailgun` | 收发 | 发信走 HTTP API；收信由 Mailgun Routes 转发到 Greenhouse，按签名校验 |
+| 第二个云服务 | 收发 | Postmark 或 Resend，实现时按收信能力和签名校验选定 |
+
+- 能收信的适配器实现 `receive`：把服务商的入站请求验签、解析成统一的邮件（发件人、收件人、主题、正文、附件、Message-ID、In-Reply-To、SPF / DKIM 结论）。入站地址是 `/api/mail/inbound/:instance`，验签失败一律拒收。
+- Agent 邮箱的域名由 `MAIL_AGENT_DOMAIN` 或管理界面设置，MX 记录指向服务商；地址默认是「名字-随机 4 位@域名」，主人可以改前缀。
+- 来信是不可信输入：正文和附件存进存储服务，进对话时用 fence 隔开；附件和正文有大小上限。
+- 只有能收信的实例在顺序之首时，Agent 邮箱才出现。
+
+### 渠道 `im` / `push`
 
 | 能力 | 适配器 | v2.0 | 后续 |
 | --- | --- | --- | --- |
-| `mail` | `smtp` | 任意 SMTP 服务器（tls / starttls / none）；用 nodemailer，所以写在 API 里（`apps/api/src/modules/channels/smtp.ts`），像扩展一样注册；地址是 `smtp://主机:端口`，换地址清空密码 | 邮件服务商的 HTTP API |
-| `im` | `feishu`、`wecom` | 飞书（含 Lark 预设）与企微自建应用，纯文本私信；令牌按应用缓存 | 飞书消息卡片 |
+| `im` | `feishu`、`wecom` | 代码已有、界面不出现：飞书（含 Lark 预设）与企微自建应用，纯文本私信；令牌按应用缓存 | IM 渠道统一设计：加 Slack、Discord、Telegram，账号绑定、机器人、扫码登录 |
 | `push` | `expo` | Expo 推送服务：按项目分组、每次最多 100 条，15 分钟后查回执 | 直连 APNs / FCM |
 
 ## 7. 界面
 
 管理 → 服务
 
-- 8 行能力加 1 行渠道，每行显示：能力名、浅色「?」（能力用在哪里）、当前实例与来源标签、状态点、「配置」。
+- 9 行能力加 1 行推送，每行显示：能力名、浅色「?」（能力用在哪里）、当前实例与来源标签、状态点、「配置」。
 - 点「配置」在右侧抽屉里管理这个能力：
   - 实例列表：可以拖动排序，顺序就是回退顺序。
   - 添加实例：先选厂商预设；表单由 `configSchema` 生成，Key 只写不读。
