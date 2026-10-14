@@ -85,16 +85,7 @@ import {
 } from './access.js';
 import { diffText } from './diff.js';
 import { exportCopy, notesEntry, planExport, safeSegment, zipStream, type ExportFile } from './export.js';
-import {
-  canonicalFileLinks,
-  docLinkIds,
-  docSnippet,
-  fileLinkIds,
-  markdownText,
-  mentionIds,
-  signFileLinks,
-  snippetFor,
-} from './markdown.js';
+import { docLinkIds, docSnippet, fileLinks, markdownText, mentionIds, snippetFor } from './markdown.js';
 import { createPresence } from './presence.js';
 import {
   agentNames,
@@ -200,8 +191,18 @@ function decodeRecent(cursor: string | undefined): { u: string; id: string } | n
   throw invalidInput('The cursor is invalid.');
 }
 
-export function createKnowledgeService(deps: { files: FilesService; notifications: NotificationsService; hub: Hub }) {
+export function createKnowledgeService(deps: {
+  files: FilesService;
+  notifications: NotificationsService;
+  hub: Hub;
+  /** This server's address: file links with its origin are ours, any other host's are not. */
+  publicUrl: string;
+}) {
   const presence = createPresence();
+  const links = fileLinks(deps.publicUrl);
+  /** File links signed for one reader. */
+  const signedFor = (markdown: string, memberId: string) =>
+    links.sign(markdown, (fileId) => deps.files.signedUrl(fileId, memberId).url);
 
   const readerFor = (memberId: string, as?: As) => loadReader(memberId, as?.agentId ?? null);
 
@@ -534,10 +535,7 @@ export function createKnowledgeService(deps: { files: FilesService; notification
     return {
       id: doc.id,
       title: doc.title,
-      content:
-        options.signed === false
-          ? doc.content
-          : signFileLinks(doc.content, (id) => deps.files.signedUrl(id, reader.memberId).url),
+      content: options.signed === false ? doc.content : signedFor(doc.content, reader.memberId),
       space: doc.space,
       folder_id: doc.folderId,
       owner_id: doc.ownerId,
@@ -724,7 +722,7 @@ export function createKnowledgeService(deps: { files: FilesService; notification
   ): Promise<DocRow> {
     if (input.version !== doc.version) stale(doc);
     const title = input.title ?? doc.title;
-    const content = input.content === undefined ? doc.content : canonicalFileLinks(input.content);
+    const content = input.content === undefined ? doc.content : links.canonical(input.content);
     if (title === doc.title && content === doc.content) return doc;
     const [saved] = await getDb()
       .update(docs)
@@ -1087,7 +1085,7 @@ export function createKnowledgeService(deps: { files: FilesService; notification
       }
       const place = await placeFor(reader, { folderId: input.folder_id, space: input.space });
       const title = input.title ?? template!.title;
-      const content = canonicalFileLinks(input.content ?? template?.content ?? '');
+      const content = links.canonical(input.content ?? template?.content ?? '');
       const tags = input.tags ?? template?.tags ?? [];
       const meta = input.meta ?? {};
       const doc = await transaction(async () => {
@@ -1271,7 +1269,7 @@ export function createKnowledgeService(deps: { files: FilesService; notification
         created_by: refOf(people, row.createdBy),
         agent: row.agentId ? { id: row.agentId, name: writers.get(row.agentId) ?? '' } : null,
         created_at: row.createdAt,
-        content: signFileLinks(row.content, (fileId) => deps.files.signedUrl(fileId, memberId).url),
+        content: signedFor(row.content, memberId),
       };
     },
 
@@ -1377,7 +1375,7 @@ export function createKnowledgeService(deps: { files: FilesService; notification
           targetId: docId,
           createdBy: memberId,
           agentId: as?.agentId ?? null,
-          body,
+          body: links.canonical(body),
           mentions: mentionIds(body),
         })
         .returning();
@@ -1392,7 +1390,7 @@ export function createKnowledgeService(deps: { files: FilesService; notification
       const own = await ownComment(memberId, docId, commentId);
       const [row] = await getDb()
         .update(comments)
-        .set({ body, mentions: mentionIds(body), updatedAt: new Date().toISOString() })
+        .set({ body: links.canonical(body), mentions: mentionIds(body), updatedAt: new Date().toISOString() })
         .where(eq(comments.id, own.id))
         .returning();
       await tellComment(reader, doc, row!, own.mentions, own.agentId);
@@ -1772,7 +1770,7 @@ export function createKnowledgeService(deps: { files: FilesService; notification
       ]);
       // Pictures and files the docs show, when the member may open them.
       const inTree = new Set(fileRows.map((row) => row.id));
-      const shown = [...new Set(docRows.flatMap((doc) => fileLinkIds(doc.content)))].filter((id) => !inTree.has(id));
+      const shown = [...new Set(docRows.flatMap((doc) => links.ids(doc.content)))].filter((id) => !inTree.has(id));
       const assets: ExportFile[] = [];
       for (const id of shown) {
         const row = await deps.files.get(memberId, id).catch(() => null);
@@ -1788,6 +1786,7 @@ export function createKnowledgeService(deps: { files: FilesService; notification
         locale: reader.locale,
         label,
         exportedAt,
+        links,
       });
       const body = zipStream(async (zip) => {
         for (const entry of plan.entries) {
@@ -2031,7 +2030,7 @@ export function createKnowledgeService(deps: { files: FilesService; notification
     },
   };
 
-  /** Comments as the reader sees them, with names. */
+  /** Comments as the reader sees them: with names, and file links signed for them. */
   async function commentViews(memberId: string, rows: CommentRow[]) {
     const [people, writers] = await Promise.all([
       memberNames(rows.map((row) => row.createdBy)),
@@ -2041,7 +2040,7 @@ export function createKnowledgeService(deps: { files: FilesService; notification
       id: row.id,
       target_type: row.targetType,
       target_id: row.targetId,
-      body: row.body,
+      body: signedFor(row.body, memberId),
       mentions: row.mentions,
       created_by: refOf(people, row.createdBy),
       agent: row.agentId ? { id: row.agentId, name: writers.get(row.agentId) ?? '' } : null,

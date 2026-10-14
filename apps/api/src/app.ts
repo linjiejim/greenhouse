@@ -152,7 +152,7 @@ export function createServices(config: AppConfig, options: ServiceOptions = {}):
     forbiddenOrigins,
   });
   const skills = createSkillsService({ files, providers, agents, connectors, computers, notifications });
-  const knowledge = createKnowledgeService({ files, notifications, hub });
+  const knowledge = createKnowledgeService({ files, notifications, hub, publicUrl: config.PUBLIC_URL });
   const schedules = createSchedulesService({ agents, background: () => engine.background });
   const requests = createRequestsService({ hub, notifications });
   const engine = createEngine({

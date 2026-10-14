@@ -103,7 +103,10 @@ export type DocMeta = z.infer<typeof docMetaSchema>;
 export const knowledgeDocSchema = z.object({
   id: z.string(),
   title: z.string(),
-  /** Markdown, the source of truth. File links are signed for the reader; saves may send them back as they are. */
+  /**
+   * Markdown, the source of truth. Links and pictures of this server's files (`[a](/api/files/<id>/content)`)
+   * are signed for the reader; saves may send them back as they are.
+   */
   content: z.string(),
   space: z.enum(KNOWLEDGE_SPACES),
   folder_id: z.string().nullable(),
@@ -263,7 +266,7 @@ export const commentSchema = z.object({
   id: z.string(),
   target_type: z.enum(COMMENT_TARGETS),
   target_id: z.string(),
-  /** Markdown; `[@Name](member:<id>)` mentions. */
+  /** Markdown; `[@Name](member:<id>)` mentions. File links are signed for the reader, as in a doc. */
   body: z.string(),
   /** The members it mentions. */
   mentions: z.array(z.string()),

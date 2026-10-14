@@ -1,14 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { DOC_CONTENT_MAX } from '@greenhouse/contract';
 import {
-  canonicalFileLinks,
   docLinkIds,
   docSnippet,
-  fileLinkIds,
+  fileLinks,
   markdownText,
   mentionIds,
   replaceDocLinks,
-  signFileLinks,
   snippetFor,
 } from '../markdown.js';
 
@@ -16,6 +14,9 @@ const DOC_A = 'doc_01JAAAAAAAAAAAAAAAAAAAAAAA';
 const DOC_B = 'doc_01JBBBBBBBBBBBBBBBBBBBBBBB';
 const MEMBER = 'mbr_01JCCCCCCCCCCCCCCCCCCCCCCC';
 const FILE = 'fil_01JDDDDDDDDDDDDDDDDDDDDDDD';
+const OTHER = 'fil_01JEEEEEEEEEEEEEEEEEEEEEEE';
+const links = fileLinks('https://greenhouse.example/');
+const sign = (id: string) => `/api/files/${id}/content?sig=me`;
 
 describe('links in a doc', () => {
   it('finds doc links once each, wherever they are written, but not in code', () => {
@@ -37,14 +38,82 @@ describe('links in a doc', () => {
     expect(mentionIds('`[@Ann](member:mbr_01JCCCCCCCCCCCCCCCCCCCCCCC)` in code')).toEqual([]);
   });
 
-  it('stores file links without signatures and signs them for a reader', () => {
-    const signed = `![x](/api/files/${FILE}/content?exp=1&m=${MEMBER}&sig=abc) [y](https://h.example/api/files/${FILE}/content?exp=2&sig=d)`;
-    const canonical = canonicalFileLinks(signed);
-    expect(canonical).toBe(`![x](/api/files/${FILE}/content) [y](https://h.example/api/files/${FILE}/content)`);
-    expect(fileLinkIds(canonical)).toEqual([FILE]);
-    expect(signFileLinks(canonical, (id) => `/api/files/${id}/content?sig=me`)).toBe(
-      `![x](/api/files/${FILE}/content?sig=me) [y](https://h.example/api/files/${FILE}/content?sig=me)`,
+  it('stores file links without signatures and signs them for a reader, on this server only', () => {
+    const signed = [
+      `![x](/api/files/${FILE}/content?exp=1&m=${MEMBER}&sig=abc)`,
+      `[y](HTTPS://Greenhouse.Example:443/api/files/${FILE}/content?exp=2&sig=d)`,
+      `[z](https://outside.example/api/files/${OTHER}/content?exp=2&sig=d)`,
+    ].join(' ');
+    const canonical = links.canonical(signed);
+    expect(canonical).toBe(
+      [
+        `![x](/api/files/${FILE}/content)`,
+        `[y](HTTPS://Greenhouse.Example:443/api/files/${FILE}/content)`,
+        // Another host's address is not ours to touch.
+        `[z](https://outside.example/api/files/${OTHER}/content?exp=2&sig=d)`,
+      ].join(' '),
     );
+    expect(links.ids(canonical)).toEqual([FILE]);
+    expect(links.sign(canonical, sign)).toBe(
+      [
+        `![x](/api/files/${FILE}/content?sig=me)`,
+        `[y](HTTPS://Greenhouse.Example:443/api/files/${FILE}/content?sig=me)`,
+        `[z](https://outside.example/api/files/${OTHER}/content?exp=2&sig=d)`,
+      ].join(' '),
+    );
+  });
+
+  it('never signs a file link that another address, raw HTML or an autolink could hold', () => {
+    const file = (letter: string) => `fil_01J${letter.repeat(23)}`;
+    const hostile = [
+      // The same path on another host, or after a path, a query or a parenthesis of one.
+      `![a](https://outside.example/api/files/${file('A')}/content)`,
+      `![b](https://outside.example/x/api/files/${file('B')}/content)`,
+      `![c](https://outside.example/?u=/api/files/${file('C')}/content)`,
+      `![d](https://outside.example/(/api/files/${file('D')}/content))`,
+      `![e](https://outside.example/](/api/files/${file('E')}/content))`,
+      `![f](//outside.example/![x](/api/files/${file('F')}/content))`,
+      // Inside an angle-bracket target, which may hold spaces, or an escaped `>`.
+      `[g](<https://outside.example/ ![x](/api/files/${file('G')}/content)>)`,
+      `[h](< https://outside.example/\\> ![x](/api/files/${file('H')}/content)>)`,
+      // Inside raw HTML: an attribute, across lines, or a value no closing quote ends.
+      `<img src="/api/files/${file('J')}/content">`,
+      `<img\nsrc='https://outside.example/?x= ![y](/api/files/${file('K')}/content)'>`,
+      `<div><img src='https://outside.example/\n\n![y](/api/files/${file('M')}/content)\n\n<p title='x'>`,
+      `<style>p { background: url('https://outside.example/ ![y](/api/files/${file('N')}/content)') }</style>`,
+      // Inside an address the parser links as a whole, or a reference definition's target.
+      `https://outside.example/![z](/api/files/${file('P')}/content)`,
+      `www.outside.example/![z](/api/files/${file('Q')}/content)`,
+      `[r]:\n//outside.example/![z](/api/files/${file('R')}/content)`,
+      // Not a link at all.
+      `see /api/files/${file('S')}/content`,
+    ].join('\n\n');
+    expect(links.sign(hostile, sign)).toBe(hostile);
+    // A page base would send every relative address elsewhere: nothing is signed.
+    const based = `<base href="https://outside.example/">\n\n![ok](/api/files/${FILE}/content)`;
+    expect(links.sign(based, sign)).toBe(based);
+  });
+
+  it('signs the links and pictures the editor writes, in prose of any language', () => {
+    const md = [
+      `![a](/api/files/${FILE}/content "title")`,
+      `见[文档](/api/files/${FILE}/content)和[表格](https://greenhouse.example/api/files/${OTHER}/content)。`,
+      `- ![list item](/api/files/${FILE}/content)`,
+      `> ![quote](/api/files/${FILE}/content)`,
+      `| ![cell](/api/files/${FILE}/content) | [a \\[1\\]](/api/files/${OTHER}/content) |`,
+      `<b>bold</b> ![after a tag](/api/files/${FILE}/content)`,
+      `See https://outside.example/page then ![after an address](/api/files/${FILE}/content)`,
+    ].join('\n');
+    expect(links.sign(md, sign).match(/sig=me/g)).toHaveLength(9);
+    // Forms the editor never writes stay unsigned: no picture is worth a doubt.
+    const other = [
+      `[b](</api/files/${FILE}/content>)`,
+      `<https://greenhouse.example/api/files/${FILE}/content>`,
+      `![c][pic]`,
+      '',
+      `[pic]: /api/files/${OTHER}/content`,
+    ].join('\n');
+    expect(links.sign(other, sign)).toBe(other);
   });
 
   it('rewrites doc links that have a new target and leaves the rest', () => {
@@ -125,6 +194,9 @@ describe('hostile input', () => {
     'doc links that never finish': fill('#/knowledge/doc_'),
     'link targets before a doc link': fill('](x'),
     'file links that never finish': fill('/api/files/fil_'),
+    'file links everywhere': fill(
+      `![x](/api/files/${FILE}/content) [y](https://greenhouse.example/api/files/${OTHER}/content)\n`,
+    ),
   };
   it.each(Object.entries(cases))('stays fast on %s', (_name, text) => {
     expect(text.length).toBeGreaterThan(longest - 1_000);
@@ -132,8 +204,9 @@ describe('hostile input', () => {
     markdownText(text);
     mentionIds(text);
     docLinkIds(text);
-    fileLinkIds(text);
-    canonicalFileLinks(text);
+    links.ids(text);
+    links.canonical(text);
+    links.sign(text, sign);
     replaceDocLinks(text, () => 'x.md');
     docSnippet(text, ['missing']);
     snippetFor(text, ['missing']);

@@ -100,9 +100,8 @@ describe('images survive the round-trip (previously silently dropped)', () => {
   });
 });
 
-describe('editor fallback for docs with no content_json', () => {
-  // Markdown-only writers (CLI import, agent tools) leave content_json '{}', so
-  // the editor loads them by parsing the Markdown instead. That branch used to be
+describe('the editor loading a doc from its Markdown', () => {
+  // Docs store only Markdown, so the editor always loads them by parsing it. That used to be
   // a line-based converter that knew only headings/lists/quotes: a brand doc
   // opened as literal text and the first save wrote the flattening back over the
   // canonical Markdown, escaped. Same source, same schema, same result as the

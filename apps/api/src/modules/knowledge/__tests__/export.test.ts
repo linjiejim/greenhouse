@@ -1,6 +1,7 @@
 import { strFromU8, unzipSync } from 'fflate';
 import { describe, expect, it } from 'vitest';
 import { notesEntry, planExport, relativePath, safeSegment, zipStream, type ExportInput } from '../export.js';
+import { fileLinks } from '../markdown.js';
 
 const DOC_A = 'doc_01JAAAAAAAAAAAAAAAAAAAAAAA';
 const DOC_B = 'doc_01JBBBBBBBBBBBBBBBBBBBBBBB';
@@ -41,6 +42,7 @@ function input(overrides: Partial<ExportInput> = {}): ExportInput {
     locale: 'en',
     label: 'Handbook',
     exportedAt: '2026-10-14T08:00:00.000Z',
+    links: fileLinks('https://greenhouse.example'),
     ...overrides,
   };
 }

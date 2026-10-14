@@ -5,7 +5,17 @@ import { strFromU8, unzipSync } from 'fflate';
 import { and, eq } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import type { RealtimeEvent } from '@greenhouse/contract';
-import { docLinks, docVersions, getDb, groupMembers, groups, members, newId, notifications } from '@greenhouse/db';
+import {
+  comments,
+  docLinks,
+  docVersions,
+  getDb,
+  groupMembers,
+  groups,
+  members,
+  newId,
+  notifications,
+} from '@greenhouse/db';
 import { createTestApp } from '../../../testing.js';
 
 type App = ReturnType<typeof createTestApp>;
@@ -628,6 +638,42 @@ describe('files in the tree', () => {
     expect(url).toContain(`m=${chen.id}`);
     expect((await app.app.request(url)).status).toBe(200);
     expect((await as(chen).del(`/api/knowledge/files/${picture.body.id}`)).body.error.code).toBe('doc_file');
+
+    // Only this server's links are signed: the same path on another host, or inside another
+    // address, stays as written, so a reader's signature never goes anywhere else.
+    const outside = `https://outside.example/api/files/${picture.body.id}/content`;
+    const nested = `[x](https://outside.example/(/api/files/${picture.body.id}/content))`;
+    await as(lin).patch(`/api/knowledge/docs/${doc.id}`, {
+      version: 2,
+      content: `![ours](http://greenhouse.test/api/files/${picture.body.id}/content)\n\n![theirs](${outside})\n\n${nested}`,
+    });
+    const read = (await as(chen).get(`/api/knowledge/docs/${doc.id}`)).body.content as string;
+    expect(read).toContain(`![ours](http://greenhouse.test/api/files/${picture.body.id}/content?exp=`);
+    expect(read).toContain(`![theirs](${outside})`);
+    expect(read).toContain(nested);
+    expect(read.match(/sig=/g)).toHaveLength(1);
+    const version = (await as(chen).get(`/api/knowledge/docs/${doc.id}/versions/3`)).body.content as string;
+    expect(version.match(/sig=/g)).toHaveLength(1);
+    expect(version).toContain(`m=${chen.id}`);
+  });
+
+  it('keeps comments free of signatures and signs their pictures for each reader', async () => {
+    const { app, lin, chen, as, upload } = await setup();
+    const doc = (await as(lin).post('/api/knowledge/docs', { title: 'Review', content: 'x', space: 'team' })).body;
+    const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0]);
+    const picture = (await upload(lin, new File([png], 'shot.png', { type: 'image/png' }), { doc_id: doc.id })).body;
+    const outside = `https://outside.example/api/files/${picture.id}/content?sig=theirs`;
+    const posted = await as(lin).post(`/api/knowledge/docs/${doc.id}/comments`, {
+      body: `Look: ![shot](${picture.url}) and [elsewhere](${outside})`,
+    });
+    const [stored] = await getDb().select().from(comments).where(eq(comments.id, posted.body.id));
+    expect(stored!.body).toBe(`Look: ![shot](/api/files/${picture.id}/content) and [elsewhere](${outside})`);
+    expect(posted.body.body).toContain(`m=${lin.id}`);
+    const forChen = (await as(chen).get(`/api/knowledge/docs/${doc.id}/comments`)).body.items[0];
+    const url = /\((\/api\/files\/[^)]+)\)/.exec(forChen.body)![1]!;
+    expect(url).toContain(`m=${chen.id}`);
+    expect(forChen.body).toContain(`[elsewhere](${outside})`);
+    expect((await app.app.request(url)).status).toBe(200);
   });
 });
 

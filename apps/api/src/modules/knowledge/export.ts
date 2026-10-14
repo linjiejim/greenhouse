@@ -7,7 +7,7 @@
  */
 
 import { Zip, ZipDeflate, ZipPassThrough } from 'fflate';
-import { fileLinkIds, replaceDocLinks, replaceFileLinks } from './markdown.js';
+import { replaceDocLinks, type FileLinks } from './markdown.js';
 
 export const MAX_EXPORT_DOCS = 5_000;
 /** Files and pictures together; past this they are listed instead of packed. */
@@ -47,6 +47,8 @@ export interface ExportInput {
   locale: 'zh' | 'en';
   label: string;
   exportedAt: string;
+  /** This server's file links: only those are pointed at the packed files. */
+  links: Pick<FileLinks, 'ids' | 'replace'>;
 }
 
 export type ExportEntry = { path: string; text: string } | { path: string; fileId: string; sizeBytes: number };
@@ -182,9 +184,9 @@ export function planExport(input: ExportInput): { entries: ExportEntry[]; notes:
   for (const doc of docs) {
     const path = docPaths.get(doc.id)!;
     const dir = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '';
-    const missing = fileLinkIds(doc.content).some((id) => !filePaths.has(id));
+    const missing = input.links.ids(doc.content).some((id) => !filePaths.has(id));
     if (missing) notes.push(copy.unreadable(doc.title));
-    let body = replaceFileLinks(doc.content, (id) => {
+    let body = input.links.replace(doc.content, (id) => {
       const target = filePaths.get(id);
       return target ? relativePath(dir, target) : null;
     });

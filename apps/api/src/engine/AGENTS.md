@@ -90,6 +90,8 @@ The one engine for conversations and runs. Read with the root AGENTS.md and docs
 - Writes raise the `tool_write` card, except inside the Agent's own private reference folder (`callRisk` answers read there). A doc the member cannot see is refused before any card.
 - An edit sends the version it read; a newer one refuses it. Versions and comments record the Agent next to the member (`agent_id`).
 - The private folder (`folders.agent_id`) is made on the first write, at the top of the owner's space; the owner's other Agents never see it and it is never shared.
+- File links in docs and comments are stored unsigned and signed per reader on read (modules/knowledge/markdown.ts): only with no origin or PUBLIC_URL's, and only as the whole target of a Markdown link or image that nothing around can extend. Another host's path, raw HTML, autolinks and bare addresses stay unsigned; a doc with `<base>` gets no signature.
+- Doc Markdown reaches a page only through the editor's ProseMirror parser or a sanitiser: md-html's HTML is raw.
 
 ## Computers
 - One computer per Agent and member from the sandbox provider (modules/computers): the owner's, or a member's own copy of a public Agent. The Docker adapter always runs hardened (read-only root, no capabilities, bounded resources, no published port) with the home on a named volume; production uses gVisor (`runsc`).
