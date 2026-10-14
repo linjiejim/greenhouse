@@ -1,4 +1,4 @@
-/** Rows of the tree as the API shows them, and the order of a folder's contents. */
+/** Rows of the tree as the API shows them. Their order is the database's (service.ts treePage). */
 
 import { inArray } from 'drizzle-orm';
 import type { KnowledgeItem, KnowledgeShare, MemberRef } from '@greenhouse/contract';
@@ -98,21 +98,6 @@ export const toItem = (source: Source, access: Role, shared: boolean): Knowledge
   archived_at: source.archivedAt,
   updated_at: source.updatedAt,
 });
-
-const TYPE_RANK = { folder: 0, doc: 1, file: 1 } as const;
-
-/** Hand-ordered items first, then folders, then docs and files by name. */
-export function treeOrder(a: Source, b: Source): number {
-  const manualA = a.sortOrder > 0 ? 0 : 1;
-  const manualB = b.sortOrder > 0 ? 0 : 1;
-  return (
-    manualA - manualB ||
-    a.sortOrder - b.sortOrder ||
-    TYPE_RANK[a.type] - TYPE_RANK[b.type] ||
-    a.name.localeCompare(b.name, 'zh-Hans-CN', { numeric: true }) ||
-    a.id.localeCompare(b.id)
-  );
-}
 
 /** Names of members, for who wrote what. */
 export async function memberNames(ids: Iterable<string | null | undefined>): Promise<Map<string, string>> {

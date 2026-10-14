@@ -145,6 +145,65 @@ describe('spaces and the tree', () => {
     expect(moved.body).toMatchObject({ name: 'Deep', folder_id: null, path: [] });
   });
 
+  it('pages folders, space roots, shared roots and the archive in the order the database keeps', async () => {
+    const { lin, chen, as, upload } = await setup();
+    const top = (await as(lin).post('/api/knowledge/folders', { name: 'Top' })).body;
+    for (const name of ['d', 'b', 'e']) await as(lin).post('/api/knowledge/docs', { title: name, folder_id: top.id });
+    await as(lin).post('/api/knowledge/folders', { name: 'z', folder_id: top.id });
+    await upload(lin, new File(['x'], 'a.txt', { type: 'text/plain' }), { folder_id: top.id });
+    /** Every page of a list, following next_cursor. */
+    async function pages(path: string, take: (body: any) => any[]) {
+      const seen: string[][] = [];
+      let cursor: string | null = null;
+      do {
+        const answer = await as(lin).get(
+          `${path}${path.includes('?') ? '&' : '?'}limit=2${cursor ? `&cursor=${cursor}` : ''}`,
+        );
+        const body: any = answer.body;
+        seen.push(take(body).map((item: any) => item.name));
+        cursor = body.next_cursor;
+      } while (cursor);
+      return seen;
+    }
+    expect(await pages(`/api/knowledge/folders/${top.id}`, (body) => body.children)).toEqual([
+      ['z', 'a.txt'],
+      ['b', 'd'],
+      ['e'],
+    ]);
+    for (const name of ['p', 'q', 'r']) await as(lin).post('/api/knowledge/docs', { title: name });
+    expect((await pages('/api/knowledge/folders?space=personal', (body) => body.items)).flat()).toEqual([
+      'Top',
+      'p',
+      'q',
+      'r',
+    ]);
+
+    // What others shared, and what was archived, page the same way.
+    for (const title of ['s1', 's2', 's3']) {
+      const doc = (await as(lin).post('/api/knowledge/docs', { title })).body;
+      await as(lin).put(`/api/knowledge/docs/${doc.id}/share`, {
+        items: [{ type: 'member', id: chen.id, role: 'viewer' }],
+      });
+    }
+    const shared = await as(chen).get('/api/knowledge/folders?space=shared&limit=2');
+    expect(shared.body.items.map((item: any) => item.name)).toEqual(['s1', 's2']);
+    const rest = await as(chen).get(`/api/knowledge/folders?space=shared&limit=2&cursor=${shared.body.next_cursor}`);
+    expect(rest.body).toMatchObject({ items: [expect.objectContaining({ name: 's3' })], next_cursor: null });
+
+    for (const name of ['p', 'q', 'r']) {
+      const found = (await as(lin).get(`/api/knowledge/search?q=${name}&space=personal`)).body.items[0];
+      await as(lin).del(`/api/knowledge/docs/${found.id}`);
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+    expect(await pages('/api/knowledge/archived?space=personal', (body) => body.items)).toEqual([['r', 'q'], ['p']]);
+
+    // A cursor the server did not make is refused, not passed to the database.
+    expect((await as(lin).get(`/api/knowledge/folders/${top.id}?cursor=bogus`)).body.error.code).toBe('invalid_input');
+    expect((await as(lin).get('/api/knowledge/archived?space=personal&cursor=bogus')).body.error.code).toBe(
+      'invalid_input',
+    );
+  });
+
   it('moves personal items into the team space with what is in them, never back', async () => {
     const { lin, chen, as } = await setup();
     const drafts = (await as(lin).post('/api/knowledge/folders', { name: 'Drafts' })).body;

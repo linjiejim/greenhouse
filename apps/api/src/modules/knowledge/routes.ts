@@ -1,11 +1,11 @@
 /**
  * GET    /api/knowledge/search?q=&space=&folder_id=&limit=   full text over what I may read, best first, with snippets
- * GET    /api/knowledge/archived?space=team|personal         what was archived, topmost first
+ * GET    /api/knowledge/archived?space=&cursor=&limit=      what was archived, topmost and newest first
  * POST   /api/knowledge/reorder                              hand order for items of one folder (or a space root)
  * GET    /api/knowledge/export?space=team|personal           a whole space as a ZIP
- * GET    /api/knowledge/folders?space=team|personal|shared   the root of a space, or the topmost items shared with me
+ * GET    /api/knowledge/folders?space=&cursor=&limit=       the root of a space (team|personal), or the topmost items shared with me
  * POST   /api/knowledge/folders                              a folder in a folder or at the root of a space
- * GET    /api/knowledge/folders/:id                          the folder, its path and what is in it
+ * GET    /api/knowledge/folders/:id?cursor=&limit=          the folder, its path and a page of what is in it
  * PATCH  /api/knowledge/folders/:id                          rename or move (never into itself)
  * DELETE /api/knowledge/folders/:id                          archive it and everything in it
  * POST   /api/knowledge/folders/:id/restore                  bring back what was archived with it
@@ -56,6 +56,8 @@ import {
   reorderInputSchema,
   restoreVersionInputSchema,
   rootQuerySchema,
+  archivedQuerySchema,
+  treePageQuerySchema,
   shareInputSchema,
   spaceQuerySchema,
   updateDocInputSchema,
@@ -87,9 +89,10 @@ export function knowledgeRoutes(service: KnowledgeService) {
     .get('/search', async (c) =>
       c.json(await service.search(c.get('member').id, readQuery(c, knowledgeSearchQuerySchema))),
     )
-    .get('/archived', async (c) =>
-      c.json(await service.archived(c.get('member').id, readQuery(c, spaceQuerySchema).space)),
-    )
+    .get('/archived', async (c) => {
+      const { space, ...page } = readQuery(c, archivedQuerySchema);
+      return c.json(await service.archived(c.get('member').id, space, page));
+    })
     .post('/reorder', async (c) => {
       await service.reorder(c.get('member').id, await readJson(c, reorderInputSchema));
       return c.body(null, 204);
@@ -99,11 +102,16 @@ export function knowledgeRoutes(service: KnowledgeService) {
       const { filename, body } = await service.exportTree(c.get('member').id, { space });
       return attachment(body, filename, 'application/zip');
     })
-    .get('/folders', async (c) => c.json(await service.roots(c.get('member').id, readQuery(c, rootQuerySchema).space)))
+    .get('/folders', async (c) => {
+      const { space, ...page } = readQuery(c, rootQuerySchema);
+      return c.json(await service.roots(c.get('member').id, space, undefined, page));
+    })
     .post('/folders', async (c) =>
       c.json(await service.createFolder(c.get('member').id, await readJson(c, createFolderInputSchema)), 201),
     )
-    .get('/folders/:id', async (c) => c.json(await service.folder(c.get('member').id, id(c))))
+    .get('/folders/:id', async (c) =>
+      c.json(await service.folder(c.get('member').id, id(c), undefined, readQuery(c, treePageQuerySchema))),
+    )
     .patch('/folders/:id', async (c) =>
       c.json(await service.updateFolder(c.get('member').id, id(c), await readJson(c, updateFolderInputSchema))),
     )

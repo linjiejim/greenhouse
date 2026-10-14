@@ -5,7 +5,23 @@
  * service, and it checks access on every call (access.ts).
  */
 
-import { and, asc, desc, eq, gt, ilike, inArray, isNotNull, isNull, lt, ne, or, sql, type SQL } from 'drizzle-orm';
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  gt,
+  ilike,
+  inArray,
+  isNotNull,
+  isNull,
+  lt,
+  ne,
+  or,
+  sql,
+  type SQL,
+  type SQLWrapper,
+} from 'drizzle-orm';
 import { DOC_CONTENT_MAX } from '@greenhouse/contract';
 import type {
   CreateDocInput,
@@ -110,7 +126,6 @@ import {
   refOf,
   shareViews,
   toItem,
-  treeOrder,
   type Source,
 } from './views.js';
 
@@ -139,8 +154,9 @@ function withinLimit(content: string): string {
   }
   return content;
 }
-/** A folder shows at most this many items of each kind. */
-const MAX_CHILDREN = 1000;
+
+/** Backlinks listed at most, newest first. */
+const MAX_BACKLINKS = 1000;
 /**
  * Reading an uploaded file for search, inside the upload request: only the text search keeps,
  * at most 50 PDF pages, at most 5 seconds.
@@ -242,6 +258,94 @@ function decodeRecent(cursor: string | undefined): { u: string; id: string } | n
     // fall through
   }
   throw invalidInput('The cursor is invalid.');
+}
+
+/** A page of the tree, as the routes ask for it (treePageQuerySchema). */
+type TreePage = { cursor?: string | undefined; limit: number };
+/** A tree row by what orders it: hand order first, folders before the rest, then the name; the id breaks ties. */
+interface TreeKey {
+  type: 'folder' | 'doc' | 'file';
+  id: string;
+  sortOrder: number;
+  rank: number;
+  name: string;
+}
+/** The page a list starts with when nobody asked for another. */
+const FIRST_PAGE: TreePage = { limit: 200 };
+
+/** A file's hand order, kept in its meta. */
+const fileSortOrder = sql`COALESCE(CASE WHEN jsonb_typeof(${files.meta}->'sort_order') = 'number' THEN (${files.meta}->>'sort_order')::numeric::int END, 0)`;
+
+const encodeTreeCursor = (key: TreeKey) =>
+  Buffer.from(JSON.stringify({ s: key.sortOrder, r: key.rank, n: key.name, id: key.id })).toString('base64url');
+
+function decodeTreeCursor(cursor: string | undefined): Omit<TreeKey, 'type'> | null {
+  if (!cursor) return null;
+  try {
+    const value = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8')) as Record<string, unknown>;
+    if (
+      Number.isInteger(value.s) &&
+      (value.r === 0 || value.r === 1) &&
+      typeof value.n === 'string' &&
+      typeof value.id === 'string' &&
+      value.id.length <= 64
+    ) {
+      return { sortOrder: value.s as number, rank: value.r, name: value.n, id: value.id };
+    }
+  } catch {
+    // fall through
+  }
+  throw invalidInput('The cursor is invalid.');
+}
+
+function decodeArchivedCursor(cursor: string | undefined): { at: string; id: string } | null {
+  if (!cursor) return null;
+  try {
+    const value = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8')) as { at?: unknown; id?: unknown };
+    if (
+      typeof value.at === 'string' &&
+      TIMESTAMP.test(value.at) &&
+      typeof value.id === 'string' &&
+      value.id.length <= 64
+    ) {
+      return { at: value.at, id: value.id };
+    }
+  } catch {
+    // fall through
+  }
+  throw invalidInput('The cursor is invalid.');
+}
+
+/**
+ * One page of tree rows, ordered by the database (hand-ordered first, by that order; then
+ * folders before docs and files; then by name and id), from SELECTs of
+ * `type, id, sort_order, rank, name`. Only the keys are read here; the rows follow by id.
+ */
+async function treePage(parts: SQL[], page: TreePage): Promise<{ keys: TreeKey[]; next: string | null }> {
+  const after = decodeTreeCursor(page.cursor);
+  const rows = await getDb().execute<{
+    type: TreeKey['type'];
+    id: string;
+    sort_order: number;
+    rank: number;
+    name: string;
+  }>(sql`
+    SELECT type, id, sort_order, rank, name FROM (${sql.join(parts, sql` UNION ALL `)}) AS tree
+    WHERE ${
+      after
+        ? sql`(sort_order <= 0, sort_order, rank, name, id) > (${after.sortOrder <= 0}::boolean, ${after.sortOrder}::int, ${after.rank}::int, ${after.name}::text, ${after.id}::text)`
+        : sql`true`
+    }
+    ORDER BY sort_order <= 0, sort_order, rank, name, id
+    LIMIT ${page.limit + 1}`);
+  const keys = [...rows].slice(0, page.limit).map((row) => ({
+    type: row.type,
+    id: row.id,
+    sortOrder: Number(row.sort_order),
+    rank: Number(row.rank),
+    name: row.name,
+  }));
+  return { keys, next: rows.length > page.limit ? encodeTreeCursor(keys[keys.length - 1]!) : null };
 }
 
 export function createKnowledgeService(deps: {
@@ -397,106 +501,95 @@ export function createKnowledgeService(deps: {
     });
   }
 
-  /** What is in a folder (or at the root of a space), in tree order. */
-  async function contents(
-    reader: Reader,
-    at: { folderId: string | null; space: KnowledgeSpace; ownerId: string | null },
-    archived: boolean,
-  ): Promise<KnowledgeItem[]> {
-    const live = (column: Parameters<typeof isNull>[0]) => (archived ? undefined : isNull(column));
-    const root = (space: SQL, owner: SQL) => and(space, owner);
+  /** The rows of one page of the tree, read in full, in the page's order. */
+  async function sourcesOf(keys: readonly TreeKey[]): Promise<Source[]> {
+    const ids = (type: TreeKey['type']) => keys.filter((key) => key.type === type).map((key) => key.id);
     const [folderRows, docRows, fileRows] = await Promise.all([
       getDb()
         .select()
         .from(folders)
-        .where(
-          and(
-            at.folderId
-              ? eq(folders.parentId, at.folderId)
-              : root(
-                  and(isNull(folders.parentId), eq(folders.space, at.space))!,
-                  at.ownerId ? eq(folders.ownerId, at.ownerId) : isNull(folders.ownerId),
-                ),
-            live(folders.archivedAt),
-          ),
-        )
-        .limit(MAX_CHILDREN),
+        .where(inList(folders.id, ids('folder'))),
       getDb()
         .select(docListColumns)
         .from(docs)
-        .where(
-          and(
-            at.folderId
-              ? eq(docs.folderId, at.folderId)
-              : root(
-                  and(isNull(docs.folderId), eq(docs.space, at.space))!,
-                  at.ownerId ? eq(docs.ownerId, at.ownerId) : isNull(docs.ownerId),
-                ),
-            live(docs.archivedAt),
-          ),
-        )
-        .limit(MAX_CHILDREN),
+        .where(inList(docs.id, ids('doc'))),
       getDb()
         .select(fileListColumns)
         .from(files)
-        .where(
-          and(
-            treeFile(),
-            at.folderId
-              ? eq(files.folderId, at.folderId)
-              : root(
-                  and(isNull(files.folderId), eq(files.space, at.space))!,
-                  at.ownerId ? eq(files.ownerId, at.ownerId) : isNull(files.ownerId),
-                ),
-            live(files.archivedAt),
-          ),
-        )
-        .limit(MAX_CHILDREN),
+        .where(inList(files.id, ids('file'))),
     ]);
-    const sources = [...folderRows.map(folderSource), ...docRows.map(docSource), ...fileRows.map(fileSource)];
-    sources.sort(treeOrder);
-    return itemsOf(reader, sources.slice(0, MAX_CHILDREN));
+    const byKey = new Map(
+      [...folderRows.map(folderSource), ...docRows.map(docSource), ...fileRows.map(fileSource)].map((source) => [
+        `${source.type}:${source.id}`,
+        source,
+      ]),
+    );
+    return keys.flatMap((key) => byKey.get(`${key.type}:${key.id}`) ?? []);
   }
 
-  /** The topmost folders and docs others shared with the reader. */
-  async function sharedRoots(reader: Reader): Promise<KnowledgeItem[]> {
-    const grants = await getDb()
-      .select({ type: shares.resourceType, id: shares.resourceId })
-      .from(shares)
-      .where(and(inArray(shares.resourceType, ['folder', 'doc']), principalMatch(reader)));
-    const folderIds = grants.filter((grant) => grant.type === 'folder').map((grant) => grant.id);
-    const docIds = grants.filter((grant) => grant.type === 'doc').map((grant) => grant.id);
-    const others = (space: SQL, owner: SQL) => and(space, owner);
-    const [reach, folderRows, docRows] = await Promise.all([
+  /** What is in a folder (or at the root of a space): a page in tree order. */
+  async function contents(
+    reader: Reader,
+    at: { folderId: string | null; space: KnowledgeSpace; ownerId: string | null },
+    archived: boolean,
+    page: TreePage,
+  ): Promise<Page<KnowledgeItem>> {
+    const live = (column: SQLWrapper) => (archived ? undefined : isNull(column as never));
+    const owner = (column: SQLWrapper) => (at.ownerId ? eq(column as never, at.ownerId) : isNull(column as never));
+    const placed = (table: typeof docs | typeof files) =>
+      at.folderId
+        ? eq(table.folderId, at.folderId)
+        : and(isNull(table.folderId), eq(table.space, at.space), owner(table.ownerId));
+    const { keys, next } = await treePage(
+      [
+        sql`SELECT 'folder' AS type, ${folders.id} AS id, ${folders.sortOrder} AS sort_order, 0 AS rank, ${folders.name} AS name
+          FROM ${folders} WHERE ${and(
+            at.folderId
+              ? eq(folders.parentId, at.folderId)
+              : and(isNull(folders.parentId), eq(folders.space, at.space), owner(folders.ownerId)),
+            live(folders.archivedAt),
+          )}`,
+        sql`SELECT 'doc', ${docs.id}, ${docs.sortOrder}, 1, ${docs.title}
+          FROM ${docs} WHERE ${and(placed(docs), live(docs.archivedAt))}`,
+        sql`SELECT 'file', ${files.id}, ${fileSortOrder}, 1, ${files.name}
+          FROM ${files} WHERE ${and(treeFile(), placed(files), live(files.archivedAt))}`,
+      ],
+      page,
+    );
+    return { items: await itemsOf(reader, await sourcesOf(keys)), next_cursor: next };
+  }
+
+  /**
+   * The topmost folders and docs others shared with the reader, a page in tree order. One inside
+   * another shared folder is reached by opening that one, so a page may hold fewer rows.
+   */
+  async function sharedRoots(reader: Reader, page: TreePage): Promise<Page<KnowledgeItem>> {
+    const granted = (type: 'folder' | 'doc', id: SQLWrapper) =>
+      sql`${id} IN (SELECT ${shares.resourceId} FROM ${shares} WHERE ${shares.resourceType} = ${type} AND ${principalMatch(reader)})`;
+    const [reach, { keys, next }] = await Promise.all([
       reader.sharedFolders(),
-      getDb()
-        .select()
-        .from(folders)
-        .where(
-          and(
-            inList(folders.id, folderIds),
-            isNull(folders.archivedAt),
-            others(eq(folders.space, 'personal'), ne(folders.ownerId, reader.memberId)),
-          ),
-        ),
-      getDb()
-        .select(docListColumns)
-        .from(docs)
-        .where(
-          and(
-            inList(docs.id, docIds),
-            isNull(docs.archivedAt),
-            others(eq(docs.space, 'personal'), ne(docs.ownerId, reader.memberId)),
-          ),
-        ),
+      treePage(
+        [
+          sql`SELECT 'folder' AS type, ${folders.id} AS id, ${folders.sortOrder} AS sort_order, 0 AS rank, ${folders.name} AS name
+            FROM ${folders} WHERE ${and(
+              granted('folder', folders.id),
+              isNull(folders.archivedAt),
+              eq(folders.space, 'personal'),
+              ne(folders.ownerId, reader.memberId),
+            )}`,
+          sql`SELECT 'doc', ${docs.id}, ${docs.sortOrder}, 1, ${docs.title}
+            FROM ${docs} WHERE ${and(
+              granted('doc', docs.id),
+              isNull(docs.archivedAt),
+              eq(docs.space, 'personal'),
+              ne(docs.ownerId, reader.memberId),
+            )}`,
+        ],
+        page,
+      ),
     ]);
-    // Inside another shared folder: reached by opening that one.
-    const sources = [
-      ...folderRows.filter((row) => !(row.parentId && reach.has(row.parentId))).map(folderSource),
-      ...docRows.filter((row) => !(row.folderId && reach.has(row.folderId))).map(docSource),
-    ];
-    sources.sort(treeOrder);
-    return itemsOf(reader, sources);
+    const sources = (await sourcesOf(keys)).filter((source) => !(source.folderId && reach.has(source.folderId)));
+    return { items: await itemsOf(reader, sources), next_cursor: next };
   }
 
   /** Each folder's path from the root of its space down to it. */
@@ -547,9 +640,15 @@ export function createKnowledgeService(deps: {
     folder: FolderRow,
     chain: FolderRow[],
     role: Role,
+    page: TreePage = FIRST_PAGE,
   ): Promise<KnowledgeFolder> {
     const [children, names, shared, path] = await Promise.all([
-      contents(reader, { folderId: folder.id, space: folder.space, ownerId: folder.ownerId }, !!folder.archivedAt),
+      contents(
+        reader,
+        { folderId: folder.id, space: folder.space, ownerId: folder.ownerId },
+        !!folder.archivedAt,
+        page,
+      ),
       memberNames([folder.createdBy]),
       sharedIds([folder.id]),
       visiblePath(reader, folder, chain.slice(1)),
@@ -557,7 +656,8 @@ export function createKnowledgeService(deps: {
     return {
       ...toItem(folderSource(folder), role, shared.has(folder.id)),
       path,
-      children,
+      children: children.items,
+      next_cursor: children.next_cursor,
       created_by: refOf(names, folder.createdBy),
       created_at: folder.createdAt,
     };
@@ -825,22 +925,28 @@ export function createKnowledgeService(deps: {
     reader: readerFor,
 
     /** The root of a space, or the topmost items others shared with the member. */
-    async roots(memberId: string, scope: KnowledgeScope, as?: As): Promise<{ items: KnowledgeItem[] }> {
+    /** The root of a space, or the topmost items others shared with the member: a page in tree order. */
+    async roots(
+      memberId: string,
+      scope: KnowledgeScope,
+      as?: As,
+      page: TreePage = FIRST_PAGE,
+    ): Promise<Page<KnowledgeItem>> {
       const reader = await readerFor(memberId, as);
-      if (scope === 'shared') return { items: await sharedRoots(reader) };
-      return {
-        items: await contents(
-          reader,
-          { folderId: null, space: scope, ownerId: scope === 'personal' ? memberId : null },
-          false,
-        ),
-      };
+      if (scope === 'shared') return sharedRoots(reader, page);
+      return contents(
+        reader,
+        { folderId: null, space: scope, ownerId: scope === 'personal' ? memberId : null },
+        false,
+        page,
+      );
     },
 
-    async folder(memberId: string, id: string, as?: As): Promise<KnowledgeFolder> {
+    /** The folder with a page of what is in it. */
+    async folder(memberId: string, id: string, as?: As, page: TreePage = FIRST_PAGE): Promise<KnowledgeFolder> {
       const reader = await readerFor(memberId, as);
       const { folder, chain, role } = await folderAt(reader, id);
-      return folderView(reader, folder, chain, role);
+      return folderView(reader, folder, chain, role, page);
     },
 
     async createFolder(memberId: string, input: CreateFolderInput, as?: As): Promise<KnowledgeFolder> {
@@ -1063,34 +1169,44 @@ export function createKnowledgeService(deps: {
       });
     },
 
-    /** What was archived in a space, topmost first; an archived folder opens to the rest. */
-    async archived(memberId: string, space: KnowledgeSpace): Promise<{ items: KnowledgeItem[] }> {
+    /**
+     * What was archived in a space, topmost and newest first, a page at a time; an archived
+     * folder opens to the rest. The order and the page are the database's.
+     */
+    async archived(memberId: string, space: KnowledgeSpace, page: TreePage = FIRST_PAGE): Promise<Page<KnowledgeItem>> {
       const reader = await readerFor(memberId);
       const ownerId = space === 'personal' ? memberId : null;
-      const owned = (column: Parameters<typeof eq>[0]) => (ownerId ? eq(column, ownerId) : isNull(column));
-      const [folderRows, docRows, fileRows] = await Promise.all([
-        getDb()
-          .select()
-          .from(folders)
-          .where(and(eq(folders.space, space), owned(folders.ownerId), sql`${folders.archivedAt} IS NOT NULL`)),
-        getDb()
-          .select(docListColumns)
-          .from(docs)
-          .where(and(eq(docs.space, space), owned(docs.ownerId), sql`${docs.archivedAt} IS NOT NULL`)),
-        getDb()
-          .select(fileListColumns)
-          .from(files)
-          .where(and(treeFile(), eq(files.space, space), owned(files.ownerId), sql`${files.archivedAt} IS NOT NULL`)),
-      ]);
-      const stamps = new Map(folderRows.map((row) => [row.id, row.archivedAt]));
-      // Archived together with the folder above: reached by opening it.
-      const topmost = (parent: string | null, stamp: string | null) => !parent || stamps.get(parent) !== stamp;
-      const sources = [
-        ...folderRows.filter((row) => topmost(row.parentId, row.archivedAt)).map(folderSource),
-        ...docRows.filter((row) => topmost(row.folderId, row.archivedAt)).map(docSource),
-        ...fileRows.filter((row) => topmost(row.folderId, row.archivedAt)).map(fileSource),
-      ].sort((a, b) => (b.archivedAt ?? '').localeCompare(a.archivedAt ?? '') || treeOrder(a, b));
-      return { items: await itemsOf(reader, sources.slice(0, MAX_CHILDREN)) };
+      const owned = (column: SQLWrapper) => (ownerId ? eq(column as never, ownerId) : isNull(column as never));
+      const after = decodeArchivedCursor(page.cursor);
+      // Archived together with the folder above it: reached by opening that one.
+      const topmost = (parent: SQLWrapper, stamp: SQLWrapper) =>
+        sql`NOT EXISTS (SELECT 1 FROM folders above WHERE above.id = ${parent} AND above.archived_at = ${stamp})`;
+      const rows = await getDb().execute<{ type: TreeKey['type']; id: string; at: string }>(sql`
+        SELECT type, id, stamp::text AS at FROM (
+          SELECT 'folder' AS type, ${folders.id} AS id, ${folders.archivedAt} AS stamp FROM ${folders}
+            WHERE ${and(eq(folders.space, space), owned(folders.ownerId), sql`${folders.archivedAt} IS NOT NULL`, topmost(folders.parentId, folders.archivedAt))}
+          UNION ALL
+          SELECT 'doc', ${docs.id}, ${docs.archivedAt} FROM ${docs}
+            WHERE ${and(eq(docs.space, space), owned(docs.ownerId), sql`${docs.archivedAt} IS NOT NULL`, topmost(docs.folderId, docs.archivedAt))}
+          UNION ALL
+          SELECT 'file', ${files.id}, ${files.archivedAt} FROM ${files}
+            WHERE ${and(treeFile(), eq(files.space, space), owned(files.ownerId), sql`${files.archivedAt} IS NOT NULL`, topmost(files.folderId, files.archivedAt))}
+        ) AS archived
+        WHERE ${after ? sql`(stamp, id) < (${after.at}::timestamptz, ${after.id}::text)` : sql`true`}
+        ORDER BY stamp DESC, id DESC
+        LIMIT ${page.limit + 1}`);
+      const keys = [...rows].slice(0, page.limit);
+      const sources = await sourcesOf(
+        keys.map((row) => ({ type: row.type, id: row.id, sortOrder: 0, rank: 0, name: '' })),
+      );
+      const last = keys[keys.length - 1];
+      return {
+        items: await itemsOf(reader, sources),
+        next_cursor:
+          rows.length > page.limit && last
+            ? Buffer.from(JSON.stringify({ at: last.at, id: last.id })).toString('base64url')
+            : null,
+      };
     },
 
     /** Recently updated docs the member may read, newest first; templates with `template`. */
@@ -1403,7 +1519,7 @@ export function createKnowledgeService(deps: {
         .innerJoin(docs, eq(docs.id, docLinks.fromDocId))
         .where(and(eq(docLinks.toDocId, id), isNull(docs.archivedAt), await readableWhere(reader, docs, 'doc')))
         .orderBy(desc(docs.updatedAt))
-        .limit(MAX_CHILDREN);
+        .limit(MAX_BACKLINKS);
       return { items: await itemsOf(reader, rows.map(docSource)) };
     },
 

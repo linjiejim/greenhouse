@@ -16,7 +16,7 @@ import {
   pageSchema,
   commentSchema,
   docPresenceListSchema,
-  knowledgeItemsSchema,
+  knowledgeItemPageSchema,
   knowledgeItemSchema,
   type TokenPair,
 } from '@greenhouse/contract';
@@ -44,7 +44,7 @@ describe('client.knowledge', () => {
     const doc = knowledgeDocSchema.parse(
       await knowledge.docs.create({ title: 'Setup', content: 'Install it.', folder_id: folder.id }),
     );
-    knowledgeItemsSchema.parse(await knowledge.folders.roots('personal'));
+    knowledgeItemPageSchema.parse(await knowledge.folders.roots('personal', { limit: 10 }));
     knowledgeFolderSchema.parse(await knowledge.folders.get(folder.id));
     const saved = knowledgeDocSchema.parse(
       await knowledge.docs.update(doc.id, { version: doc.version, content: 'Install it, then run it.' }),
@@ -85,7 +85,8 @@ describe('client.knowledge', () => {
     knowledgeSearchResultSchema.parse(await knowledge.search({ q: 'install' }));
 
     await knowledge.docs.archive(doc.id);
-    expect((await knowledge.archived('personal')).items.map((item) => item.id)).toEqual([doc.id]);
+    const archived = knowledgeItemPageSchema.parse(await knowledge.archived('personal'));
+    expect(archived.items.map((item) => item.id)).toEqual([doc.id]);
     knowledgeDocSchema.parse(await knowledge.docs.restore(doc.id));
     await knowledge.reorder({ folder_id: folder.id, items: [{ type: 'file', id: file.id }] });
     expect((await knowledge.folders.get(folder.id)).children.map((item) => item.name)).toEqual(['hello.txt', 'Setup']);
