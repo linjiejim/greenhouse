@@ -79,7 +79,9 @@ describe('a member’s own key', () => {
           needs_connection: true,
           key_help: 'The key from your desk profile',
           tool_count: 0,
+          builtin: null,
         }),
+        expect.objectContaining({ slug: 'mailbox', builtin: 'mailbox', needs_connection: true }),
       ],
     });
 

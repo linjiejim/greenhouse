@@ -74,6 +74,7 @@ The one engine for conversations and runs. Read with the root AGENTS.md and docs
 - Only in turns, never in someone else's public Agent: its owner's instructions could read the asker's accounts and send them elsewhere.
 - What a connector returns is outside text: the tool `taints` and is `outbound`; results are cut to 20 000 characters, stripped of prompt structure, and keys and tokens are taken out.
 - Servers are reached only through modules/connectors (network.ts): https, public addresses in production, a deadline on every request.
+- Built-in connectors have no `connectors` row: the member's own mailbox (`mailbox`, modules/connectors/mailbox.ts) is offered once they connected it; its search and read tools are read-only, drafting and sending raise the card like any write.
 
 ## Skills
 - A message's `skill` (a `/` run) is checked when it is sent (`skills.prepareRun`): a skill the sender sees, clean and not archived, whose requirements (computer, connectors) every answering Agent meets, with its required fields filled. The message records the version that runs.

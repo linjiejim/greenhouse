@@ -35,7 +35,7 @@ v2 和 v1 不兼容，不加 `/api/v2` 前缀，也不保留旧路由。`GET /ap
 | `GET /api/me/usage?period=month\|30d` | 我的用量：总计，按能力、Agent、天；我的成员预算 |
 | `/api/me/providers[/:id][/test]` | 我的服务，即个人 Key |
 | `GET /api/me/models` | 我能给 Agent 选的模型：为我服务的各实例的模型，按顺序 |
-| `GET` / `POST /api/me/connections` · `POST …/oauth/start` · `…/oauth/finish` · `POST …/:id/test` · `DELETE …/:id` | 连接：MCP 连接器账号；飞书 / 企微、邮箱随渠道。`GET` 返回我的连接和我能用的连接器；`POST` 存我自己的 Key（服务器先验证，拒绝时 `key_rejected`）；OAuth：`start` 返回授权地址，回调把 `oauth_state`、`oauth_code` 交给 Web，由发起登录的同一成员 `finish`（别人是 `sign_in_not_yours`）；`test` 用我的连接列工具并记下状态；`DELETE` 断开，OAuth 同时撤销 |
+| `GET` / `POST /api/me/connections` · `POST …/oauth/start` · `…/oauth/finish` · `POST …/:id/test` · `DELETE …/:id` | 连接：MCP 连接器账号，以及内置连接器「邮箱」（`kind: email`）；飞书 / 企微随 IM 渠道。`GET` 返回我的连接和我能用的连接器（内置的带 `builtin`）；`POST` 存我自己的 Key（服务器先验证，拒绝时 `key_rejected`），或连我自己的邮箱（`{ kind: 'email', address, imap: { host, port, security }, smtp: {…}, username?, password }`：IMAP 与 SMTP 都连通才保存，否则 `mailbox_rejected`，`details` 里分别说明；内网地址拒绝；每个成员一个，再连即替换）；OAuth：`start` 返回授权地址，回调把 `oauth_state`、`oauth_code` 交给 Web，由发起登录的同一成员 `finish`（别人是 `sign_in_not_yours`）；`test` 用我的连接列工具并记下状态；`DELETE` 断开，OAuth 同时撤销 |
 | `/api/me/vault[/:id]` · `GET /api/me/vault/log` | 密码库：列出、新建、读取、修改（留空的值不变，空字符串清除）、删除。用户名、密码、TOTP 密钥只写不读，响应只有标签、站点、掩码用户名和是否已设置；站点是精确 origin 或 `*.域名`，「总是允许」只能是其中的站点，`agent_ids` 只能是自己的 Agent（空 = 全部）。`log` 是本人的代填记录，新的在前，不含任何值。没配 `VAULT_ENCRYPTION_KEY` 时都返回 503 `vault_unavailable` |
 | `/api/me/grants[/:id]` · `POST …/:id/approve` | 外部访问：我授权过的客户端（不含个人令牌）；撤销即作废它的全部令牌；管理员绑定给我的机器客户端要我批准后才生效 |
 | `/api/me/tokens[/:id]` | 个人访问令牌：名称、scope、有效期（1–366 天），令牌只在创建时显示一次；只能调用 `/api/mcp` |

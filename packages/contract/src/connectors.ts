@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { isoTime } from './common.js';
+import { mailboxSettingsSchema } from './mail.js';
 
 /** Remote transports only: Greenhouse never starts a local process for a connector. */
 export const CONNECTOR_TRANSPORTS = ['streamable_http', 'sse'] as const;
@@ -220,8 +221,10 @@ export type ProbeResult = z.infer<typeof probeResultSchema>;
 export const connectionSchema = z.object({
   id: z.string(),
   kind: z.enum(CONNECTION_KINDS),
-  /** For kind `connector`. */
+  /** For kind `connector`, and the built-in mailbox for kind `email`. */
   connector: z.object({ id: z.string(), slug: z.string(), name: z.string(), enabled: z.boolean() }).nullable(),
+  /** For kind `email`: the mailbox's settings (never its password). */
+  mailbox: mailboxSettingsSchema.nullable(),
   display_name: z.string(),
   status: z.enum(CONNECTION_STATUSES),
   last_error: z.string().nullable(),
@@ -247,6 +250,8 @@ export const availableConnectorSchema = z.object({
   key_help_url: z.string().nullable(),
   tool_count: z.number().int(),
   read_only_tool_count: z.number().int(),
+  /** A connector Greenhouse itself provides (no MCP server): `mailbox` is connected with IMAP and SMTP settings. */
+  builtin: z.enum(['mailbox']).nullable(),
 });
 export type AvailableConnector = z.infer<typeof availableConnectorSchema>;
 
