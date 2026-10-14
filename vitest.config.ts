@@ -63,13 +63,7 @@ export default defineConfig({
     // .claude/** holds agent worktrees (full repo copies) — never collect them.
     // skillhub/** ships in-bundle node:test files (*.test.mjs) that vitest
     // cannot parse; tests/skillhub/bundles.test.ts runs them via `node --test`.
-    exclude: [
-      'tests/e2e/**',
-      'tests/e2e-ui/**',
-      '**/node_modules/**',
-      '**/.claude/**',
-      'skillhub/**',
-    ],
+    exclude: ['tests/e2e/**', 'tests/e2e-ui/**', '**/node_modules/**', '.claude/**', 'skillhub/**'],
     // Silence app loggers so error-path tests don't spam the run output.
     // Override with LOG_LEVEL=debug when debugging a specific test.
     env: { LOG_LEVEL: process.env.LOG_LEVEL ?? 'silent' },
@@ -85,7 +79,7 @@ export default defineConfig({
             'tests/e2e/**',
             'tests/e2e-ui/**',
             '**/node_modules/**',
-            '**/.claude/**',
+            '.claude/**',
             'skillhub/**',
           ],
           // `forks`, not `vmThreads`, and the difference is memory, not speed.
@@ -113,7 +107,7 @@ export default defineConfig({
         test: {
           name: 'db',
           include: ['**/*.db.test.ts'],
-          exclude: ['apps/mobile/**', '**/node_modules/**', '**/.claude/**'],
+          exclude: ['apps/mobile/**', '**/node_modules/**', '.claude/**'],
           globalSetup: ['./tests/setup/db-global.ts'],
           setupFiles: ['./tests/setup/db-transaction.ts'],
           pool: 'forks',
@@ -127,7 +121,7 @@ export default defineConfig({
           // Real commits on a real pool: races between processes, which a per-test transaction hides.
           name: 'db-commit',
           include: ['**/*.db-commit.test.ts'],
-          exclude: ['apps/mobile/**', '**/node_modules/**', '**/.claude/**'],
+          exclude: ['apps/mobile/**', '**/node_modules/**', '.claude/**'],
           globalSetup: ['./tests/setup/db-global.ts'],
           setupFiles: ['./tests/setup/db-commit.ts'],
           pool: 'forks',

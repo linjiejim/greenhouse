@@ -149,3 +149,27 @@ export interface AppTemplate {
   review_status: 'pending' | 'approved' | 'rejected';
   owner_id: string;
 }
+
+/** The Agent and MCP app read faces share the same action contract. */
+export const appAgentQuerySchema = z.discriminatedUnion('action', [
+  z.object({
+    action: z.literal('list'),
+    cursor: z.string().optional(),
+    limit: z.number().int().min(1).max(50).default(20),
+  }),
+  z.object({ action: z.literal('get'), app_id: z.string().max(64) }),
+  z.object({
+    action: z.literal('query'),
+    app_id: z.string().max(64),
+    version: z.number().int().positive(),
+    card: z.string().max(64),
+    cursor: z.string().optional(),
+  }),
+  z.object({
+    action: z.literal('record'),
+    app_id: z.string().max(64),
+    version: z.number().int().positive(),
+    card: z.string().max(64),
+    record_id: z.string().max(64),
+  }),
+]);

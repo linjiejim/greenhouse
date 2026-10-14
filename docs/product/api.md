@@ -151,6 +151,8 @@ OAuth 2.1 与 MCP（公开路径，错误按 RFC 6749 返回 `{ error, error_des
 | `conversations:read` | `conversations_list`、`conversations_search`、`conversation_get` |
 | `runs:read` | `runs_list`、`run_get`、`schedules_list` |
 | `memories:read` | `memories_list`：Agent 关于我的记忆 |
+| `apps:read` | `apps_query`：按我的应用与表格角色读发布页面、卡片及记录 |
+| `apps:write` | `apps_action`：执行已保存动作；共享写入等我在 Greenhouse 批准 |
 
 表格 Web（#70，T3）直接消费上述计算字段与角色接口：公式错误 `details` 的 `code/start/end/params` 用于本地化提示和标记；`records.changed` 中的 `computed_revision` 与编辑 revision 分开比较。字段生成仍通过 `POST /api/tables/fields/:id/generate`；标签栏为非搭建者创建仪表盘时固定 `personal: true`。
 
@@ -241,6 +243,16 @@ apps/api/src/
 - `AGENT_EVENT_WAKES_PER_DAY` 配置每日上限（1–1000，默认 50）；`AGENT_EVENT_MERGE_MS` 默认 120000，测试夹具使用较短窗口。客户端新增字段均有默认值，旧调用可以继续省略。
 
 `memory` 的 recall 可用于后台；前台私有记忆 remember/update 按第 1 档留下可撤销回执，forget 为彻底删除、按第 3 档审批且不能预批；读过外部内容后不改记忆。
+
+
+### 表格与 Agent（#70）
+
+- `POST /api/tables/records/:id/handoff`：`{ agent_id, brief, output_field_id? }`，仅自己的 Agent；读取成员可见记录，响应 `{ run_id }`。负责人仍是成员，来源为 `record`；默认结果作为评论，经 `table_mutation` 分档写回；可选文字字段使用交办时的修订，不能覆盖后来的修改。
+- `GET /api/tables/bases/:id/automations`（游标分页）、`POST`（创建），`PATCH /api/tables/automations/:id`（完整规则与 `revision`）、`DELETE`：需要搭建者权限，执行者为保存规则的成员。触发为 `record_created / record_updated / record_matched / schedule / date_reached / button`；`config` 含筛选、限定更新字段、间隔分钟或日期字段与动作列表。
+- `GET /api/tables/automations/:id/runs`（游标分页）给出步骤、状态与 Agent `run_id`；`POST /api/tables/automations/:id/run` 显式执行按钮规则（可附 `record_id`）。执行前复核执行者与通知收件人的权限。
+- 通知动作 `{type:"notify",members,title}` 统一经通知服务；Agent 动作 `{type:"agent",agent_id,brief,tools:"none"|"same_base_read",output_field_id?}` 经事件唤醒入口，默认无工具；可选回写仍需按档批准。webhook `{type:"webhook",url}` 仅公网 HTTPS、拒绝重定向、连接时复核 DNS、10 秒超时。创建含 webhook 的规则或首次添加 webhook 时仅一次返回 `webhook_secret`，后续不读取；请求头 `x-greenhouse-id` 为执行 id、`x-greenhouse-timestamp` 为 Unix 秒、`x-greenhouse-signature` 为 `v1=` 加 HMAC-SHA256(secret, timestamp + "." + 原始请求体)。接收方应校验时间窗口并按 id 去重；发送结果未知不会自动重发。
+- `table_query` 发现表格、数据表、视图，按成员的自定义角色筛选记录与聚合；读取的记录引用会再次按接收者权限裁剪。`table_mutation` 支持记录批量修改、回收、评论和彻底删除；私有可逆操作有回执与撤销、共享按数据表动作批准、彻底删除逐次批准。`table_schema_plan` 的精确结构计划逐次确认后才落库。
+- `apps_query` 读取已发布应用与卡片，`apps_action` 只执行已保存的动作，按查看者的应用与表格权限交集。MCP 对应独立的 `apps:read` / `apps:write`，不扩大其他已授权范围；共享动作返回 `needs_you`，外部客户端不能代替成员批准。
 
 ## 6. M2.4 引擎接口（#70）
 

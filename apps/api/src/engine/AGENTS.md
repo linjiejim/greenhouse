@@ -36,7 +36,7 @@ The one engine for conversations and runs. Read with the root AGENTS.md and docs
 
 ## Tools
 - One file per tool with `defineTool` (tools/define.ts): description, zod input, risk, availability, and the service call. Routes and tools call the same services.
-- Provider inputs go through tools/schema.ts: root object only, no root union combinators. Object unions merge their fields and action enums for providers; the original Zod schema validates and applies defaults before risk checks, cards or execution. The browser-test model enforces the same root rules.
+- Provider and MCP inputs go through tools/schema.ts: root object only, no root union combinators. Object unions merge their fields and action enums for providers; the original Zod schema validates and applies defaults before risk checks, cards or execution. The browser-test model enforces the same root rules.
 - Tool results are evidence of actions; replies cannot perform a hand-off or another write. A screenshot without vision returns `unsupported` and explicitly says none was taken.
 - Every call is a `run_steps` row. Tools that read outside text set `taints`; after that a turn cannot change memories.
 - What a web page or a connector returns reaches the model through `outsideText` (security/prompt.ts): cut to size with a note of what was left out, stripped of anything that could pose as prompt structure; titles and snippets are sanitized too.
@@ -162,3 +162,9 @@ The one engine for conversations and runs. Read with the root AGENTS.md and docs
 - Completion logs are system-written memory data, never model instructions. Only seven days of log titles enter the index; recalling log detail taints the turn.
 - Eval snapshots use the production prompt recipe and canonical tool hashes. Export strips credentials; fixtures use synthetic real-model acceptance conversations.
 - The daily engine_retention job prunes terminal model context after 90 days and expired output bytes; edit/regenerate remove their old model context immediately.
+
+## Table and app work
+- Table citations are permission-filtered per recipient. Table reads use the same records and aggregate compiler; app reads/actions use immutable publications and intersected roles.
+- Record handoffs and automation output use table_mutation, including result revision checks and approval cards. Inline record/event context starts tainted and private.
+- Result writebacks use the same output-file wrapper as model calls; undo state keeps the full result.
+- Table automation events use deliver, then create background runs under the wake cap. Their tools default to none; same_base_read is table_query confined to the source base. Carry tableEventChain through normal and approved writes.

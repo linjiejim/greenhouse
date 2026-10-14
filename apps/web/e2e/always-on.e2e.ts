@@ -3,7 +3,8 @@ import { expect, test } from '@playwright/test';
 import { apiAs } from './api';
 import { composer, open } from './fixtures';
 
-const pictures = new URL('../../../artifacts/t2/', import.meta.url).pathname;
+// Screenshots for review go with the other test output, never into the repo.
+const pictures = new URL('../test-results/screens/', import.meta.url).pathname;
 
 test('background receipts do not hide a waiting card and approval resumes the run', async ({ page, request }) => {
   const agent = await apiAs<{ id: string }>(request, 'lin', 'POST', '/api/agents', { name: 'AO background' });

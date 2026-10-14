@@ -53,3 +53,5 @@ The v2 web app. Product scope is docs/product/prd.md §6–7; layout and compone
 - `sh apps/web/e2e/stack.sh` starts the same stack on 4580–4582 for looking at the app by hand (the "web-v2" preview). STACK_SANDBOX_IMAGE=greenhouse/bot-computer:latest gives it real computers ("web-v2-computer"); remove their containers and volumes (gh-cmp-*) afterwards, since every start reseeds the database.
 
 - Publish knowledge grants with the owner's personal folder tree, excluding Agent reference folders. Helper runs render inside their parent process card; completion logs have a separate group on the Agent memory page.
+
+- Tables: record handoffs select an owned Agent and brief; automation editors use the shared filter editor and hold navigation. Run history opens the linked Agent run; both record and automation runs are labelled Tables.

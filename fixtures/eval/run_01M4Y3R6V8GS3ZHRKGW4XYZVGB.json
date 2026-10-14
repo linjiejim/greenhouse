@@ -1,9 +1,9 @@
 {
   "version": 1,
   "source": {
-    "run_id": "run_01M4Y0163JXX7WH5AMXY7E5SQT",
+    "run_id": "run_01M4Y3R6V8GS3ZHRKGW4XYZVGB",
     "model": null,
-    "status": "succeeded"
+    "status": "waiting"
   },
   "harness": {
     "recipe": {
@@ -69,6 +69,7 @@
       "knowledge": true
     },
     "surface": "turn",
+    "tainted": false,
     "manifest": {
       "name": "Greeny",
       "role": "主助手",
@@ -92,34 +93,25 @@
       {
         "role": "user",
         "content": "这是工程验收，请只用一句简体中文说明你可以帮助我做什么。不要调用工具。",
-        "created_at": "2026-10-14 19:59:51.351709+00"
+        "created_at": "2026-10-14 21:05:29.760157+00"
       },
       {
         "role": "assistant",
-        "content": "我是你的主助手 Greeny，可以帮你查资料、写东西、处理日常杂事，并在遇到专家活时交给合适的 Agent。"
+        "content": "我可以帮你处理问答、写作、调研和日常事务，需要时也会把专家的活转给合适的 Agent。"
       },
       {
         "role": "user",
-        "content": "这是工程验收，请调用 memory recall 查找“验收”，然后用一句话说明有没有记忆。不要写入。",
-        "created_at": "2026-10-14 19:59:53.435184+00"
+        "content": "这是工程验收，请实际调用 memory 的 recall 查找“验收”，然后用一句话说明有没有记忆。不要写入。",
+        "created_at": "2026-10-14 21:05:32.184421+00"
       },
       {
         "role": "assistant",
-        "content": "我查了记忆里的“验收”，没有任何相关记录，所以目前我没有关于它的记忆。"
+        "content": "我查了记忆里关于“验收”的内容，没有任何记录。"
       },
       {
         "role": "user",
-        "content": "这是工程验收，请调用 ask_user 问我“验收颜色选什么？”，选项为蓝色和绿色。",
-        "created_at": "2026-10-14 19:59:56.54855+00"
-      },
-      {
-        "role": "assistant",
-        "content": "我已经把问题发出去了：验收颜色选蓝色还是绿色？请选一个，我这边就继续。"
-      },
-      {
-        "role": "user",
-        "content": "这是工程验收，请只用一句简体中文说明你可以帮助我做什么。不要调用工具。\n\n<turn_context note=\"Rebuilt by the system for this turn.\">\n## In this conversation\n- Greeny, 主助手 (you)\n\n## Connectors you can use (mcp_call)\nNone is connected for the member yet: they connect one under Settings → Connections.\n\n## Rich blocks this screen draws\nchart, datatable, confirm, mermaid, html-preview\n</turn_context>\n\nReply to Lin's latest message.",
-        "created_at": "2026-10-14 20:00:34.410442+00"
+        "content": "这是工程验收，请实际调用 ask_user 问我“验收颜色选什么？”，选项为蓝色和绿色。\n\n<turn_context note=\"Rebuilt by the system for this turn.\">\n## In this conversation\n- Greeny, 主助手 (you)\n\n## Connectors you can use (mcp_call)\nNone is connected for the member yet: they connect one under Settings → Connections.\n\n## Rich blocks this screen draws\nchart, datatable, confirm, mermaid, html-preview\n</turn_context>\n\nReply to Lin's latest message.",
+        "created_at": "2026-10-14 21:05:34.555979+00"
       }
     ],
     "definitions": [
@@ -1242,22 +1234,396 @@
             "action"
           ],
           "properties": {
+            "card": {
+              "type": "object",
+              "required": [
+                "id",
+                "kind",
+                "title",
+                "table_id"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9_-]{1,40}$"
+                },
+                "kind": {
+                  "enum": [
+                    "number",
+                    "bar",
+                    "line",
+                    "pie",
+                    "list"
+                  ],
+                  "type": "string"
+                },
+                "list": {
+                  "type": "object",
+                  "required": [
+                    "fields"
+                  ],
+                  "properties": {
+                    "limit": {
+                      "type": "integer",
+                      "maximum": 50,
+                      "minimum": 1
+                    },
+                    "sorts": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "field"
+                        ],
+                        "properties": {
+                          "desc": {
+                            "type": "boolean"
+                          },
+                          "field": {
+                            "type": "string",
+                            "maxLength": 64,
+                            "minLength": 1
+                          }
+                        },
+                        "additionalProperties": false
+                      },
+                      "maxItems": 3
+                    },
+                    "fields": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "maxLength": 64,
+                        "minLength": 1
+                      },
+                      "maxItems": 8
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "size": {
+                  "enum": [
+                    "small",
+                    "medium",
+                    "large"
+                  ],
+                  "type": "string"
+                },
+                "group": {
+                  "type": "object",
+                  "required": [
+                    "field"
+                  ],
+                  "properties": {
+                    "field": {
+                      "type": "string",
+                      "maxLength": 64,
+                      "minLength": 1
+                    },
+                    "limit": {
+                      "type": "integer",
+                      "maximum": 50,
+                      "minimum": 1
+                    },
+                    "bucket": {
+                      "enum": [
+                        "day",
+                        "week",
+                        "month",
+                        "quarter",
+                        "year"
+                      ],
+                      "type": "string"
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "title": {
+                  "type": "string",
+                  "maxLength": 100
+                },
+                "filter": {
+                  "type": "object",
+                  "required": [
+                    "mode",
+                    "clauses"
+                  ],
+                  "properties": {
+                    "mode": {
+                      "enum": [
+                        "and",
+                        "or"
+                      ],
+                      "type": "string"
+                    },
+                    "clauses": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "field",
+                          "op"
+                        ],
+                        "properties": {
+                          "op": {
+                            "enum": [
+                              "eq",
+                              "neq",
+                              "contains",
+                              "not_contains",
+                              "gt",
+                              "gte",
+                              "lt",
+                              "lte",
+                              "is_empty",
+                              "is_not_empty"
+                            ],
+                            "type": "string"
+                          },
+                          "field": {
+                            "type": "string",
+                            "maxLength": 64,
+                            "minLength": 1
+                          },
+                          "value": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "maxLength": 1000
+                              },
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "boolean"
+                              },
+                              {
+                                "type": "null"
+                              },
+                              {
+                                "type": "array",
+                                "items": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string",
+                                      "maxLength": 200
+                                    },
+                                    {
+                                      "type": "number"
+                                    }
+                                  ]
+                                },
+                                "maxItems": 100
+                              }
+                            ]
+                          }
+                        },
+                        "additionalProperties": false
+                      },
+                      "maxItems": 20
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "measure": {
+                  "type": "object",
+                  "required": [
+                    "aggregate"
+                  ],
+                  "properties": {
+                    "field": {
+                      "type": "string",
+                      "maxLength": 64,
+                      "minLength": 1
+                    },
+                    "aggregate": {
+                      "enum": [
+                        "count",
+                        "sum",
+                        "avg",
+                        "min",
+                        "max"
+                      ],
+                      "type": "string"
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "table_id": {
+                  "type": "string",
+                  "maxLength": 64,
+                  "minLength": 1
+                }
+              },
+              "additionalProperties": false
+            },
+            "count": {
+              "type": "boolean"
+            },
+            "group": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "required": [
+                    "field"
+                  ],
+                  "properties": {
+                    "desc": {
+                      "type": "boolean"
+                    },
+                    "field": {
+                      "type": "string",
+                      "maxLength": 64,
+                      "minLength": 1
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
             "limit": {
               "type": "integer",
               "default": 20,
               "maximum": 50,
               "minimum": 1
             },
+            "sorts": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "field"
+                ],
+                "properties": {
+                  "desc": {
+                    "type": "boolean"
+                  },
+                  "field": {
+                    "type": "string",
+                    "maxLength": 64,
+                    "minLength": 1
+                  }
+                },
+                "additionalProperties": false
+              },
+              "maxItems": 3
+            },
             "action": {
               "enum": [
+                "bases",
+                "tables",
+                "views",
                 "list",
+                "aggregate",
                 "read"
               ],
               "type": "string",
               "description": ""
             },
             "cursor": {
-              "type": "string"
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "string",
+                  "maxLength": 400
+                }
+              ]
+            },
+            "filter": {
+              "type": "object",
+              "required": [
+                "mode",
+                "clauses"
+              ],
+              "properties": {
+                "mode": {
+                  "enum": [
+                    "and",
+                    "or"
+                  ],
+                  "type": "string"
+                },
+                "clauses": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "field",
+                      "op"
+                    ],
+                    "properties": {
+                      "op": {
+                        "enum": [
+                          "eq",
+                          "neq",
+                          "contains",
+                          "not_contains",
+                          "gt",
+                          "gte",
+                          "lt",
+                          "lte",
+                          "is_empty",
+                          "is_not_empty"
+                        ],
+                        "type": "string"
+                      },
+                      "field": {
+                        "type": "string",
+                        "maxLength": 64,
+                        "minLength": 1
+                      },
+                      "value": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "maxLength": 1000
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "boolean"
+                          },
+                          {
+                            "type": "null"
+                          },
+                          {
+                            "type": "array",
+                            "items": {
+                              "anyOf": [
+                                {
+                                  "type": "string",
+                                  "maxLength": 200
+                                },
+                                {
+                                  "type": "number"
+                                }
+                              ]
+                            },
+                            "maxItems": 100
+                          }
+                        ]
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "maxItems": 20
+                }
+              },
+              "additionalProperties": false
+            },
+            "search": {
+              "type": "string",
+              "maxLength": 200
+            },
+            "base_id": {
+              "type": "string",
+              "maxLength": 64
             },
             "table_id": {
               "type": "string",
@@ -1268,11 +1634,11 @@
               "maxLength": 64
             }
           },
-          "description": "action=list requires: action, table_id\naction=read requires: action, record_id",
+          "description": "action=bases requires: action\naction=tables|views requires: action, base_id\naction=list requires: action, table_id\naction=aggregate requires: action, card\naction=read requires: action, record_id",
           "additionalProperties": false
         },
         "idempotent": true,
-        "description": "Read a data table or record with the member’s permissions. Supply field ids as keys when writing records."
+        "description": "Discover bases (bases), their tables/fields (tables) and views (views); list filtered/sorted records, read a record, or aggregate a card. Acts with the member’s custom row/column roles. Use returned field ids for writes."
       },
       {
         "name": "table_mutation",
@@ -1285,6 +1651,11 @@
             "table_id"
           ],
           "properties": {
+            "body": {
+              "type": "string",
+              "maxLength": 20000,
+              "minLength": 1
+            },
             "items": {
               "type": "array",
               "items": {
@@ -1319,6 +1690,8 @@
               "enum": [
                 "create",
                 "update",
+                "comment",
+                "purge",
                 "delete",
                 "bulk"
               ],
@@ -1346,11 +1719,747 @@
               "maxLength": 64
             }
           },
-          "description": "action=create requires: action, table_id, values\naction=update requires: action, table_id, record_id, revision, values\naction=delete requires: action, table_id, record_id\naction=bulk requires: action, table_id, items",
+          "description": "action=create requires: action, table_id, values\naction=update requires: action, table_id, record_id, revision, values\naction=comment requires: action, table_id, record_id, body\naction=purge requires: action, table_id, record_id\naction=delete requires: action, table_id, record_id\naction=bulk requires: action, table_id, items",
           "additionalProperties": false
         },
         "idempotent": false,
         "description": "Create, update, recycle or bulk edit records. Private writes run immediately with undo; shared changes require approval unless the member granted this exact table and action. A bulk change is one approval card."
+      },
+      {
+        "name": "table_schema_plan",
+        "risk": "write",
+        "schema": {
+          "type": "object",
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "required": [
+            "name"
+          ],
+          "properties": {
+            "name": {
+              "type": "string",
+              "maxLength": 100,
+              "minLength": 1,
+              "description": "The new base name; for an existing base, the plan title."
+            },
+            "tables": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "name",
+                  "fields"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "maxLength": 100,
+                    "minLength": 1
+                  },
+                  "fields": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "name",
+                        "type"
+                      ],
+                      "properties": {
+                        "name": {
+                          "type": "string",
+                          "maxLength": 100,
+                          "minLength": 1
+                        },
+                        "type": {
+                          "enum": [
+                            "text",
+                            "long_text",
+                            "number",
+                            "checkbox",
+                            "date",
+                            "datetime",
+                            "single_select",
+                            "multi_select",
+                            "member",
+                            "url",
+                            "email",
+                            "phone",
+                            "attachment",
+                            "relation",
+                            "parent",
+                            "dependency",
+                            "formula",
+                            "lookup",
+                            "rollup",
+                            "ai"
+                          ],
+                          "type": "string"
+                        },
+                        "config": {
+                          "type": "object",
+                          "properties": {
+                            "inputs": {
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "maxLength": 64,
+                                "minLength": 1
+                              },
+                              "maxItems": 20
+                            },
+                            "prompt": {
+                              "type": "string",
+                              "maxLength": 4000
+                            },
+                            "result": {
+                              "enum": [
+                                "text",
+                                "number",
+                                "checkbox",
+                                "date",
+                                "datetime"
+                              ],
+                              "type": "string"
+                            },
+                            "formula": {},
+                            "options": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "required": [
+                                  "id",
+                                  "label",
+                                  "color"
+                                ],
+                                "properties": {
+                                  "id": {
+                                    "type": "string",
+                                    "pattern": "^[A-Za-z0-9_-]{1,64}$"
+                                  },
+                                  "color": {
+                                    "enum": [
+                                      "gray",
+                                      "blue",
+                                      "teal",
+                                      "green",
+                                      "amber",
+                                      "orange",
+                                      "red",
+                                      "pink",
+                                      "purple"
+                                    ],
+                                    "type": "string"
+                                  },
+                                  "label": {
+                                    "type": "string",
+                                    "maxLength": 100,
+                                    "minLength": 1
+                                  }
+                                },
+                                "additionalProperties": false
+                              },
+                              "maxItems": 200
+                            },
+                            "multiple": {
+                              "type": "boolean"
+                            },
+                            "table_id": {
+                              "type": "string",
+                              "maxLength": 64,
+                              "minLength": 1
+                            },
+                            "aggregate": {
+                              "enum": [
+                                "count",
+                                "count_values",
+                                "count_unique",
+                                "sum",
+                                "avg",
+                                "min",
+                                "max",
+                                "join"
+                              ],
+                              "type": "string"
+                            },
+                            "precision": {
+                              "type": "integer",
+                              "maximum": 6,
+                              "minimum": 0
+                            },
+                            "link_field": {
+                              "type": "string",
+                              "maxLength": 64,
+                              "minLength": 1
+                            },
+                            "auto_update": {
+                              "type": "boolean"
+                            },
+                            "formula_text": {
+                              "type": "string",
+                              "maxLength": 4000
+                            },
+                            "target_field": {
+                              "type": "string",
+                              "maxLength": 64,
+                              "minLength": 1
+                            }
+                          },
+                          "additionalProperties": false
+                        },
+                        "required": {
+                          "type": "boolean"
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    "maxItems": 30
+                  }
+                },
+                "additionalProperties": false
+              },
+              "default": [],
+              "maxItems": 10,
+              "description": "New data tables with ALL their new fields nested in fields. This creates each table and its fields together; no ids are needed."
+            },
+            "base_id": {
+              "type": "string",
+              "maxLength": 64
+            },
+            "changes": {
+              "type": "array",
+              "items": {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "required": [
+                      "action",
+                      "table_id",
+                      "input"
+                    ],
+                    "properties": {
+                      "input": {
+                        "type": "object",
+                        "required": [
+                          "name",
+                          "type"
+                        ],
+                        "properties": {
+                          "name": {
+                            "type": "string",
+                            "maxLength": 100,
+                            "minLength": 1
+                          },
+                          "type": {
+                            "enum": [
+                              "text",
+                              "long_text",
+                              "number",
+                              "checkbox",
+                              "date",
+                              "datetime",
+                              "single_select",
+                              "multi_select",
+                              "member",
+                              "url",
+                              "email",
+                              "phone",
+                              "attachment",
+                              "relation",
+                              "parent",
+                              "dependency",
+                              "formula",
+                              "lookup",
+                              "rollup",
+                              "ai"
+                            ],
+                            "type": "string"
+                          },
+                          "config": {
+                            "type": "object",
+                            "properties": {
+                              "inputs": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string",
+                                  "maxLength": 64,
+                                  "minLength": 1
+                                },
+                                "maxItems": 20
+                              },
+                              "prompt": {
+                                "type": "string",
+                                "maxLength": 4000
+                              },
+                              "result": {
+                                "enum": [
+                                  "text",
+                                  "number",
+                                  "checkbox",
+                                  "date",
+                                  "datetime"
+                                ],
+                                "type": "string"
+                              },
+                              "formula": {},
+                              "options": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "required": [
+                                    "id",
+                                    "label",
+                                    "color"
+                                  ],
+                                  "properties": {
+                                    "id": {
+                                      "type": "string",
+                                      "pattern": "^[A-Za-z0-9_-]{1,64}$"
+                                    },
+                                    "color": {
+                                      "enum": [
+                                        "gray",
+                                        "blue",
+                                        "teal",
+                                        "green",
+                                        "amber",
+                                        "orange",
+                                        "red",
+                                        "pink",
+                                        "purple"
+                                      ],
+                                      "type": "string"
+                                    },
+                                    "label": {
+                                      "type": "string",
+                                      "maxLength": 100,
+                                      "minLength": 1
+                                    }
+                                  },
+                                  "additionalProperties": false
+                                },
+                                "maxItems": 200
+                              },
+                              "multiple": {
+                                "type": "boolean"
+                              },
+                              "table_id": {
+                                "type": "string",
+                                "maxLength": 64,
+                                "minLength": 1
+                              },
+                              "aggregate": {
+                                "enum": [
+                                  "count",
+                                  "count_values",
+                                  "count_unique",
+                                  "sum",
+                                  "avg",
+                                  "min",
+                                  "max",
+                                  "join"
+                                ],
+                                "type": "string"
+                              },
+                              "precision": {
+                                "type": "integer",
+                                "maximum": 6,
+                                "minimum": 0
+                              },
+                              "link_field": {
+                                "type": "string",
+                                "maxLength": 64,
+                                "minLength": 1
+                              },
+                              "auto_update": {
+                                "type": "boolean"
+                              },
+                              "formula_text": {
+                                "type": "string",
+                                "maxLength": 4000
+                              },
+                              "target_field": {
+                                "type": "string",
+                                "maxLength": 64,
+                                "minLength": 1
+                              }
+                            },
+                            "additionalProperties": false
+                          },
+                          "required": {
+                            "type": "boolean"
+                          }
+                        },
+                        "additionalProperties": false
+                      },
+                      "action": {
+                        "type": "string",
+                        "const": "create_field"
+                      },
+                      "table_id": {
+                        "type": "string",
+                        "maxLength": 64
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "required": [
+                      "action",
+                      "field_id",
+                      "input"
+                    ],
+                    "properties": {
+                      "input": {
+                        "type": "object",
+                        "required": [
+                          "schema_revision"
+                        ],
+                        "properties": {
+                          "name": {
+                            "type": "string",
+                            "maxLength": 100,
+                            "minLength": 1
+                          },
+                          "type": {
+                            "enum": [
+                              "text",
+                              "long_text",
+                              "number",
+                              "checkbox",
+                              "date",
+                              "datetime",
+                              "single_select",
+                              "multi_select",
+                              "member",
+                              "url",
+                              "email",
+                              "phone",
+                              "attachment",
+                              "relation",
+                              "parent",
+                              "dependency",
+                              "formula",
+                              "lookup",
+                              "rollup",
+                              "ai"
+                            ],
+                            "type": "string"
+                          },
+                          "config": {
+                            "type": "object",
+                            "properties": {
+                              "inputs": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string",
+                                  "maxLength": 64,
+                                  "minLength": 1
+                                },
+                                "maxItems": 20
+                              },
+                              "prompt": {
+                                "type": "string",
+                                "maxLength": 4000
+                              },
+                              "result": {
+                                "enum": [
+                                  "text",
+                                  "number",
+                                  "checkbox",
+                                  "date",
+                                  "datetime"
+                                ],
+                                "type": "string"
+                              },
+                              "formula": {},
+                              "options": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "required": [
+                                    "id",
+                                    "label",
+                                    "color"
+                                  ],
+                                  "properties": {
+                                    "id": {
+                                      "type": "string",
+                                      "pattern": "^[A-Za-z0-9_-]{1,64}$"
+                                    },
+                                    "color": {
+                                      "enum": [
+                                        "gray",
+                                        "blue",
+                                        "teal",
+                                        "green",
+                                        "amber",
+                                        "orange",
+                                        "red",
+                                        "pink",
+                                        "purple"
+                                      ],
+                                      "type": "string"
+                                    },
+                                    "label": {
+                                      "type": "string",
+                                      "maxLength": 100,
+                                      "minLength": 1
+                                    }
+                                  },
+                                  "additionalProperties": false
+                                },
+                                "maxItems": 200
+                              },
+                              "multiple": {
+                                "type": "boolean"
+                              },
+                              "table_id": {
+                                "type": "string",
+                                "maxLength": 64,
+                                "minLength": 1
+                              },
+                              "aggregate": {
+                                "enum": [
+                                  "count",
+                                  "count_values",
+                                  "count_unique",
+                                  "sum",
+                                  "avg",
+                                  "min",
+                                  "max",
+                                  "join"
+                                ],
+                                "type": "string"
+                              },
+                              "precision": {
+                                "type": "integer",
+                                "maximum": 6,
+                                "minimum": 0
+                              },
+                              "link_field": {
+                                "type": "string",
+                                "maxLength": 64,
+                                "minLength": 1
+                              },
+                              "auto_update": {
+                                "type": "boolean"
+                              },
+                              "formula_text": {
+                                "type": "string",
+                                "maxLength": 4000
+                              },
+                              "target_field": {
+                                "type": "string",
+                                "maxLength": 64,
+                                "minLength": 1
+                              }
+                            },
+                            "additionalProperties": false
+                          },
+                          "position": {
+                            "type": "integer",
+                            "maximum": 10000,
+                            "minimum": 0
+                          },
+                          "required": {
+                            "type": "boolean"
+                          },
+                          "schema_revision": {
+                            "type": "integer",
+                            "maximum": 9007199254740991,
+                            "exclusiveMinimum": 0
+                          }
+                        },
+                        "additionalProperties": false
+                      },
+                      "action": {
+                        "type": "string",
+                        "const": "update_field"
+                      },
+                      "field_id": {
+                        "type": "string",
+                        "maxLength": 64
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "required": [
+                      "action",
+                      "field_id"
+                    ],
+                    "properties": {
+                      "action": {
+                        "type": "string",
+                        "const": "archive_field"
+                      },
+                      "field_id": {
+                        "type": "string",
+                        "maxLength": 64
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "required": [
+                      "action",
+                      "table_id",
+                      "input"
+                    ],
+                    "properties": {
+                      "input": {
+                        "type": "object",
+                        "properties": {
+                          "name": {
+                            "type": "string",
+                            "maxLength": 100,
+                            "minLength": 1
+                          },
+                          "position": {
+                            "type": "integer",
+                            "maximum": 10000,
+                            "minimum": 0
+                          },
+                          "description": {
+                            "type": "string",
+                            "maxLength": 2000
+                          }
+                        },
+                        "additionalProperties": false
+                      },
+                      "action": {
+                        "type": "string",
+                        "const": "update_table"
+                      },
+                      "table_id": {
+                        "type": "string",
+                        "maxLength": 64
+                      }
+                    },
+                    "additionalProperties": false
+                  }
+                ]
+              },
+              "default": [],
+              "maxItems": 50,
+              "description": "Only changes to existing table/field ids in base_id. Empty when creating a new base. Never put table names here."
+            }
+          },
+          "additionalProperties": false
+        },
+        "idempotent": false,
+        "description": "Plan a base and its data tables, or change existing schema, for the member to confirm. To create a base: omit base_id; name is the base name; tables lists the data tables, each with all its new fields nested in fields; leave changes empty. Example: {name: \"Work\", tables: [{name: \"Items\", fields: [{name: \"Notes\", type: \"long_text\"}]}], changes: []}. Newly created tables already have a primary name field. changes only targets existing ids read with table_query, never names or tables being created in this plan. Existing base requires builder access."
+      },
+      {
+        "name": "apps_query",
+        "risk": "read",
+        "schema": {
+          "type": "object",
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "required": [
+            "action"
+          ],
+          "properties": {
+            "card": {
+              "type": "string",
+              "maxLength": 64
+            },
+            "limit": {
+              "type": "integer",
+              "default": 20,
+              "maximum": 50,
+              "minimum": 1
+            },
+            "action": {
+              "enum": [
+                "list",
+                "get",
+                "query",
+                "record"
+              ],
+              "type": "string",
+              "description": ""
+            },
+            "app_id": {
+              "type": "string",
+              "maxLength": 64
+            },
+            "cursor": {
+              "type": "string"
+            },
+            "version": {
+              "type": "integer",
+              "maximum": 9007199254740991,
+              "exclusiveMinimum": 0
+            },
+            "record_id": {
+              "type": "string",
+              "maxLength": 64
+            }
+          },
+          "description": "action=list requires: action\naction=get requires: action, app_id\naction=query requires: action, app_id, version, card\naction=record requires: action, app_id, version, card, record_id",
+          "additionalProperties": false
+        },
+        "idempotent": true,
+        "description": "List usable apps, read their published pages, query a saved card or read a record through that card. App roles narrow the member’s base permissions."
+      },
+      {
+        "name": "apps_action",
+        "risk": "write",
+        "schema": {
+          "type": "object",
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "required": [
+            "version",
+            "card",
+            "action",
+            "app_id"
+          ],
+          "properties": {
+            "card": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{1,40}$"
+            },
+            "action": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{1,40}$"
+            },
+            "app_id": {
+              "type": "string",
+              "maxLength": 64
+            },
+            "values": {
+              "type": "object",
+              "default": {},
+              "propertyNames": {
+                "type": "string",
+                "maxLength": 64,
+                "minLength": 1
+              },
+              "additionalProperties": {}
+            },
+            "version": {
+              "type": "integer",
+              "maximum": 9007199254740991,
+              "exclusiveMinimum": 0
+            },
+            "revision": {
+              "type": "integer",
+              "maximum": 9007199254740991,
+              "exclusiveMinimum": 0
+            },
+            "record_id": {
+              "type": "string",
+              "maxLength": 64,
+              "minLength": 1
+            }
+          },
+          "additionalProperties": false
+        },
+        "idempotent": false,
+        "description": "Execute a saved app action or submit a published form as the member. The card shows server-resolved values. Private reversible writes have undo; shared writes use per-table approval. Never accepts a new app specification."
       }
     ],
     "publicAgent": null,
@@ -1371,13 +2480,42 @@
   },
   "steps": [
     {
+      "kind": "tool",
+      "tool": "ask_user",
+      "status": "succeeded",
+      "risk": "read",
+      "input": {
+        "fields": [
+          {
+            "key": "color",
+            "type": "choice",
+            "label": "颜色",
+            "options": [
+              "蓝色",
+              "绿色"
+            ],
+            "required": true
+          }
+        ],
+        "question": "验收颜色选什么？"
+      },
+      "output": {
+        "note": "The member sees your question. End your turn now.",
+        "status": "asked",
+        "request_id": "req_01M4Y3R83PP9SEWSD8YB33N5C7"
+      },
+      "error": null
+    },
+    {
       "kind": "model",
       "tool": null,
       "status": "succeeded",
       "risk": null,
       "input": {
         "step": 1,
-        "tools": []
+        "tools": [
+          "ask_user"
+        ]
       },
       "output": {
         "messages": [
@@ -1385,8 +2523,46 @@
             "role": "assistant",
             "content": [
               {
-                "text": "我是你的主助手 Greeny，可以帮你查资料、写东西、处理日常杂事，遇到专家活还能交给合适的 Agent。",
-                "type": "text"
+                "text": "The member asks me to actually call ask_user asking \"验收颜色选什么？\" with options 蓝色 and 绿色. Do it. But wait — my previous turn claimed I called memory recall; presumably I did. Now just call ask_user.\n\nHmm, but is this an instruction from the member — yes, it's a member message. It's harmless (a question). Fine.\n\nask_user requires question and fields. Use a choice field.",
+                "type": "reasoning"
+              },
+              {
+                "type": "tool-call",
+                "input": {
+                  "fields": [
+                    {
+                      "key": "color",
+                      "type": "choice",
+                      "label": "颜色",
+                      "options": [
+                        "蓝色",
+                        "绿色"
+                      ],
+                      "required": true
+                    }
+                  ],
+                  "question": "验收颜色选什么？"
+                },
+                "toolName": "ask_user",
+                "toolCallId": "call_00_8aB3bcRIbgYrzTHFKUcS1907"
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "content": [
+              {
+                "type": "tool-result",
+                "output": {
+                  "type": "json",
+                  "value": {
+                    "note": "The member sees your question. End your turn now.",
+                    "status": "asked",
+                    "request_id": "req_01M4Y3R83PP9SEWSD8YB33N5C7"
+                  }
+                },
+                "toolName": "ask_user",
+                "toolCallId": "call_00_8aB3bcRIbgYrzTHFKUcS1907"
               }
             ]
           }
@@ -1485,11 +2661,23 @@
       },
       {
         "name": "table_query",
-        "hash": "581ddd6c1df3feb35701269f0b6959529855701290a91ae35eecaf47915a4152"
+        "hash": "6a0a36570e90d3dd4b986490444c419c878e482584e9a912975844d50e33ec93"
       },
       {
         "name": "table_mutation",
-        "hash": "50dd6602115224f6e6b562d344688d2aa3dbf5a5608b708d027ca5473d9725a0"
+        "hash": "7a1028f67f4ea2dc528360723a03bfec92dc33fe4241a0ad01b4e6538be4e8f9"
+      },
+      {
+        "name": "table_schema_plan",
+        "hash": "05e711c17cb0160c06c8621e7dbfad9a0273cba6a8d11d5bf2dde2d0886cb19a"
+      },
+      {
+        "name": "apps_query",
+        "hash": "c3c89b19a0ede15d3f7d8886c957991bca09d33f73e84c08d67e87ac5843ce6b"
+      },
+      {
+        "name": "apps_action",
+        "hash": "d6c34485d0c0d6934b40bdfb5053ec92bf16c2ee31c180a0a474a7a1bcae9099"
       }
     ]
   }

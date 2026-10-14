@@ -170,6 +170,17 @@ async function stream(response, request) {
         { title: 'M24 source two', brief: 'Summarize source two.' },
       ],
     });
+  } else if (!afterTool && /^change table record /i.test(said)) {
+    const [, table_id, record_id, field_id] = /^change table record (\S+) (\S+) (\S+)/i.exec(said) ?? [];
+    tool('table_mutation', {
+      action: 'update',
+      table_id,
+      record_id,
+      revision: 1,
+      values: { [field_id]: 'Approved record' },
+    });
+  } else if (!afterTool && /^read table record /i.test(said)) {
+    tool('table_query', { action: 'read', record_id: said.split(' ').at(-1) });
   } else if (!afterTool && mailWake) {
     tool('mail', { action: 'read', id: /\bmal_[0-9A-Z]{26}\b/.exec(closing)?.[0] ?? '' });
   } else if (afterTool && toolText.includes('mail_body')) {

@@ -60,6 +60,8 @@ export const ID_PREFIX = {
   form: 'frm',
   formSubmission: 'sub',
   baseImport: 'imp',
+  baseAutomation: 'atm',
+  baseAutomationRun: 'amr',
 } as const;
 export type IdKind = keyof typeof ID_PREFIX;
 

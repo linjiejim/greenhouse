@@ -1,3 +1,6 @@
+import { appAgentQuerySchema, appExecuteSchema } from '@greenhouse/contract';
+import type { AppsService } from '../apps/service.js';
+import type { TablesService } from '../tables/service.js';
 /**
  * The tools `/api/mcp` offers. Each one belongs to the scopes that open it and calls the same
  * service as the HTTP route, as the member the token acts for, so it can never see or do more
@@ -20,6 +23,8 @@ import type { Caller } from '../oauth/service.js';
 import { ASK_MAX_CHARS, WAIT_MAX_SECONDS, createExchange, type ExchangeService } from './exchange.js';
 
 export interface McpServices {
+  apps: AppsService;
+  tables: TablesService;
   agents: AgentsService;
   conversations: ConversationsService;
   engine: Engine;
@@ -81,6 +86,28 @@ const waitSeconds = z
   .describe(`How long to wait for the answer, in seconds (at most ${WAIT_MAX_SECONDS}).`);
 
 export const MCP_TOOLS: readonly McpTool[] = [
+  defineMcpTool({
+    name: 'apps_query',
+    scopes: ['apps:read'],
+    description: 'Read published app pages and saved cards with your own app and base roles.',
+    input: appAgentQuerySchema,
+    readOnly: true,
+    async run(args, { caller, services }) {
+      if (args.action === 'list') return services.apps.list(caller.memberId, args);
+      if (args.action === 'get') return services.apps.runtime(caller.memberId, args.app_id);
+      if (args.action === 'query') return services.apps.card(caller.memberId, args.app_id, args);
+      return services.apps.record(caller.memberId, args.app_id, args, args.record_id);
+    },
+  }),
+  defineMcpTool({
+    name: 'apps_action',
+    scopes: ['apps:write'],
+    description:
+      'Execute a published app action with the approval tiers. Shared writes return needs_you, for the member to decide in Greenhouse.',
+    input: appExecuteSchema.extend({ app_id: z.string().max(64) }),
+    readOnly: false,
+    run: (args, { caller, services }) => services.engine.externalAppAction(caller.memberId, args),
+  }),
   defineMcpTool({
     name: 'agents_list',
     scopes: ['agents:read', 'agents:ask'],

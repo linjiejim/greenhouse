@@ -1,3 +1,7 @@
+import { createAutomationsService, type AutomationsService } from './modules/tables/automations.js';
+import { createRecordAgents, type RecordAgentsService } from './modules/tables/agents.js';
+import { automationsRoutes } from './modules/tables/automations-routes.js';
+import { appTools } from './engine/tools/apps.js';
 import { appsRoutes } from './modules/apps/routes.js';
 import { createAppsService, type AppsService } from './modules/apps/service.js';
 import { randomUUID } from 'node:crypto';
@@ -114,6 +118,8 @@ export interface Services {
   voice: VoiceService;
   knowledge: KnowledgeService;
   tables: TablesService;
+  automations: AutomationsService;
+  recordAgents: RecordAgentsService;
   apps: AppsService;
   notifications: NotificationsService;
   channels: ChannelsService;
@@ -228,11 +234,24 @@ export function createServices(config: AppConfig, options: ServiceOptions = {}):
       skillMutationTool(skills),
       ...knowledgeTools(knowledge),
       ...tableTools(tables),
+      ...appTools(apps, tables),
       ...(options.tools ?? []),
     ],
     ...(options.languageModel ? { languageModel: options.languageModel } : {}),
     development: config.NODE_ENV === 'development',
   });
+  const recordAgents = createRecordAgents({ tables, agents, engine: () => engine });
+  const automations = createAutomationsService({
+    tables,
+    agents,
+    engine: () => engine,
+    notifications,
+    key: Buffer.from(config.providerEncryptionKey, 'hex'),
+    ...(options.fetch ? { fetch: options.fetch } : {}),
+  });
+  tables.installAutomationHooks(automations.hooks);
+  tables.worker.register('base_automation', automations.handle);
+  tables.worker.every(automations.sweep);
   const runs = createRunsService({ background: () => engine.background });
   return {
     config,
@@ -252,6 +271,8 @@ export function createServices(config: AppConfig, options: ServiceOptions = {}):
     voice,
     knowledge,
     tables,
+    automations,
+    recordAgents,
     apps,
     notifications,
     channels,
@@ -344,6 +365,7 @@ export function createApp(services: Services, options: { webDir?: string } = {})
   signedIn.route('/knowledge', knowledgeRoutes(services.knowledge));
   signedIn.route('/apps', appsRoutes(services.apps));
   signedIn.route('/tables', tablesRoutes(services.tables));
+  signedIn.route('/tables', automationsRoutes(services.automations, services.recordAgents));
   signedIn.route('/tables', formsRoutes(services.tables.forms));
   signedIn.route('/tables', importsRoutes(services.tables.imports));
   signedIn.route('/tables', cardsRoutes(services.tables.cards));
