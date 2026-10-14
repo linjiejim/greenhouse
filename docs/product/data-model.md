@@ -4,7 +4,7 @@
 
 v2 从零建表：只有一份基线迁移，不继承 v1 的迁移链，也不在 v1 库上原地升级。v1 的历史数据以后用离线 ETL 搬进来，见 [migration-v1.md](migration-v1.md)。
 
-本文写到能照着实现的程度，列不求全。实现以 Drizzle schema 为准，改表时同步本文。共 75 张表，分 10 个领域；v1 加上 PR #64 是 137 张。
+本文写到能照着实现的程度，列不求全。实现以 Drizzle schema 为准，改表时同步本文。共 78 张表，分 10 个领域；v1 加上 PR #64 是 137 张。
 
 ## 1. 约定
 
@@ -63,7 +63,7 @@ v2 从零建表：只有一份基线迁移，不继承 v1 的迁移链，也不�
 | `groups` | 管理员维护的分组 | `name`（唯一）、`description`、`created_by` |
 | `group_members` | 分组成员 | 主键 `(group_id, member_id)`，两端 `CASCADE` |
 | `refresh_tokens` | 刷新令牌 | `member_id` `CASCADE`、`token_hash`、`auth_version`、`client`（web / ios / android / extension / desktop）、`expires_at`、`last_used_at`；单次消费 |
-| `auth_links` | 激活与重置密码的一次性链接 | `member_id` `CASCADE`、`purpose`（activate / reset）、`token_hash`（唯一）、`issued_auth_version`、`expires_at`、`consumed_at`、`revoked_at`、`delivery_status`；每人最多一条有效 |
+| `auth_links` | 激活与重置密码的一次性链接 | `member_id` `CASCADE`、`purpose`（activate / reset）、`token_hash`（唯一）、`issued_auth_version`、`expires_at`、`consumed_at`、`revoked_at`、`delivery_status`（shown：只给管理员复制 / emailed：邮箱服务发出 / failed：没发出）；每人最多一条有效 |
 | `shares` | 唯一的分享表 | `resource_type`（folder / doc / file / base / form / app / agent）、`resource_id`、`principal_type`（member / group / workspace）、`principal_id`（workspace 时为空）、`role`、`custom_role_id`（→ `base_roles`）、`created_by`；唯一 `(resource_type, resource_id, principal_type, principal_id)` |
 | `pins` | 成员自己的置顶 | 主键 `(member_id, target_type, target_id)`、`position`；目标是对话、表格、应用或文档 |
 
@@ -82,6 +82,9 @@ v2 从零建表：只有一份基线迁移，不继承 v1 的迁移链，也不�
 | `agent_computers` | Agent 电脑的生命周期 | `agent_id` `CASCADE`、`owner_id`（这台电脑是谁的）、`provider_id`（沙箱实例）、`sandbox_ref`（适配器自己的容器、卷或沙箱 id）、`state`（stopped / starting / running / failed）、`state_reason`、`timezone`、`version`、`last_active_at`、`last_started_at`；唯一 `(agent_id, owner_id)`：主人一台，公开 Agent 的发布允许电脑时，使用它的成员各一台；观看、接管和终端用一次性 ticket，连接打开期间刷新 `last_active_at`；画面租约 `lease_controller`（member / agent，空 = 无人）、`lease_holder`（持有它的控制画面或浏览器动作）、`lease_until`：成员的控制画面打开期间一直持有并续期，Agent 的每个浏览器动作短暂持有；成员总能拿到，Agent 只在无人持有或已过期时拿到（AGNT-22） |
 | `computer_backups` | 电脑家目录的加密备份 | `computer_id`、`owner_id`（逻辑）、`status`、`reason`（idle / admin / migration）、`storage_prefix`、`key_enc`、`format`、`bytes`、`restored_at`；每台电脑最多一条 running；先删对象再删行 |
 | `computer_watches` | 电脑上的后台进程结束时唤醒 Agent | `computer_id` `CASCADE`、`agent_id`、`member_id`（以谁的权限唤醒）、`conversation_id`、`job_ref`（按电脑唯一）、`name`、`status`（watching / notified / gone，从 watching 单次认领，7 天无果作废） |
+| `agent_mailboxes` | Agent 邮箱（AGNT-30） | `agent_id` `CASCADE`（唯一）、`local_part`（工作区内唯一，小写；默认「名字-随机 4 位」）、`allow_members`（工作区成员的来信能叫醒它，默认开）；域名是 `mail` 能力的默认项 `agent_domain`，改域名就改了所有地址；主人第一次查看时建立 |
+| `mail_senders` | 主人放行的发件人 | 主键 `(agent_id, address)`、`agent_id` `CASCADE`、`address`（小写）、`added_by`；主人自己总在名单里，成员按 `allow_members` |
+| `mail_messages` | Agent 的来信与发信 | `agent_id` `CASCADE`、`owner_id`（逻辑）、`direction`（in / out）、`status`（screened / delivered；sending / sent / failed）、`screen_reason`（sender / unverified / public_agent / archived）、`provider_id` + `provider_message_id`（来信按 `(agent_id, provider_id, provider_message_id)` 唯一）、`message_id` / `in_reply_to` / `references`、`from_address` / `from_name`、`to` / `cc` / `reply_to`、`subject`、`text`（有上限，供阅读与搜索）、`html_file_id`（HTML 正文存进存储服务）、`attachments`（文件 id、名字、类型、大小、被略过的原因）、`auth`（收信服务器的 SPF / DKIM / DMARC 结论）、`verified`（与发件域对齐通过）、`conversation_id`（卡片所在的对话）、`run_id`（发信的那次批准）、`error`、`woke_at`、`at` |
 
 句柄：主 Agent 是 `main`，按成员解析，与显示名无关（默认名 Greeny，可改）。其他 Agent 是 `agent:<id>`，固定版本写 `agent:<id>@<version>`。v1 的 `sprouty`、`bot:`、`custom:` 句柄不再解析。
 
@@ -114,7 +117,7 @@ v2 从零建表：只有一份基线迁移，不继承 v1 的迁移链，也不�
 | `doc_versions` | 不可变版本 | `doc_id` `CASCADE`、`version`、`title`、`content`、`change_note`、`created_by`、`agent_id`（Agent 代写时）；唯一 `(doc_id, version)`；新建是版本 1，恢复写一个新版本 |
 | `doc_links` | 反向链接 | 主键 `(from_doc_id, to_doc_id)`，两端 `CASCADE`；每次保存由正文重建，读反链时逐条过权限 |
 | `comments` | 文档和记录的评论 | `target_type`（doc / record）、`target_id`、`base_id`（记录评论）、`created_by`、`agent_id`（Agent 代写时）、`body`（Markdown）、`mentions`（由正文里的 `[@名字](member:<id>)` 得出）、`deleted_at`、`updated_at`；读权限跟随目标，不进全文检索 |
-| `files` | 统一文件服务 | `purpose`（attachment / knowledge / record / artifact / export / import / skill / avatar / branding）、`provider_id`、`storage_key`（唯一）、`name`、`content_type`、`size_bytes`、`sha256`、`status`、`owner_id`、归属列按 purpose 填一个（`folder_id` + `space`、`conversation_id`、`base_id`、`run_id`；技能包、头像、品牌由引用它的行持有）、`expires_at`（导出）、`meta`、`search_*`（知识库文件：A 文件名，C 文本与 PDF 的文字）、`archived_at`；权限跟随归属。知识库文件的 `folder_id` → `folders` `SET NULL`，`owner_id` 同 `folders`；`meta.doc_id` 是贴进文档的图片（不在树里，权限跟随文档），`meta.sort_order` 是手动顺序 |
+| `files` | 统一文件服务 | `purpose`（attachment / knowledge / record / artifact / export / import / skill / avatar / branding / mail）、`provider_id`、`storage_key`（唯一）、`name`、`content_type`、`size_bytes`、`sha256`、`status`、`owner_id`、归属列按 purpose 填一个（`folder_id` + `space`、`conversation_id`、`base_id`、`run_id`；技能包、头像、品牌由引用它的行持有）、`expires_at`（导出）、`meta`、`search_*`（知识库文件：A 文件名，C 文本与 PDF 的文字）、`archived_at`；权限跟随归属。知识库文件的 `folder_id` → `folders` `SET NULL`，`owner_id` 同 `folders`；`meta.doc_id` 是贴进文档的图片（不在树里，权限跟随文档），`meta.sort_order` 是手动顺序 |
 
 「他人正在编辑」与在线状态放在进程内存里，不建表；有多个 API 进程时，各自只看得到连在本进程的人。
 
@@ -127,26 +130,28 @@ v2 从零建表：只有一份基线迁移，不继承 v1 的迁移链，也不�
 | 表 | 用途 | 关键列与关系 |
 | --- | --- | --- |
 | `bases` | 表格 | `name`、`description`、`icon`、`owner_id`、`template_key` + `template_version`（从模板创建时）、`created_by`、`archived_at`；团队可见、成员和分组的权限都在 `shares` |
-| `base_roles` | 表格的自定义角色 | `base_id` `CASCADE`、`name`、`rules`（按数据表的行级、列级规则）、`position`、`revision` |
+| `base_roles` | 表格的自定义角色 | `base_id` `CASCADE`、`name`（表格内唯一）、`description`、`rules`（`{ tables: { 数据表 id: { access: read / edit, rows: 筛选, hidden_fields } } }`，没列出的数据表看不到）、`position`、`revision`；在 `shares` 里以角色 `custom` 加 `custom_role_id` 分出去，删除角色时这些分享一起删除 |
 | `base_tables` | 数据表 | `base_id` `CASCADE`、`name`（表格内未删除的唯一，部分唯一索引）、`description`、`position`、`schema_revision`（字段每变一次加一）、`created_by`、`archived_at`（回收站：记录、字段、视图随它回来） |
-| `base_fields` | 字段 | `table_id` `CASCADE`、`name`（表内未删除的唯一）、`type`（text / long_text / number / checkbox / date / datetime / single_select / multi_select / member / url / email / phone / attachment / relation / lookup / formula / rollup / ai / parent / dependency）、`required`、`is_primary`（每表一个，部分唯一索引）、`config`（选项、小数位、成员和关联是否多个、关联的目标数据表）、`position`、`created_by`、`archived_at`（回收站：值留在记录里，彻底删除时才去掉）；每表最多一个父记录字段和一个依赖字段 |
-| `base_field_deps` | 公式、汇总、lookup、AI 字段的依赖边 | 主键 `(field_id, depends_on_field_id)`、`kind`；用于反查影响和级联重算 |
+| `base_fields` | 字段 | `table_id` `CASCADE`、`name`（表内未删除的唯一）、`type`（text / long_text / number / checkbox / date / datetime / single_select / multi_select / member / url / email / phone / attachment / relation / lookup / formula / rollup / ai / parent / dependency）、`required`、`is_primary`（每表一个，部分唯一索引）、`config`（选项、小数位、成员和关联是否多个、关联的目标数据表；公式存解析后的表达式 `formula` 和结果类型 `result`，查找引用与汇总存 `link_field`、`target_field`、`aggregate`，AI 字段存 `prompt`（字段写作 `{#id}`）、`inputs`、`auto_update`）、`position`、`created_by`、`archived_at`（回收站：值留在记录里，彻底删除时才去掉）；每表最多一个父记录字段和一个依赖字段 |
+| `base_field_deps` | 公式、汇总、lookup、AI 字段的依赖边 | 主键 `(field_id, depends_on_field_id)`，两端 `CASCADE`、`kind`（same：同一条记录的字段；link：查找引用、汇总沿着的关联字段；target：关联过去读的字段）；用于反查影响、级联重算、成环检查和自定义角色的隐藏 |
 | `base_views` | 视图，含仪表盘 | `base_id` / `table_id` `CASCADE`（仪表盘的 `table_id` 为空）、`name`、`type`（grid / kanban / calendar / gallery / timeline / dashboard）、`owner_id`（空 = 共享视图）、`config`（筛选、排序、分组、列宽；仪表盘的卡片与应用共用一套 schema）、`position`、`revision` |
 | `base_forms` | 内部表单 | `table_id` `CASCADE`、`name`、`status`（draft / published）、`config`、`revision`；谁能提交由 `shares` 决定，默认是有新建权限的成员 |
-| `base_form_submissions` | 表单提交 | `form_id` `CASCADE`、`member_id`、`record_id` `SET NULL`、`single_submit`；只允许提交一次的表单靠部分唯一索引 |
-| `base_records` | 记录 | `table_id` `CASCADE`、`values`（按字段 id，只有标量字段；关联类和附件在下面两张表）、`computed`（公式、汇总、AI 字段）、`revision`、`computed_revision`、`search_*`（A 主字段，B 选项名，C 其他文本）、`created_by` / `updated_by`、`deleted_at` + `deleted_by`（回收站，30 天后彻底删除）；没有排序的视图按 id 排，即创建顺序（一次建多条时 id 依次递增） |
+| `base_form_submissions` | 表单提交 | `form_id` `CASCADE`、`member_id`、`record_id` `SET NULL`、`single_submit`；只允许提交一次的表单靠部分唯一索引 `(form_id, member_id) WHERE single_submit` |
+| `base_records` | 记录 | `table_id` `CASCADE`、`values`（按字段 id，只有标量字段；关联类和附件在下面两张表）、`computed`（公式、查找引用、汇总、AI 字段的值，失败是 `{ error }`，AI 生成中是 `{ pending, job }`）、`revision`（写入时加一）、`computed_revision`（计算值变化时加一）、`seq`（自增，创建顺序；没有排序的视图按它排，id 保持随机）、`search_*`（A 主字段，B 选项名，C 其他文本）、`created_by` / `updated_by`、`deleted_at` + `deleted_by`（回收站，30 天后由每天的 `base_purge` 任务彻底删除） |
 | `base_record_links` | 关联、父记录、依赖的规范边 | 主键 `(field_id, source_record_id, target_record_id)`，三列都 `CASCADE`、`position`；指向回收站里记录的边保留，记录恢复时链接跟着回来；父记录与依赖不能成环 |
-| `base_record_files` | 记录附件 | 主键 `(record_id, field_id, file_id)`，`record_id` / `field_id` `CASCADE`、`file_id` → `files`（用途 `record`，`files.base_id` 是所在表格）、`position`；只能挂自己上传到这个表格、还没挂在别的记录上的文件 |
+| `base_record_files` | 记录附件 | 主键 `(record_id, field_id, file_id)`，`record_id` / `field_id` `CASCADE`、`file_id` → `files`（用途 `record`，`files.base_id` 是所在表格，`file_id` 唯一）、`position`；只能挂自己上传到这个表格、还没挂在别的记录上的文件；记录在回收站里时附件打不开；彻底删除后文件字节在提交后由 `base_discard` 任务删除，一天没挂上的上传由每天的清理删除 |
 | `base_record_events` | 记录历史 | `record_id` `CASCADE`、`table_id`、`actor_type`（member / agent / automation / form / import / app / system）、`actor_id`、`type`（created / updated / deleted / restored）、`changes`（字段前后值）、`meta` |
 | `base_automations` | 自动化规则 | `base_id` / `table_id` `CASCADE`、`name`、`status`、`trigger`（record_created / record_updated / record_matched / schedule / date_reached / button）、`config`（条件与动作：通知成员、Agent 步骤、webhook）、`run_as`（成员）、`secrets_enc`（webhook 签名密钥）、`revision`、`next_fire_at`、`swept_until` |
 | `base_automation_runs` | 自动化执行记录 | `automation_id` `CASCADE`、`record_id`（逻辑）、`trigger`、`status`、`steps`、`run_id`（Agent 步骤对应的运行）、`error`、`started_at`、`finished_at` |
-| `base_imports` | CSV 导入 | `table_id` `CASCADE`、`member_id`、`file_id`、`mapping`、`status`、`committed_rows`（重试从这里继续）、`result`、`expires_at` |
+| `base_imports` | CSV 导入 | `base_id` / `table_id` `CASCADE`、`member_id`、`file_id`（用途 `import`，导入结束即删除）、`mapping`（`{ header, columns, first, samples }`）、`status`（draft / queued / running / done / failed / cancelled）、`total_rows`、`committed_rows`（重试从这里继续）、`result`（`{ created, skipped, errors（最多 100 条）, more_errors, failure }`）、`expires_at`（草稿 24 小时）；后台任务 `base_import`，去重键 `base_import:<id>:<起始行>` |
 | `apps` | 应用 | `base_id` `CASCADE`、`name`、`description`、`icon`、`accent`、`owner_id`、`status`（draft / published）、`draft_spec`（text）、`draft_revision`、`published_version`、`featured`、`archived_at`；受众在 `shares` |
 | `app_versions` | 已发布的不可变版本 | `app_id` `CASCADE`、`version`、`spec`（text）、`spec_hash`、`draft_revision`、`notes`、`custom_review`、`published_by`、`published_at` |
 | `base_templates` | 表格模板，可带应用；「项目」是内置模板 | `key`（唯一）、`source`（builtin / published）、`name`、`description`、`owner_id`、`latest_version`、`source_app_id`、`source_base_id`、`archived_at` |
 | `base_template_versions` | 模板的不可变版本 | `template_id` `CASCADE`、`version`（semver）、`changelog`、`content`（text：表结构、可选的应用 spec、示例行）、`content_hash`、`custom_cards`、`automations`、`scan_status`、`review_status`、`reviewed_by`、`reviewed_at` |
 
-已建（M2.2 第一阶段）：`bases`、`base_tables`、`base_fields`（公式、汇总、lookup、AI 以外的类型）、`base_views`（仪表盘以外的类型）、`base_records`（还没有 `computed`、`computed_revision`）、`base_record_links`、`base_record_files`、`base_record_events`；表格的分享在 `shares`，记录评论在 `comments`，置顶在 `pins`。其余各表随后续阶段加入。「项目」内置模板先写在代码里（apps/api/src/modules/tables/templates.ts），`base_templates` 随应用模板一起建。
+已建（M2.2 第一、二阶段）：`bases`、`base_roles`、`base_tables`、`base_fields`（全部类型）、`base_field_deps`、`base_views`（含仪表盘）、`base_forms`、`base_form_submissions`、`base_records`、`base_record_links`、`base_record_files`、`base_record_events`、`base_imports`；表格的分享在 `shares`，记录评论在 `comments`，置顶在 `pins`。自动化与应用随第三阶段。「项目」内置模板仍写在代码里（apps/api/src/modules/tables/templates.ts），`base_templates` 随应用模板一起建。
+
+后台任务（都在 `jobs`，apps/api/src/modules/tables/worker.ts）：`base_recompute`（记录写入时先在同一事务里算好它自己的计算字段，读到它的别处记录排进这个任务，按块重算并继续向下游传播；关联记录的标题变了、被删除或恢复时，读这些关联的记录也重算；字段新建、修改、删除、恢复后整表重算）、`base_ai_field`（快速模型生成 AI 字段的值，按字段创建者计量与预算，旧任务被新任务取代时不写入）、`base_import`、`base_purge`（每天一次：回收站 30 天以上的记录、过期导入、没挂上的附件）、`base_discard`（提交后删除文件字节）。
 
 与 #64 的差别：
 - `table_dashboards` / `table_dashboard_widgets` 并入 `base_views`。
@@ -167,7 +172,7 @@ v2 从零建表：只有一份基线迁移，不继承 v1 的迁移链，也不�
 | 表 | 用途 | 关键列与关系 |
 | --- | --- | --- |
 | `connectors` | 管理员安装的 MCP 服务器 | `slug`（唯一，模型调用时用，不可改）、`name`、`description`、`url`（不含凭据）、`transport`（streamable_http / sse）、`auth_mode`（none / shared / per_member / oauth）、`auth_header` 或 `auth_query_param`、`auth_prefix`（如 `Bearer `）、`auth_enc`（共享 Key）、`key_help` / `key_help_url`（per_member：成员该粘贴什么）、`oauth_scope`、`oauth_client_enc`（本工作区在对方授权服务器的客户端：动态注册或管理员手填）、`oauth_discovery`（公开元数据缓存）、`allowed_tools`（null 表示全部）、`read_only_tools`（管理员担保只读；服务器标为 destructive 的不算）、`catalog_id`、`tools`（最近一次刷新的工具缓存；失败时保留上一份）、`tools_refreshed_at`、`last_error`、`enabled`、`created_by` `SET NULL` |
-| `connections` | 成员接入的外部账号 | `member_id` `CASCADE`、`kind`（connector / feishu / wecom / email）、`connector_id` `CASCADE`（只有 connector 有）、`external_id`（飞书 open_id、企微 userid、邮箱地址）、`display_name`、`config`（邮箱的 IMAP / SMTP 主机、端口等明文设置）、`secrets_enc`（OAuth 令牌、个人 Key、邮箱密码）、`scopes`、`expires_at`（访问令牌到期）、`status`（active / needs_reauth / error）、`last_error`、`last_verified_at`；每个成员每个连接器一条（`kind = connector` 时 `(member_id, connector_id)` 唯一）；飞书和企微的 `(kind, external_id)` 唯一，扫码登录按它找成员。刷新令牌只覆盖它读到的那份密文，并发刷新时轮换后的令牌不会被旧的覆盖 |
+| `connections` | 成员接入的外部账号 | `member_id` `CASCADE`、`kind`（connector / feishu / wecom / email）、`connector_id` `CASCADE`（只有 connector 有）、`external_id`（飞书 open_id、企微 userid、邮箱地址）、`display_name`、`config`（邮箱的 IMAP / SMTP 主机、端口等明文设置）、`secrets_enc`（OAuth 令牌、个人 Key、邮箱密码）、`scopes`、`expires_at`（访问令牌到期）、`status`（active / needs_reauth / error）、`last_error`、`last_verified_at`；每个成员每个连接器一条（`kind = connector` 时 `(member_id, connector_id)` 唯一）；`kind = email` 是内置连接器「邮箱」的连接，每个成员一条；飞书和企微的 `(kind, external_id)` 唯一，扫码登录按它找成员。刷新令牌只覆盖它读到的那份密文，并发刷新时轮换后的令牌不会被旧的覆盖 |
 | `vault_items` | 密码库条目 | `member_id` `CASCADE`、`label`、`origins`（精确 origin 或 `*.域名`）、`username_enc` / `password_enc` / `totp_enc`（`VAULT_ENCRYPTION_KEY`）、`username_hint`（掩码用户名）、`policy`（ask / auto）、`always_origins`（`ask` 条目不发卡片的站点，只能是 `origins` 里的精确站点）、`agent_ids`（自己的 Agent，空 = 所有 Agent）、`last_used_at` |
 | `vault_access_log` | 代填日志，只给成员本人看 | `member_id`、`item_id` `SET NULL`、`item_label`、`agent_id`、`conversation_id`、`origin`（浏览器报告的页面站点）、`action`（fill）、`outcome`（requested / filled / declined / origin_mismatch / no_fields / failed）、`approval`（auto / always / member）；不记录任何值。不并入 `audit_events`，因为管理员不读密码库 |
 | `providers` | 服务实例（[providers.md §4.4](providers.md#44-运行时数据库)） | `id`、`capability`、`kind`、`preset`、`name`、`scope`（workspace / personal）、`owner_id`、`config`（非机密）、`secrets_enc`、`enabled`、`last_check`、`created_by`、时间戳；环境变量实例只在内存里 |
@@ -203,7 +208,7 @@ v1 的预算账本不再保留：每次花费都对应一条 `usage_events`；�
 | --- | --- | --- |
 | `workspace` | 工作区，只有一行 | `id`（固定 `default`）、`name`、`logo_file_id`、`primary_color`、`settings`（新成员的默认模块权限等非机密设置）、`setup_completed_at`、`updated_by`；机密一律在 `providers` |
 | `jobs` | 通用后台任务队列 | `kind`（如 request_decided、deliver_notification、push_receipts、base_automation、recompute、ai_field、video_poll、file_purge、computer_backup、export）、`dedupe_key`（唯一）、`payload`、`status`（pending / claimed / succeeded / failed / dead / suppressed）、`attempts` / `max_attempts`、`available_at`、`lease_owner` / `lease_expires_at`、`last_error`、`result`（处理中途记下的进度，接手的进程据此不重复执行）；和触发它的状态变更在同一事务里写入；领取即算一次尝试，租约过期（进程死了）回到队列，处理期间持有者续租；`apps/api/src/jobs.ts` 是唯一的入队、领取、续租与结算方式。`request_decided`：每张卡片一条，和批准、拒绝、回答、交还或过期在同一事务里写入，结束 7 天后删除；送达任务结束 30 天后删除 |
-| `idempotency_keys` | 有副作用请求的幂等记录 | 主键 `(scope, key)`（scope 如成员 id 或 `feishu`）、`request_hash`、`status`（running / done）、`response`、`expires_at`；承接 `Idempotency-Key` 头、应用动作重放和飞书事件去重；电脑画面与终端的一次性 ticket 也在这里（scope `computer_ticket`，`key` 是 ticket 的 keyed hash，一分钟，用时删除）；OAuth 同意请求同理（scope `oauth_request`，十分钟，归第一个打开它的成员，做出决定时删除） |
+| `idempotency_keys` | 有副作用请求的幂等记录 | 主键 `(scope, key)`（scope 如成员 id 或 `feishu`）、`request_hash`、`status`（running / done）、`response`、`expires_at`；承接 `Idempotency-Key` 头、应用动作重放和飞书事件去重；电脑画面与终端的一次性 ticket 也在这里（scope `computer_ticket`，`key` 是 ticket 的 keyed hash，一分钟，用时删除）；OAuth 同意请求同理（scope `oauth_request`，十分钟，归第一个打开它的成员，做出决定时删除）；邮件服务商通知的 nonce 也在这里（scope `mail_notice`，处理成功后记下，Resend 两天、Mailgun 13 小时，同一个 nonce 不再处理） |
 | `extension_migrations` | 扩展迁移通道的记录 | 主键 `(extension_id, name)`、`checksum`、`applied_at` |
 
 v1 迁移工具的 ID 映射与检查点放在单独的 `migration` schema，不属于基线。
@@ -216,7 +221,7 @@ v1 迁移工具的 ID 映射与检查点放在单独的 `migration` schema，不
 2. 文档只存 Markdown，不存编辑器 JSON。M2.1 先验证编辑器对表格、提及、图片能无损往返，做不到再加 `content_json` 作缓存。
 3. 用一个通用 `jobs` 队列，取代 v1 各自实现的租约队列（`runtime_outbox`、`notification_delivery_attempts`、`table_automation_outbox`、`table_recompute_jobs`）；领域事实仍留在各自的表里。
 4. 前台回合也记一条 run（`kind=turn`，不进运行列表）。恢复、计量和「需要你」只有一条路径，代价是 `runs` 的行数随回复增长。
-5. 渠道（SMTP、飞书、企微、推送）存进 `providers`，capability 取 mail / im / push，见 [providers.md](providers.md#2-能力)。
+5. 邮箱服务与渠道（Resend、Mailgun、SMTP、飞书、企微、推送）存进 `providers`，capability 取 mail / im / push，见 [providers.md](providers.md#2-能力)。
 6. 个人访问令牌复用 `oauth_tokens`（`kind=personal`），挂在内置客户端 `personal` 的授权下，吊销与审计走同一条路；它只能调用 `/api/mcp`。
 7. 仪表盘并入 `base_views`（`type=dashboard`），卡片与应用共用一套 schema。
 8. 「项目」模板的里程碑放进任务表，用单选字段「类型」区分；依赖和父记录都在同一张表内，时间线只读一张表。

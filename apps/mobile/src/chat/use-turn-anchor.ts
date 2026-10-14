@@ -1,7 +1,6 @@
 /**
- * `useTurnAnchor` — the transcript's scrolling rules, shared by the
- * conversation (app/(drawer)/(main)/index.tsx) and the Bots thread
- * (src/bots/thread/thread-screen.tsx). Wire it into a KeyboardChatScrollView
+ * `useTurnAnchor` — the transcript's scrolling rules for the conversation screen
+ * (src/conversation/screen.tsx). Wire it into a KeyboardChatScrollView
  * (`ref`, `blankSpace`, `onLayout`, `onContentSizeChange`,
  * `onScrollBeginDrag`, `onEndVisible`) and into the row a turn anchors to.
  *
@@ -14,8 +13,10 @@
  *    Only static rows are held this way: a turn that starts streaming is
  *    anchored by the screen (`holdingEnd()` says whether the end is still
  *    held), never followed.
- *  - **Anchor a turn** (`anchorNext(rowId)` — every send, and a reply the
- *    server started while the end was in view): once that row is laid out it
+ *  - **Anchor a turn** (`anchorNext(rowId, box?)` — every send, and a reply the
+ *    server started while the end was in view; `box` = the row's layout when it
+ *    already happened, e.g. the realtime copy of a sent message arrived before
+ *    the send answered): once that row is laid out it
  *    slides up under the nav bar and the reply unfolds below it in place. The
  *    `blankSpace` inset floor keeps that offset reachable while the reply is
  *    short (= anchor offset + viewport − content) and shrinks to 0 as it
@@ -60,8 +61,11 @@ export interface TurnAnchor {
   onDragStart(): void;
   /** `onLayout` of the row a turn may anchor to (the conversation: its last user message). */
   onAnchorRowLayout(rowId: string, e: LayoutChangeEvent): void;
-  /** Anchor the next turn to this row: it slides under the nav bar once laid out, the reply unfolds below. */
-  anchorNext(rowId: string): void;
+  /**
+   * Anchor the next turn to this row: it slides under the nav bar once laid out, the reply unfolds
+   * below. Pass its box when the row is already laid out (no further onLayout will come).
+   */
+  anchorNext(rowId: string, box?: { y: number; height: number }): void;
   /** The end is still held from opening (no drag, no anchored turn since). */
   holdingEnd(): boolean;
   /** A send is starting (keyboard about to hide): floor the inset at one viewport, stop holding the end. */
@@ -133,9 +137,10 @@ export function useTurnAnchor({
   }, [syncBlank, topPad]);
 
   const anchorNext = useCallback(
-    (rowId: string) => {
+    (rowId: string, box?: { y: number; height: number }) => {
       pinEndRef.current = false;
       pendingRef.current = rowId;
+      if (box) geo.current.row = { id: rowId, y: box.y, h: box.height };
       tryAnchor();
     },
     [tryAnchor],

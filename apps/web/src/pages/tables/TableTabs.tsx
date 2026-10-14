@@ -1,15 +1,16 @@
 /**
- * A base's data tables as tabs, with their actions on right-click (or a long press) and a "+"
- * for builders. Arrow keys move between tabs; Enter or Space opens one.
+ * A base's data tables as tabs, then its dashboards, with their actions on right-click (or a long
+ * press) and a "+" for builders (a data table or a dashboard). Arrow keys move between tabs;
+ * Enter or Space opens one.
  */
 
 import { useId, useRef, useState, type KeyboardEvent } from 'react';
-import { Pencil, Plus, Trash2 } from 'lucide-react';
+import { LayoutDashboard, Pencil, Plus, Table2, Trash2 } from 'lucide-react';
 import {
   Button,
   Field,
-  IconButton,
   Input,
+  Menu,
   Overlay,
   OverlayActions,
   useContextMenu,
@@ -23,6 +24,7 @@ import { api } from '../../lib/api';
 import { cx } from '../../lib/cx';
 import { useI18n } from '../../lib/i18n';
 import { navigate } from '../../lib/router';
+import { NewDashboardDialog } from './dashboards/NewDashboardDialog';
 import { tablesError } from './errors';
 
 /** Names a new data table, or renames one. */
@@ -125,11 +127,24 @@ function Tab({
   );
 }
 
-export function TableTabs({ base, current, canBuild }: { base: Base; current?: string; canBuild: boolean }) {
+export function TableTabs({
+  base,
+  current,
+  dashboard,
+  canBuild,
+}: {
+  base: Base;
+  current?: string;
+  /** The dashboard on screen, instead of a table. */
+  dashboard?: string;
+  canBuild: boolean;
+}) {
   const { t } = useI18n();
   const notify = useNotify();
   const list = useRef<HTMLDivElement>(null);
   const [naming, setNaming] = useState<BaseTable | 'new' | null>(null);
+  const [newDashboard, setNewDashboard] = useState(false);
+  const dashboards = base.views.filter((view) => view.type === 'dashboard');
   const move = (event: KeyboardEvent<HTMLDivElement>) => {
     if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
     const tabs = Array.from(list.current?.querySelectorAll<HTMLElement>('[role="tab"]') ?? []);
@@ -171,12 +186,41 @@ export function TableTabs({ base, current, canBuild }: { base: Base; current?: s
             }
           />
         ))}
+        {dashboards.map((view) => (
+          <button
+            key={view.id}
+            type="button"
+            role="tab"
+            aria-selected={view.id === dashboard}
+            tabIndex={view.id === dashboard ? 0 : -1}
+            className="app-tb-dashboard-tab"
+            onClick={() => navigate({ page: 'base', id: base.id, dashboard: view.id })}
+          >
+            <LayoutDashboard size={icon.sm} strokeWidth={icon.stroke} aria-hidden />
+            {view.name}
+          </button>
+        ))}
       </div>
       {canBuild && (
-        <IconButton label={t('tables.addTable')} size="sm" onClick={() => setNaming('new')}>
-          <Plus size={icon.md} strokeWidth={icon.stroke} />
-        </IconButton>
+        <Menu
+          label={t('tables.addTableOrDashboard')}
+          trigger={<Plus size={icon.md} strokeWidth={icon.stroke} />}
+          align="start"
+          items={[
+            {
+              label: t('tables.addTable'),
+              icon: <Table2 size={icon.md} strokeWidth={icon.stroke} />,
+              onClick: () => setNaming('new'),
+            },
+            {
+              label: t('tables.addDashboard'),
+              icon: <LayoutDashboard size={icon.md} strokeWidth={icon.stroke} />,
+              onClick: () => setNewDashboard(true),
+            },
+          ]}
+        />
       )}
+      {newDashboard && <NewDashboardDialog base={base} onClose={() => setNewDashboard(false)} />}
       {naming && (
         <NameDialog
           title={naming === 'new' ? t('tables.addTable') : t('tables.renameTable')}

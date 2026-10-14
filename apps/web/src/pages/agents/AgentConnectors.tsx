@@ -1,7 +1,7 @@
 /**
  * 可用连接器 (AGNT-07): which connectors this Agent may use. 全部 (manifest `connectors` null)
  * follows whatever its owner can use, now and later; otherwise only the picked ones. Picks save
- * as one new version when the list closes. Nothing shows while no connector is installed.
+ * as one new version when the list closes. The built-in mailbox is one of them.
  */
 
 import { useState } from 'react';
@@ -56,7 +56,7 @@ export function AgentConnectors({ agent }: { agent: AgentDetail }) {
             disabled={locked}
             options={connectors.map((connector) => ({
               value: connector.slug,
-              label: connector.name,
+              label: connector.builtin === 'mailbox' ? t('connections.mailbox') : connector.name,
               description:
                 connector.needs_connection && !usable(connector.id)
                   ? t('agents.connectorNotConnected')

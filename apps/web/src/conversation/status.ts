@@ -21,3 +21,22 @@ export function requestStatus(request: Pick<NeedsYou, 'status'>): { word: Messag
       return { word: 'status.canceled', tone: 'neutral' };
   }
 }
+
+/**
+ * An approval card's details as label and value: the engine's cards carry `[{ label, value }]`
+ * (engine/tools/define.ts), others a plain object of them.
+ */
+export function detailRows(details: unknown): [string, string][] {
+  const text = (value: unknown) => (typeof value === 'string' ? value : JSON.stringify(value));
+  if (Array.isArray(details)) {
+    return details.flatMap((entry: unknown): [string, string][] =>
+      entry && typeof entry === 'object' && 'label' in entry
+        ? [[String((entry as { label: unknown }).label), text((entry as { value?: unknown }).value ?? '')]]
+        : [],
+    );
+  }
+  if (details && typeof details === 'object') {
+    return Object.entries(details as Record<string, unknown>).map(([key, value]) => [key, text(value)]);
+  }
+  return [];
+}

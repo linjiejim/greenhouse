@@ -10,7 +10,7 @@
 import { useState } from 'react';
 import { View } from 'react-native';
 import { Image } from 'expo-image';
-import { uploadUrl } from '../../../api/upload';
+import { fileUrl } from '../../../api/files';
 import { useT } from '../../../lib/i18n';
 import { openLink } from '../../../lib/links';
 import { makeStyles, radius, space, squircle, useTheme } from '../../../theme';
@@ -20,7 +20,7 @@ import type { MdImage } from '../parse';
 const SINGLE_W = 260;
 const TILE = 112;
 
-const resolve = (src: string) => (src.startsWith('/') ? uploadUrl(src) : src);
+const resolve = (src: string) => (src.startsWith('/') ? fileUrl(src) : src);
 
 export function ImageRow({ images }: { images: MdImage[] }) {
   const { colors: c } = useTheme();

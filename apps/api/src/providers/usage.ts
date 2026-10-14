@@ -18,6 +18,7 @@ import {
   type SttClient,
   type TtsClient,
 } from '@greenhouse/providers';
+import { audioSeconds } from '@greenhouse/utils/audio';
 import { toErrorMessage } from '@greenhouse/utils/error';
 import { logger } from '@greenhouse/utils/logger';
 
@@ -148,8 +149,10 @@ export function meter<C extends Capability>(
         async transcribe(input) {
           await before();
           const result = await stt.transcribe(input);
-          // Not every vendor reports the audio length; unknown stays unknown rather than 0.
-          await record({ quantity: result.durationSeconds, unit: 'second' });
+          // The vendor's own figure when it reports one, else the length the recording's container
+          // gives; a format that says neither stays unknown rather than 0.
+          const seconds = result.durationSeconds ?? audioSeconds(input.audio) ?? undefined;
+          await record({ quantity: seconds, unit: 'second' });
           return result;
         },
       };

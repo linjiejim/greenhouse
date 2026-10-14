@@ -1,7 +1,13 @@
+import { tablesDashboardsEn } from './tables-dashboards.en';
+import { tablesFormsEn } from './tables-forms.en';
+import { tablesImportEn } from './tables-import.en';
 import type { tablesZh } from './tables.zh';
 
 /** Tables words in English (spread into en.ts); the same keys as tables.zh.ts. */
 export const tablesEn: Record<keyof typeof tablesZh, string> = {
+  ...tablesFormsEn,
+  ...tablesImportEn,
+  ...tablesDashboardsEn,
   'tables.new': 'New base',
   'tables.newTitle': 'New base',
   'tables.fromTemplate': 'New from the Projects template',
@@ -33,6 +39,8 @@ export const tablesEn: Record<keyof typeof tablesZh, string> = {
   'tables.share': 'Share',
   'tables.trash': 'Recycle bin',
   'tables.exportCsv': 'Export CSV',
+  'tables.importCsv': 'Import CSV',
+  'tables.forms': 'Forms',
   'tables.exported': 'Exported "{name}"',
   'tables.rename': 'Rename',
   'tables.pin': 'Pin',
@@ -54,6 +62,8 @@ export const tablesEn: Record<keyof typeof tablesZh, string> = {
   'tables.save': 'Save',
 
   'tables.addTable': 'New table',
+  'tables.addDashboard': 'New dashboard',
+  'tables.addTableOrDashboard': 'New table or dashboard',
   'tables.tableName': 'Table name',
   'tables.tableDefault': 'Table {n}',
   'tables.renameTable': 'Rename table',
@@ -71,6 +81,7 @@ export const tablesEn: Record<keyof typeof tablesZh, string> = {
   'tables.view.calendar': 'Calendar',
   'tables.view.gallery': 'Gallery',
   'tables.view.timeline': 'Timeline',
+  'tables.view.dashboard': 'Dashboard',
   'tables.viewName': 'View name',
   'tables.viewType': 'Type',
   'tables.viewScope': 'Who sees it',
@@ -196,6 +207,10 @@ export const tablesEn: Record<keyof typeof tablesZh, string> = {
   'tables.type.relation': 'Relation',
   'tables.type.parent': 'Parent',
   'tables.type.dependency': 'Dependencies',
+  'tables.type.formula': 'Formula',
+  'tables.type.lookup': 'Lookup',
+  'tables.type.rollup': 'Rollup',
+  'tables.type.ai': 'AI field',
 
   'tables.field.new': 'Add field',
   'tables.field.edit': 'Edit field',

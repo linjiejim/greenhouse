@@ -41,6 +41,13 @@ const LABELS: Record<string, MessageKey> = {
   input: 'provider.field.priceInput',
   output: 'provider.field.priceOutput',
   cachedInput: 'provider.field.priceCached',
+  fromAddress: 'provider.field.fromAddress',
+  fromName: 'provider.field.fromName',
+  domain: 'provider.field.domain',
+  host: 'provider.field.host',
+  port: 'provider.field.port',
+  security: 'provider.field.security',
+  username: 'provider.field.username',
 };
 
 const typeOf = (schema: JsonSchema) =>

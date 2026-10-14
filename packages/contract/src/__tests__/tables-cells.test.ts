@@ -102,4 +102,29 @@ describe('clipboard and CSV', () => {
     expect(parseClipboard(toClipboard([['x\ty', 'z']]))).toEqual([['x\ty', 'z']]);
     expect(csvLine(['a,b', 'c"d', 'e'])).toBe('"a,b","c""d",e');
   });
+
+  it('keeps text a spreadsheet would run as a formula as text, and numbers as they are', () => {
+    expect(csvLine(['=SUM(A1)', '+1', '-2', '@cmd', '\tx', 'ok', '1-2'])).toBe("'=SUM(A1),'+1,'-2,'@cmd,'\tx,ok,1-2");
+    expect(csvLine([{ number: '-5' }, { number: '3.50' }, '-5'])).toBe("-5,3.50,'-5");
+    expect(csvLine(['=HYPERLINK("x","y")'])).toBe('"\'=HYPERLINK(""x"",""y"")"');
+  });
+});
+
+describe('computed cells', () => {
+  it('show what a formula, lookup, rollup or AI field yields, and failures as # and their reason', () => {
+    expect(formatCell(field('formula', { result: 'number', precision: 1 }), 2.25, ctx)).toBe('2.3');
+    expect(formatCell(field('formula', { result: 'checkbox' }), true, ctx)).toBe('true');
+    expect(formatCell(field('formula', { result: 'datetime' }), '2026-10-16T01:30:00.000Z', ctx)).toBe(
+      '2026-10-16 09:30',
+    );
+    expect(formatCell(field('rollup', { result: 'number' }), 12, ctx)).toBe('12');
+    expect(formatCell(field('lookup'), ['a', 2, true], ctx)).toBe('a, 2, true');
+    expect(formatCell(field('ai'), 'A note', ctx)).toBe('A note');
+    expect(formatCell(field('formula'), { error: 'div_zero' }, ctx)).toBe('#div_zero');
+    expect(formatCell(field('ai'), { pending: true }, ctx)).toBe('');
+  });
+
+  it('cannot be pasted into', () => {
+    expect(() => parseCell(field('formula'), '3', ctx)).toThrow(CellParseError);
+  });
 });

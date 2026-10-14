@@ -1,6 +1,7 @@
 /**
  * Channels: where notifications go besides the in-app center (NTF-03…06, SET-02, ADM-05,
- * CHN-02…04). Email, Feishu, WeCom and push are provider instances (instances.ts).
+ * CHN-02…04). Email goes through the mail capability (modules/mail sets it up); Feishu, WeCom
+ * and push are provider instances of their own (instances.ts).
  *
  * - `notifications.publish` stores a notification and, in the same transaction, `enqueue` writes
  *   one `deliver_notification` job per channel the member wants for its category and can use now
@@ -10,14 +11,16 @@
  *   newer one is recorded as collapsed. A lock per source keeps two processes from both sending.
  * - A worker in every API process claims due jobs with a lease and delivers them (deliver.ts);
  *   failures back off and retry, and a claim whose process died goes back to the queue.
- * - 设置 → 通知 offers only the channels a member can use; 管理 → 渠道 edits each channel's
- *   provider instance, which the providers service audits.
+ * - 设置 → 通知 offers only the channels a member can use; 管理 → 渠道 edits the Feishu, WeCom
+ *   and push instances, which the providers service audits.
  */
 
 import { randomUUID } from 'node:crypto';
 import { hostname } from 'node:os';
 import { and, desc, eq, gte, inArray, ne, sql } from 'drizzle-orm';
+import { ADMIN_CHANNELS } from '@greenhouse/contract';
 import type {
+  AdminChannel,
   AdminChannels,
   ChannelInput,
   ChannelStatus,
@@ -73,11 +76,10 @@ import {
   channelInstance,
   channelSettings,
   configured,
+  mailReady,
   providerChange,
   secretsSet,
 } from './instances.js';
-// Registers the smtp adapter before any channel is resolved.
-import './smtp.js';
 import {
   categoryOf,
   COLLAPSE_WINDOW_MS,
@@ -131,6 +133,10 @@ export function createChannelsService(deps: { config: AppConfig; providers: Prov
   ): Promise<DeliveryChannel[]> {
     const out: DeliveryChannel[] = [];
     for (const channel of among) {
+      if (channel === 'email') {
+        if (mailReady(arranged)) out.push(channel);
+        continue;
+      }
       if (!configured(channelInstance(arranged, channel))) continue;
       if (channel === 'feishu' || channel === 'wecom') {
         if (!(await linkedAccount(member.id, channel))) continue;
@@ -231,7 +237,7 @@ export function createChannelsService(deps: { config: AppConfig; providers: Prov
   async function channelList(): Promise<AdminChannels> {
     const [arranged, history] = await Promise.all([deps.providers.arrangement(), deliveryHistory()]);
     return {
-      items: DELIVERY_CHANNELS.map((channel) => {
+      items: ADMIN_CHANNELS.map((channel) => {
         const found = channelInstance(arranged, channel);
         const past = history.get(channel);
         return {
@@ -447,7 +453,7 @@ export function createChannelsService(deps: { config: AppConfig; providers: Prov
      * Saves one channel. The first save creates the workspace instance; settings from env become
      * an editable copy that takes their place. Either way it serves first among its kind.
      */
-    async save<C extends DeliveryChannel>(actorId: string, channel: C, input: ChannelInput[C]): Promise<ChannelStatus> {
+    async save<C extends AdminChannel>(actorId: string, channel: C, input: ChannelInput[C]): Promise<ChannelStatus> {
       const { capability, kind, name } = CHANNEL_PROVIDER[channel];
       await transaction(async () => {
         const found = channelInstance(await deps.providers.arrangement(), channel);
@@ -484,8 +490,8 @@ export function createChannelsService(deps: { config: AppConfig; providers: Prov
       return (await channelList()).items.find((item) => item.channel === channel)!;
     },
 
-    /** A test message to the admin: their email, their linked account, their phones. */
-    async test(actorId: string, channel: DeliveryChannel): Promise<ChannelTest> {
+    /** A test message to the admin: their linked account, their phones. */
+    async test(actorId: string, channel: AdminChannel): Promise<ChannelTest> {
       const started = Date.now();
       const found = channelInstance(await deps.providers.arrangement(), channel);
       const notReady = () => new ApiError(409, 'channel_not_configured', 'Set this channel up first.');
@@ -496,12 +502,7 @@ export function createChannelsService(deps: { config: AppConfig; providers: Prov
       const message = testText(localeOf(member), workspaceName);
       let delivered = 0;
       try {
-        if (channel === 'email') {
-          const mail = (await deps.providers.byId('mail', id, {}))?.client;
-          if (!mail) throw notReady();
-          await mail.send({ to: member.email, toName: member.name, subject: workspaceName, text: message });
-          delivered = 1;
-        } else if (channel === 'feishu' || channel === 'wecom') {
+        if (channel === 'feishu' || channel === 'wecom') {
           const im = (await deps.providers.byId('im', id, {}))?.client;
           if (!im) throw notReady();
           await im.verify();

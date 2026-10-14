@@ -1,6 +1,6 @@
 /**
- * An Agent's one home (AGNT-05): profile, abilities, memory, schedules and computer. The header
- * says who it is and offers "message"; its "⋯" archives or restores.
+ * An Agent's one home (AGNT-05): profile, abilities, memory, schedules, computer and mailbox. The
+ * header says who it is and offers "message"; its "⋯" archives or restores.
  */
 
 import { useState } from 'react';
@@ -12,6 +12,7 @@ import { useNotify } from '../../app/notify';
 import { useMe } from '../../app/session';
 import { useAgent, useArchiveAgent, useRestoreAgent } from '../../data/agents';
 import { useCreateConversation } from '../../data/conversations';
+import { useMailbox } from '../../data/mail';
 import type { MessageKey } from '../../i18n/zh';
 import { useI18n } from '../../lib/i18n';
 import { navigate, type AgentTab } from '../../lib/router';
@@ -21,6 +22,7 @@ import { AbilitiesTab } from './AbilitiesTab';
 import { ActivityTab } from './ActivityTab';
 import { PublishTab } from './PublishTab';
 import { ComputerTab } from './ComputerTab';
+import { MailboxTab } from './MailboxTab';
 import { MemoryTab } from './MemoryTab';
 import { ProfileTab } from './ProfileTab';
 import { SchedulesTab } from './SchedulesTab';
@@ -31,6 +33,7 @@ const TAB_LABEL: Record<AgentTab, MessageKey> = {
   memory: 'agents.tabMemory',
   schedules: 'agents.tabSchedules',
   computer: 'agents.tabComputer',
+  mailbox: 'mail.tab',
   publish: 'agents.tabPublish',
   activity: 'agents.tabActivity',
 };
@@ -44,6 +47,8 @@ export function AgentPage({ id, tab }: { id: string; tab: AgentTab }) {
   const restore = useRestoreAgent();
   const createConversation = useCreateConversation();
   const [archiving, setArchiving] = useState(false);
+  // The tab shows only while the Agent has a mailbox (a receiving mail service and a domain).
+  const mailbox = useMailbox(agent.data && !agent.data.archived_at ? agent.data.id : undefined);
 
   if (agent.isPending)
     return (
@@ -73,6 +78,7 @@ export function AgentPage({ id, tab }: { id: string; tab: AgentTab }) {
     'memory',
     'schedules',
     ...(computers ? (['computer'] as const) : []),
+    ...(mailbox.data?.available ? (['mailbox'] as const) : []),
     ...(data.is_main ? [] : (['publish'] as const)),
     'activity',
   ];
@@ -140,6 +146,7 @@ export function AgentPage({ id, tab }: { id: string; tab: AgentTab }) {
       {current === 'memory' && <MemoryTab agentId={data.id} />}
       {current === 'schedules' && <SchedulesTab agentId={data.id} />}
       {current === 'computer' && <ComputerTab agentId={data.id} />}
+      {current === 'mailbox' && <MailboxTab agentId={data.id} name={data.name} />}
       {current === 'publish' && <PublishTab agent={data} />}
       {current === 'activity' && <ActivityTab agentId={data.id} />}
       {archiving && (

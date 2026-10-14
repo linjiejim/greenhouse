@@ -23,6 +23,11 @@ export const keys = {
   computer: (agentId: string) => ['agents', 'computer', agentId] as const,
   computerFiles: (agentId: string) => ['agents', 'files', agentId] as const,
   computerFolder: (agentId: string, path: string) => ['agents', 'files', agentId, path] as const,
+  /** An Agent's mailbox and mail: one invalidation of mailAll covers them. */
+  mailAll: (agentId: string) => ['mail', agentId] as const,
+  mailbox: (agentId: string) => ['mail', agentId, 'box'] as const,
+  mailList: (agentId: string, status?: string) => ['mail', agentId, 'list', status ?? 'all'] as const,
+  mail: (agentId: string, mailId: string) => ['mail', agentId, 'one', mailId] as const,
   conversations: ['conversations', 'list'] as const,
   conversation: (id: string) => ['conversations', 'one', id] as const,
   messages: (conversationId: string) => ['messages', conversationId] as const,

@@ -64,6 +64,7 @@ import type {
   UpdateNoteInput,
 } from './conversations.js';
 import type { FileView } from './files.js';
+import type { SpeechInput, Transcription } from './voice.js';
 import { knowledgeApi } from './knowledge-client.js';
 import { tablesApi } from './tables-client.js';
 import { REALTIME_SIGN_IN_AGAIN, type RealtimeEvent } from './realtime.js';
@@ -79,13 +80,24 @@ import type {
   UpdateMeInput,
   UpdateMemberInput,
 } from './members.js';
+import type {
+  AdminMail,
+  ConnectMailboxInput,
+  Mailbox,
+  MailDetail,
+  MailItem,
+  MailRelease,
+  MailTest,
+  UpdateAdminMailInput,
+  UpdateMailboxInput,
+} from './mail.js';
 import type { Notification } from './notifications.js';
 import type {
+  AdminChannel,
   AdminChannels,
   ChannelInput,
   ChannelStatus,
   ChannelTest,
-  DeliveryChannel,
   NotificationSettings,
   PushDevice,
   PushDeviceList,
@@ -474,8 +486,11 @@ export function createApiClient(options: ApiClientOptions) {
       connections: {
         /** My connections, and the connectors I can use. */
         list: () => get<MyConnections>('/api/me/connections'),
-        /** My own key for a per_member connector; the server checks it first (`key_rejected`). */
-        connect: (input: ConnectKeyInput) => post<Connection>('/api/me/connections', input),
+        /**
+         * My own key for a per_member connector (`key_rejected` when the server refuses it), or my own
+         * mailbox for the built-in mailbox connector (`mailbox_rejected` when IMAP or SMTP refuses it).
+         */
+        connect: (input: ConnectKeyInput | ConnectMailboxInput) => post<Connection>('/api/me/connections', input),
         /** Sign in to an oauth connector: open `authorization_url`; the provider comes back to 设置 → 连接. */
         startOAuth: (connectorId: string) =>
           post<OAuthStart>('/api/me/connections/oauth/start', { connector_id: connectorId }),
@@ -582,6 +597,29 @@ export function createApiClient(options: ApiClientOptions) {
         request<void>('DELETE', `/api/agents/${encodeURIComponent(id)}/computer/files`, undefined, {
           query: { path },
         }),
+    },
+
+    /** Agent 邮箱 (AGNT-30): an Agent's address, who may wake it, and its mail. Only for the Agent's owner. */
+    mail: {
+      /** The mailbox, made on first look; `available: false` says why there is none. */
+      mailbox: (agentId: string) => get<Mailbox>(`/api/agents/${encodeURIComponent(agentId)}/mailbox`),
+      /** A new address prefix, or whether workspace members may wake it. */
+      updateMailbox: (agentId: string, input: UpdateMailboxInput) =>
+        patch<Mailbox>(`/api/agents/${encodeURIComponent(agentId)}/mailbox`, input),
+      addSender: (agentId: string, address: string) =>
+        post<Mailbox>(`/api/agents/${encodeURIComponent(agentId)}/mailbox/senders`, { address }),
+      removeSender: (agentId: string, address: string) =>
+        request<Mailbox>(
+          'DELETE',
+          `/api/agents/${encodeURIComponent(agentId)}/mailbox/senders/${encodeURIComponent(address)}`,
+        ),
+      list: (agentId: string, query: { status?: MailItem['status']; cursor?: string; limit?: number } = {}) =>
+        get<Page<MailItem>>(`/api/agents/${encodeURIComponent(agentId)}/mail`, query),
+      get: (agentId: string, mailId: string) =>
+        get<MailDetail>(`/api/agents/${encodeURIComponent(agentId)}/mail/${encodeURIComponent(mailId)}`),
+      /** Lets a screened mail's sender in: their waiting mail goes into the thread. */
+      release: (agentId: string, mailId: string) =>
+        post<MailRelease>(`/api/agents/${encodeURIComponent(agentId)}/mail/${encodeURIComponent(mailId)}/release`),
     },
 
     conversations: {
@@ -699,6 +737,22 @@ export function createApiClient(options: ApiClientOptions) {
       remove: (id: string) => del(`/api/files/${id}`),
     },
 
+    /** 语音: a recording to text through the STT service, text to speech through the TTS service. */
+    voice: {
+      transcribe(recording: Blob & { name?: string }, fields: { language?: string } = {}) {
+        const form = new FormData();
+        form.set('file', recording, recording.name ?? 'recording');
+        if (fields.language) form.set('language', fields.language);
+        return request<Transcription>('POST', '/api/voice/transcriptions', undefined, { raw: form });
+      },
+      /** The audio of `text`, to play. */
+      async speak(input: SpeechInput): Promise<Blob> {
+        const response = await authed('POST', '/api/voice/speech', input);
+        if (!response.ok) return parse<never>(response);
+        return response.blob();
+      },
+    },
+
     /** The skill library: team and personal skills, their versions, scan review and `/` runs. */
     skills: {
       /** `agent` (default: the main Agent) decides `available`: the `/` menu passes the answering Agent. */
@@ -793,13 +847,20 @@ export function createApiClient(options: ApiClientOptions) {
         pause: (id: string) => post<AdminPublicAgent>(`/api/admin/public-agents/${id}/pause`),
         resume: (id: string) => post<AdminPublicAgent>(`/api/admin/public-agents/${id}/resume`),
       },
-      /** 管理 → 服务 → 渠道: email (SMTP), Feishu, WeCom, push. Secrets are write-only. */
+      /** 管理 → 服务 → 渠道: Feishu, WeCom, push. Secrets are write-only. */
       channels: {
         list: () => get<AdminChannels>('/api/admin/channels'),
-        save: <C extends DeliveryChannel>(channel: C, input: ChannelInput[C]) =>
+        save: <C extends AdminChannel>(channel: C, input: ChannelInput[C]) =>
           put<ChannelStatus>(`/api/admin/channels/${channel}`, input),
-        /** A test message to me: my email, my linked account, my phones. */
-        test: (channel: DeliveryChannel) => post<ChannelTest>(`/api/admin/channels/${channel}/test`),
+        /** A test message to me: my linked account, my phones. */
+        test: (channel: AdminChannel) => post<ChannelTest>(`/api/admin/channels/${channel}/test`),
+      },
+      /** 管理 → 服务 → 邮箱: the Agent mail domain and the addresses vendors post received mail to. */
+      mail: {
+        get: () => get<AdminMail>('/api/admin/mail'),
+        save: (input: UpdateAdminMailInput) => put<AdminMail>('/api/admin/mail', input),
+        /** A test mail to me. */
+        test: () => post<MailTest>('/api/admin/mail/test'),
       },
       /** External access: interactive and machine clients. */
       clients: {

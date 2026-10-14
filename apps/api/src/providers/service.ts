@@ -9,6 +9,7 @@
 
 import { eq, like, sql } from 'drizzle-orm';
 import { z } from 'zod';
+import { MAIL_DOMAIN } from '@greenhouse/contract';
 import type {
   AdminProviders,
   CapabilityState,
@@ -634,6 +635,14 @@ export function createProvidersService(deps: { config: AppConfig; fetch?: typeof
       return (await viewOf(capability)).defaults;
     },
 
+    /** A capability's defaults as an admin saved them (null before any save) and as the env declares them. */
+    async defaultsBySource(
+      capability: Capability,
+    ): Promise<{ saved: Record<string, unknown> | null; env: Record<string, unknown> }> {
+      const current = await viewOf(capability);
+      return { saved: current.binding ? current.binding.defaults : null, env: env.defaults[capability] ?? {} };
+    },
+
     /** Replaces a capability's defaults; its order and policy stay as they are. */
     async setDefaults(actorId: string, capability: Capability, defaults: Record<string, unknown>): Promise<void> {
       const current = await viewOf(capability);
@@ -894,6 +903,14 @@ export function createProvidersService(deps: { config: AppConfig; fetch?: typeof
         if (unknown.length) throw invalidInput(`Unknown instances: ${unknown.join(', ')}.`);
         if (input.policy.allow_personal && !PERSONAL_CAPABILITIES.includes(capability)) {
           throw invalidInput(`Personal keys are not available for ${capability}.`);
+        }
+        if (capability === 'mail') {
+          for (const [name, domain] of Object.entries(input.defaults)) {
+            if (name !== 'agent_domain') throw invalidInput(`Unknown mail default "${name}".`);
+            if (typeof domain !== 'string' || !MAIL_DOMAIN.test(domain)) {
+              throw invalidInput('agent_domain must be a domain name, such as agents.example.com.');
+            }
+          }
         }
         if (capability === 'llm') {
           const chain = instanceIds.map((id) => known.get(id)!);

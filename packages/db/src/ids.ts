@@ -29,6 +29,8 @@ export const ID_PREFIX = {
   file: 'fil',
   connector: 'cnr',
   connection: 'cnx',
+  mailbox: 'mbx',
+  mail: 'mal',
   notification: 'ntf',
   pushDevice: 'pdv',
   schedule: 'sch',
@@ -49,6 +51,10 @@ export const ID_PREFIX = {
   baseField: 'col',
   baseView: 'viw',
   record: 'rec',
+  baseRole: 'rol',
+  form: 'frm',
+  formSubmission: 'sub',
+  baseImport: 'imp',
 } as const;
 export type IdKind = keyof typeof ID_PREFIX;
 

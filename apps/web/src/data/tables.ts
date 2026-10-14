@@ -57,7 +57,7 @@ export const queryOf = (config: ViewConfig, search: string): ViewQuery => ({
 export function useBases(archived = false, enabled = true) {
   const result = useQuery({
     queryKey: tablesKeys.bases(archived),
-    queryFn: () => api.tables.bases.list({ archived }),
+    queryFn: () => api.tables.bases.listAll({ archived }),
     staleTime: 30_000,
     enabled,
   });

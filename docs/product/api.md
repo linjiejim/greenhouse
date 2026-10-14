@@ -16,7 +16,7 @@ v2 和 v1 不兼容，不加 `/api/v2` 前缀，也不保留旧路由。`GET /ap
 | 分页 | 游标分页：`?cursor=&limit=`，默认 50，最大 200。总数单独给（`?count=1`），不和列表混在一起 |
 | 时间与 ID | ISO 8601 UTC；ID 是「类型前缀 + ULID」的字符串（如 `agt_01J…`），见[数据模型](data-model.md#1-约定) |
 | 鉴权 | Web、移动端、扩展用 Bearer 访问令牌加刷新令牌；`/api/mcp` 只认 OAuth 2.1 访问令牌或个人访问令牌（不认 App 的令牌）；电脑画面和终端用一次性 ticket；文件内容用按成员签发的短期签名 URL，因为 `<img>` 和下载链接带不了请求头 |
-| 实时 | 只有一个 WebSocket `/api/ws`，事件为 `{ type, data }`，类型定义在 contract 里。消息增量、运行进度、需要你、通知、在线状态、表格的记录变更（`records.changed`，带每条记录现在的 revision）和结构变更（`base.updated`）都走它；发送消息仍用 `POST`。回复的文字增量每 75 ms 合成一帧（`message.delta`，`offset` 是这一帧开头在回复里的位置）。进程之间经 PostgreSQL NOTIFY 转发；一条事件大到转不过去时，另一个进程上的客户端收到补拉提示：长回复的最终消息变成 `conversation.resync { conversation_id, after_seq }`，用 `GET /api/conversations/:id/messages?after=<after_seq>` 补拉；一次改了太多条记录的 `records.changed` 变成记录列表为空的同一事件（表示很多条变了）。重连后只补拉屏幕上打开的对话（和「需要你」的计数），其余查询标为过期，下次显示时再取 |
+| 实时 | 只有一个 WebSocket `/api/ws`，事件为 `{ type, data }`，类型定义在 contract 里。消息增量、运行进度、需要你、通知、在线状态、表格的记录变更（`records.changed`，带每条记录现在的 revision 和 computed_revision；只凭自定义角色看表格的人只收到空列表，不知道是哪几条）和结构变更（`base.updated`）都走它；发送消息仍用 `POST`。回复的文字增量每 75 ms 合成一帧（`message.delta`，`offset` 是这一帧开头在回复里的位置）。进程之间经 PostgreSQL NOTIFY 转发；一条事件大到转不过去时，另一个进程上的客户端收到补拉提示：长回复的最终消息变成 `conversation.resync { conversation_id, after_seq }`，用 `GET /api/conversations/:id/messages?after=<after_seq>` 补拉；一次改了太多条记录的 `records.changed` 变成记录列表为空的同一事件（表示很多条变了）。重连后只补拉屏幕上打开的对话（和「需要你」的计数），其余查询标为过期，下次显示时再取 |
 | 幂等 | 有副作用的 `POST` 接受 `Idempotency-Key` 头；卡片动作（批准、拒绝）天然幂等 |
 | 注册顺序 | 路由挂载顺序有安全含义，保持单链定义；公开路径白名单越小越好 |
 | 配置 | 只有 `apps/api/src/config/` 可以读 `process.env`；外部服务一律通过 `providers.resolve()` 获取 |
@@ -35,7 +35,7 @@ v2 和 v1 不兼容，不加 `/api/v2` 前缀，也不保留旧路由。`GET /ap
 | `GET /api/me/usage?period=month\|30d` | 我的用量：总计，按能力、Agent、天；我的成员预算。每组带 `cached_tokens` 与缓存命中率 `cache_hit_rate`（没有输入 token 时为空） |
 | `/api/me/providers[/:id][/test]` | 我的服务，即个人 Key |
 | `GET /api/me/models` | 我能给 Agent 选的模型：为我服务的各实例的模型，按顺序 |
-| `GET` / `POST /api/me/connections` · `POST …/oauth/start` · `…/oauth/finish` · `POST …/:id/test` · `DELETE …/:id` | 连接：MCP 连接器账号；飞书 / 企微、邮箱随渠道。`GET` 返回我的连接和我能用的连接器；`POST` 存我自己的 Key（服务器先验证，拒绝时 `key_rejected`）；OAuth：`start` 返回授权地址，回调把 `oauth_state`、`oauth_code` 交给 Web，由发起登录的同一成员 `finish`（别人是 `sign_in_not_yours`）；`test` 用我的连接列工具并记下状态；`DELETE` 断开，OAuth 同时撤销 |
+| `GET` / `POST /api/me/connections` · `POST …/oauth/start` · `…/oauth/finish` · `POST …/:id/test` · `DELETE …/:id` | 连接：MCP 连接器账号，以及内置连接器「邮箱」（`kind: email`）；飞书 / 企微随 IM 渠道。`GET` 返回我的连接和我能用的连接器（内置的带 `builtin`）；`POST` 存我自己的 Key（服务器先验证，拒绝时 `key_rejected`），或连我自己的邮箱（`{ kind: 'email', address, imap: { host, port, security }, smtp: {…}, username?, password }`：IMAP 与 SMTP 都连通才保存，否则 `mailbox_rejected`，`details` 里分别说明；内网地址拒绝；每个成员一个，再连即替换）；OAuth：`start` 返回授权地址，回调把 `oauth_state`、`oauth_code` 交给 Web，由发起登录的同一成员 `finish`（别人是 `sign_in_not_yours`）；`test` 用我的连接列工具并记下状态；`DELETE` 断开，OAuth 同时撤销 |
 | `/api/me/vault[/:id]` · `GET /api/me/vault/log` | 密码库：列出、新建、读取、修改（留空的值不变，空字符串清除）、删除。用户名、密码、TOTP 密钥只写不读，响应只有标签、站点、掩码用户名和是否已设置；站点是精确 origin 或 `*.域名`，「总是允许」只能是其中的站点，`agent_ids` 只能是自己的 Agent（空 = 全部）。`log` 是本人的代填记录，新的在前，不含任何值。没配 `VAULT_ENCRYPTION_KEY` 时都返回 503 `vault_unavailable` |
 | `/api/me/grants[/:id]` · `POST …/:id/approve` | 外部访问：我授权过的客户端（不含个人令牌）；撤销即作废它的全部令牌；管理员绑定给我的机器客户端要我批准后才生效 |
 | `/api/me/tokens[/:id]` | 个人访问令牌：名称、scope、有效期（1–366 天），令牌只在创建时显示一次；只能调用 `/api/mcp` |
@@ -52,12 +52,15 @@ v2 和 v1 不兼容，不加 `/api/v2` 前缀，也不保留旧路由。`GET /ap
 | `/api/agents/:id/versions` · `/memories` · `/schedules` · `/usage` · `/activity` · `/publication` | Agent 资料的各个分页；`/usage`、`/activity` 只给主人，只有计数、结果与评价，没有内容 |
 | `PUT` / `DELETE /api/agents/:id/publication` | 发布固定版本给受众（成员、分组、全员），附电脑与每人每日上限；再次 `PUT` 改版本或受众；`DELETE` 取消发布。主 Agent 不能发布 |
 | `/api/agents/:id/computer` · `POST …/start` · `…/stop` · `…/restart` · `GET …/processes` · `POST …/ticket` · `…/files[?path=]` · `GET …/files/content?path=` | 电脑：状态、启停、重启（进程结束、文件保留）、后台进程；公开 Agent 的使用者用自己的一台。`ticket` 换取画面（`view` / `control`）或终端（`terminal`）的一次性 ticket，一分钟内用一次；家目录文件按相对路径列出、下载（一律下载）、上传（multipart，最大 50 MB）、删除 |
+| `GET` / `PATCH /api/agents/:id/mailbox` · `POST …/mailbox/senders` · `DELETE …/mailbox/senders/:address` · `GET /api/agents/:id/mail?status=` · `GET …/mail/:mailId` · `POST …/mail/:mailId/release` | Agent 邮箱，只给主人：`GET` 第一次查看时建立地址，邮箱不可用时返回 `{ available: false, reason }`（not_configured / public_agent / archived）；`PATCH` 改前缀（`mailbox_taken`、`mailbox_reserved`）或成员能否叫醒它；发件人名单；邮件列表（新的在前，`status` 可筛 screened 等）与详情（纯文本、原样的 HTML 由客户端净化、附件的签名链接）；`release` 放行一封留存邮件的发件人，他留存的信全部送进对话，Agent 被叫醒一次（`mail_not_screened`） |
 | `GET /api/conversations?kind=&q=&archived=` · `POST /api/conversations` | 对话列表与新建，`kind` 取 `main` / `direct` / `chat` / `room` |
 | `PATCH` / `DELETE /api/conversations/:id` | 改名、置顶、归档、删除 |
 | `GET` / `POST /api/conversations/:id/messages` | 分页读取；发送（附件、引用、技能调用、`@` 点名，以及这个界面能画的富块 `rich_blocks`；不声明时只用五种通用块） |
 | `PATCH /api/conversations/:id/messages/:mid` · `POST …/:mid/regenerate` · `PUT …/:mid/feedback` | 编辑最后一条、重新生成、👍 / 👎 |
 | `POST /api/conversations/:id/stop` · `…/read` | 停止、已读 |
 | `/api/conversations/:id/members` · `/notes` · `/export` | 房间成员、共享笔记、导出 Markdown |
+| `POST /api/voice/transcriptions` | 语音输入：multipart `file`（录音，最大 25 MB；能从容器读出时长时最长 10 分钟，超出 `audio_too_large` / `audio_too_long`）和可选 `language`，返回 `{ text, duration_seconds }`；没有为我服务的 STT 时 503 `stt_not_configured`，服务商出错 502 `provider_failed` |
+| `POST /api/voice/speech` | 朗读：`{ text（纯文本，最多 4000 字）, format?, voice?, speed? }`，返回音频；没有 TTS 时 503 `tts_not_configured`。客户端去掉 Markdown 后分段请求 |
 | `GET /api/requests?state=pending` · `POST /api/requests/:id/{approve,reject,answer,handback}` | 需要你：批准、拒绝、回答、交还。登录卡片可以批准（服务端随即代填）、拒绝，或在成员手动登录后交还；接管卡片只能交还 |
 
 ### 2.3 运行
@@ -80,17 +83,20 @@ v2 和 v1 不兼容，不加 `/api/v2` 前缀，也不保留旧路由。`GET /ap
 | `…/docs/:id/backlinks` · `…/comments[/:commentId]` · `…/share` · `…/presence` · `…/export` | 反向链接（按读者权限过滤）；评论（能读就能评，只改、删自己的）；分享（同文件夹）；在线：`PUT { state: viewing\|editing }` 是心跳，`DELETE` 是离开；导出 Markdown |
 | `POST /api/knowledge/files` · `GET` / `PATCH` / `DELETE /api/knowledge/files/:id` · `POST …/restore` | 知识库文件：multipart 传到 `folder_id`、`space` 根或 `doc_id`（贴进文档的图片，跟随文档）；返回预览方式（image / pdf / text / audio / video / none）与签名地址；改名、移动、归档。`DELETE /api/files/:id` 对它们返回 `file_governed` |
 | `GET /api/knowledge/search?q=&space=&folder_id=&limit=` | 中英文全文检索（文档与文件），只含读者能读的，分数高的在前，带片段和路径 |
-| `GET /api/tables/bases?archived=` · `POST /api/tables/bases` · `GET` / `PATCH /api/tables/bases/:id` · `POST …/archive` · `…/restore` · `…/delete` | 表格：我的和分享给我的（带数据表与我看得到的视图；`archived=true` 是我拥有的已归档表格）；新建空白表格（一张数据表、一个表格视图）或从模板新建（`template: project`）；详情是数据表、字段、视图和我的角色；`PATCH` 改名、说明（搭建者）或给自己置顶；归档、恢复、彻底删除只有拥有者，彻底删除要再输一遍名称（`{ name }`） |
-| `GET` / `PUT /api/tables/bases/:id/share` | 分享：拥有者加分享列表；`PUT` 整体替换，只有拥有者。角色是 owner / builder / editor / viewer，分组和全员只能是 editor / viewer；新加的人收到通知；写审计 |
-| `GET /api/tables/bases/:id/trash` · `…/audit` · `POST …/files` · `POST …/tables` | 回收站：删除的记录、字段和数据表，新的在前（编辑者；超过 30 天的记录先彻底删除）；审计：分享、归档、删除（拥有者）；附件字段的上传（multipart `file`，编辑者，记录引用它时才挂上）；新建数据表（带主字段和表格视图，搭建者） |
-| `PATCH` / `DELETE /api/tables/tables/:id` · `POST …/restore` · `…/purge` · `GET …/titles?q=` · `GET …/export?view_id=` | 数据表：改名、说明、顺序；删除进回收站；恢复；彻底删除（连同记录和附件）；记录标题（选择器用）；导出某个视图（筛选、排序、显示的字段）或整张表的 CSV（带 BOM） |
-| `POST /api/tables/tables/:id/fields` · `PATCH` / `DELETE /api/tables/fields/:id` · `POST …/restore` · `…/purge` | 字段（搭建者）：文本、长文本、数字、勾选、日期、日期时间、单选、多选、成员、链接、邮箱、电话、附件、关联、父记录、依赖；名称在表内唯一（`name_taken`）；每张表一个父记录字段和一个依赖字段（`one_per_table`）；类型只在值能保留时可改（文本类之间、单选到多选、日期到日期时间，否则 `type_change_unsupported`）；主字段不能删；删除进回收站，所有视图里去掉它，值留到彻底删除 |
-| `POST /api/tables/tables/:id/views` · `PATCH` / `DELETE /api/tables/views/:id` | 视图：表格、看板、日历、画册、时间线；个人视图任何能看的人都能建，共享视图要搭建者；配置是筛选、排序、分组、字段顺序、隐藏、列宽、冻结列、行高和各类型的设置；改动带 `revision`，旧的返回 409 `stale_revision`；每张表至少留一个共享视图（`last_view`） |
-| `POST /api/tables/tables/:id/records/query` | 查询记录：`{ filter, sorts, group, search, cursor, limit, count }`，筛选里 `$me` 是读者，`$today` 等按读者时区；分组先于排序；游标是带查询指纹的偏移；返回记录（关联、依赖、父记录、附件填好 id）、关联记录的标题、附件的签名地址，`count` 时带总数 |
-| `POST /api/tables/tables/:id/records` · `…/records/bulk` · `…/records/delete` | 新建记录；批量粘贴（每条各自成功或失败：`stale_revision`、`invalid_input`、`not_found`）；批量删除进回收站（编辑者） |
+| `GET /api/tables/bases?archived=&cursor=&limit=` · `POST /api/tables/bases` · `GET` / `PATCH /api/tables/bases/:id` · `POST …/archive` · `…/restore` · `…/delete` | 表格：我的和分享给我的，按名称分页（默认 200，最多 500，`next_cursor`），带数据表与我看得到的视图（`archived=true` 是我拥有的已归档表格）；只凭自定义角色看的人只拿到角色看得到的数据表和字段，带 `custom_role`，每张数据表带 `access`（read / edit）；新建空白表格（一张数据表、一个表格视图）或从模板新建（`template: project`）；详情是数据表、字段、视图和我的角色；`PATCH` 改名、说明（搭建者）或给自己置顶；归档、恢复、彻底删除只有拥有者，彻底删除要再输一遍名称（`{ name }`） |
+| `GET` / `PUT /api/tables/bases/:id/share` | 分享：拥有者加分享列表；`PUT` 整体替换，只有拥有者。角色是 owner / builder / editor / viewer，分组和全员只能是 editor / viewer；也可以是 `custom` 加 `custom_role_id`（这个表格的自定义角色，成员、分组、全员都行）；四种角色胜过自定义角色，多个自定义角色叠加；新加的人收到通知；写审计 |
+| `GET` / `POST /api/tables/bases/:id/roles` · `PATCH` / `DELETE /api/tables/roles/:id` | 自定义角色（拥有者）：按数据表不可见、只读或可编辑，行规则（和视图一样的筛选，`$me` 是读者）与隐藏字段（主字段不能隐藏）；每个表格最多 20 个，名称唯一（`name_taken`）；修改带 `revision`（旧的 `stale_revision`，`details.role`）；删除时它的分享一起删除。规则在服务里对每条读路径生效：列表、记录、标题、搜索、导出、仪表盘、历史、评论、附件、实时事件；读了隐藏字段或读不全的数据表的计算字段一起隐藏；只能写看得到的字段，记录只能写在自己看得到的范围里（否则 403）；回收站不对它开放 |
+| `GET /api/tables/bases/:id/trash` · `…/audit` · `POST …/files` · `POST …/tables` | 回收站：删除的记录、字段和数据表，新的在前（四种角色里的编辑者；游标带精确的删除时间，坏游标 400；超过 30 天的记录由每天的清理任务彻底删除）；审计：分享、角色、归档、删除（拥有者）；附件字段的上传（multipart `file`，编辑者；先查权限再读正文，没有长度的正文边读边计，超过 50 MB 返回 413，记录引用它时才挂上，一天内没挂上的由清理任务删除）；新建数据表（带主字段和表格视图，搭建者） |
+| `PATCH` / `DELETE /api/tables/tables/:id` · `POST …/restore` · `…/purge` · `GET …/titles?q=` · `GET …/export?view_id=` | 数据表：改名、说明、顺序；删除进回收站；恢复；彻底删除（连同记录和附件）；记录标题（选择器用）；导出某个视图（筛选、排序、显示的字段）或整张表的 CSV（带 BOM，按读者能看到的字段和记录，最多 5 万条，分批流式写出；会被表格软件当公式的文本前加 `'`，数字原样） |
+| `POST /api/tables/tables/:id/fields` · `PATCH` / `DELETE /api/tables/fields/:id` · `POST …/restore` · `…/purge` | 字段（搭建者）：文本、长文本、数字、勾选、日期、日期时间、单选、多选、成员、链接、邮箱、电话、附件、关联、父记录、依赖；名称在表内唯一（`name_taken`）；每张表一个父记录字段和一个依赖字段（`one_per_table`）；类型只在值能保留时可改（文本类之间、单选到多选、日期到日期时间，否则 `type_change_unsupported`）；主字段不能删；删除进回收站，所有视图里去掉它，值留到彻底删除。改类型时每个值按新类型检查，有不合的就拒绝（`type_change_values`，`details` 带条数和前 20 条记录）；修改带 `schema_revision`（旧的 `stale_schema`）。计算字段：公式（`config.formula_text`，读同表字段，错误返回 400 `invalid_formula`，`details` 是错误码和位置；返回时 `formula_text` 用现在的名称）、查找引用与汇总（`link_field` 加关联表里的 `target_field`，汇总 `aggregate` 为 count / count_values / count_unique / sum / avg / min / max / join）、AI 字段（`prompt` 里 `{名称}` 引用字段，`auto_update`；只有配置了模型才能加，否则 409 `ai_unavailable`）；会互相引用成环的拒绝（409 `field_cycle`）。`POST /api/tables/fields/:id/generate { record_ids }` 让 AI 字段为这些记录重新生成（编辑者，最多 100 条，模型费用记在字段创建者名下） |
+| `POST /api/tables/tables/:id/views` · `PATCH` / `DELETE /api/tables/views/:id` | 视图：表格、看板、日历、画册、时间线；个人视图任何能看的人都能建，共享视图要搭建者；配置是筛选、排序、分组、字段顺序、隐藏、列宽、冻结列、行高和各类型的设置；改动带 `revision`，旧的返回 409 `stale_revision`；每张表至少留一个共享视图（`last_view`）；每人每张表看得到的视图最多 100 个（`too_many_views`）。仪表盘：`POST /api/tables/bases/:id/dashboards`（共享的要搭建者，个人的谁都能建），卡片在视图配置里；`GET /api/tables/views/:id/cards` 按读者的权限算出每张卡片（每张各自成败），`POST /api/tables/cards/query` 算一张没保存的卡片 |
+| `POST /api/tables/tables/:id/records/query` | 查询记录：`{ filter, sorts, group, search, cursor, limit, count }`，筛选里 `$me` 是读者，`$today` 等按读者时区；分组先于排序；游标是带查询指纹的偏移；返回记录（关联、依赖、父记录、附件填好 id；计算字段的值也在 `values` 里，失败是 `{ error }`，AI 生成中是 `{ pending: true }`；`computed_revision` 在计算值变化时加一）、关联记录的标题、附件的签名地址，`count` 时带总数 |
+| `POST /api/tables/tables/:id/records` · `…/records/bulk` · `…/records/delete` | 新建记录；批量粘贴（每条各自成功或失败：`stale_revision`、`invalid_input`、`not_found`，意外错误是 `failed`，不影响已经写好的）；批量删除进回收站（编辑者）；计算字段不能写。表格接口的 JSON 正文最多 8 MB（413 `too_large`），所有接口的 JSON 正文最多 16 MB |
+| `GET` / `POST /api/tables/tables/:id/forms` · `GET` / `PATCH` / `DELETE /api/tables/forms/:id` · `POST …/publish` · `…/unpublish` · `GET` / `PUT …/share` · `GET …/submissions` · `GET …/fill` · `POST …/files` · `POST …/submissions` | 内部表单：搭建者建、改（带 `revision`）、发布、停止；谁能提交默认是能新建记录的成员，`PUT …/share` 另定（角色 `submitter`）；提交写一条记录（历史里记为表单），只允许提交一次的表单第二次返回 409 `already_submitted`；未发布 `form_closed`；附件经表单自己的上传（先查能否提交再读正文）；提交列表给四种角色里的编辑者 |
+| `POST` / `GET /api/tables/tables/:id/imports` · `GET` / `PATCH /api/tables/imports/:id` · `POST …/start` · `…/cancel` | CSV 导入（编辑者）：上传成为草稿（24 小时，最多 20 MB、5 万行、500 列），按列名对应字段可改，开始后由后台任务分批写入，失败重试从已写入的行继续；读不出或被拒的行跳过，结果报告行号、列和原因；只有导入者看得到自己的导入 |
 | `GET` / `PATCH` / `DELETE /api/tables/records/:id` · `POST …/restore` · `…/purge` · `GET …/activity` · `…/comments[/:commentId]` | 一条记录（带子记录）；修改要带读到的 `revision`，旧的返回 409 `stale_revision`（`details.record` 是现在的记录）；删除进回收站，恢复，彻底删除（搭建者）；活动是评论和变更历史，新的在前；评论（能读就能评，提及的人和记录创建者收到通知；只改自己的，拥有者能删任何一条） |
-| `GET /api/search?q=&kinds=` | `⌘K` 全局搜索；`records` 是我能读的表格里的记录（中英文全文检索），带 `base_id`、`table_id` |
-| `/api/apps[/:id]/…` · `POST /api/forms/:id` | 应用、表单提交 |
+| `GET /api/search?q=&kinds=` | `⌘K` 全局搜索；`records` 是我能读的表格里的记录（中英文全文检索），带 `base_id`、`table_id`；只凭自定义角色看的表格里只搜角色看得到的字段和记录 |
+| `/api/apps[/:id]/…` | 应用 |
 | `GET /api/skills?q=&space=&kind=&scan_status=&archived=&agent=` · `POST /api/skills` · `GET` / `PATCH` / `DELETE /api/skills/:id` · `POST …/restore` · `GET` / `POST …/versions` · `POST …/scan` · `GET …/download?version=` · `GET /api/skills/starters?agent=` | 技能：我看得到的技能，`available` 与原因按 `agent`（默认主 Agent）判断；新建模板，或用 purpose `skill` 上传的 ZIP 新建包；`PATCH` 改显示名、说明、标签，`DELETE` 是归档；新版本（新 ZIP，或模板的新正文、字段、要求）；`scan` 重扫，或审核（`safe` / `malicious`，团队技能由管理员、个人技能由主人）；下载返回包的签名链接；`starters` 是新会话的 3 个常用技能（没有时给模板开场） |
 | `GET /api/notifications` · `POST …/read` | 通知 |
 | `GET /api/members?q=` · `GET /api/groups` | 成员与分组选择器（只读） |
@@ -99,10 +105,11 @@ v2 和 v1 不兼容，不加 `/api/v2` 前缀，也不保留旧路由。`GET /ap
 
 | 路径 | 用途 |
 | --- | --- |
-| `/api/admin/members[/:id]` | 邀请、角色、停用、重置链接、模块权限、预算 |
+| `/api/admin/members[/:id]` | 邀请、角色、停用、重置链接、模块权限、预算；邀请和 `POST …/:id/link` 返回的链接带 `delivery`（emailed：已由邮箱服务发出 / failed / shown：没有邮箱服务），链接都可复制 |
 | `/api/admin/groups[/:id]` | 分组 |
 | `/api/admin/providers[/:id][/test\|/copy]` · `PUT /api/admin/provider-bindings/:capability` | 服务：实例、测试连接、复制环境变量实例；能力的顺序、默认项与策略 |
-| `GET /api/admin/channels` · `PUT …/:channel` · `POST …/:channel/test` | 渠道 `email`（SMTP）、`feishu`、`wecom`、`push`（Expo）：`GET` 列出每个渠道能否送达（`configured`）、来源（`env` / `workspace`）、设置、哪些机密已填、最近一次成功与失败；`PUT` 保存一个渠道的设置（email：`host`、`port`、`security` tls / starttls / none、`username`、`from_address`、`from_name`、`password`；feishu：`base_url`、`app_id`、`app_secret`；wecom：`base_url`、`corp_id`、`agent_id`、`secret`；push：`base_url`、`access_token`；都可带 `enabled`），机密只写不读、省略即保留、`''` 清空，换主机或地址同时清空机密；第一次保存或改环境变量来的设置时生成工作区实例，排在同类之首；`test` 给管理员自己发一条（邮箱、绑定的账号、手机），没有可发的对象时只验证凭据，返回 `{ ok, delivered, latency_ms, error }` |
+| `GET /api/admin/channels` · `PUT …/:channel` · `POST …/:channel/test` | 渠道 `feishu`、`wecom`、`push`（Expo；飞书、企微在界面隐藏，随 IM 渠道开放）：`GET` 列出每个渠道能否送达（`configured`）、来源（`env` / `workspace`）、设置、哪些机密已填、最近一次成功与失败；`PUT` 保存一个渠道的设置（feishu：`base_url`、`app_id`、`app_secret`；wecom：`base_url`、`corp_id`、`agent_id`、`secret`；push：`base_url`、`access_token`；都可带 `enabled`），机密只写不读、省略即保留、`''` 清空，换地址同时清空机密；第一次保存或改环境变量来的设置时生成工作区实例，排在同类之首；`test` 给管理员自己发一条（绑定的账号、手机），没有可发的对象时只验证凭据，返回 `{ ok, delivered, latency_ms, error }`。邮件不在这里：它是邮箱服务 |
+| `GET` / `PUT /api/admin/mail` · `POST /api/admin/mail/test` | 邮箱服务：能否发信、Agent 邮箱的域名（来源 env / workspace，另附 `MAIL_AGENT_DOMAIN` 的值；`PUT { agent_domain }`，null 回到它，写审计）、Agent 邮箱是否开通、每个能收信的实例要填到服务商那里的入站地址；`test` 经第一个能发的实例给管理员自己发一封（`mail_not_configured`） |
 | `GET /api/admin/computers` · `PUT …/capacity` · `POST …/:id/stop` · `DELETE …/:id` | 电脑：所有成员的电脑与状态（不含画面和文件）；容量（空闲多少分钟后关机、最多同时开机，0 为不限，超出时开机返回 `computers_full`）；停止；重置（连主目录删除，下次使用重开） |
 | `GET /api/admin/usage?period=&group_by=member\|agent\|provider\|capability` | 工作区用量 |
 | `GET` / `PUT /api/admin/budgets` · `DELETE …/:id` | 预算：组织、服务实例、成员三级，token 或美元，按月；`PUT` 建立或替换一个范围与单位的预算；列表带本月已用 |
@@ -117,6 +124,7 @@ v2 和 v1 不兼容，不加 `/api/v2` 前缀，也不保留旧路由。`GET /ap
 | --- | --- |
 | `/api/mcp` · `/oauth/*` · `/.well-known/*` | MCP 服务器与 OAuth 2.1，是唯一对外接口，见下 |
 | `GET /api/connectors/oauth/callback` | 连接器 OAuth 回调（公开）：不改任何数据，302 到 `#/settings/connections?connector=&oauth_state=&oauth_code=`（失败时带 `oauth_error`），Web 用成员自己的会话调用 `finish`。不在 `/api/mcp` 下，那是 Greenhouse 自己的 MCP 服务器 |
+| `POST /api/mail/inbound/:instance` | 邮件服务商的收信通知（公开，凭服务商的签名）：Resend 的 Svix 签名 webhook、Mailgun `store(notify=…)` 的 HMAC；先验签（失败 401 `invalid_signature`），再用实例的 Key 从服务商拉取那封信；nonce 一次性，同一封信只存一次；拉取失败 502 让服务商重试；过大的通知 413 |
 | `/api/ws` · `/api/ws/computer?ticket=` · `/api/ws/computer-terminal?ticket=` | 实时通道、电脑画面（RFB，`view` ticket 的输入由服务端丢弃）、终端（二进制按键与输出，`resize` 文本消息） |
 | `/api/ext/<id>/*` | 扩展 |
 | `GET /health` | 健康检查：各能力是否可用（不含机密）；数据库不可用时返回 503 |
@@ -175,7 +183,7 @@ OAuth 2.1 与 MCP（公开路径，错误按 RFC 6749 返回 `{ error, error_des
 | 表格与应用 | `tables_query`、`tables_mutation`、`tables_schema_plan`、`apps_query`、`apps_action` |
 | 技能 | `skill_query`（search、load、read_file，有电脑时 install）、`skill_mutation`（只提议「存为技能」，成员接受后保存为模板） |
 | 多媒体（来自 Provider） | `web_search`、`web_fetch`、`generate_image`、`generate_video`、`speak`（TTS 生成音频）、`transcribe`（STT）、`analyze_image` |
-| 其他 | `compute`（isolated-vm）、`read_attachment`、`export_data`、`memory`、`mcp_call`、`email_query`、`email_mutation` |
+| 其他 | `compute`（isolated-vm）、`read_attachment`、`export_data`、`memory`、`mcp_call`（成员自己的邮箱经内置连接器 `mailbox`）、`mail`（Agent 自己的邮箱） |
 | 只在 Agent 内使用 | `browser`、`computer`、`request_takeover`、`vault` |
 | 删除 | `workbench_*`、`project_*`、`mission_dispatch`、`workflow_plan`、`spawn_session`、`call_llm`、`task_capture`、`eval_*`、`manage_eval_dataset`、`query_eval_runs`、`feature_request`、`log_friction`、`automation_*`（改为 `schedule_*`）、`external_search`（改为 `web_search`）、`session_query`（改为 `conversation_query`） |
 
@@ -186,6 +194,8 @@ OAuth 2.1 与 MCP（公开路径，错误按 RFC 6749 返回 `{ error, error_des
 `knowledge_query`（`search`、`read`、`list`）以提问者的权限读知识库：读过的文档列为回复的出处（`kind: doc`，地址 `#/knowledge/<id>`），搜索到的文档在回复链接到时列出；`space: agent` 是这个 Agent 的私有参考文件夹。`knowledge_mutation`（`create`、`edit`、`move`、`comment`）改知识库：`edit` 带读到的 `version`，整体替换或给只出现一次的 find / replace；除了 Agent 自己的私有参考文件夹，写入都先弹出批准卡（`tool_write`）；版本和评论记下代写的 Agent。写入只在回合里，公开 Agent 两个都没有。
 
 知识库正文的约定：引用其他文档写作 `[标题](#/knowledge/<文档 id>)`（编辑器的 `[[`），提及写作 `[@名字](member:<成员 id>)`，图片与文件写作 `/api/files/<id>/content`，存储时去掉签名、读取时按读者签名。实时事件：`doc.updated`、`doc.presence`、`comments.updated`，发给打开着这篇文档的人；`knowledge.changed`（不带任何内容）在新建、改名、移动、排序、保存、分享、归档、恢复之后发给看得到那个位置的人（团队空间是所有开着知识库的成员，个人空间是主人和分享覆盖到的人，取消分享时也告诉原来覆盖到的人；归档或恢复文件夹时，分享到其中任何文件夹或文档的人也会收到），各端据此刷新屏幕上的知识库列表。保存分享时只校验新加的成员和分组：已有的分享即使对象已停用或已删除也原样保留。
+
+`mail` 是 Agent 自己的邮箱（AGNT-30）：`list`（收件箱或已发送）、`search`、`read` 只读，读信让回合 taint，正文用 fence 隔开；留存（screened）的信读不到；`send`、`reply` 是第 3 档：每次都弹出批准卡（收件人、主题、正文摘录），批准后从 Agent 的地址发出，回信带 In-Reply-To 与 References。只在主人自己的回合里发信，不在房间、后台运行里；不能写的 Agent 只能读；公开 Agent 没有这个工具。
 
 `mcp_call` 是连接器的唯一工具（`list`、`describe`、`call`）。它的描述每个回合重建，只列出这个 Agent 此刻能为提问者用的连接器和工具：已启用、在 manifest 的 `connectors` 里（空值表示全部）、per_member / oauth 的已由提问者连接；不能写的 Agent 只看到只读工具。只读工具直接运行；其余工具弹出批准卡（`tool_write`，原样参数），批准后用提问者的 Key 或登录执行。只在回合里提供，公开 Agent 不提供。
 

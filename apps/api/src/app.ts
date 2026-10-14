@@ -32,6 +32,7 @@ import { skillQueryTool } from './engine/tools/skill-query.js';
 import { requestTakeoverTool } from './engine/tools/takeover.js';
 import { browserTool } from './engine/tools/browser.js';
 import { vaultTool } from './engine/tools/vault.js';
+import { mailTool } from './engine/tools/mail.js';
 import { webTools } from './engine/tools/web.js';
 import { knowledgeTools } from './engine/tools/knowledge.js';
 import { adminPublicAgentRoutes, agentRoutes } from './modules/agents/routes.js';
@@ -46,15 +47,22 @@ import { vaultRoutes } from './modules/vault/routes.js';
 import { createVaultService, type VaultService } from './modules/vault/service.js';
 import { conversationRoutes } from './modules/conversations/routes.js';
 import { fileContentRoutes, fileRoutes } from './modules/files/routes.js';
+import { voiceRoutes } from './modules/voice/routes.js';
+import { createVoiceService, type VoiceService } from './modules/voice/service.js';
 import { createFilesService, type FilesService } from './modules/files/service.js';
 import { knowledgeRoutes } from './modules/knowledge/routes.js';
 import { createKnowledgeService, type KnowledgeService } from './modules/knowledge/service.js';
+import { cardsRoutes } from './modules/tables/cards-routes.js';
+import { formsRoutes } from './modules/tables/forms-routes.js';
+import { importsRoutes } from './modules/tables/imports-routes.js';
 import { tablesRoutes } from './modules/tables/routes.js';
 import { createTablesService, type TablesService } from './modules/tables/service.js';
 import { notificationRoutes } from './modules/notifications/routes.js';
 import { createNotificationsService, type NotificationsService } from './modules/notifications/service.js';
 import { adminChannelRoutes, notificationSettingsRoutes, pushDeviceRoutes } from './modules/channels/routes.js';
 import { createChannelsService, type ChannelsService } from './modules/channels/service.js';
+import { adminMailRoutes, agentMailRoutes, mailInboundRoutes } from './modules/mail/routes.js';
+import { createMailService, type MailService } from './modules/mail/service.js';
 import { requestRoutes } from './modules/requests/routes.js';
 import { runRoutes } from './modules/runs/routes.js';
 import { scheduleRoutes } from './modules/schedules/routes.js';
@@ -95,10 +103,12 @@ export interface Services {
   vault: VaultService;
   conversations: ConversationsService;
   files: FilesService;
+  voice: VoiceService;
   knowledge: KnowledgeService;
   tables: TablesService;
   notifications: NotificationsService;
   channels: ChannelsService;
+  mail: MailService;
   requests: RequestsService;
   runs: RunsService;
   schedules: SchedulesService;
@@ -127,6 +137,7 @@ export function createServices(config: AppConfig, options: ServiceOptions = {}):
   const auth = createAuthService({ tokens, publicUrl: config.PUBLIC_URL });
   const providers = createProvidersService({ config, fetch: options.fetch });
   const files = createFilesService({ providers, sign: (data) => tokens.hashSecret(data, 'file') });
+  const voice = createVoiceService({ providers, files });
   // Equipping a skill checks it can run for the Agent (the skills service is made below).
   const agents = createAgentsService({
     providers,
@@ -137,7 +148,9 @@ export function createServices(config: AppConfig, options: ServiceOptions = {}):
   const channels = createChannelsService({ config, providers });
   const notifications = createNotificationsService({ hub, deliveries: channels });
   const conversations = createConversationsService({ agents, providers, hub, files, notifications });
-  const members = createMembersService({ auth, providers, files });
+  // Mail wakes Agents through the engine, which is made below.
+  const mail = createMailService({ config, providers, files, agents, conversations, engine: () => engine });
+  const members = createMembersService({ auth, providers, files, mail });
   // A socket ticket is a one-time link: random, stored only as a keyed hash.
   const computers = createComputersService({
     providers,
@@ -156,7 +169,9 @@ export function createServices(config: AppConfig, options: ServiceOptions = {}):
   });
   const skills = createSkillsService({ files, providers, agents, connectors, computers, notifications });
   const knowledge = createKnowledgeService({ files, notifications, hub, publicUrl: config.PUBLIC_URL });
-  const tables = createTablesService({ files, notifications, hub });
+  const tables = createTablesService({ files, notifications, hub, providers });
+  // Who sees a base is cached a few seconds; a change of groups, modules or status forgets it at once.
+  members.onAccessChange(() => tables.forgetAudiences());
   const schedules = createSchedulesService({ agents, background: () => engine.background });
   // A committed decision wakes the engine's worker (made below) rather than waiting for its poll.
   const requests = createRequestsService({ hub, notifications, decided: () => engine.wakeDecisions() });
@@ -174,7 +189,7 @@ export function createServices(config: AppConfig, options: ServiceOptions = {}):
       askUserTool(),
       selfTool(agents),
       conversationTool(),
-      readAttachmentTool(files),
+      readAttachmentTool(files, voice),
       computerTool(computers),
       requestTakeoverTool(),
       browserTool(browser),
@@ -184,6 +199,7 @@ export function createServices(config: AppConfig, options: ServiceOptions = {}):
       ...scheduleTools(schedules),
       ...webTools(providers, options.fetch ? { fetch: options.fetch } : {}),
       connectorTool(connectors),
+      mailTool(mail),
       skillQueryTool(skills),
       skillMutationTool(skills),
       ...knowledgeTools(knowledge),
@@ -207,10 +223,12 @@ export function createServices(config: AppConfig, options: ServiceOptions = {}):
     vault,
     conversations,
     files,
+    voice,
     knowledge,
     tables,
     notifications,
     channels,
+    mail,
     requests,
     runs,
     schedules,
@@ -227,7 +245,8 @@ export function createServices(config: AppConfig, options: ServiceOptions = {}):
 /**
  * The HTTP surface. Public: /health, /api/bootstrap, /api/auth/*, file content behind a signed URL
  * (GET /api/files/:id/content?exp=&m=&sig=), the connector sign-in callback
- * (GET /api/connectors/oauth/callback, which changes nothing), the OAuth endpoints (/.well-known/*,
+ * (GET /api/connectors/oauth/callback, which changes nothing), a mail vendor's signed notice of received mail
+ * (POST /api/mail/inbound/:instance, refused unless its signature verifies), the OAuth endpoints (/.well-known/*,
  * /oauth/*), the MCP server /api/mcp (its own OAuth or personal bearer tokens), and the built web
  * app at /.
  * Everything else under /api requires a member; /api/admin/* also requires an admin.
@@ -261,6 +280,8 @@ export function createApp(services: Services, options: { webDir?: string } = {})
   app.route('/api/files', fileContentRoutes(services.files));
   // A provider sends the member's browser back here without a bearer header; the web app finishes it.
   app.route('/api/connectors', connectorCallbackRoutes(services.connectors));
+  // A mail vendor's notice: its own signature is the credential, and the mail is fetched from the vendor.
+  app.route('/api/mail', mailInboundRoutes(services.mail));
   // External access: OAuth 2.1 metadata and endpoints, and the MCP server with its own bearer tokens.
   app.route('/', oauthProtocolRoutes({ oauth: services.oauth, clientIp: (c) => requestSourceIp(c as never, trust) }));
   app.route('/api/mcp', mcpRoutes({ oauth: services.oauth, services }));
@@ -283,16 +304,21 @@ export function createApp(services: Services, options: { webDir?: string } = {})
   signedIn.route('/agents', agentRoutes(services.agents));
   signedIn.route('/agents', agentUsageRoutes(services.usage));
   signedIn.route('/agents', computerRoutes(services.computers));
+  signedIn.route('/agents', agentMailRoutes(services.mail));
   signedIn.route('/conversations', conversationRoutes(services.conversations, services.engine));
   signedIn.route('/requests', requestRoutes(services.requests));
   signedIn.route('/runs', runRoutes(services.runs));
   signedIn.route('/files', fileRoutes(services.files, services.conversations));
+  signedIn.route('/voice', voiceRoutes(services.voice));
   signedIn.route('/schedules', scheduleRoutes(services.schedules));
   signedIn.route('/notifications', notificationRoutes(services.notifications));
   signedIn.route('/search', searchRoutes(services.search));
   signedIn.route('/skills', skillRoutes(services.skills));
   signedIn.route('/knowledge', knowledgeRoutes(services.knowledge));
   signedIn.route('/tables', tablesRoutes(services.tables));
+  signedIn.route('/tables', formsRoutes(services.tables.forms));
+  signedIn.route('/tables', importsRoutes(services.tables.imports));
+  signedIn.route('/tables', cardsRoutes(services.tables.cards));
   signedIn.use('/admin/*', requireAdmin);
   signedIn.route('/admin', adminMemberRoutes(services.members));
   signedIn.route('/admin/branding', brandingRoutes(services.workspace));
@@ -303,6 +329,7 @@ export function createApp(services: Services, options: { webDir?: string } = {})
   signedIn.route('/admin/connectors', adminConnectorRoutes(services.connectors));
   signedIn.route('/admin/clients', adminClientRoutes(services.oauth));
   signedIn.route('/admin/channels', adminChannelRoutes(services.channels));
+  signedIn.route('/admin/mail', adminMailRoutes(services.mail));
   app.route('/api', signedIn);
   app.route('/', webRoutes(options.webDir));
 

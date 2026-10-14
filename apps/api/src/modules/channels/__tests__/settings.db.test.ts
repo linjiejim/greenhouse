@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { connections, getDb, members, newId } from '@greenhouse/db';
 import { createTestApp } from '../../../testing.js';
-import { EXPO_TOKEN, fakeNetwork, PROJECT_ID } from './fakes.js';
+import { EXPO_TOKEN, fakeNetwork, PROJECT_ID, smtpInstance } from './fakes.js';
 
 describe('设置 → 通知', () => {
   it('offers only the channels set up and connected for me', async () => {
@@ -18,10 +18,7 @@ describe('设置 → 通知', () => {
       previews: false,
     });
 
-    await call('PUT', '/api/admin/channels/email', {
-      token: admin.token,
-      body: { host: 'smtp.acme.com', security: 'starttls', from_address: 'gh@acme.com' },
-    });
+    await smtpInstance(call, admin.token, { host: 'smtp.acme.com', security: 'starttls', fromAddress: 'gh@acme.com' });
     await call('PUT', '/api/admin/channels/feishu', {
       token: admin.token,
       body: { app_id: 'cli_settings', app_secret: 'secret' },
@@ -58,10 +55,7 @@ describe('设置 → 通知', () => {
     const { call, member } = createTestApp();
     const admin = await member('admin');
     const lin = await member();
-    await call('PUT', '/api/admin/channels/email', {
-      token: admin.token,
-      body: { host: 'smtp.acme.com', from_address: 'gh@acme.com' },
-    });
+    await smtpInstance(call, admin.token, { host: 'smtp.acme.com', fromAddress: 'gh@acme.com' });
     const saved = await call('PUT', '/api/me/notification-settings', {
       token: lin.token,
       body: { categories: { needs_you: { email: true }, runs: { email: true } } },

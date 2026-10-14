@@ -154,7 +154,7 @@ export type ChatAttachmentsData = ChatAttachmentItem[];
 
 // ─── Fences ──────────────────────────────────────────────
 
-/** Blocks the model writes: taught in the prompt, gated by the client's declared capabilities. */
+/** Blocks the model writes: all taught in the prompt, used only where the client declared it draws them. */
 export type ModelFence = 'chart' | 'datatable' | 'stats' | 'cards' | 'steps' | 'confirm' | 'mermaid' | 'html-preview';
 /** Blocks only the server writes: never taught, but every client must at least degrade them. */
 export type ServerFence = 'mission-artifacts' | 'attachments';
@@ -173,9 +173,9 @@ export const MODEL_FENCES: readonly ModelFence[] = [
 ];
 
 /**
- * What a request that declares nothing is taught — exactly the five blocks
- * every client could draw before capabilities existed, so an old client keeps
- * today's behaviour. New blocks are NEVER added here: a client learns them only
+ * What a screen that declares nothing draws — exactly the five blocks every
+ * client could draw before capabilities existed, so an old client keeps
+ * today's behaviour. New blocks are NEVER added here: a client gets them only
  * by declaring them (spec D2).
  */
 export const DEFAULT_CLIENT_BLOCKS: readonly ModelFence[] = [
@@ -197,9 +197,9 @@ export type RichCapability = ModelFence | 'html-preview-bridge';
 export const RICH_CAPABILITIES: readonly RichCapability[] = [...MODEL_FENCES, 'html-preview-bridge'];
 
 /**
- * Turn a request's `rich_blocks` into what to teach.
+ * Turn a request's `rich_blocks` into the blocks its screen draws.
  *
- * Not an array → `undefined` (teach {@link DEFAULT_CLIENT_BLOCKS}). An array is
+ * Not an array → `undefined` (the screen draws {@link DEFAULT_CLIENT_BLOCKS}). An array is
  * intersected with the known names, unknown entries dropped silently — a newer
  * client talking to an older server must not fail its turn. `[]` means a
  * client that draws nothing special.

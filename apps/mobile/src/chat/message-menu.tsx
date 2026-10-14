@@ -32,7 +32,7 @@ import { sfSymbol } from '../ui/core';
 import { NativeMenu, type MenuItem } from '../ui/menu';
 import { useLocaleEnv } from '../ui/native-form';
 import { useT } from '../lib/i18n';
-import { plainText } from './model';
+import { plainText } from './text';
 
 /** Lines of the excerpt shown in the lifted preview. */
 const PREVIEW_LINES = 10;

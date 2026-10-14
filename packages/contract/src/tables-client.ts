@@ -3,9 +3,14 @@
 import type { Page } from './common.js';
 import type { KnowledgeComment } from './knowledge.js';
 import type { KnowledgeHttp } from './knowledge-client.js';
+import { cardsApi } from './tables-cards-client.js';
+import { formsApi } from './tables-forms-client.js';
+import { importsApi } from './tables-imports-client.js';
 import type {
   Base,
   BaseAuditEntry,
+  BaseCustomRole,
+  BaseList,
   BaseShareInput,
   BaseShares,
   BaseSummary,
@@ -15,6 +20,7 @@ import type {
   CreateBaseInput,
   CreateFieldInput,
   CreateRecordInput,
+  CreateRoleInput,
   CreateViewInput,
   Field,
   RecordActivity,
@@ -28,22 +34,43 @@ import type {
   TrashItem,
   UpdateBaseInput,
   UpdateFieldInput,
+  UpdateRoleInput,
   UpdateTableInput,
   UpdateViewInput,
   View,
 } from './tables.js';
 
-const path = (kind: 'bases' | 'tables' | 'fields' | 'views' | 'records', id: string, rest = '') =>
+const path = (kind: 'bases' | 'tables' | 'fields' | 'views' | 'records' | 'roles', id: string, rest = '') =>
   `/api/tables/${kind}/${encodeURIComponent(id)}${rest}`;
 
 export function tablesApi(http: KnowledgeHttp) {
   return {
     bases: {
-      /** Mine and those shared with me, with their tables and the views I see; `archived` lists the archived ones I own. */
-      list: (query: { archived?: boolean } = {}) =>
-        http.get<{ items: BaseSummary[] }>('/api/tables/bases', {
+      /**
+       * A page of mine and those shared with me (by name), with their tables and the views I see;
+       * `archived` lists the archived ones I own.
+       */
+      list: (query: { archived?: boolean; cursor?: string; limit?: number } = {}) =>
+        http.get<BaseList>('/api/tables/bases', {
           archived: query.archived === undefined ? undefined : String(query.archived),
+          cursor: query.cursor,
+          limit: query.limit,
         }),
+      /** Every page of `list`, up to `max` bases. */
+      async listAll(query: { archived?: boolean } = {}, max = 2000): Promise<{ items: BaseSummary[] }> {
+        const items: BaseSummary[] = [];
+        let cursor: string | undefined;
+        do {
+          const page = await http.get<BaseList>('/api/tables/bases', {
+            archived: query.archived === undefined ? undefined : String(query.archived),
+            cursor,
+            limit: 500,
+          });
+          items.push(...page.items);
+          cursor = page.next_cursor ?? undefined;
+        } while (cursor && items.length < max);
+        return { items };
+      },
       get: (id: string) => http.get<Base>(path('bases', id)),
       /** Blank (one table, one view) or from a template. */
       create: (input: CreateBaseInput) => http.post<Base>('/api/tables/bases', input),
@@ -67,6 +94,16 @@ export function tablesApi(http: KnowledgeHttp) {
         return http.request<RecordFile>('POST', path('bases', id, '/files'), undefined, { raw: form });
       },
       createTable: (id: string, name: string) => http.post<BaseTable>(path('bases', id, '/tables'), { name }),
+      /** Its custom roles (owners). */
+      roles: (id: string) => http.get<{ items: BaseCustomRole[] }>(path('bases', id, '/roles')),
+      createRole: (id: string, input: CreateRoleInput) => http.post<BaseCustomRole>(path('bases', id, '/roles'), input),
+    },
+
+    roles: {
+      /** Send the revision it is based on; a newer one answers 409 `stale_revision` with the role now. */
+      update: (id: string, input: UpdateRoleInput) => http.patch<BaseCustomRole>(path('roles', id), input),
+      /** Whoever had it through a share has it no more. */
+      remove: (id: string) => http.del(path('roles', id)),
     },
 
     tables: {
@@ -96,6 +133,12 @@ export function tablesApi(http: KnowledgeHttp) {
       archive: (id: string) => http.del(path('fields', id)),
       restore: (id: string) => http.post<Field>(path('fields', id, '/restore')),
       purge: (id: string) => http.post<void>(path('fields', id, '/purge')),
+      /** An AI field filled in again for these records (at most 100). */
+      generate: (id: string, recordIds: string[]) =>
+        http.post<{ items: Array<{ id: string; revision: number; computed_revision: number }> }>(
+          path('fields', id, '/generate'),
+          { record_ids: recordIds },
+        ),
     },
 
     views: {
@@ -120,5 +163,9 @@ export function tablesApi(http: KnowledgeHttp) {
       removeComment: (id: string, commentId: string) =>
         http.del(path('records', id, `/comments/${encodeURIComponent(commentId)}`)),
     },
+
+    forms: formsApi(http),
+    imports: importsApi(http),
+    cards: cardsApi(http),
   };
 }

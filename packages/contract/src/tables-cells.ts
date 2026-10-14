@@ -4,7 +4,7 @@
  * only translate. Dates are YYYY-MM-DD; a date-time shows in the reader's time zone.
  */
 
-import type { Field } from './tables.js';
+import { isComputedError, isComputedPending, type Field } from './tables.js';
 
 export interface CellContext {
   timeZone: string;
@@ -88,8 +88,31 @@ const list = (value: unknown): string[] => (Array.isArray(value) ? value.filter(
 export const linkTarget = (field: Pick<Field, 'type' | 'table_id' | 'config'>) =>
   field.type === 'relation' ? (field.config.table_id ?? '') : field.table_id;
 
+/** A computed value as text: a failure as `#` and its reason, one on its way as nothing. */
+function formatComputed(field: Field, value: unknown, ctx: CellContext): string {
+  if (isComputedError(value)) return `#${value.error}`;
+  if (isComputedPending(value) || isEmptyValue(value)) return '';
+  if (field.type === 'lookup') {
+    return (Array.isArray(value) ? value : [value])
+      .filter((item) => item !== null && item !== undefined && item !== '' && typeof item !== 'object')
+      .map(String)
+      .join(', ');
+  }
+  const result = field.type === 'ai' ? 'text' : (field.config.result ?? (field.type === 'rollup' ? 'number' : 'text'));
+  const as = { ...field, type: result, config: { precision: field.config.precision } } as Field;
+  if (result === 'checkbox') return value === true ? 'true' : 'false';
+  return formatCell(as, value, ctx);
+}
+
 /** A value as plain text: options by label, members by name, links by title, files by name. */
 export function formatCell(field: Field, value: unknown, ctx: CellContext): string {
+  switch (field.type) {
+    case 'formula':
+    case 'lookup':
+    case 'rollup':
+    case 'ai':
+      return formatComputed(field, value, ctx);
+  }
   if (field.type === 'checkbox') return value === true ? 'true' : 'false';
   if (isEmptyValue(value)) return '';
   switch (field.type) {
@@ -224,6 +247,10 @@ export function parseCell(field: Field, raw: string, ctx: CellContext): unknown 
         : unique;
     }
     case 'attachment':
+    case 'formula':
+    case 'lookup':
+    case 'rollup':
+    case 'ai':
       throw new CellParseError('unsupported', text);
   }
 }
@@ -233,9 +260,24 @@ function findOption(field: Field, text: string): string | undefined {
   return field.config.options?.find((option) => option.label.toLowerCase() === wanted || option.id === text)?.id;
 }
 
-/** One line of CSV: fields with a comma, quote or line break are quoted, quotes doubled. */
-export function csvLine(cells: readonly string[]): string {
-  return cells.map((cell) => (/[",\r\n]/.test(cell) ? `"${cell.replace(/"/g, '""')}"` : cell)).join(',');
+/** A cell of CSV: text, or a number as formatted (written as it is). */
+export type CsvCell = string | { number: string };
+
+/**
+ * Text a spreadsheet would run as a formula (it starts with =, +, -, @, a tab or a return) is
+ * kept as text with a ' in front; numbers are left as they are.
+ */
+export const safeCsvText = (text: string) => (/^[=+\-@\t\r]/.test(text) ? `'${text}` : text);
+
+/**
+ * One line of CSV: text made safe to open in a spreadsheet (safeCsvText), then fields with a
+ * comma, quote or line break are quoted and quotes doubled.
+ */
+export function csvLine(cells: readonly CsvCell[]): string {
+  return cells
+    .map((cell) => (typeof cell === 'string' ? safeCsvText(cell) : cell.number))
+    .map((cell) => (/[",\r\n]/.test(cell) ? `"${cell.replace(/"/g, '""')}"` : cell))
+    .join(',');
 }
 
 /** Rows of tab-separated text (a spreadsheet's copy): quoted cells may hold tabs and line breaks. */

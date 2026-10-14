@@ -11,6 +11,7 @@ export const FILE_PURPOSES = [
   'skill',
   'avatar',
   'branding',
+  'mail',
 ] as const;
 /** Purposes a member may upload directly; the rest are written by the server. A `skill` upload is a ZIP for `POST /api/skills`. */
 export const UPLOAD_PURPOSES = ['attachment', 'avatar', 'branding', 'skill'] as const;

@@ -27,6 +27,8 @@ describe('hash routes', () => {
       view: 'viw_1',
       record: 'rec_1',
     });
+    expect(parse('#/tables/bas_1?dashboard=viw_2')).toEqual({ page: 'base', id: 'bas_1', dashboard: 'viw_2' });
+    expect(parse('#/forms/frm_1')).toEqual({ page: 'form', id: 'frm_1' });
     expect(parse('#/oauth/consent?request=req_1')).toEqual({ page: 'consent', request: 'req_1', error: '' });
     expect(parse('#/oauth/consent?error=invalid_client')).toEqual({
       page: 'consent',
@@ -99,6 +101,8 @@ describe('hash routes', () => {
       { page: 'base', id: 'bas_1' },
       { page: 'base', id: 'bas_1', table: 'tbl_1' },
       { page: 'base', id: 'bas_1', table: 'tbl_1', view: 'viw_1', record: 'rec_1' },
+      { page: 'base', id: 'bas_1', dashboard: 'viw_2' },
+      { page: 'form', id: 'frm_1' },
       { page: 'consent', request: '', error: 'invalid_redirect_uri' },
     ];
     for (const route of routes) expect(parse(href(route))).toEqual(route);

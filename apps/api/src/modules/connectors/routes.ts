@@ -10,7 +10,8 @@
  * POST   /api/admin/connectors/:id/refresh      list the tools again (per_member and oauth: with the admin's own connection)
  * POST   /api/admin/connectors/:id/test         connect and list, without changing the cached tools
  * GET    /api/me/connections                    my connections and the connectors I can use
- * POST   /api/me/connections                    connect my own key to a per_member connector (checked first)
+ * POST   /api/me/connections                    connect my own key to a per_member connector, or (kind `email`) my own
+ *                                                mailbox to the built-in mailbox connector; both are checked first
  * POST   /api/me/connections/oauth/start        start my sign-in: the provider's consent page
  * POST   /api/me/connections/oauth/finish       finish it with the state and code the callback handed the web app
  * POST   /api/me/connections/:id/test           list the tools with my connection
@@ -24,6 +25,7 @@
 import { Hono } from 'hono';
 import {
   connectKeyInputSchema,
+  connectMailboxInputSchema,
   createConnectorInputSchema,
   idParamSchema,
   oauthFinishInputSchema,
@@ -68,9 +70,21 @@ export function adminConnectorRoutes(service: ConnectorsService) {
 export function myConnectionRoutes(service: ConnectorsService) {
   return new Hono<AppEnv>()
     .get('/', async (c) => c.json(await service.mine(c.get('member').id)))
-    .post('/', async (c) =>
-      c.json(await service.connectKey(c.get('member').id, await readJson(c, connectKeyInputSchema)), 201),
-    )
+    .post('/', async (c) => {
+      const kind = (
+        (await c.req.raw
+          .clone()
+          .json()
+          .catch(() => null)) as { kind?: unknown } | null
+      )?.kind;
+      if (kind === 'email') {
+        return c.json(
+          await service.connectMailbox(c.get('member').id, await readJson(c, connectMailboxInputSchema)),
+          201,
+        );
+      }
+      return c.json(await service.connectKey(c.get('member').id, await readJson(c, connectKeyInputSchema)), 201);
+    })
     .post('/oauth/start', async (c) =>
       c.json(await service.startOAuth(c.get('member').id, (await readJson(c, oauthStartInputSchema)).connector_id)),
     )

@@ -108,7 +108,7 @@ function ClauseValue({
 }: {
   fields: readonly Field[];
   clause: FilterClause;
-  onChange: (value: unknown) => void;
+  onChange: (value: FilterClause['value']) => void;
 }) {
   const { t } = useI18n();
   const { members } = usePeople();

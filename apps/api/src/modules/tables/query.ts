@@ -1,6 +1,7 @@
 /**
  * The one record query compiler: a view's filter, sorts and group, and the toolbar search, as
- * SQL over `base_records` (values by field id in jsonb; links and files in their own tables).
+ * SQL over `base_records` (values by field id in jsonb; links and files in their own tables;
+ * computed fields in `computed`, read as the kind they yield, a failed one as nothing).
  * Tokens resolve here: `$me` is the reader (member fields, created_by, updated_by), and the day
  * tokens are days in the reader's time zone (date and date-time fields, created_at, updated_at).
  * A clause on a field that is gone, or without the value it needs, is left out rather than
@@ -8,12 +9,14 @@
  */
 
 import { createHash } from 'node:crypto';
-import { and, asc, eq, inArray, isNull, or, sql, type SQL } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull, or, sql, type SQL, type SQLWrapper } from 'drizzle-orm';
 import {
   canGroupBy,
   canSortBy,
+  isComputedType,
   isSystemField,
   operatorsFor,
+  valueTypeOf,
   zonedDay,
   zonedInstant,
   type Filter,
@@ -36,14 +39,42 @@ export interface QueryContext {
 const TRUE = sql`true`;
 const FALSE = sql`false`;
 
-const json = (fieldId: string) => sql`(${baseRecords.values} -> ${fieldId})`;
+/** Ids as one array parameter: no limit on how many (a list of parameters stops at 65,534). */
+export const idList = (ids: readonly string[]) => sql`${sql.param([...ids])}::text[]`;
+export const inIds = (column: SQLWrapper | SQL, ids: readonly string[]) => sql`${column} = ANY(${idList(ids)})`;
+
+type FieldLike = Pick<BaseFieldRow, 'id' | 'type' | 'config'>;
+
+/** Where a field's value is: `values`, or `computed` for formula, lookup, rollup and AI fields. */
+const columnOf = (field: FieldLike) => (isComputedType(field.type) ? baseRecords.computed : baseRecords.values);
+const json = (field: FieldLike) => sql`(${columnOf(field)} -> ${field.id})`;
 /** A text[] literal of bound parameters. */
 const textArray = (values: readonly string[]) =>
   sql`ARRAY[${sql.join(
     values.map((value) => sql`${value}`),
     sql`, `,
   )}]::text[]`;
-const text = (fieldId: string) => sql`(${baseRecords.values} ->> ${fieldId})`;
+/** A scalar value as text; a computed failure (`{ error }`) or list reads as nothing. */
+const text = (field: FieldLike) =>
+  isComputedType(field.type)
+    ? sql`(CASE WHEN jsonb_typeof(${json(field)}) IN ('string', 'number', 'boolean') THEN ${columnOf(field)} ->> ${field.id} END)`
+    : sql`(${baseRecords.values} ->> ${field.id})`;
+/** A number; a computed value that is not one reads as nothing. */
+const numeric = (field: FieldLike) =>
+  isComputedType(field.type)
+    ? sql`(CASE WHEN jsonb_typeof(${json(field)}) = 'number' THEN (${columnOf(field)} ->> ${field.id})::numeric END)`
+    : sql`(${text(field)})::numeric`;
+const truth = (field: FieldLike) =>
+  isComputedType(field.type)
+    ? sql`coalesce(CASE WHEN jsonb_typeof(${json(field)}) = 'boolean' THEN (${columnOf(field)} ->> ${field.id})::boolean END, false)`
+    : sql`coalesce((${text(field)})::boolean, false)`;
+/** A lookup's values as text, one row each. */
+const elements = (field: FieldLike) =>
+  sql`jsonb_array_elements_text(CASE WHEN jsonb_typeof(${json(field)}) = 'array' THEN ${json(field)} ELSE '[]'::jsonb END)`;
+
+/** The kind a field's value behaves as in a query: a computed one as what it yields. */
+const kindOf = (field: FieldLike) =>
+  valueTypeOf({ type: field.type, config: { result: (field.config as { result?: string }).result } });
 
 function addDays(day: string, days: number): string {
   const date = new Date(`${day}T00:00:00.000Z`);
@@ -138,63 +169,72 @@ function systemClause(field: SystemField, clause: FilterClause, ctx: QueryContex
 
 function fieldClause(field: BaseFieldRow, clause: FilterClause, ctx: QueryContext): SQL | null {
   const op = clause.op;
-  if (!operatorsFor(field.type).includes(op)) throw invalidInput(`「${field.name}」cannot be filtered with ${op}.`);
+  const kind = kindOf(field);
+  if (!operatorsFor(kind).includes(op)) throw invalidInput(`「${field.name}」cannot be filtered with ${op}.`);
   const id = field.id;
   const value = clause.value;
-  switch (field.type) {
+  switch (kind) {
     case 'text':
     case 'long_text':
     case 'url':
     case 'email':
     case 'phone': {
-      const empty = sql`(${text(id)} IS NULL OR ${text(id)} = '')`;
+      const empty = sql`(${text(field)} IS NULL OR ${text(field)} = '')`;
       if (op === 'is_empty') return empty;
       if (op === 'is_not_empty') return sql`NOT ${empty}`;
       if (typeof value !== 'string' || !value) return null;
-      if (op === 'contains') return sql`${text(id)} ILIKE ${containing(value)}`;
-      if (op === 'not_contains') return sql`(${text(id)} IS NULL OR ${text(id)} NOT ILIKE ${containing(value)})`;
-      return compare(sql`lower(${text(id)})`, op as Cmp, sql`lower(${value})`);
+      if (op === 'contains') return sql`${text(field)} ILIKE ${containing(value)}`;
+      if (op === 'not_contains') return sql`(${text(field)} IS NULL OR ${text(field)} NOT ILIKE ${containing(value)})`;
+      return compare(sql`lower(${text(field)})`, op as Cmp, sql`lower(${value})`);
     }
     case 'number': {
-      if (op === 'is_empty') return sql`(${json(id)} IS NULL OR ${json(id)} = 'null'::jsonb)`;
-      if (op === 'is_not_empty') return sql`(${json(id)} IS NOT NULL AND ${json(id)} <> 'null'::jsonb)`;
+      if (op === 'is_empty') return sql`${numeric(field)} IS NULL`;
+      if (op === 'is_not_empty') return sql`${numeric(field)} IS NOT NULL`;
       const number = typeof value === 'number' ? value : typeof value === 'string' && value ? Number(value) : NaN;
       if (!Number.isFinite(number)) return null;
-      return compare(sql`(${text(id)})::numeric`, op as Cmp, sql`${number}::numeric`);
+      return compare(numeric(field), op as Cmp, sql`${number}::numeric`);
     }
     case 'checkbox': {
       if (typeof value !== 'boolean') return null;
-      return sql`coalesce((${text(id)})::boolean, false) = ${value}`;
+      return sql`${truth(field)} = ${value}`;
     }
     case 'date': {
-      if (op === 'is_empty') return sql`${text(id)} IS NULL`;
-      if (op === 'is_not_empty') return sql`${text(id)} IS NOT NULL`;
+      if (op === 'is_empty') return sql`${text(field)} IS NULL`;
+      if (op === 'is_not_empty') return sql`${text(field)} IS NOT NULL`;
       const day = resolveDay(value, ctx);
       if (!day) return null;
-      return compare(text(id), op as Cmp, sql`${day}`);
+      return compare(text(field), op as Cmp, sql`${day}`);
     }
     case 'datetime': {
-      if (op === 'is_empty') return sql`${text(id)} IS NULL`;
-      if (op === 'is_not_empty') return sql`${text(id)} IS NOT NULL`;
+      if (op === 'is_empty') return sql`${text(field)} IS NULL`;
+      if (op === 'is_not_empty') return sql`${text(field)} IS NOT NULL`;
       const day = resolveDay(value, ctx);
       if (!day) return null;
       // Stored as toISOString(): compared as text, they order as instants.
-      return dayRange((bound) => sql`${bound}`, text(id), op as Cmp, day, ctx.timeZone);
+      return dayRange((bound) => sql`${bound}`, text(field), op as Cmp, day, ctx.timeZone);
     }
     case 'single_select': {
-      if (op === 'is_empty') return sql`${text(id)} IS NULL`;
-      if (op === 'is_not_empty') return sql`${text(id)} IS NOT NULL`;
+      if (op === 'is_empty') return sql`${text(field)} IS NULL`;
+      if (op === 'is_not_empty') return sql`${text(field)} IS NOT NULL`;
       if (typeof value !== 'string' || !value) return null;
-      return op === 'eq' ? sql`${text(id)} = ${value}` : sql`(${text(id)} IS NULL OR ${text(id)} <> ${value})`;
+      return op === 'eq' ? sql`${text(field)} = ${value}` : sql`(${text(field)} IS NULL OR ${text(field)} <> ${value})`;
     }
     case 'multi_select':
     case 'member': {
-      const empty = sql`(${json(id)} IS NULL OR ${json(id)} = '[]'::jsonb OR ${json(id)} = 'null'::jsonb)`;
+      const empty = sql`(${json(field)} IS NULL OR ${json(field)} = '[]'::jsonb OR ${json(field)} = 'null'::jsonb)`;
       if (op === 'is_empty') return empty;
       if (op === 'is_not_empty') return sql`NOT ${empty}`;
       const wanted = field.type === 'member' ? memberValue(value, ctx) : typeof value === 'string' ? value : null;
       if (!wanted) return null;
-      const has = sql`coalesce(${json(id)} @> ${JSON.stringify([wanted])}::jsonb, false)`;
+      const has = sql`coalesce(${json(field)} @> ${JSON.stringify([wanted])}::jsonb, false)`;
+      return op === 'contains' ? has : sql`NOT ${has}`;
+    }
+    case 'lookup': {
+      const some = sql`EXISTS (SELECT 1 FROM ${elements(field)} e WHERE e <> '')`;
+      if (op === 'is_empty') return sql`NOT ${some}`;
+      if (op === 'is_not_empty') return some;
+      if (typeof value !== 'string' || !value) return null;
+      const has = sql`EXISTS (SELECT 1 FROM ${elements(field)} e WHERE e ILIKE ${containing(value)})`;
       return op === 'contains' ? has : sql`NOT ${has}`;
     }
     case 'relation':
@@ -209,6 +249,8 @@ function fieldClause(field: BaseFieldRow, clause: FilterClause, ctx: QueryContex
       const some = sql`EXISTS (SELECT 1 FROM ${baseRecordFiles} f WHERE f.record_id = ${baseRecords.id} AND f.field_id = ${id})`;
       return op === 'is_empty' ? sql`NOT ${some}` : some;
     }
+    default:
+      return null;
   }
 }
 
@@ -228,6 +270,33 @@ export function compileFilter(filter: Filter | undefined, ctx: QueryContext): SQ
   return filter.mode === 'or' ? or(...parts) : and(...parts);
 }
 
+/**
+ * A custom role's record filters as one condition: a record is seen when any of them keeps it.
+ * Unlike a view's filter it fails closed: a clause on a field that is gone, or without the value
+ * it needs, keeps no record (a broken rule must not show everything).
+ */
+export function compileRoleFilters(filters: readonly Filter[], ctx: QueryContext): SQL | undefined {
+  if (!filters.length) return undefined;
+  const each = filters.map((filter) => {
+    const parts = filter.clauses.map((clause) => {
+      let compiled: SQL | null;
+      try {
+        compiled = isSystemField(clause.field)
+          ? systemClause(clause.field, clause, ctx)
+          : ctx.fields.has(clause.field)
+            ? fieldClause(ctx.fields.get(clause.field)!, clause, ctx)
+            : null;
+      } catch {
+        compiled = null;
+      }
+      return compiled ? sql`(${compiled})` : FALSE;
+    });
+    if (!parts.length) return FALSE;
+    return filter.mode === 'or' ? or(...parts)! : and(...parts)!;
+  });
+  return sql`(${or(...each)!})`;
+}
+
 /** Text in any text field, or an option whose label has it. */
 export function compileSearch(search: string | undefined, ctx: QueryContext): SQL | undefined {
   const q = search?.trim();
@@ -235,8 +304,10 @@ export function compileSearch(search: string | undefined, ctx: QueryContext): SQ
   const parts: SQL[] = [];
   const needle = q.toLowerCase();
   for (const field of ctx.fields.values()) {
-    if (['text', 'long_text', 'url', 'email', 'phone'].includes(field.type)) {
-      parts.push(sql`${text(field.id)} ILIKE ${containing(q)}`);
+    if (['text', 'long_text', 'url', 'email', 'phone'].includes(kindOf(field))) {
+      parts.push(sql`${text(field)} ILIKE ${containing(q)}`);
+    } else if (field.type === 'lookup') {
+      parts.push(sql`EXISTS (SELECT 1 FROM ${elements(field)} e WHERE e ILIKE ${containing(q)})`);
     } else if (field.type === 'single_select' || field.type === 'multi_select') {
       const ids = (field.config.options ?? [])
         .filter((option) => option.label.toLowerCase().includes(needle))
@@ -244,8 +315,8 @@ export function compileSearch(search: string | undefined, ctx: QueryContext): SQ
       if (!ids.length) continue;
       parts.push(
         field.type === 'single_select'
-          ? inArray(sql`${text(field.id)}`, ids)
-          : sql`coalesce(${json(field.id)} ?| ${textArray(ids)}, false)`,
+          ? inArray(sql`${text(field)}`, ids)
+          : sql`coalesce(${json(field)} ?| ${textArray(ids)}, false)`,
       );
     }
   }
@@ -269,26 +340,37 @@ function orderKey(ref: string, ctx: QueryContext, purpose: 'sort' | 'group'): SQ
   }
   const field = ctx.fields.get(ref);
   if (!field) return null;
-  if (purpose === 'sort' ? !canSortBy(field.type) : !canGroupBy(field.type)) {
+  const kind = kindOf(field);
+  if (purpose === 'sort' ? !canSortBy(kind) : !canGroupBy(kind)) {
     throw invalidInput(`Records cannot be ${purpose === 'sort' ? 'sorted' : 'grouped'} by 「${field.name}」.`);
   }
-  switch (field.type) {
+  return valueKey(field);
+}
+
+/** A field's value as one ordered thing: numbers as numbers, options by their order, members by name. */
+export function valueKey(field: BaseFieldRow): SQL {
+  switch (kindOf(field)) {
     case 'number':
-      return sql`(${text(field.id)})::numeric`;
+      return numeric(field);
     case 'checkbox':
-      return sql`coalesce((${text(field.id)})::boolean, false)`;
+      return truth(field);
     case 'single_select': {
       const ids = (field.config.options ?? []).map((option) => option.id);
-      return ids.length ? sql`array_position(${textArray(ids)}, ${text(field.id)})` : sql`${text(field.id)}`;
+      return ids.length ? sql`array_position(${textArray(ids)}, ${text(field)})` : sql`${text(field)}`;
     }
     case 'member':
-      return sql`(SELECT ${members.name} FROM ${members} WHERE ${members.id} = ${json(field.id)} ->> 0)`;
+      return sql`(SELECT ${members.name} FROM ${members} WHERE ${members.id} = ${json(field)} ->> 0)`;
     default:
-      return sql`nullif(${text(field.id)}, '')`;
+      return sql`nullif(${text(field)}, '')`;
   }
 }
 
-/** Group first (records of a group together), then the sorts, then creation order. */
+/** A field's value as text (nothing for a computed failure), for grouping and charts. */
+export const valueText = (field: BaseFieldRow): SQL => text(field);
+/** A field's value as a number (nothing when it is not one), for sums and charts. */
+export const valueNumber = (field: BaseFieldRow): SQL => numeric(field);
+
+/** Group first (records of a group together), then the sorts, then creation order (`seq`). */
 export function compileOrder(
   sorts: readonly Sort[] | undefined,
   group: ViewGroup | null | undefined,
@@ -303,7 +385,7 @@ export function compileOrder(
     const key = orderKey(sort.field, ctx, 'sort');
     if (key) order.push(sort.desc ? sql`${key} DESC NULLS LAST` : sql`${key} ASC NULLS LAST`);
   }
-  order.push(asc(baseRecords.id));
+  order.push(asc(baseRecords.seq));
   return order;
 }
 

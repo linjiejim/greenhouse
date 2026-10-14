@@ -1,3 +1,4 @@
+import { mailEn } from './mail.en';
 import { tablesEn } from './tables.en';
 import type { MessageKey } from './zh';
 
@@ -271,7 +272,7 @@ export const en: Record<MessageKey, string> = {
   'message.failed': 'The reply failed',
   'message.edited': 'Edited',
   'message.you': 'You',
-  'message.readUnsupported': 'This browser can’t read aloud',
+  'message.readFailed': 'Couldn’t read it aloud · {reason}',
   'message.steps': '{count} steps',
   'message.summaryNotice': 'Earlier messages are summarized',
   'message.viewSummary': 'View summary',
@@ -299,6 +300,17 @@ export const en: Record<MessageKey, string> = {
   'composer.clearTarget': 'Back to the main Agent',
   'composer.clearQuote': 'Remove quote',
   'composer.readOnly': 'This conversation is read-only',
+  'composer.voice': 'Voice input',
+  'composer.voiceFinish': 'Finish recording',
+  'composer.voiceListening': 'Listening…',
+  'composer.voiceHint': 'Click the microphone again to finish, Esc to cancel',
+  'composer.voiceTranscribing': 'Turning it into text…',
+  'composer.voiceDenied':
+    'No microphone access: allow this site to use the microphone in the browser’s site settings, then try again',
+  'composer.voiceNoMic': 'No microphone was found',
+  'composer.voiceNothing': 'Nothing was heard; try saying it again',
+  'composer.voiceFailed': 'The recording didn’t turn into text · {reason}',
+  'composer.voiceUnavailable': 'Voice input isn’t available on this device',
 
   'memory.fact': 'Fact',
   'memory.preference': 'Preference',
@@ -371,7 +383,7 @@ export const en: Record<MessageKey, string> = {
   'provider.sandbox': 'Computers (sandbox)',
   'provider.search': 'Web search',
   'provider.storage': 'File storage',
-  'provider.mail': 'Email',
+  'provider.mail': 'Mail',
   'provider.im': 'Messaging',
   'provider.push': 'Push',
   'provider.off': 'Off',
@@ -959,22 +971,12 @@ export const en: Record<MessageKey, string> = {
   'notify.turnOff': 'Stop pushing',
 
   'channels.title': 'Notification channels',
-  'channels.email': 'Email (SMTP)',
   'channels.feishu': 'Feishu',
   'channels.wecom': 'WeCom',
   'channels.push': 'Phone push',
   'channels.secretKept': 'Saved; leave empty to keep it, fill in to replace it',
   'channels.secretSaved': 'Saved',
   'channels.fromEnv': 'This channel comes from the server’s environment; it is read-only here.',
-  'channels.host': 'SMTP host',
-  'channels.port': 'Port',
-  'channels.portHint': 'Empty uses the usual port for the security (465, 587 or 25)',
-  'channels.security': 'Security',
-  'channels.securityNone': 'None',
-  'channels.username': 'User name',
-  'channels.password': 'Password',
-  'channels.fromAddress': 'From address',
-  'channels.fromName': 'From name',
   'channels.baseUrl': 'Service address',
   'channels.appId': 'App ID',
   'channels.appSecret': 'App Secret',
@@ -1146,6 +1148,11 @@ export const en: Record<MessageKey, string> = {
   'errors.readOnly': 'This conversation is read-only',
   'errors.notLatest': 'The conversation moved on; only the latest exchange can change',
   'errors.tooLarge': 'That file is too large. The limit is 50 MB',
+  'errors.audioTooLarge': 'That recording is too large. The limit is 25 MB',
+  'errors.audioTooLong': 'That recording is too long. The limit is 10 minutes',
+  'errors.sttUnavailable': 'No speech-to-text service is set up',
+  'errors.ttsUnavailable': 'No read-aloud service is set up',
+  'errors.providerFailed': 'The service didn’t answer this time; try again later',
   'errors.folderTooDeep': 'Folders nest at most 32 levels deep',
   'errors.folderCycle': 'A folder can’t move into itself or a folder below it',
   'errors.agentFolder': 'An Agent’s folder stays at the top of its owner’s space',
@@ -1416,4 +1423,5 @@ export const en: Record<MessageKey, string> = {
   'common.pageFailed': 'This page hit an error · try again',
 
   ...tablesEn,
+  ...mailEn,
 };

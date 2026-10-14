@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { providersFromEnv } from '../../../providers/env.js';
 // The smtp adapter registers itself; env settings are checked against it.
-import '../smtp.js';
+import '../../mail/smtp.js';
 
 describe('channels from env', () => {
   it('reads SMTP_*, FEISHU_*, WECOM_* and PUSH_PROVIDER into channel instances', () => {
@@ -23,7 +23,7 @@ describe('channels from env', () => {
     });
     expect(instances).toEqual([
       {
-        id: 'env-mail',
+        id: 'env-mail-smtp',
         capability: 'mail',
         kind: 'smtp',
         preset: null,

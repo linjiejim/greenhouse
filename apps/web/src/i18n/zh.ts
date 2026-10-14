@@ -1,3 +1,4 @@
+import { mailZh } from './mail.zh';
 import { tablesZh } from './tables.zh';
 
 /** Chinese: the source dictionary. Keys are grouped by where the words appear; a module may keep its own in <module>.zh.ts. */
@@ -270,7 +271,7 @@ export const zh = {
   'message.failed': '回复失败',
   'message.edited': '已编辑',
   'message.you': '你',
-  'message.readUnsupported': '这个浏览器不支持朗读',
+  'message.readFailed': '没能朗读 · {reason}',
   'message.steps': '{count} 步',
   'message.summaryNotice': '已摘要较早的内容',
   'message.viewSummary': '查看摘要',
@@ -298,6 +299,16 @@ export const zh = {
   'composer.clearTarget': '改回主 Agent',
   'composer.clearQuote': '取消引用',
   'composer.readOnly': '这段对话是只读的',
+  'composer.voice': '语音输入',
+  'composer.voiceFinish': '结束录音',
+  'composer.voiceListening': '正在听…',
+  'composer.voiceHint': '再点麦克风结束，Esc 取消',
+  'composer.voiceTranscribing': '正在转成文字…',
+  'composer.voiceDenied': '没有麦克风权限：在浏览器的网站设置里允许使用麦克风后再试',
+  'composer.voiceNoMic': '没有找到可用的麦克风',
+  'composer.voiceNothing': '没有听清，再说一次试试',
+  'composer.voiceFailed': '语音没有转成文字 · {reason}',
+  'composer.voiceUnavailable': '这台设备上不能用语音输入',
 
   'memory.fact': '事实',
   'memory.preference': '偏好',
@@ -370,7 +381,7 @@ export const zh = {
   'provider.sandbox': '电脑（沙箱）',
   'provider.search': '网页搜索',
   'provider.storage': '文件存储',
-  'provider.mail': '邮件',
+  'provider.mail': '邮箱',
   'provider.im': '消息渠道',
   'provider.push': '推送',
   'provider.off': '已关闭',
@@ -935,22 +946,12 @@ export const zh = {
   'notify.turnOff': '不再推送',
 
   'channels.title': '通知渠道',
-  'channels.email': '邮件（SMTP）',
   'channels.feishu': '飞书',
   'channels.wecom': '企业微信',
   'channels.push': '手机推送',
   'channels.secretKept': '已保存；留空不变，填写则替换',
   'channels.secretSaved': '已保存',
   'channels.fromEnv': '这个渠道由服务器的环境变量配置，这里只读。',
-  'channels.host': 'SMTP 主机',
-  'channels.port': '端口',
-  'channels.portHint': '留空按安全方式用默认端口（465、587 或 25）',
-  'channels.security': '安全方式',
-  'channels.securityNone': '不加密',
-  'channels.username': '用户名',
-  'channels.password': '密码',
-  'channels.fromAddress': '发件地址',
-  'channels.fromName': '发件人名称',
   'channels.baseUrl': '服务地址',
   'channels.appId': 'App ID',
   'channels.appSecret': 'App Secret',
@@ -1119,6 +1120,11 @@ export const zh = {
   'errors.readOnly': '这段对话是只读的',
   'errors.notLatest': '对话已经往下走了，只能改最后一轮',
   'errors.tooLarge': '文件太大了，最多 50 MB',
+  'errors.audioTooLarge': '录音太大了，最多 25 MB',
+  'errors.audioTooLong': '录音太长了，最多 10 分钟',
+  'errors.sttUnavailable': '语音识别服务没有设置',
+  'errors.ttsUnavailable': '朗读服务没有设置',
+  'errors.providerFailed': '服务这次没有回应，稍后再试',
   'errors.folderTooDeep': '文件夹最多嵌套 32 层',
   'errors.folderCycle': '文件夹不能移进它自己或它下面的文件夹',
   'errors.agentFolder': 'Agent 的文件夹固定在主人个人空间的最上层',
@@ -1384,6 +1390,7 @@ export const zh = {
   'common.pageFailed': '这个页面出错了 · 可以重试',
 
   ...tablesZh,
+  ...mailZh,
 } as const;
 
 export type MessageKey = keyof typeof zh;

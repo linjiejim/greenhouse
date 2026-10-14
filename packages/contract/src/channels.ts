@@ -109,7 +109,9 @@ export type UpdatePushDeviceInput = z.input<typeof updatePushDeviceInputSchema>;
 
 // ─── 管理 → 服务 → 渠道 (ADM-05) ──────────────────────────────────────────
 
-export const SMTP_SECURITY = ['tls', 'starttls', 'none'] as const;
+/** The channels an admin sets up here; email is the mail capability (管理 → 服务 → 邮箱). */
+export const ADMIN_CHANNELS = ['feishu', 'wecom', 'push'] as const;
+export type AdminChannel = (typeof ADMIN_CHANNELS)[number];
 
 const statusFields = {
   /** It can deliver now: set up, turned on, its keys filled in. */
@@ -126,20 +128,11 @@ const statusFields = {
   last_error_at: isoTime.nullable(),
 };
 
-export const emailChannelSettingsSchema = z.object({
-  host: z.string(),
-  port: z.number().int(),
-  security: z.enum(SMTP_SECURITY),
-  username: z.string().nullable(),
-  from_address: z.string(),
-  from_name: z.string().nullable(),
-});
 export const feishuChannelSettingsSchema = z.object({ base_url: z.string(), app_id: z.string() });
 export const wecomChannelSettingsSchema = z.object({ base_url: z.string(), corp_id: z.string(), agent_id: z.number() });
 export const pushChannelSettingsSchema = z.object({ base_url: z.string() });
 
 export const channelStatusSchema = z.discriminatedUnion('channel', [
-  z.object({ channel: z.literal('email'), ...statusFields, settings: emailChannelSettingsSchema.nullable() }),
   z.object({ channel: z.literal('feishu'), ...statusFields, settings: feishuChannelSettingsSchema.nullable() }),
   z.object({ channel: z.literal('wecom'), ...statusFields, settings: wecomChannelSettingsSchema.nullable() }),
   z.object({ channel: z.literal('push'), ...statusFields, settings: pushChannelSettingsSchema.nullable() }),
@@ -158,26 +151,11 @@ const secretSchema = z
 const baseUrlSchema = z.string().trim().url().max(500);
 
 /**
- * Settings an admin saves for one channel. Write-only fields (password, app_secret, secret,
- * access_token): omitted keeps the stored value, '' clears it. A new host, port or base URL
- * clears them too: a key never follows its settings to another address.
+ * Settings an admin saves for one channel. Write-only fields (app_secret, secret, access_token):
+ * omitted keeps the stored value, '' clears it. A new base URL clears them too: a key never
+ * follows its settings to another address.
  */
 export const channelInputSchemas = {
-  email: z
-    .object({
-      host: z.string().trim().min(1).max(255),
-      /** null: the usual port for the security (465, 587 or 25). */
-      port: z.number().int().min(1).max(65_535).nullable(),
-      security: z.enum(SMTP_SECURITY),
-      /** null for a relay that takes mail without signing in. */
-      username: z.string().trim().min(1).max(255).nullable(),
-      from_address: z.string().trim().email().max(320),
-      from_name: z.string().trim().min(1).max(100).nullable(),
-      password: z.string().max(1024),
-      enabled: z.boolean(),
-    })
-    .partial()
-    .strict(),
   feishu: z
     .object({
       base_url: baseUrlSchema,
@@ -199,9 +177,9 @@ export const channelInputSchemas = {
     .strict(),
   push: z.object({ base_url: baseUrlSchema, access_token: secretSchema, enabled: z.boolean() }).partial().strict(),
 } as const;
-export type ChannelInput = { [C in DeliveryChannel]: z.input<(typeof channelInputSchemas)[C]> };
+export type ChannelInput = { [C in AdminChannel]: z.input<(typeof channelInputSchemas)[C]> };
 
-/** A test message to the admin themself: their email, their linked account, their phones. */
+/** A test message to the admin themself: their linked account, their phones. */
 export const channelTestSchema = z.object({
   ok: z.boolean(),
   /** How many test messages went out; 0 when the keys work but there is nowhere of mine to send to. */

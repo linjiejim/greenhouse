@@ -33,6 +33,7 @@ import { toPage, decodeCursor } from '../../http/pagination.js';
 import type { ProvidersService } from '../../providers/service.js';
 import type { AuthService } from '../auth/service.js';
 import type { FilesService } from '../files/service.js';
+import type { MailService } from '../mail/service.js';
 
 const DEFAULT_MODULES: MemberModules = { knowledge: true, tables: true, apps: true, computer: true };
 
@@ -84,11 +85,34 @@ async function activeAdminCount(db: Db, excluding: string): Promise<number> {
   return row?.n ?? 0;
 }
 
-export function createMembersService(deps: { auth: AuthService; providers: ProvidersService; files: FilesService }) {
+export function createMembersService(deps: {
+  auth: AuthService;
+  providers: ProvidersService;
+  files: FilesService;
+  /** Mails one-time links when the mail capability can send; the link is shown either way. */
+  mail: Pick<MailService, 'sendLink'>;
+}) {
   /** What the member can use now: their own keys where the policy allows, else the workspace's. */
   const capabilitiesOf = (memberId: string) => deps.providers.availability({ memberId });
+  /** Told after a change of who may reach what: a member's status or modules, or a group's members. */
+  const accessListeners: Array<() => void> = [];
+  const accessChanged = () => {
+    for (const listener of accessListeners) listener();
+  };
+
+  /** Mails a link to its member after it was committed; the admin's copy of it stays. */
+  async function mailLink(actorId: string, member: Member, purpose: 'activate' | 'reset', link: IssuedLink) {
+    const [actor] = await getDb().select({ name: members.name }).from(members).where(eq(members.id, actorId));
+    const delivery = await deps.mail.sendLink(member, purpose, link.url, actor?.name ?? 'Greenhouse');
+    return { ...link, delivery };
+  }
 
   return {
+    /** Listens for changes of who may reach what (modules that cache their audiences forget them). */
+    onAccessChange(listener: () => void) {
+      accessListeners.push(listener);
+    },
+
     async me(memberId: string): Promise<Me> {
       return toMe(await load(getDb(), memberId), await capabilitiesOf(memberId), deps.files);
     },
@@ -169,8 +193,9 @@ export function createMembersService(deps: { auth: AuthService; providers: Provi
       return toPage(rows, query.limit, (row) => toAdmin(row, summary));
     },
 
+    /** Invites by email: the activation link goes out by mail when it can, and the admin gets it to copy. */
     async invite(actorId: string, input: InviteInput): Promise<InviteResult> {
-      return transaction(async (db) => {
+      const invited = await transaction(async (db) => {
         const [existing] = await db.select({ id: members.id }).from(members).where(eq(members.email, input.email));
         if (existing) throw conflict('email_taken', 'Someone with this email is already a member.');
         const [row] = await db
@@ -185,12 +210,16 @@ export function createMembersService(deps: { auth: AuthService; providers: Provi
           resourceId: row!.id,
           summary: row!.role,
         });
-        return { member: toAdmin(row!, summaryFor(deps.files, actorId)), link };
+        return { row: row!, link };
       });
+      return {
+        member: toAdmin(invited.row, summaryFor(deps.files, actorId)),
+        link: await mailLink(actorId, invited.row, 'activate', invited.link),
+      };
     },
 
     async update(actorId: string, memberId: string, input: UpdateMemberInput): Promise<MemberAdmin> {
-      return transaction(async (db) => {
+      const updated = await transaction(async (db) => {
         const row = await load(db, memberId);
         const demotes = input.role === 'member' && row.role === 'admin';
         const disables = input.status === 'disabled' && row.status !== 'disabled';
@@ -227,16 +256,20 @@ export function createMembersService(deps: { auth: AuthService; providers: Provi
         });
         return toAdmin(updated!, summaryFor(deps.files, actorId));
       });
+      if (input.status !== undefined || input.modules !== undefined) accessChanged();
+      return updated;
     },
 
+    /** A fresh activation (invited) or reset (active) link, mailed when it can be. */
     async issueResetLink(actorId: string, memberId: string): Promise<IssuedLink> {
-      return transaction(async (db) => {
+      const issued = await transaction(async (db) => {
         const row = await load(db, memberId);
         if (row.status === 'disabled') throw conflict('member_disabled', 'Reactivate the member first.');
-        const purpose = row.passwordHash ? 'reset' : 'activate';
+        const purpose = row.passwordHash ? ('reset' as const) : ('activate' as const);
         await audit({ actorId, action: 'member.link', resourceType: 'member', resourceId: memberId, summary: purpose });
-        return deps.auth.issueLink(db, row, purpose);
+        return { row, purpose, link: await deps.auth.issueLink(db, row, purpose) };
       });
+      return mailLink(actorId, issued.row, issued.purpose, issued.link);
     },
 
     async listGroups(): Promise<Group[]> {
@@ -262,7 +295,7 @@ export function createMembersService(deps: { auth: AuthService; providers: Provi
     },
 
     async saveGroup(actorId: string, input: GroupInput, groupId?: string): Promise<Group> {
-      return transaction(async (db) => {
+      const saved = await transaction(async (db) => {
         const id = groupId ?? newId('group');
         const [clash] = await db
           .select({ id: groups.id })
@@ -296,6 +329,8 @@ export function createMembersService(deps: { auth: AuthService; providers: Provi
         const all = await this.listGroups();
         return all.find((group) => group.id === id)!;
       });
+      accessChanged();
+      return saved;
     },
 
     async deleteGroup(actorId: string, groupId: string): Promise<void> {
@@ -304,6 +339,7 @@ export function createMembersService(deps: { auth: AuthService; providers: Provi
         if (!deleted.length) throw notFound('Group');
         await audit({ actorId, action: 'group.delete', resourceType: 'group', resourceId: groupId });
       });
+      accessChanged();
     },
   };
 }

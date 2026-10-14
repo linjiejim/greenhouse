@@ -22,20 +22,24 @@ import { Button, ChatCard, IconButton, TextArea, Tooltip } from '@greenhouse/ui/
 import { icon } from '@greenhouse/ui/tokens';
 import type { Agent, MemberSummary, Message, NeedsYou } from '@greenhouse/contract';
 import { useNotify } from '../app/notify';
+import { useSession } from '../app/session';
 import { useSkills } from '../data/skills';
 import { liveText, useStream, type LiveStep } from '../data/streams';
 import { cx } from '../lib/cx';
+import { errorText } from '../lib/errors';
 import { useI18n } from '../lib/i18n';
 import { href } from '../lib/router';
 import { fullTime, relativeTime } from '../lib/time';
 import { AgentAvatar } from '../shell/AgentAvatar';
 import { MemberAvatar } from '../shell/MemberAvatar';
 import { Attachments } from './Attachments';
+import { isMailEvent, MailCard } from './MailCard';
 import { Markdown } from './Markdown';
 import { RichContent, type BlockContext } from './rich/RichContent';
 import { flattenRichOutput } from '@greenhouse/types/rich-output';
 
 const NO_BLOCKS: BlockContext = {};
+import { readAloud, readAloudMode, stopReading, useReading } from './readAloud';
 import { RequestCard } from './RequestCard';
 import { Sources } from './Sources';
 
@@ -77,21 +81,6 @@ function ProcessCard({ steps }: { steps: Step[] }) {
       </ol>
     </ChatCard>
   );
-}
-
-function readAloud(text: string, locale: 'zh' | 'en', onEnd: () => void): boolean {
-  const synth = window.speechSynthesis;
-  if (!synth) return false;
-  const utterance = new SpeechSynthesisUtterance(
-    // Read the prose only: no code blocks or tables.
-    text.replace(/```[\s\S]*?```/g, '').replace(/^\|.*\|$/gm, ''),
-  );
-  utterance.lang = locale === 'zh' ? 'zh-CN' : 'en-US';
-  utterance.onend = onEnd;
-  utterance.onerror = onEnd;
-  synth.cancel();
-  synth.speak(utterance);
-  return true;
 }
 
 /** The skill a member ran with `/`, with the values they filled in. */
@@ -150,7 +139,12 @@ export const MessageView = memo(function MessageView({
   const { t, locale } = useI18n();
   const notify = useNotify();
   const stream = useStream(message.id);
-  const [speaking, setSpeaking] = useState(false);
+  const { me } = useSession();
+  // The TTS service when one serves me, else the browser's voice; hidden when there is neither.
+  const voice = readAloudMode(me?.capabilities.tts);
+  const speaking = useReading(message.id);
+  /** Why reading aloud failed, under the reply's actions until the next try. */
+  const [readError, setReadError] = useState('');
   const [editing, setEditing] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const streaming = message.status === 'streaming';
@@ -158,6 +152,8 @@ export const MessageView = memo(function MessageView({
   const time = relativeTime(message.created_at, { locale, timeZone });
 
   if (message.role === 'event') {
+    // A mail that arrived at the Agent's address, or one it sent: a card that opens the mail.
+    if (isMailEvent(message.event)) return <MailCard message={message as Message & { event: typeof message.event }} />;
     return (
       <div className="app-event-line" role="note">
         {message.content}
@@ -343,21 +339,22 @@ export const MessageView = memo(function MessageView({
                 </IconButton>
               </>
             )}
-            <IconButton
-              label={speaking ? t('message.stopReading') : t('message.readAloud')}
-              size="sm"
-              aria-pressed={speaking}
-              onClick={() => {
-                if (speaking) {
-                  window.speechSynthesis?.cancel();
-                  return setSpeaking(false);
-                }
-                if (readAloud(text, locale, () => setSpeaking(false))) setSpeaking(true);
-                else notify(t('message.readUnsupported'));
-              }}
-            >
-              <Volume2 size={icon.sm} />
-            </IconButton>
+            {voice && (
+              <IconButton
+                label={speaking ? t('message.stopReading') : t('message.readAloud')}
+                size="sm"
+                aria-pressed={speaking}
+                onClick={() => {
+                  if (speaking) return stopReading();
+                  setReadError('');
+                  readAloud(message.id, text, { mode: voice, locale }).catch((error: unknown) =>
+                    setReadError(t('message.readFailed', { reason: errorText(error, t) })),
+                  );
+                }}
+              >
+                <Volume2 size={icon.sm} />
+              </IconButton>
+            )}
             {onQuote && (
               <IconButton label={t('message.quote')} size="sm" onClick={() => onQuote(text)}>
                 <Quote size={icon.sm} />
@@ -380,6 +377,11 @@ export const MessageView = memo(function MessageView({
               </IconButton>
             )}
           </div>
+        )}
+        {readError && (
+          <p className="app-request-error" role="alert">
+            {readError}
+          </p>
         )}
       </div>
     </article>

@@ -41,6 +41,7 @@ export default defineConfig({
       '@greenhouse/utils/error': resolve(__dirname, 'packages/utils/src/error.ts'),
       '@greenhouse/utils/prompts': resolve(__dirname, 'packages/utils/src/prompts.ts'),
       '@greenhouse/utils/semver': resolve(__dirname, 'packages/utils/src/semver.ts'),
+      '@greenhouse/utils/audio': resolve(__dirname, 'packages/utils/src/audio.ts'),
       '@greenhouse/utils/html': resolve(__dirname, 'packages/utils/src/html.ts'),
       '@greenhouse/agent-core': resolve(__dirname, 'packages/agent-core/src/index.ts'),
       '@greenhouse/contract/client': resolve(__dirname, 'packages/contract/src/client.ts'),
@@ -63,7 +64,6 @@ export default defineConfig({
     // skillhub/** ships in-bundle node:test files (*.test.mjs) that vitest
     // cannot parse; tests/skillhub/bundles.test.ts runs them via `node --test`.
     exclude: [
-      'apps/mobile/**',
       'tests/e2e/**',
       'tests/e2e-ui/**',
       '**/node_modules/**',
@@ -82,7 +82,6 @@ export default defineConfig({
           exclude: [
             '**/*.db.test.ts',
             '**/*.db-commit.test.ts',
-            'apps/mobile/**',
             'tests/e2e/**',
             'tests/e2e-ui/**',
             '**/node_modules/**',

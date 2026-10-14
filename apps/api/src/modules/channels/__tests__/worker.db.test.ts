@@ -4,7 +4,7 @@ import { connections, getDb, jobs, members, newId, pushDevices, requests, type J
 import { claimJobs, settleJob } from '../../../jobs.js';
 import { createTestApp, createTestServices } from '../../../testing.js';
 import type { PublishInput } from '../../notifications/service.js';
-import { EXPO_TOKEN, fakeNetwork, PROJECT_ID, readMail, startFakeSmtp, type FakeSmtp } from './fakes.js';
+import { EXPO_TOKEN, fakeNetwork, PROJECT_ID, readMail, smtpInstance, startFakeSmtp, type FakeSmtp } from './fakes.js';
 
 let smtp: FakeSmtp | null = null;
 afterEach(async () => {
@@ -18,9 +18,11 @@ async function setup(env: Record<string, string> = {}) {
   const app = createTestApp(env, { fetch: net.fetch });
   const admin = await app.member('admin');
   const lin = await app.member('member', 'lin@acme.com');
-  await app.call('PUT', '/api/admin/channels/email', {
-    token: admin.token,
-    body: { host: '127.0.0.1', port: smtp.port, security: 'none', from_address: 'gh@acme.com' },
+  const mailId = await smtpInstance(app.call, admin.token, {
+    host: '127.0.0.1',
+    port: smtp.port,
+    security: 'none',
+    fromAddress: 'gh@acme.com',
   });
   const settings = (body: unknown, token = lin.token) =>
     app.call('PUT', '/api/me/notification-settings', { token, body });
@@ -52,12 +54,12 @@ async function setup(env: Record<string, string> = {}) {
       .set({ availableAt: sql`now() - interval '1 second'` })
       .where(eq(jobs.status, 'pending'));
   const run = () => app.services.channels.runOnce();
-  return { ...app, net, admin, lin, settings, publish, deliveries, due, run };
+  return { ...app, net, admin, lin, mailId, settings, publish, deliveries, due, run };
 }
 
 describe('the delivery worker', () => {
   it('emails a member who opted in, once, with the link back and no content', async () => {
-    const { publish, deliveries, run, call, admin } = await setup();
+    const { publish, deliveries, run } = await setup();
     const published = await publish();
     // Idempotent per notification: the same dedupe key publishes nothing more.
     expect(await publish({ dedupeKey: 'run:x:1' })).not.toBeNull();
@@ -78,13 +80,11 @@ describe('the delivery worker', () => {
     expect(mail.text).not.toContain('本周完成');
     const [sent] = await deliveries();
     expect(sent).toMatchObject({ status: 'succeeded', attempts: 1, leaseOwner: null, lastError: null });
-
-    const status = (await call('GET', '/api/admin/channels', { token: admin.token })).body.items[0];
-    expect(status).toMatchObject({ channel: 'email', last_success_at: expect.any(String), last_error: null });
+    expect(sent!.result).toMatchObject({ instance: expect.any(String) });
   });
 
   it('retries with backoff, then delivers; a refused recipient is given up at once', async () => {
-    const { publish, deliveries, run, due, call, admin, lin } = await setup();
+    const { publish, deliveries, run, due, lin } = await setup();
     smtp!.answers.push('451 4.3.0 try again later');
     await publish();
     await run();
@@ -92,8 +92,6 @@ describe('the delivery worker', () => {
     expect(failed).toMatchObject({ status: 'pending', attempts: 1, lastError: expect.stringContaining('451') });
     // Not due before its backoff.
     expect(await run()).toBe(0);
-    const status = (await call('GET', '/api/admin/channels', { token: admin.token })).body.items[0];
-    expect(status).toMatchObject({ last_error: expect.stringContaining('451'), last_error_at: expect.any(String) });
 
     await due();
     await run();
@@ -139,7 +137,7 @@ describe('the delivery worker', () => {
   });
 
   it('suppresses what no longer makes sense by the time it goes out', async () => {
-    const { publish, deliveries, run, call, lin, settings, admin, services } = await setup();
+    const { publish, deliveries, run, call, lin, settings, admin, services, mailId } = await setup();
     const read = await publish({ targetId: 'cnv_1' });
     await call('POST', '/api/notifications/read', { token: lin.token, body: { ids: [read!.id] } });
     await run();
@@ -163,14 +161,14 @@ describe('the delivery worker', () => {
       .set({ expiresAt: sql`now() - interval '1 second'` })
       .where(eq(requests.id, card.id));
     await publish({ targetId: 'cnv_4' });
-    await call('PUT', '/api/admin/channels/email', { token: admin.token, body: { enabled: false } });
+    await call('PATCH', `/api/admin/providers/${mailId}`, { token: admin.token, body: { enabled: false } });
     await run();
     expect((await deliveries()).slice(2).map((job) => job.result?.reason)).toEqual([
       'request_settled',
       'not_configured',
     ]);
 
-    await call('PUT', '/api/admin/channels/email', { token: admin.token, body: { enabled: true } });
+    await call('PATCH', `/api/admin/providers/${mailId}`, { token: admin.token, body: { enabled: true } });
     await publish({ targetId: 'cnv_5' });
     await getDb().update(members).set({ status: 'disabled' }).where(eq(members.id, lin.id));
     await run();

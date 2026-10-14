@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { eq } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import type { RealtimeEvent } from '@greenhouse/contract';
-import { auditEvents, getDb, groupMembers, groups, members, newId, notifications } from '@greenhouse/db';
+import { auditEvents, baseTables, getDb, groupMembers, groups, members, newId, notifications } from '@greenhouse/db';
 import { createTestApp } from '../../../testing.js';
 
 type App = ReturnType<typeof createTestApp>;
@@ -60,6 +60,12 @@ async function blank(as: ReturnType<Awaited<ReturnType<typeof setup>>['as']>, na
   const owner = await field({ name: 'Owner', type: 'member' });
   const primary = table.fields[0];
   return { base, table, primary, status, count, due, owner };
+}
+
+/** The data table's schema revision now: field changes name it. */
+async function schemaOf(_as: unknown, tableId: string) {
+  const [row] = await getDb().select().from(baseTables).where(eq(baseTables.id, tableId));
+  return row!.schemaRevision;
 }
 
 describe('bases', () => {
@@ -194,13 +200,22 @@ describe('fields and views', () => {
     const second = await as(lin).post(`/api/tables/tables/${table.id}/fields`, { name: 'Parent 2', type: 'parent' });
     expect(second.body.error.code).toBe('one_per_table');
 
-    const renamed = await as(lin).patch(`/api/tables/fields/${status.id}`, { name: 'State' });
+    const revision = await schemaOf(as(lin), table.id);
+    const renamed = await as(lin).patch(`/api/tables/fields/${status.id}`, {
+      schema_revision: revision,
+      name: 'State',
+    });
     expect(renamed.body).toMatchObject({ name: 'State', type: 'single_select' });
+    // A change based on the schema before the rename is refused.
+    const late = await as(lin).patch(`/api/tables/fields/${status.id}`, { schema_revision: revision, name: 'Later' });
+    expect(late).toMatchObject({ status: 409, body: { error: { code: 'stale_schema' } } });
     const primary = table.fields[0];
     expect((await as(lin).del(`/api/tables/fields/${primary.id}`)).body.error.code).toBe('primary_field');
-    expect((await as(lin).patch(`/api/tables/fields/${status.id}`, { type: 'number' })).body.error.code).toBe(
-      'type_change_unsupported',
-    );
+    const now = await schemaOf(as(lin), table.id);
+    expect(
+      (await as(lin).patch(`/api/tables/fields/${status.id}`, { schema_revision: now, type: 'number' })).body.error
+        .code,
+    ).toBe('type_change_unsupported');
   });
 
   it('drops a deleted field from every view, and brings the field back from the recycle bin', async () => {
@@ -292,7 +307,11 @@ describe('records', () => {
     });
     expect(events).toContainEqual({
       type: 'records.changed',
-      data: { base_id: table.base_id, table_id: table.id, records: [{ id: record.id, revision: 1 }] },
+      data: {
+        base_id: table.base_id,
+        table_id: table.id,
+        records: [{ id: record.id, revision: 1, computed_revision: 0 }],
+      },
     });
 
     const changed = await as(lin).patch(`/api/tables/records/${record.id}`, {

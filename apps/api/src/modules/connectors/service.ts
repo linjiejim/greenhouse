@@ -1,6 +1,7 @@
 /**
- * Connectors: MCP servers an admin installs (管理 → 连接器), the connections members make to
- * them (设置 → 连接), and what an Agent may call through them (mcp_call).
+ * Connectors: MCP servers an admin installs (管理 → 连接器), the built-in connectors Greenhouse
+ * provides itself (the member's own mailbox, mailbox.ts), the connections members make to them
+ * (设置 → 连接), and what an Agent may call through them (mcp_call).
  *
  * - Auth modes: `none`; `shared` (one key, sealed on the connector, sent in a header or a query
  *   parameter); `per_member` (each member's own key, checked against the server before it is
@@ -15,6 +16,9 @@
  * - Keys, tokens and client secrets are sealed (secrets.ts) and never returned; errors pass
  *   through `redact` first. The network is network.ts: https, public addresses in production,
  *   deadlines.
+ * - The built-in mailbox has the slug `mailbox` and no row in `connectors`: each member connects
+ *   their own (a `connections` row of kind `email`, its password sealed, IMAP and SMTP both tested
+ *   before it is kept), and the manifest's `connectors` scope it like any other.
  */
 
 import { and, asc, eq, inArray, sql } from 'drizzle-orm';
@@ -23,6 +27,7 @@ import type {
   AgentManifest,
   AvailableConnector,
   CatalogEntry,
+  ConnectMailboxInput,
   Connection,
   ConnectionTest,
   Connector,
@@ -89,6 +94,15 @@ import {
   withConnectionLock,
   type OAuthDeps,
 } from './oauth.js';
+import {
+  MAILBOX_CONNECTOR_ID,
+  MAILBOX_SLUG,
+  MAILBOX_TOOLS,
+  MailboxError,
+  mailboxClient,
+  runMailboxTool,
+  type MailboxSettings,
+} from './mailbox.js';
 import { placeOf, redact, seal, unseal } from './secrets.js';
 import { findConnection, markConnection, saveConnection, type KeySecrets } from './store.js';
 
@@ -206,15 +220,36 @@ function toolView(row: ConnectorRow, tool: ConnectorToolSpec): ConnectorTool {
   };
 }
 
+/** The built-in mailbox as the connector of a member's `email` connection. */
+const MAILBOX_VIEW = { id: MAILBOX_CONNECTOR_ID, slug: MAILBOX_SLUG, name: 'Mailbox', enabled: true };
+
+/** A mailbox connection's settings, without its password. */
+function mailboxSettingsOf(row: Pick<ConnectionRow, 'config'>): MailboxSettings | null {
+  const config = row.config as Partial<MailboxSettings>;
+  if (!config.address || !config.imap || !config.smtp || !config.username) return null;
+  return config as MailboxSettings;
+}
+
 function connectionView(
   row: ConnectionRow,
   connector: Pick<ConnectorRow, 'id' | 'slug' | 'name' | 'enabled'> | null,
 ): Connection {
+  const mailbox = row.kind === 'email' ? mailboxSettingsOf(row) : null;
   return {
     id: row.id,
     kind: row.kind,
     connector: connector
       ? { id: connector.id, slug: connector.slug, name: connector.name, enabled: connector.enabled }
+      : row.kind === 'email'
+        ? MAILBOX_VIEW
+        : null,
+    mailbox: mailbox
+      ? {
+          address: mailbox.address,
+          imap: { ...mailbox.imap },
+          smtp: { ...mailbox.smtp },
+          username: mailbox.username,
+        }
       : null,
     display_name: row.displayName,
     status: row.status,
@@ -278,6 +313,10 @@ export function createConnectorsService(deps: {
   }
 
   /** Enabled connectors in a manifest's list (null: all), by slug. */
+  /** Whether the manifest lets the Agent use the member's built-in mailbox (null: every connector). */
+  const mailboxAllowed = (manifest: Pick<AgentManifest, 'connectors'>) =>
+    !manifest.connectors || manifest.connectors.includes(MAILBOX_SLUG);
+
   async function enabledFor(manifest: Pick<AgentManifest, 'connectors'>): Promise<ConnectorRow[]> {
     const allowed = manifest.connectors ? new Set(manifest.connectors) : null;
     if (allowed && !allowed.size) return [];
@@ -540,6 +579,23 @@ export function createConnectorsService(deps: {
     summary,
   });
 
+  /** The member's mailbox connection (the built-in connector), if any. */
+  async function mailboxConnection(memberId: string): Promise<ConnectionRow | null> {
+    const [found] = await getDb()
+      .select()
+      .from(connections)
+      .where(and(eq(connections.memberId, memberId), eq(connections.kind, 'email')));
+    return found ?? null;
+  }
+
+  /** A client for the member's own mailbox, with its sealed password opened. */
+  function mailboxOf(connection: ConnectionRow) {
+    const settings = mailboxSettingsOf(connection);
+    const stored = unseal<{ password: string }>(key, placeOf.connection(connection.id), connection.secretsEnc);
+    if (!settings || !stored?.password) return null;
+    return mailboxClient(settings, stored.password, mode);
+  }
+
   async function ownConnection(memberId: string, id: string): Promise<ConnectionRow> {
     const [found] = await getDb()
       .select()
@@ -547,6 +603,32 @@ export function createConnectorsService(deps: {
       .where(and(eq(connections.id, id), eq(connections.memberId, memberId)));
     if (!found) throw notFound('Connection');
     return found;
+  }
+
+  /** One tool of the member's own mailbox; a refused password marks the connection to renew. */
+  async function runMailbox(memberId: string, toolName: string, args: Record<string, unknown>): Promise<CallOutcome> {
+    const connection = await mailboxConnection(memberId);
+    const client = connection && connection.status !== 'needs_reauth' ? mailboxOf(connection) : null;
+    if (!connection || !client) {
+      throw new Error("The member's mailbox is not connected: they need to connect it in 设置 → 连接.");
+    }
+    const started = Date.now();
+    try {
+      const outcome = await runMailboxTool(client, toolName, args);
+      logger.info('[connectors] a mailbox tool ran', {
+        tool: toolName,
+        durationMs: Date.now() - started,
+        member: memberId,
+      });
+      return outcome;
+    } catch (error) {
+      if (error instanceof MailboxError && error.authFailed) {
+        await markConnection(connection.id, { status: 'needs_reauth', error: error.message }, connection.secretsEnc);
+        throw new Error("The mailbox refused the member's password: they need to reconnect it in 设置 → 连接.");
+      }
+      logger.warn('[connectors] a mailbox tool failed', { tool: toolName, error: toErrorMessage(error) });
+      throw new Error(`Using the mailbox failed: ${toErrorMessage(error)}`);
+    }
   }
 
   const service = {
@@ -589,6 +671,9 @@ export function createConnectorsService(deps: {
     /** Installs a connector and lists its tools right away; a server that cannot be reached is still saved. */
     async create(actorId: string, input: CreateInput): Promise<Connector> {
       const settings = await settingsFor(actorId, input);
+      if (settings.slug === MAILBOX_SLUG) {
+        throw conflict('connector_slug_taken', `"${MAILBOX_SLUG}" is a built-in connector; pick another slug.`);
+      }
       await checkUrl(settings.url);
       checkHelpUrl(settings.keyHelpUrl);
       const placed = placement(settings.authMode, settings.authHeader, settings.authQueryParam, settings.authPrefix);
@@ -833,12 +918,79 @@ export function createConnectorsService(deps: {
           key_help_url: found.keyHelpUrl,
           tool_count: tools.length,
           read_only_tool_count: tools.filter((tool) => tool.readOnly).length,
+          builtin: null,
         };
+      });
+      const mailboxTools = MAILBOX_TOOLS;
+      available.push({
+        id: MAILBOX_CONNECTOR_ID,
+        slug: MAILBOX_SLUG,
+        name: MAILBOX_VIEW.name,
+        description:
+          'Your own mailbox over IMAP and SMTP: your Agents search and read it; drafts and sending wait for your approval.',
+        auth_mode: 'per_member',
+        needs_connection: true,
+        key_help: '',
+        key_help_url: null,
+        tool_count: mailboxTools.length,
+        read_only_tool_count: mailboxTools.filter((tool) => tool.readOnly).length,
+        builtin: 'mailbox',
       });
       return {
         items: own.map((entry) => connectionView(entry.connection, entry.connector)),
         connectors: available,
       };
+    },
+
+    /**
+     * Connects the member's own mailbox: IMAP and SMTP are both tried with these settings first
+     * (a private address is refused), and only then is anything kept, the password sealed.
+     */
+    async connectMailbox(memberId: string, input: ConnectMailboxInput): Promise<Connection> {
+      const settings: MailboxSettings = {
+        address: input.address,
+        ...(input.display_name ? { displayName: input.display_name } : {}),
+        imap: { host: input.imap.host, port: input.imap.port, security: input.imap.security },
+        smtp: { host: input.smtp.host, port: input.smtp.port, security: input.smtp.security },
+        username: input.username ?? input.address,
+      };
+      const checked = await mailboxClient(settings, input.password, mode).test();
+      if (checked.imap || checked.smtp) {
+        throw new ApiError(400, 'mailbox_rejected', 'The mailbox could not be reached with these settings.', {
+          imap: checked.imap,
+          smtp: checked.smtp,
+        });
+      }
+      const saved = await transaction(async (db) => {
+        const [existing] = await db
+          .select({ id: connections.id })
+          .from(connections)
+          .where(and(eq(connections.memberId, memberId), eq(connections.kind, 'email')))
+          .for('update');
+        const id = existing?.id ?? newId('connection');
+        const values = {
+          externalId: settings.address,
+          displayName: settings.displayName ?? settings.address,
+          config: settings as unknown as Record<string, unknown>,
+          secretsEnc: seal(key, placeOf.connection(id), { password: input.password }),
+          status: 'active' as const,
+          lastError: null,
+          lastVerifiedAt: new Date().toISOString(),
+        };
+        const [row] = existing
+          ? await db
+              .update(connections)
+              .set({ ...values, updatedAt: sql`now()` })
+              .where(eq(connections.id, id))
+              .returning()
+          : await db
+              .insert(connections)
+              .values({ id, memberId, kind: 'email', ...values })
+              .returning();
+        await audit(connectionAudit(memberId, existing ? 'connection.update' : 'connection.create', id, 'mailbox'));
+        return row!;
+      });
+      return connectionView(saved, null);
     },
 
     /** Keeps the member's own key, once the server accepted it. */
@@ -911,6 +1063,24 @@ export function createConnectorsService(deps: {
     /** Lists the tools with the member's connection and records how it went. */
     async testConnection(memberId: string, id: string): Promise<ConnectionTest> {
       const own = await ownConnection(memberId, id);
+      if (own.kind === 'email') {
+        const client = mailboxOf(own);
+        const checked = client
+          ? await client.test()
+          : { imap: 'The stored settings cannot be read.', smtp: null, authFailed: true };
+        const error = [checked.imap, checked.smtp].filter(Boolean).join(' · ') || null;
+        await markConnection(
+          own.id,
+          error ? { status: checked.authFailed ? 'needs_reauth' : 'error', error } : { status: 'active' },
+          own.secretsEnc,
+        );
+        return {
+          ok: !error,
+          tool_count: error ? null : MAILBOX_TOOLS.length,
+          error,
+          connection: connectionView(await ownConnection(memberId, id), null),
+        };
+      }
       if (own.kind !== 'connector' || !own.connectorId)
         throw conflict('not_testable', 'Only a connector connection can be tested here.');
       const found = await enabledRow(own.connectorId);
@@ -968,12 +1138,14 @@ export function createConnectorsService(deps: {
     // ─── agents ──────────────────────────────────────────
 
     /**
-     * Whether an Agent with this manifest has connectors at all: an enabled one in its manifest
-     * (null: all) with a tool it may call, or whose tools nobody has listed yet, whether or not
-     * the member connected it. This decides whether `mcp_call` is offered, so connecting an
-     * account never changes a turn's tools.
+     * Whether an Agent with this manifest has connectors at all: the built-in mailbox, which
+     * every member can connect and whose reading tools need no write, or an enabled one in its
+     * manifest (null: all) with a tool it may call, or whose tools nobody has listed yet, whether
+     * or not the member connected it. This decides whether `mcp_call` is offered, so connecting
+     * an account never changes a turn's tools.
      */
     async offered(manifest: Pick<AgentManifest, 'connectors' | 'write'>): Promise<boolean> {
+      if (mailboxAllowed(manifest)) return true;
       return (await enabledFor(manifest)).some(
         (found) => !found.tools.length || callableTools(found).some((tool) => manifest.write || tool.readOnly),
       );
@@ -985,8 +1157,24 @@ export function createConnectorsService(deps: {
      * the read-only tools.
      */
     async usable(memberId: string, manifest: Pick<AgentManifest, 'connectors' | 'write'>): Promise<UsableConnector[]> {
+      // The member's own mailbox, once connected and while it works.
+      const builtin: UsableConnector[] = [];
+      if (mailboxAllowed(manifest)) {
+        const mailbox = await mailboxConnection(memberId);
+        if (mailbox && mailbox.status !== 'needs_reauth' && mailbox.secretsEnc) {
+          const address = mailboxSettingsOf(mailbox)?.address ?? '';
+          const tools = MAILBOX_TOOLS.filter((tool) => manifest.write || tool.readOnly);
+          builtin.push({
+            id: MAILBOX_CONNECTOR_ID,
+            slug: MAILBOX_SLUG,
+            name: `Mailbox ${address}`.trim(),
+            description: "The member's own mailbox (IMAP and SMTP).",
+            tools: tools.map((tool) => ({ ...tool })),
+          });
+        }
+      }
       const candidates = await enabledFor(manifest);
-      if (!candidates.length) return [];
+      if (!candidates.length) return builtin;
       const mine = candidates.some((found) => personal(found.authMode))
         ? await getDb()
             .select({
@@ -1000,13 +1188,16 @@ export function createConnectorsService(deps: {
       const usableNow = new Set(
         mine.filter((entry) => entry.status !== 'needs_reauth' && entry.sealed).map((entry) => entry.connectorId),
       );
-      return candidates.flatMap((found) => {
-        if (personal(found.authMode) && !usableNow.has(found.id)) return [];
-        const tools = callableTools(found).filter((tool) => manifest.write || tool.readOnly);
-        return tools.length
-          ? [{ id: found.id, slug: found.slug, name: found.name, description: found.description, tools }]
-          : [];
-      });
+      return [
+        ...builtin,
+        ...candidates.flatMap((found) => {
+          if (personal(found.authMode) && !usableNow.has(found.id)) return [];
+          const tools = callableTools(found).filter((tool) => manifest.write || tool.readOnly);
+          return tools.length
+            ? [{ id: found.id, slug: found.slug, name: found.name, description: found.description, tools }]
+            : [];
+        }),
+      ];
     },
 
     /** One tool an Agent may call, or the sentence that tells the model why not. */
@@ -1041,6 +1232,7 @@ export function createConnectorsService(deps: {
       args: Record<string, unknown>,
       signal?: AbortSignal,
     ): Promise<CallOutcome> {
+      if (connectorId === MAILBOX_CONNECTOR_ID) return runMailbox(memberId, toolName, args);
       const found = await row(connectorId);
       if (!found.enabled) throw new Error(`${found.name} was turned off.`);
       const resolved = await resolve(found, memberId);

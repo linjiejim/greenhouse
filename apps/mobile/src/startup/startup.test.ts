@@ -32,6 +32,7 @@ const test = await vi.hoisted(async () => {
     motionListener: null as ((reduced: boolean) => void) | null,
     auth: {
       startupError: null as string | null,
+      mismatch: null as 'app_outdated' | 'server_outdated' | null,
       loading: true,
       user: { id: 'member-a' } as { id: string } | null,
       bootstrap: vi.fn(),
@@ -157,6 +158,7 @@ vi.mock('../ui/menu', () => ({ MenuHost: () => null }));
 vi.mock('../ui/toast', () => ({ ToastHost: () => null }));
 vi.mock('../lib/i18n', () => ({ useT: () => (key: string) => key }));
 vi.mock('../realtime/realtime-bridge', () => ({ RealtimeBridge: () => null }));
+vi.mock('../shell/mismatch', () => ({ MismatchScreen: () => null }));
 vi.mock('../ui/nav', () => ({
   detailScreen: () => ({}),
   modalScreen: () => ({}),
@@ -381,9 +383,9 @@ describe('root startup reveal', () => {
   });
 
   it.each([
-    ['knowledge', '[slug]'],
-    ['settings', 'bots'],
-    ['bots', 'request'],
+    ['agents', '[id]'],
+    ['settings', 'notifications'],
+    ['request'],
   ])('a deep-linked %s page does not wait for the hidden home underneath', async (...segments) => {
     test.auth.loading = false;
     test.fonts = [true, null];
@@ -394,27 +396,6 @@ describe('root startup reveal', () => {
     await advance(FADE_TOTAL_MS);
     expect(covered()).toBe(false);
   });
-
-  it.each([['bots'], ['chat', '[id]']])(
-    'a %s forwarder waits for the destination to report readiness',
-    async (...segments) => {
-      test.auth.loading = false;
-      test.fonts = [true, null];
-      test.segments = segments;
-      await render(h(RootLayout));
-      await advance(MARK_BUILD_MS);
-      expect(fadeCalls()).toHaveLength(0);
-      test.segments = ['(drawer)', '(main)'];
-      const screen = routeFixture();
-      await render(h(RootLayout));
-      await act(async () => {
-        screen.response.resolve('deep-linked thread');
-      });
-      await advance(FADE_TOTAL_MS);
-      expect(covered()).toBe(false);
-      expect(container.querySelector('article')?.textContent).toBe('deep-linked thread');
-    },
-  );
 });
 
 describe('splash deadline and animation lifecycle', () => {

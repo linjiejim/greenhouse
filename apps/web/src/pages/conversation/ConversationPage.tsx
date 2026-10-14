@@ -38,6 +38,7 @@ import { useNotify } from '../../app/notify';
 import { useMe } from '../../app/session';
 import { Composer, type Candidate, type ComposerSend } from '../../conversation/Composer';
 import { MessageView, type Author } from '../../conversation/MessageView';
+import { stopReading } from '../../conversation/readAloud';
 import { RequestCard } from '../../conversation/RequestCard';
 import { Thread } from '../../conversation/Thread';
 import {
@@ -166,6 +167,8 @@ function ExistingConversation({ id }: { id: string }) {
   const readSeq = conversation?.last_read_seq ?? 0;
   const visible = useVisible();
   const marking = useRef(0);
+  // A reply read aloud stops when its conversation is left.
+  useEffect(() => () => stopReading(), [conversationId]);
   const { mutate: markReadNow } = markRead;
   useEffect(() => {
     if (!conversationId || !visible || lastSeq <= readSeq || marking.current >= lastSeq) return;

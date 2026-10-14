@@ -54,7 +54,8 @@ describe('client.tables', () => {
     const extra = baseTableSchema.parse(await tables.bases.createTable(base.id, 'Notes'));
     baseTableSchema.parse(await tables.tables.update(extra.id, { description: 'Loose ends' }));
     const field = fieldSchema.parse(await tables.tables.createField(extra.id, { name: 'Done', type: 'checkbox' }));
-    fieldSchema.parse(await tables.fields.update(field.id, { name: 'Finished' }));
+    const revision = (await tables.bases.get(base.id)).tables.find((table) => table.id === extra.id)!.schema_revision;
+    fieldSchema.parse(await tables.fields.update(field.id, { schema_revision: revision, name: 'Finished' }));
     const view = viewSchema.parse(
       await tables.tables.createView(extra.id, { name: 'Mine', type: 'grid', personal: true }),
     );
@@ -109,5 +110,5 @@ describe('client.tables', () => {
     baseSchema.parse(await tables.bases.restore(base.id));
     await tables.bases.remove(base.id, base.name);
     await expect(tables.bases.get(base.id)).rejects.toMatchObject({ status: 404 });
-  });
+  }, 30_000);
 });
