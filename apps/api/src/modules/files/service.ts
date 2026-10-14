@@ -301,6 +301,17 @@ export function createFilesService(deps: {
     },
 
     /**
+     * Keeps what reading a file learned (an audio file's transcript) with it, so the next read is
+     * free. The bytes never change, so neither does what was learned from them.
+     */
+    async remember(id: string, learned: Record<string, unknown>): Promise<void> {
+      await getDb()
+        .update(files)
+        .set({ meta: sql`${files.meta} || ${JSON.stringify(learned)}::jsonb` })
+        .where(eq(files.id, id));
+    },
+
+    /**
      * A picture the member uploaded for this purpose, to become their avatar or the logo. Someone
      * else's file is not found.
      */

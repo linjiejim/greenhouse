@@ -14,6 +14,7 @@ export * from './channels.js';
 export * from './runs.js';
 export * from './schedules.js';
 export * from './files.js';
+export * from './voice.js';
 export * from './skills.js';
 export * from './computers.js';
 export * from './search.js';

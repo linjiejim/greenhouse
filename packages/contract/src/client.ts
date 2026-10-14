@@ -64,6 +64,7 @@ import type {
   UpdateNoteInput,
 } from './conversations.js';
 import type { FileView } from './files.js';
+import type { SpeechInput, Transcription } from './voice.js';
 import { knowledgeApi } from './knowledge-client.js';
 import { tablesApi } from './tables-client.js';
 import { REALTIME_SIGN_IN_AGAIN, type RealtimeEvent } from './realtime.js';
@@ -697,6 +698,22 @@ export function createApiClient(options: ApiClientOptions) {
       },
       get: (id: string) => get<FileView>(`/api/files/${id}`),
       remove: (id: string) => del(`/api/files/${id}`),
+    },
+
+    /** 语音: a recording to text through the STT service, text to speech through the TTS service. */
+    voice: {
+      transcribe(recording: Blob & { name?: string }, fields: { language?: string } = {}) {
+        const form = new FormData();
+        form.set('file', recording, recording.name ?? 'recording');
+        if (fields.language) form.set('language', fields.language);
+        return request<Transcription>('POST', '/api/voice/transcriptions', undefined, { raw: form });
+      },
+      /** The audio of `text`, to play. */
+      async speak(input: SpeechInput): Promise<Blob> {
+        const response = await authed('POST', '/api/voice/speech', input);
+        if (!response.ok) return parse<never>(response);
+        return response.blob();
+      },
     },
 
     /** The skill library: team and personal skills, their versions, scan review and `/` runs. */
