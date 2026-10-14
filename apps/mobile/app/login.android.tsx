@@ -8,8 +8,8 @@ import { BrandText as Text } from '../src/ui/brand-text.android';
  */
 
 import React, { useCallback, useRef } from 'react';
-import { Text as RNText, useWindowDimensions, View } from 'react-native';
-import { Stack } from 'expo-router';
+import { BackHandler, Keyboard, Text as RNText, useWindowDimensions, View } from 'react-native';
+import { Stack, useFocusEffect } from 'expo-router';
 import { Button, CircularProgressIndicator, RNHostView, type TextFieldRef } from '@expo/ui/jetpack-compose';
 import { fillMaxWidth, padding, size } from '@expo/ui/jetpack-compose/modifiers';
 import { useLogin } from '../src/login/use-login';
@@ -33,6 +33,18 @@ export default function Login() {
   const emailState = useNativeState('');
   const passwordState = useNativeState('');
   const passwordRef = useRef<TextFieldRef>(null);
+  const emailRef = useRef<TextFieldRef>(null);
+  useFocusEffect(
+    useCallback(() => {
+      const back = BackHandler.addEventListener('hardwareBackPress', () => {
+        Keyboard.dismiss();
+        void emailRef.current?.blur().catch(() => {});
+        void passwordRef.current?.blur().catch(() => {});
+        return true;
+      });
+      return () => back.remove();
+    }, []),
+  );
   const readEmail = useCallback(() => emailState.get(), [emailState]);
   const readPassword = useCallback(() => passwordState.get(), [passwordState]);
   const { station, error, connectionError, retry, busy, submit, clearError, openStations } = useLogin({
@@ -71,6 +83,7 @@ export default function Login() {
 
         <FormFields>
           <FormTextField
+            fieldRef={emailRef}
             label={t('login.emailPlaceholder')}
             state={emailState}
             onChangeText={clearError}

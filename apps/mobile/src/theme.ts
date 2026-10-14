@@ -237,7 +237,8 @@ const iosPalette: ThemeColors | null = Platform.OS === 'ios' ? buildIosPalette()
  */
 export function useTheme(): { colors: ThemeColors; hex: HexPalette; isDark: boolean } {
   const scheme = useColorScheme();
-  const isDark = scheme === 'dark';
+  const pref = usePrefs((s) => s.theme);
+  const isDark = pref === 'dark' || (pref === 'system' && scheme === 'dark');
   const hex = isDark ? DARK : LIGHT;
   return { colors: iosPalette ?? hex, hex, isDark };
 }

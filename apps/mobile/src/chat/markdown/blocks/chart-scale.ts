@@ -54,3 +54,6 @@ export function formatTick(value: number): string {
   if (abs >= 1e4) return `${sign}${trim(abs / 1e3)}k`;
   return `${sign}${trim(abs)}`;
 }
+
+export const CHART_COLORS = ['#6c995e', '#3f6f8a', '#c8881f', '#9b6bd6', '#c4503e', '#3aa0a0', '#d6792e', '#5b6b82'];
+export const PLOT_H = 168;

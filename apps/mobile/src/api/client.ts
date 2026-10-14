@@ -19,6 +19,11 @@ import { checkAborted, withConnectionDeadline } from './connection-deadline';
 import { clearTokens, getAccessToken, getRefreshToken, getTokenStationId, setTokens } from './token-storage';
 
 let onUnauthorized: (() => void) | null = null;
+let transport: typeof fetch = (...args) => fetch(...args);
+/** The native app installs Expo fetch so multipart File bodies carry bytes, not URI descriptors. */
+export function setTransport(fetcher: typeof fetch): void {
+  transport = fetcher;
+}
 export function setOnUnauthorized(cb: () => void): void {
   onUnauthorized = cb;
 }
@@ -54,7 +59,7 @@ async function doRefresh(sid: string | null, signal?: AbortSignal): Promise<bool
   // Origin and refresh token are read in the same tick as `sid` (the mirror follows the active station synchronously).
   const refreshToken = getRefreshToken();
   if (!refreshToken) return false;
-  const res = await fetch(`${getApiBase()}/api/auth/refresh`, {
+  const res = await transport(`${getApiBase()}/api/auth/refresh`, {
     signal,
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -112,7 +117,7 @@ export async function api(path: string, init: RequestInit = {}): Promise<Respons
   const headers = new Headers(init.headers);
   if (token) headers.set('Authorization', `Bearer ${token}`);
 
-  let res = await fetch(url, { ...init, headers });
+  let res = await transport(url, { ...init, headers });
   checkAborted(init.signal);
   // Another origin's 401 is about no session of ours.
   if (!own) return res;
@@ -125,7 +130,7 @@ export async function api(path: string, init: RequestInit = {}): Promise<Respons
       const retryHeaders = new Headers(init.headers);
       const newToken = getAccessToken();
       if (newToken) retryHeaders.set('Authorization', `Bearer ${newToken}`);
-      res = await fetch(url, { ...init, headers: retryHeaders });
+      res = await transport(url, { ...init, headers: retryHeaders });
       checkAborted(init.signal);
       if (res.status === 401 && sameStation()) {
         clearTokens();
@@ -167,14 +172,17 @@ export function queryString(query?: Query): string {
 /** A response as an `ApiResult`: 204 is `undefined`, any other success its JSON. */
 export async function toResult<T>(res: Response): Promise<ApiResult<T>> {
   if (res.status === 204) return { ok: true, data: undefined as T };
-  const text = await res.text().catch(() => '');
+  const text = await res.text();
   let body: unknown;
   try {
     body = text ? JSON.parse(text) : undefined;
   } catch {
     body = undefined;
   }
-  if (res.ok) return { ok: true, data: body as T };
+  if (res.ok)
+    return body === undefined
+      ? { ok: false, status: res.status, code: 'invalid_response', message: 'The server response could not be read.' }
+      : { ok: true, data: body as T };
   const error = (body as { error?: { code?: unknown; message?: unknown; details?: unknown } } | undefined)?.error;
   return {
     ok: false,
@@ -202,8 +210,7 @@ export async function request<T>(
       method,
       signal: options.signal,
       headers: options.body !== undefined && !isForm ? { 'Content-Type': 'application/json' } : undefined,
-      body:
-        options.body === undefined ? undefined : isForm ? (options.body as FormData) : JSON.stringify(options.body),
+      body: options.body === undefined ? undefined : isForm ? (options.body as FormData) : JSON.stringify(options.body),
     });
     return await toResult<T>(res);
   } catch (error) {
@@ -211,8 +218,7 @@ export async function request<T>(
   }
 }
 
-export const get = <T>(path: string, query?: Query, signal?: AbortSignal) =>
-  request<T>('GET', path, { query, signal });
+export const get = <T>(path: string, query?: Query, signal?: AbortSignal) => request<T>('GET', path, { query, signal });
 export const post = <T>(path: string, body: unknown = {}) => request<T>('POST', path, { body });
 export const patch = <T>(path: string, body: unknown) => request<T>('PATCH', path, { body });
 export const put = <T>(path: string, body: unknown) => request<T>('PUT', path, { body });

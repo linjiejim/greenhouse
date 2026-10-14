@@ -59,7 +59,11 @@ export default function RunPage() {
   useEffect(() => {
     void load();
     const off = realtime.on((event) => {
-      if ((event.type === 'run.updated' && event.data.run_id === id) || event.type === 'request.updated' || event.type === 'resync') {
+      if (
+        (event.type === 'run.updated' && event.data.run_id === id) ||
+        event.type === 'request.updated' ||
+        event.type === 'resync'
+      ) {
         void load();
       }
     });
@@ -132,12 +136,18 @@ export default function RunPage() {
       <Stack.Screen options={{ title: run.title }} />
       <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerStyle={styles.content}>
         <View style={styles.head}>
-          <AgentAvatar agent={agent} size={40} state={run.status === 'running' ? 'thinking' : run.status === 'waiting' ? 'waiting' : undefined} />
+          <AgentAvatar
+            agent={agent}
+            size={40}
+            state={run.status === 'running' ? 'thinking' : run.status === 'waiting' ? 'waiting' : undefined}
+          />
           <View style={styles.headTexts}>
             <Text style={styles.title}>{run.title}</Text>
             <View style={styles.metaRow}>
               <View style={[styles.status, { borderColor: tone }]}>
-                <Text style={[styles.statusText, { color: tone }]}>{t(`runs.status.${status.word}` as 'runs.status.running')}</Text>
+                <Text style={[styles.statusText, { color: tone }]}>
+                  {t(`runs.status.${status.word}` as 'runs.status.running')}
+                </Text>
               </View>
               <Text style={styles.meta}>{meta}</Text>
             </View>
@@ -160,10 +170,20 @@ export default function RunPage() {
             />
           ) : null}
           {active ? (
-            <NativeButton label={t('runs.cancel')} destructive loading={busy === 'cancel'} onPress={() => void act('cancel')} />
+            <NativeButton
+              label={t('runs.cancel')}
+              destructive
+              loading={busy === 'cancel'}
+              onPress={() => void act('cancel')}
+            />
           ) : null}
-          {run.status === 'failed' ? (
-            <NativeButton label={t('runs.retry')} variant="prominent" loading={busy === 'retry'} onPress={() => void act('retry')} />
+          {run.status === 'failed' && !run.parent_run_id ? (
+            <NativeButton
+              label={t('runs.retry')}
+              variant="prominent"
+              loading={busy === 'retry'}
+              onPress={() => void act('retry')}
+            />
           ) : null}
         </View>
 
@@ -175,6 +195,20 @@ export default function RunPage() {
           </View>
         ) : null}
 
+        {run.findings.length ? (
+          <ListSection header={t('integration.findings')}>
+            {run.findings.map((finding, index) => (
+              <Text key={index} style={styles.meta}>
+                {finding}
+              </Text>
+            ))}
+          </ListSection>
+        ) : null}
+        {run.summary && !run.output ? (
+          <View style={styles.section}>
+            <Markdown source={run.summary} />
+          </View>
+        ) : null}
         {run.output ? (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>{t('runs.output')}</Text>
@@ -205,7 +239,11 @@ export default function RunPage() {
 
         {run.brief ? (
           <View style={styles.section}>
-            <NativeButton label={brief ? t('runs.hideBrief') : t('runs.showBrief')} size="small" onPress={() => setBrief((v) => !v)} />
+            <NativeButton
+              label={brief ? t('runs.hideBrief') : t('runs.showBrief')}
+              size="small"
+              onPress={() => setBrief((v) => !v)}
+            />
             {brief ? (
               <Text style={styles.brief} selectable>
                 {run.brief}
@@ -242,7 +280,13 @@ const useStyles = makeStyles((c) => ({
   cards: { gap: space.sm, paddingHorizontal: space.margin },
   section: { paddingHorizontal: space.margin, gap: space.sm, alignItems: 'flex-start' },
   sectionTitle: { ...typo.footnote, fontWeight: weight.semibold, color: c.secondaryLabel },
-  step: { flexDirection: 'row', alignItems: 'flex-start', gap: space.sm, paddingHorizontal: space.margin, paddingVertical: space.sm + 2 },
+  step: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: space.sm,
+    paddingHorizontal: space.margin,
+    paddingVertical: space.sm + 2,
+  },
   stepTexts: { flex: 1, gap: 2 },
   stepName: { ...typo.subheadline, color: c.label },
   stepError: { ...typo.footnote, color: c.red },

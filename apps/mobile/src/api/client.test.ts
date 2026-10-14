@@ -23,7 +23,7 @@ vi.mock('./token-storage', () => ({
   clearTokens: () => clearTokens(),
 }));
 
-const { api, onStation, setOnUnauthorized, refreshTokens } = await import('./client');
+const { api, onStation, setOnUnauthorized, refreshTokens, setTransport, get } = await import('./client');
 
 type Call = { url: string; auth: string | null };
 let calls: Call[] = [];
@@ -62,7 +62,9 @@ describe('api() 401 handling', () => {
     let first = true;
     answer = async (call) => {
       if (call.url.endsWith('/api/auth/refresh')) {
-        return new Response(JSON.stringify({ access_token: 'A2', refresh_token: 'r2', expires_in: 14400 }), { status: 200 });
+        return new Response(JSON.stringify({ access_token: 'A2', refresh_token: 'r2', expires_in: 14400 }), {
+          status: 200,
+        });
       }
       if (first) {
         first = false;
@@ -252,14 +254,17 @@ describe('cancelled startup requests', () => {
     expect(clearTokens).not.toHaveBeenCalled();
   });
 
-  it.each([undefined, new AbortController().signal])('preserves credentials on a refresh network failure (signal: %s)', async (signal) => {
-    answer = async (call) => {
-      if (call.url.endsWith('/api/auth/refresh')) throw new Error('offline');
-      return status(401);
-    };
-    await expect(api('/api/auth/me', { signal })).rejects.toThrow('offline');
-    expect(clearTokens).not.toHaveBeenCalled();
-  });
+  it.each([undefined, new AbortController().signal])(
+    'preserves credentials on a refresh network failure (signal: %s)',
+    async (signal) => {
+      answer = async (call) => {
+        if (call.url.endsWith('/api/auth/refresh')) throw new Error('offline');
+        return status(401);
+      };
+      await expect(api('/api/auth/me', { signal })).rejects.toThrow('offline');
+      expect(clearTokens).not.toHaveBeenCalled();
+    },
+  );
 
   it('lets retry start a fresh rotation after timeout and discards the abandoned answer', async () => {
     const controller = new AbortController();
@@ -290,7 +295,6 @@ describe('cancelled startup requests', () => {
   });
 });
 
-
 it('expires a background refresh too, so startup retries never join it forever', async () => {
   vi.useFakeTimers();
   try {
@@ -304,4 +308,33 @@ it('expires a background refresh too, so startup retries never join it forever',
   } finally {
     vi.useRealTimers();
   }
+});
+
+it('sends multipart bytes through the native transport without turning them into JSON', async () => {
+  const form = new FormData();
+  form.append('file', new Blob(['audio bytes'], { type: 'audio/mp4' }), 'recording.m4a');
+  const native = vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) => {
+    expect(init?.body).toBe(form);
+    expect(new Headers(init?.headers).get('Authorization')).toBe('Bearer A-token');
+    expect(new Headers(init?.headers).has('Content-Type')).toBe(false);
+    return status(200);
+  });
+  setTransport(native);
+  try {
+    expect((await api('/api/voice/transcriptions', { method: 'POST', body: form })).ok).toBe(true);
+    expect(native).toHaveBeenCalledOnce();
+  } finally {
+    setTransport((...args) => fetch(...args));
+  }
+});
+
+it('keeps body read failures and unreadable JSON out of successful API results', async () => {
+  answer = async () => {
+    const res = status(200);
+    vi.spyOn(res, 'text').mockRejectedValue(new Error('Connection ended'));
+    return res;
+  };
+  expect(await get('/api/me/push-devices')).toMatchObject({ ok: false, code: 'network' });
+  answer = async () => new Response('unreadable', { status: 200 });
+  expect(await get('/api/me/push-devices')).toMatchObject({ ok: false, code: 'invalid_response' });
 });

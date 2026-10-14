@@ -12,6 +12,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Text, View } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { useT } from '../lib/i18n';
+import { getApiBase } from '../store/stations';
 import { makeStyles, radius, space, typo, useTheme } from '../theme';
 import { NativeButton } from '../ui/button';
 import { Icon, Spinner } from '../ui/core';
@@ -33,7 +34,12 @@ export function ComputerScreenView({
   const t = useT();
   const { colors: c, hex } = useTheme();
   const styles = useStyles(c);
-  const source = useMemo(() => ({ html: viewerHtml(hex.secondaryBackground) }), [hex.secondaryBackground]);
+  // The API checks the socket Origin. Local HTML needs the active station as its base.
+  const baseUrl = getApiBase();
+  const source = useMemo(
+    () => ({ html: viewerHtml(hex.secondaryBackground), baseUrl }),
+    [hex.secondaryBackground, baseUrl],
+  );
   const [hint, setHint] = useState(false);
 
   useEffect(() => {
@@ -67,8 +73,10 @@ export function ComputerScreenView({
       <WebView
         ref={screen.webRef}
         source={source}
-        originWhitelist={['about:blank']}
-        onShouldStartLoadWithRequest={(req) => req.url === 'about:blank'}
+        originWhitelist={['about:blank', baseUrl]}
+        onShouldStartLoadWithRequest={(req) =>
+          req.url === 'about:blank' || req.url === baseUrl || req.url === `${baseUrl}/`
+        }
         onMessage={screen.onMessage}
         onContentProcessDidTerminate={() => screen.webRef.current?.reload()}
         incognito
@@ -78,7 +86,7 @@ export function ComputerScreenView({
         bounces={false}
         overScrollMode="never"
         allowsLinkPreview={false}
-        dataDetectorTypes="none"
+        dataDetectorTypes={['none']}
         style={styles.web}
         containerStyle={styles.web}
       />
@@ -88,7 +96,9 @@ export function ComputerScreenView({
           <Text style={styles.hintText} numberOfLines={2}>
             {t('computer.viewOnlyHint')}
           </Text>
-          {onTakeOver ? <NativeButton label={t('computer.takeOver')} size="small" variant="prominent" onPress={onTakeOver} /> : null}
+          {onTakeOver ? (
+            <NativeButton label={t('computer.takeOver')} size="small" variant="prominent" onPress={onTakeOver} />
+          ) : null}
         </View>
       ) : null}
     </View>

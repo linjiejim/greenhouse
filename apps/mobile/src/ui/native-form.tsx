@@ -62,10 +62,14 @@ export function useLocaleEnv() {
 }
 
 export function NativeForm({ children, style }: { children: React.ReactNode; style?: StyleProp<ViewStyle> }) {
-  const { hex } = useTheme();
+  const { hex, isDark } = useTheme();
   const locale = useLocaleEnv();
   return (
-    <Host style={[{ flex: 1 }, style]} modifiers={[font({ textStyle: 'body' }), tint(hex.accent), locale]}>
+    <Host
+      colorScheme={isDark ? 'dark' : 'light'}
+      style={[{ flex: 1 }, style]}
+      modifiers={[font({ textStyle: 'body' }), tint(hex.accent), locale]}
+    >
       <Form>{children}</Form>
     </Host>
   );

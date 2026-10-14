@@ -56,7 +56,10 @@ export default function Notifications() {
   const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(async () => {
-    const [pending, list] = await Promise.all([listRequests({ state: 'pending', limit: 100 }), listNotifications({ limit: 50 })]);
+    const [pending, list] = await Promise.all([
+      listRequests({ state: 'pending', limit: 100 }),
+      listNotifications({ limit: 50 }),
+    ]);
     if (pending.ok) setRequests(pending.data.items);
     if (list.ok) {
       setItems(list.data.items);
@@ -105,7 +108,9 @@ export default function Notifications() {
   };
 
   const markAll = async () => {
-    setItems((current) => current?.map((item) => ({ ...item, read_at: item.read_at ?? new Date().toISOString() })) ?? null);
+    setItems(
+      (current) => current?.map((item) => ({ ...item, read_at: item.read_at ?? new Date().toISOString() })) ?? null,
+    );
     const result = await markNotificationsRead({ all: true });
     if (!result.ok) alertError(t('notifications.markFailed'));
     void useWorkspace.getState().refreshSummary();
@@ -113,7 +118,9 @@ export default function Notifications() {
 
   const open = (item: Notification) => {
     if (!item.read_at) {
-      setItems((current) => current?.map((n) => (n.id === item.id ? { ...n, read_at: new Date().toISOString() } : n)) ?? null);
+      setItems(
+        (current) => current?.map((n) => (n.id === item.id ? { ...n, read_at: new Date().toISOString() } : n)) ?? null,
+      );
       void markNotificationsRead({ ids: [item.id] }).then(() => void useWorkspace.getState().refreshSummary());
     }
     if (item.request_id && item.target_type === 'conversation' && item.target_id) {
@@ -132,12 +139,18 @@ export default function Notifications() {
       router.push({ pathname: '/agents/[id]', params: { id: item.target_id } });
       return;
     }
-    // documents and folders: the knowledge base comes to the app in a later phase
-    if (item.target_type === 'doc' || item.target_type === 'folder') alertError(t('notifications.webOnly'));
+    if (item.target_id && item.target_type === 'doc') {
+      router.push({ pathname: '/knowledge/doc', params: { id: item.target_id } });
+    } else if (item.target_id && item.target_type === 'folder') {
+      router.push({ pathname: '/knowledge', params: { folder: item.target_id } });
+    } else if (item.target_id && item.target_type === 'record') {
+      router.push({ pathname: '/tables/record', params: { id: item.target_id } });
+    }
   };
 
   const agentName = (id: string | null) =>
-    (id && (agents?.find((agent) => agent.id === id)?.name ?? publicAgents.find((agent) => agent.id === id)?.name)) || undefined;
+    (id && (agents?.find((agent) => agent.id === id)?.name ?? publicAgents.find((agent) => agent.id === id)?.name)) ||
+    undefined;
 
   const loading = view === 'needs' ? requests === null : items === null;
   return (
@@ -145,7 +158,11 @@ export default function Notifications() {
       <Stack.Screen options={{ title: t('notifications.title') }} />
       {view === 'all' ? (
         <Stack.Toolbar placement="right">
-          <Stack.Toolbar.Button icon={toolbarIcon('checkCircle')} accessibilityLabel={t('notifications.markAllRead')} onPress={() => void markAll()} />
+          <Stack.Toolbar.Button
+            icon={toolbarIcon('checkCircle')}
+            accessibilityLabel={t('notifications.markAllRead')}
+            onPress={() => void markAll()}
+          />
         </Stack.Toolbar>
       ) : null}
       <FlatList<NeedsYou | Notification>
@@ -180,12 +197,22 @@ export default function Notifications() {
               title={notification.title}
               subtitle={notification.body || undefined}
               icon={KIND_ICON[notification.kind] ?? 'bell'}
-              iconTint={notification.kind === 'request' ? c.orange : notification.kind === 'run_failed' ? c.red : undefined}
+              iconTint={
+                notification.kind === 'request' ? c.orange : notification.kind === 'run_failed' ? c.red : undefined
+              }
               value={relativeTimeNow(notification.created_at)}
               accessory={notification.read_at ? 'none' : <View style={styles.unread} />}
               onPress={() => open(notification)}
-              position={list.length === 1 ? 'only' : index === 0 ? 'first' : index === list.length - 1 ? 'last' : 'middle'}
-              accessibilityLabel={[notification.title, notification.body, notification.read_at ? '' : t('directory.unread')].filter(Boolean).join(t('common.listSep'))}
+              position={
+                list.length === 1 ? 'only' : index === 0 ? 'first' : index === list.length - 1 ? 'last' : 'middle'
+              }
+              accessibilityLabel={[
+                notification.title,
+                notification.body,
+                notification.read_at ? '' : t('directory.unread'),
+              ]
+                .filter(Boolean)
+                .join(t('common.listSep'))}
             />
           );
         }}
@@ -216,4 +243,3 @@ const useStyles = makeStyles((c) => ({
   unread: { width: 9, height: 9, borderRadius: 4.5, backgroundColor: c.accent },
   empty: { paddingTop: space.xxl },
 }));
-

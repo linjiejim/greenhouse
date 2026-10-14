@@ -143,15 +143,24 @@ export default function AgentProfile() {
         <View style={styles.hero}>
           <AgentAvatar agent={agent} size={88} state={archived ? 'sleep' : undefined} animate={focused && !archived} />
           <Text style={styles.name}>{agent.name}</Text>
-          <Text style={styles.role}>{[agent.role, agent.is_main ? t('agents.main') : ''].filter(Boolean).join(' · ')}</Text>
+          <Text style={styles.role}>
+            {[agent.role, agent.is_main ? t('agents.main') : ''].filter(Boolean).join(' · ')}
+          </Text>
           {agent.description ? <Text style={styles.description}>{agent.description}</Text> : null}
           <View style={styles.actions}>
-            <NativeButton label={t('agents.message')} icon="msg" variant="prominent" onPress={() => void openThread(agent)} />
+            <NativeButton
+              label={t('agents.message')}
+              icon="msg"
+              variant="prominent"
+              onPress={() => void openThread(agent)}
+            />
             {!archived ? (
               <NativeButton
                 label={t('conversation.newChat')}
                 icon="compose"
-                onPress={() => openNewChat(router, { agent: agent.is_main ? undefined : agent.id, compose: true }, 'dismissTo')}
+                onPress={() =>
+                  openNewChat(router, { agent: agent.is_main ? undefined : agent.id, compose: true }, 'dismissTo')
+                }
               />
             ) : null}
             {computers && !archived ? (
@@ -164,13 +173,43 @@ export default function AgentProfile() {
           </View>
         </View>
 
+        {mine ? (
+          <ListSection>
+            <ListRow
+              title={t('work.mailbox')}
+              icon="at"
+              accessory="chevron"
+              onPress={() => router.push({ pathname: '/agents/mailbox', params: { id: agent.id } })}
+            />
+          </ListSection>
+        ) : null}
+        {mine && !archived ? (
+          <ListSection>
+            <ListRow
+              title={t('integration.schedules')}
+              icon="clock"
+              accessory="chevron"
+              onPress={() => router.push({ pathname: '/agents/schedules', params: { id: agent.id } })}
+            />
+            <ListRow
+              title={t('integration.standing')}
+              icon="shieldCheck"
+              accessory="chevron"
+              onPress={() => router.push({ pathname: '/agents/standing', params: { id: agent.id } })}
+            />
+          </ListSection>
+        ) : null}
         <ListSection header={t('agents.instructions')}>
           <View style={styles.instructions}>
             <Text style={styles.instructionsText} selectable numberOfLines={showAll || !long ? undefined : 8}>
               {instructions || t('agents.noInstructions')}
             </Text>
             {long ? (
-              <NativeButton label={showAll ? t('agents.showLess') : t('agents.showAll')} size="small" onPress={() => setShowAll((v) => !v)} />
+              <NativeButton
+                label={showAll ? t('agents.showLess') : t('agents.showAll')}
+                size="small"
+                onPress={() => setShowAll((v) => !v)}
+              />
             ) : null}
           </View>
         </ListSection>
@@ -190,7 +229,13 @@ export default function AgentProfile() {
             {archived ? (
               <ListRow title={t('agents.restore')} icon="rotate" onPress={() => void restore()} />
             ) : (
-              <ListRow title={t('row.archive')} icon="archive" iconTint={c.red} destructive onPress={() => void archive()} />
+              <ListRow
+                title={t('row.archive')}
+                icon="archive"
+                iconTint={c.red}
+                destructive
+                onPress={() => void archive()}
+              />
             )}
           </ListSection>
         ) : null}
@@ -218,7 +263,9 @@ function SharedProfile({ agent, onTalk }: { agent: PublicAgent; onTalk: () => vo
         <View style={styles.hero}>
           <AgentAvatar agent={agent} size={88} />
           <Text style={styles.name}>{agent.name}</Text>
-          <Text style={styles.role}>{[agent.role, t('directory.sharedBy', { name: agent.owner.name })].filter(Boolean).join(' · ')}</Text>
+          <Text style={styles.role}>
+            {[agent.role, t('directory.sharedBy', { name: agent.owner.name })].filter(Boolean).join(' · ')}
+          </Text>
           {agent.description ? <Text style={styles.description}>{agent.description}</Text> : null}
           <View style={styles.actions}>
             <NativeButton label={t('agents.message')} icon="msg" variant="prominent" onPress={onTalk} />
@@ -233,7 +280,13 @@ function SharedProfile({ agent, onTalk }: { agent: PublicAgent; onTalk: () => vo
 const useStyles = makeStyles((c) => ({
   center: { flex: 1, justifyContent: 'center' },
   content: { paddingBottom: space.xxxl },
-  hero: { alignItems: 'center', paddingHorizontal: space.xxl, paddingTop: space.lg, paddingBottom: space.lg, gap: space.xs },
+  hero: {
+    alignItems: 'center',
+    paddingHorizontal: space.xxl,
+    paddingTop: space.lg,
+    paddingBottom: space.lg,
+    gap: space.xs,
+  },
   name: { ...typo.title2, fontWeight: weight.semibold, color: c.label, marginTop: space.sm, textAlign: 'center' },
   role: { ...typo.subheadline, color: c.secondaryLabel, textAlign: 'center' },
   description: { ...typo.body, color: c.label, textAlign: 'center', marginTop: space.xs },
@@ -242,4 +295,3 @@ const useStyles = makeStyles((c) => ({
   instructions: { padding: space.md, gap: space.sm, alignItems: 'flex-start' },
   instructionsText: { ...typo.subheadline, color: c.label },
 }));
-

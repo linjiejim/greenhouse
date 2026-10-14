@@ -85,7 +85,11 @@ export function openNewChat(
  * above, the other places pushed over it. False for a web-only route (knowledge, tables, apps…):
  * the caller says it opens in the web app.
  */
-export function openAppRoute(router: AppRouter, route: AppRoute, options: { request?: string; how?: NavHow } = {}): boolean {
+export function openAppRoute(
+  router: AppRouter,
+  route: AppRoute,
+  options: { request?: string; how?: NavHow } = {},
+): boolean {
   const how = options.how ?? 'dismissTo';
   switch (route.kind) {
     case 'main':
@@ -114,6 +118,28 @@ export function openAppRoute(router: AppRouter, route: AppRoute, options: { requ
       return true;
     case 'settings':
       router.push('/settings');
+      return true;
+    case 'knowledge':
+      router.push({
+        pathname: route.id ? '/knowledge/doc' : '/knowledge',
+        params: route.id ? { id: route.id } : { folder: route.folder ?? '' },
+      });
+      return true;
+    case 'tables':
+      if (route.record) router.push({ pathname: '/tables/record', params: { id: route.record } });
+      else if (route.base && route.table)
+        router.push({
+          pathname: '/tables/view',
+          params: { base: route.base, table: route.table, view: route.view ?? '' },
+        });
+      else if (route.base) router.push({ pathname: '/tables/base', params: { id: route.base } });
+      else router.push('/tables');
+      return true;
+    case 'form':
+      router.push({ pathname: '/tables/form', params: { id: route.id } });
+      return true;
+    case 'apps':
+      router.push(route.id ? { pathname: '/apps/runtime', params: { id: route.id, page: route.page ?? '' } } : '/apps');
       return true;
     case 'web':
       return false;

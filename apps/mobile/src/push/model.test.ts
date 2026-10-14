@@ -65,7 +65,7 @@ describe('where a tap goes', () => {
     expect(routeOf(parsePushData(bare)!)).toEqual({ kind: 'conversation', id: 'conv-1', request: 'req_1' });
     expect(
       routeOf(parsePushData({ v: 1, s: 'st-home', u: 'user-1', k: 'other', nid: 'n', url: '/knowledge/doc-1' })!),
-    ).toEqual({ kind: 'place', route: { kind: 'notifications' } });
+    ).toEqual({ kind: 'place', route: { kind: 'knowledge', id: 'doc-1' } });
     // anything else is not followed
     expect(routeOf(parsePushData({ ...runDone, url: 'https://evil.example/x' })!)).toEqual({ kind: 'home' });
     expect(routeOf(parsePushData({ ...runDone, url: '/runs/../../etc' })!)).toEqual({ kind: 'home' });

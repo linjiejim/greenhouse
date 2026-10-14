@@ -22,7 +22,14 @@ import { brandFont as font } from './brand-font';
 import React from 'react';
 import type { StyleProp, ViewStyle } from 'react-native';
 import { Button, Host, Label, ProgressView, Text } from '@expo/ui/swift-ui';
-import { buttonStyle, controlSize, disabled as disabledMod, frame, tint } from '@expo/ui/swift-ui/modifiers';
+import {
+  buttonStyle,
+  controlSize,
+  disabled as disabledMod,
+  frame,
+  foregroundStyle,
+  tint,
+} from '@expo/ui/swift-ui/modifiers';
 import { useTheme } from '../theme';
 import { sfSymbol, type IconName } from './core';
 import { LIQUID_GLASS } from './glass';
@@ -83,13 +90,14 @@ export function NativeButton({
         role={destructive ? 'destructive' : undefined}
         modifiers={[
           styleFor(variant),
+          ...(variant === 'prominent' ? [foregroundStyle(hex.onAccent)] : []),
           controlSize(size),
           tint(destructive ? hex.red : hex.accent),
           disabledMod(disabled || loading),
         ]}
       >
         {loading ? (
-          <ProgressView modifiers={stretch} />
+          <ProgressView modifiers={[tint(hex.onAccent), ...stretch]} />
         ) : icon ? (
           <Label title={label} systemImage={sfSymbol(icon)} modifiers={stretch} />
         ) : (

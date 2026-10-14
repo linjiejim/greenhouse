@@ -11,6 +11,8 @@ import type { IconName } from './core';
 
 /* eslint-disable @typescript-eslint/no-require-imports -- static asset table */
 const SOURCES: Record<IconName, ImageSourcePropType> = {
+  mic: require('../../assets/icons/android/mic.xml'),
+  speaker: require('../../assets/icons/android/volume_up.xml'),
   plus: require('../../assets/icons/android/add.xml'),
   up: require('../../assets/icons/android/arrow_upward.xml'),
   stop: require('../../assets/icons/android/stop.xml'),

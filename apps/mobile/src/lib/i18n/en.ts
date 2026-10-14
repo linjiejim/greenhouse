@@ -1,9 +1,13 @@
+import { integration } from './integration.en';
+import { work } from './work.en';
 /**
  * English catalog — the source of the keys (zh.ts must match). Words follow the glossary (PRD §5):
  * Agent, conversation, main thread, chat, room, run, needs you; never Bot.
  */
 
 export const en = {
+  work,
+  integration,
   common: {
     loading: 'Loading…',
     cancel: 'Cancel',
@@ -61,14 +65,16 @@ export const en = {
     addHint: 'Without a name, the server’s own name or address is shown.',
     addFailed: 'Couldn’t add the station',
     switchFailed: 'Couldn’t switch stations',
-    timeout: 'No response from this station within 10 seconds. Retry or choose another station. Your saved sign-in is kept.',
+    timeout:
+      'No response from this station within 10 seconds. Retry or choose another station. Your saved sign-in is kept.',
     connectionFailed: 'Could not connect to this station. Retry or choose another station.',
   },
   mismatch: {
     appTitle: 'Update the app',
     appBody: '{station} runs a newer Greenhouse than this app. Update the app, then retry — or choose another station.',
     serverTitle: 'This server needs an update',
-    serverBody: '{station} runs an older Greenhouse that this app cannot use. Ask your admin to update it, or choose another station.',
+    serverBody:
+      '{station} runs an older Greenhouse that this app cannot use. Ask your admin to update it, or choose another station.',
   },
   nav: {
     chat: 'Chats',
@@ -259,7 +265,6 @@ export const en = {
     ask: 'Ask About This',
     askHint: 'Touch and hold a source to quote it in your message.',
     knowledge: 'Knowledge',
-    webOnly: 'Documents open in the web app for now',
   },
   requests: {
     title: 'Needs You',
@@ -310,7 +315,6 @@ export const en = {
     empty: 'No notifications',
     nothingNeedsYou: 'Nothing needs you',
     loadFailed: 'Couldn’t load notifications',
-    webOnly: 'This opens in the web app for now',
   },
   agents: {
     title: 'Agents',
@@ -387,7 +391,15 @@ export const en = {
       sunflower: 'Sunflower',
       dandelion: 'Dandelion',
     },
-    tintName: { plant: 'Natural', sky: 'Sky', violet: 'Violet', rose: 'Rose', coral: 'Coral', gold: 'Gold', teal: 'Teal' },
+    tintName: {
+      plant: 'Natural',
+      sky: 'Sky',
+      violet: 'Violet',
+      rose: 'Rose',
+      coral: 'Coral',
+      gold: 'Gold',
+      teal: 'Teal',
+    },
   },
   runs: {
     title: 'Runs',
@@ -606,7 +618,8 @@ export const en = {
     liveActivityExperimental: 'Experimental',
     liveActivityFooter:
       'A background run counts up on the Lock Screen and in the Dynamic Island, and goes away when it ends. Experimental: if the app was force-quit, it goes away only once you open the app.',
-    liveActivityNeedsPush: 'Turn on push notifications above first — a push is what clears the timer when a run ends while you’re away.',
+    liveActivityNeedsPush:
+      'Turn on push notifications above first — a push is what clears the timer when a run ends while you’re away.',
     liveActivitySystemOff: 'Live Activities for Greenhouse are off in Settings.',
     liveActivityLog: 'Of the last {total} run ends, {ended} were cleared in the background.',
   },

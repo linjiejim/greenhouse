@@ -1,3 +1,12 @@
+import { RICH_BLOCKS } from '../shared/rich-output';
+
+const richFence = new RegExp(
+  '^[ \t]*```(' +
+    RICH_BLOCKS.map((block) => block.fence).join('|') +
+    ')[^\\n]*\\n[\\s\\S]*?(?:^[ \t]*```[ \t]*$|(?![\\s\\S]))',
+  'gm',
+);
+
 /** Plain text out of a reply's Markdown (quotes, menu previews, table cell widths). No React. */
 
 /** A one-line, length-capped excerpt. */
@@ -12,6 +21,7 @@ export function excerpt(text: string, max = 80): string {
  */
 export function plainText(md: string): string {
   return md
+    .replace(richFence, '')
     .replace(/^[ \t]*```.*$/gm, '')
     .replace(/!\[([^\]]*)\]\([^)]*\)/g, '$1')
     .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')

@@ -279,3 +279,15 @@ M3 媒体与计数（#70）：
 `GREENHOUSE_ROLE=all`（默认）提供全部能力；`api` 提供 HTTP、WebSocket 和前台回合，`worker` 不监听 HTTP，运行后台任务与清扫。收到 SIGTERM 后停止领取新回合 / 任务，进行中的回复最多等待 60 秒。符合十分钟、成员仍在、步骤完成条件的回合由另一个 API 接着写原 message id；续跑先发送小的 `message.resumed { conversation_id, message_id, offset }`，客户端丢弃未完成的增量并把 streaming 文字截回 offset；随后按 message.updated 与增量 offset 同步，不产生第二条回复。这个小事件可跨副本传递，即使长回复全文需要 resync 补拉。
 
 `RATE_LIMIT_STORE=memory|postgres` 控制现有限流的计数位置。多副本应全部设为 postgres：登录的 IP 与邮箱窗口每分钟各 10 次；OAuth 注册每 IP 每小时 20 次、授权每分钟 30 次、令牌 / 作废每分钟 60 次、客户端凭据尝试每分钟 10 次；MCP 每 grant 的窗口沿用每分钟 120 次；成员 multipart 上传（文件、知识库、表格与语音）每分钟 30 次，在读取正文前检查。超过返回 429 `rate_limited`；OAuth 保持 RFC 6749 错误形状，其余保持 API 错误包，OAuth / MCP / 上传带 Retry-After。成功登录只重置邮箱计数，不重置 IP。
+
+### 原生移动端 phase 2（#70）
+
+移动端复用知识库、表格、语音和 Agent 邮箱接口，不增加原生专用接口。文档修改发送编辑开始时的 `version`，记录修改发送起始 `revision` 和变化字段；409 时保留草稿，明确重新载入。文件预览仍用签名 URL。转写只填入输入框，朗读使用 `/api/voice/speech` 或设备语音。原生页接收 `knowledge.changed`、`doc.updated`、`doc.presence`、`comments.updated`、`records.changed`、`base.updated`，重连和回到前台时重新读取。邮件正文用原生纯文本呈现，附件使用签名链接。
+
+### 原生移动端最新 v2 集成（#70）
+
+移动端继续复用标准接口：批准发送 `standing`，运行提议可发送 `continue_after`；仅 tier2 且有明确范围的卡片提供预先授权，`batch_ready=false` 时禁止批准。写入回执按 `step_id` 调用 `POST /api/runs/steps/:id/undo`，由服务检查本人和当前修订。主人可分页读取／撤销 Agent 的预先授权，并通过 `/api/schedules` 保存 `quiet`；日程修改只发送本次变化的字段，避免覆盖另一端的无关配置。记录交办使用 `POST /api/tables/records/:id/handoff`。
+
+应用列表与运行页、卡片查询、限定字段详情、表单提交和固定动作全部走 `/api/apps`；查询及写入钉住 `version`，记录动作携带 `revision`，不经更宽的表格接口读写应用记录。`stale_version` 保留原生表单草稿，只有明确重新载入才采用新的发布版本。搭建与发布仍在网页端，自定义 HTML 在手机端也禁用。没有新增接口或更改错误码。
+
+应用关联选项只查询当前发布的记录卡片，复用卡片筛选与应用权限；没有对应候选卡片时提供网页填写入口，不查询完整表格目录。成员候选使用成员目录，附件沿用受控上传与签名文件链接。

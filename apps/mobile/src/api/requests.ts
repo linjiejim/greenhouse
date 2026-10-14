@@ -15,7 +15,11 @@ export const listRequests = (
   query: { state?: 'pending' | 'all'; conversation_id?: string; cursor?: string; limit?: number } = {},
 ) => get<Page<NeedsYou>>('/api/requests', query);
 
-export const approveRequest = (id: string) => post<NeedsYou>(`${base(id)}/approve`);
+export const approveRequest = (id: string, standing = false, continueAfter?: boolean) =>
+  post<NeedsYou>(`${base(id)}/approve`, {
+    standing,
+    ...(continueAfter === undefined ? {} : { continue_after: continueAfter }),
+  });
 
 export const rejectRequest = (id: string, reason?: string) =>
   post<NeedsYou>(`${base(id)}/reject`, reason ? { reason } : {});
