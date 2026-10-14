@@ -89,12 +89,31 @@ describe('catching up', () => {
         [4, 'the new answer', 'complete'],
       ]),
     );
-    // The open conversation's own queries refetch; the rest are stale, not refetched.
+    // The open conversation's own queries refetch; the rest are stale, not refetched, even later.
     await vi.waitFor(() => expect(conversation).toHaveBeenCalledTimes(2));
+    await new Promise((resolve) => setTimeout(resolve, 400));
     expect(list).toHaveBeenCalledTimes(1);
     expect(client.getQueryState(keys.conversations)?.isInvalidated).toBe(true);
     stop();
     stopDetail();
     stopOthers();
+  });
+
+  it('keeps what arrived while it fetched, and never takes a finished reply back to partial text', async () => {
+    client.setQueryData(keys.messages('cnv_1'), page([item(1, 'hi'), item(2, 'Writ', 'streaming')]));
+    let answer!: (value: { items: MessageItem[]; next_cursor: null }) => void;
+    messages.mockReturnValue(new Promise((resolve) => (answer = resolve)));
+    applyEvent(client, { type: 'conversation.resync', data: { conversation_id: 'cnv_1', after_seq: 1 } });
+    // While the answer is on its way, the reply finishes and the next message comes in.
+    applyEvent(client, { type: 'message.updated', data: { message: item(2, 'Written in full.') } });
+    applyEvent(client, { type: 'message.created', data: { message: item(3, 'next one') } });
+    answer({ items: [item(2, 'Written', 'streaming')], next_cursor: null });
+    await vi.waitFor(() => expect(messages).toHaveBeenCalled());
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(shown(client)).toEqual([
+      [1, 'hi', 'complete'],
+      [2, 'Written in full.', 'complete'],
+      [3, 'next one', 'complete'],
+    ]);
   });
 });

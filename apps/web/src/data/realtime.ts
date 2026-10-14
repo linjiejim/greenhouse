@@ -97,19 +97,16 @@ export function replaceMessage(client: QueryClient, message: Message) {
 
 /**
  * Messages from `?after=` into the cache, replacing what it had of them, with the reader's own
- * ratings. A cached message in the range read (`after` < seq ≤ `upTo`) that did not come back was
- * deleted meanwhile.
+ * ratings. A cached message within the range the answer covered (`after` < seq ≤ its last seq)
+ * that did not come back was deleted meanwhile; anything newer arrived while it was on its way
+ * and stays. A reply already finished here is never taken back to the partial text of the answer.
  */
-function mergeMessages(
-  client: QueryClient,
-  conversationId: string,
-  items: MessageItem[],
-  range: { after: number; upTo: number },
-) {
+function mergeMessages(client: QueryClient, conversationId: string, items: MessageItem[], after: number) {
+  const upTo = items.at(-1)?.seq ?? after;
   client.setQueryData<MessagePages>(keys.messages(conversationId), (data) => {
     if (!data?.pages.length) return data;
     const fresh = new Map(items.map((item) => [item.id, item]));
-    const gone = (item: MessageItem) => item.seq > range.after && item.seq <= range.upTo && !fresh.has(item.id);
+    const gone = (item: MessageItem) => item.seq > after && item.seq <= upTo && !fresh.has(item.id);
     const pages = data.pages.map((page) => ({
       ...page,
       items: page.items
@@ -118,7 +115,7 @@ function mergeMessages(
           const next = fresh.get(item.id);
           if (!next) return item;
           fresh.delete(item.id);
-          return next;
+          return item.status !== 'streaming' && next.status === 'streaming' ? item : next;
         }),
     }));
     const [first, ...rest] = pages;
@@ -135,17 +132,11 @@ export async function catchUp(client: QueryClient, conversationId: string, after
   let after = afterSeq;
   for (let page = 0; page < CATCH_UP_PAGES; page++) {
     const { items, next_cursor } = await api.conversations.messages(conversationId, { after, limit: 200 });
-    const last = items.at(-1);
-    mergeMessages(client, conversationId, items, {
-      after,
-      upTo: next_cursor && last ? last.seq : Number.POSITIVE_INFINITY,
-    });
+    mergeMessages(client, conversationId, items, after);
     // A reply that is done replaces its live piece; one still being written goes on from deltas.
     for (const item of items) if (item.status !== 'streaming') endStream(item.id);
-    if (!next_cursor || !last) {
-      soon(client, keys.conversations);
-      return;
-    }
+    const last = items.at(-1);
+    if (!next_cursor || !last) return;
     after = last.seq;
   }
   await client.invalidateQueries({ queryKey: keys.messages(conversationId) });
@@ -153,15 +144,17 @@ export async function catchUp(client: QueryClient, conversationId: string, after
 
 /**
  * The socket came back. The conversations on screen catch up from just before their newest
- * messages (and the oldest reply that was still being written) and refetch what else is theirs;
- * every other query is only marked stale and refetches when it is next shown, instead of
- * everything at once.
+ * messages (and the oldest reply that was still being written) and refetch what else is theirs,
+ * with the needs-you badge; every other query is only marked stale and refetches when it is next
+ * shown. A server restart reconnects every client at once: none of them refetches everything.
  */
 export function afterReconnect(client: QueryClient): void {
   const open = client.getQueryCache().findAll({ queryKey: ['messages'], type: 'active' });
   const ids = open.map((query) => String(query.queryKey[1]));
+  const badge = JSON.stringify(keys.summary);
   const theirs = (query: Query) =>
-    query.queryKey[0] !== 'messages' && ids.some((id) => query.queryKey.includes(id));
+    query.queryHash === badge ||
+    (query.queryKey[0] !== 'messages' && ids.some((id) => query.queryKey.includes(id)));
   void client.invalidateQueries({ predicate: (query) => !open.includes(query) && !theirs(query), refetchType: 'none' });
   void client.invalidateQueries({ predicate: theirs });
   for (const query of open) {
@@ -220,6 +213,8 @@ export function applyEvent(client: QueryClient, event: Exclude<RealtimeEvent, { 
       void catchUp(client, event.data.conversation_id, event.data.after_seq).catch(() =>
         soon(client, keys.messages(event.data.conversation_id)),
       );
+      // Unread counts and order come from the server.
+      soon(client, keys.conversations);
       return;
     case 'conversation.updated':
       // No changes listed: its people or Agents changed (or I left it); refetch it.
