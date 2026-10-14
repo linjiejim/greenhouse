@@ -199,6 +199,21 @@ export async function insideAgentFolders(folderIds: readonly string[]): Promise<
   return new Set((await walkUp(folderIds)).filter((row) => row.agentId).map((row) => row.start));
 }
 
+/**
+ * Of these docs, the ones a member may read now, as themselves (none while their knowledge
+ * module is off). Conversations use it so a source under a reply reaches only who may open it.
+ */
+export async function readableDocs(memberId: string, docIds: readonly string[]): Promise<Set<string>> {
+  if (!docIds.length) return new Set();
+  const reader = await loadReader(memberId).catch(() => null);
+  if (!reader) return new Set();
+  const rows = await getDb()
+    .select({ id: docs.id })
+    .from(docs)
+    .where(and(inList(docs.id, docIds), await readableWhere(reader, docs, 'doc')));
+  return new Set(rows.map((row) => row.id));
+}
+
 /** The folder and the folders above it, the folder first. */
 export async function chainOf(folderId: string | null): Promise<FolderRow[]> {
   if (!folderId) return [];

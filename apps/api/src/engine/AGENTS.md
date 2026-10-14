@@ -87,6 +87,8 @@ The one engine for conversations and runs. Read with the root AGENTS.md and docs
 ## Knowledge
 - `knowledge_query` (search, read, list) and `knowledge_mutation` (create, edit, move, comment) call modules/knowledge with the asker's rights; someone else's public Agent has neither.
 - Reading is private and taints the turn: docs are other people's text. A doc read is a source under the reply (`kind: doc`, `#/knowledge/<id>`); a search hit only when the reply links it.
+- Each person sees a `kind: doc` source only while they may read the doc: the conversations service filters sources per reader when it lists and publishes messages (knowledge `readableDocs`).
+- In a room the knowledge tools' step lines and card summaries (which the decision line repeats) name no doc or folder; the card's details, which only the asker sees, and `run_steps` keep them.
 - Writes raise the `tool_write` card, except inside the Agent's own private reference folder (`callRisk` answers read there). A doc the member cannot see is refused before any card.
 - An edit sends the version it read; a newer one refuses it. Versions and comments record the Agent next to the member (`agent_id`).
 - The private folder (`folders.agent_id`) is made on the first write, at the top of the owner's space; the owner's other Agents never see it and it is never shared. As a backstop, share reach, listings and search ignore any share inside one.
