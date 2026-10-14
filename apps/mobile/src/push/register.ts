@@ -1,40 +1,43 @@
 /**
- * This phone's push registration (spec docs/specs/20261010-mobile-push.md §2.3, §2.4,
- * §3.5) — iOS only (Bots, and so pushes, are iOS-only in v1).
+ * This phone's push registration with each station (CHN-04; `/api/me/push-devices`, which
+ * keeps v1's request and response shapes).
  *
- * `syncPush()` runs after sign-in / `bootstrap()`, whenever the app comes to the
- * foreground and when Expo hands out a new token: it asks the station whether it
- * pushes at all (`GET` — 404 = an older server, `enabled: false` = switched off
- * there; both hide every push entry), and, once the member has allowed notifications
- * and has not switched them off for this station, gets the Expo token and registers
- * it (`PUT` — which also refreshes `last_seen_at`; a device unseen for 90 days stops
- * receiving). It never asks the system for permission: that is the soft ask's job
- * (./soft-ask.ts) or the member's, in Settings → 通知.
+ * `syncPush()` runs after sign-in / `bootstrap()`, whenever the app comes to the foreground and
+ * when Expo hands out a new token: it asks the station whether it pushes at all (`GET` —
+ * `enabled: false` = this deployment sends no pushes; every push entry hides), and, once the
+ * member has allowed notifications and has not switched them off for this station, gets the
+ * Expo token and registers it (`PUT` — which also refreshes `last_seen_at`). It never asks the
+ * system for permission: that is the soft ask's job (./soft-ask.ts) or the member's, in
+ * Settings → 通知.
  *
- * Every station the member signs in to registers this phone on its own; a station
- * that is not active keeps its registration and keeps pushing (a tap switches there,
- * ./handler.ts). What survives restarts lives in prefs (`push_stations`): per station
- * the device id it gave us and whether the member switched pushes off there.
+ * Every station the member signs in to registers this phone on its own; a station that is not
+ * active keeps its registration and keeps pushing (a tap switches there, ./handler.ts). What
+ * survives restarts lives in prefs (`push_stations`): per station the device id it gave us and
+ * whether the member switched pushes off there.
  *
- * Sign-out and removing a station unregister first (best effort — an offline phone
- * stays registered until another account signs in on it or 90 days pass, spec R4).
+ * Sign-out and removing a station unregister first (best effort — `DELETE` disables the phone
+ * there; an offline phone stays registered until its token is reported gone).
+ *
+ * Android gets an Expo push token only once the build has Firebase credentials
+ * (google-services.json); until then registration fails quietly (`tokenFailed`).
  */
 
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 import * as Notifications from 'expo-notifications';
 import { create } from 'zustand';
-import type { PushDeviceView, PushPrefs } from '../shared/push';
-import { listPushDevices, registerPushDevice, unregisterPushDevice, updatePushPrefs } from '../api/push';
+import type { PushDevice, PushPrefs } from '../shared/contract';
+import { listPushDevices, registerPushDevice, unregisterPushDevice, updatePushPrefs } from '../api/me';
 import { loadPref, readStationTokens, savePref } from '../api/token-storage';
 import { useAuth } from '../store/auth';
 import { useStations, type StationRecord } from '../store/stations';
 import type { PushPermission } from './model';
 
-/** The station's stance: not asked yet · an older server (404) · switched off there · pushing. */
-export type PushSupport = 'unknown' | 'unsupported' | 'disabled' | 'enabled';
+/** The station's stance: not asked yet · switched off there · pushing. */
+export type PushSupport = 'unknown' | 'disabled' | 'enabled';
 
-export const PUSH_PLATFORM_READY = Platform.OS === 'ios';
+export const PUSH_PLATFORM_READY = Platform.OS === 'ios' || Platform.OS === 'android';
+const PLATFORM = Platform.OS === 'android' ? 'android' : 'ios';
 
 interface StationPush {
   /** The id the station gave this phone. */
@@ -85,10 +88,10 @@ interface PushState {
   support: PushSupport;
   permission: PushPermission;
   /** This phone's registration on the active station (null: none / switched off / not allowed). */
-  device: PushDeviceView | null;
+  device: PushDevice | null;
   /** The member switched pushes off for the active station on this phone. */
   off: boolean;
-  /** The last registration attempt failed on this phone (no Expo token — simulator without APNs, offline). */
+  /** The last registration attempt failed on this phone (no Expo token — a simulator, offline, no FCM). */
   tokenFailed: boolean;
 }
 
@@ -161,9 +164,9 @@ export function onDeviceTokenReported(token: Notifications.DevicePushToken): voi
 
 async function syncOnce(): Promise<void> {
   const generation = ++syncGeneration;
-  const { user, loading } = useAuth.getState();
+  const { user, loading, mismatch } = useAuth.getState();
   const stationId = useStations.getState().activeId;
-  if (loading || !user || !stationId) {
+  if (loading || !user || !stationId || mismatch) {
     usePush.setState({ support: 'unknown', device: null, off: false, tokenFailed: false });
     return;
   }
@@ -171,21 +174,16 @@ async function syncOnce(): Promise<void> {
   const [permission, listed, saved] = await Promise.all([readPermission(), listPushDevices(), loadStationPush()]);
   if (!current()) return;
   const record = saved[stationId] ?? {};
-  if (listed === null) {
+  if (!listed.ok) {
     // offline / a hiccup: keep what we knew
     usePush.setState({ permission, off: !!record.off });
     return;
   }
-  if (listed === 'unsupported' || !listed.enabled) {
-    usePush.setState({
-      support: listed === 'unsupported' ? 'unsupported' : 'disabled',
-      permission,
-      device: null,
-      off: !!record.off,
-    });
+  if (!listed.data.enabled) {
+    usePush.setState({ support: 'disabled', permission, device: null, off: !!record.off });
     return;
   }
-  const known = listed.devices.find((device) => device.id === record.deviceId) ?? null;
+  const known = listed.data.devices.find((device) => device.id === record.deviceId) ?? null;
   usePush.setState({ support: 'enabled', permission, off: !!record.off, device: record.off ? null : known });
   if (permission !== 'granted' || record.off) return;
 
@@ -199,14 +197,16 @@ async function syncOnce(): Promise<void> {
     return;
   }
   if (!current()) return;
-  const registered = await registerPushDevice({ token, platform: 'ios', project_id: project, client_ref: stationId });
-  if (!current() || registered === null) return;
-  if (registered === 'unsupported' || !registered.enabled || !registered.device) {
-    usePush.setState({ support: registered === 'unsupported' ? 'unsupported' : 'disabled', device: null });
+  const registered = await registerPushDevice({ token, platform: PLATFORM, project_id: project, client_ref: stationId });
+  if (!current() || !registered.ok) return;
+  if (!registered.data.enabled || !registered.data.device) {
+    usePush.setState({ support: 'disabled', device: null });
     return;
   }
-  usePush.setState({ device: registered.device, tokenFailed: false });
-  if (registered.device.id !== record.deviceId) await patchStationPush(stationId, { deviceId: registered.device.id });
+  usePush.setState({ device: registered.data.device, tokenFailed: false });
+  if (registered.data.device.id !== record.deviceId) {
+    await patchStationPush(stationId, { deviceId: registered.data.device.id });
+  }
 }
 
 /** Ask the system (after the soft ask, or from Settings) and register on success. */
@@ -231,7 +231,7 @@ export async function setPushOff(off: boolean): Promise<boolean> {
   if (!stationId) return false;
   if (off) {
     const device = usePush.getState().device;
-    if (device && !(await unregisterPushDevice(device.id))) return false;
+    if (device && !(await unregisterPushDevice(device.id)).ok) return false;
     await patchStationPush(stationId, { off: true });
     usePush.setState({ off: true, device: null });
     return true;
@@ -244,14 +244,14 @@ export async function setPushOff(off: boolean): Promise<boolean> {
   return true;
 }
 
-/** Change switches of this phone's registration on the active station. */
+/** Change switches of this phone's registration on the active station (they only narrow 设置 → 通知). */
 export async function setPushPrefs(prefs: Partial<PushPrefs>): Promise<boolean> {
   const device = usePush.getState().device;
   if (!device) return false;
   usePush.setState({ device: { ...device, prefs: { ...device.prefs, ...prefs } } });
   const saved = await updatePushPrefs(device.id, prefs);
-  usePush.setState({ device: saved ?? device });
-  return saved !== null;
+  usePush.setState({ device: saved.ok ? saved.data.device : device });
+  return saved.ok;
 }
 
 /** How long sign-out / removing a station waits for the station to unregister this phone. */
@@ -291,7 +291,7 @@ async function unregisterStationNow(station: StationRecord): Promise<void> {
   if (!record?.deviceId) return;
   const { access, refresh } = await readStationTokens(station.id);
   const remove = (token: string) =>
-    fetch(`${station.baseUrl}/api/auth/me/push-devices/${encodeURIComponent(record.deviceId!)}`, {
+    fetch(`${station.baseUrl}/api/me/push-devices/${encodeURIComponent(record.deviceId!)}`, {
       method: 'DELETE',
       headers: { Authorization: `Bearer ${token}` },
     });
@@ -302,12 +302,12 @@ async function unregisterStationNow(station: StationRecord): Promise<void> {
       const refreshed = await fetch(`${station.baseUrl}/api/auth/refresh`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ refreshToken: refresh }),
+        body: JSON.stringify({ refresh_token: refresh }),
       });
-      const data = refreshed.ok ? ((await refreshed.json()) as { accessToken?: unknown }) : {};
-      if (typeof data.accessToken === 'string') await remove(data.accessToken);
+      const data = refreshed.ok ? ((await refreshed.json()) as { access_token?: unknown }) : {};
+      if (typeof data.access_token === 'string') await remove(data.access_token);
     }
   } catch {
-    // best effort (spec R4)
+    // best effort
   }
 }

@@ -16,34 +16,24 @@
  * models put them in table cells — is a line break.
  *
  * Links (iOS text-link styling: tinted, no underline):
- *  - entity deeplinks (`#/knowledge/doc/<id>-<slug>`, `#/projects/<id>`) open
- *    the native preview sheet (src/lib/entity-links.ts),
- *  - http(s), uploaded images (`/api/upload/…`) and a Bot computer's port
- *    previews (`/api/bots-preview/<ticket>/<port>/`) → the in-app Safari view
- *    (src/lib/links.ts `openLink`); mailto / tel → the system (Mail, Phone),
- *  - chat files (`/api/chat-files/<id>/content`, e.g. an export_table result)
- *    → authenticated download + the system share sheet (Save to Files,
- *    AirDrop…; src/lib/share-file.ts), named after the link text; a short
- *    "正在准备文件…" HUD while it downloads, a system alert if it fails,
- *  - a Bots thread (`#/bots?c=<session>`) opens on home with Bots on; a
- *    session's full record (`#/chat?session=<id>` — a background task's
- *    report links its transcript) opens read-only on home (spec
- *    docs/specs/20261008-mobile-bots.md §2.4),
- *  - any other web-app route (`#/…`) or relative path has no surface here →
- *    a system alert saying it opens in the web app.
+ *  - http(s) → the in-app Safari view (src/lib/links.ts `openLink`); mailto / tel → the system,
+ *  - a file of this station (`/api/files/<id>/content?…`, signed) → the file preview with
+ *    share and save (app/file-preview.tsx), named after the link text,
+ *  - a place of the app (`#/c/<id>`, `#/agents/<id>`, `#/runs/<id>` …; src/lib/app-links.ts) →
+ *    that screen (src/shell/nav.ts `openAppRoute`),
+ *  - any other web-app route or relative link has no surface here → a system alert saying it
+ *    opens in the web app.
  */
 import { type ReactNode, useCallback } from 'react';
 import { Text } from 'react-native';
 import { useRouter } from 'expo-router';
-import { uploadUrl } from '../../api/upload';
-import { entityRoute, parseEntityUrl } from '../../lib/entity-links';
+import { isFilePath, parseAppPath } from '../../lib/app-links';
 import { useT } from '../../lib/i18n';
 import { openLink } from '../../lib/links';
 import { makeStyles, mono, type ThemeColors, typo, useTheme, weight } from '../../theme';
 import { alertError } from '../../ui/dialogs';
+import { openAppRoute } from '../../shell/nav';
 import { saveFile } from '../file-card';
-import { botsEnabledNow } from '../../bots/availability';
-import { openChat, openThread } from '../../bots/nav';
 
 /** No-break space — keeps inline-code padding glued to the code when lines wrap. */
 const NBSP = '\u00a0';
@@ -226,59 +216,20 @@ export function useOpenLink(): OpenLink {
   const { hex } = useTheme();
   return useCallback(
     (href: string, label?: string) => {
-      const ref = parseEntityUrl(href);
-      const route = ref ? entityRoute(ref) : null;
-      if (route) {
-        router.push(route);
-        return;
-      }
       if (/^(https?:|mailto:|tel:)/i.test(href)) {
         void openLink(href, hex.accent).catch(() => alertError(t('chat.linkFailed')));
         return;
       }
-      // an uploaded / generated image (public, like the bubbles' thumbnails), or a
-      // Bot computer's port preview — its path carries its own ticket, so it opens
-      // top-level on the station like any page (never in a frame: the server forbids it)
-      if (/^\/api\/(upload|bots-preview)\//.test(href)) {
-        void openLink(uploadUrl(href), hex.accent).catch(() => alertError(t('chat.linkFailed')));
-        return;
-      }
-      if (/^\/api\/chat-files\//.test(href)) {
+      if (isFilePath(href)) {
         saveFile(href, label ?? '');
         return;
       }
-      // Web-app routes with a home surface here (a link may sit in a sheet: dismiss back to home).
-      const thread = webRouteParam(href, 'bots', 'c');
-      if (thread && botsEnabledNow()) {
-        openThread(router, { c: thread }, 'dismissTo');
-        return;
-      }
-      const record = webRouteParam(href, 'chat', 'session');
-      if (record) {
-        openChat(router, { id: record, ro: true }, 'dismissTo');
-        return;
-      }
-      // Any other web-app route (`#/…`, incl. records with no mobile surface)
-      // or relative link has no surface here.
+      const route = parseAppPath(href);
+      if (route && openAppRoute(router, route)) return;
       alertError(t('chat.webOnlyLink'));
     },
     [router, t, hex.accent],
   );
-}
-
-/** `name` from a web-app route's query (`#/<route>?…&name=value`), or null. */
-function webRouteParam(href: string, route: string, name: string): string | null {
-  const query = href.match(new RegExp(`^#/${route}\\?([^#]*)$`))?.[1];
-  const value = query
-    ?.split('&')
-    .find((pair) => pair.startsWith(`${name}=`))
-    ?.slice(name.length + 1);
-  if (!value) return null;
-  try {
-    return decodeURIComponent(value);
-  } catch {
-    return null;
-  }
 }
 
 /** An HTML line break (`<br>`, `<br/>`, `<br />`) — common in model-written table cells. */

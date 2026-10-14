@@ -5,11 +5,12 @@
  * stays in the app — so it shows what the app last published.
  *
  * Timing (`useWidgetSnapshot`, mounted in app/_layout.tsx):
- * - signed in (startup, sign-in, after a station switch): a refresh — the Bots
- *   lists or, without Bots, recent sessions, plus the agent catalog — then publish;
- * - in the foreground: whenever the Bots store or the language changes, 2 s
- *   after it settles (the WebSocket keeps the store live;
- *   reloads triggered from the foreground don't count against WidgetKit's budget);
+ * - signed in (startup, sign-in, after a station switch): the pending cards are
+ *   listed, then it publishes from the workspace (src/store/workspace.ts — the
+ *   drawer and the realtime socket keep it current);
+ * - in the foreground: whenever the Agents, the conversations, the bell's count or
+ *   the language change, 2 s after they settle (reloads triggered from the
+ *   foreground don't count against WidgetKit's budget);
  * - going to the background: published at once from what the app holds;
  * - signed out, or a station switch starting: cleared (launcher-only) — the
  *   widget never links into the previous station's conversations.
@@ -18,51 +19,31 @@
 import { useEffect } from 'react';
 import { AppState, Platform } from 'react-native';
 import { pruneWidgetArt, listWidgetArt, setWidgetSnapshot } from '../../modules/widget-bridge';
-import { listSessions } from '../api/sessions';
-import { botsEnabledNow, isInternal } from '../bots/availability';
-import { sproutyBot, useBots, type BotsState } from '../bots/store';
-import { cachedProfiles, effectiveProfile, loadProfiles } from '../chat/profile-menu';
-import { parseMs } from '../lib/format';
-import { t } from '../lib/i18n';
+import { listRequests } from '../api/requests';
+import { parseMs } from '../data/time';
+import type { NeedsYou } from '../shared/contract';
 import { useAuth } from '../store/auth';
 import { usePrefs } from '../store/prefs';
 import { useStations } from '../store/stations';
+import { useWorkspace } from '../store/workspace';
 import { renderWidgetArt } from './art-host';
-import {
-  buildWidgetSnapshot,
-  snapshotArtKeys,
-  withoutMissingArt,
-  type WidgetInput,
-  type WidgetSession,
-} from './model';
+import { buildWidgetSnapshot, snapshotArtKeys, withoutMissingArt } from './model';
 
 const IOS = Platform.OS === 'ios';
 const SETTLE_MS = 2000;
-const MAX_SESSIONS = 4;
 
-/** Recent sessions for the no-Bots layout, as last fetched. */
-let sessions: WidgetSession[] = [];
+/** The pending cards, as last listed (for the card a face opens and its title). */
+let pending: NeedsYou[] = [];
 /** Bumped by every publish / clear: an older publish still drawing faces never writes after it. */
 let generation = 0;
 
-/** Who "New Chat" starts with — always Sprouty: the member's main Bot when we know it, else the catalog's entry. */
-function defaultAgent(bots: BotsState): WidgetInput['defaultAgent'] {
-  const sprouty = sproutyBot(bots);
-  if (sprouty) return { name: sprouty.name, avatar: sprouty };
-  const profile = effectiveProfile(cachedProfiles(), 'sprouty');
-  return profile ? { name: profile.name_i18n?.[usePrefs.getState().lang] || profile.name, avatar: null } : null;
-}
-
-async function fetchSessions(): Promise<void> {
-  const rows = await listSessions({ limit: 10 }).catch(() => null);
-  if (!rows) return;
-  sessions = rows
-    .filter((s) => s.is_owner !== false)
-    .slice(0, MAX_SESSIONS)
-    .map((s) => {
-      const at = parseMs(s.updated_at);
-      return { id: s.id, title: s.title || '', updatedAt: Number.isFinite(at) ? at : null };
-    });
+async function fetchPending(): Promise<void> {
+  if ((useWorkspace.getState().summary?.needs_you ?? 0) === 0) {
+    pending = [];
+    return;
+  }
+  const page = await listRequests({ state: 'pending', limit: 50 });
+  if (page.ok) pending = page.data.items;
 }
 
 /** Build from what the app holds now, draw the faces it lacks, write. Never throws. */
@@ -71,26 +52,12 @@ export async function publishWidgetSnapshot(): Promise<void> {
   if (!IOS || !user || useAuth.getState().loading) return;
   const mine = ++generation;
   try {
-    const bots = useBots.getState();
+    const { agents, conversations } = useWorkspace.getState();
     const { snapshot, jobs } = buildWidgetSnapshot({
       now: Date.now(),
-      nickname: user.nickname ?? '',
+      nickname: user.name,
       lang: usePrefs.getState().lang,
-      bots: botsEnabledNow() ? bots : null,
-      defaultAgent: defaultAgent(bots),
-      sessions,
-      copy: {
-        deletedBot: t('bots.common.deletedBot'),
-        untitledGroup: t('bots.nav.untitledGroup'),
-        newChat: t('chat.newConversation'),
-        archivedName: (name) => t('bots.nav.archivedName', { name }),
-        youSaid: (text) => t('bots.common.youSaid', { text }),
-        botSaid: (name, text) => t('bots.nav.botSaid', { name, text }),
-        noMessages: t('bots.common.noMessages'),
-        roomUntitled: t('bots.room.untitled'),
-        agentOf: (name) => t('bots.room.agentOf', { name }),
-        someAgent: t('bots.room.someAgent'),
-      },
+      source: agents ? { agents, conversations: conversations ?? [], requests: pending } : null,
       parseMs,
     });
     const have = new Set(listWidgetArt());
@@ -105,25 +72,11 @@ export async function publishWidgetSnapshot(): Promise<void> {
   }
 }
 
-/** Reload what the widget shows, then publish. */
-export async function refreshWidgetSnapshot(): Promise<void> {
-  const user = useAuth.getState().user;
-  if (!IOS || !user) return;
-  const bots = useBots.getState();
-  const loads: Promise<unknown>[] = [loadProfiles().catch(() => null)];
-  // The Bot list (names, faces, the default agent's) only needs an internal account.
-  if (isInternal(user)) loads.push(bots.loadBots());
-  if (botsEnabledNow()) loads.push(bots.loadConversations(), bots.loadPending());
-  else loads.push(fetchSessions());
-  await Promise.all(loads);
-  await publishWidgetSnapshot();
-}
-
 /** Drop the snapshot and its faces — the widget falls back to launcher-only mode. */
 export function clearWidgetSnapshot(): void {
   if (!IOS) return;
   generation += 1;
-  sessions = [];
+  pending = [];
   setWidgetSnapshot(null);
   pruneWidgetArt([]);
 }
@@ -145,25 +98,24 @@ export function useWidgetSnapshot(): void {
       clearWidgetSnapshot();
       return;
     }
-    void refreshWidgetSnapshot();
+    void fetchPending().then(publishWidgetSnapshot);
 
     let timer: ReturnType<typeof setTimeout> | null = null;
+    let cardsChanged = false;
     const settle = () => {
       if (timer) clearTimeout(timer);
       timer = setTimeout(() => {
         timer = null;
-        if (AppState.currentState === 'active') void publishWidgetSnapshot();
+        if (AppState.currentState !== 'active') return;
+        const listed = cardsChanged ? fetchPending() : Promise.resolve();
+        cardsChanged = false;
+        void listed.then(publishWidgetSnapshot);
       }, SETTLE_MS);
     };
-    const offBots = useBots.subscribe((s, prev) => {
-      if (
-        s.conversations !== prev.conversations ||
-        s.pendingRequests !== prev.pendingRequests ||
-        s.bots !== prev.bots ||
-        s.error !== prev.error
-      ) {
-        settle();
-      }
+    const offWorkspace = useWorkspace.subscribe((s, prev) => {
+      const cards = s.summary?.needs_you !== prev.summary?.needs_you;
+      if (cards) cardsChanged = true;
+      if (cards || s.agents !== prev.agents || s.conversations !== prev.conversations) settle();
     });
     const offPrefs = usePrefs.subscribe((s, prev) => {
       if (s.lang !== prev.lang) settle();
@@ -173,12 +125,11 @@ export function useWidgetSnapshot(): void {
         if (timer) clearTimeout(timer);
         timer = null;
         void publishWidgetSnapshot();
-        if (!botsEnabledNow()) void fetchSessions().then(publishWidgetSnapshot);
       }
     });
     return () => {
       if (timer) clearTimeout(timer);
-      offBots();
+      offWorkspace();
       offPrefs();
       offApp.remove();
     };

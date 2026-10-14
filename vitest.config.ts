@@ -64,7 +64,6 @@ export default defineConfig({
     // skillhub/** ships in-bundle node:test files (*.test.mjs) that vitest
     // cannot parse; tests/skillhub/bundles.test.ts runs them via `node --test`.
     exclude: [
-      'apps/mobile/**',
       'tests/e2e/**',
       'tests/e2e-ui/**',
       '**/node_modules/**',
@@ -83,7 +82,6 @@ export default defineConfig({
           exclude: [
             '**/*.db.test.ts',
             '**/*.db-commit.test.ts',
-            'apps/mobile/**',
             'tests/e2e/**',
             'tests/e2e-ui/**',
             '**/node_modules/**',

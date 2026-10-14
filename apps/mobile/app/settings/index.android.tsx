@@ -1,26 +1,18 @@
 import { BrandText as Text } from '../../src/ui/brand-text.android';
 /**
- * Settings on Android — the Settings modal's root as a Material 3 form (iOS:
- * ./index.tsx, SwiftUI; both read src/settings/use-settings.ts):
- *
- *  - account card (initial avatar, name, email), role, 工作站 → stations page,
- *  - 外观: theme (segmented; applied app-wide at once) and language (menu),
- *  - 对话: 标签 → tag library, 连接器 → /settings/connectors when the account
- *    has external tools (no default agent to pick: new chats start with
- *    Sprouty, 2026-10),
- *  - 用量 (when the account has limits), 关于 (version, which JS bundle runs),
- *  - 退出登录 (error color, confirmed).
+ * Settings on Android — the Settings modal's root as a Material 3 form (iOS: ./index.tsx,
+ * SwiftUI; both read src/settings/use-settings.ts): the account (picture, name, email, role,
+ * change picture / name), 工作站, 通知, 外观 (theme, language — account settings), 关于 and
+ * 退出登录.
  */
 
 import React from 'react';
 import { Stack, useRouter } from 'expo-router';
 import { Box, ListItem } from '@expo/ui/jetpack-compose';
 import { background, clip, fillMaxWidth, Shapes, size } from '@expo/ui/jetpack-compose/modifiers';
-import { chooseLanguage } from '../../src/settings/account-language';
-import type { LangPref, ThemePref } from '../../src/store/prefs';
-import { compactNumber } from '../../src/lib/format';
 import { useT } from '../../src/lib/i18n';
-import { ROLE_LABEL, useSettings } from '../../src/settings/use-settings';
+import { usePushRow, useSettings } from '../../src/settings/use-settings';
+import type { LangPref, ThemePref } from '../../src/store/prefs';
 import { useM3 } from '../../src/ui/m3';
 import {
   FormActionRow,
@@ -36,9 +28,9 @@ export default function Settings() {
   const t = useT();
   const m = useM3();
   const router = useRouter();
-  const { user, nickname, station, prefs, tagCount, tagsLoaded, version, update, signOut, connectors } =
-    useSettings();
-  const { theme, setTheme, lang } = prefs;
+  const s = useSettings();
+  const push = usePushRow();
+  const name = s.user?.name || t('settings.fallbackName');
 
   return (
     <>
@@ -51,29 +43,45 @@ export default function Settings() {
             <ListItem.LeadingContent>
               <Box contentAlignment="center" modifiers={[size(52, 52), clip(Shapes.Circle), background(m.primary)]}>
                 <Text color={m.onPrimary} style={{ typography: 'titleLarge' }}>
-                  {(nickname.trim()[0] ?? '?').toUpperCase()}
+                  {(name.trim()[0] ?? '?').toUpperCase()}
                 </Text>
               </Box>
             </ListItem.LeadingContent>
             <ListItem.HeadlineContent>
               <Text style={{ typography: 'titleMedium' }} maxLines={1}>
-                {nickname}
+                {name}
               </Text>
             </ListItem.HeadlineContent>
-            {user?.email ? (
+            {s.user?.email ? (
               <ListItem.SupportingContent>
                 <Text color={m.onSurfaceVariant} style={{ typography: 'bodyMedium' }} maxLines={1}>
-                  {user.email}
+                  {s.user.email}
                 </Text>
               </ListItem.SupportingContent>
             ) : null}
           </ListItem>
-          {user?.role ? <FormValueRow label={t('settings.role')} value={t(ROLE_LABEL[user.role])} /> : null}
+          <FormActionRow label={t('settings.changeAvatar')} icon="image" onPress={() => void s.changeAvatar()} />
+          <FormActionRow label={t('settings.changeName')} icon="pen" onPress={() => void s.rename()} />
+          {s.user?.role ? (
+            <FormValueRow
+              label={t('settings.role')}
+              value={t(s.user.role === 'admin' ? 'settings.roleAdmin' : 'settings.roleMember')}
+            />
+          ) : null}
           <FormNavRow
             label={t('station.title')}
-            value={station?.name ?? '—'}
+            value={s.station?.name ?? '—'}
             icon="server"
             onPress={() => router.push('/settings/stations')}
+          />
+        </FormSection>
+
+        <FormSection>
+          <FormNavRow
+            label={t('settings.notifications')}
+            value={push || undefined}
+            icon="bell"
+            onPress={() => router.push('/settings/notifications')}
           />
         </FormSection>
 
@@ -81,8 +89,8 @@ export default function Settings() {
         <FormSection title={t('settings.appearance')}>
           <FormSegmentedRow<ThemePref>
             label={t('settings.theme')}
-            value={theme}
-            onChange={setTheme}
+            value={s.theme}
+            onChange={s.setTheme}
             options={[
               { value: 'system', label: t('settings.themeSystem') },
               { value: 'light', label: t('settings.themeLight') },
@@ -91,8 +99,8 @@ export default function Settings() {
           />
           <FormSelectRow<LangPref>
             label={t('settings.language')}
-            value={lang}
-            onChange={chooseLanguage}
+            value={s.lang}
+            onChange={s.setLanguage}
             options={[
               { value: 'zh', label: t('settings.langZh') },
               { value: 'en', label: t('settings.langEn') },
@@ -100,44 +108,14 @@ export default function Settings() {
           />
         </FormSection>
 
-        {/* ── conversations ── */}
-        <FormSection title={t('settings.conversations')}>
-          <FormNavRow
-            label={t('settings.tags')}
-            value={tagsLoaded ? String(tagCount) : undefined}
-            icon="tag"
-            onPress={() => router.push('/settings/tags')}
-          />
-          {connectors !== null ? (
-            <FormNavRow
-              label={t('settings.connectors')}
-              value={String(connectors)}
-              icon="plug"
-              onPress={() => router.push('/settings/connectors')}
-            />
-          ) : null}
-        </FormSection>
-
-        {/* ── usage ── */}
-        {user?.daily_message_limit || user?.monthly_token_limit ? (
-          <FormSection title={t('settings.usage')}>
-            {user.daily_message_limit ? (
-              <FormValueRow label={t('settings.dailyLimit')} value={String(user.daily_message_limit)} />
-            ) : null}
-            {user.monthly_token_limit ? (
-              <FormValueRow label={t('settings.monthlyLimit')} value={compactNumber(user.monthly_token_limit)} />
-            ) : null}
-          </FormSection>
-        ) : null}
-
         {/* ── about ── */}
         <FormSection title={t('settings.about')} footer={t('settings.footer')}>
-          <FormValueRow label={t('settings.version')} value={version || '—'} />
-          <FormValueRow label={t('settings.update')} value={update} />
+          <FormValueRow label={t('settings.version')} value={s.version || '—'} />
+          <FormValueRow label={t('settings.update')} value={s.update} />
         </FormSection>
 
         <FormSection>
-          <FormActionRow label={t('settings.logout')} icon="logout" destructive onPress={() => void signOut()} />
+          <FormActionRow label={t('settings.logout')} icon="logout" destructive onPress={() => void s.signOut()} />
         </FormSection>
       </NativeForm>
     </>

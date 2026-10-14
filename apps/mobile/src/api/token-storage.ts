@@ -19,16 +19,18 @@
 
 import { Platform } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
-import type { AuthenticatedUser } from '../shared/greenhouse-types';
+import type { Me } from '../shared/contract';
 import { checkAborted } from './connection-deadline';
 
 const ACCESS_KEY = 'greenhouse_access_token';
 const REFRESH_KEY = 'greenhouse_refresh_token';
-const USER_KEY = 'greenhouse_user';
+/** The signed-in member as `/api/me` last answered (v1 kept another shape under `greenhouse_user`). */
+const USER_KEY = 'greenhouse_me';
+const V1_USER_KEY = 'greenhouse_user';
 
 const isWeb = Platform.OS === 'web';
 
-let mem: { access: string | null; refresh: string | null; user: AuthenticatedUser | null } = {
+let mem: { access: string | null; refresh: string | null; user: Me | null } = {
   access: null,
   refresh: null,
   user: null,
@@ -103,20 +105,25 @@ export async function hydrateTokens(stationId: string | null, signal?: AbortSign
   detachTokens(stationId);
   if (!stationId) return;
   const started = epoch;
-  const [access, refresh, userRaw] = await Promise.all([
+  const [access, refresh, userRaw, v1User] = await Promise.all([
     persistGet(keyFor(ACCESS_KEY, stationId)),
     persistGet(keyFor(REFRESH_KEY, stationId)),
     persistGet(keyFor(USER_KEY, stationId)),
+    persistGet(keyFor(V1_USER_KEY, stationId)),
   ]);
   checkAborted(signal);
   if (started !== epoch) return;
   mem = { access, refresh, user: userRaw ? safeParseUser(userRaw) : null };
   hydrating = false;
+  // v1 cached another shape of the member; it never comes back.
+  if (v1User !== null) persistSet(keyFor(V1_USER_KEY, stationId), null);
 }
 
-function safeParseUser(raw: string): AuthenticatedUser | null {
+/** A cached member, or null when the value is not one (a corrupt entry). */
+function safeParseUser(raw: string): Me | null {
   try {
-    return JSON.parse(raw) as AuthenticatedUser;
+    const user = JSON.parse(raw) as Partial<Me> | null;
+    return user && typeof user.id === 'string' && user.modules && user.capabilities ? (user as Me) : null;
   } catch {
     return null;
   }
@@ -133,7 +140,7 @@ export function getAccessToken(): string | null {
 export function getRefreshToken(): string | null {
   return mem.refresh;
 }
-export function getCachedUser(): AuthenticatedUser | null {
+export function getCachedUser(): Me | null {
   return mem.user;
 }
 
@@ -147,7 +154,7 @@ export function setTokens(access: string, refresh: string): void {
   persistSet(keyFor(REFRESH_KEY, activeSid), refresh);
 }
 
-export function setCachedUser(user: AuthenticatedUser): void {
+export function setCachedUser(user: Me): void {
   mem.user = user;
   if (activeSid) persistSet(keyFor(USER_KEY, activeSid), JSON.stringify(user));
 }
@@ -185,27 +192,7 @@ export function purgeStationTokens(stationId: string): void {
   persistSet(keyFor(ACCESS_KEY, stationId), null);
   persistSet(keyFor(REFRESH_KEY, stationId), null);
   persistSet(keyFor(USER_KEY, stationId), null);
-}
-
-/**
- * One-time adoption of the pre-station un-suffixed keys: move them under
- * `stationId` and delete the legacy entries. Returns whether a legacy session
- * existed (the caller uses this to decide seeding).
- */
-export async function migrateLegacyTokens(stationId: string): Promise<boolean> {
-  const [access, refresh, userRaw] = await Promise.all([
-    persistGet(ACCESS_KEY),
-    persistGet(REFRESH_KEY),
-    persistGet(USER_KEY),
-  ]);
-  if (!access && !refresh) return false;
-  if (access) persistSet(keyFor(ACCESS_KEY, stationId), access);
-  if (refresh) persistSet(keyFor(REFRESH_KEY, stationId), refresh);
-  if (userRaw) persistSet(keyFor(USER_KEY, stationId), userRaw);
-  persistSet(ACCESS_KEY, null);
-  persistSet(REFRESH_KEY, null);
-  persistSet(USER_KEY, null);
-  return true;
+  persistSet(keyFor(V1_USER_KEY, stationId), null);
 }
 
 // ─── UI preferences (non-secret, same persistence backend) ──

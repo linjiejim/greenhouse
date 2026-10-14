@@ -27,6 +27,8 @@ const { api, onStation, setOnUnauthorized, refreshTokens } = await import('./cli
 
 type Call = { url: string; auth: string | null };
 let calls: Call[] = [];
+/** What each refresh sent. */
+let refreshBodies: string[] = [];
 let answer: (call: Call) => Promise<Response>;
 
 function switchTo(sid: string, base: string, access: string): void {
@@ -35,7 +37,7 @@ function switchTo(sid: string, base: string, access: string): void {
 
 const status = (code: number) => new Response(code === 200 ? '{}' : null, { status: code });
 const rotated = (access: string, refresh: string) =>
-  new Response(JSON.stringify({ accessToken: access, refreshToken: refresh }), { status: 200 });
+  new Response(JSON.stringify({ access_token: access, refresh_token: refresh, expires_in: 14400 }), { status: 200 });
 const refreshCalls = () => calls.filter((c) => c.url.endsWith('/api/auth/refresh')).map((c) => c.url);
 /** Let every settled promise's continuation run. */
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
@@ -43,11 +45,13 @@ const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 beforeEach(() => {
   switchTo('a', 'https://a.example', 'A-token');
   calls = [];
+  refreshBodies = [];
   clearTokens.mockReset();
   setTokens.mockReset();
   answer = async () => status(200);
   vi.stubGlobal('fetch', (url: string, init: RequestInit) => {
     const call = { url, auth: new Headers(init.headers).get('Authorization') };
+    if (url.endsWith('/api/auth/refresh')) refreshBodies.push(typeof init.body === 'string' ? init.body : '');
     calls.push(call);
     return answer(call);
   });
@@ -58,7 +62,7 @@ describe('api() 401 handling', () => {
     let first = true;
     answer = async (call) => {
       if (call.url.endsWith('/api/auth/refresh')) {
-        return new Response(JSON.stringify({ accessToken: 'A2', refreshToken: 'r2' }), { status: 200 });
+        return new Response(JSON.stringify({ access_token: 'A2', refresh_token: 'r2', expires_in: 14400 }), { status: 200 });
       }
       if (first) {
         first = false;
@@ -75,6 +79,9 @@ describe('api() 401 handling', () => {
       'https://a.example/api/x',
     ]);
     expect(calls[2]?.auth).toBe('Bearer A2');
+    // API v2: the single-use refresh token goes in the body, never as a bearer
+    expect(refreshBodies.map((body) => JSON.parse(body))).toEqual([{ refresh_token: 'a-refresh' }]);
+    expect(calls[1]?.auth).toBeNull();
   });
 
   it('a 401 from the old station after a switch is handed back untouched', async () => {
