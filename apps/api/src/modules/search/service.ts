@@ -1,8 +1,9 @@
 /**
  * `⌘K` search (SRCH-01): conversation titles and message text in the conversations the member is
  * in, the member's own Agents, the people directory (plain ILIKE with the query's wildcards
- * escaped; a few of each kind, newest first where time matters), and the docs they may read
- * (the knowledge base's full-text search, best first).
+ * escaped; a few of each kind, newest first where time matters), the docs they may read
+ * (the knowledge base's full-text search, best first), and the records of the bases they may
+ * read (the same full-text search, by title first).
  */
 
 import { and, asc, desc, eq, ilike, inArray, isNull, or } from 'drizzle-orm';
@@ -11,10 +12,15 @@ import { agents, conversationMembers, conversations, getDb, messages } from '@gr
 import { containing, snippetAround } from '../../http/like.js';
 import type { KnowledgeService } from '../knowledge/service.js';
 import type { MembersService } from '../members/service.js';
+import type { TablesService } from '../tables/service.js';
 
 const SNIPPET = 120;
 
-export function createSearchService(deps: { members: MembersService; knowledge: KnowledgeService }) {
+export function createSearchService(deps: {
+  members: MembersService;
+  knowledge: KnowledgeService;
+  tables: TablesService;
+}) {
   /** Titles to show: a conversation's own, else the name of the Agent it is with. */
   async function agentNames(ids: (string | null)[]): Promise<Map<string, string>> {
     const wanted = [...new Set(ids.filter((id): id is string => !!id))];
@@ -120,6 +126,18 @@ export function createSearchService(deps: { members: MembersService; knowledge: 
           title: hit.title,
           ...(hit.snippet ? { snippet: hit.snippet } : {}),
         }));
+    },
+
+    async records(memberId, q, limit) {
+      const found = await deps.tables.records.search(memberId, q, limit);
+      return found.map((hit) => ({
+        kind: 'records',
+        id: hit.id,
+        title: hit.title,
+        snippet: hit.where,
+        base_id: hit.base_id,
+        table_id: hit.table_id,
+      }));
     },
   };
 

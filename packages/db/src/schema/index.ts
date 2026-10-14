@@ -12,3 +12,4 @@ export * from './usage.js';
 export * from './workspace.js';
 export * from './vault.js';
 export * from './knowledge.js';
+export * from './tables.js';

@@ -3,8 +3,8 @@
  * generated here and never taken from input. A file remembers the storage instance that holds
  * it, so changing the storage order later does not lose it. Who may read a file follows what
  * it belongs to: its owner, the people of its conversation, the owner of its run, whoever sees
- * the skill a package belongs to; a member's current avatar is visible to every member, and the
- * workspace logo to everyone.
+ * the skill a package belongs to, whoever reads the base of a record's attachment; a member's
+ * current avatar is visible to every member, and the workspace logo to everyone.
  *
  * Bytes are read through signed URLs, so an `<img>` or a link works without a bearer header. A
  * URL is made for one member (`m`) and ends within one to two hours; serving it checks the
@@ -199,6 +199,8 @@ export function createFilesService(deps: {
         purpose: FilePurpose;
         conversationId?: string | null;
         runId?: string | null;
+        /** Record attachments: the base they belong to. */
+        baseId?: string | null;
         /** Knowledge files: where in the tree, and whose space (null: the team's). */
         folderId?: string | null;
         space?: 'team' | 'personal';
@@ -237,6 +239,7 @@ export function createFilesService(deps: {
           ownerId: input.ownerId === undefined ? memberId : input.ownerId,
           conversationId: input.conversationId ?? null,
           runId: input.runId ?? null,
+          baseId: input.baseId ?? null,
           folderId: input.folderId ?? null,
           space: input.space ?? null,
           meta: input.meta ?? {},
