@@ -7,7 +7,7 @@
  * header, and live saves, presence and comments arrive through realtime events.
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { FileQuestion, History, Pencil } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import {
@@ -41,13 +41,16 @@ import { Page, PageHeader } from '../../shell/Page';
 import { useItemMenu } from './actions';
 import { Comments } from './Comments';
 import { DocContent, DocToc, goToHeading, useHeadings } from './DocContent';
-import { DocEditor, type DocEditorHandle } from './DocEditor';
+import type { DocEditorHandle } from './DocEditor';
 import { canArchive, canEdit, docItem, routeOf, scopeOf, staleDetails } from './helpers';
 import { Crumbs, ItemIcon } from './parts';
 import { revealFolders, setKnowledgeScope } from './scope';
 import { VersionsDrawer } from './VersionsDrawer';
 
 const WIDE = '(min-width: 1280px)';
+
+/** The editor (Tiptap and ProseMirror) loads only when someone edits. */
+const DocEditor = lazy(() => import('./DocEditor').then((module) => ({ default: module.DocEditor })));
 
 /** Who else has the doc open: faces, with who is editing in the tooltip. */
 function Presence({ items }: { items: readonly DocPresence[] }) {
@@ -401,13 +404,15 @@ function DocEdit({ doc }: { doc: KnowledgeDoc }) {
           }
         }}
       />
-      <DocEditor
-        key={start.version}
-        docId={doc.id}
-        markdown={start.content}
-        handle={editor}
-        onChange={() => setChanged(true)}
-      />
+      <Suspense fallback={<Skeleton lines={8} />}>
+        <DocEditor
+          key={start.version}
+          docId={doc.id}
+          markdown={start.content}
+          handle={editor}
+          onChange={() => setChanged(true)}
+        />
+      </Suspense>
       <div className="app-save-bar app-doc-save-bar">
         <Input
           className="app-doc-note"
