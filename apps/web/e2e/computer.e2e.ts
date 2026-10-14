@@ -11,6 +11,8 @@ import { composer, open } from './fixtures';
 async function askForTakeOver(page: Page) {
   await open(page);
   await page.getByRole('button', { name: '新会话' }).click();
+  // Typed before the new chat replaces the main thread, the text would go to the old composer.
+  await expect(page.getByText('你好，Lin')).toBeVisible();
   await composer(page).fill('need a human at the sign-in page');
   await composer(page).press('Enter');
   await expect(page).toHaveURL(/#\/c\/cnv_/);
