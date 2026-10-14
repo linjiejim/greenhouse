@@ -524,10 +524,12 @@ describe('presence and realtime', () => {
     await as(lin).patch(`/api/knowledge/docs/${doc.id}`, { version: 1, content: 'b' });
     await as(lin).post(`/api/knowledge/docs/${doc.id}/comments`, { body: 'Saved.' });
     expect((await as(lin).del(`/api/knowledge/docs/${doc.id}/presence`)).status).toBe(204);
+    // The save also changed the team's tree, which everyone hears about (tree-events.db.test.ts).
     expect(chenEvents.map((event) => event.type)).toEqual([
       'doc.presence',
       'doc.presence',
       'doc.updated',
+      'knowledge.changed',
       'comments.updated',
       'doc.presence',
     ]);

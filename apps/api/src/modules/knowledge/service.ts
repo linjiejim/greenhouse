@@ -65,6 +65,7 @@ import type { Hub } from '../../realtime/hub.js';
 import { exportFilename } from '../conversations/export.js';
 import type { FilesService } from '../files/service.js';
 import { fileText } from '../files/text.js';
+import { effectiveModules } from '../members/service.js';
 import type { NotificationsService } from '../notifications/service.js';
 import {
   agentOfChain,
@@ -115,6 +116,28 @@ const MAX_CHILDREN = 1000;
 const MAX_FILE_TEXT = 20_000;
 /** Mentions and comment followers told about one change. */
 const MAX_TOLD = 50;
+/** Members per realtime publish, so each stays inside one NOTIFY payload. */
+const TELL_CHUNK = 100;
+
+/** Where a change happened, for who to tell: the space, its owner, the folders it is in (nearest first). */
+interface TreePlace {
+  space: KnowledgeSpace;
+  ownerId: string | null;
+  folderIds: string[];
+  /** A doc that changed: its own shares count too. */
+  docId?: string;
+}
+
+const placeOf = (
+  item: { space: KnowledgeSpace | null; ownerId: string | null },
+  chain: readonly Pick<FolderRow, 'id'>[],
+  docId?: string,
+): TreePlace => ({
+  space: item.space ?? 'team',
+  ownerId: item.ownerId,
+  folderIds: chain.map((folder) => folder.id),
+  ...(docId ? { docId } : {}),
+});
 
 /** In an Agent's turn: the Agent that reads or writes for the member. */
 export interface As {
@@ -219,6 +242,66 @@ export function createKnowledgeService(deps: { files: FilesService; notification
         archived: !!doc.archivedAt,
       },
     });
+
+  // ── Telling screens the tree changed ────────────────────
+
+  /** Everyone with the knowledge base on: who sees the team space (or a workspace share). */
+  async function everyone(): Promise<string[]> {
+    const rows = await getDb()
+      .select({ id: members.id, modules: members.modules })
+      .from(members)
+      .where(eq(members.status, 'active'));
+    return rows.filter((row) => effectiveModules(row.modules).knowledge).map((row) => row.id);
+  }
+
+  /**
+   * Who sees a place: everyone in the team space; in a personal one its owner and whoever a share
+   * on the item (`docId`, or a folder in `folderIds`) or on a folder above it reaches.
+   */
+  async function audienceOf(places: readonly TreePlace[]): Promise<string[]> {
+    if (places.some((place) => place.space === 'team')) return everyone();
+    const people = new Set(places.flatMap((place) => (place.ownerId ? [place.ownerId] : [])));
+    const folderIds = [...new Set(places.flatMap((place) => place.folderIds))];
+    const docIds = [...new Set(places.flatMap((place) => (place.docId ? [place.docId] : [])))];
+    const grants =
+      folderIds.length || docIds.length
+        ? await getDb()
+            .select({ type: shares.principalType, id: shares.principalId })
+            .from(shares)
+            .where(
+              or(
+                and(eq(shares.resourceType, 'folder'), inList(shares.resourceId, folderIds)),
+                and(eq(shares.resourceType, 'doc'), inList(shares.resourceId, docIds)),
+              ),
+            )
+        : [];
+    if (grants.some((grant) => grant.type === 'workspace')) return everyone();
+    for (const grant of grants) if (grant.type === 'member' && grant.id) people.add(grant.id);
+    const groupIds = grants.flatMap((grant) => (grant.type === 'group' && grant.id ? [grant.id] : []));
+    if (groupIds.length) {
+      const rows = await getDb()
+        .select({ id: groupMembers.memberId })
+        .from(groupMembers)
+        .where(inArray(groupMembers.groupId, groupIds));
+      for (const row of rows) people.add(row.id);
+    }
+    return [...people];
+  }
+
+  /**
+   * Tells whoever sees these places (and `also`: those a share just stopped reaching) that the
+   * tree changed, so the lists on their screens refetch. A hint only: it never fails the change.
+   */
+  async function treeChanged(places: readonly TreePlace[], also: readonly string[] = []) {
+    try {
+      const memberIds = [...new Set([...(await audienceOf(places)), ...also])];
+      for (let start = 0; start < memberIds.length; start += TELL_CHUNK) {
+        deps.hub.publish(memberIds.slice(start, start + TELL_CHUNK), { type: 'knowledge.changed', data: {} });
+      }
+    } catch (error) {
+      logger.warn('[knowledge] could not tell screens about a change', { error: toErrorMessage(error) });
+    }
+  }
 
   // ── Loading with access ─────────────────────────────────
 
@@ -808,6 +891,7 @@ export function createKnowledgeService(deps: { files: FilesService; notification
           createdBy: memberId,
         })
         .returning();
+      await treeChanged([placeOf(place, place.chain)]);
       return folderView(reader, folder!, [folder!, ...place.chain], roleAt(reader, place));
     },
 
@@ -880,6 +964,8 @@ export function createKnowledgeService(deps: { files: FilesService; notification
             .where(eq(folders.id, folder.id));
         }
       });
+      const now = await chainOf(folder.id);
+      await treeChanged([placeOf(folder, await chainOf(folder.parentId)), placeOf(now[0] ?? folder, now)]);
       return service.folder(memberId, id);
     },
 
@@ -907,6 +993,7 @@ export function createKnowledgeService(deps: { files: FilesService; notification
           .returning();
       });
       for (const doc of archivedDocs) docUpdated(doc);
+      await treeChanged([placeOf(folder, await chainOf(folder.id))]);
     },
 
     /** Brings back exactly what was archived with the folder; to the root when its parent stays archived. */
@@ -938,6 +1025,7 @@ export function createKnowledgeService(deps: { files: FilesService; notification
           .returning();
       });
       for (const doc of restoredDocs) docUpdated(doc);
+      await treeChanged([placeOf(folder, await chainOf(folder.id))]);
       return service.folder(memberId, id);
     },
 
@@ -1000,6 +1088,7 @@ export function createKnowledgeService(deps: { files: FilesService; notification
           }
         }
       });
+      await treeChanged([placeOf({ space, ownerId }, await chainOf(input.folder_id))]);
     },
 
     /** What was archived in a space, topmost first; an archived folder opens to the rest. */
@@ -1122,6 +1211,7 @@ export function createKnowledgeService(deps: { files: FilesService; notification
         return row!;
       });
       await tellMentioned(reader, doc, '', content, as?.agentId);
+      await treeChanged([placeOf(place, place.chain)]);
       return docView(reader, doc, place.chain, roleAt(reader, place));
     },
 
@@ -1188,6 +1278,10 @@ export function createKnowledgeService(deps: { files: FilesService; notification
       });
       await tellMentioned(reader, saved, before, saved.content, as?.agentId);
       if (saved !== doc) docUpdated(saved);
+      if (saved !== doc) {
+        const [before, now] = await Promise.all([chainOf(doc.folderId), chainOf(saved.folderId)]);
+        await treeChanged([placeOf(doc, before, doc.id), placeOf(saved, now, saved.id)]);
+      }
       return service.getDoc(memberId, id, { as: as ?? {} });
     },
 
@@ -1202,6 +1296,7 @@ export function createKnowledgeService(deps: { files: FilesService; notification
         .where(eq(docs.id, id))
         .returning();
       docUpdated(archived!);
+      await treeChanged([placeOf(doc, await chainOf(doc.folderId), doc.id)]);
     },
 
     /** Back where it was; to the root of its space when its folder is archived. */
@@ -1216,6 +1311,7 @@ export function createKnowledgeService(deps: { files: FilesService; notification
           .where(eq(docs.id, id))
           .returning();
         docUpdated(restored!);
+        await treeChanged([placeOf(restored!, await chainOf(restored!.folderId), doc.id)]);
       }
       return service.getDoc(memberId, id);
     },
@@ -1477,6 +1573,9 @@ export function createKnowledgeService(deps: { files: FilesService; notification
       if (people.length !== memberIds.length || teams.length !== groupIds.length) {
         throw invalidInput('Some members or groups do not exist.');
       }
+      // Whoever the old shares reached refreshes too: a removed share takes the item off their list.
+      const place = placeOf(item, found.chain, type === 'doc' ? id : undefined);
+      const reachedBefore = await audienceOf([place]).catch(() => [] as string[]);
       const added = await transaction(async () => {
         const existing = await getDb()
           .select()
@@ -1519,6 +1618,7 @@ export function createKnowledgeService(deps: { files: FilesService; notification
         return fresh;
       });
       await tellShared(reader, type, id, type === 'folder' ? (item as FolderRow).name : (item as DocRow).title, added);
+      await treeChanged([place], reachedBefore);
       return service.shares(memberId, type, id);
     },
 
@@ -1605,6 +1705,8 @@ export function createKnowledgeService(deps: { files: FilesService; notification
           .where(eq(files.id, stored.id));
       }
       const [row] = await getDb().select().from(files).where(eq(files.id, stored.id));
+      // A file of the tree (a picture pasted into a doc is not in it).
+      if (!input.docId) await treeChanged([placeOf(place, await chainOf(place.folderId))]);
       return fileView(reader, row!, role);
     },
 
@@ -1639,6 +1741,12 @@ export function createKnowledgeService(deps: { files: FilesService; notification
           .set({ ...changes, updatedAt: sql`now()` })
           .where(eq(files.id, id));
       }
+      if (Object.keys(changes).length && !docId) {
+        const folderId = changes.folderId === undefined ? file.folderId : changes.folderId;
+        const [before, now] = await Promise.all([chainOf(file.folderId), chainOf(folderId)]);
+        const after = { space: changes.space ?? file.space, ownerId: changes.ownerId ?? file.ownerId };
+        await treeChanged([placeOf(file, before), placeOf(after, now)]);
+      }
       return service.file(memberId, id);
     },
 
@@ -1652,6 +1760,7 @@ export function createKnowledgeService(deps: { files: FilesService; notification
           .update(files)
           .set({ archivedAt: sql`now()` })
           .where(eq(files.id, id));
+      if (!file.archivedAt) await treeChanged([placeOf(file, await chainOf(file.folderId))]);
     },
 
     async restoreFile(memberId: string, id: string): Promise<KnowledgeFile> {
@@ -1663,6 +1772,7 @@ export function createKnowledgeService(deps: { files: FilesService; notification
           .update(files)
           .set({ archivedAt: null, ...(chain[0]?.archivedAt ? { folderId: null } : {}) })
           .where(eq(files.id, id));
+        await treeChanged([placeOf(file, chain[0]?.archivedAt ? [] : chain)]);
       }
       return service.file(memberId, id);
     },
@@ -2014,6 +2124,7 @@ export function createKnowledgeService(deps: { files: FilesService; notification
           createdBy: agent.ownerId,
         })
         .onConflictDoNothing();
+      await treeChanged([{ space: 'personal', ownerId: agent.ownerId, folderIds: [] }]);
       return find();
     },
 
