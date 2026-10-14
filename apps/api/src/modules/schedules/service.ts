@@ -1,14 +1,15 @@
 /**
  * Schedules belong to an Agent and act with its owner's rights. Each firing starts a background
  * run with the schedule's brief; the run reports into the Agent's own thread. Firing claims a
- * due schedule with FOR UPDATE SKIP LOCKED and moves its next time in the same statement, so
- * two processes never fire it twice.
+ * due schedule with FOR UPDATE SKIP LOCKED, moves its next time and queues the run in one
+ * transaction, so two processes never fire it twice and a crash never loses a firing: whichever
+ * process is up takes the queued run. Firings missed while no process ran collapse into one.
  */
 
 import { Cron } from 'croner';
 import { and, asc, eq, lte, sql } from 'drizzle-orm';
 import type { Schedule, UpdateScheduleInput, createScheduleInputSchema } from '@greenhouse/contract';
-import { getDb, members, newId, schedules, transaction, type ScheduleRow } from '@greenhouse/db';
+import { getDb, members, newId, schedules, transaction, type Run, type ScheduleRow } from '@greenhouse/db';
 import { toErrorMessage } from '@greenhouse/utils/error';
 import { logger } from '@greenhouse/utils/logger';
 import type { z } from 'zod';
@@ -71,9 +72,9 @@ export function createSchedulesService(deps: { agents: AgentsService; background
     return row;
   }
 
-  /** Starts the run of one firing and records it on the schedule. */
-  async function fire(row: ScheduleRow): Promise<void> {
-    const run = await deps.background().start({
+  /** Queues the run of one firing and records it on the schedule. Joins the open transaction. */
+  async function fire(row: ScheduleRow): Promise<Run> {
+    const run = await deps.background().create({
       agentId: row.agentId,
       ownerId: row.ownerId,
       requestedBy: row.ownerId,
@@ -93,6 +94,7 @@ export function createSchedulesService(deps: { agents: AgentsService; background
         updatedAt: sql`now()`,
       })
       .where(eq(schedules.id, row.id));
+    return run;
   }
 
   const service = {
@@ -194,11 +196,15 @@ export function createSchedulesService(deps: { agents: AgentsService; background
     /** Fires once now, without moving the regular time. */
     async runNow(memberId: string, id: string): Promise<Schedule> {
       const row = await own(memberId, id);
-      await fire(row);
+      deps.background().kick(await transaction(() => fire(row)));
       return toSchedule(await own(memberId, id));
     },
 
-    /** Fires every schedule that is due. Safe with several processes. */
+    /**
+     * Fires every schedule that is due. Safe with several processes: each firing is claimed, moved
+     * to its next time after now (so firings missed while nothing ran collapse into one) and its
+     * run queued in one transaction, and the run is taken once that commits.
+     */
     async tick(now = new Date()): Promise<number> {
       let fired = 0;
       for (;;) {
@@ -217,16 +223,19 @@ export function createSchedulesService(deps: { agents: AgentsService; background
           } catch {
             next = null;
           }
-          await db
-            .update(schedules)
-            .set(next ? { nextRunAt: next } : { status: 'paused', nextRunAt: null, lastStatus: 'invalid' })
-            .where(eq(schedules.id, due.id));
-          return next ? due : null;
+          if (!next) {
+            await db
+              .update(schedules)
+              .set({ status: 'paused', nextRunAt: null, lastStatus: 'invalid' })
+              .where(eq(schedules.id, due.id));
+            return { run: null };
+          }
+          await db.update(schedules).set({ nextRunAt: next }).where(eq(schedules.id, due.id));
+          return { run: await fire(due) };
         });
         if (!claimed) return fired;
-        await fire(claimed).catch((error: unknown) =>
-          logger.warn('[schedules] could not start a run', { schedule: claimed.id, error: toErrorMessage(error) }),
-        );
+        if (!claimed.run) continue;
+        deps.background().kick(claimed.run);
         fired += 1;
       }
     },

@@ -424,7 +424,11 @@ export function createBackground(deps: {
   }
 
   const background = {
-    async start(input: StartBackground): Promise<Run> {
+    /**
+     * A queued run. Joins the open transaction, so the change that causes it (a schedule moving
+     * on) commits with it; `kick` it after the commit. Any process takes it from the queue.
+     */
+    async create(input: StartBackground): Promise<Run> {
       const [run] = await getDb()
         .insert(runs)
         .values({
@@ -443,9 +447,19 @@ export function createBackground(deps: {
         })
         .returning();
       await event(run!.id, 'queued', { source: input.source }, input.requestedBy);
-      announce(run!, 'queued');
-      track(tick());
       return run!;
+    },
+
+    /** A run committed to the queue: say so and take it now rather than at the next tick. */
+    kick(run: Run): void {
+      announce(run, 'queued');
+      track(tick());
+    },
+
+    async start(input: StartBackground): Promise<Run> {
+      const run = await transaction(() => background.create(input));
+      background.kick(run);
+      return run;
     },
 
     /** Stops a run: a queued one at once, a running one at its next step. */
