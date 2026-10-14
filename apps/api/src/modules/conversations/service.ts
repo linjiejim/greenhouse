@@ -411,6 +411,33 @@ export function createConversationsService(deps: {
     });
   }
 
+  /**
+   * Every event for a conversation's people leaves here. A message that cites docs reaches each
+   * person with only the sources they may open.
+   */
+  async function deliver(audience: readonly string[], event: RealtimeEvent): Promise<void> {
+    const message = event.type === 'message.created' || event.type === 'message.updated' ? event.data.message : null;
+    const docIds = message ? citedDocs(message.citations) : [];
+    if (!message || !docIds.length) {
+      deps.hub.publish(audience, event);
+      return;
+    }
+    const seeing = new Map<string, { citations: Citation[]; members: string[] }>();
+    for (const memberId of audience) {
+      const citations = (await sourcesFor(memberId, docIds))(message.citations);
+      const key = citations.map((citation) => `${citation.kind}:${citation.id}`).join('\n');
+      const same = seeing.get(key) ?? { citations, members: [] };
+      same.members.push(memberId);
+      seeing.set(key, same);
+    }
+    for (const { citations, members: people } of seeing.values()) {
+      deps.hub.publish(people, {
+        type: event.type,
+        data: { message: { ...message, citations } },
+      } as RealtimeEvent);
+    }
+  }
+
   const service = {
     /** The main thread: every member has exactly one, with the main Agent. Safe to call concurrently. */
     async ensureMain(memberId: string): Promise<ConversationRow> {
@@ -778,34 +805,14 @@ export function createConversationsService(deps: {
      * left). A message that cites docs reaches each person with only the sources they may open.
      */
     async publish(conversationId: string, event: RealtimeEvent, also: string[] = []): Promise<void> {
-      const audience = [...new Set([...(await service.audience(conversationId)), ...also])];
-      const message = event.type === 'message.created' || event.type === 'message.updated' ? event.data.message : null;
-      const docIds = message ? citedDocs(message.citations) : [];
-      if (!message || !docIds.length) {
-        deps.hub.publish(audience, event);
-        return;
-      }
-      const seeing = new Map<string, { citations: Citation[]; members: string[] }>();
-      for (const memberId of audience) {
-        const citations = (await sourcesFor(memberId, docIds))(message.citations);
-        const key = citations.map((citation) => `${citation.kind}:${citation.id}`).join('\n');
-        const same = seeing.get(key) ?? { citations, members: [] };
-        same.members.push(memberId);
-        seeing.set(key, same);
-      }
-      for (const { citations, members: people } of seeing.values()) {
-        deps.hub.publish(people, {
-          type: event.type,
-          data: { message: { ...message, citations } },
-        } as RealtimeEvent);
-      }
+      await deliver([...new Set([...(await service.audience(conversationId)), ...also])], event);
     },
 
     /**
      * A publisher for one conversation that looks its people up once and keeps them until they
      * change (an empty `conversation.updated`, from any process): a turn sends a frame every
-     * 75 ms and must not query the members for each. Events leave in the order given. Close it
-     * when done.
+     * 75 ms and must not query the members for each. Events leave in the order given, filtered
+     * like `publish`. Close it when done.
      */
     audienceOf(conversationId: string) {
       let people: Promise<string[]> | null = null;
@@ -822,7 +829,7 @@ export function createConversationsService(deps: {
       return {
         publish(event: RealtimeEvent): Promise<void> {
           order = order
-            .then(async () => deps.hub.publish(await (people ??= service.audience(conversationId)), event))
+            .then(async () => deliver(await (people ??= service.audience(conversationId)), event))
             .catch((error: unknown) => {
               people = null;
               logger.warn('[conversations] could not publish an event', { error: toErrorMessage(error) });

@@ -66,6 +66,22 @@ describe('the hub between processes', () => {
     expect(there).toEqual([{ type: 'conversation.resync', data: { conversation_id: 'cnv_1', after_seq: 11 } }]);
   });
 
+  it('sends records too many to name as "many changed" to the other processes', async () => {
+    const { transport } = bus();
+    const a = createHub();
+    const b = createHub();
+    await a.connect(transport);
+    await b.connect(transport);
+    const there: RealtimeEvent[] = [];
+    b.subscribe('mbr_lin', (event) => there.push(event));
+    const records = Array.from({ length: 300 }, (_, index) => ({
+      id: `rec_${String(index).padStart(26, '0')}`,
+      revision: 2,
+    }));
+    a.publish(['mbr_lin'], { type: 'records.changed', data: { base_id: 'bas_1', table_id: 'tbl_1', records } });
+    expect(there).toEqual([{ type: 'records.changed', data: { base_id: 'bas_1', table_id: 'tbl_1', records: [] } }]);
+  });
+
   it('shows observers every event, published here or received', async () => {
     const { transport } = bus();
     const a = createHub();

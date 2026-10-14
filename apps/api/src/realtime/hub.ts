@@ -4,8 +4,9 @@
  * listener (tests, a single process) delivery is local only.
  *
  * A NOTIFY payload holds under 8000 bytes, so a long recipient list is split across several. An
- * event that does not fit even alone (a long reply's final message) reaches the other processes
- * as `conversation.resync`: their clients fetch the messages after it from the API.
+ * event that does not fit even alone reaches the other processes as a hint to refetch: a long
+ * reply's final message as `conversation.resync` (their clients fetch the messages after it),
+ * records too many to name as `records.changed` with an empty list. Anything else stays local.
  */
 
 import { randomUUID } from 'node:crypto';
@@ -23,14 +24,23 @@ export interface NotifyTransport {
   listen(channel: string, onPayload: (payload: string) => void): Promise<() => Promise<void>>;
 }
 
-/** What other processes get instead of a message event too big to pass between them. */
+/** What other processes get instead of an event too big to pass between them. */
 function resyncOf(event: RealtimeEvent): RealtimeEvent | null {
-  if (event.type !== 'message.created' && event.type !== 'message.updated') return null;
-  const { message } = event.data;
-  return {
-    type: 'conversation.resync',
-    data: { conversation_id: message.conversation_id, after_seq: Math.max(0, message.seq - 1) },
-  };
+  switch (event.type) {
+    case 'message.created':
+    case 'message.updated': {
+      const { message } = event.data;
+      return {
+        type: 'conversation.resync',
+        data: { conversation_id: message.conversation_id, after_seq: Math.max(0, message.seq - 1) },
+      };
+    }
+    case 'records.changed':
+      // Too many records to name: an empty list means many changed.
+      return { type: 'records.changed', data: { ...event.data, records: [] } };
+    default:
+      return null;
+  }
 }
 
 /** The NOTIFY payloads of one event, recipients split so each fits; null when the event alone does not. */
