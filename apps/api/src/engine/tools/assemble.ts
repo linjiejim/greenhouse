@@ -5,12 +5,43 @@
 
 import { createHash } from 'node:crypto';
 import { tool, type ToolSet } from 'ai';
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import { getDb, newId, runSteps, type NeedsYouRequest } from '@greenhouse/db';
 import { toErrorMessage } from '@greenhouse/utils/error';
 import { surfacesOf, type AvailabilityContext, type Card, type ToolContext, type ToolDef } from './define.js';
 
 const MAX_STORED_JSON = 20_000;
+
+/** What the model reads instead of a result when an earlier attempt left the same call unfinished. */
+const UNCERTAIN_RESULT = {
+  status: 'uncertain',
+  note: 'An earlier attempt of this run made this exact call and stopped before it finished, so whether it took effect is unknown. Check the current state first, and make the call again only if it did not happen.',
+};
+
+/**
+ * Steps a run's dead process left running. A pure read simply failed; any other call may have
+ * had its effect outside, so its outcome is unknown (`uncertain`) and nothing makes it again by
+ * itself.
+ */
+export async function abandonSteps(runId: string, defs: readonly ToolDef[]): Promise<void> {
+  const reads = defs.filter((def) => def.idempotent).map((def) => def.name);
+  const running = and(eq(runSteps.runId, runId), eq(runSteps.kind, 'tool'), eq(runSteps.status, 'running'));
+  if (reads.length) {
+    await getDb()
+      .update(runSteps)
+      .set({
+        status: 'failed',
+        error: { code: 'interrupted', message: 'The process running it stopped.' },
+        finishedAt: sql`now()`,
+        updatedAt: sql`now()`,
+      })
+      .where(and(running, inArray(runSteps.toolName, reads)));
+  }
+  await getDb()
+    .update(runSteps)
+    .set({ status: 'uncertain', finishedAt: sql`now()`, updatedAt: sql`now()` })
+    .where(running);
+}
 
 /** Step rows keep a bounded copy of inputs and outputs. */
 function bounded(value: unknown): unknown {
@@ -29,6 +60,8 @@ export interface TurnTools {
   tools: ToolSet;
   /** Names of the tools present, for the rules paragraphs. */
   names: Set<string>;
+  /** What the tools add to the closing message (turnContext), in tool order. */
+  context: string[];
   defs: Map<string, ToolDef>;
   /** True once a tool raised a card: the turn ends after this step and its run waits. */
   waiting(): boolean;
@@ -47,6 +80,13 @@ function stable(value: unknown): string {
       .join(',')}}`;
   }
   return JSON.stringify(value) ?? 'null';
+}
+
+/** The key of one call within a run: the same tool with the same arguments is the same step. */
+export function callKey(tool: string, args: unknown): string {
+  return createHash('sha256')
+    .update(`${tool}\n${stable(args)}`)
+    .digest('hex');
 }
 
 const MAX_DETAIL_FIELDS = 12;
@@ -82,8 +122,10 @@ export async function assembleTools(input: {
 }): Promise<TurnTools> {
   const { context, availability } = input;
   const allowed = context.manifest.tools ? new Set(context.manifest.tools) : null;
+  // Which tools and in what order depends on the Agent version and the member's access, never on
+  // anything that changes between turns: the definitions stay byte for byte the same.
   const chosen: ToolDef[] = [];
-  const descriptions = new Map<string, string>();
+  const turnContext: string[] = [];
   for (const def of input.defs) {
     if (!surfacesOf(def).includes(context.surface)) continue;
     // Someone else's public Agent gets only the tools that act on the asker's own things.
@@ -91,10 +133,9 @@ export async function assembleTools(input: {
     if (allowed && !allowed.has(def.name)) continue;
     if (def.risk !== 'read' && !context.manifest.write) continue;
     if (def.available && !(await def.available(availability))) continue;
-    const description = def.descriptionFor ? await def.descriptionFor(availability) : def.description;
-    if (description === null) continue;
     chosen.push(def);
-    descriptions.set(def.name, description);
+    const section = def.turnContext ? await def.turnContext(availability) : null;
+    if (section) turnContext.push(section);
   }
 
   let waiting = false;
@@ -111,7 +152,7 @@ export async function assembleTools(input: {
   const tools: ToolSet = {};
   for (const def of chosen) {
     tools[def.name] = tool({
-      description: descriptions.get(def.name) ?? def.description,
+      description: def.description,
       inputSchema: def.input,
       execute: async (args: unknown, options: { toolCallId: string; abortSignal?: AbortSignal }) => {
         if (def.outbound && readPrivate && context.surface === 'background') {
@@ -122,26 +163,31 @@ export async function assembleTools(input: {
         if (def.private) readPrivate = true;
         const started = Date.now();
         const key = stepKey(options.toolCallId);
+        const attempt = context.attempt ?? 1;
         const risk = def.callRisk ? await def.callRisk(args, context) : def.risk;
-        // A background run is replayed on retry: a call that already succeeded returns what it returned.
-        const idempotencyKey =
-          context.surface === 'background'
-            ? createHash('sha256')
-                .update(`${def.name}\n${stable(args)}`)
-                .digest('hex')
-            : null;
+        // A background run can be retried: the same call (tool and arguments) is the same step.
+        const idempotencyKey = context.surface === 'background' ? callKey(def.name, args) : null;
         if (idempotencyKey) {
-          const [cached] = await getDb()
-            .select({ output: runSteps.output })
+          const [earlier] = await getDb()
+            .select({ id: runSteps.id, status: runSteps.status, attempt: runSteps.attempt, output: runSteps.output })
             .from(runSteps)
-            .where(
-              and(
-                eq(runSteps.runId, context.runId),
-                eq(runSteps.idempotencyKey, idempotencyKey),
-                eq(runSteps.status, 'succeeded'),
-              ),
-            );
-          if (cached) return cached.output;
+            .where(and(eq(runSteps.runId, context.runId), eq(runSteps.idempotencyKey, idempotencyKey)));
+          // A call that already succeeded returns what it returned.
+          if (earlier?.status === 'succeeded') return earlier.output;
+          // An earlier attempt died while making this call: with effects outside, it is not made
+          // again blindly. The Agent is told once per attempt; calling it again after that runs it.
+          if (
+            earlier &&
+            !def.idempotent &&
+            (earlier.status === 'running' || earlier.status === 'uncertain') &&
+            earlier.attempt < attempt
+          ) {
+            await getDb()
+              .update(runSteps)
+              .set({ key, attempt, status: 'uncertain', finishedAt: sql`now()`, updatedAt: sql`now()` })
+              .where(eq(runSteps.id, earlier.id));
+            return UNCERTAIN_RESULT;
+          }
         }
         const [row] = await getDb()
           .insert(runSteps)
@@ -149,7 +195,7 @@ export async function assembleTools(input: {
             id: newId('runStep'),
             runId: context.runId,
             key,
-            attempt: context.attempt ?? 1,
+            attempt,
             kind: 'tool',
             toolName: def.name,
             risk,
@@ -162,7 +208,7 @@ export async function assembleTools(input: {
             target: [runSteps.runId, runSteps.idempotencyKey],
             set: {
               key,
-              attempt: context.attempt ?? 1,
+              attempt,
               status: 'running',
               output: null,
               error: null,
@@ -234,6 +280,7 @@ export async function assembleTools(input: {
   return {
     tools,
     names: new Set(chosen.map((def) => def.name)),
+    context: turnContext,
     defs: new Map(chosen.map((def) => [def.name, def])),
     waiting: () => waiting,
     markWaiting: () => {

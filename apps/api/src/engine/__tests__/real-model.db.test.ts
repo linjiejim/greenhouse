@@ -80,7 +80,11 @@ beforeAll(async () => {
         }
         response.write(chunk({ choices: [{ index: 0, delta: {}, finish_reason: 'stop' }] }));
       }
-      response.write(chunk({ choices: [], usage: { prompt_tokens: 42, completion_tokens: 7, total_tokens: 49 } }));
+      // A later call of the same turn starts with the prompt the vendor has seen: part of it is cached.
+      const cached = requests.length > 1 ? { prompt_tokens_details: { cached_tokens: 30 } } : {};
+      response.write(
+        chunk({ choices: [], usage: { prompt_tokens: 42, completion_tokens: 7, total_tokens: 49, ...cached } }),
+      );
       response.end('data: [DONE]\n\n');
     });
   });
@@ -134,11 +138,25 @@ describe('a real model over HTTP', () => {
       inputTokens: 42,
       outputTokens: 7,
     });
+    expect(usage.map((row) => row.cachedTokens ?? 0).sort()).toEqual([0, 30]);
+    // What the vendor's cache served shows as a hit rate, for the member and for admins.
+    const mine = await app.call('GET', '/api/me/usage', { token: lin.token });
+    expect(mine.body.totals).toMatchObject({ input_tokens: 84, cached_tokens: 30, cache_hit_rate: 30 / 84 });
+    const admin = await app.member('admin');
+    const workspace = await app.call('GET', '/api/admin/usage', { token: admin.token });
+    expect(workspace.body.groups.find((row: { key: string }) => row.key === lin.id)).toMatchObject({
+      cache_hit_rate: 30 / 84,
+    });
 
     const deltas = events.filter(
       (event): event is Extract<RealtimeEvent, { type: 'message.delta' }> => event.type === 'message.delta',
     );
     expect(deltas.map((event) => event.data.text).join('')).toBe('Noted, Lin.');
-    expect(deltas.map((event) => event.data.offset)).toEqual([0, 5, 7]);
+    // Deltas go out as frames; each frame starts where the text before it ends.
+    let offset = 0;
+    for (const delta of deltas) {
+      expect(delta.data.offset).toBe(offset);
+      offset += delta.data.text.length;
+    }
   });
 });

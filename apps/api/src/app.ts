@@ -173,7 +173,8 @@ export function createServices(config: AppConfig, options: ServiceOptions = {}):
   // Who sees a base is cached a few seconds; a change of groups, modules or status forgets it at once.
   members.onAccessChange(() => tables.forgetAudiences());
   const schedules = createSchedulesService({ agents, background: () => engine.background });
-  const requests = createRequestsService({ hub, notifications });
+  // A committed decision wakes the engine's worker (made below) rather than waiting for its poll.
+  const requests = createRequestsService({ hub, notifications, decided: () => engine.wakeDecisions() });
   const engine = createEngine({
     agents,
     conversations,
@@ -205,6 +206,7 @@ export function createServices(config: AppConfig, options: ServiceOptions = {}):
       ...(options.tools ?? []),
     ],
     ...(options.languageModel ? { languageModel: options.languageModel } : {}),
+    development: config.NODE_ENV === 'development',
   });
   const runs = createRunsService({ background: () => engine.background });
   return {
@@ -304,7 +306,7 @@ export function createApp(services: Services, options: { webDir?: string } = {})
   signedIn.route('/agents', computerRoutes(services.computers));
   signedIn.route('/agents', agentMailRoutes(services.mail));
   signedIn.route('/conversations', conversationRoutes(services.conversations, services.engine));
-  signedIn.route('/requests', requestRoutes(services.requests, services.engine));
+  signedIn.route('/requests', requestRoutes(services.requests));
   signedIn.route('/runs', runRoutes(services.runs));
   signedIn.route('/files', fileRoutes(services.files, services.conversations));
   signedIn.route('/voice', voiceRoutes(services.voice));

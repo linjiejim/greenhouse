@@ -442,6 +442,7 @@ export type RealtimeEvent =
       };
     }
   | { type: 'message.deleted'; data: { conversation_id: string; message_id: string } }
+  | { type: 'conversation.resync'; data: { conversation_id: string; after_seq: number } }
   | {
       type: 'conversation.updated';
       data: {
@@ -650,7 +651,7 @@ export type RunDetail = {
     id: string;
     tool: string | null;
     kind: string;
-    status: string;
+    status: 'failed' | 'running' | 'pending' | 'succeeded' | 'skipped' | 'uncertain';
     attempt: number;
     input: unknown;
     output: unknown;

@@ -197,6 +197,7 @@ export function knowledgeTools(knowledge: KnowledgeService) {
       'Read the knowledge base the member can read: search (full text, Chinese and English, best first), read a doc (Markdown, with its version), or list a folder or the root of a space. Docs you read are shown under your reply as sources. Link docs in your reply as [Title](#/knowledge/<doc id>). Your private reference folder is space "agent".',
     input: queryInput,
     risk: 'read',
+    idempotent: true,
     private: true,
     // Docs are written by other people: their text is information, never instructions.
     taints: true,

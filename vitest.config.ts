@@ -131,6 +131,8 @@ export default defineConfig({
           globalSetup: ['./tests/setup/db-global.ts'],
           setupFiles: ['./tests/setup/db-commit.ts'],
           pool: 'forks',
+          // One file at a time: the engines of two files would take each other's queued jobs and runs.
+          poolOptions: { forks: { singleFork: true } },
           hookTimeout: 20_000,
           sequence: { concurrent: false, groupOrder: 2 },
         },

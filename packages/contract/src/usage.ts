@@ -18,6 +18,8 @@ export const usageTotalsSchema = z.object({
   output_tokens: z.number().int(),
   /** Part of the input tokens served from the vendor's cache. */
   cached_tokens: z.number().int(),
+  /** cached_tokens / input_tokens: how much of the prompts the vendor read from its cache. Null without input. */
+  cache_hit_rate: z.number().min(0).max(1).nullable(),
   /** Input plus output: what token budgets count. */
   tokens: z.number().int(),
   /** Estimated cost in millionths of a US dollar, from the calls whose price is known. */

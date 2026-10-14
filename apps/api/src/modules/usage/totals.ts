@@ -28,11 +28,13 @@ export function toTotals(row: TotalsRow | undefined): UsageTotals {
   const n = (value: string | number | null | undefined) => Number(value ?? 0);
   const input = n(row?.input);
   const output = n(row?.output);
+  const cached = n(row?.cached);
   return {
     requests: n(row?.requests),
     input_tokens: input,
     output_tokens: output,
-    cached_tokens: n(row?.cached),
+    cached_tokens: cached,
+    cache_hit_rate: input ? Math.min(1, cached / input) : null,
     tokens: input + output,
     cost_micros: n(row?.cost),
     unpriced: n(row?.unpriced),

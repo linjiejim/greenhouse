@@ -268,7 +268,8 @@ describe('the mapping of a draft', () => {
   });
 });
 
-describe('running an import', () => {
+// Imports run several job passes each; under a loaded machine they need more than the default 5 s.
+describe('running an import', { timeout: 30_000 }, () => {
   it('creates the rows it can read and reports those it skips, as the importer', async () => {
     const { lin, mei, as, upload, listen, drain } = await setup();
     const { table, primary, count, due, status, owner } = await blank(as(lin), { required: true });

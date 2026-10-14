@@ -10,7 +10,7 @@ import { getDb, messages, requests, runSteps, runs } from '@greenhouse/db';
 import { connectorTool } from '../tools/connectors.js';
 import { connectorApp } from '../../modules/connectors/__tests__/setup.js';
 import { startFakeMcpServer, type FakeMcpServer } from '../../modules/connectors/__tests__/fake-mcp-server.js';
-import { scriptedModel, text, toolCall } from './model.js';
+import { lastUserText, scriptedModel, text, toolCall } from './model.js';
 
 const servers: FakeMcpServer[] = [];
 afterEach(async () => {
@@ -30,7 +30,11 @@ async function setup(scripts: Parameters<typeof scriptedModel>[0]) {
     return sent.body;
   };
   const steps = (runId: string) =>
-    getDb().select().from(runSteps).where(eq(runSteps.runId, runId)).orderBy(asc(runSteps.createdAt));
+    getDb()
+      .select()
+      .from(runSteps)
+      .where(and(eq(runSteps.runId, runId), eq(runSteps.kind, 'tool')))
+      .orderBy(asc(runSteps.startedAt), asc(runSteps.key));
   const transcript = async (conversationId: string = main.id) =>
     (
       await getDb()
@@ -168,7 +172,7 @@ describe('what an Agent may use', () => {
 
     const tool = connectorTool(services.connectors);
     const describe = (manifest: { connectors: string[] | null; write: boolean }) =>
-      tool.descriptionFor!({
+      tool.turnContext!({
         memberId: lin.id,
         modules: { knowledge: true, tables: true, apps: true, computer: false },
         manifest: { ...manifest } as never,
@@ -181,7 +185,8 @@ describe('what an Agent may use', () => {
     expect(forReader).not.toContain('create_ticket');
     expect(await describe({ connectors: null, write: true })).toContain('create_ticket');
 
-    // A connector that works with each member's own account appears once the asker connected it.
+    // A connector that works with each member's own account is listed once the asker connected it;
+    // the tool is there either way, so connecting never changes a turn's tool definitions.
     await request('PATCH', `/api/admin/connectors/${desk.id}`, { token: admin.token, body: { enabled: false } });
     const keyed = await startFakeMcpServer({ apiKey: { value: 'key-000123', header: 'X-Key' } });
     servers.push(keyed);
@@ -193,12 +198,17 @@ describe('what an Agent may use', () => {
       auth_header: 'X-Key',
     });
     await send('hello');
-    expect(model.tools.at(-1)).not.toContain('mcp_call');
+    expect(model.tools.at(-1)).toContain('mcp_call');
+    expect(lastUserText(model.prompts.at(-1))).toContain('None is connected for the member yet');
+    const before = model.toolSpecs.at(-1);
     await request('POST', '/api/me/connections', {
       token: lin.token,
       body: { connector_id: own.body.id, key: 'key-000123' },
     });
     expect(await describe({ connectors: null, write: true })).toContain('- own (Own desk)');
+    await send('hello again');
+    expect(lastUserText(model.prompts.at(-1))).toContain('- own (Own desk)');
+    expect(model.toolSpecs.at(-1)).toEqual(before);
   });
 
   it('is never offered in someone else’s public Agent', async () => {

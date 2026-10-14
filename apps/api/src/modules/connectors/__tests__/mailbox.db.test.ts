@@ -8,7 +8,7 @@ import { and, asc, eq } from 'drizzle-orm';
 import { afterEach, describe, expect, it } from 'vitest';
 import { connections, getDb, requests, runSteps } from '@greenhouse/db';
 import { startFakeMailbox, type FakeMailbox } from '../../../../../web/e2e/fake-mailbox.mjs';
-import { scriptedModel, text, toolCall } from '../../../engine/__tests__/model.js';
+import { lastUserText, scriptedModel, text, toolCall } from '../../../engine/__tests__/model.js';
 import { MailboxError, planHost } from '../mailbox.js';
 import { connectorApp } from './setup.js';
 
@@ -160,7 +160,7 @@ describe('an Agent with the mailbox', () => {
       getDb()
         .select()
         .from(runSteps)
-        .where(eq(runSteps.runId, runId))
+        .where(and(eq(runSteps.runId, runId), eq(runSteps.kind, 'tool')))
         .orderBy(asc(runSteps.createdAt), asc(runSteps.id));
     return { ...app, box, model, main, send, steps };
   }
@@ -175,7 +175,9 @@ describe('an Agent with the mailbox', () => {
       text('Invoice 42 is due.'),
     ]);
     const sent = await send('any invoices?');
-    expect(JSON.stringify(model.toolSpecs[0]!.find((tool) => tool.name === 'mcp_call'))).toContain('mailbox');
+    // The tool's description is fixed; the connectors usable this turn are in the closing message.
+    expect(model.toolSpecs[0]!.some((tool) => tool.name === 'mcp_call')).toBe(true);
+    expect(lastUserText(model.prompts[0])).toContain('- mailbox (Mailbox');
     // The two calls run side by side, so find each by what it called.
     const rows = await steps(sent.run_id);
     const search = rows.find((row) => (row.input as { tool?: string }).tool === 'search_messages');

@@ -8,15 +8,23 @@ The one engine for conversations and runs. Read with the root AGENTS.md and docs
 - Ending a turn and taking the next inbox item happen in one transaction under the conversation row lock (`for('update')`). Posting a message takes the same lock before it checks for an active turn. Keep both, or a message can be left with no turn to answer it.
 - In one process, `withConversation` (locks.ts) queues writes per conversation. Across processes the row lock does it. The test transaction cannot model two connections; races between processes are tested in `*.db-commit.test.ts`.
 - Every turn holds a lease (60 s, renewed every 10 s). `sweep()` ends turns whose lease expired as `interrupted`, keeps the text they wrote, and starts queues left without a turn. It runs at boot and every 15 s.
+- A process that is shutting down starts no new turn (`takeNext`): what waits in the inbox is left for another process's sweep.
 - Stop sets `desired_state = cancel`; the process running the turn aborts at once or at its next heartbeat. Stop drops what the stopping member queued.
 
 ## Turns
 - The model comes from services.providers.languageModel (pinned key, metering, fallback). Never build a client here.
 - A turn acts with the rights of the member who asked (`runs.owner_id`); a personal key serves only that member's own Agents.
 - The reply row exists from the first token (status `streaming`) and its text is flushed every second, so a reload or a crash keeps what was written.
+- A turn looks up who sees the conversation once (`conversations.audienceOf`) and again only after its people change (an empty `conversation.updated`, seen from any process through `hub.observe`). Its text deltas go out as one frame every 75 ms (at most 1000 characters), flushed before any other event about the reply; each frame keeps its offset.
+- The hub splits long recipient lists across NOTIFY payloads. An event too big for one reaches other processes as a hint: a long final reply as `conversation.resync` (their clients catch up with `?after=`), a `records.changed` naming too many records with an empty list (many changed); any other stays local. NOTIFYs leave on one connection, in order.
+- Every event for a conversation's people goes through the conversations service (`publish`, or a turn's `audienceOf`), which gives each person only the doc sources they may read; never send message events to `hub.publish` directly.
 - After it exists, a reply is only written by UPDATE on its id, so a reply that was removed never comes back.
 - A turn runs only while the member who asked is in the conversation. Leaving or being removed (`release`) stops their reply, drops their queue and expires their cards there.
-- Prompt layout: rules, identity, about, digest in the system prompt; the transcript; one closing message rebuilt each turn (roster, memory index, the task). Anything written by models, pages or other people is fenced data (security/prompt.ts), never instructions.
+- Prompt layout: fixed tool descriptions; rules (every rich block documented), identity, about, digest in the system prompt; the transcript; one closing message rebuilt each turn (`<turn_context>`: roster, memory index, the tools' `turnContext` lists, the rich blocks this screen draws; then the task). Anything written by models, pages or other people is fenced data (security/prompt.ts), never instructions.
+- Between two turns without a summary fold the tool definitions and the system prompt are byte for byte the same: what changes per turn (connections, equipped skills, the screen's rich blocks, memories) goes in the closing message only.
+- The tools offered depend on the Agent version and the member's access (modules, configured services, connectors an admin enabled, a second Agent for handoff), never on per-turn data; their order is the registry's.
+- Cache breakpoints are neutral marks (`CACHE_BREAKPOINT` from @greenhouse/providers): the system prompt, the end of the transcript the next turn keeps, and the newest message of each call (history.ts `cacheBreakpoints` moves it, never adds up). Only adapters translate them (Anthropic `cacheControl`); OpenAI-compatible services and DeepSeek cache a stable prefix themselves.
+- In development, a later turn of a conversation that read nothing from the cache logs a warning: the prefix moved.
 - Rule paragraphs describe a tool only when the tool exists this turn.
 
 ## Edit and regenerate
@@ -29,12 +37,19 @@ The one engine for conversations and runs. Read with the root AGENTS.md and docs
 ## Tools
 - One file per tool with `defineTool` (tools/define.ts): description, zod input, risk, availability, and the service call. Routes and tools call the same services.
 - Every call is a `run_steps` row. Tools that read outside text set `taints`; after that a turn cannot change memories.
+- What a web page or a connector returns reaches the model through `outsideText` (security/prompt.ts): cut to size with a note of what was left out, stripped of anything that could pose as prompt structure; titles and snippets are sanitized too.
+- A tool is `idempotent` only when the same call twice does what it does once (pure reads: web, knowledge and skill reads, conversation search, attachments). Computer, browser, vault, memory and every write are not.
+- In a background retry a call with the same tool and arguments is the same step: a succeeded one returns its recorded output; a non-idempotent one an earlier attempt left running becomes `uncertain`, is not made, and the model is told to check first (calling it again in that attempt makes it).
+- Steps a dead process left running are marked by the sweeps: reads failed (`interrupted`), anything else `uncertain`.
 - Read tools run in turns and background runs; write and external tools only in turns, and only for Agents whose manifest allows writing.
-- A description that depends on the member and the Agent comes from `descriptionFor` (null leaves the tool out). A risk that depends on the arguments comes from `callRisk`: a call classed above read waits for approval like a write tool, and the engine marks the approved run `ctx.approved`.
+- Descriptions are fixed text. A list that depends on the member and the turn (the connectors they can use, the Agent's skills) comes from `turnContext` and goes in the closing message, fenced. A risk that depends on the arguments comes from `callRisk`: a call classed above read waits for approval like a write tool, and the engine marks the approved run `ctx.approved`.
 
 ## Needs you
 - Write and external tools never run when the model calls them: the call raises an approval card (`requests`, subject `tool_write`) holding the exact arguments, the step waits as `pending`, and the turn ends with the run `waiting`.
 - A decision is a compare-and-set from pending (requests service). The engine then runs exactly the approved arguments with the asker's rights, or skips the step, writes one event line in the transcript, closes the waiting run, and wakes the Agent through the inbox with the outcome.
+- Settling and expiring write a `request_decided` job in the same transaction; any process's decision worker carries it out (the settling process is woken after commit, every process polls, dead claims are taken over), up to 10 at once, each on its own. An approved call is told to stop after 5 minutes.
+- An approval runs once: its step moves pending → running by compare-and-set and only the winner executes. A step found running (its process died mid-call) becomes `uncertain` and is never run again; the Agent is told to check. An approved proposal is applied once: the job records `applying`, then the outcome. Answers, hand-backs, rejections and expiries change nothing but what the Agent is told, and are simply worked out again.
+- The follow-up (the event line, closing the run, the wake-up) is one transaction under the conversation lock and happens once: the line, keyed by `request_id`, records it.
 - A tool that raises its own card (ask_user, self, request_takeover, vault) implements `decide`; return a null note to leave the Agent asleep.
 - Expired cards are swept: the step is skipped, the run closes, and the Agent is not woken.
 - Every card is a notification through `notifications.publish`, the one entry point for notifications; it also queues the card's email and push deliveries (modules/channels), which go out without what the card asks.
@@ -44,12 +59,15 @@ The one engine for conversations and runs. Read with the root AGENTS.md and docs
 - Context is the approved brief plus the Agent's identity and instructions; no history, memories or "about me".
 - Tools: read tools only. Once a tool marked `private` ran, tools marked `outbound` refuse: nobody is watching, and a URL or a query can carry data out.
 - Claiming uses FOR UPDATE SKIP LOCKED; at most 3 running per member and 4 per process; 20 minutes and 30 steps per attempt.
-- A run whose process died is requeued up to 3 attempts; a shutdown requeues without counting as a failure. A retry replays the brief, and a call with the same tool and arguments as a succeeded step returns the recorded output.
+- A run is created queued in the transaction of what causes it (`background.create`) and kicked after the commit; any process takes it from the queue. A schedule's firing claims the schedule, moves it to its next time after now and queues the run in one transaction, so firings missed while no process ran collapse into one run.
+- A run whose process died is requeued up to 3 attempts; a shutdown requeues without counting as a failure.
+- Every model step, as it ends, records what it added (the model's message, then the tool results) as a `run_steps` row of kind `model` (steps.ts, about 20k characters, long results cut first). Turns record them too, for resuming them later (M3.6); the run detail never lists them.
+- A retry continues from the recorded steps after the brief, never from scratch; a call with the same tool and arguments as a succeeded step returns the recorded output. A run whose last recorded step was its answer ends with it.
 - The timeline (`run_events`) is numbered per run and written in order. The end of a run is reported into its conversation (or the Agent's own thread) and notified.
 
 ## Rolling summary
-- When a conversation goes idle and the text after its summary passes 24k estimated tokens, digest.ts folds older messages into `conversations.digest` (structured JSON, rendered within 1500 characters into the system prompt) and moves `digest_upto_seq`.
-- Cuts fall just before a member message and keep at least the last two exchanges; one call folds at most 30k tokens, oldest first. The write is a compare-and-set on the old boundary; failures back off.
+- When a conversation goes idle and the text after its summary passes a quarter of the answering model's context window (24k estimated tokens when unknown), digest.ts folds older messages into `conversations.digest` (structured JSON, rendered within 1500 characters into the system prompt) and moves `digest_upto_seq`. History windowing (half the window) is only the last resort of a conversation that never idles; it logs when it drops messages.
+- Cuts fall just before a member message and keep at least the last two exchanges, and as much more as fits in a third of the trigger; one call folds at most 30k tokens, oldest first. The write is a compare-and-set on the old boundary; failures back off.
 
 ## Hand-offs
 - `handoff` brings another of the member's Agents into the conversation with a brief; the handing Agent's turn ends after that step and the other answers next through the inbox, with the same member's rights.
@@ -69,17 +87,17 @@ The one engine for conversations and runs. Read with the root AGENTS.md and docs
 - The owner sees counts, outcomes, tokens, cost and ratings with comments (`/usage`, `/activity`), never content or who asked.
 
 ## Connectors
-- `mcp_call` (tools/connectors.ts) is the one tool for connectors: `list`, `describe`, `call`. Its description, rebuilt each turn, lists only what this Agent may use for the asker: enabled connectors in the manifest's `connectors` (null: all), connected by the asker when the connector works with each member's account, and only the read-only tools when the manifest may not write.
+- `mcp_call` (tools/connectors.ts) is the one tool for connectors: `list`, `describe`, `call`. It is offered when an enabled connector in the manifest's `connectors` (null: all) has a tool the Agent may call (or none listed yet), connected or not. The closing message lists only what this Agent may use for the asker: connected by the asker when the connector works with each member's account, and only the read-only tools when the manifest may not write.
 - A tool declared read-only, or vouched read-only by an admin and not destructive, runs at once. Any other call is classed `external`: it raises the `tool_write` card with the exact arguments and runs only as the approved call, with the asker's key or sign-in, everything checked again then.
 - Only in turns, never in someone else's public Agent: its owner's instructions could read the asker's accounts and send them elsewhere.
 - What a connector returns is outside text: the tool `taints` and is `outbound`; results are cut to 20 000 characters, stripped of prompt structure, and keys and tokens are taken out.
 - Servers are reached only through modules/connectors (network.ts): https, public addresses in production, a deadline on every request.
-- Built-in connectors have no `connectors` row: the member's own mailbox (`mailbox`, modules/connectors/mailbox.ts) is offered once they connected it; its search and read tools are read-only, drafting and sending raise the card like any write.
+- Built-in connectors have no `connectors` row: the member's own mailbox (`mailbox`, modules/connectors/mailbox.ts) is listed in the closing message once they connected it, and `mcp_call` is offered wherever the manifest allows it, connected or not; its search and read tools are read-only, drafting and sending raise the card like any write.
 
 ## Skills
 - A message's `skill` (a `/` run) is checked when it is sent (`skills.prepareRun`): a skill the sender sees, clean and not archived, whose requirements (computer, connectors) every answering Agent meets, with its required fields filled. The message records the version that runs.
 - history.ts puts the sender's own run inside their message as `<skill_run>`: the template's filled text, or SKILL.md and the package's file list, fenced as the member's request. Someone else's run is only named; one blocked or archived since is named with why and its text leaves later turns. Typed text cannot pose as a block.
-- `skill_query` lists the Agent's equipped skills (manifest `skills`) in its description, rebuilt each turn, with why one cannot run; `load` and `read_file` read the asker's library with the asker's rights; `install` copies a package to `~/skills/<name>/` on the computer, in turns only.
+- `skill_query` lists the Agent's equipped skills (manifest `skills`) in the closing message, with why one cannot run; `load` and `read_file` read the asker's library with the asker's rights; `install` copies a package to `~/skills/<name>/` on the computer, in turns only.
 - `skill_mutation` only proposes a template (card subject `skill_save`); accepting it saves the skill as the member. Equipping goes through the same requirement check (`skill_unavailable`).
 
 ## Budgets

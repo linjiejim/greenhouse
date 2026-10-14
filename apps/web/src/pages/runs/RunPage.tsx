@@ -77,6 +77,8 @@ function Detail({ run }: { run: RunDetail }) {
                   {step.tool ?? step.kind}
                   {step.error && <span className="app-step-error"> · {step.error.message}</span>}
                 </span>
+                {/* It was running when its process died: it may have taken effect, and is never run again by itself. */}
+                {step.status === 'uncertain' && <StatusBadge status={t('status.uncertain')} tone="warning" />}
                 {step.duration_ms !== null && <span className="app-step-time">{seconds(step.duration_ms)}</span>}
               </li>
             ))}

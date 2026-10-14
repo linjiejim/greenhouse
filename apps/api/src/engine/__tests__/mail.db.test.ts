@@ -30,7 +30,11 @@ async function setup(scripts: Part[][]) {
     return sent.body as { run_id: string };
   };
   const steps = (runId: string) =>
-    getDb().select().from(runSteps).where(eq(runSteps.runId, runId)).orderBy(asc(runSteps.createdAt));
+    getDb()
+      .select()
+      .from(runSteps)
+      .where(and(eq(runSteps.runId, runId), eq(runSteps.kind, 'tool')))
+      .orderBy(asc(runSteps.createdAt));
   const turns = () =>
     getDb()
       .select()

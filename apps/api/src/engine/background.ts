@@ -8,12 +8,13 @@
  * the brief the member approved and the Agent's own instructions: no history, no memories.
  *
  * Runs are claimed from the queue with FOR UPDATE SKIP LOCKED, hold a lease, and are requeued
- * when their process dies. A retry replays the brief; tool calls that already succeeded return
- * their recorded output instead of running again.
+ * when their process dies. Every step records what it added to the context (steps.ts); a retry
+ * continues from there with the brief, and a call that already succeeded returns its recorded
+ * output instead of running again.
  */
 
 import { runLoop } from '@greenhouse/agent-core';
-import { and, asc, eq, isNotNull, lt, sql } from 'drizzle-orm';
+import { and, asc, eq, lt, sql } from 'drizzle-orm';
 import type { RealtimeEvent } from '@greenhouse/contract';
 import {
   getDb,
@@ -21,12 +22,12 @@ import {
   newId,
   runEvents,
   runs,
-  runSteps,
   schedules,
   transaction,
   type Run,
   type RunSource,
 } from '@greenhouse/db';
+import { CACHE_BREAKPOINT } from '@greenhouse/providers';
 import { REPLY_STYLE_RULE } from '@greenhouse/utils/prompts';
 import { toErrorMessage } from '@greenhouse/utils/error';
 import { logger } from '@greenhouse/utils/logger';
@@ -37,8 +38,10 @@ import { toMessage, type ConversationsService } from '../modules/conversations/s
 import { effectiveModules } from '../modules/members/service.js';
 import type { NotificationsService } from '../modules/notifications/service.js';
 import { fence } from '../security/prompt.js';
+import { cacheBreakpoints } from './history.js';
 import { assembleSystem, buildIdentity, type Locale } from './prompt.js';
-import { assembleTools } from './tools/assemble.js';
+import { finalAnswer, recordedSteps, recordModelStep } from './steps.js';
+import { abandonSteps, assembleTools } from './tools/assemble.js';
 import type { ToolDef } from './tools/define.js';
 
 export const MAX_CONCURRENT_RUNS = 4;
@@ -168,24 +171,6 @@ export function createBackground(deps: {
         .returning();
       return claimed ?? null;
     });
-  }
-
-  /** What earlier attempts already found, so a retry does not start from nothing. */
-  async function progressOf(run: Run): Promise<string | null> {
-    if (run.attempt <= 1) return null;
-    const done = await getDb()
-      .select({ tool: runSteps.toolName, input: runSteps.input, output: runSteps.output })
-      .from(runSteps)
-      .where(and(eq(runSteps.runId, run.id), eq(runSteps.status, 'succeeded'), isNotNull(runSteps.idempotencyKey)))
-      .orderBy(asc(runSteps.createdAt))
-      .limit(20);
-    if (!done.length) return null;
-    return done
-      .map(
-        (step) =>
-          `- ${step.tool} ${JSON.stringify(step.input).slice(0, 200)} → ${JSON.stringify(step.output).slice(0, 600)}`,
-      )
-      .join('\n');
   }
 
   async function report(
@@ -320,42 +305,51 @@ export function createBackground(deps: {
         raise: () => Promise.reject(new Error('Background runs cannot raise cards.')),
         approvalTitle: (summary) => summary,
       });
-      const progress = await progressOf(run);
-      const brief = [
-        `# ${fence(run.title, 200)}`,
-        '<brief note="Approved by the member.">',
-        fence(run.brief, 4000),
-        '</brief>',
-        ...(progress
-          ? [
-              '',
-              '<progress note="What an earlier attempt of this run already found. Do not repeat it.">',
-              fence(progress, 8000),
-              '</progress>',
-            ]
-          : []),
-      ].join('\n');
-      const result = await runLoop(
-        {
+      // A retry continues from the steps earlier attempts recorded, and never makes those calls again.
+      const { steps, last } = await recordedSteps(run.id);
+      const answered = finalAnswer(steps);
+      if (answered !== null) {
+        outcome = { status: 'succeeded', text: answered };
+      } else {
+        const brief = [
+          `# ${fence(run.title, 200)}`,
+          '<brief note="Approved by the member.">',
+          fence(run.brief, 4000),
+          '</brief>',
+          // What the tools offer (the Agent's skills), as a turn's closing message lists it.
+          ...(toolset.context.length
+            ? ['', '<run_context note="Rebuilt by the system for this run.">', ...toolset.context, '</run_context>']
+            : []),
+        ].join('\n');
+        const result = await runLoop({
           model: { model: resolved.model, modelId: resolved.modelId, deepseek: resolved.deepseek },
-          instructions: assembleSystem([
-            backgroundRules(locale, { web: toolset.names.has('web_search') }),
-            buildIdentity({ name: agent.name, role: agent.role, instructions: manifest.instructions }, member.name),
-          ]),
+          instructions: {
+            role: 'system',
+            content: assembleSystem([
+              backgroundRules(locale, { web: toolset.names.has('web_search') }),
+              buildIdentity({ name: agent.name, role: agent.role, instructions: manifest.instructions }, member.name),
+            ]),
+            providerOptions: CACHE_BREAKPOINT,
+          },
           messages: [{ role: 'user', content: brief }],
+          resume: steps.flat(),
+          // Each step reads the ones before it from the cache.
+          prepareStepMessages: ({ messages }) => cacheBreakpoints(messages, -1),
           tools: toolset.tools,
           maxSteps: RUN_MAX_STEPS,
           abortSignal: controller.signal,
           timeContext: { timezone: member.timezone },
           traceId: run.id,
-        },
-        {
-          onStepEnd: (info) => {
-            void record('step', info);
+          onStepEnd: async (step) => {
+            const index = last + step.stepNumber;
+            await recordModelStep({ runId: run.id, attempt: run.attempt, index, step }).catch((error: unknown) =>
+              logger.warn('[runs] could not record a step', { run: run.id, error: toErrorMessage(error) }),
+            );
+            void record('step', { stepNumber: index, toolNames: step.toolNames });
           },
-        },
-      );
-      outcome = { status: 'succeeded', text: result.text };
+        });
+        outcome = { status: 'succeeded', text: result.text };
+      }
     } catch (error) {
       if (stopping) {
         // This process is going away: the run goes back to the queue for another one.
@@ -380,6 +374,8 @@ export function createBackground(deps: {
     }
 
     if (outcome.status === 'queued') {
+      // A call the shutdown cut short may have had its effect.
+      await abandonSteps(run.id, deps.tools());
       await getDb()
         .update(runs)
         .set({ status: 'queued', leaseOwner: null, leaseExpiresAt: null, updatedAt: sql`now()` })
@@ -422,7 +418,11 @@ export function createBackground(deps: {
   }
 
   const background = {
-    async start(input: StartBackground): Promise<Run> {
+    /**
+     * A queued run. Joins the open transaction, so the change that causes it (a schedule moving
+     * on) commits with it; `kick` it after the commit. Any process takes it from the queue.
+     */
+    async create(input: StartBackground): Promise<Run> {
       const [run] = await getDb()
         .insert(runs)
         .values({
@@ -441,9 +441,19 @@ export function createBackground(deps: {
         })
         .returning();
       await event(run!.id, 'queued', { source: input.source }, input.requestedBy);
-      announce(run!, 'queued');
-      track(tick());
       return run!;
+    },
+
+    /** A run committed to the queue: say so and take it now rather than at the next tick. */
+    kick(run: Run): void {
+      announce(run, 'queued');
+      track(tick());
+    },
+
+    async start(input: StartBackground): Promise<Run> {
+      const run = await transaction(() => background.create(input));
+      background.kick(run);
+      return run;
     },
 
     /** Stops a run: a queued one at once, a running one at its next step. */
@@ -499,6 +509,7 @@ export function createBackground(deps: {
         );
       for (const run of expired) {
         if (live.has(run.id)) continue;
+        await abandonSteps(run.id, deps.tools());
         const giveUp = run.attempt >= RUN_MAX_ATTEMPTS;
         await getDb()
           .update(runs)

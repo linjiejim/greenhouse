@@ -63,6 +63,7 @@ function conversationOf(event: RealtimeEvent): string | null {
     case 'message.updated':
       return event.data.message.conversation_id;
     case 'conversation.updated':
+    case 'conversation.resync':
       return event.data.conversation_id;
     case 'run.updated':
     case 'request.updated':

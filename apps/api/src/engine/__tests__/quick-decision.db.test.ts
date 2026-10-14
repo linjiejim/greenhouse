@@ -6,7 +6,7 @@
 import { eq } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import { getDb, runs } from '@greenhouse/db';
+import { getDb, requests, runs } from '@greenhouse/db';
 import type { Services } from '../../app.js';
 import { createTestApp } from '../../testing.js';
 import { defineTool } from '../tools/define.js';
@@ -14,7 +14,8 @@ import { scriptedModel, toolCall } from './model.js';
 
 /**
  * Raises a waiting card and has it decided at once, before the turn reaches its end. `decide`
- * false settles it without telling the engine yet, so the turn's own finish is what must notice.
+ * false marks it decided as another process would, whose decision has not been carried out yet,
+ * so the turn's own finish is what must notice.
  */
 function quickTool(services: () => Services, decide = true) {
   return defineTool({
@@ -30,11 +31,14 @@ function quickTool(services: () => Services, decide = true) {
         payload: { reason: 'quick' },
         waits: true,
       });
-      const settled = await services().requests.settle(ctx.memberId, request.id, {
-        status: 'handed_back',
-        result: { decision: 'handed_back' },
-      });
-      if (decide) services().engine.decide(settled);
+      if (decide) {
+        await services().requests.settle(ctx.memberId, request.id, {
+          status: 'handed_back',
+          result: { decision: 'handed_back' },
+        });
+      } else {
+        await getDb().update(requests).set({ status: 'handed_back' }).where(eq(requests.id, request.id));
+      }
       return { status: 'requested' };
     },
   });

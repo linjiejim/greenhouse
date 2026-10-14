@@ -1,7 +1,7 @@
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import { files, getDb, runSteps } from '@greenhouse/db';
 import { scriptedModel, text, toolCall } from '../../../engine/__tests__/model.js';
@@ -137,7 +137,10 @@ describe('files', () => {
       body: { content: 'what does it say?', attachments: [note.body.id] },
     });
     await app.services.engine.idle();
-    const [step] = await getDb().select().from(runSteps).where(eq(runSteps.runId, sent.body.run_id));
+    const [step] = await getDb()
+      .select()
+      .from(runSteps)
+      .where(and(eq(runSteps.runId, sent.body.run_id), eq(runSteps.kind, 'tool')));
     expect(step).toMatchObject({ toolName: 'read_attachment', status: 'succeeded' });
     expect(step!.output).toMatchObject({ name: 'hello.txt', content: 'hello from the file' });
 

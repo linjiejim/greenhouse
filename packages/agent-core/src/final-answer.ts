@@ -8,14 +8,14 @@
  * the workaround means deleting this file and dsml-interceptor.ts.
  */
 
-import { streamText, type ModelMessage } from 'ai';
+import { streamText, type ModelMessage, type SystemModelMessage } from 'ai';
 import { logger } from '@greenhouse/utils/logger';
 import { guardedModel, LOOP_TIMEOUT, providerOptionsFor, type LoopModel } from './settings.js';
 import { applyTimeContext, type EngineMessage, type TimeContextOption } from './time-context.js';
 
 export interface FinalAnswerInput {
   model: LoopModel;
-  instructions: string;
+  instructions: string | SystemModelMessage;
   /** The conversation the primary loop ran on. */
   baseMessages: EngineMessage[];
   /** The primary loop's response messages; their tool results become the digest. */

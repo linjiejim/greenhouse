@@ -64,6 +64,14 @@ export function applyEvent(event: ClientEvent): void {
       forgetStream(event.data.message_id);
       threads().dropMessages(event.data.conversation_id, [event.data.message_id]);
       return;
+    case 'conversation.resync': {
+      // An event too big to pass between the server's processes (a long reply's final message):
+      // fetch what came after it, as after a reconnect.
+      const id = event.data.conversation_id;
+      if (loaded(id)) void threads().catchUp(id);
+      soon('conversations', () => workspace().refreshConversations());
+      return;
+    }
     case 'conversation.updated': {
       const { conversation_id: id, changes } = event.data;
       // No changes listed: its people or Agents changed (or I left it): refetch it.

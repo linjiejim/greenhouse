@@ -1104,6 +1104,10 @@ a {
   background: var(--gh-danger);
 }
 
+.app-step.is-uncertain .app-step-dot {
+  background: var(--gh-warning);
+}
+
 .app-step-summary {
   flex: 1;
   min-width: 0;

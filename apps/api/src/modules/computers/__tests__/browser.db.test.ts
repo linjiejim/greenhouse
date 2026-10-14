@@ -4,7 +4,7 @@
  * it reads, screenshots for a model that sees images, and one controller at a time.
  */
 
-import { asc, eq } from 'drizzle-orm';
+import { and, asc, eq } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import { agentComputers, getDb, runSteps } from '@greenhouse/db';
 import { SHOWN_IMAGE_TEXT } from '../../../engine/history.js';
@@ -68,7 +68,11 @@ async function setup(start = SHOP, options: { vision?: boolean } = {}) {
     });
     await app.services.engine.idle();
     return (
-      await getDb().select().from(runSteps).where(eq(runSteps.runId, sent.body.run_id)).orderBy(asc(runSteps.startedAt))
+      await getDb()
+        .select()
+        .from(runSteps)
+        .where(and(eq(runSteps.runId, sent.body.run_id), eq(runSteps.kind, 'tool')))
+        .orderBy(asc(runSteps.startedAt))
     ).map((row) => row.output as any);
   };
   const computer = async () => {

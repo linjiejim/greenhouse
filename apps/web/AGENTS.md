@@ -14,6 +14,8 @@ The v2 web app. Product scope is docs/product/prd.md §6–7; layout and compone
 ## Rules
 - Server state lives in the query cache; realtime events patch it (messages, conversation flags) or mark queries stale. Never keep a second copy in component state.
 - Streaming text never goes through the cache: streams.ts holds it per message and joins it to the saved partial text by offset.
+- A conversation that missed events catches up with `?after=` (realtime.ts `catchUp`): on `conversation.resync`, and after a reconnect for the conversations on screen. A reconnect refetches only those conversations' own queries and the needs-you badge, and marks every other query stale; never refetch everything at once (a server restart reconnects every client together).
+- Catching up never removes what arrived after the answer it got, and never takes a finished reply back to a partial one.
 - The API client (@greenhouse/contract/client) is the only way to the server. Its errors are ApiClientError; branch on `code`, show the dictionary's words.
 - Hide what this member cannot use: modules from me.modules, configured capabilities from me.capabilities (no computer entries without sandbox). Voice falls back first: the microphone uses the STT service when me.capabilities.stt, else the browser's recognition, else it is hidden; read-aloud uses TTS, else speechSynthesis, else it is hidden.
 - Voice input (conversation/voiceInput.ts) puts the words where the caret was and never sends them; Esc cancels. Read-aloud (conversation/readAloud.ts) reads one reply at a time and stops when the conversation is left; it speaks speechText (lib/speech.ts), never raw Markdown, in parts of at most SPEECH_TEXT_MAX.

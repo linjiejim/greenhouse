@@ -14,13 +14,12 @@ import {
   requestListQuerySchema,
   type QuestionField,
 } from '@greenhouse/contract';
-import type { Engine } from '../../engine/engine.js';
 import { conflict, invalidInput } from '../../http/errors.js';
 import type { AppEnv } from '../../http/env.js';
 import { readJson, readQuery } from '../../http/validate.js';
 import { toRequest, type RequestsService } from './service.js';
 
-export function requestRoutes(service: RequestsService, engine: Engine) {
+export function requestRoutes(service: RequestsService) {
   return new Hono<AppEnv>()
     .get('/', async (c) => c.json(await service.list(c.get('member').id, readQuery(c, requestListQuerySchema))))
     .post('/:id/approve', async (c) => {
@@ -33,7 +32,6 @@ export function requestRoutes(service: RequestsService, engine: Engine) {
         status: 'approved',
         result: { decision: 'approved' },
       });
-      engine.decide(settled);
       return c.json(toRequest(settled));
     })
     .post('/:id/reject', async (c) => {
@@ -45,7 +43,6 @@ export function requestRoutes(service: RequestsService, engine: Engine) {
         status: 'rejected',
         result: { decision: 'rejected', ...(reason ? { reason } : {}) },
       });
-      engine.decide(settled);
       return c.json(toRequest(settled));
     })
     .post('/:id/answer', async (c) => {
@@ -63,7 +60,6 @@ export function requestRoutes(service: RequestsService, engine: Engine) {
       }
       const known = Object.fromEntries(fields.map((field) => [field.key, (answers[field.key] ?? '').trim()]));
       const settled = await service.settle(memberId, current.id, { status: 'answered', result: { answers: known } });
-      engine.decide(settled);
       return c.json(toRequest(settled));
     })
     .post('/:id/handback', async (c) => {
@@ -77,7 +73,6 @@ export function requestRoutes(service: RequestsService, engine: Engine) {
         status: 'handed_back',
         result: { decision: 'handed_back', ...(note ? { note } : {}) },
       });
-      engine.decide(settled);
       return c.json(toRequest(settled));
     });
 }

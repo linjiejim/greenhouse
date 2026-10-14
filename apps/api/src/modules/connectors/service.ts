@@ -312,6 +312,22 @@ export function createConnectorsService(deps: {
     return found;
   }
 
+  /** Enabled connectors in a manifest's list (null: all), by slug. */
+  /** Whether the manifest lets the Agent use the member's built-in mailbox (null: every connector). */
+  const mailboxAllowed = (manifest: Pick<AgentManifest, 'connectors'>) =>
+    !manifest.connectors || manifest.connectors.includes(MAILBOX_SLUG);
+
+  async function enabledFor(manifest: Pick<AgentManifest, 'connectors'>): Promise<ConnectorRow[]> {
+    const allowed = manifest.connectors ? new Set(manifest.connectors) : null;
+    if (allowed && !allowed.size) return [];
+    const rows = await getDb()
+      .select()
+      .from(connectors)
+      .where(eq(connectors.enabled, true))
+      .orderBy(asc(connectors.slug));
+    return rows.filter((found) => !allowed || allowed.has(found.slug));
+  }
+
   async function connectionCounts(ids?: string[]): Promise<Map<string, number>> {
     const rows = await getDb()
       .select({ id: connections.connectorId, n: sql<number>`count(*)::int` })
@@ -1122,16 +1138,28 @@ export function createConnectorsService(deps: {
     // ─── agents ──────────────────────────────────────────
 
     /**
+     * Whether an Agent with this manifest has connectors at all: the built-in mailbox, which
+     * every member can connect and whose reading tools need no write, or an enabled one in its
+     * manifest (null: all) with a tool it may call, or whose tools nobody has listed yet, whether
+     * or not the member connected it. This decides whether `mcp_call` is offered, so connecting
+     * an account never changes a turn's tools.
+     */
+    async offered(manifest: Pick<AgentManifest, 'connectors' | 'write'>): Promise<boolean> {
+      if (mailboxAllowed(manifest)) return true;
+      return (await enabledFor(manifest)).some(
+        (found) => !found.tools.length || callableTools(found).some((tool) => manifest.write || tool.readOnly),
+      );
+    },
+
+    /**
      * What an Agent of this member may use now: enabled connectors in its manifest (null: all),
      * usable for the asker, with the tools it may call. An Agent that may not write sees only
      * the read-only tools.
      */
     async usable(memberId: string, manifest: Pick<AgentManifest, 'connectors' | 'write'>): Promise<UsableConnector[]> {
-      const allowed = manifest.connectors ? new Set(manifest.connectors) : null;
-      if (allowed && !allowed.size) return [];
       // The member's own mailbox, once connected and while it works.
       const builtin: UsableConnector[] = [];
-      if (!allowed || allowed.has(MAILBOX_SLUG)) {
+      if (mailboxAllowed(manifest)) {
         const mailbox = await mailboxConnection(memberId);
         if (mailbox && mailbox.status !== 'needs_reauth' && mailbox.secretsEnc) {
           const address = mailboxSettingsOf(mailbox)?.address ?? '';
@@ -1145,12 +1173,7 @@ export function createConnectorsService(deps: {
           });
         }
       }
-      const rows = await getDb()
-        .select()
-        .from(connectors)
-        .where(eq(connectors.enabled, true))
-        .orderBy(asc(connectors.slug));
-      const candidates = rows.filter((found) => !allowed || allowed.has(found.slug));
+      const candidates = await enabledFor(manifest);
       if (!candidates.length) return builtin;
       const mine = candidates.some((found) => personal(found.authMode))
         ? await getDb()

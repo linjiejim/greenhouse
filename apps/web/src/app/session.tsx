@@ -12,7 +12,7 @@ import { api, onSignedOut } from '../lib/api';
 import { asLocale, browserLocale, I18nProvider, type Locale } from '../lib/i18n';
 import { browserTokens, onOtherTab } from '../lib/tokens';
 import { keys } from '../data/query';
-import { applyEvent } from '../data/realtime';
+import { afterReconnect, applyEvent } from '../data/realtime';
 import { clearStreams } from '../data/streams';
 
 interface Session {
@@ -92,7 +92,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     const connection = api.connect({
       onEvent: (event) => applyEvent(client, event),
       onReady: ({ reconnected }) => {
-        if (reconnected) void client.invalidateQueries();
+        if (reconnected) afterReconnect(client);
       },
       onStatus: setRealtime,
     });

@@ -1,8 +1,9 @@
 import { and, asc, eq } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import { getDb, messages, notifications, runs, runSteps } from '@greenhouse/db';
+import { getDb, messages, newId, notifications, runs, runSteps } from '@greenhouse/db';
 import { createTestApp } from '../../testing.js';
+import { callKey } from '../tools/assemble.js';
 import { defineTool } from '../tools/define.js';
 import { gate, lastUserText, scriptedModel, systemText, text, toolCall } from './model.js';
 
@@ -35,6 +36,7 @@ function testTools(log: string[], flaky: { failures: number }) {
       description: 'Look a fact up.',
       input: z.object({ q: z.string() }),
       risk: 'read',
+      idempotent: true,
       async execute(args) {
         log.push(`lookup:${args.q}`);
         if (flaky.failures > 0) {
@@ -52,6 +54,17 @@ function testTools(log: string[], flaky: { failures: number }) {
       async execute() {
         log.push('note_write');
         return { written: true };
+      },
+    }),
+    // Offered to background runs, but with an effect outside: not idempotent.
+    defineTool({
+      name: 'ping_team',
+      description: 'Ping the team.',
+      input: z.object({ text: z.string() }),
+      risk: 'read',
+      async execute(args) {
+        log.push(`ping_team:${args.text}`);
+        return { pinged: true };
       },
     }),
   ];
@@ -75,7 +88,44 @@ async function setup(scripts: Parameters<typeof scriptedModel>[0], flaky = { fai
       sourceId: main.id,
       conversationId: main.id,
     });
-  return { ...app, model, lin, main, agent, log, start };
+  /** A run back in the queue after its first attempt died in the middle of these calls. */
+  const interrupted = async (calls: Array<{ tool: string; args: Record<string, unknown> }>) => {
+    const [run] = await getDb()
+      .insert(runs)
+      .values({
+        id: newId('run'),
+        agentId: agent.id,
+        ownerId: lin.id,
+        requestedBy: lin.id,
+        kind: 'background',
+        source: 'conversation',
+        sourceId: main.id,
+        conversationId: main.id,
+        title: 'Ping',
+        brief: 'Ping the team about the standup.',
+        status: 'queued',
+        attempt: 1,
+      })
+      .returning();
+    for (const [index, call] of calls.entries()) {
+      await getDb()
+        .insert(runSteps)
+        .values({
+          id: newId('runStep'),
+          runId: run!.id,
+          key: `dead_${index}`,
+          attempt: 1,
+          kind: 'tool',
+          toolName: call.tool,
+          risk: 'read',
+          idempotencyKey: callKey(call.tool, call.args),
+          status: 'running',
+          input: call.args,
+        });
+    }
+    return run!;
+  };
+  return { ...app, model, lin, main, agent, log, start, interrupted };
 }
 
 describe('background runs', () => {
@@ -155,7 +205,10 @@ describe('background runs', () => {
     expect(model.tools[0]).not.toContain('note_write');
     expect(model.tools[0]).not.toContain('ask_user');
     expect(model.tools[0]).not.toContain('memory');
-    const steps = await getDb().select().from(runSteps).where(eq(runSteps.runId, run.id));
+    const steps = await getDb()
+      .select()
+      .from(runSteps)
+      .where(and(eq(runSteps.runId, run.id), eq(runSteps.kind, 'tool')));
     expect(steps.map((step) => [step.toolName, step.status])).toEqual([['secret_read', 'succeeded']]);
     expect(log).toEqual(['secret_read']);
     const [finished] = await getDb().select().from(runs).where(eq(runs.id, run.id));
@@ -179,41 +232,38 @@ describe('background runs', () => {
     );
   });
 
-  it('retries a failed run and reuses the steps that already succeeded', async () => {
-    const flaky = { failures: 0 };
-    const { call, services, lin, start, log } = await setup(
-      [
-        toolCall('lookup', { q: 'alpha' }, 'c1'),
-        toolCall('lookup', { q: 'beta' }, 'c2'),
-        text('first attempt'),
-        toolCall('lookup', { q: 'alpha' }, 'c3'),
-        toolCall('lookup', { q: 'beta' }, 'c4'),
-        text('Both found.'),
-      ],
-      flaky,
-    );
+  it('retries a failed run from the steps it recorded, without running them again', async () => {
+    const { call, services, model, lin, start, log } = await setup([
+      toolCall('lookup', { q: 'alpha' }, 'c1'),
+      { parts: [], error: 'The model service is overloaded.' },
+      toolCall('lookup', { q: 'beta' }, 'c2'),
+      text('Both found.'),
+    ]);
     const run = await start('Two lookups', 'Look up alpha and beta.');
-    // Make the second lookup fail on the first attempt, and the model give up.
-    flaky.failures = 0;
     await services.engine.idle();
-    await getDb().update(runs).set({ status: 'failed', errorCode: 'run_failed' }).where(eq(runs.id, run.id));
-    await getDb()
-      .update(runSteps)
-      .set({ status: 'failed' })
-      .where(and(eq(runSteps.runId, run.id), eq(runSteps.toolName, 'lookup')));
-    const alpha = (await getDb().select().from(runSteps).where(eq(runSteps.runId, run.id))).find(
-      (step) => (step.input as { q: string }).q === 'alpha',
+    const [failed] = await getDb().select().from(runs).where(eq(runs.id, run.id));
+    expect(failed).toMatchObject({ status: 'failed', attempt: 1 });
+    expect(log).toEqual(['lookup:alpha']);
+    // The model step is kept as the run's context, never listed as something it did.
+    const steps = await getDb().select().from(runSteps).where(eq(runSteps.runId, run.id));
+    expect(steps.map((step) => [step.kind, step.key])).toEqual(
+      expect.arrayContaining([
+        ['tool', 'c1'],
+        ['model', 'model:1'],
+      ]),
     );
-    await getDb().update(runSteps).set({ status: 'succeeded' }).where(eq(runSteps.id, alpha!.id));
-    log.length = 0;
+    expect((await call('GET', `/api/runs/${run.id}`, { token: lin.token })).body.steps).toEqual([
+      expect.objectContaining({ tool: 'lookup', kind: 'tool', status: 'succeeded' }),
+    ]);
 
     const retried = await call('POST', `/api/runs/${run.id}/retry`, { token: lin.token });
     expect(retried.status).toBe(200);
     await services.engine.idle();
     const [row] = await getDb().select().from(runs).where(eq(runs.id, run.id));
-    expect(row).toMatchObject({ status: 'succeeded', attempt: 2 });
-    // alpha came from the record, beta ran again.
-    expect(log).toEqual(['lookup:beta']);
+    expect(row).toMatchObject({ status: 'succeeded', attempt: 2, output: { text: 'Both found.' } });
+    // The retry went on from alpha's result: alpha did not run again.
+    expect(log).toEqual(['lookup:alpha', 'lookup:beta']);
+    expect(JSON.stringify(model.prompts[2])).toContain('about alpha');
     expect((await call('POST', `/api/runs/${run.id}/retry`, { token: lin.token })).body.error.code).toBe(
       'run_not_retryable',
     );
@@ -238,5 +288,92 @@ describe('background runs', () => {
     expect(row).toMatchObject({ status: 'succeeded', attempt: 2 });
     const detail = await call('GET', `/api/runs/${run.id}`, { token: lin.token });
     expect(detail.body.events.map((event: { type: string }) => event.type)).toContain('requeued');
+  });
+
+  it('marks what a dead process left running: a read failed, a call with effects is uncertain', async () => {
+    const { call, services, lin, start } = await setup([text('Recovered.')]);
+    const run = await start('Recover me', 'Anything.');
+    await services.engine.idle();
+    await getDb()
+      .update(runs)
+      .set({ status: 'running', leaseOwner: 'api-dead', leaseExpiresAt: new Date(Date.now() - 1000).toISOString() })
+      .where(eq(runs.id, run.id));
+    for (const [tool, args] of [
+      ['ping_team', { text: 'standup' }],
+      ['lookup', { q: 'standup' }],
+    ] as const) {
+      await getDb()
+        .insert(runSteps)
+        .values({
+          id: newId('runStep'),
+          runId: run.id,
+          key: tool,
+          attempt: 1,
+          kind: 'tool',
+          toolName: tool,
+          risk: 'read',
+          idempotencyKey: callKey(tool, args),
+          status: 'running',
+          input: args,
+        });
+    }
+    await services.engine.background.sweep();
+    await services.engine.idle();
+    const detail = await call('GET', `/api/runs/${run.id}`, { token: lin.token });
+    expect(detail.body.steps).toHaveLength(2);
+    expect(detail.body.steps).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ tool: 'ping_team', status: 'uncertain' }),
+        expect.objectContaining({
+          tool: 'lookup',
+          status: 'failed',
+          error: expect.objectContaining({ code: 'interrupted' }),
+        }),
+      ]),
+    );
+  });
+
+  it('never makes a call with effects again by itself when an earlier attempt left it unfinished', async () => {
+    const { call, services, model, lin, log, interrupted } = await setup([
+      toolCall('ping_team', { text: 'standup' }),
+      toolCall('lookup', { q: 'standup' }, 'c2'),
+      text('The standup ping may not have gone out: check the channel before sending it again.'),
+    ]);
+    const run = await interrupted([
+      { tool: 'ping_team', args: { text: 'standup' } },
+      { tool: 'lookup', args: { q: 'standup' } },
+    ]);
+    await services.engine.background.sweep();
+    await services.engine.idle();
+    // The ping is not sent again; the read simply runs again.
+    expect(log).toEqual(['lookup:standup']);
+    expect(JSON.stringify(model.prompts[1])).toContain('whether it took effect is unknown');
+    const detail = await call('GET', `/api/runs/${run.id}`, { token: lin.token });
+    expect(detail.body).toMatchObject({ status: 'succeeded', attempt: 2 });
+    expect(detail.body.steps).toHaveLength(2);
+    expect(detail.body.steps).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ tool: 'ping_team', status: 'uncertain', attempt: 2 }),
+        expect.objectContaining({ tool: 'lookup', status: 'succeeded', attempt: 2 }),
+      ]),
+    );
+  });
+
+  it('makes the call once the Agent, told the outcome is unknown, makes it again', async () => {
+    const { services, log, interrupted } = await setup([
+      toolCall('ping_team', { text: 'standup' }),
+      toolCall('lookup', { q: 'was the standup ping sent' }, 'c2'),
+      toolCall('ping_team', { text: 'standup' }, 'c3'),
+      text('It had not gone out; pinged the team now.'),
+    ]);
+    const run = await interrupted([{ tool: 'ping_team', args: { text: 'standup' } }]);
+    await services.engine.background.sweep();
+    await services.engine.idle();
+    expect(log).toEqual(['lookup:was the standup ping sent', 'ping_team:standup']);
+    const [ping] = await getDb()
+      .select()
+      .from(runSteps)
+      .where(and(eq(runSteps.runId, run.id), eq(runSteps.toolName, 'ping_team')));
+    expect(ping).toMatchObject({ status: 'succeeded', attempt: 2 });
   });
 });

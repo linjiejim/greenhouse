@@ -16,7 +16,7 @@ v2 和 v1 不兼容，不加 `/api/v2` 前缀，也不保留旧路由。`GET /ap
 | 分页 | 游标分页：`?cursor=&limit=`，默认 50，最大 200。总数单独给（`?count=1`），不和列表混在一起 |
 | 时间与 ID | ISO 8601 UTC；ID 是「类型前缀 + ULID」的字符串（如 `agt_01J…`），见[数据模型](data-model.md#1-约定) |
 | 鉴权 | Web、移动端、扩展用 Bearer 访问令牌加刷新令牌；`/api/mcp` 只认 OAuth 2.1 访问令牌或个人访问令牌（不认 App 的令牌）；电脑画面和终端用一次性 ticket；文件内容用按成员签发的短期签名 URL，因为 `<img>` 和下载链接带不了请求头 |
-| 实时 | 只有一个 WebSocket `/api/ws`，事件为 `{ type, data }`，类型定义在 contract 里。消息增量、运行进度、需要你、通知、在线状态、表格的记录变更（`records.changed`，带每条记录现在的 revision 和 computed_revision；只凭自定义角色看表格的人只收到空列表，不知道是哪几条）和结构变更（`base.updated`）都走它；发送消息仍用 `POST` |
+| 实时 | 只有一个 WebSocket `/api/ws`，事件为 `{ type, data }`，类型定义在 contract 里。消息增量、运行进度、需要你、通知、在线状态、表格的记录变更（`records.changed`，带每条记录现在的 revision 和 computed_revision；只凭自定义角色看表格的人只收到空列表，不知道是哪几条）和结构变更（`base.updated`）都走它；发送消息仍用 `POST`。回复的文字增量每 75 ms 合成一帧（`message.delta`，`offset` 是这一帧开头在回复里的位置）。进程之间经 PostgreSQL NOTIFY 转发；一条事件大到转不过去时，另一个进程上的客户端收到补拉提示：长回复的最终消息变成 `conversation.resync { conversation_id, after_seq }`，用 `GET /api/conversations/:id/messages?after=<after_seq>` 补拉；一次改了太多条记录的 `records.changed` 变成记录列表为空的同一事件（表示很多条变了）。重连后只补拉屏幕上打开的对话（和「需要你」的计数），其余查询标为过期，下次显示时再取 |
 | 幂等 | 有副作用的 `POST` 接受 `Idempotency-Key` 头；卡片动作（批准、拒绝）天然幂等 |
 | 注册顺序 | 路由挂载顺序有安全含义，保持单链定义；公开路径白名单越小越好 |
 | 配置 | 只有 `apps/api/src/config/` 可以读 `process.env`；外部服务一律通过 `providers.resolve()` 获取 |
@@ -32,7 +32,7 @@ v2 和 v1 不兼容，不加 `/api/v2` 前缀，也不保留旧路由。`GET /ap
 | `GET /api/auth/links/inspect` · `POST /api/auth/links/complete` | 一次性链接：查看用途；设密码完成激活或重置，随即登录 |
 | `GET /api/auth/feishu/*` | 飞书扫码登录 |
 | `GET` / `PATCH /api/me` | 我：名字、头像、语言、主题、「关于我」、模块权限与可用能力（只读） |
-| `GET /api/me/usage?period=month\|30d` | 我的用量：总计，按能力、Agent、天；我的成员预算 |
+| `GET /api/me/usage?period=month\|30d` | 我的用量：总计，按能力、Agent、天；我的成员预算。每组带 `cached_tokens` 与缓存命中率 `cache_hit_rate`（没有输入 token 时为空） |
 | `/api/me/providers[/:id][/test]` | 我的服务，即个人 Key |
 | `GET /api/me/models` | 我能给 Agent 选的模型：为我服务的各实例的模型，按顺序 |
 | `GET` / `POST /api/me/connections` · `POST …/oauth/start` · `…/oauth/finish` · `POST …/:id/test` · `DELETE …/:id` | 连接：MCP 连接器账号，以及内置连接器「邮箱」（`kind: email`）；飞书 / 企微随 IM 渠道。`GET` 返回我的连接和我能用的连接器（内置的带 `builtin`）；`POST` 存我自己的 Key（服务器先验证，拒绝时 `key_rejected`），或连我自己的邮箱（`{ kind: 'email', address, imap: { host, port, security }, smtp: {…}, username?, password }`：IMAP 与 SMTP 都连通才保存，否则 `mailbox_rejected`，`details` 里分别说明；内网地址拒绝；每个成员一个，再连即替换）；OAuth：`start` 返回授权地址，回调把 `oauth_state`、`oauth_code` 交给 Web，由发起登录的同一成员 `finish`（别人是 `sign_in_not_yours`）；`test` 用我的连接列工具并记下状态；`DELETE` 断开，OAuth 同时撤销 |
@@ -67,7 +67,7 @@ v2 和 v1 不兼容，不加 `/api/v2` 前缀，也不保留旧路由。`GET /ap
 
 | 方法与路径 | 用途 |
 | --- | --- |
-| `GET /api/runs?state=active\|done&agent=&source=` · `GET /api/runs/:id` | 运行列表与详情（步骤、产物） |
+| `GET /api/runs?state=active\|done&agent=&source=` · `GET /api/runs/:id` | 运行列表与详情（步骤、产物）。步骤状态：pending（等批准）、running、succeeded、failed、skipped、uncertain（进程中断时正在执行、又有副作用，不知道是否生效，不会自动重做） |
 | `POST /api/runs/:id/cancel` · `…/retry` | 取消；只重试失败的步骤 |
 | `/api/schedules[/:id]` · `POST …/:id/run-now` · `…/pause` · `…/resume` | 定时，都属于某个 Agent；五段 cron 加时区，最短 15 分钟 |
 

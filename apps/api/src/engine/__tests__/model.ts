@@ -38,6 +38,8 @@ export interface Script {
   parts: Part[];
   /** Holds the stream open until released (or aborted). */
   gate?: Promise<void>;
+  /** The call fails with this message, as a vendor error would. */
+  error?: string;
 }
 
 export function scriptedModel(scripts: Array<Part[] | Script>, options: { title?: string; summary?: string } = {}) {
@@ -46,8 +48,11 @@ export function scriptedModel(scripts: Array<Part[] | Script>, options: { title?
   const tools: string[][] = [];
   /** The tools offered on each call, with the descriptions the model read. */
   const toolSpecs: Array<Array<{ name: string; description: string }>> = [];
+  /** The tool definitions of each call exactly as the model got them (names, descriptions, schemas). */
+  const toolsJson: string[] = [];
   const record = (offered: ReadonlyArray<{ name: string }> | undefined) => {
     tools.push((offered ?? []).map((entry) => entry.name));
+    toolsJson.push(JSON.stringify(offered ?? []));
     toolSpecs.push(
       (offered ?? []).map((entry) => ({
         name: entry.name,
@@ -80,6 +85,9 @@ export function scriptedModel(scripts: Array<Part[] | Script>, options: { title?
       prompts.push(call.prompt);
       record(call.tools);
       const script = next();
+      if (script.error) throw new Error(script.error);
+      // Aborted before the call: fail at once, as a real request would.
+      if (call.abortSignal?.aborted) throw call.abortSignal.reason ?? new Error('aborted');
       if (script.gate) {
         await Promise.race([
           script.gate,
@@ -119,6 +127,7 @@ export function scriptedModel(scripts: Array<Part[] | Script>, options: { title?
       prompts.push(call.prompt);
       record(call.tools);
       const script = next();
+      if (script.error) throw new Error(script.error);
       return {
         stream: new ReadableStream({
           async start(controller) {
@@ -152,7 +161,7 @@ export function scriptedModel(scripts: Array<Part[] | Script>, options: { title?
     modelId: 'm',
     deepseek: false,
   });
-  return { languageModel, prompts, tools, toolSpecs, calls: () => index };
+  return { languageModel, prompts, tools, toolSpecs, toolsJson, calls: () => index };
 }
 
 export function gate() {

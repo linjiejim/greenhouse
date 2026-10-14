@@ -46,31 +46,44 @@ import {
   transaction,
   type Conversation as ConversationRow,
   type Db,
+  type JobRow,
   type NeedsYouRequest,
   type Message as MessageRow,
   type MessageStep,
   type Run,
+  type RunStep,
 } from '@greenhouse/db';
+import { CACHE_BREAKPOINT } from '@greenhouse/providers';
 import { admitRichBlocks, DEFAULT_CLIENT_BLOCKS } from '@greenhouse/types/rich-output';
 import { toErrorMessage } from '@greenhouse/utils/error';
 import { logger } from '@greenhouse/utils/logger';
 import type { z } from 'zod';
 import { ApiError, conflict, forbidden, invalidInput, notFound } from '../http/errors.js';
+import {
+  claimJobs,
+  extendJobLease,
+  pruneJobs,
+  recordJobProgress,
+  releaseExpiredClaims,
+  settleJob,
+  type JobOutcome,
+} from '../jobs.js';
 import type { ProvidersService } from '../providers/service.js';
 import type { Hub } from '../realtime/hub.js';
 import type { AgentsService, TurnAgent } from '../modules/agents/service.js';
 import type { FilesService } from '../modules/files/service.js';
 import type { NotificationsService } from '../modules/notifications/service.js';
-import type { RequestsService } from '../modules/requests/service.js';
+import { DECISION_JOB, type RequestsService } from '../modules/requests/service.js';
 import type { SkillsService } from '../modules/skills/service.js';
 import { notifyMentions, notifyMissedReplies } from './alerts.js';
 import { createBackground, type Background } from './background.js';
 import { toMessage, type ConversationsService } from '../modules/conversations/service.js';
 import { effectiveModules } from '../modules/members/service.js';
 import { createDigester, parseStoredDigest, renderDigest } from './digest.js';
-import { closeTranscript, projectHistory, withShownImages } from './history.js';
+import { cacheBreakpoints, closeTranscript, projectHistory, withShownImages } from './history.js';
 import { createKeyedLock } from './locks.js';
 import { createSources } from './sources.js';
+import { recordModelStep } from './steps.js';
 import {
   assembleSystem,
   buildAbout,
@@ -83,7 +96,7 @@ import {
   type Locale,
   type TurnReason,
 } from './prompt.js';
-import { assembleTools } from './tools/assemble.js';
+import { abandonSteps, assembleTools } from './tools/assemble.js';
 import type { DecisionOutcome, ToolContext, ToolDef } from './tools/define.js';
 
 type SendInput = z.output<typeof sendMessageInputSchema>;
@@ -143,14 +156,33 @@ export interface EngineDeps {
   tools: (engine: { background: Background; handOff: Engine['handOff'] }) => readonly ToolDef[];
   /** Replaces model resolution (tests). */
   languageModel?: ProvidersService['languageModel'];
+  /** Development: warn when a later turn reads nothing from the prompt cache. */
+  development?: boolean;
 }
 
+/** A reply's text goes out as one frame every FRAME_MS, at most FRAME_MAX_CHARS each. */
+const FRAME_MS = 75;
+const FRAME_MAX_CHARS = 1000;
+/** Vendors cache prompts from about this size; below it no cache read is expected. */
+const CACHEABLE_TOKENS = 2048;
 const MAX_INLINE_IMAGES = 4;
 const MAX_INLINE_IMAGE_BYTES = 5 * 1024 * 1024;
 const LEASE_MS = 60_000;
 const HEARTBEAT_MS = 10_000;
 const FLUSH_MS = 1_000;
 const SWEEP_MS = 15_000;
+/** Decisions: a lease kept alive while one is carried out, and a poll for what other processes left. */
+const DECISION_LEASE_MS = 60_000;
+const DECISION_RENEW_MS = 20_000;
+const DECISION_POLL_MS = 5_000;
+/** Decisions carried out at once in one process. */
+const DECISION_CONCURRENCY = 10;
+/** An approved call that runs longer is told to stop (its tool's own deadline is usually shorter). */
+const DECISION_EXECUTE_MS = 5 * 60_000;
+const DECISION_PRUNE_EVERY_MS = 60 * 60_000;
+/** Settled decision jobs are kept a week. */
+const DECISION_KEEP_MS = 7 * 24 * 60 * 60_000;
+const LEASE_LOST = 'The lease on this decision was lost.';
 
 const FAILURE_TEXT: Record<Locale, Record<string, string>> = {
   zh: {
@@ -185,6 +217,35 @@ function zoneOf(timezone: string | null | undefined): string {
 
 const localeOf = (value: string | null | undefined): Locale => (value === 'en' ? 'en' : 'zh');
 
+/**
+ * The text deltas of one reply, sent as one frame every FRAME_MS and before anything else about
+ * the reply (flush). Each frame keeps the offset of its first delta, so a client joins them as
+ * it joined single deltas.
+ */
+function deltaFrames(send: (text: string, offset: number) => void) {
+  let pending = '';
+  let start = 0;
+  let timer: NodeJS.Timeout | null = null;
+  const flush = () => {
+    if (timer) clearTimeout(timer);
+    timer = null;
+    while (pending) {
+      const text = pending.slice(0, FRAME_MAX_CHARS);
+      send(text, start);
+      start += text.length;
+      pending = pending.slice(text.length);
+    }
+  };
+  return {
+    push(text: string, offset: number) {
+      if (!pending) start = offset;
+      pending += text;
+      timer ??= setTimeout(flush, FRAME_MS);
+    },
+    flush,
+  };
+}
+
 function stepSummary(call: ToolCallRecord, defs: Map<string, ToolDef>, locale: Locale): string {
   const def = defs.get(call.tool);
   try {
@@ -203,6 +264,11 @@ export function createEngine(deps: EngineDeps) {
   let tools: readonly ToolDef[] | null = null;
   let stopping = false;
   let sweeper: NodeJS.Timeout | null = null;
+  let decisionPoll: NodeJS.Timeout | null = null;
+  let claiming: Promise<void> | null = null;
+  let claimAgain = false;
+  const carrying = new Set<Promise<void>>();
+  let decisionsPrunedAt = 0;
 
   const toolDefs = (): readonly ToolDef[] =>
     (tools ??= deps.tools({ background, handOff: (input) => engine.handOff(input) }));
@@ -298,15 +364,17 @@ export function createEngine(deps: EngineDeps) {
             updatedAt: sql`now()`,
           })
           .where(eq(runs.id, run.id));
-        if (stopping) return null;
         return takeNext(db, run.conversationId!);
       }),
     );
   }
 
-  /** Starts the next turn from the inbox, if any. The caller holds the conversation row lock. */
+  /**
+   * Starts the next turn from the inbox, if any. The caller holds the conversation row lock. A
+   * process going away starts none: what waits is left for another one's sweep.
+   */
   async function takeNext(db: Db, conversationId: string): Promise<Run | null> {
-    if (await activeTurn(db, conversationId)) return null;
+    if (stopping || (await activeTurn(db, conversationId))) return null;
     const pending = await db
       .select()
       .from(conversationInbox)
@@ -631,18 +699,33 @@ export function createEngine(deps: EngineDeps) {
     for (const runId of removed.runIds) live.get(runId)?.abort();
   }
 
-  /** A turn started by an edit, a regenerate or a new message: tell everyone, then run it. */
+  /**
+   * A turn started by an edit, a regenerate, a new message or a wake-up: tell everyone, then run
+   * it. It is committed and leased to this process, so it runs even when telling people fails.
+   */
   async function begin(conversationId: string, run: Run | null) {
     if (!run) return;
     await publish(conversationId, {
       type: 'conversation.updated',
       data: { conversation_id: conversationId, changes: { working: true } },
-    });
+    }).catch((error: unknown) =>
+      logger.warn('[engine] could not announce a turn', { run: run.id, error: toErrorMessage(error) }),
+    );
     track(runChain(run));
   }
 
   /** One turn: build the prompt, stream the reply, persist it, then hand over to the next. */
   async function runTurn(run: Run): Promise<Run | null> {
+    // The conversation's people are looked up once for the turn, and again only when they change.
+    const audience = deps.conversations.audienceOf(run.conversationId!);
+    try {
+      return await answer(run, (event) => audience.publish(event));
+    } finally {
+      audience.close();
+    }
+  }
+
+  async function answer(run: Run, send: (event: RealtimeEvent) => Promise<void>): Promise<Run | null> {
     const controller = new AbortController();
     live.set(run.id, controller);
     const heartbeat = setInterval(() => {
@@ -669,6 +752,9 @@ export function createEngine(deps: EngineDeps) {
     const collector = createCollector();
     const sources = createSources();
     let defs = new Map<string, ToolDef>();
+    let frames: ReturnType<typeof deltaFrames> | null = null;
+    let contextWindow: number | undefined;
+    const usage = { input: 0, cached: 0 };
 
     try {
       if (!conversation || !member) throw new ApiError(410, 'gone', 'The conversation or its member no longer exists.');
@@ -689,7 +775,15 @@ export function createEngine(deps: EngineDeps) {
           status: 'streaming',
         }),
       );
-      await publish(conversation.id, { type: 'message.created', data: { message: toMessage(reply) } });
+      await send({ type: 'message.created', data: { message: toMessage(reply) } });
+      const replyId = reply.id;
+      frames = deltaFrames(
+        (text, offset) =>
+          void send({
+            type: 'message.delta',
+            data: { conversation_id: conversation.id, message_id: replyId, text, offset },
+          }),
+      );
       // Someone else's public Agent runs its published version, for the asker (engine/AGENTS.md).
       const loaded: TurnAgent = await deps.agents.loadForTurn(run.ownerId, run.agentId);
       const { agent, manifest } = loaded;
@@ -794,7 +888,7 @@ export function createEngine(deps: EngineDeps) {
               ? { reason: 'mention', memberName: member.name }
               : { reason: 'message', memberName: member.name, count: Math.max(1, input.message_ids.length) };
       const has = (name: string) => turnTools.names.has(name);
-      // Teach the blocks the newest screen that wrote here can draw; without a word, the five every client draws.
+      // The blocks the newest screen that wrote here draws; without a word, the five every client draws.
       const [declared] = await getDb()
         .select({ richBlocks: messages.richBlocks })
         .from(messages)
@@ -821,7 +915,6 @@ export function createEngine(deps: EngineDeps) {
           },
           locale,
           conversation.kind,
-          declared?.richBlocks ?? DEFAULT_CLIENT_BLOCKS,
           !!shared,
         ),
         buildIdentity(
@@ -843,18 +936,33 @@ export function createEngine(deps: EngineDeps) {
           memories.map((memory) => ({ id: memory.id, title: memory.title, pinned: memory.pinned })),
           locale,
         ),
+        tools: turnTools.context,
+        richBlocks: declared?.richBlocks ?? DEFAULT_CLIENT_BLOCKS,
         instruction: buildInstruction(reason),
       });
+      contextWindow = resolved.contextWindow;
+      const transcript = closeTranscript(projection.messages, tail, resolved.vision ? await imagesOf(run, input) : []);
       const loopInput: LoopInput = {
         model: { model: resolved.model, modelId: resolved.modelId, deepseek: resolved.deepseek },
-        instructions: system,
-        messages: closeTranscript(projection.messages, tail, resolved.vision ? await imagesOf(run, input) : []),
+        // Cached up to here; the transcript the next turn keeps and the newest message are the other breakpoints.
+        instructions: { role: 'system', content: system, providerOptions: CACHE_BREAKPOINT },
+        messages: transcript,
         tools: turnTools.tools,
         abortSignal: controller.signal,
         stopWhen: [() => turnTools.waiting() || turnTools.ended()],
-        prepareStepMessages: ({ messages: stepMessages }) => withShownImages(stepMessages, shown.splice(0)),
+        prepareStepMessages: ({ messages: stepMessages }) =>
+          cacheBreakpoints(withShownImages(stepMessages, shown.splice(0)) ?? stepMessages, transcript.length - 2),
         timeContext: { timezone: member.timezone },
         traceId: run.id,
+        // What each step added, so the turn can be resumed from its last finished step.
+        onStepEnd: async (step) => {
+          usage.input += step.usage.inputTokens ?? 0;
+          usage.cached += step.usage.cachedInputTokens ?? 0;
+          await recordModelStep({ runId: run.id, attempt: run.attempt || 1, index: step.stepNumber, step }).catch(
+            (error: unknown) =>
+              logger.warn('[engine] could not record a step', { run: run.id, error: toErrorMessage(error) }),
+          );
+        },
       };
 
       const { result } = streamLoop(loopInput);
@@ -865,15 +973,7 @@ export function createEngine(deps: EngineDeps) {
         if (part.type === 'error' && part.error instanceof ApiError) refusal ??= part.error;
         const call = collect(part, collector);
         if (part.type === 'text-delta' && part.text) {
-          await publish(conversation.id, {
-            type: 'message.delta',
-            data: {
-              conversation_id: conversation.id,
-              message_id: reply.id,
-              text: part.text,
-              offset: collector.text.length - part.text.length,
-            },
-          });
+          frames.push(part.text, collector.text.length - part.text.length);
           if (Date.now() - flushedAt > FLUSH_MS && collector.text.length > flushedLength) {
             // Partial text survives a reload and a crash.
             flushedAt = Date.now();
@@ -882,7 +982,8 @@ export function createEngine(deps: EngineDeps) {
           }
         }
         if (call) {
-          await publish(conversation.id, {
+          frames.flush();
+          await send({
             type: 'message.step',
             data: {
               conversation_id: conversation.id,
@@ -921,6 +1022,7 @@ export function createEngine(deps: EngineDeps) {
     } finally {
       clearInterval(heartbeat);
       live.delete(run.id);
+      frames?.flush();
     }
 
     // An edit or a regenerate removed the reply while it was still being written (its lease was
@@ -950,7 +1052,7 @@ export function createEngine(deps: EngineDeps) {
         })
         .where(eq(messages.id, reply.id))
         .returning();
-      if (saved) await publish(conversation.id, { type: 'message.updated', data: { message: toMessage(saved) } });
+      if (saved) await send({ type: 'message.updated', data: { message: toMessage(saved) } });
       else superseded = true;
       await deps.agents.touch(run.agentId);
     }
@@ -974,21 +1076,22 @@ export function createEngine(deps: EngineDeps) {
         .where(eq(handoffs.id, handoffId));
     }
     const next = await finishAndTakeNext(run, outcome);
+    if (conversation && deps.development) await warnUncached(run, usage);
     if (conversation) {
-      await publish(conversation.id, {
+      await send({
         type: 'run.updated',
         data: { run_id: run.id, status: outcome.status, conversation_id: conversation.id },
       });
       if (!next && !(await activeTurn(getDb(), conversation.id))) {
-        await publish(conversation.id, {
+        await send({
           type: 'conversation.updated',
           data: { conversation_id: conversation.id, changes: { working: false } },
         });
         // The conversation is idle: fold older messages into the summary if it has grown long.
-        track(digester.run(conversation.id));
+        track(digester.run(conversation.id, contextWindow));
       }
       if (conversation.kind === 'chat' && !conversation.title && outcome.status !== 'failed') {
-        await nameChat(conversation.id, run).catch((error: unknown) =>
+        await nameChat(conversation.id, run, send).catch((error: unknown) =>
           logger.warn('[engine] could not name a chat', { error: toErrorMessage(error) }),
         );
       }
@@ -996,8 +1099,36 @@ export function createEngine(deps: EngineDeps) {
     return next;
   }
 
+  /**
+   * Development only: a later turn of a conversation that read nothing from the prompt cache
+   * means the prefix moved (a tool description, the system prompt or an early message changed).
+   */
+  async function warnUncached(run: Run, usage: { input: number; cached: number }) {
+    if (usage.cached > 0 || usage.input < CACHEABLE_TOKENS) return;
+    const [earlier] = await getDb()
+      .select({ id: runs.id })
+      .from(runs)
+      .where(
+        and(
+          eq(runs.conversationId, run.conversationId!),
+          eq(runs.agentId, run.agentId),
+          eq(runs.kind, 'turn'),
+          eq(runs.status, 'succeeded'),
+          ne(runs.id, run.id),
+        ),
+      )
+      .limit(1);
+    if (earlier) {
+      logger.warn('[engine] a later turn of a conversation read nothing from the prompt cache', {
+        conversation: run.conversationId,
+        run: run.id,
+        inputTokens: usage.input,
+      });
+    }
+  }
+
   /** A new chat gets a short title from its first exchange, written by the fast model. */
-  async function nameChat(conversationId: string, run: Run) {
+  async function nameChat(conversationId: string, run: Run, send: (event: RealtimeEvent) => Promise<void>) {
     const rows = await getDb()
       .select({ role: messages.role, content: messages.content })
       .from(messages)
@@ -1036,10 +1167,7 @@ export function createEngine(deps: EngineDeps) {
       .where(and(eq(conversations.id, conversationId), eq(conversations.title, '')))
       .returning({ id: conversations.id });
     if (updated)
-      await publish(conversationId, {
-        type: 'conversation.updated',
-        data: { conversation_id: conversationId, changes: { title } },
-      });
+      await send({ type: 'conversation.updated', data: { conversation_id: conversationId, changes: { title } } });
   }
 
   /** Images sent with the messages this turn answers, for a model that can see them. */
@@ -1076,7 +1204,13 @@ export function createEngine(deps: EngineDeps) {
     return text.length > 1500 ? `${text.slice(0, 1500)}…` : text;
   }
 
-  /** An approved write runs exactly the arguments the member saw, with the asker's rights. */
+  /**
+   * An approved write runs exactly the arguments the member saw, with the asker's rights, and runs
+   * once: its step moves pending → running by compare-and-set, and only the call that moved it
+   * executes. A step found running was being executed when its process died: its outcome is
+   * unknown, so it becomes uncertain and is never run again by itself. A finished step gives the
+   * outcome it recorded, so the decision can be followed up again after a crash.
+   */
   async function decideToolWrite(
     request: NeedsYouRequest,
     run: Run | undefined,
@@ -1085,15 +1219,23 @@ export function createEngine(deps: EngineDeps) {
     const payload = request.payload as { tool?: string; input?: unknown; summary?: string };
     const summary = payload.summary ?? payload.tool ?? '';
     const zh = locale === 'zh';
-    const setStep = (values: Record<string, unknown>) =>
+    /** Moves the step on, only from the states given: the first to move it wins. */
+    const moveStep = async (from: RunStep['status'][], values: Record<string, unknown>) =>
       request.stepId
-        ? getDb()
-            .update(runSteps)
-            .set({ ...values, updatedAt: sql`now()` } as never)
-            .where(eq(runSteps.id, request.stepId))
-        : Promise.resolve();
+        ? (
+            await getDb()
+              .update(runSteps)
+              .set({ ...values, updatedAt: sql`now()` } as never)
+              .where(and(eq(runSteps.id, request.stepId), inArray(runSteps.status, from)))
+              .returning({ id: runSteps.id })
+          ).length > 0
+        : false;
+    const unknown = {
+      line: zh ? `已批准：${summary}，结果未知` : `Approved: ${summary}, outcome unknown`,
+      note: `The member approved "${summary}", but running it was interrupted, so it is unknown whether it took effect. Check the current state before you do it again.`,
+    };
     if (request.status !== 'approved') {
-      await setStep({ status: 'skipped', finishedAt: sql`now()` });
+      await moveStep(['pending'], { status: 'skipped', finishedAt: sql`now()` });
       if (request.status === 'rejected') {
         const reason =
           typeof request.result?.reason === 'string' && request.result.reason ? `: ${request.result.reason}` : '';
@@ -1104,30 +1246,64 @@ export function createEngine(deps: EngineDeps) {
       }
       return { line: zh ? `卡片已过期：${summary}` : `Card expired: ${summary}`, note: null };
     }
+    const gone = {
+      line: zh ? `已批准：${summary}，但无法执行` : `Approved: ${summary}, but it could not run`,
+      note: `The member approved "${summary}", but the tool is no longer available.`,
+    };
+    if (!request.stepId) return gone;
     const def = toolDefs().find((candidate) => candidate.name === payload.tool);
     // The same Agent the turn ran on; a public Agent paused or unshared meanwhile does not act.
     const loaded = run ? await deps.agents.loadForTurn(run.ownerId, run.agentId).catch(() => null) : null;
-    if (!def || !run || !loaded || (loaded.public && !def.publicAgent)) {
-      await setStep({ status: 'failed', error: { code: 'tool_gone', message: 'The tool is no longer available.' } });
+    const ready = def && run && loaded && !(loaded.public && !def.publicAgent) ? { def, run, loaded } : null;
+    const moved = ready
+      ? await moveStep(['pending'], { status: 'running', startedAt: sql`now()` })
+      : await moveStep(['pending'], {
+          status: 'failed',
+          error: { code: 'tool_gone', message: 'The tool is no longer available.' },
+          finishedAt: sql`now()`,
+        });
+    if (!moved) {
+      // An earlier attempt of this decision got here first.
+      const [step] = await getDb().select().from(runSteps).where(eq(runSteps.id, request.stepId));
+      if (step?.status === 'succeeded') {
+        return {
+          line: zh ? `已批准：${summary}` : `Approved: ${summary}`,
+          note: `The member approved "${summary}" and it ran. Result: ${brief(step.output)}`,
+        };
+      }
+      if (step?.status === 'failed') {
+        if (step.error?.code === 'tool_gone') return gone;
+        return {
+          line: zh ? `已批准：${summary}，但没有成功` : `Approved: ${summary}, but it failed`,
+          note: `The member approved "${summary}", but it failed: ${step.error?.message ?? 'unknown error'}`,
+        };
+      }
+      if (step?.status === 'running') {
+        await moveStep(['running'], { status: 'uncertain', finishedAt: sql`now()` });
+        return unknown;
+      }
+      if (step?.status === 'uncertain') return unknown;
+      // Skipped: the reply that asked for it was removed meanwhile.
       return {
-        line: zh ? `已批准：${summary}，但无法执行` : `Approved: ${summary}, but it could not run`,
-        note: `The member approved "${summary}", but the tool is no longer available.`,
+        line: zh ? `已批准：${summary}，但已不再需要` : `Approved: ${summary}, but it is no longer needed`,
+        note: null,
       };
     }
-    const { agent, manifest } = loaded;
-    const [conversation] = run.conversationId
-      ? await getDb().select().from(conversations).where(eq(conversations.id, run.conversationId))
+    if (!ready) return gone;
+    const { agent, manifest } = ready.loaded;
+    const [conversation] = ready.run.conversationId
+      ? await getDb().select().from(conversations).where(eq(conversations.id, ready.run.conversationId))
       : [];
     const context: ToolContext = {
-      memberId: run.ownerId,
+      memberId: ready.run.ownerId,
       agent,
       manifest,
       conversation: conversation ?? null,
-      runId: run.id,
-      stepId: request.stepId ?? '',
+      runId: ready.run.id,
+      stepId: request.stepId,
       locale,
       surface: 'turn',
-      signal: new AbortController().signal,
+      signal: AbortSignal.timeout(DECISION_EXECUTE_MS),
       taint: () => undefined,
       tainted: () => false,
       raise: () => Promise.reject(new Error('An approved action cannot raise another card.')),
@@ -1136,8 +1312,9 @@ export function createEngine(deps: EngineDeps) {
     };
     const started = Date.now();
     try {
-      const output = await def.execute(payload.input, context);
-      await setStep({
+      const output = await ready.def.execute(payload.input, context);
+      // Recorded even when a sweep took the step for abandoned meanwhile: it did run.
+      await moveStep(['running', 'uncertain'], {
         status: 'succeeded',
         output: output ?? null,
         durationMs: Date.now() - started,
@@ -1149,7 +1326,12 @@ export function createEngine(deps: EngineDeps) {
       };
     } catch (error) {
       const message = toErrorMessage(error).slice(0, 500);
-      await setStep({ status: 'failed', error: { code: 'tool_failed', message }, finishedAt: sql`now()` });
+      await moveStep(['running', 'uncertain'], {
+        status: 'failed',
+        error: { code: 'tool_failed', message },
+        durationMs: Date.now() - started,
+        finishedAt: sql`now()`,
+      });
       return {
         line: zh ? `已批准：${summary}，但没有成功` : `Approved: ${summary}, but it failed`,
         note: `The member approved "${summary}", but it failed: ${message}`,
@@ -1157,11 +1339,38 @@ export function createEngine(deps: EngineDeps) {
     }
   }
 
+  const cardTitle = (request: NeedsYouRequest) =>
+    typeof request.payload.title === 'string' && request.payload.title ? request.payload.title : request.subject;
+
+  /** A card a tool raised itself (a question, a proposal, a take-over): the tool applies the decision. */
+  async function decideOwnCard(
+    request: NeedsYouRequest,
+    agentId: string | null,
+    locale: Locale,
+  ): Promise<DecisionOutcome> {
+    const def = toolDefs().find((candidate) => candidate.name === request.payload.tool);
+    const [agent] = agentId ? await getDb().select().from(agents).where(eq(agents.id, agentId)) : [];
+    if (!def?.decide || !agent) return { line: request.status, note: null };
+    try {
+      return await def.decide(request, { memberId: request.memberId, agent, locale });
+    } catch (error) {
+      const message = toErrorMessage(error).slice(0, 500);
+      const title = cardTitle(request);
+      return {
+        line: locale === 'zh' ? `没能处理：${title}` : `Could not be carried out: ${title}`,
+        note: `Carrying out the member's decision on "${title}" failed: ${message}`,
+      };
+    }
+  }
+
   /**
-   * What a decision does: runs an approved write or lets the tool apply its proposal, writes one
-   * line in the transcript, ends the run that waited for it, and wakes the Agent with the outcome.
+   * What a decision does, from its job: runs an approved write or lets the tool apply the
+   * decision, then follows it up. The job records how far it got, so the claim that takes it over
+   * after a crash never applies a decision twice: a write by its step, an approved proposal by the
+   * job. Answers, hand-backs, rejections and expiries change nothing but what the Agent is told,
+   * so they are simply worked out again.
    */
-  async function resolve(request: NeedsYouRequest): Promise<void> {
+  async function resolve(request: NeedsYouRequest, job: JobRow): Promise<void> {
     const [run] = request.runId ? await getDb().select().from(runs).where(eq(runs.id, request.runId)) : [];
     const [member] = await getDb()
       .select({ locale: members.locale })
@@ -1169,61 +1378,177 @@ export function createEngine(deps: EngineDeps) {
       .where(eq(members.id, request.memberId));
     const locale = localeOf(member?.locale);
     const agentId = request.agentId ?? run?.agentId ?? null;
+    const progress = (job.result ?? {}) as { applying?: boolean; outcome?: DecisionOutcome };
     let outcome: DecisionOutcome;
-    if (request.subject === 'tool_write') {
+    if (progress.outcome) {
+      outcome = progress.outcome;
+    } else if (request.subject === 'tool_write') {
       outcome = await decideToolWrite(request, run, locale);
+    } else if (progress.applying) {
+      const title = cardTitle(request);
+      outcome = {
+        line: locale === 'zh' ? `结果未知：${title}` : `Outcome unknown: ${title}`,
+        note: `Carrying out the member's decision on "${title}" was interrupted, so it is unknown whether it took effect. Check before you rely on it.`,
+      };
     } else {
-      const def = toolDefs().find((candidate) => candidate.name === request.payload.tool);
-      const [agent] = agentId ? await getDb().select().from(agents).where(eq(agents.id, agentId)) : [];
-      outcome =
-        def?.decide && agent
-          ? await def.decide(request, { memberId: request.memberId, agent, locale })
-          : { line: request.status, note: null };
+      // An approval applies something (starts a run, saves a skill, signs in): it happens once.
+      if (request.status === 'approved' && !(await recordJobProgress(job, instance, { applying: true }))) {
+        throw new Error(LEASE_LOST);
+      }
+      outcome = await decideOwnCard(request, agentId, locale);
     }
+    if (!progress.outcome && !(await recordJobProgress(job, instance, { outcome }))) throw new Error(LEASE_LOST);
+    await followUp(request, run, agentId, outcome);
+  }
 
-    if (request.conversationId) {
-      const line = await withConversation(request.conversationId, () =>
-        deps.conversations.append(request.conversationId!, {
+  /**
+   * One line in the transcript, the waiting run closed once none of its cards is open, and the
+   * Agent woken with the outcome: one transaction under the conversation lock (the lock a turn's
+   * finish takes, so whichever comes second sees what the other did), done once, as the line
+   * records.
+   */
+  async function followUp(
+    request: NeedsYouRequest,
+    run: Run | undefined,
+    agentId: string | null,
+    outcome: DecisionOutcome,
+  ): Promise<void> {
+    const conversationId = request.conversationId;
+    if (!conversationId) return;
+    const done = await withConversation(conversationId, () =>
+      transaction(async (db) => {
+        const [locked] = await db
+          .select({ id: conversations.id })
+          .from(conversations)
+          .where(eq(conversations.id, conversationId))
+          .for('update');
+        if (!locked) return null;
+        const [seen] = await db
+          .select({ id: messages.id })
+          .from(messages)
+          .where(
+            and(
+              eq(messages.conversationId, conversationId),
+              eq(messages.role, 'event'),
+              sql`${messages.event}->>'request_id' = ${request.id}`,
+            ),
+          )
+          .limit(1);
+        if (seen) return null;
+        const line = await deps.conversations.append(conversationId, {
           role: 'event',
           agentId,
           content: outcome.line,
           event: { type: 'decision', request_id: request.id, status: request.status },
-        }),
-      );
-      await publish(request.conversationId, { type: 'message.created', data: { message: toMessage(line) } });
-    }
-
-    // The run that waited is done once none of its cards is still open. Under the conversation's
-    // row lock, like a turn's finish: whichever comes second sees what the other did.
-    if (run?.conversationId) {
-      const closed = await withConversation(run.conversationId, () =>
-        transaction(async (db) => {
-          await lockConversation(db, run.conversationId!);
+        });
+        let closed = false;
+        if (run?.conversationId === conversationId) {
           const [open] = await db
             .select({ id: requestsTable.id })
             .from(requestsTable)
             .where(and(eq(requestsTable.runId, run.id), eq(requestsTable.status, 'pending')))
             .limit(1);
-          if (open) return false;
-          const updated = await db
-            .update(runs)
-            .set({ status: 'succeeded', waitReason: null, finishedAt: sql`now()`, updatedAt: sql`now()` })
-            .where(and(eq(runs.id, run.id), eq(runs.status, 'waiting')))
-            .returning({ id: runs.id });
-          return updated.length > 0;
-        }),
-      );
-      if (closed) {
-        await publish(run.conversationId, {
+          if (!open) {
+            const updated = await db
+              .update(runs)
+              .set({ status: 'succeeded', waitReason: null, finishedAt: sql`now()`, updatedAt: sql`now()` })
+              .where(and(eq(runs.id, run.id), eq(runs.status, 'waiting')))
+              .returning({ id: runs.id });
+            closed = updated.length > 0;
+          }
+        }
+        const next =
+          outcome.note && agentId
+            ? await enqueue(db, conversationId, { agent_id: agentId, member_id: request.memberId, note: outcome.note })
+            : null;
+        return { line, closed, next };
+      }),
+    );
+    if (!done) return;
+    // Committed: the turn it woke starts whatever happens to the announcements.
+    try {
+      await publish(conversationId, { type: 'message.created', data: { message: toMessage(done.line) } });
+      if (done.closed && run) {
+        await publish(conversationId, {
           type: 'run.updated',
-          data: { run_id: run.id, status: 'succeeded', conversation_id: run.conversationId },
+          data: { run_id: run.id, status: 'succeeded', conversation_id: conversationId },
         });
       }
+    } catch (error) {
+      logger.warn('[engine] could not announce a decision', { request: request.id, error: toErrorMessage(error) });
     }
+    await begin(conversationId, done.next);
+  }
 
-    if (outcome.note && request.conversationId && agentId) {
-      await engine.deliver(request.conversationId, { agentId, memberId: request.memberId, note: outcome.note });
+  /** One decision job, under a lease kept alive while it works. */
+  async function carryOut(job: JobRow): Promise<void> {
+    const renew = setInterval(() => {
+      void extendJobLease(job, instance, DECISION_LEASE_MS).catch((error: unknown) =>
+        logger.warn('[engine] could not renew a decision lease', { job: job.id, error: toErrorMessage(error) }),
+      );
+    }, DECISION_RENEW_MS);
+    let outcome: JobOutcome = { status: 'succeeded' };
+    try {
+      const [request] = await getDb()
+        .select()
+        .from(requestsTable)
+        .where(eq(requestsTable.id, String(job.payload.request_id)));
+      if (request) await resolve(request, job);
+    } catch (error) {
+      logger.warn('[engine] a decision could not be carried out', { job: job.id, error: toErrorMessage(error) });
+      outcome = { status: 'retry', error: toErrorMessage(error).slice(0, 500) };
+    } finally {
+      clearInterval(renew);
     }
+    if ((await settleJob(job, instance, outcome)) === 'dead')
+      logger.warn('[engine] gave up on a decision', { job: job.id });
+  }
+
+  /**
+   * Claims ready decisions while fewer than DECISION_CONCURRENCY run here, and starts each on its
+   * own: one slow approved write never holds up the others. Claims of dead processes go back to
+   * the queue first.
+   */
+  async function claimDecisions(): Promise<void> {
+    await releaseExpiredClaims([DECISION_JOB]);
+    while (!stopping && carrying.size < DECISION_CONCURRENCY) {
+      const claimed = await claimJobs([DECISION_JOB], instance, {
+        limit: DECISION_CONCURRENCY - carrying.size,
+        leaseMs: DECISION_LEASE_MS,
+      });
+      if (!claimed.length) break;
+      for (const job of claimed) {
+        const work: Promise<void> = carryOut(job).finally(() => {
+          carrying.delete(work);
+          // A slot is free: take what waited for one.
+          wakeDecisions();
+        });
+        carrying.add(work);
+        track(work);
+      }
+    }
+    if (Date.now() - decisionsPrunedAt > DECISION_PRUNE_EVERY_MS) {
+      decisionsPrunedAt = Date.now();
+      await pruneJobs([DECISION_JOB], DECISION_KEEP_MS);
+    }
+  }
+
+  /** Takes the decisions that are ready now; a wake while claiming claims once more after it. */
+  function wakeDecisions(): void {
+    if (stopping) return;
+    if (claiming) {
+      claimAgain = true;
+      return;
+    }
+    claimAgain = false;
+    claiming = claimDecisions()
+      .catch((error: unknown) => logger.warn('[engine] claiming decisions failed', { error: toErrorMessage(error) }))
+      .finally(() => {
+        claiming = null;
+        // Its decision may have committed after this claim looked.
+        if (claimAgain) wakeDecisions();
+      });
+    track(claiming);
   }
 
   const background = createBackground({
@@ -1243,10 +1568,8 @@ export function createEngine(deps: EngineDeps) {
     instance,
     background,
 
-    /** Carries out a decision the member just made on a card. */
-    decide(request: NeedsYouRequest): void {
-      track(resolve(request));
-    },
+    /** A decision committed: carry it out now (every process also polls, and takes over dead claims). */
+    wakeDecisions,
 
     /** A member's message. Starts a turn now, or queues behind the one answering. */
     async post(memberId: string, conversationId: string, input: SendInput): Promise<SendMessageResult> {
@@ -1614,7 +1937,9 @@ export function createEngine(deps: EngineDeps) {
      * hear about the replies they missed.
      */
     async sweep(): Promise<void> {
-      for (const request of await deps.requests.expireDue()) track(resolve(request));
+      // Expired cards are followed up by the decision worker, like decisions.
+      await deps.requests.expireDue();
+      wakeDecisions();
       await background.sweep();
       const expired = await getDb()
         .select()
@@ -1624,6 +1949,7 @@ export function createEngine(deps: EngineDeps) {
         );
       for (const run of expired) {
         if (live.has(run.id)) continue;
+        await abandonSteps(run.id, toolDefs());
         const [streaming] = await getDb()
           .update(messages)
           .set({ status: 'failed' })
@@ -1669,6 +1995,7 @@ export function createEngine(deps: EngineDeps) {
 
     start() {
       background.start_worker();
+      decisionPoll ??= setInterval(wakeDecisions, DECISION_POLL_MS);
       sweeper ??= setInterval(() => {
         void engine
           .sweep()
@@ -1690,6 +2017,8 @@ export function createEngine(deps: EngineDeps) {
       stopping = true;
       if (sweeper) clearInterval(sweeper);
       sweeper = null;
+      if (decisionPoll) clearInterval(decisionPoll);
+      decisionPoll = null;
       for (const controller of live.values()) controller.abort();
       await background.shutdown();
       await engine.idle();

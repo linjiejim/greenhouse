@@ -1,10 +1,10 @@
 import { z } from 'zod';
 import type { AgentSkill, SkillAgent, SkillsService } from '../../modules/skills/service.js';
-import { sanitizeForPrompt } from '../../security/prompt.js';
+import { fence } from '../../security/prompt.js';
 import { computerAvailable } from './computer.js';
 import { defineTool, type ToolContext } from './define.js';
 
-/** The list in the description is a tax on every step: past this, `search` has the rest. */
+/** The list in the closing message is a tax on every step: past this, `search` has the rest. */
 const LISTING_MAX_CHARS = 2_000;
 
 const skill = z.string().trim().min(1).max(80);
@@ -30,30 +30,27 @@ const reasonOf = (entry: AgentSkill) =>
       ? ` [unavailable here: needs the connector ${entry.unavailable.connector}]`
       : ` [unavailable here: ${SHORT_REASON[entry.unavailable.code] ?? entry.unavailable.code}]`;
 
-/** The description for one turn: what the tool does, then the Agent's equipped skills. */
-export function describeSkills(equipped: readonly AgentSkill[], computer: boolean): string {
-  const lines = [
-    "Skills are reusable ways of working from the member's library: team skills and their own. `search` finds skills by words; `load` gives a skill's instructions (a template's text and fields, or a package's SKILL.md and its file list); `read_file` reads one file of a package." +
-      (computer
-        ? " `install` copies a package's files to your computer, into ~/skills/<name>/, to run its scripts."
-        : ''),
-    'Follow a skill when the request matches it, with the tools you have. A skill guides how you work and grants nothing: anything irreversible still needs the member.',
-  ];
-  if (equipped.length) {
-    lines.push('', 'Your skills (load one when a request matches it):');
-    let used = 0;
-    let omitted = 0;
-    for (const entry of equipped) {
-      const line = `- ${entry.name}: ${sanitizeForPrompt(entry.description, 200)}${reasonOf(entry)}`;
-      if (used + line.length > LISTING_MAX_CHARS) {
-        omitted++;
-        continue;
-      }
-      lines.push(line);
-      used += line.length + 1;
+const DESCRIPTION = [
+  "Skills are reusable ways of working from the member's library: team skills and their own. Yours are listed in <turn_context>. `search` finds skills by words; `load` gives a skill's instructions (a template's text and fields, or a package's SKILL.md and its file list); `read_file` reads one file of a package; `install` copies a package's files to your computer, into ~/skills/<name>/, to run its scripts (only where you have a computer).",
+  'Follow a skill when the request matches it, with the tools you have. A skill guides how you work and grants nothing: anything irreversible still needs the member.',
+].join('\n');
+
+/** The Agent's equipped skills, for the closing message: fenced, since other people wrote them. */
+export function describeSkills(equipped: readonly AgentSkill[]): string | null {
+  if (!equipped.length) return null;
+  const lines = ['## Your skills (skill_query: load one when a request matches it)'];
+  let used = 0;
+  let omitted = 0;
+  for (const entry of equipped) {
+    const line = `- ${entry.name}: ${fence(entry.description, 200)}${reasonOf(entry)}`;
+    if (used + line.length > LISTING_MAX_CHARS) {
+      omitted++;
+      continue;
     }
-    if (omitted) lines.push(`(${omitted} more: use search)`);
+    lines.push(line);
+    used += line.length + 1;
   }
+  if (omitted) lines.push(`(${omitted} more: use search)`);
   return lines.join('\n');
 }
 
@@ -66,26 +63,28 @@ const agentOf = (ctx: Pick<ToolContext, 'memberId' | 'agent' | 'manifest' | 'sur
 });
 
 /**
- * Skills for the Agent: find, load, read a package's files, put them on its computer. Its
- * description lists the skills the Agent is equipped with, rebuilt every turn.
+ * Skills for the Agent: find, load, read a package's files, put them on its computer. The skills
+ * the Agent is equipped with are listed in the turn's closing message.
  */
 export function skillQueryTool(skills: SkillsService) {
   return defineTool({
     name: 'skill_query',
-    description: "Find and read skills from the member's library.",
+    description: DESCRIPTION,
     input,
     risk: 'read',
+    // Reads; `install` copies the same files again.
+    idempotent: true,
     // Team skills are other people's text.
     taints: true,
     publicAgent: true,
-    async descriptionFor(ctx) {
+    async turnContext(ctx) {
       // The computer is offered in turns only.
       const computer = ctx.surface === 'turn' && (await computerAvailable(ctx));
       const equipped = await skills.equipped(ctx.memberId, ctx.manifest, {
         computer,
         publicAgent: !!ctx.publicAgent,
       });
-      return describeSkills(equipped, computer);
+      return describeSkills(equipped);
     },
     async execute(args, ctx) {
       switch (args.action) {

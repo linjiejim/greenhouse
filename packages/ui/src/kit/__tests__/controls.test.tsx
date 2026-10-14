@@ -146,6 +146,7 @@ describe('status vocabulary', () => {
   it('yellow only for what needs you, red only for failure, everything else neutral', () => {
     expect(statusTone('需要你')).toBe('warning');
     expect(statusTone('等你接管')).toBe('warning');
+    expect(statusTone('结果未知')).toBe('warning');
     expect(statusTone('失败')).toBe('danger');
     expect(statusTone('部分不可用')).toBe('danger');
     expect(statusTone('运行中')).toBe('info');

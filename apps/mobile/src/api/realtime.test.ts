@@ -222,6 +222,10 @@ describe('helpers', () => {
       type: 'run.updated',
       data: { run_id: 'r', status: 'running', conversation_id: null },
     });
+    expect(parseFrame('{"type":"conversation.resync","data":{"conversation_id":"c1","after_seq":4}}')).toEqual({
+      type: 'conversation.resync',
+      data: { conversation_id: 'c1', after_seq: 4 },
+    });
     expect(parseFrame('{"type":"run.updated"}')).toBeNull();
     expect(parseFrame(42)).toBeNull();
   });

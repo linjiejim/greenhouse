@@ -1,13 +1,24 @@
 /**
  * "Needs you": the one request model. A request is decided once, by the member it is for, with
  * a compare-and-set from pending; a second decision or an expired card answers 409. What the
- * decision does next (run the approved tool, wake the Agent) belongs to the engine.
+ * decision does next (run the approved tool, wake the Agent) belongs to the engine: settling and
+ * expiring write a `request_decided` job in the same transaction, so a decision survives a crash
+ * between the click and its execution, and the engine's worker is woken once it commits.
  */
 
 import { and, desc, eq, gt, inArray, isNull, lt, or, sql } from 'drizzle-orm';
 import type { NeedsYou, Page } from '@greenhouse/contract';
-import { getDb, newId, requests, type NeedsYouRequest, type RequestKind, type RequestStatus } from '@greenhouse/db';
+import {
+  getDb,
+  newId,
+  requests,
+  transaction,
+  type NeedsYouRequest,
+  type RequestKind,
+  type RequestStatus,
+} from '@greenhouse/db';
 import { conflict, notFound } from '../../http/errors.js';
+import { enqueueJob } from '../../jobs.js';
 import { decodeCursor, toPage } from '../../http/pagination.js';
 import type { Hub } from '../../realtime/hub.js';
 import type { NotificationsService } from '../notifications/service.js';
@@ -46,12 +57,24 @@ export const toRequest = (row: NeedsYouRequest): NeedsYou => ({
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-export function createRequestsService(deps: { hub: Hub; notifications: NotificationsService }) {
+/** The job that carries out a decision (or an expiry): one per request, ever. */
+export const DECISION_JOB = 'request_decided';
+
+export function createRequestsService(deps: {
+  hub: Hub;
+  notifications: NotificationsService;
+  /** A decision committed: the engine's worker takes it now rather than at its next poll. */
+  decided: () => void;
+}) {
   const announce = (row: NeedsYouRequest) =>
     deps.hub.publish([row.memberId], {
       type: 'request.updated',
       data: { request_id: row.id, status: row.status, conversation_id: row.conversationId },
     });
+
+  /** Joins the open transaction: the job commits with the decision. */
+  const queueDecision = (row: NeedsYouRequest) =>
+    enqueueJob({ kind: DECISION_JOB, dedupeKey: `${DECISION_JOB}:${row.id}`, payload: { request_id: row.id } });
 
   return {
     async create(input: CreateRequest): Promise<NeedsYouRequest> {
@@ -116,52 +139,66 @@ export function createRequestsService(deps: { hub: Hub; notifications: Notificat
       return row;
     },
 
-    /** The one way a request is decided: from pending, before it expires, exactly once. */
+    /**
+     * The one way a request is decided: from pending, before it expires, exactly once. The
+     * decision and the job that carries it out commit together.
+     */
     async settle(
       memberId: string,
       id: string,
       outcome: { status: Exclude<RequestStatus, 'pending' | 'expired'>; result: Record<string, unknown> },
     ): Promise<NeedsYouRequest> {
-      const [row] = await getDb()
-        .update(requests)
-        .set({
-          status: outcome.status,
-          result: outcome.result,
-          decidedBy: memberId,
-          decidedAt: sql`now()`,
-          version: sql`${requests.version} + 1`,
-          updatedAt: sql`now()`,
-        })
-        .where(
-          and(
-            eq(requests.id, id),
-            eq(requests.memberId, memberId),
-            eq(requests.status, 'pending'),
-            or(isNull(requests.expiresAt), gt(requests.expiresAt, new Date().toISOString())),
-          ),
-        )
-        .returning();
+      const row = await transaction(async (db) => {
+        const [settled] = await db
+          .update(requests)
+          .set({
+            status: outcome.status,
+            result: outcome.result,
+            decidedBy: memberId,
+            decidedAt: sql`now()`,
+            version: sql`${requests.version} + 1`,
+            updatedAt: sql`now()`,
+          })
+          .where(
+            and(
+              eq(requests.id, id),
+              eq(requests.memberId, memberId),
+              eq(requests.status, 'pending'),
+              or(isNull(requests.expiresAt), gt(requests.expiresAt, new Date().toISOString())),
+            ),
+          )
+          .returning();
+        if (!settled) return null;
+        await deps.notifications.markRequestRead(id);
+        await queueDecision(settled);
+        return settled;
+      });
       if (!row) {
         const current = await this.get(memberId, id);
         if (current.status === 'pending') throw conflict('request_expired', 'This card has expired.');
         throw conflict('request_settled', 'This card was already decided.');
       }
-      await deps.notifications.markRequestRead(id);
       announce(row);
+      deps.decided();
       return row;
     },
 
-    /** Pending requests past their time become expired; returns them for follow-up. */
+    /** Pending requests past their time become expired; the engine's worker follows each up. */
     async expireDue(): Promise<NeedsYouRequest[]> {
-      const rows = await getDb()
-        .update(requests)
-        .set({ status: 'expired', updatedAt: sql`now()`, version: sql`${requests.version} + 1` })
-        .where(and(eq(requests.status, 'pending'), lt(requests.expiresAt, new Date().toISOString())))
-        .returning();
-      for (const row of rows) {
-        await deps.notifications.markRequestRead(row.id);
-        announce(row);
-      }
+      const rows = await transaction(async (db) => {
+        const expired = await db
+          .update(requests)
+          .set({ status: 'expired', updatedAt: sql`now()`, version: sql`${requests.version} + 1` })
+          .where(and(eq(requests.status, 'pending'), lt(requests.expiresAt, new Date().toISOString())))
+          .returning();
+        for (const row of expired) {
+          await deps.notifications.markRequestRead(row.id);
+          await queueDecision(row);
+        }
+        return expired;
+      });
+      for (const row of rows) announce(row);
+      if (rows.length) deps.decided();
       return rows;
     },
 

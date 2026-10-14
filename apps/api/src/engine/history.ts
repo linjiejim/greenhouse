@@ -1,8 +1,8 @@
 /**
  * The transcript as the speaking Agent sees it. Its own replies are assistant messages; everyone
  * else's words arrive as user messages behind a speaker label the model cannot forge (a label at
- * the start of a message body is neutralised into a quote). Older messages beyond the budget live
- * on in the rolling summary.
+ * the start of a message body is neutralised into a quote). Older messages live on in the rolling
+ * summary, which folds them long before the budget below would drop any.
  */
 
 import type { ModelMessage } from 'ai';
@@ -15,6 +15,8 @@ import {
   type EngineMessage,
 } from '@greenhouse/agent-core';
 import { agents, getDb, members, messages, type Conversation, type Message } from '@greenhouse/db';
+import { CACHE_BREAKPOINT } from '@greenhouse/providers';
+import { logger } from '@greenhouse/utils/logger';
 import { skillRuns } from '../modules/skills/turn.js';
 import { sanitizeForPrompt } from '../security/prompt.js';
 import { SPEAKER } from './prompt.js';
@@ -109,10 +111,17 @@ export async function projectHistory(input: {
   }
 
   const budget = resolveHistoryBudget(input.contextWindow);
+  // The last resort: the summary folds long before this, once the conversation goes idle.
   const windowed = windowMessagesByBudget(
     merged.map((message) => ({ ...message, content: message.content as string })),
     budget,
   );
+  if (windowed.dropped) {
+    logger.warn('[engine] the transcript passed its budget before a summary; the oldest messages were left out', {
+      conversation: input.conversation.id,
+      dropped: windowed.dropped,
+    });
+  }
   const kept = windowed.messages;
   return {
     messages: kept.map(({ seq: _seq, ...message }) => message),
@@ -149,6 +158,22 @@ export function closeTranscript(
     return [...transcript.slice(0, -1), { ...last, content: content(`${last.content}\n\n${tail}`) }];
   }
   return [...transcript, { role: 'user', content: content(tail) }];
+}
+
+/**
+ * The cache breakpoints of one model call, besides the end of the system prompt: the end of the
+ * transcript the next turn keeps (`stableEnd`, the message before the closing one; -1 for none)
+ * and the newest message, so the next step of the same turn reads everything before it. Marks
+ * from earlier steps are moved, never added up: a vendor honours only a few.
+ */
+export function cacheBreakpoints(messages: ModelMessage[], stableEnd: number): ModelMessage[] {
+  const last = messages.length - 1;
+  return messages.map((message, index) => {
+    const { greenhouse: _mark, ...rest } = message.providerOptions ?? {};
+    const options = index === stableEnd || index === last ? { ...rest, ...CACHE_BREAKPOINT } : rest;
+    if (!message.providerOptions && !Object.keys(options).length) return message;
+    return { ...message, providerOptions: options } as ModelMessage;
+  });
 }
 
 /** Opens the message a screenshot rides in: a system line, so the model never takes it for the member. */

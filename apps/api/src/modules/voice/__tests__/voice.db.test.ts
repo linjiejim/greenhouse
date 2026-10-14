@@ -241,7 +241,11 @@ describe('voice', () => {
       body: { content: '听一下这段录音', attachments: [uploaded.id] },
     });
     await app.services.engine.idle();
-    const steps = await getDb().select().from(runSteps).where(eq(runSteps.runId, sent.body.run_id));
+    const steps = await getDb()
+      .select()
+      .from(runSteps)
+      .where(and(eq(runSteps.runId, sent.body.run_id), eq(runSteps.kind, 'tool')))
+      .orderBy(runSteps.startedAt);
     expect(steps.map((step) => step.output)).toEqual([
       expect.objectContaining({ name: 'memo.webm', transcript: '会议定在周三下午三点', duration_seconds: 2.5 }),
       expect.objectContaining({ transcript: '会议定在周三下午三点' }),

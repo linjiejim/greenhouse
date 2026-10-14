@@ -14,6 +14,7 @@ export function conversationTool() {
       'Search earlier messages of this conversation when something said before is not in your context. Returns matching messages, newest first, with their position in the conversation.',
     input: z.object({ query: z.string().min(1).max(200), limit: z.number().int().min(1).max(20).default(8) }),
     risk: 'read',
+    idempotent: true,
     private: true,
     surfaces: ['turn'],
     // The asker's own conversation.

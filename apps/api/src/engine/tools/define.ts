@@ -97,10 +97,11 @@ export interface ToolDef<I = any> {
   /** Hidden unless this holds: a module the member has, a provider that is configured. */
   available?(ctx: AvailabilityContext): boolean | Promise<boolean>;
   /**
-   * The description for this turn, when it depends on the member and the Agent (the connectors
-   * they can use); null leaves the tool out.
+   * What the tool adds to the turn's closing message (<turn_context>): a list that changes from
+   * turn to turn (the connectors the asker can use, the Agent's skills), so that the description
+   * stays fixed and the prompt prefix cacheable. Fence what others wrote. Null adds nothing.
    */
-  descriptionFor?(ctx: AvailabilityContext): Promise<string | null>;
+  turnContext?(ctx: AvailabilityContext): Promise<string | null>;
   /**
    * The risk of one call, when it depends on the arguments (a connector tool that only reads).
    * `risk` is the lowest and decides where the tool is offered; a call classed above read waits
@@ -114,6 +115,11 @@ export interface ToolDef<I = any> {
   describe?(input: I, ctx: ToolContext): ApprovalCard | Promise<ApprovalCard>;
   /** Reading its result brings outside text into the turn. */
   taints?: boolean;
+  /**
+   * The same call twice does what it does once: a pure read. A call of any other tool that an
+   * earlier attempt left unfinished is not made again by itself: its outcome is unknown.
+   */
+  idempotent?: boolean;
   /** Reads the member's own data (conversations, documents, memories). */
   private?: boolean;
   /** Sends something out of Greenhouse (a search query, a URL). Unwatched runs stop using it after a private read. */

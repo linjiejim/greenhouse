@@ -1,5 +1,5 @@
 import { and, asc, eq } from 'drizzle-orm';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { RealtimeEvent } from '@greenhouse/contract';
 import {
   agentMemories,
@@ -11,6 +11,7 @@ import {
   runs,
   runSteps,
 } from '@greenhouse/db';
+import { logger } from '@greenhouse/utils/logger';
 import { ApiError } from '../../http/errors.js';
 import { createTestApp } from '../../testing.js';
 import { gate, lastUserText, scriptedModel, systemText, text, toolCall } from './model.js';
@@ -24,19 +25,105 @@ async function setup(scripts: Parameters<typeof scriptedModel>[0], options?: Par
 }
 
 describe('the engine', () => {
-  it('teaches the rich blocks the sending screen draws, and only the defaults without a word', async () => {
+  it('keeps the tools and the system prompt byte for byte between turns, and marks where the cache ends', async () => {
     const { call, services, model, lin, main } = await setup([text('One.'), text('Two.')]);
     await call('POST', `/api/conversations/${main.id}/messages`, { token: lin.token, body: { content: 'Plain' } });
     await services.engine.idle();
+    // Between the two turns the screen changes what it draws, and the Agent learns something.
+    await call('POST', `/api/agents/main/memories`, {
+      token: lin.token,
+      body: { title: 'Likes short answers', content: '' },
+    });
     await call('POST', `/api/conversations/${main.id}/messages`, {
       token: lin.token,
       body: { content: 'Rich', rich_blocks: ['stats', 'not-a-block'] },
     });
     await services.engine.idle();
+    expect(model.toolsJson[1]).toBe(model.toolsJson[0]);
+    expect(systemText(model.prompts[1])).toBe(systemText(model.prompts[0]));
+    // Every block is taught in the system prompt; the closing message names what this screen draws.
     expect(systemText(model.prompts[0])).toContain('### 图表（chart）');
-    expect(systemText(model.prompts[0])).not.toContain('### 指标卡（stats）');
-    expect(systemText(model.prompts[1])).toContain('### 指标卡（stats）');
-    expect(systemText(model.prompts[1])).not.toContain('### 图表（chart）');
+    expect(systemText(model.prompts[0])).toContain('### 指标卡（stats）');
+    expect(lastUserText(model.prompts[0])).toContain(
+      '## Rich blocks this screen draws\nchart, datatable, confirm, mermaid, html-preview',
+    );
+    expect(lastUserText(model.prompts[1])).toContain('## Rich blocks this screen draws\nstats\n');
+    // The breakpoints: the system prompt, the transcript the next turn keeps, the newest message.
+    const marks = (prompt: unknown) =>
+      (prompt as Array<{ role: string; providerOptions?: { greenhouse?: { cacheBreakpoint?: boolean } } }>).map(
+        (message) => [message.role, message.providerOptions?.greenhouse?.cacheBreakpoint === true],
+      );
+    expect(marks(model.prompts[0])).toEqual([
+      ['system', true],
+      ['assistant', true],
+      ['user', true],
+    ]);
+    expect(marks(model.prompts[1])).toEqual([
+      ['system', true],
+      ['assistant', false],
+      ['user', false],
+      ['assistant', true],
+      ['user', true],
+    ]);
+  });
+
+  it('warns in development when a later turn of a conversation reads nothing from the prompt cache', async () => {
+    const uncached = (value: string) =>
+      text(value).map((part) =>
+        part.type === 'finish'
+          ? {
+              ...part,
+              usage: {
+                inputTokens: { total: 6000, noCache: 6000, cacheRead: 0, cacheWrite: 0 },
+                outputTokens: { total: 5, text: 5, reasoning: 0 },
+              },
+            }
+          : part,
+      );
+    const model = scriptedModel([uncached('One.'), uncached('Two.')]);
+    const app = createTestApp({ NODE_ENV: 'development' }, { languageModel: model.languageModel });
+    const lin = await app.member();
+    const main = (await app.call('GET', '/api/conversations', { token: lin.token })).body.items[0];
+    const warn = vi.spyOn(logger, 'warn');
+    const warned = () =>
+      warn.mock.calls.filter(([message]) => String(message).includes('read nothing from the prompt cache')).length;
+    try {
+      for (const content of ['one', 'two']) {
+        await app.call('POST', `/api/conversations/${main.id}/messages`, { token: lin.token, body: { content } });
+        await app.services.engine.idle();
+      }
+      expect(warned()).toBe(1);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it('looks up who sees the conversation a fixed number of times per turn, and sends a reply in frames', async () => {
+    const long = Array.from({ length: 400 }, (_, index) => `word${index} `).join('');
+    const { call, services, lin, main } = await setup([text('Hi.'), text(long)]);
+    const events: RealtimeEvent[] = [];
+    services.hub.subscribe(lin.id, (event) => events.push(event));
+    const audience = vi.spyOn(services.conversations, 'audience');
+    const say = async (content: string) => {
+      audience.mockClear();
+      await call('POST', `/api/conversations/${main.id}/messages`, { token: lin.token, body: { content } });
+      await services.engine.idle();
+      return audience.mock.calls.length;
+    };
+    const short = await say('one');
+    events.length = 0;
+    expect(await say('two')).toBe(short);
+    expect(short).toBeGreaterThan(0);
+    expect(short).toBeLessThanOrEqual(3);
+    // 400 deltas went out as a handful of frames that still join into the reply.
+    const deltas = events.filter(
+      (event): event is Extract<RealtimeEvent, { type: 'message.delta' }> => event.type === 'message.delta',
+    );
+    expect(deltas.length).toBeLessThan(20);
+    expect(deltas.map((delta) => delta.data.text).join('')).toBe(long);
+    expect(events.at(-1)!.type).toBe('conversation.updated');
+    const final = events.findIndex((event) => event.type === 'message.updated');
+    expect(events.slice(final).some((event) => event.type === 'message.delta')).toBe(false);
   });
 
   it('answers a message in the main thread and keeps the whole exchange', async () => {
@@ -235,7 +322,10 @@ describe('the engine', () => {
     expect(memories).toEqual([
       expect.objectContaining({ title: 'Lin prefers tea', source: 'agent', sourceConversationId: main.id }),
     ]);
-    const [step] = await getDb().select().from(runSteps).where(eq(runSteps.runId, sent.body.run_id));
+    const [step] = await getDb()
+      .select()
+      .from(runSteps)
+      .where(and(eq(runSteps.runId, sent.body.run_id), eq(runSteps.kind, 'tool')));
     expect(step).toMatchObject({ toolName: 'memory', status: 'succeeded', kind: 'tool' });
     const [reply] = await getDb().select().from(messages).where(eq(messages.runId, sent.body.run_id));
     expect(reply!.steps).toEqual([
