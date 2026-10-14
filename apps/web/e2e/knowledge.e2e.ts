@@ -394,7 +394,7 @@ test('search finds a doc by the words in it, and so does ⌘K', async ({ page, r
 
   await page.goto('/#/agents');
   await page.keyboard.press('ControlOrMeta+k');
-  await page.getByRole('combobox', { name: '搜索对话、文档、Agent 和设置' }).fill('nonprofits');
+  await page.getByRole('combobox', { name: '搜索对话、文档、表格、Agent 和设置' }).fill('nonprofits');
   const option = page.getByRole('option', { name: /Pricing FAQ/ });
   await expect(option).toBeVisible();
   await option.click();

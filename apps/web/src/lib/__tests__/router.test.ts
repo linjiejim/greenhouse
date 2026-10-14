@@ -18,6 +18,15 @@ describe('hash routes', () => {
     expect(parse('#/settings/vault')).toEqual({ page: 'settings', section: 'vault' });
     expect(parse('#/admin/public-agents')).toEqual({ page: 'admin', section: 'public-agents' });
     expect(parse('#/activate?token=abc')).toEqual({ page: 'activate', token: 'abc' });
+    expect(parse('#/tables')).toEqual({ page: 'tables' });
+    expect(parse('#/tables/bas_1')).toEqual({ page: 'base', id: 'bas_1' });
+    expect(parse('#/tables/bas_1/tbl_1/viw_1?record=rec_1')).toEqual({
+      page: 'base',
+      id: 'bas_1',
+      table: 'tbl_1',
+      view: 'viw_1',
+      record: 'rec_1',
+    });
     expect(parse('#/oauth/consent?request=req_1')).toEqual({ page: 'consent', request: 'req_1', error: '' });
     expect(parse('#/oauth/consent?error=invalid_client')).toEqual({
       page: 'consent',
@@ -54,7 +63,7 @@ describe('hash routes', () => {
       page: 'not-found',
       path: '/knowledge/folder/fld_1/more',
     });
-    expect(parse('#/tables')).toEqual({ page: 'not-found', path: '/tables' });
+    expect(parse('#/tables/a/b/c/d')).toEqual({ page: 'not-found', path: '/tables/a/b/c/d' });
     expect(parse('#/c/a/b')).toEqual({ page: 'not-found', path: '/c/a/b' });
     expect(parse('#/c/%E0%A4%A')).toEqual({ page: 'conversation', id: '%E0%A4%A' });
     expect(parse('#/oauth/authorize')).toEqual({ page: 'not-found', path: '/oauth/authorize' });
@@ -86,6 +95,10 @@ describe('hash routes', () => {
       { page: 'admin', section: 'usage' },
       { page: 'activate', token: 'a+b/c' },
       { page: 'consent', request: 'a+b/c', error: '' },
+      { page: 'tables' },
+      { page: 'base', id: 'bas_1' },
+      { page: 'base', id: 'bas_1', table: 'tbl_1' },
+      { page: 'base', id: 'bas_1', table: 'tbl_1', view: 'viw_1', record: 'rec_1' },
       { page: 'consent', request: '', error: 'invalid_redirect_uri' },
     ];
     for (const route of routes) expect(parse(href(route))).toEqual(route);

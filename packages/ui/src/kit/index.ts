@@ -32,4 +32,5 @@ export { Badge, Banner, Empty, ErrorBox, Skeleton, StatusBadge, Toast, statusTon
 export { Menu, useContextMenu, type MenuEntry, type MenuItem } from './menu';
 export { DatePicker, DateRangePicker, MultiSelect, Select, formatDate, toISO, type SelectOption } from './pickers';
 export { ConfirmDialog, Overlay, OverlayActions, type OverlayProps } from './overlay';
+export { Popover } from './popover';
 export { ChatCard } from './card';

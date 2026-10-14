@@ -15,6 +15,8 @@ import { RunsPage } from '../pages/runs/RunsPage';
 import { SettingsPage } from '../pages/settings/SettingsPage';
 import { SkillPage } from '../pages/skills/SkillPage';
 import { SkillsPage } from '../pages/skills/SkillsPage';
+import { BasePage } from '../pages/tables/BasePage';
+import { TablesHome } from '../pages/tables/TablesHome';
 
 /** The page for the route. Admin pages need an admin; the knowledge base needs its module. */
 export function Workspace({ route }: { route: Route }) {
@@ -40,6 +42,14 @@ export function Workspace({ route }: { route: Route }) {
       return <SkillsPage scope={route.scope} />;
     case 'skill':
       return <SkillPage key={route.id} id={route.id} />;
+    case 'tables':
+      return me?.modules.tables ? <TablesHome /> : <NotFoundPage />;
+    case 'base':
+      return me?.modules.tables ? (
+        <BasePage key={route.id} id={route.id} table={route.table} view={route.view} record={route.record} />
+      ) : (
+        <NotFoundPage />
+      );
     case 'runs':
       return <RunsPage view={route.view} />;
     case 'run':

@@ -28,6 +28,7 @@ import { useRuns } from '../data/runs';
 import { useT } from '../lib/i18n';
 import { navigate, useRoute } from '../lib/router';
 import { useNewTarget } from '../pages/knowledge/KnowledgeDirectory';
+import { lastBase, tablesMenu } from '../pages/tables/entry';
 import { MODULES, type ModuleId } from './modules';
 import { useOpenOverlay } from './overlays';
 import { useShell } from './context';
@@ -143,6 +144,14 @@ export function Rail({ module }: { module: ModuleId }) {
             active={module === 'knowledge'}
             menu={knowledgeMenu}
             onClick={() => navigate({ page: 'knowledge' })}
+          />
+        )}
+        {me?.modules.tables && (
+          <RailButton
+            id="tables"
+            active={module === 'tables'}
+            menu={tablesMenu(t, openOverlay)}
+            onClick={() => navigate(lastBase())}
           />
         )}
         <Menu

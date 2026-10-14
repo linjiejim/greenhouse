@@ -93,6 +93,20 @@ export const realtimeEventSchema = z.discriminatedUnion('type', [
     type: z.literal('doc.presence'),
     data: z.object({ doc_id: z.string(), items: z.array(docPresenceSchema) }),
   }),
+  /**
+   * Records of a base I can see changed: each with its revision now. A cached record at an older
+   * revision, or one not cached, is out of date; an empty list means many changed.
+   */
+  z.object({
+    type: z.literal('records.changed'),
+    data: z.object({
+      base_id: z.string(),
+      table_id: z.string(),
+      records: z.array(z.object({ id: z.string(), revision: z.number().int() })),
+    }),
+  }),
+  /** A base's name, data tables, fields, views or shares changed: refetch it. */
+  z.object({ type: z.literal('base.updated'), data: z.object({ base_id: z.string() }) }),
   /** A comment was added, edited or deleted on something I have open: refetch its comments. */
   z.object({
     type: z.literal('comments.updated'),

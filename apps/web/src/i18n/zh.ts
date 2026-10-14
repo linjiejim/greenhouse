@@ -1,4 +1,6 @@
-/** Chinese: the source dictionary. Keys are grouped by where the words appear. */
+import { tablesZh } from './tables.zh';
+
+/** Chinese: the source dictionary. Keys are grouped by where the words appear; a module may keep its own in <module>.zh.ts. */
 export const zh = {
   'app.name': 'Greenhouse',
 
@@ -205,7 +207,7 @@ export const zh = {
   'notifications.empty': '没有新通知',
   'notifications.nothingNeedsYou': '没有需要你处理的事',
 
-  'search.placeholder': '搜索对话、文档、Agent 和设置',
+  'search.placeholder': '搜索对话、文档、表格、Agent 和设置',
   'search.empty': '没有找到「{query}」',
   'search.go': '前往',
   'palette.title': '搜索与命令',
@@ -1366,6 +1368,8 @@ export const zh = {
   'common.updateRequired': '服务器已更新，请刷新页面',
   'common.refresh': '刷新',
   'common.pageFailed': '这个页面出错了 · 可以重试',
+
+  ...tablesZh,
 } as const;
 
 export type MessageKey = keyof typeof zh;

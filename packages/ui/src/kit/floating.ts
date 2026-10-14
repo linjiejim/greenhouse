@@ -88,8 +88,10 @@ export function useFloating<T extends HTMLElement = HTMLDivElement>(open: boolea
 
 /**
  * Closes a floating layer on a pointer press outside the given elements, or on a scroll that
- * carries them away. A scroll elsewhere (a thread pinning itself to its newest message) leaves
- * the layer open: its anchor did not move.
+ * carries them away. `inside` is the layer first, then its anchor (a trigger). A scroll elsewhere
+ * (a thread pinning itself to its newest message) leaves the layer open, and so does a scroll that
+ * left the anchor where it was: the browser reports a scroll a frame late, so a click right after
+ * scrolling a field into view would otherwise close the list it just opened.
  */
 export function useDismiss(open: boolean, close: () => void, inside: RefObject<HTMLElement | null>[]) {
   const latest = useRef({ close, inside });
@@ -98,6 +100,18 @@ export function useDismiss(open: boolean, close: () => void, inside: RefObject<H
     if (!open) return;
     const elements = () =>
       latest.current.inside.map((ref) => ref.current).filter((element): element is HTMLElement => !!element);
+    const anchors = () => latest.current.inside.slice(1).map((ref) => ref.current?.getBoundingClientRect() ?? null);
+    const opened = anchors();
+    /** Without an anchor, or without layout to compare (a point, a test), any scroll around it counts. */
+    const anchorMoved = () => {
+      if (!opened.length) return true;
+      const now = anchors();
+      return opened.some((before, index) => {
+        const after = now[index];
+        if (!before || !after || (!before.width && !before.height)) return true;
+        return Math.abs(after.top - before.top) >= 1 || Math.abs(after.left - before.left) >= 1;
+      });
+    };
     const pointer = (event: Event) => {
       if (elements().some((element) => element.contains(event.target as Node))) return;
       latest.current.close();
@@ -107,7 +121,7 @@ export function useDismiss(open: boolean, close: () => void, inside: RefObject<H
       const scroller = !target || target === document ? document.documentElement : target;
       const own = elements();
       if (own.some((element) => element.contains(scroller))) return;
-      if (own.some((element) => scroller.contains(element))) latest.current.close();
+      if (own.some((element) => scroller.contains(element)) && anchorMoved()) latest.current.close();
     };
     document.addEventListener('pointerdown', pointer, true);
     document.addEventListener('scroll', scroll, true);

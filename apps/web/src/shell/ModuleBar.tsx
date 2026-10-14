@@ -6,6 +6,7 @@ import { icon } from '@greenhouse/ui/tokens';
 import { useSession } from '../app/session';
 import { useT } from '../lib/i18n';
 import { navigate } from '../lib/router';
+import { lastBase } from '../pages/tables/entry';
 import { MODULES, type ModuleId } from './modules';
 
 export function ModuleBar({ module }: { module: ModuleId }) {
@@ -13,6 +14,7 @@ export function ModuleBar({ module }: { module: ModuleId }) {
   const { me } = useSession();
   const Chat = MODULES.chat.icon;
   const Knowledge = MODULES.knowledge.icon;
+  const Tables = MODULES.tables.icon;
   return (
     <nav className="app-module-bar" aria-label={t('nav.main')}>
       <button type="button" aria-current={module === 'chat' ? 'page' : undefined} onClick={() => navigate('#/c/main')}>
@@ -27,6 +29,16 @@ export function ModuleBar({ module }: { module: ModuleId }) {
         >
           <Knowledge size={icon.lg} strokeWidth={icon.stroke} />
           <span>{t('nav.knowledge')}</span>
+        </button>
+      )}
+      {me?.modules.tables && (
+        <button
+          type="button"
+          aria-current={module === 'tables' ? 'page' : undefined}
+          onClick={() => navigate(lastBase())}
+        >
+          <Tables size={icon.lg} strokeWidth={icon.stroke} />
+          <span>{t('nav.tables')}</span>
         </button>
       )}
       <Menu

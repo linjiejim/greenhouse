@@ -107,8 +107,12 @@ same script doubles as an end-to-end smoke tour (see [Development](#development)
   with line and word diffs, backlinks, comments, templates, sharing with members, groups or
   everyone, Markdown and ZIP export, and segmented full-text search (CJK-aware).
 - **Projects** — projects, tasks (board / gantt / tree views), members, comments, activity log.
-- **Tables** — multidimensional bases: typed fields, views, forms, record links, dashboards,
-  rule automations, and conversational schema planning (the agent drafts a base, you confirm).
+- **Tables** — bases of data tables with typed fields (text to attachments, record links, parent
+  records and dependencies); grid, board, calendar, gallery and timeline views (a gantt with
+  dependency arrows and milestones, dragged to change dates), each with its filters, sorts and
+  groups, shared or personal; editing in cells or a record drawer, pasting blocks, comments and
+  history, a recycle bin, CSV export, sharing with four roles, and a Projects template. Forms, CSV
+  import, formulas, dashboards, automations and Agent tools are the next phases.
 - **Home workbench** — a personal dashboard of live cards backed by the same tools (recipes and
   templates), editable by drag-and-drop or by asking the agent; it is the empty state of a new chat.
 - **Execution center** — one surface for every durable run: automations (cron), missions,

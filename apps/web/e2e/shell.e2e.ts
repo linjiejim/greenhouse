@@ -35,7 +35,7 @@ test.describe('signed out', () => {
 test('⌘K finds commands, Agents and settings and goes there', async ({ page }) => {
   await open(page);
   await page.keyboard.press('ControlOrMeta+k');
-  const search = page.getByRole('combobox', { name: '搜索对话、文档、Agent 和设置' });
+  const search = page.getByRole('combobox', { name: '搜索对话、文档、表格、Agent 和设置' });
   await expect(search).toBeFocused();
   await expect(page.getByRole('option', { name: '新会话' })).toBeVisible();
   await search.fill('我的服务');

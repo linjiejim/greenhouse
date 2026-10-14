@@ -65,6 +65,7 @@ import type {
 } from './conversations.js';
 import type { FileView } from './files.js';
 import { knowledgeApi } from './knowledge-client.js';
+import { tablesApi } from './tables-client.js';
 import { REALTIME_SIGN_IN_AGAIN, type RealtimeEvent } from './realtime.js';
 import type {
   Group,
@@ -681,6 +682,7 @@ export function createApiClient(options: ApiClientOptions) {
     },
 
     knowledge: knowledgeApi({ get, post, patch, put, del, request, download, downloadBlob }),
+    tables: tablesApi({ get, post, patch, put, del, request, download, downloadBlob }),
 
     files: {
       upload(

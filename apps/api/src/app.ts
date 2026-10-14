@@ -49,6 +49,8 @@ import { fileContentRoutes, fileRoutes } from './modules/files/routes.js';
 import { createFilesService, type FilesService } from './modules/files/service.js';
 import { knowledgeRoutes } from './modules/knowledge/routes.js';
 import { createKnowledgeService, type KnowledgeService } from './modules/knowledge/service.js';
+import { tablesRoutes } from './modules/tables/routes.js';
+import { createTablesService, type TablesService } from './modules/tables/service.js';
 import { notificationRoutes } from './modules/notifications/routes.js';
 import { createNotificationsService, type NotificationsService } from './modules/notifications/service.js';
 import { adminChannelRoutes, notificationSettingsRoutes, pushDeviceRoutes } from './modules/channels/routes.js';
@@ -94,6 +96,7 @@ export interface Services {
   conversations: ConversationsService;
   files: FilesService;
   knowledge: KnowledgeService;
+  tables: TablesService;
   notifications: NotificationsService;
   channels: ChannelsService;
   requests: RequestsService;
@@ -153,6 +156,7 @@ export function createServices(config: AppConfig, options: ServiceOptions = {}):
   });
   const skills = createSkillsService({ files, providers, agents, connectors, computers, notifications });
   const knowledge = createKnowledgeService({ files, notifications, hub, publicUrl: config.PUBLIC_URL });
+  const tables = createTablesService({ files, notifications, hub });
   const schedules = createSchedulesService({ agents, background: () => engine.background });
   const requests = createRequestsService({ hub, notifications });
   const engine = createEngine({
@@ -202,12 +206,13 @@ export function createServices(config: AppConfig, options: ServiceOptions = {}):
     conversations,
     files,
     knowledge,
+    tables,
     notifications,
     channels,
     requests,
     runs,
     schedules,
-    search: createSearchService({ members, knowledge }),
+    search: createSearchService({ members, knowledge, tables }),
     skills,
     usage: createUsageService({ agents, providers }),
     hub,
@@ -285,6 +290,7 @@ export function createApp(services: Services, options: { webDir?: string } = {})
   signedIn.route('/search', searchRoutes(services.search));
   signedIn.route('/skills', skillRoutes(services.skills));
   signedIn.route('/knowledge', knowledgeRoutes(services.knowledge));
+  signedIn.route('/tables', tablesRoutes(services.tables));
   signedIn.use('/admin/*', requireAdmin);
   signedIn.route('/admin', adminMemberRoutes(services.members));
   signedIn.route('/admin/branding', brandingRoutes(services.workspace));

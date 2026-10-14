@@ -1,3 +1,4 @@
+import { tablesEn } from './tables.en';
 import type { MessageKey } from './zh';
 
 export const en: Record<MessageKey, string> = {
@@ -207,7 +208,7 @@ export const en: Record<MessageKey, string> = {
   'notifications.empty': 'No new notifications',
   'notifications.nothingNeedsYou': 'Nothing needs you right now',
 
-  'search.placeholder': 'Search chats, docs, Agents and settings',
+  'search.placeholder': 'Search chats, docs, tables, Agents and settings',
   'search.empty': 'Nothing found for “{query}”',
   'search.go': 'Go to',
   'palette.title': 'Search and commands',
@@ -1399,4 +1400,6 @@ export const en: Record<MessageKey, string> = {
   'common.updateRequired': 'The server was updated. Refresh the page',
   'common.refresh': 'Refresh',
   'common.pageFailed': 'This page hit an error · try again',
+
+  ...tablesEn,
 };
