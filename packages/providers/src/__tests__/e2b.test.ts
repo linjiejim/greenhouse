@@ -82,6 +82,18 @@ async function rejection(call: Promise<unknown>): Promise<Error & { statusCode?:
 }
 
 describe('the E2B sandbox settings', () => {
+  it('restricts background egress to declared domains, can seal it offline, and restores only normal deny rules', async () => {
+    const { fake, client } = setup();
+    await client.ensure(SPEC);
+    await client.setEgress!(NAME, ['example.com']);
+    await client.setEgress!(NAME, []);
+    await client.setEgress!(NAME, null);
+    expect(fake.networks.map(({ id: _id, ...rules }) => rules)).toEqual([
+      { allowOut: ['example.com'], denyOut: ['0.0.0.0/0', '::/0'] },
+      { allowOut: [], denyOut: ['0.0.0.0/0', '::/0'] },
+      { denyOut: PROVIDER_DENY_OUT },
+    ]);
+  });
   it('is registered with E2B and PPIO presets, the API key as its one secret', () => {
     const adapter = getAdapter('sandbox', 'e2b')!;
     expect(adapter).toBe(e2bAdapter);

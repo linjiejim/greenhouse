@@ -34,10 +34,11 @@ import { z } from 'zod';
 import type { AppEnv } from '../../http/env.js';
 import { readJson, readParam, readQuery } from '../../http/validate.js';
 import type { AgentsService } from './service.js';
+import type { ApprovalsService } from './approvals.js';
 
 const memoryQuerySchema = z.object({ status: z.enum(['active', 'all']).default('active') });
 
-export function agentRoutes(service: AgentsService) {
+export function agentRoutes(service: AgentsService, approvals: ApprovalsService) {
   return new Hono<AppEnv>()
     .get('/', async (c) => {
       const { scope } = readQuery(c, agentListQuerySchema);
@@ -50,6 +51,13 @@ export function agentRoutes(service: AgentsService) {
       c.json(await service.create(c.get('member').id, await readJson(c, createAgentInputSchema)), 201),
     )
     .get('/:id', async (c) => c.json(await service.get(c.get('member').id, c.req.param('id'))))
+    .get('/:id/standing-approvals', async (c) =>
+      c.json(await approvals.list(c.get('member').id, c.req.param('id'), readQuery(c, pageQuerySchema))),
+    )
+    .delete('/:id/standing-approvals/:aid', async (c) => {
+      await approvals.revoke(c.get('member').id, c.req.param('id'), c.req.param('aid'));
+      return c.body(null, 204);
+    })
     .patch('/:id', async (c) =>
       c.json(await service.update(c.get('member').id, c.req.param('id'), await readJson(c, updateAgentInputSchema))),
     )

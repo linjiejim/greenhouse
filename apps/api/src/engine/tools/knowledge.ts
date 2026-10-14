@@ -139,7 +139,11 @@ export function knowledgeTools(knowledge: KnowledgeService) {
       if (folder?.archivedAt) throw new Error('The member archived your reference folder; ask them to restore it.');
       return { folderId: folder?.id ?? null, space: 'personal', ownFolder: true };
     }
-    return { folderId: null, space: args.space === 'team' ? 'team' : 'personal', ownFolder: false };
+    return {
+      folderId: null,
+      space: args.folder_id ? undefined : args.space === 'team' ? 'team' : 'personal',
+      ownFolder: false,
+    };
   }
 
   /** A short name for a place, in the member's language. */
@@ -304,19 +308,96 @@ export function knowledgeTools(knowledge: KnowledgeService) {
   const mutation = defineTool({
     name: 'knowledge_mutation',
     description:
-      'Change the knowledge base with the member\'s rights: create a doc, edit one (read it first and send its version; prefer edits with exact find/replace for small changes), move a doc, or comment on one. Changes outside your private reference folder (space "agent") wait for the member\'s approval. Every edit keeps a version that names you. Link other docs as [Title](#/knowledge/<doc id>).',
+      'Change the knowledge base with the member\'s rights: create a doc, edit one (read it first and send its version; prefer edits with exact find/replace for small changes), move a doc, or comment on one. Reversible changes visible only to this member or in your private reference folder (space "agent") run immediately with undo. Shared changes use an approval card or the member’s standing approval; outside reads disable standing approvals. Every edit keeps a version that names you. Link other docs as [Title](#/knowledge/<doc id>).',
     input: mutationInput,
     risk: 'write',
+    surfaces: ['turn', 'background'],
+    guard: () => knowledge.lockWriteScope(),
     available: (ctx) => ctx.modules.knowledge,
     async callRisk(args, ctx) {
       markNameable(args, ctx);
       try {
-        return (await ownFolderOnly(args, ctx)) ? 'read' : 'write';
+        await ownFolderOnly(args, ctx);
+        const source = await knowledge.writeScope(
+          ctx.memberId,
+          args.action === 'create'
+            ? {
+                folderId: (await target(args, ctx, false)).folderId ?? undefined,
+                space: args.folder_id ? undefined : args.space === 'team' ? 'team' : 'personal',
+              }
+            : { docId: args.doc_id },
+          as(ctx),
+        );
+        if (args.action !== 'move') return source.tier;
+        const doc = await knowledge.getDoc(ctx.memberId, args.doc_id, { as: as(ctx), signed: false });
+        const place = await target(args, ctx, false);
+        const destination = await knowledge.writeScope(
+          ctx.memberId,
+          { folderId: place.folderId ?? undefined, space: place.space },
+          as(ctx),
+        );
+        if (doc.space === 'personal' && destination.space === 'team') return 'tier3';
+        return source.tier === 'tier1' && destination.tier === 'tier1' ? 'tier1' : 'tier2';
       } catch (error) {
         // Refused before any card: a doc the member cannot see, a folder that is not there.
         if (error instanceof ApiError) throw new Error(error.message);
         throw error;
       }
+    },
+    async approvalScope(args, ctx) {
+      // Moving changes the scope itself; approving its old folder cannot authorize the destination.
+      if (args.action === 'move') return null;
+      const scope = await knowledge.writeScope(
+        ctx.memberId,
+        args.action === 'create'
+          ? {
+              folderId: args.folder_id,
+              space: args.folder_id ? undefined : args.space === 'team' ? 'team' : 'personal',
+            }
+          : { docId: args.doc_id },
+        as(ctx),
+      );
+      return scope.folderId
+        ? { type: 'folder' as const, id: scope.folderId, actions: [`knowledge.${args.action}`] }
+        : null;
+    },
+    async before(args, ctx) {
+      const input = { action: args.action, ...('doc_id' in args ? { doc_id: args.doc_id } : {}) };
+      if (args.action === 'create' || args.action === 'comment') return { input };
+      const doc = await knowledge.getDoc(ctx.memberId, args.doc_id, { as: as(ctx), signed: false });
+      return { input, version: doc.version, folder_id: doc.folder_id, space: doc.space };
+    },
+    undoResult: (output) => output,
+    async undo(args, output, before, ctx) {
+      const result = output as {
+        created?: string;
+        saved?: string;
+        moved?: string;
+        version?: number;
+        commented?: string;
+        updated_at?: string;
+        folder_id?: string | null;
+        space?: 'team' | 'personal';
+      };
+      const prior = before as { version: number; folder_id: string | null; space: 'team' | 'personal' };
+      if (args.action === 'comment') {
+        await knowledge.undoComment(ctx.memberId, args.doc_id, result.commented!, result.updated_at!);
+        return;
+      }
+      const docId = args.action === 'create' ? result.created! : args.doc_id;
+      await knowledge.lockDoc(ctx.memberId, docId, as(ctx));
+      const current = await knowledge.getDoc(ctx.memberId, docId, { as: as(ctx), signed: false });
+      if (current.version !== (result.version ?? prior.version))
+        throw new ApiError(409, 'undo_conflict', 'This doc changed after the write.');
+      if (
+        (args.action === 'create' || args.action === 'move') &&
+        (current.folder_id !== result.folder_id || current.space !== result.space)
+      )
+        throw new ApiError(409, 'undo_conflict', 'This doc moved after the write.');
+      if (args.action === 'create') await knowledge.archiveDoc(ctx.memberId, docId);
+      else if (args.action === 'edit')
+        await knowledge.restoreVersion(ctx.memberId, docId, prior.version, current.version, as(ctx));
+      else await knowledge.updateDoc(ctx.memberId, docId, { folder_id: prior.folder_id, space: prior.space }, as(ctx));
     },
     async describe(args, ctx) {
       const zh = ctx.locale === 'zh';
@@ -404,6 +485,8 @@ export function knowledgeTools(knowledge: KnowledgeService) {
           title: doc.title,
           link: docHref(doc.id),
           version: doc.version,
+          folder_id: doc.folder_id,
+          space: doc.space,
           where: pathText(doc.path) || doc.space,
         };
       }
@@ -433,10 +516,16 @@ export function knowledgeTools(knowledge: KnowledgeService) {
           place.folderId ? { folder_id: place.folderId } : { folder_id: null, space: place.space ?? 'personal' },
           as(ctx),
         );
-        return { moved: moved.id, where: pathText(moved.path) || moved.space };
+        return {
+          moved: moved.id,
+          where: pathText(moved.path) || moved.space,
+          version: moved.version,
+          folder_id: moved.folder_id,
+          space: moved.space,
+        };
       }
       const comment = await knowledge.addComment(ctx.memberId, args.doc_id, args.body, as(ctx));
-      return { commented: comment.id, doc_id: args.doc_id };
+      return { commented: comment.id, doc_id: args.doc_id, updated_at: comment.updated_at };
     },
     summarize: (args, output, locale) => {
       const zh = locale === 'zh';

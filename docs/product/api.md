@@ -200,13 +200,13 @@ OAuth 2.1 与 MCP（公开路径，错误按 RFC 6749 返回 `{ error, error_des
 
 `skill_query` 的描述每个回合重建，列出这个 Agent 装备的技能，不能运行的写明原因；它按提问者的权限读技能库，公开 Agent 也提供。成员用 `/` 运行的技能在发送时检查（看得到、扫描通过、未归档、回答的 Agent 满足运行要求、必填项已填），正文作为成员的请求进入回合。
 
-`knowledge_query`（`search`、`read`、`list`）以提问者的权限读知识库：读过的文档列为回复的出处（`kind: doc`，地址 `#/knowledge/<id>`），搜索到的文档在回复链接到时列出；`space: agent` 是这个 Agent 的私有参考文件夹。`knowledge_mutation`（`create`、`edit`、`move`、`comment`）改知识库：`edit` 带读到的 `version`，整体替换或给只出现一次的 find / replace；除了 Agent 自己的私有参考文件夹，写入都先弹出批准卡（`tool_write`）；版本和评论记下代写的 Agent。写入只在回合里，公开 Agent 两个都没有。
+`knowledge_query`（`search`、`read`、`list`）以提问者的权限读知识库：读过的文档列为回复的出处（`kind: doc`，地址 `#/knowledge/<id>`），搜索到的文档在回复链接到时列出；`space: agent` 是这个 Agent 的私有参考文件夹。`knowledge_mutation`（`create`、`edit`、`move`、`comment`）改知识库：`edit` 带读到的 `version`，整体替换或给只出现一次的 find / replace；成员独享的可撤销写入直接执行并留回执；共享写入发批准卡（`tool_write`）或使用该范围及动作的预先授权；taint 后不用预先授权；版本和评论记下代写的 Agent。读写可在回合和后台运行中使用；后台卡片暂停运行，决定后按步骤续跑；公开 Agent 两个都没有。
 
-知识库正文的约定：引用其他文档写作 `[标题](#/knowledge/<文档 id>)`（编辑器的 `[[`），提及写作 `[@名字](member:<成员 id>)`，图片与文件写作 `/api/files/<id>/content`，存储时去掉签名、读取时按读者签名。实时事件：`doc.updated`、`doc.presence`、`comments.updated`，发给打开着这篇文档的人；`knowledge.changed`（不带任何内容）在新建、改名、移动、排序、保存、分享、归档、恢复之后发给看得到那个位置的人（团队空间是所有开着知识库的成员，个人空间是主人和分享覆盖到的人，取消分享时也告诉原来覆盖到的人；归档或恢复文件夹时，分享到其中任何文件夹或文档的人也会收到），各端据此刷新屏幕上的知识库列表。保存分享时只校验新加的成员和分组：已有的分享即使对象已停用或已删除也原样保留。
+知识库正文的约定：引用其他文档写作 `[标题](#/knowledge/<文档 id>)`（编辑器的 `[[`），提及成员写作 `[@名字](member:<成员 id>)`，主人提及自己的 Agent 写作 `[@名字](agent:<Agent id>)`，文档与评论经唤醒层送到其 Agent 对话，图片与文件写作 `/api/files/<id>/content`，存储时去掉签名、读取时按读者签名。实时事件：`doc.updated`、`doc.presence`、`comments.updated`，发给打开着这篇文档的人；`knowledge.changed`（不带任何内容）在新建、改名、移动、排序、保存、分享、归档、恢复之后发给看得到那个位置的人（团队空间是所有开着知识库的成员，个人空间是主人和分享覆盖到的人，取消分享时也告诉原来覆盖到的人；归档或恢复文件夹时，分享到其中任何文件夹或文档的人也会收到），各端据此刷新屏幕上的知识库列表。保存分享时只校验新加的成员和分组：已有的分享即使对象已停用或已删除也原样保留。
 
-`mail` 是 Agent 自己的邮箱（AGNT-30）：`list`（收件箱或已发送）、`search`、`read` 只读，读信让回合 taint，正文用 fence 隔开；留存（screened）的信读不到；`send`、`reply` 是第 3 档：每次都弹出批准卡（收件人、主题、正文摘录），批准后从 Agent 的地址发出，回信带 In-Reply-To 与 References。只在主人自己的回合里发信，不在房间、后台运行里；不能写的 Agent 只能读；公开 Agent 没有这个工具。
+`mail` 是 Agent 自己的邮箱（AGNT-30）：`list`（收件箱或已发送）、`search`、`read` 只读，读信让回合 taint，正文用 fence 隔开；留存（screened）的信读不到；`send`、`reply` 是第 3 档：每次都弹出批准卡（收件人、主题、正文摘录），批准后从 Agent 的地址发出，回信带 In-Reply-To 与 References。只为主人自己的 Agent 发信，不在房间里；后台与事件回合同样每次要求人批；不能写的 Agent 只能读；公开 Agent 没有这个工具。
 
-`mcp_call` 是连接器的唯一工具（`list`、`describe`、`call`）。它的描述每个回合重建，只列出这个 Agent 此刻能为提问者用的连接器和工具：已启用、在 manifest 的 `connectors` 里（空值表示全部）、per_member / oauth 的已由提问者连接；不能写的 Agent 只看到只读工具。只读工具直接运行；其余工具弹出批准卡（`tool_write`，原样参数），批准后用提问者的 Key 或登录执行。只在回合里提供，公开 Agent 不提供。
+`mcp_call` 是连接器的唯一工具（`list`、`describe`、`call`）。它的描述每个回合重建，只列出这个 Agent 此刻能为提问者用的连接器和工具：已启用、在 manifest 的 `connectors` 里（空值表示全部）、per_member / oauth 的已由提问者连接；不能写的 Agent 只看到只读工具。只读工具直接运行；其余工具弹出批准卡（`tool_write`，原样参数），批准后用提问者的 Key 或登录执行。回合里提供，后台只允许只读调用；公开 Agent 不提供。
 
 `browser` 与 `vault` 只在回合里，和 `computer` 同时出现。`browser` 经 DevTools 操作电脑里的 Chromium：`open`、`snapshot`（带 ref 的短行，可从 `from_line` 续读）、`read`、`click`、`type`、`press`、`scroll`、`wait`、`back`、`tabs`、`switch_tab`、`close_tab`、`screenshot`（模型能看图时，图片随下一步给模型，不入库；不能看图时返回 `status: unsupported`，不截图，改用 snapshot / read）；只开 http 和 https，成员控制画面时不操作。`vault` 有 `find`（当前页面站点的条目，只有标签和掩码用户名）和 `fill {item_id, submit}`（服务端代填，`ask` 条目先发登录卡片）；公开 Agent 没有 `vault`。
 
@@ -226,3 +226,18 @@ apps/api/src/
 ```
 
 每个模块都附测试：service 单元测试、路由 API 测试、关键流程端到端测试。删除模块时，按 [功能清单](features.md) 的维护规则同步清理。
+
+
+## 5. 常驻（M1.7）
+
+- `POST /api/requests/:id/approve` 的可选正文：`{ standing: false, continue_after?: boolean }`。省略正文仍可批准。`standing: true` 只能授予卡片展示的第 2 档范围和动作；其他卡片返回 409 `standing_not_allowed`。`continue_after` 只用于后台简报卡。多写卡片 `payload.calls` 展示全部写入，`batch_ready` 为 false 时不能批准（409 `request_building`）。
+- `GET /api/agents/:id/standing-approvals?cursor=&limit=`：拥有者的分页列表，`items` 含 `id`、`agent_id`、`scope_type`、`scope_id`、`actions`、`granted_at`、`revoked_at`，仍可读时附 `scope_name` 和 `scope_href`；权限失去时不泄露对象名。
+- `DELETE /api/agents/:id/standing-approvals/:approval_id`：撤销自己的授权，204。
+- `POST /api/runs/steps/:step_id/undo`：撤销自己回执的写入，204；`already_undone` / `undo_conflict` / `undo_unavailable` 为 409。撤销与 成员 的服务权限相同，文档版本或记录修订改变后不覆盖。
+- `run_start` 简报参数新增 `computer`（默认 false）、`domains`（明确域名，最多 20 个，不接受 URL 或通配符）、`continue_after`（默认 false）。卡片显示电脑与域名，成员可以勾选「完成后继续」。Docker 后台期间断网；E2B 通过网络更新接口限制域名，不支持该接口的兼容服务拒绝后台电脑。
+- `schedule_mutation` 与定时的 POST / PATCH 新增 `quiet`（默认 false）及同样的电脑 / 域名 / 跟进参数。后台用 `run_finish { report, findings }` 结束；`GET /api/runs/:id` 新增 `findings`。静默且无发现时不发完成通知，也不再唤醒跟进；失败总是通知。
+- `table_query`（list / read）和 `table_mutation`（create / update / delete / bulk）调用同一个表格服务；bulk 最多 20 项，一张卡；delete 是移入回收站，彻底删除不提供给它。表格和知识库按三档，move 改变范围不能获得预先授权。
+- `engine.deliver` 不是对外 HTTP 接口。事件必须送到 Agent 与主人的对话；来源键去重，默认两分钟合并，每 UTC 日默认 50 次事件回合，深度最多三层。事件是 untrusted 数据，不能代替成员批准。进程结束的事件可离线检查原进程输出，新电脑工作仍要批准简报。
+- `AGENT_EVENT_WAKES_PER_DAY` 配置每日上限（1–1000，默认 50）；`AGENT_EVENT_MERGE_MS` 默认 120000，测试夹具使用较短窗口。客户端新增字段均有默认值，旧调用可以继续省略。
+
+`memory` 的 recall 可用于后台；前台私有记忆 remember/update 按第 1 档留下可撤销回执，forget 为彻底删除、按第 3 档审批且不能预批；读过外部内容后不改记忆。

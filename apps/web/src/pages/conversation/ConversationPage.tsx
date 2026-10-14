@@ -188,7 +188,12 @@ function ExistingConversation({ id }: { id: string }) {
     return map;
   }, [requests.items]);
 
-  const shownRuns = new Set(messages.messages.map((message) => message.run_id).filter(Boolean));
+  const shownRuns = new Set(
+    messages.messages
+      .filter((message) => message.role === 'assistant')
+      .map((message) => message.run_id)
+      .filter(Boolean),
+  );
   const looseRequests = requests.items.filter(
     (request) => request.status === 'pending' && (!request.run_id || !shownRuns.has(request.run_id)),
   );

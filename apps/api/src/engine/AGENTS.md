@@ -43,11 +43,11 @@ The one engine for conversations and runs. Read with the root AGENTS.md and docs
 - A tool is `idempotent` only when the same call twice does what it does once (pure reads: web, knowledge and skill reads, conversation search, attachments). Computer, browser, vault, memory and every write are not.
 - In a background retry a call with the same tool and arguments is the same step: a succeeded one returns its recorded output; a non-idempotent one an earlier attempt left running becomes `uncertain`, is not made, and the model is told to check first (calling it again in that attempt makes it).
 - Steps a dead process left running are marked by the sweeps: reads failed (`interrupted`), anything else `uncertain`.
-- Read tools run in turns and background runs; write and external tools only in turns, and only for Agents whose manifest allows writing.
-- Descriptions are fixed text. A list that depends on the member and the turn (the connectors they can use, the Agent's skills) comes from `turnContext` and goes in the closing message, fenced. A risk that depends on the arguments comes from `callRisk`: a call classed above read waits for approval like a write tool, and the engine marks the approved run `ctx.approved`.
+- Writes need manifest.write. callRisk is read / tier1 / tier2 / tier3: private reversible writes and untainted standing scopes run with receipts; shared writes otherwise wait; tier3 always waits and cannot grant a scope. Batch writes in one model step share a card that is ready only at step end.
+- Descriptions are fixed text. A list that depends on the member and the turn (the connectors they can use, the Agent's skills) comes from `turnContext` and goes in the closing message, fenced. A risk that depends on the arguments comes from `callRisk`: risk and scope are checked again under their locks before executing, and the engine marks the approved run `ctx.approved`.
 
 ## Needs you
-- Write and external tools never run when the model calls them: the call raises an approval card (`requests`, subject `tool_write`) holding the exact arguments, the step waits as `pending`, and the turn ends with the run `waiting`.
+- Writes requiring approval never run when the model calls them: the call raises an approval card (`requests`, subject `tool_write`) holding the exact arguments, the step waits as `pending`, and the turn ends with the run `waiting`.
 - A decision is a compare-and-set from pending (requests service). The engine then runs exactly the approved arguments with the asker's rights, or skips the step, writes one event line in the transcript, closes the waiting run, and wakes the Agent through the inbox with the outcome.
 - Settling and expiring write a `request_decided` job in the same transaction; any process's decision worker carries it out (the settling process is woken after commit, every process polls, dead claims are taken over), up to 10 at once, each on its own. An approved call is told to stop after 5 minutes.
 - An approval runs once: its step moves pending → running by compare-and-set and only the winner executes. A step found running (its process died mid-call) becomes `uncertain` and is never run again; the Agent is told to check. An approved proposal is applied once: the job records `applying`, then the outcome. Answers, hand-backs, rejections and expiries change nothing but what the Agent is told, and are simply worked out again.
@@ -58,8 +58,8 @@ The one engine for conversations and runs. Read with the root AGENTS.md and docs
 
 ## Background runs
 - A background run starts only from a member's decision: an approved `run_start` proposal or a schedule they set up. The model can propose, never start.
-- Context is the approved brief plus the Agent's identity and instructions; no history, memories or "about me".
-- Tools: read tools only. Once a tool marked `private` ran, tools marked `outbound` refuse: nobody is watching, and a URL or a query can carry data out.
+- Context is the approved brief plus the Agent's identity and instructions; history, memories and "about me" are not injected; explicit reads use the tools.
+- Tools: memory recall, the source conversation only, connector reads, and tiered knowledge/table/mail writes. A pending card waits; its decision resumes the recorded model steps with actual tool results. Computer use requires a declared brief and domains; Docker stays offline, E2B restricts egress, private reads seal it offline. Computer work is exclusive and its processes are cleared before normal network access returns. Once a tool marked `private` ran, tools marked `outbound` refuse: nobody is watching, and a URL or a query can carry data out.
 - Claiming uses FOR UPDATE SKIP LOCKED; at most 3 running per member and 4 per process; 20 minutes and 30 steps per attempt.
 - A run is created queued in the transaction of what causes it (`background.create`) and kicked after the commit; any process takes it from the queue. A schedule's firing claims the schedule, moves it to its next time after now and queues the run in one transaction, so firings missed while no process ran collapse into one run.
 - A run whose process died is requeued up to 3 attempts; a shutdown requeues without counting as a failure.
@@ -142,7 +142,15 @@ The one engine for conversations and runs. Read with the root AGENTS.md and docs
 
 ## Mail
 - `mail` (tools/mail.ts) is the Agent's own mailbox (modules/mail): `list`, `search` and `read` read it; they taint the turn and a mail's text comes back fenced as untrusted input. Screened mail is never readable here.
-- `send` and `reply` are external (tier 3, never pre-approved): `callRisk` answers external only in the owner's own turn, outside a room, for an Agent that may write; the card shows the recipients, the subject and the start of the body. The approved call sends from the Agent's address; a reply carries In-Reply-To and References. Anywhere else the tool refuses to send.
+- `send` and `reply` are external (tier 3, never pre-approved): `callRisk` answers tier3 only in the owner's own work, outside a room, for an Agent that may write; the card shows the recipients, the subject and the start of the body. The approved call sends from the Agent's address; a reply carries In-Reply-To and References. Anywhere else the tool refuses to send.
 - Never offered to someone else's public Agent; a public Agent has no mailbox.
-- Mail wakes an Agent only through `wakeForMail` (modules/mail/wake.ts), which calls `deliver` with a note of metadata only (the mail's id, the sender's address, a cut fenced subject). M1.7's wake layer replaces that one function.
+- Mail wakes an Agent through `deliver` with per-mail dedupe keys with a note of metadata only (the mail's id, the sender's address, a cut fenced subject). The wake layer merges it with other events.
 - It wakes only for a sender the Agent may hear from (its owner, active members unless turned off, addresses let in) whose From domain passed DMARC, or SPF or DKIM aligned with it; at most 50 wakes a day. Anything else is screened; letting a sender in delivers what waited and wakes the Agent once.
+
+- Memory remember/update are tier1 with undo; forget permanently deletes and is tier3. Background work may only recall; tainted turns never mutate memory.
+
+## Always-on wakes and receipts
+- Events, run reports and hand-backs use the inbox. Events collect for two minutes; member messages precede decisions, which precede events. Dedupe includes consumed rows. Three source-chain levels, 50 event turns per Agent per UTC day by default, one cap notification, suppressed events retained.
+- Event turns and their decision follow-ups use background rules, taint from the start, and cannot treat event text as approval. A process-end event may inspect its computer offline, but cannot start new commands without a brief.
+- A run's final state and run_report job commit together. Reporting, notification and optional follow-up are idempotent; quiet empty findings skip both the completion notification and follow-up. Failures notify.
+- Undo metadata is separate from bounded display results. Lock the target and compare versions/revisions; never overwrite a later member edit. The member and service permissions are checked again when carrying out a card.

@@ -12,6 +12,7 @@ import {
   getDb,
   newId,
   requests,
+  runs,
   transaction,
   type NeedsYouRequest,
   type RequestKind,
@@ -22,6 +23,7 @@ import { enqueueJob } from '../../jobs.js';
 import { decodeCursor, toPage } from '../../http/pagination.js';
 import type { Hub } from '../../realtime/hub.js';
 import type { NotificationsService } from '../notifications/service.js';
+import type { ApprovalsService } from '../agents/approvals.js';
 
 export interface CreateRequest {
   memberId: string;
@@ -65,6 +67,7 @@ export function createRequestsService(deps: {
   notifications: NotificationsService;
   /** A decision committed: the engine's worker takes it now rather than at its next poll. */
   decided: () => void;
+  approvals?: ApprovalsService;
 }) {
   const announce = (row: NeedsYouRequest) =>
     deps.hub.publish([row.memberId], {
@@ -78,6 +81,49 @@ export function createRequestsService(deps: {
 
   return {
     async create(input: CreateRequest): Promise<NeedsYouRequest> {
+      if (input.subject === 'tool_write' && input.runId) {
+        const merged = await transaction(async (db) => {
+          await db.select({ id: runs.id }).from(runs).where(eq(runs.id, input.runId!)).for('update');
+          const [existing] = await db
+            .select()
+            .from(requests)
+            .where(
+              and(eq(requests.runId, input.runId!), eq(requests.subject, 'tool_write'), eq(requests.status, 'pending')),
+            )
+            .for('update');
+          if (!existing) return null;
+          const calls = (existing.payload.calls as Record<string, unknown>[] | undefined) ?? [
+            { step_id: existing.stepId, ...existing.payload },
+          ];
+          calls.push({ step_id: input.stepId, ...input.payload });
+          const scope = existing.payload.standing_scope as { type: string; id: string; actions: string[] } | undefined;
+          const added = input.payload.standing_scope as typeof scope;
+          const sameScope = scope && added && scope.type === added.type && scope.id === added.id;
+          const payload = {
+            ...existing.payload,
+            calls,
+            tier: existing.payload.tier === 'tier3' || input.payload.tier === 'tier3' ? 'tier3' : 'tier2',
+            standing_scope: sameScope
+              ? { ...scope, actions: [...new Set([...scope.actions, ...added.actions])] }
+              : null,
+            details: calls.flatMap((call, index) => [
+              { label: String(index + 1), value: String(call.summary ?? call.tool ?? '') },
+              ...((call.details as unknown[]) ?? []),
+            ]),
+            batch_ready: false,
+          };
+          const [row] = await db
+            .update(requests)
+            .set({ payload, updatedAt: sql`now()` })
+            .where(eq(requests.id, existing.id))
+            .returning();
+          return row!;
+        });
+        if (merged) {
+          announce(merged);
+          return merged;
+        }
+      }
       const [row] = await getDb()
         .insert(requests)
         .values({
@@ -85,7 +131,11 @@ export function createRequestsService(deps: {
           memberId: input.memberId,
           kind: input.kind,
           subject: input.subject,
-          payload: { ...input.payload, title: input.title },
+          payload: {
+            ...input.payload,
+            title: input.title,
+            ...(input.subject === 'tool_write' ? { batch_ready: false } : {}),
+          },
           conversationId: input.conversationId ?? null,
           runId: input.runId ?? null,
           stepId: input.stepId ?? null,
@@ -149,6 +199,13 @@ export function createRequestsService(deps: {
       outcome: { status: Exclude<RequestStatus, 'pending' | 'expired'>; result: Record<string, unknown> },
     ): Promise<NeedsYouRequest> {
       const row = await transaction(async (db) => {
+        const [current] = await db
+          .select()
+          .from(requests)
+          .where(and(eq(requests.id, id), eq(requests.memberId, memberId)))
+          .for('update');
+        if (current?.payload.batch_ready === false)
+          throw conflict('request_building', 'The Agent is still preparing this approval card.');
         const [settled] = await db
           .update(requests)
           .set({
@@ -169,6 +226,10 @@ export function createRequestsService(deps: {
           )
           .returning();
         if (!settled) return null;
+        if (outcome.status === 'approved' && outcome.result.standing === true) {
+          if (!deps.approvals) throw conflict('standing_not_allowed', 'Standing approvals are unavailable.');
+          await deps.approvals.grant(settled);
+        }
         await deps.notifications.markRequestRead(id);
         await queueDecision(settled);
         return settled;
@@ -181,6 +242,15 @@ export function createRequestsService(deps: {
       announce(row);
       deps.decided();
       return row;
+    },
+
+    async ready(runId: string) {
+      const rows = await getDb()
+        .update(requests)
+        .set({ payload: sql`${requests.payload} || '{"batch_ready":true}'::jsonb` })
+        .where(and(eq(requests.runId, runId), eq(requests.status, 'pending'), eq(requests.subject, 'tool_write')))
+        .returning();
+      for (const row of rows) announce(row);
     },
 
     /** Pending requests past their time become expired; the engine's worker follows each up. */

@@ -645,6 +645,7 @@ export type RunDetail = {
   started_at: string | null;
   finished_at: string | null;
   created_at: string;
+  findings: Array<string>;
   brief: string;
   output: string | null;
   steps: Array<{
@@ -813,6 +814,10 @@ export type Schedule = {
   agent_id: string;
   name: string;
   brief: string;
+  quiet: boolean;
+  computer: boolean;
+  domains: Array<string>;
+  continue_after: boolean;
   cron: string;
   timezone: string;
   status: 'active' | 'paused';

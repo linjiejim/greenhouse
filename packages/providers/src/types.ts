@@ -141,6 +141,8 @@ export interface SandboxStream {
 }
 
 export interface SandboxClient {
+  /** Temporary background egress. Empty means offline; null restores the provider's normal rules. */
+  setEgress?(name: string, domains: readonly string[] | null): Promise<void>;
   /** Starts the computer, creating it with an empty home the first time. Idempotent. */
   ensure(spec: SandboxSpec): Promise<void>;
   status(name: string): Promise<'running' | 'stopped' | 'missing'>;

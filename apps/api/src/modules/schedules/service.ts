@@ -17,7 +17,7 @@ import type { Background } from '../../engine/background.js';
 import { conflict, invalidInput, notFound } from '../../http/errors.js';
 import type { AgentsService } from '../agents/service.js';
 
-type CreateInput = z.output<typeof createScheduleInputSchema>;
+type CreateInput = z.input<typeof createScheduleInputSchema>;
 
 /** At most this many schedules per member, and never more often than every 15 minutes. */
 export const MAX_SCHEDULES = 50;
@@ -29,6 +29,10 @@ const toSchedule = (row: ScheduleRow): Schedule => ({
   agent_id: row.agentId,
   name: row.name,
   brief: row.brief,
+  quiet: row.quiet,
+  computer: row.computer,
+  domains: row.domains,
+  continue_after: row.continueAfter,
   cron: row.cron,
   timezone: row.timezone,
   status: row.status,
@@ -83,6 +87,10 @@ export function createSchedulesService(deps: { agents: AgentsService; background
       source: 'schedule',
       sourceId: row.id,
       conversationId: null,
+      quiet: row.quiet,
+      computer: row.computer,
+      domains: row.domains,
+      continue_after: row.continueAfter,
     });
     await getDb()
       .update(schedules)
@@ -135,6 +143,10 @@ export function createSchedulesService(deps: { agents: AgentsService; background
             ownerId: memberId,
             name: input.name,
             brief: input.brief,
+            quiet: input.quiet ?? false,
+            computer: input.computer ?? false,
+            domains: input.domains ?? [],
+            continueAfter: input.continue_after ?? false,
             cron: input.cron.trim(),
             timezone,
             nextRunAt: next.toISOString(),
@@ -154,6 +166,10 @@ export function createSchedulesService(deps: { agents: AgentsService; background
         .set({
           ...(input.name !== undefined ? { name: input.name } : {}),
           ...(input.brief !== undefined ? { brief: input.brief } : {}),
+          ...(input.quiet !== undefined ? { quiet: input.quiet } : {}),
+          ...(input.computer !== undefined ? { computer: input.computer } : {}),
+          ...(input.domains !== undefined ? { domains: input.domains } : {}),
+          ...(input.continue_after !== undefined ? { continueAfter: input.continue_after } : {}),
           cron,
           timezone,
           nextRunAt: row.status === 'active' ? next.toISOString() : row.nextRunAt,

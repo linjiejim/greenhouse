@@ -77,7 +77,7 @@ export function connectorTool(connectors: ConnectorsService) {
     description: DESCRIPTION,
     input,
     risk: 'read',
-    surfaces: ['turn'],
+    surfaces: ['turn', 'background'],
     taints: true,
     outbound: true,
     // Offered whenever the Agent has connectors, connected or not: an account connected or
@@ -89,7 +89,9 @@ export function connectorTool(connectors: ConnectorsService) {
     async callRisk(args, ctx) {
       if (args.action !== 'call') return 'read';
       const found = await connectors.findTool(ctx.memberId, ctx.manifest, args.connector, args.tool);
-      return 'tool' in found && !found.tool.readOnly ? 'external' : 'read';
+      if ('tool' in found && !found.tool.readOnly && ctx.surface === 'background')
+        throw new Error('Background runs can only read connector tools.');
+      return 'tool' in found && !found.tool.readOnly ? 'tier3' : 'read';
     },
     async describe(args, ctx) {
       const zh = ctx.locale === 'zh';

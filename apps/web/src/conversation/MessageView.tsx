@@ -5,6 +5,7 @@
  */
 
 import { memo, useState } from 'react';
+import { WriteReceipt } from './WriteReceipt';
 import {
   CircleAlert,
   Copy,
@@ -152,6 +153,7 @@ export const MessageView = memo(function MessageView({
   const time = relativeTime(message.created_at, { locale, timeZone });
 
   if (message.role === 'event') {
+    if (message.event?.type === 'write_receipt') return <WriteReceipt message={message} />;
     // A mail that arrived at the Agent's address, or one it sent: a card that opens the mail.
     if (isMailEvent(message.event)) return <MailCard message={message as Message & { event: typeof message.event }} />;
     return (

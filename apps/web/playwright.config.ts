@@ -11,6 +11,7 @@ const root = new URL('../..', import.meta.url).pathname;
 const apiEnv = [
   `GREENHOUSE_ENV_FILE=/dev/null`,
   `NODE_ENV=development`,
+  `AGENT_EVENT_MERGE_MS=100`,
   `PORT=${E2E.apiPort}`,
   `PUBLIC_URL=http://127.0.0.1:${E2E.webPort}`,
   `DATABASE_URL=${E2E.databaseUrl}`,

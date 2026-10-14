@@ -96,7 +96,7 @@ describe('connector tools in a turn', () => {
     });
     expect(server.tickets).toEqual([]);
     const [pending] = await steps(write.run_id);
-    expect(pending).toMatchObject({ risk: 'external', status: 'pending', requestId: card!.id });
+    expect(pending).toMatchObject({ risk: 'tier3', status: 'pending', requestId: card!.id });
     expect((await getDb().select().from(runs).where(eq(runs.id, write.run_id)))[0]!.status).toBe('waiting');
 
     expect((await request('POST', `/api/requests/${card!.id}/approve`, { token: lin.token })).status).toBe(200);

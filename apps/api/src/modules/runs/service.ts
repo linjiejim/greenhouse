@@ -86,6 +86,9 @@ export function createRunsService(deps: { background: () => Background }) {
       return {
         ...toRun(row),
         brief: row.brief,
+        findings: Array.isArray(row.output?.findings)
+          ? row.output.findings.filter((value): value is string => typeof value === 'string')
+          : [],
         output,
         steps: steps.map((step) => ({
           id: step.id,

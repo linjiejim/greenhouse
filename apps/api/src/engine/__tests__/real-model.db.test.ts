@@ -6,7 +6,7 @@
 
 import { createServer, type IncomingMessage, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { RealtimeEvent } from '@greenhouse/contract';
 import { agentMemories, getDb, messages, runSteps, usageEvents } from '@greenhouse/db';
@@ -164,7 +164,10 @@ describe('a real model over HTTP', () => {
     expect(roles.some((role, index) => role === 'user' && roles[index - 1] === 'user')).toBe(false);
     expect(JSON.stringify(requests[0]!.messages.at(-1))).toContain('remember that I like tea');
 
-    const [reply] = await getDb().select().from(messages).where(eq(messages.runId, sent.body.run_id));
+    const [reply] = await getDb()
+      .select()
+      .from(messages)
+      .where(and(eq(messages.runId, sent.body.run_id), eq(messages.role, 'assistant')));
     expect(reply).toMatchObject({ status: 'complete', content: 'Noted, Lin.' });
     expect(reply!.steps).toEqual([expect.objectContaining({ tool: 'memory', status: 'done' })]);
     const memories = await getDb().select().from(agentMemories).where(eq(agentMemories.memberId, lin.id));

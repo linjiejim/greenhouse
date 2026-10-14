@@ -131,7 +131,7 @@ describe('knowledge tools in a turn', () => {
       ],
     });
     const [pending] = await steps(sent.run_id);
-    expect(pending).toMatchObject({ risk: 'write', status: 'pending' });
+    expect(pending).toMatchObject({ risk: 'tier2', status: 'pending' });
     expect((await app.services.knowledge.getDoc(lin.id, plan.id)).version).toBe(1);
 
     expect((await app.call('POST', `/api/requests/${card!.id}/approve`, { token: lin.token })).status).toBe(200);
@@ -193,7 +193,7 @@ describe('knowledge tools in a turn', () => {
     const sent = await send(main.id, 'remember how I like answers');
     expect(await getDb().select().from(requests).where(eq(requests.runId, sent.run_id))).toEqual([]);
     const [created] = await steps(sent.run_id);
-    expect(created).toMatchObject({ toolName: 'knowledge_mutation', risk: 'read', status: 'succeeded' });
+    expect(created).toMatchObject({ toolName: 'knowledge_mutation', risk: 'tier1', status: 'succeeded' });
     const docId = (created!.output as { created: string }).created;
     const [doc] = await getDb().select().from(docs).where(eq(docs.id, docId));
     const [folder] = await getDb().select().from(folders).where(eq(folders.id, doc!.folderId!));
@@ -237,7 +237,7 @@ describe('knowledge tools in a turn', () => {
     const own = await send(main.id, 'and in Chinese please');
     const [found, edited] = await steps(own.run_id);
     expect(found!.output).toMatchObject({ results: [expect.objectContaining({ id: docId, where: 'Greeny' })] });
-    expect(edited).toMatchObject({ risk: 'read', status: 'succeeded' });
+    expect(edited).toMatchObject({ risk: 'tier1', status: 'succeeded' });
     expect(await getDb().select().from(requests).where(eq(requests.runId, own.run_id))).toEqual([]);
   });
 
@@ -253,6 +253,10 @@ describe('knowledge tools in a turn', () => {
       title: 'Handbook',
       content: 'Hi.',
       space: 'team',
+    });
+    const another = await app.member();
+    await app.services.knowledge.share(lin.id, 'doc', secret.id, {
+      items: [{ type: 'member', id: another.id, role: 'viewer' }],
     });
     const room = (
       await app.call('POST', '/api/conversations', {
