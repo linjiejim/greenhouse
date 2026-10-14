@@ -87,8 +87,18 @@ async function activeAdminCount(db: Db, excluding: string): Promise<number> {
 export function createMembersService(deps: { auth: AuthService; providers: ProvidersService; files: FilesService }) {
   /** What the member can use now: their own keys where the policy allows, else the workspace's. */
   const capabilitiesOf = (memberId: string) => deps.providers.availability({ memberId });
+  /** Told after a change of who may reach what: a member's status or modules, or a group's members. */
+  const accessListeners: Array<() => void> = [];
+  const accessChanged = () => {
+    for (const listener of accessListeners) listener();
+  };
 
   return {
+    /** Listens for changes of who may reach what (modules that cache their audiences forget them). */
+    onAccessChange(listener: () => void) {
+      accessListeners.push(listener);
+    },
+
     async me(memberId: string): Promise<Me> {
       return toMe(await load(getDb(), memberId), await capabilitiesOf(memberId), deps.files);
     },
@@ -190,7 +200,7 @@ export function createMembersService(deps: { auth: AuthService; providers: Provi
     },
 
     async update(actorId: string, memberId: string, input: UpdateMemberInput): Promise<MemberAdmin> {
-      return transaction(async (db) => {
+      const updated = await transaction(async (db) => {
         const row = await load(db, memberId);
         const demotes = input.role === 'member' && row.role === 'admin';
         const disables = input.status === 'disabled' && row.status !== 'disabled';
@@ -227,6 +237,8 @@ export function createMembersService(deps: { auth: AuthService; providers: Provi
         });
         return toAdmin(updated!, summaryFor(deps.files, actorId));
       });
+      if (input.status !== undefined || input.modules !== undefined) accessChanged();
+      return updated;
     },
 
     async issueResetLink(actorId: string, memberId: string): Promise<IssuedLink> {
@@ -262,7 +274,7 @@ export function createMembersService(deps: { auth: AuthService; providers: Provi
     },
 
     async saveGroup(actorId: string, input: GroupInput, groupId?: string): Promise<Group> {
-      return transaction(async (db) => {
+      const saved = await transaction(async (db) => {
         const id = groupId ?? newId('group');
         const [clash] = await db
           .select({ id: groups.id })
@@ -296,6 +308,8 @@ export function createMembersService(deps: { auth: AuthService; providers: Provi
         const all = await this.listGroups();
         return all.find((group) => group.id === id)!;
       });
+      accessChanged();
+      return saved;
     },
 
     async deleteGroup(actorId: string, groupId: string): Promise<void> {
@@ -304,6 +318,7 @@ export function createMembersService(deps: { auth: AuthService; providers: Provi
         if (!deleted.length) throw notFound('Group');
         await audit({ actorId, action: 'group.delete', resourceType: 'group', resourceId: groupId });
       });
+      accessChanged();
     },
   };
 }

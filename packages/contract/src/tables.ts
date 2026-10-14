@@ -163,6 +163,8 @@ export const LONG_TEXT_MAX = 100_000;
 export const MAX_FIELDS = 200;
 export const MAX_OPTIONS = 200;
 export const MAX_TABLES = 50;
+/** Views of one data table one member sees: the shared ones and their own. */
+export const MAX_VIEWS = 100;
 export const MAX_FILTER_CLAUSES = 20;
 export const MAX_SORTS = 3;
 /** Records one query page returns at most; the web loads a view page by page up to MAX_VIEW_RECORDS. */
@@ -537,7 +539,14 @@ export const baseSchema = baseSummarySchema.omit({ tables: true, dashboards: tru
 });
 export type Base = z.infer<typeof baseSchema>;
 
-export const baseListQuerySchema = z.object({ archived: z.enum(['true', 'false']).default('false') });
+export const baseListQuerySchema = z.object({
+  archived: z.enum(['true', 'false']).default('false'),
+  cursor: z.string().max(500).optional(),
+  limit: z.coerce.number().int().min(1).max(500).default(200),
+});
+/** A page of my bases, by name; `next_cursor` for the next one. */
+export const baseListSchema = z.object({ items: z.array(baseSummarySchema), next_cursor: z.string().nullable() });
+export type BaseList = z.infer<typeof baseListSchema>;
 export const createBaseInputSchema = z.object({
   /** Default: the template's name, or 未命名表格. */
   name: z.string().trim().min(1).max(BASE_NAME_MAX).optional(),
@@ -783,6 +792,9 @@ export const createRoleInputSchema = z.object({
   rules: roleRulesSchema.default({ tables: {} }),
 });
 export type CreateRoleInput = z.input<typeof createRoleInputSchema>;
+/** AI fields filled in again for these records now (editors; the model is metered to them). */
+export const generateInputSchema = z.object({ record_ids: z.array(idField).min(1).max(100) });
+export type GenerateInput = z.infer<typeof generateInputSchema>;
 export const updateRoleInputSchema = z.object({
   revision: z.number().int().positive(),
   name: z.string().trim().min(1).max(60).optional(),

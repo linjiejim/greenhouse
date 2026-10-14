@@ -10,11 +10,11 @@ import {
   BASE_ROLES,
   MAX_FIELDS,
   MAX_TABLES,
-  TRASH_DAYS,
-  csvLine,
-  formatCell,
+  MAX_VIEWS,
+  isComputedType,
   roleAtLeast,
   type Base,
+  type BaseList,
   type BaseAuditEntry,
   type BaseRole,
   type BaseShareInput,
@@ -27,6 +27,7 @@ import {
   type Field,
   type Page,
   type RecordFile,
+  type RecordValues,
   type TrashItem,
   type UpdateBaseInput,
   type UpdateFieldInput,
@@ -59,19 +60,32 @@ import {
   type BaseRow,
   type BaseTableRow,
 } from '@greenhouse/db';
+import { enqueueJob } from '../../jobs.js';
 import { isUniqueViolation, toErrorMessage } from '@greenhouse/utils/error';
 import { logger } from '@greenhouse/utils/logger';
 import { audit } from '../../audit.js';
-import { ApiError, conflict, forbidden, invalidInput, notFound } from '../../http/errors.js';
+import { ApiError, conflict, forbidden, invalidInput } from '../../http/errors.js';
 import type { Hub } from '../../realtime/hub.js';
-import { exportFilename } from '../conversations/export.js';
 import type { FilesService } from '../files/service.js';
 import { inList } from '../knowledge/access.js';
 import { memberNames, refOf, shareViews } from '../knowledge/views.js';
 import type { NotificationsService } from '../notifications/service.js';
 import type { ProvidersService } from '../../providers/service.js';
-import { audienceOf, baseAt, canRead, loadReader, readableBases, rolesOn, type TablesReader } from './access.js';
+import {
+  accessOn,
+  audienceOf,
+  baseAt,
+  canRead,
+  loadReader,
+  readableBases,
+  type Audience,
+  type CustomAccess,
+  type TablesReader,
+} from './access.js';
 import { createCards } from './cards.js';
+import { createComputed, type ComputedRow } from './computed.js';
+import { checkNoCycle, lockFieldGraph, prepareComputed, saveDeps } from './computed-fields.js';
+import { exportCsv } from './export.js';
 import { createForms } from './forms.js';
 import { createImports } from './imports.js';
 import type { TablesKit } from './kit.js';
@@ -82,23 +96,24 @@ import {
   configOfField,
   fieldAt,
   fieldsOf,
-  fill,
+  recordAt,
   tableAt,
   toField,
   toTable,
   toView,
   viewAt,
 } from './load.js';
-import { compileFilter, compileOrder, recordsWhere } from './query.js';
-import { createRecords, purgeRecords } from './records.js';
+import { discardJob, discardLater, filesOfField, purgeJob, purgeRecords, recordIdsOf } from './purge.js';
+import { createRecords, type ChangedRecord } from './records.js';
+import { createRoles } from './roles.js';
+import { inIds } from './query.js';
+import { hiddenFields, scopeOf } from './scope.js';
 import { projectTemplate, TEMPLATE_VERSIONS, type TemplatePlan } from './templates.js';
 import { canChangeType, convertValue, normalizeConfig, normalizeValue, emptyRefs, searchOf } from './values.js';
 import { cleanConfig, defaultConfig } from './views.js';
 
 /** Who may see a base, kept for a few seconds so a burst of writes asks once. */
 const AUDIENCE_TTL_MS = 5_000;
-/** Most records one CSV export holds. */
-const MAX_EXPORT_ROWS = 50_000;
 
 const WORDS = {
   zh: { base: '未命名表格', table: '数据表', field: '名称', grid: '表格' },
@@ -120,17 +135,19 @@ export function createTablesService(deps: {
   hub: Hub;
   providers: ProvidersService;
 }) {
-  const audiences = new Map<string, { at: number; ids: Promise<string[]> }>();
+  const audiences = new Map<string, { at: number; who: Promise<Audience> }>();
   const worker = createTablesWorker();
 
-  function audience(base: Pick<BaseRow, 'id' | 'ownerId'>): Promise<string[]> {
+  /** Who sees a base now, kept a few seconds; forgotten at once when shares, groups or modules change. */
+  function audienceAll(base: Pick<BaseRow, 'id' | 'ownerId'>): Promise<Audience> {
     const cached = audiences.get(base.id);
-    if (cached && Date.now() - cached.at < AUDIENCE_TTL_MS) return cached.ids;
-    const ids = audienceOf(base);
-    audiences.set(base.id, { at: Date.now(), ids });
-    ids.catch(() => audiences.delete(base.id));
-    return ids;
+    if (cached && Date.now() - cached.at < AUDIENCE_TTL_MS) return cached.who;
+    const who = audienceOf(base);
+    audiences.set(base.id, { at: Date.now(), who });
+    who.catch(() => audiences.delete(base.id));
+    return who;
   }
+  const audience = async (base: Pick<BaseRow, 'id' | 'ownerId'>) => (await audienceAll(base)).ids;
 
   /** The base's structure, views or shares changed: everyone who sees it refetches (only `to` for a personal view). */
   async function baseChanged(base: Pick<BaseRow, 'id' | 'ownerId'>, to?: string) {
@@ -148,21 +165,57 @@ export function createTablesService(deps: {
       .where(eq(bases.id, baseId));
   };
 
+  /** Records of a table changed: everyone who sees the base is told which (a custom role only that some did). */
+  async function publishChanged(base: Pick<BaseRow, 'id' | 'ownerId'>, tableId: string, rows: ChangedRecord[]) {
+    try {
+      const who = await audienceAll(base);
+      const full = who.ids.filter((id) => !who.limited.has(id));
+      deps.hub.publish(full, { type: 'records.changed', data: { base_id: base.id, table_id: tableId, records: rows } });
+      // A custom role may not see every record: it learns that the table changed, not which records.
+      if (who.limited.size) {
+        deps.hub.publish([...who.limited], {
+          type: 'records.changed',
+          data: { base_id: base.id, table_id: tableId, records: [] },
+        });
+      }
+    } catch (error) {
+      logger.warn('[tables] could not tell about changed records', { base: base.id, error: toErrorMessage(error) });
+    }
+  }
+
+  async function baseOfTable(tableId: string): Promise<Pick<BaseRow, 'id' | 'ownerId'> | null> {
+    const [row] = await getDb()
+      .select({ id: bases.id, ownerId: bases.ownerId })
+      .from(baseTables)
+      .innerJoin(bases, eq(bases.id, baseTables.baseId))
+      .where(eq(baseTables.id, tableId));
+    return row ?? null;
+  }
+
+  const computed = createComputed({
+    providers: deps.providers,
+    kick: () => worker.kick(),
+    async changed(tableId: string, rows: ComputedRow[]) {
+      const base = await baseOfTable(tableId);
+      if (base) await publishChanged(base, tableId, rows.length > 100 ? [] : rows);
+    },
+  });
+
   const records = createRecords({
     files: deps.files,
     notifications: deps.notifications,
+    computed,
+    kick: () => worker.kick(),
     touch,
-    async changed(base, tableId, rows) {
-      deps.hub.publish(await audience(base), {
-        type: 'records.changed',
-        data: { base_id: base.id, table_id: tableId, records: rows },
-      });
+    changed(base, tableId, rows) {
+      void publishChanged(base, tableId, rows);
     },
     async commented(base, recordId, commentId) {
-      deps.hub.publish(await audience(base), {
-        type: 'comments.updated',
-        data: { target_type: 'record', target_id: recordId, comment_id: commentId },
-      });
+      const who = await audienceAll(base);
+      deps.hub.publish(
+        who.ids.filter((id) => !who.limited.has(id)),
+        { type: 'comments.updated', data: { target_type: 'record', target_id: recordId, comment_id: commentId } },
+      );
     },
   });
 
@@ -180,6 +233,37 @@ export function createTablesService(deps: {
   const forms = createForms(kit);
   const imports = createImports(kit);
   const cards = createCards(kit);
+  const roles = createRoles({
+    async changed(base) {
+      audiences.delete(base.id);
+      await baseChanged(base);
+    },
+  });
+
+  // ── Background work ──────────────────────────────────
+
+  worker.register('base_recompute', (job) => computed.recomputeJob(job));
+  worker.register('base_ai_field', (job) => computed.aiJob(job));
+  worker.register('base_discard', (job) => discardJob(deps.files, job.payload));
+  worker.register('base_purge', () =>
+    purgeJob({
+      files: deps.files,
+      expiredImports: () => imports.purgeExpired(),
+      async touched(baseId, rows) {
+        const [base] = await getDb().select().from(bases).where(eq(bases.id, baseId));
+        if (base) await records.tellTouched(base, rows);
+        await computed.touched(rows.map((row) => row.id));
+      },
+    }),
+  );
+  /** Once a day, the first pass of the day queues the purge (one per day for every process). */
+  let purgeQueued = '';
+  worker.every(async () => {
+    const day = new Date().toISOString().slice(0, 10);
+    if (day === purgeQueued) return;
+    await enqueueJob({ kind: 'base_purge', dedupeKey: `base_purge:${day}`, payload: { day } });
+    purgeQueued = day;
+  });
 
   // ── Reading bases ────────────────────────────────────
 
@@ -232,11 +316,30 @@ export function createTablesService(deps: {
       .orderBy(asc(baseViews.position), asc(baseViews.id));
   }
 
-  async function detail(reader: TablesReader, base: BaseRow, role: BaseRole): Promise<Base> {
-    const tables = await liveTables([base.id]);
+  /** The fields of these tables a custom role sees (all of them for the four roles). */
+  async function seenFields(custom: CustomAccess | null, tableIds: readonly string[]) {
+    const fields = await fieldsOf(tableIds);
+    if (!custom) return fields;
+    const hidden = new Set<string>();
+    for (const id of tableIds) for (const field of await hiddenFields(custom, id)) hidden.add(field);
+    return fields.filter((field) => !hidden.has(field.id));
+  }
+
+  const customRoleOf = (custom: CustomAccess | null) =>
+    custom?.roles.length
+      ? { id: custom.roles[0]!.id, name: custom.roles.map((entry) => entry.name).join(' + ') }
+      : null;
+
+  async function detail(
+    reader: TablesReader,
+    base: BaseRow,
+    role: BaseRole,
+    custom: CustomAccess | null,
+  ): Promise<Base> {
+    const tables = (await liveTables([base.id])).filter((table) => !custom || custom.tables.has(table.id));
     const ids = tables.map((table) => table.id);
     const [fields, views, dashboards, pinned, owner, ai] = await Promise.all([
-      fieldsOf(ids),
+      seenFields(custom, ids),
       viewsOf(reader, ids),
       dashboardsOf(reader, [base.id]),
       pinnedOf(reader.memberId, [base.id]),
@@ -256,9 +359,12 @@ export function createTablesService(deps: {
       archived_at: base.archivedAt,
       created_at: base.createdAt,
       updated_at: base.updatedAt,
-      tables: tables.map((table) => toTable(table, fields)),
+      tables: tables.map((table) => ({
+        ...toTable(table, fields),
+        ...(custom ? { access: custom.tables.get(table.id)!.access } : {}),
+      })),
       views: [...views, ...dashboards].map((view) => toView(view, reader, role)),
-      custom_role: null,
+      custom_role: customRoleOf(custom),
       ai_fields: ai,
     };
   }
@@ -520,6 +626,53 @@ export function createTablesService(deps: {
     await touch(base.id);
   }
 
+  /**
+   * A field's type changes: its values carry over (values.ts), each checked against the new type.
+   * Values that would not fit refuse the change rather than being lost.
+   */
+  async function convertValues(field: BaseFieldRow, type: BaseFieldRow['type'], config: BaseFieldRow['config']) {
+    const rows = await getDb()
+      .select({ id: baseRecords.id, values: baseRecords.values })
+      .from(baseRecords)
+      .where(and(eq(baseRecords.tableId, field.tableId), sql`${baseRecords.values} ? ${field.id}`));
+    const target = { ...field, type, config };
+    const changed: Array<{ id: string; values: RecordValues }> = [];
+    const refused: string[] = [];
+    for (const row of rows) {
+      const before = row.values[field.id];
+      let after: unknown;
+      try {
+        after = normalizeValue(target, convertValue(field.type, type, before), emptyRefs());
+      } catch {
+        refused.push(row.id);
+        continue;
+      }
+      if (JSON.stringify(after) !== JSON.stringify(before))
+        changed.push({ id: row.id, values: { ...row.values, [field.id]: after } });
+    }
+    if (refused.length) {
+      throw new ApiError(
+        409,
+        'type_change_values',
+        `${refused.length} records hold values that are not valid for the new type. Change or clear them first.`,
+        { count: refused.length, record_ids: refused.slice(0, 20) },
+      );
+    }
+    for (const row of changed) {
+      await getDb().update(baseRecords).set({ values: row.values }).where(eq(baseRecords.id, row.id));
+    }
+  }
+
+  /** A write that may clash with another name (two at once): answered 409 `name_taken`. */
+  async function uniqueName<T>(work: () => Promise<T>, message: string): Promise<T> {
+    try {
+      return await work();
+    } catch (error) {
+      if (!(error instanceof ApiError) && isUniqueViolation(error)) throw conflict('name_taken', message);
+      throw error;
+    }
+  }
+
   const auditBase = (reader: TablesReader, base: BaseRow, action: string, summary = '') =>
     audit({
       actorId: reader.memberId,
@@ -541,17 +694,40 @@ export function createTablesService(deps: {
 
     // ── Bases ──────────────────────────────────────────
 
-    /** My bases and those shared with me (or the archived ones I own), with their tables and my views. */
-    async list(memberId: string, query: { archived: boolean }): Promise<{ items: BaseSummary[] }> {
+    /**
+     * A page of my bases and those shared with me (or the archived ones I own), by name, with
+     * their tables and my views.
+     */
+    async list(
+      memberId: string,
+      query: { archived: boolean; cursor?: string | undefined; limit?: number },
+    ): Promise<BaseList> {
       const reader = await loadReader(memberId);
+      const limit = query.limit ?? 200;
+      const after = query.cursor ? decodeBases(query.cursor) : null;
       const rows = await getDb()
         .select()
         .from(bases)
-        .where(and(readableBases(reader), query.archived ? isNotNull(bases.archivedAt) : isNull(bases.archivedAt)));
-      const roles = await rolesOn(reader, rows);
-      const visible = rows.filter((row) => roles.has(row.id) && (!query.archived || roles.get(row.id) === 'owner'));
+        .where(
+          and(
+            readableBases(reader),
+            query.archived ? isNotNull(bases.archivedAt) : isNull(bases.archivedAt),
+            after ? sql`(${bases.name}, ${bases.id}) > (${after.name}, ${after.id})` : undefined,
+          ),
+        )
+        .orderBy(asc(bases.name), asc(bases.id))
+        .limit(limit + 1);
+      const more = rows.length > limit;
+      const pageRows = more ? rows.slice(0, limit) : rows;
+      const access = await accessOn(reader, pageRows);
+      const visible = pageRows.filter(
+        (row) => access.has(row.id) && (!query.archived || access.get(row.id)!.role === 'owner'),
+      );
       const ids = visible.map((row) => row.id);
-      const tables = await liveTables(ids);
+      const tables = (await liveTables(ids)).filter((table) => {
+        const custom = access.get(table.baseId)?.custom;
+        return !custom || custom.tables.has(table.id);
+      });
       const [views, dashboards, pinned] = await Promise.all([
         viewsOf(
           reader,
@@ -568,7 +744,7 @@ export function createTablesService(deps: {
             description: row.description,
             icon: row.icon,
             owner_id: row.ownerId,
-            access: roles.get(row.id)!,
+            access: access.get(row.id)!.role,
             pinned: pinned.has(row.id),
             template_key: row.templateKey,
             archived_at: row.archivedAt,
@@ -585,17 +761,22 @@ export function createTablesService(deps: {
             dashboards: dashboards
               .filter((view) => view.baseId === row.id)
               .map((view) => ({ id: view.id, name: view.name, personal: !!view.ownerId })),
-            custom_role: null,
+            custom_role: customRoleOf(access.get(row.id)!.custom),
           }),
         )
         .sort((a, b) => a.name.localeCompare(b.name, 'zh-Hans-CN', { numeric: true }) || a.id.localeCompare(b.id));
-      return { items };
+      const last = pageRows[pageRows.length - 1];
+      return {
+        items,
+        next_cursor:
+          more && last ? Buffer.from(JSON.stringify({ n: last.name, i: last.id })).toString('base64url') : null,
+      };
     },
 
     async get(memberId: string, baseId: string): Promise<Base> {
       const reader = await loadReader(memberId);
-      const { base, role } = await baseAt(reader, baseId, 'viewer', { archived: true });
-      return detail(reader, base, role);
+      const { base, role, custom } = await baseAt(reader, baseId, 'viewer', { archived: true });
+      return detail(reader, base, role, custom);
     },
 
     /** Blank (one data table with a grid) or from a template. The member owns it. */
@@ -621,13 +802,13 @@ export function createTablesService(deps: {
         if (input.template) await auditBase(reader, row!, 'base.create', `template ${input.template}`);
         return row!;
       });
-      return detail(reader, base, 'owner');
+      return detail(reader, base, 'owner', null);
     },
 
     async update(memberId: string, baseId: string, input: UpdateBaseInput): Promise<Base> {
       const reader = await loadReader(memberId);
       const changesBase = input.name !== undefined || input.description !== undefined || input.icon !== undefined;
-      const { base, role } = await baseAt(reader, baseId, changesBase ? 'builder' : 'viewer');
+      const { base, role, custom } = await baseAt(reader, baseId, changesBase ? 'builder' : 'viewer');
       if (input.pinned !== undefined) {
         if (input.pinned) {
           await getDb().insert(pins).values({ memberId, targetType: 'base', targetId: baseId }).onConflictDoNothing();
@@ -651,7 +832,7 @@ export function createTablesService(deps: {
           .returning()) as [BaseRow];
         await baseChanged(row);
       }
-      return detail(reader, row, role);
+      return detail(reader, row, role, custom);
     },
 
     async archive(memberId: string, baseId: string): Promise<Base> {
@@ -667,13 +848,13 @@ export function createTablesService(deps: {
         return archived!;
       });
       await baseChanged(row);
-      return detail(reader, row, 'owner');
+      return detail(reader, row, 'owner', null);
     },
 
     async restore(memberId: string, baseId: string): Promise<Base> {
       const reader = await loadReader(memberId);
       const { base } = await baseAt(reader, baseId, 'owner', { archived: true });
-      if (!base.archivedAt) return detail(reader, base, 'owner');
+      if (!base.archivedAt) return detail(reader, base, 'owner', null);
       const row = await transaction(async () => {
         const [restored] = await getDb()
           .update(bases)
@@ -684,7 +865,7 @@ export function createTablesService(deps: {
         return restored!;
       });
       await baseChanged(row);
-      return detail(reader, row, 'owner');
+      return detail(reader, row, 'owner', null);
     },
 
     /** For good, with everything in it: the name typed again must match. */
@@ -701,6 +882,7 @@ export function createTablesService(deps: {
         .innerJoin(baseTables, eq(baseTables.id, baseRecords.tableId))
         .where(eq(baseTables.baseId, baseId));
       await transaction(async () => {
+        await forms.dropShares({ baseId });
         await getDb().delete(bases).where(eq(bases.id, baseId));
         await getDb()
           .delete(shares)
@@ -710,8 +892,10 @@ export function createTablesService(deps: {
           .where(and(eq(pins.targetType, 'base'), eq(pins.targetId, baseId)));
         await getDb().delete(comments).where(eq(comments.baseId, baseId));
         await auditBase(reader, base, 'base.delete', `${held.length} files`);
+        // The bytes go once this has committed.
+        await discardLater(held.map((file) => file.id));
       });
-      for (const file of held) await deps.files.discard(file.id);
+      worker.kick();
       audiences.delete(baseId);
       deps.hub.publish(people, { type: 'base.updated', data: { base_id: baseId } });
     },
@@ -879,16 +1063,20 @@ export function createTablesService(deps: {
       if (input.name && (await tableNameTaken(base.id, input.name, tableId))) {
         throw conflict('name_taken', 'This base already has a data table with that name.');
       }
-      const [row] = await getDb()
-        .update(baseTables)
-        .set({
-          ...(input.name !== undefined ? { name: input.name } : {}),
-          ...(input.description !== undefined ? { description: input.description } : {}),
-          ...(input.position !== undefined ? { position: input.position } : {}),
-          updatedAt: sql`now()`,
-        })
-        .where(eq(baseTables.id, table.id))
-        .returning();
+      const [row] = await uniqueName(
+        () =>
+          getDb()
+            .update(baseTables)
+            .set({
+              ...(input.name !== undefined ? { name: input.name } : {}),
+              ...(input.description !== undefined ? { description: input.description } : {}),
+              ...(input.position !== undefined ? { position: input.position } : {}),
+              updatedAt: sql`now()`,
+            })
+            .where(eq(baseTables.id, table.id))
+            .returning(),
+        'This base already has a data table with that name.',
+      );
       await touch(base.id);
       await baseChanged(base);
       return toTable(row!, await fieldsOf(table.id));
@@ -904,7 +1092,10 @@ export function createTablesService(deps: {
           .set({ archivedAt: sql`now()`, updatedAt: sql`now()` })
           .where(eq(baseTables.id, table.id));
         await touch(base.id);
+        // Lookups and rollups elsewhere read its records no more.
+        await computed.tableChanged(table.id);
       });
+      worker.kick();
       await baseChanged(base);
     },
 
@@ -915,14 +1106,30 @@ export function createTablesService(deps: {
       if (await tableNameTaken(base.id, table.name, table.id)) {
         throw conflict('name_taken', 'Another data table has its name now. Rename that one first.');
       }
-      const [row] = await getDb()
-        .update(baseTables)
-        .set({ archivedAt: null, updatedAt: sql`now()` })
-        .where(eq(baseTables.id, table.id))
-        .returning();
-      await touch(base.id);
+      const row = await uniqueName(
+        () =>
+          transaction(async () => {
+            // Under the base's row lock, so two restores cannot pass the cap together.
+            await getDb().select({ id: bases.id }).from(bases).where(eq(bases.id, base.id)).for('update');
+            const [{ n } = { n: 0 }] = await getDb()
+              .select({ n: sql<number>`count(*)::int` })
+              .from(baseTables)
+              .where(and(eq(baseTables.baseId, base.id), isNull(baseTables.archivedAt)));
+            if (n >= MAX_TABLES) throw conflict('too_many_tables', `A base holds up to ${MAX_TABLES} data tables.`);
+            const [restored] = await getDb()
+              .update(baseTables)
+              .set({ archivedAt: null, updatedAt: sql`now()` })
+              .where(eq(baseTables.id, table.id))
+              .returning();
+            await touch(base.id);
+            await computed.tableChanged(table.id);
+            return restored!;
+          }),
+        'Another data table has its name now. Rename that one first.',
+      );
+      worker.kick();
       await baseChanged(base);
-      return toTable(row!, await fieldsOf(table.id));
+      return toTable(row, await fieldsOf(table.id));
     },
 
     /** Deletes a data table in the recycle bin for good, with its records and their files. */
@@ -930,11 +1137,10 @@ export function createTablesService(deps: {
       const reader = await loadReader(memberId);
       const { base, table } = await tableAt(reader, tableId, 'builder', { archived: true });
       if (!table.archivedAt) throw conflict('not_archived', 'Delete the data table to the recycle bin first.');
-      const recordIds = (
-        await getDb().select({ id: baseRecords.id }).from(baseRecords).where(eq(baseRecords.tableId, tableId))
-      ).map((row) => row.id);
-      await transaction(async () => {
-        await purgeRecords(deps.files, recordIds);
+      const recordIds = await recordIdsOf(tableId);
+      const purged = await transaction(async () => {
+        const gone = await purgeRecords(recordIds, { memberId, baseId: base.id }, { anyState: true, audit: false });
+        await forms.dropShares({ tableId });
         await getDb().delete(baseTables).where(eq(baseTables.id, tableId));
         await audit({
           actorId: memberId,
@@ -943,9 +1149,13 @@ export function createTablesService(deps: {
           resourceId: tableId,
           scopeType: 'base',
           scopeId: base.id,
-          summary: `${recordIds.length} records`,
+          summary: `${gone.count} records`,
         });
+        await computed.touched(gone.touched.map((row) => row.id));
+        return gone;
       });
+      await records.tellTouched(base, purged.touched);
+      worker.kick();
       await baseChanged(base);
     },
 
@@ -954,8 +1164,15 @@ export function createTablesService(deps: {
     async createField(memberId: string, tableId: string, input: CreateFieldInput): Promise<Field> {
       const reader = await loadReader(memberId);
       const at = await tableAt(reader, tableId, 'builder');
-      const config = normalizeConfig(input.type, input.config);
-      await checkFieldConfig(at, input.type, config);
+      const computes = isComputedType(input.type);
+      if (input.type === 'ai' && !(await deps.providers.available('llm', { memberId }).catch(() => false))) {
+        throw conflict('ai_unavailable', 'AI fields need a model service. An admin can set one up.');
+      }
+      const prepared = computes
+        ? await prepareComputed({ id: tableId, baseId: at.base.id }, input.type, input.config ?? {})
+        : null;
+      const config = prepared ? prepared.config : normalizeConfig(input.type, input.config);
+      if (!computes) await checkFieldConfig(at, input.type, config);
       if (await fieldNameTaken(tableId, input.name)) {
         throw conflict('name_taken', 'This data table already has a field with that name.');
       }
@@ -968,13 +1185,21 @@ export function createTablesService(deps: {
             name: input.name,
             type: input.type,
             config,
-            required: input.required ?? false,
+            // A computed value is never empty for want of someone filling it in.
+            required: computes ? false : (input.required ?? false),
           });
+          if (prepared) {
+            await lockFieldGraph(at.base.id);
+            await checkNoCycle(at.base.id, made.id, prepared.deps);
+            await saveDeps(made.id, prepared.deps);
+            await computed.fieldsChanged([made.id]);
+          }
           await schemaChanged(at.base, tableId);
           return made;
         });
+        worker.kick();
         await baseChanged(at.base);
-        return toField(field);
+        return toField(field, await fieldsOf(tableId));
       } catch (error) {
         if (isUniqueViolation(error))
           throw conflict('name_taken', 'This data table already has a field with that name.');
@@ -998,13 +1223,19 @@ export function createTablesService(deps: {
         throw conflict('name_taken', 'This data table already has a field with that name.');
       }
       let config = field.config;
-      if (input.config || type !== field.type) {
+      const prepared =
+        isComputedType(type) && input.config
+          ? await prepareComputed({ id: field.tableId, baseId: at.base.id }, type, input.config, field)
+          : null;
+      if (prepared) config = prepared.config;
+      else if (input.config || type !== field.type) {
         config = normalizeConfig(type, { ...configOfField(field), ...input.config });
         if (field.type === 'relation' && config.table_id !== field.config.table_id) {
           throw conflict('relation_target_fixed', 'A relation keeps the data table it links to.');
         }
         await checkFieldConfig(at, type, config, fieldId);
       }
+      const values = input.config !== undefined || type !== field.type;
       const updated = await transaction(async () => {
         // Field changes go one at a time per table, each based on the schema it was made against;
         // record writes hold the same row shared, so none lands halfway through a type change.
@@ -1018,18 +1249,7 @@ export function createTablesService(deps: {
             schema_revision: table?.revision ?? null,
           });
         }
-        if (type !== field.type && (field.type === 'single_select' || field.type === 'date')) {
-          const rows = await getDb()
-            .select({ id: baseRecords.id, values: baseRecords.values })
-            .from(baseRecords)
-            .where(and(eq(baseRecords.tableId, field.tableId), sql`${baseRecords.values} ? ${fieldId}`));
-          for (const row of rows) {
-            await getDb()
-              .update(baseRecords)
-              .set({ values: { ...row.values, [fieldId]: convertValue(field.type, type, row.values[fieldId]) } })
-              .where(eq(baseRecords.id, row.id));
-          }
-        }
+        if (type !== field.type) await convertValues(field, type, config);
         const [row] = await getDb()
           .update(baseFields)
           .set({
@@ -1042,12 +1262,25 @@ export function createTablesService(deps: {
           })
           .where(eq(baseFields.id, fieldId))
           .returning();
+        if (prepared) {
+          await lockFieldGraph(at.base.id);
+          await checkNoCycle(at.base.id, fieldId, prepared.deps);
+          await saveDeps(fieldId, prepared.deps);
+        }
+        // What it holds or reads changed: it, and what reads it, are worked out again.
+        if (values) await computed.fieldsChanged([fieldId]);
         await schemaChanged(at.base, field.tableId);
         await cleanViews(field.tableId);
         return row!;
+      }).catch((error: unknown) => {
+        if (!(error instanceof ApiError) && isUniqueViolation(error)) {
+          throw conflict('name_taken', 'This data table already has a field with that name.');
+        }
+        throw error;
       });
+      worker.kick();
       await baseChanged(at.base);
-      return toField(updated);
+      return toField(updated, await fieldsOf(field.tableId));
     },
 
     /** To the recycle bin: gone from every view; its values wait in the records until it is deleted for good. */
@@ -1062,7 +1295,10 @@ export function createTablesService(deps: {
           .where(eq(baseFields.id, fieldId));
         await schemaChanged(at.base, at.field.tableId);
         await cleanViews(at.field.tableId);
+        // What reads it shows that it is gone.
+        await computed.fieldsChanged([fieldId]);
       });
+      worker.kick();
       await baseChanged(at.base);
     },
 
@@ -1074,15 +1310,33 @@ export function createTablesService(deps: {
       if (await fieldNameTaken(field.tableId, field.name, fieldId)) {
         throw conflict('name_taken', 'Another field has its name now. Rename that one first.');
       }
-      await checkFieldConfig(at, field.type, field.config, fieldId);
-      const [row] = await getDb()
-        .update(baseFields)
-        .set({ archivedAt: null, updatedAt: sql`now()` })
-        .where(eq(baseFields.id, fieldId))
-        .returning();
-      await schemaChanged(at.base, field.tableId);
+      if (!isComputedType(field.type)) await checkFieldConfig(at, field.type, field.config, fieldId);
+      const row = await uniqueName(
+        () =>
+          transaction(async () => {
+            // Under the table's row lock, so two restores cannot pass the cap together.
+            await getDb()
+              .select({ id: baseTables.id })
+              .from(baseTables)
+              .where(eq(baseTables.id, field.tableId))
+              .for('update');
+            if ((await fieldsOf(field.tableId)).length >= MAX_FIELDS) {
+              throw conflict('too_many_fields', `A data table holds up to ${MAX_FIELDS} fields.`);
+            }
+            const [restored] = await getDb()
+              .update(baseFields)
+              .set({ archivedAt: null, updatedAt: sql`now()` })
+              .where(eq(baseFields.id, fieldId))
+              .returning();
+            await schemaChanged(at.base, field.tableId);
+            await computed.fieldsChanged([fieldId]);
+            return restored!;
+          }),
+        'Another field has its name now. Rename that one first.',
+      );
+      worker.kick();
       await baseChanged(at.base);
-      return toField(row!);
+      return toField(row, await fieldsOf(field.tableId));
     },
 
     /** Deletes a field in the recycle bin for good: its values leave every record. */
@@ -1090,15 +1344,20 @@ export function createTablesService(deps: {
       const reader = await loadReader(memberId);
       const at = await fieldAt(reader, fieldId, 'builder', { archived: true });
       if (!at.field.archivedAt) throw conflict('not_archived', 'Delete the field to the recycle bin first.');
-      const held = await getDb()
-        .select({ id: baseRecordFiles.fileId })
-        .from(baseRecordFiles)
-        .where(eq(baseRecordFiles.fieldId, fieldId));
+      const held = await filesOfField(fieldId);
       await transaction(async () => {
         await getDb()
           .update(baseRecords)
-          .set({ values: sql`${baseRecords.values} - ${fieldId}::text` })
-          .where(and(eq(baseRecords.tableId, at.field.tableId), sql`${baseRecords.values} ? ${fieldId}`));
+          .set({
+            values: sql`${baseRecords.values} - ${fieldId}::text`,
+            computed: sql`${baseRecords.computed} - ${fieldId}::text`,
+          })
+          .where(
+            and(
+              eq(baseRecords.tableId, at.field.tableId),
+              sql`(${baseRecords.values} ? ${fieldId} OR ${baseRecords.computed} ? ${fieldId})`,
+            ),
+          );
         await getDb().delete(baseFields).where(eq(baseFields.id, fieldId));
         await audit({
           actorId: memberId,
@@ -1108,9 +1367,34 @@ export function createTablesService(deps: {
           scopeType: 'base',
           scopeId: at.base.id,
         });
+        // The bytes go once this has committed.
+        await discardLater(held);
       });
-      for (const file of held) await deps.files.discard(file.id);
+      worker.kick();
       await baseChanged(at.base);
+    },
+
+    /** AI field values written again for these records, now (editors; the model is metered to them). */
+    async generate(memberId: string, fieldId: string, recordIds: readonly string[]) {
+      const reader = await loadReader(memberId);
+      const at = await fieldAt(reader, fieldId, 'editor');
+      if (at.field.type !== 'ai') throw invalidInput('Only AI fields are written by the model.');
+      if (!(await deps.providers.available('llm', { memberId }).catch(() => false))) {
+        throw conflict('ai_unavailable', 'AI fields need a model service. An admin can set one up.');
+      }
+      const scope = await scopeOf(reader, at);
+      const visible = scope.rows
+        ? (
+            await getDb()
+              .select({ id: baseRecords.id })
+              .from(baseRecords)
+              .where(and(inIds(baseRecords.id, recordIds), scope.rows))
+          ).map((row) => row.id)
+        : [...recordIds];
+      const rows = await computed.generate(at.table.id, fieldId, visible);
+      worker.kick();
+      if (rows.length) await publishChanged(at.base, at.table.id, rows);
+      return { items: rows };
     },
 
     // ── Views ──────────────────────────────────────────
@@ -1129,6 +1413,9 @@ export function createTablesService(deps: {
         throw new ApiError(409, 'view_needs_field', 'This view needs a field of the right type first.', {
           type: input.type,
         });
+      }
+      if ((await viewsOf(reader, [tableId])).length >= MAX_VIEWS) {
+        throw conflict('too_many_views', `A data table holds up to ${MAX_VIEWS} views.`);
       }
       const view = await insertView(reader, at.table, { name: input.name, type: input.type, config, personal });
       await baseChanged(at.base, personal ? memberId : undefined);
@@ -1202,22 +1489,8 @@ export function createTablesService(deps: {
       query: { cursor?: string | undefined; limit: number },
     ): Promise<Page<TrashItem>> {
       const reader = await loadReader(memberId);
-      await baseAt(reader, baseId, 'editor');
-      const expired = await getDb()
-        .select({ id: baseRecords.id })
-        .from(baseRecords)
-        .innerJoin(baseTables, eq(baseTables.id, baseRecords.tableId))
-        .where(
-          and(eq(baseTables.baseId, baseId), lt(baseRecords.deletedAt, sql`now() - ${`${TRASH_DAYS} days`}::interval`)),
-        )
-        .limit(500);
-      if (expired.length)
-        await transaction(() =>
-          purgeRecords(
-            deps.files,
-            expired.map((row) => row.id),
-          ),
-        );
+      // The recycle bin spans every table: not for a custom role.
+      await baseAt(reader, baseId, 'editor', { standard: true });
       const after = query.cursor ? decodeTrash(query.cursor) : null;
       const rows = await getDb().execute<{
         kind: TrashItem['kind'];
@@ -1226,9 +1499,10 @@ export function createTablesService(deps: {
         table_id: string;
         table_name: string;
         deleted_at: string;
+        exact: string;
         deleted_by: string | null;
       }>(sql`
-        SELECT * FROM (
+        SELECT bin.*, bin.deleted_at::text AS exact FROM (
           SELECT 'record' AS kind, r.id, coalesce(r.values ->> f.id, '') AS name, r.table_id, t.name AS table_name,
                  r.deleted_at, r.deleted_by
             FROM base_records r JOIN base_tables t ON t.id = r.table_id
@@ -1260,12 +1534,9 @@ export function createTablesService(deps: {
           deleted_at: new Date(row.deleted_at).toISOString(),
           deleted_by: refOf(people, row.deleted_by),
         })),
+        // The exact time (microseconds), so records deleted in the same millisecond are not skipped.
         next_cursor:
-          more && last
-            ? Buffer.from(JSON.stringify({ at: new Date(last.deleted_at).toISOString(), id: last.id })).toString(
-                'base64url',
-              )
-            : null,
+          more && last ? Buffer.from(JSON.stringify({ at: last.exact, id: last.id })).toString('base64url') : null,
       };
     },
 
@@ -1308,104 +1579,66 @@ export function createTablesService(deps: {
       };
     },
 
-    /** A file for an attachment field of this base; it joins a record when a change names it. */
-    async upload(
-      memberId: string,
-      baseId: string,
-      file: { name: string; contentType: string; bytes: Uint8Array },
-    ): Promise<RecordFile> {
+    /**
+     * Checks that the member may upload for an attachment field of this base (an editor), before
+     * the body is read; the answer stores the file, which joins a record when a change names it.
+     */
+    async uploader(memberId: string, baseId: string) {
       const reader = await loadReader(memberId);
       await baseAt(reader, baseId, 'editor');
-      const stored = await deps.files.store(memberId, { ...file, purpose: 'record', baseId });
-      return {
-        id: stored.id,
-        name: stored.name,
-        content_type: stored.content_type,
-        size_bytes: stored.size_bytes,
-        url: stored.url,
+      return async (file: { name: string; contentType: string; bytes: Uint8Array }): Promise<RecordFile> => {
+        const stored = await deps.files.store(memberId, { ...file, purpose: 'record', baseId });
+        return {
+          id: stored.id,
+          name: stored.name,
+          content_type: stored.content_type,
+          size_bytes: stored.size_bytes,
+          url: stored.url,
+        };
       };
     },
 
     /**
      * The records of a view (its filter, sorts, group and visible fields), or of the whole table,
-     * as CSV with a byte order mark so spreadsheets read it as UTF-8.
+     * as CSV with a byte order mark so spreadsheets read it as UTF-8, written as a stream.
      */
-    async exportCsv(memberId: string, tableId: string, viewId?: string): Promise<{ filename: string; body: string }> {
-      const reader = await loadReader(memberId);
-      const at = await tableAt(reader, tableId, 'viewer');
-      const fields = await fieldsOf(tableId);
-      let config: ViewConfig = {};
-      if (viewId) {
-        const found = await viewAt(reader, viewId);
-        if (found.table?.id !== tableId) throw notFound('View');
-        config = configOf(found.view);
-      }
-      const hidden = new Set(config.hidden ?? []);
-      const order = new Map((config.order ?? []).map((id, index) => [id, index]));
-      const shown = fields
-        .filter((field) => field.isPrimary || !hidden.has(field.id))
-        .sort((a, b) =>
-          a.isPrimary !== b.isPrimary ? (a.isPrimary ? -1 : 1) : (order.get(a.id) ?? 1e6) - (order.get(b.id) ?? 1e6),
-        );
-      const ctx = { fields: new Map(fields.map((field) => [field.id, field])), memberId, timeZone: reader.timeZone };
-      const where = recordsWhere(tableId, compileFilter(config.filter, ctx));
-      const orderBy = compileOrder(config.sorts, config.group, ctx);
-      const lines = [csvLine(shown.map((field) => field.name))];
-      const memberIds = new Set<string>();
-      const batches: Array<{
-        rows: Array<{ values: Record<string, unknown> }>;
-        filled: Awaited<ReturnType<typeof fill>>;
-      }> = [];
-      for (let offset = 0; offset < MAX_EXPORT_ROWS; offset += 1000) {
-        const rows = await getDb()
-          .select()
-          .from(baseRecords)
-          .where(where)
-          .orderBy(...orderBy)
-          .limit(1000)
-          .offset(offset);
-        if (!rows.length) break;
-        const filled = await fill(rows, fields, { files: deps.files, memberId });
-        const values = rows.map((row) => ({ values: filled.values.get(row.id)! }));
-        for (const row of values) {
-          for (const field of shown) {
-            if (field.type === 'member')
-              for (const id of (row.values[field.id] as string[] | undefined) ?? []) memberIds.add(id);
-          }
-        }
-        batches.push({ rows: values, filled });
-        if (rows.length < 1000) break;
-      }
-      const names = await memberNames(memberIds);
-      for (const batch of batches) {
-        const cell = {
-          timeZone: reader.timeZone,
-          memberName: (id: string) => names.get(id),
-          linkedTitle: (id: string) => batch.filled.linked[id]?.title,
-          fileName: (id: string) => batch.filled.files[id]?.name,
-        };
-        for (const row of batch.rows)
-          lines.push(csvLine(shown.map((field) => formatCell(toField(field), row.values[field.id], cell))));
-      }
-      const day = new Date().toISOString().slice(0, 10);
-      // exportFilename makes the name safe and adds .md; the extension is ours to choose.
-      const name = exportFilename(at.table.name, 'table').slice(0, -3);
-      return { filename: `${name}-${day}.csv`, body: `\uFEFF${lines.join('\r\n')}\r\n` };
-    },
+    exportCsv: (memberId: string, tableId: string, viewId?: string) =>
+      exportCsv({ files: deps.files }, memberId, tableId, viewId),
 
-    /** Whether a member may read a record file (the file service asks). */
+    /**
+     * Whether a member may read a record file (the file service asks): one a live record holds,
+     * in a field and a record their role sees; or, not yet in a record, their own upload while
+     * they still see the base.
+     */
     async canReadFile(
       memberId: string,
       row: { id: string; baseId: string | null; ownerId: string | null },
     ): Promise<boolean> {
-      if (!row.baseId || !(await canRead(memberId, row.baseId))) return false;
-      if (row.ownerId === memberId) return true;
+      if (!row.baseId) return false;
       const [held] = await getDb()
-        .select({ id: baseRecordFiles.fileId })
+        .select({ recordId: baseRecordFiles.recordId, fieldId: baseRecordFiles.fieldId })
         .from(baseRecordFiles)
         .where(eq(baseRecordFiles.fileId, row.id))
         .limit(1);
-      return !!held;
+      if (!held) return row.ownerId === memberId && (await canRead(memberId, row.baseId));
+      const reader = await loadReader(memberId).catch(() => null);
+      if (!reader) return false;
+      try {
+        const at = await recordAt(reader, held.recordId, 'viewer');
+        if (at.base.id !== row.baseId) return false;
+        if (at.access && (await hiddenFields(at.access, at.table.id)).has(held.fieldId)) return false;
+        return true;
+      } catch {
+        return false;
+      }
+    },
+
+    /** Custom roles of a base. */
+    roles,
+
+    /** Group members, modules or statuses changed somewhere: who sees which base is asked again. */
+    forgetAudiences() {
+      audiences.clear();
     },
   };
 
@@ -1453,10 +1686,32 @@ export function createTablesService(deps: {
   return service;
 }
 
+const TIMESTAMP = /^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}(\.\d{1,6})?(Z|[+-]\d{2}(:?\d{2})?)?$/;
+
+/** The recycle bin's cursor: the exact deletion time (as Postgres wrote it) and the id. */
 function decodeTrash(cursor: string): { at: string; id: string } {
   try {
     const value = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8')) as { at?: unknown; id?: unknown };
-    if (typeof value.at === 'string' && typeof value.id === 'string') return { at: value.at, id: value.id };
+    if (
+      typeof value.at === 'string' &&
+      TIMESTAMP.test(value.at) &&
+      typeof value.id === 'string' &&
+      value.id.length <= 64
+    ) {
+      return { at: value.at, id: value.id };
+    }
+  } catch {
+    // fall through
+  }
+  throw invalidInput('The cursor is invalid.');
+}
+
+function decodeBases(cursor: string): { name: string; id: string } {
+  try {
+    const value = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8')) as { n?: unknown; i?: unknown };
+    if (typeof value.n === 'string' && typeof value.i === 'string' && value.n.length <= 200 && value.i.length <= 64) {
+      return { name: value.n, id: value.i };
+    }
   } catch {
     // fall through
   }

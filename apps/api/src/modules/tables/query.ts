@@ -9,7 +9,7 @@
  */
 
 import { createHash } from 'node:crypto';
-import { and, asc, eq, inArray, isNull, or, sql, type SQL } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull, or, sql, type SQL, type SQLWrapper } from 'drizzle-orm';
 import {
   canGroupBy,
   canSortBy,
@@ -38,6 +38,10 @@ export interface QueryContext {
 
 const TRUE = sql`true`;
 const FALSE = sql`false`;
+
+/** Ids as one array parameter: no limit on how many (a list of parameters stops at 65,534). */
+export const idList = (ids: readonly string[]) => sql`${sql.param([...ids])}::text[]`;
+export const inIds = (column: SQLWrapper | SQL, ids: readonly string[]) => sql`${column} = ANY(${idList(ids)})`;
 
 type FieldLike = Pick<BaseFieldRow, 'id' | 'type' | 'config'>;
 
@@ -264,6 +268,33 @@ export function compileFilter(filter: Filter | undefined, ctx: QueryContext): SQ
   }
   if (!parts.length) return undefined;
   return filter.mode === 'or' ? or(...parts) : and(...parts);
+}
+
+/**
+ * A custom role's record filters as one condition: a record is seen when any of them keeps it.
+ * Unlike a view's filter it fails closed: a clause on a field that is gone, or without the value
+ * it needs, keeps no record (a broken rule must not show everything).
+ */
+export function compileRoleFilters(filters: readonly Filter[], ctx: QueryContext): SQL | undefined {
+  if (!filters.length) return undefined;
+  const each = filters.map((filter) => {
+    const parts = filter.clauses.map((clause) => {
+      let compiled: SQL | null;
+      try {
+        compiled = isSystemField(clause.field)
+          ? systemClause(clause.field, clause, ctx)
+          : ctx.fields.has(clause.field)
+            ? fieldClause(ctx.fields.get(clause.field)!, clause, ctx)
+            : null;
+      } catch {
+        compiled = null;
+      }
+      return compiled ? sql`(${compiled})` : FALSE;
+    });
+    if (!parts.length) return FALSE;
+    return filter.mode === 'or' ? or(...parts)! : and(...parts)!;
+  });
+  return sql`(${or(...each)!})`;
 }
 
 /** Text in any text field, or an option whose label has it. */

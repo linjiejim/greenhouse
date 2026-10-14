@@ -160,6 +160,8 @@ export function createServices(config: AppConfig, options: ServiceOptions = {}):
   const skills = createSkillsService({ files, providers, agents, connectors, computers, notifications });
   const knowledge = createKnowledgeService({ files, notifications, hub, publicUrl: config.PUBLIC_URL });
   const tables = createTablesService({ files, notifications, hub, providers });
+  // Who sees a base is cached a few seconds; a change of groups, modules or status forgets it at once.
+  members.onAccessChange(() => tables.forgetAudiences());
   const schedules = createSchedulesService({ agents, background: () => engine.background });
   const requests = createRequestsService({ hub, notifications });
   const engine = createEngine({

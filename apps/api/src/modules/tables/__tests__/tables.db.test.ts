@@ -307,7 +307,11 @@ describe('records', () => {
     });
     expect(events).toContainEqual({
       type: 'records.changed',
-      data: { base_id: table.base_id, table_id: table.id, records: [{ id: record.id, revision: 1 }] },
+      data: {
+        base_id: table.base_id,
+        table_id: table.id,
+        records: [{ id: record.id, revision: 1, computed_revision: 0 }],
+      },
     });
 
     const changed = await as(lin).patch(`/api/tables/records/${record.id}`, {

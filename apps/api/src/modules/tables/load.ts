@@ -1,7 +1,8 @@
 /**
  * Loading what a call is about with the reader's access checked (a table, field, view or
- * record leads to its base), the JSON views of rows, and a page of records with their links,
- * files and linked titles filled in.
+ * record leads to its base; a custom role may hide tables and records), the JSON views of rows,
+ * and a page of records with their links, files and linked titles filled in. Something the
+ * reader may not reach is not found as the thing asked for, whatever stopped it.
  */
 
 import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
@@ -34,27 +35,48 @@ import {
 } from '@greenhouse/db';
 import { notFound } from '../../http/errors.js';
 import type { FilesService } from '../files/service.js';
-import { baseAt, needsRole, type TablesReader } from './access.js';
+import {
+  asNotFound,
+  baseAt,
+  needsRole,
+  type CustomAccess,
+  type CustomTableRules,
+  type TablesReader,
+} from './access.js';
+import { presentConfig } from './computed-fields.js';
+import { inIds } from './query.js';
+import { recordVisible, rowsOf } from './scope.js';
 
 export interface TableAt {
   base: BaseRow;
   role: BaseRole;
   table: BaseTableRow;
+  /** The reader's custom roles in the base (null for the four roles)... */
+  access: CustomAccess | null;
+  /** ...and what they allow in this table. */
+  custom: CustomTableRules | null;
 }
 
-/** A data table and its base, with at least `needed`. An archived table only when asked for. */
+/**
+ * A data table and its base, with at least `needed`. An archived table only when asked for. A
+ * custom role must see the table, and edit it for `editor`; it never builds.
+ */
 export async function tableAt(
   reader: TablesReader,
   tableId: string,
   needed: BaseRole,
-  options: { archived?: boolean } = {},
+  options: { archived?: boolean; kind?: string } = {},
 ): Promise<TableAt> {
+  const kind = options.kind ?? 'Table';
   const [table] = await getDb().select().from(baseTables).where(eq(baseTables.id, tableId));
-  if (!table) throw notFound('Table');
-  const { base, role } = await baseAt(reader, table.baseId, 'viewer');
-  if (table.archivedAt && !options.archived) throw notFound('Table');
+  if (!table) throw notFound(kind);
+  const { base, role, custom: access } = await asNotFound(kind, () => baseAt(reader, table.baseId, 'viewer'));
+  if (table.archivedAt && !options.archived) throw notFound(kind);
+  const custom = access ? (access.tables.get(table.id) ?? null) : null;
+  if (access && !custom) throw notFound(kind);
   if (!roleAtLeast(role, needed)) throw needsRole(needed);
-  return { base, role, table };
+  if (custom && needed !== 'viewer' && custom.access !== 'edit') throw needsRole(needed);
+  return { base, role, table, access, custom };
 }
 
 /** A table's fields in order (the primary one first), live unless asked otherwise. */
@@ -75,8 +97,10 @@ export async function fieldAt(
   options: { archived?: boolean } = {},
 ): Promise<TableAt & { field: BaseFieldRow }> {
   const [field] = await getDb().select().from(baseFields).where(eq(baseFields.id, fieldId));
-  if (!field || (field.archivedAt && !options.archived)) throw notFound('Field');
-  return { ...(await tableAt(reader, field.tableId, needed, options)), field };
+  if (!field) throw notFound('Field');
+  const at = await tableAt(reader, field.tableId, needed, { ...options, kind: 'Field' });
+  if ((field.archivedAt && !options.archived) || at.custom?.hidden.has(field.id)) throw notFound('Field');
+  return { ...at, field };
 }
 
 /** A view or dashboard the reader sees, with its table (none for a dashboard). */
@@ -84,6 +108,7 @@ export interface ViewAt {
   base: BaseRow;
   role: BaseRole;
   table: BaseTableRow | null;
+  access: CustomAccess | null;
   view: BaseViewRow;
 }
 
@@ -91,14 +116,23 @@ export interface ViewAt {
 export async function viewAt(reader: TablesReader, viewId: string): Promise<ViewAt> {
   const [view] = await getDb().select().from(baseViews).where(eq(baseViews.id, viewId));
   if (!view || (view.ownerId && view.ownerId !== reader.memberId)) throw notFound('View');
-  if (!view.tableId) return { ...(await baseAt(reader, view.baseId, 'viewer')), table: null, view };
-  return { ...(await tableAt(reader, view.tableId, 'viewer')), view };
+  if (!view.tableId) {
+    const { base, role, custom } = await asNotFound('View', () => baseAt(reader, view.baseId, 'viewer'));
+    return { base, role, table: null, access: custom, view };
+  }
+  const at = await tableAt(reader, view.tableId, 'viewer', { kind: 'View' });
+  return { base: at.base, role: at.role, table: at.table, access: at.access, view };
 }
 
 /** May the reader change this view: their personal view, or a shared one when they build the base. */
 export const canEditView = (reader: TablesReader, role: BaseRole, view: Pick<BaseViewRow, 'ownerId'>) =>
   view.ownerId ? view.ownerId === reader.memberId : roleAtLeast(role, 'builder');
 
+/**
+ * A record with its table, the reader's access checked first: a record they may not reach is not
+ * found whether it is live, deleted or not there. A deleted one only when asked for, and only for
+ * editors (the recycle bin is theirs).
+ */
 export async function recordAt(
   reader: TablesReader,
   recordId: string,
@@ -106,19 +140,27 @@ export async function recordAt(
   options: { deleted?: boolean } = {},
 ): Promise<TableAt & { record: BaseRecordRow }> {
   const [record] = await getDb().select().from(baseRecords).where(eq(baseRecords.id, recordId));
-  if (!record || (record.deletedAt && !options.deleted)) throw notFound('Record');
-  return { ...(await tableAt(reader, record.tableId, needed)), record };
+  if (!record) throw notFound('Record');
+  const at = await tableAt(reader, record.tableId, needed, { kind: 'Record', archived: options.deleted });
+  if (record.deletedAt && !options.deleted) throw notFound('Record');
+  if (record.deletedAt && (!roleAtLeast(at.role, 'editor') || at.access)) throw notFound('Record');
+  if (at.custom && !(await recordVisible(reader, at, record.id))) throw notFound('Record');
+  return { ...at, record };
 }
 
 /** Configs are stored only after normalizeConfig checked them against the contract. */
 export const configOfField = (row: Pick<BaseFieldRow, 'config'>) => row.config as FieldConfig;
 
-export const toField = (row: BaseFieldRow): Field => ({
+/**
+ * A field as the API answers it. Given its table's fields, a formula comes with its text and an
+ * AI prompt with field names (computed-fields.ts).
+ */
+export const toField = (row: BaseFieldRow, fields?: readonly BaseFieldRow[]): Field => ({
   id: row.id,
   table_id: row.tableId,
   name: row.name,
   type: row.type,
-  config: configOfField(row),
+  config: presentConfig(row, fields),
   required: row.required,
   is_primary: row.isPrimary,
   position: row.position,
@@ -131,7 +173,7 @@ export const toTable = (row: BaseTableRow, fields: readonly BaseFieldRow[]): Bas
   description: row.description,
   position: row.position,
   schema_revision: row.schemaRevision,
-  fields: fields.filter((field) => field.tableId === row.id).map(toField),
+  fields: fields.filter((field) => field.tableId === row.id).map((field, _index, own) => toField(field, own)),
 });
 
 /** A stored config as the contract reads it (a config saved by an older build drops what it no longer knows). */
@@ -193,17 +235,56 @@ export interface Filled {
   files: Record<string, RecordFile>;
 }
 
-/** Titles of records (their primary field's text) and the table each is in. */
-export async function titlesOf(recordIds: readonly string[]): Promise<Record<string, LinkedRecord>> {
+/** Who reads titles through a custom role: titles of records it may not see stay empty. */
+export interface TitleViewer {
+  reader: TablesReader;
+  access: CustomAccess;
+}
+
+/** The title viewer for a reader at a table (none for the four roles). */
+export const viewerOf = (reader: TablesReader, at: { access: CustomAccess | null }): TitleViewer | null =>
+  at.access ? { reader, access: at.access } : null;
+
+/**
+ * Titles of records (their primary field's text) and the table each is in, only for records of
+ * `baseId` (an id from elsewhere names nothing). For a custom role, a record in a table it does
+ * not see, or outside its records there, has an empty title.
+ */
+export async function titlesOf(
+  baseId: string,
+  recordIds: readonly string[],
+  viewer?: TitleViewer | null,
+): Promise<Record<string, LinkedRecord>> {
   if (!recordIds.length) return {};
   const rows = await getDb().execute<{ id: string; table_id: string; title: string | null }>(sql`
     SELECT r.id, r.table_id, r.values ->> f.id AS title
-    FROM base_records r JOIN base_fields f ON f.table_id = r.table_id AND f.is_primary
-    WHERE r.id IN (${sql.join(
-      recordIds.map((id) => sql`${id}`),
-      sql`, `,
-    )})`);
-  return Object.fromEntries([...rows].map((row) => [row.id, { title: row.title ?? '', table_id: row.table_id }]));
+    FROM base_records r
+    JOIN base_tables t ON t.id = r.table_id AND t.base_id = ${baseId}
+    JOIN base_fields f ON f.table_id = r.table_id AND f.is_primary
+    WHERE ${inIds(sql`r.id`, recordIds)}`);
+  const found = [...rows];
+  const hidden = new Set<string>();
+  if (viewer) {
+    for (const tableId of new Set(found.map((row) => row.table_id))) {
+      const rules = viewer.access.tables.get(tableId);
+      const ids = found.filter((row) => row.table_id === tableId).map((row) => row.id);
+      if (!rules) {
+        for (const id of ids) hidden.add(id);
+        continue;
+      }
+      const condition = await rowsOf(viewer.reader, { table: { id: tableId }, custom: rules });
+      if (!condition) continue;
+      const seen = await getDb()
+        .select({ id: baseRecords.id })
+        .from(baseRecords)
+        .where(and(inIds(baseRecords.id, ids), condition));
+      const visible = new Set(seen.map((row) => row.id));
+      for (const id of ids) if (!visible.has(id)) hidden.add(id);
+    }
+  }
+  return Object.fromEntries(
+    found.map((row) => [row.id, { title: hidden.has(row.id) ? '' : (row.title ?? ''), table_id: row.table_id }]),
+  );
 }
 
 /**
@@ -213,7 +294,13 @@ export async function titlesOf(recordIds: readonly string[]): Promise<Record<str
 export async function fill(
   rows: readonly BaseRecordRow[],
   fields: readonly BaseFieldRow[],
-  deps: { files: Pick<FilesService, 'signedUrl'>; memberId: string },
+  deps: {
+    files: Pick<FilesService, 'signedUrl'>;
+    memberId: string;
+    /** The base the records are in (looked up when not given); linked titles come only from it. */
+    baseId?: string;
+    viewer?: TitleViewer | null;
+  },
 ): Promise<Filled> {
   const values = new Map(rows.map((row) => [row.id, { ...row.values }]));
   const ids = rows.map((row) => row.id);
@@ -270,6 +357,15 @@ export async function fill(
       url: deps.files.signedUrl(file.id, deps.memberId).url,
     };
   }
-  filled.linked = await titlesOf([...new Set(links.map((link) => link.target))]);
+  const targets = [...new Set(links.map((link) => link.target))];
+  if (targets.length) {
+    const baseId = deps.baseId ?? (await baseOfTable(rows[0]!.tableId));
+    filled.linked = baseId ? await titlesOf(baseId, targets, deps.viewer) : {};
+  }
   return filled;
+}
+
+async function baseOfTable(tableId: string): Promise<string | null> {
+  const [row] = await getDb().select({ baseId: baseTables.baseId }).from(baseTables).where(eq(baseTables.id, tableId));
+  return row?.baseId ?? null;
 }

@@ -1,6 +1,6 @@
 /**
  * The 表格 directory (PRD §6.1): pinned bases, then my bases; each base opens into its data
- * tables and each table into its views. Rows have the same actions as the object's own "⋯".
+ * tables (each into its views) and its dashboards. Rows have the same actions as the object's own "⋯".
  */
 
 import { useEffect, useState } from 'react';
@@ -98,7 +98,7 @@ function BaseTree({ base, route }: { base: BaseSummary; route: Route }) {
         leading={glyph(LayoutGrid)}
         title={base.name}
         expanded={open}
-        active={!!here && !here.table}
+        active={!!here && !here.table && !here.dashboard}
         menu={baseMenu}
         menuLabel={base.name}
         renaming={renaming === base.id}
@@ -172,6 +172,17 @@ function BaseTree({ base, route }: { base: BaseSummary; route: Route }) {
             </div>
           );
         })}
+      {open &&
+        base.dashboards.map((dashboard) => (
+          <DirectoryRow
+            key={dashboard.id}
+            leading={viewIcon('dashboard')}
+            title={dashboard.name}
+            indent={1}
+            href={href({ page: 'base', id: base.id, dashboard: dashboard.id })}
+            active={here?.dashboard === dashboard.id}
+          />
+        ))}
     </div>
   );
 }

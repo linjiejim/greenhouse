@@ -1,6 +1,7 @@
 /**
  * The 表格 background work, on the one `jobs` queue (apps/api/src/jobs.ts): recomputing what
- * computed fields work out, AI field values, CSV imports and the recycle bin's daily purge. Each
+ * computed fields work out, AI field values, CSV imports, the recycle bin's daily purge and
+ * discarding the bytes of files let go of (after the commit that let go of them). Each
  * kind has one handler; a job is written in the same transaction as the change that needs it.
  * In this process a pass runs every couple of seconds, and right after a change asks for one
  * (`kick`). Tests call `drain` to run every ready job at once.
@@ -12,7 +13,13 @@ import { logger } from '@greenhouse/utils/logger';
 import { claimJobs, pruneJobs, releaseExpiredClaims, settleJob, type JobOutcome } from '../../jobs.js';
 import { newId } from '@greenhouse/db';
 
-export const TABLES_JOB_KINDS = ['base_recompute', 'base_ai_field', 'base_import', 'base_purge'] as const;
+export const TABLES_JOB_KINDS = [
+  'base_recompute',
+  'base_ai_field',
+  'base_import',
+  'base_purge',
+  'base_discard',
+] as const;
 export type TablesJobKind = (typeof TABLES_JOB_KINDS)[number];
 export type TablesJobHandler = (job: JobRow) => Promise<JobOutcome>;
 

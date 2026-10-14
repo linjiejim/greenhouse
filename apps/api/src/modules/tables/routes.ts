@@ -1,5 +1,5 @@
 /**
- * GET    /api/tables/bases?archived=                       my bases and those shared with me (archived: the ones I own)
+ * GET    /api/tables/bases?archived=&cursor=&limit=        a page of my bases and those shared with me, by name (archived: the ones I own)
  * POST   /api/tables/bases                                 a blank base, or one from a template (`project`)
  * GET    /api/tables/bases/:id                             the base: data tables, fields, the views I see, my access
  * PATCH  /api/tables/bases/:id                             rename, describe (builders); pin for me (anyone)
@@ -10,6 +10,10 @@
  * PUT    /api/tables/bases/:id/share                       replace its shares (owners)
  * GET    /api/tables/bases/:id/trash?cursor=&limit=        deleted records, fields and data tables (editors)
  * GET    /api/tables/bases/:id/audit?cursor=&limit=        shares, archives, deletions (owners)
+ * GET    /api/tables/bases/:id/roles                       its custom roles (owners)
+ * POST   /api/tables/bases/:id/roles                       a custom role (owners)
+ * PATCH  /api/tables/roles/:id                             change a custom role, with its revision (owners)
+ * DELETE /api/tables/roles/:id                             delete a custom role: its shares go too (owners)
  * POST   /api/tables/bases/:id/files                       upload for an attachment field (multipart `file`, editors)
  * POST   /api/tables/bases/:id/tables                      a data table with its primary field and a grid (builders)
  * PATCH  /api/tables/tables/:id                            rename, describe, reorder (builders)
@@ -28,6 +32,7 @@
  * DELETE /api/tables/fields/:id                            to the recycle bin (builders)
  * POST   /api/tables/fields/:id/restore                    back from the recycle bin (builders)
  * POST   /api/tables/fields/:id/purge                      delete for good, with its values (builders)
+ * POST   /api/tables/fields/:id/generate                   an AI field written again for some records (editors)
  * PATCH  /api/tables/views/:id                             rename, settings, place (my personal view; builders for shared)
  * DELETE /api/tables/views/:id                             delete a view (same)
  * GET    /api/tables/records/:id                           a record with its links, files and children
@@ -41,7 +46,8 @@
  * DELETE /api/tables/records/:id/comments/:commentId       delete my comment (owners: any)
  */
 
-import { Hono } from 'hono';
+import { Hono, type MiddlewareHandler } from 'hono';
+import { bodyLimit } from 'hono/body-limit';
 import {
   baseListQuerySchema,
   baseShareInputSchema,
@@ -51,8 +57,10 @@ import {
   createFieldInputSchema,
   createRecordInputSchema,
   createTableInputSchema,
+  createRoleInputSchema,
   createViewInputSchema,
   deleteBaseInputSchema,
+  generateInputSchema,
   idParamSchema,
   pageQuerySchema,
   recordIdsInputSchema,
@@ -61,29 +69,56 @@ import {
   updateBaseInputSchema,
   updateFieldInputSchema,
   updateRecordInputSchema,
+  updateRoleInputSchema,
   updateTableInputSchema,
   updateViewInputSchema,
 } from '@greenhouse/contract';
 import { z } from 'zod';
-import { invalidInput } from '../../http/errors.js';
+import { errorBody, invalidInput } from '../../http/errors.js';
 import type { AppEnv } from '../../http/env.js';
 import { readJson, readParam, readQuery } from '../../http/validate.js';
-import { dispositionFor, MAX_UPLOAD_BYTES } from '../files/service.js';
+import { uploadLimit } from '../files/routes.js';
+import { dispositionFor } from '../files/service.js';
 import type { TablesService } from './service.js';
 
-/** Multipart overhead on top of the file itself. */
-const FORM_SLACK_BYTES = 64 * 1024;
 const exportQuerySchema = z.object({ view_id: idParamSchema.optional() });
+
+/**
+ * JSON bodies here are at most this big: the largest is a paste of MAX_BULK records, each
+ * within the field limits a paste uses in practice.
+ */
+export const TABLES_JSON_MAX_BYTES = 8 * 1024 * 1024;
+const jsonLimit = bodyLimit({
+  maxSize: TABLES_JSON_MAX_BYTES,
+  onError: (c) => c.json(errorBody('too_large', 'This request is too large.'), 413),
+});
+
+type UploadEnv = AppEnv & { Variables: { store: Awaited<ReturnType<TablesService['uploader']>> } };
 
 export function tablesRoutes(service: TablesService) {
   const id = (c: Parameters<typeof readParam>[0]) => readParam(c, 'id', idParamSchema);
   const records = service.records;
+  /** Who may upload is settled before uploadLimit reads the body (without a length it reads it all first). */
+  const mayUpload: MiddlewareHandler<UploadEnv> = async (c, next) => {
+    c.set('store', await service.uploader(c.get('member').id, id(c)));
+    await next();
+  };
   return new Hono<AppEnv>()
-    .get('/bases', async (c) =>
-      c.json(
-        await service.list(c.get('member').id, { archived: readQuery(c, baseListQuerySchema).archived === 'true' }),
-      ),
-    )
+    .use('*', async (c, next) => {
+      // Uploads have their own limit; every JSON body has this one.
+      if (c.req.header('content-type')?.startsWith('multipart/form-data')) return next();
+      return jsonLimit(c, next);
+    })
+    .get('/bases', async (c) => {
+      const query = readQuery(c, baseListQuerySchema);
+      return c.json(
+        await service.list(c.get('member').id, {
+          archived: query.archived === 'true',
+          cursor: query.cursor,
+          limit: query.limit,
+        }),
+      );
+    })
     .post('/bases', async (c) =>
       c.json(await service.create(c.get('member').id, await readJson(c, createBaseInputSchema)), 201),
     )
@@ -108,16 +143,25 @@ export function tablesRoutes(service: TablesService) {
     .get('/bases/:id/audit', async (c) =>
       c.json(await service.auditLog(c.get('member').id, id(c), readQuery(c, pageQuerySchema))),
     )
-    .post('/bases/:id/files', async (c) => {
-      const declared = Number(c.req.header('content-length') ?? 0);
-      if (declared > MAX_UPLOAD_BYTES + FORM_SLACK_BYTES) throw invalidInput('Files can be up to 50 MB.');
+    .get('/bases/:id/roles', async (c) => c.json(await service.roles.list(c.get('member').id, id(c))))
+    .post('/bases/:id/roles', async (c) =>
+      c.json(await service.roles.create(c.get('member').id, id(c), await readJson(c, createRoleInputSchema)), 201),
+    )
+    .patch('/roles/:id', async (c) =>
+      c.json(await service.roles.update(c.get('member').id, id(c), await readJson(c, updateRoleInputSchema))),
+    )
+    .delete('/roles/:id', async (c) => {
+      await service.roles.remove(c.get('member').id, id(c));
+      return c.body(null, 204);
+    })
+    .post('/bases/:id/files', mayUpload, uploadLimit, async (c) => {
       if (!c.req.header('content-type')?.startsWith('multipart/form-data')) {
         throw invalidInput('Upload the file as multipart/form-data.');
       }
       const form = await c.req.parseBody();
       const file = form.file;
       if (!(file instanceof File)) throw invalidInput('Add the file in the `file` field.');
-      const stored = await service.upload(c.get('member').id, id(c), {
+      const stored = await c.get('store')({
         name: file.name,
         contentType: file.type || 'application/octet-stream',
         bytes: new Uint8Array(await file.arrayBuffer()),
@@ -186,6 +230,10 @@ export function tablesRoutes(service: TablesService) {
     .post('/fields/:id/purge', async (c) => {
       await service.purgeField(c.get('member').id, id(c));
       return c.body(null, 204);
+    })
+    .post('/fields/:id/generate', async (c) => {
+      const { record_ids } = await readJson(c, generateInputSchema);
+      return c.json(await service.generate(c.get('member').id, id(c), record_ids));
     })
     .patch('/views/:id', async (c) =>
       c.json(await service.updateView(c.get('member').id, id(c), await readJson(c, updateViewInputSchema))),
