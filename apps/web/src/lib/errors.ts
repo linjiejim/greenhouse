@@ -23,6 +23,15 @@ const KNOWN: Record<string, MessageKey> = {
   connection_busy: 'errors.connectionBusy',
   registry_unavailable: 'errors.registry',
   too_many_tokens: 'errors.tooManyTokens',
+  // The knowledge base's rules for moving, sharing and archived items.
+  folder_too_deep: 'errors.folderTooDeep',
+  folder_cycle: 'errors.folderCycle',
+  agent_folder: 'errors.agentFolder',
+  agent_folder_private: 'errors.agentFolderPrivate',
+  cross_space_move: 'errors.crossSpaceMove',
+  doc_file: 'errors.docFile',
+  archived: 'errors.archived',
+  team_space: 'errors.teamSpace',
 };
 
 export function errorText(error: unknown, t: Translate): string {

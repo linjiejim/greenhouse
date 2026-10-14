@@ -224,3 +224,213 @@ describe('knowledge base constructs round-trip (M2.1: Markdown stays the source 
     expect(roundTrip(md)).toBe(md);
   });
 });
+
+describe('marks Markdown can hold', () => {
+  it('keeps strikethrough, and literal tildes stay text', () => {
+    expect(roundTrip('Ship ~~Friday~~ Monday.')).toBe('Ship ~~Friday~~ Monday.');
+    expect(roundTrip('About ~5 minutes.')).toBe('About ~5 minutes.');
+    const literal: TiptapNode = {
+      type: 'doc',
+      content: [{ type: 'paragraph', content: [{ type: 'text', text: 'a ~~b~~ c' }] }],
+    };
+    const out = tiptapJsonToMarkdown(literal);
+    expect(roundTrip(out)).toBe(out);
+    expect(markdownToTiptapJson(out)).not.toContain('strike');
+  });
+
+  it('offers no underline, which Markdown cannot store', () => {
+    expect(markdownToTiptapJson('<u>under</u> line')).not.toContain('underline');
+  });
+});
+
+/** Markdown → editor JSON → Markdown → editor JSON: the document has to come back the same. */
+function survives(md: string) {
+  const first = markdownToTiptapJson(md);
+  const written = tiptapJsonToMarkdown(JSON.parse(first) as TiptapNode);
+  expect(markdownToTiptapJson(written)).toBe(first);
+  // …and a second save writes the same Markdown.
+  expect(roundTrip(written)).toBe(written);
+  return written;
+}
+
+const text = (value: string, marks: string[] = []): TiptapNode => ({
+  type: 'text',
+  text: value,
+  ...(marks.length ? { marks: marks.map((type) => ({ type })) } : {}),
+});
+const paragraph = (...content: TiptapNode[]): TiptapNode => ({ type: 'paragraph', content });
+const docOf = (...content: TiptapNode[]): TiptapNode => ({ type: 'doc', content });
+
+describe('line breaks', () => {
+  it('keeps a hard break as a backslash at the end of the line', () => {
+    expect(survives('line one\\\nline two')).toBe('line one\\\nline two');
+    expect(markdownToEditorHtml(roundTrip('a\\\nb'))).toContain('<br>');
+  });
+
+  it('writes breaks in headings and table cells as <br>, which are one line', () => {
+    const json = docOf(
+      { type: 'heading', attrs: { level: 2 }, content: [text('Plan'), { type: 'hardBreak' }, text('B')] },
+      {
+        type: 'table',
+        content: [
+          {
+            type: 'tableRow',
+            content: [{ type: 'tableHeader', content: [paragraph(text('a'), { type: 'hardBreak' }, text('b'))] }],
+          },
+        ],
+      },
+    );
+    const md = tiptapJsonToMarkdown(json);
+    expect(md).toContain('## Plan<br>B');
+    expect(md).toContain('| a<br>b |');
+    expect(roundTrip(md)).toBe(md);
+  });
+
+  it('drops a break at the end of a paragraph instead of leaving a stray backslash', () => {
+    expect(tiptapJsonToMarkdown(docOf(paragraph(text('end'), { type: 'hardBreak' })))).toBe('end');
+  });
+
+  it('keeps a line that looks like a rule or a heading underline as text', () => {
+    const md = tiptapJsonToMarkdown(docOf(paragraph(text('a'), { type: 'hardBreak' }, text('---'))));
+    expect(markdownToTiptapJson(md)).not.toContain('heading');
+    expect(markdownToTiptapJson(md)).toContain('---');
+  });
+});
+
+describe('marks next to spaces and punctuation', () => {
+  it('keeps the space outside the delimiters', () => {
+    const md = tiptapJsonToMarkdown(docOf(paragraph(text('Note: ', ['bold']), text('rest'))));
+    expect(md).toBe('**Note:** rest');
+    const again = tiptapJsonToMarkdown(docOf(paragraph(text('see'), text(' this', ['italic']))));
+    expect(again).toBe('see *this*');
+  });
+
+  it('writes bold that Markdown would not read next to CJK punctuation as a tag', () => {
+    const md = tiptapJsonToMarkdown(docOf(paragraph(text('注意：', ['bold']), text('请看'))));
+    expect(md).toBe('<strong>注意：</strong>请看');
+    expect(markdownToTiptapJson(md)).toContain('"bold"');
+    expect(roundTrip(md)).toBe(md);
+    // Plain CJK bold stays Markdown.
+    expect(survives('这是**重点**内容')).toBe('这是**重点**内容');
+  });
+
+  it('nests marks that start or end together', () => {
+    expect(survives('**bold *both***')).toBe('**bold *both***');
+    expect(survives('**a***b*')).toBe('**a***b*');
+    expect(survives('[**bold link**](https://example.com) and ~~gone~~')).toBe(
+      '[**bold link**](https://example.com) and ~~gone~~',
+    );
+  });
+
+  it('keeps text that looks like HTML or an entity as text', () => {
+    const md = tiptapJsonToMarkdown(docOf(paragraph(text('<b>not bold</b> &amp; ~a~'))));
+    expect(markdownToTiptapJson(md)).not.toContain('"bold"');
+    expect(markdownToTiptapJson(md)).toContain('<b>not bold</b> &amp; ~a~');
+  });
+
+  it('holds backticks in inline code and in code blocks', () => {
+    const inline = tiptapJsonToMarkdown(docOf(paragraph(text('a`b', ['code']))));
+    expect(inline).toBe('``a`b``');
+    expect(survives(inline)).toBe(inline);
+    const fenced = survives(['````md', '```js', 'x', '```', '````'].join('\n'));
+    expect(fenced.startsWith('````md')).toBe(true);
+  });
+
+  it('keeps brackets in link text and spaces in addresses', () => {
+    const md = tiptapJsonToMarkdown(
+      docOf(
+        paragraph({ type: 'text', text: 'a ] b', marks: [{ type: 'link', attrs: { href: 'https://x.test/a b' } }] }),
+      ),
+    );
+    expect(md).toBe('[a \\] b](<https://x.test/a b>)');
+    expect(markdownToTiptapJson(md)).toContain('a ] b');
+  });
+
+  it('keeps a heading that ends with #', () => {
+    expect(survives('# Issue \\#')).toBe('# Issue \\#');
+  });
+});
+
+describe('lists', () => {
+  it('keeps task lists and whether each task is done', () => {
+    const md = ['- [ ] write the plan', '- [x] book the room', '  - [ ] nested task'].join('\n');
+    expect(markdownToTiptapJson(md)).toContain('taskItem');
+    expect(survives(md)).toBe(md);
+  });
+
+  it('drops an empty task, which Markdown cannot hold, and keeps the rest a task list', () => {
+    const json = docOf({
+      type: 'taskList',
+      content: [
+        { type: 'taskItem', attrs: { checked: true }, content: [paragraph(text('done'))] },
+        { type: 'taskItem', attrs: { checked: false }, content: [paragraph()] },
+      ],
+    });
+    expect(tiptapJsonToMarkdown(json)).toBe('- [x] done');
+  });
+
+  it('keeps a box written in a list that also has plain items', () => {
+    expect(survives('- [ ] task\n- plain')).toBe('- [ ] task\n- plain');
+  });
+
+  it('keeps where a numbered list starts', () => {
+    expect(survives('3. three\n4. four')).toBe('3. three\n4. four');
+  });
+
+  it('nests under numbers as deep as their marker', () => {
+    expect(survives('1. first\n   - inside\n2. second')).toBe('1. first\n   - inside\n2. second');
+    expect(survives('- a\n\n  3. starts at three')).toBe('- a\n\n  3. starts at three');
+  });
+
+  it('keeps paragraphs apart inside list items and quotes', () => {
+    expect(survives('- one\n\n  two\n- three')).toBe('- one\n\n  two\n- three');
+    expect(survives('> one\n>\n> two')).toBe('> one\n>\n> two');
+  });
+
+  it('keeps two lists in a row apart', () => {
+    expect(survives('- a\n\n* b')).toBe('- a\n\n* b');
+    expect(survives('1. a\n\n1) b')).toBe('1. a\n\n1) b');
+  });
+});
+
+describe('a whole doc', () => {
+  it('comes back the same after a save', () => {
+    const md = [
+      '# 上线计划',
+      '',
+      '<strong>注意：</strong>周五前完成，问 [@Ann](member:mbr_01JABCDEFGHJKMNPQRSTVWXYZ0)。',
+      '',
+      '## Tasks',
+      '',
+      '- [x] Draft the **plan**',
+      '- [ ] Review with `ops`\\',
+      '  and legal',
+      '  - [ ] Book the room',
+      '',
+      '3. Ship',
+      '4. Announce',
+      '   1. Blog',
+      '   2. Mail',
+      '',
+      '> Quote with *emphasis*',
+      '>',
+      '> - and a list',
+      '',
+      '| Who | What |',
+      '| --- | --- |',
+      '| Mei | Docs<br>and tests |',
+      '',
+      '```ts',
+      'const a = `x`;',
+      '',
+      '',
+      'const b = 2;',
+      '```',
+      '',
+      '---',
+      '',
+      '![chart](/api/files/fil_01JABCDEFGHJKMNPQRSTVWXYZ0/content "Q3")',
+    ].join('\n');
+    expect(survives(md)).toBe(md);
+  });
+});

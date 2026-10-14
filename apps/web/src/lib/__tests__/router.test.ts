@@ -33,6 +33,18 @@ describe('hash routes', () => {
       request: '',
       error: 'invalid_client',
     });
+    expect(parse('#/knowledge')).toEqual({ page: 'knowledge' });
+    expect(parse('#/knowledge?space=shared')).toEqual({ page: 'knowledge', space: 'shared' });
+    expect(parse('#/knowledge?space=personal&view=archived')).toEqual({
+      page: 'knowledge',
+      space: 'personal',
+      archived: true,
+    });
+    expect(parse('#/knowledge?space=team&file=fil_1')).toEqual({ page: 'knowledge', space: 'team', file: 'fil_1' });
+    expect(parse('#/knowledge/doc_1')).toEqual({ page: 'doc', id: 'doc_1' });
+    expect(parse('#/knowledge/doc_1?edit=1')).toEqual({ page: 'doc', id: 'doc_1', edit: true });
+    expect(parse('#/knowledge/folder/fld_1')).toEqual({ page: 'folder', id: 'fld_1' });
+    expect(parse('#/knowledge/folder/fld_1?file=fil_1')).toEqual({ page: 'folder', id: 'fld_1', file: 'fil_1' });
     // The callback hands a sign-in back to 设置 → 连接; the page reads its own parameters.
     expect(parse('#/settings/connections?oauth_state=s&oauth_code=c')).toEqual({
       page: 'settings',
@@ -43,7 +55,14 @@ describe('hash routes', () => {
   it('falls back to a default for unknown values and refuses unknown paths', () => {
     expect(parse('#/agents?scope=everyone')).toEqual({ page: 'agents', scope: 'mine' });
     expect(parse('#/settings/nope')).toEqual({ page: 'settings', section: 'account' });
-    expect(parse('#/knowledge')).toEqual({ page: 'not-found', path: '/knowledge' });
+    expect(parse('#/knowledge?space=everyone')).toEqual({ page: 'knowledge' });
+    expect(parse('#/knowledge?space=shared&view=archived')).toEqual({ page: 'knowledge', space: 'shared' });
+    expect(parse('#/knowledge/folder')).toEqual({ page: 'not-found', path: '/knowledge/folder' });
+    expect(parse('#/knowledge/doc_1/more')).toEqual({ page: 'not-found', path: '/knowledge/doc_1/more' });
+    expect(parse('#/knowledge/folder/fld_1/more')).toEqual({
+      page: 'not-found',
+      path: '/knowledge/folder/fld_1/more',
+    });
     expect(parse('#/tables/a/b/c/d')).toEqual({ page: 'not-found', path: '/tables/a/b/c/d' });
     expect(parse('#/c/a/b')).toEqual({ page: 'not-found', path: '/c/a/b' });
     expect(parse('#/c/%E0%A4%A')).toEqual({ page: 'conversation', id: '%E0%A4%A' });
@@ -62,6 +81,14 @@ describe('hash routes', () => {
       { page: 'runs', view: 'active' },
       { page: 'runs', view: 'scheduled' },
       { page: 'run', id: 'run_1' },
+      { page: 'knowledge' },
+      { page: 'knowledge', space: 'team' },
+      { page: 'knowledge', space: 'personal', archived: true },
+      { page: 'knowledge', space: 'shared', file: 'fil 1' },
+      { page: 'folder', id: 'fld_1' },
+      { page: 'folder', id: 'fld/1', file: 'fil_1' },
+      { page: 'doc', id: 'doc_1' },
+      { page: 'doc', id: 'doc_1', edit: true },
       { page: 'notifications', view: 'needs' },
       { page: 'notifications', view: 'all' },
       { page: 'settings', section: 'services' },
