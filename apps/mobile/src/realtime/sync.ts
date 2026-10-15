@@ -58,10 +58,11 @@ export function applyEvent(event: ClientEvent): void {
       if(event.data.step.tool === 'agent_mutation' && event.data.step.status === 'done') soon('agents',()=>workspace().refreshAgents());
       return;
     case 'message.resumed': {
-      const {conversation_id, message_id, offset} = event.data;
+      const { conversation_id, message_id, offset } = event.data;
       endStream(message_id);
-      const message = threads().threads[conversation_id]?.messages.find(item => item.id === message_id);
-      if (message?.status === 'streaming') threads().patchMessage(conversation_id, message_id, {content: message.content.slice(0, offset)});
+      const message = threads().threads[conversation_id]?.messages.find((item) => item.id === message_id);
+      if (message?.status === 'streaming')
+        threads().patchMessage(conversation_id, message_id, { content: message.content.slice(0, offset) });
       return;
     }
     case 'message.updated':
@@ -110,6 +111,7 @@ export function applyEvent(event: ClientEvent): void {
     }
     case 'notification.created':
     case 'notification.read':
+    case 'notification.removed':
       soon('summary', () => workspace().refreshSummary());
       return;
     default:

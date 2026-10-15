@@ -120,12 +120,22 @@ function ModelDialog({
 
 const FOLLOW = 'follow-agent';
 
-export function ConversationPage({ id, agent, skill }: { id: string; agent?: string; skill?: string }) {
+export function ConversationPage({
+  id,
+  agent,
+  skill,
+  request,
+}: {
+  id: string;
+  agent?: string;
+  skill?: string;
+  request?: string;
+}) {
   if (id === 'new') return <NewChat agentId={agent} skillId={skill} />;
-  return <ExistingConversation id={id} />;
+  return <ExistingConversation id={id} requestId={request} />;
 }
 
-function ExistingConversation({ id }: { id: string }) {
+function ExistingConversation({ id, requestId }: { id: string; requestId?: string }) {
   const { t } = useI18n();
   const me = useMe();
   const notify = useNotify();
@@ -135,6 +145,11 @@ function ExistingConversation({ id }: { id: string }) {
   const detail = useConversation(conversationId);
   const messages = useMessages(conversationId);
   const requests = useRequests(conversationId, 'all', !!conversationId);
+  useEffect(() => {
+    if (!requestId) return;
+    const target = document.getElementById(`request-${requestId}`);
+    if (target) target.scrollIntoView({ block: 'center' });
+  }, [requestId, requests.data, messages.data]);
   const people = usePeople();
   const send = useSendMessage(conversationId ?? '');
   const stop = useStop(conversationId ?? '');

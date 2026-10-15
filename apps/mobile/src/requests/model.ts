@@ -29,6 +29,10 @@ export function requestStatus(request: Pick<NeedsYou, 'status'>): { word: string
       return { word: 'rejected', tone: 'neutral' };
     case 'expired':
       return { word: 'expired', tone: 'neutral' };
+    case 'superseded':
+      return { word: 'superseded', tone: 'neutral' };
+    case 'withdrawn':
+      return { word: 'withdrawn', tone: 'neutral' };
     case 'canceled':
       return { word: 'canceled', tone: 'neutral' };
   }
@@ -193,4 +197,16 @@ export function standingScope(request: NeedsYou): 'folder' | 'table' | null {
     return null;
   const type = (scope as { type?: unknown }).type;
   return type === 'folder' || type === 'table' ? type : null;
+}
+
+/** Retired cards collapse; replacement navigation stays in their source conversation. */
+export function retiredRequest(request: Pick<NeedsYou, 'status' | 'result' | 'conversation_id'>) {
+  if (request.status !== 'superseded' && request.status !== 'withdrawn') return null;
+  return {
+    word: request.result?.reason === 'answered in chat' ? 'answeredInChat' : request.status,
+    replacement:
+      typeof request.result?.replacement_request_id === 'string' && request.conversation_id
+        ? { id: request.conversation_id, request: request.result.replacement_request_id }
+        : null,
+  };
 }

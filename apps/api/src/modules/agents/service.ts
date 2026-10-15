@@ -105,7 +105,7 @@ interface Shared {
 }
 
 const localeOf = (locale: string): AgentLocale => (locale === 'en' ? 'en' : 'zh');
-const nameKey = (name: string) => name.trim().toLowerCase();
+export const nameKey = (name: string) => name.trim().toLowerCase();
 export const handleOf = (agent: Pick<AgentRow, 'id' | 'isMain'>) => (agent.isMain ? 'main' : `agent:${agent.id}`);
 /** The id in `agent:<id>@<version>`, `agent:<id>` or a bare id. */
 export const agentIdOf = (idOrHandle: string) =>

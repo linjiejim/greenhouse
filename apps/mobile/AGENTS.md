@@ -122,3 +122,5 @@
 - Run findings, summaries, briefs, output and completion reports use Markdown safe mode with native app links. Notification, schedule-list and request-card excerpts use plainText; approval previews stay inert. Memory rule errors map by code through operationErrorText. These display changes require no native modules.
 
 - Message reactions are small emoji chips; todo plans render on the reply and run detail. One-off reminder pushes use the existing conversation target and replies category; generated files reuse MessageFiles and signed downloads.
+
+- Notifications have one list and an unread badge; pending requests belong to their conversations. notification.removed clears request pointers on open screens. Superseded/withdrawn cards collapse and replacements open the new card in its source conversation.

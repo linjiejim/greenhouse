@@ -83,12 +83,7 @@ export const ConversationHeader = memo(function ConversationHeader({
 }) {
   const t = useT();
   const { kind } = model;
-  const bellLabel =
-    model.badge?.kind === 'count'
-      ? t('shell.notificationsCount', { n: model.badge.text })
-      : model.badge?.kind === 'dot'
-        ? t('shell.notificationsUnread')
-        : t('shell.notifications');
+  const bellLabel = model.badge ? t('shell.notificationsUnread') : t('shell.notifications');
   const thread = kind === 'main' || kind === 'direct';
   return (
     <>
@@ -115,9 +110,7 @@ export const ConversationHeader = memo(function ConversationHeader({
           icon={toolbarIcon(model.badge?.kind === 'dot' ? 'bellBadge' : 'bell')}
           accessibilityLabel={bellLabel}
           onPress={onNotifications}
-        >
-          {model.badge?.kind === 'count' ? <Stack.Toolbar.Badge>{model.badge.text}</Stack.Toolbar.Badge> : null}
-        </Stack.Toolbar.Button>
+        />
         {kind === 'new' ? null : (
           <Stack.Toolbar.Menu icon={toolbarIcon('more')} accessibilityLabel={t('common.more')}>
             <Stack.Toolbar.MenuAction icon={toolbarIcon('book')} onPress={() => onMenu('notes')}>

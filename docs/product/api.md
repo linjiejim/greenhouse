@@ -16,7 +16,7 @@ v2 和 v1 不兼容，不加 `/api/v2` 前缀，也不保留旧路由。`GET /ap
 | 分页 | 游标分页：`?cursor=&limit=`，默认 50，最大 200。总数单独给（`?count=1`），不和列表混在一起 |
 | 时间与 ID | ISO 8601 UTC；ID 是「类型前缀 + ULID」的字符串（如 `agt_01J…`），见[数据模型](data-model.md#1-约定) |
 | 鉴权 | Web、移动端、扩展用 Bearer 访问令牌加刷新令牌；`/api/mcp` 只认 OAuth 2.1 访问令牌或个人访问令牌（不认 App 的令牌）；电脑画面和终端用一次性 ticket；文件内容用按成员签发的短期签名 URL，因为 `<img>` 和下载链接带不了请求头 |
-| 实时 | 只有一个 WebSocket `/api/ws`，事件为 `{ type, data }`，类型定义在 contract 里。消息增量、运行进度、需要你、通知、在线状态、表格的记录变更（`records.changed`，带每条记录现在的 revision 和 computed_revision；只凭自定义角色看表格的人只收到空列表，不知道是哪几条）和结构变更（`base.updated`）都走它；发送消息仍用 `POST`。回复的文字增量每 75 ms 合成一帧（`message.delta`，`offset` 是这一帧开头在回复里的位置）。进程之间经 PostgreSQL NOTIFY 转发；一条事件大到转不过去时，另一个进程上的客户端收到补拉提示：长回复的最终消息变成 `conversation.resync { conversation_id, after_seq }`，用 `GET /api/conversations/:id/messages?after=<after_seq>` 补拉；一次改了太多条记录的 `records.changed` 变成记录列表为空的同一事件（表示很多条变了）。重连后只补拉屏幕上打开的对话（和「需要你」的计数），其余查询标为过期，下次显示时再取 |
+| 实时 | 只有一个 WebSocket `/api/ws`，事件为 `{ type, data }`，类型定义在 contract 里。消息增量、运行进度、需要你、通知、在线状态、表格的记录变更（`records.changed`，带每条记录现在的 revision 和 computed_revision；只凭自定义角色看表格的人只收到空列表，不知道是哪几条）和结构变更（`base.updated`）都走它；发送消息仍用 `POST`。回复的文字增量每 75 ms 合成一帧（`message.delta`，`offset` 是这一帧开头在回复里的位置）。进程之间经 PostgreSQL NOTIFY 转发；一条事件大到转不过去时，另一个进程上的客户端收到补拉提示：长回复的最终消息变成 `conversation.resync { conversation_id, after_seq }`，用 `GET /api/conversations/:id/messages?after=<after_seq>` 补拉；一次改了太多条记录的 `records.changed` 变成记录列表为空的同一事件（表示很多条变了）。重连后只补拉屏幕上打开的对话（和通知未读计数），其余查询标为过期，下次显示时再取 |
 | 幂等 | 有副作用的 `POST` 接受 `Idempotency-Key` 头；卡片动作（批准、拒绝）天然幂等 |
 | 注册顺序 | 路由挂载顺序有安全含义，保持单链定义；公开路径白名单越小越好 |
 | 配置 | 只有 `apps/api/src/config/` 可以读 `process.env`；外部服务一律通过 `providers.resolve()` 获取 |
@@ -350,3 +350,13 @@ custom 网页运行使用双层 `sandbox="allow-scripts"` iframe，均无 allow-
 - 提醒目前通过 Agent 的 remind 工具创建／分页列出／取消；due_at 必须为带 UTC 偏移的 ISO 时间，timezone 取成员配置。每个成员最多 100 个待提醒，一年内到期；到期 event.type=reminder，通知 target_type=conversation，沿用原生 push v1 路由及回复通知设置。撤销仍用 POST /api/runs/steps/:id/undo。
 - Agent 创建／更新输入与资料可带 folder_ids（最多 50）；工具只修改私有 Agent；当前 Agent 的指令须走 self 提议。schedule_mutation create 可带 agent_id，为成员另一个 Agent 设置循环工作。
 - file_create 的附件沿用 GET /api/files/:id 与签名 content 下载，未新增公开下载端点；可创建 txt／md／csv／json／xlsx，最大 1 MiB、每回合最多 10 个。撤销后原文件链接失效。
+
+### 请求与通知自动清理（#70，U3）
+
+- 请求状态增加 `superseded` 和 `withdrawn`。被取代卡片的 `result.replacement_request_id` 指向新请求；`result.reason="answered in chat"` 时，`message_id` 指向成员已发送的回答，Agent 直接读这条消息，不另外唤醒一次。聊天消息从不表示批准或拒绝。
+- 同对话、同成员和 Agent、同 subject 与规范目标的新请求自动取代旧 pending；取消运行或回合撤回它发起的 pending 请求，包括非阻塞提议。旧卡保留在 `GET /api/requests?state=all&conversation_id=…`。已经处理的卡返回 409 `request_settled`。
+- `GET /api/notifications` 只列未清理的通知，无单独审批视图。请求离开 pending 后，其通知不论是否读过都消失，summary.unread 同时排除。summary.needs_you 仍给出待处理请求总数供小组件同步；通知导航与原生应用角标使用 unread。
+- WebSocket 新增 `notification.removed { request_id }`，通知列表立即移除该请求的行并刷新计数；`request.updated` 同步卡片与对话标记。Web 的 `#/c/:id?request=:request_id` 和原生来源链接定位具体卡片。
+- 批准第 2 档卡片时，其他同对话、同成员和 Agent、同 scope 且动作被覆盖的已准备请求也批准（`result.covered_by_request_id`）；第 3 档、污染、过期、取消不继承。每张卡有独立决策任务和写入回执。
+
+U2 私有工具的请求目标统一由 requests/target.ts 解析：Agent id／新建规范化名称、提醒取消 id、文件最终名称、计划所属 run_id；新建提醒不猜测目标。正常第 1 档工具仍立即执行并返回回执，不新增审批卡。

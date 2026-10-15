@@ -333,56 +333,56 @@ export function createEngine(deps: EngineDeps) {
         : step?.toolName === 'apps_action'
           ? (step.undoState as { before?: { plan?: { table_id?: string } } } | null)?.before?.plan?.table_id
           : null;
-    const result = await withConversation(run.conversationId, () =>
-      transaction(async (db) => {
-        await db
-          .select({ id: conversations.id })
-          .from(conversations)
-          .where(eq(conversations.id, run.conversationId!))
-          .for('update');
-        const receipts = await db
-          .select()
-          .from(messages)
-          .where(and(eq(messages.runId, run.id), sql`${messages.event}->>'type' = 'write_receipt'`))
-          .for('update');
-        if (
-          receipts.some(
-            (receipt) =>
-              receipt.event?.step_id === stepId || (receipt.event?.step_ids as string[] | undefined)?.includes(stepId),
-          )
+    // Reversible writes already hold the database conversation lock. Taking the local queue
+    // here would deadlock with a new member message waiting for that database lock.
+    const result = await transaction(async (db) => {
+      await db
+        .select({ id: conversations.id })
+        .from(conversations)
+        .where(eq(conversations.id, run.conversationId!))
+        .for('update');
+      const receipts = await db
+        .select()
+        .from(messages)
+        .where(and(eq(messages.runId, run.id), sql`${messages.event}->>'type' = 'write_receipt'`))
+        .for('update');
+      if (
+        receipts.some(
+          (receipt) =>
+            receipt.event?.step_id === stepId || (receipt.event?.step_ids as string[] | undefined)?.includes(stepId),
         )
-          return null;
-        const existing = tableId
-          ? receipts.find((receipt) => receipt.event?.table_id === tableId && receipt.event?.undone !== true)
-          : null;
-        if (existing) {
-          const ids = (existing.event?.step_ids as string[] | undefined) ?? [String(existing.event?.step_id)];
-          const [saved] = await db
-            .update(messages)
-            .set({
-              content: `${existing.content}\n${summary.includes('\n') && existing.content.split('\n')[0] === summary.split('\n')[0] ? summary.slice(summary.indexOf('\n') + 1) : summary}`,
-              event: { ...existing.event, type: 'write_receipt', step_ids: [...ids, stepId] },
-            })
-            .where(eq(messages.id, existing.id))
-            .returning();
-          return saved ? { row: saved, updated: true } : null;
-        }
-        const row = await deps.conversations.append(run.conversationId!, {
-          role: 'event',
-          agentId: run.agentId,
-          runId: run.id,
-          content: summary,
-          event: {
-            type: 'write_receipt',
-            step_id: stepId,
-            step_ids: [stepId],
-            member_id: run.ownerId,
-            ...(tableId ? { table_id: tableId } : {}),
-          },
-        });
-        return { row, updated: false };
-      }),
-    );
+      )
+        return null;
+      const existing = tableId
+        ? receipts.find((receipt) => receipt.event?.table_id === tableId && receipt.event?.undone !== true)
+        : null;
+      if (existing) {
+        const ids = (existing.event?.step_ids as string[] | undefined) ?? [String(existing.event?.step_id)];
+        const [saved] = await db
+          .update(messages)
+          .set({
+            content: `${existing.content}\n${summary.includes('\n') && existing.content.split('\n')[0] === summary.split('\n')[0] ? summary.slice(summary.indexOf('\n') + 1) : summary}`,
+            event: { ...existing.event, type: 'write_receipt', step_ids: [...ids, stepId] },
+          })
+          .where(eq(messages.id, existing.id))
+          .returning();
+        return saved ? { row: saved, updated: true } : null;
+      }
+      const row = await deps.conversations.append(run.conversationId!, {
+        role: 'event',
+        agentId: run.agentId,
+        runId: run.id,
+        content: summary,
+        event: {
+          type: 'write_receipt',
+          step_id: stepId,
+          step_ids: [stepId],
+          member_id: run.ownerId,
+          ...(tableId ? { table_id: tableId } : {}),
+        },
+      });
+      return { row, updated: false };
+    });
     if (result)
       await publish(run.conversationId, {
         type: result.updated ? 'message.updated' : 'message.created',
@@ -1838,6 +1838,7 @@ export function createEngine(deps: EngineDeps) {
         })
         .where(eq(handoffs.id, handoffId));
     }
+    if (outcome.status === 'canceled') await deps.requests.withdrawOpen([run.id]);
     const next = await finishAndTakeNext(run, outcome);
     if (outcome.status === 'waiting') await background.kickHelpers(run.id);
     if (conversation && deps.development) await warnUncached(run, usage);
@@ -2198,6 +2199,26 @@ export function createEngine(deps: EngineDeps) {
     let outcome: DecisionOutcome;
     if (progress.outcome) {
       outcome = progress.outcome;
+    } else if (request.status === 'superseded' || request.status === 'withdrawn') {
+      await getDb()
+        .update(runSteps)
+        .set({ status: 'skipped', finishedAt: sql`now()` })
+        .where(and(eq(runSteps.requestId, request.id), eq(runSteps.status, 'pending')));
+      outcome = {
+        line:
+          request.status === 'withdrawn'
+            ? locale === 'zh'
+              ? '请求已撤回'
+              : 'Request withdrawn'
+            : request.result?.reason === 'answered in chat'
+              ? locale === 'zh'
+                ? '已在对话中回答'
+                : 'Answered in chat'
+              : locale === 'zh'
+                ? '已被新的请求取代'
+                : 'Replaced by a newer request',
+        note: null,
+      };
     } else if (request.subject === 'tool_write') {
       const calls = request.payload.calls as Array<{ step_id: string; [key: string]: unknown }> | undefined;
       if (calls?.length) {
@@ -2355,6 +2376,9 @@ export function createEngine(deps: EngineDeps) {
       }),
     );
     if (!done) return;
+    // Reconcile clients after the durable decision; the original card may have been raised
+    // inside a wider tool transaction than the requests service could observe.
+    deps.requests.announce(request);
     if (done.closed && run?.kind === 'background') background.kick(run);
     // Committed: the turn it woke starts whatever happens to the announcements.
     try {
@@ -2594,7 +2618,11 @@ export function createEngine(deps: EngineDeps) {
         input.content,
         input.mentions,
       );
-      const responders = await respondersFor(memberId, conversation, mentions);
+      let responders = await respondersFor(memberId, conversation, mentions);
+      if (conversation.kind === 'room' && !mentions.length && input.content.trim()) {
+        const asking = await deps.requests.questionAgents(memberId, conversationId);
+        if (asking.length) responders = await respondersFor(memberId, conversation, asking);
+      }
 
       const result = await withConversation(conversationId, () =>
         transaction(async (db) => {
@@ -2624,6 +2652,7 @@ export function createEngine(deps: EngineDeps) {
             skill,
             richBlocks: admitRichBlocks(input.rich_blocks) ?? null,
           });
+          if (input.content.trim()) await deps.requests.answeredInChat(memberId, conversationId, targets, message.id);
           const dispatched = await dispatch(db, conversationId, {
             memberId,
             messageIds: [message.id],
@@ -2638,6 +2667,7 @@ export function createEngine(deps: EngineDeps) {
         }),
       );
       await publish(conversationId, { type: 'message.created', data: { message: toMessage(result.message) } });
+      wakeDecisions();
       await notifyMentions(deps.notifications, { conversation, message: result.message, senderId: memberId }).catch(
         (error: unknown) => logger.warn('[engine] could not tell the people named', { error: toErrorMessage(error) }),
       );
@@ -3130,7 +3160,7 @@ export function createEngine(deps: EngineDeps) {
                     eq(runs.ownerId, memberId),
                     eq(runs.kind, 'turn'),
                     eq(runs.status, 'waiting'),
-                    eq(runs.waitReason, 'helpers'),
+                    inArray(runs.waitReason, ['helpers', 'request']),
                   ),
                 )
                 .orderBy(desc(runs.id))
@@ -3149,10 +3179,12 @@ export function createEngine(deps: EngineDeps) {
                 : {}),
             })
             .where(eq(runs.id, active.id));
+          await deps.requests.withdrawOpen([active.id]);
           return { active, dropped: await dropQueued(db, conversationId, memberId) };
         }),
       );
       if (!result) return;
+      wakeDecisions();
       live.get(result.active.id)?.abort();
       for (const message of result.dropped)
         await publish(conversationId, { type: 'message.updated', data: { message: toMessage(message) } });

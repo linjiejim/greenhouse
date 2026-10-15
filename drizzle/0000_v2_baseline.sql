@@ -374,6 +374,7 @@ CREATE TABLE "requests" (
 	"member_id" text NOT NULL,
 	"kind" text NOT NULL,
 	"subject" text NOT NULL,
+	"target_key" text,
 	"status" text DEFAULT 'pending' NOT NULL,
 	"conversation_id" text,
 	"run_id" text,
@@ -659,6 +660,7 @@ CREATE TABLE "notifications" (
 	"payload" jsonb DEFAULT '{}'::jsonb NOT NULL,
 	"dedupe_key" text NOT NULL,
 	"read_at" timestamp with time zone,
+	"cleared_at" timestamp with time zone,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint

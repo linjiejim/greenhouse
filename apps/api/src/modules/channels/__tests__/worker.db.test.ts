@@ -285,7 +285,7 @@ describe('the delivery worker', () => {
       title: 'Greenhouse',
       body: '后台运行完成了',
       sound: 'default',
-      badge: 0,
+      badge: 1,
       priority: 'high',
       interruptionLevel: 'active',
       data: {

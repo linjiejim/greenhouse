@@ -70,6 +70,7 @@ const EVENT_TYPES: ReadonlySet<string> = new Set<RealtimeEvent['type']>([
   'request.updated',
   'notification.created',
   'notification.read',
+  'notification.removed',
   'computer.updated',
   'vault.updated',
   'doc.updated',

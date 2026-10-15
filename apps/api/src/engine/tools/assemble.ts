@@ -318,6 +318,7 @@ export async function assembleTools(input: {
                   summary: card.summary,
                   details: card.details,
                   tier: risk,
+                  tainted: context.tainted(),
                   ...(scope ? { standing_scope: scope } : {}),
                 },
                 waits: true,

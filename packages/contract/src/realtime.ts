@@ -83,6 +83,8 @@ export const realtimeEventSchema = z.discriminatedUnion('type', [
   }),
   /** Some of my notifications were read (on another screen, or by reading their conversation): refetch them. */
   z.object({ type: z.literal('notification.read'), data: z.object({ notification_ids: z.array(z.string()) }) }),
+  /** A request left pending: remove its notifications on every open client. */
+  z.object({ type: z.literal('notification.removed'), data: z.object({ request_id: z.string() }) }),
   /** My computer of this Agent started, stopped or failed: refetch it. */
   z.object({
     type: z.literal('computer.updated'),

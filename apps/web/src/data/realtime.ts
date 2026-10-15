@@ -13,6 +13,7 @@ import type {
   ConversationMembers,
   Message,
   MessageItem,
+  Notification,
   Page,
   RealtimeEvent,
 } from '@greenhouse/contract';
@@ -288,9 +289,17 @@ export function applyEvent(client: QueryClient, event: Exclude<RealtimeEvent, { 
       soon(client, ['runs']);
       return;
     case 'request.updated':
+      if (event.data.conversation_id) soon(client, keys.conversation(event.data.conversation_id));
       soon(client, ['requests']);
       soon(client, keys.summary);
       soon(client, keys.conversations);
+      return;
+    case 'notification.removed':
+      void client.cancelQueries({ queryKey: keys.notifications });
+      client.setQueriesData<InfiniteData<Page<Notification>>>({ queryKey: keys.notifications }, data => data ? {
+        ...data, pages: data.pages.map(page => ({ ...page, items: page.items.filter(item => item.request_id !== event.data.request_id) })),
+      } : data);
+      soon(client, ['notifications']);
       return;
     case 'notification.created':
     case 'notification.read':

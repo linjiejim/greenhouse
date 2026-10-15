@@ -260,6 +260,8 @@ export const REQUEST_STATUSES = [
   'handed_back',
   'expired',
   'canceled',
+  'superseded',
+  'withdrawn',
 ] as const;
 export type RequestStatus = (typeof REQUEST_STATUSES)[number];
 
@@ -274,6 +276,8 @@ export const requests = pgTable(
     kind: text('kind', { enum: REQUEST_KINDS }).notNull(),
     /** What is being decided, e.g. tool_write, agent_create, instructions_update, run_start. */
     subject: text('subject').notNull(),
+    /** Canonical execution target, defined by the requests service. */
+    targetKey: text('target_key'),
     status: text('status', { enum: REQUEST_STATUSES }).notNull().default('pending'),
     conversationId: text('conversation_id'),
     runId: text('run_id'),

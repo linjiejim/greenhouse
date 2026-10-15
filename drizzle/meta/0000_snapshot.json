@@ -1,5 +1,5 @@
 {
-  "id": "bcd3e031-49ea-40b9-b9c5-202843118fc5",
+  "id": "10708367-94cc-463f-b70c-bc7e5a448a7d",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -3509,6 +3509,12 @@
           "primaryKey": false,
           "notNull": true
         },
+        "target_key": {
+          "name": "target_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "status": {
           "name": "status",
           "type": "text",
@@ -6072,6 +6078,12 @@
         },
         "read_at": {
           "name": "read_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "cleared_at": {
+          "name": "cleared_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false

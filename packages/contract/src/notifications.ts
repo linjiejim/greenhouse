@@ -30,7 +30,7 @@ export const readNotificationsInputSchema = z.union([
 ]);
 
 export const notificationSummarySchema = z.object({
-  /** The one badge: how many things need the member. */
+  /** Pending request total for conversation/widget sync; notification badges use unread. */
   needs_you: z.number().int(),
   unread: z.number().int(),
 });

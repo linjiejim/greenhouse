@@ -113,8 +113,8 @@ describe('row signals and the bell', () => {
   });
 
   it('the bell counts what needs you, else a dot for anything unread', () => {
-    expect(badgeOf({ needs_you: 3, unread: 9 })).toEqual({ kind: 'count', text: '3' });
-    expect(badgeOf({ needs_you: 120, unread: 0 })).toEqual({ kind: 'count', text: '99+' });
+    expect(badgeOf({ needs_you: 3, unread: 9 })).toEqual({ kind: 'dot' });
+    expect(badgeOf({ needs_you: 120, unread: 0 })).toBeNull();
     expect(badgeOf({ needs_you: 0, unread: 2 })).toEqual({ kind: 'dot' });
     expect(badgeOf({ needs_you: 0, unread: 0 })).toBeNull();
     expect(badgeOf(null)).toBeNull();
