@@ -219,6 +219,7 @@ export default function RootLayout() {
                 <Stack.Screen name="agents/mail" options={sheetScreen([1], { header: true })} />
                 {/* ── sheets: a card in full, short forms, details ── */}
                 <Stack.Screen name="notes" options={sheetScreen([1], { header: true })} />
+                <Stack.Screen name="note" options={sheetScreen([1], { header: true })} />
                 <Stack.Screen name="request" options={sheetScreen([1], { header: true })} />
                 <Stack.Screen name="agents/edit" options={sheetScreen([1], { header: true })} />
                 <Stack.Screen name="new-room" options={sheetScreen([1], { header: true })} />
