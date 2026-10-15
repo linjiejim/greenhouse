@@ -50,7 +50,7 @@ export const sendTestPush = (id: string) => post<{ ok: true }>(`${DEVICES}/${seg
 export const memberDirectory = (q?: string) => get<{ items: MemberSummary[] }>('/api/members', { q: q || undefined });
 
 /** Skills I can see; `available` (and why not) is judged for `agent` (the main Agent by default). */
-export const listSkills = (query: { agent?: string; q?: string; limit?: number } = {}) =>
+export const listSkills = (query: { agent?: string; q?: string; limit?: number; cursor?: string } = {}) =>
   get<Page<Skill>>('/api/skills', query);
 
 /** A new chat's empty state: my three most-used skills for this Agent, else its template's starters. */

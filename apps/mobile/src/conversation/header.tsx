@@ -44,6 +44,7 @@ export type MenuAction =
   | 'markRead'
   | 'profile'
   | 'newChat'
+  | 'notes'
   | 'people'
   | 'addPeople'
   | 'leave';
@@ -119,6 +120,9 @@ export const ConversationHeader = memo(function ConversationHeader({
         </Stack.Toolbar.Button>
         {kind === 'new' ? null : (
           <Stack.Toolbar.Menu icon={toolbarIcon('more')} accessibilityLabel={t('common.more')}>
+            <Stack.Toolbar.MenuAction icon={toolbarIcon('book')} onPress={() => onMenu('notes')}>
+              {t('integration.notes')}
+            </Stack.Toolbar.MenuAction>
             <Stack.Toolbar.Menu inline hidden={!thread && kind !== 'chat'}>
               <Stack.Toolbar.MenuAction icon={toolbarIcon('compose')} onPress={() => onMenu('newChat')}>
                 {t('conversation.newChatWith')}

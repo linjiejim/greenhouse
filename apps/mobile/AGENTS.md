@@ -104,3 +104,12 @@
 - App relation pickers read only published record cards that expose their title field, with that card's filter. If none exists, offer web completion; never fall back to ordinary table-title queries. Member choices use the member directory.
 
 - Regenerate src/shared/contract.ts after computer/app contract changes. Queued computers keep polling. External app cards currently use the web fallback; custom HTML remains disabled on native.
+
+## Phone parity
+
+- DirectorySearch owns loaded-name filtering and clears it on blur; keep knowledge full-text search separate. Match names, never internal ids. Module navigation also clears the conversation drawer query.
+- Skill directory selections fill a new composer without sending. Clear composer handoffs with station/member changes.
+- Agent usage and budgets come from the owner's usage projection; memory uses the same member-scoped service as web.
+- Read /api/me/operations for member-facing pause messages; only admins change switches. Queued computers poll only while focused and never offer another start. Do not fetch computer files/processes before running.
+- Approval copy uses payload.summary/details from the permission-checked server projection. Never render execution inputs or standing-approval scopes as display copy.
+- ListSection takes direct rows (arrays are fine), not a Fragment: it passes last to each child. Large text wraps row values and card headings without remounting screen state.

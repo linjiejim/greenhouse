@@ -89,6 +89,7 @@ export function DrawerContent({ navigation }: DrawerContentComponentProps) {
         publicAgents,
         conversations: conversations ?? [],
         untitled: t('conversation.untitled'),
+        mainTitle: t('conversation.mainThread'),
         query: search,
         now: Date.now(),
         timeZone: me?.timezone,
@@ -142,7 +143,8 @@ export function DrawerContent({ navigation }: DrawerContentComponentProps) {
     later(() => router.push('/new-room'));
   }, [close, later, router]);
   const go = useCallback(
-    (path: '/agents' | '/runs' | '/settings' | '/apps') => {
+    (path: '/agents' | '/runs' | '/settings' | '/apps' | '/skills') => {
+      setSearch('');
       close();
       later(() => router.push(path));
     },
@@ -375,7 +377,6 @@ export function DrawerContent({ navigation }: DrawerContentComponentProps) {
           <Icon name="search" size={16} color={c.secondaryLabel} />
           <TextInput
             key={fontKey}
-            maxFontSizeMultiplier={1.3}
             value={search}
             onChangeText={setSearch}
             placeholder={t('directory.search')}
@@ -562,6 +563,7 @@ export function DrawerContent({ navigation }: DrawerContentComponentProps) {
             label={t('work.title')}
             onPress={() => {
               close();
+              setSearch('');
               router.push('/knowledge');
             }}
           />
@@ -572,6 +574,7 @@ export function DrawerContent({ navigation }: DrawerContentComponentProps) {
             label={t('work.tables')}
             onPress={() => {
               close();
+              setSearch('');
               router.push('/tables');
             }}
           />
@@ -582,17 +585,19 @@ export function DrawerContent({ navigation }: DrawerContentComponentProps) {
             label={t('integration.apps')}
             onPress={() => {
               close();
+              setSearch('');
               router.push('/apps');
             }}
           />
         ) : null}
         <NativeMenu
           items={[
+            { id: '/skills', title: t('integration.skills'), icon: 'sparkle' },
             { id: '/agents', title: t('nav.agents'), icon: 'sparkle' },
             { id: '/runs', title: t('nav.runs'), icon: 'runs' },
             { id: '/settings', title: t('nav.settings'), icon: 'gear' },
           ]}
-          onSelect={(id) => go(id as '/agents' | '/runs' | '/settings' | '/apps')}
+          onSelect={(id) => go(id as '/agents' | '/runs' | '/settings' | '/apps' | '/skills')}
           style={styles.barSlot}
         >
           <BarItem icon="more" label={t('nav.more')} />
@@ -882,7 +887,8 @@ const useStyles = makeStyles((c) => ({
     flexDirection: 'row',
     alignItems: 'center',
     gap: space.xs + 2,
-    height: 38,
+    minHeight: HIT,
+    paddingVertical: space.xs,
     paddingHorizontal: space.md - 2,
     borderRadius: 19,
     backgroundColor: c.tertiaryFill,

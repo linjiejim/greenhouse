@@ -30,6 +30,12 @@ export function createOperationsService(config: AppConfig) {
   }
   return {
     read,
+    /** Members may explain unavailable operations; changing them remains admin-only. */
+    async memberStatus(actorId: string) {
+      const [actor] = await getDb().select().from(members).where(eq(members.id, actorId));
+      if (actor?.status !== 'active') throw forbidden();
+      return read();
+    },
     async assertEnabled(key: OperationSwitch) {
       if ((await read())[key])
         throw new ApiError(503, 'operation_disabled', 'An admin temporarily paused this operation.', { switch: key });

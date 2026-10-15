@@ -8,6 +8,9 @@ import type {
   Agent,
   AgentDetail,
   AgentMemory,
+  AgentUsage,
+  MemoryInput,
+  UpdateMemoryInput,
   CreateAgentInput,
   PublicAgent,
   UpdateAgentInput,
@@ -35,3 +38,9 @@ export const archiveAgent = (id: string) => del(base(id));
 export const restoreAgent = (id: string) => post<AgentDetail>(`${base(id)}/restore`);
 
 export const agentMemories = (id: string) => get<{ items: AgentMemory[] }>(`${base(id)}/memories`);
+
+export const agentUsage = (id: string) => get<AgentUsage>(`${base(id)}/usage`, { period: 'month' });
+export const createMemory = (id: string, input: MemoryInput) => post<AgentMemory>(`${base(id)}/memories`, input);
+export const updateMemory = (id: string, memory: string, input: UpdateMemoryInput) =>
+  patch<AgentMemory>(`${base(id)}/memories/${seg(memory)}`, input);
+export const forgetMemory = (id: string, memory: string) => del(`${base(id)}/memories/${seg(memory)}`);

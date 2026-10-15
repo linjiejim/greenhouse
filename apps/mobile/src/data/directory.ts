@@ -15,6 +15,7 @@
 
 import type { Agent, Conversation, PublicAgent } from '../shared/contract';
 import { dayKey, parseMs } from './time';
+import { matchesDirectory as matches } from './directory-filter';
 
 export interface AgentRow {
   agent: Agent | PublicAgent;
@@ -33,11 +34,6 @@ export interface DirectorySections {
   earlier: Conversation[];
 }
 
-const matches = (query: string, ...values: (string | undefined)[]) => {
-  const q = query.trim().toLowerCase();
-  return !q || values.some((value) => !!value && value.toLowerCase().includes(q));
-};
-
 const byActivity = (a: Conversation, b: Conversation) =>
   (parseMs(b.last_activity_at) || 0) - (parseMs(a.last_activity_at) || 0);
 
@@ -47,6 +43,7 @@ export function directorySections(input: {
   conversations: readonly Conversation[];
   /** A chat's title when it has none yet. */
   untitled: string;
+  mainTitle: string;
   query?: string;
   now: number;
   timeZone?: string;
@@ -66,7 +63,7 @@ export function directorySections(input: {
   const titled = (item: Conversation) => matches(query, item.title || input.untitled);
   return {
     main:
-      mainAgent && matches(query, mainAgent.name, mainAgent.role)
+      mainAgent && matches(query, mainAgent.name, input.mainTitle)
         ? { agent: mainAgent, conversation: mainConversation }
         : null,
     agents: input.agents
@@ -87,7 +84,12 @@ export function directorySections(input: {
 }
 
 /** The one signal on a row's right, strongest first. */
-export type RowSignal = { kind: 'needs'; count: number } | { kind: 'muted' } | { kind: 'running' } | { kind: 'unread' } | null;
+export type RowSignal =
+  | { kind: 'needs'; count: number }
+  | { kind: 'muted' }
+  | { kind: 'running' }
+  | { kind: 'unread' }
+  | null;
 
 export function signalOf(conversation: Conversation | null | undefined): RowSignal {
   if (!conversation) return null;

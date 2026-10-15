@@ -89,7 +89,7 @@ export function cardBody(request: Pick<NeedsYou, 'kind' | 'subject' | 'payload'>
   fields: QuestionField[];
 } {
   const payload = request.payload ?? {};
-  const reason = text(payload.reason);
+  const reason = text(payload.summary) || text(payload.reason);
   if (request.kind === 'question') {
     return {
       reason: '',
