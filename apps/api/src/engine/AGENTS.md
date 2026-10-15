@@ -203,3 +203,6 @@ The one engine for conversations and runs. Read with the root AGENTS.md and docs
 - Automatic chat titles summarize only the first member message. Never feed assistant refusals, interim steps or outcomes to the title model; preserve manually set titles with the conditional update.
 
 - Memory mutation refusals throw ApiError (memory_background_read_only / memory_untrusted_content), never successful error objects. Preserve the cause and do-not-retry instruction in model evidence and failed steps.
+
+- Member replies stream in one row; tool-call prose is cleared with message.resumed and never retained as a separate reply. Wake text is private: only send_message makes the reserved reply visible, and ends the wake. Keep hidden rows out of history, exports and notifications. send_message ignores capability allowlists so every wake can publish; other tools honor them, and helper runs still cannot post.
+- agent_mutation is tier1 for owned private Agents; current instructions still need an accepted self proposal. Reminders use delayed jobs with revision checks and conversation-before-reminder locks; todo lives on the current run and reply. file_create reuses files and signed downloads with bounded data.

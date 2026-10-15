@@ -57,6 +57,7 @@ export async function projectHistory(input: {
     .from(messages)
     .where(
       and(
+        eq(messages.visible, true),
         eq(messages.conversationId, input.conversation.id),
         gt(messages.seq, input.conversation.digestUptoSeq),
         input.excludeMessageId ? ne(messages.id, input.excludeMessageId) : undefined,

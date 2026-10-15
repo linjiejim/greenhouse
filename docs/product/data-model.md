@@ -4,7 +4,7 @@
 
 v2 从零建表：只有一份基线迁移，不继承 v1 的迁移链，也不在 v1 库上原地升级。v1 的历史数据以后用离线 ETL 搬进来，见 [migration-v1.md](migration-v1.md)。
 
-本文写到能照着实现的程度，列不求全。实现以 Drizzle schema 为准，改表时同步本文。共 78 张表，分 10 个领域；v1 加上 PR #64 是 137 张。
+本文写到能照着实现的程度，列不求全。实现以 Drizzle schema 为准，改表时同步本文。共 79 张表，分 10 个领域；v1 加上 PR #64 是 137 张。
 
 ## 1. 约定
 
@@ -294,3 +294,12 @@ M3.4 计数（#70）：`metric_events` 仅存 identity id、member_id（逻辑�
 ### 记忆拒绝与原生 Markdown（#70）
 
 无表结构变化。记忆规则拒绝复用 `run_steps.error` 的 `{ code, message }`，步骤状态为 `failed`，不保存成功输出、不产生写入回执。`runs.output.findings` 与已有报告正文继续保存 Markdown，由原生安全渲染器展示并解析应用内链接；通知和卡片列表使用可读纯文字摘要。
+
+### U2 回复与私有工作状态（#70）
+
+- `messages.visible` 默认 true；事件回合预留回复为 false，只有 send_message 才公开；查询、导出、历史摘要与漏读通知排除不可见行。草稿证据仍在该 run 的 model steps，不随实时帧泄露。
+- `messages.reactions` 为 `{agent_id, emoji}[]`，每个 Agent 对成员消息最多一个回应；固定六个表情，复用 message.updated。
+- 计划为 `runs.checkpoint.todo` 与 `messages.blocks` 中 `{type: todo, items: [{title,status}]}`，状态 pending／active／done／blocked／skipped，最多 20 项。
+- Agent manifest 可附 `folder_ids`（成员有权读取的有效知识文件夹，最多 50），复用 agent_versions；它是参考资料入口，不授予额外权限。撤销仍追加一个版本，校验当前版本；新建 Agent 的撤销为归档。
+- `reminders`：text id（rmd_）、owner_id（成员级联）、conversation_id（对话级联）、逻辑 agent_id、text、due_at、timezone、status（pending／canceled／delivered）、revision、message_id、created_at、updated_at；owner_id／id 索引。每次恢复排入带 revision 去重键、available_at 等于 due_at 的 `reminder_deliver` job，旧 job 不能送达新版本。送达与取消同持会话锁和提醒行锁；线程行、状态和 notifications 同事务提交，重试不重复。
+- file_create 复用 files，purpose=attachment，run_id／conversation_id 关联与 meta.created_step 记录创建步骤，复用签名下载。单文件及表格输入数据上限 1 MiB；xlsx 由已有 ExcelJS 生成，不执行公式。

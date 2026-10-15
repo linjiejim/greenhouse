@@ -59,7 +59,7 @@ import { hashSeed, PLANT_IDS, PLANT_TINTS, TEMPLATE_PLANT, type PlantId } from '
 import { isUniqueViolation } from '@greenhouse/utils/error';
 import type { z } from 'zod';
 import { audit, changedFields } from '../../audit.js';
-import { ApiError, conflict, invalidInput, notFound } from '../../http/errors.js';
+import { ApiError, forbidden, conflict, invalidInput, notFound } from '../../http/errors.js';
 import { decodeCursor, encodeCursor } from '../../http/pagination.js';
 import { insideAgentFolders, loadReader } from '../knowledge/access.js';
 import { folders } from '@greenhouse/db';
@@ -224,6 +224,7 @@ const toMemory = (row: MemoryRow): AgentMemory => ({
 
 export function createAgentsService(deps: {
   providers: ProvidersService;
+  attachFolders: (memberId: string, ids: string[]) => Promise<void>;
   files: FilesService;
   /** Refuses skills being equipped that this Agent cannot run, with why (modules/skills). */
   equip?: (memberId: string, manifest: AgentManifest, added: string[]) => Promise<void>;
@@ -281,6 +282,14 @@ export function createAgentsService(deps: {
         ),
       );
     if (clash) throw conflict('agent_name_taken', 'You already have an Agent with this name.');
+  }
+
+  async function assertFolders(memberId: string, ids: string[]) {
+    if (!ids.length) return;
+    const unique = [...new Set(ids)];
+    if ((await insideAgentFolders(unique)).size)
+      throw invalidInput('Choose knowledge folders outside Agent reference folders.');
+    await deps.attachFolders(memberId, unique);
   }
 
   async function assertModel(ref: string, memberId: string) {
@@ -507,6 +516,7 @@ export function createAgentsService(deps: {
     return {
       ...toAgent(row, manifest),
       instructions: manifest.instructions,
+      folder_ids: manifest.folder_ids ?? [],
       model: manifest.model,
       skills: manifest.skills,
       connectors: manifest.connectors,
@@ -861,6 +871,39 @@ export function createAgentsService(deps: {
       });
     },
 
+    /** Locks a private profile for a reversible Agent tool call; self proposals stay human-reviewed. */
+    async privateMutationTarget(memberId: string, id: string, actingAgentId: string, instructions?: string) {
+      const own = await ownAgent(memberId, id);
+      const [row] = await getDb().select().from(agents).where(eq(agents.id, own.id)).for('update');
+      if (!row || row.visibility !== 'private' || row.archivedAt)
+        throw forbidden('Only active private Agents may be changed by a tool.');
+      if (
+        row.id === actingAgentId &&
+        instructions !== undefined &&
+        instructions !== (await manifestOf(row.id, row.currentVersion)).instructions
+      )
+        throw new ApiError(
+          403,
+          'agent_self_proposal_required',
+          'Use self to propose changes to your own instructions.',
+        );
+      return { row, manifest: await manifestOf(row.id, row.currentVersion) };
+    },
+
+    async undoPrivateMutation(
+      memberId: string,
+      id: string,
+      writtenVersion: number,
+      previous: AgentManifest | null,
+      actingAgentId: string,
+    ) {
+      const { row } = await service.privateMutationTarget(memberId, id, actingAgentId);
+      if (row.currentVersion !== writtenVersion)
+        throw conflict('undo_conflict', 'This Agent has changed since this write.');
+      if (previous) await service.update(memberId, id, { ...previous, change_note: 'Undo' });
+      else await service.archive(memberId, id);
+    },
+
     async create(memberId: string, input: CreateInput): Promise<AgentDetail> {
       const template = input.template_key ? agentTemplate(input.template_key) : undefined;
       if (input.template_key && (!template || template.key === MAIN_AGENT_TEMPLATE.key)) {
@@ -876,17 +919,20 @@ export function createAgentsService(deps: {
         instructions: input.instructions ?? copy?.instructions ?? '',
         avatar: cleanAvatar(input.avatar, template?.plant ?? FREE_PLANTS[hashSeed(id) % FREE_PLANTS.length]!),
         model: input.model ?? 'default',
+        folder_ids: input.folder_ids ?? [],
         skills: input.skills ?? [],
         connectors: input.connectors ?? null,
         tools: input.tools ?? null,
         write: input.write ?? true,
       });
+      await assertFolders(memberId, manifest.folder_ids ?? []);
       await assertName(memberId, manifest.name);
       await assertModel(manifest.model, memberId);
       await deps.equip?.(memberId, manifest, manifest.skills);
       await service.ensureMain(memberId);
       try {
         const row = await transaction(async (db) => {
+          await db.select({ id: members.id }).from(members).where(eq(members.id, memberId)).for('update');
           const [{ n }] = (await db
             .select({ n: sql<number>`count(*)::int` })
             .from(agents)
@@ -930,6 +976,7 @@ export function createAgentsService(deps: {
           ? cleanAvatar(changes.avatar, (current.avatar.plant as PlantId) ?? 'sprout')
           : current.avatar,
       });
+      if (changes.folder_ids !== undefined) await assertFolders(memberId, next.folder_ids ?? []);
       if (canonical(next) === canonical(current)) return detail(memberId, row);
       if (next.name !== current.name) await assertName(memberId, next.name, row.id);
       if (next.model !== current.model) await assertModel(next.model, memberId);

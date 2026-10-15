@@ -1,3 +1,4 @@
+import { todoItemSchema } from './conversations.js';
 import { z } from 'zod';
 import { isoTime } from './common.js';
 
@@ -54,6 +55,7 @@ export const runEventSchema = z.object({
 });
 
 export const runDetailSchema = runSchema.extend({
+  todo: z.array(todoItemSchema).optional(),
   progress: z.number().min(0).max(100).nullable().default(null),
   file_ids: z.array(z.string()).default([]),
   findings: z.array(z.string()).default([]),

@@ -1,3 +1,5 @@
+import './u2.css';
+import { TodoPlan } from './TodoPlan';
 import { api } from '../lib/api';
 /**
  * One message (conversation.md): the member's own words in a light bubble on the right; an
@@ -250,6 +252,7 @@ export const MessageView = memo(function MessageView({
             <Markdown text={text} />
           </div>
         )}
+        <Reactions message={message} />
         <Attachments ids={message.attachments} mine />
         {message.event?.type === 'interjection' && (
           <span className="app-message-queue" role="status">
@@ -345,6 +348,7 @@ export const MessageView = memo(function MessageView({
           ) : (
             <Markdown text={text} />
           ))}
+        <Reactions message={message} />
         <Attachments ids={message.attachments} />
         {!streaming && message.citations.length > 0 && (
           <Sources
@@ -368,6 +372,7 @@ export const MessageView = memo(function MessageView({
         {requests.map((request) => (
           <RequestCard key={request.id} request={request} />
         ))}
+        <TodoPlan blocks={message.blocks} />
         <ProcessCard steps={steps} runId={message.run_id} />
         {!streaming && assistant && text && (
           <div className="app-message-actions is-reply">
@@ -449,3 +454,17 @@ export const MessageView = memo(function MessageView({
     </article>
   );
 });
+
+function Reactions({ message }: { message: Message }) {
+  const { t } = useI18n();
+  if (!message.reactions?.length) return null;
+  return (
+    <div className="app-message-reactions">
+      {message.reactions.map((reaction) => (
+        <span key={reaction.agent_id} role="img" aria-label={t('message.reaction', { emoji: reaction.emoji })}>
+          {reaction.emoji}
+        </span>
+      ))}
+    </div>
+  );
+}

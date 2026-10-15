@@ -161,7 +161,18 @@ async function stream(response, request) {
     chunk(response, { choices: [{ index: 0, delta: {}, finish_reason: 'stop' }] });
   };
 
-  if (/M24 source one: succeeded/.test(closing)) {
+  if (!afterTool && /(?:^|\n\n)u2 react\s*$/i.test(said)) {
+    tool('react', { emoji: '👍' });
+  } else if (!afterTool && /(?:^|\n\n)u2 file\s*$/i.test(said)) {
+    tool('file_create', { name: 'export', format: 'csv', content: 'Name,Count\nLin,3\nMei,5' });
+  } else if (!afterTool && /(?:^|\n\n)u2 plan\s*$/i.test(said)) {
+    tool('todo', {
+      items: [
+        { title: 'Compare options', status: 'done' },
+        { title: 'Prepare report', status: 'active' },
+      ],
+    });
+  } else if (/M24 source one: succeeded/.test(closing)) {
     await say('Helper reports combined.', 10);
   } else if (!afterTool && !mailWake && /^delegate helpers/i.test(said)) {
     tool('helper_run', {
@@ -245,7 +256,7 @@ async function stream(response, request) {
   } else if (!afterTool && mailWake) {
     tool('mail', { action: 'read', id: /\bmal_[0-9A-Z]{26}\b/.exec(closing)?.[0] ?? '' });
   } else if (afterTool && toolText.includes('mail_body')) {
-    await say(`Read the mail: ${/"subject":\s*"((?:[^"\\]|\\.)*)"/.exec(toolText)?.[1] ?? ''}`, 10);
+    tool('send_message', { text: `Read the mail: ${/"subject":\s*"((?:[^"\\]|\\.)*)"/.exec(toolText)?.[1] ?? ''}` });
   } else if (!afterTool && /^reply to the mail/i.test(said)) {
     const ids = [...JSON.stringify(messages).matchAll(/\bmal_[0-9A-Z]{26}\b/g)].map((match) => match[0]);
     tool('mail', { action: 'reply', id: ids.at(-1) ?? '', body: 'Thanks, we got it.' });

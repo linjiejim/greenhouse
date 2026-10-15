@@ -194,3 +194,5 @@ Read [migration-v1.md](docs/product/migration-v1.md). There is no in-place migra
 ## Contributing
 
 Start with [AGENTS.md](AGENTS.md), the [product documents](docs/product/) and [design system](docs/design-system/README.md). API contracts live in `packages/contract`; permission checks live in services and are shared by HTTP routes, Agent tools and MCP. The web interface includes Chinese and English dictionaries; sign-in follows the browser language and members can choose their own language. Every local commit needs typecheck, lint and relevant tests; releases come from `main` only. See [RELEASING.md](RELEASING.md).
+
+Agent 回复默认简短；可在对话里创建私有 Agent、设置一次提醒、跟踪长工作的计划和生成可下载文件。私有写入附回执与撤销；事件唤醒只在有值得告知的结果时发消息。

@@ -1,3 +1,4 @@
+import { TodoPlan } from './todo-plan';
 import { readAloud, useSpeech } from '../voice/read-aloud';
 /**
  * Messages of a conversation (content layer — solid system colors, never glass), in the order
@@ -318,6 +319,7 @@ export const MemberMessage = memo(function MemberMessage({
       ) : (
         content
       )}
+      {message.reactions?.length ? <View style={{ flexDirection: 'row', gap: 4 }}>{message.reactions.map(reaction=><Text key={reaction.agent_id} accessibilityLabel={reaction.emoji} style={styles.sourceChip}>{reaction.emoji}</Text>)}</View> : null}
       <MessageFiles ids={message.attachments} align={mine ? 'end' : 'start'} />
       {meta ? (
         <Text
@@ -454,6 +456,7 @@ export const AgentReply = memo(function AgentReply({
         body
       )}
       <View style={styles.replyTail}>
+        <TodoPlan blocks={message.blocks} />
         <MessageFiles ids={message.attachments} align="start" />
         {cards}
         {sources ? (

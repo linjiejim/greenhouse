@@ -134,6 +134,7 @@ export function createRunsService(deps: {
       const output = row.output && typeof row.output.text === 'string' ? row.output.text : null;
       return {
         ...toRun(row),
+        todo: (row.checkpoint?.todo ?? []) as NonNullable<RunDetail['todo']>,
         brief: row.brief,
         progress: typeof row.checkpoint?.progress === 'number' ? row.checkpoint.progress : null,
         file_ids: Array.isArray(row.output?.file_ids)

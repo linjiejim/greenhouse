@@ -1,3 +1,4 @@
+import { TodoPlan } from '../../conversation/TodoPlan';
 import { errorCodeText, errorText } from '../../lib/errors';
 import { ExtensionPanels } from '../../extensions/host';
 import { Attachments } from '../../conversation/Attachments';
@@ -57,6 +58,7 @@ function Detail({ run }: { run: RunDetail }) {
       </div>
       {run.progress !== null && <p role="status">{t('media.progress', { count: run.progress })}</p>}
       <Attachments ids={run.file_ids} />
+      <TodoPlan items={run.todo} />
       {run.error && (
         <p className="app-run-error" role="alert">
           {run.error.message}

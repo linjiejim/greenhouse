@@ -178,3 +178,10 @@ describe('tap ledger', () => {
     expect(ledger.first('a')).toBe(true); // forgotten beyond the window
   });
 });
+
+it('opens a one-off reminder push in its conversation without carrying its text',()=>{
+  const push={v:1,s:'station-u2',u:'member-u2',k:'other',nid:'notification-u2',sid:'conversation-u2',url:'/c/conversation-u2'};
+  expect(parsePushData(push)).toEqual(push);
+  expect(routeOf(parsePushData(push)!)).toEqual({kind:'conversation',id:'conversation-u2',request:''});
+  expect(shouldPresent({data:push,activeStationId:'station-u2',visibleConversation:'conversation-u2'})).toBe(false);
+});

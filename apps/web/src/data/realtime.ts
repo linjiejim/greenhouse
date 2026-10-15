@@ -230,6 +230,7 @@ export function applyEvent(client: QueryClient, event: Exclude<RealtimeEvent, { 
       return;
     case 'message.step':
       upsertStep(event.data.message_id, event.data.step);
+      if (event.data.step.tool === 'agent_mutation' && event.data.step.status === 'done') soon(client, ['agents']);
       return;
     case 'message.resumed':
       endStream(event.data.message_id);
@@ -242,6 +243,7 @@ export function applyEvent(client: QueryClient, event: Exclude<RealtimeEvent, { 
       return;
     case 'message.updated':
       replaceMessage(client, event.data.message);
+      if (event.data.message.steps?.some(step => step.tool === 'agent_mutation' && step.status === 'done') || (event.data.message.event?.type === 'write_receipt' && event.data.message.event.undone === true)) soon(client, ['agents']);
       endStream(event.data.message.id);
       return;
     case 'message.deleted':

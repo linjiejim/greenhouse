@@ -126,7 +126,7 @@ export async function assembleTools(input: {
     if (!surfacesOf(def).includes(context.surface)) continue;
     // Someone else's public Agent gets only the tools that act on the asker's own things.
     if (availability.publicAgent && !def.publicAgent) continue;
-    if (allowed && !allowed.has(def.name)) continue;
+    if (allowed && !allowed.has(def.name) && def.name !== 'send_message') continue;
     if (def.risk !== 'read' && !context.manifest.write) continue;
     if (context.readOnly && !def.idempotent && !['memory', 'conversation_query', 'mcp_call'].includes(def.name))
       continue;

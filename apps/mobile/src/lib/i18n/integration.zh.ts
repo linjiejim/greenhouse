@@ -1,4 +1,10 @@
 export const integration = {
+  planPending: '待开始',
+  planActive: '进行中',
+  planDone: '已完成',
+  planBlocked: '待解决',
+  planSkipped: '已跳过',
+  plan: '计划',
   fieldWeb: '请在网页端填写此字段',
   choices: '成员与关联记录按可见范围显示。',
   findings: '发现',

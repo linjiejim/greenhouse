@@ -1,0 +1,11 @@
+.app-message-reactions {
+  display: flex;
+  gap: var(--gh-space-1);
+  margin-block: var(--gh-space-1);
+}
+.app-message-reactions > span {
+  border: var(--gh-stroke-hairline) solid var(--gh-line);
+  border-radius: var(--gh-radius-sm);
+  padding: 0 var(--gh-space-1);
+  font: var(--gh-type-caption);
+}

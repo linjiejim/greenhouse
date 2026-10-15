@@ -341,3 +341,12 @@ custom 网页运行使用双层 `sandbox="allow-scripts"` iframe，均无 allow-
 ### 记忆规则拒绝（#70）
 
 `memory` 修改在后台返回 `memory_background_read_only`，本轮读取外部内容后返回 `memory_untrusted_content`（均为 403）。工具步骤持久化为 `failed`，`error.code` 保留上述稳定码，`error.message` 和模型收到的工具错误说明具体原因、不要重试；外部内容拒绝要求成员在新一轮对话中确认。原生与 Web 词典均映射这两个码。后台工具参数仍只提供 `recall`。
+
+### U2 对话与运行投影（#70）
+
+- GET 对话消息与实时 message.created／message.updated 增加可选 reactions：`[{agent_id,emoji}]`，固定集合 👍／✅／🙏／❤️／👀／🎉。不可见唤醒回复不会出现在列表、补拉和导出；正文只在 send_message 后公开。
+- 成员流式回复遇到工具调用，message.resumed（offset=已完成正文长度）清除当前步骤的前言；同一回复 id 保持稳定，工具文字留在 run_steps，不追加独立消息。
+- 消息 blocks 可带 `{type:"todo",items:[{title,status}]}`；GET /api/runs/:id 增加可选 todo 同形数组。
+- 提醒目前通过 Agent 的 remind 工具创建／分页列出／取消；due_at 必须为带 UTC 偏移的 ISO 时间，timezone 取成员配置。每个成员最多 100 个待提醒，一年内到期；到期 event.type=reminder，通知 target_type=conversation，沿用原生 push v1 路由及回复通知设置。撤销仍用 POST /api/runs/steps/:id/undo。
+- Agent 创建／更新输入与资料可带 folder_ids（最多 50）；工具只修改私有 Agent；当前 Agent 的指令须走 self 提议。schedule_mutation create 可带 agent_id，为成员另一个 Agent 设置循环工作。
+- file_create 的附件沿用 GET /api/files/:id 与签名 content 下载，未新增公开下载端点；可创建 txt／md／csv／json／xlsx，最大 1 MiB、每回合最多 10 个。撤销后原文件链接失效。

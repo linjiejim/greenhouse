@@ -351,6 +351,8 @@ CREATE TABLE "messages" (
 	"author_member_id" text,
 	"agent_id" text,
 	"content" text DEFAULT '' NOT NULL,
+	"visible" boolean DEFAULT true NOT NULL,
+	"reactions" jsonb DEFAULT '[]'::jsonb NOT NULL,
 	"blocks" jsonb DEFAULT '[]'::jsonb NOT NULL,
 	"attachments" jsonb DEFAULT '[]'::jsonb NOT NULL,
 	"quote" jsonb,
@@ -1202,6 +1204,21 @@ CREATE TABLE "extension_migrations" (
 	CONSTRAINT "extension_migrations_extension_id_name_pk" PRIMARY KEY("extension_id","name")
 );
 --> statement-breakpoint
+CREATE TABLE "reminders" (
+	"id" text PRIMARY KEY NOT NULL,
+	"owner_id" text NOT NULL,
+	"conversation_id" text NOT NULL,
+	"agent_id" text NOT NULL,
+	"text" text NOT NULL,
+	"due_at" timestamp with time zone NOT NULL,
+	"timezone" text NOT NULL,
+	"status" text DEFAULT 'pending' NOT NULL,
+	"revision" integer DEFAULT 1 NOT NULL,
+	"message_id" text,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
 ALTER TABLE "auth_links" ADD CONSTRAINT "auth_links_member_id_members_id_fk" FOREIGN KEY ("member_id") REFERENCES "public"."members"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "group_members" ADD CONSTRAINT "group_members_group_id_groups_id_fk" FOREIGN KEY ("group_id") REFERENCES "public"."groups"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "group_members" ADD CONSTRAINT "group_members_member_id_members_id_fk" FOREIGN KEY ("member_id") REFERENCES "public"."members"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
@@ -1296,6 +1313,8 @@ ALTER TABLE "base_template_versions" ADD CONSTRAINT "base_template_versions_temp
 ALTER TABLE "base_automation_runs" ADD CONSTRAINT "base_automation_runs_automation_id_base_automations_id_fk" FOREIGN KEY ("automation_id") REFERENCES "public"."base_automations"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "base_automations" ADD CONSTRAINT "base_automations_base_id_bases_id_fk" FOREIGN KEY ("base_id") REFERENCES "public"."bases"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "base_automations" ADD CONSTRAINT "base_automations_table_id_base_tables_id_fk" FOREIGN KEY ("table_id") REFERENCES "public"."base_tables"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "reminders" ADD CONSTRAINT "reminders_owner_id_members_id_fk" FOREIGN KEY ("owner_id") REFERENCES "public"."members"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "reminders" ADD CONSTRAINT "reminders_conversation_id_conversations_id_fk" FOREIGN KEY ("conversation_id") REFERENCES "public"."conversations"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 CREATE UNIQUE INDEX "auth_links_hash_key" ON "auth_links" USING btree ("token_hash");--> statement-breakpoint
 CREATE UNIQUE INDEX "auth_links_live_key" ON "auth_links" USING btree ("member_id") WHERE "auth_links"."consumed_at" IS NULL AND "auth_links"."revoked_at" IS NULL;--> statement-breakpoint
 CREATE INDEX "group_members_member_idx" ON "group_members" USING btree ("member_id");--> statement-breakpoint
@@ -1431,4 +1450,5 @@ CREATE UNIQUE INDEX "base_automation_runs_dedupe_key" ON "base_automation_runs" 
 CREATE INDEX "base_automation_runs_automation_idx" ON "base_automation_runs" USING btree ("automation_id","id");--> statement-breakpoint
 CREATE INDEX "base_automations_table_idx" ON "base_automations" USING btree ("table_id");--> statement-breakpoint
 CREATE INDEX "base_automations_due_idx" ON "base_automations" USING btree ("status","next_fire_at");--> statement-breakpoint
-CREATE INDEX "rate_limits_reset_idx" ON "rate_limits" USING btree ("reset_at");
+CREATE INDEX "rate_limits_reset_idx" ON "rate_limits" USING btree ("reset_at");--> statement-breakpoint
+CREATE INDEX "reminders_owner_idx" ON "reminders" USING btree ("owner_id","id");

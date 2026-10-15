@@ -74,8 +74,10 @@ describe('talking to a public Agent', () => {
       'ask_user',
       'conversation_query',
       'memory',
+      'react',
       'read_attachment',
       'skill_query',
+      'todo',
       'tool_output_read',
     ]);
 

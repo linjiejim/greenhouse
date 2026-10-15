@@ -191,3 +191,9 @@ it('debounces bursts independently for each query client', async () => {
     vi.useRealTimers();
   }
 });
+
+it('refreshes cached Agents after a tool creates or updates one',async()=>{
+  client.setQueryData(keys.agents('mine'),{items:[]});
+  applyEvent(client,{type:'message.step',data:{conversation_id:'cnv_1',message_id:'msg_2',step:{id:'s1',tool:'agent_mutation',summary:'Saved an Agent',status:'done'}}});
+  await vi.waitFor(()=>expect(client.getQueryState(keys.agents('mine'))?.isInvalidated).toBe(true));
+});

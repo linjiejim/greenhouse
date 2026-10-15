@@ -60,6 +60,8 @@ export interface ToolContext {
   signal: AbortSignal;
   backgroundComputer?: boolean;
   eventWoken?: boolean;
+  postMessage?(text: string): Promise<void>;
+  setTodo?(items: { title: string; status: string }[]): Promise<void>;
   /** The turn has read outside text (a page, another Agent, a file): some writes get stricter. */
   taint(): void;
   tainted(): boolean;
@@ -84,7 +86,7 @@ export interface ToolContext {
   /** Present when the model sees images: shows it one (a screenshot) with its next step. */
   attachImage?(image: Uint8Array, mediaType: string): void;
   /** Persists the single image shown with this reply, even for a text-only model. */
-  attachFile?(fileId: string): Promise<void>;
+  attachFile?(fileId: string, append?: boolean): Promise<void>;
 }
 
 /** What a decision on a tool's card means for the conversation. */

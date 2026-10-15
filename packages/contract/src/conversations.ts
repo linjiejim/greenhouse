@@ -111,6 +111,12 @@ export const messageStepSchema = z.object({
   recovered: z.boolean().optional(),
 });
 
+export const REACTION_EMOJIS = ['👍', '✅', '🙏', '❤️', '👀', '🎉'] as const;
+export const todoItemSchema = z.object({
+  title: z.string().trim().min(1).max(200),
+  status: z.enum(['pending', 'active', 'done', 'blocked', 'skipped']),
+});
+export type TodoItem = z.infer<typeof todoItemSchema>;
 export const messageSchema = z.object({
   id: z.string(),
   conversation_id: z.string(),
@@ -119,6 +125,7 @@ export const messageSchema = z.object({
   author_member_id: z.string().nullable(),
   agent_id: z.string().nullable(),
   content: z.string(),
+  reactions: z.array(z.object({ agent_id: z.string(), emoji: z.enum(REACTION_EMOJIS) })).optional(),
   blocks: z.array(z.unknown()),
   attachments: z.array(z.string()),
   quote: z.object({ message_id: z.string(), text: z.string() }).nullable(),

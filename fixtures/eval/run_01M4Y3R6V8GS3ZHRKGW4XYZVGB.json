@@ -298,6 +298,334 @@
         "description": "Propose new standing instructions for yourself after learning a lasting lesson about how to do your job. Give the complete new text and the reason. Nothing changes until the member accepts."
       },
       {
+        "name": "agent_mutation",
+        "description": "Create one of the member’s private Agents or update a private Agent’s profile, instructions, abilities (tools/connectors/write), attached readable knowledge folder_ids, equipped skills and allowed model. Runs immediately with receipt and undo. No publishing or sharing. For your own instructions use self instead. A recurring mail summary also needs schedule_mutation; creating an Agent alone does not schedule it.",
+        "schema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 24
+            },
+            "role": {
+              "type": "string",
+              "maxLength": 40
+            },
+            "description": {
+              "type": "string",
+              "maxLength": 500
+            },
+            "instructions": {
+              "type": "string",
+              "maxLength": 8000
+            },
+            "avatar": {
+              "type": "object",
+              "properties": {
+                "plant": {
+                  "type": "string",
+                  "enum": [
+                    "sprout",
+                    "ivy",
+                    "sage",
+                    "basil",
+                    "fern",
+                    "clover",
+                    "monstera",
+                    "ginkgo",
+                    "maple",
+                    "echeveria",
+                    "opuntia",
+                    "lotus",
+                    "eucalyptus",
+                    "lavender",
+                    "sunflower",
+                    "dandelion"
+                  ]
+                },
+                "tint": {
+                  "type": "string",
+                  "enum": [
+                    "plant",
+                    "sky",
+                    "violet",
+                    "rose",
+                    "coral",
+                    "gold",
+                    "teal"
+                  ]
+                }
+              },
+              "required": [
+                "plant"
+              ],
+              "additionalProperties": false
+            },
+            "model": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 160
+            },
+            "folder_ids": {
+              "maxItems": 50,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "maxLength": 64
+              }
+            },
+            "skills": {
+              "maxItems": 50,
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "connectors": {
+              "anyOf": [
+                {
+                  "maxItems": 50,
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "tools": {
+              "anyOf": [
+                {
+                  "maxItems": 100,
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "write": {
+              "type": "boolean"
+            },
+            "action": {
+              "type": "string",
+              "enum": [
+                "create",
+                "update"
+              ],
+              "description": ""
+            },
+            "change_note": {
+              "type": "string",
+              "maxLength": 200
+            },
+            "id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            }
+          },
+          "required": [
+            "action"
+          ],
+          "additionalProperties": false,
+          "description": "action=create requires: name, action\naction=update requires: action, id"
+        },
+        "risk": "write",
+        "idempotent": false
+      },
+      {
+        "name": "remind",
+        "description": "Create, list or cancel a one-off personal reminder in this thread. Convert the member’s local time using their time zone in context and supply due_at as ISO 8601 with UTC offset. Due reminders post in the thread and notify the member. Private reversible writes run immediately with receipt and undo. For recurring work use schedule_mutation.",
+        "schema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "enum": [
+                "create",
+                "list",
+                "cancel"
+              ],
+              "description": ""
+            },
+            "text": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1000
+            },
+            "due_at": {
+              "type": "string",
+              "format": "date-time",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+            },
+            "cursor": {
+              "type": "string"
+            },
+            "limit": {
+              "default": 50,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            },
+            "id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            }
+          },
+          "required": [
+            "action"
+          ],
+          "additionalProperties": false,
+          "description": "action=create requires: action, text, due_at\naction=list requires: action\naction=cancel requires: action, id"
+        },
+        "risk": "read",
+        "idempotent": false
+      },
+      {
+        "name": "file_create",
+        "description": "Create a downloadable txt, md, csv, json or xlsx file without a computer, up to 1 MiB. Supply content for text formats; for xlsx supply rows (at most 1000 rows and 50 columns). Files attach to the reply. Private reversible write with receipt and undo; unavailable in rooms.",
+        "schema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 160
+            },
+            "format": {
+              "type": "string",
+              "enum": [
+                "txt",
+                "md",
+                "csv",
+                "json",
+                "xlsx"
+              ]
+            },
+            "content": {
+              "type": "string",
+              "maxLength": 1048576
+            },
+            "rows": {
+              "maxItems": 1000,
+              "type": "array",
+              "items": {
+                "maxItems": 50,
+                "type": "array",
+                "items": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "maxLength": 10000
+                    },
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "required": [
+            "name",
+            "format"
+          ],
+          "additionalProperties": false
+        },
+        "risk": "write",
+        "idempotent": false
+      },
+      {
+        "name": "react",
+        "description": "Acknowledge the member’s latest message in the current turn with one emoji instead of a text reply. Ends this turn. Use only when an acknowledgement is enough.",
+        "schema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "emoji": {
+              "type": "string",
+              "enum": [
+                "👍",
+                "✅",
+                "🙏",
+                "❤️",
+                "👀",
+                "🎉"
+              ]
+            }
+          },
+          "required": [
+            "emoji"
+          ],
+          "additionalProperties": false
+        },
+        "risk": "read",
+        "idempotent": false
+      },
+      {
+        "name": "todo",
+        "description": "Maintain a short plan for long work. Replace the current run’s items with their latest statuses. Use this instead of narrating progress; the member sees it in the reply and run detail. Do not use for simple questions.",
+        "schema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "items": {
+              "minItems": 1,
+              "maxItems": 20,
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "title": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "pending",
+                      "active",
+                      "done",
+                      "blocked",
+                      "skipped"
+                    ]
+                  }
+                },
+                "required": [
+                  "title",
+                  "status"
+                ],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": [
+            "items"
+          ],
+          "additionalProperties": false
+        },
+        "risk": "read",
+        "idempotent": false
+      },
+      {
         "name": "conversation_query",
         "risk": "read",
         "schema": {
@@ -700,44 +1028,13 @@
       },
       {
         "name": "schedule_mutation",
-        "risk": "write",
+        "description": "Create, change, pause, resume or delete one of the member’s schedules. On create, agent_id selects another owned Agent (for example one just created); omit it for yourself. A schedule runs a self-contained brief in the background on a cron time (five fields: minute hour day month weekday, at most every 15 minutes) and reports back to your thread. The member approves the change first.",
         "schema": {
-          "type": "object",
           "$schema": "http://json-schema.org/draft-07/schema#",
-          "required": [
-            "action"
-          ],
+          "type": "object",
           "properties": {
-            "id": {
-              "type": "string"
-            },
-            "cron": {
-              "type": "string",
-              "maxLength": 100,
-              "minLength": 9
-            },
-            "name": {
-              "type": "string",
-              "maxLength": 80,
-              "minLength": 1
-            },
-            "brief": {
-              "type": "string",
-              "maxLength": 2000,
-              "minLength": 1
-            },
-            "quiet": {
-              "anyOf": [
-                {
-                  "type": "boolean",
-                  "default": false
-                },
-                {
-                  "type": "boolean"
-                }
-              ]
-            },
             "action": {
+              "type": "string",
               "enum": [
                 "create",
                 "update",
@@ -745,37 +1042,73 @@
                 "resume",
                 "delete"
               ],
-              "type": "string",
               "description": ""
             },
+            "agent_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "computer": {
+              "default": false,
+              "type": "boolean"
+            },
             "domains": {
+              "default": [],
+              "maxItems": 20,
               "type": "array",
               "items": {
                 "type": "string",
-                "pattern": "^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\\.)+[a-z]{2,63}$",
-                "maxLength": 253
-              },
-              "default": [],
-              "maxItems": 20
+                "maxLength": 253,
+                "pattern": "^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\\.)+[a-z]{2,63}$"
+              }
             },
-            "computer": {
-              "type": "boolean",
-              "default": false
+            "continue_after": {
+              "default": false,
+              "type": "boolean"
+            },
+            "quiet": {
+              "anyOf": [
+                {
+                  "default": false,
+                  "type": "boolean"
+                },
+                {
+                  "type": "boolean"
+                }
+              ]
+            },
+            "name": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 80
+            },
+            "brief": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000
+            },
+            "cron": {
+              "type": "string",
+              "minLength": 9,
+              "maxLength": 100
             },
             "timezone": {
               "type": "string",
               "maxLength": 64
             },
-            "continue_after": {
-              "type": "boolean",
-              "default": false
+            "id": {
+              "type": "string"
             }
           },
-          "description": "action=create requires: action, name, brief, cron\naction=update requires: action, id\naction=pause|resume|delete requires: action, id",
-          "additionalProperties": false
+          "required": [
+            "action"
+          ],
+          "additionalProperties": false,
+          "description": "action=create requires: action, name, brief, cron\naction=update requires: action, id\naction=pause|resume|delete requires: action, id"
         },
-        "idempotent": false,
-        "description": "Create, change, pause, resume or delete one of your schedules. A schedule runs a self-contained brief in the background on a cron time (five fields: minute hour day month weekday, at most every 15 minutes) and reports back to your thread. The member approves the change first."
+        "risk": "write",
+        "idempotent": false
       },
       {
         "name": "web_search",
@@ -2572,7 +2905,7 @@
     }
   ],
   "expected": {
-    "system": "07388c1c56fdc82034c7cf28ffd86554259a27e7ae757e161e9d4c37269f3c24",
+    "system": "622009c249f0de40baf8619c3ef3697e7ad9ecef6f44becdb94a5c26a4435da4",
     "tail": "4008af2b8e81421c5fb0140050fa1e417c727aa6a10bbf87f367f04b5a2b5fe6",
     "tools": [
       {
@@ -2586,6 +2919,26 @@
       {
         "name": "self",
         "hash": "edf984d92b7e18356761166d1cd450e62d1d24b4cf4f4210965102aabe3635dc"
+      },
+      {
+        "name": "agent_mutation",
+        "hash": "1dde55f55c5e966e6f1b048bddd0a97fd1421d961a5a8b18ec69abec08b832e3"
+      },
+      {
+        "name": "remind",
+        "hash": "7af96031559dc283429274bdece6f397d6e6accb987e5c03e051ab6280c3fb0b"
+      },
+      {
+        "name": "file_create",
+        "hash": "7a21a7e798edb450bb473207dc44d55d5d24e99050be526976ac99bea3086f42"
+      },
+      {
+        "name": "react",
+        "hash": "b729552f0f63cedd374cc8317bff684cff8ccec4df75d5d1bf36b7a9686591d7"
+      },
+      {
+        "name": "todo",
+        "hash": "a0b81e60fda04c7442b56284a5529ef5433e3e7e4131a56e4aafd43cc22fb05c"
       },
       {
         "name": "conversation_query",
@@ -2629,7 +2982,7 @@
       },
       {
         "name": "schedule_mutation",
-        "hash": "98013064bb64c16c58be64ff4c01e4667c1c43a4c3867012e697ace4cdd4698d"
+        "hash": "cd84647a995d53facbbafc90ec32fa6c4000242d5f98d02935c3b6e61225ec7f"
       },
       {
         "name": "web_search",

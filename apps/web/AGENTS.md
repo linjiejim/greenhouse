@@ -87,3 +87,5 @@ The v2 web app. Product scope is docs/product/prd.md §6–7; layout and compone
 - Operational pause errors use errorText with details.switch so computer, background-run and outbound-mail reasons follow the member's language.
 
 - Memory rule refusals keep stable codes (memory_background_read_only / memory_untrusted_content); run-step errors use the dictionary mapping and never suggest retrying the refused write.
+
+- Reactions are chips under member messages from message.updated; todo blocks reuse the process card and run detail. Generated files use existing signed attachment downloads.

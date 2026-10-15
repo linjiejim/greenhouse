@@ -110,6 +110,8 @@ export const messages = pgTable(
     authorMemberId: text('author_member_id').references(() => members.id, { onDelete: 'set null' }),
     agentId: text('agent_id').references(() => agents.id, { onDelete: 'set null' }),
     content: text('content').notNull().default(''),
+    visible: boolean('visible').notNull().default(true),
+    reactions: json<{ agent_id: string; emoji: string }[]>('reactions', []),
     blocks: json<unknown[]>('blocks', []),
     attachments: json<string[]>('attachments', []),
     quote: jsonOrNull<{ messageId: string; text: string }>('quote'),

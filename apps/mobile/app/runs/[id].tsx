@@ -1,3 +1,4 @@
+import { TodoPlan } from '../../src/chat/todo-plan';
 import { operationErrorText } from '../../src/api/operation-error';
 /**
  * A run (RUN-02; a pushed page): its status, who and where from, what needs the member (its
@@ -222,6 +223,7 @@ export default function RunPage() {
           </View>
         ) : null}
 
+        <TodoPlan items={run.todo} />
         <ListSection header={t('runs.steps')}>
           {run.steps.length ? (
             run.steps.map((step) => (

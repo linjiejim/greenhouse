@@ -55,6 +55,7 @@ export function applyEvent(event: ClientEvent): void {
       return;
     case 'message.step':
       upsertStep(event.data.message_id, event.data.step);
+      if(event.data.step.tool === 'agent_mutation' && event.data.step.status === 'done') soon('agents',()=>workspace().refreshAgents());
       return;
     case 'message.resumed': {
       const {conversation_id, message_id, offset} = event.data;
@@ -65,6 +66,7 @@ export function applyEvent(event: ClientEvent): void {
     }
     case 'message.updated':
       threads().addMessages(event.data.message.conversation_id, [event.data.message]);
+      if (event.data.message.steps?.some(step => step.tool === 'agent_mutation' && step.status === 'done') || (event.data.message.event?.type === 'write_receipt' && event.data.message.event.undone === true)) soon('agents',()=>workspace().refreshAgents());
       endStream(event.data.message.id);
       return;
     case 'message.deleted':
