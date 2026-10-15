@@ -8,6 +8,8 @@ An open-source, self-hosted workspace where members work with their own AI Agent
 
 [中文产品说明](docs/product/prd.md) · [Feature status](docs/product/features.md) · [API](docs/product/api.md) · [Provider configuration](docs/product/providers.md) · [MIT license](LICENSE)
 
+Decisions stay in their source conversations. New requests for the same target replace earlier pending cards; handled or withdrawn requests clear their notifications automatically. Notifications use one list, with pending decisions marked on the corresponding conversation.
+
 ## A look inside
 
 <picture>

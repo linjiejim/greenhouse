@@ -19,13 +19,14 @@ import { relativeTimeNow } from '../lib/time-words';
 import { useT } from '../lib/i18n';
 import type { NeedsYou } from '../shared/contract';
 import { makeStyles, radius, space, typo, useTheme, weight } from '../theme';
+import { openConversation } from '../shell/nav';
 import { Icon } from '../ui/core';
 import { useFontScaleKey } from '../ui/font-scale';
 import { NativeButton } from '../ui/button';
 import { decide } from './decide';
 import { captureIdentity } from '../data/identity';
 import { inlineQuestion } from './question';
-import { KIND_ICON, cardBody, requestStatus, secondsLeft } from './model';
+import { KIND_ICON, cardBody, requestStatus, secondsLeft, retiredRequest } from './model';
 
 export const RequestCard = memo(function RequestCard({
   request,
@@ -76,62 +77,71 @@ export const RequestCard = memo(function RequestCard({
   const tone = status.tone === 'warning' ? c.orange : status.tone === 'success' ? c.green : c.secondaryLabel;
   const summary = plainText(body.reason || body.details.map((detail) => detail.value).join(' · ') || body.body);
   const meta = [context, relativeTimeNow(request.created_at)].filter(Boolean).join(' · ');
+  const retired = retiredRequest(request);
   return (
-    <ChatCard
-      variant={pending ? 'fill' : 'outline'}
-      inset={inset}
-      onPress={choice ? undefined : () => router.push({ pathname: '/request', params: { id: request.id } })}
-      accessibilityLabel={[request.title, statusWord, summary].filter(Boolean).join(t('common.listSep'))}
-      accessibilityHint={t('requests.openHint')}
-      style={[pending && styles.pending, highlighted && styles.highlighted]}
-    >
-      <Animated.View
-        key={fontKey}
-        layout={LinearTransition.duration(200).reduceMotion(ReduceMotion.System)}
-        style={styles.body}
-      >
-        <View style={[styles.head, large && { flexWrap: 'wrap' }]}>
-          <Icon name={KIND_ICON[request.kind]} size={16} color={pending ? c.orange : c.secondaryLabel} />
-          <Text style={[styles.title, large && { flexBasis: '80%' }]} numberOfLines={large ? 0 : 2}>
-            {request.title}
-          </Text>
-          <View style={[styles.status, { borderColor: tone }]}>
-            <Text style={[styles.statusText, { color: tone }]}>{statusWord}</Text>
+    <Animated.View layout={LinearTransition.duration(200).reduceMotion(ReduceMotion.System)}>
+      {retired ? (
+        <Text
+          style={[styles.summary, styles.retired, inset && styles.inset]}
+          accessibilityRole={retired.replacement ? 'link' : undefined}
+          onPress={retired.replacement ? () => openConversation(router, retired.replacement!) : undefined}
+        >
+          {t(`requests.status.${retired.word}` as 'requests.status.needsYou')}
+        </Text>
+      ) : (
+        <ChatCard
+          variant={pending ? 'fill' : 'outline'}
+          inset={inset}
+          onPress={choice ? undefined : () => router.push({ pathname: '/request', params: { id: request.id } })}
+          accessibilityLabel={[request.title, statusWord, summary].filter(Boolean).join(t('common.listSep'))}
+          accessibilityHint={t('requests.openHint')}
+          style={[pending && styles.pending, highlighted && styles.highlighted]}
+        >
+          <View key={fontKey} style={styles.body}>
+            <View style={[styles.head, large && { flexWrap: 'wrap' }]}>
+              <Icon name={KIND_ICON[request.kind]} size={16} color={pending ? c.orange : c.secondaryLabel} />
+              <Text style={[styles.title, large && { flexBasis: '80%' }]} numberOfLines={large ? 0 : 2}>
+                {request.title}
+              </Text>
+              <View style={[styles.status, { borderColor: tone }]}>
+                <Text style={[styles.statusText, { color: tone }]}>{statusWord}</Text>
+              </View>
+            </View>
+            {summary ? (
+              <Text style={styles.summary} numberOfLines={large ? 0 : 3}>
+                {summary}
+              </Text>
+            ) : null}
+            {choice ? (
+              <View style={styles.choices}>
+                <Text style={styles.summary}>{choice.label}</Text>
+                {choice.options!.map((option) => (
+                  <NativeButton
+                    key={option}
+                    label={option}
+                    icon={selected === option ? 'check' : undefined}
+                    variant={selected === option ? 'prominent' : 'tinted'}
+                    disabled={!pending || busy || picked !== null}
+                    onPress={() => void answer(option)}
+                  />
+                ))}
+              </View>
+            ) : null}
+            <View style={styles.foot}>
+              <Text style={styles.meta} numberOfLines={large ? 0 : 1}>
+                {meta}
+              </Text>
+              {pending && !choice ? (
+                <>
+                  <Text style={styles.open}>{t('requests.review')}</Text>
+                  <Icon name="chevR" size={12} weight="semibold" color={c.accent} />
+                </>
+              ) : null}
+            </View>
           </View>
-        </View>
-        {summary ? (
-          <Text style={styles.summary} numberOfLines={large ? 0 : 3}>
-            {summary}
-          </Text>
-        ) : null}
-        {choice ? (
-          <View style={styles.choices}>
-            <Text style={styles.summary}>{choice.label}</Text>
-            {choice.options!.map((option) => (
-              <NativeButton
-                key={option}
-                label={option}
-                icon={selected === option ? 'check' : undefined}
-                variant={selected === option ? 'prominent' : 'tinted'}
-                disabled={!pending || busy || picked !== null}
-                onPress={() => void answer(option)}
-              />
-            ))}
-          </View>
-        ) : null}
-        <View style={styles.foot}>
-          <Text style={styles.meta} numberOfLines={large ? 0 : 1}>
-            {meta}
-          </Text>
-          {pending && !choice ? (
-            <>
-              <Text style={styles.open}>{t('requests.review')}</Text>
-              <Icon name="chevR" size={12} weight="semibold" color={c.accent} />
-            </>
-          ) : null}
-        </View>
-      </Animated.View>
-    </ChatCard>
+        </ChatCard>
+      )}
+    </Animated.View>
   );
 });
 
@@ -148,6 +158,8 @@ function useSecondsLeft(request: NeedsYou): number | null {
 }
 
 const useStyles = makeStyles((c) => ({
+  retired: { paddingVertical: space.sm },
+  inset: { marginHorizontal: space.margin },
   pending: { borderWidth: 1, borderColor: c.orange },
   highlighted: { borderWidth: 2, borderColor: c.accent },
   body: { padding: space.md, gap: space.sm },

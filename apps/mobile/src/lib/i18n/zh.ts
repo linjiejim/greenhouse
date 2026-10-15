@@ -81,7 +81,6 @@ export const zh: Catalog = {
   shell: {
     openDrawer: '展开目录',
     notifications: '通知',
-    notificationsCount: '通知，{n} 件需要你',
     notificationsUnread: '通知，有未读',
   },
   directory: {
@@ -295,6 +294,9 @@ export const zh: Catalog = {
       handedBack: '已交还',
       rejected: '已拒绝',
       expired: '已过期',
+      superseded: '已被新的请求取代',
+      withdrawn: '请求已撤回',
+      answeredInChat: '已在对话中回答',
       canceled: '已取消',
     },
     body: {
@@ -305,12 +307,9 @@ export const zh: Catalog = {
   },
   notifications: {
     title: '通知',
-    needsYou: '需要你',
-    all: '全部',
     markAllRead: '全部标为已读',
     markFailed: '没能标为已读',
     empty: '没有新通知',
-    nothingNeedsYou: '没有需要你处理的事',
     loadFailed: '通知加载失败',
   },
   agents: {
@@ -428,6 +427,9 @@ export const zh: Catalog = {
       needsYou: '需要你',
       done: '已完成',
       failed: '失败',
+      superseded: '已被新的请求取代',
+      withdrawn: '请求已撤回',
+      answeredInChat: '已在对话中回答',
       canceled: '已取消',
     },
   },

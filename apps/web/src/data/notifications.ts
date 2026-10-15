@@ -2,7 +2,7 @@ import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tansta
 import { api } from '../lib/api';
 import { keys } from './query';
 
-/** The one badge: how many things need the member, else whether anything is unread. */
+/** The notification badge counts only effective unread pointers. */
 export function useNotificationSummary() {
   return useQuery({ queryKey: keys.summary, queryFn: api.notifications.summary, refetchInterval: 120_000 });
 }

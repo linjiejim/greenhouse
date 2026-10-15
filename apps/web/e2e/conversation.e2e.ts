@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
-import { composer, open } from './fixtures';
+import { composer, open, sendForRequest } from './fixtures';
+import { apiAs } from './api';
 
 test('a message streams a reply, and the thread keeps its order', async ({ page }) => {
   await open(page);
@@ -30,13 +31,13 @@ test('stop ends a long reply; a message sent meanwhile is queued and answered af
   await expect(page.getByRole('button', { name: '发送' })).toBeVisible();
 });
 
-test('a question card: answering it lets the Agent go on', async ({ page }) => {
-  await open(page);
-  await composer(page).fill('ask me where to go');
-  await composer(page).press('Enter');
+test('a question card: answering it lets the Agent go on', async ({ page, request }) => {
+  const thread = await apiAs<{ id: string }>(request, 'lin', 'POST', '/api/conversations', { kind: 'chat' });
+  await open(page, `/#/c/${thread.id}`);
+  await sendForRequest(page, thread.id, 'ask me where to go');
   const card = page.locator('.gh-chat-card', { hasText: 'Which city?' });
   await expect(card.getByText('需要你')).toBeVisible();
-  await expect(page.getByRole('button', { name: /需要你/ }).or(page.locator('.app-rail-count'))).toBeVisible();
+  await expect(page.locator('.app-rail-dot').first()).toBeVisible();
   await card.getByRole('button', { name: '提交回答' }).click();
   const form = page.getByRole('dialog', { name: 'Which city?' });
   await form.getByLabel('City').fill('Hangzhou');

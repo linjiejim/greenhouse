@@ -1,6 +1,6 @@
 /**
- * In-app notifications: a pointer back to where something happened. Permanent and idempotent
- * (one per member and dedupe key); only the read state changes. Every source calls publish(),
+ * In-app notifications: a pointer back to where something happened. Idempotent
+ * (one per member and dedupe key); settled request pointers are cleared. Every source calls publish(),
  * which also queues the delivery to the member's other channels in the same transaction.
  */
 
@@ -116,6 +116,7 @@ export function createNotificationsService(deps: { hub: Hub; deliveries: Deliver
         .where(
           and(
             eq(notifications.memberId, memberId),
+            isNull(notifications.clearedAt),
             query.unread === 'true' ? isNull(notifications.readAt) : undefined,
             before ? lt(notifications.id, before) : undefined,
           ),
@@ -132,6 +133,7 @@ export function createNotificationsService(deps: { hub: Hub; deliveries: Deliver
         .where(
           and(
             eq(notifications.memberId, memberId),
+            isNull(notifications.clearedAt),
             isNull(notifications.readAt),
             'ids' in input ? inArray(notifications.id, input.ids) : undefined,
           ),
@@ -148,6 +150,7 @@ export function createNotificationsService(deps: { hub: Hub; deliveries: Deliver
         .where(
           and(
             eq(notifications.memberId, memberId),
+            isNull(notifications.clearedAt),
             eq(notifications.targetType, 'conversation'),
             eq(notifications.targetId, conversationId),
             inArray(notifications.kind, ['reply', 'mention']),
@@ -159,15 +162,20 @@ export function createNotificationsService(deps: { hub: Hub; deliveries: Deliver
       announceRead(memberId, read);
     },
 
-    /** Notifications about a request are read once it is decided. */
-    async markRequestRead(requestId: string): Promise<void> {
+    /** Keep dedupe and delivery history while removing the pointer from lists and counts. */
+    async clearRequest(requestId: string): Promise<void> {
       await getDb()
         .update(notifications)
-        .set({ readAt: sql`now()` })
-        .where(and(eq(notifications.requestId, requestId), isNull(notifications.readAt)));
+        .set({ clearedAt: sql`now()`, readAt: sql`coalesce(${notifications.readAt}, now())` })
+        .where(and(eq(notifications.requestId, requestId), isNull(notifications.clearedAt)));
     },
 
-    /** The one badge: what needs the member, else whether anything is unread. */
+    /** Called with request announcements after the enclosing transaction commits. */
+    announceRemoved(memberId: string, requestId: string) {
+      deps.hub.publish([memberId], { type: 'notification.removed', data: { request_id: requestId } });
+    },
+
+    /** Pending totals support conversation/widget sync; the notification badge uses unread. */
     async summary(memberId: string): Promise<{ needs_you: number; unread: number }> {
       const [[pending], [unread]] = await Promise.all([
         getDb()
@@ -177,7 +185,9 @@ export function createNotificationsService(deps: { hub: Hub; deliveries: Deliver
         getDb()
           .select({ n: count() })
           .from(notifications)
-          .where(and(eq(notifications.memberId, memberId), isNull(notifications.readAt))),
+          .where(
+            and(eq(notifications.memberId, memberId), isNull(notifications.clearedAt), isNull(notifications.readAt)),
+          ),
       ]);
       return { needs_you: pending?.n ?? 0, unread: unread?.n ?? 0 };
     },

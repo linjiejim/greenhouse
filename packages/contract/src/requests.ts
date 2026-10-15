@@ -10,6 +10,8 @@ export const REQUEST_STATUSES = [
   'handed_back',
   'expired',
   'canceled',
+  'superseded',
+  'withdrawn',
 ] as const;
 
 export const questionFieldSchema = z.object({

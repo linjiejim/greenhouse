@@ -1238,6 +1238,10 @@ button.gh-chat-card-header:focus-visible {
 
 /* ─── ChatCard: one layout for results, process and decisions ─── */
 
+.gh-card-summary {
+  padding-block: var(--gh-space-2);
+  color: var(--gh-secondary);
+}
 .gh-chat-card {
   transition:
     border-color var(--gh-duration-base) var(--gh-ease-standard),

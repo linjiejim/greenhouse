@@ -19,7 +19,7 @@ export const NOTIFICATION_KINDS = [
 ] as const;
 export type NotificationKind = (typeof NOTIFICATION_KINDS)[number];
 
-/** In-app notifications are permanent and idempotent; only the read state changes. */
+/** Idempotent pointers; request notifications are cleared when their request leaves pending. */
 export const notifications = pgTable(
   'notifications',
   {
@@ -37,6 +37,7 @@ export const notifications = pgTable(
     payload: json<Record<string, unknown>>('payload', {}),
     dedupeKey: text('dedupe_key').notNull(),
     readAt: at('read_at'),
+    clearedAt: at('cleared_at'),
     createdAt: createdAt(),
   },
   (t) => [

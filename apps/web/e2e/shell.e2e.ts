@@ -49,10 +49,8 @@ test('the rail: notifications, runs and the account menu; admins see 管理', as
   await open(page);
   await page.getByRole('button', { name: '通知' }).click();
   await expect(page).toHaveURL(/#\/notifications$/);
-  // Earlier cases may leave a request waiting; this case checks navigation in either state.
-  await expect(page.getByRole('main').getByRole('heading', { name: '需要你', level: 1 })).toBeVisible();
-  await page.getByRole('link', { name: '全部' }).click();
-  await expect(page).toHaveURL(/#\/notifications\?view=all$/);
+  await expect(page.getByRole('main').getByRole('heading', { name: '通知', level: 1 })).toBeVisible();
+  await expect(page.getByRole('link', { name: '需要你', exact: true })).toHaveCount(0);
 
   await page.getByRole('button', { name: '运行' }).click();
   await expect(page).toHaveURL(/#\/runs$/);

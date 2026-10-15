@@ -124,3 +124,5 @@
 - Agent author rows are room-only and sit above full-width replies. Thinking never adds an avatar. Replies expose a small NativeMenu; chat Markdown passes calm, while knowledge documents retain their type hierarchy.
 - A one-field ask_user choice with 1–6 options answers in the card; all other questions keep the request route. Disable choices during the write, show the optimistic pick, restore on failure and read persisted selection from result.answers. Do not change request lifecycle rules for presentation.
 - Readable custom light colors live in src/theme/palette.ts; theme.ts maps them to native dynamic colors while retaining system dark backgrounds. Keep contrast tests React-free.
+
+- Notifications have one list and an unread badge; pending requests belong to their conversations. notification.removed clears request pointers on open screens. Superseded/withdrawn cards collapse and replacements open the new card in its source conversation.

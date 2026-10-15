@@ -1,7 +1,7 @@
 import { mkdirSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
 import { apiAs } from './api';
-import { composer, open } from './fixtures';
+import { composer, open, sendForRequest } from './fixtures';
 
 // Screenshots for review go with the other test output, never into the repo.
 const pictures = new URL('../test-results/screens/', import.meta.url).pathname;
@@ -81,8 +81,7 @@ test('a shared card grants an exact folder scope and its Agent abilities can rev
     agent_id: agent.id,
   });
   await open(page, `/#/c/${thread.id}`);
-  await composer(page).fill(`shared draft in ${folder.id}`);
-  await composer(page).press('Enter');
+  await sendForRequest(page, thread.id, `shared draft in ${folder.id}`);
   const allow = page.getByRole('switch', { name: '以后这个文件夹都允许' });
   await expect(allow).toBeVisible();
   const cards = await apiAs<{ items: { payload: { summary: string; details: unknown } }[] }>(

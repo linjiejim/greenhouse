@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import type { NeedsYou } from '../shared/contract';
-import { cardActions, cardBody, checkAnswers, requestStatus, secondsLeft, standingScope } from './model';
+import {
+  cardActions,
+  cardBody,
+  checkAnswers,
+  requestStatus,
+  secondsLeft,
+  standingScope,
+  retiredRequest,
+} from './model';
 
 function card(partial: Partial<NeedsYou> = {}): NeedsYou {
   return {
@@ -182,4 +190,19 @@ it('preserves only declared approval preview formats without exposing execution 
     { label: '其他', value: '<script>bad</script>' },
   ]);
   expect(JSON.stringify(body)).not.toContain('secret');
+});
+
+describe('retired cards', () => {
+  it('collapses superseded and withdrawn cards without decision actions', () => {
+    const replaced = card({ status: 'superseded', result: { replacement_request_id: 'newer' } });
+    expect(retiredRequest(replaced)).toEqual({ word: 'superseded', replacement: { id: 'c1', request: 'newer' } });
+    expect(cardActions(replaced, true)).toEqual([]);
+    expect(requestStatus(replaced).tone).toBe('neutral');
+    expect(retiredRequest(card({ status: 'withdrawn' }))).toEqual({ word: 'withdrawn', replacement: null });
+    expect(retiredRequest(card({ status: 'superseded', result: { reason: 'answered in chat' } }))).toEqual({
+      word: 'answeredInChat',
+      replacement: null,
+    });
+    expect(retiredRequest(card())).toBeNull();
+  });
 });

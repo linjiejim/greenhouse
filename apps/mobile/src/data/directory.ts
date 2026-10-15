@@ -108,11 +108,10 @@ export function moodOf(conversation: Conversation | null | undefined): 'thinking
 }
 
 /** The bell's one badge: the needs-you count, else a dot for anything unread, else nothing. */
-export type Badge = { kind: 'count'; text: string } | { kind: 'dot' } | null;
+export type Badge = { kind: 'dot' } | null;
 
 export function badgeOf(summary: { needs_you: number; unread: number } | null | undefined): Badge {
   if (!summary) return null;
-  if (summary.needs_you > 0) return { kind: 'count', text: summary.needs_you > 99 ? '99+' : String(summary.needs_you) };
   return summary.unread > 0 ? { kind: 'dot' } : null;
 }
 

@@ -9,8 +9,8 @@ import { FilteredAgents, FilteredSkills, FilteredRuns } from './FilteredDirector
 import { AppsDirectory } from '../pages/apps/AppsDirectory';
 import { useRef, useState, type KeyboardEvent } from 'react';
 import {
-  Activity,
   Bell,
+  Activity,
   CalendarClock,
   CheckCircle2,
   Inbox,
@@ -97,27 +97,17 @@ function RunsList({ route }: { route: Route }) {
   );
 }
 
-function NotificationsList({ route }: { route: Route }) {
+function NotificationsList() {
   const t = useT();
   const summary = useNotificationSummary();
-  const view = route.page === 'notifications' ? route.view : null;
   return (
-    <>
-      <DirectoryRow
-        leading={glyph(Bell)}
-        title={t('notifications.needsYou')}
-        href={href({ page: 'notifications', view: 'needs' })}
-        active={view === 'needs'}
-        signal={{ needs: summary.data?.needs_you }}
-      />
-      <DirectoryRow
-        leading={glyph(Inbox)}
-        title={t('notifications.all')}
-        href={href({ page: 'notifications', view: 'all' })}
-        active={view === 'all'}
-        signal={{ unread: (summary.data?.unread ?? 0) > 0 }}
-      />
-    </>
+    <DirectoryRow
+      leading={glyph(Inbox)}
+      title={t('notifications.title')}
+      href={href({ page: 'notifications' })}
+      active
+      signal={{ unread: (summary.data?.unread ?? 0) > 0 }}
+    />
   );
 }
 
@@ -301,7 +291,7 @@ export function Directory({
           ))}
         {module === 'runs' &&
           (query.trim() ? <FilteredRuns route={route} query={query} /> : <RunsList route={route} />)}
-        {module === 'notifications' && <NotificationsList route={route} />}
+        {module === 'notifications' && <NotificationsList />}
         {module === 'settings' &&
           SETTINGS.map((section) => (
             <DirectoryRow

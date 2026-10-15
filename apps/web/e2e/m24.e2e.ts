@@ -49,8 +49,9 @@ test('publication chooses knowledge folders and the public Agent cites only that
   await context.close();
 });
 
-test('helper runs appear within the parent process card with completion summaries', async ({ page }) => {
-  await open(page);
+test('helper runs appear within the parent process card with completion summaries', async ({ page, request }) => {
+  const thread = await apiAs<{ id: string }>(request, 'lin', 'POST', '/api/conversations', { kind: 'chat' });
+  await open(page, `/#/c/${thread.id}`);
   await composer(page).fill('delegate helpers');
   await composer(page).press('Enter');
   await expect(page.getByText('Helper reports combined.', { exact: true })).toBeVisible({ timeout: 30000 });

@@ -23,6 +23,7 @@ export function ChatCard({
   footer,
   footerEnd = false,
   className,
+  collapsed,
   children,
 }: {
   icon?: ReactNode;
@@ -39,12 +40,15 @@ export function ChatCard({
   /** Explicit end alignment for standalone previews; conversation cards use the default start alignment. */
   footerEnd?: boolean;
   className?: string;
+  /** Retired decisions retain a neutral summary and animate out of their full frame. */
+  collapsed?: ReactNode;
   children?: ReactNode;
 }) {
   const [open, setOpen] = useState(defaultOpen);
   const element = useRef<HTMLElement>(null);
   const previousHeight = useRef<number | null>(null);
   const animation = useRef<Animation | null>(null);
+  const isCollapsed = !!collapsed;
   useLayoutEffect(() => {
     const card = element.current;
     if (!card) return;
@@ -70,7 +74,7 @@ export function ChatCard({
       },
     );
     return () => animation.current?.cancel();
-  }, [attention, open]);
+  }, [attention, open, isCollapsed]);
   const heading = (
     <>
       {expandable ? (
@@ -89,18 +93,27 @@ export function ChatCard({
     </>
   );
   return (
-    <section ref={element} className={cx('gh-chat-card', attention && 'is-attention', className)}>
-      {expandable ? (
-        <button type="button" className="gh-chat-card-header" aria-expanded={open} onClick={() => setOpen(!open)}>
-          {heading}
-        </button>
+    <section
+      ref={element}
+      className={cx(collapsed ? 'gh-card-summary' : 'gh-chat-card', attention && 'is-attention', className)}
+    >
+      {collapsed ? (
+        collapsed
       ) : (
-        <header className="gh-chat-card-header">{heading}</header>
+        <>
+          {expandable ? (
+            <button type="button" className="gh-chat-card-header" aria-expanded={open} onClick={() => setOpen(!open)}>
+              {heading}
+            </button>
+          ) : (
+            <header className="gh-chat-card-header">{heading}</header>
+          )}
+          {(!expandable || open) && Children.toArray(children).length > 0 && (
+            <div className="gh-chat-card-body">{children}</div>
+          )}
+          {footer && <footer className={cx('gh-chat-card-footer', footerEnd && 'is-end')}>{footer}</footer>}
+        </>
       )}
-      {(!expandable || open) && Children.toArray(children).length > 0 && (
-        <div className="gh-chat-card-body">{children}</div>
-      )}
-      {footer && <footer className={cx('gh-chat-card-footer', footerEnd && 'is-end')}>{footer}</footer>}
     </section>
   );
 }

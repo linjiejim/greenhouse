@@ -15,7 +15,7 @@ The v2 web app. Product scope is docs/product/prd.md §6–7; layout and compone
 - Server state lives in the query cache; realtime events patch it (messages, conversation flags) or mark queries stale. Never keep a second copy in component state.
 - message.resumed clears the live suffix and truncates a streaming cached reply to its completed offset before continuation. The small event crosses replicas even when the full prefix needs resync; never truncate an already complete reply.
 - Streaming text never goes through the cache: streams.ts holds it per message and joins it to the saved partial text by offset.
-- A conversation that missed events catches up with `?after=` (realtime.ts `catchUp`): on `conversation.resync`, and after a reconnect for the conversations on screen. A reconnect refetches only those conversations' own queries and the needs-you badge, and marks every other query stale; never refetch everything at once (a server restart reconnects every client together).
+- A conversation that missed events catches up with `?after=` (realtime.ts `catchUp`): on `conversation.resync`, and after a reconnect for the conversations on screen. A reconnect refetches only those conversations' own queries and the notification unread badge, and marks every other query stale; never refetch everything at once (a server restart reconnects every client together).
 - Catching up never removes what arrived after the answer it got, and never takes a finished reply back to a partial one.
 - The API client (@greenhouse/contract/client) is the only way to the server. Its errors are ApiClientError; branch on `code`, show the dictionary's words.
 - Hide what this member cannot use: modules from me.modules, configured capabilities from me.capabilities (no computer entries without sandbox). Voice falls back first: the microphone uses the STT service when me.capabilities.stt, else the browser's recognition, else it is hidden; read-aloud uses TTS, else speechSynthesis, else it is hidden.
@@ -90,3 +90,7 @@ The v2 web app. Product scope is docs/product/prd.md §6–7; layout and compone
 
 - Conversation identity: Agent author rows are room-only; place avatar/name above full-width text. Reply actions use one accessible Menu, named message.actions. Single-field ask_user choices (1–6 options) answer inline with the original answers payload; other question forms use a guarded Overlay with OverlayActions.
 - Overlay portals mount at the nearest whole-frame floating boundary, so page positioning never limits the scrim. Use the shared lib/useDraftNavigation for form guards. Segmented changes views (up to four short choices); Tabs changes page sections.
+
+- Notifications have one list. notification.removed drops a request pointer immediately; request.updated refreshes its conversation badge and cards. Superseded/withdrawn cards collapse; replacements link to the new card.
+
+- Browser approval checks use sendForRequest to await a committed pending-request response before asserting its rendered details; receipt checks await the turn settling. Keep UI assertions independent of backend execution latency.

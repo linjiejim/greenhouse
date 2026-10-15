@@ -41,7 +41,7 @@ export function PageHeader({
   const t = useT();
   const { narrow, directoryHidden, openDirectory } = useShell();
   const summary = useNotificationSummary();
-  const needsYou = summary.data?.needs_you ?? 0;
+  const unread = summary.data?.unread ?? 0;
   return (
     <header className={cx('app-page-header', wrap && 'is-wrap')}>
       {directoryHidden && (
@@ -63,13 +63,10 @@ export function PageHeader({
       {menu && menu.length > 0 && <Menu items={menu} />}
       {narrow && (
         <span className="app-header-notifications">
-          <IconButton
-            label={needsYou ? t('nav.needsYou', { count: needsYou }) : t('nav.notifications')}
-            onClick={() => navigate({ page: 'notifications', view: 'needs' })}
-          >
+          <IconButton label={t('nav.notifications')} onClick={() => navigate({ page: 'notifications' })}>
             <Bell size={icon.lg} strokeWidth={icon.stroke} />
           </IconButton>
-          {needsYou > 0 && <span className="app-rail-count">{needsYou > 99 ? '99+' : needsYou}</span>}
+          {unread > 0 && <span className="app-rail-dot" aria-label={t('nav.unread')} />}
         </span>
       )}
     </header>

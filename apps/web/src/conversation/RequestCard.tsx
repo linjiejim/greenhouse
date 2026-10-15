@@ -27,6 +27,7 @@ import { ComputerScreen } from '../computer/ComputerScreen';
 import { useDecide } from '../data/requests';
 import { errorText } from '../lib/errors';
 import { useI18n } from '../lib/i18n';
+import { href, navigate } from '../lib/router';
 import { relativeTime } from '../lib/time';
 import { useDraftNavigation } from '../lib/useDraftNavigation';
 import { inlineQuestion } from './question';
@@ -405,66 +406,95 @@ export function RequestCard({ request, showContext = false }: { request: NeedsYo
     ) : null
   ) : null;
 
-  return (
-    <ChatCard
-      icon={<Icon size={icon.md} strokeWidth={icon.stroke} />}
-      title={request.title}
-      meta={meta}
-      status={t(status.word)}
-      tone={status.tone}
-      attention={pending}
-      footer={
-        footer || (showContext && request.conversation_id) ? (
-          <>
-            {showContext && request.conversation_id && (
-              <a className="app-request-open" href={`#/c/${request.conversation_id}`}>
-                {t('request.openConversation')}
+  const retired = request.status === 'superseded' || request.status === 'withdrawn';
+  const collapsed = retired
+    ? (() => {
+        const replacement = request.result?.replacement_request_id;
+        const word = request.result?.reason === 'answered in chat' ? t('request.answeredInChat') : t(status.word);
+        return (
+          <span className="app-muted">
+            {typeof replacement === 'string' && request.conversation_id ? (
+              <a
+                href={href({ page: 'conversation', id: request.conversation_id, request: replacement })}
+                onClick={(event) => {
+                  event.preventDefault();
+                  navigate({ page: 'conversation', id: request.conversation_id!, request: replacement });
+                  document.getElementById(`request-${replacement}`)?.scrollIntoView({ block: 'center' });
+                }}
+              >
+                {word}
               </a>
-            )}
-            {footer}
-          </>
-        ) : undefined
-      }
-    >
-      {pending ? (
-        <Details request={request} />
-      ) : (
-        !inline && (
-          <details className="app-request-settled">
-            <summary>{t('request.expandPreview')}</summary>
-            <Details request={request} />
-          </details>
-        )
-      )}
-      {pending && request.subject === 'run_start' && (
-        <div className="app-setting-row is-plain">
-          <span className="app-setting-text">{t('approvals.continue')}</span>
-          <Switch checked={continueAfter} onChange={setContinueAfter} label={t('approvals.continue')} />
-        </div>
-      )}
-      {pending && request.payload.tier === 'tier2' && !!request.payload.standing_scope && (
-        <div className="app-setting-row is-plain">
-          <span className="app-setting-text">
-            {t(
-              (request.payload.standing_scope as { type: string }).type === 'folder'
-                ? 'approvals.allowFolder'
-                : 'approvals.allowTable',
+            ) : (
+              word
             )}
           </span>
-          <Switch
-            checked={standing}
-            onChange={setStanding}
-            label={t(
-              (request.payload.standing_scope as { type: string }).type === 'folder'
-                ? 'approvals.allowFolder'
-                : 'approvals.allowTable',
-            )}
-          />
-        </div>
-      )}
-      {inline && <InlineChoices key={request.id} request={request} />}
-      {questioning && <QuestionForm key={request.id} request={request} onClose={() => setQuestioning(false)} />}
-      {handing && pending && <HandBack request={request} mode={handing} onClose={() => setHanding(null)} />}
-    </ChatCard>
+        );
+      })()
+    : undefined;
+
+  return (
+    <div id={`request-${request.id}`}>
+      <ChatCard
+        icon={<Icon size={icon.md} strokeWidth={icon.stroke} />}
+        title={request.title}
+        meta={meta}
+        status={t(status.word)}
+        tone={status.tone}
+        attention={pending}
+        collapsed={collapsed}
+        footer={
+          footer || (showContext && request.conversation_id) ? (
+            <>
+              {showContext && request.conversation_id && (
+                <a className="app-request-open" href={`#/c/${request.conversation_id}`}>
+                  {t('request.openConversation')}
+                </a>
+              )}
+              {footer}
+            </>
+          ) : undefined
+        }
+      >
+        {pending ? (
+          <Details request={request} />
+        ) : (
+          !inline && (
+            <details className="app-request-settled">
+              <summary>{t('request.expandPreview')}</summary>
+              <Details request={request} />
+            </details>
+          )
+        )}
+        {pending && request.subject === 'run_start' && (
+          <div className="app-setting-row is-plain">
+            <span className="app-setting-text">{t('approvals.continue')}</span>
+            <Switch checked={continueAfter} onChange={setContinueAfter} label={t('approvals.continue')} />
+          </div>
+        )}
+        {pending && request.payload.tier === 'tier2' && !!request.payload.standing_scope && (
+          <div className="app-setting-row is-plain">
+            <span className="app-setting-text">
+              {t(
+                (request.payload.standing_scope as { type: string }).type === 'folder'
+                  ? 'approvals.allowFolder'
+                  : 'approvals.allowTable',
+              )}
+            </span>
+            <Switch
+              checked={standing}
+              onChange={setStanding}
+              label={t(
+                (request.payload.standing_scope as { type: string }).type === 'folder'
+                  ? 'approvals.allowFolder'
+                  : 'approvals.allowTable',
+              )}
+            />
+          </div>
+        )}
+        {inline && <InlineChoices key={request.id} request={request} />}
+        {questioning && <QuestionForm key={request.id} request={request} onClose={() => setQuestioning(false)} />}
+        {handing && pending && <HandBack request={request} mode={handing} onClose={() => setHanding(null)} />}
+      </ChatCard>
+    </div>
   );
 }

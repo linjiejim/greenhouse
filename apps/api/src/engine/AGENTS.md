@@ -46,7 +46,7 @@ The one engine for conversations and runs. Read with the root AGENTS.md and docs
 - Writes need manifest.write. callRisk is read / tier1 / tier2 / tier3: private reversible writes and untainted standing scopes run with receipts; shared writes otherwise wait; tier3 always waits and cannot grant a scope. Batch writes in one model step share a card that is ready only at step end.
 - Descriptions are fixed text. A list that depends on the member and the turn (the connectors they can use, the Agent's skills) comes from `turnContext` and goes in the closing message, fenced. A risk that depends on the arguments comes from `callRisk`: risk and scope are checked again under their locks before executing, and the engine marks the approved run `ctx.approved`.
 
-## Needs you
+## Requests
 - Writes requiring approval never run when the model calls them: the call raises an approval card (`requests`, subject `tool_write`) holding the exact arguments, the step waits as `pending`, and the turn ends with the run `waiting`.
 - A decision is a compare-and-set from pending (requests service). The engine then runs exactly the approved arguments with the asker's rights, or skips the step, writes one event line in the transcript, closes the waiting run, and wakes the Agent through the inbox with the outcome.
 - Settling and expiring write a `request_decided` job in the same transaction; any process's decision worker carries it out (the settling process is woken after commit, every process polls, dead claims are taken over), up to 10 at once, each on its own. An approved call is told to stop after 5 minutes.
@@ -54,6 +54,7 @@ The one engine for conversations and runs. Read with the root AGENTS.md and docs
 - The follow-up (the event line, closing the run, the wake-up) is one transaction under the conversation lock and happens once: the line, keyed by `request_id`, records it.
 - A tool that raises its own card (ask_user, self, request_takeover, vault) implements `decide`; return a null note to leave the Agent asleep.
 - Expired cards are swept: the step is skipped, the run closes, and the Agent is not woken.
+- Superseded and withdrawn requests skip pending steps without waking the Agent; a chat answer supersedes only that member’s questions for the responding Agent. Cancellation withdraws pending cards, including proposals.
 - Every card is a notification through `notifications.publish`, the one entry point for notifications; it also queues the card's email and push deliveries (modules/channels), which go out without what the card asks.
 
 ## Background runs
@@ -203,3 +204,5 @@ The one engine for conversations and runs. Read with the root AGENTS.md and docs
 - Automatic chat titles summarize only the first member message. Never feed assistant refusals, interim steps or outcomes to the title model; preserve manually set titles with the conditional update.
 
 - Memory mutation refusals throw ApiError (memory_background_read_only / memory_untrusted_content), never successful error objects. Preserve the cause and do-not-retry instruction in model evidence and failed steps.
+
+- Approved reversible writes already hold the conversation row lock when recording receipts; do not take the local conversation queue inside that transaction (follow-up takes local queue before transaction).
