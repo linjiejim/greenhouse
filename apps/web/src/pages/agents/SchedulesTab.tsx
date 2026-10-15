@@ -11,6 +11,7 @@ import {
   Empty,
   ErrorBox,
   Field,
+  FieldGroup,
   Input,
   Menu,
   Overlay,
@@ -90,33 +91,33 @@ function ScheduleForm({
           <TextArea value={brief} maxLength={2000} maxRows={8} onChange={(event) => setBrief(event.target.value)} />
         </Field>
         <div className="app-form-row">
-          <Field label={t('schedules.frequency')}>
+          <FieldGroup label={t('schedules.frequency')}>
             <Select
               label={t('schedules.frequency')}
               value={frequency.kind}
               options={KINDS.map((kind) => ({ value: kind, label: t(`schedules.${kind}`) }))}
               onChange={(value) => setKind(value as (typeof KINDS)[number])}
             />
-          </Field>
+          </FieldGroup>
           {frequency.kind === 'weekly' && (
-            <Field label={t('schedules.weekday')}>
+            <FieldGroup label={t('schedules.weekday')}>
               <Select
                 label={t('schedules.weekday')}
                 value={String(frequency.weekday)}
                 options={[1, 2, 3, 4, 5, 6, 0].map((day) => ({ value: String(day), label: weekdayName(day, locale) }))}
                 onChange={(value) => setFrequency({ ...frequency, weekday: Number(value) })}
               />
-            </Field>
+            </FieldGroup>
           )}
           {frequency.kind === 'monthly' && (
-            <Field label={t('schedules.day')}>
+            <FieldGroup label={t('schedules.day')}>
               <Select
                 label={t('schedules.day')}
                 value={String(frequency.day)}
                 options={Array.from({ length: 28 }, (_, index) => String(index + 1))}
                 onChange={(value) => setFrequency({ ...frequency, day: Number(value) })}
               />
-            </Field>
+            </FieldGroup>
           )}
           {'hour' in frequency && (
             <Field label={t('schedules.time')}>
@@ -132,14 +133,14 @@ function ScheduleForm({
             </Field>
           )}
           {frequency.kind === 'hourly' && (
-            <Field label={t('schedules.minute')}>
+            <FieldGroup label={t('schedules.minute')}>
               <Select
                 label={t('schedules.minute')}
                 value={String(frequency.minute)}
                 options={[0, 15, 30, 45].map((minute) => String(minute))}
                 onChange={(value) => setFrequency({ kind: 'hourly', minute: Number(value) })}
               />
-            </Field>
+            </FieldGroup>
           )}
           {frequency.kind === 'custom' && (
             <Field label={t('schedules.cron')} description={t('schedules.cronHint')}>

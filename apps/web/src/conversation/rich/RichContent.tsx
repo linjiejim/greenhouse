@@ -6,7 +6,7 @@
  */
 
 import { lazy, memo, Suspense, useEffect, useId, useMemo, useRef, useState } from 'react';
-import { BarChart3, Check, Download, FileCode2, ListChecks, Maximize2, Table2 } from 'lucide-react';
+import { BarChart3, Check, Download, FileCode2, ListChecks, Maximize2, Network, Table2 } from 'lucide-react';
 import { Badge, Button, ChatCard, Overlay, Skeleton, StatusBadge, type Tone } from '@greenhouse/ui/kit';
 import { icon } from '@greenhouse/ui/tokens';
 import {
@@ -28,7 +28,7 @@ import { cx } from '../../lib/cx';
 import { useI18n } from '../../lib/i18n';
 import { saveBlob } from '../../lib/save';
 import { Markdown } from '../Markdown';
-import { ChartView } from './Chart';
+const ChartView = lazy(() => import('./Chart').then((module) => ({ default: module.ChartView })));
 
 const MermaidView = lazy(() => import('./Mermaid'));
 
@@ -391,7 +391,15 @@ export const RichContent = memo(function RichContent({
           case 'chart':
             return (
               <ChatCard key={key} icon={<BarChart3 size={icon.md} />} title={segment.data.title ?? t('rich.chart')}>
-                <ChartView data={segment.data} />
+                <Suspense
+                  fallback={
+                    <div className="app-rich-loading">
+                      <Skeleton lines={6} />
+                    </div>
+                  }
+                >
+                  <ChartView data={segment.data} />
+                </Suspense>
               </ChatCard>
             );
           case 'datatable':
@@ -411,9 +419,17 @@ export const RichContent = memo(function RichContent({
             );
           case 'mermaid':
             return (
-              <Suspense key={key} fallback={<Skeleton lines={4} />}>
-                <MermaidView code={segment.code} />
-              </Suspense>
+              <ChatCard key={key} icon={<Network size={icon.md} />} title={t('rich.diagram')}>
+                <Suspense
+                  fallback={
+                    <div className="app-mermaid">
+                      <Skeleton lines={6} />
+                    </div>
+                  }
+                >
+                  <MermaidView code={segment.code} />
+                </Suspense>
+              </ChatCard>
             );
           case 'html-preview':
             return <HtmlPreviewBlock key={key} segment={segment} context={context} />;

@@ -5,7 +5,7 @@
  */
 
 import { ThumbsDown, ThumbsUp } from 'lucide-react';
-import { Empty, Skeleton, StatusBadge } from '@greenhouse/ui/kit';
+import { Empty, ErrorBox, Skeleton, StatusBadge } from '@greenhouse/ui/kit';
 import { icon } from '@greenhouse/ui/tokens';
 import { useQuery } from '@tanstack/react-query';
 import { useMe } from '../../app/session';
@@ -13,7 +13,7 @@ import { api } from '../../lib/api';
 import { useI18n } from '../../lib/i18n';
 import { href } from '../../lib/router';
 import { relativeTime } from '../../lib/time';
-import { formatCost, formatTokens } from '../../shell/usage';
+import { formatCost, formatTokens, VoiceUsage } from '../../shell/usage';
 import { RUN_STATUS } from '../runs/status';
 
 export function ActivityTab({ agentId }: { agentId: string }) {
@@ -28,6 +28,7 @@ export function ActivityTab({ agentId }: { agentId: string }) {
   const data = usage.data;
   return (
     <section className="app-section" aria-label={t('agents.tabActivity')}>
+      {usage.isError && <ErrorBox onRetry={() => void usage.refetch()}>{t('common.error')}</ErrorBox>}
       {data && (
         <>
           <div className="app-stats-grid">
@@ -51,6 +52,7 @@ export function ActivityTab({ agentId }: { agentId: string }) {
               <span className="app-stat-value">{formatTokens(data.totals.tokens, locale)}</span>
               <span className="app-stat-hint">{formatCost(data.totals.cost_micros, locale)}</span>
             </div>
+            <VoiceUsage totals={data.totals} />
           </div>
           <div className="app-ratings">
             <span>
@@ -80,6 +82,8 @@ export function ActivityTab({ agentId }: { agentId: string }) {
       <h2 className="app-section-title">{t('activity.latest')}</h2>
       {activity.isPending ? (
         <Skeleton lines={4} />
+      ) : activity.isError ? (
+        <ErrorBox onRetry={() => void activity.refetch()}>{t('common.error')}</ErrorBox>
       ) : !(activity.data?.items ?? []).length ? (
         <Empty title={t('activity.none')} />
       ) : (

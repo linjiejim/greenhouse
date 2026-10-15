@@ -151,8 +151,9 @@ test('an Agent updates a shared table after approval and cited records open thei
     )
     .toBe('Approved record');
   // The row write precedes the decision follow-up; wait for that reply before the next request.
-  await expect(page.getByText('Done.', { exact: true })).toBeVisible();
-  await expect(composer(page)).toBeEnabled();
+  await expect(page.getByText('Decision complete.', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: '停止', exact: true })).toBeHidden();
+  await expect(page.getByRole('button', { name: '批准', exact: true })).toBeHidden();
   await composer(page).fill(`read table record ${record.record.id}`);
   await composer(page).press('Enter');
   await page.getByRole('button', { name: '查看来源：Approved record' }).click();

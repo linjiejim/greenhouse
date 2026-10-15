@@ -38,7 +38,7 @@ export function TransportField({
 }) {
   const { t } = useI18n();
   return (
-    <Field label={t('connectors.transport')}>
+    <FieldGroup label={t('connectors.transport')}>
       <Select
         label={t('connectors.transport')}
         value={value}
@@ -48,7 +48,7 @@ export function TransportField({
         ]}
         onChange={(next) => onChange(next as Connector['transport'])}
       />
-    </Field>
+    </FieldGroup>
   );
 }
 
@@ -102,7 +102,7 @@ export function ConnectorFields({
           <TransportField value={draft.transport} onChange={(transport) => set({ transport })} />
         </>
       )}
-      <Field label={t('connectors.authMode')}>
+      <FieldGroup label={t('connectors.authMode')}>
         <Select
           label={t('connectors.authMode')}
           value={draft.auth_mode}
@@ -113,7 +113,7 @@ export function ConnectorFields({
           }))}
           onChange={(mode) => set({ auth_mode: mode as ConnectorAuthMode })}
         />
-      </Field>
+      </FieldGroup>
       {carriesKey(draft.auth_mode) && (
         <>
           <FieldGroup label={t('connectors.keyPlace')}>

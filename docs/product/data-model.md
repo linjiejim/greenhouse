@@ -144,7 +144,7 @@ v2 从零建表：只有一份基线迁移，不继承 v1 的迁移链，也不�
 | `base_record_files` | 记录附件 | 主键 `(record_id, field_id, file_id)`，`record_id` / `field_id` `CASCADE`、`file_id` → `files`（用途 `record`，`files.base_id` 是所在表格，`file_id` 唯一）、`position`；只能挂自己上传到这个表格、还没挂在别的记录上的文件；记录在回收站里时附件打不开；彻底删除后文件字节在提交后由 `base_discard` 任务删除，一天没挂上的上传由每天的清理删除 |
 | `base_record_events` | 记录历史 | `record_id` `CASCADE`、`table_id`、`actor_type`（member / agent / automation / form / import / app / system）、`actor_id`、`type`（created / updated / deleted / restored）、`changes`（字段前后值）、`meta` |
 | `base_automations` | 自动化规则 | `base_id` / `table_id` `CASCADE`、`name`、`status`、`trigger`（record_created / record_updated / record_matched / schedule / date_reached / button）、`config`（条件与动作：通知成员、Agent 步骤、webhook）、`run_as`（成员）、`secrets_enc`（webhook 签名密钥）、`revision`、`next_fire_at`、`swept_until` |
-| `base_automation_runs` | 自动化执行记录 | `automation_id` `CASCADE`、`record_id`（逻辑）、`trigger`、`status`、`dedupe_key`（唯一）、`revision`（固定的规则修订）、`event_chain`（随 Agent 写入继续传递）、`steps`、`run_id`（Agent 步骤对应的后台运行，逻辑引用）、`error`、`started_at`、`finished_at`；发送中断标记结果未知，旧修订或来源链循环标记停止 |
+| `base_automation_runs` | 自动化执行记录 | `automation_id` `CASCADE`、`record_id`（逻辑）、`trigger`、`status`、`dedupe_key`（唯一）、`revision`（固定的规则修订）、`event_chain`（随 Agent 写入继续传递）、`steps`（Agent 派发后为 queued，API 按关联后台运行的状态展示）、`run_id`（最近 Agent 步骤对应的后台运行，逻辑引用）、`error`、`started_at`、`finished_at`；发送中断标记结果未知，旧修订或来源链循环标记停止 |
 | `base_imports` | CSV 导入 | `base_id` / `table_id` `CASCADE`、`member_id`、`file_id`（用途 `import`，导入结束即删除）、`mapping`（`{ header, columns, first, samples }`）、`status`（draft / queued / running / done / failed / cancelled）、`total_rows`、`committed_rows`（重试从这里继续）、`result`（`{ created, skipped, errors（最多 100 条）, more_errors, failure }`）、`expires_at`（草稿 24 小时）；后台任务 `base_import`，去重键 `base_import:<id>:<起始行>` |
 | `apps` | 应用 | `base_id` `CASCADE`、`name`、`description`、`icon`、`accent`、`owner_id`、`status`（draft / published）、`draft_spec`（text）、`draft_revision`、`published_version`、`featured`、`archived_at`；受众在 `shares` |
 | `app_versions` | 已发布的不可变版本 | `app_id` `CASCADE`、`version`、`spec`（text）、`spec_hash`、`review_status`（pending / approved / rejected）、`reviewed_by`、`reviewed_at`、`draft_revision`、`notes`、`published_by`、`published_at` |
@@ -260,6 +260,12 @@ M3.4 计数（#70）：`metric_events` 仅存 identity id、member_id（逻辑�
 - `conversation_digest` 是回复结束后写入的摘要任务；`mail_inbound` 只保存已验证的实例 id 和通知引用，由 worker 经 providers 拉信，任务去重并保留接手进度；不把签名、Key 或整封信塞进队列。后台运行和其他 jobs 在排空后交还租约，不消耗停机重试次数；后台 `checkpoint.crashes` 单独累计意外进程中断，成员手动重试归零，`attempt` 仍为模型步骤分代。
 - `rate_limits` 仅在 RATE_LIMIT_STORE=postgres 时使用；窗口是所有 API 副本共享的，拒绝请求返回 429，存储故障不会退回单机放行。
 
+### v2.0 交付补充（#70，2026-10-15）
+
+- 基线应用器在迁移锁内建立 ICU `greenhouse_natural` collation（`zh-u-co-pinyin-kn-true`），目录树的名称比较、排序与游标使用同一规则，不改变表结构。Postgres 需要 ICU 支持。
+- 语音总计直接从 `usage_events.quantity` 汇总：STT + second → `stt_seconds`，TTS + character → `tts_characters`；不增加计数表或缓存。
+- 自动化 Agent 子运行的 `runs.input` 同时保存 `automation_run_id` 和 `automation_action_index`。执行历史按每个步骤关联后台运行；尚未建立运行时保持排队，全部完成后才显示完成。派发器的结束时间不作为 Agent 完成时间。
+
 ### 移动端 phase 2（#70）
 
 知识库、表格、评论、表单和 Agent 邮箱共用现有 v2 对象与权限，不新增数据表或迁移。移动端复用 `version` / `revision` 做并发检查；Markdown 与字段值由服务端保存，未保存的输入只暂存在当前原生表单。
@@ -267,3 +273,7 @@ M3.4 计数（#70）：`metric_events` 仅存 identity id、member_id（逻辑�
 ### 移动端最新 v2 集成（#70）
 
 移动端只消费既有审批范围、步骤回执、日程 `quiet`、记录交办、应用及不可变发布、运行摘要与发现，不新增数据表或迁移。预先授权由成员在当前 tier2 卡片明确选择，授权和撤销均以服务端对象为准。应用卡片的字段范围和发布版本不由原生草稿扩大；未保存字段只留在当前成员／工作站及该对象的原生表单，身份变化清空。
+
+### 请求展示投影（#70）
+
+`requests.payload` 中的标题、审批摘要与详情保存权限检查后的名称／路径，避免把原始对象 id 显示给成员；未知引用以本地化占位替代。房间公开摘要不包含私有对象名，应用详情沿用应用的字段投影。执行用的 `input`、预先授权范围和批次调用保留原 id；本次没有 schema 或迁移变化。已经保存的历史请求不重写。

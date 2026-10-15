@@ -162,7 +162,12 @@ function ClientDialog({ onClose, onCreated }: { onClose: () => void; onCreated: 
             />
           </Field>
         ) : (
-          <Field label={t('clients.member')} required description={t('clients.memberHint')} error={errorOf('member')}>
+          <FieldGroup
+            label={t('clients.member')}
+            required
+            description={t('clients.memberHint')}
+            error={errorOf('member')}
+          >
             <Select
               label={t('clients.member')}
               value={member}
@@ -176,7 +181,7 @@ function ClientDialog({ onClose, onCreated }: { onClose: () => void; onCreated: 
                 setError(null);
               }}
             />
-          </Field>
+          </FieldGroup>
         )}
         <ScopeChecks
           label={kind === 'interactive' ? t('clients.scopeCap') : t('clients.scopes')}

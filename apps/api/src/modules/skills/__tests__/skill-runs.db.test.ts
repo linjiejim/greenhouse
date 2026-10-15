@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { and, asc, eq } from 'drizzle-orm';
 import { unzipSync } from 'fflate';
 import { describe, expect, it } from 'vitest';
-import { connectors, getDb, messages, newId, runSteps, skills } from '@greenhouse/db';
+import { connectors, conversations, getDb, messages, newId, runSteps, skills } from '@greenhouse/db';
 import { lastUserText, scriptedModel, systemText, text, toolCall } from '../../../engine/__tests__/model.js';
 import { createTestApp } from '../../../testing.js';
 import { fake, fakeSandboxEnv } from '../../computers/__tests__/fake-sandbox.js';
@@ -308,16 +308,31 @@ describe('saving a way of working as a skill', () => {
 
 describe('the new chat starters', () => {
   it("offers my three most-used skills that can run, else the Agent template's starters", async () => {
-    const { test, call, lin, send } = await setup([text('ok')]);
+    const { test, call, lin, main } = await setup([text('ok')]);
     expect((await call('GET', '/api/skills/starters', { token: lin.token })).body).toEqual({
       skills: [],
       starters: ['你能帮我做什么？', '帮我排一下这周', '帮我建一个研究员 Agent'],
     });
     const make = async (name: string) => (await createTemplate(test, lin.token, { name })).body.id as string;
     const [a, b, c, d] = [await make('alpha'), await make('beta'), await make('gamma'), await make('delta')];
-    for (const id of [d, d, d, d, a, a, a, b, b, c]) {
-      expect((await send({ content: '', skill: { skill_id: id, variables: {} } })).status).toBe(201);
-    }
+    // Ranking needs historical usage; skill execution and message recording are covered above.
+    const [conversation] = await getDb()
+      .select({ lastSeq: conversations.lastSeq })
+      .from(conversations)
+      .where(eq(conversations.id, main.id));
+    const history = [d, d, d, d, a, a, a, b, b, c].map((id, index) => ({
+      id: newId('message'),
+      conversationId: main.id as string,
+      seq: conversation!.lastSeq + index + 1,
+      role: 'user' as const,
+      authorMemberId: lin.id,
+      skill: { skillId: id, version: '1.0.0', variables: {} },
+    }));
+    await getDb().insert(messages).values(history);
+    await getDb()
+      .update(conversations)
+      .set({ lastSeq: conversation!.lastSeq + history.length })
+      .where(eq(conversations.id, main.id));
     await call('DELETE', `/api/skills/${d}`, { token: lin.token });
     const starters = (await call('GET', '/api/skills/starters?agent=main', { token: lin.token })).body;
     expect(starters.skills.map((skill: { name: string }) => skill.name)).toEqual(['alpha', 'beta', 'gamma']);

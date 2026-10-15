@@ -12,5 +12,5 @@ export default defineConfig({
     proxy: { '/api': { target: api, ws: true }, '/health': { target: api } },
   },
   // The API serves the built app from the repo-root public/ (apps/api/src/http/web.ts).
-  build: { outDir: '../../public', emptyOutDir: true },
+  build: { manifest: true, outDir: '../../public', emptyOutDir: true },
 });

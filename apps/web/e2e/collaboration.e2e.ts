@@ -45,7 +45,9 @@ test('export a chat as Markdown', async ({ page }) => {
   await open(page, '/#/c/new');
   await composer(page).fill('export me');
   await composer(page).press('Enter');
-  await expect(page.getByText('Echo: export me')).toBeVisible();
+  // Export the completed reply; model work uses the test's action budget, not a short UI assertion.
+  await page.getByText('Echo: export me').waitFor({ state: 'visible' });
+  await page.getByRole('button', { name: '停止', exact: true }).waitFor({ state: 'hidden' });
   await page.getByRole('main').getByRole('button', { name: '更多' }).click();
   const download = page.waitForEvent('download');
   await page.getByRole('menuitem', { name: '导出 Markdown' }).click();
@@ -62,8 +64,10 @@ test('a room: Lin brings Mei and Greeny, Mei writes back, notes are shared, Mei 
   await dialog.getByLabel('房间名').fill('Launch');
   await dialog.getByRole('combobox', { name: '添加的人' }).click();
   await page.getByRole('option', { name: /Mei/ }).click();
+  await page.keyboard.press('Escape');
   await dialog.getByRole('combobox', { name: '带上我的 Agent' }).click();
   await page.getByRole('option', { name: /Greeny/ }).click();
+  await page.keyboard.press('Escape');
   await dialog.getByRole('button', { name: '创建房间' }).click();
   await expect(page).toHaveURL(/#\/c\/cnv_/);
   await expect(page.getByRole('main').getByText('Launch')).toBeVisible();

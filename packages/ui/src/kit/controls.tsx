@@ -190,18 +190,22 @@ export function FieldGroup({
   label,
   description,
   error,
+  required = false,
   children,
 }: {
   label: string;
   description?: string;
   error?: string;
+  required?: boolean;
   children: ReactNode;
 }) {
+  const t = useKitStrings();
   const id = useId();
   return (
     <div className="gh-field" role="group" aria-labelledby={`${id}-label`}>
       <span className="gh-field-label-text" id={`${id}-label`}>
         {label}
+        {required && <span className="gh-field-required"> · {t.required}</span>}
       </span>
       <div className="gh-field-group-body">{children}</div>
       {error ? (

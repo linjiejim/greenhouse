@@ -7,7 +7,17 @@
 
 import { useState, type FormEvent } from 'react';
 import { CircleHelp, KeyRound, MonitorPlay, MousePointer2, ShieldCheck, Sparkles } from 'lucide-react';
-import { Button, ChatCard, Field, Input, Overlay, OverlayActions, Select, Switch } from '@greenhouse/ui/kit';
+import {
+  Button,
+  ChatCard,
+  Field,
+  FieldGroup,
+  Input,
+  Overlay,
+  OverlayActions,
+  Select,
+  Switch,
+} from '@greenhouse/ui/kit';
 import { icon } from '@greenhouse/ui/tokens';
 import type { NeedsYou, QuestionField } from '@greenhouse/contract';
 import { useNotify } from '../app/notify';
@@ -113,28 +123,31 @@ function QuestionForm({ request, disabled }: { request: NeedsYou; disabled: bool
   };
   return (
     <form className="app-request-form" onSubmit={submit} id={`answer-${request.id}`}>
-      {fields.map((field) => (
-        <Field key={field.key} label={field.label}>
-          {field.type === 'choice' && field.options?.length ? (
-            <Select
-              label={field.label}
-              value={answers[field.key] ?? ''}
-              options={field.options.map((option) => ({ value: option, label: option }))}
-              disabled={disabled}
-              onChange={(value: string) => setAnswers({ ...answers, [field.key]: value })}
-            />
-          ) : (
-            <Input
-              value={answers[field.key] ?? ''}
-              disabled={disabled}
-              onChange={(event) => {
-                setAnswers({ ...answers, [field.key]: event.target.value });
-                setError('');
-              }}
-            />
-          )}
-        </Field>
-      ))}
+      {fields.map((field) => {
+        const FormField = field.type === 'choice' && field.options?.length ? FieldGroup : Field;
+        return (
+          <FormField key={field.key} label={field.label} required={field.required !== false}>
+            {field.type === 'choice' && field.options?.length ? (
+              <Select
+                label={field.label}
+                value={answers[field.key] ?? ''}
+                options={field.options.map((option) => ({ value: option, label: option }))}
+                disabled={disabled}
+                onChange={(value: string) => setAnswers({ ...answers, [field.key]: value })}
+              />
+            ) : (
+              <Input
+                value={answers[field.key] ?? ''}
+                disabled={disabled}
+                onChange={(event) => {
+                  setAnswers({ ...answers, [field.key]: event.target.value });
+                  setError('');
+                }}
+              />
+            )}
+          </FormField>
+        );
+      })}
       {error && (
         <p className="app-request-error" role="alert">
           {error}

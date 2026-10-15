@@ -13,6 +13,7 @@ import {
   Empty,
   ErrorBox,
   Field,
+  FieldGroup,
   HelpHint,
   Input,
   Overlay,
@@ -94,14 +95,14 @@ function TokenDialog({
             setScopeError('');
           }}
         />
-        <Field label={t('access.expiry')}>
+        <FieldGroup label={t('access.expiry')}>
           <Select
             label={t('access.expiry')}
             value={days}
             options={DAYS.map((count) => ({ value: String(count), label: t('access.days', { count }) }))}
             onChange={setDays}
           />
-        </Field>
+        </FieldGroup>
       </form>
       <OverlayActions>
         <Button onClick={onClose}>{t('common.cancel')}</Button>

@@ -95,16 +95,16 @@ export interface RecordGroup {
   records: TableRecord[];
 }
 
-/** Records come from the server already in group order: consecutive runs of one key. */
+/** Preserve the server's group order, including while a new query still shows cached records. */
 export function groupRecords(records: readonly TableRecord[], field: Field | SystemField): RecordGroup[] {
-  const groups: RecordGroup[] = [];
+  const groups = new Map<string, RecordGroup>();
   for (const record of records) {
     const key = groupKey(field, record);
-    const last = groups[groups.length - 1];
-    if (last && last.key === key) last.records.push(record);
-    else groups.push({ key, records: [record] });
+    const group = groups.get(key);
+    if (group) group.records.push(record);
+    else groups.set(key, { key, records: [record] });
   }
-  return groups;
+  return [...groups.values()];
 }
 
 /** A field id or a system field, as the view config stores it, back to what it names. */

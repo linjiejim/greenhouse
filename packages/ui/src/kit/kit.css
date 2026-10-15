@@ -714,7 +714,8 @@ button.gh-chat-card-header:focus-visible {
   border-radius: var(--gh-radius-lg);
   background: var(--gh-raised);
   box-shadow: var(--gh-shadow-2);
-  animation: gh-pop var(--gh-duration-fast) var(--gh-ease-enter);
+  /* A transform would make this a containing block for its fixed-position pickers. */
+  animation: gh-fade var(--gh-duration-fast) var(--gh-ease-enter);
 }
 .gh-popover.is-wide {
   max-width: min(calc(var(--gh-popover-max) * 2), calc(100vw - 2 * var(--gh-space-4)));
@@ -859,7 +860,7 @@ button.gh-chat-card-header:focus-visible {
   border-radius: var(--gh-radius-lg);
   background: var(--gh-raised);
   box-shadow: var(--gh-shadow-2);
-  animation: gh-pop var(--gh-duration-fast) var(--gh-ease-enter);
+  animation: gh-fade var(--gh-duration-fast) var(--gh-ease-enter);
 }
 .gh-picker-list {
   overflow-y: auto;

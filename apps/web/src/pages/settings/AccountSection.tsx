@@ -4,11 +4,11 @@
  */
 
 import { useMemo, useState, type FormEvent } from 'react';
-import { Button, Field, FieldGroup, Input, Segmented, Select, Skeleton, TextArea } from '@greenhouse/ui/kit';
+import { Button, ErrorBox, Field, FieldGroup, Input, Segmented, Select, Skeleton, TextArea } from '@greenhouse/ui/kit';
 import { PASSWORD_MIN_LENGTH, type UpdateMeInput } from '@greenhouse/contract';
 import { ApiClientError } from '@greenhouse/contract/client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { BudgetBar, formatCost, formatHitRate, formatTokens } from '../../shell/usage';
+import { BudgetBar, formatCost, formatHitRate, formatTokens, VoiceUsage } from '../../shell/usage';
 import { ImagePicker } from '../../shell/ImagePicker';
 import { MemberAvatar } from '../../shell/MemberAvatar';
 import { useNotify } from '../../app/notify';
@@ -193,7 +193,7 @@ function MyUsage() {
   const { t, locale } = useI18n();
   const usage = useQuery({ queryKey: ['usage', 'mine'], queryFn: () => api.usage.mine('month') });
   if (usage.isPending) return <Skeleton lines={3} />;
-  if (usage.isError) return null;
+  if (usage.isError) return <ErrorBox onRetry={() => void usage.refetch()}>{t('common.error')}</ErrorBox>;
   const data = usage.data;
   return (
     <section className="app-section" aria-label={t('usage.mine')}>
@@ -218,6 +218,7 @@ function MyUsage() {
           <span className="app-stat-label">{t('usage.cacheHitRate')}</span>
           <span className="app-stat-value">{formatHitRate(data.totals.cache_hit_rate, locale)}</span>
         </div>
+        <VoiceUsage totals={data.totals} />
       </div>
       {data.budgets.map((budget) => (
         <BudgetBar key={budget.unit} spent={budget.spent} limit={budget.monthly_limit} unit={budget.unit} />
@@ -229,7 +230,15 @@ function MyUsage() {
               <span className="app-list-main">
                 <span className="app-list-title">{row.agent_id ? row.name : t('usage.outsideAgents')}</span>
               </span>
-              <span className="app-list-time">{formatTokens(row.tokens, locale)}</span>
+              <span className="app-list-time">
+                {[
+                  formatTokens(row.tokens, locale),
+                  row.stt_seconds ? t('usage.seconds', { count: row.stt_seconds.toLocaleString(locale) }) : '',
+                  row.tts_characters ? t('usage.characters', { count: row.tts_characters.toLocaleString(locale) }) : '',
+                ]
+                  .filter(Boolean)
+                  .join(' · ')}
+              </span>
             </li>
           ))}
         </ul>

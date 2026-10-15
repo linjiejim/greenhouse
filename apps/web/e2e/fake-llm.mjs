@@ -126,14 +126,14 @@ async function stream(response, request) {
   const messages = request.messages ?? [];
   const last = messages[messages.length - 1];
   const said = lastUser(messages);
-  // A turn woken by a decision (an answer, an approval) carries it in the closing context.
-  const woken = /answered your question|approved|rejected|dismissed|handed your computer back/i.test(
-    textOf(messages.filter((message) => message.role === 'user').at(-1)?.content ?? ''),
-  );
+  // Only the current instruction identifies a decision wake. Roster names and earlier
+  // replies may also contain "approved"; they must not suppress a new member request.
+  const closing = textOf(messages.filter((message) => message.role === 'user').at(-1)?.content ?? '');
+  const instruction = closing.split('</turn_context>').at(-1).trim();
+  const woken = instruction.startsWith('Continue your work in this conversation.');
   const afterTool = last?.role === 'tool' || woken;
   const toolText = last?.role === 'tool' ? textOf(last.content) : '';
   // Mail at the Agent's address wakes it with a note naming the mail (modules/mail/wake.ts).
-  const closing = textOf(messages.filter((message) => message.role === 'user').at(-1)?.content ?? '');
   const mailWake = /New mail arrived in your mailbox|let in mail that had been held back/.test(closing);
   const tool = (name, args) => {
     chunk(response, {
@@ -193,7 +193,10 @@ async function stream(response, request) {
   } else if (afterTool && toolText.includes('search_messages')) {
     await say(`Found mail: ${/subject\\?":\s*\\?"([^"\\]+)/.exec(toolText)?.[1] ?? 'nothing'}`, 10);
   } else if (!afterTool && /^ask me/i.test(said)) {
-    tool('ask_user', { question: 'Which city?', fields: [{ key: 'city', label: 'City', type: 'text' }] });
+    const field = /^ask me choices/i.test(said)
+      ? { key: 'city', label: 'City', type: 'choice', options: ['Kyoto', 'Osaka'] }
+      : { key: 'city', label: 'City', type: 'text' };
+    tool('ask_user', { question: 'Which city?', fields: [field] });
   } else if (!afterTool && /^make image/i.test(said)) {
     tool('generate_image', {
       prompt: said,
@@ -228,6 +231,8 @@ async function stream(response, request) {
   } else if (afterTool && DOC_HIT.test(toolText)) {
     const [, id, title] = DOC_HIT.exec(toolText);
     await say(`Found it in [${title}](#/knowledge/${id}).`, 10);
+  } else if (woken && /^change table record /i.test(said)) {
+    await say('Decision complete.', 20);
   } else if (afterTool) {
     await say('Done.', 20);
   } else if (/^show (chart|table|choices|diagram|page|stats)/i.test(said)) {

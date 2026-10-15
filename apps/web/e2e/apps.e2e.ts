@@ -155,11 +155,17 @@ test('apps: build and publish for Mei, use list/detail/form/action, hide a field
   const installer = await installerContext.newPage();
   await open(installer, '/#/apps');
   await installer.getByRole('tab', { name: '模板', exact: true }).click();
+  const installing = installer.waitForResponse(
+    (response) =>
+      response.request().method() === 'POST' &&
+      /\/api\/apps\/templates\/[^/]+\/install$/.test(new URL(response.url()).pathname),
+  );
   await installer
     .locator('article')
     .filter({ has: installer.getByRole('heading', { name: 'E2E 申请模板', exact: true }) })
     .getByRole('button', { name: '从模板新建' })
     .click();
+  expect((await installing).status()).toBe(201);
   await expect(installer).toHaveURL(/#\/apps\/app_.*\/edit/);
   const installedId = /#\/apps\/(app_[0-9A-Z]+)/.exec(installer.url())![1]!;
   const installed = await apiAs<AppDraft>(request, 'mei', 'GET', `/api/apps/${installedId}/draft`);

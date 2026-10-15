@@ -143,6 +143,7 @@ export interface TableWake {
   source: 'automation';
   sourceId: string;
   automationRunId: string;
+  actionIndex: number;
   title: string;
   tools: string[];
   baseId: string;
@@ -561,6 +562,7 @@ export function createEngine(deps: EngineDeps) {
           tools: wake.tools,
           table_base_id: wake.baseId,
           automation_run_id: wake.automationRunId,
+          automation_action_index: wake.actionIndex,
           result_target: wake.result,
         });
         await db

@@ -3,9 +3,10 @@
 #
 # Quick start:
 #   1) cp .env.example .env && ./scripts/gen-secrets.sh   # fills required secrets
-#   2) edit .env — set LLM_BASE_URL / LLM_API_KEY / LLM_MODEL
+#   2) edit .env — set BOOTSTRAP_ADMIN_EMAIL and LLM_PROVIDER / LLM_API_KEY / LLM_MODEL
 #   3) docker compose up -d --build
-#   4) docker compose exec api pnpm admin:create          # create the first super-admin
+#   4) docker compose logs api | rg 'Activate the first administrator'
+#      Open the one-time link and set the first admin's password.
 #   App is then at http://localhost:3000
 #
 # The DB credentials default to greenhouse/greenhouse; to change them, set

@@ -106,11 +106,15 @@ export default defineConfig({
         extends: true,
         test: {
           name: 'db',
+          // Per-test rollbacks share singleton provider bindings and job dedupe keys.
+          // Parallel files can hold those locks in opposite orders for the whole test.
+          // Real concurrency belongs in db-commit; keep this fixture isolated.
           include: ['**/*.db.test.ts'],
           exclude: ['apps/mobile/**', '**/node_modules/**', '.claude/**'],
           globalSetup: ['./tests/setup/db-global.ts'],
           setupFiles: ['./tests/setup/db-transaction.ts'],
           pool: 'forks',
+          poolOptions: { forks: { singleFork: true } },
           hookTimeout: 20_000,
           sequence: { concurrent: false, groupOrder: 1 },
         },

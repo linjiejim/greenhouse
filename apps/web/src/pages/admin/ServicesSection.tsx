@@ -14,7 +14,7 @@ import {
   Button,
   Empty,
   ErrorBox,
-  Field,
+  FieldGroup,
   IconButton,
   Overlay,
   Select,
@@ -197,7 +197,7 @@ function CapabilityDrawer({ capability, onClose }: { capability: ProviderCapabil
         <section className="app-section">
           <h3 className="app-section-title">{t('provider.defaults')}</h3>
           {(['default', 'strong', 'fast'] as const).map((alias) => (
-            <Field key={alias} label={t(`provider.alias.${alias}`)}>
+            <FieldGroup key={alias} label={t(`provider.alias.${alias}`)}>
               <Select
                 label={t(`provider.alias.${alias}`)}
                 value={String(state.defaults[alias] ?? '')}
@@ -211,7 +211,7 @@ function CapabilityDrawer({ capability, onClose }: { capability: ProviderCapabil
                   })
                 }
               />
-            </Field>
+            </FieldGroup>
           ))}
         </section>
       )}

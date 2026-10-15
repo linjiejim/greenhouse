@@ -27,6 +27,7 @@ Greenhouse is an open-source, self-hosted platform where a team works with its o
 ## Commands
 - `pnpm typecheck`, `pnpm lint` (`pnpm lint:fix`) and `pnpm test` must pass before every commit.
 - `pnpm test` runs the unit, db and db-commit projects. db tests need TEST_DATABASE_URL pointing at a loopback database whose name contains test; it is wiped and migrated once per run.
+- db files run serially because their outer transactions share singleton configuration and job keys. Use db-commit tests for real concurrency.
 - db tests run inside one rolled-back transaction each. Races between processes need real commits: write them as `*.db-commit.test.ts`, which run on a real pool, one file at a time (their engines share the job and run queues), and clean up after themselves.
 - `GREENHOUSE_ROLE=all|api|worker` (default all) selects the same image’s work: api serves HTTP/WebSocket and foreground turns; worker runs jobs, schedules, background runs, watches, cleanup and digests. API replicas poll foreground leases/inboxes; workers never answer foreground turns. Shared storage and keys are required.
 - SIGTERM stops admission synchronously and drains for 60 s before releasing leases. Keep Compose stop_grace_period above that deadline.
@@ -75,6 +76,7 @@ Greenhouse is an open-source, self-hosted platform where a team works with its o
 - The first-admin bootstrap never promotes or revives an existing account and does nothing once an admin exists.
 - Keep at least one active admin; a member cannot disable themselves.
 - Enforce access in services, never only in the UI. Writes record the acting member.
+- Request display copy resolves internal references through permission-checked services; keep execution inputs and approval scopes unchanged. App field labels use the card projection; room headings never name private objects.
 - Admin changes to members, groups, branding, providers, budgets, public Agents and team skill reviews call audit() (apps/api/src/audit.ts) in the same transaction, and so does publishing an Agent. Summaries name fields, never values or secrets.
 
 ## Database
@@ -94,3 +96,4 @@ Greenhouse is an open-source, self-hosted platform where a team works with its o
 - Workflows that publish or deploy run only in linjiejim/greenhouse. Nightly pnpm eval also requires GREENHOUSE_EVAL_MODEL_KEY; local replay never reaches real providers unless GREENHOUSE_EVAL_REAL=1.
 
 - Product metrics reuse requests/runs/usage facts; metric_events holds only enum counts, dates and logical ids. Weekly aggregates recheck admin access in the service.
+- Knowledge tree pages use the greenhouse_natural ICU collation for both names and cursor comparisons. applyMigrations creates it under the migration lock; supported Postgres builds need ICU.

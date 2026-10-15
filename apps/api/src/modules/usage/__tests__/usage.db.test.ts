@@ -66,6 +66,8 @@ describe('usage', () => {
       cached_tokens: 40,
       cache_hit_rate: 40 / 110,
       tokens: 135,
+      stt_seconds: 0,
+      tts_characters: 0,
       cost_micros: 500,
       unpriced: 2,
     });
@@ -95,6 +97,37 @@ describe('usage', () => {
     expect(rolling.body.totals.tokens).toBe(135 + (inWindow ? 1000 : 0));
     expect(rolling.body.by_day.length).toBeGreaterThanOrEqual(30);
     expect((await app.call('GET', '/api/me/usage?period=year', { token: lin.token })).status).toBe(400);
+  });
+
+  it('totals STT seconds and TTS characters separately in every usage view', async () => {
+    const app = createTestApp(ENV);
+    const admin = await app.member('admin');
+    const other = await app.member();
+    const main = (await app.call('GET', '/api/agents/main', { token: admin.token })).body;
+    for (const seconds of [1.25, 2.5])
+      await record({ memberId: admin.id, agentId: main.id, capability: 'stt', quantity: seconds, unit: 'second' });
+    await record({ memberId: admin.id, agentId: main.id, capability: 'tts', quantity: 42, unit: 'character' });
+    await record({ memberId: admin.id, capability: 'video', quantity: 100, unit: 'second' });
+    await record({ memberId: other.id, capability: 'stt', quantity: 9, unit: 'second' });
+    await record({ memberId: admin.id, capability: 'stt', quantity: null, unit: 'second' });
+    const mine = (await app.call('GET', '/api/me/usage', { token: admin.token })).body;
+    expect(mine.totals).toMatchObject({ stt_seconds: 3.75, tts_characters: 42 });
+    expect(mine.by_day.at(-1)).toMatchObject({ stt_seconds: 3.75, tts_characters: 42 });
+    expect(mine.by_capability.find((row: { capability: string }) => row.capability === 'stt')).toMatchObject({
+      stt_seconds: 3.75,
+      tts_characters: 0,
+    });
+    expect(mine.by_agent.find((row: { agent_id: string }) => row.agent_id === main.id)).toMatchObject({
+      stt_seconds: 3.75,
+      tts_characters: 42,
+    });
+    for (const group of ['member', 'agent', 'provider', 'capability']) {
+      const all = (await app.call('GET', `/api/admin/usage?group_by=${group}`, { token: admin.token })).body;
+      expect(all.totals).toMatchObject({ stt_seconds: 12.75, tts_characters: 42 });
+      expect(all.groups.reduce((n: number, row: { stt_seconds: number }) => n + row.stt_seconds, 0)).toBe(12.75);
+    }
+    const agent = await app.call('GET', `/api/agents/${main.id}/usage`, { token: admin.token });
+    expect(agent.body.totals).toMatchObject({ stt_seconds: 3.75, tts_characters: 42 });
   });
 
   it('shows admins the workspace grouped four ways, and nobody else', async () => {

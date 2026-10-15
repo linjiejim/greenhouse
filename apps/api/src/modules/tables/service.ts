@@ -706,6 +706,20 @@ export function createTablesService(deps: {
         throw conflict('undo_conflict', 'This record changed after the write.');
       return records.restore(memberId, recordId);
     },
+    /** A display name under the same column projection as record reads, including app cards. */
+    async fieldLabel(memberId: string, fieldId: string) {
+      const [field] = await getDb()
+        .select({ tableId: baseFields.tableId })
+        .from(baseFields)
+        .where(eq(baseFields.id, fieldId));
+      if (!field) throw notFound('Field');
+      const reader = await loadReader(memberId);
+      const at = await tableAt(reader, field.tableId, 'viewer');
+      const scope = await scopeOf(reader, at);
+      const visible = scope.fields.find((field) => field.id === fieldId);
+      if (!visible) throw notFound('Field');
+      return visible.name;
+    },
     async scopeLabel(memberId: string, tableId: string) {
       const { base, table } = await tableAt(await loadReader(memberId), tableId, 'viewer');
       return {

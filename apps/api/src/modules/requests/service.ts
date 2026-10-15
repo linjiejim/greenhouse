@@ -69,6 +69,7 @@ export function createRequestsService(deps: {
   /** A decision committed: the engine's worker takes it now rather than at its next poll. */
   decided: () => void;
   approvals?: ApprovalsService;
+  display?: (input: CreateRequest) => Promise<CreateRequest>;
 }) {
   const announce = (row: NeedsYouRequest) =>
     deps.hub.publish([row.memberId], {
@@ -82,6 +83,7 @@ export function createRequestsService(deps: {
 
   return {
     async create(input: CreateRequest): Promise<NeedsYouRequest> {
+      if (deps.display) input = await deps.display(input);
       if (input.subject === 'tool_write' && input.runId) {
         const merged = await transaction(async (db) => {
           await db.select({ id: runs.id }).from(runs).where(eq(runs.id, input.runId!)).for('update');

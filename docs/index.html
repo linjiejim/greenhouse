@@ -1,1031 +1,133 @@
 <!doctype html>
-<html lang="en" class="scroll-smooth">
-<head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Greenhouse — an organization's shared AI brain</title>
-<meta name="description" content="An open-source AI assistant for your whole team, on your own server. It knows your documents, projects and data, and the same tools work in team chat, in your apps, and in Claude or Cursor." />
-<link rel="icon" type="image/svg+xml" href="./favicon.svg" />
-<link rel="apple-touch-icon" href="./apple-touch-icon.png" />
-<meta name="theme-color" content="#235d4d" />
-<meta property="og:type" content="website" />
-<meta property="og:url" content="https://greenhouse.linjiejim.com/" />
-<meta property="og:title" content="Greenhouse — an organization's shared AI brain" />
-<meta property="og:description" content="An open-source AI assistant for your whole team, on your own server. It knows your documents, projects and data, and the same tools work in team chat, in your apps, and in Claude or Cursor." />
-<meta property="og:image" content="https://greenhouse.linjiejim.com/og.png" />
-<meta property="og:image:width" content="1200" />
-<meta property="og:image:height" content="630" />
-<meta name="twitter:card" content="summary_large_image" />
-<meta name="twitter:title" content="Greenhouse — an organization's shared AI brain" />
-<meta name="twitter:description" content="Open-source, AI-native agent workbench. One tool layer for your team, your app, and any MCP client." />
-<link rel="stylesheet" href="./tailwind.css" />
-<style>
-  @font-face{ font-family:'Nunito'; font-style:normal; font-weight:200 1000; font-display:swap; src:url('./fonts/nunito-variable.woff2') format('woff2'); }
-  @font-face{ font-family:'JetBrains Mono'; font-style:normal; font-weight:400 500; font-display:swap; src:url('./fonts/jbmono-var.woff2') format('woff2'); }
-  body{ -webkit-font-smoothing:antialiased; }
-  .grid-bg{
-    background-image:
-      linear-gradient(to right, rgba(35,93,77,.06) 1px, transparent 1px),
-      linear-gradient(to bottom, rgba(35,93,77,.06) 1px, transparent 1px);
-    background-size: 48px 48px;
-    -webkit-mask-image: radial-gradient(ellipse 80% 60% at 50% 0%, #000 40%, transparent 80%);
-    mask-image: radial-gradient(ellipse 80% 60% at 50% 0%, #000 40%, transparent 80%);
-  }
-  .glow{ background: radial-gradient(60% 60% at 50% 0%, rgba(182,202,104,.12), transparent 70%); }
-  .card-shadow{ box-shadow: 0 1px 2px rgba(15,23,42,.04), 0 12px 32px -12px rgba(15,23,42,.10); }
-  .soft-shadow{ box-shadow: 0 1px 2px rgba(15,23,42,.04); }
-  .shot-shadow{ box-shadow: 0 1px 2px rgba(15,23,42,.05), 0 24px 48px -20px rgba(15,23,42,.22); }
-  /* Product tour: the active tab is styled here so the JS only toggles aria-selected */
-  .tour-tab{ border-color: transparent; }
-  .tour-tab[aria-selected="true"]{ border-color:#b1d2bf; background:#f4f7f0; }
-  .tour-tab[aria-selected="true"] .tour-tab-title{ color:#235d4d; }
-  .tour-panel[hidden]{ display:none; }
-  /* i18n: Chinese typography — CJK-friendly font stack, and drop negative tracking that cramps CJK headings */
-  html[lang^="zh"] body{ font-family:'Nunito','PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif; }
-  html[lang^="zh"] h1,html[lang^="zh"] h2{ letter-spacing:normal; }
-</style>
-</head>
-<body class="bg-white font-sans text-ink antialiased">
-
-<!-- NAV -->
-<header class="sticky top-0 z-40 border-b border-edge/70 bg-white/80 backdrop-blur">
-  <div class="mx-auto flex h-16 max-w-6xl items-center justify-between px-6">
-    <a href="#top" class="flex items-center gap-2.5">
-      <img src="./favicon.svg" class="h-7 w-7 text-brand-600" alt="" />
-      <span class="text-[17px] font-bold tracking-tight">Greenhouse</span>
-    </a>
-    <nav class="hidden items-center gap-7 text-sm font-medium text-ink-soft md:flex">
-      <a href="#thesis" class="hover:text-brand-700" data-i18n="nav.why">Why</a>
-      <a href="#tour" class="hover:text-brand-700" data-i18n="nav.tour">Tour</a>
-      <a href="#tool-layer" class="hover:text-brand-700" data-i18n="nav.toolLayer">Tool layer</a>
-      <a href="#features" class="hover:text-brand-700" data-i18n="nav.features">Features</a>
-      <a href="#extend" class="hover:text-brand-700" data-i18n="nav.extend">Extend</a>
-      <a href="#selfhost" class="hover:text-brand-700" data-i18n="nav.selfhost">Self-host</a>
-    </nav>
-    <div class="flex items-center gap-3">
-      <button id="lang-toggle" type="button" aria-label="切换为中文" class="flex items-center gap-2 rounded-lg border border-edge-strong px-2.5 py-1.5 text-sm font-medium text-ink-soft transition hover:bg-gray-50">
-        <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18" stroke-linecap="round"/></svg>
-        <span id="lang-toggle-label">中文</span>
-      </button>
-      <a href="https://github.com/linjiejim/greenhouse" class="hidden items-center gap-2 rounded-lg border border-edge-strong px-3 py-1.5 text-sm font-medium text-ink-soft transition hover:bg-gray-50 sm:flex">
-        <svg viewBox="0 0 16 16" class="h-4 w-4" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
-        <span data-i18n="nav.star">Star</span>
-      </a>
-      <a href="#selfhost" class="rounded-lg bg-brand-600 px-3.5 py-1.5 text-sm font-semibold text-white transition hover:bg-brand-700" data-i18n="nav.getStarted">Get started</a>
-    </div>
-  </div>
-</header>
-
-<main id="top">
-
-<!-- HERO -->
-<section class="relative overflow-hidden">
-  <div class="absolute inset-0 grid-bg"></div>
-  <div class="absolute inset-x-0 top-0 h-[420px] glow"></div>
-  <div class="relative mx-auto max-w-6xl px-6 pb-16 pt-16 lg:pt-24">
-    <div class="mx-auto max-w-3xl text-center">
-      <div class="mb-5 inline-flex items-center gap-2 rounded-full border border-brand-200 bg-brand-50 px-3 py-1 text-xs font-medium text-brand-700">
-        <span class="h-1.5 w-1.5 rounded-full bg-brand-500"></span>
-        <span data-i18n="hero.badge">Open source · MIT · self-hosted</span>
-      </div>
-      <h1 class="text-[2.7rem] font-extrabold leading-[1.05] tracking-tight text-ink sm:text-[3.4rem]" data-i18n="hero.h1">
-        Put the agent at the<br><span class="text-brand-600">center</span> of your organization.
-      </h1>
-      <p class="mx-auto mt-6 max-w-2xl text-lg leading-relaxed text-ink-soft" data-i18n="hero.lede">
-        An open-source AI assistant for your whole team, running on your own server. It knows your
-        documents, your projects and your data, and every tool you give it works the same way in team chat,
-        in your own apps, and in Claude or Cursor —
-        <span class="font-semibold text-ink">one file per new capability.</span>
-      </span>
-      </p>
-      <div class="mt-8 flex flex-wrap items-center justify-center gap-3">
-        <a href="https://github.com/linjiejim/greenhouse" class="inline-flex items-center gap-2 rounded-xl bg-brand-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-brand-700">
-          <span data-i18n="hero.star">Star on GitHub</span>
-          <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        </a>
-        <a href="#tour" class="inline-flex items-center gap-2 rounded-xl border border-edge-strong bg-white px-5 py-3 text-sm font-semibold text-ink-soft transition hover:bg-gray-50" data-i18n="hero.tour">
-          Take the tour
-        </a>
-      </div>
-      <div class="mt-7 inline-flex max-w-full items-center gap-3 rounded-xl border border-edge bg-gray-50 px-4 py-2.5 font-mono text-[13px] text-ink-soft">
-        <span class="select-none text-brand-600">$</span>
-        <span class="min-w-0 break-all">curl -fsSL https://greenhouse.linjiejim.com/install.sh | bash</span>
-      </div>
-    </div>
-
-    <!-- HERO: real recording of a knowledge-grounded answer -->
-    <div class="relative mx-auto mt-14 max-w-5xl">
-      <div class="overflow-hidden rounded-2xl border border-edge bg-white shot-shadow">
-        <div class="flex items-center gap-1.5 border-b border-edge bg-gray-50 px-3 py-2">
-          <span class="h-2.5 w-2.5 rounded-full bg-red-300"></span>
-          <span class="h-2.5 w-2.5 rounded-full bg-amber-300"></span>
-          <span class="h-2.5 w-2.5 rounded-full bg-green-300"></span>
-          <span class="ml-2 truncate font-mono text-[11px] text-ink-faint">greenhouse.example/#/chat</span>
-          <span class="ml-auto rounded-full bg-brand-50 px-2 py-0.5 text-[10px] font-medium text-brand-700" data-i18n="hero.liveBadge">real recording · no mock data</span>
-        </div>
-        <video class="block w-full" autoplay muted loop playsinline preload="metadata" poster="./assets/screens/chat-knowledge-answer.webp" width="1280" height="800" aria-label="A member asks about the home-office stipend; the agent searches the knowledge base and answers with citations">
-          <source src="./assets/screens/chat-knowledge.mp4" type="video/mp4" />
-          <img src="./assets/screens/chat-knowledge.gif" alt="Chat answering with citations from the knowledge base" class="block w-full" />
-        </video>
-      </div>
-      <p class="mt-4 text-center text-sm text-ink-mut" data-i18n="hero.caption">
-        A member asks about the home-office stipend. The agent searches the team knowledge base, answers with
-        <span class="font-medium text-ink">citations</span>, and the trace shows every tool call it made.
-      </p>
-      <div class="absolute -bottom-3 -left-3 -z-10 h-full w-full rounded-2xl border border-brand-200 bg-brand-50/40"></div>
-    </div>
-  </div>
-</section>
-
-<!-- TRUST STRIP -->
-<section class="border-y border-edge bg-gray-50/60">
-  <div class="mx-auto flex max-w-6xl flex-wrap items-center justify-center gap-x-10 gap-y-3 px-6 py-5 text-sm text-ink-mut">
-    <span class="font-medium text-ink-soft" data-i18n="trust.worksWith">Works with</span>
-    <span data-i18n="trust.openai">Any OpenAI-compatible model</span><span class="text-edge-strong">·</span>
-    <span>Claude</span><span class="text-edge-strong">·</span>
-    <span>Cursor</span><span class="text-edge-strong">·</span>
-    <span data-i18n="trust.mcpClient">Any MCP client</span><span class="text-edge-strong">·</span>
-    <span class="rounded-full bg-brand-50 px-2.5 py-0.5 text-xs font-medium text-brand-700" data-i18n="trust.builtBy">Built by agents, for agents</span>
-  </div>
-</section>
-
-<!-- THESIS -->
-<section id="thesis" class="mx-auto max-w-4xl px-6 py-24 text-center">
-  <p class="text-sm font-semibold uppercase tracking-widest text-brand-600" data-i18n="thesis.kicker">The idea</p>
-  <h2 class="mx-auto mt-4 max-w-3xl text-3xl font-extrabold leading-tight tracking-tight text-ink sm:text-[2.6rem]" data-i18n="thesis.h2">
-    The agent <span class="text-brand-600">is</span> the product — not a feature bolted on the side.
-  </h2>
-  <p class="mx-auto mt-6 max-w-2xl text-lg leading-relaxed text-ink-soft" data-i18n="thesis.p">
-        Most AI tools stop at helping one person. The moment a team needs them, the hard parts are
-        missing: who may see what, who approved what, and a record of what happened. Greenhouse is that
-        missing part — the foundation an agent sits on, not another clever agent.
-      </span>
-  </p>
-  <blockquote class="mx-auto mt-10 max-w-2xl border-l-2 border-brand-400 pl-5 text-left text-lg italic leading-relaxed text-ink-soft" data-i18n="thesis.quote">
-        The tools your team uses in chat are the same tools you hand to Claude or Cursor.
-        Adding a capability is writing one file.
-      </blockquote>
-</section>
-
-<!-- PRODUCT TOUR -->
-<section id="tour" class="border-y border-edge bg-gray-50/60">
-  <div class="mx-auto max-w-6xl px-6 py-24">
-    <div class="mx-auto max-w-2xl text-center">
-      <p class="text-sm font-semibold uppercase tracking-widest text-brand-600" data-i18n="tour.kicker">Product tour</p>
-      <h2 class="mt-4 text-3xl font-extrabold tracking-tight text-ink sm:text-4xl" data-i18n="tour.h2">One place to work. The agent is in all of it.</h2>
-    </div>
-
-    <div class="mt-12 grid gap-6 lg:grid-cols-[19rem_1fr]" data-tour>
-      <!-- tabs -->
-      <div class="flex gap-2 overflow-x-auto pb-1 lg:flex-col lg:overflow-visible lg:pb-0" role="tablist" aria-label="Product tour">
-        <button type="button" class="tour-tab shrink-0 rounded-xl border bg-white px-4 py-3 text-left transition hover:bg-brand-50/60 lg:w-full" role="tab" aria-selected="true" data-tour-tab="workbench">
-          <span class="tour-tab-title block text-sm font-semibold text-ink" data-i18n="tour.t1">Home workbench</span>
-          <span class="mt-0.5 hidden text-[12.5px] leading-snug text-ink-mut lg:block" data-i18n="tour.d1">Live cards backed by the same tools the agent uses.</span>
-        </button>
-        <button type="button" class="tour-tab shrink-0 rounded-xl border bg-white px-4 py-3 text-left transition hover:bg-brand-50/60 lg:w-full" role="tab" aria-selected="false" data-tour-tab="data">
-          <span class="tour-tab-title block text-sm font-semibold text-ink" data-i18n="tour.t2">Ask across your data</span>
-          <span class="mt-0.5 hidden text-[12.5px] leading-snug text-ink-mut lg:block" data-i18n="tour.d2">The answer comes back as real, sortable tables.</span>
-        </button>
-        <button type="button" class="tour-tab shrink-0 rounded-xl border bg-white px-4 py-3 text-left transition hover:bg-brand-50/60 lg:w-full" role="tab" aria-selected="false" data-tour-tab="knowledge">
-          <span class="tour-tab-title block text-sm font-semibold text-ink" data-i18n="tour.t3">Knowledge base</span>
-          <span class="mt-0.5 hidden text-[12.5px] leading-snug text-ink-mut lg:block" data-i18n="tour.d3">Team, personal and shared docs the agent can cite.</span>
-        </button>
-        <button type="button" class="tour-tab shrink-0 rounded-xl border bg-white px-4 py-3 text-left transition hover:bg-brand-50/60 lg:w-full" role="tab" aria-selected="false" data-tour-tab="tables">
-          <span class="tour-tab-title block text-sm font-semibold text-ink" data-i18n="tour.t4">Tables</span>
-          <span class="mt-0.5 hidden text-[12.5px] leading-snug text-ink-mut lg:block" data-i18n="tour.d4">Typed fields, views and forms — structured data with an agent attached.</span>
-        </button>
-        <button type="button" class="tour-tab shrink-0 rounded-xl border bg-white px-4 py-3 text-left transition hover:bg-brand-50/60 lg:w-full" role="tab" aria-selected="false" data-tour-tab="projects">
-          <span class="tour-tab-title block text-sm font-semibold text-ink" data-i18n="tour.t5">Projects</span>
-          <span class="mt-0.5 hidden text-[12.5px] leading-snug text-ink-mut lg:block" data-i18n="tour.d5">Portfolio timeline, boards and task trees.</span>
-        </button>
-        <button type="button" class="tour-tab shrink-0 rounded-xl border bg-white px-4 py-3 text-left transition hover:bg-brand-50/60 lg:w-full" role="tab" aria-selected="false" data-tour-tab="executions">
-          <span class="tour-tab-title block text-sm font-semibold text-ink" data-i18n="tour.t6">Execution center</span>
-          <span class="mt-0.5 hidden text-[12.5px] leading-snug text-ink-mut lg:block" data-i18n="tour.d6">Scheduled jobs, long tasks and workflows, in one place.</span>
-        </button>
-        <button type="button" class="tour-tab shrink-0 rounded-xl border bg-white px-4 py-3 text-left transition hover:bg-brand-50/60 lg:w-full" role="tab" aria-selected="false" data-tour-tab="skills">
-          <span class="tour-tab-title block text-sm font-semibold text-ink" data-i18n="tour.t7">Skill Center</span>
-          <span class="mt-0.5 hidden text-[12.5px] leading-snug text-ink-mut lg:block" data-i18n="tour.d7">An org-wide library of versioned agent skills.</span>
-        </button>
-        <button type="button" class="tour-tab shrink-0 rounded-xl border bg-white px-4 py-3 text-left transition hover:bg-brand-50/60 lg:w-full" role="tab" aria-selected="false" data-tour-tab="agents">
-          <span class="tour-tab-title block text-sm font-semibold text-ink" data-i18n="tour.t8">My Agents</span>
-          <span class="mt-0.5 hidden text-[12.5px] leading-snug text-ink-mut lg:block" data-i18n="tour.d8">Virtual coworkers: a prompt, a subset of tools, a face.</span>
-        </button>
-      </div>
-
-      <!-- panels -->
-      <div class="min-w-0">
-        <figure class="tour-panel" data-tour-panel="workbench">
-          <div class="overflow-hidden rounded-2xl border border-edge bg-white shot-shadow">
-            <img src="./assets/screens/home-workbench.webp" alt="Home workbench with a notes card and live project cards" width="1440" height="900" class="block w-full" />
-          </div>
-          <figcaption class="mt-3 text-sm leading-relaxed text-ink-mut" data-i18n="tour.c1">Your day on one screen. Every card is a tool call with a saved recipe — rearrange by drag-and-drop, or ask the agent to change the layout for you.</figcaption>
-        </figure>
-        <figure class="tour-panel" data-tour-panel="data" hidden>
-          <div class="overflow-hidden rounded-2xl border border-edge bg-white shot-shadow">
-            <img src="./assets/screens/chat-tables-answer.webp" alt="Chat answer analysing a Customer Feedback base with rendered tables" width="1440" height="900" class="block w-full" loading="lazy" />
-          </div>
-          <figcaption class="mt-3 text-sm leading-relaxed text-ink-mut" data-i18n="tour.c2">“Which feedback is negative, and what is the average score per channel?” — the agent queries the Tables base and answers with sortable, exportable tables, then points at the actionable gap.</figcaption>
-        </figure>
-        <figure class="tour-panel" data-tour-panel="knowledge" hidden>
-          <div class="overflow-hidden rounded-2xl border border-edge bg-white shot-shadow">
-            <img src="./assets/screens/knowledge-search.webp" alt="Knowledge base with a search hit open next to the results" width="1440" height="900" class="block w-full" loading="lazy" />
-          </div>
-          <figcaption class="mt-3 text-sm leading-relaxed text-ink-mut" data-i18n="tour.c3">
-        A proper editor, folders, links between pages, version history, and search that handles
-              Chinese — the same place the agent quotes from in chat.
-      </figcaption>
-        </figure>
-        <figure class="tour-panel" data-tour-panel="tables" hidden>
-          <div class="overflow-hidden rounded-2xl border border-edge bg-white shot-shadow">
-            <img src="./assets/screens/tables-grid.webp" alt="Tables grid with select, number, date, user and checkbox fields" width="1440" height="900" class="block w-full" loading="lazy" />
-          </div>
-          <figcaption class="mt-3 text-sm leading-relaxed text-ink-mut" data-i18n="tour.c4">
-        Spreadsheet-like tables with real field types, views, forms and links between records.
-              Describe what you need in chat and the agent drafts it for you to approve.
-      </figcaption>
-        </figure>
-        <figure class="tour-panel" data-tour-panel="projects" hidden>
-          <div class="overflow-hidden rounded-2xl border border-edge bg-white shot-shadow">
-            <img src="./assets/screens/projects-gantt.webp" alt="Projects portfolio timeline with a today marker" width="1440" height="900" class="block w-full" loading="lazy" />
-          </div>
-          <figcaption class="mt-3 text-sm leading-relaxed text-ink-mut" data-i18n="tour.c5">Portfolio timeline, kanban boards and task trees with members, comments and an activity log — and the agent files tasks straight from a conversation.</figcaption>
-        </figure>
-        <figure class="tour-panel" data-tour-panel="executions" hidden>
-          <div class="overflow-hidden rounded-2xl border border-edge bg-white shot-shadow">
-            <img src="./assets/screens/execution-center.webp" alt="Execution center listing completed automation runs" width="1440" height="900" class="block w-full" loading="lazy" />
-          </div>
-          <figcaption class="mt-3 text-sm leading-relaxed text-ink-mut" data-i18n="tour.c6">
-        Everything running in the background on one screen — scheduled jobs, long tasks, workflows —
-              with an inbox for the steps that need a person to say yes.
-      </figcaption>
-        </figure>
-        <figure class="tour-panel" data-tour-panel="skills" hidden>
-          <div class="overflow-hidden rounded-2xl border border-edge bg-white shot-shadow">
-            <img src="./assets/screens/skillhub.webp" alt="Skill Center listing published skills" width="1440" height="900" class="block w-full" loading="lazy" />
-          </div>
-          <figcaption class="mt-3 text-sm leading-relaxed text-ink-mut" data-i18n="tour.c7">
-        Reusable know-how the agent can pick up, versioned so an update never rewrites history.
-              A starter set ships with the project.
-      </figcaption>
-        </figure>
-        <figure class="tour-panel" data-tour-panel="agents" hidden>
-          <div class="overflow-hidden rounded-2xl border border-edge bg-white shot-shadow">
-            <img src="./assets/screens/agents.webp" alt="My Agents page with a custom agent" width="1440" height="900" class="block w-full" loading="lazy" />
-          </div>
-          <figcaption class="mt-3 text-sm leading-relaxed text-ink-mut" data-i18n="tour.c8">A profile is a system prompt, a chosen subset of tools and a face. Keep it private, publish it to the team after review, fork someone else's, or run it on a schedule.</figcaption>
-        </figure>
-      </div>
-    </div>
-  </div>
-</section>
-
-<!-- ONE FILE THREE SURFACES -->
-<section id="tool-layer" class="mx-auto max-w-6xl px-6 py-24">
-  <div class="mx-auto max-w-2xl text-center">
-    <p class="text-sm font-semibold uppercase tracking-widest text-brand-600" data-i18n="tool.kicker">The tool layer</p>
-    <h2 class="mt-4 text-3xl font-extrabold tracking-tight text-ink sm:text-4xl" data-i18n="tool.h2">One definition. Three entry points.</h2>
-    <p class="mt-5 text-lg leading-relaxed text-ink-soft" data-i18n="tool.p">
-      Declare a tool once with <span class="font-mono text-[15px] text-brand-700">defineTool</span> and add one line to the registry.
-      It appears everywhere — automatically. No three separate lists drifting apart.
-    </p>
-  </div>
-
-  <div class="mt-14 grid items-center gap-8 lg:grid-cols-[0.9fr_1.1fr]">
-    <!-- code -->
-    <div class="overflow-hidden rounded-2xl border border-edge bg-[#0c1512] card-shadow">
-      <div class="flex items-center gap-2 border-b border-white/10 px-4 py-2.5">
-        <span class="h-2.5 w-2.5 rounded-full bg-white/20"></span><span class="h-2.5 w-2.5 rounded-full bg-white/20"></span><span class="h-2.5 w-2.5 rounded-full bg-white/20"></span>
-        <span class="ml-2 font-mono text-[12px] text-white/40">tools/my-tool.ts</span>
-      </div>
-      <pre class="overflow-x-auto p-4 font-mono text-[12.5px] leading-relaxed text-emerald-50/90"><span class="text-teal-300">export const</span> myTool = <span class="text-teal-300">defineTool</span>({
-  meta: {
-    id: <span class="text-amber-200">'my_tool'</span>,
-    brief: <span class="text-amber-200">'one-line summary'</span>,
-    category: <span class="text-amber-200">'team'</span>,
-    surface: {
-      proxy: <span class="text-amber-200">'read'</span>,      <span class="text-white/35">// read | write | none</span>
-      mcp: <span class="text-amber-200">'knowledge'</span>,  <span class="text-white/35">// MCP resource group</span>
-    },
-  },
-  kind: <span class="text-amber-200">'static'</span>,
-  create: (ctx) => tool({ <span class="text-white/35">/* … */</span> }),
-});</pre>
-    </div>
-
-    <!-- diagram -->
-    <div class="rounded-2xl border border-edge bg-white p-7 card-shadow">
-      <div class="mx-auto mb-6 w-fit rounded-xl border border-brand-200 bg-brand-50 px-4 py-2.5 text-center">
-        <p class="font-mono text-[12px] text-brand-700" data-i18n="tool.badgeMono">one tool = one file</p>
-        <p class="text-sm font-semibold text-ink" data-i18n="tool.badgeTitle">The shared tool layer</p>
-      </div>
-      <div class="relative mx-auto mb-6 h-8 w-px bg-edge-strong"></div>
-      <div class="grid grid-cols-3 gap-3 text-center">
-        <div class="rounded-xl border border-edge bg-gray-50 p-3">
-          <div class="mx-auto mb-2 grid h-9 w-9 place-items-center rounded-lg bg-brand-50 text-brand-600">
-            <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" stroke-linecap="round" stroke-linejoin="round"/></svg>
-          </div>
-          <p class="text-[13px] font-semibold text-ink" data-i18n="tool.teamChat">Team chat</p>
-          <p class="mt-0.5 text-[11.5px] text-ink-mut" data-i18n="tool.teamChatSub">members, in-app</p>
-        </div>
-        <div class="rounded-xl border border-edge bg-gray-50 p-3">
-          <div class="mx-auto mb-2 grid h-9 w-9 place-items-center rounded-lg bg-brand-50 text-brand-600">
-            <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 18l6-6-6-6M8 6l-6 6 6 6" stroke-linecap="round" stroke-linejoin="round"/></svg>
-          </div>
-          <p class="text-[13px] font-semibold text-ink">Agent API</p>
-          <p class="mt-0.5 text-[11.5px] text-ink-mut">/api/agent</p>
-        </div>
-        <div class="rounded-xl border border-edge bg-gray-50 p-3">
-          <div class="mx-auto mb-2 grid h-9 w-9 place-items-center rounded-lg bg-brand-50 text-brand-600">
-            <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M2 12h4M18 12h4M5 5l3 3M16 16l3 3M19 5l-3 3M8 16l-3 3" stroke-linecap="round"/></svg>
-          </div>
-          <p class="text-[13px] font-semibold text-ink" data-i18n="tool.mcpServer">MCP server</p>
-          <p class="mt-0.5 text-[11.5px] text-ink-mut">Claude · Cursor</p>
-        </div>
-      </div>
-      <p class="mt-6 rounded-lg bg-gray-50 px-3 py-2 text-center text-[12.5px] text-ink-mut" data-i18n="tool.permNote">
-        Permissions only <span class="font-semibold text-ink">narrow</span>, never widen — every surface is a subset of the user's own access.
-      </p>
-    </div>
-  </div>
-</section>
-
-<!-- GENERATIVE UI -->
-<section class="border-y border-edge bg-gray-50/60">
-  <div class="mx-auto max-w-6xl px-6 py-24">
-    <div class="grid items-center gap-12 lg:grid-cols-[0.8fr_1.2fr]">
-      <div>
-        <p class="text-sm font-semibold uppercase tracking-widest text-brand-600" data-i18n="gen.kicker">Generative UI</p>
-        <h2 class="mt-4 text-3xl font-extrabold tracking-tight text-ink sm:text-4xl" data-i18n="gen.h2">Messages aren't just text.</h2>
-        <p class="mt-5 text-lg leading-relaxed text-ink-soft" data-i18n="gen.p1">
-        When an answer carries a table, a chart or something to approve, the chat turns it into the
-        real thing — sortable tables, charts, file cards, buttons. The agent only writes text; the interface
-        decides how it looks.
-      </p>
-        <p class="mt-4 text-lg leading-relaxed text-ink-soft" data-i18n="gen.p2">
-        The buttons work: a click answers the step the agent paused on, and it carries on.
-      </span>
-        </p>
-        <ul class="mt-6 space-y-2.5 text-[15px] text-ink-soft">
-          <li class="flex items-center gap-2.5"><span class="grid h-5 w-5 place-items-center rounded-full bg-brand-50 text-brand-600"><svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span data-i18n="gen.li1">Sortable, searchable data tables with CSV export</span></li>
-          <li class="flex items-center gap-2.5"><span class="grid h-5 w-5 place-items-center rounded-full bg-brand-50 text-brand-600"><svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span data-i18n="gen.li2">Charts — bar, line, pie, radar</span></li>
-          <li class="flex items-center gap-2.5"><span class="grid h-5 w-5 place-items-center rounded-full bg-brand-50 text-brand-600"><svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span data-i18n="gen.li3">Confirm buttons that resume the agent</span></li>
-          <li class="flex items-center gap-2.5"><span class="grid h-5 w-5 place-items-center rounded-full bg-brand-50 text-brand-600"><svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span data-i18n="gen.li4">Citations, record peeks, file &amp; preview cards</span></li>
-        </ul>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Greenhouse v2 · 人与 Agent 一起工作的地方</title>
+    <meta name="description" content="开源、自托管的团队 AI 工作空间。自己的 Agent，共享的知识、表格与应用；一个引擎，同一套权限。" />
+    <meta name="theme-color" content="#235d4d" />
+    <meta property="og:title" content="Greenhouse v2" />
+    <meta property="og:description" content="Your Agents. Shared knowledge, tables and apps. On your own server." />
+    <meta property="og:image" content="https://greenhouse.linjiejim.com/assets/v2/conversation-light.webp" />
+    <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+    <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
+    <link rel="stylesheet" href="./tailwind.css" />
+    <style>
+      @font-face { font-family: Nunito; font-style: normal; font-weight: 200 1000; font-display: swap; src: url('./fonts/nunito-variable.woff2') format('woff2'); }
+      :root { color-scheme: light dark; --bg: #f9faf7; --surface: #fff; --ink: #202c25; --muted: #626e66; --edge: #dfe5dd; --accent: #235d4d; --button: #fff; }
+      @media (prefers-color-scheme: dark) { :root { --bg: #141b17; --surface: #1d2720; --ink: #e6ece6; --muted: #abb8ad; --edge: #354238; --accent: #aad3b5; --button: #142219; } }
+      * { box-sizing: border-box; }
+      body { margin: 0; background: var(--bg); color: var(--ink); font-family: Nunito, 'PingFang SC', system-ui, sans-serif; line-height: 1.7; -webkit-font-smoothing: antialiased; }
+      a { color: var(--accent); text-underline-offset: .2em; }
+      button { font: inherit; color: inherit; background: var(--surface); border: 1px solid var(--edge); border-radius: .6rem; padding: .4rem .8rem; cursor: pointer; }
+      a:focus-visible, button:focus-visible { outline: 3px solid var(--accent); outline-offset: 4px; }
+      header, main, footer { max-width: 1200px; margin: auto; padding-inline: 24px; }
+      header { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding-block: 24px; }
+      .brand { display: inline-flex; align-items: center; gap: 10px; color: var(--ink); font-size: 20px; font-weight: 800; text-decoration: none; }
+      .brand img { width: 32px; height: 32px; }
+      nav { display: flex; align-items: center; gap: 20px; }
+      nav a { text-decoration: none; }
+      h1, h2, h3, p { margin: 0; }
+      h1 { font-size: clamp(36px, 5vw, 62px); line-height: 1.18; font-weight: 800; max-width: 900px; margin-block: 16px 24px; }
+      h2 { font-size: clamp(26px, 3vw, 36px); line-height: 1.3; margin-bottom: 16px; }
+      h3 { font-size: 21px; line-height: 1.4; margin-bottom: 12px; }
+      .hero { padding-top: 64px; }
+      .eyebrow, .muted, figcaption { color: var(--muted); }
+      .intro { max-width: 760px; font-size: 20px; }
+      .actions { display: flex; align-items: center; flex-wrap: wrap; gap: 24px; margin-top: 28px; }
+      .primary { display: inline-block; border-radius: 10px; background: var(--accent); color: var(--button); padding: 12px 24px; font-weight: 800; text-decoration: none; }
+      .release { margin-top: 20px; max-width: 780px; font-size: 14px; color: var(--muted); }
+      figure { margin: 40px 0 0; }
+      picture, picture img { display: block; width: 100%; }
+      picture img { border: 1px solid var(--edge); border-radius: 12px; box-shadow: 0 20px 60px -32px #0008; aspect-ratio: 16 / 10; object-fit: cover; object-position: top; }
+      figcaption { margin-top: 12px; font-size: 14px; }
+      section { padding-block: 72px 0; scroll-margin-top: 24px; }
+      .cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px; margin-top: 28px; }
+      .card { padding: 28px; background: var(--surface); border: 1px solid var(--edge); border-radius: 14px; }
+      .card p { color: var(--muted); }
+      .tour { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; }
+      .tour figure { min-width: 0; margin-top: 28px; }
+      .tour img { aspect-ratio: 16 / 10; }
+      .setup { margin-top: 72px; padding: 36px; border: 1px solid var(--edge); border-radius: 16px; background: var(--surface); }
+      pre { white-space: pre-wrap; overflow-wrap: anywhere; background: var(--bg); border: 1px solid var(--edge); padding: 20px; border-radius: 10px; font-size: 14px; line-height: 1.7; }
+      footer { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 16px; padding-block: 48px; color: var(--muted); font-size: 14px; }
+      .skip { position: absolute; top: -100px; padding: 12px; background: var(--surface); }
+      .skip:focus { top: 10px; }
+      @media (max-width: 700px) { header, main, footer { padding-inline: 20px; } nav { gap: 12px; font-size: 14px; } .hero { padding-top: 32px; } .cards, .tour { grid-template-columns: 1fr; } section { padding-top: 48px; } .setup { padding: 24px; margin-top: 48px; } .intro { font-size: 18px; } }
+    </style>
+  </head>
+  <body>
+    <a class="skip" href="#main" data-zh="跳到正文" data-en="Skip to content">跳到正文</a>
+    <header>
+      <a class="brand" href="#main"><img src="./favicon.svg" alt="" />Greenhouse</a>
+      <nav aria-label="导航" data-aria-zh="导航" data-aria-en="Navigation">
+        <a href="https://github.com/linjiejim/greenhouse/tree/v2" data-zh="源代码" data-en="Source">源代码</a>
+        <button id="language" type="button" aria-label="Switch to English">English</button>
+      </nav>
+    </header>
+    <main id="main">
+      <div class="hero">
+        <p class="eyebrow" data-zh="开源 · 自托管 · v2 预览" data-en="Open source · Self hosted · v2 preview">开源 · 自托管 · v2 预览</p>
+        <h1 data-zh="自己的 Agent，&lt;br /&gt;一起工作的地方。" data-en="Your Agents.&lt;br /&gt;A shared place to work.">自己的 Agent，<br />一起工作的地方。</h1>
+        <p class="intro" data-zh="每个成员有自己的 AI 同事，在同一份知识、表格与应用上协作。数据留在自己的服务器，行动遵守同一套权限。" data-en="Each member has an AI colleague. Work together on shared knowledge, tables and apps, on your own server, with the same permissions for every action.">每个成员有自己的 AI 同事，在同一份知识、表格与应用上协作。数据留在自己的服务器，行动遵守同一套权限。</p>
+        <div class="actions"><a class="primary" href="#selfhost" data-zh="开始自托管" data-en="Start self hosting">开始自托管</a><a href="https://github.com/linjiejim/greenhouse/blob/v2/docs/product/prd.md" data-zh="阅读产品说明" data-en="Read the product spec">阅读产品说明</a></div>
+        <p class="release" data-zh="v2.0 正在交付验收中，尚未发布。v2 使用全新数据库；现有 v1 部署请先看迁移指南。" data-en="v2.0 is in delivery acceptance and has not been released. v2 starts with a new database; existing v1 deployments should read the migration guide first.">v2.0 正在交付验收中，尚未发布。v2 使用全新数据库；现有 v1 部署请先看迁移指南。</p>
       </div>
       <figure>
-        <div class="overflow-hidden rounded-2xl border border-edge bg-white shot-shadow">
-          <img src="./assets/screens/chat-knowledge-trace.webp" alt="Chat answer with the tool-call trace expanded and the reference list open" width="1440" height="900" class="block w-full" loading="lazy" />
-        </div>
-        <figcaption class="mt-3 text-sm leading-relaxed text-ink-mut" data-i18n="gen.figcap">Tool-call trace and reference list expanded under a knowledge answer — every claim links back to the document it came from.</figcaption>
+        <picture><source media="(prefers-color-scheme: dark)" srcset="./assets/v2/conversation-dark.webp" /><img src="./assets/v2/conversation-light.webp" width="1440" height="900" alt="Greenhouse 对话与引用的知识文档" data-alt-zh="Greenhouse 对话与引用的知识文档" data-alt-en="Greenhouse conversation with a cited knowledge document" fetchpriority="high" /></picture>
+        <figcaption data-zh="实际 Web 界面 · 预置示例数据与脚本模型 · 随系统切换浅色／深色" data-en="The actual web app · Seeded sample data and a scripted model · Light and dark themes">实际 Web 界面 · 预置示例数据与脚本模型 · 随系统切换浅色／深色</figcaption>
       </figure>
-    </div>
-  </div>
-</section>
-
-<!-- PERMISSIONS / TRUST -->
-<section class="mx-auto max-w-6xl px-6 py-24">
-  <div class="mx-auto max-w-2xl text-center">
-    <p class="text-sm font-semibold uppercase tracking-widest text-brand-600" data-i18n="perm.kicker">Trust boundary</p>
-    <h2 class="mt-4 text-3xl font-extrabold tracking-tight text-ink sm:text-4xl" data-i18n="perm.h2">Safe to point at your whole org.</h2>
-    <p class="mt-5 text-lg leading-relaxed text-ink-soft" data-i18n="perm.p">
-        Permissions live in one place, and they only ever take away — never add. That is what makes
-        it safe to open your company's tools to an outside agent.
-      </p>
-  </div>
-  <div class="mt-14 grid gap-5 md:grid-cols-2 lg:grid-cols-4">
-    <div class="rounded-2xl border border-edge bg-white p-6 soft-shadow">
-      <div class="mb-4 grid h-10 w-10 place-items-center rounded-xl bg-brand-50 text-brand-600"><svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 11V7a5 5 0 0 1 10 0v4" stroke-linecap="round"/><rect x="4" y="11" width="16" height="10" rx="2"/></svg></div>
-      <h3 class="text-base font-semibold text-ink" data-i18n="perm.c1t">Only narrow, never widen</h3>
-      <p class="mt-1.5 text-sm leading-relaxed text-ink-mut" data-i18n="perm.c1b">An agent gets a subset of its user's permissions — it can never gain a capability the user doesn't have.</p>
-    </div>
-    <div class="rounded-2xl border border-edge bg-white p-6 soft-shadow">
-      <div class="mb-4 grid h-10 w-10 place-items-center rounded-xl bg-brand-50 text-brand-600"><svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12l2 2 4-4" stroke-linecap="round" stroke-linejoin="round"/><circle cx="12" cy="12" r="9"/></svg></div>
-      <h3 class="text-base font-semibold text-ink" data-i18n="perm.c2t">Writes need a human</h3>
-      <p class="mt-1.5 text-sm leading-relaxed text-ink-mut" data-i18n="perm.c2b">Mutating actions are deny-by-default. Every write is confirm-gated and logged to an audit trail.</p>
-    </div>
-    <div class="rounded-2xl border border-edge bg-white p-6 soft-shadow">
-      <div class="mb-4 grid h-10 w-10 place-items-center rounded-xl bg-brand-50 text-brand-600"><svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l8 4v6c0 5-3.4 8.5-8 10-4.6-1.5-8-5-8-10V6z" stroke-linejoin="round"/></svg></div>
-      <h3 class="text-base font-semibold text-ink" data-i18n="perm.c3t">Fail-closed by design</h3>
-      <p class="mt-1.5 text-sm leading-relaxed text-ink-mut" data-i18n="perm.c3b">No signing key, no encryption key? The server refuses to start. No "forgot to configure it, now everything's open."</p>
-    </div>
-    <div class="rounded-2xl border border-edge bg-white p-6 soft-shadow">
-      <div class="mb-4 grid h-10 w-10 place-items-center rounded-xl bg-brand-50 text-brand-600"><svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="7" r="3"/><path d="M3 20a6 6 0 0 1 12 0M16 3.5a3 3 0 0 1 0 7M21 20a6 6 0 0 0-4-5.6" stroke-linecap="round"/></svg></div>
-      <h3 class="text-base font-semibold text-ink" data-i18n="perm.c4t">Roles, policies, one dialog</h3>
-      <p class="mt-1.5 text-sm leading-relaxed text-ink-mut" data-i18n="perm.c4b">
-        Roles, per-person switches, and rules down to a single field — written once, enforced the
-          same way however the request arrives.
-      </p>
-    </div>
-  </div>
-  <div class="mt-10 grid gap-6 md:grid-cols-2">
-    <figure>
-      <div class="overflow-hidden rounded-2xl border border-edge bg-white shot-shadow">
-        <img src="./assets/screens/admin-permissions-dialog.webp" alt="Per-user permissions dialog with basic, app and advanced access tabs" width="1440" height="900" class="block w-full" loading="lazy" />
-      </div>
-      <figcaption class="mt-3 text-sm leading-relaxed text-ink-mut" data-i18n="perm.figA">One permissions dialog per user — basic access, app access, advanced access and usage limits, with global tools shown for what they are.</figcaption>
-    </figure>
-    <figure>
-      <div class="overflow-hidden rounded-2xl border border-edge bg-white shot-shadow">
-        <img src="./assets/screens/admin-mcp-access.webp" alt="MCP Access page listing a machine client with least-privilege scopes" width="1440" height="900" class="block w-full" loading="lazy" />
-      </div>
-      <figcaption class="mt-3 text-sm leading-relaxed text-ink-mut" data-i18n="perm.figB">
-        Outside agents sign in with OAuth, and each one is granted only the groups of tools you pick.
-      </figcaption>
-    </figure>
-  </div>
-</section>
-
-<!-- PROFILES -->
-<section class="border-y border-edge bg-gray-50/60">
-  <div class="mx-auto max-w-6xl px-6 py-24">
-    <div class="grid items-center gap-12 lg:grid-cols-2">
-      <figure class="order-2 lg:order-1">
-        <div class="overflow-hidden rounded-2xl border border-edge bg-white shot-shadow">
-          <img src="./assets/screens/automations.webp" alt="Automation page with a scheduled daily standup digest" width="1440" height="900" class="block w-full" loading="lazy" />
+      <section>
+        <h2 data-zh="从一句话，到有出处的结果。" data-en="From a conversation to a result you can trace.">从一句话，到有出处的结果。</h2>
+        <div class="cards">
+          <article class="card"><h3 data-zh="对话与后台运行" data-en="Conversations and runs">对话与后台运行</h3><p data-zh="主线、Agent 对话、会话与房间各有位置。长工作交给后台运行；过程、需要你的决定与最终结果都能找到。" data-en="A main thread, direct Agent conversations, separate chats and rooms. Long work runs in the background, with visible progress, decisions and results.">主线、Agent 对话、会话与房间各有位置。长工作交给后台运行；过程、需要你的决定与最终结果都能找到。</p></article>
+          <article class="card"><h3 data-zh="共享的知识与数据" data-en="Shared knowledge and data">共享的知识与数据</h3><p data-zh="文档、文件、版本与评论在一棵树里。表格支持多种视图、表单、自动化与角色权限；应用直接建立在它们之上。" data-en="Documents, files, versions and comments in one tree. Tables offer views, forms, automations and access roles. Apps build on those same tables.">文档、文件、版本与评论在一棵树里。表格支持多种视图、表单、自动化与角色权限；应用直接建立在它们之上。</p></article>
+          <article class="card"><h3 data-zh="行动有权限与边界" data-en="Actions with clear boundaries">行动有权限与边界</h3><p data-zh="Agent 工具、网页和外部 MCP 客户端调用相同服务。写入按审批分级；外部操作要确认，可逆结果保留撤销凭据。" data-en="Agent tools, the web app and external MCP clients call the same services. Writes use approval tiers, external actions need confirmation, and reversible changes keep undo receipts.">Agent 工具、网页和外部 MCP 客户端调用相同服务。写入按审批分级；外部操作要确认，可逆结果保留撤销凭据。</p></article>
         </div>
-        <figcaption class="mt-3 text-sm leading-relaxed text-ink-mut" data-i18n="prof.figcap">A profile on a cron schedule: the daily standup digest runs itself, lands in the Execution center and notifies the owner.</figcaption>
-      </figure>
-      <div class="order-1 lg:order-2">
-        <p class="text-sm font-semibold uppercase tracking-widest text-brand-600" data-i18n="prof.kicker">Agent profiles</p>
-        <h2 class="mt-4 text-3xl font-extrabold tracking-tight text-ink sm:text-4xl" data-i18n="prof.h2">Distill best practices into virtual coworkers.</h2>
-        <p class="mt-5 text-lg leading-relaxed text-ink-soft" data-i18n="prof.p1">
-        A profile is a name, a face, a set of instructions and the tools it may use — one person's way
-        of doing a job, saved so anyone can use it. Publish it to the team, or copy someone's and improve it.
-      </p>
-        <p class="mt-4 text-lg leading-relaxed text-ink-soft" data-i18n="prof.p2">
-          Pair it with <span class="font-semibold text-ink">automations</span> — a cron schedule that runs a profile's
-          prompt on its own — and the daily standup report or morning data sweep runs itself. The longer a team
-          uses it, the stronger its bench of virtual coworkers gets. It compounds.
-        </p>
-      </div>
-    </div>
-  </div>
-</section>
-
-<!-- FEATURE GRID -->
-<section id="features" class="mx-auto max-w-6xl px-6 py-24">
-  <div class="mx-auto max-w-2xl text-center">
-    <p class="text-sm font-semibold uppercase tracking-widest text-brand-600" data-i18n="feat.kicker">One platform</p>
-    <h2 class="mt-4 text-3xl font-extrabold tracking-tight text-ink sm:text-4xl" data-i18n="feat.h2">Everything shares the same tool layer.</h2>
-  </div>
-  <div class="mt-14 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-    <div class="group rounded-2xl border border-edge bg-white p-6 soft-shadow transition hover:border-brand-300">
-      <div class="mb-4 grid h-10 w-10 place-items-center rounded-xl bg-brand-50 text-brand-600"><svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
-      <h3 class="text-base font-semibold text-ink" data-i18n="feat.chatT">Chat</h3>
-      <p class="mt-1.5 text-sm leading-relaxed text-ink-mut" data-i18n="feat.chatB">
-        Streaming replies you can watch work, attachments of any type, a different model per
-          message, plus branching, sharing, tags and ⌘P search.
-      </p>
-    </div>
-    <div class="group rounded-2xl border border-edge bg-white p-6 soft-shadow transition hover:border-brand-300">
-      <div class="mb-4 grid h-10 w-10 place-items-center rounded-xl bg-brand-50 text-brand-600"><svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" stroke-linecap="round"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" stroke-linejoin="round"/></svg></div>
-      <h3 class="text-base font-semibold text-ink" data-i18n="feat.kbT">Knowledge base</h3>
-      <p class="mt-1.5 text-sm leading-relaxed text-ink-mut" data-i18n="feat.kbB">
-        Team, personal and shared documents — a proper editor, links between pages, comments,
-          version history, and search that handles Chinese.
-      </p>
-    </div>
-    <div class="group rounded-2xl border border-edge bg-white p-6 soft-shadow transition hover:border-brand-300">
-      <div class="mb-4 grid h-10 w-10 place-items-center rounded-xl bg-brand-50 text-brand-600"><svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg></div>
-      <h3 class="text-base font-semibold text-ink" data-i18n="feat.projT">Projects</h3>
-      <p class="mt-1.5 text-sm leading-relaxed text-ink-mut" data-i18n="feat.projB">Projects &amp; tasks with board, gantt and tree views, members, comments, and an activity log.</p>
-    </div>
-    <div class="group rounded-2xl border border-edge bg-white p-6 soft-shadow transition hover:border-brand-300">
-      <div class="mb-4 grid h-10 w-10 place-items-center rounded-xl bg-brand-50 text-brand-600"><svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M9 4v16" stroke-linecap="round"/></svg></div>
-      <h3 class="text-base font-semibold text-ink" data-i18n="feat.tablesT">Tables</h3>
-      <p class="mt-1.5 text-sm leading-relaxed text-ink-mut" data-i18n="feat.tablesB">
-        Spreadsheet-like tables with real field types, views, forms, links between records,
-          dashboards and automations — designed by talking to the agent.
-      </p>
-    </div>
-    <div class="group rounded-2xl border border-edge bg-white p-6 soft-shadow transition hover:border-brand-300">
-      <div class="mb-4 grid h-10 w-10 place-items-center rounded-xl bg-brand-50 text-brand-600"><svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12l9-9 9 9M5 10v10h14V10" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
-      <h3 class="text-base font-semibold text-ink" data-i18n="feat.wbT">Home workbench</h3>
-      <p class="mt-1.5 text-sm leading-relaxed text-ink-mut" data-i18n="feat.wbB">A personal dashboard of live cards backed by the same tools — recipes and templates, editable by drag-and-drop or by asking the agent.</p>
-    </div>
-    <div class="group rounded-2xl border border-edge bg-white p-6 soft-shadow transition hover:border-brand-300">
-      <div class="mb-4 grid h-10 w-10 place-items-center rounded-xl bg-brand-50 text-brand-600"><svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
-      <h3 class="text-base font-semibold text-ink" data-i18n="feat.execT">Execution center + automations</h3>
-      <p class="mt-1.5 text-sm leading-relaxed text-ink-mut" data-i18n="feat.execB">Cron-scheduled agent runs, workflows and sub-agents in one surface, with an approval inbox for steps that need a human.</p>
-    </div>
-    <div class="group rounded-2xl border border-edge bg-white p-6 soft-shadow transition hover:border-brand-300">
-      <div class="mb-4 grid h-10 w-10 place-items-center rounded-xl bg-brand-50 text-brand-600"><svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 17l6-6-6-6M12 19h8" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
-      <h3 class="text-base font-semibold text-ink" data-i18n="feat.missionT">Missions <span class="ml-1 rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-ink-mut">optional</span></h3>
-      <p class="mt-1.5 text-sm leading-relaxed text-ink-mut" data-i18n="feat.missionB">
-        Long tasks run in a throwaway sandbox with a real shell and file system, reporting
-          progress and handing back what they produced.
-      </p>
-    </div>
-    <div class="group rounded-2xl border border-edge bg-white p-6 soft-shadow transition hover:border-brand-300">
-      <div class="mb-4 grid h-10 w-10 place-items-center rounded-xl bg-brand-50 text-brand-600"><svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a7 7 0 0 0-7 7c0 3 2 4 2 7h10c0-3 2-4 2-7a7 7 0 0 0-7-7zM9 21h6" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
-      <h3 class="text-base font-semibold text-ink" data-i18n="feat.memT">Memory</h3>
-      <p class="mt-1.5 text-sm leading-relaxed text-ink-mut" data-i18n="feat.memB">
-        The agent remembers what each person told it to, and notes where the tooling got in its way.
-      </p>
-    </div>
-    <div class="group rounded-2xl border border-edge bg-white p-6 soft-shadow transition hover:border-brand-300">
-      <div class="mb-4 grid h-10 w-10 place-items-center rounded-xl bg-brand-50 text-brand-600"><svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" stroke-linejoin="round"/><path d="M3.3 7L12 12l8.7-5M12 22V12" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
-      <h3 class="text-base font-semibold text-ink" data-i18n="feat.skillT">Skill Center</h3>
-      <p class="mt-1.5 text-sm leading-relaxed text-ink-mut" data-i18n="feat.skillB">
-        A shared library of agent know-how: versioned, change-logged and security-scanned, with
-          a starter set in the box.
-      </p>
-    </div>
-    <div class="group rounded-2xl border border-edge bg-white p-6 soft-shadow transition hover:border-brand-300">
-      <div class="mb-4 grid h-10 w-10 place-items-center rounded-xl bg-brand-50 text-brand-600"><svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
-      <h3 class="text-base font-semibold text-ink" data-i18n="feat.emailT">Email &amp; integrations <span class="ml-1 rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-ink-mut">optional</span></h3>
-      <p class="mt-1.5 text-sm leading-relaxed text-ink-mut" data-i18n="feat.emailB">IMAP/SMTP mailboxes with a server-side draft confirmation, WeCom and Feishu binding, and notifications delivered where people already are.</p>
-    </div>
-    <div class="group rounded-2xl border border-edge bg-white p-6 soft-shadow transition hover:border-brand-300">
-      <div class="mb-4 grid h-10 w-10 place-items-center rounded-xl bg-brand-50 text-brand-600"><svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M2 12h4M18 12h4M5 5l3 3M16 16l3 3M19 5l-3 3M8 16l-3 3" stroke-linecap="round"/></svg></div>
-      <h3 class="text-base font-semibold text-ink" data-i18n="feat.mcpT">MCP server</h3>
-      <p class="mt-1.5 text-sm leading-relaxed text-ink-mut" data-i18n="feat.mcpB">
-        Connect Claude, Cursor or anything that speaks MCP. They get the same tools, with exactly
-          the permissions you granted.
-      </p>
-    </div>
-    <div class="group rounded-2xl border border-edge bg-white p-6 soft-shadow transition hover:border-brand-300">
-      <div class="mb-4 grid h-10 w-10 place-items-center rounded-xl bg-brand-50 text-brand-600"><svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" stroke-linejoin="round"/></svg></div>
-      <h3 class="text-base font-semibold text-ink" data-i18n="feat.kernelT">Permissions &amp; settings</h3>
-      <p class="mt-1.5 text-sm leading-relaxed text-ink-mut" data-i18n="feat.kernelB">
-        Every feature declares what it is, so one set of rules covers every way in. Credentials
-          and branding are edited in the browser and take effect at once.
-      </p>
-    </div>
-  </div>
-</section>
-
-<!-- BUILT BY AGENTS -->
-<section class="border-y border-edge bg-gray-50/60">
-  <div class="mx-auto max-w-4xl px-6 py-24 text-center">
-    <p class="text-sm font-semibold uppercase tracking-widest text-brand-600" data-i18n="metaSec.kicker">Meta</p>
-    <h2 class="mx-auto mt-4 max-w-2xl text-3xl font-extrabold leading-tight tracking-tight text-ink sm:text-[2.4rem]" data-i18n="metaSec.h2">
-      A product for agents — built by agents.
-    </h2>
-    <p class="mx-auto mt-6 max-w-2xl text-lg leading-relaxed text-ink-soft" data-i18n="metaSec.p1">
-      The implementation is almost entirely agent-written; the top-level design is human-held. Every layer
-      ships an <span class="font-mono text-[15px] text-brand-700">AGENTS.md</span> spelling out its conventions,
-      boundaries, and domain rules — the harness for the agent that builds it. There's even an anti-entropy
-      section: delete-and-cascade discipline, no duplicate implementations, declared capabilities must be real.
-    </p>
-    <p class="mx-auto mt-5 max-w-2xl text-base leading-relaxed text-ink-mut" data-i18n="metaSec.p2">
-      A product agents use should be a product agents can keep building. Those turn out to be the same capability.
-    </p>
-  </div>
-</section>
-
-<!-- SELF HOST -->
-<section id="selfhost" class="mx-auto max-w-6xl px-6 py-24">
-  <div class="mx-auto max-w-2xl text-center">
-    <p class="text-sm font-semibold uppercase tracking-widest text-brand-600" data-i18n="self.kicker">Self-host</p>
-    <h2 class="mt-4 text-3xl font-extrabold tracking-tight text-ink sm:text-4xl" data-i18n="self.h2">One command. Your infrastructure.</h2>
-    <p class="mt-5 text-lg leading-relaxed text-ink-soft" data-i18n="self.p">A single container serves the app and the API; Postgres and the database migration come with
-      it. All you need is a server with Docker — the installer sets that up too — and an API key for any
-      OpenAI-compatible model. People sign in with an account — there is nothing to install.</p>
-  </div>
-  <div class="mx-auto mt-12 max-w-5xl overflow-hidden rounded-2xl border border-edge bg-[#0c1512] card-shadow">
-    <div class="flex items-center gap-2 border-b border-white/10 px-4 py-2.5">
-      <span class="h-2.5 w-2.5 rounded-full bg-white/20"></span><span class="h-2.5 w-2.5 rounded-full bg-white/20"></span><span class="h-2.5 w-2.5 rounded-full bg-white/20"></span>
-      <span class="ml-2 font-mono text-[12px] text-white/40">deploy</span>
-    </div>
-    <pre class="overflow-x-auto p-5 font-mono text-[13px] leading-relaxed text-emerald-50/90"><span class="text-white/35"># 1. install — asks for the admin's email, an optional domain (HTTPS) and a model key</span>
-curl -fsSL https://greenhouse.linjiejim.com/install.sh | bash
-
-<span class="text-white/35"># 2. open the one-time link it prints and choose a password — you are the admin</span>
-<span class="text-teal-300">→</span> https://your-domain   or   http://your-server:3000
-
-<span class="text-white/35"># no server? the same image runs on Railway — see the README</span></pre>
-  </div>
-  <div class="mt-8 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm text-ink-mut">
-    <span class="font-medium text-ink-soft" data-i18n="self.stack">Stack</span>
-    <span>Hono</span><span class="text-edge-strong">·</span>
-    <span>React 19 + Vite</span><span class="text-edge-strong">·</span>
-    <span>PostgreSQL 16 + Drizzle</span><span class="text-edge-strong">·</span>
-    <span>Any OpenAI-compatible LLM</span><span class="text-edge-strong">·</span>
-    <span>Node 22</span>
-  </div>
-
-  <div class="mx-auto mt-16 max-w-2xl text-center">
-    <h3 class="text-2xl font-bold tracking-tight text-ink" data-i18n="self.configT">Then configure it from the browser.</h3>
-    <p class="mt-3 text-base leading-relaxed text-ink-soft" data-i18n="self.configP">
-        API keys, the product name, the logo and the colours are all edited in Administration —
-      stored encrypted and applied immediately, right down to the login screen.
-      </p>
-  </div>
-  <div class="mt-8 grid gap-6 md:grid-cols-2">
-    <figure>
-      <div class="overflow-hidden rounded-2xl border border-edge bg-white shot-shadow">
-        <img src="./assets/screens/admin-runtime-config.webp" alt="Runtime Config page with LLM, media and search settings" width="1440" height="900" class="block w-full" loading="lazy" />
-      </div>
-      <figcaption class="mt-3 text-sm leading-relaxed text-ink-mut" data-i18n="self.figA">Runtime Config — every workspace setting is declared once in code and rendered here; secrets are encrypted at rest.</figcaption>
-    </figure>
-    <figure>
-      <div class="overflow-hidden rounded-2xl border border-edge bg-white shot-shadow">
-        <img src="./assets/screens/admin-branding-studio.webp" alt="Branding Studio with logo and theme token controls" width="1440" height="900" class="block w-full" loading="lazy" />
-      </div>
-      <figcaption class="mt-3 text-sm leading-relaxed text-ink-mut" data-i18n="self.figB">Branding Studio — change the name, logo and colours without touching a stylesheet.</figcaption>
-    </figure>
-  </div>
-</section>
-
-<!-- EXTEND -->
-<section id="extend" class="mx-auto max-w-6xl px-6 py-24 scroll-mt-20">
-  <div class="mx-auto max-w-2xl text-center">
-    <p class="text-sm font-semibold uppercase tracking-widest text-brand-600" data-i18n="ext.kicker">Make it yours</p>
-    <h2 class="mt-4 text-3xl font-extrabold tracking-tight text-ink sm:text-4xl" data-i18n="ext.h2">Your own modules, without forking the core.</h2>
-    <p class="mt-5 text-lg leading-relaxed text-ink-soft" data-i18n="ext.p">
-        An extension is two folders and one import line. It can bring its own pages, tools, tables,
-      permissions, search, files, scheduled jobs and commands. The core never learns your module exists, so
-      <code class="rounded bg-gray-100 px-1.5 py-0.5 text-[13px] text-ink">git merge upstream</code> keeps working.
-      </code> stays boring.
-    </p>
-  </div>
-
-  <div class="mt-12 grid gap-8 lg:grid-cols-[0.9fr_1.1fr] lg:items-center">
-    <div>
-<pre class="overflow-x-auto rounded-2xl border border-edge bg-ink p-6 text-[13px] leading-relaxed text-gray-100 shot-shadow"><span class="text-gray-500">// apps/api/src/extensions/notes/index.ts</span>
-<span class="text-teal-300">export const</span> notesExtension = <span class="text-teal-300">defineExtension</span>({
-  id: <span class="text-amber-200">'notes'</span>,
-  tools: [notesQueryTool],
-  routes: [{ path: <span class="text-amber-200">'/api/ext/notes'</span>, app: notesRoutes }],
-  featureFlags: [{ key: <span class="text-amber-200">'notes'</span>, defaultEnabled: <span class="text-teal-300">false</span> }],
-  entityKinds: [{ kind: <span class="text-amber-200">'ext:notes:note'</span>, route: <span class="text-amber-200">'#/notes/:id'</span> }],
-  searchSources: [notesSearchLane],
-  driveScopes: [notesCabinet],
-  migrations: { dir: extensionPath(import.meta.url, <span class="text-amber-200">'migrations'</span>) },
-  services: createNotesService,
-})</pre>
-      <p class="mt-5 text-[15px] leading-relaxed text-ink-soft" data-i18n="ext.list">
-        Switch it on per deployment in <code class="rounded bg-gray-100 px-1.5 py-0.5 text-[13px] text-ink">greenhouse.config.ts</code>,
-        then per user with a permission toggle. A disabled extension contributes nothing at all — no tools, no routes,
-        no migrations.
-      </p>
-    </div>
-    <figure>
-      <div class="overflow-hidden rounded-2xl border border-edge bg-white shot-shadow">
-        <img src="./assets/screens/extension-example-page.webp" alt="An extension's own page rendered in the workbench" width="1440" height="900" class="block w-full" loading="lazy" />
-      </div>
-      <figcaption class="mt-3 text-sm leading-relaxed text-ink-mut" data-i18n="ext.figA">The reference extension shipping with the repo: its own page, table, tool and API — the template you copy.</figcaption>
-    </figure>
-  </div>
-
-  <div class="mt-10 grid gap-6 md:grid-cols-3">
-    <figure>
-      <div class="overflow-hidden rounded-2xl border border-edge bg-white shot-shadow">
-        <img src="./assets/screens/extension-more-menu.webp" alt="An extension's navigation entry in the sidebar menu" width="1440" height="900" class="block w-full" loading="lazy" />
-      </div>
-      <figcaption class="mt-3 text-sm leading-relaxed text-ink-mut" data-i18n="ext.figB">Navigation, gated by the user's own feature flag.</figcaption>
-    </figure>
-    <figure>
-      <div class="overflow-hidden rounded-2xl border border-edge bg-white shot-shadow">
-        <img src="./assets/screens/extension-chat-card.webp" alt="An extension's tool result rendered as a chat card" width="1440" height="900" class="block w-full" loading="lazy" />
-      </div>
-      <figcaption class="mt-3 text-sm leading-relaxed text-ink-mut" data-i18n="ext.figC">Its tool results render as first-class chat cards.</figcaption>
-    </figure>
-    <figure>
-      <div class="overflow-hidden rounded-2xl border border-edge bg-white shot-shadow">
-        <img src="./assets/screens/extension-runtime-config.webp" alt="An extension's settings on the Runtime Config page" width="1440" height="900" class="block w-full" loading="lazy" />
-      </div>
-      <figcaption class="mt-3 text-sm leading-relaxed text-ink-mut" data-i18n="ext.figD">Its settings appear in Runtime Config like any built-in.</figcaption>
-    </figure>
-  </div>
-</section>
-
-<!-- EVERYWHERE -->
-<section class="border-y border-edge bg-gray-50/60">
-  <div class="mx-auto max-w-6xl px-6 py-24">
-    <div class="mx-auto max-w-2xl text-center">
-      <p class="text-sm font-semibold uppercase tracking-widest text-brand-600" data-i18n="every.kicker">Everywhere your team is</p>
-      <h2 class="mt-4 text-3xl font-extrabold tracking-tight text-ink sm:text-4xl" data-i18n="every.h2">Light, dark, desktop, phone.</h2>
-      <p class="mt-5 text-lg leading-relaxed text-ink-soft" data-i18n="every.p">
-        Light, dark and system themes on a responsive web app, plus a native Expo app for iOS and Android and a
-        Chrome side-panel extension — all against the same API.
-      </p>
-    </div>
-    <div class="mt-12 grid items-start gap-6 md:grid-cols-[1fr_0.34fr]">
-      <div class="overflow-hidden rounded-2xl border border-edge bg-white shot-shadow">
-        <img src="./assets/screens/chat-knowledge-answer-dark.webp" alt="The same chat answer in the dark theme" width="1440" height="900" class="block w-full" loading="lazy" />
-      </div>
-      <div class="overflow-hidden rounded-2xl border border-edge bg-white shot-shadow">
-        <img src="./assets/screens/mobile-chat.webp" alt="Chat on a phone-sized viewport" width="390" height="844" class="block w-full" loading="lazy" />
-      </div>
-    </div>
-  </div>
-</section>
-
-<!-- WHO -->
-<section class="mx-auto max-w-6xl px-6 py-24">
-  <div class="grid gap-6 md:grid-cols-2">
-    <div class="rounded-2xl border border-edge bg-white p-8 card-shadow">
-      <div class="mb-4 grid h-11 w-11 place-items-center rounded-xl bg-brand-50 text-brand-600"><svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21h18M5 21V7l7-4 7 4v14M9 9h.01M15 9h.01M9 13h.01M15 13h.01" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
-      <h3 class="text-xl font-bold text-ink" data-i18n="who.c1t">Teams going AI-native</h3>
-      <p class="mt-2 text-[15px] leading-relaxed text-ink-soft" data-i18n="who.c1b">Use it as the foundation for an internal platform — open your tools and data top-down, hand members a day-one agent that solves real work.</p>
-    </div>
-    <div class="rounded-2xl border border-edge bg-white p-8 card-shadow">
-      <div class="mb-4 grid h-11 w-11 place-items-center rounded-xl bg-brand-50 text-brand-600"><svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 18l6-6-6-6M8 6l-6 6 6 6" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
-      <h3 class="text-xl font-bold text-ink" data-i18n="who.c2t">Developers &amp; builders</h3>
-      <p class="mt-2 text-[15px] leading-relaxed text-ink-soft" data-i18n="who.c2b">
-        Read it as a worked example of how an agent platform fits together — tools, permissions,
-          interface, MCP — then take it your own way.
-      </p>
-    </div>
-  </div>
-</section>
-
-<!-- FINAL CTA -->
-<section class="relative overflow-hidden border-t border-edge">
-  <div class="absolute inset-0 grid-bg opacity-70"></div>
-  <div class="relative mx-auto max-w-3xl px-6 py-24 text-center">
-    <img src="./favicon.svg" class="mx-auto mb-6 h-12 w-12 text-brand-600" alt="" />
-    <h2 class="text-4xl font-extrabold tracking-tight text-ink sm:text-5xl" data-i18n="cta.h2">Clone it. Write your first tool.</h2>
-    <p class="mx-auto mt-5 max-w-xl text-lg leading-relaxed text-ink-soft" data-i18n="cta.p">
-      Greenhouse is an answer to what "the agent at the center of an organization" actually looks like — and an invitation.
-    </p>
-    <div class="mt-9 flex flex-wrap items-center justify-center gap-3">
-      <a href="https://github.com/linjiejim/greenhouse" class="inline-flex items-center gap-2 rounded-xl bg-brand-600 px-6 py-3.5 text-base font-semibold text-white transition hover:bg-brand-700">
-        <svg viewBox="0 0 16 16" class="h-5 w-5" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
-        <span data-i18n="cta.star">Star on GitHub</span>
-      </a>
-      <a href="https://github.com/linjiejim/greenhouse#readme" class="inline-flex items-center gap-2 rounded-xl border border-edge-strong bg-white px-6 py-3.5 text-base font-semibold text-ink-soft transition hover:bg-gray-50" data-i18n="cta.docs">Read the docs</a>
-    </div>
-  </div>
-</section>
-
-</main>
-
-<!-- FOOTER -->
-<footer class="border-t border-edge bg-white">
-  <div class="mx-auto flex max-w-6xl flex-col items-center justify-between gap-4 px-6 py-10 sm:flex-row">
-    <div class="flex items-center gap-2.5">
-      <img src="./favicon.svg" class="h-6 w-6 text-brand-600" alt="" />
-      <span class="text-sm font-semibold text-ink">Greenhouse</span>
-      <span class="text-sm text-ink-faint" data-i18n="footer.tagline">— an organization's shared AI brain</span>
-    </div>
-    <div class="flex items-center gap-6 text-sm text-ink-mut">
-      <a href="https://github.com/linjiejim/greenhouse" class="hover:text-brand-700">GitHub</a>
-      <a href="https://github.com/linjiejim/greenhouse#readme" class="hover:text-brand-700" data-i18n="footer.docs">Docs</a>
-      <a href="#thesis" class="hover:text-brand-700" data-i18n="footer.philosophy">Philosophy</a>
-      <a href="./privacy/" class="hover:text-brand-700" data-i18n="footer.privacy">Privacy</a>
-      <span class="text-ink-faint">MIT</span>
-    </div>
-  </div>
-</footer>
-
-<!-- Product tour tabs: purely presentational, no dependencies -->
-<script>
-(function () {
-  var roots = document.querySelectorAll('[data-tour]');
-  for (var r = 0; r < roots.length; r++) {
-    (function (root) {
-      var tabs = root.querySelectorAll('[data-tour-tab]');
-      var panels = root.querySelectorAll('[data-tour-panel]');
-      function show(key) {
-        for (var i = 0; i < tabs.length; i++) {
-          tabs[i].setAttribute('aria-selected', tabs[i].getAttribute('data-tour-tab') === key ? 'true' : 'false');
-        }
-        for (var j = 0; j < panels.length; j++) {
-          panels[j].hidden = panels[j].getAttribute('data-tour-panel') !== key;
-        }
-      }
-      for (var t = 0; t < tabs.length; t++) {
-        tabs[t].addEventListener('click', function () { show(this.getAttribute('data-tour-tab')); });
-      }
-    })(roots[r]);
-  }
-})();
-</script>
-
-<!-- i18n: bilingual (EN / 中文) support with browser-language default + persisted toggle -->
-<script>
-(function () {
-  var STORAGE_KEY = 'gh-lang';
-  var SUPPORTED = ['en', 'zh'];
-
-  var ZH = {
-    'meta.title': 'Greenhouse — 组织共享的 AI 大脑',
-    'meta.desc': '一套开源的团队 AI 助手，跑在你自己的服务器上。它认得你们的文档、项目和数据；同一套工具，在团队对话里、在你的应用里、在 Claude 或 Cursor 里都一样用。',
-
-    'nav.why': '理念',
-    'nav.tour': '产品导览',
-    'nav.toolLayer': '工具层',
-    'nav.features': '功能',
-    'nav.selfhost': '自托管',
-    'nav.star': 'Star',
-    'nav.getStarted': '开始使用',
-
-    'hero.badge': '开源 · MIT · 自托管',
-    'hero.h1': '让 Agent 站在组织的<br><span class="text-brand-600">正中心</span>。',
-    'hero.lede': '一套开源的团队 AI 助手，跑在你自己的服务器上。它认得你们的文档、项目和数据；你给它的每一样工具，在团队对话里、在你自己的应用里、在 Claude 或 Cursor 里，用起来都是同一套——<span class="font-semibold text-ink">加一样能力，写一个文件。</span>',
-    'hero.star': '在 GitHub 上 Star',
-    'hero.tour': '看看产品导览',
-    'hero.liveBadge': '真实录屏 · 无任何假数据',
-    'hero.caption': '一位成员问起居家办公补贴。Agent 检索团队知识库，给出<span class="font-medium text-ink">带引用</span>的回答，调用轨迹里能看到它做的每一次工具调用。',
-
-    'trust.worksWith': '适配',
-    'trust.openai': '任意 OpenAI 兼容模型',
-    'trust.mcpClient': '任意 MCP 客户端',
-    'trust.builtBy': '由 Agent 打造，为 Agent 而生',
-
-    'thesis.kicker': '核心理念',
-    'thesis.h2': 'Agent <span class="text-brand-600">本身</span>就是产品，而不是硬生生拼在旁边的一个功能。',
-    'thesis.p': '大多数 AI 工具止步于帮一个人。一旦一个团队要用，最难的部分就空着：谁能看到什么、谁批准了什么、发生过什么有没有记录。Greenhouse 补的就是这一块——不是又一个聪明的 Agent，而是 Agent 站上去的地基。',
-    'thesis.quote': '团队在对话里用的工具，就是你交给 Claude 或 Cursor 的那套工具。加一样能力，写一个文件。',
-
-    'tour.kicker': '产品导览',
-    'tour.h2': '一个地方干活，Agent 无处不在。',
-    'tour.t1': '首页工作台',
-    'tour.d1': '由 Agent 同一套工具驱动的实时卡片。',
-    'tour.t2': '跨数据提问',
-    'tour.d2': '答案直接以真正可排序的表格返回。',
-    'tour.t3': '知识库',
-    'tour.d3': '团队、个人与共享文档，Agent 都能引用。',
-    'tour.t4': '多维表格',
-    'tour.d4': '类型化字段、视图与表单——自带 Agent 的结构化数据。',
-    'tour.t5': '项目',
-    'tour.d5': '组合时间线、看板与任务树。',
-    'tour.t6': '执行中心',
-    'tour.d6': '定时任务、长任务和工作流，都在一个地方。',
-    'tour.t7': '技能中心',
-    'tour.d7': '全组织共享的带版本 Agent 技能库。',
-    'tour.t8': '我的 Agent',
-    'tour.d8': '虚拟同事：一段提示词、一组工具、一张脸。',
-    'tour.c1': '一天的工作，一屏看完。每张卡片都是一次带保存配方的工具调用——拖拽重排，或者直接让 Agent 帮你改布局。',
-    'tour.c2': '“哪些反馈是负面的？各渠道平均分是多少？”——Agent 查询多维表格，用可排序、可导出的表格作答，并指出真正需要行动的缺口。',
-    'tour.c3': '像样的编辑器、文件夹、页面互链、版本历史，还有认得中文的搜索——Agent 在对话里引用的就是这里。',
-    'tour.c4': '像表格一样的多维表：真正的字段类型、视图、表单、记录关联。在对话里说清楚要什么，Agent 先起个草给你确认。',
-    'tour.c5': '组合时间线、看板与任务树，带成员、评论和活动日志——Agent 还能直接从对话里创建任务。',
-    'tour.c6': '所有在后台跑的东西都在一屏里——定时任务、长任务、工作流——需要人点头的步骤会进收件箱。',
-    'tour.c7': '可复用的经验，Agent 随手就能拿来用；版本化保存，更新不会改写历史。项目自带一套入门包。',
-    'tour.c8': '一个档案 = 一段系统提示词 + 一组挑选好的工具 + 一张脸。可以私有使用，评审后发布给团队，复刻别人的，或者定时运行。',
-
-    'tool.kicker': '工具层',
-    'tool.h2': '一次定义，三处可用。',
-    'tool.p': '用 <span class="font-mono text-[15px] text-brand-700">defineTool</span> 定义一次工具，再往注册表里加一行，它就会自动出现在每一处，不用再维护三份、还越改越对不上的清单。',
-    'tool.badgeMono': '一个工具 = 一个文件',
-    'tool.badgeTitle': '共享的工具层',
-    'tool.teamChat': '团队聊天',
-    'tool.teamChatSub': '成员 · 应用内',
-    'tool.mcpServer': 'MCP 服务器',
-    'tool.permNote': '权限只会<span class="font-semibold text-ink">收窄</span>，绝不放大：每个入口拿到的，都只是用户自己权限的一个子集。',
-
-    'gen.kicker': '生成式 UI',
-    'gen.h2': '消息，不只是文本。',
-    'gen.p1': '当回答里带着表格、图表或需要你点头的操作，对话会把它变成真东西——可排序的表格、图表、文件卡片、按钮。Agent 只写文字，界面决定它长什么样。',
-    'gen.p2': '按钮是真能按的：点一下就回答了 Agent 停下来等的那一步，它接着往下做。',
-    'gen.li1': '可排序、可搜索、可导出 CSV 的数据表格',
-    'gen.li2': '图表：柱状、折线、饼图、雷达',
-    'gen.li3': '一点就让 Agent 接着往下跑的确认按钮',
-    'gen.li4': '引用、记录速览、文件与预览卡片',
-    'gen.figcap': '知识库回答下方展开的工具调用轨迹与引用列表——每一句结论都能回溯到它所出自的文档。',
-
-    'perm.kicker': '信任边界',
-    'perm.h2': '放心对着整个组织开放。',
-    'perm.p': '权限只在一个地方定义，而且只会做减法，永远不会加。正因如此，把公司的工具开放给外部 Agent 才是安全的。',
-    'perm.c1t': '只收窄，绝不放大',
-    'perm.c1b': 'Agent 拿到的，只是它所属用户权限的一个子集，永远不可能获得用户自己都没有的能力。',
-    'perm.c2t': '写操作，得有人点头',
-    'perm.c2b': '任何改动默认一律拒绝。每一次写入都要人确认，并留下审计日志。',
-    'perm.c3t': '默认就是关的',
-    'perm.c3b': '没配签名密钥、没配加密密钥？服务器直接拒绝启动。绝不会出现“忘了配置、结果门户大开”的情况。',
-    'perm.c4t': '角色、策略，一个对话框',
-    'perm.c4b': '角色、按人开关、细到单个字段的规则——写一次，无论请求从哪来都是同一套。',
-    'perm.figA': '每位用户一个权限对话框：基础访问、应用访问、高级访问与用量上限，全局工具如实标明。',
-    'perm.figB': '外部 Agent 用 OAuth 登录，每个只拿到你勾选的那几组工具。',
-
-    'prof.kicker': 'Agent 档案',
-    'prof.h2': '把最佳实践，沉淀成一个个虚拟同事。',
-    'prof.p1': '一个「分身」就是一个名字、一张脸、一套指令和它能用的工具——把一个人做某件事的方法存下来，谁都能用。可以发布给全团队，也可以抄别人的再改得更好。',
-    'prof.p2': '再配上<span class="font-semibold text-ink">自动化</span>：用 cron 定时让某个档案的提示词自己跑起来，每天的站会汇报、早上的数据巡检就全自动了。团队用得越久，这条虚拟同事的板凳就越深，像复利一样越滚越大。',
-    'prof.figcap': '定时运行的档案：每日站会摘要自己跑完，进入执行中心，并通知负责人。',
-
-    'feat.kicker': '同一个平台',
-    'feat.h2': '所有功能，共享同一套工具层。',
-    'feat.chatT': '聊天',
-    'feat.chatB': '流式回答，能看着它干活；任意类型的附件；每条消息都能换模型；还有分支、分享、标签和 ⌘P 搜索。',
-    'feat.kbT': '知识库',
-    'feat.kbB': '团队、个人和共享文档——像样的编辑器、页面互链、评论、版本历史，以及认得中文的搜索。',
-    'feat.projT': '项目',
-    'feat.projB': '项目和任务，支持看板、甘特图、树状三种视图，带成员、评论和活动日志。',
-    'feat.tablesT': '多维表格',
-    'feat.tablesB': '像表格一样的多维表：真正的字段类型、视图、表单、记录关联、仪表盘和自动化——跟 Agent 聊着就设计好了。',
-    'feat.wbT': '首页工作台',
-    'feat.wbB': '由同一套工具驱动的个人实时仪表盘——配方与模板，拖拽即可编辑，或者直接让 Agent 来改。',
-    'feat.execT': '执行中心 + 自动化',
-    'feat.execB': 'cron 定时的 Agent 运行、工作流与子 Agent 汇集在一个界面，需要人拍板的步骤进入审批收件箱。',
-    'feat.missionT': '任务沙箱 <span class="ml-1 rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-ink-mut">可选</span>',
-    'feat.missionB': '长任务跑在用完即弃的沙箱里，有真的 shell 和文件系统，边跑边汇报进度，做完把产物交回来。',
-    'feat.memT': '记忆',
-    'feat.memB': 'Agent 记住每个人让它记的事，也会记下工具在哪里绊住了它。',
-    'feat.skillT': '技能中心',
-    'feat.skillB': '团队共享的经验库：版本化、有变更记录、过安全扫描，开箱带一套入门包。',
-    'feat.emailT': '邮件与集成 <span class="ml-1 rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-ink-mut">可选</span>',
-    'feat.emailB': 'IMAP/SMTP 邮箱（服务端草稿确认）、企业微信与飞书账号绑定，通知直接送到大家已经在用的地方。',
-    'feat.mcpT': 'MCP 服务',
-    'feat.mcpB': '接上 Claude、Cursor，或任何会说 MCP 的东西。它们拿到同一套工具，权限就是你给的那些。',
-    'feat.kernelT': '权限与设置',
-    'feat.kernelB': '每个功能都自己声明是什么，所以一套规则覆盖所有入口。密钥和品牌在浏览器里改，改完立刻生效。',
-
-    'metaSec.kicker': '关于产品本身',
-    'metaSec.h2': '一个为 Agent 打造的产品——也由 Agent 亲手打造。',
-    'metaSec.p1': '代码几乎全部由 Agent 写成，顶层设计则牢牢握在人手里。每一层都配了一份 <span class="font-mono text-[15px] text-brand-700">AGENTS.md</span>，把这层的约定、边界和领域规则讲清楚——这就是给动手构建它的 Agent 的一份操作手册。里面甚至专门有一节讲“反熵”：删除必须级联清干净、不许有重复实现、声明过的能力必须真能用。',
-    'metaSec.p2': '一个给 Agent 用的产品，也应该是一个 Agent 能不断往下建的产品。事实证明，这两件事其实是同一种能力。',
-
-    'self.kicker': '自托管',
-    'self.h2': '一条命令，部署在你自己的基础设施上。',
-    'self.p': '一个容器同时跑应用和 API，Postgres 和数据库迁移都带着。你只需要一台装了 Docker 的服务器（没装的话安装脚本会帮你装），以及任意一个 OpenAI 兼容模型的 API key。成员用账号登录，什么都不用装。',
-    'self.stack': '技术栈',
-    'self.configT': '然后，在浏览器里把它配好。',
-    'self.configP': 'API key、产品名、Logo 和配色都在「管理」里改——加密存储，改完立刻生效，连登录页都跟着变。',
-    'self.figA': '运行时配置——每一项工作区设置都只在代码里声明一次，这里自动渲染；密钥落盘加密。',
-    'self.figB': '品牌工作室——改名字、Logo 和配色，不用碰样式表。',
-
-    'nav.extend': '扩展',
-    'ext.kicker': '让它成为你的',
-    'ext.h2': '写你自己的模块，不用 fork 内核。',
-    'ext.p': '一个扩展就是两个目录加一行 import。它可以自带页面、工具、数据表、权限、搜索、文件、定时任务和命令。内核从不知道你的模块存在，所以 <code class="rounded bg-gray-100 px-1.5 py-0.5 text-[13px] text-ink">git merge upstream</code> 一直都好使。',
-    'ext.list': '在 <code class="rounded bg-gray-100 px-1.5 py-0.5 text-[13px] text-ink">greenhouse.config.ts</code> 里按部署开关，再按用户用权限开关。关掉的扩展什么都不贡献——没有工具、没有路由、没有迁移。',
-    'ext.figA': '仓库自带的参考扩展：自己的页面、表、工具和 API——照着抄就行。',
-    'ext.figB': '导航入口，按用户的功能开关显示。',
-    'ext.figC': '它的工具结果在对话里就是一等公民卡片。',
-    'ext.figD': '它的设置和内置模块一样出现在 Runtime Config 里。',
-    'every.kicker': '团队在哪，它就在哪',
-    'every.h2': '浅色、深色、桌面、手机。',
-    'every.p': '响应式 Web 应用支持浅色、深色与跟随系统三种主题；另有 iOS / Android 原生 Expo 应用与 Chrome 侧边栏扩展，全部对接同一套 API。',
-
-    'who.c1t': '正在转向 AI 原生的团队',
-    'who.c1b': '拿它当内部平台的底座：自上而下开放你的工具和数据，给每位成员一个开箱即用、能真正干活的 Agent。',
-    'who.c2t': '开发者与构建者',
-    'who.c2b': '把它当成一个完整的范例，看一个 Agent 平台是怎么拼起来的——工具、权限、界面、MCP——然后按你自己的想法接着做。',
-
-    'cta.h2': '克隆下来，写下你的第一个工具。',
-    'cta.p': '“让 Agent 站在组织中心”到底是什么样子？Greenhouse 给出了一个答案——也发出一份邀请。',
-    'cta.star': '在 GitHub 上 Star',
-    'cta.docs': '阅读文档',
-
-    'footer.tagline': '— 组织共享的 AI 大脑',
-    'footer.docs': '文档',
-    'footer.philosophy': '理念',
-    'footer.privacy': '隐私'
-  };
-
-  var I18N = { en: {}, zh: ZH };
-
-  // Snapshot the English source of truth straight from the rendered DOM,
-  // so the English dictionary never drifts from the markup.
-  var nodes = document.querySelectorAll('[data-i18n]');
-  for (var i = 0; i < nodes.length; i++) {
-    I18N.en[nodes[i].getAttribute('data-i18n')] = nodes[i].innerHTML;
-  }
-  var descTag = document.querySelector('meta[name="description"]');
-  I18N.en['meta.title'] = document.title;
-  I18N.en['meta.desc'] = descTag ? descTag.getAttribute('content') : '';
-
-  function detectLang() {
-    try {
-      var saved = localStorage.getItem(STORAGE_KEY);
-      if (saved && SUPPORTED.indexOf(saved) !== -1) return saved;
-    } catch (e) {}
-    var langs = (navigator.languages && navigator.languages.length)
-      ? navigator.languages
-      : [navigator.language || 'en'];
-    for (var j = 0; j < langs.length; j++) {
-      var l = (langs[j] || '').toLowerCase();
-      if (l.indexOf('zh') === 0) return 'zh';
-      if (l.indexOf('en') === 0) return 'en';
-    }
-    return 'en';
-  }
-
-  function applyLang(lang) {
-    if (SUPPORTED.indexOf(lang) === -1) lang = 'en';
-    var dict = I18N[lang] || I18N.en;
-    document.documentElement.setAttribute('lang', lang === 'zh' ? 'zh-Hans' : 'en');
-    for (var k = 0; k < nodes.length; k++) {
-      var key = nodes[k].getAttribute('data-i18n');
-      var val = (dict[key] != null) ? dict[key] : I18N.en[key];
-      if (val != null) nodes[k].innerHTML = val;
-    }
-    if (dict['meta.title']) document.title = dict['meta.title'];
-    if (descTag && dict['meta.desc']) descTag.setAttribute('content', dict['meta.desc']);
-    var label = document.getElementById('lang-toggle-label');
-    if (label) label.textContent = (lang === 'zh') ? 'EN' : '中文';
-    var toggle = document.getElementById('lang-toggle');
-    if (toggle) toggle.setAttribute('aria-label', (lang === 'zh') ? 'Switch to English' : '切换为中文');
-    try { localStorage.setItem(STORAGE_KEY, lang); } catch (e) {}
-  }
-
-  var current = detectLang();
-  applyLang(current);
-
-  var toggleBtn = document.getElementById('lang-toggle');
-  if (toggleBtn) {
-    toggleBtn.addEventListener('click', function () {
-      current = (current === 'zh') ? 'en' : 'zh';
-      applyLang(current);
-    });
-  }
-})();
-</script>
-
-</body>
+      </section>
+      <section>
+        <h2 data-zh="每个对象，只有一个家。" data-en="One home for each kind of work.">每个对象，只有一个家。</h2>
+        <div class="tour">
+          <figure><picture><source media="(prefers-color-scheme: dark)" srcset="./assets/v2/tables-dark.webp" /><img src="./assets/v2/tables-light.webp" alt="Greenhouse 项目表格" data-alt-zh="Greenhouse 项目表格" data-alt-en="Greenhouse project table" width="1440" height="900" loading="lazy" /></picture><figcaption data-zh="表格 · 项目模板使用同一套字段、视图与权限" data-en="Tables · Projects use the same fields, views and permissions">表格 · 项目模板使用同一套字段、视图与权限</figcaption></figure>
+          <figure><picture><source media="(prefers-color-scheme: dark)" srcset="./assets/v2/knowledge-dark.webp" /><img src="./assets/v2/knowledge-light.webp" alt="Greenhouse 知识文档" data-alt-zh="Greenhouse 知识文档" data-alt-en="Greenhouse knowledge document" width="1440" height="900" loading="lazy" /></picture><figcaption data-zh="知识库 · 文档、文件、评论与引用" data-en="Knowledge · Documents, files, comments and sources">知识库 · 文档、文件、评论与引用</figcaption></figure>
+          <figure><picture><source media="(prefers-color-scheme: dark)" srcset="./assets/v2/apps-dark.webp" /><img src="./assets/v2/apps-light.webp" alt="已发布的内部 Greenhouse 应用" data-alt-zh="已发布的内部 Greenhouse 应用" data-alt-en="A published internal Greenhouse application" width="1440" height="900" loading="lazy" /></picture><figcaption data-zh="应用 · 发布给内部成员，操作服从表格权限" data-en="Apps · Publish for internal members, with actions bounded by table access">应用 · 发布给内部成员，操作服从表格权限</figcaption></figure>
+          <figure><picture><source media="(prefers-color-scheme: dark)" srcset="./assets/v2/agents-dark.webp" /><img src="./assets/v2/agents-light.webp" alt="Greenhouse Agent 资料" data-alt-zh="Greenhouse Agent 资料" data-alt-en="Greenhouse Agent profile" width="1440" height="900" loading="lazy" /></picture><figcaption data-zh="Agents · 资料、能力、记忆、定时与活动" data-en="Agents · Profile, abilities, memory, schedules and activity">Agents · 资料、能力、记忆、定时与活动</figcaption></figure>
+        </div>
+      </section>
+      <section id="selfhost" class="setup">
+        <h2 data-zh="从自己的服务器开始。" data-en="Start on your own server.">从自己的服务器开始。</h2>
+        <p data-zh="Docker Compose 启动 Postgres、迁移和 Web／API。先设置管理员邮箱与模型服务，再从日志中的一次性链接激活账号。" data-en="Docker Compose starts Postgres, migrations and the web/API. Set your admin email and model service first, then activate through the one-time link in the logs.">Docker Compose 启动 Postgres、迁移和 Web／API。先设置管理员邮箱与模型服务，再从日志中的一次性链接激活账号。</p>
+        <pre><code>git clone -b v2 https://github.com/linjiejim/greenhouse.git
+cd greenhouse
+cp .env.example .env
+./scripts/gen-secrets.sh
+# Set BOOTSTRAP_ADMIN_EMAIL and LLM_* in .env
+docker compose -p greenhouse-v2 up -d --build</code></pre>
+        <p data-zh="模型、搜索、语音、图像、视频、存储、电脑和邮箱均可配置。Compose 的 Agent 电脑使用 E2B 兼容服务；SMTP 只发信，Resend／Mailgun 可接收 Agent 邮件。" data-en="Configure models, search, speech, images, video, storage, computers and mail. Agent computers in Compose use an E2B-compatible service. SMTP sends mail; Resend or Mailgun can also receive mail for Agents.">模型、搜索、语音、图像、视频、存储、电脑和邮箱均可配置。Compose 的 Agent 电脑使用 E2B 兼容服务；SMTP 只发信，Resend／Mailgun 可接收 Agent 邮件。</p>
+        <div class="actions"><a class="primary" href="https://github.com/linjiejim/greenhouse/blob/v2/README.md" data-zh="完整部署指南" data-en="Full setup guide">完整部署指南</a><a href="https://github.com/linjiejim/greenhouse/blob/v2/docs/product/migration-v1.md" data-zh="从 v1 迁移" data-en="Moving from v1">从 v1 迁移</a></div>
+      </section>
+    </main>
+    <footer><span>Greenhouse · MIT</span><a href="https://github.com/linjiejim/greenhouse/blob/v2/docs/product/features.md" data-zh="功能与交付状态" data-en="Feature and delivery status">功能与交付状态</a></footer>
+    <script>
+      const switcher = document.getElementById('language');
+      switcher.addEventListener('click', () => {
+        const language = document.documentElement.lang === 'en' ? 'zh' : 'en';
+        document.documentElement.lang = language === 'zh' ? 'zh-CN' : 'en';
+        document.querySelectorAll('[data-zh][data-en]').forEach((element) => {
+          // Both language strings are static, repository-owned text.
+          if (element.tagName === 'H1') element.innerHTML = element.dataset[language];
+          else element.textContent = element.dataset[language];
+        });
+        document.querySelectorAll('[data-alt-zh]').forEach((element) => {
+          element.alt = element.dataset[language === 'zh' ? 'altZh' : 'altEn'];
+        });
+        document.querySelectorAll('[data-aria-zh]').forEach((element) => {
+          element.setAttribute('aria-label', element.dataset[language === 'zh' ? 'ariaZh' : 'ariaEn']);
+        });
+        switcher.textContent = language === 'zh' ? 'English' : '中文';
+        switcher.setAttribute('aria-label', language === 'zh' ? 'Switch to English' : '切换到中文');
+        document.title = language === 'zh' ? 'Greenhouse v2 · 人与 Agent 一起工作的地方' : 'Greenhouse v2 · Your Agents. A shared place to work.';
+      });
+    </script>
+  </body>
 </html>

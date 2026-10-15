@@ -370,7 +370,7 @@ export function createAutomationsService(deps: {
       const steps = [...run.steps];
       for (const [index, action] of config.actions.entries()) {
         const prior = steps.find((s) => s.index === index);
-        if (prior?.status === 'succeeded') continue;
+        if (prior?.status === 'succeeded' || prior?.status === 'queued') continue;
         if (prior?.status === 'sending') return finish('uncertain', 'webhook_outcome_unknown');
         if (action.type === 'notify')
           for (const memberId of action.members) {
@@ -433,6 +433,7 @@ export function createAutomationsService(deps: {
               source: 'automation',
               sourceId: rule.id,
               automationRunId: id,
+              actionIndex: index,
               title: rule.name,
               tools: action.tools === 'same_base_read' ? ['table_query'] : [],
               baseId: rule.baseId,
@@ -449,7 +450,7 @@ export function createAutomationsService(deps: {
             },
           });
         }
-        steps.push({ index, status: 'succeeded' });
+        steps.push({ index, status: action.type === 'agent' ? 'queued' : 'succeeded' });
         await getDb().update(baseAutomationRuns).set({ steps }).where(eq(baseAutomationRuns.id, id));
       }
       return finish('succeeded');
@@ -486,7 +487,7 @@ export function createAutomationsService(deps: {
       await getDb().delete(baseAutomations).where(eq(baseAutomations.id, id));
     },
     async history(memberId: string, id: string, query: { cursor?: string; limit: number }) {
-      await at(memberId, id);
+      const rule = await at(memberId, id);
       const rows = await getDb()
         .select()
         .from(baseAutomationRuns)
@@ -499,34 +500,72 @@ export function createAutomationsService(deps: {
         .orderBy(asc(baseAutomationRuns.id))
         .limit(query.limit + 1);
       const agentRuns = await getDb()
-        .select({ id: runs.id, status: runs.status })
+        .select({
+          id: runs.id,
+          status: runs.status,
+          input: runs.input,
+          startedAt: runs.startedAt,
+          finishedAt: runs.finishedAt,
+          error: runs.errorCode,
+        })
         .from(runs)
         .where(
           inIds(
-            runs.id,
-            rows.flatMap((r) => r.runId ?? []),
+            sql`${runs.input}->>'automation_run_id'`,
+            rows.map((r) => r.id),
           ),
         );
-      const states = new Map(agentRuns.map((r) => [r.id, r.status]));
+      const agentIndexes = automationConfigSchema
+        .parse(rule.config)
+        .actions.flatMap((action, index) => (action.type === 'agent' ? [index] : []));
       return toPage(
-        rows.map((r) => ({
-          id: r.id,
-          run_id: r.runId,
-          automation_id: r.automationId,
-          record_id: r.recordId,
-          trigger: r.trigger,
-          status:
-            r.runId && states.has(r.runId)
-              ? states.get(r.runId) === 'canceled'
-                ? ('failed' as const)
-                : states.get(r.runId)!
-              : r.status,
-          steps: r.steps,
-          error: r.error,
-          started_at: r.startedAt,
-          finished_at: r.finishedAt,
-          created_at: r.createdAt,
-        })),
+        rows.map((r) => {
+          const children = agentRuns.filter((child) => child.input.automation_run_id === r.id);
+          const queued = r.steps.filter((step) => step.status === 'queued').map((step) => step.index);
+          const indexes = r.revision === rule.revision ? agentIndexes : queued;
+          const waitingForAgents = indexes.length > 0 && ['queued', 'running', 'succeeded'].includes(r.status);
+          const status = !waitingForAgents
+            ? r.status
+            : children.some((child) => child.status === 'failed' || child.status === 'canceled')
+              ? ('failed' as const)
+              : children.length === indexes.length && children.every((child) => child.status === 'succeeded')
+                ? ('succeeded' as const)
+                : children.some((child) => child.status === 'waiting')
+                  ? ('waiting' as const)
+                  : children.some((child) => child.status !== 'queued')
+                    ? ('running' as const)
+                    : ('queued' as const);
+          const started = children
+            .map((child) => child.startedAt)
+            .filter((at): at is string => !!at)
+            .sort();
+          const finished = children
+            .map((child) => child.finishedAt)
+            .filter((at): at is string => !!at)
+            .sort();
+          return {
+            id: r.id,
+            run_id: r.runId,
+            automation_id: r.automationId,
+            record_id: r.recordId,
+            trigger: r.trigger,
+            status,
+            steps: r.steps.map((step) => {
+              const child = children.find((child) => child.input.automation_action_index === step.index);
+              return child
+                ? { ...step, status: child.status === 'canceled' ? 'failed' : child.status, run_id: child.id }
+                : step;
+            }),
+            error: children.find((child) => child.error)?.error ?? r.error,
+            started_at: waitingForAgents ? (started[0] ?? null) : r.startedAt,
+            finished_at: waitingForAgents
+              ? ['succeeded', 'failed'].includes(status)
+                ? (finished.at(-1) ?? null)
+                : null
+              : r.finishedAt,
+            created_at: r.createdAt,
+          };
+        }),
         query.limit,
         (r) => r,
       );

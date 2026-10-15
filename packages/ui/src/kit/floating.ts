@@ -72,16 +72,31 @@ export function useFloating<T extends HTMLElement = HTMLDivElement>(open: boolea
       }
       left = clamp(left, frame.left + EDGE, frame.right - EDGE - width);
       top = clamp(top, frame.top + EDGE, frame.bottom - EDGE - height);
-      setStyle({ position: 'fixed', left, top, minWidth: matchWidth ? rect.width : undefined });
+      const minWidth = matchWidth ? rect.width : undefined;
+      setStyle((previous) =>
+        previous.left === left && previous.top === top && previous.minWidth === minWidth
+          ? previous
+          : { position: 'fixed', left, top, minWidth },
+      );
     };
     place();
-    const resize = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(place);
+    // A picker can change its own width. Measure in the next frame so repositioning does
+    // not trigger another layout in the same ResizeObserver delivery cycle.
+    let frame = 0;
+    const resize =
+      typeof ResizeObserver === 'undefined'
+        ? null
+        : new ResizeObserver(() => {
+            cancelAnimationFrame(frame);
+            frame = requestAnimationFrame(place);
+          });
     if (panel.current) resize?.observe(panel.current);
     window.addEventListener('resize', place);
     // A scroll that carries the panel with its anchor (both inside it) keeps the panel by the anchor.
     window.addEventListener('scroll', place, true);
     return () => {
       resize?.disconnect();
+      cancelAnimationFrame(frame);
       window.removeEventListener('resize', place);
       window.removeEventListener('scroll', place, true);
     };

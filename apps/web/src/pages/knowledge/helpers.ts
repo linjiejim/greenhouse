@@ -68,14 +68,15 @@ export const SORTS = ['manual', 'name', 'updated'] as const;
 export type Sort = (typeof SORTS)[number];
 
 /** A folder's items in the chosen order; `manual` keeps the server's tree order. */
-export function sortItems(items: readonly KnowledgeItem[], sort: Sort, locale: string): KnowledgeItem[] {
+export function sortItems(items: readonly KnowledgeItem[], sort: Sort): KnowledgeItem[] {
   if (sort === 'manual') return [...items];
+  const names = new Intl.Collator('zh-u-co-pinyin', { numeric: true });
   const folderFirst = (a: KnowledgeItem, b: KnowledgeItem) =>
     (a.type === 'folder' ? 0 : 1) - (b.type === 'folder' ? 0 : 1);
   return [...items].sort((a, b) =>
     sort === 'name'
-      ? folderFirst(a, b) || a.name.localeCompare(b.name, locale, { numeric: true })
-      : b.updated_at.localeCompare(a.updated_at) || a.name.localeCompare(b.name, locale, { numeric: true }),
+      ? folderFirst(a, b) || names.compare(a.name, b.name) || a.id.localeCompare(b.id)
+      : b.updated_at.localeCompare(a.updated_at) || names.compare(a.name, b.name) || a.id.localeCompare(b.id),
   );
 }
 

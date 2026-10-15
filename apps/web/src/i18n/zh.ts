@@ -1077,6 +1077,10 @@ export const zh = {
 
   'account.avatar': '头像',
   'usage.mine': '本月用量',
+  'usage.sttSeconds': '语音输入（秒）',
+  'usage.ttsCharacters': '朗读（字符）',
+  'usage.seconds': '{count} 秒音频',
+  'usage.characters': '{count} 字符',
   'usage.tokens': 'Token',
   'usage.cost': '估算费用',
   'usage.requests': '调用次数',

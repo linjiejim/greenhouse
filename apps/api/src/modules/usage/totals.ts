@@ -17,6 +17,8 @@ export const totalsColumns = {
   input: sum(usageEvents.inputTokens),
   output: sum(usageEvents.outputTokens),
   cached: sum(usageEvents.cachedTokens),
+  stt: sql<string>`coalesce(sum(${usageEvents.quantity}) filter (where ${usageEvents.capability} = 'stt' and ${usageEvents.unit} = 'second'), 0)`,
+  tts: sql<string>`coalesce(sum(${usageEvents.quantity}) filter (where ${usageEvents.capability} = 'tts' and ${usageEvents.unit} = 'character'), 0)`,
   cost: sum(usageEvents.costMicros),
   unpriced: sql<string>`count(*) filter (where ${usageEvents.costMicros} is null)::bigint`,
 };
@@ -36,6 +38,8 @@ export function toTotals(row: TotalsRow | undefined): UsageTotals {
     cached_tokens: cached,
     cache_hit_rate: input ? Math.min(1, cached / input) : null,
     tokens: input + output,
+    stt_seconds: n(row?.stt),
+    tts_characters: n(row?.tts),
     cost_micros: n(row?.cost),
     unpriced: n(row?.unpriced),
   };

@@ -27,6 +27,14 @@ function createRenderer(copyLabel: string) {
   return new Marked({
     gfm: true,
     breaks: true,
+    tokenizer: {
+      del(src) {
+        const match = /^~~(?=[^\s~])((?:\\[\s\S]|[^\\])*?(?:\\[\s\S]|[^\s~\\]))~~(?=[^~]|$)/.exec(src);
+        if (match) return { type: 'del', raw: match[0], text: match[1], tokens: this.lexer.inlineTokens(match[1]) };
+        // Returning undefined disables marked's single-tilde extension; false would fall back to it.
+        return undefined;
+      },
+    },
     renderer: {
       code({ text, lang }: Tokens.Code) {
         const language = (lang ?? '').split(/\s/)[0] ?? '';

@@ -43,6 +43,8 @@ export async function applyMigrations(url: string, folder = MIGRATIONS_FOLDER): 
     await sql`SELECT pg_advisory_lock(${MIGRATION_LOCK_KEY}::bigint)`;
     try {
       await assertNotV1Database(sql);
+      // One ordering for every knowledge page, independent of the database's default locale.
+      await sql`CREATE COLLATION IF NOT EXISTS greenhouse_natural (provider = icu, locale = 'zh-u-co-pinyin-kn-true')`;
       await migrate(drizzle(sql), { migrationsFolder: folder });
     } finally {
       await sql`SELECT pg_advisory_unlock(${MIGRATION_LOCK_KEY}::bigint)`.catch(() => undefined);

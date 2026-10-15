@@ -252,7 +252,7 @@ apps/api/src/
 
 - `POST /api/tables/records/:id/handoff`：`{ agent_id, brief, output_field_id? }`，仅自己的 Agent；读取成员可见记录，响应 `{ run_id }`。负责人仍是成员，来源为 `record`；默认结果作为评论，经 `table_mutation` 分档写回；可选文字字段使用交办时的修订，不能覆盖后来的修改。
 - `GET /api/tables/bases/:id/automations`（游标分页）、`POST`（创建），`PATCH /api/tables/automations/:id`（完整规则与 `revision`）、`DELETE`：需要搭建者权限，执行者为保存规则的成员。触发为 `record_created / record_updated / record_matched / schedule / date_reached / button`；`config` 含筛选、限定更新字段、间隔分钟或日期字段与动作列表。
-- `GET /api/tables/automations/:id/runs`（游标分页）给出步骤、状态与 Agent `run_id`；`POST /api/tables/automations/:id/run` 显式执行按钮规则（可附 `record_id`）。执行前复核执行者与通知收件人的权限。
+- `GET /api/tables/automations/:id/runs`（游标分页）给出步骤、状态与 Agent `run_id`（Agent 事件尚在合并、未建立后台运行时为 queued；步骤派发成功不代表 Agent 已完成；多个 Agent 步骤全部成功才返回 succeeded）；`POST /api/tables/automations/:id/run` 显式执行按钮规则（可附 `record_id`）。执行前复核执行者与通知收件人的权限。
 - 通知动作 `{type:"notify",members,title}` 统一经通知服务；Agent 动作 `{type:"agent",agent_id,brief,tools:"none"|"same_base_read",output_field_id?}` 经事件唤醒入口，默认无工具；可选回写仍需按档批准。webhook `{type:"webhook",url}` 仅公网 HTTPS、拒绝重定向、连接时复核 DNS、10 秒超时。创建含 webhook 的规则或首次添加 webhook 时仅一次返回 `webhook_secret`，后续不读取；请求头 `x-greenhouse-id` 为执行 id、`x-greenhouse-timestamp` 为 Unix 秒、`x-greenhouse-signature` 为 `v1=` 加 HMAC-SHA256(secret, timestamp + "." + 原始请求体)。接收方应校验时间窗口并按 id 去重；发送结果未知不会自动重发。
 - `table_query` 发现表格、数据表、视图，按成员的自定义角色筛选记录与聚合；读取的记录引用会再次按接收者权限裁剪。`table_mutation` 支持记录批量修改、回收、评论和彻底删除；私有可逆操作有回执与撤销、共享按数据表动作批准、彻底删除逐次批准。`table_schema_plan` 的精确结构计划逐次确认后才落库。
 - `apps_query` 读取已发布应用与卡片，`apps_action` 只执行已保存的动作，按查看者的应用与表格权限交集。MCP 对应独立的 `apps:read` / `apps:write`，不扩大其他已授权范围；共享动作返回 `needs_you`，外部客户端不能代替成员批准。
@@ -283,6 +283,12 @@ M3 媒体与计数（#70）：
 
 `RATE_LIMIT_STORE=memory|postgres` 控制现有限流的计数位置。多副本应全部设为 postgres：登录的 IP 与邮箱窗口每分钟各 10 次；OAuth 注册每 IP 每小时 20 次、授权每分钟 30 次、令牌 / 作废每分钟 60 次、客户端凭据尝试每分钟 10 次；MCP 每 grant 的窗口沿用每分钟 120 次；成员 multipart 上传（文件、知识库、表格与语音）每分钟 30 次，在读取正文前检查。超过返回 429 `rate_limited`；OAuth 保持 RFC 6749 错误形状，其余保持 API 错误包，OAuth / MCP / 上传带 Retry-After。成功登录只重置邮箱计数，不重置 IP。
 
+### v2.0 交付约定（#70）
+
+- 知识库目录分页使用固定的 ICU `zh-u-co-pinyin-kn-true` 排序规则；手动位置、文件夹优先级、自然名称、id 共同构成稳定游标。中文按拼音，数字按数值（Doc 2 在 Doc 10 前），不依赖数据库默认 locale。
+- `/api/me/usage`、`/api/admin/usage`、`/api/agents/:id/usage` 的总计与各分组包含 `stt_seconds`（音频秒数，可有小数）和 `tts_characters`（朗读字符数）。分别只合计 STT 的 second 与 TTS 的 character 计量；未知数量计零，不由 token 或费用推算。
+- `run_steps.kind=model` 是恢复上下文，不是永久运行证据：终态运行结束满 90 天由每日清理删除；编辑或重新生成删除旧回复时立即删除对应模型步骤与 Eval 提示快照。工具步骤保留。
+
 ### 原生移动端 phase 2（#70）
 
 移动端复用知识库、表格、语音和 Agent 邮箱接口，不增加原生专用接口。文档修改发送编辑开始时的 `version`，记录修改发送起始 `revision` 和变化字段；409 时保留草稿，明确重新载入。文件预览仍用签名 URL。转写只填入输入框，朗读使用 `/api/voice/speech` 或设备语音。原生页接收 `knowledge.changed`、`doc.updated`、`doc.presence`、`comments.updated`、`records.changed`、`base.updated`，重连和回到前台时重新读取。邮件正文用原生纯文本呈现，附件使用签名链接。
@@ -300,3 +306,7 @@ M3 媒体与计数（#70）：
 external 卡片仅执行保存的只读连接器工具，auth_mode 必须是 per_member 或 oauth；每次求值和缓存命中前重查查看者的连接及连接器版本。缓存 15 秒、最多 500 项，结果最多 256 KB／100 行，JSON Pointer 映射标量，连接器 HTML 永不执行。应用角色不裁剪外部系统数据，但应用和底层表格访问权仍是入口条件。
 
 custom 网页运行使用双层 `sandbox="allow-scripts"` iframe，均无 allow-same-origin；平台先放 CSP（default-src none、connect-src none、frame-src none、form-action none），只允许内联脚本／样式及 data/blob 图片。外层限制内层跳转；postMessage 双层检查 source。去掉直接的 RTCPeerConnection 并关闭 DNS 预取，但这不能证明浏览器 WebRTC／DNS 残余外泄通道不存在（嵌套 srcdoc 可以重新取得 WebRTC）。因此每个版本必须人工审核，绑定不得含连接器数据；不宣称是任意恶意代码的完整网络隔离。手机端继续禁用 custom 执行。
+
+### 请求卡片的对象名称（#70）
+
+所有新请求的标题、`payload.summary` 与 `payload.details` 在服务端保存前转为人可读文字：内部引用显示当前成员可读的对象标题或路径，正文片段与嵌套参数预览中的引用也一样；不存在或不可读的对象只显示本地化的「不可用的对象」。每张卡最多解析 64 个不同引用，超出的引用同样隐藏 id。房间标题／摘要只显示「关联对象」，私有详情仍仅给被请求成员；应用动作的字段名称受发布角色和卡片列投影约束。`payload.input`、`standing_scope` 与批次 `calls` 的执行参数保持原样，批准后仍精确执行原调用，不能把展示文字当参数。Web 与原生移动端直接消费同一 payload；不新增接口和 schema。

@@ -1104,6 +1104,10 @@ export const en: Record<MessageKey, string> = {
 
   'account.avatar': 'Picture',
   'usage.mine': 'Usage this month',
+  'usage.sttSeconds': 'Voice input (seconds)',
+  'usage.ttsCharacters': 'Read aloud (characters)',
+  'usage.seconds': '{count} seconds of audio',
+  'usage.characters': '{count} characters',
   'usage.tokens': 'Tokens',
   'usage.cost': 'Estimated cost',
   'usage.requests': 'Calls',

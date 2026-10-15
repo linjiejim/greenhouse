@@ -10,6 +10,7 @@ import {
   Badge,
   Button,
   Field,
+  FieldGroup,
   Input,
   Menu,
   Overlay,
@@ -176,24 +177,24 @@ export function InstanceDrawer({
     >
       <form id="provider-instance" className="app-form" onSubmit={(event) => void submit(event)}>
         {!instance && adapters.length > 1 && (
-          <Field label={t('provider.adapter')}>
+          <FieldGroup label={t('provider.adapter')}>
             <Select
               label={t('provider.adapter')}
               value={kind}
               options={adapters.map((item) => ({ value: item.kind, label: item.label }))}
               onChange={pickAdapter}
             />
-          </Field>
+          </FieldGroup>
         )}
         {!instance && (adapter?.presets.length ?? 0) > 1 && (
-          <Field label={t('provider.preset')}>
+          <FieldGroup label={t('provider.preset')}>
             <Select
               label={t('provider.preset')}
               value={preset}
               options={adapter!.presets.map((item) => ({ value: item.id, label: item.label }))}
               onChange={pickPreset}
             />
-          </Field>
+          </FieldGroup>
         )}
         <Field label={t('provider.name')} required>
           <Input
