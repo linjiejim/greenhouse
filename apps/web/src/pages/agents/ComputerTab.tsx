@@ -1,3 +1,4 @@
+import { errorText } from '../../lib/errors';
 /**
  * 电脑 (AGNT-18, AGNT-19, AGNT-20): my computer of this Agent (its own, or my copy of a public
  * one). Its state, start / stop / restart (files in the home stay), and while it runs: the
@@ -12,7 +13,6 @@ import { ComputerScreen } from '../../computer/ComputerScreen';
 import { ComputerTerminal } from '../../computer/ComputerTerminal';
 import { icon } from '@greenhouse/ui/tokens';
 import type { ComputerJob, ComputerView } from '@greenhouse/contract';
-import { ApiClientError } from '@greenhouse/contract/client';
 import { useNotify } from '../../app/notify';
 import { useMe } from '../../app/session';
 import { useComputer, useComputerAction, useProcesses } from '../../data/agents';
@@ -55,7 +55,7 @@ export function ComputerTab({ agentId }: { agentId: string }) {
   const action = useComputerAction(agentId);
   const run = (kind: 'start' | 'stop' | 'restart') =>
     action.mutate(kind, {
-      onError: (caught) => notify(caught instanceof ApiClientError ? caught.message : t('common.error')),
+      onError: (caught) => notify(errorText(caught, t)),
     });
 
   const processesList = (

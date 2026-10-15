@@ -74,7 +74,7 @@ export function browserTool(browser: BrowserService, files: FilesService) {
         : 'read';
     },
     async execute(args, ctx) {
-      return browser.act(
+      const result = await browser.act(
         {
           memberId: ctx.memberId,
           agentId: ctx.agent.id,
@@ -99,6 +99,10 @@ export function browserTool(browser: BrowserService, files: FilesService) {
         },
         args,
       );
+      if (args.action !== 'screenshot') return result;
+      // The reply already carries the image; the model has no follow-up use for its storage id.
+      const { file_id, ...preview } = result;
+      return { ...preview, ...(file_id ? { file_name: ctx.locale === 'zh' ? '截图.jpg' : 'Screenshot.jpg' } : {}) };
     },
     summarize: (args, output, locale) => {
       const zh = locale === 'zh';

@@ -114,6 +114,7 @@ export function createMediaService(deps: {
       });
       if (ctx.signal.aborted) throw conflict('stopped', 'Generation was stopped.');
       const ids: string[] = [];
+      const names: string[] = [];
       for (const image of result.images.slice(0, 1)) {
         const type = sniffImage(image.data);
         if (!type) throw invalidInput('The image service returned invalid bytes.');
@@ -126,6 +127,7 @@ export function createMediaService(deps: {
           runId: ctx.runId,
         });
         ids.push(file.id);
+        names.push(file.name);
       }
       const saved = await transaction(async (db) => {
         const [active] = await db
@@ -160,7 +162,8 @@ export function createMediaService(deps: {
         });
       return {
         file_ids: ids,
-        note: 'The artifacts are already shown as result cards. Briefly describe the result; never print file ids, attachment markers or invented download URLs.',
+        file_names: names,
+        note: 'The artifacts are already shown to the member as result cards. file_ids are internal references for reference_file_id when editing; name the files using file_names. Briefly describe the result; never print file ids, attachment markers or invented download URLs.',
       };
     },
     async video(ctx: ToolContext, input: z.infer<typeof videoInput>) {

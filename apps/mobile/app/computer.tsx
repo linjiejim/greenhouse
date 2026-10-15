@@ -1,3 +1,4 @@
+import { operationErrorText } from '../src/api/operation-error';
 /**
  * `/computer?agent=&request=&control=` — an Agent's computer on the phone (AGNT-18, AGNT-19): my
  * copy of it (each Agent has its own; a public Agent's users each get theirs).
@@ -182,8 +183,8 @@ export default function ComputerPage() {
     if (!result.ok) {
       alertError(
         t('computer.startFailed'),
-        result.code === 'operation_disabled' ? t('integration.computersDisabled') : undefined,
-        result.message,
+        operationErrorText(result, t),
+        operationErrorText(result, t) ? undefined : result.message,
       );
     }
   };

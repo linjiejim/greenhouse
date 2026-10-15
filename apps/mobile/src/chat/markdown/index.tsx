@@ -34,6 +34,7 @@
 import { memo, useMemo } from 'react';
 import { View } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
+import { PreviewContext } from './context';
 import { parseBlocks, type Block } from './parse';
 import { fenceBlocks } from './registry';
 import { CodeBlock } from './blocks/code';
@@ -60,7 +61,7 @@ const Fence = memo(function Fence({ lang, raw }: { lang: string; raw: string }) 
   );
 });
 
-function renderBlock(b: Block, i: number, live: boolean, safe: boolean) {
+function renderBlock(b: Block, i: number, live: boolean, safe: boolean, preview: boolean) {
   switch (b.kind) {
     case 'heading':
       return <Heading key={i} level={b.level} text={b.text} />;
@@ -75,13 +76,17 @@ function renderBlock(b: Block, i: number, live: boolean, safe: boolean) {
     case 'quote':
       return <Quote key={i} text={b.text} />;
     case 'table':
-      return <Table key={i} data={b.data} />;
+      return preview ? (
+        <Paragraph key={i} text={[b.data.head.join(' · '), ...b.data.rows.map((row) => row.join(' · '))].join('\n')} />
+      ) : (
+        <Table key={i} data={b.data} />
+      );
     case 'images':
-      return <ImageRow key={i} images={b.images} />;
+      return preview ? null : <ImageRow key={i} images={b.images} />;
     case 'code': {
       // Known fence langs (chart, …) render as their custom block; the rest
       // are plain code. This is the whole extension surface.
-      if (safe || !fenceBlocks[b.lang]) return <CodeBlock key={i} lang={b.lang} code={b.text} />;
+      if (preview || safe || !fenceBlocks[b.lang]) return <CodeBlock key={i} lang={b.lang} code={b.text} />;
       // still streaming in: no half-written JSON / HTML (turn-input fences render nothing anyway)
       if (b.open && live) return b.lang.endsWith('attachments') ? null : <PendingBlock key={i} lang={b.lang} />;
       return <Fence key={i} lang={b.lang} raw={b.text} />;
@@ -95,19 +100,23 @@ export function Markdown({
   source,
   animated = false,
   safe = false,
+  preview = false,
 }: {
   source: string;
   animated?: boolean;
   safe?: boolean;
+  preview?: boolean;
 }) {
   const blocks = useMemo(() => parseBlocks(source), [source]);
   return (
-    <View>
-      {blocks.map((b, i) => (
-        <Animated.View key={i} entering={animated ? FadeIn.duration(260) : undefined}>
-          {renderBlock(b, i, animated, safe)}
-        </Animated.View>
-      ))}
-    </View>
+    <PreviewContext.Provider value={preview}>
+      <View>
+        {blocks.map((b, i) => (
+          <Animated.View key={i} entering={animated ? FadeIn.duration(260) : undefined}>
+            {renderBlock(b, i, animated, safe, preview)}
+          </Animated.View>
+        ))}
+      </View>
+    </PreviewContext.Provider>
   );
 }

@@ -38,7 +38,7 @@ Knowledge includes spaces and folders, safe Markdown reading and source editing,
 
 Published apps open native runtime pages, record details, forms, charts and confirmed actions. Reads and writes retain the publication version and access boundaries; building and publishing stay on the web. The builder shows the published version, pending changes and an Open action; record fields use their configured currency and precision. Always-on flows include reversible write receipts and undo, tier2 standing approvals, quiet schedules, record handoffs and event lines.
 
-Native directories filter loaded names and clear when left. Agent profiles show memory and monthly usage with budgets; shared notes and account password/About me edits are available on the phone. Computer queues show their position, and computer/background pauses explain what is waiting.
+Native directories filter loaded names and clear when left. Agent profiles show memory and monthly usage with budgets; shared notes and account password/About me edits are available on the phone. Computer queues show their position, and computer/background/mail pauses explain what is waiting in the selected language. Approval sheets render safe Markdown previews with expand; write receipts keep document names and batch actions.
 
 The launch cover leaves when authentication, fonts and the focused page are ready. Its 650 ms logo animation adds no minimum wait; unsettled content gets up to 900 ms before showing loading or retry. On iOS, chat and computer files use native Quick Look for PDF, images and system-supported formats, with sharing and saving available.
 

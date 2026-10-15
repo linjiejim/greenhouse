@@ -49,6 +49,12 @@ const KNOWN: Record<string, MessageKey> = {
 
 export function errorText(error: unknown, t: Translate): string {
   if (error instanceof ApiClientError) {
+    if (error.code === 'operation_disabled') {
+      const operation = (error.details as { switch?: string } | undefined)?.switch;
+      if (operation === 'disable_computers') return t('errors.computersDisabled');
+      if (operation === 'pause_background_runs') return t('errors.backgroundPaused');
+      if (operation === 'disable_outbound_mail') return t('errors.outboundMailDisabled');
+    }
     const key = KNOWN[error.code];
     if (key) return t(key);
     if (error.status >= 500 || error.status === 0) return t('common.error');

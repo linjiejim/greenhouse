@@ -1,3 +1,4 @@
+import { ApprovalPreview } from '../src/requests/approval-preview';
 /**
  * A 「需要你」 card in full (`/request?id=`, a full-height sheet): the only place a card is
  * decided — nothing is approved without being seen whole (CONV-17).
@@ -235,9 +236,13 @@ export default function RequestSheet() {
             {body.details.map((detail) => (
               <View key={detail.label} style={styles.detail}>
                 <Text style={styles.detailLabel}>{detailLabel(t, detail.label)}</Text>
-                <Text style={styles.detailValue} selectable>
-                  {detail.value}
-                </Text>
+                {detail.format === 'markdown' ? (
+                  <ApprovalPreview key={`${request.id}:${detail.label}`} source={detail.value} />
+                ) : (
+                  <Text style={styles.detailValue} selectable>
+                    {detail.value}
+                  </Text>
+                )}
               </View>
             ))}
           </View>

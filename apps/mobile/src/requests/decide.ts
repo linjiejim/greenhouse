@@ -6,6 +6,7 @@
  * carry out keeps the card pending and says why in a system alert.
  */
 
+import { operationErrorText } from '../api/operation-error';
 import { captureIdentity } from '../data/identity';
 import { answerRequest, approveRequest, handBack, rejectRequest } from '../api/requests';
 import type { ApiResult } from '../api/client';
@@ -55,6 +56,10 @@ export async function decide(request: NeedsYou, decision: Decision): Promise<Dec
   }
   settle();
   if (result.status === 409) return 'stale';
-  alertError(t('requests.failed'), result.message || undefined);
+  alertError(
+    t('requests.failed'),
+    operationErrorText(result, t),
+    operationErrorText(result, t) ? undefined : result.message,
+  );
   return 'failed';
 }

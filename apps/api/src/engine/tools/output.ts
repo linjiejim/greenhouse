@@ -40,7 +40,7 @@ export async function storeToolOutput(
     file: { id: file.id, name: file.name },
     head: text.slice(0, TOOL_OUTPUT_HEAD),
     length: text.length,
-    note: 'Read more with tool_output_read using the file id and character offset. Follow next_offset until it is null to read to the end. This owner-only file expires after 30 days.',
+    note: 'The file id is internal; never repeat it to the member. Read more with tool_output_read using the file id and character offset. Follow next_offset until it is null to read to the end. This owner-only file expires after 30 days.',
   };
 }
 

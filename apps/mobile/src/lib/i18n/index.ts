@@ -5,6 +5,7 @@
  * and the fallback. `{n}` placeholders interpolate via the second arg.
  */
 
+import { interpolate } from './format';
 import { useMemo } from 'react';
 import { usePrefs, type LangPref } from '../../store/prefs';
 import { en, type Catalog } from './en';
@@ -30,7 +31,7 @@ function lookup(cat: Catalog, key: string): string | undefined {
 export function translate(lang: LangPref, key: TranslationKey, vars?: Record<string, string | number>): string {
   const raw = lookup(catalogs[lang], key) ?? lookup(en, key) ?? key;
   if (!vars) return raw;
-  return raw.replace(/\{(\w+)\}/g, (m, name) => (name in vars ? String(vars[name]) : m));
+  return interpolate(lang, raw, vars);
 }
 
 export type TFunction = (key: TranslationKey, vars?: Record<string, string | number>) => string;

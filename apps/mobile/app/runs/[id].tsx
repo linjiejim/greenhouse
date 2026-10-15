@@ -1,3 +1,4 @@
+import { operationErrorText } from '../../src/api/operation-error';
 /**
  * A run (RUN-02; a pushed page): its status, who and where from, what needs the member (its
  * 「需要你」 cards), the result, the steps (failed ones say why) and the brief. 取消 while it runs;
@@ -81,8 +82,8 @@ export default function RunPage() {
     if (!result.ok) {
       alertError(
         action === 'cancel' ? t('runs.cancelFailed') : t('runs.retryFailed'),
-        result.code === 'operation_disabled' ? t('integration.operationPaused') : undefined,
-        result.message,
+        operationErrorText(result, t),
+        operationErrorText(result, t) ? undefined : result.message,
       );
       return;
     }
