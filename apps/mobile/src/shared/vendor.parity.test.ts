@@ -68,6 +68,10 @@ function declarationText(sf: ts.SourceFile, name: string): string {
 }
 
 describe('file-verbatim copies', () => {
+  it('dictionary interpolation and name spacing', () => {
+    expectFileVendored('packages/utils/src/i18n.ts', `${MOBILE}/lib/i18n/format.ts`);
+  });
+
   it('plant-avatar vocabulary and resolver', () => {
     expectFileVendored('packages/types/src/plant-avatar.ts', `${MOBILE}/ui/plant-avatar/plant-ids.ts`);
   });

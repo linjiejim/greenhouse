@@ -116,7 +116,7 @@ export const en: Record<MessageKey, string> = {
   'chat.noteBody': 'Note',
   'chat.noNotes': 'No notes yet',
   'chat.noteDone': 'Done',
-  'chat.remove': 'Remove',
+  'chat.remove': 'Remove {name}',
   'chat.add': 'Add',
   'chat.members': 'Members',
   'chat.starters': 'Ways to start',

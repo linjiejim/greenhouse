@@ -82,6 +82,6 @@ The v2 web app. Product scope is docs/product/prd.md §6–7; layout and compone
 
 - Empty active runs use the server recent_finished preview, ordered by actual completion time, rather than slicing the newest-created finished page.
 
-- Realtime debounce timers belong to each QueryClient. Chinese interpolation keeps Latin/number spacing but joins adjacent Chinese words; separators between two interpolated values retain their template spaces. Upload inputs mount only when their destination is loaded and editable. Header geometry uses the canonical header-height token, including Suspense frames.
+- Realtime debounce timers belong to each QueryClient. Dictionary interpolation uses @greenhouse/utils/i18n (the canonical helper also vendored by mobile): add one space at Han/Latin-or-digit boundaries even without template spaces, join adjacent Han runs, and retain deliberate separators between two values. Upload inputs mount only when their destination is loaded and editable. Header geometry uses the canonical header-height token, including Suspense frames.
 
 - Operational pause errors use errorText with details.switch so computer, background-run and outbound-mail reasons follow the member's language.

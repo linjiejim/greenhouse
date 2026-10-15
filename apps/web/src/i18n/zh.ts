@@ -116,7 +116,7 @@ export const zh = {
   'chat.noteBody': '内容',
   'chat.noNotes': '还没有笔记',
   'chat.noteDone': '完成',
-  'chat.remove': '移除',
+  'chat.remove': '移除 {name}',
   'chat.add': '添加',
   'chat.members': '成员',
   'chat.starters': '可以这样开始',

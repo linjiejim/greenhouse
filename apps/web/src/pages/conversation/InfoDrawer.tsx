@@ -75,7 +75,7 @@ function People({ conversation }: { conversation: Conversation }) {
             {member.role === 'owner' && <span className="app-info-hint">{t('chat.owner')}</span>}
             {room && owner && member.id !== me.id && (
               <IconButton
-                label={`${t('chat.remove')} ${member.name}`}
+                label={t('chat.remove', { name: member.name })}
                 size="sm"
                 onClick={() => actions.remove.mutate(member.id, { onError: failed })}
               >
