@@ -12,7 +12,7 @@ import { fake, fakeSandboxEnv } from './fake-sandbox.js';
 beforeEach(() => fake.reset());
 
 describe('computers for admins', () => {
-  it('lists every computer, sets the capacity, refuses a start beyond it, stops and resets', async () => {
+  it('lists every computer, sets the capacity, queues a start beyond it, stops and resets', async () => {
     const app = createTestApp(fakeSandboxEnv());
     const admin = await app.member('admin');
     const lin = await app.member();
@@ -46,8 +46,8 @@ describe('computers for admins', () => {
     expect(sandbox.effective.length).toBeGreaterThan(0);
 
     const refused = await app.call('POST', '/api/agents/main/computer/start', { token: mei.token });
-    expect(refused.status).toBe(503);
-    expect(refused.body.error.code).toBe('computers_full');
+    expect(refused.status).toBe(200);
+    expect(refused.body).toMatchObject({ state: 'queued', queue_position: 1 });
 
     const id = listed.body.items[0].id;
     expect((await app.call('POST', `/api/admin/computers/${id}/stop`, { token: admin.token })).status).toBe(204);

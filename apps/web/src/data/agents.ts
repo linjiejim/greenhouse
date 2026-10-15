@@ -77,7 +77,7 @@ export function useComputer(agentId: string, enabled = true) {
     queryKey: keys.computer(agentId),
     queryFn: () => api.agents.computer(agentId),
     enabled,
-    refetchInterval: (query) => (query.state.data?.state === 'starting' ? 2_000 : false),
+    refetchInterval: (query) => (['starting', 'queued'].includes(query.state.data?.state ?? '') ? 2_000 : false),
   });
 }
 

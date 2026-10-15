@@ -1,11 +1,12 @@
 import { z } from 'zod';
 import { isoTime } from './common.js';
 
-export const COMPUTER_STATES = ['stopped', 'starting', 'running', 'failed'] as const;
+export const COMPUTER_STATES = ['stopped', 'queued', 'starting', 'running', 'failed'] as const;
 
 /** An Agent's computer: a sandbox whose home outlives restarts. */
 export const computerSchema = z.object({
   agent_id: z.string(),
+  queue_position: z.number().int().positive().nullable().optional(),
   state: z.enum(COMPUTER_STATES),
   state_reason: z.string().nullable(),
   last_active_at: isoTime.nullable(),
@@ -96,7 +97,7 @@ export type HandbackInput = z.infer<typeof handbackInputSchema>;
 export const computerCapacitySchema = z.object({
   /** Minutes without use before a computer stops; one with a running process or a waiting card never does. */
   idle_minutes: z.number().int().min(5).max(1440),
-  /** Computers running at once; 0 means no limit. A start beyond it is refused with `computers_full`. */
+  /** Computers running at once; 0 means no limit. A start beyond it joins the durable FIFO queue. */
   max_running: z.number().int().min(0).max(1000),
 });
 export type ComputerCapacity = z.infer<typeof computerCapacitySchema>;
@@ -108,6 +109,16 @@ export const adminComputerSchema = z.object({
   agent_name: z.string(),
   owner_id: z.string(),
   owner_name: z.string(),
+  queue_position: z.number().int().positive().nullable(),
+  backups: z.array(
+    z.object({
+      id: z.string(),
+      created_at: isoTime,
+      bytes: z.number(),
+      status: z.enum(['complete', 'failed']),
+      error: z.string().nullable(),
+    }),
+  ),
   state: z.enum(COMPUTER_STATES),
   state_reason: z.string().nullable(),
   last_active_at: isoTime.nullable(),

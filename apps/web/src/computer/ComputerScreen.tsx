@@ -5,7 +5,7 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
-import { MousePointer2, RefreshCw } from 'lucide-react';
+import { Maximize, Minimize, MousePointer2, RefreshCw } from 'lucide-react';
 import { Button, ErrorBox, Spinner } from '@greenhouse/ui/kit';
 import { icon } from '@greenhouse/ui/tokens';
 import type RFB from '@novnc/novnc';
@@ -25,10 +25,18 @@ export function ComputerScreen({
   onControlChange?: (control: boolean) => void;
 }) {
   const { t } = useI18n();
+  const screen = useRef<HTMLDivElement>(null);
+  const [fullscreen, setFullscreen] = useState(false);
   const host = useRef<HTMLDivElement>(null);
   const client = useRef<RFB | null>(null);
   const [state, setState] = useState<State>('connecting');
   const [attempt, setAttempt] = useState(0);
+
+  useEffect(() => {
+    const changed = () => setFullscreen(document.fullscreenElement === screen.current);
+    document.addEventListener('fullscreenchange', changed);
+    return () => document.removeEventListener('fullscreenchange', changed);
+  }, []);
 
   useEffect(() => {
     let live = true;
@@ -42,6 +50,7 @@ export function ComputerScreen({
         if (!live || !host.current) return;
         const rfb = new RFBClient(host.current, url, { shared: true });
         rfb.viewOnly = !control;
+        rfb.focusOnClick = control;
         rfb.scaleViewport = true;
         rfb.background = 'transparent';
         rfb.addEventListener('connect', () => live && setState('connected'));
@@ -62,7 +71,7 @@ export function ComputerScreen({
   }, [agentId, control, attempt]);
 
   return (
-    <div className="app-screen">
+    <div className="app-screen" ref={screen}>
       <div className="app-screen-bar">
         <span className="app-muted">
           {state === 'connecting'
@@ -74,6 +83,17 @@ export function ComputerScreen({
               : t('computer.disconnected')}
         </span>
         <span className="app-page-header-spacer" />
+        {document.fullscreenEnabled && (
+          <Button
+            size="sm"
+            onClick={() =>
+              void (fullscreen ? document.exitFullscreen() : screen.current!.requestFullscreen()).catch(() => undefined)
+            }
+          >
+            {fullscreen ? <Minimize size={icon.sm} /> : <Maximize size={icon.sm} />}
+            {fullscreen ? t('computer.exitFullscreen') : t('computer.fullscreen')}
+          </Button>
+        )}
         {onControlChange && (
           <Button size="sm" kind={control ? 'primary' : 'secondary'} onClick={() => onControlChange(!control)}>
             <MousePointer2 size={icon.sm} />
@@ -87,7 +107,16 @@ export function ComputerScreen({
           </Button>
         )}
       </div>
-      <div className="app-screen-canvas" ref={host}>
+      <div
+        className="app-screen-canvas"
+        ref={host}
+        onKeyDown={(event) => {
+          if (control) event.stopPropagation();
+        }}
+        onKeyUp={(event) => {
+          if (control) event.stopPropagation();
+        }}
+      >
         {state === 'connecting' && (
           <div className="app-center">
             <Spinner />

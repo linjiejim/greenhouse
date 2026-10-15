@@ -21,6 +21,7 @@ import { useI18n } from '../../lib/i18n';
 import { relativeTime } from '../../lib/time';
 
 const STATE: Record<ComputerView['state'], { word: MessageKey; tone: Tone }> = {
+  queued: { word: 'computer.queued', tone: 'info' },
   stopped: { word: 'computer.stopped', tone: 'neutral' },
   starting: { word: 'computer.starting', tone: 'info' },
   running: { word: 'computer.running', tone: 'info' },
@@ -98,16 +99,18 @@ export function ComputerTab({ agentId }: { agentId: string }) {
             {t('agents.tabComputer')} <StatusBadge status={t(state.word)} tone={state.tone} />
           </strong>
           <span>
-            {view.state_reason ??
-              (view.last_active_at
-                ? t('computer.lastActive', {
-                    time: relativeTime(view.last_active_at, { locale, timeZone: me.timezone }),
-                  })
-                : t('computer.never'))}
+            {view.queue_position
+              ? t('computer.queuePosition', { position: view.queue_position })
+              : (view.state_reason ??
+                (view.last_active_at
+                  ? t('computer.lastActive', {
+                      time: relativeTime(view.last_active_at, { locale, timeZone: me.timezone }),
+                    })
+                  : t('computer.never')))}
           </span>
         </div>
         <div className="app-inline-actions">
-          {view.state === 'running' || view.state === 'starting' ? (
+          {view.state === 'running' || view.state === 'starting' || view.state === 'queued' ? (
             <>
               <Button onClick={() => run('restart')} loading={action.isPending && action.variables === 'restart'}>
                 <RotateCw size={icon.md} />

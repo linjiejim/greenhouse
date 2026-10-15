@@ -137,6 +137,12 @@ function buildServer(tickets: string[], identity: string, requestUrl: string, au
         tickets.push(String(args.title));
         return { content: [{ type: 'text', text: `Created ticket T-${tickets.length}: ${String(args.title)}` }] };
       case 'search_docs':
+        if (args.query === 'card-data')
+          return {
+            content: [
+              { type: 'text', text: JSON.stringify({ total: 42, rows: [{ name: '<b>Plain text</b>', value: 42 }] }) },
+            ],
+          };
         return { content: [{ type: 'text', text: `3 articles about ${String(args.query)}` }] };
       case 'drop_table':
         return { content: [{ type: 'text', text: `Dropped ${String(args.name)}` }] };

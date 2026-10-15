@@ -144,6 +144,7 @@ CREATE TABLE "agent_computers" (
 	"sandbox_ref" text NOT NULL,
 	"state" text DEFAULT 'stopped' NOT NULL,
 	"state_reason" text,
+	"queued_at" timestamp with time zone,
 	"timezone" text DEFAULT 'Asia/Shanghai' NOT NULL,
 	"version" integer DEFAULT 0 NOT NULL,
 	"lease_controller" text,
@@ -203,6 +204,17 @@ CREATE TABLE "agents" (
 	"archived_at" timestamp with time zone,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "computer_backups" (
+	"id" text PRIMARY KEY NOT NULL,
+	"computer_id" text NOT NULL,
+	"provider_id" text NOT NULL,
+	"object_key" text NOT NULL,
+	"status" text NOT NULL,
+	"bytes" integer DEFAULT 0 NOT NULL,
+	"error" text,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "computer_watches" (
@@ -1084,6 +1096,9 @@ CREATE TABLE "app_versions" (
 	"version" integer NOT NULL,
 	"spec" text NOT NULL,
 	"spec_hash" text NOT NULL,
+	"review_status" text DEFAULT 'pending' NOT NULL,
+	"reviewed_by" text,
+	"reviewed_at" timestamp with time zone,
 	"draft_revision" integer NOT NULL,
 	"notes" text DEFAULT '' NOT NULL,
 	"published_by" text NOT NULL,
@@ -1196,6 +1211,7 @@ ALTER TABLE "agent_memories" ADD CONSTRAINT "agent_memories_agent_id_agents_id_f
 ALTER TABLE "agent_memories" ADD CONSTRAINT "agent_memories_member_id_members_id_fk" FOREIGN KEY ("member_id") REFERENCES "public"."members"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "agent_versions" ADD CONSTRAINT "agent_versions_agent_id_agents_id_fk" FOREIGN KEY ("agent_id") REFERENCES "public"."agents"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "agents" ADD CONSTRAINT "agents_owner_id_members_id_fk" FOREIGN KEY ("owner_id") REFERENCES "public"."members"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "computer_backups" ADD CONSTRAINT "computer_backups_computer_id_agent_computers_id_fk" FOREIGN KEY ("computer_id") REFERENCES "public"."agent_computers"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "computer_watches" ADD CONSTRAINT "computer_watches_computer_id_agent_computers_id_fk" FOREIGN KEY ("computer_id") REFERENCES "public"."agent_computers"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "standing_approvals" ADD CONSTRAINT "standing_approvals_agent_id_agents_id_fk" FOREIGN KEY ("agent_id") REFERENCES "public"."agents"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "standing_approvals" ADD CONSTRAINT "standing_approvals_member_id_members_id_fk" FOREIGN KEY ("member_id") REFERENCES "public"."members"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
@@ -1295,6 +1311,7 @@ CREATE UNIQUE INDEX "agents_one_main_key" ON "agents" USING btree ("owner_id") W
 CREATE UNIQUE INDEX "agents_owner_name_key" ON "agents" USING btree ("owner_id","name_key") WHERE "agents"."archived_at" IS NULL;--> statement-breakpoint
 CREATE INDEX "agents_owner_idx" ON "agents" USING btree ("owner_id");--> statement-breakpoint
 CREATE INDEX "agents_visibility_idx" ON "agents" USING btree ("visibility");--> statement-breakpoint
+CREATE INDEX "computer_backups_computer_idx" ON "computer_backups" USING btree ("computer_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "computer_watches_job_key" ON "computer_watches" USING btree ("computer_id","job_ref");--> statement-breakpoint
 CREATE INDEX "computer_watches_status_idx" ON "computer_watches" USING btree ("status");--> statement-breakpoint
 CREATE UNIQUE INDEX "standing_approvals_active_key" ON "standing_approvals" USING btree ("agent_id","member_id","scope_type","scope_id") WHERE "standing_approvals"."revoked_at" IS NULL;--> statement-breakpoint

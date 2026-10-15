@@ -220,6 +220,7 @@ export function createServices(config: AppConfig, options: ServiceOptions = {}):
   const members = createMembersService({ auth, providers, files, mail });
   // A socket ticket is a one-time link: random, stored only as a keyed hash.
   const computers = createComputersService({
+    encryptionKey: Buffer.from(config.providerEncryptionKey, 'hex'),
     providers,
     agents,
     hub,
@@ -243,7 +244,7 @@ export function createServices(config: AppConfig, options: ServiceOptions = {}):
     engine: () => engine,
   });
   const tables = createTablesService({ files, notifications, hub, providers });
-  const apps = createAppsService({ tables, notifications });
+  const apps = createAppsService({ tables, notifications, connectors });
   // Who sees a base is cached a few seconds; a change of groups, modules or status forgets it at once.
   members.onAccessChange(() => tables.forgetAudiences());
   const schedules = createSchedulesService({ agents, background: () => engine.background });

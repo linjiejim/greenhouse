@@ -178,7 +178,7 @@ export default function ComputerPage() {
     if (!result.ok) {
       alertError(
         t('computer.startFailed'),
-        result.code === 'computers_full' ? t('computer.full') : result.message || undefined,
+        result.message || undefined,
       );
     }
   };
@@ -196,7 +196,7 @@ export default function ComputerPage() {
         : c.green
       : computer?.state === 'failed'
         ? c.red
-        : computer?.state === 'starting'
+        : computer?.state === 'starting' || computer?.state === 'queued'
           ? c.blue
           : c.gray;
 
@@ -265,7 +265,7 @@ export default function ComputerPage() {
           <EmptyState
             icon={computer.state === 'failed' ? 'alertCircle' : 'sleep'}
             title={stateWord}
-            message={computer.state_reason ?? t('computer.stoppedDesc', { name })}
+            message={computer.state === 'queued' ? t('computer.queuedDesc', { position: computer.queue_position ?? 1 }) : computer.state_reason ?? t('computer.stoppedDesc', { name })}
             action={
               <NativeButton
                 label={t('computer.start')}

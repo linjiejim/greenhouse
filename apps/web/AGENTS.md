@@ -63,3 +63,6 @@ The v2 web app. Product scope is docs/product/prd.md §6–7; layout and compone
 - Admin usage shows count-only UTC weekly metrics; zero denominators are unknown, not zero. Interjection event state labels are server-owned.
 
 - An initial message-page fetch preserves realtime rows that arrived after its snapshot and completed replies. Receive events while that query is fetching, even before its first page exists.
+
+- Computer fullscreen reuses the mounted viewer in pages and drawers. Only control canvases capture keys; host shortcuts and drawer Escape do not receive those keys. Queued computers poll their position.
+- Custom app frames use the platform double srcdoc wrapper, sandbox=allow-scripts only, source-checked JSON-RPC and declared read bindings. Unapproved versions show a placeholder; external card results render as text/chart data. Admin code review is in the app center.

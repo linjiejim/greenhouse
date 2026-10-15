@@ -42,6 +42,7 @@ export interface Target {
 
 /** A tool's result as text the model can read: never raw binary. */
 export interface CallOutcome {
+  data?: unknown;
   isError: boolean;
   text: string;
 }
@@ -220,7 +221,11 @@ export function flattenResult(result: {
   }
   // Servers from before 2025 answer with a bare `toolResult`.
   if (!lines.length && result.toolResult !== undefined) lines.push(JSON.stringify(result.toolResult));
-  return { isError: result.isError === true, text: lines.join('\n').trim() };
+  return {
+    isError: result.isError === true,
+    text: lines.join('\n').trim(),
+    ...(result.structuredContent !== undefined ? { data: result.structuredContent } : {}),
+  };
 }
 
 /** Calls one tool and flattens its result. Throws on a transport or protocol failure. */

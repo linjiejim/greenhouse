@@ -105,7 +105,7 @@ export const agentMemories = pgTable(
   (t) => [index('agent_memories_agent_idx').on(t.agentId, t.status)],
 );
 
-export const COMPUTER_STATES = ['stopped', 'starting', 'running', 'failed'] as const;
+export const COMPUTER_STATES = ['stopped', 'queued', 'starting', 'running', 'failed'] as const;
 export type ComputerState = (typeof COMPUTER_STATES)[number];
 
 /**
@@ -127,6 +127,7 @@ export const agentComputers = pgTable(
     sandboxRef: text('sandbox_ref').notNull(),
     state: text('state', { enum: COMPUTER_STATES }).notNull().default('stopped'),
     stateReason: text('state_reason'),
+    queuedAt: at('queued_at'),
     timezone: text('timezone').notNull().default('Asia/Shanghai'),
     version: integer('version').notNull().default(0),
     /**
@@ -182,3 +183,21 @@ export type AgentVersion = typeof agentVersions.$inferSelect;
 export type AgentMemory = typeof agentMemories.$inferSelect;
 export type AgentComputer = typeof agentComputers.$inferSelect;
 export type ComputerWatch = typeof computerWatches.$inferSelect;
+
+/** Encrypted home archives; object locations and keys never leave the service. */
+export const computerBackups = pgTable(
+  'computer_backups',
+  {
+    id: id(),
+    computerId: text('computer_id')
+      .notNull()
+      .references(() => agentComputers.id, { onDelete: 'cascade' }),
+    providerId: text('provider_id').notNull(),
+    objectKey: text('object_key').notNull(),
+    status: text('status', { enum: ['complete', 'failed'] }).notNull(),
+    bytes: integer('bytes').notNull().default(0),
+    error: text('error'),
+    createdAt: createdAt(),
+  },
+  (t) => [index('computer_backups_computer_idx').on(t.computerId)],
+);

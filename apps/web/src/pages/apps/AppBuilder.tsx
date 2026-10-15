@@ -359,6 +359,7 @@ function Builder({ initial }: { initial: AppDraft }) {
         <AppCardEditor
           base={base.data}
           initial={editing}
+          cards={draft.spec.pages.flatMap((p) => p.cards)}
           onClose={() => setEditing(null)}
           onSave={(card) => {
             changePage({
@@ -413,6 +414,7 @@ function Builder({ initial }: { initial: AppDraft }) {
               <article className="app-ap-tile" key={version.id}>
                 <h2>{t('apps.version', { version: version.version })}</h2>
                 <p>{version.notes}</p>
+                <StatusBadge status={t(`apps.review.${version.review_status}`)} tone="neutral" />
                 <Button loading={busy} disabled={dirty} onClick={() => void restore(version.version)}>
                   {t('apps.restore')}
                 </Button>

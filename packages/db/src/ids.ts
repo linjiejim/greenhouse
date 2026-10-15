@@ -39,6 +39,7 @@ export const ID_PREFIX = {
   reservation: 'brv',
   job: 'job',
   computer: 'cmp',
+  computerBackup: 'cbk',
   computerWatch: 'cwt',
   vaultItem: 'vlt',
   skill: 'skl',
