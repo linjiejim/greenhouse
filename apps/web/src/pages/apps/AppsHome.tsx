@@ -25,6 +25,7 @@ import { api } from '../../lib/api';
 import { useT } from '../../lib/i18n';
 import { navigate } from '../../lib/router';
 import { Page, PageHeader } from '../../shell/Page';
+import { CodeReviews } from './CodeReviews';
 import { appsError } from './errors';
 import '../../styles/apps.css';
 
@@ -200,6 +201,8 @@ function TemplateTile({ template }: { template: AppTemplate }) {
 }
 export function AppsHome({ newApp }: { newApp?: boolean }) {
   const t = useT();
+  const { me } = useSession();
+  const [reviews, setReviews] = useState(false);
   const apps = useApps();
   const templates = useAppTemplates();
   const [scope, setScope] = useState('apps.all');
@@ -221,6 +224,7 @@ export function AppsHome({ newApp }: { newApp?: boolean }) {
       header={
         <PageHeader
           title={t('nav.apps')}
+          menu={me?.role === 'admin' ? [{ label: t('apps.codeReviews'), onClick: () => setReviews(true) }] : []}
           primary={
             <Button kind="primary" onClick={() => navigate({ page: 'apps', newApp: true })}>
               {t('apps.new')}
@@ -267,6 +271,7 @@ export function AppsHome({ newApp }: { newApp?: boolean }) {
           {apps.hasNextPage && <Button onClick={() => void apps.fetchNextPage()}>{t('knowledge.showMore')}</Button>}
         </>
       )}
+      {reviews && <CodeReviews onClose={() => setReviews(false)} />}
       {newApp && <NewApp onClose={() => navigate({ page: 'apps' })} />}
     </Page>
   );

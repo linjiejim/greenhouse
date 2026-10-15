@@ -163,13 +163,14 @@ export interface SandboxClient {
   /** Starts the computer, creating it with an empty home the first time. Idempotent. */
   ensure(spec: SandboxSpec): Promise<void>;
   status(name: string): Promise<'running' | 'stopped' | 'missing'>;
+  homeExists?(name: string): Promise<boolean>;
   /** Runs argv inside as `user`; output past the cap is cut, and a command past its time is killed. */
   exec(
     name: string,
     input: { argv: string[]; user: 'agent' | 'root'; cwd?: string; timeoutMs: number; maxOutputBytes?: number },
   ): Promise<ExecResult>;
-  /** A long-lived process as `agent` with its input and output attached; the caller ends it. */
-  stream(name: string, input: { argv: string[]; user: 'agent'; cwd?: string }): SandboxStream;
+  /** A process in one home account with its input/output attached; browser is for home backups only. */
+  stream(name: string, input: { argv: string[]; user: 'agent' | 'browser'; cwd?: string }): SandboxStream;
   /**
    * The screen as a raw RFB byte stream. The display belongs to another user than the Agent's
    * shell, which can never reach it; only the API opens it.

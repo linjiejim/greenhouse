@@ -440,10 +440,11 @@ export const zh: Catalog = {
     loadFailed: '无法获取电脑状态。',
     start: '开机',
     startFailed: '电脑没有启动。',
-    full: '电脑都在使用中，稍后再试。',
+    queuedDesc: '排队中，第 {position} 位。',
     startingDesc: '首次启动大约需要 30 秒。',
     stoppedDesc: '这是 {name} 自己的电脑。{name} 需要时会自动开机；关机期间文件都会保留。',
     state: {
+      queued: '排队',
       stopped: '离线',
       starting: '启动中',
       running: '运行中',

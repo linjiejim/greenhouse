@@ -25,7 +25,44 @@ export const appCardSchema = z.union([
     actions: z.array(appActionSchema).max(10).default([]),
   }),
   z.object({ id: key, kind: z.literal('button'), title, table_id: idParamSchema, action: appActionSchema }),
-  z.object({ id: key, kind: z.literal('custom'), title, html: z.string().max(200_000) }),
+  z.object({
+    id: key,
+    kind: z.literal('custom'),
+    title,
+    html: z.string().max(200_000),
+    bindings: z
+      .array(z.object({ id: key, card: key }))
+      .max(10)
+      .optional(),
+    height: z.number().int().min(100).max(1200).optional(),
+  }),
+  z.object({
+    id: key,
+    kind: z.literal('external'),
+    title,
+    source: z.object({
+      connector: z.string().min(1).max(100),
+      tool: z.string().min(1).max(200),
+      arguments: z.record(z.string(), z.unknown()).default({}),
+    }),
+    map: z.discriminatedUnion('kind', [
+      z.object({ kind: z.literal('number'), value: z.string().max(1000) }),
+      z.object({
+        kind: z.literal('table'),
+        rows: z.string().max(1000),
+        columns: z
+          .array(z.object({ label: title, path: z.string().max(1000) }))
+          .min(1)
+          .max(20),
+      }),
+      z.object({
+        kind: z.enum(['bar', 'line']),
+        rows: z.string().max(1000),
+        group: z.string().max(1000),
+        value: z.string().max(1000),
+      }),
+    ]),
+  }),
 ]);
 export type AppCard = z.infer<typeof appCardSchema>;
 export type AppAction = z.infer<typeof appActionSchema>;
@@ -102,6 +139,16 @@ export const templateSaveSchema = z.object({
 });
 export const templateReviewSchema = z.object({ decision: z.enum(['approved', 'rejected']) });
 export const templateInstallSchema = z.object({ name: title.optional() });
+export const appReviewSchema = z.object({
+  version: z.number().int().positive(),
+  spec_hash: z.string().regex(/^[a-f0-9]{64}$/),
+  decision: z.enum(['approved', 'rejected']),
+});
+export const appBindingSchema = appRequestSchema.extend({
+  card: key,
+  binding: key,
+  cursor: z.string().max(2000).optional(),
+});
 export const appFlagSchema = z.object({ value: z.boolean() });
 
 export interface AppSummary {
@@ -129,12 +176,14 @@ export interface AppRuntime {
   base: Base;
   preview: boolean;
   preview_role: string | null;
+  custom_review: 'pending' | 'approved' | 'rejected';
 }
 export interface AppVersion {
   id: string;
   version: number;
   spec: AppSpec;
   spec_hash: string;
+  review_status: 'pending' | 'approved' | 'rejected';
   notes: string;
   published_by: string;
   published_at: string;

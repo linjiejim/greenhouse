@@ -6,7 +6,7 @@ export const integration = {
   noApps: '还没有已发布的应用',
   pages: '页面',
   builderWeb: '请在网页端搭建和发布应用。',
-  customWeb: '请在网页端打开此自定义页面',
+  customWeb: '请在网页端打开此卡片',
   appChanged: '应用已更新，请重新载入后再操作。草稿已保留。',
   actionConfirm: '执行此操作？',
   preview: '预览 · 只读',

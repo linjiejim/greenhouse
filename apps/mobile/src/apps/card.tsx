@@ -30,7 +30,7 @@ export function RuntimeCard({ runtime, card }: { runtime: AppRuntime; card: AppC
   const r = useResource(
     useCallback(
       () =>
-        card.kind === 'custom' || card.kind === 'button' || card.kind === 'form'
+        card.kind === 'custom' || card.kind === 'external' || card.kind === 'button' || card.kind === 'form'
           ? Promise.resolve({ ok: true as const, data: { kind: 'empty' as const } })
           : appCard(runtime.app.id, runtime.version, card.id),
       [runtime.app.id, runtime.version, card.id, card.kind],
@@ -81,7 +81,7 @@ export function RuntimeCard({ runtime, card }: { runtime: AppRuntime; card: AppC
         result.message,
       );
   };
-  if (card.kind === 'custom')
+  if (card.kind === 'custom' || card.kind === 'external')
     return (
       <ListSection header={card.title}>
         <ListRow

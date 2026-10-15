@@ -138,3 +138,15 @@
     padding: var(--gh-space-3);
   }
 }
+
+.app-custom-card {
+  width: 100%;
+  border: 0;
+  background: var(--gh-surface);
+}
+.app-ap-code {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 60dvh;
+  overflow: auto;
+}

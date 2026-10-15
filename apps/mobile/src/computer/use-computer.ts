@@ -31,7 +31,7 @@ export function useComputer(agentId: string) {
   }, [agentId, refresh]);
 
   // Starting takes a while: look again until it settles.
-  const starting = computer?.state === 'starting';
+  const starting = computer?.state === 'starting' || computer?.state === 'queued';
   useEffect(() => {
     if (!starting) return undefined;
     const timer = setInterval(() => void refresh(), 2500);

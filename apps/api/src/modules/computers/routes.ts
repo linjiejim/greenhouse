@@ -85,10 +85,15 @@ export function computerRoutes(service: ComputersService) {
  */
 export function adminComputerRoutes(service: ComputersService) {
   return new Hono<AppEnv>()
-    .get('/', async (c) => c.json(await service.adminList()))
+    .get('/', async (c) => c.json(await service.adminList(c.get('member').id)))
     .put('/capacity', async (c) =>
       c.json(await service.setCapacity(c.get('member').id, await readJson(c, computerCapacitySchema))),
     )
+    .post('/:id/backups', async (c) => c.json(await service.adminBackup(c.get('member').id, c.req.param('id'))))
+    .post('/:id/backups/:backup/restore', async (c) => {
+      await service.adminRestore(c.get('member').id, c.req.param('id'), c.req.param('backup'));
+      return c.body(null, 204);
+    })
     .post('/:id/stop', async (c) => {
       await service.adminStop(c.get('member').id, c.req.param('id'));
       return c.body(null, 204);

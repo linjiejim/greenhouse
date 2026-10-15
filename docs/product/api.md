@@ -98,7 +98,9 @@ v2 和 v1 不兼容，不加 `/api/v2` 前缀，也不保留旧路由。`GET /ap
 | `GET /api/search?q=&kinds=` | `⌘K` 全局搜索；`records` 是我能读的表格里的记录（中英文全文检索），带 `base_id`、`table_id`；只凭自定义角色看的表格里只搜角色看得到的字段和记录 |
 | `GET` / `POST /api/apps` | 应用目录（游标、名称搜索）与新建（表格搭建者）；目录包含我可用的发布应用和我搭建的草稿。应用开关和底层表格权限每次复核 |
 | `GET` / `PUT /api/apps/:id/draft` · `POST …/publish` · `GET …/versions` · `POST …/restore` | 搭建者只能修改自己的应用。草稿保存、发布、恢复带 `revision`，旧的 409 `stale_revision`；发布事务写不可变 spec/hash 和受众，并消耗 revision。恢复只改变草稿，旧发布继续生效；版本列表使用游标 |
-| `GET /api/apps/:id` · `POST …/cards/query` · `POST …/cards/:card/records/:record` · `POST …/actions` | 发布运行页面、保存的卡片求值／记录详情、固定动作与内部表单。数据按底层权限 ∩ 应用角色 ∩ 卡片查询／字段；应用永不扩大表格权限。动作带 `version` 和保存的 card/action id，旧发布版 409 `stale_version`；按钮不接收覆盖值。写入者是成员，记录历史 actor_type=app、meta.app_id。卡片记录查询支持游标；搭建者可用 `preview_role` 只读预览草稿，卡片查询带 version=0 和相同 preview_role，不允许预览动作；自定义 HTML 不执行且不返回源码 |
+| `GET /api/apps/:id` · `POST …/cards/query` · `POST …/cards/:card/records/:record` · `POST …/actions` | 发布运行页面、保存的卡片求值／记录详情、固定动作与内部表单。数据按底层权限 ∩ 应用角色 ∩ 卡片查询／字段；应用永不扩大表格权限。动作带 `version` 和保存的 card/action id，旧发布版 409 `stale_version`；按钮不接收覆盖值。写入者是成员，记录历史 actor_type=app、meta.app_id。卡片记录查询支持游标；搭建者可用 `preview_role` 只读预览草稿，卡片查询带 version=0 和相同 preview_role，不允许预览动作；custom 卡片仅在该发布版本通过管理员审核后返回源码；未批准及草稿预览不返回源码，显示占位 |
+| `GET /api/apps/reviews` · `POST /api/apps/:id/review` | 管理员分页查看发布 spec，按 `{version, spec_hash, decision}` 批准／拒绝代码；新版本一律 pending，hash 不符 409 stale_version，审核写审计。管理员可读结构，不因此得到底层记录权限 |
+| `POST /api/apps/:id/bindings/query` | 已批准的 custom 卡片 `{version, card, binding, cursor?}`，只读其声明的本应用表格数据卡；沿用卡片权限、字段和查询，禁止外部连接器绑定。桥只收合法来源的 JSON-RPC tools/call query.*，每窗口最多 30 次／分钟且一次一个在途查询，不给身份或 token |
 | `PUT /api/apps/:id/pin` · `…/featured` | 本人置顶；管理员精选（管理员也需有应用和表格访问权，写审计） |
 | `GET /api/apps/templates[/:id]` · `POST /api/apps/:id/templates` · `POST /api/apps/templates/:id/review` · `…/install` | 查看可用／自己的模板（管理员可看待审结构）、从发布应用存结构模板、管理员审核、安装到新表格与应用草稿。只有审核通过的版本可安装；不复制线上记录、受众或自动化。未通过的模板对其他成员不可见。项目内置模板复用表格安装器 |
 | `GET /api/skills?q=&space=&kind=&scan_status=&archived=&agent=` · `POST /api/skills` · `GET` / `PATCH` / `DELETE /api/skills/:id` · `POST …/restore` · `GET` / `POST …/versions` · `POST …/scan` · `GET …/download?version=` · `GET /api/skills/starters?agent=` | 技能：我看得到的技能，`available` 与原因按 `agent`（默认主 Agent）判断；新建模板，或用 purpose `skill` 上传的 ZIP 新建包；`PATCH` 改显示名、说明、标签，`DELETE` 是归档；新版本（新 ZIP，或模板的新正文、字段、要求）；`scan` 重扫，或审核（`safe` / `malicious`，团队技能由管理员、个人技能由主人）；下载返回包的签名链接；`starters` 是新会话的 3 个常用技能（没有时给模板开场） |
@@ -114,7 +116,8 @@ v2 和 v1 不兼容，不加 `/api/v2` 前缀，也不保留旧路由。`GET /ap
 | `/api/admin/providers[/:id][/test\|/copy]` · `PUT /api/admin/provider-bindings/:capability` | 服务：实例、测试连接、复制环境变量实例；能力的顺序、默认项与策略 |
 | `GET /api/admin/channels` · `PUT …/:channel` · `POST …/:channel/test` | 渠道 `feishu`、`wecom`、`push`（Expo；飞书、企微在界面隐藏，随 IM 渠道开放）：`GET` 列出每个渠道能否送达（`configured`）、来源（`env` / `workspace`）、设置、哪些机密已填、最近一次成功与失败；`PUT` 保存一个渠道的设置（feishu：`base_url`、`app_id`、`app_secret`；wecom：`base_url`、`corp_id`、`agent_id`、`secret`；push：`base_url`、`access_token`；都可带 `enabled`），机密只写不读、省略即保留、`''` 清空，换地址同时清空机密；第一次保存或改环境变量来的设置时生成工作区实例，排在同类之首；`test` 给管理员自己发一条（绑定的账号、手机），没有可发的对象时只验证凭据，返回 `{ ok, delivered, latency_ms, error }`。邮件不在这里：它是邮箱服务 |
 | `GET` / `PUT /api/admin/mail` · `POST /api/admin/mail/test` | 邮箱服务：能否发信、Agent 邮箱的域名（来源 env / workspace，另附 `MAIL_AGENT_DOMAIN` 的值；`PUT { agent_domain }`，null 回到它，写审计）、Agent 邮箱是否开通、每个能收信的实例要填到服务商那里的入站地址；`test` 经第一个能发的实例给管理员自己发一封（`mail_not_configured`） |
-| `GET /api/admin/computers` · `PUT …/capacity` · `POST …/:id/stop` · `DELETE …/:id` | 电脑：所有成员的电脑与状态（不含画面和文件）；容量（空闲多少分钟后关机、最多同时开机，0 为不限，超出时开机返回 `computers_full`）；停止；重置（连主目录删除，下次使用重开） |
+| `GET /api/admin/computers` · `PUT …/capacity` · `POST …/:id/stop` · `DELETE …/:id` | 电脑：所有成员的电脑与状态（不含画面和文件）；容量（空闲多少分钟后关机、最多同时开机，0 为不限，超出时开机返回 200 queued 和 queue_position，停机取消排队）；停止；重置（连主目录删除，下次使用重开） |
+| `POST /api/admin/computers/:id/backups` · `POST …/:id/backups/:backup/restore` | 管理员按需备份运行中的电脑；停机后恢复归属此电脑的成功备份（覆盖两个主目录，弹确认）。列表返回备份 id、时间、大小、状态、错误，永不返回存储位置或密钥。每进程最多同时 2 个备份，每个压缩主目录最多 32 MiB，恢复展开最多 256 MiB、10 万项，拒绝路径穿越／设备／越界链接；先验证完整密文再写盘。`backup_unavailable` 503、`backup_failed` 502、`backup_invalid`／`backup_restore_failed`／`computer_not_stopped` 409 |
 | `GET /api/admin/usage?period=&group_by=member\|agent\|provider\|capability` | 工作区用量 |
 | `GET` / `PUT /api/admin/budgets` · `DELETE …/:id` | 预算：组织、服务实例、成员三级，token 或美元，按月；`PUT` 建立或替换一个范围与单位的预算；列表带本月已用 |
 | `/api/admin/connectors[/:id]` · `GET …/catalog` · `GET …/registry?q=` · `POST …/probe` · `POST …/:id/refresh` · `…/test` | 安装连接器：内置目录（`{ catalog_id }`）、Registry 搜索（慢，服务端缓存）、URL（`probe` 先看要哪种鉴权）；鉴权 none / shared / per_member / oauth，共享 Key 与 OAuth 客户端密钥只写不读；工具缓存（`refresh` 重列，per_member / oauth 用管理员自己的连接）、白名单、只读工具；启用 / 停用；改地址或鉴权方式会断开所有成员的连接 |
@@ -291,3 +294,9 @@ M3 媒体与计数（#70）：
 应用列表与运行页、卡片查询、限定字段详情、表单提交和固定动作全部走 `/api/apps`；查询及写入钉住 `version`，记录动作携带 `revision`，不经更宽的表格接口读写应用记录。`stale_version` 保留原生表单草稿，只有明确重新载入才采用新的发布版本。搭建与发布仍在网页端，自定义 HTML 在手机端也禁用。没有新增接口或更改错误码。
 
 应用关联选项只查询当前发布的记录卡片，复用卡片筛选与应用权限；没有对应候选卡片时提供网页填写入口，不查询完整表格目录。成员候选使用成员目录，附件沿用受控上传与签名文件链接。
+
+#70 电脑与应用补充：电脑停机前备份是有界同步操作；存储暂不可用时记录失败，保留原主目录并继续停机。队列由数据库状态保存，以事务锁认领容量，worker 每分钟补偿，超过 15 分钟的 starting 复核沙箱状态。丢失持久主目录时从最新成功备份恢复；密文不可用时失败，不悄悄用空目录开机。备份依赖部署的 provider 加密密钥，恢复部署时必须保留该密钥。
+
+external 卡片仅执行保存的只读连接器工具，auth_mode 必须是 per_member 或 oauth；每次求值和缓存命中前重查查看者的连接及连接器版本。缓存 15 秒、最多 500 项，结果最多 256 KB／100 行，JSON Pointer 映射标量，连接器 HTML 永不执行。应用角色不裁剪外部系统数据，但应用和底层表格访问权仍是入口条件。
+
+custom 网页运行使用双层 `sandbox="allow-scripts"` iframe，均无 allow-same-origin；平台先放 CSP（default-src none、connect-src none、frame-src none、form-action none），只允许内联脚本／样式及 data/blob 图片。外层限制内层跳转；postMessage 双层检查 source。去掉直接的 RTCPeerConnection 并关闭 DNS 预取，但这不能证明浏览器 WebRTC／DNS 残余外泄通道不存在（嵌套 srcdoc 可以重新取得 WebRTC）。因此每个版本必须人工审核，绑定不得含连接器数据；不宣称是任意恶意代码的完整网络隔离。手机端继续禁用 custom 执行。

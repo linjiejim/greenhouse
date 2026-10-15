@@ -46,12 +46,18 @@ import { fieldsOf, tableAt } from '../tables/load.js';
 import type { TablesService } from '../tables/service.js';
 import type { NotificationsService } from '../notifications/service.js';
 import { actionsIn, checkSpec, fieldsIn, readSpec, trimCard } from './spec.js';
+import type { ConnectorsService } from '../connectors/service.js';
+import { mapExternal } from './external.js';
 import { createTemplates } from './templates.js';
 
 export const hashContent = (text: string) => createHash('sha256').update(text).digest('hex');
 const stale = () => conflict('stale_revision', 'Someone changed this draft. Reload it before saving.');
 
-export function createAppsService(deps: { tables: TablesService; notifications: NotificationsService }) {
+export function createAppsService(deps: {
+  tables: TablesService;
+  notifications: NotificationsService;
+  connectors: ConnectorsService;
+}) {
   async function readerOf(memberId: string) {
     const [member] = await getDb()
       .select({ modules: members.modules, role: members.role, status: members.status })
@@ -130,7 +136,7 @@ export function createAppsService(deps: { tables: TablesService; notifications: 
       (at.app.ownerId === memberId && !previewRole) || roleIds.includes('use')
         ? null
         : combineRoles(spec.roles.filter((r) => roleIds.includes(r.id)));
-    return { ...at, spec, rules, version: saved?.version ?? 0 };
+    return { ...at, spec, rules, reviewStatus: saved?.reviewStatus ?? 'pending', version: saved?.version ?? 0 };
   }
   async function inSession<T>(
     memberId: string,
@@ -149,7 +155,7 @@ export function createAppsService(deps: { tables: TablesService; notifications: 
   }
   async function visibleCard(ctx: Awaited<ReturnType<typeof session>>, cardId: string) {
     const card = findCard(ctx.spec, cardId);
-    if (card.kind === 'custom') throw forbidden('Custom HTML cards do not run.');
+    if (card.kind === 'custom' || card.kind === 'external') throw forbidden('This card has no record actions.');
     const at = await tableAt(ctx.reader, card.table_id, 'viewer');
     const scope = await scopeOf(ctx.reader, at);
     const trimmed = trimCard(card, new Map(scope.fields.map((f) => [f.id, f])));
@@ -159,7 +165,7 @@ export function createAppsService(deps: { tables: TablesService; notifications: 
   /** Card fields and query narrow record detail and writes as well as the list. */
   async function inCard<T>(
     ctx: Awaited<ReturnType<typeof session>>,
-    card: Exclude<AppCard, { kind: 'custom' }>,
+    card: Exclude<AppCard, { kind: 'custom' | 'external' }>,
     work: () => Promise<T>,
     constrainQuery = true,
   ) {
@@ -206,7 +212,7 @@ export function createAppsService(deps: { tables: TablesService; notifications: 
   async function resolveAction(ctx: Awaited<ReturnType<typeof session>>, input: ActionInput) {
     const memberId = ctx.reader.memberId;
     const { card, scope } = await visibleCard(ctx, input.card);
-    if (card.kind === 'custom') throw forbidden('Custom HTML cards do not run.');
+    if (card.kind === 'custom' || card.kind === 'external') throw forbidden('This card has no record actions.');
     const form = card.kind === 'form' && input.action === 'submit';
     const action = actionsIn(card).find((a) => a.id === input.action);
     if (!form && !action) throw notFound('Action');
@@ -429,6 +435,7 @@ export function createAppsService(deps: { tables: TablesService; notifications: 
         version: r.version,
         spec: readSpec(r.spec),
         spec_hash: r.specHash,
+        review_status: r.reviewStatus,
         notes: r.notes,
         published_by: r.publishedBy,
         published_at: r.publishedAt,
@@ -460,7 +467,9 @@ export function createAppsService(deps: { tables: TablesService; notifications: 
         const pages = ctx.spec.pages.map((page) => ({
           ...page,
           cards: page.cards.flatMap((card) => {
-            if (card.kind === 'custom') return [{ ...card, html: '' }];
+            if (card.kind === 'custom')
+              return [{ ...card, html: ctx.reviewStatus === 'approved' && !previewRole ? card.html : '' }];
+            if (card.kind === 'external') return [card];
             const table = base.tables.find((t) => t.id === card.table_id);
             if (!table) return [];
             const visible = new Map(table.fields.map((f) => [f.id, f]));
@@ -475,6 +484,7 @@ export function createAppsService(deps: { tables: TablesService; notifications: 
           base,
           preview: !!previewRole,
           preview_role: previewRole ?? null,
+          custom_review: ctx.reviewStatus,
         };
       });
     },
@@ -488,8 +498,26 @@ export function createAppsService(deps: { tables: TablesService; notifications: 
         appId,
         input.version,
         async (ctx) => {
+          const declared = findCard(ctx.spec, input.card);
+          if (declared.kind === 'external') {
+            const result = await deps.connectors.readCard(
+              memberId,
+              declared.source.connector,
+              declared.source.tool,
+              declared.source.arguments,
+            );
+            let data: unknown = result.data;
+            if (data === undefined) {
+              try {
+                data = JSON.parse(result.text);
+              } catch {
+                throw invalidInput('The connector must return JSON data.');
+              }
+            }
+            return mapExternal(declared, data);
+          }
           const { card } = await visibleCard(ctx, input.card);
-          if (card.kind === 'custom') throw forbidden('Custom HTML cards do not run.');
+          if (card.kind === 'custom' || card.kind === 'external') throw forbidden('This card has no record actions.');
           if (['number', 'bar', 'line', 'pie', 'list'].includes(card.kind))
             return {
               kind: 'chart' as const,
@@ -531,6 +559,73 @@ export function createAppsService(deps: { tables: TablesService; notifications: 
         input.preview_role,
       );
     },
+    async binding(
+      memberId: string,
+      appId: string,
+      input: { version: number; card: string; binding: string; cursor?: string },
+    ) {
+      const ctx = await session(memberId, appId, input.version);
+      if (ctx.reviewStatus !== 'approved') throw forbidden('This published version needs admin review.');
+      const card = findCard(ctx.spec, input.card);
+      if (card.kind !== 'custom') throw notFound('Custom card');
+      const binding = card.bindings?.find((b) => b.id === input.binding);
+      if (!binding) throw notFound('Binding');
+      if (findCard(ctx.spec, binding.card).kind === 'external')
+        throw forbidden('Custom cards cannot read external connections.');
+      return service.card(memberId, appId, { version: input.version, card: binding.card, cursor: input.cursor });
+    },
+    async reviews(actorId: string, query: { cursor?: string; limit: number }) {
+      if (!(await readerOf(actorId)).admin) throw forbidden('Only admins review custom code.');
+      const after = decodeCursor(query.cursor);
+      const rows = await getDb()
+        .select({ version: appVersions, name: apps.name })
+        .from(appVersions)
+        .innerJoin(apps, eq(apps.id, appVersions.appId))
+        .where(and(isNull(apps.archivedAt), after ? gt(appVersions.id, after) : undefined))
+        .orderBy(asc(appVersions.id))
+        .limit(query.limit + 1);
+      return toPage(
+        rows.map(({ version: v, name }) => ({
+          id: v.id,
+          app_id: v.appId,
+          name,
+          version: v.version,
+          spec: readSpec(v.spec),
+          spec_hash: v.specHash,
+          review_status: v.reviewStatus,
+        })),
+        query.limit,
+        (r) => r,
+      );
+    },
+    async review(
+      actorId: string,
+      appId: string,
+      input: { version: number; spec_hash: string; decision: 'approved' | 'rejected' },
+    ) {
+      if (!(await readerOf(actorId)).admin) throw forbidden('Only admins review custom code.');
+      await transaction(async () => {
+        const [version] = await getDb()
+          .update(appVersions)
+          .set({ reviewStatus: input.decision, reviewedBy: actorId, reviewedAt: new Date().toISOString() })
+          .where(
+            and(
+              eq(appVersions.appId, appId),
+              eq(appVersions.version, input.version),
+              eq(appVersions.specHash, input.spec_hash),
+            ),
+          )
+          .returning();
+        if (!version) throw conflict('stale_version', 'Review the exact published version and hash.');
+        await audit({
+          actorId,
+          action: 'app.code.review',
+          resourceType: 'app',
+          resourceId: appId,
+          summary: 'review_status',
+        });
+      });
+    },
     async inActionScope<T>(
       memberId: string,
       appId: string,
@@ -541,7 +636,7 @@ export function createAppsService(deps: { tables: TablesService; notifications: 
       await getDb().select({ id: apps.id }).from(apps).where(eq(apps.id, appId)).for('update');
       return inSession(memberId, appId, version, async (ctx) => {
         const { card } = await visibleCard(ctx, cardId);
-        if (card.kind === 'custom') throw forbidden('Custom HTML cards do not run.');
+        if (card.kind === 'custom' || card.kind === 'external') throw forbidden('This card has no record actions.');
         return inCard(ctx, card, () => work(card.table_id), false);
       });
     },

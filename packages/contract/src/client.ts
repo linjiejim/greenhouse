@@ -813,6 +813,8 @@ export function createApiClient(options: ApiClientOptions) {
       computers: {
         list: () => get<AdminComputers>('/api/admin/computers'),
         setCapacity: (input: ComputerCapacity) => put<ComputerCapacity>('/api/admin/computers/capacity', input),
+        backup: (id: string) => post<void>(`/api/admin/computers/${id}/backups`),
+        restore: (id: string, backup: string) => post<void>(`/api/admin/computers/${id}/backups/${backup}/restore`),
         stop: (id: string) => post<void>(`/api/admin/computers/${id}/stop`),
         reset: (id: string) => del(`/api/admin/computers/${id}`),
       },
@@ -900,3 +902,5 @@ export function createApiClient(options: ApiClientOptions) {
 }
 
 export type ApiClient = ReturnType<typeof createApiClient>;
+
+export type { AppCardAnswer } from './apps-client.js';

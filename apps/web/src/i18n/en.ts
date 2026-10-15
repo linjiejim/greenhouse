@@ -384,6 +384,13 @@ export const en: Record<MessageKey, string> = {
   'schedules.deleteTitle': 'Delete schedule “{name}”?',
   'schedules.deleteBody': 'Runs already started are not affected.',
 
+  'computer.fullscreen': 'Full screen',
+  'computer.exitFullscreen': 'Exit full screen',
+  'computer.queued': 'Queued',
+  'computer.queuePosition': 'Queued, position {position}',
+  'computers.backup': 'Back up',
+  'computers.restore': 'Restore backup',
+  'computers.restoreBody': 'This replaces the current home directories. Stop the computer first.',
   'computer.stopped': 'Offline',
   'computer.starting': 'Starting',
   'computer.running': 'Running',
@@ -902,7 +909,7 @@ export const en: Record<MessageKey, string> = {
   'computers.idleMinutesHint':
     'A computer with a running process, or one waiting for someone to take over or approve a sign-in, never stops',
   'computers.maxRunning': 'Running at once',
-  'computers.maxRunningHint': '0 means no limit; past it a new start is refused until one stops',
+  'computers.maxRunningHint': '0 means no limit; new starts queue until capacity is available',
   'computers.list': 'Computers · {running} running of {count}',
   'computers.none': 'No computers yet',
   'computers.reset': 'Reset',
@@ -1192,7 +1199,6 @@ export const en: Record<MessageKey, string> = {
   'errors.outsideHome': 'Only files in the computer’s home folder can be reached',
   'errors.computerOff': 'The computer is off',
   'errors.uploadCut': 'The upload stopped. Try again',
-  'errors.computersFull': 'Every computer is in use. Try again in a few minutes',
   'errors.modelUnavailable': 'That model is not available now',
 
   'knowledge.new': 'New',

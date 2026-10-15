@@ -41,6 +41,11 @@ export const appVersions = pgTable(
     version: integer('version').notNull(),
     spec: text('spec').notNull(),
     specHash: text('spec_hash').notNull(),
+    reviewStatus: text('review_status', { enum: ['pending', 'approved', 'rejected'] })
+      .notNull()
+      .default('pending'),
+    reviewedBy: text('reviewed_by'),
+    reviewedAt: at('reviewed_at'),
     draftRevision: integer('draft_revision').notNull(),
     notes: text('notes').notNull().default(''),
     publishedBy: text('published_by').notNull(),

@@ -1,6 +1,8 @@
 import { Hono } from 'hono';
 import {
   appCardRequestSchema,
+  appBindingSchema,
+  appReviewSchema,
   appCreateSchema,
   appDraftSchema,
   appExecuteSchema,
@@ -24,6 +26,7 @@ export function appsRoutes(service: AppsService) {
   return new Hono<AppEnv>()
     .get('/', async (c) => c.json(await service.list(c.get('member').id, readQuery(c, appListQuerySchema))))
     .post('/', async (c) => c.json(await service.create(c.get('member').id, await readJson(c, appCreateSchema)), 201))
+    .get('/reviews', async (c) => c.json(await service.reviews(c.get('member').id, readQuery(c, pageQuerySchema))))
     .get('/templates', async (c) =>
       c.json(await service.templates.list(c.get('member').id, readQuery(c, pageQuerySchema))),
     )
@@ -54,6 +57,13 @@ export function appsRoutes(service: AppsService) {
     )
     .get('/:id', async (c) =>
       c.json(await service.runtime(c.get('member').id, id(c), readQuery(c, appRuntimeQuerySchema).preview_role)),
+    )
+    .post('/:id/review', async (c) => {
+      await service.review(c.get('member').id, id(c), await readJson(c, appReviewSchema));
+      return c.body(null, 204);
+    })
+    .post('/:id/bindings/query', async (c) =>
+      c.json(await service.binding(c.get('member').id, id(c), await readJson(c, appBindingSchema))),
     )
     .post('/:id/cards/query', async (c) =>
       c.json(await service.card(c.get('member').id, id(c), await readJson(c, appCardRequestSchema))),

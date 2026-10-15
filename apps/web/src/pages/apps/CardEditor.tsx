@@ -1,3 +1,5 @@
+import { useQuery } from '@tanstack/react-query';
+import { api } from '../../lib/api';
 import { useId, useState } from 'react';
 import {
   Button,
@@ -33,12 +35,15 @@ export const CARD_CHOICES: readonly AppCard['kind'][] = [
   'button',
   ...CHARTS,
   'custom',
+  'external',
 ] as const;
 export function newCard(kind: AppCard['kind'], base: Base, title: string): AppCard {
   const table = base.tables[0]!;
   const id = localId();
   if (CHARTS.includes(kind))
     return { id, kind: kind as Card['kind'], title, table_id: table.id, measure: { aggregate: 'count' } };
+  if (kind === 'external')
+    return { id, kind, title, source: { connector: '', tool: '', arguments: {} }, map: { kind: 'number', value: '' } };
   if (kind === 'custom') return { id, kind, title, html: '' };
   if (kind === 'button')
     return { id, kind, title, table_id: table.id, action: { id: localId(), name: title, type: 'create', values: {} } };
@@ -130,17 +135,33 @@ function ActionsEditor({
 export function AppCardEditor({
   base,
   initial,
+  cards = [],
   onSave,
   onClose,
 }: {
   base: Base;
   initial: AppCard;
+  cards?: AppCard[];
   onSave: (card: AppCard) => void;
   onClose: () => void;
 }) {
   const t = useT();
   const [card, setCard] = useState(initial);
   const formId = useId();
+  const connections = useQuery({
+    queryKey: ['connections', 'mine'],
+    queryFn: () => api.me.connections.list(),
+    enabled: card.kind === 'external',
+  });
+  const [argumentsText, setArgumentsText] = useState(
+    initial.kind === 'external' ? JSON.stringify(initial.source.arguments, null, 2) : '{}',
+  );
+  const [columnsText, setColumnsText] = useState(
+    initial.kind === 'external' && initial.map.kind === 'table'
+      ? JSON.stringify(initial.map.columns, null, 2)
+      : '[{"label":"Name","path":"/name"}]',
+  );
+  const [jsonError, setJsonError] = useState(false);
   if (CHARTS.includes(card.kind))
     return (
       <ChartEditor
@@ -173,6 +194,18 @@ export function AppCardEditor({
         id={formId}
         onSubmit={(e) => {
           e.preventDefault();
+          if (card.kind === 'external') {
+            try {
+              onSave({
+                ...card,
+                source: { ...card.source, arguments: JSON.parse(argumentsText) },
+                map: card.map.kind === 'table' ? { ...card.map, columns: JSON.parse(columnsText) } : card.map,
+              });
+            } catch {
+              setJsonError(true);
+            }
+            return;
+          }
           onSave(
             'actions' in card
               ? { ...card, actions: card.actions.map(normalizeAction) }
@@ -185,9 +218,102 @@ export function AppCardEditor({
         <Field label={t('apps.cardTitle')}>
           <Input value={card.title} required maxLength={100} onChange={(e) => set({ title: e.target.value })} />
         </Field>
-        {card.kind === 'custom' ? (
+        {card.kind === 'external' ? (
           <>
-            <p>{t('apps.customDisabled')}</p>
+            <FieldGroup label={t('apps.externalConnector')}>
+              <Select
+                label={t('apps.externalConnector')}
+                value={card.source.connector}
+                options={(connections.data?.connectors ?? [])
+                  .filter((c) => c.needs_connection && c.read_only_tool_count > 0 && c.builtin === null)
+                  .map((c) => ({ value: c.slug, label: c.name }))}
+                onChange={(connector) => set({ source: { ...card.source, connector } })}
+              />
+            </FieldGroup>
+            <Field label={t('apps.externalTool')}>
+              <Input
+                value={card.source.tool}
+                required
+                onChange={(e) => set({ source: { ...card.source, tool: e.target.value } })}
+              />
+            </Field>
+            <Field label={t('apps.externalArguments')}>
+              <TextArea rows={4} value={argumentsText} onChange={(e) => setArgumentsText(e.target.value)} />
+            </Field>
+            <FieldGroup label={t('apps.externalDisplay')}>
+              <Select
+                label={t('apps.externalDisplay')}
+                value={card.map.kind}
+                options={(['number', 'table', 'bar', 'line'] as const).map((value) => ({
+                  value,
+                  label: t(`apps.kind.${value}`),
+                }))}
+                onChange={(kind) =>
+                  set({
+                    map:
+                      kind === 'number'
+                        ? { kind, value: '' }
+                        : kind === 'table'
+                          ? { kind, rows: '', columns: [] }
+                          : { kind: kind as 'bar' | 'line', rows: '', group: '/name', value: '/value' },
+                  })
+                }
+              />
+            </FieldGroup>
+            {'rows' in card.map && (
+              <Field label={t('apps.externalRows')}>
+                <Input
+                  value={card.map.rows}
+                  onChange={(e) => set({ map: { ...card.map, rows: e.target.value } as typeof card.map })}
+                />
+              </Field>
+            )}
+            {'value' in card.map && (
+              <Field label={t('apps.externalValue')}>
+                <Input
+                  value={card.map.value}
+                  onChange={(e) => set({ map: { ...card.map, value: e.target.value } as typeof card.map })}
+                />
+              </Field>
+            )}
+            {'group' in card.map && (
+              <Field label={t('apps.externalGroup')}>
+                <Input
+                  value={card.map.group}
+                  onChange={(e) => set({ map: { ...card.map, group: e.target.value } as typeof card.map })}
+                />
+              </Field>
+            )}
+            {card.map.kind === 'table' && (
+              <Field label={t('apps.externalColumns')}>
+                <TextArea rows={4} value={columnsText} onChange={(e) => setColumnsText(e.target.value)} />
+              </Field>
+            )}
+            <p className="app-muted">{t('apps.externalHint')}</p>
+            {jsonError && <p role="alert">{t('apps.error.invalid')}</p>}
+          </>
+        ) : card.kind === 'custom' ? (
+          <>
+            <p>{t('apps.customHint')}</p>
+            <FieldGroup label={t('apps.bindings')}>
+              <MultiSelect
+                label={t('apps.bindings')}
+                value={card.bindings?.map((b) => b.card) ?? []}
+                options={cards
+                  .filter((c) => !['custom', 'external', 'button', 'form'].includes(c.kind))
+                  .map((c) => ({ value: c.id, label: `${c.title} (${c.id})` }))}
+                onChange={(ids) => set({ bindings: ids.map((id) => ({ id, card: id })) })}
+              />
+            </FieldGroup>
+            <Field label={t('apps.cardHeight')}>
+              <Input
+                type="number"
+                min={100}
+                max={1200}
+                value={card.height ?? 320}
+                onChange={(e) => set({ height: Number(e.target.value) })}
+              />
+            </Field>
             <Field label={t('apps.html')}>
               <TextArea
                 rows={12}
