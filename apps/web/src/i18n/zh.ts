@@ -44,6 +44,7 @@ export const zh = {
   'activate.submit': '设置密码并进入',
   'activate.invalid': '这个链接已失效，请向管理员要一个新的',
 
+  'nav.extensions': '扩展',
   'nav.main': '主导航',
   'nav.home': '回到主线',
   'nav.chat': '对话',
@@ -861,6 +862,7 @@ export const zh = {
   'agents.connectorsNone': '一个都不用',
   'agents.connectorNotConnected': '未连接，先在「设置 → 连接」连上',
 
+  'errors.operationDisabled': '管理员已临时暂停此操作，请稍后再试。',
   'errors.connectorOff': '管理员已关闭这个连接器',
   'errors.connectionBusy': '这个连接刚被改过，请重试',
   'errors.registry': '连不上 MCP Registry，稍后再试',
@@ -1078,6 +1080,13 @@ export const zh = {
   'usage.outsideAgents': 'Agent 之外（标题、摘要）',
   'usage.budget': '本月预算',
 
+  'admin.operations': '运维',
+  'operations.pause_background_runs': '暂停后台运行',
+  'operations.pause_background_runsHint': '新运行留在队列，正在运行的继续完成。',
+  'operations.disable_computers': '禁用电脑',
+  'operations.disable_computersHint': '暂停启动、操作电脑与新画面连接；仍可停止和删除电脑。',
+  'operations.disable_outbound_mail': '禁用外发邮件',
+  'operations.disable_outbound_mailHint': '暂停系统邮件、Agent 邮箱和个人邮箱发信；仍可收信。',
   'budgets.agent': 'Agent 月度预算',
   'budgets.title': '预算',
   'budgets.add': '添加预算',

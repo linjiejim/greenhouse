@@ -9,9 +9,9 @@ export function AppsDirectory({ route, query }: { route: Route; query: string })
   const apps = useApps();
   return (
     <>
-      <DirectoryRow title={t('apps.all')} href="#/apps" active={route.page === 'apps'} />
+      {!query.trim() && <DirectoryRow title={t('apps.all')} href="#/apps" active={route.page === 'apps'} />}
       {apps.items
-        .filter((a) => a.name.toLowerCase().includes(query.toLowerCase()))
+        .filter((a) => a.name.toLowerCase().includes(query.trim().toLowerCase()))
         .map((app) => (
           <DirectoryRow
             key={app.id}

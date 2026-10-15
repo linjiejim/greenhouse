@@ -1,3 +1,4 @@
+import { ExtensionPanels } from '../../extensions/host';
 import { useMemo, useState } from 'react';
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { Banner, Button, ConfirmDialog, ErrorBox, FieldGroup, Overlay, Skeleton, Tabs } from '@greenhouse/ui/kit';
@@ -59,6 +60,7 @@ function RuntimePages({ runtime, pageId }: { runtime: Runtime; pageId?: string }
         />
       }
     >
+      <ExtensionPanels entity="app" id={runtime.app.id} />
       {runtime.preview && <Banner>{t('apps.previewHint')}</Banner>}
       <Tabs
         items={runtime.pages.map((p) => p.name)}

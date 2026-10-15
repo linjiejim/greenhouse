@@ -200,16 +200,20 @@ v2 从零建表：只有一份基线迁移，不继承 v1 的迁移链，也不�
 | 表 | 用途 | 关键列与关系 |
 | --- | --- | --- |
 | `usage_events` | 每次 Provider 调用一条 | `capability`、`provider_id`、`source`（env / workspace / personal / builtin）、`member_id`（以谁的权限调用；公开 Agent 的回合记提问的人）、`agent_id`、`run_id`、`conversation_id`、`model`、`input_tokens` / `output_tokens` / `cached_tokens`（llm）、`quantity` + `unit`（秒、字符、张、分钟、字节）、`cost_micros`（按实例模型目录里的单价估算，没有单价为空）、`estimated`（结果未知、按预留量计费）、`budget_key`、`created_at`；按成员、实例、Agent 加时间建索引，另有时间索引 |
-| `budgets` | 预算上限 | `scope_type`（workspace / provider / member / agent / field）、`scope_id`、`unit`（tokens / usd_micros …）、`monthly_limit`、`enabled`；唯一 `(scope_type, scope_id, unit)`。组织即 workspace（`scope_id` 为 `default`），field 是 AI 字段的上限；管理接口目前只开放 workspace、provider、member 三级 |
+| `budgets` | 预算上限 | `scope_type`（workspace / provider / member / agent / field）、`scope_id`、`unit`（tokens / usd_micros …）、`monthly_limit`、`enabled`；唯一 `(scope_type, scope_id, unit)`。组织即 workspace（`scope_id` 为 `default`），field 是 AI 字段的上限；管理接口开放 workspace、provider、member、agent 四种范围；Agent 主人也可管理自己的公开 Agent 预算，取消发布后保留预算并可继续调整 |
 | `budget_periods` | 每个预算每月的计数 | 主键 `(budget_id, period_start)`、`period_end`、`reserved`、`spent`、`version`；周期是 UTC 自然月 |
 | `budget_reservations` | 调用前的预留 | `budget_id`、`period_start`、`idempotency_key`（同一次调用涉及的各级预算共用）、`estimated`、`actual`、`status`（reserved / settled / released / expired）、`expires_at`、`member_id`、`run_id`；唯一 `(budget_id, idempotency_key)` |
 | `audit_events` | 唯一的审计表 | `actor_type`（member / agent / client / system）、`actor_id`、`on_behalf_of`（成员）、`agent_id`、`client_id`、`request_id`、`action`、`resource_type` + `resource_id`、`scope_type` + `scope_id`（如所在表格）、`result`（success / denied / error）、`summary`（不含内容和机密）、`ip`、`created_at` |
 
 #70：真实 DeepSeek 对话已验证 `input_tokens`、`output_tokens` 与 `cached_tokens` 按模型调用入账；缓存命中率由缓存 token ÷ 输入 token 汇总，不新增缓存计数表。模型目录没有单价时 `cost_micros` 为空，界面单列未定价调用。
 
+公开 Agent 的月度预算复用 `budgets.scope_type=agent` 与 Agent ID；主人或管理员可设 token／美元上限，所有使用者的 `usage_events.agent_id` 一起累计，计量调用前统一检查。
+
 v1 的预算账本不再保留：每次花费都对应一条 `usage_events`；预留过期按估算计费时也写一条（`estimated=true`）。
 
 ## 11. 工作区设置与基础设施
+
+运维开关复用 `workspace.settings.kill_switches`，无按成员开关；行锁下合并部分更新并在同一事务记审计。未保存时使用部署配置的默认值。
 
 | 表 | 用途 | 关键列与关系 |
 | --- | --- | --- |
@@ -217,7 +221,7 @@ v1 的预算账本不再保留：每次花费都对应一条 `usage_events`；�
 | `rate_limits` | 多 API 副本共用的固定窗口限流（可选，默认内存） | `key`（命名空间与请求键的 SHA-256 主键，不存邮箱、IP 或凭据）、`count`、`reset_at`（带索引）；UPSERT 按数据库时钟原子计数，worker 每日清理过期窗口 |
 | `jobs` | 通用后台任务队列 | `kind`（如 request_decided、deliver_notification、push_receipts、base_automation、recompute、ai_field、video_poll、file_purge、computer_backup、export）、`dedupe_key`（唯一）、`payload`、`status`（pending / claimed / succeeded / failed / dead / suppressed）、`attempts` / `max_attempts`、`available_at`、`lease_owner` / `lease_expires_at`、`last_error`、`result`（处理中途记下的进度，接手的进程据此不重复执行）；和触发它的状态变更在同一事务里写入；领取即算一次尝试，租约过期（进程死了）回到队列，处理期间持有者续租；`apps/api/src/jobs.ts` 是唯一的入队、领取、续租与结算方式。`request_decided`：每张卡片一条，和批准、拒绝、回答、交还或过期在同一事务里写入，结束 7 天后删除；送达任务结束 30 天后删除 |
 | `idempotency_keys` | 有副作用请求的幂等记录 | 主键 `(scope, key)`（scope 如成员 id 或 `feishu`）、`request_hash`、`status`（running / done）、`response`、`expires_at`；承接 `Idempotency-Key` 头、应用动作重放和飞书事件去重；电脑画面与终端的一次性 ticket 也在这里（scope `computer_ticket`，`key` 是 ticket 的 keyed hash，一分钟，用时删除）；OAuth 同意请求同理（scope `oauth_request`，十分钟，归第一个打开它的成员，做出决定时删除）；邮件服务商通知的 nonce 也在这里（scope `mail_notice`，处理成功后记下，Resend 两天、Mailgun 13 小时，同一个 nonce 不再处理） |
-| `extension_migrations` | 扩展迁移通道的记录 | 主键 `(extension_id, name)`、`checksum`、`applied_at` |
+| `extension_migrations` | 扩展迁移通道的记录 | 主键 `(extension_id, name)`、`checksum`、`applied_at`；扩展表以 `ext_<id>_` 命名，在各自 SQL 目录维护；启动在事务 advisory lock 下执行，修改、删除已执行文件或前插迁移均拒绝 |
 
 v1 迁移工具的 ID 映射与检查点放在单独的 `migration` schema，不属于基线。
 
@@ -266,5 +270,3 @@ M3.4 计数（#70）：`metric_events` 仅存 identity id、member_id（逻辑�
 ### 移动端最新 v2 集成（#70）
 
 移动端只消费既有审批范围、步骤回执、日程 `quiet`、记录交办、应用及不可变发布、运行摘要与发现，不新增数据表或迁移。预先授权由成员在当前 tier2 卡片明确选择，授权和撤销均以服务端对象为准。应用卡片的字段范围和发布版本不由原生草稿扩大；未保存字段只留在当前成员／工作站及该对象的原生表单，身份变化清空。
-
-公开 Agent 的月度预算复用 `budgets.scope_type=agent` 与 Agent ID；主人或管理员可设 token／美元上限，所有使用者的 `usage_events.agent_id` 一起累计，计量调用前统一检查。

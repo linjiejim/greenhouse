@@ -65,3 +65,5 @@ The v2 web app. Product scope is docs/product/prd.md §6–7; layout and compone
 - An initial message-page fetch preserves realtime rows that arrived after its snapshot and completed replies. Receive events while that query is fetching, even before its first page exists.
 
 - Published Agent budgets use the shared usage facts and UTC month; owners edit them on Publish, admins on Public Agents.
+- Directory filters stay local to a module and filter loaded entries; arrows move between results, Enter opens and Escape clears then closes.
+- Extension pages/sections/panels render only when the authenticated manifest declares them; only extensions/index.ts imports concrete extensions.

@@ -1,3 +1,4 @@
+import { BUDGET_SCOPES } from '@greenhouse/contract';
 /**
  * Usage and budgets (ADM-07, AGNT-15): my usage, the workspace's, one Agent's for its owner, and
  * the monthly budgets an admin sets. Everything is read from usage_events and runs: counts,
@@ -43,7 +44,7 @@ import { daysOf, periodOf, totalsColumns, toTotals } from './totals.js';
 
 type BudgetSave = z.output<typeof budgetInputSchema>;
 
-const MANAGED_SCOPES = ['workspace', 'provider', 'member', 'agent'] as const;
+const MANAGED_SCOPES = BUDGET_SCOPES;
 const RECENT_COMMENTS = 20;
 
 /** Most tokens first, then most calls. */
@@ -88,7 +89,13 @@ export function createUsageService(deps: { agents: AgentsService; providers: Pro
     const [agent] = await getDb().select().from(agents).where(eq(agents.id, agentId));
     if (!actor || actor.status !== 'active' || !agent || (actor.role !== 'admin' && agent.ownerId !== actorId))
       throw forbidden();
-    if (agent.visibility !== 'public' || agent.archivedAt) throw invalidInput('Budget a published Agent.');
+    const [existing] = await getDb()
+      .select({ id: budgets.id })
+      .from(budgets)
+      .where(and(eq(budgets.scopeType, 'agent'), eq(budgets.scopeId, agentId)))
+      .limit(1);
+    if ((agent.visibility !== 'public' && !existing) || agent.archivedAt)
+      throw invalidInput('Budget a published Agent.');
   }
 
   async function budgetViews(rows: BudgetRow[]): Promise<Budget[]> {

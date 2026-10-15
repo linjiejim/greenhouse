@@ -1,3 +1,4 @@
+import { ExtensionPanels } from '../../extensions/host';
 /**
  * A doc (`#/knowledge/:docId`, KNOW-03 to KNOW-09, KNOW-15): read at reading width with its
  * contents, links to it and comments; edited in place (`?edit=1`) with the editor. A save names
@@ -227,6 +228,7 @@ function DocRead({ doc, presence, gone }: DocView) {
             />
           )}
           <Backlinks docId={doc.id} />
+          <ExtensionPanels entity="doc" id={doc.id} />
           <Comments docId={doc.id} archived={!!doc.archived_at} />
         </div>
         {wide && headings.length > 1 && (

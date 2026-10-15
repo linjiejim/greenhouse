@@ -1,3 +1,4 @@
+import type { OperationsService } from '../operations/service.js';
 /**
  * Connectors: MCP servers an admin installs (管理 → 连接器), the built-in connectors Greenhouse
  * provides itself (the member's own mailbox, mailbox.ts), the connections members make to them
@@ -276,6 +277,7 @@ type Listing = { ok: true; tools: ConnectorToolSpec[] } | { ok: false; error: st
 
 export function createConnectorsService(deps: {
   config: AppConfig;
+  operations?: OperationsService;
   /** The built-in catalog; tests hand in their own entries. */
   catalog?: () => CatalogItem[];
   /** The MCP Registry; tests point it at a local server. */
@@ -607,6 +609,7 @@ export function createConnectorsService(deps: {
 
   /** One tool of the member's own mailbox; a refused password marks the connection to renew. */
   async function runMailbox(memberId: string, toolName: string, args: Record<string, unknown>): Promise<CallOutcome> {
+    if (toolName === 'send_message') await deps.operations?.assertEnabled('disable_outbound_mail');
     const connection = await mailboxConnection(memberId);
     const client = connection && connection.status !== 'needs_reauth' ? mailboxOf(connection) : null;
     if (!connection || !client) {

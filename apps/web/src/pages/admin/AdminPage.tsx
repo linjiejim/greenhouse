@@ -1,3 +1,4 @@
+import { OperationsSection } from './OperationsSection';
 import type { MessageKey } from '../../i18n/zh';
 import type { AdminSection } from '../../lib/router';
 import { useI18n } from '../../lib/i18n';
@@ -29,6 +30,7 @@ export function AdminPage({ section }: { section: AdminSection }) {
       width={LIST.includes(section) ? 'list' : 'form'}
       header={<PageHeader title={t(`admin.${section}`)} help={help && t(help)} />}
     >
+      {section === 'operations' && <OperationsSection />}
       {section === 'members' && <MembersSection />}
       {section === 'services' && <ServicesSection />}
       {section === 'usage' && <UsageSection />}

@@ -10,7 +10,7 @@
  * budget counts everything its instance serves.
  */
 
-import { and, eq, gte, inArray, ne, or, sql, type SQL } from 'drizzle-orm';
+import { and, eq, gte, inArray, lt, ne, or, sql, type SQL } from 'drizzle-orm';
 import { budgetReservations, budgets, getDb, usageEvents, type BudgetRow } from '@greenhouse/db';
 import { ApiError } from '../http/errors.js';
 
@@ -57,7 +57,13 @@ export async function spentOf(
   const [row] = await getDb()
     .select({ spent: measure(budget.unit) })
     .from(usageEvents)
-    .where(and(gte(usageEvents.createdAt, month.start), covers(budget, personalCounting)));
+    .where(
+      and(
+        gte(usageEvents.createdAt, month.start),
+        lt(usageEvents.createdAt, month.end),
+        covers(budget, personalCounting),
+      ),
+    );
   return Number(row?.spent ?? 0);
 }
 

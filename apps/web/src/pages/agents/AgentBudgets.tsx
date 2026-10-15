@@ -1,9 +1,10 @@
 import { useState, type FormEvent } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Button, Field, FieldGroup, Input, Select, Skeleton } from '@greenhouse/ui/kit';
+import { Button, ConfirmDialog, Field, FieldGroup, Input, Select, Skeleton } from '@greenhouse/ui/kit';
 import { api } from '../../lib/api';
 import { errorText } from '../../lib/errors';
 import { useI18n } from '../../lib/i18n';
+import { useDraftNavigation } from '../tables/useDraftNavigation';
 import { BudgetBar } from '../../shell/usage';
 
 export function AgentBudgets({ agentId }: { agentId: string }) {
@@ -15,6 +16,7 @@ export function AgentBudgets({ agentId }: { agentId: string }) {
   const [limit, setLimit] = useState('');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+  const navigation = useDraftNavigation(limit !== '', saving, () => setLimit(''));
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     const value = Number(limit);
@@ -75,6 +77,16 @@ export function AgentBudgets({ agentId }: { agentId: string }) {
           </Button>
         </div>
       </form>
+      {navigation.asking && (
+        <ConfirmDialog
+          title={t('knowledge.discardTitle')}
+          confirmLabel={t('knowledge.discard')}
+          onCancel={navigation.cancel}
+          onConfirm={navigation.discard}
+        >
+          {t('knowledge.discardBody')}
+        </ConfirmDialog>
+      )}
     </section>
   );
 }

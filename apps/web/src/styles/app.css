@@ -3838,3 +3838,10 @@ button.app-agent-card {
 .app-stat dd {
   margin: 0;
 }
+
+.app-directory-content {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
+}

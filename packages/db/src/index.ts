@@ -3,3 +3,5 @@ export { createDbClient, getDb, setDb, transaction, type Db, type DbClient, type
 export { newId, isId, ulid, ID_PREFIX, type IdKind } from './ids.js';
 export { applyMigrations, assertNotV1Database, MIGRATIONS_FOLDER } from './migrate.js';
 export { MAX_INDEXED_CHARS, queryWords, searchQuery, searchTokens, segment } from './search.js';
+
+export { applyExtensionMigrations, type ExtensionMigrationSource } from './extension-migrations.js';

@@ -23,6 +23,9 @@ one tool layer and one permission model; the same tools your team uses in chat a
 expose to Claude, Cursor, or any MCP client.
 
 > 当前 `v2` 分支仍在开发。v2 表格中的记录可交给自己的 Agent 在后台处理；评论和字段结果遵守写入审批。表格内的自动化支持记录、日期、间隔和按钮触发，统一通知成员、唤醒 Agent，或向公网 HTTPS 地址发送签名 webhook。Agent 也能按成员权限查询和操作已发布应用；外部客户端需要单独授权 `apps:read` / `apps:write`。
+>
+> 公开 Agent 的主人和管理员可以设置 token 或美元月度预算；发布页和用量页显示本月已用，额度用完后暂停计量调用。
+> 管理 → 运维可以暂停后台领队列、禁用电脑或外发邮件；部署环境变量提供初始值，之后的管理修改即时跨副本生效。v2 私有扩展入口、独立迁移与完整示例见 [EXTENDING.md](EXTENDING.md)。
 
 ## A quick look
 
@@ -927,5 +930,3 @@ issue — see [SECURITY.md](./SECURITY.md).
 在 v2 Web 任意页面按 ⌘J（Windows/Linux：Ctrl+J）打开页面会话；它带入当前对象并保存在会话列表，窄屏显示为 Sheet。
 
 配置图像服务后，Agent 可生成图片或编辑有权限的参考文件；配置视频服务后，批准生成即可在「运行」查看进度。产物卡片提供预览、下载及保存到个人知识库。302.AI 可用 `IMAGE_PROVIDER=302ai`、`VIDEO_PROVIDER=302ai` 和各自的 `*_API_KEY`／`*_BASE_URL` 配置，详见 docs/product/providers.md。回复中插话会在下一模型步骤带入，崩溃恢复后仍保留该上下文并接着写当前回复；管理 → 用量可查看每周采纳与运行指标。
-
-公开 Agent 的主人和管理员可以设置 token 或美元月度预算；发布页和用量页显示本月已用，额度用完后暂停计量调用。

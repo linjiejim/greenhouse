@@ -46,12 +46,13 @@ export const viewIcon = (type: ViewType, size: number = icon.md) => {
 
 const glyph = (Icon: typeof Table2) => <Icon size={icon.md} strokeWidth={icon.stroke} />;
 
-function BaseTree({ base, route }: { base: BaseSummary; route: Route }) {
+function BaseTree({ base, route, query }: { base: BaseSummary; route: Route; query: string }) {
   const { t } = useI18n();
   const notify = useNotify();
   const openOverlay = useOpenOverlay();
   const here = route.page === 'base' && route.id === base.id ? route : null;
-  const [open, setOpen] = useState(!!here);
+  const [opened, setOpen] = useState(!!here);
+  const open = opened || !!query.trim();
   const [openTables, setOpenTables] = useState<Set<string>>(() => new Set(here?.table ? [here.table] : []));
   const [renaming, setRenaming] = useState<string | null>(null);
   useEffect(() => {
@@ -113,7 +114,7 @@ function BaseTree({ base, route }: { base: BaseSummary; route: Route }) {
       />
       {open &&
         base.tables.map((table) => {
-          const tableOpen = openTables.has(table.id);
+          const tableOpen = !!query.trim() || openTables.has(table.id);
           const tableMenu: MenuEntry[] = builder
             ? [
                 { label: t('tables.renameTable'), icon: glyph(Pencil), onClick: () => setRenaming(table.id) },
@@ -192,7 +193,13 @@ export function TablesDirectory({ route, query }: { route: Route; query: string 
   const bases = useBases();
   const q = query.trim().toLowerCase();
   const match = (base: BaseSummary) =>
-    !q || base.name.toLowerCase().includes(q) || base.tables.some((table) => table.name.toLowerCase().includes(q));
+    !q ||
+    base.name.toLowerCase().includes(q) ||
+    base.tables.some(
+      (table) =>
+        table.name.toLowerCase().includes(q) || table.views.some((view) => view.name.toLowerCase().includes(q)),
+    ) ||
+    base.dashboards.some((dashboard) => dashboard.name.toLowerCase().includes(q));
   const shown = bases.items.filter(match);
   const pinned = shown.filter((base) => base.pinned);
   const rest = shown.filter((base) => !base.pinned);
@@ -203,13 +210,13 @@ export function TablesDirectory({ route, query }: { route: Route; query: string 
       {pinned.length > 0 && (
         <DirectorySection title={t('tables.pinned')}>
           {pinned.map((base) => (
-            <BaseTree key={base.id} base={base} route={route} />
+            <BaseTree key={base.id} base={base} route={route} query={query} />
           ))}
         </DirectorySection>
       )}
       <DirectorySection title={t('tables.mine')}>
         {rest.map((base) => (
-          <BaseTree key={base.id} base={base} route={route} />
+          <BaseTree key={base.id} base={base} route={route} query={query} />
         ))}
       </DirectorySection>
     </>

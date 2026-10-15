@@ -16,6 +16,7 @@ import type { Route } from '../lib/router';
 
 /** The modules this build has. */
 export type ModuleId =
+  | 'extensions'
   | 'chat'
   | 'knowledge'
   | 'apps'
@@ -28,6 +29,7 @@ export type ModuleId =
   | 'admin';
 
 export const MODULES: Record<ModuleId, { label: MessageKey; icon: LucideIcon }> = {
+  extensions: { label: 'nav.extensions', icon: LayoutGrid },
   chat: { label: 'nav.chat', icon: MessageSquare },
   knowledge: { label: 'nav.knowledge', icon: BookOpen },
   apps: { label: 'nav.apps', icon: LayoutGrid },
@@ -42,6 +44,10 @@ export const MODULES: Record<ModuleId, { label: MessageKey; icon: LucideIcon }> 
 
 export function moduleOf(route: Route): ModuleId {
   switch (route.page) {
+    case 'extension':
+      return 'extensions';
+    case 'extension-section':
+      return route.parent;
     case 'knowledge':
     case 'folder':
     case 'doc':

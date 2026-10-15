@@ -33,6 +33,9 @@ it('lets only the owner or admin budget a published Agent and audits each change
   ).toBe(200);
   const audits = await getDb().select().from(auditEvents).where(eq(auditEvents.resourceId, saved.body.id));
   expect(audits.map((row) => row.actorId)).toEqual([owner.id, admin.id]);
+  await app.call('DELETE', `/api/agents/${agent.id}/publication`, { token: owner.token });
+  expect((await app.call('PUT', path, { token: owner.token, body: { ...body, monthly_limit: 300 } })).status).toBe(200);
+  expect((await app.call('GET', path, { token: owner.token })).body.items[0].monthly_limit).toBe(300);
 });
 
 describe('Agent budgets at the provider boundary', () => {
@@ -76,6 +79,16 @@ describe('Agent budgets at the provider boundary', () => {
         agentId: agent.id,
         inputTokens: 1000,
         createdAt: new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 0)).toISOString(),
+      });
+    await getDb()
+      .insert(usageEvents)
+      .values({
+        capability: 'llm',
+        providerId: 'env-llm',
+        source: 'env',
+        agentId: agent.id,
+        inputTokens: 1000,
+        createdAt: new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1)).toISOString(),
       });
     const call = async (memberId: string) =>
       generateText({

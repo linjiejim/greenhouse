@@ -20,3 +20,5 @@ export * from './apps.js';
 
 export * from './automations.js';
 export * from './rate-limits.js';
+
+export * from './extensions.js';

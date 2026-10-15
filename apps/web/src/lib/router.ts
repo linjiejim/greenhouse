@@ -15,6 +15,7 @@ export const ADMIN_SECTIONS = [
   'access',
   'public-agents',
   'branding',
+  'operations',
 ] as const;
 export const AGENT_SCOPES = ['mine', 'public', 'archived'] as const;
 export const AGENT_TABS = [
@@ -41,6 +42,8 @@ export type RunView = (typeof RUN_VIEWS)[number];
 export type SkillScope = (typeof SKILL_SCOPES)[number];
 
 export type Route =
+  | { page: 'extension'; extension: string; view: string; path: string; query: string }
+  | { page: 'extension-section'; parent: 'settings' | 'admin'; extension: string; section: string }
   /** `main`, `new` (optionally with the Agent to ask and a skill to run), or a conversation id. */
   | { page: 'conversation'; id: string; agent?: string; skill?: string }
   | { page: 'agents'; scope: AgentScope }
@@ -98,6 +101,12 @@ export function parse(hash: string): Route {
   const [head, id, extra] = parts;
   const notFound = { page: 'not-found', path } as const;
   const file = query.get('file');
+  if (head === 'ext' && id && extra)
+    return { page: 'extension', extension: id, view: extra, path: parts.slice(3).join('/'), query: search };
+  if ((head === 'settings' || head === 'admin') && id === 'ext')
+    return parts.length === 4
+      ? { page: 'extension-section', parent: head, extension: extra!, section: parts[3]! }
+      : notFound;
   if (head === 'knowledge') {
     if (parts.length > 3 || (extra !== undefined && id !== 'folder')) return notFound;
     if (id === 'folder') return extra ? { page: 'folder', id: extra, ...(file ? { file } : {}) } : notFound;
@@ -174,6 +183,10 @@ export function parse(hash: string): Route {
 
 export function href(route: Route): string {
   switch (route.page) {
+    case 'extension':
+      return `#/ext/${encodeURIComponent(route.extension)}/${encodeURIComponent(route.view)}${route.path ? '/' + route.path.split('/').map(encodeURIComponent).join('/') : ''}${route.query ? '?' + route.query : ''}`;
+    case 'extension-section':
+      return `#/${route.parent}/ext/${encodeURIComponent(route.extension)}/${encodeURIComponent(route.section)}`;
     case 'conversation': {
       const query = new URLSearchParams({
         ...(route.agent ? { agent: route.agent } : {}),

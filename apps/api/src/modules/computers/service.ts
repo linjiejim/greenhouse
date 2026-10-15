@@ -1,3 +1,4 @@
+import type { OperationsService } from '../operations/service.js';
 /**
  * Agent computers: one sandbox per Agent and member, from the sandbox provider, with a home that
  * outlives restarts. The owner has the Agent's own computer; when a public Agent's publication
@@ -128,6 +129,7 @@ export type Deliver = (
 ) => Promise<void>;
 
 export function createComputersService(deps: {
+  operations?: OperationsService;
   providers: ProvidersService;
   agents: AgentsService;
   hub: Hub;
@@ -137,6 +139,7 @@ export function createComputersService(deps: {
   let ticker: NodeJS.Timeout | null = null;
 
   async function sandbox(memberId: string) {
+    await deps.operations?.assertEnabled('disable_computers');
     const resolved = await deps.providers.resolve('sandbox', { memberId, personal: false });
     if (!resolved) throw new ApiError(503, 'computer_unavailable', 'Agent computers are not set up here.');
     return resolved;
@@ -203,6 +206,7 @@ export function createComputersService(deps: {
   }
 
   async function stillAllowed(grant: TicketGrant): Promise<boolean> {
+    if ((await deps.operations?.read())?.disable_computers) return false;
     const [member] = await getDb()
       .select({ status: members.status, authVersion: members.authVersion, modules: members.modules })
       .from(members)
@@ -235,6 +239,7 @@ export function createComputersService(deps: {
 
   /** The member's computer for an Agent, started if it was not running. */
   async function ensure(memberId: string, agentId: string): Promise<{ row: AgentComputer; client: SandboxClient }> {
+    await deps.operations?.assertEnabled('disable_computers');
     const member = await computerMember(memberId);
     const agent = await agentFor(memberId, agentId);
     const resolved = await sandbox(memberId);
@@ -450,6 +455,7 @@ export function createComputersService(deps: {
      * running. Only its keyed hash is stored, for a minute.
      */
     async ticket(memberId: string, agentId: string, purpose: ComputerTicketPurpose): Promise<ComputerTicket> {
+      await deps.operations?.assertEnabled('disable_computers');
       const member = await computerMember(memberId);
       let row: AgentComputer;
       if (purpose === 'view') {
@@ -499,6 +505,7 @@ export function createComputersService(deps: {
      * computers (forbidden), or when the computer stopped (computer_not_running).
      */
     async open(ticket: string, socket: 'screen' | 'terminal'): Promise<ComputerSession> {
+      await deps.operations?.assertEnabled('disable_computers');
       const invalid = () => new ApiError(401, 'ticket_invalid', 'This ticket is not valid. Ask for a new one.');
       if (!ticket || ticket.length > 200) throw invalid();
       const [spent] = await getDb()
@@ -922,7 +929,10 @@ export function createComputersService(deps: {
     /** Checks watched processes and idle computers every minute. */
     startWatching(deliver: Deliver) {
       ticker ??= setInterval(() => {
-        void service.checkWatches(deliver).then(() => service.stopIdle());
+        void service
+          .checkWatches(deliver)
+          .then(() => service.stopIdle())
+          .catch((error: unknown) => logger.warn('[computers] watch sweep failed', { error: toErrorMessage(error) }));
       }, WATCH_MS);
     },
 

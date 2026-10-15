@@ -1,3 +1,4 @@
+import type { OperationsService } from '../modules/operations/service.js';
 /**
  * Background runs: work an Agent does while nobody watches. They start only from a member's
  * decision (an approved proposal, a schedule they set up), use the declared tools, and report
@@ -95,6 +96,7 @@ export interface StartBackground {
 const localeOf = (value: string | null | undefined): Locale => (value === 'en' ? 'en' : 'zh');
 
 export function createBackground(deps: {
+  operations?: OperationsService;
   files: FilesService;
   requests?: RequestsService;
   approvals?: ApprovalsService;
@@ -158,6 +160,7 @@ export function createBackground(deps: {
   /** Takes the oldest queued run of a member who is not already at their limit. */
   async function claim(): Promise<Run | null> {
     return transaction(async (db) => {
+      if ((await deps.operations?.read(true))?.pause_background_runs) return null;
       const [candidate] = await db
         .select({ id: runs.id })
         .from(runs)

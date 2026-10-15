@@ -1,3 +1,5 @@
+import type { ExtensionSearchSource } from '../../extensions/define.js';
+import { searchItemSchema } from '@greenhouse/contract';
 /**
  * `⌘K` search (SRCH-01): conversation titles and message text in the conversations the member is
  * in, the member's own Agents, the people directory (plain ILIKE with the query's wildcards
@@ -23,6 +25,7 @@ export function createSearchService(deps: {
   knowledge: KnowledgeService;
   tables: TablesService;
   apps: AppsService;
+  extensions?: () => readonly (ExtensionSearchSource & { extensionId: string })[];
 }) {
   /** Titles to show: a conversation's own, else the name of the Agent it is with. */
   async function agentNames(ids: (string | null)[]): Promise<Map<string, string>> {
@@ -36,6 +39,27 @@ export function createSearchService(deps: {
   }
 
   const finders: Record<SearchKind, (memberId: string, q: string, limit: number) => Promise<SearchItem[]>> = {
+    async extensions(memberId, q, limit) {
+      const groups = await Promise.allSettled(
+        (deps.extensions?.() ?? []).map(async (source) => {
+          const items = await source.search(memberId, q, limit);
+          return items.slice(0, limit).map((item) => {
+            if (!/^[a-zA-Z0-9_/-]+$/.test(item.path) || item.path.split('/').some((part) => !part))
+              throw new Error('Invalid extension search path');
+            return searchItemSchema.parse({
+              kind: 'extensions',
+              id: item.id,
+              title: item.title,
+              snippet: item.snippet,
+              extension_id: source.extensionId,
+              source: source.id,
+              href: `#/ext/${source.extensionId}/${item.path}`,
+            });
+          });
+        }),
+      );
+      return groups.flatMap((group) => (group.status === 'fulfilled' ? group.value : []));
+    },
     async conversations(memberId, q, limit) {
       const rows = await getDb()
         .select({ id: conversations.id, title: conversations.title, agentId: conversations.agentId })

@@ -1,3 +1,4 @@
+import { ExtensionPanels } from '../../extensions/host';
 /**
  * An Agent's one home (AGNT-05): profile, abilities, memory, schedules, computer and mailbox. The
  * header says who it is and offers "message"; its "⋯" archives or restores.
@@ -149,6 +150,7 @@ export function AgentPage({ id, tab }: { id: string; tab: AgentTab }) {
       {current === 'mailbox' && <MailboxTab agentId={data.id} name={data.name} />}
       {current === 'publish' && <PublishTab agent={data} />}
       {current === 'activity' && <ActivityTab agentId={data.id} />}
+      <ExtensionPanels entity="agent" id={data.id} />
       {archiving && (
         <ConfirmDialog
           title={t('agents.archiveTitle', { name: data.name })}

@@ -1,3 +1,4 @@
+import { ExtensionPage } from '../extensions/host';
 import { AppsHome } from '../pages/apps/AppsHome';
 import { AppBuilder } from '../pages/apps/AppBuilder';
 import { AppRuntime } from '../pages/apps/AppRuntime';
@@ -27,6 +28,9 @@ export function Workspace({ route }: { route: Route }) {
   const { me } = useSession();
   const knowledge = !!me?.modules.knowledge;
   switch (route.page) {
+    case 'extension':
+    case 'extension-section':
+      return <ExtensionPage route={route} />;
     case 'knowledge':
       if (!knowledge) return <NotFoundPage />;
       if (route.space && route.archived && route.space !== 'shared') return <ArchivedPage space={route.space} />;

@@ -1,3 +1,4 @@
+import type { OperationsService } from '../modules/operations/service.js';
 import { interjectionText } from './history.js';
 import { countAssignment, countActive, countAdoption, adoptedOutputKey } from '../modules/usage/counts.js';
 import { fence } from '../security/prompt.js';
@@ -167,6 +168,7 @@ export const HANDOFF_MAX_DEPTH = 3;
 export const HANDOFF_MAX_PER_CHAIN = 6;
 
 export interface EngineDeps {
+  operations?: OperationsService;
   role?: 'all' | 'api' | 'worker';
   eventWakeLimit?: number;
   eventMergeMs?: number;
@@ -2218,6 +2220,7 @@ export function createEngine(deps: EngineDeps) {
   }
 
   const background = createBackground({
+    operations: deps.operations,
     enabled: worker,
     files: deps.files,
     requests: deps.requests,

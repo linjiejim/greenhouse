@@ -72,6 +72,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
       api.search({
         q: debounced,
         kinds: [
+          'extensions',
           'conversations',
           ...(knowledge ? (['docs'] as const) : []),
           'messages',
@@ -195,6 +196,17 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
           },
         ];
       }
+      if (item.kind === 'extensions' && item.href)
+        return [
+          {
+            id: `extension:${item.extension_id}:${item.source}:${item.id}`,
+            group: t('nav.extensions'),
+            label: item.title,
+            hint: item.snippet,
+            leading: small(<FileText size={icon.md} />),
+            run: () => navigate(item.href!),
+          },
+        ];
       if (item.kind === 'docs') {
         return [
           {

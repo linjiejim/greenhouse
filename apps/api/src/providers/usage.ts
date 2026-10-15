@@ -13,6 +13,7 @@ import {
   type ClientByCapability,
   type ImageClient,
   type LlmClient,
+  type MailClient,
   type ModelInfo,
   type SearchClient,
   type SttClient,
@@ -120,6 +121,18 @@ export function meter<C extends Capability>(
         models: () => llm.models(),
       };
       return metered as ClientByCapability[C];
+    }
+    case 'mail': {
+      const mail = client as MailClient;
+      return {
+        ...mail,
+        async send(input: Parameters<MailClient['send']>[0]) {
+          await before();
+          const result = await mail.send(input);
+          await record({ quantity: 1, unit: 'mail' });
+          return result;
+        },
+      } as ClientByCapability[C];
     }
     case 'search': {
       const search = client as SearchClient;
