@@ -1,7 +1,11 @@
+import { integration } from './integration.zh';
+import { work } from './work.zh';
 import type { Catalog } from './en';
 
 /** 中文词表：键跟 en.ts 一一对应。用词跟 web 一致（PRD §5）：Agent、对话、主线、会话、房间、运行、需要你。 */
 export const zh: Catalog = {
+  work,
+  integration,
   common: {
     loading: '加载中…',
     cancel: '取消',
@@ -256,7 +260,6 @@ export const zh: Catalog = {
     ask: '就此追问',
     askHint: '长按一个来源，可以把它引用到消息里。',
     knowledge: '知识库',
-    webOnly: '文档暂时要在网页版打开',
   },
   requests: {
     title: '需要你',
@@ -307,7 +310,6 @@ export const zh: Catalog = {
     empty: '没有新通知',
     nothingNeedsYou: '没有需要你处理的事',
     loadFailed: '通知加载失败',
-    webOnly: '这个暂时要在网页版打开',
   },
   agents: {
     title: 'Agents',
@@ -401,7 +403,7 @@ export const zh: Catalog = {
     fromConversation: '来自对话',
     fromSchedule: '来自定时',
     fromAutomation: '来自自动化',
-    fromRecord: '来自记录',
+    fromRecord: '来自表格',
     fromHandoff: '来自转交',
     fromApp: '来自应用',
     took: '用时 {time}',

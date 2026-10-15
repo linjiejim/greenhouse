@@ -13,9 +13,9 @@ import { pageScreen, stackDefaults } from '../../src/ui/nav';
 export const unstable_settings = { initialRouteName: 'index' };
 
 export default function SettingsLayout() {
-  const { colors: c, hex } = useTheme();
+  const { colors: c, hex, isDark } = useTheme();
   return (
-    <Stack screenOptions={{ ...stackDefaults(c, hex), ...pageScreen(c, { grouped: true }) }}>
+    <Stack screenOptions={{ ...stackDefaults(c, hex, isDark), ...pageScreen(c, { grouped: true }) }}>
       <Stack.Screen name="index" />
       <Stack.Screen name="stations" />
       <Stack.Screen name="notifications" />

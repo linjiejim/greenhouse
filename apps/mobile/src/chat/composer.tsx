@@ -1,3 +1,5 @@
+import { useState } from 'react';
+import { useVoice } from '../voice/use-voice';
 /**
  * Composer — the floating Liquid Glass control layer at the bottom of a conversation (iOS 26
  * Messages-style): one `GlassGroup` row of
@@ -95,11 +97,13 @@ export const Composer = memo(
     const { colors: c } = useTheme();
     const styles = useStyles(c);
     const t = useT();
-    const canSend = !sending && canSendMessage(value, files, !!skill);
+    const [selection, setSelection] = useState({ start: value.length, end: value.length });
+    const voice = useVoice(value, onChangeText, selection);
+    const canSend = voice.state === 'idle' && !sending && canSendMessage(value, files, !!skill);
     const failed = files.some((file) => file.status === 'error');
     const hasChips = files.length > 0 || !!quote || !!skill;
     const full = files.length >= MAX_FILES || !!attachNote;
-    const showStop = working && !!onStop && !value.trim() && !files.length && !skill;
+    const showStop = voice.state === 'idle' && working && !!onStop && !value.trim() && !files.length && !skill;
     const attachItems: MenuItem[] = [
       { id: 'camera', title: t('composer.camera'), icon: 'camera', disabled: full },
       { id: 'library', title: t('composer.photos'), icon: 'photos', disabled: full },
@@ -224,10 +228,30 @@ export const Composer = memo(
               style={styles.input}
               testID="composer-input"
               accessibilityLabel={placeholder}
-              onSelectionChange={onSelectionChange ? (e) => onSelectionChange(e.nativeEvent.selection) : undefined}
+              onSelectionChange={(e) => {
+                setSelection(e.nativeEvent.selection);
+                onSelectionChange?.(e.nativeEvent.selection);
+              }}
             />
           </Glass>
 
+          {voice.supported ? (
+            <GlassIconButton
+              icon={voice.state === 'recording' ? 'stop' : 'mic'}
+              disabled={voice.state === 'transcribing'}
+              onPress={() => void voice.toggle()}
+              accessibilityLabel={t(
+                voice.state === 'recording'
+                  ? 'work.recording'
+                  : voice.state === 'transcribing'
+                    ? 'work.transcribing'
+                    : 'work.mic',
+              )}
+            />
+          ) : null}
+          {voice.state !== 'idle' ? (
+            <GlassIconButton icon="x" onPress={voice.cancel} accessibilityLabel={t('work.cancelRecording')} />
+          ) : null}
           {showStop ? (
             <GlassIconButton icon="stop" prominent onPress={onStop} accessibilityLabel={t('composer.stop')} />
           ) : (

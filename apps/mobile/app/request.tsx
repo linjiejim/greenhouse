@@ -16,15 +16,25 @@
  * from the conversation's transcript when it is open, else from the API.
  */
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ScrollView, Text, TextInput, View } from 'react-native';
-import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
+import { Stack, useIsFocused, useLocalSearchParams, useRouter } from 'expo-router';
+import { captureIdentity } from '../src/data/identity';
+import { NativeToggle } from '../src/ui/toggle';
 import { listRequests } from '../src/api/requests';
 import { useT } from '../src/lib/i18n';
 import { relativeTimeNow } from '../src/lib/time-words';
 import { softAskAfterDecision } from '../src/push/soft-ask';
 import { decide, type Decision } from '../src/requests/decide';
-import { KIND_ICON, cardActions, cardBody, checkAnswers, requestStatus, type CardAction } from '../src/requests/model';
+import {
+  KIND_ICON,
+  standingScope,
+  cardActions,
+  cardBody,
+  checkAnswers,
+  requestStatus,
+  type CardAction,
+} from '../src/requests/model';
 import type { NeedsYou, QuestionField } from '../src/shared/contract';
 import { useAuth } from '../src/store/auth';
 import { useThreads } from '../src/store/threads';
@@ -66,7 +76,8 @@ function useRequest(id: string): { request: NeedsYou | null; missing: boolean } 
       live = false;
     };
   }, [id, fromThreads]);
-  return { request: fromThreads ?? fetched, missing: !fromThreads && !fetched && missing };
+  const matching = fetched?.id === id ? fetched : null;
+  return { request: fromThreads ?? matching, missing: !fromThreads && !matching && missing };
 }
 
 export default function RequestSheet() {
@@ -79,7 +90,25 @@ export default function RequestSheet() {
   const agents = useWorkspace((s) => s.agents);
   const { request, missing } = useRequest(id);
   const [answers, setAnswers] = useState<Record<string, string>>({});
+  const focused = useIsFocused();
+  const active = useRef({ id, focused });
+  active.current = { id, focused };
+  const [standing, setStanding] = useState(false);
+  const [continueAfter, setContinueAfter] = useState<boolean | null>(null);
   const [busy, setBusy] = useState<CardAction | null>(null);
+
+  useEffect(() => {
+    setStanding(false);
+    setContinueAfter(null);
+    setAnswers({});
+    setBusy(null);
+  }, [id]);
+  useEffect(
+    () => () => {
+      active.current.focused = false;
+    },
+    [],
+  );
 
   const computers = !!me?.modules.computer && !!me?.capabilities.sandbox;
   const body = useMemo(() => (request ? cardBody(request) : null), [request]);
@@ -87,7 +116,9 @@ export default function RequestSheet() {
   const agentName = request?.agent_id ? agents?.find((agent) => agent.id === request.agent_id)?.name : undefined;
 
   const run = async (action: CardAction) => {
-    if (!request || busy) return;
+    if (!request || busy || request.status !== 'pending') return;
+    const identity = captureIdentity();
+    const current = () => identity() && active.current.id === request.id && active.current.focused;
     if (action === 'takeOver' || action === 'signInMyself') {
       if (request.agent_id) {
         router.push({ pathname: '/computer', params: { agent: request.agent_id, request: request.id, control: '1' } });
@@ -111,10 +142,22 @@ export default function RequestSheet() {
       if (!ok) return;
       decision = { action: 'handBack' };
     } else {
-      decision = { action };
+      decision =
+        action === 'approve'
+          ? {
+              action,
+              standing: !!standingScope(request) && standing,
+              ...(request.subject === 'run_start'
+                ? { continueAfter: continueAfter ?? request.payload.continue_after === true }
+                : {}),
+            }
+          : { action };
     }
+    if (action === 'approve' && request.payload.batch_ready === false) return;
+    if (!current()) return;
     setBusy(action);
     const outcome = await decide(request, decision);
+    if (!current()) return;
     setBusy(null);
     if (outcome === 'done') {
       router.back();
@@ -168,14 +211,22 @@ export default function RequestSheet() {
         keyboardDismissMode="interactive"
       >
         <View style={styles.head}>
-          <Icon name={KIND_ICON[request.kind]} size={20} color={request.status === 'pending' ? c.orange : c.secondaryLabel} />
+          <Icon
+            name={KIND_ICON[request.kind]}
+            size={20}
+            color={request.status === 'pending' ? c.orange : c.secondaryLabel}
+          />
           <Text style={styles.title}>{request.title}</Text>
         </View>
         <View style={styles.metaRow}>
           <View style={[styles.status, { borderColor: tone }]}>
-            <Text style={[styles.statusText, { color: tone }]}>{t(`requests.status.${status.word}` as 'requests.status.needsYou')}</Text>
+            <Text style={[styles.statusText, { color: tone }]}>
+              {t(`requests.status.${status.word}` as 'requests.status.needsYou')}
+            </Text>
           </View>
-          <Text style={styles.meta}>{[agentName, relativeTimeNow(request.created_at)].filter(Boolean).join(' · ')}</Text>
+          <Text style={styles.meta}>
+            {[agentName, relativeTimeNow(request.created_at)].filter(Boolean).join(' · ')}
+          </Text>
         </View>
 
         {body?.reason ? <Text style={styles.reason}>{body.reason}</Text> : null}
@@ -200,6 +251,29 @@ export default function RequestSheet() {
           </View>
         ) : null}
 
+        {request.status === 'pending' && standingScope(request) ? (
+          <NativeToggle
+            label={t(standingScope(request) === 'folder' ? 'integration.allowFolder' : 'integration.allowTable')}
+            value={standing}
+            onChange={setStanding}
+            disabled={!!busy}
+          />
+        ) : null}
+        {request.status === 'pending' && request.subject === 'run_start' ? (
+          <NativeToggle
+            label={t('integration.continueAfter')}
+            value={continueAfter ?? request.payload.continue_after === true}
+            onChange={setContinueAfter}
+            disabled={!!busy}
+          />
+        ) : null}
+        {request.subject === 'run_start' && request.payload.computer === true ? (
+          <Text style={styles.reason}>
+            {t('integration.computerAccess', {
+              domains: Array.isArray(request.payload.domains) ? request.payload.domains.join(', ') || '—' : '—',
+            })}
+          </Text>
+        ) : null}
         {request.kind === 'question' ? (
           <View style={styles.form}>
             {(body?.fields ?? []).map((field) => (
@@ -227,7 +301,9 @@ export default function RequestSheet() {
                 variant={index === actions.length - 1 ? 'prominent' : 'tinted'}
                 destructive={action === 'reject'}
                 loading={busy === action}
-                disabled={!!busy && busy !== action}
+                disabled={
+                  (!!busy && busy !== action) || (action === 'approve' && request.payload.batch_ready === false)
+                }
                 fullWidth
                 size="large"
                 style={styles.button}
@@ -236,7 +312,7 @@ export default function RequestSheet() {
             ))}
           </View>
         ) : null}
-        {request.status === 'pending' && request.conversation_id ? (
+        {request.status === 'pending' && request.conversation_id && !standing ? (
           <Text style={styles.scope}>{t('requests.onlyThisOnce')}</Text>
         ) : null}
       </ScrollView>
@@ -283,7 +359,12 @@ function Field({
           onSelect={onChange}
           fill={false}
         >
-          <View style={[styles.choice, disabled && styles.disabled]} accessible accessibilityRole="button" accessibilityLabel={label}>
+          <View
+            style={[styles.choice, disabled && styles.disabled]}
+            accessible
+            accessibilityRole="button"
+            accessibilityLabel={label}
+          >
             <Text numberOfLines={1} style={value ? styles.choiceText : styles.placeholder}>
               {value || t('composer.choose')}
             </Text>
@@ -319,7 +400,13 @@ const useStyles = makeStyles((c) => ({
   statusText: { ...typo.caption1, fontWeight: weight.semibold },
   meta: { flex: 1, ...typo.footnote, color: c.secondaryLabel },
   reason: { ...typo.body, color: c.label },
-  details: { borderRadius: radius.lg, backgroundColor: c.secondaryGroupedBackground, padding: space.md, gap: space.sm, ...squircle },
+  details: {
+    borderRadius: radius.lg,
+    backgroundColor: c.secondaryGroupedBackground,
+    padding: space.md,
+    gap: space.sm,
+    ...squircle,
+  },
   detail: { gap: 2 },
   detailLabel: { ...typo.footnote, color: c.secondaryLabel },
   detailValue: { ...typo.body, color: c.label },

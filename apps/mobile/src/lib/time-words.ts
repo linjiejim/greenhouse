@@ -1,6 +1,6 @@
 /** Relative times (../data/time.ts) in the app's language and the member's time zone. */
 
-import { relativeTime, type TimeWords } from '../data/time';
+import { calendarDate, relativeTime, type TimeWords } from '../data/time';
 import { useAuth } from '../store/auth';
 import { t } from './i18n';
 
@@ -19,4 +19,8 @@ function words(): TimeWords {
 /** content.md's relative time for this moment ('' for an unreadable time). */
 export function relativeTimeNow(iso: string | null | undefined): string {
   return relativeTime(iso, words(), Date.now(), useAuth.getState().user?.timezone);
+}
+
+export function calendarDateLabel(iso: string): string {
+  return calendarDate(iso, words(), useAuth.getState().user?.timezone);
 }

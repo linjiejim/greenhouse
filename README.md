@@ -29,6 +29,18 @@ Screenshots use seeded sample data and a scripted model. [Regenerate them](#scre
   <img src="docs/assets/v2/tables-light.webp" alt="The project template in Greenhouse v2 Tables" width="1200" loading="lazy" />
 </picture>
 
+## Native apps
+
+The [native API v2 app](apps/mobile) opens the main thread with Greeny, conversations, Agents, runs, needs-you cards, notifications and the live computer. iOS uses system navigation, SwiftUI forms and Liquid Glass controls; Android uses Material 3 forms, menus and dialogs.
+
+Knowledge includes spaces and folders, safe Markdown reading and source editing, versions, comments and mentions, sharing, signed file previews and search. Tables use phone record lists with a grid switch, kanban, agendas and read-only timelines; records and internal forms use native sheets. The grid shows the view's first six visible fields; record details show all readable fields. Agent mailboxes show allowed senders and held mail, with mail cards in conversations. Configured transcription fills the composer without sending; read-aloud uses the speech service or device voice.
+
+Published apps open native runtime pages, record details, forms, charts and confirmed actions. Reads and writes retain the publication version and access boundaries; building and publishing stay on the web. Always-on flows include reversible write receipts and undo, tier2 standing approvals, quiet schedules, record handoffs and event lines.
+
+The launch cover leaves when authentication, fonts and the focused page are ready. Its 650 ms logo animation adds no minimum wait; unsettled content gets up to 900 ms before showing loading or retry. On iOS, chat and computer files use native Quick Look for PDF, images and system-supported formats, with sharing and saving available.
+
+The app has an isolated install: `pnpm mobile:install`, then `pnpm mobile`. Use a native development client on an iOS simulator or Android device; Expo Go cannot run it. See [mobile rules](apps/mobile/AGENTS.md) for platform checks and [RELEASING.md](RELEASING.md) for native builds.
+
 ## Start with Docker Compose
 
 Install Docker with Compose, then use a fresh checkout and a new Compose project for v2:

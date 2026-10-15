@@ -7,7 +7,7 @@
 import React from 'react';
 import { View } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import { RNHostView, useNativeState } from '@expo/ui/jetpack-compose';
+import { RNHostView } from '@expo/ui/jetpack-compose';
 import { TintSwatches } from '../../src/agents/tint-swatches';
 import { availableTemplates, templatePitch, useAgentForm, type AgentDraft } from '../../src/agents/use-agent-form';
 import { useT } from '../../src/lib/i18n';
@@ -23,6 +23,7 @@ import {
   FormSelectRow,
   FormTextField,
   NativeForm,
+  useNativeState,
 } from '../../src/ui/native-form.android';
 import { PLANT_IDS, type PlantId } from '../../src/ui/plant-avatar/plant-ids';
 import { FormChrome, SheetClose } from '../../src/ui/sheet-chrome';
@@ -45,7 +46,8 @@ export default function AgentEdit() {
       return;
     }
     toast(t('agents.created', { name: outcome.name }), 'check');
-    if (outcome.conversationId) openConversation(router, { id: outcome.conversationId, title: outcome.name, compose: true }, 'dismissTo');
+    if (outcome.conversationId)
+      openConversation(router, { id: outcome.conversationId, title: outcome.name, compose: true }, 'dismissTo');
     else router.back();
   };
 
@@ -77,7 +79,12 @@ export default function AgentEdit() {
                   onPress={() => form.choose(template)}
                 />
               ))}
-              <FormNavRow label={t('agents.blank')} value={t('agents.blankPitch')} icon="plus" onPress={() => form.choose(null)} />
+              <FormNavRow
+                label={t('agents.blank')}
+                value={t('agents.blankPitch')}
+                icon="plus"
+                onPress={() => form.choose(null)}
+              />
             </FormSection>
           </NativeForm>
         )}
@@ -86,8 +93,19 @@ export default function AgentEdit() {
   }
   return (
     <>
-      <FormChrome title={title} dirty={form.dirty} canSave={form.canSave} saving={form.saving} onSave={() => void save()} />
-      <AgentFields key={`${draft.template_key ?? 'blank'}:${id ?? 'new'}`} form={form} draft={draft} agentId={id ?? null} />
+      <FormChrome
+        title={title}
+        dirty={form.dirty}
+        canSave={form.canSave}
+        saving={form.saving}
+        onSave={() => void save()}
+      />
+      <AgentFields
+        key={`${draft.template_key ?? 'blank'}:${id ?? 'new'}`}
+        form={form}
+        draft={draft}
+        agentId={id ?? null}
+      />
     </>
   );
 }
@@ -111,8 +129,16 @@ function AgentFields({
       <FormSection title={t('agents.look')}>
         <RNHostView matchContents>
           <View style={{ alignItems: 'center', paddingVertical: 12, gap: 12 }}>
-            <AgentAvatar agent={{ id: stableId, avatar: { plant: draft.plant, tint: draft.tint }, template_key: null }} size={72} />
-            <TintSwatches plant={draft.plant} stableId={stableId} tint={draft.tint} onChange={(tint) => form.set('tint', tint)} />
+            <AgentAvatar
+              agent={{ id: stableId, avatar: { plant: draft.plant, tint: draft.tint }, template_key: null }}
+              size={72}
+            />
+            <TintSwatches
+              plant={draft.plant}
+              stableId={stableId}
+              tint={draft.tint}
+              onChange={(tint) => form.set('tint', tint)}
+            />
           </View>
         </RNHostView>
         <FormSelectRow<PlantId>

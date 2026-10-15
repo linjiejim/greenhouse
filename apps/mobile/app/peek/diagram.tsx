@@ -24,7 +24,7 @@ export default function DiagramViewer() {
   const t = useT();
   const top = useHeaderInset();
   const { k } = useLocalSearchParams<{ k?: string }>();
-  const code = getHandoff<string>(k);
+  const code = getHandoff<string>(k, 'diagram');
   const [failed, setFailed] = useState(false);
   const source = useMemo(() => (code ? { html: mermaidHtml(code, hex, isDark, true) } : null), [code, hex, isDark]);
 
@@ -66,4 +66,3 @@ const useStyles = makeStyles((c) => ({
   code: { paddingHorizontal: space.margin },
   web: { flex: 1, backgroundColor: 'transparent' },
 }));
-

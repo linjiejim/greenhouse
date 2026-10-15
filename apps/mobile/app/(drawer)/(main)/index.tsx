@@ -23,6 +23,7 @@ import { NEW_CHAT, homeParams, type HomeParams } from '../../../src/shell/nav';
 import { useHomeSurface } from '../../../src/shell/surface';
 import { useStartupContent } from '../../../src/startup/context';
 import { usePrefs } from '../../../src/store/prefs';
+import { useAuth } from '../../../src/store/auth';
 import { useThreads } from '../../../src/store/threads';
 import { mainConversationId, useWorkspace } from '../../../src/store/workspace';
 import { useTheme } from '../../../src/theme';
@@ -41,6 +42,7 @@ export default function Home() {
   const t = useT();
   const { colors: c } = useTheme();
   const focused = useIsFocused();
+  const member = useAuth((s) => s.user?.id);
   const hydrated = usePrefs((s) => s.hydrated);
   const loaded = useWorkspace((s) => s.conversations !== null);
   const loadFailed = useWorkspace((s) => s.loadFailed);
@@ -68,25 +70,31 @@ export default function Home() {
     publish({ conversationId, newChat, visible: focused && AppState.currentState === 'active' });
   }, [publish, conversationId, newChat, focused]);
   useEffect(() => {
-    const sub = AppState.addEventListener('change', (state) =>
-      publish({ visible: state === 'active' && focused }),
-    );
+    const sub = AppState.addEventListener('change', (state) => publish({ visible: state === 'active' && focused }));
     return () => sub.remove();
   }, [publish, focused]);
 
   // The splash waits for the first page of the conversation it covers (bounded by the splash itself).
-  const threadReady = useThreads((s) => (conversationId ? s.threads[conversationId]?.status !== 'loading' && !!s.threads[conversationId] : false));
+  const threadReady = useThreads((s) =>
+    conversationId ? s.threads[conversationId]?.status !== 'loading' && !!s.threads[conversationId] : false,
+  );
   useStartupContent(newChat ? loaded : threadReady || (loaded && !conversationId) || loadFailed);
 
   const clearRequest = useCallback(() => router.setParams({ request: '' }), [router]);
 
-  if (newChat) return <NewChatScreen key={`new:${params.agent}`} agentId={params.agent} compose={params.compose === '1'} />;
+  if (!member) return null;
+  if (newChat)
+    return <NewChatScreen key={`new:${params.agent}`} agentId={params.agent} compose={params.compose === '1'} />;
   if (!conversationId) {
     return (
       <View style={[styles.root, { backgroundColor: c.background }]}>
         <Stack.Screen options={{ title: '' }} />
         {loadFailed ? (
-          <EmptyState icon="alert" title={t('conversation.loadFailed')} onRetry={() => void useWorkspace.getState().refresh()} />
+          <EmptyState
+            icon="alert"
+            title={t('conversation.loadFailed')}
+            onRetry={() => void useWorkspace.getState().refresh()}
+          />
         ) : (
           <LoadingState />
         )}

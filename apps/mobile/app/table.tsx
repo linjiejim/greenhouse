@@ -28,7 +28,7 @@ export default function FullTable() {
   const styles = useStyles(c);
   const t = useT();
   const { k, title } = useLocalSearchParams<{ k?: string; title?: string }>();
-  const data = getHandoff<TableData>(k);
+  const data = getHandoff<TableData>(k, 'table');
   const [avail, setAvail] = useState(0);
   const [mode, setMode] = useState<'records' | 'grid'>(data && data.head.length > 4 ? 'records' : 'grid');
 

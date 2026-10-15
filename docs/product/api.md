@@ -285,3 +285,15 @@ M3 媒体与计数（#70）：
 - 知识库目录分页使用固定的 ICU `zh-u-co-pinyin-kn-true` 排序规则；手动位置、文件夹优先级、自然名称、id 共同构成稳定游标。中文按拼音，数字按数值（Doc 2 在 Doc 10 前），不依赖数据库默认 locale。
 - `/api/me/usage`、`/api/admin/usage`、`/api/agents/:id/usage` 的总计与各分组包含 `stt_seconds`（音频秒数，可有小数）和 `tts_characters`（朗读字符数）。分别只合计 STT 的 second 与 TTS 的 character 计量；未知数量计零，不由 token 或费用推算。
 - `run_steps.kind=model` 是恢复上下文，不是永久运行证据：终态运行结束满 90 天由每日清理删除；编辑或重新生成删除旧回复时立即删除对应模型步骤与 Eval 提示快照。工具步骤保留。
+
+### 原生移动端 phase 2（#70）
+
+移动端复用知识库、表格、语音和 Agent 邮箱接口，不增加原生专用接口。文档修改发送编辑开始时的 `version`，记录修改发送起始 `revision` 和变化字段；409 时保留草稿，明确重新载入。文件预览仍用签名 URL。转写只填入输入框，朗读使用 `/api/voice/speech` 或设备语音。原生页接收 `knowledge.changed`、`doc.updated`、`doc.presence`、`comments.updated`、`records.changed`、`base.updated`，重连和回到前台时重新读取。邮件正文用原生纯文本呈现，附件使用签名链接。
+
+### 原生移动端最新 v2 集成（#70）
+
+移动端继续复用标准接口：批准发送 `standing`，运行提议可发送 `continue_after`；仅 tier2 且有明确范围的卡片提供预先授权，`batch_ready=false` 时禁止批准。写入回执按 `step_id` 调用 `POST /api/runs/steps/:id/undo`，由服务检查本人和当前修订。主人可分页读取／撤销 Agent 的预先授权，并通过 `/api/schedules` 保存 `quiet`；日程修改只发送本次变化的字段，避免覆盖另一端的无关配置。记录交办使用 `POST /api/tables/records/:id/handoff`。
+
+应用列表与运行页、卡片查询、限定字段详情、表单提交和固定动作全部走 `/api/apps`；查询及写入钉住 `version`，记录动作携带 `revision`，不经更宽的表格接口读写应用记录。`stale_version` 保留原生表单草稿，只有明确重新载入才采用新的发布版本。搭建与发布仍在网页端，自定义 HTML 在手机端也禁用。没有新增接口或更改错误码。
+
+应用关联选项只查询当前发布的记录卡片，复用卡片筛选与应用权限；没有对应候选卡片时提供网页填写入口，不查询完整表格目录。成员候选使用成员目录，附件沿用受控上传与签名文件链接。

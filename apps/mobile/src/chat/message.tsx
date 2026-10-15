@@ -1,3 +1,4 @@
+import { readAloud, useSpeech } from '../voice/read-aloud';
 /**
  * Messages of a conversation (content layer — solid system colors, never glass), in the order
  * docs/design-system/conversation.md sets for a reply: conclusion → result cards → decisions →
@@ -45,15 +46,7 @@ import { Markdown, RichContext, type RichEnv } from './markdown';
 import { Inline } from './markdown/inline';
 import { MessageMenu } from './message-menu';
 
-export type MessageAction =
-  | 'copy'
-  | 'share'
-  | 'quote'
-  | 'edit'
-  | 'regenerate'
-  | 'rateUp'
-  | 'rateDown'
-  | 'newChat';
+export type MessageAction = 'copy' | 'share' | 'quote' | 'edit' | 'regenerate' | 'rateUp' | 'rateDown' | 'newChat';
 
 /** A tool step as a reply shows it: settled ones from the message, live ones from the stream. */
 export interface StepView {
@@ -111,7 +104,11 @@ export function DisclosureRow({
       accessibilityLabel={detail ? `${label}, ${detail}` : label}
       style={({ pressed }) => [styles.disclosure, pressed && { opacity: 0.5 }]}
     >
-      {busy ? <Spinner style={styles.disclosureSpinner} /> : <Icon name={icon} size={14} weight="medium" color={color} />}
+      {busy ? (
+        <Spinner style={styles.disclosureSpinner} />
+      ) : (
+        <Icon name={icon} size={14} weight="medium" color={color} />
+      )}
       <Text numberOfLines={1} style={[styles.disclosureText, { color }]}>
         {label}
       </Text>
@@ -151,7 +148,9 @@ export function ReplyError({ detail, onRetry }: { detail?: string; onRetry?: () 
     <View style={styles.error}>
       <Icon name="alert" size={15} weight="semibold" color={c.red} />
       <Text style={styles.errorText}>{t('conversation.replyFailed')}</Text>
-      {detail ? <NativeButton label={t('common.details')} size="small" onPress={() => showErrorDetails(detail)} /> : null}
+      {detail ? (
+        <NativeButton label={t('common.details')} size="small" onPress={() => showErrorDetails(detail)} />
+      ) : null}
       {onRetry ? <NativeButton label={t('common.retry')} icon="refresh" size="small" onPress={onRetry} /> : null}
     </View>
   );
@@ -312,7 +311,12 @@ export const MemberMessage = memo(function MemberMessage({
       )}
       <MessageFiles ids={message.attachments} align={mine ? 'end' : 'start'} />
       {meta ? (
-        <Text style={[styles.meta, mine ? styles.metaMine : null]} accessibilityLabel={readBy?.length ? t('conversation.readByNames', { names: readBy.join(t('common.listSep')) }) : undefined}>
+        <Text
+          style={[styles.meta, mine ? styles.metaMine : null]}
+          accessibilityLabel={
+            readBy?.length ? t('conversation.readByNames', { names: readBy.join(t('common.listSep')) }) : undefined
+          }
+        >
           {meta}
         </Text>
       ) : null}
@@ -359,7 +363,11 @@ export const AgentReply = memo(function AgentReply({
   const lang = usePrefs((s) => s.lang);
   const fontKey = useFontScaleKey();
   const { text, steps, live } = useReplyContent(message);
-  const rich = useMemo<RichEnv>(() => ({ reply: readOnly ? undefined : onReply, followUp }), [readOnly, onReply, followUp]);
+  const rich = useMemo<RichEnv>(
+    () => ({ reply: readOnly ? undefined : onReply, followUp }),
+    [readOnly, onReply, followUp],
+  );
+  const reading = useSpeech((s) => s.id === message.id);
   const rating = message.my_rating;
   const thinking = live && !text && !steps.length;
   const failedSteps = steps.filter((step) => step.status === 'failed').length;
@@ -371,6 +379,11 @@ export const AgentReply = memo(function AgentReply({
         [
           { id: 'copy', title: translate(lang, 'conversation.copy'), icon: 'copy' },
           { id: 'share', title: translate(lang, 'conversation.share'), icon: 'share' },
+          {
+            id: 'readAloud',
+            title: translate(lang, reading ? 'work.stopReading' : 'work.readAloud'),
+            icon: reading ? 'stop' : 'speaker',
+          },
           ...(readOnly ? [] : [{ id: 'quote', title: translate(lang, 'conversation.quote'), icon: 'quote' as const }]),
         ],
         [
@@ -392,7 +405,7 @@ export const AgentReply = memo(function AgentReply({
             : []),
         ],
       ]),
-    [lang, readOnly, canRegenerate, rating],
+    [lang, readOnly, canRegenerate, rating, reading],
   );
 
   const body = (
@@ -419,7 +432,13 @@ export const AgentReply = memo(function AgentReply({
         </View>
       ) : null}
       {text && !live ? (
-        <MessageMenu items={items} text={text} onSelect={(id) => onAction(message, id as MessageAction)}>
+        <MessageMenu
+          items={items}
+          text={text}
+          onSelect={(id) =>
+            id === 'readAloud' ? void readAloud(message.id, text) : onAction(message, id as MessageAction)
+          }
+        >
           {body}
         </MessageMenu>
       ) : (
@@ -459,7 +478,11 @@ export const AgentReply = memo(function AgentReply({
         {message.status === 'failed' ? <ReplyError /> : null}
         {message.status === 'stopped' ? <Text style={styles.note}>{t('conversation.stopped')}</Text> : null}
         {rating ? (
-          <View style={styles.rated} accessible accessibilityLabel={t(rating === 1 ? 'conversation.ratedUp' : 'conversation.ratedDown')}>
+          <View
+            style={styles.rated}
+            accessible
+            accessibilityLabel={t(rating === 1 ? 'conversation.ratedUp' : 'conversation.ratedDown')}
+          >
             <Icon name={rating === 1 ? 'thumbUpFill' : 'thumbDownFill'} size={13} color={c.tertiaryLabel} />
           </View>
         ) : null}
@@ -570,7 +593,13 @@ const useStyles = makeStyles((c) => ({
   chipSize: { ...typo.caption1, color: c.secondaryLabel },
 
   /* a person */
-  memberRow: { paddingHorizontal: space.margin, paddingTop: space.xs, paddingBottom: space.md, alignItems: 'flex-end', gap: space.xs },
+  memberRow: {
+    paddingHorizontal: space.margin,
+    paddingTop: space.xs,
+    paddingBottom: space.md,
+    alignItems: 'flex-end',
+    gap: space.xs,
+  },
   memberMenu: { alignSelf: 'flex-end', maxWidth: '84%' },
   memberCol: { alignItems: 'flex-end', gap: space.xs + 2 },
   quote: { flexDirection: 'row', gap: space.sm, maxWidth: '100%', paddingRight: space.xs },

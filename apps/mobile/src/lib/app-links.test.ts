@@ -16,10 +16,21 @@ describe('the web app’s routes as places in the app (PRD §6.4)', () => {
     expect(parseAppPath('#/settings/notifications')).toEqual({ kind: 'settings' });
   });
 
-  it('leaves knowledge, tables and apps to the web app for now', () => {
-    expect(parseAppPath('#/knowledge/doc-1')).toEqual({ kind: 'web', path: '/knowledge/doc-1' });
-    expect(parseAppPath('/knowledge/folder/f-1')).toEqual({ kind: 'web', path: '/knowledge/folder/f-1' });
-    expect(parseAppPath('#/tables/t1/rows/r1')).toEqual({ kind: 'web', path: '/tables/t1/rows/r1' });
+  it('opens knowledge, records and forms natively', () => {
+    expect(parseAppPath('#/knowledge/doc-1')).toEqual({ kind: 'knowledge', id: 'doc-1' });
+    expect(parseAppPath('/knowledge/folder/f-1')).toEqual({ kind: 'knowledge', folder: 'f-1' });
+    expect(parseAppPath('#/tables/b1/t1/v1?record=r1')).toEqual({
+      kind: 'tables',
+      base: 'b1',
+      table: 't1',
+      view: 'v1',
+      record: 'r1',
+    });
+    expect(parseAppPath('#/forms/f1')).toEqual({ kind: 'form', id: 'f1' });
+    expect(parseAppPath('#/apps/a1')).toEqual({ kind: 'apps', id: 'a1', page: undefined });
+    expect(parseAppPath('#/apps/a1/overview')).toEqual({ kind: 'apps', id: 'a1', page: 'overview' });
+    expect(parseAppPath('#/apps/a1/edit')).toEqual({ kind: 'web', path: '/apps/a1/edit' });
+    expect(parseAppPath('#/apps/a1/p/extra')).toBeNull();
   });
 
   it('follows nothing else', () => {

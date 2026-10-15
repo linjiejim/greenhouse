@@ -1,3 +1,4 @@
+import { clearHandoffs } from '../src/lib/handoff';
 /**
  * Root layout — bootstraps auth + prefs, applies the appearance, gates routes, and declares the
  * app's native navigation map (PRD §6.2):
@@ -32,7 +33,7 @@
 
 import 'react-native-gesture-handler';
 import React, { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
-import { View } from 'react-native';
+import { Keyboard, Platform, View } from 'react-native';
 import { useFonts } from 'expo-font';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -44,7 +45,8 @@ import { usePrefs } from '../src/store/prefs';
 import { useStations } from '../src/store/stations';
 import { StartupContent, waitsForHome } from '../src/startup/content';
 import { StartupContext } from '../src/startup/context';
-import { setOnUnauthorized } from '../src/api/client';
+import { fetch as expoFetch } from 'expo/fetch';
+import { setTransport, setOnUnauthorized } from '../src/api/client';
 import { useWidgetSnapshot } from '../src/widget/snapshot';
 import { useAccountLanguage } from '../src/settings/account-language';
 import { usePushBridge } from '../src/push/use-push';
@@ -66,6 +68,19 @@ import nunitoMedium from '../assets/fonts/Nunito-Medium.ttf';
 import nunitoSemiBold from '../assets/fonts/Nunito-SemiBold.ttf';
 import nunitoBold from '../assets/fonts/Nunito-Bold.ttf';
 
+setTransport((input, init) => (init?.body instanceof FormData ? expoFetch(input, init) : fetch(input, init)));
+let handoffIdentity = '';
+const followHandoffs = () => {
+  const next = `${useStations.getState().activeId ?? ''}:${useAuth.getState().user?.id ?? ''}`;
+  if (next !== handoffIdentity) {
+    handoffIdentity = next;
+    Keyboard.dismiss();
+    clearHandoffs();
+  }
+};
+useAuth.subscribe(followHandoffs);
+useStations.subscribe(followHandoffs);
+
 export const unstable_settings = { initialRouteName: '(drawer)' };
 
 /** Routes a signed-out member may be on: the login page and the stations sheet it opens. */
@@ -79,7 +94,7 @@ export default function RootLayout() {
     'Nunito-Bold': nunitoBold,
   });
   useApplyAppearance();
-  const { colors: c, hex } = useTheme();
+  const { colors: c, hex, isDark } = useTheme();
   const t = useT();
   const bootstrap = useAuth((s) => s.bootstrap);
   const loading = useAuth((s) => s.loading);
@@ -109,7 +124,10 @@ export default function RootLayout() {
   // eslint-disable-next-line react-hooks/exhaustive-deps -- these are the lifetime keys of the launch scope
   const content = useMemo(() => new StartupContent(), [loading, stationId, userId]);
   const contentReady = useSyncExternalStore(content.subscribe, content.getSnapshot, content.getSnapshot);
-  const startup = useMemo(() => ({ content, covered: !splashGone && !startupError }), [content, splashGone, startupError]);
+  const startup = useMemo(
+    () => ({ content, covered: !splashGone && !startupError }),
+    [content, splashGone, startupError],
+  );
 
   // Redirect based on auth state once bootstrap resolves.
   useEffect(() => {
@@ -146,7 +164,7 @@ export default function RootLayout() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <KeyboardProvider>
         <SafeAreaProvider>
-          <StatusBar style="auto" />
+          {Platform.OS === 'android' ? <StatusBar style={isDark ? 'light' : 'dark'} /> : null}
           <RealtimeBridge />
           <WidgetArtHost />
           <StartupContext.Provider value={startup}>
@@ -157,7 +175,10 @@ export default function RootLayout() {
             ) : mismatch ? (
               <MismatchScreen mismatch={mismatch} />
             ) : (
-              <Stack screenOptions={{ ...stackDefaults(c, hex), headerShown: false }} screenLayout={sheetEdgeLayout}>
+              <Stack
+                screenOptions={{ ...stackDefaults(c, hex, isDark), headerShown: false }}
+                screenLayout={sheetEdgeLayout}
+              >
                 {/* home is the stack's root: never popped by the back gesture (the drawer owns horizontal swipes) */}
                 <Stack.Screen name="(drawer)" options={{ title: t('nav.chat'), gestureEnabled: false }} />
                 <Stack.Screen name="login" options={{ animation: 'fade', gestureEnabled: false }} />
@@ -169,6 +190,28 @@ export default function RootLayout() {
                 <Stack.Screen name="runs/index" options={pageScreen(c, { grouped: true })} />
                 <Stack.Screen name="runs/[id]" options={detailScreen(c)} />
 
+                <Stack.Screen name="knowledge/index" options={pageScreen(c, { grouped: true })} />
+                <Stack.Screen name="knowledge/doc" options={detailScreen(c)} />
+                <Stack.Screen name="knowledge/versions" options={detailScreen(c, { grouped: true })} />
+                <Stack.Screen name="knowledge/shares" options={detailScreen(c, { grouped: true })} />
+                <Stack.Screen name="knowledge/file" options={detailScreen(c)} />
+                <Stack.Screen name="knowledge/edit" options={sheetScreen([1], { header: true })} />
+                <Stack.Screen name="apps/index" options={pageScreen(c, { grouped: true })} />
+                <Stack.Screen name="apps/runtime" options={detailScreen(c, { grouped: true })} />
+                <Stack.Screen name="apps/card" options={sheetScreen([1], { header: true })} />
+                <Stack.Screen name="agents/standing" options={detailScreen(c, { grouped: true })} />
+                <Stack.Screen name="agents/schedules" options={detailScreen(c, { grouped: true })} />
+                <Stack.Screen name="agents/schedule" options={sheetScreen([1], { header: true })} />
+                <Stack.Screen name="tables/handoff" options={sheetScreen([1], { header: true })} />
+                <Stack.Screen name="tables/index" options={pageScreen(c, { grouped: true })} />
+                <Stack.Screen name="tables/forms" options={detailScreen(c, { grouped: true })} />
+                <Stack.Screen name="comments" options={detailScreen(c, { grouped: true })} />
+                <Stack.Screen name="tables/base" options={detailScreen(c, { grouped: true })} />
+                <Stack.Screen name="tables/view" options={detailScreen(c, { grouped: true })} />
+                <Stack.Screen name="tables/record" options={sheetScreen([1], { header: true })} />
+                <Stack.Screen name="tables/form" options={sheetScreen([1], { header: true })} />
+                <Stack.Screen name="agents/mailbox" options={detailScreen(c, { grouped: true })} />
+                <Stack.Screen name="agents/mail" options={sheetScreen([1], { header: true })} />
                 {/* ── sheets: a card in full, short forms, details ── */}
                 <Stack.Screen name="request" options={sheetScreen([1], { header: true })} />
                 <Stack.Screen name="agents/edit" options={sheetScreen([1], { header: true })} />
@@ -179,7 +222,10 @@ export default function RootLayout() {
                 <Stack.Screen name="sheets/stations" options={sheetScreen([0.6, 1], { header: true })} />
 
                 {/* an Agent's computer: full screen, no swipe-down (fingers on the screen are the computer's) */}
-                <Stack.Screen name="computer" options={{ ...detailScreen(c), presentation: 'fullScreenModal', gestureEnabled: false }} />
+                <Stack.Screen
+                  name="computer"
+                  options={{ ...detailScreen(c), presentation: 'fullScreenModal', gestureEnabled: false }}
+                />
 
                 {/* ── modals with their own stack ── */}
                 <Stack.Screen name="settings" options={modalScreen()} />

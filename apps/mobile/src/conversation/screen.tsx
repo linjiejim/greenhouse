@@ -1,3 +1,6 @@
+import { stopReading } from '../voice/read-aloud';
+import { WriteReceipt } from './write-receipt';
+import { MailCard } from '../mail/card';
 /**
  * A conversation (PRD §7.1): the main thread, an Agent thread, a chat or a room — one screen on
  * the home route (`?c=`), inside the drawer.
@@ -63,7 +66,7 @@ import { t as tNow, useT } from '../lib/i18n';
 import { relativeTimeNow } from '../lib/time-words';
 import { clearConversationBanners } from '../push/banners';
 import { RequestCard } from '../requests/request-card';
-import type { Conversation, MessageItem, NeedsYou, Skill } from '../shared/contract';
+import type { Conversation, Me, MessageItem, NeedsYou, Skill } from '../shared/contract';
 import { shareTextFile } from '../lib/share-file';
 import { openMainThread, openNewChat } from '../shell/nav';
 import { useAuth } from '../store/auth';
@@ -88,20 +91,28 @@ const MVCP = { minIndexForVisible: 1 } as const;
 const NO_SKILLS: Skill[] = [];
 const NO_CANDIDATES: MentionCandidate[] = [];
 
-export function ConversationScreen({
-  conversationId: id,
-  title: placeholderTitle,
-  request: linkedRequest,
-  compose,
-  onRequestSeen,
-}: {
+interface ConversationScreenProps {
   conversationId: string;
   title: string;
   /** A card to scroll to and highlight (a push, a deep link). */
   request: string;
   compose: boolean;
   onRequestSeen: () => void;
-}) {
+}
+
+export function ConversationScreen(props: ConversationScreenProps) {
+  const me = useAuth((s) => s.user);
+  return me ? <MemberConversationScreen key={me.id} {...props} me={me} /> : null;
+}
+
+function MemberConversationScreen({
+  conversationId: id,
+  title: placeholderTitle,
+  request: linkedRequest,
+  compose,
+  onRequestSeen,
+  me,
+}: ConversationScreenProps & { me: Me }) {
   const { colors: c } = useTheme();
   const styles = useStyles(c);
   const t = useT();
@@ -110,8 +121,16 @@ export function ConversationScreen({
   const insets = useSafeAreaInsets();
   const headerHeight = useHeaderInset();
   const focused = useIsFocused();
-  const me = useAuth((s) => s.user)!;
-
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state !== 'active') stopReading();
+    });
+    return () => sub.remove();
+  }, []);
+  useEffect(() => {
+    if (!focused) stopReading();
+    return stopReading;
+  }, [focused, id]);
   /* ---------- data ---------- */
   const listed = useWorkspace((s) => s.conversations?.find((item) => item.id === id));
   const agents = useWorkspace((s) => s.agents);
@@ -164,9 +183,7 @@ export function ConversationScreen({
       ...thread.members.agents
         .filter((agent) => agent.owner_id === me.id)
         .map((agent) => ({ handle: `agent:${agent.id}`, name: agent.name, hint: agent.role })),
-      ...thread.members.members
-        .filter((person) => person.id !== me.id)
-        .map((person) => ({ handle: person.id, name: person.name, hint: person.email })),
+      ...thread.members.members.map((person) => ({ handle: person.id, name: person.name, hint: person.email })),
     ];
   }, [room, thread?.members, me.id]);
   const faces = useCallback(
@@ -469,18 +486,25 @@ export function ConversationScreen({
 
   /* ---------- the header ---------- */
   const people = useMemo(
-    () =>
-      (thread?.members?.members ?? [])
-        .filter((person) => person.id !== me.id)
-        .map((person) => ({ name: person.name, avatarUrl: person.avatar_url })),
-    [thread?.members, me.id],
+    () => [
+      ...(thread?.members?.members ?? []).map((person) => ({ name: person.name, avatarUrl: person.avatar_url })),
+      ...(thread?.members?.agents ?? []).map((agent) => ({
+        name: agent.name,
+        avatarUrl: null,
+        agent: { id: agent.id, avatar: agent.avatar, template_key: null },
+      })),
+    ],
+    [thread?.members],
   );
   const computers = me.modules.computer && me.capabilities.sandbox;
   const headerModel = useMemo<HeaderModel>(() => {
     const name =
       kind === 'main' || kind === 'direct'
         ? (answering?.name ?? conversation?.title ?? placeholderTitle)
-        : conversation?.title || (room ? people.map((p) => p.name).join('、') : '') || placeholderTitle || t('conversation.untitled');
+        : conversation?.title ||
+          (room ? people.map((p) => p.name).join('、') : '') ||
+          placeholderTitle ||
+          t('conversation.untitled');
     const status = working
       ? t('conversation.statusWorking')
       : kind === 'main'
@@ -501,7 +525,20 @@ export function ConversationScreen({
       computer: computers && !room && !!answering,
       badge: badgeOf(summary),
     };
-  }, [kind, answering, conversation, placeholderTitle, room, people, t, working, thread?.members, detail, computers, summary]);
+  }, [
+    kind,
+    answering,
+    conversation,
+    placeholderTitle,
+    room,
+    people,
+    t,
+    working,
+    thread?.members,
+    detail,
+    computers,
+    summary,
+  ]);
 
   const openAgentProfile = useCallback(() => {
     const agentId = latest.current.conversation?.agent_id;
@@ -642,7 +679,14 @@ export function ConversationScreen({
   const rows = messages.map((message, index) => {
     const previous = messages[index - 1];
     const showAuthor = startsGroup(message, previous);
-    if (message.role === 'event') return <EventLine key={message.id} text={message.content} />;
+    if (message.role === 'event')
+      return message.event?.type === 'write_receipt' ? (
+        <WriteReceipt key={message.id} message={message} />
+      ) : message.event?.type === 'mail' ? (
+        <MailCard key={message.id} message={message} />
+      ) : (
+        <EventLine key={message.id} text={message.content} />
+      );
     if (message.role === 'user') {
       const mine = message.author_member_id === me.id;
       const author = lookup.person(message.author_member_id) ?? { name: t('conversation.someone'), avatarUrl: null };
@@ -722,7 +766,12 @@ export function ConversationScreen({
   ) : composer.picker.length ? (
     <PickerStrip entries={composer.picker} faces={faces} onPick={composer.pick} />
   ) : composer.skill?.variables.length ? (
-    <SkillFields skill={composer.skill} values={composer.fields} onChange={composer.setField} onSubmit={() => void send()} />
+    <SkillFields
+      skill={composer.skill}
+      values={composer.fields}
+      onChange={composer.setField}
+      onSubmit={() => void send()}
+    />
   ) : null;
   const menuExtra = useMemo(
     () =>
@@ -799,7 +848,9 @@ export function ConversationScreen({
         ))}
       </KeyboardChatScrollView>
 
-      {loading ? <LoadingState style={[styles.center, { top: headerHeight, bottom: composerH + composerBottom }]} /> : null}
+      {loading ? (
+        <LoadingState style={[styles.center, { top: headerHeight, bottom: composerH + composerBottom }]} />
+      ) : null}
       {failed ? (
         <View style={[styles.center, { top: headerHeight, bottom: composerH + composerBottom }]}>
           <EmptyState
@@ -848,7 +899,11 @@ export function ConversationScreen({
               files={composer.files}
               onRemoveFile={composer.removeFile}
               onRetryFiles={composer.retryFiles}
-              skill={composer.skill ? `/${composer.skill.name}${composer.skill.display_name ? ` · ${composer.skill.display_name}` : ''}` : null}
+              skill={
+                composer.skill
+                  ? `/${composer.skill.name}${composer.skill.display_name ? ` · ${composer.skill.display_name}` : ''}`
+                  : null
+              }
               onClearSkill={composer.clearSkill}
               placeholder={placeholder}
               autoFocus={compose}
@@ -873,7 +928,13 @@ const useStyles = makeStyles((c) => ({
   scroll: { flex: 1 },
   older: { alignItems: 'center', paddingVertical: space.md },
   olderSpinner: { flexGrow: 0 },
-  digest: { ...typo.footnote, color: c.tertiaryLabel, textAlign: 'center', paddingHorizontal: space.xxl, paddingBottom: space.md },
+  digest: {
+    ...typo.footnote,
+    color: c.tertiaryLabel,
+    textAlign: 'center',
+    paddingHorizontal: space.xxl,
+    paddingBottom: space.md,
+  },
   cards: { gap: space.sm, alignSelf: 'stretch' },
   looseCard: { paddingBottom: space.md },
   center: { ...StyleSheet.absoluteFill, alignItems: 'center', justifyContent: 'center' },

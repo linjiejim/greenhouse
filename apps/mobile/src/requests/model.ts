@@ -47,7 +47,10 @@ export const KIND_ICON = {
 export type CardAction = 'approve' | 'reject' | 'answer' | 'takeOver' | 'handBack' | 'signInMyself';
 
 /** Which buttons a card has, primary last; none once it is decided. */
-export function cardActions(request: Pick<NeedsYou, 'kind' | 'subject' | 'status' | 'agent_id'>, computers: boolean): CardAction[] {
+export function cardActions(
+  request: Pick<NeedsYou, 'kind' | 'subject' | 'status' | 'agent_id'>,
+  computers: boolean,
+): CardAction[] {
   if (request.status !== 'pending') return [];
   switch (request.kind) {
     case 'question':
@@ -139,9 +142,17 @@ export function cardBody(request: Pick<NeedsYou, 'kind' | 'subject' | 'payload'>
   }
   if (request.kind === 'takeover') return { reason, details: [], body: '', bodyLabel: null, fields: [] };
   // An approval: what it would do, as the Agent's tool described it.
-  const details =
-    payload.details && typeof payload.details === 'object' && !Array.isArray(payload.details)
-      ? Object.entries(payload.details as Record<string, unknown>).map(([label, value]) => ({ label, value: text(value) }))
+  const details = Array.isArray(payload.details)
+    ? payload.details.flatMap((row: unknown) => {
+        if (!row || typeof row !== 'object') return [];
+        const detail = row as Record<string, unknown>;
+        return typeof detail.label === 'string' ? [{ label: detail.label, value: text(detail.value) }] : [];
+      })
+    : payload.details && typeof payload.details === 'object' && !Array.isArray(payload.details)
+      ? Object.entries(payload.details as Record<string, unknown>).map(([label, value]) => ({
+          label,
+          value: text(value),
+        }))
       : [];
   return { reason, details, body: '', bodyLabel: null, fields: [] };
 }
@@ -164,4 +175,13 @@ export function secondsLeft(request: Pick<NeedsYou, 'status' | 'expires_at'>, no
   if (request.status !== 'pending' || !request.expires_at) return null;
   const left = Math.ceil(((parseMs(request.expires_at) || 0) - now) / 1000);
   return left >= 0 && left <= 60 ? left : null;
+}
+
+/** Only an explicit tier2 scope can be offered as a standing approval. */
+export function standingScope(request: NeedsYou): 'folder' | 'table' | null {
+  const scope = request.payload.standing_scope;
+  if (request.kind !== 'approval' || request.payload.tier !== 'tier2' || !scope || typeof scope !== 'object')
+    return null;
+  const type = (scope as { type?: unknown }).type;
+  return type === 'folder' || type === 'table' ? type : null;
 }

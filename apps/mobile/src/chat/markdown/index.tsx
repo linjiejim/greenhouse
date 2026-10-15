@@ -60,7 +60,7 @@ const Fence = memo(function Fence({ lang, raw }: { lang: string; raw: string }) 
   );
 });
 
-function renderBlock(b: Block, i: number, live: boolean) {
+function renderBlock(b: Block, i: number, live: boolean, safe: boolean) {
   switch (b.kind) {
     case 'heading':
       return <Heading key={i} level={b.level} text={b.text} />;
@@ -81,7 +81,7 @@ function renderBlock(b: Block, i: number, live: boolean) {
     case 'code': {
       // Known fence langs (chart, …) render as their custom block; the rest
       // are plain code. This is the whole extension surface.
-      if (!fenceBlocks[b.lang]) return <CodeBlock key={i} lang={b.lang} code={b.text} />;
+      if (safe || !fenceBlocks[b.lang]) return <CodeBlock key={i} lang={b.lang} code={b.text} />;
       // still streaming in: no half-written JSON / HTML (turn-input fences render nothing anyway)
       if (b.open && live) return b.lang.endsWith('attachments') ? null : <PendingBlock key={i} lang={b.lang} />;
       return <Fence key={i} lang={b.lang} raw={b.text} />;
@@ -91,13 +91,21 @@ function renderBlock(b: Block, i: number, live: boolean) {
   }
 }
 
-export function Markdown({ source, animated = false }: { source: string; animated?: boolean }) {
+export function Markdown({
+  source,
+  animated = false,
+  safe = false,
+}: {
+  source: string;
+  animated?: boolean;
+  safe?: boolean;
+}) {
   const blocks = useMemo(() => parseBlocks(source), [source]);
   return (
     <View>
       {blocks.map((b, i) => (
         <Animated.View key={i} entering={animated ? FadeIn.duration(260) : undefined}>
-          {renderBlock(b, i, animated)}
+          {renderBlock(b, i, animated, safe)}
         </Animated.View>
       ))}
     </View>

@@ -264,3 +264,11 @@ M3.4 计数（#70）：`metric_events` 仅存 identity id、member_id（逻辑�
 - 基线应用器在迁移锁内建立 ICU `greenhouse_natural` collation（`zh-u-co-pinyin-kn-true`），目录树的名称比较、排序与游标使用同一规则，不改变表结构。Postgres 需要 ICU 支持。
 - 语音总计直接从 `usage_events.quantity` 汇总：STT + second → `stt_seconds`，TTS + character → `tts_characters`；不增加计数表或缓存。
 - 自动化 Agent 子运行的 `runs.input` 同时保存 `automation_run_id` 和 `automation_action_index`。执行历史按每个步骤关联后台运行；尚未建立运行时保持排队，全部完成后才显示完成。派发器的结束时间不作为 Agent 完成时间。
+
+### 移动端 phase 2（#70）
+
+知识库、表格、评论、表单和 Agent 邮箱共用现有 v2 对象与权限，不新增数据表或迁移。移动端复用 `version` / `revision` 做并发检查；Markdown 与字段值由服务端保存，未保存的输入只暂存在当前原生表单。
+
+### 移动端最新 v2 集成（#70）
+
+移动端只消费既有审批范围、步骤回执、日程 `quiet`、记录交办、应用及不可变发布、运行摘要与发现，不新增数据表或迁移。预先授权由成员在当前 tier2 卡片明确选择，授权和撤销均以服务端对象为准。应用卡片的字段范围和发布版本不由原生草稿扩大；未保存字段只留在当前成员／工作站及该对象的原生表单，身份变化清空。

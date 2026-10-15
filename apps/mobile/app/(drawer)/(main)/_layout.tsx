@@ -13,9 +13,9 @@ import { useTheme } from '../../../src/theme';
 import { detailScreen, stackDefaults } from '../../../src/ui/nav';
 
 export default function MainLayout() {
-  const { colors: c, hex } = useTheme();
+  const { colors: c, hex, isDark } = useTheme();
   return (
-    <Stack screenOptions={{ ...stackDefaults(c, hex), ...detailScreen(c) }}>
+    <Stack screenOptions={{ ...stackDefaults(c, hex, isDark), ...detailScreen(c) }}>
       <Stack.Screen name="index" options={{ animation: 'fade', animationDuration: 200, gestureEnabled: false }} />
     </Stack>
   );
