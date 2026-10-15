@@ -298,7 +298,7 @@ export function createServices(config: AppConfig, options: ServiceOptions = {}):
       requestTakeoverTool(),
       browserTool(browser, files),
       vaultTool(vault, browser),
-      runStartTool(background),
+      runStartTool(background, computers, providers),
       helperRunTool(background),
       runFinishTool(computers),
       handoffTool(handOff),

@@ -3,6 +3,7 @@
  * automations. Running and finished lists filter by Agent; 定时 lists every schedule.
  */
 
+import type { RunView } from '@greenhouse/contract';
 import { useState } from 'react';
 import { Activity, CalendarClock, Play } from 'lucide-react';
 import { Button, Empty, ErrorBox, Select, Skeleton, StatusBadge, Switch } from '@greenhouse/ui/kit';
@@ -76,8 +77,7 @@ function Schedules() {
 }
 
 function RunList({ view }: { view: 'active' | 'done' }) {
-  const { t, locale } = useI18n();
-  const me = useMe();
+  const { t } = useI18n();
   const agents = useAgents('mine');
   const [agent, setAgent] = useState('');
   const runs = useRuns(view, agent || undefined);
@@ -97,38 +97,67 @@ function RunList({ view }: { view: 'active' | 'done' }) {
   if (runs.isPending) body = <Skeleton lines={5} />;
   else if (runs.isError) body = <ErrorBox onRetry={() => void runs.refetch()}>{t('common.error')}</ErrorBox>;
   else if (!runs.items.length)
-    body = <Empty icon={<Activity />} title={view === 'active' ? t('runs.noneActive') : t('runs.noneDone')} />;
-  else
-    body = (
-      <ul className="app-list">
-        {runs.items.map((run) => {
-          const owner = agents.items.find((item) => item.id === run.agent_id);
-          const status = RUN_STATUS[run.status];
-          const when = run.finished_at ?? run.started_at ?? run.created_at;
-          return (
-            <li key={run.id}>
-              <a className="app-list-row" href={href({ page: 'run', id: run.id })}>
-                {owner && <AgentAvatar agent={owner} size={24} />}
-                <span className="app-list-main">
-                  <span className="app-list-title">{run.title}</span>
-                  <span className="app-list-meta">
-                    {owner?.name ?? ''} · {t(RUN_SOURCE[run.source])}
-                  </span>
-                </span>
-                <StatusBadge status={t(status.word)} tone={status.tone} />
-                <time className="app-list-time" dateTime={when}>
-                  {relativeTime(when, { locale, timeZone: me.timezone })}
-                </time>
-              </a>
-            </li>
-          );
-        })}
-      </ul>
-    );
+    body =
+      view === 'active' ? (
+        <RecentFinished items={runs.data?.recent_finished ?? []} />
+      ) : (
+        <Empty icon={<Activity />} title={t('runs.noneDone')} />
+      );
+  else body = <RunRows items={runs.items} />;
   return (
     <>
       <div className="app-toolbar">{filter}</div>
       {body}
+    </>
+  );
+}
+
+function RunRows({ items }: { items: RunView[] }) {
+  const { t, locale } = useI18n();
+  const me = useMe();
+  const agents = useAgents('mine');
+  return (
+    <ul className="app-list">
+      {items.map((run) => {
+        const owner = agents.items.find((item) => item.id === run.agent_id);
+        const status = RUN_STATUS[run.status];
+        const when = run.finished_at ?? run.started_at ?? run.created_at;
+        return (
+          <li key={run.id}>
+            <a className="app-list-row" href={href({ page: 'run', id: run.id })}>
+              {owner && <AgentAvatar agent={owner} size={24} />}
+              <span className="app-list-main">
+                <span className="app-list-title">{run.title}</span>
+                <span className="app-list-meta">
+                  {owner?.name ?? ''} · {t(RUN_SOURCE[run.source])}
+                </span>
+              </span>
+              <StatusBadge status={t(status.word)} tone={status.tone} />
+              <time className="app-list-time" dateTime={when}>
+                {relativeTime(when, { locale, timeZone: me.timezone })}
+              </time>
+            </a>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+function RecentFinished({ items }: { items: RunView[] }) {
+  const { t } = useI18n();
+  return (
+    <>
+      <Empty icon={<Activity />} title={t('runs.noneActive')} />
+      <p>
+        <a href={href({ page: 'runs', view: 'done' })}>{t('runs.viewFinished')}</a>
+      </p>
+      {items.length > 0 && (
+        <>
+          <p className="app-muted">{t('runs.recentFinished')}</p>
+          <RunRows items={items} />
+        </>
+      )}
     </>
   );
 }

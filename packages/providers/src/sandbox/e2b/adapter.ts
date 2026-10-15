@@ -575,6 +575,7 @@ export function createE2bSandbox(config: E2bConfig, apiKey: string, deps: E2bDep
   }
 
   const client: SandboxClient = {
+    backgroundNetwork: 'domains',
     async setEgress(name, domains) {
       const handle = await running(checkName(name));
       await api.network(

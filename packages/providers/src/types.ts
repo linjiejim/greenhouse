@@ -158,6 +158,8 @@ export interface SandboxStream {
 }
 
 export interface SandboxClient {
+  /** Whether a background computer can enforce a nonempty domain allowlist. */
+  backgroundNetwork?: 'offline' | 'domains';
   /** Temporary background egress. Empty means offline; null restores the provider's normal rules. */
   setEgress?(name: string, domains: readonly string[] | null): Promise<void>;
   /** Starts the computer, creating it with an empty home the first time. Idempotent. */

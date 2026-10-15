@@ -228,7 +228,7 @@ a {
   display: flex;
   align-items: center;
   gap: var(--gh-space-1);
-  height: var(--gh-header-height);
+  height: var(--gh-header);
   flex-shrink: 0;
 }
 
@@ -434,7 +434,7 @@ a {
 }
 
 .app-page-header {
-  height: var(--gh-header-height);
+  height: var(--gh-header);
   flex-shrink: 0;
   display: flex;
   align-items: center;
@@ -2628,7 +2628,7 @@ button.app-list-row {
 
 .app-offline {
   position: absolute;
-  top: calc(var(--gh-header-height) + var(--gh-space-2));
+  top: calc(var(--gh-header) + var(--gh-space-2));
   left: 50%;
   transform: translateX(-50%);
   z-index: var(--gh-z-toast);
@@ -3932,4 +3932,37 @@ button.app-agent-card {
 .app-markdown-preview h6 {
   font-size: 1em;
   margin: var(--gh-space-2) 0;
+}
+
+.app-room-empty {
+  padding: var(--gh-space-6);
+  color: var(--gh-secondary);
+}
+.app-room-roster {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--gh-space-3);
+}
+.app-room-roster > span {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--gh-space-2);
+}
+
+.app-preserve-lines {
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+
+.app-page-header.is-wrap {
+  height: auto;
+  min-height: var(--gh-header-height);
+  flex-wrap: wrap;
+  padding-block: var(--gh-space-2);
+}
+.app-page-header.is-wrap .app-page-title {
+  flex: 1 1 8rem;
+}
+.app-page-header.is-wrap > button {
+  flex-shrink: 0;
 }

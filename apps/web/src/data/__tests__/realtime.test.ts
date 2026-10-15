@@ -159,3 +159,15 @@ it('discards an unfinished suffix before resumed deltas, even for a prefix too l
   applyEvent(client, {type:'message.resumed', data:{conversation_id:'cnv_1',message_id:'msg_2',offset:prefix.length}});
   expect(shown(client)).toEqual([[2,prefix+'continued','complete']]);
 });
+
+it('refreshes committed pending approvals when a turn becomes idle', async () => {
+  const read = vi.fn(async () => ({ id: 'cnv_1', working: false, pending_requests: 1 }));
+  client.setQueryData(keys.conversations, { pages: [{ items: [{ id: 'cnv_1', working: true, pending_requests: 0 }], next_cursor: null }], pageParams: [undefined] });
+  const observer = new QueryObserver(client, { queryKey: keys.conversations, queryFn: async () => ({ pages: [{ items: [await read()], next_cursor: null }], pageParams: [undefined] }), staleTime: Infinity });
+  const stop = observer.subscribe(() => undefined);
+  try {
+    applyEvent(client, { type: 'conversation.updated', data: { conversation_id: 'cnv_1', changes: { working: false } } });
+    await vi.waitFor(() => expect(read).toHaveBeenCalled());
+    expect(client.getQueryData<{pages: { items: { pending_requests: number }[] }[]}>(keys.conversations)!.pages[0]!.items[0]!.pending_requests).toBe(1);
+  } finally { stop(); }
+});

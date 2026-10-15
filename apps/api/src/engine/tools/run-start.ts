@@ -1,5 +1,7 @@
 import { z } from 'zod';
 import { createScheduleInputSchema } from '@greenhouse/contract';
+import type { ProvidersService } from '../../providers/service.js';
+import type { ComputersService } from '../../modules/computers/service.js';
 import type { Background } from '../background.js';
 import { defineTool } from './define.js';
 
@@ -11,7 +13,7 @@ export const backgroundOptionsSchema = createScheduleInputSchema.pick({
 });
 
 /** Long work goes into a background run; the Agent can only propose it, the member starts it. */
-export function runStartTool(background: Background) {
+export function runStartTool(background: Background, computers: ComputersService, providers: ProvidersService) {
   return defineTool({
     name: 'run_start',
     description:
@@ -24,6 +26,39 @@ export function runStartTool(background: Background) {
     risk: 'read',
     surfaces: ['turn'],
     async execute(args, ctx) {
+      const network = args.computer ? await computers.backgroundNetwork(ctx.memberId, ctx.agent.id) : null;
+      const sites = args.domains.join(' · ');
+      const enabled = (name: string) => ctx.manifest.tools === null || ctx.manifest.tools.includes(name);
+      const web = await providers.available('search', { memberId: ctx.memberId });
+      const search = web && enabled('web_search');
+      const read = web && enabled('web_fetch');
+      const zh = ctx.locale === 'zh';
+      const webLabel = zh
+        ? search && read
+          ? '使用搜索和网页阅读'
+          : search
+            ? '使用搜索'
+            : read
+              ? '使用网页阅读'
+              : '本运行未启用搜索或网页阅读'
+        : search && read
+          ? 'Search and page reading'
+          : search
+            ? 'Search'
+            : read
+              ? 'Page reading'
+              : 'Search and page reading are not enabled for this run';
+      const accessSummary =
+        network === 'domains'
+          ? zh
+            ? `使用电脑 · 可访问的域名：${sites || '无（离线）'}`
+            : `Computer · Allowed domains: ${sites || 'None (offline)'}`
+          : [
+              ...(network === 'offline' ? [zh ? '电脑仅用于离线工作' : 'Computer for offline work only'] : []),
+              zh
+                ? `${webLabel}${sites ? ` · 研究网站：${sites}` : ''}`
+                : `${webLabel}${sites ? ` · Research sites: ${sites}` : ''}`,
+            ].join('\n');
       const request = await ctx.raise({
         kind: 'proposal',
         subject: 'run_start',
@@ -33,6 +68,7 @@ export function runStartTool(background: Background) {
             : `${ctx.agent.name} proposes a background run: ${args.title}`,
         payload: {
           run_title: args.title,
+          access_summary: accessSummary,
           brief: args.brief,
           computer: args.computer,
           domains: args.domains,
@@ -41,7 +77,12 @@ export function runStartTool(background: Background) {
         waits: false,
         expiresInMs: DAY_MS,
       });
-      return { status: 'proposed', request_id: request.id };
+      return {
+        status: 'proposed',
+        status_label: zh ? '已提议，等你确认' : 'Proposed, awaiting your confirmation',
+        access_summary: accessSummary,
+        request_id: request.id,
+      };
     },
     async decide(request, ctx) {
       const title = String(request.payload.run_title ?? '');

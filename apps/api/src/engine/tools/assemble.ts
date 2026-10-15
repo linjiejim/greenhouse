@@ -18,9 +18,9 @@ import {
   type NeedsYouRequest,
 } from '@greenhouse/db';
 import type { ApprovalsService } from '../../modules/agents/approvals.js';
-import { toErrorMessage } from '@greenhouse/utils/error';
 import { surfacesOf, type AvailabilityContext, type Card, type ToolContext, type ToolDef } from './define.js';
-import { argumentDetails } from './presentation.js';
+import { ApiError } from '../../http/errors.js';
+import { argumentDetails, failureSummary } from './presentation.js';
 import { toolInputSchema } from './schema.js';
 import { createKeyedLock } from '../locks.js';
 
@@ -372,8 +372,13 @@ export async function assembleTools(input: {
                   transaction(perform),
                 );
           } catch (error) {
-            await finish('failed', undefined, toErrorMessage(error));
-            throw error;
+            const summary = failureSummary(def, args, error, call);
+            await finish('failed', undefined, summary);
+            throw new ApiError(
+              error instanceof ApiError ? error.status : 502,
+              error instanceof ApiError ? error.code : 'tool_failed',
+              summary,
+            );
           }
         }),
     } as never);

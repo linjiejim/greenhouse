@@ -49,6 +49,7 @@ export type BaseFieldConfig = {
   options?: Array<{ id: string; label: string; color: string }>;
   /** Number: decimal places shown. */
   precision?: number;
+  currency?: string;
   /** Member and relation: more than one. */
   multiple?: boolean;
   /** Relation: the data table it links to, in the same base. */

@@ -259,7 +259,8 @@ export function applyEvent(client: QueryClient, event: Exclude<RealtimeEvent, { 
         return;
       }
       patchConversation(client, event.data.conversation_id, event.data.changes);
-      if ('title' in event.data.changes || 'archived' in event.data.changes) soon(client, keys.conversations);
+      if ('title' in event.data.changes || 'archived' in event.data.changes || event.data.changes.working === false) soon(client, keys.conversations);
+      if (event.data.changes.working === false) soon(client, keys.conversation(event.data.conversation_id));
       return;
     case 'notes.updated':
       soon(client, keys.notes(event.data.conversation_id));

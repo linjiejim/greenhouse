@@ -92,6 +92,7 @@ export type MessageStep = {
   summary: string;
   status: 'done' | 'failed';
   durationMs?: number;
+  recovered?: boolean;
   approvalStepId?: string;
 };
 export type MessageCitation = { kind: string; id: string; title: string; url?: string };

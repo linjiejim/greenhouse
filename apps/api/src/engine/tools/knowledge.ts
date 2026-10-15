@@ -16,6 +16,7 @@ import {
 } from '@greenhouse/contract';
 import { ApiError } from '../../http/errors.js';
 import type { As, KnowledgeService } from '../../modules/knowledge/service.js';
+import { spaceLabel, accessLabel } from './presentation.js';
 import { diffText } from '../../modules/knowledge/diff.js';
 import { defineTool, type ToolContext } from './define.js';
 
@@ -233,7 +234,8 @@ export function knowledgeTools(knowledge: KnowledgeService) {
             type: hit.type,
             id: hit.id,
             title: hit.title,
-            where: pathText(hit.path) || hit.space,
+            where: pathText(hit.path) || spaceLabel(hit.space, ctx.locale),
+            space_label: spaceLabel(hit.space, ctx.locale),
             snippet: hit.snippet,
             updated_at: hit.updated_at,
           })),
@@ -247,9 +249,11 @@ export function knowledgeTools(knowledge: KnowledgeService) {
           id: doc.id,
           title: doc.title,
           link: docHref(doc.id),
-          where: pathText(doc.path) || doc.space,
+          where: pathText(doc.path) || spaceLabel(doc.space, ctx.locale),
+          space_label: spaceLabel(doc.space, ctx.locale),
           version: doc.version,
           access: doc.access,
+          access_label: accessLabel(doc.access, ctx.locale),
           updated_at: doc.updated_at,
           updated_by: doc.updated_by?.name ?? null,
           content: doc.content.slice(args.offset, end),
@@ -262,7 +266,13 @@ export function knowledgeTools(knowledge: KnowledgeService) {
         for (const id of ctx.agent.publication.folderIds ?? []) {
           if (!reader.publicationFolders.includes(id)) continue;
           const folder = await knowledge.folder(ctx.memberId, id, as(ctx));
-          items.push({ type: 'folder', id: folder.id, name: folder.name, access: 'viewer' });
+          items.push({
+            type: 'folder',
+            id: folder.id,
+            name: folder.name,
+            access: 'viewer',
+            access_label: accessLabel('viewer', ctx.locale),
+          });
         }
         return { items };
       }
@@ -275,7 +285,13 @@ export function knowledgeTools(knowledge: KnowledgeService) {
         : (await knowledge.roots(ctx.memberId, args.space === 'shared' ? 'shared' : (place.space ?? 'team'), as(ctx)))
             .items;
       return {
-        items: items.map((item) => ({ type: item.type, id: item.id, name: item.name, access: item.access })),
+        items: items.map((item) => ({
+          type: item.type,
+          id: item.id,
+          name: item.name,
+          access: item.access,
+          access_label: accessLabel(item.access, ctx.locale),
+        })),
       };
     },
     summarize: (args, output, locale) => {
@@ -318,6 +334,13 @@ export function knowledgeTools(knowledge: KnowledgeService) {
 
   const mutation = defineTool({
     name: 'knowledge_mutation',
+    async retryTarget(args) {
+      return JSON.stringify(
+        args.action === 'create'
+          ? [args.action, args.title, args.folder_id ?? null, args.space ?? null]
+          : [args.action, args.doc_id],
+      );
+    },
     description:
       'Change the knowledge base with the member\'s rights: create a doc, edit one (read it first and send its version; prefer edits with exact find/replace for small changes), move a doc, or comment on one. Reversible changes visible only to this member or in your private reference folder (space "agent") run immediately with undo. Shared changes use an approval card or the member’s standing approval; outside reads disable standing approvals. Every edit keeps a version that names you. Link other docs as [Title](#/knowledge/<doc id>).',
     input: mutationInput,
@@ -502,7 +525,8 @@ export function knowledgeTools(knowledge: KnowledgeService) {
           version: doc.version,
           folder_id: doc.folder_id,
           space: doc.space,
-          where: pathText(doc.path) || doc.space,
+          where: pathText(doc.path) || spaceLabel(doc.space, ctx.locale),
+          space_label: spaceLabel(doc.space, ctx.locale),
         };
       }
       if (args.action === 'edit') {
@@ -533,7 +557,8 @@ export function knowledgeTools(knowledge: KnowledgeService) {
         );
         return {
           moved: moved.id,
-          where: pathText(moved.path) || moved.space,
+          where: pathText(moved.path) || spaceLabel(moved.space, ctx.locale),
+          space_label: spaceLabel(moved.space, ctx.locale),
           version: moved.version,
           folder_id: moved.folder_id,
           space: moved.space,

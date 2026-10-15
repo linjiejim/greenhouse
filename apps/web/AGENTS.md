@@ -77,3 +77,7 @@ The v2 web app. Product scope is docs/product/prd.md §6–7; layout and compone
 
 - Approval details render server-owned human text. format=markdown uses the text-only MarkdownPreview allowlist (no images, links or controls), with a short clamp and Expand. chips carry option labels; preserve the same words as value for native readers. Run step labels use summary, never tool ids.
 - Same-turn/table receipts list writes in one card; their step_id undo endpoint handles the full batch. Hide repeated base/table subtitles when there is one same-name table.
+
+- Consume only the submitted composer snapshot; serialize subsequent sends and retain newer drafts. Enter selects mentions or waits for candidates, including before the popup loads. Room faces come from the permission-checked roster. Rich object headers may wrap; inspect 390 px screenshots.
+
+- Empty active runs use the server recent_finished preview, ordered by actual completion time, rather than slicing the newest-created finished page.

@@ -53,7 +53,13 @@ export interface Author {
   member?: Pick<MemberSummary, 'avatar_url'>;
 }
 
-type Step = { tool: string; summary: string; status: 'running' | 'done' | 'failed'; duration_ms?: number };
+type Step = {
+  tool: string;
+  summary: string;
+  status: 'running' | 'done' | 'failed';
+  duration_ms?: number;
+  recovered?: boolean;
+};
 
 /** All tool calls of a reply folded into one process card; failed ones open by default. */
 function ProcessCard({ steps, runId }: { steps: Step[]; runId: string | null }) {
@@ -61,7 +67,9 @@ function ProcessCard({ steps, runId }: { steps: Step[]; runId: string | null }) 
   const helpers = useHelperRuns(steps.some((step) => step.tool === 'helper_run') ? runId : null);
   if (!steps.length) return null;
   const running = steps.some((step) => step.status === 'running');
-  const failed = steps.some((step) => step.status === 'failed');
+  const failures = steps.filter((step) => step.status === 'failed');
+  const recovered = failures.length > 0 && failures.every((step) => step.recovered);
+  const failed = failures.length > 0 && !recovered;
   const title = steps.length === 1 ? steps[0]!.summary : `${steps[0]!.summary}…`;
   return (
     <ChatCard
@@ -70,7 +78,15 @@ function ProcessCard({ steps, runId }: { steps: Step[]; runId: string | null }) 
       icon={<Wrench size={icon.md} />}
       title={title}
       meta={steps.length > 1 ? t('message.steps', { count: steps.length }) : undefined}
-      status={running ? t('status.running') : failed ? t('status.failed') : undefined}
+      status={
+        running
+          ? t('status.running')
+          : failed
+            ? t('status.failed')
+            : recovered
+              ? t('message.retried', { count: failures.length })
+              : undefined
+      }
       tone={running ? 'info' : failed ? 'danger' : undefined}
     >
       <ol className="app-steps">

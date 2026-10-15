@@ -2,7 +2,7 @@ import type { OperationsService } from '../modules/operations/service.js';
 import { interjectionText } from './history.js';
 import { countAssignment, countActive, countAdoption, adoptedOutputKey } from '../modules/usage/counts.js';
 import { fence } from '../security/prompt.js';
-import { toolSummary, approvalStep } from './tools/presentation.js';
+import { toolSummary, approvalStep, recoveredCalls, failureSummary } from './tools/presentation.js';
 import { tableEventChain } from '../modules/tables/event-context.js';
 import { baseAutomationRuns } from '@greenhouse/db';
 /**
@@ -1662,10 +1662,26 @@ export function createEngine(deps: EngineDeps) {
     let superseded = false;
     if (reply && conversation) {
       const failed = outcome.status === 'failed';
+      const identities = new Map<ToolCallRecord, string>();
+      if (outcome.status === 'succeeded' && collector.calls.some((call) => call.status === 'failed')) {
+        await Promise.all(
+          collector.calls.map(async (call, index) => {
+            const target = defs.get(call.tool)?.retryTarget;
+            if (!target) return;
+            try {
+              identities.set(call, await target(call.input, run.ownerId));
+            } catch {
+              identities.set(call, `unresolved:${index}`);
+            }
+          }),
+        );
+      }
+      const recovered = outcome.status === 'succeeded' ? recoveredCalls(collector.calls, identities) : new Set();
       const steps: MessageStep[] = collector.calls
         .filter((call) => call.status !== 'running')
         .map((call) => ({
           tool: call.tool,
+          ...(recovered.has(call) ? { recovered: true } : {}),
           summary: stepSummary(call, defs, locale),
           ...pendingStep(call),
           status: call.status === 'failed' ? 'failed' : 'done',
@@ -1694,11 +1710,14 @@ export function createEngine(deps: EngineDeps) {
             const call = (card?.payload.calls as Array<{ step_id: string; summary: string }> | undefined)?.find(
               (call) => call.step_id === actual.id,
             );
-            step.summary = approvalStep(
-              String(call?.summary ?? card?.payload.summary ?? ''),
-              card?.status === 'rejected' ? 'rejected' : actual.status,
-              locale,
-            );
+            step.summary =
+              actual.status === 'failed' && actual.error?.message
+                ? actual.error.message
+                : approvalStep(
+                    String(call?.summary ?? card?.payload.summary ?? ''),
+                    card?.status === 'rejected' ? 'rejected' : actual.status,
+                    locale,
+                  );
             step.status = actual.status === 'failed' ? 'failed' : 'done';
           }
           const [saved] = await db
@@ -2040,7 +2059,7 @@ export function createEngine(deps: EngineDeps) {
         note: `The member approved "${summary}" and it ran. Result: ${brief(output)}`,
       };
     } catch (error) {
-      const message = toErrorMessage(error).slice(0, 500);
+      const message = failureSummary(ready.def, payload.input, error, context).slice(0, 500);
       await moveStep(['running', 'uncertain'], {
         status: 'failed',
         error: { code: 'tool_failed', message },
@@ -2193,14 +2212,18 @@ export function createEngine(deps: EngineDeps) {
               const call = calls.find((call) => call.step_id === step.approvalStepId);
               if (!call) return step;
               changed = true;
-              const state = steps.find((step) => step.id === call.step_id)?.status ?? 'skipped';
+              const actual = steps.find((step) => step.id === call.step_id);
+              const state = actual?.status ?? 'skipped';
               return {
                 ...step,
-                summary: approvalStep(
-                  call.summary,
-                  request.status === 'rejected' ? 'rejected' : state,
-                  localeOf(memberLocale),
-                ),
+                summary:
+                  state === 'failed' && actual?.error?.message
+                    ? actual.error.message
+                    : approvalStep(
+                        call.summary,
+                        request.status === 'rejected' ? 'rejected' : state,
+                        localeOf(memberLocale),
+                      ),
                 status: state === 'failed' ? ('failed' as const) : ('done' as const),
               };
             });
@@ -2481,7 +2504,13 @@ export function createEngine(deps: EngineDeps) {
       if (!input.content.trim() && !input.attachments.length && !input.skill) {
         throw invalidInput('Write a message or attach a file.');
       }
-      const responders = await respondersFor(memberId, conversation, input.mentions);
+      const mentions = await deps.conversations.resolveMentions(
+        memberId,
+        conversationId,
+        input.content,
+        input.mentions,
+      );
+      const responders = await respondersFor(memberId, conversation, mentions);
 
       const result = await withConversation(conversationId, () =>
         transaction(async (db) => {
@@ -2507,7 +2536,7 @@ export function createEngine(deps: EngineDeps) {
             content: input.content,
             attachments: input.attachments,
             quote: input.quote ? { messageId: input.quote.message_id, text: input.quote.text } : null,
-            mentions: input.mentions,
+            mentions,
             skill,
             richBlocks: admitRichBlocks(input.rich_blocks) ?? null,
           });

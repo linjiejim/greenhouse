@@ -7,3 +7,5 @@
 - Templates contain schema and published pages, no live records, shares or automations. Install through tables services with fresh references and computed dependencies. Only approved versions install; admin review is audited.
 - Custom code runs only after admin review of that exact immutable version/hash. Pending/rejected and draft previews omit HTML. The source-checked read bridge only queries declared same-app table cards; never bind external connector data or permit writes.
 - External cards use connectors.readCard with the viewer’s personal connection and read-only tool policy. Cache hits recheck connection/connector revisions. JSON Pointer maps return scalars only. Agent tools and scoped MCP reuse this gateway.
+
+- No-audience publication copy reflects rowAt: the owner can open it; other members still need an explicit audience grant and base access. Admin status alone does not bypass app access.

@@ -51,7 +51,9 @@ export function collect(part: any, collector: LoopCollector, now = Date.now()): 
     }
     case 'tool-result':
     case 'tool-error': {
-      const record = collector.calls.find((call) => call.id === part.toolCallId);
+      const record = [...collector.calls]
+        .reverse()
+        .find((call) => call.id === part.toolCallId && call.status === 'running');
       if (!record) return undefined;
       record.durationMs = now - record.startedAt;
       if (part.type === 'tool-result') {

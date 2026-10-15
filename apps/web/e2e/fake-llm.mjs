@@ -170,6 +170,24 @@ async function stream(response, request) {
         { title: 'M24 source two', brief: 'Summarize source two.' },
       ],
     });
+  } else if (!afterTool && /^acceptance background/i.test(said)) {
+    tool('run_start', {
+      title: 'T14 后台比较',
+      brief: 'Summarize the public facts briefly.',
+      computer: false,
+      domains: ['supabase.com', 'neon.tech'],
+      continue_after: false,
+    });
+  } else if (!woken && /^acceptance retry /i.test(said)) {
+    const [, , table_id, field_id] = said.split(' ');
+    const count = messages.filter((message) => message.role === 'tool').length;
+    if (count < 2)
+      tool('table_mutation', {
+        action: 'create',
+        table_id,
+        values: { [field_id]: count === 0 ? 'missing-option' : 'new' },
+      });
+    else await say('Retry completed.', 10);
   } else if (!afterTool && /^acceptance schema/i.test(said)) {
     tool('table_schema_plan', {
       name: 'T14 browser customers',

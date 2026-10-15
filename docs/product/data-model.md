@@ -285,3 +285,7 @@ M3.4 计数（#70）：`metric_events` 仅存 identity id、member_id（逻辑�
 ### 验收展示与回执（#70）
 
 无新增表、列或迁移。`messages.event.type=write_receipt` 保存入口 `step_id`、同一运行同一数据表的 `step_ids`、逻辑引用 `table_id`、`member_id` 和撤销后的 `undone`；人类文字保存在 `content`，不用客户端重建。撤销逐步更新 `run_steps.undone_at`，与整批逆操作处在同一事务。浏览器截图使用已有 `files.purpose=attachment`、`conversation_id`、`run_id`，当前回复 `attachments` 仅保留最后一张截图，读取继续检查对话成员权限并签发短期 URL。
+
+### 第二批验收的现有 JSON 字段（#70）
+
+无新增数据库表、列或索引。`messages.steps` 增加可选 `recovered`，记录成功回复内同操作、同对象的后续成功重试；失败原因保存在已有 `summary`。`base_fields.config` 的数字配置增加可选 `currency`（三位大写币种），继续使用既有 `precision`。`requests.payload` 的后台提议增加人类文字 `access_summary`，不替换 `computer`、`domains` 等批准输入。房间作者的姓名、头像及所有者继续来自权限检查后的成员名单，不复制私有 Agent 详情。

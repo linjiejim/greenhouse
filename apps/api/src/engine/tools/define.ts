@@ -157,6 +157,8 @@ export interface ToolDef<I = any> {
   decide?(request: NeedsYouRequest, ctx: DecisionContext): Promise<DecisionOutcome>;
   /** One line for the steps under a reply. */
   summarize?(input: I, output: unknown, locale: 'zh' | 'en'): string;
+  /** Stable object identity for recognizing a corrected retry without comparing the invalid values. */
+  retryTarget?(input: I, memberId: string): Promise<string>;
   /** Human copy for a reversible write; may resolve names with the acting member's rights. */
   receipt?(input: I, output: unknown, ctx: ToolContext): Promise<string>;
 }

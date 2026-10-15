@@ -191,3 +191,5 @@ The one engine for conversations and runs. Read with the root AGENTS.md and docs
 
 - Approval details are human label/value copy; Markdown previews declare format and select labels declare chips. Never serialize plans as card copy or show tool ids as step labels. Keep pending steps linked internally to their approval step and refresh their summaries after decisions.
 - Reversible writes serialize on the conversation before scope locks. Same-run/table receipts carry step_ids and undo atomically in reverse order; revision lineage permits only changes within that batch, never newer member edits. Keep room summaries and receipts free of private names.
+
+- Tool failures project a human action and cause before model evidence and step persistence; room summaries hide private field names. Recovered steps require a later success on the same action/object and a successful reply. Reused model call ids settle the newest running call.

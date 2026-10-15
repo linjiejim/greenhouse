@@ -3,7 +3,7 @@
  * (kind `turn`) are runs too but never listed here. Cancel and retry go through the engine.
  */
 
-import { and, asc, desc, eq, inArray, lt, ne } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, lt, ne, sql } from 'drizzle-orm';
 import type { Page, RunDetail, RunView } from '@greenhouse/contract';
 import { getDb, runEvents, runs, runSteps, type Run, type RunSource, type RunStep } from '@greenhouse/db';
 import type { Background } from '../../engine/background.js';
@@ -58,7 +58,7 @@ export function createRunsService(deps: {
         cursor?: string;
         limit: number;
       },
-    ): Promise<Page<RunView>> {
+    ): Promise<Page<RunView> & { recent_finished?: RunView[] }> {
       const before = decodeCursor(query.cursor);
       const rows = await getDb()
         .select()
@@ -77,7 +77,24 @@ export function createRunsService(deps: {
         )
         .orderBy(desc(runs.id))
         .limit(query.limit + 1);
-      return toPage(rows, query.limit, toRun);
+      const page = toPage(rows, query.limit, toRun);
+      if (query.state !== 'active' || rows.length) return page;
+      const recent = await getDb()
+        .select()
+        .from(runs)
+        .where(
+          and(
+            eq(runs.ownerId, memberId),
+            eq(runs.kind, 'background'),
+            inArray(runs.status, [...DONE]),
+            query.agent ? eq(runs.agentId, query.agent) : undefined,
+            query.parent ? eq(runs.parentRunId, query.parent) : undefined,
+            query.source ? eq(runs.source, query.source) : undefined,
+          ),
+        )
+        .orderBy(sql`${runs.finishedAt} desc nulls last`, desc(runs.id))
+        .limit(3);
+      return { ...page, recent_finished: recent.map(toRun) };
     },
 
     async get(memberId: string, runId: string): Promise<RunDetail> {

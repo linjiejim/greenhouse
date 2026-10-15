@@ -274,7 +274,13 @@ export type Message = {
   mentions: Array<string>;
   skill: { skill_id: string; version: string | null; variables: Record<string, string> } | null;
   citations: Array<{ kind: string; id: string; title: string; url?: string | undefined }>;
-  steps: Array<{ tool: string; summary: string; status: 'done' | 'failed'; duration_ms?: number | undefined }>;
+  steps: Array<{
+    tool: string;
+    summary: string;
+    status: 'done' | 'failed';
+    duration_ms?: number | undefined;
+    recovered?: boolean | undefined;
+  }>;
   reasoning: string | null;
   event: Record<string, unknown> | null;
   run_id: string | null;
@@ -297,7 +303,13 @@ export type MessageItem = {
   mentions: Array<string>;
   skill: { skill_id: string; version: string | null; variables: Record<string, string> } | null;
   citations: Array<{ kind: string; id: string; title: string; url?: string | undefined }>;
-  steps: Array<{ tool: string; summary: string; status: 'done' | 'failed'; duration_ms?: number | undefined }>;
+  steps: Array<{
+    tool: string;
+    summary: string;
+    status: 'done' | 'failed';
+    duration_ms?: number | undefined;
+    recovered?: boolean | undefined;
+  }>;
   reasoning: string | null;
   event: Record<string, unknown> | null;
   run_id: string | null;
@@ -331,7 +343,13 @@ export type SendMessageResult = {
     mentions: Array<string>;
     skill: { skill_id: string; version: string | null; variables: Record<string, string> } | null;
     citations: Array<{ kind: string; id: string; title: string; url?: string | undefined }>;
-    steps: Array<{ tool: string; summary: string; status: 'done' | 'failed'; duration_ms?: number | undefined }>;
+    steps: Array<{
+      tool: string;
+      summary: string;
+      status: 'done' | 'failed';
+      duration_ms?: number | undefined;
+      recovered?: boolean | undefined;
+    }>;
     reasoning: string | null;
     event: Record<string, unknown> | null;
     run_id: string | null;
@@ -361,7 +379,13 @@ export type EditMessageResult = {
     mentions: Array<string>;
     skill: { skill_id: string; version: string | null; variables: Record<string, string> } | null;
     citations: Array<{ kind: string; id: string; title: string; url?: string | undefined }>;
-    steps: Array<{ tool: string; summary: string; status: 'done' | 'failed'; duration_ms?: number | undefined }>;
+    steps: Array<{
+      tool: string;
+      summary: string;
+      status: 'done' | 'failed';
+      duration_ms?: number | undefined;
+      recovered?: boolean | undefined;
+    }>;
     reasoning: string | null;
     event: Record<string, unknown> | null;
     run_id: string | null;
@@ -396,7 +420,13 @@ export type RealtimeEvent =
           mentions: Array<string>;
           skill: { skill_id: string; version: string | null; variables: Record<string, string> } | null;
           citations: Array<{ kind: string; id: string; title: string; url?: string | undefined }>;
-          steps: Array<{ tool: string; summary: string; status: 'done' | 'failed'; duration_ms?: number | undefined }>;
+          steps: Array<{
+            tool: string;
+            summary: string;
+            status: 'done' | 'failed';
+            duration_ms?: number | undefined;
+            recovered?: boolean | undefined;
+          }>;
           reasoning: string | null;
           event: Record<string, unknown> | null;
           run_id: string | null;
@@ -418,6 +448,7 @@ export type RealtimeEvent =
           id: string;
           status: 'done' | 'failed' | 'running';
           duration_ms?: number | undefined;
+          recovered?: boolean | undefined;
         };
       };
     }
@@ -439,7 +470,13 @@ export type RealtimeEvent =
           mentions: Array<string>;
           skill: { skill_id: string; version: string | null; variables: Record<string, string> } | null;
           citations: Array<{ kind: string; id: string; title: string; url?: string | undefined }>;
-          steps: Array<{ tool: string; summary: string; status: 'done' | 'failed'; duration_ms?: number | undefined }>;
+          steps: Array<{
+            tool: string;
+            summary: string;
+            status: 'done' | 'failed';
+            duration_ms?: number | undefined;
+            recovered?: boolean | undefined;
+          }>;
           reasoning: string | null;
           event: Record<string, unknown> | null;
           run_id: string | null;
@@ -1058,6 +1095,7 @@ export type AppRuntime = {
               }>
             | undefined;
           precision?: number | undefined;
+          currency?: string | undefined;
           multiple?: boolean | undefined;
           table_id?: string | undefined;
           formula_text?: string | undefined;
@@ -1685,6 +1723,7 @@ export type Base = {
             }>
           | undefined;
         precision?: number | undefined;
+        currency?: string | undefined;
         multiple?: boolean | undefined;
         table_id?: string | undefined;
         formula_text?: string | undefined;
@@ -1867,6 +1906,7 @@ export type BaseTable = {
           }>
         | undefined;
       precision?: number | undefined;
+      currency?: string | undefined;
       multiple?: boolean | undefined;
       table_id?: string | undefined;
       formula_text?: string | undefined;
@@ -1920,6 +1960,7 @@ export type Field = {
         }>
       | undefined;
     precision?: number | undefined;
+    currency?: string | undefined;
     multiple?: boolean | undefined;
     table_id?: string | undefined;
     formula_text?: string | undefined;
@@ -2080,6 +2121,7 @@ export type FormFill = {
           }>
         | undefined;
       precision?: number | undefined;
+      currency?: string | undefined;
       multiple?: boolean | undefined;
       table_id?: string | undefined;
       formula_text?: string | undefined;
@@ -2135,6 +2177,7 @@ export type FormFillField = {
         }>
       | undefined;
     precision?: number | undefined;
+    currency?: string | undefined;
     multiple?: boolean | undefined;
     table_id?: string | undefined;
     formula_text?: string | undefined;

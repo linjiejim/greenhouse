@@ -82,14 +82,7 @@ function Details({ request }: { request: NeedsYou }) {
       <div className="app-request-body">
         <div className="app-request-label">{String(payload.run_title ?? '')}</div>
         <MarkdownPreview text={String(payload.brief ?? '')} />
-        {payload.computer === true && (
-          <p>
-            {t('approvals.computer')} · {t('approvals.domains')}:{' '}
-            {Array.isArray(payload.domains) ? payload.domains.join(' · ') || '—' : '—'}
-            <br />
-            {t('approvals.offline')}
-          </p>
-        )}
+        {typeof payload.access_summary === 'string' && <p className="app-preserve-lines">{payload.access_summary}</p>}
         {payload.continue_after === true && <p>{t('approvals.continue')}</p>}
       </div>
     );

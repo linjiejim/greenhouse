@@ -427,6 +427,14 @@ export function createComputersService(deps: {
   });
 
   const service = {
+    async backgroundNetwork(memberId: string, agentId: string) {
+      await agentFor(memberId, agentId);
+      const row = await rowOf(memberId, agentId);
+      const client = row ? await clientFor(row, memberId) : (await sandbox(memberId)).client;
+      if (!client.setEgress)
+        throw conflict('background_network_unavailable', 'This sandbox cannot restrict background networking.');
+      return client.backgroundNetwork ?? 'offline';
+    },
     ensure,
 
     async assertRunAccess(memberId: string, agentId: string, runId: string) {

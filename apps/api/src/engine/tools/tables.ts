@@ -6,7 +6,7 @@ import { invalidInput } from '../../http/errors.js';
 import { tableSchemaTool } from './tables-schema.js';
 import type { TablesService } from '../../modules/tables/service.js';
 import { defineTool, type ToolDef } from './define.js';
-import { detailText } from './presentation.js';
+import { accessLabel, detailText } from './presentation.js';
 import { conflict } from '../../http/errors.js';
 
 const values = z.record(z.string(), z.unknown());
@@ -71,7 +71,10 @@ export function tableTools(tables: TablesService): ToolDef[] {
       const [run] = await getDb().select({ input: runs.input }).from(runs).where(eq(runs.id, ctx.runId));
       const baseOnly = run?.input.table_base_id as string | undefined;
       if (baseOnly) {
-        if (args.action === 'bases') return { items: [await tables.get(ctx.memberId, baseOnly)], next_cursor: null };
+        if (args.action === 'bases') {
+          const base = await tables.get(ctx.memberId, baseOnly);
+          return { items: [{ ...base, access_label: accessLabel(base.access, ctx.locale) }], next_cursor: null };
+        }
         const baseId =
           'base_id' in args
             ? args.base_id
@@ -85,10 +88,24 @@ export function tableTools(tables: TablesService): ToolDef[] {
                 ).base_id;
         if (baseId !== baseOnly) throw invalidInput('This run reads only its source base.');
       }
-      if (args.action === 'bases') return tables.list(ctx.memberId, { archived: false, ...args });
+      if (args.action === 'bases') {
+        const result = await tables.list(ctx.memberId, { archived: false, ...args });
+        return {
+          ...result,
+          items: result.items.map((base) => ({ ...base, access_label: accessLabel(base.access, ctx.locale) })),
+        };
+      }
       if ('base_id' in args) {
         const base = await tables.get(ctx.memberId, args.base_id);
-        return { items: args.action === 'tables' ? base.tables : base.views };
+        return {
+          items:
+            args.action === 'tables'
+              ? base.tables.map((table) => ({
+                  ...table,
+                  access_label: accessLabel(table.access ?? 'read', ctx.locale),
+                }))
+              : base.views,
+        };
       }
       if (args.action === 'aggregate') return tables.cards.query(ctx.memberId, args.card);
       const result =
@@ -113,6 +130,18 @@ export function tableTools(tables: TablesService): ToolDef[] {
   });
   const mutation = defineTool({
     name: 'table_mutation',
+    async retryTarget(args, memberId) {
+      const at = await tables.scopeLabel(memberId, args.table_id);
+      const target =
+        'record_id' in args
+          ? args.record_id
+          : args.action === 'bulk'
+            ? args.items.map((item) => item.id ?? item.values[at.primary_id ?? ''] ?? null)
+            : 'values' in args
+              ? (args.values[at.primary_id ?? ''] ?? null)
+              : null;
+      return JSON.stringify([args.action, args.table_id, target]);
+    },
     description:
       'Create, update, recycle or bulk edit records. Private writes run immediately with undo; shared changes require approval unless the member granted this exact table and action. A bulk change is one approval card.',
     input,

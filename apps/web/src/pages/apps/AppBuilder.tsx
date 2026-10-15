@@ -162,14 +162,36 @@ function Builder({ initial }: { initial: AppDraft }) {
   };
   const latest = versions.data?.pages.flatMap((p) => p.items).find((v) => v.version === saved.app.published_version);
   const diff = pageDiff(latest?.spec, draft.spec);
+  const unpublished =
+    !!saved.app.published_version &&
+    ((latest?.spec !== undefined && JSON.stringify(latest?.spec) !== JSON.stringify(draft.spec)) ||
+      JSON.stringify(publishedAudience) !== JSON.stringify(draft.audience));
   const tabs = ['apps.pages', 'apps.roles', 'apps.audience'] as const;
   return (
     <Page
       width="canvas"
       header={
         <PageHeader
+          wrap
           title={draft.app.name}
-          badge={<StatusBadge status={t('apps.draft')} tone="neutral" />}
+          badge={
+            <span className="app-ap-publication">
+              <StatusBadge
+                status={
+                  saved.app.published_version
+                    ? t('apps.publishedVersion', { version: saved.app.published_version })
+                    : t('apps.draft')
+                }
+                tone={saved.app.published_version ? 'success' : 'neutral'}
+              />
+              {unpublished && <span className="app-muted">{t('apps.unpublishedChanges')}</span>}
+            </span>
+          }
+          actions={
+            saved.app.published_version ? (
+              <Button onClick={() => navigate({ page: 'app', id })}>{t('apps.open')}</Button>
+            ) : undefined
+          }
           primary={
             <Button kind="primary" loading={busy} onClick={() => void openPublish()}>
               {t('apps.publish')}
@@ -375,15 +397,14 @@ function Builder({ initial }: { initial: AppDraft }) {
         <Overlay variant="dialog" title={t('apps.publishTitle')} onClose={() => setPublish(false)}>
           <div className="app-form">
             <p>{t('apps.publishHint')}</p>
-            <p>
-              {t('apps.changes', {
-                pages: draft.spec.pages.length,
-                cards: draft.spec.pages.flatMap((p) => p.cards).length,
-                roles: draft.spec.roles.length,
-                audience: draft.audience.length,
-              })}
-            </p>
-            <p>{t('apps.diffCount', { added: diff.added, removed: diff.removed, changed: diff.changed })}</p>
+            <ul>
+              {diff.added > 0 && <li>{t('apps.pagesAdded', { count: diff.added })}</li>}
+              {diff.removed > 0 && <li>{t('apps.pagesRemoved', { count: diff.removed })}</li>}
+              {diff.changed > 0 && <li>{t('apps.pagesChanged', { count: diff.changed })}</li>}
+              {diff.permissions && <li>{t('apps.rolesChanged')}</li>}
+              {!diff.added && !diff.removed && !diff.changed && !diff.permissions && <li>{t('apps.noPageChanges')}</li>}
+            </ul>
+            {!draft.audience.length && <Banner>{t('apps.ownerOnly')}</Banner>}
             {(diff.permissions || JSON.stringify(publishedAudience) !== JSON.stringify(draft.audience)) && (
               <Banner>{t('apps.audienceChanged')}</Banner>
             )}
