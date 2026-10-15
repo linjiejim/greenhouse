@@ -4,17 +4,27 @@ import { computerBackups, getDb, newId, type AgentComputer } from '@greenhouse/d
 import type { SandboxClient, SandboxStream } from '@greenhouse/providers';
 import { logger } from '@greenhouse/utils/logger';
 import { encrypt, decrypt } from '@greenhouse/utils/crypto';
+import { toErrorMessage } from '@greenhouse/utils/error';
 import type { ProvidersService } from '../../providers/service.js';
 import { ApiError, conflict, notFound } from '../../http/errors.js';
 import { runToEnd } from './streams.js';
 
 const MAX_ARCHIVE = 32 * 1024 * 1024;
 const MAX_OBJECT = 120 * 1024 * 1024;
-const TIMEOUT = 120_000;
+/** A 32 MiB home also needs time to cross the hosted bridge on a slow connection. */
+const TIMEOUT = 10 * 60_000;
 const USERS = ['agent', 'browser'] as const;
-const QUIESCE = `import os, signal
+export const QUIESCE_SCRIPT = `import os, signal
+protected = {1, os.getpid()}
+pid = os.getppid()
+while pid > 1 and pid not in protected:
+ protected.add(pid)
+ try:
+  with open('/proc/'+str(pid)+'/status') as info:
+   pid = next(int(line.split()[1]) for line in info if line.startswith('PPid:'))
+ except (ProcessLookupError, FileNotFoundError): break
 for item in os.listdir('/proc'):
- if not item.isdigit() or int(item) in (1, os.getpid()): continue
+ if not item.isdigit() or int(item) in protected: continue
  try:
   if os.stat('/proc/'+item).st_uid == os.getuid(): os.kill(int(item), signal.SIGSTOP)
  except (ProcessLookupError, FileNotFoundError): pass
@@ -31,6 +41,7 @@ const EXPORT = [
   '--exclude=./chromium/Singleton*',
   '--exclude=./chromium/*/Cache',
   '--exclude=./chromium/*/Code Cache',
+  '--exclude=./chromium/component_crx_cache',
   '-czf',
   '-',
   '.',
@@ -60,7 +71,7 @@ with tarfile.open(fileobj=io.BytesIO(raw), mode='r:gz') as archive:
  finally: shutil.rmtree(stage, ignore_errors=True)
 `;
 
-async function bytesOf(stream: SandboxStream): Promise<Buffer> {
+async function bytesOf(stream: SandboxStream, timeoutMs: number): Promise<Buffer | null> {
   const parts: Buffer[] = [];
   let size = 0;
   let failure: Error | undefined;
@@ -84,11 +95,12 @@ async function bytesOf(stream: SandboxStream): Promise<Buffer> {
   const timer = setTimeout(() => {
     failure = new Error('The backup timed out.');
     stream.kill();
-  }, TIMEOUT);
+  }, timeoutMs);
   try {
     const code = await stream.exited;
     if (failure) throw failure;
-    if (code !== 0 && code !== 1) throw new Error('The home could not be archived.');
+    if (code === null) return null;
+    if (code !== 0 && code !== 1) throw new Error(`The home could not be archived (exit ${code}).`);
     return Buffer.concat(parts);
   } finally {
     clearTimeout(timer);
@@ -126,12 +138,23 @@ export function createComputerBackups(deps: { providers: ProvidersService; encry
         }
         const id = newId('computerBackup');
         const objectKey = `computer-backups/${row.ownerId}/${row.id}/${id}`;
+        let stage = 'agent';
         try {
           const archives: Record<string, string> = {};
-          for (const user of USERS)
-            archives[user] = (
-              await bytesOf(client.stream(row.sandboxRef, { user, cwd: `/home/${user}`, argv: EXPORT }))
-            ).toString('base64');
+          for (const user of USERS) {
+            stage = user;
+            const deadline = Date.now() + TIMEOUT;
+            const read = () =>
+              bytesOf(
+                client.stream(row.sandboxRef, { user, cwd: `/home/${user}`, argv: EXPORT }),
+                Math.max(1, deadline - Date.now()),
+              );
+            // A dropped transport may be retried: nothing was written, and no partial archive is kept.
+            const archive = (await read()) ?? (await read());
+            if (!archive) throw new Error('The archive connection ended before the command exited.');
+            archives[user] = archive.toString('base64');
+          }
+          stage = 'storage';
           const sealed = Buffer.from(encrypt(JSON.stringify(archives), deps.encryptionKey, aad(row, id)));
           await storage.client.put(objectKey, sealed, { contentType: 'application/octet-stream' });
           await getDb().insert(computerBackups).values({
@@ -145,7 +168,8 @@ export function createComputerBackups(deps: { providers: ProvidersService; encry
           await service
             .prune(row.id)
             .catch(() => logger.warn('[computers] backup retention will retry', { computer: row.id }));
-        } catch {
+        } catch (error) {
+          logger.warn('[computers] backup failed', { computer: row.id, stage, error: toErrorMessage(error) });
           await storage.client.delete(objectKey).catch(() => undefined);
           await getDb().insert(computerBackups).values({
             id,
@@ -228,10 +252,14 @@ export function createComputerBackups(deps: { providers: ProvidersService; encry
         if (typeof archives[user] !== 'string') throw conflict('backup_invalid', 'The backup is incomplete.');
       }
       for (const user of USERS) {
-        const paused = await runToEnd(client.stream(row.sandboxRef, { user, argv: ['python3', '-c', QUIESCE] }), null, {
-          timeoutMs: 10_000,
-          maxOutputBytes: 4096,
-        });
+        const paused = await runToEnd(
+          client.stream(row.sandboxRef, { user, argv: ['python3', '-c', QUIESCE_SCRIPT] }),
+          null,
+          {
+            timeoutMs: 10_000,
+            maxOutputBytes: 4096,
+          },
+        );
         if (paused.code !== 0) throw conflict('backup_restore_failed', 'The computer could not pause its processes.');
       }
       for (const user of USERS) {

@@ -110,9 +110,23 @@ SANDBOX_PROVIDER=e2b
 SANDBOX_API_KEY=your-sandbox-key
 SANDBOX_E2B_TEMPLATE=your-template-id
 SANDBOX_E2B_NAMESPACE=greenhouse-v2
+SANDBOX_E2B_TIMEOUT_MINUTES=60
 ```
 
-Build the template with `node --import tsx scripts/e2b-template.mts`; see [the computer image definition](apps/bot-computer/Dockerfile). Another deployment on the same provider account needs its own namespace. Hosted adapter tests use a local protocol server; acceptance against a real E2B account still needs that account's credentials.
+The server needs an E2B account with credit, a completed computer template in that account, and outbound HTTPS/WebSocket access to `api.e2b.app` and `*.e2b.app`. It needs no local Docker engine or Docker socket for computers. Build from this checkout on an operator machine with Node.js and `pnpm install`:
+
+```sh
+# E2B_API_KEY is supplied securely in the environment, for the same account as SANDBOX_API_KEY.
+node --import tsx scripts/e2b-template.mts --cpus 2 --memory 2048
+```
+
+Copy the printed name into `SANDBOX_E2B_TEMPLATE`. Rebuild after changes to [the computer image](apps/bot-computer/Dockerfile); existing computers retain their original template and need recreation to adopt bridge/image changes. After a verified home backup, deleting the sandbox in the provider console lets the next start restore that backup into the configured template; Greenhouse Reset deletes backups too. For an E2B-compatible host set both build-time `E2B_DOMAIN` and runtime `SANDBOX_E2B_DOMAIN` to its domain. Every deployment sharing an account needs a distinct namespace; API and worker replicas of the same deployment share it, the API key, storage and encryption keys.
+
+Running computers consume provider credit; template builds also use provider resources. See [current E2B pricing](https://e2b.dev/pricing). Greenhouse pauses idle computers after 30 minutes by default (Admin → Services → Computers). Watching, typing, running processes and pending takeovers keep them active. The provider timeout is a separate auto-pause safeguard: keep it above the idle interval and within your account's session limit. Stop preserves memory and both homes; reset permanently deletes the sandbox. Paused computers persist until explicitly deleted; see [E2B persistence](https://docs.e2b.dev/sandbox/persistence).
+
+Encrypted home backups use the configured storage provider and `PROVIDER_TOKEN_ENCRYPTION_KEY`; keep both when restoring a deployment. Background runs can reach only approved brief domains on E2B; non-loopback IPv6 is blocked to prevent bypassing the provider's IPv4 rules. After private reads the computer goes offline. Browser screenshots require a model with vision; watching and taking over work independently of that capability. Details and the opt-in live check are in [provider configuration](docs/product/providers.md).
+
+For local real-service acceptance, `REAL_SANDBOX_PROVIDER=e2b SANDBOX_E2B_TEMPLATE=<printed-name> sh scripts/dev-real.sh` uses E2B; Docker remains the default. Export `SANDBOX_API_KEY` securely first. `REAL_STORAGE_ROOT` can isolate acceptance files.
 
 To run computers on your own Docker host, run the API on the host, build the image from `apps/bot-computer` and configure `SANDBOX_PROVIDER=docker` and `SANDBOX_IMAGE`. Production requires gVisor (`SANDBOX_DOCKER_RUNTIME=runsc`); `runc` is for local development. Do not mount the Docker socket into the Compose API container.
 

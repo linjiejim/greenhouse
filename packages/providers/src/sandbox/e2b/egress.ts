@@ -12,7 +12,8 @@
  *   whatever it does);
  * - the provider's agent (envd, :49983), the two bridges (:7681, :7682, only ever reached from
  *   outside through the provider's edge) and rpcbind (:111).
- * The internet, DNS and the computer's own loopback services stay open.
+ * IPv4 internet, DNS and the computer's own loopback services stay open. Non-loopback IPv6 is
+ * refused: the provider's domain rules accept IPv4 CIDRs only, so IPv6 must not bypass them.
  *
  * The adapter applies the table as root at every start, so the rules belong to the API version,
  * not the template, and then probes from both accounts before the computer is used: one whose
@@ -49,7 +50,7 @@ table inet gh_egress {
 	chain member {
 		ip daddr 169.254.0.0/16 reject with icmpx admin-prohibited
 		ip daddr { ${BLOCKED_V4.join(', ')} } reject with icmpx admin-prohibited
-		ip6 daddr { fc00::/7, fe80::/10, ff00::/8 } reject with icmpx admin-prohibited
+		ip6 daddr != ::1 reject with icmpx admin-prohibited
 		tcp dport { ${Object.values(BLOCKED_PORTS).join(', ')} } reject with tcp reset
 		udp dport ${BLOCKED_PORTS.rpcbind} reject with icmpx admin-prohibited
 	}

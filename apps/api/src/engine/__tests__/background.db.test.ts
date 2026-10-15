@@ -1,5 +1,5 @@
 import { and, asc, eq } from 'drizzle-orm';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { getDb, messages, newId, notifications, runs, runSteps } from '@greenhouse/db';
 import { createTestApp } from '../../testing.js';
@@ -129,6 +129,41 @@ async function setup(scripts: Parameters<typeof scriptedModel>[0], flaky = { fai
 }
 
 describe('background runs', () => {
+  it('renews the run lease while a slow computer cleanup is still in progress', async () => {
+    const { services, start } = await setup([text('Done.')]);
+    const entered = gate();
+    const cleanup = gate();
+    const release = vi.spyOn(services.computers, 'releaseBackground').mockImplementation(async () => {
+      entered.open();
+      await cleanup.promise;
+    });
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+    try {
+      const run = await start('Cleanup', 'Finish, then release the computer.');
+      await entered.promise;
+      await getDb()
+        .update(runs)
+        .set({ leaseExpiresAt: new Date(Date.now() - 1000).toISOString() })
+        .where(eq(runs.id, run.id));
+      await vi.advanceTimersByTimeAsync(10_000);
+      await expect
+        .poll(async () => {
+          const [row] = await getDb().select().from(runs).where(eq(runs.id, run.id));
+          return row!.status === 'running' && Date.parse(row!.leaseExpiresAt!) > Date.now();
+        })
+        .toBe(true);
+      cleanup.open();
+      await services.engine.idle();
+      const [done] = await getDb().select().from(runs).where(eq(runs.id, run.id));
+      expect(done).toMatchObject({ status: 'succeeded', attempt: 1, leaseExpiresAt: null });
+    } finally {
+      cleanup.open();
+      await services.engine.idle();
+      release.mockRestore();
+      vi.useRealTimers();
+    }
+  });
+
   it('start only from an approved proposal, run read-only, and report back', async () => {
     const { call, services, model, lin, main, log } = await setup([
       toolCall('run_start', { title: 'Market scan', brief: 'Find the three biggest competitors.' }),

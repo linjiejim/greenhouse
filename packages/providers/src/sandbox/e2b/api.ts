@@ -119,8 +119,7 @@ export function createE2bApi(domain: string, apiKey: string, fetchImpl: typeof f
       let next: string | null = null;
       for (let page = 0; page < LIST_PAGES; page++) {
         const query = new URLSearchParams({ metadata: new URLSearchParams(metadata).toString() });
-        query.append('state', 'running');
-        query.append('state', 'paused');
+        query.set('state', 'running,paused');
         query.set('limit', String(LIST_PAGE));
         if (next) query.set('nextToken', next);
         const response = (await request('GET', `/v2/sandboxes?${query}`, 'Listing the computers'))!;

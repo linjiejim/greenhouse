@@ -676,8 +676,6 @@ export function createBackground(deps: {
       }
     } finally {
       clearTimeout(deadline);
-      clearInterval(heartbeat);
-      live.delete(run.id);
       try {
         await deps.computers?.releaseBackground(run.ownerId, run.agentId, run.id);
       } catch (error) {
@@ -687,6 +685,9 @@ export function createBackground(deps: {
           errorCode: 'computer_cleanup_failed',
           errorMessage: toErrorMessage(error).slice(0, 500),
         };
+      } finally {
+        clearInterval(heartbeat);
+        live.delete(run.id);
       }
     }
 

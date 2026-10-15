@@ -119,7 +119,7 @@ v2 和 v1 不兼容，不加 `/api/v2` 前缀，也不保留旧路由。`GET /ap
 | `GET /api/admin/channels` · `PUT …/:channel` · `POST …/:channel/test` | 渠道 `feishu`、`wecom`、`push`（Expo；飞书、企微在界面隐藏，随 IM 渠道开放）：`GET` 列出每个渠道能否送达（`configured`）、来源（`env` / `workspace`）、设置、哪些机密已填、最近一次成功与失败；`PUT` 保存一个渠道的设置（feishu：`base_url`、`app_id`、`app_secret`；wecom：`base_url`、`corp_id`、`agent_id`、`secret`；push：`base_url`、`access_token`；都可带 `enabled`），机密只写不读、省略即保留、`''` 清空，换地址同时清空机密；第一次保存或改环境变量来的设置时生成工作区实例，排在同类之首；`test` 给管理员自己发一条（绑定的账号、手机），没有可发的对象时只验证凭据，返回 `{ ok, delivered, latency_ms, error }`。邮件不在这里：它是邮箱服务 |
 | `GET` / `PUT /api/admin/mail` · `POST /api/admin/mail/test` | 邮箱服务：能否发信、Agent 邮箱的域名（来源 env / workspace，另附 `MAIL_AGENT_DOMAIN` 的值；`PUT { agent_domain }`，null 回到它，写审计）、Agent 邮箱是否开通、每个能收信的实例要填到服务商那里的入站地址；`test` 经第一个能发的实例给管理员自己发一封（`mail_not_configured`） |
 | `GET /api/admin/computers` · `PUT …/capacity` · `POST …/:id/stop` · `DELETE …/:id` | 电脑：所有成员的电脑与状态（不含画面和文件）；容量（空闲多少分钟后关机、最多同时开机，0 为不限，超出时开机返回 200 queued 和 queue_position，停机取消排队）；停止；重置（连主目录删除，下次使用重开） |
-| `POST /api/admin/computers/:id/backups` · `POST …/:id/backups/:backup/restore` | 管理员按需备份运行中的电脑；停机后恢复归属此电脑的成功备份（覆盖两个主目录，弹确认）。列表返回备份 id、时间、大小、状态、错误，永不返回存储位置或密钥。每进程最多同时 2 个备份，每个压缩主目录最多 32 MiB，恢复展开最多 256 MiB、10 万项，拒绝路径穿越／设备／越界链接；先验证完整密文再写盘。`backup_unavailable` 503、`backup_failed` 502、`backup_invalid`／`backup_restore_failed`／`computer_not_stopped` 409 |
+| `POST /api/admin/computers/:id/backups` · `POST …/:id/backups/:backup/restore` | 管理员按需备份运行中的电脑；停机后恢复归属此电脑的成功备份（覆盖两个主目录，弹确认）。列表返回备份 id、时间、大小、状态、错误，永不返回存储位置或密钥。每进程最多同时 2 个备份，每个压缩主目录最多 32 MiB，单个归档传输／导入最多 10 分钟，归档连接中断在同一时限内只重读一次，恢复展开最多 256 MiB、10 万项，拒绝路径穿越／设备／越界链接；先验证完整密文再写盘。`backup_unavailable` 503、`backup_failed` 502、`backup_invalid`／`backup_restore_failed`／`computer_not_stopped` 409 |
 | `GET /api/admin/usage?period=&group_by=member\|agent\|provider\|capability` | 工作区用量 |
 | `GET` / `PUT /api/admin/budgets` · `DELETE …/:id` | 预算：组织、服务实例、成员、公开 Agent 四种范围，token 或美元，按月；`PUT` 建立或替换一个范围与单位的预算；列表带本月已用 |
 | `GET` / `PATCH /api/admin/operations` | 运维开关（仅管理员）：`pause_background_runs`、`disable_computers`、`disable_outbound_mail`，部分更新，审计只记字段名 |
@@ -305,7 +305,7 @@ M3 媒体与计数（#70）：
 
 应用关联选项只查询当前发布的记录卡片，复用卡片筛选与应用权限；没有对应候选卡片时提供网页填写入口，不查询完整表格目录。成员候选使用成员目录，附件沿用受控上传与签名文件链接。
 
-#70 电脑与应用补充：电脑停机前备份是有界同步操作；存储暂不可用时记录失败，保留原主目录并继续停机。队列由数据库状态保存，以事务锁认领容量，worker 每分钟补偿，超过 15 分钟的 starting 复核沙箱状态。丢失持久主目录时从最新成功备份恢复；密文不可用时失败，不悄悄用空目录开机。备份依赖部署的 provider 加密密钥，恢复部署时必须保留该密钥。
+#70 电脑与应用补充：电脑停机前备份是有界同步操作；存储暂不可用时记录失败，保留原主目录并继续停机。队列由数据库状态保存，以事务锁认领容量，worker 每分钟补偿，超过 15 分钟的 starting 复核沙箱状态。丢失持久主目录时从最新成功备份恢复；密文不可用时失败，不悄悄用空目录开机。备份依赖部署的 provider 加密密钥，恢复部署时必须保留该密钥。#70：同一备份接口支持 Docker 与 E2B；排除浏览器组件下载缓存，恢复时保留执行导入的进程祖先，避免冻结 E2B 桥。
 
 external 卡片仅执行保存的只读连接器工具，auth_mode 必须是 per_member 或 oauth；每次求值和缓存命中前重查查看者的连接及连接器版本。缓存 15 秒、最多 500 项，结果最多 256 KB／100 行，JSON Pointer 映射标量，连接器 HTML 永不执行。应用角色不裁剪外部系统数据，但应用和底层表格访问权仍是入口条件。
 

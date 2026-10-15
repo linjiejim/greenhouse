@@ -15,7 +15,8 @@
  * {"t":"exit","code","signal"}. Tunnels are raw bytes both ways.
  *
  * Backpressure goes both ways: a reader that pauses `output` pauses the socket, a full socket
- * holds back the input.
+ * holds back the input. Text ping/pong data frames keep the bridge alive through provider proxies
+ * that terminate WebSocket control pings; tunnels never forward these frames into VNC or DevTools.
  */
 
 import { constants as osConstants } from 'node:os';
@@ -153,6 +154,7 @@ export class BridgeStream implements SandboxStream {
       return;
     }
     this.ws = ws;
+    let alive = true;
     ws.on('open', () => {
       if (this.mode.kind === 'exec') {
         const { argv, cwd, env } = this.mode;
@@ -170,6 +172,7 @@ export class BridgeStream implements SandboxStream {
       ws.terminate();
     });
     ws.on('message', (data: WebSocket.RawData, isBinary: boolean) => {
+      alive = true;
       const buffer = Buffer.isBuffer(data)
         ? data
         : Array.isArray(data)
@@ -187,19 +190,29 @@ export class BridgeStream implements SandboxStream {
     });
     ws.on('error', (error: Error) => this.fail(new BridgeError(error.message)));
     // A connection that died without closing (a network path gone) is noticed within two pings.
-    let alive = true;
     ws.on('pong', () => {
+      alive = true;
+    });
+    ws.on('ping', () => {
       alive = true;
     });
     this.ping = setInterval(() => {
       if (ws.readyState !== WebSocket.OPEN) return;
+      // A paused reader cannot receive the pong either. Give it a fresh interval after it drains.
+      if (this.behind.size) {
+        alive = true;
+        // Reading is paused, but writes still reach the peer and must keep its lease alive.
+        ws.send(JSON.stringify({ t: 'ping' }));
+        return;
+      }
       if (!alive) {
         this.fail(new BridgeError('The computer stopped answering'));
         ws.terminate();
         return;
       }
       alive = false;
-      ws.ping();
+      // Provider proxies may terminate control pings locally; use a data frame end to end.
+      ws.send(JSON.stringify({ t: 'ping' }));
     }, PING_MS);
     this.ping.unref();
   }
