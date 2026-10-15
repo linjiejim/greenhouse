@@ -4,6 +4,8 @@ import type { Translate } from './i18n';
 
 /** Codes the member can act on get the dictionary's words; anything else shows the server's. */
 const KNOWN: Record<string, MessageKey> = {
+  memory_background_read_only: 'errors.memoryBackgroundReadOnly',
+  memory_untrusted_content: 'errors.memoryUntrustedContent',
   undo_conflict: 'errors.undoConflict',
   already_undone: 'errors.alreadyUndone',
   undo_unavailable: 'errors.undoUnavailable',
@@ -47,6 +49,11 @@ const KNOWN: Record<string, MessageKey> = {
   team_space: 'errors.teamSpace',
 };
 
+export function errorCodeText(code: string, t: Translate): string | undefined {
+  const key = KNOWN[code];
+  return key ? t(key) : undefined;
+}
+
 export function errorText(error: unknown, t: Translate): string {
   if (error instanceof ApiClientError) {
     if (error.code === 'operation_disabled') {
@@ -55,8 +62,8 @@ export function errorText(error: unknown, t: Translate): string {
       if (operation === 'pause_background_runs') return t('errors.backgroundPaused');
       if (operation === 'disable_outbound_mail') return t('errors.outboundMailDisabled');
     }
-    const key = KNOWN[error.code];
-    if (key) return t(key);
+    const known = errorCodeText(error.code, t);
+    if (known) return known;
     if (error.status >= 500 || error.status === 0) return t('common.error');
     return error.message;
   }

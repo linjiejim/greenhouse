@@ -2,6 +2,7 @@ import { useCallback, useRef } from 'react';
 import { ScrollView } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { schedules, scheduleAction, removeSchedule } from '../../src/api/always-on';
+import { plainText } from '../../src/chat/text';
 import { useResource } from '../../src/data/use-resource';
 import { ResourceState } from '../../src/knowledge/state';
 import { useT } from '../../src/lib/i18n';
@@ -92,7 +93,7 @@ export default function Schedules() {
                   subtitle={[
                     t(s.status === 'active' ? 'integration.active' : 'integration.paused'),
                     s.quiet ? t('integration.quiet') : '',
-                    s.brief,
+                    plainText(s.brief),
                   ]
                     .filter(Boolean)
                     .join(' · ')}

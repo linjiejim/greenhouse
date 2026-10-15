@@ -118,3 +118,5 @@
 
 - Approval Markdown previews use inert preview mode: no links, images or executable rich blocks; clamp long content with expand. Receipts display the server message content verbatim. All dictionary interpolation uses the verbatim copy of packages/utils/src/i18n.ts in src/lib/i18n/format.ts, guarded by vendor.parity.test.ts. It adds a space at Han/Latin-or-digit boundaries even when templates omit it, and removes spaces between Han runs.
 - Map operation_disabled plus details.switch through operationErrorText; never show the server's English pause copy as a member-facing reason.
+
+- Run findings, summaries, briefs, output and completion reports use Markdown safe mode with native app links. Notification, schedule-list and request-card excerpts use plainText; approval previews stay inert. Memory rule errors map by code through operationErrorText. These display changes require no native modules.

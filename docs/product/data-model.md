@@ -290,3 +290,7 @@ M3.4 计数（#70）：`metric_events` 仅存 identity id、member_id（逻辑�
 无新增数据库表、列或索引。`messages.steps` 增加可选 `recovered`，记录成功回复内同操作、同对象的后续成功重试；失败原因保存在已有 `summary`。`base_fields.config` 的数字配置增加可选 `currency`（三位大写币种），继续使用既有 `precision`。`requests.payload` 的后台提议增加人类文字 `access_summary`，不替换 `computer`、`domains` 等批准输入。房间作者的姓名、头像及所有者继续来自权限检查后的成员名单，不复制私有 Agent 详情。
 
 整合回归（#70，T14）未新增表、列或迁移；普通与批准后执行共用错误投影，`run_steps.error` 保留 `{ code, message }`，其中 `code` 为原服务错误码，`message` 为可展示的操作及原因。
+
+### 记忆拒绝与原生 Markdown（#70）
+
+无表结构变化。记忆规则拒绝复用 `run_steps.error` 的 `{ code, message }`，步骤状态为 `failed`，不保存成功输出、不产生写入回执。`runs.output.findings` 与已有报告正文继续保存 Markdown，由原生安全渲染器展示并解析应用内链接；通知和卡片列表使用可读纯文字摘要。

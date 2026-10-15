@@ -1,3 +1,4 @@
+import { plainText } from '../src/chat/text';
 /**
  * The notification center (NTF-01; a large-title page over the conversation, opened from the
  * bell): 需要你 lists every pending decision as its card — tap one to decide it in its sheet —
@@ -195,7 +196,7 @@ export default function Notifications() {
           return (
             <ListRow
               title={notification.title}
-              subtitle={notification.body || undefined}
+              subtitle={plainText(notification.body) || undefined}
               icon={KIND_ICON[notification.kind] ?? 'bell'}
               iconTint={
                 notification.kind === 'request' ? c.orange : notification.kind === 'run_failed' ? c.red : undefined
@@ -208,7 +209,7 @@ export default function Notifications() {
               }
               accessibilityLabel={[
                 notification.title,
-                notification.body,
+                plainText(notification.body),
                 notification.read_at ? '' : t('directory.unread'),
               ]
                 .filter(Boolean)

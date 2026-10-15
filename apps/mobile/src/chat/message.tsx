@@ -422,7 +422,7 @@ export const AgentReply = memo(function AgentReply({
       {thinking ? <Thinking agent={author.agent} /> : null}
       {text ? (
         <RichContext.Provider value={rich}>
-          <Markdown source={text} animated={live} />
+          <Markdown source={text} animated={live} safe={message.event?.type === 'run_report'} />
         </RichContext.Provider>
       ) : null}
     </View>

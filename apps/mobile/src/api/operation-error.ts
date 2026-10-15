@@ -1,8 +1,10 @@
 import type { ApiMiss } from './client';
 import type { TFunction } from '../lib/i18n';
 
-/** Switch errors have stable codes and details; server copy is not the member's language. */
+/** Rule refusals use stable codes; server copy may be in another language. */
 export function operationErrorText(error: Pick<ApiMiss, 'code' | 'details'>, t: TFunction): string | undefined {
+  if (error.code === 'memory_background_read_only') return t('integration.memoryBackgroundReadOnly');
+  if (error.code === 'memory_untrusted_content') return t('integration.memoryUntrustedContent');
   if (error.code !== 'operation_disabled') return undefined;
   const operation = (error.details as { switch?: string } | undefined)?.switch;
   if (operation === 'disable_computers') return t('integration.computersDisabled');

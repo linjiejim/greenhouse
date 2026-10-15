@@ -1,4 +1,4 @@
-import { errorText } from '../../lib/errors';
+import { errorCodeText, errorText } from '../../lib/errors';
 import { ExtensionPanels } from '../../extensions/host';
 import { Attachments } from '../../conversation/Attachments';
 /**
@@ -79,8 +79,13 @@ function Detail({ run }: { run: RunDetail }) {
               <li key={step.id} className={cx('app-step', `is-${step.status}`)}>
                 <span className="app-step-dot" aria-hidden />
                 <span className="app-step-summary">
-                  {step.summary}
-                  {step.error && <span className="app-step-error"> · {step.error.message}</span>}
+                  {step.summary !== step.error?.message && step.summary}
+                  {step.error && (
+                    <span className="app-step-error">
+                      {step.summary !== step.error.message && ' · '}
+                      {errorCodeText(step.error.code, t) ?? step.error.message}
+                    </span>
+                  )}
                 </span>
                 {/* It was running when its process died: it may have taken effect, and is never run again by itself. */}
                 {step.status === 'uncertain' && <StatusBadge status={t('status.uncertain')} tone="warning" />}

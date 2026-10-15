@@ -84,9 +84,17 @@ export function memoryTool(agents: AgentsService) {
     },
     async execute(args, ctx) {
       if (ctx.surface === 'background' && args.action !== 'recall')
-        throw new Error('Background runs may only recall memories.');
+        throw new ApiError(
+          403,
+          'memory_background_read_only',
+          'Background runs may only recall memories. Do not retry this write.',
+        );
       if (args.action !== 'recall' && ctx.tainted())
-        return { error: 'Memories cannot be changed after reading outside content in the same turn. Ask the member.' };
+        throw new ApiError(
+          403,
+          'memory_untrusted_content',
+          'Memories cannot be changed after reading outside content in the same turn. Do not retry this write; ask the member in a new turn.',
+        );
       const handle = ctx.agent.id;
       if (args.action === 'remember') {
         const saved = await agents.remember(
@@ -120,10 +128,6 @@ export function memoryTool(agents: AgentsService) {
         // Completion logs can summarize outside sources; reading their detail taints this turn.
         if (hits.some((memory) => memory.category === 'log')) ctx.taint();
         return { results: hits };
-      }
-      // Text read this turn could be steering the change; old memories stay as they are.
-      if (ctx.tainted()) {
-        return { error: 'Memories cannot be changed after reading outside content in the same turn. Ask the member.' };
       }
       if (args.action === 'update') {
         const saved = await agents.updateMemory(ctx.memberId, handle, args.id, {

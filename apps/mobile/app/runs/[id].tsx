@@ -22,7 +22,7 @@ import { parseMs } from '../../src/data/time';
 import type { NeedsYou } from '../../src/shared/contract';
 import { openConversation } from '../../src/shell/nav';
 import { useWorkspace } from '../../src/store/workspace';
-import { makeStyles, mono, radius, space, squircle, typo, useTheme, weight } from '../../src/theme';
+import { makeStyles, radius, space, squircle, typo, useTheme, weight } from '../../src/theme';
 import { AgentAvatar } from '../../src/ui/agent-avatar';
 import { NativeButton } from '../../src/ui/button';
 import { Icon } from '../../src/ui/core';
@@ -163,7 +163,7 @@ export default function RunPage() {
         {run.error ? (
           <View style={styles.error}>
             <Icon name="alert" size={15} color={c.red} />
-            <Text style={styles.errorText}>{run.error.message}</Text>
+            <Text style={styles.errorText}>{operationErrorText(run.error, t) ?? run.error.message}</Text>
           </View>
         ) : null}
 
@@ -204,21 +204,21 @@ export default function RunPage() {
         {run.findings.length ? (
           <ListSection header={t('integration.findings')}>
             {run.findings.map((finding, index) => (
-              <Text key={index} style={styles.meta}>
-                {finding}
-              </Text>
+              <View key={index} style={styles.section}>
+                <Markdown source={finding} safe />
+              </View>
             ))}
           </ListSection>
         ) : null}
         {run.summary && !run.output ? (
           <View style={styles.section}>
-            <Markdown source={run.summary} />
+            <Markdown source={run.summary} safe />
           </View>
         ) : null}
         {run.output ? (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>{t('runs.output')}</Text>
-            <Markdown source={run.output} />
+            <Markdown source={run.output} safe />
           </View>
         ) : null}
 
@@ -232,8 +232,10 @@ export default function RunPage() {
                   color={step.status === 'failed' ? c.red : step.status === 'succeeded' ? c.green : c.secondaryLabel}
                 />
                 <View style={styles.stepTexts}>
-                  <Text style={styles.stepName}>{step.tool ?? step.kind}</Text>
-                  {step.error ? <Text style={styles.stepError}>{step.error.message}</Text> : null}
+                  {step.summary !== step.error?.message ? <Text style={styles.stepName}>{step.summary}</Text> : null}
+                  {step.error ? (
+                    <Text style={styles.stepError}>{operationErrorText(step.error, t) ?? step.error.message}</Text>
+                  ) : null}
                 </View>
                 {step.duration_ms !== null ? <Text style={styles.stepTime}>{duration(step.duration_ms)}</Text> : null}
               </View>
@@ -250,11 +252,7 @@ export default function RunPage() {
               size="small"
               onPress={() => setBrief((v) => !v)}
             />
-            {brief ? (
-              <Text style={styles.brief} selectable>
-                {run.brief}
-              </Text>
-            ) : null}
+            {brief ? <Markdown source={run.brief} safe /> : null}
           </View>
         ) : null}
       </ScrollView>
@@ -298,14 +296,4 @@ const useStyles = makeStyles((c) => ({
   stepError: { ...typo.footnote, color: c.red },
   stepTime: { ...typo.caption1, color: c.tertiaryLabel, fontVariant: ['tabular-nums'] },
   none: { ...typo.footnote, color: c.tertiaryLabel, padding: space.margin },
-  brief: {
-    alignSelf: 'stretch',
-    ...typo.footnote,
-    fontFamily: mono,
-    color: c.label,
-    padding: space.md,
-    borderRadius: radius.md,
-    backgroundColor: c.secondaryGroupedBackground,
-    ...squircle,
-  },
 }));

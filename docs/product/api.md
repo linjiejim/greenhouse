@@ -337,3 +337,7 @@ custom 网页运行使用双层 `sandbox="allow-scripts"` iframe，均无 allow-
 运维开关拒绝操作时统一返回 `operation_disabled`，`details.switch` 区分 `pause_background_runs`、`disable_computers`、`disable_outbound_mail`；Web 与原生按此字段显示本地化原因。截图已作为回复附件展示时，浏览器工具只向模型返回 `file_name` 和展示说明，文件编号仍由服务端保存。
 
 会话自动标题（#70，T18）：快速模型只读取首条成员消息，概括成员请求，不读取助手回复、工具步骤或中途失败措辞；只在标题仍为空时写入，保留成员手动设置的标题。
+
+### 记忆规则拒绝（#70）
+
+`memory` 修改在后台返回 `memory_background_read_only`，本轮读取外部内容后返回 `memory_untrusted_content`（均为 403）。工具步骤持久化为 `failed`，`error.code` 保留上述稳定码，`error.message` 和模型收到的工具错误说明具体原因、不要重试；外部内容拒绝要求成员在新一轮对话中确认。原生与 Web 词典均映射这两个码。后台工具参数仍只提供 `recall`。

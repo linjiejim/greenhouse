@@ -66,6 +66,8 @@ export const integration = {
   computersDisabled: '管理员已临时禁用电脑，请稍后再试。',
   backgroundPaused: '管理员已暂停后台运行；排队的工作会保留，恢复后继续。',
   outboundMailDisabled: '管理员已临时暂停发送邮件，请稍后再试。',
+  memoryBackgroundReadOnly: '后台运行只能读取记忆，不能修改；请勿重试这次写入',
+  memoryUntrustedContent: '本轮已读取网页等外部内容，不能直接存为或修改记忆；请勿重试，请成员在新一轮对话中确认',
   operationPaused: '管理员已临时暂停此操作，请稍后再试。',
   skills: '技能',
   noSkills: '暂无技能',

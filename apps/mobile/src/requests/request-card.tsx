@@ -12,6 +12,7 @@
 import React, { memo, useEffect, useState } from 'react';
 import { Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
+import { plainText } from '../chat/text';
 import { ChatCard } from '../chat/chat-card';
 import { relativeTimeNow } from '../lib/time-words';
 import { useT } from '../lib/i18n';
@@ -50,7 +51,7 @@ export const RequestCard = memo(function RequestCard({
       ? t('requests.expiresIn', { s: left })
       : t(`requests.status.${status.word}` as 'requests.status.needsYou');
   const tone = status.tone === 'warning' ? c.orange : status.tone === 'success' ? c.green : c.secondaryLabel;
-  const summary = body.reason || body.details.map((detail) => detail.value).join(' · ') || body.body;
+  const summary = plainText(body.reason || body.details.map((detail) => detail.value).join(' · ') || body.body);
   const meta = [context, relativeTimeNow(request.created_at)].filter(Boolean).join(' · ');
   return (
     <ChatCard

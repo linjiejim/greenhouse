@@ -350,7 +350,7 @@ describe('M2.4 engine additions', () => {
     expect(
       await getDb().select().from(agentMemories).where(eq(agentMemories.title, 'Injected helper instructions')),
     ).toEqual([]);
-    expect(JSON.stringify(s.model.prompts.at(-1))).toContain('Memories cannot be changed');
+    expect(JSON.stringify(s.model.prompts.at(-1))).toMatch(/请勿重试|Do not retry/);
     expect(await getDb().select().from(runs).where(eq(runs.kind, 'background'))).toHaveLength(1);
   });
   it('keeps successful action evidence when long-output storage is unavailable', async () => {
