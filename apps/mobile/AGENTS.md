@@ -113,3 +113,5 @@
 - Read /api/me/operations for member-facing pause messages; only admins change switches. Queued computers poll only while focused and never offer another start. Do not fetch computer files/processes before running.
 - Approval copy uses payload.summary/details from the permission-checked server projection. Never render execution inputs or standing-approval scopes as display copy.
 - ListSection takes direct rows (arrays are fine), not a Fragment: it passes last to each child. Large text wraps row values and card headings without remounting screen state.
+
+- Shared-note create/edit uses the note route and native multiline forms, never a global Alert.prompt: incoming links must not leave an editor over another screen. Guard saves and late feedback by focus and identity.

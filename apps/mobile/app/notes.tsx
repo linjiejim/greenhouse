@@ -1,22 +1,24 @@
 import { useCallback, useRef, useState } from 'react';
 import { FlatList } from 'react-native';
-import { Stack, useLocalSearchParams } from 'expo-router';
-import { del, get, patch, post, seg } from '../src/api/client';
+import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
+import { del, get, patch, seg } from '../src/api/client';
 import { useResource } from '../src/data/use-resource';
 import { ResourceState } from '../src/knowledge/state';
 import { useT } from '../src/lib/i18n';
+import { putHandoff } from '../src/lib/handoff';
 import type { Note, Page } from '../src/shared/contract';
 import { EmptyState } from '../src/ui/empty';
 import { ListRow } from '../src/ui/list';
 import { NativeMenu } from '../src/ui/menu';
 import { NativeButton } from '../src/ui/button';
-import { alertError, confirmAction, promptText } from '../src/ui/dialogs';
+import { alertError, confirmAction } from '../src/ui/dialogs';
 import { SheetClose } from '../src/ui/sheet-chrome';
 import { toolbarIcon } from '../src/ui/toolbar-icon';
 
 export default function Notes() {
   const { c = '' } = useLocalSearchParams<{ c: string }>();
   const t = useT();
+  const router = useRouter();
   const base = `/api/conversations/${seg(c)}/notes`;
   const r = useResource(
     useCallback(() => get<Page<Note>>(base), [base]),
@@ -28,6 +30,10 @@ export default function Notes() {
     if (action === 'activate') action = 'edit';
     if (!['add', 'edit', 'pin', 'delete'].includes(action)) return;
     if (pending.current) return;
+    if (action === 'add' || action === 'edit') {
+      router.push({ pathname: '/note', params: { c, ...(note ? { k: putHandoff('note', note) } : {}) } });
+      return;
+    }
     const current = r.captureWrite();
     pending.current = true;
     setBusy(true);
@@ -37,20 +43,11 @@ export default function Notes() {
         !(await confirmAction({ title: t('integration.deleteNote'), confirmLabel: t('row.delete'), destructive: true }))
       )
         return;
-      const body =
-        action === 'edit' || action === 'add'
-          ? await promptText({
-              title: t(action === 'add' ? 'integration.newNote' : 'integration.editNote'),
-              defaultValue: note?.body,
-            })
-          : undefined;
-      if (!current() || body === null) return;
+      if (!current()) return;
       const result =
-        action === 'add'
-          ? await post<Note>(base, { body })
-          : action === 'delete'
-            ? await del(`${base}/${seg(note!.id)}`)
-            : await patch<Note>(`${base}/${seg(note!.id)}`, action === 'pin' ? { pinned: !note!.pinned } : { body });
+        action === 'delete'
+          ? await del(`${base}/${seg(note!.id)}`)
+          : await patch<Note>(`${base}/${seg(note!.id)}`, { pinned: !note!.pinned });
       if (!current()) return;
       if (result.ok) void r.refresh();
       else alertError(t('work.saveFailed'), undefined, result.message);
