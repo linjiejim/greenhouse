@@ -1,4 +1,4 @@
-import { useDraftNavigation } from './useDraftNavigation';
+import { useDraftNavigation } from '../../lib/useDraftNavigation';
 import { useEffect, useState } from 'react';
 import {
   Button,

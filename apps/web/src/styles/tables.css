@@ -34,19 +34,8 @@
 }
 
 .app-tb-chip {
-  display: inline-flex;
   flex: none;
-  align-items: center;
-  max-width: 100%;
-  height: var(--gh-space-5);
-  padding: 0 var(--gh-space-2);
-  overflow: hidden;
-  border-radius: var(--gh-radius-full);
   background: var(--gh-cat-gray-fill);
-  color: var(--gh-text);
-  font: var(--gh-type-caption);
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .app-tb-swatch {
@@ -242,35 +231,18 @@ button.app-tb-record-chip:hover {
   scrollbar-width: none;
 }
 
-.app-tb-tabs > button {
-  flex: none;
-  min-height: var(--gh-control-md);
-  margin-bottom: calc(-1 * var(--gh-stroke-hairline));
-  padding: 0;
-  border: 0;
-  border-bottom: var(--gh-stroke-strong) solid transparent;
-  background: none;
-  color: var(--gh-secondary);
-  font: var(--gh-type-label);
-  white-space: nowrap;
-  cursor: pointer;
-  transition: color var(--gh-duration-fast) var(--gh-ease-standard);
+.app-tb-tabs {
+  width: auto;
+  border-bottom: 0;
 }
-
-.app-tb-tabs > button:hover,
-.app-tb-tabs > button.is-menu-open {
-  color: var(--gh-text);
+.app-tb-tabs::after {
+  display: none;
 }
-
 .app-tb-tabs > button[aria-selected='true'] {
   border-bottom-color: var(--gh-accent);
-  color: var(--gh-text);
-  font-weight: 600;
 }
-
-.app-tb-tabs > button:focus-visible {
-  outline: var(--gh-stroke-strong) solid var(--gh-focus);
-  outline-offset: calc(-1 * var(--gh-stroke-strong));
+.app-tb-tabs > button.is-menu-open {
+  background: var(--gh-hover);
 }
 
 .app-tb-viewbar {
@@ -295,10 +267,10 @@ button.app-tb-record-chip:hover {
   flex: none;
   align-items: center;
   gap: var(--gh-space-1);
-  height: var(--gh-control-sm);
-  padding: 0 var(--gh-space-2);
+  min-height: var(--gh-control-md);
+  padding: 0 var(--gh-space-3);
   border: 0;
-  border-radius: var(--gh-radius-md);
+  border-radius: var(--gh-radius-sm);
   background: none;
   color: var(--gh-secondary);
   font: var(--gh-type-label);
@@ -482,7 +454,7 @@ button.app-tb-record-chip:hover {
   overflow: auto;
   border: var(--gh-stroke-hairline) solid var(--gh-line);
   border-radius: var(--gh-radius-lg);
-  background: var(--gh-canvas);
+  background: var(--gh-surface);
   font: var(--gh-type-body-sm);
   overscroll-behavior: contain;
   scrollbar-width: thin;
@@ -585,13 +557,13 @@ button.app-tb-record-chip:hover {
   padding: 0 var(--gh-space-3);
   overflow: hidden;
   border-right: var(--gh-stroke-hairline) solid var(--gh-line);
-  background: var(--gh-canvas);
+  background: var(--gh-surface);
   color: var(--gh-text);
   cursor: default;
 }
 
 .app-tb-row:hover .app-tb-cell {
-  background: color-mix(in srgb, var(--gh-hover) 60%, var(--gh-canvas));
+  background: color-mix(in srgb, var(--gh-hover) 60%, var(--gh-surface));
 }
 
 .app-tb-row.is-selected .app-tb-cell {
@@ -615,7 +587,7 @@ button.app-tb-record-chip:hover {
 }
 
 .app-tb-cell.is-in-range {
-  background: color-mix(in srgb, var(--gh-selection) 70%, var(--gh-canvas));
+  background: color-mix(in srgb, var(--gh-selection) 70%, var(--gh-surface));
 }
 
 .app-tb-cell.is-active {
@@ -1257,4 +1229,16 @@ button.app-tb-record-chip:hover {
 .app-tb-webhook-secret {
   overflow-wrap: anywhere;
   user-select: all;
+}
+
+/* Dark data planes retain their original canvas layering. */
+[data-theme='dark'] .app-tb-grid,
+[data-theme='dark'] .app-tb-cell {
+  background: var(--gh-canvas);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .app-tb-grid,
+  :root:not([data-theme='light']) .app-tb-cell {
+    background: var(--gh-canvas);
+  }
 }

@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { apiAs } from './api';
-import { composer, open } from './fixtures';
+import { open, sendForRequest } from './fixtures';
 
 /** Uses the real request service and two simultaneously open clients. */
 test('a newer approval replaces its card and clears notifications on another client', async ({ page, request }) => {
@@ -9,8 +9,7 @@ test('a newer approval replaces its card and clears notifications on another cli
     space: 'team',
   });
   await open(page, '/#/c/new');
-  await composer(page).fill(`shared draft in ${folder.id} old plan`);
-  await composer(page).press('Enter');
+  await sendForRequest(page, undefined, `shared draft in ${folder.id} old plan`);
   const card = page.locator('[id^="request-"] .gh-chat-card', { hasText: 'Shared agent draft' });
   await expect(card.getByRole('button', { name: '批准', exact: true })).toBeEnabled();
   const conversation = /#\/c\/([^?]+)/.exec(page.url())![1]!;
@@ -24,12 +23,13 @@ test('a newer approval replaces its card and clears notifications on another cli
   const notifications = await page.context().newPage();
   await open(notifications, '/#/notifications');
   await expect(notifications.getByRole('main').locator(`a[href*="request=${old}"]`)).toBeVisible();
-  await composer(page).fill(`shared draft in ${folder.id} newer plan`);
-  await composer(page).press('Enter');
+  await sendForRequest(page, conversation, `shared draft in ${folder.id} newer plan`, old);
   const replaced = page.getByRole('link', { name: '已被新的请求取代', exact: true });
   await expect(replaced).toBeVisible();
   await expect(notifications.getByRole('main').locator(`a[href*="request=${old}"]`)).toHaveCount(0);
   await expect(card).toHaveCount(1);
+  await expect(page.locator(`#request-${old} button`)).toHaveCount(0);
+  await expect(card.locator('.gh-chat-card-footer button').first()).toHaveText('批准');
   await replaced.click();
   await expect(page).toHaveURL(/request=req_/);
   await expect(card).toBeInViewport();
@@ -43,7 +43,15 @@ test('a newer approval replaces its card and clears notifications on another cli
     await page.evaluate((dark) => {
       document.documentElement.dataset.theme = dark ? 'dark' : 'light';
     }, dark);
-    await page.screenshot({ path: `../../artifacts/u3/requests-${name}.png`, fullPage: true });
+    await page.evaluate(() =>
+      Promise.all(
+        document
+          .getAnimations()
+          .filter((animation) => animation.effect?.getTiming().iterations !== Infinity)
+          .map((animation) => animation.finished.catch(() => {})),
+      ),
+    );
+    await page.screenshot({ path: `../../artifacts/u1/integration/requests-${name}.png`, fullPage: true });
   }
   await card.getByRole('button', { name: '拒绝', exact: true }).click();
   await expect(notifications.getByRole('main').getByText('U3 shared drafts', { exact: false })).toHaveCount(0);

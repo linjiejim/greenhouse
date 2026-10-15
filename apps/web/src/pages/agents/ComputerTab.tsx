@@ -6,7 +6,7 @@ import { errorText } from '../../lib/errors';
  */
 
 import { Power, RotateCw, Square } from 'lucide-react';
-import { Button, Empty, ErrorBox, Skeleton, StatusBadge, Tabs, type Tone } from '@greenhouse/ui/kit';
+import { Button, Empty, ErrorBox, Skeleton, StatusBadge, Segmented, type Tone } from '@greenhouse/ui/kit';
 import { useState } from 'react';
 import { ComputerFiles } from '../../computer/ComputerFiles';
 import { ComputerScreen } from '../../computer/ComputerScreen';
@@ -132,7 +132,7 @@ export function ComputerTab({ agentId }: { agentId: string }) {
 
       {running ? (
         <>
-          <Tabs
+          <Segmented
             label={t('agents.tabComputer')}
             items={PANES.map((item) => t(PANE_LABEL[item]))}
             value={t(PANE_LABEL[pane])}

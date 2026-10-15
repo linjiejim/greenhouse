@@ -47,6 +47,19 @@ function Page({ onClose = () => {}, beforeClose }: { onClose?: () => void; befor
 const dialog = () => document.querySelector<HTMLElement>('[role="dialog"]');
 
 describe('Overlay', () => {
+  it('covers the whole floating frame even when opened from a positioned page', () => {
+    render(
+      <div data-floating-boundary>
+        <div className="positioned-page">
+          <Drawer onClose={() => {}} />
+        </div>
+      </div>,
+    );
+    const frame = get('[data-floating-boundary]');
+    expect(get('.gh-overlay').parentElement).toBe(frame);
+    expect(get('.positioned-page').contains(get('.gh-overlay'))).toBe(false);
+  });
+
   it('moves focus in, keeps the actions in the fixed footer, and returns focus to the opener', () => {
     vi.useFakeTimers();
     render(<Page />);

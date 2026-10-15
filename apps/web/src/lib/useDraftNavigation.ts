@@ -1,6 +1,6 @@
-/** A table draft asks before route changes as well as before closing its overlay. */
+/** A draft asks before route changes as well as before closing its overlay. */
 import { useLayoutEffect, useRef, useState } from 'react';
-import { holdNavigation, leaveTo, type Attempt } from '../../lib/router';
+import { holdNavigation, leaveTo, type Attempt } from './router';
 
 export function useDraftNavigation(dirty: boolean, busy: boolean, onDiscard: (navigating: boolean) => void) {
   const [asking, setAsking] = useState(false);

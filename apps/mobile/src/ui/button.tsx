@@ -73,6 +73,7 @@ export function NativeButton({
 }) {
   const { hex, isDark } = useTheme();
   const locale = useLocaleEnv();
+  const foreground = disabled || loading ? hex.secondaryLabel : hex.onAccent;
   const stretch = fullWidth ? [frame({ maxWidth: 10000 })] : [];
   return (
     <Host
@@ -90,14 +91,14 @@ export function NativeButton({
         role={destructive ? 'destructive' : undefined}
         modifiers={[
           styleFor(variant),
-          ...(variant === 'prominent' ? [foregroundStyle(hex.onAccent)] : []),
+          ...(variant === 'prominent' ? [foregroundStyle(foreground)] : []),
           controlSize(size),
           tint(destructive ? hex.red : hex.accent),
           disabledMod(disabled || loading),
         ]}
       >
         {loading ? (
-          <ProgressView modifiers={[tint(hex.onAccent), ...stretch]} />
+          <ProgressView modifiers={[tint(foreground), ...stretch]} />
         ) : icon ? (
           <Label title={label} systemImage={sfSymbol(icon)} modifiers={stretch} />
         ) : (

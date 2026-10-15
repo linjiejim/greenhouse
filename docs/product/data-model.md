@@ -295,6 +295,10 @@ M3.4 计数（#70）：`metric_events` 仅存 identity id、member_id（逻辑�
 
 无表结构变化。记忆规则拒绝复用 `run_steps.error` 的 `{ code, message }`，步骤状态为 `failed`，不保存成功输出、不产生写入回执。`runs.output.findings` 与已有报告正文继续保存 Markdown，由原生安全渲染器展示并解析应用内链接；通知和卡片列表使用可读纯文字摘要。
 
+### U1 提问展示打磨（#70）
+
+不新增接口、字段、表或迁移。客户端根据已有 `requests.payload.fields` 判断是否可单击回答；只有一个 `choice` 字段且选项为 1–6 项时在消息内展示。提交继续使用 `{ answers: { [key]: value } }`，完成后从已有 `requests.result.answers` 恢复选择；复杂表单使用相同接口与权限检查。展示不更改请求生命周期。
+
 ### 请求生命周期收敛（#70，U3）
 
 `requests.target_key` 由 requests/target.ts 单点定义。取代的匹配范围为 member_id、conversation_id、agent_id、subject 和 target_key；创建与决定同持对话锁。新请求仅取代 pending；无法可靠确定目标时不猜测。完整批次按目标集合匹配，不撤掉无关目标。`result.replacement_request_id` 链接新卡；聊天回答使用 `result.reason="answered in chat"` 与 `message_id`，取消使用 withdrawn。每项终态与 request_decided 入队、通知 cleared_at 同事务，历史请求不删除。

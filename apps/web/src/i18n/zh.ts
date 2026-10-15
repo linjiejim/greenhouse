@@ -287,6 +287,7 @@ export const zh = {
   'request.loginSite': '网站',
   'request.loginItem': '登录',
 
+  'message.actions': '消息操作',
   'message.copy': '复制',
   'message.copied': '已复制',
   'message.copyFailed': '复制失败，请选中内容复制',

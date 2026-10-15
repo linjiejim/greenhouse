@@ -18,7 +18,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { AccessibilityInfo, Platform, StyleSheet, Text, View } from 'react-native';
-import Animated, { FadeInUp, FadeOutUp } from 'react-native-reanimated';
+import Animated, { FadeInUp, ReduceMotion, FadeOutUp } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { FullWindowOverlay } from 'react-native-screens';
 import { create } from 'zustand';
@@ -86,7 +86,11 @@ export function ToastHost() {
       style={[StyleSheet.absoluteFill, { paddingTop: insets.top + space.xs, alignItems: 'center' }]}
     >
       {current ? (
-        <Animated.View key={current.id} entering={FadeInUp.duration(220)} exiting={FadeOutUp.duration(EXIT_MS)}>
+        <Animated.View
+          key={current.id}
+          entering={FadeInUp.duration(200).reduceMotion(ReduceMotion.System)}
+          exiting={FadeOutUp.duration(EXIT_MS).reduceMotion(ReduceMotion.System)}
+        >
           <Glass style={styles.pill}>
             {current.icon ? <Icon name={current.icon} size={16} weight="semibold" color={c.label} /> : null}
             <Text style={styles.text} numberOfLines={2}>

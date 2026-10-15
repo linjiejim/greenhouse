@@ -20,25 +20,25 @@ export interface ModeValue {
 /** Semantic colors. The keys become `--gh-<kebab-key>`. */
 export const color = {
   // Surfaces, back to front.
-  canvas: { light: '#FFFFFF', dark: '#111113' }, // the work area
-  chrome: { light: '#F2F2F7', dark: '#1C1C1E' }, // module column, grouped backgrounds
-  rail: { light: '#EDEDF2', dark: '#161618' }, // global rail
+  canvas: { light: '#F2F4F3', dark: '#111113' }, // the work area
+  chrome: { light: '#E8EDE9', dark: '#1C1C1E' }, // module column, grouped backgrounds
+  rail: { light: '#E0E6E2', dark: '#161618' }, // global rail
   surface: { light: '#FFFFFF', dark: '#242426' }, // controls and cards on canvas or chrome
   raised: { light: '#FFFFFF', dark: '#2A2A2D' }, // menus, popovers, dialogs, drawers, sheets
   fill: { light: '#F0F0F4', dark: '#2A2A2D' }, // neutral fills: segmented track, code, skeleton
-  hover: { light: '#E8E8ED', dark: '#303033' },
-  pressed: { light: '#DEDEE4', dark: '#3A3A3E' },
-  selection: { light: '#E2ECE6', dark: '#263A30' }, // current row / nav item (brand-derived)
+  hover: { light: '#D3DFD6', dark: '#303033' },
+  pressed: { light: '#C5D5CA', dark: '#3A3A3E' },
+  selection: { light: '#B4CDBD', dark: '#263A30' }, // current row / nav item (brand-derived)
   scrim: { light: 'rgba(17, 17, 19, 0.32)', dark: 'rgba(0, 0, 0, 0.6)' },
 
   // Lines.
-  line: { light: '#E4E4E9', dark: '#333336' }, // decorative dividers; no contrast requirement
+  line: { light: '#BFC8C1', dark: '#333336' }, // dividers: light ≥ 1.45:1 on canvas
   controlLine: { light: '#86868B', dark: '#707078' }, // input, checkbox and switch boundaries (≥ 3:1)
 
   // Text and icons.
   text: { light: '#1C1C1E', dark: '#F5F5F7' },
-  secondary: { light: '#636366', dark: '#AEAEB2' }, // supporting text (≥ 4.5:1)
-  tertiary: { light: '#86868B', dark: '#7C7C82' }, // placeholders, the "?" hint, non-essential meta (≥ 3:1)
+  secondary: { light: '#424944', dark: '#AEAEB2' }, // supporting text (≥ 4.5:1)
+  tertiary: { light: '#4D534F', dark: '#7C7C82' }, // placeholders and meta: light ≥ 4.5:1 on canvas / chrome / surfaces
 
   // Brand accent. A workspace brand color regenerates this group only.
   accent: { light: '#235D4D', dark: '#B1D2BF' }, // primary action fill, selected indicator, focus

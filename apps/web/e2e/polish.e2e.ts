@@ -40,7 +40,7 @@ test('Markdown keeps single tildes and sanitizes reply HTML in the browser', asy
     '19~24°C ~原文~ ~~删除~~ <img src=x onerror="window.polishInjected=true"> <script>window.polishInjected=true</script>',
   );
   await composer(page).press('Enter');
-  const reply = page.locator('article').filter({ has: page.getByRole('button', { name: '重新生成', exact: true }) });
+  const reply = page.locator('.app-message.is-reply').last();
   await expect(reply).toContainText('19~24°C ~原文~');
   await expect(reply.locator('del')).toHaveText('删除');
   expect(await page.evaluate(() => 'polishInjected' in window)).toBe(false);
@@ -109,13 +109,10 @@ test('choice fields in skill calls and question cards close after a pick', async
   await composer(page).fill('ask me choices');
   await composer(page).press('Enter');
   const card = page.locator('.gh-chat-card', { hasText: 'Which city?' });
-  const answer = card.getByRole('combobox', { name: 'City', exact: true });
-  await answer.click();
-  await page.getByRole('option', { name: 'Osaka', exact: true }).click();
-  await expect(answer).toHaveAttribute('aria-expanded', 'false');
-  await expect(answer).toBeFocused();
+  await expect(card.getByRole('button', { name: 'Osaka', exact: true })).toBeVisible();
   await captureChoice(page, 'question');
-  await card.getByRole('button', { name: '提交回答', exact: true }).click();
+  await card.getByRole('button', { name: 'Osaka', exact: true }).click();
+  await expect(card.getByRole('button', { name: 'Osaka', exact: true })).toHaveAttribute('aria-pressed', 'true');
   await expect(card.getByText('已完成')).toBeVisible();
   await expect(page.getByText('Done.', { exact: true })).toBeVisible();
 });

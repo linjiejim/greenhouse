@@ -37,7 +37,7 @@
 - Declare presentation only in app/\_layout.tsx with the src/ui/nav.ts presets; screens set their own title and toolbar; the back button is always the system's.
 - Sheets are routes; take their chrome from src/ui/sheet-chrome.tsx (SheetClose, FormChrome, useLeaveSheetTo, which dismisses before pushing).
 - Pass structured params with putHandoff (src/lib/handoff.ts), read with the matching kind and handle an expired key; return results through a zustand store, never callbacks.
-- Never pin buttons to the bottom of a half-height sheet; the root layout fades that edge.
+- SheetActions owns pinned bottom actions through SheetFrame; the partial-height fade covers only the scrolling body. Primary actions are full-width; FormChrome retains close/back draft guards.
 - A failed user action shows alertError (raw provider text goes in detail); toast is for success only; a failed load shows EmptyState with retry; login errors stay inline.
 - Forms use NativeForm with FormNavRow and FormCheckRow; content buttons use NativeButton, never Pressable plus Text.
 - Every SwiftUI Host you create gets the useLocaleEnv() modifier, and inline hosts in RN content get ignoreSafeArea="all"; format dates with useLocale() or localeOf().
@@ -120,5 +120,9 @@
 - Map operation_disabled plus details.switch through operationErrorText; never show the server's English pause copy as a member-facing reason.
 
 - Run findings, summaries, briefs, output and completion reports use Markdown safe mode with native app links. Notification, schedule-list and request-card excerpts use plainText; approval previews stay inert. Memory rule errors map by code through operationErrorText. These display changes require no native modules.
+
+- Agent author rows are room-only and sit above full-width replies. Thinking never adds an avatar. Replies expose a small NativeMenu; chat Markdown passes calm, while knowledge documents retain their type hierarchy.
+- A one-field ask_user choice with 1–6 options answers in the card; all other questions keep the request route. Disable choices during the write, show the optimistic pick, restore on failure and read persisted selection from result.answers. Do not change request lifecycle rules for presentation.
+- Readable custom light colors live in src/theme/palette.ts; theme.ts maps them to native dynamic colors while retaining system dark backgrounds. Keep contrast tests React-free.
 
 - Notifications have one list and an unread badge; pending requests belong to their conversations. notification.removed clears request pointers on open screens. Superseded/withdrawn cards collapse and replacements open the new card in its source conversation.

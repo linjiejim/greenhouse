@@ -2,7 +2,7 @@ import { mkdirSync } from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
 import type { Base, NeedsYou, Message } from '@greenhouse/contract';
 import { apiAs } from './api';
-import { composer, open } from './fixtures';
+import { composer, open, sendForRequest } from './fixtures';
 
 async function capture(page: Page, name: string) {
   const path = new URL('../../../artifacts/t14/', import.meta.url).pathname;
@@ -33,8 +33,7 @@ test('schema cards show named types and chips, reuse the primary field, and avoi
 }) => {
   const thread = await conversation(request, 'T14 schema');
   await open(page, `/#/c/${thread.id}`);
-  await composer(page).fill('acceptance schema');
-  await composer(page).press('Enter');
+  await sendForRequest(page, thread.id, 'acceptance schema');
   const details = page.locator('.app-request-details');
   await expect(details).toContainText('客户名');
   await expect(details).toContainText('文本 · 主字段');
@@ -68,8 +67,7 @@ test('knowledge cards safely preview Markdown, expand, and update the original s
     space: 'team',
   });
   await open(page, `/#/c/${thread.id}`);
-  await composer(page).fill(`acceptance markdown ${folder.id}`);
-  await composer(page).press('Enter');
+  await sendForRequest(page, thread.id, `acceptance markdown ${folder.id}`);
   const preview = page.locator('.app-markdown-preview');
   await expect(preview.locator('h1')).toHaveText('PG18 速览');
   await expect(preview.locator('strong')).toHaveText('异步 I/O');
@@ -97,6 +95,9 @@ test('three same-turn record creations appear as one receipt with one atomic und
   await open(page, `/#/c/${thread.id}`);
   await composer(page).fill(`acceptance records ${table.id} ${table.fields[0]!.id}`);
   await composer(page).press('Enter');
+  const stop = page.getByRole('button', { name: '停止', exact: true });
+  await expect(stop).toBeVisible();
+  await stop.waitFor({ state: 'hidden' });
   await expect(page.getByText('Records completed.', { exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: '撤销这次写入' })).toHaveCount(1);
   await expect(page.getByText(/新增记录「深圳云图科技」/)).toBeVisible();

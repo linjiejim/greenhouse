@@ -6,4 +6,4 @@ export { useMe } from './app/session';
 export { navigate, href } from './lib/router';
 export { errorText } from './lib/errors';
 export * from '@greenhouse/ui/kit';
-export { useDraftNavigation } from './pages/tables/useDraftNavigation';
+export { useDraftNavigation } from './lib/useDraftNavigation';

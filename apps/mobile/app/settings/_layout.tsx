@@ -7,6 +7,7 @@
 
 import React from 'react';
 import { Stack } from 'expo-router';
+import { sheetEdgeLayout } from '../../src/ui/sheet-edge';
 import { useTheme } from '../../src/theme';
 import { pageScreen, sheetScreen, stackDefaults } from '../../src/ui/nav';
 
@@ -15,7 +16,10 @@ export const unstable_settings = { initialRouteName: 'index' };
 export default function SettingsLayout() {
   const { colors: c, hex, isDark } = useTheme();
   return (
-    <Stack screenOptions={{ ...stackDefaults(c, hex, isDark), ...pageScreen(c, { grouped: true }) }}>
+    <Stack
+      screenLayout={sheetEdgeLayout}
+      screenOptions={{ ...stackDefaults(c, hex, isDark), ...pageScreen(c, { grouped: true }) }}
+    >
       <Stack.Screen name="index" />
       <Stack.Screen name="account" options={sheetScreen([1], { header: true })} />
       <Stack.Screen name="stations" />

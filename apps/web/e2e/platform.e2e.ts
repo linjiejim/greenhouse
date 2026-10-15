@@ -147,6 +147,8 @@ test('all seven module directories filter their own entries and support arrows, 
         .filter({ hasText: /t11filter/i })
         .first();
       await expect(result).toBeVisible();
+      // Hover tips consume Escape first; keep the pointer clear for this keyboard-only check.
+      await page.mouse.move(0, 0);
       await search.press('ArrowDown');
       await expect(directory.locator('.app-row:focus')).toBeVisible();
       await page.keyboard.press('Escape');

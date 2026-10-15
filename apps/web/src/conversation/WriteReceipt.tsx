@@ -23,7 +23,7 @@ export function WriteReceipt({ message }: { message: Message }) {
   const undone = undo.isSuccess || message.event?.undone === true;
   return (
     <ChatCard
-      footerEnd
+      className="app-write-receipt"
       title={t('approvals.receipt')}
       footer={
         message.event?.member_id === me?.id && (

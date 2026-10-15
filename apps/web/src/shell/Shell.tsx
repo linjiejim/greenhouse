@@ -112,11 +112,15 @@ export function Shell() {
     setOverlay(request);
   }, []);
 
-  const showDirectory = floating ? drawer : !collapsed;
   let directory: ReactNode = null;
-  if (showDirectory) {
+  if (!floating || drawer) {
     directory = (
-      <aside className={cx('app-directory', floating && 'is-floating')} aria-label={t('nav.directory')}>
+      <aside
+        className={cx('app-directory', floating && 'is-floating', !floating && collapsed && 'is-collapsed')}
+        aria-label={t('nav.directory')}
+        inert={!floating && collapsed}
+        aria-hidden={(!floating && collapsed) || undefined}
+      >
         <Directory key={module} module={module} route={route} floating={floating} onHide={hide} />
         {narrow && <ModuleBar module={module} />}
       </aside>

@@ -33,8 +33,8 @@
  */
 import { memo, useMemo } from 'react';
 import { View } from 'react-native';
-import Animated, { FadeIn } from 'react-native-reanimated';
-import { PreviewContext } from './context';
+import Animated, { FadeIn, ReduceMotion } from 'react-native-reanimated';
+import { CalmContext, PreviewContext } from './context';
 import { parseBlocks, type Block } from './parse';
 import { fenceBlocks } from './registry';
 import { CodeBlock } from './blocks/code';
@@ -101,22 +101,29 @@ export function Markdown({
   animated = false,
   safe = false,
   preview = false,
+  calm = false,
 }: {
   source: string;
   animated?: boolean;
   safe?: boolean;
   preview?: boolean;
+  calm?: boolean;
 }) {
   const blocks = useMemo(() => parseBlocks(source), [source]);
   return (
-    <PreviewContext.Provider value={preview}>
-      <View>
-        {blocks.map((b, i) => (
-          <Animated.View key={i} entering={animated ? FadeIn.duration(260) : undefined}>
-            {renderBlock(b, i, animated, safe, preview)}
-          </Animated.View>
-        ))}
-      </View>
-    </PreviewContext.Provider>
+    <CalmContext.Provider value={calm}>
+      <PreviewContext.Provider value={preview}>
+        <View>
+          {blocks.map((b, i) => (
+            <Animated.View
+              key={i}
+              entering={animated ? FadeIn.duration(200).reduceMotion(ReduceMotion.System) : undefined}
+            >
+              {renderBlock(b, i, animated, safe, preview)}
+            </Animated.View>
+          ))}
+        </View>
+      </PreviewContext.Provider>
+    </CalmContext.Provider>
   );
 }

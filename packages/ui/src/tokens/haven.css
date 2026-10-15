@@ -94,21 +94,21 @@
 
 :root,
 [data-theme='light'] {
-  --gh-canvas: #FFFFFF;
-  --gh-chrome: #F2F2F7;
-  --gh-rail: #EDEDF2;
+  --gh-canvas: #F2F4F3;
+  --gh-chrome: #E8EDE9;
+  --gh-rail: #E0E6E2;
   --gh-surface: #FFFFFF;
   --gh-raised: #FFFFFF;
   --gh-fill: #F0F0F4;
-  --gh-hover: #E8E8ED;
-  --gh-pressed: #DEDEE4;
-  --gh-selection: #E2ECE6;
+  --gh-hover: #D3DFD6;
+  --gh-pressed: #C5D5CA;
+  --gh-selection: #B4CDBD;
   --gh-scrim: rgba(17, 17, 19, 0.32);
-  --gh-line: #E4E4E9;
+  --gh-line: #BFC8C1;
   --gh-control-line: #86868B;
   --gh-text: #1C1C1E;
-  --gh-secondary: #636366;
-  --gh-tertiary: #86868B;
+  --gh-secondary: #424944;
+  --gh-tertiary: #4D534F;
   --gh-accent: #235D4D;
   --gh-accent-hover: #1C4D40;
   --gh-accent-pressed: #163E34;

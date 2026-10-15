@@ -29,7 +29,7 @@ import { useAgents } from '../../data/agents';
 import { usePeople } from '../../data/people';
 import { tablesError } from './errors';
 import { CardFilter } from './dashboards/CardFilter';
-import { useDraftNavigation } from './useDraftNavigation';
+import { useDraftNavigation } from '../../lib/useDraftNavigation';
 
 export function AutomationsDrawer({ base, table, onClose }: { base: Base; table: BaseTable; onClose: () => void }) {
   const { t } = useI18n();

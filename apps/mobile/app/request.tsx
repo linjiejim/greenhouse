@@ -30,7 +30,6 @@ import { openConversation } from '../src/shell/nav';
 import { softAskAfterDecision } from '../src/push/soft-ask';
 import { decide, type Decision } from '../src/requests/decide';
 import {
-  KIND_ICON,
   standingScope,
   cardActions,
   cardBody,
@@ -49,7 +48,8 @@ import { Icon } from '../src/ui/core';
 import { alertError, confirmAction } from '../src/ui/dialogs';
 import { EmptyState, LoadingState } from '../src/ui/empty';
 import { NativeMenu } from '../src/ui/menu';
-import { SheetClose } from '../src/ui/sheet-chrome';
+import { FormChrome, SheetClose } from '../src/ui/sheet-chrome';
+import { SheetActions } from '../src/ui/sheet-actions';
 
 /** The card from an open transcript, else from the API (pending ones, and all of its conversation's). */
 function useRequest(id: string): { request: NeedsYou | null; missing: boolean } {
@@ -222,22 +222,21 @@ export default function RequestSheet() {
 
   return (
     <>
-      <Stack.Screen options={{ title: t('requests.title') }} />
-      <SheetClose />
+      <FormChrome
+        title={request.title}
+        dirty={request.status === 'pending' && Object.values(answers).some((value) => value.trim())}
+        canSave={false}
+        saving={!!busy}
+        onSave={() => {}}
+        hideSave
+        protectNavigation
+      />
       <ScrollView
         contentInsetAdjustmentBehavior="automatic"
         contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="interactive"
       >
-        <View style={styles.head}>
-          <Icon
-            name={KIND_ICON[request.kind]}
-            size={20}
-            color={request.status === 'pending' ? c.orange : c.secondaryLabel}
-          />
-          <Text style={styles.title}>{request.title}</Text>
-        </View>
         <View style={styles.metaRow}>
           <View style={[styles.status, { borderColor: tone }]}>
             <Text style={[styles.statusText, { color: tone }]}>
@@ -303,7 +302,7 @@ export default function RequestSheet() {
                 key={field.key}
                 field={field}
                 value={answers[field.key] ?? ''}
-                disabled={request.status !== 'pending'}
+                disabled={request.status !== 'pending' || !!busy}
                 onChange={(value) => setAnswers((current) => ({ ...current, [field.key]: value }))}
               />
             ))}
@@ -314,30 +313,28 @@ export default function RequestSheet() {
           <Text style={styles.outcome}>{t(`requests.status.${status.word}` as 'requests.status.needsYou')}</Text>
         ) : null}
 
-        {actions.length ? (
-          <View style={styles.actions}>
-            {actions.map((action, index) => (
-              <NativeButton
-                key={action}
-                label={label(action)}
-                variant={index === actions.length - 1 ? 'prominent' : 'tinted'}
-                destructive={action === 'reject'}
-                loading={busy === action}
-                disabled={
-                  (!!busy && busy !== action) || (action === 'approve' && request.payload.batch_ready === false)
-                }
-                fullWidth
-                size="large"
-                style={styles.button}
-                onPress={() => void run(action)}
-              />
-            ))}
-          </View>
-        ) : null}
         {request.status === 'pending' && request.conversation_id && !standing ? (
           <Text style={styles.scope}>{t('requests.onlyThisOnce')}</Text>
         ) : null}
       </ScrollView>
+      {actions.length ? (
+        <SheetActions>
+          {[...actions].reverse().map((action, index) => (
+            <NativeButton
+              key={action}
+              label={label(action)}
+              variant={index === 0 ? 'prominent' : 'tinted'}
+              destructive={action === 'reject'}
+              loading={busy === action}
+              disabled={(!!busy && busy !== action) || (action === 'approve' && request.payload.batch_ready === false)}
+              fullWidth
+              size="large"
+              style={styles.button}
+              onPress={() => void run(action)}
+            />
+          ))}
+        </SheetActions>
+      ) : null}
     </>
   );
 }
@@ -378,7 +375,9 @@ function Field({
         <Text style={styles.fieldLabel}>{label}</Text>
         <NativeMenu
           items={field.options.map((option) => ({ id: option, title: option, checked: value === option }))}
-          onSelect={onChange}
+          onSelect={(value) => {
+            if (!disabled) onChange(value);
+          }}
           fill={false}
         >
           <View
@@ -403,6 +402,7 @@ function Field({
         value={value}
         onChangeText={onChange}
         editable={!disabled}
+        maxLength={4000}
         multiline
         placeholder={t('requests.answerPlaceholder')}
         placeholderTextColor={c.placeholder}
@@ -415,20 +415,12 @@ function Field({
 
 const useStyles = makeStyles((c) => ({
   content: { padding: space.margin, paddingBottom: space.xxxl, gap: space.md },
-  head: { flexDirection: 'row', alignItems: 'flex-start', gap: space.sm },
-  title: { flex: 1, ...typo.title3, fontWeight: weight.semibold, color: c.label },
   metaRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
   status: { borderWidth: 1, borderRadius: radius.sm, paddingHorizontal: 6, paddingVertical: 1 },
   statusText: { ...typo.caption1, fontWeight: weight.semibold },
   meta: { flex: 1, ...typo.footnote, color: c.secondaryLabel },
   reason: { ...typo.body, color: c.label },
-  details: {
-    borderRadius: radius.lg,
-    backgroundColor: c.secondaryGroupedBackground,
-    padding: space.md,
-    gap: space.sm,
-    ...squircle,
-  },
+  details: { gap: space.sm },
   detail: { gap: 2 },
   detailLabel: { ...typo.footnote, color: c.secondaryLabel },
   detailValue: { ...typo.body, color: c.label },
@@ -461,7 +453,6 @@ const useStyles = makeStyles((c) => ({
   placeholder: { flex: 1, ...typo.body, color: c.placeholder },
   disabled: { opacity: 0.5 },
   outcome: { ...typo.subheadline, color: c.secondaryLabel },
-  actions: { gap: space.sm, marginTop: space.sm },
   button: { alignSelf: 'stretch' },
   scope: { ...typo.footnote, color: c.tertiaryLabel, textAlign: 'center' },
 }));

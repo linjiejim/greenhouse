@@ -9,7 +9,7 @@
 import { useMemo, useState } from 'react';
 import DOMPurify from 'dompurify';
 import { Paperclip } from 'lucide-react';
-import { Banner, Button, ErrorBox, Overlay, Skeleton, StatusBadge } from '@greenhouse/ui/kit';
+import { Banner, Button, ErrorBox, Overlay, OverlayActions, Skeleton, StatusBadge } from '@greenhouse/ui/kit';
 import { icon } from '@greenhouse/ui/tokens';
 import type { MailDetail } from '@greenhouse/contract';
 import { useNotify } from '../app/notify';
@@ -167,30 +167,31 @@ export function MailDrawer({ agentId, mailId, onClose }: { agentId: string; mail
     <Overlay title={mail ? mail.subject || t('mail.noSubject') : t('mail.open')} onClose={onClose} wide>
       {detail.isPending && <Skeleton lines={6} />}
       {detail.isError && <ErrorBox onRetry={() => void detail.refetch()}>{errorText(detail.error, t)}</ErrorBox>}
+      {mail?.status === 'screened' && (
+        <OverlayActions>
+          {' '}
+          <Button
+            size="sm"
+            kind="primary"
+            loading={release.isPending}
+            onClick={() =>
+              void release
+                .mutateAsync(mail.id)
+                .then((done) => {
+                  notify(t('mail.released', { sender: done.sender, count: done.delivered }));
+                  return detail.refetch();
+                })
+                .catch((caught: unknown) => notify(errorText(caught, t)))
+            }
+          >
+            {t('mail.release')}
+          </Button>
+        </OverlayActions>
+      )}
       {mail && (
         <article className="app-mail" aria-label={mail.subject || t('mail.noSubject')}>
           {mail.status === 'screened' && (
-            <Banner
-              tone="warning"
-              action={
-                <Button
-                  size="sm"
-                  kind="primary"
-                  loading={release.isPending}
-                  onClick={() =>
-                    void release
-                      .mutateAsync(mail.id)
-                      .then((done) => {
-                        notify(t('mail.released', { sender: done.sender, count: done.delivered }));
-                        return detail.refetch();
-                      })
-                      .catch((caught: unknown) => notify(errorText(caught, t)))
-                  }
-                >
-                  {t('mail.release')}
-                </Button>
-              }
-            >
+            <Banner tone="warning">
               {t('mail.screenedBanner', { reason: mail.screen_reason ? t(REASON[mail.screen_reason]) : '' })}
             </Banner>
           )}

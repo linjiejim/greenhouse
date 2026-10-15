@@ -302,14 +302,37 @@ button.gh-chat-card-header:focus-visible {
 /* ─── Segmented: 2–4 options; the selected one is a small raised item (shadow 1) ─── */
 
 .gh-segmented {
+  position: relative;
+  isolation: isolate;
   display: inline-flex;
+  max-width: 100%;
   gap: var(--gh-space-0_5);
   padding: var(--gh-space-0_5);
   border-radius: var(--gh-radius-md);
   background: var(--gh-fill);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.gh-segmented::before {
+  content: '';
+  position: absolute;
+  top: var(--gh-space-0_5);
+  bottom: var(--gh-space-0_5);
+  left: 0;
+  width: var(--gh-indicator-width);
+  transform: translateX(var(--gh-indicator-x));
+  border-radius: var(--gh-radius-sm);
+  background: var(--gh-raised);
+  box-shadow: var(--gh-shadow-1);
+  transition:
+    transform var(--gh-duration-base) var(--gh-ease-standard),
+    width var(--gh-duration-base) var(--gh-ease-standard);
+  pointer-events: none;
 }
 .gh-segmented > button {
-  height: var(--gh-control-sm);
+  position: relative;
+  flex: none;
+  min-height: var(--gh-control-md);
   padding: 0 var(--gh-space-3);
   border: 0;
   border-radius: var(--gh-radius-sm);
@@ -318,16 +341,13 @@ button.gh-chat-card-header:focus-visible {
   font: var(--gh-type-label);
   white-space: nowrap;
   cursor: pointer;
-  transition-property: background-color, color, box-shadow;
-  transition-duration: var(--gh-duration-fast);
+  transition: color var(--gh-duration-fast) var(--gh-ease-standard);
 }
 .gh-segmented > button:hover {
   color: var(--gh-text);
 }
 .gh-segmented > button[aria-checked='true'] {
-  background: var(--gh-raised);
   color: var(--gh-text);
-  box-shadow: var(--gh-shadow-1);
 }
 
 /* ─── Switch: 40 × 24 track, 20 knob ─── */
@@ -424,6 +444,8 @@ button.gh-chat-card-header:focus-visible {
 /* ─── Tabs: underlined views of one object ─── */
 
 .gh-tabs {
+  position: relative;
+  isolation: isolate;
   display: flex;
   /* It scrolls sideways, so in a column it would otherwise shrink to nothing. */
   flex-shrink: 0;
@@ -438,7 +460,8 @@ button.gh-chat-card-header:focus-visible {
   flex-shrink: 0;
   min-height: var(--gh-control-md);
   margin-bottom: calc(-1 * var(--gh-stroke-hairline));
-  padding: 0;
+  padding: 0 var(--gh-space-2);
+  border-radius: var(--gh-radius-sm) var(--gh-radius-sm) 0 0;
   border: 0;
   border-bottom: var(--gh-stroke-strong) solid transparent;
   background: none;
@@ -453,9 +476,31 @@ button.gh-chat-card-header:focus-visible {
   color: var(--gh-text);
 }
 .gh-tabs > button[aria-selected='true'] {
-  border-bottom-color: var(--gh-accent);
   color: var(--gh-text);
   font-weight: 600;
+}
+
+.gh-tabs::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: var(--gh-indicator-width);
+  height: var(--gh-stroke-strong);
+  border-radius: var(--gh-radius-full);
+  background: var(--gh-accent);
+  transform: translateX(var(--gh-indicator-x));
+  transition:
+    transform var(--gh-duration-base) var(--gh-ease-standard),
+    width var(--gh-duration-base) var(--gh-ease-standard);
+  pointer-events: none;
+}
+.gh-tabs > button:hover {
+  background: var(--gh-hover);
+}
+.gh-tabs > button:focus-visible,
+.gh-segmented > button:focus-visible {
+  outline-offset: calc(-1 * var(--gh-stroke-strong));
 }
 
 /* ─── Badge: 20 high, caption bold, a status pair with a dot ─── */
@@ -616,8 +661,7 @@ button.gh-chat-card-header:focus-visible {
 .gh-toast-text {
   min-width: 0;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 .gh-toast .gh-button {
   color: var(--gh-canvas);
@@ -840,12 +884,17 @@ button.gh-chat-card-header:focus-visible {
 }
 .gh-chip {
   display: inline-flex;
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   align-items: center;
   height: var(--gh-space-5);
   padding: 0 var(--gh-space-2);
-  border-radius: var(--gh-radius-sm);
+  border-radius: var(--gh-radius-full);
   background: var(--gh-fill);
-  font: var(--gh-type-body-sm);
+  font: var(--gh-type-caption);
 }
 .gh-chip.is-more {
   color: var(--gh-secondary);
@@ -1103,6 +1152,7 @@ button.gh-chat-card-header:focus-visible {
   width: clamp(var(--gh-drawer-min), var(--gh-drawer-share), var(--gh-drawer-max));
   max-width: calc(100% - var(--gh-space-10));
   height: 100%;
+  min-height: 0;
   border-left: var(--gh-stroke-hairline) solid var(--gh-line);
   background: var(--gh-raised);
   color: var(--gh-text);
@@ -1138,7 +1188,8 @@ button.gh-chat-card-header:focus-visible {
   overflow: hidden;
   font: var(--gh-type-title);
   text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 .gh-overlay-spacer {
   flex: 1;
@@ -1160,6 +1211,8 @@ button.gh-chat-card-header:focus-visible {
   gap: var(--gh-space-2);
 }
 .gh-overlay-footer {
+  flex-wrap: wrap;
+  background: var(--gh-raised);
   padding: var(--gh-space-4) var(--gh-space-6);
   border-top: var(--gh-stroke-hairline) solid var(--gh-line);
 }
@@ -1185,7 +1238,14 @@ button.gh-chat-card-header:focus-visible {
 
 /* ─── ChatCard: one layout for results, process and decisions ─── */
 
+.gh-card-summary {
+  padding-block: var(--gh-space-2);
+  color: var(--gh-secondary);
+}
 .gh-chat-card {
+  transition:
+    border-color var(--gh-duration-base) var(--gh-ease-standard),
+    background-color var(--gh-duration-base) var(--gh-ease-standard);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -1256,10 +1316,11 @@ button.gh-chat-card-header:hover {
   padding: 0 var(--gh-space-3) var(--gh-space-3);
 }
 .gh-chat-card-footer {
+  flex-wrap: wrap;
   display: flex;
   align-items: center;
   gap: var(--gh-space-2);
-  padding: 0 var(--gh-space-3) var(--gh-space-3) var(--gh-space-1);
+  padding: 0 var(--gh-space-3) var(--gh-space-3);
 }
 .gh-chat-card-footer.is-end {
   justify-content: flex-end;
@@ -1393,6 +1454,8 @@ button.gh-chat-card-header:hover {
   padding: var(--gh-space-5);
 }
 [data-narrow] .gh-overlay-footer {
+  flex-wrap: wrap;
+  background: var(--gh-raised);
   padding: var(--gh-space-3) var(--gh-space-4) calc(var(--gh-space-3) + env(safe-area-inset-bottom, 0px));
 }
 
@@ -1481,5 +1544,16 @@ button.gh-chat-card-header:hover {
 @keyframes gh-sheet-out {
   to {
     transform: translateY(100%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0s !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0s !important;
+    scroll-behavior: auto !important;
   }
 }

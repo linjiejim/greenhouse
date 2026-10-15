@@ -342,6 +342,10 @@ custom 网页运行使用双层 `sandbox="allow-scripts"` iframe，均无 allow-
 
 `memory` 修改在后台返回 `memory_background_read_only`，本轮读取外部内容后返回 `memory_untrusted_content`（均为 403）。工具步骤持久化为 `failed`，`error.code` 保留上述稳定码，`error.message` 和模型收到的工具错误说明具体原因、不要重试；外部内容拒绝要求成员在新一轮对话中确认。原生与 Web 词典均映射这两个码。后台工具参数仍只提供 `recall`。
 
+### U1 提问展示打磨（#70）
+
+不新增接口、字段、表或迁移。客户端根据已有 `requests.payload.fields` 判断是否可单击回答；只有一个 `choice` 字段且选项为 1–6 项时在消息内展示。提交继续使用 `{ answers: { [key]: value } }`，完成后从已有 `requests.result.answers` 恢复选择；复杂表单使用相同接口与权限检查。展示不更改请求生命周期。
+
 ### 请求与通知自动清理（#70，U3）
 
 - 请求状态增加 `superseded` 和 `withdrawn`。被取代卡片的 `result.replacement_request_id` 指向新请求；`result.reason="answered in chat"` 时，`message_id` 指向成员已发送的回答，Agent 直接读这条消息，不另外唤醒一次。聊天消息从不表示批准或拒绝。
