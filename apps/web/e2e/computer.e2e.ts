@@ -56,7 +56,7 @@ test("the Agent's page shows its computer, and why it could not start", async ({
 test("a conversation's computer drawer is the Agent's whole computer page", async ({ page }) => {
   await open(page);
   await page.getByRole('main').getByRole('button', { name: '电脑' }).click();
-  const drawer = page.getByRole('dialog', { name: 'Greeny的电脑' });
+  const drawer = page.getByRole('dialog', { name: 'Greeny 的电脑' });
   await expect(drawer.getByRole('button', { name: '开机' })).toBeVisible();
   await expect(drawer.getByText('电脑没开机')).toBeVisible();
 });

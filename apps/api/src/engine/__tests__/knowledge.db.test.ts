@@ -68,7 +68,10 @@ describe('knowledge tools in a turn', () => {
       content: 'Expenses are filed by Friday.',
     });
     // Another member's personal doc is not there for this member's Agent.
-    expect(refused).toMatchObject({ status: 'failed', error: { message: 'Doc not found.' } });
+    expect(refused).toMatchObject({
+      status: 'failed',
+      error: { code: 'not_found', message: '读一篇文档失败：对象不存在或无法访问' },
+    });
     const answer = await reply(sent.run_id);
     expect(answer.citations).toEqual([
       { kind: 'doc', id: handbook.id, title: 'Handbook', url: `#/knowledge/${handbook.id}` },
@@ -83,7 +86,15 @@ describe('knowledge tools in a turn', () => {
     const searched = await send(main.id, 'find the expenses rule');
     const [search] = await steps(searched.run_id);
     expect(search!.output).toMatchObject({
-      results: [expect.objectContaining({ id: handbook.id, title: 'Handbook', where: 'team' })],
+      results: [
+        expect.objectContaining({
+          id: handbook.id,
+          title: 'Handbook',
+          where: '团队知识库',
+          space: 'team',
+          space_label: '团队知识库',
+        }),
+      ],
     });
     expect((await reply(searched.run_id)).citations).toEqual([
       { kind: 'doc', id: handbook.id, title: 'Handbook', url: `#/knowledge/${handbook.id}` },
@@ -127,6 +138,7 @@ describe('knowledge tools in a turn', () => {
       summary: '修改文档《Plan》',
       details: [
         { label: '改动', value: '+1 −1\n- Ship in May.\n+ Ship in June.' },
+        { label: '内容预览', value: 'Ship in June.\n', format: 'markdown' },
         { label: '说明', value: 'New date' },
       ],
     });

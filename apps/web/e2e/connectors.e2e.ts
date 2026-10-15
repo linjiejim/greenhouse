@@ -170,11 +170,11 @@ test.describe('as Mei', () => {
     await expect(row).toContainText('已连接');
     await expect(row).toContainText('3 个工具，1 个只读');
 
-    await row.getByRole('button', { name: 'Ticket desk的操作' }).click();
+    await row.getByRole('button', { name: 'Ticket desk 的操作' }).click();
     await page.getByRole('menuitem', { name: '测试连接' }).click();
     await expect(page.getByText('Ticket desk 连接正常 · 3 个工具')).toBeVisible();
 
-    await row.getByRole('button', { name: 'Ticket desk的操作' }).click();
+    await row.getByRole('button', { name: 'Ticket desk 的操作' }).click();
     await page.getByRole('menuitem', { name: '断开' }).click();
     const confirm = page.getByRole('alertdialog', { name: '断开 Ticket desk？' });
     await confirm.getByRole('button', { name: '断开' }).click();
@@ -222,7 +222,7 @@ test.describe('as Mei', () => {
     await page.goto(`/#/settings/connections?connector=${connector.id}&oauth_error=access_denied`);
     await expect(page.getByText('你在 Sign-in desk 那边取消了授权。')).toBeVisible();
 
-    await row.getByRole('button', { name: 'Sign-in desk的操作' }).click();
+    await row.getByRole('button', { name: 'Sign-in desk 的操作' }).click();
     await page.getByRole('menuitem', { name: '断开' }).click();
     await page.getByRole('alertdialog').getByRole('button', { name: '断开' }).click();
     await expect(row).toContainText('未连接');

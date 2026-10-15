@@ -174,7 +174,7 @@ describe('what an Agent may use', () => {
     expect(model.tools.at(-1)).toContain('mcp_call');
     const [step] = await steps(refused.run_id);
     expect(step).toMatchObject({ risk: 'read', status: 'failed' });
-    expect(step!.error?.message).toMatch(/no tool "create_ticket" you can use here/);
+    expect(step!.error).toEqual({ code: 'forbidden', message: '使用连接器失败：没有操作权限' });
     expect(await getDb().select().from(requests).where(eq(requests.runId, refused.run_id))).toEqual([]);
 
     const tool = connectorTool(services.connectors);

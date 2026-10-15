@@ -16,6 +16,7 @@ import { cutText } from '@greenhouse/providers';
 import { MAIL_BODY_MAX, MAIL_RECIPIENTS_MAX, MAIL_SUBJECT_MAX, type MailService } from '../../modules/mail/service.js';
 import { fence, sanitizeForPrompt } from '../../security/prompt.js';
 import { defineTool, type ToolContext } from './define.js';
+import { forbidden } from '../../http/errors.js';
 
 const LIST_MAX = 50;
 const DETAIL_BODY_EXCERPT = 600;
@@ -162,7 +163,7 @@ export function mailTool(mail: MailService) {
         case 'reply': {
           // Sending runs only as the call the owner approved on its card, never on the model's word.
           if (!ctx.approved || !maySend(ctx)) {
-            throw new Error(
+            throw forbidden(
               ctx.surface !== 'turn'
                 ? 'Mail can only be sent from a conversation, where your owner approves it.'
                 : 'Sending mail needs your owner to approve it, and you may only read here.',

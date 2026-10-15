@@ -8,8 +8,8 @@
  *
  * Read-only tools run at once. Any other tool is classed external for that call, so the member
  * approves exactly these arguments on a card first, and it then runs with their connection.
- * Offered only in turns (nobody watches a background run) and never in someone else's public
- * Agent, whose instructions are not the asker's (engine/AGENTS.md).
+ * Background runs may only call read-only tools; authenticated results close their outbound
+ * access. Never offered in someone else's public Agent (engine/AGENTS.md).
  */
 
 import { z } from 'zod';
@@ -17,6 +17,7 @@ import type { ConnectorsService, UsableConnector } from '../../modules/connector
 import { fence, outsideText, sanitizeForPrompt } from '../../security/prompt.js';
 import { argumentDetails } from './presentation.js';
 import { defineTool } from './define.js';
+import { forbidden } from '../../http/errors.js';
 
 /** A result longer than this is cut; the rest is said in one line. */
 export const MAX_RESULT_CHARS = 20_000;
@@ -80,6 +81,15 @@ export function connectorTool(connectors: ConnectorsService) {
     surfaces: ['turn', 'background'],
     taints: true,
     outbound: true,
+    async privateRead(args, ctx) {
+      if (args.action !== 'call') return false;
+      const found = await connectors.findTool(ctx.memberId, ctx.manifest, args.connector, args.tool);
+      if ('error' in found) return false;
+      const available = await connectors.mine(ctx.memberId);
+      const source = available.connectors.find((entry) => entry.id === found.connector.id);
+      // Without a trusted public-data declaration, authenticated results stay private.
+      return source?.auth_mode !== 'none';
+    },
     // Offered whenever the Agent has connectors, connected or not: an account connected or
     // disconnected changes only the list in the closing message.
     available: (ctx) => connectors.offered(ctx.manifest),
@@ -127,7 +137,7 @@ export function connectorTool(connectors: ConnectorsService) {
         };
       }
       const found = await connectors.findTool(ctx.memberId, ctx.manifest, args.connector, args.tool);
-      if ('error' in found) throw new Error(found.error);
+      if ('error' in found) throw forbidden(found.error);
       if (args.action === 'describe') {
         return {
           connector: found.connector.slug,

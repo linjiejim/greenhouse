@@ -40,11 +40,15 @@ export const RequestCard = memo(function RequestCard({
   const t = useT();
   const router = useRouter();
   const fontKey = useFontScaleKey();
+  const large = Number(fontKey) >= 1.5;
   const pending = request.status === 'pending';
   const status = requestStatus(request);
   const body = cardBody(request);
   const left = useSecondsLeft(request);
-  const statusWord = left !== null ? t('requests.expiresIn', { s: left }) : t(`requests.status.${status.word}` as 'requests.status.needsYou');
+  const statusWord =
+    left !== null
+      ? t('requests.expiresIn', { s: left })
+      : t(`requests.status.${status.word}` as 'requests.status.needsYou');
   const tone = status.tone === 'warning' ? c.orange : status.tone === 'success' ? c.green : c.secondaryLabel;
   const summary = body.reason || body.details.map((detail) => detail.value).join(' · ') || body.body;
   const meta = [context, relativeTimeNow(request.created_at)].filter(Boolean).join(' · ');
@@ -58,9 +62,9 @@ export const RequestCard = memo(function RequestCard({
       style={[pending && styles.pending, highlighted && styles.highlighted]}
     >
       <View key={fontKey} style={styles.body}>
-        <View style={styles.head}>
+        <View style={[styles.head, large && { flexWrap: 'wrap' }]}>
           <Icon name={KIND_ICON[request.kind]} size={16} color={pending ? c.orange : c.secondaryLabel} />
-          <Text style={styles.title} numberOfLines={2}>
+          <Text style={[styles.title, large && { flexBasis: '80%' }]} numberOfLines={large ? 0 : 2}>
             {request.title}
           </Text>
           <View style={[styles.status, { borderColor: tone }]}>
@@ -68,12 +72,12 @@ export const RequestCard = memo(function RequestCard({
           </View>
         </View>
         {summary ? (
-          <Text style={styles.summary} numberOfLines={3}>
+          <Text style={styles.summary} numberOfLines={large ? 0 : 3}>
             {summary}
           </Text>
         ) : null}
         <View style={styles.foot}>
-          <Text style={styles.meta} numberOfLines={1}>
+          <Text style={styles.meta} numberOfLines={large ? 0 : 1}>
             {meta}
           </Text>
           {pending ? (
@@ -106,7 +110,7 @@ const useStyles = makeStyles((c) => ({
   body: { padding: space.md, gap: space.sm },
   head: { flexDirection: 'row', alignItems: 'flex-start', gap: space.sm },
   title: { flex: 1, ...typo.subheadline, fontWeight: weight.semibold, color: c.label },
-  status: { borderWidth: 1, borderRadius: radius.sm, paddingHorizontal: 6, paddingVertical: 1 },
+  status: { maxWidth: '100%', borderWidth: 1, borderRadius: radius.sm, paddingHorizontal: 6, paddingVertical: 1 },
   statusText: { ...typo.caption1, fontWeight: weight.semibold },
   summary: { ...typo.subheadline, color: c.secondaryLabel },
   foot: { flexDirection: 'row', alignItems: 'center', gap: space.xs },

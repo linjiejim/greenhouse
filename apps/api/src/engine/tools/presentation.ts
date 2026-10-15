@@ -191,6 +191,9 @@ export function failureSummary(
   };
   const expected = details?.expected && reasons[details.expected]?.[zh ? 0 : 1];
   const codes: Record<string, [string, string]> = {
+    budget_exceeded: ['剩余预算不足', 'There is not enough remaining budget'],
+    budget_estimate_unavailable: ['模型尚未设置价格，无法核对预算', 'Model prices are required to check the budget'],
+    source_base_only: ['这次运行只能读取来源表格', 'This run can only read its source base'],
     forbidden: ['没有操作权限', 'You do not have permission'],
     not_found: ['对象不存在或无法访问', 'Item is missing or inaccessible'],
     invalid_input: ['输入内容不符合要求', 'Check the supplied values'],

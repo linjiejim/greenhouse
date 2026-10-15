@@ -14,7 +14,18 @@ import { brandFont as font } from '../../src/ui/brand-font';
 
 import React from 'react';
 import { Stack, useRouter } from 'expo-router';
-import { Button, Circle, HStack, LabeledContent, Picker, RNHostView, Section, Text, VStack, ZStack } from '@expo/ui/swift-ui';
+import {
+  Button,
+  Circle,
+  HStack,
+  LabeledContent,
+  Picker,
+  RNHostView,
+  Section,
+  Text,
+  VStack,
+  ZStack,
+} from '@expo/ui/swift-ui';
 import {
   accessibilityElement,
   accessibilityHidden,
@@ -75,7 +86,9 @@ export default function Settings() {
               </RNHostView>
             ) : (
               <ZStack modifiers={[accessibilityHidden()]}>
-                <Circle modifiers={[foregroundStyle(hex.accent), frame({ width: 56, height: 56 }), accessibilityHidden()]} />
+                <Circle
+                  modifiers={[foregroundStyle(hex.accent), frame({ width: 56, height: 56 }), accessibilityHidden()]}
+                />
                 <Text
                   modifiers={[
                     font({ textStyle: 'title2', weight: 'semibold' }),
@@ -105,11 +118,24 @@ export default function Settings() {
               <Text>{t(s.user.role === 'admin' ? 'settings.roleAdmin' : 'settings.roleMember')}</Text>
             </LabeledContent>
           ) : null}
-          <FormNavRow label={t('station.title')} value={s.station?.name ?? '—'} onPress={() => router.push('/settings/stations')} />
+          <FormNavRow label={t('integration.aboutMe')} onPress={() => router.push('/settings/account')} />
+          <FormNavRow
+            label={t('integration.changePassword')}
+            onPress={() => router.push({ pathname: '/settings/account', params: { mode: 'password' } })}
+          />
+          <FormNavRow
+            label={t('station.title')}
+            value={s.station?.name ?? '—'}
+            onPress={() => router.push('/settings/stations')}
+          />
         </Section>
 
         <Section>
-          <FormNavRow label={t('settings.notifications')} value={push} onPress={() => router.push('/settings/notifications')} />
+          <FormNavRow
+            label={t('settings.notifications')}
+            value={push}
+            onPress={() => router.push('/settings/notifications')}
+          />
         </Section>
 
         {/* ── appearance ── */}

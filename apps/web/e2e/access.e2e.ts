@@ -178,7 +178,7 @@ test('admin: a machine client acts for Mei only once she approves; rotate, disab
   await expect(row).not.toContainText('待批准');
 
   // A new secret: the old one stops at once.
-  await row.getByRole('button', { name: 'Nightly sync的操作' }).click();
+  await row.getByRole('button', { name: 'Nightly sync 的操作' }).click();
   await page.getByRole('menuitem', { name: '轮换密钥' }).click();
   await page
     .getByRole('alertdialog', { name: '轮换「Nightly sync」的密钥？' })
@@ -190,13 +190,13 @@ test('admin: a machine client acts for Mei only once she approves; rotate, disab
   expect((await clientCredentials(request, clientId, secret)).status()).toBe(401);
   expect((await clientCredentials(request, clientId, fresh)).status()).toBe(200);
 
-  await row.getByRole('button', { name: 'Nightly sync的操作' }).click();
+  await row.getByRole('button', { name: 'Nightly sync 的操作' }).click();
   await page.getByRole('menuitem', { name: '停用' }).click();
   await page.getByRole('alertdialog', { name: '停用「Nightly sync」？' }).getByRole('button', { name: '停用' }).click();
   await expect(row).toContainText('已停用');
   expect((await clientCredentials(request, clientId, fresh)).status()).toBe(401);
 
-  await row.getByRole('button', { name: 'Nightly sync的操作' }).click();
+  await row.getByRole('button', { name: 'Nightly sync 的操作' }).click();
   await page.getByRole('menuitem', { name: '删除' }).click();
   await page.getByRole('alertdialog', { name: '删除「Nightly sync」？' }).getByRole('button', { name: '删除' }).click();
   await expect(row).toHaveCount(0);

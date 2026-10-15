@@ -223,7 +223,7 @@ it('applies the wake cap to automation runs and confines granted reads to the so
   expect(app.model.tools[0]).toEqual(['table_query']);
   const [step] = await getDb().select().from(runSteps).where(eq(runSteps.toolName, 'table_query'));
   expect(step!.status).toBe('failed');
-  expect(step!.error!.message).toContain('source base');
+  expect(step!.error).toEqual({ code: 'source_base_only', message: '查看表格失败：这次运行只能读取来源表格' });
 });
 
 it('does not replay a webhook after its sender dies and suppresses a chain beyond three levels', async () => {

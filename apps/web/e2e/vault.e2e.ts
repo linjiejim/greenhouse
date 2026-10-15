@@ -37,7 +37,7 @@ test('the vault: a login goes in, shows only a masked user name, and can be edit
   await expect(page.getByText('还没有使用记录')).toBeVisible();
   await page.getByRole('tab', { name: '登录' }).click();
 
-  await row.getByRole('button', { name: 'GitHub的操作' }).click();
+  await row.getByRole('button', { name: 'GitHub 的操作' }).click();
   await page.getByRole('menuitem', { name: '删除' }).click();
   await page.getByRole('alertdialog').getByRole('button', { name: '删除' }).click();
   await expect(page.getByText('还没有保存的登录')).toBeVisible();

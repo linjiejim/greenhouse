@@ -56,7 +56,11 @@ const shared: PublicAgent = {
 
 const now = Date.parse('2026-10-14T06:00:00.000Z');
 const input = {
-  agents: [agent('greeny', { is_main: true }), agent('sage'), agent('old', { archived_at: '2026-10-02T00:00:00.000Z' })],
+  agents: [
+    agent('greeny', { is_main: true }),
+    agent('sage'),
+    agent('old', { archived_at: '2026-10-02T00:00:00.000Z' }),
+  ],
   publicAgents: [shared],
   conversations: [
     conv('main', { kind: 'main', agent_id: 'greeny' }),
@@ -69,6 +73,7 @@ const input = {
     conv('gone', { archived: true }),
   ],
   untitled: 'New chat',
+  mainTitle: '主线',
   now,
   timeZone: 'UTC',
 };
@@ -89,6 +94,7 @@ describe('directorySections (PRD §6.2)', () => {
   it('narrows every section by name (Agents also by role), an untitled chat by its placeholder', () => {
     const s = directorySections({ ...input, query: 'sage ROLE' });
     expect(s.main).toBeNull();
+    expect(directorySections({ ...input, query: ' 主线 ' }).main?.agent.id).toBe('greeny');
     expect(s.agents.map((row) => row.agent.id)).toEqual(['sage']);
     expect(s.rooms).toEqual([]);
     expect(directorySections({ ...input, query: 'new' }).today.map((c) => c.id)).toEqual(['today']);

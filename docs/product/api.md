@@ -32,6 +32,7 @@ v2 和 v1 不兼容，不加 `/api/v2` 前缀，也不保留旧路由。`GET /ap
 | `GET /api/auth/links/inspect` · `POST /api/auth/links/complete` | 一次性链接：查看用途；设密码完成激活或重置，随即登录 |
 | `GET /api/auth/feishu/*` | 飞书扫码登录 |
 | `GET` / `PATCH /api/me` | 我：名字、头像、语言、主题、「关于我」、模块权限与可用能力（只读） |
+| `GET /api/me/operations` | 活跃成员读取当前运维状态：仅返回 `pause_background_runs`、`disable_computers`、`disable_outbound_mail` 三个布尔值，供客户端解释暂停；不能修改开关 |
 | `GET /api/me/usage?period=month\|30d` | 我的用量：总计，按能力、Agent、天；我的成员预算。每组带 `cached_tokens` 与缓存命中率 `cache_hit_rate`（没有输入 token 时为空） |
 | `/api/me/providers[/:id][/test]` | 我的服务，即个人 Key |
 | `GET /api/me/models` | 我能给 Agent 选的模型：为我服务的各实例的模型，按顺序 |
@@ -274,8 +275,8 @@ M3 媒体与计数（#70）：
 - `PUT /api/agents/:id/publication` 新增 `folder_ids`（最多 100 个，默认空）；读取发布设置也返回它。只能选主人当前可用的个人知识文件夹，排除 Agent 私有参考文件夹。
 - `GET /api/runs?parent=<run id>` 仅返回当前成员拥有的子运行；运行视图带 `parent_run_id` 和子运行的 `summary`。子运行仍经已有详情与取消接口查看，不允许直接重试（`helper_retry`），由新的主 Agent 回合重新安排。
 - `helper_run { briefs: [{ title, brief }] }` 仅在主 Agent 的个人回合提供。一个回合最多 3 个、每个 8 步、仅只读后台工具，父回合暂停后经 `run_report` 一次收齐最多三个摘要（总上限 8,000 字符）；摘要续回不能再开一批，只有新的成员消息重置上限。摘要和工作日志正文均按不可信数据处理。拒绝码包括 `helper_limit`、`helper_forbidden`、`parent_unavailable`、`budget_exceeded`、`budget_estimate_unavailable`。
-- 工具输出超过约 8,000 字符时返回 `{ file: { id, name }, head, length, note }`。`tool_output_read { file_id, offset?, length? }` 返回字符区间、总长度与 `next_offset`（默认 4,000，最多 6,000 字符），每次检查成员的文件权限。文件到期或无权读取均返回 `not_found`。若动作已完成但输出存储失败，步骤仍成功，结果明确返回 `storage_error`、开头与长度，不虚构文件，也不诱发重复写入。
-- `memory.recall` 支持 `from` / `to`（UTC 日期 YYYY-MM-DD，含两端）；至少给查询词或日期范围。后台只允许 recall；系统在后台运行结束时写工作日志，不接受运行结果中的记忆指令。
+- 工具输出超过约 8,000 字符时返回 `{ file: { id, name }, head, length, note }`。`tool_output_read { file_id, offset?, length? }` 返回 `offset`、总长度 `length`、本段消耗的字符数 `read_length`、正文 `content` 与 `next_offset`（默认和上限均为 3,500 字符；含 JSON 转义的完整结果不超过 8,000 字符，必要时缩小窗口，不再次省略；按 `next_offset` 读到 null 即读完），每次检查成员的文件权限。文件到期或无权读取均返回 `not_found`。文件仅主人可读不等于来源私有：公开网页、搜索和未读私有数据时自行生成的输出，读回后仍可联网；知识库、记忆和需鉴权的连接器输出继续按私有数据限制后台联网，缺失来源信息也按私有处理。若动作已完成但输出存储失败，步骤仍成功，结果明确返回 `storage_error`、开头与长度，不虚构文件，也不诱发重复写入。
+- `memory.recall` 支持 `from` / `to`（UTC 日期 YYYY-MM-DD，含两端）；至少给查询词或日期范围。后台提供的工具参数只包含 recall，不提供 remember / update / forget；系统在后台运行结束时写工作日志，不接受运行结果中的记忆指令。
 - 工程命令：`pnpm cli eval export <run|message id>` 在本地连接的 v2 数据库导出 `fixtures/eval/*.json`；成员消息会找到当前对应的回合，多个 Agent 同时回答时返回 `eval_ambiguous`，应指定回复或运行 id；`TEST_DATABASE_URL=... pnpm eval` 用脚本模型回放，不请求真实模型。夜间真实模型用例留 M3.6。
 
 插话与恢复（#70）：已带入的消息、后续模型上下文和新回复检查点同事务持久化；进程崩溃后接着写当前回复，不重复已完成工具，也可继续插话。排空中的 API 不再带入新消息，由其他 API 接手队列。
@@ -330,3 +331,5 @@ custom 网页运行使用双层 `sandbox="allow-scripts"` iframe，均无 allow-
 - 未选择受众的已发布应用仍仅应用拥有者可打开；其他成员需要显式应用受众及底层表格权限，管理员身份不绕过这两层访问检查。
 
 - `GET /api/runs?state=active` 的列表为空时附 `recent_finished`：按实际结束时间取最近三条已结束运行，沿用本人、Agent、来源及父运行筛选；原有 `items/next_cursor` 分页不变。这样较早创建、刚结束的长运行也会出现在空状态。
+
+整合回归（#70，T14）：工具失败的模型结果与步骤摘要继续使用本地化的人类文字；`run_steps.error.code` 保留服务的稳定错误码，意外异常才记为 `tool_failed`。预算不足为 `budget_exceeded`，未设置价格为 `budget_estimate_unavailable`，表格自动化越过批准的来源表格为 `source_base_only`。知识查询的 `space` 保留范围枚举，`space_label` 和 `where` 提供可读范围与位置。

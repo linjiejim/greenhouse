@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { expect, it, vi } from 'vitest';
 import { getDb, members, newId, runs, runSteps } from '@greenhouse/db';
 import { createTestApp } from '../../testing.js';
@@ -191,6 +191,11 @@ it('keeps a human failure cause on the original approved-write step', async () =
     (message: { role: string; run_id: string }) => message.role === 'assistant' && message.run_id === sent.run_id,
   );
   expect(reply.steps[0]).toMatchObject({ status: 'failed', summary: '新增表格记录失败：字段「阶段」没有这个选项' });
+  const [failed] = await getDb()
+    .select()
+    .from(runSteps)
+    .where(and(eq(runSteps.runId, sent.run_id), eq(runSteps.kind, 'tool')));
+  expect(failed!.error).toEqual({ code: 'invalid_input', message: '新增表格记录失败：字段「阶段」没有这个选项' });
 });
 
 it('does not call a different record creation a successful retry', async () => {

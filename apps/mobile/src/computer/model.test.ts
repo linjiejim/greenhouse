@@ -41,6 +41,8 @@ describe('the computer page', () => {
     expect(cardToAnswer(pending, { agentId: 'basil' })).toBeNull();
     // the card asked for was decided meanwhile: nothing to hand back on its behalf
     expect(cardToAnswer([card('done', { status: 'handed_back' })], { requestId: 'done', agentId: 'sage' })).toBeNull();
+    expect(cardToAnswer(pending, { requestId: 'other-agent', agentId: 'sage' })).toBeNull();
+    expect(cardToAnswer(pending, { requestId: 'approval', agentId: 'sage' })).toBeNull();
     expect(isComputerCard({ kind: 'question' })).toBe(false);
   });
 });

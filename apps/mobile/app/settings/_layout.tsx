@@ -8,7 +8,7 @@
 import React from 'react';
 import { Stack } from 'expo-router';
 import { useTheme } from '../../src/theme';
-import { pageScreen, stackDefaults } from '../../src/ui/nav';
+import { pageScreen, sheetScreen, stackDefaults } from '../../src/ui/nav';
 
 export const unstable_settings = { initialRouteName: 'index' };
 
@@ -17,6 +17,7 @@ export default function SettingsLayout() {
   return (
     <Stack screenOptions={{ ...stackDefaults(c, hex, isDark), ...pageScreen(c, { grouped: true }) }}>
       <Stack.Screen name="index" />
+      <Stack.Screen name="account" options={sheetScreen([1], { header: true })} />
       <Stack.Screen name="stations" />
       <Stack.Screen name="notifications" />
     </Stack>

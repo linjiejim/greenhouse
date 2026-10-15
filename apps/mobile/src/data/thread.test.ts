@@ -42,6 +42,20 @@ function msg(id: string, seq: number, partial: Partial<MessageItem> = {}): Messa
 const mine = (id: string, seq: number, partial: Partial<MessageItem> = {}) =>
   msg(id, seq, { role: 'user', author_member_id: ME, agent_id: null, ...partial });
 
+it('does not rewind a finished reply or incorporated interjection when an older page arrives', () => {
+  const reply = msg('reply', 2, { content: 'Complete answer', status: 'complete' });
+  const interjection = mine('question', 3, { event: { type: 'interjection', state: 'incorporated' } });
+  const merged = mergeMessages(
+    [reply, interjection],
+    [
+      { ...reply, content: 'Partial', status: 'streaming' },
+      { ...interjection, event: { type: 'interjection', state: 'queued' } },
+    ],
+  );
+  expect(merged).toEqual([reply, interjection]);
+  expect(mergeMessages([interjection], [{ ...interjection, event: null }])[0]?.event).toEqual(interjection.event);
+});
+
 function card(id: string, partial: Partial<NeedsYou> = {}): NeedsYou {
   return {
     id,
@@ -115,7 +129,11 @@ describe('cards in the transcript', () => {
   it('sit under the reply of their run; pending ones without a shown reply go to the end', () => {
     const messages = [mine('q', 1), msg('r', 2, { run_id: 'run-1' })];
     const { byRun, loose } = placeRequests(
-      [card('k1', { run_id: 'run-1' }), card('k2', { run_id: 'run-x' }), card('k3', { run_id: 'run-y', status: 'approved' })],
+      [
+        card('k1', { run_id: 'run-1' }),
+        card('k2', { run_id: 'run-x' }),
+        card('k3', { run_id: 'run-y', status: 'approved' }),
+      ],
       messages,
     );
     expect(byRun.get('run-1')?.map((c) => c.id)).toEqual(['k1']);

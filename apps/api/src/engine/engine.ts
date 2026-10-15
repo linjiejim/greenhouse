@@ -2003,6 +2003,7 @@ export function createEngine(deps: EngineDeps) {
       manifest,
       conversation: conversation ?? null,
       runId: ready.run.id,
+      outputPrivate: ready.run.checkpoint?.read_private === true,
       stepId: request.stepId,
       locale,
       surface:
@@ -2062,7 +2063,7 @@ export function createEngine(deps: EngineDeps) {
       const message = failureSummary(ready.def, payload.input, error, context).slice(0, 500);
       await moveStep(['running', 'uncertain'], {
         status: 'failed',
-        error: { code: 'tool_failed', message },
+        error: { code: error instanceof ApiError ? error.code : 'tool_failed', message },
         durationMs: Date.now() - started,
         finishedAt: sql`now()`,
       });

@@ -139,6 +139,66 @@ export type AgentMemory = {
   updated_at: string;
 };
 
+export type AgentUsage = {
+  agent_id: string;
+  period: { name: 'month' | '30d'; start: string; end: string };
+  budgets: Array<{
+    id: string;
+    scope_type: 'member' | 'workspace' | 'provider' | 'agent';
+    scope_id: string;
+    scope_name: string;
+    unit: 'tokens' | 'usd_micros';
+    monthly_limit: number;
+    enabled: boolean;
+    period_start: string;
+    period_end: string;
+    spent: number;
+    exceeded: boolean;
+    created_at: string;
+  }>;
+  totals: {
+    requests: number;
+    input_tokens: number;
+    output_tokens: number;
+    cached_tokens: number;
+    cache_hit_rate: number | null;
+    tokens: number;
+    stt_seconds: number;
+    tts_characters: number;
+    cost_micros: number;
+    unpriced: number;
+  };
+  turns: { total: number; succeeded: number; failed: number; canceled: number; active: number };
+  background_runs: { total: number; succeeded: number; failed: number; canceled: number; active: number };
+  people: number;
+  ratings: {
+    up: number;
+    down: number;
+    comments: Array<{ rating: number; comment: string; version: number | null; created_at: string }>;
+  };
+};
+
+export type OperationSwitches = {
+  pause_background_runs: boolean;
+  disable_computers: boolean;
+  disable_outbound_mail: boolean;
+};
+
+export type MemoryInput = {
+  title: string;
+  content?: string | undefined;
+  category?: 'fact' | 'preference' | 'person' | 'project' | 'procedure' | 'log' | undefined;
+  pinned?: boolean | undefined;
+};
+
+export type UpdateMemoryInput = {
+  title?: string | undefined;
+  content?: string | undefined;
+  category?: 'fact' | 'preference' | 'person' | 'project' | 'procedure' | 'log' | undefined;
+  pinned?: boolean | undefined;
+  status?: 'active' | 'dormant' | 'archived' | undefined;
+};
+
 export type CreateAgentInput = {
   name?: string | undefined;
   role?: string | undefined;
@@ -229,6 +289,19 @@ export type ConversationMembers = {
   }>;
 };
 
+export type Note = {
+  id: string;
+  conversation_id: string;
+  title: string;
+  body: string;
+  status: 'open' | 'done';
+  pinned: boolean;
+  author_member_id: string | null;
+  author_agent_id: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 export type CreateConversationInput =
   | { kind: 'direct'; agent_id: string }
   | {
@@ -277,7 +350,7 @@ export type Message = {
   steps: Array<{
     tool: string;
     summary: string;
-    status: 'done' | 'failed';
+    status: 'failed' | 'done';
     duration_ms?: number | undefined;
     recovered?: boolean | undefined;
   }>;
@@ -306,7 +379,7 @@ export type MessageItem = {
   steps: Array<{
     tool: string;
     summary: string;
-    status: 'done' | 'failed';
+    status: 'failed' | 'done';
     duration_ms?: number | undefined;
     recovered?: boolean | undefined;
   }>;
@@ -346,7 +419,7 @@ export type SendMessageResult = {
     steps: Array<{
       tool: string;
       summary: string;
-      status: 'done' | 'failed';
+      status: 'failed' | 'done';
       duration_ms?: number | undefined;
       recovered?: boolean | undefined;
     }>;
@@ -382,7 +455,7 @@ export type EditMessageResult = {
     steps: Array<{
       tool: string;
       summary: string;
-      status: 'done' | 'failed';
+      status: 'failed' | 'done';
       duration_ms?: number | undefined;
       recovered?: boolean | undefined;
     }>;
@@ -423,7 +496,7 @@ export type RealtimeEvent =
           steps: Array<{
             tool: string;
             summary: string;
-            status: 'done' | 'failed';
+            status: 'failed' | 'done';
             duration_ms?: number | undefined;
             recovered?: boolean | undefined;
           }>;
@@ -446,7 +519,7 @@ export type RealtimeEvent =
           tool: string;
           summary: string;
           id: string;
-          status: 'done' | 'failed' | 'running';
+          status: 'failed' | 'done' | 'running';
           duration_ms?: number | undefined;
           recovered?: boolean | undefined;
         };
@@ -473,7 +546,7 @@ export type RealtimeEvent =
           steps: Array<{
             tool: string;
             summary: string;
-            status: 'done' | 'failed';
+            status: 'failed' | 'done';
             duration_ms?: number | undefined;
             recovered?: boolean | undefined;
           }>;
@@ -559,7 +632,7 @@ export type NeedsYou = {
   id: string;
   kind: 'approval' | 'login' | 'takeover' | 'question' | 'proposal';
   subject: string;
-  status: 'pending' | 'approved' | 'rejected' | 'answered' | 'handed_back' | 'expired' | 'canceled';
+  status: 'canceled' | 'pending' | 'approved' | 'rejected' | 'answered' | 'handed_back' | 'expired';
   conversation_id: string | null;
   run_id: string | null;
   agent_id: string | null;
@@ -671,7 +744,7 @@ export type RunView = {
   parent_run_id: string | null;
   summary: string | null;
   title: string;
-  status: 'failed' | 'queued' | 'running' | 'canceled' | 'waiting' | 'succeeded';
+  status: 'succeeded' | 'failed' | 'canceled' | 'queued' | 'running' | 'waiting';
   source: 'record' | 'app' | 'conversation' | 'schedule' | 'automation' | 'handoff';
   source_id: string | null;
   conversation_id: string | null;
@@ -688,7 +761,7 @@ export type RunDetail = {
   parent_run_id: string | null;
   summary: string | null;
   title: string;
-  status: 'failed' | 'queued' | 'running' | 'canceled' | 'waiting' | 'succeeded';
+  status: 'succeeded' | 'failed' | 'canceled' | 'queued' | 'running' | 'waiting';
   source: 'record' | 'app' | 'conversation' | 'schedule' | 'automation' | 'handoff';
   source_id: string | null;
   conversation_id: string | null;
@@ -707,7 +780,7 @@ export type RunDetail = {
     tool: string | null;
     summary: string;
     kind: string;
-    status: 'failed' | 'running' | 'pending' | 'succeeded' | 'skipped' | 'uncertain';
+    status: 'succeeded' | 'failed' | 'running' | 'pending' | 'skipped' | 'uncertain';
     attempt: number;
     input: unknown;
     output: unknown;
@@ -970,7 +1043,7 @@ export type AppRuntime = {
           group?:
             | {
                 field: string;
-                bucket?: 'day' | 'week' | 'month' | 'quarter' | 'year' | undefined;
+                bucket?: 'month' | 'day' | 'week' | 'quarter' | 'year' | undefined;
                 limit?: number | undefined;
               }
             | undefined;
@@ -1157,7 +1230,7 @@ export type AppRuntime = {
               end?: string | undefined;
               dependency?: string | undefined;
               milestone?: { field: string; option?: string | undefined } | undefined;
-              scale?: 'day' | 'week' | 'month' | undefined;
+              scale?: 'month' | 'day' | 'week' | undefined;
             }
           | undefined;
         cards?:
@@ -1190,7 +1263,7 @@ export type AppRuntime = {
               group?:
                 | {
                     field: string;
-                    bucket?: 'day' | 'week' | 'month' | 'quarter' | 'year' | undefined;
+                    bucket?: 'month' | 'day' | 'week' | 'quarter' | 'year' | undefined;
                     limit?: number | undefined;
                   }
                 | undefined;
@@ -1246,7 +1319,7 @@ export type AppCard =
       group?:
         | {
             field: string;
-            bucket?: 'day' | 'week' | 'month' | 'quarter' | 'year' | undefined;
+            bucket?: 'month' | 'day' | 'week' | 'quarter' | 'year' | undefined;
             limit?: number | undefined;
           }
         | undefined;
@@ -1334,7 +1407,7 @@ export type AppCardAnswer =
             }>;
             other: { value: number | null; records: number } | null;
             records: number;
-            bucket?: 'day' | 'week' | 'month' | 'quarter' | 'year' | undefined;
+            bucket?: 'month' | 'day' | 'week' | 'quarter' | 'year' | undefined;
           }
         | {
             kind: 'list';
@@ -1394,7 +1467,7 @@ export type CardData =
       }>;
       other: { value: number | null; records: number } | null;
       records: number;
-      bucket?: 'day' | 'week' | 'month' | 'quarter' | 'year' | undefined;
+      bucket?: 'month' | 'day' | 'week' | 'quarter' | 'year' | undefined;
     }
   | {
       kind: 'list';
@@ -1550,9 +1623,9 @@ export type KnowledgeComment = {
 };
 
 export type KnowledgeShares = {
-  items: Array<{ type: 'member' | 'group' | 'workspace'; id: string | null; name: string; role: 'editor' | 'viewer' }>;
+  items: Array<{ type: 'member' | 'workspace' | 'group'; id: string | null; name: string; role: 'editor' | 'viewer' }>;
   inherited: Array<{
-    type: 'member' | 'group' | 'workspace';
+    type: 'member' | 'workspace' | 'group';
     id: string | null;
     name: string;
     role: 'editor' | 'viewer';
@@ -1615,7 +1688,7 @@ export type View = {
           end?: string | undefined;
           dependency?: string | undefined;
           milestone?: { field: string; option?: string | undefined } | undefined;
-          scale?: 'day' | 'week' | 'month' | undefined;
+          scale?: 'month' | 'day' | 'week' | undefined;
         }
       | undefined;
     cards?:
@@ -1648,7 +1721,7 @@ export type View = {
           group?:
             | {
                 field: string;
-                bucket?: 'day' | 'week' | 'month' | 'quarter' | 'year' | undefined;
+                bucket?: 'month' | 'day' | 'week' | 'quarter' | 'year' | undefined;
                 limit?: number | undefined;
               }
             | undefined;
@@ -1785,7 +1858,7 @@ export type Base = {
             end?: string | undefined;
             dependency?: string | undefined;
             milestone?: { field: string; option?: string | undefined } | undefined;
-            scale?: 'day' | 'week' | 'month' | undefined;
+            scale?: 'month' | 'day' | 'week' | undefined;
           }
         | undefined;
       cards?:
@@ -1818,7 +1891,7 @@ export type Base = {
             group?:
               | {
                   field: string;
-                  bucket?: 'day' | 'week' | 'month' | 'quarter' | 'year' | undefined;
+                  bucket?: 'month' | 'day' | 'week' | 'quarter' | 'year' | undefined;
                   limit?: number | undefined;
                 }
               | undefined;

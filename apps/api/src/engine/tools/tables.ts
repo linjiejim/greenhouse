@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { cardSchema, recordsQuerySchema } from '@greenhouse/contract';
 import { comments, getDb, runs } from '@greenhouse/db';
 import { eq } from 'drizzle-orm';
-import { invalidInput } from '../../http/errors.js';
+import { ApiError, invalidInput } from '../../http/errors.js';
 import { tableSchemaTool } from './tables-schema.js';
 import type { TablesService } from '../../modules/tables/service.js';
 import { defineTool, type ToolDef } from './define.js';
@@ -86,7 +86,7 @@ export function tableTools(tables: TablesService): ToolDef[] {
                     args.action === 'aggregate' ? args.card.table_id : args.table_id,
                   )
                 ).base_id;
-        if (baseId !== baseOnly) throw invalidInput('This run reads only its source base.');
+        if (baseId !== baseOnly) throw new ApiError(403, 'source_base_only', 'This run reads only its source base.');
       }
       if (args.action === 'bases') {
         const result = await tables.list(ctx.memberId, { archived: false, ...args });

@@ -228,7 +228,7 @@ a {
   display: flex;
   align-items: center;
   gap: var(--gh-space-1);
-  height: var(--gh-header);
+  height: var(--gh-header-height);
   flex-shrink: 0;
 }
 
@@ -434,7 +434,7 @@ a {
 }
 
 .app-page-header {
-  height: var(--gh-header);
+  height: var(--gh-header-height);
   flex-shrink: 0;
   display: flex;
   align-items: center;
@@ -2628,7 +2628,7 @@ button.app-list-row {
 
 .app-offline {
   position: absolute;
-  top: calc(var(--gh-header) + var(--gh-space-2));
+  top: calc(var(--gh-header-height) + var(--gh-space-2));
   left: 50%;
   transform: translateX(-50%);
   z-index: var(--gh-z-toast);

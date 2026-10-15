@@ -3,6 +3,15 @@ import { MEMORY_CATEGORIES } from '@greenhouse/contract';
 import type { AgentsService } from '../../modules/agents/service.js';
 import { defineTool } from './define.js';
 
+const recallInput = z
+  .object({
+    action: z.literal('recall'),
+    query: z.string().max(200).optional().describe('Words to look for; omit for a date range.'),
+    from: z.iso.date().optional().describe('Inclusive UTC date, YYYY-MM-DD.'),
+    to: z.iso.date().optional().describe('Inclusive UTC date, YYYY-MM-DD.'),
+  })
+  .refine((args) => !!args.query || !!args.from || !!args.to, { message: 'Give words or a date range.' });
+
 const input = z.discriminatedUnion('action', [
   z.object({
     action: z.literal('remember'),
@@ -10,14 +19,7 @@ const input = z.discriminatedUnion('action', [
     content: z.string().max(4000).default('').describe('Detail you can read back with recall.'),
     category: z.enum(MEMORY_CATEGORIES).default('fact'),
   }),
-  z
-    .object({
-      action: z.literal('recall'),
-      query: z.string().max(200).optional().describe('Words to look for; omit for a date range.'),
-      from: z.iso.date().optional().describe('Inclusive UTC date, YYYY-MM-DD.'),
-      to: z.iso.date().optional().describe('Inclusive UTC date, YYYY-MM-DD.'),
-    })
-    .refine((args) => !!args.query || !!args.from || !!args.to, { message: 'Give words or a date range.' }),
+  recallInput,
   z.object({
     action: z.literal('update'),
     id: z.string(),
@@ -32,14 +34,15 @@ export function memoryTool(agents: AgentsService) {
   return defineTool({
     name: 'memory',
     description:
-      'Your memory of this member: durable facts, preferences and lessons about how to do your job. Titles of what you remember are listed each turn; recall reads the detail. Never store secrets, passwords or task details.',
+      'Your memory of this member: durable facts, preferences and lessons about how to do your job. Titles of what you remember are listed each turn; recall reads the detail. Never store secrets, passwords or task details. Background runs offer recall only.',
     input,
+    backgroundInput: recallInput,
     // Notes in the Agent's own memory, which the member can review and delete at any time.
     risk: 'read',
     surfaces: ['turn', 'background'],
     // A public Agent keeps one memory per asker: it reads and writes only theirs.
     publicAgent: true,
-    private: true,
+    privateRead: async (args) => args.action === 'recall',
     async callRisk(args, ctx) {
       if (args.action === 'recall' || ctx.surface === 'background' || ctx.tainted()) return 'read';
       return args.action === 'forget' ? 'tier3' : 'tier1';

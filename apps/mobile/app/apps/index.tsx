@@ -1,3 +1,5 @@
+import { matchesDirectory } from '../../src/data/directory-filter';
+import { DirectorySearch, useDirectoryFilter } from '../../src/ui/directory-search';
 import { useCallback, useRef, useState } from 'react';
 import { FlatList } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
@@ -13,10 +15,10 @@ import { alertError } from '../../src/ui/dialogs';
 
 export default function Apps() {
   const t = useT();
+  const filter = useDirectoryFilter();
   const router = useRouter();
   const allowed = useAuth((s) => s.user?.modules.apps);
-  const [query, setQuery] = useState('');
-  const r = useResource(useCallback(() => apps({ q: query }), [query]));
+  const r = useResource(useCallback(() => apps(), []));
   const [busy, setBusy] = useState(false);
   const pending = useRef(false);
   const more = async () => {
@@ -24,7 +26,7 @@ export default function Apps() {
     const current = r.capture();
     pending.current = true;
     setBusy(true);
-    const result = await apps({ q: query, cursor: r.data.next_cursor });
+    const result = await apps({ cursor: r.data.next_cursor });
     pending.current = false;
     setBusy(false);
     if (!current()) return;
@@ -39,11 +41,12 @@ export default function Apps() {
       );
     else alertError(t('work.loadFailed'), result.message);
   };
-  const published = r.data?.items.filter((a) => a.status === 'published') ?? [];
+  const published =
+    r.data?.items.filter((a) => a.status === 'published' && matchesDirectory(filter.query, a.name)) ?? [];
   return (
     <>
       <Stack.Screen options={{ title: t('integration.apps') }} />
-      <Stack.SearchBar placeholder={t('integration.searchApps')} onChangeText={(e) => setQuery(e.nativeEvent.text)} />
+      <DirectorySearch filter={filter} />
       {!allowed ? (
         <EmptyState icon="table" title={t('work.permissionLost')} />
       ) : !r.data ? (
@@ -74,7 +77,9 @@ export default function Apps() {
               onPress={() => router.push({ pathname: '/apps/runtime', params: { id: item.id } })}
             />
           )}
-          ListEmptyComponent={<EmptyState icon="table" title={t('integration.noApps')} />}
+          ListEmptyComponent={
+            <EmptyState icon="table" title={t(filter.query.trim() ? 'directory.noMatches' : 'integration.noApps')} />
+          }
           ListFooterComponent={
             <>
               {r.data.next_cursor ? (

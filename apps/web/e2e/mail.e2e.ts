@@ -248,7 +248,10 @@ test("the Agent's reply waits for approval, then goes out from its address in th
   await open(page, '/');
   await composer(page).fill('reply to the mail, please');
   await composer(page).press('Enter');
-  const approval = page.locator('.gh-chat-card', { hasText: '回信给 stranger@outside.example' });
+  const approval = page.locator('.gh-chat-card').filter({
+    hasText: '回信给 stranger@outside.example',
+    has: page.getByRole('button', { name: '批准', exact: true }),
+  });
   await expect(approval).toContainText('需要你');
   // What goes out, from where, to whom.
   await expect(approval.locator('dt')).toHaveText(['发件人', '收件人', '主题', '正文']);

@@ -5,19 +5,20 @@
  * to. Refreshes every few seconds while active and on realtime `run.updated`.
  */
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ScrollView, Text, View } from 'react-native';
-import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
+import { Stack, useIsFocused, useLocalSearchParams, useRouter } from 'expo-router';
 import { listRequests } from '../../src/api/requests';
 import { cancelRun, getRun, retryRun } from '../../src/api/runs';
 import { Markdown } from '../../src/chat/markdown';
 import { useT } from '../../src/lib/i18n';
 import { relativeTimeNow } from '../../src/lib/time-words';
-import { realtime } from '../../src/realtime';
+import { useResource } from '../../src/data/use-resource';
+import { useOperations } from '../../src/data/use-operations';
 import { RequestCard } from '../../src/requests/request-card';
 import { RUN_SOURCE, RUN_STATUS, duration, isActiveRun } from '../../src/runs/status';
 import { parseMs } from '../../src/data/time';
-import type { NeedsYou, RunDetail } from '../../src/shared/contract';
+import type { NeedsYou } from '../../src/shared/contract';
 import { openConversation } from '../../src/shell/nav';
 import { useWorkspace } from '../../src/store/workspace';
 import { makeStyles, mono, radius, space, squircle, typo, useTheme, weight } from '../../src/theme';
@@ -36,57 +37,56 @@ export default function RunPage() {
   const t = useT();
   const router = useRouter();
   const agents = useWorkspace((s) => s.agents);
-  const [run, setRun] = useState<RunDetail | null>(null);
-  const [cards, setCards] = useState<NeedsYou[]>([]);
-  const [state, setState] = useState<'loading' | 'ready' | 'missing' | 'failed'>('loading');
-  const [busy, setBusy] = useState<'cancel' | 'retry' | null>(null);
-  const [brief, setBrief] = useState(false);
-
-  const load = useCallback(async () => {
-    const result = await getRun(id);
-    if (!result.ok) {
-      setState((current) => (current === 'ready' ? current : result.status === 404 ? 'missing' : 'failed'));
-      return;
-    }
-    setRun(result.data);
-    setState('ready');
-    if (result.data.conversation_id) {
-      const requests = await listRequests({ state: 'all', conversation_id: result.data.conversation_id, limit: 200 });
-      if (requests.ok) setCards(requests.data.items.filter((request) => request.run_id === result.data.id));
-    }
-  }, [id]);
-
-  useEffect(() => {
-    void load();
-    const off = realtime.on((event) => {
-      if (
-        (event.type === 'run.updated' && event.data.run_id === id) ||
-        event.type === 'request.updated' ||
-        event.type === 'resync'
-      ) {
-        void load();
+  const focused = useIsFocused();
+  const operations = useOperations();
+  const resource = useResource(
+    useCallback(async () => {
+      const result = await getRun(id);
+      if (!result.ok) return result;
+      let cards: NeedsYou[] = [];
+      if (result.data.conversation_id) {
+        const requests = await listRequests({ state: 'all', conversation_id: result.data.conversation_id, limit: 200 });
+        if (!requests.ok) return requests;
+        cards = requests.data.items.filter((request) => request.run_id === result.data.id);
       }
-    });
-    return off;
-  }, [id, load]);
+      return { ok: true as const, data: { run: result.data, cards } };
+    }, [id]),
+    ['run.updated', 'request.updated'],
+  );
+  const run = resource.data?.run ?? null;
+  const cards = resource.data?.cards ?? [];
+  const state = run ? 'ready' : resource.loading ? 'loading' : resource.error?.status === 404 ? 'missing' : 'failed';
+  const load = resource.refresh;
+  const [busy, setBusy] = useState<'cancel' | 'retry' | null>(null);
+  const pending = useRef(false);
+  const [brief, setBrief] = useState(false);
 
   // While it runs: a fresh look every few seconds (steps land without their own events).
   const active = !!run && isActiveRun(run);
   useEffect(() => {
-    if (!active) return undefined;
+    if (!active || !focused) return undefined;
     const timer = setInterval(() => void load(), 3000);
     return () => clearInterval(timer);
-  }, [active, load]);
+  }, [active, focused, load]);
 
   const act = async (action: 'cancel' | 'retry') => {
+    if (pending.current) return;
+    const current = resource.captureWrite();
+    pending.current = true;
     setBusy(action);
     const result = action === 'cancel' ? await cancelRun(id) : await retryRun(id);
+    pending.current = false;
+    if (!current()) return;
     setBusy(null);
     if (!result.ok) {
-      alertError(action === 'cancel' ? t('runs.cancelFailed') : t('runs.retryFailed'), result.message || undefined);
+      alertError(
+        action === 'cancel' ? t('runs.cancelFailed') : t('runs.retryFailed'),
+        result.code === 'operation_disabled' ? t('integration.operationPaused') : undefined,
+        result.message,
+      );
       return;
     }
-    setRun(result.data);
+    resource.setData((old) => (old ? { ...old, run: result.data } : old));
     toast(action === 'cancel' ? t('runs.canceled') : t('runs.retried'), 'check');
   };
 
@@ -135,6 +135,11 @@ export default function RunPage() {
     <>
       <Stack.Screen options={{ title: run.title }} />
       <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerStyle={styles.content}>
+        {run.status === 'queued' && operations.data?.pause_background_runs ? (
+          <Text accessibilityRole="alert" style={styles.meta}>
+            {t('integration.backgroundPaused')}
+          </Text>
+        ) : null}
         <View style={styles.head}>
           <AgentAvatar
             agent={agent}

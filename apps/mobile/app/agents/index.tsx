@@ -7,9 +7,12 @@
  * that is how a public Agent is talked to.
  */
 
+import { matchesDirectory } from '../../src/data/directory-filter';
+import { DirectorySearch, useDirectoryFilter } from '../../src/ui/directory-search';
 import React, { useCallback, useEffect, useState } from 'react';
 import { FlatList, RefreshControl, View } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
+import { useResource } from '../../src/data/use-resource';
 import { listAgents, restoreAgent } from '../../src/api/agents';
 import { createConversation } from '../../src/api/conversations';
 import { useT } from '../../src/lib/i18n';
@@ -35,28 +38,27 @@ export default function Agents() {
   const { colors: c } = useTheme();
   const styles = useStyles(c);
   const t = useT();
+  const filter = useDirectoryFilter();
   const router = useRouter();
   const mine = useWorkspace((s) => s.agents);
   const shared = useWorkspace((s) => s.publicAgents);
   const conversations = useWorkspace((s) => s.conversations);
   const [scope, setScope] = useState<Scope>('mine');
-  const [archived, setArchived] = useState<Agent[] | null>(null);
+  const archivedResource = useResource(useCallback(() => listAgents('archived'), []));
+  const archived = archivedResource.data?.items ?? null;
+  const loadArchived = archivedResource.refresh;
   const [refreshing, setRefreshing] = useState(false);
-
-  const loadArchived = useCallback(async () => {
-    const result = await listAgents('archived');
-    setArchived(result.ok ? result.data.items : []);
-  }, []);
+  const loadFailed = useWorkspace((s) => s.loadFailed);
   useEffect(() => {
     void useWorkspace.getState().refreshAgents();
   }, []);
-  useEffect(() => {
-    if (scope === 'archived') void loadArchived();
-  }, [scope, loadArchived]);
 
   const refresh = async () => {
     setRefreshing(true);
-    await Promise.all([useWorkspace.getState().refreshAgents(), scope === 'archived' ? loadArchived() : Promise.resolve()]);
+    await Promise.all([
+      useWorkspace.getState().refreshAgents(),
+      scope === 'archived' ? loadArchived() : Promise.resolve(),
+    ]);
     setRefreshing(false);
   };
 
@@ -86,19 +88,25 @@ export default function Agents() {
     void useWorkspace.getState().refresh();
   };
 
-  const list: (Agent | PublicAgent)[] =
+  const entries: (Agent | PublicAgent)[] =
     scope === 'mine'
       ? [...(mine ?? [])].sort((a, b) => Number(b.is_main) - Number(a.is_main))
       : scope === 'public'
         ? shared
         : (archived ?? []);
+  const list = entries.filter((item) => matchesDirectory(filter.query, item.name, item.role));
   const loading = scope === 'mine' ? mine === null : scope === 'archived' ? archived === null : false;
 
   return (
     <View style={styles.root}>
       <Stack.Screen options={{ title: t('agents.title') }} />
+      <DirectorySearch filter={filter} />
       <Stack.Toolbar placement="right">
-        <Stack.Toolbar.Button icon={toolbarIcon('plus')} accessibilityLabel={t('agents.new')} onPress={() => router.push('/agents/edit')} />
+        <Stack.Toolbar.Button
+          icon={toolbarIcon('plus')}
+          accessibilityLabel={t('agents.new')}
+          onPress={() => router.push('/agents/edit')}
+        />
       </Stack.Toolbar>
       <FlatList<Agent | PublicAgent>
         contentInsetAdjustmentBehavior="automatic"
@@ -119,7 +127,11 @@ export default function Agents() {
         }
         renderItem={({ item, index }) => {
           const owner = 'owner' in item ? item.owner.name : null;
-          const subtitle = [item.role, owner ? t('directory.sharedBy', { name: owner }) : '', item.is_main ? t('agents.main') : '']
+          const subtitle = [
+            item.role,
+            owner ? t('directory.sharedBy', { name: owner }) : '',
+            item.is_main ? t('agents.main') : '',
+          ]
             .filter(Boolean)
             .join(' · ');
           const row = (
@@ -148,8 +160,12 @@ export default function Agents() {
           );
         }}
         ListEmptyComponent={
-          loading ? (
+          (scope === 'archived' ? !!archivedResource.error : loadFailed) ? (
+            <EmptyState icon="alert" title={t('agents.loadFailed')} onRetry={() => void refresh()} />
+          ) : loading ? (
             <LoadingState style={styles.empty} />
+          ) : filter.query.trim() ? (
+            <EmptyState icon="search" title={t('directory.noMatches')} />
           ) : scope === 'public' ? (
             <EmptyState icon="sparkle" title={t('agents.nonePublic')} />
           ) : scope === 'archived' ? (

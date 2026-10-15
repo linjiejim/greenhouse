@@ -81,3 +81,5 @@ The v2 web app. Product scope is docs/product/prd.md §6–7; layout and compone
 - Consume only the submitted composer snapshot; serialize subsequent sends and retain newer drafts. Enter selects mentions or waits for candidates, including before the popup loads. Room faces come from the permission-checked roster. Rich object headers may wrap; inspect 390 px screenshots.
 
 - Empty active runs use the server recent_finished preview, ordered by actual completion time, rather than slicing the newest-created finished page.
+
+- Realtime debounce timers belong to each QueryClient. Chinese interpolation keeps Latin/number spacing but joins adjacent Chinese words; separators between two interpolated values retain their template spaces. Upload inputs mount only when their destination is loaded and editable. Header geometry uses the canonical header-height token, including Suspense frames.

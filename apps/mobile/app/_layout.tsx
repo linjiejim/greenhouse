@@ -1,3 +1,4 @@
+import { useComposerBridge } from '../src/chat/composer-bridge';
 import { clearHandoffs } from '../src/lib/handoff';
 /**
  * Root layout — bootstraps auth + prefs, applies the appearance, gates routes, and declares the
@@ -76,6 +77,7 @@ const followHandoffs = () => {
     handoffIdentity = next;
     Keyboard.dismiss();
     clearHandoffs();
+    useComposerBridge.setState({ skill: null, quote: null, drafts: [] });
   }
 };
 useAuth.subscribe(followHandoffs);
@@ -185,6 +187,9 @@ export default function RootLayout() {
 
                 {/* ── pages over the conversation ── */}
                 <Stack.Screen name="notifications" options={pageScreen(c, { grouped: true })} />
+                <Stack.Screen name="skills/index" options={pageScreen(c, { grouped: true })} />
+                <Stack.Screen name="agents/memories" options={detailScreen(c, { grouped: true })} />
+                <Stack.Screen name="agents/memory" options={sheetScreen([1], { header: true })} />
                 <Stack.Screen name="agents/index" options={pageScreen(c, { grouped: true })} />
                 <Stack.Screen name="agents/[id]" options={detailScreen(c, { grouped: true })} />
                 <Stack.Screen name="runs/index" options={pageScreen(c, { grouped: true })} />
@@ -213,6 +218,7 @@ export default function RootLayout() {
                 <Stack.Screen name="agents/mailbox" options={detailScreen(c, { grouped: true })} />
                 <Stack.Screen name="agents/mail" options={sheetScreen([1], { header: true })} />
                 {/* ── sheets: a card in full, short forms, details ── */}
+                <Stack.Screen name="notes" options={sheetScreen([1], { header: true })} />
                 <Stack.Screen name="request" options={sheetScreen([1], { header: true })} />
                 <Stack.Screen name="agents/edit" options={sheetScreen([1], { header: true })} />
                 <Stack.Screen name="new-room" options={sheetScreen([1], { header: true })} />

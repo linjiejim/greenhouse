@@ -131,7 +131,7 @@ export async function assembleTools(input: {
     if (context.readOnly && !def.idempotent && !['memory', 'conversation_query', 'mcp_call'].includes(def.name))
       continue;
     if (def.available && !(await def.available(availability))) continue;
-    chosen.push(def);
+    chosen.push(context.surface === 'background' && def.backgroundInput ? { ...def, input: def.backgroundInput } : def);
     const section = def.turnContext ? await def.turnContext(availability) : null;
     if (section) turnContext.push(section);
   }
@@ -171,7 +171,7 @@ export async function assembleTools(input: {
               'This run has read private data, so it can no longer search or open web pages. Report what you have.',
             );
           }
-          if (def.private) {
+          if (def.privateRead ? await def.privateRead(args, context) : def.private) {
             readPrivate = true;
             await input.privateRead?.();
           }
@@ -269,13 +269,17 @@ export async function assembleTools(input: {
               return request;
             },
           };
-          const finish = async (status: 'succeeded' | 'failed', output: unknown, error?: string) => {
+          const finish = async (
+            status: 'succeeded' | 'failed',
+            output: unknown,
+            error?: { code: string; message: string },
+          ) => {
             await getDb()
               .update(runSteps)
               .set({
                 status,
                 output: bounded(output),
-                error: error ? { code: 'tool_failed', message: error.slice(0, 1000) } : null,
+                error: error ? { code: error.code, message: error.message.slice(0, 1000) } : null,
                 durationMs: Date.now() - started,
                 finishedAt: sql`now()`,
                 updatedAt: sql`now()`,
@@ -354,7 +358,9 @@ export async function assembleTools(input: {
                 .where(eq(runSteps.id, stepId));
             }
             const evidence =
-              input.output && def.name !== 'tool_output_read' ? await input.output(output, call) : output;
+              input.output && def.name !== 'tool_output_read'
+                ? await input.output(output, { ...call, outputPrivate: readPrivate })
+                : output;
             await finish('succeeded', evidence);
             if ((risk === 'tier1' || standing) && reversible && def.undo && input.receipt) {
               const summary =
@@ -373,7 +379,10 @@ export async function assembleTools(input: {
                 );
           } catch (error) {
             const summary = failureSummary(def, args, error, call);
-            await finish('failed', undefined, summary);
+            await finish('failed', undefined, {
+              code: error instanceof ApiError ? error.code : 'tool_failed',
+              message: summary,
+            });
             throw new ApiError(
               error instanceof ApiError ? error.status : 502,
               error instanceof ApiError ? error.code : 'tool_failed',

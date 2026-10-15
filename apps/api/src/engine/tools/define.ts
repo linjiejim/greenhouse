@@ -53,6 +53,8 @@ export interface ToolContext {
   stepId: string;
   /** Which attempt of the run this is; background runs can be retried. */
   attempt?: number;
+  /** Source privacy inherited by a stored result, independent of its owner-only file access. */
+  outputPrivate?: boolean;
   locale: 'zh' | 'en';
   surface: Surface;
   signal: AbortSignal;
@@ -109,6 +111,8 @@ export interface ToolDef<I = any> {
   name: string;
   description: string;
   input: z.ZodType<I>;
+  /** A narrower schema for unwatched runs; selected before provider schemas and Eval snapshots. */
+  backgroundInput?: z.ZodType<I>;
   risk: ToolRisk;
   /** Default: read tools everywhere, write and external tools only in turns. */
   surfaces?: readonly Surface[];
@@ -145,6 +149,8 @@ export interface ToolDef<I = any> {
   idempotent?: boolean;
   /** Reads the member's own data (conversations, documents, memories). */
   private?: boolean;
+  /** Per-call source privacy, when a tool can read either public or private data. */
+  privateRead?(input: I, ctx: Omit<ToolContext, 'stepId' | 'raise' | 'endTurn'>): Promise<boolean>;
   /** Sends something out of Greenhouse (a search query, a URL). Unwatched runs stop using it after a private read. */
   outbound?: boolean;
   /**

@@ -68,6 +68,11 @@ export default function Settings() {
               value={t(s.user.role === 'admin' ? 'settings.roleAdmin' : 'settings.roleMember')}
             />
           ) : null}
+          <FormNavRow label={t('integration.aboutMe')} onPress={() => router.push('/settings/account')} />
+          <FormNavRow
+            label={t('integration.changePassword')}
+            onPress={() => router.push({ pathname: '/settings/account', params: { mode: 'password' } })}
+          />
           <FormNavRow
             label={t('station.title')}
             value={s.station?.name ?? '—'}

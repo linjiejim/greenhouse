@@ -1,6 +1,10 @@
 import { visiblePages } from '../../src/data/pages';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { FlatList } from 'react-native';
+import { matchesDirectory } from '../../src/data/directory-filter';
+import { DirectorySearch, useDirectoryFilter } from '../../src/ui/directory-search';
+import { Segmented } from '../../src/ui/segmented';
+import { View } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { roots, folder, searchKnowledge } from '../../src/api/knowledge';
 import { post, type ApiResult } from '../../src/api/client';
@@ -24,7 +28,9 @@ export default function Knowledge() {
   const t = useT();
   const router = useRouter();
   const allowed = useAuth((s) => s.user?.modules.knowledge);
-  const [search, setSearch] = useState('');
+  const filter = useDirectoryFilter();
+  const [mode, setMode] = useState<'names' | 'content'>('names');
+  const search = mode === 'content' ? filter.query : '';
   const visible = useRef(1);
   useEffect(() => {
     visible.current = 1;
@@ -112,10 +118,13 @@ export default function Knowledge() {
     }
     open({ ...result.data, type: kind, name });
   };
+  const list = (resource.data?.items ?? []).filter(
+    (item) => mode === 'content' || matchesDirectory(filter.query, item.name),
+  );
   return (
     <>
       <Stack.Screen options={{ title: resource.data?.name ?? t('work.title') }} />
-      <Stack.SearchBar placeholder={t('work.search')} onChangeText={(event) => setSearch(event.nativeEvent.text)} />
+      <DirectorySearch filter={filter} />
       {allowed && scope !== 'shared' ? (
         <Stack.Toolbar placement="right">
           <Stack.Toolbar.Menu icon={toolbarIcon('plus')} accessibilityLabel={t('work.newDoc')}>
@@ -134,36 +143,41 @@ export default function Knowledge() {
         <FlatList
           contentInsetAdjustmentBehavior="automatic"
           contentContainerStyle={{ paddingBottom: 40 }}
-          data={resource.data.items}
+          data={list}
           keyExtractor={(item) => item.id}
           refreshing={resource.loading}
           onRefresh={() => void resource.refresh()}
           ListHeaderComponent={
-            !folderId ? (
-              <ListSection>
-                <NativeMenu
-                  items={(['team', 'personal', 'shared'] as const).map((id) => ({
-                    id,
-                    title: t(`work.${id}`),
-                    checked: id === scope,
-                  }))}
-                  onSelect={(id) => router.setParams({ scope: id })}
-                >
-                  <ListRow title={t(`work.${scope}`)} menuTrigger accessory="chevron" />
-                </NativeMenu>
-              </ListSection>
-            ) : null
+            <View>
+              <Segmented
+                value={mode}
+                onChange={setMode}
+                options={[
+                  { value: 'names', label: t('integration.filterNames') },
+                  { value: 'content', label: t('integration.searchContent') },
+                ]}
+                style={{ margin: 16 }}
+              />
+              {!folderId ? (
+                <ListSection>
+                  <NativeMenu
+                    items={(['team', 'personal', 'shared'] as const).map((id) => ({
+                      id,
+                      title: t(`work.${id}`),
+                      checked: id === scope,
+                    }))}
+                    onSelect={(id) => router.setParams({ scope: id })}
+                  >
+                    <ListRow title={t(`work.${scope}`)} menuTrigger accessory="chevron" />
+                  </NativeMenu>
+                </ListSection>
+              ) : null}
+            </View>
           }
           renderItem={({ item, index }) => (
             <ListRow
               position={
-                index === 0
-                  ? resource.data!.items.length === 1
-                    ? 'only'
-                    : 'first'
-                  : index === resource.data!.items.length - 1
-                    ? 'last'
-                    : 'middle'
+                index === 0 ? (list.length === 1 ? 'only' : 'first') : index === list.length - 1 ? 'last' : 'middle'
               }
               title={item.name}
               subtitle={'snippet' in item ? String(item.snippet) : undefined}
@@ -172,7 +186,9 @@ export default function Knowledge() {
               accessory="chevron"
             />
           )}
-          ListEmptyComponent={<EmptyState icon="book" title={t('work.empty')} />}
+          ListEmptyComponent={
+            <EmptyState icon="book" title={t(filter.query.trim() ? 'directory.noMatches' : 'work.empty')} />
+          }
           ListFooterComponent={
             resource.data.next_cursor ? (
               <NativeButton label={t('work.more')} loading={paging} onPress={() => void more()} />

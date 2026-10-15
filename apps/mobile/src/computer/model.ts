@@ -15,7 +15,8 @@ export function heldFor(since: number | null, now: number): string {
 }
 
 /** Cards a member answers at the computer: a take-over or a sign-in. */
-export const isComputerCard = (request: Pick<NeedsYou, 'kind'>) => request.kind === 'takeover' || request.kind === 'login';
+export const isComputerCard = (request: Pick<NeedsYou, 'kind'>) =>
+  request.kind === 'takeover' || request.kind === 'login';
 
 /**
  * The card handing the computer back settles: the one the page was opened for (`?request=`)
@@ -28,7 +29,8 @@ export function cardToAnswer(
 ): NeedsYou | null {
   if (opts.requestId) {
     const asked = pending.find((request) => request.id === opts.requestId);
-    if (asked) return asked.status === 'pending' ? asked : null;
+    if (asked)
+      return asked.status === 'pending' && isComputerCard(asked) && asked.agent_id === opts.agentId ? asked : null;
   }
   return (
     pending

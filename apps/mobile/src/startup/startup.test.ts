@@ -149,6 +149,7 @@ vi.mock('../store/auth', () => ({
 vi.mock('../store/prefs', () => ({
   usePrefs: (selector: (state: typeof test.prefs) => unknown) => selector(test.prefs),
 }));
+vi.mock('../chat/composer-bridge', () => ({ useComposerBridge: { setState: vi.fn() } }));
 vi.mock('../store/stations', () => ({
   useStations: Object.assign((selector: (state: typeof test.station) => unknown) => selector(test.station), {
     getState: () => test.station,

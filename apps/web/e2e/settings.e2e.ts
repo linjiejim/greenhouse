@@ -51,7 +51,7 @@ test('admin: allow personal keys; a member adds and deletes one', async ({ page,
   await form.getByRole('button', { name: '添加', exact: true }).click();
   const row = other.getByRole('listitem').filter({ hasText: 'My DeepSeek' });
   await expect(row).toContainText('未测试');
-  await row.getByRole('button', { name: 'My DeepSeek的操作' }).click();
+  await row.getByRole('button', { name: 'My DeepSeek 的操作' }).click();
   await other.getByRole('menuitem', { name: '删除' }).click();
   await expect(row).toHaveCount(0);
   await mei.close();

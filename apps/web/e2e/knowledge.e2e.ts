@@ -247,7 +247,7 @@ test('share a personal doc with Mei: it appears under 分享给我 at once and s
   await page.getByRole('option', { name: /Mei/ }).click();
   await page.keyboard.press('Escape');
   await dialog.getByRole('button', { name: '添加', exact: true }).click();
-  await expect(dialog.getByRole('combobox', { name: 'Mei的权限' })).toContainText('可查看');
+  await expect(dialog.getByRole('combobox', { name: 'Mei 的权限' })).toContainText('可查看');
   await dialog.getByRole('button', { name: '保存分享' }).click();
   await expect(page.getByText('已更新「Budget draft」的分享')).toBeVisible();
 
@@ -327,7 +327,7 @@ test('archive a doc, undo it, archive again and restore it from 已归档', asyn
   await open(page, `/#/knowledge/folder/${old.id}`);
   const list = page.getByRole('main').getByRole('list', { name: 'Old stuff' });
   const archive = async () => {
-    await list.getByRole('button', { name: 'Memo 2025的操作' }).click();
+    await list.getByRole('button', { name: 'Memo 2025 的操作' }).click();
     await page.getByRole('menuitem', { name: '归档' }).click();
     await expect(page.getByText('已归档「Memo 2025」')).toBeVisible();
     await expect(list.getByRole('link', { name: /Memo 2025/ })).toHaveCount(0);
@@ -354,7 +354,7 @@ test('move a doc with 移动到… and by dragging it onto a folder', async ({ p
   await doc(request, { title: 'Invoice', folder_id: from.id, content: 'Due.' });
   await open(page, `/#/knowledge/folder/${from.id}`);
   const list = page.getByRole('main').getByRole('list', { name: 'Inbox folder' });
-  await list.getByRole('button', { name: 'Receipt的操作' }).click();
+  await list.getByRole('button', { name: 'Receipt 的操作' }).click();
   await page.getByRole('menuitem', { name: '移动到…' }).click();
   const move = page.getByRole('dialog', { name: '把「Receipt」移动到…' });
   await move.getByRole('radio', { name: 'Filed folder' }).click();
@@ -372,7 +372,7 @@ test('move a doc with 移动到… and by dragging it onto a folder', async ({ p
 
   // 下移 puts it in hand order, the keyboard's way to reorder.
   await expect(filed.getByRole('link')).toHaveText([/Invoice/, /Receipt/]);
-  await filed.getByRole('button', { name: 'Invoice的操作' }).click();
+  await filed.getByRole('button', { name: 'Invoice 的操作' }).click();
   await page.getByRole('menuitem', { name: '下移' }).click();
   await expect(filed.getByRole('link')).toHaveText([/Receipt/, /Invoice/]);
 
@@ -543,7 +543,7 @@ test('an Agent keeps notes in its own folder: its owner sees it under the Agent,
   await page.goto('/#/knowledge?space=personal');
   const folderRow = page.getByRole('main').getByRole('listitem').filter({ hasText: 'Greeny' });
   await expect(folderRow.locator('.pa-root')).toBeVisible();
-  await folderRow.getByRole('button', { name: 'Greeny的操作' }).click();
+  await folderRow.getByRole('button', { name: 'Greeny 的操作' }).click();
   await expect(page.getByRole('menuitem', { name: '分享' })).toHaveCount(0);
   await expect(page.getByRole('menuitem', { name: '移动到…' })).toHaveCount(0);
   await page.keyboard.press('Escape');

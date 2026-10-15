@@ -251,6 +251,15 @@ export const MemberMessage = memo(function MemberMessage({
   const meta = [
     time,
     message.edited_at ? t('conversation.edited') : '',
+    message.event?.type === 'interjection'
+      ? t(
+          message.event.state === 'incorporated'
+            ? 'integration.incorporated'
+            : message.event.state === 'canceled'
+              ? 'integration.interjectionStopped'
+              : 'conversation.queued',
+        )
+      : '',
     readBy?.length ? t('conversation.readBy', { n: readBy.length }) : '',
   ]
     .filter(Boolean)

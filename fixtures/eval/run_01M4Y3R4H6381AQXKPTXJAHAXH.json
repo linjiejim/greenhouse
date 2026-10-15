@@ -2566,7 +2566,7 @@
     "tools": [
       {
         "name": "memory",
-        "hash": "2a1f13005d09b4477a48c9b0ff7868d188e4f0f702846053c2fa006dc5817f88"
+        "hash": "295e6f9f06ca83c84a1595320293e9594045b680c16efb574efd15da5655e113"
       },
       {
         "name": "ask_user",
@@ -2586,7 +2586,7 @@
       },
       {
         "name": "tool_output_read",
-        "hash": "d9b675c48336f7f7b281a30244d6380c5b8d84a1fc80f253a0958fb9d106924b"
+        "hash": "38cd4fafb43452907eba56bdaeeaecbb51198059f21820d17c1ab2200db6ebb2"
       },
       {
         "name": "computer",
@@ -2598,7 +2598,7 @@
       },
       {
         "name": "browser",
-        "hash": "b6807f4484aa501137f68516e68bd0204a694ee349d711cd2bd7f8d3582f08d0"
+        "hash": "14267dd1c5e7d7e2a31480167183c7b06f2cdb2865f8db49b1d0e337ddee372a"
       },
       {
         "name": "vault",
@@ -2658,7 +2658,7 @@
       },
       {
         "name": "table_schema_plan",
-        "hash": "05e711c17cb0160c06c8621e7dbfad9a0273cba6a8d11d5bf2dde2d0886cb19a"
+        "hash": "1b160603be83ed1ab1cc4aebaea51a4bd4e8eecc550b3f81e8cb14680dcfb0cf"
       },
       {
         "name": "apps_query",

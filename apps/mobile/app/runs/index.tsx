@@ -4,13 +4,17 @@
  * menu. A row opens its detail. Refreshes as realtime `run.updated` events arrive.
  */
 
-import React, { useCallback, useEffect, useState } from 'react';
+import { matchesDirectory } from '../../src/data/directory-filter';
+import { DirectorySearch, useDirectoryFilter } from '../../src/ui/directory-search';
+import React, { useCallback, useRef, useState } from 'react';
 import { FlatList, RefreshControl, Text, View } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { listRuns } from '../../src/api/runs';
 import { useT } from '../../src/lib/i18n';
 import { relativeTimeNow } from '../../src/lib/time-words';
-import { realtime } from '../../src/realtime';
+import { useResource } from '../../src/data/use-resource';
+import { useOperations } from '../../src/data/use-operations';
+import { alertError } from '../../src/ui/dialogs';
 import { RUN_SOURCE, RUN_STATUS } from '../../src/runs/status';
 import type { RunView } from '../../src/shared/contract';
 import { useWorkspace } from '../../src/store/workspace';
@@ -30,50 +34,42 @@ export default function Runs() {
   const { colors: c } = useTheme();
   const styles = useStyles(c);
   const t = useT();
+  const filter = useDirectoryFilter();
   const router = useRouter();
   const agents = useWorkspace((s) => s.agents);
   const [view, setView] = useState<View_>('active');
   const [agent, setAgent] = useState<string>('');
-  const [runs, setRuns] = useState<RunView[] | null>(null);
-  const [next, setNext] = useState<string | null>(null);
-  const [failed, setFailed] = useState(false);
+  const operations = useOperations();
+  const r = useResource(
+    useCallback(() => listRuns({ state: view, agent: agent || undefined, limit: 50 }), [view, agent]),
+    ['run.updated'],
+  );
+  const runs = r.data?.items ?? null;
+  const failed = !!r.error;
   const [refreshing, setRefreshing] = useState(false);
-
-  const load = useCallback(async () => {
-    const page = await listRuns({ state: view, agent: agent || undefined, limit: 50 });
-    if (page.ok) {
-      setRuns(page.data.items);
-      setNext(page.data.next_cursor);
-      setFailed(false);
-    } else setFailed(true);
-  }, [view, agent]);
-
-  useEffect(() => {
-    setRuns(null);
-    void load();
-    let timer: ReturnType<typeof setTimeout> | null = null;
-    const off = realtime.on((event) => {
-      if (event.type !== 'run.updated' && event.type !== 'resync') return;
-      if (timer) return;
-      timer = setTimeout(() => {
-        timer = null;
-        void load();
-      }, 400);
-    });
-    return () => {
-      off();
-      if (timer) clearTimeout(timer);
-    };
-  }, [load]);
-
+  const pending = useRef(false);
+  const load = r.refresh;
   const loadMore = async () => {
-    if (!next) return;
-    const page = await listRuns({ state: view, agent: agent || undefined, cursor: next, limit: 50 });
-    if (!page.ok) return;
-    setRuns((current) => [...(current ?? []), ...page.data.items]);
-    setNext(page.data.next_cursor);
+    if (!r.data?.next_cursor || pending.current) return;
+    const current = r.capture();
+    pending.current = true;
+    const page = await listRuns({ state: view, agent: agent || undefined, cursor: r.data.next_cursor, limit: 50 });
+    pending.current = false;
+    if (!current()) return;
+    if (page.ok)
+      r.setData((old) =>
+        old
+          ? {
+              ...page.data,
+              items: [
+                ...old.items,
+                ...page.data.items.filter((item) => !old.items.some((known) => known.id === item.id)),
+              ],
+            }
+          : old,
+      );
+    else alertError(t('runs.loadFailed'), undefined, page.message);
   };
-
   const refresh = async () => {
     setRefreshing(true);
     await load();
@@ -81,10 +77,11 @@ export default function Runs() {
   };
 
   const filterName = agent ? agents?.find((item) => item.id === agent)?.name : null;
-  const list = runs ?? [];
+  const list = (runs ?? []).filter((item) => matchesDirectory(filter.query, item.title));
   return (
     <View style={styles.root}>
       <Stack.Screen options={{ title: t('runs.title') }} />
+      <DirectorySearch filter={filter} />
       <Stack.Toolbar placement="right">
         <Stack.Toolbar.Menu icon={toolbarIcon(agent ? 'filterOn' : 'filter')} accessibilityLabel={t('runs.byAgent')}>
           <Stack.Toolbar.MenuAction isOn={!agent} onPress={() => setAgent('')}>
@@ -104,6 +101,11 @@ export default function Runs() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void refresh()} />}
         ListHeaderComponent={
           <View>
+            {operations.data?.pause_background_runs ? (
+              <Text accessibilityRole="alert" style={styles.filter}>
+                {t('integration.backgroundPaused')}
+              </Text>
+            ) : null}
             <Segmented<View_>
               value={view}
               onChange={setView}
@@ -133,14 +135,26 @@ export default function Runs() {
           return (
             <ListRow
               title={item.title}
-              subtitle={[owner?.name, t(`runs.${RUN_SOURCE[item.source]}` as 'runs.fromConversation'), relativeTimeNow(when)]
+              subtitle={[
+                owner?.name,
+                t(`runs.${RUN_SOURCE[item.source]}` as 'runs.fromConversation'),
+                relativeTimeNow(when),
+              ]
                 .filter(Boolean)
                 .join(' · ')}
-              leading={<AgentAvatar agent={owner ?? null} size={30} state={item.status === 'running' ? 'thinking' : undefined} />}
+              leading={
+                <AgentAvatar
+                  agent={owner ?? null}
+                  size={30}
+                  state={item.status === 'running' ? 'thinking' : undefined}
+                />
+              }
               leadingWidth={30}
               accessory={
                 <View style={[styles.status, { borderColor: tone }]}>
-                  <Text style={[styles.statusText, { color: tone }]}>{t(`runs.status.${status.word}` as 'runs.status.running')}</Text>
+                  <Text style={[styles.statusText, { color: tone }]}>
+                    {t(`runs.status.${status.word}` as 'runs.status.running')}
+                  </Text>
                 </View>
               }
               position={position(index, list.length)}
@@ -156,7 +170,16 @@ export default function Runs() {
           ) : failed ? (
             <EmptyState icon="alert" title={t('runs.loadFailed')} onRetry={() => void load()} />
           ) : (
-            <EmptyState icon="runs" title={view === 'active' ? t('runs.noneActive') : t('runs.noneDone')} />
+            <EmptyState
+              icon="runs"
+              title={
+                filter.query.trim()
+                  ? t('directory.noMatches')
+                  : view === 'active'
+                    ? t('runs.noneActive')
+                    : t('runs.noneDone')
+              }
+            />
           )
         }
         ListFooterComponent={<View style={{ height: space.xxl }} />}
@@ -168,7 +191,12 @@ export default function Runs() {
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.groupedBackground },
   segmented: { marginHorizontal: space.margin, marginVertical: space.md },
-  filter: { ...typo.footnote, color: c.secondaryLabel, marginHorizontal: space.margin + space.xs, marginBottom: space.sm },
+  filter: {
+    ...typo.footnote,
+    color: c.secondaryLabel,
+    marginHorizontal: space.margin + space.xs,
+    marginBottom: space.sm,
+  },
   status: { borderWidth: 1, borderRadius: radius.sm, paddingHorizontal: 6, paddingVertical: 1 },
   statusText: { ...typo.caption1, fontWeight: weight.semibold },
   empty: { paddingTop: space.xxl },

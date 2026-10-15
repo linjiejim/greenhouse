@@ -159,7 +159,7 @@ describe('the mail tool', () => {
     const attempt = await send('reply');
     const [step] = await steps(attempt.run_id);
     expect(step).toMatchObject({ risk: 'read', status: 'failed' });
-    expect(step!.error).toMatchObject({ message: expect.stringContaining('approve') });
+    expect(step!.error).toEqual({ code: 'forbidden', message: '回一封邮件失败：没有操作权限' });
     expect(await getDb().select().from(requests)).toEqual([]);
     expect(resend.state.sent).toEqual([]);
   });

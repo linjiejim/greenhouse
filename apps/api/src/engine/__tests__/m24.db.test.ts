@@ -136,7 +136,7 @@ describe('M2.4 engine additions', () => {
       .select()
       .from(runSteps)
       .where(and(eq(runSteps.runId, sent.body.run_id), eq(runSteps.kind, 'tool')));
-    expect(step?.error?.message).toContain('budget');
+    expect(step?.error).toEqual({ code: 'budget_exceeded', message: '开始 1 个子运行失败：剩余预算不足' });
   });
 
   it('counts outstanding reservations, includes agent budgets and refuses unpriced cost estimates', async () => {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
-import { agentComputers, auditEvents, getDb, newId, runs } from '@greenhouse/db';
+import { agentComputers, auditEvents, getDb, members, newId, runs } from '@greenhouse/db';
 import { createTestApp } from '../../../testing.js';
 import { scriptedModel, text } from '../../../engine/__tests__/model.js';
 
@@ -21,6 +21,20 @@ it('requires an active admin, shares switches across replicas, merges patches an
     pause_background_runs: true,
     disable_outbound_mail: true,
   });
+  expect((await app.call('GET', '/api/me/operations')).status).toBe(401);
+  expect((await app.call('GET', '/api/me/operations', { token: member.token })).body).toEqual({
+    disable_computers: true,
+    pause_background_runs: true,
+    disable_outbound_mail: true,
+  });
+  expect(
+    (await app.call('PATCH', '/api/me/operations', { token: member.token, body: { disable_computers: false } })).status,
+  ).toBe(404);
+  await expect(app.services.operations.memberStatus('missing')).rejects.toMatchObject({ code: 'forbidden' });
+  await getDb().update(members).set({ status: 'disabled' }).where(eq(members.id, member.id));
+  await expect(app.services.operations.memberStatus(member.id)).rejects.toMatchObject({ code: 'forbidden' });
+  expect((await app.call('GET', '/api/me/operations', { token: member.token })).status).toBe(401);
+
   expect(
     (await app.call('PATCH', '/api/admin/operations', { token: admin.token, body: { unknown: true } })).status,
   ).toBe(400);
