@@ -1901,6 +1901,7 @@ export function createEngine(deps: EngineDeps) {
       manifest,
       conversation: conversation ?? null,
       runId: ready.run.id,
+      outputPrivate: ready.run.checkpoint?.read_private === true,
       stepId: request.stepId,
       locale,
       surface:

@@ -105,5 +105,6 @@ export function tableSchemaTool(tables: TablesService) {
         return tables.get(ctx.memberId, base.id);
       });
     },
+    summarize: (_args, _output, locale) => (locale === 'zh' ? '修改了表格结构' : 'Changed table structure'),
   });
 }

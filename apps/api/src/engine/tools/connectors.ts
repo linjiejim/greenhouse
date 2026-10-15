@@ -8,8 +8,8 @@
  *
  * Read-only tools run at once. Any other tool is classed external for that call, so the member
  * approves exactly these arguments on a card first, and it then runs with their connection.
- * Offered only in turns (nobody watches a background run) and never in someone else's public
- * Agent, whose instructions are not the asker's (engine/AGENTS.md).
+ * Background runs may only call read-only tools; authenticated results close their outbound
+ * access. Never offered in someone else's public Agent (engine/AGENTS.md).
  */
 
 import { z } from 'zod';
@@ -80,6 +80,15 @@ export function connectorTool(connectors: ConnectorsService) {
     surfaces: ['turn', 'background'],
     taints: true,
     outbound: true,
+    async privateRead(args, ctx) {
+      if (args.action !== 'call') return false;
+      const found = await connectors.findTool(ctx.memberId, ctx.manifest, args.connector, args.tool);
+      if ('error' in found) return false;
+      const available = await connectors.mine(ctx.memberId);
+      const source = available.connectors.find((entry) => entry.id === found.connector.id);
+      // Without a trusted public-data declaration, authenticated results stay private.
+      return source?.auth_mode !== 'none';
+    },
     // Offered whenever the Agent has connectors, connected or not: an account connected or
     // disconnected changes only the list in the closing message.
     available: (ctx) => connectors.offered(ctx.manifest),

@@ -254,7 +254,7 @@ M3.4 计数（#70）：`metric_events` 仅存 identity id、member_id（逻辑�
 
 - `agents.publication.folderIds` 保存公开 Agent 的知识授权根。只接受主人未归档的个人文件夹，排除所有 Agent 私有参考文件夹及其后代。每次知识读取重查发布、受众、主人模块与当前子树；授权不变成成员对文档或文件的直接分享。
 - 子运行仍是 `runs.kind=background`，`parent_run_id` 指父回合，`input.helper=true`，`input.model_ref` 固定本次工作区模型；父回合以 `wait_reason=helpers` 等待。每回合最多 3 个，完成只经同一个 `run_report` 唤醒层回传摘要；不单独通知。每个子运行预留 100,000 tokens 的估算额度，成本预算按模型价格计算；没有覆盖预算时仍留预留凭证。
-- `files.purpose=tool_output` 的文件始终仅 owner 可读，即使带有 run_id 也不继承对话受众；模型读区间按字符偏移。每日 `engine_retention` jobs 清理过期字节，并删除终态运行 90 天以前的 model 步骤及 Eval 提示快照；工具证据保留。编辑或重新生成删除旧回复时同时清除其模型上下文。
+- `files.purpose=tool_output` 的文件始终仅 owner 可读，即使带有 run_id 也不继承对话受众；模型读区间按字符偏移；`meta.tool_output` 保存服务端写入的 `private`（来源及该运行此前是否已读私有数据）和 `step_id`，不改变文件权限。缺失来源按私有处理；公开来源存成仅主人可读的文件后，不因读回而变成私有来源。每日 `engine_retention` jobs 清理过期字节，并删除终态运行 90 天以前的 model 步骤及 Eval 提示快照；工具证据保留。编辑或重新生成删除旧回复时同时清除其模型上下文。
 - `runs.checkpoint.eval` 保存当时的提示组装配方、实际工具定义、成员模块与模型输入，供本地 Eval 导出。夹具导出清除凭据字段、Bearer、已知 key 形式和文件签名；导出前仍应使用不含私有业务材料的验收对话。
 
 ### 12.8 M3.6 发布形态（#70）

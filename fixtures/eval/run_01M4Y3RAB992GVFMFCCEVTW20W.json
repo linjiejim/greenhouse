@@ -2575,7 +2575,7 @@
     "tools": [
       {
         "name": "memory",
-        "hash": "2a1f13005d09b4477a48c9b0ff7868d188e4f0f702846053c2fa006dc5817f88"
+        "hash": "295e6f9f06ca83c84a1595320293e9594045b680c16efb574efd15da5655e113"
       },
       {
         "name": "ask_user",
@@ -2595,7 +2595,7 @@
       },
       {
         "name": "tool_output_read",
-        "hash": "d9b675c48336f7f7b281a30244d6380c5b8d84a1fc80f253a0958fb9d106924b"
+        "hash": "38cd4fafb43452907eba56bdaeeaecbb51198059f21820d17c1ab2200db6ebb2"
       },
       {
         "name": "computer",

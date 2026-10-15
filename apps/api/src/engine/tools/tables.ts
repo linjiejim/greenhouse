@@ -98,6 +98,7 @@ export function tableTools(tables: TablesService): ToolDef[] {
       }
       return result;
     },
+    summarize: (_args, _output, locale) => (locale === 'zh' ? '查看了表格' : 'Read tables'),
   });
   const mutation = defineTool({
     name: 'table_mutation',

@@ -19,6 +19,10 @@ function definitions() {
 }
 
 describe('provider tool inputs', () => {
+  it('registers human step summaries for every engine tool', () => {
+    for (const def of definitions()) expect(def.summarize, def.name).toBeTypeOf('function');
+  });
+
   it('offers every built-in as a root object without union combinators', async () => {
     const defs = definitions();
     expect(defs.length).toBeGreaterThan(15);
