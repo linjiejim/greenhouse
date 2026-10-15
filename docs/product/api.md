@@ -335,3 +335,5 @@ custom 网页运行使用双层 `sandbox="allow-scripts"` iframe，均无 allow-
 整合回归（#70，T14）：工具失败的模型结果与步骤摘要继续使用本地化的人类文字；`run_steps.error.code` 保留服务的稳定错误码，意外异常才记为 `tool_failed`。预算不足为 `budget_exceeded`，未设置价格为 `budget_estimate_unavailable`，表格自动化越过批准的来源表格为 `source_base_only`。知识查询的 `space` 保留范围枚举，`space_label` 和 `where` 提供可读范围与位置。
 
 运维开关拒绝操作时统一返回 `operation_disabled`，`details.switch` 区分 `pause_background_runs`、`disable_computers`、`disable_outbound_mail`；Web 与原生按此字段显示本地化原因。截图已作为回复附件展示时，浏览器工具只向模型返回 `file_name` 和展示说明，文件编号仍由服务端保存。
+
+会话自动标题（#70，T18）：快速模型只读取首条成员消息，概括成员请求，不读取助手回复、工具步骤或中途失败措辞；只在标题仍为空时写入，保留成员手动设置的标题。
