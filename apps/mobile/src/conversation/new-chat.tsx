@@ -16,6 +16,7 @@ import { KeyboardStickyView, useReanimatedKeyboardAnimation } from 'react-native
 import { createConversation, sendMessage } from '../api/conversations';
 import { skillStarters } from '../api/me';
 import { badgeOf } from '../data/directory';
+import { useComposerBridge } from '../chat/composer-bridge';
 import { Composer } from '../chat/composer';
 import { HeroAvatar } from '../chat/hero-avatar';
 import { greeting } from '../lib/format';
@@ -34,7 +35,6 @@ import { PickerStrip, SkillFields, type CandidateFace } from './composer-accesso
 import { ConversationHeader, type HeaderModel } from './header';
 import type { MentionCandidate } from './picker';
 import { useComposer } from './use-composer';
-
 
 export function NewChatScreen({ agentId, compose }: { agentId: string; compose: boolean }) {
   const { colors: c } = useTheme();
@@ -76,6 +76,14 @@ export function NewChatScreen({ agentId, compose }: { agentId: string; compose: 
     onSwitch: (candidate) => setPicked(candidate.handle),
     skills,
   });
+
+  const selectedSkill = useComposerBridge((s) => s.skill);
+  const chooseSkill = composer.chooseSkill;
+  useEffect(() => {
+    if (!focused || !selectedSkill) return;
+    useComposerBridge.setState({ skill: null });
+    chooseSkill(selectedSkill);
+  }, [focused, selectedSkill, chooseSkill]);
 
   // Starters: my skills for this Agent, else its template's opening lines.
   const [starters, setStarters] = useState<{ skills: Skill[]; lines: string[] } | null>(null);
@@ -130,9 +138,12 @@ export function NewChatScreen({ agentId, compose }: { agentId: string; compose: 
       openConversation(router, { id: chat.data.id, title: chat.data.title });
       return;
     }
-    void useThreads.getState().open(chat.data.id).then(() => {
-      useThreads.getState().addMessages(chat.data.id, [sent.data.message]);
-    });
+    void useThreads
+      .getState()
+      .open(chat.data.id)
+      .then(() => {
+        useThreads.getState().addMessages(chat.data.id, [sent.data.message]);
+      });
     openConversation(router, { id: chat.data.id, title: chat.data.title });
   }, [sending, build, take, restore, answering, router]);
 
@@ -154,7 +165,12 @@ export function NewChatScreen({ agentId, compose }: { agentId: string; compose: 
   const accessory = composer.picker.length ? (
     <PickerStrip entries={composer.picker} faces={faces} onPick={composer.pick} />
   ) : composer.skill?.variables.length ? (
-    <SkillFields skill={composer.skill} values={composer.fields} onChange={composer.setField} onSubmit={() => void send()} />
+    <SkillFields
+      skill={composer.skill}
+      values={composer.fields}
+      onChange={composer.setField}
+      onSubmit={() => void send()}
+    />
   ) : null;
   const menuExtra = useMemo(
     () => ({
@@ -182,7 +198,10 @@ export function NewChatScreen({ agentId, compose }: { agentId: string; compose: 
         onNotifications={() => router.push('/notifications')}
         onMenu={() => undefined}
       />
-      <View style={[styles.heroWrap, { top: headerHeight, bottom: composerH + composerBottom }]} pointerEvents="box-none">
+      <View
+        style={[styles.heroWrap, { top: headerHeight, bottom: composerH + composerBottom }]}
+        pointerEvents="box-none"
+      >
         <ScrollView
           contentContainerStyle={styles.heroScroll}
           keyboardShouldPersistTaps="handled"
@@ -232,7 +251,9 @@ export function NewChatScreen({ agentId, compose }: { agentId: string; compose: 
         </ScrollView>
       </View>
       <KeyboardStickyView offset={stickyOffset} style={styles.sticky}>
-        <View style={[{ paddingBottom: composerBottom }, Platform.OS === 'android' && { backgroundColor: c.background }]}>
+        <View
+          style={[{ paddingBottom: composerBottom }, Platform.OS === 'android' && { backgroundColor: c.background }]}
+        >
           <Composer
             ref={composer.inputRef}
             value={composer.value}
@@ -245,7 +266,11 @@ export function NewChatScreen({ agentId, compose }: { agentId: string; compose: 
             files={composer.files}
             onRemoveFile={composer.removeFile}
             onRetryFiles={composer.retryFiles}
-            skill={composer.skill ? `/${composer.skill.name}${composer.skill.display_name ? ` · ${composer.skill.display_name}` : ''}` : null}
+            skill={
+              composer.skill
+                ? `/${composer.skill.name}${composer.skill.display_name ? ` · ${composer.skill.display_name}` : ''}`
+                : null
+            }
             onClearSkill={composer.clearSkill}
             placeholder={t('composer.placeholder', { name: answering?.name ?? 'Greeny' })}
             autoFocus={compose}

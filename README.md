@@ -38,6 +38,8 @@ Knowledge includes spaces and folders, safe Markdown reading and source editing,
 
 Published apps open native runtime pages, record details, forms, charts and confirmed actions. Reads and writes retain the publication version and access boundaries; building and publishing stay on the web. Always-on flows include reversible write receipts and undo, tier2 standing approvals, quiet schedules, record handoffs and event lines.
 
+Native directories filter loaded names and clear when left. Agent profiles show memory and monthly usage with budgets; shared notes and account password/About me edits are available on the phone. Computer queues show their position, and computer/background pauses explain what is waiting.
+
 The launch cover leaves when authentication, fonts and the focused page are ready. Its 650 ms logo animation adds no minimum wait; unsettled content gets up to 900 ms before showing loading or retry. On iOS, chat and computer files use native Quick Look for PDF, images and system-supported formats, with sharing and saving available.
 
 The app has an isolated install: `pnpm mobile:install`, then `pnpm mobile`. Use a native development client on an iOS simulator or Android device; Expo Go cannot run it. See [mobile rules](apps/mobile/AGENTS.md) for platform checks and [RELEASING.md](RELEASING.md) for native builds.

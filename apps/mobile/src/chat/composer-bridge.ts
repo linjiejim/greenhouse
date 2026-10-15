@@ -11,8 +11,10 @@
  */
 
 import { create } from 'zustand';
+import type { Skill } from '../shared/contract';
 
 interface ComposerBridge {
+  skill: Skill | null;
   quote: string | null;
   drafts: string[];
   takeQuote: () => string | null;
@@ -20,6 +22,7 @@ interface ComposerBridge {
 }
 
 export const useComposerBridge = create<ComposerBridge>((set, get) => ({
+  skill: null,
   quote: null,
   drafts: [],
   takeQuote: () => {

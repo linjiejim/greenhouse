@@ -10,13 +10,15 @@
  * pitch, and 发消息.
  */
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import { ScrollView, Text, View } from 'react-native';
 import { Stack, useIsFocused, useLocalSearchParams, useRouter } from 'expo-router';
+import { AgentUsage } from '../../src/agents/usage';
+import { useResource } from '../../src/data/use-resource';
 import { archiveAgent, getAgent, restoreAgent } from '../../src/api/agents';
 import { createConversation } from '../../src/api/conversations';
 import { useT } from '../../src/lib/i18n';
-import type { AgentDetail, PublicAgent } from '../../src/shared/contract';
+import type { PublicAgent } from '../../src/shared/contract';
 import { openConversation, openMainThread, openNewChat } from '../../src/shell/nav';
 import { useAuth } from '../../src/store/auth';
 import { useWorkspace } from '../../src/store/workspace';
@@ -39,21 +41,21 @@ export default function AgentProfile() {
   const me = useAuth((s) => s.user);
   const shared = useWorkspace((s) => s.publicAgents.find((agent) => agent.id === id) ?? null);
   const conversations = useWorkspace((s) => s.conversations);
-  const [agent, setAgent] = useState<AgentDetail | null>(null);
-  const [state, setState] = useState<'loading' | 'ready' | 'missing' | 'failed'>('loading');
+  const r = useResource(
+    useCallback(() => getAgent(id), [id]),
+    ['agent.updated'],
+  );
+  const agent = r.data;
+  const state = agent
+    ? 'ready'
+    : r.loading
+      ? 'loading'
+      : r.error?.status === 404 || r.error?.status === 403
+        ? 'missing'
+        : 'failed';
+  const load = r.refresh;
   const [showAll, setShowAll] = useState(false);
-
-  const load = useCallback(async () => {
-    const result = await getAgent(id);
-    if (result.ok) {
-      setAgent(result.data);
-      setState('ready');
-    } else setState(result.status === 404 || result.status === 403 ? 'missing' : 'failed');
-  }, [id]);
-  // Again whenever the page comes back (an edit saved in the form sheet).
-  useEffect(() => {
-    if (focused) void load();
-  }, [focused, load]);
+  const pending = useRef(false);
 
   const computers = !!me?.modules.computer && !!me?.capabilities.sandbox;
 
@@ -67,7 +69,12 @@ export default function AgentProfile() {
       openConversation(router, { id: known.id, title: target.name }, 'dismissTo');
       return;
     }
+    if (pending.current) return;
+    pending.current = true;
+    const current = r.captureWrite();
     const made = await createConversation({ kind: 'direct', agent_id: target.id });
+    pending.current = false;
+    if (!current()) return;
     if (!made.ok) {
       alertError(t('directory.openFailed'), made.message || undefined);
       return;
@@ -98,13 +105,18 @@ export default function AgentProfile() {
   const mine = agent.owner_id === me?.id;
 
   const archive = async () => {
+    if (pending.current) return;
+    const current = r.captureWrite();
     const ok = await confirmAction({
       title: t('agents.archiveTitle', { name: agent.name }),
       message: t('agents.archiveHint'),
       confirmLabel: t('row.archive'),
     });
-    if (!ok) return;
+    if (!ok || !current() || pending.current) return;
+    pending.current = true;
     const result = await archiveAgent(agent.id);
+    pending.current = false;
+    if (!current()) return;
     if (!result.ok) {
       alertError(t('agents.archiveFailed'), result.message || undefined);
       return;
@@ -115,14 +127,19 @@ export default function AgentProfile() {
   };
 
   const restore = async () => {
+    if (pending.current) return;
+    pending.current = true;
+    const current = r.captureWrite();
     const result = await restoreAgent(agent.id);
+    pending.current = false;
+    if (!current()) return;
     if (!result.ok) {
       alertError(t('agents.restoreFailed'), result.message || undefined);
       return;
     }
     toast(t('agents.restored', { name: agent.name }), 'check');
     void useWorkspace.getState().refresh();
-    setAgent(result.data);
+    r.setData(result.data);
   };
 
   const instructions = agent.instructions.trim();
@@ -199,6 +216,14 @@ export default function AgentProfile() {
             />
           </ListSection>
         ) : null}
+        <ListSection>
+          <ListRow
+            title={t('integration.memories')}
+            icon="book"
+            accessory="chevron"
+            onPress={() => router.push({ pathname: '/agents/memories', params: { id: agent.id } })}
+          />
+        </ListSection>
         <ListSection header={t('agents.instructions')}>
           <View style={styles.instructions}>
             <Text style={styles.instructionsText} selectable numberOfLines={showAll || !long ? undefined : 8}>
@@ -223,6 +248,8 @@ export default function AgentProfile() {
             value={agent.connectors === null ? t('agents.connectorsAll') : String(agent.connectors.length)}
           />
         </ListSection>
+
+        {mine ? <AgentUsage id={agent.id} /> : null}
 
         {mine && !agent.is_main ? (
           <ListSection>
@@ -256,6 +283,7 @@ function SharedProfile({ agent, onTalk }: { agent: PublicAgent; onTalk: () => vo
   const { colors: c } = useTheme();
   const styles = useStyles(c);
   const t = useT();
+  const router = useRouter();
   return (
     <>
       <Stack.Screen options={{ title: agent.name }} />
@@ -271,6 +299,10 @@ function SharedProfile({ agent, onTalk }: { agent: PublicAgent; onTalk: () => vo
             <NativeButton label={t('agents.message')} icon="msg" variant="prominent" onPress={onTalk} />
           </View>
           <Text style={styles.note}>{t('agents.publicNote', { name: agent.owner.name })}</Text>
+          <NativeButton
+            label={t('integration.memories')}
+            onPress={() => router.push({ pathname: '/agents/memories', params: { id: agent.id } })}
+          />
         </View>
       </ScrollView>
     </>

@@ -26,6 +26,7 @@ import { ControlBar } from '../src/computer/control-bar';
 import { FilesTab } from '../src/computer/files-tab';
 import { cardToAnswer } from '../src/computer/model';
 import { ProcessesTab } from '../src/computer/processes-tab';
+import { useOperations } from '../src/data/use-operations';
 import { useComputer } from '../src/computer/use-computer';
 import { useComputerScreen } from '../src/computer/use-computer-screen';
 import { useT } from '../src/lib/i18n';
@@ -61,7 +62,9 @@ export default function ComputerPage() {
   );
   const name = agentName ?? t('conversation.anAgent');
   const { computer, failed, busy, refresh, act } = useComputer(agentId);
-  const running = computer?.state === 'running';
+  const operations = useOperations();
+  const disabled = operations.data?.disable_computers || failed?.code === 'operation_disabled';
+  const running = computer?.state === 'running' && !disabled;
   const [tab, setTab] = useState<Tab>('screen');
   const [control, setControl] = useState(params.control === '1');
   const [since, setSince] = useState<number | null>(params.control === '1' ? Date.now() : null);
@@ -175,10 +178,12 @@ export default function ComputerPage() {
 
   const start = async () => {
     const result = await act('start');
+    if (!result) return;
     if (!result.ok) {
       alertError(
         t('computer.startFailed'),
-        result.message || undefined,
+        result.code === 'operation_disabled' ? t('integration.computersDisabled') : undefined,
+        result.message,
       );
     }
   };
@@ -239,18 +244,35 @@ export default function ComputerPage() {
         </View>
       ) : null}
       <View style={styles.body}>
-        {failed && !computer ? (
+        {disabled ? (
+          <EmptyState
+            icon="computer"
+            title={t('integration.computersDisabled')}
+            onRetry={() => {
+              void operations.refresh();
+              void refresh();
+            }}
+            style={styles.fill}
+          />
+        ) : failed && !computer ? (
           <EmptyState
             icon="alertCircle"
-            title={failed.message || t('computer.loadFailed')}
+            title={t('computer.loadFailed')}
             onRetry={() => void refresh()}
             style={styles.fill}
           />
         ) : !computer ? (
           <LoadingState style={styles.fill} />
-        ) : tab === 'files' ? (
+        ) : computer.state === 'queued' ? (
+          <EmptyState
+            icon="clock"
+            title={t('computer.state.queued')}
+            message={t('computer.queuedDesc', { position: computer.queue_position ?? 1 })}
+            style={styles.fill}
+          />
+        ) : running && tab === 'files' ? (
           <FilesTab agentId={agentId} />
-        ) : tab === 'processes' ? (
+        ) : running && tab === 'processes' ? (
           <ProcessesTab agentId={agentId} />
         ) : running ? (
           <ComputerScreenView screen={screen} hintAt={hintAt} onTakeOver={takeOver} />
@@ -265,7 +287,7 @@ export default function ComputerPage() {
           <EmptyState
             icon={computer.state === 'failed' ? 'alertCircle' : 'sleep'}
             title={stateWord}
-            message={computer.state === 'queued' ? t('computer.queuedDesc', { position: computer.queue_position ?? 1 }) : computer.state_reason ?? t('computer.stoppedDesc', { name })}
+            message={t('computer.stoppedDesc', { name })}
             action={
               <NativeButton
                 label={t('computer.start')}
@@ -313,5 +335,5 @@ const useStyles = makeStyles((c) => ({
   },
   bannerText: { ...typo.subheadline, fontWeight: weight.medium, color: c.label },
   bannerReason: { ...typo.footnote, color: c.secondaryLabel },
-  bannerButtons: { flexDirection: 'row', justifyContent: 'flex-end', gap: space.sm },
+  bannerButtons: { flexWrap: 'wrap', flexDirection: 'row', justifyContent: 'flex-end', gap: space.sm },
 }));

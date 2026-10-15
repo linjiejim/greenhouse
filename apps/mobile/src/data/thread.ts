@@ -14,13 +14,24 @@ import type { Message, MessageItem, NeedsYou } from '../shared/contract';
 import { parseMs } from './time';
 
 /** One page or event's worth of messages into the transcript (by id; oldest first). */
-export function mergeMessages(list: readonly MessageItem[], incoming: readonly (Message | MessageItem)[]): MessageItem[] {
+export function mergeMessages(
+  list: readonly MessageItem[],
+  incoming: readonly (Message | MessageItem)[],
+): MessageItem[] {
   if (!incoming.length) return list as MessageItem[];
   const byId = new Map(list.map((message) => [message.id, message]));
   for (const message of incoming) {
     const known = byId.get(message.id);
     const rating = 'my_rating' in message ? message.my_rating : (known?.my_rating ?? null);
-    byId.set(message.id, { ...message, my_rating: rating });
+    // A slow page must not rewind a completed reply or a consumed interjection.
+    if (known && known.status !== 'streaming' && message.status === 'streaming') continue;
+    const event =
+      known?.event?.type === 'interjection' &&
+      known.event.state !== 'queued' &&
+      (!message.event || message.event.state === 'queued')
+        ? known.event
+        : message.event;
+    byId.set(message.id, { ...message, event, my_rating: rating });
   }
   return [...byId.values()].sort((a, b) => a.seq - b.seq);
 }

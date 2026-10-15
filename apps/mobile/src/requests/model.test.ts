@@ -51,6 +51,28 @@ describe('what a card can do', () => {
 });
 
 describe('what a card says', () => {
+  it('reads the server display summary and named details without exposing execution inputs', () => {
+    const body = cardBody(
+      card({
+        payload: {
+          summary: 'Update Launch plan in Shared notes',
+          reason: 'Legacy reason',
+          details: [
+            { label: 'Document', value: 'Launch plan' },
+            { label: 'Folder', value: 'Shared notes' },
+          ],
+          input: { doc_id: 'doc_private', folder_id: 'fld_private' },
+          standing_scope: { type: 'folder', id: 'fld_private', actions: ['edit'] },
+        },
+      }),
+    );
+    expect(body.reason).toBe('Update Launch plan in Shared notes');
+    expect(body.details).toEqual([
+      { label: 'Document', value: 'Launch plan' },
+      { label: 'Folder', value: 'Shared notes' },
+    ]);
+    expect(JSON.stringify(body)).not.toContain('private');
+  });
   it('renders ordered tier details and only offers standing approval for tier2 folder/table scopes', () => {
     const payload = {
       tier: 'tier2',

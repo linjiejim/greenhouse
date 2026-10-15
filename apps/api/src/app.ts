@@ -1,7 +1,7 @@
 import type { GreenhouseExtension } from './extensions/define.js';
 import { extensionRoutes, extensionTools } from './extensions/host.js';
 import { createOperationsService, type OperationsService } from './modules/operations/service.js';
-import { operationRoutes } from './modules/operations/routes.js';
+import { memberOperationRoutes, operationRoutes } from './modules/operations/routes.js';
 import { createMetricsService, type MetricsService } from './modules/usage/metrics.js';
 import { metricRoutes, adminMetricRoutes } from './modules/usage/metrics-routes.js';
 import { createMediaService, type MediaService } from './modules/media/service.js';
@@ -491,6 +491,7 @@ export function createApp(services: Services, options: { webDir?: string } = {})
   signedIn.route('/tables', importsRoutes(services.tables.imports));
   signedIn.route('/tables', cardsRoutes(services.tables.cards));
   signedIn.route('/', extensionRoutes(services.extensions, services));
+  signedIn.route('/me/operations', memberOperationRoutes(services.operations));
   signedIn.use('/admin/*', requireAdmin);
   signedIn.route('/admin', adminMemberRoutes(services.members));
   signedIn.route('/admin/operations', operationRoutes(services.operations));

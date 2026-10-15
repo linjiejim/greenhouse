@@ -569,6 +569,9 @@ function MemberConversationScreen({
         case 'profile':
           openAgentProfile();
           return;
+        case 'notes':
+          router.push({ pathname: '/notes', params: { c: id } });
+          return;
         case 'people':
           router.push({ pathname: '/room-people', params: { c: id } });
           return;

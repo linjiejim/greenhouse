@@ -11,3 +11,7 @@ export function operationRoutes(service: OperationsService) {
       c.json(await service.update(c.get('member').id, await readJson(c, updateOperationSwitchesSchema))),
     );
 }
+
+export function memberOperationRoutes(service: OperationsService) {
+  return new Hono<AppEnv>().get('/', async (c) => c.json(await service.memberStatus(c.get('member').id)));
+}

@@ -199,6 +199,7 @@ export function ListRow({
   const styles = useStyles(c);
   const inset = separatorInset(icon ? TILE : leading ? (leadingWidth ?? TILE) : undefined);
   const fontKey = useFontScaleKey();
+  const large = Number(fontKey) >= 1.5;
   const isLast = last || position === 'last' || position === 'only';
   return (
     <View
@@ -223,20 +224,20 @@ export function ListRow({
         style={[styles.row, disabled && { opacity: 0.4 }]}
       >
         {icon ? <IconTile icon={icon} tint={iconTint} /> : leading}
-        <View style={styles.body}>
+        <View style={[styles.body, large && { flexWrap: 'wrap' }]}>
           {/* keyed on the text size: re-measures when Dynamic Type changes (./font-scale.ts) */}
-          <View key={fontKey} style={styles.texts}>
-            <Text numberOfLines={titleLines} style={[styles.title, destructive && { color: c.red }]}>
+          <View key={fontKey} style={[styles.texts, large && { flexBasis: '100%' }]}>
+            <Text numberOfLines={large ? 0 : titleLines} style={[styles.title, destructive && { color: c.red }]}>
               {title}
             </Text>
             {subtitle ? (
-              <Text numberOfLines={subtitleLines} style={styles.subtitle}>
+              <Text numberOfLines={large ? 0 : subtitleLines} style={styles.subtitle}>
                 {subtitle}
               </Text>
             ) : null}
           </View>
           {value ? (
-            <Text numberOfLines={1} style={styles.value}>
+            <Text numberOfLines={large ? 0 : 1} style={[styles.value, large && { maxWidth: '100%' }]}>
               {value}
             </Text>
           ) : null}
@@ -381,7 +382,13 @@ const useStyles = makeStyles((c) => ({
   header:
     Platform.OS === 'android'
       ? // Material list headers: sentence case in the primary color (as in Android Settings)
-        { ...typo.subheadline, fontWeight: weight.medium, color: c.accent, paddingHorizontal: space.margin, paddingBottom: space.sm }
+        {
+          ...typo.subheadline,
+          fontWeight: weight.medium,
+          color: c.accent,
+          paddingHorizontal: space.margin,
+          paddingBottom: space.sm,
+        }
       : {
           ...typo.footnote,
           color: c.secondaryLabel,

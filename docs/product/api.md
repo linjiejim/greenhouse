@@ -32,6 +32,7 @@ v2 和 v1 不兼容，不加 `/api/v2` 前缀，也不保留旧路由。`GET /ap
 | `GET /api/auth/links/inspect` · `POST /api/auth/links/complete` | 一次性链接：查看用途；设密码完成激活或重置，随即登录 |
 | `GET /api/auth/feishu/*` | 飞书扫码登录 |
 | `GET` / `PATCH /api/me` | 我：名字、头像、语言、主题、「关于我」、模块权限与可用能力（只读） |
+| `GET /api/me/operations` | 活跃成员读取当前运维状态：仅返回 `pause_background_runs`、`disable_computers`、`disable_outbound_mail` 三个布尔值，供客户端解释暂停；不能修改开关 |
 | `GET /api/me/usage?period=month\|30d` | 我的用量：总计，按能力、Agent、天；我的成员预算。每组带 `cached_tokens` 与缓存命中率 `cache_hit_rate`（没有输入 token 时为空） |
 | `/api/me/providers[/:id][/test]` | 我的服务，即个人 Key |
 | `GET /api/me/models` | 我能给 Agent 选的模型：为我服务的各实例的模型，按顺序 |
