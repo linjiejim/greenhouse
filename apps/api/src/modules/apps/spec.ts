@@ -21,7 +21,17 @@ export async function checkSpec(baseId: string, spec: AppSpec): Promise<AppSpec>
   const fields = await fieldsOf(tables.map((t) => t.id));
   for (const page of spec.pages)
     for (const card of page.cards) {
-      if (card.kind === 'custom') continue;
+      if (card.kind === 'custom') {
+        if (new Set(card.bindings?.map((b) => b.id)).size !== (card.bindings?.length ?? 0))
+          throw invalidInput('Binding ids must be unique.');
+        for (const binding of card.bindings ?? []) {
+          const target = spec.pages.flatMap((p) => p.cards).find((c) => c.id === binding.card);
+          if (!target || ['custom', 'external', 'button', 'form'].includes(target.kind))
+            throw invalidInput('Bindings read a declared data card of this app.');
+        }
+        continue;
+      }
+      if (card.kind === 'external') continue;
       if (!tables.some((t) => t.id === card.table_id)) throw invalidInput('Cards use data tables of this base.');
       const own = fields.filter((f) => f.tableId === card.table_id);
       if (fieldsIn(card).some((id) => !own.some((f) => f.id === id)))
@@ -70,6 +80,7 @@ export async function checkSpec(baseId: string, spec: AppSpec): Promise<AppSpec>
 /** A card whose predicate or fixed action reads a hidden field must not disclose that value. */
 export function trimCard(card: AppCard, visible: Map<string, Pick<BaseFieldRow, 'id'>>): AppCard | null {
   if (card.kind === 'custom') return { ...card, html: '' };
+  if (card.kind === 'external') return card;
   const refs = 'filter' in card ? (card.filter?.clauses.map((c) => c.field) ?? []) : [];
   if ('group' in card && card.group) refs.push(card.group.field);
   if ('measure' in card && card.measure?.field) refs.push(card.measure.field);

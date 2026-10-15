@@ -667,7 +667,10 @@ export function createE2bSandbox(config: E2bConfig, apiKey: string, deps: E2bDep
       }
     },
 
-    stream: (name, input) => open(name, 'agent', { kind: 'exec', argv: input.argv, cwd: input.cwd ?? AGENT_HOME }),
+    homeExists: async (name) => (await client.status(name)) !== 'missing',
+
+    stream: (name, input) =>
+      open(name, input.user, { kind: 'exec', argv: input.argv, cwd: input.cwd ?? `/home/${input.user}` }),
 
     screen: (name) => open(name, 'browser', { kind: 'tunnel', path: '/vnc' }),
 

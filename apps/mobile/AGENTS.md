@@ -102,3 +102,5 @@
 - Agent owners manage schedules (quiet defaults off; edit only changed fields) and standing approvals. Keep approval selections and form drafts scoped to their request/object; discard late results after identity or route changes.
 - Record handoffs leave the record sheet before opening the native brief form; completion opens its run. Helper runs have no direct retry. Event messages remain quiet lines in threads.
 - App relation pickers read only published record cards that expose their title field, with that card's filter. If none exists, offer web completion; never fall back to ordinary table-title queries. Member choices use the member directory.
+
+- Regenerate src/shared/contract.ts after computer/app contract changes. Queued computers keep polling. External app cards currently use the web fallback; custom HTML remains disabled on native.

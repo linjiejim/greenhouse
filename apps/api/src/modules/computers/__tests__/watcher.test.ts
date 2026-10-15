@@ -8,6 +8,7 @@ it('keeps the worker alive after a failed watch sweep and checks again on the ne
     .spyOn(services.computers, 'checkWatches')
     .mockRejectedValueOnce(new Error('Database unavailable'))
     .mockResolvedValue(undefined);
+  const queue = vi.spyOn(services.computers, 'drainQueue').mockResolvedValue(undefined);
   const idle = vi.spyOn(services.computers, 'stopIdle').mockResolvedValue(undefined);
   try {
     services.computers.startWatching(async () => undefined);
@@ -17,6 +18,7 @@ it('keeps the worker alive after a failed watch sweep and checks again on the ne
     await vi.advanceTimersByTimeAsync(60_000);
     expect(watches).toHaveBeenCalledTimes(2);
     expect(idle).toHaveBeenCalledTimes(1);
+    expect(queue).toHaveBeenCalledTimes(1);
   } finally {
     services.computers.stopWatching();
     vi.restoreAllMocks();

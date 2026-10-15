@@ -18,6 +18,7 @@ import type { CardData } from './tables-cards.js';
 export type AppCardAnswer =
   | { kind: 'chart'; data: CardData }
   | { kind: 'records'; data: RecordPage }
+  | { kind: 'external'; columns: string[]; rows: (string | number | boolean | null)[][] }
   | { kind: 'empty' };
 export function appsApi(http: KnowledgeHttp) {
   const path = (id: string) => `/api/apps/${encodeURIComponent(id)}`;
@@ -50,6 +51,22 @@ export function appsApi(http: KnowledgeHttp) {
       http.post<RecordDetail>(`${path(id)}/actions`, input),
     pin: (id: string, value: boolean) => http.put<void>(`${path(id)}/pin`, { value }),
     feature: (id: string, value: boolean) => http.put<void>(`${path(id)}/featured`, { value }),
+    reviews: (input: { cursor?: string; limit?: number } = {}) =>
+      http.get<
+        Page<{
+          id: string;
+          app_id: string;
+          name: string;
+          version: number;
+          spec: import('./apps.js').AppSpec;
+          spec_hash: string;
+          review_status: string;
+        }>
+      >(`/api/apps/reviews?${query(input)}`),
+    review: (id: string, version: number, specHash: string, decision: 'approved' | 'rejected') =>
+      http.post<void>(`${path(id)}/review`, { version, spec_hash: specHash, decision }),
+    binding: (id: string, version: number, card: string, binding: string, cursor?: string) =>
+      http.post<AppCardAnswer>(`${path(id)}/bindings/query`, { version, card, binding, cursor }),
     templates: {
       list: (input: { cursor?: string; limit?: number } = {}) =>
         http.get<Page<AppTemplate>>(`/api/apps/templates?${query(input)}`),

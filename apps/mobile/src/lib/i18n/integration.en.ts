@@ -6,7 +6,7 @@ export const integration = {
   noApps: 'No published apps',
   pages: 'Pages',
   builderWeb: 'Build and publish apps on the web.',
-  customWeb: 'Open this custom page on the web',
+  customWeb: 'Open this card on the web',
   appChanged: 'This app has changed. Reload before continuing. Your draft is kept.',
   actionConfirm: 'Run this action?',
   preview: 'Preview · read only',

@@ -69,6 +69,7 @@ describe('the MCP client', () => {
       }),
     ).toEqual({
       isError: true,
+      data: { points: 3 },
       text: 'Chart:\n[image (image/png), not shown]\n[resource: https://example.com/a "A"]\n[resource: x://y (application/pdf), not shown]\n{"points":3}',
     });
     expect(flattenResult({ toolResult: { ok: 1 } }).text).toBe('{"ok":1}');

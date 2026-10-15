@@ -23,6 +23,7 @@ import { Page, PageHeader } from '../../shell/Page';
 import { CellValue, FieldInput, fromText } from '../tables/cells';
 import { CardBody } from '../tables/dashboards/CardBody';
 import { titleOf, type CellLookups } from '../tables/model';
+import { CustomCard } from './CustomCard';
 import { appsError } from './errors';
 import '../../styles/apps.css';
 import '../../styles/tables.css';
@@ -130,8 +131,32 @@ function RuntimeCard({ runtime, card }: { runtime: Runtime; card: AppCard }) {
     }
   };
   let body;
-  if (card.kind === 'custom') body = <p>{t('apps.customDisabled')}</p>;
-  else if (runtime.preview && (card.kind === 'form' || card.kind === 'button'))
+  if (card.kind === 'custom') body = <CustomCard runtime={runtime} card={card} />;
+  else if (card.kind === 'external' && answers?.[0]?.kind === 'external') {
+    const data = answers[0];
+    body = (
+      <div className="app-ap-table">
+        <table>
+          <thead>
+            <tr>
+              {data.columns.map((c, i) => (
+                <th key={i}>{c}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {data.rows.map((row, i) => (
+              <tr key={i}>
+                {row.map((v, j) => (
+                  <td key={j}>{v === null ? '' : String(v)}</td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    );
+  } else if (runtime.preview && (card.kind === 'form' || card.kind === 'button'))
     body = (
       <p className="app-muted">
         {'fields' in card
@@ -248,7 +273,11 @@ function RuntimeCard({ runtime, card }: { runtime: Runtime; card: AppCard }) {
     const data = answers?.[0];
     body = (
       <CardBody
-        card={card as import('@greenhouse/contract').Card}
+        card={
+          (card.kind === 'external'
+            ? { id: card.id, title: card.title, kind: card.map.kind, table_id: '', measure: { aggregate: 'count' } }
+            : card) as import('@greenhouse/contract').Card
+        }
         data={data?.kind === 'chart' ? data.data : undefined}
         table={table}
         baseId={runtime.base.id}

@@ -3845,3 +3845,50 @@ button.app-agent-card {
   min-height: 0;
   flex: 1;
 }
+
+.app-screen:fullscreen {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  background: var(--gh-canvas);
+  padding: var(--gh-space-3);
+}
+.app-screen:fullscreen .app-screen-canvas {
+  flex: 1;
+  min-height: 0;
+  height: auto;
+  aspect-ratio: auto;
+}
+.app-computer-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: start;
+}
+.app-computer-row > .app-list-main {
+  grid-column: 1;
+  grid-row: 1;
+}
+.app-computer-row > .app-computer-state {
+  grid-column: 2;
+  grid-row: 1;
+}
+.app-computer-row > :last-child {
+  grid-column: 3;
+  grid-row: 1;
+}
+.app-computer-backups {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  display: grid;
+  gap: var(--gh-space-2);
+}
+.app-computer-backups:empty {
+  display: none;
+}
+.app-computer-backups > div {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--gh-space-2);
+}

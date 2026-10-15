@@ -482,7 +482,10 @@ export type RealtimeEvent =
   | { type: 'request.updated'; data: { request_id: string; status: string; conversation_id: string | null } }
   | { type: 'notification.created'; data: { notification_id: string; kind: string; title: string } }
   | { type: 'notification.read'; data: { notification_ids: Array<string> } }
-  | { type: 'computer.updated'; data: { agent_id: string; state: 'failed' | 'stopped' | 'running' | 'starting' } }
+  | {
+      type: 'computer.updated';
+      data: { agent_id: string; state: 'failed' | 'stopped' | 'queued' | 'running' | 'starting' };
+    }
   | { type: 'vault.updated'; data: { item_id: string | null } }
   | {
       type: 'doc.updated';
@@ -711,10 +714,11 @@ export type FileView = {
 
 export type ComputerView = {
   agent_id: string;
-  state: 'failed' | 'stopped' | 'running' | 'starting';
+  state: 'failed' | 'stopped' | 'queued' | 'running' | 'starting';
   state_reason: string | null;
   last_active_at: string | null;
   last_started_at: string | null;
+  queue_position?: number | null | undefined;
 };
 
 export type ComputerJob = {
@@ -978,7 +982,24 @@ export type AppRuntime = {
           table_id: string;
           action: { id: string; name: string; type: 'create' | 'update'; values: Record<string, unknown> };
         }
-      | { id: string; kind: 'custom'; title: string; html: string }
+      | {
+          id: string;
+          kind: 'custom';
+          title: string;
+          html: string;
+          bindings?: Array<{ id: string; card: string }> | undefined;
+          height?: number | undefined;
+        }
+      | {
+          id: string;
+          kind: 'external';
+          title: string;
+          source: { connector: string; tool: string; arguments: Record<string, unknown> };
+          map:
+            | { kind: 'number'; value: string }
+            | { kind: 'table'; rows: string; columns: Array<{ label: string; path: string }> }
+            | { kind: 'bar' | 'line'; rows: string; group: string; value: string };
+        }
     >;
   }>;
   base: {
@@ -1153,6 +1174,7 @@ export type AppRuntime = {
   };
   preview: boolean;
   preview_role: string | null;
+  custom_review: 'pending' | 'approved' | 'rejected';
 };
 
 export type AppCard =
@@ -1235,7 +1257,24 @@ export type AppCard =
       table_id: string;
       action: { id: string; name: string; type: 'create' | 'update'; values: Record<string, unknown> };
     }
-  | { id: string; kind: 'custom'; title: string; html: string };
+  | {
+      id: string;
+      kind: 'custom';
+      title: string;
+      html: string;
+      bindings?: Array<{ id: string; card: string }> | undefined;
+      height?: number | undefined;
+    }
+  | {
+      id: string;
+      kind: 'external';
+      title: string;
+      source: { connector: string; tool: string; arguments: Record<string, unknown> };
+      map:
+        | { kind: 'number'; value: string }
+        | { kind: 'table'; rows: string; columns: Array<{ label: string; path: string }> }
+        | { kind: 'bar' | 'line'; rows: string; group: string; value: string };
+    };
 
 export type AppAction = { id: string; name: string; type: 'create' | 'update'; values: Record<string, unknown> };
 
@@ -1299,6 +1338,7 @@ export type AppCardAnswer =
         total?: number | undefined;
       };
     }
+  | { kind: 'external'; columns: Array<string>; rows: Array<Array<string | number | boolean | null>> }
   | { kind: 'empty' };
 
 export type CardData =
@@ -2204,7 +2244,7 @@ export const RUN_STATUSES = ['queued', 'running', 'waiting', 'succeeded', 'faile
 
 export const RUN_SOURCES = ['conversation', 'schedule', 'automation', 'record', 'handoff', 'app'] as const;
 
-export const COMPUTER_STATES = ['stopped', 'starting', 'running', 'failed'] as const;
+export const COMPUTER_STATES = ['stopped', 'queued', 'starting', 'running', 'failed'] as const;
 
 export const NOTIFICATION_CATEGORIES = ['needs_you', 'replies', 'runs', 'other'] as const;
 

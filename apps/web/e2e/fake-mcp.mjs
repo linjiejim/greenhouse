@@ -59,6 +59,15 @@ function issue() {
 function callTool(name, args) {
   switch (name) {
     case 'lookup_order':
+      if (args.order_id === 't12-card-data')
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify({ total: 42, rows: [{ name: '<b>Plain external text</b>', value: 42 }] }),
+            },
+          ],
+        };
       return { content: [{ type: 'text', text: `Order ${String(args.order_id)} shipped on 2026-10-01` }] };
     case 'create_ticket':
       return { content: [{ type: 'text', text: `Created ticket T-1: ${String(args.title)}` }] };

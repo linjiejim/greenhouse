@@ -203,6 +203,9 @@ export function createDockerSandbox(config: DockerConfig): SandboxClient {
           if (network !== 'none') await control(['network', 'disconnect', '--force', network, target]);
       }
     },
+    async homeExists(name) {
+      return (await runDocker(['volume', 'inspect', volumeOf(checkName(name))])).exitCode === 0;
+    },
     async status(name) {
       const result = await runDocker(['inspect', '--format', '{{.State.Running}}', checkName(name)]);
       if (result.exitCode !== 0) return 'missing';

@@ -61,7 +61,7 @@ import { isUniqueViolation, toErrorMessage } from '@greenhouse/utils/error';
 import { logger } from '@greenhouse/utils/logger';
 import { audit, changedFields } from '../../audit.js';
 import type { AppConfig } from '../../config/index.js';
-import { ApiError, conflict, invalidInput, notFound } from '../../http/errors.js';
+import { ApiError, conflict, forbidden, invalidInput, notFound } from '../../http/errors.js';
 import {
   catalogReader,
   OFFICIAL_REGISTRY_URL,
@@ -1252,7 +1252,13 @@ export function createConnectorsService(deps: {
           durationMs: Date.now() - started,
           member: memberId,
         });
-        return { isError: outcome.isError, text: redact(outcome.text, secretsOf(resolved)) };
+        return {
+          isError: outcome.isError,
+          text: redact(outcome.text, secretsOf(resolved)),
+          ...(outcome.data !== undefined
+            ? { data: JSON.parse(redact(JSON.stringify(outcome.data), secretsOf(resolved))) }
+            : {}),
+        };
       } catch (error) {
         const reason = redact(describeError(error), secretsOf(resolved));
         if (personal(found.authMode) && isAuthFailure(error)) {
@@ -1266,7 +1272,40 @@ export function createConnectorsService(deps: {
       }
     },
   };
-  return service;
+  const cardCache = new Map<string, { until: number; result: CallOutcome }>();
+  return {
+    ...service,
+    async readCard(memberId: string, slug: string, toolName: string, args: Record<string, unknown>) {
+      const found = await service.findTool(memberId, { connectors: null, write: false }, slug, toolName);
+      if (!('tool' in found) || !found.tool.readOnly)
+        throw forbidden('This card requires an available read-only connector tool.');
+      // Re-read the connection and connector revisions even on a cache hit: disconnects apply at once.
+      const [connector] = await getDb().select().from(connectors).where(eq(connectors.id, found.connector.id));
+      if (!connector || !personal(connector.authMode))
+        throw forbidden('External cards require the viewer’s own connection.');
+      const connection = await findConnection(memberId, connector.id);
+      if (!connection || connection.status === 'needs_reauth')
+        throw forbidden('Connect your account before opening this card.');
+      const cacheKey = JSON.stringify([
+        memberId,
+        connection.id,
+        connection.updatedAt,
+        connector.updatedAt,
+        toolName,
+        args,
+      ]);
+      const cached = cardCache.get(cacheKey);
+      if (cached && cached.until > Date.now()) return cached.result;
+      const result = await service.run(memberId, found.connector.id, toolName, args, AbortSignal.timeout(15_000));
+      if (result.isError) throw new ApiError(502, 'external_data_failed', 'The connector could not read this card.');
+      if (Buffer.byteLength(JSON.stringify(result)) > 256_000)
+        throw invalidInput('External card data is at most 256 KB.');
+      for (const [key, entry] of cardCache) if (entry.until <= Date.now()) cardCache.delete(key);
+      if (cardCache.size >= 500) cardCache.delete(cardCache.keys().next().value!);
+      cardCache.set(cacheKey, { until: Date.now() + 15_000, result });
+      return result;
+    },
+  };
 }
 
 export type ConnectorsService = ReturnType<typeof createConnectorsService>;

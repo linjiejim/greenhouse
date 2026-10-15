@@ -453,10 +453,11 @@ export const en = {
     loadFailed: 'Couldn’t read the computer’s state',
     start: 'Start',
     startFailed: 'The computer didn’t start',
-    full: 'All computers are in use right now. Try again in a while.',
+    queuedDesc: 'Queued, position {position}.',
     startingDesc: 'The first start takes about half a minute.',
     stoppedDesc: 'This is {name}’s own computer. It starts when {name} needs it; files stay while it is off.',
     state: {
+      queued: 'Queued',
       stopped: 'Off',
       starting: 'Starting',
       running: 'Running',

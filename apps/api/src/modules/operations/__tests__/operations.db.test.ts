@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
-import { auditEvents, getDb, runs } from '@greenhouse/db';
+import { agentComputers, auditEvents, getDb, newId, runs } from '@greenhouse/db';
 import { createTestApp } from '../../../testing.js';
 import { scriptedModel, text } from '../../../engine/__tests__/model.js';
 
@@ -61,6 +61,21 @@ describe('operational enforcement', () => {
     });
     const member = await app.member();
     await expect(app.services.computers.start(member.id, 'main')).rejects.toMatchObject({ code: 'operation_disabled' });
+    const agent = await app.services.agents.own(member.id, 'main');
+    const computerId = newId('computer');
+    await getDb().insert(agentComputers).values({
+      id: computerId,
+      agentId: agent.id,
+      ownerId: member.id,
+      providerId: 'missing',
+      sandboxRef: 'gh-cmp-queued-test',
+      state: 'queued',
+      queuedAt: new Date().toISOString(),
+    });
+    await app.services.computers.drainQueue();
+    expect((await getDb().select().from(agentComputers).where(eq(agentComputers.id, computerId)))[0]!.state).toBe(
+      'queued',
+    );
     const mail = await app.services.providers.resolve('mail', { memberId: member.id });
     expect(mail).not.toBeNull();
     await expect(

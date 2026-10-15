@@ -38,6 +38,7 @@ import {
   newId,
   requests,
   runs,
+  transaction,
   type AgentComputer,
   type Agent as AgentRow,
 } from '@greenhouse/db';
@@ -67,6 +68,7 @@ import {
   uploadName,
 } from './files.js';
 import { bodyOf, readSizeLine, runToEnd } from './streams.js';
+import { createComputerBackups } from './backups.js';
 import { TERMINAL_ARGV, TERMINAL_CWD } from './terminal.js';
 
 export const SHELL_TIMEOUT_MS = 120_000;
@@ -130,12 +132,14 @@ export type Deliver = (
 
 export function createComputersService(deps: {
   operations?: OperationsService;
+  encryptionKey: Buffer;
   providers: ProvidersService;
   agents: AgentsService;
   hub: Hub;
   /** Ticket secrets: random, and the keyed hash they are stored as. */
   secrets: { create(): string; hash(secret: string): string };
 }) {
+  const backups = createComputerBackups(deps);
   let ticker: NodeJS.Timeout | null = null;
 
   async function sandbox(memberId: string) {
@@ -201,7 +205,8 @@ export function createComputersService(deps: {
   /** The member, when computers are on for them. */
   async function computerMember(memberId: string) {
     const [member] = await getDb().select().from(members).where(eq(members.id, memberId));
-    if (!member || !effectiveModules(member.modules).computer) throw forbidden('Computers are turned off for you.');
+    if (!member || member.status !== 'active' || !effectiveModules(member.modules).computer)
+      throw forbidden('Computers are turned off for you.');
     return member;
   }
 
@@ -259,27 +264,53 @@ export function createComputersService(deps: {
     const row = await rowOf(memberId, agent.id);
     const client = row!.providerId === resolved.instance.id ? resolved.client : await clientFor(row!, memberId);
     if (row!.state !== 'running' || (await client.status(row!.sandboxRef)) !== 'running') {
-      // Two starts at once can pass the limit by one; it is a budget, not a lock.
-      const { max_running: max } = await capacity();
-      if (max > 0) {
+      const claimed = await transaction(async () => {
+        await getDb().execute(sql`select pg_advisory_xact_lock(hashtext(${row!.id}))`);
+        await getDb().execute(sql`select pg_advisory_xact_lock(704012)`);
+        const current = await byId(row!.id);
+        if (current.state === 'starting') throw conflict('computer_starting', 'The computer is starting.');
+        const { max_running: max } = await capacity();
         const [busy] = await getDb()
           .select({ count: sql<number>`count(*)::int` })
           .from(agentComputers)
           .where(and(inArray(agentComputers.state, ['running', 'starting']), ne(agentComputers.id, row!.id)));
-        if ((busy?.count ?? 0) >= max) {
-          throw new ApiError(503, 'computers_full', 'Every computer is in use. Try again in a few minutes.');
+        const [first] = await getDb()
+          .select()
+          .from(agentComputers)
+          .where(eq(agentComputers.state, 'queued'))
+          .orderBy(agentComputers.queuedAt, agentComputers.id)
+          .limit(1);
+        if ((max > 0 && (busy?.count ?? 0) >= max) || (first && first.id !== row!.id)) {
+          if (current.state !== 'queued') await setState(row!.id, 'queued', null, { queuedAt: sql`now()` });
+          return false;
         }
-      }
-      await setState(row!.id, 'starting');
+        await setState(row!.id, 'starting', null, { queuedAt: null });
+        return true;
+      });
+      if (!claimed) throw conflict('computer_queued', 'The computer is queued until capacity is available.');
+      let restoring = false;
       try {
+        const lostHome =
+          row!.stateReason === 'backup_restore_failed' ||
+          (client.homeExists ? !(await client.homeExists(row!.sandboxRef)) : false);
+        const latest = lostHome ? (await backups.list(row!.id)).find((b) => b.status === 'complete') : undefined;
         await client.ensure({
           name: row!.sandboxRef,
           labels: { 'greenhouse.computer': row!.id, 'greenhouse.agent': agent.id, 'greenhouse.owner': memberId },
           timezone: row!.timezone,
         });
+        if (latest) {
+          restoring = true;
+          try {
+            await backups.restore(row!, client, latest.id);
+          } finally {
+            await client.restart(row!.sandboxRef);
+          }
+        }
         await setState(row!.id, 'running', null, { lastStartedAt: sql`now()`, lastActiveAt: sql`now()` });
       } catch (error) {
-        await setState(row!.id, 'failed', toErrorMessage(error).slice(0, 500));
+        await client.stop(row!.sandboxRef).catch(() => undefined);
+        await setState(row!.id, 'failed', restoring ? 'backup_restore_failed' : toErrorMessage(error).slice(0, 500));
         throw new ApiError(
           503,
           'computer_failed',
@@ -348,7 +379,46 @@ export function createComputersService(deps: {
     return parsed;
   }
 
-  const toView = (row: AgentComputer): ComputerView => ({
+  async function queuePosition(id: string) {
+    const queue = await getDb()
+      .select({ id: agentComputers.id })
+      .from(agentComputers)
+      .where(eq(agentComputers.state, 'queued'))
+      .orderBy(agentComputers.queuedAt, agentComputers.id);
+    const index = queue.findIndex((r) => r.id === id);
+    return index >= 0 ? index + 1 : null;
+  }
+
+  async function admin(actorId: string) {
+    const [member] = await getDb().select().from(members).where(eq(members.id, actorId));
+    if (member?.role !== 'admin' || member.status !== 'active') throw forbidden('Admin access is required.');
+  }
+
+  async function backupBeforeStop(row: AgentComputer, client: SandboxClient) {
+    try {
+      await backups.take(row, client, false);
+    } catch (error) {
+      logger.warn('[computers] backup before stop failed', { computer: row.id, error: toErrorMessage(error) });
+    }
+  }
+
+  async function stopRow(row: AgentComputer, reason: string) {
+    await transaction(async () => {
+      await getDb().execute(sql`select pg_advisory_xact_lock(hashtext(${row.id}))`);
+      row = await byId(row.id);
+      if (reason === 'idle' && row.state !== 'running') return;
+      if (row.state === 'starting') throw conflict('computer_starting', 'Wait for the computer to finish starting.');
+      const client = await clientFor(row, row.ownerId);
+      if (row.state === 'running') await backupBeforeStop(row, client);
+      if (reason === 'idle' && (await byId(row.id)).lastActiveAt !== row.lastActiveAt) return;
+      await client.stop(row.sandboxRef);
+      await setState(row.id, 'stopped', reason, { queuedAt: null });
+    });
+    await service.drainQueue();
+  }
+
+  const toView = async (row: AgentComputer): Promise<ComputerView> => ({
+    queue_position: row.state === 'queued' ? await queuePosition(row.id) : null,
     agent_id: row.agentId,
     state: row.state,
     state_reason: row.stateReason,
@@ -397,17 +467,24 @@ export function createComputersService(deps: {
       await client.setEgress?.(row.sandboxRef, []);
     },
     async releaseBackground(memberId: string, agentId: string, runId: string) {
-      const row = await rowOf(memberId, agentId);
-      if (row?.backgroundRunId !== runId) return;
-      const client = await clientFor(row, memberId);
-      // Stop processes before normal network access can be restored by a later foreground turn.
-      await client.restart(row.sandboxRef);
-      await client.stop(row.sandboxRef);
-      await getDb()
-        .update(agentComputers)
-        .set({ backgroundRunId: null })
-        .where(and(eq(agentComputers.id, row.id), eq(agentComputers.backgroundRunId, runId)));
-      await setState(row.id, 'stopped');
+      await transaction(async () => {
+        const found = await rowOf(memberId, agentId);
+        if (found?.backgroundRunId !== runId) return;
+        await getDb().execute(sql`select pg_advisory_xact_lock(hashtext(${found.id}))`);
+        const row = await byId(found.id);
+        if (row.backgroundRunId !== runId) return;
+        const client = await clientFor(row, memberId);
+        // Stop processes before normal network access can be restored by a later foreground turn.
+        await backupBeforeStop(row, client);
+        await client.restart(row.sandboxRef);
+        await client.stop(row.sandboxRef);
+        await getDb()
+          .update(agentComputers)
+          .set({ backgroundRunId: null })
+          .where(and(eq(agentComputers.id, row.id), eq(agentComputers.backgroundRunId, runId)));
+        await setState(row.id, 'stopped');
+      });
+      await service.drainQueue();
     },
 
     async view(memberId: string, agentId: string): Promise<ComputerView> {
@@ -419,15 +496,19 @@ export function createComputersService(deps: {
     },
 
     async start(memberId: string, agentId: string): Promise<ComputerView> {
-      return toView((await ensure(memberId, agentId)).row);
+      try {
+        return await toView((await ensure(memberId, agentId)).row);
+      } catch (error) {
+        if (error instanceof ApiError && error.code === 'computer_queued') return service.view(memberId, agentId);
+        throw error;
+      }
     },
 
     async stop(memberId: string, agentId: string): Promise<ComputerView> {
       const agent = await agentFor(memberId, agentId);
       const row = await rowOf(memberId, agent.id);
       if (!row) return service.view(memberId, agentId);
-      await (await clientFor(row, memberId)).stop(row.sandboxRef);
-      await setState(row.id, 'stopped', 'member');
+      await stopRow(row, 'member');
       return service.view(memberId, agentId);
     },
 
@@ -808,7 +889,8 @@ export function createComputersService(deps: {
     },
 
     /** 管理 → 服务 · 沙箱: every computer, most recently used first, with the capacity. */
-    async adminList(): Promise<AdminComputers> {
+    async adminList(actorId: string): Promise<AdminComputers> {
+      await admin(actorId);
       const rows = await getDb()
         .select({
           computer: agentComputers,
@@ -819,17 +901,21 @@ export function createComputersService(deps: {
         .innerJoin(agentRows, eq(agentRows.id, agentComputers.agentId))
         .innerJoin(members, eq(members.id, agentComputers.ownerId))
         .orderBy(sql`${agentComputers.lastActiveAt} desc nulls last`);
-      const items = rows.map(({ computer, agentName, ownerName }) => ({
-        id: computer.id,
-        agent_id: computer.agentId,
-        agent_name: agentName,
-        owner_id: computer.ownerId,
-        owner_name: ownerName,
-        state: computer.state,
-        state_reason: computer.stateReason,
-        last_active_at: computer.lastActiveAt,
-        last_started_at: computer.lastStartedAt,
-      }));
+      const items = await Promise.all(
+        rows.map(async ({ computer, agentName, ownerName }) => ({
+          queue_position: computer.state === 'queued' ? await queuePosition(computer.id) : null,
+          backups: await backups.list(computer.id),
+          id: computer.id,
+          agent_id: computer.agentId,
+          agent_name: agentName,
+          owner_id: computer.ownerId,
+          owner_name: ownerName,
+          state: computer.state,
+          state_reason: computer.stateReason,
+          last_active_at: computer.lastActiveAt,
+          last_started_at: computer.lastStartedAt,
+        })),
+      );
       return {
         items,
         capacity: await capacity(),
@@ -838,6 +924,7 @@ export function createComputersService(deps: {
     },
 
     async setCapacity(actorId: string, input: ComputerCapacity): Promise<ComputerCapacity> {
+      await admin(actorId);
       const stored = await deps.providers.defaultsOf('sandbox');
       await deps.providers.setDefaults(actorId, 'sandbox', { ...stored, ...input });
       await audit({
@@ -847,14 +934,15 @@ export function createComputersService(deps: {
         resourceId: 'sandbox',
         summary: 'idle_minutes, max_running',
       });
+      await service.drainQueue();
       return capacity();
     },
 
     /** An admin stops a member's computer; its home stays. */
     async adminStop(actorId: string, id: string): Promise<void> {
+      await admin(actorId);
       const row = await byId(id);
-      await (await clientFor(row, row.ownerId)).stop(row.sandboxRef);
-      await setState(row.id, 'stopped', 'admin');
+      await stopRow(row, 'admin');
       await audit({ actorId, action: 'computer.stop', resourceType: 'computer', resourceId: id, summary: 'stopped' });
     },
 
@@ -863,17 +951,29 @@ export function createComputersService(deps: {
      * new one. Background processes on it are gone too.
      */
     async adminReset(actorId: string, id: string): Promise<void> {
-      const row = await byId(id);
-      await (await clientFor(row, row.ownerId)).remove(row.sandboxRef, { keepHome: false });
-      await getDb().delete(agentComputers).where(eq(agentComputers.id, id));
-      deps.hub.publish([row.ownerId], { type: 'computer.updated', data: { agent_id: row.agentId, state: 'stopped' } });
-      await audit({
-        actorId,
-        action: 'computer.reset',
-        resourceType: 'computer',
-        resourceId: id,
-        summary: 'home removed',
+      await admin(actorId);
+      await transaction(async () => {
+        await getDb().execute(sql`select pg_advisory_xact_lock(hashtext(${id}))`);
+        const current = await byId(id);
+        if (current.state === 'starting')
+          throw conflict('computer_starting', 'Wait for the computer to finish starting.');
+        await backups.prune(id, true);
+        const row = await byId(id);
+        await (await clientFor(row, row.ownerId)).remove(row.sandboxRef, { keepHome: false });
+        await getDb().delete(agentComputers).where(eq(agentComputers.id, id));
+        deps.hub.publish([row.ownerId], {
+          type: 'computer.updated',
+          data: { agent_id: row.agentId, state: 'stopped' },
+        });
+        await audit({
+          actorId,
+          action: 'computer.reset',
+          resourceType: 'computer',
+          resourceId: id,
+          summary: 'home removed',
+        });
       });
+      await service.drainQueue();
     },
 
     /**
@@ -915,8 +1015,7 @@ export function createComputersService(deps: {
           });
           // Not knowing is not the same as none running: keep it up.
           if (listed.exitCode !== 0 || Number(listed.stdout.trim()) > 0) continue;
-          await client.stop(computer.sandboxRef);
-          await setState(computer.id, 'stopped', 'idle');
+          await stopRow(computer, 'idle');
         } catch (error) {
           logger.warn('[computers] could not stop an idle computer', {
             computer: computer.id,
@@ -926,13 +1025,108 @@ export function createComputersService(deps: {
       }
     },
 
+    async drainQueue(): Promise<void> {
+      if ((await deps.operations?.read())?.disable_computers) return;
+      const abandoned = await getDb()
+        .select()
+        .from(agentComputers)
+        .where(
+          and(
+            eq(agentComputers.state, 'starting'),
+            lt(agentComputers.updatedAt, new Date(Date.now() - 15 * 60_000).toISOString()),
+          ),
+        );
+      for (const row of abandoned) {
+        const client = await clientFor(row, row.ownerId);
+        const state = await client.status(row.sandboxRef);
+        await getDb()
+          .update(agentComputers)
+          .set({
+            state: state === 'running' ? 'running' : 'stopped',
+            stateReason: 'start_recovered',
+            updatedAt: sql`now()`,
+          })
+          .where(and(eq(agentComputers.id, row.id), eq(agentComputers.version, row.version)));
+      }
+      const queued = await getDb()
+        .select()
+        .from(agentComputers)
+        .where(eq(agentComputers.state, 'queued'))
+        .orderBy(agentComputers.queuedAt, agentComputers.id);
+      for (const row of queued) {
+        try {
+          await ensure(row.ownerId, row.agentId);
+        } catch (error) {
+          if (error instanceof ApiError && (error.code === 'computer_queued' || error.code === 'operation_disabled'))
+            break;
+          if (!(error instanceof ApiError && error.code === 'computer_starting')) {
+            const [failed] = await getDb()
+              .update(agentComputers)
+              .set({
+                state: 'failed',
+                queuedAt: null,
+                stateReason: 'The queued start could not complete.',
+                version: sql`${agentComputers.version} + 1`,
+                updatedAt: sql`now()`,
+              })
+              .where(and(eq(agentComputers.id, row.id), eq(agentComputers.state, 'queued')))
+              .returning();
+            if (failed)
+              deps.hub.publish([row.ownerId], {
+                type: 'computer.updated',
+                data: { agent_id: row.agentId, state: 'failed' },
+              });
+          }
+        }
+      }
+    },
+
+    async adminBackup(actorId: string, id: string) {
+      await admin(actorId);
+      const result = await transaction(async () => {
+        await getDb().execute(sql`select pg_advisory_xact_lock(hashtext(${id}))`);
+        const row = await byId(id);
+        if (row.state !== 'running') throw conflict('computer_not_running', 'Start the computer before backing it up.');
+        try {
+          await backups.take(row, await clientFor(row, row.ownerId));
+        } catch (error) {
+          return { error };
+        }
+        await audit({ actorId, action: 'computer.backup', resourceType: 'computer', resourceId: id, summary: 'home' });
+        return { backups: await backups.list(id) };
+      });
+      if ('error' in result) throw result.error;
+      return result.backups;
+    },
+
+    async adminRestore(actorId: string, id: string, backupId: string) {
+      await admin(actorId);
+      await transaction(async () => {
+        await getDb().execute(sql`select pg_advisory_xact_lock(hashtext(${id}))`);
+        const row = await byId(id);
+        if (row.state !== 'stopped')
+          throw conflict('computer_not_stopped', 'Stop the computer before restoring its home.');
+        const started = await ensure(row.ownerId, row.agentId);
+        try {
+          await backups.restore(row, started.client, backupId);
+        } finally {
+          await started.client.restart(row.sandboxRef);
+          await started.client.stop(row.sandboxRef);
+          await setState(row.id, 'stopped', 'restore');
+        }
+        await audit({ actorId, action: 'computer.restore', resourceType: 'computer', resourceId: id, summary: 'home' });
+      });
+      await service.drainQueue();
+    },
+
     /** Checks watched processes and idle computers every minute. */
     startWatching(deliver: Deliver) {
       ticker ??= setInterval(() => {
         void service
           .checkWatches(deliver)
           .then(() => service.stopIdle())
-          .catch((error: unknown) => logger.warn('[computers] watch sweep failed', { error: toErrorMessage(error) }));
+          .then(() => service.drainQueue())
+          .catch((error) => logger.warn('[computers] lifecycle check failed', { error: toErrorMessage(error) }));
       }, WATCH_MS);
     },
 
