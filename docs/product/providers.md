@@ -1,6 +1,6 @@
 # 服务 Provider 体系
 
-更新 2026-10-14 · 状态：设计已定，大部分已实现（[功能清单](features.md) PRV-01…16）· 配套 [PRD §8.1](prd.md#81-服务provider)
+更新 2026-10-15 · 状态：设计已定，大部分已实现（[功能清单](features.md) PRV-01…16）· 配套 [PRD §8.1](prd.md#81-服务provider)
 
 ## 1. 目标
 
@@ -253,6 +253,15 @@ v2.0 表示首发；后续 表示接口已经留好，按需求再加。
 | `docker` | 本机 Docker + gVisor（`runsc`） | — |
 | `e2b` | E2B；PPIO（预设）；其他 E2B 协议兼容服务填写 domain，须支持暂停与恢复 | Daytona、Modal、Kubernetes |
 
+服务器接 E2B（#70，T16 真实账号验收）：
+
+- 服务器不需要 Docker 引擎，也不挂 Docker socket；需要有额度的 E2B 账号，以及允许出站 HTTPS / WebSocket 到 `api.e2b.app` 和 `*.e2b.app` 的网络。兼容服务换成自己的域名。
+- 在有 Node.js、已执行 `pnpm install` 的本仓库检出上构建模板：安全导出 `E2B_API_KEY`，执行 `node --import tsx scripts/e2b-template.mts --cpus 2 --memory 2048`。脚本按内容命名，已有成功构建则复用；构建也会使用服务商资源。兼容服务同时给构建环境设置 `E2B_DOMAIN`。
+- 运行环境设置 `SANDBOX_PROVIDER=e2b`、`SANDBOX_API_KEY`（与构建使用同一账号）、`SANDBOX_E2B_TEMPLATE`（脚本输出的名字）、`SANDBOX_E2B_NAMESPACE`（部署唯一，默认 greenhouse）、`SANDBOX_E2B_TIMEOUT_MINUTES=60`；兼容服务另设 `SANDBOX_E2B_DOMAIN`。同一部署的 API 与 worker 共用命名空间、Key、存储和加密密钥，另一个部署必须换命名空间。
+- 费用按运行时长、CPU 和内存及账号套餐计，见 [E2B 现行价格](https://e2b.dev/pricing)。管理 → 服务 → 电脑默认空闲 30 分钟暂停；画面、终端、后台进程和等待接管等活动会延后停机。服务商超时是 API 失联后的另一道自动暂停，必须大于空闲时间且不超过套餐会话上限。暂停保留内存与主目录，重置才销毁；暂停后的保留行为见 [E2B 持久化说明](https://docs.e2b.dev/sandbox/persistence)。
+- 两个主目录的加密备份依赖存储服务与 `PROVIDER_TOKEN_ENCRYPTION_KEY`，恢复部署时保留它们；不备份浏览器可重新下载的组件缓存。模型不支持视觉时，浏览器截图返回 unsupported，观看与接管仍可用。
+- 本地真实服务验收可导出 `REAL_SANDBOX_PROVIDER=e2b` 与上述运行配置再执行 `sh scripts/dev-real.sh`，默认仍为 Docker；`REAL_STORAGE_ROOT` 可隔离验收文件。适配器实测命令：安全导出 `E2B_API_KEY` 与可选 `E2B_TEMPLATE` 后执行 `npx vitest run --project unit apps/api/src/providers/__tests__/e2b.live.test.ts`；不设模板时自动构建本检出的版本，测试会创建并删除一台电脑，消耗额度。
+
 E2B 与兼容服务（`packages/providers/src/sandbox/e2b/`，从 v1 移植）：
 
 - 每台电脑是服务商的一台微虚拟机，从 apps/bot-computer 构建的模板启动。`scripts/e2b-template.mts` 在服务商处构建模板并给出名字；名字随内容变化，镜像改了就重新构建、改配置。CPU 与内存在构建模板时决定，创建接口没有按台的规格。
@@ -262,9 +271,10 @@ E2B 与兼容服务（`packages/providers/src/sandbox/e2b/`，从 v1 移植）�
 - 重启在原地进行：结束 agent 与 browser 两个账号的全部进程，清掉它们留在临时目录里的文件，再启动桌面；家目录保留。
 - 端口全部私有：创建时关闭公开访问，服务商的边缘只放行带这台沙箱流量 token 的请求；没有给 token 的服务商不启用。两个桥（gh-bridge）再各自校验本账号的密钥（API Key 对沙箱与账号的 HMAC）：browser 账号的桥管画面与 DevTools，agent 账号的桥管命令、终端与文件。VNC 与 DevTools 仍是 browser 账号 0600 的 Unix socket，只有它的桥能打开。
 - envd（服务商在沙箱里的代理）只做 root 的事：出口规则、启动脚本、重启、以 root 执行的命令。命令的时限在电脑里执行（`timeout`），API 另有兜底。
-- 出口：每次启动以 root 加载 nftables 规则，只管两个成员账号：不能访问链路本地网段（含元数据服务 169.254.169.254）、私网与保留网段、envd 与两个桥的端口；外网和 DNS 照常。新沙箱另由服务商在虚拟机外拒绝私网。规则加载后从两个账号各探测一次，有一个目标能连通，这台电脑就不启用。
+- 出口：每次启动以 root 加载 nftables 规则，只管两个成员账号：不能访问链路本地网段（含元数据服务 169.254.169.254）、私网与保留网段、envd 与两个桥的端口；IPv4 外网和 DNS 照常，非回环 IPv6 一律拒绝，避免绕过服务商仅接受 IPv4 CIDR 的域名规则。后台运行只放行简报批准的域名，读取私有内容后不出网。新沙箱另由服务商在虚拟机外拒绝私网。规则加载后从两个账号各探测一次，有一个目标能连通，这台电脑就不启用。
 - API Key 只发往 `https://api.<domain>`；envd 与两个桥在 `<端口>-<沙箱>.<domain>`，各用自己的 token，固定 fetch 只放行这个域名下的地址。
-- 模板升级不搬家：已有的电脑继续用创建时的模板，新电脑用配置的模板。
+- 模板升级不搬家：已有的电脑继续用创建时的模板，新电脑用配置的模板。桥协议更新时须同步升级 API 与模板；已有电脑先确认成功备份，再从服务商控制台删除沙箱，下次开机自动从最新备份恢复到新模板。不要用 Greenhouse 的重置代替这一步，重置会删除备份。
+- 保活走应用层的文本 ping/pong 帧，避免服务商代理在本地终结 WebSocket 控制帧；画面和 DevTools 的桥会拦下保活帧。读写背压期间两端仍发保活，大文件不因等待 pong 被误断开。
 
 ### 搜索 `search`
 

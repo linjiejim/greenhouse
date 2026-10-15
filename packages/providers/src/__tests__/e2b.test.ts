@@ -89,8 +89,8 @@ describe('the E2B sandbox settings', () => {
     await client.setEgress!(NAME, []);
     await client.setEgress!(NAME, null);
     expect(fake.networks.map(({ id: _id, ...rules }) => rules)).toEqual([
-      { allowOut: ['example.com'], denyOut: ['0.0.0.0/0', '::/0'] },
-      { allowOut: [], denyOut: ['0.0.0.0/0', '::/0'] },
+      { allowOut: ['example.com'], denyOut: ['0.0.0.0/0'] },
+      { allowOut: [], denyOut: ['0.0.0.0/0'] },
       { denyOut: PROVIDER_DENY_OUT },
     ]);
   });
@@ -147,6 +147,8 @@ describe('the E2B sandbox', () => {
   it('creates a computer with private ports, boots it as root and proves its network rules', async () => {
     const { fake, client, apiKey, seen } = setup();
     expect(await client.status(NAME)).toBe('missing');
+    const listing = fake.requests.find(({ url }) => url.pathname === '/v2/sandboxes')!;
+    expect(listing.url.searchParams.getAll('state')).toEqual(['running,paused']);
     await client.ensure(SPEC);
 
     expect(fake.creates).toHaveLength(1);

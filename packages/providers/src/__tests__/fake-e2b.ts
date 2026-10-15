@@ -139,7 +139,10 @@ export class FakeE2b {
     const path = url.pathname;
     if (method === 'GET' && path === '/v2/sandboxes') {
       const wanted = [...new URLSearchParams(url.searchParams.get('metadata') ?? '')];
-      const states = url.searchParams.getAll('state');
+      if (url.searchParams.getAll('state').length > 1) {
+        return json({ code: 400, message: 'state must be a single comma-separated parameter' }, 400);
+      }
+      const states = url.searchParams.get('state')?.split(',') ?? [];
       const rows = [...this.sandboxes.values()].filter(
         (sandbox) =>
           wanted.every(([key, value]) => sandbox.metadata[key] === value) &&
@@ -191,6 +194,9 @@ export class FakeE2b {
       return new Response(null, { status: 204 });
     }
     if (method === 'PUT' && action === '/network') {
+      if (body.denyOut?.some((cidr: string) => cidr.includes(':'))) {
+        return json({ code: 400, message: 'invalid denied IPv6 CIDR' }, 400);
+      }
       this.networks.push({ id: sandbox.id, ...(body as { allowOut?: string[]; denyOut: string[] }) });
       return new Response(null, { status: 204 });
     }
