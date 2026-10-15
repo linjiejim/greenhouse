@@ -17,6 +17,10 @@ export function requestStatus(request: Pick<NeedsYou, 'status'>): { word: Messag
       return { word: 'status.rejected', tone: 'neutral' };
     case 'expired':
       return { word: 'status.expired', tone: 'neutral' };
+    case 'superseded':
+      return { word: 'status.superseded', tone: 'neutral' };
+    case 'withdrawn':
+      return { word: 'status.withdrawn', tone: 'neutral' };
     case 'canceled':
       return { word: 'status.canceled', tone: 'neutral' };
   }

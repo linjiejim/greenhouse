@@ -45,7 +45,7 @@ export type Route =
   | { page: 'extension'; extension: string; view: string; path: string; query: string }
   | { page: 'extension-section'; parent: 'settings' | 'admin'; extension: string; section: string }
   /** `main`, `new` (optionally with the Agent to ask and a skill to run), or a conversation id. */
-  | { page: 'conversation'; id: string; agent?: string; skill?: string }
+  | { page: 'conversation'; id: string; agent?: string; skill?: string; request?: string }
   | { page: 'agents'; scope: AgentScope }
   | { page: 'agent'; id: string; tab: AgentTab }
   | { page: 'runs'; view: RunView }
@@ -72,7 +72,7 @@ export type Route =
   | { page: 'base'; id: string; table?: string; view?: string; record?: string; dashboard?: string }
   /** An internal form to fill in: `#/forms/:id`. */
   | { page: 'form'; id: string }
-  | { page: 'notifications'; view: 'needs' | 'all' }
+  | { page: 'notifications' }
   | { page: 'settings'; section: SettingsSection }
   | { page: 'admin'; section: AdminSection }
   | { page: 'activate'; token: string }
@@ -151,7 +151,12 @@ export function parse(hash: string): Route {
     case undefined:
       return { page: 'conversation', id: 'main' };
     case 'c': {
-      if (id !== 'new') return { page: 'conversation', id: id ?? 'main' };
+      if (id !== 'new')
+        return {
+          page: 'conversation',
+          id: id ?? 'main',
+          ...(query.get('request') ? { request: query.get('request')! } : {}),
+        };
       const agent = query.get('agent');
       const skill = query.get('skill');
       return { page: 'conversation', id: 'new', ...(agent ? { agent } : {}), ...(skill ? { skill } : {}) };
@@ -165,7 +170,7 @@ export function parse(hash: string): Route {
     case 'skills':
       return id ? { page: 'skill', id } : { page: 'skills', scope: pick(SKILL_SCOPES, query.get('scope'), 'all') };
     case 'notifications':
-      return id ? notFound : { page: 'notifications', view: query.get('view') === 'all' ? 'all' : 'needs' };
+      return id ? notFound : { page: 'notifications' };
     case 'settings':
       return { page: 'settings', section: pick(SETTINGS_SECTIONS, id, 'account') };
     case 'admin':
@@ -191,6 +196,7 @@ export function href(route: Route): string {
       const query = new URLSearchParams({
         ...(route.agent ? { agent: route.agent } : {}),
         ...(route.skill ? { skill: route.skill } : {}),
+        ...(route.request ? { request: route.request } : {}),
       }).toString();
       return `#/c/${encodeURIComponent(route.id)}${query ? `?${query}` : ''}`;
     }
@@ -239,7 +245,7 @@ export function href(route: Route): string {
       return `#/tables/${path}${route.record ? `?record=${encodeURIComponent(route.record)}` : ''}`;
     }
     case 'notifications':
-      return route.view === 'all' ? '#/notifications?view=all' : '#/notifications';
+      return '#/notifications';
     case 'settings':
       return `#/settings/${route.section}`;
     case 'admin':

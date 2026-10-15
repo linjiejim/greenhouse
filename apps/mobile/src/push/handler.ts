@@ -119,14 +119,14 @@ export async function clearStaleBanners(): Promise<void> {
   }
 }
 
-/** The app icon badge = the bell's number: how many things need the member (0 signed out). */
+/** The app icon badge counts effective unread notifications (0 signed out). */
 export async function syncBadge(): Promise<void> {
   if (!READY) return;
   const signedIn = !!useAuth.getState().user;
   const summary = useWorkspace.getState().summary;
   if (signedIn && !summary) return;
   try {
-    await Notifications.setBadgeCountAsync(signedIn ? (summary?.needs_you ?? 0) : 0);
+    await Notifications.setBadgeCountAsync(signedIn ? (summary?.unread ?? 0) : 0);
   } catch {
     // no badge permission: nothing to show
   }

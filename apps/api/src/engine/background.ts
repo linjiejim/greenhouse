@@ -973,7 +973,7 @@ export function createBackground(deps: {
         .where(eq(runs.id, runId))
         .returning();
       if (!run) return;
-      const expired = (await deps.requests?.expireOpen({ runIds: [runId] })) ?? [];
+      const expired = (await deps.requests?.withdrawOpen([runId])) ?? [];
       await getDb()
         .update(runSteps)
         .set({ status: 'skipped', finishedAt: sql`now()` })

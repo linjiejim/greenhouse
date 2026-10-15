@@ -18,9 +18,10 @@ import { relativeTimeNow } from '../lib/time-words';
 import { useT } from '../lib/i18n';
 import type { NeedsYou } from '../shared/contract';
 import { makeStyles, radius, space, typo, useTheme, weight } from '../theme';
+import { openConversation } from '../shell/nav';
 import { Icon } from '../ui/core';
 import { useFontScaleKey } from '../ui/font-scale';
-import { KIND_ICON, cardBody, requestStatus, secondsLeft } from './model';
+import { KIND_ICON, cardBody, requestStatus, secondsLeft, retiredRequest } from './model';
 
 export const RequestCard = memo(function RequestCard({
   request,
@@ -53,6 +54,17 @@ export const RequestCard = memo(function RequestCard({
   const tone = status.tone === 'warning' ? c.orange : status.tone === 'success' ? c.green : c.secondaryLabel;
   const summary = plainText(body.reason || body.details.map((detail) => detail.value).join(' · ') || body.body);
   const meta = [context, relativeTimeNow(request.created_at)].filter(Boolean).join(' · ');
+  const retired = retiredRequest(request);
+  if (retired)
+    return (
+      <Text
+        style={styles.summary}
+        accessibilityRole={retired.replacement ? 'link' : undefined}
+        onPress={retired.replacement ? () => openConversation(router, retired.replacement!) : undefined}
+      >
+        {t(`requests.status.${retired.word}` as 'requests.status.needsYou')}
+      </Text>
+    );
   return (
     <ChatCard
       variant={pending ? 'fill' : 'outline'}

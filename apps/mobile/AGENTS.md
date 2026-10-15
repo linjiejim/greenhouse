@@ -120,3 +120,5 @@
 - Map operation_disabled plus details.switch through operationErrorText; never show the server's English pause copy as a member-facing reason.
 
 - Run findings, summaries, briefs, output and completion reports use Markdown safe mode with native app links. Notification, schedule-list and request-card excerpts use plainText; approval previews stay inert. Memory rule errors map by code through operationErrorText. These display changes require no native modules.
+
+- Notifications have one list and an unread badge; pending requests belong to their conversations. notification.removed clears request pointers on open screens. Superseded/withdrawn cards collapse and replacements open the new card in its source conversation.

@@ -10,6 +10,7 @@ import { countActive } from '../usage/counts.js';
 import { and, desc, eq, gt, inArray, isNull, lt, or, sql } from 'drizzle-orm';
 import type { NeedsYou, Page } from '@greenhouse/contract';
 import {
+  conversations,
   getDb,
   newId,
   requests,
@@ -19,6 +20,8 @@ import {
   type RequestKind,
   type RequestStatus,
 } from '@greenhouse/db';
+import { approvalScopeSchema } from '@greenhouse/contract';
+import { resolveRequestTargetKey } from './target.js';
 import { conflict, notFound } from '../../http/errors.js';
 import { enqueueJob } from '../../jobs.js';
 import { decodeCursor, toPage } from '../../http/pagination.js';
@@ -71,95 +74,182 @@ export function createRequestsService(deps: {
   approvals?: ApprovalsService;
   display?: (input: CreateRequest) => Promise<CreateRequest>;
 }) {
-  const announce = (row: NeedsYouRequest) =>
+  const announce = (row: NeedsYouRequest) => {
+    if (row.status !== 'pending') deps.notifications.announceRemoved(row.memberId, row.id);
     deps.hub.publish([row.memberId], {
       type: 'request.updated',
       data: { request_id: row.id, status: row.status, conversation_id: row.conversationId },
     });
+  };
 
   /** Joins the open transaction: the job commits with the decision. */
   const queueDecision = (row: NeedsYouRequest) =>
     enqueueJob({ kind: DECISION_JOB, dedupeKey: `${DECISION_JOB}:${row.id}`, payload: { request_id: row.id } });
 
+  const lockConversation = async (id: string | null | undefined) => {
+    if (id)
+      await getDb().select({ id: conversations.id }).from(conversations).where(eq(conversations.id, id)).for('update');
+  };
+
+  /** All automatic retirements share the decision queue and notification cleanup. */
+  const retire = async (
+    rows: NeedsYouRequest[],
+    status: 'superseded' | 'withdrawn',
+    result: Record<string, unknown>,
+  ) => {
+    const retired: NeedsYouRequest[] = [];
+    for (const candidate of rows) {
+      const [row] = await getDb()
+        .update(requests)
+        .set({
+          status,
+          result,
+          decidedAt: sql`now()`,
+          updatedAt: sql`now()`,
+          version: sql`${requests.version} + 1`,
+        })
+        .where(and(eq(requests.id, candidate.id), eq(requests.status, 'pending')))
+        .returning();
+      if (!row) continue;
+      await deps.notifications.clearRequest(row.id);
+      await queueDecision(row);
+      retired.push(row);
+    }
+    return retired;
+  };
+
+  const replaceOlder = async (row: NeedsYouRequest) => {
+    if (!row.conversationId || !row.agentId || !row.targetKey) return [];
+    const older = await getDb()
+      .select()
+      .from(requests)
+      .where(
+        and(
+          eq(requests.memberId, row.memberId),
+          eq(requests.conversationId, row.conversationId),
+          eq(requests.agentId, row.agentId),
+          eq(requests.subject, row.subject),
+          eq(requests.targetKey, row.targetKey),
+          eq(requests.status, 'pending'),
+          lt(requests.id, row.id),
+        ),
+      )
+      .orderBy(requests.id)
+      .for('update');
+    return retire(older, 'superseded', { reason: 'replaced', replacement_request_id: row.id });
+  };
+
+  const announceAll = (rows: NeedsYouRequest[]) => {
+    for (const row of rows) announce(row);
+  };
+
   return {
     async create(input: CreateRequest): Promise<NeedsYouRequest> {
       if (deps.display) input = await deps.display(input);
-      if (input.subject === 'tool_write' && input.runId) {
-        const merged = await transaction(async (db) => {
-          await db.select({ id: runs.id }).from(runs).where(eq(runs.id, input.runId!)).for('update');
-          const [existing] = await db
-            .select()
-            .from(requests)
-            .where(
-              and(eq(requests.runId, input.runId!), eq(requests.subject, 'tool_write'), eq(requests.status, 'pending')),
-            )
-            .for('update');
-          if (!existing) return null;
-          const calls = (existing.payload.calls as Record<string, unknown>[] | undefined) ?? [
-            { step_id: existing.stepId, ...existing.payload },
-          ];
-          calls.push({ step_id: input.stepId, ...input.payload });
-          const scope = existing.payload.standing_scope as { type: string; id: string; actions: string[] } | undefined;
-          const added = input.payload.standing_scope as typeof scope;
-          const sameScope = scope && added && scope.type === added.type && scope.id === added.id;
-          const payload = {
-            ...existing.payload,
-            calls,
-            tier: existing.payload.tier === 'tier3' || input.payload.tier === 'tier3' ? 'tier3' : 'tier2',
-            standing_scope: sameScope
-              ? { ...scope, actions: [...new Set([...scope.actions, ...added.actions])] }
-              : null,
-            details: calls.flatMap((call, index) => [
-              { label: String(index + 1), value: String(call.summary ?? input.title) },
-              ...((call.details as unknown[]) ?? []),
-            ]),
-            batch_ready: false,
-          };
-          const [row] = await db
-            .update(requests)
-            .set({ payload, updatedAt: sql`now()` })
-            .where(eq(requests.id, existing.id))
-            .returning();
-          return row!;
-        });
-        if (merged) {
-          announce(merged);
-          return merged;
+      const changed: NeedsYouRequest[] = [];
+      const created = await transaction(async () => {
+        await lockConversation(input.conversationId);
+        if (input.runId) {
+          const [run] = await getDb().select().from(runs).where(eq(runs.id, input.runId)).for('update');
+          if (run?.desiredState === 'cancel') throw conflict('run_canceled', 'This run was canceled.');
         }
-      }
-      const [row] = await getDb()
-        .insert(requests)
-        .values({
-          id: newId('request'),
+        if (input.subject === 'tool_write' && input.runId) {
+          const merged = await transaction(async (db) => {
+            await db.select({ id: runs.id }).from(runs).where(eq(runs.id, input.runId!)).for('update');
+            const [existing] = await db
+              .select()
+              .from(requests)
+              .where(
+                and(
+                  eq(requests.runId, input.runId!),
+                  eq(requests.subject, 'tool_write'),
+                  eq(requests.status, 'pending'),
+                  sql`${requests.payload}->>'batch_ready' = 'false'`,
+                ),
+              )
+              .for('update');
+            if (!existing) return null;
+            const calls = (existing.payload.calls as Record<string, unknown>[] | undefined) ?? [
+              { step_id: existing.stepId, ...existing.payload },
+            ];
+            calls.push({ step_id: input.stepId, ...input.payload });
+            const scope = existing.payload.standing_scope as
+              | { type: string; id: string; actions: string[] }
+              | undefined;
+            const added = input.payload.standing_scope as typeof scope;
+            const sameScope = scope && added && scope.type === added.type && scope.id === added.id;
+            const payload = {
+              ...existing.payload,
+              calls,
+              tainted: existing.payload.tainted === true || input.payload.tainted === true,
+              tier: existing.payload.tier === 'tier3' || input.payload.tier === 'tier3' ? 'tier3' : 'tier2',
+              standing_scope: sameScope
+                ? { ...scope, actions: [...new Set([...scope.actions, ...added.actions])] }
+                : null,
+              details: calls.flatMap((call, index) => [
+                { label: String(index + 1), value: String(call.summary ?? input.title) },
+                ...((call.details as unknown[]) ?? []),
+              ]),
+              batch_ready: false,
+            };
+            const [row] = await db
+              .update(requests)
+              .set({ payload, updatedAt: sql`now()` })
+              .where(eq(requests.id, existing.id))
+              .returning();
+            return row!;
+          });
+          if (merged) {
+            const targetKey = await resolveRequestTargetKey(
+              merged.subject,
+              merged.payload,
+              merged.memberId,
+              merged.agentId,
+            );
+            await getDb().update(requests).set({ targetKey }).where(eq(requests.id, merged.id));
+            changed.push(...(await replaceOlder({ ...merged, targetKey })));
+            changed.push(merged);
+            return merged;
+          }
+        }
+        const [row] = await getDb()
+          .insert(requests)
+          .values({
+            id: newId('request'),
+            memberId: input.memberId,
+            kind: input.kind,
+            subject: input.subject,
+            targetKey: await resolveRequestTargetKey(input.subject, input.payload, input.memberId, input.agentId),
+            payload: {
+              ...input.payload,
+              title: input.title,
+              ...(input.subject === 'tool_write' ? { batch_ready: false } : {}),
+            },
+            conversationId: input.conversationId ?? null,
+            runId: input.runId ?? null,
+            stepId: input.stepId ?? null,
+            agentId: input.agentId ?? null,
+            expiresAt: new Date(Date.now() + (input.expiresInMs ?? DAY_MS)).toISOString(),
+          })
+          .returning();
+        changed.push(...(await replaceOlder(row!)));
+        await deps.notifications.publish({
           memberId: input.memberId,
-          kind: input.kind,
-          subject: input.subject,
-          payload: {
-            ...input.payload,
-            title: input.title,
-            ...(input.subject === 'tool_write' ? { batch_ready: false } : {}),
-          },
-          conversationId: input.conversationId ?? null,
-          runId: input.runId ?? null,
-          stepId: input.stepId ?? null,
-          agentId: input.agentId ?? null,
-          expiresAt: new Date(Date.now() + (input.expiresInMs ?? DAY_MS)).toISOString(),
-        })
-        .returning();
-      await deps.notifications.publish({
-        memberId: input.memberId,
-        kind: 'request',
-        title: input.title,
-        targetType: input.conversationId ? 'conversation' : 'request',
-        targetId: input.conversationId ?? row!.id,
-        requestId: row!.id,
-        runId: input.runId ?? undefined,
-        agentId: input.agentId ?? undefined,
-        payload: { kind: input.kind },
-        dedupeKey: `request:${row!.id}`,
+          kind: 'request',
+          title: input.title,
+          targetType: input.conversationId ? 'conversation' : 'request',
+          targetId: input.conversationId ?? row!.id,
+          requestId: row!.id,
+          runId: input.runId ?? undefined,
+          agentId: input.agentId ?? undefined,
+          payload: { kind: input.kind },
+          dedupeKey: `request:${row!.id}`,
+        });
+        changed.push(row!);
+        return row!;
       });
-      announce(row!);
-      return row!;
+      announceAll(changed);
+      return created;
     },
 
     async list(
@@ -201,13 +291,17 @@ export function createRequestsService(deps: {
       id: string,
       outcome: { status: Exclude<RequestStatus, 'pending' | 'expired'>; result: Record<string, unknown> },
     ): Promise<NeedsYouRequest> {
+      const settledRows: NeedsYouRequest[] = [];
       const row = await transaction(async (db) => {
+        const initial = await this.get(memberId, id);
+        await lockConversation(initial.conversationId);
         const [current] = await db
           .select()
           .from(requests)
           .where(and(eq(requests.id, id), eq(requests.memberId, memberId)))
           .for('update');
-        if (current?.payload.batch_ready === false)
+        if (current?.status !== 'pending') throw conflict('request_settled', 'This card was already decided.');
+        if (current.payload.batch_ready === false)
           throw conflict('request_building', 'The Agent is still preparing this approval card.');
         const [settled] = await db
           .update(requests)
@@ -234,8 +328,75 @@ export function createRequestsService(deps: {
           if (!deps.approvals) throw conflict('standing_not_allowed', 'Standing approvals are unavailable.');
           await deps.approvals.grant(settled);
         }
-        await deps.notifications.markRequestRead(id);
+        await deps.notifications.clearRequest(id);
         await queueDecision(settled);
+        settledRows.push(settled);
+        // A tier2 decision covers only its declared actions, for this member and Agent here.
+        const scope = approvalScopeSchema.safeParse(settled.payload.standing_scope);
+        if (
+          outcome.status === 'approved' &&
+          settled.payload.tier === 'tier2' &&
+          scope.success &&
+          settled.conversationId &&
+          settled.agentId
+        ) {
+          const others = await db
+            .select()
+            .from(requests)
+            .where(
+              and(
+                eq(requests.memberId, memberId),
+                eq(requests.agentId, settled.agentId),
+                eq(requests.conversationId, settled.conversationId),
+                eq(requests.subject, 'tool_write'),
+                eq(requests.status, 'pending'),
+                or(isNull(requests.expiresAt), gt(requests.expiresAt, new Date().toISOString())),
+              ),
+            )
+            .orderBy(requests.id)
+            .for('update');
+          for (const candidate of others) {
+            const otherScope = approvalScopeSchema.safeParse(candidate.payload.standing_scope);
+            if (
+              candidate.payload.tier !== 'tier2' ||
+              candidate.payload.tainted === true ||
+              candidate.payload.batch_ready === false ||
+              !otherScope.success ||
+              otherScope.data.type !== scope.data.type ||
+              otherScope.data.id !== scope.data.id ||
+              !otherScope.data.actions.every((action) => scope.data.actions.includes(action))
+            )
+              continue;
+            const [run] = candidate.runId ? await db.select().from(runs).where(eq(runs.id, candidate.runId)) : [];
+            // Tainted or canceled work never inherits consent from another card.
+            if (
+              !run ||
+              run.desiredState !== 'run' ||
+              run.checkpoint?.tainted === true ||
+              run.input.event_woken === true ||
+              run.input.reason === 'event' ||
+              typeof run.input.helper_parent === 'string'
+            )
+              continue;
+            const [covered] = await db
+              .update(requests)
+              .set({
+                status: 'approved',
+                result: { decision: 'approved', covered_by_request_id: settled.id },
+                decidedBy: memberId,
+                decidedAt: sql`now()`,
+                updatedAt: sql`now()`,
+                version: sql`${requests.version} + 1`,
+              })
+              .where(and(eq(requests.id, candidate.id), eq(requests.status, 'pending')))
+              .returning();
+            if (covered) {
+              await deps.notifications.clearRequest(covered.id);
+              await queueDecision(covered);
+              settledRows.push(covered);
+            }
+          }
+        }
         return settled;
       });
       if (!row) {
@@ -243,9 +404,69 @@ export function createRequestsService(deps: {
         if (current.status === 'pending') throw conflict('request_expired', 'This card has expired.');
         throw conflict('request_settled', 'This card was already decided.');
       }
-      announce(row);
+      announceAll(settledRows);
       deps.decided();
       return row;
+    },
+
+    /** A room's plain answer can address its pending question without another mention. */
+    async questionAgents(memberId: string, conversationId: string): Promise<string[]> {
+      const rows = await getDb()
+        .select({ agentId: requests.agentId })
+        .from(requests)
+        .where(
+          and(
+            eq(requests.memberId, memberId),
+            eq(requests.conversationId, conversationId),
+            eq(requests.subject, 'ask_user'),
+            eq(requests.kind, 'question'),
+            eq(requests.status, 'pending'),
+            or(isNull(requests.expiresAt), gt(requests.expiresAt, new Date().toISOString())),
+          ),
+        );
+      return [...new Set(rows.flatMap((row) => (row.agentId ? [row.agentId] : [])))];
+    },
+
+    /** A real member message answers questions only; it never decides an approval. */
+    async answeredInChat(memberId: string, conversationId: string, agentIds: string[], messageId: string) {
+      if (!agentIds.length) return;
+      const rows = await transaction(async () => {
+        await lockConversation(conversationId);
+        const open = await getDb()
+          .select()
+          .from(requests)
+          .where(
+            and(
+              eq(requests.memberId, memberId),
+              eq(requests.conversationId, conversationId),
+              inArray(requests.agentId, agentIds),
+              eq(requests.subject, 'ask_user'),
+              eq(requests.kind, 'question'),
+              eq(requests.status, 'pending'),
+              or(isNull(requests.expiresAt), gt(requests.expiresAt, new Date().toISOString())),
+            ),
+          )
+          .orderBy(requests.id)
+          .for('update');
+        return retire(open, 'superseded', { reason: 'answered in chat', message_id: messageId });
+      });
+      announceAll(rows);
+    },
+
+    /** Cancellation withdraws the run's remaining cards, including non-blocking proposals. */
+    async withdrawOpen(runIds: string[]) {
+      if (!runIds.length) return [];
+      const rows = await transaction(async () => {
+        const open = await getDb()
+          .select()
+          .from(requests)
+          .where(and(inArray(requests.runId, runIds), eq(requests.status, 'pending')))
+          .orderBy(requests.id)
+          .for('update');
+        return retire(open, 'withdrawn', { reason: 'canceled' });
+      });
+      announceAll(rows);
+      return rows;
     },
 
     async ready(runId: string) {
@@ -266,7 +487,7 @@ export function createRequestsService(deps: {
           .where(and(eq(requests.status, 'pending'), lt(requests.expiresAt, new Date().toISOString())))
           .returning();
         for (const row of expired) {
-          await deps.notifications.markRequestRead(row.id);
+          await deps.notifications.clearRequest(row.id);
           await queueDecision(row);
         }
         return expired;
@@ -295,7 +516,7 @@ export function createRequestsService(deps: {
           ),
         )
         .returning();
-      for (const row of rows) await deps.notifications.markRequestRead(row.id);
+      for (const row of rows) await deps.notifications.clearRequest(row.id);
       return rows;
     },
 

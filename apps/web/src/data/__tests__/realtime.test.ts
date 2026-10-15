@@ -1,6 +1,6 @@
-import { QueryClient, QueryObserver } from '@tanstack/react-query';
+import { QueryClient, QueryObserver, type InfiniteData } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { MessageItem } from '@greenhouse/contract';
+import type { MessageItem, Notification, Page } from '@greenhouse/contract';
 import { keys } from '../query';
 import { afterReconnect, applyEvent, fetchMessagePage, type MessagePages } from '../realtime';
 import { appendDelta, clearStreams, liveText, readStream } from '../streams';
@@ -190,4 +190,16 @@ it('debounces bursts independently for each query client', async () => {
     other.clear();
     vi.useRealTimers();
   }
+});
+
+
+it('removes every cached pointer for a settled request immediately without dropping other notifications', () => {
+  const old = { id: 'ntf_old', request_id: 'req_old' } as Notification;
+  const kept = { id: 'ntf_kept', request_id: null } as Notification;
+  for (const filter of ['all', 'unread']) client.setQueryData<InfiniteData<Page<Notification>>>([...keys.notifications, filter], {
+    pages: [{ items: [old, kept], next_cursor: 'next' }], pageParams: [undefined],
+  });
+  applyEvent(client, { type: 'notification.removed', data: { request_id: 'req_old' } });
+  for (const filter of ['all', 'unread']) expect(client.getQueryData<InfiniteData<Page<Notification>>>([...keys.notifications, filter])?.pages[0])
+    .toEqual({ items: [kept], next_cursor: 'next' });
 });

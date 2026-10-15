@@ -26,6 +26,7 @@ import { NativeToggle } from '../src/ui/toggle';
 import { listRequests } from '../src/api/requests';
 import { useT } from '../src/lib/i18n';
 import { relativeTimeNow } from '../src/lib/time-words';
+import { openConversation } from '../src/shell/nav';
 import { softAskAfterDecision } from '../src/push/soft-ask';
 import { decide, type Decision } from '../src/requests/decide';
 import {
@@ -35,6 +36,7 @@ import {
   cardBody,
   checkAnswers,
   requestStatus,
+  retiredRequest,
   type CardAction,
 } from '../src/requests/model';
 import type { NeedsYou, QuestionField } from '../src/shared/contract';
@@ -176,6 +178,22 @@ export default function RequestSheet() {
       </>
     );
   }
+
+  const retired = retiredRequest(request);
+  if (retired)
+    return (
+      <>
+        <Stack.Screen options={{ title: t('requests.title') }} />
+        <SheetClose />
+        <Text
+          style={styles.outcome}
+          accessibilityRole={retired.replacement ? 'link' : undefined}
+          onPress={retired.replacement ? () => openConversation(router, retired.replacement!, 'dismissTo') : undefined}
+        >
+          {t(`requests.status.${retired.word}` as 'requests.status.needsYou')}
+        </Text>
+      </>
+    );
 
   const status = requestStatus(request);
   const tone = status.tone === 'warning' ? c.orange : status.tone === 'success' ? c.green : c.secondaryLabel;

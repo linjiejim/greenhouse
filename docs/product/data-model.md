@@ -102,7 +102,7 @@ v2 从零建表：只有一份基线迁移，不继承 v1 的迁移链，也不�
 | `conversation_notes` | 对话的共享笔记 | `conversation_id` `CASCADE`、`title`、`body`、`author_member_id` 或 `author_agent_id`、`status`（open / done）、`pinned` |
 | `conversation_inbox` | 单写者队列与事件合并 | `conversation_id` `CASCADE`、`kind`（event / continue / run_report / message / mention / handback）、`dedupe_key`（对话内唯一，已消费的也去重）、`ready_at`（默认首条事件到达后二分钟）、`payload`（Agent、成员、来源链、深度超限 / 每日上限的抑制原因）、`consumed_at`；消息 > 决定 > 事件，超限事件照样保留 |
 | `handoffs` | Agent 之间的转交 | `requested_by`（成员，权限来源）、`source_conversation_id` / `source_agent_id`、`target_conversation_id` / `target_agent_id`、`run_id`、`chain_key` + `path`（深度、次数、循环限制）、`dedupe_key`（唯一）、`status`、`reply`、`returned_at` |
-| `requests` | 「需要你」，唯一的请求模型 | `member_id`（由谁决定）、`kind`（approval / login / takeover / question / proposal）、`subject`（如 tool_write、app_action、agent_create、instructions_update、run_start、tables_plan）、`status`（pending / approved / rejected / answered / handed_back / expired / canceled）、`conversation_id`、`run_id`、`step_id`、`agent_id`、`payload`（不含机密）、`result`、`expires_at`、`decided_by`、`decided_at`、`version`；只从 pending 单次 CAS 结算，结算与执行它的 `request_decided` 任务同一事务写入 |
+| `requests` | 「需要你」，唯一的请求模型 | `member_id`（由谁决定）、`kind`（approval / login / takeover / question / proposal）、`subject`（如 tool_write、app_action、agent_create、instructions_update、run_start、tables_plan）、`status`（pending / approved / rejected / answered / handed_back / expired / canceled / superseded / withdrawn）、`target_key`（由执行参数生成的规范目标）、`conversation_id`、`run_id`、`step_id`、`agent_id`、`payload`（不含机密）、`result`、`expires_at`、`decided_by`、`decided_at`、`version`；只从 pending 单次 CAS 结算，结算与执行它的 `request_decided` 任务同一事务写入 |
 | `runs` | 运行：Agent 做的一件事。每段对话同时最多一个进行中的回合（部分唯一索引 `runs_one_active_turn_key`），这就是单写者 | `agent_id`、`owner_id`（权限来自谁）、`requested_by`、`kind`（background / turn；turn 是前台回合，不进运行列表）、`source`（conversation / schedule / automation / record / handoff / app）+ `source_id`、`conversation_id`、`parent_run_id` `CASCADE`、`root_run_id`、`title`、`brief`、`status`、`desired_state`、`wait_reason`、租约（`lease_owner`、`lease_expires_at`、`heartbeat_at`）、`attempt`、`deadline_at`、`checkpoint`（长任务的续跑点）、`input`、`output`、`error_code`、`version` |
 | `run_steps` | 步骤，重试的最小单位；工具调用是一种步骤 | `run_id` `CASCADE`、`parent_step_id`、`key` + `attempt`（唯一）、`kind`（model / tool / handoff / computer / wait；model 是模型步骤结束时记下的新增回复片段与工具结果，`output.messages`，每步约 2 万字，键 `model:<序号>`，重试从这里接着做，运行详情不列出）、`tool_name`、`risk`（read / tier1 / tier2 / tier3）、`undo_state`（撤销前状态及不受展示截断影响的结果引用）、`undone_at`、`idempotency_key`（运行内唯一）、`request_id`、`status`（含 uncertain：外部结果未知，不自动重放）、`input`、`output`、`error`、`tokens`、`duration_ms`、租约 |
 | `run_events` | 只追加的运行时间线 | `run_id` `CASCADE`、`seq`（唯一）、`type`、`payload`、`actor`；运行详情和 WebSocket 进度都读它 |
@@ -191,7 +191,7 @@ v2 从零建表：只有一份基线迁移，不继承 v1 的迁移链，也不�
 
 | 表 | 用途 | 关键列与关系 |
 | --- | --- | --- |
-| `notifications` | 站内通知 | `member_id`、`kind`（request / run_done / run_failed / reply / mention / comment / share / automation / skill_scan / budget / system）、`title`、`body`、`target_type` + `target_id`（打开即回到来源）、`request_id`、`run_id`、`agent_id`、`payload`（来源附带的信息，不含内容；送达的路由取自 target、request、run 列；回复与提及带 `message_id`、`seq`，提及另带 `from_member_id`，读会话到该 `seq` 即已读）、`dedupe_key`（每人唯一）、`read_at`；只有已读状态可改；外部送达是 `jobs`（`deliver_notification`，每条通知每个渠道一条，和通知在同一事务里写入） |
+| `notifications` | 站内通知 | `member_id`、`kind`（request / run_done / run_failed / reply / mention / comment / share / automation / skill_scan / budget / system）、`title`、`body`、`target_type` + `target_id`（打开即回到来源）、`request_id`、`run_id`、`agent_id`、`payload`（来源附带的信息，不含内容；送达的路由取自 target、request、run 列；回复与提及带 `message_id`、`seq`，提及另带 `from_member_id`，读会话到该 `seq` 即已读）、`dedupe_key`（每人唯一）、`read_at`、`cleared_at`（请求离开 pending 时清理，列表与未读数排除；保留幂等与投递历史）；只有已读状态可改；外部送达是 `jobs`（`deliver_notification`，每条通知每个渠道一条，和通知在同一事务里写入） |
 | `push_devices` | 手机推送设备 | `member_id` `CASCADE`、`token`（Expo push token，唯一，从不返回）、`platform`（ios / android）、`project_id`（按它分组发送）、`client_ref`（工作站 id，推送里原样带回）、`prefs`（needs_you / done / replies / preview / live_activity，只能收窄成员的设置）、`auth_version`（登记时的，改密码或停用后停推）、`last_seen_at`（90 天未见不推）、`disabled_at` + `disabled_reason`（unregistered / device_not_registered / device_limit，每人最多 10 台）；按 token 登记，换人即归新成员并重置开关；只停用不删除 |
 | `schedules` | 定时，只属于 Agent | `agent_id` `CASCADE`、`owner_id`、`name`、`brief`（每次运行的简报）、`quiet`（默认 false）、`computer`、`domains`、`continue_after`（默认 false；触发时四项复制到运行 input）、`skill_id`（可选：按技能运行）、`model`、`cron`、`timezone`、`status`（active / paused）、`next_run_at`、`last_run_at`、`last_run_id`、`last_status`、`run_count` |
 
@@ -294,3 +294,9 @@ M3.4 计数（#70）：`metric_events` 仅存 identity id、member_id（逻辑�
 ### 记忆拒绝与原生 Markdown（#70）
 
 无表结构变化。记忆规则拒绝复用 `run_steps.error` 的 `{ code, message }`，步骤状态为 `failed`，不保存成功输出、不产生写入回执。`runs.output.findings` 与已有报告正文继续保存 Markdown，由原生安全渲染器展示并解析应用内链接；通知和卡片列表使用可读纯文字摘要。
+
+### 请求生命周期收敛（#70，U3）
+
+`requests.target_key` 由 requests/target.ts 单点定义。取代的匹配范围为 member_id、conversation_id、agent_id、subject 和 target_key；创建与决定同持对话锁。新请求仅取代 pending；无法可靠确定目标时不猜测。完整批次按目标集合匹配，不撤掉无关目标。`result.replacement_request_id` 链接新卡；聊天回答使用 `result.reason="answered in chat"` 与 `message_id`，取消使用 withdrawn。每项终态与 request_decided 入队、通知 cleared_at 同事务，历史请求不删除。
+
+第 2 档批准可覆盖同对话、同成员和 Agent 的相同范围与动作子集；未准备完、过期、已取消或已污染的请求不适用。每张卡分别入队、执行、记录回执。`payload.tainted` 在发卡时记录污染状态，批次取逻辑或。

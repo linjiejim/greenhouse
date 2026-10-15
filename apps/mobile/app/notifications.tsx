@@ -1,21 +1,15 @@
 import { plainText } from '../src/chat/text';
-/**
- * The notification center (NTF-01; a large-title page over the conversation, opened from the
- * bell): 需要你 lists every pending decision as its card — tap one to decide it in its sheet —
- * and 全部 lists what happened, newest first; opening one marks it read and goes back to its
- * source. 「全部已读」 in the bar. Both refresh as realtime events arrive.
- */
+/** One notification list, refreshed across open clients. Decisions live in conversations. */
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { FlatList, RefreshControl, View } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { listNotifications, markNotificationsRead } from '../src/api/notifications';
-import { listRequests } from '../src/api/requests';
 import { useT } from '../src/lib/i18n';
 import { relativeTimeNow } from '../src/lib/time-words';
+import { captureIdentity } from '../src/data/identity';
 import { realtime } from '../src/realtime';
-import { RequestCard } from '../src/requests/request-card';
-import type { NeedsYou, Notification } from '../src/shared/contract';
+import type { Notification } from '../src/shared/contract';
 import { openConversation } from '../src/shell/nav';
 import { useWorkspace } from '../src/store/workspace';
 import { makeStyles, space, useTheme } from '../src/theme';
@@ -23,10 +17,7 @@ import type { IconName } from '../src/ui/core';
 import { alertError } from '../src/ui/dialogs';
 import { EmptyState, LoadingState } from '../src/ui/empty';
 import { ListRow } from '../src/ui/list';
-import { Segmented } from '../src/ui/segmented';
 import { toolbarIcon } from '../src/ui/toolbar-icon';
-
-type View_ = 'needs' | 'all';
 
 const KIND_ICON: Record<string, IconName> = {
   request: 'hand',
@@ -47,26 +38,23 @@ export default function Notifications() {
   const styles = useStyles(c);
   const t = useT();
   const router = useRouter();
-  const agents = useWorkspace((s) => s.agents);
-  const publicAgents = useWorkspace((s) => s.publicAgents);
-  const [view, setView] = useState<View_>('needs');
-  const [requests, setRequests] = useState<NeedsYou[] | null>(null);
   const [items, setItems] = useState<Notification[] | null>(null);
   const [next, setNext] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
+  const generation = useRef(0);
+  const cleared = useRef(new Set<string>());
   const load = useCallback(async () => {
-    const [pending, list] = await Promise.all([
-      listRequests({ state: 'pending', limit: 100 }),
-      listNotifications({ limit: 50 }),
-    ]);
-    if (pending.ok) setRequests(pending.data.items);
+    const n = ++generation.current;
+    const current = captureIdentity();
+    const list = await listNotifications({ limit: 50 });
+    if (!current() || generation.current !== n) return;
     if (list.ok) {
-      setItems(list.data.items);
+      setItems(list.data.items.filter((item) => !item.request_id || !cleared.current.has(item.request_id)));
       setNext(list.data.next_cursor);
     }
-    setFailed(!pending.ok && !list.ok);
+    setFailed(!list.ok);
     void useWorkspace.getState().refreshSummary();
   }, []);
 
@@ -77,10 +65,15 @@ export default function Notifications() {
       if (
         event.type !== 'notification.created' &&
         event.type !== 'notification.read' &&
+        event.type !== 'notification.removed' &&
         event.type !== 'request.updated' &&
         event.type !== 'resync'
       ) {
         return;
+      }
+      if (event.type === 'notification.removed') {
+        cleared.current.add(event.data.request_id);
+        setItems((current) => current?.filter((item) => item.request_id !== event.data.request_id) ?? null);
       }
       if (timer) return;
       timer = setTimeout(() => {
@@ -89,6 +82,8 @@ export default function Notifications() {
       }, 300);
     });
     return () => {
+      // eslint-disable-next-line react-hooks/exhaustive-deps -- invalidate pending reads on cleanup
+      generation.current++;
       off();
       if (timer) clearTimeout(timer);
     };
@@ -96,9 +91,14 @@ export default function Notifications() {
 
   const loadMore = async () => {
     if (!next) return;
+    const n = generation.current;
+    const current = captureIdentity();
     const page = await listNotifications({ cursor: next, limit: 50 });
-    if (!page.ok) return;
-    setItems((current) => [...(current ?? []), ...page.data.items]);
+    if (!page.ok || !current() || generation.current !== n) return;
+    setItems((current) => [
+      ...(current ?? []),
+      ...page.data.items.filter((item) => !item.request_id || !cleared.current.has(item.request_id)),
+    ]);
     setNext(page.data.next_cursor);
   };
 
@@ -149,48 +149,23 @@ export default function Notifications() {
     }
   };
 
-  const agentName = (id: string | null) =>
-    (id && (agents?.find((agent) => agent.id === id)?.name ?? publicAgents.find((agent) => agent.id === id)?.name)) ||
-    undefined;
-
-  const loading = view === 'needs' ? requests === null : items === null;
+  const loading = items === null;
   return (
     <View style={styles.root}>
       <Stack.Screen options={{ title: t('notifications.title') }} />
-      {view === 'all' ? (
-        <Stack.Toolbar placement="right">
-          <Stack.Toolbar.Button
-            icon={toolbarIcon('checkCircle')}
-            accessibilityLabel={t('notifications.markAllRead')}
-            onPress={() => void markAll()}
-          />
-        </Stack.Toolbar>
-      ) : null}
-      <FlatList<NeedsYou | Notification>
+      <Stack.Toolbar placement="right">
+        <Stack.Toolbar.Button
+          icon={toolbarIcon('checkCircle')}
+          accessibilityLabel={t('notifications.markAllRead')}
+          onPress={() => void markAll()}
+        />
+      </Stack.Toolbar>
+      <FlatList<Notification>
         contentInsetAdjustmentBehavior="automatic"
-        data={(view === 'needs' ? requests : items) ?? []}
+        data={items ?? []}
         keyExtractor={(item) => item.id}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void refresh()} />}
-        ListHeaderComponent={
-          <Segmented<View_>
-            value={view}
-            onChange={setView}
-            options={[
-              { value: 'needs', label: t('notifications.needsYou') },
-              { value: 'all', label: t('notifications.all') },
-            ]}
-            style={styles.segmented}
-          />
-        }
         renderItem={({ item, index }) => {
-          if (view === 'needs') {
-            const request = item as NeedsYou;
-            return (
-              <View style={styles.card}>
-                <RequestCard request={request} context={agentName(request.agent_id)} />
-              </View>
-            );
-          }
           const notification = item as Notification;
           const list = items ?? [];
           return (
@@ -217,15 +192,13 @@ export default function Notifications() {
             />
           );
         }}
-        onEndReached={() => (view === 'all' ? void loadMore() : undefined)}
+        onEndReached={() => void loadMore()}
         onEndReachedThreshold={0.4}
         ListEmptyComponent={
           loading ? (
             <LoadingState style={styles.empty} />
           ) : failed ? (
             <EmptyState icon="alert" title={t('notifications.loadFailed')} onRetry={() => void load()} />
-          ) : view === 'needs' ? (
-            <EmptyState icon="checkCircle" title={t('notifications.nothingNeedsYou')} />
           ) : (
             <EmptyState icon="bell" title={t('notifications.empty')} />
           )
@@ -239,8 +212,6 @@ export default function Notifications() {
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.groupedBackground },
   content: { paddingBottom: space.xxl },
-  segmented: { marginHorizontal: space.margin, marginVertical: space.md },
-  card: { paddingHorizontal: space.margin, paddingBottom: space.md },
   unread: { width: 9, height: 9, borderRadius: 4.5, backgroundColor: c.accent },
   empty: { paddingTop: space.xxl },
 }));

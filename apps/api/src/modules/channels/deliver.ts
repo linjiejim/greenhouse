@@ -10,7 +10,7 @@
  * retry never pushes the same phone twice, and leaves a receipts check for fifteen minutes later.
  */
 
-import { and, count, eq } from 'drizzle-orm';
+import { and, count, eq, isNull } from 'drizzle-orm';
 import {
   agents,
   connections,
@@ -77,11 +77,11 @@ const suppressed = (reason: string, result: Record<string, unknown> = {}): JobOu
   result: { ...result, reason },
 });
 
-export async function pendingCount(memberId: string): Promise<number> {
+export async function unreadCount(memberId: string): Promise<number> {
   const [row] = await getDb()
     .select({ n: count() })
-    .from(requests)
-    .where(and(eq(requests.memberId, memberId), eq(requests.status, 'pending')));
+    .from(notifications)
+    .where(and(eq(notifications.memberId, memberId), isNull(notifications.readAt), isNull(notifications.clearedAt)));
   return row?.n ?? 0;
 }
 
@@ -141,7 +141,7 @@ export function createDeliverer(deps: { providers: ProvidersService; publicUrl: 
     const devices = await deliverableDevices(member);
     if (!devices.length) return suppressed('no_device');
     const reached = new Set(((job.result?.sent as string[] | undefined) ?? []).filter((id) => typeof id === 'string'));
-    const badge = await pendingCount(member.id);
+    const badge = await unreadCount(member.id);
     const runEnd = isRunEnd(notification);
     const outgoing: { deviceId: string; message: PushMessage }[] = [];
     for (const device of devices) {

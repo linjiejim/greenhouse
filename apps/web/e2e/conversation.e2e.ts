@@ -36,7 +36,7 @@ test('a question card: answering it lets the Agent go on', async ({ page }) => {
   await composer(page).press('Enter');
   const card = page.locator('.gh-chat-card', { hasText: 'Which city?' });
   await expect(card.getByText('需要你')).toBeVisible();
-  await expect(page.getByRole('button', { name: /需要你/ }).or(page.locator('.app-rail-count'))).toBeVisible();
+  await expect(page.locator('.app-rail-dot').first()).toBeVisible();
   await card.getByLabel('City').fill('Hangzhou');
   await card.getByRole('button', { name: '提交回答' }).click();
   await expect(card.getByText('已完成')).toBeVisible();
