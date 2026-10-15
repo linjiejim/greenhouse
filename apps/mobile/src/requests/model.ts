@@ -73,6 +73,7 @@ export function cardActions(
 export interface CardDetail {
   label: string;
   value: string;
+  format?: 'markdown' | 'chips';
 }
 
 const text = (value: unknown) => (typeof value === 'string' ? value : value == null ? '' : JSON.stringify(value));
@@ -146,7 +147,15 @@ export function cardBody(request: Pick<NeedsYou, 'kind' | 'subject' | 'payload'>
     ? payload.details.flatMap((row: unknown) => {
         if (!row || typeof row !== 'object') return [];
         const detail = row as Record<string, unknown>;
-        return typeof detail.label === 'string' ? [{ label: detail.label, value: text(detail.value) }] : [];
+        return typeof detail.label === 'string'
+          ? [
+              {
+                label: detail.label,
+                value: text(detail.value),
+                ...(detail.format === 'markdown' || detail.format === 'chips' ? { format: detail.format } : {}),
+              },
+            ]
+          : [];
       })
     : payload.details && typeof payload.details === 'object' && !Array.isArray(payload.details)
       ? Object.entries(payload.details as Record<string, unknown>).map(([label, value]) => ({

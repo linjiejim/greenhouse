@@ -1,6 +1,6 @@
 import { and, eq } from 'drizzle-orm';
 import { expect, it, vi } from 'vitest';
-import { getDb, members, newId, runs, runSteps } from '@greenhouse/db';
+import { getDb, members, messages, newId, runs, runSteps } from '@greenhouse/db';
 import { createTestApp } from '../../testing.js';
 import { scriptedModel, text, toolCall } from './model.js';
 
@@ -287,4 +287,68 @@ it('finds the latest finished runs even when they were created before newer fini
   expect(page.recent_finished).toHaveLength(3);
   expect(page.recent_finished[0]).toMatchObject({ id: old, title: '刚结束的长运行' });
   expect(page.recent_finished.some((run: { title: string }) => run.title === '其他成员的私有运行')).toBe(false);
+});
+
+it('recalls an indexed memory by id within the current member partition', async () => {
+  const app = await setup();
+  const agent = (await app.call('GET', '/api/agents/main', { token: app.member.token })).body;
+  const memory = await app.services.agents.remember(app.member.id, agent.id, {
+    title: '偏好',
+    content: '简短回答',
+    category: 'fact',
+    pinned: false,
+  });
+  app.scripts.push(toolCall('memory', { action: 'recall', id: memory.id }), text('知道了'));
+  const sent = await app.send();
+  const steps = await getDb().select().from(runSteps).where(eq(runSteps.runId, sent.run_id));
+  expect(steps.find((step) => step.toolName === 'memory')).toMatchObject({
+    status: 'succeeded',
+    output: { results: [{ id: memory.id, title: '偏好', content: '简短回答' }] },
+  });
+  const other = await app.createMember();
+  const foreignAgent = (await app.call('GET', '/api/agents/main', { token: other.token })).body;
+  const foreign = await app.services.agents.remember(other.id, foreignAgent.id, {
+    title: '私有',
+    content: '不应读到',
+    category: 'fact',
+    pinned: false,
+  });
+  app.scripts.push(toolCall('memory', { action: 'recall', id: foreign.id }), text('没有结果'));
+  const second = await app.send();
+  const misses = await getDb().select().from(runSteps).where(eq(runSteps.runId, second.run_id));
+  expect(misses.find((step) => step.toolName === 'memory')!.output).toEqual({ results: [] });
+});
+
+it('keeps the document name in a receipt after approval reparses the execution payload', async () => {
+  const app = await setup();
+  const admin = await app.createMember('admin');
+  const folder = await app.services.knowledge.createFolder(admin.id, { name: '共享', space: 'team' });
+  app.scripts.push(
+    toolCall('knowledge_mutation', { action: 'create', title: '协作说明', content: '# 说明', folder_id: folder.id }),
+    text('完成'),
+  );
+  await app.send();
+  const cards = await app.call('GET', `/api/requests?conversation_id=${app.main.id}`, { token: app.member.token });
+  const request = cards.body.items[0];
+  expect(request).toBeDefined();
+  await app.call('POST', `/api/requests/${request.id}/approve`, { token: app.member.token });
+  await app.services.engine.idle();
+  const receipts = await getDb().select().from(messages).where(eq(messages.conversationId, app.main.id));
+  expect(receipts.find((message) => message.event?.type === 'write_receipt')?.content).toBe('新建了《协作说明》');
+});
+
+it('shuts down a stalled turn and clears its merge/wake timers before test rollback', async () => {
+  const scripts: Parameters<typeof scriptedModel>[0] = [{ parts: text('部分回答'), gate: new Promise<void>(() => {}) }];
+  const model = scriptedModel(scripts);
+  const app = createTestApp({ AGENT_EVENT_MERGE_MS: '100' }, { languageModel: model.languageModel });
+  const member = await app.member();
+  const main = (await app.call('GET', '/api/conversations', { token: member.token })).body.items[0];
+  await app.call('POST', `/api/conversations/${main.id}/messages`, { token: member.token, body: { content: '开始' } });
+  await vi.waitFor(() => expect(model.prompts.length).toBeGreaterThan(0));
+  await app.services.engine.shutdown({ graceMs: 0 });
+  // A timed-out test can close the app without waiting for the model's gate.
+  await app.services.engine.idle();
+  const sweep = vi.spyOn(app.services.engine, 'sweep');
+  await new Promise((resolve) => setTimeout(resolve, 150));
+  expect(sweep).not.toHaveBeenCalled();
 });

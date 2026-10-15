@@ -1,3 +1,4 @@
+import { errorText } from '../../lib/errors';
 /**
  * Runs (RUN-01): what the Agents do in the background, from conversations, schedules and
  * automations. Running and finished lists filter by Agent; 定时 lists every schedule.
@@ -8,7 +9,6 @@ import { useState } from 'react';
 import { Activity, CalendarClock, Play } from 'lucide-react';
 import { Button, Empty, ErrorBox, Select, Skeleton, StatusBadge, Switch } from '@greenhouse/ui/kit';
 import { icon } from '@greenhouse/ui/tokens';
-import { ApiClientError } from '@greenhouse/contract/client';
 import { useNotify } from '../../app/notify';
 import { useMe } from '../../app/session';
 import { useAgents } from '../../data/agents';
@@ -57,7 +57,7 @@ function Schedules() {
               onClick={() =>
                 actions.runNow.mutate(schedule.id, {
                   onSuccess: () => notify(t('schedules.started', { name: schedule.name })),
-                  onError: (error) => notify(error instanceof ApiClientError ? error.message : t('common.error')),
+                  onError: (error) => notify(errorText(error, t)),
                 })
               }
             >

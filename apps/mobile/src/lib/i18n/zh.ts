@@ -262,6 +262,8 @@ export const zh: Catalog = {
     knowledge: '知识库',
   },
   requests: {
+    expandPreview: '展开预览',
+    collapsePreview: '收起预览',
     title: '需要你',
     review: '查看',
     openHint: '打开卡片做决定',

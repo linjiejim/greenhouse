@@ -119,7 +119,7 @@ v2 和 v1 不兼容，不加 `/api/v2` 前缀，也不保留旧路由。`GET /ap
 | `GET /api/admin/channels` · `PUT …/:channel` · `POST …/:channel/test` | 渠道 `feishu`、`wecom`、`push`（Expo；飞书、企微在界面隐藏，随 IM 渠道开放）：`GET` 列出每个渠道能否送达（`configured`）、来源（`env` / `workspace`）、设置、哪些机密已填、最近一次成功与失败；`PUT` 保存一个渠道的设置（feishu：`base_url`、`app_id`、`app_secret`；wecom：`base_url`、`corp_id`、`agent_id`、`secret`；push：`base_url`、`access_token`；都可带 `enabled`），机密只写不读、省略即保留、`''` 清空，换地址同时清空机密；第一次保存或改环境变量来的设置时生成工作区实例，排在同类之首；`test` 给管理员自己发一条（绑定的账号、手机），没有可发的对象时只验证凭据，返回 `{ ok, delivered, latency_ms, error }`。邮件不在这里：它是邮箱服务 |
 | `GET` / `PUT /api/admin/mail` · `POST /api/admin/mail/test` | 邮箱服务：能否发信、Agent 邮箱的域名（来源 env / workspace，另附 `MAIL_AGENT_DOMAIN` 的值；`PUT { agent_domain }`，null 回到它，写审计）、Agent 邮箱是否开通、每个能收信的实例要填到服务商那里的入站地址；`test` 经第一个能发的实例给管理员自己发一封（`mail_not_configured`） |
 | `GET /api/admin/computers` · `PUT …/capacity` · `POST …/:id/stop` · `DELETE …/:id` | 电脑：所有成员的电脑与状态（不含画面和文件）；容量（空闲多少分钟后关机、最多同时开机，0 为不限，超出时开机返回 200 queued 和 queue_position，停机取消排队）；停止；重置（连主目录删除，下次使用重开） |
-| `POST /api/admin/computers/:id/backups` · `POST …/:id/backups/:backup/restore` | 管理员按需备份运行中的电脑；停机后恢复归属此电脑的成功备份（覆盖两个主目录，弹确认）。列表返回备份 id、时间、大小、状态、错误，永不返回存储位置或密钥。每进程最多同时 2 个备份，每个压缩主目录最多 32 MiB，恢复展开最多 256 MiB、10 万项，拒绝路径穿越／设备／越界链接；先验证完整密文再写盘。`backup_unavailable` 503、`backup_failed` 502、`backup_invalid`／`backup_restore_failed`／`computer_not_stopped` 409 |
+| `POST /api/admin/computers/:id/backups` · `POST …/:id/backups/:backup/restore` | 管理员按需备份运行中的电脑；停机后恢复归属此电脑的成功备份（覆盖两个主目录，弹确认）。列表返回备份 id、时间、大小、状态、错误，永不返回存储位置或密钥。每进程最多同时 2 个备份，每个压缩主目录最多 32 MiB，单个归档传输／导入最多 10 分钟，归档连接中断在同一时限内只重读一次，恢复展开最多 256 MiB、10 万项，拒绝路径穿越／设备／越界链接；先验证完整密文再写盘。`backup_unavailable` 503、`backup_failed` 502、`backup_invalid`／`backup_restore_failed`／`computer_not_stopped` 409 |
 | `GET /api/admin/usage?period=&group_by=member\|agent\|provider\|capability` | 工作区用量 |
 | `GET` / `PUT /api/admin/budgets` · `DELETE …/:id` | 预算：组织、服务实例、成员、公开 Agent 四种范围，token 或美元，按月；`PUT` 建立或替换一个范围与单位的预算；列表带本月已用 |
 | `GET` / `PATCH /api/admin/operations` | 运维开关（仅管理员）：`pause_background_runs`、`disable_computers`、`disable_outbound_mail`，部分更新，审计只记字段名 |
@@ -276,7 +276,7 @@ M3 媒体与计数（#70）：
 - `GET /api/runs?parent=<run id>` 仅返回当前成员拥有的子运行；运行视图带 `parent_run_id` 和子运行的 `summary`。子运行仍经已有详情与取消接口查看，不允许直接重试（`helper_retry`），由新的主 Agent 回合重新安排。
 - `helper_run { briefs: [{ title, brief }] }` 仅在主 Agent 的个人回合提供。一个回合最多 3 个、每个 8 步、仅只读后台工具，父回合暂停后经 `run_report` 一次收齐最多三个摘要（总上限 8,000 字符）；摘要续回不能再开一批，只有新的成员消息重置上限。摘要和工作日志正文均按不可信数据处理。拒绝码包括 `helper_limit`、`helper_forbidden`、`parent_unavailable`、`budget_exceeded`、`budget_estimate_unavailable`。
 - 工具输出超过约 8,000 字符时返回 `{ file: { id, name }, head, length, note }`。`tool_output_read { file_id, offset?, length? }` 返回 `offset`、总长度 `length`、本段消耗的字符数 `read_length`、正文 `content` 与 `next_offset`（默认和上限均为 3,500 字符；含 JSON 转义的完整结果不超过 8,000 字符，必要时缩小窗口，不再次省略；按 `next_offset` 读到 null 即读完），每次检查成员的文件权限。文件到期或无权读取均返回 `not_found`。文件仅主人可读不等于来源私有：公开网页、搜索和未读私有数据时自行生成的输出，读回后仍可联网；知识库、记忆和需鉴权的连接器输出继续按私有数据限制后台联网，缺失来源信息也按私有处理。若动作已完成但输出存储失败，步骤仍成功，结果明确返回 `storage_error`、开头与长度，不虚构文件，也不诱发重复写入。
-- `memory.recall` 支持 `from` / `to`（UTC 日期 YYYY-MM-DD，含两端）；至少给查询词或日期范围。后台提供的工具参数只包含 recall，不提供 remember / update / forget；系统在后台运行结束时写工作日志，不接受运行结果中的记忆指令。
+- `memory.recall` 支持索引中的 `id` 精确读取，以及 `query` 查询词、`from` / `to`（UTC 日期 YYYY-MM-DD，含两端）；至少给记忆编号、非空查询词或日期范围。编号仍只在当前成员与 Agent 的记忆分区内匹配。后台提供的工具参数只包含 recall，不提供 remember / update / forget；系统在后台运行结束时写工作日志，不接受运行结果中的记忆指令。
 - 工程命令：`pnpm cli eval export <run|message id>` 在本地连接的 v2 数据库导出 `fixtures/eval/*.json`；成员消息会找到当前对应的回合，多个 Agent 同时回答时返回 `eval_ambiguous`，应指定回复或运行 id；`TEST_DATABASE_URL=... pnpm eval` 用脚本模型回放，不请求真实模型。夜间真实模型用例留 M3.6。
 
 插话与恢复（#70）：已带入的消息、后续模型上下文和新回复检查点同事务持久化；进程崩溃后接着写当前回复，不重复已完成工具，也可继续插话。排空中的 API 不再带入新消息，由其他 API 接手队列。
@@ -305,7 +305,7 @@ M3 媒体与计数（#70）：
 
 应用关联选项只查询当前发布的记录卡片，复用卡片筛选与应用权限；没有对应候选卡片时提供网页填写入口，不查询完整表格目录。成员候选使用成员目录，附件沿用受控上传与签名文件链接。
 
-#70 电脑与应用补充：电脑停机前备份是有界同步操作；存储暂不可用时记录失败，保留原主目录并继续停机。队列由数据库状态保存，以事务锁认领容量，worker 每分钟补偿，超过 15 分钟的 starting 复核沙箱状态。丢失持久主目录时从最新成功备份恢复；密文不可用时失败，不悄悄用空目录开机。备份依赖部署的 provider 加密密钥，恢复部署时必须保留该密钥。
+#70 电脑与应用补充：电脑停机前备份是有界同步操作；存储暂不可用时记录失败，保留原主目录并继续停机。队列由数据库状态保存，以事务锁认领容量，worker 每分钟补偿，超过 15 分钟的 starting 复核沙箱状态。丢失持久主目录时从最新成功备份恢复；密文不可用时失败，不悄悄用空目录开机。备份依赖部署的 provider 加密密钥，恢复部署时必须保留该密钥。#70：同一备份接口支持 Docker 与 E2B；排除浏览器组件下载缓存，恢复时保留执行导入的进程祖先，避免冻结 E2B 桥。
 
 external 卡片仅执行保存的只读连接器工具，auth_mode 必须是 per_member 或 oauth；每次求值和缓存命中前重查查看者的连接及连接器版本。缓存 15 秒、最多 500 项，结果最多 256 KB／100 行，JSON Pointer 映射标量，连接器 HTML 永不执行。应用角色不裁剪外部系统数据，但应用和底层表格访问权仍是入口条件。
 
@@ -333,3 +333,7 @@ custom 网页运行使用双层 `sandbox="allow-scripts"` iframe，均无 allow-
 - `GET /api/runs?state=active` 的列表为空时附 `recent_finished`：按实际结束时间取最近三条已结束运行，沿用本人、Agent、来源及父运行筛选；原有 `items/next_cursor` 分页不变。这样较早创建、刚结束的长运行也会出现在空状态。
 
 整合回归（#70，T14）：工具失败的模型结果与步骤摘要继续使用本地化的人类文字；`run_steps.error.code` 保留服务的稳定错误码，意外异常才记为 `tool_failed`。预算不足为 `budget_exceeded`，未设置价格为 `budget_estimate_unavailable`，表格自动化越过批准的来源表格为 `source_base_only`。知识查询的 `space` 保留范围枚举，`space_label` 和 `where` 提供可读范围与位置。
+
+运维开关拒绝操作时统一返回 `operation_disabled`，`details.switch` 区分 `pause_background_runs`、`disable_computers`、`disable_outbound_mail`；Web 与原生按此字段显示本地化原因。截图已作为回复附件展示时，浏览器工具只向模型返回 `file_name` 和展示说明，文件编号仍由服务端保存。
+
+会话自动标题（#70，T18）：快速模型只读取首条成员消息，概括成员请求，不读取助手回复、工具步骤或中途失败措辞；只在标题仍为空时写入，保留成员手动设置的标题。

@@ -64,6 +64,7 @@ The one engine for conversations and runs. Read with the root AGENTS.md and docs
 - Claiming uses FOR UPDATE SKIP LOCKED; at most 3 running per member and 4 per process; 20 minutes and 30 steps per attempt.
 - A run is created queued in the transaction of what causes it (`background.create`) and kicked after the commit; any process takes it from the queue. A schedule's firing claims the schedule, moves it to its next time after now and queues the run in one transaction, so firings missed while no process ran collapse into one run.
 - A run whose process died is requeued up to 3 attempts; a shutdown requeues without counting as a failure.
+- Keep the background heartbeat and live-run registration through computer cleanup, including slow hosted backups; recovery must never reclaim a run while its cleanup still owns the computer.
 - Every model step, as it ends, records what it added (the model's message, then the tool results) as a `run_steps` row of kind `model` (steps.ts, about 20k characters, long results cut first). Turns atomically record their step, reply id and completed text length too; recovery reuses that message and discards only the unfinished suffix; the run detail never lists them.
 - A retry continues from the recorded steps after the brief, never from scratch; a call with the same tool and arguments as a succeeded step returns the recorded output. A run whose last recorded step was its answer ends with it.
 - The timeline (`run_events`) is numbered per run and written in order. The end of a run is reported into its conversation (or the Agent's own thread) and notified.
@@ -196,3 +197,7 @@ The one engine for conversations and runs. Read with the root AGENTS.md and docs
 - Tool failures project a human action and cause before model evidence and step persistence; room summaries hide private field names. Recovered steps require a later success on the same action/object and a successful reply. Reused model call ids settle the newest running call.
 
 - Human error projection preserves ApiError codes on both normal and approved steps. Budget and source-base restrictions retain actionable localized causes; unexpected service messages stay private. Refresh Eval hashes only for changed tool definitions.
+
+- Engine timers use createTimerScope, are unref'd and disposed before database teardown. Test services close before transaction rollback, including timeout paths. Per-run scopes also cover setup failures.
+- Memory recall accepts an indexed id within the current member/Agent partition. Screenshot tool results name the attached file without its storage id. Mark knowledge summary privacy again after approved inputs are parsed.
+- Automatic chat titles summarize only the first member message. Never feed assistant refusals, interim steps or outcomes to the title model; preserve manually set titles with the conditional update.

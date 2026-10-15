@@ -267,6 +267,8 @@ export const en = {
     knowledge: 'Knowledge',
   },
   requests: {
+    expandPreview: 'Expand preview',
+    collapsePreview: 'Collapse preview',
     title: 'Needs You',
     review: 'Review',
     openHint: 'Opens the card to decide',

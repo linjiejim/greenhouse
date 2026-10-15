@@ -89,6 +89,51 @@ describe('computer backup lifecycle', () => {
     await app.services.computers.adminReset(admin.id, id);
     expect(objects.size).toBe(0);
   });
+  it('discards an interrupted archive and retries once, while bounding repeated disconnects', async () => {
+    const app = createTestApp(fakeSandboxEnv());
+    const admin = await app.member('admin');
+    const storage = await app.services.providers.create(admin.id, 'workspace', {
+      capability: 'storage',
+      kind: 'backup-test',
+      name: 'Backup retry',
+      config: {},
+      secrets: {},
+    });
+    await app.services.providers.setBinding(admin.id, 'storage', {
+      instance_ids: [storage.id],
+      defaults: {},
+      policy: {},
+    });
+    await app.call('POST', '/api/agents/main/computer/start', { token: admin.token });
+    const id = (await app.services.computers.adminList(admin.id)).items[0]!.id;
+    let reads = 0;
+    fake.onStream = (stream) => {
+      if (!stream.argv.includes('tar')) return;
+      reads++;
+      if (reads === 1) {
+        stream.output.write(Buffer.from('partial'));
+        stream.exit(null);
+      } else stream.output.write(Buffer.from('complete home'));
+    };
+    await app.services.computers.adminBackup(admin.id, id);
+    expect(reads).toBe(3);
+    expect((await app.services.computers.adminList(admin.id)).items[0]!.backups).toEqual([
+      expect.objectContaining({ status: 'complete' }),
+    ]);
+    reads = 0;
+    fake.onStream = (stream) => {
+      if (!stream.argv.includes('tar')) return;
+      reads++;
+      stream.exit(null);
+    };
+    await expect(app.services.computers.adminBackup(admin.id, id)).rejects.toMatchObject({ code: 'backup_failed' });
+    expect(reads).toBe(2);
+    expect((await app.services.computers.adminList(admin.id)).items[0]!.backups.map((b) => b.status)).toEqual([
+      'failed',
+      'complete',
+    ]);
+  });
+
   it('keeps failure metadata and still allows a stop when the archive fails', async () => {
     const app = createTestApp(fakeSandboxEnv());
     const admin = await app.member('admin');

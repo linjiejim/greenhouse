@@ -62,7 +62,7 @@ async function waitFor(check: () => boolean, ms = 10_000) {
   }
 }
 
-export async function startBridges(): Promise<BridgeHarness> {
+export async function startBridges(options: { fastHeartbeat?: boolean } = {}): Promise<BridgeHarness> {
   const dir = mkdtempSync(join(tmpdir(), 'gh-bridge-'));
   // The script resolves `ws` next to itself, as /opt/gh-bridge does in the template.
   const app = join(dir, 'app');
@@ -93,13 +93,19 @@ export async function startBridges(): Promise<BridgeHarness> {
     servers.push(server);
   }
   const children: ChildProcess[] = [];
+  const clock = join(dir, 'clock.mjs');
+  if (options.fastHeartbeat)
+    writeFileSync(
+      clock,
+      'const interval = globalThis.setInterval; globalThis.setInterval = (fn, ms, ...args) => interval(fn, ms === 20000 ? 100 : ms, ...args);',
+    );
   async function bridge(name: string, extra: Record<string, string>): Promise<Bridge> {
     const port = await freePort();
     const secretFile = join(dir, `${name}.secret`);
     writeFileSync(secretFile, 'unset'.repeat(10), { mode: 0o600 });
     const ready = join(dir, `${name}.ready`);
     children.push(
-      spawn(process.execPath, [join(app, 'gh-bridge.mjs')], {
+      spawn(process.execPath, [...(options.fastHeartbeat ? ['--import', clock] : []), join(app, 'gh-bridge.mjs')], {
         env: {
           PATH: `${bin}:${process.env.PATH ?? ''}`,
           HOME: dir,

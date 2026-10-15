@@ -580,7 +580,7 @@ export function createE2bSandbox(config: E2bConfig, apiKey: string, deps: E2bDep
       const handle = await running(checkName(name));
       await api.network(
         handle.id,
-        domains === null ? { denyOut: PROVIDER_DENY_OUT } : { allowOut: [...domains], denyOut: ['0.0.0.0/0', '::/0'] },
+        domains === null ? { denyOut: PROVIDER_DENY_OUT } : { allowOut: [...domains], denyOut: ['0.0.0.0/0'] },
       );
     },
     async ensure(spec) {

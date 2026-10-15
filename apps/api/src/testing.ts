@@ -5,10 +5,19 @@ import { createApp, createServices, type ServiceOptions, type Services } from '.
 import { hashPassword } from './auth/password.js';
 import { loadConfig } from './config/index.js';
 
+const testServices = new Set<Services>();
+
+/** Called before test transaction rollback, including after a test timeout. */
+export async function disposeTestServices(): Promise<void> {
+  const services = [...testServices];
+  testServices.clear();
+  await Promise.all(services.map((service) => service.engine.shutdown({ graceMs: 0 })));
+}
+
 export const TEST_PASSWORD = 'correct horse battery';
 
 export function createTestServices(overrides: Record<string, string> = {}, options: ServiceOptions = {}): Services {
-  return createServices(
+  const services = createServices(
     loadConfig({
       AGENT_EVENT_MERGE_MS: '0',
       NODE_ENV: 'test',
@@ -21,6 +30,8 @@ export function createTestServices(overrides: Record<string, string> = {}, optio
     }),
     options,
   );
+  testServices.add(services);
+  return services;
 }
 
 export function createTestApp(overrides?: Record<string, string>, options?: ServiceOptions) {

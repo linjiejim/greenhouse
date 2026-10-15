@@ -249,6 +249,9 @@ importers:
       '@greenhouse/ui':
         specifier: workspace:*
         version: link:../../packages/ui
+      '@greenhouse/utils':
+        specifier: workspace:*
+        version: link:../../packages/utils
       '@novnc/novnc':
         specifier: ^1.7.0
         version: 1.7.0

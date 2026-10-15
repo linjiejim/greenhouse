@@ -1,16 +1,20 @@
 import { z } from 'zod';
 import { MEMORY_CATEGORIES } from '@greenhouse/contract';
 import type { AgentsService } from '../../modules/agents/service.js';
+import { ApiError } from '../../http/errors.js';
 import { defineTool } from './define.js';
 
 const recallInput = z
   .object({
     action: z.literal('recall'),
+    id: z.string().min(1).max(64).optional().describe('Internal memory id from the index; reads this memory only.'),
     query: z.string().max(200).optional().describe('Words to look for; omit for a date range.'),
     from: z.iso.date().optional().describe('Inclusive UTC date, YYYY-MM-DD.'),
     to: z.iso.date().optional().describe('Inclusive UTC date, YYYY-MM-DD.'),
   })
-  .refine((args) => !!args.query || !!args.from || !!args.to, { message: 'Give words or a date range.' });
+  .refine((args) => !!args.id || !!args.query?.trim() || !!args.from || !!args.to, {
+    message: 'Give a memory id, words or a date range.',
+  });
 
 const input = z.discriminatedUnion('action', [
   z.object({
@@ -34,7 +38,7 @@ export function memoryTool(agents: AgentsService) {
   return defineTool({
     name: 'memory',
     description:
-      'Your memory of this member: durable facts, preferences and lessons about how to do your job. Titles of what you remember are listed each turn; recall reads the detail. Never store secrets, passwords or task details. Background runs offer recall only.',
+      'Your memory of this member: durable facts, preferences and lessons about how to do your job. Titles and internal ids of what you remember are listed each turn; recall accepts id to read one entry, or query/from/to to search. Never store secrets, passwords or task details. Background runs offer recall only.',
     input,
     backgroundInput: recallInput,
     // Notes in the Agent's own memory, which the member can review and delete at any time.
@@ -94,12 +98,14 @@ export function memoryTool(agents: AgentsService) {
         return { remembered: saved.id, updated_at: saved.updated_at };
       }
       if (args.action === 'recall') {
-        if (!args.query && !args.from && !args.to) throw new Error('Give words or a date range to recall.');
+        if (!args.id && !args.query?.trim() && !args.from && !args.to)
+          throw new ApiError(400, 'invalid_input', 'Give a memory id, words or a date range to recall.');
         const query = (args.query ?? '').toLowerCase();
         const all = await agents.memories(ctx.memberId, handle, 'active');
         const hits = all
           .filter(
             (memory) =>
+              (!args.id || memory.id === args.id) &&
               `${memory.title}\n${memory.content}`.toLowerCase().includes(query) &&
               (!args.from || memory.created_at.slice(0, 10) >= args.from) &&
               (!args.to || memory.created_at.slice(0, 10) <= args.to),

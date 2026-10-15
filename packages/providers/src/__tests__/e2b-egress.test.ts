@@ -35,7 +35,7 @@ describe('hosted egress rules', () => {
     for (const range of ['10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16', '100.64.0.0/10']) {
       expect(member).toContain(range);
     }
-    expect(member).toContain('ip6 daddr { fc00::/7, fe80::/10, ff00::/8 } reject');
+    expect(member).toContain('ip6 daddr != ::1 reject');
     expect(member).toContain('tcp dport { 111, 7681, 7682, 49983 } reject with tcp reset');
     expect(EGRESS_RULESET.startsWith('table inet gh_egress\ndelete table inet gh_egress\n')).toBe(true);
     expect(Buffer.from(egressApplyEnv().GH_EGRESS_NFT!, 'base64').toString()).toBe(EGRESS_RULESET);

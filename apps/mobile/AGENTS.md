@@ -115,3 +115,6 @@
 - ListSection takes direct rows (arrays are fine), not a Fragment: it passes last to each child. Large text wraps row values and card headings without remounting screen state.
 
 - Shared-note create/edit uses the note route and native multiline forms, never a global Alert.prompt: incoming links must not leave an editor over another screen. Guard saves and late feedback by focus and identity.
+
+- Approval Markdown previews use inert preview mode: no links, images or executable rich blocks; clamp long content with expand. Receipts display the server message content verbatim. All dictionary interpolation uses the verbatim copy of packages/utils/src/i18n.ts in src/lib/i18n/format.ts, guarded by vendor.parity.test.ts. It adds a space at Han/Latin-or-digit boundaries even when templates omit it, and removes spaces between Han runs.
+- Map operation_disabled plus details.switch through operationErrorText; never show the server's English pause copy as a member-facing reason.

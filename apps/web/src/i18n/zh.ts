@@ -116,7 +116,7 @@ export const zh = {
   'chat.noteBody': '内容',
   'chat.noNotes': '还没有笔记',
   'chat.noteDone': '完成',
-  'chat.remove': '移除',
+  'chat.remove': '移除 {name}',
   'chat.add': '添加',
   'chat.members': '成员',
   'chat.starters': '可以这样开始',
@@ -877,6 +877,9 @@ export const zh = {
   'agents.connectorsNone': '一个都不用',
   'agents.connectorNotConnected': '未连接，先在「设置 → 连接」连上',
 
+  'errors.computersDisabled': '管理员已临时禁用电脑，请稍后再试。',
+  'errors.backgroundPaused': '管理员已暂停后台运行；排队的工作会保留，恢复后继续。',
+  'errors.outboundMailDisabled': '管理员已临时暂停发送邮件，请稍后再试。',
   'errors.operationDisabled': '管理员已临时暂停此操作，请稍后再试。',
   'errors.connectorOff': '管理员已关闭这个连接器',
   'errors.connectionBusy': '这个连接刚被改过，请重试',

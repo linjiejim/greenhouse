@@ -44,7 +44,7 @@ v2 从零建表：只有一份基线迁移，不继承 v1 的迁移链，也不�
   - 与 v1 不同：v1 有 6 条上传路径，写死腾讯 COS 的 `cos_key`，图片没有数据库行、靠公开读。
 - 机密
   - 只写不读。密文列以 `_enc` 结尾，AES-256-GCM，密文带密钥版本前缀以便轮换，AAD 绑定「表 : 行 id : 列」（密码库另绑定成员）。任何读路径都不返回 `_enc` 列。
-  - 两把钥匙：`PROVIDER_TOKEN_ENCRYPTION_KEY` 管服务、连接、连接器和自动化密钥；`VAULT_ENCRYPTION_KEY` 管密码库和电脑备份密钥。
+  - 两把钥匙：`PROVIDER_TOKEN_ENCRYPTION_KEY` 管服务、连接、连接器、自动化密钥和电脑备份；`VAULT_ENCRYPTION_KEY` 管密码库。
   - 能哈希的就不加密：密码（自描述格式 `scrypt$…`）、刷新令牌、OAuth 授权码与令牌、激活链接只存哈希。
 - 审计与用量
   - `audit_events` 是唯一的只追加审计表。它记录谁（成员、Agent、外部客户端或系统）代表谁，对什么做了什么，结果如何；不记内容和机密。
@@ -82,7 +82,6 @@ v2 从零建表：只有一份基线迁移，不继承 v1 的迁移链，也不�
 | `standing_approvals` | 成员在卡片上授予的预先授权 | `id`（sap 前缀）、`agent_id` / `member_id`（CASCADE）、`scope_type`（folder / table）、`scope_id`（逻辑引用）、`actions`、`granted_at`、`revoked_at`；未撤销的 `(agent_id, member_id, scope_type, scope_id)` 唯一；第 3 档不能授予，taint 后不能使用，撤销记录保留 |
 | `agent_computers` | Agent 电脑的生命周期 | `agent_id` `CASCADE`、`owner_id`（这台电脑是谁的）、`provider_id`（沙箱实例）、`sandbox_ref`（适配器自己的容器、卷或沙箱 id）、`state`（stopped / queued / starting / running / failed）、`queued_at`（FIFO，同时间按 id 排序）、`state_reason`、`timezone`、`version`、`last_active_at`、`last_started_at`；唯一 `(agent_id, owner_id)`：主人一台，公开 Agent 的发布允许电脑时，使用它的成员各一台；观看、接管和终端用一次性 ticket，连接打开期间刷新 `last_active_at`；后台占用 `background_run_id`（逻辑运行引用）及 `egress_restricted`（退出后直到正常网络恢复）；画面租约 `lease_controller`（member / agent，空 = 无人）、`lease_holder`（持有它的控制画面或浏览器动作）、`lease_until`：成员的控制画面打开期间一直持有并续期，Agent 的每个浏览器动作短暂持有；成员总能拿到，Agent 只在无人持有或已过期时拿到（AGNT-22） |
 | `computer_backups` | 加密主目录备份 | `computer_id` `CASCADE`、`provider_id`（存储实例）、`object_key`、`status`（complete / failed）、`bytes`、`error`、`created_at`；最近各 3 条，重置电脑先删除存储对象。密文绑定 owner/computer/backup id，使用部署的 provider 加密密钥，不提供下载地址 |
-| `computer_backups` | 电脑家目录的加密备份 | `computer_id`、`owner_id`（逻辑）、`status`、`reason`（idle / admin / migration）、`storage_prefix`、`key_enc`、`format`、`bytes`、`restored_at`；每台电脑最多一条 running；先删对象再删行 |
 | `computer_watches` | 电脑上的后台进程结束时唤醒 Agent | `computer_id` `CASCADE`、`agent_id`、`member_id`（以谁的权限唤醒）、`conversation_id`、`job_ref`（按电脑唯一）、`name`、`status`（watching / notified / gone，从 watching 单次认领，7 天无果作废） |
 | `agent_mailboxes` | Agent 邮箱（AGNT-30） | `agent_id` `CASCADE`（唯一）、`local_part`（工作区内唯一，小写；默认「名字-随机 4 位」）、`allow_members`（工作区成员的来信能叫醒它，默认开）；域名是 `mail` 能力的默认项 `agent_domain`，改域名就改了所有地址；主人第一次查看时建立 |
 | `mail_senders` | 主人放行的发件人 | 主键 `(agent_id, address)`、`agent_id` `CASCADE`、`address`（小写）、`added_by`；主人自己总在名单里，成员按 `allow_members` |

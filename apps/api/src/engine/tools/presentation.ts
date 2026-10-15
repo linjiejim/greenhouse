@@ -191,6 +191,7 @@ export function failureSummary(
   };
   const expected = details?.expected && reasons[details.expected]?.[zh ? 0 : 1];
   const codes: Record<string, [string, string]> = {
+    operation_disabled: ['管理员已临时暂停此操作，请稍后再试', 'An admin paused this operation; try again later'],
     budget_exceeded: ['剩余预算不足', 'There is not enough remaining budget'],
     budget_estimate_unavailable: ['模型尚未设置价格，无法核对预算', 'Model prices are required to check the budget'],
     source_base_only: ['这次运行只能读取来源表格', 'This run can only read its source base'],

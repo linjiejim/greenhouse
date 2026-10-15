@@ -1,4 +1,5 @@
-import { afterAll, beforeAll } from 'vitest';
+import { disposeTestServices } from '../../apps/api/src/testing.js';
+import { afterAll, afterEach, beforeAll } from 'vitest';
 import { createDbClient, setDb, type DbClient } from '@greenhouse/db';
 import { assertSafeTestDatabase, TEST_DATABASE_URL } from '@greenhouse/db/testing';
 
@@ -11,6 +12,8 @@ beforeAll(() => {
   client = createDbClient(TEST_DATABASE_URL, { max: 10 });
   setDb(client.db);
 });
+
+afterEach(() => disposeTestServices());
 
 afterAll(async () => {
   setDb(null);

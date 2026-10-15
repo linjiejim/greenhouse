@@ -65,6 +65,7 @@ export const integration = {
   noBudget: '未设置月度预算',
   computersDisabled: '管理员已临时禁用电脑，请稍后再试。',
   backgroundPaused: '管理员已暂停后台运行；排队的工作会保留，恢复后继续。',
+  outboundMailDisabled: '管理员已临时暂停发送邮件，请稍后再试。',
   operationPaused: '管理员已临时暂停此操作，请稍后再试。',
   skills: '技能',
   noSkills: '暂无技能',

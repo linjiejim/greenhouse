@@ -24,7 +24,8 @@
  *  - any other web-app route or relative link has no surface here → a system alert saying it
  *    opens in the web app.
  */
-import { type ReactNode, useCallback } from 'react';
+import { type ReactNode, useCallback, useContext } from 'react';
+import { PreviewContext } from './context';
 import { Text } from 'react-native';
 import { useRouter } from 'expo-router';
 import { isFilePath, parseAppPath } from '../../lib/app-links';
@@ -63,6 +64,7 @@ interface Ctx {
   s: InlineStyles;
   open: OpenLink;
   imageLabel: string;
+  preview: boolean;
 }
 
 type InlineTok = {
@@ -84,20 +86,24 @@ const URL_STOP = '\\s<>"\'`\\u2e80-\\u9fff\\u3000-\\u303f\\uff00-\\uffef';
 const URL_TAIL = '.,;:!?)\\]}*_~';
 const BARE_URL = new RegExp(`^https?:\\/\\/[^${URL_STOP}]*[^${URL_STOP}${URL_TAIL}]`);
 
-const linkNode = (href: string, label: ReactNode, k: number, { s, open }: Ctx, name?: string) => (
-  <Text key={k} style={s.link} onPress={() => open(href, name)} accessibilityRole="link">
-    {label}
-  </Text>
-);
+const linkNode = (href: string, label: ReactNode, k: number, { s, open, preview }: Ctx, name?: string) =>
+  preview ? (
+    <Text key={k}>{label}</Text>
+  ) : (
+    <Text key={k} style={s.link} onPress={() => open(href, name)} accessibilityRole="link">
+      {label}
+    </Text>
+  );
 
 const INLINE_TOKENS: InlineTok[] = [
   {
     re: /^!\[([^\]]*)\]\(\s*([^)\s]+)\s*\)/,
-    node: (m, k, { s, open, imageLabel }) => (
-      <Text key={k} style={s.link} onPress={() => open(m[2], m[1])} accessibilityRole="link">
-        {`[${m[1] || imageLabel}]`}
-      </Text>
-    ),
+    node: (m, k, { s, open, imageLabel, preview }) =>
+      preview ? null : (
+        <Text key={k} style={s.link} onPress={() => open(m[2], m[1])} accessibilityRole="link">
+          {`[${m[1] || imageLabel}]`}
+        </Text>
+      ),
   },
   {
     // CommonMark lets the destination sit between spaces: `[name]( /path )`
@@ -240,5 +246,6 @@ export function Inline({ text }: { text: string }) {
   const styles = useStyles(c);
   const open = useOpenLink();
   const t = useT();
-  return <>{renderInline(text.replace(BR, '\n'), { s: styles, open, imageLabel: t('chat.image') })}</>;
+  const preview = useContext(PreviewContext);
+  return <>{renderInline(text.replace(BR, '\n'), { s: styles, open, imageLabel: t('chat.image'), preview })}</>;
 }

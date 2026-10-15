@@ -116,7 +116,7 @@ export const en: Record<MessageKey, string> = {
   'chat.noteBody': 'Note',
   'chat.noNotes': 'No notes yet',
   'chat.noteDone': 'Done',
-  'chat.remove': 'Remove',
+  'chat.remove': 'Remove {name}',
   'chat.add': 'Add',
   'chat.members': 'Members',
   'chat.starters': 'Ways to start',
@@ -897,6 +897,9 @@ export const en: Record<MessageKey, string> = {
   'agents.connectorsNone': 'None',
   'agents.connectorNotConnected': 'Not connected; connect it in Settings → Connections',
 
+  'errors.computersDisabled': 'An admin temporarily disabled computers. Try again later.',
+  'errors.backgroundPaused': 'An admin paused background runs. Queued work is kept and will continue when resumed.',
+  'errors.outboundMailDisabled': 'An admin paused outbound mail. Try again later.',
   'errors.operationDisabled': 'An admin paused this operation. Try again later.',
   'errors.connectorOff': 'An admin turned this connector off',
   'errors.connectionBusy': 'This connection just changed; try again',
