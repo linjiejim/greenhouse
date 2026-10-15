@@ -1,5 +1,6 @@
 import { execFileSync, spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, it } from 'vitest';
 import { QUIESCE_SCRIPT, RESTORE_SCRIPT } from '../backups.js';
@@ -25,7 +26,7 @@ print(json.dumps(stopped))
 });
 
 it.each(['../escape', '/absolute', 'unsafe-link'])('rejects %s before changing an existing home', (name) => {
-  const home = mkdtempSync(join(process.cwd(), 'node_modules/.cache/t12-archive-'));
+  const home = mkdtempSync(join(tmpdir(), 'gh-archive-'));
   try {
     writeFileSync(join(home, 'original'), 'kept');
     const archive = execFileSync('python3', [
