@@ -202,8 +202,6 @@ describe('needs you', () => {
       .where(and(eq(messages.runId, sent.run_id)));
     expect(lines).toHaveLength(1);
     expect((await call('GET', '/api/requests?state=all', { token: lin.token })).body.items[0].status).toBe('expired');
-    expect((await call('GET', '/api/notifications', { token: lin.token })).body.items[0]).toMatchObject({
-      kind: 'request',
-    });
+    expect((await call('GET', '/api/notifications', { token: lin.token })).body.items).toEqual([]);
   });
 });

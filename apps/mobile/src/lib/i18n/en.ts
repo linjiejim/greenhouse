@@ -86,7 +86,6 @@ export const en = {
   shell: {
     openDrawer: 'Open the directory',
     notifications: 'Notifications',
-    notificationsCount: 'Notifications, {n} need you',
     notificationsUnread: 'Notifications, unread',
   },
   directory: {
@@ -300,6 +299,9 @@ export const en = {
       handedBack: 'Handed back',
       rejected: 'Rejected',
       expired: 'Expired',
+      superseded: 'Replaced by a newer request',
+      withdrawn: 'Request withdrawn',
+      answeredInChat: 'Answered in chat',
       canceled: 'Canceled',
     },
     body: {
@@ -310,12 +312,9 @@ export const en = {
   },
   notifications: {
     title: 'Notifications',
-    needsYou: 'Needs You',
-    all: 'All',
     markAllRead: 'Mark All as Read',
     markFailed: 'Couldn’t mark them read',
     empty: 'No notifications',
-    nothingNeedsYou: 'Nothing needs you',
     loadFailed: 'Couldn’t load notifications',
   },
   agents: {
@@ -441,6 +440,9 @@ export const en = {
       needsYou: 'Needs you',
       done: 'Done',
       failed: 'Failed',
+      superseded: 'Replaced by a newer request',
+      withdrawn: 'Request withdrawn',
+      answeredInChat: 'Answered in chat',
       canceled: 'Canceled',
     },
   },

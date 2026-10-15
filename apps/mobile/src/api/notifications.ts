@@ -8,7 +8,7 @@ import type { Notification, Page } from '../shared/contract';
 import { get, post } from './client';
 
 export interface NotificationSummary {
-  /** The one badge: how many things need the member. */
+  /** Pending requests for widget synchronization; notification badges use unread. */
   needs_you: number;
   unread: number;
 }

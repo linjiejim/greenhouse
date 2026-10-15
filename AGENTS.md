@@ -100,3 +100,5 @@ Greenhouse is an open-source, self-hosted platform where a team works with its o
 - Operational switches live in workspace.settings.kill_switches; read fresh at execution boundaries. Background pause keeps queued runs; computer cleanup and inbound mail remain available.
 - Extensions use extensions/define.ts and host.ts; only each extensions/index.ts imports concrete implementations. Their migrations never enter core baseline. See EXTENDING.md for the v2 surfaces.
 - Periodic worker sweeps catch and log rejected promises, then try again on the next tick; a transient database error must not exit the API process.
+
+- Requests own target identity in modules/requests/target.ts. Retiring a request clears its notification pointer and queues its decision atomically; superseded/withdrawn history stays in the conversation.

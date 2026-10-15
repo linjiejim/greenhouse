@@ -592,6 +592,7 @@ export type RealtimeEvent =
   | { type: 'request.updated'; data: { request_id: string; status: string; conversation_id: string | null } }
   | { type: 'notification.created'; data: { notification_id: string; kind: string; title: string } }
   | { type: 'notification.read'; data: { notification_ids: Array<string> } }
+  | { type: 'notification.removed'; data: { request_id: string } }
   | {
       type: 'computer.updated';
       data: { agent_id: string; state: 'failed' | 'stopped' | 'queued' | 'running' | 'starting' };
@@ -632,7 +633,16 @@ export type NeedsYou = {
   id: string;
   kind: 'approval' | 'login' | 'takeover' | 'question' | 'proposal';
   subject: string;
-  status: 'canceled' | 'pending' | 'approved' | 'rejected' | 'answered' | 'handed_back' | 'expired';
+  status:
+    | 'superseded'
+    | 'canceled'
+    | 'pending'
+    | 'approved'
+    | 'rejected'
+    | 'answered'
+    | 'handed_back'
+    | 'expired'
+    | 'withdrawn';
   conversation_id: string | null;
   run_id: string | null;
   agent_id: string | null;

@@ -81,7 +81,15 @@ function WorkspacePage({ route }: { route: Route }) {
     case 'doc':
       return knowledge ? <DocPage key={route.id} id={route.id} edit={!!route.edit} /> : <NotFoundPage />;
     case 'conversation':
-      return <ConversationPage key={route.id} id={route.id} agent={route.agent} skill={route.skill} />;
+      return (
+        <ConversationPage
+          key={route.id}
+          id={route.id}
+          agent={route.agent}
+          skill={route.skill}
+          request={route.request}
+        />
+      );
     case 'agents':
       return <AgentsPage scope={route.scope} />;
     case 'agent':
@@ -118,7 +126,7 @@ function WorkspacePage({ route }: { route: Route }) {
     case 'run':
       return <RunPage key={route.id} id={route.id} />;
     case 'notifications':
-      return <NotificationsPage view={route.view} />;
+      return <NotificationsPage />;
     case 'settings':
       return <SettingsPage section={route.section} />;
     case 'admin':

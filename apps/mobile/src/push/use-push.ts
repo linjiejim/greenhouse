@@ -73,9 +73,9 @@ export function usePushBridge(ready: boolean): void {
   }, [ready, loading, user, identity, taps, router]);
 
   // The badge follows the bell while the app runs; signed out → none.
-  const needsYou = useWorkspace((s) => (s.summary ? s.summary.needs_you : -1));
+  const unread = useWorkspace((s) => (s.summary ? s.summary.unread : -1));
   useEffect(() => {
     if (!PUSH_PLATFORM_READY || loading) return;
-    if (!user || needsYou >= 0) void syncBadge();
-  }, [needsYou, user, loading]);
+    if (!user || unread >= 0) void syncBadge();
+  }, [unread, user, loading]);
 }

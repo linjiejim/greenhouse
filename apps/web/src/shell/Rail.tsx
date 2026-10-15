@@ -87,7 +87,6 @@ export function Rail({ module }: { module: ModuleId }) {
   const markRead = useMarkRead();
   const markNotifications = useMarkNotificationsRead();
   const newTarget = useNewTarget(useRoute());
-  const needsYou = summary.data?.needs_you ?? 0;
   const unread = summary.data?.unread ?? 0;
 
   const markAllRead = () => {
@@ -206,16 +205,8 @@ export function Rail({ module }: { module: ModuleId }) {
           id="notifications"
           active={module === 'notifications'}
           menu={notificationsMenu}
-          onClick={() => navigate({ page: 'notifications', view: 'needs' })}
-          badge={
-            needsYou > 0 ? (
-              <span className="app-rail-count" aria-label={t('nav.needsYou', { count: needsYou })}>
-                {needsYou > 99 ? '99+' : needsYou}
-              </span>
-            ) : unread > 0 ? (
-              <span className="app-rail-dot" aria-label={t('nav.unread')} />
-            ) : undefined
-          }
+          onClick={() => navigate({ page: 'notifications' })}
+          badge={unread > 0 ? <span className="app-rail-dot" aria-label={t('nav.unread')} /> : undefined}
         />
         <Menu
           className="app-rail-account"

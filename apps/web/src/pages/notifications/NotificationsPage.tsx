@@ -1,16 +1,11 @@
-/**
- * Notifications (NTF-01): 需要你 lists every pending decision as its card, so it can be decided
- * here; 全部 lists what happened, newest first. Opening one goes back to its source.
- */
+/** One notification list; pending decisions are handled in their conversations. */
 
-import { BellOff, CheckCheck, CircleCheck } from 'lucide-react';
+import { BellOff, CheckCheck } from 'lucide-react';
 import { Button, Empty, ErrorBox, Skeleton } from '@greenhouse/ui/kit';
 import { icon } from '@greenhouse/ui/tokens';
 import type { Notification } from '@greenhouse/contract';
 import { useSession } from '../../app/session';
-import { RequestCard } from '../../conversation/RequestCard';
 import { useMarkNotificationsRead, useNotifications } from '../../data/notifications';
-import { useRequests } from '../../data/requests';
 import { api } from '../../lib/api';
 import { cx } from '../../lib/cx';
 import { useI18n } from '../../lib/i18n';
@@ -20,6 +15,8 @@ import { Page, PageHeader } from '../../shell/Page';
 
 /** Where a notification leads. */
 function targetOf(notification: Notification): Route | null {
+  if (notification.request_id && notification.target_type === 'conversation' && notification.target_id)
+    return { page: 'conversation', id: notification.target_id, request: notification.request_id };
   if (notification.run_id) return { page: 'run', id: notification.run_id };
   if (notification.target_type === 'conversation' && notification.target_id)
     return { page: 'conversation', id: notification.target_id };
@@ -41,22 +38,6 @@ async function openRecord(id: string) {
   if (detail) navigate({ page: 'base', id: detail.base_id, table: detail.table_id, record: id });
 }
 
-function NeedsYou() {
-  const { t } = useI18n();
-  const requests = useRequests(undefined, 'pending');
-  if (requests.isPending) return <Skeleton lines={4} />;
-  if (requests.isError) return <ErrorBox onRetry={() => void requests.refetch()}>{t('common.error')}</ErrorBox>;
-  if (!requests.items.length)
-    return <Empty icon={<CircleCheck strokeWidth={icon.stroke} />} title={t('notifications.nothingNeedsYou')} />;
-  return (
-    <div className="app-stack">
-      {requests.items.map((request) => (
-        <RequestCard key={request.id} request={request} showContext />
-      ))}
-    </div>
-  );
-}
-
 function All() {
   const { t, locale } = useI18n();
   const { me } = useSession();
@@ -69,7 +50,7 @@ function All() {
   if (!notifications.items.length)
     return <Empty icon={<BellOff strokeWidth={icon.stroke} />} title={t('notifications.empty')} />;
   return (
-    <ul className="app-list" aria-label={t('notifications.all')}>
+    <ul className="app-list" aria-label={t('notifications.title')}>
       {notifications.items.map((item) => {
         const target = targetOf(item);
         const open = () => {
@@ -118,7 +99,7 @@ function All() {
   );
 }
 
-export function NotificationsPage({ view }: { view: 'needs' | 'all' }) {
+export function NotificationsPage() {
   const { t } = useI18n();
   const markRead = useMarkNotificationsRead();
   return (
@@ -126,19 +107,17 @@ export function NotificationsPage({ view }: { view: 'needs' | 'all' }) {
       width="reading"
       header={
         <PageHeader
-          title={view === 'needs' ? t('notifications.needsYou') : t('notifications.all')}
+          title={t('notifications.title')}
           primary={
-            view === 'all' ? (
-              <Button kind="ghost" onClick={() => markRead.mutate({ all: true })}>
-                <CheckCheck size={icon.md} strokeWidth={icon.stroke} />
-                {t('notifications.markAllRead')}
-              </Button>
-            ) : undefined
+            <Button kind="ghost" onClick={() => markRead.mutate({ all: true })}>
+              <CheckCheck size={icon.md} strokeWidth={icon.stroke} />
+              {t('notifications.markAllRead')}
+            </Button>
           }
         />
       }
     >
-      {view === 'needs' ? <NeedsYou /> : <All />}
+      <All />
     </Page>
   );
 }
