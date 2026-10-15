@@ -85,6 +85,21 @@ test('a shared card grants an exact folder scope and its Agent abilities can rev
   await composer(page).press('Enter');
   const allow = page.getByRole('switch', { name: '以后这个文件夹都允许' });
   await expect(allow).toBeVisible();
+  const cards = await apiAs<{ items: { payload: { summary: string; details: unknown } }[] }>(
+    request,
+    'lin',
+    'GET',
+    '/api/requests?state=pending',
+  );
+  const card = cards.items.find((item) => JSON.stringify(item.payload.details).includes('shared draft in'))!;
+  expect(card).toBeTruthy();
+  expect(JSON.stringify([card.payload.summary, card.payload.details])).not.toMatch(
+    /\b[a-z]{3}_[0-9A-HJKMNP-TV-Z]{26}\b/,
+  );
+  await expect(page.locator('.app-request-details')).toContainText('shared draft in Always-on approvals');
+  mkdirSync(pictures, { recursive: true });
+  await page.screenshot({ path: `${pictures}named-approval.png`, fullPage: true });
+
   await expect(page.getByText('以后这个文件夹都允许', { exact: true })).toBeVisible();
   await allow.click();
   await page.getByRole('button', { name: '批准', exact: true }).last().click();

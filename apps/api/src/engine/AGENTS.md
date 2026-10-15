@@ -185,3 +185,5 @@ The one engine for conversations and runs. Read with the root AGENTS.md and docs
 - Nightly Eval uses the same synthetic fixtures with real provider resolution and bounded calls;
   service outputs are fixture data and shared writes must still stop at approval.
 - Table automation wakes carry their action index into background run input. Creating the run and linking its automation history stay in the same inbox transaction.
+
+- Request creation projects headings, summaries and details to permission-checked object names (modules/requests/display.ts). Never alter execution inputs or standing scopes. Room headings stay generic; app field labels use the publication/card column projection.

@@ -4,9 +4,7 @@
  */
 
 import { useEffect, useId, useState } from 'react';
-import { Network } from 'lucide-react';
-import { ChatCard } from '@greenhouse/ui/kit';
-import { icon } from '@greenhouse/ui/tokens';
+import { Skeleton } from '@greenhouse/ui/kit';
 import { useI18n } from '../../lib/i18n';
 import { Markdown } from '../Markdown';
 
@@ -38,12 +36,20 @@ export default function MermaidView({ code }: { code: string }) {
 
   if (failed) return <Markdown text={'```mermaid\n' + code + '\n```'} />;
   return (
-    <ChatCard icon={<Network size={icon.md} />} title={t('rich.diagram')}>
+    <>
       {svg ? (
-        <div className="app-mermaid" dangerouslySetInnerHTML={{ __html: svg }} />
+        <div
+          className="app-mermaid"
+          role="region"
+          tabIndex={0}
+          aria-label={t('rich.diagram')}
+          dangerouslySetInnerHTML={{ __html: svg }}
+        />
       ) : (
-        <div className="app-mermaid is-loading" aria-label={t('common.loading')} />
+        <div className="app-mermaid" role="status" aria-label={t('common.loading')}>
+          <Skeleton lines={6} />
+        </div>
       )}
-    </ChatCard>
+    </>
   );
 }

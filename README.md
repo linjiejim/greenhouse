@@ -133,7 +133,7 @@ pnpm api                 # API on 3000; MIGRATE_ON_START=1 applies the guarded b
 pnpm web:dev             # in another terminal; proxies /api to the API
 ```
 
-`GREENHOUSE_API` selects another API address for Vite. `pnpm web:build` builds the SPA served by the API. `apps/design` is a component prototype on mock data, not the product.
+`GREENHOUSE_API` selects another API address for Vite. Pages, the editor, rich charts/diagrams and the computer viewer load on demand with skeletons. Run `node scripts/check-web-bundle.mjs` after a web build to check the 350 KB entry budget and deferred modules. `pnpm web:build` builds the SPA served by the API. `apps/design` is a component prototype on mock data, not the product.
 
 ### A local stack with real services
 

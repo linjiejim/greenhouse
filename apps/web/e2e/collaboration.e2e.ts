@@ -45,7 +45,9 @@ test('export a chat as Markdown', async ({ page }) => {
   await open(page, '/#/c/new');
   await composer(page).fill('export me');
   await composer(page).press('Enter');
-  await expect(page.getByText('Echo: export me')).toBeVisible();
+  // Export the completed reply; model work uses the test's action budget, not a short UI assertion.
+  await page.getByText('Echo: export me').waitFor({ state: 'visible' });
+  await page.getByRole('button', { name: '停止', exact: true }).waitFor({ state: 'hidden' });
   await page.getByRole('main').getByRole('button', { name: '更多' }).click();
   const download = page.waitForEvent('download');
   await page.getByRole('menuitem', { name: '导出 Markdown' }).click();

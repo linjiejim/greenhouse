@@ -1,10 +1,12 @@
-import { useEffect, useRef, useState } from 'react';
-import { Button, ErrorBox, Overlay, Spinner } from '@greenhouse/ui/kit';
+import { lazy, Suspense, useEffect, useRef, useState } from 'react';
+import { Button, ErrorBox, Overlay, Skeleton, Spinner } from '@greenhouse/ui/kit';
 import type { PageContext } from '@greenhouse/contract';
 import { useCreateConversation } from '../data/conversations';
 import { useT } from '../lib/i18n';
 import { navigate, type Route } from '../lib/router';
-import { ConversationPage } from '../pages/conversation/ConversationPage';
+const ConversationPage = lazy(() =>
+  import('../pages/conversation/ConversationPage').then((module) => ({ default: module.ConversationPage })),
+);
 
 export function contextOf(route: Route): PageContext {
   if (route.page === 'doc' || route.page === 'run' || route.page === 'agent') return { kind: route.page, id: route.id };
@@ -50,7 +52,15 @@ export function PageConversation({
             >
               {t('pageConversation.open')}
             </Button>
-            <ConversationPage id={chatId} />
+            <Suspense
+              fallback={
+                <div role="status" aria-label={t('common.loading')}>
+                  <Skeleton lines={8} />
+                </div>
+              }
+            >
+              <ConversationPage id={chatId} />
+            </Suspense>
           </>
         ) : failed ? (
           <ErrorBox

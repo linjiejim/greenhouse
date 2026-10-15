@@ -89,6 +89,7 @@ import { runRoutes } from './modules/runs/routes.js';
 import { scheduleRoutes } from './modules/schedules/routes.js';
 import { createSchedulesService, type SchedulesService } from './modules/schedules/service.js';
 import { createRunsService, type RunsService } from './modules/runs/service.js';
+import { createCardDisplay } from './modules/requests/display.js';
 import { createRequestsService, type RequestsService } from './modules/requests/service.js';
 import { createConversationsService, type ConversationsService } from './modules/conversations/service.js';
 import { searchRoutes } from './modules/search/routes.js';
@@ -249,7 +250,13 @@ export function createServices(config: AppConfig, options: ServiceOptions = {}):
   const schedules = createSchedulesService({ agents, background: () => engine.background });
   // A committed decision wakes the engine's worker (made below) rather than waiting for its poll.
   const approvals = createApprovalsService(agents, knowledge, tables);
-  const requests = createRequestsService({ hub, notifications, approvals, decided: () => engine.wakeDecisions() });
+  const requests = createRequestsService({
+    hub,
+    notifications,
+    approvals,
+    display: createCardDisplay({ knowledge, tables, apps, agents, files, connectors, mail }),
+    decided: () => engine.wakeDecisions(),
+  });
   const media = createMediaService({ providers, files, knowledge, conversations, hub });
   tables.worker.register('media_video', media.handle);
   tables.worker.every(media.sweep);

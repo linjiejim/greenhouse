@@ -2490,6 +2490,7 @@ button.app-list-row {
 }
 
 .app-mermaid {
+  height: calc(6 * var(--gh-space-10));
   overflow: auto;
 }
 
@@ -2498,8 +2499,13 @@ button.app-list-row {
   height: auto;
 }
 
-.app-mermaid.is-loading {
+.app-rich-loading {
+  aspect-ratio: 16 / 7;
   min-height: calc(4 * var(--gh-space-10));
+}
+
+.app-screen-loading {
+  padding: var(--gh-space-4);
 }
 
 .app-file-list {
@@ -2521,6 +2527,7 @@ button.app-list-row {
 }
 
 .app-screen-bar {
+  min-height: var(--gh-space-8);
   display: flex;
   align-items: center;
   gap: var(--gh-space-2);
