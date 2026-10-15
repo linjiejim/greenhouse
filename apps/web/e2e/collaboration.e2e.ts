@@ -62,8 +62,10 @@ test('a room: Lin brings Mei and Greeny, Mei writes back, notes are shared, Mei 
   await dialog.getByLabel('房间名').fill('Launch');
   await dialog.getByRole('combobox', { name: '添加的人' }).click();
   await page.getByRole('option', { name: /Mei/ }).click();
+  await page.keyboard.press('Escape');
   await dialog.getByRole('combobox', { name: '带上我的 Agent' }).click();
   await page.getByRole('option', { name: /Greeny/ }).click();
+  await page.keyboard.press('Escape');
   await dialog.getByRole('button', { name: '创建房间' }).click();
   await expect(page).toHaveURL(/#\/c\/cnv_/);
   await expect(page.getByRole('main').getByText('Launch')).toBeVisible();

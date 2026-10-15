@@ -75,6 +75,7 @@ export interface StartBackground {
   tools?: string[];
   table_base_id?: string;
   automation_run_id?: string;
+  automation_action_index?: number;
   event_woken?: boolean;
   result_target?: { table_id: string; record_id: string; field_id?: string; revision: number };
   agentId: string;
@@ -916,6 +917,7 @@ export function createBackground(deps: {
             ...(input.tools ? { tools: input.tools } : {}),
             table_base_id: input.table_base_id,
             automation_run_id: input.automation_run_id,
+            automation_action_index: input.automation_action_index,
             result_target: input.result_target,
             reason: input.event_woken ? 'event' : undefined,
           },

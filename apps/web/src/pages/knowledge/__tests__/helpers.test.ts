@@ -86,9 +86,14 @@ describe('order, drops and reorders', () => {
   ];
 
   it('sorts by hand (as given), by name with folders first, or by the latest change', () => {
-    expect(sortItems(items, 'manual', 'zh').map((entry) => entry.id)).toEqual(['b', 'f', 'a']);
-    expect(sortItems(items, 'name', 'zh').map((entry) => entry.id)).toEqual(['f', 'a', 'b']);
-    expect(sortItems(items, 'updated', 'zh').map((entry) => entry.id)).toEqual(['a', 'b', 'f']);
+    expect(sortItems(items, 'manual').map((entry) => entry.id)).toEqual(['b', 'f', 'a']);
+    expect(sortItems(items, 'name').map((entry) => entry.id)).toEqual(['f', 'a', 'b']);
+    expect(sortItems(items, 'updated').map((entry) => entry.id)).toEqual(['a', 'b', 'f']);
+  });
+
+  it('uses the API’s natural pinyin order in either interface language', () => {
+    const rows = ['Doc 10', '中', '张', 'Doc 2', '阿'].map((name, index) => item({ id: String(index), name }));
+    expect(sortItems(rows, 'name').map((entry) => entry.name)).toEqual(['阿', '张', '中', 'Doc 2', 'Doc 10']);
   });
 
   it('puts in order only rows of one folder (分享给我 mixes owners)', () => {

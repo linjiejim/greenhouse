@@ -22,6 +22,9 @@ export const usageTotalsSchema = z.object({
   cache_hit_rate: z.number().min(0).max(1).nullable(),
   /** Input plus output: what token budgets count. */
   tokens: z.number().int(),
+  /** STT audio seconds and TTS characters, kept in their original units. */
+  stt_seconds: z.number().nonnegative(),
+  tts_characters: z.number().nonnegative(),
   /** Estimated cost in millionths of a US dollar, from the calls whose price is known. */
   cost_micros: z.number().int(),
   /** Calls whose cost is unknown (their model has no price), so cost_micros leaves them out. */

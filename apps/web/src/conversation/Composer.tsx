@@ -22,7 +22,7 @@ import {
   type KeyboardEvent,
 } from 'react';
 import { ArrowUp, AtSign, FileText, Mic, Paperclip, Square, Wand2, X } from 'lucide-react';
-import { Button, Field, IconButton, Input, Select, Spinner } from '@greenhouse/ui/kit';
+import { Button, Field, FieldGroup, IconButton, Input, Select, Spinner } from '@greenhouse/ui/kit';
 import { icon } from '@greenhouse/ui/tokens';
 import type { FileView, Skill } from '@greenhouse/contract';
 import { useSession } from '../app/session';
@@ -426,7 +426,7 @@ export function Composer({
                 <Wand2 size={icon.sm} aria-hidden />
                 <span className="app-chip-text">
                   /{chosen.name}
-                  {chosen.display_name ? ` · ${chosen.display_name}` : ''}
+                  {chosen.display_name && chosen.display_name !== chosen.name ? ` · ${chosen.display_name}` : ''}
                 </span>
                 <button
                   type="button"
@@ -464,35 +464,38 @@ export function Composer({
         )}
         {chosen && chosen.variables.length > 0 && (
           <div className="app-composer-fields" ref={fieldsBox}>
-            {chosen.variables.map((field) => (
-              <Field key={field.key} label={field.label} required={field.required !== false}>
-                {field.type === 'choice' && field.options?.length ? (
-                  <Select
-                    label={field.label}
-                    value={fields[field.key] ?? ''}
-                    options={field.options.map((option) => ({ value: option, label: option }))}
-                    onChange={(next: string) => {
-                      setFields({ ...fields, [field.key]: next });
-                      setFieldError('');
-                    }}
-                  />
-                ) : (
-                  <Input
-                    value={fields[field.key] ?? ''}
-                    onChange={(event) => {
-                      setFields({ ...fields, [field.key]: event.target.value });
-                      setFieldError('');
-                    }}
-                    onKeyDown={(event) => {
-                      if (event.key === 'Enter' && !event.nativeEvent.isComposing) {
-                        event.preventDefault();
-                        void send();
-                      }
-                    }}
-                  />
-                )}
-              </Field>
-            ))}
+            {chosen.variables.map((field) => {
+              const FormField = field.type === 'choice' && field.options?.length ? FieldGroup : Field;
+              return (
+                <FormField key={field.key} label={field.label} required={field.required !== false}>
+                  {field.type === 'choice' && field.options?.length ? (
+                    <Select
+                      label={field.label}
+                      value={fields[field.key] ?? ''}
+                      options={field.options.map((option) => ({ value: option, label: option }))}
+                      onChange={(next: string) => {
+                        setFields({ ...fields, [field.key]: next });
+                        setFieldError('');
+                      }}
+                    />
+                  ) : (
+                    <Input
+                      value={fields[field.key] ?? ''}
+                      onChange={(event) => {
+                        setFields({ ...fields, [field.key]: event.target.value });
+                        setFieldError('');
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter' && !event.nativeEvent.isComposing) {
+                          event.preventDefault();
+                          void send();
+                        }
+                      }}
+                    />
+                  )}
+                </FormField>
+              );
+            })}
             {fieldError && (
               <p className="app-request-error" role="alert">
                 {fieldError}

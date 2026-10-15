@@ -2,6 +2,25 @@
 
 import { cx } from '../lib/cx';
 import { useI18n } from '../lib/i18n';
+import type { UsageTotals } from '@greenhouse/contract';
+
+export function VoiceUsage({ totals }: { totals: Pick<UsageTotals, 'stt_seconds' | 'tts_characters'> }) {
+  const { t, locale } = useI18n();
+  return (
+    <>
+      <div className="app-stat">
+        <span className="app-stat-label">{t('usage.sttSeconds')}</span>
+        <span className="app-stat-value">
+          {totals.stt_seconds.toLocaleString(locale, { maximumFractionDigits: 2 })}
+        </span>
+      </div>
+      <div className="app-stat">
+        <span className="app-stat-label">{t('usage.ttsCharacters')}</span>
+        <span className="app-stat-value">{totals.tts_characters.toLocaleString(locale)}</span>
+      </div>
+    </>
+  );
+}
 
 export function formatTokens(tokens: number, locale: string): string {
   if (tokens >= 1_000_000)

@@ -5,7 +5,7 @@
 
 import { useState, type FormEvent } from 'react';
 import { ApiClientError } from '@greenhouse/contract/client';
-import { Button, Field, Input, MultiSelect, Overlay, OverlayActions } from '@greenhouse/ui/kit';
+import { Button, Field, FieldGroup, Input, MultiSelect, Overlay, OverlayActions } from '@greenhouse/ui/kit';
 import { useMe } from '../../app/session';
 import { useCreateConversation } from '../../data/conversations';
 import { usePeople } from '../../data/people';
@@ -44,7 +44,7 @@ export function NewRoomDialog({ onClose, people: preset = [] }: { onClose: () =>
         <Field label={t('chat.newRoomTitle')}>
           <Input value={title} maxLength={120} autoFocus onChange={(event) => setTitle(event.target.value)} />
         </Field>
-        <Field label={t('chat.addPeople')}>
+        <FieldGroup label={t('chat.addPeople')}>
           <MultiSelect
             label={t('chat.addPeople')}
             value={people}
@@ -53,15 +53,15 @@ export function NewRoomDialog({ onClose, people: preset = [] }: { onClose: () =>
               .map((member) => ({ value: member.id, label: member.name, description: member.email }))}
             onChange={setPeople}
           />
-        </Field>
-        <Field label={t('chat.addAgents')}>
+        </FieldGroup>
+        <FieldGroup label={t('chat.addAgents')}>
           <MultiSelect
             label={t('chat.addAgents')}
             value={bring}
             options={agents.map((agent) => ({ value: agent.handle, label: agent.name, description: agent.role }))}
             onChange={setBring}
           />
-        </Field>
+        </FieldGroup>
         {error && (
           <p className="app-form-error" role="alert">
             {error}

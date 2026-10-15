@@ -30,7 +30,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNotify } from '../../app/notify';
 import { api } from '../../lib/api';
 import { useI18n } from '../../lib/i18n';
-import { BudgetBar, formatCost, formatHitRate, formatTokens } from '../../shell/usage';
+import { BudgetBar, formatCost, formatHitRate, formatTokens, VoiceUsage } from '../../shell/usage';
 
 const BUDGETS = ['admin', 'budgets'] as const;
 
@@ -68,7 +68,7 @@ function BudgetDrawer({ budget, onClose }: { budget: Budget | null; onClose: () 
   return (
     <Overlay variant="dialog" title={budget ? t('budgets.edit') : t('budgets.add')} onClose={onClose}>
       <form id="budget" className="app-form" onSubmit={(event) => void submit(event)}>
-        <Field label={t('budgets.scope')}>
+        <FieldGroup label={t('budgets.scope')}>
           <Select
             label={t('budgets.scope')}
             value={scope}
@@ -83,9 +83,9 @@ function BudgetDrawer({ budget, onClose }: { budget: Budget | null; onClose: () 
               setScopeId('');
             }}
           />
-        </Field>
+        </FieldGroup>
         {scope !== 'workspace' && (
-          <Field label={scope === 'member' ? t('budgets.member') : t('budgets.provider')} required>
+          <FieldGroup label={scope === 'member' ? t('budgets.member') : t('budgets.provider')}>
             <Select
               label={scope === 'member' ? t('budgets.member') : t('budgets.provider')}
               value={scopeId}
@@ -105,7 +105,7 @@ function BudgetDrawer({ budget, onClose }: { budget: Budget | null; onClose: () 
               }
               onChange={setScopeId}
             />
-          </Field>
+          </FieldGroup>
         )}
         <FieldGroup label={t('budgets.unit')}>
           <Segmented
@@ -164,6 +164,8 @@ function Budgets() {
       </div>
       {budgets.isPending ? (
         <Skeleton lines={2} />
+      ) : budgets.isError ? (
+        <ErrorBox onRetry={() => void budgets.refetch()}>{t('common.error')}</ErrorBox>
       ) : !items.length ? (
         <Empty title={t('budgets.none')} />
       ) : (
@@ -269,6 +271,7 @@ export function UsageSection() {
               <span className="app-stat-label">{t('usage.cacheHitRate')}</span>
               <span className="app-stat-value">{formatHitRate(usage.data.totals.cache_hit_rate, locale)}</span>
             </div>
+            <VoiceUsage totals={usage.data.totals} />
           </div>
           {usage.data.groups.length ? (
             <div className="app-table-wrap">
@@ -280,6 +283,8 @@ export function UsageSection() {
                     <th className="is-number">{t('usage.cost')}</th>
                     <th className="is-number">{t('usage.requests')}</th>
                     <th className="is-number">{t('usage.cacheHitRate')}</th>
+                    <th className="is-number">{t('usage.sttSeconds')}</th>
+                    <th className="is-number">{t('usage.ttsCharacters')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -293,6 +298,10 @@ export function UsageSection() {
                       <td className="is-number">{formatCost(row.cost_micros, locale)}</td>
                       <td className="is-number">{row.requests.toLocaleString(locale)}</td>
                       <td className="is-number">{formatHitRate(row.cache_hit_rate, locale)}</td>
+                      <td className="is-number">
+                        {row.stt_seconds.toLocaleString(locale, { maximumFractionDigits: 2 })}
+                      </td>
+                      <td className="is-number">{row.tts_characters.toLocaleString(locale)}</td>
                     </tr>
                   ))}
                 </tbody>

@@ -66,7 +66,21 @@ export function useBases(archived = false, enabled = true) {
 }
 
 export function useBase(id: string) {
-  return useQuery({ queryKey: tablesKeys.base(id), queryFn: () => api.tables.bases.get(id) });
+  return useQuery({ queryKey: tablesKeys.base(id), queryFn: () => fetchBase(id) });
+}
+
+/** A refetch started before a view save can finish after it; keep the newer revision. */
+export async function fetchBase(id: string, client = queryClient): Promise<Base> {
+  const base = await api.tables.bases.get(id);
+  const cached = client.getQueryData<Base>(tablesKeys.base(id));
+  if (!cached) return base;
+  return {
+    ...base,
+    views: base.views.map((view) => {
+      const newer = cached.views.find((entry) => entry.id === view.id && entry.revision > view.revision);
+      return newer ?? view;
+    }),
+  };
 }
 
 /** Every record a view shows, page by page up to MAX_VIEW_RECORDS. */

@@ -154,7 +154,7 @@ export function FolderPage({
   space?: KnowledgeScope;
   file?: string;
 }) {
-  const { t, locale } = useI18n();
+  const { t } = useI18n();
   const me = useMe();
   const notify = useNotify();
   const openOverlay = useOpenOverlay();
@@ -216,7 +216,7 @@ export function FolderPage({
     onFiles: (files, into) => void uploads.start(files, { folder_id: into.id }),
   });
   const search = useKnowledgeSearch(debounced, folderId ? { folder_id: folderId } : { space: scope });
-  const sorted = useMemo(() => sortItems(items, sort, locale), [items, sort, locale]);
+  const sorted = useMemo(() => sortItems(items, sort), [items, sort]);
 
   const upload = (files: File[]) => {
     if (!uploadTarget || !files.length) return;

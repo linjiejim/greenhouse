@@ -1,7 +1,10 @@
 import { QueryClient } from '@tanstack/react-query';
 import { afterEach, expect, it, vi } from 'vitest';
-import type { RecordDetail, TableRecord } from '@greenhouse/contract';
-import { applyTablesEvent, putRecords, tablesKeys, type ViewRecords } from '../tables';
+import type { Base, RecordDetail, TableRecord } from '@greenhouse/contract';
+import { applyTablesEvent, fetchBase, putRecords, tablesKeys, type ViewRecords } from '../tables';
+
+const getBase = vi.hoisted(() => vi.fn());
+vi.mock('../../lib/api', () => ({ api: { tables: { bases: { get: getBase } } } }));
 
 const clients: QueryClient[] = [];
 const client = () => {
@@ -59,4 +62,19 @@ it('discards cached values and search hits when access rules change', () => {
   expect(cache.getQueryData(key)).toBeUndefined();
   expect(cache.getQueryData(tablesKeys.record('rec_1'))).toBeUndefined();
   expect(cache.getQueryData(['search', 'secret'])).toBeUndefined();
+});
+
+it('keeps a saved view when an older in-flight refetch arrives after its save queue drained', async () => {
+  vi.useFakeTimers();
+  const cache = client();
+  const old = { id: 'bas_1', views: [{ id: 'view_1', revision: 1, config: {} }] } as Base;
+  let release!: (base: Base) => void;
+  getBase.mockReturnValueOnce(new Promise<Base>((resolve) => { release = resolve; }));
+  const fetching = fetchBase('bas_1', cache);
+  const saved = { ...old, views: [{ ...old.views[0]!, revision: 3, config: { group: { field: 'fld_1' } } }] };
+  cache.setQueryData(tablesKeys.base('bas_1'), saved);
+  release(old);
+  expect((await fetching).views).toEqual(saved.views);
+  getBase.mockResolvedValueOnce({ ...old, views: [{ ...old.views[0]!, revision: 4, config: {} }] });
+  expect((await fetchBase('bas_1', cache)).views[0]!.revision).toBe(4);
 });

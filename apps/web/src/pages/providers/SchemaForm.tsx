@@ -5,7 +5,7 @@
  */
 
 import { Plus, Trash2 } from 'lucide-react';
-import { Button, Field, IconButton, Input, Select, Switch, TextArea } from '@greenhouse/ui/kit';
+import { Button, Field, FieldGroup, IconButton, Input, Select, Switch, TextArea } from '@greenhouse/ui/kit';
 import { icon } from '@greenhouse/ui/tokens';
 import type { MessageKey } from '../../i18n/zh';
 import { useI18n } from '../../lib/i18n';
@@ -77,14 +77,14 @@ function FieldFor({
 
   if (schema.enum?.length) {
     return (
-      <Field label={label} required={required}>
+      <FieldGroup label={label} required={required}>
         <Select
           label={label}
           value={value === undefined ? '' : String(value)}
           options={schema.enum.map((option) => String(option))}
           onChange={onChange}
         />
-      </Field>
+      </FieldGroup>
     );
   }
   if (type === 'boolean') {

@@ -357,10 +357,10 @@ async function treePage(parts: SQL[], page: TreePage): Promise<{ keys: TreeKey[]
     SELECT type, id, sort_order, rank, name FROM (${sql.join(parts, sql` UNION ALL `)}) AS tree
     WHERE ${
       after
-        ? sql`(sort_order <= 0, sort_order, rank, name, id) > (${after.sortOrder <= 0}::boolean, ${after.sortOrder}::int, ${after.rank}::int, ${after.name}::text, ${after.id}::text)`
+        ? sql`(sort_order <= 0, sort_order, rank, name COLLATE greenhouse_natural, id) > (${after.sortOrder <= 0}::boolean, ${after.sortOrder}::int, ${after.rank}::int, ${after.name}::text COLLATE greenhouse_natural, ${after.id}::text)`
         : sql`true`
     }
-    ORDER BY sort_order <= 0, sort_order, rank, name, id
+    ORDER BY sort_order <= 0, sort_order, rank, name COLLATE greenhouse_natural, id
     LIMIT ${page.limit + 1}`);
   const keys = [...rows].slice(0, page.limit).map((row) => ({
     type: row.type,

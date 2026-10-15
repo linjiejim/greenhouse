@@ -12,6 +12,7 @@ import {
   Empty,
   ErrorBox,
   Field,
+  FieldGroup,
   Input,
   Overlay,
   OverlayActions,
@@ -93,14 +94,14 @@ function MemoryForm({
             onChange={(event) => setContent(event.target.value)}
           />
         </Field>
-        <Field label={t('memory.category')}>
+        <FieldGroup label={t('memory.category')}>
           <Select
             label={t('memory.category')}
             value={category}
             options={MEMORY_CATEGORIES.map((value) => ({ value, label: t(CATEGORY_LABEL[value]) }))}
             onChange={(value) => setCategory(value as Category)}
           />
-        </Field>
+        </FieldGroup>
         <div className="app-setting-row">
           <div className="app-setting-text">
             <strong>{t('memory.pinned')}</strong>

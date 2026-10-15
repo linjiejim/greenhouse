@@ -114,7 +114,16 @@ export function AgentsPage({ scope }: { scope: AgentScope }) {
   }
 
   return (
-    <Page header={<PageHeader title={t(`agents.${scope}`)} primary={scope === 'mine' ? newAgent : undefined} />}>
+    <Page
+      header={
+        <PageHeader
+          title={t(`agents.${scope}`)}
+          primary={
+            scope === 'mine' && (agents.items.length > 0 || agents.isPending || agents.isError) ? newAgent : undefined
+          }
+        />
+      }
+    >
       {body}
     </Page>
   );

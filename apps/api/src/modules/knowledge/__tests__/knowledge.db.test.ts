@@ -66,6 +66,24 @@ async function setup() {
 }
 
 describe('spaces and the tree', () => {
+  it('paginates names naturally and by pinyin without losing equal names across pages', async () => {
+    const { lin, as } = await setup();
+    const folder = (await as(lin).post('/api/knowledge/folders', { name: 'Ordered', space: 'personal' })).body;
+    const titles = ['中', 'Doc 10', '张', '阿', 'Doc 2', 'Doc 1', 'Doc 2'];
+    for (const title of titles) await as(lin).post('/api/knowledge/docs', { title, folder_id: folder.id });
+    const names: string[] = [];
+    let cursor: string | null = null;
+    do {
+      const result = await as(lin).get(
+        `/api/knowledge/folders/${folder.id}?limit=2${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`,
+      );
+      expect(result.status).toBe(200);
+      names.push(...result.body.children.map((item: { name: string }) => item.name));
+      cursor = result.body.next_cursor;
+    } while (cursor);
+    expect(names).toEqual(['阿', '张', '中', 'Doc 1', 'Doc 2', 'Doc 2', 'Doc 10']);
+  });
+
   it('gives every member the team space and each member a personal space of their own', async () => {
     const { lin, chen, as } = await setup();
     const policies = await as(lin).post('/api/knowledge/folders', { name: 'Policies', space: 'team' });

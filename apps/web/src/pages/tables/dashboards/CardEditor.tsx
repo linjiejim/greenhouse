@@ -190,18 +190,18 @@ export function CardEditor({
             })}
           </div>
         </FieldGroup>
-        <Field label={t('tables.dashboards.table')}>
+        <FieldGroup label={t('tables.dashboards.table')}>
           <Select
             label={t('tables.dashboards.table')}
             value={draft.table_id}
             options={base.tables.map((entry) => ({ value: entry.id, label: entry.name }))}
             onChange={(tableId) => change(switchTable(draft, tableId))}
           />
-        </Field>
+        </FieldGroup>
 
         {draft.kind !== 'list' && (
           <div className="app-tb-dash-editor-pair">
-            <Field label={t('tables.dashboards.measure')}>
+            <FieldGroup label={t('tables.dashboards.measure')}>
               <Select
                 label={t('tables.dashboards.measure')}
                 value={aggregate}
@@ -229,16 +229,16 @@ export function CardEditor({
                   })
                 }
               />
-            </Field>
+            </FieldGroup>
             {aggregate !== 'count' && (
-              <Field label={t('tables.dashboards.measureField')}>
+              <FieldGroup label={t('tables.dashboards.measureField')}>
                 <Select
                   label={t('tables.dashboards.measureField')}
                   value={draft.measure?.field ?? ''}
                   options={numbers.map(fieldOption)}
                   onChange={(field) => change({ ...draft, measure: { aggregate, field } })}
                 />
-              </Field>
+              </FieldGroup>
             )}
           </div>
         )}
@@ -246,7 +246,7 @@ export function CardEditor({
         {isChart(draft.kind) && (
           <>
             <div className="app-tb-dash-editor-pair">
-              <Field label={t('tables.dashboards.group')}>
+              <FieldGroup label={t('tables.dashboards.group')}>
                 <Select
                   label={t('tables.dashboards.group')}
                   value={draft.group?.field ?? ''}
@@ -263,9 +263,9 @@ export function CardEditor({
                     });
                   }}
                 />
-              </Field>
+              </FieldGroup>
               {draft.group && isDateKind(groupKind) && (
-                <Field label={t('tables.dashboards.bucket')}>
+                <FieldGroup label={t('tables.dashboards.bucket')}>
                   <Select
                     label={t('tables.dashboards.bucket')}
                     value={draft.group.bucket ?? 'day'}
@@ -277,11 +277,11 @@ export function CardEditor({
                       change({ ...draft, group: { ...draft.group!, bucket: bucket as DateBucket } })
                     }
                   />
-                </Field>
+                </FieldGroup>
               )}
             </div>
             {draft.group && (
-              <Field label={t('tables.dashboards.limit')}>
+              <FieldGroup label={t('tables.dashboards.limit')}>
                 <Select
                   label={t('tables.dashboards.limit')}
                   value={String(groupLimit(draft))}
@@ -290,14 +290,14 @@ export function CardEditor({
                     .map((count) => ({ value: String(count), label: t('tables.dashboards.limitGroups', { count }) }))}
                   onChange={(next) => change({ ...draft, group: { ...draft.group!, limit: Number(next) } })}
                 />
-              </Field>
+              </FieldGroup>
             )}
           </>
         )}
 
         {draft.kind === 'list' && (
           <>
-            <Field label={t('tables.dashboards.listFields')}>
+            <FieldGroup label={t('tables.dashboards.listFields')}>
               <MultiSelect
                 label={t('tables.dashboards.listFields')}
                 value={draft.list?.fields ?? []}
@@ -306,9 +306,9 @@ export function CardEditor({
                   change({ ...draft, list: { ...draft.list, fields: next.slice(0, LIST_FIELDS_MAX) } })
                 }
               />
-            </Field>
+            </FieldGroup>
             <div className="app-tb-dash-editor-pair">
-              <Field label={t('tables.dashboards.sort')}>
+              <FieldGroup label={t('tables.dashboards.sort')}>
                 <Select
                   label={t('tables.dashboards.sort')}
                   value={sort?.field ?? ''}
@@ -324,7 +324,7 @@ export function CardEditor({
                     })
                   }
                 />
-              </Field>
+              </FieldGroup>
               {sort && (
                 <FieldGroup label={t('tables.group.order')}>
                   <Segmented
@@ -348,7 +348,7 @@ export function CardEditor({
                 </FieldGroup>
               )}
             </div>
-            <Field label={t('tables.dashboards.listLimit')}>
+            <FieldGroup label={t('tables.dashboards.listLimit')}>
               <Select
                 label={t('tables.dashboards.listLimit')}
                 value={String(listLimit(draft))}
@@ -359,7 +359,7 @@ export function CardEditor({
                   change({ ...draft, list: { fields: draft.list?.fields ?? [], ...draft.list, limit: Number(next) } })
                 }
               />
-            </Field>
+            </FieldGroup>
           </>
         )}
 

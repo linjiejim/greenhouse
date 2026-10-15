@@ -9,3 +9,4 @@
 - The existing jobs worker also dispatches media_video; handlers still fence writes with the job lease, and media work never uses request-context timers.
 - The worker runs only in all/worker roles and also dispatches verified mail_inbound jobs through
   the mail service. Stop admission before awaiting a batch; release unstarted claims on shutdown.
+- Automation dispatch only queues Agent actions. History stays queued through the event merge window and derives each Agent step from runs.input automation_run_id/automation_action_index; all children must finish before success.

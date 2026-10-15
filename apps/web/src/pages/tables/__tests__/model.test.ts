@@ -65,6 +65,16 @@ describe('fields of a view', () => {
 });
 
 describe('groups', () => {
+  it('keeps one header per group while cached records still have the previous query order', () => {
+    const groups = groupRecords(
+      [record('1', {}), record('2', { m: ['mbr_a'] }), record('3', {}), record('4', { m: ['mbr_a'] })],
+      field('m', 'member'),
+    );
+    expect(groups.map((group) => [group.key, group.records.map((row) => row.id)])).toEqual([
+      ['', ['1', '3']],
+      ['mbr_a', ['2', '4']],
+    ]);
+  });
   it('splits records the server sorted into runs of one value; lists group by their first value', () => {
     const status = field('s', 'single_select');
     const groups = groupRecords(

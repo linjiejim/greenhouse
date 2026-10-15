@@ -249,7 +249,7 @@ apps/api/src/
 
 - `POST /api/tables/records/:id/handoff`：`{ agent_id, brief, output_field_id? }`，仅自己的 Agent；读取成员可见记录，响应 `{ run_id }`。负责人仍是成员，来源为 `record`；默认结果作为评论，经 `table_mutation` 分档写回；可选文字字段使用交办时的修订，不能覆盖后来的修改。
 - `GET /api/tables/bases/:id/automations`（游标分页）、`POST`（创建），`PATCH /api/tables/automations/:id`（完整规则与 `revision`）、`DELETE`：需要搭建者权限，执行者为保存规则的成员。触发为 `record_created / record_updated / record_matched / schedule / date_reached / button`；`config` 含筛选、限定更新字段、间隔分钟或日期字段与动作列表。
-- `GET /api/tables/automations/:id/runs`（游标分页）给出步骤、状态与 Agent `run_id`；`POST /api/tables/automations/:id/run` 显式执行按钮规则（可附 `record_id`）。执行前复核执行者与通知收件人的权限。
+- `GET /api/tables/automations/:id/runs`（游标分页）给出步骤、状态与 Agent `run_id`（Agent 事件尚在合并、未建立后台运行时为 queued；步骤派发成功不代表 Agent 已完成；多个 Agent 步骤全部成功才返回 succeeded）；`POST /api/tables/automations/:id/run` 显式执行按钮规则（可附 `record_id`）。执行前复核执行者与通知收件人的权限。
 - 通知动作 `{type:"notify",members,title}` 统一经通知服务；Agent 动作 `{type:"agent",agent_id,brief,tools:"none"|"same_base_read",output_field_id?}` 经事件唤醒入口，默认无工具；可选回写仍需按档批准。webhook `{type:"webhook",url}` 仅公网 HTTPS、拒绝重定向、连接时复核 DNS、10 秒超时。创建含 webhook 的规则或首次添加 webhook 时仅一次返回 `webhook_secret`，后续不读取；请求头 `x-greenhouse-id` 为执行 id、`x-greenhouse-timestamp` 为 Unix 秒、`x-greenhouse-signature` 为 `v1=` 加 HMAC-SHA256(secret, timestamp + "." + 原始请求体)。接收方应校验时间窗口并按 id 去重；发送结果未知不会自动重发。
 - `table_query` 发现表格、数据表、视图，按成员的自定义角色筛选记录与聚合；读取的记录引用会再次按接收者权限裁剪。`table_mutation` 支持记录批量修改、回收、评论和彻底删除；私有可逆操作有回执与撤销、共享按数据表动作批准、彻底删除逐次批准。`table_schema_plan` 的精确结构计划逐次确认后才落库。
 - `apps_query` 读取已发布应用与卡片，`apps_action` 只执行已保存的动作，按查看者的应用与表格权限交集。MCP 对应独立的 `apps:read` / `apps:write`，不扩大其他已授权范围；共享动作返回 `needs_you`，外部客户端不能代替成员批准。
@@ -279,3 +279,9 @@ M3 媒体与计数（#70）：
 `GREENHOUSE_ROLE=all`（默认）提供全部能力；`api` 提供 HTTP、WebSocket 和前台回合，`worker` 不监听 HTTP，运行后台任务与清扫。收到 SIGTERM 后停止领取新回合 / 任务，进行中的回复最多等待 60 秒。符合十分钟、成员仍在、步骤完成条件的回合由另一个 API 接着写原 message id；续跑先发送小的 `message.resumed { conversation_id, message_id, offset }`，客户端丢弃未完成的增量并把 streaming 文字截回 offset；随后按 message.updated 与增量 offset 同步，不产生第二条回复。这个小事件可跨副本传递，即使长回复全文需要 resync 补拉。
 
 `RATE_LIMIT_STORE=memory|postgres` 控制现有限流的计数位置。多副本应全部设为 postgres：登录的 IP 与邮箱窗口每分钟各 10 次；OAuth 注册每 IP 每小时 20 次、授权每分钟 30 次、令牌 / 作废每分钟 60 次、客户端凭据尝试每分钟 10 次；MCP 每 grant 的窗口沿用每分钟 120 次；成员 multipart 上传（文件、知识库、表格与语音）每分钟 30 次，在读取正文前检查。超过返回 429 `rate_limited`；OAuth 保持 RFC 6749 错误形状，其余保持 API 错误包，OAuth / MCP / 上传带 Retry-After。成功登录只重置邮箱计数，不重置 IP。
+
+### v2.0 交付约定（#70）
+
+- 知识库目录分页使用固定的 ICU `zh-u-co-pinyin-kn-true` 排序规则；手动位置、文件夹优先级、自然名称、id 共同构成稳定游标。中文按拼音，数字按数值（Doc 2 在 Doc 10 前），不依赖数据库默认 locale。
+- `/api/me/usage`、`/api/admin/usage`、`/api/agents/:id/usage` 的总计与各分组包含 `stt_seconds`（音频秒数，可有小数）和 `tts_characters`（朗读字符数）。分别只合计 STT 的 second 与 TTS 的 character 计量；未知数量计零，不由 token 或费用推算。
+- `run_steps.kind=model` 是恢复上下文，不是永久运行证据：终态运行结束满 90 天由每日清理删除；编辑或重新生成删除旧回复时立即删除对应模型步骤与 Eval 提示快照。工具步骤保留。

@@ -12,6 +12,7 @@ import {
   Empty,
   ErrorBox,
   Field,
+  FieldGroup,
   Input,
   Menu,
   MultiSelect,
@@ -133,7 +134,7 @@ function InviteDrawer({ onClose, onLink }: { onClose: () => void; onLink: (link:
         <Field label={t('activate.name')} required>
           <Input value={name} maxLength={80} onChange={(event) => setName(event.target.value)} />
         </Field>
-        <Field label={t('members.role')}>
+        <FieldGroup label={t('members.role')}>
           <Select
             label={t('members.role')}
             value={role}
@@ -143,7 +144,7 @@ function InviteDrawer({ onClose, onLink }: { onClose: () => void; onLink: (link:
             ]}
             onChange={(value) => setRole(value as 'member' | 'admin')}
           />
-        </Field>
+        </FieldGroup>
       </form>
       <OverlayActions>
         <Button onClick={onClose}>{t('common.cancel')}</Button>
@@ -167,7 +168,7 @@ function MemberDrawer({ member, onClose }: { member: MemberAdmin; onClose: () =>
   return (
     <Overlay title={member.name} onClose={onClose}>
       <section className="app-section">
-        <Field label={t('members.role')}>
+        <FieldGroup label={t('members.role')}>
           <Select
             label={t('members.role')}
             value={member.role}
@@ -177,7 +178,7 @@ function MemberDrawer({ member, onClose }: { member: MemberAdmin; onClose: () =>
             ]}
             onChange={(role) => void save({ role: role as 'member' | 'admin' })}
           />
-        </Field>
+        </FieldGroup>
       </section>
       <section className="app-section">
         <h3 className="app-section-title">{t('members.modules')}</h3>
@@ -350,7 +351,7 @@ function GroupDrawer({ group, onClose }: { group: Group | null; onClose: () => v
             onChange={(event) => setDescription(event.target.value)}
           />
         </Field>
-        <Field label={t('groups.people')}>
+        <FieldGroup label={t('groups.people')}>
           <MultiSelect
             label={t('groups.people')}
             value={people}
@@ -362,7 +363,7 @@ function GroupDrawer({ group, onClose }: { group: Group | null; onClose: () => v
             }))}
             onChange={setPeople}
           />
-        </Field>
+        </FieldGroup>
       </form>
       <OverlayActions>
         <Button onClick={onClose}>{t('common.cancel')}</Button>

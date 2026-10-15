@@ -141,13 +141,13 @@ export function Directory({
       ? { label: t('chat.newChat'), onClick: () => navigate('#/c/new') }
       : module === 'knowledge'
         ? { label: t('knowledge.new'), onClick: () => openOverlay({ type: 'new-knowledge', target: newTarget() }) }
-        : module === 'agents'
+        : module === 'agents' && route.page !== 'agents'
           ? { label: t('agents.new'), onClick: () => openOverlay({ type: 'new-agent' }) }
-          : module === 'skills'
+          : module === 'skills' && route.page !== 'skills'
             ? { label: t('skills.new'), onClick: () => openOverlay({ type: 'new-skill' }) }
             : module === 'tables' && route.page !== 'tables'
               ? { label: t('tables.new'), onClick: () => openNewBase(openOverlay) }
-              : module === 'apps'
+              : module === 'apps' && route.page !== 'apps'
                 ? { label: t('apps.new'), onClick: () => navigate({ page: 'apps', newApp: true }) }
                 : null;
 
@@ -185,7 +185,11 @@ export function Directory({
         </IconButton>
       </div>
       {primary && (
-        <Button className="app-directory-create" kind="primary" onClick={primary.onClick}>
+        <Button
+          className="app-directory-create"
+          kind={module === 'knowledge' ? 'secondary' : 'primary'}
+          onClick={primary.onClick}
+        >
           <Plus size={icon.md} strokeWidth={icon.stroke} />
           {primary.label}
         </Button>

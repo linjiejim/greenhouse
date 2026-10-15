@@ -57,11 +57,23 @@ describe('editing the last message', () => {
     const [, , oldReply] = await transcript();
     expect(oldReply).toMatchObject({ seq: 3, content: 'Kyoto in April is lovely.' });
 
+    expect(
+      await getDb()
+        .select()
+        .from(runSteps)
+        .where(and(eq(runSteps.runId, sent.run_id), eq(runSteps.kind, 'model'))),
+    ).not.toHaveLength(0);
     const edited = await call('PATCH', `/api/conversations/${main.id}/messages/${sent.message.id}`, {
       token: lin.token,
       body: { content: 'Plan a trip to Osaka' },
     });
     expect(edited.status).toBe(200);
+    expect(
+      await getDb()
+        .select()
+        .from(runSteps)
+        .where(and(eq(runSteps.runId, sent.run_id), eq(runSteps.kind, 'model'))),
+    ).toHaveLength(0);
     expect(edited.body).toMatchObject({
       message: { id: sent.message.id, seq: 2, content: 'Plan a trip to Osaka' },
       deleted_message_ids: [oldReply!.id],

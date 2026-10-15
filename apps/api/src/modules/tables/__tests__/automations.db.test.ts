@@ -3,7 +3,7 @@ import { eq, sql } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import { baseAutomations, baseAutomationRuns, getDb, jobs, runs, runSteps } from '@greenhouse/db';
 import { createTestApp } from '../../../testing.js';
-import { scriptedModel, text } from '../../../engine/__tests__/model.js';
+import { gate, scriptedModel, text } from '../../../engine/__tests__/model.js';
 import { tableEventChain } from '../event-context.js';
 import type { AutomationInput } from '@greenhouse/contract';
 
@@ -144,6 +144,36 @@ describe('table automations', () => {
       app.services.tables.records.create(app.owner.id, app.table.id, { [app.title.id]: 'Again' }),
     );
     expect((await app.history(rule.id)).items.at(-1)!.status).toBe('suppressed');
+  });
+
+  it('keeps Agent history queued while events merge, then running until the Agent finishes', async () => {
+    const app = await setup(undefined, { AGENT_EVENT_MERGE_MS: '120000' });
+    const waiting = gate();
+    app.scripts.splice(0, app.scripts.length, { parts: text('Finished.'), gate: waiting.promise });
+    const rule = await app.create('button', { actions: [{ type: 'agent', agent_id: app.main.id, brief: 'Review' }] });
+    await app.services.automations.button(app.owner.id, rule.id);
+    await app.services.tables.worker.drain();
+    const before = (await app.history(rule.id)).items[0]!;
+    expect(before).toMatchObject({
+      status: 'queued',
+      run_id: null,
+      started_at: null,
+      finished_at: null,
+      steps: [{ index: 0, status: 'queued' }],
+    });
+    await getDb().execute(sql`UPDATE conversation_inbox SET ready_at = now() WHERE consumed_at IS NULL`);
+    await app.services.engine.sweep();
+    await app.services.engine.background.sweep();
+    await expect.poll(() => app.model.calls()).toBe(1);
+    const active = (await app.history(rule.id)).items[0]!;
+    expect(active).toMatchObject({ status: 'running', finished_at: null, steps: [{ index: 0, status: 'running' }] });
+    expect(active.run_id).toBeTruthy();
+    waiting.open();
+    await app.services.engine.background.idle();
+    expect((await app.history(rule.id)).items[0]!).toMatchObject({
+      status: 'succeeded',
+      steps: [{ status: 'succeeded' }],
+    });
   });
 
   it('rechecks the execution member and recipients instead of granting permissions with a rule', async () => {

@@ -128,7 +128,7 @@ export function PublishTab({ agent }: { agent: AgentDetail }) {
         </div>
       )}
       <form className="app-form" onSubmit={(event) => void submit(event)} aria-label={t('agents.tabPublish')}>
-        <Field label={t('publish.version')}>
+        <FieldGroup label={t('publish.version')}>
           <Select
             label={t('publish.version')}
             value={version}
@@ -139,7 +139,7 @@ export function PublishTab({ agent }: { agent: AgentDetail }) {
             }))}
             onChange={setVersion}
           />
-        </Field>
+        </FieldGroup>
         <FieldGroup label={t('publish.audience')} error={error || undefined}>
           <Segmented
             label={t('publish.audience')}
