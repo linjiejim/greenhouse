@@ -1,3 +1,4 @@
+import { ExtensionPanels } from '../../extensions/host';
 import { Attachments } from '../../conversation/Attachments';
 /**
  * A run's detail (RUN-02) opens as a drawer over its list: status, the brief, what needs the
@@ -129,6 +130,7 @@ export function RunPage({ id }: { id: string }) {
         ) : (
           <Detail run={run.data} />
         )}
+        {run.data && <ExtensionPanels entity="run" id={run.data.id} />}
         {run.data && (
           <OverlayActions>
             {run.data.conversation_id && (

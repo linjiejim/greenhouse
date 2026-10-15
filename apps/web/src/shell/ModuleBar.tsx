@@ -1,3 +1,5 @@
+import { useExtensions } from '../extensions/host';
+import { useI18n } from '../lib/i18n';
 /** Narrow screens: the drawer ends with the module bar, as in the native app (PRD §6.2). */
 
 import { MoreHorizontal } from 'lucide-react';
@@ -11,6 +13,8 @@ import { MODULES, type ModuleId } from './modules';
 
 export function ModuleBar({ module }: { module: ModuleId }) {
   const t = useT();
+  const { locale } = useI18n();
+  const extensions = useExtensions();
   const { me } = useSession();
   const Chat = MODULES.chat.icon;
   const Knowledge = MODULES.knowledge.icon;
@@ -63,6 +67,15 @@ export function ModuleBar({ module }: { module: ModuleId }) {
         }
         items={[
           { label: t('nav.agents'), onClick: () => navigate({ page: 'agents', scope: 'mine' }) },
+          ...extensions.items.flatMap((extension) =>
+            (extension.pages ?? [])
+              .filter((page) => extension.info.pages.includes(page.id))
+              .map((page) => ({
+                label: page.label[locale],
+                onClick: () =>
+                  navigate({ page: 'extension', extension: extension.id, view: page.id, path: '', query: '' }),
+              })),
+          ),
           { label: t('nav.runs'), onClick: () => navigate({ page: 'runs', view: 'active' }) },
           '-',
           { label: t('nav.settings'), onClick: () => navigate({ page: 'settings', section: 'account' }) },

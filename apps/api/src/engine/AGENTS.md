@@ -60,6 +60,7 @@ The one engine for conversations and runs. Read with the root AGENTS.md and docs
 - A background run starts only from a member's decision: an approved `run_start` proposal or a schedule they set up. The model can propose, never start.
 - Context is the approved brief plus the Agent's identity and instructions; history, memories and "about me" are not injected; explicit reads use the tools.
 - Tools: memory recall, the source conversation only, connector reads, and tiered knowledge/table/mail writes. A pending card waits; its decision resumes the recorded model steps with actual tool results. Computer use requires a declared brief and domains; Docker stays offline, E2B restricts egress, private reads seal it offline. Computer work is exclusive and its processes are cleared before normal network access returns. Once a tool marked `private` ran, tools marked `outbound` refuse: nobody is watching, and a URL or a query can carry data out.
+- Claiming checks the operational pause under a shared workspace row lock in the claim transaction; switching it waits for admitted claims. Active runs finish, queued runs wait.
 - Claiming uses FOR UPDATE SKIP LOCKED; at most 3 running per member and 4 per process; 20 minutes and 30 steps per attempt.
 - A run is created queued in the transaction of what causes it (`background.create`) and kicked after the commit; any process takes it from the queue. A schedule's firing claims the schedule, moves it to its next time after now and queues the run in one transaction, so firings missed while no process ran collapse into one run.
 - A run whose process died is requeued up to 3 attempts; a shutdown requeues without counting as a failure.
@@ -103,7 +104,7 @@ The one engine for conversations and runs. Read with the root AGENTS.md and docs
 - `skill_mutation` only proposes a template (card subject `skill_save`); accepting it saves the skill as the member. Equipping goes through the same requirement check (`skill_unavailable`).
 
 ## Budgets
-- Every metered call (each model attempt too) is checked first against the enabled budgets that cover it (providers/budgets.ts); one used up refuses it with `budget_exceeded`, which a turn keeps as its error code and says in its reply. An instance over its own budget falls back to the next instance.
+- Every metered call (each model attempt too) is checked first against the enabled workspace, provider, member and Agent budgets that cover it (providers/budgets.ts); one used up refuses it with `budget_exceeded`, which a turn keeps as its error code and says in its reply. An instance over its own budget falls back to the next instance.
 
 ## Knowledge
 - `knowledge_query` (search, read, list) and `knowledge_mutation` (create, edit, move, comment) call modules/knowledge with the asker's rights. Public Agents may read only their live publication grant; they never mutate knowledge.

@@ -36,3 +36,6 @@ export * from './metrics.js';
 export * from './media.js';
 
 export type { AppCardAnswer } from './apps-client.js';
+
+export * from './operations.js';
+export * from './extensions.js';

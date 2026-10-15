@@ -1,3 +1,4 @@
+import { ExtensionPanels } from '../../extensions/host';
 import { HandoffDialog } from './HandoffDialog';
 /**
  * A record in the drawer (TBL-07; a bottom sheet on phones): its fields, its children, then
@@ -380,6 +381,7 @@ export function RecordDrawer({
             )}
           </section>
         )}
+        <ExtensionPanels entity="record" id={record.id} />
         <Activity base={base} table={table} recordId={record.id} lookups={merged} />
       </div>
     );

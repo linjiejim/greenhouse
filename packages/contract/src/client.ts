@@ -1,3 +1,5 @@
+import type { ExtensionInfo } from './extensions.js';
+import type { OperationSwitches } from './operations.js';
 import type { AdoptInput, Metrics } from './metrics.js';
 import type { SaveMediaInput } from './media.js';
 import type { KnowledgeFile } from './knowledge.js';
@@ -419,6 +421,7 @@ export function createApiClient(options: ApiClientOptions) {
     refresh,
     connect,
 
+    extensions: () => get<{ items: ExtensionInfo[] }>('/api/extensions'),
     bootstrap: () => get<Bootstrap>('/api/bootstrap'),
 
     auth: {
@@ -723,6 +726,11 @@ export function createApiClient(options: ApiClientOptions) {
         get<Page<AgentActivity>>(`/api/agents/${encodeURIComponent(id)}/activity`, query),
     },
 
+    agentBudgets: {
+      list: (id: string) => get<{ items: Budget[] }>(`/api/agents/${encodeURIComponent(id)}/budgets`),
+      save: (id: string, input: Omit<BudgetInput, 'scope_type' | 'scope_id'>) =>
+        put<Budget>(`/api/agents/${encodeURIComponent(id)}/budgets`, { ...input, scope_type: 'agent', scope_id: id }),
+    },
     publication: {
       /** Other members' public Agents shared with me; talk to one with conversations.create({ kind: 'direct' }). */
       shared: () => get<{ items: PublicAgent[] }>('/api/agents', { scope: 'public' }),
@@ -842,6 +850,10 @@ export function createApiClient(options: ApiClientOptions) {
       /** The workspace's usage, grouped by member, Agent, provider or capability. */
       usage: (query: { period?: UsagePeriod['name']; group_by?: AdminUsage['group_by'] } = {}) =>
         get<AdminUsage>('/api/admin/usage', query),
+      operations: {
+        get: () => get<OperationSwitches>('/api/admin/operations'),
+        update: (input: Partial<OperationSwitches>) => patch<OperationSwitches>('/api/admin/operations', input),
+      },
       budgets: {
         list: (query: { cursor?: string; limit?: number } = {}) => get<Page<Budget>>('/api/admin/budgets', query),
         /** Creates or replaces the budget of one scope and unit. */

@@ -97,3 +97,6 @@ Greenhouse is an open-source, self-hosted platform where a team works with its o
 
 - Product metrics reuse requests/runs/usage facts; metric_events holds only enum counts, dates and logical ids. Weekly aggregates recheck admin access in the service.
 - Knowledge tree pages use the greenhouse_natural ICU collation for both names and cursor comparisons. applyMigrations creates it under the migration lock; supported Postgres builds need ICU.
+- Operational switches live in workspace.settings.kill_switches; read fresh at execution boundaries. Background pause keeps queued runs; computer cleanup and inbound mail remain available.
+- Extensions use extensions/define.ts and host.ts; only each extensions/index.ts imports concrete implementations. Their migrations never enter core baseline. See EXTENDING.md for the v2 surfaces.
+- Periodic worker sweeps catch and log rejected promises, then try again on the next tick; a transient database error must not exit the API process.

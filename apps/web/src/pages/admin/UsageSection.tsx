@@ -40,6 +40,11 @@ function BudgetDrawer({ budget, onClose }: { budget: Budget | null; onClose: () 
   const members = useQuery({ queryKey: ['members', 'directory'], queryFn: () => api.members.directory() });
   const providers = useQuery({ queryKey: ['admin', 'providers'], queryFn: () => api.admin.providers() });
   const [scope, setScope] = useState<BudgetInput['scope_type']>(budget?.scope_type ?? 'workspace');
+  const agents = useQuery({
+    queryKey: ['admin', 'public-agents'],
+    queryFn: () => api.admin.publicAgents.list({ limit: 200 }),
+    enabled: scope === 'agent',
+  });
   const [scopeId, setScopeId] = useState(budget?.scope_type === 'workspace' ? '' : (budget?.scope_id ?? ''));
   const [unit, setUnit] = useState<BudgetInput['unit']>(budget?.unit ?? 'tokens');
   const [limit, setLimit] = useState(
@@ -77,6 +82,7 @@ function BudgetDrawer({ budget, onClose }: { budget: Budget | null; onClose: () 
               { value: 'workspace', label: t('budgets.workspace') },
               { value: 'provider', label: t('budgets.provider') },
               { value: 'member', label: t('budgets.member') },
+              { value: 'agent', label: t('budgets.agent') },
             ]}
             onChange={(value) => {
               setScope(value as BudgetInput['scope_type']);
@@ -85,9 +91,19 @@ function BudgetDrawer({ budget, onClose }: { budget: Budget | null; onClose: () 
           />
         </FieldGroup>
         {scope !== 'workspace' && (
-          <FieldGroup label={scope === 'member' ? t('budgets.member') : t('budgets.provider')}>
+          <FieldGroup
+            label={
+              scope === 'agent' ? t('budgets.agent') : scope === 'member' ? t('budgets.member') : t('budgets.provider')
+            }
+          >
             <Select
-              label={scope === 'member' ? t('budgets.member') : t('budgets.provider')}
+              label={
+                scope === 'agent'
+                  ? t('budgets.agent')
+                  : scope === 'member'
+                    ? t('budgets.member')
+                    : t('budgets.provider')
+              }
               value={scopeId}
               disabled={!!budget}
               options={
@@ -97,11 +113,17 @@ function BudgetDrawer({ budget, onClose }: { budget: Budget | null; onClose: () 
                       label: member.name,
                       description: member.email,
                     }))
-                  : instances.map((instance) => ({
-                      value: instance.id,
-                      label: instance.name,
-                      description: instance.kind,
-                    }))
+                  : scope === 'agent'
+                    ? (agents.data?.items ?? []).map((agent) => ({
+                        value: agent.id,
+                        label: agent.name,
+                        description: agent.owner.name,
+                      }))
+                    : instances.map((instance) => ({
+                        value: instance.id,
+                        label: instance.name,
+                        description: instance.kind,
+                      }))
               }
               onChange={setScopeId}
             />

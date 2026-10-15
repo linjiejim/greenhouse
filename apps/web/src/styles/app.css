@@ -3846,6 +3846,13 @@ button.app-agent-card {
   margin: 0;
 }
 
+.app-directory-content {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
+}
+
 .app-screen:fullscreen {
   display: flex;
   flex-direction: column;

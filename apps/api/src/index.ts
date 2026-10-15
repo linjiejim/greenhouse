@@ -1,3 +1,6 @@
+import { COMPILED_EXTENSIONS } from './extensions/index.js';
+import { selectExtensions } from './extensions/define.js';
+import { registerExtensionAdapters } from './extensions/host.js';
 /**
  * Greenhouse API v2 entry point: load config, connect, migrate when asked, make sure the
  * workspace and first admin exist, then serve.
@@ -5,7 +8,7 @@
 
 import type { Server } from 'node:http';
 import { serve } from '@hono/node-server';
-import { applyMigrations, assertNotV1Database, createDbClient, setDb } from '@greenhouse/db';
+import { applyMigrations, applyExtensionMigrations, assertNotV1Database, createDbClient, setDb } from '@greenhouse/db';
 import { logger } from '@greenhouse/utils/logger';
 import { createApp, createServices } from './app.js';
 import { loadConfig, loadEnvironment } from './config/index.js';
@@ -24,7 +27,14 @@ async function main() {
   if (config.MIGRATE_ON_START) await applyMigrations(config.DATABASE_URL);
   setDb(client.db);
 
-  const services = createServices(config);
+  const extensions = selectExtensions(COMPILED_EXTENSIONS, config.extensions);
+  registerExtensionAdapters(extensions);
+  await applyExtensionMigrations(
+    extensions
+      .filter((extension) => extension.migrations)
+      .map((extension) => ({ extensionId: extension.id, dir: extension.migrations!.dir })),
+  );
+  const services = createServices(config, { extensions });
   await services.workspace.row();
   if (config.GREENHOUSE_ROLE !== 'worker') {
     await ensureFirstAdmin(config.BOOTSTRAP_ADMIN_EMAIL, services.auth);

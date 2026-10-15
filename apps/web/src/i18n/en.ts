@@ -44,6 +44,7 @@ export const en: Record<MessageKey, string> = {
   'activate.submit': 'Set password and continue',
   'activate.invalid': 'This link no longer works. Ask an admin for a new one',
 
+  'nav.extensions': 'Extensions',
   'nav.main': 'Main navigation',
   'nav.home': 'Back to the main thread',
   'nav.chat': 'Chat',
@@ -888,6 +889,7 @@ export const en: Record<MessageKey, string> = {
   'agents.connectorsNone': 'None',
   'agents.connectorNotConnected': 'Not connected; connect it in Settings → Connections',
 
+  'errors.operationDisabled': 'An admin paused this operation. Try again later.',
   'errors.connectorOff': 'An admin turned this connector off',
   'errors.connectionBusy': 'This connection just changed; try again',
   'errors.registry': 'The MCP Registry can’t be reached; try again later',
@@ -1116,6 +1118,16 @@ export const en: Record<MessageKey, string> = {
   'usage.outsideAgents': 'Outside Agents (titles, summaries)',
   'usage.budget': 'Budget this month',
 
+  'admin.operations': 'Operations',
+  'operations.pause_background_runs': 'Pause background runs',
+  'operations.pause_background_runsHint': 'New runs stay queued; active runs finish.',
+  'operations.disable_computers': 'Disable computers',
+  'operations.disable_computersHint':
+    'Pause starting and operating computers and new screen connections. Stopping and deleting remain available.',
+  'operations.disable_outbound_mail': 'Disable outbound mail',
+  'operations.disable_outbound_mailHint':
+    'Pause system, Agent and personal mailbox sending. Receiving remains available.',
+  'budgets.agent': 'Agent monthly budget',
   'budgets.title': 'Budgets',
   'budgets.add': 'Add budget',
   'budgets.edit': 'Edit budget',

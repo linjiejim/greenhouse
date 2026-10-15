@@ -1,3 +1,7 @@
+import type { GreenhouseExtension } from './extensions/define.js';
+import { extensionRoutes, extensionTools } from './extensions/host.js';
+import { createOperationsService, type OperationsService } from './modules/operations/service.js';
+import { operationRoutes } from './modules/operations/routes.js';
 import { createMetricsService, type MetricsService } from './modules/usage/metrics.js';
 import { metricRoutes, adminMetricRoutes } from './modules/usage/metrics-routes.js';
 import { createMediaService, type MediaService } from './modules/media/service.js';
@@ -112,7 +116,9 @@ import { adminProviderRoutes, myModelRoutes, myProviderRoutes } from './provider
 import { createProvidersService, type ProvidersService } from './providers/service.js';
 
 export interface Services {
+  extensions: readonly GreenhouseExtension[];
   config: AppConfig;
+  operations: OperationsService;
   tokens: Tokens;
   auth: AuthService;
   workspace: WorkspaceService;
@@ -151,6 +157,7 @@ export interface Services {
 }
 
 export interface ServiceOptions {
+  extensions?: readonly GreenhouseExtension[];
   /** Replaces the network for provider calls (tests). */
   fetch?: typeof fetch;
   /** Replaces model resolution in the engine (tests). */
@@ -158,15 +165,17 @@ export interface ServiceOptions {
   /** Tools added to the built-in ones (extensions, tests). */
   tools?: readonly ToolDef[];
   /** Replaces the connector catalog and the MCP Registry address (tests). */
-  connectors?: Omit<Parameters<typeof createConnectorsService>[0], 'config'>;
+  connectors?: Omit<Parameters<typeof createConnectorsService>[0], 'config' | 'operations'>;
 }
 
 export function createServices(config: AppConfig, options: ServiceOptions = {}): Services {
+  const extensions = options.extensions ?? [];
   const rateLimitStore =
     config.RATE_LIMIT_STORE === 'postgres' ? new PostgresRateLimitStore() : new MemoryRateLimitStore();
   const tokens = createTokens(config.tokenSigningKey);
   const auth = createAuthService({ tokens, publicUrl: config.PUBLIC_URL });
-  const providers = createProvidersService({ config, fetch: options.fetch });
+  const operations = createOperationsService(config);
+  const providers = createProvidersService({ config, fetch: options.fetch, operations });
   const files = createFilesService({ providers, sign: (data) => tokens.hashSecret(data, 'file') });
   const voice = createVoiceService({ providers, files });
   // Equipping a skill checks it can run for the Agent (the skills service is made below).
@@ -221,13 +230,14 @@ export function createServices(config: AppConfig, options: ServiceOptions = {}):
   const members = createMembersService({ auth, providers, files, mail });
   // A socket ticket is a one-time link: random, stored only as a keyed hash.
   const computers = createComputersService({
+    operations,
     encryptionKey: Buffer.from(config.providerEncryptionKey, 'hex'),
     providers,
     agents,
     hub,
     secrets: { create: () => tokens.newSecret(), hash: (secret) => tokens.hashSecret(secret, 'link') },
   });
-  const connectors = createConnectorsService({ config, ...options.connectors });
+  const connectors = createConnectorsService({ config, operations, ...options.connectors });
   // The browser and the vault never reach Greenhouse itself; what a page shows is redacted against the vault.
   const forbiddenOrigins = ownOrigins(config);
   const vault = createVaultService({ config, hub, forbiddenOrigins });
@@ -262,6 +272,7 @@ export function createServices(config: AppConfig, options: ServiceOptions = {}):
   tables.worker.register('media_video', media.handle);
   tables.worker.every(media.sweep);
   const engine = createEngine({
+    operations,
     role: config.GREENHOUSE_ROLE,
     eventWakeLimit: config.AGENT_EVENT_WAKES_PER_DAY,
     eventMergeMs: config.AGENT_EVENT_MERGE_MS,
@@ -300,6 +311,7 @@ export function createServices(config: AppConfig, options: ServiceOptions = {}):
       ...mediaTools(media),
       ...tableTools(tables),
       ...appTools(apps, tables),
+      ...extensionTools(extensions, services),
       ...(options.tools ?? []),
     ],
     ...(options.languageModel ? { languageModel: options.languageModel } : {}),
@@ -324,8 +336,10 @@ export function createServices(config: AppConfig, options: ServiceOptions = {}):
   );
   tables.worker.every(automations.sweep);
   const runs = createRunsService({ background: () => engine.background, cancelMedia: media.cancel });
-  return {
+  const services: Services = {
+    extensions,
     config,
+    operations,
     tokens,
     auth,
     workspace: createWorkspaceService({ files }),
@@ -352,7 +366,16 @@ export function createServices(config: AppConfig, options: ServiceOptions = {}):
     requests,
     runs,
     schedules,
-    search: createSearchService({ members, knowledge, tables, apps }),
+    search: createSearchService({
+      members,
+      knowledge,
+      tables,
+      apps,
+      extensions: () =>
+        extensions.flatMap((extension) =>
+          (extension.searchSources?.(services) ?? []).map((source) => ({ ...source, extensionId: extension.id })),
+        ),
+    }),
     skills,
     usage: createUsageService({ agents, providers }),
     metrics: createMetricsService({ files, conversations }),
@@ -362,6 +385,7 @@ export function createServices(config: AppConfig, options: ServiceOptions = {}):
     limiter: new RateLimiter(10, 60_000, rateLimitStore, 'auth'),
     oauth: createOAuthService({ tokens, publicUrl: config.PUBLIC_URL }),
   };
+  return services;
 }
 
 /**
@@ -466,8 +490,10 @@ export function createApp(services: Services, options: { webDir?: string } = {})
   signedIn.route('/tables', formsRoutes(services.tables.forms));
   signedIn.route('/tables', importsRoutes(services.tables.imports));
   signedIn.route('/tables', cardsRoutes(services.tables.cards));
+  signedIn.route('/', extensionRoutes(services.extensions, services));
   signedIn.use('/admin/*', requireAdmin);
   signedIn.route('/admin', adminMemberRoutes(services.members));
+  signedIn.route('/admin/operations', operationRoutes(services.operations));
   signedIn.route('/admin/branding', brandingRoutes(services.workspace));
   signedIn.route('/admin', adminProviderRoutes(services.providers));
   signedIn.route('/admin', adminMetricRoutes(services.metrics));

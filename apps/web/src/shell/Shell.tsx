@@ -117,7 +117,7 @@ export function Shell() {
   if (showDirectory) {
     directory = (
       <aside className={cx('app-directory', floating && 'is-floating')} aria-label={t('nav.directory')}>
-        <Directory module={module} route={route} floating={floating} onHide={hide} />
+        <Directory key={module} module={module} route={route} floating={floating} onHide={hide} />
         {narrow && <ModuleBar module={module} />}
       </aside>
     );
@@ -137,7 +137,13 @@ export function Shell() {
               </div>
             )}
             <ErrorBoundary
-              key={'id' in route ? `${route.page}:${route.id}` : route.page}
+              key={
+                'extension' in route
+                  ? `${route.page}:${route.extension}:${route.page === 'extension' ? route.view + ':' + route.path : route.section}`
+                  : 'id' in route
+                    ? `${route.page}:${route.id}`
+                    : route.page
+              }
               fallback={(retry) => (
                 <div className="app-center">
                   <ErrorBox onRetry={retry}>{t('common.pageFailed')}</ErrorBox>

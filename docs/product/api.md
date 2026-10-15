@@ -51,6 +51,7 @@ v2 和 v1 不兼容，不加 `/api/v2` 前缀，也不保留旧路由。`GET /ap
 | `GET` / `PATCH` / `DELETE /api/agents/:id` · `POST …/restore` | 资料（`main` 可作 id）；`DELETE` 是归档，`restore` 恢复 |
 | `/api/agents/:id/versions` · `/memories` · `/schedules` · `/usage` · `/activity` · `/publication` | Agent 资料的各个分页；`/usage`、`/activity` 只给主人，只有计数、结果与评价，没有内容 |
 | `PUT` / `DELETE /api/agents/:id/publication` | 发布固定版本给受众（成员、分组、全员），附电脑与每人每日上限；再次 `PUT` 改版本或受众；`DELETE` 取消发布。主 Agent 不能发布 |
+| `GET` / `PUT /api/agents/:id/budgets` | 公开 Agent 的月度预算；主人或管理员可读写，token 或美元，复用统一预算检查与用量；取消发布后已有预算保留并可继续调整，仍约束这个 Agent；管理员也可经 `/api/admin/budgets` 管理 |
 | `/api/agents/:id/computer` · `POST …/start` · `…/stop` · `…/restart` · `GET …/processes` · `POST …/ticket` · `…/files[?path=]` · `GET …/files/content?path=` | 电脑：状态、启停、重启（进程结束、文件保留）、后台进程；公开 Agent 的使用者用自己的一台。`ticket` 换取画面（`view` / `control`）或终端（`terminal`）的一次性 ticket，一分钟内用一次；家目录文件按相对路径列出、下载（一律下载）、上传（multipart，最大 50 MB）、删除 |
 | `GET` / `PATCH /api/agents/:id/mailbox` · `POST …/mailbox/senders` · `DELETE …/mailbox/senders/:address` · `GET /api/agents/:id/mail?status=` · `GET …/mail/:mailId` · `POST …/mail/:mailId/release` | Agent 邮箱，只给主人：`GET` 第一次查看时建立地址，邮箱不可用时返回 `{ available: false, reason }`（not_configured / public_agent / archived）；`PATCH` 改前缀（`mailbox_taken`、`mailbox_reserved`）或成员能否叫醒它；发件人名单；邮件列表（新的在前，`status` 可筛 screened 等）与详情（纯文本、原样的 HTML 由客户端净化、附件的签名链接）；`release` 放行一封留存邮件的发件人，他留存的信全部送进对话，Agent 被叫醒一次（`mail_not_screened`） |
 | `GET /api/conversations?kind=&q=&archived=` · `POST /api/conversations` | 对话列表与新建，`kind` 取 `main` / `direct` / `chat` / `room` |
@@ -119,7 +120,8 @@ v2 和 v1 不兼容，不加 `/api/v2` 前缀，也不保留旧路由。`GET /ap
 | `GET /api/admin/computers` · `PUT …/capacity` · `POST …/:id/stop` · `DELETE …/:id` | 电脑：所有成员的电脑与状态（不含画面和文件）；容量（空闲多少分钟后关机、最多同时开机，0 为不限，超出时开机返回 200 queued 和 queue_position，停机取消排队）；停止；重置（连主目录删除，下次使用重开） |
 | `POST /api/admin/computers/:id/backups` · `POST …/:id/backups/:backup/restore` | 管理员按需备份运行中的电脑；停机后恢复归属此电脑的成功备份（覆盖两个主目录，弹确认）。列表返回备份 id、时间、大小、状态、错误，永不返回存储位置或密钥。每进程最多同时 2 个备份，每个压缩主目录最多 32 MiB，恢复展开最多 256 MiB、10 万项，拒绝路径穿越／设备／越界链接；先验证完整密文再写盘。`backup_unavailable` 503、`backup_failed` 502、`backup_invalid`／`backup_restore_failed`／`computer_not_stopped` 409 |
 | `GET /api/admin/usage?period=&group_by=member\|agent\|provider\|capability` | 工作区用量 |
-| `GET` / `PUT /api/admin/budgets` · `DELETE …/:id` | 预算：组织、服务实例、成员三级，token 或美元，按月；`PUT` 建立或替换一个范围与单位的预算；列表带本月已用 |
+| `GET` / `PUT /api/admin/budgets` · `DELETE …/:id` | 预算：组织、服务实例、成员、公开 Agent 四种范围，token 或美元，按月；`PUT` 建立或替换一个范围与单位的预算；列表带本月已用 |
+| `GET` / `PATCH /api/admin/operations` | 运维开关（仅管理员）：`pause_background_runs`、`disable_computers`、`disable_outbound_mail`，部分更新，审计只记字段名 |
 | `/api/admin/connectors[/:id]` · `GET …/catalog` · `GET …/registry?q=` · `POST …/probe` · `POST …/:id/refresh` · `…/test` | 安装连接器：内置目录（`{ catalog_id }`）、Registry 搜索（慢，服务端缓存）、URL（`probe` 先看要哪种鉴权）；鉴权 none / shared / per_member / oauth，共享 Key 与 OAuth 客户端密钥只写不读；工具缓存（`refresh` 重列，per_member / oauth 用管理员自己的连接）、白名单、只读工具；启用 / 停用；改地址或鉴权方式会断开所有成员的连接 |
 | `/api/admin/clients[/:id]` · `POST …/:id/rotate-secret` | 外部访问客户端：交互客户端（自行注册或管理员添加，可设 scope 上限）与机器客户端（绑定一个成员，本人批准后生效；密钥只显示一次）；停用即作废全部令牌；列表带最近使用、在用授权与令牌数；变更写审计 |
 | `GET /api/admin/public-agents` · `POST …/:id/pause` · `…/resume` | 公开 Agent：主人、受众人数、本月用量；暂停与恢复 |
@@ -133,7 +135,8 @@ v2 和 v1 不兼容，不加 `/api/v2` 前缀，也不保留旧路由。`GET /ap
 | `GET /api/connectors/oauth/callback` | 连接器 OAuth 回调（公开）：不改任何数据，302 到 `#/settings/connections?connector=&oauth_state=&oauth_code=`（失败时带 `oauth_error`），Web 用成员自己的会话调用 `finish`。不在 `/api/mcp` 下，那是 Greenhouse 自己的 MCP 服务器 |
 | `POST /api/mail/inbound/:instance` | 邮件服务商的收信通知（公开，凭服务商的签名）：Resend 的 Svix 签名 webhook、Mailgun `store(notify=…)` 的 HMAC；先验签（失败 401 `invalid_signature`），再持久写入 mail_inbound 任务并应答 200 `{ status: queued, job_id, delivered: 0, screened: 0 }`；worker 用实例的 Key 拉信，失败按 jobs 退避重试，不能把 queued 当作已投递；重复通知 status=duplicate、无关通知 status=ignored；同一封信只存一次；过大的通知 413 |
 | `/api/ws` · `/api/ws/computer?ticket=` · `/api/ws/computer-terminal?ticket=` | 实时通道、电脑画面（RFB，`view` ticket 的输入由服务端丢弃）、终端（二进制按键与输出，`resize` 文本消息） |
-| `/api/ext/<id>/*` | 扩展 |
+| `GET /api/extensions` | 已启用扩展及其页面、设置、管理、实体面板声明；管理分区仅管理员可见 |
+| `/api/ext/<id>/*` | 可信扩展的路由，统一成员鉴权；`/admin` 子树另需管理员。Agent 工具沿用审批，搜索经 `/api/search?kinds=extensions` 返回限定到自己页面的链接 |
 | `GET /health` | 健康检查：各能力是否可用（不含机密）；数据库不可用时返回 503 |
 
 OAuth 2.1 与 MCP（公开路径，错误按 RFC 6749 返回 `{ error, error_description }`，不用 API 信封；元数据、注册、令牌、撤销与 `/api/mcp` 对任意来源开放 CORS，因为它们不读 cookie）：

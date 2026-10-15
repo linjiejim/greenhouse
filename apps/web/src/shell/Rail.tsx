@@ -1,3 +1,5 @@
+import { useExtensions } from '../extensions/host';
+import { useI18n } from '../lib/i18n';
 /**
  * The 64px global rail (PRD §6.1): the mark (back to the main thread), the modules, then runs,
  * notifications and the account. Module buttons have a right-click menu of "new" actions.
@@ -74,6 +76,8 @@ function RailButton({
 
 export function Rail({ module }: { module: ModuleId }) {
   const t = useT();
+  const { locale } = useI18n();
+  const extensions = useExtensions();
   const { me, signOut, bootstrap } = useSession();
   const { openPalette } = useShell();
   const openOverlay = useOpenOverlay();
@@ -177,6 +181,15 @@ export function Rail({ module }: { module: ModuleId }) {
               icon: glyph(Wand2),
               onClick: () => navigate({ page: 'skills', scope: 'all' }),
             },
+            ...extensions.items.flatMap((extension) =>
+              (extension.pages ?? [])
+                .filter((page) => extension.info.pages.includes(page.id))
+                .map((page) => ({
+                  label: page.label[locale],
+                  onClick: () =>
+                    navigate({ page: 'extension', extension: extension.id, view: page.id, path: '', query: '' }),
+                })),
+            ),
             { label: t('search.placeholder'), shortcut: '⌘K', onClick: openPalette },
           ]}
         />

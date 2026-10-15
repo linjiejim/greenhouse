@@ -16,6 +16,7 @@ const KNOWN: Record<string, MessageKey> = {
   agent_unavailable: 'errors.agentUnavailable',
   agent_archived: 'errors.agentArchived',
   daily_cap_reached: 'errors.dailyCap',
+  operation_disabled: 'errors.operationDisabled',
   budget_exceeded: 'errors.budget',
   conversation_busy: 'errors.busy',
   read_only: 'errors.readOnly',

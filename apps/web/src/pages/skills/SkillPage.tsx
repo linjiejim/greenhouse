@@ -1,3 +1,4 @@
+import { ExtensionPanels } from '../../extensions/host';
 /**
  * A skill's detail (SKL-02 to SKL-04, SKL-09), as a drawer over the library: what it does, its
  * instructions and fields, what it needs, its versions, and its scan with the reviewer's buttons.
@@ -233,6 +234,7 @@ export function SkillPage({ id }: { id: string }) {
         ) : (
           <Detail skill={data} />
         )}
+        {data && <ExtensionPanels entity="skill" id={data.id} />}
         {data && (
           <OverlayActions>
             {menu.length > 0 && (

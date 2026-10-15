@@ -1,3 +1,6 @@
+import deployment from '../../../../greenhouse.config.js';
+import { parseGreenhouseConfig } from '@greenhouse/types/config-schema';
+import { parseExtensionsEnv, type ExtensionsConfig } from '@greenhouse/types/config';
 /**
  * The only module that reads process.env. Everything else receives values from here,
  * so configuration is validated once at startup and tests can build their own.
@@ -35,6 +38,9 @@ const schema = z.object({
     .optional(),
   BOOTSTRAP_ADMIN_EMAIL: z.string().email().optional(),
   MIGRATE_ON_START: booleanFlag,
+  PAUSE_BACKGROUND_RUNS: booleanFlag,
+  DISABLE_COMPUTERS: booleanFlag,
+  DISABLE_OUTBOUND_MAIL: booleanFlag,
   CORS_ALLOWED_ORIGINS: z.string().default(''),
   TRUSTED_PROXY_IPS: z.string().default(''),
   TRUSTED_PROXY_HOPS: z.coerce.number().int().min(0).max(10).default(0),
@@ -49,6 +55,7 @@ export type AppConfig = Omit<
   | 'PROVIDER_TOKEN_ENCRYPTION_KEY'
   | 'VAULT_ENCRYPTION_KEY'
 > & {
+  extensions: ExtensionsConfig['enabled'];
   corsAllowedOrigins: string[];
   trustedProxyIps: string[];
   tokenSigningKey: string;
@@ -85,6 +92,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
   } = parsed.data;
   return {
     ...rest,
+    extensions: parseExtensionsEnv(env.GREENHOUSE_EXTENSIONS) ?? parseGreenhouseConfig(deployment).extensions.enabled,
     corsAllowedOrigins: list(CORS_ALLOWED_ORIGINS),
     trustedProxyIps: list(TRUSTED_PROXY_IPS),
     tokenSigningKey: TOKEN_SIGNING_KEY.toLowerCase(),

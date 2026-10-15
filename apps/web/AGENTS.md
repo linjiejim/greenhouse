@@ -64,6 +64,9 @@ The v2 web app. Product scope is docs/product/prd.md §6–7; layout and compone
 
 - An initial message-page fetch preserves realtime rows that arrived after its snapshot and completed replies. Receive events while that query is fetching, even before its first page exists.
 
+- Published Agent budgets use the shared usage facts and UTC month; owners edit them on Publish, admins on Public Agents.
+- Directory filters stay local to a module and filter loaded entries; arrows move between results, Enter opens and Escape clears then closes.
+- Extension pages/sections/panels render only when the authenticated manifest declares them; only extensions/index.ts imports concrete extensions.
 - Computer fullscreen reuses the mounted viewer in pages and drawers. Only control canvases capture keys; host shortcuts and drawer Escape do not receive those keys. Queued computers poll their position.
 - Custom app frames use the platform double srcdoc wrapper, sandbox=allow-scripts only, source-checked JSON-RPC and declared read bindings. Unapproved versions show a placeholder; external card results render as text/chart data. Admin code review is in the app center.
 - Lists own their create action; do not repeat it in both the directory and header/empty state. Knowledge's directory keeps the secondary creation menu because it also creates folders.

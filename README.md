@@ -23,6 +23,7 @@ Screenshots use seeded sample data and a scripted model. [Regenerate them](#scre
 - **Tables:** typed and computed fields, grid, kanban, calendar, gallery, timeline, dashboards, internal forms, access roles and automations. The project template uses the same tables and views.
 - **Apps:** build pages on a table base, publish an immutable version to internal members and manage reviewed templates. Runtime actions obey both table access and application roles. External data cards read through the viewer's own connections; custom code cards run in an isolated frame after an admin reviews each published version.
 - **Skills and connections:** reusable skills, approved MCP connectors, personal connections and OAuth/PAT access for external clients acting as a member.
+- **Administration:** members and roles, services, usage with workspace, member, provider and published-Agent monthly budgets, computers, and operations switches that pause background runs, computers or outgoing mail. Private extensions add routes, pages, tools and their own migrations; see [EXTENDING.md](EXTENDING.md).
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/v2/tables-dark.webp" />

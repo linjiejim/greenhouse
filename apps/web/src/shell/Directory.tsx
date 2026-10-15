@@ -1,10 +1,13 @@
+import { useExtensions } from '../extensions/host';
+import { useI18n } from '../lib/i18n';
+import { FilteredAgents, FilteredSkills, FilteredRuns } from './FilteredDirectory';
 /**
  * The module directory (layout.md): a 56 title row (module name, search, collapse), one full-width
  * primary action, the list, and low-traffic entries at the bottom. Search opens in place.
  */
 
 import { AppsDirectory } from '../pages/apps/AppsDirectory';
-import { useState } from 'react';
+import { useRef, useState, type KeyboardEvent } from 'react';
 import {
   Activity,
   Bell,
@@ -61,6 +64,7 @@ export const ADMIN: { id: AdminSection; label: MessageKey; icon: LucideIcon }[] 
   { id: 'connectors', label: 'admin.connectors', icon: Plug },
   { id: 'access', label: 'admin.access', icon: Shield },
   { id: 'public-agents', label: 'admin.public-agents', icon: Sparkles },
+  { id: 'operations', label: 'admin.operations', icon: Shield },
   { id: 'branding', label: 'admin.branding', icon: LayoutGrid },
 ];
 
@@ -131,9 +135,45 @@ export function Directory({
 }) {
   const t = useT();
   const { me } = useSession();
+  const { locale } = useI18n();
+  const extensions = useExtensions();
   const openOverlay = useOpenOverlay();
   const [searching, setSearching] = useState(false);
   const [query, setQuery] = useState('');
+  const root = useRef<HTMLDivElement>(null);
+  const step = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey || event.nativeEvent.isComposing)
+      return;
+    const target = event.target as HTMLElement;
+    const searchingInput = target.matches('.gh-search-input');
+    if (!searchingInput && !target.matches('.app-row')) return;
+    const rows = [
+      ...(root.current?.querySelectorAll<HTMLElement>(
+        '.app-directory-list a.app-row, .app-directory-list button.app-row',
+      ) ?? []),
+    ];
+    const index = rows.indexOf(target);
+    let next: HTMLElement | undefined;
+    if (event.key === 'ArrowDown') next = rows[Math.min(index + 1, rows.length - 1)];
+    else if (event.key === 'ArrowUp')
+      next = searchingInput
+        ? rows[rows.length - 1]
+        : index > 0
+          ? rows[index - 1]
+          : (root.current?.querySelector<HTMLInputElement>('.gh-search-input') ?? undefined);
+    else if (!searchingInput && event.key === 'Home') next = rows[0];
+    else if (!searchingInput && event.key === 'End') next = rows[rows.length - 1];
+    else if (searchingInput && event.key === 'Enter') {
+      event.preventDefault();
+      rows[0]?.click();
+      return;
+    } else if (!searchingInput && event.key === 'Escape')
+      next = root.current?.querySelector<HTMLInputElement>('.gh-search-input') ?? undefined;
+    if (next) {
+      event.preventDefault();
+      next.focus();
+    }
+  };
   const newTarget = useNewTarget(route);
   const name = t(MODULES[module].label);
   const primary =
@@ -152,7 +192,7 @@ export function Directory({
                 : null;
 
   return (
-    <>
+    <div ref={root} className="app-directory-content" onKeyDown={step}>
       <div className="app-directory-heading">
         {searching ? (
           <SearchInput
@@ -169,7 +209,9 @@ export function Directory({
           module === 'agents' ||
           module === 'knowledge' ||
           module === 'tables' ||
-          module === 'apps') && (
+          module === 'apps' ||
+          module === 'skills' ||
+          module === 'runs') && (
           <IconButton
             label={searching ? t('directory.closeSearch') : t('directory.searchIn', { name })}
             onClick={() => {
@@ -195,11 +237,46 @@ export function Directory({
         </Button>
       )}
       <div className="app-directory-list">
+        {extensions.items.flatMap((extension) =>
+          (module === 'settings'
+            ? (extension.settingsSections ?? [])
+            : module === 'admin' && me?.role === 'admin'
+              ? (extension.adminSections ?? [])
+              : module === 'extensions'
+                ? (extension.pages ?? [])
+                : []
+          )
+            .filter((surface) =>
+              (module === 'settings'
+                ? extension.info.settings_sections
+                : module === 'admin'
+                  ? extension.info.admin_sections
+                  : extension.info.pages
+              ).includes(surface.id),
+            )
+            .map((surface) => (
+              <DirectoryRow
+                key={`${extension.id}:${surface.id}`}
+                title={surface.label[locale]}
+                href={
+                  module === 'extensions'
+                    ? href({ page: 'extension', extension: extension.id, view: surface.id, path: '', query: '' })
+                    : href({
+                        page: 'extension-section',
+                        parent: module as 'settings' | 'admin',
+                        extension: extension.id,
+                        section: surface.id,
+                      })
+                }
+              />
+            )),
+        )}
         {module === 'chat' && <ChatDirectory route={route} query={query} />}
         {module === 'knowledge' && <KnowledgeDirectory route={route} query={query} />}
         {module === 'apps' && <AppsDirectory route={route} query={query} />}
         {module === 'tables' && <TablesDirectory route={route} query={query} />}
-        {module === 'agents' && (
+        {module === 'agents' && query.trim() && <FilteredAgents route={route} query={query} />}
+        {module === 'agents' && !query.trim() && (
           <>
             {(['mine', 'public', 'archived'] as const).map((scope) => (
               <DirectoryRow
@@ -211,7 +288,9 @@ export function Directory({
             ))}
           </>
         )}
+        {module === 'skills' && query.trim() && <FilteredSkills route={route} query={query} />}
         {module === 'skills' &&
+          !query.trim() &&
           SKILL_SCOPES.filter((scope) => scope !== 'review' || me?.role === 'admin').map((scope) => (
             <DirectoryRow
               key={scope}
@@ -220,7 +299,8 @@ export function Directory({
               active={route.page === 'skills' && route.scope === scope}
             />
           ))}
-        {module === 'runs' && <RunsList route={route} />}
+        {module === 'runs' &&
+          (query.trim() ? <FilteredRuns route={route} query={query} /> : <RunsList route={route} />)}
         {module === 'notifications' && <NotificationsList route={route} />}
         {module === 'settings' &&
           SETTINGS.map((section) => (
@@ -244,6 +324,6 @@ export function Directory({
             />
           ))}
       </div>
-    </>
+    </div>
   );
 }

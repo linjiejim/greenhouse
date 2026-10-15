@@ -1,3 +1,4 @@
+import type { OperationsService } from '../modules/operations/service.js';
 /**
  * Resolution and management of provider instances (docs/product/providers.md §4).
  *
@@ -166,7 +167,11 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 }
 
-export function createProvidersService(deps: { config: AppConfig; fetch?: typeof fetch }) {
+export function createProvidersService(deps: {
+  config: AppConfig;
+  fetch?: typeof fetch;
+  operations?: OperationsService;
+}) {
   const key = Buffer.from(deps.config.providerEncryptionKey, 'hex');
   const env = providersFromEnv(deps.config.providerEnv);
   const fixed = [...env.instances, ...BUILTINS];
@@ -299,8 +304,9 @@ export function createProvidersService(deps: { config: AppConfig; fetch?: typeof
     ctx: UsageContext,
     policy: Required<ProviderPolicy>,
   ): ClientByCapability[C] =>
-    meter<C>(instance, rawClient(instance).created as ClientByCapability[C], ctx, () =>
-      assertWithinBudgets({
+    meter<C>(instance, rawClient(instance).created as ClientByCapability[C], ctx, async () => {
+      if (instance.capability === 'mail') await deps.operations?.assertEnabled('disable_outbound_mail');
+      await assertWithinBudgets({
         capability: instance.capability,
         instanceId: instance.id,
         personal: instance.source === 'personal',
@@ -308,8 +314,9 @@ export function createProvidersService(deps: { config: AppConfig; fetch?: typeof
         ...(ctx.memberId ? { memberId: ctx.memberId } : {}),
         personalCounting,
         runId: ctx.runId,
-      }),
-    );
+        agentId: ctx.agentId,
+      });
+    });
 
   const publicView = (instance: Instance): ProviderInstance => ({
     id: instance.id,

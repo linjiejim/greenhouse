@@ -1194,6 +1194,14 @@ CREATE TABLE "rate_limits" (
 	"reset_at" timestamp with time zone NOT NULL
 );
 --> statement-breakpoint
+CREATE TABLE "extension_migrations" (
+	"extension_id" text NOT NULL,
+	"name" text NOT NULL,
+	"checksum" text NOT NULL,
+	"applied_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "extension_migrations_extension_id_name_pk" PRIMARY KEY("extension_id","name")
+);
+--> statement-breakpoint
 ALTER TABLE "auth_links" ADD CONSTRAINT "auth_links_member_id_members_id_fk" FOREIGN KEY ("member_id") REFERENCES "public"."members"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "group_members" ADD CONSTRAINT "group_members_group_id_groups_id_fk" FOREIGN KEY ("group_id") REFERENCES "public"."groups"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "group_members" ADD CONSTRAINT "group_members_member_id_members_id_fk" FOREIGN KEY ("member_id") REFERENCES "public"."members"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint

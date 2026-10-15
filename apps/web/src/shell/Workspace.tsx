@@ -1,6 +1,7 @@
 import { lazy, Suspense } from 'react';
 import { Skeleton } from '@greenhouse/ui/kit';
 import { useT } from '../lib/i18n';
+import { ExtensionPage } from '../extensions/host';
 import { MODULES, moduleOf } from './modules';
 import { Page, PageHeader } from './Page';
 import { useSession } from '../app/session';
@@ -67,6 +68,9 @@ function WorkspacePage({ route }: { route: Route }) {
   const { me } = useSession();
   const knowledge = !!me?.modules.knowledge;
   switch (route.page) {
+    case 'extension':
+    case 'extension-section':
+      return <ExtensionPage route={route} />;
     case 'knowledge':
       if (!knowledge) return <NotFoundPage />;
       if (route.space && route.archived && route.space !== 'shared') return <ArchivedPage space={route.space} />;

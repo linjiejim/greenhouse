@@ -13,7 +13,7 @@ import { api } from '../../lib/api';
 import { useI18n } from '../../lib/i18n';
 import { href } from '../../lib/router';
 import { relativeTime } from '../../lib/time';
-import { formatCost, formatTokens, VoiceUsage } from '../../shell/usage';
+import { BudgetBar, formatCost, formatTokens, VoiceUsage } from '../../shell/usage';
 import { RUN_STATUS } from '../runs/status';
 
 export function ActivityTab({ agentId }: { agentId: string }) {
@@ -31,6 +31,9 @@ export function ActivityTab({ agentId }: { agentId: string }) {
       {usage.isError && <ErrorBox onRetry={() => void usage.refetch()}>{t('common.error')}</ErrorBox>}
       {data && (
         <>
+          {data.budgets.map((budget) => (
+            <BudgetBar key={budget.id} spent={budget.spent} limit={budget.monthly_limit} unit={budget.unit} />
+          ))}
           <div className="app-stats-grid">
             <div className="app-stat">
               <span className="app-stat-label">{t('activity.replies')}</span>
