@@ -16,6 +16,7 @@ allowBuilds:
   # Pi (agent-runner) transitive deps — postinstall scripts are optional codegen/
   # telemetry; the runner never executes them, so skip.
   '@google/genai': false
+  '@parcel/watcher': false # landing CSS builds once; the optional watch backend is unused
   better-sqlite3: false # unused drizzle driver (we use postgres-js)
   esbuild: true
   isolated-vm: true

@@ -66,3 +66,4 @@ The v2 web app. Product scope is docs/product/prd.md §6–7; layout and compone
 
 - Lists own their create action; do not repeat it in both the directory and header/empty state. Knowledge's directory keeps the secondary creation menu because it also creates folders.
 - Base refetches compare view revisions at response time so a delayed response cannot replace saved settings. Floating panels containing fixed pickers use opacity-only entry animations.
+- `node --import tsx apps/web/e2e/capture-v2.mts` seeds sample content through the local fake stack and captures light/dark/narrow screens; STACK_WEB_PORT selects it. Published WebP pairs go to docs/assets/v2; the review manifest and full PNGs go to artifacts/t10. It refuses remote model endpoints and requires cwebp.
