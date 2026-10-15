@@ -26,5 +26,6 @@ export function runFinishTool(computers: ComputersService) {
       ctx.endTurn();
       return { report: args.report, findings: args.findings };
     },
+    summarize: (_args, _output, locale) => (locale === 'zh' ? '完成了后台工作' : 'Finished background work'),
   });
 }

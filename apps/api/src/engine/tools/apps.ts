@@ -34,6 +34,7 @@ export function appTools(apps: AppsService, tables: TablesService) {
       );
       return detail;
     },
+    summarize: (_args, _output, locale) => (locale === 'zh' ? '查看了应用' : 'Read apps'),
   });
   const action = defineTool({
     name: 'apps_action',

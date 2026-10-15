@@ -143,7 +143,7 @@ export async function assembleTools(input: {
     if (context.readOnly && !def.idempotent && !['memory', 'conversation_query', 'mcp_call'].includes(def.name))
       continue;
     if (def.available && !(await def.available(availability))) continue;
-    chosen.push(def);
+    chosen.push(context.surface === 'background' && def.backgroundInput ? { ...def, input: def.backgroundInput } : def);
     const section = def.turnContext ? await def.turnContext(availability) : null;
     if (section) turnContext.push(section);
   }
@@ -183,7 +183,7 @@ export async function assembleTools(input: {
               'This run has read private data, so it can no longer search or open web pages. Report what you have.',
             );
           }
-          if (def.private) {
+          if (def.privateRead ? await def.privateRead(args, context) : def.private) {
             readPrivate = true;
             await input.privateRead?.();
           }
@@ -347,7 +347,9 @@ export async function assembleTools(input: {
                 .where(eq(runSteps.id, stepId));
             }
             const evidence =
-              input.output && def.name !== 'tool_output_read' ? await input.output(output, call) : output;
+              input.output && def.name !== 'tool_output_read'
+                ? await input.output(output, { ...call, outputPrivate: readPrivate })
+                : output;
             await finish('succeeded', evidence);
             if ((risk === 'tier1' || standing) && def.undo && input.receipt) {
               const summary = def.summarize?.(args, output, context.locale) ?? def.name;
