@@ -243,7 +243,7 @@ async function approveAll(id: string) {
       const calls = (request.payload.calls ?? [request.payload]) as { tool?: string }[];
       if (
         request.payload.tier === 'tier3' ||
-        calls.some((call) => !/^(knowledge_mutation|tables_)/.test(call.tool ?? ''))
+        calls.some((call) => !/^(knowledge_mutation|table_schema_plan|tables_)/.test(call.tool ?? ''))
       )
         throw new Error('Unexpected approval outside reversible knowledge/table writes; left pending.');
     }
@@ -336,7 +336,7 @@ try {
     state.doc = href!.match(/doc_[A-Z0-9]+/)![0];
     await docLink.click();
     await check('文档页面', '文档标题与 Markdown 正常渲染', async () => {
-      await expect(page.getByRole('heading', { level: 1, name: title })).toBeVisible();
+      await expect(page.locator('.app-page-header').getByRole('heading', { level: 1, name: title })).toBeVisible();
       await expect(page.locator('.app-doc-content')).toBeVisible();
     });
     await capture('doc');
@@ -480,6 +480,10 @@ try {
           .last()
           .evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth > 0),
       ).toBe(true);
+    });
+    await check('截图回复无内部文件编号', '模型正文不包含内部文件编号', async () => {
+      const ms = await messages(id);
+      expect(ms.filter((m) => m.role === 'assistant').some((m) => /fil_[0-9A-Z]{20,}/.test(m.content))).toBe(false);
     });
     await capture('reply');
     await page.getByRole('main').getByRole('button', { name: '电脑', exact: true }).click();
@@ -644,7 +648,18 @@ try {
     // F05 deliberately undoes its records. Add a human record to make the runtime readable.
     const table = state.base.tables[0]!;
     await api(`/api/tables/tables/${table.id}/records`, 'POST', {
-      values: { [table.fields.find((f) => f.name === '客户名')?.id ?? table.fields[0]!.id]: '应用验收客户' },
+      values: Object.fromEntries(
+        table.fields.map((field) => [
+          field.id,
+          field.type === 'number'
+            ? 1000
+            : field.type === 'date'
+              ? '2026-10-15'
+              : field.type === 'single_select'
+                ? (field.config.options as { id: string }[])[0]!.id
+                : '应用验收客户',
+        ]),
+      ),
     });
     await open('/apps');
     await page.getByRole('main').getByRole('button', { name: '新建应用', exact: true }).click();
@@ -710,7 +725,8 @@ try {
       await open('/agents/main?tab=computer', member.page);
       await member.page.getByRole('button', { name: '开机', exact: true }).click();
       await check('禁用电脑的成员提示', '成员明确看到电脑被管理员禁用', async () => {
-        await expect(member.page.getByText(/管理员.*暂停|An admin temporarily paused this operation/)).toBeVisible();
+        await expect(member.page.getByText(/管理员.*(?:暂停|禁用)|电脑.*暂停/)).toBeVisible();
+        await expect(member.page.getByRole('main')).not.toContainText('An admin temporarily paused');
       });
       await capture('computer-disabled', member.page);
     } finally {
