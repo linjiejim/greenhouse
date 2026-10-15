@@ -66,6 +66,7 @@ import { errorText } from '../../lib/errors';
 import { useI18n } from '../../lib/i18n';
 import { useVisible } from '../../lib/media';
 import { href, navigate } from '../../lib/router';
+import { MemberAvatar } from '../../shell/MemberAvatar';
 import { AgentAvatar } from '../../shell/AgentAvatar';
 import { Page, PageHeader } from '../../shell/Page';
 import { ComputerTab } from '../agents/ComputerTab';
@@ -203,25 +204,30 @@ function ExistingConversation({ id }: { id: string }) {
     (request) => request.status === 'pending' && (!request.run_id || !shownRuns.has(request.run_id)),
   );
 
+  // In a room, @ names the people here and my own Agents that are here (only those answer me).
+  const room = conversation?.kind === 'room';
+  const roomPeople = useConversationMembers(conversationId, room);
   const authorOf = useCallback(
     (message: Message): Author => {
       if (message.agent_id) {
-        const agent = people.agentById.get(message.agent_id);
+        const agent =
+          roomPeople.data?.agents.find((item) => item.id === message.agent_id) ??
+          people.agentById.get(message.agent_id);
+        const owner = agent && roomPeople.data?.members.find((item) => item.id === agent.owner_id);
         return {
-          name: agent?.name ?? 'Agent',
-          agent: agent ?? { id: message.agent_id, avatar: {}, template_key: null },
+          name: agent ? `${agent.name}${owner && owner.id !== me.id ? ` · ${owner.name}` : ''}` : 'Agent',
+          agent: agent
+            ? { ...agent, template_key: people.agentById.get(agent.id)?.template_key ?? null }
+            : { id: message.agent_id, avatar: {}, template_key: null },
         };
       }
       if (message.author_member_id === me.id) return { name: me.name, member: { avatar_url: me.avatar_url } };
       const member = message.author_member_id ? people.memberById.get(message.author_member_id) : undefined;
       return { name: member?.name ?? '—', member: member ?? { avatar_url: null } };
     },
-    [people.agentById, people.memberById, me],
+    [people.agentById, people.memberById, roomPeople.data, me],
   );
 
-  // In a room, @ names the people here and my own Agents that are here (only those answer me).
-  const room = conversation?.kind === 'room';
-  const roomPeople = useConversationMembers(conversationId, room);
   const candidates: Candidate[] = useMemo(() => {
     if (!room || !roomPeople.data) return [];
     return [
@@ -259,13 +265,16 @@ function ExistingConversation({ id }: { id: string }) {
     kind === 'main' || kind === 'direct'
       ? (answering?.name ?? conversation.title)
       : conversation.title || t('chat.untitled');
-  const status = conversation.working
-    ? t('status.running')
-    : kind === 'main'
-      ? t('chat.mainThread')
-      : kind === 'room'
-        ? t('chat.people', { count: detail.data?.members.length ?? 0 })
-        : (answering?.role ?? '');
+  const status =
+    !conversation.working && conversation.pending_requests > 0
+      ? t('chat.awaitingConfirmation')
+      : conversation.working
+        ? t('status.running')
+        : kind === 'main'
+          ? t('chat.mainThread')
+          : kind === 'room'
+            ? t('chat.people', { count: detail.data?.members.length ?? 0 })
+            : (answering?.role ?? '');
 
   const sendMessage = async (input: ComposerSend) => {
     const result = await send.mutateAsync(input).catch((error: unknown) => {
@@ -418,6 +427,29 @@ function ExistingConversation({ id }: { id: string }) {
         >
           {messages.isPending && <Skeleton lines={6} />}
           {messages.isError && <ErrorBox onRetry={() => void messages.refetch()}>{t('common.error')}</ErrorBox>}
+          {!messages.isPending && !messages.isError && room && !list.length && (
+            <div className="app-room-empty">
+              <p>{t('chat.roomHint')}</p>
+              <div className="app-room-roster">
+                {roomPeople.data?.members.map((member) => (
+                  <span key={member.id}>
+                    <MemberAvatar name={member.name} url={member.avatar_url} size={24} />
+                    {member.name}
+                  </span>
+                ))}
+                {roomPeople.data?.agents.map((agent) => {
+                  const owner = roomPeople.data.members.find((member) => member.id === agent.owner_id);
+                  return (
+                    <span key={agent.id}>
+                      <AgentAvatar agent={{ ...agent, template_key: null }} size={24} />
+                      {agent.name}
+                      {owner ? ` · ${owner.name}` : ''}
+                    </span>
+                  );
+                })}
+              </div>
+            </div>
+          )}
           {list.map((message, index) => {
             const previous = list[index - 1];
             const showAuthor =

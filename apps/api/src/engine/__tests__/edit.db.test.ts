@@ -16,6 +16,7 @@ import { gate, scriptedModel, text, toolCall } from './model.js';
 function noteTool(ran: unknown[]) {
   return defineTool({
     name: 'note_write',
+    describe: async () => ({ summary: '写入共享笔记', details: [] }),
     description: 'Write a note into the shared notebook.',
     input: z.object({ text: z.string() }),
     risk: 'write',
@@ -290,7 +291,7 @@ describe('regenerating the last reply', () => {
     const before = await transcript();
     expect(before.slice(2).map((row) => [row.role, row.content])).toEqual([
       ['assistant', ''],
-      ['event', '已批准：note_write'],
+      ['event', '已批准：写入共享笔记'],
       ['assistant', 'Written.'],
     ]);
 
@@ -302,7 +303,7 @@ describe('regenerating the last reply', () => {
     const after = await transcript();
     expect(after.slice(2).map((row) => [row.role, row.content])).toEqual([
       ['assistant', ''],
-      ['event', '已批准：note_write'],
+      ['event', '已批准：写入共享笔记'],
       ['assistant', 'Written, and filed under groceries.'],
     ]);
     const [run] = await getDb().select().from(runs).where(eq(runs.id, regenerated.body.run_id));

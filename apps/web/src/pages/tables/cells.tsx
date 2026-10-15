@@ -177,8 +177,12 @@ export function CellValue({
       return (
         <span className="app-tb-number">
           {value.toLocaleString(locale === 'zh' ? 'zh-CN' : 'en-US', {
-            minimumFractionDigits: digits ?? 0,
-            maximumFractionDigits: digits ?? 6,
+            ...(field.config.currency ? { style: 'currency', currency: field.config.currency } : {}),
+            ...(digits === undefined
+              ? field.config.currency
+                ? {}
+                : { minimumFractionDigits: 0, maximumFractionDigits: 6 }
+              : { minimumFractionDigits: digits, maximumFractionDigits: digits }),
           })}
         </span>
       );

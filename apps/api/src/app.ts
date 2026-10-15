@@ -92,6 +92,7 @@ import { requestRoutes } from './modules/requests/routes.js';
 import { runRoutes } from './modules/runs/routes.js';
 import { scheduleRoutes } from './modules/schedules/routes.js';
 import { createSchedulesService, type SchedulesService } from './modules/schedules/service.js';
+import { toolSummary } from './engine/tools/presentation.js';
 import { createRunsService, type RunsService } from './modules/runs/service.js';
 import { createCardDisplay } from './modules/requests/display.js';
 import { createRequestsService, type RequestsService } from './modules/requests/service.js';
@@ -295,9 +296,9 @@ export function createServices(config: AppConfig, options: ServiceOptions = {}):
       toolOutputReadTool(files),
       computerTool(computers),
       requestTakeoverTool(),
-      browserTool(browser),
+      browserTool(browser, files),
       vaultTool(vault, browser),
-      runStartTool(background),
+      runStartTool(background, computers, providers),
       helperRunTool(background),
       runFinishTool(computers),
       handoffTool(handOff),
@@ -335,7 +336,16 @@ export function createServices(config: AppConfig, options: ServiceOptions = {}):
     ),
   );
   tables.worker.every(automations.sweep);
-  const runs = createRunsService({ background: () => engine.background, cancelMedia: media.cancel });
+  const runs = createRunsService({
+    background: () => engine.background,
+    cancelMedia: media.cancel,
+    summarize: (step, locale) =>
+      toolSummary(
+        { ...step, tool: step.toolName ?? '' },
+        new Map(engine.toolsForEvaluation().map((def) => [def.name, def])),
+        locale,
+      ),
+  });
   const services: Services = {
     extensions,
     config,

@@ -78,11 +78,32 @@
   padding-block: var(--gh-space-3);
   border-bottom: var(--gh-stroke-hairline) solid var(--gh-line);
 }
+.app-ap-record-title {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--gh-text);
+  font: inherit;
+  font-weight: 600;
+  text-align: start;
+  cursor: pointer;
+}
 .app-ap-values {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--gh-space-2);
-  padding-block: var(--gh-space-2);
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr));
+  gap: var(--gh-space-3);
+  margin: var(--gh-space-3) 0;
+}
+.app-ap-values > div {
+  min-width: 0;
+}
+.app-ap-values dt {
+  color: var(--gh-secondary);
+  font: var(--gh-type-body-sm);
+}
+.app-ap-values dd {
+  margin: var(--gh-space-1) 0 0;
+  overflow-wrap: anywhere;
 }
 .app-ap-detail {
   display: flex;
@@ -149,4 +170,14 @@
   overflow-wrap: anywhere;
   max-height: 60dvh;
   overflow: auto;
+}
+
+.app-ap-publication {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--gh-space-2);
+}
+.app-ap-publication > span {
+  white-space: nowrap;
 }

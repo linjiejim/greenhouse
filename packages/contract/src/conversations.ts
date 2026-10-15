@@ -108,6 +108,7 @@ export const messageStepSchema = z.object({
   summary: z.string(),
   status: z.enum(['done', 'failed']),
   duration_ms: z.number().int().optional(),
+  recovered: z.boolean().optional(),
 });
 
 export const messageSchema = z.object({

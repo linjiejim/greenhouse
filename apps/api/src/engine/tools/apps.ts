@@ -6,12 +6,14 @@ import { defineTool } from './define.js';
 import { tableTools } from './tables.js';
 
 export function appTools(apps: AppsService, tables: TablesService) {
+  const plans = new WeakMap<object, Awaited<ReturnType<typeof apps.actionPlan>>>();
   const mutation = tableTools(tables).find((tool) => tool.name === 'table_mutation')!;
   const query = defineTool({
     name: 'apps_query',
     description:
       'List usable apps, read their published pages, query a saved card or read a record through that card. App roles narrow the member’s base permissions.',
     input: appAgentQuerySchema,
+    summarize: (_args, _output, locale) => (locale === 'zh' ? '查看了应用' : 'Viewed apps'),
     risk: 'read',
     idempotent: true,
     private: true,
@@ -34,7 +36,6 @@ export function appTools(apps: AppsService, tables: TablesService) {
       );
       return detail;
     },
-    summarize: (_args, _output, locale) => (locale === 'zh' ? '查看了应用' : 'Read apps'),
   });
   const action = defineTool({
     name: 'apps_action',
@@ -59,19 +60,28 @@ export function appTools(apps: AppsService, tables: TablesService) {
     },
     async describe(args, ctx) {
       const plan = await apps.actionPlan(ctx.memberId, args.app_id, args);
-      return {
-        summary: ctx.locale === 'zh' ? '执行应用动作' : 'Run app action',
-        details: [{ label: plan.label, value: JSON.stringify(plan).slice(0, 3000) }],
-      };
+      return apps.inActionScope(ctx.memberId, args.app_id, args.version, args.card, async () => {
+        const card = await mutation.describe!(plan, ctx);
+        return {
+          ...card,
+          details: [{ label: ctx.locale === 'zh' ? '应用动作' : 'App action', value: plan.label }, ...card.details],
+        };
+      });
     },
     async before(args, ctx) {
       const plan = await apps.actionPlan(ctx.memberId, args.app_id, args);
+      plans.set(args, plan);
       return { ...((await mutation.before!(plan, ctx)) as object), input: args, plan };
     },
     execute: (args, ctx) => apps.execute(ctx.memberId, args.app_id, args),
     async undo(args, output, before, ctx) {
       return apps.inActionScope(ctx.memberId, args.app_id, args.version, args.card, () =>
         mutation.undo!((before as { plan: unknown }).plan, output, before, ctx),
+      );
+    },
+    async receipt(args, output, ctx) {
+      return apps.inActionScope(ctx.memberId, args.app_id, args.version, args.card, async () =>
+        mutation.receipt!(plans.get(args)!, output, ctx),
       );
     },
     undoResult: mutation.undoResult,

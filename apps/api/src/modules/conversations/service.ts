@@ -51,6 +51,7 @@ import {
   type NewMessage,
 } from '@greenhouse/db';
 import { agentGreeting } from '@greenhouse/types/agent-templates';
+import { parseMentions } from '@greenhouse/utils/mentions';
 import { toErrorMessage } from '@greenhouse/utils/error';
 import { logger } from '@greenhouse/utils/logger';
 import { audit } from '../../audit.js';
@@ -100,6 +101,7 @@ export const toMessage = (row: MessageRow): Message => ({
     tool: step.tool,
     summary: step.summary,
     status: step.status,
+    ...(step.recovered ? { recovered: true } : {}),
     ...(step.durationMs !== undefined ? { duration_ms: step.durationMs } : {}),
   })),
   reasoning: row.reasoning,
@@ -460,6 +462,18 @@ export function createConversationsService(deps: {
   }
 
   const service = {
+    /** Resolve only exact, unambiguous names present in this room; explicit handles win. */
+    async resolveMentions(memberId: string, conversationId: string, content: string, explicit: string[]) {
+      const { conversation } = await service.access(memberId, conversationId);
+      if (conversation.kind !== 'room' || !content.includes('@')) return explicit;
+      const roster = await peopleOf(conversation, memberId);
+      const candidates = [
+        ...roster.members.map((member) => ({ name: member.name, id: member.id })),
+        ...roster.agents.map((agent) => ({ name: agent.name, id: `agent:${agent.id}` })),
+      ];
+      return [...new Set([...explicit, ...parseMentions(content, candidates)])].slice(0, 50);
+    },
+
     /** The main thread: every member has exactly one, with the main Agent. Safe to call concurrently. */
     async ensureMain(memberId: string): Promise<ConversationRow> {
       const find = async () =>

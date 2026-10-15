@@ -502,7 +502,7 @@ describe('submitting', () => {
     const wrong = await as(ann).post(`/api/tables/forms/${form.id}/submissions`, {
       values: { [primary.id]: 'Pens', [count.id]: 'many' },
     });
-    expect(wrong.body.error.details).toEqual({ field: count.id });
+    expect(wrong.body.error.details).toEqual({ field: count.id, field_name: count.name, expected: 'a number' });
 
     const told = listen(lin);
     const sent = await as(ann).post(`/api/tables/forms/${form.id}/submissions`, {

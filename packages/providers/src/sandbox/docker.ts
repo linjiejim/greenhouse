@@ -189,6 +189,7 @@ export function createDockerSandbox(config: DockerConfig): SandboxClient {
     return name;
   };
   const client: SandboxClient = {
+    backgroundNetwork: 'offline',
     async setEgress(name, domains) {
       const target = checkName(name);
       const inspected = await runDocker(['inspect', '--format', '{{json .NetworkSettings.Networks}}', target]);

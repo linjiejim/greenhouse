@@ -75,6 +75,7 @@ export function FieldDialog({
   const [name, setName] = useState(field?.name ?? '');
   const [type, setType] = useState<FieldType>(field?.type ?? 'text');
   const [options, setOptions] = useState<SelectOption[]>(field?.config.options ?? []);
+  const [currency, setCurrency] = useState(field?.config.currency ?? '');
   const [precision, setPrecision] = useState(field?.config.precision);
   const [multiple, setMultiple] = useState(field?.config.multiple ?? type === 'relation');
   const [target, setTarget] = useState(
@@ -101,7 +102,7 @@ export function FieldDialog({
       case 'multi_select':
         return { options: options.filter((option) => option.label.trim()) };
       case 'number':
-        return precision === undefined ? {} : { precision };
+        return { ...(precision === undefined ? {} : { precision }), ...(currency ? { currency } : {}) };
       case 'member':
         return { multiple };
       case 'relation':
@@ -302,15 +303,25 @@ export function FieldDialog({
           </FieldGroup>
         )}
         {type === 'number' && (
-          <Select
-            label={t('tables.field.precision')}
-            value={precision === undefined ? '' : String(precision)}
-            options={[
-              { value: '', label: '—' },
-              ...[0, 1, 2, 3, 4].map((n) => ({ value: String(n), label: t('tables.field.precisionN', { n }) })),
-            ]}
-            onChange={(next) => setPrecision(next === '' ? undefined : Number(next))}
-          />
+          <>
+            <FieldGroup label={t('tables.field.currency')}>
+              <Input
+                value={currency}
+                maxLength={3}
+                placeholder="CNY / USD"
+                onChange={(event) => setCurrency(event.target.value.toUpperCase().replace(/[^A-Z]/g, ''))}
+              />
+            </FieldGroup>
+            <Select
+              label={t('tables.field.precision')}
+              value={precision === undefined ? '' : String(precision)}
+              options={[
+                { value: '', label: '—' },
+                ...[0, 1, 2, 3, 4].map((n) => ({ value: String(n), label: t('tables.field.precisionN', { n }) })),
+              ]}
+              onChange={(next) => setPrecision(next === '' ? undefined : Number(next))}
+            />
+          </>
         )}
         {type === 'relation' && (
           <FieldGroup label={t('tables.field.target')} description={t('tables.field.targetHint')}>

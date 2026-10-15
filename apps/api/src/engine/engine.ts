@@ -2,6 +2,7 @@ import type { OperationsService } from '../modules/operations/service.js';
 import { interjectionText } from './history.js';
 import { countAssignment, countActive, countAdoption, adoptedOutputKey } from '../modules/usage/counts.js';
 import { fence } from '../security/prompt.js';
+import { toolSummary, approvalStep, recoveredCalls, failureSummary } from './tools/presentation.js';
 import { tableEventChain } from '../modules/tables/event-context.js';
 import { baseAutomationRuns } from '@greenhouse/db';
 /**
@@ -282,12 +283,12 @@ function deltaFrames(send: (text: string, offset: number) => void) {
 }
 
 function stepSummary(call: ToolCallRecord, defs: Map<string, ToolDef>, locale: Locale): string {
-  const def = defs.get(call.tool);
-  try {
-    return def?.summarize?.(call.input as never, call.output, locale) ?? call.tool;
-  } catch {
-    return call.tool;
-  }
+  return toolSummary(call, defs, locale);
+}
+
+function pendingStep(call: ToolCallRecord): { approvalStepId?: string } {
+  const output = call.output as { status?: string; step_id?: string } | undefined;
+  return output?.status === 'needs_approval' && output.step_id ? { approvalStepId: output.step_id } : {};
 }
 
 export function createEngine(deps: EngineDeps) {
@@ -317,31 +318,70 @@ export function createEngine(deps: EngineDeps) {
   const publish = (conversationId: string, event: RealtimeEvent) => deps.conversations.publish(conversationId, event);
 
   async function receipt(run: Run, stepId: string, summary: string) {
-    const [step] = await getDb().select({ risk: runSteps.risk }).from(runSteps).where(eq(runSteps.id, stepId));
+    const [step] = await getDb().select().from(runSteps).where(eq(runSteps.id, stepId));
     if (step?.risk === 'tier2') await countAdoption(run.ownerId, adoptedOutputKey(run.id, 'step', stepId));
     if (!run.conversationId) return;
-    const row = await withConversation(run.conversationId, () =>
+    const tableId =
+      step?.toolName === 'table_mutation'
+        ? (step.undoState as { before?: { input?: { table_id?: string } } } | null)?.before?.input?.table_id
+        : step?.toolName === 'apps_action'
+          ? (step.undoState as { before?: { plan?: { table_id?: string } } } | null)?.before?.plan?.table_id
+          : null;
+    const result = await withConversation(run.conversationId, () =>
       transaction(async (db) => {
         await db
           .select({ id: conversations.id })
           .from(conversations)
           .where(eq(conversations.id, run.conversationId!))
           .for('update');
-        const [seen] = await db
-          .select({ id: messages.id })
+        const receipts = await db
+          .select()
           .from(messages)
-          .where(and(eq(messages.conversationId, run.conversationId!), sql`${messages.event}->>'step_id' = ${stepId}`));
-        if (seen) return null;
-        return deps.conversations.append(run.conversationId!, {
+          .where(and(eq(messages.runId, run.id), sql`${messages.event}->>'type' = 'write_receipt'`))
+          .for('update');
+        if (
+          receipts.some(
+            (receipt) =>
+              receipt.event?.step_id === stepId || (receipt.event?.step_ids as string[] | undefined)?.includes(stepId),
+          )
+        )
+          return null;
+        const existing = tableId
+          ? receipts.find((receipt) => receipt.event?.table_id === tableId && receipt.event?.undone !== true)
+          : null;
+        if (existing) {
+          const ids = (existing.event?.step_ids as string[] | undefined) ?? [String(existing.event?.step_id)];
+          const [saved] = await db
+            .update(messages)
+            .set({
+              content: `${existing.content}\n${summary.includes('\n') && existing.content.split('\n')[0] === summary.split('\n')[0] ? summary.slice(summary.indexOf('\n') + 1) : summary}`,
+              event: { ...existing.event, type: 'write_receipt', step_ids: [...ids, stepId] },
+            })
+            .where(eq(messages.id, existing.id))
+            .returning();
+          return saved ? { row: saved, updated: true } : null;
+        }
+        const row = await deps.conversations.append(run.conversationId!, {
           role: 'event',
           agentId: run.agentId,
           runId: run.id,
           content: summary,
-          event: { type: 'write_receipt', step_id: stepId, member_id: run.ownerId },
+          event: {
+            type: 'write_receipt',
+            step_id: stepId,
+            step_ids: [stepId],
+            member_id: run.ownerId,
+            ...(tableId ? { table_id: tableId } : {}),
+          },
         });
+        return { row, updated: false };
       }),
     );
-    if (row) await publish(run.conversationId, { type: 'message.created', data: { message: toMessage(row) } });
+    if (result)
+      await publish(run.conversationId, {
+        type: result.updated ? 'message.updated' : 'message.created',
+        data: { message: toMessage(result.row) },
+      });
   }
 
   function track(work: Promise<void>) {
@@ -1092,6 +1132,16 @@ export function createEngine(deps: EngineDeps) {
             tainted = true;
           },
           tainted: () => tainted,
+          attachFile: async (fileId) => {
+            if (controller.signal.aborted) throw new Error('Stopped.');
+            await deps.conversations.access(run.ownerId, conversation.id);
+            const [saved] = await getDb()
+              .update(messages)
+              .set({ attachments: [fileId] })
+              .where(eq(messages.id, replyId))
+              .returning();
+            if (saved) await send({ type: 'message.updated', data: { message: toMessage(saved) } });
+          },
           cite: sources.cite,
           chain: (run.input as TurnInput).chain ?? { key: run.id, path: [agent.id] },
           ...(resolved.vision
@@ -1319,6 +1369,7 @@ export function createEngine(deps: EngineDeps) {
                     .map((call) => ({
                       tool: call.tool,
                       summary: stepSummary(call, defs, locale),
+                      ...pendingStep(call),
                       status: call.status === 'failed' ? ('failed' as const) : ('done' as const),
                       durationMs: call.durationMs,
                     })),
@@ -1487,6 +1538,7 @@ export function createEngine(deps: EngineDeps) {
                       .map((call) => ({
                         tool: call.tool,
                         summary: stepSummary(call, defs, locale),
+                        ...pendingStep(call),
                         status: call.status === 'failed' ? ('failed' as const) : ('done' as const),
                         durationMs: call.durationMs,
                       })),
@@ -1610,28 +1662,78 @@ export function createEngine(deps: EngineDeps) {
     let superseded = false;
     if (reply && conversation) {
       const failed = outcome.status === 'failed';
+      const identities = new Map<ToolCallRecord, string>();
+      if (outcome.status === 'succeeded' && collector.calls.some((call) => call.status === 'failed')) {
+        await Promise.all(
+          collector.calls.map(async (call, index) => {
+            const target = defs.get(call.tool)?.retryTarget;
+            if (!target) return;
+            try {
+              identities.set(call, await target(call.input, run.ownerId));
+            } catch {
+              identities.set(call, `unresolved:${index}`);
+            }
+          }),
+        );
+      }
+      const recovered = outcome.status === 'succeeded' ? recoveredCalls(collector.calls, identities) : new Set();
       const steps: MessageStep[] = collector.calls
         .filter((call) => call.status !== 'running')
         .map((call) => ({
           tool: call.tool,
+          ...(recovered.has(call) ? { recovered: true } : {}),
           summary: stepSummary(call, defs, locale),
+          ...pendingStep(call),
           status: call.status === 'failed' ? 'failed' : 'done',
           ...(call.durationMs !== undefined ? { durationMs: call.durationMs } : {}),
         }));
       const content =
         collector.text.trim() ||
         (failed ? (FAILURE_TEXT[locale][outcome.errorCode ?? ''] ?? FAILURE_TEXT[locale].default!) : collector.text);
-      const [saved] = await getDb()
-        .update(messages)
-        .set({
-          content,
-          steps: [...previousSteps, ...steps],
-          citations: failed ? [] : sources.citations(content),
-          reasoning: collector.reasoning || null,
-          status: outcome.status === 'canceled' ? 'stopped' : failed ? 'failed' : 'complete',
-        })
-        .where(eq(messages.id, reply.id))
-        .returning();
+      const finishedReplyId = reply.id;
+      const saved = await withConversation(conversation.id, () =>
+        transaction(async (db) => {
+          await db
+            .select({ id: conversations.id })
+            .from(conversations)
+            .where(eq(conversations.id, conversation.id))
+            .for('update');
+          const finalSteps = [...previousSteps, ...steps];
+          const approved = await db
+            .select()
+            .from(runSteps)
+            .where(and(eq(runSteps.runId, run.id), isNotNull(runSteps.requestId)));
+          for (const step of finalSteps) {
+            const actual = approved.find((actual) => actual.id === step.approvalStepId);
+            if (!actual || actual.status === 'pending') continue;
+            const [card] = await db.select().from(requestsTable).where(eq(requestsTable.id, actual.requestId!));
+            const call = (card?.payload.calls as Array<{ step_id: string; summary: string }> | undefined)?.find(
+              (call) => call.step_id === actual.id,
+            );
+            step.summary =
+              actual.status === 'failed' && actual.error?.message
+                ? actual.error.message
+                : approvalStep(
+                    String(call?.summary ?? card?.payload.summary ?? ''),
+                    card?.status === 'rejected' ? 'rejected' : actual.status,
+                    locale,
+                  );
+            step.status = actual.status === 'failed' ? 'failed' : 'done';
+          }
+          const [saved] = await db
+            .update(messages)
+            .set({
+              content,
+              steps: finalSteps,
+              citations: failed ? [] : sources.citations(content),
+              reasoning: collector.reasoning || null,
+              status: outcome.status === 'canceled' ? 'stopped' : failed ? 'failed' : 'complete',
+            })
+            .where(eq(messages.id, finishedReplyId))
+            .returning();
+          return saved;
+        }),
+      );
       if (saved) await send({ type: 'message.updated', data: { message: toMessage(saved) } });
       else superseded = true;
       await deps.agents.touch(run.agentId);
@@ -1804,7 +1906,7 @@ export function createEngine(deps: EngineDeps) {
     signal: AbortSignal,
   ): Promise<DecisionOutcome> {
     const payload = request.payload as { tool?: string; input?: unknown; summary?: string };
-    const summary = payload.summary ?? payload.tool ?? '';
+    const summary = payload.summary ?? (locale === 'zh' ? '执行操作' : 'Perform action');
     const zh = locale === 'zh';
     /** Moves the step on, only from the states given: the first to move it wins. */
     const moveStep = async (from: RunStep['status'][], values: Record<string, unknown>) =>
@@ -1917,28 +2019,51 @@ export function createEngine(deps: EngineDeps) {
     };
     const started = Date.now();
     try {
-      const raw = await tableEventChain.run((run?.input.event_chain as string[] | undefined) ?? [], () =>
-        ready.def.execute(payload.input, context),
+      const perform = async () => {
+        if (ready.def.undo && ready.run.conversationId)
+          await getDb()
+            .select({ id: conversations.id })
+            .from(conversations)
+            .where(eq(conversations.id, ready.run.conversationId))
+            .for('update');
+        await ready.def.guard?.(payload.input, context);
+        const before = ready.def.undo ? await ready.def.before?.(payload.input, context) : undefined;
+        const raw = await ready.def.execute(payload.input, context);
+        const output = await storeToolOutput(deps.files, raw, context);
+        if (ready.def.undo && before != null)
+          await getDb()
+            .update(runSteps)
+            .set({ undoState: { before, output: ready.def.undoResult?.(raw) ?? raw } })
+            .where(eq(runSteps.id, request.stepId!));
+        if (ready.def.risk !== 'read' && ready.def.name !== 'generate_video')
+          await countAdoption(ready.run.ownerId, adoptedOutputKey(ready.run.id, 'step', request.stepId!));
+        await moveStep(['running', 'uncertain'], {
+          status: 'succeeded',
+          output: output ?? null,
+          durationMs: Date.now() - started,
+          finishedAt: sql`now()`,
+        });
+        if (ready.def.undo && before != null) {
+          const receiptSummary =
+            (await ready.def.receipt?.(payload.input, raw, context)) ??
+            ready.def.summarize?.(payload.input, raw, locale) ??
+            summary;
+          await receipt(ready.run, request.stepId!, receiptSummary);
+        }
+        return output;
+      };
+      const output = await tableEventChain.run((run?.input.event_chain as string[] | undefined) ?? [], () =>
+        ready.def.undo ? transaction(perform) : perform(),
       );
-      const output = await storeToolOutput(deps.files, raw, context);
-      // Recorded even when a sweep took the step for abandoned meanwhile: it did run.
-      if (ready.def.risk !== 'read' && ready.def.name !== 'generate_video')
-        await countAdoption(ready.run.ownerId, adoptedOutputKey(ready.run.id, 'step', request.stepId));
-      await moveStep(['running', 'uncertain'], {
-        status: 'succeeded',
-        output: output ?? null,
-        durationMs: Date.now() - started,
-        finishedAt: sql`now()`,
-      });
       return {
         line: zh ? `已批准：${summary}` : `Approved: ${summary}`,
         note: `The member approved "${summary}" and it ran. Result: ${brief(output)}`,
       };
     } catch (error) {
-      const message = toErrorMessage(error).slice(0, 500);
+      const message = failureSummary(ready.def, payload.input, error, context).slice(0, 500);
       await moveStep(['running', 'uncertain'], {
         status: 'failed',
-        error: { code: 'tool_failed', message },
+        error: { code: error instanceof ApiError ? error.code : 'tool_failed', message },
         durationMs: Date.now() - started,
         finishedAt: sql`now()`,
       });
@@ -1950,7 +2075,7 @@ export function createEngine(deps: EngineDeps) {
   }
 
   const cardTitle = (request: NeedsYouRequest) =>
-    typeof request.payload.title === 'string' && request.payload.title ? request.payload.title : request.subject;
+    typeof request.payload.title === 'string' && request.payload.title ? request.payload.title : '请求';
 
   /** A card a tool raised itself (a question, a proposal, a take-over): the tool applies the decision. */
   async function decideOwnCard(
@@ -1960,7 +2085,7 @@ export function createEngine(deps: EngineDeps) {
   ): Promise<DecisionOutcome> {
     const def = toolDefs().find((candidate) => candidate.name === request.payload.tool);
     const [agent] = agentId ? await getDb().select().from(agents).where(eq(agents.id, agentId)) : [];
-    if (!def?.decide || !agent) return { line: request.status, note: null };
+    if (!def?.decide || !agent) return { line: locale === 'zh' ? '请求已处理' : 'Request settled', note: null };
     try {
       return await def.decide(request, { memberId: request.memberId, agent, locale });
     } catch (error) {
@@ -2040,6 +2165,11 @@ export function createEngine(deps: EngineDeps) {
   ): Promise<void> {
     const conversationId = request.conversationId;
     if (!conversationId) return;
+    const [reader] = await getDb()
+      .select({ locale: members.locale })
+      .from(members)
+      .where(eq(members.id, request.memberId));
+    const memberLocale = reader?.locale;
     const done = await withConversation(conversationId, () =>
       transaction(async (db) => {
         const [locked] = await db
@@ -2066,6 +2196,48 @@ export function createEngine(deps: EngineDeps) {
           content: outcome.line,
           event: { type: 'decision', request_id: request.id, status: request.status },
         });
+        const updatedReplies: MessageRow[] = [];
+        if (run?.conversationId === conversationId && request.subject === 'tool_write') {
+          const calls = (request.payload.calls as Array<{ step_id: string; summary: string }> | undefined) ?? [
+            { step_id: request.stepId!, summary: String(request.payload.summary ?? '') },
+          ];
+          const steps = await db.select().from(runSteps).where(eq(runSteps.runId, run.id));
+          const replies = await db
+            .select()
+            .from(messages)
+            .where(and(eq(messages.runId, run.id), eq(messages.role, 'assistant')))
+            .for('update');
+          for (const reply of replies) {
+            let changed = false;
+            const refreshed = reply.steps.map((step) => {
+              const call = calls.find((call) => call.step_id === step.approvalStepId);
+              if (!call) return step;
+              changed = true;
+              const actual = steps.find((step) => step.id === call.step_id);
+              const state = actual?.status ?? 'skipped';
+              return {
+                ...step,
+                summary:
+                  state === 'failed' && actual?.error?.message
+                    ? actual.error.message
+                    : approvalStep(
+                        call.summary,
+                        request.status === 'rejected' ? 'rejected' : state,
+                        localeOf(memberLocale),
+                      ),
+                status: state === 'failed' ? ('failed' as const) : ('done' as const),
+              };
+            });
+            if (changed) {
+              const [saved] = await db
+                .update(messages)
+                .set({ steps: refreshed })
+                .where(eq(messages.id, reply.id))
+                .returning();
+              if (saved) updatedReplies.push(saved);
+            }
+          }
+        }
         let closed = false;
         if (run?.conversationId === conversationId) {
           const [open] = await db
@@ -2098,13 +2270,15 @@ export function createEngine(deps: EngineDeps) {
                 event_chain: run?.input.event_chain as string[] | undefined,
               })
             : null;
-        return { line, closed, next };
+        return { line, closed, next, updatedReplies };
       }),
     );
     if (!done) return;
     if (done.closed && run?.kind === 'background') background.kick(run);
     // Committed: the turn it woke starts whatever happens to the announcements.
     try {
+      for (const reply of done.updatedReplies)
+        await publish(conversationId, { type: 'message.updated', data: { message: toMessage(reply) } });
       await publish(conversationId, { type: 'message.created', data: { message: toMessage(done.line) } });
       if (done.closed && run) {
         await publish(conversationId, {
@@ -2249,58 +2423,76 @@ export function createEngine(deps: EngineDeps) {
     background,
 
     async undoWrite(memberId: string, stepId: string): Promise<void> {
+      let changed: MessageRow | undefined;
       await transaction(async (db) => {
-        const [step] = await db.select().from(runSteps).where(eq(runSteps.id, stepId)).for('update');
-        const [run] = step ? await db.select().from(runs).where(eq(runs.id, step.runId)) : [];
-        if (!step || !run || run.ownerId !== memberId) throw notFound('Receipt');
-        if (step.undoneAt) throw conflict('already_undone', 'This write was already undone.');
-        const def = toolDefs().find((candidate) => candidate.name === step.toolName);
-        if (step.status !== 'succeeded' || !def?.undo || step.undoState === null)
-          throw conflict('undo_unavailable', 'This write cannot be undone.');
-        const { agent, manifest } = await deps.agents.loadForTurn(memberId, run.agentId);
-        const conversation = run.conversationId
-          ? (await deps.conversations.access(memberId, run.conversationId)).conversation
-          : null;
-        const inverse = step.undoState as { before: { input: unknown }; output: unknown };
-        await def.guard?.(inverse.before.input, {
-          memberId,
-          agent,
-          manifest,
-          conversation,
-          runId: run.id,
-          stepId,
-          locale: 'zh',
-          surface: 'turn',
-          signal: AbortSignal.timeout(DECISION_EXECUTE_MS),
-          taint: () => undefined,
-          tainted: () => true,
-          raise: () => Promise.reject(new Error('Undo cannot raise cards.')),
-          endTurn: () => undefined,
-        });
-        await def.undo(inverse.before.input, inverse.output, inverse.before, {
-          memberId,
-          agent,
-          manifest,
-          conversation,
-          runId: run.id,
-          stepId,
-          locale: 'zh',
-          surface: run.kind === 'background' ? 'background' : 'turn',
-          signal: AbortSignal.timeout(DECISION_EXECUTE_MS),
-          taint: () => undefined,
-          tainted: () => true,
-          raise: () => Promise.reject(new Error('Undo cannot raise cards.')),
-          endTurn: () => undefined,
-        });
-        await db
-          .update(runSteps)
-          .set({ undoneAt: sql`now()` })
-          .where(eq(runSteps.id, stepId));
-        await db
-          .update(messages)
-          .set({ event: sql`${messages.event} || '{"undone":true}'::jsonb` })
-          .where(sql`${messages.event}->>'step_id' = ${stepId}`);
+        const [target] = await db.select().from(runSteps).where(eq(runSteps.id, stepId));
+        const [ownerRun] = target ? await db.select().from(runs).where(eq(runs.id, target.runId)) : [];
+        if (!target || !ownerRun || ownerRun.ownerId !== memberId) throw notFound('Receipt');
+        if (ownerRun.conversationId)
+          await db
+            .select({ id: conversations.id })
+            .from(conversations)
+            .where(eq(conversations.id, ownerRun.conversationId))
+            .for('update');
+        const [receipt] = await db
+          .select()
+          .from(messages)
+          .where(
+            and(
+              eq(messages.runId, ownerRun.id),
+              sql`${messages.event}->>'type' = 'write_receipt'`,
+              sql`(${messages.event}->>'step_id' = ${stepId} OR ${messages.event}->'step_ids' @> ${JSON.stringify([stepId])}::jsonb)`,
+            ),
+          )
+          .for('update');
+        const ids = (receipt?.event?.step_ids as string[] | undefined) ?? [stepId];
+        const undoRevisions = new Map<string, { written: number; current: number }>();
+        // Later writes undo first; any stale item rolls the entire batch back.
+        for (const undoId of [...ids].reverse()) {
+          const [step] = await db.select().from(runSteps).where(eq(runSteps.id, undoId)).for('update');
+          const [run] = step ? await db.select().from(runs).where(eq(runs.id, step.runId)) : [];
+          if (!step || !run || run.ownerId !== memberId) throw notFound('Receipt');
+          if (step.undoneAt) throw conflict('already_undone', 'This write was already undone.');
+          const def = toolDefs().find((candidate) => candidate.name === step.toolName);
+          if (step.status !== 'succeeded' || !def?.undo || step.undoState === null)
+            throw conflict('undo_unavailable', 'This write cannot be undone.');
+          const { agent, manifest } = await deps.agents.loadForTurn(memberId, run.agentId);
+          const conversation = run.conversationId
+            ? (await deps.conversations.access(memberId, run.conversationId)).conversation
+            : null;
+          const inverse = step.undoState as { before: { input: unknown }; output: unknown };
+          const context: ToolContext = {
+            memberId,
+            agent,
+            manifest,
+            conversation,
+            runId: run.id,
+            stepId: undoId,
+            locale: 'zh',
+            surface: run.kind === 'background' ? 'background' : 'turn',
+            signal: AbortSignal.timeout(DECISION_EXECUTE_MS),
+            taint: () => undefined,
+            tainted: () => true,
+            raise: () => Promise.reject(new Error('Undo cannot raise cards.')),
+            endTurn: () => undefined,
+            undoRevisions,
+          };
+          await def.guard?.(inverse.before.input, context);
+          await def.undo(inverse.before.input, inverse.output, inverse.before, context);
+          await db
+            .update(runSteps)
+            .set({ undoneAt: sql`now()` })
+            .where(eq(runSteps.id, undoId));
+        }
+        if (receipt)
+          [changed] = await db
+            .update(messages)
+            .set({ event: { ...receipt.event, type: 'write_receipt', undone: true } })
+            .where(eq(messages.id, receipt.id))
+            .returning();
       });
+      if (changed)
+        await publish(changed.conversationId, { type: 'message.updated', data: { message: toMessage(changed) } });
     },
 
     /** A decision committed: carry it out now (every process also polls, and takes over dead claims). */
@@ -2313,7 +2505,13 @@ export function createEngine(deps: EngineDeps) {
       if (!input.content.trim() && !input.attachments.length && !input.skill) {
         throw invalidInput('Write a message or attach a file.');
       }
-      const responders = await respondersFor(memberId, conversation, input.mentions);
+      const mentions = await deps.conversations.resolveMentions(
+        memberId,
+        conversationId,
+        input.content,
+        input.mentions,
+      );
+      const responders = await respondersFor(memberId, conversation, mentions);
 
       const result = await withConversation(conversationId, () =>
         transaction(async (db) => {
@@ -2339,7 +2537,7 @@ export function createEngine(deps: EngineDeps) {
             content: input.content,
             attachments: input.attachments,
             quote: input.quote ? { messageId: input.quote.message_id, text: input.quote.text } : null,
-            mentions: input.mentions,
+            mentions,
             skill,
             richBlocks: admitRichBlocks(input.rich_blocks) ?? null,
           });

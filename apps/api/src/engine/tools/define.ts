@@ -79,8 +79,12 @@ export interface ToolContext {
   chain?: { key: string; path: string[] };
   /** Set when the engine runs a call the member approved on its card. */
   approved?: boolean;
+  /** Revision lineage while undoing one receipt; never authorizes edits made outside the batch. */
+  undoRevisions?: Map<string, { written: number; current: number }>;
   /** Present when the model sees images: shows it one (a screenshot) with its next step. */
   attachImage?(image: Uint8Array, mediaType: string): void;
+  /** Persists the single image shown with this reply, even for a text-only model. */
+  attachFile?(fileId: string): Promise<void>;
 }
 
 /** What a decision on a tool's card means for the conversation. */
@@ -100,7 +104,7 @@ export interface DecisionContext {
 export interface ApprovalCard {
   /** What will happen, as a short phrase in the member's language: 修改知识库, edit the knowledge base. */
   summary: string;
-  details: { label: string; value: string }[];
+  details: { label: string; value: string; format?: 'markdown'; chips?: string[] }[];
 }
 
 export interface ToolDef<I = any> {
@@ -128,7 +132,7 @@ export interface ToolDef<I = any> {
    */
   callRisk?(input: I, ctx: Omit<ToolContext, 'stepId' | 'raise' | 'endTurn'>): Promise<CallRisk>;
   approvalScope?(input: I, ctx: ToolContext): Promise<ApprovalScope | null>;
-  /** State needed to undo a reversible write, captured before it executes. */
+  /** State needed to undo a reversible write, captured before it executes; null means this call is irreversible. */
   before?(input: I, ctx: ToolContext): Promise<unknown>;
   /** Holds scope changes still while risk is checked again and a reversible write commits. */
   guard?(input: I, ctx: ToolContext): Promise<void>;
@@ -159,6 +163,10 @@ export interface ToolDef<I = any> {
   decide?(request: NeedsYouRequest, ctx: DecisionContext): Promise<DecisionOutcome>;
   /** One line for the steps under a reply. */
   summarize?(input: I, output: unknown, locale: 'zh' | 'en'): string;
+  /** Stable object identity for recognizing a corrected retry without comparing the invalid values. */
+  retryTarget?(input: I, memberId: string): Promise<string>;
+  /** Human copy for a reversible write; may resolve names with the acting member's rights. */
+  receipt?(input: I, output: unknown, ctx: ToolContext): Promise<string>;
 }
 
 export function defineTool<I>(def: ToolDef<I>): ToolDef<I> {

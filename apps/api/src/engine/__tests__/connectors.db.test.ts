@@ -79,7 +79,7 @@ describe('connector tools in a turn', () => {
     });
     const [reply] = await getDb().select().from(messages).where(eq(messages.runId, read.run_id));
     expect(reply).toMatchObject({ content: 'A-1 shipped on October 1.' });
-    expect(reply!.steps).toEqual([expect.objectContaining({ summary: '用了 desk：lookup_order' })]);
+    expect(reply!.steps).toEqual([expect.objectContaining({ summary: '使用了连接器' })]);
 
     const write = await send('open a ticket for the printer');
     const [card] = await getDb().select().from(requests).where(eq(requests.runId, write.run_id));
@@ -87,11 +87,11 @@ describe('connector tools in a turn', () => {
     expect(card!.payload).toMatchObject({
       tool: 'mcp_call',
       input: { action: 'call', connector: 'desk', tool: 'create_ticket', arguments: { title: 'Broken printer' } },
-      summary: '在 Order desk 上运行 create_ticket',
+      summary: '使用连接器「Order desk」执行操作',
       details: [
         { label: '连接器', value: 'Order desk' },
-        { label: '工具', value: 'create_ticket' },
-        { label: 'title', value: 'Broken printer' },
+        { label: '操作说明', value: 'Create a support ticket.' },
+        { label: '标题', value: 'Broken printer' },
       ],
     });
     expect(server.tickets).toEqual([]);
@@ -106,7 +106,7 @@ describe('connector tools in a turn', () => {
     expect(ran).toMatchObject({ status: 'succeeded' });
     expect(ran!.output).toMatchObject({ content: 'Created ticket T-1: Broken printer' });
     expect((await transcript()).slice(-2)).toEqual([
-      ['event', '已批准：在 Order desk 上运行 create_ticket'],
+      ['event', '已批准：使用连接器「Order desk」执行操作'],
       ['assistant', 'Ticket T-1 is open.'],
     ]);
     // The Agent is woken with the outcome, the tool's text inside it.
@@ -174,7 +174,7 @@ describe('what an Agent may use', () => {
     expect(model.tools.at(-1)).toContain('mcp_call');
     const [step] = await steps(refused.run_id);
     expect(step).toMatchObject({ risk: 'read', status: 'failed' });
-    expect(step!.error?.message).toMatch(/no tool "create_ticket" you can use here/);
+    expect(step!.error).toEqual({ code: 'forbidden', message: '使用连接器失败：没有操作权限' });
     expect(await getDb().select().from(requests).where(eq(requests.runId, refused.run_id))).toEqual([]);
 
     const tool = connectorTool(services.connectors);

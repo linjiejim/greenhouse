@@ -185,17 +185,19 @@ function RuntimeCard({ runtime, card }: { runtime: Runtime; card: AppCard }) {
       .filter((f) => !f.is_primary);
     const row = (record: TableRecord) => (
       <div key={record.id} className="app-ap-record">
-        <Button kind="ghost" onClick={() => setRecordId(record.id)}>
+        <button type="button" className="app-ap-record-title" onClick={() => setRecordId(record.id)}>
           {titleOf(table.fields, record) || t('tables.record.untitled')}
-        </Button>
-        <div className="app-ap-values">
+        </button>
+        <dl className="app-ap-values">
           {fields.map((field) => (
-            <span key={field.id}>
-              <span className="app-muted">{field.name}: </span>
-              <CellValue field={field} value={record.values[field.id]} lookups={lookups} />
-            </span>
+            <div key={field.id}>
+              <dt>{field.name}</dt>
+              <dd>
+                <CellValue field={field} value={record.values[field.id]} lookups={lookups} />
+              </dd>
+            </div>
           ))}
-        </div>
+        </dl>
         <div className="app-ap-actions">
           {card.actions.map((action) => (
             <Button
@@ -227,9 +229,9 @@ function RuntimeCard({ runtime, card }: { runtime: Runtime; card: AppCard }) {
               {records.map((record) => (
                 <tr key={record.id}>
                   <td>
-                    <Button kind="ghost" onClick={() => setRecordId(record.id)}>
+                    <button type="button" className="app-ap-record-title" onClick={() => setRecordId(record.id)}>
                       {titleOf(table.fields, record) || t('tables.record.untitled')}
-                    </Button>
+                    </button>
                   </td>
                   {fields.map((field) => (
                     <td key={field.id}>

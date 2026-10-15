@@ -438,17 +438,19 @@ export function FolderPage({
           </>
         )}
       </div>
-      <input
-        ref={picker}
-        type="file"
-        multiple
-        hidden
-        aria-label={t('knowledge.upload')}
-        onChange={(event) => {
-          upload(Array.from(event.target.files ?? []));
-          event.target.value = '';
-        }}
-      />
+      {canAdd && uploadTarget && (
+        <input
+          ref={picker}
+          type="file"
+          multiple
+          hidden
+          aria-label={t('knowledge.upload')}
+          onChange={(event) => {
+            upload(Array.from(event.target.files ?? []));
+            event.target.value = '';
+          }}
+        />
+      )}
       {file && <FilePreview id={file} onClose={closePreview} />}
     </Page>
   );

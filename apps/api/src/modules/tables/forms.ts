@@ -181,7 +181,10 @@ function fillConfig(field: BaseFieldRow): FieldConfig {
     case 'multi_select':
       return { options: config.options ?? [] };
     case 'number':
-      return config.precision === undefined ? {} : { precision: config.precision };
+      return {
+        ...(config.precision === undefined ? {} : { precision: config.precision }),
+        ...(config.currency ? { currency: config.currency } : {}),
+      };
     case 'member':
       return { multiple: config.multiple === true };
     case 'relation':

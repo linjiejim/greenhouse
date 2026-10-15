@@ -38,6 +38,7 @@ afterAll(async () => {
 function apiProcess(languageModel: ReturnType<typeof scriptedModel>['languageModel'], sent: string[]) {
   const noteSend = defineTool({
     name: 'note_send',
+    describe: async () => ({ summary: '发送笔记', details: [] }),
     description: 'Send a note to the team.',
     input: z.object({ text: z.string() }),
     risk: 'write',
@@ -124,7 +125,7 @@ describe('decisions across processes', () => {
     expect(step!.status).toBe('succeeded');
     const [turn] = await getDb().select().from(runs).where(eq(runs.id, first.run_id!));
     expect(turn!.status).toBe('succeeded');
-    expect((await decisionLines(main.id, card!.id)).map((line) => line.content)).toEqual(['已批准：note_send']);
+    expect((await decisionLines(main.id, card!.id)).map((line) => line.content)).toEqual(['已批准：发送笔记']);
     expect(await jobOf(card!.id)).toMatchObject({ status: 'succeeded', attempts: 1 });
     expect(model.calls()).toBe(2);
 
@@ -166,7 +167,7 @@ describe('decisions across processes', () => {
     const [uncertain] = await getDb().select().from(runSteps).where(eq(runSteps.id, again!.stepId!));
     expect(uncertain!.status).toBe('uncertain');
     expect((await decisionLines(main.id, again!.id)).map((line) => line.content)).toEqual([
-      '已批准：note_send，结果未知',
+      '已批准：发送笔记，结果未知',
     ]);
     const [woken] = await getDb()
       .select()

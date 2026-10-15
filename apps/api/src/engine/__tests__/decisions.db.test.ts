@@ -18,6 +18,7 @@ describe('decisions', () => {
     const tools = [
       defineTool({
         name: 'slow_write',
+        describe: async () => ({ summary: '写入较慢的笔记', details: [] }),
         description: 'Write something that takes a while.',
         input: z.object({}),
         risk: 'write',
@@ -29,6 +30,7 @@ describe('decisions', () => {
       }),
       defineTool({
         name: 'quick_write',
+        describe: async () => ({ summary: '写入较快的笔记', details: [] }),
         description: 'Write something at once.',
         input: z.object({}),
         risk: 'write',
@@ -68,12 +70,14 @@ describe('decisions', () => {
     await app.call('POST', `/api/requests/${slowCard.id}/approve`, { token: lin.token });
     await app.call('POST', `/api/requests/${quickCard.id}/approve`, { token: lin.token });
     // The quick write is carried out while the slow one still runs.
-    await expect.poll(lines, { timeout: 5000 }).toEqual(['已批准：quick_write']);
-    expect(ran).toEqual(['quick']);
-
-    slow.open();
-    await app.services.engine.idle();
+    try {
+      await expect.poll(lines, { timeout: 4000 }).toEqual(['已批准：写入较快的笔记']);
+      expect(ran).toEqual(['quick']);
+    } finally {
+      slow.open();
+      await app.services.engine.idle();
+    }
     expect(ran).toEqual(['quick', 'slow']);
-    expect((await lines()).sort()).toEqual(['已批准：quick_write', '已批准：slow_write']);
+    expect((await lines()).sort()).toEqual(['已批准：写入较快的笔记', '已批准：写入较慢的笔记']);
   });
 });

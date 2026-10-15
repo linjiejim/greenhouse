@@ -24,7 +24,7 @@ import { applyTablesEvent } from './tables';
 export type MessagePages = InfiniteData<Page<MessageItem>, string | undefined>;
 export type ConversationPages = InfiniteData<Page<Conversation>, string | undefined>;
 
-const timers = new Map<string, ReturnType<typeof setTimeout>>();
+const clientTimers = new WeakMap<QueryClient, Map<string, ReturnType<typeof setTimeout>>>();
 /** Catching up reads at most this many pages of 200; further behind, the list is fetched again. */
 const CATCH_UP_PAGES = 5;
 /** A reconnect also reads back this many of the newest messages: an edit elsewhere changes the latest exchange. */
@@ -32,6 +32,11 @@ const RECONNECT_TAIL = 20;
 
 /** Invalidates once for a burst of events. */
 function soon(client: QueryClient, queryKey: QueryKey, delay = 300) {
+  let timers = clientTimers.get(client);
+  if (!timers) {
+    timers = new Map();
+    clientTimers.set(client, timers);
+  }
   const id = JSON.stringify(queryKey);
   if (timers.has(id)) return;
   timers.set(
@@ -259,7 +264,8 @@ export function applyEvent(client: QueryClient, event: Exclude<RealtimeEvent, { 
         return;
       }
       patchConversation(client, event.data.conversation_id, event.data.changes);
-      if ('title' in event.data.changes || 'archived' in event.data.changes) soon(client, keys.conversations);
+      if ('title' in event.data.changes || 'archived' in event.data.changes || event.data.changes.working === false) soon(client, keys.conversations);
+      if (event.data.changes.working === false) soon(client, keys.conversation(event.data.conversation_id));
       return;
     case 'notes.updated':
       soon(client, keys.notes(event.data.conversation_id));

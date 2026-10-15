@@ -22,21 +22,36 @@ export function requestStatus(request: Pick<NeedsYou, 'status'>): { word: Messag
   }
 }
 
-/**
- * An approval card's details as label and value: the engine's cards carry `[{ label, value }]`
- * (engine/tools/define.ts), others a plain object of them.
- */
-export function detailRows(details: unknown): [string, string][] {
-  const text = (value: unknown) => (typeof value === 'string' ? value : JSON.stringify(value));
-  if (Array.isArray(details)) {
-    return details.flatMap((entry: unknown): [string, string][] =>
-      entry && typeof entry === 'object' && 'label' in entry
-        ? [[String((entry as { label: unknown }).label), text((entry as { value?: unknown }).value ?? '')]]
-        : [],
-    );
-  }
-  if (details && typeof details === 'object') {
-    return Object.entries(details as Record<string, unknown>).map(([key, value]) => [key, text(value)]);
-  }
+/** Approval details keep the server's words and optional rendering hints together. */
+export function detailRows(
+  details: unknown,
+): { label: string; value: string; format?: 'markdown'; chips?: string[] }[] {
+  const text = (value: unknown, depth = 0): string => {
+    if (value === null || value === undefined) return '—';
+    if (depth > 5) return '…';
+    if (Array.isArray(value)) return value.map((value) => text(value, depth + 1)).join(' · ');
+    if (typeof value === 'object')
+      return Object.entries(value)
+        .map(([key, value]) => `${key}: ${text(value, depth + 1)}`)
+        .join('\n');
+    return String(value);
+  };
+  if (Array.isArray(details))
+    return details.flatMap((entry: unknown) => {
+      if (!entry || typeof entry !== 'object' || !('label' in entry)) return [];
+      const row = entry as { label: unknown; value?: unknown; format?: unknown; chips?: unknown };
+      return [
+        {
+          label: text(row.label),
+          value: text(row.value ?? ''),
+          ...(row.format === 'markdown' ? { format: 'markdown' as const } : {}),
+          ...(Array.isArray(row.chips)
+            ? { chips: row.chips.filter((chip): chip is string => typeof chip === 'string') }
+            : {}),
+        },
+      ];
+    });
+  if (details && typeof details === 'object')
+    return Object.entries(details).map(([label, value]) => ({ label, value: text(value) }));
   return [];
 }

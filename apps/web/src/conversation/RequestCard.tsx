@@ -27,6 +27,7 @@ import { useDecide } from '../data/requests';
 import { errorText } from '../lib/errors';
 import { useI18n } from '../lib/i18n';
 import { relativeTime } from '../lib/time';
+import { MarkdownPreview } from './MarkdownPreview';
 import { detailRows, requestStatus } from './status';
 
 const KIND_ICON = {
@@ -72,7 +73,7 @@ function Details({ request }: { request: NeedsYou }) {
       <div className="app-request-body">
         {typeof payload.reason === 'string' && payload.reason && <p>{payload.reason}</p>}
         <div className="app-request-label">{t('request.newInstructions')}</div>
-        <pre className="app-request-text">{String(payload.instructions ?? '')}</pre>
+        <MarkdownPreview text={String(payload.instructions ?? '')} />
       </div>
     );
   }
@@ -80,27 +81,35 @@ function Details({ request }: { request: NeedsYou }) {
     return (
       <div className="app-request-body">
         <div className="app-request-label">{String(payload.run_title ?? '')}</div>
-        <pre className="app-request-text">{String(payload.brief ?? '')}</pre>
-        {payload.computer === true && (
-          <p>
-            {t('approvals.computer')} · {t('approvals.domains')}:{' '}
-            {Array.isArray(payload.domains) ? payload.domains.join(' · ') || '—' : '—'}
-            <br />
-            {t('approvals.offline')}
-          </p>
-        )}
+        <MarkdownPreview text={String(payload.brief ?? '')} />
+        {typeof payload.access_summary === 'string' && <p className="app-preserve-lines">{payload.access_summary}</p>}
         {payload.continue_after === true && <p>{t('approvals.continue')}</p>}
       </div>
     );
   }
-  const rows = request.kind === 'approval' ? detailRows(payload.details) : [];
+  const rows = detailRows(payload.details);
   if (rows.length) {
     return (
       <dl className="app-request-details">
-        {rows.map(([label, value], index) => (
+        {rows.map(({ label, value, format, chips }, index) => (
           <div key={`${index}-${label}`}>
             <dt>{label}</dt>
-            <dd>{value}</dd>
+            <dd>
+              {format === 'markdown' ? (
+                <MarkdownPreview text={value} />
+              ) : (
+                <span className="app-detail-value">
+                  {chips?.length ? value.split(chips.join(' · ')).join('').replace(/ · $/, '') : value}
+                </span>
+              )}
+              {chips?.length ? (
+                <span className="app-detail-chips">
+                  {chips.map((chip, index) => (
+                    <span key={index}>{chip}</span>
+                  ))}
+                </span>
+              ) : null}
+            </dd>
           </div>
         ))}
       </dl>

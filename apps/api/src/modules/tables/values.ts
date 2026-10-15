@@ -39,7 +39,10 @@ export function normalizeConfig(type: FieldType, input: FieldConfig | undefined)
       };
     }
     case 'number':
-      return config.precision === undefined ? {} : { precision: config.precision };
+      return {
+        ...(config.precision === undefined ? {} : { precision: config.precision }),
+        ...(config.currency ? { currency: config.currency } : {}),
+      };
     case 'member':
       return { multiple: config.multiple === true };
     case 'relation':
@@ -92,7 +95,7 @@ function ids(field: BaseFieldRow, value: unknown, max: number): string[] {
 }
 
 const invalidValue = (field: BaseFieldRow, expected: string) =>
-  invalidInput(`「${field.name}」 expects ${expected}.`, { field: field.id });
+  invalidInput(`「${field.name}」 expects ${expected}.`, { field: field.id, field_name: field.name, expected });
 
 /**
  * One value checked against its field and put in its stored form ('' and [] become null). The

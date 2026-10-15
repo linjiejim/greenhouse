@@ -136,6 +136,8 @@ export function Composer({
   const [picker, setPicker] = useState<{ start: number; query: string } | null>(null);
   const [active, setActive] = useState(0);
   const [sending, setSending] = useState(false);
+  const sendQueue = useRef(Promise.resolve());
+  const pendingSends = useRef(0);
   const textarea = useRef<HTMLTextAreaElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const listId = useId();
@@ -283,7 +285,7 @@ export function Composer({
 
   const uploading = files.some((file) => !file.file && !file.error);
   const ready = files.filter((file) => file.file);
-  const canSend = !sending && !uploading && (value.trim().length > 0 || ready.length > 0 || !!chosen);
+  const canSend = !uploading && (value.trim().length > 0 || ready.length > 0 || !!chosen);
   /** Sending was asked for while files were still uploading: it goes once they are up. */
   const [queued, setQueued] = useState(false);
 
@@ -327,37 +329,49 @@ export function Composer({
   };
 
   const send = async () => {
-    if (!sending && uploading) return setQueued(true);
+    if (uploading) return setQueued(true);
     if (!canSend) return;
     const missing = chosen?.variables.find((field) => field.required !== false && !fields[field.key]?.trim());
     if (missing) {
       setFieldError(t('request.required', { name: missing.label }));
       return;
     }
+    const snapshot: ComposerSend = {
+      content: value.trim(),
+      attachments: ready.map((item) => item.file!.id),
+      mentions: mentions.filter((candidate) => value.includes(`@${candidate.name}`)).map((item) => item.handle),
+      ...(quote ? { quote } : {}),
+      ...(chosen ? { skill: { skill_id: chosen.id, variables: fields } } : {}),
+    };
+    // Consume this draft now. A response must never clear what the member types next.
+    setValue('');
+    setFiles([]);
+    setMentions([]);
+    setChosen(null);
+    setFields({});
+    setPicker(null);
+    onClearQuote?.();
+    pendingSends.current += 1;
     setSending(true);
-    // Only mentions still named in the text count.
-    const named = mentions.filter((candidate) => value.includes(`@${candidate.name}`)).map((item) => item.handle);
-    try {
-      await onSend({
-        content: value.trim(),
-        attachments: ready.map((item) => item.file!.id),
-        mentions: named,
-        ...(quote ? { quote } : {}),
-        ...(chosen ? { skill: { skill_id: chosen.id, variables: fields } } : {}),
-      });
-      for (const item of files) if (item.preview) URL.revokeObjectURL(item.preview);
-      setValue('');
-      setFiles([]);
-      setMentions([]);
-      setChosen(null);
-      setFields({});
-      onClearQuote?.();
-    } catch {
-      // The page said why; the text stays here to send again.
-    } finally {
-      setSending(false);
-      textarea.current?.focus();
-    }
+    sendQueue.current = sendQueue.current.then(async () => {
+      try {
+        await onSend(snapshot);
+        for (const item of files) if (item.preview) URL.revokeObjectURL(item.preview);
+      } catch {
+        // Preserve a failed send alongside any newer draft; the page explains the failure.
+        setValue((current) => [snapshot.content, current].filter(Boolean).join('\n'));
+        setFiles((current) => [...files, ...current]);
+        setMentions((current) => [...mentions, ...current]);
+        if (chosen) {
+          setChosen((current) => current ?? chosen);
+          setFields((current) => (Object.keys(current).length ? current : fields));
+        }
+      } finally {
+        pendingSends.current -= 1;
+        setSending(pendingSends.current > 0);
+      }
+    });
+    textarea.current?.focus();
   };
 
   const latestSend = useRef(send);
@@ -370,16 +384,17 @@ export function Composer({
   }, [queued, uploading, files]);
 
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (listOpen) {
-      if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+    if (event.nativeEvent.isComposing || event.keyCode === 229) return;
+    if (picker || listOpen) {
+      if (entries.length && (event.key === 'ArrowDown' || event.key === 'ArrowUp')) {
         event.preventDefault();
         setActive((index) => (index + (event.key === 'ArrowDown' ? 1 : -1) + entries.length) % entries.length);
         return;
       }
       if (event.key === 'Enter' || event.key === 'Tab') {
         event.preventDefault();
-        const entry = entries[Math.min(active, entries.length - 1)]!;
-        if (!entry.disabled) entry.choose();
+        const entry = entries[Math.min(active, entries.length - 1)];
+        if (entry && !entry.disabled) entry.choose();
         return;
       }
       if (event.key === 'Escape') {

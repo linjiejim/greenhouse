@@ -170,6 +170,67 @@ async function stream(response, request) {
         { title: 'M24 source two', brief: 'Summarize source two.' },
       ],
     });
+  } else if (!afterTool && /^acceptance background/i.test(said)) {
+    tool('run_start', {
+      title: 'T14 后台比较',
+      brief: 'Summarize the public facts briefly.',
+      computer: false,
+      domains: ['supabase.com', 'neon.tech'],
+      continue_after: false,
+    });
+  } else if (!woken && /^acceptance retry /i.test(said)) {
+    const [, , table_id, field_id] = said.split(' ');
+    const count = messages.filter((message) => message.role === 'tool').length;
+    if (count < 2)
+      tool('table_mutation', {
+        action: 'create',
+        table_id,
+        values: { [field_id]: count === 0 ? 'missing-option' : 'new' },
+      });
+    else await say('Retry completed.', 10);
+  } else if (!afterTool && /^acceptance schema/i.test(said)) {
+    tool('table_schema_plan', {
+      name: 'T14 browser customers',
+      tables: [
+        {
+          name: 'T14 browser customers',
+          fields: [
+            { name: '客户名', type: 'text' },
+            {
+              name: '阶段',
+              type: 'single_select',
+              config: {
+                options: [
+                  { id: 'new', label: '新客户', color: 'green' },
+                  { id: 'talk', label: '洽谈中', color: 'blue' },
+                ],
+              },
+            },
+          ],
+        },
+      ],
+      changes: [],
+    });
+  } else if (!afterTool && /^acceptance markdown /i.test(said)) {
+    tool('knowledge_mutation', {
+      action: 'create',
+      title: 'PG18 速览',
+      folder_id: said.split(' ').at(-1),
+      content:
+        '# PG18 速览\n\n- **异步 I/O**\n- `EXPLAIN`\n' +
+        '- 列表项\n'.repeat(12) +
+        '\n```sql\nSELECT 1;\n```\n<img src="https://tracking.example/pixel" onerror="window.previewAttack=true"><script>window.previewAttack=true</script>',
+    });
+  } else if (!woken && /^acceptance records /i.test(said)) {
+    const [, , table_id, field_id] = said.split(' ');
+    const count = messages.filter((m) => m.role === 'tool').length;
+    if (count < 3)
+      tool('table_mutation', {
+        action: 'create',
+        table_id,
+        values: { [field_id]: ['深圳云图科技', '杭州星河', '台北青禾'][count] },
+      });
+    else await say('Records completed.', 10);
   } else if (!afterTool && /^change table record /i.test(said)) {
     const [, table_id, record_id, field_id] = /^change table record (\S+) (\S+) (\S+)/i.exec(said) ?? [];
     tool('table_mutation', {

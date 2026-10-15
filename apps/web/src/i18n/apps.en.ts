@@ -1,5 +1,14 @@
 import type { appsZh } from './apps.zh';
 export const appsEn: Record<keyof typeof appsZh, string> = {
+  'apps.publishedVersion': 'Published · v{version}',
+  'apps.unpublishedChanges': 'Unpublished changes',
+  'apps.pagesAdded': 'Add {count} pages',
+  'apps.pagesRemoved': 'Remove {count} pages',
+  'apps.pagesChanged': 'Update {count} pages',
+  'apps.rolesChanged': 'Adjust app roles and permissions',
+  'apps.noPageChanges': 'No changes to pages or roles',
+  'apps.ownerOnly':
+    'No audience selected. Only the app owner can open it after publication; other members still need audience and base access.',
   'apps.kind.external': 'External data',
   'apps.bridgeBusy': 'Too many requests. Try again shortly.',
   'apps.bindingDenied': 'This data is unavailable.',
@@ -97,10 +106,8 @@ export const appsEn: Record<keyof typeof appsZh, string> = {
   'apps.publish': 'Publish app',
   'apps.publishTitle': 'Confirm publication',
   'apps.publishHint': 'Publishes an immutable version. Later draft edits do not change the version colleagues use.',
-  'apps.changes': 'Pages {pages} · Cards {cards} · Roles {roles} · Audience {audience}',
   'apps.notes': 'Version notes',
   'apps.diff': 'Compare with published version',
-  'apps.diffCount': 'Pages: +{added} / −{removed} / changed {changed}',
   'apps.audienceChanged': 'Audience or role permissions changed. Check them before publishing.',
   'apps.saved': 'Draft saved',
   'apps.published': 'App published',

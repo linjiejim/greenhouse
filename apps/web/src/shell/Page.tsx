@@ -18,6 +18,7 @@ export type PageWidth = 'reading' | 'form' | 'list' | 'canvas';
 
 export function PageHeader({
   title,
+  wrap = false,
   leading,
   help,
   badge,
@@ -26,6 +27,8 @@ export function PageHeader({
   menu,
 }: {
   title: ReactNode;
+  /** Let rich object headings and their actions wrap on a narrow screen. */
+  wrap?: boolean;
   /** Before the title: an avatar on a conversation, a back button on a detail. */
   leading?: ReactNode;
   help?: ReactNode;
@@ -40,7 +43,7 @@ export function PageHeader({
   const summary = useNotificationSummary();
   const needsYou = summary.data?.needs_you ?? 0;
   return (
-    <header className="app-page-header">
+    <header className={cx('app-page-header', wrap && 'is-wrap')}>
       {directoryHidden && (
         <IconButton label={narrow ? t('nav.menu') : t('nav.openDirectory')} onClick={openDirectory}>
           {narrow ? (

@@ -220,7 +220,8 @@ describe('an Agent with the mailbox', () => {
       .select()
       .from(requests)
       .where(and(eq(requests.runId, sending.run_id), eq(requests.status, 'pending')));
-    expect(sendCard!.payload).toMatchObject({ summary: expect.stringContaining('send_message') });
+    expect(sendCard!.payload).toMatchObject({ summary: '使用连接器「Mailbox lin@acme.test」执行操作' });
+    expect(JSON.stringify(sendCard!.payload.details)).not.toContain('send_message');
     const [pending] = await steps(sending.run_id);
     expect(pending).toMatchObject({ risk: 'tier3', status: 'pending' });
     expect(box.state.sent).toEqual([]);

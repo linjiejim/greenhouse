@@ -271,6 +271,10 @@ export const fieldConfigSchema = z.object({
   options: z.array(selectOptionSchema).max(MAX_OPTIONS).optional(),
   /** Number, and numeric formulas and rollups: decimal places shown, 0–6. */
   precision: z.number().int().min(0).max(6).optional(),
+  currency: z
+    .string()
+    .regex(/^[A-Z]{3}$/)
+    .optional(),
   /** Member and relation: more than one. */
   multiple: z.boolean().optional(),
   /** Relation: the data table it links to, in the same base. */

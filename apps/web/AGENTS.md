@@ -74,3 +74,12 @@ The v2 web app. Product scope is docs/product/prd.md §6–7; layout and compone
 - `node --import tsx apps/web/e2e/capture-v2.mts` seeds sample content through the local fake stack and captures light/dark/narrow screens; STACK_WEB_PORT selects it. Published WebP pairs go to docs/assets/v2; the review manifest and full PNGs go to artifacts/t10. It refuses remote model endpoints and requires cwebp.
 
 - Route pages and rich charts/diagrams/computer viewers load through Suspense with kit skeletons that preserve their frame. Keep heavy modules out of the entry static graph; after `pnpm web:build`, run `node scripts/check-web-bundle.mjs` (entry budget 350 KB).
+
+- Approval details render server-owned human text. format=markdown uses the text-only MarkdownPreview allowlist (no images, links or controls), with a short clamp and Expand. chips carry option labels; preserve the same words as value for native readers. Run step labels use summary, never tool ids.
+- Same-turn/table receipts list writes in one card; their step_id undo endpoint handles the full batch. Hide repeated base/table subtitles when there is one same-name table.
+
+- Consume only the submitted composer snapshot; serialize subsequent sends and retain newer drafts. Enter selects mentions or waits for candidates, including before the popup loads. Room faces come from the permission-checked roster. Rich object headers may wrap; inspect 390 px screenshots.
+
+- Empty active runs use the server recent_finished preview, ordered by actual completion time, rather than slicing the newest-created finished page.
+
+- Realtime debounce timers belong to each QueryClient. Chinese interpolation keeps Latin/number spacing but joins adjacent Chinese words; separators between two interpolated values retain their template spaces. Upload inputs mount only when their destination is loaded and editable. Header geometry uses the canonical header-height token, including Suspense frames.

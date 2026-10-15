@@ -33,6 +33,7 @@ export const RUN_STEP_STATUSES = ['pending', 'running', 'succeeded', 'failed', '
 export const runStepSchema = z.object({
   id: z.string(),
   tool: z.string().nullable(),
+  summary: z.string(),
   kind: z.string(),
   status: z.enum(RUN_STEP_STATUSES),
   attempt: z.number().int(),

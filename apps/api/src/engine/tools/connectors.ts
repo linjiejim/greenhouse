@@ -15,8 +15,9 @@
 import { z } from 'zod';
 import type { ConnectorsService, UsableConnector } from '../../modules/connectors/service.js';
 import { fence, outsideText, sanitizeForPrompt } from '../../security/prompt.js';
-import { argumentDetails } from './assemble.js';
+import { argumentDetails } from './presentation.js';
 import { defineTool } from './define.js';
+import { forbidden } from '../../http/errors.js';
 
 /** A result longer than this is cut; the rest is said in one line. */
 export const MAX_RESULT_CHARS = 20_000;
@@ -109,13 +110,13 @@ export function connectorTool(connectors: ConnectorsService) {
           ? await connectors.findTool(ctx.memberId, ctx.manifest, args.connector, args.tool)
           : null;
       const name = found && 'connector' in found ? found.connector.name : 'connector' in args ? args.connector : '';
-      const tool = 'tool' in args ? args.tool : '';
+      const tool = found && 'tool' in found ? found.tool.description : '';
       return {
-        summary: zh ? `在 ${name} 上运行 ${tool}` : `run ${tool} on ${name}`,
+        summary: zh ? `使用连接器「${name}」执行操作` : `Run an action on ${name}`,
         details: [
           { label: zh ? '连接器' : 'Connector', value: name },
-          { label: zh ? '工具' : 'Tool', value: tool },
-          ...argumentDetails(args.action === 'call' ? args.arguments : {}),
+          { label: zh ? '操作说明' : 'Action', value: tool || (zh ? '连接器操作' : 'Connector action') },
+          ...argumentDetails(args.action === 'call' ? args.arguments : {}, ctx.locale),
         ],
       };
     },
@@ -136,7 +137,7 @@ export function connectorTool(connectors: ConnectorsService) {
         };
       }
       const found = await connectors.findTool(ctx.memberId, ctx.manifest, args.connector, args.tool);
-      if ('error' in found) throw new Error(found.error);
+      if ('error' in found) throw forbidden(found.error);
       if (args.action === 'describe') {
         return {
           connector: found.connector.slug,
@@ -171,9 +172,9 @@ export function connectorTool(connectors: ConnectorsService) {
       const zh = locale === 'zh';
       if (args.action === 'list') return zh ? '查看了连接器' : 'Looked at the connectors';
       if (args.action === 'describe') {
-        return zh ? `查看了 ${args.connector} 的 ${args.tool}` : `Looked up ${args.tool} on ${args.connector}`;
+        return zh ? '查看了连接器的操作说明' : 'Read connector action instructions';
       }
-      return zh ? `用了 ${args.connector}：${args.tool}` : `Used ${args.connector}: ${args.tool}`;
+      return zh ? '使用了连接器' : 'Used a connector';
     },
   });
 }
