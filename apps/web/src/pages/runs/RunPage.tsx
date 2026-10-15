@@ -1,3 +1,4 @@
+import { errorText } from '../../lib/errors';
 import { ExtensionPanels } from '../../extensions/host';
 import { Attachments } from '../../conversation/Attachments';
 /**
@@ -115,7 +116,7 @@ export function RunPage({ id }: { id: string }) {
   });
   const list = run.data && !isActive(run.data) ? 'done' : 'active';
   const close = () => navigate({ page: 'runs', view: list }, { replace: true });
-  const failed = (error: unknown) => notify(error instanceof ApiClientError ? error.message : t('common.error'));
+  const failed = (error: unknown) => notify(errorText(error, t));
 
   return (
     <>

@@ -14,6 +14,7 @@
     "@greenhouse/knowledge-editor": "workspace:*",
     "@greenhouse/types": "workspace:*",
     "@greenhouse/ui": "workspace:*",
+    "@greenhouse/utils": "workspace:*",
     "@novnc/novnc": "^1.7.0",
     "@tanstack/react-query": "^5.104.2",
     "@xterm/addon-fit": "^0.10.0",

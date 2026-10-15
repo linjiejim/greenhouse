@@ -4,6 +4,10 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./i18n": {
+      "import": "./src/i18n.ts",
+      "types": "./src/i18n.ts"
+    },
     "./date": {
       "import": "./src/date.ts",
       "types": "./src/date.ts"

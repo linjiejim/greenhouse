@@ -508,6 +508,7 @@ export function knowledgeTools(knowledge: KnowledgeService) {
       };
     },
     async execute(args, ctx) {
+      markNameable(args, ctx);
       if (args.action === 'create') {
         const place = await target(args, ctx, true);
         const doc = await knowledge.createDoc(

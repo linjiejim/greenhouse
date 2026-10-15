@@ -197,3 +197,7 @@ The one engine for conversations and runs. Read with the root AGENTS.md and docs
 - Tool failures project a human action and cause before model evidence and step persistence; room summaries hide private field names. Recovered steps require a later success on the same action/object and a successful reply. Reused model call ids settle the newest running call.
 
 - Human error projection preserves ApiError codes on both normal and approved steps. Budget and source-base restrictions retain actionable localized causes; unexpected service messages stay private. Refresh Eval hashes only for changed tool definitions.
+
+- Engine timers use createTimerScope, are unref'd and disposed before database teardown. Test services close before transaction rollback, including timeout paths. Per-run scopes also cover setup failures.
+- Memory recall accepts an indexed id within the current member/Agent partition. Screenshot tool results name the attached file without its storage id. Mark knowledge summary privacy again after approved inputs are parsed.
+- Automatic chat titles summarize only the first member message. Never feed assistant refusals, interim steps or outcomes to the title model; preserve manually set titles with the conditional update.

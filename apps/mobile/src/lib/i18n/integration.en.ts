@@ -67,6 +67,7 @@ export const integration = {
   noBudget: 'No monthly budget',
   computersDisabled: 'An admin temporarily disabled computers. Try again later.',
   backgroundPaused: 'An admin paused background runs. Queued work is kept and will continue when resumed.',
+  outboundMailDisabled: 'An admin paused outbound mail. Try again later.',
   operationPaused: 'An admin paused this operation. Try again later.',
   skills: 'Skills',
   noSkills: 'No skills',

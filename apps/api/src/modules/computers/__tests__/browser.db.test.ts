@@ -173,7 +173,8 @@ describe('the browser tool', () => {
     expect(read.text).toBe('Your password is [hidden]');
     expect(shot).toMatchObject({ code: 'secret_visible' });
     expect(opened.url).toBe(SHOP);
-    expect(clean).toMatchObject({ url: SHOP, file_id: expect.stringMatching(/^fil_/) });
+    expect(clean).toMatchObject({ url: SHOP, file_name: '截图.jpg' });
+    expect(clean).not.toHaveProperty('file_id');
     expect(clean.note).toContain('also shown to you');
     // The picture reaches the model with the next step, as a system line, and is kept nowhere.
     const next = JSON.stringify(env.model.prompts.at(-1));
@@ -187,19 +188,23 @@ describe('the browser tool', () => {
   it('attaches one saved screenshot for the member without giving images to a text-only model', async () => {
     const env = await setup();
     const [shot, second] = await env.turn({ action: 'screenshot' }, { action: 'screenshot' });
-    expect(shot.file_id).toMatch(/^fil_/);
+    expect(shot.file_name).toBe('截图.jpg');
+    expect(shot).not.toHaveProperty('file_id');
     expect(shot.note).toContain('member can see');
     expect(shot.note).toContain('model cannot see images');
     expect(shot.note).toContain('accessibility tree');
     expect(env.chromium.methods).toContain('Page.captureScreenshot');
     const transcript = await env.call('GET', `/api/conversations/${env.main.id}/messages`, { token: env.lin.token });
     expect(transcript.body.items.at(-1).steps[0].summary).toBe('截取了屏幕');
-    expect(transcript.body.items.at(-1).attachments).toEqual([second.file_id]);
-    expect(Buffer.from((await env.services.files.bytes(env.lin.id, second.file_id)).bytes).toString()).toBe(
+    const attachment = transcript.body.items.at(-1).attachments[0];
+    expect(attachment).toMatch(/^fil_/);
+    expect(second.file_name).toBe('截图.jpg');
+    expect(transcript.body.items.at(-1).attachments).toHaveLength(1);
+    expect(Buffer.from((await env.services.files.bytes(env.lin.id, attachment)).bytes).toString()).toBe(
       'fake jpeg bytes',
     );
     const other = await env.member();
-    await expect(env.services.files.get(other.id, second.file_id)).rejects.toMatchObject({ status: 404 });
+    await expect(env.services.files.get(other.id, attachment)).rejects.toMatchObject({ status: 404 });
     expect(JSON.stringify(env.model.prompts)).not.toContain('image/jpeg');
     expect(JSON.stringify(await getDb().select().from(runSteps))).not.toContain(
       Buffer.from('fake jpeg bytes').toString('base64'),

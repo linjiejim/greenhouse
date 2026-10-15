@@ -162,3 +162,24 @@ describe('answers and deadlines', () => {
     expect(secondsLeft(card({ expires_at: '2026-10-14T06:00:42.000Z', status: 'approved' }), now)).toBeNull();
   });
 });
+
+it('preserves only declared approval preview formats without exposing execution inputs', () => {
+  const body = cardBody(
+    card({
+      payload: {
+        inputs: { content: 'secret' },
+        details: [
+          { label: '预览', value: '# 标题\n\n**重点**', format: 'markdown' },
+          { label: '字段', value: '选项', format: 'chips' },
+          { label: '其他', value: '<script>bad</script>', format: 'html' },
+        ],
+      },
+    }),
+  );
+  expect(body.details).toEqual([
+    { label: '预览', value: '# 标题\n\n**重点**', format: 'markdown' },
+    { label: '字段', value: '选项', format: 'chips' },
+    { label: '其他', value: '<script>bad</script>' },
+  ]);
+  expect(JSON.stringify(body)).not.toContain('secret');
+});

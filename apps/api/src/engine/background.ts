@@ -1,3 +1,4 @@
+import { createTimerScope } from './timers.js';
 import type { OperationsService } from '../modules/operations/service.js';
 /**
  * Background runs: work an Agent does while nobody watches. They start only from a member's
@@ -127,6 +128,8 @@ export function createBackground(deps: {
   publish: (conversationId: string, event: RealtimeEvent) => Promise<void>;
   enabled?: boolean;
 }) {
+  const timers = createTimerScope();
+  const runTimers = new Set<ReturnType<typeof createTimerScope>>();
   const live = new Map<string, AbortController>();
   const inFlight = new Set<Promise<void>>();
   let ticker: NodeJS.Timeout | null = null;
@@ -346,22 +349,37 @@ export function createBackground(deps: {
   }
 
   async function execute(run: Run): Promise<void> {
+    const scope = createTimerScope();
+    runTimers.add(scope);
+    try {
+      await executeRun(run, scope);
+    } finally {
+      scope.dispose();
+      runTimers.delete(scope);
+      live.delete(run.id);
+    }
+  }
+
+  async function executeRun(run: Run, timers: ReturnType<typeof createTimerScope>): Promise<void> {
     const controller = new AbortController();
     live.set(run.id, controller);
     let timedOut = false;
-    const deadline = setTimeout(
+    const deadline = timers.timeout(
       () => {
         timedOut = true;
         controller.abort();
       },
       Math.max(1000, Date.parse(run.deadlineAt ?? '') - Date.now() || RUN_TIMEOUT_MS),
     );
-    const heartbeat = setInterval(() => {
-      void getDb()
-        .update(runs)
-        .set({ leaseExpiresAt: new Date(Date.now() + LEASE_MS).toISOString(), heartbeatAt: sql`now()` })
-        .where(and(eq(runs.id, run.id), eq(runs.leaseOwner, deps.instance)))
-        .returning({ desired: runs.desiredState })
+    const heartbeat = timers.interval(() => {
+      void Promise.resolve()
+        .then(() =>
+          getDb()
+            .update(runs)
+            .set({ leaseExpiresAt: new Date(Date.now() + LEASE_MS).toISOString(), heartbeatAt: sql`now()` })
+            .where(and(eq(runs.id, run.id), eq(runs.leaseOwner, deps.instance)))
+            .returning({ desired: runs.desiredState }),
+        )
         .then(([row]) => {
           if (!row || row.desired === 'cancel') controller.abort();
         })
@@ -675,7 +693,7 @@ export function createBackground(deps: {
         };
       }
     } finally {
-      clearTimeout(deadline);
+      timers.clear(deadline);
       try {
         await deps.computers?.releaseBackground(run.ownerId, run.agentId, run.id);
       } catch (error) {
@@ -686,7 +704,7 @@ export function createBackground(deps: {
           errorMessage: toErrorMessage(error).slice(0, 500),
         };
       } finally {
-        clearInterval(heartbeat);
+        timers.clear(heartbeat);
         live.delete(run.id);
       }
     }
@@ -1063,7 +1081,7 @@ export function createBackground(deps: {
     },
 
     start_worker() {
-      ticker ??= setInterval(() => {
+      ticker ??= timers.interval(() => {
         void tick().catch((error: unknown) => logger.warn('[runs] tick failed', { error: toErrorMessage(error) }));
       }, TICK_MS);
     },
@@ -1074,12 +1092,14 @@ export function createBackground(deps: {
 
     drain(): void {
       stopping = true;
-      if (ticker) clearInterval(ticker);
+      if (ticker) timers.clear(ticker);
       ticker = null;
     },
 
     abort(): void {
       background.drain();
+      timers.dispose();
+      for (const scope of runTimers) scope.dispose();
       for (const controller of live.values()) controller.abort();
     },
 

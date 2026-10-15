@@ -349,8 +349,9 @@ describe('the engine', () => {
     expect(lastUserText(model.prompts[2])).toContain('Lin prefers tea');
   });
 
-  it('names a new chat after its first exchange', async () => {
-    const { call, services, lin } = await setup([text('Sure.')], { title: 'Trip to Kyoto' });
+  it('names a new chat for the first member request without using the reply', async () => {
+    const { call, services, lin, model } = await setup([text('Sure.')], { title: 'Trip to Kyoto' });
+    const title = vi.spyOn((await model.languageModel()).model, 'doGenerate');
     const chat = await call('POST', '/api/conversations', { token: lin.token, body: { kind: 'chat' } });
     expect(chat.body).toMatchObject({ kind: 'chat', title: '', last_seq: 0 });
     await call('POST', `/api/conversations/${chat.body.id}/messages`, {
@@ -360,6 +361,43 @@ describe('the engine', () => {
     await services.engine.idle();
     expect((await call('GET', `/api/conversations/${chat.body.id}`, { token: lin.token })).body.title).toBe(
       'Trip to Kyoto',
+    );
+    expect(title).toHaveBeenCalledOnce();
+    const prompt = title.mock.calls[0]![0].prompt;
+    expect(systemText(prompt)).toContain('what the member asked for');
+    expect(lastUserText(prompt)).toContain('Plan a trip');
+    expect(lastUserText(prompt)).not.toContain('Sure.');
+  });
+
+  it('keeps failed intermediate wording and later follow-ups out of an untitled chat title', async () => {
+    const request = '打开 example.com 并发送屏幕截图';
+    const refusal = '无法提供真实屏幕截图';
+    const followUp = '再试一次';
+    const reply = '截图已附在回复中';
+    const { call, services, lin, model } = await setup([text(reply)], { title: '打开网页并截图' });
+    const title = vi.spyOn((await model.languageModel()).model, 'doGenerate');
+    const chat = await call('POST', '/api/conversations', { token: lin.token, body: { kind: 'chat' } });
+    await services.conversations.append(chat.body.id, {
+      role: 'user',
+      authorMemberId: lin.id,
+      content: request,
+    });
+    await services.conversations.append(chat.body.id, {
+      role: 'assistant',
+      agentId: chat.body.agent_id,
+      content: refusal,
+      status: 'failed',
+    });
+    await call('POST', `/api/conversations/${chat.body.id}/messages`, {
+      token: lin.token,
+      body: { content: followUp },
+    });
+    await services.engine.idle();
+    const prompt = lastUserText(title.mock.calls[0]![0].prompt);
+    expect(prompt).toContain(request);
+    for (const excluded of [refusal, followUp, reply]) expect(prompt).not.toContain(excluded);
+    expect((await call('GET', `/api/conversations/${chat.body.id}`, { token: lin.token })).body.title).toBe(
+      '打开网页并截图',
     );
   });
 
