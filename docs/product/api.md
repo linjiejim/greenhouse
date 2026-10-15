@@ -116,7 +116,7 @@ v2 和 v1 不兼容，不加 `/api/v2` 前缀，也不保留旧路由。`GET /ap
 | `GET` / `PUT /api/admin/mail` · `POST /api/admin/mail/test` | 邮箱服务：能否发信、Agent 邮箱的域名（来源 env / workspace，另附 `MAIL_AGENT_DOMAIN` 的值；`PUT { agent_domain }`，null 回到它，写审计）、Agent 邮箱是否开通、每个能收信的实例要填到服务商那里的入站地址；`test` 经第一个能发的实例给管理员自己发一封（`mail_not_configured`） |
 | `GET /api/admin/computers` · `PUT …/capacity` · `POST …/:id/stop` · `DELETE …/:id` | 电脑：所有成员的电脑与状态（不含画面和文件）；容量（空闲多少分钟后关机、最多同时开机，0 为不限，超出时开机返回 `computers_full`）；停止；重置（连主目录删除，下次使用重开） |
 | `GET /api/admin/usage?period=&group_by=member\|agent\|provider\|capability` | 工作区用量 |
-| `GET` / `PUT /api/admin/budgets` · `DELETE …/:id` | 预算：组织、服务实例、成员三级，token 或美元，按月；`PUT` 建立或替换一个范围与单位的预算；列表带本月已用 |
+| `GET` / `PUT /api/admin/budgets` · `DELETE …/:id` | 预算：组织、服务实例、成员、公开 Agent 四种范围，token 或美元，按月；`PUT` 建立或替换一个范围与单位的预算；列表带本月已用 |
 | `/api/admin/connectors[/:id]` · `GET …/catalog` · `GET …/registry?q=` · `POST …/probe` · `POST …/:id/refresh` · `…/test` | 安装连接器：内置目录（`{ catalog_id }`）、Registry 搜索（慢，服务端缓存）、URL（`probe` 先看要哪种鉴权）；鉴权 none / shared / per_member / oauth，共享 Key 与 OAuth 客户端密钥只写不读；工具缓存（`refresh` 重列，per_member / oauth 用管理员自己的连接）、白名单、只读工具；启用 / 停用；改地址或鉴权方式会断开所有成员的连接 |
 | `/api/admin/clients[/:id]` · `POST …/:id/rotate-secret` | 外部访问客户端：交互客户端（自行注册或管理员添加，可设 scope 上限）与机器客户端（绑定一个成员，本人批准后生效；密钥只显示一次）；停用即作废全部令牌；列表带最近使用、在用授权与令牌数；变更写审计 |
 | `GET /api/admin/public-agents` · `POST …/:id/pause` · `…/resume` | 公开 Agent：主人、受众人数、本月用量；暂停与恢复 |
@@ -130,6 +130,7 @@ v2 和 v1 不兼容，不加 `/api/v2` 前缀，也不保留旧路由。`GET /ap
 | `GET /api/connectors/oauth/callback` | 连接器 OAuth 回调（公开）：不改任何数据，302 到 `#/settings/connections?connector=&oauth_state=&oauth_code=`（失败时带 `oauth_error`），Web 用成员自己的会话调用 `finish`。不在 `/api/mcp` 下，那是 Greenhouse 自己的 MCP 服务器 |
 | `POST /api/mail/inbound/:instance` | 邮件服务商的收信通知（公开，凭服务商的签名）：Resend 的 Svix 签名 webhook、Mailgun `store(notify=…)` 的 HMAC；先验签（失败 401 `invalid_signature`），再持久写入 mail_inbound 任务并应答 200 `{ status: queued, job_id, delivered: 0, screened: 0 }`；worker 用实例的 Key 拉信，失败按 jobs 退避重试，不能把 queued 当作已投递；重复通知 status=duplicate、无关通知 status=ignored；同一封信只存一次；过大的通知 413 |
 | `/api/ws` · `/api/ws/computer?ticket=` · `/api/ws/computer-terminal?ticket=` | 实时通道、电脑画面（RFB，`view` ticket 的输入由服务端丢弃）、终端（二进制按键与输出，`resize` 文本消息） |
+| `GET` / `PUT /api/agents/:id/budgets` | 公开 Agent 的月度预算；主人或管理员可读写，token 或美元，复用统一预算检查与用量；管理员也可经 `/api/admin/budgets` 管理 |
 | `/api/ext/<id>/*` | 扩展 |
 | `GET /health` | 健康检查：各能力是否可用（不含机密）；数据库不可用时返回 503 |
 

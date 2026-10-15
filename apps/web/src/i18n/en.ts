@@ -1105,6 +1105,7 @@ export const en: Record<MessageKey, string> = {
   'usage.outsideAgents': 'Outside Agents (titles, summaries)',
   'usage.budget': 'Budget this month',
 
+  'budgets.agent': 'Agent monthly budget',
   'budgets.title': 'Budgets',
   'budgets.add': 'Add budget',
   'budgets.edit': 'Edit budget',

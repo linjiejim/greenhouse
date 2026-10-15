@@ -1078,6 +1078,7 @@ export const zh = {
   'usage.outsideAgents': 'Agent 之外（标题、摘要）',
   'usage.budget': '本月预算',
 
+  'budgets.agent': 'Agent 月度预算',
   'budgets.title': '预算',
   'budgets.add': '添加预算',
   'budgets.edit': '修改预算',

@@ -103,7 +103,7 @@ The one engine for conversations and runs. Read with the root AGENTS.md and docs
 - `skill_mutation` only proposes a template (card subject `skill_save`); accepting it saves the skill as the member. Equipping goes through the same requirement check (`skill_unavailable`).
 
 ## Budgets
-- Every metered call (each model attempt too) is checked first against the enabled budgets that cover it (providers/budgets.ts); one used up refuses it with `budget_exceeded`, which a turn keeps as its error code and says in its reply. An instance over its own budget falls back to the next instance.
+- Every metered call (each model attempt too) is checked first against the enabled workspace, provider, member and Agent budgets that cover it (providers/budgets.ts); one used up refuses it with `budget_exceeded`, which a turn keeps as its error code and says in its reply. An instance over its own budget falls back to the next instance.
 
 ## Knowledge
 - `knowledge_query` (search, read, list) and `knowledge_mutation` (create, edit, move, comment) call modules/knowledge with the asker's rights. Public Agents may read only their live publication grant; they never mutate knowledge.

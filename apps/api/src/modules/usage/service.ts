@@ -34,7 +34,7 @@ import {
 } from '@greenhouse/db';
 import type { z } from 'zod';
 import { audit } from '../../audit.js';
-import { invalidInput, notFound } from '../../http/errors.js';
+import { forbidden, invalidInput, notFound } from '../../http/errors.js';
 import { decodeCursor, toPage } from '../../http/pagination.js';
 import { currentMonth, spentOf, WORKSPACE_BUDGET_ID } from '../../providers/budgets.js';
 import type { ProvidersService } from '../../providers/service.js';
@@ -43,7 +43,7 @@ import { daysOf, periodOf, totalsColumns, toTotals } from './totals.js';
 
 type BudgetSave = z.output<typeof budgetInputSchema>;
 
-const MANAGED_SCOPES = ['workspace', 'provider', 'member'] as const;
+const MANAGED_SCOPES = ['workspace', 'provider', 'member', 'agent'] as const;
 const RECENT_COMMENTS = 20;
 
 /** Most tokens first, then most calls. */
@@ -78,6 +78,19 @@ export function createUsageService(deps: { agents: AgentsService; providers: Pro
     return toTotals(row);
   }
 
+  async function assertAdmin(actorId: string) {
+    const [actor] = await getDb().select().from(members).where(eq(members.id, actorId));
+    if (actor?.role !== 'admin' || actor.status !== 'active') throw forbidden();
+  }
+
+  async function assertAgentBudget(actorId: string, agentId: string) {
+    const [actor] = await getDb().select().from(members).where(eq(members.id, actorId));
+    const [agent] = await getDb().select().from(agents).where(eq(agents.id, agentId));
+    if (!actor || actor.status !== 'active' || !agent || (actor.role !== 'admin' && agent.ownerId !== actorId))
+      throw forbidden();
+    if (agent.visibility !== 'public' || agent.archivedAt) throw invalidInput('Budget a published Agent.');
+  }
+
   async function budgetViews(rows: BudgetRow[]): Promise<Budget[]> {
     if (!rows.length) return [];
     const month = currentMonth();
@@ -90,6 +103,10 @@ export function createUsageService(deps: { agents: AgentsService; providers: Pro
       rows.some((row) => row.scopeType === 'provider') ? deps.providers.instanceDirectory() : new Map(),
       getDb().select({ name: workspace.name }).from(workspace).limit(1),
     ]);
+    const agentIds = rows.filter((row) => row.scopeType === 'agent').map((row) => row.scopeId);
+    const agentNames = agentIds.length
+      ? await getDb().select({ id: agents.id, name: agents.name }).from(agents).where(inArray(agents.id, agentIds))
+      : [];
     const names = new Map(people.map((person) => [person.id, person.name]));
     return Promise.all(
       rows.map(async (row) => {
@@ -101,9 +118,11 @@ export function createUsageService(deps: { agents: AgentsService; providers: Pro
           scope_name:
             row.scopeType === 'workspace'
               ? (space?.name ?? 'Greenhouse')
-              : row.scopeType === 'member'
-                ? (names.get(row.scopeId) ?? '')
-                : (instances.get(row.scopeId)?.name ?? row.scopeId),
+              : row.scopeType === 'agent'
+                ? (agentNames.find((agent) => agent.id === row.scopeId)?.name ?? '')
+                : row.scopeType === 'member'
+                  ? (names.get(row.scopeId) ?? '')
+                  : (instances.get(row.scopeId)?.name ?? row.scopeId),
           unit: row.unit,
           monthly_limit: row.monthlyLimit,
           enabled: row.enabled,
@@ -230,9 +249,21 @@ export function createUsageService(deps: { agents: AgentsService; providers: Pro
       return { items: await budgetViews(page.items), next_cursor: page.next_cursor };
     },
 
+    async agentBudgets(actorId: string, agentId: string): Promise<Budget[]> {
+      await assertAgentBudget(actorId, agentId);
+      return budgetViews(
+        await getDb()
+          .select()
+          .from(budgets)
+          .where(and(eq(budgets.scopeType, 'agent'), eq(budgets.scopeId, agentId))),
+      );
+    },
+
     /** Creates or replaces the budget of one scope and unit. */
     async saveBudget(actorId: string, input: BudgetSave): Promise<Budget> {
       const scopeId = input.scope_type === 'workspace' ? WORKSPACE_BUDGET_ID : input.scope_id!;
+      if (input.scope_type === 'agent') await assertAgentBudget(actorId, scopeId);
+      else await assertAdmin(actorId);
       if (input.scope_type === 'provider' && !(await deps.providers.instanceDirectory()).get(scopeId)?.managed) {
         throw invalidInput('Budget a service instance of the workspace, not a personal key.');
       }
@@ -271,6 +302,7 @@ export function createUsageService(deps: { agents: AgentsService; providers: Pro
     },
 
     async removeBudget(actorId: string, id: string): Promise<void> {
+      await assertAdmin(actorId);
       await transaction(async (db) => {
         const [deleted] = await db
           .delete(budgets)
@@ -337,6 +369,12 @@ export function createUsageService(deps: { agents: AgentsService; providers: Pro
       ]);
       return {
         agent_id: agent.id,
+        budgets: await budgetViews(
+          await db
+            .select()
+            .from(budgets)
+            .where(and(eq(budgets.scopeType, 'agent'), eq(budgets.scopeId, agent.id))),
+        ),
         period,
         totals,
         turns: outcomes(runRows.filter((row) => row.kind === 'turn')),

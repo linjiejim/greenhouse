@@ -308,6 +308,7 @@ export function createProvidersService(deps: { config: AppConfig; fetch?: typeof
         ...(ctx.memberId ? { memberId: ctx.memberId } : {}),
         personalCounting,
         runId: ctx.runId,
+        agentId: ctx.agentId,
       }),
     );
 

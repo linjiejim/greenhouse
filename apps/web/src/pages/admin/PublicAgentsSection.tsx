@@ -9,6 +9,7 @@ import { icon } from '@greenhouse/ui/tokens';
 import { ApiClientError } from '@greenhouse/contract/client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNotify } from '../../app/notify';
+import { AgentBudgets } from '../agents/AgentBudgets';
 import { api } from '../../lib/api';
 import { useI18n } from '../../lib/i18n';
 import { AgentAvatar } from '../../shell/AgentAvatar';
@@ -52,6 +53,10 @@ export function PublicAgentsSection() {
             {agent.paused_at ? <Play size={icon.sm} /> : <Pause size={icon.sm} />}
             {agent.paused_at ? t('publicAgents.resume') : t('publicAgents.pause')}
           </Button>
+          <details>
+            <summary>{t('budgets.agent')}</summary>
+            <AgentBudgets agentId={agent.id} />
+          </details>
         </li>
       ))}
     </ul>

@@ -11,6 +11,7 @@
 import { Hono } from 'hono';
 import {
   adminUsageQuerySchema,
+  agentBudgetInputSchema,
   budgetInputSchema,
   idParamSchema,
   pageQuerySchema,
@@ -29,6 +30,15 @@ export function myUsageRoutes(service: UsageService) {
 /** Mounted under /api/agents. */
 export function agentUsageRoutes(service: UsageService) {
   return new Hono<AppEnv>()
+    .get('/:id/budgets', async (c) =>
+      c.json({ items: await service.agentBudgets(c.get('member').id, c.req.param('id')) }),
+    )
+    .put('/:id/budgets', async (c) => {
+      const input = await readJson(c, agentBudgetInputSchema);
+      return c.json(
+        await service.saveBudget(c.get('member').id, { ...input, scope_type: 'agent', scope_id: c.req.param('id') }),
+      );
+    })
     .get('/:id/usage', async (c) =>
       c.json(await service.agentUsage(c.get('member').id, c.req.param('id'), readQuery(c, usageQuerySchema).period)),
     )

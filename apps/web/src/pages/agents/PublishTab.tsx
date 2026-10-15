@@ -25,6 +25,7 @@ import { useNotify } from '../../app/notify';
 import { useMe } from '../../app/session';
 import { useVersions } from '../../data/agents';
 import { api } from '../../lib/api';
+import { AgentBudgets } from './AgentBudgets';
 import { KnowledgeGrant } from './KnowledgeGrant';
 import { useI18n } from '../../lib/i18n';
 
@@ -190,6 +191,7 @@ export function PublishTab({ agent }: { agent: AgentDetail }) {
           </Button>
         </div>
       </form>
+      {current?.published && <AgentBudgets agentId={agent.id} />}
       {unpublishing && (
         <ConfirmDialog
           danger

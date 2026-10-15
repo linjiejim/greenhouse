@@ -69,6 +69,7 @@ export interface BudgetCheck {
   /** This capability's personal-key usage counts toward workspace and member budgets. */
   personalCounts: boolean;
   memberId?: string;
+  agentId?: string;
   runId?: string;
   /** Every capability whose personal usage counts, for the sums; read only when a budget applies. */
   personalCounting: () => Promise<readonly string[]>;
@@ -79,6 +80,7 @@ export async function assertWithinBudgets(check: BudgetCheck): Promise<void> {
   const counted = !check.personal || check.personalCounts;
   const scopes = or(
     and(eq(budgets.scopeType, 'provider'), eq(budgets.scopeId, check.instanceId)),
+    check.agentId ? and(eq(budgets.scopeType, 'agent'), eq(budgets.scopeId, check.agentId)) : undefined,
     counted ? eq(budgets.scopeType, 'workspace') : undefined,
     counted && check.memberId ? and(eq(budgets.scopeType, 'member'), eq(budgets.scopeId, check.memberId)) : undefined,
   );
@@ -113,6 +115,7 @@ export async function assertWithinBudgets(check: BudgetCheck): Promise<void> {
       workspace: 'the workspace',
       provider: 'this service',
       member: 'your account',
+      agent: 'this Agent',
     };
     throw new ApiError(
       429,

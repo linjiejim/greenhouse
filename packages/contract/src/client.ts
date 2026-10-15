@@ -723,6 +723,11 @@ export function createApiClient(options: ApiClientOptions) {
         get<Page<AgentActivity>>(`/api/agents/${encodeURIComponent(id)}/activity`, query),
     },
 
+    agentBudgets: {
+      list: (id: string) => get<{ items: Budget[] }>(`/api/agents/${encodeURIComponent(id)}/budgets`),
+      save: (id: string, input: Omit<BudgetInput, 'scope_type' | 'scope_id'>) =>
+        put<Budget>(`/api/agents/${encodeURIComponent(id)}/budgets`, { ...input, scope_type: 'agent', scope_id: id }),
+    },
     publication: {
       /** Other members' public Agents shared with me; talk to one with conversations.create({ kind: 'direct' }). */
       shared: () => get<{ items: PublicAgent[] }>('/api/agents', { scope: 'public' }),

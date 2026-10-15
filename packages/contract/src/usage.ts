@@ -59,8 +59,14 @@ export const adminUsageSchema = z.object({
 export type AdminUsage = z.infer<typeof adminUsageSchema>;
 
 /** The PRD's three levels; personal-key usage counts only where the capability's policy says so. */
-export const BUDGET_SCOPES = ['workspace', 'provider', 'member'] as const;
+export const BUDGET_SCOPES = ['workspace', 'provider', 'member', 'agent'] as const;
 export const BUDGET_UNITS = ['tokens', 'usd_micros'] as const;
+
+export const agentBudgetInputSchema = z.object({
+  unit: z.enum(BUDGET_UNITS),
+  monthly_limit: z.number().int().min(1).max(1e15),
+  enabled: z.boolean().default(true),
+});
 
 /** Creates or replaces the budget of one scope and unit. */
 export const budgetInputSchema = z
@@ -73,7 +79,7 @@ export const budgetInputSchema = z
     enabled: z.boolean().default(true),
   })
   .refine((input) => (input.scope_type === 'workspace') === (input.scope_id === undefined), {
-    message: 'A provider or member budget names its scope_id; the workspace budget has none.',
+    message: 'A provider, member or Agent budget names its scope_id; the workspace budget has none.',
     path: ['scope_id'],
   });
 export type BudgetInput = z.input<typeof budgetInputSchema>;
@@ -110,6 +116,7 @@ export const runOutcomesSchema = z.object({
 export const agentUsageSchema = z.object({
   agent_id: z.string(),
   period: usagePeriodSchema,
+  budgets: z.array(budgetSchema),
   /** Every member's usage of it, its owner's included. */
   totals: usageTotalsSchema,
   /** Replies. */
