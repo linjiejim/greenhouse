@@ -1,3 +1,4 @@
+import { Markdown } from '../src/chat/markdown';
 import { ApprovalPreview } from '../src/requests/approval-preview';
 /**
  * A 「需要你」 card in full (`/request?id=`, a full-height sheet): the only place a card is
@@ -40,7 +41,7 @@ import type { NeedsYou, QuestionField } from '../src/shared/contract';
 import { useAuth } from '../src/store/auth';
 import { useThreads } from '../src/store/threads';
 import { useWorkspace } from '../src/store/workspace';
-import { HIT, makeStyles, mono, radius, space, squircle, typo, useTheme, weight } from '../src/theme';
+import { HIT, makeStyles, radius, space, squircle, typo, useTheme, weight } from '../src/theme';
 import { NativeButton } from '../src/ui/button';
 import { Icon } from '../src/ui/core';
 import { alertError, confirmAction } from '../src/ui/dialogs';
@@ -230,7 +231,7 @@ export default function RequestSheet() {
           </Text>
         </View>
 
-        {body?.reason ? <Text style={styles.reason}>{body.reason}</Text> : null}
+        {body?.reason ? <Markdown source={body.reason} safe /> : null}
         {body?.details.length ? (
           <View style={styles.details}>
             {body.details.map((detail) => (
@@ -250,9 +251,7 @@ export default function RequestSheet() {
         {body?.body ? (
           <View style={styles.block}>
             {body.bodyLabel ? <Text style={styles.blockLabel}>{t(`requests.body.${body.bodyLabel}`)}</Text> : null}
-            <Text style={styles.blockText} selectable>
-              {body.body}
-            </Text>
+            <Markdown source={body.body} safe />
           </View>
         ) : null}
 
@@ -417,15 +416,6 @@ const useStyles = makeStyles((c) => ({
   detailValue: { ...typo.body, color: c.label },
   block: { gap: space.xs },
   blockLabel: { ...typo.footnote, fontWeight: weight.semibold, color: c.secondaryLabel },
-  blockText: {
-    ...typo.subheadline,
-    fontFamily: mono,
-    color: c.label,
-    padding: space.md,
-    borderRadius: radius.md,
-    backgroundColor: c.secondaryGroupedBackground,
-    ...squircle,
-  },
   form: { gap: space.md },
   field: { gap: space.xs },
   fieldLabel: { ...typo.footnote, fontWeight: weight.semibold, color: c.secondaryLabel },

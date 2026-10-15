@@ -201,3 +201,5 @@ The one engine for conversations and runs. Read with the root AGENTS.md and docs
 - Engine timers use createTimerScope, are unref'd and disposed before database teardown. Test services close before transaction rollback, including timeout paths. Per-run scopes also cover setup failures.
 - Memory recall accepts an indexed id within the current member/Agent partition. Screenshot tool results name the attached file without its storage id. Mark knowledge summary privacy again after approved inputs are parsed.
 - Automatic chat titles summarize only the first member message. Never feed assistant refusals, interim steps or outcomes to the title model; preserve manually set titles with the conditional update.
+
+- Memory mutation refusals throw ApiError (memory_background_read_only / memory_untrusted_content), never successful error objects. Preserve the cause and do-not-retry instruction in model evidence and failed steps.

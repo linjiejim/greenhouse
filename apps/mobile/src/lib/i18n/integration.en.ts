@@ -68,6 +68,8 @@ export const integration = {
   computersDisabled: 'An admin temporarily disabled computers. Try again later.',
   backgroundPaused: 'An admin paused background runs. Queued work is kept and will continue when resumed.',
   outboundMailDisabled: 'An admin paused outbound mail. Try again later.',
+  memoryBackgroundReadOnly: 'Background runs can only read memories, not change them. Do not retry this write',
+  memoryUntrustedContent: 'This turn has read outside content, so memories cannot be changed. Do not retry; ask the member in a new turn',
   operationPaused: 'An admin paused this operation. Try again later.',
   skills: 'Skills',
   noSkills: 'No skills',

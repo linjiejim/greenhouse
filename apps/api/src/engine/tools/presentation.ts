@@ -194,6 +194,14 @@ export function failureSummary(
     operation_disabled: ['管理员已临时暂停此操作，请稍后再试', 'An admin paused this operation; try again later'],
     budget_exceeded: ['剩余预算不足', 'There is not enough remaining budget'],
     budget_estimate_unavailable: ['模型尚未设置价格，无法核对预算', 'Model prices are required to check the budget'],
+    memory_background_read_only: [
+      '后台运行只能读取记忆，不能修改；请勿重试这次写入',
+      'Background runs can only read memories, not change them. Do not retry this write',
+    ],
+    memory_untrusted_content: [
+      '本轮已读取网页等外部内容，不能直接存为或修改记忆；请勿重试，请成员在新一轮对话中确认',
+      'This turn has read outside content, so memories cannot be changed. Do not retry; ask the member in a new turn',
+    ],
     source_base_only: ['这次运行只能读取来源表格', 'This run can only read its source base'],
     forbidden: ['没有操作权限', 'You do not have permission'],
     not_found: ['对象不存在或无法访问', 'Item is missing or inaccessible'],

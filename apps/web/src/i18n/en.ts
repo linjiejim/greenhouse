@@ -900,6 +900,9 @@ export const en: Record<MessageKey, string> = {
   'errors.computersDisabled': 'An admin temporarily disabled computers. Try again later.',
   'errors.backgroundPaused': 'An admin paused background runs. Queued work is kept and will continue when resumed.',
   'errors.outboundMailDisabled': 'An admin paused outbound mail. Try again later.',
+  'errors.memoryBackgroundReadOnly': 'Background runs can only read memories, not change them. Do not retry this write',
+  'errors.memoryUntrustedContent':
+    'This turn has read outside content, so memories cannot be changed. Do not retry; ask the member in a new turn',
   'errors.operationDisabled': 'An admin paused this operation. Try again later.',
   'errors.connectorOff': 'An admin turned this connector off',
   'errors.connectionBusy': 'This connection just changed; try again',

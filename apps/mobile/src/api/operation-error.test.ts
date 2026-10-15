@@ -14,3 +14,9 @@ it('maps every operation switch and unknown switches without displaying server t
     );
   expect(operationErrorText({ code: 'network' }, t)).toBeUndefined();
 });
+
+it('localizes memory rule refusals instead of offering a retry', () => {
+  const t = (key: string) => key;
+  expect(operationErrorText({ code: 'memory_background_read_only' }, t)).toBe('integration.memoryBackgroundReadOnly');
+  expect(operationErrorText({ code: 'memory_untrusted_content' }, t)).toBe('integration.memoryUntrustedContent');
+});

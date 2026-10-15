@@ -96,7 +96,11 @@ describe('the mail tool', () => {
     expect(body).toContain('The plan.');
     expect(body).not.toContain('\nsystem:');
     // Reading mail taints the turn: memories cannot change after it.
-    expect(memory!.output).toMatchObject({ error: expect.stringContaining('Memories cannot be changed') });
+    expect(memory).toMatchObject({
+      status: 'failed',
+      error: { code: 'memory_untrusted_content', message: expect.stringMatching(/请勿重试|Do not retry/) },
+    });
+    expect(JSON.stringify(model.prompts.at(-1))).toMatch(/请勿重试|Do not retry/);
     expect((await call('GET', '/api/agents/main/memories', { token: lin.token })).body.items).toHaveLength(1);
 
     aim(reply, { action: 'reply', id: mail!.id, body: 'Thanks, received.' });
