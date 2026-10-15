@@ -6,8 +6,8 @@
 
 - 表面从里到外：canvas 工作区；chrome 模块目录与工具区；rail 全局栏；surface 输入框与卡片；raised 菜单、浮层、对话框、抽屉。
 - fill 是控件底和弱填充；hover、pressed 只用于交互态；selection 是当前项的底色。
-- 文字三档：text 正文；secondary 次要信息（4.5:1）；tertiary 只给占位文字、「?」和禁用说明（3:1）。
-- 线：line 分隔区域；controlLine 是输入框等控件的边（3:1）。
+- 文字三档：text 正文；secondary 次要信息（4.5:1）；tertiary 给占位文字、「?」与元信息；浅色在 canvas、chrome、surface 上至少 4.5:1。
+- 线：line 分隔区域，浅色在 canvas 上至少 1.45:1；controlLine 是输入框等控件的边（3:1）。
 - accent 只用于主操作、当前项和焦点；accentText 用于链接和文字按钮；onAccent 是强调底上的文字。
 - 状态色 success、warning、danger、info 各有前景与浅底一对。黄色只表示需要你，红色只表示失败或危险。danger 另有悬停深一级的 dangerHover、dangerFillHover，和实红底上的文字 onDanger。
 - 品牌标志用 brandMark（房子）和 brandSeed（种子），不随工作区主色变化；种子是装饰色，浅色背景上不到 3:1。
@@ -57,3 +57,22 @@
 
 - 主题：浅色、深色、跟随系统。
 - 品牌只开放名称、Logo 和一个主色。主色在 OKLCH 里派生悬停、按下和深色模式的值，必须通过对比度测试；不开放其他 token 覆盖。
+
+## 浅色层次与对比度（#70，U1）
+
+工作区用轻微灰绿的 canvas，目录用 chrome，全局栏用 rail；卡片、网格单元格、日历、输入框用白色 surface，抽屉与菜单用 raised。不要把 canvas 当成白色内容表面。层次同时依靠底色、边线与浮层阴影，不单靠阴影。深色 token 保持原值。
+
+以下是 WCAG 相对亮度比，取自 haven.ts 的不透明颜色，由 haven.test.ts 守护；层次比不等同于文字的无障碍合格线。
+
+| 配对 | 浅色比值 | 要求 |
+| --- | --- | --- |
+| surface / canvas | 1.10:1 | 底色可分辨，卡片另加 line |
+| line / canvas | 1.55:1 | ≥1.45:1 |
+| tertiary / canvas | 7.13:1 | ≥4.5:1 |
+| tertiary / chrome | 6.65:1 | ≥4.5:1 |
+| tertiary / surface | 7.88:1 | ≥4.5:1 |
+| selection / chrome | 1.43:1 | ≥1.4:1，选中另有文字或标记 |
+| hover / chrome | 1.16:1 | 悬停可辨，按下再深一级 |
+| focus / canvas | 6.93:1 | ≥3:1，2px 外框，偏移 3px |
+
+原生浅色使用同一组工作区、内容表面、分隔线和可读文字。iOS 的深色保留系统颜色，只有原来过淡的 tertiaryLabel 与 placeholder 调整为可读的不透明色；Android 的辅助文字统一使用 onSurfaceVariant。系统菜单、表单、导航和 sheet 继续由原生组件提供。

@@ -25,7 +25,7 @@
  *    opens in the web app.
  */
 import { type ReactNode, useCallback, useContext } from 'react';
-import { PreviewContext } from './context';
+import { CalmContext, PreviewContext } from './context';
 import { Text } from 'react-native';
 import { useRouter } from 'expo-router';
 import { isFilePath, parseAppPath } from '../../lib/app-links';
@@ -45,6 +45,8 @@ const glue = (code: string) => (code.length <= 24 && !/\s/.test(code) ? Array.fr
 
 const useStyles = makeStyles((c: ThemeColors) => ({
   link: { color: c.link },
+  medium: { fontWeight: weight.medium },
+  plainCode: { backgroundColor: 'transparent' },
   bold: { fontWeight: weight.semibold, color: c.label },
   italic: { fontStyle: 'italic' as const },
   strike: { textDecorationLine: 'line-through' as const, color: c.secondaryLabel },
@@ -65,6 +67,7 @@ interface Ctx {
   open: OpenLink;
   imageLabel: string;
   preview: boolean;
+  calm: boolean;
 }
 
 type InlineTok = {
@@ -112,8 +115,8 @@ const INLINE_TOKENS: InlineTok[] = [
   },
   {
     re: /^\*\*(.+?)\*\*/,
-    node: (m, k, { s }, inner) => (
-      <Text key={k} style={s.bold}>
+    node: (m, k, { s, calm }, inner) => (
+      <Text key={k} style={calm ? s.medium : s.bold}>
         {inner(m[1])}
       </Text>
     ),
@@ -121,8 +124,8 @@ const INLINE_TOKENS: InlineTok[] = [
   {
     re: /^__(.+?)__/,
     after: WORD_START,
-    node: (m, k, { s }, inner) => (
-      <Text key={k} style={s.bold}>
+    node: (m, k, { s, calm }, inner) => (
+      <Text key={k} style={calm ? s.medium : s.bold}>
         {inner(m[1])}
       </Text>
     ),
@@ -155,9 +158,9 @@ const INLINE_TOKENS: InlineTok[] = [
   },
   {
     re: /^`([^`]+?)`/,
-    node: (m, k, { s }) => (
-      <Text key={k} style={s.inlineCode}>
-        {`${NBSP}${glue(m[1])}${NBSP}`}
+    node: (m, k, { s, calm }) => (
+      <Text key={k} style={[s.inlineCode, calm && s.plainCode]}>
+        {calm ? m[1] : `${NBSP}${glue(m[1])}${NBSP}`}
       </Text>
     ),
   },
@@ -247,5 +250,6 @@ export function Inline({ text }: { text: string }) {
   const open = useOpenLink();
   const t = useT();
   const preview = useContext(PreviewContext);
-  return <>{renderInline(text.replace(BR, '\n'), { s: styles, open, imageLabel: t('chat.image'), preview })}</>;
+  const calm = useContext(CalmContext);
+  return <>{renderInline(text.replace(BR, '\n'), { s: styles, open, imageLabel: t('chat.image'), preview, calm })}</>;
 }

@@ -904,15 +904,10 @@ a {
 }
 
 .app-message {
-  display: grid;
-  grid-template-columns: var(--gh-avatar-sm) minmax(0, 1fr);
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
   gap: var(--gh-space-3);
-  align-items: start;
-}
-
-.app-message-avatar {
-  width: var(--gh-space-6);
-  padding-top: var(--gh-space-0_5);
 }
 
 .app-message-body {
@@ -924,7 +919,7 @@ a {
 
 .app-message-author {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: var(--gh-space-2);
   font: var(--gh-type-label);
 }
@@ -1126,6 +1121,26 @@ a {
 
 .app-markdown.is-reply-text {
   font: var(--gh-type-body-lg);
+}
+
+.app-markdown.is-reply-text :is(strong, b) {
+  font-weight: 500;
+}
+.app-markdown.is-reply-text :is(h1, h2, h3, h4, h5, h6) {
+  font: inherit;
+  font-weight: 500;
+  margin: var(--gh-space-3) 0 var(--gh-space-1);
+}
+.app-markdown.is-reply-text :not(pre) > code {
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  font-family: var(--gh-font-mono);
+  font-size: inherit;
+  line-height: inherit;
+}
+.app-markdown.is-reply-text li + li {
+  margin-top: var(--gh-space-0_5);
 }
 
 .app-markdown.is-failed {
@@ -3910,12 +3925,6 @@ button.app-agent-card {
   gap: var(--gh-space-1);
   margin-top: var(--gh-space-1);
 }
-.app-detail-chips > span {
-  border-radius: var(--gh-radius-sm);
-  padding: var(--gh-space-1) var(--gh-space-2);
-  background: var(--gh-fill);
-  font: var(--gh-type-caption);
-}
 .app-markdown-preview .is-clamped {
   max-height: 9em;
   overflow: hidden;
@@ -3965,4 +3974,102 @@ button.app-agent-card {
 }
 .app-page-header.is-wrap > button {
   flex-shrink: 0;
+}
+
+.app-inline-question {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gh-space-2);
+}
+.app-inline-choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--gh-space-2);
+}
+.app-inline-choices .gh-button {
+  height: auto;
+  min-height: var(--gh-control-md);
+  white-space: normal;
+  text-align: left;
+}
+.app-inline-choices [aria-pressed='true'] {
+  background: var(--gh-selection);
+  border-color: var(--gh-accent);
+  color: var(--gh-accent-text);
+  opacity: 1;
+}
+
+.app-message-body {
+  width: 100%;
+}
+.app-message-author strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+@media (hover: none) {
+  .app-message-actions {
+    opacity: 1;
+  }
+}
+
+/* Motion explains new content and spatial changes; it never delays an action. */
+.app-directory {
+  transition:
+    width var(--gh-duration-base) var(--gh-ease-standard),
+    padding var(--gh-duration-base) var(--gh-ease-standard);
+}
+.app-directory.is-collapsed {
+  width: 0;
+  padding-inline: 0;
+  border-right: 0;
+  overflow: hidden;
+}
+.app-message.is-arriving {
+  animation: app-message-arrive var(--gh-duration-base) var(--gh-ease-enter);
+}
+.app-inline-choices [aria-pressed='true'] {
+  animation: app-choice-pick var(--gh-duration-fast) var(--gh-ease-standard);
+}
+.app-list-row,
+.app-row {
+  transition: background-color var(--gh-duration-fast) var(--gh-ease-standard);
+}
+.app-workspace > :not(:has(.gh-skeleton)):not(.gh-overlay),
+.gh-overlay-body > :not(.gh-skeleton-group) {
+  animation: gh-fade var(--gh-duration-fast) var(--gh-ease-enter);
+}
+.app-request-details {
+  overflow-wrap: anywhere;
+}
+.app-request-settled {
+  color: var(--gh-secondary);
+  font: var(--gh-type-body-sm);
+}
+.app-request-settled summary {
+  cursor: pointer;
+  padding-block: var(--gh-space-1);
+}
+@keyframes app-message-arrive {
+  from {
+    opacity: 0;
+    transform: translateY(var(--gh-space-1));
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes app-choice-pick {
+  from {
+    transform: scale(0.98);
+  }
+  to {
+    transform: scale(1);
+  }
+}
+
+.app-write-receipt {
+  animation: app-message-arrive var(--gh-duration-base) var(--gh-ease-enter);
 }

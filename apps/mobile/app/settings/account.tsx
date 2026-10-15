@@ -50,7 +50,7 @@ function Editor({ password }: { password: boolean }) {
             />
           </Section>
         ) : (
-          <Section modifiers={[disabled(f.saving)]} title={t('integration.aboutMe')}>
+          <Section modifiers={[disabled(f.saving)]}>
             <TextField
               text={about}
               axis="vertical"

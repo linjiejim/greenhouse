@@ -1,7 +1,7 @@
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
 import { apiAs } from './api';
 import { E2E } from './env';
-import { composer, open } from './fixtures';
+import { composer, messageMenu, open } from './fixtures';
 
 /**
  * 语音 (CONV-12, CONV-13): the microphone and read-aloud, through the speech services when one
@@ -59,7 +59,7 @@ async function reply(page: Page, said: string, shown: string) {
   await composer(page).fill(said);
   await composer(page).press('Enter');
   const message = page.locator('.app-message', { hasText: `Echo: ${shown}` });
-  await expect(message.getByRole('button', { name: '复制' })).toBeAttached();
+  await expect(message.getByRole('button', { name: '消息操作' })).toBeAttached();
   return message;
 }
 
@@ -151,17 +151,21 @@ test('read-aloud through the speech service says the prose only, one reply at a 
     const second = await reply(page, '第二条', '第二条');
     const asked = page.waitForRequest((seen) => seen.url().endsWith('/api/voice/speech'));
     await first.hover();
-    await first.getByRole('button', { name: '朗读' }).click();
+    await (await messageMenu(first)).getByRole('menuitem', { name: '朗读', exact: true }).click();
     expect((await asked).postDataJSON()).toEqual({ text: 'Echo: 看 这里 和 代码' });
-    await expect(first.getByRole('button', { name: '停止朗读' })).toHaveAttribute('aria-pressed', 'true');
+    await expect((await messageMenu(first)).getByRole('menuitem', { name: '停止朗读', exact: true })).toBeVisible();
+    await page.keyboard.press('Escape');
 
     // Another reply takes over: the first one stops.
     await second.hover();
-    await second.getByRole('button', { name: '朗读' }).click();
-    await expect(second.getByRole('button', { name: '停止朗读' })).toBeVisible();
-    await expect(first.getByRole('button', { name: '朗读' })).toHaveAttribute('aria-pressed', 'false');
-    await second.getByRole('button', { name: '停止朗读' }).click();
-    await expect(second.getByRole('button', { name: '朗读' })).toHaveAttribute('aria-pressed', 'false');
+    await (await messageMenu(second)).getByRole('menuitem', { name: '朗读', exact: true }).click();
+    await expect((await messageMenu(second)).getByRole('menuitem', { name: '停止朗读', exact: true })).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect((await messageMenu(first)).getByRole('menuitem', { name: '朗读', exact: true })).toBeVisible();
+    await page.keyboard.press('Escape');
+    await (await messageMenu(second)).getByRole('menuitem', { name: '停止朗读', exact: true }).click();
+    await expect((await messageMenu(second)).getByRole('menuitem', { name: '朗读', exact: true })).toBeVisible();
+    await page.keyboard.press('Escape');
   } finally {
     await done();
   }
@@ -175,19 +179,21 @@ test('without a speech service the browser reads aloud, and with no voice at all
   await open(page, '/#/c/new');
   const message = await reply(page, '**你好**，世界', '你好，世界');
   await message.hover();
-  await message.getByRole('button', { name: '朗读' }).click();
-  await expect(message.getByRole('button', { name: '停止朗读' })).toBeVisible();
+  await (await messageMenu(message)).getByRole('menuitem', { name: '朗读', exact: true }).click();
+  await expect((await messageMenu(message)).getByRole('menuitem', { name: '停止朗读', exact: true })).toBeVisible();
+  await page.keyboard.press('Escape');
   expect(await page.evaluate(() => (window as unknown as { __spoken: string[] }).__spoken)).toEqual([
     'Echo: 你好，世界',
   ]);
-  await message.getByRole('button', { name: '停止朗读' }).click();
-  await expect(message.getByRole('button', { name: '朗读' })).toBeVisible();
+  await (await messageMenu(message)).getByRole('menuitem', { name: '停止朗读', exact: true }).click();
+  await expect((await messageMenu(message)).getByRole('menuitem', { name: '朗读', exact: true })).toBeVisible();
+  await page.keyboard.press('Escape');
 
   const context = await browser.newContext({ storageState: 'e2e/.auth/lin.json', locale: 'zh-CN' });
   const bare = await context.newPage();
   await bare.addInitScript(noBrowserSpeech);
   await open(bare, '/#/c/new');
   const silent = await reply(bare, 'quiet please', 'quiet please');
-  await expect(silent.getByRole('button', { name: '朗读' })).toHaveCount(0);
+  await expect((await messageMenu(silent)).getByRole('menuitem', { name: '朗读', exact: true })).toHaveCount(0);
   await context.close();
 });

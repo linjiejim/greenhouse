@@ -5,8 +5,8 @@ import { usePreventRemove } from 'expo-router/react-navigation';
  * `Stack.Screen` options / `Stack.Toolbar` items for the screen they're in):
  *
  *  - `<SheetClose />` — the ✕ on the left that closes a peek / picker / viewer.
- *  - `<FormChrome … />` — title + ✕ cancel / ✓ save for create / edit forms:
- *    ✕ asks before discarding when there are unsaved edits, ✓ is the accent
+ *  - `<FormChrome … />` — title + ✕ cancel and a pinned primary save for create / edit forms:
+ *    ✕ asks before discarding when there are unsaved edits; the footer holds the accent
  *    "done" button (disabled until `canSave`, and while `saving`), and the
  *    swipe-to-dismiss gesture is blocked while dirty so an accidental swipe
  *    never loses edits.
@@ -21,7 +21,8 @@ import { Stack, useFocusEffect, useNavigation, useRouter, type Href } from 'expo
 import { useT } from '../lib/i18n';
 import { useAuth } from '../store/auth';
 import { useStations } from '../store/stations';
-import { alpha, useTheme } from '../theme';
+import { SheetActions } from './sheet-actions';
+import { NativeButton } from './button';
 import { confirmAction } from './dialogs';
 import { toolbarIcon } from './toolbar-icon';
 
@@ -52,7 +53,7 @@ export function confirmDiscard(t: ReturnType<typeof useT>): Promise<boolean> {
 }
 
 /**
- * Title + ✕ / ✓ for a create / edit form presented as a sheet or modal.
+ * Title, close guard and pinned primary action for a form presented as a sheet or modal.
  * `onSave` only fires when `canSave` and not `saving`; ✕ (and `onCancel`, if
  * given, instead of `router.back()`) runs after the discard check.
  */
@@ -66,6 +67,7 @@ export function FormChrome({
   saveLabel,
   protectNavigation = false,
   onReload,
+  hideSave = false,
 }: {
   title: string;
   dirty: boolean;
@@ -77,10 +79,10 @@ export function FormChrome({
   saveLabel?: string;
   protectNavigation?: boolean;
   onReload?: () => void;
+  hideSave?: boolean;
 }) {
   const t = useT();
   const router = useRouter();
-  const { hex } = useTheme();
   const navigation = useNavigation();
   const member = useAuth((s) => s.user?.id);
   const station = useStations((s) => s.activeId);
@@ -145,20 +147,22 @@ export function FormChrome({
             onPress={onReload}
           />
         ) : null}
-        <Stack.Toolbar.Button
-          icon={toolbarIcon('check')}
-          variant="done"
-          // Android draws the tint as given, disabled or not — dim it the Material way
-          tintColor={
-            Platform.OS === 'android' && (!sameIdentity || !canSave || saving) ? alpha(hex.label, 0.38) : hex.accent
-          }
-          disabled={!sameIdentity || !canSave || saving}
-          accessibilityLabel={saveLabel ?? t('common.save')}
-          onPress={() => {
-            if (sameIdentity && canSave && !saving) onSave();
-          }}
-        />
       </Stack.Toolbar>
+      {!hideSave && (
+        <SheetActions>
+          <NativeButton
+            label={saveLabel ?? t('common.save')}
+            variant="prominent"
+            size="large"
+            fullWidth
+            disabled={!sameIdentity || !canSave}
+            loading={saving}
+            onPress={() => {
+              if (sameIdentity && canSave && !saving) onSave();
+            }}
+          />
+        </SheetActions>
+      )}
     </>
   );
 }

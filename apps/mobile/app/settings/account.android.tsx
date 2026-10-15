@@ -51,7 +51,7 @@ function Editor({ password }: { password: boolean }) {
             />
           </FormSection>
         ) : (
-          <FormSection title={t('integration.aboutMe')}>
+          <FormSection>
             <FormTextField
               enabled={!f.saving}
               state={about}

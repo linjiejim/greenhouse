@@ -8,6 +8,7 @@ import { ResourceState } from '../../src/knowledge/state';
 import { useT } from '../../src/lib/i18n';
 import { ListSection, ListRow } from '../../src/ui/list';
 import { NativeButton } from '../../src/ui/button';
+import { SheetActions } from '../../src/ui/sheet-actions';
 import { SheetClose } from '../../src/ui/sheet-chrome';
 import { saveFile } from '../../src/chat/file-card';
 import { alertError, confirmAction } from '../../src/ui/dialogs';
@@ -59,7 +60,16 @@ export default function Mail() {
             <ListSection>
               <View style={{ padding: space.margin }}>
                 {r.data.verified && r.data.screen_reason === 'sender' ? (
-                  <NativeButton label={t('work.release')} loading={busy} onPress={() => void release()} />
+                  <SheetActions>
+                    <NativeButton
+                      label={t('work.release')}
+                      variant="prominent"
+                      fullWidth
+                      size="large"
+                      loading={busy}
+                      onPress={() => void release()}
+                    />
+                  </SheetActions>
                 ) : (
                   <Text style={{ ...typo.body, color: c.secondaryLabel }}>{t('work.unverified')}</Text>
                 )}

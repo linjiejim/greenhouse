@@ -162,7 +162,13 @@ export function TableTabs({
   if (!base.tables.length && !canBuild) return null;
   return (
     <div className="app-tb-tabs-row">
-      <div ref={list} className="app-tb-tabs" role="tablist" aria-label={t('tables.tablesLabel')} onKeyDown={move}>
+      <div
+        ref={list}
+        className="gh-tabs app-tb-tabs"
+        role="tablist"
+        aria-label={t('tables.tablesLabel')}
+        onKeyDown={move}
+      >
         {base.tables.map((table) => (
           <Tab
             key={table.id}

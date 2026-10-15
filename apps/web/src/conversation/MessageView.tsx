@@ -20,7 +20,7 @@ import {
   Wand2,
   Wrench,
 } from 'lucide-react';
-import { Button, ChatCard, IconButton, TextArea, Tooltip } from '@greenhouse/ui/kit';
+import { Button, ChatCard, Menu, TextArea, Tooltip, type MenuEntry } from '@greenhouse/ui/kit';
 import { icon } from '@greenhouse/ui/tokens';
 import type { Agent, MemberSummary, Message, NeedsYou } from '@greenhouse/contract';
 import { useNotify } from '../app/notify';
@@ -279,20 +279,22 @@ export const MessageView = memo(function MessageView({
             </Tooltip>
           )}
           <span className="app-message-actions">
-            <IconButton label={t('message.copy')} size="sm" onClick={copy}>
-              <Copy size={icon.sm} />
-            </IconButton>
-            {onEdit && (
-              <IconButton
-                label={t('message.edit')}
-                size="sm"
-                disabled={!!busyReason}
-                disabledReason={busyReason}
-                onClick={() => setEditing(message.content)}
-              >
-                <Pencil size={icon.sm} />
-              </IconButton>
-            )}
+            <Menu
+              label={t('message.actions')}
+              items={[
+                { label: t('message.copy'), icon: <Copy size={icon.sm} />, onClick: copy },
+                ...(onEdit
+                  ? [
+                      {
+                        label: t('message.edit'),
+                        icon: <Pencil size={icon.sm} />,
+                        disabled: !!busyReason,
+                        onClick: () => setEditing(message.content),
+                      },
+                    ]
+                  : []),
+              ]}
+            />
           </span>
         </div>
       </article>
@@ -310,18 +312,18 @@ export const MessageView = memo(function MessageView({
   const assistant = message.role === 'assistant';
 
   return (
-    <article className={cx('app-message', assistant && 'is-reply')} aria-label={author.name}>
-      <div className="app-message-avatar" aria-hidden>
-        {showAuthor &&
-          (author.agent ? (
-            <AgentAvatar agent={author.agent} size={24} state={streaming ? 'thinking' : undefined} />
-          ) : (
-            <MemberAvatar name={author.name} url={author.member?.avatar_url} size={24} />
-          ))}
-      </div>
+    <article
+      className={cx('app-message', assistant && 'is-reply', streaming && 'is-arriving')}
+      aria-label={author.name}
+    >
       <div className="app-message-body">
         {showAuthor && (
           <header className="app-message-author">
+            {author.agent ? (
+              <AgentAvatar agent={author.agent} size={24} />
+            ) : (
+              <MemberAvatar name={author.name} url={author.member?.avatar_url} size={24} />
+            )}
             <strong>{author.name}</strong>
             <time dateTime={message.created_at} title={fullTime(message.created_at, { locale, timeZone })}>
               {time}
@@ -371,73 +373,71 @@ export const MessageView = memo(function MessageView({
         <ProcessCard steps={steps} runId={message.run_id} />
         {!streaming && assistant && text && (
           <div className="app-message-actions is-reply">
-            <IconButton label={t('message.copy')} size="sm" onClick={copy}>
-              <Copy size={icon.sm} />
-            </IconButton>
-            {onRate && (
-              <>
-                <IconButton
-                  label={t('message.helpful')}
-                  size="sm"
-                  aria-pressed={rating === 1}
-                  onClick={() => onRate(rating === 1 ? 0 : 1)}
-                >
-                  <ThumbsUp size={icon.sm} />
-                </IconButton>
-                <IconButton
-                  label={t('message.notHelpful')}
-                  size="sm"
-                  aria-pressed={rating === -1}
-                  onClick={() => onRate(rating === -1 ? 0 : -1)}
-                >
-                  <ThumbsDown size={icon.sm} />
-                </IconButton>
-              </>
-            )}
-            {voice && (
-              <IconButton
-                label={speaking ? t('message.stopReading') : t('message.readAloud')}
-                size="sm"
-                aria-pressed={speaking}
-                onClick={() => {
-                  if (speaking) return stopReading();
-                  setReadError('');
-                  readAloud(message.id, text, { mode: voice, locale }).catch((error: unknown) =>
-                    setReadError(t('message.readFailed', { reason: errorText(error, t) })),
-                  );
-                }}
-              >
-                <Volume2 size={icon.sm} />
-              </IconButton>
-            )}
-            {onQuote && (
-              <IconButton
-                label={t('message.quote')}
-                size="sm"
-                onClick={() => {
-                  void api.metrics.adopt({ kind: 'citation', message_id: message.id }).catch(() => undefined);
-                  onQuote(text);
-                }}
-              >
-                <Quote size={icon.sm} />
-              </IconButton>
-            )}
-            {onNewChat && (
-              <IconButton label={t('message.newChatFromHere')} size="sm" onClick={onNewChat}>
-                <Split size={icon.sm} />
-              </IconButton>
-            )}
-            {onRegenerate && (
-              <IconButton
-                label={t('message.regenerate')}
-                size="sm"
-                disabled={!!busyReason}
-                disabledReason={busyReason}
-                onClick={onRegenerate}
-              >
-                <RotateCcw size={icon.sm} />
-              </IconButton>
-            )}
+            <Menu
+              label={t('message.actions')}
+              align="start"
+              items={
+                [
+                  { label: t('message.copy'), icon: <Copy size={icon.sm} />, onClick: copy },
+                  ...(onRate
+                    ? [
+                        {
+                          label: t('message.helpful'),
+                          icon: <ThumbsUp size={icon.sm} />,
+                          checked: rating === 1,
+                          onClick: () => onRate(rating === 1 ? 0 : 1),
+                        },
+                        {
+                          label: t('message.notHelpful'),
+                          icon: <ThumbsDown size={icon.sm} />,
+                          checked: rating === -1,
+                          onClick: () => onRate(rating === -1 ? 0 : -1),
+                        },
+                      ]
+                    : []),
+                  ...(voice
+                    ? [
+                        {
+                          label: speaking ? t('message.stopReading') : t('message.readAloud'),
+                          icon: <Volume2 size={icon.sm} />,
+                          onClick: () => {
+                            if (speaking) return stopReading();
+                            setReadError('');
+                            readAloud(message.id, text, { mode: voice, locale }).catch((error: unknown) =>
+                              setReadError(t('message.readFailed', { reason: errorText(error, t) })),
+                            );
+                          },
+                        },
+                      ]
+                    : []),
+                  ...(onQuote
+                    ? [
+                        {
+                          label: t('message.quote'),
+                          icon: <Quote size={icon.sm} />,
+                          onClick: () => {
+                            void api.metrics.adopt({ kind: 'citation', message_id: message.id }).catch(() => undefined);
+                            onQuote(text);
+                          },
+                        },
+                      ]
+                    : []),
+                  ...(onNewChat
+                    ? [{ label: t('message.newChatFromHere'), icon: <Split size={icon.sm} />, onClick: onNewChat }]
+                    : []),
+                  ...(onRegenerate
+                    ? [
+                        {
+                          label: t('message.regenerate'),
+                          icon: <RotateCcw size={icon.sm} />,
+                          disabled: !!busyReason,
+                          onClick: onRegenerate,
+                        },
+                      ]
+                    : []),
+                ] satisfies MenuEntry[]
+              }
+            />
           </div>
         )}
         {readError && (

@@ -289,6 +289,7 @@ export const en: Record<MessageKey, string> = {
   'request.loginSite': 'Site',
   'request.loginItem': 'Login',
 
+  'message.actions': 'Message actions',
   'message.copy': 'Copy',
   'message.copied': 'Copied',
   'message.copyFailed': 'Couldn’t copy. Select the text and copy it',

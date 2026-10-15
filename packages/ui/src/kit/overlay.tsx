@@ -9,7 +9,7 @@
  * drawer. Inside a `[data-floating-boundary]` an overlay covers that frame, else the viewport.
  */
 
-import { createContext, useContext, useEffect, useId, useRef, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 import { icon, motion } from '../tokens/haven';
@@ -59,6 +59,10 @@ export function Overlay({
   closeButton = true,
 }: OverlayProps) {
   const t = useKitStrings();
+  const [mount, setMount] = useState<HTMLElement | null>(null);
+  const anchor = useCallback((element: HTMLSpanElement | null) => {
+    if (element) setMount(element.closest<HTMLElement>('[data-floating-boundary]') ?? document.body);
+  }, []);
   const panel = useRef<HTMLDivElement>(null);
   const titleId = useId();
   const [leaving, setLeaving] = useState(false);
@@ -88,6 +92,7 @@ export function Overlay({
   }, [leaving]);
 
   useEffect(() => {
+    if (!mount) return;
     const self = {};
     const root = document.documentElement;
     if (stack.length === 0) {
@@ -138,13 +143,13 @@ export function Overlay({
       document.removeEventListener('keydown', keydown);
       if (opener?.isConnected) opener.focus({ preventScroll: true });
     };
-  }, []);
+  }, [mount]);
 
   const endDrag = () => {
     dragStart.current = null;
     setDrag(0);
   };
-  return (
+  const content = (
     <div className={cx('gh-overlay', `gh-overlay-${variant}`, leaving && 'is-leaving')}>
       <button type="button" className="gh-scrim" aria-label={t.dismissOverlay} tabIndex={-1} onClick={dismiss} />
       <div
@@ -193,6 +198,12 @@ export function Overlay({
         <footer ref={setFooter} className="gh-overlay-footer" />
       </div>
     </div>
+  );
+  return (
+    <>
+      <span hidden ref={anchor} />
+      {mount && createPortal(content, mount)}
+    </>
   );
 }
 

@@ -30,7 +30,7 @@ import { queryClient } from '../../data/query';
 import { refreshBase, tablesKeys } from '../../data/tables';
 import { CardFilter } from './dashboards/CardFilter';
 import { tablesError } from './errors';
-import { useDraftNavigation } from './useDraftNavigation';
+import { useDraftNavigation } from '../../lib/useDraftNavigation';
 
 export function RolesDrawer({ base, onClose }: { base: Base; onClose: () => void }) {
   const { t } = useI18n();

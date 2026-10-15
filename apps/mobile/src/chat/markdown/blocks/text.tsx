@@ -5,6 +5,8 @@
  * title3 / headline / subheadline) and system label colors. All share the
  * inline span renderer for their text content.
  */
+import { useContext } from 'react';
+import { CalmContext } from '../context';
 import { StyleSheet, Text, View } from 'react-native';
 import { makeStyles, space, typo, useTheme, weight } from '../../../theme';
 import { Icon } from '../../../ui/core';
@@ -24,8 +26,12 @@ const HEADING = [
 export function Heading({ level, text }: { level: number; text: string }) {
   const { colors: c } = useTheme();
   const styles = useStyles(c);
+  const calm = useContext(CalmContext);
   return (
-    <Text style={[styles.h, HEADING[Math.min(Math.max(level, 1), 4) - 1]]} accessibilityRole="header">
+    <Text
+      style={[styles.h, calm ? styles.calmHeading : HEADING[Math.min(Math.max(level, 1), 4) - 1]]}
+      accessibilityRole="header"
+    >
       <Inline text={text} />
     </Text>
   );
@@ -63,8 +69,9 @@ export function Quote({ text }: { text: string }) {
 export function BulletList({ items }: { items: string[] }) {
   const { colors: c } = useTheme();
   const styles = useStyles(c);
+  const calm = useContext(CalmContext);
   return (
-    <View style={styles.list}>
+    <View style={[styles.list, calm && styles.calmList]}>
       {items.map((it, j) => {
         const task = it.match(/^\[( |x|X)\]\s+(.*)$/);
         if (task) {
@@ -98,8 +105,9 @@ export function BulletList({ items }: { items: string[] }) {
 export function OrderedList({ items, start = 1 }: { items: string[]; start?: number }) {
   const { colors: c } = useTheme();
   const styles = useStyles(c);
+  const calm = useContext(CalmContext);
   return (
-    <View style={styles.list}>
+    <View style={[styles.list, calm && styles.calmList]}>
       {items.map((it, j) => (
         <View key={j} style={styles.li}>
           <Text style={[styles.p, styles.num]}>{start + j}.</Text>
@@ -114,9 +122,11 @@ export function OrderedList({ items, start = 1 }: { items: string[]; start?: num
 
 const useStyles = makeStyles((c) => ({
   p: { ...typo.body, lineHeight: PROSE_LINE, color: c.label, marginVertical: space.xs + 2 },
+  calmHeading: { ...typo.body, lineHeight: PROSE_LINE, fontWeight: weight.medium, marginTop: space.md },
   h: { color: c.label, marginBottom: space.xs },
   hr: { height: StyleSheet.hairlineWidth, backgroundColor: c.separator, marginVertical: space.lg },
 
+  calmList: { gap: space.xxs },
   list: { marginVertical: space.xs, gap: space.xs },
   li: { flexDirection: 'row', alignItems: 'flex-start' },
   liText: { flex: 1, marginVertical: 0 },

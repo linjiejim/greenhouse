@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { as, composer, open } from './fixtures';
+import { as, composer, messageMenu, open } from './fixtures';
 
 const lastReply = (page: Page) => page.locator('.app-message.is-reply').last();
 
@@ -10,10 +10,14 @@ test('rate a reply, and the rating is still there after a reload', async ({ page
   await expect(page.getByText('Echo: rate this')).toBeVisible();
   const reply = lastReply(page);
   await reply.hover();
-  await reply.getByRole('button', { name: '有帮助' }).click();
-  await expect(reply.getByRole('button', { name: '有帮助' })).toHaveAttribute('aria-pressed', 'true');
+  await (await messageMenu(reply)).getByRole('menuitemcheckbox', { name: '有帮助', exact: true }).click();
+  await expect(
+    (await messageMenu(reply)).getByRole('menuitemcheckbox', { name: '有帮助', exact: true }),
+  ).toHaveAttribute('aria-checked', 'true');
   await page.reload();
-  await expect(lastReply(page).getByRole('button', { name: '有帮助' })).toHaveAttribute('aria-pressed', 'true');
+  await expect(
+    (await messageMenu(lastReply(page))).getByRole('menuitemcheckbox', { name: '有帮助', exact: true }),
+  ).toHaveAttribute('aria-checked', 'true');
 });
 
 test('edit my last message: the old reply goes and it is answered again; regenerate writes it again', async ({
@@ -26,7 +30,7 @@ test('edit my last message: the old reply goes and it is answered again; regener
 
   const mine = page.locator('.app-message.is-mine').last();
   await mine.hover();
-  await mine.getByRole('button', { name: '编辑' }).click();
+  await (await messageMenu(mine)).getByRole('menuitem', { name: '编辑', exact: true }).click();
   const editor = page.getByRole('textbox', { name: '编辑' });
   await editor.fill('second wording');
   await page.getByRole('button', { name: '保存并重新回答' }).click();
@@ -36,7 +40,7 @@ test('edit my last message: the old reply goes and it is answered again; regener
 
   const reply = lastReply(page);
   await reply.hover();
-  await reply.getByRole('button', { name: '重新生成' }).click();
+  await (await messageMenu(reply)).getByRole('menuitem', { name: '重新生成' }).click();
   await expect(page.getByText('Echo: second wording')).toHaveCount(1);
   await expect(page.locator('.app-message.is-reply')).toHaveCount(1);
 });

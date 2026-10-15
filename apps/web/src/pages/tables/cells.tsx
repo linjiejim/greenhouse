@@ -115,7 +115,7 @@ export function shortDateTime(iso: string, locale: 'zh' | 'en', timeZone: string
 }
 
 export function OptionChip({ option }: { option: OptionDef }) {
-  return <span className={cx('app-tb-chip', `is-${option.color}`)}>{option.label}</span>;
+  return <span className={cx('gh-chip app-tb-chip', `is-${option.color}`)}>{option.label}</span>;
 }
 
 function MemberChip({ member, id }: { member: MemberSummary | undefined; id: string }) {

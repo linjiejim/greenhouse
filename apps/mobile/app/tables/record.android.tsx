@@ -4,7 +4,8 @@ import { FormChrome, SheetClose, useLeaveSheetTo } from '../../src/ui/sheet-chro
 import { FieldEditor } from '../../src/tables/fields.android';
 import { useRecordEditor } from '../../src/tables/use-record-editor';
 import { useT } from '../../src/lib/i18n';
-import { toolbarIcon } from '../../src/ui/toolbar-icon.android';
+import { SheetActions } from '../../src/ui/sheet-actions';
+import { NativeButton } from '../../src/ui/button.android';
 export default function Record() {
   const { id = '' } = useLocalSearchParams<{ id: string }>();
   const f = useRecordEditor(id);
@@ -30,9 +31,9 @@ export default function Record() {
         </>
       )}
       {!f.editing && f.editable ? (
-        <Stack.Toolbar placement="right">
-          <Stack.Toolbar.Button icon={toolbarIcon('pen')} accessibilityLabel={t('work.recordEdit')} onPress={f.begin} />
-        </Stack.Toolbar>
+        <SheetActions>
+          <NativeButton label={t('work.recordEdit')} variant="prominent" size="large" fullWidth onPress={f.begin} />
+        </SheetActions>
       ) : null}
       <NativeForm>
         {f.table && f.current ? (

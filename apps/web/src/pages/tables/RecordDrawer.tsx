@@ -43,7 +43,7 @@ import { navigate } from '../../lib/router';
 import { Activity } from './Activity';
 import { CellValue, FieldInput, fromText } from './cells';
 import { tablesError } from './errors';
-import { useDraftNavigation } from './useDraftNavigation';
+import { useDraftNavigation } from '../../lib/useDraftNavigation';
 import { titleOf, type CellLookups } from './model';
 
 const same = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);

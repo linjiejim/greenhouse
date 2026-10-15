@@ -87,3 +87,6 @@ The v2 web app. Product scope is docs/product/prd.md §6–7; layout and compone
 - Operational pause errors use errorText with details.switch so computer, background-run and outbound-mail reasons follow the member's language.
 
 - Memory rule refusals keep stable codes (memory_background_read_only / memory_untrusted_content); run-step errors use the dictionary mapping and never suggest retrying the refused write.
+
+- Conversation identity: Agent author rows are room-only; place avatar/name above full-width text. Reply actions use one accessible Menu, named message.actions. Single-field ask_user choices (1–6 options) answer inline with the original answers payload; other question forms use a guarded Overlay with OverlayActions.
+- Overlay portals mount at the nearest whole-frame floating boundary, so page positioning never limits the scrim. Use the shared lib/useDraftNavigation for form guards. Segmented changes views (up to four short choices); Tabs changes page sections.

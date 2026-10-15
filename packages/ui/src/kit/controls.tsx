@@ -321,6 +321,26 @@ function stepKey(event: KeyboardEvent, index: number, count: number): number | n
   return null;
 }
 
+/** Keep the active marker aligned when labels, fonts or the available width change. */
+function useSelectionIndicator(value: string, labels: string) {
+  const ref = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const element = ref.current;
+    if (!element) return;
+    const selected = element.querySelector<HTMLElement>('[aria-checked="true"], [aria-selected="true"]');
+    const measure = () => {
+      element.style.setProperty('--gh-indicator-x', `${selected?.offsetLeft ?? 0}px`);
+      element.style.setProperty('--gh-indicator-width', `${selected?.offsetWidth ?? 0}px`);
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    if (selected) observer.observe(selected);
+    return () => observer.disconnect();
+  }, [value, labels]);
+  return ref;
+}
+
 /** A string is its own label; an object keeps a stable value apart from its (translated) label. */
 export type SegmentedItem = string | { value: string; label: string };
 
@@ -337,9 +357,10 @@ export function Segmented({
   label: string;
 }) {
   const options = items.map((item) => (typeof item === 'string' ? { value: item, label: item } : item));
+  const indicator = useSelectionIndicator(value, options.map((option) => option.label).join('\0'));
   const current = options.some((option) => option.value === value) ? value : options[0]?.value;
   return (
-    <div className="gh-segmented" role="radiogroup" aria-label={label}>
+    <div ref={indicator} className="gh-segmented" role="radiogroup" aria-label={label}>
       {options.map((option, index) => (
         <button
           key={option.value}
@@ -522,11 +543,12 @@ export function Tabs({
 }) {
   const t = useKitStrings();
   const id = useId();
+  const indicator = useSelectionIndicator(value, items.join('\0'));
   if (items.length < 2) return null;
   // One tab is always reachable with Tab, even before a valid value arrives.
   const current = items.includes(value) ? value : items[0];
   return (
-    <div className="gh-tabs" role="tablist" aria-label={label ?? t.views}>
+    <div ref={indicator} className="gh-tabs" role="tablist" aria-label={label ?? t.views}>
       {items.map((item, index) => (
         <button
           key={item}

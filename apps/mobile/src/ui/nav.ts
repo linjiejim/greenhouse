@@ -95,6 +95,7 @@ export function sheetScreen(
   }
   return {
     presentation: 'formSheet',
+    headerLargeTitleEnabled: false,
     sheetAllowedDetents: detents,
     sheetInitialDetentIndex: opts.initial ?? 0,
     sheetGrabberVisible: true,

@@ -42,7 +42,7 @@ import { cx } from '../../lib/cx';
 import { useI18n } from '../../lib/i18n';
 import { FieldIcon } from './cells';
 import { tablesError } from './errors';
-import { useDraftNavigation } from './useDraftNavigation';
+import { useDraftNavigation } from '../../lib/useDraftNavigation';
 
 /** Changes the server allows without losing values (values.ts canChangeType). */
 const TEXT_KINDS: readonly FieldType[] = ['text', 'long_text', 'url', 'email', 'phone'];

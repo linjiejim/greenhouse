@@ -53,7 +53,7 @@ span.app-tb-tl-unscheduled {
   isolation: isolate;
   border: var(--gh-stroke-hairline) solid var(--gh-line);
   border-radius: var(--gh-radius-lg);
-  background: var(--gh-canvas);
+  background: var(--gh-surface);
   scroll-padding: var(--gh-space-10) 0 0 var(--app-tb-tl-title);
   scrollbar-width: thin;
 }
@@ -175,7 +175,7 @@ span.app-tb-tl-unscheduled {
   width: var(--app-tb-tl-title);
   height: 100%;
   border-right: var(--gh-stroke-hairline) solid var(--gh-line);
-  background: var(--gh-canvas);
+  background: var(--gh-surface);
 }
 
 .app-tb-tl-grid {
@@ -271,7 +271,7 @@ span.app-tb-tl-unscheduled {
   height: 100%;
   padding-right: var(--gh-space-2);
   border-right: var(--gh-stroke-hairline) solid var(--gh-line);
-  background: var(--gh-canvas);
+  background: var(--gh-surface);
   box-shadow: inset 0 calc(-1 * var(--gh-stroke-hairline)) var(--gh-line);
 }
 
@@ -536,5 +536,19 @@ span.app-tb-tl-unscheduled {
   .app-tb-tl-diamond,
   .app-tb-tl-grip::after {
     transition: none;
+  }
+}
+
+/* Dark data planes retain their original canvas layering. */
+[data-theme='dark'] .app-tb-tl-scroll,
+[data-theme='dark'] .app-tb-tl-rail,
+[data-theme='dark'] .app-tb-tl-title {
+  background: var(--gh-canvas);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .app-tb-tl-scroll,
+  :root:not([data-theme='light']) .app-tb-tl-rail,
+  :root:not([data-theme='light']) .app-tb-tl-title {
+    background: var(--gh-canvas);
   }
 }

@@ -39,7 +39,7 @@ import { useI18n } from '../../lib/i18n';
 import { relativeTime } from '../../lib/time';
 import { MemberAvatar } from '../../shell/MemberAvatar';
 import { tablesError } from './errors';
-import { useDraftNavigation } from './useDraftNavigation';
+import { useDraftNavigation } from '../../lib/useDraftNavigation';
 import { NameDialog } from './TableTabs';
 
 type Entry = Pick<BaseShare, 'type' | 'id' | 'name' | 'role' | 'custom_role_id'>;

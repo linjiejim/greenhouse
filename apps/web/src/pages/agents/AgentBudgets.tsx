@@ -4,7 +4,7 @@ import { Button, ConfirmDialog, Field, FieldGroup, Input, Select, Skeleton } fro
 import { api } from '../../lib/api';
 import { errorText } from '../../lib/errors';
 import { useI18n } from '../../lib/i18n';
-import { useDraftNavigation } from '../tables/useDraftNavigation';
+import { useDraftNavigation } from '../../lib/useDraftNavigation';
 import { BudgetBar } from '../../shell/usage';
 
 export function AgentBudgets({ agentId }: { agentId: string }) {

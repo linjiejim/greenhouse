@@ -89,7 +89,7 @@
   padding: var(--gh-space-3);
   border: var(--gh-stroke-hairline) solid var(--gh-line);
   border-radius: var(--gh-radius-md);
-  background: var(--gh-canvas);
+  background: var(--gh-surface);
   cursor: pointer;
   animation: app-tb-kb-in var(--gh-duration-base) var(--gh-ease-enter);
   transition: border-color var(--gh-duration-fast) var(--gh-ease-standard);
@@ -245,7 +245,7 @@
   overscroll-behavior: contain;
   border: var(--gh-stroke-hairline) solid var(--gh-line);
   border-radius: var(--gh-radius-lg);
-  background: var(--gh-canvas);
+  background: var(--gh-surface);
   scrollbar-width: thin;
 }
 
@@ -260,7 +260,7 @@
   top: 0;
   z-index: var(--gh-z-sticky);
   border-bottom: var(--gh-stroke-hairline) solid var(--gh-line);
-  background: var(--gh-canvas);
+  background: var(--gh-surface);
 }
 
 .app-tb-cal-weekday {
@@ -617,5 +617,19 @@
   .app-tb-cal-add.gh-button,
   .app-tb-gal-card {
     transition: none;
+  }
+}
+
+/* Dark data planes retain their original canvas layering. */
+[data-theme='dark'] .app-tb-kb-card,
+[data-theme='dark'] .app-tb-cal-month,
+[data-theme='dark'] .app-tb-cal-weekdays {
+  background: var(--gh-canvas);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .app-tb-kb-card,
+  :root:not([data-theme='light']) .app-tb-cal-month,
+  :root:not([data-theme='light']) .app-tb-cal-weekdays {
+    background: var(--gh-canvas);
   }
 }

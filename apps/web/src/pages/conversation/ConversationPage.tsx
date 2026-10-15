@@ -462,7 +462,7 @@ function ExistingConversation({ id }: { id: string }) {
                 key={message.id}
                 message={message}
                 author={authorOf(message)}
-                showAuthor={showAuthor}
+                showAuthor={showAuthor && (message.role !== 'assistant' || conversation.kind === 'room')}
                 mine={mine}
                 requests={
                   message.run_id && message.role === 'assistant' && latestReplyByRun.get(message.run_id) === message.id

@@ -24,7 +24,14 @@ import { readAloud, useSpeech } from '../voice/read-aloud';
 import React, { memo, useEffect, useMemo } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { Image } from 'expo-image';
-import Animated, { FadeIn, useAnimatedStyle, useSharedValue, withRepeat, withTiming } from 'react-native-reanimated';
+import Animated, {
+  FadeIn,
+  ReduceMotion,
+  useAnimatedStyle,
+  useSharedValue,
+  withRepeat,
+  withTiming,
+} from 'react-native-reanimated';
 import { fileUrl } from '../api/files';
 import { liveText } from '../data/streams';
 import { useStream } from '../data/use-stream';
@@ -44,7 +51,6 @@ import { NativeMenu, menuSections, type MenuItem } from '../ui/menu';
 import { fileIcon, saveFile } from './file-card';
 import { Markdown, RichContext, type RichEnv } from './markdown';
 import { Inline } from './markdown/inline';
-import { MessageMenu } from './message-menu';
 
 export type MessageAction = 'copy' | 'share' | 'quote' | 'edit' | 'regenerate' | 'rateUp' | 'rateDown' | 'newChat';
 
@@ -123,18 +129,17 @@ export function DisclosureRow({
 }
 
 /** The plant thinking until the first words arrive. */
-function Thinking({ agent }: { agent: AgentFace | null }) {
+function Thinking() {
   const { colors: c } = useTheme();
   const styles = useStyles(c);
   const t = useT();
   const pulse = useSharedValue(1);
   useEffect(() => {
-    pulse.value = withRepeat(withTiming(0.45, { duration: 900 }), -1, true);
+    pulse.value = withRepeat(withTiming(0.45, { duration: 900, reduceMotion: ReduceMotion.System }), -1, true);
   }, [pulse]);
   const fade = useAnimatedStyle(() => ({ opacity: pulse.value }));
   return (
     <View style={styles.thinking} accessible accessibilityLabel={t('conversation.thinking')}>
-      <AgentAvatar agent={agent} size={28} state="thinking" />
       <Animated.Text style={[styles.thinkingText, fade]}>{t('conversation.thinking')}</Animated.Text>
     </View>
   );
@@ -419,10 +424,10 @@ export const AgentReply = memo(function AgentReply({
 
   const body = (
     <View style={styles.replyBody}>
-      {thinking ? <Thinking agent={author.agent} /> : null}
+      {thinking ? <Thinking /> : null}
       {text ? (
         <RichContext.Provider value={rich}>
-          <Markdown source={text} animated={live} safe={message.event?.type === 'run_report'} />
+          <Markdown source={text} calm animated={live} safe={message.event?.type === 'run_report'} />
         </RichContext.Provider>
       ) : null}
     </View>
@@ -430,7 +435,11 @@ export const AgentReply = memo(function AgentReply({
 
   const sources = !live && message.citations.length ? message.citations : null;
   return (
-    <Animated.View key={fontKey} entering={live ? FadeIn.duration(200) : undefined} style={styles.replyRow}>
+    <Animated.View
+      key={fontKey}
+      entering={live ? FadeIn.duration(200).reduceMotion(ReduceMotion.System) : undefined}
+      style={styles.replyRow}
+    >
       {showAuthor ? (
         <View style={styles.replyAuthor} accessibilityRole="header">
           <AgentAvatar agent={author.agent} size={22} state={live ? 'thinking' : undefined} />
@@ -440,20 +449,21 @@ export const AgentReply = memo(function AgentReply({
           {time ? <Text style={styles.authorTime}>{time}</Text> : null}
         </View>
       ) : null}
-      {text && !live ? (
-        <MessageMenu
-          items={items}
-          text={text}
-          onSelect={(id) =>
-            id === 'readAloud' ? void readAloud(message.id, text) : onAction(message, id as MessageAction)
-          }
-        >
-          {body}
-        </MessageMenu>
-      ) : (
-        body
-      )}
+      {body}
       <View style={styles.replyTail}>
+        {text && !live ? (
+          <NativeMenu
+            items={items}
+            onSelect={(id) =>
+              id === 'readAloud' ? void readAloud(message.id, text) : onAction(message, id as MessageAction)
+            }
+            width={44}
+          >
+            <View style={styles.more} accessible accessibilityRole="button" accessibilityLabel={t('common.more')}>
+              <Icon name="more" size={20} color={c.secondaryLabel} />
+            </View>
+          </NativeMenu>
+        ) : null}
         <MessageFiles ids={message.attachments} align="start" />
         {cards}
         {sources ? (
@@ -544,6 +554,7 @@ const useStyles = makeStyles((c) => ({
     paddingTop: space.sm,
   },
   replyBody: { paddingHorizontal: space.margin, gap: space.xs },
+  more: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
   replyTail: { paddingHorizontal: space.margin, gap: space.sm, alignItems: 'flex-start' },
   authorName: { flexShrink: 1, ...typo.subheadline, fontWeight: weight.semibold, color: c.label },
   authorTime: { ...typo.caption1, color: c.tertiaryLabel },

@@ -566,11 +566,21 @@
 }
 
 .app-tb-dash-card.is-preview {
-  background: var(--gh-canvas);
+  background: var(--gh-surface);
 }
 
 .app-tb-dash-editor-error {
   margin: 0;
   color: var(--gh-danger);
   font: var(--gh-type-body-sm);
+}
+
+/* Dark data planes retain their original canvas layering. */
+[data-theme='dark'] .app-tb-dash-card.is-preview {
+  background: var(--gh-canvas);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .app-tb-dash-card.is-preview {
+    background: var(--gh-canvas);
+  }
 }

@@ -731,7 +731,7 @@ function MemberConversationScreen({
         <AgentReply
           message={message}
           author={{ name: agent?.name ?? t('conversation.anAgent'), agent: agent ?? null }}
-          showAuthor={showAuthor}
+          showAuthor={room && showAuthor}
           time={showAuthor ? relativeTimeNow(message.created_at) : ''}
           canRegenerate={message.id === canRegenerate}
           readOnly={readOnly}

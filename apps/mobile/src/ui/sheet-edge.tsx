@@ -10,13 +10,14 @@
  *
  * Every partial-detent form sheet of the root stack gets it through
  * `sheetEdgeLayout` (the stack's `screenLayout`, app/_layout.tsx) — sheets
- * never render it themselves. Nothing is pinned to the bottom of those sheets,
- * so the fade only ever covers scrolling content (it takes no touches).
+ * never render it themselves. SheetFrame keeps any pinned actions outside this wrapper,
+ * so the fade only covers scrolling content (it takes no touches).
  */
 
 import React, { useEffect, useState } from 'react';
 import { Platform, StyleSheet, View } from 'react-native';
 import type { NativeStackNavigationOptions } from 'expo-router/build/react-navigation/native-stack';
+import { SheetFrame } from './sheet-actions';
 import { useTheme } from '../theme';
 import { useAuth } from '../store/auth';
 import { useStations } from '../store/stations';
@@ -35,7 +36,11 @@ export function sheetEdgeLayout(props: {
   navigation: unknown;
   options: NativeStackNavigationOptions;
 }): React.ReactElement {
-  return <IdentityScreen>{sheetContent(props)}</IdentityScreen>;
+  return (
+    <IdentityScreen>
+      <SheetFrame>{sheetContent(props)}</SheetFrame>
+    </IdentityScreen>
+  );
 }
 
 function IdentityScreen({ children }: { children: React.ReactElement }) {

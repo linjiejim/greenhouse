@@ -294,3 +294,7 @@ M3.4 计数（#70）：`metric_events` 仅存 identity id、member_id（逻辑�
 ### 记忆拒绝与原生 Markdown（#70）
 
 无表结构变化。记忆规则拒绝复用 `run_steps.error` 的 `{ code, message }`，步骤状态为 `failed`，不保存成功输出、不产生写入回执。`runs.output.findings` 与已有报告正文继续保存 Markdown，由原生安全渲染器展示并解析应用内链接；通知和卡片列表使用可读纯文字摘要。
+
+### U1 提问展示打磨（#70）
+
+不新增接口、字段、表或迁移。客户端根据已有 `requests.payload.fields` 判断是否可单击回答；只有一个 `choice` 字段且选项为 1–6 项时在消息内展示。提交继续使用 `{ answers: { [key]: value } }`，完成后从已有 `requests.result.answers` 恢复选择；复杂表单使用相同接口与权限检查。展示不更改请求生命周期。

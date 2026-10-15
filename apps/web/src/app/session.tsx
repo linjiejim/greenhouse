@@ -4,7 +4,16 @@
  * the cache and shows sign-in.
  */
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { API_VERSION, type Bootstrap, type Me } from '@greenhouse/contract';
 import type { RealtimeStatus } from '@greenhouse/contract/client';
@@ -48,7 +57,13 @@ export function useMe(): Me {
 }
 
 function applyTheme(theme: Me['theme'] | undefined) {
+  if (theme === undefined) return;
   const root = document.documentElement;
+  try {
+    localStorage.setItem('greenhouse.theme', theme);
+  } catch {
+    /* Storage may be unavailable. */
+  }
   if (theme === 'light' || theme === 'dark') root.dataset.theme = theme;
   else delete root.dataset.theme;
 }
@@ -84,7 +99,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const bootstrap = useQuery({ queryKey: keys.bootstrap, queryFn: api.bootstrap, staleTime: 5 * 60_000 });
   const me = useQuery({ queryKey: keys.me, queryFn: api.me.get, enabled: signedIn });
 
-  useEffect(() => applyTheme(me.data?.theme), [me.data?.theme]);
+  useLayoutEffect(() => applyTheme(me.data?.theme), [me.data?.theme]);
 
   const ready = signedIn && me.isSuccess;
   useEffect(() => {

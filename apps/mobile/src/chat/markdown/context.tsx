@@ -23,3 +23,5 @@ export const useRich = (): RichEnv => useContext(RichContext);
 
 /** Approval previews never open links, load images or execute rich blocks. */
 export const PreviewContext = createContext(false);
+
+export const CalmContext = createContext(false);

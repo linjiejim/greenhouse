@@ -1,15 +1,16 @@
 /**
  * A decision card (「需要你」, CONV-17): the one card layout with the status at the far right of
- * the title row and the buttons bottom right, primary last. It says what is decided, on what and
+ * the title row and the buttons bottom left, primary first. It says what is decided, on what and
  * with what effect; once decided or expired it cannot be pressed again. A take-over or sign-in
  * card opens the Agent's screen in control, and handing the computer back wakes the Agent.
  */
 
-import { useState, type FormEvent } from 'react';
+import { useRef, useState, type FormEvent } from 'react';
 import { CircleHelp, KeyRound, MonitorPlay, MousePointer2, ShieldCheck, Sparkles } from 'lucide-react';
 import {
   Button,
   ChatCard,
+  ConfirmDialog,
   Field,
   FieldGroup,
   Input,
@@ -27,6 +28,8 @@ import { useDecide } from '../data/requests';
 import { errorText } from '../lib/errors';
 import { useI18n } from '../lib/i18n';
 import { relativeTime } from '../lib/time';
+import { useDraftNavigation } from '../lib/useDraftNavigation';
+import { inlineQuestion } from './question';
 import { MarkdownPreview } from './MarkdownPreview';
 import { detailRows, requestStatus } from './status';
 
@@ -105,7 +108,9 @@ function Details({ request }: { request: NeedsYou }) {
               {chips?.length ? (
                 <span className="app-detail-chips">
                   {chips.map((chip, index) => (
-                    <span key={index}>{chip}</span>
+                    <span className="gh-chip" key={index}>
+                      {chip}
+                    </span>
                   ))}
                 </span>
               ) : null}
@@ -118,51 +123,153 @@ function Details({ request }: { request: NeedsYou }) {
   return null;
 }
 
-function QuestionForm({ request, disabled }: { request: NeedsYou; disabled: boolean }) {
+function InlineChoices({ request }: { request: NeedsYou }) {
   const { t } = useI18n();
   const decide = useDecide();
-  const fields = (request.payload.fields ?? []) as QuestionField[];
-  const [answers, setAnswers] = useState<Record<string, string>>({});
+  const field = inlineQuestion(request)!;
+  const [picked, setPicked] = useState<string | null>(null);
   const [error, setError] = useState('');
-  const submit = (event: FormEvent) => {
-    event.preventDefault();
-    const missing = fields.find((field) => field.required !== false && !answers[field.key]?.trim());
-    if (missing) return setError(t('request.required', { name: missing.label }));
-    decide.mutate({ id: request.id, action: 'answer', answers }, { onError: () => setError(t('common.error')) });
+  const sending = useRef(false);
+  const saved = (request.result?.answers as Record<string, string> | undefined)?.[field.key];
+  const selected = request.status === 'answered' ? (saved ?? picked) : picked;
+  const answer = async (option: string) => {
+    if (sending.current || request.status !== 'pending') return;
+    sending.current = true;
+    setPicked(option);
+    setError('');
+    try {
+      await decide.mutateAsync({ id: request.id, action: 'answer', answers: { [field.key]: option } });
+    } catch (error) {
+      setPicked(null);
+      setError(errorText(error, t));
+    } finally {
+      sending.current = false;
+    }
   };
   return (
-    <form className="app-request-form" onSubmit={submit} id={`answer-${request.id}`}>
-      {fields.map((field) => {
-        const FormField = field.type === 'choice' && field.options?.length ? FieldGroup : Field;
-        return (
-          <FormField key={field.key} label={field.label} required={field.required !== false}>
-            {field.type === 'choice' && field.options?.length ? (
-              <Select
-                label={field.label}
-                value={answers[field.key] ?? ''}
-                options={field.options.map((option) => ({ value: option, label: option }))}
-                disabled={disabled}
-                onChange={(value: string) => setAnswers({ ...answers, [field.key]: value })}
-              />
-            ) : (
-              <Input
-                value={answers[field.key] ?? ''}
-                disabled={disabled}
-                onChange={(event) => {
-                  setAnswers({ ...answers, [field.key]: event.target.value });
-                  setError('');
-                }}
-              />
-            )}
-          </FormField>
-        );
-      })}
+    <div className="app-inline-question" role="group" aria-label={field.label} aria-busy={decide.isPending}>
+      <span className="app-request-label">{field.label}</span>
+      <div className="app-inline-choices">
+        {field.options!.map((option) => (
+          <Button
+            key={option}
+            aria-pressed={selected === option}
+            disabled={request.status !== 'pending' || decide.isPending || picked !== null}
+            onClick={() => void answer(option)}
+          >
+            {option}
+          </Button>
+        ))}
+      </div>
       {error && (
         <p className="app-request-error" role="alert">
           {error}
         </p>
       )}
-    </form>
+    </div>
+  );
+}
+
+function QuestionForm({ request, onClose }: { request: NeedsYou; onClose: () => void }) {
+  const { t } = useI18n();
+  const decide = useDecide();
+  const fields = (request.payload.fields ?? []) as QuestionField[];
+  const [answers, setAnswers] = useState<Record<string, string>>(
+    (request.result?.answers as Record<string, string> | undefined) ?? {},
+  );
+  const [error, setError] = useState('');
+  const pending = request.status === 'pending';
+  const busy = useRef(false);
+  const form = `answer-${request.id}`;
+  const dirty = pending && Object.values(answers).some((answer) => answer.trim());
+  const guard = useDraftNavigation(!!dirty, decide.isPending, onClose);
+  const close = () => {
+    if (decide.isPending) return false;
+    if (dirty) {
+      guard.ask();
+      return false;
+    }
+    return true;
+  };
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    if (busy.current || !pending) return;
+    const missing = fields.find((field) => field.required !== false && !answers[field.key]?.trim());
+    if (missing) return setError(t('request.required', { name: missing.label }));
+    busy.current = true;
+    try {
+      await decide.mutateAsync({ id: request.id, action: 'answer', answers });
+      onClose();
+    } catch (error) {
+      setError(errorText(error, t));
+    } finally {
+      busy.current = false;
+    }
+  };
+  return (
+    <Overlay title={request.title} onClose={onClose} beforeClose={close}>
+      <form className="app-request-form" onSubmit={(event) => void submit(event)} id={form}>
+        {fields.map((field) => {
+          const FormField = field.type === 'choice' && field.options?.length ? FieldGroup : Field;
+          return (
+            <FormField key={field.key} label={field.label} required={field.required !== false}>
+              {field.type === 'choice' && field.options?.length ? (
+                <Select
+                  label={field.label}
+                  value={answers[field.key] ?? ''}
+                  options={field.options.map((option) => ({ value: option, label: option }))}
+                  disabled={!pending || decide.isPending}
+                  onChange={(value: string) => {
+                    setAnswers({ ...answers, [field.key]: value });
+                    setError('');
+                  }}
+                />
+              ) : (
+                <Input
+                  value={answers[field.key] ?? ''}
+                  maxLength={4000}
+                  disabled={!pending || decide.isPending}
+                  onChange={(event) => {
+                    setAnswers({ ...answers, [field.key]: event.target.value });
+                    setError('');
+                  }}
+                />
+              )}
+            </FormField>
+          );
+        })}
+        {error && (
+          <p className="app-request-error" role="alert">
+            {error}
+          </p>
+        )}
+      </form>
+      <OverlayActions>
+        <Button
+          disabled={decide.isPending}
+          onClick={() => {
+            if (close()) onClose();
+          }}
+        >
+          {t('common.cancel')}
+        </Button>
+        {pending && (
+          <Button kind="primary" type="submit" form={form} loading={decide.isPending}>
+            {t('request.answer')}
+          </Button>
+        )}
+      </OverlayActions>
+      {guard.asking && (
+        <ConfirmDialog
+          title={t('knowledge.discardTitle')}
+          confirmLabel={t('connectors.discard')}
+          cancelLabel={t('knowledge.keepEditing')}
+          danger
+          onConfirm={guard.discard}
+          onCancel={guard.cancel}
+        />
+      )}
+    </Overlay>
   );
 }
 
@@ -225,6 +332,8 @@ export function RequestCard({ request, showContext = false }: { request: NeedsYo
   const { t, locale } = useI18n();
   const { me } = useSession();
   const decide = useDecide();
+  const [questioning, setQuestioning] = useState(false);
+  const inline = inlineQuestion(request);
   const [handing, setHanding] = useState<'screen' | 'note' | null>(null);
   const [standing, setStanding] = useState(false);
   const [continueAfter, setContinueAfter] = useState(request.payload.continue_after === true);
@@ -235,17 +344,13 @@ export function RequestCard({ request, showContext = false }: { request: NeedsYo
 
   const footer = pending ? (
     request.kind === 'question' ? (
-      <Button kind="primary" type="submit" form={`answer-${request.id}`} loading={decide.isPending}>
-        {t('request.answer')}
-      </Button>
+      inline ? null : (
+        <Button kind="primary" onClick={() => setQuestioning(true)}>
+          {t('request.answer')}
+        </Button>
+      )
     ) : request.kind === 'approval' || request.kind === 'proposal' ? (
       <>
-        <Button
-          loading={decide.isPending && decide.variables?.action === 'reject'}
-          onClick={() => decide.mutate({ id: request.id, action: 'reject' })}
-        >
-          {t('request.reject')}
-        </Button>
         <Button
           kind="primary"
           disabled={request.payload.batch_ready === false}
@@ -261,9 +366,22 @@ export function RequestCard({ request, showContext = false }: { request: NeedsYo
         >
           {request.subject === 'run_start' ? t('request.startRun') : t('request.approve')}
         </Button>
+        <Button
+          loading={decide.isPending && decide.variables?.action === 'reject'}
+          onClick={() => decide.mutate({ id: request.id, action: 'reject' })}
+        >
+          {t('request.reject')}
+        </Button>
       </>
     ) : request.kind === 'login' && request.subject === 'vault_fill' ? (
       <>
+        <Button
+          kind="primary"
+          loading={decide.isPending && decide.variables?.action === 'approve'}
+          onClick={() => decide.mutate({ id: request.id, action: 'approve' })}
+        >
+          {t('request.allowLogin')}
+        </Button>
         <Button
           loading={decide.isPending && decide.variables?.action === 'reject'}
           onClick={() => decide.mutate({ id: request.id, action: 'reject' })}
@@ -273,23 +391,16 @@ export function RequestCard({ request, showContext = false }: { request: NeedsYo
         {request.agent_id && me?.capabilities.sandbox && (
           <Button onClick={() => setHanding('screen')}>{t('request.signInMyself')}</Button>
         )}
-        <Button
-          kind="primary"
-          loading={decide.isPending && decide.variables?.action === 'approve'}
-          onClick={() => decide.mutate({ id: request.id, action: 'approve' })}
-        >
-          {t('request.allowLogin')}
-        </Button>
       </>
     ) : handsBack(request) ? (
       <>
-        <Button onClick={() => setHanding('note')}>{t('computer.handBack')}</Button>
         {request.agent_id && me?.capabilities.sandbox && (
           <Button kind="primary" onClick={() => setHanding('screen')}>
             <MousePointer2 size={icon.sm} />
             {t('request.takeOver')}
           </Button>
         )}
+        <Button onClick={() => setHanding('note')}>{t('computer.handBack')}</Button>
       </>
     ) : null
   ) : null;
@@ -314,9 +425,17 @@ export function RequestCard({ request, showContext = false }: { request: NeedsYo
           </>
         ) : undefined
       }
-      footerEnd
     >
-      <Details request={request} />
+      {pending ? (
+        <Details request={request} />
+      ) : (
+        !inline && (
+          <details className="app-request-settled">
+            <summary>{t('request.expandPreview')}</summary>
+            <Details request={request} />
+          </details>
+        )
+      )}
       {pending && request.subject === 'run_start' && (
         <div className="app-setting-row is-plain">
           <span className="app-setting-text">{t('approvals.continue')}</span>
@@ -343,7 +462,8 @@ export function RequestCard({ request, showContext = false }: { request: NeedsYo
           />
         </div>
       )}
-      {request.kind === 'question' && <QuestionForm request={request} disabled={!pending} />}
+      {inline && <InlineChoices key={request.id} request={request} />}
+      {questioning && <QuestionForm key={request.id} request={request} onClose={() => setQuestioning(false)} />}
       {handing && pending && <HandBack request={request} mode={handing} onClose={() => setHanding(null)} />}
     </ChatCard>
   );

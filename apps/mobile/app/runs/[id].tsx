@@ -24,6 +24,7 @@ import { openConversation } from '../../src/shell/nav';
 import { useWorkspace } from '../../src/store/workspace';
 import { makeStyles, radius, space, squircle, typo, useTheme, weight } from '../../src/theme';
 import { AgentAvatar } from '../../src/ui/agent-avatar';
+import { SheetActions } from '../../src/ui/sheet-actions';
 import { NativeButton } from '../../src/ui/button';
 import { Icon } from '../../src/ui/core';
 import { alertError } from '../../src/ui/dialogs';
@@ -148,7 +149,6 @@ export default function RunPage() {
             state={run.status === 'running' ? 'thinking' : run.status === 'waiting' ? 'waiting' : undefined}
           />
           <View style={styles.headTexts}>
-            <Text style={styles.title}>{run.title}</Text>
             <View style={styles.metaRow}>
               <View style={[styles.status, { borderColor: tone }]}>
                 <Text style={[styles.statusText, { color: tone }]}>
@@ -166,32 +166,6 @@ export default function RunPage() {
             <Text style={styles.errorText}>{operationErrorText(run.error, t) ?? run.error.message}</Text>
           </View>
         ) : null}
-
-        <View style={styles.actions}>
-          {run.conversation_id ? (
-            <NativeButton
-              label={t('runs.openSource')}
-              icon="msg"
-              onPress={() => openConversation(router, { id: run.conversation_id! }, 'dismissTo')}
-            />
-          ) : null}
-          {active ? (
-            <NativeButton
-              label={t('runs.cancel')}
-              destructive
-              loading={busy === 'cancel'}
-              onPress={() => void act('cancel')}
-            />
-          ) : null}
-          {run.status === 'failed' && !run.parent_run_id ? (
-            <NativeButton
-              label={t('runs.retry')}
-              variant="prominent"
-              loading={busy === 'retry'}
-              onPress={() => void act('retry')}
-            />
-          ) : null}
-        </View>
 
         {cards.length ? (
           <View style={styles.cards}>
@@ -256,6 +230,37 @@ export default function RunPage() {
           </View>
         ) : null}
       </ScrollView>
+      <SheetActions>
+        {run.conversation_id ? (
+          <NativeButton
+            fullWidth
+            size="large"
+            label={t('runs.openSource')}
+            icon="msg"
+            onPress={() => openConversation(router, { id: run.conversation_id! }, 'dismissTo')}
+          />
+        ) : null}
+        {active ? (
+          <NativeButton
+            fullWidth
+            size="large"
+            label={t('runs.cancel')}
+            destructive
+            loading={busy === 'cancel'}
+            onPress={() => void act('cancel')}
+          />
+        ) : null}
+        {run.status === 'failed' && !run.parent_run_id ? (
+          <NativeButton
+            fullWidth
+            size="large"
+            label={t('runs.retry')}
+            variant="prominent"
+            loading={busy === 'retry'}
+            onPress={() => void act('retry')}
+          />
+        ) : null}
+      </SheetActions>
     </>
   );
 }
