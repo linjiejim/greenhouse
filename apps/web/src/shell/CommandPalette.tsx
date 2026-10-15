@@ -153,7 +153,10 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
             id: `base:${base.id}`,
             group: t('nav.tables'),
             label: base.name,
-            hint: base.tables.map((table) => table.name).join(' · '),
+            hint:
+              base.tables.length === 1 && base.tables[0]?.name === base.name
+                ? undefined
+                : base.tables.map((table) => table.name).join(' · '),
             leading: small(<Table2 size={icon.md} />),
             run: () => navigate({ page: 'base', id: base.id }),
           }))

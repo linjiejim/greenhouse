@@ -75,6 +75,7 @@ export interface BrowserCall {
   signal?: AbortSignal;
   /** Shows a screenshot to a model that can see images; absent when it cannot. */
   attachImage?: (image: Uint8Array, mediaType: string) => void;
+  saveScreenshot?: (image: Uint8Array, mediaType: string, check: () => Promise<void>) => Promise<string>;
 }
 
 export interface TabView {
@@ -87,6 +88,7 @@ export interface TabView {
 /** What the Agent reads back. Small: a window of the page, never all of it. */
 export interface BrowserResult {
   url?: string;
+  file_id?: string;
   title?: string;
   snapshot?: string;
   /** The snapshot holds more: `snapshot {from_line}` continues here. */
@@ -950,13 +952,6 @@ export function createBrowserService(deps: {
         }
         case 'screenshot': {
           const main = await guard(page);
-          if (!call.attachImage) {
-            return {
-              status: 'unsupported',
-              url: redact(main.url),
-              note: 'No screenshot was taken: your model cannot see images here. Use snapshot or read to see the page.',
-            };
-          }
           // A picture cannot be redacted: none is taken while the page shows a saved secret.
           const shown = await page.run<string>(SHOWN_TEXT, 10_000).catch(() => null);
           if (shown === null || redact(shown) !== shown) {
@@ -972,8 +967,16 @@ export function createBrowserService(deps: {
           );
           // Nothing taken across a take-over is kept.
           await step();
-          call.attachImage(Buffer.from(data, 'base64'), 'image/jpeg');
-          return { url: redact(main.url), note: 'The screenshot is shown to you with this result.' };
+          const image = Buffer.from(data, 'base64');
+          const fileId = await call.saveScreenshot?.(image, 'image/jpeg', step);
+          call.attachImage?.(image, 'image/jpeg');
+          return {
+            url: redact(main.url),
+            ...(fileId ? { file_id: fileId } : {}),
+            note: call.attachImage
+              ? 'The member can see the screenshot attached to your reply. It is also shown to you with this result. Do not duplicate it in Markdown.'
+              : 'The member can see the screenshot attached to your reply, but your model cannot see images. Do not claim you inspected it or duplicate it in Markdown. Use snapshot (accessibility tree) or read (page text) to decide what to do next.',
+          };
         }
       }
     });

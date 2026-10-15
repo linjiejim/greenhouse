@@ -668,6 +668,7 @@ export type RunDetail = {
   steps: Array<{
     id: string;
     tool: string | null;
+    summary: string;
     kind: string;
     status: 'failed' | 'running' | 'pending' | 'succeeded' | 'skipped' | 'uncertain';
     attempt: number;

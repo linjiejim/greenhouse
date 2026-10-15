@@ -123,7 +123,7 @@ export const tablesZh = {
   'tables.mine': '我的表格',
   'tables.archived': '已归档',
   'tables.noneArchived': '没有归档的表格',
-  'tables.updatedAt': '{time}更新',
+  'tables.updatedAt': '{time} 更新',
   'tables.sharedWithMe': '分享给我',
   'tables.notFound': '找不到这个表格，可能已被删除，或者你没有权限',
   'tables.allBases': '查看所有表格',
@@ -405,7 +405,7 @@ export const tablesZh = {
   'tables.calendar.month': '{year} 年 {month} 月',
   'tables.calendar.weekdays': '一,二,三,四,五,六,日',
   'tables.calendar.label': '记录日历',
-  'tables.calendar.dayRecords': '{date}的记录',
+  'tables.calendar.dayRecords': '{date} 的记录',
   'tables.calendar.noneThisMonth': '这个月没有记录',
 
   'tables.gallery.label': '记录画册',

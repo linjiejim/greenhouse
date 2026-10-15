@@ -29,7 +29,7 @@ function BaseRow({ base }: { base: BaseSummary }) {
         <Table2 size={icon.md} className="app-file-icon" aria-hidden />
         <span className="app-list-main">
           <span className="app-list-title">{base.name}</span>
-          <span className="app-list-meta">{tables}</span>
+          {tables !== base.name && <span className="app-list-meta">{tables}</span>}
         </span>
         {base.pinned && <Pin size={icon.sm} className="app-muted" aria-label={t('tables.pinned')} />}
         {base.owner_id !== me?.id && <Badge>{t('tables.sharedWithMe')}</Badge>}

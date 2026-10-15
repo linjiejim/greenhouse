@@ -6,6 +6,7 @@ import { invalidInput } from '../../http/errors.js';
 import { tableSchemaTool } from './tables-schema.js';
 import type { TablesService } from '../../modules/tables/service.js';
 import { defineTool, type ToolDef } from './define.js';
+import { detailText } from './presentation.js';
 import { conflict } from '../../http/errors.js';
 
 const values = z.record(z.string(), z.unknown());
@@ -31,6 +32,16 @@ const input = z.discriminatedUnion('action', [
 ]);
 
 export function tableTools(tables: TablesService): ToolDef[] {
+  const titles = new WeakMap<object, string[]>();
+  const verbs = (action: string, zh: boolean) =>
+    ({
+      create: zh ? '新增' : 'Added',
+      bulk: zh ? '批量写入' : 'Wrote',
+      update: zh ? '修改' : 'Updated',
+      delete: zh ? '删除' : 'Deleted',
+      purge: zh ? '永久删除' : 'Permanently deleted',
+      comment: zh ? '评论' : 'Commented on',
+    })[action] ?? (zh ? '修改' : 'Updated');
   const query = defineTool({
     name: 'table_query',
     description:
@@ -50,6 +61,7 @@ export function tableTools(tables: TablesService): ToolDef[] {
       z.object({ action: z.literal('aggregate'), card: cardSchema }),
       z.object({ action: z.literal('read'), record_id: z.string().max(64) }),
     ]),
+    summarize: (_args, _output, locale) => (locale === 'zh' ? '查看了表格' : 'Viewed tables'),
     risk: 'read',
     idempotent: true,
     private: true,
@@ -124,24 +136,78 @@ export function tableTools(tables: TablesService): ToolDef[] {
     async approvalScope(args) {
       return { type: 'table' as const, id: args.table_id, actions: [`table.${args.action}`] };
     },
-    describe: (args, ctx) => ({
-      summary: ctx.locale === 'zh' ? '修改表格记录' : 'change table records',
-      details: [
-        { label: ctx.locale === 'zh' ? '数据表' : 'Data table', value: args.table_id },
-        { label: ctx.locale === 'zh' ? '改动' : 'Changes', value: JSON.stringify(args).slice(0, 1200) },
-      ],
-    }),
+    async describe(args, ctx) {
+      const zh = ctx.locale === 'zh';
+      const at = await tables.scopeLabel(ctx.memberId, args.table_id);
+      const base = await tables.get(ctx.memberId, at.base_id);
+      const table = base.tables.find((table) => table.id === args.table_id)!;
+      const details = [{ label: zh ? '数据表' : 'Data table', value: `${base.name} / ${at.name}` }];
+      const records = args.action === 'bulk' ? args.items : 'values' in args ? [{ values: args.values }] : [];
+      for (const [index, record] of records.entries()) {
+        if (records.length > 1) details.push({ label: zh ? '记录' : 'Record', value: String(index + 1) });
+        for (const [id, value] of Object.entries(record.values)) {
+          const field = table.fields.find((field) => field.id === id);
+          if (!field) throw invalidInput('A field is not available in this table.');
+          const option = (id: unknown) => field.config.options?.find((option) => option.id === id)?.label ?? id;
+          const shown =
+            field.type === 'single_select'
+              ? option(value)
+              : field.type === 'multi_select' && Array.isArray(value)
+                ? value.map(option)
+                : value;
+          details.push({ label: field.name, value: detailText(shown, ctx.locale) });
+        }
+      }
+      if ('record_id' in args) details.push({ label: zh ? '记录' : 'Record', value: args.record_id });
+      if (args.action === 'comment') details.push({ label: zh ? '评论' : 'Comment', value: args.body });
+      return {
+        summary:
+          ctx.conversation?.kind === 'room'
+            ? `${verbs(args.action, zh)}${zh ? '表格记录' : ' records'}`
+            : `${verbs(args.action, zh)}${zh ? '表格' : ' records in'}「${at.name}」${zh ? '的记录' : ''}`,
+        details,
+      };
+    },
+    async receipt(args, output, ctx) {
+      const zh = ctx.locale === 'zh';
+      const at = await tables.scopeLabel(ctx.memberId, args.table_id);
+      const result = output as {
+        record?: { values: Record<string, unknown> };
+        items?: Array<{ ok: boolean; record?: { values: Record<string, unknown> } }>;
+      };
+      const records = result.record
+        ? [result.record]
+        : (result.items?.flatMap((item) => (item.ok && item.record ? [item.record] : [])) ?? []);
+      if (result.items && !records.length) return zh ? '没有记录写入' : 'No records were written';
+      const names = records.map((record) =>
+        String(record.values[at.primary_id ?? ''] ?? (zh ? '未命名记录' : 'Untitled record')),
+      );
+      const before = titles.get(args) ?? [];
+      const room = ctx.conversation?.kind === 'room';
+      const successful =
+        args.action === 'bulk'
+          ? (result.items?.flatMap((item, index) => (item.ok && item.record ? [args.items[index]!] : [])) ?? [])
+          : [];
+      const lines = (names.length ? names : before.length ? before : ['']).map((name, index) => {
+        const action = args.action === 'bulk' ? (successful[index]?.id ? 'update' : 'create') : args.action;
+        return `${verbs(action, zh)}${zh ? '记录' : ' record'}${!room && name ? `「${name}」` : ''}`;
+      });
+      return `${room ? '' : `${zh ? '数据表' : 'Table'}「${at.name}」\n`}${lines.join('\n')}`;
+    },
     async before(args, ctx) {
-      if (args.action === 'purge') return { records: [] };
+      if (args.action === 'purge') return null;
       const ids =
         'record_id' in args
           ? [args.record_id]
           : args.action === 'bulk'
             ? args.items.flatMap((entry) => entry.id ?? [])
             : [];
+      const at = await tables.scopeLabel(ctx.memberId, args.table_id);
+      const names: string[] = [];
       const records = await Promise.all(
         ids.map(async (id) => {
           const record = (await tables.records.get(ctx.memberId, id)).record;
+          names.push(String(record.values[at.primary_id ?? ''] ?? ''));
           const keys =
             args.action === 'update'
               ? Object.keys(args.values)
@@ -151,6 +217,7 @@ export function tableTools(tables: TablesService): ToolDef[] {
           return { ...record, values: Object.fromEntries(keys.map((key) => [key, record.values[key] ?? null])) };
         }),
       );
+      titles.set(args, names);
       return {
         input: {
           action: args.action,
@@ -198,8 +265,19 @@ export function tableTools(tables: TablesService): ToolDef[] {
       }
       const previous = (before as { records: Array<{ id: string; revision: number; values: Record<string, unknown> }> })
         .records;
+      const expected = (id: string, revision: number) => {
+        const prior = ctx.undoRevisions?.get(id);
+        if (!prior) return revision;
+        if (prior.written !== revision) throw conflict('undo_conflict', 'This record changed between the writes.');
+        return prior.current;
+      };
       if (args.action === 'delete') {
-        await tables.undoDeletedRecord(ctx.memberId, args.record_id, previous[0]!.revision + 1);
+        const restored = await tables.undoDeletedRecord(
+          ctx.memberId,
+          args.record_id,
+          expected(args.record_id, previous[0]!.revision + 1),
+        );
+        ctx.undoRevisions?.set(args.record_id, { written: previous[0]!.revision, current: restored.revision });
         return;
       }
       const result = output as {
@@ -213,10 +291,15 @@ export function tableTools(tables: TablesService): ToolDef[] {
         await tables.lockRecord(ctx.memberId, record.id);
         const old = previous.find((entry) => entry.id === record.id);
         const current = await tables.records.get(ctx.memberId, record.id);
-        if (current.record.revision !== record.revision)
+        if (current.record.revision !== expected(record.id, record.revision))
           throw conflict('undo_conflict', 'This record changed after the write.');
-        if (old) await tables.records.update(ctx.memberId, old.id, record.revision, old.values);
-        else await tables.records.remove(ctx.memberId, record.id);
+        if (old) {
+          const restored = await tables.records.update(ctx.memberId, old.id, current.record.revision, old.values);
+          ctx.undoRevisions?.set(old.id, { written: old.revision, current: restored.record.revision });
+        } else {
+          await tables.records.remove(ctx.memberId, record.id);
+          ctx.undoRevisions?.set(record.id, { written: 0, current: current.record.revision + 1 });
+        }
       }
     },
     undoResult(output) {
@@ -240,7 +323,8 @@ export function tableTools(tables: TablesService): ToolDef[] {
           : {}),
       };
     },
-    summarize: (_args, _output, locale) => (locale === 'zh' ? '修改了表格记录' : 'Changed table records'),
+    summarize: (args, _output, locale) =>
+      `${verbs(args.action, locale === 'zh')}${locale === 'zh' ? '了表格记录' : ' table records'}`,
   });
   return [query, mutation, tableSchemaTool(tables)];
 }

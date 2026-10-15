@@ -268,6 +268,8 @@ export const en: Record<MessageKey, string> = {
   'status.queued': 'Queued',
   'status.failed': 'Failed',
   'status.uncertain': 'Outcome unknown',
+  'request.expandPreview': 'Expand',
+  'request.collapsePreview': 'Collapse',
   'request.approve': 'Approve',
   'request.reject': 'Reject',
   'request.answer': 'Send answer',

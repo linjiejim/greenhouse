@@ -5,8 +5,10 @@
 
 import { and, asc, desc, eq, inArray, lt, ne } from 'drizzle-orm';
 import type { Page, RunDetail, RunView } from '@greenhouse/contract';
-import { getDb, runEvents, runs, runSteps, type Run, type RunSource } from '@greenhouse/db';
+import { getDb, runEvents, runs, runSteps, type Run, type RunSource, type RunStep } from '@greenhouse/db';
 import type { Background } from '../../engine/background.js';
+import { members, requests } from '@greenhouse/db';
+import { approvalStep } from '../../engine/tools/presentation.js';
 import { conflict, notFound } from '../../http/errors.js';
 import { decodeCursor, toPage } from '../../http/pagination.js';
 
@@ -33,6 +35,7 @@ const toRun = (row: Run): RunView => ({
 
 export function createRunsService(deps: {
   background: () => Background;
+  summarize?: (step: RunStep, locale: 'zh' | 'en') => string;
   cancelMedia: (memberId: string, runId: string) => Promise<void>;
 }) {
   async function own(memberId: string, runId: string): Promise<Run> {
@@ -95,6 +98,22 @@ export function createRunsService(deps: {
           .orderBy(asc(runEvents.seq))
           .limit(MAX_DETAIL_ROWS),
       ]);
+      const [member] = await db.select({ locale: members.locale }).from(members).where(eq(members.id, memberId));
+      const locale = member?.locale === 'en' ? 'en' : 'zh';
+      const cards = await db.select().from(requests).where(eq(requests.runId, runId));
+      const summary = (step: RunStep) => {
+        const card = cards.find((card) => card.id === step.requestId);
+        const call = (card?.payload.calls as Array<{ step_id: string; summary: string }> | undefined)?.find(
+          (call) => call.step_id === step.id,
+        );
+        return card
+          ? approvalStep(
+              String(call?.summary ?? card.payload.summary ?? card.payload.title),
+              card.status === 'rejected' ? 'rejected' : step.status,
+              locale,
+            )
+          : (deps.summarize?.(step, locale) ?? (locale === 'zh' ? '处理操作' : 'Process action'));
+      };
       const output = row.output && typeof row.output.text === 'string' ? row.output.text : null;
       return {
         ...toRun(row),
@@ -110,6 +129,7 @@ export function createRunsService(deps: {
         steps: steps.map((step) => ({
           id: step.id,
           tool: step.toolName,
+          summary: summary(step),
           kind: step.kind,
           status: step.status,
           attempt: step.attempt,

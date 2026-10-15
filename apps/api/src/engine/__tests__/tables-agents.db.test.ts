@@ -268,3 +268,199 @@ it('rejects invented schema targets before asking a member to approve the plan',
   expect((await app.call('GET', '/api/requests', { token: app.member.token })).body.items).toHaveLength(0);
   expect((await app.services.tables.list(app.member.id, { archived: false })).items).toHaveLength(1);
 });
+
+it('describes schema plans with names, field types and option labels, and reuses the planned primary field', async () => {
+  const app = await workspace();
+  app.scripts.push(
+    toolCall('table_schema_plan', {
+      name: '客户',
+      tables: [
+        {
+          name: '客户',
+          fields: [
+            { name: '客户名', type: 'text' },
+            {
+              name: '阶段',
+              type: 'single_select',
+              config: { options: [{ id: 'new', label: '新客户', color: 'green' }] },
+            },
+          ],
+        },
+        {
+          name: '联系人',
+          fields: [
+            { name: '备注', type: 'long_text' },
+            { name: '姓名', type: 'text', primary: true },
+          ],
+        },
+      ],
+    }),
+    text('Done'),
+  );
+  await app.send();
+  const cards = await app.call('GET', '/api/requests', { token: app.member.token });
+  const card = cards.body.items[0];
+  expect(card.payload.details).toContainEqual({ label: '客户名', value: '文本 · 主字段' });
+  expect(card.payload.details).toContainEqual(
+    expect.objectContaining({ label: '阶段', value: '单选 · 新客户', chips: ['新客户'] }),
+  );
+  expect(JSON.stringify(card.payload.details)).not.toContain('single_select');
+  expect(JSON.stringify(card.payload.details)).not.toContain('"new"');
+  await app.call('POST', `/api/requests/${card.id}/approve`, { token: app.member.token });
+  await app.services.engine.idle();
+  const list = await app.services.tables.list(app.member.id, { archived: false });
+  const base = await app.services.tables.get(app.member.id, list.items.find((base) => base.name === '客户')!.id);
+  expect(base.tables[0]!.fields.map((field) => field.name)).toEqual(['客户名', '阶段']);
+  expect(base.tables[0]!.fields[0]!.is_primary).toBe(true);
+  expect(base.tables[1]!.fields.find((field) => field.is_primary)?.name).toBe('姓名');
+  expect(base.tables[1]!.fields).toHaveLength(2);
+});
+
+it('describes existing schema changes without ids or JSON in display copy', async () => {
+  const app = await workspace();
+  app.scripts.push(
+    toolCall('table_schema_plan', {
+      base_id: app.base.id,
+      name: '改进结构',
+      changes: [
+        {
+          action: 'update_field',
+          field_id: app.field.id,
+          input: { name: '客户名', schema_revision: app.table.schema_revision },
+        },
+        { action: 'create_field', table_id: app.table.id, input: { name: '邮箱', type: 'email' } },
+      ],
+    }),
+    text('Not done'),
+  );
+  await app.send();
+  const card = (await app.call('GET', '/api/requests', { token: app.member.token })).body.items[0];
+  const copy = JSON.stringify(card.payload.details);
+  expect(copy).toContain('修改字段');
+  expect(copy).toContain('客户名');
+  expect(copy).toContain('新增字段');
+  expect(copy).not.toContain(app.field.id);
+  expect(copy).not.toContain(app.table.id);
+  expect(card.payload.input.changes[0].field_id).toBe(app.field.id);
+});
+
+it('merges same-turn table writes into one named receipt and atomically undoes the whole batch', async () => {
+  const app = await workspace();
+  for (const name of ['深圳云图科技', '杭州星河', '台北青禾'])
+    app.scripts.push(
+      toolCall('table_mutation', { action: 'create', table_id: app.table.id, values: { [app.field.id]: name } }),
+    );
+  app.scripts.push(text('Created'));
+  await app.send();
+  const transcript = () => app.call('GET', `/api/conversations/${app.main.id}/messages`, { token: app.member.token });
+  const receipts = (await transcript()).body.items.filter(
+    (message: { event?: { type: string } }) => message.event?.type === 'write_receipt',
+  );
+  expect(receipts).toHaveLength(1);
+  expect(receipts[0].content).toContain('新增记录「深圳云图科技」');
+  expect(receipts[0].content).toContain('新增记录「杭州星河」');
+  expect(receipts[0].event.step_ids).toHaveLength(3);
+  const rows = await app.services.tables.records.query(app.member.id, app.table.id, { limit: 20 });
+  const edited = rows.items.find((record) => record.values[app.field.id] === '杭州星河')!;
+  await app.services.tables.records.update(app.member.id, edited.id, edited.revision, { [app.field.id]: 'Later edit' });
+  // The third inverse must roll back when the second record conflicts.
+  await expect(app.services.engine.undoWrite(app.member.id, receipts[0].event.step_id)).rejects.toMatchObject({
+    code: 'undo_conflict',
+  });
+  expect((await app.services.tables.records.query(app.member.id, app.table.id, { limit: 20 })).items).toHaveLength(3);
+});
+
+it('undoes a complete receipt once, and uses edit and delete verbs with record names', async () => {
+  const app = await workspace();
+  for (const name of ['甲', '乙', '丙'])
+    app.scripts.push(
+      toolCall('table_mutation', { action: 'create', table_id: app.table.id, values: { [app.field.id]: name } }),
+    );
+  app.scripts.push(text('Created'));
+  await app.send();
+  const transcript = (await app.call('GET', `/api/conversations/${app.main.id}/messages`, { token: app.member.token }))
+    .body.items;
+  const receipt = transcript.find((message: { event?: { type: string } }) => message.event?.type === 'write_receipt');
+  await expect(app.services.engine.undoWrite(app.other.id, receipt.event.step_id)).rejects.toMatchObject({
+    status: 404,
+  });
+  await app.services.engine.undoWrite(app.member.id, receipt.event.step_id);
+  expect((await app.services.tables.records.query(app.member.id, app.table.id, { limit: 20 })).items).toHaveLength(0);
+  await expect(app.services.engine.undoWrite(app.member.id, receipt.event.step_id)).rejects.toMatchObject({
+    code: 'already_undone',
+  });
+  const record = await app.services.tables.records.create(app.member.id, app.table.id, { [app.field.id]: '原名' });
+  app.scripts.push(
+    toolCall('table_mutation', {
+      action: 'update',
+      table_id: app.table.id,
+      record_id: record.record.id,
+      revision: 1,
+      values: { [app.field.id]: '新名' },
+    }),
+    text('Changed'),
+  );
+  await app.send();
+  app.scripts.push(
+    toolCall('table_mutation', { action: 'delete', table_id: app.table.id, record_id: record.record.id }),
+    text('Deleted'),
+  );
+  await app.send();
+  const messages = (await app.call('GET', `/api/conversations/${app.main.id}/messages`, { token: app.member.token }))
+    .body.items;
+  expect(messages.some((message: { content: string }) => message.content.includes('修改记录「新名」'))).toBe(true);
+  expect(messages.some((message: { content: string }) => message.content.includes('删除记录「新名」'))).toBe(true);
+});
+
+it('undoes consecutive changes to one record without mistaking batch inverses for newer member edits', async () => {
+  const app = await workspace();
+  const original = await app.services.tables.records.create(app.member.id, app.table.id, {
+    [app.field.id]: 'Original',
+  });
+  for (const [index, name] of ['First edit', 'Second edit'].entries())
+    app.scripts.push(
+      toolCall('table_mutation', {
+        action: 'update',
+        table_id: app.table.id,
+        record_id: original.record.id,
+        revision: index + 1,
+        values: { [app.field.id]: name },
+      }),
+    );
+  app.scripts.push(text('Updated'));
+  await app.send();
+  const transcript = (await app.call('GET', `/api/conversations/${app.main.id}/messages`, { token: app.member.token }))
+    .body.items;
+  const receipt = transcript.find((message: { event?: { type: string } }) => message.event?.type === 'write_receipt');
+  expect(receipt.event.step_ids).toHaveLength(2);
+  await app.services.engine.undoWrite(app.member.id, receipt.event.step_ids[1]);
+  expect((await app.services.tables.records.get(app.member.id, original.record.id)).record.values[app.field.id]).toBe(
+    'Original',
+  );
+});
+
+it('undoes an edit followed by deletion in one receipt and restores the original record', async () => {
+  const app = await workspace();
+  const original = await app.services.tables.records.create(app.member.id, app.table.id, {
+    [app.field.id]: 'Original',
+  });
+  app.scripts.push(
+    toolCall('table_mutation', {
+      action: 'update',
+      table_id: app.table.id,
+      record_id: original.record.id,
+      revision: 1,
+      values: { [app.field.id]: 'Edited' },
+    }),
+    toolCall('table_mutation', { action: 'delete', table_id: app.table.id, record_id: original.record.id }),
+    text('Deleted'),
+  );
+  await app.send();
+  const transcript = (await app.call('GET', `/api/conversations/${app.main.id}/messages`, { token: app.member.token }))
+    .body.items;
+  const receipt = transcript.find((message: { event?: { type: string } }) => message.event?.type === 'write_receipt');
+  await app.services.engine.undoWrite(app.member.id, receipt.event.step_id);
+  expect((await app.services.tables.records.get(app.member.id, original.record.id)).record.values[app.field.id]).toBe(
+    'Original',
+  );
+});

@@ -423,12 +423,12 @@ export function knowledgeTools(knowledge: KnowledgeService) {
               ? '新建一篇文档'
               : 'create a doc'
             : zh
-              ? `在${place}新建文档《${args.title}》`
+              ? `在 ${place} 新建文档《${args.title}》`
               : `create the doc "${args.title}" in ${place}`,
           details: [
             ...(room ? [{ label: zh ? '标题' : 'Title', value: args.title }] : []),
             { label: zh ? '位置' : 'Where', value: place },
-            { label: zh ? '内容' : 'Content', value: args.content.slice(0, 1200) },
+            { label: zh ? '内容' : 'Content', value: args.content.slice(0, 1200), format: 'markdown' as const },
           ],
         };
       }
@@ -450,6 +450,7 @@ export function knowledgeTools(knowledge: KnowledgeService) {
               ? [{ label: zh ? '新标题' : 'New title', value: args.title }]
               : []),
             { label: zh ? '改动' : 'Changes', value: preview(doc.content, after) },
+            { label: zh ? '内容预览' : 'Content preview', value: after.slice(0, 1200), format: 'markdown' as const },
             ...(args.change_note ? [{ label: zh ? '说明' : 'Note', value: args.change_note }] : []),
           ],
         };
@@ -462,7 +463,7 @@ export function knowledgeTools(knowledge: KnowledgeService) {
               ? '移动一篇文档'
               : 'move a doc'
             : zh
-              ? `把《${doc.title}》移到${place}`
+              ? `把《${doc.title}》移到 ${place}`
               : `move "${doc.title}" to ${place}`,
           details: [...titled, { label: zh ? '移到' : 'To', value: place }],
         };
@@ -475,7 +476,10 @@ export function knowledgeTools(knowledge: KnowledgeService) {
           : zh
             ? `评论《${doc.title}》`
             : `comment on "${doc.title}"`,
-        details: [...titled, { label: zh ? '评论' : 'Comment', value: args.body.slice(0, 1200) }],
+        details: [
+          ...titled,
+          { label: zh ? '评论' : 'Comment', value: args.body.slice(0, 1200), format: 'markdown' as const },
+        ],
       };
     },
     async execute(args, ctx) {

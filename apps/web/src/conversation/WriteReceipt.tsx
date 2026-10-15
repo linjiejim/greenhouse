@@ -33,7 +33,7 @@ export function WriteReceipt({ message }: { message: Message }) {
         )
       }
     >
-      <p>{message.content}</p>
+      <p className="app-detail-value">{message.content}</p>
     </ChatCard>
   );
 }

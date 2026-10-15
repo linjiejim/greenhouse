@@ -37,7 +37,7 @@ The one engine for conversations and runs. Read with the root AGENTS.md and docs
 ## Tools
 - One file per tool with `defineTool` (tools/define.ts): description, zod input, risk, availability, and the service call. Routes and tools call the same services.
 - Provider and MCP inputs go through tools/schema.ts: root object only, no root union combinators. Object unions merge their fields and action enums for providers; the original Zod schema validates and applies defaults before risk checks, cards or execution. The browser-test model enforces the same root rules.
-- Tool results are evidence of actions; replies cannot perform a hand-off or another write. A screenshot without vision returns `unsupported` and explicitly says none was taken.
+- Tool results are evidence of actions; replies cannot perform a hand-off or another write. Screenshots are saved as reply attachments regardless of vision; only the model image context requires vision.
 - Every call is a `run_steps` row. Tools that read outside text set `taints`; after that a turn cannot change memories.
 - What a web page or a connector returns reaches the model through `outsideText` (security/prompt.ts): cut to size with a note of what was left out, stripped of anything that could pose as prompt structure; titles and snippets are sanitized too.
 - A tool is `idempotent` only when the same call twice does what it does once (pure reads: web, knowledge and skill reads, conversation search, attachments). Computer, browser, vault, memory and every write are not.
@@ -137,7 +137,7 @@ The one engine for conversations and runs. Read with the root AGENTS.md and docs
 - `browser` drives the computer's Chromium over DevTools: `SandboxClient.devtools`, the relay's socket that only the `browser` user opens, one connection per action. Turns only; a public Agent's asker uses their own copy.
 - One controller at a time (`agent_computers.lease_*`): a member's `control` screen holds the screen while open and always wins; each Agent action holds it briefly. While the member holds it the Agent does not act, and taken over mid-action, the next step stops and nothing it read comes back.
 - Only http(s) is opened or read; file:, chrome:, devtools:, javascript: and the like and Greenhouse's own origins are refused, and a tab that lands there goes back to a blank page. Our page scripts run in an isolated world.
-- The Agent never types into a password or card field. Everything read from a page is redacted against the member's vault first, and no screenshot is taken while a page shows a vault value. A screenshot reaches a model that sees images with its next step (`ToolContext.attachImage`) and is stored nowhere.
+- The Agent never types into a password or card field. Everything read from a page is redacted against the member's vault first, and no screenshot is taken while a page shows a vault value. A screenshot is stored as a conversation attachment and replaces the reply’s previous screenshot. A vision model also sees it with its next step (`ToolContext.attachImage`); a text-only model is told to use snapshot/read for decisions.
 - `vault` is never offered to a public Agent, and a login serves only the Agents in its `agent_ids` (empty = all the member's own). The page origin always comes from the browser. The server types the values (`Input.insertText`), so none is ever in a tool result, a card, a step, the transcript or a log line.
 - An `ask` login raises a `login` card first: approving fills on the site it named (even while the member holds the screen), rejecting tells the Agent, and handing back settles it after the member signed in by hand. `auto` logins and always-allowed sites fill directly. Every fill writes a `vault_access_log` row.
 
@@ -188,3 +188,6 @@ The one engine for conversations and runs. Read with the root AGENTS.md and docs
 - Table automation wakes carry their action index into background run input. Creating the run and linking its automation history stay in the same inbox transaction.
 
 - Request creation projects headings, summaries and details to permission-checked object names (modules/requests/display.ts). Never alter execution inputs or standing scopes. Room headings stay generic; app field labels use the publication/card column projection.
+
+- Approval details are human label/value copy; Markdown previews declare format and select labels declare chips. Never serialize plans as card copy or show tool ids as step labels. Keep pending steps linked internally to their approval step and refresh their summaries after decisions.
+- Reversible writes serialize on the conversation before scope locks. Same-run/table receipts carry step_ids and undo atomically in reverse order; revision lineage permits only changes within that batch, never newer member edits. Keep room summaries and receipts free of private names.

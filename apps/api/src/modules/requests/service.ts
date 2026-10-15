@@ -110,7 +110,7 @@ export function createRequestsService(deps: {
               ? { ...scope, actions: [...new Set([...scope.actions, ...added.actions])] }
               : null,
             details: calls.flatMap((call, index) => [
-              { label: String(index + 1), value: String(call.summary ?? call.tool ?? '') },
+              { label: String(index + 1), value: String(call.summary ?? input.title) },
               ...((call.details as unknown[]) ?? []),
             ]),
             batch_ready: false,

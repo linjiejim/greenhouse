@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { SchedulesService } from '../../modules/schedules/service.js';
+import { argumentDetails } from './presentation.js';
 import { defineTool } from './define.js';
 import { backgroundOptionsSchema } from './run-start.js';
 
@@ -57,7 +58,7 @@ export function scheduleTools(schedules: SchedulesService) {
     ]),
     risk: 'write',
     callRisk: async (args) => (args.action === 'delete' ? 'tier3' : 'tier2'),
-    describe: (args, ctx) => {
+    async describe(args, ctx) {
       const zh = ctx.locale === 'zh';
       const summary = {
         create: zh
@@ -68,9 +69,20 @@ export function scheduleTools(schedules: SchedulesService) {
         resume: zh ? '恢复一个定时' : 'resume a schedule',
         delete: zh ? '删除一个定时' : 'delete a schedule',
       }[args.action];
-      const details = Object.entries(args)
-        .filter(([key]) => key !== 'action')
-        .map(([label, value]) => ({ label, value: String(value) }));
+      const { action: _action, ...values } = args;
+      const schedule =
+        'id' in args
+          ? (await schedules.list(ctx.memberId, ctx.agent.id)).find((schedule) => schedule.id === args.id)
+          : null;
+      const details = argumentDetails(
+        Object.fromEntries(Object.entries(values).filter(([key]) => key !== 'id')),
+        ctx.locale,
+      );
+      if ('id' in args)
+        details.unshift({
+          label: zh ? '定时' : 'Schedule',
+          value: schedule?.name ?? (zh ? '不可用的定时' : 'Unavailable schedule'),
+        });
       return { summary, details };
     },
     async execute(args, ctx) {

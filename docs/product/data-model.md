@@ -97,7 +97,7 @@ v2 从零建表：只有一份基线迁移，不继承 v1 的迁移链，也不�
 | `conversations` | 所有消息流 | `kind`（main / direct / chat / room）、`owner_id`、`agent_id`（room 与 v1 归档为空）、`title`、`model`（会话选的模型）、`origin`（web / ios / android / extension / desktop / feishu / assistant / v1）、`external_key`（飞书话题键，唯一）、`context`（页面助手带来的上下文）、`read_only`（v1 归档）、`forked_from_message_id`、`digest` + `digest_upto_seq`（滚动摘要）、`last_seq`、`last_activity_at`；部分唯一：每人一个 main，每个（成员，Agent）一个 direct |
 | `conversation_members` | 对话里的人和各自的状态 | `conversation_id` / `member_id` `CASCADE`、`role`（owner / member）、`last_read_seq`（已读回执）、`archived_at`、`added_by`；非房间对话只有主人一行。可见性只看这张表 |
 | `conversation_agents` | 对话里额外在场的 Agent | `conversation_id` / `agent_id` `CASCADE`、`added_by`（成员）；房间里各人带来的、被拉进对话的 Agent |
-| `messages` | 消息 | `conversation_id` `CASCADE`、`seq`（锁定对话行后分配，唯一 `(conversation_id, seq)`）、`role`（user / assistant / event）、`author_member_id`、`agent_id`、`content`（Markdown）、`blocks`（富结果）、`attachments`（file id）、`quote`、`mentions`、`skill`（`/` 调用的技能、运行的版本与填的变量；部分索引 `messages_skill_runs_idx` 用来找成员最常用的技能）、`rich_blocks`（发送端声明能画的富块，空表示未声明）、`citations`、`steps`（工具摘要）、`reasoning`、`event`（加入、转交、交还等系统事件）、`run_id`、`status`（complete / stopped / failed）、`edited_at` |
+| `messages` | 消息 | `conversation_id` `CASCADE`、`seq`（锁定对话行后分配，唯一 `(conversation_id, seq)`）、`role`（user / assistant / event）、`author_member_id`、`agent_id`、`content`（Markdown）、`blocks`（富结果）、`attachments`（file id）、`quote`、`mentions`、`skill`（`/` 调用的技能、运行的版本与填的变量；部分索引 `messages_skill_runs_idx` 用来找成员最常用的技能）、`rich_blocks`（发送端声明能画的富块，空表示未声明）、`citations`、`steps`（工具摘要，待批步骤内部保存 `approvalStepId`，用于决定后更新同一条摘要；API 不输出该内部关联）、`reasoning`、`event`（加入、转交、交还等系统事件）、`run_id`、`status`（complete / stopped / failed）、`edited_at` |
 | `message_feedback` | 对一条回复的赞或踩 | `message_id` `CASCADE`、`member_id`、`rating`（1 / -1）、`comment`、`agent_id`、`agent_version`；唯一 `(message_id, member_id)`；公开 Agent 的主人只读这张表，读不到消息 |
 | `message_receipts` | Agent 对消息的处理回执 | `message_id` `CASCADE`、`agent_id`、`status`（queued / processing / answered / skipped / failed / canceled）、`processed_at`；唯一 `(message_id, agent_id)` |
 | `conversation_notes` | 对话的共享笔记 | `conversation_id` `CASCADE`、`title`、`body`、`author_member_id` 或 `author_agent_id`、`status`（open / done）、`pinned` |
@@ -281,3 +281,7 @@ M3.4 计数（#70）：`metric_events` 仅存 identity id、member_id（逻辑�
 ### 请求展示投影（#70）
 
 `requests.payload` 中的标题、审批摘要与详情保存权限检查后的名称／路径，避免把原始对象 id 显示给成员；未知引用以本地化占位替代。房间公开摘要不包含私有对象名，应用详情沿用应用的字段投影。执行用的 `input`、预先授权范围和批次调用保留原 id；本次没有 schema 或迁移变化。已经保存的历史请求不重写。
+
+### 验收展示与回执（#70）
+
+无新增表、列或迁移。`messages.event.type=write_receipt` 保存入口 `step_id`、同一运行同一数据表的 `step_ids`、逻辑引用 `table_id`、`member_id` 和撤销后的 `undone`；人类文字保存在 `content`，不用客户端重建。撤销逐步更新 `run_steps.undone_at`，与整批逆操作处在同一事务。浏览器截图使用已有 `files.purpose=attachment`、`conversation_id`、`run_id`，当前回复 `attachments` 仅保留最后一张截图，读取继续检查对话成员权限并签发短期 URL。

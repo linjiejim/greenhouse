@@ -55,7 +55,25 @@ export function skillMutationTool(skills: SkillsService) {
           ctx.locale === 'zh'
             ? `${ctx.agent.name} 想把这个做法存为技能：${label}`
             : `${ctx.agent.name} proposes saving this as a skill: ${label}`,
-        payload: { skill, reason },
+        payload: {
+          skill,
+          reason,
+          details: [
+            { label: ctx.locale === 'zh' ? '技能' : 'Skill', value: label },
+            { label: ctx.locale === 'zh' ? '说明' : 'Description', value: skill.description },
+            { label: ctx.locale === 'zh' ? '做法' : 'Instructions', value: skill.body, format: 'markdown' },
+            ...skill.variables.map((field) => ({
+              label: field.label,
+              value: field.required
+                ? ctx.locale === 'zh'
+                  ? '必填'
+                  : 'Required'
+                : ctx.locale === 'zh'
+                  ? '可选'
+                  : 'Optional',
+            })),
+          ],
+        },
         waits: false,
         expiresInMs: WEEK_MS,
       });

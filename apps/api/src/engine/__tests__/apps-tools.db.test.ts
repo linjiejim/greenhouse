@@ -148,3 +148,69 @@ it('keeps private app writes undoable through the original action', async () => 
   expect((await app.call('POST', `/api/runs/steps/${step!.id}/undo`, { token: owner.token })).status).toBe(204);
   expect((await app.services.tables.records.query(owner.id, table.id, {})).items).toHaveLength(0);
 });
+
+it('keeps the receipt when a saved action moves a record outside its card filter', async () => {
+  const scripts: Parameters<typeof scriptedModel>[0] = [];
+  const model = scriptedModel(scripts);
+  const app = createTestApp({}, { languageModel: model.languageModel });
+  const owner = await app.member();
+  const base = await app.services.tables.create(owner.id, { name: 'Inbox' });
+  const table = base.tables[0]!;
+  const field = table.fields[0]!;
+  const row = await app.services.tables.records.create(owner.id, table.id, { [field.id]: 'Pending' });
+  const created = await app.services.apps.create(owner.id, { base_id: base.id, name: 'Queue', description: '' });
+  const draft = await app.services.apps.save(owner.id, created.app.id, {
+    revision: created.revision,
+    name: 'Queue',
+    description: '',
+    spec: {
+      roles: [],
+      pages: [
+        {
+          id: 'home',
+          name: 'Home',
+          cards: [
+            {
+              id: 'pending',
+              kind: 'records',
+              title: 'Pending',
+              table_id: table.id,
+              fields: [field.id],
+              filter: { mode: 'and', clauses: [{ field: field.id, op: 'eq', value: 'Pending' }] },
+              actions: [{ id: 'done', name: 'Complete', type: 'update', values: { [field.id]: 'Done' } }],
+            },
+          ],
+        },
+      ],
+    },
+  });
+  await app.services.apps.publish(owner.id, draft.app.id, { revision: draft.revision, notes: '', audience: [] });
+  const main = (await app.call('GET', '/api/conversations', { token: owner.token })).body.items[0];
+  scripts.push(
+    toolCall('apps_action', {
+      app_id: created.app.id,
+      version: 1,
+      card: 'pending',
+      action: 'done',
+      record_id: row.record.id,
+      revision: 1,
+    }),
+    text('Done'),
+  );
+  const sent = await app.call('POST', `/api/conversations/${main.id}/messages`, {
+    token: owner.token,
+    body: { content: 'Complete it' },
+  });
+  await app.services.engine.idle();
+  const [step] = await getDb()
+    .select()
+    .from(runSteps)
+    .where(and(eq(runSteps.runId, sent.body.run_id), eq(runSteps.toolName, 'apps_action')));
+  expect(step!.status).toBe('succeeded');
+  expect((await app.services.tables.records.get(owner.id, row.record.id)).record.values[field.id]).toBe('Done');
+  const transcript = (await app.call('GET', `/api/conversations/${main.id}/messages`, { token: owner.token })).body
+    .items;
+  expect(transcript.some((message: { content: string }) => message.content.includes('修改记录「Done」'))).toBe(true);
+  await app.services.engine.undoWrite(owner.id, step!.id);
+  expect((await app.services.tables.records.get(owner.id, row.record.id)).record.values[field.id]).toBe('Pending');
+});

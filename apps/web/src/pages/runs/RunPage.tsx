@@ -78,7 +78,7 @@ function Detail({ run }: { run: RunDetail }) {
               <li key={step.id} className={cx('app-step', `is-${step.status}`)}>
                 <span className="app-step-dot" aria-hidden />
                 <span className="app-step-summary">
-                  {step.tool ?? step.kind}
+                  {step.summary}
                   {step.error && <span className="app-step-error"> · {step.error.message}</span>}
                 </span>
                 {/* It was running when its process died: it may have taken effect, and is never run again by itself. */}

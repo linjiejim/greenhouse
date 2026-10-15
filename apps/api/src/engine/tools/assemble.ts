@@ -7,10 +7,20 @@ import { tableEventChain } from '../../modules/tables/event-context.js';
 import { createHash } from 'node:crypto';
 import { tool, type ToolSet } from 'ai';
 import { and, eq, inArray, sql } from 'drizzle-orm';
-import { getDb, members, newId, runSteps, runs, transaction, type NeedsYouRequest } from '@greenhouse/db';
+import {
+  getDb,
+  conversations,
+  members,
+  newId,
+  runSteps,
+  runs,
+  transaction,
+  type NeedsYouRequest,
+} from '@greenhouse/db';
 import type { ApprovalsService } from '../../modules/agents/approvals.js';
 import { toErrorMessage } from '@greenhouse/utils/error';
 import { surfacesOf, type AvailabilityContext, type Card, type ToolContext, type ToolDef } from './define.js';
+import { argumentDetails } from './presentation.js';
 import { toolInputSchema } from './schema.js';
 import { createKeyedLock } from '../locks.js';
 
@@ -91,28 +101,6 @@ export function callKey(tool: string, args: unknown): string {
   return createHash('sha256')
     .update(`${tool}\n${stable(args)}`)
     .digest('hex');
-}
-
-const MAX_DETAIL_FIELDS = 12;
-const MAX_DETAIL_CHARS = 300;
-
-/** What an approval card shows when the tool does not describe itself: its arguments. */
-export function argumentDetails(args: unknown): { label: string; value: string }[] {
-  if (!args || typeof args !== 'object') return [];
-  const entries = Object.entries(args as Record<string, unknown>).filter(([, value]) => value !== undefined);
-  const rows = entries.slice(0, MAX_DETAIL_FIELDS).map(([label, value]) => {
-    const text = typeof value === 'string' ? value : JSON.stringify(value);
-    return {
-      label,
-      value:
-        text.length > MAX_DETAIL_CHARS
-          ? `${text.slice(0, MAX_DETAIL_CHARS)}…(+${text.length - MAX_DETAIL_CHARS} more characters)`
-          : text,
-    };
-  });
-  if (entries.length > MAX_DETAIL_FIELDS)
-    rows.push({ label: '…', value: `+${entries.length - MAX_DETAIL_FIELDS} more fields` });
-  return rows;
 }
 
 export async function assembleTools(input: {
@@ -296,6 +284,12 @@ export async function assembleTools(input: {
           };
           const perform = async () => {
             if (call.signal.aborted) throw new Error('Stopped.');
+            if (def.undo && context.conversation)
+              await getDb()
+                .select({ id: conversations.id })
+                .from(conversations)
+                .where(eq(conversations.id, context.conversation.id))
+                .for('update');
             await def.guard?.(args, call);
             if (risk !== 'read' && def.callRisk) {
               risk = await def.callRisk(args, context);
@@ -306,7 +300,10 @@ export async function assembleTools(input: {
               scope && !context.tainted() && (await input.approvals?.allows(context.agent.id, context.memberId, scope));
             if (risk === 'tier3' || (risk === 'tier2' && !standing)) {
               // Nothing changes until the member approves; the engine runs exactly these arguments then.
-              const card = (await def.describe?.(args, call)) ?? { summary: def.name, details: argumentDetails(args) };
+              const card = (await def.describe?.(args, call)) ?? {
+                summary: context.locale === 'zh' ? '执行操作' : 'Perform action',
+                details: argumentDetails(args, context.locale),
+              };
               const request = await call.raise({
                 kind: 'approval',
                 subject: 'tool_write',
@@ -328,15 +325,25 @@ export async function assembleTools(input: {
               return {
                 status: 'needs_approval',
                 request_id: request.id,
+                step_id: stepId,
+                summary: String(
+                  (request.payload.calls as Array<{ step_id: string; summary: string }> | undefined)?.find(
+                    (call) => call.step_id === stepId,
+                  )?.summary ??
+                    request.payload.summary ??
+                    card.summary,
+                ),
                 note: 'The member sees an approval card. End your turn now; you will be told the outcome.',
               };
             }
+            let reversible = false;
             if (def.before && risk !== 'read') {
               const before = await def.before(args, call);
+              reversible = before != null;
               await getDb().update(runSteps).set({ undoState: before }).where(eq(runSteps.id, stepId));
             }
             const output = await def.execute(args, call);
-            if (def.undo && risk !== 'read') {
+            if (def.undo && reversible) {
               const [saved] = await getDb()
                 .select({ before: runSteps.undoState })
                 .from(runSteps)
@@ -349,8 +356,11 @@ export async function assembleTools(input: {
             const evidence =
               input.output && def.name !== 'tool_output_read' ? await input.output(output, call) : output;
             await finish('succeeded', evidence);
-            if ((risk === 'tier1' || standing) && def.undo && input.receipt) {
-              const summary = def.summarize?.(args, output, context.locale) ?? def.name;
+            if ((risk === 'tier1' || standing) && reversible && def.undo && input.receipt) {
+              const summary =
+                (await def.receipt?.(args, output, call)) ??
+                def.summarize?.(args, output, context.locale) ??
+                (context.locale === 'zh' ? '完成了操作' : 'Completed an action');
               await input.receipt(stepId, summary);
             }
             return evidence;

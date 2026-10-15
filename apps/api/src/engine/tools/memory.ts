@@ -49,6 +49,7 @@ export function memoryTool(agents: AgentsService) {
         await agents.lockMemory(ctx.memberId, ctx.agent.id, args.id);
     },
     async before(args, ctx) {
+      if (args.action === 'forget') return null;
       return {
         input: { action: args.action, ...('id' in args ? { id: args.id } : {}) },
         ...(args.action === 'update' ? { previous: await agents.lockMemory(ctx.memberId, ctx.agent.id, args.id) } : {}),
@@ -64,10 +65,16 @@ export function memoryTool(agents: AgentsService) {
         (before as { previous?: { title: string; content: string } }).previous,
       );
     },
-    describe: (args, ctx) => ({
-      summary: ctx.locale === 'zh' ? '彻底删除一条记忆' : 'permanently delete a memory',
-      details: 'id' in args ? [{ label: ctx.locale === 'zh' ? '记忆' : 'Memory', value: args.id }] : [],
-    }),
+    async describe(args, ctx) {
+      const memory =
+        'id' in args
+          ? (await agents.memories(ctx.memberId, ctx.agent.id, 'active')).find((memory) => memory.id === args.id)
+          : null;
+      return {
+        summary: ctx.locale === 'zh' ? '彻底删除一条记忆' : 'permanently delete a memory',
+        details: memory ? [{ label: ctx.locale === 'zh' ? '记忆' : 'Memory', value: memory.title }] : [],
+      };
+    },
     async execute(args, ctx) {
       if (ctx.surface === 'background' && args.action !== 'recall')
         throw new Error('Background runs may only recall memories.');

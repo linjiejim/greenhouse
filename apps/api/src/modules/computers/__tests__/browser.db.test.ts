@@ -53,9 +53,16 @@ type Scripts = Parameters<typeof scriptedModel>[0];
 async function setup(start = SHOP, options: { vision?: boolean } = {}) {
   const scripts: Scripts = [];
   const model = scriptedModel(scripts);
-  const app = createTestApp(fakeSandboxEnv(), {
-    languageModel: async () => ({ ...(await model.languageModel()), ...(options.vision ? { vision: true } : {}) }),
-  });
+  const app = createTestApp(
+    {
+      ...fakeSandboxEnv(),
+      STORAGE_PROVIDER: 'local',
+      STORAGE_ROOT: `${process.cwd()}/node_modules/.cache/t14-screenshots`,
+    },
+    {
+      languageModel: async () => ({ ...(await model.languageModel()), ...(options.vision ? { vision: true } : {}) }),
+    },
+  );
   const chromium = new FakeChromium(PAGES, start);
   fake.onStream = (stream) => {
     if (stream.kind === 'devtools') chromium.attach(stream);
@@ -166,7 +173,8 @@ describe('the browser tool', () => {
     expect(read.text).toBe('Your password is [hidden]');
     expect(shot).toMatchObject({ code: 'secret_visible' });
     expect(opened.url).toBe(SHOP);
-    expect(clean).toEqual({ url: SHOP, note: 'The screenshot is shown to you with this result.' });
+    expect(clean).toMatchObject({ url: SHOP, file_id: expect.stringMatching(/^fil_/) });
+    expect(clean.note).toContain('also shown to you');
     // The picture reaches the model with the next step, as a system line, and is kept nowhere.
     const next = JSON.stringify(env.model.prompts.at(-1));
     expect(next).toContain(SHOWN_IMAGE_TEXT.slice(0, 40));
@@ -176,15 +184,26 @@ describe('the browser tool', () => {
     expect(stored).not.toContain(Buffer.from('fake jpeg bytes').toString('base64'));
   });
 
-  it('says so when the model cannot see a screenshot', async () => {
+  it('attaches one saved screenshot for the member without giving images to a text-only model', async () => {
     const env = await setup();
-    const [shot] = await env.turn({ action: 'screenshot' });
-    expect(shot.status).toBe('unsupported');
-    expect(shot.note).toContain('No screenshot was taken');
-    expect(shot.note).toContain('cannot see images');
-    expect(env.chromium.methods).not.toContain('Page.captureScreenshot');
+    const [shot, second] = await env.turn({ action: 'screenshot' }, { action: 'screenshot' });
+    expect(shot.file_id).toMatch(/^fil_/);
+    expect(shot.note).toContain('member can see');
+    expect(shot.note).toContain('model cannot see images');
+    expect(shot.note).toContain('accessibility tree');
+    expect(env.chromium.methods).toContain('Page.captureScreenshot');
     const transcript = await env.call('GET', `/api/conversations/${env.main.id}/messages`, { token: env.lin.token });
-    expect(transcript.body.items.at(-1).steps[0].summary).toBe('模型不支持查看截图');
+    expect(transcript.body.items.at(-1).steps[0].summary).toBe('截取了屏幕');
+    expect(transcript.body.items.at(-1).attachments).toEqual([second.file_id]);
+    expect(Buffer.from((await env.services.files.bytes(env.lin.id, second.file_id)).bytes).toString()).toBe(
+      'fake jpeg bytes',
+    );
+    const other = await env.member();
+    await expect(env.services.files.get(other.id, second.file_id)).rejects.toMatchObject({ status: 404 });
+    expect(JSON.stringify(env.model.prompts)).not.toContain('image/jpeg');
+    expect(JSON.stringify(await getDb().select().from(runSteps))).not.toContain(
+      Buffer.from('fake jpeg bytes').toString('base64'),
+    );
   });
 
   it('keeps tabs numbered, switches and closes them', async () => {

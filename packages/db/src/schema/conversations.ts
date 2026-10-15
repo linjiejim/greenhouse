@@ -87,7 +87,13 @@ export const conversationAgents = pgTable(
   (t) => [primaryKey({ columns: [t.conversationId, t.agentId] })],
 );
 
-export type MessageStep = { tool: string; summary: string; status: 'done' | 'failed'; durationMs?: number };
+export type MessageStep = {
+  tool: string;
+  summary: string;
+  status: 'done' | 'failed';
+  durationMs?: number;
+  approvalStepId?: string;
+};
 export type MessageCitation = { kind: string; id: string; title: string; url?: string };
 
 export const messages = pgTable(

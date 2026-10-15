@@ -198,6 +198,20 @@ describe('always-on approvals', () => {
     expect((await app.call('POST', `/api/requests/${card!.id}/approve`, { token: app.member.token })).status).toBe(200);
     await app.services.engine.idle();
     expect(await app.services.agents.memories(app.member.id, app.main.agent_id)).toEqual([]);
+    const forgetSteps = await getDb()
+      .select()
+      .from(runSteps)
+      .where(and(eq(runSteps.runId, forgetting), eq(runSteps.kind, 'tool')));
+    expect(forgetSteps[0]!.undoState).toBeNull();
+    expect(
+      (await app.call('POST', `/api/runs/steps/${forgetSteps[0]!.id}/undo`, { token: app.member.token })).body.error
+        .code,
+    ).toBe('undo_unavailable');
+    expect(
+      (await getDb().select().from(messages).where(eq(messages.runId, forgetting))).some(
+        (message) => message.event?.type === 'write_receipt',
+      ),
+    ).toBe(false);
   });
 
   it('grants only the card’s scope and action, disables standing approval after a read, and revokes it', async () => {
@@ -466,4 +480,38 @@ describe('quiet schedules', () => {
       expect.objectContaining({ kind: 'run_failed' }),
     ]);
   });
+});
+
+it('keeps shared knowledge steps waiting until approved and says a declined write was not executed', async () => {
+  const app = await setup();
+  const folder = await app.services.knowledge.createFolder(app.member.id, { name: 'Shared', space: 'team' });
+  for (const action of ['reject', 'approve'] as const) {
+    app.scripts.push(
+      toolCall('knowledge_mutation', {
+        action: 'create',
+        title: 'PG18 速览',
+        content: '# PG18 速览\n\n- **异步 I/O**\n- `EXPLAIN`',
+        folder_id: folder.id,
+      }),
+      text('Settled'),
+    );
+    const runId = await app.send();
+    const [card] = await app.cards(runId);
+    expect(card!.payload.details).toContainEqual(expect.objectContaining({ label: '内容', format: 'markdown' }));
+    const replies = () =>
+      getDb()
+        .select()
+        .from(messages)
+        .where(and(eq(messages.runId, runId), eq(messages.role, 'assistant')));
+    expect((await replies())[0]!.steps[0]!.summary).toContain('等你批准');
+    expect((await replies())[0]!.steps[0]!.summary).not.toContain('新建了');
+    expect(
+      (await app.call('POST', `/api/requests/${card!.id}/${action}`, { token: app.member.token, body: {} })).status,
+    ).toBe(200);
+    await app.services.engine.idle();
+    expect((await replies())[0]!.steps[0]!.summary).toContain(action === 'reject' ? '未执行' : '已完成');
+    expect((await replies())[0]!.steps[0]!.summary).not.toContain('等你批准');
+    const created = await getDb().select().from(docs).where(eq(docs.title, 'PG18 速览'));
+    expect(created).toHaveLength(action === 'reject' ? 0 : 1);
+  }
 });

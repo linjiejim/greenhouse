@@ -216,7 +216,7 @@ OAuth 2.1 与 MCP（公开路径，错误按 RFC 6749 返回 `{ error, error_des
 
 `mcp_call` 是连接器的唯一工具（`list`、`describe`、`call`）。它的描述每个回合重建，只列出这个 Agent 此刻能为提问者用的连接器和工具：已启用、在 manifest 的 `connectors` 里（空值表示全部）、per_member / oauth 的已由提问者连接；不能写的 Agent 只看到只读工具。只读工具直接运行；其余工具弹出批准卡（`tool_write`，原样参数），批准后用提问者的 Key 或登录执行。回合里提供，后台只允许只读调用；公开 Agent 不提供。
 
-`browser` 与 `vault` 只在回合里，和 `computer` 同时出现。`browser` 经 DevTools 操作电脑里的 Chromium：`open`、`snapshot`（带 ref 的短行，可从 `from_line` 续读）、`read`、`click`、`type`、`press`、`scroll`、`wait`、`back`、`tabs`、`switch_tab`、`close_tab`、`screenshot`（模型能看图时，图片随下一步给模型，不入库；不能看图时返回 `status: unsupported`，不截图，改用 snapshot / read）；只开 http 和 https，成员控制画面时不操作。`vault` 有 `find`（当前页面站点的条目，只有标签和掩码用户名）和 `fill {item_id, submit}`（服务端代填，`ask` 条目先发登录卡片）；公开 Agent 没有 `vault`。
+`browser` 与 `vault` 只在回合里，和 `computer` 同时出现。`browser` 经 DevTools 操作电脑里的 Chromium：`open`、`snapshot`（带 ref 的短行，可从 `from_line` 续读）、`read`、`click`、`type`、`press`、`scroll`、`wait`、`back`、`tabs`、`switch_tab`、`close_tab`、`screenshot`（经控制租约与密码库敏感值检查后保存为附件，返回 `file_id` 并在当前回复内联一张图片；模型能看图时也随下一步提供，不能看图时明确告知成员可见、模型不可见，仍可用 snapshot / read 决策）；只开 http 和 https，成员控制画面时不操作。`vault` 有 `find`（当前页面站点的条目，只有标签和掩码用户名）和 `fill {item_id, submit}`（服务端代填，`ask` 条目先发登录卡片）；公开 Agent 没有 `vault`。
 
 ## 5. 模块布局
 
@@ -241,7 +241,7 @@ apps/api/src/
 - `POST /api/requests/:id/approve` 的可选正文：`{ standing: false, continue_after?: boolean }`。省略正文仍可批准。`standing: true` 只能授予卡片展示的第 2 档范围和动作；其他卡片返回 409 `standing_not_allowed`。`continue_after` 只用于后台简报卡。多写卡片 `payload.calls` 展示全部写入，`batch_ready` 为 false 时不能批准（409 `request_building`）。
 - `GET /api/agents/:id/standing-approvals?cursor=&limit=`：拥有者的分页列表，`items` 含 `id`、`agent_id`、`scope_type`、`scope_id`、`actions`、`granted_at`、`revoked_at`，仍可读时附 `scope_name` 和 `scope_href`；权限失去时不泄露对象名。
 - `DELETE /api/agents/:id/standing-approvals/:approval_id`：撤销自己的授权，204。
-- `POST /api/runs/steps/:step_id/undo`：撤销自己回执的写入，204；`already_undone` / `undo_conflict` / `undo_unavailable` 为 409。撤销与 成员 的服务权限相同，文档版本或记录修订改变后不覆盖。
+- `POST /api/runs/steps/:step_id/undo`：撤销自己回执的写入，204；`already_undone` / `undo_conflict` / `undo_unavailable` 为 409。撤销与成员的服务权限相同，文档版本或记录修订改变后不覆盖。同一运行在同一数据表的回执包含 `event.step_ids`，保留 `step_id` 作为入口；调用批中任一步骤均在一个事务内倒序撤销整个批次，任一冲突则全部回滚。
 - `run_start` 简报参数新增 `computer`（默认 false）、`domains`（明确域名，最多 20 个，不接受 URL 或通配符）、`continue_after`（默认 false）。卡片显示电脑与域名，成员可以勾选「完成后继续」。Docker 后台期间断网；E2B 通过网络更新接口限制域名，不支持该接口的兼容服务拒绝后台电脑。
 - `schedule_mutation` 与定时的 POST / PATCH 新增 `quiet`（默认 false）及同样的电脑 / 域名 / 跟进参数。后台用 `run_finish { report, findings }` 结束；`GET /api/runs/:id` 新增 `findings`。静默且无发现时不发完成通知，也不再唤醒跟进；失败总是通知。
 - `table_query`（list / read）和 `table_mutation`（create / update / delete / bulk）调用同一个表格服务；bulk 最多 20 项，一张卡；delete 是移入回收站，彻底删除不提供给它。表格和知识库按三档，move 改变范围不能获得预先授权。
@@ -257,7 +257,7 @@ apps/api/src/
 - `GET /api/tables/bases/:id/automations`（游标分页）、`POST`（创建），`PATCH /api/tables/automations/:id`（完整规则与 `revision`）、`DELETE`：需要搭建者权限，执行者为保存规则的成员。触发为 `record_created / record_updated / record_matched / schedule / date_reached / button`；`config` 含筛选、限定更新字段、间隔分钟或日期字段与动作列表。
 - `GET /api/tables/automations/:id/runs`（游标分页）给出步骤、状态与 Agent `run_id`（Agent 事件尚在合并、未建立后台运行时为 queued；步骤派发成功不代表 Agent 已完成；多个 Agent 步骤全部成功才返回 succeeded）；`POST /api/tables/automations/:id/run` 显式执行按钮规则（可附 `record_id`）。执行前复核执行者与通知收件人的权限。
 - 通知动作 `{type:"notify",members,title}` 统一经通知服务；Agent 动作 `{type:"agent",agent_id,brief,tools:"none"|"same_base_read",output_field_id?}` 经事件唤醒入口，默认无工具；可选回写仍需按档批准。webhook `{type:"webhook",url}` 仅公网 HTTPS、拒绝重定向、连接时复核 DNS、10 秒超时。创建含 webhook 的规则或首次添加 webhook 时仅一次返回 `webhook_secret`，后续不读取；请求头 `x-greenhouse-id` 为执行 id、`x-greenhouse-timestamp` 为 Unix 秒、`x-greenhouse-signature` 为 `v1=` 加 HMAC-SHA256(secret, timestamp + "." + 原始请求体)。接收方应校验时间窗口并按 id 去重；发送结果未知不会自动重发。
-- `table_query` 发现表格、数据表、视图，按成员的自定义角色筛选记录与聚合；读取的记录引用会再次按接收者权限裁剪。`table_mutation` 支持记录批量修改、回收、评论和彻底删除；私有可逆操作有回执与撤销、共享按数据表动作批准、彻底删除逐次批准。`table_schema_plan` 的精确结构计划逐次确认后才落库。
+- `table_query` 发现表格、数据表、视图，按成员的自定义角色筛选记录与聚合；读取的记录引用会再次按接收者权限裁剪。`table_mutation` 支持记录批量修改、回收、评论和彻底删除；私有可逆操作有回执与撤销、共享按数据表动作批准、彻底删除逐次批准。`table_schema_plan` 的精确结构计划逐次确认后才落库；新增字段可标记 `primary: true`（只能一个文本字段），否则第一字段为 text 时复用为主字段，不再另加默认名称列。
 - `apps_query` 读取已发布应用与卡片，`apps_action` 只执行已保存的动作，按查看者的应用与表格权限交集。MCP 对应独立的 `apps:read` / `apps:write`，不扩大其他已授权范围；共享动作返回 `needs_you`，外部客户端不能代替成员批准。
 
 页面会话（CONV-28）：`POST /api/conversations` 的 chat.context 只接受引用 `{kind: doc|record|run|agent, id}`、`{kind: app, id, page_id?}` 或 `{kind: page, name}`。服务端验证对象访问，每轮按当前权限读取并作为不可信数据带入；不接受客户端内容快照。
@@ -313,3 +313,9 @@ custom 网页运行使用双层 `sandbox="allow-scripts"` iframe，均无 allow-
 ### 请求卡片的对象名称（#70）
 
 所有新请求的标题、`payload.summary` 与 `payload.details` 在服务端保存前转为人可读文字：内部引用显示当前成员可读的对象标题或路径，正文片段与嵌套参数预览中的引用也一样；不存在或不可读的对象只显示本地化的「不可用的对象」。每张卡最多解析 64 个不同引用，超出的引用同样隐藏 id。房间标题／摘要只显示「关联对象」，私有详情仍仅给被请求成员；应用动作的字段名称受发布角色和卡片列投影约束。`payload.input`、`standing_scope` 与批次 `calls` 的执行参数保持原样，批准后仍精确执行原调用，不能把展示文字当参数。Web 与原生移动端直接消费同一 payload；不新增接口和 schema。
+
+### 验收展示载荷（#70）
+
+`tool_write.payload.details` 是按顺序的 `{label, value, format?, chips?}`。`value` 已是成员语言的人类文字，内部引用经过权限检查；原始 `input` 与审批范围不参与展示转换。`format: markdown` 表示正文短预览，Web 仅允许标题、列表、强调和代码等安全文本结构，不加载远程图片，可展开；`chips` 是选项标签，`value` 同时保留标签以供原生读取。表结构、记录写入与应用动作不再把 JSON 序列化为详情。
+
+消息步骤的 `summary` 由服务端区分待批、完成、拒绝和结果未知；决定后更新原回复并发送 `message.updated`。运行详情 `steps[].summary` 使用同一套语义，`tool` 仍供程序识别，不作为界面标签。写入回执的 `content` 包含表名、正确操作动词与记录名，多项用换行列出；房间中的公开摘要和回执不命名私有对象。
