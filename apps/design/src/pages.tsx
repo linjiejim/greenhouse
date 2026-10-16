@@ -38,7 +38,7 @@ import {
   Tabs,
   TextArea,
 } from '@greenhouse/ui/kit';
-import { MiniChart, PageFrame, RequestCard, SectionTitle } from './components';
+import { MiniChart, PageFrame, SectionTitle } from './components';
 import { useDesign } from './context';
 import {
   agents,
@@ -48,7 +48,6 @@ import {
   documents,
   downloadText,
   members,
-  runs,
   schedules,
   skills,
   workspaceProviders,
@@ -166,7 +165,7 @@ function KnowledgePage() {
 // ─── Tables (the 项目 template replaces the v1 Projects module) ───
 
 function TablesPage() {
-  const { selection, select, newItem } = useDesign();
+  const { selection, select, newItem, mobile } = useDesign();
   const [, base, table, view] = selection.match(/^view:([^/]+)\/([^/]+)\/(.+)$/) ?? ['', '产品计划', '任务', '表格'];
   const views =
     base === '产品计划' && table === '任务'
@@ -175,6 +174,7 @@ function TablesPage() {
         ? ['表格', '看板']
         : ['表格'];
   const isTasks = base === '产品计划' && table === '任务';
+  if (selection.startsWith('config:')) return <BuilderPage kind={selection.slice(7)} />;
   return (
     <PageFrame
       title={`${base} / ${table}`}
@@ -188,6 +188,8 @@ function TablesPage() {
           </Button>
           <Menu
             items={[
+              { label: mobile ? '查看字段' : '字段配置', onClick: () => select('config:字段配置') },
+              { label: mobile ? '查看视图配置' : '视图配置', onClick: () => select('config:视图配置') },
               { label: '共享与权限', onClick: () => {} },
               { label: '自动化', onClick: () => {} },
               { label: '回收站', onClick: () => {} },
@@ -358,7 +360,7 @@ function Timeline() {
 }
 
 export function TablePage({ embedded = false }: { embedded?: boolean }) {
-  const { records, setRecords, openRecord, notify, confirm } = useDesign();
+  const { records, setRecords, openRecord, notify, confirm, mobile } = useDesign();
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('全部状态');
   const [sort, setSort] = useState(false);
@@ -403,19 +405,23 @@ export function TablePage({ embedded = false }: { embedded?: boolean }) {
           }}
           placeholder="搜索记录…"
         />
-        <Select
-          label="筛选状态"
-          value={status}
-          options={['全部状态', '待处理', '进行中', '已完成']}
-          onChange={(value) => {
-            setStatus(value);
-            setPage(1);
-          }}
-        />
-        <Button kind={sort ? 'secondary' : 'ghost'} aria-pressed={sort} onClick={() => setSort(!sort)}>
-          <ArrowDown size={15} />
-          截止日期
-        </Button>
+        {!mobile && (
+          <>
+            <Select
+              label="筛选状态"
+              value={status}
+              options={['全部状态', '待处理', '进行中', '已完成']}
+              onChange={(value) => {
+                setStatus(value);
+                setPage(1);
+              }}
+            />
+            <Button kind={sort ? 'secondary' : 'ghost'} aria-pressed={sort} onClick={() => setSort(!sort)}>
+              <ArrowDown size={15} />
+              截止日期
+            </Button>
+          </>
+        )}
         <IconButton
           className="mobile-only"
           label={mobileGrid ? '切换记录列表' : '切换完整表格'}
@@ -602,8 +608,9 @@ export function TablePage({ embedded = false }: { embedded?: boolean }) {
 // ─── Apps ───
 
 function AppsPage() {
-  const { selection, select, openPanel, notify } = useDesign();
+  const { selection, select, notify, mobile } = useDesign();
   const [scope, setScope] = useState('我的');
+  if (selection.startsWith('builder:')) return <BuilderPage kind="应用搭建器" />;
   if (selection.startsWith('app:')) {
     const app = apps.find((item) => item.id === selection.slice(4))!;
     return <AppRuntime app={app} />;
@@ -642,9 +649,8 @@ function AppsPage() {
               items={[
                 { label: '打开', onClick: () => select(`app:${app.id}`) },
                 {
-                  label: '编辑应用',
-                  onClick: () =>
-                    openPanel('编辑应用', <p>页面、卡片、角色与受众在搭建器里编辑；发布前可以按角色预览。</p>),
+                  label: mobile ? '查看搭建器' : '编辑应用',
+                  onClick: () => select(`builder:${app.id}`),
                 },
                 { label: app.pinned ? '取消置顶' : '置顶', onClick: () => notify('已更新') },
               ]}
@@ -656,7 +662,7 @@ function AppsPage() {
   );
 }
 function AppRuntime({ app }: { app: (typeof apps)[number] }) {
-  const { openPanel, notify } = useDesign();
+  const { openPanel, notify, select, mobile } = useDesign();
   const [page, setPage] = useState('我的工单');
   return (
     <PageFrame
@@ -670,7 +676,7 @@ function AppRuntime({ app }: { app: (typeof apps)[number] }) {
           >
             提交工单
           </Button>
-          <Menu items={[{ label: '编辑应用', onClick: () => notify('打开搭建器') }]} />
+          <Menu items={[{ label: mobile ? '查看搭建器' : '编辑应用', onClick: () => select(`builder:${app.id}`) }]} />
         </>
       }
     >
@@ -711,11 +717,13 @@ function TicketForm({ onSubmit }: { onSubmit: () => void }) {
 // ─── Skills ───
 
 function SkillsPage() {
-  const { selection, openPanel, navigate } = useDesign();
+  const { selection, openPanel, navigate, select, mobile } = useDesign();
+  if (selection.startsWith('file:')) return <BuilderPage kind="技能文件" />;
   const shown = skills.filter((skill) => selection === '全部' || skill.scope === selection);
   return (
     <PageFrame
       title="技能"
+      actions={<Button onClick={() => select('file:sk-weekly')}>{mobile ? '查看技能文件' : '编辑技能文件'}</Button>}
       help="技能是可复用的做法。模板只有说明和变量；技能包可以带文件和脚本，有版本与安全扫描。在输入框里用 / 调用。"
     >
       <div className="list-card">
@@ -823,7 +831,7 @@ function AgentsPage() {
 // ─── Runs ───
 
 function RunsPage() {
-  const { selection, openRun, notify } = useDesign();
+  const { selection, openRun, notify, runs } = useDesign();
   const [agent, setAgent] = useState('全部 Agent');
   if (selection === '定时')
     return (
@@ -892,21 +900,21 @@ function RunsPage() {
 // ─── Notifications ───
 
 function NotificationsPage() {
-  const { selection, openRun, openRecord, records, notify } = useDesign();
+  const { selection, openRun, openRecord, records, notify, requests, navigate } = useDesign();
   const [read, setRead] = useState<string[]>([]);
   if (selection === '需要你')
     return (
       <PageFrame title="需要你" help="等你决定的事。在这里直接处理，或回到来源对话。">
         <div className="stack">
-          <button className="list-row bordered" onClick={() => openRun('run-1')}>
-            <StatusBadge status="需要你" />
-            <span className="grow">
-              <strong>把 2 条任务标为已完成？</strong>
-              <span className="muted small">卷卷 · 4 分钟后过期</span>
-            </span>
-            <ChevronRight size={15} />
-          </button>
-          <RequestCard kind="takeover" onDone={() => notify('已交还给 Greeny')} />
+          {requests
+            .filter((item) => item.state === 'pending')
+            .map((item) => (
+              <Button key={item.id} onClick={() => navigate('chat', item.conversation)}>
+                <StatusBadge status="需要你" />
+                {item.title}
+                <ChevronRight size={15} />
+              </Button>
+            ))}
         </div>
       </PageFrame>
     );
@@ -1281,7 +1289,7 @@ function SettingsPage() {
 // ─── Admin ───
 
 function AdminPage() {
-  const { selection, notify, openPanel, openProvider, newItem, confirm } = useDesign();
+  const { selection, notify, openPanel, openProvider, newItem, confirm, mobile } = useDesign();
   const [tab, setTab] = useState('成员');
   const [paused, setPaused] = useState(false);
   const [accent, setAccent] = useState('#235D4D');
@@ -1289,6 +1297,7 @@ function AdminPage() {
     return (
       <PageFrame
         title="服务"
+        builder
         width="form"
         help="每种能力都可以换成任意服务商。部署时可以用环境变量初始化，之后在这里修改，立即生效。"
       >
@@ -1316,7 +1325,7 @@ function AdminPage() {
                   </span>
                 </span>
                 <StatusBadge status={status} />
-                <Button onClick={() => openProvider(item.id)}>配置</Button>
+                <Button onClick={() => openProvider(item.id)}>{mobile ? '查看' : '配置'}</Button>
               </div>
             );
           })}
@@ -1332,7 +1341,7 @@ function AdminPage() {
             <Button
               onClick={() => openPanel('渠道', <p>系统发信、飞书、企业微信与手机推送的配置，形式与服务相同。</p>)}
             >
-              配置
+              {mobile ? '查看' : '配置'}
             </Button>
           </div>
         </div>
@@ -1541,6 +1550,101 @@ function AdminPage() {
               />
             </div>
           ))}
+        </div>
+      )}
+    </PageFrame>
+  );
+}
+
+/** Mock builders expose the same content at every size; phones hand editing to the desktop. */
+function BuilderPage({ kind }: { kind: string }) {
+  const { mobile, notify, select, module } = useDesign();
+  const [name, setName] = useState(kind === '应用搭建器' ? 'IT 工单' : '产品计划');
+  const [group, setGroup] = useState('状态');
+  const [file, setFile] = useState('# 整理周报\n汇总本周进度与下周安排。\n保留来源，请成员确认写入。');
+  return (
+    <PageFrame
+      title={kind}
+      builder
+      width="form"
+      actions={
+        <Button kind="primary" onClick={() => notify('已保存')}>
+          保存
+        </Button>
+      }
+    >
+      <Button
+        kind="ghost"
+        onClick={() => select(module === 'tables' ? 'view:产品计划/任务/表格' : module === 'apps' ? 'center' : '全部')}
+      >
+        返回
+      </Button>
+      {kind === '字段配置' ? (
+        <div className="list-card">
+          {['标题 · 文本', '状态 · 单选', '负责人 · 成员', '截止日期 · 日期'].map((label) => (
+            <div className="list-row" key={label}>
+              <span className="grow">{label}</span>
+              {!mobile && (
+                <Menu
+                  items={[
+                    { label: '修改字段', onClick: () => notify('字段已更新') },
+                    { label: '删除字段', onClick: () => notify('字段已删除') },
+                  ]}
+                />
+              )}
+            </div>
+          ))}
+          {!mobile && <Button onClick={() => notify('已添加字段')}>添加字段</Button>}
+        </div>
+      ) : kind === '视图配置' ? (
+        <div className="stack">
+          <Field label="筛选">
+            {mobile ? (
+              <p>状态不是已完成</p>
+            ) : (
+              <Select label="视图筛选" value={name} options={['产品计划', '全部任务', '待处理']} onChange={setName} />
+            )}
+          </Field>
+          <Field label="排序">
+            {mobile ? (
+              <p>截止日期 · 升序</p>
+            ) : (
+              <Select
+                label="视图排序"
+                value="截止日期"
+                options={['截止日期', '负责人']}
+                onChange={() => notify('排序已更新')}
+              />
+            )}
+          </Field>
+          <Field label="分组">
+            {mobile ? (
+              <p>{group}</p>
+            ) : (
+              <Select label="视图分组" value={group} options={['状态', '负责人', '不分组']} onChange={setGroup} />
+            )}
+          </Field>
+        </div>
+      ) : kind === '技能文件' ? (
+        <Field label="SKILL.md">
+          {mobile ? (
+            <pre className="code-block">{file}</pre>
+          ) : (
+            <TextArea aria-label="技能文件" value={file} onChange={(event) => setFile(event.target.value)} />
+          )}
+        </Field>
+      ) : (
+        <div className="stack">
+          <Field label="应用名称">
+            {mobile ? <p>{name}</p> : <Input value={name} onChange={(event) => setName(event.target.value)} />}
+          </Field>
+          <div className="list-card">
+            <div className="list-row">页面：我的工单、全部工单、统计</div>
+            <div className="list-row">数据：IT 支持 / 工单</div>
+            <div className="list-row">受众：所有成员</div>
+          </div>
+          {!mobile && <Button onClick={() => notify('已添加页面')}>添加页面</Button>}
+          <TicketsTable />
         </div>
       )}
     </PageFrame>

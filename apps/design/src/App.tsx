@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState, type ReactNode } from 'react';
-import { Columns3, Menu as MenuIcon, Moon, PanelLeftOpen, Smartphone, Sun } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { Columns3, Menu as MenuIcon, Moon, PanelLeftOpen, Smartphone, Sun, Tablet } from 'lucide-react';
 import { GreenhouseMark } from '@greenhouse/ui/components/brand';
 import { Button, ConfirmDialog, IconButton, KitProvider, Overlay, Toast } from '@greenhouse/ui/kit';
 import { DesignContext, type Confirmation, type Marks } from './context';
@@ -8,8 +8,12 @@ import {
   capabilities,
   chats,
   initialRecords,
+  initialRequests,
+  runs as initialRuns,
+  decideRequest,
+  nextPendingRequest,
+  pendingRequests,
   modules,
-  runs,
   saveRecord,
   type Capability,
   type ModuleId,
@@ -19,6 +23,7 @@ import { NativeSelect } from './components';
 import { Page } from './pages';
 import { ChatPage } from './chat';
 import { ComponentLab } from './lab';
+import { SurfacesPage } from './surfaces';
 import { MobileModuleBar, ModuleSidebar, Rail, defaultSelection } from './shell';
 import {
   AgentProfile,
@@ -55,8 +60,14 @@ export function App() {
   const [viewport, setViewport] = useState('桌面');
   const [systemDark, setSystemDark] = useState(window.matchMedia('(prefers-color-scheme: dark)').matches);
   const [smallScreen, setSmallScreen] = useState(window.matchMedia('(max-width: 767px)').matches);
+  const [mediumScreen, setMediumScreen] = useState(
+    window.matchMedia('(min-width: 768px) and (max-width: 1023px)').matches,
+  );
   const [density, setDensity] = useState<'舒适' | '紧凑'>('舒适');
   const [records, setRecords] = useState(initialRecords);
+  const [requests, setRequests] = useState(initialRequests);
+  const requestList = useRef(initialRequests);
+  const [runs, setRuns] = useState(initialRuns);
   const [collapsed, setCollapsed] = useState(false);
   const [drawer, setDrawer] = useState(false);
   const [panel, setPanel] = useState<Panel | null>(null);
@@ -76,7 +87,9 @@ export function App() {
       }),
     [],
   );
-  const mobile = viewport === '手机' || smallScreen;
+  const mobile = viewport === '手机' || (smallScreen && viewport !== '平板');
+  const tablet = !mobile && (viewport === '平板' || mediumScreen);
+  const overlayNavigation = mobile || tablet;
   const selection = selections[module];
   useEffect(() => {
     const listener = () => {
@@ -92,13 +105,19 @@ export function App() {
   useEffect(() => {
     const media = window.matchMedia('(prefers-color-scheme: dark)');
     const narrow = window.matchMedia('(max-width: 767px)');
+    const medium = window.matchMedia('(min-width: 768px) and (max-width: 1023px)');
     const change = () => setSystemDark(media.matches);
-    const size = () => setSmallScreen(narrow.matches);
+    const size = () => {
+      setSmallScreen(narrow.matches);
+      setMediumScreen(medium.matches);
+    };
     media.addEventListener('change', change);
     narrow.addEventListener('change', size);
+    medium.addEventListener('change', size);
     return () => {
       media.removeEventListener('change', change);
       narrow.removeEventListener('change', size);
+      medium.removeEventListener('change', size);
     };
   }, []);
   const select = useCallback(
@@ -119,6 +138,9 @@ export function App() {
   );
   const reset = () => {
     setRecords(initialRecords);
+    requestList.current = initialRequests;
+    setRequests(initialRequests);
+    setRuns(initialRuns);
     setSelections(defaultSelection);
     setScope('团队');
     setPanel(null);
@@ -160,18 +182,67 @@ export function App() {
     } else if (module === 'agents') open({ type: 'agent', id: 'new' });
     else open({ type: 'create', module });
   };
-  const needsYou = runs.filter((run) => run.state === '需要你').length + 1;
+  const decide = (id: string, decision: 'accepted' | 'rejected' | 'done', standing = false) => {
+    const current = requestList.current;
+    const request = current.find((item) => item.id === id);
+    if (!request || request.state !== 'pending') return;
+    const result = { ...decideRequest(request, decision), standing };
+    const next = current.map((item) => (item.id === id ? result : item));
+    requestList.current = next;
+    setRequests(next);
+    if (id === 'approve-tasks' && result.state === 'accepted') {
+      setRecords((items) =>
+        items.map((item) => (['GH-104', 'GH-102'].includes(item.id) ? { ...item, status: '已完成' } : item)),
+      );
+    }
+    const label =
+      result.state === 'expired'
+        ? '已过期'
+        : decision === 'accepted'
+          ? '已批准'
+          : decision === 'rejected'
+            ? '已拒绝'
+            : '已完成';
+    const remaining = pendingRequests(next).length;
+    const following = nextPendingRequest(next, id);
+    notify(
+      remaining ? `${label} · 还有 ${remaining} 件需要你` : label,
+      following ? { label: '下一件', onClick: () => navigate('chat', following.conversation) } : undefined,
+    );
+  };
+  const needsYou = pendingRequests(requests).length;
   const headerLead =
-    mobile || collapsed ? (
+    overlayNavigation || collapsed ? (
       <IconButton
-        label={mobile ? '打开导航' : '展开目录'}
-        onClick={() => (mobile ? setDrawer(true) : setCollapsed(false))}
+        label={overlayNavigation ? '打开导航' : '展开目录'}
+        onClick={() => (overlayNavigation ? setDrawer(true) : setCollapsed(false))}
       >
-        {mobile ? <MenuIcon size={19} /> : <PanelLeftOpen size={18} />}
+        {overlayNavigation ? <MenuIcon size={19} /> : <PanelLeftOpen size={18} />}
       </IconButton>
     ) : null;
   const context = {
     module,
+    requests,
+    runs,
+    cancelRun: (id: string) => {
+      setRuns((items) => items.map((item) => (item.id === id ? { ...item, state: '已取消' } : item)));
+      notify('已取消');
+    },
+    decide,
+    openPhone: (conversation: string) => {
+      setViewport('手机');
+      navigate('chat', conversation);
+    },
+    continueOnComputer: () =>
+      notify('已发到你的电脑', {
+        label: '复制链接',
+        onClick: () => {
+          void navigator.clipboard?.writeText(location.href).then(
+            () => notify('链接已复制'),
+            () => notify('复制失败，请重试'),
+          );
+        },
+      }),
     records,
     setRecords,
     navigate,
@@ -292,30 +363,43 @@ export function App() {
             </a>
             <div className="preview-controls">
               <div className="preview-tabs">
-                <button aria-pressed={module !== 'components'} onClick={() => navigate('chat')}>
+                <button
+                  aria-pressed={module !== 'components' && module !== 'surfaces'}
+                  onClick={() => navigate('chat')}
+                >
                   页面
                 </button>
                 <button aria-pressed={module === 'components'} onClick={() => navigate('components')}>
                   组件
                 </button>
+                <button aria-pressed={module === 'surfaces'} onClick={() => navigate('surfaces')}>
+                  多端
+                </button>
               </div>
-              <NativeSelect
-                label="预览页面"
-                value={modules.find((item) => item.id === module)!.label}
-                options={modules
-                  .filter((item) => item.id !== 'components')
-                  .map((item) => item.label)
-                  .concat(module === 'components' ? ['组件'] : [])}
-                onChange={(label) => navigate(modules.find((item) => item.label === label)!.id)}
-              />
-              <div className="preview-devices">
-                <IconButton label="桌面预览" aria-pressed={viewport === '桌面'} onClick={() => setViewport('桌面')}>
-                  <Columns3 size={17} />
-                </IconButton>
-                <IconButton label="手机预览" aria-pressed={viewport === '手机'} onClick={() => setViewport('手机')}>
-                  <Smartphone size={17} />
-                </IconButton>
-              </div>
+              {module !== 'surfaces' && (
+                <NativeSelect
+                  label="预览页面"
+                  value={modules.find((item) => item.id === module)!.label}
+                  options={modules
+                    .filter((item) => item.id !== 'components' && item.id !== 'surfaces')
+                    .map((item) => item.label)
+                    .concat(module === 'components' ? ['组件'] : [])}
+                  onChange={(label) => navigate(modules.find((item) => item.label === label)!.id)}
+                />
+              )}
+              {module !== 'surfaces' && (
+                <div className="preview-devices">
+                  <IconButton label="桌面预览" aria-pressed={viewport === '桌面'} onClick={() => setViewport('桌面')}>
+                    <Columns3 size={17} />
+                  </IconButton>
+                  <IconButton label="平板预览" aria-pressed={viewport === '平板'} onClick={() => setViewport('平板')}>
+                    <Tablet size={17} />
+                  </IconButton>
+                  <IconButton label="手机预览" aria-pressed={viewport === '手机'} onClick={() => setViewport('手机')}>
+                    <Smartphone size={17} />
+                  </IconButton>
+                </div>
+              )}
               <IconButton label={dark ? '切换浅色' : '切换深色'} onClick={() => setTheme(dark ? 'light' : 'dark')}>
                 {dark ? <Sun size={17} /> : <Moon size={17} />}
               </IconButton>
@@ -325,16 +409,23 @@ export function App() {
             </div>
             <span className="preview-caption">模拟数据 · 无需后端</span>
           </header>
-          <div className={`stage ${mobile ? 'mobile-stage' : ''}`}>
+          <div
+            className={`stage ${module === 'surfaces' ? 'surfaces-stage' : mobile ? 'mobile-stage' : tablet ? 'tablet-stage' : ''}`}
+          >
             <div
               className={`product-window ${density === '紧凑' ? 'compact' : ''}`}
               data-theme={dark ? 'dark' : 'light'}
-              data-narrow={mobile || undefined}
+              data-narrow={(mobile && module !== 'surfaces') || undefined}
+              data-tablet={tablet || undefined}
               data-floating-boundary
               data-testid="product-window"
             >
               <div className="product-background" inert={panel !== null || undefined}>
-                {module === 'login' ? (
+                {module === 'surfaces' ? (
+                  <main className="main-area" key={revision}>
+                    <SurfacesPage />
+                  </main>
+                ) : module === 'login' ? (
                   <LoginPage
                     onLogin={() => {
                       navigate('chat', 'main');
@@ -344,11 +435,11 @@ export function App() {
                 ) : (
                   <>
                     {!mobile && <Rail onLogout={() => navigate('login')} />}
-                    {mobile && drawer && (
+                    {overlayNavigation && drawer && (
                       <button className="nav-scrim" aria-label="关闭导航" onClick={() => setDrawer(false)} />
                     )}
-                    {(mobile ? drawer : !collapsed) && (
-                      <aside className={`context-sidebar ${mobile ? 'open' : ''}`} aria-label="模块目录">
+                    {(overlayNavigation ? drawer : !collapsed) && (
+                      <aside className={`context-sidebar ${overlayNavigation ? 'open' : ''}`} aria-label="模块目录">
                         <ModuleSidebar onCollapse={() => setCollapsed(true)} onClose={() => setDrawer(false)} />
                         {mobile && <MobileModuleBar />}
                       </aside>

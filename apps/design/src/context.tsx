@@ -1,7 +1,13 @@
 import { createContext, useContext, type Dispatch, type ReactNode, type SetStateAction } from 'react';
-import type { Capability, ModuleId, RecordItem } from './data';
+import type { Capability, DesignRequest, ModuleId, RecordItem, RunItem } from './data';
 export interface DesignContextValue {
   module: ModuleId;
+  requests: DesignRequest[];
+  runs: RunItem[];
+  cancelRun: (id: string) => void;
+  decide: (id: string, decision: 'accepted' | 'rejected' | 'done', standing?: boolean) => void;
+  openPhone: (conversation: string) => void;
+  continueOnComputer: () => void;
   records: RecordItem[];
   setRecords: Dispatch<SetStateAction<RecordItem[]>>;
   navigate: (module: ModuleId, selection?: string) => void;
