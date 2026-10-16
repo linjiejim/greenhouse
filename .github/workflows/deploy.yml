@@ -5,8 +5,9 @@ name: Deploy
 #
 # Chain: push to main → Release builds ghcr `main-<sha>` → this workflow fires,
 # waits for the CI quality gate (lint/typecheck/test/e2e) on the same sha, then
-# SSHes in and rolls the compose stack to that exact image (the one-shot
-# `migrate` service applies DB migrations before the API restarts).
+# SSHes in and rolls the compose stack to that exact image: migrations run
+# with the new image while the old API keeps serving, and only a successful
+# migration moves the pin and restarts the API.
 #
 # Fork-safe: hard-gated to this repository; secrets live in the `jim-server`
 # environment (DEV_SERVER_HOST / PORT / USERNAME / SSH_KEY).
@@ -77,8 +78,6 @@ jobs:
             IMG="ghcr.io/linjiejim/greenhouse:main-${{ steps.sha.outputs.short }}"
             # The image being replaced stays on disk as the rollback target.
             PREV=$(sed -n 's/^GREENHOUSE_IMAGE=//p' .env)
-            # Persist the pin so a manual `docker compose up` uses the same image.
-            sed -i "s|^GREENHOUSE_IMAGE=.*|GREENHOUSE_IMAGE=$IMG|" .env
             # Every roll pins a new tag and `image prune` only removes untagged images, so
             # superseded tags piled up until the disk filled and took Postgres down with it
             # (2026-09-24: 43 tags, 100%). Drop every main-* tag (and locally loaded
@@ -93,7 +92,16 @@ jobs:
             # keeps the deploy independent of whatever is stored there.
             export DOCKER_CONFIG="$(mktemp -d)"
             trap 'rm -rf "$DOCKER_CONFIG"' EXIT
+            # The shell variable overrides the .env pin for compose until the pin moves.
+            export GREENHOUSE_IMAGE="$IMG"
             $COMPOSE pull --quiet
+            # Migrate before touching the API: `up -d` alone recreates the API first, so a
+            # failing migration left nothing serving (2026-10-16, 502 for 2h20m). Here it
+            # fails the job with the old API and the old pin still in place. Migrations
+            # must therefore stay compatible with the API they replace.
+            $COMPOSE run --rm migrate || { echo "migrate failed on $IMG; still serving $PREV"; exit 1; }
+            # Persist the pin so a manual `docker compose up` uses the same image.
+            sed -i "s|^GREENHOUSE_IMAGE=.*|GREENHOUSE_IMAGE=$IMG|" .env
             $COMPOSE up -d
             # The API needs a few seconds before it listens; until then curl exits
             # non-zero, and under `set -e` a failing `S=$(...)` would abort the roll
