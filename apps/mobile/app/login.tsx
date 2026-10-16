@@ -26,6 +26,7 @@ import {
   type SecureFieldRef,
 } from '@expo/ui/swift-ui';
 import {
+  accessibilityLabel,
   autocorrectionDisabled,
   buttonStyle,
   controlSize,
@@ -39,6 +40,7 @@ import {
   submitLabel,
   textContentType,
   textInputAutocapitalization,
+  tint,
 } from '@expo/ui/swift-ui/modifiers';
 import { useLogin } from '../src/login/use-login';
 import { useT } from '../src/lib/i18n';
@@ -48,7 +50,7 @@ import { FormNavRow, NativeForm } from '../src/ui/native-form';
 import { makeStyles, space, typo, useTheme } from '../src/theme';
 
 export default function Login() {
-  const { colors: c } = useTheme();
+  const { colors: c, hex } = useTheme();
   const styles = useStyles(c);
   const t = useT();
   const { width } = useWindowDimensions();
@@ -74,7 +76,6 @@ export default function Login() {
               <View style={[styles.brand, { width: width - 40 }]}>
                 <GreenhouseMark size={64} />
                 <RNText style={styles.title}>Greenhouse</RNText>
-                <RNText style={styles.sub}>{t('login.subtitle')}</RNText>
               </View>
             </RNHostView>
           }
@@ -93,15 +94,14 @@ export default function Login() {
           </Section>
         ) : null}
 
-        {/* The footer is always a Text — the error in red, else the members-only
-            note. Adding / removing a Section footer rebuilds its rows, and the
-            focused field would lose focus mid-typing when the error clears. */}
-        <Section footer={<Text modifiers={error ? [foregroundStyle('red')] : []}>{error ?? t('login.footer')}</Text>}>
+        {/* Keep the footer mounted: rebuilding its Section would blur a focused field. */}
+        <Section footer={<Text modifiers={error ? [foregroundStyle('red')] : []}>{error ?? ''}</Text>}>
           <TextField
             text={emailState}
             placeholder={t('login.emailPlaceholder')}
             onTextChange={clearError}
             modifiers={[
+              accessibilityLabel(t('login.emailPlaceholder')),
               textContentType('username'),
               keyboardType('email-address'),
               textInputAutocapitalization('never'),
@@ -115,7 +115,12 @@ export default function Login() {
             text={passwordState}
             placeholder={t('login.passwordPlaceholder')}
             onTextChange={clearError}
-            modifiers={[textContentType('password'), submitLabel('go'), onSubmit(() => void submit())]}
+            modifiers={[
+              accessibilityLabel(t('login.passwordPlaceholder')),
+              textContentType('password'),
+              submitLabel('go'),
+              onSubmit(() => void submit()),
+            ]}
           />
         </Section>
 
@@ -123,6 +128,7 @@ export default function Login() {
           <Button
             onPress={() => void submit()}
             modifiers={[
+              foregroundStyle(hex.onAccent),
               buttonStyle(LIQUID_GLASS ? 'glassProminent' : 'borderedProminent'),
               controlSize('large'),
               disabled(busy),
@@ -131,7 +137,7 @@ export default function Login() {
             ]}
           >
             {busy ? (
-              <ProgressView modifiers={[frame({ maxWidth: 9999 })]} />
+              <ProgressView modifiers={[tint(hex.onAccent), frame({ maxWidth: 9999 })]} />
             ) : (
               <Text modifiers={[font({ weight: 'semibold' }), frame({ maxWidth: 9999 })]}>{t('login.submit')}</Text>
             )}
@@ -145,5 +151,4 @@ export default function Login() {
 const useStyles = makeStyles((c) => ({
   brand: { alignItems: 'center', paddingTop: space.xxxl, paddingBottom: space.xl, gap: space.xs },
   title: { ...typo.largeTitle, color: c.label, marginTop: space.md },
-  sub: { ...typo.subheadline, color: c.secondaryLabel, textAlign: 'center' },
 }));

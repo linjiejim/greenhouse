@@ -1,7 +1,7 @@
 /**
- * The realtime socket's URL (./index.ts `socketUrl`): a token only ever goes to the origin of the
- * station it belongs to, and only while that is the active station. Runs in the ROOT vitest unit
- * project with the stores faked (no React Native module loads).
+ * The realtime socket's target (./index.ts `socketTarget`): a token only ever goes to the origin
+ * of the station it belongs to, and only while that is the active station. Runs in the ROOT
+ * vitest unit project with the stores faked (no React Native module loads).
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -22,7 +22,7 @@ vi.hoisted(() => {
   g.WebSocket ??= class {};
 });
 
-import { socketUrl } from './index';
+import { socketTarget } from './index';
 
 beforeEach(() => {
   active = { id: 'B', baseUrl: 'https://b.example', name: 'B' };
@@ -30,22 +30,22 @@ beforeEach(() => {
   tokenStation = 'B';
 });
 
-describe('socketUrl', () => {
-  it("pairs the active station's origin with its own token", () => {
-    expect(socketUrl()).toBe('wss://b.example/api/ws?token=tok-B');
+describe('socketTarget', () => {
+  it("pairs the active station's origin with its own token, which never goes in the URL", () => {
+    expect(socketTarget()).toEqual({ url: 'wss://b.example/api/ws', token: 'tok-B' });
   });
 
   it('refuses a token the mirror holds for another station (a switch mid-flight)', () => {
     token = 'tok-A';
     tokenStation = 'A';
-    expect(socketUrl()).toBeNull();
+    expect(socketTarget()).toBeNull();
   });
 
   it('stays closed with no token or no active station', () => {
     token = null;
-    expect(socketUrl()).toBeNull();
+    expect(socketTarget()).toBeNull();
     token = 'tok-B';
     active = null;
-    expect(socketUrl()).toBeNull();
+    expect(socketTarget()).toBeNull();
   });
 });

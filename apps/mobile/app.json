@@ -3,7 +3,7 @@
     "name": "Greenhouse",
     "slug": "greenhouse-mobile",
     "scheme": "greenhouse",
-    "version": "1.3.2",
+    "version": "2.0.0",
     "runtimeVersion": {
       "policy": "fingerprint"
     },
@@ -11,19 +11,24 @@
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
-    "assetBundlePatterns": ["**/*"],
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "app.greenhouse.mobile",
       "appleTeamId": "3SKAS5BNK9",
       "entitlements": {
-        "com.apple.security.application-groups": ["group.app.greenhouse.mobile"],
+        "com.apple.security.application-groups": [
+          "group.app.greenhouse.mobile"
+        ],
         "aps-environment": "development",
         "com.apple.developer.usernotifications.time-sensitive": true
       },
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
-        "NSSupportsLiveActivities": true
+        "NSSupportsLiveActivities": true,
+        "UIViewControllerBasedStatusBarAppearance": true
       }
     },
     "android": {
@@ -91,6 +96,12 @@
             ]
           }
         }
+      ],
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "Allow Greenhouse to transcribe your recording into the composer."
+        }
       ]
     ],
     "experiments": {
@@ -106,7 +117,9 @@
                   "bundleIdentifier": "app.greenhouse.mobile.widget",
                   "targetName": "GreenhouseWidget",
                   "entitlements": {
-                    "com.apple.security.application-groups": ["group.app.greenhouse.mobile"]
+                    "com.apple.security.application-groups": [
+                      "group.app.greenhouse.mobile"
+                    ]
                   }
                 }
               ]

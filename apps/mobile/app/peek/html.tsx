@@ -58,7 +58,7 @@ export default function HtmlViewer() {
   const t = useT();
   const { k } = useLocalSearchParams<{ k?: string }>();
   const router = useRouter();
-  const page = getHandoff<{ code: string; title?: string; bridge?: boolean }>(k);
+  const page = getHandoff<{ code: string; title?: string; bridge?: boolean }>(k, 'html');
   const source = useMemo(() => (page ? { html: page.code } : null), [page]);
   const handedBack = useRef(false);
   const token = useMemo(bridgeToken, []);

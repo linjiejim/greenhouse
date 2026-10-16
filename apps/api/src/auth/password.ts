@@ -1,40 +1,38 @@
 /**
- * Password hashing — scrypt-based, zero external dependencies.
- *
- * Uses Node.js built-in crypto.scrypt for password hashing.
- * Format: "<salt_hex>:<key_hex>"
+ * Password hashing with scrypt. Stored as `scrypt$N$r$p$<salt>$<key>` (base64url), so the
+ * parameters travel with the hash and can be raised later.
  */
 
-import { scrypt, randomBytes, timingSafeEqual } from 'node:crypto';
-import { promisify } from 'node:util';
+import { randomBytes, scrypt, timingSafeEqual, type ScryptOptions } from 'node:crypto';
 
-const scryptAsync = promisify(scrypt);
-
-const SALT_LENGTH = 32;
+const N = 16_384;
+const R = 8;
+const P = 1;
 const KEY_LENGTH = 64;
 
-/**
- * Hash a plaintext password using scrypt.
- * Returns "salt_hex:key_hex" string suitable for DB storage.
- */
-export async function hashPassword(password: string): Promise<string> {
-  const salt = randomBytes(SALT_LENGTH);
-  const key = (await scryptAsync(password, salt, KEY_LENGTH)) as Buffer;
-  return `${salt.toString('hex')}:${key.toString('hex')}`;
+function derive(password: string, salt: Buffer, options: ScryptOptions): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    scrypt(password.normalize('NFKC'), salt, KEY_LENGTH, { ...options, maxmem: 64 * 1024 * 1024 }, (error, key) =>
+      error ? reject(error) : resolve(key),
+    );
+  });
 }
 
-/**
- * Verify a plaintext password against a stored hash.
- * Uses timing-safe comparison.
- */
-export async function verifyPassword(password: string, storedHash: string): Promise<boolean> {
-  const [saltHex, keyHex] = storedHash.split(':');
-  if (!saltHex || !keyHex) return false;
+export async function hashPassword(password: string): Promise<string> {
+  const salt = randomBytes(16);
+  const key = await derive(password, salt, { N, r: R, p: P });
+  return ['scrypt', N, R, P, salt.toString('base64url'), key.toString('base64url')].join('$');
+}
 
-  const salt = Buffer.from(saltHex, 'hex');
-  const expectedKey = Buffer.from(keyHex, 'hex');
-  const key = (await scryptAsync(password, salt, KEY_LENGTH)) as Buffer;
-
-  if (key.length !== expectedKey.length) return false;
-  return timingSafeEqual(key, expectedKey);
+export async function verifyPassword(password: string, stored: string | null): Promise<boolean> {
+  if (!stored) return false;
+  const [scheme, n, r, p, salt, key] = stored.split('$');
+  if (scheme !== 'scrypt' || !salt || !key) return false;
+  const expected = Buffer.from(key, 'base64url');
+  const actual = await derive(password, Buffer.from(salt, 'base64url'), {
+    N: Number(n),
+    r: Number(r),
+    p: Number(p),
+  });
+  return actual.length === expected.length && timingSafeEqual(actual, expected);
 }

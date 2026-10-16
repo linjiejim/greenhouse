@@ -12,8 +12,6 @@
  * recall and is a product decision; this is only the safety floor under it.
  */
 
-import { getModelEntry } from './registry.js';
-
 /**
  * Fallback history budget in estimated tokens, used only for models whose
  * catalog entry declares no `contextWindow`. Sized for 128k-class context
@@ -33,16 +31,12 @@ export const HISTORY_TOKEN_BUDGET = 80_000;
 export const DEFAULT_COMPACTION_THRESHOLD = 0.5;
 
 /**
- * History budget for one chat turn, derived from the model catalog:
- * `contextWindow × compactionThreshold` (threshold defaults to 50%).
- * Unknown models — or entries without a declared window — fall back to the
- * conservative HISTORY_TOKEN_BUDGET so a catalog gap can never overflow a
- * small-window model.
+ * History budget for one turn: `contextWindow × threshold`. A model without a declared window
+ * gets the conservative HISTORY_TOKEN_BUDGET, so a missing number never overflows a small model.
  */
-export function resolveHistoryBudget(modelId?: string): number {
-  const entry = modelId ? getModelEntry(modelId) : undefined;
-  if (!entry?.contextWindow) return HISTORY_TOKEN_BUDGET;
-  return Math.floor(entry.contextWindow * (entry.compactionThreshold ?? DEFAULT_COMPACTION_THRESHOLD));
+export function resolveHistoryBudget(contextWindow?: number, threshold = DEFAULT_COMPACTION_THRESHOLD): number {
+  if (!contextWindow) return HISTORY_TOKEN_BUDGET;
+  return Math.floor(contextWindow * threshold);
 }
 
 /** Rough token estimate: CJK ≈ 1 token per char, everything else ≈ 4 chars per token. */

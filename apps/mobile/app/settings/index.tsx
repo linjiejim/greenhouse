@@ -1,27 +1,18 @@
 import { brandFont as font } from '../../src/ui/brand-font';
 /**
- * Settings — the root of the Settings modal (page sheet with its own native
- * stack, large title, ✓ Done). A real SwiftUI Form, iOS Settings–style:
+ * Settings — the root of the Settings modal (page sheet with its own native stack, large title,
+ * ✓ Done). A SwiftUI Form, iOS Settings–style (SET-01, SET-02):
  *
- *  - account: avatar + name + email (one VoiceOver element — the initial is
- *    decoration), role, the 工作站 row (→ stations page) and — on iOS, for a
- *    station that pushes — 通知 · {state} (→ /settings/notifications),
- *  - 外观: theme (segmented; applied app-wide at once via Appearance) and
- *    language (menu picker),
- *  - 对话: 标签 (→ tag library page), — internal accounts on iOS — 我的 Bot
- *    · {n} (→ /settings/bots, where Bots are made and managed) and — when the
- *    account has external tools — 连接器 · {n} (→ /settings/connectors: the
- *    member's own keys and sign-ins). No default agent to pick (2026-10): new
- *    chats start with Sprouty — the footer says so, and how to talk to one
- *    Bot on its own (its profile → 新对话),
- *  - 用量 (when the account has limits), 关于 (version, OTA update),
- *  - 退出登录 (destructive, confirmed): the modal closes first, then the auth
- *    store signs out and the root layout routes to /login (local — can't fail).
- *
- * Drill-down rows are the shared `FormNavRow` (label · muted value · chevron).
+ *  - account: picture (or the initial) + name + email; 「更换头像」 and 「修改名字」; the role;
+ *    the 工作站 row (→ stations page);
+ *  - 通知 (→ /settings/notifications): what reaches the member, and this phone;
+ *  - 外观: theme (segmented) and language (menu) — account settings, applied at once and saved;
+ *  - 关于 (version, which JS bundle runs);
+ *  - 退出登录 (destructive, confirmed): the modal closes first, then the auth store signs out
+ *    and the root layout routes to /login.
  */
 
-import React, { useEffect } from 'react';
+import React from 'react';
 import { Stack, useRouter } from 'expo-router';
 import {
   Button,
@@ -29,6 +20,7 @@ import {
   HStack,
   LabeledContent,
   Picker,
+  RNHostView,
   Section,
   Text,
   VStack,
@@ -44,14 +36,12 @@ import {
   pickerStyle,
   tag,
 } from '@expo/ui/swift-ui/modifiers';
-import { chooseLanguage } from '../../src/settings/account-language';
-import type { LangPref, ThemePref } from '../../src/store/prefs';
-import { useBotIdentityEnabled } from '../../src/bots/availability';
-import { PUSH_PLATFORM_READY, usePush } from '../../src/push/register';
-import { sproutyBot, useBots } from '../../src/bots/store';
-import { compactNumber } from '../../src/lib/format';
+import { Image } from 'expo-image';
+import { View } from 'react-native';
+import { fileUrl } from '../../src/api/files';
 import { useT } from '../../src/lib/i18n';
-import { ROLE_LABEL, useSettings } from '../../src/settings/use-settings';
+import { usePushRow, useSettings } from '../../src/settings/use-settings';
+import type { LangPref, ThemePref } from '../../src/store/prefs';
 import { useTheme } from '../../src/theme';
 import { FormNavRow, NativeForm } from '../../src/ui/native-form';
 import { toolbarIcon } from '../../src/ui/toolbar-icon';
@@ -62,11 +52,9 @@ export default function Settings() {
   const t = useT();
   const { hex } = useTheme();
   const router = useRouter();
-  const { user, nickname, station, prefs, tagCount, tagsLoaded, version, update, signOut, connectors } =
-    useSettings();
-  const { theme, setTheme, lang } = prefs;
-  const myBots = useMyBots();
+  const s = useSettings();
   const push = usePushRow();
+  const name = s.user?.name || t('settings.fallbackName');
 
   return (
     <>
@@ -83,54 +71,79 @@ export default function Settings() {
       <NativeForm>
         {/* ── account ── */}
         <Section>
-          {/* one VoiceOver element: "name, email" — the initial avatar is decoration */}
+          {/* one VoiceOver element: "name, email" — the picture is decoration */}
           <HStack spacing={14} modifiers={[accessibilityElement('combine')]}>
-            <ZStack modifiers={[accessibilityHidden()]}>
-              <Circle
-                modifiers={[foregroundStyle(hex.accent), frame({ width: 56, height: 56 }), accessibilityHidden()]}
-              />
-              <Text
-                modifiers={[
-                  font({ textStyle: 'title2', weight: 'semibold' }),
-                  foregroundStyle(hex.onAccent),
-                  accessibilityHidden(),
-                ]}
-              >
-                {(nickname.trim()[0] ?? '?').toUpperCase()}
-              </Text>
-            </ZStack>
+            {s.user?.avatar_url ? (
+              <RNHostView matchContents>
+                <View style={{ width: 56, height: 56 }}>
+                  <Image
+                    source={{ uri: fileUrl(s.user.avatar_url) }}
+                    style={{ width: 56, height: 56, borderRadius: 28 }}
+                    contentFit="cover"
+                    accessible={false}
+                  />
+                </View>
+              </RNHostView>
+            ) : (
+              <ZStack modifiers={[accessibilityHidden()]}>
+                <Circle
+                  modifiers={[foregroundStyle(hex.accent), frame({ width: 56, height: 56 }), accessibilityHidden()]}
+                />
+                <Text
+                  modifiers={[
+                    font({ textStyle: 'title2', weight: 'semibold' }),
+                    foregroundStyle(hex.onAccent),
+                    accessibilityHidden(),
+                  ]}
+                >
+                  {(name.trim()[0] ?? '?').toUpperCase()}
+                </Text>
+              </ZStack>
+            )}
             <VStack alignment="leading" spacing={2}>
-              <Text modifiers={[font({ textStyle: 'title3', weight: 'semibold' }), lineLimit(1)]}>{nickname}</Text>
-              {user?.email ? (
-                <Text modifiers={[font({ textStyle: 'subheadline' }), SECONDARY, lineLimit(1)]}>{user.email}</Text>
+              <Text modifiers={[font({ textStyle: 'title3', weight: 'semibold' }), lineLimit(1)]}>{name}</Text>
+              {s.user?.email ? (
+                <Text modifiers={[font({ textStyle: 'subheadline' }), SECONDARY, lineLimit(1)]}>{s.user.email}</Text>
               ) : null}
             </VStack>
           </HStack>
-          {user?.role ? (
+          <Button onPress={() => void s.changeAvatar()}>
+            <Text modifiers={[frame({ maxWidth: 9999, alignment: 'leading' })]}>{t('settings.changeAvatar')}</Text>
+          </Button>
+          <Button onPress={() => void s.rename()}>
+            <Text modifiers={[frame({ maxWidth: 9999, alignment: 'leading' })]}>{t('settings.changeName')}</Text>
+          </Button>
+          {s.user?.role ? (
             <LabeledContent label={t('settings.role')}>
-              <Text>{t(ROLE_LABEL[user.role])}</Text>
+              <Text>{t(s.user.role === 'admin' ? 'settings.roleAdmin' : 'settings.roleMember')}</Text>
             </LabeledContent>
           ) : null}
+          <FormNavRow label={t('integration.aboutMe')} onPress={() => router.push('/settings/account')} />
+          <FormNavRow
+            label={t('integration.changePassword')}
+            onPress={() => router.push({ pathname: '/settings/account', params: { mode: 'password' } })}
+          />
           <FormNavRow
             label={t('station.title')}
-            value={station?.name ?? '—'}
+            value={s.station?.name ?? '—'}
             onPress={() => router.push('/settings/stations')}
           />
-          {push.shown ? (
-            <FormNavRow
-              label={t('push.title')}
-              value={t(push.value)}
-              onPress={() => router.push('/settings/notifications')}
-            />
-          ) : null}
+        </Section>
+
+        <Section>
+          <FormNavRow
+            label={t('settings.notifications')}
+            value={push}
+            onPress={() => router.push('/settings/notifications')}
+          />
         </Section>
 
         {/* ── appearance ── */}
         <Section title={t('settings.appearance')}>
           <Picker
             label={t('settings.theme')}
-            selection={theme}
-            onSelectionChange={(v) => setTheme(v as ThemePref)}
+            selection={s.theme}
+            onSelectionChange={(v) => s.setTheme(v as ThemePref)}
             // segmented hides the label — keep it for VoiceOver
             modifiers={[pickerStyle('segmented'), accessibilityLabel(t('settings.theme'))]}
           >
@@ -140,9 +153,8 @@ export default function Settings() {
           </Picker>
           <Picker
             label={t('settings.language')}
-            selection={lang}
-            // the account takes it too: the server writes in it (Bot greetings, event lines), like the web's switch
-            onSelectionChange={(v) => chooseLanguage(v as LangPref)}
+            selection={s.lang}
+            onSelectionChange={(v) => s.setLanguage(v as LangPref)}
             modifiers={[pickerStyle('menu')]}
           >
             <Text modifiers={[tag('zh')]}>{t('settings.langZh')}</Text>
@@ -150,103 +162,22 @@ export default function Settings() {
           </Picker>
         </Section>
 
-        {/* ── conversations ── */}
-        <Section
-          title={t('settings.conversations')}
-          footer={myBots.main ? <Text>{t('settings.newChatHint', { name: myBots.main })}</Text> : undefined}
-        >
-          <FormNavRow
-            label={t('settings.tags')}
-            value={tagsLoaded ? String(tagCount) : ''}
-            onPress={() => router.push('/settings/tags')}
-          />
-          {myBots.shown ? (
-            <FormNavRow
-              label={t('settings.myBots')}
-              value={myBots.count === null ? '' : String(myBots.count)}
-              onPress={() => router.push('/settings/bots')}
-            />
-          ) : null}
-          {connectors !== null ? (
-            <FormNavRow
-              label={t('settings.connectors')}
-              value={String(connectors)}
-              onPress={() => router.push('/settings/connectors')}
-            />
-          ) : null}
-        </Section>
-
-        {/* ── usage ── */}
-        {user?.daily_message_limit || user?.monthly_token_limit ? (
-          <Section title={t('settings.usage')}>
-            {user.daily_message_limit ? (
-              <LabeledContent label={t('settings.dailyLimit')}>
-                <Text>{String(user.daily_message_limit)}</Text>
-              </LabeledContent>
-            ) : null}
-            {user.monthly_token_limit ? (
-              <LabeledContent label={t('settings.monthlyLimit')}>
-                <Text>{compactNumber(user.monthly_token_limit)}</Text>
-              </LabeledContent>
-            ) : null}
-          </Section>
-        ) : null}
-
         {/* ── about ── */}
         <Section title={t('settings.about')} footer={<Text>{t('settings.footer')}</Text>}>
           <LabeledContent label={t('settings.version')}>
-            <Text>{version || '—'}</Text>
+            <Text>{s.version || '—'}</Text>
           </LabeledContent>
           <LabeledContent label={t('settings.update')}>
-            <Text>{update}</Text>
+            <Text>{s.update}</Text>
           </LabeledContent>
         </Section>
 
         <Section>
-          <Button role="destructive" onPress={() => void signOut()}>
+          <Button role="destructive" onPress={() => void s.signOut()}>
             <Text modifiers={[frame({ maxWidth: 9999 })]}>{t('settings.logout')}</Text>
           </Button>
         </Section>
       </NativeForm>
     </>
   );
-}
-
-/**
- * The 我的 Bot row (internal accounts on iOS — the identity routes need no
- * more, whatever the `bots` switch says) with the active Bot count, and the
- * main Bot's name (Sprouty, whom new chats start with) for the footer.
- */
-function useMyBots() {
-  const shown = useBotIdentityEnabled();
-  const botsLoaded = useBots((s) => s.botsLoaded);
-  const count = useBots((s) => (s.botsLoaded ? s.bots.length : null));
-  const loadBots = useBots((s) => s.loadBots);
-  const main = useBots((s) => sproutyBot(s)?.name ?? null);
-
-  useEffect(() => {
-    if (shown && !botsLoaded) void loadBots();
-  }, [shown, botsLoaded, loadBots]);
-
-  return { shown, count, main: shown ? main : null };
-}
-
-/**
- * The 通知 row (iOS, a station that pushes — an older server or one with pushes off shows
- * none): this phone's state on the active station.
- */
-function usePushRow() {
-  const support = usePush((s) => s.support);
-  const permission = usePush((s) => s.permission);
-  const off = usePush((s) => s.off);
-  const device = usePush((s) => s.device);
-  const value =
-    permission === 'denied'
-      ? ('push.rowSystemOff' as const)
-      : off
-        ? ('push.rowOff' as const)
-        : permission === 'granted' && device
-          ? ('push.rowOn' as const)
-          : ('push.rowNotSet' as const);
-  return { shown: PUSH_PLATFORM_READY && support === 'enabled', value };
 }

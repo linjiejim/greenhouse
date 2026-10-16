@@ -1,8 +1,15 @@
-CREATE TABLE IF NOT EXISTS "ext_example_notes" (
-  "id" serial PRIMARY KEY NOT NULL,
-  "user_id" text NOT NULL,
-  "body" text NOT NULL,
-  "created_at" timestamp with time zone DEFAULT now() NOT NULL
+CREATE TABLE ext_example_notes (
+  id text PRIMARY KEY,
+  member_id text NOT NULL REFERENCES members(id) ON DELETE CASCADE,
+  title text NOT NULL,
+  body text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now()
 );
 --> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "idx_ext_example_notes_user" ON "ext_example_notes" ("user_id", "created_at");
+CREATE INDEX ext_example_notes_member_idx ON ext_example_notes(member_id, id);
+--> statement-breakpoint
+CREATE TABLE ext_example_settings (
+  scope_id text PRIMARY KEY,
+  member_id text REFERENCES members(id) ON DELETE CASCADE,
+  label text NOT NULL
+);

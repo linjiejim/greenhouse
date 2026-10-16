@@ -10,7 +10,7 @@ TMP="$ROOT/apps/web/.landing-tw.css"
 cleanup() { rm -f "$TMP"; }
 trap cleanup EXIT
 
-# The @import must resolve tailwindcss from apps/web/node_modules (pnpm layout).
+# Resolve the stylesheet and CLI through the pinned workspace toolchain.
 cat > "$TMP" <<'CSS'
 @import "tailwindcss" source(none);
 @source "../../docs/index.html";
@@ -28,5 +28,5 @@ cat > "$TMP" <<'CSS'
 }
 CSS
 
-( cd "$ROOT/apps/web" && npx @tailwindcss/cli@^4 -i .landing-tw.css -o "$ROOT/docs/tailwind.css" --minify )
+( cd "$ROOT/apps/web" && pnpm exec tailwindcss -i .landing-tw.css -o "$ROOT/docs/tailwind.css" --minify )
 echo "✓ built docs/tailwind.css"

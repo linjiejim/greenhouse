@@ -17,7 +17,6 @@ import type { ReactElement } from 'react';
 import { Chart } from './blocks/chart';
 import { ConfirmBlock } from './blocks/confirm';
 import { DataTableBlock } from './blocks/datatable';
-import { MissionArtifactsBlock } from './blocks/files';
 import { HtmlPreviewBlock } from './blocks/html-preview';
 import { MermaidBlock } from './blocks/mermaid';
 import { CardsBlock } from './blocks/cards';
@@ -42,9 +41,8 @@ const REGISTRY = {
   mermaid: ({ raw }) => <MermaidBlock raw={raw} />,
   'html-preview': ({ raw }) => <HtmlPreviewBlock raw={raw} />,
   confirm: ({ raw }) => <ConfirmBlock raw={raw} />,
-  'mission-artifacts': ({ raw }) => <MissionArtifactsBlock raw={raw} />,
   attachments: () => null,
   'mission-attachments': () => null,
-} satisfies Record<RichFence | 'mission-attachments', FenceBlock>;
+} satisfies Record<Exclude<RichFence, 'mission-artifacts'> | 'mission-attachments', FenceBlock>;
 
 export const fenceBlocks: Record<string, FenceBlock> = REGISTRY;

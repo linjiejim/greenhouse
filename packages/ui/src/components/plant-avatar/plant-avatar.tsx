@@ -1,8 +1,8 @@
 /**
  * <PlantAvatar/> and <PlantAvatarStack/> — the React wrapper around the SVG builder.
  *
- * - theme 'auto': one markup string, the injected CSS switches the palette under
- *   `.dark-theme`, so a theme toggle never re-renders;
+ * - theme 'auto': one markup string, the injected CSS switches the palette under a dark
+ *   ancestor (`[data-theme='dark']` or `.dark-theme`), so a theme toggle never re-renders;
  * - the string is memoised on identity / size / LOD / animate only; a state change on an
  *   animated avatar morphs the mounted <svg> in place (useLayoutEffect) instead of
  *   re-rendering it, so poses transition and the eyes swap behind a blink;
@@ -25,7 +25,7 @@ import {
   type PlantState,
   type PlantStateInput,
 } from '@greenhouse/types';
-import type { ProfileAvatar } from '@greenhouse/types/api';
+import type { ProfileAvatar } from '@greenhouse/types';
 import { buildPlantAvatarSvg, ensurePlantAvatarStyles, poseFor } from './plant-avatar-svg';
 import { morphPlantAvatar } from './plant-morph';
 

@@ -25,7 +25,12 @@ export function putHandoff<T>(kind: string, value: T): string {
   return key;
 }
 
-export function getHandoff<T>(key?: string | string[]): T | undefined {
+export function getHandoff<T>(key: string | string[] | undefined, kind: string): T | undefined {
   const k = Array.isArray(key) ? key[0] : key;
-  return k ? (store.get(k) as T | undefined) : undefined;
+  return k?.startsWith(`${kind}_`) ? (store.get(k) as T | undefined) : undefined;
+}
+
+/** Sign-out and station/member changes invalidate every private preview payload. */
+export function clearHandoffs(): void {
+  store.clear();
 }

@@ -1,41 +1,25 @@
-/**
- * Drizzle schema — barrel export.
- *
- * All tables defined across domain-specific files.
- */
-
-export * from './session.js';
-export * from './llm-call.js';
-export * from './eval.js';
-export * from './chat-eval.js';
+export * from './identity.js';
+export * from './oauth.js';
+export * from './agents.js';
+export * from './approvals.js';
+export * from './conversations.js';
+export * from './runs.js';
+export * from './files.js';
+export * from './skills.js';
+export * from './connections.js';
+export * from './mail.js';
+export * from './providers.js';
+export * from './notifications.js';
 export * from './usage.js';
-export * from './user.js';
-export * from './project.js';
-export * from './api-client.js';
-export * from './feature-request.js';
-export * from './user-prompt.js';
-export * from './session-share.js';
-export * from './scheduled-task.js';
-export * from './provider-token.js';
-export * from './feishu-bot.js';
-export * from './session-tag.js';
-export * from './session-group.js';
-export * from './knowledge-base.js';
-export * from './drive.js';
-export * from './email.js';
-export * from './mcp-server.js';
-export * from './user-feature.js';
-export * from './user-memory.js';
-export * from './tool-friction.js';
-export * from './groups.js';
-export * from './skill.js';
-export * from './platform.js';
-export * from './platform-oauth.js';
+export * from './workspace.js';
+export * from './vault.js';
+export * from './knowledge.js';
 export * from './tables.js';
-export * from './workflow.js';
-export * from './agent-run.js';
-export * from './runtime.js';
-export * from './notification.js';
-export * from './push-device.js';
-export * from './workspace-setting.js';
-export * from './bots.js';
+
+export * from './apps.js';
+
+export * from './automations.js';
+export * from './rate-limits.js';
+
+export * from './extensions.js';
+export * from './reminders.js';

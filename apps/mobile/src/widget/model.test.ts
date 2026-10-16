@@ -1,34 +1,35 @@
 import { describe, expect, it } from 'vitest';
-import type { BotConversationSummary, BotRequestView, BotView } from '../shared/bots';
-import type { RowCopy } from '../bots/drawer/row-text';
+import type { Agent, Conversation, NeedsYou } from '../shared/contract';
 import {
   artKey,
   buildWidgetSnapshot,
   firstPendingRequest,
   snapshotArtKeys,
+  widgetAgentPicks,
   widgetBadge,
-  widgetBotPicks,
   withoutMissingArt,
-  type WidgetBotsSource,
   type WidgetInput,
+  type WidgetSource,
 } from './model';
 
-function bot(id: string, partial: Partial<BotView> = {}): BotView {
+const parseMs = (iso: string) => Date.parse(iso);
+
+function agent(id: string, partial: Partial<Agent> = {}): Agent {
   return {
     id,
+    handle: id,
     name: id.toUpperCase(),
-    role: '',
+    role: `${id} role`,
     description: '',
-    instructions: '',
     avatar: {},
-    model_id: null,
-    tools: null,
-    max_steps: null,
+    is_main: false,
+    owner_id: 'm1',
+    visibility: 'private',
+    published_version: null,
+    paused_at: null,
     template_key: null,
-    status: 'active',
-    dm_session_id: `dm_${id}`,
     current_version: 1,
-    user_id: 'u1',
+    archived_at: null,
     last_active_at: null,
     created_at: '2026-10-01T00:00:00.000Z',
     updated_at: '2026-10-01T00:00:00.000Z',
@@ -36,116 +37,113 @@ function bot(id: string, partial: Partial<BotView> = {}): BotView {
   };
 }
 
-function dm(botId: string, partial: Partial<BotConversationSummary> = {}): BotConversationSummary {
+function thread(agentId: string, partial: Partial<Conversation> = {}): Conversation {
   return {
-    session_id: `dm_${botId}`,
+    id: `c_${agentId}`,
     kind: 'direct',
-    title: null,
-    owner_bot_id: botId,
-    lead_bot_id: botId,
-    members: [{ bot_id: botId, role: 'owner', position: 0 }],
-    last_message: null,
-    attention: 'idle',
+    title: '',
+    agent_id: agentId,
+    model: null,
+    origin: 'app',
+    read_only: false,
+    last_seq: 1,
+    last_read_seq: 1,
+    unread: 0,
+    pinned: false,
+    archived: false,
+    muted: false,
+    working: false,
     pending_requests: 0,
-    unread_count: 0,
-    last_activity_at: '2026-10-09T10:00:00.000Z',
+    last_activity_at: '2026-10-10T08:00:00.000Z',
+    created_at: '2026-10-01T00:00:00.000Z',
     ...partial,
   };
 }
 
-function request(id: string, sessionId: string, created: string, status: BotRequestView['status'] = 'pending') {
+function card(id: string, partial: Partial<NeedsYou> = {}): NeedsYou {
   return {
     id,
-    session_id: sessionId,
-    bot_id: null,
     kind: 'approval',
-    status,
+    subject: 'tool_write',
+    status: 'pending',
+    conversation_id: 'c_b',
+    run_id: null,
+    agent_id: 'b',
+    title: `Approve ${id}`,
     payload: {},
     result: null,
     expires_at: null,
-    created_at: created,
-  } as unknown as BotRequestView;
-}
-
-const sprouty = bot('sprouty', { name: 'Sprouty', template_key: 'sprouty' });
-
-/** Bots + their DMs, the server's order (newest activity first) = the order given. */
-function source(rows: BotConversationSummary[], extra: Partial<WidgetBotsSource> = {}): WidgetBotsSource {
-  const bots = [
-    sprouty,
-    ...rows.flatMap((r) => (r.owner_bot_id && r.owner_bot_id !== 'sprouty' ? [bot(r.owner_bot_id)] : [])),
-  ];
-  return {
-    bots,
-    byId: Object.fromEntries(bots.map((b) => [b.id, b])),
-    botsLoaded: true,
-    conversations: rows,
-    pendingRequests: [],
-    ...extra,
+    decided_at: null,
+    created_at: '2026-10-10T09:00:00.000Z',
+    ...partial,
   };
 }
 
-const ids = (s: WidgetBotsSource) => widgetBotPicks(s).map((p) => p.bot.id);
+const main = agent('greeny', { is_main: true, name: 'Greeny', template_key: 'main' });
+const mainThread = thread('greeny', { id: 'c_main', kind: 'main' });
 
-describe('widgetBotPicks', () => {
-  it('pins Sprouty, then the replyable DMs by recent activity, four in all', () => {
-    const s = source([dm('a'), dm('sprouty'), dm('b'), dm('c'), dm('d')]);
-    expect(ids(s)).toEqual(['sprouty', 'a', 'b', 'c']);
+function source(over: Partial<WidgetSource> = {}): WidgetSource {
+  return {
+    agents: [main, agent('a'), agent('b'), agent('c'), agent('d'), agent('e')],
+    conversations: [
+      mainThread,
+      thread('a', { last_activity_at: '2026-10-10T10:00:00.000Z' }),
+      thread('b', { last_activity_at: '2026-10-10T12:00:00.000Z' }),
+      thread('c', { last_activity_at: '2026-10-10T11:00:00.000Z' }),
+      thread('d', { last_activity_at: '2026-10-10T09:00:00.000Z' }),
+      thread('e', { last_activity_at: '2026-10-10T07:00:00.000Z' }),
+    ],
+    requests: [],
+    ...over,
+  };
+}
+
+const ids = (picks: ReturnType<typeof widgetAgentPicks>) => picks.map((pick) => pick.agent.id);
+
+describe('widgetAgentPicks', () => {
+  it('pins the main Agent, then the Agent threads by recent activity, four in all', () => {
+    const picks = widgetAgentPicks(source(), parseMs);
+    expect(ids(picks)).toEqual(['greeny', 'b', 'c', 'a']);
+    expect(picks[0]!.conversation?.id).toBe('c_main');
   });
 
-  it('skips archived Bots and retired group chats', () => {
-    const s = source([dm('a'), dm('b'), { ...dm('g'), kind: 'group', owner_bot_id: null, session_id: 'grp' }, dm('c')]);
-    s.bots = s.bots.filter((b) => b.id !== 'b');
-    expect(ids(s)).toEqual(['sprouty', 'a', 'c']);
+  it('skips archived Agents, archived threads and Agents without a thread', () => {
+    const s = source({
+      agents: [main, agent('a', { archived_at: '2026-10-09T00:00:00.000Z' }), agent('b'), agent('x')],
+      conversations: [mainThread, thread('a'), thread('b', { archived: true })],
+    });
+    expect(ids(widgetAgentPicks(s, parseMs))).toEqual(['greeny']);
   });
 
-  it('lets a Bot waiting on the member past the cut take the last slot that is not waiting', () => {
-    const s = source([
-      dm('a'),
-      dm('b', { pending_requests: 1 }),
-      dm('c'),
-      dm('d'),
-      dm('e', { pending_requests: 2 }),
-      dm('f', { pending_requests: 1 }),
-    ]);
-    // c (last, not waiting) → e; then a (b is waiting) → f; Sprouty never moves.
-    expect(ids(s)).toEqual(['sprouty', 'f', 'b', 'e']);
+  it('lets an Agent waiting on the member past the cut take the last slot that is not waiting', () => {
+    const conversations = source().conversations.map((item) =>
+      item.agent_id === 'e' ? { ...item, pending_requests: 2 } : item,
+    );
+    expect(ids(widgetAgentPicks(source({ conversations }), parseMs))).toEqual(['greeny', 'b', 'c', 'e']);
   });
 
-  it('never replaces Sprouty, even when every other slot is waiting', () => {
-    const waiting = { pending_requests: 1 };
-    const s = source([dm('a', waiting), dm('b', waiting), dm('c', waiting), dm('d', waiting)]);
-    expect(ids(s)).toEqual(['sprouty', 'a', 'b', 'c']);
+  it('never replaces the main Agent, even when every other slot is waiting', () => {
+    const conversations = source().conversations.map((item) =>
+      item.kind === 'direct' ? { ...item, pending_requests: 1 } : item,
+    );
+    expect(ids(widgetAgentPicks(source({ conversations }), parseMs))).toEqual(['greeny', 'b', 'c', 'a']);
   });
 
-  it('shows nothing until the Bot list has answered', () => {
-    expect(widgetBotPicks({ ...source([dm('a')]), botsLoaded: false })).toEqual([]);
-  });
-
-  it('keeps Sprouty without a DM yet (row null)', () => {
-    const picks = widgetBotPicks(source([dm('a')]));
-    expect(picks[0]).toMatchObject({ bot: { id: 'sprouty' }, row: null });
+  it('keeps the main Agent before its thread is listed', () => {
+    const picks = widgetAgentPicks(source({ conversations: [] }), parseMs);
+    expect(picks).toEqual([{ agent: main, conversation: null }]);
   });
 });
 
 describe('widgetBadge', () => {
-  it('pending cards beat unread replies', () => {
-    expect(widgetBadge(dm('a', { pending_requests: 2, attention: 'needs_you', unread_count: 5 }))).toEqual({
-      badge: 'needs_you',
-      count: 2,
-    });
+  it('pending cards beat unread messages', () => {
+    expect(widgetBadge(thread('a', { pending_requests: 2, unread: 5 }))).toEqual({ badge: 'needs_you', count: 2 });
+    expect(widgetBadge(thread('a', { unread: 5 }))).toEqual({ badge: 'unread', count: 5 });
   });
-  it('counts unread replies; no count → a dot', () => {
-    expect(widgetBadge(dm('a', { attention: 'unread', unread_count: 5 }))).toEqual({ badge: 'unread', count: 5 });
-    expect(widgetBadge(dm('a', { attention: 'unread', unread_count: undefined }))).toEqual({
-      badge: 'unread',
-      count: null,
-    });
-    // Only system events arrived: unread, but no Bot reply to count.
-    expect(widgetBadge(dm('a', { attention: 'unread', unread_count: 0 }))).toEqual({ badge: 'unread', count: null });
-  });
-  it('working and idle rows carry no badge (a snapshot would show "replying" long after it ended)', () => {
-    expect(widgetBadge(dm('a', { attention: 'working' }))).toEqual({ badge: null, count: null });
+
+  it('a muted, a working or a read thread carries no badge', () => {
+    expect(widgetBadge(thread('a', { unread: 3, muted: true }))).toEqual({ badge: null, count: null });
+    expect(widgetBadge(thread('a', { working: true }))).toEqual({ badge: null, count: null });
     expect(widgetBadge(null)).toEqual({ badge: null, count: null });
   });
 });
@@ -153,108 +151,73 @@ describe('widgetBadge', () => {
 describe('firstPendingRequest', () => {
   it('is the oldest pending card of that conversation', () => {
     const requests = [
-      request('r3', 'dm_a', '2026-10-09T10:03:00.000Z'),
-      request('r1', 'dm_a', '2026-10-09T10:01:00.000Z', 'approved'),
-      request('r2', 'dm_a', '2026-10-09T10:02:00.000Z'),
-      request('r0', 'dm_b', '2026-10-09T10:00:00.000Z'),
+      card('late', { created_at: '2026-10-10T10:00:00.000Z' }),
+      card('early', { created_at: '2026-10-10T08:00:00.000Z' }),
+      card('decided', { created_at: '2026-10-10T07:00:00.000Z', status: 'approved' }),
+      card('elsewhere', { created_at: '2026-10-10T06:00:00.000Z', conversation_id: 'c_a' }),
     ];
-    expect(firstPendingRequest(requests, 'dm_a')).toBe('r2');
-    expect(firstPendingRequest(requests, 'dm_c')).toBeNull();
+    expect(firstPendingRequest(requests, 'c_b')?.id).toBe('early');
+    expect(firstPendingRequest(requests, 'c_z')).toBeNull();
   });
 });
 
-const copy: RowCopy = {
-  deletedBot: 'Deleted Bot',
-  untitledGroup: 'Group',
-  newChat: 'New chat',
-  archivedName: (name) => `${name} (archived)`,
-  youSaid: (text) => `You: ${text}`,
-  botSaid: (name, text) => `${name}: ${text}`,
-  noMessages: 'No messages yet',
-};
-
-function input(partial: Partial<WidgetInput> = {}): WidgetInput {
-  return {
-    now: 1_000,
-    nickname: 'Jim',
-    lang: 'en',
-    bots: null,
-    defaultAgent: { name: 'Sprouty', avatar: sprouty },
-    sessions: [{ id: 's1', title: 'Plan', updatedAt: 5 }],
-    copy,
-    parseMs: (iso) => Date.parse(iso),
-    ...partial,
-  };
-}
-
 describe('buildWidgetSnapshot', () => {
-  it('without Bots: the recent sessions, no Bot list', () => {
-    const { snapshot } = buildWidgetSnapshot(input());
-    expect(snapshot).toMatchObject({ v: 2, nickname: 'Jim', bots: null, sessions: [{ id: 's1' }] });
+  const input = (over: Partial<WidgetInput> = {}): WidgetInput => ({
+    now: 1000,
+    nickname: 'Jim',
+    lang: 'zh',
+    source: source(),
+    parseMs,
+    ...over,
   });
 
-  it('with Bots: one entry per pick, the deep-link fields and the face that goes with the signal', () => {
-    const s = source(
-      [
-        dm('a', {
-          pending_requests: 1,
-          attention: 'needs_you',
-          last_message: {
-            preview: 'Publish  the\nreport?',
-            bot_id: 'a',
-            role: 'assistant',
-            created_at: '2026-10-09T10:05:00.000Z',
-          },
-        }),
-        dm('b', {
-          attention: 'unread',
-          unread_count: 3,
-          last_message: { preview: 'hi', bot_id: null, role: 'user', created_at: '2026-10-09T09:00:00.000Z' },
-        }),
-      ],
-      { pendingRequests: [request('r9', 'dm_a', '2026-10-09T10:04:00.000Z')] },
+  it('before the Agents load: no entries and no default Agent', () => {
+    const { snapshot } = buildWidgetSnapshot(input({ source: null }));
+    expect(snapshot).toMatchObject({ v: 2, bots: [], defaultAgent: null, nickname: 'Jim', lang: 'zh' });
+  });
+
+  it('one entry per pick, with the deep-link fields, the signal and the face that goes with it', () => {
+    const conversations = source().conversations.map((item) =>
+      item.agent_id === 'b' ? { ...item, pending_requests: 1 } : item.agent_id === 'c' ? { ...item, unread: 3 } : item,
     );
-    s.bots = s.bots.map((b) => (b.id === 'sprouty' ? { ...b, dm_session_id: null } : b));
-    const { snapshot, jobs } = buildWidgetSnapshot(input({ bots: s }));
-    expect(snapshot.sessions).toEqual([]);
-    expect(snapshot.bots).toMatchObject([
-      { id: 'sprouty', sessionId: null, sprouty: true, badge: null, requestId: null, preview: '', lastAt: null },
-      { id: 'a', sessionId: 'dm_a', badge: 'needs_you', count: 1, requestId: 'r9', preview: 'Publish the report?' },
-      { id: 'b', sessionId: 'dm_b', badge: 'unread', count: 3, requestId: null, preview: 'You: hi' },
-    ]);
-    expect(snapshot.bots?.[1].lastAt).toBe(Date.parse('2026-10-09T10:05:00.000Z'));
-    const [, waiting, resting] = snapshot.bots!;
-    expect(waiting.art.light).not.toBe(waiting.art.dark);
-    // a and b are different Bots anyway; the same Bot waiting vs at rest is a different face too:
-    const calm = buildWidgetSnapshot(input({ bots: { ...s, conversations: [dm('a'), s.conversations[1]] } }));
-    expect(calm.snapshot.bots?.[1].art.light).not.toBe(waiting.art.light);
-    expect(resting.art.light).toMatch(/^a[0-9a-f]{8}[0-9a-z]+$/);
-    // every key the snapshot points at has exactly one job
-    expect(new Set(jobs.map((j) => j.key))).toEqual(new Set(snapshotArtKeys(snapshot)));
-    expect(jobs.every((j) => j.svg.startsWith('<svg ') && !j.svg.includes('class='))).toBe(true);
+    const { snapshot, jobs } = buildWidgetSnapshot(input({ source: source({ conversations, requests: [card('r1')] }) }));
+    const [first, b, c] = snapshot.bots!;
+    expect(first).toMatchObject({ id: 'greeny', sessionId: 'c_main', sprouty: true, badge: null, preview: 'greeny role' });
+    expect(b).toMatchObject({
+      id: 'b',
+      sessionId: 'c_b',
+      sprouty: false,
+      badge: 'needs_you',
+      count: 1,
+      requestId: 'r1',
+      preview: 'Approve r1',
+      lastAt: Date.parse('2026-10-10T12:00:00.000Z'),
+    });
+    expect(c).toMatchObject({ badge: 'unread', count: 3, requestId: null, preview: 'c role' });
+    // the waiting face differs from the resting one
+    expect(b!.art.light).not.toBe(c!.art.light);
+    for (const key of snapshotArtKeys(snapshot)) expect(jobs.some((job) => job.key === key)).toBe(true);
   });
 
-  it('the default agent gets its resting and its late-night face; none known → Sprouty’s plant', () => {
-    const known = buildWidgetSnapshot(input()).snapshot.defaultAgent!;
-    expect(known.name).toBe('Sprouty');
-    expect(known.sleep.light).not.toBe(known.art.light);
-    const unknown = buildWidgetSnapshot(input({ defaultAgent: { name: 'Sprouty', avatar: null } })).snapshot;
-    expect(unknown.defaultAgent?.art).toEqual(known.art);
-    expect(buildWidgetSnapshot(input({ defaultAgent: null })).snapshot.defaultAgent).toBeNull();
+  it('the main Agent is the default one, with its resting and its late-night face', () => {
+    const { snapshot } = buildWidgetSnapshot(input());
+    expect(snapshot.defaultAgent?.name).toBe('Greeny');
+    expect(snapshot.defaultAgent?.art.light).not.toBe(snapshot.defaultAgent?.sleep.light);
   });
 
   it('a face that failed to render is cleared, the rest kept', () => {
-    const { snapshot } = buildWidgetSnapshot(input({ bots: source([dm('a')]) }));
-    const keep = new Set([snapshot.bots![1].art.light]);
-    const pruned = withoutMissingArt(snapshot, keep);
-    expect(pruned.bots![1].art).toEqual({ light: snapshot.bots![1].art.light, dark: '' });
-    expect(pruned.defaultAgent?.art).toEqual({ light: '', dark: '' });
+    const { snapshot } = buildWidgetSnapshot(input());
+    const keep = new Set([snapshot.bots![0]!.art.light]);
+    const cleaned = withoutMissingArt(snapshot, keep);
+    expect(cleaned.bots![0]!.art).toEqual({ light: snapshot.bots![0]!.art.light, dark: '' });
+    expect(cleaned.defaultAgent?.sleep).toEqual({ light: '', dark: '' });
   });
 });
 
 describe('artKey', () => {
   it('is stable and tells different faces apart', () => {
-    expect(artKey('<svg a/>')).toBe(artKey('<svg a/>'));
-    expect(artKey('<svg a/>')).not.toBe(artKey('<svg b/>'));
+    expect(artKey('<svg/>')).toBe(artKey('<svg/>'));
+    expect(artKey('<svg/>')).not.toBe(artKey('<svg />'));
+    expect(artKey('<svg/>')).toMatch(/^a[0-9a-f]{8}[0-9a-z]+$/);
   });
 });

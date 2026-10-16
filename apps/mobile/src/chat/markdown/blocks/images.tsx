@@ -10,7 +10,7 @@
 import { useState } from 'react';
 import { View } from 'react-native';
 import { Image } from 'expo-image';
-import { uploadUrl } from '../../../api/upload';
+import { fileUrl } from '../../../api/files';
 import { useT } from '../../../lib/i18n';
 import { openLink } from '../../../lib/links';
 import { makeStyles, radius, space, squircle, useTheme } from '../../../theme';
@@ -20,7 +20,8 @@ import type { MdImage } from '../parse';
 const SINGLE_W = 260;
 const TILE = 112;
 
-const resolve = (src: string) => (src.startsWith('/') ? uploadUrl(src) : src);
+const resolve = (src: string) =>
+  /^https?:\/\//i.test(src) || /^\/api\/files\/[^/]+\/content(?:\?|$)/.test(src) ? fileUrl(src) : '';
 
 export function ImageRow({ images }: { images: MdImage[] }) {
   const { colors: c } = useTheme();
@@ -39,7 +40,7 @@ export function Thumb({ image, single }: { image: MdImage; single: boolean }) {
   const styles = useStyles(c);
   const t = useT();
   const [ratio, setRatio] = useState<number | null>(null);
-  const [failed, setFailed] = useState(false);
+  const [failed, setFailed] = useState(!resolve(image.src));
   const uri = resolve(image.src);
   const target = image.href ? resolve(image.href) : uri;
   const size = single

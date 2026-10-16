@@ -50,27 +50,22 @@ describe('StartupContent', () => {
 });
 
 describe('waitsForHome', () => {
-  it.each([
-    [],
-    ['(drawer)'],
-    ['(drawer)', '(main)'],
-    ['(drawer)', '(main)', 'index'],
-    ['chat', '[id]'],
-    ['bots'],
-    ['bots', 'index'],
-  ])('waits for the actual home surface or its forwarder: %j', (...segments) => {
-    expect(waitsForHome(segments)).toBe(true);
-  });
+  it.each([[], ['(drawer)'], ['(drawer)', '(main)'], ['(drawer)', '(main)', 'index']])(
+    'waits for the actual home surface: %j',
+    (...segments) => {
+      expect(waitsForHome(segments)).toBe(true);
+    },
+  );
 
   it.each([
     ['login'],
-    ['knowledge', '[slug]'],
-    ['projects', '[id]'],
-    ['settings', 'bots'],
+    ['notifications'],
+    ['agents', '[id]'],
+    ['runs', '[id]'],
+    ['settings', 'notifications'],
     ['sheets', 'stations'],
-    ['peek', 'doc', '[slug]'],
-    ['bots', 'request'],
-    ['bots', 'needs-you'],
+    ['request'],
+    ['computer'],
   ])('does not wait for home underneath another deep link: %j', (...segments) => {
     expect(waitsForHome(segments)).toBe(false);
   });

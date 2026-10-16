@@ -1,31 +1,29 @@
 /**
- * Greenhouse widget (v4) — the member's Bots on the home screen:
+ * Greenhouse widget (v5) — the member's Agents on the home screen (`SnapshotBot` is one Agent):
  *   · systemSmall          greeting + main face + compact other faces → new chat
- *   · systemMedium         main Agent row · [新会话] + 3 compact Bot faces
+ *   · systemMedium         main Agent row · [新会话] + 3 compact Agent faces
  *   · systemLarge          Greenhouse header · prominent main Agent + 3 rows · [新会话]
  *   · accessoryRectangular what is waiting on the member, or "start a new chat" (lock screen)
- *   · accessoryCircular    Sprouty silhouette → new chat (lock screen)
- * …and, in the same bundle, a Bot's background task as a Live Activity (lock screen +
+ *   · accessoryCircular    sprout silhouette → new chat (lock screen)
+ * …and, in the same bundle, an Agent's background run as a Live Activity (lock screen +
  * Dynamic Island): BotTaskLiveActivity.swift.
  *
  * Data comes from the App Group snapshot written by modules/widget-bridge —
  * `Snapshot` below decodes the JSON whose SCHEMA TRUTH lives in
  * src/widget/model.ts (bump SNAPSHOT_VERSION together); avatars are PNGs the
  * app rendered into `widget-art/` (src/widget/art-host.tsx). No snapshot
- * (signed out / never opened) degrades every family to launcher-only mode;
- * `bots == nil` (Bots unavailable) shows recent conversations instead.
+ * (signed out / never opened) degrades every family to launcher-only mode.
  *
- * Badges follow the app drawer's rule — one signal per Bot: "needs you"
- * (orange, pending cards) beats unread (accent, Bot replies; a dot when the
- * server didn't count them). "Replying…" is never shown: a snapshot would keep
- * saying it long after the reply ended.
+ * Badges follow the app drawer's rule — one signal per Agent: "needs you"
+ * (orange, pending cards) beats unread (accent, unread messages). "Replying…" is
+ * never shown: a snapshot would keep saying it long after the reply ended.
  *
- * Deep links ride the `greenhouse://` scheme (expo-router): `bots?c=<dm>`
- * opens a Bot's thread (`&request=<id>` scrolls to the card waiting on the
- * member; no `c` bootstraps Sprouty's), `?compose=1` starts a new chat with
- * the default agent, `settings/bots`, `chat/<id>` resumes a
- * conversation. Strings mirror src/lib/i18n; language follows the snapshot's
- * app preference, falling back to the system locale.
+ * Deep links ride the `greenhouse://` scheme (expo-router, src/shell/nav.ts):
+ * `?c=<conversation>` opens an Agent thread (`&request=<id>` scrolls to the card
+ * waiting on the member), the bare scheme opens the main thread, `?c=new&compose=1`
+ * starts a new chat with the main Agent, `agents/edit` makes a new Agent. Strings
+ * mirror src/lib/i18n; language follows the snapshot's app preference, falling back
+ * to the system locale.
  */
 
 import WidgetKit
@@ -50,7 +48,7 @@ struct SnapshotBot: Decodable {
   let sprouty: Bool
   /// "needs_you" | "unread" | nil
   let badge: String?
-  /// needs_you → pending cards; unread → Bot replies; nil → a dot
+  /// needs_you → pending cards; unread → unread messages; nil → a dot
   let count: Int?
   let requestId: String?
   let preview: String
@@ -61,11 +59,6 @@ struct SnapshotAgent: Decodable {
   let art: SnapshotArt
   let sleep: SnapshotArt
 }
-struct SnapshotSession: Decodable {
-  let id: String
-  let title: String
-  let updatedAt: Double?
-}
 struct Snapshot: Decodable {
   let v: Int
   let updatedAt: Double
@@ -74,7 +67,6 @@ struct Snapshot: Decodable {
   // Optional so a v1 snapshot (left by the previous build until the app next runs) still decodes.
   let defaultAgent: SnapshotAgent?
   let bots: [SnapshotBot]?
-  let sessions: [SnapshotSession]?
 }
 
 private func loadSnapshot() -> Snapshot? {
@@ -126,7 +118,7 @@ private func greetingName(_ snap: Snapshot?, zh: Bool) -> String {
 
 private func countText(_ n: Int) -> String { n > 99 ? "99+" : "\(n)" }
 
-/** What a Bot's badge says, for VoiceOver and the lock screen. */
+/** What an Agent's badge says, for VoiceOver and the lock screen. */
 private func signalText(_ bot: SnapshotBot, zh: Bool) -> String? {
   switch bot.badge {
   case "needs_you":
@@ -149,14 +141,7 @@ private func hm(_ ms: Double, zh: Bool) -> String {
   return f.string(from: Date(timeIntervalSince1970: ms / 1000))
 }
 
-private func relativeText(_ ms: Double, zh: Bool) -> String {
-  let f = RelativeDateTimeFormatter()
-  f.locale = Locale(identifier: zh ? "zh_CN" : "en_US")
-  f.unitsStyle = .short
-  return f.localizedString(for: Date(timeIntervalSince1970: ms / 1000), relativeTo: Date())
-}
-
-/** A row's time, Messages-style (src/bots/drawer/row-text.ts `rowTime`): today's clock, Yesterday, the weekday, the date. */
+/** A row's time, Messages-style: today's clock, Yesterday, the weekday, the date. */
 private func rowTime(_ ms: Double, now: Date, zh: Bool) -> String {
   let date = Date(timeIntervalSince1970: ms / 1000)
   let cal = Calendar.current
@@ -182,24 +167,20 @@ private func isNight(_ date: Date) -> Bool {
 
 // MARK: - Deep links (routes in apps/mobile/app/)
 
-private let composeURL = URL(string: "greenhouse://?compose=1")!
-private let botsURL = URL(string: "greenhouse://bots")!
-private let newBotURL = URL(string: "greenhouse://settings/bots")!
+private let composeURL = URL(string: "greenhouse://?c=new&compose=1")!
+private let mainURL = URL(string: "greenhouse://")!
+private let newAgentURL = URL(string: "greenhouse://agents/edit")!
 
 func query(_ value: String) -> String {
   value.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? value
 }
 
-private func chatURL(_ id: String) -> URL {
-  URL(string: "greenhouse://chat/\(query(id))") ?? composeURL
-}
-
-/** The Bot's thread — at the card waiting on the member when there is one. No DM yet → Sprouty's bootstrap. */
+/** The Agent's thread — at the card waiting on the member when there is one. Not listed yet → the main thread. */
 private func botURL(_ bot: SnapshotBot) -> URL {
-  guard let sid = bot.sessionId else { return botsURL }
-  var link = "greenhouse://bots?c=\(query(sid))"
+  guard let sid = bot.sessionId else { return mainURL }
+  var link = "greenhouse://?c=\(query(sid))"
   if bot.badge == "needs_you", let request = bot.requestId { link += "&request=\(query(request))" }
-  return URL(string: link) ?? botsURL
+  return URL(string: link) ?? mainURL
 }
 
 // MARK: - Timeline (hourly keeps greeting / night face / times current)
@@ -255,7 +236,7 @@ private struct FaceImage: View {
   }
 }
 
-/** The default agent's face (new chat): its rendered art, else Sprouty's bundled one. */
+/** The main Agent's face (new chat): its rendered art, else the bundled sprout. */
 private struct AgentFace: View {
   @Environment(\.colorScheme) private var scheme
   let agent: SnapshotAgent?
@@ -275,7 +256,7 @@ private struct AgentFace: View {
   }
 }
 
-/** A Bot's face with its badge at the top right. Missing art: Sprouty's bundled face, or the name's initial. */
+/** An Agent's face with its badge at the top right. Missing art: the bundled sprout (main Agent), or the name's initial. */
 private struct BotFace: View {
   @Environment(\.colorScheme) private var scheme
   let bot: SnapshotBot
@@ -388,7 +369,7 @@ private func botA11y(_ bot: SnapshotBot, zh: Bool) -> String {
   return (zh ? "\(bot.name)，" : "\(bot.name), ") + signal
 }
 
-/** Only Sprouty so far: one dashed "New Agent" slot (Settings → My Agents), never a row of empties. */
+/** Only the main Agent so far: one dashed "New Agent" slot, never a row of empties. */
 private struct NewBotCell: View {
   let zh: Bool
   let size: CGFloat
@@ -440,32 +421,6 @@ private struct BotRow: View {
       Text(bot.preview).font(.system(size: 12.5)).foregroundStyle(Color.secondary).lineLimit(prominent ? 2 : 1).privacySensitive()
     }
   }
-}
-
-private struct SessionRow: View {
-  let session: SnapshotSession
-  let zh: Bool
-
-  var body: some View {
-    Link(destination: chatURL(session.id)) {
-      HStack(spacing: 6) {
-        Image(systemName: "message").font(.system(size: 12)).foregroundStyle(Color("$accent"))
-        Text(session.title.isEmpty ? (zh ? "新会话" : "New chat") : session.title)
-          .font(.system(size: 12.5, weight: .medium))
-          .foregroundStyle(Color.primary)
-          .lineLimit(1)
-          .privacySensitive()
-        Spacer(minLength: 4)
-        if let at = session.updatedAt {
-          Text(relativeText(at, zh: zh)).font(.system(size: 11)).foregroundStyle(Color.secondary)
-        }
-      }
-    }
-  }
-}
-
-private func sectionLabel(_ text: String) -> some View {
-  Text(text).font(.system(size: 11, weight: .semibold)).foregroundStyle(Color.secondary)
 }
 
 private func emptyPrompt(_ zh: Bool, size: CGFloat) -> some View {
@@ -534,13 +489,6 @@ private struct MediumLauncher: View {
             }
           }
         }
-      } else if let sessions = entry.snapshot?.sessions, entry.snapshot?.bots == nil, !sessions.isEmpty {
-        sectionLabel(zh ? "继续对话" : "Continue chatting")
-        VStack(alignment: .leading, spacing: 6) {
-          ForEach(sessions.prefix(2), id: \.id) { s in SessionRow(session: s, zh: zh) }
-        }
-        Spacer(minLength: 0)
-        NewChatLink(entry: entry, zh: zh)
       } else {
         HStack(spacing: 12) {
           AgentFace(agent: entry.snapshot?.defaultAgent, date: entry.date, size: 62)
@@ -578,21 +526,12 @@ private struct LargeLauncher: View {
         VStack(alignment: .leading, spacing: 12) {
           ForEach(bots.dropFirst(), id: \.id) { bot in BotRow(bot: bot, now: entry.date, zh: zh) }
           if bots.count == 1 {
-            Link(destination: newBotURL) {
+            Link(destination: newAgentURL) {
               HStack(spacing: 11) {
                 NewBotCell(zh: zh, size: 34)
                 Text(zh ? "新建 Agent" : "New Agent").font(.system(size: 14)).foregroundStyle(Color.secondary)
               }
             }
-          }
-        }
-      } else if let sessions = entry.snapshot?.sessions, entry.snapshot?.bots == nil {
-        sectionLabel(zh ? "继续对话" : "Continue chatting")
-        if sessions.isEmpty {
-          Text(zh ? "暂无最近会话" : "No recent conversations").font(.system(size: 12)).foregroundStyle(Color.secondary)
-        } else {
-          VStack(alignment: .leading, spacing: 10) {
-            ForEach(sessions.prefix(4), id: \.id) { s in SessionRow(session: s, zh: zh) }
           }
         }
       } else {

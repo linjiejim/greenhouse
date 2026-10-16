@@ -22,9 +22,9 @@
 #            Without them the macOS build is ad-hoc signed: it runs, but Gatekeeper
 #            warns on first open. Windows installers are not Authenticode-signed.
 name: Desktop release
+# v2.0 ships web and native mobile; the desktop app returns after v2.0, so tags no longer
+# build it. Run it by hand for an existing tag once the desktop shell is on v2.
 on:
-  push:
-    tags: ['v*']
   workflow_dispatch:
     inputs:
       tag:

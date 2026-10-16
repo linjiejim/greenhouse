@@ -101,7 +101,22 @@ function keepAlive(ws) {
   ws.on('pong', () => {
     alive = true;
   });
+  ws.on('ping', () => {
+    alive = true;
+  });
+  ws.on('message', (data, binary) => {
+    alive = true;
+    if (isPing(data, binary)) ws.send('{"t":"pong"}');
+  });
   const timer = setInterval(() => {
+    if (ws.readyState !== ws.OPEN) return;
+    // Keep the other end alive even while stdin backpressure stops us reading its ping.
+    ws.send('{"t":"pong"}');
+    // A pong cannot pass queued output or a socket paused for stdin backpressure.
+    if (ws.isPaused || ws.bufferedAmount > LOW_WATER) {
+      alive = true;
+      return;
+    }
     if (!alive) {
       ws.terminate();
       return;
@@ -114,6 +129,10 @@ function keepAlive(ws) {
     }
   }, PING_MS);
   ws.on('close', () => clearInterval(timer));
+}
+
+function isPing(data, binary) {
+  return !binary && data.toString() === '{"t":"ping"}';
 }
 
 function previewPort(url) {
@@ -132,7 +151,12 @@ function tunnel(ws, unix) {
     unix.destroy();
   };
   unix.on('data', (chunk) => sendWithBackpressure(ws, chunk, unix));
-  ws.on('message', (data) => {
+  ws.on('message', (data, binary) => {
+    if (isPing(data, binary)) return;
+    if (!binary) {
+      ws.close(1008, 'binary messages only');
+      return;
+    }
     if (!unix.write(data)) {
       ws.pause();
       unix.once('drain', () => ws.resume());
@@ -206,6 +230,7 @@ function exec(ws) {
       ws.close(1008, 'bad message');
       return;
     }
+    if (message?.t === 'ping') return;
     if (!child && !finished) {
       start(message);
       return;

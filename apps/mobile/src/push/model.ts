@@ -1,58 +1,96 @@
 /**
  * Push rules on the phone, pure — no React, no Expo — so the root vitest pins them
- * (./model.test.ts). Spec: docs/specs/20261010-mobile-push.md §2.2–§2.4, §3.5.
+ * (./model.test.ts).
  *
- * - `planTap`: a tap opens its conversation — on the station that sent it, switching
- *   there first when another station is active (signed in or not), and waiting for a
- *   sign-in when nobody is signed in there; a push for someone else (the phone
- *   changed hands) or a removed station just opens the app.
- * - `routeOf` / `hrefOf`: only the app's existing deep links (`/bots?c=&request=`,
- *   `/chat/<id>`), rebuilt from validated ids — never a URL taken as given.
- * - `shouldPresent`: in the foreground, the thread on screen stays quiet.
- * - `forThread` / `staleIds`: which banners to clear — a thread's own when it opens,
+ * - `parsePushData`: a push's `data` as the server writes it (apps/api/src/modules/channels/push.ts
+ *   `pushData`, still `v: 1`): who it is for, the notification, the conversation and card to
+ *   open, the run and how it ended. Ids only, never content.
+ * - `planTap`: a tap opens its source — on the station that sent it, switching there first when
+ *   another station is active (signed in or not), and waiting for a sign-in when nobody is
+ *   signed in there; a push for someone else (the phone changed hands) or a removed station
+ *   just opens the app.
+ * - `routeOf`: the source as one of the app's places (../lib/app-links.ts), rebuilt from
+ *   validated ids — never a URL taken as given.
+ * - `shouldPresent`: in the foreground, the conversation on screen stays quiet.
+ * - `forConversation` / `staleIds`: which banners to clear — a conversation's own when it opens,
  *   a card decided elsewhere or a reply read elsewhere when the app comes back.
- * - `softAskDue`: the soft ask comes once per 14 days at most, and only while the
- *   system has not been asked.
+ * - `softAskDue`: the soft ask comes once per 14 days at most, and only while the system has
+ *   not been asked.
  */
 
-import { parsePushData, type PushData } from '../shared/push';
+import { parseAppPath, type AppRoute } from '../lib/app-links';
 
-export type PushRoute =
-  | { kind: 'thread'; c: string; request: string }
-  | { kind: 'chat'; id: string }
-  | { kind: 'home' };
+/** What a push is about, as `data.k` says it (runs were "done" first). */
+export type PushKind = 'needs_you' | 'replies' | 'done' | 'other' | 'test';
 
-const ID = /^[A-Za-z0-9._:-]{1,200}$/;
-
-/** Where a push's tap goes, from its `url` (validated against its own ids) or its kind. */
-export function routeOf(data: PushData): PushRoute {
-  const url = data.url ?? '';
-  const bots = /^\/bots\?c=([^&]+)(?:&request=([^&]+))?$/.exec(url);
-  if (bots) {
-    const c = decodeURIComponent(bots[1]!);
-    const request = bots[2] ? decodeURIComponent(bots[2]) : '';
-    if (ID.test(c) && (!request || ID.test(request))) return { kind: 'thread', c, request };
-    return { kind: 'home' };
-  }
-  const chat = /^\/chat\/([^/?#]+)$/.exec(url);
-  if (chat) {
-    const id = decodeURIComponent(chat[1]!);
-    return ID.test(id) ? { kind: 'chat', id } : { kind: 'home' };
-  }
-  // no (usable) url: a card or a reply always lives in a Bots thread
-  if ((data.k === 'needs_you' || data.k === 'replies') && data.sid) {
-    return { kind: 'thread', c: data.sid, request: data.k === 'needs_you' ? (data.rid ?? '') : '' };
-  }
-  return { kind: 'home' };
+/** Every push's `data`: what the phone needs to route a tap. Never content. */
+export interface PushData {
+  v: 1;
+  /** The device's own id for the station that sent it (`client_ref`): a tap from another station switches first. */
+  s: string | null;
+  /** The member it was for. */
+  u: string;
+  k: PushKind;
+  /** The notification. */
+  nid: string;
+  /** The conversation it opens. */
+  sid?: string;
+  /** A 「需要你」 card to scroll to. */
+  rid?: string;
+  /** Where a tap goes: the web app's route without the hash (`/c/<id>`, `/runs/<id>`, …). */
+  url?: string;
+  /** A run that ended: the phone ends its Live Activity. */
+  run?: string;
+  st?: 'succeeded' | 'failed';
 }
 
-/** The router path of a route — the deep-link forwarders (`app/bots/index.tsx`, `app/chat/[id].tsx`) take it from there. */
-export function hrefOf(route: PushRoute): string {
-  if (route.kind === 'thread') {
-    return `/bots?c=${encodeURIComponent(route.c)}${route.request ? `&request=${encodeURIComponent(route.request)}` : ''}`;
-  }
-  if (route.kind === 'chat') return `/chat/${encodeURIComponent(route.id)}`;
-  return '/';
+const ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$/;
+const KINDS: ReadonlySet<string> = new Set<PushKind>(['needs_you', 'replies', 'done', 'other', 'test']);
+const isId = (value: unknown): value is string => typeof value === 'string' && ID.test(value);
+
+/** A received `data` object → `PushData`, or null when it is not one of ours. */
+export function parsePushData(value: unknown): PushData | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const data = value as Record<string, unknown>;
+  if (data.v !== 1 || typeof data.k !== 'string' || !KINDS.has(data.k)) return null;
+  if (!isId(data.u) || !isId(data.nid)) return null;
+  // optional fields: absent is fine, present must be well-formed
+  if (data.s != null && !isId(data.s)) return null;
+  if (data.sid !== undefined && !isId(data.sid)) return null;
+  if (data.rid !== undefined && !isId(data.rid)) return null;
+  if (data.url !== undefined && (typeof data.url !== 'string' || data.url.length > 512)) return null;
+  if (data.run !== undefined && !isId(data.run)) return null;
+  if (data.st !== undefined && data.st !== 'succeeded' && data.st !== 'failed') return null;
+  return {
+    v: 1,
+    s: isId(data.s) ? data.s : null,
+    u: data.u,
+    k: data.k as PushKind,
+    nid: data.nid,
+    ...(isId(data.sid) ? { sid: data.sid } : {}),
+    ...(isId(data.rid) ? { rid: data.rid } : {}),
+    ...(typeof data.url === 'string' ? { url: data.url } : {}),
+    ...(isId(data.run) ? { run: data.run } : {}),
+    ...(data.st === 'succeeded' || data.st === 'failed' ? { st: data.st } : {}),
+  };
+}
+
+/** Where a tap goes: a conversation (with its card), another place of the app, or just the app. */
+export type PushRoute =
+  | { kind: 'conversation'; id: string; request: string }
+  | { kind: 'place'; route: Exclude<AppRoute, { kind: 'conversation' | 'web' }> }
+  | { kind: 'home' };
+
+export function routeOf(data: PushData): PushRoute {
+  if (data.k === 'test') return { kind: 'home' };
+  const request = data.k === 'needs_you' ? (data.rid ?? '') : '';
+  if (data.sid) return { kind: 'conversation', id: data.sid, request };
+  const route = data.url ? parseAppPath(data.url) : null;
+  if (!route) return { kind: 'home' };
+  if (route.kind === 'conversation') return { kind: 'conversation', id: route.id, request };
+  // knowledge and the rest have no screen here yet: the notification center lists it
+  if (route.kind === 'web') return { kind: 'place', route: { kind: 'notifications' } };
+  return { kind: 'place', route };
 }
 
 export type TapPlan =
@@ -67,12 +105,12 @@ export function planTap(input: {
   data: unknown;
   activeStationId: string | null;
   knownStationIds: readonly string[];
-  /** The account signed in on the active station (null while signed out). */
+  /** The member signed in on the active station (null while signed out). */
   userId: string | null;
 }): TapPlan {
   const data = parsePushData(input.data);
   if (!data) return { action: 'ignore' };
-  const route = data.k === 'test' ? ({ kind: 'home' } as const) : routeOf(data);
+  const route = routeOf(data);
   const station = data.s;
   // the station that sent it comes first — whether or not the active one is signed in
   if (station && station !== input.activeStationId) {
@@ -87,16 +125,16 @@ export function planTap(input: {
   return { action: 'open', route };
 }
 
-/** Show this notification while the app is in the foreground? The thread on screen stays quiet (spec §2.2). */
+/** Show this notification while the app is in the foreground? The conversation on screen stays quiet. */
 export function shouldPresent(input: {
   data: unknown;
   activeStationId: string | null;
-  visibleThread: string | null;
+  visibleConversation: string | null;
 }): boolean {
   const data = parsePushData(input.data);
-  if (!data || !data.sid || !input.visibleThread) return true;
+  if (!data || !data.sid || !input.visibleConversation) return true;
   const sameStation = !data.s || data.s === input.activeStationId;
-  return !(sameStation && data.sid === input.visibleThread);
+  return !(sameStation && data.sid === input.visibleConversation);
 }
 
 export interface Presented {
@@ -106,7 +144,7 @@ export interface Presented {
 }
 
 /** The banners of one conversation (to clear when it opens). */
-export function forThread(presented: readonly Presented[], stationId: string | null, sid: string): string[] {
+export function forConversation(presented: readonly Presented[], stationId: string | null, sid: string): string[] {
   return presented
     .filter((item) => {
       const data = parsePushData(item.data);
@@ -116,20 +154,20 @@ export function forThread(presented: readonly Presented[], stationId: string | n
 }
 
 /**
- * Banners that went stale while the app was away: a card that is no longer pending,
- * a reply in a conversation that is no longer unread. Only this station's — another
- * station's facts are unknown here.
+ * Banners that went stale while the app was away: a card that is no longer pending, a reply in
+ * a conversation that is no longer unread. Only this station's — another station's facts are
+ * unknown here.
  */
 export function staleIds(
   presented: readonly Presented[],
-  facts: { stationId: string | null; pendingRequestIds: ReadonlySet<string>; unreadSessionIds: ReadonlySet<string> },
+  facts: { stationId: string | null; pendingRequestIds: ReadonlySet<string>; unreadConversationIds: ReadonlySet<string> },
 ): string[] {
   return presented
     .filter((item) => {
       const data = parsePushData(item.data);
       if (!data || (data.s && data.s !== facts.stationId)) return false;
       if (data.k === 'needs_you') return !!data.rid && !facts.pendingRequestIds.has(data.rid);
-      if (data.k === 'replies') return !!data.sid && !facts.unreadSessionIds.has(data.sid);
+      if (data.k === 'replies') return !!data.sid && !facts.unreadConversationIds.has(data.sid);
       return false;
     })
     .map((item) => item.id);

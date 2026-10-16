@@ -1,160 +1,117 @@
-/**
- * The example extension — a complete, minimal reference for every field of the
- * contract: a table with its own migration, a service, a lazy tool, routes with a
- * feature guard, a feature flag + point, a runtime setting, a job and a command.
- *
- * It is compiled into every build but off by default; enable it per deployment
- * with `extensions.enabled: ['example']` in greenhouse.config.ts or
- * `GREENHOUSE_EXTENSIONS=example`. Copy this folder to start your own.
- */
-import { logger } from '@greenhouse/utils/logger';
-import { getDb, getExtensionServices } from '@greenhouse/db';
-import { requireFeature } from '../../auth/middleware.js';
-import { defineExtension, extensionPath } from '../define.js';
-import { exampleRoutes } from './routes.js';
-import { createExampleServices, type ExampleServices } from './service.js';
-import { exampleNotesQueryTool } from './tool.js';
+import { fileURLToPath } from 'node:url';
+import { Hono } from 'hono';
 import { z } from 'zod';
+import { pageQuerySchema, idParamSchema } from '@greenhouse/contract';
+import { exampleSettingsSchema, noteInputSchema } from '@greenhouse/contract/extensions/example';
+import type { ProviderAdapter } from '@greenhouse/providers';
+import { defineExtension, defineTool, readJson, readQuery, readParam, type AppEnv } from '../../extension-kit.js';
+import { exampleService } from './service.js';
+
+const adapter: ProviderAdapter<'search', { baseUrl: string }> = {
+  capability: 'search',
+  kind: 'example-search',
+  label: 'Example search',
+  configSchema: z.object({ baseUrl: z.string().url() }),
+  secretKeys: [],
+  endpoints: (config) => [config.baseUrl],
+  create: ({ config, fetch }) => ({
+    async search(query, options) {
+      const url = new URL(config.baseUrl);
+      url.searchParams.set('q', query);
+      url.searchParams.set('limit', String(options?.limit ?? 5));
+      const response = await fetch(url);
+      if (!response.ok) throw new Error('Example search is unavailable');
+      return z
+        .array(z.object({ title: z.string(), url: z.string().url(), snippet: z.string() }))
+        .max(20)
+        .parse(await response.json());
+    },
+  }),
+};
 
 export const exampleExtension = defineExtension({
   id: 'example',
-  name: 'Example notes',
-  description: 'Reference extension: per-user notes with a tool, routes, a flag, a setting and a job.',
-
-  tools: [exampleNotesQueryTool],
-  routes: [{ path: '/api/ext/example', app: exampleRoutes, guards: [requireFeature('example')] }],
-
-  // Its own MCP consent group, so a token can be granted `mcp:example` alone.
-  mcpGroups: ['example'],
-  // Its records get deeplinks (`#/example/notes/42`) and peeks in chat.
-  entityKinds: [{ kind: 'ext:example:note', route: '#/example/notes/:id' }],
-  // …and a lane in the global search palette.
-  searchSources: [
+  name: 'Example',
+  pages: ['notes'],
+  settingsSections: ['preferences'],
+  adminSections: ['preferences'],
+  entityPanels: [
+    { id: 'notes', entity: 'doc' },
+    { id: 'note', entity: 'ext:example:note' },
+  ],
+  migrations: { dir: fileURLToPath(new URL('./migrations', import.meta.url)) },
+  providerAdapters: [adapter],
+  routes: (services) =>
+    new Hono<AppEnv>()
+      .get('/notes', async (c) =>
+        c.json(
+          await exampleService.list(
+            c.get('member').id,
+            readQuery(c, pageQuerySchema.extend({ q: z.string().trim().max(100).optional() })),
+          ),
+        ),
+      )
+      .post('/notes', async (c) =>
+        c.json(await exampleService.create(c.get('member').id, await readJson(c, noteInputSchema)), 201),
+      )
+      .get('/notes/:id', async (c) =>
+        c.json(await exampleService.get(c.get('member').id, readParam(c, 'id', idParamSchema))),
+      )
+      .get('/settings', async (c) => c.json(await exampleService.settings(c.get('member').id, false)))
+      .patch('/settings', async (c) =>
+        c.json(
+          await exampleService.saveSettings(
+            c.get('member').id,
+            false,
+            (await readJson(c, exampleSettingsSchema)).label,
+          ),
+        ),
+      )
+      .get('/admin/settings', async (c) => c.json(await exampleService.settings(c.get('member').id, true)))
+      .patch('/admin/settings', async (c) =>
+        c.json(
+          await exampleService.saveSettings(c.get('member').id, true, (await readJson(c, exampleSettingsSchema)).label),
+        ),
+      )
+      .get('/docs/:id/panel', async (c) => {
+        await services.knowledge.getDoc(c.get('member').id, readParam(c, 'id', idParamSchema));
+        return c.json(await exampleService.list(c.get('member').id, { limit: 5 }));
+      }),
+  tools: () => [
+    defineTool({
+      name: 'ext_example_notes',
+      description: 'Read your example notes, or save a note after approval.',
+      input: z.object({
+        action: z.enum(['list', 'create']),
+        title: z.string().max(120).optional(),
+        body: z.string().max(4000).optional(),
+      }),
+      risk: 'read',
+      private: true,
+      taints: true,
+      callRisk: async (input) => (input.action === 'list' ? 'read' : 'tier2'),
+      describe: (_input, ctx) => ({
+        summary: ctx.locale === 'zh' ? '保存示例笔记' : 'Save an example note',
+        details: [],
+      }),
+      execute: async (input, ctx) =>
+        input.action === 'list'
+          ? exampleService.list(ctx.memberId, { limit: 20 })
+          : exampleService.create(ctx.memberId, noteInputSchema.parse(input)),
+    }),
+  ],
+  searchSources: () => [
     {
-      kind: 'ext:example:note',
-      search: async ({ query, limit, userId, db }) => {
-        const { notes } = getExtensionServices<ExampleServices>(db, 'example');
-        const rows = await notes.search(userId, query, limit);
-        return rows.map((row) => ({
-          ref: { kind: 'ext:example:note' as const, id: row.id },
-          title: row.body.slice(0, 80),
+      id: 'notes',
+      async search(memberId, query, limit) {
+        const found = await exampleService.list(memberId, { q: query, limit });
+        return found.items.map((note) => ({
+          id: note.id,
+          title: note.title,
+          snippet: note.body.slice(0, 120),
+          path: `notes/${encodeURIComponent(note.id)}`,
         }));
       },
     },
   ],
-  // …and its own drive scope: a file cabinet per note, inside the shared
-  // `drive_*` tables, keyed by `owner_key` and guarded by this resolver.
-  driveScopes: [
-    {
-      scope: 'example-note',
-      authorize: async (ownerKey, { userId, db }) => {
-        if (!ownerKey) return null;
-        const { notes } = getExtensionServices<ExampleServices>(db, 'example');
-        // Notes are personal, so the cabinet is too: `get` is already scoped to
-        // the caller, so a note that is not theirs simply is not found.
-        const note = await notes.get(userId, Number(ownerKey));
-        return note ? 'editor' : null;
-      },
-    },
-  ],
-  // …and a whole-dataset lane in `export_data`, so the model exports the notes
-  // as a file instead of transcribing them into an inline payload.
-  exportSources: [
-    {
-      type: 'example_notes',
-      schema: z.object({ type: z.literal('example_notes') }),
-      describe: 'export every note the signed-in user has saved in the Example extension.',
-      load: async (_source, { userId }, db) => {
-        const { notes } = getExtensionServices<ExampleServices>(db, 'example');
-        const rows = await notes.list(userId, 1000);
-        return {
-          columns: [
-            { key: 'id', label: 'ID' },
-            { key: 'body', label: 'Note' },
-            { key: 'created_at', label: 'Created' },
-          ],
-          rows: rows as unknown as Array<Record<string, unknown>>,
-          defaultFilename: 'example-notes',
-          defaultSheetName: 'Notes',
-        };
-      },
-    },
-  ],
-  // …and a Home workbench card backed by its read tool.
-  workbenchRecipes: [
-    {
-      id: 'example.notes',
-      toolId: 'example_notes_query',
-      label: 'Example notes',
-      description: 'Your latest notes from the Example extension',
-      labelKey: 'ext.example.recipe.notes',
-      descriptionKey: 'ext.example.recipe.notesDesc',
-      display: 'table',
-      source: { toolId: 'example_notes_query', input: { limit: 10 } },
-      map: { rows: 'notes', columns: [{ key: 'body', type: 'text' }] },
-      size: { w: 6, h: 5 },
-    },
-  ],
-
-  featureFlags: [
-    {
-      key: 'example',
-      label: 'Example notes',
-      description: 'The reference extension: personal notes, its tool and its page',
-      defaultEnabled: false,
-    },
-  ],
-  featurePoints: [
-    {
-      key: 'example',
-      title: 'Example notes',
-      description: 'Personal notes from the reference extension (page, REST and chat tool).',
-      icon: 'StickyNote',
-      kind: 'flag',
-      group: 'advanced',
-      flag: 'example',
-      toolIds: ['example_notes_query'],
-    },
-  ],
-  workspaceSettings: [
-    {
-      key: 'example.greeting',
-      group: 'example',
-      label: 'Greeting',
-      description: 'Shown at the top of the Example notes page.',
-      type: 'string',
-      placeholder: 'Welcome to your notes',
-      maxLength: 120,
-    },
-  ],
-
-  migrations: { dir: extensionPath(import.meta.url, 'migrations') },
-  services: createExampleServices,
-  resetTables: ['ext_example_notes'],
-
-  jobs: [
-    {
-      id: 'example-note-count',
-      cron: '0 3 * * *',
-      run: async () => {
-        const { notes } = getExtensionServices<ExampleServices>(getDb(), 'example');
-        logger.info(`[example] ${await notes.count()} note(s) in total`);
-      },
-    },
-  ],
-  commands: [
-    {
-      name: 'example:count',
-      usage: 'Count the notes stored by the example extension',
-      run: async () => {
-        const { notes } = getExtensionServices<ExampleServices>(getDb(), 'example');
-        console.log(await notes.count());
-        return 0;
-      },
-    },
-  ],
-
-  onBoot: () => {
-    logger.info('[example] extension ready');
-  },
 });

@@ -164,7 +164,7 @@ describe('buildPlantAvatarSvg — structural guarantees', () => {
     // the stylesheet leaves the light palette to each paint's fallback and switches only dark
     expect(PLANT_AVATAR_CSS).toContain('\n.pa{display:block;overflow:visible}\n');
     expect(PLANT_AVATAR_CSS).toContain(
-      '.dark-theme .pa,.pa-dark .pa{--pa-disc:var(--pa-d-disc);--pa-body:var(--pa-d-body);',
+      "[data-theme='dark'] .pa,.dark-theme .pa,.pa-dark .pa{--pa-disc:var(--pa-d-disc);--pa-body:var(--pa-d-body);",
     );
     // static output carries no motion vars
     expect(rootTag).not.toContain('--pa-phase');
@@ -361,6 +361,7 @@ describe('PLANT_AVATAR_CSS', () => {
     expect(PLANT_AVATAR_CSS).toContain('.pa-m-lean{animation:pa-lean 2.6s ease-in-out 3}');
     expect(PLANT_AVATAR_CSS).toContain('.pa-paused .pa *');
     expect(PLANT_AVATAR_CSS).toContain('.dark-theme .pa');
+    expect(PLANT_AVATAR_CSS).toContain("[data-theme='dark'] .pa");
   });
 
   it('gives the seeded phase only to infinite loops; a capped loop starts at most a quarter cycle in', () => {

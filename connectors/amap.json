@@ -18,7 +18,7 @@
       "title_zh": "高德地图",
       "description_zh": "高德地图的地理编码、地点搜索、路线规划与天气查询。",
       "auth": {
-        "mode": "per_user",
+        "mode": "per_member",
         "query_param": "key",
         "help": "An Amap Web Service key (create an app in the Amap console, then add a key of type \"Web 服务\").",
         "help_zh": "高德开放平台的「Web 服务」Key：在控制台创建应用并添加 Key 即可。",

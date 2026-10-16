@@ -4,8 +4,6 @@ on:
     paths:
       - examples/plant-motion-review/**
       - .github/workflows/plant-motion-review.yml
-      - package.json
-      - pnpm-lock.yaml
 jobs:
   browser:
     runs-on: ubuntu-latest

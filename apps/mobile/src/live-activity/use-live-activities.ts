@@ -1,10 +1,10 @@
 /**
- * `useLiveActivities()` — mounted once in the root layout, renders nothing. Keeps a Bot's
- * background tasks on the lock screen / Dynamic Island in step with the server
+ * `useLiveActivities()` — mounted once in the root layout, renders nothing. Keeps an Agent's
+ * background runs on the lock screen / Dynamic Island in step with the server
  * (./controller.ts): reconciles when the station, the account, this phone's push
- * registration or the switch change, when the app comes to the foreground, and on the Bots
- * realtime events (debounced) — and tells the station the switch whenever the registration
- * changes, so its "done" pushes wake the app.
+ * registration or the switch change, when the app comes to the foreground, and on
+ * `run.updated` events (debounced) — and tells the station the switch whenever the
+ * registration changes, so its "done" pushes wake the app.
  */
 
 import { useEffect } from 'react';
@@ -16,7 +16,7 @@ import { useStations } from '../store/stations';
 import { hydrateLiveActivity, reconcile, syncLiveActivityPref, useLiveActivity } from './controller';
 
 const IOS = Platform.OS === 'ios';
-/** Realtime pushes come in bursts (a task's start and its report each touch the conversation). */
+/** Realtime events come in bursts (a run's start and its steps each update it). */
 const SETTLE_MS = 1000;
 
 export function useLiveActivities(): void {
@@ -50,7 +50,7 @@ export function useLiveActivities(): void {
       if (state === 'active') void reconcile();
     });
     const off = realtime.on((event) => {
-      if (event.type === 'resync' || event.type === 'bots:conversation') soon();
+      if (event.type === 'resync' || event.type === 'run.updated') soon();
     });
     return () => {
       if (timer) clearTimeout(timer);

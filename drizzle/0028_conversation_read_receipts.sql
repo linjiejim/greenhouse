@@ -1,1 +1,0 @@
-ALTER TABLE "conversation_participants" ADD COLUMN "last_read_seq" integer DEFAULT -1 NOT NULL;

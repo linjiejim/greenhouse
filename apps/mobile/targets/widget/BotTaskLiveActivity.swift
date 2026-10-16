@@ -1,19 +1,21 @@
 /**
- * A Bot's background task as a Live Activity — lock screen and Dynamic Island (spec
+ * An Agent's background run as a Live Activity — lock screen and Dynamic Island (spec
  * docs/specs/20261010-mobile-live-activity.md §2.3, §2.4; mock docs/specs/assets/live-activity/).
+ * The Swift names still say "task"; the words on screen say 运行 / run.
  *
  * The app starts, updates and ends it (src/live-activity, modules/widget-bridge); the data is
  * `BotTaskAttributes` (./BotTaskAttributes.swift) and carries no words — every string below is
  * written here, in the activity's own language (`attributes.lang`).
  *
- * - The timer is `Text(timerInterval:)`, capped at the task's 20-minute limit: the system ticks it
+ * - The timer is `Text(timerInterval:)`, capped at the run's 20-minute limit: the system ticks it
  *   with no updates, and it can never run past the limit.
  * - Stale (no news by `staleDate`): "may have finished", never a guess at the result.
  * - Faces are the App Group PNGs the app drew for this activity, read at their real point size
  *   (an image larger than its presentation can keep an activity from starting): 52 pt for the
  *   lock screen and the expanded island, 36 pt (dark) for compact / minimal. Missing → the
- *   Bot's initial on a tinted disc.
- * - One `widgetURL` for the whole island (several are undefined behaviour): the task's conversation.
+ *   Agent's initial on a tinted disc.
+ * - One `widgetURL` for the whole island (several are undefined behaviour): the run's conversation,
+ *   else the run itself.
  * - No title unless the device shows previews (`attributes.title`); no buttons (D12).
  */
 
@@ -21,7 +23,7 @@ import ActivityKit
 import SwiftUI
 import WidgetKit
 
-/// The task limit (apps/api BOT_TASK_TIMEOUT_MS): the timer stops there.
+/// The run limit (apps/api RUN_TIMEOUT_MS): the timer stops there.
 private let taskLimit: TimeInterval = 20 * 60
 /// The island is always black: its accent is the dark-mode one.
 private let islandAccent = Color("IslandAccent")
@@ -29,13 +31,12 @@ private let islandAccent = Color("IslandAccent")
 // MARK: - State
 
 private enum TaskPhase {
-  case queued, running, paused, succeeded, failed, interrupted, canceled, stale
+  case queued, running, needsYou, succeeded, failed, canceled, stale
 
   init(_ context: ActivityViewContext<BotTaskAttributes>) {
     switch context.state.status {
     case "succeeded": self = .succeeded
     case "failed": self = .failed
-    case "interrupted": self = .interrupted
     case "canceled": self = .canceled
     default:
       // still going as far as we know: past its staleDate, say so instead
@@ -45,14 +46,14 @@ private enum TaskPhase {
       }
       switch context.state.status {
       case "queued": self = .queued
-      case "waiting": self = .paused
+      case "waiting": self = .needsYou
       default: self = .running
       }
     }
   }
 
   var ticks: Bool { self == .queued || self == .running }
-  var ended: Bool { self == .succeeded || self == .failed || self == .interrupted || self == .canceled }
+  var ended: Bool { self == .succeeded || self == .failed || self == .canceled }
 }
 
 private func startDate(_ state: BotTaskAttributes.ContentState) -> Date {
@@ -71,14 +72,13 @@ private struct Copy {
   func line(_ phase: TaskPhase, _ state: BotTaskAttributes.ContentState) -> String {
     switch phase {
     case .queued: return zh ? "排队中" : "Queued"
-    case .running: return zh ? "后台任务进行中" : "Working in the background"
-    case .paused: return zh ? "已暂停" : "Paused"
+    case .running: return zh ? "后台运行中" : "Running in the background"
+    case .needsYou: return zh ? "需要你" : "Needs you"
     case .succeeded:
-      guard let took = duration(state) else { return zh ? "后台任务完成了" : "Background task done" }
-      return zh ? "后台任务完成了 · 用时 \(took)" : "Done in \(took)"
-    case .failed: return zh ? "后台任务没能完成" : "The background task didn't finish"
-    case .interrupted: return zh ? "后台任务被中断了" : "The background task was interrupted"
-    case .canceled: return zh ? "后台任务已取消" : "Background task canceled"
+      guard let took = duration(state) else { return zh ? "运行完成了" : "Run done" }
+      return zh ? "运行完成了 · 用时 \(took)" : "Done in \(took)"
+    case .failed: return zh ? "运行没能完成" : "The run didn't finish"
+    case .canceled: return zh ? "运行已取消" : "Run canceled"
     case .stale: return zh ? "状态没有更新，可能已经结束" : "No update — it may have finished"
     }
   }
@@ -87,7 +87,8 @@ private struct Copy {
   func hint(_ phase: TaskPhase) -> String? {
     switch phase {
     case .succeeded: return zh ? "点按查看汇报" : "Tap to see the report"
-    case .failed, .interrupted: return zh ? "点按查看原因" : "Tap to see why"
+    case .needsYou: return zh ? "点按去处理" : "Tap to take a look"
+    case .failed: return zh ? "点按查看原因" : "Tap to see why"
     case .stale: return zh ? "打开 App 查看" : "Open the app to check"
     default: return nil
     }
@@ -95,7 +96,7 @@ private struct Copy {
 
   var elapsed: String { zh ? "已用时" : "Elapsed" }
   var islandHint: String { zh ? "点按打开对话 · 最长 20 分钟" : "Tap to open the chat · 20 min at most" }
-  var islandLine: String { zh ? "后台任务进行中 · 完成后会通知你" : "Working in the background · you'll be told when it's done" }
+  var islandLine: String { zh ? "后台运行中 · 完成后会通知你" : "Running in the background · you'll be told when it's done" }
 
   /// "4 分 12 秒" / "4m 12s"; nil when the end is unknown.
   private func duration(_ state: BotTaskAttributes.ContentState) -> String? {
@@ -109,7 +110,8 @@ private struct Copy {
 }
 
 private func taskURL(_ attributes: BotTaskAttributes) -> URL? {
-  URL(string: "greenhouse://bots?c=\(query(attributes.session))")
+  if attributes.session.isEmpty { return URL(string: "greenhouse://runs/\(query(attributes.run))") }
+  return URL(string: "greenhouse://?c=\(query(attributes.session))")
 }
 
 // MARK: - Faces
@@ -170,9 +172,9 @@ private struct PhaseGlyph: View {
   var body: some View {
     switch phase {
     case .succeeded: glyph("checkmark.circle.fill", .green)
-    case .failed, .interrupted: glyph("exclamationmark.circle.fill", .orange)
+    case .failed: glyph("exclamationmark.circle.fill", .orange)
     case .canceled: glyph("xmark.circle.fill", .gray)
-    case .paused: glyph("pause.circle.fill", .gray)
+    case .needsYou: glyph("hand.raised.circle.fill", .orange)
     case .stale: glyph("clock.fill", .gray)
     default: EmptyView()
     }
@@ -195,7 +197,7 @@ private struct TaskTimer: View {
 
   var body: some View {
     let start = startDate(state)
-    // ends at the task limit: the clock stops there by itself
+    // ends at the run limit: the clock stops there by itself
     Text(timerInterval: start...start.addingTimeInterval(taskLimit), countsDown: false)
       .font(.system(size: size, weight: .semibold))
       .monospacedDigit()
