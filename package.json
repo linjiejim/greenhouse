@@ -36,7 +36,11 @@
     "test:db": "VITEST_MAX_WORKERS=4 vitest run --project db",
     "db:generate": "DATABASE_URL=postgresql://unused/generate drizzle-kit generate",
     "cli": "tsx apps/api/src/cli.ts",
-    "eval": "vitest run apps/api/src/engine/__tests__/eval.db.test.ts"
+    "eval": "vitest run apps/api/src/engine/__tests__/eval.db.test.ts",
+    "plant-motion:dev": "node examples/plant-motion-review/server.mjs",
+    "test:plant-motion": "vitest run --project unit examples/plant-motion-review/controller.test.ts",
+    "typecheck:plant-motion": "tsc -p examples/plant-motion-review/typecheck.json",
+    "test:plant-motion:browser": "node examples/plant-motion-review/browser-qa.mjs"
   },
   "lint-staged": {
     "apps/!(mobile)/**/*.{ts,tsx}": [

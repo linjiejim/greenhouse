@@ -107,3 +107,7 @@ Greenhouse is an open-source, self-hosted platform where a team works with its o
 - Human schedule summaries live in packages/utils/src/cron.ts; server cards and Web lists share them. Custom expressions remain execution/editing inputs, never card copy.
 
 - The bilingual v2 website is docs/index.html; claims follow README Highlights. Keep film, fonts and screenshots local. Regenerate docs/tailwind.css after class changes and docs/og.png after hero changes; review both languages/themes at 1440 and 390 px. docs/install.sh pins 2.0.0, uses PUBLIC_URL and isolates v1; --dry-run renders local checkout templates without starting services.
+
+## Isolated plant motion review
+
+`examples/plant-motion-review/` is the user-requested V1/V2 comparison experiment for plant avatar motion. Read its local AGENTS.md before editing. Frozen V1 is intentionally retained alongside experimental V2; neither is imported by product code. Adopting V2 means porting it into packages/ui plant avatars and the native app, not linking the experiment.

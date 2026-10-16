@@ -1,0 +1,535 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="color-scheme" content="light dark"><title>Greenhouse · 植物的回应</title><meta name="description" content="16 个 Greenhouse 植物角色的独立交互动画实验室。"><link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Ccircle cx='20' cy='24' r='13' fill='%239ab67a'/%3E%3Cpath d='M20 13Q6 12 12 3Q22 4 20 13M20 13Q19 1 29 3Q32 12 20 13' fill='%235e9466'/%3E%3C/svg%3E"><style>@font-face{font-family:Fallback;src:local('PingFang SC')}*{box-sizing:border-box}html{scroll-behavior:smooth}body{--bg:#f7f8f2;--surface:#fffefa;--ink:#24392f;--muted:#68766a;--line:#dfe5d8;--soft:#edf1e6;--accent:#52764d;--active:#294934;--active-ink:#fffdf4;--note:#f1eddf;margin:0;background:var(--bg);color:var(--ink);font-family:Fallback,'Noto Sans CJK SC','Microsoft YaHei',system-ui,sans-serif;font-size:14px;line-height:1.6}body.dark{--bg:#131e19;--surface:#1b2922;--ink:#e6ebdf;--muted:#a2b2a5;--line:#34473a;--soft:#26392c;--accent:#b1c799;--active:#d4e3bd;--active-ink:#24392f;--note:#353529;color-scheme:dark}button,select{font:inherit;color:inherit}button,a,select{-webkit-tap-highlight-color:transparent}button{cursor:pointer;border:1px solid var(--line);background:transparent;border-radius:10px;min-height:44px;padding:8px 14px}button:hover{background:var(--soft)}button:focus-visible,a:focus-visible,select:focus-visible{outline:3px solid var(--accent);outline-offset:4px}button[aria-pressed=true]{background:var(--active);border-color:var(--active);color:var(--active-ink)}button:disabled{opacity:.5;cursor:default}a{color:inherit;text-decoration:none}p,h1,h2,h3{margin:0}.shell{max-width:1264px;padding:0 48px;margin:auto}.masthead{height:94px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between}.wordmark{font-size:22px;font-weight:650;letter-spacing:-.8px;display:flex;align-items:center;gap:10px}.brand-symbol{font-size:32px;color:var(--accent)}.edition{font-size:12px;font-weight:400;letter-spacing:1px;color:var(--muted);margin-left:12px}.icon-button{display:flex;align-items:center;justify-content:center;gap:7px;min-width:44px;background:var(--surface)}.intro{display:flex;justify-content:space-between;align-items:end;padding:54px 0 34px;gap:24px}.eyebrow{font:11px/1.5 ui-monospace,monospace;letter-spacing:2px;color:var(--muted)}.eyebrow span{margin-left:22px}h1{font-size:clamp(38px,5.1vw,62px);font-weight:600;letter-spacing:-2px;line-height:1.22;margin:22px 0}.title-dot{color:#8fba73}.intro-copy{color:var(--muted);line-height:1.9;font-size:15px}.intro-aside{padding-bottom:5px;width:210px}.index-number{font:76px/.95 Georgia,serif;letter-spacing:-4px}.index-number span{font:13px system-ui;letter-spacing:0;margin-left:15px;color:var(--muted)}.intro-aside p{margin-top:22px;font-size:12px;line-height:1.8;color:var(--muted)}.notice{display:flex;gap:15px;align-items:center;padding:14px 18px;border-radius:12px;background:var(--note);font-size:12px;margin-bottom:22px}.notice-label{font-size:10px;letter-spacing:1px;white-space:nowrap;padding:4px 8px;border:1px solid var(--muted);border-radius:5px}.notice p{color:var(--muted)}.notice strong{font-weight:500;color:var(--ink)}.control-panel{background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:20px 24px}.control-top,.control-bottom{display:flex;align-items:center;justify-content:space-between;gap:18px}.section-heading{display:flex;align-items:center;gap:9px}.section-heading h2,.section-heading h3{font-size:14px;font-weight:600}.tiny-dot{width:7px;height:7px;border-radius:50%;background:var(--accent);display:inline-block}.play-controls{display:flex;gap:8px}.play-controls button,.detail-actions button{font-size:12px;min-height:38px}.state-row{display:grid;grid-template-columns:repeat(8,1fr);gap:8px;margin:18px 0}.state-row button{background:var(--soft);border-color:transparent;padding:10px 4px;font-size:13px}.state-row button[aria-pressed=true]{background:var(--active)}.state-row button small{display:block;font:9px/1.4 ui-monospace,monospace;opacity:.65;letter-spacing:.4px}.control-bottom{padding-top:13px;border-top:1px solid var(--line)}.control-bottom p{font-size:11px;color:var(--muted)}.select-controls{display:flex;gap:18px}label{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--muted)}select{background:transparent;color:var(--ink);border:0;padding:8px 4px;min-height:40px}.gallery-heading{display:flex;align-items:center;justify-content:space-between;margin:36px 0 17px}.gallery-heading h2{font-size:16px;font-weight:600}.gallery-heading span{font-size:11px;color:var(--muted)}.gallery{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}.plant-card{padding:0;text-align:left;overflow:hidden;border-radius:17px;background:var(--surface);position:relative;min-width:0}.card-top{display:flex;align-items:center;justify-content:space-between;padding:15px 18px 0}.card-number{font:10px ui-monospace,monospace;color:var(--muted);letter-spacing:1px}.card-arrow{color:var(--muted);font-size:16px}.avatar-host{height:179px;display:flex;align-items:center;justify-content:center}.avatar-host svg{display:block;max-width:100%;flex-shrink:0}.card-caption{display:flex;align-items:end;justify-content:space-between;gap:5px;padding:4px 18px 18px}.plant-name{font-size:15px;font-weight:550;display:block}.plant-alias{font-size:10px;color:var(--muted);display:block;margin-top:3px}.state-badge{font-size:10px;color:var(--muted);padding:3px 7px;background:var(--soft);border-radius:20px;white-space:nowrap}.plant-card:hover{border-color:var(--accent);background:var(--surface)}.plant-card:hover .card-arrow{color:var(--ink)}.gallery.small .avatar-host{height:82px}.gallery.small .card-caption{display:block}.gallery.small .state-badge{display:inline-block;margin-top:7px}footer{display:flex;align-items:center;justify-content:space-between;gap:20px;border-top:1px solid var(--line);margin-top:38px;padding:25px 0 36px;color:var(--muted);font-size:10px;letter-spacing:1px}footer p{text-align:right;letter-spacing:0;line-height:1.8}dialog{max-width:920px;width:calc(100% - 48px);padding:0;border:1px solid var(--line);border-radius:24px;background:var(--surface);color:var(--ink);max-height:92dvh;overflow:auto}dialog::backdrop{background:rgb(10 22 14 / .56)}.dialog-inner{padding:26px 30px 32px}.dialog-top{display:flex;align-items:center;justify-content:space-between}.close{font-size:24px;border:0;background:var(--soft);border-radius:50%}.detail-layout{display:grid;grid-template-columns:1fr 1.12fr;gap:28px;margin-top:16px}.portrait-section{text-align:center;padding-top:8px}.portrait-nav{display:flex;align-items:center;justify-content:space-between;gap:0}.portrait-nav .icon-button{border:0;background:none;font-size:20px;padding:0}.portrait-nav .icon-button:hover{background:var(--soft)}#portrait{display:flex;align-items:center;justify-content:center;min-width:0;flex:1;height:256px}#portrait svg{width:100%!important;height:auto!important;max-width:250px;display:block}.portrait-section h2{font-size:24px;font-weight:600;margin-top:14px}.portrait-section>p{font-size:12px;color:var(--muted);margin-top:8px}.portrait-status{display:flex;align-items:center;justify-content:center;gap:7px;font-size:12px;margin-top:13px}.detail-actions{display:flex;justify-content:center;gap:8px;margin-top:20px}.sizes-strip{display:flex;justify-content:center;gap:22px;margin-top:25px;padding-top:18px;border-top:1px solid var(--line)}.size-example{display:flex;flex-direction:column;align-items:center;gap:7px;font:10px ui-monospace,monospace;color:var(--muted)}.size-example>div{height:45px;display:flex;align-items:center}.expression-section{padding:18px 0 0 26px;border-left:1px solid var(--line)}.muted{color:var(--muted);font-size:11px;margin-top:8px}.comparison{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-top:20px}.expression-button{padding:7px 2px 9px;border-radius:12px;display:flex;align-items:center;flex-direction:column;background:var(--bg);min-width:0}.expression-button .expression-avatar{height:68px;display:flex;align-items:center}.expression-button span{font-size:11px}.expression-button small{font:8px ui-monospace,monospace;opacity:.7}.expression-button[aria-pressed=true]{outline:2px solid var(--accent);outline-offset:1px;background:var(--soft);color:var(--ink);border-color:transparent}.detail-settings{margin-top:22px;border-top:1px solid var(--line);padding-top:14px}.detail-settings p{font-size:11px;color:var(--muted);margin-top:7px}body:has(dialog[open]){overflow:hidden}@media(min-width:760px){.expression-section{display:flex;flex-direction:column;justify-content:center;padding-top:0}}@media(max-width:900px){.shell{padding:0 28px}.gallery{grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}.avatar-host{height:145px}.avatar-host svg{max-width:126px;height:auto!important}.card-caption{display:block;padding:4px 13px 14px}.state-badge{display:inline-block;margin-top:6px}.card-top{padding:13px 13px 0}.comparison{grid-template-columns:repeat(4,minmax(0,1fr))}.dialog-inner{padding:20px}.detail-layout{gap:15px}.expression-section{padding-left:15px}}@media(max-width:650px){.shell{padding:0 20px}.masthead{height:77px}.wordmark{font-size:20px;gap:7px}.edition{font-size:10px;margin-left:5px;letter-spacing:0}.brand-symbol{font-size:28px}#theme{border:0;background:none;padding:6px;min-width:44px}#theme span{display:none}.intro{padding:34px 0 27px;align-items:center;gap:15px}.eyebrow{font-size:9px;letter-spacing:1.3px}.eyebrow span{margin-left:12px}h1{font-size:40px;margin:19px 0 17px}.intro-copy{font-size:12px;line-height:1.9}.intro-aside{width:65px;align-self:flex-start;margin-top:58px}.index-number{font-size:48px;letter-spacing:-3px}.index-number span{display:block;font-size:10px;margin:10px 0 0;letter-spacing:1px}.intro-aside p{display:none}.notice{align-items:flex-start;gap:10px;padding:12px;font-size:10px;border-radius:10px;margin-bottom:18px}.notice-label{font-size:9px;padding:3px 5px}.control-panel{padding:16px 14px;border-radius:16px}.control-top{gap:7px;flex-wrap:wrap}.section-heading h2{font-size:12px}.play-controls{gap:5px}.play-controls button{font-size:10px;min-height:36px;padding:6px 8px}.state-row{grid-template-columns:repeat(4,1fr);gap:6px;margin:13px 0}.state-row button{min-height:49px;font-size:12px}.state-row button small{font-size:8px}.control-bottom{flex-direction:column;align-items:flex-start;gap:6px;padding-top:9px}.select-controls{justify-content:space-between;width:100%;gap:8px}.select-controls label{font-size:10px;gap:3px}.select-controls select{font-size:11px;padding:4px 2px}.gallery-heading{margin:28px 0 14px;align-items:baseline}.gallery-heading h2{font-size:14px}.gallery-heading span{font-size:9px}.gallery{grid-template-columns:repeat(2,minmax(0,1fr));gap:11px}.avatar-host{height:142px}.avatar-host svg{max-width:132px}.plant-name{font-size:14px}.card-caption{display:flex;padding:0 12px 14px;align-items:end}.plant-alias{font-size:9px}.state-badge{font-size:9px;padding:2px 5px}.card-top{padding:12px 12px 0}.gallery.small .avatar-host{height:76px}footer{font-size:8px;align-items:flex-start;padding-bottom:28px}dialog{width:100%;max-width:none;max-height:96dvh;position:fixed;inset:auto 0 0;margin:0;border-radius:22px 22px 0 0;border-bottom:0}.dialog-inner{padding:16px 20px 26px;padding-bottom:max(26px,env(safe-area-inset-bottom))}.dialog-top .eyebrow{font-size:10px}.detail-layout{display:flex;flex-direction:column;gap:22px;margin-top:0}.portrait-section{padding-top:0}.portrait-nav{max-width:330px;margin:auto}#portrait{height:195px}#portrait svg{max-width:193px}.portrait-section h2{font-size:22px;margin-top:6px}.portrait-section>p{font-size:11px;margin-top:4px}.portrait-status{margin-top:8px}.detail-actions{margin-top:12px}.sizes-strip{margin-top:17px;padding-top:12px;gap:27px}.size-example>div{height:40px}.expression-section{border-left:0;border-top:1px solid var(--line);padding:18px 0 0}.comparison{margin-top:14px;gap:8px}.expression-button .expression-avatar{height:62px}.expression-button svg{width:60px!important;height:60px!important}.detail-settings{display:flex;align-items:center;gap:18px;margin-top:14px;padding-top:10px}.detail-settings p{font-size:10px;margin:0}.expression-section h3{font-size:13px}}@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+</style><script type="module">// All 16 geometries refined from the parent-reviewed A visual specification.
+// The executor did not view the A image directly. Original vendor geometry is preserved.
+export const PRESETS = {"sprout":{"pivot":[50,94],"face":{"x":50,"y":65,"gap":9.5},"parts":{"l":{"at":[49,34],"fold":-25},"r":{"at":[51,34],"fold":25}},"layers":[{"d":"M50 43V29","tone":"stem","stroke":4.6,"lods":"gap"},{"d":"M49 35C42 27 42 14 49 5C59 16 59 27 49 35Z","tone":"shade","lods":"gap"},{"d":"M49 35C33 35 25 26 25 16C38 16 47 23 49 35Z","tone":"shade","lods":"gap","part":"l"},{"d":"M51 35C66 34 74 25 74 16C61 16 53 23 51 35Z","tone":"shade","lods":"gap","part":"r"},{"d":"M19 65a31 31 0 1 0 62 0a31 31 0 1 0 -62 0Z","tone":"body","lods":"gap"}],"palette":{"light":{"disc":"#EAF1E2","body":"#9AB67A","shade":"#5E9466","light":"#D6E8C4","accent":"#E2B04A","accent2":"#E2B04A","stem":"#4A8A6C","ink":"#14200F","catch":"#FFFFFF","rim":"#56744A","mark":"#56744A"},"dark":{"disc":"#1F2E1C","body":"#A9C78A","shade":"#74AA79","light":"#D6E8C4","accent":"#E2B04A","accent2":"#E2B04A","stem":"#5FA287","ink":"#14200F","catch":"#FFFFFF","rim":"#0E170C","mark":"#A9C78A"}}},"ivy":{"pivot":[50,90],"face":{"x":50,"y":58,"gap":9.4},"layers":[{"d":"M53 33C57 22 69 24 72 16C75 6 59 3 59 12C59 17 64 18 66 14","tone":"stem","stroke":3.7,"lods":"gap"},{"d":"M68 28C71 18 81 19 82 23C80 30 74 33 68 28Z","tone":"shade","lods":"ap"},{"d":"M50 33C41 17 22 17 16 32C9 51 27 70 50 88C70 74 88 50 82 33C77 18 59 18 50 33Z","tone":"body","lods":"gap"},{"d":"M50 74V83","tone":"light","stroke":1.7,"lods":"p","op":0.65}],"palette":{"light":{"disc":"#E2EFEA","body":"#4A8C7B","shade":"#3B7767","light":"#BFE0D4","accent":"#3F7F70","accent2":"#3F7F70","stem":"#3E7A69","ink":"#03100A","catch":"#FFFFFF","rim":"#2A5F51","mark":"#2A5F51"},"dark":{"disc":"#183028","body":"#62A894","shade":"#4E927F","light":"#BFE0D4","accent":"#3F7F70","accent2":"#3F7F70","stem":"#57988A","ink":"#03100A","catch":"#FFFFFF","rim":"#08140F","mark":"#62A894"}}},"sage":{"pivot":[53,94],"face":{"x":49.5,"y":59,"gap":8.2,"scale":0.95},"layers":[{"d":"M52 85L54 95","tone":"stem","stroke":4.2,"lods":"gap"},{"d":"M47 7C26 23 24 49 31 68C36 81 43 88 52 90C67 74 74 53 67 34C63 21 54 13 47 7Z","tone":"body","lods":"gap"},{"d":"M47 15L49 43M49 29L40 24M49 37L60 29M51 75L54 85M52 79L43 76","tone":"light","stroke":1.7,"lods":"p","op":0.65}],"palette":{"light":{"disc":"#EEF2E9","body":"#A8B698","shade":"#8A9C7B","light":"#F1F4EA","accent":"#8B7BC4","accent2":"#8B7BC4","stem":"#7D8F6E","ink":"#141C10","catch":"#FFFFFF","rim":"#56654A","mark":"#56654A"},"dark":{"disc":"#252F20","body":"#A4B98D","shade":"#879E72","light":"#E8F1DC","accent":"#8B7BC4","accent2":"#8B7BC4","stem":"#8DA37D","ink":"#141C10","catch":"#FFFFFF","rim":"#0D120B","mark":"#A4B98D"}}},"basil":{"pivot":[50,95],"face":{"x":50,"y":65,"gap":9.5},"layers":[{"d":"M50 86V96","tone":"stem","stroke":4.6,"lods":"gap"},{"d":"M50 7C46 22 20 36 19 58C18 78 32 91 50 91C68 91 82 78 81 58C80 36 55 22 50 7Z","tone":"body","lods":"gap"},{"d":"M50 7C55 22 80 36 81 58C82 78 68 91 50 91Z","tone":"shade","lods":"gap"},{"d":"M50 17V46M50 32L39 25M50 43L31 35M50 32L61 25M50 43L69 35M50 80V88","tone":"light","stroke":1.7,"lods":"p","op":0.62}],"palette":{"light":{"disc":"#E3F2E3","body":"#5DB052","shade":"#4E9C45","light":"#B5E39C","accent":"#F4F1EA","accent2":"#F4F1EA","stem":"#2F6E33","ink":"#06180A","catch":"#FFFFFF","rim":"#24622A","mark":"#24622A"},"dark":{"disc":"#173419","body":"#6CC062","shade":"#5AAC51","light":"#B5E39C","accent":"#F4F1EA","accent2":"#F4F1EA","stem":"#4A8A4E","ink":"#06180A","catch":"#FFFFFF","rim":"#07140A","mark":"#6CC062"}}},"fern":{"pivot":[48,95],"face":{"x":52,"y":47,"gap":8.8,"scale":0.96},"parts":{"l":{"at":[46,82],"fold":-23},"r":{"at":[47,89],"fold":23}},"layers":[{"d":"M40 70C39 80 44 88 48 95","tone":"stem","stroke":5.7,"lods":"gap"},{"d":"M47 86C32 87 24 79 25 72C36 70 43 77 47 86Z","tone":"light","lods":"gap","part":"l"},{"d":"M48 91C62 93 72 85 71 77C60 76 52 82 48 91Z","tone":"light","lods":"gap","part":"r"},{"d":"M44 72.9L39.6 71L35.6 68.5L32.1 65.4L29.2 61.8L26.9 57.8L25.3 53.4L24.4 48.9L24.3 44.4L25 39.9L26.3 35.6L28.4 31.6L31 28L34.2 24.9L37.8 22.4L41.8 20.6L45.9 19.4L50.2 18.9L54.5 19.1L58.6 20L62.6 21.6L66.2 23.8L69.3 26.5L72 29.7L74.1 33.3L75.5 37.1L76.4 41.1L76.5 45.1L76 49.1L74.8 52.9L73.1 56.5L70.8 59.6L68 62.4L64.9 64.7L61.4 66.3L57.8 67.4L54 67.9","tone":"shade","stroke":8.5,"lods":"gap"},{"d":"M31.5 46a20.5 20.5 0 1 0 41 0a20.5 20.5 0 1 0 -41 0Z","tone":"body","lods":"gap"}],"palette":{"light":{"disc":"#FBEDE0","body":"#DA9452","shade":"#B8743A","light":"#8DB062","accent":"#B98A5E","accent2":"#B98A5E","stem":"#6F8F47","ink":"#2A1405","catch":"#FFFFFF","rim":"#8A4F1E","mark":"#8A4F1E"},"dark":{"disc":"#3A2A1C","body":"#E3A365","shade":"#C7864A","light":"#9DBF70","accent":"#B98A5E","accent2":"#B98A5E","stem":"#84A65C","ink":"#2A1405","catch":"#FFFFFF","rim":"#160E07","mark":"#E3A365"}}},"clover":{"pivot":[50,95],"face":{"x":50,"y":53,"gap":8.9,"scale":0.97},"layers":[{"d":"M50 70V95","tone":"stem","stroke":5.5,"lods":"gap"},{"d":"M50 44.1L35.3 29.3A10.4 10.4 0 0 1 50 14.6A10.4 10.4 0 0 1 64.7 29.3Z","tone":"shade","lods":"gap"},{"d":"M40.7 55.2L33.5 73.1A9.6 9.6 0 0 1 15.6 65.8A9.6 9.6 0 0 1 22.8 48Z","tone":"shade","lods":"gap"},{"d":"M59.3 55.2L77.2 48A9.6 9.6 0 0 1 84.4 65.8A9.6 9.6 0 0 1 66.5 73.1Z","tone":"shade","lods":"gap"},{"d":"M28.5 53a21.5 21.5 0 1 0 43 0a21.5 21.5 0 1 0 -43 0Z","tone":"body","lods":"gap"}],"palette":{"light":{"disc":"#EEEAF7","body":"#8E80C2","shade":"#B1A6DA","light":"#D9D2F0","accent":"#F3EEF2","accent2":"#F3EEF2","stem":"#6E8F5E","ink":"#120A24","catch":"#FFFFFF","rim":"#4E3F86","mark":"#4E3F86"},"dark":{"disc":"#2A2438","body":"#A194D4","shade":"#C0B6E6","light":"#D9D2F0","accent":"#F3EEF2","accent2":"#F3EEF2","stem":"#84A673","ink":"#120A24","catch":"#FFFFFF","rim":"#110C19","mark":"#A194D4"}}},"monstera":{"pivot":[49,97],"face":{"x":49,"y":57,"gap":8.5,"scale":0.95},"layers":[{"d":"M49 80V97","tone":"stem","stroke":4.4,"lods":"gap"},{"d":"M49 24C44 10 28 9 20 20C15 27 12 36 14 43C20 46 27 47 32 49C36 51 34 54 31 54L13 49C10 55 12 62 16 66L30 64C34 63 36 67 32 69L21 73C26 80 34 84 42 88L46 76C47 73 50 73 50 77L49 91C57 88 65 85 70 80L59 72C56 69 58 66 62 68L78 73C82 68 86 60 84 54L67 58C63 59 61 56 65 53L86 47C87 40 85 32 81 27L65 38C61 41 59 38 62 35L77 21C70 11 56 9 51 23Q50 27 49 24ZM25.9 30a3.1 3.1 0 1 0 6.2 0a3.1 3.1 0 1 0 -6.2 0ZM35 24a2 3.2 0 1 0 4 0a2 3.2 0 1 0 -4 0Z","tone":"body","lods":"gap","fillRule":"evenodd"},{"d":"M50 32V40M49 73V88","tone":"light","stroke":1.8,"lods":"p","op":0.6}],"palette":{"light":{"disc":"#E2EEE7","body":"#3E9467","shade":"#2F7A53","light":"#A9D9B8","accent":"#EFE6C8","accent2":"#EFE6C8","stem":"#2A7049","ink":"#020D06","catch":"#FFFFFF","rim":"#1A5236","mark":"#1A5236"},"dark":{"disc":"#143324","body":"#4BA676","shade":"#3B8C61","light":"#A9D9B8","accent":"#EFE6C8","accent2":"#EFE6C8","stem":"#3F8A60","ink":"#020D06","catch":"#FFFFFF","rim":"#06120B","mark":"#4BA676"}}},"ginkgo":{"pivot":[50,96],"face":{"x":50,"y":62,"gap":9.2},"layers":[{"d":"M50 76V96","tone":"stem","stroke":4.2,"lods":"gap"},{"d":"M50 84C39 75 20 65 8 53C5 49 8 43 13 43C10 36 17 31 22 34C20 27 29 22 34 27C34 19 44 19 48 25Q50 33 53 25C58 18 67 21 67 28C74 24 82 29 80 36C87 33 94 40 90 46C96 48 94 54 90 57C77 68 62 77 50 84Z","tone":"body","lods":"gap"},{"d":"M24 47L34 55M32 35L39 47M43 31L46 44M58 33L55 44M69 38L61 49M81 48L68 56","tone":"light","stroke":1.6,"lods":"p","op":0.7}],"palette":{"light":{"disc":"#F8EDD2","body":"#DDA22F","shade":"#C98D1C","light":"#F6DA8C","accent":"#C9A15E","accent2":"#C9A15E","stem":"#9A7426","ink":"#2E1F05","catch":"#FFFFFF","rim":"#8A5C08","mark":"#8A5C08"},"dark":{"disc":"#3A2E14","body":"#E8B246","shade":"#CC9528","light":"#F6DA8C","accent":"#C9A15E","accent2":"#C9A15E","stem":"#A4823C","ink":"#2E1F05","catch":"#FFFFFF","rim":"#1A1306","mark":"#E8B246"}}},"maple":{"pivot":[50,96],"face":{"x":50,"y":59,"gap":9.2},"layers":[{"d":"M50 76V96","tone":"stem","stroke":4.4,"lods":"gap"},{"d":"M50 5L57 23L62 18L63 37L76 24L77 34L89 31L84 46L95 49L80 60L85 67L67 70L68 82L53 77L50 83L47 77L32 82L33 70L15 67L20 60L5 49L16 46L11 31L23 34L24 24L37 37L38 18L43 23Z","tone":"body","lods":"gap"},{"d":"M50 18V43M36 40L42 46M64 40L58 46M50 75V81","tone":"light","stroke":1.6,"lods":"p","op":0.7}],"palette":{"light":{"disc":"#FBE9DC","body":"#E07E3E","shade":"#C2632A","light":"#F6BE8E","accent":"#D8A869","accent2":"#D8A869","stem":"#8E4A20","ink":"#2A1003","catch":"#FFFFFF","rim":"#8C3E10","mark":"#8C3E10"},"dark":{"disc":"#3A2216","body":"#EA8B4E","shade":"#CC6E33","light":"#F6BE8E","accent":"#D8A869","accent2":"#D8A869","stem":"#995C36","ink":"#2A1003","catch":"#FFFFFF","rim":"#1A0D06","mark":"#EA8B4E"}}},"echeveria":{"pivot":[50,79],"face":{"x":50,"y":52,"gap":8.2,"scale":0.94,"tone":"light"},"layers":[{"d":"M50 40A17.8 17.8 0 0 1 50 6A17.8 17.8 0 0 1 50 40Z","tone":"shade","lods":"gap","organ":{"at":[50,50],"gain":0.28,"phase":0}},{"d":"M56.4 42.3A18.6 18.6 0 0 1 79.6 14.8A18.6 18.6 0 0 1 56.4 42.3Z","tone":"shade","lods":"gap","organ":{"at":[50,50],"gain":0.28,"phase":0.63}},{"d":"M59.8 48.3A16.5 16.5 0 0 1 91.4 42.7A16.5 16.5 0 0 1 59.8 48.3Z","tone":"shade","lods":"gap","organ":{"at":[50,50],"gain":0.28,"phase":1.26}},{"d":"M58.7 55A17.9 17.9 0 0 1 89 72.5A17.9 17.9 0 0 1 58.7 55Z","tone":"shade","lods":"gap","organ":{"at":[50,50],"gain":0.28,"phase":1.8900000000000001}},{"d":"M53.4 59.4A16.5 16.5 0 0 1 64.4 89.5A16.5 16.5 0 0 1 53.4 59.4Z","tone":"shade","lods":"gap","organ":{"at":[50,50],"gain":0.28,"phase":2.52}},{"d":"M46.6 59.4A17.3 17.3 0 0 1 35 91.3A17.3 17.3 0 0 1 46.6 59.4Z","tone":"shade","lods":"gap","organ":{"at":[50,50],"gain":0.28,"phase":3.15}},{"d":"M41.3 55A18.5 18.5 0 0 1 11 72.5A18.5 18.5 0 0 1 41.3 55Z","tone":"shade","lods":"gap","organ":{"at":[50,50],"gain":0.28,"phase":3.7800000000000002}},{"d":"M40.2 48.3A16.7 16.7 0 0 1 7.7 42.5A16.7 16.7 0 0 1 40.2 48.3Z","tone":"shade","lods":"gap","organ":{"at":[50,50],"gain":0.28,"phase":4.41}},{"d":"M43.6 42.3A19.2 19.2 0 0 1 20.4 14.8A19.2 19.2 0 0 1 43.6 42.3Z","tone":"shade","lods":"gap","organ":{"at":[50,50],"gain":0.28,"phase":5.04}},{"d":"M52.3 44.5A14.8 14.8 0 0 1 63.7 17.8A14.8 14.8 0 0 1 52.3 44.5Z","tone":"body","lods":"gap","organ":{"at":[50,50],"gain":0.17,"phase":0}},{"d":"M55.8 48.4A15.4 15.4 0 0 1 84.7 40.3A15.4 15.4 0 0 1 55.8 48.4Z","tone":"body","lods":"gap","organ":{"at":[50,50],"gain":0.17,"phase":0.8}},{"d":"M54.9 53.5A16 16 0 0 1 80 71.7A16 16 0 0 1 54.9 53.5Z","tone":"body","lods":"gap","organ":{"at":[50,50],"gain":0.17,"phase":1.6}},{"d":"M50.3 56A14.8 14.8 0 0 1 51.7 85A14.8 14.8 0 0 1 50.3 56Z","tone":"body","lods":"gap","organ":{"at":[50,50],"gain":0.17,"phase":2.4000000000000004}},{"d":"M45.5 54A15.4 15.4 0 0 1 22.9 73.8A15.4 15.4 0 0 1 45.5 54Z","tone":"body","lods":"gap","organ":{"at":[50,50],"gain":0.17,"phase":3.2}},{"d":"M44.1 48.9A16 16 0 0 1 13.6 43.5A16 16 0 0 1 44.1 48.9Z","tone":"body","lods":"gap","organ":{"at":[50,50],"gain":0.17,"phase":4}},{"d":"M47.1 44.7A14.8 14.8 0 0 1 33.3 19.2A14.8 14.8 0 0 1 47.1 44.7Z","tone":"body","lods":"gap","organ":{"at":[50,50],"gain":0.17,"phase":4.800000000000001}},{"d":"M50 51A12 12 0 0 1 50 27A12 12 0 0 1 50 51ZM50 51A12 12 0 0 1 72.8 43.6A12 12 0 0 1 50 51ZM50 51A12 12 0 0 1 64.1 70.4A12 12 0 0 1 50 51ZM50 51A12 12 0 0 1 35.9 70.4A12 12 0 0 1 50 51ZM50 51A12 12 0 0 1 27.2 43.6A12 12 0 0 1 50 51Z","tone":"light","lods":"gap"},{"d":"M34 51a16 16 0 1 0 32 0a16 16 0 1 0 -32 0Z","tone":"light","lods":"gap"}],"palette":{"light":{"disc":"#E9F0F4","body":"#86A9BD","shade":"#6A8FA5","light":"#C9DCE6","accent":"#E392A6","accent2":"#E392A6","stem":"#6A8FA5","ink":"#102330","catch":"#FFFFFF","rim":"#3E6074","mark":"#3E6074"},"dark":{"disc":"#1D2B33","body":"#91B3C7","shade":"#7395AA","light":"#C2D8E4","accent":"#E392A6","accent2":"#E392A6","stem":"#7395AA","ink":"#102330","catch":"#FFFFFF","rim":"#0B1216","mark":"#91B3C7"}}},"opuntia":{"pivot":[50,95],"face":{"x":50,"y":51,"gap":8.7,"scale":0.95},"parts":{"l":{"at":[35,66],"fold":-19},"r":{"at":[65,66],"fold":19}},"layers":[{"d":"M36 72H28C21 72 17 68 17 61V52C17 44 28 44 28 52V59C28 61 31 61 36 61Z","tone":"body","lods":"gap","part":"l"},{"d":"M64 72H73C80 72 84 68 84 61V49C84 41 73 41 73 49V59C73 61 70 61 64 61Z","tone":"body","lods":"gap","part":"r"},{"d":"M31 92V43C31 20 69 20 69 43V92Q50 98 31 92Z","tone":"body","lods":"gap"},{"d":"M42 70V86M51 74V91M60 70V85","tone":"light","stroke":1.6,"lods":"p","op":0.65},{"d":"M46.5 12.9a4.5 4.5 0 1 0 9 0a4.5 4.5 0 1 0 -9 0ZM51.4 16.4a4.5 4.5 0 1 0 9 0a4.5 4.5 0 1 0 -9 0ZM49.5 22.1a4.5 4.5 0 1 0 9 0a4.5 4.5 0 1 0 -9 0ZM43.5 22.1a4.5 4.5 0 1 0 9 0a4.5 4.5 0 1 0 -9 0ZM41.6 16.4a4.5 4.5 0 1 0 9 0a4.5 4.5 0 1 0 -9 0Z","tone":"accent","lods":"gap","organ":{"at":[51,25],"gain":0.55,"phase":0.7}},{"d":"M47.7 18a3.3 3.3 0 1 0 6.6 0a3.3 3.3 0 1 0 -6.6 0Z","tone":"accent2","lods":"gap","organ":{"at":[51,25],"gain":0.55,"phase":0.7}}],"palette":{"light":{"disc":"#EAF2E6","body":"#78A35E","shade":"#5E874A","light":"#D5E8C8","accent":"#E2786A","accent2":"#F2C14E","stem":"#5E874A","ink":"#0E1D09","catch":"#FFFFFF","rim":"#3E6230","mark":"#3E6230"},"dark":{"disc":"#1F3119","body":"#8AB86F","shade":"#6E9A57","light":"#D5E8C8","accent":"#EB8778","accent2":"#F2C14E","stem":"#6E9A57","ink":"#0E1D09","catch":"#FFFFFF","rim":"#0A1208","mark":"#8AB86F"}}},"lotus":{"pivot":[50,91],"face":{"x":50,"y":60,"gap":8.5,"scale":0.96,"tone":"light"},"parts":{"l":{"at":[49,83],"fold":14},"r":{"at":[51,83],"fold":-14}},"layers":[{"d":"M50 89C33 75 16 80 8 89C23 98 39 97 50 89ZM50 89C67 75 84 80 92 89C77 98 61 97 50 89Z","tone":"accent2","lods":"gap"},{"d":"M48 87C27 85 9 72 10 52C28 56 45 70 48 87Z","tone":"shade","lods":"gap","part":"l"},{"d":"M52 87C73 85 91 72 90 52C72 56 55 70 52 87Z","tone":"shade","lods":"gap","part":"r"},{"d":"M49 85C22 77 17 53 24 28C45 44 51 62 49 85Z","tone":"body","lods":"gap","part":"l"},{"d":"M51 85C78 77 83 53 76 28C55 44 49 62 51 85Z","tone":"body","lods":"gap","part":"r"},{"d":"M50 8C33 26 29 44 31 59C33 76 40 85 50 89C60 85 67 76 69 59C71 44 67 26 50 8Z","tone":"light","lods":"gap"}],"palette":{"light":{"disc":"#FBEAF0","body":"#E58AA9","shade":"#C8698C","light":"#F4B6CB","accent":"#F5CF5A","accent2":"#5A9446","stem":"#5A9446","ink":"#3A0F22","catch":"#FFFFFF","rim":"#9C3A62","mark":"#9C3A62"},"dark":{"disc":"#3A1C28","body":"#EA96B3","shade":"#CB7294","light":"#F6BCD0","accent":"#F5CF5A","accent2":"#66A052","stem":"#66A052","ink":"#3A0F22","catch":"#FFFFFF","rim":"#1A0B11","mark":"#EA96B3"}}},"eucalyptus":{"pivot":[53,96],"face":{"x":55,"y":69,"gap":9.2},"layers":[{"d":"M53 96C50 73 53 43 64 8","tone":"stem","stroke":3.1,"lods":"gap"},{"d":"M53 13a7 6 0 1 0 14 0a7 6 0 1 0 -14 0Z","tone":"shade","lods":"gap","organ":{"at":[61,17],"gain":1.2,"phase":1.2}},{"d":"M37 26a11 8 0 1 0 22 0a11 8 0 1 0 -22 0Z","tone":"shade","lods":"gap","organ":{"at":[58,28],"gain":1,"phase":0.9}},{"d":"M57 36a12 9 0 1 0 24 0a12 9 0 1 0 -24 0Z","tone":"body","lods":"gap","organ":{"at":[56,39],"gain":0.8,"phase":0.65}},{"d":"M27 47a14 10 0 1 0 28 0a14 10 0 1 0 -28 0Z","tone":"shade","lods":"gap","organ":{"at":[54,49],"gain":0.65,"phase":0.4}},{"d":"M58 53a13 10 0 1 0 26 0a13 10 0 1 0 -26 0Z","tone":"body","lods":"gap","organ":{"at":[53,55],"gain":0.45,"phase":0.2}},{"d":"M16 65a16 13 0 1 0 32 0a16 13 0 1 0 -32 0Z","tone":"shade","lods":"gap","organ":{"at":[47,67],"gain":0.25,"phase":0}},{"d":"M28 71a27 25 0 1 0 54 0a27 25 0 1 0 -54 0Z","tone":"body","lods":"gap"}],"palette":{"light":{"disc":"#E7F1EF","body":"#7DAAA4","shade":"#5F8E87","light":"#D8EAE6","accent":"#B4654E","accent2":"#B4654E","stem":"#A3563F","ink":"#0C2220","catch":"#FFFFFF","rim":"#3D6A64","mark":"#3D6A64"},"dark":{"disc":"#1A2C2A","body":"#89B5AF","shade":"#68948D","light":"#D8EAE6","accent":"#B4654E","accent2":"#B4654E","stem":"#C0705A","ink":"#0C2220","catch":"#FFFFFF","rim":"#0A1413","mark":"#89B5AF"}}},"lavender":{"pivot":[50,96],"face":{"x":50,"y":72,"gap":8.5,"scale":0.94},"parts":{"l":{"at":[48,91],"fold":-17},"r":{"at":[52,91],"fold":17}},"layers":[{"d":"M50 84V97","tone":"stem","stroke":4,"lods":"gap"},{"d":"M48 92C35 92 28 84 29 79C40 79 47 84 48 92Z","tone":"stem","lods":"gap","part":"l"},{"d":"M52 92C65 92 72 84 71 79C60 79 53 84 52 92Z","tone":"stem","lods":"gap","part":"r"},{"d":"M50 5C40 11 40 20 45 26C36 22 30 31 36 40C26 38 22 49 29 58C19 56 19 68 24 74C34 88 65 88 76 72C81 63 73 55 68 57C75 48 70 39 62 39C68 30 62 22 56 25C61 17 58 10 50 5Z","tone":"shade","lods":"gap","organ":{"at":[50,83],"gain":0.42,"phase":0.8}},{"d":"M50 54C41 44 26 50 25 65C16 78 33 89 50 92C67 88 82 77 75 65C74 50 59 44 50 54Z","tone":"body","lods":"gap"},{"d":"M48 12C45 15 45 20 48 22C52 20 52 16 48 12ZM43 29C36 31 35 35 40 39C45 38 47 33 43 29ZM58 42C52 44 51 48 55 51C61 50 63 46 58 42Z","tone":"light","lods":"p","op":0.65}],"palette":{"light":{"disc":"#EFEAF7","body":"#9177C7","shade":"#7A5FB4","light":"#D0C0F0","accent":"#C9B6EC","accent2":"#C9B6EC","stem":"#7F9878","ink":"#140A28","catch":"#FFFFFF","rim":"#4F3586","mark":"#4F3586"},"dark":{"disc":"#2A2238","body":"#A088D2","shade":"#8A70C0","light":"#D4C6F1","accent":"#CDBDEE","accent2":"#CDBDEE","stem":"#8FA888","ink":"#140A28","catch":"#FFFFFF","rim":"#110C19","mark":"#A088D2"}}},"sunflower":{"pivot":[50,95],"face":{"x":50,"y":48,"gap":8.3,"tone":"accent"},"layers":[{"d":"M50 71V96","tone":"stem","stroke":4.4,"lods":"gap"},{"d":"M50 32A15.1 15.1 0 0 1 50 4A15.1 15.1 0 0 1 50 32Z","tone":"body","lods":"gap","organ":{"at":[50,30],"gain":0.32,"phase":0}},{"d":"M59.4 35.1A15.1 15.1 0 0 1 75.9 12.4A15.1 15.1 0 0 1 59.4 35.1Z","tone":"body","lods":"gap","organ":{"at":[60.58013454126451,33.43769410125095],"gain":0.32,"phase":0.65}},{"d":"M65.2 43.1A15.1 15.1 0 0 1 91.8 34.4A15.1 15.1 0 0 1 65.2 43.1Z","tone":"body","lods":"gap","organ":{"at":[67.11901729331277,42.43769410125095],"gain":0.32,"phase":1.3}},{"d":"M65.2 52.9A15.1 15.1 0 0 1 91.8 61.6A15.1 15.1 0 0 1 65.2 52.9Z","tone":"body","lods":"gap","organ":{"at":[67.11901729331277,53.56230589874905],"gain":0.32,"phase":1.9500000000000002}},{"d":"M59.4 60.9A15.1 15.1 0 0 1 75.9 83.6A15.1 15.1 0 0 1 59.4 60.9Z","tone":"body","lods":"gap","organ":{"at":[60.58013454126451,62.56230589874905],"gain":0.32,"phase":2.6}},{"d":"M50 64A15.1 15.1 0 0 1 50 92A15.1 15.1 0 0 1 50 64Z","tone":"body","lods":"gap","organ":{"at":[50,66],"gain":0.32,"phase":3.25}},{"d":"M40.6 60.9A15.1 15.1 0 0 1 24.1 83.6A15.1 15.1 0 0 1 40.6 60.9Z","tone":"body","lods":"gap","organ":{"at":[39.41986545873549,62.56230589874905],"gain":0.32,"phase":3.9000000000000004}},{"d":"M34.8 52.9A15.1 15.1 0 0 1 8.2 61.6A15.1 15.1 0 0 1 34.8 52.9Z","tone":"body","lods":"gap","organ":{"at":[32.880982706687234,53.56230589874905],"gain":0.32,"phase":4.55}},{"d":"M34.8 43.1A15.1 15.1 0 0 1 8.2 34.4A15.1 15.1 0 0 1 34.8 43.1Z","tone":"body","lods":"gap","organ":{"at":[32.880982706687234,42.43769410125094],"gain":0.32,"phase":5.2}},{"d":"M40.6 35.1A15.1 15.1 0 0 1 24.1 12.4A15.1 15.1 0 0 1 40.6 35.1Z","tone":"body","lods":"gap","organ":{"at":[39.41986545873548,33.43769410125095],"gain":0.32,"phase":5.8500000000000005}},{"d":"M27 48a23 23 0 1 0 46 0a23 23 0 1 0 -46 0Z","tone":"accent","lods":"gap"},{"d":"M67.7 48a0.9 0.9 0 1 0 1.7 0a0.9 0.9 0 1 0 -1.7 0ZM65.8 56a0.9 0.9 0 1 0 1.7 0a0.9 0.9 0 1 0 -1.7 0ZM60.7 62.5a0.9 0.9 0 1 0 1.7 0a0.9 0.9 0 1 0 -1.7 0ZM53.3 66a0.9 0.9 0 1 0 1.7 0a0.9 0.9 0 1 0 -1.7 0ZM45 66a0.9 0.9 0 1 0 1.7 0a0.9 0.9 0 1 0 -1.7 0ZM37.6 62.5a0.9 0.9 0 1 0 1.7 0a0.9 0.9 0 1 0 -1.7 0ZM32.5 56a0.9 0.9 0 1 0 1.7 0a0.9 0.9 0 1 0 -1.7 0ZM30.7 48a0.9 0.9 0 1 0 1.7 0a0.9 0.9 0 1 0 -1.7 0ZM32.5 40a0.9 0.9 0 1 0 1.7 0a0.9 0.9 0 1 0 -1.7 0ZM37.6 33.5a0.9 0.9 0 1 0 1.7 0a0.9 0.9 0 1 0 -1.7 0ZM45 30a0.9 0.9 0 1 0 1.7 0a0.9 0.9 0 1 0 -1.7 0ZM53.3 30a0.9 0.9 0 1 0 1.7 0a0.9 0.9 0 1 0 -1.7 0ZM60.7 33.5a0.9 0.9 0 1 0 1.7 0a0.9 0.9 0 1 0 -1.7 0ZM65.8 40a0.9 0.9 0 1 0 1.7 0a0.9 0.9 0 1 0 -1.7 0Z","tone":"accent2","lods":"p","op":0.45}],"palette":{"light":{"disc":"#FCF1CF","body":"#E9A820","shade":"#D6920E","light":"#FBE39A","accent":"#5A3A1C","accent2":"#7C522B","stem":"#926B38","ink":"#FBE8B5","catch":"#5A3A1C","rim":"#9A6508","mark":"#9A6508"},"dark":{"disc":"#3A2F12","body":"#F4BD38","shade":"#D8991C","light":"#FBE39A","accent":"#5A3A1C","accent2":"#7C522B","stem":"#B79561","ink":"#FBE8B5","catch":"#5A3A1C","rim":"#191305","mark":"#F4BD38"}}},"dandelion":{"pivot":[50,96],"face":{"x":50,"y":46,"gap":8.3,"scale":0.96},"layers":[{"d":"M50 65V96","tone":"stem","stroke":4.1,"lods":"gap"},{"d":"M50 26L50 9","tone":"shade","stroke":1.15,"lods":"ap","organ":{"at":[50,26],"gain":0.35,"phase":0}},{"d":"M50 9L43.08 7.02M50 9L44.54 4.31M50 9L47 2.46M50 9L50 1.8M50 9L53 2.46M50 9L55.46 4.31M50 9L56.92 7.02","tone":"light","stroke":1.4,"lods":"p","organ":{"at":[50,26],"gain":0.35,"phase":0}},{"d":"M50 9L44.61 5.37M50 9L50 2.5M50 9L55.39 5.37","tone":"light","stroke":1.55,"lods":"a","organ":{"at":[50,26],"gain":0.35,"phase":0}},{"d":"M58.24 27.88L65.62 12.57","tone":"shade","stroke":1.15,"lods":"ap","organ":{"at":[58.24379104323361,27.88159150985404],"gain":0.35,"phase":0.48}},{"d":"M65.62 12.57L60.25 7.77M65.62 12.57L62.74 5.97M65.62 12.57L65.75 5.37M65.62 12.57L68.74 6.08M65.62 12.57L71.17 7.97M65.62 12.57L72.58 10.71M65.62 12.57L72.72 13.78","tone":"light","stroke":1.4,"lods":"p","organ":{"at":[58.24379104323361,27.88159150985404],"gain":0.35,"phase":0.48}},{"d":"M65.62 12.57L62.34 6.95M65.62 12.57L68.44 6.71M65.62 12.57L72.05 11.63","tone":"light","stroke":1.55,"lods":"a","organ":{"at":[58.24379104323361,27.88159150985404],"gain":0.35,"phase":0.48}},{"d":"M64.85 33.15L78.15 22.55","tone":"shade","stroke":1.15,"lods":"ap","organ":{"at":[64.85479816689256,33.153693764684064],"gain":0.35,"phase":0.96}},{"d":"M78.15 22.55L75.38 15.91M78.15 22.55L78.41 15.36M78.15 22.55L81.39 16.13M78.15 22.55L83.78 18.07M78.15 22.55L85.13 20.82M78.15 22.55L85.22 23.9M78.15 22.55L84.01 26.73","tone":"light","stroke":1.4,"lods":"p","organ":{"at":[64.85479816689256,33.153693764684064],"gain":0.35,"phase":0.96}},{"d":"M78.15 22.55L77.63 16.08M78.15 22.55L83.23 18.5M78.15 22.55L84.35 24.5","tone":"light","stroke":1.55,"lods":"a","organ":{"at":[64.85479816689256,33.153693764684064],"gain":0.35,"phase":0.96}},{"d":"M68.52 40.77L85.1 36.99","tone":"shade","stroke":1.15,"lods":"ap","organ":{"at":[68.52363033145465,40.772102254830024],"gain":0.35,"phase":1.44}},{"d":"M85.1 36.99L85.49 29.8M85.1 36.99L88.46 30.62M85.1 36.99L90.81 32.6M85.1 36.99L92.12 35.39M85.1 36.99L92.15 38.46M85.1 36.99L90.89 41.27M85.1 36.99L88.57 43.3","tone":"light","stroke":1.4,"lods":"p","organ":{"at":[68.52363033145465,40.772102254830024],"gain":0.35,"phase":1.44}},{"d":"M85.1 36.99L87.44 30.93M85.1 36.99L91.43 35.54M85.1 36.99L89.84 41.43","tone":"light","stroke":1.55,"lods":"a","organ":{"at":[68.52363033145465,40.772102254830024],"gain":0.35,"phase":1.44}},{"d":"M68.52 49.23L85.1 53.01","tone":"shade","stroke":1.15,"lods":"ap","organ":{"at":[68.52363033145465,49.227897745169976],"gain":0.35,"phase":1.92}},{"d":"M85.1 53.01L88.57 46.7M85.1 53.01L90.89 48.73M85.1 53.01L92.15 51.54M85.1 53.01L92.12 54.61M85.1 53.01L90.81 57.4M85.1 53.01L88.46 59.38M85.1 53.01L85.49 60.2","tone":"light","stroke":1.4,"lods":"p","organ":{"at":[68.52363033145465,49.227897745169976],"gain":0.35,"phase":1.92}},{"d":"M85.1 53.01L89.84 48.57M85.1 53.01L91.43 54.46M85.1 53.01L87.44 59.07","tone":"light","stroke":1.55,"lods":"a","organ":{"at":[68.52363033145465,49.227897745169976],"gain":0.35,"phase":1.92}},{"d":"M64.85 56.85L78.15 67.45","tone":"shade","stroke":1.15,"lods":"ap","organ":{"at":[64.85479816689256,56.84630623531594],"gain":0.35,"phase":2.4}},{"d":"M78.15 67.45L84.01 63.27M78.15 67.45L85.22 66.1M78.15 67.45L85.13 69.18M78.15 67.45L83.78 71.93M78.15 67.45L81.39 73.87M78.15 67.45L78.41 74.64M78.15 67.45L75.38 74.09","tone":"light","stroke":1.4,"lods":"p","organ":{"at":[64.85479816689256,56.84630623531594],"gain":0.35,"phase":2.4}},{"d":"M78.15 67.45L84.35 65.5M78.15 67.45L83.23 71.5M78.15 67.45L77.63 73.92","tone":"light","stroke":1.55,"lods":"a","organ":{"at":[64.85479816689256,56.84630623531594],"gain":0.35,"phase":2.4}},{"d":"M58.24 62.12L65.62 77.43","tone":"shade","stroke":1.15,"lods":"ap","organ":{"at":[58.24379104323361,62.11840849014596],"gain":0.35,"phase":2.88}},{"d":"M65.62 77.43L72.72 76.22M65.62 77.43L72.58 79.29M65.62 77.43L71.17 82.03M65.62 77.43L68.74 83.92M65.62 77.43L65.75 84.63M65.62 77.43L62.74 84.03M65.62 77.43L60.25 82.23","tone":"light","stroke":1.4,"lods":"p","organ":{"at":[58.24379104323361,62.11840849014596],"gain":0.35,"phase":2.88}},{"d":"M65.62 77.43L72.05 78.37M65.62 77.43L68.44 83.29M65.62 77.43L62.34 83.05","tone":"light","stroke":1.55,"lods":"a","organ":{"at":[58.24379104323361,62.11840849014596],"gain":0.35,"phase":2.88}},{"d":"M50 64L50 81","tone":"shade","stroke":1.15,"lods":"ap","organ":{"at":[50,64],"gain":0.35,"phase":3.36}},{"d":"M50 81L56.92 82.98M50 81L55.46 85.69M50 81L53 87.54M50 81L50 88.2M50 81L47 87.54M50 81L44.54 85.69M50 81L43.08 82.98","tone":"light","stroke":1.4,"lods":"p","organ":{"at":[50,64],"gain":0.35,"phase":3.36}},{"d":"M50 81L55.39 84.63M50 81L50 87.5M50 81L44.61 84.63","tone":"light","stroke":1.55,"lods":"a","organ":{"at":[50,64],"gain":0.35,"phase":3.36}},{"d":"M41.76 62.12L34.38 77.43","tone":"shade","stroke":1.15,"lods":"ap","organ":{"at":[41.756208956766386,62.11840849014596],"gain":0.35,"phase":3.84}},{"d":"M34.38 77.43L39.75 82.23M34.38 77.43L37.26 84.03M34.38 77.43L34.25 84.63M34.38 77.43L31.26 83.92M34.38 77.43L28.83 82.03M34.38 77.43L27.42 79.29M34.38 77.43L27.28 76.22","tone":"light","stroke":1.4,"lods":"p","organ":{"at":[41.756208956766386,62.11840849014596],"gain":0.35,"phase":3.84}},{"d":"M34.38 77.43L37.66 83.05M34.38 77.43L31.56 83.29M34.38 77.43L27.95 78.37","tone":"light","stroke":1.55,"lods":"a","organ":{"at":[41.756208956766386,62.11840849014596],"gain":0.35,"phase":3.84}},{"d":"M35.15 56.85L21.85 67.45","tone":"shade","stroke":1.15,"lods":"ap","organ":{"at":[35.145201833107436,56.846306235315936],"gain":0.35,"phase":4.32}},{"d":"M21.85 67.45L24.62 74.09M21.85 67.45L21.59 74.64M21.85 67.45L18.61 73.87M21.85 67.45L16.22 71.93M21.85 67.45L14.87 69.18M21.85 67.45L14.78 66.1M21.85 67.45L15.99 63.27","tone":"light","stroke":1.4,"lods":"p","organ":{"at":[35.145201833107436,56.846306235315936],"gain":0.35,"phase":4.32}},{"d":"M21.85 67.45L22.37 73.92M21.85 67.45L16.77 71.5M21.85 67.45L15.65 65.5","tone":"light","stroke":1.55,"lods":"a","organ":{"at":[35.145201833107436,56.846306235315936],"gain":0.35,"phase":4.32}},{"d":"M31.48 49.23L14.9 53.01","tone":"shade","stroke":1.15,"lods":"ap","organ":{"at":[31.476369668545352,49.227897745169976],"gain":0.35,"phase":4.8}},{"d":"M14.9 53.01L14.51 60.2M14.9 53.01L11.54 59.38M14.9 53.01L9.19 57.4M14.9 53.01L7.88 54.61M14.9 53.01L7.85 51.54M14.9 53.01L9.11 48.73M14.9 53.01L11.43 46.7","tone":"light","stroke":1.4,"lods":"p","organ":{"at":[31.476369668545352,49.227897745169976],"gain":0.35,"phase":4.8}},{"d":"M14.9 53.01L12.56 59.07M14.9 53.01L8.57 54.46M14.9 53.01L10.16 48.57","tone":"light","stroke":1.55,"lods":"a","organ":{"at":[31.476369668545352,49.227897745169976],"gain":0.35,"phase":4.8}},{"d":"M31.48 40.77L14.9 36.99","tone":"shade","stroke":1.15,"lods":"ap","organ":{"at":[31.47636966854535,40.77210225483004],"gain":0.35,"phase":5.279999999999999}},{"d":"M14.9 36.99L11.43 43.3M14.9 36.99L9.11 41.27M14.9 36.99L7.85 38.46M14.9 36.99L7.88 35.39M14.9 36.99L9.19 32.6M14.9 36.99L11.54 30.62M14.9 36.99L14.51 29.8","tone":"light","stroke":1.4,"lods":"p","organ":{"at":[31.47636966854535,40.77210225483004],"gain":0.35,"phase":5.279999999999999}},{"d":"M14.9 36.99L10.16 41.43M14.9 36.99L8.57 35.54M14.9 36.99L12.56 30.93","tone":"light","stroke":1.55,"lods":"a","organ":{"at":[31.47636966854535,40.77210225483004],"gain":0.35,"phase":5.279999999999999}},{"d":"M35.15 33.15L21.85 22.55","tone":"shade","stroke":1.15,"lods":"ap","organ":{"at":[35.145201833107436,33.153693764684064],"gain":0.35,"phase":5.76}},{"d":"M21.85 22.55L15.99 26.73M21.85 22.55L14.78 23.9M21.85 22.55L14.87 20.82M21.85 22.55L16.22 18.07M21.85 22.55L18.61 16.13M21.85 22.55L21.59 15.36M21.85 22.55L24.62 15.91","tone":"light","stroke":1.4,"lods":"p","organ":{"at":[35.145201833107436,33.153693764684064],"gain":0.35,"phase":5.76}},{"d":"M21.85 22.55L15.65 24.5M21.85 22.55L16.77 18.5M21.85 22.55L22.37 16.08","tone":"light","stroke":1.55,"lods":"a","organ":{"at":[35.145201833107436,33.153693764684064],"gain":0.35,"phase":5.76}},{"d":"M41.76 27.88L34.38 12.57","tone":"shade","stroke":1.15,"lods":"ap","organ":{"at":[41.75620895676639,27.88159150985404],"gain":0.35,"phase":6.24}},{"d":"M34.38 12.57L27.28 13.78M34.38 12.57L27.42 10.71M34.38 12.57L28.83 7.97M34.38 12.57L31.26 6.08M34.38 12.57L34.25 5.37M34.38 12.57L37.26 5.97M34.38 12.57L39.75 7.77","tone":"light","stroke":1.4,"lods":"p","organ":{"at":[41.75620895676639,27.88159150985404],"gain":0.35,"phase":6.24}},{"d":"M34.38 12.57L27.95 11.63M34.38 12.57L31.56 6.71M34.38 12.57L37.66 6.95","tone":"light","stroke":1.55,"lods":"a","organ":{"at":[41.75620895676639,27.88159150985404],"gain":0.35,"phase":6.24}},{"d":"M50 25L50 12M45.47 9.89L50 12L54.53 9.89M61.76 28.82L69.4 18.3M66.97 13.93L69.4 18.3L74.31 19.26M69.02 38.82L81.38 34.8M81.99 29.84L81.38 34.8L84.79 38.46M69.02 51.18L81.38 55.2M84.79 51.54L81.38 55.2L81.99 60.16M61.76 61.18L69.4 71.7M74.31 70.74L69.4 71.7L66.97 76.07M50 65L50 78M54.53 80.11L50 78L45.47 80.11M38.24 61.18L30.6 71.7M33.03 76.07L30.6 71.7L25.69 70.74M30.98 51.18L18.62 55.2M18.01 60.16L18.62 55.2L15.21 51.54M30.98 38.82L18.62 34.8M15.21 38.46L18.62 34.8L18.01 29.84M38.24 28.82L30.6 18.3M25.69 19.26L30.6 18.3L33.03 13.93","tone":"shade","stroke":1.8,"lods":"g"},{"d":"M28 45a22 22 0 1 0 44 0a22 22 0 1 0 -44 0Z","tone":"body","lods":"gap"}],"palette":{"light":{"disc":"#E8DFCB","body":"#E8AE2A","shade":"#9B783E","light":"#FFF9E8","accent":"#F2C443","accent2":"#F2C443","stem":"#7E9A55","ink":"#2A2006","catch":"#FFFFFF","rim":"#8F6A0E","mark":"#8F6A0E"},"dark":{"disc":"#373629","body":"#F4CB55","shade":"#B99C60","light":"#F9EFD0","accent":"#F4CB55","accent2":"#F4CB55","stem":"#8FAE66","ink":"#2A2006","catch":"#FFFFFF","rim":"#1A1406","mark":"#F4CB55"}}}};
+export const FIT = {"sprout":{"glyph":[45.605,0,-0.505],"avatar":[45.605,0,-0.505],"portrait":[45.605,0,-0.505]},"ivy":{"glyph":[45.481,1.179,3.607],"avatar":[45.481,1.179,3.607],"portrait":[45.481,1.179,3.607]},"sage":{"glyph":[45.495,1.452,-2.05],"avatar":[45.495,1.452,-2.05],"portrait":[45.495,1.452,-2.05]},"basil":{"glyph":[45.75,0,-2.65],"avatar":[45.75,0,-2.65],"portrait":[45.75,0,-2.65]},"fern":{"glyph":[41.774,-0.4,-6.25],"avatar":[41.774,-0.4,-6.25],"portrait":[41.774,-0.4,-6.25]},"clover":{"glyph":[43.848,-0.002,-4.77],"avatar":[43.848,-0.002,-4.77],"portrait":[43.848,-0.002,-4.77]},"monstera":{"glyph":[47.273,1.095,-5.866],"avatar":[47.273,1.095,-5.866],"portrait":[47.273,1.095,-5.866]},"ginkgo":{"glyph":[44.953,-0.295,-9.412],"avatar":[44.953,-0.295,-9.412],"portrait":[44.953,-0.295,-9.412]},"maple":{"glyph":[46.7,0,-1.6],"avatar":[46.7,0,-1.6],"portrait":[46.7,0,-1.6]},"echeveria":{"glyph":[46.149,0.452,1.248],"avatar":[46.149,0.452,1.248],"portrait":[46.149,0.452,1.248]},"opuntia":{"glyph":[44.87,-0.5,-1.7],"avatar":[44.87,-0.5,-1.7],"portrait":[44.87,-0.5,-1.7]},"lotus":{"glyph":[56.227,0,-1.69],"avatar":[56.227,0,-1.69],"portrait":[56.227,0,-1.69]},"eucalyptus":{"glyph":[47.824,0,-2],"avatar":[47.824,0,-2],"portrait":[47.824,0,-2]},"lavender":{"glyph":[47.108,0.851,-2],"avatar":[47.108,0.851,-2],"portrait":[47.108,0.851,-2]},"sunflower":{"glyph":[47.2,0,-1.1],"avatar":[47.2,0,-1.1],"portrait":[47.2,0,-1.1]},"dandelion":{"glyph":[44.848,0,-3.52],"avatar":[48.263,0,0.113],"portrait":[48.575,0,0.425]}};
+
+/**
+ * Plant-avatar path + colour math (internal to the plant-avatar module).
+ *
+ * Flat geometric plants: every silhouette is built from circles, circular arcs and straight
+ * lines on the 100×100 viewBox (the helpers below), once at module load. The apps/mobile copy
+ * is compared byte for byte, so keep the arithmetic identical there.
+ */
+
+// ─── numbers ────────────────────────────────────────────────────────────────
+
+/** One decimal, no negative zero. */
+export function f(n        )         {
+  const v = Math.round(n * 10) / 10;
+  return Object.is(v, -0) ? '0' : String(v);
+}
+/** Integer (ring paths — cheap at list sizes). */
+export function fi(n        )         {
+  return String(Math.round(n));
+}
+/** Three decimals, no negative zero (scales). */
+export function f2(n        )         {
+  const v = Math.round(n * 1000) / 1000;
+  return Object.is(v, -0) ? '0' : String(v);
+}
+
+// ─── points & paths ─────────────────────────────────────────────────────────
+
+/** `[x, y]` is a smooth anchor; `[x, y, 1]` a sharp corner (leaf tips, notches). */
+                                                    
+
+/** Smooth closed (or open) path through anchor points. */
+export function smooth(points               , closed = true, tension = 1, prec = 1)         {
+  const fmt = prec ? f : fi;
+  const n = points.length;
+  const at = (i        )     => (closed ? points[(i + n) % n]  : points[Math.max(0, Math.min(n - 1, i))] );
+  let d = `M${fmt(points[0] [0])} ${fmt(points[0] [1])}`;
+  const segs = closed ? n : n - 1;
+  const k = tension / 6;
+  for (let i = 0; i < segs; i++) {
+    const p0 = at(i - 1);
+    const p1 = at(i);
+    const p2 = at(i + 1);
+    const p3 = at(i + 2);
+    const c1 = p1[2]
+      ? [p1[0] + (p2[0] - p1[0]) * 0.3, p1[1] + (p2[1] - p1[1]) * 0.3]
+      : [p1[0] + (p2[0] - p0[0]) * k, p1[1] + (p2[1] - p0[1]) * k];
+    const c2 = p2[2]
+      ? [p2[0] - (p2[0] - p1[0]) * 0.3, p2[1] - (p2[1] - p1[1]) * 0.3]
+      : [p2[0] - (p3[0] - p1[0]) * k, p2[1] - (p3[1] - p1[1]) * k];
+    d += `C${fmt(c1[0] )} ${fmt(c1[1] )} ${fmt(c2[0] )} ${fmt(c2[1] )} ${fmt(p2[0])} ${fmt(p2[1])}`;
+  }
+  return closed ? d + 'Z' : d;
+}
+
+/** Mirror a right half (top-centre → bottom-centre, x ≥ axis) into a full loop. */
+export function sym(right               , axis = 50)       {
+  const left = right
+    .slice(1, -1)
+    .reverse()
+    .map(([x, y, c])     => (c ? [2 * axis - x, y, 1] : [2 * axis - x, y]));
+  return right.concat(left);
+}
+
+                                 
+                                      
+               
+              
+              
+             
+              
+              
+              
+              
+ 
+
+/** Rotate / scale / translate point lists about (cx, cy). */
+export function xf(
+  points               ,
+  { rot = 0, cx = 50, cy = 50, s = 1, sx = s, sy = s, dx = 0, dy = 0 }                 = {},
+)       {
+  const a = (rot * Math.PI) / 180;
+  const cos = Math.cos(a);
+  const sin = Math.sin(a);
+  return points.map(([x, y, c])     => {
+    const X = (x - cx) * sx;
+    const Y = (y - cy) * sy;
+    const out     = [cx + X * cos - Y * sin + dx, cy + X * sin + Y * cos + dy];
+    return c ? [out[0], out[1], 1] : out;
+  });
+}
+
+export const circ = (cx        , cy        , r        )         =>
+  `M${f(cx - r)} ${f(cy)}a${f(r)} ${f(r)} 0 1 0 ${f(2 * r)} 0a${f(r)} ${f(r)} 0 1 0 ${f(-2 * r)} 0Z`;
+export const ell = (cx        , cy        , rx        , ry        )         =>
+  `M${f(cx - rx)} ${f(cy)}a${f(rx)} ${f(ry)} 0 1 0 ${f(2 * rx)} 0a${f(rx)} ${f(ry)} 0 1 0 ${f(-2 * rx)} 0Z`;
+
+/** Parse "x,y x,y* …" into points (`*` = sharp corner). */
+export function pts(str        )       {
+  return str
+    .trim()
+    .split(/\s+/)
+    .map((tok)     => {
+      const corner = tok.endsWith('*');
+      const [x = 0, y = 0] = tok.replace('*', '').split(',').map(Number);
+      return corner ? [x, y, 1] : [x, y];
+    });
+}
+export const sm = (str        , closed = true, tension = 1)         => smooth(pts(str), closed, tension);
+export const smx = (str        , t                , closed = true)         => smooth(xf(pts(str), t), closed);
+export const mirror = (p               )       => p.map(([x, y, c])     => (c ? [100 - x, y, 1] : [100 - x, y]));
+const ring = (p               , n        , offset = 0, s = 1)         =>
+  Array.from({ length: n }, (_, i) => xf(p, { rot: offset + (360 / n) * i, s }));
+/** n rotated copies merged into one path (one element; nonzero fill keeps overlaps solid). */
+export const ringD = (p               , n        , offset = 0, s = 1)         =>
+  ring(p, n, offset, s)
+    .map((q) => smooth(q, true, 1, 0))
+    .join('');
+export const dots = (list               , r        )         => list.map(([x, y]) => circ(x, y, r)).join('');
+
+/** Wavy closed ring (merged petals / scallops) — one subpath, cheap at list sizes. */
+export function scallop(
+  cx        ,
+  cy        ,
+  rOut        ,
+  rIn        ,
+  n        ,
+  offset = 0,
+  pointed = false,
+)         {
+  const p       = [];
+  for (let i = 0; i < n * 2; i++) {
+    const a = ((offset + (180 / n) * i - 90) * Math.PI) / 180;
+    const r = i % 2 ? rIn : rOut;
+    const q     = [cx + r * Math.cos(a), cy + r * Math.sin(a)];
+    p.push(pointed && !(i % 2) ? [q[0], q[1], 1] : q);
+  }
+  return smooth(p);
+}
+
+/** Sunflower seed head: a Fibonacci spiral of dots. */
+export function fibSeeds(cx        , cy        , R        , n        )         {
+  let out = '';
+  for (let i = 1; i <= n; i++) {
+    const r = R * Math.sqrt(i / n) * 0.92;
+    const a = i * 2.39996;
+    out += circ(cx + r * Math.cos(a), cy + r * Math.sin(a), 0.9 + (r / R) * 0.5);
+  }
+  return out;
+}
+
+// ─── flat geometric primitives (circular arcs + straight lines only) ─────────
+
+/** Vesica leaf from base (x1, y1) to tip (x2, y2), `w` wide at the middle: two equal arcs. */
+export function lens(x1        , y1        , x2        , y2        , w        )         {
+  const c = Math.hypot(x2 - x1, y2 - y1);
+  const h = w / 2;
+  const r = (c * c) / 4 / (2 * h) + h / 2;
+  return `M${f(x1)} ${f(y1)}A${f(r)} ${f(r)} 0 0 1 ${f(x2)} ${f(y2)}A${f(r)} ${f(r)} 0 0 1 ${f(x1)} ${f(y1)}Z`;
+}
+
+/**
+ * Geometric heart (two semicircles on a 45° square): tip at (0, 24)·s, notch at (0, −20)·s,
+ * lobes ±26.6·s wide, rotated `rot`° about its centre (cx, cy).
+ */
+export function heart(cx        , cy        , s        , rot = 0)         {
+  const a = (rot * Math.PI) / 180;
+  const cos = Math.cos(a);
+  const sin = Math.sin(a);
+  const P = (x        , y        ) => `${f(cx + s * (x * cos - y * sin))} ${f(cy + s * (x * sin + y * cos))}`;
+  const R = f(15.56 * s);
+  return `M${P(0, 24)}L${P(-22, 2)}A${R} ${R} 0 0 1 ${P(0, -20)}A${R} ${R} 0 0 1 ${P(22, 2)}Z`;
+}
+
+/** Stadium between two centre points, radius r (a pill when vertical). */
+export function capsule(x1        , y1        , x2        , y2        , r        )         {
+  const L = Math.hypot(x2 - x1, y2 - y1) || 1;
+  const nx = (-(y2 - y1) / L) * r;
+  const ny = ((x2 - x1) / L) * r;
+  return (
+    `M${f(x1 + nx)} ${f(y1 + ny)}L${f(x2 + nx)} ${f(y2 + ny)}A${f(r)} ${f(r)} 0 0 0 ${f(x2 - nx)} ${f(y2 - ny)}` +
+    `L${f(x1 - nx)} ${f(y1 - ny)}A${f(r)} ${f(r)} 0 0 0 ${f(x1 + nx)} ${f(y1 + ny)}Z`
+  );
+}
+
+/** Straight-edged polygon through "x,y x,y …" (sharp corners only). */
+export const poly = (str        )         =>
+  'M' +
+  pts(str)
+    .map(([x, y]) => `${f(x)} ${f(y)}`)
+    .join('L') +
+  'Z';
+
+/** Open polyline spiral about (cx, cy): radius r0 → r1 while the angle runs a0 → a1 (degrees, screen). */
+export function spiral(cx        , cy        , r0        , r1        , a0        , a1        , n = 36)         {
+  let d = '';
+  for (let i = 0; i <= n; i++) {
+    const t = i / n;
+    const a = ((a0 + (a1 - a0) * t) * Math.PI) / 180;
+    const r = r0 + (r1 - r0) * t;
+    d += `${i ? 'L' : 'M'}${f(cx + r * Math.cos(a))} ${f(cy + r * Math.sin(a))}`;
+  }
+  return d;
+}
+
+const polar = (cx        , cy        , r        , deg        )                   => [
+  cx + r * Math.cos((deg * Math.PI) / 180),
+  cy + r * Math.sin((deg * Math.PI) / 180),
+];
+
+/**
+ * Circle with V notches cut from the rim, or — with `fan` [from°, to°] — a fan (sector) that
+ * closes through its centre. Notches are [angle°, half-width°, depth], sorted by angle; for a
+ * full circle every notch lies within 360° of the first.
+ */
+export function notched(
+  cx        ,
+  cy        ,
+  r        ,
+  notches                                                ,
+  fan                                      ,
+)         {
+  const P = (rr        , deg        ) => polar(cx, cy, rr, deg).map(f).join(' ');
+  const arc = (from        , to        ) =>
+    to - from > 0.01 ? `A${f(r)} ${f(r)} 0 ${to - from > 180 ? 1 : 0} 1 ${P(r, to)}` : '';
+  const vee = (deg        , hw        , depth        ) => `L${P(r - depth, deg)}L${P(r, deg + hw)}`;
+  if (fan) {
+    let d = `M${f(cx)} ${f(cy)}L${P(r, fan[0])}`;
+    let at = fan[0];
+    for (const [deg, hw, depth] of notches) {
+      d += arc(at, deg - hw) + vee(deg, hw, depth);
+      at = deg + hw;
+    }
+    return d + arc(at, fan[1]) + 'Z';
+  }
+  const [first, ...rest] = notches;
+  if (!first) return circ(cx, cy, r);
+  let at = first[0] + first[1];
+  let d = `M${P(r, at)}`;
+  for (const [deg, hw, depth] of rest) {
+    d += arc(at, deg - hw) + vee(deg, hw, depth);
+    at = deg + hw;
+  }
+  return d + arc(at, first[0] + 360 - first[1]) + `L${P(r - first[2], first[0] + 360)}Z`;
+}
+
+/** n lens petals around (cx, cy), from radius rIn to rOut, `w` wide, starting at `offset`° (0 = up). */
+export function lensRing(cx        , cy        , n        , rIn        , rOut        , w        , offset = 0)         {
+  let d = '';
+  for (let i = 0; i < n; i++) {
+    const deg = offset + (360 / n) * i - 90;
+    const [x1, y1] = polar(cx, cy, rIn, deg);
+    const [x2, y2] = polar(cx, cy, rOut, deg);
+    d += lens(x1, y1, x2, y2, w);
+  }
+  return d;
+}
+
+/** n straight spokes from radius rIn to rOut (one stroked path), starting at `offset`° (0 = up). */
+export function spokes(cx        , cy        , n        , rIn        , rOut        , offset = 0)         {
+  let d = '';
+  for (let i = 0; i < n; i++) {
+    const deg = offset + (360 / n) * i - 90;
+    d += `M${polar(cx, cy, rIn, deg).map(f).join(' ')}L${polar(cx, cy, rOut, deg).map(f).join(' ')}`;
+  }
+  return d;
+}
+
+/** n dots of radius rd on a circle of radius R, starting at `offset`° (0 = up). */
+export function dotRing(cx        , cy        , n        , R        , rd        , offset = 0)         {
+  let d = '';
+  for (let i = 0; i < n; i++) {
+    const [x, y] = polar(cx, cy, R, offset + (360 / n) * i - 90);
+    d += circ(x, y, rd);
+  }
+  return d;
+}
+
+// ─── colour (state treatments + contrast tests) ─────────────────────────────
+
+                                    
+
+const hexToRgb = (h        )      => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16))       ;
+const rgbToHex = (c                   )         =>
+  '#' +
+  c
+    .map((v) =>
+      Math.max(0, Math.min(255, Math.round(v)))
+        .toString(16)
+        .padStart(2, '0'),
+    )
+    .join('')
+    .toUpperCase();
+
+/** Linear RGB mix of two `#RRGGBB` colours (t = 0 → a, 1 → b). */
+export function mix(a        , b        , t        )         {
+  const A = hexToRgb(a);
+  const B = hexToRgb(b);
+  return rgbToHex(A.map((v, i) => v + (B[i]  - v) * t));
+}
+
+/** WCAG relative luminance. */
+export function luminance(hex        )         {
+  const [r, g, b] = hexToRgb(hex).map((v) => {
+    const c = v / 255;
+    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  })       ;
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+/** WCAG contrast ratio. */
+export function contrast(a        , b        )         {
+  const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x)                    ;
+  return (hi + 0.05) / (lo + 0.05);
+}
+
+/** Pull a colour toward its own grey (keeps the hue family, lowers chroma). */
+export function desaturate(hex        , t        )         {
+  const [r, g, b] = hexToRgb(hex);
+  const y = 0.299 * r + 0.587 * g + 0.114 * b;
+  return rgbToHex([r + (y - r) * t, g + (y - g) * t, b + (y - b) * t]);
+}
+
+// ─── OKLCH (the disc-and-body recolour of a `tint`) ──────────────────────────
+
+const toLinear = (v        ) => {
+  const c = v / 255;
+  return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+};
+const fromLinear = (v        ) => 255 * (v <= 0.0031308 ? 12.92 * v : 1.055 * v ** (1 / 2.4) - 0.055);
+
+/** `#RRGGBB` → OKLCH [L 0–1, C, H degrees 0–360]. */
+export function toOklch(hex        )                                    {
+  const [r, g, b] = hexToRgb(hex).map(toLinear)       ;
+  const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b);
+  const m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b);
+  const s = Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b);
+  const L = 0.2104542553 * l + 0.793617785 * m - 0.0040720468 * s;
+  const A = 1.9779984951 * l - 2.428592205 * m + 0.4505937099 * s;
+  const B = 0.0259040371 * l + 0.7827717662 * m - 0.808675766 * s;
+  return [L, Math.hypot(A, B), ((Math.atan2(B, A) * 180) / Math.PI + 360) % 360];
+}
+
+/** OKLCH → linear sRGB, unclamped (out of gamut when a channel leaves 0–1). */
+function oklchToLinear(L        , C        , H        )      {
+  const a = C * Math.cos((H * Math.PI) / 180);
+  const b = C * Math.sin((H * Math.PI) / 180);
+  const l = (L + 0.3963377774 * a + 0.2158037573 * b) ** 3;
+  const m = (L - 0.1055613458 * a - 0.0638541728 * b) ** 3;
+  const s = (L - 0.0894841775 * a - 1.291485548 * b) ** 3;
+  return [
+    4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s,
+    -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s,
+    -0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s,
+  ];
+}
+
+/**
+ * The colour at OKLCH hue `h` with its own chroma and its own WCAG luminance (or `lum0`;
+ * lightness re-solved at the new hue, so every contrast it took part in holds) — chroma eased
+ * down until it fits sRGB (a vivid green turned blue keeps its lightness, not its punch).
+ */
+export function withHue(hex        , h        , lum0         = luminance(hex))         {
+  const target = lum0;
+  const C = toOklch(hex)[1];
+  const at = (L        , c        ) => oklchToLinear(L, c, h);
+  const lum = (rgb     ) => 0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2];
+  const toHex = (rgb     ) => rgbToHex(rgb.map((v) => fromLinear(Math.min(1, Math.max(0, v)))));
+  let c = C;
+  for (let i = 0; i < 30; i++) {
+    let lo = 0;
+    let hi = 1;
+    for (let j = 0; j < 28; j++) {
+      const mid = (lo + hi) / 2;
+      if (lum(at(mid, c)) < target) lo = mid;
+      else hi = mid;
+    }
+    const rgb = at((lo + hi) / 2, c);
+    if (rgb.every((v) => v >= -1e-4 && v <= 1 + 1e-4)) return toHex(rgb);
+    c *= 0.9;
+  }
+  return toHex(at(toOklch(hex)[0], 0));
+}
+
+
+
+export const STATES = ['idle','thinking','speaking','done','error','waiting','sleep','hello'];
+export const LABELS = ['待机','思考','说话','完成','出错','等待','休眠','问好'];
+export const META = [
+ ['sprout','新芽','Greeny','轻轻呼吸，三片叶子向你打招呼'],
+ ['ivy','常春藤','Ivy','舒缓地侧倾，留一点好奇'],
+ ['sage','鼠尾草','Sage','慢半拍的沉静回应'],
+ ['basil','罗勒','Basil','清爽、轻快的点头'],
+ ['fern','蕨','卷卷','小小卷芽，温柔地晃一晃'],
+ ['clover','紫色三叶草','叶叶','圆润的叶片，雀跃但克制'],
+ ['monstera','龟背竹','Monstera','宽叶微摆，从容地回应'],
+ ['ginkgo','银杏','Ginkgo','像一把小扇，慢慢舒展'],
+ ['maple','枫','枫枫','带一点俏皮的轻倾'],
+ ['echeveria','石莲花','Echeveria','稳稳的花心，安静地呼吸'],
+ ['opuntia','仙人掌','仙仙','小幅点头，枝片轻轻抬起'],
+ ['lotus','莲','Lotus','花瓣缓缓收拢与展开'],
+ ['eucalyptus','尤加利','Eucalyptus','细长枝干，轻柔地摇摆'],
+ ['lavender','薰衣草','薰薰','花穗轻晃，节奏柔和'],
+ ['sunflower','向日葵','葵葵','奶油色笑脸，明亮地回应'],
+ ['dandelion','蒲公英','蒲蒲','轻盈地漂浮，带一点好奇'],
+];
+// All states share these numeric channels and the same SVG nodes. Retargeting
+// never resets the clock or the current interpolated values.
+const base = {rot:0,y:0,sx:1,sy:1,fold:0,lookX:0,lookY:0,eye:3.5,curve:0,mouth:0.6,smile:2.5,width:3.6,brow:0,energy:0.55,talk:0,wave:0};
+export const TARGETS = {
+ idle:{...base},
+ thinking:{...base,rot:-2.7,lookX:2.3,lookY:-2,eye:3.1,smile:.5,width:2.7,energy:.12},
+ speaking:{...base,y:-.3,eye:3.8,mouth:.6,smile:1.5,width:4,talk:1,energy:.48},
+ done:{...base,eye:.45,curve:-2.4,mouth:2,smile:3.8,width:4.2,energy:0},
+ error:{...base,lookY:.6,eye:2.9,brow:1,width:2.6,mouth:.3,smile:-.6,energy:0},
+ waiting:{...base,eye:4.1,mouth:1.3,smile:1,width:2.1,energy:.28},
+ sleep:{...base,rot:2.5,y:1.4,sy:.99,eye:.28,curve:1.8,mouth:.2,smile:.7,width:2.2,fold:.23,energy:.15},
+ hello:{...base,eye:3.9,mouth:1.3,smile:3.5,width:4,energy:0,wave:0},
+};
+const ns='http://www.w3.org/2000/svg';
+function el(tag,attrs={},parent){const n=document.createElementNS(ns,tag);for(const [k,v] of Object.entries(attrs))n.setAttribute(k,v);parent?.append(n);return n;}
+const n=v=>Math.round(v*1000)/1000;
+const seed=s=>[...s].reduce((v,c)=>(v*31+c.charCodeAt(0))>>>0,0);
+let serial=0;
+const active=new Set();
+export const runtime={paused:false,hidden:document.hidden,reduced:matchMedia('(prefers-reduced-motion: reduce)').matches,speed:1,theme:'light',tint:'plant',time:0,frames:0,draws:0,lastCost:0};
+let frame=0,last=0;
+const observers=new IntersectionObserver(entries=>{for(const entry of entries){const a=entry.target.avatarInstance;if(a){a.visible=entry.isIntersecting;if(a.visible){a.dirty=true;wake();}}}}, {rootMargin:'40px'});
+export function wake(){if(!frame&&!runtime.hidden)frame=requestAnimationFrame(tick);}
+function tick(now){frame=0;const dt=last?Math.min((now-last)/1000,.25):0;last=now;const running=!runtime.paused&&!runtime.hidden&&!runtime.reduced;
+ const start=performance.now();if(running)runtime.time+=dt*runtime.speed;
+ for(const a of active){if(!a.visible||a.suspended)continue;if((running&&!a.static)||a.dirty)a.draw(running?dt*runtime.speed:0);}
+ runtime.frames++;runtime.lastCost=performance.now()-start;
+ document.dispatchEvent(new CustomEvent('motion-frame',{detail:{dt:running?dt*runtime.speed:0}}));
+ if(running&&[...active].some(a=>a.visible&&!a.suspended&&!a.static))wake();else last=0;
+}
+export function settings(patch){Object.assign(runtime,patch);for(const a of active){if('theme'in patch||'tint'in patch)a.paint();a.dirty=true;}wake();}
+document.addEventListener('visibilitychange',()=>{runtime.hidden=document.hidden;last=0;if(runtime.hidden&&frame){cancelAnimationFrame(frame);frame=0;}else wake();});
+matchMedia('(prefers-reduced-motion: reduce)').addEventListener('change',e=>{runtime.reduced=e.matches;for(const a of active){if(e.matches)a.current={...TARGETS[a.state]};a.dirty=true;}document.dispatchEvent(new Event('motion-preference'));wake();});
+const colorCache=new Map();
+function recolor(hex,tint){if(tint==='plant')return hex;const key=hex+tint;if(!colorCache.has(key))colorCache.set(key,withHue(hex,{sky:245,violet:300,rose:355,coral:40,gold:85,teal:190}[tint]));return colorCache.get(key);}
+export class Avatar {
+ constructor(host,plant,{state='idle',size=144,static:still=false,key=''}={}){
+  this.host=host;this.plant=plant;this.p=PRESETS[plant];this.state=state;this.current={...TARGETS[state]};this.target=TARGETS[state];this.static=still;this.size=size;this.visible=true;this.suspended=false;this.dirty=true;
+  const idx=META.findIndex(x=>x[0]===plant);this.phase=(seed(plant+key)%997)/997*Math.PI*2;this.period=4.1+(idx*7%13)*.15;this.amplitude=['echeveria','sunflower','opuntia','lotus'].includes(plant)?.2:plant==='eucalyptus'?1.1:.45+(idx%4)*.16;this.entered=runtime.time;this.waking=false;this.blinkCount=0;this.blinkRng=seed(plant+key+'blink')||1;this.nextBlink=runtime.time+this.nextBlinkGap();this.blinkStart=-10;
+  this.svg=el('svg',{viewBox:'-8 -8 116 116',role:'img','aria-label':`${META[idx][1]} · ${LABELS[STATES.indexOf(state)]}`,'data-plant':plant,'data-instance':++serial,'data-state':state},host);
+  this.disc=el('circle',{cx:50,cy:50,r:49,fill:this.p.palette.light.disc},this.svg);
+  this.fit=el('g',{},this.svg);this.pose=el('g',{'data-rig':'pose'},this.fit);
+  this.layers=this.p.layers.map(l=>{let group=el('g',{'data-rig':l.part||'body'},this.pose);let path=el('path',{d:l.d,fill:l.stroke?'none':'currentColor','fill-rule':l.fillRule||'nonzero','stroke-linecap':'round','stroke-linejoin':'round',...(l.stroke?{stroke:'currentColor','stroke-width':l.stroke}:{})},group);return{l,group,path};});
+  this.face=el('g',{'data-rig':'face'},this.pose);this.eyes=[el('path',{},this.face),el('path',{},this.face)];this.brows=[el('path',{fill:'none','stroke-width':1.7,'stroke-linecap':'round'},this.face),el('path',{fill:'none','stroke-width':1.7,'stroke-linecap':'round'},this.face)];
+  this.mouth=el('path',{'stroke-width':1.25,'stroke-linecap':'round','stroke-linejoin':'round'},this.face);
+  host.avatarInstance=this;observers.observe(host);active.add(this);this.resize(size);this.paint();this.draw(0);wake();
+ }
+ nextBlinkGap(){let x=this.blinkRng;x^=x<<13;x^=x>>>17;x^=x<<5;this.blinkRng=x>>>0;return 3+3*this.blinkRng/4294967296;}
+ setState(state){if(!TARGETS[state]||state===this.state)return;this.waking=this.state==='sleep';this.state=state;this.entered=runtime.time;this.target=TARGETS[state];this.svg.dataset.state=state;this.svg.setAttribute('aria-label',`${META.find(x=>x[0]===this.plant)[1]} · ${LABELS[STATES.indexOf(state)]}`);this.dirty=true;if(this.static||runtime.reduced){this.current={...this.target};this.draw(0);}wake();}
+ resize(size){this.size=size;this.svg.style.width=size+'px';this.svg.style.height=size+'px';const lod=size<=20?'glyph':size<=44?'avatar':'portrait',code={glyph:'g',avatar:'a',portrait:'p'}[lod];this.svg.dataset.lod=lod;const [r,dx,dy]=FIT[this.plant][lod],scale=41/r;this.fit.setAttribute('transform',`translate(50 50) scale(${scale}) translate(${-50+dx} ${-50+dy})`);for(const {l,group}of this.layers)group.style.display=l.lods.includes(code)?'':'none';this.mouth.style.display=lod==='glyph'?'none':'';this.dirty=true;wake();}
+ paint(){const palette={...this.p.palette[runtime.theme]};for(const k of ['disc','body','shade','light'])palette[k]=recolor(palette[k],runtime.tint);this.disc.setAttribute('fill',palette.disc);for(const {l,path}of this.layers){path.style.color=palette[l.tone];path.setAttribute('opacity',l.op??1);}this.ink=palette.ink;for(const e of this.eyes)e.setAttribute('fill',this.ink);for(const b of this.brows)b.setAttribute('stroke',this.ink);this.mouth.setAttribute('fill',this.ink);this.mouth.setAttribute('stroke',this.ink);}
+ draw(dt){this.dirty=false;runtime.draws++;const c=this.current,elapsed=runtime.time-this.entered;const goal={...this.target};
+  if(this.state==='done'&&elapsed<.9)goal.y=-2*Math.sin(Math.PI*elapsed/.9);
+  if(this.state==='error'&&elapsed<.85){goal.rot=2.8*Math.sin(Math.PI*elapsed/.85);goal.sy=1-.014*Math.sin(Math.PI*elapsed/.85);}
+  if(this.state==='hello'&&elapsed<1.2){goal.rot=2.5*Math.sin(elapsed/1.2*Math.PI*4)*(1-elapsed/1.2);goal.wave=Math.sin(elapsed/1.2*Math.PI*4)*(1-elapsed/1.2);}
+  if(!this.static&&!runtime.reduced&&!runtime.paused)for(const k in c){const slow=this.state==='sleep'||(this.waking&&elapsed<.65);const tau=slow?(k==='eye'||k==='curve'?.18:k==='fold'?.2:.15):.085;c[k]+=(goal[k]-c[k])*(1-Math.exp(-dt/tau));}
+  const still=this.static||runtime.reduced, t=still?0:runtime.time, phase=still?0:this.phase, freq=2*Math.PI/this.period;
+  const sw=still?0:Math.sin(t*freq+phase), sway=sw*c.energy*this.amplitude, breathe=still?0:Math.sin(t*freq*.72+phase)*.003*c.energy;
+  const [px,py]=this.p.pivot;this.pose.setAttribute('transform',runtime.reduced?'translate(0 0)':`translate(0 ${n(c.y+sw*c.energy*.5)}) translate(${px} ${py}) rotate(${n(c.rot+sway)}) scale(${n(c.sx-breathe)} ${n(c.sy+breathe)}) translate(${-px} ${-py})`);
+  for(const {l,group}of this.layers){if(l.part){const part=this.p.parts[l.part];const waving=still?0:c.wave*(l.part==='r'?3.5:.7);const rot=runtime.reduced?0:part.fold*c.fold+waving+sway*.5;group.setAttribute('transform',`rotate(${n(rot)} ${part.at.join(' ')})`);}else if(l.organ){const organ=l.organ;const motion=still?0:Math.sin(t*freq+phase-organ.phase)*c.energy*organ.gain;group.setAttribute('transform',`rotate(${n(motion)} ${organ.at.join(' ')})`);}}
+  this.face.setAttribute('transform',`translate(${n(c.lookX)} ${n(c.lookY)})`);
+  const face=this.p.face,s=face.scale||1,gap=Math.max(face.gap,this.size<=20?8.8:7),eyeW=(this.size<=20?3.9:2.9)*s;
+  if(!still&&t>=this.nextBlink){this.blinkStart=t;this.blinkCount++;this.nextBlink=t+this.nextBlinkGap();}
+  const blinkPhase=t-this.blinkStart,blink=still?1:blinkPhase>=0&&blinkPhase<.18?Math.abs(blinkPhase/.09-1):1;
+  const eyeH=Math.max(.24,c.eye*blink)*s;
+  this.eyes.forEach((eye,i)=>{const x=face.x+(i?gap:-gap),y=face.y,curve=c.curve*s;eye.setAttribute('d',`M${n(x-eyeW)} ${y} C${n(x-eyeW)} ${n(y+curve-eyeH*1.33)} ${n(x+eyeW)} ${n(y+curve-eyeH*1.33)} ${n(x+eyeW)} ${y} C${n(x+eyeW)} ${n(y+curve+eyeH*1.33)} ${n(x-eyeW)} ${n(y+curve+eyeH*1.33)} ${n(x-eyeW)} ${y}Z`);const dir=i?1:-1;this.brows[i].setAttribute('d',`M${n(x-3)} ${n(y-7-dir)} Q${x} ${n(y-8.5)} ${n(x+3)} ${n(y-7+dir)}`);this.brows[i].setAttribute('opacity',n(c.brow));});
+  const phrase=(t+phase)%1.68,syllables=2+(seed(this.plant)%3),durations=[.21,.29,.18,.26];let cursor=0,syllable=0;for(let i=0;i<syllables;i++){const end=cursor+durations[i];if(phrase>=cursor&&phrase<end)syllable=Math.pow(Math.sin((phrase-cursor)/durations[i]*Math.PI),1.5)*(2.2+i%2*.7);cursor=end;}
+  const talk=still?c.talk*1.9:c.talk*syllable;const x=face.x,y=face.y+8*s,w=c.width*s,open=Math.max(.2,c.mouth+talk)*s;
+  this.mouth.setAttribute('d',`M${n(x-w)} ${y} Q${x} ${n(y+c.smile-open*.7)} ${n(x+w)} ${y} Q${x} ${n(y+c.smile+open*1.5)} ${n(x-w)} ${y}Z`);
+ }
+ dispose(){observers.unobserve(this.host);active.delete(this);this.svg.remove();delete this.host.avatarInstance;}
+}
+export function diagnostics(){return {instances:active.size,visible:[...active].filter(a=>a.visible&&!a.suspended&&!a.static).length,static:[...active].filter(a=>a.static).length,...runtime};}
+
+
+const $=s=>document.querySelector(s);
+let globalState='idle',selected=0,detailAvatar=null,detailExtras=[],demo=false,localDemo=false,demoElapsed=0,localElapsed=0,localState='idle',localPaused=false,opener=null;
+const sequence=['idle','hello','thinking','speaking','done','waiting','error','sleep'];
+const gallery= $('#gallery'),avatars=[];
+function stateLabel(s){return LABELS[STATES.indexOf(s)];}
+function stateButton(state){const b=document.createElement('button');b.type='button';b.dataset.state=state;b.setAttribute('aria-pressed','false');b.innerHTML=`${stateLabel(state)}<small>${state}</small>`;return b;}
+for(const state of STATES){const b=stateButton(state);b.addEventListener('click',()=>{demo=false;setGlobal(state);updateControls();});$('#global-states').append(b);}
+META.forEach(([id,name,alias],i)=>{const card=document.createElement('button');card.type='button';card.className='plant-card';card.dataset.plant=id;card.setAttribute('aria-label',`查看${name}的全部表情`);card.innerHTML=`<div class="card-top"><span class="card-number">${String(i+1).padStart(2,'0')}</span><span class="card-arrow">↗</span></div><div class="avatar-host"></div><div class="card-caption"><div><span class="plant-name">${name}</span><span class="plant-alias">${alias}</span></div><span class="state-badge">待机</span></div>`;gallery.append(card);avatars.push(new Avatar(card.querySelector('.avatar-host'),id,{key:'gallery'}));card.addEventListener('click',()=>openDetail(i,card));});
+function setGlobal(state){globalState=state;avatars.forEach(a=>a.setState(state));document.querySelectorAll('.state-badge').forEach(b=>b.textContent=stateLabel(state));document.querySelectorAll('#global-states button').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.state===state)));updateControls();}
+function setLocal(state){localState=state;detailAvatar?.setState(state);detailExtras.filter(x=>!x.compare).forEach(x=>x.avatar.setState(state));document.querySelectorAll('.expression-button').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.state===state)));$('#detail-state').textContent=`${stateLabel(state)}${localPaused||runtime.paused?' · 已暂停':''}`;}
+function disposeDetail(){detailAvatar?.dispose();detailAvatar=null;detailExtras.forEach(x=>x.avatar.dispose());detailExtras=[];$('#portrait').replaceChildren();$('#comparison').replaceChildren();$('#sizes-strip').replaceChildren();}
+function openDetail(index,source){selected=(index+16)%16;const [id,name,alias,description]=META[selected];if(source)opener=source;disposeDetail();localDemo=false;localPaused=false;localState=globalState;localElapsed=0;avatars.forEach(a=>a.suspended=true);$('#detail-name').textContent=name+(alias!==name?' · '+alias:'');$('#detail-description').textContent=description;$('#detail-counter').textContent=`MEET THE PLANTS / ${String(selected+1).padStart(2,'0')} OF 16`;
+ detailAvatar=new Avatar($('#portrait'),id,{size:256,state:localState,key:'portrait'});
+ for(const s of STATES){const b=stateButton(s);b.className='expression-button';b.innerHTML=`<div class="expression-avatar"></div><span>${stateLabel(s)}</span><small>${s}</small>`;$('#comparison').append(b);const avatar=new Avatar(b.querySelector('.expression-avatar'),id,{size:66,state:s,static:true,key:'compare-'+s});detailExtras.push({avatar,compare:true});b.addEventListener('click',()=>{localDemo=false;setLocal(s);updateControls();});}
+ for(const size of [16,20,32,44]){const box=document.createElement('div');box.className='size-example';box.innerHTML=`<div></div><span>${size} px</span>`;$('#sizes-strip').append(box);detailExtras.push({avatar:new Avatar(box.firstElementChild,id,{size,state:localState,static:true,key:'size'+size}),compare:false});}
+ if(!$('#detail').open)$('#detail').showModal();setLocal(localState);updateControls();$('#close').focus();wake();
+}
+function closeDetail(){disposeDetail();avatars.forEach(a=>a.suspended=false);localDemo=false;localPaused=false;opener?.focus();updateControls();wake();}
+function updateControls(){const reduced=runtime.reduced;$('#demo').textContent=demo?'■ 停止演示':'▷ 连续演示';$('#demo').setAttribute('aria-pressed',String(demo));$('#demo').disabled=reduced;$('#pause').textContent=runtime.paused?'▷ 继续':'Ⅱ 暂停';$('#pause').setAttribute('aria-pressed',String(runtime.paused));$('#pause').disabled=reduced;$('#local-demo').textContent=localDemo?'■ 停止演示':'▷ 连续演示';$('#local-demo').setAttribute('aria-pressed',String(localDemo));$('#local-demo').disabled=reduced;$('#local-pause').textContent=runtime.paused||localPaused?'▷ 继续':'Ⅱ 暂停';$('#local-pause').setAttribute('aria-pressed',String(runtime.paused||localPaused));$('#local-pause').disabled=reduced;$('#playback-status').textContent=reduced?'已跟随系统减少动态 · 可手动查看静态表情':runtime.paused?'已暂停 · 继续时从当前动作接续':demo?`连续演示中 · ${stateLabel(globalState)}`:`当前状态：${stateLabel(globalState)}`;$('#motion-note').textContent=reduced?'已尊重系统的「减少动态效果」设置。':'离开页面时，植物会自动休息。';$('#speed').value=runtime.speed;$('#local-speed').value=runtime.speed;if(detailAvatar)$('#detail-state').textContent=`${stateLabel(localState)}${localPaused||runtime.paused?' · 已暂停':''}`;}
+$('#close').addEventListener('click',()=>$('#detail').close());$('#detail').addEventListener('close',closeDetail);$('#detail').addEventListener('click',e=>{if(e.target===$('#detail')){const r=e.target.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)e.target.close();}});
+$('#previous').addEventListener('click',()=>openDetail(selected-1));$('#next').addEventListener('click',()=>openDetail(selected+1));$('#detail').addEventListener('keydown',e=>{if(e.target.tagName==='SELECT')return;if(e.key==='ArrowRight'){e.preventDefault();openDetail(selected+1);}if(e.key==='ArrowLeft'){e.preventDefault();openDetail(selected-1);}});
+$('#demo').addEventListener('click',()=>{demo=!demo;demoElapsed=0;if(demo&&runtime.paused)settings({paused:false});updateControls();});
+$('#pause').addEventListener('click',()=>{settings({paused:!runtime.paused});updateControls();});
+$('#local-demo').addEventListener('click',()=>{localDemo=!localDemo;localElapsed=0;if(localDemo){localPaused=false;detailAvatar.suspended=false;settings({paused:false});}updateControls();});
+$('#local-pause').addEventListener('click',()=>{if(runtime.paused){settings({paused:false});localPaused=false;}else localPaused=!localPaused;detailAvatar.suspended=localPaused;updateControls();wake();});
+function speedChanged(e){settings({speed:Number(e.target.value)});updateControls();}$('#speed').addEventListener('change',speedChanged);$('#local-speed').addEventListener('change',speedChanged);
+$('#size').addEventListener('change',e=>{const size=Number(e.target.value);avatars.forEach(a=>a.resize(size));gallery.classList.toggle('small',size<100);});
+$('#tint').addEventListener('change',e=>settings({tint:e.target.value}));
+$('#theme').addEventListener('click',()=>{const theme=runtime.theme==='light'?'dark':'light';document.body.classList.toggle('dark',theme==='dark');settings({theme});$('#theme span').textContent=theme==='light'?'浅色':'深色';$('#theme').setAttribute('aria-label',`切换${theme==='light'?'深':'浅'}色背景`);});
+document.addEventListener('motion-frame',e=>{if(e.detail.dt===0)return;if(demo&&!$('#detail').open){demoElapsed+=e.detail.dt;if(demoElapsed>=3){demoElapsed%=3;setGlobal(sequence[(sequence.indexOf(globalState)+1)%sequence.length]);}}if(localDemo&&detailAvatar&&!localPaused){localElapsed+=e.detail.dt;if(localElapsed>=3){localElapsed%=3;setLocal(sequence[(sequence.indexOf(localState)+1)%sequence.length]);}}});
+document.addEventListener('motion-preference',()=>{if(runtime.reduced){demo=false;localDemo=false;}updateControls();});
+setGlobal('idle');
+// Read-only diagnostics + instances, intentionally exposed for repeatable local QA.
+window.greenhouseLab={get avatars(){return avatars;},get portrait(){return detailAvatar;},get diagnostics(){return diagnostics();},get current(){return {globalState,localState,selected,demo,localDemo,localPaused};}};
+</script></head>
+<body>
+<div class="shell">
+ <header class="masthead"><a class="wordmark" href="#"><span class="brand-symbol">✳</span> greenhouse <span class="edition">/ 植物实验室</span></a><button class="icon-button" id="theme" aria-label="切换深色背景" title="切换深色背景">◐ <span>浅色</span></button></header>
+ <main>
+  <section class="intro"><div><p class="eyebrow">CHARACTER STUDIES <span>01 — 16</span></p><h1>小小植物，<br>各有回应<span class="title-dot">。</span></h1><p class="intro-copy">一片叶子的轻摆，一个刚刚好的微笑。<br>选一位伙伴，看看它如何倾听、思考和表达。</p></div><div class="intro-aside"><span class="index-number">16<span>位伙伴</span></span><p>8 种状态 · 连续动作<br>点开头像，慢慢认识它</p></div></section>
+  <aside class="notice"><span class="notice-label">A 方案 · 审阅版</span><p>全部 16 个角色已按 A 图的逐项视觉规格重绘，<strong>待原图复核</strong>。轻点头像，查看表情和连贯动作。</p></aside>
+  <section class="control-panel" aria-label="全局动画控制"><div class="control-top"><div class="section-heading"><span class="tiny-dot"></span><h2>一起切换状态</h2></div><div class="play-controls"><button id="demo" aria-pressed="false">▷ 连续演示</button><button id="pause" aria-pressed="false">Ⅱ 暂停</button></div></div><div id="global-states" class="state-row" aria-label="所有角色的状态"></div><div class="control-bottom"><p id="playback-status" aria-live="polite">正在轻轻呼吸</p><div class="select-controls"><label>速度 <select id="speed"><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="1.5">1.5×</option><option value="2">2×</option></select></label><label>尺寸 <select id="size"><option value="144">画廊</option><option value="44">44 px</option><option value="32">32 px</option><option value="20">20 px</option><option value="16">16 px</option></select></label><label>配色 <select id="tint"><option value="plant">本色</option><option value="sky">天空</option><option value="violet">紫罗兰</option><option value="rose">玫瑰</option><option value="coral">珊瑚</option><option value="gold">金色</option><option value="teal">青绿</option></select></label></div></div></section>
+  <section aria-label="全部 16 位植物伙伴"><div class="gallery-heading"><h2>温室里的伙伴们</h2><span>点击头像 · 查看 8 种表情 ↗</span></div><div id="gallery" class="gallery"></div></section>
+  <footer><span>GREENHOUSE · MOTION EXPLORATIONS</span><p>独立预览 · 不影响正式应用<br><span id="motion-note">离开页面时，植物会自动休息。</span></p></footer>
+ </main>
+</div>
+<dialog id="detail" aria-labelledby="detail-name"><div class="dialog-inner"><div class="dialog-top"><span id="detail-counter" class="eyebrow"></span><button class="icon-button close" id="close" aria-label="关闭单角色预览">×</button></div><div class="detail-layout"><section class="portrait-section"><div class="portrait-nav"><button id="previous" class="icon-button" aria-label="上一位植物">←</button><div id="portrait"></div><button id="next" class="icon-button" aria-label="下一位植物">→</button></div><h2 id="detail-name"></h2><p id="detail-description"></p><div class="portrait-status"><span class="tiny-dot"></span><span id="detail-state" aria-live="polite"></span></div><div class="detail-actions"><button id="local-demo" aria-pressed="false">▷ 连续演示</button><button id="local-pause" aria-pressed="false">Ⅱ 暂停</button></div><div id="sizes-strip" class="sizes-strip" aria-label="小尺寸预览"></div></section><section class="expression-section"><div class="section-heading"><h3>八种心情，慢慢过渡</h3></div><p class="muted">点选表情，在大预览里看它自然接续。</p><div id="comparison" class="comparison"></div><div class="detail-settings"><label>速度 <select id="local-speed"><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="1.5">1.5×</option><option value="2">2×</option></select></label><p>快速连续点选，也会从当前动作接上。</p></div></section></div></div></dialog>
+</body></html>
