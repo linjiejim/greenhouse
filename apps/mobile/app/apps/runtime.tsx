@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { FlatList, View } from 'react-native';
 import { Stack, useLocalSearchParams } from 'expo-router';
+import { memberDirectory } from '../../src/api/me';
 import { appRuntime } from '../../src/api/apps';
 import { useResource } from '../../src/data/use-resource';
 import { ResourceState } from '../../src/knowledge/state';
@@ -16,6 +17,8 @@ import { space } from '../../src/theme';
 export default function Runtime() {
   const { id = '', page: initialPage } = useLocalSearchParams<{ id: string; page?: string }>();
   const t = useT();
+  const members = useResource(useCallback(() => memberDirectory(), []));
+  const names = Object.fromEntries((members.data?.items ?? []).map((member) => [member.id, member.name]));
   const allowed = useAuth((s) => s.user?.modules.apps);
   const [page, setPage] = useState(initialPage);
   const r = useResource(
@@ -31,7 +34,7 @@ export default function Runtime() {
       {!allowed ? (
         <EmptyState icon="table" title={t('work.permissionLost')} />
       ) : !runtime ? (
-        <ResourceState loading={r.loading} retry={() => void r.refresh()} />
+        <ResourceState error={r.error} loading={r.loading} retry={() => void r.refresh()} />
       ) : (
         <FlatList
           key={`${id}:${runtime.version}:${current?.id}`}
@@ -39,14 +42,20 @@ export default function Runtime() {
           contentContainerStyle={{ paddingBottom: 40 }}
           data={current?.cards ?? []}
           keyExtractor={(card) => `${runtime.version}:${card.id}`}
-          renderItem={({ item }) => <RuntimeCard runtime={runtime} card={item} />}
+          renderItem={({ item }) => <RuntimeCard runtime={runtime} card={item} names={names} />}
           initialNumToRender={2}
           maxToRenderPerBatch={2}
           windowSize={3}
           ListHeaderComponent={
             <>
               <View
-                style={{ margin: space.margin, flexDirection: 'row', justifyContent: 'space-between', gap: space.sm }}
+                style={{
+                  margin: space.margin,
+                  flexDirection: 'row',
+                  flexWrap: 'wrap',
+                  justifyContent: 'space-between',
+                  gap: space.sm,
+                }}
               >
                 <NativeMenu
                   items={runtime.pages.map((p) => ({ id: p.id, title: p.name, checked: current?.id === p.id }))}

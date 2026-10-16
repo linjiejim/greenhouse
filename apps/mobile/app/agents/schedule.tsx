@@ -1,7 +1,9 @@
+import { readScheduleTime, writeScheduleTime, type ScheduleFrequency } from '../../src/data/schedule-time';
+import { repeatOptions } from '../../src/agents/schedule-copy';
 import { useLocalSearchParams } from 'expo-router';
-import { Section, TextField, Toggle, ProgressView, useNativeState } from '@expo/ui/swift-ui';
-import { disabled } from '@expo/ui/swift-ui/modifiers';
-import { NativeForm, FormNavRow } from '../../src/ui/native-form';
+import { Section, TextField, Toggle, Picker, Text, DatePicker, useNativeState } from '@expo/ui/swift-ui';
+import { disabled, tag, pickerStyle } from '@expo/ui/swift-ui/modifiers';
+import { NativeForm, FormLoading, FormNavRow } from '../../src/ui/native-form';
 import { FormChrome } from '../../src/ui/sheet-chrome';
 import { useSchedule } from '../../src/agents/use-schedule';
 import { useT } from '../../src/lib/i18n';
@@ -29,7 +31,7 @@ function Editor({ id, schedule }: { id: string; schedule?: string }) {
         ) : (
           <Section>
             {f.resource.loading ? (
-              <ProgressView />
+              <FormLoading />
             ) : (
               <FormNavRow label={t('work.loadFailed')} onPress={() => void f.resource.refresh()} />
             )}
@@ -41,9 +43,10 @@ function Editor({ id, schedule }: { id: string; schedule?: string }) {
 }
 function ScheduleFields({ f }: { f: ReturnType<typeof useSchedule> }) {
   const t = useT();
+  const time = readScheduleTime(f.draft.cron);
+  const date = new Date(2000, 0, 1, time?.hour ?? 9, time?.minute ?? 0);
   const name = useNativeState(f.draft.name),
     brief = useNativeState(f.draft.brief),
-    cron = useNativeState(f.draft.cron),
     zone = useNativeState(f.draft.timezone);
   return (
     <>
@@ -65,7 +68,33 @@ function ScheduleFields({ f }: { f: ReturnType<typeof useSchedule> }) {
         />
       </Section>
       <Section modifiers={[disabled(f.saving)]} title={t('integration.cron')}>
-        <TextField text={cron} maxLength={100} placeholder="0 9 * * *" onTextChange={(v) => f.change('cron', v)} />
+        <Picker
+          label={t('integration.repeat')}
+          selection={time?.frequency ?? 'custom'}
+          onSelectionChange={(value) => {
+            if (value !== 'custom')
+              f.change('cron', writeScheduleTime(value as ScheduleFrequency, time?.hour ?? 9, time?.minute ?? 0));
+          }}
+          modifiers={[pickerStyle('menu')]}
+        >
+          {repeatOptions(f.draft.cron, t).map((option) => (
+            <Text key={option.value} modifiers={[tag(option.value)]}>
+              {option.label}
+            </Text>
+          ))}
+        </Picker>
+        {time ? (
+          <DatePicker
+            title={t('integration.cron')}
+            selection={date}
+            displayedComponents={['hourAndMinute']}
+            onDateChange={(value) =>
+              f.change('cron', writeScheduleTime(time.frequency, value.getHours(), value.getMinutes()))
+            }
+          />
+        ) : (
+          <Text>{t('integration.customScheduleHint')}</Text>
+        )}
       </Section>
       <Section modifiers={[disabled(f.saving)]} title={t('integration.timezone')}>
         <TextField

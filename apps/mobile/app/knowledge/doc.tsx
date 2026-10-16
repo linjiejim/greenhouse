@@ -53,7 +53,7 @@ export default function Doc() {
         </Stack.Toolbar>
       ) : null}
       {!value ? (
-        <ResourceState loading={resource.loading} retry={() => void resource.refresh()} />
+        <ResourceState error={resource.error} loading={resource.loading} retry={() => void resource.refresh()} />
       ) : (
         <ScrollView
           contentInsetAdjustmentBehavior="automatic"

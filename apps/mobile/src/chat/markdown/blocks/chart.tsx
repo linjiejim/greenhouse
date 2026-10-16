@@ -204,7 +204,7 @@ function CartesianChart({ spec }: { spec: ChartSpec }) {
                           <SvgText
                             x={bar.x + bar.w / 2}
                             y={bar.v >= 0 ? bar.top - 5 : bar.top + bar.h + 12}
-                            fontSize={11}
+                            fontSize={typo.caption1.fontSize}
                             fill={hex.secondaryLabel}
                             textAnchor="middle"
                           >
@@ -359,7 +359,7 @@ function RadarChart({ spec }: { spec: ChartSpec }) {
               key={i}
               x={lx}
               y={ly}
-              fontSize={10}
+              fontSize={typo.caption1.fontSize}
               fill={hex.secondaryLabel}
               textAnchor={anchor}
               alignmentBaseline="middle"

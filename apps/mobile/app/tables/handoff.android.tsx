@@ -1,6 +1,7 @@
 import { useLocalSearchParams } from 'expo-router';
 import {
   NativeForm,
+  FormLoading,
   FormSection,
   FormSelectRow,
   FormTextField,
@@ -46,11 +47,10 @@ function Editor({ id }: { id: string }) {
             ) : (
               <FormValueRow label={t('integration.noAgents')} />
             )
+          ) : f.agents.loading ? (
+            <FormLoading />
           ) : (
-            <FormNavRow
-              label={t(f.agents.loading ? 'common.loading' : 'work.loadFailed')}
-              onPress={() => void f.agents.refresh()}
-            />
+            <FormNavRow label={t('work.loadFailed')} onPress={() => void f.agents.refresh()} />
           )}
         </FormSection>
         <FormTextField

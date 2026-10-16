@@ -20,8 +20,9 @@ import {
   Icon,
   Row,
 } from '@expo/ui/jetpack-compose';
-import { fillMaxWidth, size as sizeMod } from '@expo/ui/jetpack-compose/modifiers';
+import { defaultMinSize, fillMaxWidth, selectable, size as sizeMod } from '@expo/ui/jetpack-compose/modifiers';
 import type { IconName } from './core';
+import { HIT } from '../theme';
 import { M3Host, useM3 } from './m3';
 // the Android table explicitly: TypeScript resolves the bare path to the iOS one (SF names)
 import { toolbarIcon } from './toolbar-icon.android';
@@ -44,6 +45,7 @@ export function NativeButton({
   destructive = false,
   disabled = false,
   loading = false,
+  selected,
   style,
   testID,
 }: {
@@ -59,6 +61,7 @@ export function NativeButton({
   disabled?: boolean;
   /** Shows the progress indicator in place of the label and disables the button. */
   loading?: boolean;
+  selected?: boolean;
   style?: StyleProp<ViewStyle>;
   testID?: string;
 }) {
@@ -77,16 +80,30 @@ export function NativeButton({
         enabled={!disabled && !loading}
         colors={colors}
         contentPadding={PAD[size]}
-        modifiers={fullWidth ? [fillMaxWidth()] : undefined}
+        modifiers={[
+          defaultMinSize({ minHeight: HIT }),
+          ...(selected !== undefined
+            ? [
+                selectable(
+                  selected,
+                  () => {
+                    if (!disabled && !loading) onPress();
+                  },
+                  'radioButton',
+                ),
+              ]
+            : []),
+          ...(fullWidth ? [fillMaxWidth()] : []),
+        ]}
       >
-        {loading ? (
-          <CircularProgressIndicator modifiers={[sizeMod(iconSize, iconSize)]} />
-        ) : (
-          <Row horizontalArrangement={{ spacedBy: 8 }} verticalAlignment="center">
-            {icon ? <Icon source={toolbarIcon(icon)} size={iconSize} /> : null}
-            <Text style={{ typography: size === 'large' ? 'titleMedium' : 'labelLarge' }}>{label}</Text>
-          </Row>
-        )}
+        <Row horizontalArrangement={{ spacedBy: 8 }} verticalAlignment="center">
+          {loading ? (
+            <CircularProgressIndicator modifiers={[sizeMod(iconSize, iconSize)]} />
+          ) : icon ? (
+            <Icon source={toolbarIcon(icon)} size={iconSize} />
+          ) : null}
+          <Text style={{ typography: size === 'large' ? 'titleMedium' : 'labelLarge' }}>{label}</Text>
+        </Row>
       </Variant>
     </M3Host>
   );

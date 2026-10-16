@@ -56,7 +56,7 @@ export function ChatCard({
 
 const useStyles = makeStyles((c) => ({
   card: { borderRadius: radius.lg, overflow: 'hidden', ...squircle },
-  fill: { backgroundColor: c.tertiaryFill },
+  fill: { backgroundColor: c.secondaryGroupedBackground },
   outline: {
     backgroundColor: c.secondaryGroupedBackground,
     borderWidth: StyleSheet.hairlineWidth,

@@ -319,11 +319,11 @@ export default function RequestSheet() {
       </ScrollView>
       {actions.length ? (
         <SheetActions>
-          {[...actions].reverse().map((action, index) => (
+          {actions.map((action, index) => (
             <NativeButton
               key={action}
               label={label(action)}
-              variant={index === 0 ? 'prominent' : 'tinted'}
+              variant={index === actions.length - 1 ? 'prominent' : 'tinted'}
               destructive={action === 'reject'}
               loading={busy === action}
               disabled={(!!busy && busy !== action) || (action === 'approve' && request.payload.batch_ready === false)}

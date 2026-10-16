@@ -28,7 +28,6 @@ export const zh: Catalog = {
     discardHint: '未保存的更改将会丢失。',
   },
   login: {
-    subtitle: '团队的 AI 同事',
     station: '工作站',
     noStation: '请先添加工作站',
     emailPlaceholder: '邮箱',
@@ -37,7 +36,6 @@ export const zh: Catalog = {
     missingFields: '请输入邮箱和密码',
     failed: '登录失败',
     networkError: '网络错误，请检查连接',
-    footer: '仅限团队成员登录',
   },
   station: {
     title: '工作站',
@@ -175,6 +173,8 @@ export const zh: Catalog = {
     sourcesCount: '{n} 个来源',
     stepsMore: '{first} · 共 {n} 步',
     process: '过程',
+    actions: '消息操作',
+    step: '处理步骤',
     processLive: '回复写完前，这里会跟着更新。',
     noSteps: '没有步骤',
     replyFailed: '回复失败',
@@ -189,6 +189,7 @@ export const zh: Catalog = {
     leaveFailed: '没能离开房间',
   },
   composer: {
+    messagePlaceholder: '消息',
     placeholder: '给 {name} 发消息',
     placeholderRoom: '在房间里发消息',
     send: '发送',

@@ -1,3 +1,4 @@
+import { cellText } from '../tables/display';
 import { useCallback, useRef, useState } from 'react';
 import { Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
@@ -9,7 +10,7 @@ import { openLink } from '../lib/links';
 import { getApiBase } from '../store/stations';
 import type { AppCard, AppRuntime, CardData, RecordPage, TableRecord } from '../shared/contract';
 import { MAX_VIEW_RECORDS } from '../shared/contract';
-import { cellText, groups } from '../tables/model';
+import { groups } from '../tables/model';
 import { makeStyles, space, typo, useTheme, weight } from '../theme';
 import { useFontScaleKey } from '../ui/font-scale';
 import { NativeButton } from '../ui/button';
@@ -20,7 +21,15 @@ import { Chart } from '../chat/markdown/blocks/chart';
 import { appCardPath, cardFields, canAct, type AppCardContext } from './model';
 import { useAppAction } from './use-action';
 
-export function RuntimeCard({ runtime, card }: { runtime: AppRuntime; card: AppCard }) {
+export function RuntimeCard({
+  runtime,
+  card,
+  names,
+}: {
+  runtime: AppRuntime;
+  card: AppCard;
+  names: Record<string, string>;
+}) {
   const t = useT();
   const router = useRouter();
   const { colors } = useTheme();
@@ -141,10 +150,10 @@ export function RuntimeCard({ runtime, card }: { runtime: AppRuntime; card: AppC
   const row = (record: TableRecord) => (
     <ListRow
       key={record.id}
-      title={(primary && cellText(primary, record.values[primary.id], page)) || t('work.record')}
+      title={(primary && cellText(primary, record.values[primary.id], page, names)) || t('work.record')}
       subtitle={fields
         .filter((f) => !f.is_primary)
-        .map((f) => `${f.name}: ${cellText(f, record.values[f.id], page) || '—'}`)
+        .map((f) => `${f.name}: ${cellText(f, record.values[f.id], page, names) || '—'}`)
         .join(' · ')}
       accessory="chevron"
       onPress={() => open(record.id)}
@@ -159,7 +168,7 @@ export function RuntimeCard({ runtime, card }: { runtime: AppRuntime; card: AppC
         groups(page.items, card.group_field).map((g) => (
           <ListSection
             key={g.key}
-            header={`${card.title} · ${(groupField && cellText(groupField, g.key, page)) || t('work.emptyValue')}`}
+            header={`${card.title} · ${(groupField && cellText(groupField, g.key, page, names)) || t('work.emptyValue')}`}
           >
             {g.items.map(row)}
           </ListSection>

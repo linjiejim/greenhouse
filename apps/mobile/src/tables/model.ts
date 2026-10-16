@@ -22,8 +22,13 @@ export function cellText(
         page?.linked[String(v)]?.title ??
         page?.files[String(v)]?.name ??
         names[String(v)] ??
-        (['member', 'relation', 'parent', 'dependency', 'attachment'].includes(field.type) ? '' : String(v)),
+        (['member', 'relation', 'parent', 'dependency', 'attachment', 'single_select', 'multi_select'].includes(
+          field.type,
+        )
+          ? ''
+          : String(v)),
     )
+    .filter(Boolean)
     .join(', ');
 }
 export function shownFields(table: BaseTable, view?: View): Field[] {

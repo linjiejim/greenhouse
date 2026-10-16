@@ -46,7 +46,7 @@ export default function Mail() {
       <Stack.Screen options={{ title: r.data?.subject || t('work.mail') }} />
       <SheetClose />
       {!r.data ? (
-        <ResourceState loading={r.loading} retry={() => void r.refresh()} />
+        <ResourceState error={r.error} loading={r.loading} retry={() => void r.refresh()} />
       ) : (
         <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerStyle={{ paddingBottom: 40 }}>
           <ListSection>

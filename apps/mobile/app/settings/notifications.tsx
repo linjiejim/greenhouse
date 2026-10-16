@@ -15,7 +15,7 @@
 import React, { useEffect } from 'react';
 import { AppState, Linking } from 'react-native';
 import { Stack } from 'expo-router';
-import { Button, ProgressView, Section, Text, Toggle } from '@expo/ui/swift-ui';
+import { Button, Section, Text, Toggle } from '@expo/ui/swift-ui';
 import { disabled, frame } from '@expo/ui/swift-ui/modifiers';
 import { readTaskActivityLog } from '../../modules/widget-bridge';
 import { useT } from '../../src/lib/i18n';
@@ -29,7 +29,7 @@ import {
 } from '../../src/settings/use-notification-settings';
 import { NOTIFICATION_CATEGORIES } from '../../src/shared/contract';
 import { alertError } from '../../src/ui/dialogs';
-import { NativeForm } from '../../src/ui/native-form';
+import { NativeForm, FormLoading } from '../../src/ui/native-form';
 
 const FILL = frame({ maxWidth: 9999, alignment: 'leading' });
 
@@ -73,7 +73,7 @@ export default function SettingsNotifications() {
                 <Text modifiers={[FILL]}>{t('common.retry')}</Text>
               </Button>
             ) : (
-              <ProgressView />
+              <FormLoading />
             )}
           </Section>
         ) : (
@@ -127,7 +127,11 @@ export default function SettingsNotifications() {
                     isOn={n.prefs.needs_you}
                     onIsOnChange={(v) => void n.togglePhonePref('needs_you', v)}
                   />
-                  <Toggle label={t('push.done')} isOn={n.prefs.done} onIsOnChange={(v) => void n.togglePhonePref('done', v)} />
+                  <Toggle
+                    label={t('push.done')}
+                    isOn={n.prefs.done}
+                    onIsOnChange={(v) => void n.togglePhonePref('done', v)}
+                  />
                   <Toggle
                     label={t('push.replies')}
                     isOn={n.prefs.replies}

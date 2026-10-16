@@ -22,6 +22,7 @@ import {
   FormSwitchRow,
   FormValueRow,
   NativeForm,
+  FormLoading,
 } from '../../src/ui/native-form.android';
 
 export default function SettingsNotifications() {
@@ -37,7 +38,7 @@ export default function SettingsNotifications() {
             {n.failed ? (
               <FormActionRow label={t('common.retry')} icon="refresh" onPress={() => void n.reload()} />
             ) : (
-              <FormValueRow label={t('common.loading')} value="" />
+              <FormLoading />
             )}
           </FormSection>
         ) : (
@@ -75,9 +76,17 @@ export default function SettingsNotifications() {
         {n.pushes ? (
           <>
             <FormSection title={t('push.thisPhone')} footer={n.footer}>
-              <FormSwitchRow label={t('push.enable')} value={n.phoneOn} onValueChange={(next) => void n.togglePhone(next)} />
+              <FormSwitchRow
+                label={t('push.enable')}
+                value={n.phoneOn}
+                onValueChange={(next) => void n.togglePhone(next)}
+              />
               {n.systemOff ? (
-                <FormActionRow label={t('push.openSystemSettings')} icon="gear" onPress={() => void Linking.openSettings()} />
+                <FormActionRow
+                  label={t('push.openSystemSettings')}
+                  icon="gear"
+                  onPress={() => void Linking.openSettings()}
+                />
               ) : null}
             </FormSection>
             {n.phoneOn && n.prefs ? (
@@ -88,7 +97,11 @@ export default function SettingsNotifications() {
                     value={n.prefs.needs_you}
                     onValueChange={(v) => void n.togglePhonePref('needs_you', v)}
                   />
-                  <FormSwitchRow label={t('push.done')} value={n.prefs.done} onValueChange={(v) => void n.togglePhonePref('done', v)} />
+                  <FormSwitchRow
+                    label={t('push.done')}
+                    value={n.prefs.done}
+                    onValueChange={(v) => void n.togglePhonePref('done', v)}
+                  />
                   <FormSwitchRow
                     label={t('push.replies')}
                     value={n.prefs.replies}

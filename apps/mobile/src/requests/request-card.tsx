@@ -1,12 +1,7 @@
 /**
- * A 「需要你」 card in a transcript or the notification center (CONV-17, conversation.md): the
- * one card layout — the kind's icon, the title, a short meta line, and the status word fixed at
- * the right of the title row (yellow only while it needs you). Below, the essentials: why, and
- * up to three details.
- *
- * Small single-choice questions answer directly. Other cards open their sheet (app/request.tsx),
- * which shows everything and is where the member decides — nothing is approved without being
- * seen in full. Once decided the card stays, quieter, with the outcome as its status.
+ * Transcript request: inline single choices, or a review action opening the native sheet.
+ * Completed cards collapse to their title, saved answer and outcome. Display content comes
+ * from the server projection; deciding still uses the shared request service.
  */
 
 import React, { memo, useEffect, useRef, useState } from 'react';
@@ -18,9 +13,9 @@ import { ChatCard } from '../chat/chat-card';
 import { relativeTimeNow } from '../lib/time-words';
 import { useT } from '../lib/i18n';
 import type { NeedsYou } from '../shared/contract';
-import { makeStyles, radius, space, typo, useTheme, weight } from '../theme';
+import { HIT, makeStyles, motion, radius, space, typo, useTheme, weight } from '../theme';
 import { openConversation } from '../shell/nav';
-import { Icon } from '../ui/core';
+import { Icon, Touchable } from '../ui/core';
 import { useFontScaleKey } from '../ui/font-scale';
 import { NativeButton } from '../ui/button';
 import { decide } from './decide';
@@ -79,20 +74,31 @@ export const RequestCard = memo(function RequestCard({
   const meta = [context, relativeTimeNow(request.created_at)].filter(Boolean).join(' · ');
   const retired = retiredRequest(request);
   return (
-    <Animated.View layout={LinearTransition.duration(200).reduceMotion(ReduceMotion.System)}>
-      {retired ? (
-        <Text
-          style={[styles.summary, styles.retired, inset && styles.inset]}
-          accessibilityRole={retired.replacement ? 'link' : undefined}
-          onPress={retired.replacement ? () => openConversation(router, retired.replacement!) : undefined}
+    <Animated.View layout={LinearTransition.duration(motion.base).reduceMotion(ReduceMotion.System)}>
+      {!pending ? (
+        <Touchable
+          style={[styles.retired, inset && styles.inset]}
+          accessibilityRole={retired?.replacement ? 'link' : 'button'}
+          onPress={() =>
+            retired?.replacement
+              ? openConversation(router, retired.replacement)
+              : router.push({ pathname: '/request', params: { id: request.id } })
+          }
         >
-          {t(`requests.status.${retired.word}` as 'requests.status.needsYou')}
-        </Text>
+          <Text style={styles.summary}>
+            {[
+              request.title,
+              selected,
+              retired ? t(`requests.status.${retired.word}` as 'requests.status.needsYou') : statusWord,
+            ]
+              .filter(Boolean)
+              .join(' · ')}
+          </Text>
+        </Touchable>
       ) : (
         <ChatCard
           variant={pending ? 'fill' : 'outline'}
           inset={inset}
-          onPress={choice ? undefined : () => router.push({ pathname: '/request', params: { id: request.id } })}
           accessibilityLabel={[request.title, statusWord, summary].filter(Boolean).join(t('common.listSep'))}
           accessibilityHint={t('requests.openHint')}
           style={[pending && styles.pending, highlighted && styles.highlighted]}
@@ -120,6 +126,7 @@ export const RequestCard = memo(function RequestCard({
                     key={option}
                     label={option}
                     icon={selected === option ? 'check' : undefined}
+                    selected={selected === option}
                     variant={selected === option ? 'prominent' : 'tinted'}
                     disabled={!pending || busy || picked !== null}
                     onPress={() => void answer(option)}
@@ -131,13 +138,15 @@ export const RequestCard = memo(function RequestCard({
               <Text style={styles.meta} numberOfLines={large ? 0 : 1}>
                 {meta}
               </Text>
-              {pending && !choice ? (
-                <>
-                  <Text style={styles.open}>{t('requests.review')}</Text>
-                  <Icon name="chevR" size={12} weight="semibold" color={c.accent} />
-                </>
-              ) : null}
             </View>
+            {!choice ? (
+              <View style={styles.actions}>
+                <NativeButton
+                  label={t('requests.review')}
+                  onPress={() => router.push({ pathname: '/request', params: { id: request.id } })}
+                />
+              </View>
+            ) : null}
           </View>
         </ChatCard>
       )}
@@ -158,7 +167,7 @@ function useSecondsLeft(request: NeedsYou): number | null {
 }
 
 const useStyles = makeStyles((c) => ({
-  retired: { paddingVertical: space.sm },
+  retired: { minHeight: HIT, justifyContent: 'center', paddingVertical: space.sm },
   inset: { marginHorizontal: space.margin },
   pending: { borderWidth: 1, borderColor: c.orange },
   highlighted: { borderWidth: 2, borderColor: c.accent },
@@ -170,6 +179,6 @@ const useStyles = makeStyles((c) => ({
   summary: { ...typo.subheadline, color: c.secondaryLabel },
   choices: { gap: space.sm, alignItems: 'flex-start' },
   foot: { flexDirection: 'row', alignItems: 'center', gap: space.xs },
+  actions: { alignItems: 'flex-start' },
   meta: { flex: 1, ...typo.caption1, color: c.tertiaryLabel },
-  open: { ...typo.footnote, fontWeight: weight.semibold, color: c.accent },
 }));
