@@ -24,14 +24,14 @@ async function askForTakeOver(page: Page) {
 
 test('a take-over card opens the screen in control, and handing back with a note wakes the Agent', async ({ page }) => {
   const card = await askForTakeOver(page);
-  await card.getByRole('button', { name: '接管电脑' }).click();
+  await card.getByRole('button', { name: '接管电脑', exact: true }).click();
   const drawer = page.getByRole('dialog', { name: 'Greeny 需要你接管电脑' });
   await expect(drawer).toBeVisible();
   await drawer.getByRole('textbox', { name: '给 Agent 留句话（可选）' }).fill('Signed in for you');
   await drawer.getByRole('button', { name: '交还电脑' }).click();
   await expect(drawer).toBeHidden();
   await expect(card.getByText('已交还', { exact: true })).toBeVisible();
-  await expect(card.getByRole('button', { name: '接管电脑' })).toBeHidden();
+  await expect(card.getByRole('button', { name: '接管电脑', exact: true })).toBeHidden();
   await expect(page.getByText('Done.')).toBeVisible();
 });
 

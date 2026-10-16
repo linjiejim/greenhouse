@@ -211,3 +211,9 @@ The one engine for conversations and runs. Read with the root AGENTS.md and docs
 - Reversible writes already hold the conversation row lock when recording receipts; do not take the local conversation queue inside that transaction (follow-up takes local queue before transaction).
 
 - Request targets live only in modules/requests/target.ts. Private workflow keys use Agent id/normalized create name, reminder cancellation id, final file name and todo run id; new reminders have no reliable replacement target.
+
+- Schedule decisions use @greenhouse/utils/cron and explicit changes, omitting create defaults and the member's own time zone. Keep execution arguments exact.
+- Receipts group by their internal object key per run (tables keep their existing table batch). Undo revision/timestamp lineage is transaction-local and never covers later edits. Room summaries and receipts omit private names.
+- Failure copy classifies provider status and stable tool errors without echoing vendor text. Successful replies keep failed attempts as neutral notes, independent of exact retry recovery.
+
+- Destructive approval descriptions set danger; request batches preserve it if any call is destructive. This is display metadata only. Human title interpolation uses @greenhouse/utils/i18n.

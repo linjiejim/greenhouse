@@ -23,6 +23,12 @@ export function useDraftNavigation(dirty: boolean, busy: boolean, onDiscard: (na
   }, [dirty]);
   return {
     asking,
+    saved() {
+      release.current?.();
+      release.current = null;
+      attempt.current = null;
+      setAsking(false);
+    },
     ask() {
       attempt.current = null;
       setAsking(true);

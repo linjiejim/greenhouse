@@ -1,3 +1,4 @@
+import { errorText } from '../../lib/errors';
 /**
  * 管理 → 连接器 (ADM-08): the MCP servers installed here. Each row says how members authenticate,
  * how many tools Agents may call, how many members connected and whether its last listing or
@@ -47,7 +48,7 @@ export function ConnectorsSection() {
       {connectors.isPending ? (
         <Skeleton lines={4} />
       ) : connectors.isError ? (
-        <ErrorBox onRetry={() => void connectors.refetch()}>{t('common.error')}</ErrorBox>
+        <ErrorBox onRetry={() => void connectors.refetch()}>{errorText(connectors.error, t)}</ErrorBox>
       ) : items.length ? (
         <ul className="app-list app-bordered">
           {items.map((connector) => {

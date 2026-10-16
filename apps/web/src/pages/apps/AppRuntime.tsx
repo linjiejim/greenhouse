@@ -1,3 +1,4 @@
+import { useDraftNavigation } from '../../lib/useDraftNavigation';
 import { ExtensionPanels } from '../../extensions/host';
 import { useMemo, useState } from 'react';
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
@@ -406,6 +407,7 @@ function AppForm({
   const [sent, setSent] = useState(false);
   const [error, setError] = useState('');
   const [files, setFiles] = useState<RecordDetail['files']>({});
+  const navigation = useDraftNavigation(!sent && Object.keys(values).length > 0, busy, () => setValues({}));
   const fields = card.fields.flatMap((id) => table.fields.find((f) => f.id === id) ?? []);
   const submit = async () => {
     setBusy(true);
@@ -429,37 +431,51 @@ function AppForm({
   };
   if (sent) return <p role="status">{t('apps.submitted')}</p>;
   return (
-    <form
-      className="app-form"
-      aria-label={card.title}
-      onSubmit={(e) => {
-        e.preventDefault();
-        void submit();
-      }}
-    >
-      {fields.map((field) => (
-        <FieldGroup key={field.id} label={field.name}>
-          <FieldInput
-            field={field}
-            baseId={runtime.base.id}
-            value={values[field.id]}
-            lookups={{ ...lookups, files: { ...lookups.files, ...files } }}
-            onFiles={(added) =>
-              setFiles((current) => ({ ...current, ...Object.fromEntries(added.map((f) => [f.id, f])) }))
-            }
-            onChange={(value) => setValues({ ...values, [field.id]: value })}
-          />
-        </FieldGroup>
-      ))}
-      {error && <p role="alert">{error}</p>}
-      <Button
-        kind="primary"
-        type="submit"
-        loading={busy}
-        disabled={runtime.preview || !(table.access !== 'read' && runtime.base.access !== 'viewer')}
+    <>
+      <form
+        className="app-form"
+        inert={busy}
+        aria-busy={busy}
+        aria-label={card.title}
+        onSubmit={(e) => {
+          e.preventDefault();
+          void submit();
+        }}
       >
-        {t('apps.submit')}
-      </Button>
-    </form>
+        {fields.map((field) => (
+          <FieldGroup key={field.id} label={field.name}>
+            <FieldInput
+              field={field}
+              baseId={runtime.base.id}
+              value={values[field.id]}
+              lookups={{ ...lookups, files: { ...lookups.files, ...files } }}
+              onFiles={(added) =>
+                setFiles((current) => ({ ...current, ...Object.fromEntries(added.map((f) => [f.id, f])) }))
+              }
+              onChange={(value) => setValues({ ...values, [field.id]: value })}
+            />
+          </FieldGroup>
+        ))}
+        {error && <p role="alert">{error}</p>}
+        <Button
+          kind="primary"
+          type="submit"
+          loading={busy}
+          disabled={runtime.preview || !(table.access !== 'read' && runtime.base.access !== 'viewer')}
+        >
+          {t('apps.submit')}
+        </Button>
+      </form>
+      {navigation.asking && (
+        <ConfirmDialog
+          title={t('knowledge.discardTitle')}
+          confirmLabel={t('knowledge.discard')}
+          onCancel={navigation.cancel}
+          onConfirm={navigation.discard}
+        >
+          {t('knowledge.discardBody')}
+        </ConfirmDialog>
+      )}
+    </>
   );
 }

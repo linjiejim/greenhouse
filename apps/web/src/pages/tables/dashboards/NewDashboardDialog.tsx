@@ -1,3 +1,4 @@
+import { useOverlayDraft } from '../../../lib/useOverlayDraft';
 /**
  * Names a new dashboard of a base and who sees it (everyone who sees the base, or only me;
  * shared ones are for builders), then opens it. With `cards` it is a copy of another dashboard:
@@ -34,6 +35,7 @@ export function NewDashboardDialog({
   const [personal, setPersonal] = useState(!canBuild);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const dismiss = useOverlayDraft({ name, personal }, busy, onClose);
   const create = async () => {
     setBusy(true);
     try {
@@ -43,7 +45,7 @@ export function NewDashboardDialog({
         putView(base.id, view);
         void refreshBase(base.id);
       }
-      onClose();
+      dismiss.saved();
       navigate({ page: 'base', id: base.id, dashboard: view.id });
     } catch (failure) {
       setError(tablesError(failure, t));
@@ -51,48 +53,53 @@ export function NewDashboardDialog({
     }
   };
   return (
-    <Overlay
-      variant="dialog"
-      title={cards ? t('tables.dashboards.duplicateDashboard') : t('tables.addDashboard')}
-      onClose={onClose}
-    >
-      <form
-        id={formId}
-        className="app-form"
-        noValidate
-        onSubmit={(event) => {
-          event.preventDefault();
-          void create();
-        }}
+    <>
+      <Overlay
+        variant="dialog"
+        title={cards ? t('tables.dashboards.duplicateDashboard') : t('tables.addDashboard')}
+        onClose={onClose}
+        beforeClose={dismiss.beforeClose}
       >
-        <Field label={t('tables.dashboards.name')} error={error || undefined}>
-          <Input
-            data-autofocus
-            value={name}
-            maxLength={VIEW_NAME_MAX}
-            onChange={(event) => setName(event.target.value)}
-          />
-        </Field>
-        {canBuild && (
-          <FieldGroup label={t('tables.viewScope')} description={t('tables.dashboards.scopeHint')}>
-            <Segmented
-              label={t('tables.viewScope')}
-              items={[
-                { value: 'shared', label: t('tables.viewShared') },
-                { value: 'personal', label: t('tables.viewPersonal') },
-              ]}
-              value={personal ? 'personal' : 'shared'}
-              onChange={(next) => setPersonal(next === 'personal')}
+        <form
+          {...dismiss.formProps}
+          id={formId}
+          className="app-form"
+          noValidate
+          onSubmit={(event) => {
+            event.preventDefault();
+            void create();
+          }}
+        >
+          <Field label={t('tables.dashboards.name')} error={error || undefined}>
+            <Input
+              data-autofocus
+              value={name}
+              maxLength={VIEW_NAME_MAX}
+              onChange={(event) => setName(event.target.value)}
             />
-          </FieldGroup>
-        )}
-      </form>
-      <OverlayActions>
-        <Button onClick={onClose}>{t('common.cancel')}</Button>
-        <Button kind="primary" type="submit" form={formId} loading={busy}>
-          {t('tables.dashboards.create')}
-        </Button>
-      </OverlayActions>
-    </Overlay>
+          </Field>
+          {canBuild && (
+            <FieldGroup label={t('tables.viewScope')} description={t('tables.dashboards.scopeHint')}>
+              <Segmented
+                label={t('tables.viewScope')}
+                items={[
+                  { value: 'shared', label: t('tables.viewShared') },
+                  { value: 'personal', label: t('tables.viewPersonal') },
+                ]}
+                value={personal ? 'personal' : 'shared'}
+                onChange={(next) => setPersonal(next === 'personal')}
+              />
+            </FieldGroup>
+          )}
+        </form>
+        <OverlayActions>
+          <Button onClick={dismiss.close}>{t('common.cancel')}</Button>
+          <Button kind="primary" type="submit" form={formId} loading={busy}>
+            {t('tables.dashboards.create')}
+          </Button>
+        </OverlayActions>
+      </Overlay>
+      {dismiss.confirmation}
+    </>
   );
 }

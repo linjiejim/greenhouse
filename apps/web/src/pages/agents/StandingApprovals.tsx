@@ -16,7 +16,7 @@ export function StandingApprovals({ agentId }: { agentId: string }) {
       {query.isPending ? (
         <Skeleton lines={2} />
       ) : query.isError ? (
-        <ErrorBox onRetry={() => void query.refetch()}>{t('common.error')}</ErrorBox>
+        <ErrorBox onRetry={() => void query.refetch()}>{errorText(query.error, t)}</ErrorBox>
       ) : !query.items.length ? (
         <p className="app-muted">{t('approvals.none')}</p>
       ) : (

@@ -1,3 +1,4 @@
+import { interpolate } from '@greenhouse/utils/i18n';
 import { z } from 'zod';
 import {
   SKILL_DESCRIPTION_MAX,
@@ -53,7 +54,7 @@ export function skillMutationTool(skills: SkillsService) {
         subject: 'skill_save',
         title:
           ctx.locale === 'zh'
-            ? `${ctx.agent.name} 想把这个做法存为技能：${label}`
+            ? interpolate('zh', '{name} 想把这个做法存为技能：{label}', { name: ctx.agent.name, label })
             : `${ctx.agent.name} proposes saving this as a skill: ${label}`,
         payload: {
           skill,

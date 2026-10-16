@@ -1,3 +1,5 @@
+import { errorText } from '../../lib/errors';
+import { useOverlayDraft } from '../../lib/useOverlayDraft';
 import { WeeklyMetrics } from './WeeklyMetrics';
 /**
  * 管理 → 用量 (ADM-07): the workspace's usage this month or the last 30 days, grouped by
@@ -25,7 +27,6 @@ import {
 } from '@greenhouse/ui/kit';
 import { icon } from '@greenhouse/ui/tokens';
 import type { AdminUsage, Budget, BudgetInput } from '@greenhouse/contract';
-import { ApiClientError } from '@greenhouse/contract/client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNotify } from '../../app/notify';
 import { api } from '../../lib/api';
@@ -51,11 +52,15 @@ function BudgetDrawer({ budget, onClose }: { budget: Budget | null; onClose: () 
     budget ? String(budget.unit === 'usd_micros' ? budget.monthly_limit / 1_000_000 : budget.monthly_limit) : '',
   );
   const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
+  const dismiss = useOverlayDraft({ scope, scopeId, unit, limit }, saving, onClose);
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     const value = Number(limit);
     if (!(value > 0)) return setError(t('budgets.limitRequired'));
     if (scope !== 'workspace' && !scopeId) return setError(t('budgets.scopeRequired'));
+    if (saving) return;
+    setSaving(true);
     try {
       await api.admin.budgets.save({
         scope_type: scope,
@@ -66,37 +71,40 @@ function BudgetDrawer({ budget, onClose }: { budget: Budget | null; onClose: () 
       await client.invalidateQueries({ queryKey: BUDGETS });
       onClose();
     } catch (caught) {
-      setError(caught instanceof ApiClientError ? caught.message : t('common.error'));
+      setError(errorText(caught, t));
+    } finally {
+      setSaving(false);
     }
   };
   const instances = (providers.data?.capabilities ?? []).flatMap((state) => state.instances);
   return (
-    <Overlay variant="dialog" title={budget ? t('budgets.edit') : t('budgets.add')} onClose={onClose}>
-      <form id="budget" className="app-form" onSubmit={(event) => void submit(event)}>
-        <FieldGroup label={t('budgets.scope')}>
-          <Select
-            label={t('budgets.scope')}
-            value={scope}
-            disabled={!!budget}
-            options={[
-              { value: 'workspace', label: t('budgets.workspace') },
-              { value: 'provider', label: t('budgets.provider') },
-              { value: 'member', label: t('budgets.member') },
-              { value: 'agent', label: t('budgets.agent') },
-            ]}
-            onChange={(value) => {
-              setScope(value as BudgetInput['scope_type']);
-              setScopeId('');
-            }}
-          />
-        </FieldGroup>
-        {scope !== 'workspace' && (
-          <FieldGroup
-            label={
-              scope === 'agent' ? t('budgets.agent') : scope === 'member' ? t('budgets.member') : t('budgets.provider')
-            }
-          >
+    <>
+      <Overlay
+        variant="dialog"
+        title={budget ? t('budgets.edit') : t('budgets.add')}
+        onClose={onClose}
+        beforeClose={dismiss.beforeClose}
+      >
+        <form {...dismiss.formProps} id="budget" className="app-form" onSubmit={(event) => void submit(event)}>
+          <FieldGroup label={t('budgets.scope')}>
             <Select
+              label={t('budgets.scope')}
+              value={scope}
+              disabled={!!budget}
+              options={[
+                { value: 'workspace', label: t('budgets.workspace') },
+                { value: 'provider', label: t('budgets.provider') },
+                { value: 'member', label: t('budgets.member') },
+                { value: 'agent', label: t('budgets.agent') },
+              ]}
+              onChange={(value) => {
+                setScope(value as BudgetInput['scope_type']);
+                setScopeId('');
+              }}
+            />
+          </FieldGroup>
+          {scope !== 'workspace' && (
+            <FieldGroup
               label={
                 scope === 'agent'
                   ? t('budgets.agent')
@@ -104,62 +112,73 @@ function BudgetDrawer({ budget, onClose }: { budget: Budget | null; onClose: () 
                     ? t('budgets.member')
                     : t('budgets.provider')
               }
-              value={scopeId}
-              disabled={!!budget}
-              options={
-                scope === 'member'
-                  ? (members.data?.items ?? []).map((member) => ({
-                      value: member.id,
-                      label: member.name,
-                      description: member.email,
-                    }))
-                  : scope === 'agent'
-                    ? (agents.data?.items ?? []).map((agent) => ({
-                        value: agent.id,
-                        label: agent.name,
-                        description: agent.owner.name,
+            >
+              <Select
+                label={
+                  scope === 'agent'
+                    ? t('budgets.agent')
+                    : scope === 'member'
+                      ? t('budgets.member')
+                      : t('budgets.provider')
+                }
+                value={scopeId}
+                disabled={!!budget}
+                options={
+                  scope === 'member'
+                    ? (members.data?.items ?? []).map((member) => ({
+                        value: member.id,
+                        label: member.name,
+                        description: member.email,
                       }))
-                    : instances.map((instance) => ({
-                        value: instance.id,
-                        label: instance.name,
-                        description: instance.kind,
-                      }))
-              }
-              onChange={setScopeId}
+                    : scope === 'agent'
+                      ? (agents.data?.items ?? []).map((agent) => ({
+                          value: agent.id,
+                          label: agent.name,
+                          description: agent.owner.name,
+                        }))
+                      : instances.map((instance) => ({
+                          value: instance.id,
+                          label: instance.name,
+                          description: instance.kind,
+                        }))
+                }
+                onChange={setScopeId}
+              />
+            </FieldGroup>
+          )}
+          <FieldGroup label={t('budgets.unit')}>
+            <Segmented
+              label={t('budgets.unit')}
+              items={[
+                { value: 'tokens', label: t('usage.tokens') },
+                { value: 'usd_micros', label: t('budgets.dollars') },
+              ]}
+              value={unit}
+              onChange={(value) => setUnit(value as BudgetInput['unit'])}
             />
           </FieldGroup>
-        )}
-        <FieldGroup label={t('budgets.unit')}>
-          <Segmented
-            label={t('budgets.unit')}
-            items={[
-              { value: 'tokens', label: t('usage.tokens') },
-              { value: 'usd_micros', label: t('budgets.dollars') },
-            ]}
-            value={unit}
-            onChange={(value) => setUnit(value as BudgetInput['unit'])}
-          />
-        </FieldGroup>
-        <Field label={t('budgets.limit')} required error={error || undefined}>
-          <Input
-            type="number"
-            min={0}
-            step={unit === 'usd_micros' ? 0.01 : 1000}
-            value={limit}
-            onChange={(event) => {
-              setLimit(event.target.value);
-              setError('');
-            }}
-          />
-        </Field>
-      </form>
-      <OverlayActions>
-        <Button onClick={onClose}>{t('common.cancel')}</Button>
-        <Button kind="primary" type="submit" form="budget">
-          {t('common.save')}
-        </Button>
-      </OverlayActions>
-    </Overlay>
+          <Field label={t('budgets.limit')} required error={error || undefined}>
+            <Input
+              type="number"
+              min={0}
+              step={unit === 'usd_micros' ? 0.01 : 1000}
+              value={limit}
+              onChange={(event) => {
+                setLimit(event.target.value);
+                setError('');
+              }}
+            />
+          </Field>
+        </form>
+        <OverlayActions>
+          <Button onClick={dismiss.close}>{t('common.cancel')}</Button>
+          <Button kind="primary" type="submit" form="budget" loading={saving}>
+            {t('common.save')}
+          </Button>
+        </OverlayActions>
+      </Overlay>
+      {dismiss.confirmation}
+    </>
   );
 }
 
@@ -174,7 +193,7 @@ function Budgets() {
   const scopeLabel = (budget: Budget) =>
     budget.scope_type === 'workspace'
       ? t('budgets.workspace')
-      : `${budget.scope_type === 'member' ? t('budgets.member') : t('budgets.provider')} · ${budget.scope_name}`;
+      : `${budget.scope_type === 'member' ? t('budgets.member') : budget.scope_type === 'agent' ? t('budgets.agent') : t('budgets.provider')} · ${budget.scope_name}`;
   return (
     <section className="app-section">
       <div className="app-section-heading">
@@ -187,7 +206,7 @@ function Budgets() {
       {budgets.isPending ? (
         <Skeleton lines={2} />
       ) : budgets.isError ? (
-        <ErrorBox onRetry={() => void budgets.refetch()}>{t('common.error')}</ErrorBox>
+        <ErrorBox onRetry={() => void budgets.refetch()}>{errorText(budgets.error, t)}</ErrorBox>
       ) : !items.length ? (
         <Empty title={t('budgets.none')} />
       ) : (
@@ -224,7 +243,7 @@ function Budgets() {
             void api.admin.budgets
               .remove(target.id)
               .then(() => client.invalidateQueries({ queryKey: BUDGETS }))
-              .catch((error: unknown) => notify(error instanceof ApiClientError ? error.message : t('common.error')));
+              .catch((error: unknown) => notify(errorText(error, t)));
           }}
         >
           {t('budgets.deleteBody')}
@@ -270,7 +289,7 @@ export function UsageSection() {
       {usage.isPending ? (
         <Skeleton lines={5} />
       ) : usage.isError ? (
-        <ErrorBox onRetry={() => void usage.refetch()}>{t('common.error')}</ErrorBox>
+        <ErrorBox onRetry={() => void usage.refetch()}>{errorText(usage.error, t)}</ErrorBox>
       ) : (
         <>
           <div className="app-stats-grid">

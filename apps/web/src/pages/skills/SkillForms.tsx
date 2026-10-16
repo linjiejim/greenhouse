@@ -1,3 +1,4 @@
+import { useOverlayDraft } from '../../lib/useOverlayDraft';
 /**
  * Making skills: a template (instructions with `{{key}}` blanks and the fields that fill them) or
  * a SKILL.md package uploaded as a ZIP; and a new version of either. Versions never change once
@@ -162,6 +163,11 @@ export function SkillDrawer({ skill, onClose }: { skill?: SkillDetail; onClose: 
   const [error, setError] = useState('');
   const busy = actions.create.isPending || actions.addVersion.isPending;
 
+  const dismiss = useOverlayDraft(
+    { name, displayName, description, body, fields, computer, space, changelog },
+    busy,
+    onClose,
+  );
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     setError('');
@@ -175,7 +181,7 @@ export function SkillDrawer({ skill, onClose }: { skill?: SkillDetail; onClose: 
           input: { changelog: changelog.trim(), body, variables, requirements },
         });
         notify(t('skills.versionSaved'));
-        onClose();
+        dismiss.saved();
       } else {
         const created = await actions.create.mutateAsync({
           kind: 'template',
@@ -187,7 +193,7 @@ export function SkillDrawer({ skill, onClose }: { skill?: SkillDetail; onClose: 
           requirements,
           space,
         });
-        onClose();
+        dismiss.saved();
         navigate({ page: 'skill', id: created.id });
       }
     } catch (caught) {
@@ -196,55 +202,59 @@ export function SkillDrawer({ skill, onClose }: { skill?: SkillDetail; onClose: 
   };
 
   return (
-    <Overlay
-      title={skill ? t('skills.newVersionOf', { name: skill.display_name || skill.name }) : t('skills.new')}
-      onClose={onClose}
-    >
-      <form id="skill-form" className="app-form" onSubmit={(event) => void submit(event)}>
-        {!skill && (
-          <>
-            <Field label={t('skills.name')} description={t('skills.nameHint')} required>
-              <Input value={name} maxLength={64} onChange={(event) => setName(event.target.value)} />
-            </Field>
-            <Field label={t('skills.displayName')}>
-              <Input value={displayName} maxLength={80} onChange={(event) => setDisplayName(event.target.value)} />
-            </Field>
-            <Field label={t('skills.description')} description={t('skills.descriptionHint')} required>
-              <TextArea rows={2} value={description} onChange={(event) => setDescription(event.target.value)} />
-            </Field>
-          </>
-        )}
-        <Field label={t('skills.body')} description={t('skills.bodyHint')} required>
-          <TextArea rows={8} value={body} onChange={(event) => setBody(event.target.value)} />
-        </Field>
-        <FieldsEditor fields={fields} onChange={setFields} />
-        <div className="app-setting-row is-plain">
-          <span className="app-setting-text">
-            <strong>{t('skills.needsComputer')}</strong>
-            <span>{t('skills.needsComputerHint')}</span>
-          </span>
-          <Switch label={t('skills.needsComputer')} checked={computer} onChange={setComputer} />
-        </div>
-        {skill ? (
-          <Field label={t('skills.changelog')} required>
-            <Input value={changelog} maxLength={200} onChange={(event) => setChangelog(event.target.value)} />
+    <>
+      <Overlay
+        title={skill ? t('skills.newVersionOf', { name: skill.display_name || skill.name }) : t('skills.new')}
+        onClose={onClose}
+        beforeClose={dismiss.beforeClose}
+      >
+        <form {...dismiss.formProps} id="skill-form" className="app-form" onSubmit={(event) => void submit(event)}>
+          {!skill && (
+            <>
+              <Field label={t('skills.name')} description={t('skills.nameHint')} required>
+                <Input value={name} maxLength={64} onChange={(event) => setName(event.target.value)} />
+              </Field>
+              <Field label={t('skills.displayName')}>
+                <Input value={displayName} maxLength={80} onChange={(event) => setDisplayName(event.target.value)} />
+              </Field>
+              <Field label={t('skills.description')} description={t('skills.descriptionHint')} required>
+                <TextArea rows={2} value={description} onChange={(event) => setDescription(event.target.value)} />
+              </Field>
+            </>
+          )}
+          <Field label={t('skills.body')} description={t('skills.bodyHint')} required>
+            <TextArea rows={8} value={body} onChange={(event) => setBody(event.target.value)} />
           </Field>
-        ) : (
-          <SpacePicker value={space} onChange={setSpace} />
-        )}
-        {error && (
-          <p className="app-request-error" role="alert">
-            {error}
-          </p>
-        )}
-      </form>
-      <OverlayActions>
-        <Button onClick={onClose}>{t('common.cancel')}</Button>
-        <Button kind="primary" type="submit" form="skill-form" loading={busy}>
-          {skill ? t('skills.saveVersion') : t('skills.create')}
-        </Button>
-      </OverlayActions>
-    </Overlay>
+          <FieldsEditor fields={fields} onChange={setFields} />
+          <div className="app-setting-row is-plain">
+            <span className="app-setting-text">
+              <strong>{t('skills.needsComputer')}</strong>
+              <span>{t('skills.needsComputerHint')}</span>
+            </span>
+            <Switch label={t('skills.needsComputer')} checked={computer} onChange={setComputer} />
+          </div>
+          {skill ? (
+            <Field label={t('skills.changelog')} required>
+              <Input value={changelog} maxLength={200} onChange={(event) => setChangelog(event.target.value)} />
+            </Field>
+          ) : (
+            <SpacePicker value={space} onChange={setSpace} />
+          )}
+          {error && (
+            <p className="app-request-error" role="alert">
+              {error}
+            </p>
+          )}
+        </form>
+        <OverlayActions>
+          <Button onClick={dismiss.close}>{t('common.cancel')}</Button>
+          <Button kind="primary" type="submit" form="skill-form" loading={busy}>
+            {skill ? t('skills.saveVersion') : t('skills.create')}
+          </Button>
+        </OverlayActions>
+      </Overlay>
+      {dismiss.confirmation}
+    </>
   );
 }
 
@@ -260,6 +270,11 @@ export function UploadSkillDialog({ skill, onClose }: { skill?: SkillDetail; onC
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
+  const dismiss = useOverlayDraft(
+    { file: file ? { name: file.name, size: file.size, lastModified: file.lastModified } : null, space, changelog },
+    busy,
+    onClose,
+  );
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     if (!file) return setError(t('skills.zipRequired'));
@@ -273,10 +288,10 @@ export function UploadSkillDialog({ skill, onClose }: { skill?: SkillDetail; onC
           input: { changelog: changelog.trim(), file_id: uploaded.id },
         });
         notify(t('skills.versionSaved'));
-        onClose();
+        dismiss.saved();
       } else {
         const created = await actions.upload.mutateAsync({ zip: file, space });
-        onClose();
+        dismiss.saved();
         navigate({ page: 'skill', id: created.id });
       }
     } catch (caught) {
@@ -287,44 +302,52 @@ export function UploadSkillDialog({ skill, onClose }: { skill?: SkillDetail; onC
   };
 
   return (
-    <Overlay variant="dialog" title={skill ? t('skills.newVersion') : t('skills.upload')} onClose={onClose}>
-      <form id="skill-upload" className="app-form" onSubmit={(event) => void submit(event)}>
-        <FieldGroup label={t('skills.zip')} description={t('skills.zipHint')}>
-          <span className="app-inline-actions">
-            <Button onClick={() => picker.current?.click()}>{t('skills.chooseZip')}</Button>
-            <span className="app-muted">{file?.name ?? ''}</span>
-          </span>
-          <input
-            ref={picker}
-            type="file"
-            accept=".zip,application/zip"
-            hidden
-            aria-label={t('skills.zip')}
-            onChange={(event) => {
-              setFile(event.target.files?.[0] ?? null);
-              setError('');
-            }}
-          />
-        </FieldGroup>
-        {skill ? (
-          <Field label={t('skills.changelog')} required>
-            <Input value={changelog} maxLength={200} onChange={(event) => setChangelog(event.target.value)} />
-          </Field>
-        ) : (
-          <SpacePicker value={space} onChange={setSpace} />
-        )}
-        {error && (
-          <p className="app-request-error" role="alert">
-            {error}
-          </p>
-        )}
-      </form>
-      <OverlayActions>
-        <Button onClick={onClose}>{t('common.cancel')}</Button>
-        <Button kind="primary" type="submit" form="skill-upload" loading={busy}>
-          {skill ? t('skills.saveVersion') : t('skills.upload')}
-        </Button>
-      </OverlayActions>
-    </Overlay>
+    <>
+      <Overlay
+        variant="dialog"
+        title={skill ? t('skills.newVersion') : t('skills.upload')}
+        onClose={onClose}
+        beforeClose={dismiss.beforeClose}
+      >
+        <form {...dismiss.formProps} id="skill-upload" className="app-form" onSubmit={(event) => void submit(event)}>
+          <FieldGroup label={t('skills.zip')} description={t('skills.zipHint')}>
+            <span className="app-inline-actions">
+              <Button onClick={() => picker.current?.click()}>{t('skills.chooseZip')}</Button>
+              <span className="app-muted">{file?.name ?? ''}</span>
+            </span>
+            <input
+              ref={picker}
+              type="file"
+              accept=".zip,application/zip"
+              hidden
+              aria-label={t('skills.zip')}
+              onChange={(event) => {
+                setFile(event.target.files?.[0] ?? null);
+                setError('');
+              }}
+            />
+          </FieldGroup>
+          {skill ? (
+            <Field label={t('skills.changelog')} required>
+              <Input value={changelog} maxLength={200} onChange={(event) => setChangelog(event.target.value)} />
+            </Field>
+          ) : (
+            <SpacePicker value={space} onChange={setSpace} />
+          )}
+          {error && (
+            <p className="app-request-error" role="alert">
+              {error}
+            </p>
+          )}
+        </form>
+        <OverlayActions>
+          <Button onClick={dismiss.close}>{t('common.cancel')}</Button>
+          <Button kind="primary" type="submit" form="skill-upload" loading={busy}>
+            {skill ? t('skills.saveVersion') : t('skills.upload')}
+          </Button>
+        </OverlayActions>
+      </Overlay>
+      {dismiss.confirmation}
+    </>
   );
 }

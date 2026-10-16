@@ -1,3 +1,4 @@
+import { interpolate } from '@greenhouse/utils/i18n';
 import { fence } from '../../security/prompt.js';
 /**
  * The knowledge base for Agents (KNOW-16, AGNT-17), through the same service as the routes and
@@ -158,7 +159,10 @@ export function knowledgeTools(knowledge: KnowledgeService) {
       const folder = await knowledge.folder(ctx.memberId, place.folderId, as(ctx));
       return pathText([...folder.path, { id: folder.id, name: folder.name }]);
     }
-    if (place.ownFolder) return zh ? `${ctx.agent.name} 的参考文件夹` : `${ctx.agent.name}'s reference folder`;
+    if (place.ownFolder)
+      return zh
+        ? interpolate('zh', '{name} 的参考文件夹', { name: ctx.agent.name })
+        : `${ctx.agent.name}'s reference folder`;
     if (place.space === 'team') return zh ? '团队知识库' : 'the team space';
     return zh ? '你的个人空间' : 'your personal space';
   }
@@ -368,33 +372,27 @@ export function knowledgeTools(knowledge: KnowledgeService) {
     available: (ctx) => ctx.modules.knowledge,
     async callRisk(args, ctx) {
       markNameable(args, ctx);
-      try {
-        await ownFolderOnly(args, ctx);
-        const source = await knowledge.writeScope(
-          ctx.memberId,
-          args.action === 'create'
-            ? {
-                folderId: (await target(args, ctx, false)).folderId ?? undefined,
-                space: args.folder_id ? undefined : args.space === 'team' ? 'team' : 'personal',
-              }
-            : { docId: args.doc_id },
-          as(ctx),
-        );
-        if (args.action !== 'move') return source.tier;
-        const doc = await knowledge.getDoc(ctx.memberId, args.doc_id, { as: as(ctx), signed: false });
-        const place = await target(args, ctx, false);
-        const destination = await knowledge.writeScope(
-          ctx.memberId,
-          { folderId: place.folderId ?? undefined, space: place.space },
-          as(ctx),
-        );
-        if (doc.space === 'personal' && destination.space === 'team') return 'tier3';
-        return source.tier === 'tier1' && destination.tier === 'tier1' ? 'tier1' : 'tier2';
-      } catch (error) {
-        // Refused before any card: a doc the member cannot see, a folder that is not there.
-        if (error instanceof ApiError) throw new Error(error.message);
-        throw error;
-      }
+      await ownFolderOnly(args, ctx);
+      const source = await knowledge.writeScope(
+        ctx.memberId,
+        args.action === 'create'
+          ? {
+              folderId: (await target(args, ctx, false)).folderId ?? undefined,
+              space: args.folder_id ? undefined : args.space === 'team' ? 'team' : 'personal',
+            }
+          : { docId: args.doc_id },
+        as(ctx),
+      );
+      if (args.action !== 'move') return source.tier;
+      const doc = await knowledge.getDoc(ctx.memberId, args.doc_id, { as: as(ctx), signed: false });
+      const place = await target(args, ctx, false);
+      const destination = await knowledge.writeScope(
+        ctx.memberId,
+        { folderId: place.folderId ?? undefined, space: place.space },
+        as(ctx),
+      );
+      if (doc.space === 'personal' && destination.space === 'team') return 'tier3';
+      return source.tier === 'tier1' && destination.tier === 'tier1' ? 'tier1' : 'tier2';
     },
     async approvalScope(args, ctx) {
       // Moving changes the scope itself; approving its old folder cannot authorize the destination.
@@ -439,7 +437,9 @@ export function knowledgeTools(knowledge: KnowledgeService) {
       const docId = args.action === 'create' ? result.created! : args.doc_id;
       await knowledge.lockDoc(ctx.memberId, docId, as(ctx));
       const current = await knowledge.getDoc(ctx.memberId, docId, { as: as(ctx), signed: false });
-      if (current.version !== (result.version ?? prior.version))
+      const written = result.version ?? prior.version;
+      const lineage = ctx.undoRevisions?.get(docId);
+      if (current.version !== (lineage?.written === written ? lineage.current : written))
         throw new ApiError(409, 'undo_conflict', 'This doc changed after the write.');
       if (
         (args.action === 'create' || args.action === 'move') &&
@@ -450,6 +450,26 @@ export function knowledgeTools(knowledge: KnowledgeService) {
       else if (args.action === 'edit')
         await knowledge.restoreVersion(ctx.memberId, docId, prior.version, current.version, as(ctx));
       else await knowledge.updateDoc(ctx.memberId, docId, { folder_id: prior.folder_id, space: prior.space }, as(ctx));
+      if (args.action !== 'create')
+        ctx.undoRevisions?.set(docId, {
+          written: prior.version,
+          current: (await knowledge.getDoc(ctx.memberId, docId, { as: as(ctx), signed: false })).version,
+        });
+    },
+    async receipt(args, output, ctx) {
+      if (inRoom(ctx)) return ctx.locale === 'zh' ? '修改了文档' : 'Changed a doc';
+      const result = output as { created?: string; title?: string };
+      const doc = await knowledge.getDoc(ctx.memberId, result.created ?? ('doc_id' in args ? args.doc_id : ''), {
+        as: as(ctx),
+        signed: false,
+      });
+      const verb = {
+        create: ['新建了', 'Created'],
+        edit: ['修改了', 'Edited'],
+        move: ['移动了', 'Moved'],
+        comment: ['评论了', 'Commented on'],
+      }[args.action][ctx.locale === 'zh' ? 0 : 1];
+      return ctx.locale === 'zh' ? `${verb}《${doc.title}》` : `${verb} “${doc.title}”`;
     },
     async describe(args, ctx) {
       const zh = ctx.locale === 'zh';

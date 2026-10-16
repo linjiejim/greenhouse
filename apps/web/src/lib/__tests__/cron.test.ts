@@ -25,6 +25,12 @@ describe('schedule frequencies', () => {
     expect(describeCron('15 9 * * 1', 'zh')).toBe('每周一 09:15');
     expect(describeCron('5 7 28 * *', 'en')).toBe('Monthly on day 28 at 07:05');
     expect(describeCron('45 * * * *', 'zh')).toBe('每小时第 45 分');
-    expect(describeCron('*/30 * * * *', 'en')).toBe('*/30 * * * *');
+    expect(describeCron('*/30 * * * *', 'en')).toBe('Every 30 minutes');
   });
+});
+
+it('describes custom ranges, month aliases and the day-or-weekday condition without cron', () => {
+  expect(describeCron('0 9 * JAN MON-FRI', 'zh')).toBe('分钟：0 · 小时：9 · 月份：1 · 星期：周一至周五');
+  expect(describeCron('0 9 1 * 1', 'en')).toContain('Day：1 or Weekday：Monday');
+  expect(describeCron('0 9 31 * *', 'zh')).toContain('日期：31');
 });

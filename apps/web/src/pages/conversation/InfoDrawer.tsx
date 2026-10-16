@@ -1,10 +1,12 @@
+import { useOverlayDraft } from '../../lib/useOverlayDraft';
+import { errorText } from '../../lib/errors';
 /**
  * The side panel's info view (CONV-22): who is here (rooms: add people and my Agents, the owner
  * removes people), the shared notes everyone here can write (CONV-24), and the summary of
  * older messages.
  */
 
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { Pin, PinOff, Plus, Trash2, UserMinus } from 'lucide-react';
 import {
   Button,
@@ -20,7 +22,6 @@ import {
 } from '@greenhouse/ui/kit';
 import { icon } from '@greenhouse/ui/tokens';
 import type { Conversation, ConversationDetail, Note } from '@greenhouse/contract';
-import { ApiClientError } from '@greenhouse/contract/client';
 import { useNotify } from '../../app/notify';
 import { useMe } from '../../app/session';
 import { useConversationMembers, useMemberActions, useNoteActions, useNotes } from '../../data/conversations';
@@ -31,7 +32,8 @@ import { href } from '../../lib/router';
 import { AgentAvatar } from '../../shell/AgentAvatar';
 import { MemberAvatar } from '../../shell/MemberAvatar';
 
-function People({ conversation }: { conversation: Conversation }) {
+type DraftState = { dirty: boolean; busy: boolean };
+function People({ conversation, onDraft }: { conversation: Conversation; onDraft: (state: DraftState) => void }) {
   const { t } = useI18n();
   const me = useMe();
   const notify = useNotify();
@@ -41,7 +43,11 @@ function People({ conversation }: { conversation: Conversation }) {
   const actions = useMemberActions(conversation.id);
   const [adding, setAdding] = useState<string[]>([]);
   const [bringing, setBringing] = useState<string[]>([]);
-  const failed = (error: unknown) => notify(error instanceof ApiClientError ? error.message : t('common.error'));
+  useEffect(
+    () => onDraft({ dirty: adding.length > 0 || bringing.length > 0, busy: actions.add.isPending }),
+    [adding, bringing, actions.add.isPending, onDraft],
+  );
+  const failed = (error: unknown) => notify(errorText(error, t));
   if (members.isPending) return <Skeleton lines={3} />;
   const data = members.data;
   const owner = data?.members.find((member) => member.role === 'owner')?.id === me.id;
@@ -158,12 +164,16 @@ function NoteRow({ conversationId, note }: { conversationId: string; note: Note 
   );
 }
 
-function Notes({ conversationId }: { conversationId: string }) {
+function Notes({ conversationId, onDraft }: { conversationId: string; onDraft: (state: DraftState) => void }) {
   const { t } = useI18n();
   const notes = useNotes(conversationId);
   const actions = useNoteActions(conversationId);
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
+  useEffect(
+    () => onDraft({ dirty: !!title || !!body, busy: actions.add.isPending }),
+    [title, body, actions.add.isPending, onDraft],
+  );
   const submit = (event: FormEvent) => {
     event.preventDefault();
     if (!title.trim() && !body.trim()) return;
@@ -216,16 +226,22 @@ export function InfoDrawer({
   onClose: () => void;
 }) {
   const { t } = useI18n();
+  const [peopleDraft, setPeopleDraft] = useState<DraftState>({ dirty: false, busy: false });
+  const [noteDraft, setNoteDraft] = useState<DraftState>({ dirty: false, busy: false });
+  const dismiss = useOverlayDraft(peopleDraft.dirty || noteDraft.dirty, peopleDraft.busy || noteDraft.busy, onClose);
   return (
-    <Overlay title={t('chat.info')} onClose={onClose}>
-      <People conversation={conversation} />
-      <Notes conversationId={conversation.id} />
-      {detail?.digest && (
-        <section className="app-info-section">
-          <h3>{t('chat.summary')}</h3>
-          <p className="app-info-summary">{detail.digest}</p>
-        </section>
-      )}
-    </Overlay>
+    <>
+      <Overlay title={t('chat.info')} onClose={onClose} beforeClose={dismiss.beforeClose}>
+        <People conversation={conversation} onDraft={setPeopleDraft} />
+        <Notes conversationId={conversation.id} onDraft={setNoteDraft} />
+        {detail?.digest && (
+          <section className="app-info-section">
+            <h3>{t('chat.summary')}</h3>
+            <p className="app-info-summary">{detail.digest}</p>
+          </section>
+        )}
+      </Overlay>
+      {dismiss.confirmation}
+    </>
   );
 }

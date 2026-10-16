@@ -1,3 +1,4 @@
+import { useOverlayDraft } from '../../lib/useOverlayDraft';
 import { useId, useState } from 'react';
 import { LayoutGrid } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
@@ -38,13 +39,14 @@ function NewApp({ onClose }: { onClose: () => void }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const choices = bases.items.filter((b) => b.access === 'owner' || b.access === 'builder');
+  const dismiss = useOverlayDraft({ name, base }, busy, onClose);
   const create = async () => {
     setBusy(true);
     setError('');
     try {
       const draft = await api.apps.create({ name, base_id: base });
       await refreshApps();
-      onClose();
+      dismiss.saved();
       navigate({ page: 'app-edit', id: draft.app.id });
     } catch (e) {
       setError(appsError(e, t));
@@ -53,36 +55,40 @@ function NewApp({ onClose }: { onClose: () => void }) {
     }
   };
   return (
-    <Overlay variant="dialog" title={t('apps.new')} onClose={onClose}>
-      <form
-        id={formId}
-        className="app-form"
-        onSubmit={(e) => {
-          e.preventDefault();
-          void create();
-        }}
-      >
-        <Field label={t('apps.name')}>
-          <Input autoFocus value={name} maxLength={100} onChange={(e) => setName(e.target.value)} />
-        </Field>
-        <FieldGroup label={t('apps.base')}>
-          <Select
-            label={t('apps.base')}
-            value={base}
-            options={choices.map((b) => ({ value: b.id, label: b.name }))}
-            onChange={setBase}
-          />
-        </FieldGroup>
-        <p className="app-muted">{t('apps.baseRights')}</p>
-        {error && <p role="alert">{error}</p>}
-      </form>
-      <OverlayActions>
-        <Button onClick={onClose}>{t('common.cancel')}</Button>
-        <Button kind="primary" type="submit" form={formId} loading={busy} disabled={!name.trim() || !base}>
-          {t('apps.new')}
-        </Button>
-      </OverlayActions>
-    </Overlay>
+    <>
+      <Overlay variant="dialog" title={t('apps.new')} onClose={onClose} beforeClose={dismiss.beforeClose}>
+        <form
+          {...dismiss.formProps}
+          id={formId}
+          className="app-form"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void create();
+          }}
+        >
+          <Field label={t('apps.name')}>
+            <Input autoFocus value={name} maxLength={100} onChange={(e) => setName(e.target.value)} />
+          </Field>
+          <FieldGroup label={t('apps.base')}>
+            <Select
+              label={t('apps.base')}
+              value={base}
+              options={choices.map((b) => ({ value: b.id, label: b.name }))}
+              onChange={setBase}
+            />
+          </FieldGroup>
+          <p className="app-muted">{t('apps.baseRights')}</p>
+          {error && <p role="alert">{error}</p>}
+        </form>
+        <OverlayActions>
+          <Button onClick={dismiss.close}>{t('common.cancel')}</Button>
+          <Button kind="primary" type="submit" form={formId} loading={busy} disabled={!name.trim() || !base}>
+            {t('apps.new')}
+          </Button>
+        </OverlayActions>
+      </Overlay>
+      {dismiss.confirmation}
+    </>
   );
 }
 function AppTile({ app }: { app: AppSummary }) {

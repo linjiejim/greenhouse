@@ -1,3 +1,5 @@
+import { errorText } from '../../lib/errors';
+import { useOverlayDraft } from '../../lib/useOverlayDraft';
 /**
  * Provider instances, shared by 管理 → 服务 and 设置 → 我的服务 (providers.md): a row with the
  * last check, and a drawer to add or edit one from the adapter catalog. Keys are write-only:
@@ -24,7 +26,6 @@ import {
 } from '@greenhouse/ui/kit';
 import { icon } from '@greenhouse/ui/tokens';
 import type { CatalogAdapter, ProviderCapability, ProviderInstance } from '@greenhouse/contract';
-import { ApiClientError } from '@greenhouse/contract/client';
 import type { MessageKey } from '../../i18n/zh';
 import { useI18n } from '../../lib/i18n';
 import { SchemaFields, type JsonSchema } from './SchemaForm';
@@ -85,13 +86,10 @@ export function InstanceRow({
       {index !== undefined && <span className="app-order">{index + 1}</span>}
       <span className="app-list-main">
         <span className="app-list-title">{instance.name}</span>
-        <span className="app-list-meta">
-          {instance.kind}
-          {instance.last_check?.error ? ` · ${instance.last_check.error}` : ''}
-          {instance.last_check?.ok && instance.last_check.latency_ms !== undefined
-            ? ` · ${instance.last_check.latency_ms} ms`
-            : ''}
-        </span>
+        {instance.last_check?.error && <span className="app-list-meta">{instance.last_check.error}</span>}
+        {instance.last_check?.ok && instance.last_check.latency_ms !== undefined && (
+          <span className="app-list-meta">{instance.last_check.latency_ms} ms</span>
+        )}
       </span>
       {instance.source === 'env' && (
         <Badge>
@@ -143,6 +141,7 @@ export function InstanceDrawer({
     if (chosen) setConfig({ ...chosen.config });
   };
 
+  const dismiss = useOverlayDraft({ kind, preset, name, config, secrets, enabled }, saving, onClose);
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     if (!name.trim()) return setError(t('request.required', { name: t('provider.name') }));
@@ -164,90 +163,99 @@ export function InstanceDrawer({
         });
       onClose();
     } catch (caught) {
-      setError(caught instanceof ApiClientError ? caught.message : t('common.error'));
+      setError(errorText(caught, t));
     } finally {
       setSaving(false);
     }
   };
 
   return (
-    <Overlay
-      title={instance ? instance.name : t('provider.add', { name: t(CAPABILITY_LABEL[capability]) })}
-      onClose={onClose}
-    >
-      <form id="provider-instance" className="app-form" onSubmit={(event) => void submit(event)}>
-        {!instance && adapters.length > 1 && (
-          <FieldGroup label={t('provider.adapter')}>
-            <Select
-              label={t('provider.adapter')}
-              value={kind}
-              options={adapters.map((item) => ({ value: item.kind, label: item.label }))}
-              onChange={pickAdapter}
-            />
-          </FieldGroup>
-        )}
-        {!instance && (adapter?.presets.length ?? 0) > 1 && (
-          <FieldGroup label={t('provider.preset')}>
-            <Select
-              label={t('provider.preset')}
-              value={preset}
-              options={adapter!.presets.map((item) => ({ value: item.id, label: item.label }))}
-              onChange={pickPreset}
-            />
-          </FieldGroup>
-        )}
-        <Field label={t('provider.name')} required>
-          <Input
-            value={name}
-            maxLength={60}
-            autoFocus
-            onChange={(event) => {
-              setName(event.target.value);
-              setError('');
-            }}
-          />
-        </Field>
-        {adapter && <SchemaFields schema={adapter.config_schema as JsonSchema} value={config} onChange={setConfig} />}
-        {(adapter?.secret_keys ?? []).map((key) =>
-          instance ? (
-            <SecretField
-              key={key}
-              label={key}
-              configured={instance.secrets_set.includes(key)}
-              onSave={(value) => void api.update(instance.id, { secrets: { [key]: value } }).catch(() => undefined)}
-            />
-          ) : (
-            <Field key={key} label={key} required={adapter?.required_secrets.includes(key)}>
-              <Input
-                type="password"
-                autoComplete="off"
-                value={secrets[key] ?? ''}
-                onChange={(event) => setSecrets({ ...secrets, [key]: event.target.value })}
+    <>
+      <Overlay
+        title={instance ? instance.name : t('provider.add', { name: t(CAPABILITY_LABEL[capability]) })}
+        onClose={onClose}
+        beforeClose={dismiss.beforeClose}
+      >
+        <form
+          {...dismiss.formProps}
+          id="provider-instance"
+          className="app-form"
+          onSubmit={(event) => void submit(event)}
+        >
+          {!instance && adapters.length > 1 && (
+            <FieldGroup label={t('provider.adapter')}>
+              <Select
+                label={t('provider.adapter')}
+                value={kind}
+                options={adapters.map((item) => ({ value: item.kind, label: item.label }))}
+                onChange={pickAdapter}
               />
-            </Field>
-          ),
-        )}
-        {instance && (
-          <div className="app-setting-row is-plain">
-            <span className="app-setting-text">
-              <strong>{t('provider.enabled')}</strong>
-            </span>
-            <Switch label={t('provider.enabled')} checked={enabled} onChange={setEnabled} />
-          </div>
-        )}
-        <p className="app-muted">{t('provider.keysGoOnly')}</p>
-        {error && (
-          <p className="app-form-error" role="alert">
-            {error}
-          </p>
-        )}
-      </form>
-      <OverlayActions>
-        <Button onClick={onClose}>{t('common.cancel')}</Button>
-        <Button kind="primary" type="submit" form="provider-instance" loading={saving}>
-          {instance ? t('common.save') : t('provider.addButton')}
-        </Button>
-      </OverlayActions>
-    </Overlay>
+            </FieldGroup>
+          )}
+          {!instance && (adapter?.presets.length ?? 0) > 1 && (
+            <FieldGroup label={t('provider.preset')}>
+              <Select
+                label={t('provider.preset')}
+                value={preset}
+                options={adapter!.presets.map((item) => ({ value: item.id, label: item.label }))}
+                onChange={pickPreset}
+              />
+            </FieldGroup>
+          )}
+          <Field label={t('provider.name')} required>
+            <Input
+              value={name}
+              maxLength={60}
+              autoFocus
+              onChange={(event) => {
+                setName(event.target.value);
+                setError('');
+              }}
+            />
+          </Field>
+          {adapter && <SchemaFields schema={adapter.config_schema as JsonSchema} value={config} onChange={setConfig} />}
+          {(adapter?.secret_keys ?? []).map((key) =>
+            instance ? (
+              <SecretField
+                key={key}
+                label={key}
+                configured={instance.secrets_set.includes(key)}
+                onSave={(value) => void api.update(instance.id, { secrets: { [key]: value } }).catch(() => undefined)}
+              />
+            ) : (
+              <Field key={key} label={key} required={adapter?.required_secrets.includes(key)}>
+                <Input
+                  type="password"
+                  autoComplete="off"
+                  value={secrets[key] ?? ''}
+                  onChange={(event) => setSecrets({ ...secrets, [key]: event.target.value })}
+                />
+              </Field>
+            ),
+          )}
+          {instance && (
+            <div className="app-setting-row is-plain">
+              <span className="app-setting-text">
+                <strong>{t('provider.enabled')}</strong>
+              </span>
+              <Switch label={t('provider.enabled')} checked={enabled} onChange={setEnabled} />
+            </div>
+          )}
+          <p className="app-muted">{t('provider.keysGoOnly')}</p>
+          {error && (
+            <p className="app-form-error" role="alert">
+              {error}
+            </p>
+          )}
+        </form>
+        <OverlayActions>
+          <Button onClick={dismiss.close}>{t('common.cancel')}</Button>
+          <Button kind="primary" type="submit" form="provider-instance" loading={saving}>
+            {instance ? t('common.save') : t('provider.addButton')}
+          </Button>
+        </OverlayActions>
+      </Overlay>
+      {dismiss.confirmation}
+    </>
   );
 }

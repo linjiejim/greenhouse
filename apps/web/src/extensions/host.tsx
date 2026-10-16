@@ -1,3 +1,4 @@
+import { errorText } from '../lib/errors';
 import { useQuery } from '@tanstack/react-query';
 import { ErrorBox, Skeleton } from '@greenhouse/ui/kit';
 import { useMe } from '../app/session';
@@ -24,7 +25,8 @@ export function ExtensionPage({ route }: { route: Extract<Route, { page: 'extens
   const me = useMe();
   const extensions = useExtensions();
   if (extensions.isPending) return <Skeleton lines={3} />;
-  if (extensions.isError) return <ErrorBox onRetry={() => void extensions.refetch()}>{t('common.error')}</ErrorBox>;
+  if (extensions.isError)
+    return <ErrorBox onRetry={() => void extensions.refetch()}>{errorText(extensions.error, t)}</ErrorBox>;
   const extension = extensions.items.find((item) => item.id === route.extension);
   if (!extension || (route.page === 'extension-section' && route.parent === 'admin' && me.role !== 'admin'))
     return <NotFoundPage />;

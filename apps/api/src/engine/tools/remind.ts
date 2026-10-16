@@ -50,21 +50,26 @@ export function remindTool(reminders: RemindersService) {
       if (args.action === 'list') return reminders.list(ctx.memberId, ctx.conversation!.id, args);
       return reminders.cancel(ctx.memberId, args.id, ctx.conversation!.id);
     },
-    async undo(args, output, _before, ctx) {
+    async undo(args, output, before, ctx) {
       const result = output as { id: string; revision: number };
-      await reminders.undo(ctx.memberId, result.id, result.revision, args.action === 'create' ? 'canceled' : 'pending');
+      const lineage = ctx.undoRevisions?.get(result.id);
+      const revision = lineage?.written === result.revision ? lineage.current : result.revision;
+      await reminders.undo(ctx.memberId, result.id, revision, args.action === 'create' ? 'canceled' : 'pending');
+      const prior = (before as { previous?: { revision: number } }).previous;
+      if (prior) ctx.undoRevisions?.set(result.id, { written: prior.revision, current: revision + 1 });
     },
-    summarize: (args, _out, locale) =>
-      locale === 'zh'
-        ? args.action === 'list'
-          ? '查看了提醒'
-          : args.action === 'cancel'
+    summarize: (args, out, locale) => {
+      if (args.action === 'list') return locale === 'zh' ? '查看了提醒' : 'Checked reminders';
+      const text = (out as { text?: string } | undefined)?.text ?? (args.action === 'create' ? args.text : '');
+      const verb =
+        args.action === 'cancel'
+          ? locale === 'zh'
             ? '取消了提醒'
-            : '设好了提醒'
-        : args.action === 'list'
-          ? 'Checked reminders'
-          : args.action === 'cancel'
-            ? 'Canceled a reminder'
-            : 'Set a reminder',
+            : 'Canceled reminder'
+          : locale === 'zh'
+            ? '设好了提醒'
+            : 'Set reminder';
+      return `${verb}${text ? (locale === 'zh' ? `：${text}` : `: ${text}`) : ''}`;
+    },
   });
 }

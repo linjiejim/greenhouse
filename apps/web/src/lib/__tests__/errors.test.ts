@@ -12,3 +12,17 @@ it('maps memory protection codes to the member dictionary', () => {
     'errors.memoryUntrustedContent',
   );
 });
+
+it.each([
+  [403, 'errors.permission'],
+  [404, 'errors.missing'],
+  [409, 'errors.conflict'],
+  [504, 'errors.requestTimeout'],
+  [500, 'errors.temporarilyUnavailable'],
+  [400, 'errors.invalidInput'],
+] as const)('keeps server internals out of a localized %s error', (status, expected) => {
+  const t = ((key: string) => key) as Translate;
+  expect(errorText(new ApiClientError(status, 'unknown_code', 'agent_id agt_private internal details'), t)).toBe(
+    expected,
+  );
+});

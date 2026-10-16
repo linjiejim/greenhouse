@@ -1,3 +1,4 @@
+import { errorText } from '../../lib/errors';
 /** One notification list; pending decisions are handled in their conversations. */
 
 import { BellOff, CheckCheck } from 'lucide-react';
@@ -46,7 +47,7 @@ function All() {
   const timeZone = me?.timezone ?? 'Asia/Shanghai';
   if (notifications.isPending) return <Skeleton lines={6} />;
   if (notifications.isError)
-    return <ErrorBox onRetry={() => void notifications.refetch()}>{t('common.error')}</ErrorBox>;
+    return <ErrorBox onRetry={() => void notifications.refetch()}>{errorText(notifications.error, t)}</ErrorBox>;
   if (!notifications.items.length)
     return <Empty icon={<BellOff strokeWidth={icon.stroke} />} title={t('notifications.empty')} />;
   return (

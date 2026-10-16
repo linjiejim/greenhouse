@@ -1,3 +1,4 @@
+import { interpolate } from '@greenhouse/utils/i18n';
 import { z } from 'zod';
 import { computerAvailable } from './computer.js';
 import { defineTool } from './define.js';
@@ -21,7 +22,10 @@ export function requestTakeoverTool() {
       const request = await ctx.raise({
         kind: 'takeover',
         subject: 'computer_takeover',
-        title: ctx.locale === 'zh' ? `${ctx.agent.name} 需要你接管电脑` : `${ctx.agent.name} needs you at its computer`,
+        title:
+          ctx.locale === 'zh'
+            ? interpolate('zh', '{name} 需要你接管电脑', { name: ctx.agent.name })
+            : `${ctx.agent.name} needs you at its computer`,
         payload: { reason: args.reason },
         waits: true,
       });

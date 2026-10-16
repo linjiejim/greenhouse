@@ -87,7 +87,8 @@ export function ComputerTab({ agentId }: { agentId: string }) {
   );
 
   if (computer.isPending) return <Skeleton lines={3} />;
-  if (computer.isError) return <ErrorBox onRetry={() => void computer.refetch()}>{t('common.error')}</ErrorBox>;
+  if (computer.isError)
+    return <ErrorBox onRetry={() => void computer.refetch()}>{errorText(computer.error, t)}</ErrorBox>;
   const view = computer.data;
   const state = STATE[view.state];
 

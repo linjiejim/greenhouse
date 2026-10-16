@@ -1,3 +1,4 @@
+import { useDraftNavigation } from '../../../lib/useDraftNavigation';
 /**
  * Adds or changes one card of a dashboard, in a drawer: its title, kind, data table, what it
  * counts or adds up, what a chart groups by (dates in days, weeks, months…), what a list shows
@@ -94,6 +95,7 @@ export function CardEditor({
   const [error, setError] = useState('');
   const [asking, setAsking] = useState(false);
   const dirty = JSON.stringify(draft) !== JSON.stringify(initial);
+  const navigation = useDraftNavigation(dirty, busy, onClose);
   const table = base.tables.find((entry) => entry.id === draft.table_id);
   const fields = table?.fields ?? [];
   const needs = cardNeeds(draft);
@@ -407,7 +409,15 @@ export function CardEditor({
         )}
       </form>
       <OverlayActions>
-        <Button onClick={onClose}>{t('common.cancel')}</Button>
+        <Button
+          onClick={() => {
+            if (busy) return;
+            if (dirty) setAsking(true);
+            else onClose();
+          }}
+        >
+          {t('common.cancel')}
+        </Button>
         <Button
           kind="primary"
           type="submit"
@@ -425,15 +435,19 @@ export function CardEditor({
           {isNew ? t('tables.dashboards.addCard') : t('tables.dashboards.saveCard')}
         </Button>
       </OverlayActions>
-      {asking && (
+      {(asking || navigation.asking) && (
         <ConfirmDialog
           title={t('tables.record.discardTitle')}
           confirmLabel={t('tables.record.discard')}
           danger
-          onCancel={() => setAsking(false)}
+          onCancel={() => {
+            setAsking(false);
+            navigation.cancel();
+          }}
           onConfirm={() => {
             setAsking(false);
-            onClose();
+            if (navigation.asking) navigation.discard();
+            else onClose();
           }}
         >
           {t('tables.record.discardBody')}

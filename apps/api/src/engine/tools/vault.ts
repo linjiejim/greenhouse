@@ -1,3 +1,4 @@
+import { interpolate } from '@greenhouse/utils/i18n';
 import { z } from 'zod';
 import { BrowserRefusal, type BrowserService } from '../../modules/computers/browser.js';
 import { signIn } from '../../modules/vault/fill.js';
@@ -94,7 +95,11 @@ export function vaultTool(vault: VaultService, browser: BrowserService) {
         subject: 'vault_fill',
         title:
           ctx.locale === 'zh'
-            ? `${ctx.agent.name} 想用「${card.item_label}」登录 ${host}`
+            ? interpolate('zh', '{name} 想用「{item}」登录 {host}', {
+                name: ctx.agent.name,
+                item: card.item_label,
+                host,
+              })
             : `${ctx.agent.name} wants to sign in to ${host} with "${card.item_label}"`,
         payload: { ...card },
         waits: true,

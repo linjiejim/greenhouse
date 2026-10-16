@@ -343,7 +343,7 @@ export function ConnectorDrawer({ id, onClose }: { id: string; onClose: () => vo
     return (
       <Overlay title={t('connectors.title')} onClose={onClose}>
         {connectors.isError ? (
-          <ErrorBox onRetry={() => void connectors.refetch()}>{t('common.error')}</ErrorBox>
+          <ErrorBox onRetry={() => void connectors.refetch()}>{errorText(connectors.error, t)}</ErrorBox>
         ) : connectors.isPending ? (
           <Skeleton lines={6} />
         ) : (

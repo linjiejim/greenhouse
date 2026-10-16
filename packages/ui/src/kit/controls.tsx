@@ -331,6 +331,13 @@ function useSelectionIndicator(value: string, labels: string) {
     const measure = () => {
       element.style.setProperty('--gh-indicator-x', `${selected?.offsetLeft ?? 0}px`);
       element.style.setProperty('--gh-indicator-width', `${selected?.offsetWidth ?? 0}px`);
+      if (selected && element.clientWidth > 0) {
+        const left = selected.offsetLeft;
+        const right = left + selected.offsetWidth;
+        if (left < element.scrollLeft) element.scrollLeft = left;
+        else if (right > element.scrollLeft + element.clientWidth)
+          element.scrollLeft = Math.max(left, right - element.clientWidth);
+      }
     };
     measure();
     const observer = new ResizeObserver(measure);

@@ -1,3 +1,4 @@
+import { useOverlayDraft } from '../../lib/useOverlayDraft';
 /**
  * A table's views (patterns.md, 数据视图: views switch like tabs): shared ones first, then mine,
  * each with its own actions; 「新建视图」 for a type. When the reader changed a view they may not
@@ -60,6 +61,7 @@ export function NewViewDialog({
   const [personal, setPersonal] = useState(!canBuild);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const dismiss = useOverlayDraft({ type, name, personal }, busy, onClose);
   const create = async () => {
     setBusy(true);
     try {
@@ -72,7 +74,7 @@ export function NewViewDialog({
       putView(base.id, view);
       void refreshBase(base.id);
       onCreated?.();
-      onClose();
+      dismiss.saved();
       navigate({ page: 'base', id: base.id, table: table.id, view: view.id });
     } catch (failure) {
       setError(tablesError(failure, t));
@@ -80,62 +82,66 @@ export function NewViewDialog({
     }
   };
   return (
-    <Overlay variant="dialog" title={t('tables.addView')} onClose={onClose}>
-      <form
-        id={formId}
-        className="app-form"
-        noValidate
-        onSubmit={(event) => {
-          event.preventDefault();
-          void create();
-        }}
-      >
-        {!config && (
-          <FieldGroup label={t('tables.viewType')}>
-            <div className="app-tb-view-types" role="radiogroup" aria-label={t('tables.viewType')}>
-              {TABLE_VIEW_TYPES.map((entry) => (
-                <button
-                  key={entry}
-                  type="button"
-                  role="radio"
-                  aria-checked={type === entry}
-                  className={cx('app-tb-view-type', type === entry && 'is-on')}
-                  onClick={() => {
-                    if (name === t(`tables.view.${type}`)) setName(t(`tables.view.${entry}`));
-                    setType(entry);
-                  }}
-                >
-                  {viewIcon(entry)}
-                  <span>{t(`tables.view.${entry}`)}</span>
-                </button>
-              ))}
-            </div>
-          </FieldGroup>
-        )}
-        <Field label={t('tables.viewName')} error={error || undefined}>
-          <Input data-autofocus value={name} maxLength={60} onChange={(event) => setName(event.target.value)} />
-        </Field>
-        {canBuild && (
-          <FieldGroup label={t('tables.viewScope')} description={t('tables.viewScopeHint')}>
-            <Segmented
-              label={t('tables.viewScope')}
-              items={[
-                { value: 'shared', label: t('tables.viewShared') },
-                { value: 'personal', label: t('tables.viewPersonal') },
-              ]}
-              value={personal ? 'personal' : 'shared'}
-              onChange={(next) => setPersonal(next === 'personal')}
-            />
-          </FieldGroup>
-        )}
-      </form>
-      <OverlayActions>
-        <Button onClick={onClose}>{t('common.cancel')}</Button>
-        <Button kind="primary" type="submit" form={formId} loading={busy}>
-          {t('tables.createView')}
-        </Button>
-      </OverlayActions>
-    </Overlay>
+    <>
+      <Overlay variant="dialog" title={t('tables.addView')} onClose={onClose} beforeClose={dismiss.beforeClose}>
+        <form
+          {...dismiss.formProps}
+          id={formId}
+          className="app-form"
+          noValidate
+          onSubmit={(event) => {
+            event.preventDefault();
+            void create();
+          }}
+        >
+          {!config && (
+            <FieldGroup label={t('tables.viewType')}>
+              <div className="app-tb-view-types" role="radiogroup" aria-label={t('tables.viewType')}>
+                {TABLE_VIEW_TYPES.map((entry) => (
+                  <button
+                    key={entry}
+                    type="button"
+                    role="radio"
+                    aria-checked={type === entry}
+                    className={cx('app-tb-view-type', type === entry && 'is-on')}
+                    onClick={() => {
+                      if (name === t(`tables.view.${type}`)) setName(t(`tables.view.${entry}`));
+                      setType(entry);
+                    }}
+                  >
+                    {viewIcon(entry)}
+                    <span>{t(`tables.view.${entry}`)}</span>
+                  </button>
+                ))}
+              </div>
+            </FieldGroup>
+          )}
+          <Field label={t('tables.viewName')} error={error || undefined}>
+            <Input data-autofocus value={name} maxLength={60} onChange={(event) => setName(event.target.value)} />
+          </Field>
+          {canBuild && (
+            <FieldGroup label={t('tables.viewScope')} description={t('tables.viewScopeHint')}>
+              <Segmented
+                label={t('tables.viewScope')}
+                items={[
+                  { value: 'shared', label: t('tables.viewShared') },
+                  { value: 'personal', label: t('tables.viewPersonal') },
+                ]}
+                value={personal ? 'personal' : 'shared'}
+                onChange={(next) => setPersonal(next === 'personal')}
+              />
+            </FieldGroup>
+          )}
+        </form>
+        <OverlayActions>
+          <Button onClick={dismiss.close}>{t('common.cancel')}</Button>
+          <Button kind="primary" type="submit" form={formId} loading={busy}>
+            {t('tables.createView')}
+          </Button>
+        </OverlayActions>
+      </Overlay>
+      {dismiss.confirmation}
+    </>
   );
 }
 

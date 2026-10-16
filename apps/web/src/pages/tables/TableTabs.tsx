@@ -1,3 +1,4 @@
+import { useOverlayDraft } from '../../lib/useOverlayDraft';
 /**
  * A base's data tables as tabs, then its dashboards, with their actions on right-click (or a long
  * press) and a "+" for builders (a data table or a dashboard). Arrow keys move between tabs;
@@ -48,6 +49,7 @@ export function NameDialog({
   const [name, setName] = useState(initial);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const dismiss = useOverlayDraft(name, busy, onClose);
   const save = async () => {
     if (!name.trim()) return;
     setBusy(true);
@@ -60,27 +62,31 @@ export function NameDialog({
     }
   };
   return (
-    <Overlay variant="dialog" title={title} onClose={onClose}>
-      <form
-        id={formId}
-        className="app-form"
-        noValidate
-        onSubmit={(event) => {
-          event.preventDefault();
-          void save();
-        }}
-      >
-        <Field label={label} error={error || undefined}>
-          <Input data-autofocus value={name} maxLength={100} onChange={(event) => setName(event.target.value)} />
-        </Field>
-      </form>
-      <OverlayActions>
-        <Button onClick={onClose}>{t('common.cancel')}</Button>
-        <Button kind="primary" type="submit" form={formId} loading={busy} disabled={!name.trim()}>
-          {submit}
-        </Button>
-      </OverlayActions>
-    </Overlay>
+    <>
+      <Overlay variant="dialog" title={title} onClose={onClose} beforeClose={dismiss.beforeClose}>
+        <form
+          {...dismiss.formProps}
+          id={formId}
+          className="app-form"
+          noValidate
+          onSubmit={(event) => {
+            event.preventDefault();
+            void save();
+          }}
+        >
+          <Field label={label} error={error || undefined}>
+            <Input data-autofocus value={name} maxLength={100} onChange={(event) => setName(event.target.value)} />
+          </Field>
+        </form>
+        <OverlayActions>
+          <Button onClick={dismiss.close}>{t('common.cancel')}</Button>
+          <Button kind="primary" type="submit" form={formId} loading={busy} disabled={!name.trim()}>
+            {submit}
+          </Button>
+        </OverlayActions>
+      </Overlay>
+      {dismiss.confirmation}
+    </>
   );
 }
 

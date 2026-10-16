@@ -64,14 +64,15 @@ type Step = {
 };
 
 /** All tool calls of a reply folded into one process card; failed ones open by default. */
-function ProcessCard({ steps, runId }: { steps: Step[]; runId: string | null }) {
+function ProcessCard({ steps, runId, status }: { steps: Step[]; runId: string | null; status: Message['status'] }) {
   const { t } = useI18n();
   const helpers = useHelperRuns(steps.some((step) => step.tool === 'helper_run') ? runId : null);
   if (!steps.length) return null;
   const running = steps.some((step) => step.status === 'running');
   const failures = steps.filter((step) => step.status === 'failed');
   const recovered = failures.length > 0 && failures.every((step) => step.recovered);
-  const failed = failures.length > 0 && !recovered;
+  const failed = failures.length > 0 && status === 'failed';
+  const completedWithNotes = failures.length > 0 && status === 'complete';
   const title = steps.length === 1 ? steps[0]!.summary : `${steps[0]!.summary}…`;
   return (
     <ChatCard
@@ -85,15 +86,20 @@ function ProcessCard({ steps, runId }: { steps: Step[]; runId: string | null }) 
           ? t('status.running')
           : failed
             ? t('status.failed')
-            : recovered
+            : recovered && completedWithNotes
               ? t('message.retried', { count: failures.length })
-              : undefined
+              : completedWithNotes
+                ? t('message.completedWithNotes', { count: failures.length })
+                : undefined
       }
       tone={running ? 'info' : failed ? 'danger' : undefined}
     >
       <ol className="app-steps">
         {steps.map((step, index) => (
-          <li key={index} className={cx('app-step', `is-${step.status}`)}>
+          <li
+            key={index}
+            className={cx('app-step', `is-${step.status === 'failed' && !failed ? 'note' : step.status}`)}
+          >
             <span className="app-step-dot" aria-hidden />
             <span className="app-step-summary">{step.summary}</span>
             {step.duration_ms !== undefined && (
@@ -375,7 +381,7 @@ export const MessageView = memo(function MessageView({
           <RequestCard key={request.id} request={request} />
         ))}
         <TodoPlan blocks={message.blocks} />
-        <ProcessCard steps={steps} runId={message.run_id} />
+        <ProcessCard steps={steps} runId={message.run_id} status={message.status} />
         {!streaming && assistant && text && (
           <div className="app-message-actions is-reply">
             <Menu

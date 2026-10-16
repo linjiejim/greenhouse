@@ -99,6 +99,11 @@ export function fileCreateTool(files: FilesService) {
         throw conflict('undo_conflict', 'This file changed after it was created.');
       await files.remove(ctx.memberId, id);
     },
-    summarize: (_args, _out, locale) => (locale === 'zh' ? '创建了文件' : 'Created a file'),
+    summarize: (args, out, locale) => {
+      const name =
+        (out as { name?: string } | undefined)?.name ??
+        (args.name.endsWith('.' + args.format) ? args.name : args.name + '.' + args.format);
+      return locale === 'zh' ? `创建了文件「${name}」` : `Created file “${name}”`;
+    },
   });
 }

@@ -32,7 +32,7 @@ import { relativeTime } from '../lib/time';
 import { useDraftNavigation } from '../lib/useDraftNavigation';
 import { inlineQuestion } from './question';
 import { MarkdownPreview } from './MarkdownPreview';
-import { detailRows, requestStatus } from './status';
+import { detailRows, requestStatus, requestText } from './status';
 
 const KIND_ICON = {
   approval: ShieldCheck,
@@ -48,6 +48,24 @@ const handsBack = (request: NeedsYou) => request.kind === 'takeover' || request.
 function Details({ request }: { request: NeedsYou }) {
   const { t } = useI18n();
   const payload = request.payload;
+  if (request.kind === 'question' && request.status === 'answered') {
+    const answers = request.result?.answers as Record<string, unknown> | undefined;
+    const fields = (payload.fields ?? []) as QuestionField[];
+    return (
+      <dl className="app-request-details">
+        {detailRows(
+          fields
+            .filter((field) => answers?.[field.key] !== undefined)
+            .map((field) => ({ label: field.label, value: answers![field.key] })),
+        ).map(({ label, value }) => (
+          <div key={label}>
+            <dt>{label}</dt>
+            <dd>{value}</dd>
+          </div>
+        ))}
+      </dl>
+    );
+  }
   if (request.kind === 'login' && typeof payload.site === 'string') {
     return (
       <dl className="app-request-details">
@@ -68,24 +86,24 @@ function Details({ request }: { request: NeedsYou }) {
   if (handsBack(request)) {
     return typeof payload.reason === 'string' && payload.reason ? (
       <div className="app-request-body">
-        <p>{payload.reason}</p>
+        <p>{requestText(payload, 'reason')}</p>
       </div>
     ) : null;
   }
   if (request.subject === 'instructions_update') {
     return (
       <div className="app-request-body">
-        {typeof payload.reason === 'string' && payload.reason && <p>{payload.reason}</p>}
+        {typeof payload.reason === 'string' && payload.reason && <p>{requestText(payload, 'reason')}</p>}
         <div className="app-request-label">{t('request.newInstructions')}</div>
-        <MarkdownPreview text={String(payload.instructions ?? '')} />
+        <MarkdownPreview text={requestText(payload, 'instructions')} />
       </div>
     );
   }
   if (request.subject === 'run_start') {
     return (
       <div className="app-request-body">
-        <div className="app-request-label">{String(payload.run_title ?? '')}</div>
-        <MarkdownPreview text={String(payload.brief ?? '')} />
+        <div className="app-request-label">{requestText(payload, 'run_title')}</div>
+        <MarkdownPreview text={requestText(payload, 'brief')} />
         {typeof payload.access_summary === 'string' && <p className="app-preserve-lines">{payload.access_summary}</p>}
         {payload.continue_after === true && <p>{t('approvals.continue')}</p>}
       </div>
@@ -283,7 +301,7 @@ function HandBack({ request, mode, onClose }: { request: NeedsYou; mode: 'screen
   const notify = useNotify();
   const decide = useDecide();
   const [note, setNote] = useState('');
-  const reason = typeof request.payload.reason === 'string' ? request.payload.reason : '';
+  const reason = requestText(request.payload, 'reason');
   const form = `handback-${request.id}`;
   const submit = (event: FormEvent) => {
     event.preventDefault();
@@ -339,6 +357,7 @@ export function RequestCard({ request, showContext = false }: { request: NeedsYo
   const [standing, setStanding] = useState(false);
   const [continueAfter, setContinueAfter] = useState(request.payload.continue_after === true);
   const status = requestStatus(request);
+  const danger = request.payload.danger === true;
   const pending = request.status === 'pending';
   const Icon = KIND_ICON[request.kind];
   const meta = relativeTime(request.created_at, { locale, timeZone: me?.timezone ?? 'Asia/Shanghai' });
@@ -353,7 +372,7 @@ export function RequestCard({ request, showContext = false }: { request: NeedsYo
     ) : request.kind === 'approval' || request.kind === 'proposal' ? (
       <>
         <Button
-          kind="primary"
+          kind={danger ? 'danger' : 'primary'}
           disabled={request.payload.batch_ready === false}
           loading={decide.isPending && decide.variables?.action === 'approve'}
           onClick={() =>
@@ -365,7 +384,13 @@ export function RequestCard({ request, showContext = false }: { request: NeedsYo
             })
           }
         >
-          {request.subject === 'run_start' ? t('request.startRun') : t('request.approve')}
+          {danger
+            ? Array.isArray(request.payload.calls) && request.payload.calls.length > 1
+              ? t('request.approveChanges')
+              : String(request.payload.summary ?? request.title)
+            : request.subject === 'run_start'
+              ? t('request.startRun')
+              : t('request.approve')}
         </Button>
         <Button
           loading={decide.isPending && decide.variables?.action === 'reject'}
@@ -437,10 +462,15 @@ export function RequestCard({ request, showContext = false }: { request: NeedsYo
       <ChatCard
         icon={<Icon size={icon.md} strokeWidth={icon.stroke} />}
         title={request.title}
-        meta={meta}
+        meta={
+          inline && request.status === 'answered'
+            ? String((request.result?.answers as Record<string, string> | undefined)?.[inline.key] ?? meta)
+            : meta
+        }
         status={t(status.word)}
         tone={status.tone}
         attention={pending}
+        expandable={!pending}
         collapsed={collapsed}
         footer={
           footer || (showContext && request.conversation_id) ? (
@@ -455,16 +485,7 @@ export function RequestCard({ request, showContext = false }: { request: NeedsYo
           ) : undefined
         }
       >
-        {pending ? (
-          <Details request={request} />
-        ) : (
-          !inline && (
-            <details className="app-request-settled">
-              <summary>{t('request.expandPreview')}</summary>
-              <Details request={request} />
-            </details>
-          )
-        )}
+        {(pending || !inline) && <Details request={request} />}
         {pending && request.subject === 'run_start' && (
           <div className="app-setting-row is-plain">
             <span className="app-setting-text">{t('approvals.continue')}</span>

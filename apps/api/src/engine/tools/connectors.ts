@@ -17,7 +17,7 @@ import type { ConnectorsService, UsableConnector } from '../../modules/connector
 import { fence, outsideText, sanitizeForPrompt } from '../../security/prompt.js';
 import { argumentDetails } from './presentation.js';
 import { defineTool } from './define.js';
-import { forbidden } from '../../http/errors.js';
+import { ApiError, forbidden } from '../../http/errors.js';
 
 /** A result longer than this is cut; the rest is said in one line. */
 export const MAX_RESULT_CHARS = 20_000;
@@ -112,7 +112,15 @@ export function connectorTool(connectors: ConnectorsService) {
       const name = found && 'connector' in found ? found.connector.name : 'connector' in args ? args.connector : '';
       const tool = found && 'tool' in found ? found.tool.description : '';
       return {
-        summary: zh ? `使用连接器「${name}」执行操作` : `Run an action on ${name}`,
+        ...(found && 'tool' in found && found.tool.destructive ? { danger: true } : {}),
+        summary:
+          ctx.conversation?.kind === 'room'
+            ? zh
+              ? '使用一个连接执行操作'
+              : 'Run an action through a connection'
+            : zh
+              ? `使用连接器「${name}」执行操作`
+              : `Run an action on ${name}`,
         details: [
           { label: zh ? '连接器' : 'Connector', value: name },
           { label: zh ? '操作说明' : 'Action', value: tool || (zh ? '连接器操作' : 'Connector action') },
@@ -161,6 +169,18 @@ export function connectorTool(connectors: ConnectorsService) {
         args.arguments,
         ctx.signal,
       );
+      if (outcome.isError) {
+        const code = /\b403\b|forbidden|permission denied/i.test(outcome.text)
+          ? 'connector_permission_denied'
+          : /\b404\b|not found/i.test(outcome.text)
+            ? 'connector_item_missing'
+            : /\b429\b|rate limit/i.test(outcome.text)
+              ? 'connector_rate_limited'
+              : /timed? out|timeout/i.test(outcome.text)
+                ? 'connector_timeout'
+                : 'connector_action_failed';
+        throw new ApiError(502, code, 'The connector reported that its action failed.');
+      }
       return {
         connector: found.connector.slug,
         tool: found.tool.name,

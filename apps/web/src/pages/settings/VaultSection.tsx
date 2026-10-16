@@ -1,3 +1,4 @@
+import { useOverlayDraft } from '../../lib/useOverlayDraft';
 /**
  * 设置 → 密码库 (SET-06, AGNT-21): logins my Agents sign in with on their computers. Values go in
  * and never come back (a masked user name at most). Each login says where it works, which of my
@@ -139,6 +140,11 @@ function VaultDrawer({ item, onClose }: { item: VaultItem | null; onClose: () =>
   const [error, setError] = useState('');
   const saving = actions.create.isPending || actions.update.isPending;
 
+  const dismiss = useOverlayDraft(
+    { label, sites, username, password, totp, policy, always, everyAgent, agentIds },
+    saving,
+    onClose,
+  );
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     const origins = lines(sites);
@@ -160,86 +166,89 @@ function VaultDrawer({ item, onClose }: { item: VaultItem | null; onClose: () =>
       notify(t('common.saved'));
       onClose();
     } catch (caught) {
-      setError(caught instanceof ApiClientError && caught.status < 500 ? caught.message : errorText(caught, t));
+      setError(errorText(caught, t));
     }
   };
 
   return (
-    <Overlay title={item ? item.label : t('vault.add')} onClose={onClose}>
-      <form id="vault-item" className="app-form" onSubmit={(event) => void submit(event)}>
-        <Field label={t('vault.label')} required>
-          <Input value={label} maxLength={60} onChange={(event) => setLabel(event.target.value)} />
-        </Field>
-        <Field label={t('vault.sites')} description={t('vault.sitesHint')} required>
-          <TextArea rows={2} value={sites} onChange={(event) => setSites(event.target.value)} />
-        </Field>
-        <ValueField
-          label={t('vault.username')}
-          type="text"
-          saved={!!item?.has_username}
-          value={username}
-          onChange={setUsername}
-        />
-        <ValueField
-          label={t('vault.password')}
-          type="password"
-          saved={!!item?.has_password}
-          value={password}
-          onChange={setPassword}
-        />
-        <ValueField
-          label={t('vault.totp')}
-          type="password"
-          saved={!!item?.has_totp}
-          value={totp}
-          onChange={setTotp}
-          help={t('vault.totpHint')}
-        />
-        <FieldGroup label={t('vault.policy')}>
-          <Segmented
-            label={t('vault.policy')}
-            items={[
-              { value: 'ask', label: t('vault.ask') },
-              { value: 'auto', label: t('vault.auto') },
-            ]}
-            value={policy}
-            onChange={(value) => setPolicy(value as VaultItem['policy'])}
-          />
-        </FieldGroup>
-        {policy === 'ask' && (
-          <Field label={t('vault.always')} description={t('vault.alwaysHint')}>
-            <TextArea rows={2} value={always} onChange={(event) => setAlways(event.target.value)} />
+    <>
+      <Overlay title={item ? item.label : t('vault.add')} onClose={onClose} beforeClose={dismiss.beforeClose}>
+        <form {...dismiss.formProps} id="vault-item" className="app-form" onSubmit={(event) => void submit(event)}>
+          <Field label={t('vault.label')} required>
+            <Input value={label} maxLength={60} onChange={(event) => setLabel(event.target.value)} />
           </Field>
-        )}
-        <div className="app-setting-row is-plain">
-          <span className="app-setting-text">
-            <strong>{t('vault.everyAgent')}</strong>
-            <span>{t('vault.everyAgentHint')}</span>
-          </span>
-          <Switch label={t('vault.everyAgent')} checked={everyAgent} onChange={setEveryAgent} />
-        </div>
-        {!everyAgent && (
-          <MultiSelect
-            label={t('vault.agents')}
-            placeholder={t('vault.agents')}
-            value={agentIds}
-            options={agents.items.map((agent) => ({ value: agent.id, label: agent.name }))}
-            onChange={setAgentIds}
+          <Field label={t('vault.sites')} description={t('vault.sitesHint')} required>
+            <TextArea rows={2} value={sites} onChange={(event) => setSites(event.target.value)} />
+          </Field>
+          <ValueField
+            label={t('vault.username')}
+            type="text"
+            saved={!!item?.has_username}
+            value={username}
+            onChange={setUsername}
           />
-        )}
-        {error && (
-          <p className="app-request-error" role="alert">
-            {error}
-          </p>
-        )}
-      </form>
-      <OverlayActions>
-        <Button onClick={onClose}>{t('common.cancel')}</Button>
-        <Button kind="primary" type="submit" form="vault-item" loading={saving}>
-          {t('common.save')}
-        </Button>
-      </OverlayActions>
-    </Overlay>
+          <ValueField
+            label={t('vault.password')}
+            type="password"
+            saved={!!item?.has_password}
+            value={password}
+            onChange={setPassword}
+          />
+          <ValueField
+            label={t('vault.totp')}
+            type="password"
+            saved={!!item?.has_totp}
+            value={totp}
+            onChange={setTotp}
+            help={t('vault.totpHint')}
+          />
+          <FieldGroup label={t('vault.policy')}>
+            <Segmented
+              label={t('vault.policy')}
+              items={[
+                { value: 'ask', label: t('vault.ask') },
+                { value: 'auto', label: t('vault.auto') },
+              ]}
+              value={policy}
+              onChange={(value) => setPolicy(value as VaultItem['policy'])}
+            />
+          </FieldGroup>
+          {policy === 'ask' && (
+            <Field label={t('vault.always')} description={t('vault.alwaysHint')}>
+              <TextArea rows={2} value={always} onChange={(event) => setAlways(event.target.value)} />
+            </Field>
+          )}
+          <div className="app-setting-row is-plain">
+            <span className="app-setting-text">
+              <strong>{t('vault.everyAgent')}</strong>
+              <span>{t('vault.everyAgentHint')}</span>
+            </span>
+            <Switch label={t('vault.everyAgent')} checked={everyAgent} onChange={setEveryAgent} />
+          </div>
+          {!everyAgent && (
+            <MultiSelect
+              label={t('vault.agents')}
+              placeholder={t('vault.agents')}
+              value={agentIds}
+              options={agents.items.map((agent) => ({ value: agent.id, label: agent.name }))}
+              onChange={setAgentIds}
+            />
+          )}
+          {error && (
+            <p className="app-request-error" role="alert">
+              {error}
+            </p>
+          )}
+        </form>
+        <OverlayActions>
+          <Button onClick={dismiss.close}>{t('common.cancel')}</Button>
+          <Button kind="primary" type="submit" form="vault-item" loading={saving}>
+            {t('common.save')}
+          </Button>
+        </OverlayActions>
+      </Overlay>
+      {dismiss.confirmation}
+    </>
   );
 }
 

@@ -1,8 +1,8 @@
+import { errorText } from '../../lib/errors';
 /** 管理 → 品牌 (ADM-11): the workspace's name and main colour, shown on sign-in and in the app. */
 
 import { useState, type FormEvent } from 'react';
 import { Button, Field, FieldGroup, Input } from '@greenhouse/ui/kit';
-import { ApiClientError } from '@greenhouse/contract/client';
 import { useQueryClient } from '@tanstack/react-query';
 import { GreenhouseMark } from '@greenhouse/ui/components/brand';
 import { useNotify } from '../../app/notify';
@@ -35,7 +35,7 @@ export function BrandingSection() {
       client.setQueryData(keys.bootstrap, saved);
       notify(t('common.saved'));
     } catch (caught) {
-      setError(caught instanceof ApiClientError ? caught.message : t('common.error'));
+      setError(errorText(caught, t));
     } finally {
       setSaving(false);
     }

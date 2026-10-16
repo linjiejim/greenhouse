@@ -1,3 +1,4 @@
+import { errorText } from '../../lib/errors';
 /**
  * 设置 → 我的服务 (SET-07): my own keys where an admin allows them. A key here serves only my
  * calls and its usage is mine; the workspace's serves me otherwise.
@@ -8,7 +9,6 @@ import { Plus } from 'lucide-react';
 import { Button, Empty, ErrorBox, Skeleton, StatusBadge, type MenuEntry } from '@greenhouse/ui/kit';
 import { icon } from '@greenhouse/ui/tokens';
 import type { ProviderCapability, ProviderInstance } from '@greenhouse/contract';
-import { ApiClientError } from '@greenhouse/contract/client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNotify } from '../../app/notify';
 import { keys } from '../../data/query';
@@ -23,7 +23,7 @@ export function MyServicesSection() {
   const data = useQuery({ queryKey: keys.myProviders, queryFn: () => api.me.providers() });
   const [editing, setEditing] = useState<{ capability: ProviderCapability; instance?: ProviderInstance } | null>(null);
   const refresh = () => client.invalidateQueries({ queryKey: keys.myProviders });
-  const failed = (error: unknown) => notify(error instanceof ApiClientError ? error.message : t('common.error'));
+  const failed = (error: unknown) => notify(errorText(error, t));
   const instanceApi: InstanceApi = useMemo(
     () => ({
       create: async (input) => {
@@ -40,7 +40,7 @@ export function MyServicesSection() {
   );
 
   if (data.isPending) return <Skeleton lines={4} />;
-  if (data.isError) return <ErrorBox onRetry={() => void data.refetch()}>{t('common.error')}</ErrorBox>;
+  if (data.isError) return <ErrorBox onRetry={() => void data.refetch()}>{errorText(data.error, t)}</ErrorBox>;
   if (!data.data.capabilities.length) return <Empty title={t('myServices.none')} />;
 
   const actionsFor = (instance: ProviderInstance): MenuEntry[] => [

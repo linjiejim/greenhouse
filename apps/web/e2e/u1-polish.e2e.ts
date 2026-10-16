@@ -32,6 +32,8 @@ test('small questions answer inline once, show the optimistic pick, and retain i
   await expect(card.getByText('已完成', { exact: true })).toBeVisible();
   expect(count).toBe(1);
   await page.reload();
+  await expect(card.locator('.gh-chat-card-meta')).toContainText('Osaka');
+  await card.locator('.gh-chat-card-header').click();
   await expect(osaka).toHaveAttribute('aria-pressed', 'true');
   await expect(osaka).toBeDisabled();
   await page.screenshot({ path: `${pictures}inline-selected.png` });

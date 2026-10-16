@@ -1,3 +1,5 @@
+import { useOverlayDraft } from '../../lib/useOverlayDraft';
+import { errorText } from '../../lib/errors';
 /**
  * 定时 (RUN-04): each schedule starts a background run with the same brief, in a time zone.
  * Pause, resume, run now, edit, delete; the shortest interval is 15 minutes (server rule).
@@ -24,7 +26,6 @@ import {
 } from '@greenhouse/ui/kit';
 import { icon } from '@greenhouse/ui/tokens';
 import type { Schedule } from '@greenhouse/contract';
-import { ApiClientError } from '@greenhouse/contract/client';
 import { useNotify } from '../../app/notify';
 import { useMe } from '../../app/session';
 import { useScheduleActions, useSchedules } from '../../data/schedules';
@@ -58,6 +59,11 @@ function ScheduleForm({
   const formId = `schedule-${schedule?.id ?? 'new'}`;
   const time = 'hour' in frequency ? `${pad(frequency.hour)}:${pad(frequency.minute)}` : '';
 
+  const dismiss = useOverlayDraft(
+    { name, brief, quiet, frequency, timezone },
+    actions.create.isPending || actions.update.isPending,
+    onClose,
+  );
   const setKind = (kind: (typeof KINDS)[number]) => {
     const hour = 'hour' in frequency ? frequency.hour : 9;
     const minute = 'minute' in frequency ? frequency.minute : 0;
@@ -75,108 +81,120 @@ function ScheduleForm({
     const input = { name: name.trim(), brief: brief.trim(), cron: toCron(frequency), timezone, quiet };
     const done = {
       onSuccess: () => onClose(),
-      onError: (caught: Error) => setError(caught instanceof ApiClientError ? caught.message : t('common.error')),
+      onError: (caught: Error) => setError(errorText(caught, t)),
     };
     if (schedule) actions.update.mutate({ id: schedule.id, input }, done);
     else actions.create.mutate({ agent_id: agentId, ...input }, done);
   };
 
   return (
-    <Overlay variant="dialog" wide title={schedule ? t('schedules.edit') : t('schedules.add')} onClose={onClose}>
-      <form id={formId} className="app-form" onSubmit={submit}>
-        <Field label={t('schedules.name')} required>
-          <Input value={name} maxLength={80} autoFocus onChange={(event) => setName(event.target.value)} />
-        </Field>
-        <Field label={t('schedules.brief')} required description={t('schedules.briefHint')}>
-          <TextArea value={brief} maxLength={2000} maxRows={8} onChange={(event) => setBrief(event.target.value)} />
-        </Field>
-        <div className="app-form-row">
-          <FieldGroup label={t('schedules.frequency')}>
-            <Select
-              label={t('schedules.frequency')}
-              value={frequency.kind}
-              options={KINDS.map((kind) => ({ value: kind, label: t(`schedules.${kind}`) }))}
-              onChange={(value) => setKind(value as (typeof KINDS)[number])}
-            />
-          </FieldGroup>
-          {frequency.kind === 'weekly' && (
-            <FieldGroup label={t('schedules.weekday')}>
+    <>
+      <Overlay
+        variant="dialog"
+        wide
+        title={schedule ? t('schedules.edit') : t('schedules.add')}
+        onClose={onClose}
+        beforeClose={dismiss.beforeClose}
+      >
+        <form {...dismiss.formProps} id={formId} className="app-form" onSubmit={submit}>
+          <Field label={t('schedules.name')} required>
+            <Input value={name} maxLength={80} autoFocus onChange={(event) => setName(event.target.value)} />
+          </Field>
+          <Field label={t('schedules.brief')} required description={t('schedules.briefHint')}>
+            <TextArea value={brief} maxLength={2000} maxRows={8} onChange={(event) => setBrief(event.target.value)} />
+          </Field>
+          <div className="app-form-row">
+            <FieldGroup label={t('schedules.frequency')}>
               <Select
-                label={t('schedules.weekday')}
-                value={String(frequency.weekday)}
-                options={[1, 2, 3, 4, 5, 6, 0].map((day) => ({ value: String(day), label: weekdayName(day, locale) }))}
-                onChange={(value) => setFrequency({ ...frequency, weekday: Number(value) })}
+                label={t('schedules.frequency')}
+                value={frequency.kind}
+                options={KINDS.map((kind) => ({ value: kind, label: t(`schedules.${kind}`) }))}
+                onChange={(value) => setKind(value as (typeof KINDS)[number])}
               />
             </FieldGroup>
+            {frequency.kind === 'weekly' && (
+              <FieldGroup label={t('schedules.weekday')}>
+                <Select
+                  label={t('schedules.weekday')}
+                  value={String(frequency.weekday)}
+                  options={[1, 2, 3, 4, 5, 6, 0].map((day) => ({
+                    value: String(day),
+                    label: weekdayName(day, locale),
+                  }))}
+                  onChange={(value) => setFrequency({ ...frequency, weekday: Number(value) })}
+                />
+              </FieldGroup>
+            )}
+            {frequency.kind === 'monthly' && (
+              <FieldGroup label={t('schedules.day')}>
+                <Select
+                  label={t('schedules.day')}
+                  value={String(frequency.day)}
+                  options={Array.from({ length: 28 }, (_, index) => String(index + 1))}
+                  onChange={(value) => setFrequency({ ...frequency, day: Number(value) })}
+                />
+              </FieldGroup>
+            )}
+            {'hour' in frequency && (
+              <Field label={t('schedules.time')}>
+                <Input
+                  type="time"
+                  value={time}
+                  onChange={(event) => {
+                    const [hour, minute] = event.target.value.split(':').map(Number);
+                    if (hour !== undefined && minute !== undefined && !Number.isNaN(hour) && !Number.isNaN(minute))
+                      setFrequency({ ...frequency, hour, minute });
+                  }}
+                />
+              </Field>
+            )}
+            {frequency.kind === 'hourly' && (
+              <FieldGroup label={t('schedules.minute')}>
+                <Select
+                  label={t('schedules.minute')}
+                  value={String(frequency.minute)}
+                  options={[0, 15, 30, 45].map((minute) => String(minute))}
+                  onChange={(value) => setFrequency({ kind: 'hourly', minute: Number(value) })}
+                />
+              </FieldGroup>
+            )}
+            {frequency.kind === 'custom' && (
+              <Field label={t('schedules.cron')} description={t('schedules.cronHint')}>
+                <Input
+                  value={frequency.cron}
+                  className="app-mono"
+                  onChange={(event) => setFrequency({ kind: 'custom', cron: event.target.value })}
+                />
+              </Field>
+            )}
+          </div>
+          <Field label={t('schedules.timezone')}>
+            <Input value={timezone} maxLength={64} onChange={(event) => setTimezone(event.target.value)} />
+          </Field>
+          <div className="app-setting-row is-plain">
+            <span className="app-setting-text">{t('approvals.quiet')}</span>
+            <Switch checked={quiet} onChange={setQuiet} label={t('approvals.quiet')} />
+          </div>
+          {error && (
+            <p className="app-form-error" role="alert">
+              {error}
+            </p>
           )}
-          {frequency.kind === 'monthly' && (
-            <FieldGroup label={t('schedules.day')}>
-              <Select
-                label={t('schedules.day')}
-                value={String(frequency.day)}
-                options={Array.from({ length: 28 }, (_, index) => String(index + 1))}
-                onChange={(value) => setFrequency({ ...frequency, day: Number(value) })}
-              />
-            </FieldGroup>
-          )}
-          {'hour' in frequency && (
-            <Field label={t('schedules.time')}>
-              <Input
-                type="time"
-                value={time}
-                onChange={(event) => {
-                  const [hour, minute] = event.target.value.split(':').map(Number);
-                  if (hour !== undefined && minute !== undefined && !Number.isNaN(hour) && !Number.isNaN(minute))
-                    setFrequency({ ...frequency, hour, minute });
-                }}
-              />
-            </Field>
-          )}
-          {frequency.kind === 'hourly' && (
-            <FieldGroup label={t('schedules.minute')}>
-              <Select
-                label={t('schedules.minute')}
-                value={String(frequency.minute)}
-                options={[0, 15, 30, 45].map((minute) => String(minute))}
-                onChange={(value) => setFrequency({ kind: 'hourly', minute: Number(value) })}
-              />
-            </FieldGroup>
-          )}
-          {frequency.kind === 'custom' && (
-            <Field label={t('schedules.cron')} description={t('schedules.cronHint')}>
-              <Input
-                value={frequency.cron}
-                className="app-mono"
-                onChange={(event) => setFrequency({ kind: 'custom', cron: event.target.value })}
-              />
-            </Field>
-          )}
-        </div>
-        <Field label={t('schedules.timezone')}>
-          <Input value={timezone} maxLength={64} onChange={(event) => setTimezone(event.target.value)} />
-        </Field>
-        <div className="app-setting-row is-plain">
-          <span className="app-setting-text">{t('approvals.quiet')}</span>
-          <Switch checked={quiet} onChange={setQuiet} label={t('approvals.quiet')} />
-        </div>
-        {error && (
-          <p className="app-form-error" role="alert">
-            {error}
-          </p>
-        )}
-      </form>
-      <OverlayActions>
-        <Button onClick={onClose}>{t('common.cancel')}</Button>
-        <Button
-          kind="primary"
-          type="submit"
-          form={formId}
-          loading={actions.create.isPending || actions.update.isPending}
-        >
-          {schedule ? t('common.save') : t('schedules.create')}
-        </Button>
-      </OverlayActions>
-    </Overlay>
+        </form>
+        <OverlayActions>
+          <Button onClick={dismiss.close}>{t('common.cancel')}</Button>
+          <Button
+            kind="primary"
+            type="submit"
+            form={formId}
+            loading={actions.create.isPending || actions.update.isPending}
+          >
+            {schedule ? t('common.save') : t('schedules.create')}
+          </Button>
+        </OverlayActions>
+      </Overlay>
+      {dismiss.confirmation}
+    </>
   );
 }
 
@@ -202,7 +220,7 @@ export function SchedulesTab({ agentId }: { agentId: string }) {
       {schedules.isPending ? (
         <Skeleton lines={3} />
       ) : schedules.isError ? (
-        <ErrorBox onRetry={() => void schedules.refetch()}>{t('common.error')}</ErrorBox>
+        <ErrorBox onRetry={() => void schedules.refetch()}>{errorText(schedules.error, t)}</ErrorBox>
       ) : !schedules.items.length ? (
         <Empty icon={<CalendarClock />} title={t('schedules.none')} />
       ) : (
@@ -212,7 +230,8 @@ export function SchedulesTab({ agentId }: { agentId: string }) {
               <button type="button" className="app-list-main app-link-button" onClick={() => setEditing(schedule)}>
                 <span className="app-list-title">{schedule.name}</span>
                 <span className="app-list-meta">
-                  {describeCron(schedule.cron, locale)} · {schedule.timezone}
+                  {describeCron(schedule.cron, locale)}
+                  {schedule.timezone !== me.timezone ? ` · ${schedule.timezone}` : ''}
                   {schedule.status === 'active' && schedule.next_run_at
                     ? ` · ${t('schedules.next', { time: when(schedule.next_run_at) })}`
                     : ''}
@@ -227,8 +246,7 @@ export function SchedulesTab({ agentId }: { agentId: string }) {
                     onClick: () =>
                       actions.runNow.mutate(schedule.id, {
                         onSuccess: () => notify(t('schedules.started', { name: schedule.name })),
-                        onError: (caught) =>
-                          notify(caught instanceof ApiClientError ? caught.message : t('common.error')),
+                        onError: (caught) => notify(errorText(caught, t)),
                       }),
                   },
                   schedule.status === 'active'

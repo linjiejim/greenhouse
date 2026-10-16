@@ -1,3 +1,4 @@
+import { useOverlayDraft } from '../../lib/useOverlayDraft';
 /**
  * 设置 → 连接 · 邮箱 (SET-05, OPEN-05): connect my own mailbox to the built-in mailbox connector.
  * The server tries IMAP and SMTP with these settings before it keeps anything; when either refuses,
@@ -139,6 +140,7 @@ export function MailboxDialog({ current, onClose }: { current: Connection | null
   const ready =
     !!address.trim() && !!imap.host.trim() && !!smtp.host.trim() && !!imap.port && !!smtp.port && !!password;
 
+  const dismiss = useOverlayDraft({ preset, address, name, imap, smtp, username, password }, saving, onClose);
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     if (!ready) return;
@@ -168,54 +170,62 @@ export function MailboxDialog({ current, onClose }: { current: Connection | null
   };
 
   return (
-    <Overlay title={t('connections.mailboxTitle')} onClose={onClose}>
-      <form id="mailbox-connection" className="app-form" onSubmit={(event) => void submit(event)}>
-        <p className="app-muted">{t('connections.mailboxIntro')}</p>
-        <FieldGroup label={t('connections.mailboxPreset')}>
-          <Select
-            label={t('connections.mailboxPreset')}
-            value={preset}
-            placeholder={t('connections.mailboxPresetOther')}
-            options={PRESETS.map((entry) => ({ value: entry.id, label: t(entry.label) }))}
-            onChange={choose}
-          />
-        </FieldGroup>
-        <Field label={t('connections.mailboxAddress')} required>
-          <Input
-            type="email"
-            autoComplete="email"
-            value={address}
-            onChange={(event) => setAddress(event.target.value)}
-          />
-        </Field>
-        <Field label={t('connections.mailboxName')}>
-          <Input value={name} onChange={(event) => setName(event.target.value)} />
-        </Field>
-        <ServerFields legend={t('connections.mailboxImap')} value={imap} onChange={setImap} />
-        <ServerFields legend={t('connections.mailboxSmtp')} value={smtp} onChange={setSmtp} />
-        <Field label={t('connections.mailboxUser')} description={t('connections.mailboxUserHint')}>
-          <Input autoComplete="username" value={username} onChange={(event) => setUsername(event.target.value)} />
-        </Field>
-        <Field label={t('connections.mailboxPassword')} required>
-          <Input
-            type="password"
-            autoComplete="off"
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-          />
-        </Field>
-        {error && (
-          <p className="app-form-error" role="alert">
-            {error}
-          </p>
-        )}
-      </form>
-      <OverlayActions>
-        <Button onClick={onClose}>{t('common.cancel')}</Button>
-        <Button kind="primary" type="submit" form="mailbox-connection" loading={saving} disabled={!ready}>
-          {t('connections.mailboxSave')}
-        </Button>
-      </OverlayActions>
-    </Overlay>
+    <>
+      <Overlay title={t('connections.mailboxTitle')} onClose={onClose} beforeClose={dismiss.beforeClose}>
+        <form
+          {...dismiss.formProps}
+          id="mailbox-connection"
+          className="app-form"
+          onSubmit={(event) => void submit(event)}
+        >
+          <p className="app-muted">{t('connections.mailboxIntro')}</p>
+          <FieldGroup label={t('connections.mailboxPreset')}>
+            <Select
+              label={t('connections.mailboxPreset')}
+              value={preset}
+              placeholder={t('connections.mailboxPresetOther')}
+              options={PRESETS.map((entry) => ({ value: entry.id, label: t(entry.label) }))}
+              onChange={choose}
+            />
+          </FieldGroup>
+          <Field label={t('connections.mailboxAddress')} required>
+            <Input
+              type="email"
+              autoComplete="email"
+              value={address}
+              onChange={(event) => setAddress(event.target.value)}
+            />
+          </Field>
+          <Field label={t('connections.mailboxName')}>
+            <Input value={name} onChange={(event) => setName(event.target.value)} />
+          </Field>
+          <ServerFields legend={t('connections.mailboxImap')} value={imap} onChange={setImap} />
+          <ServerFields legend={t('connections.mailboxSmtp')} value={smtp} onChange={setSmtp} />
+          <Field label={t('connections.mailboxUser')} description={t('connections.mailboxUserHint')}>
+            <Input autoComplete="username" value={username} onChange={(event) => setUsername(event.target.value)} />
+          </Field>
+          <Field label={t('connections.mailboxPassword')} required>
+            <Input
+              type="password"
+              autoComplete="off"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+            />
+          </Field>
+          {error && (
+            <p className="app-form-error" role="alert">
+              {error}
+            </p>
+          )}
+        </form>
+        <OverlayActions>
+          <Button onClick={dismiss.close}>{t('common.cancel')}</Button>
+          <Button kind="primary" type="submit" form="mailbox-connection" loading={saving} disabled={!ready}>
+            {t('connections.mailboxSave')}
+          </Button>
+        </OverlayActions>
+      </Overlay>
+      {dismiss.confirmation}
+    </>
   );
 }

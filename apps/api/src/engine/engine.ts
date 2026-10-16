@@ -1,3 +1,4 @@
+import { interpolate } from '@greenhouse/utils/i18n';
 import { replyParts, replyText } from './reply.js';
 import { REMINDER_JOB, type RemindersService } from '../modules/reminders/service.js';
 import { createTimerScope } from './timers.js';
@@ -333,6 +334,26 @@ export function createEngine(deps: EngineDeps) {
         : step?.toolName === 'apps_action'
           ? (step.undoState as { before?: { plan?: { table_id?: string } } } | null)?.before?.plan?.table_id
           : null;
+    const inverse = step?.undoState as {
+      output?: Record<string, unknown>;
+      before?: { input?: Record<string, unknown> };
+    } | null;
+    const output = inverse?.output;
+    const args = inverse?.before?.input;
+    const objectId =
+      tableId ??
+      (step?.toolName === 'agent_mutation'
+        ? output?.agent_id
+        : step?.toolName === 'memory'
+          ? (output?.remembered ?? output?.updated)
+          : step?.toolName === 'remind'
+            ? output?.id
+            : step?.toolName === 'file_create'
+              ? output?.file_id
+              : step?.toolName === 'knowledge_mutation'
+                ? (output?.created ?? args?.doc_id)
+                : null);
+    const objectKey = objectId ? `${tableId ? 'table' : step?.toolName}:${String(objectId)}` : null;
     // Reversible writes already hold the database conversation lock. Taking the local queue
     // here would deadlock with a new member message waiting for that database lock.
     const result = await transaction(async (db) => {
@@ -353,15 +374,15 @@ export function createEngine(deps: EngineDeps) {
         )
       )
         return null;
-      const existing = tableId
-        ? receipts.find((receipt) => receipt.event?.table_id === tableId && receipt.event?.undone !== true)
+      const existing = objectKey
+        ? receipts.find((receipt) => receipt.event?.object_key === objectKey && receipt.event?.undone !== true)
         : null;
       if (existing) {
         const ids = (existing.event?.step_ids as string[] | undefined) ?? [String(existing.event?.step_id)];
         const [saved] = await db
           .update(messages)
           .set({
-            content: `${existing.content}\n${summary.includes('\n') && existing.content.split('\n')[0] === summary.split('\n')[0] ? summary.slice(summary.indexOf('\n') + 1) : summary}`,
+            content: [...new Set([...existing.content.split('\n'), ...summary.split('\n')])].join('\n'),
             event: { ...existing.event, type: 'write_receipt', step_ids: [...ids, stepId] },
           })
           .where(eq(messages.id, existing.id))
@@ -379,6 +400,7 @@ export function createEngine(deps: EngineDeps) {
           step_ids: [stepId],
           member_id: run.ownerId,
           ...(tableId ? { table_id: tableId } : {}),
+          ...(objectKey ? { object_key: objectKey } : {}),
         },
       });
       return { row, updated: false };
@@ -1240,7 +1262,9 @@ export function createEngine(deps: EngineDeps) {
             ...(card.expiresInMs ? { expiresInMs: card.expiresInMs } : {}),
           }),
         approvalTitle: (summary) =>
-          locale === 'zh' ? `${agent.name} 请你批准：${summary}` : `${agent.name} asks to ${summary}`,
+          locale === 'zh'
+            ? interpolate('zh', '{name} 请你批准：{summary}', { name: agent.name, summary })
+            : `${agent.name} asks to ${summary}`,
       });
       defs = turnTools.defs;
 
@@ -2554,6 +2578,7 @@ export function createEngine(deps: EngineDeps) {
           .for('update');
         const ids = (receipt?.event?.step_ids as string[] | undefined) ?? [stepId];
         const undoRevisions = new Map<string, { written: number; current: number }>();
+        const undoTimestamps = new Map<string, { written: string; current: string }>();
         // Later writes undo first; any stale item rolls the entire batch back.
         for (const undoId of [...ids].reverse()) {
           const [step] = await db.select().from(runSteps).where(eq(runSteps.id, undoId)).for('update');
@@ -2583,6 +2608,7 @@ export function createEngine(deps: EngineDeps) {
             raise: () => Promise.reject(new Error('Undo cannot raise cards.')),
             endTurn: () => undefined,
             undoRevisions,
+            undoTimestamps,
           };
           await def.guard?.(inverse.before.input, context);
           await def.undo(inverse.before.input, inverse.output, inverse.before, context);

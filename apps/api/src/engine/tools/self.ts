@@ -1,3 +1,4 @@
+import { interpolate } from '@greenhouse/utils/i18n';
 import { z } from 'zod';
 import { AGENT_INSTRUCTIONS_MAX } from '@greenhouse/contract';
 import type { AgentsService } from '../../modules/agents/service.js';
@@ -26,7 +27,9 @@ export function selfTool(agents: AgentsService) {
         kind: 'proposal',
         subject: 'instructions_update',
         title:
-          ctx.locale === 'zh' ? `${ctx.agent.name} 想修改自己的指令` : `${ctx.agent.name} proposes new instructions`,
+          ctx.locale === 'zh'
+            ? interpolate('zh', '{name} 想修改自己的指令', { name: ctx.agent.name })
+            : `${ctx.agent.name} proposes new instructions`,
         payload: { instructions: args.instructions, reason: args.reason, current: ctx.manifest.instructions },
         waits: false,
         expiresInMs: WEEK_MS,

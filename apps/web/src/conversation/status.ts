@@ -59,3 +59,9 @@ export function detailRows(
     return Object.entries(details).map(([label, value]) => ({ label, value: text(value) }));
   return [];
 }
+
+/** Proposal previews may resolve references while their execution fields remain exact. */
+export function requestText(payload: Record<string, unknown>, key: string): string {
+  const display = payload.display as Record<string, unknown> | undefined;
+  return typeof display?.[key] === 'string' ? display[key] : typeof payload[key] === 'string' ? payload[key] : '';
+}

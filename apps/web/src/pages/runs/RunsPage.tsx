@@ -30,7 +30,8 @@ function Schedules() {
   const agents = useAgents('mine');
   const actions = useScheduleActions();
   if (schedules.isPending) return <Skeleton lines={4} />;
-  if (schedules.isError) return <ErrorBox onRetry={() => void schedules.refetch()}>{t('common.error')}</ErrorBox>;
+  if (schedules.isError)
+    return <ErrorBox onRetry={() => void schedules.refetch()}>{errorText(schedules.error, t)}</ErrorBox>;
   if (!schedules.items.length) return <Empty icon={<CalendarClock />} title={t('schedules.none')} />;
   return (
     <ul className="app-list">
@@ -46,6 +47,7 @@ function Schedules() {
               <span className="app-list-title">{schedule.name}</span>
               <span className="app-list-meta">
                 {agent?.name ?? ''} · {describeCron(schedule.cron, locale)}
+                {schedule.timezone !== me.timezone ? ` · ${schedule.timezone}` : ''}
                 {schedule.status === 'active' && schedule.next_run_at
                   ? ` · ${t('schedules.next', { time: relativeTime(schedule.next_run_at, { locale, timeZone: me.timezone }) })}`
                   : ''}
@@ -95,7 +97,7 @@ function RunList({ view }: { view: 'active' | 'done' }) {
   );
   let body;
   if (runs.isPending) body = <Skeleton lines={5} />;
-  else if (runs.isError) body = <ErrorBox onRetry={() => void runs.refetch()}>{t('common.error')}</ErrorBox>;
+  else if (runs.isError) body = <ErrorBox onRetry={() => void runs.refetch()}>{errorText(runs.error, t)}</ErrorBox>;
   else if (!runs.items.length)
     body =
       view === 'active' ? (

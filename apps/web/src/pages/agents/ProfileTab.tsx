@@ -1,3 +1,4 @@
+import { errorText } from '../../lib/errors';
 /**
  * 资料: plant, name, role, about and instructions. Saving appends a version (with an optional
  * note); the history below lists them. Instruction changes an Agent proposes itself arrive as
@@ -118,9 +119,7 @@ export function ProfileTab({ agent }: { agent: AgentDetail }) {
           setError(
             caught instanceof ApiClientError && caught.code === 'agent_name_taken'
               ? t('agents.nameTaken')
-              : caught instanceof ApiClientError
-                ? caught.message
-                : t('common.error'),
+              : errorText(caught, t),
           ),
       },
     );

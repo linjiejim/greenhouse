@@ -12,6 +12,7 @@ import type { ProvidersService } from '../../providers/service.js';
 import { isPrivateAddress } from '../../security/network.js';
 import { outsideText, sanitizeForPrompt } from '../../security/prompt.js';
 import { publicFetch } from '../../security/public-fetch.js';
+import { ApiError } from '../../http/errors.js';
 import { defineTool, type ToolContext } from './define.js';
 
 const MAX_PAGE_BYTES = 2 * 1024 * 1024;
@@ -32,7 +33,7 @@ const usage = (ctx: ToolContext) => ({
 
 /** Tries each search instance in order; a failing vendor hands over to the next. */
 async function firstSuccess<T>(attempts: Array<() => Promise<T>>): Promise<T> {
-  let last: unknown = new Error('Web search is not set up here.');
+  let last: unknown = new ApiError(503, 'search_not_configured', 'Web search is not set up here.');
   for (const attempt of attempts) {
     try {
       return await attempt();
@@ -83,10 +84,11 @@ export async function fetchPublicPage(
   let url = new URL(raw);
   for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
     if (url.protocol !== 'https:' && url.protocol !== 'http:')
-      throw new Error('Only web pages (http or https) can be opened.');
+      throw new ApiError(400, 'web_invalid_type', 'Only web pages (http or https) can be opened.');
     const host = url.hostname.replace(/^\[|\]$/g, '');
     // A name is checked when it resolves; an address has nothing to resolve, so check it here.
-    if (isIP(host) && isPrivateAddress(host)) throw new Error('This address points into a private network.');
+    if (isIP(host) && isPrivateAddress(host))
+      throw new ApiError(403, 'web_address_blocked', 'This address points into a private network.');
     const response = await fetchImpl(url.href, {
       redirect: 'manual',
       signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
@@ -100,10 +102,13 @@ export async function fetchPublicPage(
       url = new URL(location, url);
       continue;
     }
-    if (!response.ok) throw new Error(`The page answered HTTP ${response.status}.`);
+    if (!response.ok)
+      throw new ApiError(502, 'web_page_refused', `The page answered HTTP ${response.status}.`, {
+        http_status: response.status,
+      });
     const type = response.headers.get('content-type') ?? '';
     if (!/text\/(html|plain)|application\/xhtml/.test(type))
-      throw new Error(`This is not a web page (${type || 'unknown type'}).`);
+      throw new ApiError(400, 'web_invalid_type', `This is not a web page (${type || 'unknown type'}).`);
     const reader = response.body?.getReader();
     const chunks: Uint8Array[] = [];
     let size = 0;
@@ -113,7 +118,7 @@ export async function fetchPublicPage(
       size += value.byteLength;
       if (size > MAX_PAGE_BYTES) {
         await reader.cancel();
-        break;
+        throw new ApiError(413, 'web_page_too_large', 'The page exceeds the size limit.');
       }
       chunks.push(value);
     }
@@ -121,7 +126,7 @@ export async function fetchPublicPage(
     const page = /html/.test(type) ? htmlToText(body) : { title: '', text: body };
     return { url: url.href, title: page.title, content: page.text };
   }
-  throw new Error('Too many redirects.');
+  throw new ApiError(502, 'web_redirect_limit', 'Too many redirects.');
 }
 
 const hostOf = (url: string) => {
