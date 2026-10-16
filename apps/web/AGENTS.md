@@ -71,7 +71,7 @@ The v2 web app. Product scope is docs/product/prd.md §6–7; layout and compone
 - Custom app frames use the platform double srcdoc wrapper, sandbox=allow-scripts only, source-checked JSON-RPC and declared read bindings. Unapproved versions show a placeholder; external card results render as text/chart data. Admin code review is in the app center.
 - Lists own their create action; do not repeat it in both the directory and header/empty state. Knowledge's directory keeps the secondary creation menu because it also creates folders.
 - Base refetches compare view revisions at response time so a delayed response cannot replace saved settings. Floating panels containing fixed pickers use opacity-only entry animations.
-- `node --import tsx apps/web/e2e/capture-v2.mts` seeds sample content through the local fake stack and captures light/dark/narrow screens; STACK_WEB_PORT selects it. Published WebP pairs go to docs/assets/v2; the review manifest and full PNGs go to artifacts/t10. It refuses remote model endpoints and requires cwebp.
+- `node --import tsx apps/web/e2e/capture-v2.mts` seeds a Chinese product launch through the local fake stack and captures focused light/dark components at 2× device scale (conversation and tables keep their window); STACK_WEB_PORT selects it. Published WebP pairs go to docs/assets/v2; the review manifest and full PNGs go to artifacts/t10. It refuses remote model endpoints and requires cwebp.
 
 - Route pages and rich charts/diagrams/computer viewers load through Suspense with kit skeletons that preserve their frame. Keep heavy modules out of the entry static graph; after `pnpm web:build`, run `node scripts/check-web-bundle.mjs` (entry budget 350 KB).
 
@@ -101,4 +101,4 @@ The v2 web app. Product scope is docs/product/prd.md §6–7; layout and compone
 
 - Settled request cards default to one expandable header; answered inline choices keep their selected label in that summary. Read old previews and answers by expanding it. Dangerous approvals use the server danger marker and human action copy.
 
-- Screenshot capture also publishes approvals, receipts, populated rooms, schedules, connections and services. SCREENSHOT_COMPUTER=1 opts into a real local computer image; capture waits for its screen. SCREENSHOT_REVIEW_DIR holds PNGs and manifests together (default artifacts/t10/after); restart the sample stack before rerunning.
+- Screenshot capture also publishes approvals, receipts, populated rooms, schedules, connections and services. SCREENSHOT_COMPUTER=1 opts into a real local computer image; capture opens a Chinese release checklist in its real browser and waits for the screen. Set FAKE_LLM_CAPTURE_FIXTURE to the same local JSON path for stack.sh and capture-v2.mts; the capture writes fixed replies there, leaving normal browser tests unchanged. SCREENSHOT_REVIEW_DIR holds PNGs and manifests together (default artifacts/t10/after); restart the sample stack before rerunning.
