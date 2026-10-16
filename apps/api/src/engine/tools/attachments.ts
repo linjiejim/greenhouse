@@ -3,6 +3,7 @@ import type { FilesService } from '../../modules/files/service.js';
 import { fileText } from '../../modules/files/text.js';
 import { isAudio, type VoiceService } from '../../modules/voice/service.js';
 import { defineTool } from './define.js';
+import { han } from '@greenhouse/utils/i18n';
 
 const MAX_CHARS = 50_000;
 
@@ -70,8 +71,8 @@ export function readAttachmentTool(files: FilesService, voice: VoiceService) {
       const done = output as { name?: string; transcript?: string } | undefined;
       const name = done?.name ?? '';
       if (done?.transcript !== undefined)
-        return locale === 'zh' ? `转写了附件 ${name}` : `Transcribed the attachment ${name}`;
-      return locale === 'zh' ? `读了附件 ${name}` : `Read the attachment ${name}`;
+        return locale === 'zh' ? han`转写了附件 ${name}` : `Transcribed the attachment ${name}`;
+      return locale === 'zh' ? han`读了附件 ${name}` : `Read the attachment ${name}`;
     },
   });
 }

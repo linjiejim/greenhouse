@@ -56,6 +56,7 @@ import { recordHarness } from './eval.js';
 import { storeToolOutput } from './tools/output.js';
 import type { FilesService } from '../modules/files/service.js';
 import type { ComputersService } from '../modules/computers/service.js';
+import { han } from '@greenhouse/utils/i18n';
 
 export const MAX_CONCURRENT_RUNS = 4;
 export const MAX_RUNNING_PER_MEMBER = 3;
@@ -269,10 +270,10 @@ export function createBackground(deps: {
             : `The background run "${run.title}" finished without a report.`)
       : outcome.status === 'canceled'
         ? zh
-          ? `已停止后台运行「${run.title}」。`
+          ? han`已停止后台运行「${run.title}」。`
           : `Stopped the background run "${run.title}".`
         : zh
-          ? `后台运行「${run.title}」没有完成：${outcome.errorMessage ?? '出错了'}`
+          ? han`后台运行「${run.title}」没有完成：${outcome.errorMessage ?? '出错了'}`
           : `The background run "${run.title}" did not finish: ${outcome.errorMessage ?? 'it failed'}`;
     const { message, created } = await deps.withConversation(conversationId, () =>
       transaction(async (db) => {

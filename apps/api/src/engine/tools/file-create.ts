@@ -5,6 +5,7 @@ import { files as fileRows, getDb } from '@greenhouse/db';
 import type { FilesService } from '../../modules/files/service.js';
 import { ApiError, conflict } from '../../http/errors.js';
 import { defineTool } from './define.js';
+import { han } from '@greenhouse/utils/i18n';
 
 const MAX_BYTES = 1024 * 1024;
 const TYPES = {
@@ -103,7 +104,7 @@ export function fileCreateTool(files: FilesService) {
       const name =
         (out as { name?: string } | undefined)?.name ??
         (args.name.endsWith('.' + args.format) ? args.name : args.name + '.' + args.format);
-      return locale === 'zh' ? `创建了文件「${name}」` : `Created file “${name}”`;
+      return locale === 'zh' ? han`创建了文件「${name}」` : `Created file “${name}”`;
     },
   });
 }

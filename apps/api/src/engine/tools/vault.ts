@@ -1,4 +1,4 @@
-import { interpolate } from '@greenhouse/utils/i18n';
+import { han, interpolate } from '@greenhouse/utils/i18n';
 import { z } from 'zod';
 import { BrowserRefusal, type BrowserService } from '../../modules/computers/browser.js';
 import { signIn } from '../../modules/vault/fill.js';
@@ -138,13 +138,13 @@ export function vaultTool(vault: VaultService, browser: BrowserService) {
         });
         if (outcome.status === 'filled') {
           return {
-            line: zh ? `已用「${label}」登录 ${hostOf(site)}` : `Signed in to ${hostOf(site)} with "${label}"`,
+            line: zh ? han`已用「${label}」登录 ${hostOf(site)}` : `Signed in to ${hostOf(site)} with "${label}"`,
             note: `The member approved signing in to ${site} with "${label}". It was filled (${outcome.fields.join(', ')})${outcome.submitted ? ' and submitted' : ''}. Take a snapshot to see where you are before you go on.`,
           };
         }
         return {
           line: zh
-            ? `「${label}」没能登录 ${hostOf(site)}`
+            ? han`「${label}」没能登录 ${hostOf(site)}`
             : `Signing in to ${hostOf(site)} with "${label}" did not work`,
           note: `The member approved signing in to ${site} with "${label}", but it could not be done: ${outcome.status === 'refused' ? outcome.message : 'the page asked again'}`,
         };
@@ -170,7 +170,7 @@ export function vaultTool(vault: VaultService, browser: BrowserService) {
             ? ` and says: ${request.result.reason}`
             : '';
         return {
-          line: zh ? `已拒绝用「${label}」登录` : `Declined signing in with "${label}"`,
+          line: zh ? han`已拒绝用「${label}」登录` : `Declined signing in with "${label}"`,
           note: `The member declined signing you in to ${site} with "${label}"${reason}. Do not try again unless they ask.`,
         };
       }

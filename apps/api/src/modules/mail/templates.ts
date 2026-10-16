@@ -5,6 +5,7 @@
  */
 
 import { escapeHtml } from '@greenhouse/utils/html';
+import { han } from '@greenhouse/utils/i18n';
 
 export type Locale = 'zh' | 'en';
 
@@ -53,11 +54,11 @@ export function inviteMail(input: {
   }
   return compose(
     'zh',
-    `${inviter} 邀请你加入 ${workspace}`,
+    han`${inviter} 邀请你加入 ${workspace}`,
     [
-      `${oneLine(input.name)}，你好：`,
-      `${inviter} 邀请你加入 Greenhouse 上的 ${workspace}。设置密码就可以开始使用。`,
-      `链接只能用一次，${input.days} 天内有效。`,
+      han`${oneLine(input.name)}，你好：`,
+      han`${inviter} 邀请你加入 Greenhouse 上的 ${workspace}。设置密码就可以开始使用。`,
+      han`链接只能用一次，${input.days} 天内有效。`,
     ],
     { url: input.url, label: '设置密码' },
   );
@@ -86,11 +87,11 @@ export function resetMail(input: {
   }
   return compose(
     'zh',
-    `重置你在 ${workspace} 的密码`,
+    han`重置你在 ${workspace} 的密码`,
     [
-      `${oneLine(input.name)}，你好：`,
-      `${workspace} 的管理员给你发了一个设置新密码的链接。设置后，已登录的设备都需要重新登录。`,
-      `链接只能用一次，${input.days} 天内有效。如果你没有预料到这封邮件，请联系管理员。`,
+      han`${oneLine(input.name)}，你好：`,
+      han`${workspace} 的管理员给你发了一个设置新密码的链接。设置后，已登录的设备都需要重新登录。`,
+      han`链接只能用一次，${input.days} 天内有效。如果你没有预料到这封邮件，请联系管理员。`,
     ],
     { url: input.url, label: '设置新密码' },
   );
@@ -103,7 +104,7 @@ export function testMail(input: { locale: Locale; workspace: string; instance: s
     ? compose('en', `${workspace}: test mail`, [
         `This is a test mail: ${workspace} can send mail through ${oneLine(input.instance)}.`,
       ])
-    : compose('zh', `${workspace}：测试邮件`, [
-        `这是一封测试邮件：${workspace} 能通过 ${oneLine(input.instance)} 发出邮件。`,
+    : compose('zh', han`${workspace}：测试邮件`, [
+        han`这是一封测试邮件：${workspace} 能通过 ${oneLine(input.instance)} 发出邮件。`,
       ]);
 }

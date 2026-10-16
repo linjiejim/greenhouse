@@ -30,6 +30,7 @@ import {
 import { toErrorMessage } from '@greenhouse/utils/error';
 import { logger } from '@greenhouse/utils/logger';
 import type { NotificationsService } from '../modules/notifications/service.js';
+import { han } from '@greenhouse/utils/i18n';
 
 /** A reply nobody read for this long was missed. */
 export const REPLY_QUIET_MS = 60_000;
@@ -39,12 +40,12 @@ const SWEEP_LIMIT = 500;
 
 function replyTitle(locale: string, agent: string, title: string): string {
   if (locale === 'en') return title ? `${agent} replied in "${title}"` : `${agent} replied to you`;
-  return title ? `${agent} 在「${title}」里回复了你` : `${agent} 回复了你`;
+  return title ? han`${agent} 在「${title}」里回复了你` : han`${agent} 回复了你`;
 }
 
 function mentionTitle(locale: string, sender: string, title: string): string {
   if (locale === 'en') return title ? `${sender} mentioned you in "${title}"` : `${sender} mentioned you`;
-  return title ? `${sender} 在「${title}」里提到了你` : `${sender} 提到了你`;
+  return title ? han`${sender} 在「${title}」里提到了你` : han`${sender} 提到了你`;
 }
 
 type Publisher = Pick<NotificationsService, 'publish'>;

@@ -97,6 +97,7 @@ import {
   kindsOf,
   mergeSettings,
 } from './settings.js';
+import { han } from '@greenhouse/utils/i18n';
 
 const JOB_KINDS = [DELIVER_JOB, RECEIPTS_JOB];
 const POLL_MS = 2_000;
@@ -120,7 +121,7 @@ const iso = (value: unknown): string | null =>
 
 const testText = (locale: 'zh' | 'en', workspace: string) =>
   locale === 'zh'
-    ? `这是一条测试消息：${workspace} 能通过这里找到你。`
+    ? han`这是一条测试消息：${workspace} 能通过这里找到你。`
     : `This is a test message: ${workspace} can reach you here.`;
 
 export function createChannelsService(deps: { config: AppConfig; providers: ProvidersService }) {

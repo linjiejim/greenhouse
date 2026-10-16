@@ -18,6 +18,7 @@ import { fence, outsideText, sanitizeForPrompt } from '../../security/prompt.js'
 import { argumentDetails } from './presentation.js';
 import { defineTool } from './define.js';
 import { ApiError, forbidden } from '../../http/errors.js';
+import { han } from '@greenhouse/utils/i18n';
 
 /** A result longer than this is cut; the rest is said in one line. */
 export const MAX_RESULT_CHARS = 20_000;
@@ -119,7 +120,7 @@ export function connectorTool(connectors: ConnectorsService) {
               ? '使用一个连接执行操作'
               : 'Run an action through a connection'
             : zh
-              ? `使用连接器「${name}」执行操作`
+              ? han`使用连接器「${name}」执行操作`
               : `Run an action on ${name}`,
         details: [
           { label: zh ? '连接器' : 'Connector', value: name },

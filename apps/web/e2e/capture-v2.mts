@@ -337,11 +337,27 @@ try {
       const text = target ? await target.innerText() : await page.locator('main').innerText();
       if (/Echo:|Done\.|Shared agent draft|\b(?:fld|doc|cnv|agt)_[0-9A-Z]{26}\b|This week|E2E/.test(text))
         throw new Error(`Placeholder content in ${name}`);
+      if (
+        /\p{Script=Han}[ \u00a0]+\p{Script=Han}|\p{Script=Han}[\p{Script=Latin}\p{N}]|[\p{Script=Latin}\p{N}]\p{Script=Han}/u.test(
+          text,
+        )
+      )
+        throw new Error(`Incorrect Chinese/Latin/digit spacing in ${name}: ${text}`);
       const dimensions = target ? await target.boundingBox() : { width: 1440, height: 900 };
       execFileSync('cwebp', ['-quiet', '-q', '84', path, '-o', `${output}/${name}-${theme}.webp`]);
       const overflow = await page.evaluate(() => document.documentElement.scrollWidth > innerWidth);
       if (errors.length) throw new Error(`Page error in ${name}: ${errors.join('; ')}`);
-      results.push({ name, theme, path, deviceScaleFactor: 2, dimensions, overflow, errors: [...errors], text });
+      results.push({
+        name,
+        theme,
+        path,
+        deviceScaleFactor: 2,
+        dimensions,
+        overflow,
+        errors: [...errors],
+        spacing_verified: true,
+        text,
+      });
       errors.length = 0;
       console.log(`Captured ${name}/${theme}: ${Math.round(dimensions!.width)} CSS px at 2×`);
       if (overflow) throw new Error(`Overflow in ${name}`);
@@ -357,10 +373,11 @@ try {
   await capture('receipt', page.locator('.app-write-receipt').last());
   await send('把发布检查清单放进共享的发布准备。');
   await expect(page.getByRole('button', { name: '批准', exact: true })).toBeVisible();
-  await capture(
-    'approval',
-    page.locator('.gh-chat-card').filter({ has: page.getByRole('button', { name: '批准', exact: true }) }),
-  );
+  const approval = page
+    .locator('.gh-chat-card')
+    .filter({ has: page.getByRole('button', { name: '批准', exact: true }) });
+  await expect(approval).toContainText('在发布准备新建文档《发布检查清单》');
+  await capture('approval', approval);
   await open('/#/agents');
   await expect(page.locator('.app-agent-card')).toHaveCount(3);
   await capture('agents', page.locator('.app-card-grid'));

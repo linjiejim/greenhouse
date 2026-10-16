@@ -10,6 +10,7 @@ import { transaction } from '@greenhouse/db';
 import type { TablesService } from '../../modules/tables/service.js';
 import { fieldDetails } from './table-presentation.js';
 import { defineTool } from './define.js';
+import { han } from '@greenhouse/utils/i18n';
 
 /** Exact plans live in approval cards; no schema is changed until the member confirms. */
 export function tableSchemaTool(tables: TablesService) {
@@ -129,7 +130,7 @@ export function tableSchemaTool(tables: TablesService) {
               ? '确认表格结构计划'
               : 'Confirm table structure plan'
             : zh
-              ? `确认表格「${base?.name ?? args.name}」的结构计划`
+              ? han`确认表格「${base?.name ?? args.name}」的结构计划`
               : `Confirm the structure plan for “${base?.name ?? args.name}”`,
         ...(args.changes.some((change) => change.action === 'archive_field') ? { danger: true } : {}),
         details,

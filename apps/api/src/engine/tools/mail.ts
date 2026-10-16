@@ -17,6 +17,7 @@ import { MAIL_BODY_MAX, MAIL_RECIPIENTS_MAX, MAIL_SUBJECT_MAX, type MailService 
 import { fence, sanitizeForPrompt } from '../../security/prompt.js';
 import { defineTool, type ToolContext } from './define.js';
 import { forbidden } from '../../http/errors.js';
+import { han } from '@greenhouse/utils/i18n';
 
 const LIST_MAX = 50;
 const DETAIL_BODY_EXCERPT = 600;
@@ -108,7 +109,13 @@ export function mailTool(mail: MailService) {
       const to = draft.to.map((entry) => entry.address).join(', ');
       return {
         summary:
-          args.action === 'reply' ? (zh ? `回信给 ${to}` : `reply to ${to}`) : zh ? `发邮件给 ${to}` : `mail ${to}`,
+          args.action === 'reply'
+            ? zh
+              ? han`回信给 ${to}`
+              : `reply to ${to}`
+            : zh
+              ? han`发邮件给 ${to}`
+              : `mail ${to}`,
         details: [
           { label: zh ? '发件人' : 'From', value: draft.from },
           { label: zh ? '收件人' : 'To', value: to },
