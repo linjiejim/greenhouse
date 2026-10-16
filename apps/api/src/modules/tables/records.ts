@@ -71,6 +71,7 @@ import {
 } from './query.js';
 import { hiddenFields, rowsOf, scopeOf, type TableScope } from './scope.js';
 import { changesBetween, emptyRefs, keptApart, normalizeValue, searchOf, titleOf, type ValueRefs } from './values.js';
+import { han } from '@greenhouse/utils/i18n';
 
 /** Who a record's history names for a write: a form, import or app (the member is kept apart). */
 export interface RecordActor {
@@ -523,10 +524,10 @@ export function createRecords(deps: RecordsDeps) {
         title:
           kind === 'mention'
             ? zh
-              ? `${actor.name} 在「${title}」的评论里提到了你`
+              ? han`${actor.name} 在「${title}」的评论里提到了你`
               : `${actor.name} mentioned you in a comment on "${title}"`
             : zh
-              ? `${actor.name} 评论了「${title}」`
+              ? han`${actor.name} 评论了「${title}」`
               : `${actor.name} commented on "${title}"`,
         body,
         targetType: 'record',

@@ -3,6 +3,7 @@ import { MEMORY_CATEGORIES } from '@greenhouse/contract';
 import type { AgentsService } from '../../modules/agents/service.js';
 import { ApiError } from '../../http/errors.js';
 import { defineTool } from './define.js';
+import { han } from '@greenhouse/utils/i18n';
 
 const recallInput = z
   .object({
@@ -110,7 +111,7 @@ export function memoryTool(agents: AgentsService) {
         summary:
           memory && ctx.conversation?.kind !== 'room'
             ? ctx.locale === 'zh'
-              ? `彻底删除记忆「${memory.title}」`
+              ? han`彻底删除记忆「${memory.title}」`
               : `Permanently delete memory “${memory.title}”`
             : ctx.locale === 'zh'
               ? '彻底删除一条记忆'

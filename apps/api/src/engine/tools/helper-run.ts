@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { Background } from '../background.js';
 import { defineTool } from './define.js';
+import { han } from '@greenhouse/utils/i18n';
 
 export function helperRunTool(background: Background) {
   return defineTool({
@@ -26,6 +27,6 @@ export function helperRunTool(background: Background) {
       };
     },
     summarize: (args, _output, locale) =>
-      locale === 'zh' ? `开始了 ${args.briefs.length} 个子运行` : `Started ${args.briefs.length} helper runs`,
+      locale === 'zh' ? han`开始了 ${args.briefs.length} 个子运行` : `Started ${args.briefs.length} helper runs`,
   });
 }

@@ -14,6 +14,7 @@ import { outsideText, sanitizeForPrompt } from '../../security/prompt.js';
 import { publicFetch } from '../../security/public-fetch.js';
 import { ApiError } from '../../http/errors.js';
 import { defineTool, type ToolContext } from './define.js';
+import { han } from '@greenhouse/utils/i18n';
 
 const MAX_PAGE_BYTES = 2 * 1024 * 1024;
 /** What the model reads of a page: past this, a note says how much was left out. */
@@ -169,7 +170,7 @@ export function webTools(providers: ProvidersService, options: { fetch?: typeof 
         })),
       };
     },
-    summarize: (args, _output, locale) => (locale === 'zh' ? `搜索：${args.query}` : `Searched: ${args.query}`),
+    summarize: (args, _output, locale) => (locale === 'zh' ? han`搜索：${args.query}` : `Searched: ${args.query}`),
   });
 
   const webFetch = defineTool({
@@ -192,7 +193,8 @@ export function webTools(providers: ProvidersService, options: { fetch?: typeof 
       ctx.cite?.({ kind: 'web', id: page.url, title: title || hostOf(page.url), url: page.url }, 'read');
       return { url: page.url, title, content: outsideText(page.content, MAX_PAGE_CHARS) };
     },
-    summarize: (args, _output, locale) => (locale === 'zh' ? `阅读：${hostOf(args.url)}` : `Read: ${hostOf(args.url)}`),
+    summarize: (args, _output, locale) =>
+      locale === 'zh' ? han`阅读：${hostOf(args.url)}` : `Read: ${hostOf(args.url)}`,
   });
 
   return [webSearch, webFetch];

@@ -13,6 +13,7 @@
 import { escapeHtml } from '@greenhouse/utils/html';
 import type { NotificationCategory, NotificationKind } from '@greenhouse/db';
 import { SENSITIVE } from './settings.js';
+import { han } from '@greenhouse/utils/i18n';
 
 export type Locale = 'zh' | 'en';
 
@@ -95,7 +96,7 @@ const defuse = (text: string) => text.replace(/</g, '‹').replace(/>/g, '›');
 
 function counted(text: string, input: Pick<Rendering, 'locale' | 'count'>): string {
   if (input.count <= 1) return text;
-  return input.locale === 'zh' ? `${text}（共 ${input.count} 条）` : `${text} (${input.count} updates)`;
+  return input.locale === 'zh' ? han`${text}（共 ${input.count} 条）` : `${text} (${input.count} updates)`;
 }
 
 /** The subject line: the notification's title with previews, else who and what kind. */
@@ -125,7 +126,7 @@ export function renderEmail(input: Rendering): { subject: string; text: string; 
   const body = clip(detail(input), MESSAGE_BODY_MAX);
   const open = zh ? '打开查看' : 'Open it';
   const footer = zh
-    ? `这封邮件来自 ${oneLine(input.workspace)}。不想再收到，可以在「设置 → 通知」里关掉邮件。`
+    ? han`这封邮件来自 ${oneLine(input.workspace)}。不想再收到，可以在「设置 → 通知」里关掉邮件。`
     : `Sent by ${oneLine(input.workspace)}. To stop these emails, turn email off in Settings → Notifications.`;
   const text = [subject, body, `${open}: ${input.link}`, '—', footer].filter(Boolean).join('\n\n');
   const paragraphs = body

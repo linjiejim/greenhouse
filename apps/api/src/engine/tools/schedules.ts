@@ -5,6 +5,7 @@ import { getDb, members } from '@greenhouse/db';
 import { eq } from 'drizzle-orm';
 import { defineTool } from './define.js';
 import { backgroundOptionsSchema } from './run-start.js';
+import { han } from '@greenhouse/utils/i18n';
 
 /** The Agent's own schedules: reading them is free, changing them waits for the member. */
 export function scheduleTools(schedules: SchedulesService) {
@@ -65,7 +66,7 @@ export function scheduleTools(schedules: SchedulesService) {
       const zh = ctx.locale === 'zh';
       let summary = {
         create: zh
-          ? `新建定时「${'name' in args ? args.name : ''}」`
+          ? han`新建定时「${'name' in args ? args.name : ''}」`
           : `create the schedule "${'name' in args ? args.name : ''}"`,
         update: zh ? '修改一个定时' : 'change a schedule',
         pause: zh ? '暂停一个定时' : 'pause a schedule',
@@ -89,7 +90,7 @@ export function scheduleTools(schedules: SchedulesService) {
           delete: ['删除', 'Delete'],
         };
         const verb = verbs[args.action as keyof typeof verbs];
-        if (verb) summary = zh ? `${verb[0]}定时「${schedule.name}」` : `${verb[1]} schedule “${schedule.name}”`;
+        if (verb) summary = zh ? han`${verb[0]}定时「${schedule.name}」` : `${verb[1]} schedule “${schedule.name}”`;
       }
       add(
         'Agent',

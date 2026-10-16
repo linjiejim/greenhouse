@@ -3,6 +3,7 @@ import type { AgentSkill, SkillAgent, SkillsService } from '../../modules/skills
 import { fence } from '../../security/prompt.js';
 import { computerAvailable } from './computer.js';
 import { defineTool, type ToolContext } from './define.js';
+import { han } from '@greenhouse/utils/i18n';
 
 /** The list in the closing message is a tax on every step: past this, `search` has the rest. */
 const LISTING_MAX_CHARS = 2_000;
@@ -113,11 +114,11 @@ export function skillQueryTool(skills: SkillsService) {
         case 'search':
           return zh ? '查找了技能' : 'Searched skills';
         case 'load':
-          return zh ? `读了技能 ${args.skill}` : `Read the skill ${args.skill}`;
+          return zh ? han`读了技能 ${args.skill}` : `Read the skill ${args.skill}`;
         case 'read_file':
-          return zh ? `读了技能 ${args.skill} 的 ${args.path}` : `Read ${args.path} of the skill ${args.skill}`;
+          return zh ? han`读了技能 ${args.skill} 的 ${args.path}` : `Read ${args.path} of the skill ${args.skill}`;
         case 'install':
-          return zh ? `把技能 ${args.skill} 装到了电脑上` : `Put the skill ${args.skill} on the computer`;
+          return zh ? han`把技能 ${args.skill} 装到了电脑上` : `Put the skill ${args.skill} on the computer`;
       }
     },
   });

@@ -1,4 +1,4 @@
-import { interpolate } from '@greenhouse/utils/i18n';
+import { han, interpolate } from '@greenhouse/utils/i18n';
 import { fence } from '../../security/prompt.js';
 /**
  * The knowledge base for Agents (KNOW-16, AGNT-17), through the same service as the routes and
@@ -319,11 +319,11 @@ export function knowledgeTools(knowledge: KnowledgeService) {
     summarize: (args, output, locale) => {
       const zh = locale === 'zh';
       if (args.action === 'search')
-        return zh ? `搜索知识库：${args.query}` : `Searched the knowledge base: ${args.query}`;
+        return zh ? han`搜索知识库：${args.query}` : `Searched the knowledge base: ${args.query}`;
       if (args.action === 'read') {
         const title = nameable.has(args) ? (output as { title?: string } | undefined)?.title : undefined;
         if (!title) return zh ? '读了一篇文档' : 'Read a doc';
-        return zh ? `读了《${title}》` : `Read "${title}"`;
+        return zh ? han`读了《${title}》` : `Read "${title}"`;
       }
       return zh ? '看了知识库目录' : 'Looked through the knowledge base';
     },
@@ -484,7 +484,7 @@ export function knowledgeTools(knowledge: KnowledgeService) {
               ? '新建一篇文档'
               : 'create a doc'
             : zh
-              ? `在 ${place} 新建文档《${args.title}》`
+              ? han`在 ${place} 新建文档《${args.title}》`
               : `create the doc "${args.title}" in ${place}`,
           details: [
             ...(room ? [{ label: zh ? '标题' : 'Title', value: args.title }] : []),
@@ -503,7 +503,7 @@ export function knowledgeTools(knowledge: KnowledgeService) {
               ? '修改一篇文档'
               : 'edit a doc'
             : zh
-              ? `修改文档《${doc.title}》`
+              ? han`修改文档《${doc.title}》`
               : `edit the doc "${doc.title}"`,
           details: [
             ...titled,
@@ -524,7 +524,7 @@ export function knowledgeTools(knowledge: KnowledgeService) {
               ? '移动一篇文档'
               : 'move a doc'
             : zh
-              ? `把《${doc.title}》移到 ${place}`
+              ? han`把《${doc.title}》移到 ${place}`
               : `move "${doc.title}" to ${place}`,
           details: [...titled, { label: zh ? '移到' : 'To', value: place }],
         };
@@ -535,7 +535,7 @@ export function knowledgeTools(knowledge: KnowledgeService) {
             ? '评论一篇文档'
             : 'comment on a doc'
           : zh
-            ? `评论《${doc.title}》`
+            ? han`评论《${doc.title}》`
             : `comment on "${doc.title}"`,
         details: [
           ...titled,
@@ -612,9 +612,9 @@ export function knowledgeTools(knowledge: KnowledgeService) {
         ? ((output as { title?: string } | undefined)?.title ?? ('title' in args ? args.title : undefined))
         : undefined;
       if (args.action === 'create')
-        return title ? (zh ? `新建了《${title}》` : `Created "${title}"`) : zh ? '新建了一篇文档' : 'Created a doc';
+        return title ? (zh ? han`新建了《${title}》` : `Created "${title}"`) : zh ? '新建了一篇文档' : 'Created a doc';
       if (args.action === 'edit')
-        return title ? (zh ? `修改了《${title}》` : `Edited "${title}"`) : zh ? '修改了一篇文档' : 'Edited a doc';
+        return title ? (zh ? han`修改了《${title}》` : `Edited "${title}"`) : zh ? '修改了一篇文档' : 'Edited a doc';
       if (args.action === 'move') return zh ? '移动了一篇文档' : 'Moved a doc';
       return zh ? '评论了一篇文档' : 'Commented on a doc';
     },

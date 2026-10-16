@@ -3,57 +3,421 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Greenhouse v2 · 人与 Agent 一起工作的地方</title>
-    <meta name="description" content="开源、自托管的团队 AI 工作空间。自己的 Agent，共享的知识、表格与应用；一个引擎，同一套权限。" />
+    <title>Greenhouse v2.0.0 · 自己的 AI 同事，一起工作的地方</title>
+    <meta
+      name="description"
+      content="开源、自托管的 AI 工作空间。每个人都有自己的 Agent，在共享知识、表格与应用上协作；行动有边界，可逆写入有回执与撤销。"
+    />
     <meta name="theme-color" content="#235d4d" />
-    <meta property="og:title" content="Greenhouse v2" />
-    <meta property="og:description" content="Your Agents. Shared knowledge, tables and apps. On your own server." />
-    <meta property="og:image" content="https://greenhouse.linjiejim.com/assets/v2/conversation-light.webp" />
+    <meta property="og:title" content="Greenhouse v2.0.0 · Your AI colleagues, in one self-hosted workspace." />
+    <meta
+      property="og:description"
+      content="Agents that work with you, ask before shared or irreversible actions, and stay quiet when nothing matters. Open source · Web, iOS and Android · MIT."
+    />
+    <meta property="og:image" content="https://greenhouse.linjiejim.com/og.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:url" content="https://greenhouse.linjiejim.com/" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="canonical" href="https://greenhouse.linjiejim.com/" />
     <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
     <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
     <link rel="stylesheet" href="./tailwind.css" />
     <style>
-      @font-face { font-family: Nunito; font-style: normal; font-weight: 200 1000; font-display: swap; src: url('./fonts/nunito-variable.woff2') format('woff2'); }
-      :root { color-scheme: light dark; --bg: #f9faf7; --surface: #fff; --ink: #202c25; --muted: #626e66; --edge: #dfe5dd; --accent: #235d4d; --button: #fff; }
-      @media (prefers-color-scheme: dark) { :root { --bg: #141b17; --surface: #1d2720; --ink: #e6ece6; --muted: #abb8ad; --edge: #354238; --accent: #aad3b5; --button: #142219; } }
-      * { box-sizing: border-box; }
-      body { margin: 0; background: var(--bg); color: var(--ink); font-family: Nunito, 'PingFang SC', system-ui, sans-serif; line-height: 1.7; -webkit-font-smoothing: antialiased; }
-      a { color: var(--accent); text-underline-offset: .2em; }
-      button { font: inherit; color: inherit; background: var(--surface); border: 1px solid var(--edge); border-radius: .6rem; padding: .4rem .8rem; cursor: pointer; }
-      a:focus-visible, button:focus-visible { outline: 3px solid var(--accent); outline-offset: 4px; }
-      header, main, footer { max-width: 1200px; margin: auto; padding-inline: 24px; }
-      header { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding-block: 24px; }
-      .brand { display: inline-flex; align-items: center; gap: 10px; color: var(--ink); font-size: 20px; font-weight: 800; text-decoration: none; }
-      .brand img { width: 32px; height: 32px; }
-      nav { display: flex; align-items: center; gap: 20px; }
-      nav a { text-decoration: none; }
-      h1, h2, h3, p { margin: 0; }
-      h1 { font-size: clamp(36px, 5vw, 62px); line-height: 1.18; font-weight: 800; max-width: 900px; margin-block: 16px 24px; }
-      h2 { font-size: clamp(26px, 3vw, 36px); line-height: 1.3; margin-bottom: 16px; }
-      h3 { font-size: 21px; line-height: 1.4; margin-bottom: 12px; }
-      .hero { padding-top: 64px; }
-      .eyebrow, .muted, figcaption { color: var(--muted); }
-      .intro { max-width: 760px; font-size: 20px; }
-      .actions { display: flex; align-items: center; flex-wrap: wrap; gap: 24px; margin-top: 28px; }
-      .primary { display: inline-block; border-radius: 10px; background: var(--accent); color: var(--button); padding: 12px 24px; font-weight: 800; text-decoration: none; }
-      .release { margin-top: 20px; max-width: 780px; font-size: 14px; color: var(--muted); }
-      figure { margin: 40px 0 0; }
-      picture, picture img { display: block; width: 100%; }
-      picture img { border: 1px solid var(--edge); border-radius: 12px; box-shadow: 0 20px 60px -32px #0008; aspect-ratio: 16 / 10; object-fit: cover; object-position: top; }
-      figcaption { margin-top: 12px; font-size: 14px; }
-      section { padding-block: 72px 0; scroll-margin-top: 24px; }
-      .cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px; margin-top: 28px; }
-      .card { padding: 28px; background: var(--surface); border: 1px solid var(--edge); border-radius: 14px; }
-      .card p { color: var(--muted); }
-      .tour { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; }
-      .tour figure { min-width: 0; margin-top: 28px; }
-      .tour img { aspect-ratio: 16 / 10; }
-      .setup { margin-top: 72px; padding: 36px; border: 1px solid var(--edge); border-radius: 16px; background: var(--surface); }
-      pre { white-space: pre-wrap; overflow-wrap: anywhere; background: var(--bg); border: 1px solid var(--edge); padding: 20px; border-radius: 10px; font-size: 14px; line-height: 1.7; }
-      footer { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 16px; padding-block: 48px; color: var(--muted); font-size: 14px; }
-      .skip { position: absolute; top: -100px; padding: 12px; background: var(--surface); }
-      .skip:focus { top: 10px; }
-      @media (max-width: 700px) { header, main, footer { padding-inline: 20px; } nav { gap: 12px; font-size: 14px; } .hero { padding-top: 32px; } .cards, .tour { grid-template-columns: 1fr; } section { padding-top: 48px; } .setup { padding: 24px; margin-top: 48px; } .intro { font-size: 18px; } }
+      @font-face {
+        font-family: Nunito;
+        font-style: normal;
+        font-weight: 200 1000;
+        font-display: swap;
+        src: url('./fonts/nunito-variable.woff2') format('woff2');
+      }
+      :root {
+        color-scheme: light dark;
+        --bg: #f9faf7;
+        --surface: #fff;
+        --ink: #202c25;
+        --muted: #626e66;
+        --edge: #dfe5dd;
+        --accent: #235d4d;
+        --button: #fff;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #141b17;
+          --surface: #1d2720;
+          --ink: #e6ece6;
+          --muted: #abb8ad;
+          --edge: #354238;
+          --accent: #aad3b5;
+          --button: #142219;
+        }
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--ink);
+        font-family: Nunito, 'PingFang SC', system-ui, sans-serif;
+        line-height: 1.7;
+        -webkit-font-smoothing: antialiased;
+      }
+      a {
+        color: var(--accent);
+        text-underline-offset: 0.2em;
+      }
+      button {
+        font: inherit;
+        color: inherit;
+        background: var(--surface);
+        border: 1px solid var(--edge);
+        border-radius: 0.6rem;
+        padding: 0.4rem 0.8rem;
+        cursor: pointer;
+        min-height: 44px;
+      }
+      a:focus-visible,
+      button:focus-visible {
+        outline: 3px solid var(--accent);
+        outline-offset: 4px;
+      }
+      header,
+      main,
+      footer {
+        max-width: 1200px;
+        margin: auto;
+        padding-inline: 24px;
+      }
+      header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        padding-block: 24px;
+      }
+      .brand {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        color: var(--ink);
+        font-size: 20px;
+        font-weight: 800;
+        text-decoration: none;
+      }
+      .brand img {
+        width: 32px;
+        height: 32px;
+      }
+      nav {
+        display: flex;
+        align-items: center;
+        gap: 20px;
+      }
+      nav a {
+        text-decoration: none;
+      }
+      h1,
+      h2,
+      h3,
+      p {
+        margin: 0;
+      }
+      h1 {
+        font-size: clamp(36px, 5vw, 62px);
+        line-height: 1.18;
+        font-weight: 800;
+        max-width: 960px;
+        text-wrap: balance;
+        margin-block: 16px 24px;
+      }
+      h2 {
+        font-size: clamp(26px, 3vw, 36px);
+        line-height: 1.3;
+        margin-bottom: 16px;
+      }
+      h3 {
+        font-size: 21px;
+        line-height: 1.4;
+        margin-bottom: 12px;
+      }
+      .hero {
+        padding-top: 52px;
+      }
+      .eyebrow,
+      figcaption {
+        color: var(--muted);
+      }
+      .intro {
+        max-width: 760px;
+        font-size: 20px;
+      }
+      .actions {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 24px;
+        margin-top: 28px;
+      }
+      .primary {
+        display: inline-block;
+        border-radius: 10px;
+        background: var(--accent);
+        color: var(--button);
+        padding: 12px 24px;
+        font-weight: 800;
+        text-decoration: none;
+      }
+      figure {
+        margin: 40px 0 0;
+      }
+      picture,
+      picture img {
+        display: block;
+        width: 100%;
+      }
+      picture img {
+        border: 1px solid var(--edge);
+        border-radius: 12px;
+        box-shadow: 0 20px 60px -32px #0008;
+        height: auto;
+      }
+      figcaption {
+        margin-top: 12px;
+        font-size: 14px;
+      }
+      section {
+        padding-block: 72px 0;
+        scroll-margin-top: 24px;
+      }
+      .setup {
+        margin-top: 72px;
+        padding: 36px;
+        border: 1px solid var(--edge);
+        border-radius: 16px;
+        background: var(--surface);
+      }
+      pre {
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+        background: var(--bg);
+        border: 1px solid var(--edge);
+        padding: 20px;
+        border-radius: 10px;
+        font-size: 14px;
+        line-height: 1.7;
+      }
+      footer {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: space-between;
+        gap: 16px;
+        padding-block: 48px;
+        color: var(--muted);
+        font-size: 14px;
+      }
+      .skip {
+        position: absolute;
+        top: -100px;
+        padding: 12px;
+        background: var(--surface);
+      }
+      .skip:focus {
+        top: 10px;
+      }
+      @media (max-width: 700px) {
+        header,
+        main,
+        footer {
+          padding-inline: 20px;
+        }
+        nav {
+          gap: 12px;
+          font-size: 14px;
+        }
+        .hero {
+          padding-top: 32px;
+        }
+        .cards,
+        section {
+          padding-top: 48px;
+        }
+        .setup {
+          padding: 24px;
+          margin-top: 48px;
+        }
+        .intro {
+          font-size: 18px;
+        }
+      }
+      .hero {
+        text-align: center;
+      }
+      .hero h1,
+      .hero .intro {
+        margin-inline: auto;
+      }
+      .hero .intro {
+        max-width: 740px;
+      }
+      .hero .actions {
+        justify-content: center;
+      }
+      .eyebrow {
+        font-size: 14px;
+        font-weight: 800;
+        letter-spacing: 0.04em;
+      }
+      .film {
+        margin-top: 40px;
+      }
+      .film-frame {
+        position: relative;
+      }
+      .film-play {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        border: 0;
+        background: transparent;
+        padding: 20px;
+        display: flex;
+        align-items: flex-end;
+        justify-content: flex-start;
+      }
+      .film-play span {
+        background: var(--accent);
+        color: var(--button);
+        padding: 10px 18px;
+        border-radius: 10px;
+        font-weight: 800;
+        box-shadow: 0 4px 20px #0003;
+      }
+      .film-play[hidden] {
+        display: none;
+      }
+      video {
+        display: block;
+        width: 100%;
+        aspect-ratio: 16 / 9;
+        border: 1px solid var(--edge);
+        border-radius: 16px;
+        background: #141b17;
+        box-shadow: 0 24px 64px -36px #0008;
+      }
+      .section-lead {
+        max-width: 720px;
+        color: var(--muted);
+        font-size: 18px;
+      }
+      .feature {
+        display: grid;
+        grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.3fr);
+        align-items: center;
+        gap: 48px;
+        padding-top: 100px;
+      }
+      .feature.reverse {
+        grid-template-columns: minmax(0, 1.3fr) minmax(0, 0.8fr);
+      }
+      .feature.reverse .words {
+        order: 2;
+      }
+      .feature figure {
+        margin: 0;
+        min-width: 0;
+      }
+      .words p {
+        color: var(--muted);
+        font-size: 18px;
+      }
+      .words .eyebrow {
+        margin-bottom: 12px;
+        font-size: 13px;
+      }
+      .pair {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 28px;
+      }
+      .pair figure {
+        min-width: 0;
+      }
+      .triptych {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 24px;
+      }
+      .triptych figure {
+        min-width: 0;
+        margin-top: 28px;
+      }
+      .native-copy {
+        max-width: 720px;
+      }
+      .native-copy p {
+        color: var(--muted);
+        font-size: 18px;
+      }
+      .native-links {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 24px;
+        margin-top: 24px;
+      }
+      .setup p + p {
+        margin-top: 16px;
+      }
+      .setup code {
+        font-family: ui-monospace, SFMono-Regular, monospace;
+      }
+      .sample-note {
+        margin-top: 36px;
+        color: var(--muted);
+        font-size: 14px;
+      }
+      .footer-links {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 24px;
+      }
+      @media (max-width: 800px) {
+        .feature,
+        .feature.reverse,
+        .pair,
+        .triptych {
+          grid-template-columns: minmax(0, 1fr);
+        }
+        .feature {
+          gap: 24px;
+          padding-top: 56px;
+        }
+        .feature.reverse .words {
+          order: initial;
+        }
+        .hero h1 {
+          font-size: 38px;
+        }
+        .hero {
+          padding-top: 28px;
+        }
+        .feature picture img {
+          border-radius: 8px;
+        }
+        .pair {
+          gap: 8px;
+        }
+        .triptych {
+          gap: 4px;
+        }
+        .setup {
+          padding: 24px 20px;
+        }
+        pre {
+          padding: 14px;
+          font-size: 12px;
+        }
+      }
     </style>
   </head>
   <body>
@@ -61,62 +425,484 @@
     <header>
       <a class="brand" href="#main"><img src="./favicon.svg" alt="" />Greenhouse</a>
       <nav aria-label="导航" data-aria-zh="导航" data-aria-en="Navigation">
-        <a href="https://github.com/linjiejim/greenhouse/tree/v2" data-zh="源代码" data-en="Source">源代码</a>
+        <a href="https://github.com/linjiejim/greenhouse" data-zh="GitHub" data-en="GitHub">GitHub</a>
         <button id="language" type="button" aria-label="Switch to English">English</button>
       </nav>
     </header>
     <main id="main">
       <div class="hero">
-        <p class="eyebrow" data-zh="开源 · 自托管 · v2 预览" data-en="Open source · Self hosted · v2 preview">开源 · 自托管 · v2 预览</p>
-        <h1 data-zh="自己的 Agent，&lt;br /&gt;一起工作的地方。" data-en="Your Agents.&lt;br /&gt;A shared place to work.">自己的 Agent，<br />一起工作的地方。</h1>
-        <p class="intro" data-zh="每个成员有自己的 AI 同事，在同一份知识、表格与应用上协作。数据留在自己的服务器，行动遵守同一套权限。" data-en="Each member has an AI colleague. Work together on shared knowledge, tables and apps, on your own server, with the same permissions for every action.">每个成员有自己的 AI 同事，在同一份知识、表格与应用上协作。数据留在自己的服务器，行动遵守同一套权限。</p>
-        <div class="actions"><a class="primary" href="#selfhost" data-zh="开始自托管" data-en="Start self hosting">开始自托管</a><a href="https://github.com/linjiejim/greenhouse/blob/v2/docs/product/prd.md" data-zh="阅读产品说明" data-en="Read the product spec">阅读产品说明</a></div>
-        <p class="release" data-zh="v2.0 正在交付验收中，尚未发布。v2 使用全新数据库；现有 v1 部署请先看迁移指南。" data-en="v2.0 is in delivery acceptance and has not been released. v2 starts with a new database; existing v1 deployments should read the migration guide first.">v2.0 正在交付验收中，尚未发布。v2 使用全新数据库；现有 v1 部署请先看迁移指南。</p>
+        <p class="eyebrow" data-zh="开源 · 自托管 · v2.0.0" data-en="Open source · Self hosted · v2.0.0">
+          开源 · 自托管 · v2.0.0
+        </p>
+        <h1 data-zh="自己的 AI 同事，一起工作的地方。" data-en="Your AI colleagues, in one self‑hosted workspace.">
+          自己的 AI 同事，一起工作的地方。
+        </h1>
+        <p
+          class="intro"
+          data-zh="每个人都有自己的 Agent，在共享的知识、表格与应用上协作。把工作交出去，该你决定时再找你。"
+          data-en="An Agent for every member, working on shared knowledge, tables and apps. Hand work over. Stay in charge."
+        >
+          每个人都有自己的 Agent，在共享的知识、表格与应用上协作。把工作交出去，该你决定时再找你。
+        </p>
+        <div class="actions">
+          <a class="primary" href="#selfhost" data-zh="开始自托管" data-en="Start on your own server">开始自托管</a
+          ><a href="https://github.com/linjiejim/greenhouse" data-zh="看看源代码" data-en="Explore the source"
+            >看看源代码</a
+          >
+        </div>
       </div>
-      <figure>
-        <picture><source media="(prefers-color-scheme: dark)" srcset="./assets/v2/conversation-dark.webp" /><img src="./assets/v2/conversation-light.webp" width="1440" height="900" alt="Greenhouse 对话与引用的知识文档" data-alt-zh="Greenhouse 对话与引用的知识文档" data-alt-en="Greenhouse conversation with a cited knowledge document" fetchpriority="high" /></picture>
-        <figcaption data-zh="实际 Web 界面 · 预置示例数据与脚本模型 · 随系统切换浅色／深色" data-en="The actual web app · Seeded sample data and a scripted model · Light and dark themes">实际 Web 界面 · 预置示例数据与脚本模型 · 随系统切换浅色／深色</figcaption>
+      <figure class="film">
+        <div class="film-frame">
+          <video
+            playsinline
+            preload="none"
+            poster="./assets/v2/greenhouse-v2-intro-poster.png"
+            aria-label="Greenhouse 一分钟介绍"
+            data-aria-zh="Greenhouse 一分钟介绍"
+            data-aria-en="One-minute introduction to Greenhouse"
+          >
+            <source src="./assets/v2/greenhouse-v2-intro.mp4" type="video/mp4" />
+            <a href="./assets/v2/greenhouse-v2-intro.mp4" data-zh="下载介绍影片" data-en="Download the introduction"
+              >下载介绍影片</a
+            >
+          </video>
+          <button id="play-film" class="film-play" type="button">
+            <span data-zh="▶ 观看一分钟介绍" data-en="▶ Watch the one-minute intro">▶ 观看一分钟介绍</span>
+          </button>
+        </div>
+        <figcaption data-zh="一分钟认识 Greenhouse · 点击播放" data-en="Meet Greenhouse in a minute · Click to play">
+          一分钟认识 Greenhouse · 点击播放
+        </figcaption>
       </figure>
-      <section>
-        <h2 data-zh="从一句话，到有出处的结果。" data-en="From a conversation to a result you can trace.">从一句话，到有出处的结果。</h2>
-        <div class="cards">
-          <article class="card"><h3 data-zh="对话与后台运行" data-en="Conversations and runs">对话与后台运行</h3><p data-zh="主线、Agent 对话、会话与房间各有位置。长工作交给后台运行；过程、需要你的决定与最终结果都能找到。" data-en="A main thread, direct Agent conversations, separate chats and rooms. Long work runs in the background, with visible progress, decisions and results.">主线、Agent 对话、会话与房间各有位置。长工作交给后台运行；过程、需要你的决定与最终结果都能找到。</p></article>
-          <article class="card"><h3 data-zh="共享的知识与数据" data-en="Shared knowledge and data">共享的知识与数据</h3><p data-zh="文档、文件、版本与评论在一棵树里。表格支持多种视图、表单、自动化与角色权限；应用直接建立在它们之上。" data-en="Documents, files, versions and comments in one tree. Tables offer views, forms, automations and access roles. Apps build on those same tables.">文档、文件、版本与评论在一棵树里。表格支持多种视图、表单、自动化与角色权限；应用直接建立在它们之上。</p></article>
-          <article class="card"><h3 data-zh="行动有权限与边界" data-en="Actions with clear boundaries">行动有权限与边界</h3><p data-zh="Agent 工具、网页和外部 MCP 客户端调用相同服务。写入按审批分级；外部操作要确认，可逆结果保留撤销凭据。" data-en="Agent tools, the web app and external MCP clients call the same services. Writes use approval tiers, external actions need confirmation, and reversible changes keep undo receipts.">Agent 工具、网页和外部 MCP 客户端调用相同服务。写入按审批分级；外部操作要确认，可逆结果保留撤销凭据。</p></article>
+      <section class="feature">
+        <div class="words">
+          <p class="eyebrow" data-zh="01 · Agents" data-en="01 · Agents">01 · Agents</p>
+          <h2 data-zh="每个人，都有一位 Agent 同事。" data-en="An Agent colleague for everyone.">
+            每个人，都有一位 Agent 同事。
+          </h2>
+          <p
+            data-zh="Greeny 在一条长期主线里陪你工作。再用一句话创建更多 Agent：「每天早上帮我整理邮件」。记忆、技能、定时、邮箱，还有可选的电脑，都跟着它。"
+            data-en="Greeny works with you in one long-running thread. Create another Agent from a sentence: “sum up my mail every morning”. Memory, skills, schedules, a mailbox and an optional computer go with it."
+          >
+            Greeny 在一条长期主线里陪你工作。再用一句话创建更多
+            Agent：「每天早上帮我整理邮件」。记忆、技能、定时、邮箱，还有可选的电脑，都跟着它。
+          </p>
         </div>
+        <figure>
+          <picture
+            ><source media="(prefers-color-scheme: dark)" srcset="./assets/v2/agents-dark.webp" />
+            <img
+              src="./assets/v2/agents-light.webp"
+              width="816"
+              height="540"
+              loading="lazy"
+              alt="Agent 的资料、能力、记忆与定时"
+              data-alt-zh="Agent 的资料、能力、记忆与定时"
+              data-alt-en="An Agent’s profile, abilities, memory and schedules"
+          /></picture>
+          <figcaption
+            data-zh="Agent 的资料、能力、记忆与定时"
+            data-en="An Agent’s profile, abilities, memory and schedules"
+          >
+            Agent 的资料、能力、记忆与定时
+          </figcaption>
+        </figure>
       </section>
       <section>
-        <h2 data-zh="每个对象，只有一个家。" data-en="One home for each kind of work.">每个对象，只有一个家。</h2>
-        <div class="tour">
-          <figure><picture><source media="(prefers-color-scheme: dark)" srcset="./assets/v2/tables-dark.webp" /><img src="./assets/v2/tables-light.webp" alt="Greenhouse 项目表格" data-alt-zh="Greenhouse 项目表格" data-alt-en="Greenhouse project table" width="1440" height="900" loading="lazy" /></picture><figcaption data-zh="表格 · 项目模板使用同一套字段、视图与权限" data-en="Tables · Projects use the same fields, views and permissions">表格 · 项目模板使用同一套字段、视图与权限</figcaption></figure>
-          <figure><picture><source media="(prefers-color-scheme: dark)" srcset="./assets/v2/knowledge-dark.webp" /><img src="./assets/v2/knowledge-light.webp" alt="Greenhouse 知识文档" data-alt-zh="Greenhouse 知识文档" data-alt-en="Greenhouse knowledge document" width="1440" height="900" loading="lazy" /></picture><figcaption data-zh="知识库 · 文档、文件、评论与引用" data-en="Knowledge · Documents, files, comments and sources">知识库 · 文档、文件、评论与引用</figcaption></figure>
-          <figure><picture><source media="(prefers-color-scheme: dark)" srcset="./assets/v2/apps-dark.webp" /><img src="./assets/v2/apps-light.webp" alt="已发布的内部 Greenhouse 应用" data-alt-zh="已发布的内部 Greenhouse 应用" data-alt-en="A published internal Greenhouse application" width="1440" height="900" loading="lazy" /></picture><figcaption data-zh="应用 · 发布给内部成员，操作服从表格权限" data-en="Apps · Publish for internal members, with actions bounded by table access">应用 · 发布给内部成员，操作服从表格权限</figcaption></figure>
-          <figure><picture><source media="(prefers-color-scheme: dark)" srcset="./assets/v2/agents-dark.webp" /><img src="./assets/v2/agents-light.webp" alt="Greenhouse Agent 资料" data-alt-zh="Greenhouse Agent 资料" data-alt-en="Greenhouse Agent profile" width="1440" height="900" loading="lazy" /></picture><figcaption data-zh="Agents · 资料、能力、记忆、定时与活动" data-en="Agents · Profile, abilities, memory, schedules and activity">Agents · 资料、能力、记忆、定时与活动</figcaption></figure>
+        <p class="eyebrow" data-zh="02 · Approvals" data-en="02 · Approvals">02 · Approvals</p>
+        <h2 data-zh="行动有边界，写入有回执。" data-en="Writes with boundaries, and a way back.">
+          行动有边界，写入有回执。
+        </h2>
+        <p
+          class="section-lead"
+          data-zh="私有、可逆的写入立即完成，留下具名回执和撤销。共享修改等你点头，或遵守你给的预先授权；对外与不可逆操作始终要问你。新请求取代旧请求，处理完的卡片自动收起。"
+          data-en="Private, reversible writes happen at once with a named receipt and Undo. Shared changes wait for a tap or a standing approval you granted. External or irreversible actions always ask. New requests replace old ones; handled cards clear themselves away."
+        >
+          私有、可逆的写入立即完成，留下具名回执和撤销。共享修改等你点头，或遵守你给的预先授权；对外与不可逆操作始终要问你。新请求取代旧请求，处理完的卡片自动收起。
+        </p>
+        <div class="pair">
+          <figure>
+            <picture
+              ><source media="(prefers-color-scheme: dark)" srcset="./assets/v2/approval-dark.webp" />
+              <img
+                src="./assets/v2/approval-light.webp"
+                width="816"
+                height="680"
+                loading="lazy"
+                alt="审批卡 · 对象、影响与范围，操作在左下"
+                data-alt-zh="审批卡 · 对象、影响与范围，操作在左下"
+                data-alt-en="Approval · The object, impact and scope, with actions at bottom left"
+            /></picture>
+            <figcaption
+              data-zh="审批卡 · 对象、影响与范围，操作在左下"
+              data-en="Approval · The object, impact and scope, with actions at bottom left"
+            >
+              审批卡 · 对象、影响与范围，操作在左下
+            </figcaption>
+          </figure>
+          <figure>
+            <picture
+              ><source media="(prefers-color-scheme: dark)" srcset="./assets/v2/receipt-dark.webp" />
+              <img
+                src="./assets/v2/receipt-light.webp"
+                width="816"
+                height="272"
+                loading="lazy"
+                alt="回执 · 写明做了什么，并提供撤销"
+                data-alt-zh="回执 · 写明做了什么，并提供撤销"
+                data-alt-en="Receipt · A named change, with Undo"
+            /></picture>
+            <figcaption data-zh="回执 · 写明做了什么，并提供撤销" data-en="Receipt · A named change, with Undo">
+              回执 · 写明做了什么，并提供撤销
+            </figcaption>
+          </figure>
         </div>
       </section>
+      <section class="feature reverse">
+        <div class="words">
+          <p class="eyebrow" data-zh="03 · Runs" data-en="03 · Runs">03 · Runs</p>
+          <h2 data-zh="你不在时，工作也能继续。" data-en="Work while you are away.">你不在时，工作也能继续。</h2>
+          <p
+            data-zh="批准一份简报，把长工作交给后台。定时、一次性提醒、来信与表格自动化让工作继续；没有值得说的，Agent 就保持安静。回复先给结果，文件和计划用卡片呈现。"
+            data-en="Approve a brief and let a run carry the work forward. Schedules, one-off reminders, mail and automations keep things moving. When nothing matters, the Agent stays quiet. Replies lead with the result; files and plans arrive as cards."
+          >
+            批准一份简报，把长工作交给后台。定时、一次性提醒、来信与表格自动化让工作继续；没有值得说的，Agent
+            就保持安静。回复先给结果，文件和计划用卡片呈现。
+          </p>
+        </div>
+        <figure>
+          <picture
+            ><source media="(prefers-color-scheme: dark)" srcset="./assets/v2/schedules-dark.webp" />
+            <img
+              src="./assets/v2/schedules-light.webp"
+              width="816"
+              height="232"
+              loading="lazy"
+              alt="定时 · 用人话显示下次工作时间"
+              data-alt-zh="定时 · 用人话显示下次工作时间"
+              data-alt-en="Schedules · The next work, in plain language"
+          /></picture>
+          <figcaption data-zh="定时 · 用人话显示下次工作时间" data-en="Schedules · The next work, in plain language">
+            定时 · 用人话显示下次工作时间
+          </figcaption>
+        </figure>
+      </section>
+      <section>
+        <p class="eyebrow" data-zh="04 · Workspace" data-en="04 · Workspace">04 · Workspace</p>
+        <h2 data-zh="知识、表格与应用，在同一个地方。" data-en="Knowledge, tables and apps. Together.">
+          知识、表格与应用，在同一个地方。
+        </h2>
+        <p
+          class="section-lead"
+          data-zh="文档与文件保留版本、评论和回答的出处。表格有网格、看板、日历、时间线、画册、仪表盘、表单与自动化。基于表格搭应用，发布给成员；应用角色只能收紧表格权限。"
+          data-en="Documents and files keep versions, comments and cited answers. Typed tables offer grid, kanban, calendar, timeline, gallery, dashboards, forms and automations. Build apps on tables and publish them to members; app roles only narrow table access."
+        >
+          文档与文件保留版本、评论和回答的出处。表格有网格、看板、日历、时间线、画册、仪表盘、表单与自动化。基于表格搭应用，发布给成员；应用角色只能收紧表格权限。
+        </p>
+        <div class="triptych">
+          <figure>
+            <picture
+              ><source media="(prefers-color-scheme: dark)" srcset="./assets/v2/knowledge-dark.webp" />
+              <img
+                src="./assets/v2/knowledge-light.webp"
+                width="816"
+                height="792"
+                loading="lazy"
+                alt="知识库 · 决定和出处留得住"
+                data-alt-zh="知识库 · 决定和出处留得住"
+                data-alt-en="Knowledge · Keep decisions and their sources"
+            /></picture>
+            <figcaption data-zh="知识库 · 决定和出处留得住" data-en="Knowledge · Keep decisions and their sources">
+              知识库 · 决定和出处留得住
+            </figcaption>
+          </figure>
+          <figure>
+            <picture
+              ><source media="(prefers-color-scheme: dark)" srcset="./assets/v2/tables-dark.webp" />
+              <img
+                src="./assets/v2/tables-light.webp"
+                width="2880"
+                height="1800"
+                loading="lazy"
+                alt="表格 · 把共享工作组织起来"
+                data-alt-zh="表格 · 把共享工作组织起来"
+                data-alt-en="Tables · Organize shared work"
+            /></picture>
+            <figcaption data-zh="表格 · 把共享工作组织起来" data-en="Tables · Organize shared work">
+              表格 · 把共享工作组织起来
+            </figcaption>
+          </figure>
+          <figure>
+            <picture
+              ><source media="(prefers-color-scheme: dark)" srcset="./assets/v2/apps-dark.webp" />
+              <img
+                src="./assets/v2/apps-light.webp"
+                width="816"
+                height="588"
+                loading="lazy"
+                alt="应用 · 成员打开即可使用的发布版本"
+                data-alt-zh="应用 · 成员打开即可使用的发布版本"
+                data-alt-en="Apps · A published version, ready for members"
+            /></picture>
+            <figcaption
+              data-zh="应用 · 成员打开即可使用的发布版本"
+              data-en="Apps · A published version, ready for members"
+            >
+              应用 · 成员打开即可使用的发布版本
+            </figcaption>
+          </figure>
+        </div>
+      </section>
+      <section class="feature">
+        <div class="words">
+          <p class="eyebrow" data-zh="05 · Computer" data-en="05 · Computer">05 · Computer</p>
+          <h2 data-zh="一台你能看见的电脑。" data-en="A computer you can watch.">一台你能看见的电脑。</h2>
+          <p
+            data-zh="Agent 的沙箱电脑有浏览器和终端。看它实时工作，随时接管，再交还给它。E2B 或 Docker 提供隔离环境，主目录通过加密备份跨重启保留。"
+            data-en="An Agent’s sandboxed computer has a browser and a terminal. Watch it live, take over, then hand it back. E2B or Docker provides the sandbox; encrypted backups preserve its home across restarts."
+          >
+            Agent 的沙箱电脑有浏览器和终端。看它实时工作，随时接管，再交还给它。E2B 或 Docker
+            提供隔离环境，主目录通过加密备份跨重启保留。
+          </p>
+        </div>
+        <figure>
+          <picture
+            ><source media="(prefers-color-scheme: dark)" srcset="./assets/v2/computer-dark.webp" />
+            <img
+              src="./assets/v2/computer-light.webp"
+              width="1440"
+              height="1420"
+              loading="lazy"
+              alt="Agent 电脑 · 实时画面与接管"
+              data-alt-zh="Agent 电脑 · 实时画面与接管"
+              data-alt-en="Agent computer · Live screen and take-over"
+          /></picture>
+          <figcaption data-zh="Agent 电脑 · 实时画面与接管" data-en="Agent computer · Live screen and take-over">
+            Agent 电脑 · 实时画面与接管
+          </figcaption>
+        </figure>
+      </section>
+      <section class="feature reverse">
+        <div class="words">
+          <p class="eyebrow" data-zh="06 · Rooms" data-en="06 · Rooms">06 · Rooms</p>
+          <h2 data-zh="人和各自的 Agent，一起聊。" data-en="People and their Agents, in one room.">
+            人和各自的 Agent，一起聊。
+          </h2>
+          <p
+            data-zh="把几位同事和各自的 Agent 放进同一个房间。提及一个人或一个 Agent，所有人都能看清是谁的 Agent 在回复，讨论与结果留在同一段对话里。"
+            data-en="Bring several people and their Agents into one conversation. Mention a person or an Agent. Everyone sees whose Agent replied, with the discussion and result in the same room."
+          >
+            把几位同事和各自的 Agent 放进同一个房间。提及一个人或一个 Agent，所有人都能看清是谁的 Agent
+            在回复，讨论与结果留在同一段对话里。
+          </p>
+        </div>
+        <figure>
+          <picture
+            ><source media="(prefers-color-scheme: dark)" srcset="./assets/v2/room-dark.webp" />
+            <img
+              src="./assets/v2/room-light.webp"
+              width="880"
+              height="792"
+              loading="lazy"
+              alt="房间 · 成员与 Agent 的共同对话"
+              data-alt-zh="房间 · 成员与 Agent 的共同对话"
+              data-alt-en="Rooms · A shared conversation with members and Agents"
+          /></picture>
+          <figcaption
+            data-zh="房间 · 成员与 Agent 的共同对话"
+            data-en="Rooms · A shared conversation with members and Agents"
+          >
+            房间 · 成员与 Agent 的共同对话
+          </figcaption>
+        </figure>
+      </section>
+      <section class="native-copy">
+        <p class="eyebrow" data-zh="07 · iOS &amp; Android" data-en="07 · iOS &amp; Android">07 · iOS &amp; Android</p>
+        <h2 data-zh="离开电脑，照样接着做。" data-en="Take your workspace with you.">离开电脑，照样接着做。</h2>
+        <p
+          data-zh="iOS 和 Android 原生应用带上同样的对话、审批、回执、知识库、表格、应用与运行，通过推送叫你回来。各自遵循平台习惯；搭建应用和管理工作留在 Web。"
+          data-en="Native iOS and Android apps carry the same conversations, approvals, receipts, knowledge, tables, apps and runs, with push notifications. Each follows its platform’s conventions. App building and administration stay on the web."
+        >
+          iOS 和 Android
+          原生应用带上同样的对话、审批、回执、知识库、表格、应用与运行，通过推送叫你回来。各自遵循平台习惯；搭建应用和管理工作留在
+          Web。
+        </p>
+        <div class="native-links">
+          <a
+            href="https://github.com/linjiejim/greenhouse/tree/main/apps/mobile"
+            data-zh="了解原生应用"
+            data-en="Explore the native apps"
+            >了解原生应用</a
+          ><a
+            href="https://github.com/linjiejim/greenhouse/blob/main/RELEASING.md"
+            data-zh="构建与发布指南"
+            data-en="Build and release guide"
+            >构建与发布指南</a
+          >
+        </div>
+      </section>
+      <section class="feature">
+        <div class="words">
+          <p class="eyebrow" data-zh="08 · Open" data-en="08 · Open">08 · Open</p>
+          <h2 data-zh="接上你已经在用的工具。" data-en="Open to your tools.">接上你已经在用的工具。</h2>
+          <p
+            data-zh="成员连接自己的 MCP 工具与账号。外部客户端通过 OAuth 2.1 或个人访问令牌接入；私有扩展可以有自己的页面、工具与迁移，继续遵守同一套权限。"
+            data-en="Members connect their own MCP tools and accounts. External clients use OAuth 2.1 or personal access tokens. Private extensions can add pages, tools and migrations, with the same permission checks."
+          >
+            成员连接自己的 MCP 工具与账号。外部客户端通过 OAuth 2.1
+            或个人访问令牌接入；私有扩展可以有自己的页面、工具与迁移，继续遵守同一套权限。
+          </p>
+        </div>
+        <figure>
+          <picture
+            ><source media="(prefers-color-scheme: dark)" srcset="./assets/v2/connections-dark.webp" />
+            <img
+              src="./assets/v2/connections-light.webp"
+              width="816"
+              height="448"
+              loading="lazy"
+              alt="连接 · 每个成员自己的工具与账号"
+              data-alt-zh="连接 · 每个成员自己的工具与账号"
+              data-alt-en="Connections · Each member’s own tools and accounts"
+          /></picture>
+          <figcaption
+            data-zh="连接 · 每个成员自己的工具与账号"
+            data-en="Connections · Each member’s own tools and accounts"
+          >
+            连接 · 每个成员自己的工具与账号
+          </figcaption>
+        </figure>
+      </section>
+      <section class="feature reverse">
+        <div class="words">
+          <p class="eyebrow" data-zh="09 · Self hosted" data-en="09 · Self hosted">09 · Self hosted</p>
+          <h2 data-zh="自己的服务器，自己的模型。" data-en="Your server, your models.">自己的服务器，自己的模型。</h2>
+          <p
+            data-zh="Docker Compose 与 Postgres。选择 OpenAI、Anthropic、Gemini、DeepSeek、兼容 API 或本地 Ollama，按需接入搜索、语音、图像与视频。为工作空间、成员、服务与已发布 Agent 设置预算，随时暂停后台工作、电脑或外发邮件。"
+            data-en="Docker Compose and Postgres. Choose OpenAI, Anthropic, Gemini, DeepSeek, compatible APIs or local Ollama, plus search, voice, images and video. Set budgets for the workspace, members, providers and published Agents. Pause background work, computers or outgoing mail when needed."
+          >
+            Docker Compose 与 Postgres。选择 OpenAI、Anthropic、Gemini、DeepSeek、兼容 API 或本地
+            Ollama，按需接入搜索、语音、图像与视频。为工作空间、成员、服务与已发布 Agent
+            设置预算，随时暂停后台工作、电脑或外发邮件。
+          </p>
+        </div>
+        <figure>
+          <picture
+            ><source media="(prefers-color-scheme: dark)" srcset="./assets/v2/providers-dark.webp" />
+            <img
+              src="./assets/v2/providers-light.webp"
+              width="816"
+              height="1064"
+              loading="lazy"
+              alt="管理 → 服务 · 配置地址、模型与服务顺序"
+              data-alt-zh="管理 → 服务 · 配置地址、模型与服务顺序"
+              data-alt-en="Admin → Services · Configure addresses, models and fallback order"
+          /></picture>
+          <figcaption
+            data-zh="管理 → 服务 · 配置地址、模型与服务顺序"
+            data-en="Admin → Services · Configure addresses, models and fallback order"
+          >
+            管理 → 服务 · 配置地址、模型与服务顺序
+          </figcaption>
+        </figure>
+      </section>
+      <p
+        class="sample-note"
+        data-zh="截图来自实际 Web 界面，使用预置示例数据和脚本模型；随系统切换浅色与深色。"
+        data-en="Screenshots show the actual web app with seeded sample data and a scripted model. Images follow your system’s light or dark theme."
+      >
+        截图来自实际 Web 界面，使用预置示例数据和脚本模型；随系统切换浅色与深色。
+      </p>
       <section id="selfhost" class="setup">
         <h2 data-zh="从自己的服务器开始。" data-en="Start on your own server.">从自己的服务器开始。</h2>
-        <p data-zh="Docker Compose 启动 Postgres、迁移和 Web／API。先设置管理员邮箱与模型服务，再从日志中的一次性链接激活账号。" data-en="Docker Compose starts Postgres, migrations and the web/API. Set your admin email and model service first, then activate through the one-time link in the logs.">Docker Compose 启动 Postgres、迁移和 Web／API。先设置管理员邮箱与模型服务，再从日志中的一次性链接激活账号。</p>
-        <pre><code>git clone -b v2 https://github.com/linjiejim/greenhouse.git
-cd greenhouse
-cp .env.example .env
-./scripts/gen-secrets.sh
-# Set BOOTSTRAP_ADMIN_EMAIL and LLM_* in .env
-docker compose -p greenhouse-v2 up -d --build</code></pre>
-        <p data-zh="模型、搜索、语音、图像、视频、存储、电脑和邮箱均可配置。Compose 的 Agent 电脑使用 E2B 兼容服务；SMTP 只发信，Resend／Mailgun 可接收 Agent 邮件。" data-en="Configure models, search, speech, images, video, storage, computers and mail. Agent computers in Compose use an E2B-compatible service. SMTP sends mail; Resend or Mailgun can also receive mail for Agents.">模型、搜索、语音、图像、视频、存储、电脑和邮箱均可配置。Compose 的 Agent 电脑使用 E2B 兼容服务；SMTP 只发信，Resend／Mailgun 可接收 Agent 邮件。</p>
-        <div class="actions"><a class="primary" href="https://github.com/linjiejim/greenhouse/blob/v2/README.md" data-zh="完整部署指南" data-en="Full setup guide">完整部署指南</a><a href="https://github.com/linjiejim/greenhouse/blob/v2/docs/product/migration-v1.md" data-zh="从 v1 迁移" data-en="Moving from v1">从 v1 迁移</a></div>
+        <p
+          data-zh="准备好 Docker 与 Compose。一行命令安装 Postgres 和 Greenhouse v2.0.0，镜像固定为 ghcr.io/linjiejim/greenhouse:2.0.0。"
+          data-en="Have Docker and Compose ready. One command installs Postgres and Greenhouse v2.0.0, pinned to ghcr.io/linjiejim/greenhouse:2.0.0."
+        >
+          准备好 Docker 与 Compose。一行命令安装 Postgres 和 Greenhouse v2.0.0，镜像固定为
+          ghcr.io/linjiejim/greenhouse:2.0.0。
+        </p>
+        <pre><code>curl -fsSL https://greenhouse.linjiejim.com/install.sh | bash -s -- \
+  --version 2.0.0 --email you@example.com</code></pre>
+        <p
+          data-zh="安装器生成并保留密钥，用 PUBLIC_URL 设置访问地址；数据库仅绑定本机，从 55432 起选择空闲端口。用 --domain greenhouse.example.com 可配置 Caddy HTTPS。"
+          data-en="The installer generates and keeps your keys, sets the address with PUBLIC_URL, and binds Postgres to an available loopback port starting at 55432. Add --domain greenhouse.example.com for HTTPS through Caddy."
+        >
+          安装器生成并保留密钥，用 PUBLIC_URL 设置访问地址；数据库仅绑定本机，从 55432 起选择空闲端口。用 --domain
+          greenhouse.example.com 可配置 Caddy HTTPS。
+        </p>
+        <p
+          data-zh="从日志中找到「Activate the first admin」的一次性激活链接，设置首位管理员密码。登录后在「管理 → 服务」配置模型，邀请内部成员。"
+          data-en="Find the one-time “Activate the first admin” link in the logs and set the first admin’s password. Then configure models in Admin → Services and invite internal members."
+        >
+          从日志中找到「Activate the first admin」的一次性激活链接，设置首位管理员密码。登录后在「管理 →
+          服务」配置模型，邀请内部成员。
+        </p>
+        <pre><code>cd ~/greenhouse-v2
+docker compose logs api | grep 'Activate the first admin'</code></pre>
+        <p
+          data-zh="Compose 中的 Agent 电脑使用 E2B 或兼容服务：需要沙箱 Key、已构建的电脑模板及出网权限，运行会产生服务费用。配置 SANDBOX_PROVIDER=e2b、SANDBOX_API_KEY 与 SANDBOX_E2B_TEMPLATE；不挂载 Docker socket。"
+          data-en="Agent computers in Compose use E2B or a compatible host. You need a sandbox key, a built computer template and outbound access; running computers incur provider charges. Set SANDBOX_PROVIDER=e2b, SANDBOX_API_KEY and SANDBOX_E2B_TEMPLATE. Do not mount a Docker socket."
+        >
+          Compose 中的 Agent 电脑使用 E2B 或兼容服务：需要沙箱 Key、已构建的电脑模板及出网权限，运行会产生服务费用。配置
+          SANDBOX_PROVIDER=e2b、SANDBOX_API_KEY 与 SANDBOX_E2B_TEMPLATE；不挂载 Docker socket。
+        </p>
+        <p
+          data-zh="v2 使用全新数据库，无法从 v1 原地升级。保留 v1 的数据和密钥，在新目录与新卷里安装；需要历史记录请先阅读迁移指南。"
+          data-en="v2 starts with a new database and cannot upgrade v1 in place. Keep v1 data and keys intact; install in a fresh directory with new volumes. Read the migration guide if you need your history."
+        >
+          v2 使用全新数据库，无法从 v1 原地升级。保留 v1
+          的数据和密钥，在新目录与新卷里安装；需要历史记录请先阅读迁移指南。
+        </p>
+        <div class="actions">
+          <a
+            class="primary"
+            href="https://github.com/linjiejim/greenhouse#start-with-docker-compose"
+            data-zh="完整部署指南"
+            data-en="Full setup guide"
+            >完整部署指南</a
+          ><a
+            href="https://github.com/linjiejim/greenhouse#agent-computers"
+            data-zh="E2B 电脑配置"
+            data-en="E2B computer setup"
+            >E2B 电脑配置</a
+          ><a
+            href="https://github.com/linjiejim/greenhouse/blob/main/docs/product/migration-v1.md"
+            data-zh="v1 迁移指南"
+            data-en="v1 migration guide"
+            >v1 迁移指南</a
+          >
+        </div>
       </section>
     </main>
-    <footer><span>Greenhouse · MIT</span><a href="https://github.com/linjiejim/greenhouse/blob/v2/docs/product/features.md" data-zh="功能与交付状态" data-en="Feature and delivery status">功能与交付状态</a></footer>
+    <footer>
+      <span>Greenhouse · v2.0.0 · MIT</span>
+      <div class="footer-links">
+        <a href="https://github.com/linjiejim/greenhouse">GitHub</a
+        ><a href="https://github.com/linjiejim/greenhouse/tree/main/docs/product" data-zh="文档" data-en="Docs">文档</a
+        ><a href="https://github.com/linjiejim/greenhouse/releases" data-zh="发布记录" data-en="Releases">发布记录</a>
+      </div>
+    </footer>
     <script>
+      const film = document.querySelector('video');
+      const playFilm = document.getElementById('play-film');
+      playFilm.addEventListener('click', async () => {
+        film.controls = true;
+        try {
+          await film.play();
+          playFilm.hidden = true;
+          film.focus();
+        } catch {
+          film.controls = false;
+          playFilm.hidden = false;
+        }
+      });
       const switcher = document.getElementById('language');
       switcher.addEventListener('click', () => {
         const language = document.documentElement.lang === 'en' ? 'zh' : 'en';
         document.documentElement.lang = language === 'zh' ? 'zh-CN' : 'en';
         document.querySelectorAll('[data-zh][data-en]').forEach((element) => {
-          // Both language strings are static, repository-owned text.
-          if (element.tagName === 'H1') element.innerHTML = element.dataset[language];
-          else element.textContent = element.dataset[language];
+          element.textContent = element.dataset[language];
         });
         document.querySelectorAll('[data-alt-zh]').forEach((element) => {
           element.alt = element.dataset[language === 'zh' ? 'altZh' : 'altEn'];
@@ -126,7 +912,10 @@ docker compose -p greenhouse-v2 up -d --build</code></pre>
         });
         switcher.textContent = language === 'zh' ? 'English' : '中文';
         switcher.setAttribute('aria-label', language === 'zh' ? 'Switch to English' : '切换到中文');
-        document.title = language === 'zh' ? 'Greenhouse v2 · 人与 Agent 一起工作的地方' : 'Greenhouse v2 · Your Agents. A shared place to work.';
+        document.title =
+          language === 'zh'
+            ? 'Greenhouse v2.0.0 · 自己的 AI 同事，一起工作的地方'
+            : 'Greenhouse v2.0.0 · Your AI colleagues, in one self-hosted workspace.';
       });
     </script>
   </body>

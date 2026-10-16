@@ -106,6 +106,7 @@ import {
 } from './mailbox.js';
 import { placeOf, redact, seal, unseal } from './secrets.js';
 import { findConnection, markConnection, saveConnection, type KeySecrets } from './store.js';
+import { han } from '@greenhouse/utils/i18n';
 
 type CreateInput = z.output<typeof createConnectorInputSchema>;
 type UpdateInput = z.output<typeof updateConnectorInputSchema>;
@@ -400,13 +401,13 @@ export function createConnectorsService(deps: {
       return {
         ok: false,
         reason: 'not_connected',
-        message: `${found.name} works with each member's own account, and this member has not connected it: they need to ${how} in 设置 → 连接.`,
+        message: han`${found.name} works with each member's own account, and this member has not connected it: they need to ${how} in 设置 → 连接.`,
       };
     }
     const expired = {
       ok: false as const,
       reason: 'needs_reauth' as const,
-      message: `The member's connection to ${found.name} no longer works: they need to reconnect it in 设置 → 连接.`,
+      message: han`The member's connection to ${found.name} no longer works: they need to reconnect it in 设置 → 连接.`,
     };
     if (connection.status === 'needs_reauth' || !connection.secretsEnc) return expired;
     if (found.authMode === 'per_member') {
@@ -880,7 +881,7 @@ export function createConnectorsService(deps: {
       const started = Date.now();
       const listing = await listAs(found, actorId);
       if (!listing.ok && listing.missing) {
-        throw conflict('connection_required', `Connect your own account to ${found.name} in 设置 → 连接 first.`);
+        throw conflict('connection_required', han`Connect your own account to ${found.name} in 设置 → 连接 first.`);
       }
       await getDb()
         .update(connectors)
@@ -1264,7 +1265,7 @@ export function createConnectorsService(deps: {
         if (personal(found.authMode) && isAuthFailure(error)) {
           await refused(resolved, reason);
           throw new Error(
-            `${found.name} refused the member's ${found.authMode === 'oauth' ? 'sign-in' : 'key'}: they need to reconnect it in 设置 → 连接.`,
+            han`${found.name} refused the member's ${found.authMode === 'oauth' ? 'sign-in' : 'key'}: they need to reconnect it in 设置 → 连接.`,
           );
         }
         logger.warn('[connectors] a tool failed', { connector: found.slug, tool: toolName, error: reason });

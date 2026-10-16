@@ -1,4 +1,4 @@
-import { interpolate } from '@greenhouse/utils/i18n';
+import { han, interpolate } from '@greenhouse/utils/i18n';
 import { z } from 'zod';
 import {
   SKILL_DESCRIPTION_MAX,
@@ -85,7 +85,7 @@ export function skillMutationTool(skills: SkillsService) {
       const proposal = proposalSchema.safeParse(request.payload.skill);
       const name = proposal.success ? proposal.data.name : '';
       if (request.status === 'rejected')
-        return { line: zh ? `没有存为技能：${name}` : `Not saved as a skill: ${name}`, note: null };
+        return { line: zh ? han`没有存为技能：${name}` : `Not saved as a skill: ${name}`, note: null };
       if (request.status !== 'approved') {
         return { line: zh ? '存为技能的提议已过期' : 'The proposal to save a skill expired', note: null };
       }
@@ -95,16 +95,16 @@ export function skillMutationTool(skills: SkillsService) {
         }
         const saved = await skills.saveTemplate(ctx.memberId, proposal.data);
         // The transcript line is enough; waking the Agent would only get a thank-you.
-        return { line: zh ? `已存为技能 /${saved.name}` : `Saved as the skill /${saved.name}`, note: null };
+        return { line: zh ? han`已存为技能 /${saved.name}` : `Saved as the skill /${saved.name}`, note: null };
       } catch (error) {
         const message = toErrorMessage(error);
         return {
-          line: zh ? `没能存为技能：${message}` : `Could not save the skill: ${message}`,
+          line: zh ? han`没能存为技能：${message}` : `Could not save the skill: ${message}`,
           note: `The member accepted saving the skill "${name}", but it failed: ${message} Propose it again with that fixed if it still matters.`,
         };
       }
     },
     summarize: (args, _output, locale) =>
-      locale === 'zh' ? `提议存为技能：${args.name}` : `Proposed saving a skill: ${args.name}`,
+      locale === 'zh' ? han`提议存为技能：${args.name}` : `Proposed saving a skill: ${args.name}`,
   });
 }

@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { questionFieldSchema, type QuestionField } from '@greenhouse/contract';
 import { defineTool } from './define.js';
+import { han } from '@greenhouse/utils/i18n';
 
 /** A question the Agent cannot go on without: a short form, and the turn waits for the answer. */
 export function askUserTool() {
@@ -38,17 +39,17 @@ export function askUserTool() {
           ([key, value]) => `${fields.find((field) => field.key === key)?.label ?? key}: ${value}`,
         );
         return {
-          line: zh ? `已回答：${question}` : `Answered: ${question}`,
+          line: zh ? han`已回答：${question}` : `Answered: ${question}`,
           note: `The member answered your question "${question}":\n${lines.join('\n')}`,
         };
       }
       if (request.status === 'rejected') {
         return {
-          line: zh ? `没有回答：${question}` : `Not answered: ${question}`,
+          line: zh ? han`没有回答：${question}` : `Not answered: ${question}`,
           note: `The member dismissed your question "${question}". Go on without it, or ask once more only if you truly cannot.`,
         };
       }
-      return { line: zh ? `问题已过期：${question}` : `Question expired: ${question}`, note: null };
+      return { line: zh ? han`问题已过期：${question}` : `Question expired: ${question}`, note: null };
     },
     summarize: (_args, _output, locale) => (locale === 'zh' ? '提了一个问题' : 'Asked a question'),
   });

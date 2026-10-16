@@ -121,6 +121,15 @@ function chunk(response, body) {
   );
 }
 
+// Explicitly opt-in launch scenario; normal browser tests keep their existing replies.
+function captureReply(messages) {
+  const path = process.env.FAKE_LLM_CAPTURE_FIXTURE;
+  if (!path) return null;
+  const replies = JSON.parse(readFileSync(path, 'utf8')).replies;
+  const said = lastUser(messages);
+  return replies.find((reply) => said.includes(reply.prompt)) ?? null;
+}
+
 async function stream(response, request) {
   response.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache' });
   const messages = request.messages ?? [];
@@ -161,7 +170,11 @@ async function stream(response, request) {
     chunk(response, { choices: [{ index: 0, delta: {}, finish_reason: 'stop' }] });
   };
 
-  if (!afterTool && /^u4a forget/i.test(said)) {
+  const capture = captureReply(messages);
+  if (capture) {
+    if (!afterTool && capture.tool) tool(capture.tool.name, capture.tool.arguments);
+    else await say(capture.text, 5);
+  } else if (!afterTool && /^u4a forget/i.test(said)) {
     tool('memory', { action: 'remember', title: '周报每周五发' });
   } else if (afterTool && /^u4a forget/i.test(said) && /"remembered":"([^"]+)"/.test(toolText)) {
     tool('memory', { action: 'forget', id: /"remembered":"([^"]+)"/.exec(toolText)[1] });
@@ -368,13 +381,15 @@ function complete(response, request) {
     return;
   }
   const system = JSON.stringify(request.messages?.filter((message) => message.role === 'system') ?? []);
-  const text = system.includes('read-only helper run')
-    ? 'A bounded helper summary.'
-    : system.includes('Write a title for this conversation')
-      ? 'E2E chat'
-      : system.includes('You maintain the rolling summary')
-        ? '{}'
-        : `Echo: ${lastUser(request.messages ?? [])}`;
+  const text =
+    captureReply(request.messages ?? [])?.text ??
+    (system.includes('read-only helper run')
+      ? 'A bounded helper summary.'
+      : system.includes('Write a title for this conversation')
+        ? 'E2E chat'
+        : system.includes('You maintain the rolling summary')
+          ? '{}'
+          : `Echo: ${lastUser(request.messages ?? [])}`);
   response.writeHead(200, { 'content-type': 'application/json' });
   response.end(
     JSON.stringify({

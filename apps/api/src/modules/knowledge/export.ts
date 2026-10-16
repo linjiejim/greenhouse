@@ -11,6 +11,7 @@
 
 import { Zip, ZipDeflate, ZipPassThrough } from 'fflate';
 import { replaceDocLinks, type FileLinks } from './markdown.js';
+import { han } from '@greenhouse/utils/i18n';
 
 export const MAX_EXPORT_DOCS = 5_000;
 export const MAX_EXPORT_FOLDERS = 5_000;
@@ -109,18 +110,18 @@ const COPY = {
     exported: '导出时间',
     scope: '范围',
     counts: (docs: number, folders: number, files: number) =>
-      `文档 ${docs} 篇 · 文件夹 ${folders} 个 · 文件 ${files} 个`,
+      han`文档 ${docs} 篇 · 文件夹 ${folders} 个 · 文件 ${files} 个`,
     about:
       '目录结构与知识库一致：每篇文档是一个 `.md` 文件，顶部记录了标题、编号和版本；文档里的图片在 `assets/`。这是导出时的快照，之后的修改不会出现在这里。',
     notesTitle: '# 导出说明',
     notesIntro: '以下内容没有完整打包：',
-    tooManyDocs: (limit: number) => `文档超过 ${limit} 篇，其余没有导出。`,
-    tooManyFolders: (limit: number) => `文件夹超过 ${limit} 个，其余文件夹和其中的内容没有导出。`,
-    tooManyFiles: (limit: number) => `文件超过 ${limit} 个，其余没有打包。`,
-    tooManyAssets: (limit: number) => `文档里引用的文件超过 ${limit} 个，其余保留了原链接。`,
-    tooBig: (name: string) => `文件总量超过上限，没有打包：${name}`,
-    missing: (name: string) => `存储里找不到这个文件：${name}`,
-    unreadable: (doc: string) => `《${doc}》引用的文件你无法打开，保留了原链接。`,
+    tooManyDocs: (limit: number) => han`文档超过 ${limit} 篇，其余没有导出。`,
+    tooManyFolders: (limit: number) => han`文件夹超过 ${limit} 个，其余文件夹和其中的内容没有导出。`,
+    tooManyFiles: (limit: number) => han`文件超过 ${limit} 个，其余没有打包。`,
+    tooManyAssets: (limit: number) => han`文档里引用的文件超过 ${limit} 个，其余保留了原链接。`,
+    tooBig: (name: string) => han`文件总量超过上限，没有打包：${name}`,
+    missing: (name: string) => han`存储里找不到这个文件：${name}`,
+    unreadable: (doc: string) => han`《${doc}》引用的文件你无法打开，保留了原链接。`,
   },
   en: {
     title: '# Greenhouse knowledge export',
