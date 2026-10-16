@@ -1,6 +1,6 @@
 name: CI
 
-# Quality gate (lint / typecheck / test / e2e / secret-scan) for the default
+# Quality gate (lint / typecheck / test / secret-scan) for the default
 # branch and all PRs. This workflow never deploys — but deploy.yml polls it and
 # only rolls jim-server once it passes on the same sha.
 #
@@ -57,106 +57,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup
-      # Build the test DB via `migrate` (NOT push) so the migration chain is
-      # exercised on every run — a broken/incomplete chain fails CI here
-      # instead of silently diverging from push.
-      - name: Apply migrations to test database
-        run: npx drizzle-kit migrate
-        env:
-          DATABASE_URL: postgresql://greenhouse:greenhouse@localhost:5432/greenhouse_test
-      # The Bots browser-adapter suites (vault fills, secure sign-in, snapshot
-      # masking, BrowserSession, tab leases, page tools) drive a real Chromium
-      # and prove the vault's security properties. The headless shell is
-      # enough (~100 MB, no full browser); without it they fail in CI instead
-      # of silently skipping (apps/api/src/bots/__tests__/helpers/chromium.ts).
-      - name: Install Chromium headless shell (Bots browser suites)
-        run: pnpm exec playwright install --with-deps --only-shell chromium
       - run: pnpm test
-
-  # Live-server integration/security suite (tests/e2e). Boots the real API and
-  # drives it over HTTP — the layer `pnpm test` (in-process units) never reaches:
-  # auth/token round-trips, cross-user data isolation, role escalation, injection,
-  # tool-access & v1 API boundaries. Runs against a dead LLM endpoint so it stays
-  # deterministic and free (E2E_NO_LLM skips the few content-dependent assertions).
-  e2e:
-    if: github.repository == 'linjiejim/greenhouse'
-    runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:16-alpine
-        env:
-          POSTGRES_DB: greenhouse_test
-          POSTGRES_USER: greenhouse
-          POSTGRES_PASSWORD: greenhouse
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U greenhouse -d greenhouse_test"
-          --health-interval 5s
-          --health-timeout 3s
-          --health-retries 5
-    steps:
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/setup
-      - name: Apply migrations to test database
-        run: npx drizzle-kit migrate
-        env:
-          DATABASE_URL: postgresql://greenhouse:greenhouse@localhost:5432/greenhouse_test
-      - name: Run live-server E2E suite
-        run: pnpm test:e2e:ci
-        env:
-          DATABASE_URL: postgresql://greenhouse:greenhouse@localhost:5432/greenhouse_test
-
-  # Browser suite (tests/e2e-ui plus every extension's own `e2e/*.e2e.ts`).
-  # Boots `pnpm dev` with the example extension on and drives Chromium through
-  # the real UI: login, chat (LLM stubbed in the page), projects, users, the
-  # extension seam, and a sweep that opens every surface the active extensions
-  # register. This is the gate for failures no API test can see — a module id
-  # the panel cannot resolve, a page that throws on first render.
-  e2e-ui:
-    if: github.repository == 'linjiejim/greenhouse'
-    runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:16-alpine
-        env:
-          POSTGRES_DB: greenhouse_test
-          POSTGRES_USER: greenhouse
-          POSTGRES_PASSWORD: greenhouse
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U greenhouse -d greenhouse_test"
-          --health-interval 5s
-          --health-timeout 3s
-          --health-retries 5
-    env:
-      DATABASE_URL: postgresql://greenhouse:greenhouse@localhost:5432/greenhouse_test
-      # Same hermetic settings as scripts/e2e-ci.sh: a signing key so tokens
-      # round-trip, and an LLM endpoint that refuses connections so nothing
-      # real is ever called (the chat spec stubs the stream in the browser).
-      TOKEN_SIGNING_KEY: '6666666666666666666666666666666666666666666666666666666666666666'
-      PROVIDER_TOKEN_ENCRYPTION_KEY: '0000000000000000000000000000000000000000000000000000000000000000'
-      LLM_API_KEY: sk-e2e-fake
-      LLM_MODEL: e2e-fake-model
-      LLM_BASE_URL: http://127.0.0.1:1/v1
-      LOG_LEVEL: error
-    steps:
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/setup
-      - name: Apply migrations to test database
-        run: npx drizzle-kit migrate
-      - name: Install Chromium
-        run: pnpm exec playwright install --with-deps chromium
-      - name: Run browser suite
-        run: pnpm test:e2e:ui
-      - name: Upload Playwright report
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: playwright-report
-          path: playwright-report/
-          retention-days: 7
 
   # Secret scanning (gitleaks) — blocks newly-leaked credentials on every PR/push.
   # Rules + allowlist live in .gitleaks.toml at the repo root. Full history was

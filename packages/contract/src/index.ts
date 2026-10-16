@@ -1,24 +1,41 @@
-/**
- * @greenhouse/contract — the typed API contract shared by all clients.
- *
- * `AppType` is the full Hono route schema inferred from the server's actual
- * implementation (apps/api mountRoutes) — responses derive from `c.json(...)`
- * return values, which in turn derive from @greenhouse/db `$inferSelect` rows.
- * There is no handwritten endpoint mirror anywhere in this chain.
- *
- * Usage (any client):
- *   import { hc, type AppType } from '@greenhouse/contract';
- *   const client = hc<AppType>(BASE_URL, { fetch: myAuthFetch });
- *   const res = await client.api.profiles.$get();
- *   if (res.ok) { const { profiles } = await res.json(); }
- *
- * ⚠️ Import ONLY types from @greenhouse/api here (`export type`/`import type`).
- * A value import would execute the server entry point (it calls main()).
- *
- * Streaming endpoints (chat NDJSON and sync apply) return raw streams —
- * clients keep their hand-rolled readers for those; hc still types the
- * paths and request shapes.
- */
+export * from './common.js';
+export * from './auth.js';
+export * from './oauth.js';
+export * from './members.js';
+export * from './workspace.js';
+export * from './providers.js';
+export * from './connectors.js';
+export * from './agents.js';
+export * from './conversations.js';
+export * from './realtime.js';
+export * from './requests.js';
+export * from './notifications.js';
+export * from './channels.js';
+export * from './mail.js';
+export * from './runs.js';
+export * from './schedules.js';
+export * from './files.js';
+export * from './voice.js';
+export * from './skills.js';
+export * from './computers.js';
+export * from './search.js';
+export * from './usage.js';
+export * from './vault.js';
+export * from './knowledge.js';
+export * from './tables.js';
+export * from './tables-cells.js';
+export * from './tables-forms.js';
+export * from './tables-imports.js';
+export * from './tables-cards.js';
+export * from './tables-formula.js';
+export * from './apps.js';
+export * from './approvals.js';
 
-export type { AppType } from '@greenhouse/api';
-export { hc } from 'hono/client';
+export * from './tables-automations.js';
+export * from './metrics.js';
+export * from './media.js';
+
+export type { AppCardAnswer } from './apps-client.js';
+
+export * from './operations.js';
+export * from './extensions.js';

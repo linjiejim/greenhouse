@@ -5,10 +5,9 @@
 import { act, createElement, type ReactElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { StreamingMessageBubble } from '../chat/streaming-message-bubble';
 import { PLANT_SETTLE_MS, PlantAvatar, PlantAvatarStack, type PlantAvatarProps } from './plant-avatar';
 import { morphPlantAvatar } from './plant-morph';
-import { buildPlantAvatarSvg, ensurePlantAvatarStyles } from './plant-avatar-svg';
+import { buildPlantAvatarSvg, ensurePlantAvatarStyles, plantPalette } from './plant-avatar-svg';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -60,12 +59,28 @@ describe('<PlantAvatar/>', () => {
     expect(svg().outerHTML).toContain('var(--pa-body,');
   });
 
+  it('paints the dark disc and body under a [data-theme="dark"] ancestor, the Native Haven theme switch', () => {
+    const { light, dark } = plantPalette('ivy');
+    const tone = (name: string) => getComputedStyle(svg()).getPropertyValue(`--pa-${name}`).trim();
+    host.setAttribute('data-theme', 'dark');
+    avatar({ plant: 'ivy', size: 'sm' });
+    expect(tone('disc')).toBe(dark.disc);
+    expect(tone('body')).toBe(dark.body);
+    act(() => root.unmount());
+    root = createRoot(host);
+    host.setAttribute('data-theme', 'light');
+    avatar({ plant: 'ivy', size: 'sm' });
+    // Unset in light: every paint falls back to its light hex.
+    expect(tone('disc')).toBe('');
+    expect(svg().outerHTML).toContain(`var(--pa-disc,${light.disc})`);
+  });
+
   it('resolves stored avatars (plant > template > legacy colour) and forces the glyph LOD when compact', () => {
     avatar({ avatar: { color: 'ocean' }, stableId: 'custom:1', size: 'xs' });
     expect(svg().getAttribute('class')).toContain('pa-echeveria');
     expect(svg().getAttribute('class')).toContain('pa-lod-avatar');
-    avatar({ avatar: { color: 'ocean' }, templateKey: 'chief', size: 'xs', compact: true });
-    expect(svg().getAttribute('class')).toContain('pa-ivy');
+    avatar({ avatar: { color: 'ocean' }, templateKey: 'researcher', size: 'xs', compact: true });
+    expect(svg().getAttribute('class')).toContain('pa-dandelion');
     expect(svg().getAttribute('class')).toContain('pa-lod-glyph');
     avatar({ plant: 'lotus', avatar: { color: 'ocean' }, size: 'sm', compact: true });
     expect(svg().getAttribute('class')).toContain('pa-lotus');
@@ -264,14 +279,5 @@ describe('<PlantAvatarStack/>', () => {
     const chips = [...host.querySelector('[data-testid="plant-avatar-stack"]')!.children] as HTMLElement[];
     for (const chip of chips) expect(chip.className).toContain('ring-primary-subtle');
     expect(chips[0]!.className).not.toContain('ring-surface-raised');
-  });
-});
-
-describe('<StreamingMessageBubble/> initial wait', () => {
-  it('shows the built-in sprout thinking', () => {
-    render(createElement(StreamingMessageBubble, { text: '', reasoning: '', toolCalls: [], isStreaming: true }));
-    const el = host.querySelector('svg.pa')!;
-    expect(el.getAttribute('class')).toContain('pa-sprout');
-    expect(el.getAttribute('data-state')).toBe('thinking');
   });
 });

@@ -23,10 +23,12 @@ vi.mock('./token-storage', () => ({
   clearTokens: () => clearTokens(),
 }));
 
-const { api, onStation, setOnUnauthorized, refreshTokens } = await import('./client');
+const { api, onStation, setOnUnauthorized, refreshTokens, setTransport, get } = await import('./client');
 
 type Call = { url: string; auth: string | null };
 let calls: Call[] = [];
+/** What each refresh sent. */
+let refreshBodies: string[] = [];
 let answer: (call: Call) => Promise<Response>;
 
 function switchTo(sid: string, base: string, access: string): void {
@@ -35,7 +37,7 @@ function switchTo(sid: string, base: string, access: string): void {
 
 const status = (code: number) => new Response(code === 200 ? '{}' : null, { status: code });
 const rotated = (access: string, refresh: string) =>
-  new Response(JSON.stringify({ accessToken: access, refreshToken: refresh }), { status: 200 });
+  new Response(JSON.stringify({ access_token: access, refresh_token: refresh, expires_in: 14400 }), { status: 200 });
 const refreshCalls = () => calls.filter((c) => c.url.endsWith('/api/auth/refresh')).map((c) => c.url);
 /** Let every settled promise's continuation run. */
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
@@ -43,11 +45,13 @@ const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 beforeEach(() => {
   switchTo('a', 'https://a.example', 'A-token');
   calls = [];
+  refreshBodies = [];
   clearTokens.mockReset();
   setTokens.mockReset();
   answer = async () => status(200);
   vi.stubGlobal('fetch', (url: string, init: RequestInit) => {
     const call = { url, auth: new Headers(init.headers).get('Authorization') };
+    if (url.endsWith('/api/auth/refresh')) refreshBodies.push(typeof init.body === 'string' ? init.body : '');
     calls.push(call);
     return answer(call);
   });
@@ -58,7 +62,9 @@ describe('api() 401 handling', () => {
     let first = true;
     answer = async (call) => {
       if (call.url.endsWith('/api/auth/refresh')) {
-        return new Response(JSON.stringify({ accessToken: 'A2', refreshToken: 'r2' }), { status: 200 });
+        return new Response(JSON.stringify({ access_token: 'A2', refresh_token: 'r2', expires_in: 14400 }), {
+          status: 200,
+        });
       }
       if (first) {
         first = false;
@@ -75,6 +81,9 @@ describe('api() 401 handling', () => {
       'https://a.example/api/x',
     ]);
     expect(calls[2]?.auth).toBe('Bearer A2');
+    // API v2: the single-use refresh token goes in the body, never as a bearer
+    expect(refreshBodies.map((body) => JSON.parse(body))).toEqual([{ refresh_token: 'a-refresh' }]);
+    expect(calls[1]?.auth).toBeNull();
   });
 
   it('a 401 from the old station after a switch is handed back untouched', async () => {
@@ -245,14 +254,17 @@ describe('cancelled startup requests', () => {
     expect(clearTokens).not.toHaveBeenCalled();
   });
 
-  it.each([undefined, new AbortController().signal])('preserves credentials on a refresh network failure (signal: %s)', async (signal) => {
-    answer = async (call) => {
-      if (call.url.endsWith('/api/auth/refresh')) throw new Error('offline');
-      return status(401);
-    };
-    await expect(api('/api/auth/me', { signal })).rejects.toThrow('offline');
-    expect(clearTokens).not.toHaveBeenCalled();
-  });
+  it.each([undefined, new AbortController().signal])(
+    'preserves credentials on a refresh network failure (signal: %s)',
+    async (signal) => {
+      answer = async (call) => {
+        if (call.url.endsWith('/api/auth/refresh')) throw new Error('offline');
+        return status(401);
+      };
+      await expect(api('/api/auth/me', { signal })).rejects.toThrow('offline');
+      expect(clearTokens).not.toHaveBeenCalled();
+    },
+  );
 
   it('lets retry start a fresh rotation after timeout and discards the abandoned answer', async () => {
     const controller = new AbortController();
@@ -283,7 +295,6 @@ describe('cancelled startup requests', () => {
   });
 });
 
-
 it('expires a background refresh too, so startup retries never join it forever', async () => {
   vi.useFakeTimers();
   try {
@@ -297,4 +308,33 @@ it('expires a background refresh too, so startup retries never join it forever',
   } finally {
     vi.useRealTimers();
   }
+});
+
+it('sends multipart bytes through the native transport without turning them into JSON', async () => {
+  const form = new FormData();
+  form.append('file', new Blob(['audio bytes'], { type: 'audio/mp4' }), 'recording.m4a');
+  const native = vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) => {
+    expect(init?.body).toBe(form);
+    expect(new Headers(init?.headers).get('Authorization')).toBe('Bearer A-token');
+    expect(new Headers(init?.headers).has('Content-Type')).toBe(false);
+    return status(200);
+  });
+  setTransport(native);
+  try {
+    expect((await api('/api/voice/transcriptions', { method: 'POST', body: form })).ok).toBe(true);
+    expect(native).toHaveBeenCalledOnce();
+  } finally {
+    setTransport((...args) => fetch(...args));
+  }
+});
+
+it('keeps body read failures and unreadable JSON out of successful API results', async () => {
+  answer = async () => {
+    const res = status(200);
+    vi.spyOn(res, 'text').mockRejectedValue(new Error('Connection ended'));
+    return res;
+  };
+  expect(await get('/api/me/push-devices')).toMatchObject({ ok: false, code: 'network' });
+  answer = async () => new Response('unreadable', { status: 200 });
+  expect(await get('/api/me/push-devices')).toMatchObject({ ok: false, code: 'invalid_response' });
 });

@@ -11,11 +11,9 @@
  * load the new pair (auth.switchStation → bootstrap → hydrateTokens).
  *
  * First-launch seeding: the build's default stations (STATIONS.defaults, from
- * EXPO_PUBLIC_API_BASE_URL) are seeded signed-out with the first one active,
- * and a legacy (pre-station) signed-in session is adopted onto that first
- * station. With no defaults, only a legacy session or __DEV__ seeds a station
- * built from DEFAULT_API_BASE — the generic store build starts empty and the
- * user adds their server.
+ * EXPO_PUBLIC_API_BASE_URL) are seeded signed-out with the first one active.
+ * With no defaults, only __DEV__ seeds a station built from DEFAULT_API_BASE —
+ * the generic store build starts empty and the user adds their server.
  *
  * Single-station builds (IS_SINGLE_STATION): the registry is locked to the
  * default station — hydrate() re-locks it on every run and add / switchTo /
@@ -24,9 +22,10 @@
 
 import { create } from 'zustand';
 import { checkAborted, withConnectionDeadline } from '../api/connection-deadline';
+import { apiMismatch, parseBootstrap, type ApiMismatch } from '../api/compat';
 import { DEFAULT_API_BASE, IS_SINGLE_STATION, STATIONS } from '../config';
 import type { StationConfig } from '../shared/greenhouse-config';
-import { detachTokens, loadPref, savePref, migrateLegacyTokens, purgeStationTokens } from '../api/token-storage';
+import { detachTokens, loadPref, savePref, purgeStationTokens } from '../api/token-storage';
 
 export interface StationRecord {
   id: string;
@@ -88,28 +87,28 @@ async function getJson(url: string, signal: AbortSignal): Promise<Record<string,
   }
 }
 
+/** What a station's preflight found: a Greenhouse that speaks this app's API, or why not. */
+export type StationProbe =
+  | { ok: true; productName?: string }
+  /** `app_outdated`: the server is newer than this app; `server_outdated`: it is a v1 server. */
+  | { ok: false; mismatch?: ApiMismatch };
+
 /**
- * Is there a Greenhouse API at this origin? (no auth needed)
+ * Is there a Greenhouse at this origin that speaks this app's API? (no auth needed)
  *
- * Current servers: `GET /api/bootstrap` — the public, side-effect-free pre-login
- * personalization endpoint (`{ product_name, logo, theme_tokens }`); auth is
- * always on, and `productName` doubles as a default station name. Older
- * servers (before the 2026-09 platform sync removed it): `GET /api/auth/status`
- * → `{ authEnabled }`, where `false` means a dev server the app can't use.
+ * `GET /api/bootstrap` is the public, side-effect-free pre-sign-in endpoint: its `api_version`
+ * says which API the server speaks (../api/compat.ts) and its `name` doubles as a default
+ * station name. One connection budget covers the request and its body.
  */
-export async function probeStation(
-  baseUrl: string,
-): Promise<{ ok: boolean; authEnabled?: boolean; productName?: string }> {
-  return withConnectionDeadline(async (signal) => {
+export async function probeStation(baseUrl: string): Promise<StationProbe> {
+  return withConnectionDeadline(async (signal): Promise<StationProbe> => {
     const boot = await getJson(`${baseUrl}/api/bootstrap`, signal);
-    if (boot && 'product_name' in boot) {
-      const name = typeof boot.product_name === 'string' ? boot.product_name.trim() : '';
-      return { ok: true, authEnabled: true, productName: name || undefined };
-    }
-    const legacy = await getJson(`${baseUrl}/api/auth/status`, signal);
-    if (legacy && typeof legacy.authEnabled === 'boolean') return { ok: true, authEnabled: legacy.authEnabled };
-    return { ok: false };
-  }).catch(() => ({ ok: false }));
+    const mismatch = apiMismatch(boot);
+    if (mismatch) return { ok: false, mismatch };
+    const parsed = parseBootstrap(boot);
+    if (!parsed) return { ok: false };
+    return { ok: true, productName: parsed.name.trim() || undefined };
+  }).catch((): StationProbe => ({ ok: false }));
 }
 
 /** Signed-out record for a configured default: config id, normalized origin. */
@@ -128,7 +127,7 @@ interface StationsState {
   stations: StationRecord[];
   activeId: string | null;
   hydrated: boolean;
-  /** Load the persisted registry (with legacy adoption / first-launch seeding / single-station lock). */
+  /** Load the persisted registry (with first-launch seeding / single-station lock). */
   hydrate: (signal?: AbortSignal) => Promise<void>;
   /** Save a station and make it active; a duplicate origin switches instead. Locked builds ignore other origins. */
   add: (baseUrl: string, name?: string) => Promise<StationRecord>;
@@ -165,14 +164,12 @@ export const useStations = create<StationsState>((set, get) => ({
     let activeId = rawActive;
 
     if (!stations) {
-      // First launch on this install: seed the build's defaults, first one active.
+      // First launch on this install: seed the build's defaults, first one active (a dev build
+      // without any gets one for the build default).
       stations = STATIONS.defaults.map(seedRecord);
-      // A legacy (pre-station) session is adopted onto the first seeded station —
-      // or onto a station built from the build default when nothing is seeded.
-      const first = stations[0] ?? { id: newStationId(), baseUrl: DEFAULT_API_BASE, name: hostLabel(DEFAULT_API_BASE) };
-      const hadLegacySession = await migrateLegacyTokens(first.id);
-      checkAborted(signal);
-      if (stations.length === 0 && (hadLegacySession || __DEV__)) stations = [first];
+      if (stations.length === 0 && __DEV__) {
+        stations = [{ id: newStationId(), baseUrl: DEFAULT_API_BASE, name: hostLabel(DEFAULT_API_BASE) }];
+      }
       activeId = stations[0]?.id ?? null;
       await persist(stations, activeId);
     }

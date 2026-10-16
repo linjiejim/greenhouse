@@ -1,28 +1,29 @@
 /**
- * Authenticated fetch with transparent token refresh.
+ * Authenticated fetch with transparent token refresh, and the typed calls of API v2 built on it.
  *
- * Mirrors the web app's authFetch (apps/web/src/lib/auth.ts) but backed by our
- * async-persisted token store. Used for all JSON requests. The streaming chat
- * path (chat.ts) reuses `refreshTokens()` and `getAccessToken()` directly
- * because it needs expo/fetch for response-body streaming.
+ * Every call to a station goes through `api()`: it attaches the active station's access token,
+ * and on a 401 refreshes once (`POST /api/auth/refresh` with the single-use refresh token — one
+ * refresh at a time per station, however many requests failed) and retries. A refused refresh
+ * (400, 401, 403) ends the session; an outage keeps it.
  *
- * The bearer token only ever goes to the active station's own origin
- * (`onStation`): an absolute URL elsewhere is fetched bare, and its 401 says
- * nothing about this station's session (no refresh, no sign-out).
+ * The bearer token only ever goes to the active station's own origin (`onStation`): an absolute
+ * URL elsewhere is fetched bare, and its 401 says nothing about this station's session.
+ *
+ * `request()` and its verbs answer an `ApiResult`: the parsed body, or a miss carrying the API
+ * error envelope's stable `code` (`network` when nothing came back). They never throw.
  */
 
 import { getApiBase } from '../store/stations';
+import type { TokenPair } from '../shared/contract';
 import { checkAborted, withConnectionDeadline } from './connection-deadline';
-import {
-  getAccessToken,
-  getRefreshToken,
-  getTokenStationId,
-  setTokens,
-  setCachedUser,
-  clearTokens,
-} from './token-storage';
+import { clearTokens, getAccessToken, getRefreshToken, getTokenStationId, setTokens } from './token-storage';
 
 let onUnauthorized: (() => void) | null = null;
+let transport: typeof fetch = (...args) => fetch(...args);
+/** The native app installs Expo fetch so multipart File bodies carry bytes, not URI descriptors. */
+export function setTransport(fetcher: typeof fetch): void {
+  transport = fetcher;
+}
 export function setOnUnauthorized(cb: () => void): void {
   onUnauthorized = cb;
 }
@@ -31,12 +32,11 @@ export function setOnUnauthorized(cb: () => void): void {
 const refreshing = new Map<string | null, { promise: Promise<boolean>; signal?: AbortSignal }>();
 
 /**
- * Refresh the active station's access token. Concurrent callers on one station
- * share one refresh (a refresh token rotates: a second one would race the
- * first). Keyed by station: a caller never joins a refresh another station
- * started — that one answers false once a switch made it stale, and a caller
- * on the new station would read that false as "this session is over" and sign
- * the new station out.
+ * Refresh the active station's access token. Concurrent callers on one station share one
+ * refresh (a refresh token is single use: replaying a spent one ends every session of the
+ * member). Keyed by station: a caller never joins a refresh another station started — that one
+ * answers false once a switch made it stale, and a caller on the new station would read that
+ * false as "this session is over" and sign the new station out.
  */
 export function refreshTokens(signal?: AbortSignal): Promise<boolean> {
   checkAborted(signal);
@@ -59,26 +59,26 @@ async function doRefresh(sid: string | null, signal?: AbortSignal): Promise<bool
   // Origin and refresh token are read in the same tick as `sid` (the mirror follows the active station synchronously).
   const refreshToken = getRefreshToken();
   if (!refreshToken) return false;
-  const res = await fetch(`${getApiBase()}/api/auth/refresh`, {
+  const res = await transport(`${getApiBase()}/api/auth/refresh`, {
     signal,
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ refreshToken }),
+    body: JSON.stringify({ refresh_token: refreshToken }),
   });
   checkAborted(signal);
   if (getTokenStationId() !== sid) return false;
   if (!res.ok) {
-    // Only explicit credential rejection ends the session; outages must be retryable.
-    if (res.status !== 401 && res.status !== 403) throw new Error('Station refresh failed');
+    // Only a refused refresh ends the session; outages must be retryable.
+    if (res.status !== 400 && res.status !== 401 && res.status !== 403) throw new Error('Station refresh failed');
     return false;
   }
-  const data = await res.json();
+  const data = (await res.json()) as Partial<TokenPair>;
   checkAborted(signal);
   // A station switch mid-refresh repoints the mirror — this rotation belongs
   // to the old station, so writing it now would corrupt the new one's slot.
   if (getTokenStationId() !== sid) return false;
-  setTokens(data.accessToken, data.refreshToken);
-  if (data.user) setCachedUser(data.user);
+  if (typeof data.access_token !== 'string' || typeof data.refresh_token !== 'string') return false;
+  setTokens(data.access_token, data.refresh_token);
   return true;
 }
 
@@ -98,8 +98,8 @@ export function onStation(url: string, base: string): boolean {
 }
 
 /**
- * Authenticated fetch against the API. Pass an API-relative path like `/api/sessions`
- * (an absolute URL is fetched as given; it gets the token only on the active station's origin).
+ * Authenticated fetch against the API. Pass an API-relative path like `/api/me` (an absolute URL
+ * is fetched as given; it gets the token only on the active station's origin).
  *
  * The origin and the station whose token rides along are read together. A 401 that
  * comes back after the active station changed belongs to the previous station, so it
@@ -117,7 +117,7 @@ export async function api(path: string, init: RequestInit = {}): Promise<Respons
   const headers = new Headers(init.headers);
   if (token) headers.set('Authorization', `Bearer ${token}`);
 
-  let res = await fetch(url, { ...init, headers });
+  let res = await transport(url, { ...init, headers });
   checkAborted(init.signal);
   // Another origin's 401 is about no session of ours.
   if (!own) return res;
@@ -130,7 +130,7 @@ export async function api(path: string, init: RequestInit = {}): Promise<Respons
       const retryHeaders = new Headers(init.headers);
       const newToken = getAccessToken();
       if (newToken) retryHeaders.set('Authorization', `Bearer ${newToken}`);
-      res = await fetch(url, { ...init, headers: retryHeaders });
+      res = await transport(url, { ...init, headers: retryHeaders });
       checkAborted(init.signal);
       if (res.status === 401 && sameStation()) {
         clearTokens();
@@ -144,13 +144,91 @@ export async function api(path: string, init: RequestInit = {}): Promise<Respons
   return res;
 }
 
-/** Authenticated GET returning parsed JSON, or `fallback` on any failure. */
-export async function apiJson<T>(path: string, fallback: T, init?: RequestInit): Promise<T> {
+/** Why a call came back without its result: the API's error envelope, or `network`. */
+export interface ApiMiss {
+  ok: false;
+  /** HTTP status; 0 when nothing came back. */
+  status: number;
+  /** The envelope's stable snake_case code (`not_found`, `conflict`, …), or `network`. */
+  code: string;
+  /** For people (the server's words); may be empty. */
+  message: string;
+  details?: unknown;
+}
+
+export type ApiResult<T> = { ok: true; data: T } | ApiMiss;
+
+type Query = Record<string, string | number | boolean | null | undefined>;
+
+/** `?a=1&b=x` from the defined entries, or ''. */
+export function queryString(query?: Query): string {
+  const entries = Object.entries(query ?? {}).filter(
+    (entry): entry is [string, string | number | boolean] => entry[1] !== undefined && entry[1] !== null,
+  );
+  if (!entries.length) return '';
+  return `?${entries.map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`).join('&')}`;
+}
+
+/** A response as an `ApiResult`: 204 is `undefined`, any other success its JSON. */
+export async function toResult<T>(res: Response): Promise<ApiResult<T>> {
+  if (res.status === 204) return { ok: true, data: undefined as T };
+  const text = await res.text();
+  let body: unknown;
   try {
-    const res = await api(path, init);
-    if (!res.ok) return fallback;
-    return (await res.json()) as T;
+    body = text ? JSON.parse(text) : undefined;
   } catch {
-    return fallback;
+    body = undefined;
+  }
+  if (res.ok)
+    return body === undefined
+      ? { ok: false, status: res.status, code: 'invalid_response', message: 'The server response could not be read.' }
+      : { ok: true, data: body as T };
+  const error = (body as { error?: { code?: unknown; message?: unknown; details?: unknown } } | undefined)?.error;
+  return {
+    ok: false,
+    status: res.status,
+    code: typeof error?.code === 'string' ? error.code : res.status >= 500 ? 'unavailable' : 'internal',
+    message: typeof error?.message === 'string' ? error.message : '',
+    details: error?.details,
+  };
+}
+
+/** A miss for a call that never got an answer. */
+export function networkMiss(error: unknown): ApiMiss {
+  return { ok: false, status: 0, code: 'network', message: error instanceof Error ? error.message : String(error) };
+}
+
+/** One call to the active station, as an `ApiResult`. JSON bodies are sent as JSON, FormData as is. */
+export async function request<T>(
+  method: string,
+  path: string,
+  options: { body?: unknown; query?: Query; signal?: AbortSignal } = {},
+): Promise<ApiResult<T>> {
+  try {
+    const isForm = typeof FormData !== 'undefined' && options.body instanceof FormData;
+    const res = await api(`${path}${queryString(options.query)}`, {
+      method,
+      signal: options.signal,
+      headers: options.body !== undefined && !isForm ? { 'Content-Type': 'application/json' } : undefined,
+      body: options.body === undefined ? undefined : isForm ? (options.body as FormData) : JSON.stringify(options.body),
+    });
+    return await toResult<T>(res);
+  } catch (error) {
+    return networkMiss(error);
   }
 }
+
+export const get = <T>(path: string, query?: Query, signal?: AbortSignal) => request<T>('GET', path, { query, signal });
+export const post = <T>(path: string, body: unknown = {}) => request<T>('POST', path, { body });
+export const patch = <T>(path: string, body: unknown) => request<T>('PATCH', path, { body });
+export const put = <T>(path: string, body: unknown) => request<T>('PUT', path, { body });
+export const del = <T = void>(path: string, query?: Query) => request<T>('DELETE', path, { query });
+
+/** A read that only matters when it worked: the data, or null. */
+export async function read<T>(call: Promise<ApiResult<T>>): Promise<T | null> {
+  const result = await call;
+  return result.ok ? result.data : null;
+}
+
+/** Path segment for an id (ids are prefix + ULID, but never trust a value pasted into a URL). */
+export const seg = (id: string) => encodeURIComponent(id);

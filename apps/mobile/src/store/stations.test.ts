@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { API_VERSION } from '../shared/contract';
 
 vi.mock('zustand', () => ({ create: () => ({}) }));
 vi.mock('../config', () => ({ DEFAULT_API_BASE: '', IS_SINGLE_STATION: false, STATIONS: { defaults: [] } }));
@@ -10,36 +11,41 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+const json = (body: unknown) => new Response(JSON.stringify(body));
+
 describe('station preflight', () => {
-  it('recognizes current servers and retains legacy compatibility', async () => {
-    const fetch = vi.fn().mockResolvedValueOnce(new Response('{"product_name":"My station"}'));
+  it('recognizes a server that speaks this API by its bootstrap, and names it', async () => {
+    const fetch = vi.fn().mockResolvedValueOnce(json({ api_version: API_VERSION, name: 'My station' }));
     vi.stubGlobal('fetch', fetch);
-    expect(await probeStation('https://station.example')).toEqual({
-      ok: true,
-      authEnabled: true,
-      productName: 'My station',
-    });
-    fetch
-      .mockResolvedValueOnce(new Response(null, { status: 404 }))
-      .mockResolvedValueOnce(new Response('{"authEnabled":false}'));
-    expect(await probeStation('https://old.example')).toEqual({ ok: true, authEnabled: false });
+    expect(await probeStation('https://station.example')).toEqual({ ok: true, productName: 'My station' });
+    expect(fetch.mock.calls[0][0]).toBe('https://station.example/api/bootstrap');
+    fetch.mockResolvedValueOnce(json({ api_version: API_VERSION, name: '  ' }));
+    expect(await probeStation('https://station.example')).toEqual({ ok: true, productName: undefined });
   });
 
-  it('uses one 10-second budget across bootstrap and legacy probes, including body reads', async () => {
-    vi.useFakeTimers();
+  it('says why a Greenhouse on another API cannot be used, and refuses anything else', async () => {
     const fetch = vi
       .fn()
-      .mockImplementationOnce(async () => {
-        await new Promise((resolve) => setTimeout(resolve, 6000));
-        return new Response(null, { status: 404 });
-      })
-      .mockResolvedValueOnce({ ok: true, json: () => new Promise(() => {}) });
+      .mockResolvedValueOnce(json({ product_name: 'Old station', logo: null }))
+      .mockResolvedValueOnce(json({ api_version: API_VERSION + 1, name: 'Next' }))
+      .mockResolvedValueOnce(new Response(null, { status: 404 }))
+      .mockResolvedValueOnce(json({ hello: 'world' }));
+    vi.stubGlobal('fetch', fetch);
+    expect(await probeStation('https://v1.example')).toEqual({ ok: false, mismatch: 'server_outdated' });
+    expect(await probeStation('https://v3.example')).toEqual({ ok: false, mismatch: 'app_outdated' });
+    expect(await probeStation('https://nothing.example')).toEqual({ ok: false });
+    expect(await probeStation('https://other.example')).toEqual({ ok: false });
+  });
+
+  it('uses one 10-second budget for the request and its body', async () => {
+    vi.useFakeTimers();
+    const fetch = vi.fn().mockResolvedValueOnce({ ok: true, json: () => new Promise(() => {}) });
     vi.stubGlobal('fetch', fetch);
     const probe = probeStation('https://slow.example');
     await vi.advanceTimersByTimeAsync(10000);
     expect(await probe).toEqual({ ok: false });
-    expect(fetch).toHaveBeenCalledTimes(2);
-    expect(fetch.mock.calls[1][1].signal.aborted).toBe(true);
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(fetch.mock.calls[0][1].signal.aborted).toBe(true);
   });
 
   it('settles even if native fetch ignores cancellation', async () => {

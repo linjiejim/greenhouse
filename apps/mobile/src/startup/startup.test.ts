@@ -32,6 +32,7 @@ const test = await vi.hoisted(async () => {
     motionListener: null as ((reduced: boolean) => void) | null,
     auth: {
       startupError: null as string | null,
+      mismatch: null as 'app_outdated' | 'server_outdated' | null,
       loading: true,
       user: { id: 'member-a' } as { id: string } | null,
       bootstrap: vi.fn(),
@@ -103,6 +104,8 @@ vi.mock('react-native', () => {
     };
   });
   return {
+    Platform: { OS: 'ios' },
+    Keyboard: { dismiss: vi.fn() },
     View,
     Text: ({ children }: any) => test.React.createElement('span', null, children),
     StyleSheet: { create: (styles: unknown) => styles, absoluteFill: {} },
@@ -120,6 +123,7 @@ vi.mock('react-native-svg', () => ({
   default: ({ children }: any) => test.React.createElement('svg', null, children),
   Path: ({ d, fill }: any) => test.React.createElement('path', { d, fill }),
 }));
+vi.mock('expo/fetch', () => ({ fetch: vi.fn() }));
 vi.mock('expo-font', () => ({ useFonts: () => test.fonts }));
 vi.mock('expo-router', () => ({
   Stack: Object.assign(() => test.renderRoute(), { Screen: () => null }),
@@ -136,14 +140,23 @@ vi.mock('../theme', () => ({
   useTheme: () => ({ colors: { background: 'white', label: 'black' }, hex: { accent: 'green' } }),
   typo: { title2: {} },
 }));
-vi.mock('../store/auth', () => ({ useAuth: (selector: (state: typeof test.auth) => unknown) => selector(test.auth) }));
+vi.mock('../store/auth', () => ({
+  useAuth: Object.assign((selector: (state: typeof test.auth) => unknown) => selector(test.auth), {
+    getState: () => test.auth,
+    subscribe: vi.fn(),
+  }),
+}));
 vi.mock('../store/prefs', () => ({
   usePrefs: (selector: (state: typeof test.prefs) => unknown) => selector(test.prefs),
 }));
+vi.mock('../chat/composer-bridge', () => ({ useComposerBridge: { setState: vi.fn() } }));
 vi.mock('../store/stations', () => ({
-  useStations: (selector: (state: typeof test.station) => unknown) => selector(test.station),
+  useStations: Object.assign((selector: (state: typeof test.station) => unknown) => selector(test.station), {
+    getState: () => test.station,
+    subscribe: vi.fn(),
+  }),
 }));
-vi.mock('../api/client', () => ({ setOnUnauthorized: vi.fn() }));
+vi.mock('../api/client', () => ({ setOnUnauthorized: vi.fn(), setTransport: vi.fn() }));
 vi.mock('../widget/snapshot', () => ({ useWidgetSnapshot: () => {} }));
 vi.mock('../settings/account-language', () => ({ useAccountLanguage: () => {} }));
 vi.mock('../push/use-push', () => ({ usePushBridge: () => {} }));
@@ -157,6 +170,7 @@ vi.mock('../ui/menu', () => ({ MenuHost: () => null }));
 vi.mock('../ui/toast', () => ({ ToastHost: () => null }));
 vi.mock('../lib/i18n', () => ({ useT: () => (key: string) => key }));
 vi.mock('../realtime/realtime-bridge', () => ({ RealtimeBridge: () => null }));
+vi.mock('../shell/mismatch', () => ({ MismatchScreen: () => null }));
 vi.mock('../ui/nav', () => ({
   detailScreen: () => ({}),
   modalScreen: () => ({}),
@@ -380,39 +394,17 @@ describe('root startup reveal', () => {
     expect(covered()).toBe(false);
   });
 
-  it.each([
-    ['knowledge', '[slug]'],
-    ['settings', 'bots'],
-    ['bots', 'request'],
-  ])('a deep-linked %s page does not wait for the hidden home underneath', async (...segments) => {
-    test.auth.loading = false;
-    test.fonts = [true, null];
-    test.segments = segments;
-    await render(h(RootLayout));
-    await advance(MARK_BUILD_MS);
-    expect(fadeCalls()).toHaveLength(1);
-    await advance(FADE_TOTAL_MS);
-    expect(covered()).toBe(false);
-  });
-
-  it.each([['bots'], ['chat', '[id]']])(
-    'a %s forwarder waits for the destination to report readiness',
+  it.each([['agents', '[id]'], ['settings', 'notifications'], ['request']])(
+    'a deep-linked %s page does not wait for the hidden home underneath',
     async (...segments) => {
       test.auth.loading = false;
       test.fonts = [true, null];
       test.segments = segments;
       await render(h(RootLayout));
       await advance(MARK_BUILD_MS);
-      expect(fadeCalls()).toHaveLength(0);
-      test.segments = ['(drawer)', '(main)'];
-      const screen = routeFixture();
-      await render(h(RootLayout));
-      await act(async () => {
-        screen.response.resolve('deep-linked thread');
-      });
+      expect(fadeCalls()).toHaveLength(1);
       await advance(FADE_TOTAL_MS);
       expect(covered()).toBe(false);
-      expect(container.querySelector('article')?.textContent).toBe('deep-linked thread');
     },
   );
 });

@@ -32,8 +32,8 @@ export class StartupContent {
 
 /** Other deep-linked pages keep their own loading UI; never wait for the home below them. */
 export function waitsForHome(segments: readonly string[]): boolean {
-  const [group, page] = segments;
-  return !group || group === '(drawer)' || group === 'chat' || (group === 'bots' && (!page || page === 'index'));
+  const [group] = segments;
+  return !group || group === '(drawer)';
 }
 
 /** Extra grace after auth/fonts are ready, not a new minimum launch duration. */

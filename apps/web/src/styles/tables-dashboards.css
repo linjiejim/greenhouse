@@ -1,0 +1,586 @@
+/* ── 表格: dashboards — a grid of cards, their charts and the card editor (tokens only) ── */
+
+.app-tb-dash {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: var(--gh-space-3);
+  min-height: 0;
+  padding-top: var(--gh-space-3);
+  overflow-y: auto;
+  container-type: inline-size;
+  scrollbar-width: thin;
+}
+
+.app-tb-dash-bar {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--gh-space-2);
+  min-height: var(--gh-control-sm);
+}
+
+.app-tb-dash-spacer {
+  flex: 1;
+}
+
+/* Six columns: small cards take two, medium three, large the whole row. */
+.app-tb-dash-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: var(--gh-space-3);
+}
+
+.app-tb-dash-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gh-space-3);
+  min-width: 0;
+  padding: var(--gh-space-4);
+  border: var(--gh-stroke-hairline) solid var(--gh-line);
+  border-radius: var(--gh-radius-lg);
+  background: var(--gh-surface);
+}
+
+.app-tb-dash-card.is-small {
+  grid-column: span 2;
+}
+
+.app-tb-dash-card.is-medium {
+  grid-column: span 3;
+}
+
+.app-tb-dash-card.is-large {
+  grid-column: 1 / -1;
+}
+
+@container (max-width: 760px) {
+  .app-tb-dash-card.is-small {
+    grid-column: span 3;
+  }
+
+  .app-tb-dash-card.is-medium {
+    grid-column: 1 / -1;
+  }
+}
+
+@container (max-width: 480px) {
+  .app-tb-dash-card.is-small {
+    grid-column: 1 / -1;
+  }
+}
+
+.app-tb-dash.is-narrow .app-tb-dash-card {
+  grid-column: 1 / -1;
+}
+
+.app-tb-dash-card-head {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--gh-space-2);
+  min-width: 0;
+}
+
+.app-tb-dash-card-titles {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.app-tb-dash-card-title {
+  margin: 0;
+  overflow: hidden;
+  font: var(--gh-type-title-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-tb-dash-card-meta {
+  margin: 0;
+  overflow: hidden;
+  color: var(--gh-secondary);
+  font: var(--gh-type-caption);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-tb-dash-card-head > .gh-menu {
+  flex: none;
+  margin: calc(-1 * var(--gh-space-1)) calc(-1 * var(--gh-space-1)) 0 0;
+}
+
+.app-tb-dash-card-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--gh-space-2);
+  min-width: 0;
+}
+
+.app-tb-dash-empty {
+  margin: 0;
+  color: var(--gh-secondary);
+  font: var(--gh-type-body-sm);
+}
+
+.app-tb-dash-problem {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--gh-space-2);
+  color: var(--gh-secondary);
+  font: var(--gh-type-body-sm);
+}
+
+.app-tb-dash-problem > p {
+  flex: 1;
+  min-width: calc(var(--gh-space-16) * 2);
+  margin: 0;
+}
+
+.app-tb-dash-caption {
+  margin: 0;
+  color: var(--gh-secondary);
+  font: var(--gh-type-caption);
+  font-variant-numeric: tabular-nums;
+}
+
+/* A number card: one big figure. */
+
+.app-tb-dash-number {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gh-space-1);
+}
+
+.app-tb-dash-figure {
+  margin: 0;
+  overflow: hidden;
+  font: var(--gh-type-display);
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Colours of groups: an option's own, the chart series, and neutral ones for the rest and the empty. */
+
+.app-tb-dash-bar-fill,
+.app-tb-dash-swatch {
+  background: var(--gh-chart-1);
+}
+
+.app-tb-dash-slice {
+  fill: var(--gh-chart-1);
+  stroke: var(--gh-surface);
+  stroke-width: 1.5;
+}
+
+.app-tb-dash-bar-fill.is-c2,
+.app-tb-dash-swatch.is-c2 {
+  background: var(--gh-chart-2);
+}
+.app-tb-dash-bar-fill.is-c3,
+.app-tb-dash-swatch.is-c3 {
+  background: var(--gh-chart-3);
+}
+.app-tb-dash-bar-fill.is-c4,
+.app-tb-dash-swatch.is-c4 {
+  background: var(--gh-chart-4);
+}
+.app-tb-dash-bar-fill.is-c5,
+.app-tb-dash-swatch.is-c5 {
+  background: var(--gh-chart-5);
+}
+.app-tb-dash-bar-fill.is-c6,
+.app-tb-dash-swatch.is-c6 {
+  background: var(--gh-chart-6);
+}
+.app-tb-dash-bar-fill.is-c7,
+.app-tb-dash-swatch.is-c7 {
+  background: var(--gh-chart-7);
+}
+.app-tb-dash-bar-fill.is-c8,
+.app-tb-dash-swatch.is-c8 {
+  background: var(--gh-chart-8);
+}
+.app-tb-dash-slice.is-c2 {
+  fill: var(--gh-chart-2);
+}
+.app-tb-dash-slice.is-c3 {
+  fill: var(--gh-chart-3);
+}
+.app-tb-dash-slice.is-c4 {
+  fill: var(--gh-chart-4);
+}
+.app-tb-dash-slice.is-c5 {
+  fill: var(--gh-chart-5);
+}
+.app-tb-dash-slice.is-c6 {
+  fill: var(--gh-chart-6);
+}
+.app-tb-dash-slice.is-c7 {
+  fill: var(--gh-chart-7);
+}
+.app-tb-dash-slice.is-c8 {
+  fill: var(--gh-chart-8);
+}
+
+.app-tb-dash-bar-fill.is-gray,
+.app-tb-dash-swatch.is-gray {
+  background: var(--gh-cat-gray);
+}
+.app-tb-dash-bar-fill.is-blue,
+.app-tb-dash-swatch.is-blue {
+  background: var(--gh-cat-blue);
+}
+.app-tb-dash-bar-fill.is-teal,
+.app-tb-dash-swatch.is-teal {
+  background: var(--gh-cat-teal);
+}
+.app-tb-dash-bar-fill.is-green,
+.app-tb-dash-swatch.is-green {
+  background: var(--gh-cat-green);
+}
+.app-tb-dash-bar-fill.is-amber,
+.app-tb-dash-swatch.is-amber {
+  background: var(--gh-cat-amber);
+}
+.app-tb-dash-bar-fill.is-orange,
+.app-tb-dash-swatch.is-orange {
+  background: var(--gh-cat-orange);
+}
+.app-tb-dash-bar-fill.is-red,
+.app-tb-dash-swatch.is-red {
+  background: var(--gh-cat-red);
+}
+.app-tb-dash-bar-fill.is-pink,
+.app-tb-dash-swatch.is-pink {
+  background: var(--gh-cat-pink);
+}
+.app-tb-dash-bar-fill.is-purple,
+.app-tb-dash-swatch.is-purple {
+  background: var(--gh-cat-purple);
+}
+.app-tb-dash-slice.is-gray {
+  fill: var(--gh-cat-gray);
+}
+.app-tb-dash-slice.is-blue {
+  fill: var(--gh-cat-blue);
+}
+.app-tb-dash-slice.is-teal {
+  fill: var(--gh-cat-teal);
+}
+.app-tb-dash-slice.is-green {
+  fill: var(--gh-cat-green);
+}
+.app-tb-dash-slice.is-amber {
+  fill: var(--gh-cat-amber);
+}
+.app-tb-dash-slice.is-orange {
+  fill: var(--gh-cat-orange);
+}
+.app-tb-dash-slice.is-red {
+  fill: var(--gh-cat-red);
+}
+.app-tb-dash-slice.is-pink {
+  fill: var(--gh-cat-pink);
+}
+.app-tb-dash-slice.is-purple {
+  fill: var(--gh-cat-purple);
+}
+
+.app-tb-dash-bar-fill.is-other,
+.app-tb-dash-swatch.is-other {
+  background: var(--gh-secondary);
+}
+.app-tb-dash-bar-fill.is-empty,
+.app-tb-dash-swatch.is-empty {
+  background: var(--gh-tertiary);
+}
+.app-tb-dash-slice.is-other {
+  fill: var(--gh-secondary);
+}
+.app-tb-dash-slice.is-empty {
+  fill: var(--gh-tertiary);
+}
+
+/* Bars: one row per group — its words, the bar, the figure. */
+
+.app-tb-dash-bars {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gh-space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.app-tb-dash-bar {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 3fr) auto;
+  align-items: center;
+  gap: var(--gh-space-2);
+  font: var(--gh-type-body-sm);
+}
+
+.app-tb-dash-bar-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-tb-dash-bar-track {
+  height: var(--gh-space-3);
+  overflow: hidden;
+  border-radius: var(--gh-radius-full);
+  background: var(--gh-fill);
+}
+
+.app-tb-dash-bar-fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+}
+
+.app-tb-dash-bar-value {
+  min-width: var(--gh-space-8);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+/* A line: drawn at its real width, words in the axis 12px. */
+
+.app-tb-dash-line {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gh-space-2);
+  min-width: 0;
+}
+
+.app-tb-dash-line-box {
+  width: 100%;
+  min-width: 0;
+}
+
+.app-tb-dash-line-box svg {
+  display: block;
+  overflow: visible;
+}
+
+.app-tb-dash-axis line {
+  stroke: var(--gh-line);
+  stroke-width: 1;
+}
+
+.app-tb-dash-axis text {
+  fill: var(--gh-secondary);
+  font: var(--gh-type-caption);
+  font-variant-numeric: tabular-nums;
+}
+
+.app-tb-dash-line-path {
+  fill: none;
+  stroke: var(--gh-chart-1);
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.app-tb-dash-line-dot {
+  fill: var(--gh-chart-1);
+  stroke: var(--gh-surface);
+  stroke-width: 1.5;
+}
+
+.app-tb-dash-notes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--gh-space-1) var(--gh-space-3);
+  margin: 0;
+  padding: 0;
+  color: var(--gh-secondary);
+  font: var(--gh-type-caption);
+  font-variant-numeric: tabular-nums;
+  list-style: none;
+}
+
+/* A donut beside its legend; the legend names every slice with its figure and share. */
+
+.app-tb-dash-pie {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--gh-space-4);
+}
+
+.app-tb-dash-donut {
+  flex: none;
+  width: calc(var(--gh-space-16) * 2);
+  height: calc(var(--gh-space-16) * 2);
+}
+
+.app-tb-dash-legend {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--gh-space-1);
+  min-width: calc(var(--gh-space-16) * 2.5);
+  margin: 0;
+  padding: 0;
+  font: var(--gh-type-body-sm);
+  list-style: none;
+}
+
+.app-tb-dash-legend li {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: var(--gh-space-2);
+}
+
+.app-tb-dash-swatch {
+  width: var(--gh-space-3);
+  height: var(--gh-space-3);
+  border-radius: var(--gh-radius-xs);
+}
+
+.app-tb-dash-legend-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-tb-dash-legend-value {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.app-tb-dash-legend-share {
+  min-width: var(--gh-space-10);
+  color: var(--gh-secondary);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+/* A list of records: the title opens it, the card's fields follow on one line. */
+
+.app-tb-dash-records {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.app-tb-dash-record {
+  display: flex;
+  align-items: center;
+  gap: var(--gh-space-3);
+  min-width: 0;
+  min-height: var(--gh-control-md);
+  border-bottom: var(--gh-stroke-hairline) solid var(--gh-line);
+  font: var(--gh-type-body-sm);
+}
+
+.app-tb-dash-record:last-child {
+  border-bottom: 0;
+}
+
+.app-tb-dash-record-title {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--gh-text);
+  font-weight: 600;
+  text-decoration: none;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-tb-dash-record-title:hover {
+  color: var(--gh-accent-text);
+  text-decoration: underline;
+}
+
+.app-tb-dash-record-title:focus-visible {
+  border-radius: var(--gh-radius-sm);
+  outline: var(--gh-stroke-strong) solid var(--gh-focus);
+  outline-offset: var(--gh-stroke-focus-offset);
+}
+
+.app-tb-dash-record-fields {
+  display: flex;
+  flex: 1 1 0;
+  justify-content: flex-end;
+  gap: var(--gh-space-2);
+  min-width: 0;
+  overflow: hidden;
+  color: var(--gh-secondary);
+}
+
+.app-tb-dash-record-field {
+  display: inline-flex;
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.app-tb-dash.is-narrow .app-tb-dash-record {
+  flex-wrap: wrap;
+  gap: var(--gh-space-1) var(--gh-space-3);
+  padding: var(--gh-space-2) 0;
+}
+
+.app-tb-dash.is-narrow .app-tb-dash-record-fields {
+  flex-basis: 100%;
+  justify-content: flex-start;
+}
+
+/* The card editor: pairs of short fields side by side, a preview of the card at the end. */
+
+.app-tb-dash-editor-pair {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(calc(var(--gh-space-16) * 2.5), 1fr));
+  gap: var(--gh-space-4);
+}
+
+.app-tb-dash-filter {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gh-space-2);
+}
+
+.app-tb-dash-preview {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gh-space-2);
+  padding-top: var(--gh-space-4);
+  border-top: var(--gh-stroke-hairline) solid var(--gh-line);
+}
+
+.app-tb-dash-preview-title {
+  margin: 0;
+  color: var(--gh-secondary);
+  font: var(--gh-type-label);
+}
+
+.app-tb-dash-card.is-preview {
+  background: var(--gh-surface);
+}
+
+.app-tb-dash-editor-error {
+  margin: 0;
+  color: var(--gh-danger);
+  font: var(--gh-type-body-sm);
+}
+
+/* Dark data planes retain their original canvas layering. */
+[data-theme='dark'] .app-tb-dash-card.is-preview {
+  background: var(--gh-canvas);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .app-tb-dash-card.is-preview {
+    background: var(--gh-canvas);
+  }
+}

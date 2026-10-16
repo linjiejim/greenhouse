@@ -1,3 +1,5 @@
+import type { ModelMessage } from 'ai';
+
 /**
  * Time context injection — prepend timestamp tags to user messages.
  *
@@ -108,4 +110,23 @@ export function injectTimeContext(
     }
     return { role: msg.role, content: parts };
   });
+}
+
+/**
+ * Time context for a turn's user messages: on by default (Asia/Shanghai), `{ timezone }` for
+ * another zone, or `false` when the prompt already carries its own clock.
+ */
+export type TimeContextOption = false | { timezone?: string };
+
+/** Stamp (or not) the messages and shape them for the SDK. */
+export function applyTimeContext(messages: EngineMessage[], option: TimeContextOption | undefined): ModelMessage[] {
+  const stamped =
+    option === false
+      ? messages.map((m) => ({ role: m.role, content: m.content }))
+      : injectTimeContext(messages, option?.timezone);
+  // Only user messages carry image parts, which is what ModelMessage's per-role content types allow.
+  return stamped.map((m) => ({
+    role: m.role as 'user' | 'assistant' | 'system',
+    content: m.content,
+  })) as ModelMessage[];
 }

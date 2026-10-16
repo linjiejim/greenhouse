@@ -29,6 +29,10 @@ regexes = [
   # request with it to prove a bridge refuses the other uid's secret. It is a public
   # protocol example, not a credential.
   '''dGhlIHNhbXBsZSBub25jZQ==''',
+  # packages/providers/src/__tests__/fake-network.ts: the key the provider tests hand to
+  # adapters to prove it is sent only to the configured address (and never logged). It
+  # reaches only an in-memory fake network, never a vendor.
+  '''sk-test-secret-0123456789''',
 ]
 
 # Matched against the file path. These paths hold deliberately-committed demo /

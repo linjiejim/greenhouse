@@ -18,11 +18,11 @@
 
 import React, { useEffect, useState } from 'react';
 import { AccessibilityInfo, Platform, StyleSheet, Text, View } from 'react-native';
-import Animated, { FadeInUp, FadeOutUp } from 'react-native-reanimated';
+import Animated, { FadeIn, ReduceMotion, FadeOut } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { FullWindowOverlay } from 'react-native-screens';
 import { create } from 'zustand';
-import { makeStyles, space, typo, useTheme, weight } from '../theme';
+import { makeStyles, motion, space, typo, useTheme, weight } from '../theme';
 import { Icon, type IconName } from './core';
 import { Glass } from './glass';
 import { selectionTick } from './haptics';
@@ -48,7 +48,7 @@ export function toast(message: string, icon?: IconName): void {
 
 type Toast = NonNullable<ToastState['current']>;
 
-const EXIT_MS = 200;
+const EXIT_MS = motion.exit;
 
 export function ToastHost() {
   const { colors: c } = useTheme();
@@ -86,7 +86,11 @@ export function ToastHost() {
       style={[StyleSheet.absoluteFill, { paddingTop: insets.top + space.xs, alignItems: 'center' }]}
     >
       {current ? (
-        <Animated.View key={current.id} entering={FadeInUp.duration(220)} exiting={FadeOutUp.duration(EXIT_MS)}>
+        <Animated.View
+          key={current.id}
+          entering={FadeIn.duration(motion.base).reduceMotion(ReduceMotion.System)}
+          exiting={FadeOut.duration(EXIT_MS).reduceMotion(ReduceMotion.System)}
+        >
           <Glass style={styles.pill}>
             {current.icon ? <Icon name={current.icon} size={16} weight="semibold" color={c.label} /> : null}
             <Text style={styles.text} numberOfLines={2}>

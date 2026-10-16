@@ -3,13 +3,20 @@
 #
 # Quick start:
 #   1) cp .env.example .env && ./scripts/gen-secrets.sh   # fills required secrets
-#   2) edit .env — set LLM_BASE_URL / LLM_API_KEY / LLM_MODEL
+#   2) edit .env — set BOOTSTRAP_ADMIN_EMAIL and LLM_PROVIDER / LLM_API_KEY / LLM_MODEL
 #   3) docker compose up -d --build
-#   4) docker compose exec api pnpm admin:create          # create the first super-admin
+#   4) docker compose logs api | rg 'Activate the first administrator'
+#      Open the one-time link and set the first admin's password.
 #   App is then at http://localhost:3000
 #
 # The DB credentials default to greenhouse/greenhouse; to change them, set
 # POSTGRES_* AND update the DATABASE_URL on the migrate/api services to match.
+#
+# Agent computers: a compose deployment uses hosted sandboxes (E2B or an E2B-protocol host):
+# set SANDBOX_PROVIDER=e2b, SANDBOX_API_KEY and SANDBOX_E2B_TEMPLATE in .env (see .env.example).
+# Never mount the Docker socket (/var/run/docker.sock) into the api service: whoever got into
+# the API would own the host. Computers on this server's own Docker need the API running on the
+# host itself (README, "Agent computers").
 
 services:
   postgres:
@@ -35,15 +42,17 @@ services:
   # One-shot: applies the migration chain, then exits. The API waits for it.
   migrate:
     build: .
-    command: ['./node_modules/.bin/drizzle-kit', 'migrate']
+    command: ['node', '--import', 'tsx', 'apps/api/src/migrate.ts']
     restart: 'no'
     depends_on:
       postgres:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgresql://greenhouse:greenhouse@postgres:5432/greenhouse
+      DATABASE_URL: postgresql://${POSTGRES_USER:-greenhouse}:${POSTGRES_PASSWORD:-greenhouse}@postgres:5432/${POSTGRES_DB:-greenhouse}
 
   api:
+    init: true
+    stop_grace_period: 70s
     build: .
     restart: unless-stopped
     depends_on:
@@ -55,24 +64,49 @@ services:
       - .env
     environment:
       # In-network DB host is the `postgres` service (overrides .env's localhost value).
-      DATABASE_URL: postgresql://greenhouse:greenhouse@postgres:5432/greenhouse
-      API_PORT: '3000'
+      DATABASE_URL: postgresql://${POSTGRES_USER:-greenhouse}:${POSTGRES_PASSWORD:-greenhouse}@postgres:5432/${POSTGRES_DB:-greenhouse}
+      PORT: '3000'
+      GREENHOUSE_ROLE: ${GREENHOUSE_ROLE:-all}
+      RATE_LIMIT_STORE: ${RATE_LIMIT_STORE:-memory}
     ports:
       - '${PORT:-3000}:3000'
     volumes:
       # Uploads (data/uploads) + Skill Center bundles (data/skills) must outlive
       # the container — an image swap otherwise wipes them while the DB catalog
       # still references them.
+      # Never add the Docker socket here: Agent computers run at E2B (see the top).
       - app_data:/app/data
     healthcheck:
       test:
         [
           'CMD-SHELL',
-          "node -e \"fetch('http://localhost:3000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\"",
+          'node -e "fetch(''http://localhost:3000/health'').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"',
         ]
       interval: 10s
       timeout: 5s
       retries: 12
+
+  # Optional split: GREENHOUSE_ROLE=api RATE_LIMIT_STORE=postgres docker compose --profile worker up -d
+  # Same image, shared storage and credentials; no HTTP port or Docker socket.
+  worker:
+    profiles: ['worker']
+    init: true
+    stop_grace_period: 70s
+    build: .
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-greenhouse}:${POSTGRES_PASSWORD:-greenhouse}@postgres:5432/${POSTGRES_DB:-greenhouse}
+      GREENHOUSE_ROLE: worker
+      RATE_LIMIT_STORE: ${RATE_LIMIT_STORE:-memory}
+    volumes:
+      - app_data:/app/data
 
 volumes:
   pg_data:

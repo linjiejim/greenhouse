@@ -51,28 +51,6 @@ interface ParsedToolCall {
   args: Record<string, unknown>;
 }
 
-// ─── Legacy Tool-Name Aliases ────────────────────────────
-
-// DeepSeek sometimes emits OLD split tool names (get_team_knowledge /
-// search_team_knowledge) that were merged into a single `knowledge_query` tool
-// with an `action` arg. Without this remap, a recovered DSML call targets a
-// non-existent tool and silently no-ops (the user sees garbled DSML or a dead
-// turn). Map the legacy names back to the unified tool + action.
-const LEGACY_TOOL_ALIASES: Record<string, { name: string; action: string }> = {
-  get_team_knowledge: { name: 'knowledge_query', action: 'get' },
-  search_team_knowledge: { name: 'knowledge_query', action: 'search' },
-  get_personal_knowledge: { name: 'knowledge_query', action: 'get' },
-  search_personal_knowledge: { name: 'knowledge_query', action: 'search' },
-};
-
-export function normalizeToolCall(call: ParsedToolCall): ParsedToolCall {
-  const alias = LEGACY_TOOL_ALIASES[call.name];
-  if (!alias) return call;
-  // Existing args win over the injected default action, but legacy names never
-  // carry an `action`, so this just supplies it.
-  return { name: alias.name, args: { action: alias.action, ...call.args } };
-}
-
 // ─── DSML Detection Patterns ─────────────────────────────
 
 // ｜ = U+FF5C (full-width vertical bar), | = U+007C (ASCII pipe)
@@ -149,7 +127,7 @@ export function parseDsmlBlock(block: string): ParsedToolCall[] {
       }
     }
 
-    results.push(normalizeToolCall({ name: toolName, args }));
+    results.push({ name: toolName, args });
   }
 
   return results;

@@ -22,11 +22,19 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { IS_SINGLE_STATION } from '../config';
+import type { ApiMismatch } from '../api/compat';
 import { normalizeBaseUrl, probeStation, useStations, type StationRecord } from '../store/stations';
 import { AFTER_DISMISS_MS, useAuth } from '../store/auth';
 import { useT } from '../lib/i18n';
 import { alertError, confirmAction } from '../ui/dialogs';
 import { unregisterActive, unregisterStation } from '../push/register';
+
+/** Why a station cannot be used, in the alert's words. */
+function probeProblem(mismatch?: ApiMismatch) {
+  if (mismatch === 'app_outdated') return 'station.appOutdated' as const;
+  if (mismatch === 'server_outdated') return 'station.serverOutdated' as const;
+  return 'station.unreachable' as const;
+}
 
 export function useStationsForm({ onDone, onLeave }: { onDone: () => void; onLeave: () => void }) {
   const t = useT();
@@ -69,12 +77,9 @@ export function useStationsForm({ onDone, onLeave }: { onDone: () => void; onLea
       setPending(true);
       const probe = await probeStation(station.baseUrl);
       if (!mounted.current) return;
-      if (!probe.ok || probe.authEnabled === false) {
+      if (!probe.ok) {
         setPending(false);
-        alertError(
-          t('station.switchFailed'),
-          t(probe.authEnabled === false ? 'station.authDisabled' : 'station.unreachable'),
-        );
+        alertError(t('station.switchFailed'), t(probeProblem(probe.mismatch)));
         return;
       }
       leaveThen(() => useStations.getState().switchTo(station.id));
@@ -129,12 +134,7 @@ export function useStationsForm({ onDone, onLeave }: { onDone: () => void; onLea
       if (!mounted.current) return;
       if (!probe.ok) {
         setPending(false);
-        alertError(t('station.addFailed'), t('station.unreachable'));
-        return;
-      }
-      if (probe.authEnabled === false) {
-        setPending(false);
-        alertError(t('station.addFailed'), t('station.authDisabled'));
+        alertError(t('station.addFailed'), t(probeProblem(probe.mismatch)));
         return;
       }
       // A duplicate origin just switches to the saved entry (store rule).

@@ -1,0 +1,301 @@
+/* 表格: forms. The builders' drawer and the form page (#/forms/:id). Tokens only (docs/design-system). */
+
+/* ── The drawer: one form ─────────────────────────────────────────────── */
+
+.app-tf-detail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gh-space-4);
+}
+
+.app-tf-back {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  gap: var(--gh-space-1);
+  min-height: var(--gh-control-sm);
+  padding: 0 var(--gh-space-2) 0 var(--gh-space-1);
+  border: 0;
+  border-radius: var(--gh-radius-md);
+  background: none;
+  color: var(--gh-secondary);
+  font: var(--gh-type-label);
+  cursor: pointer;
+}
+
+.app-tf-back:hover {
+  background: var(--gh-hover);
+  color: var(--gh-text);
+}
+
+[data-narrow] .app-tf-back {
+  min-height: var(--gh-touch-target);
+}
+
+@media (pointer: coarse) {
+  .app-tf-back {
+    min-height: var(--gh-touch-target);
+  }
+}
+
+.app-tf-head {
+  display: flex;
+  align-items: center;
+  gap: var(--gh-space-2);
+  min-width: 0;
+}
+
+.app-tf-name {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font: var(--gh-type-title);
+}
+
+.app-tf-description {
+  margin: 0;
+  color: var(--gh-secondary);
+  font: var(--gh-type-body);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.app-tf-sections {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gh-space-6);
+}
+
+.app-tf-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gh-space-3);
+}
+
+.app-tf-section-title {
+  margin: 0;
+  font: var(--gh-type-title-sm);
+}
+
+.app-tf-note {
+  margin: 0;
+  color: var(--gh-secondary);
+  font: var(--gh-type-body-sm);
+}
+
+/* The fields of a form, read only. */
+.app-tf-summary {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.app-tf-summary > li {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--gh-space-3);
+  padding: var(--gh-space-2) 0;
+  border-bottom: var(--gh-stroke-hairline) solid var(--gh-line);
+}
+
+.app-tf-summary > li > .app-tb-field-icon {
+  flex: none;
+  margin-top: var(--gh-space-1);
+  color: var(--gh-tertiary);
+}
+
+.app-tf-summary-main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.app-tf-summary-label {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--gh-space-2);
+  overflow-wrap: anywhere;
+}
+
+.app-tf-summary-meta {
+  color: var(--gh-secondary);
+  font: var(--gh-type-body-sm);
+  overflow-wrap: anywhere;
+}
+
+.app-tf-settings {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: var(--gh-space-2) var(--gh-space-4);
+  margin: 0;
+}
+
+.app-tf-settings > div {
+  display: contents;
+}
+
+.app-tf-settings dt {
+  color: var(--gh-secondary);
+  font: var(--gh-type-label);
+}
+
+.app-tf-settings dd {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+[data-narrow] .app-tf-settings {
+  grid-template-columns: 1fr;
+}
+
+/* Building: each field of the form is a real group of its settings. */
+.app-tf-edit-fields {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gh-space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.app-tf-edit-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gh-space-2);
+  padding: var(--gh-space-3);
+  border: var(--gh-stroke-hairline) solid var(--gh-line);
+  border-radius: var(--gh-radius-lg);
+  background: var(--gh-surface);
+}
+
+.app-tf-edit-head {
+  display: flex;
+  align-items: center;
+  gap: var(--gh-space-2);
+  min-width: 0;
+}
+
+.app-tf-edit-head > .app-tb-field-icon {
+  flex: none;
+  color: var(--gh-tertiary);
+}
+
+.app-tf-edit-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: var(--gh-type-label);
+}
+
+.app-tf-edit-text {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--gh-space-2);
+}
+
+[data-narrow] .app-tf-edit-text {
+  grid-template-columns: 1fr;
+}
+
+/* Submissions: the record each added, or that it is gone. */
+.app-tf-record-link {
+  max-width: 100%;
+  color: var(--gh-accent-text);
+}
+
+.app-tf-record-link:hover {
+  text-decoration: underline;
+}
+
+.app-tf-gone {
+  color: var(--gh-tertiary);
+}
+
+.app-tf-share {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gh-space-3);
+}
+
+.app-tf-share-add {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: var(--gh-space-2);
+}
+
+[data-narrow] .app-tf-share-add {
+  grid-template-columns: 1fr;
+}
+
+/* ── The form page ────────────────────────────────────────────────────── */
+
+.app-tf-intro {
+  margin-bottom: var(--gh-space-6);
+}
+
+.app-tf-fill {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gh-space-5);
+}
+
+.app-tf-submit {
+  display: flex;
+  padding-top: var(--gh-space-2);
+}
+
+[data-narrow] .app-tf-submit > .gh-button {
+  flex: 1;
+}
+
+.app-tf-files {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--gh-space-2);
+}
+
+.app-tf-file-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--gh-space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.app-tf-file-size {
+  color: var(--gh-tertiary);
+  font: var(--gh-type-caption);
+  white-space: nowrap;
+}
+
+.app-tf-done {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--gh-space-3);
+  padding: var(--gh-space-6) 0;
+}
+
+.app-tf-done-icon {
+  color: var(--gh-success);
+}
+
+.app-tf-done-title {
+  margin: 0;
+  font: var(--gh-type-title);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+[data-narrow] .app-tf-done > .gh-button {
+  align-self: stretch;
+}

@@ -1,0 +1,635 @@
+/* ── 表格: the kanban, calendar and gallery views (tokens only) ─────────────── */
+
+/* Kanban: columns side by side; the board scrolls sideways, each column on its own. */
+
+.app-tb-kb {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: stretch;
+  gap: var(--gh-space-3);
+  min-height: 0;
+  padding-bottom: var(--gh-space-2);
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: thin;
+}
+
+.app-tb-kb.is-narrow {
+  scroll-snap-type: x mandatory;
+}
+
+.app-tb-kb-column {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  width: calc(var(--gh-space-1) * 68);
+  min-height: 0;
+  border-radius: var(--gh-radius-lg);
+  background: var(--gh-chrome);
+  transition-property: background-color, box-shadow;
+  transition-duration: var(--gh-duration-fast);
+  transition-timing-function: var(--gh-ease-standard);
+}
+
+.app-tb-kb.is-narrow .app-tb-kb-column {
+  width: min(calc(var(--gh-space-1) * 70), calc(100% - var(--gh-space-8)));
+  scroll-snap-align: start;
+}
+
+.app-tb-kb-column.is-over {
+  background: var(--gh-selection);
+  box-shadow: inset 0 0 0 var(--gh-stroke-strong) var(--gh-accent);
+}
+
+.app-tb-kb-head {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--gh-space-2);
+  min-height: var(--gh-control-md);
+  padding: var(--gh-space-2) var(--gh-space-3) var(--gh-space-1);
+  font: var(--gh-type-label);
+  font-weight: 600;
+}
+
+.app-tb-kb-name {
+  display: inline-flex;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.app-tb-kb-none {
+  color: var(--gh-secondary);
+}
+
+.app-tb-kb-count {
+  flex: none;
+  color: var(--gh-secondary);
+  font: var(--gh-type-caption);
+  font-variant-numeric: tabular-nums;
+}
+
+.app-tb-kb-cards {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: var(--gh-space-2);
+  min-height: var(--gh-space-12);
+  padding: var(--gh-space-1) var(--gh-space-2) var(--gh-space-2);
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  scrollbar-width: thin;
+}
+
+.app-tb-kb-card {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: var(--gh-space-2);
+  padding: var(--gh-space-3);
+  border: var(--gh-stroke-hairline) solid var(--gh-line);
+  border-radius: var(--gh-radius-md);
+  background: var(--gh-surface);
+  cursor: pointer;
+  animation: app-tb-kb-in var(--gh-duration-base) var(--gh-ease-enter);
+  transition: border-color var(--gh-duration-fast) var(--gh-ease-standard);
+}
+
+.app-tb-kb-card:hover,
+.app-tb-gal-card:hover {
+  border-color: color-mix(in srgb, var(--gh-accent) 35%, var(--gh-line));
+}
+
+.app-tb-kb-card.is-dragging,
+.app-tb-cal-chip.is-dragging {
+  opacity: 0.5;
+}
+
+/* The focus ring hugs the edge: these sit in scroll areas that clip anything outside. */
+.app-tb-kb-card:focus-visible,
+.app-tb-gal-card:focus-visible,
+.app-tb-cal-chip:focus-visible,
+.app-tb-cal-row:focus-visible,
+.app-tb-cal-add.gh-button:focus-visible,
+.app-tb-cal-more > .gh-button:focus-visible {
+  outline: var(--gh-stroke-strong) solid var(--gh-focus);
+  outline-offset: calc(-1 * var(--gh-stroke-strong));
+}
+
+.app-tb-kb-card-head {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--gh-space-1);
+  min-width: 0;
+}
+
+.app-tb-kb-card-title {
+  display: -webkit-box;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  font: var(--gh-type-body);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.app-tb-kb-card-title.is-untitled,
+.app-tb-gal-title.is-untitled,
+.app-tb-cal-chip.is-untitled .app-tb-cal-chip-title,
+.app-tb-cal-row-title.is-untitled {
+  color: var(--gh-secondary);
+}
+
+.app-tb-kb-card-menu {
+  display: inline-flex;
+  flex: none;
+  margin: calc(-1 * var(--gh-space-1)) calc(-1 * var(--gh-space-1)) calc(-1 * var(--gh-space-1)) 0;
+}
+
+/* With a mouse the "⋯" shows on hover and focus; touch always shows it. */
+@media (hover: hover) and (pointer: fine) {
+  .app-tb-kb-card-menu {
+    opacity: 0;
+    transition: opacity var(--gh-duration-fast) var(--gh-ease-standard);
+  }
+
+  .app-tb-kb-card:is(:hover, :focus-within) .app-tb-kb-card-menu,
+  .app-tb-kb-card-menu:has([aria-expanded='true']) {
+    opacity: 1;
+  }
+}
+
+.app-tb-kb-fields {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gh-space-1);
+  min-width: 0;
+}
+
+.app-tb-kb-field {
+  display: flex;
+  align-items: center;
+  gap: var(--gh-space-1);
+  min-width: 0;
+  overflow: hidden;
+  color: var(--gh-secondary);
+  font: var(--gh-type-body-sm);
+}
+
+.app-tb-kb-field > * {
+  min-width: 0;
+}
+
+.app-tb-kb-more.gh-button {
+  flex: none;
+  align-self: center;
+  color: var(--gh-secondary);
+}
+
+.app-tb-kb-add.gh-button {
+  flex: none;
+  justify-content: flex-start;
+  margin: 0 var(--gh-space-2) var(--gh-space-2);
+  color: var(--gh-secondary);
+}
+
+@keyframes app-tb-kb-in {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+/* Calendar: a month of six weeks, Monday first; the weeks scroll under the weekday names. */
+
+.app-tb-cal {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: var(--gh-space-3);
+  min-width: 0;
+  min-height: 0;
+}
+
+.app-tb-cal-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--gh-space-1);
+  min-height: var(--gh-control-md);
+}
+
+.app-tb-cal-title {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font: var(--gh-type-title-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.app-tb-cal-bar > .gh-button {
+  margin-right: var(--gh-space-1);
+}
+
+.app-tb-cal-month {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border: var(--gh-stroke-hairline) solid var(--gh-line);
+  border-radius: var(--gh-radius-lg);
+  background: var(--gh-surface);
+  scrollbar-width: thin;
+}
+
+.app-tb-cal-weekdays,
+.app-tb-cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+}
+
+.app-tb-cal-weekdays {
+  position: sticky;
+  top: 0;
+  z-index: var(--gh-z-sticky);
+  border-bottom: var(--gh-stroke-hairline) solid var(--gh-line);
+  background: var(--gh-surface);
+}
+
+.app-tb-cal-weekday {
+  padding: var(--gh-space-2);
+  color: var(--gh-secondary);
+  font: var(--gh-type-caption);
+}
+
+.app-tb-cal-grid {
+  flex: 1 0 auto;
+  grid-auto-rows: minmax(calc(var(--gh-space-1) * 31), 1fr);
+}
+
+.app-tb-cal-day {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gh-space-0_5);
+  min-width: 0;
+  padding: var(--gh-space-1);
+  border-right: var(--gh-stroke-hairline) solid var(--gh-line);
+  border-bottom: var(--gh-stroke-hairline) solid var(--gh-line);
+  transition-property: background-color, box-shadow;
+  transition-duration: var(--gh-duration-fast);
+  transition-timing-function: var(--gh-ease-standard);
+}
+
+.app-tb-cal-day:nth-child(7n) {
+  border-right: 0;
+}
+
+.app-tb-cal-day:nth-child(n + 36) {
+  border-bottom: 0;
+}
+
+.app-tb-cal-day.is-over {
+  background: var(--gh-selection);
+  box-shadow: inset 0 0 0 var(--gh-stroke-strong) var(--gh-accent);
+}
+
+.app-tb-cal-day-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--gh-space-1);
+  min-height: var(--gh-control-sm);
+}
+
+.app-tb-cal-date {
+  display: inline-block;
+  min-width: var(--gh-space-6);
+  height: var(--gh-space-6);
+  padding: 0 var(--gh-space-1);
+  overflow: hidden;
+  border-radius: var(--gh-radius-full);
+  color: var(--gh-text);
+  font: var(--gh-type-caption);
+  font-variant-numeric: tabular-nums;
+  line-height: var(--gh-space-6);
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-tb-cal-day.is-outside .app-tb-cal-date {
+  color: var(--gh-tertiary);
+}
+
+.app-tb-cal-day.is-today .app-tb-cal-date {
+  color: var(--gh-accent-text);
+  font-weight: 700;
+  box-shadow: inset 0 0 0 var(--gh-stroke-hairline) var(--gh-accent);
+}
+
+/* "+" on hover and focus; touch always shows it. */
+.app-tb-cal-add.gh-button {
+  opacity: 0;
+  transition-property: background-color, color, border-color, box-shadow, opacity;
+}
+
+.app-tb-cal-day:is(:hover, :focus-within) .app-tb-cal-add.gh-button,
+.app-tb-cal-add.gh-button.is-loading {
+  opacity: 1;
+}
+
+.app-tb-cal-chips {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gh-space-0_5);
+  min-width: 0;
+}
+
+.app-tb-cal-chip {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--gh-space-1);
+  min-width: 0;
+  height: var(--gh-space-5);
+  padding: 0 var(--gh-space-2);
+  overflow: hidden;
+  border: 0;
+  border-radius: var(--gh-radius-sm);
+  background: var(--gh-fill);
+  color: var(--gh-text);
+  font: var(--gh-type-caption);
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color var(--gh-duration-fast) var(--gh-ease-standard);
+}
+
+.app-tb-cal-chip:hover {
+  background: var(--gh-hover);
+}
+
+/* A record on several days reads as one bar across them. */
+.app-tb-cal-chip.is-continued {
+  margin-left: calc(-1 * var(--gh-space-1));
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+}
+
+.app-tb-cal-chip.is-continuing {
+  margin-right: calc(-1 * var(--gh-space-1));
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.app-tb-cal-day.is-outside .app-tb-cal-chip {
+  color: var(--gh-secondary);
+}
+
+.app-tb-cal-chip-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.app-tb-cal-time {
+  flex: none;
+  color: var(--gh-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.app-tb-cal-more > .gh-button {
+  justify-content: flex-start;
+  width: 100%;
+  height: var(--gh-space-5);
+  min-height: var(--gh-space-5);
+  padding: 0 var(--gh-space-2);
+  color: var(--gh-secondary);
+  font: var(--gh-type-caption);
+}
+
+.app-tb-cal-pop {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gh-space-1);
+}
+
+.app-tb-cal-pop-title {
+  color: var(--gh-secondary);
+  font: var(--gh-type-label);
+}
+
+.app-tb-cal-pop .app-tb-cal-chip {
+  height: var(--gh-control-sm);
+}
+
+@media (pointer: coarse) {
+  .app-tb-cal-add.gh-button {
+    opacity: 1;
+  }
+
+  .app-tb-cal-more > .gh-button {
+    height: auto;
+    min-height: var(--gh-control-sm);
+  }
+}
+
+/* The narrow calendar: the month's days that have records, as a list. */
+
+.app-tb-cal-agenda {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: var(--gh-space-4);
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.app-tb-cal-agenda-date {
+  margin: 0 0 var(--gh-space-1);
+  color: var(--gh-secondary);
+  font: var(--gh-type-label);
+  font-weight: 600;
+}
+
+.app-tb-cal-agenda-date.is-today {
+  color: var(--gh-accent-text);
+}
+
+.app-tb-cal-agenda-list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.app-tb-cal-row {
+  display: flex;
+  align-items: center;
+  gap: var(--gh-space-2);
+  width: 100%;
+  min-height: var(--gh-touch-target);
+  padding: var(--gh-space-2) var(--gh-space-3);
+  border: 0;
+  border-radius: var(--gh-radius-md);
+  background: none;
+  color: var(--gh-text);
+  font: var(--gh-type-body);
+  text-align: left;
+  cursor: pointer;
+}
+
+.app-tb-cal-row:hover {
+  background: var(--gh-hover);
+}
+
+.app-tb-cal-row-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-tb-cal-row-chips {
+  display: inline-flex;
+  flex: none;
+  gap: var(--gh-space-1);
+  max-width: 50%;
+  overflow: hidden;
+}
+
+.app-tb-cal-row-chips:empty {
+  display: none;
+}
+
+/* Gallery: cards at least 220 wide, as many as fit; it scrolls on its own. */
+
+.app-tb-gal {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: var(--gh-space-6);
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+
+.app-tb-gal-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gh-space-3);
+}
+
+.app-tb-gal-group {
+  display: flex;
+  align-items: center;
+  gap: var(--gh-space-2);
+  min-width: 0;
+  margin: 0;
+  font: var(--gh-type-label);
+  font-weight: 600;
+}
+
+.app-tb-gal-none {
+  color: var(--gh-secondary);
+}
+
+.app-tb-gal-count {
+  color: var(--gh-secondary);
+  font: var(--gh-type-caption);
+  font-variant-numeric: tabular-nums;
+}
+
+.app-tb-gal-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(calc(var(--gh-space-1) * 55), 1fr));
+  gap: var(--gh-space-4);
+}
+
+.app-tb-gal-card {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+  border: var(--gh-stroke-hairline) solid var(--gh-line);
+  border-radius: var(--gh-radius-lg);
+  background: var(--gh-surface);
+  cursor: pointer;
+  transition: border-color var(--gh-duration-fast) var(--gh-ease-standard);
+}
+
+.app-tb-gal-cover {
+  aspect-ratio: 16 / 10;
+  border-bottom: var(--gh-stroke-hairline) solid var(--gh-line);
+  background: var(--gh-fill);
+}
+
+.app-tb-gal-cover img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.app-tb-gal-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gh-space-2);
+  min-width: 0;
+  padding: var(--gh-space-4);
+}
+
+.app-tb-gal-title {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  font: var(--gh-type-title-sm);
+  overflow-wrap: anywhere;
+}
+
+.app-tb-gal-more.gh-button {
+  align-self: center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-tb-kb-card {
+    animation: none;
+  }
+
+  .app-tb-kb-card,
+  .app-tb-kb-column,
+  .app-tb-kb-card-menu,
+  .app-tb-cal-day,
+  .app-tb-cal-chip,
+  .app-tb-cal-add.gh-button,
+  .app-tb-gal-card {
+    transition: none;
+  }
+}
+
+/* Dark data planes retain their original canvas layering. */
+[data-theme='dark'] .app-tb-kb-card,
+[data-theme='dark'] .app-tb-cal-month,
+[data-theme='dark'] .app-tb-cal-weekdays {
+  background: var(--gh-canvas);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .app-tb-kb-card,
+  :root:not([data-theme='light']) .app-tb-cal-month,
+  :root:not([data-theme='light']) .app-tb-cal-weekdays {
+    background: var(--gh-canvas);
+  }
+}

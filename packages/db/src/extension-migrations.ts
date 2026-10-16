@@ -1,188 +1,53 @@
-/**
- * Migration lane for extensions.
- *
- * Core DDL stays in `drizzle/*.sql` (applied by `drizzle-kit migrate` before the
- * API starts). An extension ships its own ordered `*.sql` files instead of
- * editing the core chain; this runner applies the pending ones at boot, tracked
- * in `extension_migrations` (one row per extension + file, with a checksum so a
- * file edited after it was applied fails fast instead of silently diverging).
- *
- * Files use the same `--> statement-breakpoint` separator as drizzle-kit output,
- * so `drizzle-kit generate` against an extension's own schema works unchanged.
- * All pending files are applied inside one transaction under an advisory lock,
- * which keeps several API replicas booting at once from racing each other.
- */
 import { createHash } from 'node:crypto';
-import { tablesTouchedBy } from './core-migrations.js';
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { sql } from 'drizzle-orm';
-import type { Db } from './client.js';
+import { eq, sql } from 'drizzle-orm';
+import { transaction } from './client.js';
+import { extensionMigrations } from './schema/extensions.js';
 
 export interface ExtensionMigrationSource {
   extensionId: string;
-  /** Absolute directory holding `NNNN_name.sql` files. */
   dir: string;
 }
 
-export interface ExtensionMigrationStatus {
-  extensionId: string;
-  name: string;
-  createsTables: string[];
-  dropsTables: string[];
-  applied: boolean;
-  /** The file changed after it was applied — the runner refuses to continue. */
-  drifted: boolean;
-}
-
-const TABLE = 'extension_migrations';
-const STATEMENT_BREAKPOINT = '--> statement-breakpoint';
-/** Arbitrary but fixed: every runner instance serializes on the same key. */
-const ADVISORY_LOCK_KEY = 74_192_026;
-
-interface MigrationFile {
-  name: string;
-  checksum: string;
-  /** Tables the file creates / drops — `db baseline` checks the net set exists. */
-  createsTables: string[];
-  dropsTables: string[];
-  statements: string[];
-}
-
-function readMigrationFiles(dir: string): MigrationFile[] {
-  if (!existsSync(dir)) return [];
-  return readdirSync(dir)
-    .filter((f) => f.endsWith('.sql'))
-    .sort()
-    .map((name) => {
-      const text = readFileSync(join(dir, name), 'utf8');
-      return {
-        name,
-        checksum: createHash('sha256').update(text).digest('hex'),
-        createsTables: tablesTouchedBy(text).creates,
-        dropsTables: tablesTouchedBy(text).drops,
-        statements: text
-          .split(STATEMENT_BREAKPOINT)
-          .map((s) => s.trim())
-          .filter(Boolean),
-      };
-    });
-}
-
-export function createExtensionMigrationRunner(db: Db) {
-  async function ensureTable(): Promise<void> {
-    await db.execute(
-      sql.raw(
-        `CREATE TABLE IF NOT EXISTS ${TABLE} (` +
-          'extension_id text NOT NULL, name text NOT NULL, checksum text NOT NULL, ' +
-          'applied_at timestamptz NOT NULL DEFAULT now(), PRIMARY KEY (extension_id, name))',
-      ),
-    );
-  }
-
-  async function appliedChecksums(executor: Db, extensionId: string): Promise<Map<string, string>> {
-    const rows = (await executor.execute(
-      sql`SELECT name, checksum FROM extension_migrations WHERE extension_id = ${extensionId}`,
-    )) as unknown as Array<{ name: string; checksum: string }>;
-    return new Map(rows.map((r) => [r.name, r.checksum]));
-  }
-
-  return {
-    /** What is applied / pending / drifted per source, without changing anything. */
-    async status(sources: readonly ExtensionMigrationSource[]): Promise<ExtensionMigrationStatus[]> {
-      await ensureTable();
-      const out: ExtensionMigrationStatus[] = [];
-      for (const source of sources) {
-        const applied = await appliedChecksums(db, source.extensionId);
-        for (const file of readMigrationFiles(source.dir)) {
-          const existing = applied.get(file.name);
-          out.push({
-            extensionId: source.extensionId,
-            name: file.name,
-            createsTables: file.createsTables,
-            dropsTables: file.dropsTables,
-            applied: existing !== undefined,
-            drifted: existing !== undefined && existing !== file.checksum,
-          });
+/** Append-only SQL, atomic under the same advisory lock on every replica. */
+export async function applyExtensionMigrations(sources: readonly ExtensionMigrationSource[]): Promise<string[]> {
+  if (!sources.length) return [];
+  return transaction(async (db) => {
+    await db.execute(sql`select pg_advisory_xact_lock(74192026)`);
+    const applied: string[] = [];
+    for (const source of sources) {
+      const files = readdirSync(source.dir)
+        .filter((name) => name.endsWith('.sql'))
+        .sort();
+      if (files.some((name) => !/^\d+_[a-z0-9_-]+\.sql$/.test(name)))
+        throw new Error(`Invalid extension migration filename: ${source.extensionId}`);
+      const previous = await db
+        .select()
+        .from(extensionMigrations)
+        .where(eq(extensionMigrations.extensionId, source.extensionId));
+      for (const row of previous)
+        if (!files.includes(row.name))
+          throw new Error(`Missing extension migration: ${source.extensionId}/${row.name}`);
+      for (const name of files) {
+        const body = readFileSync(join(source.dir, name), 'utf8');
+        const checksum = createHash('sha256').update(body).digest('hex');
+        const old = previous.find((row) => row.name === name);
+        if (old) {
+          if (old.checksum !== checksum) throw new Error(`Extension migration changed: ${source.extensionId}/${name}`);
+          continue;
         }
+        if (previous.some((row) => row.name > name))
+          throw new Error(`Extension migrations must append: ${source.extensionId}/${name}`);
+        for (const statement of body
+          .split('--> statement-breakpoint')
+          .map((part) => part.trim())
+          .filter(Boolean))
+          await db.execute(sql.raw(statement));
+        await db.insert(extensionMigrations).values({ extensionId: source.extensionId, name, checksum });
+        applied.push(`${source.extensionId}/${name}`);
       }
-      return out;
-    },
-
-    /**
-     * Mark every pending file as applied WITHOUT running it.
-     *
-     * For adopting a database whose tables already exist — an internal instance
-     * moving onto the extension lane, or a restored dump. The files must match
-     * what is really in the database; the runner cannot verify that, which is
-     * why this is an explicit operator command (`pnpm cli db baseline`) rather
-     * than something the boot path can decide on its own.
-     */
-    async baseline(
-      sources: readonly ExtensionMigrationSource[],
-      opts: {
-        /**
-         * Per extension, the last file the database already reflects. Later
-         * files are left pending so they apply normally — the case where a
-         * migration exists to bring an adopted database the rest of the way.
-         */
-        through?: Readonly<Record<string, string>>;
-      } = {},
-    ): Promise<{ recorded: string[] }> {
-      if (sources.length === 0) return { recorded: [] };
-      await ensureTable();
-      return db.transaction(async (tx) => {
-        await tx.execute(sql`SELECT pg_advisory_xact_lock(${ADVISORY_LOCK_KEY})`);
-        const recorded: string[] = [];
-        for (const source of sources) {
-          const existing = await appliedChecksums(tx as unknown as Db, source.extensionId);
-          const limit = opts.through?.[source.extensionId];
-          let past = false;
-          for (const file of readMigrationFiles(source.dir)) {
-            if (past) break;
-            if (limit !== undefined && file.name === limit) past = true;
-            if (existing.has(file.name)) continue;
-            await tx.execute(
-              sql`INSERT INTO extension_migrations (extension_id, name, checksum) VALUES (${source.extensionId}, ${file.name}, ${file.checksum})`,
-            );
-            recorded.push(`${source.extensionId}/${file.name}`);
-          }
-        }
-        return { recorded };
-      });
-    },
-
-    /** Apply every pending file of every source, in order, atomically. */
-    async apply(sources: readonly ExtensionMigrationSource[]): Promise<{ applied: string[] }> {
-      if (sources.length === 0) return { applied: [] };
-      await ensureTable();
-      return db.transaction(async (tx) => {
-        await tx.execute(sql`SELECT pg_advisory_xact_lock(${ADVISORY_LOCK_KEY})`);
-        const applied: string[] = [];
-        for (const source of sources) {
-          const existing = await appliedChecksums(tx as unknown as Db, source.extensionId);
-          for (const file of readMigrationFiles(source.dir)) {
-            const checksum = existing.get(file.name);
-            if (checksum !== undefined) {
-              if (checksum !== file.checksum) {
-                throw new Error(
-                  `Extension migration ${source.extensionId}/${file.name} changed after it was applied — ` +
-                    'add a new migration file instead of editing an applied one',
-                );
-              }
-              continue;
-            }
-            for (const statement of file.statements) await tx.execute(sql.raw(statement));
-            await tx.execute(
-              sql`INSERT INTO extension_migrations (extension_id, name, checksum) VALUES (${source.extensionId}, ${file.name}, ${file.checksum})`,
-            );
-            applied.push(`${source.extensionId}/${file.name}`);
-          }
-        }
-        return { applied };
-      });
-    },
-  };
+    }
+    return applied;
+  });
 }
-
-export type ExtensionMigrationRunner = ReturnType<typeof createExtensionMigrationRunner>;

@@ -32,6 +32,8 @@ type AndroidSymbolName = Exclude<Extract<SymbolViewProps['name'], object>['andro
 
 /** Semantic icon name → [SF Symbol (iOS), Material Symbol (Android/web)]. */
 const ICONS = {
+  mic: ['mic', 'mic'],
+  speaker: ['speaker.wave.2', 'volume_up'],
   plus: ['plus', 'add'],
   up: ['arrow.up', 'arrow_upward'],
   stop: ['stop.fill', 'stop'],
@@ -42,9 +44,7 @@ const ICONS = {
   check: ['checkmark', 'check'],
   x: ['xmark', 'close'],
   book: ['book', 'menu_book'],
-  books: ['books.vertical', 'menu_book'],
   globe: ['globe', 'public'],
-  lock: ['lock', 'lock'],
   file: ['doc.text', 'description'],
   bar: ['chart.bar', 'bar_chart'],
   checkCircle: ['checkmark.circle', 'check_circle'],
@@ -55,7 +55,6 @@ const ICONS = {
   refresh: ['arrow.clockwise', 'refresh'],
   share: ['square.and.arrow.up', 'share'],
   sparkle: ['sparkles', 'auto_awesome'],
-  brain: ['brain', 'psychology'],
   msg: ['bubble.left', 'chat_bubble'],
   msgs: ['bubble.left.and.bubble.right', 'forum'],
   folder: ['folder', 'folder'],
@@ -69,25 +68,14 @@ const ICONS = {
   photos: ['photo.on.rectangle', 'image'],
   arrowDown: ['arrow.down', 'arrow_downward'],
   quote: ['quote.opening', 'format_quote'],
-  tag: ['tag', 'sell'],
-  tags: ['tag', 'label'],
   trash: ['trash', 'delete'],
   alert: ['exclamationmark.triangle', 'warning'],
   archive: ['archivebox', 'archive'],
   download: ['square.and.arrow.down', 'download'],
-  list: ['list.bullet', 'list'],
-  board: ['rectangle.split.3x1', 'view_column'],
-  gantt: ['chart.bar.xaxis', 'view_timeline'],
-  calendar: ['calendar', 'calendar_today'],
   users: ['person.2', 'group'],
   userPlus: ['person.badge.plus', 'person_add'],
   person: ['person.crop.circle', 'account_circle'],
-  diamond: ['diamond', 'diamond'],
-  activity: ['clock.arrow.circlepath', 'history'],
-  foldAll: ['arrow.down.right.and.arrow.up.left', 'unfold_less'],
   circle: ['circle', 'circle'],
-  eye: ['eye', 'visibility'],
-  flag: ['flag', 'flag'],
   filter: ['line.3.horizontal.decrease', 'filter_list'],
   filterOn: ['line.3.horizontal.decrease.circle.fill', 'filter_alt'],
   // the overflow "more" button: horizontal on iOS, vertical (⋮) on Android
@@ -98,20 +86,11 @@ const ICONS = {
   open: ['arrow.up.right.square', 'open_in_new'],
   table: ['tablecells', 'table'],
   wrench: ['wrench.and.screwdriver', 'build'],
-  person2: ['person', 'person'],
-  // ── projects (task status, milestones, members, activity) ──
+  // ── steps, people, comments, waiting ──
   statusProgress: ['circle.lefthalf.filled', 'contrast'],
-  statusReview: ['eye.circle', 'rate_review'],
   statusCancelled: ['xmark.circle', 'cancel'],
-  diamondFill: ['diamond.fill', 'diamond'],
-  flagFill: ['flag.fill', 'flag'],
-  subtask: ['arrow.turn.down.right', 'subdirectory_arrow_right'],
   personMinus: ['person.badge.minus', 'person_remove'],
-  crown: ['crown', 'workspace_premium'],
   comment: ['text.bubble', 'comment'],
-  folderPlus: ['folder.badge.plus', 'create_new_folder'],
-  plusCircle: ['plus.circle', 'add_circle'],
-  checklist: ['checklist', 'checklist'],
   hourglass: ['hourglass', 'hourglass_empty'],
   // ── rich replies (forms, artifacts, diagrams) ──
   send: ['paperplane', 'send'],
@@ -120,26 +99,16 @@ const ICONS = {
   code: ['chevron.left.forwardslash.chevron.right', 'code'],
   diagram: ['point.3.connected.trianglepath.dotted', 'account_tree'],
   attach: ['paperclip', 'attach_file'],
-  // choice indicators: iOS marks a picked option with a trailing checkmark
-  // (single) / a filled check circle (multi); Android uses radios / checkboxes
-  radioOn: ['checkmark', 'radio_button_checked'],
-  radioOff: ['circle', 'radio_button_unchecked'],
-  checkboxOn: ['checkmark.circle.fill', 'check_box'],
-  checkboxOff: ['circle', 'check_box_outline_blank'],
-  // ── Bots (pinned row, stop, "needs you" cards, sign-in, mentions) ──
+  // ── conversations (pinned row, 「需要你」 cards, sign-in, mentions) ──
   pin: ['pin.fill', 'push_pin'],
   pinOff: ['pin.slash', 'keep_off'],
-  plug: ['powerplug', 'power'],
-  stopCircle: ['stop.circle', 'stop_circle'],
   hand: ['hand.raised', 'front_hand'],
   shieldCheck: ['checkmark.shield', 'verified_user'],
-  shieldAlert: ['exclamationmark.shield', 'gpp_maybe'],
   key: ['key.fill', 'key'],
-  unlock: ['lock.open', 'lock_open'],
   sleep: ['moon.zzz', 'bedtime'],
   at: ['at', 'alternate_email'],
   alertCircle: ['exclamationmark.circle', 'error'],
-  // rating a shared Agent's reply (the filled one marks the rating given)
+  // rating a reply (the filled one marks the rating given)
   thumbUp: ['hand.thumbsup', 'thumb_up'],
   thumbUpFill: ['hand.thumbsup.fill', 'thumb_up'],
   thumbDown: ['hand.thumbsdown', 'thumb_down'],
@@ -147,9 +116,14 @@ const ICONS = {
   // ── an Agent's computer (screen, keys, zoom) ──
   computer: ['desktopcomputer', 'computer'],
   keyboard: ['keyboard', 'keyboard'],
-  chevL: ['chevron.left', 'chevron_left'],
   zoomIn: ['plus.magnifyingglass', 'zoom_in'],
   zoomOut: ['minus.magnifyingglass', 'zoom_out'],
+  // ── v2 shell (notifications, runs, skills) ──
+  bell: ['bell', 'notifications'],
+  bellBadge: ['bell.badge', 'notifications_unread'],
+  bellSlash: ['bell.slash', 'notifications_off'],
+  runs: ['waveform.path.ecg', 'vital_signs'],
+  wand: ['wand.and.stars', 'auto_fix_high'],
 } as const satisfies Record<string, readonly [SFSymbol, AndroidSymbolName]>;
 
 export type IconName = keyof typeof ICONS;
@@ -231,6 +205,7 @@ export function Touchable({
   delayLongPress,
   accessibilityRole,
   accessibilityLabel,
+  accessibilityState,
 }: {
   children: React.ReactNode;
   onPress?: (e: GestureResponderEvent) => void;
@@ -246,6 +221,7 @@ export function Touchable({
   accessibilityRole?: PressableProps['accessibilityRole'];
   /** Spoken label for icon-only buttons (no visible text). */
   accessibilityLabel?: string;
+  accessibilityState?: PressableProps['accessibilityState'];
 }) {
   const handlePress = (e: GestureResponderEvent) => {
     if (disabled) return;
@@ -269,6 +245,7 @@ export function Touchable({
       delayLongPress={delayLongPress}
       accessibilityRole={accessibilityRole}
       accessibilityLabel={accessibilityLabel}
+      accessibilityState={{ ...accessibilityState, disabled: !!disabled }}
       style={({ pressed }) => [style, pressed && !disabled && pressedStyle]}
     >
       {children}

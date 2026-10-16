@@ -44,7 +44,6 @@ import {
   type TextFieldImeAction,
   type TextFieldKeyboardType,
   type TextFieldRef,
-  useNativeState,
   Box,
 } from '@expo/ui/jetpack-compose';
 import {
@@ -53,6 +52,8 @@ import {
   clip,
   combinedClickable,
   fillMaxSize,
+  imePadding,
+  onGloballyPositioned,
   fillMaxWidth,
   padding,
   semantics,
@@ -60,12 +61,38 @@ import {
   size,
 } from '@expo/ui/jetpack-compose/modifiers';
 import type { IconName } from './core';
+import { useT } from '../lib/i18n';
+import { radius, space } from '../theme';
 import { selectionTick } from './haptics';
 import { M3Host, useM3 } from './m3';
 // the Android table explicitly: TypeScript resolves the bare path to the iOS one (SF names)
 import { toolbarIcon } from './toolbar-icon.android';
 
+import { useNativeState, useTextBinding } from './text-state.android';
 export { useNativeState };
+
+/** Static placeholders in the existing Compose form island. */
+export function FormLoading() {
+  const t = useT();
+  const m = useM3();
+  const shape = Shapes.RoundedCorner({
+    topStart: radius.xs,
+    topEnd: radius.xs,
+    bottomStart: radius.xs,
+    bottomEnd: radius.xs,
+  });
+  return (
+    <Column
+      modifiers={[padding(space.margin, space.margin, space.margin, space.margin), fillMaxWidth()]}
+      verticalArrangement={{ spacedBy: space.md }}
+    >
+      <Text color={m.onSurfaceVariant}>{t('common.loading')}</Text>
+      {[180, 120].map((width) => (
+        <Box key={width} modifiers={[size(width, 16), clip(shape), background(m.surfaceContainerHighest)]} />
+      ))}
+    </Column>
+  );
+}
 
 /** SwiftUI's locale environment has no Compose counterpart (shared modules import it). */
 export function useLocaleEnv(): null {
@@ -81,7 +108,7 @@ export function NativeForm({ children, style }: { children: React.ReactNode; sty
       <LazyColumn
         verticalArrangement={{ spacedBy: 20 }}
         contentPadding={{ start: 16, end: 16, top: 12, bottom: 40 }}
-        modifiers={[fillMaxSize(), background(m.surface)]}
+        modifiers={[fillMaxSize(), imePadding(), background(m.surface)]}
       >
         {children}
       </LazyColumn>
@@ -588,6 +615,7 @@ export function FormTextField({
 }) {
   const m = useM3();
   const note = error || supporting;
+  const { onReady, ...binding } = useTextBinding(state, fieldRef, onChangeText);
   const submit = onSubmit
     ? imeAction === 'next'
       ? { onNext: onSubmit }
@@ -601,9 +629,7 @@ export function FormTextField({
     : undefined;
   return (
     <OutlinedTextField
-      ref={fieldRef}
-      value={state}
-      onValueChange={onChangeText}
+      {...binding}
       textStyle={{ fontFamily: 'Nunito' }}
       singleLine={!multiline}
       minLines={multiline ? 3 : undefined}
@@ -618,7 +644,11 @@ export function FormTextField({
         capitalization: 'none',
       }}
       keyboardActions={submit}
-      modifiers={[fillMaxWidth(), ...(autofill ? [semantics({ contentType: autofill })] : [])]}
+      modifiers={[
+        fillMaxWidth(),
+        onGloballyPositioned(onReady),
+        ...(autofill ? [semantics({ contentType: autofill })] : []),
+      ]}
     >
       <OutlinedTextField.Label>
         <Text>{label}</Text>

@@ -463,7 +463,7 @@ export interface PlantAvatarSvgOptions {
   state?: PlantStateInput;
   /** Render px — drives LOD, the opt-in keyline's weight and motion amplitude (default 32). */
   size?: number;
-  /** 'auto' paints through CSS vars switched by `.dark-theme` (web); explicit for static targets. Default 'light'. */
+  /** 'auto' paints through CSS vars switched by `[data-theme='dark']` or `.dark-theme` (web); explicit for static targets. Default 'light'. */
   theme?: PlantAvatarTheme;
   /** false → attributes only: no classes, no style, no CSS needed. Default true. */
   animate?: boolean;
@@ -721,7 +721,7 @@ export function buildPlantAvatarSvg(o: PlantAvatarSvgOptions = {}): string {
   const phase = o.phase != null ? -Math.abs(o.phase) : -((seed % 997) / 997) * PLANT_PHASE_SPAN;
   // Motion vars only when something moves. Theme 'auto' carries just the dark tones that differ
   // from light: every paint is `var(--pa-<tone>,<light hex>)`, `.pa` leaves --pa-<tone> unset in
-  // light (→ the fallback), and `.dark-theme .pa` points it at --pa-d-<tone> — an undefined one
+  // light (→ the fallback), and a dark ancestor (`[data-theme='dark']`, `.dark-theme`) points it at --pa-d-<tone> — an undefined one
   // (same in both themes) makes it invalid, which falls back to the light hex again.
   const vars = [
     ...(animate
@@ -785,11 +785,12 @@ const LAG = `calc(var(--pa-phase) / ${PLANT_PHASE_SPAN})`;
  * them: every loop is capped unless it is thinking / speaking (live status, WCAG 2.2.2).
  * A morph (`.pa-morph`) suppresses the entrance one-shots on `.pa-os` — the pose transition
  * is the entrance — but never the thinking bob, the Y half of its circumnutation ellipse.
- * `.dark-theme` (the app's theme class) switches the 'auto' palette.
+ * A dark ancestor switches the 'auto' palette: `[data-theme='dark']` (the Native Haven tokens'
+ * switch, set on <html> or a preview frame) or the `.dark-theme` class.
  */
 export const PLANT_AVATAR_CSS = `
 .pa{display:block;overflow:visible}
-.dark-theme .pa,.pa-dark .pa{${AUTO_VARS_DARK}}
+[data-theme='dark'] .pa,.dark-theme .pa,.pa-dark .pa{${AUTO_VARS_DARK}}
 .pa .pa-mo,.pa .pa-os{transform-origin:var(--pa-ox) var(--pa-oy)}
 .pa .pa-pose,.pa .pa-part,.pa .pa-look,.pa .pa-fit{transition:transform .6s cubic-bezier(.34,1.3,.64,1)}
 .pa.pa-s-error .pa-pose,.pa.pa-s-error .pa-part{transition-duration:1s;transition-timing-function:cubic-bezier(.35,.6,.4,1)}

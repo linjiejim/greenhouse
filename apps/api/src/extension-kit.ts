@@ -1,39 +1,10 @@
-/**
- * The import surface for extensions — everything an extension under
- * `apps/api/src/extensions/<id>/` normally needs, re-exported from one place so
- * extension code does not have to know the core folder layout. Deeper imports
- * stay possible; this barrel is a convenience and the documented stable subset.
- */
-export { defineExtension, extensionPath } from './extensions/define.js';
-export type {
-  GreenhouseExtension,
-  ExtensionRoute,
-  ExtensionApplication,
-  ExtensionJob,
-  ExtensionCommand,
-  ExtensionBootContext,
-} from './extensions/define.js';
-
-export { defineTool } from './tools/define.js';
-export type { ToolModule, ToolMeta, LazyToolContext, ToolCategory } from './tools/define.js';
-
-export type { AppEnv } from './app-env.js';
-export { getAuthUser, requireFeature, requireInternal, requireSuper } from './auth/middleware.js';
-
-export { getDb, getExtensionServices } from '@greenhouse/db';
-export type { DatabaseProvider, Db } from '@greenhouse/db';
-
-export { GREENHOUSE_CONFIG, extensionEnabled, resolvePackPath } from './config/greenhouse-config.js';
-export { getWorkspaceValue } from './settings/workspace-config.js';
-
-export type { FeaturePointDef } from './platform/feature-points.js';
-export type { SearchSource, SearchSourceContext } from './search/sources.js';
-export type { SearchHit } from '@greenhouse/types/search';
-export { entityUrl, parseEntityUrl } from '@greenhouse/types/entity-links';
-export type { EntityRef, ExtensionEntityKindDef } from '@greenhouse/types/entity-links';
-export type { WidgetRecipe } from '@greenhouse/types/workbench';
-export type { FeatureFlag } from '@greenhouse/types/features';
-export type { WorkspaceSettingDef } from '@greenhouse/types/workspace-settings';
-export type { GreenhouseConfig } from '@greenhouse/types/config';
-
-export { logger } from '@greenhouse/utils/logger';
+/** Public v2 API extension imports; keep domain logic in services shared by routes and tools. */
+export { defineExtension, type GreenhouseExtension, type ExtensionSearchSource } from './extensions/define.js';
+export { defineTool, type ToolDef, type ToolContext } from './engine/tools/define.js';
+export type { Services } from './app.js';
+export type { AppEnv } from './http/env.js';
+export { readJson, readParam, readQuery } from './http/validate.js';
+export { ApiError, forbidden, invalidInput, notFound } from './http/errors.js';
+export { audit } from './audit.js';
+export { containing } from './http/like.js';
+export { decodeCursor, toPage } from './http/pagination.js';

@@ -1,71 +1,110 @@
 /**
- * Everything the Settings root shows and changes, shared by both platforms'
- * views (app/settings/index.tsx — SwiftUI, index.android.tsx — Material):
- * account, preferences (theme / language), the station, tag count, how many
- * connectors the account can use (null: none / not for this account), usage
- * limits, version + which JS bundle is running, and sign-out (which first
- * unregisters this phone's pushes on the station). There is no
- * default agent to pick any more (2026-10): a new chat starts with Sprouty,
- * a chat with one Bot from that Bot's profile.
+ * Everything Settings shows and changes, shared by both platforms' views (app/settings/index.tsx
+ * — SwiftUI, index.android.tsx — Material): the member's account (SET-01: picture, name,
+ * language, theme — account settings in v2, `PATCH /api/me`), the station, notifications, the
+ * version and which JS bundle runs, and sign-out (which first unregisters this phone's pushes on
+ * the station).
+ *
+ * Language and theme apply at once and are then saved to the account (instant-save settings,
+ * PRD §7.9); a save that fails puts them back and says so.
  */
 
-import { useEffect, useState } from 'react';
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
+import * as ImagePicker from 'expo-image-picker';
 import * as Updates from 'expo-updates';
 import { useNavigation } from 'expo-router';
-import { AFTER_DISMISS_MS, useAuth } from '../store/auth';
-import { usePrefs } from '../store/prefs';
-import { useTags } from '../store/tags';
+import { updateMe } from '../api/auth';
+import { prepareImage, uploadFile } from '../api/files';
+import { useT } from '../lib/i18n';
+import type { Me } from '../shared/contract';
 import { useActiveStation } from '../stations/use-active-station';
-import type { UserRole } from '../shared/greenhouse-types';
-import { listConnectors } from '../api/connectors';
-import { useT, type TranslationKey } from '../lib/i18n';
-import { confirmAction } from '../ui/dialogs';
-import { unregisterActive } from '../push/register';
+import { AFTER_DISMISS_MS, useAuth } from '../store/auth';
+import { usePrefs, type LangPref, type ThemePref } from '../store/prefs';
+import { alertError, confirmAction, promptText } from '../ui/dialogs';
+import { toast } from '../ui/toast';
+import { PUSH_PLATFORM_READY, unregisterActive, usePush } from '../push/register';
 
-export const ROLE_LABEL: Record<UserRole, TranslationKey> = {
-  super: 'settings.roleSuper',
-  team: 'settings.roleTeam',
-  external: 'settings.roleExternal',
-};
+
+/** Saves to the account, keeping the store's member in step; undoes `undo` when it fails. */
+async function saveMe(input: Parameters<typeof updateMe>[0], undo: () => void, failed: string): Promise<boolean> {
+  const result = await updateMe(input);
+  if (!result.ok) {
+    undo();
+    alertError(failed, result.message || undefined);
+    return false;
+  }
+  useAuth.getState().setUser(result.data);
+  return true;
+}
 
 export function useSettings() {
   const t = useT();
   const navigation = useNavigation();
   const user = useAuth((s) => s.user);
   const logout = useAuth((s) => s.logout);
-  const prefs = usePrefs();
+  const theme = usePrefs((s) => s.theme);
+  const lang = usePrefs((s) => s.lang);
   const station = useActiveStation();
-  const tagCount = useTags((s) => s.tags.length);
-  const tagsLoaded = useTags((s) => s.loaded);
-  const loadTags = useTags((s) => s.load);
 
-  useEffect(() => {
-    void loadTags();
-  }, [loadTags]);
-
-  // 连接器: only for an account with external tools (an internal member granted `mcp_call`)
-  const [connectors, setConnectors] = useState<number | null>(null);
-  const internal = !!user && user.role !== 'external';
-  useEffect(() => {
-    if (!internal) return undefined;
-    let alive = true;
-    void listConnectors().then((result) => {
-      if (alive) setConnectors(result?.enabled && result.connectors.length ? result.connectors.length : null);
-    });
-    return () => {
-      alive = false;
-    };
-  }, [internal]);
-
-  const nickname = user?.nickname || t('settings.fallbackName');
   // "1.3.2 (5)" — marketing version + build number
   const build =
     Platform.OS === 'ios'
       ? Constants.platform?.ios?.buildNumber
       : Constants.expoConfig?.android?.versionCode?.toString();
   const version = `${Constants.expoConfig?.version ?? ''}${build ? ` (${build})` : ''}`.trim();
+
+  const setTheme = (next: ThemePref) => {
+    const before = usePrefs.getState().theme;
+    usePrefs.getState().setTheme(next);
+    void saveMe({ theme: next }, () => usePrefs.getState().setTheme(before), t('settings.saveFailed'));
+  };
+
+  const setLanguage = (next: LangPref) => {
+    const before = usePrefs.getState().lang;
+    usePrefs.getState().setLang(next);
+    void saveMe({ locale: next }, () => usePrefs.getState().setLang(before), t('settings.saveFailed'));
+  };
+
+  const rename = async () => {
+    if (!user) return;
+    const next = await promptText({
+      title: t('settings.nameTitle'),
+      defaultValue: user.name,
+      confirmLabel: t('common.save'),
+    });
+    if (!next || next.trim() === user.name) return;
+    await saveMe({ name: next.trim() }, () => undefined, t('settings.saveFailed'));
+  };
+
+  /** Pick a picture from the library, upload it as my avatar and use it. */
+  const changeAvatar = async () => {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.9,
+    });
+    if (result.canceled || !result.assets[0]) return;
+    const asset = result.assets[0];
+    const uri = await prepareImage(asset.uri, asset.width);
+    const uploaded = await uploadFile(uri, {
+      name: 'avatar.jpg',
+      type: uri === asset.uri ? (asset.mimeType ?? 'image/jpeg') : 'image/jpeg',
+      purpose: 'avatar',
+    });
+    if (!uploaded.ok) {
+      alertError(t('settings.avatarFailed'), uploaded.message || undefined);
+      return;
+    }
+    if (await saveMe({ avatar_file_id: uploaded.data.id }, () => undefined, t('settings.avatarFailed'))) {
+      toast(t('settings.avatarSaved'), 'check');
+    }
+  };
+
+  const removeAvatar = async () => {
+    await saveMe({ avatar_file_id: null }, () => undefined, t('settings.saveFailed'));
+  };
 
   const signOut = async () => {
     const ok = await confirmAction({
@@ -82,13 +121,15 @@ export function useSettings() {
   };
 
   return {
-    user,
-    nickname,
+    user: user as Me | null,
     station,
-    prefs,
-    tagCount,
-    tagsLoaded,
-    connectors,
+    theme,
+    lang,
+    setTheme,
+    setLanguage,
+    rename,
+    changeAvatar,
+    removeAvatar,
     version,
     update: updateLabel(t),
     signOut,
@@ -101,4 +142,17 @@ function updateLabel(t: ReturnType<typeof useT>): string {
   if (!Updates.isEnabled || Updates.isEmbeddedLaunch || !Updates.updateId) return t('settings.updateEmbedded');
   const day = Updates.createdAt ? Updates.createdAt.toISOString().slice(0, 10) : '';
   return [Updates.updateId.slice(0, 8), day].filter(Boolean).join(' · ');
+}
+
+/** The 通知 row's value: this phone's pushes on the active station ('' when it does not push). */
+export function usePushRow(): string {
+  const t = useT();
+  const support = usePush((s) => s.support);
+  const permission = usePush((s) => s.permission);
+  const off = usePush((s) => s.off);
+  const device = usePush((s) => s.device);
+  if (!PUSH_PLATFORM_READY || support !== 'enabled') return '';
+  if (permission === 'denied') return t('push.rowSystemOff');
+  if (off) return t('push.rowOff');
+  return permission === 'granted' && device ? t('push.rowOn') : t('push.rowNotSet');
 }

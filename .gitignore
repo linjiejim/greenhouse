@@ -12,6 +12,9 @@ node_modules/
 /test-results/
 /blob-report/
 tests/e2e-ui/.auth/
+apps/web/e2e/.auth/
+apps/web/test-results/
+apps/web/playwright-report/
 
 # Build output
 dist/
@@ -48,8 +51,9 @@ data/raw/blog/
 # Downloaded PDF manuals (large, regeneratable)
 data/raw/manuals/
 
-# User uploads (runtime data)
+# User uploads (runtime data; v2's local storage writes data/files)
 data/uploads/
+data/files/
 
 # Skill Center bundle store (runtime data, seeded from skillhub/ on boot)
 data/skills/
@@ -89,7 +93,7 @@ docs/local/
 
 # Experimental specs and sketches
 docs/specs/
-design/
+/design/
 docs/sketches/
 
 # Desktop shell (Tauri)
@@ -99,3 +103,12 @@ apps/desktop/src-tauri/gen/
 apps/desktop/.keys/
 # Release staging written by scripts/desktop/*.mjs
 apps/desktop/release/
+
+# Design prototype browser output
+apps/design/playwright-report/
+apps/design/test-results/
+
+# Local review output from agents and test runs
+artifacts/
+.t*-artifacts/
+REPORT.md

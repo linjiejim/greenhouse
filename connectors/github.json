@@ -26,7 +26,7 @@
       "title_zh": "GitHub",
       "description_zh": "操作 GitHub 上的仓库、issue、PR 和代码——用每位成员自己的访问令牌。",
       "auth": {
-        "mode": "per_user",
+        "mode": "per_member",
         "header": "Authorization",
         "prefix": "Bearer ",
         "help": "A GitHub personal access token (fine-grained recommended) with access to the repositories you want the agent to use.",
