@@ -1,6 +1,8 @@
 import { z } from 'zod';
 import type { SchedulesService } from '../../modules/schedules/service.js';
-import { argumentDetails } from './presentation.js';
+import { describeCron } from '@greenhouse/utils/cron';
+import { getDb, members } from '@greenhouse/db';
+import { eq } from 'drizzle-orm';
 import { defineTool } from './define.js';
 import { backgroundOptionsSchema } from './run-start.js';
 
@@ -61,7 +63,7 @@ export function scheduleTools(schedules: SchedulesService) {
     callRisk: async (args) => (args.action === 'delete' ? 'tier3' : 'tier2'),
     async describe(args, ctx) {
       const zh = ctx.locale === 'zh';
-      const summary = {
+      let summary = {
         create: zh
           ? `新建定时「${'name' in args ? args.name : ''}」`
           : `create the schedule "${'name' in args ? args.name : ''}"`,
@@ -70,21 +72,67 @@ export function scheduleTools(schedules: SchedulesService) {
         resume: zh ? '恢复一个定时' : 'resume a schedule',
         delete: zh ? '删除一个定时' : 'delete a schedule',
       }[args.action];
-      const { action: _action, ...values } = args;
-      const schedule =
-        'id' in args
-          ? (await schedules.list(ctx.memberId, ctx.agent.id)).find((schedule) => schedule.id === args.id)
-          : null;
-      const details = argumentDetails(
-        Object.fromEntries(Object.entries(values).filter(([key]) => key !== 'id')),
-        ctx.locale,
+      const schedule = 'id' in args ? await schedules.get(ctx.memberId, args.id) : null;
+      const [member] = await getDb()
+        .select({ timezone: members.timezone })
+        .from(members)
+        .where(eq(members.id, ctx.memberId));
+      const details: { label: string; value: string }[] = [];
+      const add = (zhLabel: string, enLabel: string, value: string) =>
+        details.push({ label: zh ? zhLabel : enLabel, value });
+      if (schedule) {
+        add('定时', 'Schedule', schedule.name);
+        const verbs = {
+          update: ['修改', 'Change'],
+          pause: ['暂停', 'Pause'],
+          resume: ['恢复', 'Resume'],
+          delete: ['删除', 'Delete'],
+        };
+        const verb = verbs[args.action as keyof typeof verbs];
+        if (verb) summary = zh ? `${verb[0]}定时「${schedule.name}」` : `${verb[1]} schedule “${schedule.name}”`;
+      }
+      add(
+        'Agent',
+        'Agent',
+        schedule?.agent_id ?? ('agent_id' in args ? (args.agent_id ?? ctx.agent.id) : ctx.agent.name),
       );
-      if ('id' in args)
-        details.unshift({
-          label: zh ? '定时' : 'Schedule',
-          value: schedule?.name ?? (zh ? '不可用的定时' : 'Unavailable schedule'),
-        });
-      return { summary, details };
+      if ('name' in args && args.name && args.action === 'update') add('新名称', 'New name', args.name);
+      if ('brief' in args && args.brief) add('要做什么', 'Work', args.brief);
+      if ('cron' in args && args.cron) add('执行时间', 'Timing', describeCron(args.cron, ctx.locale));
+      const timezone = 'timezone' in args ? (args.timezone ?? member?.timezone) : schedule?.timezone;
+      if (timezone && timezone !== member?.timezone) add('时区', 'Time zone', timezone);
+      if ('computer' in args && args.computer === true) add('电脑', 'Computer', zh ? '使用电脑' : 'Use a computer');
+      if ('computer' in args && args.computer === false && args.action === 'update')
+        add('电脑', 'Computer', zh ? '改为不使用电脑' : 'Stop using a computer');
+      if ('domains' in args && args.domains?.length) add('可访问的网站', 'Allowed sites', args.domains.join(' · '));
+      if ('domains' in args && !args.domains?.length && args.action === 'update')
+        add('可访问的网站', 'Allowed sites', zh ? '移除指定网站' : 'Remove the specified sites');
+      if ('continue_after' in args && (args.continue_after || args.action === 'update'))
+        add(
+          '完成后',
+          'On completion',
+          args.continue_after
+            ? zh
+              ? '继续对话'
+              : 'Continue the conversation'
+            : zh
+              ? '仅汇报结果'
+              : 'Report the result only',
+        );
+      if ('quiet' in args && (args.quiet || args.action === 'update'))
+        add(
+          '通知',
+          'Notifications',
+          args.quiet
+            ? zh
+              ? '有发现时通知'
+              : 'Notify when there are findings'
+            : zh
+              ? '每次完成都通知'
+              : 'Notify on every completion',
+        );
+      if (ctx.conversation?.kind === 'room') summary = zh ? '管理一个定时' : 'Manage a schedule';
+      return { summary, details, ...(args.action === 'delete' ? { danger: true } : {}) };
     },
     async execute(args, ctx) {
       switch (args.action) {

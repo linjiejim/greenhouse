@@ -1,3 +1,5 @@
+import { errorText } from '../../lib/errors';
+import { useOverlayDraft } from '../../lib/useOverlayDraft';
 /**
  * 管理 → 成员与分组 (ADM-01, ADM-02, ADM-03): invite by email (a one-time link, mailed when the
  * mail service can send and always there to hand over),
@@ -105,6 +107,7 @@ function InviteDrawer({ onClose, onLink }: { onClose: () => void; onLink: (link:
   const [role, setRole] = useState<'member' | 'admin'>('member');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+  const dismiss = useOverlayDraft({ email, name, role }, saving, onClose);
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     setSaving(true);
@@ -126,33 +129,36 @@ function InviteDrawer({ onClose, onLink }: { onClose: () => void; onLink: (link:
     }
   };
   return (
-    <Overlay variant="dialog" title={t('members.invite')} onClose={onClose}>
-      <form id="invite" className="app-form" onSubmit={(event) => void submit(event)}>
-        <Field label={t('login.email')} required error={error || undefined}>
-          <Input type="email" value={email} autoFocus onChange={(event) => setEmail(event.target.value)} />
-        </Field>
-        <Field label={t('activate.name')} required>
-          <Input value={name} maxLength={80} onChange={(event) => setName(event.target.value)} />
-        </Field>
-        <FieldGroup label={t('members.role')}>
-          <Select
-            label={t('members.role')}
-            value={role}
-            options={[
-              { value: 'member', label: t('members.roleMember') },
-              { value: 'admin', label: t('members.roleAdmin') },
-            ]}
-            onChange={(value) => setRole(value as 'member' | 'admin')}
-          />
-        </FieldGroup>
-      </form>
-      <OverlayActions>
-        <Button onClick={onClose}>{t('common.cancel')}</Button>
-        <Button kind="primary" type="submit" form="invite" loading={saving} disabled={!email.trim() || !name.trim()}>
-          {t('members.sendInvite')}
-        </Button>
-      </OverlayActions>
-    </Overlay>
+    <>
+      <Overlay variant="dialog" title={t('members.invite')} onClose={onClose} beforeClose={dismiss.beforeClose}>
+        <form {...dismiss.formProps} id="invite" className="app-form" onSubmit={(event) => void submit(event)}>
+          <Field label={t('login.email')} required error={error || undefined}>
+            <Input type="email" value={email} autoFocus onChange={(event) => setEmail(event.target.value)} />
+          </Field>
+          <Field label={t('activate.name')} required>
+            <Input value={name} maxLength={80} onChange={(event) => setName(event.target.value)} />
+          </Field>
+          <FieldGroup label={t('members.role')}>
+            <Select
+              label={t('members.role')}
+              value={role}
+              options={[
+                { value: 'member', label: t('members.roleMember') },
+                { value: 'admin', label: t('members.roleAdmin') },
+              ]}
+              onChange={(value) => setRole(value as 'member' | 'admin')}
+            />
+          </FieldGroup>
+        </form>
+        <OverlayActions>
+          <Button onClick={dismiss.close}>{t('common.cancel')}</Button>
+          <Button kind="primary" type="submit" form="invite" loading={saving} disabled={!email.trim() || !name.trim()}>
+            {t('members.sendInvite')}
+          </Button>
+        </OverlayActions>
+      </Overlay>
+      {dismiss.confirmation}
+    </>
   );
 }
 
@@ -164,7 +170,7 @@ function MemberDrawer({ member, onClose }: { member: MemberAdmin; onClose: () =>
     api.admin
       .updateMember(member.id, input)
       .then(() => client.invalidateQueries({ queryKey: MEMBERS }))
-      .catch((error: unknown) => notify(error instanceof ApiClientError ? error.message : t('common.error')));
+      .catch((error: unknown) => notify(errorText(error, t)));
   return (
     <Overlay title={member.name} onClose={onClose}>
       <section className="app-section">
@@ -217,7 +223,7 @@ function Members() {
   const [editing, setEditing] = useState<MemberAdmin | null>(null);
   const [disabling, setDisabling] = useState<MemberAdmin | null>(null);
   const items = members.data?.pages.flatMap((page) => page.items) ?? [];
-  const failed = (error: unknown) => notify(error instanceof ApiClientError ? error.message : t('common.error'));
+  const failed = (error: unknown) => notify(errorText(error, t));
   const setStatus = (member: MemberAdmin, status: 'active' | 'disabled') =>
     api.admin
       .updateMember(member.id, { status })
@@ -236,7 +242,7 @@ function Members() {
       {members.isPending ? (
         <Skeleton lines={5} />
       ) : members.isError ? (
-        <ErrorBox onRetry={() => void members.refetch()}>{t('common.error')}</ErrorBox>
+        <ErrorBox onRetry={() => void members.refetch()}>{errorText(members.error, t)}</ErrorBox>
       ) : (
         <ul className="app-list">
           {items.map((member) => {
@@ -325,8 +331,12 @@ function GroupDrawer({ group, onClose }: { group: Group | null; onClose: () => v
   const [description, setDescription] = useState(group?.description ?? '');
   const [people, setPeople] = useState<string[]>(group?.member_ids ?? []);
   const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
+  const dismiss = useOverlayDraft({ name, description, people }, saving, onClose);
   const submit = async (event: FormEvent) => {
     event.preventDefault();
+    if (saving) return;
+    setSaving(true);
     try {
       const input = { name: name.trim(), description, member_ids: people };
       if (group) await api.admin.saveGroup(group.id, input);
@@ -334,44 +344,49 @@ function GroupDrawer({ group, onClose }: { group: Group | null; onClose: () => v
       await client.invalidateQueries({ queryKey: GROUPS });
       onClose();
     } catch (caught) {
-      setError(caught instanceof ApiClientError ? caught.message : t('common.error'));
+      setError(errorText(caught, t));
+    } finally {
+      setSaving(false);
     }
   };
   return (
-    <Overlay title={group ? group.name : t('groups.new')} onClose={onClose}>
-      <form id="group" className="app-form" onSubmit={(event) => void submit(event)}>
-        <Field label={t('groups.name')} required error={error || undefined}>
-          <Input value={name} maxLength={60} autoFocus onChange={(event) => setName(event.target.value)} />
-        </Field>
-        <Field label={t('groups.description')}>
-          <TextArea
-            value={description}
-            maxLength={500}
-            maxRows={4}
-            onChange={(event) => setDescription(event.target.value)}
-          />
-        </Field>
-        <FieldGroup label={t('groups.people')}>
-          <MultiSelect
-            label={t('groups.people')}
-            value={people}
-            max={4}
-            options={(directory.data?.items ?? []).map((member) => ({
-              value: member.id,
-              label: member.name,
-              description: member.email,
-            }))}
-            onChange={setPeople}
-          />
-        </FieldGroup>
-      </form>
-      <OverlayActions>
-        <Button onClick={onClose}>{t('common.cancel')}</Button>
-        <Button kind="primary" type="submit" form="group" disabled={!name.trim()}>
-          {t('common.save')}
-        </Button>
-      </OverlayActions>
-    </Overlay>
+    <>
+      <Overlay title={group ? group.name : t('groups.new')} onClose={onClose} beforeClose={dismiss.beforeClose}>
+        <form {...dismiss.formProps} id="group" className="app-form" onSubmit={(event) => void submit(event)}>
+          <Field label={t('groups.name')} required error={error || undefined}>
+            <Input value={name} maxLength={60} autoFocus onChange={(event) => setName(event.target.value)} />
+          </Field>
+          <Field label={t('groups.description')}>
+            <TextArea
+              value={description}
+              maxLength={500}
+              maxRows={4}
+              onChange={(event) => setDescription(event.target.value)}
+            />
+          </Field>
+          <FieldGroup label={t('groups.people')}>
+            <MultiSelect
+              label={t('groups.people')}
+              value={people}
+              max={4}
+              options={(directory.data?.items ?? []).map((member) => ({
+                value: member.id,
+                label: member.name,
+                description: member.email,
+              }))}
+              onChange={setPeople}
+            />
+          </FieldGroup>
+        </form>
+        <OverlayActions>
+          <Button onClick={dismiss.close}>{t('common.cancel')}</Button>
+          <Button kind="primary" type="submit" form="group" loading={saving} disabled={!name.trim()}>
+            {t('common.save')}
+          </Button>
+        </OverlayActions>
+      </Overlay>
+      {dismiss.confirmation}
+    </>
   );
 }
 
@@ -432,7 +447,7 @@ function Groups() {
             void api.admin
               .removeGroup(target.id)
               .then(() => client.invalidateQueries({ queryKey: GROUPS }))
-              .catch((error: unknown) => notify(error instanceof ApiClientError ? error.message : t('common.error')));
+              .catch((error: unknown) => notify(errorText(error, t)));
           }}
         >
           {t('groups.deleteBody')}

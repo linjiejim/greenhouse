@@ -1,3 +1,4 @@
+import { useOverlayDraft } from '../../lib/useOverlayDraft';
 /** 重命名 from a page or a list (the directory renames in place). */
 
 import { useId, useState, type FormEvent } from 'react';
@@ -33,6 +34,7 @@ export function RenameDialog({ item, onClose }: { item: KnowledgeItem; onClose: 
   const [name, setName] = useState(item.name);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const dismiss = useOverlayDraft(name, busy, onClose);
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     const next = name.trim();
@@ -48,31 +50,40 @@ export function RenameDialog({ item, onClose }: { item: KnowledgeItem; onClose: 
     }
   };
   return (
-    <Overlay variant="dialog" title={t('row.rename')} onClose={onClose}>
-      <form id={formId} className="app-form" noValidate onSubmit={(event) => void submit(event)}>
-        <Field
-          label={item.type === 'doc' ? t('knowledge.title') : t('knowledge.name')}
-          error={error || undefined}
-          required
+    <>
+      <Overlay variant="dialog" title={t('row.rename')} onClose={onClose} beforeClose={dismiss.beforeClose}>
+        <form
+          {...dismiss.formProps}
+          id={formId}
+          className="app-form"
+          noValidate
+          onSubmit={(event) => void submit(event)}
         >
-          <Input
-            data-autofocus
-            value={name}
-            maxLength={item.type === 'doc' ? DOC_TITLE_MAX : item.type === 'folder' ? FOLDER_NAME_MAX : 200}
-            onChange={(event) => {
-              setName(event.target.value);
-              setError('');
-            }}
-            onFocus={(event) => event.currentTarget.select()}
-          />
-        </Field>
-      </form>
-      <OverlayActions>
-        <Button onClick={onClose}>{t('common.cancel')}</Button>
-        <Button kind="primary" type="submit" form={formId} loading={busy}>
-          {t('row.rename')}
-        </Button>
-      </OverlayActions>
-    </Overlay>
+          <Field
+            label={item.type === 'doc' ? t('knowledge.title') : t('knowledge.name')}
+            error={error || undefined}
+            required
+          >
+            <Input
+              data-autofocus
+              value={name}
+              maxLength={item.type === 'doc' ? DOC_TITLE_MAX : item.type === 'folder' ? FOLDER_NAME_MAX : 200}
+              onChange={(event) => {
+                setName(event.target.value);
+                setError('');
+              }}
+              onFocus={(event) => event.currentTarget.select()}
+            />
+          </Field>
+        </form>
+        <OverlayActions>
+          <Button onClick={dismiss.close}>{t('common.cancel')}</Button>
+          <Button kind="primary" type="submit" form={formId} loading={busy}>
+            {t('row.rename')}
+          </Button>
+        </OverlayActions>
+      </Overlay>
+      {dismiss.confirmation}
+    </>
   );
 }

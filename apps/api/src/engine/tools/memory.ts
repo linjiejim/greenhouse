@@ -35,6 +35,25 @@ const input = z.discriminatedUnion('action', [
 
 /** Durable notes about the member and about how this Agent does its job. Private to the Agent. */
 export function memoryTool(agents: AgentsService) {
+  const nameable = new WeakSet<object>();
+  const summary = (args: z.infer<typeof input>, output: unknown, locale: 'zh' | 'en', named: boolean) => {
+    if (args.action === 'recall') return locale === 'zh' ? '回想了记忆' : 'Recalled memories';
+    const title = named
+      ? ((output as { title?: string } | undefined)?.title ?? ('title' in args ? args.title : undefined))
+      : undefined;
+    const verb = {
+      remember: ['记住了', 'Remembered'],
+      update: ['更新了记忆', 'Updated memory'],
+      forget: ['忘记了', 'Forgot'],
+    }[args.action][locale === 'zh' ? 0 : 1];
+    if (!title)
+      return {
+        remember: ['记住了一条记忆', 'Remembered a memory'],
+        update: ['更新了一条记忆', 'Updated a memory'],
+        forget: ['忘记了一条记忆', 'Forgot a memory'],
+      }[args.action][locale === 'zh' ? 0 : 1]!;
+    return `${verb}${locale === 'zh' ? `：${title}` : `: ${title}`}`;
+  };
   return defineTool({
     name: 'memory',
     description:
@@ -48,6 +67,7 @@ export function memoryTool(agents: AgentsService) {
     publicAgent: true,
     privateRead: async (args) => args.action === 'recall',
     async callRisk(args, ctx) {
+      if (ctx.conversation?.kind !== 'room') nameable.add(args);
       if (args.action === 'recall' || ctx.surface === 'background' || ctx.tainted()) return 'read';
       return args.action === 'forget' ? 'tier3' : 'tier1';
     },
@@ -64,13 +84,21 @@ export function memoryTool(agents: AgentsService) {
     },
     async undo(_args, output, before, ctx) {
       const result = output as { remembered?: string; updated?: string; updated_at: string };
+      const id = (result.remembered ?? result.updated)!;
+      const previous = (before as { previous?: { title: string; content: string; updated_at: string } }).previous;
+      const lineage = ctx.undoTimestamps?.get(id);
       await agents.undoMemory(
         ctx.memberId,
         ctx.agent.id,
-        (result.remembered ?? result.updated)!,
-        result.updated_at,
-        (before as { previous?: { title: string; content: string } }).previous,
+        id,
+        lineage?.written === result.updated_at ? lineage.current : result.updated_at,
+        previous,
       );
+      if (previous)
+        ctx.undoTimestamps?.set(id, {
+          written: previous.updated_at,
+          current: (await agents.lockMemory(ctx.memberId, ctx.agent.id, id)).updated_at,
+        });
     },
     async describe(args, ctx) {
       const memory =
@@ -78,7 +106,15 @@ export function memoryTool(agents: AgentsService) {
           ? (await agents.memories(ctx.memberId, ctx.agent.id, 'active')).find((memory) => memory.id === args.id)
           : null;
       return {
-        summary: ctx.locale === 'zh' ? '彻底删除一条记忆' : 'permanently delete a memory',
+        danger: true,
+        summary:
+          memory && ctx.conversation?.kind !== 'room'
+            ? ctx.locale === 'zh'
+              ? `彻底删除记忆「${memory.title}」`
+              : `Permanently delete memory “${memory.title}”`
+            : ctx.locale === 'zh'
+              ? '彻底删除一条记忆'
+              : 'permanently delete a memory',
         details: memory ? [{ label: ctx.locale === 'zh' ? '记忆' : 'Memory', value: memory.title }] : [],
       };
     },
@@ -103,7 +139,7 @@ export function memoryTool(agents: AgentsService) {
           { title: args.title, content: args.content, category: args.category, pinned: false },
           { source: 'agent', conversationId: ctx.conversation?.id },
         );
-        return { remembered: saved.id, updated_at: saved.updated_at };
+        return { remembered: saved.id, title: saved.title, updated_at: saved.updated_at };
       }
       if (args.action === 'recall') {
         if (!args.id && !args.query?.trim() && !args.from && !args.to)
@@ -134,17 +170,13 @@ export function memoryTool(agents: AgentsService) {
           ...(args.title !== undefined ? { title: args.title } : {}),
           ...(args.content !== undefined ? { content: args.content } : {}),
         });
-        return { updated: args.id, updated_at: saved.updated_at };
+        return { updated: args.id, title: saved.title, updated_at: saved.updated_at };
       }
+      const memory = await agents.lockMemory(ctx.memberId, handle, args.id);
       await agents.forget(ctx.memberId, handle, args.id);
-      return { forgotten: args.id };
+      return { forgotten: args.id, title: memory.title };
     },
-    summarize: (args, _output, locale) =>
-      ({
-        remember: locale === 'zh' ? '记住了一件事' : 'Remembered something',
-        recall: locale === 'zh' ? '回想了记忆' : 'Recalled memories',
-        update: locale === 'zh' ? '更新了一条记忆' : 'Updated a memory',
-        forget: locale === 'zh' ? '忘记了一条记忆' : 'Forgot a memory',
-      })[args.action],
+    receipt: async (args, output, ctx) => summary(args, output, ctx.locale, ctx.conversation?.kind !== 'room'),
+    summarize: (args, output, locale) => summary(args, output, locale, nameable.has(args)),
   });
 }

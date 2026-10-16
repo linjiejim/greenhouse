@@ -50,7 +50,7 @@ export default function Skills() {
       <Stack.Screen options={{ title: t('integration.skills') }} />
       <DirectorySearch filter={filter} />
       {!r.data ? (
-        <ResourceState loading={r.loading} retry={() => void r.refresh()} />
+        <ResourceState error={r.error} loading={r.loading} retry={() => void r.refresh()} />
       ) : (
         <FlatList
           contentInsetAdjustmentBehavior="automatic"

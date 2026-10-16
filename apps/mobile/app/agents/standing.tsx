@@ -59,7 +59,7 @@ export default function Standing() {
     <>
       <Stack.Screen options={{ title: t('integration.standing') }} />
       {!r.data ? (
-        <ResourceState loading={r.loading} retry={() => void r.refresh()} />
+        <ResourceState error={r.error} loading={r.loading} retry={() => void r.refresh()} />
       ) : (
         <FlatList
           contentInsetAdjustmentBehavior="automatic"
@@ -82,7 +82,7 @@ export default function Standing() {
               subtitle={actionsOf(item.actions)}
               value={t('integration.revoke')}
               onPress={() => void revoke(item.id)}
-              accessibilityLabel={`${item.scope_name || item.scope_type}, ${actionsOf(item.actions)}, ${t('integration.revoke')}`}
+              accessibilityLabel={`${item.scope_name || t(item.scope_type === 'folder' ? 'integration.folder' : 'integration.table')}, ${actionsOf(item.actions)}, ${t('integration.revoke')}`}
             />
           )}
           ListEmptyComponent={

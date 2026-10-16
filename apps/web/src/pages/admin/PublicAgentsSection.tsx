@@ -1,3 +1,4 @@
+import { errorText } from '../../lib/errors';
 import { useState } from 'react';
 /**
  * 管理 → 公开 Agents (ADM-10): every published Agent with its owner, audience and this month's
@@ -7,7 +8,6 @@ import { useState } from 'react';
 import { Pause, Play, Sparkles } from 'lucide-react';
 import { Button, Empty, ErrorBox, Overlay, Skeleton, StatusBadge } from '@greenhouse/ui/kit';
 import { icon } from '@greenhouse/ui/tokens';
-import { ApiClientError } from '@greenhouse/contract/client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNotify } from '../../app/notify';
 import { AgentBudgets } from '../agents/AgentBudgets';
@@ -27,9 +27,9 @@ export function PublicAgentsSection() {
   const toggle = (id: string, paused: boolean) =>
     void (paused ? api.admin.publicAgents.resume(id) : api.admin.publicAgents.pause(id))
       .then(() => client.invalidateQueries({ queryKey: KEY }))
-      .catch((error: unknown) => notify(error instanceof ApiClientError ? error.message : t('common.error')));
+      .catch((error: unknown) => notify(errorText(error, t)));
   if (agents.isPending) return <Skeleton lines={4} />;
-  if (agents.isError) return <ErrorBox onRetry={() => void agents.refetch()}>{t('common.error')}</ErrorBox>;
+  if (agents.isError) return <ErrorBox onRetry={() => void agents.refetch()}>{errorText(agents.error, t)}</ErrorBox>;
   const items = agents.data.items;
   if (!items.length) return <Empty icon={<Sparkles />} title={t('agents.noPublic')} />;
   return (

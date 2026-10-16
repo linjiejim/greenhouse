@@ -8,7 +8,7 @@
 import React, { useEffect, useState } from 'react';
 import { ScrollView, Text, View } from 'react-native';
 import { useT, type TranslationKey } from '../lib/i18n';
-import { makeStyles, radius, space, typo, useTheme, weight } from '../theme';
+import { HIT, makeStyles, radius, space, typo, useTheme, weight } from '../theme';
 import { NativeButton } from '../ui/button';
 import { Icon, Touchable, type IconName } from '../ui/core';
 import { heldFor } from './model';
@@ -27,7 +27,13 @@ function IconButton({ icon, label, onPress }: { icon: IconName; label: string; o
   const { colors: c } = useTheme();
   const styles = useStyles(c);
   return (
-    <Touchable onPress={onPress} accessibilityRole="button" accessibilityLabel={label} style={styles.iconButton} hitSlop={6}>
+    <Touchable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      style={styles.iconButton}
+      hitSlop={6}
+    >
       <Icon name={icon} size={17} color={c.label} />
     </Touchable>
   );
@@ -91,9 +97,7 @@ export function ControlBar({
             ))}
           </ScrollView>
           <View style={styles.row}>
-            <Text style={styles.held} numberOfLines={1}>
-              {t('computer.inControlFor', { time: heldFor(since, now) })}
-            </Text>
+            <Text style={styles.held}>{t('computer.inControlFor', { time: heldFor(since, now) })}</Text>
             {zoom}
           </View>
           <View style={styles.row}>
@@ -125,9 +129,7 @@ export function ControlBar({
       ) : (
         <>
           <View style={styles.row}>
-            <Text style={styles.hint} numberOfLines={2}>
-              {t('computer.watchHint')}
-            </Text>
+            <Text style={styles.hint}>{t('computer.watchHint')}</Text>
             {zoom}
           </View>
           <NativeButton
@@ -160,7 +162,7 @@ const useStyles = makeStyles((c) => ({
   keys: { gap: space.sm },
   key: {
     minWidth: 52,
-    height: 34,
+    minHeight: HIT,
     paddingHorizontal: space.md,
     alignItems: 'center',
     justifyContent: 'center',
@@ -172,8 +174,8 @@ const useStyles = makeStyles((c) => ({
   hint: { ...typo.footnote, color: c.secondaryLabel, flex: 1 },
   zoom: { flexDirection: 'row', gap: space.xs },
   iconButton: {
-    width: 34,
-    height: 34,
+    width: HIT,
+    minHeight: HIT,
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: radius.full,

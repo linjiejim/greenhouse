@@ -1,3 +1,4 @@
+import { errorText } from '../../lib/errors';
 /**
  * 发布 (AGNT-13): a fixed version for members, groups or everyone, with the computer if wanted
  * and a daily cap per person. Its audience talks to that version with their own rights; the
@@ -203,9 +204,7 @@ export function PublishTab({ agent }: { agent: AgentDetail }) {
             void api.publication
               .unpublish(agent.id)
               .then(() => client.invalidateQueries({ queryKey: key }))
-              .catch((caught: unknown) =>
-                notify(caught instanceof ApiClientError ? caught.message : t('common.error')),
-              );
+              .catch((caught: unknown) => notify(errorText(caught, t)));
           }}
         >
           {t('publish.unpublishBody')}

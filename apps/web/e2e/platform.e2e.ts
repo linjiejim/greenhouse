@@ -151,6 +151,12 @@ test('all seven module directories filter their own entries and support arrows, 
       await page.mouse.move(0, 0);
       await search.press('ArrowDown');
       await expect(directory.locator('.app-row:focus')).toBeVisible();
+      // A truncated row shows its full name on keyboard focus; the first Escape closes that tip (WCAG 1.4.13).
+      const tip = page.getByRole('tooltip');
+      if (await tip.isVisible()) {
+        await page.keyboard.press('Escape');
+        await expect(tip).toBeHidden();
+      }
       await page.keyboard.press('Escape');
       await expect(search).toBeFocused();
       await search.press('Escape');

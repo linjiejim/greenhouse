@@ -67,20 +67,24 @@ jobs:
           key: ${{ secrets.DEV_SERVER_SSH_KEY }}
           script: |
             set -e
-            cd /root/greenhouse/greenhouse
-            git fetch origin main && git reset --hard origin/main
+            # v2 lives in its own compose project with its own volumes (2026-10-15); the v1
+            # stack in /root/greenhouse/greenhouse is stopped and kept for its data.
+            cd /root/greenhouse-v2
+            COMPOSE="docker compose -p greenhouse-v2 -f docker-compose.ghcr.yml"
+            # This directory is not a checkout: take the compose file of the commit being deployed.
+            curl -fsSL "https://raw.githubusercontent.com/${{ github.repository }}/${{ steps.sha.outputs.full }}/docker-compose.ghcr.yml" \
+              -o docker-compose.ghcr.yml.next && mv docker-compose.ghcr.yml.next docker-compose.ghcr.yml
             IMG="ghcr.io/linjiejim/greenhouse:main-${{ steps.sha.outputs.short }}"
             # The image being replaced stays on disk as the rollback target.
             PREV=$(sed -n 's/^GREENHOUSE_IMAGE=//p' .env)
             # Persist the pin so a manual `docker compose up` uses the same image.
             sed -i "s|^GREENHOUSE_IMAGE=.*|GREENHOUSE_IMAGE=$IMG|" .env
-            # Every roll pins a new main-<sha> tag and `image prune` only removes
-            # untagged images, so superseded tags piled up until the disk filled and
-            # took Postgres down with it (2026-09-24: 43 tags, 100%). Drop every
-            # main-* tag but the outgoing and incoming ones before pulling, so a full
-            # disk heals on the next roll instead of failing it.
-            docker image ls --filter "reference=ghcr.io/linjiejim/greenhouse:main-*" \
-              --format '{{.Repository}}:{{.Tag}}' | grep -vxF -e "$IMG" -e "$PREV" \
+            # Every roll pins a new tag and `image prune` only removes untagged images, so
+            # superseded tags piled up until the disk filled and took Postgres down with it
+            # (2026-09-24: 43 tags, 100%). Drop every main-* tag (and locally loaded
+            # greenhouse:v2-* images) but the outgoing and incoming ones before pulling.
+            docker image ls --format '{{.Repository}}:{{.Tag}}' \
+              | grep -E '^(ghcr.io/linjiejim/greenhouse:main-|greenhouse:v2-)' | grep -vxF -e "$IMG" -e "$PREV" \
               | xargs -r docker rmi > /dev/null || true
             # Pull anonymously. The image is public, but docker never falls back to
             # anonymous while ~/.docker/config.json holds a login for ghcr.io — and other
@@ -89,18 +93,18 @@ jobs:
             # keeps the deploy independent of whatever is stored there.
             export DOCKER_CONFIG="$(mktemp -d)"
             trap 'rm -rf "$DOCKER_CONFIG"' EXIT
-            docker compose -f docker-compose.ghcr.yml pull --quiet
-            docker compose -f docker-compose.ghcr.yml up -d
+            $COMPOSE pull --quiet
+            $COMPOSE up -d
             # The API needs a few seconds before it listens; until then curl exits
             # non-zero, and under `set -e` a failing `S=$(...)` would abort the roll
             # on the first attempt — keep the assignment inside an || list.
             S=000
-            for i in 1 2 3 4 5 6 7 8; do
+            for i in 1 2 3 4 5 6 7 8 9 10 11 12; do
               sleep 5
               S=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:18905/health) || S=000
               echo "health attempt $i: HTTP $S"
               [ "$S" = "200" ] && break
             done
-            [ "$S" = "200" ] || { docker compose -f docker-compose.ghcr.yml logs --tail 50 api; exit 1; }
+            [ "$S" = "200" ] || { $COMPOSE logs --tail 50 api; exit 1; }
             curl -s http://localhost:18905/health
             docker image prune -f > /dev/null

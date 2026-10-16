@@ -268,7 +268,7 @@ function ExistingConversation({ id, requestId }: { id: string; requestId?: strin
         {missing ? (
           <Empty title={t('chat.notFound')} />
         ) : (
-          <ErrorBox onRetry={() => void detail.refetch()}>{t('common.error')}</ErrorBox>
+          <ErrorBox onRetry={() => void detail.refetch()}>{errorText(detail.error, t)}</ErrorBox>
         )}
       </Page>
     );
@@ -300,9 +300,7 @@ function ExistingConversation({ id, requestId }: { id: string; requestId?: strin
   };
 
   const exportIt = () =>
-    void downloadConversation(conversation.id).catch((error: unknown) =>
-      notify(error instanceof ApiClientError ? error.message : t('common.error')),
-    );
+    void downloadConversation(conversation.id).catch((error: unknown) => notify(errorText(error, t)));
 
   const copyLink = () => {
     void navigator.clipboard?.writeText(
@@ -441,7 +439,9 @@ function ExistingConversation({ id, requestId }: { id: string; requestId?: strin
           }
         >
           {messages.isPending && <Skeleton lines={6} />}
-          {messages.isError && <ErrorBox onRetry={() => void messages.refetch()}>{t('common.error')}</ErrorBox>}
+          {messages.isError && (
+            <ErrorBox onRetry={() => void messages.refetch()}>{errorText(messages.error, t)}</ErrorBox>
+          )}
           {!messages.isPending && !messages.isError && room && !list.length && (
             <div className="app-room-empty">
               <p>{t('chat.roomHint')}</p>

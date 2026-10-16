@@ -1,3 +1,4 @@
+import { cellText } from '../../src/tables/display';
 import { useAuth } from '../../src/store/auth';
 import { visiblePages } from '../../src/data/pages';
 import { Board, Timeline, dayLabel } from '../../src/tables/boards';
@@ -9,7 +10,7 @@ import { base, records } from '../../src/api/tables';
 import { useResource } from '../../src/data/use-resource';
 import { ResourceState } from '../../src/knowledge/state';
 import { useT } from '../../src/lib/i18n';
-import { cellText, shownFields, titleOf, groups, agendaGroups } from '../../src/tables/model';
+import { shownFields, titleOf, groups, agendaGroups } from '../../src/tables/model';
 import { MAX_VIEW_RECORDS, type TableRecord } from '../../src/shared/contract';
 import { ListRow, ListSectionHeader } from '../../src/ui/list';
 import { NativeButton } from '../../src/ui/button';
@@ -141,6 +142,7 @@ export default function TableView() {
       ) : null}
       {!b.data || !r.data || !table ? (
         <ResourceState
+          error={b.error ?? r.error}
           loading={b.loading || r.loading}
           retry={() => {
             void b.refresh();
@@ -150,7 +152,10 @@ export default function TableView() {
       ) : type === 'dashboard' ? (
         <EmptyState icon="table" title={t('work.viewUnavailable')} />
       ) : !r.data.items.length ? (
-        <EmptyState icon="table" title={t('work.noRecords')} />
+        <EmptyState
+          icon="table"
+          title={t(search.trim() || config?.filter ? 'work.noMatchingRecords' : 'work.noRecords')}
+        />
       ) : type === 'kanban' && view ? (
         <Board
           names={names}
@@ -239,11 +244,14 @@ export default function TableView() {
                   type === 'calendar' && item.key
                     ? dayLabel(item.key)
                     : item.key
-                      ? (names[item.key] ??
-                        r.data?.linked[item.key]?.title ??
-                        table.fields.find((f) => f.id === grouping)?.config.options?.find((o) => o.id === item.key)
-                          ?.label ??
-                        item.key)
+                      ? table.fields.find((f) => f.id === grouping)
+                        ? cellText(
+                            table.fields.find((f) => f.id === grouping)!,
+                            item.key,
+                            r.data ?? undefined,
+                            names,
+                          ) || t('work.unassigned')
+                        : t('work.unassigned')
                       : t(type === 'calendar' || type === 'timeline' ? 'work.unscheduled' : 'work.unassigned')
                 }
               />

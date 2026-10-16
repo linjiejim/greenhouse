@@ -1,3 +1,4 @@
+import { errorText } from '../../lib/errors';
 /**
  * 管理 → 服务 (ADM-04, ADM-12): each capability with what serves it now. A capability opens its
  * instances in fallback order (move up / down), add, test, copy an env one to edit, turn off,
@@ -25,7 +26,6 @@ import {
 } from '@greenhouse/ui/kit';
 import { icon } from '@greenhouse/ui/tokens';
 import type { CapabilityState, ProviderCapability, ProviderInstance } from '@greenhouse/contract';
-import { ApiClientError } from '@greenhouse/contract/client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNotify } from '../../app/notify';
 import { api } from '../../lib/api';
@@ -60,7 +60,7 @@ function CapabilityDrawer({ capability, onClose }: { capability: ProviderCapabil
   const [editing, setEditing] = useState<ProviderInstance | 'new' | null>(null);
   const state = data.data?.capabilities.find((item) => item.capability === capability);
   const refresh = () => client.invalidateQueries({ queryKey: KEY });
-  const failed = (error: unknown) => notify(error instanceof ApiClientError ? error.message : t('common.error'));
+  const failed = (error: unknown) => notify(errorText(error, t));
   const bind = useMutation({
     mutationFn: (input: Parameters<typeof api.admin.setBinding>[1]) => api.admin.setBinding(capability, input),
     onSettled: refresh,
@@ -85,7 +85,7 @@ function CapabilityDrawer({ capability, onClose }: { capability: ProviderCapabil
     return (
       <Overlay title={t(CAPABILITY_LABEL[capability])} onClose={onClose}>
         {data.isError ? (
-          <ErrorBox onRetry={() => void data.refetch()}>{t('common.error')}</ErrorBox>
+          <ErrorBox onRetry={() => void data.refetch()}>{errorText(data.error, t)}</ErrorBox>
         ) : (
           <Skeleton lines={4} />
         )}
@@ -260,7 +260,7 @@ export function ServicesSection() {
   const data = useQuery({ queryKey: KEY, queryFn: () => api.admin.providers() });
   const [open, setOpen] = useState<ProviderCapability | null>(null);
   if (data.isPending) return <Skeleton lines={6} />;
-  if (data.isError) return <ErrorBox onRetry={() => void data.refetch()}>{t('common.error')}</ErrorBox>;
+  if (data.isError) return <ErrorBox onRetry={() => void data.refetch()}>{errorText(data.error, t)}</ErrorBox>;
   const noModel = !data.data.capabilities.find((state) => state.capability === 'llm')?.effective.length;
   return (
     <>

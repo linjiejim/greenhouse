@@ -1297,8 +1297,20 @@ button.gh-chat-card-header:hover {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+header.gh-chat-card-header {
+  padding-top: var(--gh-space-2);
+  padding-bottom: var(--gh-space-2);
+}
+header.gh-chat-card-header .gh-chat-card-title {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
 .gh-chat-card-meta {
   flex-shrink: 0;
+  max-width: 40%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   color: var(--gh-secondary);
 }
 .gh-chat-card-meta::before {

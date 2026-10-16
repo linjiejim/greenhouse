@@ -2,8 +2,14 @@ import { ApiClientError } from '@greenhouse/contract/client';
 import type { MessageKey } from '../i18n/zh';
 import type { Translate } from './i18n';
 
-/** Codes the member can act on get the dictionary's words; anything else shows the server's. */
+/** Stable codes and HTTP causes use the member’s language; unexpected server text stays private. */
 const KNOWN: Record<string, MessageKey> = {
+  sign_in_failed: 'errors.connectionSignIn',
+  forbidden: 'errors.permission',
+  not_found: 'errors.missing',
+  invalid_input: 'errors.invalidInput',
+  file_limit: 'errors.fileLimit',
+  file_too_large: 'errors.fileTooLarge',
   memory_background_read_only: 'errors.memoryBackgroundReadOnly',
   memory_untrusted_content: 'errors.memoryUntrustedContent',
   undo_conflict: 'errors.undoConflict',
@@ -64,8 +70,16 @@ export function errorText(error: unknown, t: Translate): string {
     }
     const known = errorCodeText(error.code, t);
     if (known) return known;
-    if (error.status >= 500 || error.status === 0) return t('common.error');
-    return error.message;
+    if (error.status === 401) return t('errors.sessionExpired');
+    if (error.status === 403) return t('errors.permission');
+    if (error.status === 404 || error.status === 410) return t('errors.missing');
+    if (error.status === 408 || error.status === 504) return t('errors.requestTimeout');
+    if (error.status === 409) return t('errors.conflict');
+    if (error.status === 413) return t('errors.fileTooLarge');
+    if (error.status === 429) return t('login.tooMany');
+    if (error.status >= 500) return t('errors.temporarilyUnavailable');
+    if (error.status === 0) return t('login.offline');
+    return t('errors.invalidInput');
   }
   return t('login.offline');
 }

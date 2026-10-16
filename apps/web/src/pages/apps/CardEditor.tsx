@@ -1,3 +1,4 @@
+import { useOverlayDraft } from '../../lib/useOverlayDraft';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../lib/api';
 import { useId, useState } from 'react';
@@ -162,6 +163,7 @@ export function AppCardEditor({
       : '[{"label":"Name","path":"/name"}]',
   );
   const [jsonError, setJsonError] = useState(false);
+  const dismiss = useOverlayDraft({ card, argumentsText, columnsText }, false, onClose);
   if (CHARTS.includes(card.kind))
     return (
       <ChartEditor
@@ -188,211 +190,215 @@ export function AppCardEditor({
   });
   const set = (patch: Partial<AppCard>) => setCard({ ...card, ...patch } as AppCard);
   return (
-    <Overlay variant="drawer" title={t('apps.editCard')} onClose={onClose}>
-      <form
-        className="app-form"
-        id={formId}
-        onSubmit={(e) => {
-          e.preventDefault();
-          if (card.kind === 'external') {
-            try {
-              onSave({
-                ...card,
-                source: { ...card.source, arguments: JSON.parse(argumentsText) },
-                map: card.map.kind === 'table' ? { ...card.map, columns: JSON.parse(columnsText) } : card.map,
-              });
-            } catch {
-              setJsonError(true);
+    <>
+      <Overlay variant="drawer" title={t('apps.editCard')} onClose={onClose} beforeClose={dismiss.beforeClose}>
+        <form
+          {...dismiss.formProps}
+          className="app-form"
+          id={formId}
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (card.kind === 'external') {
+              try {
+                onSave({
+                  ...card,
+                  source: { ...card.source, arguments: JSON.parse(argumentsText) },
+                  map: card.map.kind === 'table' ? { ...card.map, columns: JSON.parse(columnsText) } : card.map,
+                });
+              } catch {
+                setJsonError(true);
+              }
+              return;
             }
-            return;
-          }
-          onSave(
-            'actions' in card
-              ? { ...card, actions: card.actions.map(normalizeAction) }
-              : 'action' in card
-                ? { ...card, action: normalizeAction(card.action) }
-                : card,
-          );
-        }}
-      >
-        <Field label={t('apps.cardTitle')}>
-          <Input value={card.title} required maxLength={100} onChange={(e) => set({ title: e.target.value })} />
-        </Field>
-        {card.kind === 'external' ? (
-          <>
-            <FieldGroup label={t('apps.externalConnector')}>
-              <Select
-                label={t('apps.externalConnector')}
-                value={card.source.connector}
-                options={(connections.data?.connectors ?? [])
-                  .filter((c) => c.needs_connection && c.read_only_tool_count > 0 && c.builtin === null)
-                  .map((c) => ({ value: c.slug, label: c.name }))}
-                onChange={(connector) => set({ source: { ...card.source, connector } })}
-              />
-            </FieldGroup>
-            <Field label={t('apps.externalTool')}>
-              <Input
-                value={card.source.tool}
-                required
-                onChange={(e) => set({ source: { ...card.source, tool: e.target.value } })}
-              />
-            </Field>
-            <Field label={t('apps.externalArguments')}>
-              <TextArea rows={4} value={argumentsText} onChange={(e) => setArgumentsText(e.target.value)} />
-            </Field>
-            <FieldGroup label={t('apps.externalDisplay')}>
-              <Select
-                label={t('apps.externalDisplay')}
-                value={card.map.kind}
-                options={(['number', 'table', 'bar', 'line'] as const).map((value) => ({
-                  value,
-                  label: t(`apps.kind.${value}`),
-                }))}
-                onChange={(kind) =>
-                  set({
-                    map:
-                      kind === 'number'
-                        ? { kind, value: '' }
-                        : kind === 'table'
-                          ? { kind, rows: '', columns: [] }
-                          : { kind: kind as 'bar' | 'line', rows: '', group: '/name', value: '/value' },
-                  })
-                }
-              />
-            </FieldGroup>
-            {'rows' in card.map && (
-              <Field label={t('apps.externalRows')}>
+            onSave(
+              'actions' in card
+                ? { ...card, actions: card.actions.map(normalizeAction) }
+                : 'action' in card
+                  ? { ...card, action: normalizeAction(card.action) }
+                  : card,
+            );
+          }}
+        >
+          <Field label={t('apps.cardTitle')}>
+            <Input value={card.title} required maxLength={100} onChange={(e) => set({ title: e.target.value })} />
+          </Field>
+          {card.kind === 'external' ? (
+            <>
+              <FieldGroup label={t('apps.externalConnector')}>
+                <Select
+                  label={t('apps.externalConnector')}
+                  value={card.source.connector}
+                  options={(connections.data?.connectors ?? [])
+                    .filter((c) => c.needs_connection && c.read_only_tool_count > 0 && c.builtin === null)
+                    .map((c) => ({ value: c.slug, label: c.name }))}
+                  onChange={(connector) => set({ source: { ...card.source, connector } })}
+                />
+              </FieldGroup>
+              <Field label={t('apps.externalTool')}>
                 <Input
-                  value={card.map.rows}
-                  onChange={(e) => set({ map: { ...card.map, rows: e.target.value } as typeof card.map })}
+                  value={card.source.tool}
+                  required
+                  onChange={(e) => set({ source: { ...card.source, tool: e.target.value } })}
                 />
               </Field>
-            )}
-            {'value' in card.map && (
-              <Field label={t('apps.externalValue')}>
-                <Input
-                  value={card.map.value}
-                  onChange={(e) => set({ map: { ...card.map, value: e.target.value } as typeof card.map })}
+              <Field label={t('apps.externalArguments')}>
+                <TextArea rows={4} value={argumentsText} onChange={(e) => setArgumentsText(e.target.value)} />
+              </Field>
+              <FieldGroup label={t('apps.externalDisplay')}>
+                <Select
+                  label={t('apps.externalDisplay')}
+                  value={card.map.kind}
+                  options={(['number', 'table', 'bar', 'line'] as const).map((value) => ({
+                    value,
+                    label: t(`apps.kind.${value}`),
+                  }))}
+                  onChange={(kind) =>
+                    set({
+                      map:
+                        kind === 'number'
+                          ? { kind, value: '' }
+                          : kind === 'table'
+                            ? { kind, rows: '', columns: [] }
+                            : { kind: kind as 'bar' | 'line', rows: '', group: '/name', value: '/value' },
+                    })
+                  }
                 />
-              </Field>
-            )}
-            {'group' in card.map && (
-              <Field label={t('apps.externalGroup')}>
-                <Input
-                  value={card.map.group}
-                  onChange={(e) => set({ map: { ...card.map, group: e.target.value } as typeof card.map })}
-                />
-              </Field>
-            )}
-            {card.map.kind === 'table' && (
-              <Field label={t('apps.externalColumns')}>
-                <TextArea rows={4} value={columnsText} onChange={(e) => setColumnsText(e.target.value)} />
-              </Field>
-            )}
-            <p className="app-muted">{t('apps.externalHint')}</p>
-            {jsonError && <p role="alert">{t('apps.error.invalid')}</p>}
-          </>
-        ) : card.kind === 'custom' ? (
-          <>
-            <p>{t('apps.customHint')}</p>
-            <FieldGroup label={t('apps.bindings')}>
-              <MultiSelect
-                label={t('apps.bindings')}
-                value={card.bindings?.map((b) => b.card) ?? []}
-                options={cards
-                  .filter((c) => !['custom', 'external', 'button', 'form'].includes(c.kind))
-                  .map((c) => ({ value: c.id, label: `${c.title} (${c.id})` }))}
-                onChange={(ids) => set({ bindings: ids.map((id) => ({ id, card: id })) })}
-              />
-            </FieldGroup>
-            <Field label={t('apps.cardHeight')}>
-              <Input
-                type="number"
-                min={100}
-                max={1200}
-                value={card.height ?? 320}
-                onChange={(e) => set({ height: Number(e.target.value) })}
-              />
-            </Field>
-            <Field label={t('apps.html')}>
-              <TextArea
-                rows={12}
-                value={card.html}
-                maxLength={200000}
-                onChange={(e) => set({ html: e.target.value })}
-              />
-            </Field>
-          </>
-        ) : (
-          <>
-            <FieldGroup label={t('apps.table')}>
-              <Select
-                label={t('apps.table')}
-                value={card.table_id}
-                options={base.tables.map((t) => ({ value: t.id, label: t.name }))}
-                onChange={(id) => {
-                  const target = base.tables.find((t) => t.id === id)!;
-                  set({ ...newCard(card.kind, { ...base, tables: [target] }, card.title), id: card.id });
-                }}
-              />
-            </FieldGroup>
-            {'fields' in card && (
-              <>
-                <FieldGroup label={t('apps.fields')}>
-                  <MultiSelect
-                    label={t('apps.fields')}
-                    value={card.fields}
-                    options={fields.map((f) => ({ value: f.id, label: f.name }))}
-                    onChange={(fields) => set({ fields })}
+              </FieldGroup>
+              {'rows' in card.map && (
+                <Field label={t('apps.externalRows')}>
+                  <Input
+                    value={card.map.rows}
+                    onChange={(e) => set({ map: { ...card.map, rows: e.target.value } as typeof card.map })}
                   />
-                </FieldGroup>
-                {card.kind !== 'form' && (
-                  <FieldGroup label={t('apps.detailFields')}>
+                </Field>
+              )}
+              {'value' in card.map && (
+                <Field label={t('apps.externalValue')}>
+                  <Input
+                    value={card.map.value}
+                    onChange={(e) => set({ map: { ...card.map, value: e.target.value } as typeof card.map })}
+                  />
+                </Field>
+              )}
+              {'group' in card.map && (
+                <Field label={t('apps.externalGroup')}>
+                  <Input
+                    value={card.map.group}
+                    onChange={(e) => set({ map: { ...card.map, group: e.target.value } as typeof card.map })}
+                  />
+                </Field>
+              )}
+              {card.map.kind === 'table' && (
+                <Field label={t('apps.externalColumns')}>
+                  <TextArea rows={4} value={columnsText} onChange={(e) => setColumnsText(e.target.value)} />
+                </Field>
+              )}
+              <p className="app-muted">{t('apps.externalHint')}</p>
+              {jsonError && <p role="alert">{t('apps.error.invalid')}</p>}
+            </>
+          ) : card.kind === 'custom' ? (
+            <>
+              <p>{t('apps.customHint')}</p>
+              <FieldGroup label={t('apps.bindings')}>
+                <MultiSelect
+                  label={t('apps.bindings')}
+                  value={card.bindings?.map((b) => b.card) ?? []}
+                  options={cards
+                    .filter((c) => !['custom', 'external', 'button', 'form'].includes(c.kind))
+                    .map((c) => ({ value: c.id, label: `${c.title} (${c.id})` }))}
+                  onChange={(ids) => set({ bindings: ids.map((id) => ({ id, card: id })) })}
+                />
+              </FieldGroup>
+              <Field label={t('apps.cardHeight')}>
+                <Input
+                  type="number"
+                  min={100}
+                  max={1200}
+                  value={card.height ?? 320}
+                  onChange={(e) => set({ height: Number(e.target.value) })}
+                />
+              </Field>
+              <Field label={t('apps.html')}>
+                <TextArea
+                  rows={12}
+                  value={card.html}
+                  maxLength={200000}
+                  onChange={(e) => set({ html: e.target.value })}
+                />
+              </Field>
+            </>
+          ) : (
+            <>
+              <FieldGroup label={t('apps.table')}>
+                <Select
+                  label={t('apps.table')}
+                  value={card.table_id}
+                  options={base.tables.map((t) => ({ value: t.id, label: t.name }))}
+                  onChange={(id) => {
+                    const target = base.tables.find((t) => t.id === id)!;
+                    set({ ...newCard(card.kind, { ...base, tables: [target] }, card.title), id: card.id });
+                  }}
+                />
+              </FieldGroup>
+              {'fields' in card && (
+                <>
+                  <FieldGroup label={t('apps.fields')}>
                     <MultiSelect
-                      label={t('apps.detailFields')}
-                      value={card.detail_fields ?? card.fields}
+                      label={t('apps.fields')}
+                      value={card.fields}
                       options={fields.map((f) => ({ value: f.id, label: f.name }))}
-                      onChange={(detail_fields) => set({ detail_fields })}
+                      onChange={(fields) => set({ fields })}
                     />
                   </FieldGroup>
-                )}
-                {card.kind === 'kanban' && (
-                  <FieldGroup label={t('apps.group')}>
-                    <Select
-                      label={t('apps.group')}
-                      value={card.group_field ?? ''}
-                      options={fields
-                        .filter((f) => f.type === 'single_select' || f.type === 'checkbox')
-                        .map((f) => ({ value: f.id, label: f.name }))}
-                      onChange={(group_field) => set({ group_field })}
-                    />
-                  </FieldGroup>
-                )}
-                <CardFilter fields={fields} filter={card.filter} onChange={(filter) => set({ filter })} />
-                {card.kind !== 'form' && table && (
-                  <FieldGroup label={t('apps.action')}>
-                    <ActionsEditor table={table} actions={card.actions} onChange={(actions) => set({ actions })} />
-                  </FieldGroup>
-                )}
-              </>
-            )}
-            {card.kind === 'button' && table && (
-              <ActionsEditor
-                onlyCreate
-                table={table}
-                actions={[card.action]}
-                onChange={(actions) => set({ action: actions[0]! })}
-              />
-            )}
-          </>
-        )}
-      </form>
-      <OverlayActions>
-        <Button onClick={onClose}>{t('common.cancel')}</Button>
-        <Button kind="primary" type="submit" form={formId} disabled={!card.title.trim()}>
-          {t('common.save')}
-        </Button>
-      </OverlayActions>
-    </Overlay>
+                  {card.kind !== 'form' && (
+                    <FieldGroup label={t('apps.detailFields')}>
+                      <MultiSelect
+                        label={t('apps.detailFields')}
+                        value={card.detail_fields ?? card.fields}
+                        options={fields.map((f) => ({ value: f.id, label: f.name }))}
+                        onChange={(detail_fields) => set({ detail_fields })}
+                      />
+                    </FieldGroup>
+                  )}
+                  {card.kind === 'kanban' && (
+                    <FieldGroup label={t('apps.group')}>
+                      <Select
+                        label={t('apps.group')}
+                        value={card.group_field ?? ''}
+                        options={fields
+                          .filter((f) => f.type === 'single_select' || f.type === 'checkbox')
+                          .map((f) => ({ value: f.id, label: f.name }))}
+                        onChange={(group_field) => set({ group_field })}
+                      />
+                    </FieldGroup>
+                  )}
+                  <CardFilter fields={fields} filter={card.filter} onChange={(filter) => set({ filter })} />
+                  {card.kind !== 'form' && table && (
+                    <FieldGroup label={t('apps.action')}>
+                      <ActionsEditor table={table} actions={card.actions} onChange={(actions) => set({ actions })} />
+                    </FieldGroup>
+                  )}
+                </>
+              )}
+              {card.kind === 'button' && table && (
+                <ActionsEditor
+                  onlyCreate
+                  table={table}
+                  actions={[card.action]}
+                  onChange={(actions) => set({ action: actions[0]! })}
+                />
+              )}
+            </>
+          )}
+        </form>
+        <OverlayActions>
+          <Button onClick={dismiss.close}>{t('common.cancel')}</Button>
+          <Button kind="primary" type="submit" form={formId} disabled={!card.title.trim()}>
+            {t('common.save')}
+          </Button>
+        </OverlayActions>
+      </Overlay>
+      {dismiss.confirmation}
+    </>
   );
 }

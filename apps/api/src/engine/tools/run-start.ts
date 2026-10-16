@@ -1,3 +1,4 @@
+import { interpolate } from '@greenhouse/utils/i18n';
 import { z } from 'zod';
 import { createScheduleInputSchema } from '@greenhouse/contract';
 import type { ProvidersService } from '../../providers/service.js';
@@ -64,7 +65,7 @@ export function runStartTool(background: Background, computers: ComputersService
         subject: 'run_start',
         title:
           ctx.locale === 'zh'
-            ? `${ctx.agent.name} 想开始一个后台运行：${args.title}`
+            ? interpolate('zh', '{name} 想开始一个后台运行：{title}', { name: ctx.agent.name, title: args.title })
             : `${ctx.agent.name} proposes a background run: ${args.title}`,
         payload: {
           run_title: args.title,

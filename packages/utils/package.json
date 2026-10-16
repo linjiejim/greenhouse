@@ -63,6 +63,10 @@
     "./mentions": {
       "import": "./src/mentions.ts",
       "types": "./src/mentions.ts"
+    },
+    "./cron": {
+      "import": "./src/cron.ts",
+      "types": "./src/cron.ts"
     }
   },
   "scripts": {

@@ -1,7 +1,7 @@
 import { useLocalSearchParams } from 'expo-router';
-import { Section, Text, Picker, TextField, useNativeState, ProgressView } from '@expo/ui/swift-ui';
+import { Section, Text, Picker, TextField, useNativeState } from '@expo/ui/swift-ui';
 import { disabled, pickerStyle, tag } from '@expo/ui/swift-ui/modifiers';
-import { NativeForm, FormNavRow } from '../../src/ui/native-form';
+import { NativeForm, FormLoading, FormNavRow } from '../../src/ui/native-form';
 import { FormChrome } from '../../src/ui/sheet-chrome';
 import { useRecordHandoff } from '../../src/tables/use-handoff';
 import { useT } from '../../src/lib/i18n';
@@ -45,7 +45,7 @@ function Editor({ id }: { id: string }) {
               <Text>{t('integration.noAgents')}</Text>
             )
           ) : f.agents.loading ? (
-            <ProgressView />
+            <FormLoading />
           ) : (
             <FormNavRow label={t('work.loadFailed')} onPress={() => void f.agents.refresh()} />
           )}

@@ -6,7 +6,7 @@
  */
 
 import React from 'react';
-import { Text, View } from 'react-native';
+import { ScrollView, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { ApiMismatch } from '../api/compat';
 import { useT } from '../lib/i18n';
@@ -16,6 +16,7 @@ import { makeStyles, space, typo, useTheme, weight } from '../theme';
 import { NativeButton } from '../ui/button';
 import { Icon } from '../ui/core';
 import { StationsForm } from '../stations/stations-form';
+import { useFontScaleKey } from '../ui/font-scale';
 
 export function MismatchScreen({ mismatch }: { mismatch: ApiMismatch }) {
   const { colors: c } = useTheme();
@@ -23,17 +24,24 @@ export function MismatchScreen({ mismatch }: { mismatch: ApiMismatch }) {
   const t = useT();
   const insets = useSafeAreaInsets();
   const station = useActiveStation();
+  const fontKey = useFontScaleKey();
   const appOutdated = mismatch === 'app_outdated';
   return (
     <View style={[styles.root, { paddingTop: insets.top + space.xxl }]}>
-      <View style={styles.message}>
+      <ScrollView style={styles.messageScroll} contentContainerStyle={styles.message}>
         <Icon name={appOutdated ? 'download' : 'server'} size={40} color={c.accent} />
-        <Text style={styles.title}>{t(appOutdated ? 'mismatch.appTitle' : 'mismatch.serverTitle')}</Text>
-        <Text style={styles.body}>
+        <Text key={`title:${fontKey}`} style={styles.title} accessibilityRole="header">
+          {t(appOutdated ? 'mismatch.appTitle' : 'mismatch.serverTitle')}
+        </Text>
+        <Text key={`body:${fontKey}`} style={styles.body}>
           {t(appOutdated ? 'mismatch.appBody' : 'mismatch.serverBody', { station: station?.name ?? '' })}
         </Text>
-        <NativeButton label={t('common.retry')} variant="prominent" onPress={() => void useAuth.getState().bootstrap()} />
-      </View>
+        <NativeButton
+          label={t('common.retry')}
+          variant="prominent"
+          onPress={() => void useAuth.getState().bootstrap()}
+        />
+      </ScrollView>
       <View style={styles.stations}>
         <StationsForm onDone={() => undefined} onLeave={() => undefined} />
       </View>
@@ -43,6 +51,7 @@ export function MismatchScreen({ mismatch }: { mismatch: ApiMismatch }) {
 
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.groupedBackground },
+  messageScroll: { flexGrow: 0, flexShrink: 1, maxHeight: '50%' },
   message: { alignItems: 'center', gap: space.md, paddingHorizontal: space.xxl, paddingBottom: space.lg },
   title: { ...typo.title2, fontWeight: weight.semibold, color: c.label, textAlign: 'center' },
   body: { ...typo.body, color: c.secondaryLabel, textAlign: 'center' },

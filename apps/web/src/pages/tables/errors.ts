@@ -34,7 +34,6 @@ export function tablesError(error: unknown, t: Translate): string {
   if (error instanceof ApiClientError) {
     const key = CODES[error.code];
     if (key) return t(key);
-    if (error.code === 'invalid_input' && error.status === 400) return error.message;
   }
   if (error instanceof CellParseError) return t(`tables.paste.${error.reason}`, { text: error.text });
   return errorText(error, t);

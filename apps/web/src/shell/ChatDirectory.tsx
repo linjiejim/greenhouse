@@ -1,3 +1,4 @@
+import { errorText } from '../lib/errors';
 /**
  * The chat directory (PRD §6.1, layout.md): the Agent area first with no heading (the main
  * Agent larger), then rooms, then chats (pinned, today, earlier). Rows never preview messages.
@@ -39,7 +40,6 @@ import {
   useUpdateConversation,
 } from '../data/conversations';
 import { api } from '../lib/api';
-import { ApiClientError } from '@greenhouse/contract/client';
 import { useI18n } from '../lib/i18n';
 import { href, navigate, type Route } from '../lib/router';
 import { AgentAvatar } from './AgentAvatar';
@@ -166,10 +166,7 @@ export function ChatDirectory({ route, query }: { route: Route; query: string })
   const isCurrent = (conversation: Conversation | undefined) =>
     !!conversation && (current === conversation.id || (conversation.kind === 'main' && current === 'main'));
 
-  const exportIt = (id: string) =>
-    void downloadConversation(id).catch((error: unknown) =>
-      notify(error instanceof ApiClientError ? error.message : t('common.error')),
-    );
+  const exportIt = (id: string) => void downloadConversation(id).catch((error: unknown) => notify(errorText(error, t)));
 
   const leave = (room: Conversation) =>
     void api.conversations
@@ -178,7 +175,7 @@ export function ChatDirectory({ route, query }: { route: Route; query: string })
         void conversations.refetch();
         if (isCurrent(room)) navigate('#/c/main', { replace: true });
       })
-      .catch((error: unknown) => notify(error instanceof ApiClientError ? error.message : t('common.error')));
+      .catch((error: unknown) => notify(errorText(error, t)));
 
   const copyLink = (id: string) => {
     void navigator.clipboard?.writeText(`${location.origin}${location.pathname}${href({ page: 'conversation', id })}`);

@@ -1,3 +1,4 @@
+import { errorText } from '../../lib/errors';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { ErrorBox, Select, Skeleton } from '@greenhouse/ui/kit';
@@ -37,7 +38,7 @@ export function WeeklyMetrics() {
       {query.isPending ? (
         <Skeleton lines={3} />
       ) : query.isError ? (
-        <ErrorBox onRetry={() => void query.refetch()}>{t('common.error')}</ErrorBox>
+        <ErrorBox onRetry={() => void query.refetch()}>{errorText(query.error, t)}</ErrorBox>
       ) : (
         selected && (
           <>

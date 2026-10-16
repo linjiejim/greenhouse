@@ -1690,6 +1690,7 @@ a {
 }
 
 .app-section-heading {
+  flex-wrap: wrap;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -4072,4 +4073,24 @@ button.app-agent-card {
 
 .app-write-receipt {
   animation: app-message-arrive var(--gh-duration-base) var(--gh-ease-enter);
+}
+
+/* Section actions retain their width beside a scrolling set of page sections. */
+.app-section-heading > .gh-tabs {
+  flex: 1;
+  min-width: 0;
+  width: auto;
+}
+.app-section-heading > .gh-button {
+  flex-shrink: 0;
+}
+[data-narrow] .app-setting-row {
+  flex-wrap: wrap;
+}
+[data-narrow] .app-setting-row > .gh-select {
+  flex-basis: 100%;
+  max-width: 100%;
+}
+.app-setting-text {
+  overflow-wrap: anywhere;
 }

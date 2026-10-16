@@ -93,7 +93,7 @@ export default function Notes() {
         />
       </Stack.Toolbar>
       {!r.data ? (
-        <ResourceState loading={r.loading} retry={() => void r.refresh()} />
+        <ResourceState error={r.error} loading={r.loading} retry={() => void r.refresh()} />
       ) : (
         <FlatList
           contentInsetAdjustmentBehavior="automatic"

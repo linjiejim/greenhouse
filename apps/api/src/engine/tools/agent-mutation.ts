@@ -44,10 +44,8 @@ export function agentMutationTool(agents: AgentsService) {
     },
     async before(args, ctx) {
       if (args.action === 'create') return { input: args, previous: null };
-      return {
-        input: args,
-        previous: (await agents.privateMutationTarget(ctx.memberId, args.id, ctx.agent.id)).manifest,
-      };
+      const prior = await agents.privateMutationTarget(ctx.memberId, args.id, ctx.agent.id);
+      return { input: args, previous: prior.manifest, previous_version: prior.row.currentVersion };
     },
     async execute(args, ctx) {
       const { action, ...values } = args;
@@ -59,14 +57,21 @@ export function agentMutationTool(agents: AgentsService) {
     },
     async undo(_args, output, before, ctx) {
       const result = output as { agent_id: string; version: number };
-      await agents.undoPrivateMutation(
-        ctx.memberId,
-        result.agent_id,
-        result.version,
-        (before as { previous: AgentManifest | null }).previous,
-        ctx.agent.id,
-      );
+      const prior = before as { previous: AgentManifest | null; previous_version?: number };
+      const lineage = ctx.undoRevisions?.get(result.agent_id);
+      const version = lineage?.written === result.version ? lineage.current : result.version;
+      await agents.undoPrivateMutation(ctx.memberId, result.agent_id, version, prior.previous, ctx.agent.id);
+      if (prior.previous_version !== undefined)
+        ctx.undoRevisions?.set(result.agent_id, {
+          written: prior.previous_version,
+          current: (await agents.get(ctx.memberId, result.agent_id)).current_version,
+        });
     },
-    summarize: (_args, _out, locale) => (locale === 'zh' ? '保存了 Agent' : 'Saved an Agent'),
+    summarize: (args, out, locale) => {
+      const name = (out as { name?: string } | undefined)?.name ?? args.name;
+      const verb =
+        args.action === 'create' ? (locale === 'zh' ? '新建了' : 'Created') : locale === 'zh' ? '修改了' : 'Updated';
+      return locale === 'zh' ? `${verb} Agent${name ? `「${name}」` : ''}` : `${verb} Agent${name ? ` “${name}”` : ''}`;
+    },
   });
 }

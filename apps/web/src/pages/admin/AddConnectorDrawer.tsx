@@ -1,12 +1,14 @@
+import { useDraftNavigation } from '../../lib/useDraftNavigation';
 /**
  * 添加连接器 (ADM-08): from the built-in catalog (checked against the live servers), from the
  * official MCP Registry (slow and unvetted: a result fills the address form, or points at the
  * catalog entry for the same server), or from an address, probed first to fill in the auth mode.
  */
 
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import {
   Button,
+  ConfirmDialog,
   Empty,
   ErrorBox,
   Field,
@@ -90,7 +92,7 @@ function CatalogTab({ focus, onInstalled }: { focus: string | null; onInstalled:
   };
 
   if (catalog.isPending) return <Skeleton lines={6} />;
-  if (catalog.isError) return <ErrorBox onRetry={() => void catalog.refetch()}>{t('common.error')}</ErrorBox>;
+  if (catalog.isError) return <ErrorBox onRetry={() => void catalog.refetch()}>{errorText(catalog.error, t)}</ErrorBox>;
   const needle = query.trim().toLowerCase();
   const entries = catalog.data.items.filter(
     (entry) =>
@@ -295,9 +297,11 @@ function probeText(result: ProbeResult, t: Translate): string {
 function UrlTab({
   prefill,
   onInstalled,
+  onDraft,
 }: {
   prefill: Partial<ConnectorDraft> | null;
   onInstalled: (connector: Connector) => void;
+  onDraft: (state: { dirty: boolean; busy: boolean }) => void;
 }) {
   const { t } = useI18n();
   const installed = useInstalled(onInstalled);
@@ -308,6 +312,11 @@ function UrlTab({
   const [error, setError] = useState<DraftError>(null);
   const [saving, setSaving] = useState(false);
 
+  const initial = useRef(JSON.stringify(draft));
+  useEffect(
+    () => onDraft({ dirty: JSON.stringify(draft) !== initial.current, busy: saving || probing }),
+    [draft, saving, probing, onDraft],
+  );
   const set = (patch: Partial<ConnectorDraft>) => {
     if (patch.slug !== undefined) setSlugTouched(true);
     setError(null);
@@ -403,34 +412,86 @@ export function AddConnectorDrawer({
   const [prefill, setPrefill] = useState<{ draft: Partial<ConnectorDraft>; at: number } | null>(null);
   const [focus, setFocus] = useState<string | null>(null);
   const [registry, setRegistry] = useState<RegistrySearch>({ query: '', asked: null });
+  const [draftState, setDraftState] = useState({ dirty: false, busy: false });
+  const [nextSource, setNextSource] = useState<Source | null>(null);
+  const navigation = useDraftNavigation(draftState.dirty, draftState.busy, (navigating) => {
+    if (nextSource && !navigating) {
+      setSource(nextSource);
+      setNextSource(null);
+      setDraftState({ dirty: false, busy: false });
+    } else onClose();
+  });
+  const installed = (connector: Connector) => {
+    navigation.saved();
+    onInstalled(connector);
+  };
   return (
-    <Overlay title={t('connectors.add')} help={t('connectors.addHelp')} onClose={onClose}>
-      <div className="app-overlay-stack">
-        <Tabs
-          label={t('connectors.add')}
-          items={SOURCES.map((item) => t(SOURCE_LABEL[item]))}
-          value={t(SOURCE_LABEL[source])}
-          onChange={(label) => setSource(SOURCES.find((item) => t(SOURCE_LABEL[item]) === label) ?? 'catalog')}
-        />
-        {source === 'catalog' && <CatalogTab focus={focus} onInstalled={onInstalled} />}
-        {source === 'registry' && (
-          <RegistryTab
-            search={registry}
-            onSearch={setRegistry}
-            onUse={(draft) => {
-              setPrefill({ draft, at: Date.now() });
-              setSource('url');
-            }}
-            onCatalog={(catalogId) => {
-              setFocus(catalogId);
-              setSource('catalog');
+    <>
+      <Overlay
+        title={t('connectors.add')}
+        help={t('connectors.addHelp')}
+        onClose={onClose}
+        beforeClose={() => {
+          if (draftState.busy) return false;
+          if (!draftState.dirty) return true;
+          setNextSource(null);
+          navigation.ask();
+          return false;
+        }}
+      >
+        <div className="app-overlay-stack">
+          <Tabs
+            label={t('connectors.add')}
+            items={SOURCES.map((item) => t(SOURCE_LABEL[item]))}
+            value={t(SOURCE_LABEL[source])}
+            onChange={(label) => {
+              const next = SOURCES.find((item) => t(SOURCE_LABEL[item]) === label) ?? 'catalog';
+              if (next === source) return;
+              if (draftState.busy) return;
+              if (draftState.dirty) {
+                setNextSource(next);
+                navigation.ask();
+              } else setSource(next);
             }}
           />
-        )}
-        {source === 'url' && (
-          <UrlTab key={prefill?.at ?? 0} prefill={prefill?.draft ?? null} onInstalled={onInstalled} />
-        )}
-      </div>
-    </Overlay>
+          {source === 'catalog' && <CatalogTab focus={focus} onInstalled={installed} />}
+          {source === 'registry' && (
+            <RegistryTab
+              search={registry}
+              onSearch={setRegistry}
+              onUse={(draft) => {
+                setPrefill({ draft, at: Date.now() });
+                setSource('url');
+              }}
+              onCatalog={(catalogId) => {
+                setFocus(catalogId);
+                setSource('catalog');
+              }}
+            />
+          )}
+          {source === 'url' && (
+            <UrlTab
+              onDraft={setDraftState}
+              key={prefill?.at ?? 0}
+              prefill={prefill?.draft ?? null}
+              onInstalled={installed}
+            />
+          )}
+        </div>
+      </Overlay>
+      {navigation.asking && (
+        <ConfirmDialog
+          title={t('knowledge.discardTitle')}
+          confirmLabel={t('knowledge.discard')}
+          onCancel={() => {
+            setNextSource(null);
+            navigation.cancel();
+          }}
+          onConfirm={navigation.discard}
+        >
+          {t('knowledge.discardBody')}
+        </ConfirmDialog>
+      )}
+    </>
   );
 }

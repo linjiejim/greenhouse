@@ -1,3 +1,4 @@
+import { cellText } from './display';
 import { useAttachments } from './use-attachments';
 import { saveFile } from '../chat/file-card';
 import { useFieldChoices } from './field-choices';
@@ -6,7 +7,7 @@ import { disabled, pickerStyle, tag, keyboardType } from '@expo/ui/swift-ui/modi
 import { FormNavRow, FormCheckRow } from '../ui/native-form';
 import { useT } from '../lib/i18n';
 import { parseMs } from '../data/time';
-import { computed, cellText, choiceValue, type EditableField } from './model';
+import { computed, choiceValue, type EditableField } from './model';
 export interface FieldProps {
   field: EditableField;
   value: unknown;

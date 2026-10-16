@@ -83,6 +83,7 @@ export interface ToolContext {
   approved?: boolean;
   /** Revision lineage while undoing one receipt; never authorizes edits made outside the batch. */
   undoRevisions?: Map<string, { written: number; current: number }>;
+  undoTimestamps?: Map<string, { written: string; current: string }>;
   /** Present when the model sees images: shows it one (a screenshot) with its next step. */
   attachImage?(image: Uint8Array, mediaType: string): void;
   /** Persists the single image shown with this reply, even for a text-only model. */
@@ -106,6 +107,7 @@ export interface DecisionContext {
 export interface ApprovalCard {
   /** What will happen, as a short phrase in the member's language: 修改知识库, edit the knowledge base. */
   summary: string;
+  danger?: boolean;
   details: { label: string; value: string; format?: 'markdown'; chips?: string[] }[];
 }
 

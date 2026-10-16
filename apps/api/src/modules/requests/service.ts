@@ -181,6 +181,7 @@ export function createRequestsService(deps: {
             const payload = {
               ...existing.payload,
               calls,
+              ...(calls.some((call) => call.danger === true) ? { danger: true } : {}),
               tainted: existing.payload.tainted === true || input.payload.tainted === true,
               tier: existing.payload.tier === 'tier3' || input.payload.tier === 'tier3' ? 'tier3' : 'tier2',
               standing_scope: sameScope

@@ -42,7 +42,7 @@ test('schema cards show named types and chips, reuse the primary field, and avoi
   await expect(page.getByRole('button', { name: /等你批准/ })).toBeVisible();
   await capture(page, 'schema');
   await page.getByRole('button', { name: '批准', exact: true }).click();
-  await expect(page.getByRole('button', { name: /已完成：确认表格结构计划/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: /已完成：确认表格「T14 browser customers」的结构计划/ })).toBeVisible();
   const bases = await apiAs<{ items: Base[] }>(request, 'lin', 'GET', '/api/tables/bases');
   const base = await apiAs<Base>(
     request,

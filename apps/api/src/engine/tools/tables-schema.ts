@@ -122,7 +122,18 @@ export function tableSchemaTool(tables: TablesService) {
           details.push({ label: zh ? '删除字段' : 'Delete field', value: at });
         else details.push({ label: zh ? '修改数据表' : 'Edit table', value: `${at} → ${change.input.name ?? at}` });
       }
-      return { summary: zh ? '确认表格结构计划' : 'Confirm table structure plan', details };
+      return {
+        summary:
+          ctx.conversation?.kind === 'room'
+            ? zh
+              ? '确认表格结构计划'
+              : 'Confirm table structure plan'
+            : zh
+              ? `确认表格「${base?.name ?? args.name}」的结构计划`
+              : `Confirm the structure plan for “${base?.name ?? args.name}”`,
+        ...(args.changes.some((change) => change.action === 'archive_field') ? { danger: true } : {}),
+        details,
+      };
     },
     summarize: (_args, _output, locale) => (locale === 'zh' ? '更新了表格结构' : 'Updated table structure'),
     async execute(args, ctx) {

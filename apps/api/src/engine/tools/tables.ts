@@ -190,6 +190,7 @@ export function tableTools(tables: TablesService): ToolDef[] {
       if ('record_id' in args) details.push({ label: zh ? '记录' : 'Record', value: args.record_id });
       if (args.action === 'comment') details.push({ label: zh ? '评论' : 'Comment', value: args.body });
       return {
+        ...(['delete', 'purge'].includes(args.action) ? { danger: true } : {}),
         summary:
           ctx.conversation?.kind === 'room'
             ? `${verbs(args.action, zh)}${zh ? '表格记录' : ' records'}`

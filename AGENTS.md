@@ -102,3 +102,5 @@ Greenhouse is an open-source, self-hosted platform where a team works with its o
 - Periodic worker sweeps catch and log rejected promises, then try again on the next tick; a transient database error must not exit the API process.
 
 - Requests own target identity in modules/requests/target.ts. Retiring a request clears its notification pointer and queues its decision atomically; superseded/withdrawn history stays in the conversation.
+
+- Human schedule summaries live in packages/utils/src/cron.ts; server cards and Web lists share them. Custom expressions remain execution/editing inputs, never card copy.

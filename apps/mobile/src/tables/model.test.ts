@@ -25,6 +25,17 @@ describe('record editing', () => {
       }),
     ).toBe('Task');
   });
+  it('hides removed option and unavailable relation identities', () => {
+    expect(
+      cellText({ type: 'multi_select', config: { options: [{ id: 'ok', label: 'Done', color: 'green' }] } }, [
+        'private_id',
+        'ok',
+      ]),
+    ).toBe('Done');
+    for (const type of ['single_select', 'multi_select', 'member', 'relation', 'attachment'] as const) {
+      expect(cellText({ type, config: {} }, ['private_id'])).toBe('');
+    }
+  });
 });
 
 it('keeps single member and record picks in their contract list shapes', () => {

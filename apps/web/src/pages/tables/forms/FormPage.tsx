@@ -1,3 +1,4 @@
+import { useDraftNavigation } from '../../../lib/useDraftNavigation';
 /**
  * `#/forms/:id`: an internal form to fill in (TBL-11). Its fields, then 提交表单; afterwards its
  * message and 再填一份, or for a single-submit form 你已经提交过 (also when opened again). Files
@@ -8,6 +9,7 @@ import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { CircleCheck, ClipboardList, Paperclip, Plus, X } from 'lucide-react';
 import {
   Banner,
+  ConfirmDialog,
   Button,
   Empty,
   ErrorBox,
@@ -110,6 +112,14 @@ function FillIn({ form }: { form: FormFill }) {
   const [state, setState] = useState<'filling' | 'sent' | 'already' | 'closed' | 'missing'>(
     form.single_submit && form.submitted ? 'already' : 'filling',
   );
+  const navigation = useDraftNavigation(
+    state === 'filling' && Object.values(values).some((value) => !isEmptyValue(value)),
+    busy,
+    () => {
+      setValues({});
+      setUploads({});
+    },
+  );
   const draft = form.status === 'draft';
   const lookups: CellLookups = useMemo(
     () => ({ members: memberById, linked: {}, files: {}, timeZone: me?.timezone ?? 'Asia/Shanghai' }),
@@ -210,6 +220,8 @@ function FillIn({ form }: { form: FormFill }) {
         ref={formRef}
         id={formId}
         className="app-tf-fill"
+        inert={busy}
+        aria-busy={busy}
         noValidate
         aria-label={t('tables.forms.fill.fields')}
         onSubmit={(event) => {
@@ -311,6 +323,16 @@ function FillIn({ form }: { form: FormFill }) {
     >
       {draft && <Banner>{t('tables.forms.fill.preview')}</Banner>}
       {form.description && state === 'filling' && <p className="app-tf-description app-tf-intro">{form.description}</p>}
+      {navigation.asking && (
+        <ConfirmDialog
+          title={t('knowledge.discardTitle')}
+          confirmLabel={t('knowledge.discard')}
+          onCancel={navigation.cancel}
+          onConfirm={navigation.discard}
+        >
+          {t('knowledge.discardBody')}
+        </ConfirmDialog>
+      )}
       {body}
     </Page>
   );

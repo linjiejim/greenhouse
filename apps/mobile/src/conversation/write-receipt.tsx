@@ -66,5 +66,5 @@ const useStyles = makeStyles((c) => ({
   texts: { gap: space.sm },
   title: { ...typo.subheadline, fontWeight: weight.semibold, color: c.label },
   body: { ...typo.body, color: c.label },
-  action: { alignSelf: 'flex-end' },
+  action: { alignSelf: 'flex-start' },
 }));

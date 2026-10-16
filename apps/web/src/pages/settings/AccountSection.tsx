@@ -1,3 +1,4 @@
+import { errorText } from '../../lib/errors';
 /**
  * 设置 → 账号 (SET-01, AGNT-09): name, language and theme (applied at once), time zone, 「关于我」
  * that every Agent reads, and the password.
@@ -32,7 +33,7 @@ function useSaveMe() {
   return useMutation({
     mutationFn: (input: UpdateMeInput) => api.me.update(input),
     onSuccess: (me) => client.setQueryData(keys.me, me),
-    onError: (error) => notify(error instanceof ApiClientError ? error.message : t('common.error')),
+    onError: (error) => notify(errorText(error, t)),
   });
 }
 
@@ -193,7 +194,7 @@ function MyUsage() {
   const { t, locale } = useI18n();
   const usage = useQuery({ queryKey: ['usage', 'mine'], queryFn: () => api.usage.mine('month') });
   if (usage.isPending) return <Skeleton lines={3} />;
-  if (usage.isError) return <ErrorBox onRetry={() => void usage.refetch()}>{t('common.error')}</ErrorBox>;
+  if (usage.isError) return <ErrorBox onRetry={() => void usage.refetch()}>{errorText(usage.error, t)}</ErrorBox>;
   const data = usage.data;
   return (
     <section className="app-section" aria-label={t('usage.mine')}>

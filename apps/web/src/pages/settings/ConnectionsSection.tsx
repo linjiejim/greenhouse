@@ -1,3 +1,4 @@
+import { useOverlayDraft } from '../../lib/useOverlayDraft';
 /**
  * 设置 → 连接 (SET-03, SET-05): the connectors I can use and my connections to them. A key is
  * checked against the server before it is kept (a refusal shows under the field); a sign-in goes
@@ -111,7 +112,7 @@ function finishProblem(caught: unknown, t: Translate): string {
   if (caught instanceof ApiClientError) {
     if (caught.code === 'sign_in_not_yours') return t('connections.signInNotYours');
     if (caught.code === 'sign_in_expired') return t('connections.signInExpired');
-    if (caught.code === 'sign_in_failed') return t('connections.signInFailed', { reason: caught.message });
+    if (caught.code === 'sign_in_failed') return errorText(caught, t);
   }
   return errorText(caught, t);
 }
@@ -129,6 +130,7 @@ function KeyDialog({ connector, onClose }: { connector: AvailableConnector; onCl
   const [key, setKey] = useState('');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+  const dismiss = useOverlayDraft(key, saving, onClose);
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     if (!key.trim()) return;
@@ -154,46 +156,54 @@ function KeyDialog({ connector, onClose }: { connector: AvailableConnector; onCl
     }
   };
   return (
-    <Overlay variant="dialog" title={t('connections.keyTitle', { name: connector.name })} onClose={onClose}>
-      <form id="connector-key" className="app-form" onSubmit={(event) => void submit(event)}>
-        {connector.key_help && <p>{connector.key_help}</p>}
-        {connector.key_help_url && (
-          <div>
-            <Button
-              kind="ghost"
-              size="sm"
-              onClick={() => window.open(connector.key_help_url!, '_blank', 'noopener,noreferrer')}
-            >
-              <ExternalLink size={icon.sm} />
-              {t('connections.getKey')}
-            </Button>
-          </div>
-        )}
-        <Field
-          label={t('connections.key')}
-          required
-          error={error || undefined}
-          description={t('connections.keyHint', { name: connector.name })}
-        >
-          <Input
-            type="password"
-            autoComplete="off"
-            autoFocus
-            value={key}
-            onChange={(event) => {
-              setKey(event.target.value);
-              setError('');
-            }}
-          />
-        </Field>
-      </form>
-      <OverlayActions>
-        <Button onClick={onClose}>{t('common.cancel')}</Button>
-        <Button kind="primary" type="submit" form="connector-key" loading={saving} disabled={!key.trim()}>
-          {t('connections.saveKey')}
-        </Button>
-      </OverlayActions>
-    </Overlay>
+    <>
+      <Overlay
+        variant="dialog"
+        title={t('connections.keyTitle', { name: connector.name })}
+        onClose={onClose}
+        beforeClose={dismiss.beforeClose}
+      >
+        <form {...dismiss.formProps} id="connector-key" className="app-form" onSubmit={(event) => void submit(event)}>
+          {connector.key_help && <p>{connector.key_help}</p>}
+          {connector.key_help_url && (
+            <div>
+              <Button
+                kind="ghost"
+                size="sm"
+                onClick={() => window.open(connector.key_help_url!, '_blank', 'noopener,noreferrer')}
+              >
+                <ExternalLink size={icon.sm} />
+                {t('connections.getKey')}
+              </Button>
+            </div>
+          )}
+          <Field
+            label={t('connections.key')}
+            required
+            error={error || undefined}
+            description={t('connections.keyHint', { name: connector.name })}
+          >
+            <Input
+              type="password"
+              autoComplete="off"
+              autoFocus
+              value={key}
+              onChange={(event) => {
+                setKey(event.target.value);
+                setError('');
+              }}
+            />
+          </Field>
+        </form>
+        <OverlayActions>
+          <Button onClick={dismiss.close}>{t('common.cancel')}</Button>
+          <Button kind="primary" type="submit" form="connector-key" loading={saving} disabled={!key.trim()}>
+            {t('connections.saveKey')}
+          </Button>
+        </OverlayActions>
+      </Overlay>
+      {dismiss.confirmation}
+    </>
   );
 }
 
@@ -266,7 +276,7 @@ export function ConnectionsSection() {
       .catch((caught: unknown) => notify(errorText(caught, t)));
 
   if (data.isPending) return <Skeleton lines={4} />;
-  if (data.isError) return <ErrorBox onRetry={() => void data.refetch()}>{t('common.error')}</ErrorBox>;
+  if (data.isError) return <ErrorBox onRetry={() => void data.refetch()}>{errorText(data.error, t)}</ErrorBox>;
   const rows = rowsOf(data.data, t);
 
   const actionFor = (row: Row) => {

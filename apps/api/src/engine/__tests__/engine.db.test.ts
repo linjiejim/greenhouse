@@ -338,8 +338,16 @@ describe('the engine', () => {
       .from(messages)
       .where(and(eq(messages.runId, sent.body.run_id), eq(messages.role, 'assistant')));
     expect(reply!.steps).toEqual([
-      expect.objectContaining({ tool: 'memory', status: 'done', summary: '记住了一件事' }),
+      expect.objectContaining({ tool: 'memory', status: 'done', summary: '记住了：Lin prefers tea' }),
     ]);
+
+    const receipts = await getDb()
+      .select()
+      .from(messages)
+      .where(and(eq(messages.runId, sent.body.run_id), eq(messages.role, 'event')));
+    expect(receipts.find((message) => message.event?.type === 'write_receipt')?.content).toBe(
+      '记住了：Lin prefers tea',
+    );
 
     await call('POST', `/api/conversations/${main.id}/messages`, {
       token: lin.token,

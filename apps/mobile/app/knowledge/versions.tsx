@@ -50,7 +50,7 @@ export default function Versions() {
           <Markdown source={picked.content} safe />
         </ScrollView>
       ) : !r.data ? (
-        <ResourceState loading={r.loading} retry={() => void r.refresh()} />
+        <ResourceState error={r.error} loading={r.loading} retry={() => void r.refresh()} />
       ) : (
         <FlatList
           contentInsetAdjustmentBehavior="automatic"

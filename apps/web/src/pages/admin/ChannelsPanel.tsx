@@ -1,3 +1,4 @@
+import { useOverlayDraft } from '../../lib/useOverlayDraft';
 /**
  * 管理 → 服务 · 渠道 (ADM-05): where notifications go besides the app and email (which is the mail
  * service). Push to the phone apps; the Feishu and WeCom apps stay hidden until the IM channels
@@ -20,7 +21,6 @@ import {
 } from '@greenhouse/ui/kit';
 import { icon } from '@greenhouse/ui/tokens';
 import type { AdminChannel, ChannelStatus } from '@greenhouse/contract';
-import { ApiClientError } from '@greenhouse/contract/client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNotify } from '../../app/notify';
 import { useMe } from '../../app/session';
@@ -125,6 +125,7 @@ function ChannelDrawer({ status, onClose }: { status: ChannelStatus; onClose: ()
     }
   };
 
+  const dismiss = useOverlayDraft({ form, enabled }, saving || testing, onClose);
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     setError('');
@@ -135,7 +136,7 @@ function ChannelDrawer({ status, onClose }: { status: ChannelStatus; onClose: ()
       notify(t('common.saved'));
       onClose();
     } catch (caught) {
-      setError(caught instanceof ApiClientError && caught.status < 500 ? caught.message : errorText(caught, t));
+      setError(errorText(caught, t));
     } finally {
       setSaving(false);
     }
@@ -161,78 +162,81 @@ function ChannelDrawer({ status, onClose }: { status: ChannelStatus; onClose: ()
   };
 
   return (
-    <Overlay title={t(LABEL[status.channel])} onClose={onClose}>
-      <form id="channel-form" className="app-form" onSubmit={(event) => void submit(event)}>
-        {readOnly && <p className="app-muted">{t('channels.fromEnv')}</p>}
-        {status.channel === 'feishu' && (
-          <>
-            {field('base_url', 'channels.baseUrl')}
-            {field('app_id', 'channels.appId')}
-            <SecretInput
-              label={t('channels.appSecret')}
-              saved={status.secrets_set.includes('app_secret')}
-              value={form.secret!}
-              onChange={set('secret')}
-              disabled={readOnly}
-            />
-          </>
-        )}
-        {status.channel === 'wecom' && (
-          <>
-            {field('base_url', 'channels.baseUrl')}
-            {field('corp_id', 'channels.corpId')}
-            {field('agent_id', 'channels.agentId', { type: 'number' })}
-            <SecretInput
-              label={t('channels.secret')}
-              saved={status.secrets_set.includes('secret')}
-              value={form.secret!}
-              onChange={set('secret')}
-              disabled={readOnly}
-            />
-          </>
-        )}
-        {status.channel === 'push' && (
-          <>
-            {field('base_url', 'channels.baseUrl')}
-            <SecretInput
-              label={t('channels.accessToken')}
-              saved={status.secrets_set.includes('access_token')}
-              value={form.secret!}
-              onChange={set('secret')}
-              disabled={readOnly}
-            />
-          </>
-        )}
-        <div className="app-setting-row is-plain">
-          <span className="app-setting-text">
-            <strong>{t('channels.enabled')}</strong>
-            <span>{t('channels.enabledHint')}</span>
-          </span>
-          <Switch label={t('channels.enabled')} checked={enabled} disabled={readOnly} onChange={setEnabled} />
-        </div>
-        {error && (
-          <p className="app-request-error" role="alert">
-            {error}
-          </p>
-        )}
-      </form>
-      <OverlayActions>
-        <Button
-          className="app-actions-start"
-          loading={testing}
-          disabled={!status.configured}
-          onClick={() => void test()}
-        >
-          {t('channels.test')}
-        </Button>
-        <Button onClick={onClose}>{t('common.cancel')}</Button>
-        {!readOnly && (
-          <Button kind="primary" type="submit" form="channel-form" loading={saving}>
-            {t('common.save')}
+    <>
+      <Overlay title={t(LABEL[status.channel])} onClose={onClose} beforeClose={dismiss.beforeClose}>
+        <form {...dismiss.formProps} id="channel-form" className="app-form" onSubmit={(event) => void submit(event)}>
+          {readOnly && <p className="app-muted">{t('channels.fromEnv')}</p>}
+          {status.channel === 'feishu' && (
+            <>
+              {field('base_url', 'channels.baseUrl')}
+              {field('app_id', 'channels.appId')}
+              <SecretInput
+                label={t('channels.appSecret')}
+                saved={status.secrets_set.includes('app_secret')}
+                value={form.secret!}
+                onChange={set('secret')}
+                disabled={readOnly}
+              />
+            </>
+          )}
+          {status.channel === 'wecom' && (
+            <>
+              {field('base_url', 'channels.baseUrl')}
+              {field('corp_id', 'channels.corpId')}
+              {field('agent_id', 'channels.agentId', { type: 'number' })}
+              <SecretInput
+                label={t('channels.secret')}
+                saved={status.secrets_set.includes('secret')}
+                value={form.secret!}
+                onChange={set('secret')}
+                disabled={readOnly}
+              />
+            </>
+          )}
+          {status.channel === 'push' && (
+            <>
+              {field('base_url', 'channels.baseUrl')}
+              <SecretInput
+                label={t('channels.accessToken')}
+                saved={status.secrets_set.includes('access_token')}
+                value={form.secret!}
+                onChange={set('secret')}
+                disabled={readOnly}
+              />
+            </>
+          )}
+          <div className="app-setting-row is-plain">
+            <span className="app-setting-text">
+              <strong>{t('channels.enabled')}</strong>
+              <span>{t('channels.enabledHint')}</span>
+            </span>
+            <Switch label={t('channels.enabled')} checked={enabled} disabled={readOnly} onChange={setEnabled} />
+          </div>
+          {error && (
+            <p className="app-request-error" role="alert">
+              {error}
+            </p>
+          )}
+        </form>
+        <OverlayActions>
+          <Button
+            className="app-actions-start"
+            loading={testing}
+            disabled={!status.configured}
+            onClick={() => void test()}
+          >
+            {t('channels.test')}
           </Button>
-        )}
-      </OverlayActions>
-    </Overlay>
+          <Button onClick={dismiss.close}>{t('common.cancel')}</Button>
+          {!readOnly && (
+            <Button kind="primary" type="submit" form="channel-form" loading={saving}>
+              {t('common.save')}
+            </Button>
+          )}
+        </OverlayActions>
+      </Overlay>
+      {dismiss.confirmation}
+    </>
   );
 }
 

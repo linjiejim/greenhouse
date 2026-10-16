@@ -29,7 +29,7 @@
 
 - Use system components: the expo-router native Stack, @expo/ui/swift-ui and NativeMenu (src/ui/menu.tsx; pass width when it is known to skip the measuring remount); never JS-drawn headers, bottom sheets, action sheets, calendars or switches.
 - Glass (src/ui/glass.tsx) is for the control layer only (bars, toolbars, floating buttons, composer); content sits on solid system colors; group adjacent glass in GlassGroup, never glass on glass.
-- `colors.*` are PlatformColor objects: never concatenate or compute alpha on them; use `hex.*` for strings and alpha() for transparency.
+- `colors.*` are opaque ColorValues: never concatenate or compute alpha on them; use `hex.*` for strings and alpha() for transparency.
 - Text and icons on the accent use onAccent, on other solid fills onTint; no hex literals except data colors.
 - Take typo, weight, radius (with squircle) and HIT from src/theme.ts; never disable allowFontScaling.
 - Register icons as [SF Symbol, Material] pairs in ICONS (src/ui/core.tsx) and run `python3 scripts/android-icons.py` in apps/mobile; toolbar icons go through toolbarIcon().
@@ -123,7 +123,19 @@
 
 - Agent author rows are room-only and sit above full-width replies. Thinking never adds an avatar. Replies expose a small NativeMenu; chat Markdown passes calm, while knowledge documents retain their type hierarchy.
 - A one-field ask_user choice with 1–6 options answers in the card; all other questions keep the request route. Disable choices during the write, show the optimistic pick, restore on failure and read persisted selection from result.answers. Do not change request lifecycle rules for presentation.
-- Readable custom light colors live in src/theme/palette.ts; theme.ts maps them to native dynamic colors while retaining system dark backgrounds. Keep contrast tests React-free.
+- Readable custom light colors live in src/theme/palette.ts; theme.ts selects explicit reading colors per appearance while dark values mirror system backgrounds. Native controls retain system styling. Keep contrast tests React-free.
 - Message reactions are small emoji chips; todo plans render on the reply and run detail. One-off reminder pushes use the existing conversation target and replies category; generated files reuse MessageFiles and signed downloads.
 
 - Notifications have one list and an unread badge; pending requests belong to their conversations. notification.removed clears request pointers on open screens. Superseded/withdrawn cards collapse and replacements open the new card in its source conversation.
+
+## Interaction audit
+
+- Settled request cards collapse to a summary row, including their saved inline answer. Keep request lifecycle and server display projections unchanged; card actions and receipt Undo align left, while native sheet primaries are last in the pinned footer.
+- LoadingState and FormLoading use static placeholders; keep the native Form mounted. NativeButton preserves its label/size and accessibility name during a write, and inline choices expose selected state. Custom touch targets use HIT.
+- At accessibility text sizes, FormNavRow stacks its value; Segmented uses a native menu on iOS and native radio rows on Android. Do not remount forms or navigators for font changes.
+- Status colors mirror Haven through `node --import tsx apps/mobile/scripts/build-status-palette.mjs`; palette tests check parity and contrast. Dark reading surfaces mirror UIKit values; select colors per appearance so embedded RN content cannot resolve mixed native traits. Idle profile and welcome portraits stay still; user-triggered portrait reactions remain one-shot.
+- Tables and app cards use tables/display.ts for member-facing dates and the pure model for stored values. Never fall back to removed option ids or unavailable member/record ids. Android tap menus also handle the accessibility activate action.
+
+- The composer keeps the same input mounted across text-size changes: scale its minimum line height, cap it at 40% of the viewport, and wrap controls below the field at accessibility sizes.
+
+- Native schedule editors use common repeat patterns and system time pickers. Keep unsupported existing expressions unchanged unless the member explicitly chooses another pattern; display a friendly schedule label, never the stored expression.

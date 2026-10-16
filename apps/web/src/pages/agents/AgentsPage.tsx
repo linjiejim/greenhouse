@@ -1,3 +1,4 @@
+import { errorText } from '../../lib/errors';
 /**
  * The Agent directory (AGNT-16): mine, public, archived. A card per Agent with its plant, name,
  * role and when it last worked; opening it goes to the profile.
@@ -5,7 +6,6 @@
 
 import { Archive, Plus, Sparkles } from 'lucide-react';
 import { Button, Empty, ErrorBox, Skeleton } from '@greenhouse/ui/kit';
-import { ApiClientError } from '@greenhouse/contract/client';
 import { useQuery } from '@tanstack/react-query';
 import { useNotify } from '../../app/notify';
 import { useCreateConversation } from '../../data/conversations';
@@ -27,7 +27,7 @@ function PublicAgents() {
   const create = useCreateConversation();
   const shared = useQuery({ queryKey: ['agents', 'list', 'public'], queryFn: () => api.publication.shared() });
   if (shared.isPending) return <Skeleton lines={4} />;
-  if (shared.isError) return <ErrorBox onRetry={() => void shared.refetch()}>{t('common.error')}</ErrorBox>;
+  if (shared.isError) return <ErrorBox onRetry={() => void shared.refetch()}>{errorText(shared.error, t)}</ErrorBox>;
   if (!shared.data.items.length) return <Empty icon={<Sparkles />} title={t('agents.noPublic')} />;
   return (
     <ul className="app-card-grid" aria-label={t('agents.public')}>
@@ -41,7 +41,7 @@ function PublicAgents() {
                 { kind: 'direct', agent_id: agent.id },
                 {
                   onSuccess: (conversation) => navigate({ page: 'conversation', id: conversation.id }),
-                  onError: (error) => notify(error instanceof ApiClientError ? error.message : t('common.error')),
+                  onError: (error) => notify(errorText(error, t)),
                 },
               )
             }
@@ -77,7 +77,7 @@ export function AgentsPage({ scope }: { scope: AgentScope }) {
   } else if (agents.isPending) {
     body = <Skeleton lines={4} />;
   } else if (agents.isError) {
-    body = <ErrorBox onRetry={() => void agents.refetch()}>{t('common.error')}</ErrorBox>;
+    body = <ErrorBox onRetry={() => void agents.refetch()}>{errorText(agents.error, t)}</ErrorBox>;
   } else if (!agents.items.length) {
     body =
       scope === 'archived' ? (

@@ -161,7 +161,15 @@ async function stream(response, request) {
     chunk(response, { choices: [{ index: 0, delta: {}, finish_reason: 'stop' }] });
   };
 
-  if (!afterTool && /(?:^|\n\n)u2 react\s*$/i.test(said)) {
+  if (!afterTool && /^u4a forget/i.test(said)) {
+    tool('memory', { action: 'remember', title: '周报每周五发' });
+  } else if (afterTool && /^u4a forget/i.test(said) && /"remembered":"([^"]+)"/.test(toolText)) {
+    tool('memory', { action: 'forget', id: /"remembered":"([^"]+)"/.exec(toolText)[1] });
+  } else if (!afterTool && /^u4a partial/i.test(said)) {
+    tool('web_fetch', { url: 'http://127.0.0.1/blocked' });
+  } else if (afterTool && /^u4a partial/i.test(said) && last.tool_call_id === 'call_web_fetch') {
+    tool('web_search', { query: 'kyoto' });
+  } else if (!afterTool && /(?:^|\n\n)u2 react\s*$/i.test(said)) {
     tool('react', { emoji: '👍' });
   } else if (!afterTool && /(?:^|\n\n)u2 file\s*$/i.test(said)) {
     tool('file_create', { name: 'export', format: 'csv', content: 'Name,Count\nLin,3\nMei,5' });

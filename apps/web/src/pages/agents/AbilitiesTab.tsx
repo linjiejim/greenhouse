@@ -13,6 +13,7 @@ import { useUpdateAgent } from '../../data/agents';
 import { useModelOptions } from '../../data/models';
 import { useSkills } from '../../data/skills';
 import { errorText } from '../../lib/errors';
+import { zh, type MessageKey } from '../../i18n/zh';
 import { useI18n } from '../../lib/i18n';
 import { AgentConnectors } from './AgentConnectors';
 import { StandingApprovals } from './StandingApprovals';
@@ -92,7 +93,16 @@ export function AbilitiesTab({ agent }: { agent: AgentDetail }) {
       <div className="app-setting-row">
         <div className="app-setting-text">
           <strong>{t('agents.tools')}</strong>
-          <span>{agent.tools === null ? t('agents.toolsAll') : agent.tools.join('、')}</span>
+          <span>
+            {agent.tools === null
+              ? t('agents.toolsAll')
+              : agent.tools
+                  .map((tool) => {
+                    const key = `tools.${tool}`;
+                    return t(Object.hasOwn(zh, key) ? (key as MessageKey) : 'tools.other');
+                  })
+                  .join(' · ')}
+          </span>
         </div>
       </div>
     </section>

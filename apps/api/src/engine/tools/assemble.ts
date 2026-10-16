@@ -307,6 +307,7 @@ export async function assembleTools(input: {
               const card = (await def.describe?.(args, call)) ?? {
                 summary: context.locale === 'zh' ? '执行操作' : 'Perform action',
                 details: argumentDetails(args, context.locale),
+                danger: false,
               };
               const request = await call.raise({
                 kind: 'approval',
@@ -317,6 +318,7 @@ export async function assembleTools(input: {
                   input: args,
                   summary: card.summary,
                   details: card.details,
+                  ...(card.danger ? { danger: true } : {}),
                   tier: risk,
                   tainted: context.tainted(),
                   ...(scope ? { standing_scope: scope } : {}),

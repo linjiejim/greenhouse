@@ -1,3 +1,5 @@
+import { errorText } from '../../lib/errors';
+import { useOverlayDraft } from '../../lib/useOverlayDraft';
 /**
  * 记忆 (AGNT-08): what this Agent remembers about the member and its work. Only titles reach
  * the prompt; the detail is read when needed. Add, edit, pin, or forget (with a confirmation).
@@ -63,6 +65,7 @@ function MemoryForm({
   const formId = `memory-${memory?.id ?? 'new'}`;
   const pending = remember.isPending || edit.isPending;
 
+  const dismiss = useOverlayDraft({ title, content, category, pinned }, pending, onClose);
   const submit = (event: FormEvent) => {
     event.preventDefault();
     if (!title.trim()) return setError(t('request.required', { name: t('memory.title') }));
@@ -73,55 +76,64 @@ function MemoryForm({
   };
 
   return (
-    <Overlay variant="dialog" wide title={memory ? t('memory.edit') : t('memory.add')} onClose={onClose}>
-      <form id={formId} className="app-form" onSubmit={submit}>
-        <Field label={t('memory.title')} required error={error || undefined}>
-          <Input
-            value={title}
-            maxLength={120}
-            autoFocus
-            onChange={(event) => {
-              setTitle(event.target.value);
-              setError('');
-            }}
-          />
-        </Field>
-        <Field label={t('memory.content')}>
-          <TextArea
-            value={content}
-            maxLength={4000}
-            maxRows={10}
-            onChange={(event) => setContent(event.target.value)}
-          />
-        </Field>
-        <FieldGroup label={t('memory.category')}>
-          <Select
-            label={t('memory.category')}
-            value={category}
-            options={MEMORY_CATEGORIES.map((value) => ({ value, label: t(CATEGORY_LABEL[value]) }))}
-            onChange={(value) => setCategory(value as Category)}
-          />
-        </FieldGroup>
-        <div className="app-setting-row">
-          <div className="app-setting-text">
-            <strong>{t('memory.pinned')}</strong>
-            <span>{t('memory.pinnedHint')}</span>
+    <>
+      <Overlay
+        variant="dialog"
+        wide
+        title={memory ? t('memory.edit') : t('memory.add')}
+        onClose={onClose}
+        beforeClose={dismiss.beforeClose}
+      >
+        <form {...dismiss.formProps} id={formId} className="app-form" onSubmit={submit}>
+          <Field label={t('memory.title')} required error={error || undefined}>
+            <Input
+              value={title}
+              maxLength={120}
+              autoFocus
+              onChange={(event) => {
+                setTitle(event.target.value);
+                setError('');
+              }}
+            />
+          </Field>
+          <Field label={t('memory.content')}>
+            <TextArea
+              value={content}
+              maxLength={4000}
+              maxRows={10}
+              onChange={(event) => setContent(event.target.value)}
+            />
+          </Field>
+          <FieldGroup label={t('memory.category')}>
+            <Select
+              label={t('memory.category')}
+              value={category}
+              options={MEMORY_CATEGORIES.map((value) => ({ value, label: t(CATEGORY_LABEL[value]) }))}
+              onChange={(value) => setCategory(value as Category)}
+            />
+          </FieldGroup>
+          <div className="app-setting-row">
+            <div className="app-setting-text">
+              <strong>{t('memory.pinned')}</strong>
+              <span>{t('memory.pinnedHint')}</span>
+            </div>
+            <Switch label={t('memory.pinned')} checked={pinned} onChange={setPinned} />
           </div>
-          <Switch label={t('memory.pinned')} checked={pinned} onChange={setPinned} />
-        </div>
-      </form>
-      <OverlayActions>
-        {memory && (
-          <Button kind="danger" className="app-actions-start" onClick={() => onForget(memory)}>
-            {t('memory.forget')}
+        </form>
+        <OverlayActions>
+          {memory && (
+            <Button kind="danger" className="app-actions-start" onClick={() => onForget(memory)}>
+              {t('memory.forget')}
+            </Button>
+          )}
+          <Button onClick={dismiss.close}>{t('common.cancel')}</Button>
+          <Button kind="primary" type="submit" form={formId} loading={pending}>
+            {t('common.save')}
           </Button>
-        )}
-        <Button onClick={onClose}>{t('common.cancel')}</Button>
-        <Button kind="primary" type="submit" form={formId} loading={pending}>
-          {t('common.save')}
-        </Button>
-      </OverlayActions>
-    </Overlay>
+        </OverlayActions>
+      </Overlay>
+      {dismiss.confirmation}
+    </>
   );
 }
 
@@ -148,7 +160,7 @@ export function MemoryTab({ agentId }: { agentId: string }) {
       {memories.isPending ? (
         <Skeleton lines={4} />
       ) : memories.isError ? (
-        <ErrorBox onRetry={() => void memories.refetch()}>{t('common.error')}</ErrorBox>
+        <ErrorBox onRetry={() => void memories.refetch()}>{errorText(memories.error, t)}</ErrorBox>
       ) : !active.length ? (
         <Empty title={t('memory.none')} />
       ) : (

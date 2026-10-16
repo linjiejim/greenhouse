@@ -1,7 +1,7 @@
 import { useLocalSearchParams } from 'expo-router';
-import { Section, TextField, ProgressView, useNativeState } from '@expo/ui/swift-ui';
+import { Section, TextField, useNativeState } from '@expo/ui/swift-ui';
 import { disabled } from '@expo/ui/swift-ui/modifiers';
-import { NativeForm, FormNavRow } from '../../src/ui/native-form';
+import { NativeForm, FormLoading, FormNavRow } from '../../src/ui/native-form';
 import { FormChrome } from '../../src/ui/sheet-chrome';
 import { useMemory } from '../../src/agents/use-memory';
 import { useT } from '../../src/lib/i18n';
@@ -29,7 +29,7 @@ function Editor({ id, memory }: { id: string; memory?: string }) {
         ) : (
           <Section>
             {f.r.loading ? (
-              <ProgressView />
+              <FormLoading />
             ) : (
               <FormNavRow label={t('work.loadFailed')} onPress={() => void f.r.refresh()} />
             )}

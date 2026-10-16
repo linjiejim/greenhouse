@@ -1,3 +1,4 @@
+import { errorText } from '../../lib/errors';
 import { ExtensionPanels } from '../../extensions/host';
 /**
  * An Agent's one home (AGNT-05): profile, abilities, memory, schedules, computer and mailbox. The
@@ -64,7 +65,7 @@ export function AgentPage({ id, tab }: { id: string; tab: AgentTab }) {
         {missing ? (
           <Empty title={t('common.notFound')} />
         ) : (
-          <ErrorBox onRetry={() => void agent.refetch()}>{t('common.error')}</ErrorBox>
+          <ErrorBox onRetry={() => void agent.refetch()}>{errorText(agent.error, t)}</ErrorBox>
         )}
       </Page>
     );

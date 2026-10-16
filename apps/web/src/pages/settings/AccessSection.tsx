@@ -1,3 +1,4 @@
+import { useOverlayDraft } from '../../lib/useOverlayDraft';
 /**
  * 设置 → 外部访问 (SET-08): outside apps acting as me through /api/mcp, never beyond what I can
  * do. Personal access tokens for the CLI and scripts (a token shows once, then only its name);
@@ -53,6 +54,7 @@ function TokenDialog({
   const [error, setError] = useState('');
   const [scopeError, setScopeError] = useState('');
   const [saving, setSaving] = useState(false);
+  const dismiss = useOverlayDraft({ name, scopes, days }, saving, onClose);
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     if (!scopes.length) return setScopeError(t('access.pickScope'));
@@ -68,49 +70,52 @@ function TokenDialog({
     }
   };
   return (
-    <Overlay variant="dialog" title={t('access.createToken')} onClose={onClose}>
-      <form id="personal-token" className="app-form" onSubmit={(event) => void submit(event)}>
-        <Field
-          label={t('access.tokenName')}
-          required
-          description={t('access.tokenNameHint')}
-          error={error || undefined}
-        >
-          <Input
-            value={name}
-            maxLength={80}
-            autoFocus
-            onChange={(event) => {
-              setName(event.target.value);
-              setError('');
+    <>
+      <Overlay variant="dialog" title={t('access.createToken')} onClose={onClose} beforeClose={dismiss.beforeClose}>
+        <form {...dismiss.formProps} id="personal-token" className="app-form" onSubmit={(event) => void submit(event)}>
+          <Field
+            label={t('access.tokenName')}
+            required
+            description={t('access.tokenNameHint')}
+            error={error || undefined}
+          >
+            <Input
+              value={name}
+              maxLength={80}
+              autoFocus
+              onChange={(event) => {
+                setName(event.target.value);
+                setError('');
+              }}
+            />
+          </Field>
+          <ScopeChecks
+            label={t('access.scopes')}
+            value={scopes}
+            error={scopeError || undefined}
+            onChange={(next) => {
+              setScopes(next);
+              setScopeError('');
             }}
           />
-        </Field>
-        <ScopeChecks
-          label={t('access.scopes')}
-          value={scopes}
-          error={scopeError || undefined}
-          onChange={(next) => {
-            setScopes(next);
-            setScopeError('');
-          }}
-        />
-        <FieldGroup label={t('access.expiry')}>
-          <Select
-            label={t('access.expiry')}
-            value={days}
-            options={DAYS.map((count) => ({ value: String(count), label: t('access.days', { count }) }))}
-            onChange={setDays}
-          />
-        </FieldGroup>
-      </form>
-      <OverlayActions>
-        <Button onClick={onClose}>{t('common.cancel')}</Button>
-        <Button kind="primary" type="submit" form="personal-token" loading={saving} disabled={!name.trim()}>
-          {t('access.createToken')}
-        </Button>
-      </OverlayActions>
-    </Overlay>
+          <FieldGroup label={t('access.expiry')}>
+            <Select
+              label={t('access.expiry')}
+              value={days}
+              options={DAYS.map((count) => ({ value: String(count), label: t('access.days', { count }) }))}
+              onChange={setDays}
+            />
+          </FieldGroup>
+        </form>
+        <OverlayActions>
+          <Button onClick={dismiss.close}>{t('common.cancel')}</Button>
+          <Button kind="primary" type="submit" form="personal-token" loading={saving} disabled={!name.trim()}>
+            {t('access.createToken')}
+          </Button>
+        </OverlayActions>
+      </Overlay>
+      {dismiss.confirmation}
+    </>
   );
 }
 
@@ -140,7 +145,7 @@ function Tokens() {
       {tokens.isPending ? (
         <Skeleton lines={2} />
       ) : tokens.isError ? (
-        <ErrorBox onRetry={() => void tokens.refetch()}>{t('common.error')}</ErrorBox>
+        <ErrorBox onRetry={() => void tokens.refetch()}>{errorText(tokens.error, t)}</ErrorBox>
       ) : items.length ? (
         <ul className="app-list app-bordered">
           {items.map((token) => (
@@ -232,7 +237,7 @@ function Grants() {
       {grants.isPending ? (
         <Skeleton lines={2} />
       ) : grants.isError ? (
-        <ErrorBox onRetry={() => void grants.refetch()}>{t('common.error')}</ErrorBox>
+        <ErrorBox onRetry={() => void grants.refetch()}>{errorText(grants.error, t)}</ErrorBox>
       ) : items.length ? (
         <ul className="app-list app-bordered">
           {items.map((grant) => {

@@ -2,6 +2,7 @@ import { useCallback, useRef } from 'react';
 import { ScrollView } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { schedules, scheduleAction, removeSchedule } from '../../src/api/always-on';
+import { scheduleLabel } from '../../src/agents/schedule-copy';
 import { plainText } from '../../src/chat/text';
 import { useResource } from '../../src/data/use-resource';
 import { ResourceState } from '../../src/knowledge/state';
@@ -58,11 +59,11 @@ export default function Schedules() {
         />
       </Stack.Toolbar>
       {!r.data ? (
-        <ResourceState loading={r.loading} retry={() => void r.refresh()} />
+        <ResourceState error={r.error} loading={r.loading} retry={() => void r.refresh()} />
       ) : (
         <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerStyle={{ paddingBottom: 40 }}>
           {r.data.items.map((s) => (
-            <ListSection key={s.id} footer={`${s.cron} · ${s.timezone}`}>
+            <ListSection key={s.id} footer={`${scheduleLabel(s.cron, t)} · ${s.timezone}`}>
               <NativeMenu
                 trigger="longPress"
                 items={[

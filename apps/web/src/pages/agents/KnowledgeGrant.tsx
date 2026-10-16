@@ -1,3 +1,4 @@
+import { errorText } from '../../lib/errors';
 /** Publication knowledge reads stay in the owner's chosen folders and their current children. */
 import { useState } from 'react';
 import { ChevronDown, ChevronRight } from 'lucide-react';
@@ -41,7 +42,9 @@ function Branch({
         />
       </div>
       {open && folder.isPending && <Skeleton lines={1} />}
-      {open && folder.isError && <ErrorBox onRetry={() => void folder.refetch()}>{t('common.error')}</ErrorBox>}
+      {open && folder.isError && (
+        <ErrorBox onRetry={() => void folder.refetch()}>{errorText(folder.error, t)}</ErrorBox>
+      )}
       {open &&
         folder.data?.children
           .filter((child) => child.type === 'folder' && !child.agent_id)
@@ -63,7 +66,7 @@ export function KnowledgeGrant({ selected, onChange }: { selected: string[]; onC
   return (
     <div className="app-picker">
       {roots.isPending && <Skeleton lines={2} />}
-      {roots.isError && <ErrorBox onRetry={() => void roots.refetch()}>{t('common.error')}</ErrorBox>}
+      {roots.isError && <ErrorBox onRetry={() => void roots.refetch()}>{errorText(roots.error, t)}</ErrorBox>}
       {roots.items
         .filter((item) => item.type === 'folder' && !item.agent_id)
         .map((item) => (

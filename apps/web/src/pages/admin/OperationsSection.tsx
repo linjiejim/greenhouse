@@ -25,7 +25,7 @@ export function OperationsSection() {
     }
   };
   if (state.isPending) return <Skeleton lines={3} />;
-  if (state.isError) return <ErrorBox onRetry={() => void state.refetch()}>{t('common.error')}</ErrorBox>;
+  if (state.isError) return <ErrorBox onRetry={() => void state.refetch()}>{errorText(state.error, t)}</ErrorBox>;
   return (
     <section className="app-section">
       {error && <p role="alert">{error}</p>}

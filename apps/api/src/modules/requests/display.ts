@@ -117,6 +117,15 @@ export function createCardDisplay(deps: {
         return value;
       };
       if (payload.details !== undefined) payload.details = await details(payload.details);
+      const display: Record<string, string> = {};
+      for (const key of ['reason', 'brief', 'instructions', 'current', 'run_title']) {
+        const value = payload[key];
+        if (typeof value !== 'string') continue;
+        const projected = await text(value);
+        if (projected !== value) display[key] = projected;
+      }
+      // Proposal text is also execution evidence: project its preview without rewriting it.
+      if (Object.keys(display).length) payload.display = display;
       return { ...input, title: await text(input.title, conversation?.kind === 'room'), payload };
     };
     // App action cards must never name columns hidden by their publication's narrower role.

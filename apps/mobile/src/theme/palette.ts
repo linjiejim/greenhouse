@@ -1,3 +1,5 @@
+import { nativeStatus } from './status.generated';
+
 /** Native string palette; React-free so contrast is checked without a native install. */
 /** Haven forest green in light mode and pale sage in dark mode. */
 const BRAND_LIGHT = '#235D4D';
@@ -43,19 +45,12 @@ export const lightHex = {
   tertiaryFill: 'rgba(118,118,128,0.12)',
   quaternaryFill: 'rgba(116,116,128,0.08)',
 
-  // ── System colors (status / semantics) ──
-  red: '#FF3B30',
-  orange: '#FF9500',
+  // ── Haven status roles, with native data colors ──
+  ...nativeStatus.light,
   yellow: '#FFCC00',
-  green: '#34C759',
-  blue: '#007AFF',
   indigo: '#5856D6',
   purple: '#AF52DE',
   gray: '#8E8E93',
-  redFill: 'rgba(255,59,48,0.12)',
-  orangeFill: 'rgba(255,149,0,0.14)',
-  greenFill: 'rgba(52,199,89,0.14)',
-  blueFill: 'rgba(0,122,255,0.12)',
 
   // ── Chat ──
   /** The user's message bubble. */
@@ -106,18 +101,11 @@ export const darkHex: HexPalette = {
   tertiaryFill: 'rgba(118,118,128,0.24)',
   quaternaryFill: 'rgba(118,118,128,0.18)',
 
-  red: '#FF453A',
-  orange: '#FF9F0A',
   yellow: '#FFD60A',
-  green: '#30D158',
-  blue: '#0A84FF',
+  ...nativeStatus.dark,
   indigo: '#5E5CE6',
   purple: '#BF5AF2',
   gray: '#8E8E93',
-  redFill: 'rgba(255,69,58,0.18)',
-  orangeFill: 'rgba(255,159,10,0.18)',
-  greenFill: 'rgba(48,209,88,0.18)',
-  blueFill: 'rgba(10,132,255,0.18)',
 
   bubble: '#1C1C1E',
 

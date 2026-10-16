@@ -95,3 +95,8 @@ The v2 web app. Product scope is docs/product/prd.md §6–7; layout and compone
 - Notifications have one list. notification.removed drops a request pointer immediately; request.updated refreshes its conversation badge and cards. Superseded/withdrawn cards collapse; replacements link to the new card.
 
 - Browser approval checks use sendForRequest to await a committed pending-request response before asserting its rendered details; receipt checks await the turn settling. Keep UI assertions independent of backend execution latency.
+
+- Form overlays reuse lib/useOverlayDraft for close, Escape, scrim and route guards. Call saved() before a successful save navigates; cancellation asks before discarding. Inline app and table forms hold navigation until submission succeeds.
+- Process tone follows the containing reply/run outcome; a successful reply may retain neutral failed steps. Agent capability lists use dictionary action names; never render tool ids. Schedule copy comes from @greenhouse/utils/cron.
+
+- Settled request cards default to one expandable header; answered inline choices keep their selected label in that summary. Read old previews and answers by expanding it. Dangerous approvals use the server danger marker and human action copy.

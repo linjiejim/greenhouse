@@ -1,3 +1,4 @@
+import { useOverlayDraft } from '../../lib/useOverlayDraft';
 /**
  * 管理 → 外部访问 (ADM-09): the clients that reach /api/mcp. Interactive clients sign members in
  * through the consent page (registered by themselves, or added here with fixed callback
@@ -74,6 +75,7 @@ function ClientDialog({ onClose, onCreated }: { onClose: () => void; onCreated: 
   const [scopes, setScopes] = useState<OAuthScope[]>([...OAUTH_SCOPES]);
   const [error, setError] = useState<{ field: 'name' | 'uris' | 'member' | 'scopes'; text: string } | null>(null);
   const [saving, setSaving] = useState(false);
+  const dismiss = useOverlayDraft({ kind, name, uris, member, scopes }, saving, onClose);
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     const redirects = uris
@@ -114,92 +116,95 @@ function ClientDialog({ onClose, onCreated }: { onClose: () => void; onCreated: 
   };
   const errorOf = (field: 'name' | 'uris' | 'member' | 'scopes') => (error?.field === field ? error.text : undefined);
   return (
-    <Overlay variant="dialog" wide title={t('clients.add')} onClose={onClose}>
-      <form id="oauth-client" className="app-form" onSubmit={(event) => void submit(event)}>
-        <FieldGroup
-          label={t('clients.kind')}
-          description={kind === 'interactive' ? t('clients.interactiveHint') : t('clients.machineHint')}
-        >
-          <Segmented
-            label={t('clients.kind')}
-            items={[
-              { value: 'interactive', label: t('clients.kind.interactive') },
-              { value: 'machine', label: t('clients.kind.machine') },
-            ]}
-            value={kind}
-            onChange={(value) => {
-              setKind(value as Kind);
-              setError(null);
-            }}
-          />
-        </FieldGroup>
-        <Field label={t('clients.name')} required error={errorOf('name')}>
-          <Input
-            value={name}
-            maxLength={120}
-            autoFocus
-            onChange={(event) => {
-              setName(event.target.value);
-              setError(null);
-            }}
-          />
-        </Field>
-        {kind === 'interactive' ? (
-          <Field
-            label={t('clients.redirectUris')}
-            required
-            description={t('clients.redirectUrisHint')}
-            error={errorOf('uris')}
-          >
-            <TextArea
-              value={uris}
-              maxRows={6}
-              placeholder="https://app.example.com/callback"
-              onChange={(event) => {
-                setUris(event.target.value);
-                setError(null);
-              }}
-            />
-          </Field>
-        ) : (
+    <>
+      <Overlay variant="dialog" wide title={t('clients.add')} onClose={onClose} beforeClose={dismiss.beforeClose}>
+        <form {...dismiss.formProps} id="oauth-client" className="app-form" onSubmit={(event) => void submit(event)}>
           <FieldGroup
-            label={t('clients.member')}
-            required
-            description={t('clients.memberHint')}
-            error={errorOf('member')}
+            label={t('clients.kind')}
+            description={kind === 'interactive' ? t('clients.interactiveHint') : t('clients.machineHint')}
           >
-            <Select
-              label={t('clients.member')}
-              value={member}
-              options={(directory.data?.items ?? []).map((item) => ({
-                value: item.id,
-                label: item.name,
-                description: item.email,
-              }))}
+            <Segmented
+              label={t('clients.kind')}
+              items={[
+                { value: 'interactive', label: t('clients.kind.interactive') },
+                { value: 'machine', label: t('clients.kind.machine') },
+              ]}
+              value={kind}
               onChange={(value) => {
-                setMember(value);
+                setKind(value as Kind);
                 setError(null);
               }}
             />
           </FieldGroup>
-        )}
-        <ScopeChecks
-          label={kind === 'interactive' ? t('clients.scopeCap') : t('clients.scopes')}
-          value={scopes}
-          error={errorOf('scopes')}
-          onChange={(next) => {
-            setScopes(next);
-            setError(null);
-          }}
-        />
-      </form>
-      <OverlayActions>
-        <Button onClick={onClose}>{t('common.cancel')}</Button>
-        <Button kind="primary" type="submit" form="oauth-client" loading={saving} disabled={!name.trim()}>
-          {t('clients.add')}
-        </Button>
-      </OverlayActions>
-    </Overlay>
+          <Field label={t('clients.name')} required error={errorOf('name')}>
+            <Input
+              value={name}
+              maxLength={120}
+              autoFocus
+              onChange={(event) => {
+                setName(event.target.value);
+                setError(null);
+              }}
+            />
+          </Field>
+          {kind === 'interactive' ? (
+            <Field
+              label={t('clients.redirectUris')}
+              required
+              description={t('clients.redirectUrisHint')}
+              error={errorOf('uris')}
+            >
+              <TextArea
+                value={uris}
+                maxRows={6}
+                placeholder="https://app.example.com/callback"
+                onChange={(event) => {
+                  setUris(event.target.value);
+                  setError(null);
+                }}
+              />
+            </Field>
+          ) : (
+            <FieldGroup
+              label={t('clients.member')}
+              required
+              description={t('clients.memberHint')}
+              error={errorOf('member')}
+            >
+              <Select
+                label={t('clients.member')}
+                value={member}
+                options={(directory.data?.items ?? []).map((item) => ({
+                  value: item.id,
+                  label: item.name,
+                  description: item.email,
+                }))}
+                onChange={(value) => {
+                  setMember(value);
+                  setError(null);
+                }}
+              />
+            </FieldGroup>
+          )}
+          <ScopeChecks
+            label={kind === 'interactive' ? t('clients.scopeCap') : t('clients.scopes')}
+            value={scopes}
+            error={errorOf('scopes')}
+            onChange={(next) => {
+              setScopes(next);
+              setError(null);
+            }}
+          />
+        </form>
+        <OverlayActions>
+          <Button onClick={dismiss.close}>{t('common.cancel')}</Button>
+          <Button kind="primary" type="submit" form="oauth-client" loading={saving} disabled={!name.trim()}>
+            {t('clients.add')}
+          </Button>
+        </OverlayActions>
+      </Overlay>
+      {dismiss.confirmation}
+    </>
   );
 }
 
@@ -209,6 +214,7 @@ function RenameDialog({ client: target, onClose }: { client: AdminClient; onClos
   const [name, setName] = useState(target.name);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+  const dismiss = useOverlayDraft(name, saving, onClose);
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     setSaving(true);
@@ -222,19 +228,27 @@ function RenameDialog({ client: target, onClose }: { client: AdminClient; onClos
     }
   };
   return (
-    <Overlay variant="dialog" title={t('clients.rename')} onClose={onClose}>
-      <form id="oauth-client-name" className="app-form" onSubmit={(event) => void submit(event)}>
-        <Field label={t('clients.name')} required error={error || undefined}>
-          <Input value={name} maxLength={120} autoFocus onChange={(event) => setName(event.target.value)} />
-        </Field>
-      </form>
-      <OverlayActions>
-        <Button onClick={onClose}>{t('common.cancel')}</Button>
-        <Button kind="primary" type="submit" form="oauth-client-name" loading={saving} disabled={!name.trim()}>
-          {t('common.save')}
-        </Button>
-      </OverlayActions>
-    </Overlay>
+    <>
+      <Overlay variant="dialog" title={t('clients.rename')} onClose={onClose} beforeClose={dismiss.beforeClose}>
+        <form
+          {...dismiss.formProps}
+          id="oauth-client-name"
+          className="app-form"
+          onSubmit={(event) => void submit(event)}
+        >
+          <Field label={t('clients.name')} required error={error || undefined}>
+            <Input value={name} maxLength={120} autoFocus onChange={(event) => setName(event.target.value)} />
+          </Field>
+        </form>
+        <OverlayActions>
+          <Button onClick={dismiss.close}>{t('common.cancel')}</Button>
+          <Button kind="primary" type="submit" form="oauth-client-name" loading={saving} disabled={!name.trim()}>
+            {t('common.save')}
+          </Button>
+        </OverlayActions>
+      </Overlay>
+      {dismiss.confirmation}
+    </>
   );
 }
 
@@ -325,7 +339,7 @@ export function ClientsSection() {
       {clients.isPending ? (
         <Skeleton lines={4} />
       ) : clients.isError ? (
-        <ErrorBox onRetry={() => void clients.refetch()}>{t('common.error')}</ErrorBox>
+        <ErrorBox onRetry={() => void clients.refetch()}>{errorText(clients.error, t)}</ErrorBox>
       ) : items.length ? (
         <div className="app-table-wrap">
           <table className="app-table" aria-label={t('admin.access')}>

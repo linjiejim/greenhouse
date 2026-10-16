@@ -97,7 +97,7 @@ export default function Mailbox() {
     <>
       <Stack.Screen options={{ title: t('work.mailbox') }} />
       {!box.data ? (
-        <ResourceState loading={box.loading} retry={() => void box.refresh()} />
+        <ResourceState error={box.error} loading={box.loading} retry={() => void box.refresh()} />
       ) : !box.data.available ? (
         <ListSection>
           <ListRow title={t(box.data.reason === 'not_configured' ? 'work.notConfigured' : 'work.mailUnavailable')} />

@@ -18,7 +18,7 @@ export default function Forms() {
     <>
       <Stack.Screen options={{ title: t('work.forms') }} />
       {!r.data ? (
-        <ResourceState loading={r.loading} retry={() => void r.refresh()} />
+        <ResourceState error={r.error} loading={r.loading} retry={() => void r.refresh()} />
       ) : (
         <FlatList
           contentInsetAdjustmentBehavior="automatic"

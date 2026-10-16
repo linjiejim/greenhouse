@@ -78,12 +78,18 @@ function Detail({ run }: { run: RunDetail }) {
         {run.steps.length ? (
           <ol className="app-steps is-run">
             {run.steps.map((step) => (
-              <li key={step.id} className={cx('app-step', `is-${step.status}`)}>
+              <li
+                key={step.id}
+                className={cx(
+                  'app-step',
+                  `is-${step.status === 'failed' && run.status !== 'failed' ? 'note' : step.status}`,
+                )}
+              >
                 <span className="app-step-dot" aria-hidden />
                 <span className="app-step-summary">
                   {step.summary !== step.error?.message && step.summary}
                   {step.error && (
-                    <span className="app-step-error">
+                    <span className={run.status === 'failed' ? 'app-step-error' : 'app-muted'}>
                       {step.summary !== step.error.message && ' · '}
                       {errorCodeText(step.error.code, t) ?? step.error.message}
                     </span>

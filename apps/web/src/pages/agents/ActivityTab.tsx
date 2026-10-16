@@ -1,3 +1,4 @@
+import { errorText } from '../../lib/errors';
 /**
  * 用量与活动 (AGNT-15): how much the Agent was used and how it went — replies, background runs,
  * people, tokens, cost, 👍/👎 with recent comments — and its latest runs. Other people's
@@ -28,7 +29,7 @@ export function ActivityTab({ agentId }: { agentId: string }) {
   const data = usage.data;
   return (
     <section className="app-section" aria-label={t('agents.tabActivity')}>
-      {usage.isError && <ErrorBox onRetry={() => void usage.refetch()}>{t('common.error')}</ErrorBox>}
+      {usage.isError && <ErrorBox onRetry={() => void usage.refetch()}>{errorText(usage.error, t)}</ErrorBox>}
       {data && (
         <>
           {data.budgets.map((budget) => (
@@ -86,7 +87,7 @@ export function ActivityTab({ agentId }: { agentId: string }) {
       {activity.isPending ? (
         <Skeleton lines={4} />
       ) : activity.isError ? (
-        <ErrorBox onRetry={() => void activity.refetch()}>{t('common.error')}</ErrorBox>
+        <ErrorBox onRetry={() => void activity.refetch()}>{errorText(activity.error, t)}</ErrorBox>
       ) : !(activity.data?.items ?? []).length ? (
         <Empty title={t('activity.none')} />
       ) : (

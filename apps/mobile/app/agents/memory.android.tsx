@@ -1,6 +1,7 @@
 import { useLocalSearchParams } from 'expo-router';
 import {
   NativeForm,
+  FormLoading,
   FormActionRow,
   FormSection,
   FormTextField,
@@ -32,10 +33,11 @@ function Editor({ id, memory }: { id: string; memory?: string }) {
           <Fields f={f} />
         ) : (
           <FormSection>
-            <FormActionRow
-              label={t(f.r.loading ? 'common.loading' : 'work.loadFailed')}
-              onPress={() => void f.r.refresh()}
-            />
+            {f.r.loading ? (
+              <FormLoading />
+            ) : (
+              <FormActionRow label={t('work.loadFailed')} onPress={() => void f.r.refresh()} />
+            )}
           </FormSection>
         )}
       </NativeForm>

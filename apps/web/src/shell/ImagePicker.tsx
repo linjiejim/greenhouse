@@ -1,7 +1,7 @@
+import { errorText } from '../lib/errors';
 /** Choose or remove a picture (avatar, logo): uploads it, then hands the file id over. */
 
 import { useRef, useState, type ReactNode } from 'react';
-import { ApiClientError } from '@greenhouse/contract/client';
 import { Button } from '@greenhouse/ui/kit';
 import { useNotify } from '../app/notify';
 import { api } from '../lib/api';
@@ -28,7 +28,7 @@ export function ImagePicker({
     try {
       await work();
     } catch (error) {
-      notify(error instanceof ApiClientError ? error.message : t('common.error'));
+      notify(errorText(error, t));
     } finally {
       setBusy(false);
     }
