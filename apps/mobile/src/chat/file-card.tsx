@@ -15,7 +15,8 @@ import { StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
 import { formatBytes } from '../lib/format';
 
-import { makeStyles, radius, space, squircle, typo, useTheme, weight } from '../theme';
+import { useFontScaleKey } from '../ui/font-scale';
+import { HIT, makeStyles, radius, space, squircle, typo, useTheme, weight } from '../theme';
 import { Icon, type IconName, Touchable } from '../ui/core';
 
 /** Both chat and computer files use the same authenticated preview route. */
@@ -43,6 +44,8 @@ export function fileDetail(size?: number, extra?: string): string | undefined {
 export function FileCard({ name, detail, path }: { name: string; detail?: string; path: string }) {
   const { colors: c } = useTheme();
   const styles = useStyles(c);
+  const fontKey = useFontScaleKey();
+  const large = Number(fontKey) >= 1.5;
   return (
     <Touchable
       onPress={() => saveFile(path, name)}
@@ -53,12 +56,12 @@ export function FileCard({ name, detail, path }: { name: string; detail?: string
       <View style={styles.tile}>
         <Icon name={fileIcon(name)} size={18} color={c.accent} />
       </View>
-      <View style={styles.texts}>
-        <Text numberOfLines={1} ellipsizeMode="middle" style={styles.name}>
+      <View key={fontKey} style={styles.texts}>
+        <Text numberOfLines={large ? 0 : 1} ellipsizeMode="middle" style={styles.name}>
           {name}
         </Text>
         {detail ? (
-          <Text numberOfLines={1} ellipsizeMode="middle" style={styles.detail}>
+          <Text numberOfLines={large ? 0 : 1} ellipsizeMode="middle" style={styles.detail}>
             {detail}
           </Text>
         ) : null}
@@ -71,15 +74,17 @@ export function FileCard({ name, detail, path }: { name: string; detail?: string
 export function AttachmentChip({ name, size, path }: { name: string; size?: number; path: string }) {
   const { colors: c } = useTheme();
   const styles = useStyles(c);
+  const fontKey = useFontScaleKey();
+  const large = Number(fontKey) >= 1.5;
   return (
     <Touchable
       onPress={() => saveFile(path, name)}
-      style={styles.chip}
+      style={[styles.chip, large && { flexWrap: 'wrap' }]}
       accessibilityRole="button"
       accessibilityLabel={name}
     >
       <Icon name={fileIcon(name) === 'image' ? 'image' : 'attach'} size={13} color={c.secondaryLabel} />
-      <Text numberOfLines={1} ellipsizeMode="middle" style={styles.chipName}>
+      <Text key={fontKey} numberOfLines={large ? 0 : 1} ellipsizeMode="middle" style={styles.chipName}>
         {name}
       </Text>
       {size != null ? <Text style={styles.chipSize}>{formatBytes(size)}</Text> : null}
@@ -113,6 +118,7 @@ const useStyles = makeStyles((c) => ({
   name: { ...typo.subheadline, fontWeight: weight.semibold, color: c.label },
   detail: { ...typo.footnote, color: c.secondaryLabel, marginTop: 1 },
   chip: {
+    minHeight: HIT,
     flexDirection: 'row',
     alignItems: 'center',
     gap: space.xs + 1,

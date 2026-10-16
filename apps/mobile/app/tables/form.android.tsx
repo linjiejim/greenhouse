@@ -1,5 +1,5 @@
 import { useLocalSearchParams } from 'expo-router';
-import { NativeForm, FormSection, FormValueRow, FormNavRow } from '../../src/ui/native-form.android';
+import { NativeForm, FormLoading, FormSection, FormValueRow, FormNavRow } from '../../src/ui/native-form.android';
 import { FormChrome } from '../../src/ui/sheet-chrome';
 import { FieldEditor } from '../../src/tables/fields.android';
 import { useFormFill } from '../../src/tables/use-record-editor';
@@ -50,7 +50,7 @@ export default function FormFill() {
           </>
         ) : (
           <FormSection>
-            <FormValueRow label={f.resource.loading ? t('common.loading') : t('work.loadFailed')} />
+            {f.resource.loading ? <FormLoading /> : <FormValueRow label={t('work.loadFailed')} />}
             <FormNavRow label={t('common.retry')} onPress={() => void f.resource.refresh()} />
           </FormSection>
         )}

@@ -32,7 +32,7 @@ import { brandFont as font } from './brand-font';
  */
 
 import React from 'react';
-import type { StyleProp, ViewStyle } from 'react-native';
+import { useWindowDimensions, type StyleProp, type ViewStyle } from 'react-native';
 import { Button, Form, HStack, Host, Image, Spacer, Text, VStack } from '@expo/ui/swift-ui';
 import {
   accessibilityAddTraits,
@@ -44,11 +44,13 @@ import {
   lineLimit,
   listRowBackground,
   opacity,
+  redacted,
   tint,
 } from '@expo/ui/swift-ui/modifiers';
 import type { SymbolViewProps } from 'expo-symbols';
+import { useT } from '../lib/i18n';
 import { usePrefs } from '../store/prefs';
-import { useTheme } from '../theme';
+import { HIT, space, useTheme } from '../theme';
 import { selectionTick } from './haptics';
 
 /**
@@ -75,7 +77,7 @@ export function NativeForm({ children, style }: { children: React.ReactNode; sty
   );
 }
 
-const SWATCH = 34;
+const SWATCH = HIT;
 
 /**
  * A color palette for a Form row (put it straight inside a `Section`): SF
@@ -154,6 +156,21 @@ const PRIMARY = foregroundStyle({ type: 'hierarchical', style: 'primary' });
 const SECONDARY = foregroundStyle({ type: 'hierarchical', style: 'secondary' });
 const TERTIARY = foregroundStyle({ type: 'hierarchical', style: 'tertiary' });
 
+/** Static form-shaped placeholders; the Form itself stays mounted while a read finishes. */
+export function FormLoading() {
+  const t = useT();
+  return (
+    <VStack alignment="leading" spacing={space.lg}>
+      <Text modifiers={[SECONDARY]}>{t('common.loading')}</Text>
+      {[3, 2].map((length) => (
+        <Text key={length} modifiers={[redacted('placeholder'), accessibilityHidden(true)]}>
+          {t('common.loading').repeat(length)}
+        </Text>
+      ))}
+    </VStack>
+  );
+}
+
 /**
  * A Form row that navigates somewhere (Settings-style): optional leading SF
  * Symbol, label, muted trailing value and a disclosure chevron — label-colored,
@@ -173,6 +190,8 @@ export function FormNavRow({
   systemImageColor?: string;
   onPress: () => void;
 }) {
+  const { fontScale } = useWindowDimensions();
+  const large = fontScale >= 1.5;
   return (
     <Button onPress={onPress} modifiers={[PRIMARY]}>
       <HStack spacing={10}>
@@ -182,9 +201,16 @@ export function FormNavRow({
             modifiers={[systemImageColor ? foregroundStyle(systemImageColor) : SECONDARY, accessibilityHidden(true)]}
           />
         ) : null}
-        <Text>{label}</Text>
+        {large ? (
+          <VStack alignment="leading" spacing={space.xs}>
+            <Text>{label}</Text>
+            {value ? <Text modifiers={[SECONDARY]}>{value}</Text> : null}
+          </VStack>
+        ) : (
+          <Text>{label}</Text>
+        )}
         <Spacer />
-        {value ? <Text modifiers={[SECONDARY, lineLimit(1)]}>{value}</Text> : null}
+        {!large && value ? <Text modifiers={[SECONDARY, lineLimit(1)]}>{value}</Text> : null}
         <Image
           systemName="chevron.right"
           modifiers={[font({ size: 13, weight: 'semibold' }), TERTIARY, accessibilityHidden(true)]}
@@ -257,7 +283,7 @@ export function FormCheckRow({
           <Text modifiers={choice ? [font({ textStyle: 'callout', weight: checked ? 'semibold' : 'regular' })] : []}>
             {label}
           </Text>
-          {detail ? <Text modifiers={[font({ textStyle: 'footnote' }), SECONDARY, lineLimit(2)]}>{detail}</Text> : null}
+          {detail ? <Text modifiers={[font({ textStyle: 'footnote' }), SECONDARY]}>{detail}</Text> : null}
         </VStack>
         <Spacer />
         {checked && !choice ? (

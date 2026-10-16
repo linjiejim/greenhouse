@@ -76,7 +76,6 @@ export default function Login() {
               <View style={[styles.brand, { width: width - 40 }]}>
                 <GreenhouseMark size={64} />
                 <RNText style={styles.title}>Greenhouse</RNText>
-                <RNText style={styles.sub}>{t('login.subtitle')}</RNText>
               </View>
             </RNHostView>
           }
@@ -95,10 +94,8 @@ export default function Login() {
           </Section>
         ) : null}
 
-        {/* The footer is always a Text — the error in red, else the members-only
-            note. Adding / removing a Section footer rebuilds its rows, and the
-            focused field would lose focus mid-typing when the error clears. */}
-        <Section footer={<Text modifiers={error ? [foregroundStyle('red')] : []}>{error ?? t('login.footer')}</Text>}>
+        {/* Keep the footer mounted: rebuilding its Section would blur a focused field. */}
+        <Section footer={<Text modifiers={error ? [foregroundStyle('red')] : []}>{error ?? ''}</Text>}>
           <TextField
             text={emailState}
             placeholder={t('login.emailPlaceholder')}
@@ -154,5 +151,4 @@ export default function Login() {
 const useStyles = makeStyles((c) => ({
   brand: { alignItems: 'center', paddingTop: space.xxxl, paddingBottom: space.xl, gap: space.xs },
   title: { ...typo.largeTitle, color: c.label, marginTop: space.md },
-  sub: { ...typo.subheadline, color: c.secondaryLabel, textAlign: 'center' },
 }));

@@ -21,16 +21,21 @@ import { brandFont as font } from './brand-font';
 
 import React from 'react';
 import type { StyleProp, ViewStyle } from 'react-native';
-import { Button, Host, Label, ProgressView, Text } from '@expo/ui/swift-ui';
+import { Button, Host, Label, ProgressView, Text, ZStack } from '@expo/ui/swift-ui';
 import {
   buttonStyle,
+  accessibilityLabel,
+  accessibilityAddTraits,
+  contentShape,
   controlSize,
   disabled as disabledMod,
   frame,
   foregroundStyle,
+  opacity,
   tint,
+  shapes,
 } from '@expo/ui/swift-ui/modifiers';
-import { useTheme } from '../theme';
+import { HIT, space, useTheme } from '../theme';
 import { sfSymbol, type IconName } from './core';
 import { LIQUID_GLASS } from './glass';
 import { useLocaleEnv } from './native-form';
@@ -53,6 +58,7 @@ export function NativeButton({
   destructive = false,
   disabled = false,
   loading = false,
+  selected,
   style,
   testID,
 }: {
@@ -68,20 +74,28 @@ export function NativeButton({
   disabled?: boolean;
   /** Shows the system spinner in place of the label and disables the button. */
   loading?: boolean;
+  selected?: boolean;
   style?: StyleProp<ViewStyle>;
   testID?: string;
 }) {
   const { hex, isDark } = useTheme();
   const locale = useLocaleEnv();
-  const foreground = disabled || loading ? hex.secondaryLabel : hex.onAccent;
-  const stretch = fullWidth ? [frame({ maxWidth: 10000 })] : [];
+  const foreground = variant === 'prominent' ? hex.onAccent : destructive ? hex.red : hex.accent;
+  const stretch = [
+    frame({
+      minHeight: HIT - (size === 'small' ? space.sm : space.md),
+      minWidth: HIT,
+      ...(fullWidth ? { maxWidth: 10000 } : {}),
+    }),
+    contentShape(shapes.rectangle()),
+  ];
   return (
     <Host
       matchContents={fullWidth ? { vertical: true } : true}
       // inline content, never a screen: a button mounted under the nav bar (a card near the top of a
       // long thread opened at its end) would otherwise draw its label pushed down by the bar's inset
       ignoreSafeArea="all"
-      style={style}
+      style={[{ maxWidth: '100%' }, style]}
       colorScheme={isDark ? 'dark' : 'light'}
       modifiers={[font({ weight: variant === 'prominent' ? 'semibold' : 'regular' }), locale]}
       testID={testID}
@@ -95,17 +109,18 @@ export function NativeButton({
           controlSize(size),
           tint(destructive ? hex.red : hex.accent),
           disabledMod(disabled || loading),
+          accessibilityLabel(label),
+          ...(selected ? [accessibilityAddTraits(['isSelected'])] : []),
         ]}
       >
-        {loading ? (
-          <ProgressView modifiers={[tint(foreground), ...stretch]} />
-        ) : icon ? (
-          <Label title={label} systemImage={sfSymbol(icon)} modifiers={stretch} />
-        ) : (
-          <Text modifiers={variant === 'prominent' ? [font({ weight: 'semibold' }), ...stretch] : stretch}>
-            {label}
-          </Text>
-        )}
+        <ZStack>
+          {icon ? (
+            <Label title={label} systemImage={sfSymbol(icon)} modifiers={[...stretch, opacity(loading ? 0 : 1)]} />
+          ) : (
+            <Text modifiers={[...stretch, opacity(loading ? 0 : 1)]}>{label}</Text>
+          )}
+          {loading ? <ProgressView modifiers={[tint(foreground)]} /> : null}
+        </ZStack>
       </Button>
     </Host>
   );

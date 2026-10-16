@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useVoice } from '../voice/use-voice';
 /**
  * Composer — the floating Liquid Glass control layer at the bottom of a conversation (iOS 26
@@ -17,11 +17,11 @@ import { useVoice } from '../voice/use-voice';
  */
 
 import React, { forwardRef, memo } from 'react';
-import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import { Image } from 'expo-image';
-import Animated, { FadeIn, LinearTransition } from 'react-native-reanimated';
+import Animated, { FadeIn, LinearTransition, ReduceMotion } from 'react-native-reanimated';
 import { useT } from '../lib/i18n';
-import { HIT, makeStyles, radius, space, squircle, typo, useTheme } from '../theme';
+import { HIT, makeStyles, motion, radius, space, squircle, typo, useTheme } from '../theme';
 import { NativeButton } from '../ui/button';
 import { Icon, Spinner, Touchable } from '../ui/core';
 import { Glass, GlassGroup, GlassIconButton } from '../ui/glass';
@@ -30,8 +30,6 @@ import { MAX_FILES, canSendMessage, type ComposerFile } from './composer-files';
 import { fileIcon } from './file-card';
 import type { AttachSource } from './use-composer-files';
 
-/** Field height cap ≈ 6 lines of body text. */
-const MAX_INPUT_HEIGHT = 6 * 22 + 22;
 const ATTACH_IDS = new Set<string>(['camera', 'library', 'files']);
 
 export const Composer = memo(
@@ -97,6 +95,15 @@ export const Composer = memo(
     const { colors: c } = useTheme();
     const styles = useStyles(c);
     const t = useT();
+    const { fontScale, height } = useWindowDimensions();
+    const large = fontScale >= 1.5;
+    const minInputHeight = Math.max(HIT, Math.ceil(typo.body.lineHeight * fontScale) + space.md * 2);
+    const maxInputHeight = Math.max(
+      minInputHeight,
+      Math.min(6 * typo.body.lineHeight * fontScale + space.md * 2, height * 0.4),
+    );
+    const [inputHeight, setInputHeight] = useState(0);
+    useEffect(() => setInputHeight(0), [fontScale]);
     const [selection, setSelection] = useState({ start: value.length, end: value.length });
     const voice = useVoice(value, onChangeText, selection);
     const canSend = voice.state === 'idle' && !sending && canSendMessage(value, files, !!skill);
@@ -114,7 +121,7 @@ export const Composer = memo(
       <View style={styles.wrap} onLayout={(e) => onHeight?.(e.nativeEvent.layout.height)}>
         {accessory ? <View style={styles.accessory}>{accessory}</View> : null}
 
-        <GlassGroup spacing={8} style={styles.row}>
+        <GlassGroup spacing={space.sm} style={[styles.row, large && { flexWrap: 'wrap', justifyContent: 'flex-end' }]}>
           <NativeMenu
             title={attachNote ?? (files.length >= MAX_FILES ? t('composer.maxFiles', { n: MAX_FILES }) : undefined)}
             items={menuExtra ? menuSections([attachItems, menuExtra.items]) : attachItems}
@@ -126,9 +133,12 @@ export const Composer = memo(
             <GlassIconButton icon="plus" accessibilityLabel={t('composer.add')} />
           </NativeMenu>
 
-          <Glass interactive style={styles.capsule}>
+          <Glass interactive style={[styles.capsule, large && { flexBasis: '75%' }]}>
             {hasChips ? (
-              <Animated.View layout={LinearTransition.duration(180)} style={styles.chips}>
+              <Animated.View
+                layout={LinearTransition.duration(motion.exit).reduceMotion(ReduceMotion.System)}
+                style={styles.chips}
+              >
                 {skill ? (
                   <View style={styles.skill}>
                     <Icon name="wand" size={13} color={c.accent} />
@@ -171,7 +181,7 @@ export const Composer = memo(
                     {files.map((file) => (
                       <Animated.View
                         key={file.id}
-                        entering={FadeIn.duration(180)}
+                        entering={FadeIn.duration(motion.exit).reduceMotion(ReduceMotion.System)}
                         style={file.kind === 'image' ? styles.thumb : styles.fileTile}
                       >
                         {file.kind === 'image' ? (
@@ -220,14 +230,21 @@ export const Composer = memo(
               value={value}
               onChangeText={onChangeText}
               autoFocus={autoFocus}
-              placeholder={placeholder}
+              placeholder={large ? t('composer.messagePlaceholder') : placeholder}
               placeholderTextColor={c.placeholder}
               selectionColor={c.accent}
               multiline
               scrollEnabled
-              style={styles.input}
+              style={[
+                styles.input,
+                {
+                  minHeight: minInputHeight,
+                  maxHeight: maxInputHeight,
+                  height: Math.max(minInputHeight, Math.min(maxInputHeight, value ? inputHeight : minInputHeight)),
+                },
+              ]}
+              onContentSizeChange={(event) => setInputHeight(event.nativeEvent.contentSize.height)}
               testID="composer-input"
-              accessibilityLabel={placeholder}
               onSelectionChange={(e) => {
                 setSelection(e.nativeEvent.selection);
                 onSelectionChange?.(e.nativeEvent.selection);
@@ -296,12 +313,10 @@ const useStyles = makeStyles((c) => ({
   row: { flexDirection: 'row', alignItems: 'flex-end', gap: space.sm },
   capsule: { flex: 1, minHeight: 44, borderRadius: 22, justifyContent: 'center', overflow: 'hidden' },
   input: {
-    fontSize: typo.body.fontSize,
+    ...typo.body,
     color: c.label,
     paddingHorizontal: space.lg,
-    paddingTop: 11,
-    paddingBottom: 11,
-    maxHeight: MAX_INPUT_HEIGHT,
+    paddingVertical: space.md,
   },
   chips: { paddingTop: space.sm, paddingHorizontal: space.sm, gap: space.xs + 2 },
   thumbs: { gap: space.sm, paddingRight: space.xs },
@@ -366,7 +381,7 @@ const useStyles = makeStyles((c) => ({
   },
   quoteBar: { width: 3, alignSelf: 'stretch', borderRadius: 2, backgroundColor: c.accent },
   quoteText: { flex: 1, ...typo.footnote, color: c.secondaryLabel },
-  chipRemove: { width: 36, minHeight: 32, alignItems: 'center', justifyContent: 'center' },
+  chipRemove: { width: HIT, minHeight: HIT, alignItems: 'center', justifyContent: 'center' },
   // grows with Dynamic Type (the message may wrap; the action sits beside it)
   readOnly: {
     minHeight: 44,

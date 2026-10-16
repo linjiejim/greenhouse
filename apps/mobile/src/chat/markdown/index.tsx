@@ -33,6 +33,7 @@
  */
 import { memo, useMemo } from 'react';
 import { View } from 'react-native';
+import { motion } from '../../theme';
 import Animated, { FadeIn, ReduceMotion } from 'react-native-reanimated';
 import { CalmContext, PreviewContext } from './context';
 import { parseBlocks, type Block } from './parse';
@@ -117,7 +118,7 @@ export function Markdown({
           {blocks.map((b, i) => (
             <Animated.View
               key={i}
-              entering={animated ? FadeIn.duration(200).reduceMotion(ReduceMotion.System) : undefined}
+              entering={animated ? FadeIn.duration(motion.base).reduceMotion(ReduceMotion.System) : undefined}
             >
               {renderBlock(b, i, animated, safe, preview)}
             </Animated.View>

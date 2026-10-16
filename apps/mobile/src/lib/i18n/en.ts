@@ -30,7 +30,6 @@ export const en = {
     discardHint: 'Your unsaved changes will be lost.',
   },
   login: {
-    subtitle: 'Your team’s AI colleagues',
     station: 'Station',
     noStation: 'Add a station first',
     emailPlaceholder: 'Email',
@@ -39,7 +38,6 @@ export const en = {
     missingFields: 'Enter your email and password',
     failed: 'Sign-in failed',
     networkError: 'Network error — check your connection',
-    footer: 'Team members only',
   },
   station: {
     title: 'Stations',
@@ -180,6 +178,8 @@ export const en = {
     sourcesCount: '{n} sources',
     stepsMore: '{first} · {n} steps',
     process: 'Process',
+    actions: 'Message actions',
+    step: 'Work step',
     processLive: 'Following the reply as it is written.',
     noSteps: 'No steps',
     replyFailed: 'The reply failed',
@@ -194,6 +194,7 @@ export const en = {
     leaveFailed: 'Couldn’t leave the room',
   },
   composer: {
+    messagePlaceholder: 'Message',
     placeholder: 'Message {name}',
     placeholderRoom: 'Message the room',
     send: 'Send',

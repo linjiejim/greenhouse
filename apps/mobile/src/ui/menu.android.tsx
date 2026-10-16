@@ -102,8 +102,26 @@ export function NativeMenu({
     [trigger],
   );
 
+  const openFromTrigger = () =>
+    view.current?.measureInWindow((x, y, _w, h) => openMenu({ ...latest.current, x, y: y + h }));
+  const childLabel = React.isValidElement<{ accessibilityLabel?: string }>(children)
+    ? children.props.accessibilityLabel
+    : undefined;
+
   return (
-    <View ref={view} style={[style, width != null ? { width } : null]} testID={testID} collapsable={false}>
+    <View
+      ref={view}
+      style={[style, width != null ? { width } : null]}
+      testID={testID}
+      collapsable={false}
+      accessible={trigger === 'tap'}
+      accessibilityRole={trigger === 'tap' ? 'button' : undefined}
+      accessibilityLabel={childLabel}
+      accessibilityActions={trigger === 'tap' ? [{ name: 'activate' }] : undefined}
+      onAccessibilityAction={(event) => {
+        if (event.nativeEvent.actionName === 'activate') openFromTrigger();
+      }}
+    >
       <GestureDetector gesture={gesture}>
         <View collapsable={false}>{children}</View>
       </GestureDetector>

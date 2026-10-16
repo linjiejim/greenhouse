@@ -47,12 +47,11 @@ function Steps({ message }: { message: MessageItem }) {
                 <Icon
                   name={step.status === 'failed' ? 'alert' : 'checkCircle'}
                   size={15}
-                  color={step.status === 'failed' ? c.red : c.secondaryLabel}
+                  color={step.status === 'failed' && message.status === 'failed' ? c.red : c.secondaryLabel}
                 />
               )}
               <View style={styles.texts}>
-                <Text style={styles.summary}>{step.summary || step.tool}</Text>
-                {step.summary && step.summary !== step.tool ? <Text style={styles.tool}>{step.tool}</Text> : null}
+                <Text style={styles.summary}>{step.summary || t('conversation.step')}</Text>
               </View>
               {step.duration_ms !== undefined ? (
                 <Text style={styles.time}>{(step.duration_ms / 1000).toFixed(1)}s</Text>
@@ -69,12 +68,16 @@ function Steps({ message }: { message: MessageItem }) {
 
 const useStyles = makeStyles((c) => ({
   content: { paddingTop: space.md, paddingBottom: space.xxxl },
-  step: { flexDirection: 'row', alignItems: 'flex-start', gap: space.sm, paddingHorizontal: space.margin, paddingVertical: space.sm + 2 },
+  step: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: space.sm,
+    paddingHorizontal: space.margin,
+    paddingVertical: space.sm + 2,
+  },
   spinner: { transform: [{ scale: 0.8 }] },
   texts: { flex: 1, gap: 2 },
   summary: { ...typo.subheadline, color: c.label },
-  tool: { ...typo.caption1, color: c.tertiaryLabel },
   time: { ...typo.caption1, color: c.tertiaryLabel, fontVariant: ['tabular-nums'] },
   none: { ...typo.footnote, color: c.tertiaryLabel, padding: space.margin },
 }));
-

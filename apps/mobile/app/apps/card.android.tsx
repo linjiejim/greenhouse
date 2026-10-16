@@ -1,6 +1,13 @@
 import { Fragment } from 'react';
 import { Stack, useLocalSearchParams } from 'expo-router';
-import { NativeForm, FormSection, FormNavRow, FormValueRow, FormActionRow } from '../../src/ui/native-form.android';
+import {
+  NativeForm,
+  FormLoading,
+  FormSection,
+  FormNavRow,
+  FormValueRow,
+  FormActionRow,
+} from '../../src/ui/native-form.android';
 import { FormChrome, SheetClose } from '../../src/ui/sheet-chrome';
 import { FieldEditor } from '../../src/tables/fields.android';
 import { useAppCard } from '../../src/apps/use-card';
@@ -52,7 +59,7 @@ function Editor({ k }: { k: string }) {
           </FormSection>
         ) : !f.ready && !f.r.error ? (
           <FormSection>
-            <FormValueRow label={t('common.loading')} loading />
+            <FormLoading />
           </FormSection>
         ) : f.submitted ? (
           <FormSection>
@@ -66,7 +73,7 @@ function Editor({ k }: { k: string }) {
                 {f.choices.error ? (
                   <FormNavRow label={t('work.loadFailed')} onPress={() => void f.choices.refresh()} />
                 ) : f.choices.loading ? (
-                  <FormValueRow label={t('common.loading')} loading />
+                  <FormLoading />
                 ) : null}
               </FormSection>
             ) : null}

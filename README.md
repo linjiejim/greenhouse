@@ -34,7 +34,7 @@ Screenshots use seeded sample data and a scripted model. [Regenerate them](#scre
 
 ## Native apps
 
-The [native API v2 app](apps/mobile) opens the main thread with Greeny, conversations, Agents, runs, needs-you cards, notifications and the live computer. iOS uses system navigation, SwiftUI forms and Liquid Glass controls; Android uses Material 3 forms, menus and dialogs.
+The [native API v2 app](apps/mobile) opens the main thread with Greeny, conversations, Agents, runs, needs-you cards, notifications and the live computer. iOS uses system navigation, SwiftUI forms and Liquid Glass controls; Android uses Material 3 forms, menus and dialogs. Both keep completed request cards compact, retain selected answers, and adapt forms and view controls to accessibility text sizes.
 
 Knowledge includes spaces and folders, safe Markdown reading and source editing, versions, comments and mentions, sharing, signed file previews and search. Tables use phone record lists with a grid switch, kanban, agendas and read-only timelines; records and internal forms use native sheets. The grid shows the view's first six visible fields; record details show all readable fields. Agent mailboxes show allowed senders and held mail, with mail cards in conversations. Configured transcription fills the composer without sending; read-aloud uses the speech service or device voice.
 

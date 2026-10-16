@@ -61,6 +61,8 @@ import {
   size,
 } from '@expo/ui/jetpack-compose/modifiers';
 import type { IconName } from './core';
+import { useT } from '../lib/i18n';
+import { radius, space } from '../theme';
 import { selectionTick } from './haptics';
 import { M3Host, useM3 } from './m3';
 // the Android table explicitly: TypeScript resolves the bare path to the iOS one (SF names)
@@ -68,6 +70,29 @@ import { toolbarIcon } from './toolbar-icon.android';
 
 import { useNativeState, useTextBinding } from './text-state.android';
 export { useNativeState };
+
+/** Static placeholders in the existing Compose form island. */
+export function FormLoading() {
+  const t = useT();
+  const m = useM3();
+  const shape = Shapes.RoundedCorner({
+    topStart: radius.xs,
+    topEnd: radius.xs,
+    bottomStart: radius.xs,
+    bottomEnd: radius.xs,
+  });
+  return (
+    <Column
+      modifiers={[padding(space.margin, space.margin, space.margin, space.margin), fillMaxWidth()]}
+      verticalArrangement={{ spacedBy: space.md }}
+    >
+      <Text color={m.onSurfaceVariant}>{t('common.loading')}</Text>
+      {[180, 120].map((width) => (
+        <Box key={width} modifiers={[size(width, 16), clip(shape), background(m.surfaceContainerHighest)]} />
+      ))}
+    </Column>
+  );
+}
 
 /** SwiftUI's locale environment has no Compose counterpart (shared modules import it). */
 export function useLocaleEnv(): null {

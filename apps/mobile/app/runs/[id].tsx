@@ -205,12 +205,14 @@ export default function RunPage() {
                 <Icon
                   name={step.status === 'failed' ? 'alert' : step.status === 'succeeded' ? 'checkCircle' : 'circle'}
                   size={14}
-                  color={step.status === 'failed' ? c.red : step.status === 'succeeded' ? c.green : c.secondaryLabel}
+                  color={step.status === 'failed' && run.status === 'failed' ? c.red : c.secondaryLabel}
                 />
                 <View style={styles.stepTexts}>
                   {step.summary !== step.error?.message ? <Text style={styles.stepName}>{step.summary}</Text> : null}
                   {step.error ? (
-                    <Text style={styles.stepError}>{operationErrorText(step.error, t) ?? step.error.message}</Text>
+                    <Text style={[styles.stepError, run.status !== 'failed' && { color: c.secondaryLabel }]}>
+                      {operationErrorText(step.error, t) ?? step.error.message}
+                    </Text>
                   ) : null}
                 </View>
                 {step.duration_ms !== null ? <Text style={styles.stepTime}>{duration(step.duration_ms)}</Text> : null}

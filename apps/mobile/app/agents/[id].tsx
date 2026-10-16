@@ -12,7 +12,7 @@
 
 import React, { useCallback, useRef, useState } from 'react';
 import { ScrollView, Text, View } from 'react-native';
-import { Stack, useIsFocused, useLocalSearchParams, useRouter } from 'expo-router';
+import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { AgentUsage } from '../../src/agents/usage';
 import { useResource } from '../../src/data/use-resource';
 import { archiveAgent, getAgent, restoreAgent } from '../../src/api/agents';
@@ -37,7 +37,6 @@ export default function AgentProfile() {
   const styles = useStyles(c);
   const t = useT();
   const router = useRouter();
-  const focused = useIsFocused();
   const me = useAuth((s) => s.user);
   const shared = useWorkspace((s) => s.publicAgents.find((agent) => agent.id === id) ?? null);
   const conversations = useWorkspace((s) => s.conversations);
@@ -158,7 +157,7 @@ export default function AgentProfile() {
       ) : null}
       <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerStyle={styles.content}>
         <View style={styles.hero}>
-          <AgentAvatar agent={agent} size={88} state={archived ? 'sleep' : undefined} animate={focused && !archived} />
+          <AgentAvatar agent={agent} size={88} state={archived ? 'sleep' : undefined} animate={false} />
           <Text style={styles.name}>{agent.name}</Text>
           <Text style={styles.role}>
             {[agent.role, agent.is_main ? t('agents.main') : ''].filter(Boolean).join(' · ')}

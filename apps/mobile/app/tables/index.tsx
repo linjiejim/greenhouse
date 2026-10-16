@@ -54,7 +54,7 @@ export default function Tables() {
       {!allowed ? (
         <EmptyState icon="table" title={t('work.permissionLost')} />
       ) : !r.data ? (
-        <ResourceState loading={r.loading} retry={() => void r.refresh()} />
+        <ResourceState error={r.error} loading={r.loading} retry={() => void r.refresh()} />
       ) : (
         <FlatList
           contentInsetAdjustmentBehavior="automatic"
