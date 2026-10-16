@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import {
   ArrowUp,
   BookOpen,
@@ -14,7 +14,7 @@ import {
   Table2,
   X,
 } from 'lucide-react';
-import { Badge, Button, ChatCard, IconButton, Input, Menu, Segmented, Switch, TextArea } from '@greenhouse/ui/kit';
+import { Badge, Button, ChatCard, Input, Menu, Segmented, Switch, TextArea } from '@greenhouse/ui/kit';
 import { PlantAvatar } from '@greenhouse/ui/components/plant-avatar';
 import { GreenhouseMark } from '@greenhouse/ui/components/brand';
 import { agents, documents, pendingRequests, skills, type DesignRequest } from './data';
@@ -61,7 +61,8 @@ function AgentAvatar({ name, size = 24 }: { name: string; size?: number }) {
     <PlantAvatar plant={agents.find((item) => item.name === name)?.plant ?? 'sprout'} size={size} animate={false} />
   );
 }
-function LiveActivity() {
+/** On the watch it only shows progress; acting on it happens on the iPhone. */
+function LiveActivity({ glance = false, hideTitle = false }: { glance?: boolean; hideTitle?: boolean }) {
   const { runs, requests, openPhone } = useDesign();
   const run = runs.find((item) => item.state === '需要你') ?? runs.find((item) => item.state === '运行中');
   const waiting = run?.state === '需要你';
@@ -73,11 +74,11 @@ function LiveActivity() {
         <strong>{run?.agent ?? 'Greeny'} · 后台运行</strong>
         <span className="surface-live-state">{waiting ? '等你批准' : (run?.state ?? '已完成')}</span>
       </div>
-      <p>{run?.title ?? '暂时没有运行'}</p>
+      {!hideTitle && <p>{run?.title ?? '暂时没有运行'}</p>}
       <progress aria-label="运行进度" max={100} value={run?.progress ?? (run ? 58 : 100)} />
       <div className="surface-live-footer">
         <span className="muted small">{run ? '第 4 / 7 步' : '所有工作已完成'}</span>
-        {waiting && (
+        {waiting && !glance && (
           <button className="surface-open-pill" onClick={() => openPhone(request?.conversation ?? 'main')}>
             打开
           </button>
@@ -112,7 +113,7 @@ function HoldApproval({ request }: { request: DesignRequest }) {
   );
   return (
     <Button
-      className={`watch-hold ${holding ? 'is-holding' : ''}`}
+      className={`watch-hold watch-big ${holding ? 'is-holding' : ''}`}
       kind="primary"
       disabled={request.state !== 'pending'}
       onPointerDown={(event) => {
@@ -305,7 +306,7 @@ function DesktopScenes() {
         </div>
         <div className="surface-tray">
           <span className="surface-section-label">需要你</span>
-          {pending.map((item) => (
+          {pending.slice(0, 3).map((item) => (
             <button className="surface-row" key={item.id} onClick={() => navigate('chat', item.conversation)}>
               <i className="surface-dot warning" />
               <span>
@@ -313,6 +314,11 @@ function DesktopScenes() {
               </span>
             </button>
           ))}
+          {pending.length > 3 && (
+            <button className="surface-row muted" onClick={() => navigate('notifications')}>
+              还有 {pending.length - 3} 件
+            </button>
+          )}
           <span className="surface-section-label">运行中</span>
           {runs
             .filter((item) => item.state === '运行中')
@@ -468,13 +474,12 @@ function PhoneScenes({ previews }: { previews: boolean }) {
                 <span className="small">需要你</span>
               </span>
             </Button>
-            <Button onClick={() => openPhone(request?.conversation ?? 'main')}>
-              下一件事
-              <br />
-              {request?.title ?? '都处理好了'}
+            <Button className="surface-lock-next" onClick={() => openPhone(request?.conversation ?? 'main')}>
+              <strong>下一件事</strong>
+              <span>{request ? (previews ? request.title : `${request.agent} · 需要你`) : '都处理好了'}</span>
             </Button>
           </div>
-          <LiveActivity />
+          <LiveActivity hideTitle={!previews} />
           {request ? (
             <div className="stack tight" key={request.id} aria-label="锁屏通知">
               <div className="surface-notification">
@@ -642,146 +647,83 @@ function PhoneScenes({ previews }: { previews: boolean }) {
     </div>
   );
 }
-function WatchScenes({ previews }: { previews: boolean }) {
-  const { requests, runs, decide, openPhone, cancelRun } = useDesign();
+/** The watch only says what needs you and how far work has got; one voice button, everything else on the iPhone. */
+function WatchVoice() {
+  const [state, setState] = useState<'idle' | 'listening' | 'sent'>('idle');
+  useEffect(() => {
+    if (state !== 'sent') return;
+    const timer = setTimeout(() => setState('idle'), 2400);
+    return () => clearTimeout(timer);
+  }, [state]);
+  return (
+    <div className="watch-voice">
+      <button
+        className={`watch-mic ${state === 'listening' ? 'is-listening' : ''}`}
+        aria-label={state === 'listening' ? '说完了' : '对 Greeny 说'}
+        onClick={() => setState(state === 'listening' ? 'sent' : 'listening')}
+      >
+        {state === 'sent' ? <ArrowUp size={44} /> : <Mic size={44} />}
+      </button>
+      <span className="watch-voice-label" role="status">
+        {state === 'idle' ? '对 Greeny 说' : state === 'listening' ? '正在听…' : '已发出，回复在 iPhone 上看'}
+      </span>
+    </div>
+  );
+}
+function WatchScenes() {
+  const { requests, runs, openPhone } = useDesign();
   const pending = pendingRequests(requests);
-  const tier2 = requests.find((item) => item.tier === 2)!;
-  const tier3 = requests.find((item) => item.tier === 3)!;
-  const first = pending[0];
   const running = runs.filter((item) => item.state === '运行中');
-  const run = runs.find((item) => item.id === 'run-2')!;
-  const [dictated, setDictated] = useState(false);
-  const [detail, setDetail] = useState(false);
-  const openDetail = () => {
-    setDetail(true);
-    document.getElementById('watch-tier2')?.scrollIntoView({ block: 'nearest', behavior: 'instant' });
-  };
+  const tier2 = requests.find((item) => item.tier === 2)!;
+  const elsewhere = pending.find((item) => item.tier !== 2) ?? requests.find((item) => item.tier === 3)!;
   return (
     <div className="surface-gallery">
       <Scene label="表盘" device="watch" dark>
         <p className="surface-date">周五 16 日</p>
         <strong className="surface-watch-clock">14:20</strong>
-        <div className="row">
-          <Button className="surface-ring warning" onClick={openDetail}>
-            <span className="watch-count">
-              {pending.length}
-              <span className="small">需要你</span>
-            </span>
-          </Button>
-          <Button onClick={() => openPhone('main')}>{running.length} 运行中</Button>
+        <div className="watch-complications">
+          <span className="watch-complication warning" aria-label={`${pending.length} 件需要你`}>
+            <strong>{pending.length}</strong>
+            <span>需要你</span>
+          </span>
+          <span className="watch-complication" aria-label={`${running.length} 个运行中`}>
+            <strong>{running.length}</strong>
+            <span>运行中</span>
+          </span>
         </div>
-        <Button className="watch-next" onClick={() => openPhone(first?.conversation ?? 'main')}>
-          <span>下一件事</span>
-          <span className="small">{first?.title ?? '都处理好了'}</span>
+      </Scene>
+      <Scene label="主屏" device="watch" dark>
+        <span className="watch-status">
+          {pending.length || running.length ? `${pending.length} 件需要你 · ${running.length} 个运行中` : '都处理好了'}
+        </span>
+        <WatchVoice />
+      </Scene>
+      <Scene label="审批提示" device="watch" dark>
+        <span className="watch-from">
+          <AgentAvatar name={tier2.agent} size={20} />
+          {tier2.agent} · 需要你
+        </span>
+        <strong className="watch-title">{tier2.title}</strong>
+        <p className="watch-effect">{tier2.effect}</p>
+        <HoldApproval request={tier2} />
+        <button className="watch-link" onClick={() => openPhone(tier2.conversation)}>
+          在 iPhone 上看
+        </button>
+      </Scene>
+      <Scene label="转到 iPhone" device="watch" dark>
+        <span className="watch-from">
+          <AgentAvatar name={elsewhere.agent} size={20} />
+          {elsewhere.agent} · 需要你
+        </span>
+        <strong className="watch-title">{elsewhere.title}</strong>
+        <p className="watch-effect">这件事在 iPhone 上处理</p>
+        <Button kind="primary" className="watch-big" onClick={() => openPhone(elsewhere.conversation)}>
+          <Smartphone size={18} />在 iPhone 上处理
         </Button>
       </Scene>
-      <Scene label="现在" device="watch" dark>
-        <strong>现在</strong>
-        <div className="watch-scroll stack tight">
-          {pending.map((item) => (
-            <button
-              className="surface-row watch-list-row watch-pending"
-              key={item.id}
-              onClick={() => (item.tier === 2 ? openDetail() : openPhone(item.conversation))}
-            >
-              <AgentAvatar name={item.agent} />
-              <span className="watch-list-copy">
-                <strong>{item.title}</strong>
-                <span>{item.agent} · 需要你</span>
-              </span>
-            </button>
-          ))}
-          {running.map((item) => (
-            <button
-              className="surface-row watch-list-row"
-              key={item.id}
-              onClick={() => document.getElementById('watch-run')?.scrollIntoView({ block: 'nearest' })}
-            >
-              <AgentAvatar name={item.agent} />
-              <span className="watch-list-copy">
-                <strong>{item.title}</strong>
-                <span>运行中 · 第 4 / 7 步</span>
-              </span>
-            </button>
-          ))}
-        </div>
-      </Scene>
-      <Scene label="第 2 档请求" device="watch" dark>
-        <div id="watch-tier2" className="stack tight">
-          <strong>{tier2.title}</strong>
-          <span className="muted small">{tier2.agent}</span>
-          <p className="small">{tier2.effect}</p>
-          {detail && <Badge tone="warning">按住确认</Badge>}
-          <HoldApproval request={tier2} />
-          <div className="row">
-            <Button disabled={tier2.state !== 'pending'} onClick={() => decide(tier2.id, 'rejected')}>
-              拒绝
-            </Button>
-            <IconButton label="在 iPhone 上打开" onClick={() => openPhone(tier2.conversation)}>
-              <Smartphone size={18} />
-            </IconButton>
-          </div>
-        </div>
-      </Scene>
-      <Scene label="第 3 档请求" device="watch" dark>
-        <strong>{tier3.title}</strong>
-        <Badge tone="warning">对外，不能撤回</Badge>
-        <p>这类操作要在 iPhone 上确认</p>
-        <Button onClick={() => openPhone(tier3.conversation)}>在 iPhone 上打开</Button>
-      </Scene>
-      <Scene label="说一句" device="watch" dark>
-        <strong>说一句</strong>
-        <IconButton label="开始听写" onClick={() => setDictated(true)}>
-          <Mic size={36} />
-        </IconButton>
-        {dictated ? (
-          <>
-            <p className="small">明早 9 点提醒我把预算表发给财务</p>
-            <p className="small">好，已加一个定时：明天 9:00。</p>
-          </>
-        ) : (
-          <p className="muted">抬腕，说一句。</p>
-        )}
-      </Scene>
-      <Scene label="运行详情" device="watch" dark>
-        <div id="watch-run" className="stack tight">
-          <strong>{run.title}</strong>
-          <div className="surface-progress-ring" style={{ '--run-progress': run.progress ?? 0 } as CSSProperties}>
-            <span>{run.state === '已取消' ? '已取消' : `${run.progress ?? 0}%`}</span>
-          </div>
-          <div className="small">
-            {run.steps?.slice(-3).map((step) => (
-              <p key={step}>{step}</p>
-            ))}
-          </div>
-          <Button disabled={run.state === '已取消'} onClick={() => cancelRun(run.id)}>
-            取消
-          </Button>
-        </div>
-      </Scene>
-      <Scene label="长通知" device="watch" dark>
-        <div className="surface-notification-heading">
-          <GreenhouseMark />
-          <span className="small">Greenhouse · 现在</span>
-        </div>
-        <div className="surface-watch-bubble">
-          <strong>{first?.agent ?? 'Greeny'}</strong>
-          <p>{previews ? (first?.title ?? '都处理好了') : '请你批准一个操作'}</p>
-        </div>
-        {first && (
-          <div className="surface-watch-actions">
-            {first.tier === 2 && (
-              <Button kind="primary" onClick={openDetail}>
-                批准
-              </Button>
-            )}
-            <Button onClick={() => openPhone(first.conversation)}>打开</Button>
-          </div>
-        )}
-      </Scene>
-      <Scene label="智能叠放" device="watch" dark>
-        <strong>14:20</strong>
-        <LiveActivity />
+      <Scene label="进度" device="watch" dark>
+        <strong className="watch-stack-time">14:20</strong>
+        <LiveActivity glance />
       </Scene>
     </div>
   );
@@ -794,10 +736,12 @@ export function SurfacesPage() {
       <header className="surface-heading">
         <h1>多端</h1>
         <Segmented label="设备场景" items={['桌面 App', '手机', '手表']} value={tab} onChange={setTab} />
-        <div className="row">
-          <span className="small">通知预览</span>
-          <Switch label="通知预览" checked={previews} onChange={setPreviews} />
-        </div>
+        {tab === '手机' && (
+          <div className="row">
+            <span className="small">通知预览</span>
+            <Switch label="通知预览" checked={previews} onChange={setPreviews} />
+          </div>
+        )}
       </header>
       <div className="surface-scroll">
         {tab === '桌面 App' ? (
@@ -805,7 +749,7 @@ export function SurfacesPage() {
         ) : tab === '手机' ? (
           <PhoneScenes previews={previews} />
         ) : (
-          <WatchScenes previews={previews} />
+          <WatchScenes />
         )}
       </div>
     </div>

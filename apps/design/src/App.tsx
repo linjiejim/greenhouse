@@ -224,10 +224,6 @@ export function App() {
     module,
     requests,
     runs,
-    cancelRun: (id: string) => {
-      setRuns((items) => items.map((item) => (item.id === id ? { ...item, state: '已取消' } : item)));
-      notify('已取消');
-    },
     decide,
     openPhone: (conversation: string) => {
       setViewport('手机');
