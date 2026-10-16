@@ -54,7 +54,7 @@ API 的公共导入是 `apps/api/src/extension-kit.ts`；Web 的是 `apps/web/sr
 
 核心表 `extension_migrations` 以 `(extension_id, name)` 为主键，记录 checksum 与 applied_at。启动只迁移启用项；所有待执行文件在一个事务和同一个 advisory lock 下执行，失败整体回滚。多个副本同时启动不会重复执行。迁移漂移会阻止启动，不能自动抹掉记录或覆盖 SQL。
 
-核心 schema 改动仍编辑 `packages/db/src/schema` 后运行 `pnpm db:baseline`；不要用扩展通道修改核心表，也不要直接运行裸 `drizzle-kit migrate`。
+核心 schema 改动仍编辑 `packages/db/src/schema` 后运行 `pnpm db:generate --name <改动>` 生成下一份迁移；已发布的迁移不能重新生成或修改；不要用扩展通道修改核心表，也不要直接运行裸 `drizzle-kit migrate`。
 
 ## 完整示例与验证
 

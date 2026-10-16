@@ -2,7 +2,7 @@
 
 更新 2026-10-13 · 状态：草案，M0.3 按此实现，改表时同步本文 · 配套 [PRD](prd.md)、[API v2](api.md)、[服务 Provider](providers.md)、[v1 数据迁移](migration-v1.md)
 
-v2 从零建表：只有一份基线迁移，不继承 v1 的迁移链，也不在 v1 库上原地升级。v1 的历史数据以后用离线 ETL 搬进来，见 [migration-v1.md](migration-v1.md)。
+v2 从零建表：迁移链从 v2 基线开始（0000_v2_baseline，v2.0.0 起增量追加），不继承 v1 的迁移链，也不在 v1 库上原地升级。v1 的历史数据以后用离线 ETL 搬进来，见 [migration-v1.md](migration-v1.md)。
 
 本文写到能照着实现的程度，列不求全。实现以 Drizzle schema 为准，改表时同步本文。共 82 张表，分 10 个领域；v1 加上 PR #64 是 137 张。
 
@@ -51,7 +51,7 @@ v2 从零建表：只有一份基线迁移，不继承 v1 的迁移链，也不�
   - `usage_events` 每次 Provider 调用写一条（[providers.md §8](providers.md#8-用量与预算)），是用量和费用的唯一事实。预算的已用量按当月直接汇总它，管理页与调用前的检查用同一个求和；`budget_periods` 的计数缓存尚未启用。M2.4 子运行已启用 `budget_reservations`：按当前 UTC 月在覆盖预算的行锁下预留，调用检查计入其他运行的未过期预留，结束按 usage_events 结算或释放。
   - 与 v1 不同：v1 的审计分散在 `platform_audit_events`、`api_audit_log`、`email_send_log` 三张表；用量分散在 `llm_usage` 和预算账本。
 - 迁移
-  - 只有一份基线 `drizzle/0000_v2_baseline.sql`，之后照旧只 `generate` + `migrate`，不 `push`。生成列、GIN 和部分唯一索引都写进基线。
+  - 迁移从 `drizzle/0000_v2_baseline.sql` 开始，之后每次改表用 `pnpm db:generate` 追加一份，已发布的迁移不再改，只 `generate` + `migrate`，不 `push`。生成列、GIN 和部分唯一索引都写进基线。
   - v2 启动时如果发现库里有 v1 的迁移记录，就拒绝启动并指向 [migration-v1.md](migration-v1.md)。
   - 扩展保留自己的迁移通道（`extension_migrations`），表名用 `ext_<扩展 id>_` 前缀。
 

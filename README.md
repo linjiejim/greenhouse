@@ -179,7 +179,7 @@ Create those disposable databases first. Tests reset them: unit/database names m
 
 Real-model acceptance against a disposable local stack: `node --import tsx scripts/acceptance/run.mts --base http://127.0.0.1:4885`. It uses the browser-test accounts, makes real provider calls, captures light/dark/narrow checkpoints, and writes `artifacts/v2-delivery/results.json`. Start `scripts/dev-real.sh` first; `--only F01,F02` selects checkpoints and `--wait 240000` controls turn waits. iOS requires separate native simulator evidence.
 
-Schema changes update `packages/db/src/schema` and regenerate the single v2 baseline with `pnpm db:baseline`. Recreate disposable databases after baseline changes; never run the baseline over a v1 database.
+Schema changes update `packages/db/src/schema` and add the next migration with `pnpm db:generate --name <change>`. Released migrations are never regenerated or edited; deployments apply new ones before the API starts. Never run v2 migrations over a v1 database.
 
 ### Screenshots
 

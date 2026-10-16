@@ -16,7 +16,7 @@ Always:
 Also, when the change touches:
 - packages/ui/src/tokens/haven.ts: `pnpm tokens:build`, then `pnpm test`
 - apps/design: `pnpm test:design-ui` (DESIGN_PORT when 4518 is taken)
-- packages/db/src/schema: `pnpm db:baseline` and a clean migrate of a scratch database
+- packages/db/src/schema: `pnpm db:generate --name <change>`, a clean migrate of a scratch database, and an upgrade from the previous release's schema
 - apps/desktop: `pnpm desktop:check`
 
 Scan the changed files (`git diff --name-only $(git merge-base origin/v2 HEAD)` plus untracked):
