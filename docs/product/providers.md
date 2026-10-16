@@ -1,10 +1,10 @@
 # 服务 Provider 体系
 
-更新 2026-10-13 · 状态：设计已定，待实现（[功能清单](features.md) PRV-01…15）· 配套 [PRD §8.1](prd.md#81-服务provider)
+更新 2026-10-15 · 状态：设计已定，大部分已实现（[功能清单](features.md) PRV-01…16）· 配套 [PRD §8.1](prd.md#81-服务provider)
 
 ## 1. 目标
 
-- 能力和厂商解耦。 8 类外部能力都可以换厂商；业务代码只依赖能力接口，不出现厂商名。
+- 能力和厂商解耦。 9 类外部能力都可以换厂商；业务代码只依赖能力接口，不出现厂商名。
 - 两种配置入口。 部署时用环境变量初始化；运行时由管理员在界面上改，改完立即生效，不需要重启。
 - 个人 Key。 管理员允许时，成员可以用自己的 Key，用量记在自己名下。
 - 兼容主流厂商。 优先按协议适配，国内外主流厂商都用「预设」覆盖。
@@ -26,14 +26,19 @@
 | 沙箱 | `sandbox` | Agent 电脑、长时间运行、`compute` 之外的命令执行 | 隐藏电脑相关入口；后台运行只用无沙箱工具 |
 | 搜索 | `search` | `web_search`；`web_fetch`（网页读取） | 工具不提供；`web_fetch` 退回到内置的安全抓取 |
 | 存储 | `storage` | 所有文件：上传、附件、产物、导出、技能包、电脑备份 | 本地磁盘 `data/` |
+| 邮箱 | `mail` | 系统发信（邀请、重置密码、通知邮件）；Agent 邮箱的收信与发信 | 不发邮件：邀请与重置改为复制链接；Agent 没有邮箱；邮件通知不出现 |
 
-渠道也是 Provider，和上面 8 类用同一张表、同一套解析与安全规则，在「管理 → 服务 → 渠道」里配置：
+渠道也是 Provider，和上面 9 类用同一张表、同一套解析与安全规则，在「管理 → 服务」里配置：
 
 | 能力 | ID | 消费方 | 未配置时 |
 | --- | --- | --- | --- |
-| 邮件发送 | `mail` | 邀请、重置密码、通知送达（SMTP） | 邀请改为复制链接；邮件渠道不出现 |
-| 即时通讯 | `im` | 飞书、企微：扫码登录、机器人、通知送达 | 对应登录与渠道不出现 |
-| 推送 | `push` | 手机推送（Expo、APNs、FCM） | 不推送，只有站内通知 |
+| 即时通讯 | `im` | 飞书、企微：通知送达。v2.0 不在界面出现，以后和 Slack、Discord、Telegram 一起作为 IM 渠道统一设计（账号、机器人、送达、扫码登录） | 对应登录与渠道不出现 |
+| 推送 | `push` | 手机推送（Expo 推送服务，它替官方 App 持有 APNs / FCM 凭据） | 不推送，只有站内通知 |
+
+渠道和 9 类能力有三处不同：
+- 一个渠道由同类实例（`feishu`、`wecom`、`expo`）在工作区顺序里的第一个提供，不回退到第二个：渠道关了就是关了。邮件通知走邮箱能力（`mail`），按能力的顺序回退。飞书和企微同属 `im`，按类型各取各的。
+- 「管理 → 服务 → 渠道」（`/api/admin/channels`）按渠道编辑：第一次保存生成工作区实例，环境变量来的设置先复制成可编辑的一份，再排到同类之首。
+- 渠道发送不计量，也不受预算限制：一封「需要你」的邮件不能因为模型预算用完而发不出去。
 
 以后可能加的能力：`embedding`（知识库语义检索；v1 明确用全文检索，暂不需要）。
 
@@ -55,12 +60,14 @@
 
 某个成员使用能力 C 时，按下面的顺序选择，用到第一个可用的为止：
 
-1. 个人实例：C 的策略允许个人 Key，且该成员为 C 启用了个人实例。
-2. 工作区绑定：数据库里 C 的有序实例。
-3. 环境变量实例：工作区还没有为 C 设置绑定时，按环境变量声明的顺序使用。
+1. 个人实例：C 的策略允许个人 Key，且该成员为 C 启用了个人实例。公开 Agent 和别人发起的运行不用个人实例。
+2. 工作区绑定：数据库里 C 的有序实例。空列表表示停用 C，环境变量实例也不用。
+3. 还没有保存绑定时：先环境变量实例（按声明顺序），再工作区实例（按添加顺序）。
 4. 内置默认：存储用本地磁盘；STT / TTS 退回客户端；其余能力视为不可用。
 
-改动立即生效：解析器缓存按版本号失效，多进程部署时通过数据库通知（`LISTEN/NOTIFY`）广播版本号。v1 那种「把数据库值回写到 `process.env`」的做法不再使用。
+- 已保存绑定时，新加的工作区实例自动排到末尾。
+- 停用的实例、缺少必填 Key 的实例不参与解析。
+- 每次解析都读取当前配置，改动立即生效，没有缓存。将来加缓存时按 `provider_bindings.version` 失效。v1 那种「把数据库值回写到 `process.env`」的做法不再使用。
 
 ### 4.2 环境变量：简单形式
 
@@ -70,7 +77,7 @@
 # 大模型：PROVIDER 写适配器或预设名
 LLM_PROVIDER=deepseek            # openai | anthropic | gemini | openai-compatible | deepseek | kimi | qwen | doubao | glm | minimax | siliconflow | openrouter | ollama …
 LLM_API_KEY=sk-…
-LLM_BASE_URL=                    # 留空 = 预设地址；填写后这个 Key 只会发往这里
+LLM_BASE_URL=                    # 留空 = 预设地址；填写后这个 Key 只会发往这里；只填它不填 PROVIDER 时按 openai-compatible
 LLM_MODEL=deepseek-chat          # 默认模型
 LLM_MODEL_STRONG=deepseek-reasoner   # 可选
 LLM_MODEL_FAST=                  # 可选，用于标题、摘要；为空时用默认模型
@@ -78,13 +85,30 @@ LLM_MODEL_FAST=                  # 可选，用于标题、摘要；为空时用
 STT_PROVIDER=openai-compatible   STT_API_KEY=…  STT_BASE_URL=…  STT_MODEL=whisper-1
 TTS_PROVIDER=minimax             TTS_API_KEY=…  TTS_VOICE=female-shaonv
 IMAGE_PROVIDER=openai            IMAGE_API_KEY=…  IMAGE_MODEL=gpt-image-1
-VIDEO_PROVIDER=kling             VIDEO_API_KEY=…  VIDEO_SECRET=…
-SANDBOX_PROVIDER=docker          # docker | e2b；e2b 需要 SANDBOX_API_KEY，SANDBOX_DOMAIN 可填兼容服务的域名
+VIDEO_PROVIDER=302ai             VIDEO_API_KEY=…  VIDEO_MODEL=sora-2  VIDEO_BASE_URL=
+SANDBOX_PROVIDER=docker          # docker | e2b | ppio（e2b 的预设）
+SANDBOX_IMAGE=greenhouse/computer:latest  SANDBOX_DOCKER_RUNTIME=runsc   # runsc = gVisor，生产必须；runc 只用于开发
+SANDBOX_NETWORK=bridge  SANDBOX_MEMORY=2g  SANDBOX_CPUS=2
+SANDBOX_API_KEY=e2b_…  SANDBOX_E2B_TEMPLATE=gh-computer-…   # e2b：模板名由 scripts/e2b-template.mts 构建后给出
+SANDBOX_E2B_DOMAIN=  SANDBOX_E2B_NAMESPACE=greenhouse  SANDBOX_E2B_TIMEOUT_MINUTES=60   # domain 留空 = 预设的
 SEARCH_PROVIDER=tavily,brave     # 多个用逗号分隔，就是回退顺序
 TAVILY_API_KEY=…  BRAVE_API_KEY=…
 STORAGE_PROVIDER=s3              # local | s3
 STORAGE_ENDPOINT=https://cos.ap-shanghai.myqcloud.com  STORAGE_BUCKET=…  STORAGE_REGION=ap-shanghai
 STORAGE_ACCESS_KEY_ID=…  STORAGE_SECRET_ACCESS_KEY=…  STORAGE_PREFIX=greenhouse/  STORAGE_FORCE_PATH_STYLE=false
+
+# 邮箱：系统发信与 Agent 邮箱；设置不全时启动告警并忽略。顺序固定：Resend、Mailgun、SMTP（能收信的在前）
+MAIL_FROM="Greenhouse <greenhouse@example.com>"   # 系统邮件的发件人；Resend、Mailgun 必填，SMTP 没有 SMTP_FROM 时也用它
+RESEND_API_KEY=re_…  RESEND_WEBHOOK_SECRET=whsec_…   # 有 webhook 密钥才收信；RESEND_BASE_URL 留空 = api.resend.com
+MAILGUN_API_KEY=…  MAILGUN_WEBHOOK_SIGNING_KEY=…  MAILGUN_DOMAIN=agents.example.com  MAILGUN_REGION=us   # us | eu；有签名密钥才收信
+SMTP_HOST=smtp.example.com       SMTP_SECURITY=starttls   # tls | starttls（默认）| none；SMTP_PORT 默认 465 / 587 / 25；只发
+SMTP_USER=…  SMTP_PASSWORD=…  SMTP_FROM=greenhouse@example.com  SMTP_FROM_NAME=Greenhouse
+MAIL_AGENT_DOMAIN=agents.example.com   # Agent 邮箱的域名；MX 指向能收信的服务；管理界面保存后以界面为准
+
+# 渠道（通知送达）；设置不全的渠道启动时告警并忽略
+FEISHU_APP_ID=cli_…  FEISHU_APP_SECRET=…  FEISHU_BASE_URL=   # 留空 = open.feishu.cn；Lark 填 https://open.larksuite.com
+WECOM_CORP_ID=ww…  WECOM_AGENT_ID=1000002  WECOM_APP_SECRET=…  WECOM_BASE_URL=   # 留空 = qyapi.weixin.qq.com
+PUSH_PROVIDER=expo               EXPO_ACCESS_TOKEN=        # 只有 Expo 项目开了 enhanced push security 才要
 ```
 
 ### 4.3 环境变量：文件形式
@@ -117,7 +141,7 @@ policy:
 | `providers` | `id`、`capability`、`kind`、`preset`、`name`、`scope`（`workspace` / `personal`）、`owner_id`、`config`（jsonb，非机密）、`secrets_enc`（AES-256-GCM，用 `PROVIDER_TOKEN_ENCRYPTION_KEY`）、`enabled`、`last_check`（时间、结果、耗时）、`created_by`、时间戳 |
 | `provider_bindings` | `capability`（主键）、`instance_ids`（有序）、`defaults`（jsonb）、`policy`（jsonb）、`version` |
 
-- 环境变量实例只在内存里，界面上标「来自环境变量」，只读。管理员可以在绑定里停用它，或「复制为可编辑」生成一个数据库实例。
+- 环境变量实例只在内存里，界面上标「来自环境变量」，只读。管理员可以在绑定里停用它，或「复制为可编辑」：生成一个数据库实例，它在顺序和默认项里替换原来的环境变量实例。
 - 修改 `base_url` 时清空已存的机密，必须重新填写 Key。
 
 ### 4.5 模型引用
@@ -147,7 +171,7 @@ interface SttClient     { transcribe(i: { audio: Blob; mimeType: string; languag
 interface TtsClient     { synthesize(i: { text: string; voice?: string; format?: AudioFormat; speed?: number }): Promise<AudioResult>; voices?(): Promise<Voice[]> }
 interface ImageClient   { generate(i: { prompt: string; size?: string; n?: number; references?: FileRef[]; mask?: FileRef }): Promise<MediaResult> }
 interface VideoClient   { submit(i: { prompt: string; seconds?: number; aspect?: string; image?: FileRef }): Promise<{ jobId: string }>; poll(jobId: string): Promise<VideoJob> }
-interface SandboxClient { create(s: SandboxSpec): Promise<SandboxHandle>; get(id: string): Promise<SandboxHandle | null> }   // 由 v1 的 ComputerHost 泛化
+interface SandboxClient { ensure(s: SandboxSpec); status(name); exec(name, i); stream(name, i); screen(name); devtools(name); stop(name); restart(name); remove(name, { keepHome }) }   // 由 v1 的 ComputerHost 泛化
 interface SearchClient  { search(q: string, o?: SearchOptions): Promise<SearchResult[]>; fetch?(url: string): Promise<PageContent> }
 interface StorageClient { put(key: string, body: Body, o?: PutOptions): Promise<void>; get(key: string): Promise<ReadableStream>; head(key: string): Promise<ObjectInfo | null>; delete(key: string): Promise<void>; presign?(key: string, o: PresignOptions): Promise<string> }
 ```
@@ -177,6 +201,8 @@ v2.0 表示首发；后续 表示接口已经留好，按需求再加。
 | `gemini` | Google Gemini（AI Studio） | Vertex AI |
 | `openai-compatible` | DeepSeek、Kimi、通义千问（百炼）、豆包（火山方舟）、智谱 GLM、MiniMax、阶跃星辰、硅基流动、OpenRouter、Groq、xAI、Mistral、Together；本地 Ollama、vLLM、LM Studio、LiteLLM | 百度千帆、腾讯混元 |
 
+提示缓存：引擎只在消息上做中性的缓存断点标记（`CACHE_BREAKPOINT`：system 末尾、下一轮仍保留的对话末尾、每次调用的最新一条）。`anthropic` 适配器把它翻译成 `cacheControl`；OpenAI、OpenAI 兼容服务和 DeepSeek 自动缓存重复的前缀，只需要前缀稳定，标记在请求里被忽略。厂商特有的写法只在适配器里。
+
 ### 语音输入 `stt`
 
 | 适配器 | v2.0 | 后续 |
@@ -198,6 +224,8 @@ v2.0 表示首发；后续 表示接口已经留好，按需求再加。
 
 ### 图像 `image`
 
+当前实现（#70）为 OpenAI 兼容协议及 OpenAI／302ai 预设，生成与参考图编辑均要求返回 base64；下面其他图像厂商是规划，尚未进入服务目录。
+
 | 适配器 | v2.0 | 后续 |
 | --- | --- | --- |
 | `openai-compatible`（Images API） | OpenAI gpt-image、302.AI 等聚合、硅基流动、Together | — |
@@ -207,9 +235,11 @@ v2.0 表示首发；后续 表示接口已经留好，按需求再加。
 
 ### 视频 `video`（全部是异步任务）
 
+当前实现（#70）为 `openai-compatible` 与 `302ai` 预设（OpenAI 官方格式的异步协议）；下面的厂商直连适配器仍是规划，尚未进入服务目录。
+
 | 适配器 | v2.0 | 后续 |
 | --- | --- | --- |
-| `openai` | Sora 2 | — |
+| `openai-compatible` | 302.AI 官方格式、可配置模型 | — |
 | `gemini` | Veo 3 | — |
 | `kling` | 可灵 | — |
 | `aliyun` | 通义万相 Wan | — |
@@ -221,7 +251,30 @@ v2.0 表示首发；后续 表示接口已经留好，按需求再加。
 | 适配器 | v2.0 | 后续 |
 | --- | --- | --- |
 | `docker` | 本机 Docker + gVisor（`runsc`） | — |
-| `e2b` | E2B；E2B 协议兼容服务（PPIO 等，填写 domain） | Daytona、Modal、Kubernetes |
+| `e2b` | E2B；PPIO（预设）；其他 E2B 协议兼容服务填写 domain，须支持暂停与恢复 | Daytona、Modal、Kubernetes |
+
+服务器接 E2B（#70，T16 真实账号验收）：
+
+- 服务器不需要 Docker 引擎，也不挂 Docker socket；需要有额度的 E2B 账号，以及允许出站 HTTPS / WebSocket 到 `api.e2b.app` 和 `*.e2b.app` 的网络。兼容服务换成自己的域名。
+- 在有 Node.js、已执行 `pnpm install` 的本仓库检出上构建模板：安全导出 `E2B_API_KEY`，执行 `node --import tsx scripts/e2b-template.mts --cpus 2 --memory 2048`。脚本按内容命名，已有成功构建则复用；构建也会使用服务商资源。兼容服务同时给构建环境设置 `E2B_DOMAIN`。
+- 运行环境设置 `SANDBOX_PROVIDER=e2b`、`SANDBOX_API_KEY`（与构建使用同一账号）、`SANDBOX_E2B_TEMPLATE`（脚本输出的名字）、`SANDBOX_E2B_NAMESPACE`（部署唯一，默认 greenhouse）、`SANDBOX_E2B_TIMEOUT_MINUTES=60`；兼容服务另设 `SANDBOX_E2B_DOMAIN`。同一部署的 API 与 worker 共用命名空间、Key、存储和加密密钥，另一个部署必须换命名空间。
+- 费用按运行时长、CPU 和内存及账号套餐计，见 [E2B 现行价格](https://e2b.dev/pricing)。管理 → 服务 → 电脑默认空闲 30 分钟暂停；画面、终端、后台进程和等待接管等活动会延后停机。服务商超时是 API 失联后的另一道自动暂停，必须大于空闲时间且不超过套餐会话上限。暂停保留内存与主目录，重置才销毁；暂停后的保留行为见 [E2B 持久化说明](https://docs.e2b.dev/sandbox/persistence)。
+- 两个主目录的加密备份依赖存储服务与 `PROVIDER_TOKEN_ENCRYPTION_KEY`，恢复部署时保留它们；不备份浏览器可重新下载的组件缓存。模型不支持视觉时，浏览器截图返回 unsupported，观看与接管仍可用。
+- 本地真实服务验收可导出 `REAL_SANDBOX_PROVIDER=e2b` 与上述运行配置再执行 `sh scripts/dev-real.sh`，默认仍为 Docker；`REAL_STORAGE_ROOT` 可隔离验收文件。适配器实测命令：安全导出 `E2B_API_KEY` 与可选 `E2B_TEMPLATE` 后执行 `npx vitest run --project unit apps/api/src/providers/__tests__/e2b.live.test.ts`；不设模板时自动构建本检出的版本，测试会创建并删除一台电脑，消耗额度。
+
+E2B 与兼容服务（`packages/providers/src/sandbox/e2b/`，从 v1 移植）：
+
+- 每台电脑是服务商的一台微虚拟机，从 apps/bot-computer 构建的模板启动。`scripts/e2b-template.mts` 在服务商处构建模板并给出名字；名字随内容变化，镜像改了就重新构建、改配置。CPU 与内存在构建模板时决定，创建接口没有按台的规格。
+- 电脑按名字找：沙箱元数据里的命名空间 `gh_ns` 与名字 `gh_name`。同一个账号下的另一个部署（例如恢复出来的副本）要换命名空间。
+- 停止就是暂停：内存与磁盘都保留，下次启动约一秒恢复，家目录和所有进程（后台任务也在内）接着跑。没有单独的卷，暂停的沙箱就是家目录；重置（`keepHome: false`）销毁沙箱，家目录一起删除。E2B 与 PPIO 都会一直保留暂停的沙箱，直到删除。
+- 超时兜底：API 不再触达后 `timeoutMinutes`（默认 60）分钟，运行中的电脑自动暂停，从不销毁；服务商声明超时会销毁的，电脑不启用。使用时每 5 分钟续期一次，开着的画面和终端也续期。它要大于闲置分钟数。
+- 重启在原地进行：结束 agent 与 browser 两个账号的全部进程，清掉它们留在临时目录里的文件，再启动桌面；家目录保留。
+- 端口全部私有：创建时关闭公开访问，服务商的边缘只放行带这台沙箱流量 token 的请求；没有给 token 的服务商不启用。两个桥（gh-bridge）再各自校验本账号的密钥（API Key 对沙箱与账号的 HMAC）：browser 账号的桥管画面与 DevTools，agent 账号的桥管命令、终端与文件。VNC 与 DevTools 仍是 browser 账号 0600 的 Unix socket，只有它的桥能打开。
+- envd（服务商在沙箱里的代理）只做 root 的事：出口规则、启动脚本、重启、以 root 执行的命令。命令的时限在电脑里执行（`timeout`），API 另有兜底。
+- 出口：每次启动以 root 加载 nftables 规则，只管两个成员账号：不能访问链路本地网段（含元数据服务 169.254.169.254）、私网与保留网段、envd 与两个桥的端口；IPv4 外网和 DNS 照常，非回环 IPv6 一律拒绝，避免绕过服务商仅接受 IPv4 CIDR 的域名规则。后台运行只放行简报批准的域名，读取私有内容后不出网。新沙箱另由服务商在虚拟机外拒绝私网。规则加载后从两个账号各探测一次，有一个目标能连通，这台电脑就不启用。
+- API Key 只发往 `https://api.<domain>`；envd 与两个桥在 `<端口>-<沙箱>.<domain>`，各用自己的 token，固定 fetch 只放行这个域名下的地址。
+- 模板升级不搬家：已有的电脑继续用创建时的模板，新电脑用配置的模板。桥协议更新时须同步升级 API 与模板；已有电脑先确认成功备份，再从服务商控制台删除沙箱，下次开机自动从最新备份恢复到新模板。不要用 Greenhouse 的重置代替这一步，重置会删除备份。
+- 保活走应用层的文本 ping/pong 帧，避免服务商代理在本地终结 WebSocket 控制帧；画面和 DevTools 的桥会拦下保活帧。读写背压期间两端仍发保活，大文件不因等待 pong 被误断开。
 
 ### 搜索 `search`
 
@@ -241,11 +294,36 @@ v1 的 Jina Reader 写死、不能关闭；v2 把它变成可选项。
 
 v2 的存储层统一为一个接口：v1 的 COS SDK、`s3-lite`、技能存储和电脑备份四套实现合并。表结构里的厂商字段（如 `cos_key`）改为中性的 `storage_key`。
 
+### 邮箱 `mail`
+
+| 适配器 | v2.0 | 说明 |
+| --- | --- | --- |
+| `smtp` | 只发 | 任意 SMTP 服务器（tls / starttls / none）；nodemailer，写在 API 里（`apps/api/src/modules/mail/smtp.ts`），像扩展一样注册；换地址清空密码 |
+| `resend` | 收发 | 发信：`POST /emails`。收信：`email.received` webhook（Svix 签名，覆盖原始请求体，5 分钟内有效）只当通知；信和收信服务器算出的 SPF / DKIM / DMARC 结论用 Key 从接收 API（`/emails/receiving/:id`）拉取，附件从 Resend 的签名链接下载（`inbound-cdn.resend.com`，不带 Key） |
+| `mailgun` | 收发 | 发信：`POST /v3/<domain>/messages`。收信：Route 的 `store(notify=…)` 通知，签名是时间戳加令牌的 HMAC（12 小时内有效，令牌只用一次）；签名不覆盖通知里的其他字段，所以只取 `message-url`，它必须是本实例域名在 Mailgun 存储地址上的信，再用 Key 拉取；Mailgun 加的 `X-Mailgun-Spf`、`X-Mailgun-Dkim-Check-Result` 各出现一次才算数（发件人能在信里写同名的头） |
+
+- 不选 Postmark：它的入站 webhook 不签名，只能靠 URL 里的基本认证和 IP 名单。
+- 实例配一个系统发件人（`fromAddress`、`fromName`）；Agent 的信从它自己的地址发出。
+- 能收信的适配器声明收信密钥（`receiveSecret`），实例填了它才收信。入站地址是 `/api/mail/inbound/<实例 id>`（公开）：先验签，验签失败、过期或格式不对一律 401；验签前按服务商的上限拒收过大的请求（Resend 256 KB，Mailgun 40 MB）。
+- 通知只是「去取」的信号：信从服务商 API 拉取，解析成统一的邮件（发件人、收件人、抄送、Reply-To、信封收件人与发件人、主题、正文、HTML、附件、Message-ID、In-Reply-To、References、SPF / DKIM / DMARC 结论、DKIM 签名域）。伪造的通知取不到不存在的信；Key 只发往本实例的地址（`pinnedFetch`），通知里的地址指向别处时不发请求。
+- 一次性：通知的 nonce（Svix 的 id、Mailgun 的令牌）成功处理后记在 `idempotency_keys`（scope `mail_notice`）；同一封信按「Agent、实例、服务商的信 id」只存一次。处理失败（拉信失败）返回 502，由服务商重试。
+- 上限：主题 500 字，纯文本 20 万字，HTML 2 MB（超出只留纯文本），附件单个 15 MB、合计 25 MB、最多 20 个，超出的记下名字和原因、不下载。
+- Agent 邮箱的域名由 `MAIL_AGENT_DOMAIN` 或「管理 → 服务 → 邮箱」设置，MX 记录指向服务商；地址默认是「名字-随机 4 位@域名」，主人可以改前缀；保留 postmaster、abuse 等名字和系统发件人的名字。
+- 来信是不可信输入：HTML 正文和附件存进存储服务（文件用途 `mail`，属于 Agent 的主人），纯文本留在库里供阅读和搜索；Agent 读到的正文用 fence 隔开。
+- 只有能收信的实例在顺序之首、且设了域名时，Agent 邮箱才出现。系统发信与 Agent 发信都按顺序回退。
+
+### 渠道 `im` / `push`
+
+| 能力 | 适配器 | v2.0 | 后续 |
+| --- | --- | --- | --- |
+| `im` | `feishu`、`wecom` | 代码已有、界面不出现：飞书（含 Lark 预设）与企微自建应用，纯文本私信；令牌按应用缓存 | IM 渠道统一设计：加 Slack、Discord、Telegram，账号绑定、机器人、扫码登录 |
+| `push` | `expo` | Expo 推送服务：按项目分组、每次最多 100 条，15 分钟后查回执 | 直连 APNs / FCM |
+
 ## 7. 界面
 
 管理 → 服务
 
-- 8 行能力加 1 行渠道，每行显示：能力名、浅色「?」（能力用在哪里）、当前实例与来源标签、状态点、「配置」。
+- 9 行能力加 1 行推送，每行显示：能力名、浅色「?」（能力用在哪里）、当前实例与来源标签、状态点、「配置」。`im` 在 IM 渠道之前不出现。
 - 点「配置」在右侧抽屉里管理这个能力：
   - 实例列表：可以拖动排序，顺序就是回退顺序。
   - 添加实例：先选厂商预设；表单由 `configSchema` 生成，Key 只写不读。
@@ -253,6 +331,7 @@ v2 的存储层统一为一个接口：v1 的 COS SDK、`s3-lite`、技能存储
   - 默认项：模型、音色、尺寸。
   - 策略：一个开关「允许成员使用自己的 Key」。
 - 沙箱的抽屉里额外有：电脑容量（空闲分钟数、最大并发）、电脑列表（停止、重置、备份）。
+- 邮箱的抽屉里额外有：Agent 邮箱的域名、每个能收信的实例要填到服务商那里的入站地址、「发测试邮件给我」。
 - 初次部署没有可用 LLM 时，登录后直接进入这一页。
 
 设置 → 我的服务
@@ -269,19 +348,22 @@ v2 的存储层统一为一个接口：v1 的 COS SDK、`s3-lite`、技能存储
 - 每次调用写一条 `usage_events`：
   - 主体：能力、实例、来源、成员、Agent、运行、对话。
   - 计量单位：LLM 是输入、输出与缓存 token；STT 是音频秒数；TTS 是字符数；图像是张数；视频是秒数；沙箱是运行分钟；存储是字节数。
-  - 预估费用：单价由预设提供，管理员可以覆盖。
-- 预算有三级：组织、服务实例、成员。用个人 Key 产生的用量默认不计入组织预算，由策略决定。
-- 公开 Agent 的预算继续由发布设置控制。
-- v1 的约 8 个用量接口合并为两个：`/api/me/usage` 和 `/api/admin/usage`。
+  - 预估费用：模型的单价写在实例的模型目录里（`price`：输入、输出、缓存输入，美元 / 百万 token），管理员可以改；没有单价的调用费用未知，界面上单独计数。预设暂不带单价。
+- 预算有四种范围：组织、服务实例、成员、公开 Agent，单位是 token 或美元，按 UTC 自然月。用个人 Key 产生的用量默认不计入组织和成员预算，由策略决定；服务实例的预算计入它服务的全部调用；Agent 预算由主人或管理员设置，累计所有使用者的调用。
+- 每次调用前（模型的每次尝试也算）检查覆盖它的预算，已用完就拒绝（`budget_exceeded`）；某个实例自己的预算用完时，回退到下一个实例。已用量直接汇总当月的 `usage_events`，正在进行的调用可能略微超出。
+- 公开 Agent 的回合记在提问的成员名下，计入这位成员的预算和组织预算；发布设置另有每人每日上限。
+- v1 的约 8 个用量接口合并为两个：`/api/me/usage` 和 `/api/admin/usage`；Agent 的主人另有 `/api/agents/:id/usage`。
+- 每组用量都带缓存命中率 `cache_hit_rate`（缓存 token ÷ 输入 token，没有输入时为空）；「我的用量」和管理里的用量页显示它。
 
 ## 9. 安全
 
 | 风险 | 规则 |
 | --- | --- |
 | Key 外泄 | 机密加密存储，任何接口都不返回明文；Key 只发往它所在实例的 base URL；改 base URL 必须重填 Key；预设没有地址时报错，不会回退到别的实例或环境变量的地址 |
-| SSRF | 成员填写的个人实例只能用公网 https 地址或预设地址；内网、回环、链路本地地址一律拒绝。工作区实例可以由管理员显式允许私网（例如本地 Ollama） |
+| SSRF | 成员的个人实例只能用公网 https 地址或预设地址：保存时检查解析结果，每次连接时再检查一次（防 DNS 重绑定）；内网、回环、链路本地地址一律拒绝。工作区实例由管理员配置，可以用内网地址（例如本地 Ollama） |
 | 越权 | 个人实例只服务它的主人，不能用于公开 Agent 或别人发起的运行；工作区实例遵守成员的模块权限与预算 |
 | 审计 | 新增、修改、删除、启停实例都写审计记录（谁、何时、哪个字段，不含机密） |
+| 入站邮件 | `/api/mail/inbound/:instance` 先验签再做任何事；通知只是信号，信用实例的 Key 从服务商拉取；nonce 一次性；来信按发件人名单与对齐的 SPF / DKIM / DMARC 决定是否叫醒 Agent（见 PRD §8.4） |
 | 内容 | 发给 STT、TTS、图像、视频服务商的内容属于成员本人或其授权范围；界面「?」里写明「内容会发送给所选服务商」 |
 
 ## 10. 扩展
@@ -315,10 +397,18 @@ packages/providers/          纯适配层：接口、注册表、通用适配器
                              只依赖 zod、AI SDK、fetch；不访问数据库，不定义 HTTP 路由
 apps/api/src/providers/      解析与管理：环境变量引导、数据库读写与加密、策略、回退、计量、版本广播
                              路由 /api/admin/providers*、/api/me/providers*
-apps/api/src/sandbox/        沙箱适配器（docker、e2b）：依赖 Docker CLI 与 E2B SDK，所以放在 API 里，实现 packages/providers 的接口
+packages/providers/src/sandbox/   沙箱适配器：docker（Docker CLI）、e2b（纯 HTTP 与 WebSocket，不用 E2B SDK）
+packages/providers/src/mail/      邮箱适配器：resend、mailgun（收发，纯 HTTP）；smtp 在 apps/api/src/modules/mail/smtp.ts
+apps/api/src/providers/e2b-template.ts   用 E2B SDK 构建电脑模板，只给 scripts/e2b-template.mts 和实测用
 ```
 
 验收要求：
 - 业务代码里 `grep process.env` 只能出现在 `apps/api/src/config/`。
 - 每个适配器都有一份测试（模拟 HTTP），覆盖「Key 只发往配置的地址」。
 - 「测试连接」在界面上可以用。
+
+### M3 图像与视频（#70）
+
+- `IMAGE_PROVIDER=302ai`：OpenAI Images 协议，默认 gpt-image-2、low。`IMAGE_BASE_URL`、`IMAGE_API_KEY`、`IMAGE_MODEL`、`IMAGE_SIZE`、`IMAGE_QUALITY` 覆盖预设；编辑用 `/images/edits` multipart，参考图片经成员文件权限读取，最大 10 MB。生成与编辑均计 image 数量，结果保留为 artifact。
+- `VIDEO_PROVIDER=302ai`：默认 `https://api.302.ai/openai/v1`、sora-2；可用 `VIDEO_BASE_URL`、`VIDEO_API_KEY`、`VIDEO_MODEL`、`VIDEO_SIZE` 覆盖。适配器经 `/videos` 提交，再查询 `/videos/:id`，通过 `/videos/:id/content` 取回 MP4；302 返回下载 URL 时仅允许配置的 contentOrigins（预设 file.302.ai），下载不带 API Key。协议依据 [302.AI 提交](https://doc.302.ai/358575764e0)与[内容](https://doc.302.ai/358660466e0)。
+- 视频只在原会话中提出审批，批准后写入唯一 jobs 队列与后台 run；提交成功按秒计量，查询／取回不重复收费。20 分钟截止，进程恢复只继续已知 ID 的查询；提交结果未知禁止自动重放与普通重试。取消停止本地轮询，厂商已经开始的生成可能继续，计费不撤销。

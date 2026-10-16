@@ -1,5 +1,5 @@
 /**
- * Unit tests for markdownToTiptapJson — the server-side Markdown→Tiptap bridge.
+ * Unit tests for markdownToTiptapJson — Markdown→Tiptap in Node, as the editor loads it.
  * Pure (no DB / no browser): verifies the generated JSON matches the editor schema.
  */
 

@@ -4,90 +4,6 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": {
-      "import": "./src/index.ts",
-      "types": "./src/index.ts"
-    },
-    "./components/ui": {
-      "import": "./src/components/ui.tsx",
-      "types": "./src/components/ui.tsx"
-    },
-    "./components/markdown": {
-      "import": "./src/components/markdown.tsx",
-      "types": "./src/components/markdown.tsx"
-    },
-    "./components/rich-markdown": {
-      "import": "./src/components/rich-markdown.tsx",
-      "types": "./src/components/rich-markdown.tsx"
-    },
-    "./components/blocks": {
-      "import": "./src/components/blocks/index.ts",
-      "types": "./src/components/blocks/index.ts"
-    },
-    "./components/blocks/chart-block": {
-      "import": "./src/components/blocks/chart-block.tsx",
-      "types": "./src/components/blocks/chart-block.tsx"
-    },
-    "./components/blocks/confirm-block": {
-      "import": "./src/components/blocks/confirm-block.tsx",
-      "types": "./src/components/blocks/confirm-block.tsx"
-    },
-    "./components/blocks/datatable-block": {
-      "import": "./src/components/blocks/datatable-block.tsx",
-      "types": "./src/components/blocks/datatable-block.tsx"
-    },
-    "./components/blocks/rich-block-shell": {
-      "import": "./src/components/blocks/rich-block-shell.tsx",
-      "types": "./src/components/blocks/rich-block-shell.tsx"
-    },
-    "./components/blocks/block-actions": {
-      "import": "./src/components/blocks/block-actions.tsx",
-      "types": "./src/components/blocks/block-actions.tsx"
-    },
-    "./components/blocks/stats-block": {
-      "import": "./src/components/blocks/stats-block.tsx",
-      "types": "./src/components/blocks/stats-block.tsx"
-    },
-    "./components/blocks/cards-block": {
-      "import": "./src/components/blocks/cards-block.tsx",
-      "types": "./src/components/blocks/cards-block.tsx"
-    },
-    "./components/blocks/steps-block": {
-      "import": "./src/components/blocks/steps-block.tsx",
-      "types": "./src/components/blocks/steps-block.tsx"
-    },
-    "./components/tool-call": {
-      "import": "./src/components/tool-call/index.tsx",
-      "types": "./src/components/tool-call/index.tsx"
-    },
-    "./components/tool-call/tool-call-card": {
-      "import": "./src/components/tool-call/tool-call-card.tsx",
-      "types": "./src/components/tool-call/tool-call-card.tsx"
-    },
-    "./components/tool-call/body-artifacts": {
-      "import": "./src/components/tool-call/body-artifacts.tsx",
-      "types": "./src/components/tool-call/body-artifacts.tsx"
-    },
-    "./components/tool-call/update-page-card": {
-      "import": "./src/components/tool-call/update-page-card.tsx",
-      "types": "./src/components/tool-call/update-page-card.tsx"
-    },
-    "./components/tool-call/artifact-renderers": {
-      "import": "./src/components/tool-call/artifact-renderers.ts",
-      "types": "./src/components/tool-call/artifact-renderers.ts"
-    },
-    "./components/chat/ask-user-card": {
-      "import": "./src/components/chat/ask-user-card.tsx",
-      "types": "./src/components/chat/ask-user-card.tsx"
-    },
-    "./components/chat/streaming-message-bubble": {
-      "import": "./src/components/chat/streaming-message-bubble.tsx",
-      "types": "./src/components/chat/streaming-message-bubble.tsx"
-    },
-    "./components/chat/reasoning-panel": {
-      "import": "./src/components/chat/reasoning-panel.tsx",
-      "types": "./src/components/chat/reasoning-panel.tsx"
-    },
     "./components/plant-avatar": {
       "import": "./src/components/plant-avatar/index.ts",
       "types": "./src/components/plant-avatar/index.ts"
@@ -96,52 +12,15 @@
       "import": "./src/components/plant-avatar/plant-avatar-svg.ts",
       "types": "./src/components/plant-avatar/plant-avatar-svg.ts"
     },
-    "./lib/icons": {
-      "import": "./src/lib/icons.ts",
-      "types": "./src/lib/icons.ts"
-    },
-    "./lib/utils": {
-      "import": "./src/lib/utils.ts",
-      "types": "./src/lib/utils.ts"
-    },
-    "./lib/api-base": {
-      "import": "./src/lib/api-base.ts",
-      "types": "./src/lib/api-base.ts"
-    },
-    "./lib/theme": {
-      "import": "./src/lib/theme.ts",
-      "types": "./src/lib/theme.ts"
-    },
-    "./lib/i18n": {
-      "import": "./src/lib/i18n/index.ts",
-      "types": "./src/lib/i18n/index.ts"
-    },
-    "./lib/stream-utils": {
-      "import": "./src/lib/stream-utils.ts",
-      "types": "./src/lib/stream-utils.ts"
-    },
-    "./lib/stream-events": {
-      "import": "./src/lib/stream-events.ts",
-      "types": "./src/lib/stream-events.ts"
-    },
-    "./lib/diff-words": {
-      "import": "./src/lib/diff-words.tsx",
-      "types": "./src/lib/diff-words.tsx"
-    },
-    "./lib/wiki-diff": {
-      "import": "./src/lib/wiki-diff.ts",
-      "types": "./src/lib/wiki-diff.ts"
-    },
-    "./styles/tokens.css": "./src/styles/tokens.css",
-    "./styles/components.css": "./src/styles/components.css",
-    "./lib/number-format": {
-      "import": "./src/lib/number-format.ts",
-      "types": "./src/lib/number-format.ts"
-    },
     "./components/brand": {
       "import": "./src/components/brand/greenhouse-mark.tsx",
       "types": "./src/components/brand/greenhouse-mark.tsx"
     },
+    "./kit": {
+      "import": "./src/kit/index.ts",
+      "types": "./src/kit/index.ts"
+    },
+    "./kit/kit.css": "./src/kit/kit.css",
     "./styles/brand.css": "./src/styles/brand.css",
     "./styles/fonts.css": "./src/styles/fonts.css",
     "./tokens/haven.css": "./src/tokens/haven.css",
@@ -155,16 +34,14 @@
   },
   "dependencies": {
     "@greenhouse/types": "workspace:*",
-    "chart.js": "^4.5.1",
-    "lucide-react": "^1.16.0",
-    "marked": "^18.0.3"
+    "lucide-react": "^1.16.0"
   },
   "peerDependencies": {
     "react": "^19.0.0"
   },
   "devDependencies": {
-    "@types/react": "^18.3.0",
-    "@types/react-dom": "^18.3.0",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "typescript": "^5.7.0"

@@ -18,7 +18,7 @@ dist 可以放在任意静态服务器的根目录或子目录下，资源都是
 - 应用 #apps、技能 #skills、Agents #agents、运行 #runs、通知 #notifications。
 - 设置 #settings、管理 #admin：其中「服务」是 8 类能力的 Provider 配置。
 - 登录 #login：只有名称、两个字段和一个大号按钮。
-- 组件 #components：8 个分区，「基础」直接读取 tokens；每个组件的状态都能操作。
+- 组件 #components：8 个分区，「基础」直接读取 tokens；每个组件的状态都能操作，包括悬停提示、有原因的禁用、确认框和英文词典。
 
 顶部可以切换页面、桌面或手机、深色或浅色，也可以重置全部示例。浏览器窗口很窄时自动用手机布局：抽屉加底部模块栏，与原生 App 一致。
 
@@ -32,13 +32,13 @@ dist 可以放在任意静态服务器的根目录或子目录下，资源都是
 
 ## 代码
 
+组件来自 packages/ui 的组件库 @greenhouse/ui/kit：按钮、输入、Select 与日期、菜单与右键菜单、「?」与 Tooltip、弹层与 ConfirmDialog、Toast、ChatCard 等。原型只保留自己的页面、外壳和模拟数据：
+
 - data.ts：模块定义、样本数据、纯状态规则。
 - shell.tsx：全局栏、模块目录、右键菜单的内容、手机模块栏。
-- popover.tsx：浮层定位、菜单、右键菜单。
-- pickers.tsx：Select、MultiSelect、DatePicker、DateRangePicker。
-- components.tsx：按钮、输入、「?」、页框、弹层、ChatCard 与「需要你」卡片、记录编辑。
+- components.tsx：页框、「需要你」卡片、记录编辑、图表与步骤，以及预览工具栏用的 NativeSelect。
 - details.tsx：抽屉内容与登录页。
-- chat.tsx：对话页与回复卡片。
-- pages.tsx：各模块页面。lab.tsx：组件页。App.tsx：路由、预览外壳与共享状态。styles.css：布局与组件样式。
+- chat.tsx：对话页与回复卡片的内容。
+- pages.tsx：各模块页面。lab.tsx：组件页。App.tsx：路由、预览外壳、共享状态与确认框。styles.css：页面与外壳的布局。
 
-颜色、字体、间距、圆角、阴影、动效都来自 @greenhouse/ui/tokens/haven.css，它由 packages/ui/src/tokens/haven.ts 生成。品牌标志与植物头像复用 @greenhouse/ui。
+颜色、字体、间距、圆角、线宽、阴影、动效都来自 @greenhouse/ui/tokens/haven.css，它由 packages/ui/src/tokens/haven.ts 生成。品牌标志（@greenhouse/ui/styles/brand.css）与植物头像复用 @greenhouse/ui。产品窗口带 data-theme、data-narrow（手机布局）和 data-floating-boundary，组件库据此切换主题、Sheet 和浮层的边界。

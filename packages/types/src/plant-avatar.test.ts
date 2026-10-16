@@ -23,10 +23,9 @@ describe('plant-avatar vocabulary', () => {
     expect(IMPLICIT_POOL).not.toContain('dandelion');
   });
 
-  it('names the Bot templates after their plants', () => {
+  it('names the Agent templates after their plants', () => {
     expect(TEMPLATE_PLANT).toEqual({
-      sprouty: 'sprout',
-      chief: 'ivy',
+      main: 'sprout',
       researcher: 'dandelion',
       operator: 'opuntia',
       writer: 'fern',

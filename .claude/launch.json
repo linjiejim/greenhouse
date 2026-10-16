@@ -72,6 +72,31 @@
         "docs"
       ],
       "port": 4599
+    },
+    {
+      "name": "web-v2",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": [
+        "apps/web/e2e/stack.sh"
+      ],
+      "port": 4580
+    },
+    {
+      "name": "web-v2-computer",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": [
+        "-c",
+        "STACK_SANDBOX_IMAGE=greenhouse/bot-computer:latest sh apps/web/e2e/stack.sh"
+      ],
+      "port": 4580
+    },
+    {
+      "name": "web-v2-real",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": [
+        "scripts/dev-real.sh"
+      ],
+      "port": 4570
     }
   ]
 }

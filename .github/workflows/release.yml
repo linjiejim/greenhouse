@@ -2,8 +2,7 @@ name: Release
 
 # Builds & publishes the distributable artifacts. Two triggers:
 #   • tag `v*`  → STABLE release: GHCR image `:X.Y.Z` `:X.Y` (+ `:latest` for a
-#                 non-prerelease tag) and the browser extension zip attached to
-#                 the GitHub Release.
+#                 non-prerelease tag). The browser extension returns after v2.0.
 #   • push main → EDGE build: GHCR image `:edge` + `:main-<sha>` only. Never
 #                 `:latest`, never a Release asset — main is explicitly unstable.
 # The stable/edge split is the machine-readable half of the promise in the README
@@ -180,25 +179,3 @@ jobs:
           # The images docker-compose.ghcr.yml and the installer's HTTPS option need.
           docker buildx imagetools create -t "${MIRROR_PREFIX}/postgres:16-alpine" docker.io/library/postgres:16-alpine
           docker buildx imagetools create -t "${MIRROR_PREFIX}/caddy:2-alpine" docker.io/library/caddy:2-alpine
-
-  # ── Browser extension → versioned zip attached to the Release (stable only) ──
-  browser:
-    if: github.repository == 'linjiejim/greenhouse' && startsWith(github.ref, 'refs/tags/v')
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write # upload the asset to the GitHub Release
-    steps:
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/setup
-
-      # `package` runs `vite build` then stamps manifest.version from APP_VERSION
-      # and zips dist/ → greenhouse-bridge-vX.Y.Z.zip.
-      - name: Build & package extension
-        run: pnpm --filter @greenhouse/browser package
-        env:
-          APP_VERSION: ${{ github.ref_name }}
-
-      - name: Attach zip to the Release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release upload "${{ github.ref_name }}" apps/browser/greenhouse-bridge-*.zip --clobber

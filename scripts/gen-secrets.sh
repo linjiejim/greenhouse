@@ -37,6 +37,6 @@ fill PROVIDER_TOKEN_ENCRYPTION_KEY
 fill VAULT_ENCRYPTION_KEY
 
 echo
-echo "Done. Next: set BOOTSTRAP_ADMIN_EMAIL and LLM_BASE_URL / LLM_API_KEY / LLM_MODEL in $ENV_FILE, then:"
+echo "Done. Next: set BOOTSTRAP_ADMIN_EMAIL and LLM_PROVIDER / LLM_API_KEY in $ENV_FILE, then:"
 echo "  docker compose up -d --build"
 echo "  docker compose logs api | grep 'Activate the first administrator'"

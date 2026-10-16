@@ -1,18 +1,19 @@
 /**
- * A Bot's background tasks as Live Activities on this phone (spec
+ * An Agent's background runs as Live Activities on this phone (spec
  * docs/specs/20261010-mobile-live-activity.md §2.2, §3.3) — the side effects; what to start,
  * update and end is decided by `planActivities` (./model.ts).
  *
- * `reconcile()` lists the member's tasks (`GET /api/bots/tasks?state=active`; on an older
- * server, the conversations it knows of), reads the activities on the phone, plans and
- * applies. It runs when the identity, the push registration or the switch changes, when the
- * app comes to the foreground, on the Bots realtime events, and right after the member
- * starts a task (`noteTaskStarted`). One at a time; calls made meanwhile run it once more.
+ * `reconcile()` lists the member's active runs started from a conversation
+ * (`GET /api/runs?state=active&source=conversation`), reads each run the phone shows that is no
+ * longer active (`GET /api/runs/:id`, for its final state), reads the activities on the phone,
+ * plans and applies. It runs when the identity, the push registration or the switch changes,
+ * when the app comes to the foreground, and on `run.updated` events. One at a time; calls made
+ * meanwhile run it once more.
  *
  * What may start one (`canStart`): the switch (Settings → 通知, device-wide, default off —
- * D10), iOS allowing Live Activities for the app, Bots, and a push registration on this
- * station — only a push can end an activity while the app is in the background (D7). What
- * ends them all: the switch off, Bots off, signing out, another station or account.
+ * D10), iOS allowing Live Activities for the app, and a push registration on this station —
+ * only a push can end an activity while the app is in the background (D7). What ends them
+ * all: the switch off, signing out, another station or account.
  *
  * The switch is also told to the station (`prefs.live_activity` of this phone's push
  * registration), whose "done" push then carries `content-available` — the native side
@@ -29,23 +30,22 @@ import {
   startTaskActivity,
   updateTaskActivity,
 } from '../../modules/widget-bridge';
-import { listConversationTasks, listMemberTasks } from '../api/bots';
+import { getRun, listRuns } from '../api/runs';
 import { loadPref, savePref } from '../api/token-storage';
-import { botsEnabledNow } from '../bots/availability';
-import { useBots } from '../bots/store';
-import { parseMs } from '../lib/format';
+import { parseMs } from '../data/time';
 import { setPushPrefs, usePush } from '../push/register';
-import { isSproutyBot, type BotTaskView } from '../shared/bots';
+import type { RunView } from '../shared/contract';
 import { useAuth } from '../store/auth';
 import { usePrefs } from '../store/prefs';
 import { useStations } from '../store/stations';
+import { useWorkspace } from '../store/workspace';
 import { renderWidgetArt } from '../widget/art-host';
 import { activityArt, attributesFor, parseActivities, planActivities, pruneShown, type Action } from './model';
 
 const IOS = Platform.OS === 'ios';
 const SWITCH_PREF = 'live_activity';
 const SHOWN_PREF = 'live_activity_shown';
-/** How long a start waits for the Bot's faces to be drawn (then it starts with the fallback). */
+/** How long a start waits for the Agent's faces to be drawn (then it starts with the fallback). */
 const ART_WAIT_MS = 1200;
 
 interface LiveActivityState {
@@ -79,7 +79,7 @@ export async function hydrateLiveActivity(): Promise<void> {
 
 /**
  * The phone's push registration on the active station says whether the switch is on, so the
- * station knows to wake the app when a task ends. False when it could not be told.
+ * station knows to wake the app when a run ends. False when it could not be told.
  */
 export async function syncLiveActivityPref(): Promise<boolean> {
   const device = usePush.getState().device;
@@ -97,7 +97,7 @@ export async function setLiveActivityOn(on: boolean): Promise<boolean> {
   return told;
 }
 
-// ─── Shown runs (never show a task twice) ────────────────
+// ─── Shown runs (never show a run twice) ─────────────────
 
 async function loadShown(): Promise<Record<string, number>> {
   try {
@@ -116,15 +116,6 @@ async function rememberShown(run: string): Promise<void> {
 }
 
 // ─── Reconcile ───────────────────────────────────────────
-
-/** Conversations the member started a task in here — the list for a server without the member-wide one. */
-const startedIn = new Set<string>();
-
-/** The member just started a task in this conversation (its card's Start went through). */
-export function noteTaskStarted(sessionId: string): void {
-  startedIn.add(sessionId);
-  void reconcile();
-}
 
 let running: Promise<void> | null = null;
 let again = false;
@@ -150,18 +141,21 @@ export function reconcile(): Promise<void> {
   return running;
 }
 
-/** The member's tasks: the member-wide list, else (an older server) the conversations we know of. */
-async function listTasks(sessions: Iterable<string>): Promise<{ tasks: BotTaskView[] | null; complete: boolean }> {
-  const all = await listMemberTasks();
-  if (all.ok) return { tasks: all.value, complete: true };
-  if (all.status !== 404) return { tasks: null, complete: false };
-  const tasks: BotTaskView[] = [];
-  for (const sessionId of new Set(sessions)) {
-    const listed = await listConversationTasks(sessionId);
-    if (!listed.ok) continue;
-    for (const task of listed.value) tasks.push({ ...task, conversation_id: task.conversation_id ?? sessionId });
+/**
+ * The member's active runs from conversations, plus the latest state of the ones on the phone
+ * that are no longer among them (to end with their final state). `complete`: every active one.
+ */
+async function listFollowed(onPhone: readonly string[]): Promise<{ runs: RunView[] | null; complete: boolean }> {
+  const active = await listRuns({ state: 'active', source: 'conversation', limit: 50 });
+  if (!active.ok) return { runs: null, complete: false };
+  const runs = [...active.data.items];
+  const listed = new Set(runs.map((run) => run.id));
+  for (const id of new Set(onPhone)) {
+    if (listed.has(id)) continue;
+    const one = await getRun(id);
+    if (one.ok) runs.push(one.data);
   }
-  return { tasks, complete: false };
+  return { runs, complete: active.data.next_cursor === null };
 }
 
 async function reconcileOnce(): Promise<void> {
@@ -174,13 +168,12 @@ async function reconcileOnce(): Promise<void> {
   const activities = parseActivities(listTaskActivitiesJson());
   const push = usePush.getState();
   const pushReady = push.support === 'enabled' && push.permission === 'granted' && !push.off && push.device !== null;
-  const bots = botsEnabledNow();
   const signedIn = !!user && !!station;
-  const canStart = on && bots && pushReady && useLiveActivity.getState().systemEnabled;
+  const canStart = on && pushReady && useLiveActivity.getState().systemEnabled;
 
-  let listed: { tasks: BotTaskView[] | null; complete: boolean } = { tasks: null, complete: false };
-  if (signedIn && on && bots && (canStart || activities.length > 0)) {
-    listed = await listTasks([...startedIn, ...activities.map((activity) => activity.session)]);
+  let listed: { runs: RunView[] | null; complete: boolean } = { runs: null, complete: false };
+  if (signedIn && on && (canStart || activities.length > 0)) {
+    listed = await listFollowed(activities.filter((activity) => !activity.ended).map((activity) => activity.run));
   }
   // the station or account may have changed while the list was on its way
   if (useStations.getState().activeId !== station || useAuth.getState().user?.id !== user?.id) {
@@ -189,13 +182,13 @@ async function reconcileOnce(): Promise<void> {
   }
   const shown = await loadShown();
   const actions = planActivities({
-    tasks: listed.tasks,
+    runs: listed.runs,
     activities,
     ctx: {
       now: Date.now(),
       station: signedIn ? station : null,
       user: signedIn ? user.id : null,
-      switchOn: on && bots,
+      switchOn: on,
       canStart,
       complete: listed.complete,
       shown: new Set(Object.keys(shown)),
@@ -214,19 +207,18 @@ async function apply(action: Action, who: { station: string; user: string }): Pr
     await endTaskActivity(action.id, action.state ? JSON.stringify({ state: action.state }) : null, action.dismissAt);
     return;
   }
-  const bot = useBots.getState().byId[action.task.bot_id] ?? null;
-  const { art, jobs } = activityArt(bot);
+  const agent = useWorkspace.getState().agents?.find((item) => item.id === action.run.agent_id) ?? null;
+  const { art, jobs } = activityArt(agent);
   const have = new Set(listWidgetArt());
   const missing = jobs.filter((job) => !have.has(job.key));
   if (missing.length > 0) {
     await Promise.race([renderWidgetArt(missing), new Promise((resolve) => setTimeout(resolve, ART_WAIT_MS))]);
   }
   const attributes = attributesFor({
-    task: action.task,
-    session: action.session,
+    run: action.run,
     station: who.station,
     user: who.user,
-    bot: bot ? { name: bot.name, sprouty: isSproutyBot(bot) } : null,
+    agent: agent ? { name: agent.name, main: agent.is_main } : null,
     art,
     lang: usePrefs.getState().lang,
     preview: usePush.getState().device?.prefs.preview ?? false,
@@ -234,5 +226,5 @@ async function apply(action: Action, who: { station: string; user: string }): Pr
   const id = startTaskActivity(
     JSON.stringify({ attributes, state: action.state, staleAt: action.staleAt, relevance: action.relevance }),
   );
-  if (id) await rememberShown(action.task.run_id);
+  if (id) await rememberShown(action.run.id);
 }

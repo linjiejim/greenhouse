@@ -2,7 +2,7 @@
 // import workspace packages; see apps/mobile/AGENTS.md). Only the import path differs: the legacy
 // Sprouty id tables come from ./avatar-config (the zod-free copy of profile-manifest.ts). Do not
 // edit here: change the canonical file, re-copy it, and run the root vitest
-// (src/bots/vendor/vendor.parity.test.ts + plant-avatar.parity.test.ts).
+// (src/shared/vendor.parity.test.ts + plant-avatar.parity.test.ts).
 
 /**
  * Plant avatars — the zod-free vocabulary every Bot / Agent avatar is built from.
@@ -28,6 +28,20 @@ import type {
   SproutyFaceStyleId,
   SproutyLeafStyleId,
 } from './avatar-config';
+
+/** Avatar JSON as the API returns it (see `avatarConfigSchema`); render with `legacyToPlant`. */
+export interface ProfileAvatar {
+  /** Plant species id (PLANT_IDS); absent on legacy avatars. */
+  plant?: string;
+  /** Resting eyes (PLANT_MOODS). */
+  mood?: string;
+  color?: string;
+  accessories?: string[];
+  leafStyle?: 'normal' | 'big' | 'mini' | 'double';
+  eyeStyle?: 'classic' | 'dot' | 'soft' | 'focused';
+  faceStyle?: string;
+  palette?: { body: string; leaf: string };
+}
 
 /**
  * The sixteen species, in catalogue order. Never reorder, and only ever append: the first
@@ -102,14 +116,12 @@ export const PLANT_TINTS = Object.freeze(['plant', 'sky', 'violet', 'rose', 'cor
 export type PlantTint = (typeof PLANT_TINTS)[number];
 
 /**
- * Bot template key → species: the built-in Sprouty is the sprout; the gallery templates are named
- * after theirs (蒲蒲 Dandy, 仙仙 Cactus, 卷卷 Fern, 叶叶 Clover, 葵葵 Sunny, 薰薰 Lavender, 枫枫 Maple);
- * the retired chief of staff was ivy. Bots store their `plant`, so changing a row here only affects
- * new Bots — and template-keyed avatars that never stored one.
+ * Agent template key → species: the main Agent (Greeny) is the sprout; the gallery templates are
+ * named after theirs (蒲蒲 Dandy, 仙仙 Cactus, 卷卷 Fern, 叶叶 Clover, 葵葵 Sunny, 薰薰 Lavender,
+ * 枫枫 Maple). Agents store their `plant`, so changing a row here only affects new Agents.
  */
 export const TEMPLATE_PLANT = Object.freeze({
-  sprouty: 'sprout',
-  chief: 'ivy',
+  main: 'sprout',
   researcher: 'dandelion',
   operator: 'opuntia',
   writer: 'fern',

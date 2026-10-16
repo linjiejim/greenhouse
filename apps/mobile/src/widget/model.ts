@@ -5,16 +5,19 @@
  * (./snapshot.ts → modules/widget-bridge); the Swift `Snapshot` Codable in
  * targets/widget/index.swift decodes exactly this shape — change them
  * together and bump `SNAPSHOT_VERSION` on breaking changes (the widget ignores
- * a snapshot with a newer `v` and falls back to launcher-only mode).
+ * a snapshot with a newer `v` and falls back to launcher-only mode). The Swift
+ * side still calls an Agent entry a `bot`; only the words on screen matter there.
  *
- * What the widget shows (spec docs/specs/20261009-ios-widget-bots.html):
- * - `bots` — Sprouty first, then the Bots whose DM moved last (the drawer's
- *   order, so positions stay put); a Bot waiting on the member beyond the
- *   slots takes the last slot that isn't. Each carries the drawer row's one
- *   signal — "needs you" (pending cards) beats unread — and the avatar face
- *   that goes with it. `null` = Bots unavailable: the widget shows recent
- *   `sessions` instead.
- * - `defaultAgent` — who "New Chat" starts with (Sprouty, the main Bot).
+ * What the widget shows:
+ * - `bots` — the member's Agents: the main Agent first (its thread is the main
+ *   thread), then the Agents whose Agent thread moved last (the drawer's order, so
+ *   positions stay put); an Agent waiting on the member beyond the slots takes the
+ *   last slot that isn't. Each carries the drawer row's one signal — "needs you"
+ *   (pending cards) beats unread, a muted thread shows neither — and the avatar
+ *   face that goes with it. Rows never preview messages (PRD §6.2): the line under
+ *   a name is the waiting card's title, else the Agent's role.
+ * - `defaultAgent` — who "New Chat" starts with (the main Agent).
+ * - `sessions` — kept for the Swift schema; always empty (every member has a main Agent).
  *
  * Avatars: the widget can't draw SVG, so every face is rendered by the app
  * (./art-host.tsx) to `<key>.png` in the App Group. `artKey` hashes the SVG
@@ -23,16 +26,13 @@
  * React-free: the root vitest runs ./model.test.ts.
  */
 
-import type { BotConversationSummary, BotRequestView, BotView } from '../shared/bots';
-import { isSproutyBot } from '../shared/bots';
-import { drawerRows, sproutyBot, type BotsData } from '../bots/store-core';
-import { rowPreview, type RowCopy, type RowDirectory } from '../bots/drawer/row-text';
+import type { Agent, Conversation, NeedsYou } from '../shared/contract';
 import { buildPlantAvatarSvg } from '../ui/plant-avatar/plant-avatar-svg';
 import { forSvgXml } from '../ui/plant-avatar/plant-avatar-native';
 import { resolvePlantAvatar, type PlantState } from '../ui/plant-avatar/plant-ids';
 
 export const SNAPSHOT_VERSION = 2;
-/** Bots on the medium / large widget (Sprouty included). */
+/** Agents on the medium / large widget (the main Agent included). */
 export const WIDGET_BOT_SLOTS = 4;
 /** Rendered avatar size in points — the widget's largest face (small widget hero); PNG = × screen scale. */
 export const ART_POINTS = 84;
@@ -51,21 +51,24 @@ export interface WidgetArt {
   dark: string;
 }
 
+/** One Agent on the widget (Swift: `SnapshotBot`). */
 export interface WidgetBot {
+  /** The Agent's id. */
   id: string;
-  /** The Bot's DM; null only for Sprouty before its DM exists (the deep link bootstraps it). */
+  /** Its Agent thread (the main thread for the main Agent); null opens the main thread. */
   sessionId: string | null;
   name: string;
   /** Face for the current signal: waiting when it needs the member, else at rest. */
   art: WidgetArt;
+  /** The main Agent. */
   sprouty: boolean;
   /** The row's one signal (the drawer's rule). */
   badge: 'needs_you' | 'unread' | null;
-  /** needs_you → pending cards; unread → Bot replies; null → a dot (unread count unknown — older server). */
+  /** needs_you → pending cards; unread → unread messages; null → a dot. */
   count: number | null;
   /** The pending card to scroll to (oldest first), when it is known. */
   requestId: string | null;
-  /** The last message, one line: "You: …" or the Bot's words. */
+  /** One line: the waiting card's title, else the Agent's role. */
   preview: string;
   lastAt: number | null;
 }
@@ -88,11 +91,11 @@ export interface WidgetSnapshot {
   updatedAt: number;
   nickname: string;
   lang: 'zh' | 'en';
-  /** Who "New Chat" starts with; null = unknown (the widget falls back to Sprouty's bundled art). */
+  /** Who "New Chat" starts with; null = unknown (the widget falls back to its bundled sprout). */
   defaultAgent: WidgetAgent | null;
-  /** null = Bots unavailable (feature off, not an internal account, Android) → `sessions` instead. */
+  /** The member's Agents; empty until the list has loaded. */
   bots: WidgetBot[] | null;
-  /** Recent conversations — only filled when `bots` is null. */
+  /** Recent conversations — only shown when `bots` is null, which v2 never sends. */
   sessions: WidgetSession[];
 }
 
@@ -106,64 +109,72 @@ export interface ArtJob {
 
 // ─── Rules ───────────────────────────────────────────────
 
-export type WidgetBotsSource = Pick<BotsData, 'bots' | 'byId' | 'botsLoaded' | 'conversations' | 'pendingRequests'>;
-
-export interface WidgetBotPick {
-  bot: BotView;
-  /** Its DM row; null for Sprouty before its DM is listed. */
-  row: BotConversationSummary | null;
+export interface WidgetSource {
+  agents: readonly Agent[];
+  conversations: readonly Conversation[];
+  /** Pending cards, as last listed (only used for the card to open and its title). */
+  requests: readonly NeedsYou[];
 }
 
-const waiting = (pick: WidgetBotPick) => (pick.row?.pending_requests ?? 0) > 0;
+export interface WidgetAgentPick {
+  agent: Agent;
+  /** Its Agent thread (the main thread for the main Agent), when listed. */
+  conversation: Conversation | null;
+}
+
+const waiting = (pick: WidgetAgentPick) => (pick.conversation?.pending_requests ?? 0) > 0;
+const activity = (conversation: Conversation, parseMs: (iso: string) => number) => parseMs(conversation.last_activity_at) || 0;
 
 /**
- * The Bots the widget shows, in order: Sprouty (never moves), then each Bot
- * whose DM someone can still reply in, newest activity first — never re-sorted
- * by attention, so a face stays where the member last saw it. A Bot waiting on
- * the member that didn't make the cut replaces the last slot that isn't
- * waiting. Empty until the Bot list has answered (names unknown).
+ * The Agents the widget shows, in order: the main Agent (never moves), then each Agent with
+ * an Agent thread, newest activity first — never re-sorted by attention, so a face stays where
+ * the member last saw it. An Agent waiting on the member that didn't make the cut replaces the
+ * last slot that isn't waiting. Archived Agents and threads are left out.
  */
-export function widgetBotPicks(s: WidgetBotsSource, slots = WIDGET_BOT_SLOTS): WidgetBotPick[] {
-  if (!s.botsLoaded) return [];
-  const { pinned, recent } = drawerRows(s, { query: '', expanded: true });
-  const active = new Map(s.bots.map((bot) => [bot.id, bot]));
-  const sprouty = sproutyBot(s);
-  const picks: WidgetBotPick[] = sprouty ? [{ bot: sprouty, row: pinned }] : [];
-  for (const row of recent) {
-    const bot = row.owner_bot_id ? active.get(row.owner_bot_id) : undefined;
-    if (row.kind !== 'direct' || !bot || isSproutyBot(bot)) continue;
-    picks.push({ bot, row });
-  }
+export function widgetAgentPicks(
+  s: Pick<WidgetSource, 'agents' | 'conversations'>,
+  parseMs: (iso: string) => number,
+  slots = WIDGET_BOT_SLOTS,
+): WidgetAgentPick[] {
+  const live = s.conversations.filter((item) => !item.archived);
+  const main = s.agents.find((agent) => agent.is_main && !agent.archived_at);
+  const threads = new Map<string, Conversation>();
+  for (const item of live) if (item.kind === 'direct' && item.agent_id) threads.set(item.agent_id, item);
+  const picks: WidgetAgentPick[] = main
+    ? [{ agent: main, conversation: live.find((item) => item.kind === 'main') ?? null }]
+    : [];
+  const others = s.agents
+    .filter((agent) => !agent.is_main && !agent.archived_at && threads.has(agent.id))
+    .map((agent) => ({ agent, conversation: threads.get(agent.id)! }))
+    .sort((a, b) => activity(b.conversation, parseMs) - activity(a.conversation, parseMs));
+  picks.push(...others);
   const shown = picks.slice(0, slots);
-  const floor = sprouty ? 1 : 0;
+  const floor = main ? 1 : 0;
   for (const pick of picks.slice(slots).filter(waiting)) {
     let i = shown.length - 1;
-    while (i >= floor && waiting(shown[i])) i -= 1;
+    while (i >= floor && waiting(shown[i]!)) i -= 1;
     if (i < floor) break;
     shown[i] = pick;
   }
   return shown;
 }
 
-/** A row's one signal and its number: pending cards beat unread replies. */
-export function widgetBadge(row: BotConversationSummary | null): Pick<WidgetBot, 'badge' | 'count'> {
-  if (!row) return { badge: null, count: null };
-  if (row.pending_requests > 0) return { badge: 'needs_you', count: row.pending_requests };
-  if (row.attention === 'unread') {
-    const n = row.unread_count ?? 0;
-    return { badge: 'unread', count: n > 0 ? n : null };
-  }
+/** A thread's one signal and its number: pending cards beat unread messages; muted shows neither. */
+export function widgetBadge(conversation: Conversation | null): Pick<WidgetBot, 'badge' | 'count'> {
+  if (!conversation) return { badge: null, count: null };
+  if (conversation.pending_requests > 0) return { badge: 'needs_you', count: conversation.pending_requests };
+  if (!conversation.muted && conversation.unread > 0) return { badge: 'unread', count: conversation.unread };
   return { badge: null, count: null };
 }
 
 /** The oldest pending card of a conversation — the one the thread scrolls to. */
-export function firstPendingRequest(requests: readonly BotRequestView[], sessionId: string): string | null {
-  let first: BotRequestView | null = null;
+export function firstPendingRequest(requests: readonly NeedsYou[], conversationId: string): NeedsYou | null {
+  let first: NeedsYou | null = null;
   for (const request of requests) {
-    if (request.session_id !== sessionId || request.status !== 'pending') continue;
+    if (request.conversation_id !== conversationId || request.status !== 'pending') continue;
     if (!first || request.created_at < first.created_at) first = request;
   }
-  return first?.id ?? null;
+  return first;
 }
 
 /** Stable file key of a face: FNV-1a over the SVG text + its length. */
@@ -176,11 +187,11 @@ export function artKey(svg: string): string {
   return `a${(h >>> 0).toString(16).padStart(8, '0')}${svg.length.toString(36)}`;
 }
 
-export type AvatarSource = Pick<BotView, 'id' | 'avatar' | 'template_key'>;
+export type AvatarSource = Pick<Agent, 'id' | 'avatar' | 'template_key'>;
 
 /** Both schemes of one face, queued in `jobs` (deduped by key). */
 function art(source: AvatarSource | null, state: PlantState, jobs: Map<string, string>): WidgetArt {
-  // No identity (the Bot list hasn't answered): Sprouty's plant, the same default the chat hero shows.
+  // No identity (the Agent list hasn't answered): the sprout, the same default the app shows.
   const { plant, tint } = source
     ? resolvePlantAvatar(source.avatar, { templateKey: source.template_key, stableId: source.id })
     : { plant: 'sprout' as const, tint: undefined };
@@ -202,13 +213,9 @@ export interface WidgetInput {
   now: number;
   nickname: string;
   lang: 'zh' | 'en';
-  /** The Bots store, or null when Bots are unavailable. */
-  bots: WidgetBotsSource | null;
-  /** The default agent: its name and, when it is a Bot we know, the Bot (null → Sprouty's plant). */
-  defaultAgent: { name: string; avatar: AvatarSource | null } | null;
-  sessions: WidgetSession[];
-  copy: RowCopy;
-  /** Hermes-safe timestamp parsing (src/lib/format.ts `parseMs`). */
+  /** What the app holds; null before the first load. */
+  source: WidgetSource | null;
+  /** Hermes-safe timestamp parsing (src/data/time.ts `parseMs`). */
   parseMs: (iso: string) => number;
 }
 
@@ -219,38 +226,34 @@ export function buildWidgetSnapshot(input: WidgetInput): { snapshot: WidgetSnaps
     const t = iso ? input.parseMs(iso) : NaN;
     return Number.isFinite(t) ? t : null;
   };
-  let bots: WidgetBot[] | null = null;
-  if (input.bots) {
-    const source = input.bots;
-    const dir: RowDirectory = { byId: source.byId, botsLoaded: source.botsLoaded };
-    bots = widgetBotPicks(source).map(({ bot, row }) => {
-      const signal = widgetBadge(row);
-      const sessionId = row?.session_id ?? bot.dm_session_id ?? null;
-      return {
-        id: bot.id,
-        sessionId,
-        name: bot.name,
-        art: art(bot, signal.badge === 'needs_you' ? 'waiting' : 'idle', jobs),
-        sprouty: isSproutyBot(bot),
-        ...signal,
-        requestId:
-          signal.badge === 'needs_you' && sessionId ? firstPendingRequest(source.pendingRequests, sessionId) : null,
-        preview: row ? oneLine(rowPreview(row, dir, input.copy)) : '',
-        lastAt: row ? ms(row.last_message?.created_at ?? row.last_activity_at) : null,
-      };
-    });
-  }
-  const agent = input.defaultAgent;
+  const source = input.source;
+  const bots: WidgetBot[] = source
+    ? widgetAgentPicks(source, input.parseMs).map(({ agent, conversation }) => {
+        const signal = widgetBadge(conversation);
+        const card =
+          signal.badge === 'needs_you' && conversation ? firstPendingRequest(source.requests, conversation.id) : null;
+        return {
+          id: agent.id,
+          sessionId: conversation?.id ?? null,
+          name: agent.name,
+          art: art(agent, signal.badge === 'needs_you' ? 'waiting' : 'idle', jobs),
+          sprouty: agent.is_main,
+          ...signal,
+          requestId: card?.id ?? null,
+          preview: oneLine(card?.title || agent.role),
+          lastAt: conversation ? ms(conversation.last_activity_at) : null,
+        };
+      })
+    : [];
+  const main = source?.agents.find((agent) => agent.is_main && !agent.archived_at) ?? null;
   const snapshot: WidgetSnapshot = {
     v: SNAPSHOT_VERSION,
     updatedAt: input.now,
     nickname: input.nickname,
     lang: input.lang,
-    defaultAgent: agent
-      ? { name: agent.name, art: art(agent.avatar, 'idle', jobs), sleep: art(agent.avatar, 'sleep', jobs) }
-      : null,
+    defaultAgent: main ? { name: main.name, art: art(main, 'idle', jobs), sleep: art(main, 'sleep', jobs) } : null,
     bots,
-    sessions: bots ? [] : input.sessions,
+    sessions: [],
   };
   return { snapshot, jobs: [...jobs].map(([key, svg]) => ({ key, svg })) };
 }

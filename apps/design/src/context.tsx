@@ -16,7 +16,9 @@ export interface DesignContextValue {
   openAgent: (id: string, tab?: string) => void;
   openRun: (id: string) => void;
   openProvider: (capability: Capability, personal?: boolean) => void;
-  openPanel: (title: string, content: ReactNode, center?: boolean) => void;
+  openPanel: (title: string, content: ReactNode) => void;
+  /** A ConfirmDialog over everything else. */
+  confirm: (confirmation: Confirmation) => void;
   notify: (text: string, action?: { label: string; onClick: () => void }) => void;
   theme: 'light' | 'dark' | 'system';
   setTheme: (theme: 'light' | 'dark' | 'system') => void;
@@ -31,6 +33,16 @@ export interface DesignContextValue {
   /** Row state the right-click menus change, keyed agent:<id> · room:<id> · chat:<title>. */
   marks: Marks;
   mark: (kind: keyof Marks, key: string, on?: boolean) => void;
+}
+/** A short decision (ConfirmDialog): a specific title, what it affects, the action repeated on the button. */
+export interface Confirmation {
+  title: string;
+  body: ReactNode;
+  confirmLabel: string;
+  cancelLabel?: string;
+  /** Irreversible or destructive: a solid red confirm button. */
+  danger?: boolean;
+  onConfirm: () => void;
 }
 export interface Marks {
   pinned: string[];

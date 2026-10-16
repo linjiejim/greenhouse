@@ -1,68 +1,91 @@
-/**
- * Renders an extension page (or its sidebar panel) for `#/<route>` once the
- * API has confirmed the extension is active; otherwise a calm "not enabled"
- * state — never a blank screen, never a crash.
- */
-import React, { Suspense } from 'react';
-import { Spinner } from '../components/ui';
-import { useT } from '../lib/i18n';
-import { useExtensionsStore } from '../stores/extensions-store';
-import { findExtensionPage } from './index';
+import { errorText } from '../lib/errors';
+import { useQuery } from '@tanstack/react-query';
+import { ErrorBox, Skeleton } from '@greenhouse/ui/kit';
+import { useMe } from '../app/session';
+import { api } from '../lib/api';
+import { useI18n } from '../lib/i18n';
+import type { Route } from '../lib/router';
+import { Page, PageHeader } from '../shell/Page';
+import { ErrorBoundary } from '../shell/ErrorBoundary';
+import { NotFoundPage } from '../pages/NotFoundPage';
+import { WEB_EXTENSIONS } from './registry';
 
-export function ExtensionPageHost({
-  route,
-  subPath,
-  params,
-}: {
-  route: string;
-  subPath: string;
-  params: URLSearchParams;
-}) {
-  const t = useT();
-  const loaded = useExtensionsStore((s) => s.loaded);
-  const active = useExtensionsStore((s) => s.extensions.some((e) => e.id === findExtensionPage(route)?.extension.id));
-  const match = findExtensionPage(route);
+export function useExtensions() {
+  const query = useQuery({ queryKey: ['extensions'], queryFn: () => api.extensions(), staleTime: Infinity });
+  return {
+    ...query,
+    items: WEB_EXTENSIONS.filter((extension) => query.data?.items.some((info) => info.id === extension.id)).map(
+      (extension) => ({ ...extension, info: query.data!.items.find((info) => info.id === extension.id)! }),
+    ),
+  };
+}
 
-  if (!match || (loaded && !active)) {
+export function ExtensionPage({ route }: { route: Extract<Route, { page: 'extension' | 'extension-section' }> }) {
+  const { t, locale } = useI18n();
+  const me = useMe();
+  const extensions = useExtensions();
+  if (extensions.isPending) return <Skeleton lines={3} />;
+  if (extensions.isError)
+    return <ErrorBox onRetry={() => void extensions.refetch()}>{errorText(extensions.error, t)}</ErrorBox>;
+  const extension = extensions.items.find((item) => item.id === route.extension);
+  if (!extension || (route.page === 'extension-section' && route.parent === 'admin' && me.role !== 'admin'))
+    return <NotFoundPage />;
+  if (route.page === 'extension') {
+    const page = extension.pages?.find((page) => page.id === route.view && extension.info.pages.includes(page.id));
+    if (!page) return <NotFoundPage />;
+    const Component = page.component;
     return (
-      <div className="flex h-full items-center justify-center text-sm text-fg-faint">
-        {t('app.extensionUnavailable')}
-      </div>
+      <Page width="list" header={<PageHeader title={page.label[locale]} />}>
+        <Component path={route.path} params={new URLSearchParams(route.query)} />
+      </Page>
     );
   }
-  if (!loaded) {
-    return (
-      <div className="flex h-full items-center justify-center">
-        <Spinner className="h-6 w-6 text-fg-faint" />
-      </div>
-    );
-  }
-  const Page = match.page.component;
+  const surfaces = route.parent === 'admin' ? extension.adminSections : extension.settingsSections;
+  const allowed = route.parent === 'admin' ? extension.info.admin_sections : extension.info.settings_sections;
+  const section = surfaces?.find((item) => item.id === route.section && allowed.includes(item.id));
+  if (!section) return <NotFoundPage />;
+  const Component = section.component;
   return (
-    <Suspense
-      fallback={
-        <div className="flex h-full items-center justify-center">
-          <Spinner className="h-6 w-6 text-fg-faint" />
-        </div>
-      }
-    >
-      <Page subPath={subPath} params={params} />
-    </Suspense>
+    <Page width="form" header={<PageHeader title={section.label[locale]} />}>
+      <Component />
+    </Page>
   );
 }
 
-export function ExtensionSidebarPanel({
-  route,
-  subPath,
-  onNavigate,
+export function ExtensionPanels({
+  entity,
+  id,
 }: {
-  route: string;
-  subPath: string;
-  onNavigate?: () => void;
+  entity: 'doc' | 'agent' | 'record' | 'app' | 'skill' | 'run' | `ext:${string}`;
+  id: string;
 }) {
-  const match = findExtensionPage(route);
-  const active = useExtensionsStore((s) => s.extensions.some((e) => e.id === match?.extension.id));
-  if (!match?.page.sidebarPanel || !active) return null;
-  const Panel = match.page.sidebarPanel;
-  return <Panel subPath={subPath} onNavigate={onNavigate} />;
+  const { t, locale } = useI18n();
+  const extensions = useExtensions();
+  return (
+    <>
+      {extensions.items.flatMap((extension) =>
+        (extension.entityPanels ?? [])
+          .filter(
+            (panel) =>
+              panel.entity === entity &&
+              extension.info.entity_panels.some((entry) => entry.id === panel.id && entry.entity === entity),
+          )
+          .map((panel) => {
+            const Component = panel.component;
+            return (
+              <section
+                key={`${extension.id}:${panel.id}:${id}`}
+                className="app-section"
+                aria-label={panel.label[locale]}
+              >
+                <h2 className="app-section-title">{panel.label[locale]}</h2>
+                <ErrorBoundary fallback={(retry) => <ErrorBox onRetry={retry}>{t('common.error')}</ErrorBox>}>
+                  <Component id={id} />
+                </ErrorBoundary>
+              </section>
+            );
+          }),
+      )}
+    </>
+  );
 }

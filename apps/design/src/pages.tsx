@@ -1,4 +1,4 @@
-import { useRef, useState, type ReactNode } from 'react';
+import { useId, useRef, useState, type ReactNode } from 'react';
 import {
   ArrowDown,
   Boxes,
@@ -22,24 +22,24 @@ import { PlantAvatar } from '@greenhouse/ui/components/plant-avatar';
 import {
   Badge,
   Button,
+  Checkbox,
   Empty,
   Field,
   HelpHint,
   IconButton,
   Input,
-  MiniChart,
-  PageFrame,
-  RequestCard,
+  Menu,
+  OverlayActions,
   SearchInput,
-  SectionTitle,
   Segmented,
+  Select,
   StatusBadge,
   Switch,
   Tabs,
-} from './components';
+  TextArea,
+} from '@greenhouse/ui/kit';
+import { MiniChart, PageFrame, RequestCard, SectionTitle } from './components';
 import { useDesign } from './context';
-import { Select } from './pickers';
-import { Menu } from './popover';
 import {
   agents,
   apps,
@@ -358,7 +358,7 @@ function Timeline() {
 }
 
 export function TablePage({ embedded = false }: { embedded?: boolean }) {
-  const { records, setRecords, openRecord, notify, openPanel } = useDesign();
+  const { records, setRecords, openRecord, notify, confirm } = useDesign();
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('全部状态');
   const [sort, setSort] = useState(false);
@@ -443,24 +443,13 @@ export function TablePage({ embedded = false }: { embedded?: boolean }) {
           <Button
             kind="ghost"
             onClick={() =>
-              openPanel(
-                `删除 ${selected.length} 条记录？`,
-                <div className="stack">
-                  <p>记录会进入回收站，30 天内可以恢复。</p>
-                  <div className="row end">
-                    <Button
-                      kind="danger"
-                      onClick={() => {
-                        remove();
-                        openPanel('已删除', <p>可以在下方提示里撤销。</p>, true);
-                      }}
-                    >
-                      删除记录
-                    </Button>
-                  </div>
-                </div>,
-                true,
-              )
+              confirm({
+                title: `删除 ${selected.length} 条记录？`,
+                body: '记录会进入回收站，30 天内可以恢复。',
+                confirmLabel: '删除记录',
+                danger: true,
+                onConfirm: remove,
+              })
             }
           >
             <Trash2 size={15} />
@@ -476,13 +465,10 @@ export function TablePage({ embedded = false }: { embedded?: boolean }) {
           <thead>
             <tr>
               <th className="check-cell">
-                <input
-                  type="checkbox"
+                <Checkbox
                   aria-label="选择当前页所有记录"
                   checked={allChecked}
-                  ref={(node) => {
-                    if (node) node.indeterminate = !allChecked && shown.some((item) => selected.includes(item.id));
-                  }}
+                  indeterminate={!allChecked && shown.some((item) => selected.includes(item.id))}
                   onChange={() =>
                     setSelected((value) =>
                       allChecked
@@ -504,8 +490,7 @@ export function TablePage({ embedded = false }: { embedded?: boolean }) {
             {shown.map((item) => (
               <tr key={item.id} className={selected.includes(item.id) ? 'selected-row' : ''}>
                 <td className="check-cell">
-                  <input
-                    type="checkbox"
+                  <Checkbox
                     aria-label={`选择 ${item.title}`}
                     checked={selected.includes(item.id)}
                     onChange={() => selectOne(item.id)}
@@ -599,13 +584,13 @@ export function TablePage({ embedded = false }: { embedded?: boolean }) {
               setPage(1);
             }}
           />
-          <IconButton label="上一页" disabled={safePage === 1} onClick={() => setPage(safePage - 1)}>
+          <IconButton label="上一页" size="sm" disabled={safePage === 1} onClick={() => setPage(safePage - 1)}>
             <ChevronLeft size={16} />
           </IconButton>
           <span className="small tabular">
             {safePage} / {pages}
           </span>
-          <IconButton label="下一页" disabled={safePage === pages} onClick={() => setPage(safePage + 1)}>
+          <IconButton label="下一页" size="sm" disabled={safePage === pages} onClick={() => setPage(safePage + 1)}>
             <ChevronRight size={16} />
           </IconButton>
         </div>
@@ -681,30 +666,7 @@ function AppRuntime({ app }: { app: (typeof apps)[number] }) {
         <>
           <Button
             kind="primary"
-            onClick={() =>
-              openPanel(
-                '提交工单',
-                <form
-                  className="stack"
-                  onSubmit={(event) => {
-                    event.preventDefault();
-                    notify('已提交，处理人会收到通知');
-                  }}
-                >
-                  <Field label="问题摘要" required>
-                    <Input data-autofocus />
-                  </Field>
-                  <Field label="优先级">
-                    <Select label="优先级" value="中" options={['高', '中', '低']} onChange={() => {}} />
-                  </Field>
-                  <div className="form-actions">
-                    <Button kind="primary" type="submit">
-                      提交
-                    </Button>
-                  </div>
-                </form>,
-              )
-            }
+            onClick={() => openPanel('提交工单', <TicketForm onSubmit={() => notify('已提交，处理人会收到通知')} />)}
           >
             提交工单
           </Button>
@@ -715,6 +677,34 @@ function AppRuntime({ app }: { app: (typeof apps)[number] }) {
       <Tabs items={['我的工单', '全部工单', '统计']} value={page} onChange={setPage} label="应用页面" />
       {page === '统计' ? <MiniChart title="本周新工单" /> : <TicketsTable />}
     </PageFrame>
+  );
+}
+
+function TicketForm({ onSubmit }: { onSubmit: () => void }) {
+  const formId = useId();
+  const [priority, setPriority] = useState('中');
+  return (
+    <form
+      id={formId}
+      className="stack"
+      noValidate
+      onSubmit={(event) => {
+        event.preventDefault();
+        onSubmit();
+      }}
+    >
+      <Field label="问题摘要" required>
+        <Input data-autofocus />
+      </Field>
+      <Field label="优先级">
+        <Select label="优先级" value={priority} options={['高', '中', '低']} onChange={setPriority} />
+      </Field>
+      <OverlayActions>
+        <Button kind="primary" type="submit" form={formId}>
+          提交工单
+        </Button>
+      </OverlayActions>
+    </form>
   );
 }
 
@@ -763,8 +753,10 @@ function SkillsPage() {
 }
 function SkillDetail({ skill, onUse }: { skill: (typeof skills)[number]; onUse: (text: string) => void }) {
   const [values, setValues] = useState<Record<string, string>>({ 项目: '产品改版', 风格: '简洁' });
+  const formId = useId();
   return (
     <form
+      id={formId}
       className="stack"
       onSubmit={(event) => {
         event.preventDefault();
@@ -789,11 +781,11 @@ function SkillDetail({ skill, onUse }: { skill: (typeof skills)[number]; onUse: 
             />
           </Field>
         ))}
-      <div className="form-actions">
-        <Button kind="primary" type="submit">
+      <OverlayActions>
+        <Button kind="primary" type="submit" form={formId}>
           在对话中使用
         </Button>
-      </div>
+      </OverlayActions>
     </form>
   );
 }
@@ -1109,14 +1101,14 @@ function SettingsPage() {
                           ? '断开后，Agent 立即失去访问；正在运行的工作会停下来问你。'
                           : '用你自己的账号授权，Agent 只能做你本人能做的事。'}
                       </p>
-                      <div className="row end">
+                      <OverlayActions>
                         <Button
                           kind={item.state === '已连接' ? 'danger' : 'primary'}
                           onClick={() => notify(item.state === '已连接' ? '已断开' : '已连接（示例）')}
                         >
                           {item.state === '已连接' ? '断开' : item.state === '已过期' ? '重新连接' : '连接'}
                         </Button>
-                      </div>
+                      </OverlayActions>
                     </div>,
                   )
                 }
@@ -1243,7 +1235,7 @@ function SettingsPage() {
           <Input value="super@greenhouse.local" readOnly />
         </Field>
         <Field label="关于我" help="所有 Agent 都会读到这段话：你的身份、偏好与习惯。比「记忆」更稳定，由你自己维护。">
-          <textarea className="input" rows={3} value={about} onChange={(event) => setAbout(event.target.value)} />
+          <TextArea rows={3} value={about} onChange={(event) => setAbout(event.target.value)} />
         </Field>
         <Saving
           dirty={dirty}
@@ -1289,7 +1281,7 @@ function SettingsPage() {
 // ─── Admin ───
 
 function AdminPage() {
-  const { selection, notify, openPanel, openProvider, newItem } = useDesign();
+  const { selection, notify, openPanel, openProvider, newItem, confirm } = useDesign();
   const [tab, setTab] = useState('成员');
   const [paused, setPaused] = useState(false);
   const [accent, setAccent] = useState('#235D4D');
@@ -1529,22 +1521,15 @@ function AdminPage() {
                 value={member.role}
                 options={['成员', '管理员']}
                 onChange={(role) =>
-                  openPanel(
-                    `把${member.name}设为${role}？`,
-                    <div className="stack">
-                      <p>
-                        {role === '管理员'
-                          ? '管理员可以管理成员、服务、预算和连接器，但看不到成员的对话。'
-                          : '对方会失去管理权限。'}
-                      </p>
-                      <div className="row end">
-                        <Button kind="primary" onClick={() => notify('角色已更新')}>
-                          设为{role}
-                        </Button>
-                      </div>
-                    </div>,
-                    true,
-                  )
+                  confirm({
+                    title: `把${member.name}设为${role}？`,
+                    body:
+                      role === '管理员'
+                        ? '管理员可以管理成员、服务、预算和连接器，但看不到成员的对话。'
+                        : '对方会失去管理权限。',
+                    confirmLabel: `设为${role}`,
+                    onConfirm: () => notify('角色已更新'),
+                  })
                 }
               />
               <Menu

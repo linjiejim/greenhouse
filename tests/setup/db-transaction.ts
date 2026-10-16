@@ -1,26 +1,17 @@
+import { disposeTestServices } from '../../apps/api/src/testing.js';
 import { afterAll, beforeEach, onTestFinished } from 'vitest';
-import {
-  closeIntegrationTestConnection,
-  startIntegrationTestTransaction,
-  TEST_DATABASE_URL,
-  type TestTransaction,
-} from '@greenhouse/db/test-config';
+import { closeTestConnection, startTestTransaction } from '@greenhouse/db/testing';
 
-let activeTransaction: TestTransaction | null = null;
-
+// Every test runs in its own transaction, rolled back when it finishes.
 beforeEach(async () => {
-  if (activeTransaction) await activeTransaction.rollback();
-  const transaction = await startIntegrationTestTransaction(TEST_DATABASE_URL);
-  activeTransaction = transaction;
-
+  const transaction = await startTestTransaction();
   onTestFinished(async () => {
-    await transaction.rollback();
-    if (activeTransaction === transaction) activeTransaction = null;
+    try {
+      await disposeTestServices();
+    } finally {
+      await transaction.rollback();
+    }
   });
 });
 
-afterAll(async () => {
-  await activeTransaction?.rollback();
-  activeTransaction = null;
-  await closeIntegrationTestConnection();
-});
+afterAll(() => closeTestConnection());

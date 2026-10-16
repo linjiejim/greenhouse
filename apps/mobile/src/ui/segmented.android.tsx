@@ -6,8 +6,9 @@ import { BrandText as Text } from './brand-text.android';
  */
 
 import React from 'react';
-import type { StyleProp, ViewStyle } from 'react-native';
-import { SegmentedButton, SingleChoiceSegmentedButtonRow } from '@expo/ui/jetpack-compose';
+import { useWindowDimensions, type StyleProp, type ViewStyle } from 'react-native';
+import { FormCheckRow } from './native-form.android';
+import { Column, SegmentedButton, SingleChoiceSegmentedButtonRow } from '@expo/ui/jetpack-compose';
 import { fillMaxWidth } from '@expo/ui/jetpack-compose/modifiers';
 import { selectionTick } from './haptics';
 import { M3Host } from './m3';
@@ -23,6 +24,27 @@ export function Segmented<T extends string>({
   onChange: (v: T) => void;
   style?: StyleProp<ViewStyle>;
 }) {
+  const { fontScale } = useWindowDimensions();
+  if (fontScale >= 1.5)
+    return (
+      <M3Host matchContents={{ vertical: true }} style={style}>
+        <Column modifiers={[fillMaxWidth()]}>
+          {options.map((option) => (
+            <FormCheckRow
+              key={option.value}
+              label={option.label}
+              checked={option.value === value}
+              onPress={() => {
+                if (option.value !== value) {
+                  selectionTick();
+                  onChange(option.value);
+                }
+              }}
+            />
+          ))}
+        </Column>
+      </M3Host>
+    );
   return (
     <M3Host matchContents={{ vertical: true }} style={style}>
       <SingleChoiceSegmentedButtonRow modifiers={[fillMaxWidth()]}>

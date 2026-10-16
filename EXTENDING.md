@@ -1,308 +1,67 @@
-# Extending Greenhouse
+# 扩展 Greenhouse v2
 
-Greenhouse is built to be extended without being forked apart. Every capability plugs into a
-**registry** that already drives chat, the `/api/agent` proxy, the `/api/mcp` server,
-permissions and the admin UI. Since 0.7 those registries aggregate from one more source: the
-**extension seam** — a folder per module, one import line, zero other core edits.
+扩展是部署者审核、编译进服务端与 Web 的可信代码。它复用 v2 的成员身份、服务、工具审批与 Provider 管理；不提供运行时安装任意代码的接口。
 
-There are three ways to add something, from lightest to heaviest:
+## 注册与启用
 
-| You want to… | Do this |
-|---|---|
-| Change how a deployment is wired (which extensions are on, where content packs live, how clients treat stations) | Edit `greenhouse.config.ts` — see [Configuration](#configuration) |
-| Add a private or experimental module — tools, routes, pages, tables, jobs — without touching core | Write an **extension** — see [Extensions](#extensions) |
-| Improve Greenhouse itself | Change the core registries directly and send it upstream — see [Core extension points](#core-extension-points) |
-
-> Earlier releases (≤ 0.6) shipped a family of `*.extensions.*` seam files that were pinned
-> empty upstream, then retired them in favour of the registries. The extension seam brings the
-> idea back as one explicit contract instead of sixteen stub files.
-
-## Configuration
-
-Configuration lives in three layers, each with one job:
-
-| Layer | Holds | Changed by |
-|---|---|---|
-| `.env` | secrets and infrastructure: `DATABASE_URL`, API keys, ports | ops, per machine |
-| Administration → Runtime Config / Branding Studio (database) | live product knobs: LLM / media / search credentials, product name, logo, theme | a super, from the browser, no restart |
-| `greenhouse.config.ts` (repo root) | structure that changes with a rebuild: enabled extensions, content packs, client stations | the maintainer of the deployment or fork |
-
-`greenhouse.config.ts` is typed by `@greenhouse/types/config` and validated at boot
-(`packages/types/src/config-schema.ts`); a bad file stops the API with a readable error.
+1. API：在 `apps/api/src/extensions/<id>/` 导出 `defineExtension(...)`，只在 `apps/api/src/extensions/index.ts` 登记。
+2. Web：在 `apps/web/src/extensions/<id>/` 导出 `defineWebExtension(...)`，只在 `apps/web/src/extensions/index.ts` 登记。
+3. 在根目录 `greenhouse.config.ts` 的 `extensions.enabled` 写 ID 列表或 `'all'`。默认空列表；`GREENHOUSE_EXTENSIONS=example`、`all` 或空值可在 API 启动时覆盖。
+4. API 在启动时校验启用项、注册适配器并执行启用扩展的迁移，再创建服务与开始监听。未知 ID 或重复 ID 会阻止启动。
+5. Web 编译进所有已登记扩展，仅显示 `GET /api/extensions` 返回的启用项及其声明的分区、页面与详情面板。管理员分区仅返回给管理员。
 
 ```ts
-import { defineConfig } from '@greenhouse/types/config';
+import { defineExtension } from '../../extension-kit.js';
 
-export default defineConfig({
-  extensions: { enabled: ['crm', 'example'] }, // or 'all'; GREENHOUSE_EXTENSIONS=… overrides at boot
-  packs: {
-    skills: ['packs/skills'],        // extra skill-pack roots, same layout as skillhub/
-    profiles: ['packs/profiles'],    // extra agent profile directories (a pack may override a core id)
-    seeds: 'packs/seed',             // dataset for `pnpm seed`
-  },
-  clients: {
-    stations: { mode: 'single', defaults: [{ id: 'hq', name: 'HQ', url: 'https://greenhouse.example.com' }] },
-  },
+export const myExtension = defineExtension({
+  id: 'my-module',
+  name: 'My module',
+  pages: ['records'],
+  // routes: (services) => new Hono<AppEnv>()...
+  // tools: (services) => [defineTool(...)],
 });
 ```
 
-- **`extensions.enabled`** — which *compiled* extensions are active. `'all'` for everything listed
-  in the two index files; an id list to trim per deployment. `GREENHOUSE_EXTENSIONS=crm,example`
-  (or `all`, or empty for none) overrides the file so one image serves several deployments.
-- **`packs`** — content, not code: skill packs, profile YAMLs and a seed dataset that live outside
-  the repository (a fork's `packs/` folder, a mounted volume). Paths are absolute or relative to
-  the repository root.
-- **`clients.stations`** — how the browser extension and the mobile app treat servers. `multi`
-  (default) lets users add and switch stations; `single` locks a client build to the one station in
-  `defaults`. See `apps/browser/src/AGENTS.md` and `apps/mobile/AGENTS.md` for the build wiring.
+API 的公共导入是 `apps/api/src/extension-kit.ts`；Web 的是 `apps/web/src/extension-kit.ts`。数据库与契约分别从 `@greenhouse/db`、`@greenhouse/contract` 导入。扩展独有的 zod 契约可放在 `packages/contract/src/extensions/<id>.ts`，通过 `@greenhouse/contract/extensions/<id>` 导入；核心不导出或导入这些实现。
 
-## Extensions
+## 扩展面
 
-An extension is two folders and two list entries:
+| 扩展面 | API `defineExtension` | Web `defineWebExtension` |
+| --- | --- | --- |
+| 页面 | `pages: ['records']` 声明路由 ID | `pages: [{ id, label: { zh, en }, component }]`；`#/ext/<id>/<page>[/<path>]`；组件收到 `path`、`params`，出现在「更多」及窄屏模块菜单 |
+| HTTP | `routes(services)` 返回 Hono，固定挂到 `/api/ext/<id>` | 使用统一 `api.request`，沿用刷新令牌及错误处理 |
+| Agent 工具 | `tools(services)` 返回现有 `ToolDef`；名称必须以 `ext_<id 的下划线形式>_` 开头 | 复用现有过程、审批与结果展示 |
+| 全局搜索来源 | `searchSources(services)`；每项有 `id`、`search(memberId, query, limit)`，返回 `id/title/snippet?/path` | ⌘K 自动显示 `extensions` 分组的结果；`path` 只能落在该扩展的 `#/ext/<id>/` 下 |
+| Provider 适配器 | `providerAdapters` 使用现有 `ProviderAdapter`；kind 以 `<id>-` 开头 | 自动加入现有管理 → 服务的配置表单，复用适配器的 schema 和 secretKeys |
+| 设置分区 | `settingsSections` 声明 ID；扩展路由调用自己的成员设置服务 | `settingsSections`；`#/settings/ext/<id>/<section>` |
+| 管理分区 | `adminSections` 声明 ID；`/api/ext/<id>/admin` 及子路由强制管理员 | `adminSections`；`#/admin/ext/<id>/<section>`，同时检查管理员身份 |
+| 实体详情面板 | `entityPanels: [{ id, entity }]` 声明面板；数据仍由扩展服务检查可见性 | `entityPanels` 的组件收到实体 `id`；支持 doc、agent、record、app、skill、run，或扩展自己的 `ext:<id>:<kind>`；自有实体页调用 `ExtensionPanels` |
+| 独立迁移 | `migrations: { dir }` 绝对目录 | 无 |
 
-```
-apps/api/src/extensions/<id>/    ← tools, routes, tables + migrations, services, jobs, commands, flags
-apps/web/src/extensions/<id>/    ← pages, navigation, settings modules, translations, chat cards
-apps/api/src/extensions/index.ts ← import + list entry (API half)
-apps/web/src/extensions/index.ts ← import + list entry (web half)
-```
+没有工作台配方、按成员功能开关、公共回调或 `/api/agent` 工具代理等旧扩展面。外部 MCP 接口仍是核心已定义的权限组；注册 Agent 工具不会自动把它公开到 MCP。
 
-Nothing else in core changes. The registries — tool catalog, route mounting, platform
-applications, feature flags and points, workspace settings, public paths, scheduler, CLI,
-database services, migrations, hash router, sidebar, i18n, tool cards, agent context — all read
-the active extensions and fold their contributions in. Copy `apps/api/src/extensions/example`
-and `apps/web/src/extensions/example` to start: together they exercise every field.
+## 权限与网络
 
-### The API half — `defineExtension`
+- 每个扩展 HTTP 路由都先经过核心 `requireMember`，使用当前数据库里的角色、状态和 auth_version。扩展不能替换核心路由或增加匿名入口。
+- 路由用 zod 解析请求，服务负责查询、事务与权限；路由、搜索、面板和工具调用同一服务。仅藏 UI 不算权限检查。成员设置只属于本人；工作区设置修改须在同一事务记 `audit`，摘要只列字段名。
+- 工具完整沿用 read / tier1 / tier2 / tier3；声明写入风险，通过审批执行器运行。公开 Agent 默认看不到扩展工具，除非工具明确声明 `publicAgent` 并按使用者权限处理。工具读取不可信数据须标记 `taints`；后台的 private/outbound 限制照常适用。
+- 外部调用只走 `services.providers`。扩展适配器必须使用其 `create` 获得的 pinned `fetch`，仅到配置的 `endpoints`；不能直接使用全局 fetch、厂商 SDK 或环境变量里的密钥。服务解析、机密封装、计量、预算与回退均复用核心。
+- 用户文案使用中英字典，样式使用组件库与设计 token；面板错误局部显示。删除扩展时同时删除自己的声明、契约、迁移与测试，核心不保留兼容占位。
 
-```ts
-// apps/api/src/extensions/crm/index.ts
-import { defineExtension, extensionPath, requireFeature } from '../../extension-kit.js';
+## 数据库迁移
 
-export const crmExtension = defineExtension({
-  id: 'crm',                        // lowercase, digits, dashes — also the config switch
-  name: 'CRM',
-  tools: [crmQueryTool, crmMutationTool],                  // defineTool(); lazy tools use createLazy(ctx)
-  routes: [{ path: '/api/ext/crm', app: crmRoutes, guards: [requireFeature('crm')] }],
-  applications: [{ manifest: crmManifest, handlers: crmHandlers, teamCapabilities: ['crm.*'] }],
-  featureFlags: [{ key: 'crm', label: 'CRM', description: '…', defaultEnabled: false }],
-  featurePoints: [{ key: 'crm', kind: 'flag', flag: 'crm', group: 'apps', toolIds: ['crm_query', 'crm_mutation'], … }],
-  workspaceSettings: [{ key: 'crm.api_key', group: 'crm', label: 'API key', type: 'string', secret: true, … }],
-  publicPaths: { exact: ['/api/ext/crm/webhook'] },
-  jobs: [{ id: 'crm-sync', cron: '*/15 * * * *', run: syncCrm }],
-  commands: [{ name: 'crm:import', usage: 'Import customers from a CSV', run: importCsv }],
-  migrations: { dir: extensionPath(import.meta.url, 'migrations') },
-  services: (db) => ({ customers: createCustomerService(db) }),
-  resetTables: ['ext_crm_customers'],
-  skillPacks: [extensionPath(import.meta.url, 'skills')],
-  onBoot: async ({ db, config }) => { /* warm caches, validate credentials */ },
-  onShutdown: async () => { /* flush */ },
-});
-```
+扩展表以 `ext_<id 的下划线形式>_` 命名，不进入核心 baseline。独立目录中的 `NNNN_name.sql` 按文件名排序，可用 `--> statement-breakpoint` 分隔语句。已执行文件只能追加，不能修改、删除或在前面插入文件。
 
-Every field is optional and maps 1:1 onto a core registry:
+核心表 `extension_migrations` 以 `(extension_id, name)` 为主键，记录 checksum 与 applied_at。启动只迁移启用项；所有待执行文件在一个事务和同一个 advisory lock 下执行，失败整体回滚。多个副本同时启动不会重复执行。迁移漂移会阻止启动，不能自动抹掉记录或覆盖 SQL。
 
-| Field | Lands in | Notes |
-|---|---|---|
-| `tools` | tool catalog → chat, `/api/agent`, `/api/mcp`, workbench | `meta.surface` decides exposure exactly like a core tool. Lazy tools implement `createLazy(ctx)` (user, session, db, `unattended`) — no per-tool case in core, and `defineExtension` refuses a lazy tool without it. Ids must not collide. |
-| `routes` | mounted after the typed core chain | Convention `/api/ext/<id>`; `guards` run for every request under the prefix. Extension routes are not part of the public `AppType` contract. |
-| `applications` | platform kernel (`bootstrapPlatform` + `initializePlatformRuntime`) | Manifest v2 + handlers; scaffold with `pnpm cli platform create-app <id>`. |
-| `featureFlags` / `featurePoints` | `user_features`, the permissions dialog, feature-owned tool sets | Extension flags are strings (the compile-time `FeatureKey` union stays core-only). A non-global tool must belong to exactly one point. |
-| `workspaceSettings` | Runtime Config (one section per extension), `workspace_settings` table, env overlay | Key `<id>.<name>`, `group: '<id>'`; secrets are encrypted at rest and write-only over the API. |
-| `publicPaths` | `isPublicPath()` in the auth middleware | Keep minimal — OAuth callbacks, webhooks. |
-| `jobs` | started/stopped with the scheduler | croner syntax; zone defaults to `SCHEDULER_TIMEZONE`. |
-| `commands` | `pnpm cli <name>` and `pnpm cli --help` | Namespace with the id: `crm:import`. |
-| `migrations` | the extension migration lane | Ordered `NNNN_name.sql` files, `--> statement-breakpoint` between statements (what `drizzle-kit generate` emits). Applied at boot under an advisory lock, tracked in `extension_migrations` with a checksum — editing an applied file fails fast. Core DDL stays in `drizzle/`. |
-| `services` / `resetTables` | `db.extensions[<id>]`, integration-test truncation | Keep a typed accessor: `getExtensionServices<CrmServices>(db, 'crm')`. |
-| `entityKinds` | in-app deeplinks (`entityUrl` / `parseEntityUrl`) and chat peeks | `{ kind: 'ext:crm:company', route: '#/crm/companies/:id' }` — one template drives both directions. Put the URL in a tool result and the chat renders a peek instead of a link. |
-| `searchSources` | the ⌘P palette | One lane per record kind; it applies its own permission check and a failure only empties its own group. |
-| `mcpGroups` | MCP consent + OAuth scopes | `['crm']` gives `mcp:crm`; tools join it with `surface.mcp: 'crm'`. Existing grants never pick up a new group. |
-| `exportSources` | the `export_data` tool's source union | A whole-dataset lane (`crm_customers`) so the model exports server-side instead of transcribing rows. Apply your own authorization; the tool only persists the result. |
-| `applications[].teamExportableEntities` | the `team` role's bootstrap field policy | Which of your entities a normal user may export in full. Empty by default — bulk export is a deliberate grant. |
-| `applications[].platformTools` | MCP tool visibility | Ties `crm_query` / `crm_mutation` to the application's query / command actions, so a fully denied tool disappears from `tools/list` like core's do. |
-| `dependsOn` | a boot-time check | Ids this extension needs switched on too. Two extensions in one build can import each other by path; this makes the configuration requirement explicit and fails fast instead of deep inside a request. Reserve it for the genuinely unshareable — an authenticated transport, a credential chain. |
-| `driveScopes` | the shared Drive (`drive_folders` / `drive_files`) | Your own file cabinet inside core's tables: rows carry `scope: '<your scope>'` and `owner_key` (any text — a record id), and the `authorize(ownerKey, ctx)` you declare is the only rule core applies. |
-| `workbenchRecipes` | Home workbench card picker + `workbench_query.recipes` | Backed by one of the extension's own read tools; `labelKey` / `descriptionKey` translate it. |
-| `skillPacks` | Skill Center seed at boot | Same layout as `skillhub/`. |
-| `onBoot` / `onShutdown` | after the tool registry exists, before routes serve; on SIGTERM | |
+核心 schema 改动仍编辑 `packages/db/src/schema` 后运行 `pnpm db:baseline`；不要用扩展通道修改核心表，也不要直接运行裸 `drizzle-kit migrate`。
 
-Import what you need from `apps/api/src/extension-kit.ts` (`defineTool`, `getDb`,
-`getAuthUser`, `requireFeature`, `getWorkspaceValue`, `GREENHOUSE_CONFIG`, types). Deeper
-imports into core stay possible; the kit is the documented stable subset.
+## 完整示例与验证
 
-### The web half — `defineWebExtension`
+仓库的 `example` 扩展覆盖上表每个扩展面：每人私有笔记、成员和管理员设置、文档详情及自有实体面板、带审批的写工具、搜索来源、使用 pinned fetch 的搜索适配器和独立 SQL 迁移。平常默认关闭；Web 浏览器测试启用它。
 
-```ts
-// apps/web/src/extensions/crm/index.ts
-import { lazy } from 'react';
-import { defineWebExtension } from '../../extension-kit';
+- API：`apps/api/src/extensions/example/`，测试在 `extensions/__tests__/example.db.test.ts`，覆盖鉴权、私有数据、管理审计、审批执行、迁移 checksum、Provider 计量。
+- Web：`apps/web/src/extensions/example/`，浏览器验证在 `apps/web/e2e/platform.e2e.ts`，覆盖页面、设置、管理、详情面板、搜索和 light/dark/390 px。
+- 防泄漏：`tests/architecture/extensions.test.ts` 扫描静态导入、再导出、动态导入和 require；只有两端的 `extensions/index.ts` 可从核心侧导入具体扩展。核心可依赖通用 define/host 与公共 extension-kit。
 
-export const crmWebExtension = defineWebExtension({
-  id: 'crm',
-  messages: { en: { title: 'CRM', … }, zh: { title: '客户', … } },   // merged under ext.crm.*
-  pages: [
-    {
-      route: 'crm',
-      component: lazy(() => import('./page')),
-      sidebarPanel: CrmNavPanel,
-      titleKey: 'ext.crm.title',
-      // Optional: sub-modules of this page — `#/crm/companies`, module id `crm.companies`.
-      modules: [{ key: 'companies', labelKey: 'ext.crm.companies', icon: Users }],
-      // Optional: hashes from before the extension — `#/customers/<tail>` → `#/crm/companies/<tail>`.
-      aliases: { customers: 'crm/companies' },
-    },
-  ],
-  navigation: [{ id: 'crm', labelKey: 'ext.crm.nav', icon: Users, href: '#/crm', route: 'crm', requireFeature: 'crm' }],
-  modules: [{ key: 'crm', parent: 'settings', labelKey: 'ext.crm.settings', icon: Users, component: CrmSettings }],
-  toolCards: [{ tool: 'crm_query', component: CrmResultCard }],
-  toolIcons: { crm_query: Users, crm_mutation: Users },
-  contextProvider: { type: 'extension', label: …, emptyMessage: …, quickActions: …, contextHint: … },
-});
-```
-
-| Field | Lands in | Notes |
-|---|---|---|
-| `pages` | hash router (`#/<route>` and sub-paths), top bar, contextual sidebar | Rendered only while the API reports the id active; otherwise a calm "not enabled" state. |
-| `pages[].modules` | the navigation registry as `standalone` modules, id `<id>.<key>` | What `<ModulePage moduleId="crm.companies">`, the module rail and the breadcrumb resolve against. Omit for a one-screen page. |
-| `pages[].aliases` | the hash router, before extension routes | Legacy top-level hashes → a path inside this page; the tail and query survive (`#/customers/42` → `#/crm/companies/42`). Must land in the page's own route, must not repeat a route, unique across the compiled set; a core route can never be aliased. |
-| `navigation` | the sidebar "More" menu (desktop flyout + mobile drawer) | `requireFeature` / `requireRole` hide the entry per user. |
-| `modules` | Settings ("Extensions" section) or Administration | Key becomes `#/settings/<key>` or `#/administration/<key>`; the module id is `settings.<key>` / `admin.<key>` (core's own shape), so a panel renders through `<ModulePage moduleId="admin.<key>">`; pins and breadcrumbs work. |
-| `messages` | i18n, under `ext.<id>.*` | `t('ext.crm.title')` type-checks; a missing locale falls back to English. The visible-copy guard still rejects hard-coded English in your TSX. |
-| `toolCards` / `toolIcons` | chat transcript, tool catalogs | A card replaces the trace row once the tool returned without error; `placement: 'below'` renders after the prose. |
-| `entityKinds` | peek / side-pane chrome and body for the kinds the API half registered | Same `kind` string on both halves; `render` is optional (without it the peek offers "open full page"). |
-| `mcpGroups` | consent screen and machine-client form | Display copy for a group the API half owns; the group only appears while the extension is active. |
-| `knowledgeDocPanels` | every knowledge document, between backlinks and comments | For things attached to documents — provenance, sync state. |
-| `contextProvider` | the agent panel on your pages | Receives `{ type: 'extension', extension, route, subPath }`. |
-
-`apps/web/src/extension-kit.ts` re-exports `authFetch`, `useT`, the UI kit, `useAuthStore`,
-`canUseFeature`, `usePageActions` and the contract types.
-
-On the browser side, `<DriveBrowser owner={{ scope: 'crm', owner_key: String(companyId) }} />`
-renders that cabinet with the same UI Tables and Knowledge use.
-
-### Proving it in a browser
-
-An API-level test cannot see the failures an extension actually ships with — a module id the
-panel cannot resolve, a page that throws on first render, a front end still calling a moved
-route. Two things cover that, and both are generic:
-
-- **The surface sweep** — `tests/e2e-ui/extension-surfaces.spec.ts` reads every hash the
-  *active* extensions registered (`window.__greenhouseExtensionSurfaces`, fed by
-  `defineWebExtension`: pages, page modules, "More" entries, Settings / Administration modules,
-  aliases) and opens each one, failing on an error boundary, a "not enabled" state, a blank
-  shell or an uncaught page error. Nothing to write: compile an extension in, switch it on, and
-  the sweep covers it.
-- **Extension-owned specs** — `apps/web/src/extensions/<id>/e2e/*.e2e.ts` run in the
-  `extensions` Playwright project with the shared authenticated state (see
-  `apps/web/src/extensions/example/e2e/notes.e2e.ts`). Import only `@playwright/test`; the
-  folder stays self-contained and inside the seam.
-
-CI runs both in the `e2e-ui` job with `GREENHOUSE_EXTENSIONS=example`. A fork's CI runs the
-same `pnpm test:e2e:ui` with its own extensions enabled (the config file's list applies when
-the variable is unset), so a private extension gets the sweep and its own specs on every push.
-
-### What the seam does not cover (yet)
-
-Notification transports (email / WeCom / Feishu) and workbench **pinning** of extension records
-are still closed in core — pinning needs a read tool plus an action mapping per kind, which no
-extension has asked for yet. If your module needs one, extend the registry upstream rather than
-patching around it: that is a contribution, not a fork.
-
-### Keeping a fork thin
-
-A fork keeps its private modules under `apps/*/src/extensions/<id>/`, its content under
-`packs/`, its deployment files under `deploy/`, and its own `greenhouse.config.ts`; it syncs with
-`git merge upstream/main`. `scripts/check-extension-overlay.mjs` fails the fork's CI when a commit
-touches anything else, so a gap in the seam surfaces as an upstream pull request instead of a
-patch that will conflict on the next merge:
-
-```bash
-git remote add upstream https://github.com/linjiejim/greenhouse.git && git fetch upstream
-node scripts/check-extension-overlay.mjs upstream/main
-```
-
-Upstream's workflows (`ci.yml`, `release.yml`, `release-please.yml`, `mobile.yml`, `deploy.yml`,
-`desktop-release.yml`) are gated to `linjiejim/greenhouse` and stay inert in a fork — `ci.yml`
-included, because it neither migrates a fork's extension tables nor carries an organisation's
-gitleaks licence, so on a fork it could only fail. A fork puts its own gates and deployment in
-`.github/workflows/fork-*.yml`, which the overlay guard allows; `desktop-check.yml` (Rust checks
-of the shell, nothing deployment-specific) is the one upstream workflow that still runs there.
-
-The rule of thumb: **code that could exist without your business goes upstream; content,
-credentials and business-specific modules stay in the overlay.**
-
-## Core extension points
-
-Everything below is also what the extension seam feeds; use these directly when the change
-belongs to Greenhouse itself.
-
-| Add a… | Where | Mechanism |
-|---|---|---|
-| **Agent tool** (chat, plus `/api/agent` / `/api/mcp` as its `surface` allows) | `apps/api/src/tools/<name>.ts` + one line in `CORE_TOOL_MODULES` (`tools/registry.ts`); a lazy tool also gets a construction case in `buildLazyServerTools` (`agent-runtime/tool-resolution.ts`) | `defineTool({ meta, kind, create? })`: static tools get `create(db)`, lazy ones are built per request from the caller's `userId`; `meta.surface` decides proxy / MCP exposure and the workbench binding; `meta.is_global` decides default availability |
-| **Platform application** (module with entities, permissions, navigation) | `apps/api/src/platform/manifests/<app>.ts` + `apps/api/src/platform/<app>/application.ts`, registered in `index.ts` (`initializePlatformRuntime`) and `platform/bootstrap.ts` | Manifest v2 (JSON-serializable) + registration handlers; scaffold with `pnpm cli platform create-app <id>`; bump `manifest.version` whenever the serialized manifest changes |
-| **Feature flag** (per-user opt-in / opt-out) | `packages/types/src/features.ts` | `FEATURE_FLAGS` entry; guard routes with `requireFeature('<key>')`; the admin toggle appears automatically |
-| **Feature point** (what a flag / app owns) | `apps/api/src/platform/feature-points.ts` | Maps a flag or app to its tool ids and capability prefix so one switch controls app + REST + MCP + chat |
-| **API route** | `apps/api/src/routes/<resource>.ts`, mounted in `apps/api/src/index.ts` (`mountRoutes`) | Chained Hono routes (they become part of the typed `AppType` contract used by the web client) |
-| **Database table + service** | `packages/db/src/schema/<domain>.ts` + `services/<domain>.ts`, one line in `provider.ts` | Drizzle schema → `pnpm drizzle-kit generate` → review SQL → commit; services are typed factories, the provider type is inferred |
-| **Web page / navigation** | `apps/web/src/pages/**`, `apps/web/src/lib/nav-registry.ts`, hash routes in `apps/web/src/app.tsx` | Settings/Administration modules come from `nav-registry`; top-level pages are hash routes in `app.tsx`; platform apps surface through the permission-aware catalog (`apps/web/src/platform/`) |
-| **Chat card for a tool output** | `apps/web/src/components/tool-call/body-artifacts.tsx` + `tool-call-card.tsx` | Tool results render from the tool's `presentation` metadata; add a body renderer keyed by tool id |
-| **Translations** | `apps/web/src/lib/i18n/{en,zh}.ts` | Keys must exist in both locales; `visible-copy.test.ts` rejects hardcoded English in TSX |
-| **Workspace setting** (admin-editable runtime config) | `packages/types/src/workspace-settings.ts` | One `WORKSPACE_SETTINGS` entry (`key`, `group`, `type`, `secret?`, `env?`) — the Runtime Config page renders from it, no migration |
-| **Model** | `apps/api/src/config/models.yaml` | Catalog entry with a provider chain; `api_key_env` / `model_env` / `base_url_env` name the env vars; unset keys hide the model |
-| **Agent profile** | `apps/api/src/profiles/*.yaml` (or a `packs.profiles` directory) | Validated on load by `validateProfile()` in `apps/api/src/profiles/profile.ts`; keep prompts free of tool-specific rules (those belong in tool descriptions) |
-| **Skill pack** (first-party skill) | `skillhub/<group>/<name>/SKILL.md` (+ `CHANGELOG.md`, assets), or a `packs.skills` root | Synced into the Skill Center on boot; see `skillhub/README.md` |
-| **Automation-eligible write tool** | `packages/types/src/automation-tools.ts` | Opt-in catalog of tools an owner may grant to an unattended run |
-| **Upload storage backend** | `apps/api/src/storage/uploads.ts` | Local disk by default; Tencent COS when `TENCENT_CLOUD_COS_*` are set; Skill Center bundles use `SKILLS_S3_*` |
-| **Notification transport** | `apps/api/src/notifications/` | Durable delivery attempts per transport (email, WeCom, Feishu) |
-| **Integration (OAuth callback, bot)** | `apps/api/src/wecom/`, `apps/api/src/feishu/` as reference implementations | Public callback paths are listed in `auth/middleware.ts` (`PUBLIC_PATHS`) — keep that list minimal |
-
-## Golden rules
-
-1. **Registries, not forks of shared files.** If a change needs an edit to `registry.ts`,
-   `index.ts`, `provider.ts` beyond the one-line registration, add the missing seam to the
-   registry instead of special-casing your module.
-2. **Permissions are declared, not hand-rolled.** Tools declare `surface` and `is_global`, and
-   feature points map each flag or application to the tools it owns; applications declare
-   capabilities and entity/field policies in the manifest. Transport layers (HTTP, chat,
-   proxy, MCP) adapt protocol only — they never make a second permission decision.
-   Extensions inherit this: a guard on a route, a flag on a tool, never both halves
-   re-deciding.
-3. **Declared capabilities must be real.** A tool description, UI option or doc must not claim
-   something the code cannot do; unconfigured paths fail explicitly.
-4. **Delete with the same discipline as you add.** Removing a module means removing its
-   translations, nav entries, docs and tests in the same change.
-5. **Generic improvements go upstream.** Anything that could exist without your private
-   domain belongs in Greenhouse; keep only genuinely private modules on your branch.
-
-## Recipe: a private module as an extension
-
-1. Copy `apps/api/src/extensions/example` → `apps/api/src/extensions/<id>` and
-   `apps/web/src/extensions/example` → `apps/web/src/extensions/<id>`; rename the id everywhere.
-2. Add the import + list entry in both `extensions/index.ts` files; enable the id in
-   `greenhouse.config.ts` (or `GREENHOUSE_EXTENSIONS`).
-3. Tables: write `migrations/0001_*.sql` (or generate it with a per-extension drizzle config),
-   declare `resetTables`, expose services through `services`.
-4. Tools: one file per tool with `defineTool`; own them through a feature point so the
-   permissions dialog shows one switch for the whole module. Declare `mcpGroups` if the module
-   should be separately consentable over MCP, and `entityKinds` + `searchSources` if it owns
-   records people will link to and search for.
-5. UI: a page under `#/<id>`, a "More" entry, translations under `ext.<id>.*`, a card for the
-   tool's result.
-6. Tests: a `*.db.test.ts` for the service, a route test, and a seam test that imports the
-   extension with `GREENHOUSE_EXTENSIONS=<id>` (see `apps/api/src/extensions/__tests__/seam.test.ts`).
-
-## Recipe: a list/edit page with `@greenhouse/crud`
-
-The low-code CRUD framework turns one declarative schema into a list + filters + add/edit
-form + detail + delete.
-
-- **Server:** `createTableCrudService(getDb(), myTable, opts)` (from `@greenhouse/db`) →
-  `createCrudRoutes(service, { filterable, sortable, guards, hooks, parseCreate, parseUpdate })`
-  (from `@greenhouse/crud/server`) → mount in `index.ts` (or in an extension's `routes`).
-  Filter/sort keys are whitelisted fail-loud (unknown key → 400).
-- **Client:** `defineCrud<Row>({ dataSource: createRestDataSource('/api/…', authFetch), columns,
-  filters, formFields, access, … })` then render `<CrudPage schema={…} />`. Reference
-  implementations: `apps/web/src/pages/administration/users.tsx`, `skills.tsx`, `mcp-keys.tsx`.
-- **Escape hatches, narrow → wide:** column/field `type: 'custom'` (render fn) → `slots` +
-  `tableActions` / `pageActions` → use `CrudPage` / `CrudForm` / `CrudDetail` standalone in a
-  bespoke page (`installCrudUi` wires the host's UI kit once, in `app.tsx`).
+私有覆盖层保留自己的扩展目录、扩展契约、注册清单和部署配置。需要新通用能力时，先给核心增加一个可验证的扩展面，再让私有代码使用它。

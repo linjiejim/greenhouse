@@ -4,6 +4,10 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./i18n": {
+      "import": "./src/i18n.ts",
+      "types": "./src/i18n.ts"
+    },
     "./date": {
       "import": "./src/date.ts",
       "types": "./src/date.ts"
@@ -36,6 +40,10 @@
       "import": "./src/semver.ts",
       "types": "./src/semver.ts"
     },
+    "./audio": {
+      "import": "./src/audio.ts",
+      "types": "./src/audio.ts"
+    },
     "./wecom": {
       "import": "./src/wecom.ts",
       "types": "./src/wecom.ts"
@@ -55,6 +63,10 @@
     "./mentions": {
       "import": "./src/mentions.ts",
       "types": "./src/mentions.ts"
+    },
+    "./cron": {
+      "import": "./src/cron.ts",
+      "types": "./src/cron.ts"
     }
   },
   "scripts": {

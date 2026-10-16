@@ -16,21 +16,23 @@
 ## 来源
 
 - tokens：packages/ui/src/tokens/haven.ts 是唯一来源。改完运行 pnpm tokens:build 生成 haven.css；单元测试检查文件是否最新和全部对比度。文档不抄写数值。
-- 组件：原型 apps/design 是当前实现（pnpm design:dev，#components 是组件页）；路线图 M0.2 把它们搬进 packages/ui。
+- 组件：packages/ui/src/kit 是实现（@greenhouse/ui/kit），新 Web 与原型共用；原型 apps/design 的组件页（pnpm design:dev，#components）演示每个状态。
 - 画稿：design/greenhouse-v2/greenhouse-v2.pen（本地，不进 git）。只放关键页面的布局、设计系统和组件状态；变量与 tokens 同名同值。
 - 原型、画稿、文档冲突时以文档为准，然后把另外两处改过来。
 
 ## 文件
 
+- rules.md：交互规则。做界面时必须守的规则，先读这一份。
 - foundations.md：颜色、字体、间距、圆角、尺寸、阴影、层级、动效、图标、焦点、主题与品牌。
 - layout.md：应用壳、目录行、页头、内容宽度、抽屉与 Sheet、窄屏。
 - components.md：组件与状态。
 - patterns.md：详情与编辑、保存、确认与撤销、右键菜单、数据视图、空与失败、搜索、通知、服务配置、登录。
 - conversation.md：对话目录、对话页、回复卡片、需要你、输入框。
+- motion.md：交互动效、时长与减少动态效果。
 - content.md：文案、状态词、时间与数字。
 
 ## 维护
 
-- 新组件或新状态：同时改 components.md、原型的组件页和画稿的组件板，检查浅色、深色和手机。
+- 新组件或新状态：同时改 components.md、packages/ui/src/kit（含单元测试）、原型的组件页和画稿的组件板，检查浅色、深色和手机。
 - 新 token：先确认现有角色表达不了，再只改 haven.ts。
 - 本目录是目标规范。新 Web 落地前，v1 代码的旧约定只对旧代码有效（apps/web/src/AGENTS.md）。

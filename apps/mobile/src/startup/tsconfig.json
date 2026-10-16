@@ -1,7 +1,7 @@
 {
   // The ROOT vitest exercises startup without the isolated mobile install. Stop
   // Vite's nearest-tsconfig lookup before it reaches expo/tsconfig.base, which
-  // is absent in root CI (the same convention as ../bots/tsconfig.json).
+  // is absent in root CI (the same convention as the other stubs).
   // The app's own tsc still uses apps/mobile/tsconfig.json for these sources.
   "compilerOptions": {
     "strict": true,

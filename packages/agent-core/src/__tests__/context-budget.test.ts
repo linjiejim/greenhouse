@@ -6,7 +6,7 @@
  * context-length error. Pin the drop-oldest/keep-newest semantics.
  */
 
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import {
   estimateTokens,
   windowMessagesByBudget,
@@ -14,7 +14,6 @@ import {
   HISTORY_TOKEN_BUDGET,
   DEFAULT_COMPACTION_THRESHOLD,
 } from '../context-budget.js';
-import { setModelRegistry, DEFAULT_MODEL_REGISTRY } from '../registry.js';
 
 describe('estimateTokens', () => {
   it('counts non-CJK text at ~4 chars per token', () => {
@@ -72,40 +71,17 @@ describe('windowMessagesByBudget', () => {
 });
 
 describe('resolveHistoryBudget', () => {
-  afterEach(() => {
-    setModelRegistry(DEFAULT_MODEL_REGISTRY);
+  it('derives context window × threshold', () => {
+    expect(resolveHistoryBudget(200_000, 0.3)).toBe(60_000);
   });
 
-  it('derives context_window × threshold from the catalog entry', () => {
-    setModelRegistry({
-      m: {
-        name: 'M',
-        contextWindow: 200_000,
-        compactionThreshold: 0.3,
-        providers: [{ provider: 'deepseek', model: 'm', apiKeyEnv: 'K' }],
-      },
-    });
-    expect(resolveHistoryBudget('m')).toBe(60_000);
-  });
-
-  it('defaults the threshold to 50% when the entry declares only a window', () => {
-    setModelRegistry({
-      m: {
-        name: 'M',
-        contextWindow: 1_000_000,
-        providers: [{ provider: 'deepseek', model: 'm', apiKeyEnv: 'K' }],
-      },
-    });
+  it('defaults the threshold to 50%', () => {
     expect(DEFAULT_COMPACTION_THRESHOLD).toBe(0.5);
-    expect(resolveHistoryBudget('m')).toBe(500_000);
+    expect(resolveHistoryBudget(1_000_000)).toBe(500_000);
   });
 
-  it('falls back to the conservative budget for unknown models, windowless entries and missing ids', () => {
-    setModelRegistry({
-      bare: { name: 'Bare', providers: [{ provider: 'deepseek', model: 'b', apiKeyEnv: 'K' }] },
-    });
-    expect(resolveHistoryBudget('bare')).toBe(HISTORY_TOKEN_BUDGET);
-    expect(resolveHistoryBudget('ghost')).toBe(HISTORY_TOKEN_BUDGET);
+  it('falls back to the conservative budget when the model declares no window', () => {
     expect(resolveHistoryBudget(undefined)).toBe(HISTORY_TOKEN_BUDGET);
+    expect(resolveHistoryBudget(0)).toBe(HISTORY_TOKEN_BUDGET);
   });
 });

@@ -1,181 +1,21 @@
 /**
- * Design tokens — iOS system colors + the Greenhouse Haven green accent.
- *
- * The app follows the iOS Human Interface Guidelines: surfaces, text,
- * separators and fills are the *system semantic colors* (on iOS they are
- * `PlatformColor`s, so they track light/dark, Increased Contrast and every iOS
- * release exactly), and brand identity comes from a single tint — Haven green — used
- * for interactive elements, selection and the brand mascot. Never hard-code a
- * hex for a surface or text: pick the semantic token.
- *
- * Two views of the same palette:
- *  - `colors` — what views and text use. iOS: PlatformColor / DynamicColorIOS
- *    objects (opaque `ColorValue`s — never string-manipulate them). Android:
- *    the Material 3 palette seeded from the Haven green (./theme-m3.android.ts — the
- *    same one Compose views are themed with); web: the hex mirror.
- *  - `hex` — plain strings for the few places that need a real color string
- *    (react-native-svg drawing, alpha math, Swift widget assets). Mirrors the
- *    iOS values; keep both in sync when adding a token.
- *
- * Appearance: the in-app theme preference (system / light / dark) is applied
- * with `Appearance.setColorScheme`, which overrides the UIWindow's interface
- * style — so dynamic colors, native headers, sheets, menus and SwiftUI views
- * all follow the same choice. See `useApplyAppearance()` (called once in the
- * root layout).
- *
- * Styling: build a themed StyleSheet with `makeStyles((c) => ({...}))` at module
- * scope, then `const { colors: c } = useTheme(); const styles = useStyles(c);`.
+ * Haven content colors, with UIKit/SwiftUI and Material owning native controls.
+ * RN content selects an explicit palette with the app theme: nested dynamic
+ * UIColors can resolve against different traits inside a native header or Host.
+ * Dark content values mirror system surfaces; controls still use system styling.
+ * `colors` are opaque ColorValues; use `hex` for SVG and alpha calculations.
  */
 
 import { useEffect } from 'react';
-import {
-  Appearance,
-  DynamicColorIOS,
-  Platform,
-  PlatformColor,
-  StyleSheet,
-  useColorScheme,
-  type ColorValue,
-  type TextStyle,
-} from 'react-native';
+import { Appearance, Platform, StyleSheet, useColorScheme, type ColorValue, type TextStyle } from 'react-native';
 import { usePrefs } from './store/prefs';
 import { materialPalette } from './theme-m3';
 
 /* ------------------------------ hex mirrors ------------------------------ */
 
-/** Haven forest green in light mode and pale sage in dark mode. */
-const BRAND_LIGHT = '#235D4D';
-const BRAND_DARK = '#B1D2BF';
-
-const lightHex = {
-  // ── Brand ──
-  accent: BRAND_LIGHT,
-  /** Text/icons on a filled accent surface. */
-  onAccent: '#FFFFFF',
-  /** Tinted fill behind accent content (selected rows, AI avatar, chips). */
-  accentFill: 'rgba(35,93,77,0.12)',
-  /** Accent-colored text that must stay readable on `accentFill`. */
-  accentText: '#235D4D',
-  /**
-   * Glyphs / text on a filled *non-accent* color (a system-color icon tile, a
-   * gray avatar, a project's color) — white in both schemes, like the icons
-   * in iOS Settings. On the accent itself use `onAccent`.
-   */
-  onTint: '#FFFFFF',
-
-  // ── Backgrounds (plain + grouped) ──
-  background: '#FFFFFF',
-  secondaryBackground: '#F2F2F7',
-  tertiaryBackground: '#FFFFFF',
-  groupedBackground: '#F2F2F7',
-  secondaryGroupedBackground: '#FFFFFF',
-  tertiaryGroupedBackground: '#F2F2F7',
-
-  // ── Text ──
-  label: '#000000',
-  secondaryLabel: 'rgba(60,60,67,0.6)',
-  tertiaryLabel: 'rgba(60,60,67,0.3)',
-  quaternaryLabel: 'rgba(60,60,67,0.18)',
-  placeholder: 'rgba(60,60,67,0.3)',
-  link: BRAND_LIGHT,
-
-  // ── Separators / fills ──
-  separator: 'rgba(60,60,67,0.29)',
-  opaqueSeparator: '#C6C6C8',
-  fill: 'rgba(120,120,128,0.2)',
-  secondaryFill: 'rgba(120,120,128,0.16)',
-  tertiaryFill: 'rgba(118,118,128,0.12)',
-  quaternaryFill: 'rgba(116,116,128,0.08)',
-
-  // ── System colors (status / semantics) ──
-  red: '#FF3B30',
-  orange: '#FF9500',
-  yellow: '#FFCC00',
-  green: '#34C759',
-  blue: '#007AFF',
-  indigo: '#5856D6',
-  purple: '#AF52DE',
-  gray: '#8E8E93',
-  redFill: 'rgba(255,59,48,0.12)',
-  orangeFill: 'rgba(255,149,0,0.14)',
-  greenFill: 'rgba(52,199,89,0.14)',
-  blueFill: 'rgba(0,122,255,0.12)',
-
-  // ── Chat ──
-  /** The user's message bubble. */
-  bubble: '#F2F2F7',
-
-  // ── Code blocks (always dark, both schemes) ──
-  codeBg: '#1C1C1E',
-  codeHeader: '#2C2C2E',
-  codeText: '#E5E5EA',
-  codeComment: '#8E8E93',
-  codeLabel: '#AEAEB2',
-  /** Syntax colors on the always-dark code card (Xcode's default dark theme). */
-  codeKeyword: '#FC5FA3',
-  codeString: '#FC6A5D',
-  codeNumber: '#D0BF69',
-
-  /** Dimming layer under the drawer / custom overlays. */
-  scrim: 'rgba(0,0,0,0.22)',
-};
-
-export type HexPalette = typeof lightHex;
-
-const darkHex: HexPalette = {
-  accent: BRAND_DARK,
-  onAccent: '#123427',
-  accentFill: 'rgba(177,210,191,0.16)',
-  accentText: '#D7EFDD',
-  onTint: '#FFFFFF',
-
-  background: '#000000',
-  secondaryBackground: '#1C1C1E',
-  tertiaryBackground: '#2C2C2E',
-  groupedBackground: '#000000',
-  secondaryGroupedBackground: '#1C1C1E',
-  tertiaryGroupedBackground: '#2C2C2E',
-
-  label: '#FFFFFF',
-  secondaryLabel: 'rgba(235,235,245,0.6)',
-  tertiaryLabel: 'rgba(235,235,245,0.3)',
-  quaternaryLabel: 'rgba(235,235,245,0.16)',
-  placeholder: 'rgba(235,235,245,0.3)',
-  link: BRAND_DARK,
-
-  separator: 'rgba(84,84,88,0.6)',
-  opaqueSeparator: '#38383A',
-  fill: 'rgba(120,120,128,0.36)',
-  secondaryFill: 'rgba(120,120,128,0.32)',
-  tertiaryFill: 'rgba(118,118,128,0.24)',
-  quaternaryFill: 'rgba(118,118,128,0.18)',
-
-  red: '#FF453A',
-  orange: '#FF9F0A',
-  yellow: '#FFD60A',
-  green: '#30D158',
-  blue: '#0A84FF',
-  indigo: '#5E5CE6',
-  purple: '#BF5AF2',
-  gray: '#8E8E93',
-  redFill: 'rgba(255,69,58,0.18)',
-  orangeFill: 'rgba(255,159,10,0.18)',
-  greenFill: 'rgba(48,209,88,0.18)',
-  blueFill: 'rgba(10,132,255,0.18)',
-
-  bubble: '#1C1C1E',
-
-  codeBg: '#1C1C1E',
-  codeHeader: '#2C2C2E',
-  codeText: '#E5E5EA',
-  codeComment: '#8E8E93',
-  codeLabel: '#AEAEB2',
-  codeKeyword: '#FC5FA3',
-  codeString: '#FC6A5D',
-  codeNumber: '#D0BF69',
-
-  scrim: 'rgba(0,0,0,0.45)',
-};
+import { lightHex, darkHex, type HexPalette } from './theme/palette';
+export type { HexPalette } from './theme/palette';
+const BRAND_LIGHT = lightHex.accent;
 
 /* ---------------------------- Android palette ---------------------------- */
 
@@ -185,66 +25,20 @@ export const SEED = BRAND_LIGHT;
 const LIGHT = Platform.OS === 'android' ? materialPalette(lightHex, 'light', SEED) : lightHex;
 const DARK = Platform.OS === 'android' ? materialPalette(darkHex, 'dark', SEED) : darkHex;
 
-/* ------------------------------ iOS palette ------------------------------ */
-
 export type ThemeColors = { [K in keyof HexPalette]: ColorValue };
 
-/** UIKit semantic color names backing each token on iOS (null = brand/custom). */
-const IOS_SYSTEM: Partial<Record<keyof HexPalette, string>> = {
-  background: 'systemBackground',
-  secondaryBackground: 'secondarySystemBackground',
-  tertiaryBackground: 'tertiarySystemBackground',
-  groupedBackground: 'systemGroupedBackground',
-  secondaryGroupedBackground: 'secondarySystemGroupedBackground',
-  tertiaryGroupedBackground: 'tertiarySystemGroupedBackground',
-  label: 'label',
-  secondaryLabel: 'secondaryLabel',
-  tertiaryLabel: 'tertiaryLabel',
-  quaternaryLabel: 'quaternaryLabel',
-  placeholder: 'placeholderText',
-  separator: 'separator',
-  opaqueSeparator: 'opaqueSeparator',
-  fill: 'systemFill',
-  secondaryFill: 'secondarySystemFill',
-  tertiaryFill: 'tertiarySystemFill',
-  quaternaryFill: 'quaternarySystemFill',
-  red: 'systemRed',
-  orange: 'systemOrange',
-  yellow: 'systemYellow',
-  green: 'systemGreen',
-  blue: 'systemBlue',
-  indigo: 'systemIndigo',
-  purple: 'systemPurple',
-  gray: 'systemGray',
-  bubble: 'secondarySystemBackground',
-};
-
-function buildIosPalette(): ThemeColors {
-  const out = {} as Record<keyof HexPalette, ColorValue>;
-  for (const key of Object.keys(lightHex) as (keyof HexPalette)[]) {
-    const system = IOS_SYSTEM[key];
-    out[key] = system ? PlatformColor(system) : DynamicColorIOS({ light: lightHex[key], dark: darkHex[key] });
-  }
-  return out;
-}
-
-const iosPalette: ThemeColors | null = Platform.OS === 'ios' ? buildIosPalette() : null;
-
-/**
- * The active palette. On iOS `colors` is one stable object (dynamic colors
- * resolve natively), so styles never need rebuilding on a scheme change; the
- * `hex` mirror and `isDark` still follow the scheme for SVG / string needs.
- */
+/** Stable objects per appearance keep RN content and native Host colors in sync. */
 export function useTheme(): { colors: ThemeColors; hex: HexPalette; isDark: boolean } {
   const scheme = useColorScheme();
-  const isDark = scheme === 'dark';
+  const pref = usePrefs((s) => s.theme);
+  const isDark = pref === 'dark' || (pref === 'system' && scheme === 'dark');
   const hex = isDark ? DARK : LIGHT;
-  return { colors: iosPalette ?? hex, hex, isDark };
+  return { colors: hex, hex, isDark };
 }
 
 /**
  * Apply the in-app theme preference to the whole UI (UIKit trait override), so
- * PlatformColors, native headers, sheets, menus and SwiftUI follow it. Call
+ * native headers, sheets, menus and SwiftUI follow it. Call
  * once from the root layout.
  */
 export function useApplyAppearance(): void {
@@ -293,7 +87,7 @@ const iosTypo = {
   subheadline: { fontSize: 15, lineHeight: 20, fontWeight: '400' },
   footnote: { fontSize: 13, lineHeight: 18, fontWeight: '400' },
   caption1: { fontSize: 12, lineHeight: 16, fontWeight: '400' },
-  caption2: { fontSize: 11, lineHeight: 13, fontWeight: '400' },
+  caption2: { fontSize: 12, lineHeight: 16, fontWeight: '400' },
 } as const satisfies Record<string, TextStyle>;
 
 /**
@@ -312,7 +106,7 @@ const androidTypo: { [K in keyof typeof iosTypo]: TextStyle } = {
   subheadline: { fontSize: 14, lineHeight: 20, fontWeight: '400' },
   footnote: { fontSize: 12, lineHeight: 16, fontWeight: '400' },
   caption1: { fontSize: 12, lineHeight: 16, fontWeight: '400' },
-  caption2: { fontSize: 11, lineHeight: 16, fontWeight: '400' },
+  caption2: { fontSize: 12, lineHeight: 16, fontWeight: '400' },
 };
 
 export const typo = Object.fromEntries(
@@ -377,6 +171,9 @@ export function alpha(color: string, a: number): string {
   const out = Math.round(Math.min(1, Math.max(0, base * a)) * 1000) / 1000;
   return `rgba(${rgb.map(Math.round).join(',')},${out})`;
 }
+
+/** Haven motion durations; system navigation owns its own transitions. */
+export const motion = { fast: 140, base: 200, slow: 240, exit: 180 } as const;
 
 /** Minimum touch target (HIG). */
 export const HIT = 44;

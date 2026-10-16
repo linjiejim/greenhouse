@@ -17,6 +17,7 @@ import {
   shadow,
   share,
   space,
+  stroke,
   type,
   zIndex,
   type ThemeMode,
@@ -64,6 +65,7 @@ function staticDeclarations(): string[] {
   for (const [name, value] of Object.entries(layout)) lines.push(`${cssVar(name)}: ${value}px;`);
   for (const [name, value] of Object.entries(share)) lines.push(`${cssVar(`${name}-share`)}: ${value}%;`);
   for (const [name, value] of Object.entries(avatar)) lines.push(`${cssVar(`avatar-${name}`)}: ${value}px;`);
+  for (const [name, value] of Object.entries(stroke)) lines.push(`${cssVar(`stroke-${name}`)}: ${value}px;`);
   lines.push(`${cssVar('icon-sm')}: ${icon.sm}px;`);
   lines.push(`${cssVar('icon-md')}: ${icon.md}px;`);
   lines.push(`${cssVar('icon-lg')}: ${icon.lg}px;`);

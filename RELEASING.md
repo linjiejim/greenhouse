@@ -51,9 +51,8 @@ for people who want to test the tip and understand it can break.
    Release with the generated notes.
 4. **The tag triggers `.github/workflows/release.yml`**, which builds & publishes:
    - the **container image** to `ghcr.io/<owner>/greenhouse` (`:X.Y.Z`, `:X.Y`,
-     `:latest`), stamped with `APP_VERSION`/`APP_REVISION` + OCI labels;
-   - the **browser extension zip** `greenhouse-bridge-vX.Y.Z.zip`, attached to the
-     Release.
+     `:latest`), stamped with `APP_VERSION`/`APP_REVISION` + OCI labels.
+   The browser extension and the desktop shell return after v2.0; tags build neither.
    The source tarball is attached automatically by GitHub.
 
 Pushes to `main` (no tag) run the same `release.yml` but only publish the `:edge` /
@@ -68,7 +67,7 @@ write** as the `RELEASE_PLEASE_TOKEN` secret — release-please uses it
 (`secrets.RELEASE_PLEASE_TOKEN || GITHUB_TOKEN`) and step 4 becomes hands-off.
 
 **Without the PAT**, the Release + tag are still created, but you must publish the
-stable image + browser zip by re-pushing the tag from a machine with normal push
+stable image by re-pushing the tag from a machine with normal push
 rights (a `GITHUB_TOKEN`-free push *does* cascade):
 
 ```bash
@@ -154,16 +153,9 @@ Without `MIRROR_PREFIX` the steps are skipped.
     README's Railway section. Re-check `TRUSTED_PROXY_HOPS` if Railway changes its edge: the
     client address must be the visitor's, not `100.64.x.x` or an edge address.
 
-### Browser extension → versioned zip
-
-`pnpm --filter @greenhouse/browser package` runs `vite build`, stamps
-`dist/manifest.json` `version` from `APP_VERSION` (normalised to Chrome's numeric
-form — `v0.2.0-rc.1` → `0.2.0`), and zips `dist/` into
-`greenhouse-bridge-v<version>.zip` for "Load unpacked" / Web Store submission.
-
 ### Desktop shell → installers + update manifests (`desktop-release.yml`)
 
-Every `v*` tag also builds the Tauri desktop shell (`apps/desktop`) for macOS (Apple Silicon)
+After v2.0, `workflow_dispatch` on an existing tag builds the Tauri desktop shell (`apps/desktop`) for macOS (Apple Silicon)
 and Windows (x64), packages the signed web bundle, attaches everything to the tag's GitHub
 Release and publishes the three manifests installed shells trust —
 `app/latest.json`, `app/downloads.json`, `web/manifest.json` — to the project site under

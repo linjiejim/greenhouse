@@ -43,4 +43,4 @@ LABEL org.opencontainers.image.title="Greenhouse" \
       org.opencontainers.image.licenses="MIT"
 EXPOSE 3000
 # Exec form so the process receives SIGTERM/SIGINT (graceful shutdown handlers).
-CMD ["./node_modules/.bin/tsx", "apps/api/src/index.ts"]
+CMD ["node", "--import", "tsx", "apps/api/src/index.ts"]

@@ -1,0 +1,554 @@
+/* ── 表格: the timeline view (gantt). Tokens only. Timeline.tsx places rows, bars and header cells
+   in px and sets --app-tb-tl-title and --app-tb-tl-row (from the same tokens) on the view. ── */
+
+.app-tb-tl {
+  --app-tb-tl-bar: var(--gh-space-6);
+  --app-tb-tl-mark: var(--gh-space-6);
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: var(--gh-space-3);
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+}
+
+.app-tb-tl.is-narrow {
+  --app-tb-tl-bar: var(--gh-space-8);
+  --app-tb-tl-mark: var(--gh-space-8);
+}
+
+/* ── The view's own bar: scale, earlier / today / later, records without dates ── */
+
+.app-tb-tl-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--gh-space-2);
+}
+
+.app-tb-tl-nav {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--gh-space-1);
+}
+
+.app-tb-tl-unscheduled {
+  margin-left: auto;
+}
+
+span.app-tb-tl-unscheduled {
+  color: var(--gh-secondary);
+  font: var(--gh-type-label);
+}
+
+/* ── The one scroll area: both ways; the header and the title column stay put ── */
+
+.app-tb-tl-scroll {
+  position: relative;
+  flex: 1 1 0;
+  min-height: calc(var(--gh-space-16) * 4);
+  overflow: auto;
+  overscroll-behavior-x: contain;
+  isolation: isolate;
+  border: var(--gh-stroke-hairline) solid var(--gh-line);
+  border-radius: var(--gh-radius-lg);
+  background: var(--gh-surface);
+  scroll-padding: var(--gh-space-10) 0 0 var(--app-tb-tl-title);
+  scrollbar-width: thin;
+}
+
+.app-tb-tl-content {
+  position: relative;
+}
+
+/* ── Header: month or year over days, weeks or months ── */
+
+.app-tb-tl-head {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  height: var(--gh-space-10);
+  border-bottom: var(--gh-stroke-hairline) solid var(--gh-line);
+  background: var(--gh-chrome);
+  color: var(--gh-secondary);
+  font: var(--gh-type-caption);
+}
+
+.app-tb-tl-corner {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  width: var(--app-tb-tl-title);
+  height: 100%;
+  padding: 0 var(--gh-space-3);
+  border-right: var(--gh-stroke-hairline) solid var(--gh-line);
+  background: var(--gh-chrome);
+  font: var(--gh-type-label);
+}
+
+.app-tb-tl-axis {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: var(--app-tb-tl-title);
+}
+
+.app-tb-tl-tier {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 50%;
+}
+
+.app-tb-tl-tier.is-upper {
+  top: 0;
+}
+
+.app-tb-tl-tier.is-lower {
+  bottom: 0;
+}
+
+/* overflow: clip, not hidden: a hidden overflow would stop the sticky label inside. */
+.app-tb-tl-cell {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  overflow: clip;
+  border-left: var(--gh-stroke-hairline) solid var(--gh-line);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.app-tb-tl-cell-text {
+  padding: 0 var(--gh-space-2);
+}
+
+/* A month's or year's name stays at the left edge while its days scroll by. */
+.app-tb-tl-tier.is-upper .app-tb-tl-cell-text {
+  position: sticky;
+  left: var(--app-tb-tl-title);
+  color: var(--gh-text);
+  font-weight: 600;
+}
+
+.app-tb-tl-axis.is-day .app-tb-tl-tier.is-lower .app-tb-tl-cell {
+  justify-content: center;
+}
+
+.app-tb-tl-axis.is-day .app-tb-tl-tier.is-lower .app-tb-tl-cell-text {
+  padding: 0;
+}
+
+.app-tb-tl-cell.is-today {
+  color: var(--gh-accent-text);
+  font-weight: 700;
+}
+
+.app-tb-tl-today-mark {
+  position: absolute;
+  bottom: 0;
+  width: var(--gh-stroke-strong);
+  height: var(--gh-space-1);
+  margin-left: calc(var(--gh-stroke-strong) / -2);
+  background: var(--gh-accent);
+}
+
+/* ── Body: row lines, weekends, today, arrows, then the rows ── */
+
+.app-tb-tl-body {
+  position: relative;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+/* The title column's ground for the whole height, under the titles of the rows drawn. */
+.app-tb-tl-rail {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  width: var(--app-tb-tl-title);
+  height: 100%;
+  border-right: var(--gh-stroke-hairline) solid var(--gh-line);
+  background: var(--gh-surface);
+}
+
+.app-tb-tl-grid {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 0;
+  background-image: linear-gradient(
+    to bottom,
+    transparent calc(var(--app-tb-tl-row) - var(--gh-stroke-hairline)),
+    var(--gh-line) 0
+  );
+  background-size: 100% var(--app-tb-tl-row);
+  pointer-events: none;
+}
+
+/* Days and weeks: a line where each week starts (the range starts on a Monday) and weekends shaded. */
+.app-tb-tl-grid.is-day,
+.app-tb-tl-grid.is-week {
+  background-image:
+    linear-gradient(to bottom, transparent calc(var(--app-tb-tl-row) - var(--gh-stroke-hairline)), var(--gh-line) 0),
+    linear-gradient(to right, var(--gh-line) var(--gh-stroke-hairline), transparent 0),
+    linear-gradient(to right, transparent calc(var(--app-tb-tl-day) * 5), var(--gh-fill) 0);
+  background-size:
+    100% var(--app-tb-tl-row),
+    calc(var(--app-tb-tl-day) * 7) 100%,
+    calc(var(--app-tb-tl-day) * 7) 100%;
+}
+
+.app-tb-tl-vline {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: var(--gh-stroke-hairline);
+  background: var(--gh-line);
+}
+
+.app-tb-tl-today {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 1;
+  width: var(--gh-stroke-strong);
+  margin-left: calc(var(--gh-stroke-strong) / -2);
+  background: var(--gh-accent);
+  pointer-events: none;
+}
+
+.app-tb-tl-arrows {
+  position: absolute;
+  top: 0;
+  z-index: 1;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.app-tb-tl-arrow {
+  fill: none;
+  stroke: var(--gh-secondary);
+  stroke-width: var(--gh-stroke-control);
+  stroke-linejoin: round;
+}
+
+.app-tb-tl-arrow .app-tb-tl-arrow-head {
+  fill: var(--gh-secondary);
+  stroke: none;
+}
+
+.app-tb-tl-arrow.is-active {
+  stroke: var(--gh-accent);
+}
+
+.app-tb-tl-arrow.is-active .app-tb-tl-arrow-head {
+  fill: var(--gh-accent);
+}
+
+/* ── Rows: placed by top, the title sticks to the left ── */
+
+.app-tb-tl-row {
+  position: absolute;
+  left: 0;
+  right: 0;
+}
+
+.app-tb-tl-title {
+  position: sticky;
+  left: 0;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: var(--gh-space-1);
+  width: var(--app-tb-tl-title);
+  height: 100%;
+  padding-right: var(--gh-space-2);
+  border-right: var(--gh-stroke-hairline) solid var(--gh-line);
+  background: var(--gh-surface);
+  box-shadow: inset 0 calc(-1 * var(--gh-stroke-hairline)) var(--gh-line);
+}
+
+/* The chevron's tooltip shows over the rows below. */
+.app-tb-tl-title:hover,
+.app-tb-tl-title:focus-within {
+  z-index: 4;
+}
+
+.app-tb-tl-twisty-space {
+  flex: none;
+  width: var(--gh-control-sm);
+}
+
+/* Phones: the chevron keeps its width in the narrow column; the row gives it 44 of height. */
+[data-narrow] .app-tb-tl-twisty.gh-icon-button {
+  width: var(--gh-control-sm);
+  min-width: var(--gh-control-sm);
+}
+
+.app-tb-tl-chevron {
+  transition: transform var(--gh-duration-fast) var(--gh-ease-standard);
+}
+
+.app-tb-tl-chevron.is-open {
+  transform: rotate(90deg);
+}
+
+.app-tb-tl-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: var(--gh-control-sm);
+  padding: 0 var(--gh-space-2);
+  overflow: hidden;
+  border: 0;
+  border-radius: var(--gh-radius-sm);
+  background: none;
+  color: var(--gh-text);
+  font: var(--gh-type-body-sm);
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.app-tb-tl-name:hover {
+  background: var(--gh-hover);
+}
+
+.app-tb-tl-name.is-parent {
+  font-weight: 600;
+}
+
+.app-tb-tl-name.is-untitled {
+  color: var(--gh-secondary);
+}
+
+.app-tb-tl-name:focus-visible {
+  outline: var(--gh-stroke-strong) solid var(--gh-focus);
+  outline-offset: calc(-1 * var(--gh-stroke-strong));
+}
+
+.app-tb-tl.is-narrow .app-tb-tl-name {
+  height: 100%;
+}
+
+/* ── Bars and milestones ── */
+
+.app-tb-tl-bar {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  height: var(--app-tb-tl-bar);
+  margin: auto 0;
+  padding: 0;
+  overflow: hidden;
+  border: var(--gh-stroke-hairline) solid var(--gh-accent-text);
+  border-radius: var(--gh-radius-sm);
+  background: var(--gh-selection);
+  color: var(--gh-accent-text);
+  font: var(--gh-type-caption);
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  transition-property: background-color, box-shadow;
+  transition-duration: var(--gh-duration-fast);
+}
+
+.app-tb-tl-bar:hover {
+  background: color-mix(in srgb, var(--gh-selection), var(--gh-accent) 10%);
+}
+
+/* A record with children: its bar spans them, drawn with a heavier edge. */
+.app-tb-tl-bar.is-parent {
+  border-width: var(--gh-stroke-strong);
+}
+
+.app-tb-tl-bar-text {
+  min-width: 0;
+  padding: 0 var(--gh-space-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.app-tb-tl-bar:focus-visible,
+.app-tb-tl-milestone:focus-visible {
+  outline: var(--gh-stroke-strong) solid var(--gh-focus);
+  outline-offset: var(--gh-stroke-strong);
+}
+
+.app-tb-tl-grip {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: var(--gh-space-2);
+  cursor: ew-resize;
+}
+
+.app-tb-tl-grip.is-start {
+  left: 0;
+}
+
+.app-tb-tl-grip.is-end {
+  right: 0;
+}
+
+.app-tb-tl-grip::after {
+  content: '';
+  position: absolute;
+  top: 25%;
+  bottom: 25%;
+  left: calc(50% - var(--gh-stroke-hairline));
+  width: var(--gh-stroke-strong);
+  border-radius: var(--gh-radius-full);
+  background: currentColor;
+  opacity: 0;
+  transition: opacity var(--gh-duration-fast);
+}
+
+.app-tb-tl-bar:hover .app-tb-tl-grip::after,
+.app-tb-tl-bar.is-dragging .app-tb-tl-grip::after {
+  opacity: 0.6;
+}
+
+.app-tb-tl-milestone {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--app-tb-tl-mark);
+  height: var(--app-tb-tl-mark);
+  margin: auto 0 auto calc(var(--app-tb-tl-mark) / -2);
+  padding: 0;
+  border: 0;
+  border-radius: var(--gh-radius-sm);
+  background: none;
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.app-tb-tl-diamond {
+  width: var(--gh-space-3);
+  height: var(--gh-space-3);
+  border-radius: var(--gh-space-0_5);
+  background: var(--gh-accent);
+  transform: rotate(45deg);
+  transition: background-color var(--gh-duration-fast);
+}
+
+.app-tb-tl-milestone:hover .app-tb-tl-diamond {
+  background: var(--gh-accent-hover);
+}
+
+.app-tb-tl-bar.is-dragging,
+.app-tb-tl-milestone.is-dragging {
+  z-index: 2;
+}
+
+.app-tb-tl-bar.is-dragging,
+.app-tb-tl-milestone.is-dragging .app-tb-tl-diamond {
+  box-shadow: var(--gh-shadow-1);
+}
+
+/* A title beside a bar too thin to hold it, or after a milestone. */
+.app-tb-tl-aside {
+  position: absolute;
+  top: 0;
+  z-index: 1;
+  max-width: calc(var(--gh-space-16) * 4);
+  overflow: hidden;
+  color: var(--gh-secondary);
+  font: var(--gh-type-caption);
+  line-height: var(--app-tb-tl-row);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.app-tb-tl-aside.is-after-mark {
+  margin-left: calc(var(--app-tb-tl-mark) / 2 + var(--gh-space-1));
+}
+
+/* The dates a drag lands on, over the bar (under it in the first row). */
+.app-tb-tl-tip {
+  position: absolute;
+  bottom: calc(50% + var(--app-tb-tl-bar) / 2 + var(--gh-space-1));
+  z-index: 4;
+  padding: var(--gh-space-0_5) var(--gh-space-2);
+  border-radius: var(--gh-radius-sm);
+  background: var(--gh-text);
+  color: var(--gh-canvas);
+  box-shadow: var(--gh-shadow-1);
+  font: var(--gh-type-caption);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.app-tb-tl-tip.is-below {
+  top: calc(50% + var(--app-tb-tl-bar) / 2 + var(--gh-space-1));
+  bottom: auto;
+}
+
+.app-tb-tl-tip.is-centered {
+  translate: -50% 0;
+}
+
+/* ── While dragging: the cursor says what the drag does ── */
+
+.app-tb-tl.is-editable .app-tb-tl-bar,
+.app-tb-tl.is-editable .app-tb-tl-milestone {
+  cursor: grab;
+}
+
+.app-tb-tl.is-editable .app-tb-tl-grip {
+  cursor: ew-resize;
+}
+
+.app-tb-tl.is-dragging .app-tb-tl-body,
+.app-tb-tl.is-dragging .app-tb-tl-body * {
+  cursor: grabbing;
+}
+
+.app-tb-tl.is-dragging.is-start .app-tb-tl-body *,
+.app-tb-tl.is-dragging.is-end .app-tb-tl-body * {
+  cursor: ew-resize;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-tb-tl-chevron,
+  .app-tb-tl-bar,
+  .app-tb-tl-diamond,
+  .app-tb-tl-grip::after {
+    transition: none;
+  }
+}
+
+/* Dark data planes retain their original canvas layering. */
+[data-theme='dark'] .app-tb-tl-scroll,
+[data-theme='dark'] .app-tb-tl-rail,
+[data-theme='dark'] .app-tb-tl-title {
+  background: var(--gh-canvas);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .app-tb-tl-scroll,
+  :root:not([data-theme='light']) .app-tb-tl-rail,
+  :root:not([data-theme='light']) .app-tb-tl-title {
+    background: var(--gh-canvas);
+  }
+}

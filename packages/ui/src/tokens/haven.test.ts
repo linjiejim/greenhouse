@@ -39,9 +39,30 @@ describe('Native Haven tokens', () => {
     ['success', 'successFill', 4.5],
     ['warning', 'warningFill', 4.5],
     ['danger', 'dangerFill', 4.5],
+    ['dangerHover', 'dangerFillHover', 4.5],
+    ['onDanger', 'danger', 4.5],
+    ['onDanger', 'dangerHover', 4.5],
     ['info', 'infoFill', 4.5],
     ['danger', 'canvas', 4.5],
   ];
+
+  for (const background of ['canvas', 'chrome', 'rail', 'surface', 'raised', 'fill', 'hover'] as const) {
+    it(`light: tertiary on ${background} ≥ 4.5:1`, () => {
+      expect(contrastRatio(color.tertiary.light, color[background].light)).toBeGreaterThanOrEqual(4.5);
+    });
+  }
+  for (const [foreground, background, minimum] of [
+    ['line', 'canvas', 1.45],
+    ['selection', 'chrome', 1.4],
+    ['hover', 'chrome', 1.15],
+    ['surface', 'canvas', 1.08],
+    ['focus', 'surface', 3],
+    ['focus', 'selection', 3],
+  ] as const) {
+    it(`light: ${foreground} separates from ${background}`, () => {
+      expect(contrastRatio(color[foreground].light, color[background].light)).toBeGreaterThanOrEqual(minimum);
+    });
+  }
 
   for (const mode of MODES) {
     for (const [fg, bg, min] of pairs) {
@@ -54,6 +75,17 @@ describe('Native Haven tokens', () => {
       it(`${mode}: categorical ${name} text on its fill ≥ 4.5:1`, () => {
         expect(contrastRatio(pair.fg[mode], pair.fill[mode])).toBeGreaterThanOrEqual(4.5);
       });
+    }
+
+    // The mark is a graphic (3:1). Its seed keeps the asset's olive, a decorative accent that reaches 3:1 on dark only.
+    for (const surface of ['canvas', 'chrome', 'rail'] as const) {
+      it(`${mode}: brand mark on ${surface} ≥ 3:1`, () => {
+        expect(contrastRatio(color.brandMark[mode], color[surface][mode])).toBeGreaterThanOrEqual(3);
+      });
+      if (mode === 'dark')
+        it(`dark: brand seed on ${surface} ≥ 3:1`, () => {
+          expect(contrastRatio(color.brandSeed.dark, color[surface].dark)).toBeGreaterThanOrEqual(3);
+        });
     }
 
     for (const series of chartSeries) {

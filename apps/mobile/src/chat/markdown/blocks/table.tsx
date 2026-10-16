@@ -17,7 +17,7 @@ import { putHandoff } from '../../../lib/handoff';
 import { useT } from '../../../lib/i18n';
 import { makeStyles, radius, space, squircle, typo, useTheme, weight } from '../../../theme';
 import { Icon, Touchable } from '../../../ui/core';
-import { plainText } from '../../model';
+import { plainText } from '../../text';
 import { Inline } from '../inline';
 import type { Align, TableData } from '../parse';
 import { HScroll } from './hscroll';

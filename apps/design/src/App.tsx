@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { Columns3, Menu as MenuIcon, Moon, PanelLeftOpen, Smartphone, Sun } from 'lucide-react';
 import { GreenhouseMark } from '@greenhouse/ui/components/brand';
-import { DesignContext, type Marks } from './context';
+import { Button, ConfirmDialog, IconButton, KitProvider, Overlay, Toast } from '@greenhouse/ui/kit';
+import { DesignContext, type Confirmation, type Marks } from './context';
 import {
   agents,
   capabilities,
@@ -14,8 +15,7 @@ import {
   type ModuleId,
   type RecordItem,
 } from './data';
-import { Button, IconButton, Overlay, Toast } from './components';
-import { NativeSelect } from './pickers';
+import { NativeSelect } from './components';
 import { Page } from './pages';
 import { ChatPage } from './chat';
 import { ComponentLab } from './lab';
@@ -38,7 +38,7 @@ type Panel =
   | { type: 'agent'; id: string; tab?: string }
   | { type: 'provider'; capability: Capability; personal: boolean }
   | { type: 'create'; module: ModuleId }
-  | { type: 'content'; title: string; content: ReactNode; center?: boolean };
+  | { type: 'content'; title: string; content: ReactNode };
 
 const initialMarks: Marks = { pinned: chats.pinned.map((title) => `chat:${title}`), muted: [], read: [], hidden: [] };
 
@@ -62,6 +62,7 @@ export function App() {
   const [panel, setPanel] = useState<Panel | null>(null);
   const [dirty, setDirty] = useState(false);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
+  const [confirmation, setConfirmation] = useState<Confirmation | null>(null);
   const [notice, setNotice] = useState<{ text: string; action?: { label: string; onClick: () => void } } | null>(null);
   const [revision, setRevision] = useState(0);
   const [marks, setMarks] = useState(initialMarks);
@@ -124,6 +125,7 @@ export function App() {
     setDirty(false);
     setConfirmDiscard(false);
     setNotice(null);
+    setConfirmation(null);
     setRevision((value) => value + 1);
     setCollapsed(false);
     setMarks(initialMarks);
@@ -134,9 +136,14 @@ export function App() {
     setPanel(value);
     setDrawer(false);
   };
+  /** Unsaved edits ask first (patterns.md, 列表与详情); answers false to keep the panel open. */
+  const mayClose = () => {
+    if (!dirty) return true;
+    setConfirmDiscard(true);
+    return false;
+  };
   const close = () => {
-    if (dirty) setConfirmDiscard(true);
-    else setPanel(null);
+    if (mayClose()) setPanel(null);
   };
   const newRecord = (): RecordItem => ({
     ...initialRecords[0],
@@ -177,8 +184,8 @@ export function App() {
     openAgent: (id: string, tab?: string) => open({ type: 'agent', id, tab }),
     openRun: (id: string) => open({ type: 'run', id }),
     openProvider: (capability: Capability, personal = false) => open({ type: 'provider', capability, personal }),
-    openPanel: (title: string, content: ReactNode, center?: boolean) =>
-      open({ type: 'content', title, content, center }),
+    openPanel: (title: string, content: ReactNode) => open({ type: 'content', title, content }),
+    confirm: setConfirmation,
     notify,
     theme,
     setTheme,
@@ -208,7 +215,11 @@ export function App() {
         editing={panel.editing}
         onEdit={() => setPanel({ ...panel, editing: true })}
         onDirty={setDirty}
-        onCancel={() => (existing ? setPanel({ ...panel, editing: false }) : close())}
+        onCancel={() => {
+          if (!existing) return close();
+          setDirty(false);
+          setPanel({ ...panel, editing: false });
+        }}
         onSave={(item) => {
           setRecords((value) => saveRecord(value, item));
           setPanel({ type: 'record', item, editing: false });
@@ -271,125 +282,141 @@ export function App() {
   }
 
   return (
-    <DesignContext.Provider value={context}>
-      <div className="preview-workspace">
-        <header className="preview-toolbar">
-          <a className="preview-brand" href="#chat">
-            <GreenhouseMark /> <strong>Design</strong>
-            <span>V2</span>
-          </a>
-          <div className="preview-controls">
-            <div className="preview-tabs">
-              <button aria-pressed={module !== 'components'} onClick={() => navigate('chat')}>
-                页面
-              </button>
-              <button aria-pressed={module === 'components'} onClick={() => navigate('components')}>
-                组件
-              </button>
-            </div>
-            <NativeSelect
-              label="预览页面"
-              value={modules.find((item) => item.id === module)!.label}
-              options={modules
-                .filter((item) => item.id !== 'components')
-                .map((item) => item.label)
-                .concat(module === 'components' ? ['组件'] : [])}
-              onChange={(label) => navigate(modules.find((item) => item.label === label)!.id)}
-            />
-            <div className="preview-devices">
-              <IconButton label="桌面预览" aria-pressed={viewport === '桌面'} onClick={() => setViewport('桌面')}>
-                <Columns3 size={17} />
+    <KitProvider locale="zh">
+      <DesignContext.Provider value={context}>
+        <div className="preview-workspace">
+          <header className="preview-toolbar">
+            <a className="preview-brand" href="#chat">
+              <GreenhouseMark /> <strong>Design</strong>
+              <span>V2</span>
+            </a>
+            <div className="preview-controls">
+              <div className="preview-tabs">
+                <button aria-pressed={module !== 'components'} onClick={() => navigate('chat')}>
+                  页面
+                </button>
+                <button aria-pressed={module === 'components'} onClick={() => navigate('components')}>
+                  组件
+                </button>
+              </div>
+              <NativeSelect
+                label="预览页面"
+                value={modules.find((item) => item.id === module)!.label}
+                options={modules
+                  .filter((item) => item.id !== 'components')
+                  .map((item) => item.label)
+                  .concat(module === 'components' ? ['组件'] : [])}
+                onChange={(label) => navigate(modules.find((item) => item.label === label)!.id)}
+              />
+              <div className="preview-devices">
+                <IconButton label="桌面预览" aria-pressed={viewport === '桌面'} onClick={() => setViewport('桌面')}>
+                  <Columns3 size={17} />
+                </IconButton>
+                <IconButton label="手机预览" aria-pressed={viewport === '手机'} onClick={() => setViewport('手机')}>
+                  <Smartphone size={17} />
+                </IconButton>
+              </div>
+              <IconButton label={dark ? '切换浅色' : '切换深色'} onClick={() => setTheme(dark ? 'light' : 'dark')}>
+                {dark ? <Sun size={17} /> : <Moon size={17} />}
               </IconButton>
-              <IconButton label="手机预览" aria-pressed={viewport === '手机'} onClick={() => setViewport('手机')}>
-                <Smartphone size={17} />
-              </IconButton>
+              <Button kind="ghost" onClick={reset}>
+                重置
+              </Button>
             </div>
-            <IconButton label={dark ? '切换浅色' : '切换深色'} onClick={() => setTheme(dark ? 'light' : 'dark')}>
-              {dark ? <Sun size={17} /> : <Moon size={17} />}
-            </IconButton>
-            <Button kind="ghost" onClick={reset}>
-              重置
-            </Button>
-          </div>
-          <span className="preview-caption">模拟数据 · 无需后端</span>
-        </header>
-        <div className={`stage ${mobile ? 'mobile-stage' : ''}`}>
-          <div
-            className={`product-window ${mobile ? 'mobile' : ''} ${density === '紧凑' ? 'compact' : ''}`}
-            data-theme={dark ? 'dark' : 'light'}
-            data-testid="product-window"
-          >
-            <div className="product-background" inert={panel !== null || undefined}>
-              {module === 'login' ? (
-                <LoginPage
-                  onLogin={() => {
-                    navigate('chat', 'main');
-                    notify('欢迎回来');
-                  }}
-                />
-              ) : (
-                <>
-                  {!mobile && <Rail onLogout={() => navigate('login')} />}
-                  {mobile && drawer && (
-                    <button className="nav-scrim" aria-label="关闭导航" onClick={() => setDrawer(false)} />
-                  )}
-                  {(mobile ? drawer : !collapsed) && (
-                    <aside className={`context-sidebar ${mobile ? 'open' : ''}`} aria-label="模块目录">
-                      <ModuleSidebar onCollapse={() => setCollapsed(true)} onClose={() => setDrawer(false)} />
-                      {mobile && <MobileModuleBar />}
-                    </aside>
-                  )}
-                  <main className="main-area" key={`${module}-${revision}`}>
-                    {module === 'chat' ? (
-                      <ChatPage key={selection} />
-                    ) : module === 'components' ? (
-                      <ComponentLab />
-                    ) : (
-                      <Page module={module} />
+            <span className="preview-caption">模拟数据 · 无需后端</span>
+          </header>
+          <div className={`stage ${mobile ? 'mobile-stage' : ''}`}>
+            <div
+              className={`product-window ${density === '紧凑' ? 'compact' : ''}`}
+              data-theme={dark ? 'dark' : 'light'}
+              data-narrow={mobile || undefined}
+              data-floating-boundary
+              data-testid="product-window"
+            >
+              <div className="product-background" inert={panel !== null || undefined}>
+                {module === 'login' ? (
+                  <LoginPage
+                    onLogin={() => {
+                      navigate('chat', 'main');
+                      notify('欢迎回来');
+                    }}
+                  />
+                ) : (
+                  <>
+                    {!mobile && <Rail onLogout={() => navigate('login')} />}
+                    {mobile && drawer && (
+                      <button className="nav-scrim" aria-label="关闭导航" onClick={() => setDrawer(false)} />
                     )}
-                  </main>
-                </>
-              )}
-            </div>
-            {panel && (
-              <Overlay
-                key={panel.type === 'record' ? panel.item.id : panelTitle}
-                title={panelTitle}
-                help={panelHelp}
-                wide={panelWide}
-                center={panel.type === 'content' && panel.center}
-                onClose={close}
-              >
-                <div hidden={confirmDiscard}>{panelContent}</div>
-                {confirmDiscard && (
-                  <div className="stack">
-                    <h3>放弃修改？</h3>
-                    <p className="muted">未保存的内容会丢失。</p>
-                    <div className="row end">
-                      <Button onClick={() => setConfirmDiscard(false)}>继续编辑</Button>
-                      <Button
-                        kind="danger"
-                        onClick={() => {
-                          setPanel(null);
-                          setDirty(false);
-                          setConfirmDiscard(false);
-                        }}
-                      >
-                        放弃修改
-                      </Button>
-                    </div>
-                  </div>
+                    {(mobile ? drawer : !collapsed) && (
+                      <aside className={`context-sidebar ${mobile ? 'open' : ''}`} aria-label="模块目录">
+                        <ModuleSidebar onCollapse={() => setCollapsed(true)} onClose={() => setDrawer(false)} />
+                        {mobile && <MobileModuleBar />}
+                      </aside>
+                    )}
+                    <main className="main-area" key={`${module}-${revision}`}>
+                      {module === 'chat' ? (
+                        <ChatPage key={selection} />
+                      ) : module === 'components' ? (
+                        <ComponentLab />
+                      ) : (
+                        <Page module={module} />
+                      )}
+                    </main>
+                  </>
                 )}
-              </Overlay>
-            )}
-            {notice && <Toast text={notice.text} action={notice.action} onClose={() => setNotice(null)} />}
+              </div>
+              {panel && (
+                <Overlay
+                  key={panel.type === 'record' ? panel.item.id : panelTitle}
+                  title={panelTitle}
+                  help={panelHelp}
+                  wide={panelWide}
+                  beforeClose={mayClose}
+                  onClose={() => setPanel(null)}
+                >
+                  {panelContent}
+                </Overlay>
+              )}
+              {confirmDiscard && (
+                <ConfirmDialog
+                  title="放弃修改？"
+                  cancelLabel="继续编辑"
+                  confirmLabel="放弃修改"
+                  danger
+                  onCancel={() => setConfirmDiscard(false)}
+                  onConfirm={() => {
+                    setPanel(null);
+                    setDirty(false);
+                    setConfirmDiscard(false);
+                  }}
+                >
+                  未保存的内容会丢失。
+                </ConfirmDialog>
+              )}
+              {confirmation && (
+                <ConfirmDialog
+                  title={confirmation.title}
+                  cancelLabel={confirmation.cancelLabel}
+                  confirmLabel={confirmation.confirmLabel}
+                  danger={confirmation.danger}
+                  onCancel={() => setConfirmation(null)}
+                  onConfirm={() => {
+                    setConfirmation(null);
+                    confirmation.onConfirm();
+                  }}
+                >
+                  {confirmation.body}
+                </ConfirmDialog>
+              )}
+              {notice && <Toast text={notice.text} action={notice.action} onClose={() => setNotice(null)} />}
+            </div>
           </div>
+          <footer className="preview-footer">
+            <span>Native Haven</span>
+            <span>选择页面、主题和设备，体验同一套组件。</span>
+          </footer>
         </div>
-        <footer className="preview-footer">
-          <span>Native Haven</span>
-          <span>选择页面、主题和设备，体验同一套组件。</span>
-        </footer>
-      </div>
-    </DesignContext.Provider>
+      </DesignContext.Provider>
+    </KitProvider>
   );
 }

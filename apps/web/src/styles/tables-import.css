@@ -1,0 +1,244 @@
+/* 表格: import. Tokens only (docs/design-system). */
+
+.app-tb-import {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gh-space-4);
+}
+
+.app-tb-import-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gh-space-1);
+}
+
+.app-tb-import-heading {
+  margin: 0;
+  color: var(--gh-secondary);
+  font: var(--gh-type-label);
+}
+
+/* Choosing a file: an area that takes a drop, with the button inside it. */
+
+.app-tb-import-drop {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--gh-space-2);
+  padding: var(--gh-space-8) var(--gh-space-4);
+  border: var(--gh-stroke-control) dashed var(--gh-line);
+  border-radius: var(--gh-radius-lg);
+  background: var(--gh-surface);
+  color: var(--gh-secondary);
+  text-align: center;
+  transition-property: background-color, border-color;
+  transition-duration: var(--gh-duration-fast);
+  transition-timing-function: var(--gh-ease-standard);
+}
+
+.app-tb-import-drop.is-over {
+  border-color: var(--gh-focus);
+  background: var(--gh-selection);
+}
+
+.app-tb-import-drop p {
+  margin: 0;
+}
+
+.app-tb-import-drop .app-tb-import-drop-title {
+  color: var(--gh-text);
+  font: var(--gh-type-title-sm);
+}
+
+/* The file, its rows and the way back. */
+
+.app-tb-import-file,
+.app-tb-import-status {
+  display: flex;
+  align-items: center;
+  gap: var(--gh-space-2);
+  min-width: 0;
+}
+
+.app-tb-import-file-name {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--gh-text);
+  font: var(--gh-type-title-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-tb-import-spacer {
+  flex: 1;
+}
+
+/* One row per column: its header and a few values, then the field it goes into. */
+
+.app-tb-import-map,
+.app-tb-import-errors {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  border: var(--gh-stroke-hairline) solid var(--gh-line);
+  border-radius: var(--gh-radius-lg);
+  list-style: none;
+}
+
+.app-tb-import-column {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: var(--gh-space-3);
+  padding: var(--gh-space-2) var(--gh-space-3);
+}
+
+.app-tb-import-column + .app-tb-import-column,
+.app-tb-import-error + .app-tb-import-error {
+  border-top: var(--gh-stroke-hairline) solid var(--gh-line);
+}
+
+.app-tb-import-source {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.app-tb-import-name,
+.app-tb-import-samples {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-tb-import-name {
+  color: var(--gh-text);
+  font: var(--gh-type-label);
+}
+
+.app-tb-import-name.is-unnamed {
+  color: var(--gh-secondary);
+}
+
+.app-tb-import-samples {
+  color: var(--gh-tertiary);
+  font: var(--gh-type-caption);
+}
+
+.app-tb-import-arrow {
+  color: var(--gh-tertiary);
+}
+
+.app-tb-import-target {
+  width: 100%;
+}
+
+.app-tb-import-target .gh-picker-trigger {
+  min-width: 0;
+}
+
+[data-narrow] .app-tb-import-column {
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--gh-space-2);
+  padding: var(--gh-space-3);
+}
+
+[data-narrow] .app-tb-import-arrow {
+  display: none;
+}
+
+.app-tb-import-note {
+  margin: 0;
+  color: var(--gh-secondary);
+  font: var(--gh-type-body-sm);
+}
+
+.app-tb-import-note.is-danger {
+  color: var(--gh-danger);
+}
+
+/* Progress: known rows of a known total. */
+
+.app-tb-import-progress {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gh-space-2);
+}
+
+.app-tb-import-progress p {
+  margin: 0;
+}
+
+.app-tb-import-count,
+.app-tb-import-counts {
+  color: var(--gh-text);
+  font: var(--gh-type-body);
+  font-variant-numeric: tabular-nums;
+}
+
+.app-tb-import-bar {
+  height: var(--gh-space-2);
+  overflow: hidden;
+  border-radius: var(--gh-radius-full);
+  background: var(--gh-fill);
+}
+
+.app-tb-import-fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--gh-info);
+  transition: width var(--gh-duration-base) var(--gh-ease-standard);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-tb-import-fill {
+    transition: none;
+  }
+}
+
+/* The result: what was created and skipped, then the rows not imported. */
+
+.app-tb-import-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--gh-space-4);
+  margin: 0;
+}
+
+.app-tb-import-error {
+  display: grid;
+  grid-template-columns: auto minmax(0, auto) minmax(0, 1fr);
+  align-items: baseline;
+  gap: var(--gh-space-3);
+  padding: var(--gh-space-2) var(--gh-space-3);
+  font: var(--gh-type-body-sm);
+}
+
+.app-tb-import-row {
+  color: var(--gh-secondary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.app-tb-import-col {
+  overflow: hidden;
+  color: var(--gh-text);
+  font: var(--gh-type-label);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-tb-import-reason {
+  color: var(--gh-text);
+  overflow-wrap: anywhere;
+}
+
+[data-narrow] .app-tb-import-error {
+  grid-template-columns: auto minmax(0, 1fr);
+}
+
+[data-narrow] .app-tb-import-reason {
+  grid-column: 1 / -1;
+}

@@ -1,54 +1,94 @@
-import { desc, eq, sql } from 'drizzle-orm';
-import type { Db } from '@greenhouse/db';
-import { exampleNotes, type ExampleNoteRow } from './schema.js';
+import { and, asc, eq, gt, ilike } from 'drizzle-orm';
+import { pgTable, text, timestamp } from 'drizzle-orm/pg-core';
+import { getDb, members, newId, transaction } from '@greenhouse/db';
+import type { z } from 'zod';
+import { type noteInputSchema, type ExampleNote } from '@greenhouse/contract/extensions/example';
+import { audit, forbidden, notFound, containing, decodeCursor, toPage } from '../../extension-kit.js';
 
-export function createExampleNoteService(db: Db) {
-  return {
-    async list(userId: string, limit = 20): Promise<ExampleNoteRow[]> {
-      return db
-        .select()
-        .from(exampleNotes)
-        .where(eq(exampleNotes.user_id, userId))
-        .orderBy(desc(exampleNotes.id))
-        .limit(limit);
-    },
-    async add(userId: string, body: string): Promise<ExampleNoteRow> {
-      const [row] = await db.insert(exampleNotes).values({ user_id: userId, body }).returning();
-      return row;
-    },
-    async remove(userId: string, id: number): Promise<boolean> {
-      const rows = await db
-        .delete(exampleNotes)
-        .where(sql`${exampleNotes.id} = ${id} AND ${exampleNotes.user_id} = ${userId}`)
-        .returning({ id: exampleNotes.id });
-      return rows.length > 0;
-    },
-    async get(userId: string, id: number): Promise<ExampleNoteRow | undefined> {
-      const [row] = await db
-        .select()
-        .from(exampleNotes)
-        .where(sql`${exampleNotes.id} = ${id} AND ${exampleNotes.user_id} = ${userId}`)
-        .limit(1);
-      return row;
-    },
-    async search(userId: string, query: string, limit: number): Promise<ExampleNoteRow[]> {
-      return db
-        .select()
-        .from(exampleNotes)
-        .where(sql`${exampleNotes.user_id} = ${userId} AND ${exampleNotes.body} ILIKE ${'%' + query + '%'}`)
-        .orderBy(desc(exampleNotes.id))
-        .limit(limit);
-    },
-    async count(): Promise<number> {
-      const [row] = await db.select({ n: sql<number>`count(*)::int` }).from(exampleNotes);
-      return row?.n ?? 0;
-    },
-  };
+const notes = pgTable('ext_example_notes', {
+  id: text('id').primaryKey(),
+  memberId: text('member_id').notNull(),
+  title: text('title').notNull(),
+  body: text('body').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).notNull(),
+});
+const settings = pgTable('ext_example_settings', {
+  scopeId: text('scope_id').primaryKey(),
+  memberId: text('member_id'),
+  label: text('label').notNull(),
+});
+const view = (row: typeof notes.$inferSelect): ExampleNote => ({
+  id: row.id,
+  title: row.title,
+  body: row.body,
+  created_at: row.createdAt,
+});
+
+async function active(memberId: string, admin = false) {
+  const [member] = await getDb().select().from(members).where(eq(members.id, memberId));
+  if (member?.status !== 'active' || (admin && member.role !== 'admin')) throw forbidden();
 }
 
-/** The bag exposed as `db.extensions.example`. */
-export function createExampleServices(db: Db) {
-  return { notes: createExampleNoteService(db) };
-}
-
-export type ExampleServices = ReturnType<typeof createExampleServices>;
+export const exampleService = {
+  async list(memberId: string, query: { cursor?: string; limit: number; q?: string }) {
+    await active(memberId);
+    const after = decodeCursor(query.cursor);
+    const rows = await getDb()
+      .select()
+      .from(notes)
+      .where(
+        and(
+          eq(notes.memberId, memberId),
+          after ? gt(notes.id, after) : undefined,
+          query.q ? ilike(notes.title, containing(query.q)) : undefined,
+        ),
+      )
+      .orderBy(asc(notes.id))
+      .limit(query.limit + 1);
+    return toPage(rows, query.limit, view);
+  },
+  async get(memberId: string, id: string) {
+    await active(memberId);
+    const [row] = await getDb()
+      .select()
+      .from(notes)
+      .where(and(eq(notes.memberId, memberId), eq(notes.id, id)));
+    if (!row) throw notFound();
+    return view(row);
+  },
+  async create(memberId: string, input: z.output<typeof noteInputSchema>) {
+    await active(memberId);
+    const [row] = await getDb()
+      .insert(notes)
+      .values({ id: newId('note'), memberId, ...input, createdAt: new Date().toISOString() })
+      .returning();
+    return view(row!);
+  },
+  async settings(memberId: string, isAdmin: boolean) {
+    await active(memberId, isAdmin);
+    const [row] = await getDb()
+      .select()
+      .from(settings)
+      .where(eq(settings.scopeId, isAdmin ? 'workspace' : memberId));
+    return { label: row?.label ?? 'Example' };
+  },
+  async saveSettings(memberId: string, isAdmin: boolean, label: string) {
+    return transaction(async (db) => {
+      await active(memberId, isAdmin);
+      const scopeId = isAdmin ? 'workspace' : memberId;
+      await db
+        .insert(settings)
+        .values({ scopeId, memberId: isAdmin ? null : memberId, label })
+        .onConflictDoUpdate({ target: settings.scopeId, set: { label } });
+      if (isAdmin)
+        await audit({
+          actorId: memberId,
+          action: 'extension.example.settings',
+          resourceType: 'extension',
+          resourceId: 'example',
+          summary: 'label',
+        });
+      return { label };
+    });
+  },
+};

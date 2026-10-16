@@ -1,6 +1,6 @@
 /** Drawer / sheet contents. One drawer at a time; editing happens in place (docs/design-system/patterns.md, 列表与详情). */
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import {
   ArrowDown,
   ArrowUp,
@@ -17,26 +17,26 @@ import {
 import { GreenhouseMark } from '@greenhouse/ui/components/brand';
 import { PlantAvatar } from '@greenhouse/ui/components/plant-avatar';
 import {
-  ApprovalCard,
   Badge,
   Button,
   ChatCard,
   Empty,
   Field,
   HelpHint,
+  IconButton,
   Input,
-  MiniChart,
-  RecordEditor,
+  Menu,
+  OverlayActions,
   SecretField,
   Segmented,
+  Select,
   StatusBadge,
-  Steps,
   Switch,
   Tabs,
-} from './components';
+  TextArea,
+} from '@greenhouse/ui/kit';
+import { ApprovalCard, MiniChart, RecordEditor, Steps } from './components';
 import { useDesign } from './context';
-import { Select } from './pickers';
-import { Menu } from './popover';
 import {
   capabilities,
   documents,
@@ -51,7 +51,7 @@ import {
   type RunItem,
 } from './data';
 
-function KeyValue({ items }: { items: [string, React.ReactNode][] }) {
+function KeyValue({ items }: { items: [string, ReactNode][] }) {
   return (
     <dl className="key-value">
       {items.map(([key, value]) => (
@@ -101,7 +101,7 @@ export function RecordDrawer({
         <p className="muted small">林杰 创建了记录 · 10 月 8 日</p>
         <p className="muted small">卷卷 把状态改为「{item.status}」· 昨天</p>
       </section>
-      <div className="form-actions">
+      <OverlayActions>
         <Menu
           label="更多操作"
           items={[
@@ -118,7 +118,7 @@ export function RecordDrawer({
         <Button kind="primary" onClick={onEdit}>
           编辑
         </Button>
-      </div>
+      </OverlayActions>
     </div>
   );
 }
@@ -135,9 +135,10 @@ export function DocumentDetail({ document, onSaved }: { document: (typeof docume
         </span>
       </div>
       {editing ? (
-        <textarea
+        <TextArea
           aria-label="文档内容"
-          className="input document-editor"
+          rows={14}
+          maxRows={24}
           value={text}
           onChange={(event) => setText(event.target.value)}
         />
@@ -148,7 +149,7 @@ export function DocumentDetail({ document, onSaved }: { document: (typeof docume
             .map((part, index) => (index % 2 === 0 ? <h3 key={index}>{part}</h3> : <p key={index}>{part}</p>))}
         </article>
       )}
-      <div className="form-actions">
+      <OverlayActions>
         {editing ? (
           <>
             <Button onClick={() => setEditing(false)}>取消</Button>
@@ -174,7 +175,7 @@ export function DocumentDetail({ document, onSaved }: { document: (typeof docume
             )}
           </>
         )}
-      </div>
+      </OverlayActions>
     </div>
   );
 }
@@ -190,9 +191,12 @@ export function NewAgentForm({ onCreate }: { onCreate: (name: string) => void })
   const [template, setTemplate] = useState('研究员');
   const [name, setName] = useState('');
   const [error, setError] = useState('');
+  const formId = useId();
   return (
     <form
+      id={formId}
       className="stack"
+      noValidate
       onSubmit={(event) => {
         event.preventDefault();
         if (!name.trim()) {
@@ -231,11 +235,11 @@ export function NewAgentForm({ onCreate }: { onCreate: (name: string) => void })
       <Field label="职责" help="一句话说明它负责什么。会显示在对话目录里，也会写进它的指令。">
         <Input defaultValue={template === '空白' ? '' : template} />
       </Field>
-      <div className="form-actions">
-        <Button kind="primary" type="submit">
+      <OverlayActions>
+        <Button kind="primary" type="submit" form={formId}>
           创建
         </Button>
-      </div>
+      </OverlayActions>
     </form>
   );
 }
@@ -274,19 +278,14 @@ export function AgentProfile({ agent, initialTab }: { agent: AgentItem; initialT
         <>
           <p>{agent.description}</p>
           <Field label="指令" help="Agent 每次回复都会遵守。Agent 自己提出修改时，会先给你一张确认卡片。">
-            <textarea
-              className="input"
-              rows={5}
-              readOnly={!mine}
-              defaultValue={`你是${agent.name}，${agent.description}`}
-            />
+            <TextArea rows={5} readOnly={!mine} defaultValue={`你是${agent.name}，${agent.description}`} />
           </Field>
           {mine && (
-            <div className="form-actions">
+            <OverlayActions>
               <Button kind="primary" onClick={() => notify('资料已保存')}>
                 保存
               </Button>
-            </div>
+            </OverlayActions>
           )}
         </>
       )}
@@ -464,7 +463,7 @@ export function RunDetail({ run }: { run: RunItem }) {
           }
         />
       )}
-      <div className="form-actions">
+      <OverlayActions>
         {run.source === '对话' && (
           <Button kind="ghost" onClick={() => navigate('chat', 'agent:triage')}>
             打开来源对话
@@ -476,7 +475,7 @@ export function RunDetail({ run }: { run: RunItem }) {
           </Button>
         )}
         {state === '运行中' && <Button onClick={() => setState('已取消')}>取消运行</Button>}
-      </div>
+      </OverlayActions>
     </div>
   );
 }
@@ -529,24 +528,17 @@ export function ProviderDrawer({ capability, personal }: { capability: Capabilit
               )}
               {!personal && instances.length > 1 && (
                 <span className="row tight">
-                  <Button
-                    kind="ghost"
-                    className="icon-button"
-                    aria-label="上移"
-                    disabled={index === 0}
-                    onClick={() => move(index, -1)}
-                  >
+                  <IconButton label="上移" size="sm" disabled={index === 0} onClick={() => move(index, -1)}>
                     <ArrowUp size={14} />
-                  </Button>
-                  <Button
-                    kind="ghost"
-                    className="icon-button"
-                    aria-label="下移"
+                  </IconButton>
+                  <IconButton
+                    label="下移"
+                    size="sm"
                     disabled={index === instances.length - 1}
                     onClick={() => move(index, 1)}
                   >
                     <ArrowDown size={14} />
-                  </Button>
+                  </IconButton>
                 </span>
               )}
               <Menu
@@ -691,10 +683,13 @@ export function CreatePanel({ module, onSave }: { module: ModuleId; onSave: (nam
   const [name, setName] = useState('');
   const [kind, setKind] = useState(module === 'knowledge' ? '文档' : module === 'skills' ? '模板' : '');
   const [error, setError] = useState('');
+  const formId = useId();
   const label = module === 'admin' ? '邮箱' : '名称';
   return (
     <form
+      id={formId}
       className="stack"
+      noValidate
       onSubmit={(event) => {
         event.preventDefault();
         if (!name.trim()) {
@@ -737,11 +732,11 @@ export function CreatePanel({ module, onSave }: { module: ModuleId; onSave: (nam
           <Select label="角色" value="成员" options={['成员', '管理员']} onChange={() => {}} />
         </Field>
       )}
-      <div className="form-actions">
-        <Button kind="primary" type="submit">
+      <OverlayActions>
+        <Button kind="primary" type="submit" form={formId}>
           {module === 'admin' ? '发送邀请' : '创建'}
         </Button>
-      </div>
+      </OverlayActions>
     </form>
   );
 }
@@ -777,7 +772,7 @@ export function LoginPage({ onLogin }: { onLogin: () => void }) {
         <h1>Greenhouse</h1>
         <Field label="邮箱">
           <Input
-            className="large"
+            size="lg"
             type="email"
             value={email}
             onChange={(event) => {
@@ -789,10 +784,9 @@ export function LoginPage({ onLogin }: { onLogin: () => void }) {
         </Field>
         <Field label="密码" error={error}>
           <Input
-            className="large"
+            size="lg"
             type="password"
             value={password}
-            aria-invalid={!!error}
             onChange={(event) => {
               setPassword(event.target.value);
               setError('');
@@ -800,11 +794,11 @@ export function LoginPage({ onLogin }: { onLogin: () => void }) {
             autoComplete="current-password"
           />
         </Field>
-        <Button type="submit" kind="primary" className="large" loading={busy}>
+        <Button type="submit" kind="primary" size="lg" loading={busy}>
           登录
         </Button>
         <div className="login-divider">或</div>
-        <Button className="large" onClick={() => setError('本地原型没有连接飞书')}>
+        <Button size="lg" onClick={() => setError('本地原型没有连接飞书')}>
           飞书登录
         </Button>
       </form>
