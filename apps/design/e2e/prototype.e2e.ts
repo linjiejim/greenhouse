@@ -14,6 +14,7 @@ const MODULES = [
   'admin',
   'login',
   'components',
+  'surfaces',
 ];
 /** Opens a Haven Select and picks an option; the list renders in a floating panel. */
 async function choose(page: Page, scope: Page | Locator, label: string, option: string) {
@@ -35,7 +36,7 @@ test('mobile drawer mirrors the native app: conversations first, modules at the 
   await page.getByRole('button', { name: '打开导航', exact: true }).click();
   const drawer = page.getByRole('complementary', { name: '模块目录' });
   // Agents sit at the top without a heading; the main Agent row is the larger one.
-  await expect(drawer.locator('.sidebar-item.main')).toHaveText('Greeny');
+  await expect(drawer.locator('.sidebar-item.main')).toHaveText('Greeny5');
   await expect(drawer.locator('.sidebar-section-title').getByText('Agents', { exact: true })).toHaveCount(0);
   await drawer.getByRole('navigation', { name: '模块' }).getByRole('button', { name: '表格', exact: true }).click();
   await expect(page.getByRole('heading', { name: '产品计划 / 任务', exact: true })).toBeVisible();
@@ -82,6 +83,7 @@ test('the "?" keeps explanations off the page until asked for', async ({ page, i
 });
 
 test('a provider instance takes a write-only key and joins the fallback order', async ({ page, isMobile }) => {
+  test.skip(isMobile, 'Phone service configuration is read only');
   await page.goto('/#admin');
   await openSidebarItem(page, isMobile, '服务');
   await page
@@ -128,7 +130,7 @@ test('record drawer: view, then edit in place with validation, dirty-draft guard
   await expect(page.getByRole('button', { name: '邀请流程已打磨', exact: true })).toBeFocused();
 });
 
-test('table filters, pagination, selection and bulk status share the same data', async ({ page }) => {
+test('table filters, pagination, selection and bulk status share the same data', async ({ page, isMobile }) => {
   await page.goto('/#tables');
   await page.getByLabel('搜索记录', { exact: true }).fill('不存在');
   await expect(page.getByText('没有匹配的记录', { exact: true })).toBeVisible();
@@ -138,9 +140,14 @@ test('table filters, pagination, selection and bulk status share the same data',
   await page.getByRole('button', { name: '上一页', exact: true }).click();
   await page.getByRole('checkbox', { name: '选择 完善成员邀请流程', exact: true }).check();
   await page.getByRole('button', { name: '标为已完成', exact: true }).click();
-  await choose(page, page, '筛选状态', '已完成');
-  await expect(page.getByRole('button', { name: '完善成员邀请流程', exact: true })).toBeVisible();
-  await expect(page.getByText('共 4 条', { exact: true })).toBeVisible();
+  if (!isMobile) {
+    await choose(page, page, '筛选状态', '已完成');
+    await expect(page.getByRole('button', { name: '完善成员邀请流程', exact: true })).toBeVisible();
+    await expect(page.getByText('共 4 条', { exact: true })).toBeVisible();
+  } else {
+    await page.getByRole('button', { name: '完善成员邀请流程', exact: true }).click();
+    await expect(page.getByRole('dialog').getByText('已完成', { exact: true })).toBeVisible();
+  }
 });
 
 test('the project template replaces the Projects module: table, board and timeline over one dataset', async ({
@@ -185,9 +192,10 @@ test('voice input fills the composer and never sends by itself', async ({ page }
 test('approval applies once; rejected and expired cards stay inactive', async ({ page }) => {
   await page.goto('/#chat');
   await page.getByLabel('对话状态', { exact: true }).selectOption('需要你：批准');
-  await page.getByRole('button', { name: '批准', exact: true }).click();
-  await expect(page.getByText('已批准', { exact: true })).toBeVisible();
-  await expect(page.getByRole('button', { name: '批准', exact: true })).toHaveCount(0);
+  const approval = page.locator('.gh-chat-card').filter({ hasText: '把 2 条任务标为已完成？' });
+  await approval.getByRole('button', { name: '批准', exact: true }).click();
+  await expect(approval.getByText('已批准', { exact: true })).toBeVisible();
+  await expect(approval.getByRole('button', { name: '批准', exact: true })).toHaveCount(0);
   await page.getByLabel('预览页面', { exact: true }).selectOption('表格');
   await page.getByRole('button', { name: '完善成员邀请流程', exact: true }).click();
   await expect(page.getByRole('dialog').getByText('已完成', { exact: true })).toBeVisible();
@@ -409,4 +417,178 @@ test('the detail drawer takes about 40% of the window; sign-in is one large butt
   await page.getByLabel('密码', { exact: true }).fill('wrong');
   await login.click();
   await expect(page.getByText('邮箱或密码不正确', { exact: true })).toBeVisible();
+});
+
+test('shared approval offers the next request in its conversation and tier 3 verifies on phones', async ({
+  page,
+  isMobile,
+}) => {
+  await page.goto('/#chat');
+  await page.getByLabel('对话状态', { exact: true }).selectOption('需要你：批准');
+  const tier2 = page.locator('.gh-chat-card').filter({ hasText: '把 2 条任务标为已完成？' });
+  await tier2.getByRole('checkbox', { name: '以后「产品计划」都允许' }).check();
+  await tier2.getByRole('button', { name: '批准', exact: true }).click();
+  await expect(tier2.getByText('任务已更新，以后「产品计划」都允许。', { exact: true })).toBeVisible();
+  await expect(page.getByText('已批准 · 还有 5 件需要你', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: '下一件', exact: true }).click();
+  await expect(page.getByRole('heading', { name: '卷卷', exact: true })).toBeVisible();
+  const tier3 = page.locator('.gh-chat-card').filter({ hasText: '发送 3 封面试邀请' });
+  await expect(tier3.getByRole('checkbox')).toHaveCount(0);
+  await expect(tier3.getByText('需要你', { exact: true })).toBeVisible();
+  if (isMobile) {
+    await page.clock.install();
+    await tier3.getByRole('button', { name: '用 Face ID 批准', exact: true }).click();
+    await expect(page.getByRole('status', { name: 'Face ID 验证中' })).toBeVisible();
+    await expect(tier3.getByText('需要你', { exact: true })).toBeVisible();
+    await page.clock.runFor(1000);
+  } else await tier3.getByRole('button', { name: '批准', exact: true }).click();
+  await expect(tier3.getByText('已批准', { exact: true })).toBeVisible();
+  await page.getByRole('banner').getByRole('button', { name: '重置', exact: true }).click();
+  await page.getByLabel('对话状态', { exact: true }).selectOption('需要你：批准');
+  await expect(
+    page.locator('.gh-chat-card').filter({ hasText: '发送 3 封面试邀请' }).getByText('需要你', { exact: true }),
+  ).toBeVisible();
+});
+
+test('watch hold cancels early, approves after 0.8 seconds, and updates chat counts', async ({ page, isMobile }) => {
+  await page.goto('/#surfaces');
+  await page.getByRole('radio', { name: '手表', exact: true }).click();
+  const detail = page.getByRole('region', { name: '第 2 档请求', exact: true });
+  const hold = detail.getByRole('button', { name: '按住批准', exact: true });
+  await page.clock.install();
+  await hold.focus();
+  await page.keyboard.down('Space');
+  await page.clock.runFor(400);
+  await page.keyboard.up('Space');
+  await page.clock.runFor(800);
+  await expect(hold).toBeEnabled();
+  await page.keyboard.down('Enter');
+  await page.clock.runFor(800);
+  await page.keyboard.up('Enter');
+  await expect(detail.getByRole('button', { name: '已批准', exact: true })).toBeDisabled();
+  await page.getByRole('button', { name: '页面', exact: true }).click();
+  if (isMobile) {
+    await expect(page.locator('.chat-header').getByLabel('5 件需要你', { exact: true })).toBeVisible();
+    await page.getByRole('button', { name: '打开导航', exact: true }).click();
+    await expect(page.locator('.sidebar-item.main .count')).toHaveText('4');
+  } else await expect(page.locator('.global-rail').getByLabel('5 件需要你', { exact: true })).toBeVisible();
+});
+
+test('lock screen tier 3 only opens the source conversation on a phone', async ({ page }) => {
+  await page.goto('/#surfaces');
+  await page.getByRole('radio', { name: '手表', exact: true }).click();
+  const hold = page
+    .getByRole('region', { name: '第 2 档请求', exact: true })
+    .getByRole('button', { name: '按住批准', exact: true });
+  await page.clock.install();
+  await hold.focus();
+  await page.keyboard.down('Space');
+  await page.clock.runFor(800);
+  await page.keyboard.up('Space');
+  await page.getByRole('radio', { name: '手机', exact: true }).click();
+  const notification = page.getByLabel('锁屏通知', { exact: true });
+  await expect(notification.getByText('卷卷：请你批准一个操作', { exact: true })).toBeVisible();
+  await notification.getByRole('button').click();
+  await expect(notification.getByRole('button')).toHaveText(['卷卷：请你批准一个操作', '打开']);
+  await notification.getByRole('button', { name: '打开', exact: true }).click();
+  await expect(page.getByTestId('product-window')).toHaveAttribute('data-narrow', 'true');
+  await expect(page.getByRole('heading', { name: '卷卷', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: '用 Face ID 批准', exact: true })).toBeVisible();
+});
+
+test('tablet keeps the rail, overlays the module column and uses a right drawer', async ({ page, isMobile }) => {
+  test.skip(isMobile, 'Tablet preview toolbar needs desktop width');
+  await page.goto('/#tables');
+  await page.getByRole('button', { name: '平板预览', exact: true }).click();
+  const product = page.getByTestId('product-window');
+  await expect(product).not.toHaveAttribute('data-narrow');
+  await expect(product).toHaveCSS('width', '820px');
+  await expect(page.getByRole('navigation', { name: '主导航' })).toBeVisible();
+  await expect(page.getByRole('complementary', { name: '模块目录' })).toHaveCount(0);
+  await page.getByRole('button', { name: '打开导航', exact: true }).click();
+  await expect(page.getByRole('complementary', { name: '模块目录' })).toHaveCSS('position', 'absolute');
+  await page.getByRole('button', { name: '关闭导航', exact: true }).click();
+  await choose(page, page, '筛选状态', '全部状态');
+  await page.getByRole('button', { name: '完善成员邀请流程', exact: true }).click();
+  await expect(page.getByRole('button', { name: '下拉关闭详情', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('dialog')).toBeVisible();
+});
+
+test('phone builders hand off to a computer and hide editing controls', async ({ page, isMobile }) => {
+  test.skip(!isMobile, 'Phone builder gate');
+  await page.goto('/#skills');
+  await page.getByRole('button', { name: '查看技能文件', exact: true }).click();
+  await expect(page.getByRole('textbox', { name: '技能文件', exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: '在电脑上继续', exact: true }).click();
+  await expect(page.getByText('已发到你的电脑', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: '复制链接', exact: true })).toBeVisible();
+  await page.goto('/#admin');
+  await openSidebarItem(page, true, '服务');
+  await expect(page.getByRole('button', { name: '在电脑上继续', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: '配置', exact: true })).toHaveCount(0);
+  await page
+    .locator('.list-row')
+    .filter({ hasText: '大模型' })
+    .getByRole('button', { name: '查看', exact: true })
+    .click();
+  await expect(page.getByRole('button', { name: '添加实例', exact: true })).toHaveCount(0);
+});
+
+test('quick launch filters records and supports keyboard selection, Agent switching and closing', async ({ page }) => {
+  await page.goto('/#surfaces');
+  const launch = page.getByRole('region', { name: '快捷启动', exact: true });
+  const input = launch.getByRole('textbox', { name: '快捷启动', exact: true });
+  await input.fill('完善成员');
+  await expect(launch.getByRole('button', { name: '问 Greeny 完善成员', exact: true })).toBeVisible();
+  await expect(launch.getByRole('button', { name: '完善成员邀请流程 记录', exact: true })).toBeVisible();
+  await input.press('ArrowDown');
+  await input.press('Meta+Enter');
+  await expect(page.getByRole('dialog', { name: '完善成员邀请流程', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: '关闭详情', exact: true }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await input.focus();
+  await input.press('Tab');
+  await input.press('Enter');
+  await expect(launch.getByText('葵葵：我找到了相关资料，可以继续整理。', { exact: true })).toBeVisible();
+  await input.press('Escape');
+  await expect(input).toHaveCount(0);
+  await launch.getByRole('button', { name: '快捷启动 ⌘⇧Space', exact: true }).click();
+  await expect(input).toBeVisible();
+});
+
+test('lock screen tier 2 verifies before changing the shared request', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.goto('/#surfaces');
+  await page.getByRole('radio', { name: '手机', exact: true }).click();
+  const notification = page.getByLabel('锁屏通知', { exact: true });
+  await notification.getByRole('button').click();
+  const now = new Date();
+  await page.clock.install({ time: now });
+  await page.clock.pauseAt(now);
+  await notification.getByRole('button', { name: '批准（需解锁）', exact: true }).click();
+  await expect(page.getByRole('status', { name: 'Face ID 验证中' })).toBeVisible();
+  await page.clock.runFor(999);
+  await expect(notification.getByText('Greeny：请你批准一个操作', { exact: true })).toBeVisible();
+  await page.clock.runFor(1);
+  await expect(page.getByText('已批准 · 还有 5 件需要你', { exact: true })).toBeVisible();
+  await expect(notification.getByText('卷卷：请你批准一个操作', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: '页面', exact: true }).click();
+  const receipt = page.locator('.gh-chat-card').filter({ hasText: '把 2 条任务标为已完成？' });
+  await expect(receipt.getByText('已批准', { exact: true })).toBeVisible();
+});
+
+test('table and app builders are read only on phones and editable at wider sizes', async ({ page, isMobile }) => {
+  await page.goto('/#tables');
+  await page.locator('.page-header').getByRole('button', { name: '更多', exact: true }).click();
+  await page.getByRole('menuitem', { name: isMobile ? '查看字段' : '字段配置', exact: true }).click();
+  await expect(page.getByRole('heading', { name: '字段配置', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: '添加字段', exact: true })).toHaveCount(isMobile ? 0 : 1);
+  if (isMobile) await expect(page.getByRole('button', { name: '在电脑上继续', exact: true })).toBeVisible();
+  await page.goto('/#apps');
+  await openSidebarItem(page, isMobile, 'IT 工单');
+  await page.locator('.page-header').getByRole('button', { name: '更多', exact: true }).click();
+  await page.getByRole('menuitem', { name: isMobile ? '查看搭建器' : '编辑应用', exact: true }).click();
+  await expect(page.getByRole('heading', { name: '应用搭建器', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: '添加页面', exact: true })).toHaveCount(isMobile ? 0 : 1);
+  if (isMobile) await expect(page.getByRole('button', { name: '在电脑上继续', exact: true })).toBeVisible();
 });

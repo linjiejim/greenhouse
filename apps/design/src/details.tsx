@@ -486,7 +486,7 @@ function testResult(instance: ProviderInstance) {
     : `可用 · ${180 + instance.name.length * 9} ms`;
 }
 export function ProviderDrawer({ capability, personal }: { capability: Capability; personal: boolean }) {
-  const { notify } = useDesign();
+  const { notify, mobile, continueOnComputer } = useDesign();
   const meta = capabilities.find((item) => item.id === capability)!;
   const [instances, setInstances] = useState(personal ? [] : workspaceProviders[capability]);
   const [adding, setAdding] = useState(false);
@@ -495,6 +495,26 @@ export function ProviderDrawer({ capability, personal }: { capability: Capabilit
   const [error, setError] = useState('');
   const [checks, setChecks] = useState<Record<string, string>>({});
   const [allowPersonal, setAllowPersonal] = useState(meta.personal);
+  if (mobile && !personal)
+    return (
+      <div className="stack">
+        <div className="list-card">
+          {instances.map((instance) => (
+            <div className="list-row" key={instance.id}>
+              <strong>{instance.name}</strong>
+              <span className="muted small">
+                {instance.preset} · {instance.status}
+              </span>
+            </div>
+          ))}
+        </div>
+        <OverlayActions>
+          <Button kind="primary" onClick={continueOnComputer}>
+            在电脑上继续
+          </Button>
+        </OverlayActions>
+      </div>
+    );
   const move = (index: number, delta: number) =>
     setInstances((value) => {
       const next = [...value];

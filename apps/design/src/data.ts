@@ -15,7 +15,8 @@ export type ModuleId =
   | 'settings'
   | 'admin'
   | 'login'
-  | 'components';
+  | 'components'
+  | 'surfaces';
 
 /** Where a module's entry lives in the shell. */
 export type Placement = 'rail' | 'more' | 'bottom' | 'account' | 'hidden';
@@ -33,6 +34,7 @@ export const modules: { id: ModuleId; label: string; placement: Placement }[] = 
   { id: 'admin', label: '管理', placement: 'account' },
   { id: 'login', label: '登录', placement: 'hidden' },
   { id: 'components', label: '组件', placement: 'hidden' },
+  { id: 'surfaces', label: '多端', placement: 'hidden' },
 ];
 
 export const moduleLabel = (id: ModuleId) => modules.find((item) => item.id === id)!.label;
@@ -157,6 +159,112 @@ export interface Approval {
 export function decideApproval(approval: Approval, decision: 'accepted' | 'rejected', now: number): Approval {
   if (approval.state !== 'pending') return approval;
   return { ...approval, state: now >= approval.expiresAt ? 'expired' : decision };
+}
+
+// Shared needs-you requests. Expiry is optional for the fixed mock scenes.
+export type RequestState = ApprovalState | 'done';
+export interface DesignRequest {
+  id: string;
+  kind: 'approve' | 'login' | 'takeover' | 'question' | 'proposal';
+  tier?: 2 | 3;
+  title: string;
+  agent: string;
+  target: string;
+  effect: string;
+  scope: string;
+  conversation: string;
+  state: RequestState;
+  expiresAt?: number;
+  standing?: boolean;
+}
+export const initialRequests: DesignRequest[] = [
+  {
+    id: 'approve-tasks',
+    kind: 'approve',
+    tier: 2,
+    title: '把 2 条任务标为已完成？',
+    agent: 'Greeny',
+    target: '产品计划',
+    effect: '2 条任务：进行中 → 已完成',
+    scope: '产品计划 / 任务',
+    conversation: 'main',
+    state: 'pending',
+  },
+  {
+    id: 'approve-mail',
+    kind: 'approve',
+    tier: 3,
+    title: '发送 3 封面试邀请',
+    agent: '卷卷',
+    target: '外部收件人',
+    effect: '发出后不能撤回',
+    scope: '本次 3 封邀请',
+    conversation: 'agent:triage',
+    state: 'pending',
+  },
+  {
+    id: 'takeover',
+    kind: 'takeover',
+    title: '完成人机验证',
+    agent: 'Greeny',
+    target: '供应商门户',
+    effect: '接管电脑，完成后交还',
+    scope: '本次验证',
+    conversation: 'main',
+    state: 'pending',
+  },
+  {
+    id: 'login',
+    kind: 'login',
+    title: '登录供应商门户',
+    agent: 'Greeny',
+    target: 'supplier.example.com',
+    effect: '下载报价单',
+    scope: '本次登录',
+    conversation: 'main',
+    state: 'pending',
+  },
+  {
+    id: 'question',
+    kind: 'question',
+    title: '周报按什么顺序排列？',
+    agent: 'Greeny',
+    target: '周报',
+    effect: '调整排列方式',
+    scope: '本次周报',
+    conversation: 'main',
+    state: 'pending',
+  },
+  {
+    id: 'proposal',
+    kind: 'proposal',
+    title: '修改「卷卷」的指令',
+    agent: 'Greeny',
+    target: '卷卷',
+    effect: '改工单状态前写处理说明',
+    scope: '卷卷的指令',
+    conversation: 'main',
+    state: 'pending',
+  },
+];
+export function decideRequest(
+  request: DesignRequest,
+  decision: 'accepted' | 'rejected' | 'done',
+  now = Date.now(),
+): DesignRequest {
+  if (request.state !== 'pending') return request;
+  return { ...request, state: now >= (request.expiresAt ?? Infinity) ? 'expired' : decision };
+}
+export function pendingRequests(requests: DesignRequest[]) {
+  return requests.filter((request) => request.state === 'pending');
+}
+export function nextPendingRequest(requests: DesignRequest[], id: string) {
+  const index = requests.findIndex((request) => request.id === id);
+  for (let offset = 1; offset <= requests.length; offset++) {
+    const request = requests[(index + offset) % requests.length];
+    if (request.id !== id && request.state === 'pending') return request;
+  }
+  return undefined;
 }
 
 // ─── Knowledge ───
@@ -288,11 +396,22 @@ export interface RunItem {
   state: '需要你' | '运行中' | '排队中' | '已完成' | '失败' | '已取消';
   agent: string;
   source: '对话' | '定时' | '表格';
+  progress?: number;
+  steps?: string[];
   time: string;
 }
 export const runs: RunItem[] = [
   { id: 'run-1', title: '更新本周任务状态', state: '需要你', agent: '卷卷', source: '对话', time: '刚刚' },
-  { id: 'run-2', title: '整理客户访谈', state: '运行中', agent: '蒲蒲', source: '对话', time: '2 分钟前' },
+  {
+    id: 'run-2',
+    title: '整理客户访谈',
+    state: '运行中',
+    agent: '蒲蒲',
+    source: '对话',
+    time: '2 分钟前',
+    progress: 58,
+    steps: ['已读取访谈', '已提炼问题', '正在整理结论'],
+  },
   { id: 'run-3', title: '生成周报', state: '已完成', agent: '葵葵', source: '定时', time: '10:30' },
   { id: 'run-4', title: '同步供应商报价', state: '失败', agent: 'Greeny', source: '定时', time: '09:00' },
   { id: 'run-5', title: '新工单自动分诊', state: '已完成', agent: '卷卷', source: '表格', time: '昨天' },

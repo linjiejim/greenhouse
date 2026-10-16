@@ -85,7 +85,6 @@ import {
   folders,
   moduleLabel,
   rooms,
-  runs,
   type AgentItem,
   type ModuleId,
 } from './data';
@@ -129,13 +128,14 @@ export const defaultSelection: Record<ModuleId, string> = {
   admin: '成员与分组',
   login: '',
   components: 'lab:0',
+  surfaces: '',
 };
 
 const icon = (Icon: LucideIcon) => <Icon size={15} />;
 
 /** The actions of each kind of row: its right-click menu and its "⋯" share one list. */
 export function useRowMenus() {
-  const { marks, mark, notify, navigate, openAgent, select, newItem } = useDesign();
+  const { marks, mark, notify, navigate, openAgent, select, newItem, mobile } = useDesign();
   const toggle = (kind: 'muted' | 'pinned', key: string, label: string, Icon: LucideIcon): MenuEntry => ({
     label,
     icon: icon(Icon),
@@ -225,23 +225,28 @@ export function useRowMenus() {
         onClick: () => notify(`已删除「${title}」`, { label: '撤销', onClick: () => notify('已恢复') }),
       },
     ],
-    table: (name: string, kind: 'base' | 'table' | 'view'): MenuEntry[] => [
-      ...(kind === 'view'
-        ? []
+    table: (name: string, kind: 'base' | 'table' | 'view'): MenuEntry[] =>
+      mobile
+        ? [{ label: '查看配置', onClick: () => select(kind === 'view' ? 'config:视图配置' : 'config:字段配置') }]
         : [
-            {
-              label: kind === 'base' ? '新建表格' : '新建视图',
-              icon: icon(Plus),
-              onClick: () => notify(kind === 'base' ? '新建表格' : '选择视图类型'),
-            },
-          ]),
-      rename,
-      ...(kind === 'base' ? [] : [{ label: '复制', icon: icon(Copy), onClick: () => notify(`已复制「${name}」`) }]),
-      '-',
-      { label: '删除', icon: icon(Trash2), danger: true, onClick: () => notify(`删除「${name}」前会再确认一次`) },
-    ],
+            ...(kind === 'view'
+              ? []
+              : [
+                  {
+                    label: kind === 'base' ? '新建表格' : '新建视图',
+                    icon: icon(Plus),
+                    onClick: () => notify(kind === 'base' ? '新建表格' : '选择视图类型'),
+                  },
+                ]),
+            rename,
+            ...(kind === 'base'
+              ? []
+              : [{ label: '复制', icon: icon(Copy), onClick: () => notify(`已复制「${name}」`) }]),
+            '-',
+            { label: '删除', icon: icon(Trash2), danger: true, onClick: () => notify(`删除「${name}」前会再确认一次`) },
+          ],
     app: (app: (typeof apps)[number]): MenuEntry[] => [
-      { label: '编辑应用', icon: icon(Pencil), onClick: () => notify('打开搭建器') },
+      { label: mobile ? '查看搭建器' : '编辑应用', icon: icon(Pencil), onClick: () => select(`builder:${app.id}`) },
       copyLink,
       { label: '取消置顶', icon: icon(PinOff), onClick: () => notify(`已取消置顶「${app.name}」`) },
       '-',
@@ -321,7 +326,7 @@ function RailItem({
 }
 
 export function Rail({ onLogout }: { onLogout: () => void }) {
-  const { module, navigate, needsYou } = useDesign();
+  const { module, navigate, needsYou, runs } = useDesign();
   const menus = useRailMenus();
   const running = runs.some((run) => run.state === '运行中');
   return (
@@ -458,7 +463,7 @@ function signalFor(
 
 /** Agents sit at the top without a heading; the main Agent is larger. Lists never preview messages. */
 function ChatList({ query }: { query: string }) {
-  const { selection, select, marks } = useDesign();
+  const { selection, select, marks, requests } = useDesign();
   const menus = useRowMenus();
   const [earlier, setEarlier] = useState(false);
   const [main, ...rest] = agents;
@@ -490,7 +495,9 @@ function ChatList({ query }: { query: string }) {
             title={main.name}
             active={selection === 'main'}
             menu={menus.agent(main)}
-            signal={signalFor(`agent:${main.id}`, marks, {})}
+            signal={signalFor(`agent:${main.id}`, marks, {
+              needs: requests.filter((item) => item.conversation === 'main' && item.state === 'pending').length,
+            })}
             onClick={() => select('main')}
           />
         )}
@@ -502,7 +509,7 @@ function ChatList({ query }: { query: string }) {
             active={selection === `agent:${agent.id}`}
             menu={menus.agent(agent)}
             signal={signalFor(`agent:${agent.id}`, marks, {
-              needs: agent.needs,
+              needs: requests.filter((item) => item.agent === agent.name && item.state === 'pending').length,
               running: agent.status === '运行中',
             })}
             onClick={() => select(`agent:${agent.id}`)}
@@ -688,9 +695,10 @@ function AppsList({ query }: { query: string }) {
 
 function FlatList({ items, icons }: { items: string[]; icons?: Record<string, ReactNode> }) {
   const { selection, select } = useDesign();
+  const { needsYou, runs } = useDesign();
   const counts: Record<string, number> = {
     运行中: runs.filter((run) => ['运行中', '排队中'].includes(run.state)).length,
-    需要你: runs.filter((run) => run.state === '需要你').length + 1,
+    需要你: needsYou,
   };
   return (
     <>
