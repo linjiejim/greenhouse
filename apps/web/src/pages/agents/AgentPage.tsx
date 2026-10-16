@@ -127,7 +127,7 @@ export function AgentPage({ id, tab }: { id: string; tab: AgentTab }) {
               working={conversation?.working}
               waiting={(conversation?.pending_requests ?? 0) > 0}
               sleeping={archived}
-              reply={messages.messages.findLast((message) => message.role === 'assistant')}
+              reply={[...messages.messages].reverse().find((message) => message.role === 'assistant')}
             />
           }
           title={

@@ -389,7 +389,7 @@ function ExistingConversation({ id, requestId }: { id: string; requestId?: strin
                 agent={answering}
                 working={conversation.working}
                 waiting={conversation.pending_requests > 0}
-                reply={list.findLast((message) => message.role === 'assistant')}
+                reply={[...list].reverse().find((message) => message.role === 'assistant')}
               />
             )
           }
