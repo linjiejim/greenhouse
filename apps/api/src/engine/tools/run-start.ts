@@ -1,4 +1,4 @@
-import { interpolate } from '@greenhouse/utils/i18n';
+import { han, interpolate } from '@greenhouse/utils/i18n';
 import { z } from 'zod';
 import { createScheduleInputSchema } from '@greenhouse/contract';
 import type { ProvidersService } from '../../providers/service.js';
@@ -52,7 +52,7 @@ export function runStartTool(background: Background, computers: ComputersService
       const accessSummary =
         network === 'domains'
           ? zh
-            ? `使用电脑 · 可访问的域名：${sites || '无（离线）'}`
+            ? han`使用电脑 · 可访问的域名：${sites || '无（离线）'}`
             : `Computer · Allowed domains: ${sites || 'None (offline)'}`
           : [
               ...(network === 'offline' ? [zh ? '电脑仅用于离线工作' : 'Computer for offline work only'] : []),
@@ -89,7 +89,7 @@ export function runStartTool(background: Background, computers: ComputersService
       const title = String(request.payload.run_title ?? '');
       const zh = ctx.locale === 'zh';
       if (request.status !== 'approved') {
-        return { line: zh ? `没有开始后台运行：${title}` : `Background run not started: ${title}`, note: null };
+        return { line: zh ? han`没有开始后台运行：${title}` : `Background run not started: ${title}`, note: null };
       }
       await background.start({
         agentId: ctx.agent.id,
@@ -107,9 +107,9 @@ export function runStartTool(background: Background, computers: ComputersService
           : {}),
       });
       // The report arrives in this conversation when the run ends.
-      return { line: zh ? `已开始后台运行：${title}` : `Background run started: ${title}`, note: null };
+      return { line: zh ? han`已开始后台运行：${title}` : `Background run started: ${title}`, note: null };
     },
     summarize: (args, _output, locale) =>
-      locale === 'zh' ? `提议后台运行：${args.title}` : `Proposed a background run: ${args.title}`,
+      locale === 'zh' ? han`提议后台运行：${args.title}` : `Proposed a background run: ${args.title}`,
   });
 }

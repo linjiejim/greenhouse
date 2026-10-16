@@ -3,6 +3,7 @@ import type { BrowserService } from '../../modules/computers/browser.js';
 import type { FilesService } from '../../modules/files/service.js';
 import { computerAvailable } from './computer.js';
 import { defineTool } from './define.js';
+import { han } from '@greenhouse/utils/i18n';
 
 const ref = z.string().min(2).max(10).describe('A ref from your latest snapshot, like e12.');
 
@@ -108,7 +109,7 @@ export function browserTool(browser: BrowserService, files: FilesService) {
       const zh = locale === 'zh';
       switch (args.action) {
         case 'open':
-          return zh ? `打开了 ${hostOf(args.url)}` : `Opened ${hostOf(args.url)}`;
+          return zh ? han`打开了 ${hostOf(args.url)}` : `Opened ${hostOf(args.url)}`;
         case 'snapshot':
         case 'read':
           return zh ? '看了网页' : 'Read the page';
@@ -117,7 +118,7 @@ export function browserTool(browser: BrowserService, files: FilesService) {
         case 'type':
           return zh ? '在网页上输入了文字' : 'Typed on the page';
         case 'press':
-          return zh ? `按了 ${args.key}` : `Pressed ${args.key}`;
+          return zh ? han`按了 ${args.key}` : `Pressed ${args.key}`;
         case 'scroll':
           return zh ? '滚动了网页' : 'Scrolled the page';
         case 'wait':

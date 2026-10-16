@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { ComputersService } from '../../modules/computers/service.js';
 import { defineTool, type AvailabilityContext } from './define.js';
+import { han } from '@greenhouse/utils/i18n';
 
 /**
  * Whether the Agent has a computer this turn: the member has computers on and a sandbox is set
@@ -85,10 +86,10 @@ export function computerTool(computers: ComputersService) {
       const zh = locale === 'zh';
       switch (args.action) {
         case 'shell':
-          return zh ? `运行了命令：${args.command.slice(0, 60)}` : `Ran: ${args.command.slice(0, 60)}`;
+          return zh ? han`运行了命令：${args.command.slice(0, 60)}` : `Ran: ${args.command.slice(0, 60)}`;
         case 'run_background':
           return zh
-            ? `在后台启动了：${args.name ?? args.command.slice(0, 40)}`
+            ? han`在后台启动了：${args.name ?? args.command.slice(0, 40)}`
             : `Started in the background: ${args.name ?? args.command.slice(0, 40)}`;
         case 'processes':
           return zh ? '查看了后台进程' : 'Checked background processes';

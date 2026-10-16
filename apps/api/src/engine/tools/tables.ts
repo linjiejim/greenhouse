@@ -8,6 +8,7 @@ import type { TablesService } from '../../modules/tables/service.js';
 import { defineTool, type ToolDef } from './define.js';
 import { accessLabel, detailText } from './presentation.js';
 import { conflict } from '../../http/errors.js';
+import { han } from '@greenhouse/utils/i18n';
 
 const values = z.record(z.string(), z.unknown());
 const item = z.object({ id: z.string().max(64).optional(), revision: z.number().int().positive().optional(), values });
@@ -193,8 +194,8 @@ export function tableTools(tables: TablesService): ToolDef[] {
         ...(['delete', 'purge'].includes(args.action) ? { danger: true } : {}),
         summary:
           ctx.conversation?.kind === 'room'
-            ? `${verbs(args.action, zh)}${zh ? '表格记录' : ' records'}`
-            : `${verbs(args.action, zh)}${zh ? '表格' : ' records in'}「${at.name}」${zh ? '的记录' : ''}`,
+            ? han`${verbs(args.action, zh)}${zh ? '表格记录' : ' records'}`
+            : han`${verbs(args.action, zh)}${zh ? '表格' : ' records in'}「${at.name}」${zh ? '的记录' : ''}`,
         details,
       };
     },
@@ -220,7 +221,7 @@ export function tableTools(tables: TablesService): ToolDef[] {
           : [];
       const lines = (names.length ? names : before.length ? before : ['']).map((name, index) => {
         const action = args.action === 'bulk' ? (successful[index]?.id ? 'update' : 'create') : args.action;
-        return `${verbs(action, zh)}${zh ? '记录' : ' record'}${!room && name ? `「${name}」` : ''}`;
+        return han`${verbs(action, zh)}${zh ? '记录' : ' record'}${!room && name ? `「${name}」` : ''}`;
       });
       return `${room ? '' : `${zh ? '数据表' : 'Table'}「${at.name}」\n`}${lines.join('\n')}`;
     },

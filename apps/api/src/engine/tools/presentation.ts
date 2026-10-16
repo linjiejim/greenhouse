@@ -1,4 +1,4 @@
-import { interpolate } from '@greenhouse/utils/i18n';
+import { han, interpolate } from '@greenhouse/utils/i18n';
 import { ProviderRequestError } from '@greenhouse/providers';
 import { ApiError } from '../../http/errors.js';
 import type { ToolCallRecord } from '@greenhouse/agent-core';
@@ -80,7 +80,7 @@ export function argumentDetails(args: unknown, locale: Locale = 'en') {
   if (entries.length > 12)
     rows.push({
       label: '…',
-      value: locale === 'zh' ? `另有 ${entries.length - 12} 项` : `${entries.length - 12} more fields`,
+      value: locale === 'zh' ? han`另有 ${entries.length - 12} 项` : `${entries.length - 12} more fields`,
     });
   return rows;
 }
@@ -88,11 +88,11 @@ export function argumentDetails(args: unknown, locale: Locale = 'en') {
 export function approvalStep(summary: string, state: string, locale: Locale): string {
   if (locale === 'zh') {
     if (state === 'pending') return interpolate('zh', '请求 {summary} · 等你批准', { summary });
-    if (state === 'running') return `正在执行：${summary}`;
-    if (state === 'uncertain') return `结果未知：${summary}`;
-    if (state === 'succeeded') return `已完成：${summary}`;
-    if (state === 'failed') return `未完成：${summary}`;
-    return `未执行：${summary} · ${state === 'rejected' ? '已拒绝' : '已结束'}`;
+    if (state === 'running') return han`正在执行：${summary}`;
+    if (state === 'uncertain') return han`结果未知：${summary}`;
+    if (state === 'succeeded') return han`已完成：${summary}`;
+    if (state === 'failed') return han`未完成：${summary}`;
+    return han`未执行：${summary} · ${state === 'rejected' ? '已拒绝' : '已结束'}`;
   }
   if (state === 'pending') return `Requested: ${summary} · Awaiting your approval`;
   if (state === 'running') return `Performing: ${summary}`;
@@ -237,7 +237,7 @@ export function failureSummary(
   const reason =
     details?.field_name && expected && ctx.conversation?.kind !== 'room'
       ? zh
-        ? `字段「${details.field_name}」${expected}`
+        ? han`字段「${details.field_name}」${expected}`
         : `Field “${details.field_name}” ${expected}`
       : (codeReason ?? failureReason(error, def.name, ctx.locale));
   return interpolate(ctx.locale, zh ? '{action}失败：{reason}' : '{action} failed: {reason}', { action, reason });

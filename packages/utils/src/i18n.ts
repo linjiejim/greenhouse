@@ -25,3 +25,23 @@ export function interpolate(locale: string, template: string, vars: Record<strin
     },
   );
 }
+
+/**
+ * A template literal for server copy that follows the same spacing rule: two Han runs join
+ * without a space, Han next to Latin or digits gets one, anything else keeps the template's.
+ * Strings without Han text come out unchanged.
+ */
+export function han(strings: TemplateStringsArray, ...values: unknown[]): string {
+  let out = strings[0]!;
+  for (let i = 0; i < values.length; i++) {
+    const value = String(values[i]);
+    const next = strings[i + 1]!;
+    const before = out.match(/ *$/)![0];
+    const head = out.slice(0, out.length - before.length);
+    const after = next.match(/^ */)![0];
+    const tail = next.slice(after.length);
+    const separator = i > 0 && /^\p{Script=Han}+$/u.test(strings[i]!.trim()) && strings[i]!.startsWith(' ');
+    out = head + gap(before, head, value, separator) + value + gap(after, value, tail, false) + tail;
+  }
+  return out;
+}

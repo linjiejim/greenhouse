@@ -1,4 +1,4 @@
-import { interpolate } from '@greenhouse/utils/i18n';
+import { han, interpolate } from '@greenhouse/utils/i18n';
 import { replyParts, replyText } from './reply.js';
 import { REMINDER_JOB, type RemindersService } from '../modules/reminders/service.js';
 import { createTimerScope } from './timers.js';
@@ -2039,10 +2039,10 @@ export function createEngine(deps: EngineDeps) {
           note: `The member declined "${summary}"${reason}. Do not retry unless they ask.`,
         };
       }
-      return { line: zh ? `卡片已过期：${summary}` : `Card expired: ${summary}`, note: null };
+      return { line: zh ? han`卡片已过期：${summary}` : `Card expired: ${summary}`, note: null };
     }
     const gone = {
-      line: zh ? `已批准：${summary}，但无法执行` : `Approved: ${summary}, but it could not run`,
+      line: zh ? han`已批准：${summary}，但无法执行` : `Approved: ${summary}, but it could not run`,
       note: `The member approved "${summary}", but the tool is no longer available.`,
     };
     if (!request.stepId) return gone;
@@ -2198,7 +2198,7 @@ export function createEngine(deps: EngineDeps) {
       const message = toErrorMessage(error).slice(0, 500);
       const title = cardTitle(request);
       return {
-        line: locale === 'zh' ? `没能处理：${title}` : `Could not be carried out: ${title}`,
+        line: locale === 'zh' ? han`没能处理：${title}` : `Could not be carried out: ${title}`,
         note: `Carrying out the member's decision on "${title}" failed: ${message}`,
       };
     }
@@ -2924,7 +2924,7 @@ export function createEngine(deps: EngineDeps) {
         deps.conversations.append(input.conversationId, {
           role: 'event',
           agentId: input.fromAgentId,
-          content: input.locale === 'zh' ? `${from} 把工作交给了 ${to}` : `${from} handed the work to ${to}`,
+          content: input.locale === 'zh' ? han`${from} 把工作交给了 ${to}` : `${from} handed the work to ${to}`,
           event: { type: 'handoff', handoff_id: row.id, from: input.fromAgentId, to: input.toAgentId },
         }),
       );

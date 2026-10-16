@@ -76,6 +76,7 @@ import {
 import { scanPackage, scanTemplate, type ScanReport } from './scan.js';
 import { changelogEntry, collectPacks, readPackFiles, SKILLHUB_DIR } from './seed.js';
 import { checkValues, variablesProblem } from './template.js';
+import { han } from '@greenhouse/utils/i18n';
 
 type ListQuery = z.output<typeof skillListQuerySchema>;
 type CreateInput = z.output<typeof createSkillInputSchema>;
@@ -403,7 +404,7 @@ export function createSkillsService(deps: {
         title:
           admin.locale === 'en'
             ? `The security scan holds the skill "${title}" for review`
-            : `技能「${title}」的安全扫描需要审核`,
+            : han`技能「${title}」的安全扫描需要审核`,
         targetType: 'skill',
         targetId: row.id,
         payload: { category: 'skill_scan', status: row.scanStatus },
@@ -830,10 +831,10 @@ export function createSkillsService(deps: {
               input.decision === 'safe'
                 ? en
                   ? `An admin marked the skill "${title}" safe`
-                  : `管理员已将技能「${title}」标记为安全`
+                  : han`管理员已将技能「${title}」标记为安全`
                 : en
                   ? `An admin confirmed the skill "${title}" malicious`
-                  : `管理员已确认技能「${title}」为恶意`,
+                  : han`管理员已确认技能「${title}」为恶意`,
             targetType: 'skill',
             targetId: updated.id,
             payload: { category: 'skill_scan', status: updated.scanStatus },

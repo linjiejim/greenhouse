@@ -130,6 +130,7 @@ import {
   toItem,
   type Source,
 } from './views.js';
+import { han } from '@greenhouse/utils/i18n';
 
 /**
  * The tree's lock, in any process and only inside a transaction. A folder move holds it alone,
@@ -903,7 +904,7 @@ export function createKnowledgeService(deps: {
         memberId,
         kind: 'mention',
         title:
-          reader.locale === 'zh' ? `${who} 在《${doc.title}》里提到了你` : `${who} mentioned you in "${doc.title}"`,
+          reader.locale === 'zh' ? han`${who} 在《${doc.title}》里提到了你` : `${who} mentioned you in "${doc.title}"`,
         targetType: 'doc',
         targetId: doc.id,
         ...(agentId ? { agentId } : {}),
@@ -933,7 +934,7 @@ export function createKnowledgeService(deps: {
         kind: 'mention',
         title:
           reader.locale === 'zh'
-            ? `${who} 在《${doc.title}》的评论里提到了你`
+            ? han`${who} 在《${doc.title}》的评论里提到了你`
             : `${who} mentioned you in a comment on "${doc.title}"`,
         body,
         targetType: 'doc',
@@ -968,7 +969,7 @@ export function createKnowledgeService(deps: {
       await deps.notifications.publish({
         memberId,
         kind: 'comment',
-        title: reader.locale === 'zh' ? `${who} 评论了《${doc.title}》` : `${who} commented on "${doc.title}"`,
+        title: reader.locale === 'zh' ? han`${who} 评论了《${doc.title}》` : `${who} commented on "${doc.title}"`,
         body,
         targetType: 'doc',
         targetId: doc.id,
@@ -2622,7 +2623,7 @@ export function createKnowledgeService(deps: {
           kind: 'share',
           title:
             reader.locale === 'zh'
-              ? `${actor.name} 把《${name}》分享给了你`
+              ? han`${actor.name} 把《${name}》分享给了你`
               : `${actor.name} shared "${name}" with you`,
           targetType: type,
           targetId: id,

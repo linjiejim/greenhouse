@@ -3,7 +3,7 @@
 Greenhouse is an open-source, self-hosted platform where a team works with its own AI Agents on shared knowledge, tables and apps. It serves one internal team: every login and integration acts as a real internal account. There is no guest or anonymous access.
 
 ## Truth and v2
-- This is the v2 branch: a top-down rewrite with no backward compatibility. v1 lives on main and is the reference to port from (`git show main:<path>`).
+- This is v2 (main since v2.0.0): a top-down rewrite with no backward compatibility. v1 lives on the release/v1 branch for security fixes and is the reference to port from (`git show release/v1:<path>`).
 - Product truth is docs/product/: prd.md (scope, objects, glossary in §5), features.md (one row per feature: ID, v2 decision, status), always-on.md (wake-ups, approval tiers, background work, reliability and cost), providers.md, api.md, data-model.md, migration-v1.md, roadmap.md (slice order and gates).
 - A new feature starts as a features.md row naming its object and why nothing existing can be reused. The change that ships or deletes it updates that row's status.
 - Copy, docs and code use only the glossary: agent, admin, member, conversation, run, request. Never reintroduce bot, super or team.
@@ -39,6 +39,7 @@ Greenhouse is an open-source, self-hosted platform where a team works with its o
 - `pnpm web:dev` (proxies /api to GREENHOUSE_API, default 127.0.0.1:3000), `pnpm web:build` and `pnpm test:web-e2e` (a real API and database with a fake model; apps/web/AGENTS.md).
 - `pnpm design:dev` (127.0.0.1:4518), `pnpm design:build` and `pnpm test:design-ui` for the prototype.
 - Commits run husky and lint-staged (eslint --fix, prettier --write on staged files).
+- Server copy that interpolates into Chinese text uses the `han` tag from @greenhouse/utils/i18n (dictionaries use `interpolate`): Han next to Han joins, Han next to Latin or digits gets a space.
 
 ## Code rules
 - Delete instead of deprecating; after a deletion, delete whatever lost its last consumer. Never add compatibility placeholders.

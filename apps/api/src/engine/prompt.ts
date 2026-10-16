@@ -19,6 +19,7 @@
 import { CONVERSATION_FOCUS_RULE, REPLY_STYLE_RULE, RICH_OUTPUT_GUIDE } from '@greenhouse/utils/prompts';
 import type { ConversationKind } from '@greenhouse/contract';
 import { fence, sanitizeForPrompt } from '../security/prompt.js';
+import { han } from '@greenhouse/utils/i18n';
 
 export type Locale = 'zh' | 'en';
 
@@ -236,7 +237,9 @@ export function renderMemoryIndex(memories: readonly MemoryEntry[], locale: Loca
     const line = `- ${memory.id}${memory.pinned ? ' 📌' : ''} ${fence(memory.title, 120)}`;
     if (used + line.length > MEMORY_INDEX_MAX_CHARS) {
       const hidden = memories.length - lines.length;
-      lines.push(locale === 'zh' ? `- 另有 ${hidden} 条，用 recall 查找` : `- ${hidden} more; find them with recall`);
+      lines.push(
+        locale === 'zh' ? han`- 另有 ${hidden} 条，用 recall 查找` : `- ${hidden} more; find them with recall`,
+      );
       break;
     }
     lines.push(line);

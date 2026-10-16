@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { agents, getDb } from '@greenhouse/db';
 import type { Engine } from '../engine.js';
 import { defineTool } from './define.js';
+import { han } from '@greenhouse/utils/i18n';
 
 /** Bring another of the member's Agents into this conversation with a brief; it answers next. */
 export function handoffTool(handOff: Engine['handOff']) {
@@ -59,7 +60,7 @@ export function handoffTool(handOff: Engine['handOff']) {
     },
     summarize: (_args, output, locale) => {
       const name = (output as { handed_to?: string } | undefined)?.handed_to ?? '';
-      return locale === 'zh' ? `交给了 ${name}` : `Handed over to ${name}`;
+      return locale === 'zh' ? han`交给了 ${name}` : `Handed over to ${name}`;
     },
   });
 }

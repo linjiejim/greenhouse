@@ -25,6 +25,7 @@ import { logger } from '@greenhouse/utils/logger';
 import type { ProvidersService } from '../providers/service.js';
 import { fence } from '../security/prompt.js';
 import type { Locale } from './prompt.js';
+import { han } from '@greenhouse/utils/i18n';
 
 /** The share of the model's context window the text after the summary may take before a fold. */
 export const DIGEST_TRIGGER_SHARE = 0.25;
@@ -116,7 +117,7 @@ export function renderDigest(doc: DigestDoc, locale: Locale, agentNames: Readonl
         zh ? '事项：' : 'Items:',
         ...d.open_items.map((x) => {
           const owner = x.owner_agent_id ? agentNames.get(x.owner_agent_id) : undefined;
-          return `${x.done ? (zh ? '已完成' : 'Done') : zh ? '待办' : 'Pending'}: ${x.text}${owner ? `, ${owner}` : ''}`;
+          return han`${x.done ? (zh ? '已完成' : 'Done') : zh ? '待办' : 'Pending'}: ${x.text}${owner ? `, ${owner}` : ''}`;
         }),
       );
     }
