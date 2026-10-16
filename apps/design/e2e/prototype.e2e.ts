@@ -453,7 +453,7 @@ test('shared approval offers the next request in its conversation and tier 3 ver
 test('watch hold cancels early, approves after 0.8 seconds, and updates chat counts', async ({ page, isMobile }) => {
   await page.goto('/#surfaces');
   await page.getByRole('radio', { name: '手表', exact: true }).click();
-  const detail = page.getByRole('region', { name: '第 2 档请求', exact: true });
+  const detail = page.getByRole('region', { name: '审批提示', exact: true });
   const hold = detail.getByRole('button', { name: '按住批准', exact: true });
   await page.clock.install();
   await hold.focus();
@@ -474,11 +474,26 @@ test('watch hold cancels early, approves after 0.8 seconds, and updates chat cou
   } else await expect(page.locator('.global-rail').getByLabel('5 件需要你', { exact: true })).toBeVisible();
 });
 
+test('the watch stays glanceable: five scenes, one voice button, the rest goes to the iPhone', async ({ page }) => {
+  await page.goto('/#surfaces');
+  await page.getByRole('radio', { name: '手表', exact: true }).click();
+  await expect(page.locator('.surface-scene-watch')).toHaveCount(5);
+  const home = page.getByRole('region', { name: '主屏', exact: true });
+  await expect(home.getByRole('button')).toHaveCount(1);
+  await home.getByRole('button', { name: '对 Greeny 说', exact: true }).click();
+  await expect(home.getByRole('status')).toHaveText('正在听…');
+  await home.getByRole('button', { name: '说完了', exact: true }).click();
+  await expect(home.getByRole('status')).toHaveText('已发出，回复在 iPhone 上看');
+  const elsewhere = page.getByRole('region', { name: '转到 iPhone', exact: true });
+  await elsewhere.getByRole('button', { name: '在 iPhone 上处理', exact: true }).click();
+  await expect(page.getByTestId('product-window')).toHaveAttribute('data-narrow', 'true');
+});
+
 test('lock screen tier 3 only opens the source conversation on a phone', async ({ page }) => {
   await page.goto('/#surfaces');
   await page.getByRole('radio', { name: '手表', exact: true }).click();
   const hold = page
-    .getByRole('region', { name: '第 2 档请求', exact: true })
+    .getByRole('region', { name: '审批提示', exact: true })
     .getByRole('button', { name: '按住批准', exact: true });
   await page.clock.install();
   await hold.focus();

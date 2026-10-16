@@ -4,7 +4,6 @@ export interface DesignContextValue {
   module: ModuleId;
   requests: DesignRequest[];
   runs: RunItem[];
-  cancelRun: (id: string) => void;
   decide: (id: string, decision: 'accepted' | 'rejected' | 'done', standing?: boolean) => void;
   openPhone: (conversation: string) => void;
   continueOnComputer: () => void;

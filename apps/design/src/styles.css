@@ -3088,54 +3088,6 @@ button.surface-row:hover {
   color: var(--gh-on-danger);
   border-color: var(--gh-danger);
 }
-.surface-ring {
-  border: var(--gh-space-1) solid var(--gh-accent);
-  border-radius: var(--gh-radius-full);
-  align-self: center;
-  padding: var(--gh-space-2);
-}
-.surface-ring.warning {
-  border-color: var(--gh-warning);
-}
-.watch-scroll {
-  overflow-y: auto;
-  min-height: 0;
-  flex: 1;
-}
-.watch-list-row {
-  flex-shrink: 0;
-  min-height: var(--gh-space-16);
-  padding: var(--gh-space-2) var(--gh-space-1);
-  background: var(--gh-fill);
-  border-radius: var(--gh-radius-lg);
-}
-.watch-list-copy {
-  display: flex;
-  flex-direction: column;
-  font: var(--gh-type-caption);
-}
-.watch-list-copy strong {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.watch-list-copy > span {
-  color: var(--gh-secondary);
-}
-.watch-pending .watch-list-copy > span {
-  color: var(--gh-warning);
-}
-.surface-watch-bubble {
-  padding: var(--gh-space-3);
-  border-radius: var(--gh-radius-xl);
-  background: var(--gh-fill);
-  font: var(--gh-type-caption);
-}
-.surface-watch-actions {
-  display: flex;
-  flex-direction: column;
-  gap: var(--gh-space-2);
-}
 .surface-watch .surface-live-heading {
   row-gap: var(--gh-space-2);
 }
@@ -3173,40 +3125,138 @@ button.surface-row:hover {
   flex-direction: column;
   align-items: center;
 }
-.surface-watch .surface-ring.warning {
-  width: var(--gh-space-16);
-  height: var(--gh-space-16);
-}
-.watch-next {
-  display: flex;
-  flex-direction: column;
-  height: auto;
-  min-height: var(--gh-space-12);
-  align-items: stretch;
-}
-.watch-next > span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.surface-progress-ring {
-  width: var(--gh-space-16);
-  height: var(--gh-space-16);
-  padding: var(--gh-space-1);
-  border-radius: var(--gh-radius-full);
-  align-self: center;
-  background: conic-gradient(var(--gh-accent) calc(var(--run-progress) * 1%), var(--gh-fill) 0);
-}
-.surface-progress-ring > span {
-  width: 100%;
-  height: 100%;
-  display: grid;
-  place-items: center;
-  background: var(--gh-canvas);
-  border-radius: inherit;
-}
 
 .surface-complication {
   width: var(--gh-space-16);
   height: var(--gh-space-16);
   flex-shrink: 0;
+}
+
+/* Watch: glanceable only. One voice button; approvals need a hold; everything else goes to the iPhone. */
+.surface-watch .surface-date {
+  margin: 0;
+  text-align: center;
+  color: var(--gh-secondary);
+}
+.watch-complications {
+  display: flex;
+  justify-content: center;
+  gap: var(--gh-space-4);
+  margin-top: auto;
+}
+.watch-complication {
+  width: var(--gh-space-16);
+  height: var(--gh-space-16);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border: var(--gh-space-1) solid var(--gh-accent);
+  border-radius: var(--gh-radius-full);
+  font: var(--gh-type-caption);
+  color: var(--gh-secondary);
+}
+.watch-complication strong {
+  font: var(--gh-type-title);
+  color: var(--gh-text);
+}
+.watch-complication.warning {
+  border-color: var(--gh-warning);
+}
+.watch-complication.warning strong {
+  color: var(--gh-warning);
+}
+.watch-status {
+  text-align: center;
+  font: var(--gh-type-caption);
+  color: var(--gh-secondary);
+}
+.watch-voice {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--gh-space-3);
+}
+.watch-mic {
+  width: calc(var(--gh-space-1) * 30);
+  height: calc(var(--gh-space-1) * 30);
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: var(--gh-radius-full);
+  background: var(--gh-accent);
+  color: var(--gh-on-accent);
+  cursor: pointer;
+  transition: background var(--gh-duration-fast) var(--gh-ease-standard);
+}
+.watch-mic:active {
+  background: var(--gh-accent-pressed);
+}
+.watch-mic:focus-visible {
+  outline: var(--gh-stroke-strong) solid var(--gh-accent);
+  outline-offset: var(--gh-stroke-focus-offset);
+}
+.watch-mic.is-listening {
+  animation: watch-listening calc(var(--gh-duration-loop) * 1.6) var(--gh-ease-standard) infinite;
+}
+@keyframes watch-listening {
+  50% {
+    box-shadow: 0 0 0 var(--gh-space-3) color-mix(in srgb, var(--gh-accent) 30%, transparent);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .watch-mic,
+  .watch-mic.is-listening {
+    animation: none;
+    transition: none;
+  }
+}
+.watch-voice-label {
+  min-height: var(--gh-space-8);
+  text-align: center;
+  font: var(--gh-type-label);
+}
+.watch-from {
+  display: flex;
+  align-items: center;
+  gap: var(--gh-space-2);
+  font: var(--gh-type-caption);
+  color: var(--gh-warning);
+}
+.watch-title {
+  font: var(--gh-type-title-sm);
+}
+.watch-effect {
+  margin: 0;
+  font: var(--gh-type-caption);
+  color: var(--gh-secondary);
+}
+.watch-big {
+  width: 100%;
+  height: var(--gh-space-12);
+  margin-top: auto;
+  border-radius: var(--gh-radius-full);
+  flex-shrink: 0;
+}
+.watch-link {
+  border: 0;
+  background: none;
+  color: var(--gh-accent-text);
+  font: var(--gh-type-caption);
+  cursor: pointer;
+  padding: var(--gh-space-1);
+}
+.watch-stack-time {
+  text-align: center;
+}
+.surface-lock-next {
+  height: auto;
+  min-height: var(--gh-space-16);
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  text-align: start;
+  font: var(--gh-type-caption);
 }
