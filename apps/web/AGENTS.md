@@ -103,3 +103,5 @@ The v2 web app. Product scope is docs/product/prd.md §6–7; layout and compone
 - Settled request cards default to one expandable header; answered inline choices keep their selected label in that summary. Read old previews and answers by expanding it. Dangerous approvals use the server danger marker and human action copy.
 
 - Screenshot capture also publishes approvals, receipts, populated rooms, schedules, connections and services. SCREENSHOT_COMPUTER=1 opts into a real local computer image; capture opens a Chinese release checklist in its real browser and waits for the screen. Set FAKE_LLM_CAPTURE_FIXTURE to the same local JSON path for stack.sh and capture-v2.mts; the capture writes fixed replies there, leaving normal browser tests unchanged. SCREENSHOT_REVIEW_DIR holds PNGs and manifests together (default artifacts/t10/after); restart the sample stack before rerunning.
+
+- Plant avatars use the shared V2 controller and stateForWork mapping. Keep directory rows animate=false and one-to-one replies avatar-free; live state belongs in the header and existing room author row.

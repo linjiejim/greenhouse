@@ -10,7 +10,7 @@
  * pitch, and 发消息.
  */
 
-import React, { useCallback, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ScrollView, Text, View } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { AgentUsage } from '../../src/agents/usage';
@@ -21,9 +21,10 @@ import { useT } from '../../src/lib/i18n';
 import type { PublicAgent } from '../../src/shared/contract';
 import { openConversation, openMainThread, openNewChat } from '../../src/shell/nav';
 import { useAuth } from '../../src/store/auth';
+import { useThreads } from '../../src/store/threads';
 import { useWorkspace } from '../../src/store/workspace';
 import { makeStyles, space, typo, useTheme, weight } from '../../src/theme';
-import { AgentAvatar } from '../../src/ui/agent-avatar';
+import { AgentAvatar, WorkingAgentAvatar } from '../../src/ui/agent-avatar';
 import { NativeButton } from '../../src/ui/button';
 import { alertError, confirmAction } from '../../src/ui/dialogs';
 import { EmptyState, LoadingState } from '../../src/ui/empty';
@@ -45,6 +46,15 @@ export default function AgentProfile() {
     ['agent.updated'],
   );
   const agent = r.data;
+  const conversation = conversations?.find(
+    (item) => item.agent_id === agent?.id && (item.kind === 'main' || item.kind === 'direct'),
+  );
+  const reply = useThreads((s) =>
+    conversation ? s.threads[conversation.id]?.messages.findLast((message) => message.role === 'assistant') : undefined,
+  );
+  useEffect(() => {
+    if (conversation?.id) void useThreads.getState().open(conversation.id);
+  }, [conversation?.id]);
   const state = agent
     ? 'ready'
     : r.loading
@@ -157,7 +167,15 @@ export default function AgentProfile() {
       ) : null}
       <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerStyle={styles.content}>
         <View style={styles.hero}>
-          <AgentAvatar agent={agent} size={88} state={archived ? 'sleep' : undefined} animate={false} />
+          <WorkingAgentAvatar
+            key={agent.id}
+            agent={agent}
+            size={88}
+            working={conversation?.working}
+            waiting={(conversation?.pending_requests ?? 0) > 0}
+            reply={reply}
+            sleeping={archived}
+          />
           <Text style={styles.name}>{agent.name}</Text>
           <Text style={styles.role}>
             {[agent.role, agent.is_main ? t('agents.main') : ''].filter(Boolean).join(' · ')}

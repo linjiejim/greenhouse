@@ -1,3 +1,4 @@
+import { stateForWork } from '../../src/ui/plant-avatar/plant-work';
 /**
  * Runs (RUN-01; a large-title page, from 更多): what the Agents do in the background, from
  * conversations, schedules and automations — 运行中 and 已结束, filtered by Agent from the bar's
@@ -146,7 +147,12 @@ export default function Runs() {
                 <AgentAvatar
                   agent={owner ?? null}
                   size={30}
-                  state={item.status === 'running' ? 'thinking' : undefined}
+                  animate={false}
+                  state={stateForWork({
+                    working: item.status === 'running',
+                    waiting: item.status === 'waiting',
+                    failed: item.status === 'failed',
+                  })}
                 />
               }
               leadingWidth={30}

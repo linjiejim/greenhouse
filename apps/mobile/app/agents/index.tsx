@@ -138,7 +138,14 @@ export default function Agents() {
             <ListRow
               title={item.name}
               subtitle={subtitle || undefined}
-              leading={<AgentAvatar agent={item} size={34} state={scope === 'archived' ? 'sleep' : undefined} />}
+              leading={
+                <AgentAvatar
+                  agent={item}
+                  size={34}
+                  animate={false}
+                  state={scope === 'archived' ? 'sleep' : undefined}
+                />
+              }
               leadingWidth={34}
               accessory="chevron"
               position={position(index, list.length)}

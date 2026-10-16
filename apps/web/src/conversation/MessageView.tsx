@@ -1,3 +1,4 @@
+import { usePlantWorkState } from '@greenhouse/ui/components/plant-avatar';
 import './u2.css';
 import { TodoPlan } from './TodoPlan';
 import { api } from '../lib/api';
@@ -190,6 +191,13 @@ export const MessageView = memo(function MessageView({
   const streaming = message.status === 'streaming';
   const text = streaming ? liveText(message.content, stream) : message.content;
   const time = relativeTime(message.created_at, { locale, timeZone });
+  const avatarState = usePlantWorkState({
+    streaming,
+    hasText: !!text,
+    toolRunning: stream?.steps.some((step) => step.status === 'running'),
+    waiting: requests.some((request) => request.status === 'pending'),
+    failed: message.status === 'failed',
+  });
 
   if (message.role === 'event') {
     if (message.event?.type === 'write_receipt') return <WriteReceipt message={message} />;
@@ -329,7 +337,7 @@ export const MessageView = memo(function MessageView({
         {showAuthor && (
           <header className="app-message-author">
             {author.agent ? (
-              <AgentAvatar agent={author.agent} size={24} />
+              <AgentAvatar agent={author.agent} size={24} state={avatarState} />
             ) : (
               <MemberAvatar name={author.name} url={author.member?.avatar_url} size={24} />
             )}

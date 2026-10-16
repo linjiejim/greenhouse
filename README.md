@@ -199,4 +199,4 @@ Read [migration-v1.md](docs/product/migration-v1.md). There is no in-place migra
 
 Start with [AGENTS.md](AGENTS.md), the [product documents](docs/product/) and the [design system](docs/design-system/README.md), whose [interaction rules](docs/design-system/rules.md) every screen keeps. API contracts live in `packages/contract`; permission checks live in services and are shared by HTTP routes, Agent tools and MCP. The interface has Chinese and English dictionaries. Every commit needs typecheck, lint and the relevant tests; releases come from `main` only. See [RELEASING.md](RELEASING.md).
 
-Plant avatar motion experiment: [V1/V2 comparison and browser QA](examples/plant-motion-review/README.md). Run `pnpm plant-motion:dev` for the isolated local review; product avatar components are unchanged.
+Plant avatars use the same interruptible V2 motion on web and native, with static lists and reduced-motion support. The frozen [V1/V2 comparison and browser QA](examples/plant-motion-review/README.md) remains available through `pnpm plant-motion:dev`.

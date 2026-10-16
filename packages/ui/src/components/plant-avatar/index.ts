@@ -36,6 +36,9 @@ export {
   type PlantPose,
   type PlantThemePalettes,
 } from './plant-avatar-svg';
-export { morphPlantAvatar, type MorphTiming } from './plant-morph';
+export { morphPlantAvatar } from './plant-morph';
 export { legacyToPlant, legacyToMood, resolvePlantAvatar, type ResolvedPlantAvatar } from '@greenhouse/types';
 export type { PlantLod, PlantPalette, PlantTone } from './plant-catalogue';
+
+export { stateForWork, type PlantWork } from './plant-work';
+export { usePlantWorkState } from './use-plant-work';

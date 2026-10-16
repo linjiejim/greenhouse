@@ -1,3 +1,4 @@
+import { stateForWork } from '../../src/ui/plant-avatar/plant-work';
 import { TodoPlan } from '../../src/chat/todo-plan';
 import { operationErrorText } from '../../src/api/operation-error';
 /**
@@ -147,7 +148,11 @@ export default function RunPage() {
           <AgentAvatar
             agent={agent}
             size={40}
-            state={run.status === 'running' ? 'thinking' : run.status === 'waiting' ? 'waiting' : undefined}
+            state={stateForWork({
+              working: run.status === 'running',
+              waiting: run.status === 'waiting',
+              failed: run.status === 'failed',
+            })}
           />
           <View style={styles.headTexts}>
             <View style={styles.metaRow}>

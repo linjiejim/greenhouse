@@ -48,7 +48,7 @@ export function HeroAvatar({ agent, size, animate }: { agent: AgentFace | null; 
     settle.current = setTimeout(() => setReaction(null), REACTION_MS);
   };
 
-  const state = reaction?.state;
+  const state = reaction?.state ?? 'hello';
   return (
     <Pressable onPress={react} hitSlop={12} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
       {/* keyed on the tap: every tap replays the one-shot from its start */}
@@ -58,10 +58,10 @@ export function HeroAvatar({ agent, size, animate }: { agent: AgentFace | null; 
           agent={agent}
           size={size}
           state={state}
-          animate={animate && reaction !== null}
+          animate={animate}
         />
       ) : (
-        <PlantAvatar key={reaction?.n ?? 0} size={size} state={state} animate={animate && reaction !== null} />
+        <PlantAvatar key={reaction?.n ?? 0} size={size} state={state} animate={animate} />
       )}
     </Pressable>
   );

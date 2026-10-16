@@ -10,8 +10,8 @@
  *   - static poses are SVG transform ATTRIBUTES, so `animate:false` + an explicit theme
  *     renders without any CSS (react-native-svg SvgXml, sharp/librsvg PNG export, emails);
  *   - animated output always emits the same skeleton (identity transforms included) so
- *     `morphPlantAvatar` can patch it in place and CSS transitions interpolate.
- * Motion is CSS-only (PLANT_AVATAR_CSS, transform/opacity), injected once per document.
+ *     the V2 renderer can retain paths and update them in place.
+ * Mounted animation uses the V2 controller; CSS only switches the theme palette.
  */
 
 import {
@@ -776,95 +776,10 @@ export function buildPlantMonoLayers(o: Omit<PlantAvatarSvgOptions, 'mono'> = {}
 // ─── motion (inject once; transform/opacity only) ───────────────────────────
 
 const AUTO_VARS_DARK = PLANT_TONES.map((t) => `--pa-${t}:var(--pa-d-${t})`).join(';');
-/** Capped loops start at most 1s in (see PLANT_PHASE_SPAN). */
-const LAG = `calc(var(--pa-phase) / ${PLANT_PHASE_SPAN})`;
-
-/**
- * Keyframes, morph transitions, pause hook and reduced-motion override. Loop caps live here
- * (`--pa-cycles`, ×3 waiting / sighs / sleep, one blink cycle), so a call site cannot forget
- * them: every loop is capped unless it is thinking / speaking (live status, WCAG 2.2.2).
- * A morph (`.pa-morph`) suppresses the entrance one-shots on `.pa-os` — the pose transition
- * is the entrance — but never the thinking bob, the Y half of its circumnutation ellipse.
- * A dark ancestor switches the 'auto' palette: `[data-theme='dark']` (the Native Haven tokens'
- * switch, set on <html> or a preview frame) or the `.dark-theme` class.
- */
+/** Palette switching only. V2 owns all motion; exports stay deterministic. */
 export const PLANT_AVATAR_CSS = `
 .pa{display:block;overflow:visible}
 [data-theme='dark'] .pa,.dark-theme .pa,.pa-dark .pa{${AUTO_VARS_DARK}}
-.pa .pa-mo,.pa .pa-os{transform-origin:var(--pa-ox) var(--pa-oy)}
-.pa .pa-pose,.pa .pa-part,.pa .pa-look,.pa .pa-fit{transition:transform .6s cubic-bezier(.34,1.3,.64,1)}
-.pa.pa-s-error .pa-pose,.pa.pa-s-error .pa-part{transition-duration:1s;transition-timing-function:cubic-bezier(.35,.6,.4,1)}
-.pa.pa-s-sleep .pa-pose,.pa.pa-s-sleep .pa-part{transition-duration:1.2s;transition-timing-function:cubic-bezier(.45,0,.55,1)}
-.pa path,.pa circle,.pa ellipse{transition:fill .6s,stroke .6s}
-.pa .pa-eyes{transform-origin:var(--pa-fx) var(--pa-fy);transition:transform .1s ease-in}
-.pa .pa-eyes.pa-shut{transform:scaleY(.1)}
-.pa.pa-morph .pa-os:not(.pa-o-bob){animation:none}
-.pa .pa-m-idle{animation:pa-breathe 5s cubic-bezier(.37,0,.63,1) ${LAG} var(--pa-cycles)}
-.pa .pa-o-sway{animation:pa-sway 4.4s ease-in-out ${LAG} var(--pa-cycles) alternate}
-.pa .pa-blink{animation:pa-blink 11s linear ${LAG} var(--pa-blinks)}
-.pa.pa-s-thinking .pa-blink,.pa.pa-s-speaking .pa-blink{animation-delay:var(--pa-phase);animation-iteration-count:infinite}
-.pa.pa-s-sleep .pa-blink,.pa.pa-s-done .pa-blink{animation:none}
-.pa .pa-m-think{animation:pa-nod-x 1.5s ease-in-out var(--pa-phase) infinite alternate}
-.pa .pa-o-bob{animation:pa-nod-y 1.5s ease-in-out calc(var(--pa-phase) - .75s) infinite alternate}
-.pa .pa-glance{animation:pa-glance 3.6s ease-in-out var(--pa-phase) infinite}
-.pa .pa-m-speak{animation:pa-talk 1.6s ease-in-out var(--pa-phase) infinite}
-.pa .pa-m-rest{animation:pa-breathe 5s cubic-bezier(.37,0,.63,1) .8s 2}
-.pa .pa-o-perk{animation:pa-perk .8s cubic-bezier(.3,1.5,.6,1) both}
-.pa .pa-bloom{opacity:0;transform-origin:50px 50px;animation:pa-bloom 1.4s cubic-bezier(.2,.7,.3,1) .15s both}
-.pa .pa-o-droop{animation:pa-droop 1s cubic-bezier(.35,.6,.4,1) both}
-.pa .pa-m-sigh{animation:pa-sigh 4s ease-in-out 1.2s 3}
-.pa .pa-m-lean{animation:pa-lean 2.6s ease-in-out 3}
-.pa.pa-s-waiting .pa-reach{animation:pa-reach 2.6s ease-in-out 3}
-.pa.pa-s-waiting.pa-morph .pa-reach{animation-delay:.6s}
-.pa .pa-m-sleep{animation:pa-breathe-slow 7s ease-in-out ${LAG} var(--pa-cycles)}
-.pa .pa-o-settle{animation:pa-settle 1.2s cubic-bezier(.45,0,.55,1) both}
-.pa .pa-o-unfurl{animation:pa-unfurl 1.1s cubic-bezier(.3,1.35,.55,1) both}
-.pa .pa-m-hello{animation:pa-hop 1.1s cubic-bezier(.3,0,.3,1) 3}
-.pa.pa-s-hello .pa-reach{animation:pa-wave .45s ease-in-out 6 alternate}
-.pa.pa-s-hello.pa-morph .pa-reach{animation-delay:.5s}
-.pa .pa-talk{animation:pa-chat .45s ease-in-out var(--pa-phase) infinite alternate}
-.pa .pa-mk-dot{transform-box:fill-box;transform-origin:center;animation:pa-dot 1.4s ease-in-out infinite}
-.pa .pa-mk-dot:nth-child(2){animation-delay:.2s}
-.pa .pa-mk-dot:nth-child(3){animation-delay:.4s}
-.pa .pa-mk-dash{animation:pa-dash .4s linear infinite alternate}
-.pa .pa-mk-badge{transform-box:fill-box;transform-origin:center;animation:pa-pop .5s cubic-bezier(.3,1.6,.5,1) backwards,pa-pulse .7s ease-in-out .5s 4 alternate}
-.pa .pa-mk-spark{transform-box:fill-box;transform-origin:center;animation:pa-twinkle 1.3s ease-in-out 2 backwards}
-.pa .pa-mk-spark:nth-of-type(3){animation-delay:.35s}
-.pa .pa-mk-spark:nth-of-type(4){animation-delay:.7s}
-.pa .pa-mk-drop{animation:pa-drip 1.6s ease-in 3 backwards}
-.pa .pa-mk-z{transform-box:fill-box;transform-origin:center;animation:pa-z 3s ease-out 3 backwards}
-.pa .pa-mk-z:nth-child(2){animation-delay:1s}
-.pa .pa-mk-z:nth-child(3){animation-delay:2s}
-.pa .pa-mk-arc{animation:pa-flick .45s ease-in-out 6 alternate}
-.pa-paused .pa *,.pa.pa-paused *{animation-play-state:paused!important}
-@keyframes pa-breathe{0%,100%{transform:none}40%{transform:translateY(calc(var(--pa-amp)*-.7px)) scale(1.006,calc(1 + var(--pa-amp)*.02))}}
-@keyframes pa-breathe-slow{0%,100%{transform:none}45%{transform:scale(1.004,calc(1 + var(--pa-amp)*.012))}}
-@keyframes pa-sway{0%{transform:rotate(calc(var(--pa-amp)*-1.3deg))}100%{transform:rotate(calc(var(--pa-amp)*1.3deg))}}
-@keyframes pa-blink{0%,25%,28%,59%,62%,64.5%,67.5%,90%,93%,100%{transform:none}26.5%,60.5%,66%,91.5%{transform:scaleY(.08)}}
-@keyframes pa-nod-x{0%{transform:translateX(calc(var(--pa-amp)*-1.3px)) rotate(calc(var(--pa-amp)*-1deg))}100%{transform:translateX(calc(var(--pa-amp)*1.3px)) rotate(calc(var(--pa-amp)*1deg))}}
-@keyframes pa-nod-y{0%{transform:translateY(calc(var(--pa-amp)*-.9px))}100%{transform:translateY(calc(var(--pa-amp)*.6px))}}
-@keyframes pa-glance{0%,36%{transform:none}42%,70%{transform:translateX(-5.5px)}76%,100%{transform:none}}
-@keyframes pa-talk{0%,100%{transform:none}12%{transform:scale(1,calc(1 + var(--pa-amp)*.03)) translateY(calc(var(--pa-amp)*-.6px))}25%{transform:scale(1.01,.99)}38%{transform:scale(1,calc(1 + var(--pa-amp)*.016))}50%{transform:none}64%{transform:scale(.995,calc(1 + var(--pa-amp)*.038)) translateY(calc(var(--pa-amp)*-.8px)) rotate(calc(var(--pa-amp)*-1.2deg))}80%{transform:scale(1.01,.985)}}
-@keyframes pa-perk{0%{transform:scale(1.03,.92) translateY(1.5px)}38%{transform:scale(.98,1.05) translateY(-1.2px)}68%{transform:scale(1.01,.99)}100%{transform:none}}
-@keyframes pa-bloom{0%{opacity:.7;transform:scale(.8)}100%{opacity:0;transform:scale(1.07)}}
-@keyframes pa-droop{0%{transform:rotate(-10deg) translateY(-2px) scale(1,1.035)}65%{transform:rotate(1.4deg)}100%{transform:none}}
-@keyframes pa-sigh{0%,100%{transform:none}35%{transform:scale(1.01,calc(1 + var(--pa-amp)*.018))}60%{transform:scale(1,calc(1 - var(--pa-amp)*.01)) rotate(calc(var(--pa-amp)*.8deg))}}
-@keyframes pa-lean{0%,100%{transform:none}35%{transform:rotate(calc(var(--pa-amp)*-1.6deg)) scale(1.012,calc(1 + var(--pa-amp)*.025))}60%{transform:rotate(calc(var(--pa-amp)*-.5deg)) scale(1.004,calc(1 + var(--pa-amp)*.008))}}
-@keyframes pa-reach{0%,100%{transform:none}35%{transform:rotate(-9deg)}60%{transform:rotate(-3deg)}}
-@keyframes pa-settle{0%{transform:rotate(-3deg) scale(1.02,1.05)}100%{transform:none}}
-@keyframes pa-unfurl{0%{opacity:0;transform:scale(.25) rotate(-28deg)}55%{opacity:1}100%{opacity:1;transform:none}}
-@keyframes pa-hop{0%,40%,100%{transform:none}20%{transform:translateY(calc(var(--pa-amp)*-2.6px))}}
-@keyframes pa-wave{0%{transform:rotate(8deg)}100%{transform:rotate(-16deg)}}
-@keyframes pa-chat{0%{transform:none}100%{transform:scaleY(.45)}}
-@keyframes pa-dot{0%,100%{opacity:.25;transform:scale(.8)}40%{opacity:1;transform:scale(1.1)}}
-@keyframes pa-dash{0%{transform:translateX(-1.5px)}100%{transform:translateX(1.5px)}}
-@keyframes pa-pop{0%{transform:scale(0)}100%{transform:none}}
-@keyframes pa-pulse{0%{transform:none}100%{transform:scale(1.12)}}
-@keyframes pa-twinkle{0%,100%{opacity:0;transform:scale(.3)}50%{opacity:1;transform:scale(1) rotate(45deg)}}
-@keyframes pa-drip{0%{opacity:0;transform:translateY(-3px)}25%{opacity:1}100%{opacity:0;transform:translateY(7px)}}
-@keyframes pa-z{0%{opacity:0;transform:translate(-2px,4px) scale(.6)}30%{opacity:1}100%{opacity:0;transform:translate(3px,-6px) scale(1.1)}}
-@keyframes pa-flick{0%{opacity:.25}100%{opacity:1}}
-@media (prefers-reduced-motion:reduce){.pa *{animation:none!important;transition-duration:0s!important}.pa .pa-eyes{transition:opacity .15s!important}.pa .pa-eyes.pa-shut{transform:none;opacity:0}}
 `;
 
 /** Inject PLANT_AVATAR_CSS once per document (SSR-safe; idempotent per document). */

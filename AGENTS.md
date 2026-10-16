@@ -88,6 +88,7 @@ Greenhouse is an open-source, self-hosted platform where a team works with its o
 
 ## Brand and avatars
 - Brand geometry has one source, packages/ui/src/assets/greenhouse-mark.svg; regenerate icons with `python3 scripts/build-brand-assets.py`.
+- Plant motion has one V2 model in packages/ui plant-motion.ts; native vendors it verbatim. Lists stay static; live work uses the existing header/room author avatars.
 - Agent avatars come from one SVG builder in packages/ui/src/components/plant-avatar/; check changes with `node --import tsx scripts/plant-avatar-gallery.mjs`.
 - docs/index.html is the GitHub Pages site; run scripts/build-landing.sh after changing its Tailwind classes.
 
@@ -110,4 +111,4 @@ Greenhouse is an open-source, self-hosted platform where a team works with its o
 
 ## Isolated plant motion review
 
-`examples/plant-motion-review/` is the user-requested V1/V2 comparison experiment for plant avatar motion. Read its local AGENTS.md before editing. Frozen V1 is intentionally retained alongside experimental V2; neither is imported by product code. Adopting V2 means porting it into packages/ui plant avatars and the native app, not linking the experiment.
+`examples/plant-motion-review/` is the user-requested V1/V2 comparison experiment for plant avatar motion. Read its local AGENTS.md before editing. Frozen V1 is retained alongside V2. The comparison imports the product V2 controller; product code never imports the experiment.

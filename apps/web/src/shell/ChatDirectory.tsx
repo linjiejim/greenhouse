@@ -1,3 +1,4 @@
+import { stateForWork } from '@greenhouse/ui/components/plant-avatar';
 import { errorText } from '../lib/errors';
 /**
  * The chat directory (PRD §6.1, layout.md): the Agent area first with no heading (the main
@@ -66,11 +67,9 @@ function signalOf(conversation: Conversation | undefined): Signal {
   };
 }
 
-/** The plant's face (AGNT-04): it moves only while its Agent answers, and waits while it needs you. */
-function moodOf(conversation: Conversation | undefined): 'thinking' | 'waiting' | undefined {
-  if (conversation?.working) return 'thinking';
-  if (conversation?.pending_requests) return 'waiting';
-  return undefined;
+/** Directory faces use the shared work mapping and stay static. */
+function moodOf(conversation: Conversation | undefined) {
+  return stateForWork({ working: conversation?.working, waiting: !!conversation?.pending_requests });
 }
 
 /** 已归档 (CONV-25): archived chats and rooms on demand; each can come back. */
@@ -321,7 +320,7 @@ export function ChatDirectory({ route, query }: { route: Route; query: string })
         {main && matches(query, main.name, t('chat.mainThread')) && (
           <DirectoryRow
             variant="main"
-            leading={<AgentAvatar agent={main} size={36} state={moodOf(mainConversation)} />}
+            leading={<AgentAvatar agent={main} size={36} animate={false} state={moodOf(mainConversation)} />}
             title={main.name}
             href="#/c/main"
             active={current === 'main' || isCurrent(mainConversation)}
@@ -335,7 +334,7 @@ export function ChatDirectory({ route, query }: { route: Route; query: string })
           return (
             <DirectoryRow
               key={agent.id}
-              leading={<AgentAvatar agent={agent} size={20} state={moodOf(direct)} />}
+              leading={<AgentAvatar agent={agent} size={20} animate={false} state={moodOf(direct)} />}
               title={agent.name}
               href={direct ? href({ page: 'conversation', id: direct.id }) : undefined}
               active={isCurrent(direct)}
