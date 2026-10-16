@@ -100,3 +100,5 @@ The v2 web app. Product scope is docs/product/prd.md §6–7; layout and compone
 - Process tone follows the containing reply/run outcome; a successful reply may retain neutral failed steps. Agent capability lists use dictionary action names; never render tool ids. Schedule copy comes from @greenhouse/utils/cron.
 
 - Settled request cards default to one expandable header; answered inline choices keep their selected label in that summary. Read old previews and answers by expanding it. Dangerous approvals use the server danger marker and human action copy.
+
+- Screenshot capture also publishes approvals, receipts, populated rooms, schedules, connections and services. SCREENSHOT_COMPUTER=1 opts into a real local computer image; capture waits for its screen. SCREENSHOT_REVIEW_DIR holds PNGs and manifests together (default artifacts/t10/after); restart the sample stack before rerunning.

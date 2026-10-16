@@ -14,7 +14,7 @@
 #
 # Options (flags, or the environment variables in brackets; anything not given is
 # asked for when a terminal is available):
-#   --dir DIR             install directory                         [GREENHOUSE_DIR]   (~/greenhouse)
+#   --dir DIR             install directory                         [GREENHOUSE_DIR]   (~/greenhouse-v2)
 #   --email EMAIL         first administrator: a one-time activation  [GREENHOUSE_ADMIN_EMAIL]
 #                         link for this address is printed at the end
 #   --domain DOMAIN       serve https://DOMAIN with automatic         [GREENHOUSE_DOMAIN]
@@ -22,13 +22,14 @@
 #                         and DOMAIN must already point at this server)
 #   --port PORT           HTTP port of the app                        [GREENHOUSE_PORT]  (3000)
 #   --url URL             address people open (without --domain)      [GREENHOUSE_URL]
-#   --version TAG         image tag                                   [GREENHOUSE_VERSION] (latest)
+#   --version TAG         image tag                                   [GREENHOUSE_VERSION] (2.0.0)
 #   --mirror PREFIX       pull greenhouse, postgres and caddy from     [GREENHOUSE_MIRROR]
 #                         PREFIX, e.g. registry.cn-hangzhou.aliyuncs.com/<namespace>
 #   --llm-base-url URL    OpenAI-compatible endpoint                  [LLM_BASE_URL]
 #   --llm-api-key KEY                                                 [LLM_API_KEY]
 #   --llm-model MODEL                                                 [LLM_MODEL]
-#                         (all three optional: Administration → Runtime Config later)
+#                         (all three optional: Admin → Services later)
+#   --dry-run            render and validate only (from a local checkout; no pull/start)
 #   -y, --yes             never prompt; take defaults
 #
 # Needs only Docker (with the compose plugin). On Linux, a missing Docker can be
@@ -39,17 +40,22 @@ set -euo pipefail
 REPO_IMAGE="ghcr.io/linjiejim/greenhouse"
 DOCS_URL="https://github.com/linjiejim/greenhouse#readme"
 
-GREENHOUSE_DIR="${GREENHOUSE_DIR:-$HOME/greenhouse}"
+GREENHOUSE_DIR="${GREENHOUSE_DIR:-$HOME/greenhouse-v2}"
 ADMIN_EMAIL="${GREENHOUSE_ADMIN_EMAIL:-}"
 DOMAIN="${GREENHOUSE_DOMAIN:-}"
 APP_PORT="${GREENHOUSE_PORT:-}"
 APP_URL="${GREENHOUSE_URL:-}"
-VERSION="${GREENHOUSE_VERSION:-}"
+VERSION="${GREENHOUSE_VERSION:-2.0.0}"
 MIRROR="${GREENHOUSE_MIRROR:-}"
 LLM_BASE="${LLM_BASE_URL:-}"
 LLM_KEY="${LLM_API_KEY:-}"
 LLM_MODEL_NAME="${LLM_MODEL:-}"
 ASSUME_YES=0
+DRY_RUN=0
+TEMPLATE_ROOT=""
+if [ -n "${BASH_SOURCE[0]:-}" ]; then
+  TEMPLATE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+fi
 
 say() { printf '\033[1;32m==>\033[0m %s\n' "$*"; }
 note() { printf '    %s\n' "$*"; }
@@ -59,7 +65,7 @@ die() {
   exit 1
 }
 
-usage() { sed -n '3,33p' "$0" 2>/dev/null | sed 's/^# \{0,1\}//' || echo "See $DOCS_URL"; }
+usage() { sed -n '3,34p' "$0" 2>/dev/null | sed 's/^# \{0,1\}//' || echo "See $DOCS_URL"; }
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -73,6 +79,7 @@ while [ $# -gt 0 ]; do
     --llm-base-url) LLM_BASE="${2:?--llm-base-url needs a value}"; shift 2 ;;
     --llm-api-key) LLM_KEY="${2:?--llm-api-key needs a value}"; shift 2 ;;
     --llm-model) LLM_MODEL_NAME="${2:?--llm-model needs a value}"; shift 2 ;;
+    --dry-run) DRY_RUN=1; shift ;;
     -y | --yes) ASSUME_YES=1; shift ;;
     -h | --help) usage; exit 0 ;;
     *) die "unknown option: $1 (see --help)" ;;
@@ -125,8 +132,11 @@ install_docker() {
   $sudo systemctl enable --now docker > /dev/null 2>&1 || true
 }
 
-command -v docker > /dev/null 2>&1 || install_docker
-if docker info > /dev/null 2>&1; then
+command -v docker > /dev/null 2>&1 || {
+  [ "$DRY_RUN" = 0 ] || die "Dry-run needs the Docker Compose CLI."
+  install_docker
+}
+if [ "$DRY_RUN" = 1 ] || docker info > /dev/null 2>&1; then
   DOCKER=(docker)
 elif command -v sudo > /dev/null 2>&1 && sudo docker info > /dev/null 2>&1; then
   DOCKER=(sudo docker)
@@ -174,11 +184,14 @@ mkdir -p "$GREENHOUSE_DIR"
 cd "$GREENHOUSE_DIR"
 UPGRADE=0
 [ -f .env ] && UPGRADE=1
+if [ "$UPGRADE" = 1 ] && grep -Eq '^(PUBLIC_BASE_URL|APP_BASE_URL)=' .env; then
+  die "This is a v1 installation. Keep it intact and install v2 in a new directory; see ${DOCS_URL}."
+fi
 
 # ─── Images ──────────────────────────────────────────────
 
 image_refs() {
-  local tag="${VERSION:-latest}"
+  local tag="${VERSION:-2.0.0}"
   if [ -n "$MIRROR" ]; then
     GREENHOUSE_IMAGE="${MIRROR%/}/greenhouse:${tag}"
     POSTGRES_IMAGE="${MIRROR%/}/postgres:16-alpine"
@@ -190,25 +203,26 @@ image_refs() {
   fi
 }
 
-if [ "$UPGRADE" = 1 ] && [ -z "$VERSION" ] && [ -z "$MIRROR" ]; then
-  GREENHOUSE_IMAGE="$(env_get GREENHOUSE_IMAGE)"
-  POSTGRES_IMAGE="$(env_get POSTGRES_IMAGE)"
-  CADDY_IMAGE="$(env_get CADDY_IMAGE)"
-  [ -n "$GREENHOUSE_IMAGE" ] || image_refs
-else
-  image_refs
-fi
+image_refs
+
 : "${POSTGRES_IMAGE:=postgres:16-alpine}"
 : "${CADDY_IMAGE:=caddy:2-alpine}"
 
-say "Pulling ${GREENHOUSE_IMAGE}"
-"${DOCKER[@]}" pull "$GREENHOUSE_IMAGE" ||
-  die "Could not pull ${GREENHOUSE_IMAGE}. On networks where ghcr.io or Docker Hub is blocked, pass --mirror <registry/namespace>."
+if [ "$DRY_RUN" = 1 ]; then
+  [ -f "$TEMPLATE_ROOT/docker-compose.ghcr.yml" ] && [ -f "$TEMPLATE_ROOT/.env.example" ] ||
+    die "Run --dry-run from a local Greenhouse checkout."
+  cp "$TEMPLATE_ROOT/docker-compose.ghcr.yml" docker-compose.yml
+  cp "$TEMPLATE_ROOT/.env.example" .env.example
+else
+  say "Pulling ${GREENHOUSE_IMAGE}"
+  "${DOCKER[@]}" pull "$GREENHOUSE_IMAGE" ||
+    die "Could not pull ${GREENHOUSE_IMAGE}. Pass --mirror <registry/namespace> if the registry is blocked."
 
-# The compose file and env template that ship inside this exact image.
-"${DOCKER[@]}" run --rm --entrypoint cat "$GREENHOUSE_IMAGE" /app/docker-compose.ghcr.yml > docker-compose.yml.new
-mv docker-compose.yml.new docker-compose.yml
-"${DOCKER[@]}" run --rm --entrypoint cat "$GREENHOUSE_IMAGE" /app/.env.example > .env.example
+  # Templates are read from the exact image being installed.
+  "${DOCKER[@]}" run --rm --entrypoint cat "$GREENHOUSE_IMAGE" /app/docker-compose.ghcr.yml > docker-compose.yml.new
+  mv docker-compose.yml.new docker-compose.yml
+  "${DOCKER[@]}" run --rm --entrypoint cat "$GREENHOUSE_IMAGE" /app/.env.example > .env.example
+fi
 
 # ─── Configuration (first install only) ──────────────────
 
@@ -233,7 +247,7 @@ if [ "$UPGRADE" = 0 ]; then
 
   if [ -z "$APP_PORT" ]; then
     APP_PORT=3000
-    while port_in_use "$APP_PORT"; do APP_PORT=$((APP_PORT + 1)); done
+    while [ "$DRY_RUN" = 0 ] && port_in_use "$APP_PORT"; do APP_PORT=$((APP_PORT + 1)); done
   fi
   if [ -n "$DOMAIN" ]; then
     APP_URL="https://${DOMAIN}"
@@ -248,7 +262,7 @@ if [ "$UPGRADE" = 0 ]; then
   APP_URL="${APP_URL%/}"
 
   if [ -z "$LLM_KEY" ] && [ "$HAVE_TTY" = 1 ]; then
-    note "Model access (OpenAI-compatible). Press Enter to skip and set it later in Administration → Runtime Config."
+    note "Model access (OpenAI-compatible). Press Enter to skip and set it later in Admin → Services."
     ask LLM_KEY "LLM API key" "" secret
     if [ -n "$LLM_KEY" ]; then
       ask LLM_BASE "LLM base URL" "${LLM_BASE:-https://api.openai.com/v1}"
@@ -262,18 +276,18 @@ if [ "$UPGRADE" = 0 ]; then
   env_set PROVIDER_TOKEN_ENCRYPTION_KEY "$(rand_hex)"
   env_set VAULT_ENCRYPTION_KEY "$(rand_hex)"
   env_set BOOTSTRAP_ADMIN_EMAIL "$ADMIN_EMAIL"
-  env_set PUBLIC_BASE_URL "$APP_URL"
-  env_set APP_BASE_URL "$APP_URL"
+  env_set PUBLIC_URL "$APP_URL"
   if [ -n "$LLM_KEY" ]; then
+    env_set LLM_PROVIDER "openai-compatible"
     env_set LLM_API_KEY "$LLM_KEY"
-    [ -z "$LLM_BASE" ] || env_set LLM_BASE_URL "$LLM_BASE"
-    [ -z "$LLM_MODEL_NAME" ] || env_set LLM_MODEL "$LLM_MODEL_NAME"
+    env_set LLM_BASE_URL "${LLM_BASE:-https://api.openai.com/v1}"
+    env_set LLM_MODEL "${LLM_MODEL_NAME:-gpt-4o-mini}"
   else
     # No placeholder key: an unconfigured model must look unconfigured.
     env_set LLM_API_KEY ""
   fi
-  pg_port=5432
-  while port_in_use "$pg_port"; do pg_port=$((pg_port + 1)); done
+  pg_port=55432
+  while [ "$DRY_RUN" = 0 ] && port_in_use "$pg_port"; do pg_port=$((pg_port + 1)); done
   env_set POSTGRES_BIND "127.0.0.1:${pg_port}"
 
   if [ -n "$DOMAIN" ]; then
@@ -332,6 +346,13 @@ fi
 
 # ─── Start ───────────────────────────────────────────────
 
+if [ "$DRY_RUN" = 1 ]; then
+  compose config --quiet
+  say "Dry-run validated: ${GREENHOUSE_IMAGE}"
+  note "Rendered Compose and .env in ${GREENHOUSE_DIR}; no images pulled or services started."
+  exit 0
+fi
+
 say "Starting Greenhouse"
 compose pull --quiet ||
   die "Could not pull the images. On networks where ghcr.io or Docker Hub is blocked, re-run with --mirror <registry/namespace>."
@@ -350,26 +371,25 @@ for _ in $(seq 1 90); do
 done
 [ "$healthy" = 1 ] || die "The app did not become healthy. Inspect it with: cd ${GREENHOUSE_DIR} && ${DOCKER[*]} compose logs api"
 
-APP_URL="$(env_get PUBLIC_BASE_URL)"
+APP_URL="$(env_get PUBLIC_URL)"
 echo
 say "Greenhouse is running at ${APP_URL}"
-link="$(compose logs --no-color api 2> /dev/null | grep 'Activate the first administrator' | tail -n 1 | awk '{print $NF}')"
+link="$(compose logs --no-color api 2> /dev/null | grep 'Activate the first admin' | tail -n 1 | awk '{print $NF}' || true)"
 if [ -n "$link" ]; then
   case "$link" in /*) link="${APP_URL}${link}" ;; esac
-  note "Open this one-time link to set the administrator's password (valid 72 hours;"
-  note "a restart issues a new one and prints it in the log):"
+  note "Open this one-time link to set the admin's password (valid 7 days;"
+  note "the link is printed once when the admin is created):"
   echo
   printf '    %s\n' "$link"
   echo
 elif [ "$UPGRADE" = 0 ]; then
-  # An image older than the activation link: create the administrator by hand.
-  note "Create the first administrator with:"
-  note "  cd ${GREENHOUSE_DIR} && ${DOCKER[*]} compose exec api pnpm admin:create"
+  note "Find the first admin activation link with:"
+  note "  cd ${GREENHOUSE_DIR} && ${DOCKER[*]} compose logs api | grep 'Activate the first admin'"
 fi
 note "Manage it from ${GREENHOUSE_DIR}:"
 note "  logs      ${DOCKER[*]} compose logs -f api"
 note "  stop      ${DOCKER[*]} compose down   (the data stays in Docker volumes)"
 note "  upgrade   run this installer again"
 if [ -z "$(env_get LLM_API_KEY)" ]; then
-  note "No model is configured yet: Administration → Runtime Config after you sign in."
+  note "No model is configured yet: Admin → Services after you sign in."
 fi

@@ -97,6 +97,7 @@ try {
     kind: 'room',
     title: '发布协作室',
     member_ids: [mei.id],
+    agent_ids: [agent.id],
   });
   const schedule = await api<{ id: string }>('/schedules', 'POST', {
     agent_id: agent.id,
@@ -179,6 +180,57 @@ try {
   await expect(page.getByRole('button', { name: '停止', exact: true })).toBeHidden();
   await expect(page.getByText('This week', { exact: true })).toBeVisible();
   await capture(page, 'conversation', true);
+  await page.goto(`${origin}/#/c/${direct.id}`);
+  await composer.fill('remember 每周五整理发布进展，并保留决定的出处');
+  await composer.press('Enter');
+  await expect(page.getByRole('button', { name: '撤销这次写入' })).toBeVisible();
+  await expect(page.getByRole('button', { name: '停止', exact: true })).toBeHidden();
+  await capture(page, 'receipt', true);
+  const folder = await api<{ id: string }>('/knowledge/folders', 'POST', {
+    name: '发布回顾',
+    space: 'team',
+  });
+  await composer.fill(`shared draft in ${folder.id}`);
+  await composer.press('Enter');
+  await expect(page.getByRole('button', { name: '批准', exact: true })).toBeVisible();
+  await capture(page, 'approval', true);
+
+  await page.goto(`${origin}/#/c/${room.id}`);
+  await composer.fill('@');
+  await page.getByRole('option', { name: /发布助手/ }).click();
+  await composer.pressSequentially('请把本周的进展与决定留在发布协作指南里。');
+  await composer.press('Enter');
+  await expect(page.getByRole('button', { name: '停止', exact: true })).toBeHidden();
+  await expect(page.locator('.app-room-roster')).toContainText('发布助手');
+  const other = await contexts.get('mei')!.newPage();
+  await other.goto(`${origin}/#/c/${room.id}`);
+  await other.getByRole('textbox', { name: /发消息|Message/ }).fill('浅色、深色和手机预览已检查，周五一起回顾。');
+  await other.getByRole('textbox', { name: /发消息|Message/ }).press('Enter');
+  await expect(page.getByText('浅色、深色和手机预览已检查，周五一起回顾。', { exact: true })).toBeVisible();
+  await capture(page, 'room', true);
+  await other.close();
+
+  // Opt in only with stack.sh's local computer image; never manufacture a screen.
+  if (process.env.SCREENSHOT_COMPUTER === '1') {
+    await api(`/agents/${agent.id}/computer/start`, 'POST');
+    await page.goto(`${origin}/#/agents/${agent.id}?tab=computer`);
+    await expect(page.getByRole('button', { name: '关机', exact: true })).toBeVisible({ timeout: 120_000 });
+    await expect(page.locator('canvas').first()).toBeVisible({ timeout: 30_000 });
+    await expect
+      .poll(
+        () =>
+          page
+            .locator('canvas')
+            .first()
+            .evaluate((canvas: HTMLCanvasElement) => {
+              const pixels = canvas.getContext('2d')!.getImageData(0, 0, canvas.width, canvas.height).data;
+              return pixels.some((value, index) => index % 4 !== 3 && value > 200);
+            }),
+        { timeout: 30_000 },
+      )
+      .toBe(true);
+    await capture(page, 'computer', true);
+  }
   const common: Array<[string, string, boolean?]> = [
     ['knowledge', `/#/knowledge/${doc.id}`, true],
     ['knowledge-edit', `/#/knowledge/${doc.id}?edit=1`],
@@ -196,7 +248,10 @@ try {
     ['direct', `/#/c/${direct.id}`],
     ['run-detail', `/#/runs/${run.last_run_id}`],
     ['chat', `/#/c/${chat.id}`],
-    ['room', `/#/c/${room.id}`],
+    ['room', `/#/c/${room.id}`, true],
+    ['schedules', `/#/agents/${agent.id}?tab=schedules`, true],
+    ['connections', '/#/settings/connections', true],
+    ['providers', '/#/admin/services', true],
     ...[
       'agents',
       'runs',
@@ -264,7 +319,7 @@ try {
   await capture(signedOut, 'activation');
   const conversations = await api<{ items: Conversation[] }>('/conversations');
   await writeFile(
-    'artifacts/t10/capture-manifest.json',
+    `${review}/capture-manifest.json`,
     JSON.stringify(
       {
         origin,
@@ -283,8 +338,8 @@ try {
   );
   console.log(`Captured ${results.length} review images; published light/dark WebP pairs in ${output}.`);
   if (results.some((item) => item.overflow || (item.unnamed as string[]).length || (item.errors as string[]).length))
-    console.log('Review overflow, unnamed controls and page errors in artifacts/t10/capture-manifest.json.');
+    console.log(`Review overflow, unnamed controls and page errors in ${review}/capture-manifest.json.`);
 } finally {
-  await writeFile('artifacts/t10/capture-results.json', JSON.stringify(results, null, 2));
+  await writeFile(`${review}/capture-results.json`, JSON.stringify(results, null, 2));
   await browser.close();
 }

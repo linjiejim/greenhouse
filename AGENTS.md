@@ -104,3 +104,5 @@ Greenhouse is an open-source, self-hosted platform where a team works with its o
 - Requests own target identity in modules/requests/target.ts. Retiring a request clears its notification pointer and queues its decision atomically; superseded/withdrawn history stays in the conversation.
 
 - Human schedule summaries live in packages/utils/src/cron.ts; server cards and Web lists share them. Custom expressions remain execution/editing inputs, never card copy.
+
+- The bilingual v2 website is docs/index.html; claims follow README Highlights. Keep film, fonts and screenshots local. Regenerate docs/tailwind.css after class changes and docs/og.png after hero changes; review both languages/themes at 1440 and 390 px. docs/install.sh pins 2.0.0, uses PUBLIC_URL and isolates v1; --dry-run renders local checkout templates without starting services.
