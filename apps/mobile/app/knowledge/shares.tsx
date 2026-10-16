@@ -17,7 +17,7 @@ export default function Shares() {
     <>
       <Stack.Screen options={{ title: t('work.sharing') }} />
       {!r.data ? (
-        <ResourceState loading={r.loading} retry={() => void r.refresh()} />
+        <ResourceState error={r.error} loading={r.loading} retry={() => void r.refresh()} />
       ) : (
         <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerStyle={{}}>
           <ListSection header={t('work.sharing')}>

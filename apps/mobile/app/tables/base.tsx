@@ -18,7 +18,7 @@ export default function Base() {
     <>
       <Stack.Screen options={{ title: r.data?.name ?? t('work.tables') }} />
       {!r.data ? (
-        <ResourceState loading={r.loading} retry={() => void r.refresh()} />
+        <ResourceState error={r.error} loading={r.loading} retry={() => void r.refresh()} />
       ) : (
         <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerStyle={{ paddingBottom: 40 }}>
           {r.data.tables.map((table) => (

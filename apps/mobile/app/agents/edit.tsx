@@ -16,7 +16,6 @@ import {
   Button,
   HStack,
   Picker,
-  ProgressView,
   RNHostView,
   Section,
   Spacer,
@@ -35,7 +34,7 @@ import { useAuth } from '../../src/store/auth';
 import { makeStyles, space, typo, useTheme } from '../../src/theme';
 import { AgentAvatar } from '../../src/ui/agent-avatar';
 import { EmptyState } from '../../src/ui/empty';
-import { NativeForm } from '../../src/ui/native-form';
+import { NativeForm, FormLoading } from '../../src/ui/native-form';
 import { PLANT_IDS, type PlantId } from '../../src/ui/plant-avatar/plant-ids';
 import { FormChrome, SheetClose } from '../../src/ui/sheet-chrome';
 import { toast } from '../../src/ui/toast';
@@ -59,14 +58,21 @@ export default function AgentEdit() {
       return;
     }
     toast(t('agents.created', { name: outcome.name }), 'check');
-    if (outcome.conversationId) openConversation(router, { id: outcome.conversationId, title: outcome.name, compose: true }, 'dismissTo');
+    if (outcome.conversationId)
+      openConversation(router, { id: outcome.conversationId, title: outcome.name, compose: true }, 'dismissTo');
     else router.back();
   };
 
   return (
     <>
       {draft ? (
-        <FormChrome title={title} dirty={form.dirty} canSave={form.canSave} saving={form.saving} onSave={() => void save()} />
+        <FormChrome
+          title={title}
+          dirty={form.dirty}
+          canSave={form.canSave}
+          saving={form.saving}
+          onSave={() => void save()}
+        />
       ) : (
         <>
           <Stack.Screen options={{ title }} />
@@ -80,14 +86,15 @@ export default function AgentEdit() {
       ) : (
         <NativeForm>
           {draft ? (
-            <AgentFields key={`${draft.template_key ?? 'blank'}:${id ?? 'new'}`} form={form} draft={draft} agentId={id ?? null} />
+            <AgentFields
+              key={`${draft.template_key ?? 'blank'}:${id ?? 'new'}`}
+              form={form}
+              draft={draft}
+              agentId={id ?? null}
+            />
           ) : id ? (
             <Section>
-              <HStack>
-                <Spacer />
-                <ProgressView />
-                <Spacer />
-              </HStack>
+              <FormLoading />
             </Section>
           ) : (
             <Section title={t('agents.templates')} footer={<Text>{t('agents.templatesFooter')}</Text>}>
@@ -96,7 +103,10 @@ export default function AgentEdit() {
                   <HStack spacing={12}>
                     <RNHostView matchContents>
                       <View>
-                        <AgentAvatar agent={{ id: template.key, avatar: { plant: template.plant }, template_key: template.key }} size={36} />
+                        <AgentAvatar
+                          agent={{ id: template.key, avatar: { plant: template.plant }, template_key: template.key }}
+                          size={36}
+                        />
                       </View>
                     </RNHostView>
                     <VStack alignment="leading" spacing={2}>
@@ -150,7 +160,11 @@ function AgentFields({
             <RNHostView matchContents>
               <View key={fontScale} style={styles.preview}>
                 <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
-                  <AgentAvatar agent={{ id: stableId, avatar: { plant: draft.plant, tint: draft.tint }, template_key: null }} size={80} animate />
+                  <AgentAvatar
+                    agent={{ id: stableId, avatar: { plant: draft.plant, tint: draft.tint }, template_key: null }}
+                    size={80}
+                    animate
+                  />
                 </View>
                 <RNText style={styles.look} accessibilityLabel={`${t('agents.look')}: ${look}`}>
                   {look}
@@ -174,14 +188,22 @@ function AgentFields({
           ))}
         </Picker>
         <RNHostView matchContents>
-          <TintSwatches key={fontScale} plant={draft.plant} stableId={stableId} tint={draft.tint} onChange={(tint) => form.set('tint', tint)} />
+          <TintSwatches
+            key={fontScale}
+            plant={draft.plant}
+            stableId={stableId}
+            tint={draft.tint}
+            onChange={(tint) => form.set('tint', tint)}
+          />
         </RNHostView>
       </Section>
 
       <Section
         title={t('agents.name')}
         footer={
-          <Text modifiers={nameTooLong ? [foregroundStyle(hex.red)] : []}>{t('agents.nameHint', { max: AGENT_NAME_MAX })}</Text>
+          <Text modifiers={nameTooLong ? [foregroundStyle(hex.red)] : []}>
+            {t('agents.nameHint', { max: AGENT_NAME_MAX })}
+          </Text>
         }
       >
         <TextField

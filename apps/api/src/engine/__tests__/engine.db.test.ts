@@ -338,7 +338,7 @@ describe('the engine', () => {
       .from(messages)
       .where(and(eq(messages.runId, sent.body.run_id), eq(messages.role, 'assistant')));
     expect(reply!.steps).toEqual([
-      expect.objectContaining({ tool: 'memory', status: 'done', summary: '记住了一条记忆' }),
+      expect.objectContaining({ tool: 'memory', status: 'done', summary: '记住了：Lin prefers tea' }),
     ]);
 
     const receipts = await getDb()

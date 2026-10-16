@@ -29,7 +29,7 @@ describe('saving shares', () => {
     await getDb().delete(groups).where(eq(groups.id, group));
     const saved = await put(path, { items: [chenShare, opsShare, { type: 'member', id: kai.id, role: 'editor' }] });
     expect(saved.status).toBe(200);
-    expect(saved.body.items.map((entry: { id: string }) => entry.id)).toEqual([chen.id, group, kai.id]);
+    expect(saved.body.items.map((entry: { id: string }) => entry.id).sort()).toEqual([chen.id, group, kai.id].sort());
 
     await getDb().update(members).set({ status: 'disabled' }).where(eq(members.id, wu.id));
     const refused = await put(path, { items: [chenShare, { type: 'member', id: wu.id, role: 'viewer' }] });

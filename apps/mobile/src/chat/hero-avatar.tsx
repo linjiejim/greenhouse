@@ -1,7 +1,7 @@
 /**
  * The new-chat hero's plant (app/(drawer)/(main)/index.tsx) — it answers a
  * touch: a tap waves hello (a hop, a light tick), three quick taps make it
- * glad (a perk, a success tap); then it settles back to its idle float. Each
+ * glad (a perk, a success tap); then it settles back to its still portrait. Each
  * tap restarts the one-shot. A small delight, so it stays out of VoiceOver's
  * way (the greeting under it says who is there). Reduced motion keeps the
  * faces and drops the movement (PlantAvatar's veto).
@@ -53,9 +53,15 @@ export function HeroAvatar({ agent, size, animate }: { agent: AgentFace | null; 
     <Pressable onPress={react} hitSlop={12} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
       {/* keyed on the tap: every tap replays the one-shot from its start */}
       {agent ? (
-        <AgentAvatar key={reaction?.n ?? 0} agent={agent} size={size} state={state} animate={animate} />
+        <AgentAvatar
+          key={reaction?.n ?? 0}
+          agent={agent}
+          size={size}
+          state={state}
+          animate={animate && reaction !== null}
+        />
       ) : (
-        <PlantAvatar key={reaction?.n ?? 0} size={size} state={state} animate={animate} />
+        <PlantAvatar key={reaction?.n ?? 0} size={size} state={state} animate={animate && reaction !== null} />
       )}
     </Pressable>
   );

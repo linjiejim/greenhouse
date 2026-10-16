@@ -60,7 +60,6 @@ export default function Login() {
           <View style={[styles.brand, { width: width - 32 }]}>
             <GreenhouseMark size={64} />
             <RNText style={styles.title}>Greenhouse</RNText>
-            <RNText style={styles.sub}>{t('login.subtitle')}</RNText>
           </View>
         </RNHostView>
 
@@ -102,7 +101,6 @@ export default function Login() {
             imeAction="go"
             onSubmit={() => void submit()}
             error={error}
-            supporting={t('login.footer')}
           />
         </FormFields>
 
@@ -126,5 +124,4 @@ export default function Login() {
 const useStyles = makeStyles((c) => ({
   brand: { alignItems: 'center', paddingTop: space.xxxl + space.lg, paddingBottom: space.md, gap: space.xs },
   title: { ...typo.largeTitle, color: c.label, marginTop: space.md },
-  sub: { ...typo.subheadline, color: c.secondaryLabel, textAlign: 'center' },
 }));

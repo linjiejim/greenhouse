@@ -42,7 +42,7 @@ import { openLink } from '../lib/links';
 import type { MessageItem } from '../shared/contract';
 import { isImage, useFiles } from '../store/files';
 import { usePrefs } from '../store/prefs';
-import { makeStyles, radius, space, squircle, typo, useTheme, weight } from '../theme';
+import { HIT, makeStyles, motion, radius, space, squircle, typo, useTheme, weight } from '../theme';
 import { AgentAvatar, MemberAvatar, type AgentFace } from '../ui/agent-avatar';
 import { NativeButton } from '../ui/button';
 import { showErrorDetails } from '../ui/dialogs';
@@ -116,14 +116,8 @@ export function DisclosureRow({
       ) : (
         <Icon name={icon} size={14} weight="medium" color={color} />
       )}
-      <Text numberOfLines={1} style={[styles.disclosureText, { color }]}>
-        {label}
-      </Text>
-      {detail ? (
-        <Text numberOfLines={1} style={styles.disclosureDetail}>
-          {detail}
-        </Text>
-      ) : null}
+      <Text style={[styles.disclosureText, { color }]}>{label}</Text>
+      {detail ? <Text style={styles.disclosureDetail}>{detail}</Text> : null}
       <Icon name="chevR" size={11} weight="semibold" color={c.tertiaryLabel} />
     </Pressable>
   );
@@ -169,13 +163,15 @@ export const MessageFiles = memo(function MessageFiles({ ids, align }: { ids: st
   const { colors: c, hex } = useTheme();
   const styles = useStyles(c);
   const t = useT();
+  const fontKey = useFontScaleKey();
+  const large = Number(fontKey) >= 1.5;
   const { files, loading } = useFiles(ids);
   if (!ids.length) return null;
   const images = files.filter(isImage);
   const others = files.filter((file) => !isImage(file));
   const justify = align === 'end' ? 'flex-end' : 'flex-start';
   return (
-    <View style={[styles.files, { justifyContent: justify }]}>
+    <View key={fontKey} style={[styles.files, { justifyContent: justify }]}>
       {images.map((file) => (
         <Touchable
           key={file.id}
@@ -195,12 +191,12 @@ export const MessageFiles = memo(function MessageFiles({ ids, align }: { ids: st
         <Touchable
           key={file.id}
           onPress={() => saveFile(fileUrl(file.url), file.name)}
-          style={styles.chip}
+          style={[styles.chip, large && { flexWrap: 'wrap' }]}
           accessibilityRole="button"
           accessibilityLabel={t('conversation.openFile', { name: file.name })}
         >
           <Icon name={fileIcon(file.name)} size={13} color={c.secondaryLabel} />
-          <Text numberOfLines={1} ellipsizeMode="middle" style={styles.chipName}>
+          <Text numberOfLines={large ? 0 : 1} ellipsizeMode="middle" style={styles.chipName}>
             {file.name}
           </Text>
           <Text style={styles.chipSize}>{formatBytes(file.size_bytes)}</Text>
@@ -324,8 +320,28 @@ export const MemberMessage = memo(function MemberMessage({
       ) : (
         content
       )}
-      {message.reactions?.length ? <View style={{ flexDirection: 'row', gap: 4 }}>{message.reactions.map(reaction=><Text key={reaction.agent_id} accessibilityLabel={reaction.emoji} style={styles.sourceChip}>{reaction.emoji}</Text>)}</View> : null}
+      {message.reactions?.length ? (
+        <View style={{ flexDirection: 'row', gap: 4 }}>
+          {message.reactions.map((reaction) => (
+            <Text key={reaction.agent_id} accessibilityLabel={reaction.emoji} style={styles.sourceChip}>
+              {reaction.emoji}
+            </Text>
+          ))}
+        </View>
+      ) : null}
       <MessageFiles ids={message.attachments} align={mine ? 'end' : 'start'} />
+      {items.length ? (
+        <NativeMenu items={items} onSelect={(id) => onAction(message, id as MessageAction)}>
+          <View
+            style={styles.more}
+            accessible
+            accessibilityRole="button"
+            accessibilityLabel={t('conversation.actions')}
+          >
+            <Icon name="more" size={20} color={c.secondaryLabel} />
+          </View>
+        </NativeMenu>
+      ) : null}
       {meta ? (
         <Text
           style={[styles.meta, mine ? styles.metaMine : null]}
@@ -439,7 +455,7 @@ export const AgentReply = memo(function AgentReply({
   return (
     <Animated.View
       key={fontKey}
-      entering={live ? FadeIn.duration(200).reduceMotion(ReduceMotion.System) : undefined}
+      entering={live ? FadeIn.duration(motion.base).reduceMotion(ReduceMotion.System) : undefined}
       style={styles.replyRow}
     >
       {showAuthor ? (
@@ -462,7 +478,12 @@ export const AgentReply = memo(function AgentReply({
             }
             width={44}
           >
-            <View style={styles.more} accessible accessibilityRole="button" accessibilityLabel={t('common.more')}>
+            <View
+              style={styles.more}
+              accessible
+              accessibilityRole="button"
+              accessibilityLabel={t('conversation.actions')}
+            >
               <Icon name="more" size={20} color={c.secondaryLabel} />
             </View>
           </NativeMenu>
@@ -492,7 +513,7 @@ export const AgentReply = memo(function AgentReply({
           <DisclosureRow
             icon={failedSteps ? 'alert' : 'wrench'}
             busy={live && runningSteps > 0}
-            tone={failedSteps ? 'danger' : undefined}
+            tone={failedSteps && message.status === 'failed' ? 'danger' : undefined}
             label={stepsLabel(t, steps)}
             onPress={() => onOpenSteps(message)}
           />
@@ -515,7 +536,7 @@ export const AgentReply = memo(function AgentReply({
 
 /** One line for a reply's process: the step that ran, or the first of several and their count. */
 function stepsLabel(t: ReturnType<typeof useT>, steps: readonly StepView[]): string {
-  const first = steps[0]!.summary || steps[0]!.tool;
+  const first = steps[0]!.summary || t('conversation.step');
   return steps.length === 1 ? first : t('conversation.stepsMore', { first, n: steps.length });
 }
 
@@ -563,11 +584,11 @@ const useStyles = makeStyles((c) => ({
   authorTime: { ...typo.caption1, color: c.tertiaryLabel },
   thinking: { flexDirection: 'row', alignItems: 'center', gap: space.sm, paddingVertical: space.xs },
   thinkingText: { ...typo.subheadline, color: c.secondaryLabel },
-  disclosure: { flexDirection: 'row', alignItems: 'center', gap: space.xs + 2, minHeight: 30, maxWidth: '100%' },
+  disclosure: { flexDirection: 'row', alignItems: 'center', gap: space.xs + 2, minHeight: HIT, maxWidth: '100%' },
   disclosureSpinner: { transform: [{ scale: 0.8 }] },
   disclosureText: { flexShrink: 1, ...typo.subheadline },
   disclosureDetail: { flexShrink: 1, ...typo.footnote, color: c.tertiaryLabel },
-  sources: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: space.xs + 2, minHeight: 30 },
+  sources: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: space.xs + 2, minHeight: HIT },
   sourcesLabel: { ...typo.footnote, color: c.secondaryLabel },
   sourceChip: {
     flexDirection: 'row',
@@ -605,7 +626,7 @@ const useStyles = makeStyles((c) => ({
     alignItems: 'center',
     gap: space.xs + 1,
     maxWidth: '100%',
-    minHeight: 32,
+    minHeight: HIT,
     paddingVertical: space.xs + 1,
     paddingHorizontal: space.sm + 2,
     borderRadius: radius.full,

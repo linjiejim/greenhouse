@@ -1,6 +1,6 @@
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import { Section, ProgressView } from '@expo/ui/swift-ui';
-import { NativeForm, FormNavRow } from '../../src/ui/native-form';
+import { Section } from '@expo/ui/swift-ui';
+import { NativeForm, FormLoading, FormNavRow } from '../../src/ui/native-form';
 import { FormChrome, SheetClose, useLeaveSheetTo } from '../../src/ui/sheet-chrome';
 import { FieldEditor } from '../../src/tables/fields';
 import { useRecordEditor } from '../../src/tables/use-record-editor';
@@ -66,7 +66,7 @@ export default function Record() {
         ) : (
           <Section>
             {f.resource.loading ? (
-              <ProgressView />
+              <FormLoading />
             ) : (
               <FormNavRow label={t('work.loadFailed')} onPress={() => void f.resource.refresh()} />
             )}

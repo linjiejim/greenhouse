@@ -44,6 +44,7 @@ import { AgentAvatar } from '../ui/agent-avatar';
 import { Icon, Spinner, Touchable, type IconName } from '../ui/core';
 import { alertError, confirmAction, promptText } from '../ui/dialogs';
 import { DRAWER_W } from '../ui/drawer';
+import { LoadingState } from '../ui/loading-state';
 import { useFontScaleKey } from '../ui/font-scale';
 import { NativeMenu, menuSections, type MenuItem } from '../ui/menu';
 import { toast } from '../ui/toast';
@@ -143,7 +144,7 @@ export function DrawerContent({ navigation }: DrawerContentComponentProps) {
     later(() => router.push('/new-room'));
   }, [close, later, router]);
   const go = useCallback(
-    (path: '/agents' | '/runs' | '/settings' | '/apps' | '/skills') => {
+    (path: '/agents' | '/runs' | '/settings' | '/apps' | '/skills' | '/knowledge' | '/tables') => {
       setSearch('');
       close();
       later(() => router.push(path));
@@ -413,7 +414,7 @@ export function DrawerContent({ navigation }: DrawerContentComponentProps) {
       </View>
 
       <ScrollView style={styles.list} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
-        {agents === null && !loadFailed ? <Spinner style={styles.loading} /> : null}
+        {agents === null && !loadFailed ? <LoadingState style={styles.loading} /> : null}
         {loadFailed && agents === null ? (
           <Touchable
             onPress={() => void useWorkspace.getState().refresh()}
@@ -557,7 +558,7 @@ export function DrawerContent({ navigation }: DrawerContentComponentProps) {
       {/* the module bar: 对话 · 更多 (知识库, 表格 and 应用 join it with their screens) */}
       <View key={fontKey} style={[styles.bar, { paddingBottom: Math.max(insets.bottom, space.sm) }]}>
         <BarItem icon="msgs" label={t('nav.chat')} current onPress={close} />
-        {me?.modules.knowledge ? (
+        {Number(fontKey) < 1.5 && me?.modules.knowledge ? (
           <BarItem
             icon="book"
             label={t('work.title')}
@@ -568,7 +569,7 @@ export function DrawerContent({ navigation }: DrawerContentComponentProps) {
             }}
           />
         ) : null}
-        {me?.modules.tables ? (
+        {Number(fontKey) < 1.5 && me?.modules.tables ? (
           <BarItem
             icon="table"
             label={t('work.tables')}
@@ -579,7 +580,7 @@ export function DrawerContent({ navigation }: DrawerContentComponentProps) {
             }}
           />
         ) : null}
-        {me?.modules.apps ? (
+        {Number(fontKey) < 1.5 && me?.modules.apps ? (
           <BarItem
             icon="form"
             label={t('integration.apps')}
@@ -592,12 +593,23 @@ export function DrawerContent({ navigation }: DrawerContentComponentProps) {
         ) : null}
         <NativeMenu
           items={[
+            ...(Number(fontKey) >= 1.5
+              ? [
+                  ...(me?.modules.knowledge
+                    ? [{ id: '/knowledge', title: t('work.title'), icon: 'book' as const }]
+                    : []),
+                  ...(me?.modules.tables ? [{ id: '/tables', title: t('work.tables'), icon: 'table' as const }] : []),
+                  ...(me?.modules.apps ? [{ id: '/apps', title: t('integration.apps'), icon: 'form' as const }] : []),
+                ]
+              : []),
             { id: '/skills', title: t('integration.skills'), icon: 'sparkle' },
             { id: '/agents', title: t('nav.agents'), icon: 'sparkle' },
             { id: '/runs', title: t('nav.runs'), icon: 'runs' },
             { id: '/settings', title: t('nav.settings'), icon: 'gear' },
           ]}
-          onSelect={(id) => go(id as '/agents' | '/runs' | '/settings' | '/apps' | '/skills')}
+          onSelect={(id) =>
+            go(id as '/agents' | '/runs' | '/settings' | '/apps' | '/skills' | '/knowledge' | '/tables')
+          }
           style={styles.barSlot}
         >
           <BarItem icon="more" label={t('nav.more')} />
@@ -682,7 +694,10 @@ function AgentRowView({
       >
         <AgentAvatar agent={row.agent} size={main ? 36 : 26} state={moodOf(row.conversation)} />
         <View style={styles.rowTexts}>
-          <Text numberOfLines={1} style={[main ? styles.mainName : styles.rowText, current && styles.rowTextActive]}>
+          <Text
+            numberOfLines={Number(fontKey) >= 1.5 ? 0 : 1}
+            style={[main ? styles.mainName : styles.rowText, current && styles.rowTextActive]}
+          >
             {row.agent.name}
           </Text>
           {owner ? (
@@ -738,7 +753,10 @@ function ConversationRowView({
         ]}
       >
         <Icon name={icon} size={16} color={c.secondaryLabel} />
-        <Text numberOfLines={1} style={[styles.rowText, styles.grow, current && styles.rowTextActive]}>
+        <Text
+          numberOfLines={Number(fontKey) >= 1.5 ? 0 : 1}
+          style={[styles.rowText, styles.grow, current && styles.rowTextActive]}
+        >
           {title}
         </Text>
         <SignalView signal={signal} />
@@ -793,9 +811,7 @@ function FoldRow({
       accessibilityState={{ expanded: open }}
       style={({ pressed }) => [styles.rowSlot, styles.fold, pressed && { backgroundColor: c.fill }]}
     >
-      <Text numberOfLines={1} style={styles.foldText}>
-        {label}
-      </Text>
+      <Text style={styles.foldText}>{label}</Text>
       {count ? <Text style={styles.foldCount}>{count}</Text> : null}
       <Icon name={open ? 'chevD' : 'chevR'} size={12} weight="semibold" color={c.tertiaryLabel} />
     </Pressable>
@@ -827,9 +843,7 @@ function PlainRow({
       ]}
     >
       <Icon name={icon} size={15} color={c.secondaryLabel} />
-      <Text numberOfLines={1} style={[styles.rowText, styles.grow, { color: c.secondaryLabel }]}>
-        {label}
-      </Text>
+      <Text style={[styles.rowText, styles.grow, { color: c.secondaryLabel }]}>{label}</Text>
     </Pressable>
   );
 }
@@ -923,14 +937,15 @@ const useStyles = makeStyles((c) => ({
   rowSub: { ...typo.caption1, color: c.secondaryLabel },
   needs: {
     minWidth: 20,
-    height: 20,
-    paddingHorizontal: 6,
+    minHeight: 20,
+    paddingVertical: space.xxs,
+    paddingHorizontal: space.xs + 2,
     borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: c.orange,
+    backgroundColor: c.orangeFill,
   },
-  needsText: { ...typo.caption1, fontWeight: weight.semibold, color: c.onTint, fontVariant: ['tabular-nums'] },
+  needsText: { ...typo.caption1, fontWeight: weight.semibold, color: c.orange, fontVariant: ['tabular-nums'] },
   running: { transform: [{ scale: 0.75 }] },
   unread: { width: 9, height: 9, borderRadius: 4.5, backgroundColor: c.accent },
   sectionHead: {
@@ -942,7 +957,7 @@ const useStyles = makeStyles((c) => ({
     paddingBottom: space.xs,
   },
   sectionText: { flex: 1, ...typo.footnote, fontWeight: weight.semibold, color: c.secondaryLabel },
-  sectionAction: { width: HIT, height: 32, alignItems: 'center', justifyContent: 'center' },
+  sectionAction: { width: HIT, height: HIT, alignItems: 'center', justifyContent: 'center' },
   fold: {
     flexDirection: 'row',
     alignItems: 'center',

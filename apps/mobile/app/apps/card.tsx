@@ -1,8 +1,8 @@
 import { Fragment } from 'react';
 import { Stack, useLocalSearchParams } from 'expo-router';
-import { Section, Text, ProgressView } from '@expo/ui/swift-ui';
+import { Section, Text } from '@expo/ui/swift-ui';
 import { disabled } from '@expo/ui/swift-ui/modifiers';
-import { NativeForm, FormNavRow } from '../../src/ui/native-form';
+import { NativeForm, FormLoading, FormNavRow } from '../../src/ui/native-form';
 import { FormChrome, SheetClose } from '../../src/ui/sheet-chrome';
 import { FieldEditor } from '../../src/tables/fields';
 import { useAppCard } from '../../src/apps/use-card';
@@ -52,7 +52,7 @@ function Editor({ k }: { k: string }) {
           </Section>
         ) : !f.ready && !f.r.error ? (
           <Section>
-            <ProgressView />
+            <FormLoading />
           </Section>
         ) : f.submitted ? (
           <Section>
@@ -66,7 +66,7 @@ function Editor({ k }: { k: string }) {
                 {f.choices.error ? (
                   <FormNavRow label={t('work.loadFailed')} onPress={() => void f.choices.refresh()} />
                 ) : f.choices.loading ? (
-                  <ProgressView />
+                  <FormLoading />
                 ) : null}
               </Section>
             ) : null}

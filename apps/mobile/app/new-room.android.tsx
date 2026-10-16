@@ -16,6 +16,7 @@ import {
   FormTextField,
   FormValueRow,
   NativeForm,
+  FormLoading,
   useNativeState,
 } from '../src/ui/native-form.android';
 import { FormChrome } from '../src/ui/sheet-chrome';
@@ -69,7 +70,7 @@ export default function NewRoom() {
           footer={r.picked.length ? t('rooms.picked', { n: r.picked.length }) : undefined}
         >
           {r.people === null && !r.failed ? (
-            <FormValueRow label={t('common.loading')} value="" />
+            <FormLoading />
           ) : r.failed ? (
             <FormActionRow label={t('common.retry')} icon="refresh" onPress={() => void r.reload()} />
           ) : r.rows.length === 0 ? (

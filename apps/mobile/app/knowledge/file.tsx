@@ -23,7 +23,7 @@ export default function File() {
     <>
       <Stack.Screen options={{ title: r.data?.name ?? t('work.file') }} />
       {!r.data ? (
-        <ResourceState loading={r.loading} retry={() => void r.refresh()} />
+        <ResourceState error={r.error} loading={r.loading} retry={() => void r.refresh()} />
       ) : (
         <ScrollView
           contentInsetAdjustmentBehavior="automatic"

@@ -1,3 +1,4 @@
+import { cellText } from './display';
 import { useState } from 'react';
 import { DatePickerDialog, TimePickerDialog } from '@expo/ui/jetpack-compose';
 import { parseMs } from '../data/time';
@@ -18,7 +19,7 @@ import {
   useNativeState,
 } from '../ui/native-form.android';
 import { useT } from '../lib/i18n';
-import { computed, cellText, choiceValue } from './model';
+import { computed, choiceValue } from './model';
 import type { FieldProps } from './fields';
 export function FieldEditor({
   field,

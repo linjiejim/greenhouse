@@ -1,3 +1,4 @@
+import { cellText } from './display';
 import { FlatList, ScrollView, View, useWindowDimensions } from 'react-native';
 import type { BaseTable, RecordPage, TableRecord, View as TableView } from '../shared/contract';
 import { useT } from '../lib/i18n';
@@ -5,7 +6,7 @@ import { calendarDateLabel } from '../lib/time-words';
 import { ListRow, ListSectionHeader, ListCard } from '../ui/list';
 import { parseMs } from '../data/time';
 import { makeStyles, radius, space, useTheme } from '../theme';
-import { cellText, groups, titleOf } from './model';
+import { groups, titleOf } from './model';
 const DAY = 86400000;
 export function dayLabel(value: unknown): string {
   return typeof value === 'string' ? calendarDateLabel(value) : '';

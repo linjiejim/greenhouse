@@ -14,7 +14,7 @@ test('completed turns keep a failed attempt neutral and retain its reason', asyn
   await expect(process).toBeVisible();
   await expect(process.locator('.gh-badge-danger')).toHaveCount(0);
   await process.locator('button').first().click();
-  await expect(process.getByText(/此网址指向受限网络/)).toBeVisible();
+  await expect(process.locator('.app-step-summary').filter({ hasText: '此网址指向受限网络' })).toBeVisible();
   await expect(process.locator('.app-step.is-failed')).toHaveCount(0);
   await page.reload();
   await expect(page.getByText('已完成，1 步未完成')).toBeVisible();
@@ -25,16 +25,18 @@ test('draft dismissal preserves input and narrow settings keep their actions vis
   const agent = await apiAs<Agent>(request, 'lin', 'POST', '/api/agents', { name: 'U4a 日程检查' });
   await open(page, `/#/agents/${agent.id}?tab=schedules`);
   await page.getByRole('button', { name: '新建定时', exact: true }).click();
-  const form = page.getByRole('dialog').filter({ has: page.getByRole('textbox', { name: '名字', exact: true }) });
-  await form.getByRole('textbox', { name: '名字', exact: true }).fill('尚未保存的周报');
+  const form = page.getByRole('dialog', { name: '新建定时', exact: true });
+  await form.getByRole('textbox', { name: /^名字/ }).fill('尚未保存的周报');
   await form.getByRole('button', { name: '关闭', exact: true }).click();
   const discard = page.getByRole('alertdialog');
   await expect(discard).toBeVisible();
+  await page.emulateMedia({ reducedMotion: 'reduce' });
   await mkdir('../../artifacts/u4a/browser', { recursive: true });
   for (const theme of ['light', 'dark'] as const)
     for (const width of [1440, 390]) {
       await page.setViewportSize({ width, height: 900 });
       await page.evaluate((value) => (document.documentElement.dataset.theme = value), theme);
+      await expect(discard).toBeInViewport();
       await page.screenshot({
         path: `../../artifacts/u4a/browser/discard-${theme}-${width}.png`,
         animations: 'disabled',
@@ -42,7 +44,7 @@ test('draft dismissal preserves input and narrow settings keep their actions vis
     }
   await page.setViewportSize({ width: 1440, height: 900 });
   await discard.getByRole('button', { name: '取消', exact: true }).click();
-  await expect(form.getByRole('textbox', { name: '名字', exact: true })).toHaveValue('尚未保存的周报');
+  await expect(form.getByRole('textbox', { name: /^名字/ })).toHaveValue('尚未保存的周报');
   await form.getByRole('button', { name: '取消', exact: true }).click();
   await discard.getByRole('button', { name: '放弃更改', exact: true }).click();
   await expect(form).toBeHidden();

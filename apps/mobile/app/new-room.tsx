@@ -8,13 +8,13 @@
 import React, { useEffect, useLayoutEffect, useRef } from 'react';
 import { Keyboard } from 'react-native';
 import { Stack, useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
-import { Button, HStack, ProgressView, Section, Spacer, Text, TextField, useNativeState } from '@expo/ui/swift-ui';
+import { Button, Section, Text, TextField, useNativeState } from '@expo/ui/swift-ui';
 import { foregroundStyle } from '@expo/ui/swift-ui/modifiers';
 import { useT } from '../src/lib/i18n';
 import { agentHandle, useNewRoom } from '../src/rooms/use-new-room';
 import { openConversation } from '../src/shell/nav';
 import { useTheme } from '../src/theme';
-import { FormCheckRow, NativeForm } from '../src/ui/native-form';
+import { FormCheckRow, NativeForm, FormLoading } from '../src/ui/native-form';
 import { FormChrome } from '../src/ui/sheet-chrome';
 
 const SECONDARY = foregroundStyle({ type: 'hierarchical', style: 'secondary' });
@@ -67,7 +67,12 @@ export default function NewRoom() {
       <NativeForm>
         {adding ? null : (
           <Section title={t('rooms.name')} footer={<Text>{t('rooms.nameFooter')}</Text>}>
-            <TextField text={titleText} placeholder={t('rooms.namePlaceholder')} maxLength={120} onTextChange={r.setTitle} />
+            <TextField
+              text={titleText}
+              placeholder={t('rooms.namePlaceholder')}
+              maxLength={120}
+              onTextChange={r.setTitle}
+            />
           </Section>
         )}
         <Section
@@ -75,11 +80,7 @@ export default function NewRoom() {
           footer={r.picked.length ? <Text>{t('rooms.picked', { n: r.picked.length })}</Text> : undefined}
         >
           {r.people === null && !r.failed ? (
-            <HStack>
-              <Spacer />
-              <ProgressView />
-              <Spacer />
-            </HStack>
+            <FormLoading />
           ) : r.failed ? (
             <>
               <Text modifiers={[SECONDARY]}>{t('rooms.loadFailed')}</Text>
