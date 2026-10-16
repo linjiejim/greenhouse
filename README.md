@@ -1,59 +1,61 @@
-<p align="center"><img src="logos/greenhouse-logo.png" alt="Greenhouse" width="400" /></p>
+<p align="center"><img src="logos/greenhouse-logo.png" alt="Greenhouse" width="360" /></p>
 
-# Greenhouse v2
+<p align="center"><b>Your AI colleagues, in one self-hosted workspace.</b><br />
+Open source · Web, iOS and Android · Docker Compose · MIT</p>
 
-An open-source, self-hosted workspace where members work with their own AI Agents on shared knowledge, tables and apps. Each member has a main Agent and can create more. Conversations, background runs and external MCP clients use the same services and permissions.
+<p align="center">
+  <a href="https://greenhouse.linjiejim.com">Website</a> ·
+  <a href="docs/assets/v2/greenhouse-v2-intro.mp4">One-minute intro</a> ·
+  <a href="docs/product/prd.md">中文产品说明</a> ·
+  <a href="docs/product/features.md">Features</a> ·
+  <a href="docs/product/api.md">API</a> ·
+  <a href="docs/product/providers.md">Providers</a>
+</p>
 
-**This branch prepares v2.0.** v2 is a rewrite with a new database. It is not an in-place upgrade from v1. Published releases still come from `main`; use a separate database and storage when trying this branch. See the [v1 migration guide](docs/product/migration-v1.md) before moving an existing deployment.
+<p align="center"><a href="docs/assets/v2/greenhouse-v2-intro.mp4"><img src="docs/assets/v2/greenhouse-v2-intro-poster.png" alt="Watch the one-minute Greenhouse v2 introduction" width="880" /></a></p>
 
-[中文产品说明](docs/product/prd.md) · [Feature status](docs/product/features.md) · [API](docs/product/api.md) · [Provider configuration](docs/product/providers.md) · [MIT license](LICENSE)
+Greenhouse is a workspace where every member works with their own AI Agents on shared knowledge, tables and apps, and stays in charge. Agents search, write, build and keep working in the background. They ask before anything shared or irreversible, leave a receipt you can undo for everything else, and speak up only when there is something worth saying.
 
-Decisions stay in their source conversations. New requests for the same target replace earlier pending cards; handled or withdrawn requests clear their notifications automatically. Notifications use one list, with pending decisions marked on the corresponding conversation.
+## Highlights
+
+- **An Agent colleague for everyone.** Each member has a main Agent, Greeny, in one long-running thread, and can create more from a sentence: "make an Agent that sums up my mail every morning". Agents have memory, skills, schedules, a mailbox and an optional computer.
+- **Writes with boundaries.** Private, reversible writes happen at once with a named receipt and Undo. Shared changes wait for one tap, or for a standing approval you granted. External or irreversible actions always ask. A newer request replaces an older one, and handled requests clear themselves away.
+- **Work while you are away.** Background runs start from a brief you approve. Schedules, one-off reminders, and wake-ups from mail and automations keep work moving; when nothing matters, the Agent stays quiet.
+- **Short, plain replies.** Answers lead with the result in a few sentences. A reaction acknowledges, files and plans arrive as cards, and Markdown appears only where structure helps.
+- **Knowledge, tables and apps.** Docs and files with versions, comments and cited answers. Typed tables with grid, kanban, calendar, timeline, gallery, dashboards, forms and automations. Apps built on tables and published to members, with roles that only narrow table access.
+- **A computer you can watch.** An Agent's sandboxed computer (E2B or Docker) has a browser and a terminal. Watch it live, take over, hand it back; its home survives restarts in encrypted backups.
+- **Rooms.** Several people and their Agents in one conversation. Mention a person or an Agent; everyone sees whose Agent replied.
+- **Native apps.** iOS and Android carry the same conversations, approvals, knowledge, tables, apps, runs and push notifications.
+- **Open to your tools.** MCP connectors per member, OAuth 2.1 and personal tokens for external clients, and private extensions with their own pages, tools and migrations.
+- **Your server, your models.** Docker Compose and Postgres; OpenAI, Anthropic, Gemini, DeepSeek, compatible APIs or local Ollama; search, voice, images and video; budgets per workspace, member, provider and published Agent; switches that pause background work, computers or outgoing mail.
 
 ## A look inside
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/v2/conversation-dark.webp" />
-  <img src="docs/assets/v2/conversation-light.webp" alt="Greenhouse v2 conversation with a knowledge source" width="1200" />
+  <img src="docs/assets/v2/conversation-light.webp" alt="A Greenhouse v2 conversation with a knowledge source" width="1200" />
 </picture>
-
-Screenshots use seeded sample data and a scripted model. [Regenerate them](#screenshots) against the local preview stack.
-
-- **Conversations:** a main thread, direct Agent conversations, separate chats and rooms. Automatic chat titles summarize the member's opening request. Replies include sources, rich results and requests for a member's decision. Voice input and read-aloud use configured services, with browser fallbacks.
-- **Agents and runs:** profiles, abilities, memory, schedules, optional computers (full screen, start queue, encrypted home backups) and mailboxes. Long work runs in the background; its progress, decisions and results stay visible. Agents can page through long tool outputs; reading stored public research keeps web access available, while private reads close it for background runs. Reversible and external writes use the approval tiers described in [always-on.md](docs/product/always-on.md). Approval cards show named changes and safe Markdown previews; same-turn writes to the same object share one named receipt and batch undo. Schedule cards show readable times and relevant access; completed turns keep failed attempts as neutral notes with specific causes. Browser screenshots appear as reply images even with a text-only model. Room drafts survive consecutive sends, and room replies show each Agent’s face and owner. Background proposals describe actual network access; empty active-run lists link to recent finished work. Step failures explain permission, budget and memory protection limits, including when a write must not be retried; memory pages keep notes separate from work logs.
-- **Knowledge:** shared and personal folders, documents and files; an editor, versions, comments, sharing and cited answers.
-- **Tables:** typed and computed fields, grid, kanban, calendar, gallery, timeline, dashboards, internal forms, access roles and automations. The project template uses the same tables and views.
-- **Apps:** build pages on a table base, publish an immutable version to internal members and manage reviewed templates. Runtime actions obey both table access and application roles. External data cards read through the viewer's own connections; custom code cards run in an isolated frame after an admin reviews each published version.
-- **Skills and connections:** reusable skills, approved MCP connectors, personal connections and OAuth/PAT access for external clients acting as a member.
-- **Administration:** members and roles, services, usage with workspace, member, provider and published-Agent monthly budgets, computers, and operations switches that pause background runs, computers or outgoing mail. Private extensions add routes, pages, tools and their own migrations; see [EXTENDING.md](EXTENDING.md).
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/v2/tables-dark.webp" />
   <img src="docs/assets/v2/tables-light.webp" alt="The project template in Greenhouse v2 Tables" width="1200" loading="lazy" />
 </picture>
 
+Screenshots use seeded sample data and a scripted model; [regenerate them](#screenshots) against the local preview stack. The interaction rules every screen keeps are in [docs/design-system/rules.md](docs/design-system/rules.md).
+
 ## Native apps
 
-The [native API v2 app](apps/mobile) opens the main thread with Greeny, conversations, Agents, runs, needs-you cards, notifications and the live computer. iOS uses system navigation, SwiftUI forms and Liquid Glass controls; Android uses Material 3 forms, menus and dialogs. Both keep completed request cards compact, retain selected answers, and adapt forms and view controls to accessibility text sizes.
+The [native app](apps/mobile) (Expo SDK 57) opens the main thread with Greeny and carries conversations and rooms, approvals and receipts, Agents, runs, knowledge, tables, published apps, the live computer, notifications and push. iOS follows system navigation, sheets and forms; Android uses Material 3. Building apps and administration stay on the web.
 
-Knowledge includes spaces and folders, safe Markdown reading and source editing, versions, comments and mentions, sharing, signed file previews and search. Tables use phone record lists with a grid switch, kanban, agendas and read-only timelines; records and internal forms use native sheets. The grid shows the view's first six visible fields; record details show all readable fields. Agent mailboxes show allowed senders and held mail, with mail cards in conversations. Configured transcription fills the composer without sending; read-aloud uses the speech service or device voice.
-
-Published apps open native runtime pages, record details, forms, charts and confirmed actions. Reads and writes retain the publication version and access boundaries; building and publishing stay on the web. The builder shows the published version, pending changes and an Open action; record fields use their configured currency and precision. Always-on flows include reversible write receipts and undo, tier2 standing approvals, quiet schedules, record handoffs and event lines.
-
-Native directories filter loaded names and clear when left. Agent profiles show memory and monthly usage with budgets; shared notes and account password/About me edits are available on the phone. Computer queues show their position, and computer/background/mail pauses explain what is waiting in the selected language. Approval sheets render safe Markdown previews with expand; write receipts keep document names and batch actions. Run findings and completion reports use safe Markdown with in-app knowledge links; notification and card excerpts show readable text. These display fixes are JavaScript only and can ship by OTA. Web and native use the same spacing around Chinese and Latin names.
-
-The launch cover leaves when authentication, fonts and the focused page are ready. Its 650 ms logo animation adds no minimum wait; unsettled content gets up to 900 ms before showing loading or retry. On iOS, chat and computer files use native Quick Look for PDF, images and system-supported formats, with sharing and saving available.
-
-The app has an isolated install: `pnpm mobile:install`, then `pnpm mobile`. Use a native development client on an iOS simulator or Android device; Expo Go cannot run it. See [mobile rules](apps/mobile/AGENTS.md) for platform checks and [RELEASING.md](RELEASING.md) for native builds.
+The app has an isolated install: `pnpm mobile:install`, then `pnpm mobile`. Use a native development client on an iOS simulator or Android device; Expo Go cannot run it. See [mobile rules](apps/mobile/AGENTS.md) for platform checks and [RELEASING.md](RELEASING.md) for native builds and over-the-air updates.
 
 ## Start with Docker Compose
 
-Install Docker with Compose, then use a fresh checkout and a new Compose project for v2:
+Install Docker with Compose, then use a fresh checkout and a Compose project of its own:
 
 ```sh
 git clone https://github.com/linjiejim/greenhouse.git
 cd greenhouse
-git checkout v2
 cp .env.example .env
 ./scripts/gen-secrets.sh
 ```
@@ -126,7 +128,7 @@ Copy the printed name into `SANDBOX_E2B_TEMPLATE`. Rebuild after changes to [the
 
 Running computers consume provider credit; template builds also use provider resources. See [current E2B pricing](https://e2b.dev/pricing). Greenhouse pauses idle computers after 30 minutes by default (Admin → Services → Computers). Watching, typing, running processes and pending takeovers keep them active. The provider timeout is a separate auto-pause safeguard: keep it above the idle interval and within your account's session limit. Stop preserves memory and both homes; reset permanently deletes the sandbox. Paused computers persist until explicitly deleted; see [E2B persistence](https://docs.e2b.dev/sandbox/persistence).
 
-Encrypted home backups use the configured storage provider and `PROVIDER_TOKEN_ENCRYPTION_KEY`; keep both when restoring a deployment. Background runs can reach only approved brief domains on E2B; non-loopback IPv6 is blocked to prevent bypassing the provider's IPv4 rules. After private reads the computer goes offline. Browser screenshots require a model with vision; watching and taking over work independently of that capability. Details and the opt-in live check are in [provider configuration](docs/product/providers.md).
+Encrypted home backups use the configured storage provider and `PROVIDER_TOKEN_ENCRYPTION_KEY`; keep both when restoring a deployment. Background runs can reach only approved brief domains on E2B; non-loopback IPv6 is blocked to prevent bypassing the provider's IPv4 rules. After private reads the computer goes offline. Screenshots reach the member even with a text-only model; only the model's own look at the screen needs vision. Details and the opt-in live check are in [provider configuration](docs/product/providers.md).
 
 For local real-service acceptance, `REAL_SANDBOX_PROVIDER=e2b SANDBOX_E2B_TEMPLATE=<printed-name> sh scripts/dev-real.sh` uses E2B; Docker remains the default. Export `SANDBOX_API_KEY` securely first. `REAL_STORAGE_ROOT` can isolate acceptance files.
 
@@ -177,7 +179,7 @@ Create those disposable databases first. Tests reset them: unit/database names m
 
 Real-model acceptance against a disposable local stack: `node --import tsx scripts/acceptance/run.mts --base http://127.0.0.1:4885`. It uses the browser-test accounts, makes real provider calls, captures light/dark/narrow checkpoints, and writes `artifacts/v2-delivery/results.json`. Start `scripts/dev-real.sh` first; `--only F01,F02` selects checkpoints and `--wait 240000` controls turn waits. iOS requires separate native simulator evidence.
 
-Schema changes update `packages/db/src/schema` and regenerate the single v2 baseline with `pnpm db:baseline`. Until v2.0, recreate disposable databases after baseline changes; never run the baseline over v1.
+Schema changes update `packages/db/src/schema` and regenerate the single v2 baseline with `pnpm db:baseline`. Recreate disposable databases after baseline changes; never run the baseline over a v1 database.
 
 ### Screenshots
 
@@ -195,4 +197,4 @@ Read [migration-v1.md](docs/product/migration-v1.md). There is no in-place migra
 
 ## Contributing
 
-Start with [AGENTS.md](AGENTS.md), the [product documents](docs/product/) and [design system](docs/design-system/README.md). API contracts live in `packages/contract`; permission checks live in services and are shared by HTTP routes, Agent tools and MCP. The web and native interfaces use layered light surfaces and readable secondary text. Small single-choice questions can be answered in the message; longer forms open a guarded drawer or native sheet with fixed bottom actions. Reply actions are in the message’s overflow menu. The web interface includes Chinese and English dictionaries; sign-in follows the browser language and members can choose their own language. Every local commit needs typecheck, lint and relevant tests; releases come from `main` only. See [RELEASING.md](RELEASING.md).
+Start with [AGENTS.md](AGENTS.md), the [product documents](docs/product/) and the [design system](docs/design-system/README.md), whose [interaction rules](docs/design-system/rules.md) every screen keeps. API contracts live in `packages/contract`; permission checks live in services and are shared by HTTP routes, Agent tools and MCP. The interface has Chinese and English dictionaries. Every commit needs typecheck, lint and the relevant tests; releases come from `main` only. See [RELEASING.md](RELEASING.md).
