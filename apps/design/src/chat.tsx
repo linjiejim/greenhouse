@@ -125,23 +125,19 @@ function useCounterpart() {
 }
 
 export function ChatPage() {
-  const {
-    records,
-    setRecords,
-    notify,
-    openPanel,
-    openDocument,
-    openAgent,
-    headerLead,
-    selection,
-    mobile,
-    navigate,
-    needsYou,
-  } = useDesign();
+  const { records, notify, openPanel, openDocument, openAgent, headerLead, selection, mobile, navigate, needsYou } =
+    useDesign();
   const counterpart = useCounterpart();
   const menus = useRowMenus();
   const startEmpty = selection === 'new' || selection === 'room:new';
-  const initialScenario: Scenario = selection === 'archived' ? 'readonly' : startEmpty ? 'empty' : 'overview';
+  const initialScenario: Scenario =
+    selection === 'archived'
+      ? 'readonly'
+      : startEmpty
+        ? 'empty'
+        : selection === 'agent:triage'
+          ? 'approval'
+          : 'overview';
   const [scenario, setScenario] = useState<Scenario>(initialScenario);
   const [messages, setMessages] = useState<Message[]>(() => scenarioMessages(initialScenario));
   const [draft, setDraft] = useState(() => sessionStorage.getItem('greenhouse-design-draft') || '');
@@ -349,7 +345,11 @@ export function ChatPage() {
         {mobile && (
           <IconButton label="通知" onClick={() => navigate('notifications')}>
             <Bell size={18} />
-            {needsYou > 0 && <span className="notification-dot" />}
+            {needsYou > 0 && (
+              <span className="count warning" aria-label={`${needsYou} 件需要你`}>
+                {needsYou}
+              </span>
+            )}
           </IconButton>
         )}
       </header>
@@ -460,6 +460,15 @@ export function ChatPage() {
                     </button>
                   </div>
                   <ToolCard initial="done" />
+                  {selection === 'main' && (
+                    <>
+                      <ApprovalCard requestId="approve-tasks" />
+                      <RequestCard kind="takeover" requestId="takeover" />
+                      <RequestCard kind="login" requestId="login" />
+                      <RequestCard kind="question" requestId="question" />
+                      <RequestCard kind="proposal" requestId="proposal" />
+                    </>
+                  )}
                 </>
               )}
               {message.rich === 'tools' && (
@@ -470,25 +479,17 @@ export function ChatPage() {
                 </>
               )}
               {message.rich === 'approval' && (
-                <ApprovalCard
-                  onResult={(result) => {
-                    if (result === 'accepted') {
-                      setRecords((value) =>
-                        value.map((record) =>
-                          ['GH-104', 'GH-102'].includes(record.id) ? { ...record, status: '已完成' } : record,
-                        ),
-                      );
-                      notify('2 条任务已更新');
-                    }
-                  }}
-                />
+                <>
+                  <ApprovalCard requestId="approve-tasks" />
+                  <ApprovalCard requestId="approve-mail" />
+                </>
               )}
               {message.rich === 'requests' && (
                 <>
-                  <RequestCard kind="login" />
-                  <RequestCard kind="takeover" />
-                  <RequestCard kind="question" />
-                  <RequestCard kind="proposal" />
+                  <RequestCard kind="login" requestId="login" />
+                  <RequestCard kind="takeover" requestId="takeover" />
+                  <RequestCard kind="question" requestId="question" />
+                  <RequestCard kind="proposal" requestId="proposal" />
                 </>
               )}
               {message.rich === 'rich' && <RichResults records={records} />}

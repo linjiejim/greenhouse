@@ -4,13 +4,14 @@
  * select of the preview toolbar.
  */
 
-import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
+import { useContext, useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import {
   BarChart3,
   Bell,
   Check,
   ChevronDown,
   FileText,
+  ScanFace,
   KeyRound,
   ListChecks,
   MessageCircleQuestion,
@@ -20,6 +21,7 @@ import {
 import {
   Button,
   ChatCard,
+  Checkbox,
   DatePicker,
   Field,
   HelpHint,
@@ -31,7 +33,7 @@ import {
   TextArea,
   type Tone,
 } from '@greenhouse/ui/kit';
-import { useDesign } from './context';
+import { DesignContext, useDesign } from './context';
 import { decideApproval, type ApprovalState, type RecordItem, type Status } from './data';
 
 /**
@@ -46,6 +48,7 @@ export function PageFrame({
   actions,
   width = 'list',
   className = '',
+  builder = false,
   children,
 }: {
   title: ReactNode;
@@ -54,9 +57,10 @@ export function PageFrame({
   actions?: ReactNode;
   width?: 'reading' | 'form' | 'list' | 'canvas';
   className?: string;
+  builder?: boolean;
   children: ReactNode;
 }) {
-  const { headerLead, mobile, navigate, needsYou } = useDesign();
+  const { headerLead, mobile, navigate, needsYou, continueOnComputer } = useDesign();
   const label = typeof title === 'string' ? title : '页面';
   return (
     <div className={`page-frame ${className}`}>
@@ -66,11 +70,21 @@ export function PageFrame({
         {help && <HelpHint label={label}>{help}</HelpHint>}
         {badge}
         <span className="grow" />
-        {actions}
+        {builder && mobile ? (
+          <Button kind="primary" onClick={continueOnComputer}>
+            在电脑上继续
+          </Button>
+        ) : (
+          actions
+        )}
         {mobile && (
           <IconButton label="通知" onClick={() => navigate('notifications')}>
             <Bell size={18} />
-            {needsYou > 0 && <span className="notification-dot" />}
+            {needsYou > 0 && (
+              <span className="count warning" aria-label={`${needsYou} 件需要你`}>
+                {needsYou}
+              </span>
+            )}
           </IconButton>
         )}
       </header>
@@ -95,76 +109,138 @@ const approvalStatus: Record<ApprovalState, [string, Tone]> = {
   rejected: ['已拒绝', 'neutral'],
   expired: ['已过期', 'neutral'],
 };
-/** "需要你" — approval: the action, its target, its effect and the scope of this grant. */
+/** A simulated system check stays inside the product's floating boundary. */
+export function FaceVerification({ onVerified }: { onVerified: () => void }) {
+  const complete = useRef(onVerified);
+  useEffect(() => {
+    complete.current = onVerified;
+  }, [onVerified]);
+  useEffect(() => {
+    const timer = setTimeout(() => complete.current(), 1000);
+    return () => clearTimeout(timer);
+  }, []);
+  return (
+    <div className="face-verification" role="status" aria-label="Face ID 验证中">
+      <div>
+        <ScanFace size={48} />
+        <span>Face ID</span>
+      </div>
+    </div>
+  );
+}
+/** Shared cards use a request id; lab samples deliberately keep local state. */
 export function ApprovalCard({
   initial = 'pending',
   expiresAt,
   onResult,
+  requestId,
 }: {
   initial?: ApprovalState;
   expiresAt?: number;
   onResult?: (state: ApprovalState) => void;
+  requestId?: string;
 }) {
+  const context = useContext(DesignContext);
+  const request = requestId ? context?.requests.find((item) => item.id === requestId) : undefined;
   const [approval, setApproval] = useState({ state: initial, expiresAt: expiresAt ?? Date.now() + 300000 });
+  const [standing, setStanding] = useState(false);
+  const [verifying, setVerifying] = useState(false);
   useEffect(() => {
-    if (approval.state !== 'pending') return;
+    if (requestId || approval.state !== 'pending') return;
     const timer = setTimeout(
       () => setApproval((value) => ({ ...value, state: 'expired' })),
       Math.max(0, approval.expiresAt - Date.now()),
     );
     return () => clearTimeout(timer);
-  }, [approval]);
-  const decide = (state: 'accepted' | 'rejected') => {
-    const result = decideApproval(approval, state, Date.now());
-    setApproval(result);
-    onResult?.(result.state);
+  }, [approval, requestId]);
+  const state = request?.state === 'done' ? 'accepted' : (request?.state ?? approval.state);
+  const decide = (decision: 'accepted' | 'rejected') => {
+    if (requestId) context?.decide(requestId, decision, standing);
+    else {
+      const result = decideApproval(approval, decision, Date.now());
+      setApproval(result);
+      onResult?.(result.state);
+    }
   };
-  const pending = approval.state === 'pending';
-  const [status, tone] = approvalStatus[approval.state];
+  const pending = state === 'pending';
+  const tier = request?.tier ?? 2;
+  const [status, tone] = approvalStatus[state];
   return (
-    <ChatCard
-      attention={pending}
-      icon={<ListChecks size={16} />}
-      title="把 2 条任务标为已完成？"
-      status={status}
-      tone={tone}
-      footerEnd={pending}
-      footer={
-        pending ? (
-          <>
-            <span className="muted small grow">仅批准这一次</span>
-            <Button onClick={() => decide('rejected')}>拒绝</Button>
-            <Button kind="primary" onClick={() => decide('accepted')}>
-              批准
-            </Button>
-          </>
-        ) : (
-          <span className="muted small">
-            {approval.state === 'accepted'
-              ? '任务已更新。'
-              : approval.state === 'rejected'
-                ? '没有修改任务。'
-                : '请让 Agent 重新发起。'}
-          </span>
-        )
-      }
-    >
-      <p className="chat-card-text">「完善成员邀请流程」「对齐首页卡片样式」· 产品计划 / 任务</p>
-      <div className="change-preview">
-        <span>状态</span>
-        <span>
-          进行中 <span className="muted">→</span> 已完成
-        </span>
-      </div>
-    </ChatCard>
+    <>
+      <ChatCard
+        attention={pending}
+        icon={<ListChecks size={16} />}
+        title={request?.title ?? '把 2 条任务标为已完成？'}
+        status={status}
+        tone={tone}
+        footerEnd={pending}
+        footer={
+          pending ? (
+            <>
+              <Button disabled={verifying} onClick={() => decide('rejected')}>
+                拒绝
+              </Button>
+              <Button
+                kind="primary"
+                disabled={verifying}
+                onClick={() => (tier === 3 && context?.mobile ? setVerifying(true) : decide('accepted'))}
+              >
+                {tier === 3 && context?.mobile ? '用 Face ID 批准' : '批准'}
+              </Button>
+            </>
+          ) : (
+            <span className="muted small">
+              {state === 'accepted'
+                ? (request?.standing ?? standing)
+                  ? '任务已更新，以后「产品计划」都允许。'
+                  : tier === 3
+                    ? '邀请已发送。'
+                    : '任务已更新。'
+                : state === 'rejected'
+                  ? '没有执行。'
+                  : '请让 Agent 重新发起。'}
+            </span>
+          )
+        }
+      >
+        <div className="request-facts">
+          <span>对象</span>
+          <span>{request?.target ?? '产品计划'}</span>
+          <span>影响</span>
+          <span>{request?.effect ?? '2 条任务：进行中 → 已完成'}</span>
+          <span>范围</span>
+          <span>{request?.scope ?? '产品计划 / 任务'}</span>
+        </div>
+        {pending && tier === 2 && <Checkbox label="以后「产品计划」都允许" checked={standing} onChange={setStanding} />}
+      </ChatCard>
+      {verifying && (
+        <FaceVerification
+          onVerified={() => {
+            setVerifying(false);
+            decide('accepted');
+          }}
+        />
+      )}
+    </>
   );
 }
 type RequestKind = 'login' | 'takeover' | 'question' | 'proposal';
 /** "需要你" — the other four request kinds share the same card. */
-export function RequestCard({ kind, onDone }: { kind: RequestKind; onDone?: (result: string) => void }) {
+export function RequestCard({
+  kind,
+  onDone,
+  requestId,
+}: {
+  kind: RequestKind;
+  onDone?: (result: string) => void;
+  requestId?: string;
+}) {
+  const context = useContext(DesignContext);
+  const request = requestId ? context?.requests.find((item) => item.id === requestId) : undefined;
   const [result, setResult] = useState<{ status: string; note: string } | null>(null);
   const [answer, setAnswer] = useState('按优先级');
   const finish = (status: string, note: string) => {
+    if (requestId) context?.decide(requestId, status === '已拒绝' ? 'rejected' : 'done');
     setResult({ status, note });
     onDone?.(note);
   };
@@ -183,14 +259,22 @@ export function RequestCard({ kind, onDone }: { kind: RequestKind; onDone?: (res
     },
   };
   const { icon, title, body } = content[kind];
-  const pending = !result;
+  const pending = request ? request.state === 'pending' : !result;
+  const status =
+    request && !pending
+      ? request.state === 'rejected'
+        ? '已拒绝'
+        : request.state === 'expired'
+          ? '已过期'
+          : '已完成'
+      : result?.status;
   return (
     <ChatCard
       attention={pending}
       icon={icon}
       title={title}
-      status={result?.status ?? '需要你'}
-      tone={pending ? 'warning' : result.status === '已完成' ? 'success' : 'neutral'}
+      status={status ?? '需要你'}
+      tone={pending ? 'warning' : status === '已完成' ? 'success' : 'neutral'}
       footerEnd={pending}
       footer={
         pending ? (
@@ -223,7 +307,7 @@ export function RequestCard({ kind, onDone }: { kind: RequestKind; onDone?: (res
             )}
           </>
         ) : (
-          <span className="muted small">{result.note}</span>
+          <span className="muted small">{result?.note ?? '已在其他设备处理。'}</span>
         )
       }
     >
