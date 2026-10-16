@@ -1,4 +1,10 @@
 export const integration = {
+  planPending: 'Pending',
+  planActive: 'Active',
+  planDone: 'Done',
+  planBlocked: 'Blocked',
+  planSkipped: 'Skipped',
+  plan: 'Plan',
   fieldWeb: 'Complete this field on the web',
   choices: 'Member and record choices follow your access.',
   findings: 'Findings',

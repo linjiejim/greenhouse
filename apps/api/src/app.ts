@@ -1,3 +1,8 @@
+import { createRemindersService } from './modules/reminders/service.js';
+import { remindTool } from './engine/tools/remind.js';
+import { agentMutationTool } from './engine/tools/agent-mutation.js';
+import { fileCreateTool } from './engine/tools/file-create.js';
+import { messageTools } from './engine/tools/message.js';
 import type { GreenhouseExtension } from './extensions/define.js';
 import { extensionRoutes, extensionTools } from './extensions/host.js';
 import { createOperationsService, type OperationsService } from './modules/operations/service.js';
@@ -182,6 +187,12 @@ export function createServices(config: AppConfig, options: ServiceOptions = {}):
   // Equipping a skill checks it can run for the Agent (the skills service is made below).
   const agents = createAgentsService({
     providers,
+    attachFolders: async (memberId, ids) => {
+      for (const id of ids) {
+        const folder = await knowledge.folder(memberId, id);
+        if (folder.archived_at) throw new ApiError(400, 'invalid_input', 'Choose active knowledge folders.');
+      }
+    },
     files,
     equip: (memberId, manifest, added) => skills.assertEquippable(memberId, manifest, added),
   });
@@ -272,7 +283,9 @@ export function createServices(config: AppConfig, options: ServiceOptions = {}):
   const media = createMediaService({ providers, files, knowledge, conversations, hub });
   tables.worker.register('media_video', media.handle);
   tables.worker.every(media.sweep);
+  const reminders = createRemindersService({ conversations, notifications });
   const engine = createEngine({
+    reminders,
     operations,
     role: config.GREENHOUSE_ROLE,
     eventWakeLimit: config.AGENT_EVENT_WAKES_PER_DAY,
@@ -291,6 +304,10 @@ export function createServices(config: AppConfig, options: ServiceOptions = {}):
       memoryTool(agents),
       askUserTool(),
       selfTool(agents),
+      agentMutationTool(agents),
+      remindTool(reminders),
+      fileCreateTool(files),
+      ...messageTools(conversations, hub),
       conversationTool(conversations),
       readAttachmentTool(files, voice),
       toolOutputReadTool(files),

@@ -11,13 +11,14 @@ const fake = vi.hoisted(() => ({
   patchMessage: vi.fn(),
   catchUp: vi.fn(async (_id: string) => undefined),
   refreshConversations: vi.fn(async () => undefined),
+  refreshAgents: vi.fn(async()=>undefined),
 }));
 
 vi.mock('../store/threads', () => ({
   useThreads: { getState: () => ({ threads: fake.threads, catchUp: fake.catchUp, patchMessage: fake.patchMessage }) },
 }));
 vi.mock('../store/workspace', () => ({
-  useWorkspace: { getState: () => ({ refreshConversations: fake.refreshConversations }) },
+  useWorkspace: { getState: () => ({ refreshConversations: fake.refreshConversations, refreshAgents: fake.refreshAgents }) },
 }));
 vi.mock('../data/streams', () => ({
   appendDelta: vi.fn(),
@@ -59,4 +60,11 @@ it('discards unfinished text on resume and preserves a completed reply', () => {
   fake.threads={c1:{messages:[{id:'m1',status:'complete',content:'saved continued'}]}};
   applyEvent({type:'message.resumed',data:{conversation_id:'c1',message_id:'m1',offset:6}});
   expect(fake.patchMessage).not.toHaveBeenCalled();
+});
+
+it('refreshes the Agent directory after an Agent tool write commits',()=>{
+  fake.refreshAgents.mockClear();
+  applyEvent({type:'message.step',data:{conversation_id:'c1',message_id:'m1',step:{id:'s1',tool:'agent_mutation',summary:'Saved an Agent',status:'done'}}});
+  vi.runAllTimers();
+  expect(fake.refreshAgents).toHaveBeenCalledOnce();
 });

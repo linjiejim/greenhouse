@@ -101,6 +101,7 @@ export type AgentDetail = {
   tools: Array<string> | null;
   write: boolean;
   conversation_id: string | null;
+  folder_ids?: Array<string> | undefined;
 };
 
 export type PublicAgent = {
@@ -206,6 +207,7 @@ export type CreateAgentInput = {
   instructions?: string | undefined;
   avatar?: { plant?: string | undefined; tint?: string | undefined } | undefined;
   model?: string | undefined;
+  folder_ids?: Array<string> | undefined;
   skills?: Array<string> | undefined;
   connectors?: Array<string> | null | undefined;
   tools?: Array<string> | null | undefined;
@@ -220,6 +222,7 @@ export type UpdateAgentInput = {
   instructions?: string | undefined;
   avatar?: { plant?: string | undefined; tint?: string | undefined } | undefined;
   model?: string | undefined;
+  folder_ids?: Array<string> | undefined;
   skills?: Array<string> | undefined;
   connectors?: Array<string> | null | undefined;
   tools?: Array<string> | null | undefined;
@@ -333,6 +336,8 @@ export type UpdateConversationInput = {
   muted?: boolean | undefined;
 };
 
+export type TodoItem = { title: string; status: 'active' | 'done' | 'pending' | 'blocked' | 'skipped' };
+
 export type Message = {
   id: string;
   conversation_id: string;
@@ -360,6 +365,7 @@ export type Message = {
   status: 'failed' | 'complete' | 'streaming' | 'stopped';
   edited_at: string | null;
   created_at: string;
+  reactions?: Array<{ agent_id: string; emoji: '👍' | '✅' | '🙏' | '❤️' | '👀' | '🎉' }> | undefined;
 };
 
 export type MessageItem = {
@@ -390,6 +396,7 @@ export type MessageItem = {
   edited_at: string | null;
   created_at: string;
   my_rating: 1 | -1 | null;
+  reactions?: Array<{ agent_id: string; emoji: '👍' | '✅' | '🙏' | '❤️' | '👀' | '🎉' }> | undefined;
 };
 
 export type SendMessageInput = {
@@ -429,6 +436,7 @@ export type SendMessageResult = {
     status: 'failed' | 'complete' | 'streaming' | 'stopped';
     edited_at: string | null;
     created_at: string;
+    reactions?: Array<{ agent_id: string; emoji: '👍' | '✅' | '🙏' | '❤️' | '👀' | '🎉' }> | undefined;
   };
   run_id: string | null;
   queued: boolean;
@@ -465,6 +473,7 @@ export type EditMessageResult = {
     status: 'failed' | 'complete' | 'streaming' | 'stopped';
     edited_at: string | null;
     created_at: string;
+    reactions?: Array<{ agent_id: string; emoji: '👍' | '✅' | '🙏' | '❤️' | '👀' | '🎉' }> | undefined;
   };
 };
 
@@ -506,6 +515,7 @@ export type RealtimeEvent =
           status: 'failed' | 'complete' | 'streaming' | 'stopped';
           edited_at: string | null;
           created_at: string;
+          reactions?: Array<{ agent_id: string; emoji: '👍' | '✅' | '🙏' | '❤️' | '👀' | '🎉' }> | undefined;
         };
       };
     }
@@ -556,6 +566,7 @@ export type RealtimeEvent =
           status: 'failed' | 'complete' | 'streaming' | 'stopped';
           edited_at: string | null;
           created_at: string;
+          reactions?: Array<{ agent_id: string; emoji: '👍' | '✅' | '🙏' | '❤️' | '👀' | '🎉' }> | undefined;
         };
       };
     }
@@ -790,7 +801,7 @@ export type RunDetail = {
     tool: string | null;
     summary: string;
     kind: string;
-    status: 'succeeded' | 'failed' | 'running' | 'pending' | 'skipped' | 'uncertain';
+    status: 'succeeded' | 'failed' | 'pending' | 'skipped' | 'running' | 'uncertain';
     attempt: number;
     input: unknown;
     output: unknown;
@@ -806,6 +817,7 @@ export type RunDetail = {
     actor: string | null;
     created_at: string;
   }>;
+  todo?: Array<{ title: string; status: 'active' | 'done' | 'pending' | 'blocked' | 'skipped' }> | undefined;
 };
 
 export type FileView = {
@@ -890,7 +902,7 @@ export type Skill = {
     key: string;
     options?: Array<string> | undefined;
   }>;
-  scan_status: 'pending' | 'clean' | 'suspicious' | 'blocked';
+  scan_status: 'pending' | 'blocked' | 'clean' | 'suspicious';
   scan_findings: Array<{ rule: string; severity: 'high' | 'medium'; excerpt: string; path?: string | undefined }>;
   scanned_at: string | null;
   scan_reviewed_by: string | null;
@@ -928,7 +940,7 @@ export type SkillStarters = {
       key: string;
       options?: Array<string> | undefined;
     }>;
-    scan_status: 'pending' | 'clean' | 'suspicious' | 'blocked';
+    scan_status: 'pending' | 'blocked' | 'clean' | 'suspicious';
     scan_findings: Array<{ rule: string; severity: 'high' | 'medium'; excerpt: string; path?: string | undefined }>;
     scanned_at: string | null;
     scan_reviewed_by: string | null;

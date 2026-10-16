@@ -26,6 +26,8 @@ export interface NewJob {
   payload: Record<string, unknown>;
   /** Not claimable before this delay. */
   delayMs?: number;
+  /** An exact due time, for work such as a one-off reminder. */
+  availableAt?: string;
   maxAttempts?: number;
   /** Recorded as already settled, saying why nothing will be done. */
   suppressed?: Record<string, unknown>;
@@ -43,7 +45,7 @@ export async function enqueueJob(job: NewJob): Promise<JobRow | null> {
       status: job.suppressed ? 'suppressed' : 'pending',
       result: job.suppressed ?? null,
       maxAttempts: job.maxAttempts ?? DEFAULT_MAX_ATTEMPTS,
-      availableAt: later(job.delayMs ?? 0),
+      availableAt: job.availableAt ?? later(job.delayMs ?? 0),
     })
     .onConflictDoNothing({ target: jobs.dedupeKey })
     .returning();

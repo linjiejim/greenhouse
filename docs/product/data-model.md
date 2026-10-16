@@ -4,7 +4,7 @@
 
 v2 从零建表：只有一份基线迁移，不继承 v1 的迁移链，也不在 v1 库上原地升级。v1 的历史数据以后用离线 ETL 搬进来，见 [migration-v1.md](migration-v1.md)。
 
-本文写到能照着实现的程度，列不求全。实现以 Drizzle schema 为准，改表时同步本文。共 78 张表，分 10 个领域；v1 加上 PR #64 是 137 张。
+本文写到能照着实现的程度，列不求全。实现以 Drizzle schema 为准，改表时同步本文。共 82 张表，分 10 个领域；v1 加上 PR #64 是 137 张。
 
 ## 1. 约定
 
@@ -298,9 +298,18 @@ M3.4 计数（#70）：`metric_events` 仅存 identity id、member_id（逻辑�
 ### U1 提问展示打磨（#70）
 
 不新增接口、字段、表或迁移。客户端根据已有 `requests.payload.fields` 判断是否可单击回答；只有一个 `choice` 字段且选项为 1–6 项时在消息内展示。提交继续使用 `{ answers: { [key]: value } }`，完成后从已有 `requests.result.answers` 恢复选择；复杂表单使用相同接口与权限检查。展示不更改请求生命周期。
+### U2 回复与私有工作状态（#70）
+- `messages.visible` 默认 true；事件回合预留回复为 false，只有 send_message 才公开；查询、导出、历史摘要与漏读通知排除不可见行。草稿证据仍在该 run 的 model steps，不随实时帧泄露。
+- `messages.reactions` 为 `{agent_id, emoji}[]`，每个 Agent 对成员消息最多一个回应；固定六个表情，复用 message.updated。
+- 计划为 `runs.checkpoint.todo` 与 `messages.blocks` 中 `{type: todo, items: [{title,status}]}`，状态 pending／active／done／blocked／skipped，最多 20 项。
+- Agent manifest 可附 `folder_ids`（成员有权读取的有效知识文件夹，最多 50），复用 agent_versions；它是参考资料入口，不授予额外权限。撤销仍追加一个版本，校验当前版本；新建 Agent 的撤销为归档。
+- `reminders`：text id（rmd_）、owner_id（成员级联）、conversation_id（对话级联）、逻辑 agent_id、text、due_at、timezone、status（pending／canceled／delivered）、revision、message_id、created_at、updated_at；owner_id／id 索引。每次恢复排入带 revision 去重键、available_at 等于 due_at 的 `reminder_deliver` job，旧 job 不能送达新版本。送达与取消同持会话锁和提醒行锁；线程行、状态和 notifications 同事务提交，重试不重复。
+- file_create 复用 files，purpose=attachment，run_id／conversation_id 关联与 meta.created_step 记录创建步骤，复用签名下载。单文件及表格输入数据上限 1 MiB；xlsx 由已有 ExcelJS 生成，不执行公式。
 
 ### 请求生命周期收敛（#70，U3）
 
 `requests.target_key` 由 requests/target.ts 单点定义。取代的匹配范围为 member_id、conversation_id、agent_id、subject 和 target_key；创建与决定同持对话锁。新请求仅取代 pending；无法可靠确定目标时不猜测。完整批次按目标集合匹配，不撤掉无关目标。`result.replacement_request_id` 链接新卡；聊天回答使用 `result.reason="answered in chat"` 与 `message_id`，取消使用 withdrawn。每项终态与 request_decided 入队、通知 cleared_at 同事务，历史请求不删除。
 
 第 2 档批准可覆盖同对话、同成员和 Agent 的相同范围与动作子集；未准备完、过期、已取消或已污染的请求不适用。每张卡分别入队、执行、记录回执。`payload.tainted` 在发卡时记录污染状态，批次取逻辑或。
+
+U2 工具沿用同一目标解析：agent_mutation 更新按 Agent id，新建按规范化名称（忽略大小写及首尾空格）；file_create 按最终文件名（含格式扩展名）；remind 取消按提醒 id，新建没有可靠对象身份，不自动取代；todo 按请求关联的 run_id，同运行的新计划不以项目文字或状态作目标。当前前三者为第 1 档回执、todo 不发审批；若进入请求路径，仍使用这些键，绝不把成员聊天当成同意。

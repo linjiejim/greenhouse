@@ -44,7 +44,7 @@ it('resumes a killed process in one reply and only one of two replicas owns reco
       .select()
       .from(messages)
       .where(and(eq(messages.runId, received.runId), eq(messages.role, 'assistant')));
-    expect(before!.content).toBe('I checked alpha. ');
+    expect(before!.content).toBe('');
     child.kill('SIGKILL');
     await once(child, 'exit');
     await getDb()
@@ -66,7 +66,7 @@ it('resumes a killed process in one reply and only one of two replicas owns reco
       .from(messages)
       .where(and(eq(messages.runId, received.runId), eq(messages.role, 'assistant')));
     expect(replies).toHaveLength(1);
-    expect(replies[0]).toMatchObject({ id: before!.id, status: 'complete', content: 'I checked alpha. Alpha is 42.' });
+    expect(replies[0]).toMatchObject({ id: before!.id, status: 'complete', content: 'Alpha is 42.' });
     expect(replies[0]!.citations).toContainEqual({
       kind: 'web',
       url: 'https://example.test/alpha',
@@ -127,8 +127,8 @@ it('recovers an interjected reply after a crash and admits another interjection'
       .where(and(eq(messages.runId, started.runId), eq(messages.role, 'assistant')))
       .orderBy(messages.seq);
     expect(before).toHaveLength(2);
-    expect(before[0]).toMatchObject({ status: 'complete', content: 'I checked alpha. ' });
-    expect(before[1]).toMatchObject({ status: 'streaming', content: 'With extra detail. ' });
+    expect(before[0]).toMatchObject({ status: 'complete', content: '' });
+    expect(before[1]).toMatchObject({ status: 'streaming', content: '' });
     const [firstRow] = await getDb().select().from(messages).where(eq(messages.id, first.message.id));
     expect(firstRow!.event).toMatchObject({ state: 'incorporated', run_id: started.runId });
     child.kill('SIGKILL');
@@ -158,10 +158,10 @@ it('recovers an interjected reply after a crash and admits another interjection'
       .where(and(eq(messages.runId, started.runId), eq(messages.role, 'assistant')))
       .orderBy(messages.seq);
     expect(replies).toHaveLength(3);
-    expect(replies[0]).toMatchObject({ id: before[0]!.id, content: 'I checked alpha. ', status: 'complete' });
+    expect(replies[0]).toMatchObject({ id: before[0]!.id, content: '', status: 'complete' });
     expect(replies[1]).toMatchObject({
       id: before[1]!.id,
-      content: 'With extra detail. Resumed prefix. ',
+      content: '',
       status: 'complete',
     });
     expect(replies[2]).toMatchObject({ content: 'Final with both details.', status: 'complete' });

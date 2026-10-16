@@ -100,7 +100,13 @@ export function createSearchService(deps: {
           ),
         )
         .innerJoin(conversations, eq(conversations.id, messages.conversationId))
-        .where(and(inArray(messages.role, ['user', 'assistant']), ilike(messages.content, containing(q))))
+        .where(
+          and(
+            eq(messages.visible, true),
+            inArray(messages.role, ['user', 'assistant']),
+            ilike(messages.content, containing(q)),
+          ),
+        )
         .orderBy(desc(messages.createdAt), desc(messages.id))
         .limit(limit);
       const names = await agentNames(rows.map((row) => (row.title ? null : row.conversationAgentId)));

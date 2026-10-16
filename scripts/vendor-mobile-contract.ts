@@ -47,6 +47,7 @@ export const TYPES = [
   'Note',
   'CreateConversationInput',
   'UpdateConversationInput',
+  'TodoItem',
   'Message',
   'MessageItem',
   'SendMessageInput',

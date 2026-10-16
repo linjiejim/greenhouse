@@ -89,6 +89,7 @@ export const toMessage = (row: MessageRow): Message => ({
   author_member_id: row.authorMemberId,
   agent_id: row.agentId,
   content: row.content,
+  reactions: row.reactions as Message['reactions'],
   blocks: row.blocks,
   attachments: row.attachments,
   quote: row.quote ? { message_id: row.quote.messageId, text: row.quote.text } : null,
@@ -332,6 +333,7 @@ export function createConversationsService(deps: {
         )
         .where(
           and(
+            eq(messages.visible, true),
             inArray(messages.conversationId, ids),
             eq(messages.role, 'assistant'),
             gt(messages.seq, conversationMembers.lastReadSeq),
@@ -440,6 +442,13 @@ export function createConversationsService(deps: {
    */
   async function deliver(audience: readonly string[], event: RealtimeEvent): Promise<void> {
     const message = event.type === 'message.created' || event.type === 'message.updated' ? event.data.message : null;
+    if (message) {
+      const [saved] = await getDb()
+        .select({ visible: messages.visible })
+        .from(messages)
+        .where(eq(messages.id, message.id));
+      if (!saved || !saved.visible) return;
+    }
     const sources = message ? citedSources(message.citations) : [];
     if (!message || !sources.length) {
       deps.hub.publish(audience, event);
@@ -759,7 +768,9 @@ export function createConversationsService(deps: {
         const rows = await db
           .select()
           .from(messages)
-          .where(and(eq(messages.conversationId, conversationId), gt(messages.seq, query.after)))
+          .where(
+            and(eq(messages.visible, true), eq(messages.conversationId, conversationId), gt(messages.seq, query.after)),
+          )
           .orderBy(asc(messages.seq))
           .limit(query.limit + 1);
         const more = rows.length > query.limit;
@@ -773,7 +784,13 @@ export function createConversationsService(deps: {
       const rows = await db
         .select()
         .from(messages)
-        .where(and(eq(messages.conversationId, conversationId), before !== null ? lt(messages.seq, before) : undefined))
+        .where(
+          and(
+            eq(messages.visible, true),
+            eq(messages.conversationId, conversationId),
+            before !== null ? lt(messages.seq, before) : undefined,
+          ),
+        )
         .orderBy(desc(messages.seq))
         .limit(query.limit + 1);
       const more = rows.length > query.limit;
@@ -1114,7 +1131,7 @@ export function createConversationsService(deps: {
       const rows = await db
         .select()
         .from(messages)
-        .where(eq(messages.conversationId, conversationId))
+        .where(and(eq(messages.visible, true), eq(messages.conversationId, conversationId)))
         .orderBy(asc(messages.seq));
       const memberIds = [...new Set(rows.map((row) => row.authorMemberId).filter((id): id is string => !!id))];
       const agentIds = [
@@ -1185,6 +1202,55 @@ export function createConversationsService(deps: {
       }
     },
 
+    async react(memberId: string, conversationId: string, agentId: string, runId: string, emoji: string) {
+      const saved = await transaction(async (db) => {
+        const { conversation } = await service.access(memberId, conversationId);
+        assertWritable(conversation);
+        await db
+          .select({ id: conversations.id })
+          .from(conversations)
+          .where(eq(conversations.id, conversationId))
+          .for('update');
+        const [run] = await db
+          .select({ input: runs.input })
+          .from(runs)
+          .where(
+            and(
+              eq(runs.id, runId),
+              eq(runs.ownerId, memberId),
+              eq(runs.agentId, agentId),
+              eq(runs.conversationId, conversationId),
+              eq(runs.desiredState, 'run'),
+            ),
+          );
+        const ids = run?.input.message_ids as string[] | undefined;
+        const [message] = await db
+          .select()
+          .from(messages)
+          .where(
+            and(
+              eq(messages.conversationId, conversationId),
+              eq(messages.role, 'user'),
+              eq(messages.authorMemberId, memberId),
+            ),
+          )
+          .orderBy(desc(messages.seq))
+          .limit(1);
+        if (!message || !ids?.includes(message.id))
+          throw conflict('reaction_target_changed', 'The latest member message is not part of this turn.');
+        const [updated] = await db
+          .update(messages)
+          .set({
+            reactions: sql`(select coalesce(jsonb_agg(r), '[]'::jsonb) from jsonb_array_elements(${messages.reactions}) r where r->>'agent_id' <> ${agentId}) || ${JSON.stringify([{ agent_id: agentId, emoji }])}::jsonb`,
+          })
+          .where(eq(messages.id, message.id))
+          .returning();
+        return updated!;
+      });
+      await service.publish(conversationId, { type: 'message.updated', data: { message: toMessage(saved) } });
+      return saved.id;
+    },
+
     /** Appends a message under the conversation lock: the only way a sequence number is given out. */
     async append(conversationId: string, message: AppendMessage): Promise<MessageRow> {
       return transaction(async (db) => {
@@ -1201,7 +1267,11 @@ export function createConversationsService(deps: {
           .returning();
         await db
           .update(conversations)
-          .set({ lastSeq: seq, lastActivityAt: sql`now()`, updatedAt: sql`now()` })
+          .set({
+            lastSeq: seq,
+            ...(message.visible === false ? {} : { lastActivityAt: sql`now()` }),
+            updatedAt: sql`now()`,
+          })
           .where(eq(conversations.id, conversationId));
         return row!;
       });

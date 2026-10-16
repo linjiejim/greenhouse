@@ -40,6 +40,7 @@ export async function toolDefinition(def: ToolDef) {
   };
 }
 export interface Harness {
+  runKind?: 'turn' | 'background';
   recipe?: TurnPromptRecipe;
   background?: BackgroundPromptRecipe;
   transcript: EngineMessage[];

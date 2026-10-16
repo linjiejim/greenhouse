@@ -17,7 +17,7 @@ describe('hand-offs', () => {
         agent: '卷卷',
         brief: 'Polish this paragraph: hello world.',
       }),
-      text('Hello, world.'),
+      toolCall('send_message', { text: 'Hello, world.' }),
     );
     const sent = await app.call('POST', `/api/conversations/${main.id}/messages`, {
       token: lin.token,
@@ -33,7 +33,7 @@ describe('hand-offs', () => {
     expect(
       transcript.slice(2).map((m) => [m.role, m.agentId === writer.body.id ? 'writer' : 'main', m.content]),
     ).toEqual([
-      ['assistant', 'main', 'I handed the polishing to 卷卷.'],
+      ['assistant', 'main', ''],
       ['event', 'main', 'Greeny 把工作交给了 卷卷'],
       ['assistant', 'writer', 'Hello, world.'],
     ]);
@@ -72,7 +72,7 @@ describe('hand-offs', () => {
       textThenTool('Over to 卷卷.', 'handoff', { agent: '卷卷', brief: 'Write it.' }),
       // 卷卷 tries to hand back to Greeny: a circle.
       toolCall('handoff', { agent: 'main', brief: 'Your turn again.' }),
-      text('I will do it myself.'),
+      toolCall('send_message', { text: 'I will do it myself.' }),
     );
     await app.call('POST', `/api/conversations/${main.id}/messages`, { token: lin.token, body: { content: 'first' } });
     await app.services.engine.idle();

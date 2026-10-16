@@ -192,6 +192,12 @@ it('debounces bursts independently for each query client', async () => {
   }
 });
 
+it('refreshes cached Agents after a tool creates or updates one',async()=>{
+  client.setQueryData(keys.agents('mine'),{items:[]});
+  applyEvent(client,{type:'message.step',data:{conversation_id:'cnv_1',message_id:'msg_2',step:{id:'s1',tool:'agent_mutation',summary:'Saved an Agent',status:'done'}}});
+  await vi.waitFor(()=>expect(client.getQueryState(keys.agents('mine'))?.isInvalidated).toBe(true));
+});
+
 
 it('removes every cached pointer for a settled request immediately without dropping other notifications', () => {
   const old = { id: 'ntf_old', request_id: 'req_old' } as Notification;

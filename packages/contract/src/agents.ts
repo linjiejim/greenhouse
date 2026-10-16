@@ -28,6 +28,8 @@ export const agentManifestSchema = z.object({
   instructions: z.string().max(AGENT_INSTRUCTIONS_MAX),
   avatar: agentAvatarSchema,
   model: modelRefSchema,
+  /** Attached readable knowledge folders, listed in turn context. */
+  folder_ids: z.array(z.string().max(64)).max(50).optional(),
   /** Skill ids it is equipped with. */
   skills: z.array(z.string()).max(50),
   /** Connector slugs it may use; null means every connector its owner can use. */
@@ -67,6 +69,7 @@ export type Agent = z.infer<typeof agentSchema>;
 /** The owner's view: the Agent with its current manifest. */
 export const agentDetailSchema = agentSchema.extend({
   instructions: z.string(),
+  folder_ids: z.array(z.string()).optional(),
   model: z.string(),
   skills: z.array(z.string()),
   connectors: z.array(z.string()).nullable(),

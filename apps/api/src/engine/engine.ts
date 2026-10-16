@@ -1,3 +1,5 @@
+import { replyParts, replyText } from './reply.js';
+import { REMINDER_JOB, type RemindersService } from '../modules/reminders/service.js';
 import { createTimerScope } from './timers.js';
 import type { OperationsService } from '../modules/operations/service.js';
 import { interjectionText } from './history.js';
@@ -175,6 +177,7 @@ export interface EngineDeps {
   role?: 'all' | 'api' | 'worker';
   eventWakeLimit?: number;
   eventMergeMs?: number;
+  reminders?: RemindersService;
   approvals?: ApprovalsService;
   computers?: ComputersService;
   agents: AgentsService;
@@ -217,7 +220,7 @@ const DECISION_PRUNE_EVERY_MS = 60 * 60_000;
 /** Settled decision jobs are kept a week. */
 const DECISION_KEEP_MS = 7 * 24 * 60 * 60_000;
 const DIGEST_JOB = 'conversation_digest';
-const ENGINE_JOBS = [DECISION_JOB, RUN_REPORT_JOB, RETENTION_JOB, DIGEST_JOB];
+const ENGINE_JOBS = [DECISION_JOB, RUN_REPORT_JOB, RETENTION_JOB, DIGEST_JOB, REMINDER_JOB];
 const RESUME_WINDOW_MS = 10 * 60_000;
 const LEASE_LOST = 'The lease on this decision was lost.';
 
@@ -320,7 +323,7 @@ export function createEngine(deps: EngineDeps) {
 
   const publish = (conversationId: string, event: RealtimeEvent) => deps.conversations.publish(conversationId, event);
 
-  async function receipt(run: Run, stepId: string, summary: string, conversationLocked = false) {
+  async function receipt(run: Run, stepId: string, summary: string) {
     const [step] = await getDb().select().from(runSteps).where(eq(runSteps.id, stepId));
     if (step?.risk === 'tier2') await countAdoption(run.ownerId, adoptedOutputKey(run.id, 'step', stepId));
     if (!run.conversationId) return;
@@ -330,58 +333,56 @@ export function createEngine(deps: EngineDeps) {
         : step?.toolName === 'apps_action'
           ? (step.undoState as { before?: { plan?: { table_id?: string } } } | null)?.before?.plan?.table_id
           : null;
-    const save = () =>
-      transaction(async (db) => {
-        await db
-          .select({ id: conversations.id })
-          .from(conversations)
-          .where(eq(conversations.id, run.conversationId!))
-          .for('update');
-        const receipts = await db
-          .select()
-          .from(messages)
-          .where(and(eq(messages.runId, run.id), sql`${messages.event}->>'type' = 'write_receipt'`))
-          .for('update');
-        if (
-          receipts.some(
-            (receipt) =>
-              receipt.event?.step_id === stepId || (receipt.event?.step_ids as string[] | undefined)?.includes(stepId),
-          )
+    // Reversible writes already hold the database conversation lock. Taking the local queue
+    // here would deadlock with a new member message waiting for that database lock.
+    const result = await transaction(async (db) => {
+      await db
+        .select({ id: conversations.id })
+        .from(conversations)
+        .where(eq(conversations.id, run.conversationId!))
+        .for('update');
+      const receipts = await db
+        .select()
+        .from(messages)
+        .where(and(eq(messages.runId, run.id), sql`${messages.event}->>'type' = 'write_receipt'`))
+        .for('update');
+      if (
+        receipts.some(
+          (receipt) =>
+            receipt.event?.step_id === stepId || (receipt.event?.step_ids as string[] | undefined)?.includes(stepId),
         )
-          return null;
-        const existing = tableId
-          ? receipts.find((receipt) => receipt.event?.table_id === tableId && receipt.event?.undone !== true)
-          : null;
-        if (existing) {
-          const ids = (existing.event?.step_ids as string[] | undefined) ?? [String(existing.event?.step_id)];
-          const [saved] = await db
-            .update(messages)
-            .set({
-              content: `${existing.content}\n${summary.includes('\n') && existing.content.split('\n')[0] === summary.split('\n')[0] ? summary.slice(summary.indexOf('\n') + 1) : summary}`,
-              event: { ...existing.event, type: 'write_receipt', step_ids: [...ids, stepId] },
-            })
-            .where(eq(messages.id, existing.id))
-            .returning();
-          return saved ? { row: saved, updated: true } : null;
-        }
-        const row = await deps.conversations.append(run.conversationId!, {
-          role: 'event',
-          agentId: run.agentId,
-          runId: run.id,
-          content: summary,
-          event: {
-            type: 'write_receipt',
-            step_id: stepId,
-            step_ids: [stepId],
-            member_id: run.ownerId,
-            ...(tableId ? { table_id: tableId } : {}),
-          },
-        });
-        return { row, updated: false };
+      )
+        return null;
+      const existing = tableId
+        ? receipts.find((receipt) => receipt.event?.table_id === tableId && receipt.event?.undone !== true)
+        : null;
+      if (existing) {
+        const ids = (existing.event?.step_ids as string[] | undefined) ?? [String(existing.event?.step_id)];
+        const [saved] = await db
+          .update(messages)
+          .set({
+            content: `${existing.content}\n${summary.includes('\n') && existing.content.split('\n')[0] === summary.split('\n')[0] ? summary.slice(summary.indexOf('\n') + 1) : summary}`,
+            event: { ...existing.event, type: 'write_receipt', step_ids: [...ids, stepId] },
+          })
+          .where(eq(messages.id, existing.id))
+          .returning();
+        return saved ? { row: saved, updated: true } : null;
+      }
+      const row = await deps.conversations.append(run.conversationId!, {
+        role: 'event',
+        agentId: run.agentId,
+        runId: run.id,
+        content: summary,
+        event: {
+          type: 'write_receipt',
+          step_id: stepId,
+          step_ids: [stepId],
+          member_id: run.ownerId,
+          ...(tableId ? { table_id: tableId } : {}),
+        },
       });
-    // Approved reversible writes already hold the database conversation lock. Taking the local
-    // lock here would invert followUp's local-lock → transaction order when several cards settle.
-    const result = await (conversationLocked ? save() : withConversation(run.conversationId, save));
+      return { row, updated: false };
+    });
     if (result)
       await publish(run.conversationId, {
         type: result.updated ? 'message.updated' : 'message.created',
@@ -1035,6 +1036,8 @@ export function createEngine(deps: EngineDeps) {
     const [conversation] = await getDb().select().from(conversations).where(eq(conversations.id, run.conversationId!));
     const [member] = await getDb().select().from(members).where(eq(members.id, run.ownerId));
     const locale = localeOf(member?.locale);
+    const eventWoken = run.input.reason === 'event' || run.input.event_woken === true || run.input.reason === 'handoff';
+    let postedText = '';
     let reply: MessageRow | null = null;
     const resumed = run.checkpoint?.turn_step ? await recordedSteps(run.id) : { steps: [], last: 0 };
     let completedText = '';
@@ -1066,20 +1069,22 @@ export function createEngine(deps: EngineDeps) {
           .from(messages)
           .where(and(eq(messages.runId, run.id), eq(messages.id, String(run.checkpoint!.reply_id))));
         if (!saved) throw new ApiError(410, 'gone', 'The reply no longer exists.');
-        completedText = saved.content.slice(0, Number(run.checkpoint!.reply_chars));
+        completedText = eventWoken ? '' : saved.content.slice(0, Number(run.checkpoint!.reply_chars));
+        const restoredText = eventWoken ? saved.content : completedText;
         previousSteps = saved.steps;
         collector.text = completedText;
-        reply = { ...saved, content: completedText, status: 'streaming' };
+        reply = { ...saved, content: restoredText, status: 'streaming' };
         await getDb()
           .update(messages)
-          .set({ content: completedText, status: 'streaming' })
+          .set({ content: restoredText, status: 'streaming' })
           .where(eq(messages.id, saved.id));
         // This small frame crosses NOTIFY even when the full prefix needs HTTP resync.
-        await send({
-          type: 'message.resumed',
-          data: { conversation_id: conversation.id, message_id: reply.id, offset: completedText.length },
-        });
-        await send({ type: 'message.updated', data: { message: toMessage(reply) } });
+        if (saved.visible)
+          await send({
+            type: 'message.resumed',
+            data: { conversation_id: conversation.id, message_id: reply.id, offset: completedText.length },
+          });
+        if (saved.visible) await send({ type: 'message.updated', data: { message: toMessage(reply) } });
       } else {
         reply = await withConversation(conversation.id, () =>
           deps.conversations.append(conversation.id, {
@@ -1087,10 +1092,12 @@ export function createEngine(deps: EngineDeps) {
             agentId: run.agentId,
             runId: run.id,
             status: 'streaming',
+            visible: !eventWoken,
           }),
         );
-        await send({ type: 'message.created', data: { message: toMessage(reply) } });
+        if (!eventWoken) await send({ type: 'message.created', data: { message: toMessage(reply) } });
       }
+      postedText = eventWoken ? reply.content : '';
       let replyId = reply.id;
       frames = deltaFrames(
         (text, offset) =>
@@ -1118,7 +1125,6 @@ export function createEngine(deps: EngineDeps) {
         personal: !shared,
       });
 
-      const eventWoken = run.input.reason === 'event' || run.input.event_woken === true;
       let tainted = !!conversation.context || eventWoken || typeof run.input.helper_parent === 'string';
       const eventComputer = eventWoken && run.input.computer === true;
       if (eventComputer) await deps.computers?.reserveBackground(run.ownerId, run.agentId, run.id);
@@ -1141,7 +1147,7 @@ export function createEngine(deps: EngineDeps) {
           runId: run.id,
           attempt: run.attempt || 1,
           locale,
-          surface: run.input.reason === 'event' || run.input.event_woken === true ? 'background' : 'turn',
+          surface: eventWoken ? 'background' : 'turn',
           backgroundComputer: eventComputer,
           eventWoken,
           signal: controller.signal,
@@ -1149,15 +1155,56 @@ export function createEngine(deps: EngineDeps) {
             tainted = true;
           },
           tainted: () => tainted,
-          attachFile: async (fileId) => {
+          postMessage: async (text) => {
+            if (controller.signal.aborted) throw new Error('Stopped.');
+            await deps.conversations.access(run.ownerId, conversation.id);
+            if (postedText)
+              throw new ApiError(409, 'message_already_sent', 'One message has already been sent in this wake-up.');
+            const saved = await transaction(async (db) => {
+              await db
+                .select({ id: conversations.id })
+                .from(conversations)
+                .where(eq(conversations.id, conversation.id))
+                .for('update');
+              await deps.conversations.access(run.ownerId, conversation.id);
+              const [owned] = await db
+                .select({ id: runs.id })
+                .from(runs)
+                .where(and(eq(runs.id, run.id), eq(runs.leaseOwner, instance), eq(runs.desiredState, 'run')))
+                .for('update');
+              if (!owned) throw new ApiError(409, 'turn_interrupted', 'This turn no longer holds its lease.');
+              const [message] = await db
+                .update(messages)
+                .set({ content: text, visible: true })
+                .where(eq(messages.id, replyId))
+                .returning();
+              return message;
+            });
+            if (!saved) throw new ApiError(410, 'gone', 'The reply no longer exists.');
+            postedText = text;
+            reply = saved;
+            await send({ type: 'message.created', data: { message: toMessage(saved) } });
+          },
+          setTodo: async (items) => {
+            const [saved] = await getDb()
+              .update(messages)
+              .set({ blocks: [{ type: 'todo', items }] })
+              .where(eq(messages.id, replyId))
+              .returning();
+            if (saved?.visible) await send({ type: 'message.updated', data: { message: toMessage(saved) } });
+          },
+          attachFile: async (fileId, append = false) => {
             if (controller.signal.aborted) throw new Error('Stopped.');
             await deps.conversations.access(run.ownerId, conversation.id);
             const [saved] = await getDb()
               .update(messages)
-              .set({ attachments: [fileId] })
+              .set({
+                attachments: append ? sql`${messages.attachments} || ${JSON.stringify([fileId])}::jsonb` : [fileId],
+              })
               .where(eq(messages.id, replyId))
               .returning();
-            if (saved) await send({ type: 'message.updated', data: { message: toMessage(saved) } });
+            // Appended files belong to a private write transaction; the final reply announces them after commit.
+            if (saved?.visible && !append) await send({ type: 'message.updated', data: { message: toMessage(saved) } });
           },
           cite: sources.cite,
           chain: (run.input as TurnInput).chain ?? { key: run.id, path: [agent.id] },
@@ -1174,7 +1221,7 @@ export function createEngine(deps: EngineDeps) {
           memberId: run.ownerId,
           modules: effectiveModules(member.modules),
           manifest,
-          surface: run.input.reason === 'event' || run.input.event_woken === true ? 'background' : 'turn',
+          surface: eventWoken ? 'background' : 'turn',
           backgroundComputer: eventComputer,
           publicAgent: shared ? { computer: shared.computer, folderIds: shared.folderIds } : null,
           available: (capability) => deps.providers.available(capability, { memberId: run.ownerId, personal: !shared }),
@@ -1243,7 +1290,7 @@ export function createEngine(deps: EngineDeps) {
         .orderBy(desc(messages.seq))
         .limit(1);
       const recipe: TurnPromptRecipe = {
-        event: input.reason === 'event' || input.event_woken === true,
+        event: eventWoken,
         rules: {
           flags: {
             computer: has('computer'),
@@ -1298,6 +1345,7 @@ export function createEngine(deps: EngineDeps) {
         closeTranscript(projection.messages, tail, resolved.vision ? await imagesOf(run, input) : []);
       if (!resumed.last)
         await recordHarness(run.id, {
+          runKind: 'turn',
           recipe,
           tainted,
           transcript,
@@ -1305,7 +1353,7 @@ export function createEngine(deps: EngineDeps) {
           manifest,
           modules: effectiveModules(member.modules),
           mainAgent: agent.isMain,
-          surface: input.reason === 'event' || input.event_woken === true ? 'background' : 'turn',
+          surface: eventWoken ? 'background' : 'turn',
           publicAgent: shared ? { computer: shared.computer, folderIds: shared.folderIds } : null,
           capabilities: await Promise.all(
             CAPABILITIES.map(async (capability) => [
@@ -1376,7 +1424,7 @@ export function createEngine(deps: EngineDeps) {
               .update(messages)
               .set({
                 content: collector.text,
-                reasoning: collector.reasoning || null,
+                reasoning: eventWoken ? null : collector.reasoning || null,
                 status: 'complete',
                 citations: sources.citations(collector.text),
                 steps: [
@@ -1497,17 +1545,7 @@ export function createEngine(deps: EngineDeps) {
             await deps.requests.ready(run.id);
             usage.input += step.usage.inputTokens ?? 0;
             usage.cached += step.usage.cachedInputTokens ?? 0;
-            completedText += step.messages
-              .filter((message) => message.role === 'assistant')
-              .map((message) =>
-                typeof message.content === 'string'
-                  ? message.content
-                  : message.content
-                      .filter((part) => part.type === 'text')
-                      .map((part) => (part as { text: string }).text)
-                      .join(''),
-              )
-              .join('');
+            completedText += eventWoken ? '' : replyText(step.messages);
             // The model context and the full visible text share one durable boundary. Partial tokens
             // from the next step may be flushed later, but recovery truncates them to reply_chars.
             await transaction(async (db) => {
@@ -1546,7 +1584,7 @@ export function createEngine(deps: EngineDeps) {
               await db
                 .update(messages)
                 .set({
-                  content: completedText,
+                  content: eventWoken ? postedText : completedText,
                   citations: sources.citations(completedText),
                   steps: [
                     ...previousSteps,
@@ -1582,7 +1620,17 @@ export function createEngine(deps: EngineDeps) {
         const { result } = alreadyAnswered ? { result: null } : streamLoop(streamInput);
         let flushedAt = Date.now();
         let flushedLength = 0;
-        for await (const part of result ? withFinalAnswer(result, streamInput, undefined, () => !interjected) : []) {
+        for await (const part of replyParts(
+          result
+            ? withFinalAnswer(
+                result,
+                streamInput,
+                undefined,
+                () => !interjected && !turnTools.waiting() && !turnTools.ended(),
+              )
+            : (async function* () {})(),
+          eventWoken,
+        )) {
           if (part.type === 'finish-step') {
             streamSteps += 1;
             try {
@@ -1604,8 +1652,16 @@ export function createEngine(deps: EngineDeps) {
               await getDb().update(messages).set({ content: collector.text }).where(eq(messages.id, reply.id));
             }
           }
-          if (call) {
+          if (call && !eventWoken) {
             frames.flush();
+            if (part.type === 'tool-call' && collector.text !== completedText) {
+              collector.text = completedText;
+              await getDb().update(messages).set({ content: completedText }).where(eq(messages.id, reply.id));
+              await send({
+                type: 'message.resumed',
+                data: { conversation_id: conversation.id, message_id: reply.id, offset: completedText.length },
+              });
+            }
             await send({
               type: 'message.step',
               data: {
@@ -1705,9 +1761,10 @@ export function createEngine(deps: EngineDeps) {
           status: call.status === 'failed' ? 'failed' : 'done',
           ...(call.durationMs !== undefined ? { durationMs: call.durationMs } : {}),
         }));
-      const content =
-        collector.text.trim() ||
-        (failed ? (FAILURE_TEXT[locale][outcome.errorCode ?? ''] ?? FAILURE_TEXT[locale].default!) : collector.text);
+      const content = eventWoken
+        ? postedText
+        : collector.text.trim() ||
+          (failed ? (FAILURE_TEXT[locale][outcome.errorCode ?? ''] ?? FAILURE_TEXT[locale].default!) : collector.text);
       const finishedReplyId = reply.id;
       const saved = await withConversation(conversation.id, () =>
         transaction(async (db) => {
@@ -1744,7 +1801,7 @@ export function createEngine(deps: EngineDeps) {
               content,
               steps: finalSteps,
               citations: failed ? [] : sources.citations(content),
-              reasoning: collector.reasoning || null,
+              reasoning: eventWoken ? null : collector.reasoning || null,
               status: outcome.status === 'canceled' ? 'stopped' : failed ? 'failed' : 'complete',
             })
             .where(eq(messages.id, finishedReplyId))
@@ -1752,8 +1809,14 @@ export function createEngine(deps: EngineDeps) {
           return saved;
         }),
       );
-      if (saved) await send({ type: 'message.updated', data: { message: toMessage(saved) } });
-      else superseded = true;
+      if (saved) {
+        const reactionOnly =
+          !eventWoken && !content && steps.length > 0 && steps.every((step) => step.tool === 'react');
+        if (reactionOnly) {
+          await getDb().update(messages).set({ visible: false }).where(eq(messages.id, saved.id));
+          await send({ type: 'message.deleted', data: { conversation_id: conversation.id, message_id: saved.id } });
+        } else if (saved.visible) await send({ type: 'message.updated', data: { message: toMessage(saved) } });
+      } else superseded = true;
       await deps.agents.touch(run.agentId);
     }
     if (!superseded) {
@@ -1769,7 +1832,7 @@ export function createEngine(deps: EngineDeps) {
         .set({
           status: outcome.status === 'failed' ? 'failed' : outcome.status === 'canceled' ? 'canceled' : 'replied',
           runId: run.id,
-          reply: collector.text.slice(0, 2000) || null,
+          reply: (eventWoken ? postedText : collector.text).slice(0, 2000) || null,
           returnedAt: sql`now()`,
           updatedAt: sql`now()`,
         })
@@ -2067,7 +2130,7 @@ export function createEngine(deps: EngineDeps) {
             (await ready.def.receipt?.(payload.input, raw, context)) ??
             ready.def.summarize?.(payload.input, raw, locale) ??
             summary;
-          await receipt(ready.run, request.stepId!, receiptSummary, true);
+          await receipt(ready.run, request.stepId!, receiptSummary);
         }
         return output;
       };
@@ -2319,7 +2382,7 @@ export function createEngine(deps: EngineDeps) {
     if (done.closed && run?.kind === 'background') background.kick(run);
     // Committed: the turn it woke starts whatever happens to the announcements.
     try {
-      for (const reply of done.updatedReplies)
+      for (const reply of done.updatedReplies.filter((reply) => reply.visible))
         await publish(conversationId, { type: 'message.updated', data: { message: toMessage(reply) } });
       await publish(conversationId, { type: 'message.created', data: { message: toMessage(done.line) } });
       if (done.closed && run) {
@@ -2360,6 +2423,8 @@ export function createEngine(deps: EngineDeps) {
         while ((await deps.files.pruneToolOutputs()) === 200) {
           /* Finish this bounded batch before settling. */
         }
+      } else if (job.kind === REMINDER_JOB) {
+        await deps.reminders?.deliver(String(job.payload.reminder_id), Number(job.payload.revision));
       } else if (job.kind === DIGEST_JOB) {
         await digester.run(
           String(job.payload.conversation_id),
@@ -3297,7 +3362,7 @@ export function createEngine(deps: EngineDeps) {
           }),
         );
         if (!recovery) continue;
-        if (recovery.failed)
+        if (recovery.failed?.visible)
           await publish(recovery.failed.conversationId, {
             type: 'message.updated',
             data: { message: toMessage(recovery.failed) },

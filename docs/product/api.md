@@ -345,6 +345,13 @@ custom 网页运行使用双层 `sandbox="allow-scripts"` iframe，均无 allow-
 ### U1 提问展示打磨（#70）
 
 不新增接口、字段、表或迁移。客户端根据已有 `requests.payload.fields` 判断是否可单击回答；只有一个 `choice` 字段且选项为 1–6 项时在消息内展示。提交继续使用 `{ answers: { [key]: value } }`，完成后从已有 `requests.result.answers` 恢复选择；复杂表单使用相同接口与权限检查。展示不更改请求生命周期。
+### U2 对话与运行投影（#70）
+- GET 对话消息与实时 message.created／message.updated 增加可选 reactions：`[{agent_id,emoji}]`，固定集合 👍／✅／🙏／❤️／👀／🎉。不可见唤醒回复不会出现在列表、补拉和导出；正文只在 send_message 后公开。
+- 成员流式回复遇到工具调用，message.resumed（offset=已完成正文长度）清除当前步骤的前言；同一回复 id 保持稳定，工具文字留在 run_steps，不追加独立消息。
+- 消息 blocks 可带 `{type:"todo",items:[{title,status}]}`；GET /api/runs/:id 增加可选 todo 同形数组。
+- 提醒目前通过 Agent 的 remind 工具创建／分页列出／取消；due_at 必须为带 UTC 偏移的 ISO 时间，timezone 取成员配置。每个成员最多 100 个待提醒，一年内到期；到期 event.type=reminder，通知 target_type=conversation，沿用原生 push v1 路由及回复通知设置。撤销仍用 POST /api/runs/steps/:id/undo。
+- Agent 创建／更新输入与资料可带 folder_ids（最多 50）；工具只修改私有 Agent；当前 Agent 的指令须走 self 提议。schedule_mutation create 可带 agent_id，为成员另一个 Agent 设置循环工作。
+- file_create 的附件沿用 GET /api/files/:id 与签名 content 下载，未新增公开下载端点；可创建 txt／md／csv／json／xlsx，最大 1 MiB、每回合最多 10 个。撤销后原文件链接失效。
 
 ### 请求与通知自动清理（#70，U3）
 
@@ -353,3 +360,5 @@ custom 网页运行使用双层 `sandbox="allow-scripts"` iframe，均无 allow-
 - `GET /api/notifications` 只列未清理的通知，无单独审批视图。请求离开 pending 后，其通知不论是否读过都消失，summary.unread 同时排除。summary.needs_you 仍给出待处理请求总数供小组件同步；通知导航与原生应用角标使用 unread。
 - WebSocket 新增 `notification.removed { request_id }`，通知列表立即移除该请求的行并刷新计数；`request.updated` 同步卡片与对话标记。Web 的 `#/c/:id?request=:request_id` 和原生来源链接定位具体卡片。
 - 批准第 2 档卡片时，其他同对话、同成员和 Agent、同 scope 且动作被覆盖的已准备请求也批准（`result.covered_by_request_id`）；第 3 档、污染、过期、取消不继承。每张卡有独立决策任务和写入回执。
+
+U2 私有工具的请求目标统一由 requests/target.ts 解析：Agent id／新建规范化名称、提醒取消 id、文件最终名称、计划所属 run_id；新建提醒不猜测目标。正常第 1 档工具仍立即执行并返回回执，不新增审批卡。

@@ -34,10 +34,11 @@ export function scheduleTools(schedules: SchedulesService) {
   const mutation = defineTool({
     name: 'schedule_mutation',
     description:
-      'Create, change, pause, resume or delete one of your schedules. A schedule runs a self-contained brief in the background on a cron time (five fields: minute hour day month weekday, at most every 15 minutes) and reports back to your thread. The member approves the change first.',
+      'Create, change, pause, resume or delete one of the member’s schedules. On create, agent_id selects another owned Agent (for example one just created); omit it for yourself. A schedule runs a self-contained brief in the background on a cron time (five fields: minute hour day month weekday, at most every 15 minutes) and reports back to your thread. The member approves the change first.',
     input: z.discriminatedUnion('action', [
       z.object({
         action: z.literal('create'),
+        agent_id: z.string().min(1).max(64).optional(),
         ...backgroundOptionsSchema.shape,
         quiet: z.boolean().default(false),
         name: z.string().min(1).max(80),
@@ -89,7 +90,7 @@ export function scheduleTools(schedules: SchedulesService) {
       switch (args.action) {
         case 'create': {
           const created = await schedules.create(ctx.memberId, {
-            agent_id: ctx.agent.id,
+            agent_id: args.agent_id ?? ctx.agent.id,
             name: args.name,
             brief: args.brief,
             cron: args.cron,

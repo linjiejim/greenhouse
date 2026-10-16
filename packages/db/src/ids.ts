@@ -35,6 +35,7 @@ export const ID_PREFIX = {
   notification: 'ntf',
   pushDevice: 'pdv',
   schedule: 'sch',
+  reminder: 'rmd',
   budget: 'bdg',
   reservation: 'brv',
   job: 'job',

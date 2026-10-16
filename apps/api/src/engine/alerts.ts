@@ -98,7 +98,12 @@ export async function notifyMissedReplies(notify: Publisher, now = Date.now()): 
     .from(runs)
     .innerJoin(
       messages,
-      and(eq(messages.runId, runs.id), eq(messages.role, 'assistant'), eq(messages.status, 'complete')),
+      and(
+        eq(messages.visible, true),
+        eq(messages.runId, runs.id),
+        eq(messages.role, 'assistant'),
+        eq(messages.status, 'complete'),
+      ),
     )
     .innerJoin(conversations, eq(conversations.id, messages.conversationId))
     .innerJoin(

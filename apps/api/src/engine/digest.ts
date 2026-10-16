@@ -209,6 +209,7 @@ export function createDigester(deps: { languageModel: ProvidersService['language
       .from(messages)
       .where(
         and(
+          eq(messages.visible, true),
           eq(messages.conversationId, conversationId),
           gt(messages.seq, uptoSeq),
           inArray(messages.status, ['complete', 'stopped']),

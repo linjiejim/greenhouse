@@ -44,6 +44,43 @@ describe('request execution targets', () => {
     expect(target('mcp_call', call)).not.toBe(target('mcp_call', { ...call, connector: 'other' }));
     expect(target('unknown', { text: 'a' })).toBeNull();
   });
+  it('identifies private workflow targets without using mutable instructions, file bytes or plan items', () => {
+    expect(target('agent_mutation', { action: 'update', id: 'a', instructions: 'old' })).toBe(
+      target('agent_mutation', { action: 'update', id: 'a', instructions: 'new' }),
+    );
+    expect(target('agent_mutation', { action: 'update', id: 'a' })).not.toBe(
+      target('agent_mutation', { action: 'update', id: 'b' }),
+    );
+    expect(target('agent_mutation', { action: 'create', name: 'Mail', job: 'old' })).toBe(
+      target('agent_mutation', { action: 'create', name: ' mail ', job: 'new' }),
+    );
+    expect(target('agent_mutation', { action: 'create', name: 'Mail' })).not.toBe(
+      target('agent_mutation', { action: 'create', name: 'Research' }),
+    );
+    expect(target('remind', { action: 'cancel', id: 'a' })).not.toBeNull();
+    expect(target('remind', { action: 'cancel', id: 'a' })).not.toBe(target('remind', { action: 'cancel', id: 'b' }));
+    expect(target('remind', { action: 'create', text: 'Meet', due_at: '2026-10-17T09:00:00Z' })).toBeNull();
+    expect(target('remind', { action: 'list' })).toBeNull();
+    expect(target('file_create', { name: 'Report', format: 'csv', content: 'old' })).toBe(
+      target('file_create', { name: 'Report.csv', format: 'csv', content: 'new' }),
+    );
+    expect(target('file_create', { name: 'Report', format: 'csv' })).not.toBe(
+      target('file_create', { name: 'Report', format: 'txt' }),
+    );
+    const plan = (run: string, title: string) =>
+      requestTargetKey(
+        'tool_write',
+        {
+          tool: 'todo',
+          input: { items: [{ title, status: 'active' }] },
+        },
+        new Map(),
+        run,
+      );
+    expect(plan('run_a', 'old')).toBe(plan('run_a', 'new'));
+    expect(plan('run_a', 'old')).not.toBe(plan('run_b', 'old'));
+    expect(target('todo', { items: [] })).toBeNull();
+  });
   it('compares complete batch targets and question keys without depending on order', () => {
     const a = { tool: 'knowledge_mutation', input: { doc_id: 'a' } };
     const b = { tool: 'knowledge_mutation', input: { doc_id: 'b' } };

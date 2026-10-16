@@ -1,5 +1,6 @@
 import { and, eq, inArray } from 'drizzle-orm';
 import { getDb, mailMessages } from '@greenhouse/db';
+import { nameKey as agentNameKey } from '../agents/service.js';
 
 /** Stable identities use execution inputs, never translated card text or mutable write values. */
 type Payload = Record<string, unknown>;
@@ -7,11 +8,33 @@ const object = (value: unknown): Payload =>
   value && typeof value === 'object' && !Array.isArray(value) ? (value as Payload) : {};
 const key = (...parts: unknown[]) => JSON.stringify(parts);
 
-function toolTarget(payload: Payload, mailThreads: ReadonlyMap<string, string> = new Map()): string | null {
+function toolTarget(
+  payload: Payload,
+  mailThreads: ReadonlyMap<string, string> = new Map(),
+  runId?: string | null,
+): string | null {
   const args = object(payload.input);
   const tool = payload.tool;
   if (typeof tool !== 'string') return null;
   switch (tool) {
+    case 'agent_mutation':
+      return args.action === 'update'
+        ? args.id
+          ? key('agent', args.id)
+          : null
+        : args.action === 'create' && typeof args.name === 'string' && args.name.trim()
+          ? key('agent_create', agentNameKey(args.name))
+          : null;
+    case 'remind':
+      // New reminders have no addressed object; equal times or text need not mean the same reminder.
+      return args.action === 'cancel' && args.id ? key('reminder', args.id) : null;
+    case 'file_create': {
+      if (typeof args.name !== 'string' || typeof args.format !== 'string') return null;
+      const name = args.name.endsWith('.' + args.format) ? args.name : args.name + '.' + args.format;
+      return key('file_create', name);
+    }
+    case 'todo':
+      return runId ? key('todo', runId) : null;
     case 'knowledge_mutation':
       return args.doc_id ? key('doc', args.doc_id) : key('folder', args.folder_id ?? args.space ?? 'personal');
     case 'table_mutation': {
@@ -28,7 +51,7 @@ function toolTarget(payload: Payload, mailThreads: ReadonlyMap<string, string> =
     case 'apps_action':
       return args.app_id && args.card ? key('app', args.app_id, args.card, args.record_id ?? null) : null;
     case 'mcp_call': {
-      const target = toolTarget({ tool: String(args.tool ?? ''), input: args.arguments });
+      const target = toolTarget({ tool: String(args.tool ?? ''), input: args.arguments }, mailThreads, runId);
       return target ? key('connector', args.connector, args.tool, target) : null;
     }
     case 'mail':
@@ -61,11 +84,12 @@ export function requestTargetKey(
   subject: string,
   payload: Payload,
   mailThreads: ReadonlyMap<string, string> = new Map(),
+  runId?: string | null,
 ): string | null {
   switch (subject) {
     case 'tool_write': {
       const calls = Array.isArray(payload.calls) ? payload.calls.map(object) : [payload];
-      const targets = calls.map((call) => toolTarget(call, mailThreads));
+      const targets = calls.map((call) => toolTarget(call, mailThreads, runId));
       return targets.some((target) => target === null) ? null : key(...[...new Set(targets)].sort());
     }
     case 'ask_user': {
@@ -85,7 +109,7 @@ export function requestTargetKey(
       return skill.id || skill.name ? key('skill', skill.id ?? skill.name) : null;
     }
     default:
-      return toolTarget(payload);
+      return toolTarget(payload, mailThreads, runId);
   }
 }
 
@@ -95,6 +119,7 @@ export async function resolveRequestTargetKey(
   payload: Payload,
   memberId: string,
   agentId?: string | null,
+  runId?: string | null,
 ) {
   const calls = Array.isArray(payload.calls) ? payload.calls.map(object) : [payload];
   const ids = calls
@@ -116,5 +141,6 @@ export async function resolveRequestTargetKey(
     subject,
     payload,
     new Map(rows.map((row) => [row.id, row.references[0] ?? row.inReplyTo ?? row.messageId ?? row.id])),
+    runId,
   );
 }

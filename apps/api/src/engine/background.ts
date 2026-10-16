@@ -301,7 +301,10 @@ export function createBackground(deps: {
             attachments: Array.isArray(run.output?.file_ids)
               ? run.output.file_ids.filter((id): id is string => typeof id === 'string')
               : [],
-            blocks: [{ type: 'run', run_id: run.id, title: run.title, status: outcome.status }],
+            blocks: [
+              { type: 'run', run_id: run.id, title: run.title, status: outcome.status },
+              ...(Array.isArray(run.checkpoint?.todo) ? [{ type: 'todo', items: run.checkpoint.todo }] : []),
+            ],
             event: { type: 'run_report', run_id: run.id, status: outcome.status, attempt: run.attempt },
           }));
         if (
@@ -549,6 +552,7 @@ export function createBackground(deps: {
         const assembled = assembleBackgroundPrompt(prompt);
         if (!run.checkpoint?.eval)
           await recordHarness(run.id, {
+            runKind: 'background',
             background: prompt,
             transcript: [{ role: 'user', content: brief }],
             definitions: [...toolset.defs.values()],

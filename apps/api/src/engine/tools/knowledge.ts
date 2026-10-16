@@ -1,3 +1,4 @@
+import { fence } from '../../security/prompt.js';
 /**
  * The knowledge base for Agents (KNOW-16, AGNT-17), through the same service as the routes and
  * with the asker's rights. Reading cites the doc under the reply. Writing waits for the member's
@@ -208,6 +209,21 @@ export function knowledgeTools(knowledge: KnowledgeService) {
     // Docs are written by other people: their text is information, never instructions.
     taints: true,
     available: (ctx) => ctx.modules.knowledge && (!ctx.publicAgent || ctx.publicAgent.folderIds.length > 0),
+    async turnContext(ctx) {
+      if (ctx.publicAgent || !ctx.manifest.folder_ids?.length) return null;
+      const attached = [];
+      for (const id of ctx.manifest.folder_ids) {
+        try {
+          const folder = await knowledge.folder(ctx.memberId, id);
+          attached.push({ id, name: folder.name });
+        } catch {
+          /* Removed folders stop appearing. */
+        }
+      }
+      return attached.length
+        ? `Attached knowledge folders (reference data): ${fence(JSON.stringify(attached), 4000)}`
+        : null;
+    },
     async execute(args, ctx) {
       markNameable(args, ctx);
       if (args.action === 'search') {

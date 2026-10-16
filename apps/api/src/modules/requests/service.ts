@@ -205,6 +205,7 @@ export function createRequestsService(deps: {
               merged.payload,
               merged.memberId,
               merged.agentId,
+              merged.runId,
             );
             await getDb().update(requests).set({ targetKey }).where(eq(requests.id, merged.id));
             changed.push(...(await replaceOlder({ ...merged, targetKey })));
@@ -219,7 +220,13 @@ export function createRequestsService(deps: {
             memberId: input.memberId,
             kind: input.kind,
             subject: input.subject,
-            targetKey: await resolveRequestTargetKey(input.subject, input.payload, input.memberId, input.agentId),
+            targetKey: await resolveRequestTargetKey(
+              input.subject,
+              input.payload,
+              input.memberId,
+              input.agentId,
+              input.runId,
+            ),
             payload: {
               ...input.payload,
               title: input.title,

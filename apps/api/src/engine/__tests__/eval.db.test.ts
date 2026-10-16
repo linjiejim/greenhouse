@@ -120,7 +120,7 @@ for (const real of [false, true])
                 modules: harness.modules,
                 surface: harness.surface,
                 mainAgent: harness.mainAgent,
-                runKind: harness.surface === 'background' ? 'background' : 'turn',
+                runKind: harness.runKind ?? (harness.surface === 'background' ? 'background' : 'turn'),
                 publicAgent: harness.publicAgent,
                 available: async (capability) =>
                   new Map(harness.capabilities as [string, boolean][]).get(capability) === true,

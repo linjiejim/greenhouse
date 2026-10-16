@@ -63,6 +63,57 @@ describe('requests clean up after themselves', () => {
     await app.services.engine.idle();
   });
 
+  it('uses private workflow targets and scopes todo replacement to its run', async () => {
+    const app = await setup();
+    app.scripts.push(text('Ready.'), text('Ready.'));
+    const firstRun = (await app.send()).run_id;
+    const secondRun = (await app.send()).run_id;
+    const raise = async (tool: string, input: Record<string, unknown>, runId = firstRun) => {
+      const card = await app.services.requests.create({
+        memberId: app.member.id,
+        conversationId: app.main.id,
+        agentId: app.main.agent_id,
+        runId,
+        kind: 'approval',
+        subject: 'tool_write',
+        title: 'Private workflow',
+        payload: { tool, input },
+      });
+      await app.services.requests.ready(runId);
+      return card;
+    };
+    for (const [tool, input, replacement] of [
+      [
+        'agent_mutation',
+        { action: 'update', id: 'agent_a', job: 'old' },
+        { action: 'update', id: 'agent_a', job: 'new' },
+      ],
+      ['remind', { action: 'cancel', id: 'rmd_a' }, { action: 'cancel', id: 'rmd_a' }],
+      [
+        'file_create',
+        { name: 'report', format: 'csv', content: 'old' },
+        { name: 'report.csv', format: 'csv', content: 'new' },
+      ],
+      ['todo', { items: [{ title: 'Old', status: 'active' }] }, { items: [{ title: 'New', status: 'done' }] }],
+    ] as const) {
+      const older = await raise(tool, input);
+      const newer = await raise(tool, replacement);
+      expect(await app.services.requests.get(app.member.id, older.id)).toMatchObject({
+        status: 'superseded',
+        result: { replacement_request_id: newer.id },
+      });
+      if (tool === 'todo') {
+        await raise(tool, replacement, secondRun);
+        expect((await app.services.requests.get(app.member.id, newer.id)).status).toBe('pending');
+      }
+    }
+    const reminder = { action: 'create', text: 'Meet', due_at: '2026-10-17T09:00:00Z' };
+    const first = await raise('remind', reminder);
+    await raise('remind', reminder);
+    expect((await app.services.requests.get(app.member.id, first.id)).status).toBe('pending');
+    await app.services.engine.idle();
+  });
+
   it('replaces a non-blocking plan raised later in the same turn', async () => {
     const app = await setup();
     app.scripts.push(
