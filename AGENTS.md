@@ -34,7 +34,7 @@ Greenhouse is an open-source, self-hosted platform where a team works with its o
 - `RATE_LIMIT_STORE=memory|postgres` defaults to memory; all API replicas use postgres for shared auth/OAuth/MCP/upload limits. Keys are hashed and expired windows are pruned by engine_retention.
 - `pnpm api` starts the API (port 3000). Give it its own DATABASE_URL; it refuses a v1 database. Required env: TOKEN_SIGNING_KEY and PROVIDER_TOKEN_ENCRYPTION_KEY (64 hex each, `openssl rand -hex 32`); VAULT_ENCRYPTION_KEY (the same form) turns the password vault on.
 - BOOTSTRAP_ADMIN_EMAIL creates the first admin once and logs a one-time activation link. MIGRATE_ON_START=1 applies migrations at boot.
-- Schema change: edit packages/db/src/schema/*, then `pnpm db:baseline` to regenerate drizzle/0000_v2_baseline.sql (one baseline until v2.0) and recreate local dev databases.
+- Schema change: edit packages/db/src/schema/*, then `pnpm db:generate --name <change>` to add the next migration in drizzle/. Released migrations (everything on main, starting with 0000_v2_baseline and 0001_v2_0_0) are immutable: never regenerate, edit or squash them, because deployed databases have applied them. Test an upgrade from the previous release's schema as well as a fresh install.
 - drizzle.config.ts has no default URL, so drizzle-kit never reaches a shared database by accident.
 - `pnpm web:dev` (proxies /api to GREENHOUSE_API, default 127.0.0.1:3000), `pnpm web:build` and `pnpm test:web-e2e` (a real API and database with a fake model; apps/web/AGENTS.md).
 - `pnpm design:dev` (127.0.0.1:4518), `pnpm design:build` and `pnpm test:design-ui` for the prototype.

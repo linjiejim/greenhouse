@@ -12,7 +12,7 @@ Steps:
 1. Check the feature's row in docs/product/features.md and the table's section in data-model.md.
 2. Define the table in `packages/db/src/schema/<domain>.ts` with explicit indexes, partial unique indexes for "one per" rules, and exported row types.
 3. Export a new file from packages/db/src/schema/index.ts. Add its id prefix to ID_PREFIX in packages/db/src/ids.ts.
-4. Run `pnpm db:baseline`, read drizzle/0000_v2_baseline.sql, and recreate your local dev database.
+4. Run `pnpm db:generate --name <change>` and read the new migration in drizzle/. Never regenerate or edit a released migration.
 5. Write or extend a `*.db.test.ts` for each constraint that encodes a rule; expected violations run in a savepoint.
 6. Update data-model.md (and migration-v1.md when the change affects how v1 data maps).
 7. Run the quality-gate skill.
