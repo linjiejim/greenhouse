@@ -3,9 +3,8 @@
  *
  * `AgentAvatar` resolves the stored avatar to a plant exactly as the web does
  * (`resolvePlantAvatar(avatar, { templateKey, stableId: id })`), so an Agent shows the same
- * species and colour everywhere. Its face follows `state`, but only an Agent that is answering
- * moves (AGNT-04); everything else holds still unless `animate` says otherwise (a profile's
- * portrait). `agent` null = not loaded yet → a neutral disc. Decorative: the name is always
+ * species and colour everywhere. Its face follows `state`; live work and greetings move
+ * (AGNT-04), while directory and list callers explicitly pass animate=false. `agent` null = not loaded yet → a neutral disc. Decorative: the name is always
  * printed next to it.
  *
  * `MemberAvatar`: the member's picture (a signed URL resolved against the station), else the
@@ -18,6 +17,8 @@ import { Image } from 'expo-image';
 import { fileUrl } from '../api/files';
 import type { Agent } from '../shared/contract';
 import { useTheme } from '../theme';
+import { useStream } from '../data/use-stream';
+import { usePlantWorkState } from './plant-avatar/use-plant-work';
 import { InitialAvatar } from './avatar';
 import { PlantAvatar } from './plant-avatar/plant-avatar';
 import { resolvePlantAvatar, type PlantStateInput } from './plant-avatar/plant-ids';
@@ -34,7 +35,7 @@ export function AgentAvatar({
   size: number;
   /** thinking (answering) | waiting (needs you) | sleep (archived) … */
   state?: PlantStateInput;
-  /** Play the state's motion; by default only `thinking` moves. */
+  /** Play the state's V2 motion; list callers pass false. */
   animate?: boolean;
 }) {
   const { colors: c } = useTheme();
@@ -60,7 +61,7 @@ export function AgentAvatar({
       tint={resolved.tint}
       state={state}
       size={size}
-      animate={animate ?? state === 'thinking'}
+      animate={animate ?? (size >= 80 || (state !== undefined && state !== 'idle'))}
       seed={id}
     />
   );
@@ -77,4 +78,35 @@ export function MemberAvatar({ name, url, size = 28 }: { name: string; url?: str
       accessible={false}
     />
   );
+}
+
+export function WorkingAgentAvatar({
+  agent,
+  size,
+  working,
+  waiting,
+  reply,
+  sleeping,
+  greeting = true,
+}: {
+  agent: AgentFace | null;
+  size: number;
+  working?: boolean;
+  waiting?: boolean;
+  reply?: { id: string; content: string; status: string };
+  sleeping?: boolean;
+  greeting?: boolean;
+}) {
+  const stream = useStream(reply?.id ?? '');
+  const state = usePlantWorkState({
+    working,
+    streaming: reply?.status === 'streaming',
+    hasText: !!(stream?.text || reply?.content),
+    toolRunning: stream?.steps.some((step) => step.status === 'running'),
+    waiting,
+    failed: reply?.status === 'failed',
+    sleeping,
+    greeting,
+  });
+  return <AgentAvatar agent={agent} size={size} state={state} animate={sleeping ? false : undefined} />;
 }

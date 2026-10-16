@@ -22,7 +22,7 @@ import { Stack } from 'expo-router';
 import { useT } from '../lib/i18n';
 import type { Badge } from '../data/directory';
 import { makeStyles, space, typo, useTheme, weight } from '../theme';
-import { AgentAvatar, MemberAvatar, type AgentFace } from '../ui/agent-avatar';
+import { AgentAvatar, WorkingAgentAvatar, MemberAvatar, type AgentFace } from '../ui/agent-avatar';
 import { Icon } from '../ui/core';
 import { useFontScaleKey } from '../ui/font-scale';
 import { toolbarIcon } from '../ui/toolbar-icon';
@@ -54,7 +54,9 @@ export interface HeaderModel {
   status: string;
   /** The answering Agent (null in a room). */
   agent: AgentFace | null;
-  agentMood?: 'thinking' | 'waiting';
+  avatarReply?: { id: string; content: string; status: string };
+  avatarWorking?: boolean;
+  avatarWaiting?: boolean;
   /** A room's first people (faces). */
   people?: { name: string; avatarUrl: string | null; agent?: AgentFace }[];
   kind: 'main' | 'direct' | 'chat' | 'room' | 'new';
@@ -233,7 +235,13 @@ function TitleView({ model, onPress }: { model: HeaderModel; onPress: () => void
           <Icon name="users" size={18} color={c.secondaryLabel} />
         )
       ) : (
-        <AgentAvatar agent={model.agent} size={26} state={model.agentMood} />
+        <WorkingAgentAvatar
+          agent={model.agent}
+          size={26}
+          working={model.avatarWorking}
+          waiting={model.avatarWaiting}
+          reply={model.avatarReply}
+        />
       )}
       <View key={fontKey} style={styles.texts}>
         <View style={styles.nameRow}>

@@ -5,8 +5,8 @@
  *   ancestor (`[data-theme='dark']` or `.dark-theme`), so a theme toggle never re-renders;
  * - the string is memoised on identity / size / LOD / animate only; a state change on an
  *   animated avatar morphs the mounted <svg> in place (useLayoutEffect) instead of
- *   re-rendering it, so poses transition and the eyes swap behind a blink;
- * - motion pauses while the avatar is offscreen (IntersectionObserver) or the tab is
+ *   re-rendering it, so the V2 controller preserves position and velocity;
+ * - one shared frame loop pauses while an avatar is offscreen (IntersectionObserver) or the tab is
  *   hidden (visibilitychange);
  * - accessible name: `label` (the full localised name, supplied by the caller) →
  *   role="img"; without it the avatar is decorative (aria-hidden), for rows that already
@@ -27,13 +27,13 @@ import {
 } from '@greenhouse/types';
 import type { ProfileAvatar } from '@greenhouse/types';
 import { buildPlantAvatarSvg, ensurePlantAvatarStyles, poseFor } from './plant-avatar-svg';
-import { morphPlantAvatar } from './plant-morph';
+import { mountPlantMotion, morphPlantAvatar } from './plant-morph';
 
 export const PLANT_AVATAR_SIZES = Object.freeze({ xs: 24, sm: 32, md: 48, lg: 80, xl: 120 } as const);
 export type PlantAvatarSize = keyof typeof PLANT_AVATAR_SIZES | number;
 
 /** States that animate by default (live work + one-shot transitions). */
-const LIVE_STATES: ReadonlySet<PlantState> = new Set(['thinking', 'speaking', 'waiting', 'done', 'error']);
+const LIVE_STATES: ReadonlySet<PlantState> = new Set(['thinking', 'speaking', 'waiting', 'done', 'error', 'hello']);
 /** At and above this size an avatar is a hero and may play its capped ambient idle. */
 const HERO_PX = 80;
 
@@ -76,7 +76,7 @@ export function PlantAvatar({
   className = '',
 }: PlantAvatarProps) {
   const px = plantAvatarPx(size);
-  const poseState = poseFor(state).state;
+  const poseState = poseFor(intro && state === 'idle' ? 'hello' : state).state;
   const animated = animate ?? (LIVE_STATES.has(poseState) || intro || px >= HERO_PX);
   const lod = compact && px <= 24 ? ('glyph' as const) : undefined;
 
@@ -118,9 +118,26 @@ export function PlantAvatar({
   }, []);
 
   useLayoutEffect(() => {
+    const svg = hostRef.current?.firstElementChild;
+    if (!animated || !svg) return;
+    return mountPlantMotion(svg, {
+      plant: resolved.plant,
+      seed: resolved.seed,
+      tint: resolved.tint,
+      state: poseState,
+      size: px,
+      lod,
+      theme: 'auto',
+      intro,
+    });
+    // html owns the persistent skeleton; state changes retarget it below.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [html]);
+
+  useLayoutEffect(() => {
     if (!animated) return;
     const svg = hostRef.current?.firstElementChild;
-    if (!svg || svg.getAttribute('data-state') === poseState) return;
+    if (!svg) return;
     morphPlantAvatar(svg, {
       plant: resolved.plant,
       tint: resolved.tint,
@@ -133,46 +150,16 @@ export function PlantAvatar({
     });
   }, [poseState, animated, resolved, px, lod, intro]);
 
-  const paused = usePausedWhenUnseen(hostRef, animated);
-
   return (
     <span
       ref={hostRef}
-      className={`pa-root${paused ? ' pa-paused' : ''}${className ? ` ${className}` : ''}`}
+      className={`pa-root${className ? ` ${className}` : ''}`}
       style={{ display: 'inline-block', flex: 'none', width: px, height: px, lineHeight: 0, verticalAlign: 'middle' }}
       {...(label ? { role: 'img', 'aria-label': label } : { 'aria-hidden': true })}
       // Self-generated SVG (no user input reaches the markup: the label is set on this span).
       dangerouslySetInnerHTML={innerHtml}
     />
   );
-}
-
-/** True while the element is offscreen or the tab is hidden (only observed when animated). */
-function usePausedWhenUnseen(ref: React.RefObject<HTMLElement | null>, active: boolean): boolean {
-  const [offscreen, setOffscreen] = useState(false);
-  const [hidden, setHidden] = useState(false);
-  useEffect(() => {
-    const el = ref.current;
-    if (!active || !el) return;
-    const onVisibility = () => setHidden(document.visibilityState === 'hidden');
-    onVisibility();
-    document.addEventListener('visibilitychange', onVisibility);
-    let io: IntersectionObserver | null = null;
-    if (typeof IntersectionObserver !== 'undefined') {
-      io = new IntersectionObserver((entries) => {
-        const entry = entries[entries.length - 1];
-        if (entry) setOffscreen(!entry.isIntersecting);
-      });
-      io.observe(el);
-    }
-    return () => {
-      document.removeEventListener('visibilitychange', onVisibility);
-      io?.disconnect();
-      setOffscreen(false);
-      setHidden(false);
-    };
-  }, [ref, active]);
-  return active && (offscreen || hidden);
 }
 
 // ─── stack ──────────────────────────────────────────────────────────────────

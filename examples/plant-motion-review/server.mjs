@@ -2,6 +2,7 @@ import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { resolve, extname, sep } from 'node:path';
+import ts from 'typescript';
 const root = fileURLToPath(new URL('.', import.meta.url));
 const types = {
   '.html': 'text/html; charset=utf-8',
@@ -14,6 +15,12 @@ export function serve(port = 4173) {
   const server = createServer(async (req, res) => {
     try {
       const pathname = decodeURIComponent(new URL(req.url, 'http://localhost').pathname);
+      if (pathname === '/packages/ui/src/components/plant-avatar/plant-motion.js') {
+        const source = await readFile(new URL('../../packages/ui/src/components/plant-avatar/plant-motion.ts', import.meta.url), 'utf8');
+        res.writeHead(200, {'Content-Type': 'text/javascript; charset=utf-8', 'Cache-Control': 'no-store'});
+        res.end(ts.transpile(source, {target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ES2022}));
+        return;
+      }
       const file = resolve(root, '.' + (pathname === '/' ? '/index.html' : pathname));
       if (!file.startsWith(root.endsWith(sep) ? root : root + sep)) {
         res.writeHead(403).end();

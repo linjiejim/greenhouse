@@ -14,6 +14,7 @@
  */
 
 import type { Agent, Conversation, PublicAgent } from '../shared/contract';
+import { stateForWork } from '../ui/plant-avatar/plant-work';
 import { dayKey, parseMs } from './time';
 import { matchesDirectory as matches } from './directory-filter';
 
@@ -100,11 +101,9 @@ export function signalOf(conversation: Conversation | null | undefined): RowSign
   return null;
 }
 
-/** The plant's face: it moves only while its Agent answers, and waits while it needs you. */
-export function moodOf(conversation: Conversation | null | undefined): 'thinking' | 'waiting' | undefined {
-  if (conversation?.working) return 'thinking';
-  if (conversation?.pending_requests) return 'waiting';
-  return undefined;
+/** Directory faces use the shared work mapping and stay static. */
+export function moodOf(conversation: Conversation | null | undefined) {
+  return stateForWork({ working: conversation?.working, waiting: !!conversation?.pending_requests });
 }
 
 /** The bell's one badge: the needs-you count, else a dot for anything unread, else nothing. */

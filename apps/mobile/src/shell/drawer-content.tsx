@@ -692,7 +692,7 @@ function AgentRowView({
           pressed && { backgroundColor: c.fill },
         ]}
       >
-        <AgentAvatar agent={row.agent} size={main ? 36 : 26} state={moodOf(row.conversation)} />
+        <AgentAvatar agent={row.agent} size={main ? 36 : 26} animate={false} state={moodOf(row.conversation)} />
         <View style={styles.rowTexts}>
           <Text
             numberOfLines={Number(fontKey) >= 1.5 ? 0 : 1}

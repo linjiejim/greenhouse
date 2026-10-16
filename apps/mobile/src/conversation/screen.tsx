@@ -53,7 +53,7 @@ import {
   stopConversation,
   updateConversation,
 } from '../api/conversations';
-import { badgeOf, moodOf } from '../data/directory';
+import { badgeOf } from '../data/directory';
 import { editableId, placeRequests, regenerableId, startsGroup } from '../data/thread';
 import { readStream } from '../data/streams';
 import { Composer, ReadOnlyBar } from '../chat/composer';
@@ -516,7 +516,9 @@ function MemberConversationScreen({
       title: name,
       status,
       agent: room ? null : (answering ?? null),
-      agentMood: moodOf(conversation),
+      avatarReply: messages.findLast((message) => message.role === 'assistant'),
+      avatarWorking: working,
+      avatarWaiting: (conversation?.pending_requests ?? 0) > 0,
       people,
       kind,
       pinned: !!conversation?.pinned,
@@ -535,6 +537,7 @@ function MemberConversationScreen({
     t,
     working,
     thread?.members,
+    messages,
     detail,
     computers,
     summary,
@@ -736,6 +739,7 @@ function MemberConversationScreen({
           canRegenerate={message.id === canRegenerate}
           readOnly={readOnly}
           followUp={followUp}
+          waiting={cards?.some((request) => request.status === 'pending')}
           cards={
             cards?.length ? (
               <View style={styles.cards}>

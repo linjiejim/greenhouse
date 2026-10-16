@@ -139,3 +139,5 @@
 - The composer keeps the same input mounted across text-size changes: scale its minimum line height, cap it at 40% of the viewport, and wrap controls below the field at accessibility sizes.
 
 - Native schedule editors use common repeat patterns and system time pickers. Keep unsupported existing expressions unchanged unless the member explicitly chooses another pattern; display a friendly schedule label, never the stored expression.
+
+- Plant motion uses verbatim packages/ui plant-motion.ts, plant-motion-shapes.ts, plant-work.ts and use-plant-work.ts (native parity guard). Reanimated drives SVG props on the UI thread; pause in background and honor Reduce Motion. Directory rows stay static.

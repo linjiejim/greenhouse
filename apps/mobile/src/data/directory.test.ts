@@ -108,7 +108,7 @@ describe('row signals and the bell', () => {
     expect(signalOf(conv('x', { working: true, unread: 1 }))).toEqual({ kind: 'running' });
     expect(signalOf(conv('x', { unread: 1 }))).toEqual({ kind: 'unread' });
     expect(signalOf(null)).toBeNull();
-    expect(moodOf(conv('x', { working: true, pending_requests: 1 }))).toBe('thinking');
+    expect(moodOf(conv('x', { working: true, pending_requests: 1 }))).toBe('waiting');
     expect(moodOf(conv('x', { pending_requests: 1 }))).toBe('waiting');
   });
 

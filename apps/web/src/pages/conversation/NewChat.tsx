@@ -76,7 +76,7 @@ export function NewChat({ agentId, skillId }: { agentId?: string; skillId?: stri
     <Page className="app-conversation" scroll={false} header={<PageHeader title={t('chat.newChat')} />}>
       <div className="app-conversation-body">
         <div className="app-new-chat">
-          {answering && <AgentAvatar agent={answering} size={72} />}
+          {answering && <AgentAvatar agent={answering} size={72} state="hello" />}
           <h2>{t('chat.greeting', { name: me.name })}</h2>
           {skillStarters.length > 0 ? (
             <div className="app-starters" role="list" aria-label={t('chat.starters')}>

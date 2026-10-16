@@ -1,3 +1,4 @@
+import { useConversations, useMessages } from '../../data/conversations';
 import { errorText } from '../../lib/errors';
 import { ExtensionPanels } from '../../extensions/host';
 /**
@@ -18,7 +19,7 @@ import { useMailbox } from '../../data/mail';
 import type { MessageKey } from '../../i18n/zh';
 import { useI18n } from '../../lib/i18n';
 import { navigate, type AgentTab } from '../../lib/router';
-import { AgentAvatar } from '../../shell/AgentAvatar';
+import { WorkingAgentAvatar } from '../../shell/AgentAvatar';
 import { Page, PageHeader } from '../../shell/Page';
 import { AbilitiesTab } from './AbilitiesTab';
 import { ActivityTab } from './ActivityTab';
@@ -45,6 +46,11 @@ export function AgentPage({ id, tab }: { id: string; tab: AgentTab }) {
   const me = useMe();
   const notify = useNotify();
   const agent = useAgent(id);
+  const conversations = useConversations();
+  const conversation = conversations.items.find(
+    (item) => item.agent_id === agent.data?.id && (item.kind === 'main' || item.kind === 'direct'),
+  );
+  const messages = useMessages(conversation?.id);
   const archive = useArchiveAgent();
   const restore = useRestoreAgent();
   const createConversation = useCreateConversation();
@@ -114,7 +120,16 @@ export function AgentPage({ id, tab }: { id: string; tab: AgentTab }) {
       width="form"
       header={
         <PageHeader
-          leading={<AgentAvatar agent={data} size={28} />}
+          leading={
+            <WorkingAgentAvatar
+              agent={data}
+              size={28}
+              working={conversation?.working}
+              waiting={(conversation?.pending_requests ?? 0) > 0}
+              sleeping={archived}
+              reply={[...messages.messages].reverse().find((message) => message.role === 'assistant')}
+            />
+          }
           title={
             <span className="app-title-stack">
               <span className="app-title-name">{data.name}</span>

@@ -1,6 +1,6 @@
 # Greenhouse plant motion review
 
-An isolated, mobile-first comparison of the accepted **A flat-refinement motion V1** and experimental **V2**. This is a review surface, not a replacement for `packages/ui` and not a production deployment.
+An isolated, mobile-first comparison of the accepted **A flat-refinement motion V1** and product **V2**. This is a review surface, not a replacement for `packages/ui` and not a production deployment.
 
 ```sh
 pnpm install --frozen-lockfile
@@ -31,11 +31,11 @@ Three scenarios make timing differences easy to inspect: sleep → speaking, thi
 
 `v1/{catalogue,geometry,motion}.js` are unmodified copies of that preview's source modules. Their A silhouettes were refined from the parent-reviewed visual specification; this executor did not directly read the original Library reference image. The accepted preview is the authoritative V1 baseline for this experiment. The original catalogue ancestry is `633c153a3d20fa148be3074a378564819881dfb6` in `linjiejim/greenhouse`.
 
-V2 imports the same catalogue, palettes, SVG scaffold, LOD, and fit data. It changes existing layer transforms and face paths only; it does not add leaves, pots, limbs, accessories, or new silhouettes. The production renderer, shared types, and application routes are untouched. Keeping the two motion implementations here is an explicitly requested comparison, not a second production source of truth.
+V2 imports the same catalogue, palettes, SVG scaffold, LOD, and fit data. It changes existing layer transforms and face paths only; it does not add leaves, pots, limbs, accessories, or new silhouettes. C1 adopted V2 in the web and native product renderers. This frozen review surface keeps V1 unchanged and imports the canonical product controller for V2; it has no second V2 motion implementation.
 
 ## Motion decisions
 
-`v2/controller.js` is a DOM-free controller. Each instance owns one current state, revision, active clock, position and velocity. An exact critically damped spring retargets from both current values and velocities. There are no queued animation completions that can restore an obsolete state. Repeated requests for the current state do not restart it. Only the explicit review demo has a sequence; manual state changes cancel it synchronously.
+`v2/controller.js` re-exports the DOM-free product controller from `packages/ui`; native vendors the same source verbatim. Each instance owns one current state, revision, active clock, position and velocity. An exact critically damped spring retargets from both current values and velocities. There are no queued animation completions that can restore an obsolete state. Repeated requests for the current state do not restart it. Only the explicit review demo has a sequence; manual state changes cancel it synchronously.
 
 Gaze gets a short head start. Waking opens the eyes before speech begins; talking uses short, separated phrases. Hello, done, and error are finite gestures that settle. Idle has one small 1.6-second breath in each much longer individual cycle, with most of a 20-second observation completely still apart from occasional blinks. No speaking brows point down. Error is a gentle acknowledgment.
 

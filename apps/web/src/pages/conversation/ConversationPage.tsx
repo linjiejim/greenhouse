@@ -67,7 +67,7 @@ import { useI18n } from '../../lib/i18n';
 import { useVisible } from '../../lib/media';
 import { href, navigate } from '../../lib/router';
 import { MemberAvatar } from '../../shell/MemberAvatar';
-import { AgentAvatar } from '../../shell/AgentAvatar';
+import { AgentAvatar, WorkingAgentAvatar } from '../../shell/AgentAvatar';
 import { Page, PageHeader } from '../../shell/Page';
 import { ComputerTab } from '../agents/ComputerTab';
 import { InfoDrawer } from './InfoDrawer';
@@ -381,7 +381,18 @@ function ExistingConversation({ id, requestId }: { id: string; requestId?: strin
       scroll={false}
       header={
         <PageHeader
-          leading={answering && <AgentAvatar agent={answering} size={28} />}
+          leading={
+            answering && (
+              <WorkingAgentAvatar
+                key={conversation.id}
+                size={28}
+                agent={answering}
+                working={conversation.working}
+                waiting={conversation.pending_requests > 0}
+                reply={[...list].reverse().find((message) => message.role === 'assistant')}
+              />
+            )
+          }
           title={
             renaming ? (
               <input

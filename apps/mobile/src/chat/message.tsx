@@ -1,3 +1,4 @@
+import { usePlantWorkState } from '../ui/plant-avatar/use-plant-work';
 import { TodoPlan } from './todo-plan';
 import { readAloud, useSpeech } from '../voice/read-aloud';
 /**
@@ -367,6 +368,7 @@ export const AgentReply = memo(function AgentReply({
   readOnly,
   followUp,
   cards,
+  waiting,
   onAction,
   onReply,
   onOpenSteps,
@@ -383,6 +385,7 @@ export const AgentReply = memo(function AgentReply({
   followUp?: string;
   /** The 「需要你」 cards of its run (already rendered — the screen owns them). */
   cards?: React.ReactNode;
+  waiting?: boolean;
   onAction: (message: MessageItem, action: MessageAction) => void;
   /** Send a follow-up from a block in the reply (a ```confirm pick); false when it did not go. */
   onReply: (text: string) => Promise<boolean>;
@@ -395,6 +398,13 @@ export const AgentReply = memo(function AgentReply({
   const lang = usePrefs((s) => s.lang);
   const fontKey = useFontScaleKey();
   const { text, steps, live } = useReplyContent(message);
+  const avatarState = usePlantWorkState({
+    streaming: live,
+    hasText: !!text,
+    toolRunning: steps.some((step) => step.status === 'running'),
+    waiting,
+    failed: message.status === 'failed',
+  });
   const rich = useMemo<RichEnv>(
     () => ({ reply: readOnly ? undefined : onReply, followUp }),
     [readOnly, onReply, followUp],
@@ -460,7 +470,7 @@ export const AgentReply = memo(function AgentReply({
     >
       {showAuthor ? (
         <View style={styles.replyAuthor} accessibilityRole="header">
-          <AgentAvatar agent={author.agent} size={22} state={live ? 'thinking' : undefined} />
+          <AgentAvatar agent={author.agent} size={22} state={avatarState} />
           <Text style={styles.authorName} numberOfLines={1}>
             {author.name}
           </Text>

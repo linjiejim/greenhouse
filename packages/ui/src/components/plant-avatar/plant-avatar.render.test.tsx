@@ -6,8 +6,8 @@ import { act, createElement, type ReactElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PLANT_SETTLE_MS, PlantAvatar, PlantAvatarStack, type PlantAvatarProps } from './plant-avatar';
-import { morphPlantAvatar } from './plant-morph';
-import { buildPlantAvatarSvg, ensurePlantAvatarStyles, plantPalette } from './plant-avatar-svg';
+import { mountPlantMotion, morphPlantAvatar } from './plant-morph';
+import { buildPlantAvatarSvg, plantPalette } from './plant-avatar-svg';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -28,6 +28,10 @@ afterEach(() => {
 
 const render = (el: ReactElement) => act(() => root.render(el));
 const avatar = (props: PlantAvatarProps) => render(createElement(PlantAvatar, props));
+const cleanups: (() => void)[] = [];
+afterEach(() => {
+  cleanups.splice(0).forEach((cleanup) => cleanup());
+});
 const span = () => host.querySelector<HTMLSpanElement>('.pa-root')!;
 const svg = () => host.querySelector('svg')!;
 
@@ -105,7 +109,7 @@ describe('<PlantAvatar/>', () => {
     expect(svg()).toBe(before);
     expect(before.getAttribute('data-state')).toBe('speaking');
     expect(before.getAttribute('class')).toContain('pa-morph');
-    expect(before.querySelector('.pa-mo')!.getAttribute('class')).toContain('pa-m-speak');
+    expect(before.querySelector('.pa-eyes')).not.toBeNull();
   });
 
   it('rebuilds a static avatar on a state change', () => {
@@ -136,14 +140,15 @@ describe('<PlantAvatar/>', () => {
           notify = cb;
         }
         observe() {}
+        unobserve() {}
         disconnect() {}
       },
     );
     avatar({ plant: 'clover', size: 'md', state: 'speaking' });
     expect(span().className).not.toContain('pa-paused');
-    act(() => notify!([{ isIntersecting: false }]));
+    act(() => notify!([{ isIntersecting: false, target: svg() } as unknown as { isIntersecting: boolean }]));
     expect(span().className).toContain('pa-paused');
-    act(() => notify!([{ isIntersecting: true }]));
+    act(() => notify!([{ isIntersecting: true, target: svg() } as unknown as { isIntersecting: boolean }]));
     expect(span().className).not.toContain('pa-paused');
 
     const visibility = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');
@@ -161,44 +166,42 @@ describe('morphPlantAvatar', () => {
     return host.firstElementChild!;
   };
 
-  it('patches transforms, motion classes and swaps the eyes behind a blink', () => {
-    vi.useFakeTimers();
-    const el = mount(buildPlantAvatarSvg({ plant: 'sprout', size: 48, theme: 'auto' }));
-    const poseBefore = el.querySelector('.pa-pose')!.getAttribute('transform');
-    expect(morphPlantAvatar(el, { plant: 'sprout', size: 48, theme: 'auto', state: 'sleep' })).toBe(el);
-    expect(el.querySelector('.pa-pose')!.getAttribute('transform')).not.toBe(poseBefore);
-    expect(el.querySelector('.pa-eyes')!.getAttribute('class')).toContain('pa-shut');
-    vi.advanceTimersByTime(110);
-    expect(el.querySelector('.pa-eyes')!.getAttribute('class')).not.toContain('pa-shut');
-    expect(el.querySelector('.pa-eyes')!.innerHTML).toContain('<path'); // closed ∪ arcs
-    vi.useRealTimers();
+  it('retargets the same SVG and face nodes without delayed swaps', () => {
+    const options = { plant: 'sprout', size: 48, theme: 'auto', state: 'hello' } as const;
+    const el = mount(buildPlantAvatarSvg(options));
+    cleanups.push(mountPlantMotion(el, options));
+    const eyes = el.querySelector('.pa-eyes');
+    const paths = [...el.querySelectorAll('.pa-eyes path')];
+    for (const state of ['sleep', 'speaking', 'error', 'done', 'thinking'] as const)
+      morphPlantAvatar(el, { ...options, state });
+    expect(el.getAttribute('data-state')).toBe('thinking');
+    expect(el.querySelector('.pa-eyes')).toBe(eyes);
+    expect([...el.querySelectorAll('.pa-eyes path')]).toEqual(paths);
+    expect(el.querySelector('.pa-shut')).toBeNull();
   });
 
-  it('keeps the thinking circumnutation running through a morph; only entrance one-shots stop', () => {
-    ensurePlantAvatarStyles();
-    const o = { plant: 'sprout', size: 48, theme: 'auto', seed: 'bot_1' } as const;
-    const el = mount(buildPlantAvatarSvg(o));
-    const mo = el.querySelector('.pa-mo')!;
-    const os = el.querySelector('.pa-os')!;
-    morphPlantAvatar(el, { ...o, state: 'thinking' }, { swapDelay: 0 });
-    expect(el.getAttribute('class')).toContain('pa-morph');
-    // the X nod and the Y bob a quarter-phase apart draw the ellipse; losing the bob flattens it
-    expect(getComputedStyle(mo).animation).toContain('pa-nod-x');
-    expect(os.getAttribute('class')).toContain('pa-o-bob');
-    expect(getComputedStyle(os).animation).toContain('pa-nod-y');
-    expect(getComputedStyle(os).animation).toContain('infinite');
-    // the droop is an entrance: the pose transition already plays it
-    morphPlantAvatar(el, { ...o, state: 'error' }, { swapDelay: 0 });
-    expect(os.getAttribute('class')).toContain('pa-o-droop');
-    expect(getComputedStyle(os).animation).toBe('none');
-  });
-
-  it('replaces the element when the plant, LOD or theme changes', () => {
-    const el = mount(buildPlantAvatarSvg({ plant: 'sprout', size: 48 }));
-    const next = morphPlantAvatar(el, { plant: 'ivy', size: 48 });
-    expect(next).not.toBe(el);
-    expect(host.firstElementChild).toBe(next);
-    expect(next.getAttribute('data-plant')).toBe('ivy');
+  it('shares one frame loop across mounted instances and cancels it on unmount', () => {
+    const callbacks = new Map<number, FrameRequestCallback>();
+    let next = 0;
+    const request = vi.spyOn(window, 'requestAnimationFrame').mockImplementation((cb) => {
+      callbacks.set(++next, cb);
+      return next;
+    });
+    const cancel = vi.spyOn(window, 'cancelAnimationFrame').mockImplementation((id) => {
+      callbacks.delete(id);
+    });
+    avatar({ plant: 'sage', size: 120 });
+    render(
+      createElement('div', null, [
+        createElement(PlantAvatar, { key: 1, plant: 'sage', size: 120 }),
+        createElement(PlantAvatar, { key: 2, plant: 'ivy', state: 'speaking' }),
+      ]),
+    );
+    expect(callbacks.size).toBe(1);
+    act(() => root.render(null));
+    expect(callbacks.size).toBe(0);
+    request.mockRestore();
+    cancel.mockRestore();
   });
 });
 

@@ -25,6 +25,9 @@
  * Regenerated 2026-10-13 (stylesheet digest only): the dark palette also switches under a
  * `[data-theme='dark']` ancestor, the Native Haven theme switch, besides `.dark-theme`.
  *
+ * Regenerated 2026-10-16: stylesheet only; V2 controller replaces CSS motion.
+ * All static SVG, geometry, palettes and fit digests remain unchanged.
+ *
  * Earlier deliberate deviations from the prototype (each has its own regression test):
  *   - theme 'auto' writes the rim underlay's fill + stroke into ONE style attribute (two
  *     `style` attributes are invalid XML and lose the keyline in HTML);
@@ -94,7 +97,7 @@ describe('golden output', () => {
 
   it('matches the reviewed stylesheet', () => {
     expect(createHash('sha256').update(PLANT_AVATAR_CSS).digest('hex').slice(0, 16)).toMatchInlineSnapshot(
-      `"8c057ae03e88848d"`,
+      `"0eeb9b4f769637e2"`,
     );
   });
 });
