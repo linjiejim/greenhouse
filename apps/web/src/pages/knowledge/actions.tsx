@@ -27,6 +27,7 @@ import type { KnowledgeItem } from '@greenhouse/contract';
 import { useNotify } from '../../app/notify';
 import { exportKnowledge, useKnowledgeActions } from '../../data/knowledge';
 import { api } from '../../lib/api';
+import { apiUrl } from '../../lib/desktop/urls';
 import { errorText } from '../../lib/errors';
 import { useI18n } from '../../lib/i18n';
 import { href, navigate } from '../../lib/router';
@@ -75,7 +76,7 @@ export function useItemMenu() {
       .get(item.id)
       .then((file) => {
         const link = document.createElement('a');
-        link.href = file.url;
+        link.href = apiUrl(file.url);
         link.download = file.name;
         link.click();
       })

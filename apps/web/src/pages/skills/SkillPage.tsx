@@ -28,6 +28,7 @@ import { Markdown } from '../../conversation/Markdown';
 import { formatSize } from '../../data/files';
 import { useSkill, useSkillActions, useSkillVersions } from '../../data/skills';
 import { api } from '../../lib/api';
+import { apiUrl } from '../../lib/desktop/urls';
 import { errorText } from '../../lib/errors';
 import { useI18n } from '../../lib/i18n';
 import { navigate } from '../../lib/router';
@@ -195,7 +196,7 @@ export function SkillPage({ id }: { id: string }) {
   const download = () =>
     void api.skills
       .download(id)
-      .then((file) => window.open(file.url, '_blank', 'noopener,noreferrer'))
+      .then((file) => window.open(apiUrl(file.url), '_blank', 'noopener,noreferrer'))
       .catch((error: unknown) => notify(errorText(error, t)));
 
   const menu: MenuEntry[] = data

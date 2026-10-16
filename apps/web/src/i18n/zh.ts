@@ -1506,6 +1506,11 @@ export const zh = {
   'common.backHome': '回到主线',
   'common.updateRequired': '服务器已更新，请刷新页面',
   'common.refresh': '刷新',
+  'desktop.updateReady': '新版本已下载，重启后生效',
+  'desktop.updateRequired': '服务器已更新，重启后使用新版本',
+  'desktop.fetchingUpdate': '服务器已更新，正在下载新版本',
+  'desktop.shellRequired': '服务器已更新，请下载新版 Greenhouse 桌面 App',
+  'desktop.restart': '重启',
   'common.pageFailed': '这个页面出错了 · 可以重试',
 
   'approvals.create': '新建',

@@ -1541,6 +1541,11 @@ export const en: Record<MessageKey, string> = {
   'common.backHome': 'Back to the main thread',
   'common.updateRequired': 'The server was updated. Refresh the page',
   'common.refresh': 'Refresh',
+  'desktop.updateReady': 'An update is downloaded. Restart to use it',
+  'desktop.updateRequired': 'The server was updated. Restart to use the new version',
+  'desktop.fetchingUpdate': 'The server was updated. Downloading the new version',
+  'desktop.shellRequired': 'The server was updated. Download the new Greenhouse desktop app',
+  'desktop.restart': 'Restart',
   'common.pageFailed': 'This page hit an error · try again',
 
   'approvals.create': 'Create',

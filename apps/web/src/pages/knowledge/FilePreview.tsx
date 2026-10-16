@@ -14,6 +14,7 @@ import { ApiClientError } from '@greenhouse/contract/client';
 import { useMe } from '../../app/session';
 import { formatSize } from '../../data/files';
 import { useKnowledgeFile } from '../../data/knowledge';
+import { apiUrl } from '../../lib/desktop/urls';
 import { errorText } from '../../lib/errors';
 import { useI18n } from '../../lib/i18n';
 import { fullTime, relativeTime } from '../../lib/time';
@@ -125,7 +126,7 @@ export function FilePreview({ id, onClose }: { id: string; onClose: () => void }
             kind="primary"
             onClick={() => {
               const link = document.createElement('a');
-              link.href = data.url;
+              link.href = apiUrl(data.url);
               link.download = data.name;
               link.click();
             }}

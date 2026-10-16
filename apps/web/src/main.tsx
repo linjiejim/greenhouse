@@ -11,15 +11,17 @@ import './styles/app.css';
 import { queryClient } from './data/query';
 import { SessionProvider } from './app/session';
 import { App } from './app/App';
+import { initDesktop } from './lib/desktop';
 
 registerWebExtensions(COMPILED_WEB_EXTENSIONS);
 
-createRoot(document.getElementById('root')!).render(
-  <StrictMode>
-    <QueryClientProvider client={queryClient}>
-      <SessionProvider>
-        <App />
-      </SessionProvider>
-    </QueryClientProvider>
-  </StrictMode>,
-);
+if (initDesktop())
+  createRoot(document.getElementById('root')!).render(
+    <StrictMode>
+      <QueryClientProvider client={queryClient}>
+        <SessionProvider>
+          <App />
+        </SessionProvider>
+      </QueryClientProvider>
+    </StrictMode>,
+  );

@@ -26,6 +26,14 @@ describe('loadConfig', () => {
     expect(config.tokenSigningKey).toBe('a'.repeat(64));
   });
 
+  it('always lets the desktop app in, beside the configured origins', () => {
+    expect(loadConfig(REQUIRED).corsAllowedOrigins).toEqual(['greenhouse://localhost', 'http://greenhouse.localhost']);
+    expect(
+      loadConfig({ ...REQUIRED, CORS_ALLOWED_ORIGINS: 'https://app.example.com, greenhouse://localhost' })
+        .corsAllowedOrigins,
+    ).toEqual(['greenhouse://localhost', 'http://greenhouse.localhost', 'https://app.example.com']);
+  });
+
   it('refuses to start without its keys', () => {
     expect(() => loadConfig({ DATABASE_URL: REQUIRED.DATABASE_URL, TOKEN_SIGNING_KEY: 'short' })).toThrow(
       /TOKEN_SIGNING_KEY.*PROVIDER_TOKEN_ENCRYPTION_KEY|PROVIDER_TOKEN_ENCRYPTION_KEY/,

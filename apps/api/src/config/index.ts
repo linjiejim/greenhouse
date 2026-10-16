@@ -66,6 +66,12 @@ export type AppConfig = Omit<
   providerEnv: Record<string, string | undefined>;
 };
 
+/**
+ * The desktop app serves the web bundle from its own scheme, so every API call and socket it
+ * makes is cross-origin. Only the shell can be these origins; a web page cannot.
+ */
+export const DESKTOP_ORIGINS = ['greenhouse://localhost', 'http://greenhouse.localhost'];
+
 const list = (value: string) =>
   value
     .split(',')
@@ -93,7 +99,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
   return {
     ...rest,
     extensions: parseExtensionsEnv(env.GREENHOUSE_EXTENSIONS) ?? parseGreenhouseConfig(deployment).extensions.enabled,
-    corsAllowedOrigins: list(CORS_ALLOWED_ORIGINS),
+    corsAllowedOrigins: [...new Set([...DESKTOP_ORIGINS, ...list(CORS_ALLOWED_ORIGINS)])],
     trustedProxyIps: list(TRUSTED_PROXY_IPS),
     tokenSigningKey: TOKEN_SIGNING_KEY.toLowerCase(),
     providerEncryptionKey: PROVIDER_TOKEN_ENCRYPTION_KEY.toLowerCase(),

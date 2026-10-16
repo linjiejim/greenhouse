@@ -22,7 +22,8 @@ The desktop app wraps apps/web for macOS and Windows and adds native capture: sc
 - GREENHOUSE_DESKTOP_API_BASE fixes the server and hides the setting; it must be a bare origin.
 - An installed base must keep its GREENHOUSE_DESKTOP_IDENTIFIER, or every user re-grants permissions and loses staged updates.
 - Without GREENHOUSE_WEB_BUNDLE_PUBKEY (or .keys/web-bundle-sign.pub) a build disables hot updates; never accept unsigned bundles.
-- The API CORS defaults must keep greenhouse://localhost and http://greenhouse.localhost (DEFAULT_CORS_ORIGINS in apps/api/src/security/security.ts), or login spins forever.
+- The API CORS defaults must keep greenhouse://localhost and http://greenhouse.localhost (DESKTOP_ORIGINS in apps/api/src/config/index.ts), or login spins forever.
+- Every web bundle the shell may load must call desktop_mark_boot_ok after it renders (apps/web/src/lib/desktop), or the shell rolls it back on the next launch.
 
 ## Hot updates
 - The main window loads greenhouse://localhost; keep the custom scheme so the origin, and the token in localStorage, survive hot updates.
