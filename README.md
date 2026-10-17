@@ -49,6 +49,14 @@ The [native app](apps/mobile) (Expo SDK 57) opens the main thread with Greeny an
 
 The app has an isolated install: `pnpm mobile:install`, then `pnpm mobile`. Use a native development client on an iOS simulator or Android device; Expo Go cannot run it. See [mobile rules](apps/mobile/AGENTS.md) for platform checks and [RELEASING.md](RELEASING.md) for native builds and over-the-air updates.
 
+The desktop app ([apps/desktop](apps/desktop), macOS on Apple Silicon and Windows x64) wraps the web app and is attached to each Release. On first launch it asks for your server's address; Settings → Desktop changes it later. Installed copies update themselves, signature-checked. The macOS build has no Developer ID, so a `.dmg` downloaded in a browser is reported as *damaged*; install from the terminal instead, which sets no quarantine flag:
+
+```bash
+curl -fsSL https://github.com/linjiejim/greenhouse/releases/latest/download/Greenhouse-macos-aarch64.app.tar.gz | tar xz -C /Applications
+```
+
+Already have the `.dmg`? Run `xattr -dr com.apple.quarantine /Applications/Greenhouse.app`. Windows: [`Greenhouse-windows-x86_64-setup.exe`](https://github.com/linjiejim/greenhouse/releases/latest/download/Greenhouse-windows-x86_64-setup.exe) is unsigned, so SmartScreen asks once (More info → Run anyway). A v1.3 desktop app does not update to v2; install v2 over it.
+
 ## Start with Docker Compose
 
 Install Docker with Compose, then use a fresh checkout and a Compose project of its own:
