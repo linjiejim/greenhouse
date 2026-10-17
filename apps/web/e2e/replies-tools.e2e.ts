@@ -2,6 +2,26 @@ import { expect, test } from '@playwright/test';
 import { composer, open } from './fixtures';
 import { mkdir } from 'node:fs/promises';
 
+test('a reaction that lands while a new chat is loading its messages still shows', async ({ page }) => {
+  const reacted = new Promise<void>((resolve) =>
+    page.on('websocket', (socket) =>
+      socket.on('framereceived', ({ payload }) => {
+        if (String(payload).includes('"message.updated"') && String(payload).includes('👍')) resolve();
+      }),
+    ),
+  );
+  // The first page is the server's snapshot from before the reaction, delivered after its event.
+  await page.route(/\/api\/conversations\/[^/]+\/messages\?limit=50$/, async (route) => {
+    const response = await route.fetch();
+    await reacted;
+    await route.fulfill({ response });
+  });
+  await open(page, '/#/c/new');
+  await composer(page).fill('u2 react');
+  await composer(page).press('Enter');
+  await expect(page.getByRole('img', { name: 'Agent 回应：👍' })).toBeVisible();
+});
+
 test('reactions, downloadable files and plans survive reload in light, dark and narrow layouts', async ({ page }) => {
   await open(page, '/#/c/new');
   await composer(page).fill('u2 react');

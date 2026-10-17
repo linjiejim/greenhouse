@@ -49,12 +49,43 @@ function soon(client: QueryClient, queryKey: QueryKey, delay = 300) {
   );
 }
 
-/** A page may finish after realtime added newer rows or completed one of its partial replies. */
+/**
+ * Realtime updates and deletions that arrived while a page of a conversation's messages was on its
+ * way, newest per message (null: deleted). The page is the server's snapshot from before them, and
+ * a new chat has no cache yet to patch, so the page takes them on when it lands.
+ */
+const inFlight = new WeakMap<QueryClient, Map<string, { pages: number; changed: Map<string, Message | null> }>>();
+
+function noteChange(client: QueryClient, conversationId: string, id: string, message: Message | null) {
+  inFlight.get(client)?.get(conversationId)?.changed.set(id, message);
+}
+
+async function fetchWithChanges(client: QueryClient, conversationId: string, cursor?: string) {
+  let open = inFlight.get(client);
+  if (!open) inFlight.set(client, (open = new Map()));
+  const noted = open.get(conversationId) ?? { pages: 0, changed: new Map<string, Message | null>() };
+  open.set(conversationId, noted);
+  noted.pages += 1;
+  try {
+    const page = await api.conversations.messages(conversationId, { cursor, limit: 50 });
+    return { page, changed: new Map(noted.changed) };
+  } finally {
+    noted.pages -= 1;
+    if (!noted.pages) open.delete(conversationId);
+  }
+}
+
+/** A page may finish after realtime added newer rows, changed or deleted its rows, or completed a partial reply. */
 export async function fetchMessagePage(client: QueryClient, conversationId: string, cursor?: string) {
-  const page = await api.conversations.messages(conversationId, { cursor, limit: 50 });
+  const { page, changed } = await fetchWithChanges(client, conversationId, cursor);
   const cached = client.getQueryData<MessagePages>(keys.messages(conversationId));
   const known = new Map(cached?.pages.flatMap((entry) => entry.items).map((item) => [item.id, item]) ?? []);
-  const items = page.items.map((item) => {
+  const items = page.items.flatMap((item): MessageItem[] => {
+    const newer = changed.get(item.id);
+    if (newer === null) return [];
+    if (newer) return [{ ...newer, my_rating: item.my_rating }];
+    return [item];
+  }).map((item) => {
     const current = known.get(item.id);
     if (current && current.status !== 'streaming' && item.status === 'streaming') return current;
     if (current?.event?.type === 'interjection' && current.event.state !== 'queued' && item.event?.state === 'queued') return { ...item, event: current.event };
@@ -243,11 +274,13 @@ export function applyEvent(client: QueryClient, event: Exclude<RealtimeEvent, { 
       } : data);
       return;
     case 'message.updated':
+      noteChange(client, event.data.message.conversation_id, event.data.message.id, event.data.message);
       replaceMessage(client, event.data.message);
       if (event.data.message.steps?.some(step => step.tool === 'agent_mutation' && step.status === 'done') || (event.data.message.event?.type === 'write_receipt' && event.data.message.event.undone === true)) soon(client, ['agents']);
       endStream(event.data.message.id);
       return;
     case 'message.deleted':
+      noteChange(client, event.data.conversation_id, event.data.message_id, null);
       forgetStream(event.data.message_id);
       removeMessage(client, event.data.conversation_id, event.data.message_id);
       return;
