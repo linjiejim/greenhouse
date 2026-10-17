@@ -5,6 +5,17 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.0](https://github.com/linjiejim/greenhouse/compare/v2.0.0...v2.1.0) (2026-10-16)
+
+
+### Added
+
+* **design:** keep the watch glanceable and the lock screen private ([5cfa3eb](https://github.com/linjiejim/greenhouse/commit/5cfa3ebd88228886091584d4fe8bb06dbdc1339b))
+* **design:** show every device in the prototype ([9a0023e](https://github.com/linjiejim/greenhouse/commit/9a0023e908456ea40fa71400ad074411338e1910))
+* **desktop:** let installed desktop apps run the v2 web bundle ([1b2047c](https://github.com/linjiejim/greenhouse/commit/1b2047cb3bb73128fd73e4799b83b694b25e5fbd))
+* **ui:** add an isolated V1/V2 plant motion review ([#74](https://github.com/linjiejim/greenhouse/issues/74)) ([a01d739](https://github.com/linjiejim/greenhouse/commit/a01d739d4400860e09f0a9a09da6979231ce9cda))
+* **ui:** adopt V2 plant motion on web and native ([#78](https://github.com/linjiejim/greenhouse/issues/78)) ([2da2711](https://github.com/linjiejim/greenhouse/commit/2da27110ab664927d07392ab05fd9086da361e2a))
+
 ## [2.0.0](https://github.com/linjiejim/greenhouse/compare/v1.3.2...v2.0.0) (2026-10-16)
 
 
