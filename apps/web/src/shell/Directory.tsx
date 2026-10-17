@@ -7,7 +7,7 @@ import { FilteredAgents, FilteredSkills, FilteredRuns } from './FilteredDirector
  */
 
 import { AppsDirectory } from '../pages/apps/AppsDirectory';
-import { useRef, useState, type KeyboardEvent } from 'react';
+import { useEffect, useRef, useState, type KeyboardEvent, type RefObject } from 'react';
 import {
   Bell,
   Activity,
@@ -111,6 +111,43 @@ function NotificationsList() {
   );
 }
 
+const ROWS = '.app-directory-list a.app-row, .app-directory-list button.app-row';
+
+/**
+ * A refresh may move or replace the focused row (new activity reorders 今天, a pinned base
+ * changes section). Moving a node drops its focus to the page, so the row with the same key takes
+ * it back and arrows and Escape keep working. Focus the member moved elsewhere stays there.
+ */
+function useKeptRowFocus(root: RefObject<HTMLDivElement | null>) {
+  useEffect(() => {
+    const element = root.current;
+    if (!element) return;
+    let kept: string | null = null;
+    const focusin = (event: FocusEvent) => {
+      const target = event.target as HTMLElement;
+      kept = target.matches(ROWS) ? (target.dataset.rowKey ?? null) : null;
+    };
+    // A row taken out of the page loses focus without the member choosing; keep its key for that.
+    const focusout = (event: FocusEvent) => {
+      if (event.relatedTarget || (event.target as Node).isConnected) kept = null;
+    };
+    const observer = new MutationObserver(() => {
+      if (kept === null || (document.activeElement && document.activeElement !== document.body)) return;
+      const row = [...element.querySelectorAll<HTMLElement>(ROWS)].find((item) => item.dataset.rowKey === kept);
+      if (row) row.focus();
+      else kept = null;
+    });
+    element.addEventListener('focusin', focusin);
+    element.addEventListener('focusout', focusout);
+    observer.observe(element, { childList: true, subtree: true });
+    return () => {
+      element.removeEventListener('focusin', focusin);
+      element.removeEventListener('focusout', focusout);
+      observer.disconnect();
+    };
+  }, [root]);
+}
+
 export function Directory({
   module,
   route,
@@ -131,17 +168,14 @@ export function Directory({
   const [searching, setSearching] = useState(false);
   const [query, setQuery] = useState('');
   const root = useRef<HTMLDivElement>(null);
+  useKeptRowFocus(root);
   const step = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey || event.nativeEvent.isComposing)
       return;
     const target = event.target as HTMLElement;
     const searchingInput = target.matches('.gh-search-input');
     if (!searchingInput && !target.matches('.app-row')) return;
-    const rows = [
-      ...(root.current?.querySelectorAll<HTMLElement>(
-        '.app-directory-list a.app-row, .app-directory-list button.app-row',
-      ) ?? []),
-    ];
+    const rows = [...(root.current?.querySelectorAll<HTMLElement>(ROWS) ?? [])];
     const index = rows.indexOf(target);
     let next: HTMLElement | undefined;
     if (event.key === 'ArrowDown') next = rows[Math.min(index + 1, rows.length - 1)];

@@ -144,6 +144,8 @@ export function DirectoryRow({
     );
   }
 
+  // The row's identity across refreshes, so the directory can give focus back to it (Directory.tsx).
+  const rowKey = href ?? title;
   const own: Partial<typeof context.handlers> = menu ? context.handlers : {};
   const handlers = {
     ...rowProps,
@@ -160,6 +162,7 @@ export function DirectoryRow({
           className={className}
           style={style}
           href={href}
+          data-row-key={rowKey}
           aria-current={active ? 'page' : undefined}
           onClick={onClick}
           {...handlers}
@@ -171,6 +174,7 @@ export function DirectoryRow({
           type="button"
           className={className}
           style={style}
+          data-row-key={rowKey}
           aria-current={active ? 'true' : undefined}
           aria-expanded={expanded}
           onClick={onClick}

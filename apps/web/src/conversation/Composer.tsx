@@ -29,6 +29,7 @@ import { useSession } from '../app/session';
 import { api } from '../lib/api';
 import { cx } from '../lib/cx';
 import { errorText } from '../lib/errors';
+import { focusUnclaimed } from '../lib/focus';
 import { useI18n } from '../lib/i18n';
 import { useVoiceInput, voiceMode, type VoiceFailure } from './voiceInput';
 
@@ -229,8 +230,10 @@ export function Composer({
     choose(skill);
   }, [initialSkill, skills]);
 
+  // Opening takes focus only if the member hasn't moved on while the page loaded.
   useEffect(() => {
-    if (autoFocus) textarea.current?.focus();
+    const element = textarea.current;
+    if (autoFocus && element && focusUnclaimed(element)) element.focus();
   }, [autoFocus, conversationId]);
 
   useEffect(() => {
