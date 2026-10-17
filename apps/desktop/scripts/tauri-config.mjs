@@ -3,7 +3,8 @@
  * Build-time deployment overlay for `tauri.conf.json`.
  *
  * The committed config is deployment-neutral: the open-source identity, no update
- * feed, a CSP that only knows the local dev servers. A deployment that builds its
+ * feed, and a CSP for an unlocked app, whose server is a setting: it may reach any
+ * https server and this computer on any port. A deployment that builds its
  * own shell (a company's private fork, CI for the public release) sets a handful
  * of `GREENHOUSE_DESKTOP_*` variables and this module turns them into the JSON
  * overlay the Tauri CLI merges over the file (`tauri build --config <json>`), so
@@ -13,7 +14,8 @@
  *                                       identity — an installed base keeps its own)
  *   GREENHOUSE_DESKTOP_PRODUCT_NAME     window / bundle name (default: Greenhouse)
  *   GREENHOUSE_DESKTOP_API_BASE         the server every install talks to (also read by
- *                                       build.rs → settings.rs; here it widens the CSP)
+ *                                       build.rs → settings.rs; here connect-src drops any
+ *                                       https server and names this one)
  *   GREENHOUSE_DESKTOP_UPDATE_BASE      update source, when it is not `<API base>/updates/desktop`
  *   GREENHOUSE_DESKTOP_UPDATER_PUBKEY   minisign public key of TAURI_SIGNING_PRIVATE_KEY —
  *                                       without it the shell cannot verify shell updates
@@ -26,8 +28,11 @@
 import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
 
-/** Origins the committed CSP already allows for local development. */
-const LOCAL_ORIGINS = ['http://localhost:3100', 'http://localhost:3000'];
+/** This computer on any port, which the committed CSP already allows. */
+const LOOPBACK = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;
+
+/** Sources that let an unlocked app reach any server; a build with a fixed server drops them. */
+const ANY_SERVER = ['https:', 'wss:'];
 
 /** Directives that must name the server and any extra origin. */
 const NETWORK_DIRECTIVES = ['connect-src', 'img-src', 'media-src'];
@@ -62,6 +67,19 @@ export function widenCsp(csp, origins) {
       const extra = origins.filter((origin) => !trimmed.includes(` ${origin}`));
       const withSockets = name === 'connect-src' ? extra.flatMap((origin) => [origin, socketOrigin(origin)]) : extra;
       return withSockets.length === 0 ? directive : `${directive} ${withSockets.join(' ')}`;
+    })
+    .join(';');
+}
+
+/** Drop the any-server sources from connect-src: a fixed server is the only one to reach. */
+export function narrowCsp(csp) {
+  return csp
+    .split(';')
+    .map((directive) => {
+      const [name, ...sources] = directive.trim().split(/\s+/);
+      if (name !== 'connect-src') return directive;
+      const leading = directive.match(/^\s*/)[0];
+      return `${leading}${[name, ...sources.filter((source) => !ANY_SERVER.includes(source))].join(' ')}`;
     })
     .join(';');
 }
@@ -108,9 +126,9 @@ export function buildTauriConfigOverlay(env, baseCsp) {
     }
     origins.push(entry);
   }
-  const unique = [...new Set(origins)].filter((origin) => !LOCAL_ORIGINS.includes(origin));
-  if (unique.length > 0) {
-    overlay.app = { security: { csp: widenCsp(baseCsp, unique) } };
+  const unique = [...new Set(origins)].filter((origin) => !LOOPBACK.test(origin));
+  if (apiBase || unique.length > 0) {
+    overlay.app = { security: { csp: widenCsp(apiBase ? narrowCsp(baseCsp) : baseCsp, unique) } };
   }
 
   return Object.keys(overlay).length === 0 ? null : overlay;

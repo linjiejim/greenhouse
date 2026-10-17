@@ -26,6 +26,8 @@ import { clearStreams } from '../data/streams';
 
 interface Session {
   bootstrap: Bootstrap | undefined;
+  /** The server did not answer its public bootstrap (the desktop app offers another address). */
+  bootstrapFailed: boolean;
   /** Undefined until loaded, or while signed out. */
   me: Me | undefined;
   /** Loading the member failed for a reason other than the session ending. */
@@ -125,9 +127,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   }, [ready, client]);
 
   const { data: member, isError: memberFailed, refetch: refetchMe } = me;
+  const bootstrapFailed = bootstrap.isError && !bootstrap.data;
   const value = useMemo<Session>(
     () => ({
       bootstrap: bootstrap.data,
+      bootstrapFailed,
       me: signedIn ? member : undefined,
       meError: signedIn && memberFailed && !member,
       retryMe: () => void refetchMe(),
@@ -149,7 +153,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         setSignedIn(false);
       },
     }),
-    [bootstrap.data, member, memberFailed, refetchMe, signedIn, realtime, reset],
+    [bootstrap.data, bootstrapFailed, member, memberFailed, refetchMe, signedIn, realtime, reset],
   );
 
   const locale: Locale = me.data ? asLocale(me.data.locale) : browserLocale();

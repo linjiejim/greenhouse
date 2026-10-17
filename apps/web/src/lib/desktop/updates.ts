@@ -21,7 +21,7 @@ const FIRST_CHECK_MS = 20_000;
 const RECHECK_MS = 4 * 60 * 60 * 1000;
 
 let state: DesktopUpdate = { kind: 'none' };
-let checking: Promise<void> | null = null;
+let checking: Promise<boolean> | null = null;
 const listeners = new Set<() => void>();
 
 function set(next: DesktopUpdate) {
@@ -48,11 +48,17 @@ async function check(): Promise<void> {
   set(shell.status === 'ready' ? { kind: 'shell', version: shell.version } : { kind: 'shell_required' });
 }
 
-/** One check at a time; failures only go to the shell's log. */
-export function checkForUpdates(): Promise<void> {
-  if (!isDesktop()) return Promise.resolve();
+/** One check at a time; resolves false when it failed, and the reason goes to the shell's log. */
+export function checkForUpdates(): Promise<boolean> {
+  if (!isDesktop()) return Promise.resolve(false);
   checking ??= check()
-    .catch((error: unknown) => desktopLog('warn', `[update] check failed: ${String(error)}`))
+    .then(
+      () => true,
+      (error: unknown) => {
+        desktopLog('warn', `[update] check failed: ${String(error)}`);
+        return false;
+      },
+    )
     .finally(() => {
       checking = null;
     });

@@ -4,7 +4,7 @@ The desktop app wraps apps/web for macOS and Windows and adds native capture: sc
 
 ## Where code goes
 - Write features in apps/web, including satellite windows (`#/desktop/*`), shortcut behavior, tray menu content and desktop settings; web changes reach installed apps as signed hot updates, shell changes need a new build.
-- Add Rust only for a system call the browser cannot make: one named #[tauri::command] in src-tauri/src/commands, mirrored in apps/web/src/lib/desktop/types.ts in the same change.
+- Add Rust only for a system call the browser cannot make: one named #[tauri::command] in src-tauri/src/commands, mirrored in the command map of apps/web/src/lib/desktop/shell.ts in the same change.
 - Never add a generic run-command, read-path or download-any-URL capability.
 - Bump nativeApiVersion in apps/desktop/package.json whenever the command surface changes, and only then: web bundles inherit it as minShellVersion. Never gate compatibility on the product version.
 - The tray only renders the TrayMenuModel that web pushes with desktop_set_tray_menu and keeps its built-in Open/Quit until then, so it works when the webview is dead.
@@ -14,12 +14,16 @@ The desktop app wraps apps/web for macOS and Windows and adds native capture: sc
 - `pnpm desktop:build` builds .app, .dmg and nsis; `pnpm desktop:check` runs fmt, clippy -D warnings and the node and cargo tests; `pnpm desktop:verify-web-update` checks a v(N-1) to v(N) hot update on macOS.
 - Run cargo through the package scripts (scripts/with-shared-target.mjs): they share ~/.cargo-target/greenhouse-desktop across worktrees and ad-hoc sign local macOS bundles. A bare cargo build creates an in-tree target/ that is safe to delete.
 - An unsealed local bundle can show Accessibility enabled while AXIsProcessTrusted returns false; build through the wrapper.
+- build.rs reads CARGO_MANIFEST_DIR at run time; env! would bake in the worktree that compiled the script, which the shared target then reuses.
+- GREENHOUSE_QA_APP_DATA_DIR isolates the shell's data, not WebKit storage: an unbundled debug binary keeps localStorage in ~/Library/WebKit/greenhouse-desktop across runs.
 - tauri::is_dev() follows the custom-protocol feature, not the profile; test the packaged path with `cargo run --features tauri/custom-protocol --manifest-path apps/desktop/src-tauri/Cargo.toml`.
 - Keep `**/target/` excluded from eslint and prettier; tauri-codegen writes .js there.
 
 ## Deployment configuration
 - Never edit tauri.conf.json per deployment; set `GREENHOUSE_DESKTOP_*` and `GREENHOUSE_WEB_BUNDLE_*` at build time (read by scripts/tauri-config.mjs and src-tauri/build.rs).
 - GREENHOUSE_DESKTOP_API_BASE fixes the server and hides the setting; it must be a bare origin.
+- Without it the server is a setting in web (sign-in and 设置 → 桌面端). The base reaches the page only in a new process (a reload re-runs the old bootstrap script), so a switch signs out and restarts the app (apps/web/src/lib/desktop/server.ts).
+- The committed CSP is for an unlocked app: connect-src allows any https/wss server and this computer on any port. With GREENHOUSE_DESKTOP_API_BASE the overlay drops https:/wss: from connect-src and names that server. Only tauri dev|build applies the overlay; a plain cargo build uses the committed CSP.
 - An installed base must keep its GREENHOUSE_DESKTOP_IDENTIFIER, or every user re-grants permissions and loses staged updates.
 - Without GREENHOUSE_WEB_BUNDLE_PUBKEY (or .keys/web-bundle-sign.pub) a build disables hot updates; never accept unsigned bundles.
 - The API CORS defaults must keep greenhouse://localhost and http://greenhouse.localhost (DESKTOP_ORIGINS in apps/api/src/config/index.ts), or login spins forever.

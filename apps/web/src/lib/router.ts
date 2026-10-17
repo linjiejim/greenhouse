@@ -6,7 +6,15 @@
 import { useSyncExternalStore } from 'react';
 import type { KnowledgeScope } from '@greenhouse/contract';
 
-export const SETTINGS_SECTIONS = ['account', 'notifications', 'connections', 'vault', 'services', 'access'] as const;
+export const SETTINGS_SECTIONS = [
+  'account',
+  'notifications',
+  'connections',
+  'vault',
+  'services',
+  'access',
+  'desktop',
+] as const;
 export const ADMIN_SECTIONS = [
   'members',
   'services',

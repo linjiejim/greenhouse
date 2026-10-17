@@ -19,6 +19,7 @@ The v2 web app. Product scope is docs/product/prd.md §6–7; layout and compone
 - Catching up never removes what arrived after the answer it got, and never takes a finished reply back to a partial one.
 - The API client (@greenhouse/contract/client) is the only way to the server. Its errors are ApiClientError; branch on `code`, show the dictionary's words.
 - In the desktop app (lib/desktop) the API is cross-origin: fetch and src/href/poster attributes are rewritten for you, but a URL handed to a detached link or window.open goes through apiUrl first.
+- An unlocked desktop app asks for its server on first launch or when it cannot reach it, and 设置 → 桌面端 changes it: check /api/bootstrap first, then switchServer signs out and restarts. Show none of it when apiBaseLocked.
 - Hide what this member cannot use: modules from me.modules, configured capabilities from me.capabilities (no computer entries without sandbox). Voice falls back first: the microphone uses the STT service when me.capabilities.stt, else the browser's recognition, else it is hidden; read-aloud uses TTS, else speechSynthesis, else it is hidden.
 - Voice input (conversation/voiceInput.ts) puts the words where the caret was and never sends them; Esc cancels. Read-aloud (conversation/readAloud.ts) reads one reply at a time and stops when the conversation is left; it speaks speechText (lib/speech.ts), never raw Markdown, in parts of at most SPEECH_TEXT_MAX.
 - Styles: src/styles/app.css for app layout only, tokens only. Anything reusable belongs in the kit.
