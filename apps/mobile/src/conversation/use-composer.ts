@@ -9,11 +9,17 @@
  * draft that `restore()` puts back when the send fails.
  */
 
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type SetStateAction } from 'react';
 import type { TextInput } from 'react-native';
 import type { SendMessageInput, Skill } from '../shared/contract';
-import { filesReady, type ComposerFile } from '../chat/composer-files';
+import { filesReady, MAX_FILES } from '../chat/composer-files';
 import { useComposerFiles } from '../chat/use-composer-files';
+import {
+  emptyComposerContent,
+  restoreComposerContent,
+  restoreComposerFiles,
+  type ComposerDraft,
+} from './composer-draft';
 import {
   applyMention,
   dropSlash,
@@ -29,14 +35,7 @@ export type PickerEntry =
   | { kind: 'mention'; key: string; candidate: MentionCandidate }
   | { kind: 'skill'; key: string; skill: Skill };
 
-export interface ComposerDraft {
-  value: string;
-  files: ComposerFile[];
-  quote: { message_id: string; text: string } | null;
-  skill: Skill | null;
-  fields: Record<string, string>;
-  picked: MentionCandidate[];
-}
+export type { ComposerDraft } from './composer-draft';
 
 export function useComposer({
   conversationId,
@@ -54,13 +53,32 @@ export function useComposer({
   skills: readonly Skill[];
 }) {
   const inputRef = useRef<TextInput>(null);
-  const [value, setValue] = useState('');
+  const [content, setContent] = useState(emptyComposerContent);
+  const { value, quote, skill, fields, picked } = content;
   const [selection, setSelection] = useState<{ start: number; end: number } | null>(null);
   const files = useComposerFiles(conversationId);
-  const [quote, setQuote] = useState<{ message_id: string; text: string } | null>(null);
-  const [skill, setSkill] = useState<Skill | null>(null);
-  const [fields, setFields] = useState<Record<string, string>>({});
-  const [picked, setPicked] = useState<MentionCandidate[]>([]);
+  const mounted = useRef(true);
+  const target = useRef({ conversationId });
+  if (target.current.conversationId !== conversationId) target.current = { conversationId };
+  const pending = useRef(new WeakMap<ComposerDraft, typeof target.current>());
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  const setValue = useCallback((next: SetStateAction<string>) => {
+    setContent((current) => ({
+      ...current,
+      value: typeof next === 'function' ? next(current.value) : next,
+    }));
+  }, []);
+  const setQuote = useCallback((next: SetStateAction<ComposerDraft['quote']>) => {
+    setContent((current) => ({
+      ...current,
+      quote: typeof next === 'function' ? next(current.quote) : next,
+    }));
+  }, []);
 
   /** The skill list was opened from the `+` menu (no `/` typed). */
   const [listing, setListing] = useState(false);
@@ -89,10 +107,13 @@ export function useComposer({
   const focus = useCallback(() => setTimeout(() => inputRef.current?.focus(), 250), []);
 
   const chooseSkill = useCallback((next: Skill) => {
-    setSkill(next);
     setListing(false);
-    setFields(Object.fromEntries(next.variables.map((field) => [field.key, ''])));
-    setValue((current) => (current.startsWith('/') ? dropSlash(current) : current));
+    setContent((current) => ({
+      ...current,
+      skill: next,
+      fields: Object.fromEntries(next.variables.map((field) => [field.key, ''])),
+      value: current.value.startsWith('/') ? dropSlash(current.value) : current.value,
+    }));
   }, []);
 
   const pick = useCallback(
@@ -110,11 +131,14 @@ export function useComposer({
       const next = applyMention(value, mention.start, caret, entry.candidate.name);
       setValue(next.text);
       setSelection({ start: next.caret, end: next.caret });
-      setPicked((current) =>
-        current.some((item) => item.handle === entry.candidate.handle) ? current : [...current, entry.candidate],
-      );
+      setContent((current) => ({
+        ...current,
+        picked: current.picked.some((item) => item.handle === entry.candidate.handle)
+          ? current.picked
+          : [...current.picked, entry.candidate],
+      }));
     },
-    [chooseSkill, mention, caret, mentionMode, onSwitch, value],
+    [chooseSkill, mention, caret, mentionMode, onSwitch, value, setValue],
   );
 
   /** Start an `@` at the caret (the `+` menu's 「@ 提及」). */
@@ -126,7 +150,7 @@ export function useComposer({
     const position = at + (needsSpace ? 2 : 1);
     setSelection({ start: position, end: position });
     focus();
-  }, [caret, value, focus]);
+  }, [caret, value, focus, setValue]);
 
   /** Open the skill list (the `+` menu's 「技能」), whatever is typed. */
   const startSkill = useCallback(() => {
@@ -137,14 +161,18 @@ export function useComposer({
   /** Close the skill list without choosing. */
   const closePicker = useCallback(() => setListing(false), []);
 
-  const setField = useCallback((key: string, text: string) => setFields((current) => ({ ...current, [key]: text })), []);
+  const setField = useCallback((key: string, text: string) => {
+    setContent((current) => ({ ...current, fields: { ...current.fields, [key]: text } }));
+  }, []);
   const clearSkill = useCallback(() => {
-    setSkill(null);
-    setFields({});
+    setContent((current) => ({ ...current, skill: null, fields: {} }));
   }, []);
 
   /** The message to send, or why it cannot go yet (the label of an empty required field). */
-  const build = useCallback((): { input: SendMessageInput } | { missing: string } | null => {
+  const build = useCallback((): { input: SendMessageInput } | { missing: string } | { tooManyFiles: true } | null => {
+    // Restoring an older send may leave more than one message's files. Keep every file for the
+    // member to choose from, and explain the limit before taking or sending this draft.
+    if (files.files.length > MAX_FILES) return { tooManyFiles: true };
     if (!filesReady(files.files)) return null;
     const text = value.trim();
     if (!text && !files.files.length && !skill) return null;
@@ -164,26 +192,22 @@ export function useComposer({
   const { setFiles } = files;
   /** Empty the composer, handing back what was in it. */
   const take = useCallback((): ComposerDraft => {
-    const draft: ComposerDraft = { value, files: files.files, quote, skill, fields, picked };
-    setValue('');
+    const draft: ComposerDraft = { ...content, files: files.files };
+    pending.current.set(draft, target.current);
+    setContent(emptyComposerContent());
     // Clear natively too: a multiline field emptied only through `value` keeps its grown height on iOS.
     inputRef.current?.clear();
     setFiles([]);
-    setQuote(null);
-    setSkill(null);
-    setFields({});
-    setPicked([]);
     return draft;
-  }, [value, files.files, quote, skill, fields, picked, setFiles]);
+  }, [content, files.files, setFiles]);
 
   const restore = useCallback(
     (draft: ComposerDraft) => {
-      setValue(draft.value);
-      setFiles(draft.files);
-      setQuote(draft.quote);
-      setSkill(draft.skill);
-      setFields(draft.fields);
-      setPicked(draft.picked);
+      // Ignore a late response after leaving, including A → B → A, and restore each send once.
+      if (!mounted.current || pending.current.get(draft) !== target.current) return;
+      pending.current.delete(draft);
+      setContent((current) => restoreComposerContent(current, draft));
+      setFiles((current) => restoreComposerFiles(current, draft.files));
     },
     [setFiles],
   );

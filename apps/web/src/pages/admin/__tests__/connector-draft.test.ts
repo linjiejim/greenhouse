@@ -146,6 +146,23 @@ describe('tool switches', () => {
     expect(withChange(desk, { allowed_tools: null }).tools.every((item) => item.allowed)).toBe(true);
     expect(withChange(desk, { enabled: false }).enabled).toBe(false);
   });
+
+  it('keeps admin confirmation separate from a server read-only declaration', () => {
+    const before = connector();
+    expect(before.read_only_tools).not.toContain('lookup');
+    const confirmed = withChange(before, { read_only_tools: vouchTool(before, 'lookup', true) });
+    expect(confirmed.read_only_tools).toEqual(['lookup']);
+    expect(confirmed.tools.find((item) => item.name === 'lookup')).toMatchObject({
+      declared_read_only: true,
+      read_only: true,
+    });
+    const revoked = withChange(confirmed, { read_only_tools: vouchTool(confirmed, 'lookup', false) });
+    expect(revoked.read_only_tools).toEqual([]);
+    expect(revoked.tools.find((item) => item.name === 'lookup')).toMatchObject({
+      declared_read_only: true,
+      read_only: true,
+    });
+  });
 });
 
 describe('a Registry result', () => {

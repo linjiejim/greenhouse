@@ -7,15 +7,16 @@
 import { and, asc, eq } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import { DOC_CONTENT_MAX, type RealtimeEvent } from '@greenhouse/contract';
-import { docs, docVersions, folders, getDb, messages, requests, runSteps } from '@greenhouse/db';
+import { docs, docVersions, folders, getDb, members, messages, requests, runSteps } from '@greenhouse/db';
 import { createTestApp } from '../../testing.js';
 import { scriptedModel, text, toolCall } from './model.js';
 
-async function setup() {
+async function setup(locale: 'zh' | 'en' = 'zh') {
   const scripts: Parameters<typeof scriptedModel>[0] = [];
   const model = scriptedModel(scripts);
   const app = createTestApp({}, { languageModel: model.languageModel });
   const lin = await app.member();
+  await getDb().update(members).set({ locale }).where(eq(members.id, lin.id));
   const chen = await app.member();
   const main = (await app.call('GET', '/api/conversations', { token: lin.token })).body.items[0];
   async function send(conversationId: string, content: string) {
@@ -142,7 +143,14 @@ describe('knowledge tools in a turn', () => {
         { label: '说明', value: 'New date' },
       ],
     });
-    const [pending] = await steps(sent.run_id);
+    const attempted = await steps(sent.run_id);
+    expect(attempted).toHaveLength(4);
+    expect(attempted.filter((step) => step.status === 'failed').map((step) => step.error?.code)).toEqual([
+      'not_found',
+      'stale_version',
+      'knowledge_edit_not_found',
+    ]);
+    const pending = attempted.find((step) => step.status === 'pending');
     expect(pending).toMatchObject({ risk: 'tier2', status: 'pending' });
     expect((await app.services.knowledge.getDoc(lin.id, plan.id)).version).toBe(1);
 
@@ -162,29 +170,79 @@ describe('knowledge tools in a turn', () => {
     expect(version).toMatchObject({ agentId: main.agent_id, createdBy: lin.id, changeNote: 'New date' });
   });
 
-  it('refuse an edit that would make a doc longer than the limit, before any card', async () => {
-    const { scripts, model, app, lin, main, send, reply } = await setup();
-    const big = await app.services.knowledge.createDoc(lin.id, {
-      title: 'Big',
-      content: `START\n${'b'.repeat(DOC_CONTENT_MAX - 100_000)}`,
-      space: 'team',
-    });
-    scripts.push(
-      toolCall('knowledge_mutation', {
-        action: 'edit',
-        doc_id: big.id,
+  it.each(['zh', 'en'] as const)(
+    'refuse an oversized edit before any card and explain how to recover (%s)',
+    async (locale) => {
+      const { scripts, model, app, lin, main, send, reply, steps } = await setup(locale);
+      const big = await app.services.knowledge.createDoc(lin.id, {
+        title: 'Big',
+        content: `START\n${'b'.repeat(DOC_CONTENT_MAX - 100_000)}`,
+        space: 'team',
+      });
+      scripts.push(
+        toolCall('knowledge_mutation', {
+          action: 'edit',
+          doc_id: big.id,
+          version: 1,
+          edits: [{ find: 'START', replace: 'x'.repeat(150_000) }],
+        }),
+        text('That was too much.'),
+      );
+      const sent = await send(main.id, 'pad the doc');
+      expect((await reply(sent.run_id)).steps).toEqual([expect.objectContaining({ status: 'failed' })]);
+      // The Agent is told why; nobody is asked to approve an edit that cannot be saved.
+      const [refused] = await steps(sent.run_id);
+      expect(refused).toMatchObject({ status: 'failed', error: { code: 'knowledge_content_limit' } });
+      const cause = locale === 'zh' ? '超过长度上限' : 'over the limit';
+      const recovery = locale === 'zh' ? '缩短改动或拆成多篇文档' : 'reduce the change or split it into multiple docs';
+      expect(refused!.error!.message).toContain(cause);
+      expect(refused!.error!.message).toContain(recovery);
+      expect(JSON.stringify(model.prompts.at(-1))).toContain(refused!.error!.message);
+      expect(await getDb().select().from(requests).where(eq(requests.runId, sent.run_id))).toEqual([]);
+      expect((await app.services.knowledge.getDoc(lin.id, big.id)).version).toBe(1);
+    },
+  );
+
+  it.each(['zh', 'en'] as const)(
+    'keeps known edit validation causes actionable and omits document text (%s)',
+    async (locale) => {
+      const { scripts, model, app, lin, main, send, steps } = await setup(locale);
+      const doc = await app.services.knowledge.createDoc(lin.id, {
+        title: 'Repeated text',
+        content: 'PRIVATE-SENTINEL\nPRIVATE-SENTINEL',
+        space: 'team',
+      });
+      const edit = { action: 'edit', doc_id: doc.id, version: 1 };
+      scripts.push(
+        toolCall('knowledge_mutation', { ...edit, version: 7, content: 'Stale rewrite' }, 'stale'),
+        toolCall('knowledge_mutation', { ...edit, edits: [{ find: 'MISSING-SENTINEL', replace: 'x' }] }, 'missing'),
+        toolCall('knowledge_mutation', { ...edit, edits: [{ find: 'PRIVATE-SENTINEL', replace: 'x' }] }, 'ambiguous'),
+        toolCall('knowledge_mutation', edit, 'empty'),
+        text('The edits need corrected inputs.'),
+      );
+      const sent = await send(main.id, 'Change the doc');
+      const attempts = await steps(sent.run_id);
+      expect(attempts).toHaveLength(4);
+      const expected = [
+        ['stale', 'stale_version', locale === 'zh' ? '重新读取' : 'read it again'],
+        ['missing', 'knowledge_edit_not_found', locale === 'zh' ? '使用其中的原文' : 'use its exact text'],
+        ['ambiguous', 'knowledge_edit_ambiguous', locale === 'zh' ? '补充前后文' : 'include more surrounding text'],
+        ['empty', 'knowledge_edit_empty', locale === 'zh' ? '请提供新内容' : 'Provide new content'],
+      ];
+      for (const [key, code, recovery] of expected) {
+        const attempt = attempts.find((step) => step.key === key)!;
+        expect(attempt).toMatchObject({ status: 'failed', error: { code } });
+        expect(attempt.error!.message).toContain(recovery);
+        expect(attempt.error!.message).not.toContain('SENTINEL');
+        expect(JSON.stringify(model.prompts.at(-1))).toContain(attempt.error!.message);
+      }
+      expect(await getDb().select().from(requests).where(eq(requests.runId, sent.run_id))).toEqual([]);
+      expect(await app.services.knowledge.getDoc(lin.id, doc.id)).toMatchObject({
         version: 1,
-        edits: [{ find: 'START', replace: 'x'.repeat(150_000) }],
-      }),
-      text('That was too much.'),
-    );
-    const sent = await send(main.id, 'pad the doc');
-    expect((await reply(sent.run_id)).steps).toEqual([expect.objectContaining({ status: 'failed' })]);
-    // The Agent is told why; nobody is asked to approve an edit that cannot be saved.
-    expect(JSON.stringify(model.prompts.at(-1))).toContain('over the limit');
-    expect(await getDb().select().from(requests).where(eq(requests.runId, sent.run_id))).toEqual([]);
-    expect((await app.services.knowledge.getDoc(lin.id, big.id)).version).toBe(1);
-  });
+        content: 'PRIVATE-SENTINEL\nPRIVATE-SENTINEL',
+      });
+    },
+  );
 
   it('keep the Agent’s private folder to the Agent and its owner, and write there without a card', async () => {
     const { scripts, app, lin, chen, main, send, steps } = await setup();

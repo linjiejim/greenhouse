@@ -18,7 +18,14 @@ import {
   type NeedsYouRequest,
 } from '@greenhouse/db';
 import type { ApprovalsService } from '../../modules/agents/approvals.js';
-import { surfacesOf, type AvailabilityContext, type Card, type ToolContext, type ToolDef } from './define.js';
+import {
+  surfacesOf,
+  type AvailabilityContext,
+  type CallRisk,
+  type Card,
+  type ToolContext,
+  type ToolDef,
+} from './define.js';
 import { ApiError } from '../../http/errors.js';
 import { argumentDetails, failureSummary } from './presentation.js';
 import { toolInputSchema } from './schema.js';
@@ -139,13 +146,19 @@ export async function assembleTools(input: {
   let waiting = false;
   let ended = false;
   // Some servers reuse call ids across steps ("call_0"); a step key must still be unique.
-  const usedKeys = new Map<string, number>();
+  const savedKeys = await getDb()
+    .select({ key: runSteps.key })
+    .from(runSteps)
+    .where(and(eq(runSteps.runId, context.runId), eq(runSteps.attempt, context.attempt ?? 1)));
+  const usedKeys = new Set(savedKeys.map((step) => step.key));
   const stepKey = (callId: string) => {
-    const seen = usedKeys.get(callId) ?? 0;
-    usedKeys.set(callId, seen + 1);
-    return seen ? `${callId}#${seen + 1}` : callId;
+    let key = callId;
+    let suffix = 1;
+    while (usedKeys.has(key)) key = `${callId}#${++suffix}`;
+    usedKeys.add(key);
+    return key;
   };
-  // Nobody watches a background run: once it has read private data it may not reach outside.
+  // Nobody watches a background run: private reads close unconstrained outbound access.
   const [savedRun] = await getDb()
     .select({ checkpoint: runs.checkpoint, input: runs.input })
     .from(runs)
@@ -161,60 +174,97 @@ export async function assembleTools(input: {
       execute: (args: unknown, options: { toolCallId: string; abortSignal?: AbortSignal }) =>
         serialize(context.runId, async () => {
           if (context.signal.aborted || options.abortSignal?.aborted) throw new Error('Stopped.');
-          const [member] = await getDb()
-            .select({ status: members.status })
-            .from(members)
-            .where(eq(members.id, context.memberId));
-          if (member?.status !== 'active') throw new Error('The member is no longer active.');
-          if (def.outbound && def.name !== 'computer' && readPrivate && context.surface === 'background') {
-            throw new Error(
-              'This run has read private data, so it can no longer search or open web pages. Report what you have.',
-            );
-          }
-          if (def.privateRead ? await def.privateRead(args, context) : def.private) {
-            readPrivate = true;
-            await input.privateRead?.();
-          }
           const started = Date.now();
           const key = stepKey(options.toolCallId);
           const attempt = context.attempt ?? 1;
-          let risk = def.callRisk
-            ? await def.callRisk(args, context)
-            : def.risk === 'read'
-              ? 'read'
-              : def.risk === 'external'
-                ? 'tier3'
-                : 'tier2';
-          if (context.readOnly && risk !== 'read') throw new Error('Helper runs are read-only.');
-          if (risk !== 'read' && !context.manifest.write) throw new Error('Writing is disabled for this Agent.');
+          let risk: CallRisk = def.risk === 'read' ? 'read' : def.risk === 'external' ? 'tier3' : 'tier2';
+          const previouslyReadPrivate = readPrivate;
           // A background run can be retried: the same call (tool and arguments) is the same step.
-          const idempotencyKey = context.surface === 'background' ? callKey(def.name, args) : null;
-          if (idempotencyKey) {
-            const [earlier] = await getDb()
-              .select({ id: runSteps.id, status: runSteps.status, attempt: runSteps.attempt, output: runSteps.output })
-              .from(runSteps)
-              .where(and(eq(runSteps.runId, context.runId), eq(runSteps.idempotencyKey, idempotencyKey)));
-            // A call that already succeeded returns what it returned.
-            if (earlier?.status === 'succeeded' || earlier?.status === 'skipped')
-              return earlier.output ?? { status: 'declined', note: 'The member declined this call. Do not repeat it.' };
-            if (earlier?.status === 'pending') {
-              waiting = true;
-              return { status: 'needs_approval', note: 'This call still waits for the member.' };
+          const idempotencyKey =
+            context.surface === 'background' ? (def.replayKey ? def.replayKey(args) : callKey(def.name, args)) : null;
+          try {
+            const [member] = await getDb()
+              .select({ status: members.status })
+              .from(members)
+              .where(eq(members.id, context.memberId));
+            if (member?.status !== 'active')
+              throw new ApiError(403, 'member_inactive', 'The member is no longer active.');
+            if (def.callRisk) risk = await def.callRisk(args, context);
+            if (context.readOnly && risk !== 'read')
+              throw new ApiError(403, 'helper_read_only', 'Helper runs are read-only.');
+            if (risk !== 'read' && !context.manifest.write)
+              throw new ApiError(403, 'agent_write_disabled', 'Writing is disabled for this Agent.');
+            // Provenance readers also enforce current file/record access, including on a cache hit.
+            if (def.privateRead ? await def.privateRead(args, context) : def.private) {
+              readPrivate = true;
+              await input.privateRead?.();
             }
-            // An earlier attempt died while making this call: with effects outside, it is not made
-            // again blindly. The Agent is told once per attempt; calling it again after that runs it.
+            // Current access/risk checks precede reuse; no new outbound request is needed for a saved result.
+            if (idempotencyKey) {
+              const [earlier] = await getDb()
+                .select({
+                  id: runSteps.id,
+                  status: runSteps.status,
+                  attempt: runSteps.attempt,
+                  output: runSteps.output,
+                })
+                .from(runSteps)
+                .where(and(eq(runSteps.runId, context.runId), eq(runSteps.idempotencyKey, idempotencyKey)));
+              if (earlier?.status === 'succeeded' || earlier?.status === 'skipped')
+                return (
+                  earlier.output ?? { status: 'declined', note: 'The member declined this call. Do not repeat it.' }
+                );
+              if (earlier?.status === 'pending') {
+                waiting = true;
+                return { status: 'needs_approval', note: 'This call still waits for the member.' };
+              }
+              if (
+                earlier &&
+                !def.idempotent &&
+                (earlier.status === 'running' || earlier.status === 'uncertain') &&
+                earlier.attempt < attempt
+              ) {
+                await getDb()
+                  .update(runSteps)
+                  .set({ key, attempt, status: 'uncertain', finishedAt: sql`now()`, updatedAt: sql`now()` })
+                  .where(eq(runSteps.id, earlier.id));
+                return UNCERTAIN_RESULT;
+              }
+            }
             if (
-              earlier &&
-              !def.idempotent &&
-              (earlier.status === 'running' || earlier.status === 'uncertain') &&
-              earlier.attempt < attempt
-            ) {
-              await getDb()
-                .update(runSteps)
-                .set({ key, attempt, status: 'uncertain', finishedAt: sql`now()`, updatedAt: sql`now()` })
-                .where(eq(runSteps.id, earlier.id));
-              return UNCERTAIN_RESULT;
-            }
+              def.outbound &&
+              def.name !== 'computer' &&
+              previouslyReadPrivate &&
+              context.surface === 'background' &&
+              !(await def.allowPrivateOutbound?.(args, context))
+            )
+              throw new ApiError(
+                403,
+                'background_private_outbound',
+                'This run has read private data and cannot send new arguments outside. Report the work that remains.',
+              );
+          } catch (error) {
+            const summary = failureSummary(def, args, error, context);
+            const code = error instanceof ApiError ? error.code : 'tool_failed';
+            // A refusal is an attempted action too. Keep any earlier successful output intact.
+            await getDb()
+              .insert(runSteps)
+              .values({
+                id: newId('runStep'),
+                runId: context.runId,
+                key,
+                attempt,
+                kind: 'tool',
+                toolName: def.name,
+                risk,
+                status: 'failed',
+                input: (bounded(args) ?? {}) as Record<string, unknown>,
+                error: { code, message: summary.slice(0, 1000) },
+                durationMs: Date.now() - started,
+                startedAt: new Date(started).toISOString(),
+                finishedAt: new Date().toISOString(),
+              });
+            throw new ApiError(error instanceof ApiError ? error.status : 502, code, summary);
           }
           const [row] = await getDb()
             .insert(runSteps)

@@ -22,6 +22,7 @@ Greenhouse is a workspace where every member works with their own AI Agents on s
 - **Writes with boundaries.** Private, reversible writes happen at once with a named receipt and Undo. Shared changes wait for one tap, or for a standing approval you granted. External or irreversible actions always ask. A newer request replaces an older one, and handled requests clear themselves away.
 - **Work while you are away.** Background runs start from a brief you approve. Schedules, one-off reminders, and wake-ups from mail and automations keep work moving; when nothing matters, the Agent stays quiet.
 - **Short, plain replies.** Answers lead with the result in a few sentences. A reaction acknowledges, files and plans arrive as cards, and Markdown appears only where structure helps.
+- **Conversations you can continue.** Start an independent chat from a completed reply in your own Agent conversation, keeping its earlier context and answering Agent. Retrying a failed first message reuses its new chat; mobile send failures retain newer draft text and uploads. Web Agent instructions ask before leaving unsaved edits.
 - **Knowledge, tables and apps.** Docs and files with versions, comments and cited answers. Typed tables with grid, kanban, calendar, timeline, gallery, dashboards, forms and automations. Apps built on tables and published to members, with roles that only narrow table access.
 - **A computer you can watch.** An Agent's sandboxed computer (E2B or Docker) has a browser and a terminal. Watch it live, take over, hand it back; its home survives restarts in encrypted backups.
 - **Rooms.** Several people and their Agents in one conversation. Mention a person or an Agent; everyone sees whose Agent replied.
@@ -106,6 +107,12 @@ Use **Admin → Services** (管理 → 服务) or initialize from `.env`. Once a
 | Mail | Resend or Mailgun for system mail and Agent mailboxes; SMTP sends system mail only. A member's own IMAP/SMTP mailbox is a personal connection. |
 
 A YAML file (`PROVIDERS_FILE`) supports several instances and fallback chains. See [providers.md](docs/product/providers.md) for adapters, preset addresses, model lists, budgets and the resolution order.
+
+### Connectors and background reads
+
+Admins install MCP servers in Settings → Connectors, select their available actions, and can confirm individual actions as read-only. The server's own read-only declaration is shown separately: it permits immediate foreground reads, while an exact background read plan requires an admin's confirmation. Destructive actions cannot be confirmed as read-only; built-in mailbox reads already have a controlled implementation.
+
+An approved background task can prepare several known reads on the same connector and account before it reads private or other source data. The first `mcp_call` carries `read_ahead`: up to 16 further exact calls, with at most 8192 bytes of current and future arguments. Each run has one immutable plan. Local tool metadata may be inspected first, and metadata or saved results still require current access. New arguments derived from private results require a new task; changing credentials, refreshing OAuth tokens, reconnecting or changing the tool permissions invalidates the old plan for later reads. Refused calls remain visible as failed steps with their reason. See [Agent tool contracts](docs/product/api.md#4-agent-工具v2-命名).
 
 ### Mail
 

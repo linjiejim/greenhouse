@@ -6,17 +6,18 @@
  * route turns into that conversation.
  */
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Keyboard, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useIsFocused, useNavigation, useRouter } from 'expo-router';
 import { DrawerActions } from 'expo-router/react-navigation';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { FadeIn, useAnimatedStyle } from 'react-native-reanimated';
 import { KeyboardStickyView, useReanimatedKeyboardAnimation } from 'react-native-keyboard-controller';
-import { createConversation, sendMessage } from '../api/conversations';
+import { createConversation, getConversation, sendMessage } from '../api/conversations';
 import { skillStarters } from '../api/me';
 import { badgeOf } from '../data/directory';
 import { useComposerBridge } from '../chat/composer-bridge';
+import { MAX_FILES } from '../chat/composer-files';
 import { Composer } from '../chat/composer';
 import { HeroAvatar } from '../chat/hero-avatar';
 import { greeting } from '../lib/format';
@@ -33,6 +34,7 @@ import { alertError } from '../ui/dialogs';
 import { useHeaderInset } from '../ui/header-inset';
 import { PickerStrip, SkillFields, type CandidateFace } from './composer-accessory';
 import { ConversationHeader, type HeaderModel } from './header';
+import { newChatSendState, sendNewChat } from './new-chat-send';
 import type { MentionCandidate } from './picker';
 import { useComposer } from './use-composer';
 
@@ -49,10 +51,27 @@ export function NewChatScreen({ agentId, compose }: { agentId: string; compose: 
   const agents = useWorkspace((s) => s.agents);
   const summary = useWorkspace((s) => s.summary);
   const [picked, setPicked] = useState<string | null>(null);
-  const chosenId = picked ?? (agentId || null);
+  const chosenId = picked ?? (agentId && agentId !== 'main' ? agentId : null);
   const main = agents?.find((agent) => agent.is_main) ?? null;
-  const answering = (chosenId ? agents?.find((agent) => agent.id === chosenId) : null) ?? main;
-  const agentKey = answering && !answering.is_main ? answering.id : 'main';
+  const answering = chosenId ? (agents?.find((agent) => agent.id === chosenId) ?? null) : main;
+  const targetId = chosenId ?? main?.id ?? null;
+  const agentKey = answering?.is_main ? 'main' : (chosenId ?? 'main');
+  const [sending, setSending] = useState(false);
+  const pending = useRef(newChatSendState());
+  const attaching = useRef(false);
+  const lifetime = useRef({ mounted: true, focused, epoch: 0 });
+  if (lifetime.current.focused !== focused) {
+    lifetime.current.focused = focused;
+    lifetime.current.epoch += 1;
+  }
+  useEffect(() => {
+    const page = lifetime.current;
+    page.mounted = true;
+    return () => {
+      page.mounted = false;
+      page.epoch += 1;
+    };
+  }, []);
 
   const candidates = useMemo<MentionCandidate[]>(
     () =>
@@ -80,10 +99,10 @@ export function NewChatScreen({ agentId, compose }: { agentId: string; compose: 
   const selectedSkill = useComposerBridge((s) => s.skill);
   const chooseSkill = composer.chooseSkill;
   useEffect(() => {
-    if (!focused || !selectedSkill) return;
+    if (!focused || sending || pending.current.sending || !selectedSkill) return;
     useComposerBridge.setState({ skill: null });
     chooseSkill(selectedSkill);
-  }, [focused, selectedSkill, chooseSkill]);
+  }, [focused, selectedSkill, chooseSkill, sending]);
 
   // Starters: my skills for this Agent, else its template's opening lines.
   const [starters, setStarters] = useState<{ skills: Skill[]; lines: string[] } | null>(null);
@@ -106,46 +125,54 @@ export function NewChatScreen({ agentId, compose }: { agentId: string; compose: 
     transform: [{ translateY: -Math.max(0, Math.abs(kbHeight.value) - insets.bottom) / 2 }],
   }));
 
-  const [sending, setSending] = useState(false);
-  const { build, take, restore } = composer;
+  const { build, take } = composer;
   const send = useCallback(async () => {
-    if (sending) return;
+    if (pending.current.sending || attaching.current || !lifetime.current.focused) return;
     const built = build();
     if (!built) return;
+    if ('tooManyFiles' in built) {
+      alertError(tNow('composer.maxFiles', { n: MAX_FILES }));
+      return;
+    }
     if ('missing' in built) {
       alertError(tNow('composer.required', { name: built.missing }));
       return;
     }
-    const draft = take();
+    const generation = useWorkspace.getState().generation;
+    const epoch = lifetime.current.epoch;
+    const current = () => lifetime.current.mounted && generation === useWorkspace.getState().generation;
+    const active = () => current() && lifetime.current.focused && lifetime.current.epoch === epoch;
+    // Keep the submitted draft visible and lock every input until this HTTP action settles.
+    // Failures and a focus change then need no restore, and cannot overwrite a newer draft.
     setSending(true);
     Keyboard.dismiss();
-    const chat = await createConversation({
-      kind: 'chat',
-      ...(answering && !answering.is_main ? { agent_id: answering.id } : {}),
-    });
-    if (!chat.ok) {
-      setSending(false);
-      restore(draft);
-      alertError(tNow('conversation.createFailed'), chat.message || undefined);
-      return;
-    }
-    const sent = await sendMessage(chat.data.id, built.input);
-    setSending(false);
-    useWorkspace.getState().putConversation(chat.data);
-    if (!sent.ok) {
-      restore(draft);
-      alertError(tNow('conversation.sendFailed'), sent.message || undefined);
-      openConversation(router, { id: chat.data.id, title: chat.data.title });
-      return;
-    }
-    void useThreads
-      .getState()
-      .open(chat.data.id)
-      .then(() => {
-        useThreads.getState().addMessages(chat.data.id, [sent.data.message]);
+    try {
+      const result = await sendNewChat(pending.current, targetId, built.input, {
+        current,
+        active,
+        create: createConversation,
+        send: sendMessage,
+        read: getConversation,
+        remember: (chat) => useWorkspace.getState().putConversation(chat),
       });
-    openConversation(router, { id: chat.data.id, title: chat.data.title });
-  }, [sending, build, take, restore, answering, router]);
+      if (!current()) return;
+      if (result.status === 'sent') {
+        take();
+        if (active()) {
+          // Thread reads carry their own workspace generation guard.
+          void useThreads.getState().open(result.conversationId);
+          openConversation(router, { id: result.conversationId });
+        }
+      } else if (result.status === 'failed' && active()) {
+        alertError(
+          tNow(result.stage === 'create' ? 'conversation.createFailed' : 'conversation.sendFailed'),
+          result.error.message || undefined,
+        );
+      }
+    } finally {
+      if (current()) setSending(false);
+    }
+  }, [build, take, targetId, router]);
 
   const headerModel = useMemo<HeaderModel>(
     () => ({
@@ -162,13 +189,21 @@ export function NewChatScreen({ agentId, compose }: { agentId: string; compose: 
     [t, answering, summary],
   );
 
-  const accessory = composer.picker.length ? (
-    <PickerStrip entries={composer.picker} faces={faces} onPick={composer.pick} />
+  const accessory = sending ? null : composer.picker.length ? (
+    <PickerStrip
+      entries={composer.picker}
+      faces={faces}
+      onPick={(entry) => {
+        if (!pending.current.sending) composer.pick(entry);
+      }}
+    />
   ) : composer.skill?.variables.length ? (
     <SkillFields
       skill={composer.skill}
       values={composer.fields}
-      onChange={composer.setField}
+      onChange={(key, value) => {
+        if (!pending.current.sending) composer.setField(key, value);
+      }}
       onSubmit={() => void send()}
     />
   ) : null;
@@ -178,7 +213,11 @@ export function NewChatScreen({ agentId, compose }: { agentId: string; compose: 
         { id: 'agent', title: tNow('composer.pickAgent'), icon: 'at' as const },
         ...(skills.length ? [{ id: 'skills', title: tNow('composer.skills'), icon: 'wand' as const }] : []),
       ],
-      onSelect: (choice: string) => (choice === 'agent' ? composer.startMention() : composer.startSkill()),
+      onSelect: (choice: string) => {
+        if (pending.current.sending) return;
+        if (choice === 'agent') composer.startMention();
+        else composer.startSkill();
+      },
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the starters are stable callbacks of the composer
     [skills.length, composer.startMention, composer.startSkill],
@@ -220,7 +259,10 @@ export function NewChatScreen({ agentId, compose }: { agentId: string; compose: 
               {skillStartersShown.map((skill) => (
                 <Pressable
                   key={skill.id}
-                  onPress={() => composer.chooseSkill(skill)}
+                  disabled={sending}
+                  onPress={() => {
+                    if (!pending.current.sending) composer.chooseSkill(skill);
+                  }}
                   accessibilityRole="button"
                   style={({ pressed }) => [styles.starter, pressed && styles.pressed]}
                 >
@@ -234,7 +276,9 @@ export function NewChatScreen({ agentId, compose }: { agentId: string; compose: 
               {lines.map((line) => (
                 <Pressable
                   key={line}
+                  disabled={sending}
                   onPress={() => {
+                    if (pending.current.sending) return;
                     composer.setValue(line);
                     composer.focus();
                   }}
@@ -257,21 +301,38 @@ export function NewChatScreen({ agentId, compose }: { agentId: string; compose: 
           <Composer
             ref={composer.inputRef}
             value={composer.value}
-            onChangeText={composer.setValue}
+            onChangeText={(value) => {
+              if (!pending.current.sending) composer.setValue(value);
+            }}
             onSend={() => void send()}
             sending={sending}
-            onAttach={(from) => void composer.attach(from)}
+            locked={sending}
+            onAttach={(from) => {
+              if (pending.current.sending || attaching.current) return;
+              attaching.current = true;
+              void composer.attach(from).finally(() => {
+                attaching.current = false;
+              });
+            }}
             quote={composer.quote?.text ?? null}
-            onClearQuote={() => composer.setQuote(null)}
+            onClearQuote={() => {
+              if (!pending.current.sending) composer.setQuote(null);
+            }}
             files={composer.files}
-            onRemoveFile={composer.removeFile}
-            onRetryFiles={composer.retryFiles}
+            onRemoveFile={(id) => {
+              if (!pending.current.sending) composer.removeFile(id);
+            }}
+            onRetryFiles={() => {
+              if (!pending.current.sending) composer.retryFiles();
+            }}
             skill={
               composer.skill
                 ? `/${composer.skill.name}${composer.skill.display_name ? ` · ${composer.skill.display_name}` : ''}`
                 : null
             }
-            onClearSkill={composer.clearSkill}
+            onClearSkill={() => {
+              if (!pending.current.sending) composer.clearSkill();
+            }}
             placeholder={t('composer.placeholder', { name: answering?.name ?? 'Greeny' })}
             autoFocus={compose}
             onHeight={setComposerH}

@@ -7,7 +7,7 @@ import { loadReader as sourceReader } from '../tables/access.js';
  * so the transcript has one order. Turns (who answers and when) belong to the engine.
  */
 
-import { and, asc, desc, eq, gt, ilike, inArray, isNotNull, isNull, lt, notInArray, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, ilike, inArray, isNotNull, isNull, lt, lte, notInArray, or, sql } from 'drizzle-orm';
 import type {
   AgentAvatar,
   Conversation,
@@ -51,13 +51,14 @@ import {
   type NewMessage,
 } from '@greenhouse/db';
 import { agentGreeting } from '@greenhouse/types/agent-templates';
+import { flattenRichOutput } from '@greenhouse/types/rich-output';
 import { parseMentions } from '@greenhouse/utils/mentions';
 import { toErrorMessage } from '@greenhouse/utils/error';
 import { logger } from '@greenhouse/utils/logger';
 import { audit } from '../../audit.js';
 import { parseStoredDigest, renderDigest } from '../../engine/digest.js';
 import type { z } from 'zod';
-import { conflict, invalidInput, notFound } from '../../http/errors.js';
+import { ApiError, conflict, invalidInput, notFound } from '../../http/errors.js';
 import { containing } from '../../http/like.js';
 import type { ProvidersService } from '../../providers/service.js';
 import type { Hub } from '../../realtime/hub.js';
@@ -114,6 +115,9 @@ export const toMessage = (row: MessageRow): Message => ({
 });
 
 const ACTIVE_TURN = ['queued', 'running'] as const;
+// A fork is all-or-nothing; a larger transcript must never be silently sliced to fit.
+const FORK_MESSAGE_LIMIT = 500;
+const FORK_TEXT_LIMIT = 200_000;
 
 type Citation = Message['citations'][number];
 /** The docs and table records a message names as sources. */
@@ -402,6 +406,7 @@ export function createConversationsService(deps: {
       })),
       agent_ids: present.map((agent) => agent.id),
       digest: await renderedDigest(memberId, row),
+      forked_from_message_id: row.forkedFromMessageId,
     };
   }
 
@@ -612,6 +617,123 @@ export function createConversationsService(deps: {
     async create(memberId: string, input: CreateInput): Promise<ConversationDetail> {
       if (input.kind === 'direct') return detail(memberId, await service.ensureDirect(memberId, input.agent_id));
       if (input.kind === 'chat') {
+        if (input.forked_from_message_id) {
+          if (input.agent_id !== undefined || input.model !== undefined || input.context !== undefined) {
+            throw invalidInput('A fork keeps its source Agent, model and page context.');
+          }
+          return transaction(async (db) => {
+            // Lock both the boundary and the reader's current seat until the snapshot commits.
+            const [source] = await db
+              .select({ message: messages, conversation: conversations })
+              .from(messages)
+              .innerJoin(conversations, eq(conversations.id, messages.conversationId))
+              .innerJoin(
+                conversationMembers,
+                and(
+                  eq(conversationMembers.conversationId, conversations.id),
+                  eq(conversationMembers.memberId, memberId),
+                ),
+              )
+              .where(and(eq(messages.id, input.forked_from_message_id!), eq(messages.visible, true)))
+              .for('share');
+            if (!source) throw notFound('Source reply');
+            if (source.message.role !== 'assistant' || source.message.status !== 'complete') {
+              throw conflict('fork_reply_unavailable', 'Choose a completed Agent reply to start a new chat.');
+            }
+            // A room's other participants must not become the asker's instructions in a private chat.
+            if (source.conversation.kind === 'room') {
+              throw conflict('fork_source_unsupported', 'Start a new chat from a one-to-one conversation.');
+            }
+            const agent = source.message.agentId ? await deps.agents.findOwn(memberId, source.message.agentId) : null;
+            if (!agent) {
+              throw conflict('fork_agent_unavailable', 'The reply must be from one of your own available Agents.');
+            }
+            if (agent.archivedAt) throw conflict('agent_archived', 'This Agent is archived.');
+            if (agent.pausedAt) throw conflict('agent_paused', 'An admin paused this Agent.');
+            if (source.conversation.context) {
+              await deps.pageContext(memberId, source.conversation.context as PageContext);
+            }
+            if (
+              source.conversation.model &&
+              !(await deps.providers.modelAvailable(source.conversation.model, { memberId }))
+            ) {
+              throw conflict('model_unavailable', 'The source conversation model is no longer available.');
+            }
+            const transcript = await db
+              .select()
+              .from(messages)
+              .where(
+                and(
+                  eq(messages.conversationId, source.conversation.id),
+                  eq(messages.visible, true),
+                  inArray(messages.role, ['user', 'assistant']),
+                  lte(messages.seq, source.message.seq),
+                ),
+              )
+              .orderBy(asc(messages.seq))
+              .limit(FORK_MESSAGE_LIMIT + 1)
+              .for('share');
+            const characters = transcript.reduce(
+              (sum, message) => sum + message.content.length + (message.quote?.text.length ?? 0),
+              0,
+            );
+            if (transcript.length > FORK_MESSAGE_LIMIT || characters > FORK_TEXT_LIMIT) {
+              throw conflict('fork_too_large', 'A fork can copy at most 500 messages and 200,000 characters.');
+            }
+            if (transcript.some((message) => message.status === 'streaming')) {
+              throw conflict('fork_reply_unavailable', 'The source context still contains an unfinished reply.');
+            }
+            if (transcript.some((message) => message.role === 'user' && message.authorMemberId !== memberId)) {
+              throw conflict('fork_source_unsupported', "A private fork can only carry its owner's member messages.");
+            }
+            const readableFiles = new Set<string>();
+            for (const id of new Set(transcript.flatMap((message) => message.attachments))) {
+              try {
+                await deps.files.get(memberId, id);
+                readableFiles.add(id);
+              } catch (error) {
+                if (!(error instanceof ApiError) || error.code !== 'not_found') throw error;
+              }
+            }
+            const ids = new Map(transcript.map((message) => [message.id, newId('message')]));
+            const row = (await open(
+              memberId,
+              {
+                kind: 'chat',
+                agentId: agent.id,
+                title: input.title ?? '',
+                model: source.conversation.model,
+                context: source.conversation.context,
+                forkedFromMessageId: source.message.id,
+              },
+              null,
+            ))!;
+            for (const message of transcript) {
+              const visibleSources = await sourcesFor(memberId, citedSources(message.citations), message.agentId);
+              // Only inert display context crosses the boundary. Rich actions become Markdown;
+              // runs, approvals, events, skill invocations, mentions and feedback are not replayed.
+              await service.append(row.id, {
+                id: ids.get(message.id)!,
+                role: message.role,
+                authorMemberId: message.authorMemberId,
+                agentId: message.agentId,
+                content: message.role === 'assistant' ? flattenRichOutput(message.content) : message.content,
+                quote: message.quote
+                  ? { messageId: ids.get(message.quote.messageId) ?? message.quote.messageId, text: message.quote.text }
+                  : null,
+                attachments: message.attachments.filter((id) => readableFiles.has(id)),
+                citations: visibleSources(message.citations),
+                status: message.status,
+              });
+            }
+            // The copied text has already been read. No digest is copied: it can include later turns.
+            await db
+              .update(conversationMembers)
+              .set({ lastReadSeq: transcript.length })
+              .where(and(eq(conversationMembers.conversationId, row.id), eq(conversationMembers.memberId, memberId)));
+            return service.get(memberId, row.id);
+          });
+        }
         if (input.context) await deps.pageContext(memberId, input.context);
         const loaded = await deps.agents.load(memberId, input.agent_id ?? 'main');
         if (loaded.agent.archivedAt) throw conflict('agent_archived', 'This Agent is archived.');

@@ -190,6 +190,13 @@ describe('background source provenance', () => {
         usable: async () => [],
         mine: s.services.connectors.mine,
         findTool: async () => ({ connector: { id, slug: 'source' }, tool: { name: 'read', readOnly: true } }),
+        readAccess: async () => ({
+          connector: { id, slug: 'source' },
+          tool: { name: 'read', readOnly: true, destructive: false },
+          binding: `test-${authMode}`,
+          private: authMode !== 'none',
+          trustedReadOnly: false,
+        }),
         run: async () => ({ text: 'Source content. '.repeat(1000), isError: false }),
       } as unknown as ConnectorsService;
       const r = await s.run([connectorTool(remote)]);
@@ -237,7 +244,7 @@ describe('background source provenance', () => {
     await expect(r.call('web_fetch', { url: 'https://example.com/next' })).rejects.toThrow('read private data');
   });
 
-  it('offers recall only to background models and rejects memory writes before recording a step', async () => {
+  it('offers recall only to background models and records a visible refusal after private recall', async () => {
     const s = await setup();
     const r = await s.run();
     const memory = r.tools.tools.memory!;
@@ -252,6 +259,12 @@ describe('background source provenance', () => {
     await expect(r.call('web_fetch', { url: 'https://example.com/leak' })).rejects.toThrow('read private data');
     expect((await getDb().select().from(runSteps).where(eq(runSteps.runId, r.runId))).map((s) => s.toolName)).toEqual([
       'memory',
+      'web_fetch',
     ]);
+    const [refusal] = await getDb()
+      .select()
+      .from(runSteps)
+      .where(and(eq(runSteps.runId, r.runId), eq(runSteps.toolName, 'web_fetch')));
+    expect(refusal).toMatchObject({ status: 'failed', error: { code: 'background_private_outbound' } });
   });
 });

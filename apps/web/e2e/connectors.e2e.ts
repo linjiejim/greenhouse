@@ -1,8 +1,7 @@
 import { expect, test } from '@playwright/test';
+import type { Connector } from '@greenhouse/contract';
 import { apiAs, MCP_KEY, mcpUrl } from './api';
 import { as, open } from './fixtures';
-
-type Connector = { id: string; slug: string };
 
 test('admin: install a connector from its address, choose what Agents may run, delete one from the catalog', async ({
   page,
@@ -23,13 +22,13 @@ test('admin: install a connector from its address, choose what Agents may run, d
   // Installed: its drawer opens with the tools it listed.
   const drawer = page.getByRole('dialog', { name: 'Helpdesk' });
   await expect(drawer.getByText('3 个工具 · 刚刚列出')).toBeVisible();
-  const free = (name: string) => drawer.getByRole('switch', { name: `${name} 免确认` });
-  // Declared read-only always runs freely; a tool that may delete data never can.
-  await expect(free('lookup_order')).toHaveAttribute('aria-checked', 'true');
-  await expect(free('lookup_order')).toBeDisabled();
-  await expect(free('delete_ticket')).toBeDisabled();
-  await free('create_ticket').click();
-  await expect(free('create_ticket')).toHaveAttribute('aria-checked', 'true');
+  const confirmed = (name: string) => drawer.getByRole('switch', { name: `${name} 管理员确认只读` });
+  // A server declaration and an admin's confirmation are independent; destructive tools cannot be confirmed.
+  await expect(confirmed('lookup_order')).toHaveAttribute('aria-checked', 'false');
+  await expect(confirmed('lookup_order')).toBeEnabled();
+  await expect(confirmed('delete_ticket')).toBeDisabled();
+  await confirmed('create_ticket').click();
+  await expect(confirmed('create_ticket')).toHaveAttribute('aria-checked', 'true');
   await drawer.getByRole('switch', { name: 'Agent 可用 delete_ticket' }).click();
   await expect(drawer.getByRole('switch', { name: '全部工具' })).toHaveAttribute('aria-checked', 'false');
   await drawer.getByRole('button', { name: '测试连接' }).click();
@@ -45,7 +44,10 @@ test('admin: install a connector from its address, choose what Agents may run, d
   await expect(row).toContainText('helpdesk · 无需鉴权 · 2 个工具 · 0 人已连接');
   await row.click();
   const again = page.getByRole('dialog', { name: 'Helpdesk' });
-  await expect(again.getByRole('switch', { name: 'create_ticket 免确认' })).toHaveAttribute('aria-checked', 'true');
+  await expect(again.getByRole('switch', { name: 'create_ticket 管理员确认只读' })).toHaveAttribute(
+    'aria-checked',
+    'true',
+  );
   await expect(again.getByRole('switch', { name: 'Agent 可用 delete_ticket' })).toHaveAttribute(
     'aria-checked',
     'false',
@@ -66,6 +68,66 @@ test('admin: install a connector from its address, choose what Agents may run, d
   await confirm.getByRole('button', { name: '删除连接器' }).click();
   await expect(page.getByRole('button', { name: /Amap Maps/ })).toHaveCount(0);
   await expect(page.getByRole('button', { name: /Helpdesk/ })).toBeVisible();
+});
+
+test('admin: explicitly confirms and revokes a server-declared read-only tool without changing its declaration', async ({
+  page,
+  request,
+}) => {
+  const installed = await apiAs<Connector>(request, 'lin', 'POST', '/api/admin/connectors', {
+    slug: 'confirmed-read-desk',
+    name: 'Confirmed Read Desk',
+    url: mcpUrl('open'),
+    auth_mode: 'none',
+  });
+  const lookup = (connector: Connector) => connector.tools.find((tool) => tool.name === 'lookup_order');
+  expect(installed.read_only_tools).toEqual([]);
+  expect(lookup(installed)).toMatchObject({ declared_read_only: true, read_only: true });
+  await open(page, '/#/admin/connectors');
+  await page.getByRole('button', { name: /Confirmed Read Desk/ }).click();
+  const drawer = page.getByRole('dialog', { name: 'Confirmed Read Desk' });
+  const confirmed = drawer.getByRole('switch', { name: 'lookup_order 管理员确认只读' });
+  const destructive = drawer.getByRole('switch', { name: 'delete_ticket 管理员确认只读' });
+  await expect(drawer.getByRole('columnheader', { name: '管理员确认只读' })).toBeVisible();
+  await expect(drawer.getByRole('row').filter({ hasText: 'lookup_order' })).toContainText('服务声明只读');
+  await expect(confirmed).toBeEnabled();
+  await expect(confirmed).toHaveAttribute('aria-checked', 'false');
+  await expect(destructive).toBeDisabled();
+  await expect(destructive).toHaveAttribute('aria-checked', 'false');
+  const changed = () =>
+    page.waitForResponse(
+      (response) =>
+        response.request().method() === 'PATCH' &&
+        new URL(response.url()).pathname === `/api/admin/connectors/${installed.id}`,
+    );
+  const confirming = changed();
+  await confirmed.click();
+  const confirmedResponse = await confirming;
+  expect(confirmedResponse.status()).toBe(200);
+  expect(confirmedResponse.request().postDataJSON()).toEqual({ read_only_tools: ['lookup_order'] });
+  const saved = (await confirmedResponse.json()) as Connector;
+  expect(saved.read_only_tools).toEqual(['lookup_order']);
+  expect(lookup(saved)).toMatchObject({ declared_read_only: true, read_only: true });
+  const list = await apiAs<{ items: Connector[] }>(request, 'lin', 'GET', '/api/admin/connectors');
+  expect(list.items.find((connector) => connector.id === installed.id)?.read_only_tools).toEqual(['lookup_order']);
+  await page.reload();
+  await page.getByRole('button', { name: /Confirmed Read Desk/ }).click();
+  await expect(confirmed).toHaveAttribute('aria-checked', 'true');
+  const revoking = changed();
+  await confirmed.click();
+  const revokedResponse = await revoking;
+  expect(revokedResponse.status()).toBe(200);
+  expect(revokedResponse.request().postDataJSON()).toEqual({ read_only_tools: [] });
+  const revoked = (await revokedResponse.json()) as Connector;
+  expect(revoked.read_only_tools).toEqual([]);
+  expect(lookup(revoked)).toMatchObject({ declared_read_only: true, read_only: true });
+  await page.reload();
+  await page.getByRole('button', { name: /Confirmed Read Desk/ }).click();
+  await expect(confirmed).toHaveAttribute('aria-checked', 'false');
+  await expect(confirmed).toBeEnabled();
+  await expect(drawer.getByRole('row').filter({ hasText: 'lookup_order' })).toContainText('服务声明只读');
+  await expect(destructive).toBeDisabled();
+  await expect(destructive).toHaveAttribute('aria-checked', 'false');
 });
 
 test('admin: a Registry search is slow, says so, and fills the address form or points at the catalog', async ({
