@@ -67,6 +67,7 @@ The v2 web app. Product scope is docs/product/prd.md §6–7; layout and compone
 
 - Published Agent budgets use the shared usage facts and UTC month; owners edit them on Publish, admins on Public Agents.
 - Directory filters stay local to a module and filter loaded entries; arrows move between results, Enter opens and Escape clears then closes.
+- A page takes focus on open only when lib/focus focusUnclaimed allows it: never from where the member moved while it loaded. Directory rows carry data-row-key (href, else title); a refresh that moves or remounts the focused row gives focus back to the same key.
 - Extension pages/sections/panels render only when the authenticated manifest declares them; only extensions/index.ts imports concrete extensions.
 - Computer fullscreen reuses the mounted viewer in pages and drawers. Only control canvases capture keys; host shortcuts and drawer Escape do not receive those keys. Queued computers poll their position.
 - Custom app frames use the platform double srcdoc wrapper, sandbox=allow-scripts only, source-checked JSON-RPC and declared read bindings. Unapproved versions show a placeholder; external card results render as text/chart data. Admin code review is in the app center.

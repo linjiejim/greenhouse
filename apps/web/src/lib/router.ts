@@ -343,6 +343,12 @@ export function leaveTo(attempt: Attempt, options: { replace?: boolean } = {}) {
   history.back();
 }
 
+/** What had focus when the route last changed (lib/focus.ts); kept from the first navigation on. */
+let focusedAtNavigation: Element | null = null;
+if (typeof window !== 'undefined')
+  window.addEventListener('hashchange', () => (focusedAtNavigation = document.activeElement), true);
+export const focusAtNavigation = () => focusedAtNavigation;
+
 function subscribe(onChange: () => void) {
   const listener = () => {
     if (!held()) onChange();

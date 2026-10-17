@@ -171,6 +171,74 @@ test('all seven module directories filter their own entries and support arrows, 
   }
 });
 
+test('a conversation page that opens after the member reached the directory leaves their focus there', async ({
+  page,
+  request,
+}) => {
+  await apiAs(request, 'lin', 'POST', '/api/conversations', { kind: 'chat', title: 'T11LateConversation' });
+  // The page's code arrives only once a directory row has focus, as on a slow load.
+  let release = () => {};
+  const arrived = new Promise<void>((resolve) => (release = resolve));
+  await page.route(/\/src\/pages\/conversation\/ConversationPage\.tsx/, async (route) => {
+    await arrived;
+    await route.continue();
+  });
+  await page.goto('/#/c/main');
+  const directory = page.getByRole('complementary', { name: '目录' });
+  await directory.getByRole('button', { name: /^搜索/ }).click();
+  const search = directory.getByRole('textbox');
+  await search.fill('t11lateconversation');
+  await page.mouse.move(0, 0);
+  await search.press('ArrowDown');
+  const row = directory.getByRole('link', { name: 'T11LateConversation' });
+  await expect(row).toBeFocused();
+  release();
+  await expect(composer(page)).toBeVisible();
+  await expect(row).toBeFocused();
+  await page.keyboard.press('Escape');
+  if (!(await search.evaluate((input) => input === document.activeElement))) await page.keyboard.press('Escape');
+  await expect(search).toBeFocused();
+});
+
+test('opening a conversation from the rail or a directory row puts focus in its composer', async ({
+  page,
+  request,
+}) => {
+  await apiAs(request, 'lin', 'POST', '/api/conversations', { kind: 'chat', title: 'T11OpenConversation' });
+  // From another module, so the conversation page loads for the first time on this click.
+  await open(page, '/#/agents');
+  await page.getByRole('button', { name: '对话', exact: true }).click();
+  await expect(composer(page)).toBeFocused();
+  await page.getByRole('complementary', { name: '目录' }).getByRole('link', { name: 'T11OpenConversation' }).click();
+  await expect(page.getByRole('main').getByRole('heading', { name: 'T11OpenConversation' })).toBeVisible();
+  await expect(composer(page)).toBeFocused();
+});
+
+test('a directory row that a refresh moves keeps keyboard focus', async ({ page, request }) => {
+  const older = await apiAs<{ id: string }>(request, 'lin', 'POST', '/api/conversations', {
+    kind: 'chat',
+    title: 'T11Keep older',
+  });
+  await apiAs(request, 'lin', 'POST', '/api/conversations', { kind: 'chat', title: 'T11Keep newer' });
+  await open(page, '/#/c/main');
+  const directory = page.getByRole('complementary', { name: '目录' });
+  await directory.getByRole('button', { name: /^搜索/ }).click();
+  const search = directory.getByRole('textbox');
+  await search.fill('t11keep');
+  const rows = directory.locator('a.app-row');
+  await expect(rows).toHaveText(['T11Keep newer', 'T11Keep older']);
+  await page.mouse.move(0, 0);
+  await search.press('ArrowDown');
+  const newer = directory.getByRole('link', { name: 'T11Keep newer' });
+  await expect(newer).toBeFocused();
+  // New activity puts the other chat first; the list re-orders under the focused row.
+  await apiAs(request, 'lin', 'POST', `/api/conversations/${older.id}/messages`, { content: 'T11 keep moving' });
+  await expect(rows).toHaveText(['T11Keep older', 'T11Keep newer']);
+  await expect(newer).toBeFocused();
+  await page.keyboard.press('ArrowUp');
+  await expect(directory.getByRole('link', { name: 'T11Keep older' })).toBeFocused();
+});
+
 test('operations and new surfaces render in light, dark and at 390 px without horizontal overflow', async ({
   page,
   request,
