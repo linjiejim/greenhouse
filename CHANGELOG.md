@@ -5,6 +5,20 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.0](https://github.com/linjiejim/greenhouse/compare/v2.1.0...v2.2.0) (2026-10-17)
+
+
+### Added
+
+* **desktop:** choose the server in the v2 web app ([18bd15a](https://github.com/linjiejim/greenhouse/commit/18bd15a33f89e2b9568645b0eb276292faca9f99))
+
+
+### Fixed
+
+* **desktop:** read the crate directory when build.rs runs ([44f0df2](https://github.com/linjiejim/greenhouse/commit/44f0df2b554215c0269d836cca2291704db244d1))
+* **web:** keep keyboard focus in the directory while pages load and lists refresh ([#79](https://github.com/linjiejim/greenhouse/issues/79)) ([8856d9b](https://github.com/linjiejim/greenhouse/commit/8856d9bdcdcb4ea54700950df084f2db5471a0ec))
+* **web:** keep realtime message changes that land while a page is loading ([#81](https://github.com/linjiejim/greenhouse/issues/81)) ([78ab528](https://github.com/linjiejim/greenhouse/commit/78ab52806f9d5905fc04dfe02aeabfc1219671d2))
+
 ## [2.1.0](https://github.com/linjiejim/greenhouse/compare/v2.0.0...v2.1.0) (2026-10-16)
 
 
