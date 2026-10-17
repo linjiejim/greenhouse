@@ -32,6 +32,7 @@ import type { ConnectionRow, ConnectorRow } from '@greenhouse/db';
 import { toErrorMessage } from '@greenhouse/utils/error';
 import { logger } from '@greenhouse/utils/logger';
 import { createKeyedLock } from '../../engine/locks.js';
+import { ApiError } from '../../http/errors.js';
 import { knock } from './mcp.js';
 import { connectorFetch, isBrowserSafeUrl, type NetworkMode } from './network.js';
 import { placeOf, seal, unseal } from './secrets.js';
@@ -157,6 +158,7 @@ export class ConnectorOAuthProvider implements OAuthClientProvider {
   private verifier: string | null;
   /** The secrets `tokens()` handed out: the compare-and-set guard for a refresh. */
   private loaded: { row: ConnectionRow; sealed: string } | null = null;
+  private pinned: { id: string; sealed: string } | null = null;
   /** Every token this request saw, so a server that echoes one cannot pass it on. */
   private readonly seen = new Set<string>();
 
@@ -217,9 +219,16 @@ export class ConnectorOAuthProvider implements OAuthClientProvider {
     logger.info('[connectors] registered this workspace as an OAuth client', { connector: this.connector.slug });
   }
 
+  /** A prepared background read may refresh this credential, but cannot adopt a different sign-in. */
+  pinConnection(id: string, sealed: string): void {
+    this.pinned = { id, sealed };
+  }
+
   async tokens(): Promise<OAuthTokens | undefined> {
     if (this.mode !== 'call') return undefined;
     const row = await findConnection(this.memberId, this.connector.id);
+    if (this.pinned && (row?.id !== this.pinned.id || row.secretsEnc !== this.pinned.sealed))
+      throw new ApiError(403, 'connector_read_scope_changed', 'The connector sign-in changed before the read.');
     if (!row?.secretsEnc || row.status === 'needs_reauth') return undefined;
     const secrets = unseal<TokenSecrets>(this.deps.key, placeOf.connection(row.id), row.secretsEnc);
     // Unreadable (the key changed): treated as no sign-in, so the call ends in "reconnect".
@@ -251,8 +260,10 @@ export class ConnectorOAuthProvider implements OAuthClientProvider {
     }
     if (this.mode !== 'call' || !this.loaded) return;
     const written = await replaceTokens(this.deps.key, this.loaded.row, this.loaded.sealed, secrets, expiresAt);
-    if (written) this.loaded = { row: this.loaded.row, sealed: written };
-    else logger.info('[connectors] another request refreshed this sign-in first', { connector: this.connector.slug });
+    if (written) {
+      this.loaded = { row: this.loaded.row, sealed: written };
+      if (this.pinned) this.pinned = { id: this.loaded.row.id, sealed: written };
+    } else logger.info('[connectors] another request refreshed this sign-in first', { connector: this.connector.slug });
   }
 
   /** The tokens this request used, to take out of anything the server sends back. */

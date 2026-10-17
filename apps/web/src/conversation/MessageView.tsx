@@ -165,7 +165,7 @@ export const MessageView = memo(function MessageView({
   rating?: 1 | -1 | null;
   onRate?: (rating: 1 | -1 | 0) => void;
   onQuote?: (text: string) => void;
-  onNewChat?: () => void;
+  onNewChat?: () => Promise<void>;
   /** The member's own last message: edit it in place. */
   onEdit?: (content: string) => Promise<unknown>;
   /** The last reply to the member: write it again. */
@@ -188,6 +188,7 @@ export const MessageView = memo(function MessageView({
   const [readError, setReadError] = useState('');
   const [editing, setEditing] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [forking, setForking] = useState(false);
   const streaming = message.status === 'streaming';
   const text = streaming ? liveText(message.content, stream) : message.content;
   const time = relativeTime(message.created_at, { locale, timeZone });
@@ -442,7 +443,20 @@ export const MessageView = memo(function MessageView({
                       ]
                     : []),
                   ...(onNewChat
-                    ? [{ label: t('message.newChatFromHere'), icon: <Split size={icon.sm} />, onClick: onNewChat }]
+                    ? [
+                        {
+                          label: t('message.newChatFromHere'),
+                          icon: <Split size={icon.sm} />,
+                          disabled: forking,
+                          onClick: () => {
+                            if (forking) return;
+                            setForking(true);
+                            void onNewChat()
+                              .catch((error: unknown) => notify(errorText(error, t)))
+                              .finally(() => setForking(false));
+                          },
+                        },
+                      ]
                     : []),
                   ...(onRegenerate
                     ? [

@@ -111,7 +111,9 @@ describe('table automations', () => {
     const rule = await app.services.automations.update(app.owner.id, initial.id, {
       ...initial,
       revision: initial.revision,
-      config: { actions: [{ type: 'webhook', url: 'https://example.com/hooks' }] },
+      // The transport above is a stub; a literal public address keeps this signing test
+      // independent of external DNS while retaining the production endpoint guard.
+      config: { actions: [{ type: 'webhook', url: 'https://1.1.1.1/hooks' }] },
     });
     expect(rule.webhook_secret).toBeTruthy();
     expect((await app.services.automations.list(app.owner.id, app.base.id, { limit: 20 })).items[0]).not.toHaveProperty(

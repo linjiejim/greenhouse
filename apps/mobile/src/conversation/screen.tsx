@@ -58,6 +58,7 @@ import { editableId, placeRequests, regenerableId, startsGroup } from '../data/t
 import { readStream } from '../data/streams';
 import { Composer, ReadOnlyBar } from '../chat/composer';
 import { useComposerBridge } from '../chat/composer-bridge';
+import { MAX_FILES } from '../chat/composer-files';
 import { AgentReply, EventLine, MemberMessage, type MessageAction } from '../chat/message';
 import { excerpt, plainText } from '../chat/text';
 import { useTurnAnchor } from '../chat/use-turn-anchor';
@@ -352,6 +353,10 @@ function MemberConversationScreen({
     if (sending) return;
     const built = build();
     if (!built) return;
+    if ('tooManyFiles' in built) {
+      alertError(t('composer.maxFiles', { n: MAX_FILES }));
+      return;
+    }
     if ('missing' in built) {
       alertError(t('composer.required', { name: built.missing }));
       return;

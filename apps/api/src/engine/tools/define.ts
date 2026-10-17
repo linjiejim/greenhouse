@@ -157,6 +157,10 @@ export interface ToolDef<I = any> {
   privateRead?(input: I, ctx: Omit<ToolContext, 'stepId' | 'raise' | 'endTurn'>): Promise<boolean>;
   /** Sends something out of Greenhouse (a search query, a URL). Unwatched runs stop using it after a private read. */
   outbound?: boolean;
+  /** A narrow, server-checked exception: local metadata or exact reads frozen before private data entered the run. */
+  allowPrivateOutbound?(input: I, ctx: Omit<ToolContext, 'stepId' | 'raise' | 'endTurn'>): Promise<boolean>;
+  /** A hybrid tool may keep metadata fresh and exclude execution-policy fields from its replay identity. */
+  replayKey?(input: I): string | null;
   /**
    * Offered in a turn of someone else's public Agent (default: not). Only tools that act on the
    * asker's own data or this conversation, with the asker's rights, may say yes.

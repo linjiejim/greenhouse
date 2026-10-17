@@ -263,6 +263,14 @@ apps/api/src/
 
 页面会话（CONV-28）：`POST /api/conversations` 的 chat.context 只接受引用 `{kind: doc|record|run|agent, id}`、`{kind: app, id, page_id?}` 或 `{kind: page, name}`。服务端验证对象访问，每轮按当前权限读取并作为不可信数据带入；不接受客户端内容快照。
 
+从回复新开会话（CONV-20）：`POST /api/conversations` 接受 `{kind: "chat", forked_from_message_id, title?}`。服务端在同一事务内复查来源会话成员权限、所选完整回复和回复 Agent 的当前可用性，复制截至该回复的全部可见 user / assistant 消息；新消息有独立 ID 和顺序，原会话不变，详情返回 `forked_from_message_id`。保留回复作者的同一 Agent、源会话的模型选择和仍可读的页面引用；不能同时覆盖 `agent_id` / `model` / `context`。来源已有归档或只读标记不妨碍读取快照，新会话可继续，原会话的标记不变。
+
+分支复制范围：目前支持本人 Agent 的 main / direct / chat，且历史成员消息均由本人发出；房间、他人的公开 Agent、仍有 streaming 历史、不可访问的来源明确拒绝。最多复制 500 条可见对话消息和 20 万字符（正文加引用文本），超过返回 `fork_too_large`，不会截断或退回空白会话。assistant 富块转为静态 Markdown；不复制源 digest（可能覆盖所选点之后）、事件、Skill 调用、工具步骤、运行、审批、待执行队列、推理和反馈。附件只保留当前可读的原文件引用，不移动文件或扩大权限，之后每次读文件仍查原 ACL；当前不可读的附件与知识引用不进入快照，其他文件服务错误中止创建。后续回合沿用普通对话的历史窗口与摘要规则。
+
+新会话首条发送（CONV-03）：Web 与 Mobile 在 create 成功后保留待发送 conversation ID，同一 Agent 的消息失败重试复用该 ID；切换 Agent 的待发送会话各自独立，切回可复用。create 自身失败可再次创建。消息发送返回 404 `not_found` 后，客户端单独读取该会话；只有该读取也明确返回 404 `not_found` 才清除这个 ID，保留草稿，下一次成员发送时重建。附件缺失、503 或无法核实都不丢弃已创建 ID。Mobile 发送失败停留在原输入框，成功后才跳转。此行为覆盖客户端收到明确发送失败的重试；请求已在服务器提交而响应丢失时的消息去重需要单独的幂等语义，不由这个客户端 ID 保留策略保证。
+
+Mobile 新会话在首条 HTTP 请求期间保留可见草稿并暂时锁定编辑，已有会话仍可继续输入下一条。同步发送锁拒绝同一时刻重复触发；显式 Agent ID 不因目录资料缺失回落主 Agent。每次异步返回检查原页面与 workspace 身份代际，切换身份后不再继续提交、写入缓存或导航；离开再返回也不恢复旧导航。临时失焦后的已知成功只消费原来锁住的草稿及待发送 ID，之后的新草稿仍会新建会话；创建成功但尚未发送时失焦，仅保存同一页面的本地 ID，等待下一次成员主动发送。
+
 M3 媒体与计数（#70）：
 - `POST /api/media/files/:id/save`，`{space?: personal|team, folder_id?}`：按成员权限将已有 artifact 复制到知识库，不改变原会话文件。
 - `GET /api/runs/:id` 增加 `progress`（0–100 或 null）和 `file_ids`；视频后台运行也走既有 list/cancel 接口，取消停止本地检查，普通 retry 拒绝 `media_not_retryable`。

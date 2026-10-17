@@ -46,6 +46,7 @@ import {
   useConversation,
   useConversationMembers,
   useConversations,
+  useCreateConversation,
   useDeleteConversation,
   useEditMessage,
   useMarkRead,
@@ -156,6 +157,7 @@ function ExistingConversation({ id, requestId }: { id: string; requestId?: strin
   const markRead = useMarkRead();
   const update = useUpdateConversation();
   const remove = useDeleteConversation();
+  const create = useCreateConversation();
   const rate = useRate(conversationId ?? '');
   const edit = useEditMessage(conversationId ?? '');
   const regenerate = useRegenerate(conversationId ?? '');
@@ -503,7 +505,14 @@ function ExistingConversation({ id, requestId }: { id: string; requestId?: strin
                     : undefined
                 }
                 onQuote={(text) => setQuote({ message_id: message.id, text: text.slice(0, 2000) })}
-                onNewChat={() => navigate('#/c/new')}
+                onNewChat={
+                  message.status === 'complete'
+                    ? async () => {
+                        const chat = await create.mutateAsync({ kind: 'chat', forked_from_message_id: message.id });
+                        navigate({ page: 'conversation', id: chat.id });
+                      }
+                    : undefined
+                }
                 onEdit={
                   message.id === editableId
                     ? (content) => edit.mutateAsync({ messageId: message.id, content }).catch(failed)

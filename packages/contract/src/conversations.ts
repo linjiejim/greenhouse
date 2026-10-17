@@ -49,6 +49,8 @@ export const conversationDetailSchema = conversationSchema.extend({
   /** Agents present besides the answering one (rooms, Agents pulled in). */
   agent_ids: z.array(z.string()),
   digest: z.string(),
+  /** The source reply of an independent transcript snapshot; null for ordinary conversations. */
+  forked_from_message_id: z.string().nullable(),
 });
 export type ConversationDetail = z.infer<typeof conversationDetailSchema>;
 
@@ -82,6 +84,8 @@ export const createConversationInputSchema = z.discriminatedUnion('kind', [
     model: z.string().trim().max(160).optional(),
     /** Page context brought by the page assistant. */
     context: pageContextSchema.optional(),
+    /** Copy visible context through this reply, keeping its Agent. Cannot override Agent, model or context. */
+    forked_from_message_id: z.string().min(1).max(100).optional(),
   }),
   z.object({
     kind: z.literal('room'),
