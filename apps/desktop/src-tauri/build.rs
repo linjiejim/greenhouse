@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 fn main() {
     stamp_app_versions();
@@ -12,6 +12,13 @@ fn main() {
 /// source, and extra installer origins. They are read with `option_env!` in the crate,
 /// so cargo must know to rebuild when they change — and a malformed value should
 /// fail here, at build time, rather than surface as a 404 on a user's machine.
+/// This crate's directory, read when the script runs. `env!` would bake in the path the
+/// script was compiled at, and the shared target dir (scripts/with-shared-target.mjs)
+/// reuses that binary from another, possibly deleted, worktree.
+fn manifest_dir() -> PathBuf {
+    PathBuf::from(std::env::var_os("CARGO_MANIFEST_DIR").expect("cargo sets CARGO_MANIFEST_DIR"))
+}
+
 fn check_deployment_env() {
     for name in [
         "GREENHOUSE_DESKTOP_API_BASE",
@@ -51,8 +58,8 @@ fn is_bare_http_origin(value: &str) -> bool {
 /// Keep the user-facing app version aligned with the root product release while
 /// retaining a separate compatibility version for native commands.
 fn stamp_app_versions() {
-    let desktop_manifest = Path::new(env!("CARGO_MANIFEST_DIR")).join("../package.json");
-    let root_manifest = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../package.json");
+    let desktop_manifest = manifest_dir().join("../package.json");
+    let root_manifest = manifest_dir().join("../../../package.json");
     println!("cargo:rerun-if-changed={}", desktop_manifest.display());
     println!("cargo:rerun-if-changed={}", root_manifest.display());
 
@@ -119,7 +126,7 @@ fn stamp_web_bundle_baseline() {
 fn commit_count() -> Option<String> {
     let output = std::process::Command::new("git")
         .args(["rev-list", "--count", "HEAD"])
-        .current_dir(env!("CARGO_MANIFEST_DIR"))
+        .current_dir(manifest_dir())
         .output()
         .ok()?;
     if !output.status.success() {
@@ -136,7 +143,7 @@ fn commit_count() -> Option<String> {
 /// run — failing closed, rather than accepting unsigned bundles.
 fn stamp_signing_key() {
     println!("cargo:rerun-if-env-changed=GREENHOUSE_WEB_BUNDLE_PUBKEY");
-    let local = Path::new(env!("CARGO_MANIFEST_DIR")).join("../.keys/web-bundle-sign.pub");
+    let local = manifest_dir().join("../.keys/web-bundle-sign.pub");
     println!("cargo:rerun-if-changed={}", local.display());
 
     let key = std::env::var("GREENHOUSE_WEB_BUNDLE_PUBKEY")
