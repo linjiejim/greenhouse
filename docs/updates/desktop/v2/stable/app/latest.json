@@ -1,0 +1,15 @@
+{
+  "version": "2.2.0",
+  "notes": "Greenhouse 2.2.0",
+  "pub_date": "2026-10-17T11:10:15.872Z",
+  "platforms": {
+    "darwin-aarch64": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUeVgrOGpzRElFNG41N0pwUDk4cmV2R2J2T0JNdFp0YlRZMWE2bGEzbnlxRzhmVVpTWTcyT1NTTnE5RFBReWZxNDl3Y2llUCtzU21sQ0FyMTFwNlhhTFlqRVVhWU85VkFVPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkyMjM1NDE1CWZpbGU6R3JlZW5ob3VzZS5hcHAudGFyLmd6CnQ0MGk4YmlWaGhFNTRONDlWT1FuZkRSaGdiQnY4VGdkMlpNVExFcXNlL3NNNURRS2dTRDRhelduajVXUklYME5uOEJjdlJoN3RXemxiV3BnRFF2Y0FBPT0K",
+      "url": "https://github.com/linjiejim/greenhouse/releases/download/v2.2.0/Greenhouse-2.2.0-aarch64.app.tar.gz"
+    },
+    "windows-x86_64": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUeVgrOGpzRElFNG0wNks5QVA1bUJiVEVBU1hzMG9SMUZMZjllYnRIb29Ec3ZKMVUvUDhjcVNwRk4vY2RBWDVIOFhHVFRyMVZIdnQramF3ellUTGpWOU9HTHNBZHkwcWdJPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkyMjM1NTgxCWZpbGU6R3JlZW5ob3VzZV8yLjIuMF94NjQtc2V0dXAuZXhlCkV1TkxVcUpnaW90aDN5b1VvdWZURXBTWHR6WnZodW9lZnozMXg1NjRYQ1lMNVlWZ3dVUk5iUXVsWXQwazlhVmpJSmlOT2Z3ZDA5eUk1bXp1cHRJM0NBPT0K",
+      "url": "https://github.com/linjiejim/greenhouse/releases/download/v2.2.0/Greenhouse-2.2.0-x86_64-setup.exe"
+    }
+  }
+}
