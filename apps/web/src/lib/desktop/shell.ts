@@ -22,6 +22,19 @@ export type WebUpdateResult =
   | { status: 'needs_newer_shell'; required: string };
 export type ShellUpdatePreparation = { status: 'ready'; version: string } | { status: 'up_to_date' };
 export type ShellUpdateResult = { status: 'installed'; version: string } | { status: 'up_to_date' };
+/** settings.rs DesktopSettingsView; shortcuts and the selection watcher come later. */
+export interface DesktopSettings {
+  apiBaseUrl: string;
+  /** The build fixed the server: show it, never offer to change it. */
+  apiBaseLocked: boolean;
+}
+/** commands/system.rs DesktopInfo. */
+export interface DesktopInfo {
+  shellVersion: string;
+  webBundleVersion: string;
+  platform: string;
+  arch: string;
+}
 
 /** The shell commands this bundle calls; names and shapes mirror src-tauri/src/commands. */
 interface Commands {
@@ -31,6 +44,9 @@ interface Commands {
   desktop_prepare_shell_update: { args: undefined; result: ShellUpdatePreparation };
   desktop_install_shell_update: { args: undefined; result: ShellUpdateResult };
   desktop_restart: { args: undefined; result: void };
+  desktop_info: { args: undefined; result: DesktopInfo };
+  desktop_get_settings: { args: undefined; result: DesktopSettings };
+  desktop_set_api_base: { args: { url: string }; result: DesktopSettings };
   desktop_hide_quick_window: { args: undefined; result: void };
   desktop_hide_selection_bar: { args: undefined; result: void };
 }

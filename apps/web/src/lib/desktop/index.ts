@@ -1,9 +1,10 @@
 /**
  * Desktop shell support, kept to what an installed shell needs to run this bundle: the API
- * origin, API links, the boot handshake, hot updates and the log. Everything is a no-op in a
+ * origin and the server setting, API links, the boot handshake, hot updates and the log. Everything is a no-op in a
  * browser. Quick launch, the selection bar, the tray menu and capture come later (PRD §8.5).
  */
 
+import { finishServerSwitch } from './server';
 import { installApiUrls } from './urls';
 import { startUpdateChecks } from './updates';
 import { desktopApiBase, desktopLog, invokeDesktop, isDesktop } from './shell';
@@ -11,6 +12,14 @@ import { desktopApiBase, desktopLog, invokeDesktop, isDesktop } from './shell';
 export { apiUrl } from './urls';
 export { applyUpdate, checkForUpdates, useDesktopUpdate } from './updates';
 export { isDesktop } from './shell';
+export {
+  checkServer,
+  isFirstLaunch,
+  parseServerAddress,
+  switchServer,
+  useDesktopSettings,
+  type ServerCheck,
+} from './server';
 
 let started = false;
 let bootReported = false;
@@ -28,6 +37,7 @@ export function initDesktop(): boolean {
     return false;
   }
 
+  finishServerSwitch();
   installApiUrls(desktopApiBase());
   window.addEventListener('error', (event) =>
     desktopLog('error', `${event.message} at ${event.filename}:${event.lineno}`),

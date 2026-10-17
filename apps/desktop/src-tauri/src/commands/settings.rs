@@ -9,11 +9,12 @@ pub fn desktop_get_settings(state: State<'_, DesktopState>) -> DesktopSettingsVi
     settings::view(&state.settings(), settings::api_base_locked())
 }
 
-/// Point the app at a different Greenhouse server. **Development builds only.**
+/// Point the app at a different Greenhouse server. Refused when the build fixed one.
 ///
-/// Reloads the window rather than mutating anything live: the API base is injected
-/// before app scripts run, and half the app (auth tokens, open websocket, cached
-/// stores) is bound to the old server. A reload is the only coherent transition.
+/// Saves the setting and reloads the window, but the new base reaches the page only in
+/// a new process: the window's bootstrap script was built with the old base and a
+/// reload re-runs it unchanged. The web app therefore restarts the app after a switch
+/// (apps/web/src/lib/desktop/server.ts).
 #[tauri::command]
 pub fn desktop_set_api_base(
     app: tauri::AppHandle,
@@ -37,7 +38,7 @@ pub fn desktop_set_api_base(
     state.set_settings(next.clone());
 
     if let Some(window) = app.get_webview_window(crate::windows::MAIN) {
-        // The bootstrap script re-runs on navigation, so a reload picks up the new base.
+        // Ends the page bound to the old server; the web app then restarts the process.
         let _ = window.eval("window.location.reload()");
     }
 

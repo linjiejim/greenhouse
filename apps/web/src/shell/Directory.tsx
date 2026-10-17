@@ -1,4 +1,5 @@
 import { useExtensions } from '../extensions/host';
+import { isDesktop } from '../lib/desktop/shell';
 import { useI18n } from '../lib/i18n';
 import { FilteredAgents, FilteredSkills, FilteredRuns } from './FilteredDirectory';
 /**
@@ -17,6 +18,7 @@ import {
   KeyRound,
   LayoutGrid,
   Link2,
+  Monitor,
   PanelLeftClose,
   Plug,
   Plus,
@@ -55,6 +57,8 @@ export const SETTINGS: { id: SettingsSection; label: MessageKey; icon: LucideIco
   { id: 'vault', label: 'settings.vault', icon: KeyRound },
   { id: 'services', label: 'settings.services', icon: Server },
   { id: 'access', label: 'settings.access', icon: Shield },
+  // SET-09: only inside the desktop app.
+  ...(isDesktop() ? [{ id: 'desktop' as const, label: 'settings.desktop' as const, icon: Monitor }] : []),
 ];
 
 export const ADMIN: { id: AdminSection; label: MessageKey; icon: LucideIcon }[] = [

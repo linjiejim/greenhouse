@@ -7,6 +7,7 @@ import { NotFoundPage } from '../NotFoundPage';
 import { AccessSection } from './AccessSection';
 import { AccountSection } from './AccountSection';
 import { ConnectionsSection } from './ConnectionsSection';
+import { DesktopSection } from './DesktopSection';
 import { MyServicesSection } from './MyServicesSection';
 import { NotificationsSection } from './NotificationsSection';
 import { VaultSection } from './VaultSection';
@@ -30,6 +31,7 @@ export function SettingsPage({ section }: { section: SettingsSection }) {
       {section === 'notifications' && <NotificationsSection />}
       {section === 'vault' && <VaultSection />}
       {section === 'access' && <AccessSection />}
+      {section === 'desktop' && <DesktopSection />}
     </Page>
   );
 }
