@@ -178,7 +178,8 @@ artifacts; it creates no Release and publishes no manifest.
 **Hot update check:** `pnpm desktop:verify-web-update -- --local` (after `pnpm web:build`)
 serves this checkout as `v2/beta` from 127.0.0.1, signed with a throwaway key, and checks
 v(N-1) → v(N) staging, boot confirmation and a retained restart. Without `--local` it checks
-the published `v2/beta` (set `GREENHOUSE_WEB_BUNDLE_PUBKEY` to the `WEB_BUNDLE_PUBKEY` variable).
+the published `v2/beta`, or `v2/stable` with `--channel stable`, from the released tag (set
+`GREENHOUSE_WEB_BUNDLE_PUBKEY` to the `WEB_BUNDLE_PUBKEY` variable).
 
 Web changes between tags do **not** reach installed shells automatically — a hot update is cut
 per tag. Installed shells check 20 s after launch and every 4 h.

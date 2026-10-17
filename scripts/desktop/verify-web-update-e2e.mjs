@@ -3,21 +3,23 @@
  * Exercise the signed Web Bundle updater through the real Tauri application.
  *
  * The check compiles a debug shell whose embedded bundle is labelled one version
- * behind this checkout, points it at an isolated app-data directory and a beta
- * update source:
+ * behind this checkout, points it at an isolated app-data directory and an update
+ * channel (beta unless --channel stable):
  *
- *   launch 1: baseline mounts, then automatically downloads/stages beta current
+ *   launch 1: baseline mounts, then automatically downloads/stages the channel's current
  *   launch 2: staged current mounts and clears its boot watchdog
  *   launch 3: current mounts again, proving it was not falsely rolled back
  *
  *   node scripts/desktop/verify-web-update-e2e.mjs           the published v2 beta
+ *   node scripts/desktop/verify-web-update-e2e.mjs --channel stable   the published v2 stable
  *   node scripts/desktop/verify-web-update-e2e.mjs --local   this checkout, served locally
  *
  * The published check reads GREENHOUSE_DESKTOP_UPDATE_BASE (default the v2 path) and
- * needs GREENHOUSE_WEB_BUNDLE_PUBKEY (or apps/desktop/.keys) to match the CI key.
+ * needs GREENHOUSE_WEB_BUNDLE_PUBKEY (or apps/desktop/.keys) to match the CI key. Run it
+ * from the released tag, or set GREENHOUSE_WEB_BUNDLE_VERSION to the published version.
  * --local packages public/ (run `pnpm web:build` first; it replaces
  * apps/desktop/release/web), signs it with a throwaway key baked into this shell
- * only, and serves it from 127.0.0.1 as <base>/beta/web/. Nothing is published.
+ * only, and serves it from 127.0.0.1 as <base>/<channel>/web/. Nothing is published.
  *
  * It never touches the installed app's data or the stable update channel.
  */
@@ -42,18 +44,21 @@ const targetDir = sharedCargoTargetDir() ?? resolve(repoRoot, 'apps/desktop/src-
 const binary = resolve(targetDir, 'debug/greenhouse-desktop');
 const qaRoot = mkdtempSync(resolve(tmpdir(), 'greenhouse-web-update-e2e-'));
 const pointerPath = resolve(qaRoot, 'web-bundles/current.json');
-// The bundle the beta channel must be serving: this checkout's own version.
+// The bundle the channel must be serving: this checkout's own version.
 const expectedVersion = resolveWebBundleVersion(process.env, repoRoot);
 if (BigInt(expectedVersion) < 2n) {
   fail(`the web bundle version must be >= 2 to have a baseline one behind it, got ${expectedVersion}`);
 }
 const baselineVersion = String(BigInt(expectedVersion) - 1n);
 const local = process.argv.includes('--local');
+const channelFlag = process.argv.indexOf('--channel');
+const channel = channelFlag === -1 ? 'beta' : process.argv[channelFlag + 1];
+if (channel !== 'beta' && channel !== 'stable') fail(`--channel must be beta or stable, got ${channel}`);
 const qaEnv = {
   ...process.env,
   GREENHOUSE_QA_APP_DATA_DIR: qaRoot,
   GREENHOUSE_QA_BASELINE_WEB_BUNDLE_VERSION: baselineVersion,
-  GREENHOUSE_UPDATE_CHANNEL: 'beta',
+  GREENHOUSE_UPDATE_CHANNEL: channel,
   GREENHOUSE_DESKTOP_UPDATE_BASE:
     process.env.GREENHOUSE_DESKTOP_UPDATE_BASE ?? 'https://greenhouse.linjiejim.com/updates/desktop/v2',
 };
@@ -69,14 +74,14 @@ try {
     qaEnv.GREENHOUSE_DESKTOP_UPDATE_BASE = source.updateBase;
     qaEnv.GREENHOUSE_WEB_BUNDLE_PUBKEY = source.publicKey;
   }
-  console.log(`Update source: ${qaEnv.GREENHOUSE_DESKTOP_UPDATE_BASE}/beta`);
+  console.log(`Update source: ${qaEnv.GREENHOUSE_DESKTOP_UPDATE_BASE}/${channel}`);
   console.log(`Building isolated baseline-v${baselineVersion} shell…`);
   await runCommand('cargo', ['build', '--features', 'tauri/custom-protocol', '--manifest-path', cargoManifest], {
     ...qaEnv,
     CARGO_TARGET_DIR: targetDir,
   });
 
-  console.log(`Launch 1/3: waiting for automatic beta v${expectedVersion} staging…`);
+  console.log(`Launch 1/3: waiting for automatic ${channel} v${expectedVersion} staging…`);
   activeChild = launchShell();
   await waitFor(
     () => {
@@ -84,7 +89,7 @@ try {
       return pointer?.webBundleVersion === expectedVersion && pointer.bootPending === false;
     },
     55_000,
-    `the app did not stage beta Web Bundle v${expectedVersion}`,
+    `the app did not stage ${channel} Web Bundle v${expectedVersion}`,
   );
   const stagedAt = statSync(pointerPath).mtimeMs;
   await stopShell(activeChild);
@@ -110,7 +115,7 @@ try {
   if (source && source.served.size === 0) fail('the shell never downloaded from the local update source');
   completed = true;
   console.log(
-    `✅ baseline v${baselineVersion} → beta v${expectedVersion} staging → ` +
+    `✅ baseline v${baselineVersion} → ${channel} v${expectedVersion} staging → ` +
       `v${expectedVersion} boot confirmation → retained restart`,
   );
 } finally {
@@ -124,22 +129,22 @@ try {
 }
 
 /**
- * Packages this checkout's public/ as beta, signed with a throwaway ed25519 key, and
- * serves it the way the project site does: <update base>/beta/web/manifest.json with
+ * Packages this checkout's public/ for the channel, signed with a throwaway ed25519 key, and
+ * serves it the way the project site does: <update base>/<channel>/web/manifest.json with
  * the tarball beside it.
  */
 async function serveLocalBundle() {
   if (!existsSync(resolve(repoRoot, 'public/index.html'))) fail('public/index.html is missing: run `pnpm web:build`');
   const { privateKey, publicKey } = generateKeyPairSync('ed25519');
   const raw = Buffer.from(publicKey.export({ format: 'jwk' }).x, 'base64url');
-  await runCommand('node', ['scripts/desktop/make-web-bundle.mjs', '--channel', 'beta'], {
+  await runCommand('node', ['scripts/desktop/make-web-bundle.mjs', '--channel', channel], {
     ...process.env,
     WEB_BUNDLE_SIGN_KEY: privateKey.export({ type: 'pkcs8', format: 'pem' }),
     GREENHOUSE_WEB_BUNDLE_VERSION: expectedVersion,
   });
 
   const site = mkdtempSync(resolve(tmpdir(), 'greenhouse-web-update-site-'));
-  const webDir = resolve(site, 'updates/desktop/v2/beta/web');
+  const webDir = resolve(site, `updates/desktop/v2/${channel}/web`);
   mkdirSync(webDir, { recursive: true });
   const built = resolve(repoRoot, 'apps/desktop/release/web');
   for (const name of ['manifest.json', `web-bundle-${expectedVersion}.tar.gz`]) {
