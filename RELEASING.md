@@ -52,7 +52,8 @@ for people who want to test the tip and understand it can break.
 4. **The tag triggers `.github/workflows/release.yml`**, which builds & publishes:
    - the **container image** to `ghcr.io/<owner>/greenhouse` (`:X.Y.Z`, `:X.Y`,
      `:latest`), stamped with `APP_VERSION`/`APP_REVISION` + OCI labels.
-   The browser extension and the desktop shell return after v2.0; tags build neither.
+   The same tag runs `.github/workflows/desktop-release.yml` (the desktop app, below).
+   The browser extension returns after v2.0.
    The source tarball is attached automatically by GitHub.
 
 Pushes to `main` (no tag) run the same `release.yml` but only publish the `:edge` /
@@ -155,23 +156,43 @@ Without `MIRROR_PREFIX` the steps are skipped.
 
 ### Desktop shell → installers + update manifests (`desktop-release.yml`)
 
-After v2.0, `workflow_dispatch` on an existing tag builds the Tauri desktop shell (`apps/desktop`) for macOS (Apple Silicon)
+Every `v*` tag builds the Tauri desktop shell (`apps/desktop`) for macOS (Apple Silicon)
 and Windows (x64), packages the signed web bundle, attaches everything to the tag's GitHub
 Release and publishes the three manifests installed shells trust —
 `app/latest.json`, `app/downloads.json`, `web/manifest.json` — to the project site under
-`docs/updates/desktop/<channel>/` (GitHub Pages serves `docs/` from `main`, so a commit is
-the deploy). Pre-release tags (`v1.2.0-rc.1`) publish to `beta`; `workflow_dispatch` can
+`docs/updates/desktop/v2/<channel>/` (GitHub Pages serves `docs/` from `main`, so a commit is
+the deploy). Pre-release tags (`v2.1.0-beta.1`) publish to `beta`; `workflow_dispatch` can
 rebuild an existing tag into either channel. The built shell reads its updates from
-`https://greenhouse.linjiejim.com/updates/desktop` and only downloads installers from the
+`https://greenhouse.linjiejim.com/updates/desktop/v2` and only downloads installers from the
 Release host (`GREENHOUSE_DESKTOP_ARTIFACT_ORIGINS`), so a tampered manifest cannot redirect it.
+
+**v1 and v2 never share an update path.** The v1.3.x shells read
+`docs/updates/desktop/<channel>/` (frozen at v1.3.2; `release/v1` publishes there with its own
+copy of this workflow). A v2 web bundle needs a v2 shell (its server setting and content
+policy), so v1.3.x users move to v2 by installing it from the Release by hand.
+
+**Dry run before a risky tag:** `gh workflow run desktop-release.yml --ref <branch> -f
+tag=<branch> -f dry_run=true` builds and signs both platforms and keeps the results as run
+artifacts; it creates no Release and publishes no manifest.
+
+**Hot update check:** `pnpm desktop:verify-web-update -- --local` (after `pnpm web:build`)
+serves this checkout as `v2/beta` from 127.0.0.1, signed with a throwaway key, and checks
+v(N-1) → v(N) staging, boot confirmation and a retained restart. Without `--local` it checks
+the published `v2/beta` (set `GREENHOUSE_WEB_BUNDLE_PUBKEY` to the `WEB_BUNDLE_PUBKEY` variable).
 
 Web changes between tags do **not** reach installed shells automatically — a hot update is cut
 per tag. Installed shells check 20 s after launch and every 4 h.
 
 Every installer is attached twice: under its versioned name (what the manifests reference)
 and under a stable alias — `Greenhouse-macos-aarch64.app.tar.gz`, `Greenhouse-macos-aarch64.dmg`,
-`Greenhouse-windows-x86_64-setup.exe` — so `releases/latest/download/<alias>` (the README's
-install command) always resolves to the newest stable release. Pre-releases are never `latest`.
+`Greenhouse-windows-x86_64-setup.exe` — so `releases/latest/download/<alias>` (the install
+command) always resolves to the newest stable release. Pre-releases are never `latest`.
+
+Without Apple secrets the macOS app is ad-hoc signed and not notarized. Install it without the
+quarantine flag (`curl -L … | tar -xz -C /Applications`), or after a browser download run
+`xattr -dr com.apple.quarantine /Applications/Greenhouse.app`; shell updates then reset macOS
+permission grants. Windows installers are not Authenticode-signed, so SmartScreen asks once.
+Adding the Apple secrets later needs no code change; users re-grant permissions once.
 
 **One-time repository configuration (settings, not code):**
 

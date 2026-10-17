@@ -4,8 +4,12 @@
 # sign the updater payloads, package the signed web bundle, attach everything to
 # the tag's GitHub Release, and publish the three documents installed shells trust
 # — `app/latest.json`, `app/downloads.json`, `web/manifest.json` — to the project
-# site under docs/updates/desktop/<channel>/ (that is what the built shell's
+# site under docs/updates/desktop/v2/<channel>/ (that is what the built shell's
 # GREENHOUSE_DESKTOP_UPDATE_BASE points at). Pre-release tags publish to `beta`.
+#
+# v2 shells read only updates/desktop/v2. updates/desktop/<channel> stays with the
+# v1.3.x shells (release/v1 publishes there with its own copy of this workflow), so
+# a v2 web bundle never reaches a shell that cannot talk to its server.
 #
 # The big files live on the Release; the manifests carry their absolute URLs and
 # the shell only downloads from origins its build allowed (GREENHOUSE_DESKTOP_
@@ -22,22 +26,26 @@
 #            Without them the macOS build is ad-hoc signed: it runs, but Gatekeeper
 #            warns on first open. Windows installers are not Authenticode-signed.
 name: Desktop release
-# v2.0 ships web and native mobile; the desktop app returns after v2.0, so tags no longer
-# build it. Run it by hand for an existing tag once the desktop shell is on v2.
 on:
+  push:
+    tags: ['v*']
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Existing tag to (re)build and publish'
+        description: 'Existing tag to (re)build and publish; with dry_run, any ref'
         required: true
       channel:
         description: 'Update channel to publish to'
         type: choice
         default: beta
         options: [beta, stable]
+      dry_run:
+        description: 'Build and sign both platforms, but create no Release and publish nothing'
+        type: boolean
+        default: false
 
 env:
-  UPDATE_BASE: https://greenhouse.linjiejim.com/updates/desktop
+  UPDATE_BASE: https://greenhouse.linjiejim.com/updates/desktop/v2
 
 concurrency:
   group: desktop-release
@@ -76,6 +84,10 @@ jobs:
           echo "channel=$channel" >> "$GITHUB_OUTPUT"
           echo "web_bundle_version=$(git rev-list --count HEAD)" >> "$GITHUB_OUTPUT"
           echo "artifact_base=https://github.com/${{ github.repository }}/releases/download/$tag" >> "$GITHUB_OUTPUT"
+          if [ "${{ inputs.dry_run }}" = true ]; then
+            echo "dry run of $tag: nothing is created or published"
+            exit 0
+          fi
           # release-please creates the Release with the tag; a hand-made tag may have none.
           if ! gh release view "$tag" >/dev/null 2>&1; then
             prerelease=""; [ "$channel" = beta ] && prerelease="--prerelease"
@@ -203,6 +215,7 @@ jobs:
 
   publish:
     needs: [plan, web-bundle, shell]
+    if: ${{ !inputs.dry_run }}
     runs-on: ubuntu-latest
     permissions:
       contents: write # upload assets to the Release, push the manifests to main
@@ -251,7 +264,7 @@ jobs:
           git config user.email github-actions@github.com
           git fetch origin main
           git worktree add ../site origin/main
-          dest="../site/docs/updates/desktop/$CHANNEL"
+          dest="../site/docs/updates/desktop/v2/$CHANNEL"
           mkdir -p "$dest/app" "$dest/web"
           cp apps/desktop/release/app/latest.json apps/desktop/release/app/downloads.json "$dest/app/"
           cp apps/desktop/release/web/manifest.json "$dest/web/"

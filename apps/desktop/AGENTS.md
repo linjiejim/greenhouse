@@ -11,7 +11,7 @@ The desktop app wraps apps/web for macOS and Windows and adds native capture: sc
 
 ## Development
 - `pnpm desktop:dev` runs web (:3100) and the shell but no API; run `pnpm api` alongside. The window calls http://localhost:3000 directly, not through the Vite proxy.
-- `pnpm desktop:build` builds .app, .dmg and nsis; `pnpm desktop:check` runs fmt, clippy -D warnings and the node and cargo tests; `pnpm desktop:verify-web-update` checks a v(N-1) to v(N) hot update on macOS.
+- `pnpm desktop:build` builds .app, .dmg and nsis; `pnpm desktop:check` runs fmt, clippy -D warnings and the node and cargo tests; `pnpm desktop:verify-web-update` checks a v(N-1) to v(N) hot update on macOS (`-- --local` serves this checkout with a throwaway key, never a live channel).
 - Run cargo through the package scripts (scripts/with-shared-target.mjs): they share ~/.cargo-target/greenhouse-desktop across worktrees and ad-hoc sign local macOS bundles. A bare cargo build creates an in-tree target/ that is safe to delete.
 - An unsealed local bundle can show Accessibility enabled while AXIsProcessTrusted returns false; build through the wrapper.
 - build.rs reads CARGO_MANIFEST_DIR at run time; env! would bake in the worktree that compiled the script, which the shared target then reuses.
@@ -31,6 +31,7 @@ The desktop app wraps apps/web for macOS and Windows and adds native capture: sc
 
 ## Hot updates
 - The main window loads greenhouse://localhost; keep the custom scheme so the origin, and the token in localStorage, survive hot updates.
+- v2 shells read updates/desktop/v2/<channel>; updates/desktop/<channel> belongs to v1.3.x shells. Never publish a v2 bundle there.
 - Web-bundle order is the commit count (scripts/desktop/web-bundle-version.mjs); CI computes it once and passes GREENHOUSE_WEB_BUNDLE_VERSION to every job.
 - merge-app-release.mjs fails when a platform is missing; use --allow-missing only as an explicit single-platform emergency.
 - desktop_prepare_shell_update downloads and never installs; only desktop_install_shell_update swaps the app, because installing replaces the bundle the running process still reads.
