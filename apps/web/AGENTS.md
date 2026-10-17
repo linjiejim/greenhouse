@@ -64,7 +64,7 @@ The v2 web app. Product scope is docs/product/prd.md §6–7; layout and compone
 - Artifact result cards use signed file URLs, fetch before counting a successful download, and save through client.media to knowledge. Hide Save when knowledge is disabled. Video progress and files come from the run detail.
 - Admin usage shows count-only UTC weekly metrics; zero denominators are unknown, not zero. Interjection event state labels are server-owned.
 
-- An initial message-page fetch preserves realtime rows that arrived after its snapshot and completed replies. Receive events while that query is fetching, even before its first page exists.
+- A message-page fetch preserves realtime rows that arrived after its snapshot and completed replies, and takes on updates and deletions of its own rows that arrived while it was on its way. Receive events while that query is fetching, even before its first page exists.
 
 - Published Agent budgets use the shared usage facts and UTC month; owners edit them on Publish, admins on Public Agents.
 - Directory filters stay local to a module and filter loaded entries; arrows move between results, Enter opens and Escape clears then closes.

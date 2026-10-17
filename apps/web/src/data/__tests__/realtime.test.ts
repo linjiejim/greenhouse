@@ -142,6 +142,25 @@ describe('a conversation opened while messages arrive', () => {
     finish({ items: [before], next_cursor: null });
     expect((await fetch).items[0]?.event?.state).toBe('incorporated');
   });
+  it('takes on a reaction and a deletion that arrived while a new chat had no messages cached yet', async () => {
+    let finish!: (value: { items: MessageItem[]; next_cursor: null }) => void;
+    messages.mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
+    const fetch = fetchMessagePage(client, 'cnv_1');
+    const reacted = { ...item(1, 'u2 react'), reactions: [{ agent_id: 'agt_1', emoji: '👍' as const }] };
+    applyEvent(client, { type: 'message.updated', data: { message: reacted } });
+    // An id of its own: a deleted id stays ignored by the streams module.
+    applyEvent(client, { type: 'message.deleted', data: { conversation_id: 'cnv_1', message_id: 'msg_42' } });
+    finish({ items: [item(42, '', 'streaming'), { ...item(1, 'u2 react'), reactions: [], my_rating: 1 }], next_cursor: null });
+    const { items } = await fetch;
+    expect(items.map((entry) => [entry.seq, entry.reactions, entry.my_rating])).toEqual([[1, reacted.reactions, 1]]);
+  });
+  it('forgets changes once its page has landed', async () => {
+    messages.mockResolvedValueOnce({ items: [item(1, 'First')], next_cursor: null });
+    await fetchMessagePage(client, 'cnv_1');
+    applyEvent(client, { type: 'message.updated', data: { message: item(1, 'Edited') } });
+    messages.mockResolvedValueOnce({ items: [item(1, 'Edited again')], next_cursor: null });
+    expect((await fetchMessagePage(client, 'cnv_1')).items[0]?.content).toBe('Edited again');
+  });
 
 });
 
