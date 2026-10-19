@@ -93,7 +93,7 @@ v2 从零建表：迁移链从 v2 基线开始（0000_v2_baseline，v2.0.0 起�
 
 | 表 | 用途 | 关键列与关系 |
 | --- | --- | --- |
-| `conversations` | 所有消息流 | `kind`（main / direct / chat / room）、`owner_id`、`agent_id`（room 与 v1 归档为空）、`title`、`model`（会话选的模型）、`origin`（web / ios / android / extension / desktop / feishu / assistant / v1）、`external_key`（飞书话题键，唯一）、`context`（页面助手带来的上下文）、`read_only`（v1 归档）、`forked_from_message_id`、`digest` + `digest_upto_seq`（滚动摘要）、`last_seq`、`last_activity_at`；部分唯一：每人一个 main，每个（成员，Agent）一个 direct |
+| `conversations` | 所有消息流 | `kind`（main / direct / chat / room）、`owner_id`、`agent_id`（room 与 v1 归档为空）、`title`、`model`（会话选的模型）、`origin`（web / ios / android / extension / desktop / feishu / assistant / v1）、`external_key`（飞书话题键，唯一）、`context`（页面助手带来的上下文）、`read_only`（v1 归档）、`forked_from_message_id`（分支来源回复；新会话保存截至此处的独立可见文本快照，不复制运行与审批）、`digest` + `digest_upto_seq`（滚动摘要）、`last_seq`、`last_activity_at`；部分唯一：每人一个 main，每个（成员，Agent）一个 direct |
 | `conversation_members` | 对话里的人和各自的状态 | `conversation_id` / `member_id` `CASCADE`、`role`（owner / member）、`last_read_seq`（已读回执）、`archived_at`、`added_by`；非房间对话只有主人一行。可见性只看这张表 |
 | `conversation_agents` | 对话里额外在场的 Agent | `conversation_id` / `agent_id` `CASCADE`、`added_by`（成员）；房间里各人带来的、被拉进对话的 Agent |
 | `messages` | 消息 | `conversation_id` `CASCADE`、`seq`（锁定对话行后分配，唯一 `(conversation_id, seq)`）、`role`（user / assistant / event）、`author_member_id`、`agent_id`、`content`（Markdown）、`blocks`（富结果）、`attachments`（file id）、`quote`、`mentions`、`skill`（`/` 调用的技能、运行的版本与填的变量；部分索引 `messages_skill_runs_idx` 用来找成员最常用的技能）、`rich_blocks`（发送端声明能画的富块，空表示未声明）、`citations`、`steps`（工具摘要，待批步骤内部保存 `approvalStepId`，用于决定后更新同一条摘要；API 不输出该内部关联）、`reasoning`、`event`（加入、转交、交还等系统事件）、`run_id`、`status`（complete / stopped / failed）、`edited_at` |
@@ -242,6 +242,8 @@ v1 迁移工具的 ID 映射与检查点放在单独的 `migration` schema，不
 11. 成员默认只停用；硬删除时必须指定接收人，共享对象转给接收人，私有数据随之删除。
 
 M1.7：运行检查点保存 `tainted`、`read_private` 与决定结果，后台审批后用已记录的模型步骤及已完成的工具结果重建上下文。结果 `output` 带 `text` 和 `findings`。运行结束和 `run_report` 汇报任务同事务，汇报消息与通知按运行 / 尝试去重；只有选择 `continue_after` 才产生唤醒事件，静默无发现时跳过跟进。事件唤醒仍是 turn 运行，以后台工具规则执行。
+
+后台连接器读取沿用 `runs.checkpoint.connector_reads`：版本、仅本地元数据的来源标记、已调用参数哈希的凭据绑定，以及一个固定读取计划（run／member／connector id、HMAC 绑定、至多 17 个精确调用哈希）。绑定包含当前连接配置、工具权限和加密凭据身份；不保存明文密钥或原始计划参数，不新增表或迁移。检查点先于首次私有结果保存，重试继续使用；权限、账号或凭据变化使旧计划与结果复用失效。前置拒绝新增独立 failed 工具步骤，`idempotency_key` 留空，保留之前成功步骤与结果；同次尝试的步骤 key 仍唯一。
 
 M3 页面会话：`conversations.context` 保存有界对象引用，不保存页面 HTML、密钥或客户端快照。每轮重新验证对象读取权限。
 

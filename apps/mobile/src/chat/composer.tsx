@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useVoice } from '../voice/use-voice';
 /**
  * Composer — the floating Liquid Glass control layer at the bottom of a conversation (iOS 26
@@ -44,6 +44,8 @@ export const Composer = memo(
       onStop?: () => void;
       /** A send is on its way: the button waits. */
       sending?: boolean;
+      /** A first send will replace this screen: retain its draft and pause every editing entrypoint. */
+      locked?: boolean;
       onAttach: (from: AttachSource) => void;
       quote: string | null;
       onClearQuote: () => void;
@@ -74,6 +76,7 @@ export const Composer = memo(
       working = false,
       onStop,
       sending = false,
+      locked = false,
       onAttach,
       quote,
       onClearQuote,
@@ -105,8 +108,23 @@ export const Composer = memo(
     const [inputHeight, setInputHeight] = useState(0);
     useEffect(() => setInputHeight(0), [fontScale]);
     const [selection, setSelection] = useState({ start: value.length, end: value.length });
-    const voice = useVoice(value, onChangeText, selection);
-    const canSend = voice.state === 'idle' && !sending && canSendMessage(value, files, !!skill);
+    const lock = useRef(locked);
+    lock.current = locked;
+    const changeText = useCallback(
+      (next: string) => {
+        if (!lock.current) onChangeText(next);
+      },
+      [onChangeText],
+    );
+    const voice = useVoice(value, changeText, selection);
+    const cancelVoice = useRef(voice.cancel);
+    cancelVoice.current = voice.cancel;
+    useEffect(() => {
+      // A permission prompt may still be opening while voice.state is idle. A locked send
+      // cancels that pending recorder too, so it cannot append text to a draft about to leave.
+      if (locked) cancelVoice.current();
+    }, [locked]);
+    const canSend = voice.state === 'idle' && !sending && !locked && canSendMessage(value, files, !!skill);
     const failed = files.some((file) => file.status === 'error');
     const hasChips = files.length > 0 || !!quote || !!skill;
     const full = files.length >= MAX_FILES || !!attachNote;
@@ -119,19 +137,24 @@ export const Composer = memo(
 
     return (
       <View style={styles.wrap} onLayout={(e) => onHeight?.(e.nativeEvent.layout.height)}>
-        {accessory ? <View style={styles.accessory}>{accessory}</View> : null}
+        {accessory && !locked ? <View style={styles.accessory}>{accessory}</View> : null}
 
         <GlassGroup spacing={space.sm} style={[styles.row, large && { flexWrap: 'wrap', justifyContent: 'flex-end' }]}>
-          <NativeMenu
-            title={attachNote ?? (files.length >= MAX_FILES ? t('composer.maxFiles', { n: MAX_FILES }) : undefined)}
-            items={menuExtra ? menuSections([attachItems, menuExtra.items]) : attachItems}
-            onSelect={(id) => {
-              if (menuExtra && !ATTACH_IDS.has(id)) menuExtra.onSelect(id);
-              else onAttach(id as AttachSource);
-            }}
-          >
-            <GlassIconButton icon="plus" accessibilityLabel={t('composer.add')} />
-          </NativeMenu>
+          {locked ? (
+            <GlassIconButton icon="plus" disabled accessibilityLabel={t('composer.add')} />
+          ) : (
+            <NativeMenu
+              title={attachNote ?? (files.length >= MAX_FILES ? t('composer.maxFiles', { n: MAX_FILES }) : undefined)}
+              items={menuExtra ? menuSections([attachItems, menuExtra.items]) : attachItems}
+              onSelect={(id) => {
+                if (lock.current) return;
+                if (menuExtra && !ATTACH_IDS.has(id)) menuExtra.onSelect(id);
+                else onAttach(id as AttachSource);
+              }}
+            >
+              <GlassIconButton icon="plus" accessibilityLabel={t('composer.add')} />
+            </NativeMenu>
+          )}
 
           <Glass interactive style={[styles.capsule, large && { flexBasis: '75%' }]}>
             {hasChips ? (
@@ -146,6 +169,7 @@ export const Composer = memo(
                       {skill}
                     </Text>
                     <Touchable
+                      disabled={locked}
                       onPress={onClearSkill}
                       style={styles.chipRemove}
                       accessibilityRole="button"
@@ -162,6 +186,7 @@ export const Composer = memo(
                       {quote}
                     </Text>
                     <Touchable
+                      disabled={locked}
                       onPress={onClearQuote}
                       style={styles.chipRemove}
                       accessibilityRole="button"
@@ -204,6 +229,7 @@ export const Composer = memo(
                           </View>
                         ) : null}
                         <Touchable
+                          disabled={locked}
                           onPress={() => onRemoveFile(file.id)}
                           style={styles.thumbX}
                           accessibilityRole="button"
@@ -220,7 +246,7 @@ export const Composer = memo(
                 {failed ? (
                   <View style={styles.uploadError}>
                     <Text style={styles.uploadErrorText}>{t('composer.uploadFailed')}</Text>
-                    <NativeButton label={t('common.retry')} size="small" onPress={onRetryFiles} />
+                    <NativeButton label={t('common.retry')} size="small" disabled={locked} onPress={onRetryFiles} />
                   </View>
                 ) : null}
               </Animated.View>
@@ -228,7 +254,8 @@ export const Composer = memo(
             <TextInput
               ref={ref}
               value={value}
-              onChangeText={onChangeText}
+              editable={!locked}
+              onChangeText={changeText}
               autoFocus={autoFocus}
               placeholder={large ? t('composer.messagePlaceholder') : placeholder}
               placeholderTextColor={c.placeholder}
@@ -255,8 +282,10 @@ export const Composer = memo(
           {voice.supported ? (
             <GlassIconButton
               icon={voice.state === 'recording' ? 'stop' : 'mic'}
-              disabled={voice.state === 'transcribing'}
-              onPress={() => void voice.toggle()}
+              disabled={locked || voice.state === 'transcribing'}
+              onPress={() => {
+                if (!lock.current) void voice.toggle();
+              }}
               accessibilityLabel={t(
                 voice.state === 'recording'
                   ? 'work.recording'
@@ -267,10 +296,21 @@ export const Composer = memo(
             />
           ) : null}
           {voice.state !== 'idle' ? (
-            <GlassIconButton icon="x" onPress={voice.cancel} accessibilityLabel={t('work.cancelRecording')} />
+            <GlassIconButton
+              icon="x"
+              disabled={locked}
+              onPress={voice.cancel}
+              accessibilityLabel={t('work.cancelRecording')}
+            />
           ) : null}
           {showStop ? (
-            <GlassIconButton icon="stop" prominent onPress={onStop} accessibilityLabel={t('composer.stop')} />
+            <GlassIconButton
+              icon="stop"
+              prominent
+              disabled={locked}
+              onPress={onStop}
+              accessibilityLabel={t('composer.stop')}
+            />
           ) : (
             <GlassIconButton
               icon="up"

@@ -271,6 +271,7 @@ export type ConversationDetail = {
   members: Array<{ member_id: string; role: 'member' | 'owner'; last_read_seq: number }>;
   agent_ids: Array<string>;
   digest: string;
+  forked_from_message_id: string | null;
 };
 
 export type ConversationMembers = {
@@ -320,6 +321,7 @@ export type CreateConversationInput =
         | { kind: 'app'; id: string; page_id?: string | undefined }
         | { kind: 'page'; name: string }
         | undefined;
+      forked_from_message_id?: string | undefined;
     }
   | {
       kind: 'room';

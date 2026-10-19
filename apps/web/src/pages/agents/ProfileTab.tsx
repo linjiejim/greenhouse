@@ -15,13 +15,14 @@ import {
   type AgentDetail,
 } from '@greenhouse/contract';
 import { ApiClientError } from '@greenhouse/contract/client';
-import { Button, Field, FieldGroup, Input, Skeleton, TextArea } from '@greenhouse/ui/kit';
+import { Button, ConfirmDialog, Field, FieldGroup, Input, Skeleton, TextArea } from '@greenhouse/ui/kit';
 import { useNotify } from '../../app/notify';
 import { useMe } from '../../app/session';
 import { useUpdateAgent, useVersions } from '../../data/agents';
 import { cx } from '../../lib/cx';
 import { useI18n } from '../../lib/i18n';
 import { relativeTime } from '../../lib/time';
+import { useDraftNavigation } from '../../lib/useDraftNavigation';
 import { AgentAvatar } from '../../shell/AgentAvatar';
 
 type Draft = { name: string; role: string; description: string; instructions: string; plant: string; tint: string };
@@ -96,6 +97,12 @@ export function ProfileTab({ agent }: { agent: AgentDetail }) {
   const original = useMemo(() => draftOf(agent), [agent]);
   const dirty = (Object.keys(draft) as (keyof Draft)[]).some((key) => draft[key] !== original[key]);
   const readOnly = !!agent.archived_at;
+  const discard = () => {
+    setDraft(original);
+    setNote('');
+    setError('');
+  };
+  const navigation = useDraftNavigation(dirty, update.isPending, discard);
 
   const save = (event: FormEvent) => {
     event.preventDefault();
@@ -111,8 +118,10 @@ export function ProfileTab({ agent }: { agent: AgentDetail }) {
       },
       {
         onSuccess: (saved) => {
+          navigation.saved();
           setDraft(draftOf(saved));
           setNote('');
+          setError('');
           notify(t('agents.saved', { version: saved.current_version }));
         },
         onError: (caught) =>
@@ -127,7 +136,13 @@ export function ProfileTab({ agent }: { agent: AgentDetail }) {
 
   return (
     <>
-      <form className="app-form" onSubmit={save} aria-label={t('agents.tabProfile')}>
+      <form
+        className="app-form"
+        onSubmit={save}
+        aria-label={t('agents.tabProfile')}
+        aria-busy={update.isPending}
+        inert={update.isPending}
+      >
         <FieldGroup label={t('agents.avatar')}>
           <PlantPicker
             agentId={agent.id}
@@ -184,15 +199,7 @@ export function ProfileTab({ agent }: { agent: AgentDetail }) {
               maxLength={200}
               onChange={(event) => setNote(event.target.value)}
             />
-            <Button
-              onClick={() => {
-                setDraft(original);
-                setNote('');
-                setError('');
-              }}
-            >
-              {t('agents.discard')}
-            </Button>
+            <Button onClick={discard}>{t('agents.discard')}</Button>
             <Button kind="primary" type="submit" loading={update.isPending}>
               {t('agents.saveVersion')}
             </Button>
@@ -220,6 +227,17 @@ export function ProfileTab({ agent }: { agent: AgentDetail }) {
           </ol>
         )}
       </section>
+      {navigation.asking && (
+        <ConfirmDialog
+          title={t('knowledge.discardTitle')}
+          cancelLabel={t('knowledge.keepEditing')}
+          confirmLabel={t('knowledge.discard')}
+          onCancel={navigation.cancel}
+          onConfirm={navigation.discard}
+        >
+          {t('knowledge.discardBody')}
+        </ConfirmDialog>
+      )}
     </>
   );
 }

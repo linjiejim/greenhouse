@@ -22,6 +22,7 @@ import type { OperationsService } from '../operations/service.js';
  *   before it is kept), and the manifest's `connectors` scope it like any other.
  */
 
+import { createHmac } from 'node:crypto';
 import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import type { z } from 'zod';
 import type {
@@ -105,7 +106,7 @@ import {
   type MailboxSettings,
 } from './mailbox.js';
 import { placeOf, redact, seal, unseal } from './secrets.js';
-import { findConnection, markConnection, saveConnection, type KeySecrets } from './store.js';
+import { findConnection, markConnection, saveConnection, type KeySecrets, type TokenSecrets } from './store.js';
 import { han } from '@greenhouse/utils/i18n';
 
 type CreateInput = z.output<typeof createConnectorInputSchema>;
@@ -121,6 +122,8 @@ export interface UsableTool {
   inputSchema: Record<string, unknown>;
   readOnly: boolean;
   destructive: boolean;
+  /** Eligible for a frozen background read plan, beyond a remote readOnly hint. */
+  trustedReadOnly?: boolean;
 }
 
 /** A connector an Agent may use for this asker now. */
@@ -130,6 +133,22 @@ export interface UsableConnector {
   name: string;
   description: string;
   tools: UsableTool[];
+}
+
+/** Server-only proof of the current destination, permissions and credential. Never expose the credential itself. */
+export interface ConnectorReadAccess {
+  connector: UsableConnector;
+  tool: UsableTool;
+  binding: string;
+  private: boolean;
+  /** A remote readOnly hint alone cannot authorize reads after private data entered the model. */
+  trustedReadOnly: boolean;
+}
+
+export interface ConnectorRunGuard {
+  manifest: Pick<AgentManifest, 'connectors' | 'write'>;
+  binding: string;
+  trustedReadOnly: boolean;
 }
 
 /** Headers the connection itself uses: a key never goes in one of these. */
@@ -166,7 +185,11 @@ export function callableTools(row: Pick<ConnectorRow, 'tools' | 'allowedTools' |
   const allowed = row.allowedTools ? new Set(row.allowedTools) : null;
   return row.tools
     .filter((tool) => !allowed || allowed.has(tool.name))
-    .map((tool) => ({ ...tool, readOnly: isReadOnly(tool, row.readOnlyTools) }));
+    .map((tool) => ({
+      ...tool,
+      readOnly: isReadOnly(tool, row.readOnlyTools),
+      trustedReadOnly: !tool.destructive && row.readOnlyTools.includes(tool.name),
+    }));
 }
 
 /** Puts a key where the connector says: a query parameter, or a header (Authorization by default). */
@@ -374,6 +397,32 @@ export function createConnectorsService(deps: {
   }
 
   const viewOf = async (found: ConnectorRow) => view(found, (await connectionCounts([found.id])).get(found.id) ?? 0);
+
+  function readBinding(memberId: string, found: ConnectorRow | null, connection: ConnectionRow | null): string {
+    return createHmac('sha256', key)
+      .update(
+        JSON.stringify([
+          memberId,
+          found && [
+            found.id,
+            found.url,
+            found.transport,
+            found.authMode,
+            found.authHeader,
+            found.authQueryParam,
+            found.authPrefix,
+            found.authEnc,
+            found.oauthClientEnc,
+            found.oauthScope,
+            found.allowedTools,
+            found.readOnlyTools,
+            found.tools,
+          ],
+          connection && [connection.id, connection.config, connection.scopes, connection.secretsEnc],
+        ]),
+      )
+      .digest('hex');
+  }
 
   /** Who a call is made as: nobody, the shared key, the member's key, or the member's sign-in. */
   async function resolve(found: ConnectorRow, memberId: string): Promise<Resolved> {
@@ -609,9 +658,16 @@ export function createConnectorsService(deps: {
   }
 
   /** One tool of the member's own mailbox; a refused password marks the connection to renew. */
-  async function runMailbox(memberId: string, toolName: string, args: Record<string, unknown>): Promise<CallOutcome> {
+  async function runMailbox(
+    memberId: string,
+    toolName: string,
+    args: Record<string, unknown>,
+    guard?: ConnectorRunGuard,
+  ): Promise<CallOutcome> {
     if (toolName === 'send_message') await deps.operations?.assertEnabled('disable_outbound_mail');
     const connection = await mailboxConnection(memberId);
+    if (guard && (!connection || readBinding(memberId, null, connection) !== guard.binding))
+      throw new ApiError(403, 'connector_read_scope_changed', 'The mailbox connection changed before the read.');
     const client = connection && connection.status !== 'needs_reauth' ? mailboxOf(connection) : null;
     if (!connection || !client) {
       throw new Error("The member's mailbox is not connected: they need to connect it in 设置 → 连接.");
@@ -1173,7 +1229,7 @@ export function createConnectorsService(deps: {
             slug: MAILBOX_SLUG,
             name: `Mailbox ${address}`.trim(),
             description: "The member's own mailbox (IMAP and SMTP).",
-            tools: tools.map((tool) => ({ ...tool })),
+            tools: tools.map((tool) => ({ ...tool, trustedReadOnly: tool.readOnly && !tool.destructive })),
           });
         }
       }
@@ -1225,6 +1281,50 @@ export function createConnectorsService(deps: {
       return { connector, tool };
     },
 
+    /** Current local access and credential checks, including when a run reuses a saved result. No network request. */
+    async readAccess(
+      memberId: string,
+      manifest: Pick<AgentManifest, 'connectors' | 'write'>,
+      slug: string,
+      toolName: string,
+    ): Promise<ConnectorReadAccess> {
+      const found = await service.findTool(memberId, manifest, slug, toolName);
+      if ('error' in found) throw forbidden(found.error);
+      if (found.connector.id === MAILBOX_CONNECTOR_ID) {
+        const connection = await mailboxConnection(memberId);
+        if (!connection || connection.status === 'needs_reauth' || !mailboxOf(connection))
+          throw new ApiError(403, 'connector_connection_unavailable', 'Reconnect the mailbox before reading it.');
+        return {
+          ...found,
+          binding: readBinding(memberId, null, connection),
+          private: true,
+          trustedReadOnly: found.tool.readOnly && !found.tool.destructive,
+        };
+      }
+      const current = await enabledRow(found.connector.id);
+      const tool = callableTools(current).find(
+        (entry) => entry.name === toolName && (manifest.write || entry.readOnly),
+      );
+      if (!tool) throw forbidden('This connector action is no longer available.');
+      const resolved = await resolve(current, memberId);
+      if (!resolved.ok)
+        throw new ApiError(403, 'connector_connection_unavailable', 'Reconnect the account before reading it.');
+      if (
+        current.authMode === 'oauth' &&
+        (!resolved.connection ||
+          !unseal<TokenSecrets>(key, placeOf.connection(resolved.connection.id), resolved.connection.secretsEnc)
+            ?.access_token)
+      )
+        throw new ApiError(403, 'connector_connection_unavailable', 'Reconnect the account before reading it.');
+      return {
+        connector: { ...found.connector, name: current.name },
+        tool,
+        binding: readBinding(memberId, current, resolved.connection),
+        private: current.authMode !== 'none',
+        trustedReadOnly: !tool.destructive && current.readOnlyTools.includes(toolName),
+      };
+    },
+
     /**
      * Runs one tool as the member, with their key or sign-in. Throws with a sentence the model can
      * pass on; a credential the server refused is marked for the member to renew.
@@ -1235,12 +1335,42 @@ export function createConnectorsService(deps: {
       toolName: string,
       args: Record<string, unknown>,
       signal?: AbortSignal,
+      guard?: ConnectorRunGuard,
     ): Promise<CallOutcome> {
-      if (connectorId === MAILBOX_CONNECTOR_ID) return runMailbox(memberId, toolName, args);
+      if (connectorId === MAILBOX_CONNECTOR_ID) {
+        if (guard) {
+          const access = await service.readAccess(memberId, guard.manifest, MAILBOX_SLUG, toolName);
+          if (access.binding !== guard.binding || !access.trustedReadOnly)
+            throw new ApiError(403, 'connector_read_scope_changed', 'The connection or its read permissions changed.');
+        }
+        return runMailbox(memberId, toolName, args, guard);
+      }
       const found = await row(connectorId);
-      if (!found.enabled) throw new Error(`${found.name} was turned off.`);
+      if (!found.enabled) {
+        if (guard)
+          throw new ApiError(403, 'connector_read_scope_changed', 'The connector was disabled before this read.');
+        throw new Error(`${found.name} was turned off.`);
+      }
       const resolved = await resolve(found, memberId);
-      if (!resolved.ok) throw new Error(resolved.message);
+      if (!resolved.ok) {
+        if (guard)
+          throw new ApiError(403, 'connector_connection_unavailable', 'Reconnect the account before reading it.');
+        throw new Error(resolved.message);
+      }
+      if (guard) {
+        const tool = callableTools(found).find((entry) => entry.name === toolName);
+        if (
+          (guard.manifest.connectors && !guard.manifest.connectors.includes(found.slug)) ||
+          !tool?.readOnly ||
+          tool.destructive ||
+          (guard.trustedReadOnly && !found.readOnlyTools.includes(toolName)) ||
+          readBinding(memberId, found, resolved.connection) !== guard.binding
+        )
+          throw new ApiError(403, 'connector_read_scope_changed', 'The connection or its read permissions changed.');
+        // A reconnect between this check and the SDK's token lookup must not switch accounts.
+        if (resolved.provider && resolved.connection?.secretsEnc)
+          resolved.provider.pinConnection(resolved.connection.id, resolved.connection.secretsEnc);
+      }
       const started = Date.now();
       try {
         const outcome = await asMember(found, memberId, resolved, () =>
@@ -1261,6 +1391,7 @@ export function createConnectorsService(deps: {
             : {}),
         };
       } catch (error) {
+        if (error instanceof ApiError) throw error;
         const reason = redact(describeError(error), secretsOf(resolved));
         if (personal(found.authMode) && isAuthFailure(error)) {
           await refused(resolved, reason);

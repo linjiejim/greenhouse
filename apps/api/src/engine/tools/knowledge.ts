@@ -172,9 +172,10 @@ export function knowledgeTools(knowledge: KnowledgeService) {
     let next = content;
     for (const edit of edits) {
       const first = next.indexOf(edit.find);
-      if (first < 0) throw new Error(`Not found in the doc: ${edit.find.slice(0, 80)}`);
+      if (first < 0)
+        throw new ApiError(400, 'knowledge_edit_not_found', 'Read the current doc and use text that appears in it.');
       if (next.indexOf(edit.find, first + 1) >= 0) {
-        throw new Error(`Found more than once; include more of the text around it: ${edit.find.slice(0, 80)}`);
+        throw new ApiError(400, 'knowledge_edit_ambiguous', 'Include more surrounding text so the edit matches once.');
       }
       next = next.slice(0, first) + edit.replace + next.slice(first + edit.find.length);
     }
@@ -339,11 +340,15 @@ export function knowledgeTools(knowledge: KnowledgeService) {
     if (args.action === 'create') return (await target(args, ctx, false)).ownFolder;
     const doc = await knowledge.getDoc(ctx.memberId, args.doc_id, { as: as(ctx), signed: false });
     if (args.action === 'edit') {
-      if (doc.version !== args.version) throw new Error(staleMessage(doc.version, args.version));
+      if (doc.version !== args.version)
+        throw new ApiError(409, 'stale_version', staleMessage(doc.version, args.version));
       const after = args.edits ? applyEdits(doc.content, args.edits) : args.content;
-      if (after === undefined && args.title === undefined) throw new Error('Send content, edits or a title.');
+      if (after === undefined && args.title === undefined)
+        throw new ApiError(400, 'knowledge_edit_empty', 'Send content, edits or a title.');
       if (after !== undefined && after.length > DOC_CONTENT_MAX) {
-        throw new Error(
+        throw new ApiError(
+          400,
+          'knowledge_content_limit',
           `The doc would be ${after.length} characters, over the limit of ${DOC_CONTENT_MAX}. Change less of it, or split it into more docs.`,
         );
       }
@@ -570,9 +575,11 @@ export function knowledgeTools(knowledge: KnowledgeService) {
       }
       if (args.action === 'edit') {
         const current = await knowledge.getDoc(ctx.memberId, args.doc_id, { as: as(ctx), signed: false });
-        if (current.version !== args.version) throw new Error(staleMessage(current.version, args.version));
+        if (current.version !== args.version)
+          throw new ApiError(409, 'stale_version', staleMessage(current.version, args.version));
         const content = args.edits ? applyEdits(current.content, args.edits) : args.content;
-        if (content === undefined && args.title === undefined) throw new Error('Send content, edits or a title.');
+        if (content === undefined && args.title === undefined)
+          throw new ApiError(400, 'knowledge_edit_empty', 'Send content, edits or a title.');
         const saved = await knowledge.updateDoc(
           ctx.memberId,
           args.doc_id,

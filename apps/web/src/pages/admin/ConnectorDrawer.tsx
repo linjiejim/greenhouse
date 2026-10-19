@@ -1,9 +1,10 @@
 /**
  * One connector (ADM-08), in a drawer. On or off and a test at the top (at once); its settings
  * (one explicit save; a new address or auth mode disconnects every member, so that asks first);
- * the keys, write-only (at once); its tools, each allowed or not and run without approval or not
- * (at once: allowed_tools null is every tool, new ones too; tools the server declares read-only
- * always run freely and destructive ones never can); delete, naming what members lose.
+ * the keys, write-only (at once); its tools, each allowed or not and separately confirmed by the
+ * admin as read-only (at once). The server's declaration remains visible, but is not the admin's
+ * confirmation for predeclared background reads. Destructive tools cannot be confirmed; delete,
+ * naming what members lose.
  */
 
 import { useEffect, useState, type FormEvent } from 'react';
@@ -278,7 +279,7 @@ function Tools({ connector }: { connector: Connector }) {
                 <tr>
                   <th>{t('connectors.tool')}</th>
                   <th>{t('connectors.allowed')}</th>
-                  <th>{t('connectors.runsFreely')}</th>
+                  <th>{t('connectors.adminReadOnly')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -307,9 +308,9 @@ function Tools({ connector }: { connector: Connector }) {
                     </td>
                     <td>
                       <Switch
-                        label={t('connectors.freeTool', { name: tool.name })}
-                        checked={tool.read_only}
-                        disabled={tool.declared_read_only || tool.destructive}
+                        label={t('connectors.confirmReadOnlyTool', { name: tool.name })}
+                        checked={connector.read_only_tools.includes(tool.name)}
+                        disabled={tool.destructive}
                         onChange={(on) => void write({ read_only_tools: vouchTool(connector, tool.name, on) })}
                       />
                     </td>

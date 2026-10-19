@@ -244,7 +244,13 @@ describe('background runs', () => {
       .select()
       .from(runSteps)
       .where(and(eq(runSteps.runId, run.id), eq(runSteps.kind, 'tool')));
-    expect(steps.map((step) => [step.toolName, step.status])).toEqual([['secret_read', 'succeeded']]);
+    expect(steps.map((step) => [step.toolName, step.status])).toEqual([
+      ['secret_read', 'succeeded'],
+      ['web_peek', 'failed'],
+    ]);
+    expect(steps.find((step) => step.toolName === 'web_peek')!.error).toMatchObject({
+      code: 'background_private_outbound',
+    });
     expect(log).toEqual(['secret_read']);
     const [finished] = await getDb().select().from(runs).where(eq(runs.id, run.id));
     expect(finished!.status).toBe('succeeded');

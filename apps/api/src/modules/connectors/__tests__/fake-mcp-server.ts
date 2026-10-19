@@ -56,6 +56,8 @@ export interface FakeMcpServer {
   tickets: string[];
   /** Every MCP request that reached the server, with its URL and authorization header. */
   requests: Array<{ url: string; authorization?: string; method: string }>;
+  /** Actual authenticated tool invocations, excluding discovery/handshake HTTP requests. */
+  calls: Array<{ tool: string; arguments: Record<string, unknown>; identity: string }>;
   oauth?: FakeOAuth;
   close(): Promise<void>;
 }
@@ -125,11 +127,18 @@ const TOOLS = [
   },
 ];
 
-function buildServer(tickets: string[], identity: string, requestUrl: string, authorization?: string): Server {
+function buildServer(
+  tickets: string[],
+  calls: FakeMcpServer['calls'],
+  identity: string,
+  requestUrl: string,
+  authorization?: string,
+): Server {
   const server = new Server({ name: 'fake-desk', version: '1.0.0' }, { capabilities: { tools: {} } });
   server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: TOOLS }));
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const args = (request.params.arguments ?? {}) as Record<string, unknown>;
+    calls.push({ tool: request.params.name, arguments: args, identity });
     switch (request.params.name) {
       case 'lookup_order':
         return { content: [{ type: 'text', text: `Order ${String(args.order_id)}: shipped on 2026-10-01` }] };
@@ -188,6 +197,7 @@ const token = (prefix: string) => `${prefix}_${randomBytes(18).toString('base64u
 export async function startFakeMcpServer(options: FakeMcpOptions = {}): Promise<FakeMcpServer> {
   const tickets: string[] = [];
   const requests: FakeMcpServer['requests'] = [];
+  const calls: FakeMcpServer['calls'] = [];
   let origin = '';
 
   const clients = new Map<string, { redirect_uris: string[]; client_name?: string }>();
@@ -387,7 +397,9 @@ export async function startFakeMcpServer(options: FakeMcpOptions = {}): Promise<
       const transport = new SSEServerTransport('/messages', response);
       sessions.set(transport.sessionId, transport);
       response.on('close', () => sessions.delete(transport.sessionId));
-      await buildServer(tickets, identity, url.pathname + url.search, request.headers.authorization).connect(transport);
+      await buildServer(tickets, calls, identity, url.pathname + url.search, request.headers.authorization).connect(
+        transport,
+      );
       return;
     }
     if (url.pathname === '/messages' && request.method === 'POST') {
@@ -404,7 +416,7 @@ export async function startFakeMcpServer(options: FakeMcpOptions = {}): Promise<
       response.writeHead(405).end();
       return;
     }
-    const server = buildServer(tickets, identity, url.pathname + url.search, request.headers.authorization);
+    const server = buildServer(tickets, calls, identity, url.pathname + url.search, request.headers.authorization);
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
     response.on('close', () => {
       void transport.close();
@@ -423,6 +435,7 @@ export async function startFakeMcpServer(options: FakeMcpOptions = {}): Promise<
     origin,
     tickets,
     requests,
+    calls,
     ...(oauth ? { oauth } : {}),
     close: () =>
       new Promise<void>((resolve) => {

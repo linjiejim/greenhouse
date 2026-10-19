@@ -5,8 +5,9 @@
  * exists from the first message on.
  */
 
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { AGENT_TEMPLATES, MAIN_AGENT_TEMPLATE } from '@greenhouse/types/agent-templates';
+import { ApiClientError } from '@greenhouse/contract/client';
 import { useNotify } from '../../app/notify';
 import { useMe } from '../../app/session';
 import { Composer, type Candidate, type ComposerSend } from '../../conversation/Composer';
@@ -39,16 +40,19 @@ export function NewChat({ agentId, skillId }: { agentId?: string; skillId?: stri
       })),
     [agents.items],
   );
-  const [picked, setPicked] = useState<Candidate | null>(null);
+  const [picked, setPicked] = useState<Candidate | null>();
   const preset = agentId ? candidates.find((candidate) => candidate.handle === agentId) : undefined;
-  const target = picked ?? preset ?? null;
+  const target = picked === undefined ? (preset ?? null) : picked;
+  const selectedAgentId = picked === null ? undefined : (picked?.handle ?? agentId);
   const main = agents.items.find((agent) => agent.is_main);
-  const answering = target ? agents.items.find((agent) => agent.id === target.handle) : main;
+  const answering = selectedAgentId ? agents.items.find((agent) => agent.id === selectedAgentId) : main;
+  // A created chat survives a failed first send. Keep only IDs here; server rows live in QueryClient.
+  const pendingChats = useRef(new Map<string, string>());
   const [seed, setSeed] = useState<{ text: string }>();
   const template =
     answering &&
     (answering.is_main ? MAIN_AGENT_TEMPLATE : AGENT_TEMPLATES.find((item) => item.key === answering.template_key));
-  const agentKey = answering && !answering.is_main ? answering.id : undefined;
+  const agentKey = answering?.is_main ? undefined : selectedAgentId;
   const skills = useSkills({ agent: agentKey ?? 'main' });
   const suggested = useSkillStarters(agentKey);
   const [skillStart, setSkillStart] = useState<string | undefined>(skillId);
@@ -56,17 +60,36 @@ export function NewChat({ agentId, skillId }: { agentId?: string; skillId?: stri
   const starters = (suggested.data?.starters ?? template?.copy[locale].starters ?? []).slice(0, 3);
 
   const start = async (input: ComposerSend) => {
+    const targetKey = answering?.is_main ? 'main' : (selectedAgentId ?? 'main');
+    let chatId = pendingChats.current.get(targetKey) ?? (answering && pendingChats.current.get(answering.id));
     try {
-      const chat = await api.conversations.create({
-        kind: 'chat',
-        ...(answering && !answering.is_main ? { agent_id: answering.id } : {}),
-      });
-      const result = await sendMessage(chat.id, input);
-      client.setQueryData(keys.conversation(chat.id), chat);
+      if (!chatId) {
+        const chat = await api.conversations.create({
+          kind: 'chat',
+          ...(agentKey ? { agent_id: agentKey } : {}),
+        });
+        chatId = chat.id;
+        pendingChats.current.set(targetKey, chatId);
+        if (chat.agent_id) pendingChats.current.set(chat.agent_id, chatId);
+        client.setQueryData(keys.conversation(chatId), chat);
+      }
+      const result = await sendMessage(chatId, input);
       addMessage(client, result.message);
       void client.invalidateQueries({ queryKey: keys.conversations });
-      navigate({ page: 'conversation', id: chat.id }, { replace: true });
+      navigate({ page: 'conversation', id: chatId }, { replace: true });
     } catch (error) {
+      if (chatId && error instanceof ApiClientError && error.status === 404 && error.code === 'not_found') {
+        try {
+          // A missing attachment can also fail a send. Forget the chat only when it is itself gone.
+          await api.conversations.get(chatId);
+        } catch (missing) {
+          if (missing instanceof ApiClientError && missing.status === 404 && missing.code === 'not_found') {
+            for (const [key, id] of pendingChats.current) {
+              if (id === chatId) pendingChats.current.delete(key);
+            }
+          }
+        }
+      }
       notify(errorText(error, t));
       throw error;
     }

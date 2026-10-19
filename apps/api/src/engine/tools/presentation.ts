@@ -198,6 +198,56 @@ export function failureSummary(
   };
   const expected = details?.expected && reasons[details.expected]?.[zh ? 0 : 1];
   const codes: Record<string, [string, string]> = {
+    background_private_outbound: [
+      '本次任务已读取私有数据，不能再向外部发送新参数；请在报告中说明尚未完成的工作',
+      'This run has read private data and cannot send new arguments outside; report the work that remains',
+    ],
+    connector_read_plan_required: [
+      '本次任务已读取私有数据，这组读取参数未提前声明；请说明缺少的结果，并请成员用明确参数开启新任务',
+      'This run has read private data and these exact read arguments were not prepared; report the missing result and ask the member to start a new task with explicit arguments',
+    ],
+    connector_read_plan_locked: [
+      '读取计划已固定，或本次任务已读取来源内容；请在新任务首次读取时一次声明全部已知参数',
+      'The read plan is already fixed or this run has read source content; start a new task and prepare all known arguments on its first read',
+    ],
+    connector_read_plan_limit: [
+      '读取计划最多包含 16 次后续读取，当前与后续参数合计不能超过 8192 字节；请缩小任务',
+      'Prepare at most 16 further reads and 8192 bytes of current and future arguments; reduce the task size',
+    ],
+    connector_read_limit: [
+      '本次运行读取数已达上限，请缩小范围并开启新任务',
+      'This run reached its connector read limit; reduce the scope and start a new task',
+    ],
+    connector_read_scope_changed: [
+      '连接账号、凭据或读取权限已更新，原计划和结果不能继续复用；请用当前连接开启新任务',
+      'The connection account, credentials or read permissions changed; start a new task with the current connection instead of reusing this plan or result',
+    ],
+    connector_read_only_unverified: [
+      '读取计划中的操作尚未经管理员确认为只读；请管理员在设置中的连接器页面核实后，再开启新任务',
+      'An admin has not vouched for every planned action as read-only; ask an admin to verify them in Settings → Connectors before starting a new task',
+    ],
+    connector_read_plan_background_only: [
+      '提前声明读取参数仅适用于已批准的后台任务',
+      'Preparing future reads is available only in an approved background task',
+    ],
+    connector_connection_unavailable: [
+      '当前连接凭据不可用，请重新连接后开启新任务',
+      'The current connection credentials are unavailable; reconnect and start a new task',
+    ],
+    connector_key_unreadable: [
+      '连接器密钥不可读取，请管理员重新设置密钥后再开启新任务',
+      'The connector key cannot be read; ask an admin to set it again and start a new task',
+    ],
+    connector_background_read_only: [
+      '后台任务只能执行连接器的只读操作，不能执行这次写入',
+      'Background tasks can only use read-only connector actions and cannot perform this write',
+    ],
+    member_inactive: ['当前成员已停用，不能继续操作', 'The current member is inactive and cannot continue'],
+    helper_read_only: [
+      '辅助任务只能读取，不能执行这次写入',
+      'Helper tasks are read-only and cannot perform this write',
+    ],
+    agent_write_disabled: ['此 Agent 未开启写入权限', 'Writing is disabled for this Agent'],
     connector_permission_denied: [
       '外部服务拒绝了这项操作，请检查连接权限',
       'The external service refused this action; check connection permissions',
@@ -226,6 +276,19 @@ export function failureSummary(
       '本轮已读取网页等外部内容，不能直接存为或修改记忆；请勿重试，请成员在新一轮对话中确认',
       'This turn has read outside content, so memories cannot be changed. Do not retry; ask the member in a new turn',
     ],
+    knowledge_content_limit: [
+      '修改后的文档超过长度上限，请缩短改动或拆成多篇文档',
+      'The edited doc would be over the limit; reduce the change or split it into multiple docs',
+    ],
+    knowledge_edit_not_found: [
+      '未找到要替换的文字，请重新读取文档并使用其中的原文',
+      'The text to replace was not found; read the current doc and use its exact text',
+    ],
+    knowledge_edit_ambiguous: [
+      '要替换的文字出现多次，请补充前后文以便唯一匹配',
+      'The text to replace appears more than once; include more surrounding text so it matches only once',
+    ],
+    knowledge_edit_empty: ['请提供新内容、精确替换或新标题', 'Provide new content, exact replacements or a new title'],
     source_base_only: ['这次运行只能读取来源表格', 'This run can only read its source base'],
     forbidden: ['没有操作权限', 'You do not have permission'],
     not_found: ['对象不存在或无法访问', 'Item is missing or inaccessible'],
