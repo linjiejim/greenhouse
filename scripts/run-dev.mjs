@@ -14,11 +14,14 @@
  *
  * 端口冲突纪律（裸 lsof 曾误杀 OrbStack，规则保守）：
  *   - 只用 lsof -sTCP:LISTEN 找「监听者」，绝不裸 lsof；
- *   - 仅当监听进程 cwd == 本树根（本树残留）才杀其进程组，其余一律 +10 梯度避让。
+ *   - 仅当监听进程 cwd == 本树根（本树残留）才杀其进程组，其余一律 +10 梯度避让；
+ *   - 每次发信号前（含 SIGTERM 之后的 SIGKILL 升级）都重新核对身份：state 里的 pid
+ *     可能早被复用（曾 SIGKILL 掉 iOS 模拟器里的进程），pgid 取不到时绝不 kill(-0)。
  *
  * 数据面纪律：worktree 默认走**同一个本地 Postgres 里的独立库**（greenhouse_wt_<slug>），
  * 绝不动主库；`stop` 不关 Postgres（它被主树/其它 worktree/其它项目共用），
- * `stop --wipe` 只 DROP 沙箱库，且硬性拒绝 greenhouse_wt_ 前缀之外的库名。
+ * `stop --wipe` 只 DROP 沙箱库，且硬性拒绝 greenhouse_wt_ 前缀之外的库名；
+ * Bots 电脑与卷只在 state 记的命名空间等于本树命名空间时才回收。
  */
 import { spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -309,10 +312,18 @@ async function assertBotsReady(state, port) {
   throw new Error(`Bots 电脑 60 秒内未就绪（state=${lastState}），查 .run-dev/logs/api.log`);
 }
 
-/** Remove this tree's computers (keep their home volumes unless wiping). */
+/**
+ * Remove this tree's computers (keep their home volumes unless wiping). A
+ * namespace that isn't this tree's own (an old or hand-edited state file) may
+ * be shared with other trees, so its computers and volumes are left alone.
+ */
 function stopBotsInfra(state, wipe) {
   const ns = state?.bots?.namespace;
   if (!ns) return;
+  if (ns !== botsNamespace()) {
+    warn(`Bots 命名空间 ${ns} 不是本树的 ${botsNamespace()}，电脑和卷都不动（要清请按名删）`);
+    return;
+  }
   const label = `greenhouse.bots.computer.namespace=${ns}`;
   const listed = sh('docker', ['ps', '-aq', '--filter', `label=${label}`]);
   for (const id of listed.out.split('\n').filter(Boolean)) {
@@ -341,24 +352,49 @@ function listenerOnPort(port) {
     ?.slice(1);
   if (!pid) return null;
   const command = sh('ps', ['-p', pid, '-o', 'command=']).out;
-  const cwd = sh('lsof', ['-a', '-p', pid, '-d', 'cwd', '-Fn'])
+  return { pid: Number(pid), command, cwd: processCwd(pid) };
+}
+
+/** 进程的工作目录；进程已退或看不到时为 undefined。 */
+function processCwd(pid) {
+  return sh('lsof', ['-a', '-p', String(pid), '-d', 'cwd', '-Fn'])
     .out.split('\n')
     .find((l) => l.startsWith('n'))
     ?.slice(1);
-  return { pid: Number(pid), command, cwd };
+}
+
+/** 进程组号；进程已退时为 0。 */
+function processGroup(pid) {
+  return Number(sh('ps', ['-p', String(pid), '-o', 'pgid=']).out) || 0;
+}
+
+/**
+ * 给整个进程组发信号。pgid 必须是大于 1 的整数：kill(-0) 会打到 run-dev 自己所在的组，
+ * kill(-1) 会打到本用户的全部进程。
+ */
+function signalGroup(pgid, signal) {
+  if (!Number.isInteger(pgid) || pgid <= 1) return false;
+  try {
+    process.kill(-pgid, signal);
+    return true;
+  } catch {
+    return false; // 组已消亡
+  }
 }
 
 const DEV_PROC_RE = /node|vite|tsx|pnpm|esbuild/i;
 
+/** pid 仍是本树残留的开发进程，而不是退出后被复用给别人的 pid。 */
+function isOurDevProcess(pid) {
+  const command = sh('ps', ['-p', String(pid), '-o', 'command=']).out;
+  return Boolean(command) && DEV_PROC_RE.test(command) && processCwd(pid) === ROOT;
+}
+
 function killProcessGroup(pid, label) {
-  const pgid = Number(sh('ps', ['-p', String(pid), '-o', 'pgid=']).out);
+  const pgid = processGroup(pid);
   if (!pgid) return;
   info(`回收 ${label}（pid=${pid} pgid=${pgid}）`);
-  try {
-    process.kill(-pgid, 'SIGTERM');
-  } catch {
-    /* 已退出 */
-  }
+  signalGroup(pgid, 'SIGTERM');
 }
 
 async function waitPortFree(port, seconds = 8) {
@@ -382,11 +418,8 @@ async function allocatePort(name) {
     if (holder.cwd === ROOT && DEV_PROC_RE.test(holder.command)) {
       killProcessGroup(holder.pid, `${name}:${port} 本树残留`);
       if (await waitPortFree(port)) return port;
-      try {
-        process.kill(-Number(sh('ps', ['-p', String(holder.pid), '-o', 'pgid=']).out), 'SIGKILL');
-      } catch {
-        /* 已退出 */
-      }
+      // 等的这几秒里 pid 可能已退并被复用：升级前重核身份，已退就取不到 pgid、不发信号
+      if (isOurDevProcess(holder.pid)) signalGroup(processGroup(holder.pid), 'SIGKILL');
       if (await waitPortFree(port, 3)) return port;
     }
     warn(`端口 ${port} 被占（${(holder.command || '?').slice(0, 60)}｜cwd=${holder.cwd}），避让`);
@@ -801,39 +834,47 @@ async function cmdUp(argv) {
 // ============================================================================
 // stop
 // ============================================================================
+/**
+ * state 里记的服务进程现状：已退为 null；owned = 命令行带 marker 且 cwd 是本树根。
+ * 只看 marker 不够（api 的 marker 就是 "api"），两样同时吻合才认作本树启动的那个进程。
+ */
+function serviceProcess(svc) {
+  const command = sh('ps', ['-p', String(svc.pid), '-o', 'command=']).out;
+  if (!command) return null;
+  const owned = (!svc.marker || command.includes(svc.marker)) && processCwd(svc.pid) === ROOT;
+  return { command, owned };
+}
+
 async function cmdStop(argv) {
   const flags = new Set(argv);
   const state = readState();
   if (!state) {
     warn('无 state（本树没有 run-dev 拉起的服务）');
   } else {
+    const signalled = [];
     for (const [name, svc] of Object.entries(state.services || {})) {
-      const cmd = sh('ps', ['-p', String(svc.pid), '-o', 'command=']).out;
-      if (!cmd) {
+      const proc = serviceProcess(svc);
+      if (!proc) {
         info(`${name} 已不在（pid=${svc.pid}）`);
         continue;
       }
-      if (svc.marker && !cmd.includes(svc.marker)) {
-        warn(`${name} pid=${svc.pid} 命令行不匹配（疑 pid 复用），跳过：${cmd.slice(0, 60)}`);
+      if (!proc.owned) {
+        warn(`${name} pid=${svc.pid} 不是本树启动的进程（疑 pid 复用），跳过：${proc.command.slice(0, 60)}`);
         continue;
       }
-      try {
-        process.kill(-svc.pgid, 'SIGTERM');
-        info(`停 ${name}（pgid=${svc.pgid}）`);
-      } catch {
-        /* 组已消亡 */
+      if (!signalGroup(svc.pgid, 'SIGTERM')) {
+        warn(`${name} pgid=${svc.pgid} 无效或组已消亡，跳过`);
+        continue;
       }
+      info(`停 ${name}（pgid=${svc.pgid}）`);
+      signalled.push([name, svc]);
     }
-    await sleep(3000); // 给 pnpm/vite 子进程退出的时间
-    for (const [name, svc] of Object.entries(state.services || {})) {
-      if (sh('ps', ['-p', String(svc.pid), '-o', 'command=']).out) {
-        warn(`${name} 未退，SIGKILL`);
-        try {
-          process.kill(-svc.pgid, 'SIGKILL');
-        } catch {
-          /* 已退出 */
-        }
-      }
+    if (signalled.length) await sleep(3000); // 给 pnpm/vite 子进程退出的时间
+    // 只升级本轮 SIGTERM 过的服务，且再核一次身份：等待期间 pid 也可能被复用
+    for (const [name, svc] of signalled) {
+      if (!serviceProcess(svc)?.owned) continue;
+      warn(`${name} 未退，SIGKILL`);
+      signalGroup(svc.pgid, 'SIGKILL');
     }
     stopMissionInfra(state);
     stopBotsInfra(state, flags.has('--wipe'));
