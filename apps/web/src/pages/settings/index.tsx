@@ -30,7 +30,7 @@ import { ProviderBindingsPanel } from './provider-bindings';
 import { EmailAccountsPanel } from './email-accounts';
 import { MemoryPanel } from './memory';
 import { GroupsPanel } from './groups';
-import { OAuthGrantsPanel } from './oauth-grants';
+import { AgentAccessPanel } from './agent-access';
 import { DesktopPanel } from './desktop';
 import { DEFAULT_MODULE, resolveSettingsRedirect } from './redirects';
 
@@ -82,7 +82,7 @@ export function SettingsPage({ subPath }: { subPath: string }) {
       contentClassName="bg-surface-canvas"
     >
       {effectiveModule === 'preferences' && <PreferencesPanel />}
-      {effectiveModule === 'agent-connections' && <OAuthGrantsPanel />}
+      {effectiveModule === 'agent-connections' && <AgentAccessPanel subPath={subPath} />}
       {effectiveModule === 'provider-bindings' && <ProviderBindingsPanel />}
       {effectiveModule === 'email-accounts' && <EmailAccountsPanel />}
       {effectiveModule === 'groups' && <GroupsPanel />}

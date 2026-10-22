@@ -239,10 +239,9 @@ export function TaskCenter({
             onChange={(event) => setKind(event.target.value as TaskCenterKindFilter)}
           >
             <option value="all">{t('taskCenter.kind.all')}</option>
-            <option value="mission">{t('taskCenter.kind.mission')}</option>
-            <option value="workflow">{t('taskCenter.kind.workflow')}</option>
             <option value="automation">{t('taskCenter.kind.automation')}</option>
             <option value="subagent">{t('taskCenter.kind.subagent')}</option>
+            <option value="agent_write">{t('taskCenter.kind.agent_write')}</option>
           </Select>
           {isSuper && (
             <Select

@@ -275,6 +275,29 @@ describe('governed external-agent writes', () => {
     expect((await agentWriteStatus(db, result.view.request_id, caller)).status).toBe('expired');
   });
 
+  it("ends an agent's standing grants when its access is revoked, so a reconnect asks again", async () => {
+    const oauthGrant = await db.platformOAuth.upsertGrant({
+      user_id: member.id,
+      client_id: caller.clientId,
+      resource: 'https://greenhouse.test/api/mcp',
+      scopes: '["mcp:read","mcp:write"]',
+    });
+    await db.agentWriteGrants.create({
+      user_id: member.id,
+      client_id: caller.clientId,
+      tool_id: TOOL,
+      action: null,
+      days: 30,
+      created_via: 'settings',
+    });
+    expect((await govern({ action: 'records.update', record_id: 'rec_11', values: {} })).status).toBe('executed');
+
+    expect(await db.platformOAuth.revokeGrant(oauthGrant.id, member.id)).toBe(true);
+    const [grant] = await db.agentWriteGrants.listForUser(member.id);
+    expect(grant!.revoked_at).not.toBeNull();
+    expect((await govern({ action: 'records.update', record_id: 'rec_12', values: {} })).status).toBe('needs_approval');
+  });
+
   it('closes a write left running by a crash as outcome unknown and never replays it', async () => {
     let run = await db.runtime.createRun({
       kind: 'agent_write',

@@ -122,7 +122,7 @@ const SETTINGS_TOP: NavModule[] = [
     icon: Key,
     path: '#/settings/agent-connections',
     parent: 'settings',
-    description: 'Review and revoke OAuth access granted to external Agents',
+    description: 'Connect your agents, approve their writes, manage standing grants',
   },
   {
     id: 'settings.provider-bindings',

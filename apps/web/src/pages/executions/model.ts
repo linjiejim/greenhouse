@@ -10,7 +10,8 @@ import {
 export { executionRunHref, parseExecutionSubPath } from '../../lib/execution-route';
 
 export type TaskCenterTab = 'attention' | 'active' | 'completed' | 'failed' | 'all';
-export type TaskCenterKindFilter = 'all' | Extract<RuntimeRunKind, 'mission' | 'workflow' | 'automation' | 'subagent'>;
+/** Retired kinds (Mission, Workflow) have no filter of their own; their history shows under All. */
+export type TaskCenterKindFilter = 'all' | Extract<RuntimeRunKind, 'automation' | 'subagent' | 'agent_write'>;
 export type TaskCenterScope = 'own' | 'all';
 export type RuntimeConnectionState = 'disconnected' | 'connecting' | 'connected';
 
@@ -50,8 +51,8 @@ export function taskCenterCounts(summary: TaskCenterSummary | null): TaskCenterC
 
 export function taskCenterKinds(
   filter: TaskCenterKindFilter,
-): Array<'mission' | 'workflow' | 'automation' | 'subagent'> {
-  return filter === 'all' ? ['mission', 'workflow', 'automation', 'subagent'] : [filter];
+): Array<'mission' | 'workflow' | 'automation' | 'subagent' | 'agent_write'> {
+  return filter === 'all' ? ['mission', 'workflow', 'automation', 'subagent', 'agent_write'] : [filter];
 }
 
 function objectPayload(value: RuntimeRun['input']): Record<string, unknown> | null {
@@ -75,6 +76,10 @@ function nestedObject(input: Record<string, unknown>, key: string): Record<strin
 
 export function runtimeRunTitle(run: RuntimeRun): string {
   const input = objectPayload(run.input);
+  if (input && run.kind === 'agent_write') {
+    const client = firstDisplayString(input, ['client_name']) ?? 'Agent';
+    return `${client} · ${firstDisplayString(input, ['action', 'tool_id']) ?? run.source_id}`;
+  }
   const automationTask = input && run.kind === 'automation' ? nestedObject(input, 'task') : null;
   const title =
     (input ? firstDisplayString(input, ['title', 'name', 'session_title', 'prompt', 'task', 'task_input']) : null) ??
@@ -86,6 +91,7 @@ export function runtimeRunTitle(run: RuntimeRun): string {
 export function runtimeRunSubtitle(run: RuntimeRun): string | null {
   const input = objectPayload(run.input);
   if (!input) return null;
+  if (run.kind === 'agent_write') return firstDisplayString(input, ['tool_id']);
   const automationTask = run.kind === 'automation' ? nestedObject(input, 'task') : null;
   const prompt =
     firstDisplayString(input, ['prompt', 'task', 'task_input']) ??

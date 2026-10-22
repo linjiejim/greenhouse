@@ -12,10 +12,7 @@ export function ExecutionsPage({ subPath, params }: { subPath: string; params: U
   return (
     <TaskCenter
       initialKind={
-        requestedKind === 'mission' ||
-        requestedKind === 'workflow' ||
-        requestedKind === 'automation' ||
-        requestedKind === 'subagent'
+        requestedKind === 'automation' || requestedKind === 'subagent' || requestedKind === 'agent_write'
           ? requestedKind
           : 'all'
       }

@@ -39,3 +39,11 @@ describe('Execution Center routes', () => {
     expect(legacyExecutionRedirect('#/executions')).toBeNull();
   });
 });
+
+describe('agent write notifications', () => {
+  it('open the approval card in Settings, not the Execution center', () => {
+    expect(executionNotificationHref('rtr_1', { runtime_kind: 'agent_write' })).toBe(
+      '#/settings/agent-connections/requests/rtr_1',
+    );
+  });
+});

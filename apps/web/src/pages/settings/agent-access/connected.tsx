@@ -1,15 +1,15 @@
 /**
- * Current user's OAuth grants for external Agent/MCP clients.
+ * Connected agents — the OAuth grants this member gave external agent/MCP
+ * clients. Revoking one also ends its standing write grants (server side).
  */
 
 import React, { useMemo } from 'react';
-import { CrudPage, defineCrud, type CrudDataSource } from './crud';
-import { Tag, TagList } from '../../components/ui';
-import { Key, Shield } from '../../lib/icons';
-import { fetchOAuthGrants, revokeOAuthGrant, type OAuthGrant } from '../../lib/api/oauth';
-import { formatDate } from '../../lib/utils';
-import { useT } from '../../lib/i18n';
-import { ModulePage } from '../../components/app/module-page';
+import { CrudPage, defineCrud, type CrudDataSource } from '../crud';
+import { Tag, TagList } from '../../../components/ui';
+import { Key, Shield } from '../../../lib/icons';
+import { fetchOAuthGrants, revokeOAuthGrant, type OAuthGrant } from '../../../lib/api/oauth';
+import { formatDate } from '../../../lib/utils';
+import { useT } from '../../../lib/i18n';
 
 const grantsDataSource: CrudDataSource<OAuthGrant> = {
   async list(params) {
@@ -20,7 +20,7 @@ const grantsDataSource: CrudDataSource<OAuthGrant> = {
   remove: revokeOAuthGrant,
 };
 
-export function OAuthGrantsPanel() {
+export function ConnectedAgents() {
   const t = useT();
   const schema = useMemo(
     () =>
@@ -102,9 +102,5 @@ export function OAuthGrantsPanel() {
     [t],
   );
 
-  return (
-    <ModulePage moduleId="settings.agent-connections" layout="list">
-      <CrudPage schema={schema} />
-    </ModulePage>
-  );
+  return <CrudPage schema={schema} />;
 }

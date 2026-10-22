@@ -6,7 +6,12 @@ export type ExecutionRouteKind = Exclude<RuntimeRunKind, 'chat'>;
 
 export function isExecutionRouteKind(value: unknown): value is ExecutionRouteKind {
   return (
-    value === 'mission' || value === 'workflow' || value === 'automation' || value === 'subagent' || value === 'eval'
+    value === 'mission' ||
+    value === 'workflow' ||
+    value === 'automation' ||
+    value === 'subagent' ||
+    value === 'eval' ||
+    value === 'agent_write'
   );
 }
 
@@ -35,7 +40,20 @@ export function parseExecutionSubPath(subPath: string): {
   }
 }
 
+/** Agent writes are decided and reviewed in Settings › Agent connections, not the Execution center. */
+export function agentWriteRequestHref(runId: string): string {
+  return `#/settings/agent-connections/requests/${encodeURIComponent(runId)}`;
+}
+
 export function executionNotificationHref(runId: string, payload: RuntimeJsonValue): string {
+  if (
+    payload !== null &&
+    typeof payload === 'object' &&
+    !Array.isArray(payload) &&
+    payload.runtime_kind === 'agent_write'
+  ) {
+    return agentWriteRequestHref(runId);
+  }
   const kind =
     payload !== null &&
     typeof payload === 'object' &&
