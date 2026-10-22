@@ -22,6 +22,13 @@ the tag, injected as `APP_VERSION` (see below), not read from `package.json`.
 `main`.** Production deploys should pin a `:X.Y.Z` (or track `:X.Y`). `:edge` is
 for people who want to test the tip and understand it can break.
 
+## The v1 line (this branch)
+
+- Branch `v1` carries 1.x; `main` carries v2. release-please runs on pushes to `v1` with `target-branch: v1`.
+- v1 tags publish `:X.Y.Z` and `:X.Y` only; `:latest` stays with the newest v2 release (`latest=false` in release.yml).
+- The next version is pinned with `release-as` in `release-please-config.json`: the 1.4 commits carry `!` breaking markers that would otherwise compute 2.0.0 and collide with v2. Update or drop the pin after each 1.x release.
+- Desktop shells do not publish from tags on this line; dispatch desktop-release.yml by hand if a v1 desktop build is ever needed.
+
 ## Version strategy
 
 - **SemVer**, from 1.0.0 on: a breaking change (`feat!:` or a `BREAKING CHANGE:`

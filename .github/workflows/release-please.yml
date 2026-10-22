@@ -1,6 +1,7 @@
 name: Release Please
 
-# Version automation. On every push to main, release-please reads the Conventional
+# Version automation for the v1 line (branch `v1`; main carries v2). On every push
+# to v1, release-please reads the Conventional
 # Commits since the last tag and maintains a "Release PR" (computed SemVer bump +
 # generated CHANGELOG.md). Merging that PR tags `vX.Y.Z` and creates the GitHub
 # Release — which is what triggers release.yml to build & publish the artifacts.
@@ -8,7 +9,7 @@ name: Release Please
 # grows Release PRs or tags it did not ask for.
 on:
   push:
-    branches: [main]
+    branches: [v1]
 
 permissions:
   contents: write
@@ -16,7 +17,7 @@ permissions:
 
 # One release train at a time; never cancel a run mid-tag.
 concurrency:
-  group: release-please
+  group: release-please-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -35,5 +36,6 @@ jobs:
       - uses: googleapis/release-please-action@v4
         with:
           token: ${{ secrets.RELEASE_PLEASE_TOKEN || secrets.GITHUB_TOKEN }}
+          target-branch: v1
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json

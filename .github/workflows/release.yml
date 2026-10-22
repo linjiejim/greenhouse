@@ -3,7 +3,7 @@ name: Release
 # Builds & publishes the distributable artifacts. Two triggers:
 #   • tag `v*`  → STABLE release: GHCR image `:X.Y.Z` `:X.Y` and the browser
 #                 extension zip attached to the GitHub Release. This is the
-#                 release/v1.3 maintenance line: its tags never move `:latest`,
+#                 v1 line (branch `v1`, 1.x tags): its tags never move `:latest`,
 #                 which belongs to the newest v2 release.
 #   • push main → EDGE build: GHCR image `:edge` + `:main-<sha>` only. Never
 #                 `:latest`, never a Release asset — main is explicitly unstable.
