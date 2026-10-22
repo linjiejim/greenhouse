@@ -422,4 +422,36 @@ describe('governed external-agent writes', () => {
     expect(second.view.request_id).not.toBe(first.view.request_id);
     expect((await agentWriteStatus(db, first.view.request_id, caller)).status).toBe('pending');
   });
+
+  it('names a team document on the approval card but never a private one its owner cannot read', async () => {
+    const team = await db.knowledgeBase.create({
+      doc_id: unique('kb-team'),
+      title: 'Team roadmap',
+      content: 'x',
+      visibility: 'team',
+      owner_user_id: other.id,
+      created_by: other.id,
+    });
+    const secret = await db.knowledgeBase.create({
+      doc_id: unique('kb-secret'),
+      title: 'Salary review',
+      content: 'x',
+      visibility: 'private',
+      owner_user_id: other.id,
+      created_by: other.id,
+    });
+    const knowledge = (docId: string) =>
+      governProxyWrite({
+        db,
+        caller,
+        toolId: 'knowledge_mutation',
+        input: { action: 'knowledge.append_doc', doc_id: docId, content: 'more' },
+        registry: { knowledge_mutation: registry[TOOL] } as unknown as ToolRegistry,
+        allowedToolIds: ['knowledge_mutation'],
+        baseRisk: 'r2',
+        legacyConfirm: false,
+      });
+    expect((await knowledge(team.doc_id)).view.target_label).toBe('Team roadmap');
+    expect((await knowledge(secret.doc_id)).view.target_label).toBeNull();
+  });
 });

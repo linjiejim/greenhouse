@@ -44,6 +44,7 @@ import type { ToolRegistry } from '../agent.js';
 import { prepareProxyToolCall } from '../agent-runtime/tool-proxy.js';
 import { hashToolInput, instrumentRuntimeTools } from '../runtime/tool-evidence.js';
 import { countUsage } from '../usage/counters.js';
+import { canRead as canReadKb, resolveKbAccess } from '../knowledge/access.js';
 import { classifyWrite, type WriteClassification } from './risk.js';
 
 export type { AgentWriteStatus, AgentWriteView, WriteBasis };
@@ -233,20 +234,27 @@ function iso(value: string | null | undefined): string | null {
   return Number.isNaN(time) ? value : new Date(time).toISOString();
 }
 
-/** Name the existing thing a write touches, so the approver need not decode an id. */
-async function targetLabel(db: DatabaseProvider, toolId: string, input: unknown): Promise<string | null> {
+/**
+ * Name the document a write touches, so the approver need not decode an id.
+ * Only when the requesting member may read it: a request must never reveal the
+ * title of a record its owner cannot see. Other targets show their id.
+ */
+async function targetLabel(
+  db: DatabaseProvider,
+  ownerUserId: string,
+  toolId: string,
+  input: unknown,
+): Promise<string | null> {
   const args = input && typeof input === 'object' && !Array.isArray(input) ? (input as Record<string, unknown>) : {};
+  if (!toolId.startsWith('knowledge_') || typeof args.doc_id !== 'string' || !args.doc_id) return null;
   try {
-    if (toolId.startsWith('knowledge_') && typeof args.doc_id === 'string' && args.doc_id) {
-      return (await db.knowledgeBase.get(args.doc_id, 'shared'))?.title ?? null;
-    }
-    if (toolId.startsWith('project_') && typeof args.task_id === 'number') {
-      return (await db.projects.getTaskById(args.task_id))?.title ?? null;
-    }
+    const doc = await db.knowledgeBase.get(args.doc_id, 'shared');
+    if (!doc || !canReadKb(await resolveKbAccess(db, doc, ownerUserId))) return null;
+    return doc.title;
   } catch {
     // A label is a convenience; the input itself is always shown.
+    return null;
   }
-  return null;
 }
 
 export async function agentWriteView(db: DatabaseProvider, run: RuntimeRunRow): Promise<AgentWriteView> {
@@ -267,7 +275,7 @@ export async function agentWriteView(db: DatabaseProvider, run: RuntimeRunRow): 
     client_id: input.client_id,
     client_name: input.client_name,
     basis,
-    target_label: await targetLabel(db, input.tool_id, input.input),
+    target_label: await targetLabel(db, run.owner_user_id, input.tool_id, input.input),
     input: input.input,
     output: output && typeof output === 'object' && !Array.isArray(output) ? (output.result ?? null) : null,
     error: run.error_message,
