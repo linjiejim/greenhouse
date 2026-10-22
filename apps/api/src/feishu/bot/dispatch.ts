@@ -8,7 +8,7 @@
  * 方案见 docs/specs/20260825-feishu-bot-conversation.md。
  */
 
-import { getDb, type DatabaseProvider } from '@greenhouse/db';
+import { getDb, readSessionDigest, type DatabaseProvider } from '@greenhouse/db';
 import { resolveHistoryBudget, windowMessagesByBudget } from '@greenhouse/agent-core';
 import type { UserRole } from '@greenhouse/types/api';
 import { logger } from '@greenhouse/utils/logger';
@@ -20,6 +20,7 @@ import { buildLazyServerTools, LAZY_TOOL_IDS } from '../../agent-runtime/tool-re
 import { runAgentInSession, type AgentGenerate, type HeadlessMessage } from '../../agent-runtime/run-agent.js';
 import { resolveMemoryContext } from '../../llm/memory.js';
 import { sanitizeChatMessagesForPrompt, sanitizeUserMessageForPrompt } from '../../chat/user-message.js';
+import { formatDigestSection, scheduleDigestFold } from '../../chat/digest.js';
 import { flattenRichOutput } from '../../notifications/render.js';
 import { FEISHU_PROVIDER } from '../../routes/feishu-oauth.js';
 import { renderAskUserFromEvidence } from './ask-user.js';
@@ -46,6 +47,8 @@ export interface DispatchDeps {
   toolRegistry: ToolRegistry;
   /** Test seam — forwarded to runAgentInSession (defaults to the real loop). */
   generate?: AgentGenerate;
+  /** Test seam — the post-turn rolling-digest fold (defaults to `scheduleDigestFold`). */
+  scheduleFold?: typeof scheduleDigestFold;
 }
 
 function settingsUrl(): string {
@@ -68,14 +71,18 @@ const MAX_REPLY_CHARS = 10_000;
  * 与 chat 同一个投影与预算：`sanitizeChatMessagesForPrompt` 只改模型视图不改转录，
  * `resolveHistoryBudget` → `windowMessagesByBudget` 按 token 开窗、丢最旧的整条。
  * 刚落库的当前这条不算历史（runner 自己会把 prompt 接在最后）。
+ *
+ * 有滚动摘要时与 chat 同一口径：`seq ≤ digest_upto_seq` 的消息不再回放，由系统
+ * prompt 末尾的摘要段代替（见 chat/digest.ts）。
  */
 async function loadPriorMessages(
   db: DatabaseProvider,
   sessionId: string,
   prompt: string,
   modelId: string | undefined,
+  afterSeq: number | null,
 ): Promise<HeadlessMessage[]> {
-  const transcript = await db.sessions.buildChatMessages(sessionId);
+  const transcript = await db.sessions.buildChatMessages(sessionId, { afterSeq });
   const tail = transcript.at(-1);
   const prior = tail && tail.role === 'user' && tail.content === prompt ? transcript.slice(0, -1) : transcript;
   if (prior.length === 0) return [];
@@ -187,13 +194,20 @@ export async function dispatchFeishuMessage(message: FeishuIncomingMessage, deps
   );
 
   const memoryBlock = await resolveMemoryContext(owner.id, owner.role as UserRole);
-  const systemPrompt = buildSystemPrompt(profile, memoryBlock ? { userInfo: memoryBlock } : undefined);
+  let systemPrompt = buildSystemPrompt(profile, memoryBlock ? { userInfo: memoryBlock } : undefined);
 
   // ── 5. 跑既有 runner（带上这串对话的历史）────────────────
   // 只给会话的主人回放历史。群里任何绑定成员都能回复同一条链、落进同一个会话，
   // 而主人可能在 Web 上接着聊过——那些轮次从没发到群里，不能经别人的提问带进群。
-  const priorMessages =
-    mapping.user_id === owner.id ? await loadPriorMessages(db, sessionId, prompt, profile.model.id) : [];
+  // 滚动摘要是同一份历史的另一种形态，同一条规则：只给主人。
+  const isOwner = mapping.user_id === owner.id;
+  const digest = isOwner ? readSessionDigest(await db.sessions.getById(sessionId)) : null;
+  if (digest) {
+    systemPrompt += formatDigestSection(digest.text, { canSearch: 'session_query' in tools });
+  }
+  const priorMessages = isOwner
+    ? await loadPriorMessages(db, sessionId, prompt, profile.model.id, digest?.uptoSeq ?? null)
+    : [];
   const result = await runAgentInSession({
     db,
     sessionId,
@@ -207,6 +221,11 @@ export async function dispatchFeishuMessage(message: FeishuIncomingMessage, deps
     usageContext: { profileId: profile.id, userId: owner.id, caller: 'feishu-bot' },
     ...(deps.generate ? { generate: deps.generate } : {}),
   });
+
+  // 回答已落库：按 chat 同一规则在后台折叠更早的轮次（不阻塞这次回复）。
+  // 只在主人发言时折叠——摘要的花费记在触发它的人头上，而它服务的是主人的历史。
+  if (isOwner)
+    void (deps.scheduleFold ?? scheduleDigestFold)({ sessionId, userId: owner.id, modelId: profile.model.id, db });
 
   // ── 6. 呈现：富块围栏拍平成飞书能渲染的 markdown（spec D10）──
   let content = flattenRichOutput(result.text ?? '').trim();

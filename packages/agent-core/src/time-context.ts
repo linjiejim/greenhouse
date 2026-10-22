@@ -3,6 +3,8 @@
  *
  * Helps the agent reason about relative dates ("yesterday", "last week")
  * without polluting the system prompt — which keeps LLM prefix caching intact.
+ * Every stamp is derived from the message itself, never from the clock, so a
+ * message renders identically on every turn after it was sent.
  */
 
 /**
@@ -51,10 +53,23 @@ function formatTimestamp(date: Date, tz: string): string {
 }
 
 /**
+ * The "now" line a host puts in the closing turn-context block of the newest
+ * user message (apps/api/src/chat/turn-context.ts). Kept out of the stamps
+ * below so they are a pure function of the transcript.
+ */
+export function formatCurrentTimeLine(now: Date = new Date(), timezone = 'Asia/Shanghai'): string {
+  return `[Current Time: ${formatTimestamp(now, timezone)}]`;
+}
+
+/**
  * Inject time context into chat messages.
  *
- * Prepends a timestamp tag to each user message based on its created_at.
- * The last user message additionally gets a [Current Time] marker.
+ * Prepends each user message's own stored timestamp (`created_at`). The
+ * result is a pure function of the transcript — the same message renders the
+ * same bytes on every later turn — so the provider's prefix cache keeps
+ * hitting across turns. The live current time is NOT added here any more: it
+ * changes every request, so hosts put it in the closing block they append to
+ * the newest user message (see `formatCurrentTimeLine`).
  *
  * @param messages - Chat messages with optional created_at from DB
  * @param timezone - IANA timezone string (default: 'Asia/Shanghai')
@@ -64,32 +79,13 @@ export function injectTimeContext(
   messages: EngineMessage[],
   timezone = 'Asia/Shanghai',
 ): Array<{ role: string; content: string | EngineContentPart[] }> {
-  // Find the index of the last user message
-  let lastUserIdx = -1;
-  for (let i = messages.length - 1; i >= 0; i--) {
-    if (messages[i].role === 'user') {
-      lastUserIdx = i;
-      break;
-    }
-  }
-
-  return messages.map((msg, idx) => {
+  return messages.map((msg) => {
     if (msg.role !== 'user') {
       return { role: msg.role, content: msg.content };
     }
 
     const ts = msg.created_at ? new Date(msg.created_at) : null;
-    const isLast = idx === lastUserIdx;
-
-    let prefix = '';
-    if (isLast) {
-      // Last user message: use current time (most accurate for relative-date reasoning)
-      const now = new Date();
-      prefix = `[Current Time: ${formatTimestamp(now, timezone)}] `;
-    } else if (ts && !isNaN(ts.getTime())) {
-      // Historical user message: use its stored timestamp
-      prefix = `[${formatTimestamp(ts, timezone)}] `;
-    }
+    const prefix = ts && !isNaN(ts.getTime()) ? `[${formatTimestamp(ts, timezone)}] ` : '';
 
     if (typeof msg.content === 'string') {
       return { role: msg.role, content: prefix + msg.content };

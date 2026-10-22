@@ -57,12 +57,14 @@ export { createDsmlInterceptor } from './dsml-interceptor.js';
 export type { DsmlRecoveryEvent } from './dsml-interceptor.js';
 
 // Cross-host conventions
-export { injectTimeContext } from './time-context.js';
+export { injectTimeContext, formatCurrentTimeLine } from './time-context.js';
 export type { EngineMessage, EngineContentPart } from './time-context.js';
 export {
   estimateTokens,
   windowMessagesByBudget,
   resolveHistoryBudget,
+  resolveDigestTriggerTokens,
+  DIGEST_TRIGGER_SHARE_OF_HISTORY,
   HISTORY_TOKEN_BUDGET,
   DEFAULT_COMPACTION_THRESHOLD,
 } from './context-budget.js';

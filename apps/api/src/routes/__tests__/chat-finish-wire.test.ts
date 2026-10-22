@@ -32,6 +32,8 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock('@greenhouse/db', () => ({
+  // Sessions in these fixtures carry no digest columns, so this is the real answer.
+  readSessionDigest: () => null,
   getDb: () => ({
     users: mocks.users,
     userFeatures: mocks.userFeatures,
@@ -64,6 +66,10 @@ vi.mock('@greenhouse/agent-core', () => ({
   resolveHistoryBudget: () => 80_000,
   // Text-only default — the vision inline path has its own unit tests (chat-vision.test.ts).
   modelSupportsVision: () => false,
+  // The closing turn-context block's clock line and the deterministic stamps
+  // recorded in the Runtime trace (both unit-tested in agent-core).
+  formatCurrentTimeLine: () => '[Current Time: test]',
+  injectTimeContext: <T>(messages: T[]) => messages,
   getModelEntry: () => ({ options: { max_tokens: 100 } }),
 }));
 
@@ -446,7 +452,11 @@ describe('POST /api/chat finish wire event', () => {
         messages: [
           {
             role: 'user',
-            content: '\n\n[Attached image ID(s): image-only.png.]',
+            // The ID hint is the message's own content; the per-turn closing
+            // block (time etc.) follows it, for the model only.
+            content: expect.stringMatching(
+              /^\n\n\[Attached image ID\(s\): image-only\.png\.\]\n\n---\n\[Turn context — added by Greenhouse/,
+            ),
             created_at: '2026-07-31T00:00:00.000Z',
             images: [{ id: 'image-only.png', url: '/api/upload/image-only.png' }],
           },
@@ -536,7 +546,10 @@ describe('POST /api/chat finish wire event', () => {
       content: string;
     }>;
     expect(modelMessages[0]!.content).not.toContain('system:');
-    expect(modelMessages[0]!.content.length).toBeLessThanOrEqual(8_000);
+    // The user's prose is capped; the server's closing turn-context block follows it.
+    const [prose, closing] = modelMessages[0]!.content.split('\n\n---\n[Turn context');
+    expect(prose!.length).toBeLessThanOrEqual(8_000);
+    expect(closing).toContain('[Current Time: test]');
     expect(mocks.persistChatResult).toHaveBeenCalledWith(
       expect.objectContaining({ expectedTail: { id: 'persisted-user-message', content: exact } }),
     );

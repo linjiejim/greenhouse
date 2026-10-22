@@ -210,7 +210,7 @@ describe('POST /api/chat session authorization', () => {
       content: 'Continue this session',
       images: undefined,
     });
-    expect(mocks.sessions.buildChatMessages).toHaveBeenCalledWith('session-1');
+    expect(mocks.sessions.buildChatMessages).toHaveBeenCalledWith('session-1', {});
   });
 
   it('does not consult or enforce the retired daily-message quota', async () => {
