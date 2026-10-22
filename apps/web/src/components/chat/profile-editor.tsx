@@ -60,7 +60,6 @@ interface ProfileEditorDrawerProps {
   onClose: () => void;
   profile: Profile | null; // null = create mode
   availableTools: ToolMeta[];
-  isSuper: boolean;
   onSave: (input: CustomProfileInput, editId?: number) => Promise<void>;
 }
 
@@ -106,14 +105,7 @@ function createProfileForm(profile: Profile): ProfileFormData {
 
 // ─── Component ──────────────────────────────────────────
 
-export function ProfileEditorDrawer({
-  open,
-  onClose,
-  profile,
-  availableTools,
-  isSuper,
-  onSave,
-}: ProfileEditorDrawerProps) {
+export function ProfileEditorDrawer({ open, onClose, profile, availableTools, onSave }: ProfileEditorDrawerProps) {
   const t = useT();
   const isEditing = !!profile;
   // Same list as the Chat picker: catalog models this deployment can reach.
@@ -609,16 +601,8 @@ export function ProfileEditorDrawer({
 
               {profile && (
                 <div className="space-y-1 rounded-lg border border-edge bg-surface-muted px-3 py-2 text-xs text-fg-muted">
-                  <div>
-                    {t('profileEditor.versionSummary', {
-                      version: profile.current_version ?? 1,
-                      status: profile.lifecycle_status ?? t('common.draft'),
-                    })}
-                    {isSuper ? ` · ${t('profileEditor.reviewActionsHint')}` : ''}
-                  </div>
-                  {(profile.lifecycle_status === 'pilot' || profile.lifecycle_status === 'verified') && (
-                    <div className="text-warning">{t('profileEditor.reviewedVersionWarning')}</div>
-                  )}
+                  <div>{t('profileEditor.versionSummary', { version: profile.current_version ?? 1 })}</div>
+                  {profile.is_shared && <div className="text-warning">{t('profileEditor.sharedEditWarning')}</div>}
                 </div>
               )}
 

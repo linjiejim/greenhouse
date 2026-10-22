@@ -46,7 +46,6 @@ async function mountEditor(profile: Profile | null) {
           onClose: vi.fn(),
           profile,
           availableTools: [],
-          isSuper: false,
           onSave: vi.fn(),
         }),
       }),

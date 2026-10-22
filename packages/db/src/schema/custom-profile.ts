@@ -7,7 +7,8 @@
 import { pgTable, serial, text, integer, boolean, timestamp, index, unique } from 'drizzle-orm/pg-core';
 import { users } from './user.js';
 
-export const CUSTOM_PROFILE_LIFECYCLE_STATUSES = [
+/** Retired in v1.4 with the review lifecycle; kept only to type the retired column. */
+const CUSTOM_PROFILE_LIFECYCLE_STATUSES = [
   'draft',
   'review',
   'pilot',
@@ -42,20 +43,25 @@ export const customProfiles = pgTable(
     tools: text('tools').notNull().default('[]'), // JSON array of tool IDs
     system_prompt: text('system_prompt').notNull(),
     max_steps: integer('max_steps').notNull().default(12),
-    is_shared: boolean('is_shared').notNull().default(false), // shared with all internal users
+    /** Team availability: false = private to the owner. Only a super switches it (v1.4). */
+    is_shared: boolean('is_shared').notNull().default(false),
     avatar: text('avatar').notNull().default('{}'), // JSON: {color, accessories, leafStyle, eyeStyle, faceStyle}
     forked_from: text('forked_from'), // source profile id: 'researcher' | 'custom:42' | null
-    /** Latest immutable manifest version visible to the owner/editor. */
+    /** Latest immutable manifest version — what everyone who picks the Agent now gets. */
     current_version: integer('current_version').notNull().default(1),
-    /** Reviewed version exposed to non-owners while lifecycle is pilot/verified. */
+    /** Retired in v1.4 (review lifecycle removed): never read or written; dropped with the retired tables. */
     published_version: integer('published_version'),
+    /** Retired in v1.4 (review lifecycle removed): never read or written; dropped with the retired tables. */
     lifecycle_status: text('lifecycle_status', { enum: CUSTOM_PROFILE_LIFECYCLE_STATUSES }).notNull().default('draft'),
+    /** Retired in v1.4 (review lifecycle removed): never read or written; dropped with the retired tables. */
     lifecycle_note: text('lifecycle_note'),
     /** Backup owner for operational continuity; ownership transfer stays explicit. */
     owner_backup_user_id: text('owner_backup_user_id').references(() => users.id, { onDelete: 'set null' }),
-    /** Reviewer references are deliberately loose so lifecycle history survives account disablement. */
+    /** Retired in v1.4 (review lifecycle removed): never read or written; dropped with the retired tables. */
     reviewed_by: text('reviewed_by'),
+    /** Retired in v1.4 (review lifecycle removed): never read or written; dropped with the retired tables. */
     reviewed_at: timestamp('reviewed_at', { withTimezone: true, mode: 'string' }),
+    /** Retired in v1.4 (review lifecycle removed): never read or written; dropped with the retired tables. */
     next_review_at: timestamp('next_review_at', { withTimezone: true, mode: 'string' }),
     created_at: timestamp('created_at', { withTimezone: true, mode: 'string' }).notNull(),
     updated_at: timestamp('updated_at', { withTimezone: true, mode: 'string' }).notNull(),
@@ -102,6 +108,7 @@ export const customProfileVersions = pgTable(
     eval_refs: text('eval_refs').notNull().default('[]'),
     /** Snapshot only: no FK, otherwise deleting a user would mutate this immutable row. */
     owner_backup_user_id: text('owner_backup_user_id'),
+    /** Retired in v1.4 (review lifecycle removed): never written; dropped with the retired tables. */
     review_due_at: timestamp('review_due_at', { withTimezone: true, mode: 'string' }),
     created_by: text('created_by'),
     created_at: timestamp('created_at', { withTimezone: true, mode: 'string' }).notNull(),
@@ -118,5 +125,4 @@ export const customProfileVersions = pgTable(
 
 export type CustomProfileRow = typeof customProfiles.$inferSelect;
 export type CustomProfileVersionRow = typeof customProfileVersions.$inferSelect;
-export type CustomProfileLifecycleStatus = CustomProfileRow['lifecycle_status'];
 export type CustomProfileRiskLevel = CustomProfileVersionRow['risk_level'];

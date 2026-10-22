@@ -155,7 +155,7 @@ prints the choices: `--reset` (wipes all rows first — gated behind typing the 
 `--yes`) or `--keep` (load on top). When you add/rename a table or change a column that the
 dataset populates, update the matching `data/examples/<table>.json` and its
 [`README.md`](data/examples/README.md), and add the table to `LOAD_ORDER` (FK-safe order).
-Custom agents load through `db.customProfiles.create()` so they get their immutable draft v1.
+Custom agents load through `db.customProfiles.create()` so they get their immutable v1.
 Auth secrets are never baked in: `users.json` carries a plaintext `password` hashed at load;
 `email_accounts` (instance-secret-encrypted) are not seeded.
 

@@ -60,11 +60,8 @@ export interface Profile {
   avatar?: ProfileAvatar;
   created_at?: string;
   updated_at?: string;
-  /** Stable asset lifecycle and immutable executable version metadata. */
-  lifecycle_status?: 'draft' | 'review' | 'pilot' | 'verified' | 'rejected' | 'suspended' | 'deprecated' | 'archived';
-  lifecycle_note?: string | null;
+  /** Latest immutable version — what anyone who picks this Agent now runs. */
   current_version?: number;
-  published_version?: number | null;
   manifest_hash?: string;
   change_log?: string;
   purpose?: string | null;
@@ -72,9 +69,6 @@ export interface Profile {
   risk_level?: 'low' | 'medium' | 'high';
   budget_policy?: Record<string, unknown>;
   owner_backup_user_id?: string | null;
-  reviewed_by?: string | null;
-  reviewed_at?: string | null;
-  next_review_at?: string | null;
 }
 
 export interface ProfileUsage {

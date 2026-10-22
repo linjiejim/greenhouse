@@ -6,6 +6,7 @@ export type PlatformNotificationKind =
   | 'runtime_attention'
   | 'runtime_completed'
   | 'runtime_failed'
+  /** Historical only: the Agent governance worker that produced these was removed in v1.4. */
   | 'agent_review_due'
   | 'agent_suspended'
   | 'budget_attention'

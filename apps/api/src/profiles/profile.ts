@@ -181,8 +181,9 @@ export function parseCustomProfileReference(profileId: string): CustomProfileRef
  * Revalidate a pinned custom Agent at the execution boundary.
  *
  * Resolving an immutable manifest proves what will run, but not whether the
- * current actor may still run it. Owners/super may exercise drafts for testing;
- * everyone else needs the exact currently published pilot/verified version.
+ * current actor may still run it. Owners/super always may; everyone else only
+ * while the Agent is shared with the team. The pinned version itself keeps
+ * resolving after later edits — unsharing is what revokes access.
  */
 export async function assertPinnedProfileExecutionAccess(
   database: DatabaseProvider,
@@ -198,16 +199,8 @@ export async function assertPinnedProfileExecutionAccess(
   }
   const asset = await database.customProfiles.getById(reference.profileId);
   if (!asset) throw new Error(`${surface} custom Agent no longer exists`);
-  if (['rejected', 'suspended', 'deprecated', 'archived'].includes(asset.lifecycle_status)) {
-    throw new Error(`${surface} custom Agent is not executable (${asset.lifecycle_status})`);
-  }
   const owns = actor.role === 'super' || asset.user_id === actor.id;
-  if (
-    !owns &&
-    (!asset.is_shared ||
-      (asset.lifecycle_status !== 'pilot' && asset.lifecycle_status !== 'verified') ||
-      asset.published_version !== reference.version)
-  ) {
+  if (!owns && !asset.is_shared) {
     throw new Error(`${surface} custom Agent access was revoked`);
   }
   if (!(await database.customProfiles.getVersion(reference.profileId, reference.version))) {
@@ -354,10 +347,6 @@ export async function resolveProfileAsync(
       // instructions and cost policy while presenting the missing Agent's id.
       throw new Error(`Custom profile not found: "${normalized}"`);
     }
-    if (['rejected', 'suspended', 'deprecated', 'archived'].includes(row.lifecycle_status)) {
-      throw new Error(`Custom profile is not executable (${row.lifecycle_status}): "${normalized}"`);
-    }
-
     const versionNumber = reference.version ?? row.current_version;
     const version = await db.customProfiles.getVersion(reference.profileId, versionNumber);
     if (!version) throw new Error(`Custom profile version not found: "custom:${reference.profileId}@${versionNumber}"`);

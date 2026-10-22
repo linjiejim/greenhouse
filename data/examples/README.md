@@ -49,7 +49,7 @@ shared demo password.
   app's own inserts don't collide.
 - **JSON-as-text columns** (`tags`, `dependencies`, `pipeline`, `references_`,
   `_questions`, `capabilities`, …) are authored as **native arrays/objects**; the
-  importer stringifies them for the underlying `text` columns. Custom agents (`custom_profiles.json`) are loaded through the service so each one also gets its immutable draft v1 version row.
+  importer stringifies them for the underlying `text` columns. Custom agents (`custom_profiles.json`) are loaded through the service so each one also gets its immutable v1 version row.
 - **Secrets are never baked in.** `users.json` rows carry a plaintext `password`
   (not `password_hash`); the importer scrypt-hashes it at load. Tables whose
   values are encrypted/hashed with the instance secret (`email_accounts`) are
@@ -78,7 +78,7 @@ parent→child sub-agent lineage, folders, tags, and a shared session.
 
 **Power features** — quick prompts (global + personal), user memories, scheduled
 automations (cron), feature requests (all statuses), one custom agent (loaded as an
-immutable draft v1), and per-user feature flags.
+immutable v1), and per-user feature flags.
 
 ## Not seeded (and why)
 

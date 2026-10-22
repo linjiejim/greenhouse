@@ -160,7 +160,7 @@ export async function run(args: string[]): Promise<number> {
     }
 
     // Custom agents go through the service: it writes the asset AND its immutable
-    // draft v1 (custom_profile_versions) in one transaction, which raw inserts
+    // v1 (custom_profile_versions) in one transaction, which raw inserts
     // cannot reproduce without duplicating the manifest-hash logic.
     if (table === 'custom_profiles') {
       for (const row of rows) {

@@ -116,7 +116,6 @@ import { createSubagentRuntimeDriver, reconcileReclaimedSubagentRun } from './ru
 import { createRuntimeNotificationProjector } from './notifications/runtime-projector.js';
 import { startNotificationDeliveryWorker } from './notifications/delivery-worker.js';
 import { createRuntimeDomainProjector } from './runtime/domain-projector.js';
-import { startAgentGovernanceWorker } from './agent-governance/worker.js';
 import {
   requireTrustedExecutionSurface,
   resolveTrustedExecutionSwitches,
@@ -425,9 +424,6 @@ async function main() {
   });
   let runtimeWorker: Awaited<ReturnType<typeof startRuntimeWorker>> | null = null;
   let notificationDeliveryWorker: Awaited<ReturnType<typeof startNotificationDeliveryWorker>> | null = null;
-  const agentGovernanceWorker = trustedExecutionPlan.agentGovernance
-    ? await startAgentGovernanceWorker({ db: dbProvider })
-    : null;
 
   // Mount everything (single typed chain — see mountRoutes/AppType above)
   mountRoutes(toolRegistry);
@@ -453,7 +449,6 @@ async function main() {
     usageBudgetSweeper.stop();
     runtimeWorker?.stop();
     notificationDeliveryWorker?.stop();
-    agentGovernanceWorker?.stop();
     stopFeishuBot();
     await runExtensionShutdownHooks();
     await chatRunRegistry.shutdown(5000);

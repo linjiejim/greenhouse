@@ -69,33 +69,22 @@ export interface CustomProfileInput {
   system_prompt: string;
   capabilities?: Array<{ icon: string; label: string; prompt: string }>;
   max_steps?: number;
-  is_shared?: boolean;
   avatar?: ProfileAvatar;
   purpose?: string;
   audience?: string;
   risk_level?: 'low' | 'medium' | 'high';
   budget_policy?: Record<string, unknown>;
   owner_backup_user_id?: string | null;
-  review_due_at?: string | null;
   change_log?: string;
 }
 
-export type ProfileLifecycleStatus = NonNullable<Profile['lifecycle_status']>;
-
-export async function transitionCustomProfileLifecycle(
-  id: number,
-  input: {
-    status: ProfileLifecycleStatus;
-    note?: string;
-    publish_version?: number;
-    next_review_at?: string;
-  },
-): Promise<Profile> {
-  const args = { param: { id: String(id) }, json: input };
-  const res = await rpc.api.profiles.custom[':id'].lifecycle.$post(args);
+/** Switch whether a custom Agent is available to the whole team. Super only. */
+export async function setCustomProfileSharing(id: number, isShared: boolean): Promise<Profile> {
+  const args = { param: { id: String(id) }, json: { is_shared: isShared } };
+  const res = await rpc.api.profiles.custom[':id'].sharing.$put(args);
   if (!res.ok) {
     const data = await res.json();
-    throw new Error(('error' in data && data.error) || 'Failed to update Agent lifecycle');
+    throw new Error(('error' in data && data.error) || 'Failed to change team availability');
   }
   return res.json();
 }

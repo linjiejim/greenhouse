@@ -300,6 +300,12 @@ git pull && pnpm install && pnpm drizzle-kit migrate   # then restart the API
 > Execution center (runs still active at upgrade are closed on first boot), and the
 > sandbox host setup (`runsc`, the agent-runtime image, `MISSION_*` / `SANDBOX_RUNNER_*`
 > env) can be decommissioned. MCP machine clients and their audit log are unaffected.
+> Custom agents lose the review lifecycle (draft → review → pilot → verified) and the
+> automatic review worker (`AGENT_GOVERNANCE_ENABLED` can be removed): an agent is private to
+> its owner unless a super makes it available to the team, and everyone who picks it gets its
+> current version. Agents that were verified or in pilot stay shared; previously archived or
+> suspended agents become visible to their owners again. Automations may now run every 15
+> minutes.
 
 > **Upgrading from 0.6.x** — this line removes the public/guest surface (`/api/v1`, the
 > `default` profile, external accounts) and the database-managed LLM gateway upstreams in

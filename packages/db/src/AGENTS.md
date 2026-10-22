@@ -68,7 +68,7 @@
 - v1.4 删除模块时**不删表**：表定义原样挪进 `schema/retired.ts`（从 schema index 导出，Drizzle snapshot 不变、不产生迁移），service 与 provider 入口一并删除。留表只为蓝绿回滚到 v1.3.x 时旧代码还能读写；v1.4 之后的下一个版本用迁移把它们 DROP 掉，再删 `retired.ts` 里对应定义。
 - 应用代码不得 import `retired.ts` 的任何导出；`resetSchema()` 的 TRUNCATE 清单保留这些表名（表还在）。
 - 退役列（表还活着、列不再读写）就地留在原 schema，注释写明退役版本，与退役表同一版本 DROP。
-- 当前退役：评测 `eval_datasets` / `eval_runs` / `eval_results` / `chat_eval_results`；Missions `agent_workspaces` / `agent_runs` / `agent_run_events` / `agent_artifacts` / `agent_run_approvals` / `agent_run_outbox`；Workflows `workflows` / `workflow_runs` / `workflow_node_runs` / `workflow_gates`；LLM 中转 key `api_clients`（`api_audit_log` 仍是活表，与它只有逻辑关联、没有 FK）；列 `custom_profile_versions.eval_refs`。
+- 当前退役：评测 `eval_datasets` / `eval_runs` / `eval_results` / `chat_eval_results`；Missions `agent_workspaces` / `agent_runs` / `agent_run_events` / `agent_artifacts` / `agent_run_approvals` / `agent_run_outbox`；Workflows `workflows` / `workflow_runs` / `workflow_node_runs` / `workflow_gates`；LLM 中转 key `api_clients`（`api_audit_log` 仍是活表，与它只有逻辑关联、没有 FK）；列 `custom_profile_versions.eval_refs` / `review_due_at`，`custom_profiles.lifecycle_status` / `lifecycle_note` / `reviewed_by` / `reviewed_at` / `next_review_at` / `published_version`（及 `idx_custom_profiles_lifecycle`）。注意：旧行的 `lifecycle_status`（如 archived / suspended）不再被读取，这些 Agent 对 owner 重新可见、可用。
 
 ### Schema 迁移
 
@@ -264,18 +264,15 @@
 - Subagent admission 只走 `runtime.admitSubagent()`：稳定 tool-call identity 绑定 child session/message id，并在同一外层事务创建 child session、seq=0 user message、Runtime Run 与 Step；内部 `createRun({active_subagent_parent:{parent_session_id,limit}})` 的 advisory lock 按 `(owner,parent session)` 串行化，从完整 Runtime input 的 `parent_session_id + mode=async` 统计 active background child，精确替代 `spawn_session` 原来的进程内 async 并发 Map。显式 `parent_run_id` 必须在该事务内 `FOR UPDATE`，且 owner/session 匹配、状态仍为 `claimed|running`、`desired_state=run`；调用层不得在显式 id 缺失/失效时降级成按 session 查另一条 Run。任一 identity/lineage/限流失败整笔回滚；禁止另建“先 transcript、后 Runtime”的 ensure 路径。Subagent Run 固定 `max_attempts=1`；只有尚未进入 `running` 的 claim lease 可恢复，running lease stale 必须终态失败，绝不能自动重放可能已外写的整轮。
 - `runtime_runs.parent_run_id` 是域内 CASCADE 所有权；Run 的用户/session/source/root、Event actor、Interrupt 决策人、ToolCall Platform Audit 是松散逻辑关联，使永久执行历史不随外域主体删除。Service 写入 step/tool/artifact/interrupt 时必须验证它们属于同一 Run，不能只依赖单列 FK。
 
-### Custom Agent 版本与治理
+### Custom Agent 版本与团队可用
 
 - `custom_profiles` 是稳定资产身份，`custom_profile_versions` 是不可变完整 manifest；生产 Service 只能 append，
-  不得 update/delete 版本。manifest hash、change log、模型/tools/prompt、purpose/audience/risk/budget 与
-  owner backup/review due 必须随版本冻结。
-- 任何新版本都撤销原审查：资产回 `draft`，清空 `published_version`、共享、reviewer 与 review date。旧
-  `custom:<id>@<version>` 仍可供已 pin 的会话/计划任务重放，但不能继续对其他用户发布。
-- 共享只能由 lifecycle `pilot` / `verified` 派生；不得直接写 `is_shared=true`。迁移把存量行转成 draft v1，
-  并把 sessions/scheduled_tasks/eval_runs 的存量 custom 引用 pin 到 `@1`。
-- 自动治理只消费 `listReviewDue(at, limit)` 与 `listActiveWithOwners(limit, afterId)`；状态变更可用逻辑 actor
-  `system:agent-governance`。发布未显式给 review date 时，low/medium risk 默认 90 天、high risk 默认 60 天，
-  禁止产生永不复核的 pilot/verified。review actor 与版本 created_by/backup snapshot 保持逻辑引用，避免账号删除改写历史。
+  不得 update 版本（`delete` 删除整个 Agent 时随 FK CASCADE 一并删除）。manifest hash、change log、
+  模型/tools/prompt、purpose/audience/risk/budget 与 owner backup 必须随版本冻结。
+- 团队可见只看 `is_shared`，只有 `setShared`（super 路由）能写；新建一律 private，新版本不改变共享状态。
+  旧 `custom:<id>@<version>` 仍可供已 pin 的会话/Automation 解析。
+- 审核生命周期列是退役列（见上「退役表」）：Service 不读不写，`listForUser` / `listAll` / `countByUser` 也不再按
+  `lifecycle_status` 过滤。
 
 ### 统一 Notification Center
 

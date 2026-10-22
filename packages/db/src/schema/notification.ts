@@ -21,6 +21,8 @@ export const notifications = pgTable(
         'runtime_attention',
         'runtime_completed',
         'runtime_failed',
+        // No longer produced (the Agent governance worker was removed in v1.4);
+        // kept so historical rows still type-check and render.
         'agent_review_due',
         'agent_suspended',
         'budget_attention',
