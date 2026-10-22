@@ -167,6 +167,7 @@ export function KnowledgeNavPanel({ activeModule = '', collapsed, onNavigate }: 
   const [personalDocs, setPersonalDocs] = useState<KnowledgeDoc[]>([]);
   const [sharedDocs, setSharedDocs] = useState<KnowledgeDoc[]>([]);
   const [docsLoading, setDocsLoading] = useState(true);
+  const docsLoadedRef = useRef(false);
 
   // kb folders (directory tree) — the whole scope in one request (`'all'`), so
   // the nested tree renders without per-level fetches.
@@ -223,7 +224,10 @@ export function KnowledgeNavPanel({ activeModule = '', collapsed, onNavigate }: 
   // past the 50th — a tree that hides documents is worse than a slow one.
   useEffect(() => {
     let cancelled = false;
-    setDocsLoading(true);
+    // Spinner on the first load only. A refetch (a local save, or another member
+    // or an agent writing — `knowledge.changed`) keeps the tree mounted, so a
+    // drag or rename in progress is not torn down under the user.
+    if (!docsLoadedRef.current) setDocsLoading(true);
     Promise.all([
       listAllKnowledgeDocs({ status: 'published', visibility: 'team' }),
       listAllKnowledgeDocs({ status: 'published', visibility: 'private' }),
@@ -234,6 +238,7 @@ export function KnowledgeNavPanel({ activeModule = '', collapsed, onNavigate }: 
         setInternalDocs(team);
         setPersonalDocs(mine.filter((d) => d.access === 'owner'));
         setSharedDocs(shared.filter((d) => d.access !== 'owner'));
+        docsLoadedRef.current = true;
         setDocsLoading(false);
       })
       .catch(() => {

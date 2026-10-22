@@ -99,7 +99,11 @@ describe('Custom Agent immutable versions', () => {
     expect(v2?.profile).toMatchObject({ current_version: 2, is_shared: true });
     // The next pick gets the new version; work already pinned keeps v1.
     await expect(pinProfileIdForUser(readerActor, `custom:${asset.id}`, db)).resolves.toBe(`custom:${asset.id}@2`);
-    await expect(pinProfileIdForUser(readerActor, `custom:${asset.id}@1`, db)).resolves.toBe(`custom:${asset.id}@1`);
+    await expect(pinProfileIdForUser(readerActor, `custom:${asset.id}@1`, db, { existingPin: true })).resolves.toBe(
+      `custom:${asset.id}@1`,
+    );
+    // Picking the old version afresh is refused: it may never have been shared.
+    await expect(pinProfileIdForUser(readerActor, `custom:${asset.id}@1`, db)).rejects.toMatchObject({ status: 403 });
     await expect(
       assertPinnedProfileExecutionAccess(db, readerActor, `custom:${asset.id}@1`, 'Automation'),
     ).resolves.toBeUndefined();

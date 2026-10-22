@@ -18,6 +18,11 @@
  * expiry is checked on read (even before the sweep runs) and the sweep needs
  * nothing but a listing.
  *
+ * The stored object also names the tool that produced the output, and a read
+ * asks the caller's CURRENT permissions whether that tool is still allowed: a
+ * permission narrowed after the call takes effect on the next read, not after
+ * the 24 hours run out.
+ *
  * Lengths are JavaScript string lengths (UTF-16 code units); ranges never split
  * a surrogate pair.
  */
@@ -72,6 +77,21 @@ function createdAtOf(outputId: string): number | null {
   return match ? Number(match[1]) : null;
 }
 
+/** Never start a slice on the second half of a surrogate pair: step back to the whole character. */
+function safeStart(text: string, start: number): number {
+  if (start <= 0 || start >= text.length) return Math.max(0, Math.min(start, text.length));
+  const code = text.charCodeAt(start);
+  const before = text.charCodeAt(start - 1);
+  return code >= 0xdc00 && code <= 0xdfff && before >= 0xd800 && before <= 0xdbff ? start - 1 : start;
+}
+
+/** What is stored: the output text plus the tool that produced it. */
+interface StoredOutput {
+  v: 1;
+  source_tool: string;
+  text: string;
+}
+
 /** Never end a slice between the two halves of a surrogate pair. */
 function safeEnd(text: string, end: number): number {
   if (end <= 0 || end >= text.length) return Math.max(0, Math.min(end, text.length));
@@ -106,6 +126,7 @@ export function previewBoundary(text: string, max: number): number {
 export async function boundReplyText(
   text: string,
   caller: ToolOutputCaller,
+  sourceTool: string,
   now: number = Date.now(),
 ): Promise<{ content: McpTextContent[]; outputId: string | null }> {
   if (text.length <= MCP_REPLY_MAX_CHARS) return { content: [{ type: 'text', text }], outputId: null };
@@ -116,7 +137,8 @@ export async function boundReplyText(
   const outputId = `out_${now}_${randomUUID().replaceAll('-', '')}`;
   let savedId: string | null = outputId;
   try {
-    await putObjectAtKey(keyFor(caller, outputId), Buffer.from(stored, 'utf8'), 'application/json');
+    const body: StoredOutput = { v: 1, source_tool: sourceTool, text: stored };
+    await putObjectAtKey(keyFor(caller, outputId), Buffer.from(JSON.stringify(body), 'utf8'), 'application/json');
   } catch (error) {
     // The call itself succeeded (a write may already have run): still answer,
     // just without a handle, rather than failing or flooding.
@@ -171,19 +193,36 @@ export interface ToolOutputRange {
   text: string;
 }
 
-/** Read `[offset, offset + limit)` of a stored output, for its producer only. */
+function parseStored(buffer: Buffer): StoredOutput | null {
+  try {
+    const parsed = JSON.parse(buffer.toString('utf8')) as Partial<StoredOutput>;
+    return parsed && parsed.v === 1 && typeof parsed.source_tool === 'string' && typeof parsed.text === 'string'
+      ? (parsed as StoredOutput)
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Read `[offset, offset + limit)` of a stored output, for its producer only, and
+ * only while `canUseTool` still allows the tool that produced it.
+ */
 export async function readToolOutput(
   caller: ToolOutputCaller,
   input: { outputId: string; offset?: number; limit?: number },
+  canUseTool: (toolId: string) => boolean,
   now: number = Date.now(),
 ): Promise<ToolOutputRange> {
   const createdAt = createdAtOf(input.outputId);
   if (createdAt === null || now - createdAt > TOOL_OUTPUT_TTL_MS) throw new ToolOutputNotFoundError();
   const object = await getObjectAtKey(keyFor(caller, input.outputId));
-  if (!object) throw new ToolOutputNotFoundError();
-  const text = object.buffer.toString('utf8');
+  const stored = object ? parseStored(object.buffer) : null;
+  // A revoked tool reads exactly like a missing output: nothing about it leaks.
+  if (!stored || !canUseTool(stored.source_tool)) throw new ToolOutputNotFoundError();
+  const text = stored.text;
 
-  const offset = Math.max(0, Math.min(Math.floor(input.offset ?? 0), text.length));
+  const offset = safeStart(text, Math.max(0, Math.min(Math.floor(input.offset ?? 0), text.length)));
   const limit = Math.max(
     1,
     Math.min(Math.floor(input.limit ?? TOOL_OUTPUT_READ_MAX_CHARS), TOOL_OUTPUT_READ_MAX_CHARS),

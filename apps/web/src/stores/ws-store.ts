@@ -28,11 +28,18 @@ interface WsStore {
   disconnect: () => void;
 }
 
+let connectedBefore = false;
+
 export const useWsStore = create<WsStore>((set) => {
   // Subscribe to connection status changes
   wsClient.onStatusChange((status) => {
     set({ status });
-    if (status === 'connected') notifyRuntimeInvalidated();
+    if (status === 'connected') {
+      notifyRuntimeInvalidated();
+      // Knowledge events are not replayed: on a REconnect, catch up on anything missed.
+      if (connectedBefore) useKnowledgeStore.getState().remoteChanged();
+      connectedBefore = true;
+    }
     // Clear presence data on disconnect (will be re-pushed on reconnect)
     if (status === 'disconnected') {
       set({ onlineUsers: [] });

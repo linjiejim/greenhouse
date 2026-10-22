@@ -307,7 +307,12 @@ export function buildMcpServer(c: Context, ctx: McpContext): Server {
         if (ctx.toolIds.length === 0) {
           throw new ProxyToolError(`Tool "${name}" is not available for this credential`, 403);
         }
-        const range = await handleToolOutputRead(outputCaller, rawArgs);
+        // Re-asked on every read: a tool revoked since the call no longer pages out.
+        const canUseTool = (toolId: string) =>
+          toolId === AGENT_WRITE_STATUS_TOOL
+            ? ctx.toolIds.some((id) => isMutatingProxyTool(id))
+            : ctx.toolIds.includes(toolId);
+        const range = await handleToolOutputRead(outputCaller, rawArgs, canUseTool);
         await recordMcpAudit(c, {
           endpoint: 'mcp:tools/call',
           statusCode: 200,
@@ -328,7 +333,7 @@ export function buildMcpServer(c: Context, ctx: McpContext): Server {
           throw new ProxyToolError(`Tool "${name}" is not available for this credential`, 403);
         }
         const result = await handleAgentWriteStatus(c, identity.userId, rawArgs);
-        const bounded = await boundReplyText(JSON.stringify(agentFacingView(result)), outputCaller);
+        const bounded = await boundReplyText(JSON.stringify(agentFacingView(result)), outputCaller, name);
         await recordMcpAudit(c, {
           endpoint: 'mcp:tools/call',
           statusCode: 200,
@@ -364,7 +369,7 @@ export function buildMcpServer(c: Context, ctx: McpContext): Server {
         });
         const bounded =
           governed.status === 'executed'
-            ? await boundReplyText(JSON.stringify(governed.view.output), outputCaller)
+            ? await boundReplyText(JSON.stringify(governed.view.output), outputCaller, name)
             : null;
         await recordMcpAudit(c, {
           endpoint: 'mcp:tools/call',
@@ -407,7 +412,7 @@ export function buildMcpServer(c: Context, ctx: McpContext): Server {
       }
 
       const output = await executeProxyTool(ctx.registry, name, ctx.toolIds, rawArgs, { usageClient: 'mcp' });
-      const bounded = await boundReplyText(JSON.stringify(output), outputCaller);
+      const bounded = await boundReplyText(JSON.stringify(output), outputCaller, name);
       await recordMcpAudit(c, {
         endpoint: 'mcp:tools/call',
         statusCode: 200,
@@ -536,11 +541,15 @@ async function handleAgentWriteStatus(c: Context, userId: string, args: Record<s
   return agentWriteStatus(getDb(), requestId, caller, wait);
 }
 
-async function handleToolOutputRead(caller: ToolOutputCaller, args: Record<string, unknown>) {
+async function handleToolOutputRead(
+  caller: ToolOutputCaller,
+  args: Record<string, unknown>,
+  canUseTool: (toolId: string) => boolean,
+) {
   const outputId = typeof args.output_id === 'string' ? args.output_id.trim() : '';
   if (!outputId) throw new ProxyToolError('output_id is required', 400);
   const number = (value: unknown) => (typeof value === 'number' && Number.isFinite(value) ? value : undefined);
-  return readToolOutput(caller, { outputId, offset: number(args.offset), limit: number(args.limit) });
+  return readToolOutput(caller, { outputId, offset: number(args.offset), limit: number(args.limit) }, canUseTool);
 }
 
 /** What the calling agent sees: enough to act on, without internal ids it cannot use. */
