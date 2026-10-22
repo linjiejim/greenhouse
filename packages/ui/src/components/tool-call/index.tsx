@@ -2,9 +2,9 @@
  * ToolCallRenderer — the collapsible "N tool calls" trace block.
  *
  * Renders process/trace tool calls as generic rows (ToolCallCard). Rich "artifact"
- * outputs (eval cards, the ask_user form, page-update diffs, generated images) are
- * filtered out here and rendered in the message body by <BodyArtifacts> instead —
- * so a message whose only tool call is an eval shows no trace block at all.
+ * outputs (the ask_user form, page-update diffs, generated images) are filtered
+ * out here and rendered in the message body by <BodyArtifacts> instead — so a
+ * message whose only tool call is such a card shows no trace block at all.
  *
  * Used by both the Chat page (variant 'full') and the Agent Panel (variant 'compact').
  */

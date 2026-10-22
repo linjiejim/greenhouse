@@ -11,8 +11,6 @@
  * GET    /api/sessions/:id/shares                       — 获取会话的分享列表
  * DELETE /api/sessions/:id/shares                       — 移除会话的所有分享
  * DELETE /api/sessions/:id/shares/:shareId               — 移除单个分享
- * GET    /api/sessions/:id/messages/:msgId/eval        — 获取消息的缓存评估结果
- * GET    /api/sessions/:id/evals                       — 会话内每条消息的最新评估摘要（驱动评测按钮状态）
  * PATCH  /api/sessions/:id/messages/:msgId             — 编辑用户消息内容（同时删除后续消息）
  * POST   /api/sessions/:id/regenerate                  — 校验指定的末尾 AI 回复可重新生成
  */
@@ -402,71 +400,13 @@ const sessions = new Hono<AppEnv>()
     };
     if (body.status !== undefined) {
       const userWritableStatuses = new Set(['active', 'archived', 'completed', 'deleted']);
-      const mayMarkEval = authUser.role === 'super' && body.status === 'eval';
-      if (!userWritableStatuses.has(body.status) && !mayMarkEval) {
+      if (!userWritableStatuses.has(body.status)) {
         return c.json({ error: 'Invalid session status' }, 400);
       }
     }
     const session = await getDb().sessions.update(id, body);
     if (!session) return c.json({ error: 'Session not found' }, 404);
     return c.json(session);
-  })
-  /** GET /api/sessions/:id/messages/:msgId/eval — get cached eval result for a message */
-  .get('/:id/messages/:msgId/eval', async (c) => {
-    const authUser = getAuthUser(c);
-    const sessionId = c.req.param('id');
-
-    // Visibility check on parent session
-    const session = await getDb().sessions.getById(sessionId);
-    if (!session || !(await canAccessSession(authUser, session))) {
-      return c.json({ error: 'Session not found' }, 404);
-    }
-
-    const messageId = c.req.param('msgId');
-    const message = await getDb().sessions.getMessageById(messageId);
-    if (!message || message.session_id !== sessionId) {
-      return c.json({ exists: false });
-    }
-
-    const evalResult = await getDb().chatEval.getByMessageId(messageId);
-    if (!evalResult || evalResult.session_id !== sessionId) return c.json({ exists: false });
-
-    return c.json({
-      exists: true,
-      eval: evalResult,
-      agent_session_id: evalResult.eval_session_id ?? null,
-    });
-  })
-  /**
-   * GET /api/sessions/:id/evals — latest eval summary per message in a session.
-   * Powers the chat eval-button state (评测过 → 查看) without an N+1 of the
-   * per-message endpoint. Returns one entry per evaluated message (most recent run).
-   */
-  .get('/:id/evals', async (c) => {
-    const authUser = getAuthUser(c);
-    const sessionId = c.req.param('id');
-
-    const session = await getDb().sessions.getById(sessionId);
-    if (!session || !(await canAccessSession(authUser, session))) {
-      return c.json({ error: 'Session not found' }, 404);
-    }
-
-    const rows = await getDb().chatEval.getBySessionId(sessionId);
-    // Collapse re-evals to the latest run per message (created_at desc).
-    const latest = new Map<string, (typeof rows)[number]>();
-    for (const row of rows) {
-      const prev = latest.get(row.message_id);
-      if (!prev || row.created_at > prev.created_at) latest.set(row.message_id, row);
-    }
-    const evals = [...latest.values()].map((r) => ({
-      message_id: r.message_id,
-      verdict: r.verdict ?? null,
-      score_final: r.score_final ?? null,
-      eval_session_id: r.eval_session_id ?? null,
-      created_at: r.created_at,
-    }));
-
-    return c.json({ evals });
   })
   /** DELETE /api/sessions/:id — hard delete session */
   .delete('/:id', async (c) => {

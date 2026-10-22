@@ -13,9 +13,6 @@ const mocks = vi.hoisted(() => ({
     getSharedSessionIds: vi.fn(),
     deleteOne: vi.fn(),
   },
-  chatEval: {
-    getByMessageId: vi.fn(),
-  },
 }));
 
 vi.mock('@greenhouse/db', () => ({
@@ -75,29 +72,6 @@ describe('session nested-resource authorization', () => {
     expect(response.status).toBe(404);
     await expect(response.json()).resolves.toEqual({ error: 'Share not found' });
     expect(mocks.sessionShares.deleteOne).toHaveBeenCalledWith(99, 'session-a');
-  });
-
-  it('does not return an eval for a message from another session', async () => {
-    mocks.sessions.getMessageById.mockResolvedValue({ id: 'message-b', session_id: 'session-b' });
-
-    const response = await createApp().request('/api/sessions/session-a/messages/message-b/eval');
-
-    expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toEqual({ exists: false });
-    expect(mocks.chatEval.getByMessageId).not.toHaveBeenCalled();
-  });
-
-  it('does not return an eval record whose parent session does not match the path', async () => {
-    mocks.sessions.getMessageById.mockResolvedValue({ id: 'message-a', session_id: 'session-a' });
-    mocks.chatEval.getByMessageId.mockResolvedValue({
-      message_id: 'message-a',
-      session_id: 'session-b',
-    });
-
-    const response = await createApp().request('/api/sessions/session-a/messages/message-a/eval');
-
-    expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toEqual({ exists: false });
   });
 
   it('lets a read-only share recipient fork through an Agent reply into an owned session', async () => {

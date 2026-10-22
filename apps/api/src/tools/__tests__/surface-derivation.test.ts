@@ -158,7 +158,6 @@ describe('surface-derived exposure sets', () => {
         'session_query',
         'knowledge_query',
         'knowledge_mutation',
-        'eval_message',
         'spawn_session',
         'call_llm',
         'skill_mutation',

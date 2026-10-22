@@ -51,7 +51,6 @@ import {
 import authRoutes from './routes/auth.js';
 import profileRoutes from './routes/profiles.js';
 import sessionRoutes from './routes/sessions.js';
-import evalRoutes from './routes/eval.js';
 import { createChatRoute } from './routes/chat.js';
 import clientActionRoutes from './routes/client-actions.js';
 import { CLIENT_ACTIONS_API_PREFIX } from '@greenhouse/types/api';
@@ -118,7 +117,6 @@ import runtimeRoutes from './routes/runtime.js';
 import { initMissionRuntime } from './cloud-agent/index.js';
 import { startRuntimeReconciler } from './runtime/reconciler.js';
 import { startRuntimeWorker } from './runtime/worker.js';
-import { createEvalRuntimeDriver, reconcileEvalRuntimeRuns, reconcileReclaimedEvalRun } from './runtime/eval-driver.js';
 import { reconcileInterruptedChatRuntimeRuns } from './chat/runtime.js';
 import { createAutomationRuntimeDriver } from './scheduler/runtime-driver.js';
 import { createSubagentRuntimeDriver, reconcileReclaimedSubagentRun } from './runtime/subagent-driver.js';
@@ -273,9 +271,6 @@ function mountRoutes(toolRegistry: ToolRegistry) {
       .route('/api/bootstrap', bootstrapRoutes)
       .route('/api/extensions', extensionsRoutes)
       .route('/api/upload', uploadRoutes)
-      // Internal-only routes (team + super)
-      .use('/api/eval/*', requireSuper())
-      .route('/api/eval', evalRoutes)
       // `/oauth/callback` is a browser redirect from WeCom and carries no Bearer,
       // so it is allowed by isPublicPath and this router must not sit behind a
       // wildcard role guard; `/oauth/start` and `/binding` guard themselves.
@@ -471,9 +466,6 @@ async function main() {
   await reconcileInterruptedChatRuntimeRuns(dbProvider).catch((error) => {
     logger.error('[chat-runtime] boot reconciliation unavailable', { error: String(error) });
   });
-  // Eval queueing is a write-side Runtime consumer and therefore follows the
-  // durable worker switch. Mission/Workflow domain engines remain independent.
-  if (trustedExecutionPlan.evalDriver) await reconcileEvalRuntimeRuns(dbProvider);
   let runtimeWorker: Awaited<ReturnType<typeof startRuntimeWorker>> | null = null;
   let notificationDeliveryWorker: Awaited<ReturnType<typeof startNotificationDeliveryWorker>> | null = null;
   const agentGovernanceWorker = trustedExecutionPlan.agentGovernance
@@ -543,9 +535,8 @@ async function main() {
     ? await startNotificationDeliveryWorker({ db: dbProvider })
     : null;
 
-  // Eval calls the authenticated local HTTP surface, so no Runtime driver may
-  // claim work until the socket above is actually listening. The boot pass is
-  // now safe and also drains stale leases/outbox immediately.
+  // No Runtime driver may claim work until the socket above is actually
+  // listening. The boot pass also drains stale leases/outbox immediately.
   runtimeWorker = trustedExecutionPlan.runtimeWorker
     ? await startRuntimeWorker({
         db: dbProvider,
@@ -556,14 +547,12 @@ async function main() {
           }
         },
         drivers: {
-          ...(trustedExecutionPlan.evalDriver ? { eval: createEvalRuntimeDriver() } : {}),
           ...(trustedExecutionPlan.automationDriver ? { automation: createAutomationRuntimeDriver(toolRegistry) } : {}),
           ...(trustedExecutionPlan.subagentDriver ? { subagent: createSubagentRuntimeDriver({ toolRegistry }) } : {}),
         },
-        driverConcurrency: { eval: 1, automation: 3, subagent: 5 },
+        driverConcurrency: { automation: 3, subagent: 5 },
         onRunReclaimed: async (run) => {
-          if (run.kind === 'eval') await reconcileReclaimedEvalRun(dbProvider, run);
-          else if (run.kind === 'subagent') await reconcileReclaimedSubagentRun(dbProvider, run);
+          if (run.kind === 'subagent') await reconcileReclaimedSubagentRun(dbProvider, run);
         },
       })
     : null;

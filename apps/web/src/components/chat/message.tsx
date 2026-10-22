@@ -12,7 +12,7 @@ import { BodyArtifacts, partitionCalls, splitArtifactsByPlacement } from '../too
 import { PipelineStageChart } from './pipeline-stage-chart';
 import type { PipelineStep } from '@greenhouse/types/session';
 import { dedupe } from './annotations';
-import { Search, BookOpen, Pencil, Clock, Globe, ChevronDown, Cloud } from '../../lib/icons';
+import { BookOpen, Pencil, Clock, Globe, ChevronDown, Cloud } from '../../lib/icons';
 import { marked } from 'marked';
 import { useTextSelection } from './use-text-selection';
 import { SelectionPopover } from './selection-popover';
@@ -24,9 +24,6 @@ import { ReasoningPanel, ReasoningToggle } from './reasoning-panel';
 export { StreamingMessageBubble } from './streaming-message-bubble';
 import { useT } from '../../lib/i18n';
 import { MediaPreviewDialog } from '../media-preview-dialog';
-
-// Temporarily hidden while the message-level evaluation flow is being revised.
-const SHOW_MESSAGE_EVAL = false;
 
 // ─── Types ───────────────────────────────────────────────
 
@@ -63,15 +60,8 @@ interface MessageProps {
   createdAt?: string;
   isLastUser?: boolean;
   isStreaming?: boolean;
-  /** Compact mode for Agent Panel — hides eval, fullscreen, translate, pipeline chart */
+  /** Compact mode for Agent Panel — hides fullscreen, translate, pipeline chart */
   compact?: boolean;
-  onEval?: (messageId: string) => void;
-  /**
-   * Existing eval for this message, if it was already evaluated. Present → the eval
-   * button shows the verdict and "view" affordance instead of "Eval"; clicking still
-   * routes through onEval, which restores the prior eval session.
-   */
-  evalState?: { verdict: string | null; score_final: number | null } | null;
   onEdit?: (messageId: string, content: string) => void;
   onTranslate?: (messageId: string, targetLang: 'en' | 'zh') => void;
   onRegenerate?: (messageId: string) => void;
@@ -126,8 +116,6 @@ function MessageBubbleImpl(props: MessageProps) {
     isLastUser,
     isStreaming,
     compact,
-    onEval,
-    evalState,
     onEdit,
     onTranslate,
     onRegenerate,
@@ -175,7 +163,7 @@ function MessageBubbleImpl(props: MessageProps) {
   }, [selection.text, selection.rect, noteDialog]);
 
   // Normalize pipeline steps into the shared ToolCall shape, then split into
-  // trace-block rows vs. body artifacts (eval cards, the ask_user form, page-update
+  // trace-block rows vs. body artifacts (the ask_user form, page-update
   // diffs, generated images). Generated-image dedup against embedded markdown lives
   // in <BodyArtifacts> (it receives `content`). Confirm-gate cards (mission
   // dispatch) render below the prose that introduces them.
@@ -372,7 +360,7 @@ function MessageBubbleImpl(props: MessageProps) {
           </div>
         )}
 
-        {/* Body artifacts — eval cards, the ask_user form, page-update diffs, generated images. */}
+        {/* Body artifacts — the ask_user form, page-update diffs, generated images. */}
         {artifactsAbove.length > 0 && (
           <BodyArtifacts
             calls={artifactsAbove}
@@ -554,16 +542,6 @@ function MessageBubbleImpl(props: MessageProps) {
             )}
           </div>
           <div className="ml-auto flex items-center">
-            {SHOW_MESSAGE_EVAL && !compact && messageId && onEval && (
-              <button
-                onClick={() => onEval(messageId)}
-                className="inline-flex h-7 items-center gap-1 rounded-md px-2 text-[11px] text-fg-faint transition-colors hover:bg-surface-muted hover:text-primary-fg"
-                title={evalState ? t('chat.viewEvaluation') : t('chat.evaluateResponse')}
-              >
-                <Search size={12} />
-                {evalState?.verdict || t('eval.title')}
-              </button>
-            )}
             <MessageActions
               content={actionContent}
               renderedHtml={renderedHtml}

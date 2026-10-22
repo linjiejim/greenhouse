@@ -18,7 +18,6 @@ describe('trusted-execution kill switches', () => {
       workflowAdapter: true,
       chatAdapter: true,
       runtimeWorker: true,
-      evalDriver: true,
       automationDriver: true,
       subagentDriver: true,
       notificationProjector: true,
@@ -30,7 +29,6 @@ describe('trusted-execution kill switches', () => {
     expect(runtimeAdapterEnabled('mission', switches)).toBe(true);
     expect(runtimeAdapterEnabled('workflow', switches)).toBe(true);
     expect(runtimeAdapterEnabled('chat', switches)).toBe(true);
-    expect(runtimeDriverEnabled('eval', switches)).toBe(true);
     expect(runtimeDriverEnabled('automation', switches)).toBe(true);
     expect(runtimeDriverEnabled('subagent', switches)).toBe(true);
   });
@@ -41,7 +39,6 @@ describe('trusted-execution kill switches', () => {
       RUNTIME_WORKFLOW_ADAPTER_ENABLED: 'off',
       RUNTIME_CHAT_ADAPTER_ENABLED: 'yes',
       RUNTIME_WORKER_ENABLED: 'FALSE',
-      RUNTIME_EVAL_DRIVER_ENABLED: '1',
       RUNTIME_AUTOMATION_DRIVER_ENABLED: 'no',
       RUNTIME_SUBAGENT_DRIVER_ENABLED: 'bad-value',
       RUNTIME_NOTIFICATION_PROJECTOR_ENABLED: 'yes',
@@ -54,7 +51,6 @@ describe('trusted-execution kill switches', () => {
       workflowAdapter: false,
       chatAdapter: true,
       runtimeWorker: false,
-      evalDriver: true,
       automationDriver: false,
       subagentDriver: false,
       notificationProjector: true,
@@ -71,7 +67,6 @@ describe('trusted-execution kill switches', () => {
       RUNTIME_WORKFLOW_ADAPTER_ENABLED: '0',
       RUNTIME_CHAT_ADAPTER_ENABLED: '0',
       RUNTIME_WORKER_ENABLED: '0',
-      RUNTIME_EVAL_DRIVER_ENABLED: '1',
       RUNTIME_AUTOMATION_DRIVER_ENABLED: '1',
       RUNTIME_SUBAGENT_DRIVER_ENABLED: '1',
       RUNTIME_NOTIFICATION_PROJECTOR_ENABLED: '1',
@@ -82,7 +77,6 @@ describe('trusted-execution kill switches', () => {
       runtimeReconciler: false,
       runtimeWorker: false,
       chatAdapter: false,
-      evalDriver: false,
       automationDriver: false,
       subagentDriver: false,
       notificationProjector: false,
@@ -94,7 +88,6 @@ describe('trusted-execution kill switches', () => {
       adapters: { mission: false, workflow: false, chat: false },
       services: {
         runtime_worker: false,
-        eval_driver: false,
         automation_driver: false,
         subagent_driver: false,
         notification_projector: false,

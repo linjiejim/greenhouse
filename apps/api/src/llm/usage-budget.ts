@@ -21,13 +21,10 @@ const PROVIDER_ATTEMPT_ESTIMATE_MARGIN = 1.25;
 const TOOL_SCHEMA_TOKEN_ALLOWANCE = 16_000;
 const DEFAULT_ORG_MONTHLY_TOKENS = 1_000_000_000;
 const DEFAULT_PROVIDER_MONTHLY_TOKENS = 500_000_000;
-const DEFAULT_EVAL_MONTHLY_TOKENS = 100_000_000;
 const DEFAULT_USER_MONTHLY_IMAGE_USD_MICROS = 20_000_000;
 const DEFAULT_ORG_MONTHLY_IMAGE_USD_MICROS = 2_000_000_000;
 const DEFAULT_PROVIDER_MONTHLY_IMAGE_USD_MICROS = 2_000_000_000;
 const DEFAULT_ORG_SCOPE_ID = 'default';
-
-export type UsageBudgetPool = 'standard' | 'eval';
 
 export class UsageBudgetAdmissionError extends Error {
   constructor(
@@ -51,8 +48,6 @@ export interface ReserveUserTokenBudgetInput {
   /** Exact concrete billing scope; bypasses logical-model fallback expansion. */
   providerScopeOverride?: string;
   runId?: string;
-  /** Eval traffic consumes an isolated organization pool instead of production capacity. */
-  budgetPool?: UsageBudgetPool;
   idempotencyKey?: string;
   ttlMs?: number;
   metadata?: Readonly<Record<string, unknown>>;
@@ -97,12 +92,6 @@ function readPositiveLimit(name: string, fallback: number): number {
   return parsed;
 }
 
-/** Judge/eval callers are isolated even when an older call site has not passed the explicit pool yet. */
-export function resolveUsageBudgetPool(caller: string, explicit?: UsageBudgetPool): UsageBudgetPool {
-  if (explicit) return explicit;
-  return /(^|[-_:])(eval|judge)([-_:]|$)/i.test(caller) ? 'eval' : 'standard';
-}
-
 function providerBudgetScopes(input: ReserveUserTokenBudgetInput): string[] {
   if (input.providerScopeOverride?.trim()) return [input.providerScopeOverride.trim()];
   if (input.modelId && getModelEntry(input.modelId)) {
@@ -121,7 +110,6 @@ export interface ProviderAttemptBudgetContext {
   profileId: string;
   sessionId?: string;
   runId?: string;
-  budgetPool?: UsageBudgetPool;
   metadata?: Readonly<Record<string, unknown>>;
 }
 
@@ -177,7 +165,6 @@ export function createProviderAttemptBudgetHook(context: ProviderAttemptBudgetCo
       providerId: descriptor.scopeId,
       providerScopeOverride: descriptor.scopeId,
       runId: context.runId ?? context.sessionId,
-      budgetPool: context.budgetPool,
       metadata: {
         ...(context.metadata ?? {}),
         profile_id: context.profileId,
@@ -237,21 +224,16 @@ export function createProviderAttemptBudgetHook(context: ProviderAttemptBudgetCo
 function buildTokenSharedAccounts(input: ReserveUserTokenBudgetInput): UsageBudgetAccountInput[] {
   const period = getUtcMonthPeriod();
   const orgScope = process.env.USAGE_BUDGET_ORG_SCOPE_ID?.trim() || DEFAULT_ORG_SCOPE_ID;
-  const pool = resolveUsageBudgetPool(input.caller, input.budgetPool);
   const providerScopes = providerBudgetScopes(input);
 
   return [
     {
       scope_type: 'organization',
-      scope_id: pool === 'eval' ? `${orgScope}:eval` : orgScope,
+      scope_id: orgScope,
       unit: 'tokens',
       period_start: period.start,
       period_end: period.end,
-      limit_units:
-        pool === 'eval'
-          ? readPositiveLimit('USAGE_BUDGET_EVAL_MONTHLY_TOKENS', DEFAULT_EVAL_MONTHLY_TOKENS)
-          : readPositiveLimit('USAGE_BUDGET_ORG_MONTHLY_TOKENS', DEFAULT_ORG_MONTHLY_TOKENS),
-      bootstrap_metadata: { budget_pool: pool },
+      limit_units: readPositiveLimit('USAGE_BUDGET_ORG_MONTHLY_TOKENS', DEFAULT_ORG_MONTHLY_TOKENS),
       update_existing_limit: true,
     },
     ...providerScopes.map(

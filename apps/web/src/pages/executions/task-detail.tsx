@@ -2,7 +2,7 @@ import type { RuntimeInterrupt, RuntimeRunCommandType } from '@greenhouse/types/
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { DetailHeader, DetailSection, Field, FieldGrid } from '../../components/detail';
 import { Button, ConfirmDialog, EmptyState, Spinner, toast } from '../../components/ui';
-import { ClipboardList, FlaskConical, Pause, Play, RefreshCw, RotateCcw, Square } from '../../lib/icons';
+import { ClipboardList, Pause, Play, RefreshCw, RotateCcw, Square } from '../../lib/icons';
 import { useT } from '../../lib/i18n';
 import {
   commandRuntimeInterrupt,
@@ -24,8 +24,7 @@ import {
   RuntimeToolCallsSection,
 } from './runtime-detail-sections';
 import { RuntimeKindTag, RuntimeStatusAxes } from './status-axes';
-import { useAuthStore, useWsStore } from '../../stores';
-import { TraceDatasetDialog } from './trace-dataset-dialog';
+import { useWsStore } from '../../stores';
 
 const COMMAND_ICONS = {
   start: Play,
@@ -39,13 +38,11 @@ export function TaskRunDetail({ runId, backHref = '#/executions' }: { runId: str
   const t = useT();
   const { enrichPageContext } = useAgentContext();
   const connection = useWsStore((state) => state.status);
-  const isSuper = useAuthStore((state) => state.currentUser?.role === 'super');
   const [detail, setDetail] = useState<RuntimeRunDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState<string | null>(null);
   const [cancelConfirm, setCancelConfirm] = useState(false);
-  const [traceDatasetOpen, setTraceDatasetOpen] = useState(false);
 
   const load = useCallback(
     async (silent = false) => {
@@ -130,12 +127,6 @@ export function TaskRunDetail({ runId, backHref = '#/executions' }: { runId: str
     if (!detail) return null;
     return (
       <>
-        {isSuper && (
-          <Button variant="outline" size="sm" onClick={() => setTraceDatasetOpen(true)} disabled={!!busy}>
-            <FlaskConical size={13} className="mr-1.5" aria-hidden="true" />
-            {t('taskCenter.traceDataset.action')}
-          </Button>
-        )}
         {detail.capabilities.commands.map((command) => {
           const Icon = COMMAND_ICONS[command];
           if (command === 'cancel') {
@@ -167,7 +158,7 @@ export function TaskRunDetail({ runId, backHref = '#/executions' }: { runId: str
         })}
       </>
     );
-  }, [busy, detail, isSuper, runCommand, t]);
+  }, [busy, detail, runCommand, t]);
 
   if (loading && !detail) {
     return (
@@ -298,9 +289,6 @@ export function TaskRunDetail({ runId, backHref = '#/executions' }: { runId: str
         confirmLabel={t('taskCenter.command.cancel')}
         confirmVariant="destructive"
       />
-      {isSuper && (
-        <TraceDatasetDialog runId={run.id} open={traceDatasetOpen} onClose={() => setTraceDatasetOpen(false)} />
-      )}
     </div>
   );
 }

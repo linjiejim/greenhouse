@@ -22,7 +22,6 @@ export default defineConfig({
     alias: {
       '@greenhouse/types/api': resolve(__dirname, 'packages/types/src/api.ts'),
       '@greenhouse/types/session': resolve(__dirname, 'packages/types/src/session.ts'),
-      '@greenhouse/types/eval': resolve(__dirname, 'packages/types/src/eval.ts'),
       '@greenhouse/types/source': resolve(__dirname, 'packages/types/src/source.ts'),
       '@greenhouse/types/agent-context': resolve(__dirname, 'packages/types/src/agent-context.ts'),
       '@greenhouse/types/features': resolve(__dirname, 'packages/types/src/features.ts'),
@@ -54,7 +53,6 @@ export default defineConfig({
       '@greenhouse/utils/prompts': resolve(__dirname, 'packages/utils/src/prompts.ts'),
       '@greenhouse/utils/semver': resolve(__dirname, 'packages/utils/src/semver.ts'),
       '@greenhouse/utils/html': resolve(__dirname, 'packages/utils/src/html.ts'),
-      '@greenhouse/db/seeds/eval-seed': resolve(__dirname, 'packages/db/src/seeds/eval-seed.ts'),
       '@greenhouse/db/test-config': resolve(__dirname, 'packages/db/src/test-config.ts'),
       '@greenhouse/db': resolve(__dirname, 'packages/db/src/index.ts'),
       '@greenhouse/platform-kernel/contract': resolve(__dirname, 'packages/platform-kernel/src/contract.ts'),

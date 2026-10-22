@@ -44,7 +44,6 @@ import { createWorkbenchEvaluator } from '../workbench/evaluate.js';
 import { delegatedAgentActor } from '../platform/actor.js';
 import { getPlatformRuntime } from '../platform/runtime.js';
 import { createLogFrictionTool } from '../tools/log-friction.js';
-import { createEvalMessageTool } from '../tools/eval-message.js';
 import { createGenerateImageTool } from '../tools/generate-image.js';
 import { createAnalyzeImageTool } from '../tools/analyze-image.js';
 import { createTablesQueryTool } from '../tools/tables-query.js';
@@ -283,16 +282,6 @@ export function buildLazyServerTools(
     });
   }
 
-  // eval_message: needs the running Agent sessionId (→ eval_session_id) so the chat
-  // UI can later restore this eval conversation. It is gated by the authenticated
-  // user's admin tool grant, same as when it was static.
-  if (effectiveTools.includes('eval_message')) {
-    tools.eval_message = createEvalMessageTool(db, {
-      userId,
-      userRole,
-      evalSessionId: sessionId ?? null,
-    });
-  }
   if (effectiveTools.includes('feature_request')) {
     tools.feature_request = createFeatureRequestTool(db, {
       userId,

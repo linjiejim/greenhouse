@@ -1,11 +1,10 @@
 /**
- * Render-level regression test for the reported issue: the "Evaluation Result"
- * card rendered INSIDE the collapsible tool-call block instead of the message body.
+ * Render-level regression test for the trace-vs-artifact split (a rich card once
+ * rendered INSIDE the collapsible tool-call block instead of the message body).
  *
- * Uses the real React reconciler (react-dom/server) to prove that after the
- * trace-vs-artifact split:
- *   - <BodyArtifacts> renders the eval card / ask_user form in the body, and
- *   - <ToolCallRenderer> filters those out (an eval-only run shows no trace block).
+ * Uses the real React reconciler (react-dom/server) to prove that:
+ *   - <BodyArtifacts> renders cards / the ask_user form in the body, and
+ *   - <ToolCallRenderer> filters those out (a card-only run shows no trace block).
  */
 
 import { afterEach, describe, it, expect } from 'vitest';
@@ -21,16 +20,6 @@ afterEach(() => useAuthStore.getState().setCurrentUser(null));
 function renderInLocale(element: ReturnType<typeof createElement>, locale: 'en' | 'zh'): string {
   return renderToStaticMarkup(createElement(I18nProvider, { initialLocale: locale, children: element }));
 }
-
-const evalCall = {
-  name: 'eval_message',
-  input: {},
-  output: {
-    score_final: 8.5,
-    scores: { accuracy: { score: 8, reason: 'ok' } },
-    discrepancies: [],
-  },
-};
 
 const workflowCall = {
   name: 'workflow_plan',
@@ -58,24 +47,12 @@ describe('workflow super-only visibility', () => {
   });
 });
 
-describe('eval result placement', () => {
-  it('BodyArtifacts renders the Evaluation Result card in the body', () => {
-    const html = renderToStaticMarkup(createElement(BodyArtifacts, { calls: [evalCall], ctx: {} }));
-    expect(html).toContain('Evaluation Result');
-  });
-
-  it('ToolCallRenderer no longer renders the eval card — an eval-only run shows no trace block', () => {
-    const html = renderToStaticMarkup(createElement(ToolCallRenderer, { calls: [evalCall], variant: 'full' as const }));
-    expect(html).toBe('');
-  });
-
-  it('a mixed run keeps process tools in the trace block and the eval card out of it', () => {
-    const search = { name: 'knowledge_query', input: { query: 'x' }, output: { found: 2 } };
-    const html = renderToStaticMarkup(
-      createElement(ToolCallRenderer, { calls: [search, evalCall], variant: 'full' as const }),
-    );
-    expect(html).toContain('Tool calls'); // the search row keeps the trace block alive
-    expect(html).not.toContain('Evaluation Result'); // the eval card is not here
+describe('retired tools in old transcripts', () => {
+  it('renders an eval_message call (tool removed in v1.4) as a plain trace row', () => {
+    const legacy = { name: 'eval_message', input: {}, output: { score_final: 8.5, scores: {} } };
+    expect(renderToStaticMarkup(createElement(BodyArtifacts, { calls: [legacy], ctx: {} }))).toBe('');
+    const trace = renderToStaticMarkup(createElement(ToolCallRenderer, { calls: [legacy], variant: 'full' as const }));
+    expect(trace).toContain('Tool calls');
   });
 });
 
@@ -117,75 +94,6 @@ describe('generated image loading state', () => {
     expect(html).toContain('role="status"');
     expect(html).toContain('Generating image…');
     expect(html).toContain('h-[260px]');
-  });
-});
-
-const evalV2Fail = {
-  name: 'eval_message',
-  input: {},
-  output: {
-    verdict: 'fail',
-    verdict_reason: '安全高风险，一票否决',
-    score_final: 3.8,
-    classification: {
-      reply_class: 'kb_plus_model',
-      intent_summary: 'Max 水泵异响',
-      q_type_l1: 'device',
-      q_type_l2: '故障自查',
-    },
-    dimensions: {
-      kb_consistency: { score: 3, reason: '新增/漏写' },
-      citation_correctness: { score: 9, reason: '型号匹配' },
-      boundary_control: { score: 5, reason: '越界' },
-      safety: { score: 0, reason: '鼓励拆机' },
-    },
-    consistency_detail: {
-      consistent: [],
-      added: ['拆开泵体清理'],
-      rewritten: [],
-      omitted: ['联系客服'],
-      unsupported: [],
-    },
-    citation_issues: [],
-    suggestions: ['删除拆机段'],
-    references_checked: [
-      { slug: 'max-pump-noise', title: 'Max 水泵噪音排查', category: 'device', source_id: 'src_123', relevant: true },
-      { slug: 'missing-doc', title: '未命中文档', relevant: false },
-    ],
-    steps: [],
-  },
-};
-
-const evalV2Pending = {
-  name: 'eval_message',
-  input: {},
-  output: {
-    verdict: 'pending',
-    score_final: null,
-    dimensions: { kb_consistency: { score: 5, reason: '' }, safety: { score: 10, reason: '' } },
-    consistency_detail: {},
-    suggestions: [],
-    steps: [],
-  },
-};
-
-describe('eval result v2 (verdict + 4 dims)', () => {
-  it('renders the verdict badge, dimensions, consistency breakdown and suggestions — not the legacy card', () => {
-    const html = renderInLocale(createElement(BodyArtifacts, { calls: [evalV2Fail], ctx: {} }), 'zh');
-    expect(html).toContain('问答评测'); // v2 header
-    expect(html).toContain('不通过'); // verdict badge
-    expect(html).toContain('安全性'); // safety dimension
-    expect(html).toContain('＋新增'); // consistency breakdown
-    expect(html).toContain('修改建议'); // suggestions
-    expect(html).toContain('参考原文'); // 查看原文 section header
-    expect(html).toContain('Max 水泵噪音排查'); // a clickable reference chip → opens the source modal
-    expect(html).not.toContain('line-clamp'); // dimension reasons are shown in full, not truncated
-    expect(html).not.toContain('Evaluation Result'); // legacy layout is NOT used
-  });
-
-  it('renders the 暂定 verdict for pending evals (KB insufficient)', () => {
-    const html = renderInLocale(createElement(BodyArtifacts, { calls: [evalV2Pending], ctx: {} }), 'zh');
-    expect(html).toContain('暂定');
   });
 });
 
@@ -231,7 +139,7 @@ describe('ask_user form placement', () => {
     expect(committed).toContain('Submit answers');
   });
 
-  it('still renders non-interactive artifacts (eval) while the turn streams', () => {
+  it('still renders non-interactive artifacts (a spawned session) while the turn streams', () => {
     const askCall = {
       name: 'ask_user',
       input: {},
@@ -242,10 +150,15 @@ describe('ask_user form placement', () => {
         questions: [{ id: 'q1', label: 'Your name?', type: 'text' }],
       },
     };
+    const spawnCall = {
+      name: 'spawn_session',
+      input: {},
+      output: { status: 'completed', child_session_id: 'child-1', title: 'Streaming child', depth: 1 },
+    };
     const html = renderToStaticMarkup(
-      createElement(BodyArtifacts, { calls: [evalCall, askCall], ctx: { streaming: true } }),
+      createElement(BodyArtifacts, { calls: [spawnCall, askCall], ctx: { streaming: true } }),
     );
-    expect(html).toContain('Evaluation Result'); // eval card streams in
+    expect(html).toContain('Streaming child'); // the spawn card streams in
     expect(html).not.toContain('A few questions'); // ask_user is deferred
   });
 });

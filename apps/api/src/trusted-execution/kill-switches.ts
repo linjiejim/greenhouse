@@ -16,7 +16,6 @@ export const TRUSTED_EXECUTION_SWITCH_ENV = {
   workflowAdapter: 'RUNTIME_WORKFLOW_ADAPTER_ENABLED',
   chatAdapter: 'RUNTIME_CHAT_ADAPTER_ENABLED',
   runtimeWorker: 'RUNTIME_WORKER_ENABLED',
-  evalDriver: 'RUNTIME_EVAL_DRIVER_ENABLED',
   automationDriver: 'RUNTIME_AUTOMATION_DRIVER_ENABLED',
   subagentDriver: 'RUNTIME_SUBAGENT_DRIVER_ENABLED',
   notificationProjector: 'RUNTIME_NOTIFICATION_PROJECTOR_ENABLED',
@@ -30,7 +29,6 @@ export interface TrustedExecutionSwitches {
   workflowAdapter: boolean;
   chatAdapter: boolean;
   runtimeWorker: boolean;
-  evalDriver: boolean;
   automationDriver: boolean;
   subagentDriver: boolean;
   notificationProjector: boolean;
@@ -45,7 +43,6 @@ export interface TrustedExecutionBootPlan {
   runtimeReconciler: boolean;
   runtimeWorker: boolean;
   chatAdapter: boolean;
-  evalDriver: boolean;
   automationDriver: boolean;
   subagentDriver: boolean;
   notificationProjector: boolean;
@@ -75,7 +72,6 @@ export function resolveTrustedExecutionSwitches(env: Environment = process.env):
     workflowAdapter: defaultOnSwitch(env, TRUSTED_EXECUTION_SWITCH_ENV.workflowAdapter, invalidEnv),
     chatAdapter: defaultOnSwitch(env, TRUSTED_EXECUTION_SWITCH_ENV.chatAdapter, invalidEnv),
     runtimeWorker: defaultOnSwitch(env, TRUSTED_EXECUTION_SWITCH_ENV.runtimeWorker, invalidEnv),
-    evalDriver: defaultOnSwitch(env, TRUSTED_EXECUTION_SWITCH_ENV.evalDriver, invalidEnv),
     automationDriver: defaultOnSwitch(env, TRUSTED_EXECUTION_SWITCH_ENV.automationDriver, invalidEnv),
     subagentDriver: defaultOnSwitch(env, TRUSTED_EXECUTION_SWITCH_ENV.subagentDriver, invalidEnv),
     notificationProjector: defaultOnSwitch(env, TRUSTED_EXECUTION_SWITCH_ENV.notificationProjector, invalidEnv),
@@ -92,7 +88,6 @@ export function trustedExecutionBootPlan(switches: TrustedExecutionSwitches): Tr
     runtimeReconciler: switches.missionAdapter || switches.workflowAdapter,
     runtimeWorker: switches.runtimeWorker,
     chatAdapter: switches.chatAdapter,
-    evalDriver: switches.runtimeWorker && switches.evalDriver,
     automationDriver: switches.runtimeWorker && switches.automationDriver,
     subagentDriver: switches.runtimeWorker && switches.subagentDriver,
     notificationProjector: switches.runtimeWorker && switches.notificationProjector,
@@ -112,11 +107,10 @@ export function runtimeAdapterEnabled(
 }
 
 export function runtimeDriverEnabled(
-  kind: 'eval' | 'automation' | 'subagent',
+  kind: 'automation' | 'subagent',
   switches: TrustedExecutionSwitches = resolveTrustedExecutionSwitches(),
 ): boolean {
   const plan = trustedExecutionBootPlan(switches);
-  if (kind === 'eval') return plan.evalDriver;
   if (kind === 'automation') return plan.automationDriver;
   return plan.subagentDriver;
 }
@@ -158,7 +152,6 @@ export function trustedExecutionHealthView(switches: TrustedExecutionSwitches) {
     },
     services: {
       runtime_worker: effective.runtimeWorker,
-      eval_driver: effective.evalDriver,
       automation_driver: effective.automationDriver,
       subagent_driver: effective.subagentDriver,
       notification_projector: effective.notificationProjector,

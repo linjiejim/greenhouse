@@ -11,9 +11,9 @@
  *
  * Fork example (in the fork's copy of this file):
  *
- *   import { EvalResultCard } from './eval-result-card';
+ *   import { ReportCard } from './report-card';
  *   export const ARTIFACT_RENDERERS: ArtifactRenderer[] = [
- *     { match: (c) => c.name === 'eval_message', render: (c) => <EvalResultCard call={c} /> },
+ *     { match: (c) => c.name === 'acme_report', render: (c) => <ReportCard call={c} /> },
  *   ];
  */
 

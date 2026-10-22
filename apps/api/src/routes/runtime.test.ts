@@ -10,7 +10,6 @@ const mocks = vi.hoisted(() => ({
   workflowEngine: { pauseRun: vi.fn(), resumeRun: vi.fn(), cancelRun: vi.fn(), decideGate: vi.fn() },
   mirrorMissionRunById: vi.fn(),
   mirrorWorkflowRunById: vi.fn(),
-  settleQueuedEvalCancellation: vi.fn(),
   delegateAutomationRuntimeCancel: vi.fn(),
   settleQueuedAutomationCancellation: vi.fn(),
   delegateSubagentRuntimeCancel: vi.fn(),
@@ -37,9 +36,6 @@ vi.mock('../workflow-engine/index.js', () => ({ getWorkflowEngine: () => mocks.w
 vi.mock('../runtime/adapters.js', () => ({
   mirrorMissionRunById: mocks.mirrorMissionRunById,
   mirrorWorkflowRunById: mocks.mirrorWorkflowRunById,
-}));
-vi.mock('../runtime/eval-driver.js', () => ({
-  settleQueuedEvalCancellation: mocks.settleQueuedEvalCancellation,
 }));
 vi.mock('../scheduler/runtime-driver.js', () => ({
   delegateAutomationRuntimeCancel: mocks.delegateAutomationRuntimeCancel,
@@ -125,7 +121,6 @@ describe('Runtime API authorization and wire', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.featureAllowed.mockResolvedValue(true);
-    mocks.settleQueuedEvalCancellation.mockImplementation(async (_db, run) => run);
     mocks.settleQueuedAutomationCancellation.mockImplementation(async (_db, run) => run);
     mocks.settleQueuedSubagentCancellation.mockImplementation(async (_db, run) => run);
   });
@@ -395,52 +390,6 @@ describe('Runtime API authorization and wire', () => {
       expect.objectContaining({ idempotency_key: 'cancel-after-crash' }),
       'owner',
       expect.any(Function),
-    );
-  });
-
-  it('durably cancels a queued Eval source and immediately terminalizes its Runtime envelope', async () => {
-    const queued = runRow({
-      id: 'runtime-eval-1',
-      root_run_id: 'runtime-eval-1',
-      kind: 'eval',
-      source_kind: 'eval_run',
-      source_id: 'eval-run-1',
-      status: 'queued',
-      version: 1,
-    });
-    const commanded = runRow({ ...queued, desired_state: 'cancel', version: 2 });
-    const canceled = runRow({ ...commanded, status: 'canceled', version: 3 });
-    const cancelRun = vi.fn().mockResolvedValue(undefined);
-    const runtime = {
-      getRun: vi.fn().mockResolvedValue(queued),
-      executeRunDomainCommand: vi.fn(
-        async (
-          _command: unknown,
-          _actor: unknown,
-          effect: (context: { run: RuntimeRunRow; may_drive: boolean }) => Promise<void>,
-        ) => {
-          await effect({ run: queued, may_drive: true });
-          return { run: commanded, idempotent: false };
-        },
-      ),
-    };
-    const evalService = { getRun: vi.fn().mockResolvedValue({ id: 'eval-run-1', status: 'queued' }), cancelRun };
-    mocks.getDb.mockReturnValue({ runtime, eval: evalService });
-    mocks.settleQueuedEvalCancellation.mockResolvedValueOnce(canceled);
-
-    const response = await appFor({ id: 'admin', role: 'super' }).request(`/runs/${queued.id}/commands`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ type: 'cancel', expected_version: 1, idempotency_key: 'cancel-queued-eval' }),
-    });
-
-    expect(response.status).toBe(200);
-    expect(await response.json()).toMatchObject({ run: { status: 'canceled', desired_state: 'cancel', version: 3 } });
-    expect(cancelRun).toHaveBeenCalledWith('eval-run-1');
-    expect(mocks.settleQueuedEvalCancellation).toHaveBeenCalledWith(
-      expect.objectContaining({ runtime }),
-      commanded,
-      'admin',
     );
   });
 

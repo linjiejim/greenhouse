@@ -6,8 +6,6 @@
 
 export * from './session.js';
 export * from './llm-call.js';
-export * from './eval.js';
-export * from './chat-eval.js';
 export * from './usage.js';
 export * from './user.js';
 export * from './project.js';
@@ -37,3 +35,4 @@ export * from './agent-run.js';
 export * from './runtime.js';
 export * from './notification.js';
 export * from './workspace-setting.js';
+export * from './retired.js';

@@ -23,7 +23,6 @@ export const ADMIN_REDIRECTS: Record<string, string> = {
   usage: 'usage',
   'feature-requests': 'feature-requests',
   frictions: 'frictions',
-  eval: 'eval',
   'llm-gateway': 'llm-gateway',
   'mcp-keys': 'mcp-keys',
   'runtime-config': 'runtime-config',
@@ -53,7 +52,7 @@ export function resolveSettingsRedirect(subPath: string): string | null {
 
   const adminTarget = ADMIN_REDIRECTS[moduleKey];
   if (adminTarget) {
-    // Preserve any sub-path only for 1:1 remaps (e.g. eval/runs/123); folded
+    // Preserve any sub-path only for 1:1 remaps (e.g. frictions/123); folded
     // pages like permissions→users have no sub-route of their own.
     const rest = adminTarget === moduleKey ? segments.slice(1) : [];
     return `#/administration/${[adminTarget, ...rest].join('/')}`;

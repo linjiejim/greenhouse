@@ -26,7 +26,6 @@ function runLabel(run: RuntimeRunRow): string {
   if (run.kind === 'workflow') return 'Workflow';
   if (run.kind === 'automation') return 'Automation';
   if (run.kind === 'subagent') return 'Subagent';
-  if (run.kind === 'eval') return 'Eval';
   return 'Run';
 }
 

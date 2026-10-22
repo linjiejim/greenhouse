@@ -20,8 +20,6 @@ export type {
   Session,
   Message,
   SessionUsage,
-  MessageEvalResult,
-  SessionEvalSummary,
   UploadResult,
   FeatureRequest,
   UserUsageSummary,

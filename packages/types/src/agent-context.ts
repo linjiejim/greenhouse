@@ -10,7 +10,6 @@
 
 export type PageContext =
   | ChatContext
-  | EvalContext
   | FeatureRequestListContext
   | ProjectListContext
   | ProjectDetailContext
@@ -30,11 +29,6 @@ export interface ChatContext {
   type: 'chat';
   sessionId?: string;
   lastAssistantMessageId?: string;
-}
-
-export interface EvalContext {
-  type: 'eval';
-  runId?: string;
 }
 
 export interface FeatureRequestListContext {

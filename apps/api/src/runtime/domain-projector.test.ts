@@ -2,13 +2,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { RuntimeRunRow } from '@greenhouse/db';
 
 const mocks = vi.hoisted(() => ({
-  eval: vi.fn(),
   automation: vi.fn(),
   subagent: vi.fn(),
   notify: vi.fn(),
 }));
 
-vi.mock('./eval-driver.js', () => ({ reconcileReclaimedEvalRun: mocks.eval }));
 vi.mock('../scheduler/runtime-driver.js', () => ({ reconcileReclaimedAutomationRun: mocks.automation }));
 vi.mock('../scheduler/notify.js', () => ({ notifyTaskResult: mocks.notify }));
 vi.mock('./subagent-driver.js', () => ({ reconcileReclaimedSubagentRun: mocks.subagent }));
@@ -18,15 +16,15 @@ import { createRuntimeDomainProjector } from './domain-projector.js';
 function run(overrides: Partial<RuntimeRunRow> = {}): RuntimeRunRow {
   return {
     id: 'runtime-1',
-    kind: 'eval',
+    kind: 'subagent',
     owner_user_id: 'owner',
     initiated_by_user_id: 'owner',
     session_id: null,
     parent_run_id: null,
     root_run_id: 'runtime-1',
-    source_kind: 'eval_run',
-    source_id: 'eval-1',
-    idempotency_key: 'eval-1',
+    source_kind: 'spawned_session',
+    source_id: 'session-1',
+    idempotency_key: 'session-1',
     status: 'failed',
     desired_state: 'run',
     wait_reason: null,
@@ -71,12 +69,12 @@ describe('Runtime durable domain projector', () => {
   it('projects a matching terminal recovery and lets failure reject for Outbox retry', async () => {
     const current = run();
     const db = { runtime: { getRun: vi.fn().mockResolvedValue(current) } };
-    mocks.eval.mockRejectedValueOnce(new Error('temporary source outage'));
+    mocks.subagent.mockRejectedValueOnce(new Error('temporary source outage'));
 
     await expect(createRuntimeDomainProjector(db as never)(event(current, 'run.lease_expired'))).rejects.toThrow(
       'temporary source outage',
     );
-    expect(mocks.eval).toHaveBeenCalledWith(db, current);
+    expect(mocks.subagent).toHaveBeenCalledWith(db, current);
   });
 
   it('ignores an old recovery event after a newer successful retry', async () => {
@@ -86,7 +84,7 @@ describe('Runtime durable domain projector', () => {
 
     await createRuntimeDomainProjector(db as never)(event(stale));
 
-    expect(mocks.eval).not.toHaveBeenCalled();
+    expect(mocks.subagent).not.toHaveBeenCalled();
   });
 
   it('projects an Automation outcome and enqueues one deep-linked durable notification', async () => {

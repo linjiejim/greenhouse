@@ -35,7 +35,6 @@ import { getWorkflowEngine } from '../workflow-engine/index.js';
 import { mirrorMissionRunById, mirrorWorkflowRunById } from '../runtime/adapters.js';
 import { delegateAutomationRuntimeCancel, settleQueuedAutomationCancellation } from '../scheduler/runtime-driver.js';
 import { delegateSubagentRuntimeCancel, settleQueuedSubagentCancellation } from '../runtime/subagent-driver.js';
-import { settleQueuedEvalCancellation } from '../runtime/eval-driver.js';
 import {
   requireTrustedExecutionSurface,
   resolveTrustedExecutionSwitches,
@@ -92,7 +91,6 @@ function decodeCursor(raw: string | undefined): Cursor | undefined {
 function supportedActions(run: RuntimeRunRow): RuntimeUserAction[] {
   if (run.source_kind === 'agent_run') return ['cancel', 'approve', 'reject'];
   if (run.source_kind === 'workflow_run') return ['pause', 'resume', 'cancel', 'approve', 'reject'];
-  if (run.source_kind === 'eval_run') return ['cancel'];
   if (run.kind === 'automation' && run.source_kind.startsWith('scheduled_task:')) return ['cancel'];
   if (run.kind === 'subagent' && run.source_kind === 'spawned_session') return ['cancel'];
   return [];
@@ -278,20 +276,6 @@ async function delegateRunCommand(run: RuntimeRunRow, type: RuntimeRunCommandTyp
     else if (type === 'cancel') await engine.cancelRun(run.source_id);
     return;
   }
-  if (run.source_kind === 'eval_run') {
-    if (type !== 'cancel') throw new RuntimeKernelError('runtime_invalid_transition', `Eval does not support ${type}`);
-    const source = await getDb().eval.getRun(run.source_id);
-    if (!source) throw new RuntimeKernelError('runtime_not_found', 'Eval source run is missing');
-    if (source.status === 'cancelled') return;
-    if (!mayDrive) {
-      throw new RuntimeKernelError('runtime_version_conflict', `Runtime run ${run.id} changed concurrently`);
-    }
-    if (source.status !== 'queued' && source.status !== 'running') {
-      throw new RuntimeKernelError('runtime_invalid_transition', `Eval is already ${source.status}`);
-    }
-    await getDb().eval.cancelRun(run.source_id);
-    return;
-  }
   if (run.kind === 'automation' && run.source_kind.startsWith('scheduled_task:')) {
     await delegateAutomationRuntimeCancel(getDb(), run, type, mayDrive);
     return;
@@ -410,9 +394,7 @@ export const runtimeRoutes = new Hono<AppEnv>()
         },
       );
       let commandedRun = fenced.run;
-      if (command.type === 'cancel' && commandedRun.kind === 'eval') {
-        commandedRun = await settleQueuedEvalCancellation(getDb(), commandedRun, user.id);
-      } else if (command.type === 'cancel' && commandedRun.kind === 'automation') {
+      if (command.type === 'cancel' && commandedRun.kind === 'automation') {
         commandedRun = await settleQueuedAutomationCancellation(getDb(), commandedRun, user.id);
       } else if (command.type === 'cancel' && commandedRun.kind === 'subagent') {
         commandedRun = await settleQueuedSubagentCancellation(getDb(), commandedRun, user.id);
@@ -422,9 +404,7 @@ export const runtimeRoutes = new Hono<AppEnv>()
           ? await mirrorMissionRunById(getDb(), commandedRun.source_id)
           : commandedRun.source_kind === 'workflow_run'
             ? await mirrorWorkflowRunById(getDb(), commandedRun.source_id)
-            : commandedRun.source_kind === 'eval_run'
-              ? commandedRun
-              : commandedRun;
+            : commandedRun;
       if (!mirrored) throw new RuntimeKernelError('runtime_not_found', 'Runtime domain source is missing');
       return c.json({ run: runView(mirrored), ...(fenced.idempotent ? { idempotent: true } : {}) });
     } catch (error) {

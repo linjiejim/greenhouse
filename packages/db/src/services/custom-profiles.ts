@@ -25,7 +25,6 @@ export interface CustomProfileGovernanceInput {
   audience?: string | null;
   risk_level?: CustomProfileRiskLevel;
   budget_policy?: Record<string, unknown>;
-  eval_refs?: unknown[];
   owner_backup_user_id?: string | null;
   review_due_at?: string | null;
   change_log?: string;
@@ -93,7 +92,6 @@ type VersionManifest = Pick<
   | 'audience'
   | 'risk_level'
   | 'budget_policy'
-  | 'eval_refs'
   | 'owner_backup_user_id'
   | 'review_due_at'
 >;
@@ -123,7 +121,6 @@ function manifestFromIdentity(
     risk_level: updates.risk_level ?? previous?.risk_level ?? 'medium',
     budget_policy:
       updates.budget_policy !== undefined ? JSON.stringify(updates.budget_policy) : (previous?.budget_policy ?? '{}'),
-    eval_refs: updates.eval_refs !== undefined ? JSON.stringify(updates.eval_refs) : (previous?.eval_refs ?? '[]'),
     owner_backup_user_id:
       updates.owner_backup_user_id !== undefined
         ? updates.owner_backup_user_id

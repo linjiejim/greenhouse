@@ -47,7 +47,7 @@ vi.mock('../../llm/title.js', () => ({
   generateSessionTitle: mocks.generateSessionTitle,
 }));
 
-import { createChatRoute, isTrustedEvalExecution } from '../chat.js';
+import { createChatRoute } from '../chat.js';
 import { canAccessSession, canWriteSession } from '../../sessions/access.js';
 
 function makeSession(ownerId = 'owner'): SessionRow {
@@ -68,14 +68,6 @@ function makeSession(ownerId = 'owner'): SessionRow {
     updated_at: '2026-07-21T00:00:00.000Z',
   };
 }
-
-describe('Eval execution provenance', () => {
-  it('never lets a team-owned mutable session status select the Eval budget pool', () => {
-    expect(isTrustedEvalExecution({ role: 'team' }, 'eval')).toBe(false);
-    expect(isTrustedEvalExecution({ role: 'super' }, 'eval')).toBe(true);
-    expect(isTrustedEvalExecution({ role: 'super' }, 'active')).toBe(false);
-  });
-});
 
 function createApp() {
   const app = new Hono<AppEnv>();

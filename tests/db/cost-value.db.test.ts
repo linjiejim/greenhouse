@@ -29,18 +29,18 @@ describe('Cost/value operating report', () => {
     // later removed; permanent usage evidence cannot depend on a live FK.
     const profileRef = 'custom:999999@3';
     const run = await db.runtime.createRun({
-      kind: 'eval',
+      kind: 'subagent',
       owner_user_id: user.id,
       initiated_by_user_id: user.id,
-      source_kind: 'eval_run',
-      source_id: unique('eval-source'),
-      input: { dataset: 'regression-v1' },
+      source_kind: 'spawned_session',
+      source_id: unique('subagent-source'),
+      input: { prompt: 'regression-v1' },
     });
     const workerId = unique('cost-value-worker');
     const claimed = await db.runtime.claimNextRun({
       worker_id: workerId,
       lease_ms: 60_000,
-      kinds: ['eval'],
+      kinds: ['subagent'],
     });
     expect(claimed?.id).toBe(run.id);
     const running = await db.runtime.transitionRun({
@@ -95,7 +95,7 @@ describe('Cost/value operating report', () => {
     await db.usageBudget.settle({ idempotency_key: budgetKey, actual_units: 5_000 });
     await db.usage.record({
       profile_id: profileRef,
-      caller: 'eval',
+      caller: 'subagent',
       user_id: user.id,
       model: 'flash',
       input_tokens: 700,
@@ -146,7 +146,7 @@ describe('Cost/value operating report', () => {
     });
     expect(report.runtime_by_kind).toContainEqual(
       expect.objectContaining({
-        kind: 'eval',
+        kind: 'subagent',
         total_runs: 1,
         terminal_runs: 1,
         llm_calls: 1,

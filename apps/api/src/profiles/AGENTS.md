@@ -11,11 +11,10 @@
 | --- | --- | --- |
 | `sprouty.yaml` | Cloud `/api/chat` | 唯一预设，也是默认 Agent（`DEFAULT_PROFILE_ID`）。模型只写 `id: flash` 作起点——**每轮可切**，采样参数归模型目录，YAML 不写 `options`。 |
 
-**hidden 系统 Profile（2 个，不进 `GET /api/profiles`、不进选择器）**
+**hidden 系统 Profile（1 个，不进 `GET /api/profiles`、不进选择器）**
 
 | 文件 | 运行面 | 说明 |
 | --- | --- | --- |
-| `eval-judge.yaml` | Cloud `/api/chat` | 交互式质量评估 Agent（`hidden: true` + `access.level: internal`）；打分由 `eval_message` 工具完成。服务端仍可按 id 解析——评测流程与定时任务要用它。 |
 | `desktop.yaml` | `/api/agent` + `/api/mcp` | 权威 agent-runtime profile（`DEFAULT_AGENT_PROFILE_ID` / `MCP_PROFILE_ID`），`access.level: hidden`；不能通过 `/api/chat` 或 `/api/sessions` 使用。id 沿用 `desktop` 是历史命名（曾服务已移除的 Electron Desktop，2026-07 瘦身），改名需迁移存量会话数据。 |
 
 ### 重要规则
@@ -61,15 +60,10 @@
   description（随 function definition 下发，覆盖所有装配面）。mission 部分：mission 由任意会话的 `mission_dispatch` 起草 + Launch 执行。`POST /api/sessions` 不再生成 `channel='mission'` 的会话；存量 mission 会话靠 **channel**（不是 profile）继续走 `/api/missions/runs` 的发送路径，`/api/chat` 对该 id 的 400 守卫再留一个版本。
 - **旧 id 只映射、不迁移**（`normalizeProfileId()`）：`team`/`default`/`researcher`/`writer`/`project-assistant`/
   `cs-quality`/`ops-analyst`/`cc-analyzer`/`crm`/`workflow-planner`/`sprouty-agents`/`sprouty-quick`/
-  `sprouty-deep`/`sprouty-k3`/`sprouty-workflows`/`sprouty-mission` → `sprouty`；`local-dev`/`local-pi` →
-  `desktop`。会话、eval run、定时任务、custom base 里存的仍是旧值，
+  `sprouty-deep`/`sprouty-k3`/`sprouty-workflows`/`sprouty-mission`/`eval-judge`（v1.4 随评测系统退役）→ `sprouty`；`local-dev`/`local-pi` →
+  `desktop`。会话、定时任务、custom base 里存的仍是旧值，
   读取时解析即可——**不要为这些 id 重建 YAML**。
 - 外部 Agent（hermes / MCP 客户端等）访问云端能力走 `/api/agent/*` 结构化 cloud tools。
-- 批量评测的 task-specific prompt 放在 `apps/api/src/llm/tasks/`；交互式评估使用 `eval-judge.yaml`。
-
-### 当前 task-specific configs
-
-- `apps/api/src/llm/tasks/batch-eval-judge.ts` — batch eval judge（`task:batch-eval-judge`）。
 
 ### 新增或修改 profile 后必须同步
 

@@ -47,8 +47,6 @@ export type * from './schema/index.js';
 // Service factories + their Input/Opts/Result types.
 export * from './services/sessions.js';
 export * from './services/llm-calls.js';
-export * from './services/eval.js';
-export * from './services/chat-eval.js';
 export * from './services/usage.js';
 export * from './services/usage-budget.js';
 export * from './services/users.js';

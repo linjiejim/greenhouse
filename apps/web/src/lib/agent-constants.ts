@@ -12,7 +12,7 @@ export const DEFAULT_AGENT_ID = 'sprouty';
 /** Declared order — the picker and the Agents page both render presets this way. */
 export const PRESET_AGENT_IDS = [DEFAULT_AGENT_ID] as const;
 
-/** Retired profile ids still stored on sessions/eval runs/scheduled tasks. */
+/** Retired profile ids still stored on sessions/scheduled tasks. */
 export const LEGACY_AGENT_IDS = new Set([
   'sprouty-quick',
   'sprouty-deep',

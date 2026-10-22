@@ -19,7 +19,6 @@ const MODULE_PAGES: ModulePageContract[] = [
   { file: '../administration/usage.tsx', moduleId: 'admin.usage', layout: 'list' },
   { file: '../administration/feature-requests.tsx', moduleId: 'admin.feature-requests', layout: 'list' },
   { file: '../administration/frictions.tsx', moduleId: 'admin.frictions', layout: 'list' },
-  { file: '../eval/index.tsx', moduleId: 'admin.eval', layout: 'canvas' },
   { file: '../administration/llm-gateway.tsx', moduleId: 'admin.llm-gateway', layout: 'list' },
   { file: '../administration/mcp-keys.tsx', moduleId: 'admin.mcp-keys', layout: 'list' },
   { file: '../administration/runtime-config.tsx', moduleId: 'admin.runtime-config', layout: 'form' },
@@ -62,14 +61,5 @@ describe('ModulePage coverage', () => {
     expect(source).toMatch(/route === 'automations' && <AutomationsPage \/>/);
     expect(source).toMatch(/route === 'tasks' && <PersonalTasksPage \/>/);
     expect(source).toMatch(/route === 'agents' && <AgentsPage \/>/);
-  });
-
-  it('keeps Evaluation confirmations on the shared dialog primitive', () => {
-    for (const file of ['../eval/runs.tsx', '../eval/run-detail.tsx']) {
-      const source = readFileSync(new URL(file, import.meta.url), 'utf8');
-
-      expect(source).toContain('<ConfirmDialog');
-      expect(source).not.toMatch(/(^|[^.A-Za-z])confirm\(/m);
-    }
   });
 });

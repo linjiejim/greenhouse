@@ -427,7 +427,7 @@ export function resolvesToDeepSeek(config: ModelConfig): boolean {
  *      this is what makes "the same assistant on a stronger model" a model
  *      choice rather than a second agent;
  *   2. the AGENT's task tuning on top, for profiles that genuinely need it
- *      (eval-judge grades at temperature 0.2 whatever the model's default is).
+ *      (e.g. a grader pinned to a low temperature whatever the model's default is).
  */
 export function resolveModelConfig(config: ModelConfig): ModelConfig {
   const entry = config.id ? getModelEntry(config.id) : undefined;

@@ -1753,10 +1753,10 @@ export function createRuntimeService(db: Db) {
           // a persistently unhealthy worker must eventually fail closed instead
           // of cycling a queued Run forever without operator visibility.
           const safeToReclaim = stale.status === 'claimed' && !cancelRequested && stale.attempt <= stale.max_attempts;
-          // Replay policy is expressed by max_attempts at admission. Eval uses
-          // additional attempts because each case has an explicit immutable
-          // checkpoint; side-effectful Automation/Subagent Runs set max=1 and
-          // therefore still fail immediately after a stale running lease.
+          // Replay policy is expressed by max_attempts at admission: only a
+          // driver with explicit immutable checkpoints may admit extra attempts;
+          // side-effectful Automation/Subagent Runs set max=1 and therefore
+          // still fail immediately after a stale running lease.
           const exhausted = stale.attempt >= stale.max_attempts;
           const nextStatus = cancelRequested ? 'canceled' : safeToReclaim ? 'queued' : exhausted ? 'failed' : 'queued';
           const terminal = nextStatus === 'failed' || nextStatus === 'canceled';

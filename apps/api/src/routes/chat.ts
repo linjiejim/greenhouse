@@ -21,7 +21,6 @@ import type { ToolRegistry } from '../agent.js';
 import {
   buildLazyServerTools,
   filterBrowserSessionToolIds,
-  filterUnattendedToolIds,
   LAZY_TOOL_IDS,
   resolveEffectiveTools,
 } from '../agent-runtime/tool-resolution.js';
@@ -55,7 +54,7 @@ import { admitTurnEnvironment } from '../chat/turn-environment.js';
 import type { AmbientContextEnvelope } from '@greenhouse/types/agent-context';
 import { chatRunRegistry, ChatRun } from '../chat/runs.js';
 import { pumpChatTurn, streamRunToResponse } from '../chat/turn.js';
-import { createProviderAttemptBudgetHook, type UsageBudgetPool } from '../llm/usage-budget.js';
+import { createProviderAttemptBudgetHook } from '../llm/usage-budget.js';
 import {
   recordChatRuntimeProviderInput,
   settleChatRuntimeTrace,
@@ -64,11 +63,6 @@ import {
 } from '../chat/runtime.js';
 import { runtimeAdapterEnabled } from '../trusted-execution/kill-switches.js';
 import { instrumentRuntimeTools } from '../runtime/tool-evidence.js';
-
-/** Session status alone is not an execution credential. */
-export function isTrustedEvalExecution(user: Pick<AuthUser, 'role'>, sessionStatus: string): boolean {
-  return user.role === 'super' && sessionStatus === 'eval';
-}
 
 /**
  * The language model receives upload IDs rather than image bytes. Resolve them
@@ -130,7 +124,6 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
         }
         let chatMessages: ChatRequestMessage[];
         let profileId = body.profile_id || 'team';
-        let budgetPool: UsageBudgetPool = 'standard';
 
         // Get authenticated user
         const authUser = (c.get as (key: string) => AuthUser | undefined)('user');
@@ -196,7 +189,6 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
 
         let titlePromise: Promise<string> | null = null;
         let pendingTitleMessage: string | null = null;
-        let unattendedExecution = false;
         let sessionChannel: SessionChannel | undefined;
         let triggeringUserMessageId: string | undefined;
         let sourceMode: 'message' | 'regeneration' | 'continuation' = 'continuation';
@@ -209,14 +201,6 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
               return c.json({ error: 'Session not found' }, 404);
             }
             sessionChannel = session.channel;
-            // `status` is user-editable for normal lifecycle actions. Only a
-            // trusted super-owned Eval self-call may select the isolated Eval
-            // budget pool and retry-safe unattended tool policy; a team user
-            // cannot promote an ordinary chat into that execution class.
-            if (isTrustedEvalExecution(authUser, session.status)) {
-              budgetPool = 'eval';
-              unattendedExecution = true;
-            }
             // Continuing a chat mutates the session and reads its full history.
             // Sharing grants read-only inbox access, so only the owner or super may
             // reach addMessage/buildChatMessages/title updates below.
@@ -456,17 +440,11 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
             profile,
             profileId,
           });
-          // Eval can retry only because its authenticated self-call is forced
-          // through the same fail-closed read-only policy as every unattended
-          // Runtime driver. A profile prompt can never opt mutation tools back in.
           // A browser-extension conversation reads untrusted pages, so it gets
           // no inline writer at all; its panel's confirm-carded Client Action is
           // the only write path (filterBrowserSessionToolIds, agent-runtime/tool-resolution.ts).
-          const executionTools = unattendedExecution
-            ? filterUnattendedToolIds(effectiveTools)
-            : sessionChannel === BROWSER_SESSION_CHANNEL
-              ? filterBrowserSessionToolIds(effectiveTools)
-              : effectiveTools;
+          const executionTools =
+            sessionChannel === BROWSER_SESSION_CHANNEL ? filterBrowserSessionToolIds(effectiveTools) : effectiveTools;
 
           const tools = selectTools(
             toolRegistry,
@@ -485,7 +463,6 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
               profileId: profile.id,
               runtimeRunId: runtimeTrace?.runId ?? null,
               toolRegistry,
-              unattended: unattendedExecution,
             }),
           );
 
@@ -610,7 +587,6 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
             profileId,
             ...(sessionId ? { sessionId } : {}),
             runId: runtimeTrace?.runId ?? run.runId,
-            budgetPool,
             metadata: { max_steps: maxSteps },
           });
 

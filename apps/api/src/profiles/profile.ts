@@ -51,10 +51,7 @@ export interface AgentProfile {
 // ─── Known Tools (for validation) ────────────────────────
 
 const KNOWN_TOOLS = new Set([
-  'eval_message',
-  'manage_eval_dataset',
   'analyze_image',
-  'query_eval_runs',
   'external_search',
   'feature_request',
   'generate_image',
@@ -131,6 +128,9 @@ const LEGACY_TEAM_PROFILE_IDS = new Set([
   // Historical sessions keep this id; their `channel='mission'` is what still
   // drives their behavior, not the profile.
   'sprouty-mission',
+  // Retired in v1.4 with the evaluation system; old eval sessions/automations
+  // still carry it.
+  'eval-judge',
   'team',
   'default',
   'researcher',
@@ -149,7 +149,7 @@ export const CUSTOM_BASE_PROFILE_IDS = PRESET_PROFILE_IDS;
 
 /**
  * Map removed/legacy interactive profile IDs to their canonical replacement.
- * Stored rows (sessions, eval runs, scheduled tasks, custom bases) still carry
+ * Stored rows (sessions, scheduled tasks, custom bases) still carry
  * `team` / `workflow-planner` / `sprouty-agents`; they resolve to their successors
  * rather than being migrated.
  */
@@ -214,19 +214,6 @@ export async function assertPinnedProfileExecutionAccess(
   if (!(await database.customProfiles.getVersion(reference.profileId, reference.version))) {
     throw new Error(`${surface} custom Agent version no longer exists`);
   }
-}
-
-/** Pin an unversioned custom reference to the asset's immutable current manifest. */
-export async function pinProfileVersion(profileId?: string | null): Promise<string> {
-  const normalized = normalizeProfileId(profileId) ?? DEFAULT_PROFILE_ID;
-  if (!normalized.startsWith('custom:')) return normalized;
-  const reference = parseCustomProfileReference(normalized);
-  if (!reference) throw new Error(`Invalid custom profile ID: "${normalized}"`);
-  if (reference.version) return normalized;
-  const { getDb } = await import('@greenhouse/db');
-  const row = await getDb().customProfiles.getById(reference.profileId);
-  if (!row) throw new Error(`Custom profile not found: "${normalized}"`);
-  return `custom:${reference.profileId}@${row.current_version}`;
 }
 
 export function isValidCustomBaseProfileId(profileId: string): boolean {

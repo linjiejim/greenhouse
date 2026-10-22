@@ -9,7 +9,6 @@
 - 移动端页面头自动堆叠，`actions` 内按钮满宽、`toolbar` 换行，模块栏自动把当前项带入视口；调用方不要添加另一套移动端页头、滚动定位或按钮宽度规则。
 - 常规配置内容用 `SettingsPanel` + `SettingsSection`；统一 `space-y-4`、标题层级、说明与操作位，禁止手写另一套 Card header。字段内部用 `components/form` 的 `FormField` / `FormGrid` / `FormActions`。
 - Automation、Tasks、Agents 的二级范围统一用 `FilterPills variant="segment"`：Mine / Shared / Team（仅 super）；每次进入默认 Mine，扩大范围不持久化。范围切换放在列表工具栏左侧，右侧依次放结果数和主操作。三档语义与空态见 [personal asset scope spec](../../../../docs/specs/20260812-personal-asset-scope-tabs.md)，禁止把管理员可见性冒充共享。
-- Eval 使用 `layout="canvas"`，固定 Tabs 放 `tabs` slot，具体视图在 content 内拥有滚动。
 
 ### 添加新页面
 个人 Settings 模块的唯一真相是 `lib/nav-registry.ts` 的 `settingsSections`；全局 Administration 模块（super only，独立顶层界面）在同文件的 `ADMINISTRATION_MODULES`。**不再**在 `settings/index.tsx` 里维护 MODULES 数组。
@@ -24,7 +23,7 @@
 - **Labs（feature-gated）**：Memory（`requireFeature: 'memory'`）
 - **个人工具独立页面**：Automation、Prompt Tasks、My Agents 分别使用 `#/automations`、`#/tasks`、`#/agents`，入口位于全局 `More`，刷新、后退和深链必须保持当前页面；历史 Settings/`#/chat?view=...` 深链只重定向到这些 canonical 地址。持久执行统一使用 `#/executions` 的「执行中心」，入口位于账户浮层 Inbox 下方，不与 Prompt Tasks 共用命名或 URL；Mission 的主要发起面仍是 Chat。
 
-**Administration（super only，独立顶层界面，入口在侧边栏账户浮层，见 `administrationModules`）**：Users、Agent Usages、Feature Requests、Frictions、Evaluation、AI Gateway、MCP Access、Runtime Config、Branding Studio。内置 Agent 已收敛为单一默认预设，不再提供只读 System Agents 清单；历史 `#/administration/profiles` 与 `#/settings/profiles` 链接落到 Agent Usages。
+**Administration（super only，独立顶层界面，入口在侧边栏账户浮层，见 `administrationModules`）**：Users、Agent Usages、Feature Requests、Frictions、AI Gateway、MCP Access、Runtime Config、Branding Studio。内置 Agent 已收敛为单一默认预设，不再提供只读 System Agents 清单；历史 `#/administration/profiles` 与 `#/settings/profiles` 链接落到 Agent Usages。
 - Users 行的「权限」按钮打开 `user-permissions-modal.tsx` 统一弹框（功能点优先，tab 归属由服务端注册表的 `group` 驱动：基础权限（默认开放的 Tables/Missions/AI Memory + 只读全局工具）/ 应用权限（Knowledge/Projects/Tables）/ 高级权限（Advanced tools）/ 用量限制 四 tab），已吸收原工具分配弹框、功能开关弹框与独立的 App Permissions 页；用量限制只配置月度 Token 上限（每日消息只保留统计、不限额）；写走既有细粒度端点，读走 `GET /api/admin/users/:id/access`（服务端 `feature-points.ts` 聚合）。详见 [spec](../../../../docs/specs/20260723-user-permissions-unified-modal.md)。
 
 ### 列表 / 记录页范式（新页一律走 @greenhouse/crud）
@@ -55,7 +54,7 @@
 - 操作列放最右侧（`text-center`），使用 icon button（`p-1 rounded`）
 - 工具栏放 table 上方：`flex items-center gap-3`，左侧计数/筛选，右侧操作按钮
 - 行 hover：`hover:bg-surface-sunken transition-colors`
-- 可展开行：点击 row 展开详情（`<td colSpan={N}>`），参考 Eval Datasets
+- 可展开行：点击 row 展开详情（`<td colSpan={N}>`）
 
 ### 表单/配置页范式（参考 Preferences）
 - Settings 页面画布统一使用 `bg-surface-canvas`；真正的数据/配置卡片使用共享 `<Card>`（`bg-surface-card border border-edge rounded-xl p-4`），输入框和弹窗继续使用 `bg-surface-raised`

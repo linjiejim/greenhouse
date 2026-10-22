@@ -34,9 +34,10 @@ describe('scheduled tasks — checkProfileAccess', () => {
     await expect(checkProfileAccess('team')).resolves.toBeNull();
   });
 
-  it('allows the legacy default alias and other internal profiles', async () => {
+  it('allows legacy aliases (incl. the retired eval-judge) and other internal profiles', async () => {
     await expect(checkProfileAccess('default')).resolves.toBeNull();
     await expect(checkProfileAccess('eval-judge')).resolves.toBeNull();
+    await expect(checkProfileAccess('sprouty')).resolves.toBeNull();
   });
 
   it('allows interactive profiles but not hidden integrations', async () => {

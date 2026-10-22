@@ -6,8 +6,6 @@ export function pageContextKey(context: PageContext | null): string {
   switch (context.type) {
     case 'chat':
       return `${context.type}:${context.sessionId || ''}`;
-    case 'eval':
-      return `${context.type}:${context.runId || ''}`;
     case 'project-detail':
       return `${context.type}:${context.projectId}`;
     case 'tables':

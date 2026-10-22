@@ -147,7 +147,6 @@ function formatCustomProfile(
           audience: version.audience,
           risk_level: version.risk_level,
           budget_policy: safeJsonParse(version.budget_policy, {}) as Record<string, unknown>,
-          eval_refs: safeJsonParse(version.eval_refs, []) as unknown[],
         }
       : {}),
     avatar,
@@ -252,7 +251,6 @@ const profiles = new Hono<AppEnv>()
       audience,
       risk_level,
       budget_policy,
-      eval_refs,
       owner_backup_user_id,
       review_due_at,
       change_log,
@@ -346,7 +344,6 @@ const profiles = new Hono<AppEnv>()
         risk_level: (risk_level as CustomProfileRiskLevel | undefined) ?? 'medium',
         budget_policy:
           budget_policy && typeof budget_policy === 'object' && !Array.isArray(budget_policy) ? budget_policy : {},
-        eval_refs: Array.isArray(eval_refs) ? eval_refs : [],
         owner_backup_user_id: typeof owner_backup_user_id === 'string' ? owner_backup_user_id : null,
         review_due_at: typeof review_due_at === 'string' ? review_due_at : null,
         change_log: typeof change_log === 'string' ? change_log : 'Initial version',
@@ -510,7 +507,6 @@ const profiles = new Hono<AppEnv>()
         tools: safeJsonParse(version.tools, []) as string[],
         avatar: safeJsonParse(version.avatar, {}) as Record<string, unknown>,
         budget_policy: safeJsonParse(version.budget_policy, {}) as Record<string, unknown>,
-        eval_refs: safeJsonParse(version.eval_refs, []) as unknown[],
       })),
     });
   })
@@ -674,10 +670,6 @@ const profiles = new Hono<AppEnv>()
         return c.json({ error: 'budget_policy must be an object' }, 400);
       }
       updates.budget_policy = body.budget_policy;
-    }
-    if (body.eval_refs !== undefined) {
-      if (!Array.isArray(body.eval_refs)) return c.json({ error: 'eval_refs must be an array' }, 400);
-      updates.eval_refs = body.eval_refs;
     }
     if (body.owner_backup_user_id !== undefined) {
       updates.owner_backup_user_id = body.owner_backup_user_id || null;

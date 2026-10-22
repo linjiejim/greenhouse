@@ -2,8 +2,8 @@
  * Shared Runtime control-plane contract.
  *
  * Runtime is deliberately an execution envelope, not a universal workflow
- * engine. Mission workspace/container state, Workflow DAG state, Chat stream
- * replay and Eval scoring remain in their domain contracts. Adapters connect
+ * engine. Mission workspace/container state, Workflow DAG state and Chat stream
+ * replay remain in their domain contracts. Adapters connect
  * those facts to this common lifecycle, interrupt and observability surface.
  *
  * Design spec: docs/specs/20260812-trusted-execution-platform-convergence.md
@@ -26,6 +26,10 @@ export type RuntimePayload = RuntimeJsonValue;
 
 // ─── Run ────────────────────────────────────────────────
 
+/**
+ * `eval` is a historical kind: the evaluation system was retired in v1.4. Its old
+ * runs still list read-only in the Execution center; nothing creates new ones.
+ */
 export type RuntimeRunKind = 'chat' | 'automation' | 'workflow' | 'mission' | 'subagent' | 'eval';
 
 export const RUNTIME_RUN_KINDS = [

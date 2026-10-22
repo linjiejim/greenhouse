@@ -48,9 +48,9 @@ function task(overrides: Partial<ScheduledTaskRow> = {}): ScheduledTaskRow {
   return {
     id: 1,
     user_id: 'owner-1',
-    name: 'Evaluation review',
-    profile_id: 'eval-judge',
-    task_prompt: 'Review the latest evaluation results',
+    name: 'Weekly review',
+    profile_id: 'sprouty',
+    task_prompt: 'Review the latest project updates',
     schedule: '0 * * * *',
     timezone: 'UTC',
     enabled: true,
@@ -82,7 +82,7 @@ describe('scheduled task executor authorization', () => {
       notification: {
         id: 'notification-1',
         kind: 'runtime_failed',
-        title: 'Evaluation review needs review',
+        title: 'Weekly review needs review',
       },
     });
     mocks.db.notifications.createDelivery.mockResolvedValue(undefined);
@@ -90,7 +90,7 @@ describe('scheduled task executor authorization', () => {
     mocks.db.sessions.create.mockResolvedValue({
       id: 'session-1',
       user_id: 'owner-1',
-      profile_id: 'eval-judge',
+      profile_id: 'sprouty',
       channel: 'task',
     });
     mocks.db.sessions.getById.mockResolvedValue(undefined);
@@ -139,9 +139,9 @@ describe('scheduled task executor authorization', () => {
     await executeTaskInSession(task(), 'session-1', {
       knowledge_query: { execute: vi.fn() },
       session_query: { execute: vi.fn() },
-      eval_message: adminTool,
-      query_eval_runs: adminTool,
-      manage_eval_dataset: adminTool,
+      knowledge_mutation: adminTool,
+      project_mutation: adminTool,
+      generate_image: adminTool,
     });
 
     const tools = mocks.runAgentInSession.mock.calls[0]?.[0].tools;
@@ -150,38 +150,38 @@ describe('scheduled task executor authorization', () => {
     // YAML tools list is not a runtime narrowing. Global read tools are in.
     expect(tools).toHaveProperty('session_query');
     expect(tools).toHaveProperty('knowledge_query');
-    // Admin-granted tools without a replay-safe declaration never survive the
+    // Tools without a replay-safe declaration never survive the
     // unattended filter, whatever the owner's role.
-    expect(tools).not.toHaveProperty('eval_message');
-    expect(tools).not.toHaveProperty('query_eval_runs');
-    expect(tools).not.toHaveProperty('manage_eval_dataset');
+    expect(tools).not.toHaveProperty('knowledge_mutation');
+    expect(tools).not.toHaveProperty('project_mutation');
+    expect(tools).not.toHaveProperty('generate_image');
   });
 
   it('re-resolves a role downgrade and never adds tools absent from the profile', async () => {
     const registry = {
       knowledge_query: { execute: vi.fn() },
-      eval_message: { execute: vi.fn() },
-      query_eval_runs: { execute: vi.fn() },
-      manage_eval_dataset: { execute: vi.fn() },
+      knowledge_mutation: { execute: vi.fn() },
+      project_mutation: { execute: vi.fn() },
+      generate_image: { execute: vi.fn() },
       session_query: { execute: vi.fn() },
     };
     mocks.db.users.getById.mockResolvedValue({ id: 'owner-1', status: 'active', role: 'super' });
     await executeTaskInSession(task(), 'session-super', registry);
 
     const superTools = mocks.runAgentInSession.mock.calls[0]?.[0].tools;
-    expect(superTools).not.toHaveProperty('eval_message');
-    expect(superTools).not.toHaveProperty('query_eval_runs');
+    expect(superTools).not.toHaveProperty('knowledge_mutation');
+    expect(superTools).not.toHaveProperty('project_mutation');
     expect(superTools).toHaveProperty('session_query');
-    expect(superTools).not.toHaveProperty('manage_eval_dataset');
+    expect(superTools).not.toHaveProperty('generate_image');
 
     mocks.db.users.getById.mockResolvedValue({ id: 'owner-1', status: 'active', role: 'team' });
     await executeTaskInSession(task(), 'session-team', registry);
 
     const teamTools = mocks.runAgentInSession.mock.calls[1]?.[0].tools;
     expect(teamTools).toHaveProperty('session_query');
-    expect(teamTools).not.toHaveProperty('eval_message');
-    expect(teamTools).not.toHaveProperty('query_eval_runs');
-    expect(teamTools).not.toHaveProperty('manage_eval_dataset');
+    expect(teamTools).not.toHaveProperty('knowledge_mutation');
+    expect(teamTools).not.toHaveProperty('project_mutation');
+    expect(teamTools).not.toHaveProperty('generate_image');
   });
 
   it('never lets writes or human-gated tools into the scheduled tool base', () => {

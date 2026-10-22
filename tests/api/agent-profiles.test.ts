@@ -12,10 +12,7 @@ import {
 
 const PROFILES_DIR = resolve(import.meta.dirname, '../../apps/api/src/profiles');
 const KNOWN_TOOLS = [
-  'eval_message',
-  'manage_eval_dataset',
   'analyze_image',
-  'query_eval_runs',
   'external_search',
   'feature_request',
   'generate_image',
@@ -49,11 +46,12 @@ function readProfileYaml(id: string) {
 describe('All profiles: structural validation', () => {
   const profileFiles = readdirSync(PROFILES_DIR).filter((f) => f.endsWith('.yaml') || f.endsWith('.yml'));
 
-  it('has exactly 3 internal system profiles', () => {
-    // One agent + two hidden runtimes. quick/deep/K3/workflows collapsed on
-    // 2026-08-01 — they differed only by model, which is now a per-turn choice.
-    expect(profileFiles.length).toBe(3);
-    expect(profileFiles.map((f) => f.replace(/\.ya?ml$/, '')).sort()).toEqual(['desktop', 'eval-judge', 'sprouty']);
+  it('has exactly 2 internal system profiles', () => {
+    // One agent + one hidden runtime. quick/deep/K3/workflows collapsed on
+    // 2026-08-01 — they differed only by model, which is now a per-turn choice;
+    // eval-judge went with the evaluation system in v1.4.
+    expect(profileFiles.length).toBe(2);
+    expect(profileFiles.map((f) => f.replace(/\.ya?ml$/, '')).sort()).toEqual(['desktop', 'sprouty']);
   });
 
   for (const file of profileFiles) {
@@ -90,11 +88,9 @@ describe('Profile identities', () => {
     expect(loadProfile('default')).toBeNull();
   });
 
-  it('only Sprouty is pickable — judges and runtimes are not', () => {
+  it('only Sprouty is pickable — runtimes are not', () => {
     // `hidden` keeps a profile out of the picker while leaving it resolvable by
-    // id server-side (the eval flow and scheduled tasks still target it).
-    expect(loadProfile('eval-judge')!.hidden).toBe(true);
-    expect(loadProfile('eval-judge')!.access.level).toBe('internal');
+    // id server-side.
     expect(loadProfile('desktop')!.hidden).toBe(true);
   });
 
@@ -123,7 +119,7 @@ describe('Profile identities', () => {
 });
 
 describe('Profile module loading and legacy compatibility', () => {
-  it('loadAllProfiles returns 3 internal system profiles', async () => {
+  it('loadAllProfiles returns 2 internal system profiles', async () => {
     const { loadAllProfiles, clearProfileCache, registerKnownTools } =
       await import('../../apps/api/src/profiles/profile.js');
     registerKnownTools(KNOWN_TOOLS);
@@ -132,13 +128,13 @@ describe('Profile module loading and legacy compatibility', () => {
       loadAllProfiles()
         .map((p) => p.id)
         .sort(),
-    ).toEqual(['desktop', 'eval-judge', 'sprouty']);
+    ).toEqual(['desktop', 'sprouty']);
   });
 
   it('maps stored legacy profile IDs onto the presets that replaced them', async () => {
     const { resolveProfile, clearProfileCache } = await import('../../apps/api/src/profiles/profile.js');
     clearProfileCache();
-    // Sessions/eval runs/scheduled tasks still store these; they must keep working.
+    // Sessions/scheduled tasks still store these; they must keep working.
     for (const legacy of [
       'team',
       'default',
@@ -153,6 +149,8 @@ describe('Profile module loading and legacy compatibility', () => {
       'sprouty-mission',
       'workflow-planner',
       'sprouty-agents',
+      // Retired in v1.4 with the evaluation system.
+      'eval-judge',
     ]) {
       expect(resolveProfile(legacy).id, legacy).toBe('sprouty');
     }
@@ -214,7 +212,7 @@ describe('Profile module loading and legacy compatibility', () => {
     // `extends` existed only to say "same agent, another model". That is a
     // dropdown now, so a YAML reaching for it is a sign the collapse is being
     // undone one file at a time.
-    for (const id of ['sprouty', 'eval-judge', 'desktop']) {
+    for (const id of ['sprouty', 'desktop']) {
       expect(readProfileYaml(id).extends, id).toBeUndefined();
     }
   });
@@ -243,7 +241,7 @@ describe('Rich output guide', () => {
     const { enrichSystemPrompt } = await import('../../apps/api/src/profiles/profile.js');
     const { RICH_OUTPUT_GUIDE } = await import('@greenhouse/utils/prompts');
 
-    for (const id of ['sprouty', 'eval-judge']) {
+    for (const id of ['sprouty']) {
       const profile = loadProfile(id)!;
       expect(enrichSystemPrompt(profile as any), id).toContain(RICH_OUTPUT_GUIDE);
       // A second copy in the YAML would drift from this one.
@@ -264,15 +262,5 @@ describe('Rich output guide', () => {
     expect(RICH_OUTPUT_GUIDE).toMatch(/数据没齐就不要开 fence/);
     expect(RICH_OUTPUT_GUIDE).toMatch(/开了就必须一次写完/);
     expect(RICH_OUTPUT_GUIDE).toMatch(/整块重写/);
-  });
-});
-
-describe('Task-specific LLM configs', () => {
-  it('batch eval judge is a task profile, not a YAML Agent Profile', async () => {
-    expect(existsSync(resolve(PROFILES_DIR, 'batch-eval-judge.yaml'))).toBe(false);
-    const { BATCH_EVAL_JUDGE_PROFILE } = await import('../../apps/api/src/llm/tasks/batch-eval-judge.js');
-    expect(BATCH_EVAL_JUDGE_PROFILE.id).toBe('task:batch-eval-judge');
-    expect(BATCH_EVAL_JUDGE_PROFILE.tools).toEqual([]);
-    expect(BATCH_EVAL_JUDGE_PROFILE.tool_choice).toBe('none');
   });
 });

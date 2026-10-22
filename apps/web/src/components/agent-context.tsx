@@ -70,13 +70,6 @@ export function resolveUrlContext(hash: string): PageContext | null {
       return { type: 'project-list' };
 
     case 'settings':
-      // Evaluation remains a Settings sub-module.
-      if (segments[1] === 'eval') {
-        return {
-          type: 'eval',
-          runId: segments[2] === 'runs' && segments[3] ? segments[3] : undefined,
-        };
-      }
       if (subPath === 'feature-requests' || params.get('tab') === 'feature-requests') {
         return { type: 'feature-request-list' };
       }

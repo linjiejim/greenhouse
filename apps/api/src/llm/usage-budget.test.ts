@@ -8,7 +8,6 @@ import {
   estimateRelayTokens,
   reserveImageUsdBudget,
   reserveUserTokenBudget,
-  resolveUsageBudgetPool,
   settleAndRecordBudgetedUsage,
   settleAndRecordBudgetedImageUsage,
 } from './usage-budget.js';
@@ -122,32 +121,6 @@ describe('provider usage-budget guard', () => {
         20_000,
       ),
     ).toBeGreaterThan(40_000);
-  });
-
-  it('isolates judge and eval traffic into the dedicated organization pool', async () => {
-    const f = fixture();
-    await reserveUserTokenBudget({
-      db: f.db as never,
-      userId: 'user-1',
-      caller: 'batch-eval-judge',
-      estimatedTokens: 10,
-      providerId: 'deepseek',
-    });
-
-    expect(resolveUsageBudgetPool('chat-eval')).toBe('eval');
-    expect(resolveUsageBudgetPool('chat', 'eval')).toBe('eval');
-    expect(f.reserveMonthlyUser).toHaveBeenCalledWith(
-      expect.objectContaining({
-        additional_accounts: expect.arrayContaining([
-          expect.objectContaining({
-            scope_type: 'organization',
-            scope_id: 'default:eval',
-            limit_units: 100_000_000,
-          }),
-          expect.objectContaining({ scope_type: 'provider', scope_id: 'deepseek' }),
-        ]),
-      }),
-    );
   });
 
   it('reserves every configured billing credential in a registry fallback chain', async () => {

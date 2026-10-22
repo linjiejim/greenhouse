@@ -11,9 +11,9 @@
  *   pnpm cli <command> [subcommand] [args] [--flags]
  *   pnpm cli --help               the getting-started guide
  *
- * Commands live in ./commands/<command>.ts and export `run(args)`. The two
- * HTTP-driven scripts (`chat`, `eval`) keep their own argv contract and are
- * delegated to as child processes — their files remain directly runnable too.
+ * Commands live in ./commands/<command>.ts and export `run(args)`. The
+ * HTTP-driven `chat` script keeps its own argv contract and is delegated to as
+ * a child process — its file remains directly runnable too.
  * Commands are imported lazily so a cheap command never pays to load the DB.
  */
 
@@ -57,7 +57,6 @@ ${chalk.bold('Diagnose')}
 
 ${chalk.bold('Chat')} ${chalk.dim('(needs a running server: pnpm api)')}
   chat                      Interactive agent chat (requires GREENHOUSE_ACCESS_TOKEN)
-  eval <args>               Chat answer eval runner (cli/eval.ts; --help for its own usage)
 
 ${chalk.dim('Global: --json (machine output where supported). DB via DATABASE_URL in .env.')}`;
 
@@ -118,8 +117,6 @@ async function dispatch(command: string, rest: string[]): Promise<number> {
     // ── HTTP-driven scripts (child-process delegation) ──
     case 'chat':
       return delegate('chat.ts', rest);
-    case 'eval':
-      return delegate('eval.ts', rest);
     default: {
       const extension = extensionCommands().find((cmd) => cmd.name === command);
       if (extension) {

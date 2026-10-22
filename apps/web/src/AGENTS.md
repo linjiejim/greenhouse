@@ -170,7 +170,6 @@ stores/
 - 桌面侧栏、移动导航抽屉和首页工作台的导航卡必须消费 `usePlatformCatalog()`；服务端 Catalog 仍是应用可见性的唯一真源。
 - 左侧栏 Logo 行依次承载全局搜索、Global Agent 与折叠控制；折叠控制必须使用明确的侧栏开/关图标，禁止使用会被误认成页面返回的裸 Chevron。普通应用不再显示冗余 Back，直接用常驻 `Chat`/`New Chat` 返回；Settings / Administration 作为专用覆盖工作区，仍保留返回进入前页面的语义。移动导航抽屉同步遵循这一规则。
 - 常驻主导航位于侧栏 `New Chat` 下方，顺序 `Chat → Knowledge → Projects → Tables → More`，桌面/移动端统一由 `platform/navigation.ts` + `components/app/sidebar-global-navigation.tsx` 构建。Automation、`My Prompts`、`My Agents`、SkillHub 与超出常驻集的应用收进 `More`：桌面悬浮或点击后向右展开，移动端点击后原位展开。Automation、Prompt Tasks、My Agents 分别使用独立地址 `#/automations`、`#/tasks`、`#/agents`；历史 `#/chat?view=...` 只作重定向兼容。Chat 是 Mission 等工作的主要发起面；账户浮层中紧跟 Inbox 的「执行中心」是唯一持久执行入口，使用 `#/executions` / `#/executions/:kind/:id` 聚合 Mission / Workflow / Automation / Subagent，并默认展示进行中。Mission 不再拥有独立列表页或 More 入口；旧 `#/missions`、`#/cloud-agent`、`#/task-center` 和 Runtime `#/tasks/:kind/:id` 只作重定向兼容。Mission 详情继续读取领域事实，Runtime 诊断作为二级视图，避免异步镜像短暂延迟造成假 404。**没有 Home tab**——首页就是 Chat 新会话空态（个人工作台在那里渲染），`#/workbench` 与 `#/home` 都重写到 `#/chat`。右侧不再渲染独立一级 Tab 条，只保留页面/会话上下文 `TopBar`。
-- 执行中心详情的「复制为评测用例」仅 super 可见：先拉完整 Runtime/Eval/会话证据预览，敏感路径只提示不静默改写，问题、ground truth、预期行为、标签和备注均可编辑；只有显式提交才创建 Dataset，提交期间禁用按钮并复用同一个 idempotency key，成功统一深链 `#/administration/eval/datasets`。
 - 只有拥有专用 Web 页面且已显式登记 host route 的应用生成浏览器链接；其余应用显示为 Agent/MCP-only。
 - 直接访问应用 URL 时也要等待 Catalog 并 fail closed；后端 Registry/Entity Policy 仍是安全边界。
 
@@ -471,7 +470,7 @@ stores/
 - `<Pagination page pageSize total onPageChange onPageSizeChange />`——`page` 为 **0-based**；自带左侧区间文案、每页数量下拉（默认 `[20,50,100]`）、Prev/Next、`X / Y` 和跳页输入框；`total===0` 时自渲染为空。
 - 每页数量用 `const [pageSize, setPageSize] = usePersistedPageSize('<scope>', 20)` 持久化到 localStorage（key 如 `projects.list`、`tables.records`）；**改变 pageSize 时调用方负责把 `page` 重置为 0**。
 - 数据加载的 `limit/offset`（或 `page_size`）一律取自 `pageSize`，并把 `pageSize` 加入 `loadData` 依赖。
-- 1-based 的旧页码（如 `eval/datasets`）在调用处做 `page={page-1}` / `onPageChange={(p)=>setPage(p+1)}` 适配，不改内部约定。
+- 1-based 的旧页码在调用处做 `page={page-1}` / `onPageChange={(p)=>setPage(p+1)}` 适配，不改内部约定。
 - 参考：`packages/crud/src/client/`、`pages/administration/users.tsx`。
 
 ### 标签 Tag 规范

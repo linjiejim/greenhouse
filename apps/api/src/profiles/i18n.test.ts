@@ -78,11 +78,4 @@ describe('shipped profiles', () => {
 
     expect(p.description_i18n?.en).toBeTruthy();
   });
-
-  it('eval-judge declares English copy for every user-facing string', () => {
-    const p = loadProfile('eval-judge');
-
-    expect(p.name_i18n?.en).toBeTruthy();
-    expect(p.description_i18n?.en).toBeTruthy();
-  });
 });

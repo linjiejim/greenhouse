@@ -98,6 +98,7 @@ export const customProfileVersions = pgTable(
     audience: text('audience'),
     risk_level: text('risk_level', { enum: CUSTOM_PROFILE_RISK_LEVELS }).notNull().default('medium'),
     budget_policy: text('budget_policy').notNull().default('{}'),
+    /** Retired in v1.4 with the evaluation system: never written; dropped with the retired tables. */
     eval_refs: text('eval_refs').notNull().default('[]'),
     /** Snapshot only: no FK, otherwise deleting a user would mutate this immutable row. */
     owner_backup_user_id: text('owner_backup_user_id'),

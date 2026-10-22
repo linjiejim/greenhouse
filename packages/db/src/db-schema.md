@@ -8,7 +8,7 @@
 
 - 数据访问统一通过 `getDb()` 返回的域 service；业务代码不直接写 SQL。
 - 内部有效用户角色只有 `team` 与 `super`。数据库仍允许读取历史 `external` 角色值以完成迁移兼容，但这类账号必须为 `disabled`，中央鉴权必须拒绝其 token。
-- Agent Profile 的持久化默认值是 `team`：`sessions.profile_id`、`eval_runs.profile_id`、`scheduled_tasks.profile_id` 与 `custom_profiles.base_profile_id`。
+- Agent Profile 的持久化默认值是 `team`：`sessions.profile_id`、`scheduled_tasks.profile_id` 与 `custom_profiles.base_profile_id`。
 - 域内强所有权使用 FK，并明确 `CASCADE` / `SET NULL`；审计、统计、跨域主体引用通常保持逻辑关联，避免主体删除时丢失历史。
 - `tags`、`meta`、`config`、`scopes` 等 JSON 数据目前以 `TEXT NOT NULL` 保存，默认值为 `[]` 或 `{}`。
 - `table_records.values/computed_values` 是动态字段检索的真实数据库路径查询需求，按列例外使用 `JSONB NOT NULL DEFAULT '{}'`；Tables 的 field/view/widget 配置使用 JSON 文本，Form/Automation 配置使用类型化 JSONB。
@@ -166,15 +166,6 @@ Subagent 以 child session 作为唯一 `source_id`，完整请求保存在 Run/
 | `table_dashboards` | PK `id`；UK `(base_id, name)` | Base 自定义仪表盘；revision 乐观并发 |
 | `table_dashboard_widgets` | PK `id` | KPI/Chart/records/text 组件；配置与布局是 JSON 文本，单组件最多绑定一张 Table；revision 乐观并发 |
 
-### 评测与工单智能化
-
-| 表 | 主键 / 唯一约束 | 关键字段与用途 |
-|---|---|---|
-| `eval_datasets` | PK `id` | 通用评测题库；问题、ground truth、期望行为、标签、语言、来源与归档状态。Task Center 的 Trace → Dataset 仅在 super 显式提交后写 `source='agent'`，`source_session_id` + `notes` 首行 `[runtime-trace:v1]` provenance 追踪来源；capture id 走事务 advisory lock 防重复点击，无自动入库/自动过期 |
-| `eval_runs` | PK `id` | 通用评测批次；profile 默认 `team`，含进度、通过/失败数与多维平均分 |
-| `eval_results` | PK `id` | 单题结果；关联 run 与 dataset，记录回答、引用、延迟、多维分数、judge reasoning 与错误 |
-| `chat_eval_results` | PK `id`；UK `message_id` | 在线消息质量评测；verdict、最终分、分类、四维结果、一致性、引用问题与建议；保留 nullable v1 分数字段 |
-
 ### 内部集成、LLM Relay 与反馈
 
 | 表 | 主键 / 唯一约束 | 关键字段与用途 |
@@ -206,6 +197,19 @@ Subagent 以 child session 作为唯一 `source_id`，完整请求保存在 Run/
 | `platform_oauth_grants` | PK `id`；UK `(user_id, client_id, resource)` | 用户对客户端 resource/scopes 的授权与撤销状态 |
 | `platform_oauth_authorization_codes` | PK `code_hash` | Authorization Code + PKCE S256；只存 hash、challenge、有效期与一次性使用时间 |
 | `platform_oauth_tokens` | PK `id`；UK `token_hash` | access/refresh token 状态；只存 hash、resource/scopes、有效期、撤销与最后使用时间 |
+
+### 退役表（v1.4 起无代码读写，下一个版本 DROP）
+
+定义在 `schema/retired.ts`，只为蓝绿回滚到 v1.3.x 保留；不要为它们写新代码。
+
+| 表 | 原模块 | 说明 |
+|---|---|---|
+| `eval_datasets` | 评测 | 题库（含 Trace → Dataset 写入的 `source='agent'` 行） |
+| `eval_runs` | 评测 | 评测批次 |
+| `eval_results` | 评测 | 单题结果；FK `run_id → eval_runs` CASCADE、`dataset_id → eval_datasets` NO ACTION |
+| `chat_eval_results` | 评测 | 单条回答的 LLM judge 结果；逻辑关联 `messages.id` / `sessions.id` |
+
+退役列：`custom_profile_versions.eval_refs`（不再写入，默认 `[]`）。
 
 ## FK 约束总览
 
@@ -264,8 +268,6 @@ Subagent 以 child session 作为唯一 `source_id`，完整请求保存在 Run/
 | `task_comments.task_id` | `tasks.id` | CASCADE |
 | `project_activities.project_id` | `projects.id` | CASCADE |
 | `project_activities.task_id` | `tasks.id` | SET NULL |
-| `eval_results.run_id` | `eval_runs.id` | CASCADE |
-| `eval_results.dataset_id` | `eval_datasets.id` | NO ACTION |
 | `api_clients.user_id` | `users.id` | CASCADE |
 | `platform_roles.org_id` | `platform_organizations.id` | CASCADE |
 | `platform_role_bindings.role_id` | `platform_roles.id` | CASCADE |
@@ -368,8 +370,6 @@ Subagent 以 child session 作为唯一 `source_id`，完整请求保存在 Run/
 | `table_views.owner_id` | `users.id` | personal Grid 视图所有者 |
 | Tables 各表的 `created_by/updated_by/added_by/execution_user_id/user_id` | `users.id` | Base 协作、自动化执行与通知主体，跨域松散关联；运行前校验 active internal user |
 | `table_records.values` 中 user/multi_user 值 | `users.id` | 动态用户字段；写入时校验 active internal user |
-| `eval_datasets.source_session_id` / `eval_results.session_id` | `sessions.id` | 题目来源与评测会话 |
-| `chat_eval_results.message_id` / `session_id` | `messages.id` / `sessions.id` | 在线质量评测目标 |
 | `api_audit_log.app_id` / `user_id` | `api_clients.app_id` / `users.id` | 审计独立于主体生命周期，允许保留已删除客户端/用户的历史 |
 | `feature_requests.submitted_by` / `session_id` | `users.id` / `sessions.id` | 需求提出者与上下文 |
 | `platform_app_releases.created_by` | `users.id` | release 发布者 |
@@ -444,7 +444,7 @@ erDiagram
     users ||--o{ email_accounts : "FK CASCADE"
 ```
 
-### 内容、项目与评测
+### 内容与项目
 
 ```mermaid
 erDiagram
@@ -480,9 +480,6 @@ erDiagram
     table_bases ||--o{ table_dashboards : "FK CASCADE"
     table_dashboards ||--o{ table_dashboard_widgets : "FK CASCADE"
     table_tables ||--o{ table_dashboard_widgets : "FK CASCADE"
-    eval_runs ||--o{ eval_results : "FK CASCADE"
-    eval_datasets ||--o{ eval_results : "FK NO ACTION"
-    messages ||--o| chat_eval_results : "逻辑 message_id"
 ```
 
 ### 内部集成与 Platform

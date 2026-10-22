@@ -34,9 +34,6 @@ import { readAttachmentTool } from './read-attachment.js';
 import { callLlmTool } from './call-llm.js';
 import { knowledgeQueryTool } from './knowledge-query.js';
 import { knowledgeMutationTool } from './knowledge-mutation.js';
-import { evalMessageTool } from './eval-message.js';
-import { manageEvalDatasetTool } from './manage-eval-dataset.js';
-import { queryEvalRunsTool } from './query-eval-runs.js';
 import { skillQueryTool } from './skills/skill-query.js';
 import { skillMutationTool } from './skills/skill-mutation.js';
 import { tablesQueryTool } from './tables-query.js';
@@ -72,9 +69,6 @@ const CORE_TOOL_MODULES: ToolModule[] = [
   callLlmTool,
   knowledgeQueryTool,
   knowledgeMutationTool,
-  evalMessageTool,
-  manageEvalDatasetTool,
-  queryEvalRunsTool,
   skillQueryTool,
   skillMutationTool,
   tablesQueryTool,

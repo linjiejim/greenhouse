@@ -71,7 +71,6 @@ export interface Profile {
   audience?: string | null;
   risk_level?: 'low' | 'medium' | 'high';
   budget_policy?: Record<string, unknown>;
-  eval_refs?: unknown[];
   owner_backup_user_id?: string | null;
   reviewed_by?: string | null;
   reviewed_at?: string | null;
@@ -240,41 +239,6 @@ export interface SessionUsage {
   totalReasoningTokens: number;
   totalDurationMs: number;
   messageCount: number;
-}
-
-// ─── Message Eval Types ──────────────────────────────────
-
-export interface MessageEvalResult {
-  exists: boolean;
-  eval?: {
-    id: number;
-    message_id: string;
-    session_id: string;
-    /** v2 verdict — 'pass' | 'fail' | 'pending'. Null on legacy rows. */
-    verdict?: string | null;
-    score_accuracy: number | null;
-    score_faithfulness: number | null;
-    score_completeness: number | null;
-    score_hallucination: number | null;
-    score_final: number | null;
-    /** JSON array string; nullable in DB (column default '[]' without NOT NULL). */
-    discrepancies: string | null;
-    duration_ms: number | null;
-    created_at: string;
-  };
-  agent_session_id?: string | null;
-}
-
-/** One evaluated message's latest-run summary — from GET /sessions/:id/evals. */
-export interface SessionEvalSummary {
-  message_id: string;
-  /** 'pass' | 'fail' | 'pending'; null on legacy rows. */
-  verdict: string | null;
-  /** Weighted 0–10; null when verdict is 'pending'. */
-  score_final: number | null;
-  /** The Agent session that ran the eval — used to restore it on click. */
-  eval_session_id: string | null;
-  created_at: string;
 }
 
 // ─── Upload Types ────────────────────────────────────────

@@ -20,16 +20,16 @@ describe('artifact renderer extension seam', () => {
   });
 
   it('an unknown tool is not an artifact when no renderer matches', () => {
-    expect(isArtifactCall({ name: 'eval_message', output: { verdict: 'pass' } })).toBe(false);
+    expect(isArtifactCall({ name: 'acme_report', output: { verdict: 'pass' } })).toBe(false);
   });
 
   it('a fork renderer makes its call an inline artifact', () => {
-    const r: ArtifactRenderer = { match: (c) => c.name === 'eval_message', render: () => null };
+    const r: ArtifactRenderer = { match: (c) => c.name === 'acme_report', render: () => null };
     ARTIFACT_RENDERERS.push(r);
-    expect(isArtifactCall({ name: 'eval_message', output: {} })).toBe(true);
-    expect(findArtifactRenderer({ name: 'eval_message' })).toBe(r);
-    const { trace, artifacts } = partitionCalls([{ name: 'eval_message', output: {} }, { name: 'other' }]);
-    expect(artifacts.map((c) => c.name)).toEqual(['eval_message']);
+    expect(isArtifactCall({ name: 'acme_report', output: {} })).toBe(true);
+    expect(findArtifactRenderer({ name: 'acme_report' })).toBe(r);
+    const { trace, artifacts } = partitionCalls([{ name: 'acme_report', output: {} }, { name: 'other' }]);
+    expect(artifacts.map((c) => c.name)).toEqual(['acme_report']);
     expect(trace.map((c) => c.name)).toEqual(['other']);
   });
 

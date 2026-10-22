@@ -31,7 +31,6 @@ async function createAgent(riskLevel: 'low' | 'medium' | 'high' = 'medium', mode
     audience: 'Engineering leads',
     risk_level: riskLevel,
     budget_policy: { max_tokens: 50_000 },
-    eval_refs: ['eval:baseline'],
     change_log: 'Initial governed draft',
     created_by: owner.id,
   });

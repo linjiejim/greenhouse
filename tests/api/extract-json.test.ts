@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { extractJson } from '../../apps/api/src/eval.js';
+import { extractJson } from '@greenhouse/utils/json';
 
 describe('extractJson', () => {
   const VALID_JUDGE = JSON.stringify({

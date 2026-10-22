@@ -79,7 +79,6 @@ DATABASE_URL=postgresql://greenhouse:greenhouse@localhost:5432/greenhouse_test \
 | `session-crud.e2e.test.ts` | Session CRUD、跨用户隔离、未认证访问拒绝 |
 | `session-shared-list.e2e.test.ts` | Session 分享列表与所有权标志 |
 | `agent-proxy.e2e.test.ts` | 内部 Agent 工具代理认证、清单与写工具确认门 |
-| `eval-system.e2e.test.ts` | 评测题库 CRUD、运行列表、权限控制 |
 | `oauth-machine-clients.e2e.test.ts` | OAuth 机器客户端：创建/轮换/禁用、client_credentials 换 token、scope 收窄与审计 |
 
 ## 注意事项

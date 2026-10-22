@@ -7,8 +7,6 @@ import type {
   Session,
   Message,
   SessionUsage,
-  MessageEvalResult,
-  SessionEvalSummary,
   ShareInfo,
   ShareableUser,
   ShareItem,
@@ -64,22 +62,6 @@ export async function forkSession(id: string, messageId?: string): Promise<Sessi
     throw new Error(('error' in data && data.error) || `Fork failed: ${res.status}`);
   }
   return res.json();
-}
-
-export async function getMessageEval(sessionId: string, messageId: string): Promise<MessageEvalResult> {
-  const res = await rpc.api.sessions[':id'].messages[':msgId'].eval.$get({
-    param: { id: sessionId, msgId: messageId },
-  });
-  if (!res.ok) throw new Error(`getMessageEval failed: ${res.status}`);
-  return res.json();
-}
-
-/** Latest eval summary per message in a session — drives the eval-button state. */
-export async function getSessionEvals(sessionId: string): Promise<SessionEvalSummary[]> {
-  const res = await rpc.api.sessions[':id'].evals.$get({ param: { id: sessionId } });
-  if (!res.ok) throw new Error(`getSessionEvals failed: ${res.status}`);
-  const data = await res.json();
-  return data.evals as SessionEvalSummary[];
 }
 
 export async function updateSession(

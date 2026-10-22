@@ -1,6 +1,6 @@
 # Agent Profiles
 
-系统 Profiles 共 3 个：**一个可选预设** Sprouty + 两个 `hidden` 的系统 profile。
+系统 Profiles 共 2 个：**一个可选预设** Sprouty + 一个 `hidden` 的系统 profile。
 
 > **四预设已于 2026-08-01 收敛为一个**（见 [附件与预设收敛 spec](../../../../docs/specs/20260731-attachment-and-preset-convergence.md) M3）。quick / deep / K3 三份提示词逐字相同，区别只有模型；`sprouty-workflows` 与 `sprouty-mission` 是把「模式」伪装成「助手」——两个工具（`workflow_plan`、`mission_dispatch`）现在对所有内部会话装配，起草与执行都不再依赖开局选中某个预设。所有退役 id 由 `normalizeProfileId()` 归一到 `sprouty`，**不做数据迁移**。存量 mission 会话继续像 mission 一样工作，靠的是 `channel='mission'` 而不是 profile。
 
@@ -9,10 +9,9 @@
 | ID | Name | Runtime | Visibility | Notes |
 | --- | --- | --- | --- | --- |
 | `sprouty` | Sprouty | Cloud `/api/chat` | internal | 唯一预设，也是默认 Agent。`model.id: flash` 只是起点——**每轮可切**（见下方「模型是每轮的选择」）。工具由用户权限/分配控制。 |
-| `eval-judge` | Sprouty (Eval) | Cloud `/api/chat` | internal, `hidden: true` | 质量评估专家；打分由 `eval_message` 工具完成。**不进选择器**（`hidden`），但服务端仍可按 id 解析——评测流程与定时任务要用它。 |
 | `desktop` | Agent Runtime | `/api/agent` + `/api/mcp` | hidden | 权威运行时 profile（全内部工具面）；不能通过普通 `/api/chat` 使用。 |
 
-**旧 id 不迁移、只映射**：`normalizeProfileId()` 把存量的 `team`/`default`/`researcher`/…、`workflow-planner`/`sprouty-agents` 以及四个退役预设（`sprouty-quick`/`-deep`/`-k3`/`-workflows`/`-mission`）全部映射到 `sprouty`。会话、eval run、定时任务、custom profile 的 base 里存的仍是旧值，读取时解析即可。
+**旧 id 不迁移、只映射**：`normalizeProfileId()` 把存量的 `team`/`default`/`researcher`/…、`workflow-planner`/`sprouty-agents` 以及四个退役预设（`sprouty-quick`/`-deep`/`-k3`/`-workflows`/`-mission`）和 v1.4 随评测系统退役的 `eval-judge` 全部映射到 `sprouty`。会话、定时任务、custom profile 的 base 里存的仍是旧值，读取时解析即可。
 
 > 约定：按用户权限动态装配的工具（`knowledge_mutation`、`tables_mutation` 等）的使用/确认/展示规则写在工具自身的 `description`（随 function definition 下发），profile prompt 不复述，避免工具未装配时留下死指令。
 
@@ -27,7 +26,7 @@ system prompt 末尾追加 `composeRichOutput({ confirm: true })` —— chart /
 三种 code fence 的写法与写作纪律。
 
 **只有一份副本，改一次即改全部**：`RICH_OUTPUT_GUIDE` 在 `packages/utils/src/prompts.ts`。
-`sprouty` 与 `eval-judge` 声明 `rich_output: true` 因此都拿到它；`desktop` 是 `false`，原样返回。
+`sprouty` 声明 `rich_output: true` 因此拿到它；`desktop` 是 `false`，原样返回。
 自定义 Agent 从 `base_profile_id` 继承 `rich_output`（`profile.ts`），因此也走同一份。
 **不要在某个 YAML 里另写一份块格式说明**——两份副本必然漂移。
 
@@ -101,7 +100,7 @@ v3 曾把模型收进 Agent 身份：想更强的推理就选 deep、想百万�
 ### Custom Agent 的版本与生命周期（2026-08-12）
 
 - `custom_profiles` 是稳定资产身份；每次创建/编辑都会向 `custom_profile_versions` 追加完整、带 SHA-256
-  `manifest_hash` 的不可变 manifest。版本同时记录 change log、purpose、audience、risk、budget policy、Eval refs、
+  `manifest_hash` 的不可变 manifest。版本同时记录 change log、purpose、audience、risk、budget policy、
   backup owner 与 review due date；服务层不提供版本 update/delete。
 - 生命周期为 `draft → review → pilot|verified|rejected`，发布后还可 `suspended` / `deprecated` / `archived`。
   owner 只能编辑自己的 draft、提交审核、撤回或归档；super 在 Agents 页看到所有未归档资产，包括未共享 review，
@@ -273,9 +272,3 @@ stateless Agent/MCP 不开放该文件工具。
 - **自建 Agent 的 `tools` 是交集过滤器**，另有 10 个 `builtin: true` 的工具无条件并入该过滤器（`BUILTIN_AGENT_TOOL_IDS`），使作者不必知道它们存在也能得到一个会追问、会读附件、会定时的 Agent。判据、清单与「必须并进过滤集而非结果集」的理由写在 api AGENTS.md「内置 Agent 工具」一节。
 - 内置只影响自建 Agent；系统 profile 本就拿全量 allow-set，不受影响。无人值守面（定时任务 / workflow 节点 / spawn 子会话）另有 fail-closed 白名单 `filterUnattendedToolIds` 收窄，内置不给它新增任何工具。
 
-## Task-specific LLM Configs
-
-批量评测使用 task-specific config；交互式评估仍使用 `eval-judge` Profile。当前：
-
-- Batch eval judge 配置位于 `apps/api/src/llm/tasks/batch-eval-judge.ts`。
-- 这些配置仅由对应 eval 引擎调用，不出现在 profile picker，也不能被用户选择；交互式评估使用 `eval-judge` profile。

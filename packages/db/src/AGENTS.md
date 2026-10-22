@@ -54,10 +54,17 @@
 - 有效账号角色只有 `team` 与 `super`。`users.role` 中的 `external` 仅为历史数据兼容值；这类账号必须为 `disabled`，且中央鉴权必须拒绝其 access/refresh token。
 - `users.auth_version` 是账号凭证代数，`refresh_tokens.auth_version` 记录签发代数。密码重置必须通过 `users.resetPasswordAndRevokeSessions()` 在同一事务内更新密码、递增代数并删除全部 refresh token；access/refresh/WebSocket 使用时都要与当前用户代数比对，禁止退回“只删 refresh token”的非原子实现。
 - 邮件设密不是 Magic Link：`account_password_links` 只存 32-byte 随机 token 的 SHA-256 hash。签发、重发、撤销、消费与账号禁用统一先锁 `users` 再锁链接；消费必须在同一事务内校验用途/状态/过期/代数并完成写密码、激活、代数递增、Refresh Token 撤销。重置签发本身就把账号置为 `reset_required`、密码改为不可登录哨兵并撤销旧会话；撤销链接不得恢复旧密码。
-- 会话、评测、定时任务和自定义 Profile 的内置基础 Profile 统一为 `team`；数据库默认值不得再写入已退役的外部服务 Profile id。
+- 会话、定时任务和自定义 Profile 的内置基础 Profile 统一为 `team`；数据库默认值不得再写入已退役的外部服务 Profile id。
 - MCP、LLM Relay 与其他内部集成必须最终绑定真实内部用户。审计表可用松散关联保留历史，但新写入的主体不能是匿名/访客身份。
 - `api_audit_log.channel='api'` 仅用于读取迁移前历史审计；新写入类型必须显式排除它，只允许内部 `a2a` / `cli` / `relay`。
 - 已移除模块对应的表不得以兼容、占位或“未来可能使用”为由重新加入；确有新消费者时按根 AGENTS.md 的复用门禁重新设计。
+
+### 退役表（`schema/retired.ts`）
+
+- v1.4 删除模块时**不删表**：表定义原样挪进 `schema/retired.ts`（从 schema index 导出，Drizzle snapshot 不变、不产生迁移），service 与 provider 入口一并删除。留表只为蓝绿回滚到 v1.3.x 时旧代码还能读写；v1.4 之后的下一个版本用迁移把它们 DROP 掉，再删 `retired.ts` 里对应定义。
+- 应用代码不得 import `retired.ts` 的任何导出；`resetSchema()` 的 TRUNCATE 清单保留这些表名（表还在）。
+- 退役列（表还活着、列不再读写）就地留在原 schema，注释写明退役版本，与退役表同一版本 DROP。
+- 当前退役：评测 `eval_datasets` / `eval_runs` / `eval_results` / `chat_eval_results`；列 `custom_profile_versions.eval_refs`。
 
 ### Schema 迁移
 
@@ -202,7 +209,7 @@
 
 - 所有"text 存 JSON"列（tags/meta/config/references\_ 等）应为 **NOT NULL**（null 从无语义，写路径总提供值）；新增此类列必须 `notNull().default('[]'/'{}')`。不要在文档中维护容易漂移的列数。
 - **整列转 jsonb 暂缓**：postgres.js 对 jsonb 返回已解析对象、写入需对象而非字符串——切换意味着全部 service 写路径（JSON.stringify）与读路径（JSON.parse/safeJsonParse）成对改造 + wire 行为回归，收益（jsonb 索引/路径查询）目前没有真实查询需求支撑。若未来某列需要 jsonb 查询（如 metadata 过滤），按列单独迁移：`USING col::jsonb` + 该列全链路读写改造 + `.$type<T>()` 标注。
-- 语义性 NULL 列（`messages.reasoning`、`eval_results.judge_reasoning`、`knowledge_base._enriched_at` 等"缺失即含义"）**保持可空**，不要顺手 NOT NULL。
+- 语义性 NULL 列（`messages.reasoning`、`knowledge_base._enriched_at` 等"缺失即含义"）**保持可空**，不要顺手 NOT NULL。
 
 ### Platform Kernel v2 控制面
 
@@ -242,7 +249,7 @@
 
 ### 统一 Runtime Kernel
 
-- schema：`schema/runtime.ts`；service：`services/runtime.ts`；provider 入口：`db.runtime`。它只统一执行 envelope、lease/CAS、Interrupt、Event/Outbox，不取代 Mission workspace、Workflow graph、Chat transcript 或 Eval score 等领域事实。
+- schema：`schema/runtime.ts`；service：`services/runtime.ts`；provider 入口：`db.runtime`。它只统一执行 envelope、lease/CAS、Interrupt、Event/Outbox，不取代 Mission workspace、Workflow graph 或 Chat transcript 等领域事实。`kind=eval` 只剩 v1.4 前的历史 Run。
 - Run/Step/ToolCall/Artifact/Interrupt 的完整 input/output/payload/decision 与 Event payload 永久保留，不自动截断、不过期、无生产 delete Service；大文件字节仍在对象存储，Artifact 保存 provenance/hash。`runtime_events` append-only，Outbox delivery state 只能写 `runtime_outbox`，禁止回写或改造 Event。
 - 每个状态/heartbeat/claim/stale-recovery 变更必须在同一事务追加 Event + Outbox；Event `seq` 通过锁定对应 Run 后分配。重复命令先查 `(run_id,idempotency_key)` 并校验完整 fingerprint，不能重新执行副作用。
 - 真实工具执行前只走 `runtime.beginToolCallWithAuthority()`：同一事务按 Run→Step 加行锁，durable driver 必须证明 Run/Step 都仍 running、`desired_state=run`、owner 匹配、worker 同时持有两条未过期 lease；unleased 例外只允许 running 的 `kind=chat/source_kind=chat_turn` projection。事务内一次完成 ToolCall create + pending→running 及两条 Event/Outbox，任一失败都禁止调用真实工具。已存在同幂等 key 永远不二次 admission。`running` worker 丢失统一转 `uncertain`（即使 Run 已请求 cancel），因为 DB 只能证明 admission 已提交，不能证明外部结果；pending 才能安全收为 canceled。
@@ -251,16 +258,15 @@
 - Automation admission 的 overlap 约束走 `createRun({single_active_source_kind:true})`：事务 advisory lock 按 `(owner,kind,source_kind)` 串行化，并拒绝同一任务定义下另一条 active occurrence；相同 source identity 仍先按完整 input 做幂等回放。这个 service 选项是 Runtime 队列事实，不得再叠一份进程内 running Set。
 - Automation 的 task summary、成功计数与外部通知只能从 Runtime 终态 Outbox 投影：`scheduled_task_runtime_occurrences` 以 `runtime_run_id` 永久幂等，成功计数与 occurrence 插入同事务；延迟旧事件可补永久事实但不能覆盖更新 Run 的 `last_status`。driver 与 stale hook 禁止直接外发或重复增加 `run_count`。
 - Subagent admission 只走 `runtime.admitSubagent()`：稳定 tool-call identity 绑定 child session/message id，并在同一外层事务创建 child session、seq=0 user message、Runtime Run 与 Step；内部 `createRun({active_subagent_parent:{parent_session_id,limit}})` 的 advisory lock 按 `(owner,parent session)` 串行化，从完整 Runtime input 的 `parent_session_id + mode=async` 统计 active background child，精确替代 `spawn_session` 原来的进程内 async 并发 Map。显式 `parent_run_id` 必须在该事务内 `FOR UPDATE`，且 owner/session 匹配、状态仍为 `claimed|running`、`desired_state=run`；调用层不得在显式 id 缺失/失效时降级成按 session 查另一条 Run。任一 identity/lineage/限流失败整笔回滚；禁止另建“先 transcript、后 Runtime”的 ensure 路径。Subagent Run 固定 `max_attempts=1`；只有尚未进入 `running` 的 claim lease 可恢复，running lease stale 必须终态失败，绝不能自动重放可能已外写的整轮。
-- Eval 的领域事实仍在 `eval_runs/eval_results`：`createQueuedRun()` 必须在一个事务内保存 exact dataset selection 与全部 pending result placeholders；Runtime envelope/Step 仍只由 `db.runtime` 创建，API boot reconciler 负责补两者之间的 crash window。driver 完成或报错 result 必须用 `updatePendingResult()` CAS，确保 durable cancel 先把 pending 改 cancelled 后，迟到的 provider 响应不能覆盖取消。`completed|error|cancelled` 都是已处理 case，恢复时不得重复模型调用；只有 pending 可形成新 Runtime Step attempt。
 - `runtime_runs.parent_run_id` 是域内 CASCADE 所有权；Run 的用户/session/source/root、Event actor、Interrupt 决策人、ToolCall Platform Audit 是松散逻辑关联，使永久执行历史不随外域主体删除。Service 写入 step/tool/artifact/interrupt 时必须验证它们属于同一 Run，不能只依赖单列 FK。
 
 ### Custom Agent 版本与治理
 
 - `custom_profiles` 是稳定资产身份，`custom_profile_versions` 是不可变完整 manifest；生产 Service 只能 append，
-  不得 update/delete 版本。manifest hash、change log、模型/tools/prompt、purpose/audience/risk/budget/Eval refs 与
+  不得 update/delete 版本。manifest hash、change log、模型/tools/prompt、purpose/audience/risk/budget 与
   owner backup/review due 必须随版本冻结。
 - 任何新版本都撤销原审查：资产回 `draft`，清空 `published_version`、共享、reviewer 与 review date。旧
-  `custom:<id>@<version>` 仍可供已 pin 的会话/计划任务/Eval 重放，但不能继续对其他用户发布。
+  `custom:<id>@<version>` 仍可供已 pin 的会话/计划任务重放，但不能继续对其他用户发布。
 - 共享只能由 lifecycle `pilot` / `verified` 派生；不得直接写 `is_shared=true`。迁移把存量行转成 draft v1，
   并把 sessions/scheduled_tasks/eval_runs 的存量 custom 引用 pin 到 `@1`。
 - 自动治理只消费 `listReviewDue(at, limit)` 与 `listActiveWithOwners(limit, afterId)`；状态变更可用逻辑 actor

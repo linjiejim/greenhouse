@@ -44,10 +44,6 @@
       "import": "./src/session.ts",
       "types": "./src/session.ts"
     },
-    "./eval": {
-      "import": "./src/eval.ts",
-      "types": "./src/eval.ts"
-    },
     "./cloud-agent": {
       "import": "./src/cloud-agent.ts",
       "types": "./src/cloud-agent.ts"

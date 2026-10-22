@@ -126,7 +126,7 @@ describe('E2E: Session Data Isolation', () => {
       body: JSON.stringify({
         session_id: sessionId,
         messages: [{ role: 'user', content: 'hello' }],
-        profile_id: 'eval-judge', // attempt to override with a different valid profile
+        profile_id: 'desktop', // attempt to override with a different valid profile
       }),
     });
     // 200 = success, 429 = rate limited

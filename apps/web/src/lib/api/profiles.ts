@@ -75,7 +75,6 @@ export interface CustomProfileInput {
   audience?: string;
   risk_level?: 'low' | 'medium' | 'high';
   budget_policy?: Record<string, unknown>;
-  eval_refs?: unknown[];
   owner_backup_user_id?: string | null;
   review_due_at?: string | null;
   change_log?: string;

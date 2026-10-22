@@ -221,7 +221,7 @@ greenhouse/
 │   ├── api/              # Hono backend — routes, agent runtime, auth, security, scheduler, CLI
 │   │   └── src/
 │   │       ├── routes/       # HTTP routes (one file per resource)
-│   │       ├── chat/         # chat turn pipeline: turn, runtime, persist, runs, vision, eval, ambient context
+│   │       ├── chat/         # chat turn pipeline: turn, runtime, persist, runs, vision, ambient context
 │   │       ├── knowledge/    # knowledge base domain: access, search, folders, sections, export, notify, backfill
 │   │       ├── sessions/     # session access rules + creation
 │   │       ├── drive/        # drive access + upload policy

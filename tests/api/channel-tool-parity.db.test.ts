@@ -156,16 +156,18 @@ describe('cross-channel tool parity', () => {
   it('propagates a user_tools grant and revocation to chat immediately, never to surfaces it lacks', async () => {
     const user = await createInternalTestUser(db, { email: uniqueEmail('parity-assign') });
 
-    await db.userTools.setTools(user.id, ['query_eval_runs'], user.id);
+    // Core ships no individually assignable tool since v1.4 (the opt-in bucket is
+    // fed by extensions); the grant path is id-agnostic, so a probe id exercises it.
+    await db.userTools.setTools(user.id, ['opt_in_probe'], user.id);
     let sets = await channelSets(user);
-    expect(sets.chat.has('query_eval_runs')).toBe(true);
+    expect(sets.chat.has('opt_in_probe')).toBe(true);
     // No proxy/MCP surface declared — never listed there, granted or not.
-    expect(sets.proxy.has('query_eval_runs')).toBe(false);
-    expect(sets.mcp.has('query_eval_runs')).toBe(false);
+    expect(sets.proxy.has('opt_in_probe')).toBe(false);
+    expect(sets.mcp.has('opt_in_probe')).toBe(false);
 
     await db.userTools.setTools(user.id, [], user.id);
     sets = await channelSets(user);
-    expect(sets.chat.has('query_eval_runs')).toBe(false);
+    expect(sets.chat.has('opt_in_probe')).toBe(false);
   });
 
   it('honors defaultEnabled at the tool layer (the isEnabled landmine)', async () => {

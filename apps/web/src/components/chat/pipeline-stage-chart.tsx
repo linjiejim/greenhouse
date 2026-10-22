@@ -1,6 +1,6 @@
 /**
  * Pipeline Stage Chart — horizontal stacked bar showing each pipeline stage's
- * timing and proportion. Used in Chat messages and Eval result details.
+ * timing and proportion. Used in Chat messages.
  */
 
 import React, { useState, useMemo } from 'react';

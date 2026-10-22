@@ -16,12 +16,11 @@ description: >-
 
 ## 第 0 步（最重要）：先确认你要的不是系统预设
 
-`profiles/` 下**只有 3 个系统 Profile YAML**，且这是刻意的：
+`profiles/` 下**只有 2 个系统 Profile YAML**，且这是刻意的：
 
 | 文件 | 运行面 | 说明 |
 | --- | --- | --- |
 | `sprouty.yaml` | `/api/chat` | **唯一预设**，也是默认 Agent（`DEFAULT_PROFILE_ID`） |
-| `eval-judge.yaml` | `/api/chat` | hidden，交互式质量评估 |
 | `desktop.yaml` | `/api/agent` + `/api/mcp` | hidden，agent-runtime 权威 profile |
 
 四个预设曾经并存，本质是"换引擎"被表达成"换助手"；**模型下放成每轮可切之后**
@@ -87,7 +86,7 @@ system_prompt: |
 - **YAML 不写 `options`**：`temperature` / `reasoning_effort` 等写
   [config/models.yaml](../../../apps/api/src/config/models.yaml)，由 `resolveModelConfig()` 合并
 - **`model.id` 只是起点不是承诺**：模型是每轮的选择，落库进 `messages.model`；
-  这个默认值服务的是 headless 路径（定时任务、eval、workflow 节点、子会话）
+  这个默认值服务的是 headless 路径（定时任务、workflow 节点、子会话）
 - **没有 `extends`**——它只为"同一个 Agent、换个模型"而生，已随四预设一并删除
 - **`rich_output` 的块格式说明只有一份**：`RICH_OUTPUT_GUIDE`（`packages/utils/src/prompts.ts`），
   由 `enrichSystemPrompt()` 追加，不要在 YAML 里另写
@@ -124,7 +123,7 @@ system_prompt: |
 
 ## 步骤 4：旧 id 只映射、不迁移
 
-退役 id 经 `normalizeProfileId()` 映射到 `sprouty` / `desktop`。会话、eval run、定时任务、
+退役 id 经 `normalizeProfileId()` 映射到 `sprouty` / `desktop`。会话、定时任务、
 custom base 里存的仍是旧值，读取时解析即可——**不要为这些 id 重建 YAML**。
 
 ## 步骤 5：门禁

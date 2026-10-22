@@ -651,7 +651,6 @@ await step('administration', async () => {
     ['administration/branding', 'admin-branding-studio'],
     ['administration/usage', 'admin-usage'],
     ['administration/mcp-keys', 'admin-mcp-access'],
-    ['administration/eval', 'admin-evaluation'],
   ]) {
     await page.goto(`${BASE}/#/${route}`);
     await snap(page, name, { wait: 1200 });

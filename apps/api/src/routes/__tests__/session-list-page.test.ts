@@ -79,7 +79,7 @@ beforeEach(() => {
 });
 
 describe('PATCH /api/sessions/:id status boundary', () => {
-  it('rejects a team user promoting an ordinary conversation into Eval', async () => {
+  it('rejects the retired eval status (only the lifecycle statuses are writable)', async () => {
     mocks.sessions.getById.mockResolvedValue(makeSession('session-a'));
 
     const response = await createApp().request('/api/sessions/session-a', {

@@ -32,7 +32,7 @@ describe('resolveSettingsRedirect', () => {
   });
 
   it('preserves the sub-path for 1:1 admin remaps', () => {
-    expect(resolveSettingsRedirect('eval/runs/123')).toBe('#/administration/eval/runs/123');
+    expect(resolveSettingsRedirect('frictions/123')).toBe('#/administration/frictions/123');
   });
 
   it('drops any tail for folded pages (no sub-route of their own)', () => {

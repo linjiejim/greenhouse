@@ -3,9 +3,9 @@
  * instead of as rows inside the collapsible "N tool calls" trace block.
  *
  * This module is the single source of truth for which tool calls become body
- * artifacts (eval cards, the ask_user form, generated images) and how they render:
+ * artifacts (the ask_user form, generated images, confirm cards) and how they render:
  *   - <ToolCallRenderer> consults `isArtifactCall` to KEEP these out of the trace
- *     block (so a message with only an eval call shows no trace block at all).
+ *     block (so a message whose only call is a card shows no trace block at all).
  *   - The message bubbles render <BodyArtifacts> above the prose — except the
  *     confirm-gate cards in `BELOW_PROSE_TOOLS`, which the prose leads up to
  *     ("I drafted this task, launch it?") and therefore render after it
@@ -21,7 +21,6 @@ import React from 'react';
 import { AlertTriangle, GitBranch, Image } from '../../lib/icons';
 import { Skeleton, Spinner } from '../ui';
 import { useT } from '../../lib/i18n';
-import { EvalResultCard } from './eval-result-card';
 import { AskUserCard, type AskUserData } from '../chat/ask-user-card';
 import { WorkflowCard } from '../workflow/workflow-card';
 import type { WorkflowPlanArtifact } from '@greenhouse/types/workflow';
@@ -82,7 +81,7 @@ export interface ArtifactCtx {
  * Keyed per-call on the output, not just the tool name, so that:
  *  - the ask_user FORM shape (returned by ask_user or another tool) always
  *    surfaces as a form regardless of which tool produced it;
- *  - a failed eval / in-flight generate_image fall back to the trace block
+ *  - a failed spawn_session / generate_image falls back to the trace block
  *    instead of vanishing.
  */
 export function isArtifactCall(call: { name: string; output?: unknown }): boolean {
@@ -104,9 +103,6 @@ export function isArtifactCall(call: { name: string; output?: unknown }): boolea
   if (registeredToolCard(call.name)) return !!out && !out.error;
 
   switch (call.name) {
-    case 'eval_message':
-      // Loading (no output yet) or a successful result; an errored eval falls back to trace.
-      return !out || !out.error;
     case 'generate_image':
       // An output-less call is the expensive generation wait itself. Surface a
       // stable image-shaped placeholder instead of making the transcript look
@@ -143,7 +139,7 @@ export function isArtifactCall(call: { name: string; output?: unknown }): boolea
  * Whether the body artifact fully replaces this call's trace row, so listing it in
  * both places would just be noise.
  *
- * True for the cards that restate the whole call (eval scores, the ask_user form,
+ * True for the cards that restate the whole call (the ask_user form,
  * a spawned session). NOT true for generate_image: its "card" is
  * only the picture, and it renders nothing at all once the URL is already embedded
  * in the prose — which used to erase the call from the UI completely, hiding both
@@ -258,9 +254,6 @@ function BodyArtifactItem({ call, ctx }: { call: ArtifactCall; ctx: ArtifactCtx 
   }
 
   switch (call.name) {
-    case 'eval_message':
-      return out ? <EvalResultCard output={out} /> : <EvalLoadingCard />;
-
     case 'generate_image': {
       const url = out?.url as string | undefined;
       if (!url) return <GeneratedImageLoadingCard />;
@@ -394,40 +387,6 @@ function SpawnSessionCard({ call, ctx }: { call: ArtifactCall; ctx: ArtifactCtx 
           {t('toolSpawn.open')} →
         </button>
       )}
-    </div>
-  );
-}
-
-// ─── Eval loading state ──────────────────────────────────
-
-/** Animated placeholder shown while eval_message is still running. */
-function EvalLoadingCard() {
-  const t = useT();
-  return (
-    <div className="bg-info-subtle rounded-lg border border-info/30 px-3 py-2.5">
-      <div className="flex items-center gap-2 mb-2">
-        <Spinner className="h-3.5 w-3.5 text-info" />
-        <span className="text-xs text-info-fg font-medium">{t('toolEval.evaluatingQuality')}</span>
-      </div>
-      <div className="grid grid-cols-2 gap-1">
-        {[
-          t('toolEval.dimConsistency'),
-          t('toolEval.dimCitation'),
-          t('toolEval.dimBoundary'),
-          t('toolEval.dimSafety'),
-        ].map((dim, i) => (
-          <div
-            key={dim}
-            className="flex items-center gap-1.5 text-xs text-info animate-pulse"
-            style={{ animationDelay: `${i * 200}ms` }}
-          >
-            <span className="w-3 h-3 rounded-full border border-info/40 flex items-center justify-center">
-              <Spinner className="h-2 w-2 text-info" />
-            </span>
-            {dim}
-          </div>
-        ))}
-      </div>
     </div>
   );
 }

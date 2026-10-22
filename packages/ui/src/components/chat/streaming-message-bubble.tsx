@@ -85,7 +85,7 @@ export function StreamingMessageBubble({ text, reasoning, toolCalls, isStreaming
   const displayText = useSmoothStreamedText(text, isStreaming);
   const catchingUp = displayText.length < text.length;
 
-  // Split tool calls into trace-block rows vs. body artifacts (eval cards, generated
+  // Split tool calls into trace-block rows vs. body artifacts (generated
   // images, page diffs, the ask_user form). ask_user submission is handled by the
   // completed bubble once streaming ends, so no submit handler is wired here.
   const { trace: traceCalls, artifacts: artifactCalls } = partitionCalls(
@@ -128,7 +128,7 @@ export function StreamingMessageBubble({ text, reasoning, toolCalls, isStreaming
           </div>
         )}
 
-        {/* Body artifacts — eval cards, generated images, page diffs. `streaming: true`
+        {/* Body artifacts — generated images, page diffs. `streaming: true`
             DEFERS the interactive ask_user form to the committed MessageBubble: this overlay
             is torn down + remounted when the turn ends, which would wipe any selection made
             mid-stream. So the form appears only once the answer has fully streamed in.

@@ -91,9 +91,8 @@ describe('E2E: Tool Visibility by Role', () => {
     expect(toolIds).toContain('ask_user');
     expect(toolIds).toContain('external_search');
     expect(toolIds).toContain('knowledge_mutation');
-    expect(toolIds).toContain('query_eval_runs');
-    expect(toolIds).toContain('manage_eval_dataset');
-    expect(toolIds).toContain('eval_message');
+    // The opt-in bucket comes from extensions; scripts/e2e-ci.sh boots the example one.
+    expect(toolIds).toContain('example_notes_query');
 
     // Risk labels in the Agent editor consume the registry's authoritative
     // surface declaration. Undefined remains undefined rather than guessing.
@@ -122,8 +121,7 @@ describe('E2E: Tool Visibility by Role', () => {
     expect(toolIds).toContain('ask_user');
 
     // Should NOT see non-global (assignment-only) tools
-    expect(toolIds).not.toContain('query_eval_runs');
-    expect(toolIds).not.toContain('eval_message');
+    expect(toolIds).not.toContain('example_notes_query');
   });
 });
 
@@ -131,11 +129,11 @@ describe('E2E: Tool Visibility by Role', () => {
 
 describe('E2E: Tool Assignment & Enforcement', () => {
   it('admin assigns tools → member can see them', async () => {
-    // Assign two non-global tools to the member
+    // Assign the example extension's opt-in tool to the member
     const assignRes = await fetch(`${BASE_URL}/api/admin/users/${memberId}/tools`, {
       method: 'PUT',
       headers: authHeaders(superToken),
-      body: JSON.stringify({ tools: ['query_eval_runs', 'eval_message'] }),
+      body: JSON.stringify({ tools: ['example_notes_query'] }),
     });
     expect(assignRes.status).toBe(200);
 
@@ -152,12 +150,8 @@ describe('E2E: Tool Assignment & Enforcement', () => {
     expect(toolIds).toContain('analyze_image');
     expect(toolIds).toContain('ask_user');
 
-    // Assigned tools now visible
-    expect(toolIds).toContain('query_eval_runs');
-    expect(toolIds).toContain('eval_message');
-
-    // NOT assigned tools still hidden
-    expect(toolIds).not.toContain('manage_eval_dataset');
+    // Assigned tool now visible
+    expect(toolIds).toContain('example_notes_query');
   });
 
   it('removing tools takes effect immediately', async () => {
@@ -177,15 +171,14 @@ describe('E2E: Tool Assignment & Enforcement', () => {
     const toolIds = data.tools.map((t: { id: string }) => t.id);
 
     expect(toolIds).toContain('knowledge_query');
-    expect(toolIds).not.toContain('query_eval_runs');
-    expect(toolIds).not.toContain('eval_message');
+    expect(toolIds).not.toContain('example_notes_query');
   });
 
   it('tool assignment rejects unknown tool IDs', async () => {
     const res = await fetch(`${BASE_URL}/api/admin/users/${memberId}/tools`, {
       method: 'PUT',
       headers: authHeaders(superToken),
-      body: JSON.stringify({ tools: ['query_eval_runs', 'nonexistent_tool'] }),
+      body: JSON.stringify({ tools: ['example_notes_query', 'nonexistent_tool'] }),
     });
     expect(res.status).toBe(400);
     const data = await res.json();
@@ -237,7 +230,7 @@ describe('E2E: Tool Assignment & Enforcement', () => {
 
     // If any tool calls happened, they should NOT be unassigned tools
     const toolCalls = events.filter(
-      (e: any) => e.type === 'tool-call' && ['query_eval_runs', 'manage_eval_dataset'].includes(e.toolName),
+      (e: any) => e.type === 'tool-call' && e.toolName === 'example_notes_query',
     );
     expect(toolCalls).toHaveLength(0);
 

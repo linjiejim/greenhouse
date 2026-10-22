@@ -4,7 +4,6 @@ import type { DatabaseProvider } from '@greenhouse/db';
 import type { RuntimeJsonValue } from '@greenhouse/types/runtime';
 import { reconcileReclaimedAutomationRun } from '../scheduler/runtime-driver.js';
 import { notifyTaskResult } from '../scheduler/notify.js';
-import { reconcileReclaimedEvalRun } from './eval-driver.js';
 import { reconcileReclaimedSubagentRun } from './subagent-driver.js';
 import type { RuntimeEventEnvelope } from './worker.js';
 
@@ -106,8 +105,7 @@ export function createRuntimeDomainProjector(db: DatabaseProvider) {
     const run = await db.runtime.getRun(event.run_id);
     // A delayed recovery event must never overwrite a newer successful retry.
     if (!run || run.version !== result.version || run.status !== result.status) return;
-    if (run.kind === 'eval') await reconcileReclaimedEvalRun(db, run);
-    else if (run.kind === 'automation') {
+    if (run.kind === 'automation') {
       if (run.status === 'failed' || run.status === 'canceled') await reconcileReclaimedAutomationRun(db, run);
       await projectAutomationOutcome(db, run, event.event_id);
     } else if (run.kind === 'subagent') await reconcileReclaimedSubagentRun(db, run);

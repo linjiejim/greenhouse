@@ -14,8 +14,6 @@ import { createCoreMigrationBaseline } from './core-migrations.js';
 import { createDbClient, type Db, type DbClient } from './client.js';
 import { createSessionService } from './services/sessions.js';
 import { createLlmCallService } from './services/llm-calls.js';
-import { createEvalService } from './services/eval.js';
-import { createChatEvalService } from './services/chat-eval.js';
 import { createUsageService } from './services/usage.js';
 import { createUsageBudgetService } from './services/usage-budget.js';
 import { createUserService } from './services/users.js';
@@ -65,8 +63,6 @@ function createDatabaseProvider(db: Db, client: DbClient['client'] | null) {
     coreMigrationBaseline: createCoreMigrationBaseline(db),
     sessions: createSessionService(db),
     llmCalls: createLlmCallService(db),
-    eval: createEvalService(db),
-    chatEval: createChatEvalService(db),
     usage: createUsageService(db),
     usageBudget: createUsageBudgetService(db),
     users: createUserService(db),
