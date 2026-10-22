@@ -390,6 +390,7 @@ v1 只接 DeepSeek 与 OpenAI 兼容服务，它们**自动**缓存 prompt 前�
 - 权限管理 API 位于 `/api/admin/platform`（super-only），支持 catalog、角色、用户 capability 例外、Entity Policy、最终权限预览和审计。策略写入时必须与当前 Manifest 的 access scopes/fields 交叉校验。
 - 新应用先运行 `pnpm cli platform create-app <id> --title "..." --dry-run` 评审边界；生成器只创建 fail-closed Manifest/registration/test/README，不会自动接入 bootstrap 或生产 runtime。
 - 新应用必须有 Manifest、registration、SQL scope/record/field adapter、HTTP/Tool/MCP 适配和 parity/security matrix；不要直接在 transport 层放行。无专用 Web UI 的应用可以保持 Agent/MCP-only。
+- **管理员改配置必须留平台审计**（v1.4）：`PUT /api/admin/settings` 有实际改动时记 `updateWorkspaceSettings`（`capability='platform.settings.manage'`，summary 只有 `set` / `cleared` / `secret_keys` 三个**键名**列表）；按用户开关功能（`PUT /api/admin/users/:id/features`、`PUT /api/admin/features`）经 `recordAccountSecurityAudit` 记 `setUserFeature`（feature、enabled、`config_keys`）。**永远只记键名不记值**——这些设置里有 LLM / 媒体 / 搜索的密钥。新增管理员写配置的端点照此办理。护栏 `routes/__tests__/admin-config-audit.db.test.ts`。
 
 ### 会话编排工具（`spawn_session` / `call_llm`）
 - 一个会话可派生子会话或并行发起一次性 LLM 调用，把单会话扩成能并行/持久啃复杂任务的"主控"。两者都是 **lazy 且 session-scoped**——只在 `buildLazyServerTools` 收到 `sessionId` 时装配，因此**不在无状态的 proxy/MCP 面暴露**（那两条调用不传 sessionId）。`is_global:true`：对内部用户默认开启（无需 assign），但因 session-scoped 仅在带 sessionId 的 chat 面生效；子工具集永远 ⊆ 调用方权限。
