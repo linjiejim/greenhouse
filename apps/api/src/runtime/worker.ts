@@ -41,6 +41,12 @@ export interface RuntimeWorkerOptions {
   onEvent?: (event: RuntimeEventEnvelope) => Promise<void>;
   /** Driver-specific domain projection after the generic stale lease reaper. */
   onRunReclaimed?: (run: RuntimeRunRow) => Promise<void>;
+  /**
+   * Kinds whose Run, when its worker vanishes mid-execution, ends
+   * `interrupted / runtime_outcome_unknown` instead of `failed`. Never replayed
+   * either way; this only changes what the owner is told.
+   */
+  outcomeUnknownKinds?: readonly RuntimeRunKind[];
   drivers?: Partial<Record<RuntimeRunKind, RuntimeDriver>>;
   /** Per-process concurrency per registered kind. Defaults to one. */
   driverConcurrency?: Partial<Record<RuntimeRunKind, number>>;
@@ -170,7 +176,7 @@ export async function startRuntimeWorker(options: RuntimeWorkerOptions): Promise
     running = true;
     try {
       const [reclaimed] = await Promise.all([
-        db.runtime.reclaimStaleRuns(new Date(), 100),
+        db.runtime.reclaimStaleRuns(new Date(), 100, { outcomeUnknownKinds: options.outcomeUnknownKinds ?? [] }),
         db.runtime.expireInterrupts(new Date(), 100),
       ]);
       if (options.onRunReclaimed) {

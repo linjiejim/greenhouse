@@ -39,22 +39,36 @@ function automationInput(run: Awaited<ReturnType<DatabaseProvider['runtime']['ge
   }
 }
 
-function automationSummary(run: NonNullable<Awaited<ReturnType<DatabaseProvider['runtime']['getRun']>>>): string {
-  if (run.status !== 'succeeded' || !run.output) return run.error_message ?? 'Automation execution failed';
+type RuntimeRun = NonNullable<Awaited<ReturnType<DatabaseProvider['runtime']['getRun']>>>;
+
+/** What the owner is told about a run whose worker died mid-execution. */
+export const AUTOMATION_INTERRUPTED_SUMMARY =
+  '运行中断：执行这次任务的进程在运行中停止，结果未知。系统不会自动重跑；请打开会话核对下面列出的写入，需要时再手动运行一次。';
+
+function automationOutput(run: RuntimeRun): { summary: string; noUpdate: boolean } {
+  if (run.status === 'interrupted') return { summary: AUTOMATION_INTERRUPTED_SUMMARY, noUpdate: false };
+  if (run.status !== 'succeeded' || !run.output) {
+    return { summary: run.error_message ?? 'Automation execution failed', noUpdate: false };
+  }
   try {
-    const output = JSON.parse(run.output) as { summary?: unknown };
-    return typeof output.summary === 'string' ? output.summary : '';
+    const output = JSON.parse(run.output) as { summary?: unknown; no_update?: unknown };
+    return {
+      summary: typeof output.summary === 'string' ? output.summary : '',
+      noUpdate: output.no_update === true,
+    };
   } catch {
-    return '';
+    return { summary: '', noUpdate: false };
   }
 }
 
-async function projectAutomationOutcome(
-  db: DatabaseProvider,
-  run: NonNullable<Awaited<ReturnType<DatabaseProvider['runtime']['getRun']>>>,
-  eventId: string,
-): Promise<void> {
-  if (run.status !== 'succeeded' && run.status !== 'failed' && run.status !== 'canceled') return;
+async function projectAutomationOutcome(db: DatabaseProvider, run: RuntimeRun, eventId: string): Promise<void> {
+  if (
+    run.status !== 'succeeded' &&
+    run.status !== 'failed' &&
+    run.status !== 'canceled' &&
+    run.status !== 'interrupted'
+  )
+    return;
   const input = automationInput(run);
   if (!input || input.task.id !== Number(run.source_kind.split(':')[1])) {
     throw new Error(`Automation Runtime run ${run.id} has invalid immutable input`);
@@ -70,12 +84,16 @@ async function projectAutomationOutcome(
     run_created_at: run.created_at,
   });
   if (run.status === 'canceled') return;
+  const output = automationOutput(run);
+  // A quiet automation that found nothing new is kept in history but sends
+  // nothing — no inbox row, no webhook, email, WeCom or Feishu delivery.
+  if (output.noUpdate) return;
   await notifyTaskResult(
     db,
     input.task,
     {
-      status: run.status === 'succeeded' ? 'completed' : 'failed',
-      summary: automationSummary(run),
+      status: run.status === 'succeeded' ? 'completed' : run.status === 'interrupted' ? 'interrupted' : 'failed',
+      summary: output.summary,
       sessionId: input.session_id,
     },
     {
@@ -99,6 +117,7 @@ export function createRuntimeDomainProjector(db: DatabaseProvider) {
       result.status === 'succeeded' ||
       result.status === 'failed' ||
       result.status === 'canceled' ||
+      result.status === 'interrupted' ||
       (result.status === 'queued' && result.error_code === 'runtime_claim_recovered');
     if (!relevant) return;
 
@@ -106,7 +125,9 @@ export function createRuntimeDomainProjector(db: DatabaseProvider) {
     // A delayed recovery event must never overwrite a newer successful retry.
     if (!run || run.version !== result.version || run.status !== result.status) return;
     if (run.kind === 'automation') {
-      if (run.status === 'failed' || run.status === 'canceled') await reconcileReclaimedAutomationRun(db, run);
+      if (run.status === 'failed' || run.status === 'canceled' || run.status === 'interrupted') {
+        await reconcileReclaimedAutomationRun(db, run);
+      }
       await projectAutomationOutcome(db, run, event.event_id);
     } else if (run.kind === 'subagent') await reconcileReclaimedSubagentRun(db, run);
   };

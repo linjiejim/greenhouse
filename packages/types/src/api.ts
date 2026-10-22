@@ -60,11 +60,8 @@ export interface Profile {
   avatar?: ProfileAvatar;
   created_at?: string;
   updated_at?: string;
-  /** Stable asset lifecycle and immutable executable version metadata. */
-  lifecycle_status?: 'draft' | 'review' | 'pilot' | 'verified' | 'rejected' | 'suspended' | 'deprecated' | 'archived';
-  lifecycle_note?: string | null;
+  /** Latest immutable version — what anyone who picks this Agent now runs. */
   current_version?: number;
-  published_version?: number | null;
   manifest_hash?: string;
   change_log?: string;
   purpose?: string | null;
@@ -72,9 +69,6 @@ export interface Profile {
   risk_level?: 'low' | 'medium' | 'high';
   budget_policy?: Record<string, unknown>;
   owner_backup_user_id?: string | null;
-  reviewed_by?: string | null;
-  reviewed_at?: string | null;
-  next_review_at?: string | null;
 }
 
 export interface ProfileUsage {
@@ -893,6 +887,11 @@ export interface ScheduledTask {
   /** Deliver the run summary as a Feishu card DM to the owner (recipient derived from their binding). */
   notify_feishu: boolean;
   /**
+   * Quiet automation: a run that finds nothing new answers `NO_UPDATE`, is kept
+   * in history as "no update" and notifies no channel.
+   */
+  quiet_when_empty: boolean;
+  /**
    * JSON string array of tools the owner granted to this automation's
    * unattended runs, beyond the read-only baseline. Catalog and parsing live in
    * `@greenhouse/types/automation-tools`; the value is a filter, never a grant.
@@ -918,6 +917,7 @@ export interface ScheduledTaskInput {
   notify_email?: boolean;
   notify_wecom?: boolean;
   notify_feishu?: boolean;
+  quiet_when_empty?: boolean;
 }
 
 /**
@@ -939,6 +939,13 @@ export interface AutomationRunEntry {
     error_message: string | null;
     started_at: string | null;
     ended_at: string | null;
+    /** A quiet automation's run that found nothing new (answered `NO_UPDATE`); nothing was sent. */
+    no_update: boolean;
+    /**
+     * The worker died while the run was executing (`status: 'interrupted'`):
+     * whether its in-flight writes happened is unknown, and it was not re-run.
+     */
+    outcome_unknown: boolean;
   } | null;
 }
 

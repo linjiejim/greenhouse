@@ -9,6 +9,8 @@ import {
 } from '../../apps/api/src/scheduler/runtime-driver.js';
 import type { RunAgentResult } from '../../apps/api/src/agent-runtime/run-agent.js';
 import { createRuntimeDomainProjector } from '../../apps/api/src/runtime/domain-projector.js';
+import { NO_UPDATE_SUMMARY } from '../../apps/api/src/scheduler/prompt-builder.js';
+import { listTaskRuns } from '../../apps/api/src/scheduler/task-center.js';
 import type { RuntimeEventEnvelope } from '../../apps/api/src/runtime/worker.js';
 import { createInternalTestUser } from '../helpers/internal-user.js';
 
@@ -31,7 +33,7 @@ async function projectLatestTerminalOutcome(runId: string): Promise<void> {
   const terminal = [...events].reverse().find((event) => {
     if (event.type !== 'run.status_changed' && event.type !== 'run.lease_expired') return false;
     const payload = JSON.parse(event.payload) as { result?: { status?: string } };
-    return payload.result && ['succeeded', 'failed', 'canceled'].includes(payload.result.status ?? '');
+    return payload.result && ['succeeded', 'failed', 'canceled', 'interrupted'].includes(payload.result.status ?? '');
   });
   if (!terminal) throw new Error(`Runtime run ${runId} has no terminal outbox event`);
   await createRuntimeDomainProjector(db)({
@@ -46,7 +48,9 @@ async function projectLatestTerminalOutcome(runId: string): Promise<void> {
   } satisfies RuntimeEventEnvelope);
 }
 
-async function scheduledTask(): Promise<ScheduledTaskRow> {
+async function scheduledTask(
+  overrides: { quiet_when_empty?: boolean; notify_email?: boolean } = {},
+): Promise<ScheduledTaskRow> {
   const owner = await createInternalTestUser(db, { email: `${unique('automation')}@test.local` });
   return db.scheduledTasks.create({
     user_id: owner.id,
@@ -56,7 +60,29 @@ async function scheduledTask(): Promise<ScheduledTaskRow> {
     schedule: '0 * * * *',
     timezone: 'UTC',
     max_steps: 5,
+    ...overrides,
   });
+}
+
+async function notificationsFor(userId: string) {
+  return (await db.notifications.listForUser({ user_id: userId })).items;
+}
+
+async function driveOnce(
+  task: ScheduledTaskRow,
+  scheduledFor: string,
+  answer: string,
+): Promise<{ runId: string; sessionId: string }> {
+  const queued = await enqueueAutomationRun({ db, task, trigger: 'manual', scheduledFor });
+  const workerId = unique('automation-quiet-worker');
+  const claimed = await db.runtime.claimNextRun({ worker_id: workerId, lease_ms: 60_000, kinds: ['automation'] });
+  expect(claimed?.id).toBe(queued.run.id);
+  await createAutomationRuntimeDriver(
+    {},
+    { executeTask: vi.fn(async () => ({ ...result, text: answer })), heartbeatIntervalMs: 60_000 },
+  )({ db, run: claimed!, workerId, leaseMs: 60_000 });
+  await projectLatestTerminalOutcome(queued.run.id);
+  return { runId: queued.run.id, sessionId: queued.session_id };
 }
 
 const result: RunAgentResult = {
@@ -343,5 +369,137 @@ describe('durable Automation Runtime driver', () => {
     expect(await db.runtime.getRun(queued.run.id)).toMatchObject({ status: 'canceled', desired_state: 'cancel' });
     expect(await db.runtime.listSteps(queued.run.id)).toEqual([expect.objectContaining({ status: 'canceled' })]);
     expect(await db.scheduledTasks.getById(task.id)).toMatchObject({ last_status: 'canceled' });
+  });
+  it('records a quiet run that found nothing new as "no update" and sends nothing', async () => {
+    const task = await scheduledTask({ quiet_when_empty: true, notify_email: true });
+    const { runId, sessionId } = await driveOnce(task, '2026-08-12T06:00:00.000Z', '  NO_UPDATE\n');
+
+    const run = await db.runtime.getRun(runId);
+    expect(run).toMatchObject({ status: 'succeeded' });
+    expect(JSON.parse(run!.output!)).toMatchObject({ summary: NO_UPDATE_SUMMARY, no_update: true });
+    // The prepared prompt carried the instruction the model answered.
+    const messages = await db.sessions.getMessages(sessionId);
+    expect(messages.find((message) => message.role === 'user')?.content).toContain('NO_UPDATE');
+    // No in-app row means no delivery row either (deliveries hang off it).
+    expect(await notificationsFor(task.user_id)).toEqual([]);
+    expect(await db.scheduledTasks.getById(task.id)).toMatchObject({ last_status: 'completed', run_count: 1 });
+
+    const history = await listTaskRuns(db, { userId: task.user_id, role: 'team', scope: 'own' }, task.id);
+    expect(history.ok && history.entries[0]?.run).toMatchObject({ status: 'succeeded', no_update: true });
+  });
+
+  it('still notifies a quiet run that has something to report, and ignores NO_UPDATE when quiet is off', async () => {
+    const quiet = await scheduledTask({ quiet_when_empty: true });
+    await driveOnce(quiet, '2026-08-12T07:00:00.000Z', 'Two new tickets need attention.');
+    expect(await notificationsFor(quiet.user_id)).toEqual([
+      expect.objectContaining({ kind: 'runtime_completed', body: expect.stringContaining('Two new tickets') }),
+    ]);
+
+    const loud = await scheduledTask();
+    const { runId, sessionId } = await driveOnce(loud, '2026-08-12T08:00:00.000Z', 'NO_UPDATE');
+    expect(JSON.parse((await db.runtime.getRun(runId))!.output!)).not.toHaveProperty('no_update');
+    expect(await notificationsFor(loud.user_id)).toHaveLength(1);
+    const messages = await db.sessions.getMessages(sessionId);
+    expect(messages.find((message) => message.role === 'user')?.content).not.toContain('NO_UPDATE');
+  });
+
+  it('ends a run that crashed mid-write as interrupted / outcome unknown, tells the owner once, and never re-runs it', async () => {
+    const task = await scheduledTask({ notify_email: true });
+    const scheduledFor = '2026-08-12T09:00:00.000Z';
+    const queued = await enqueueAutomationRun({ db, task, trigger: 'cron', scheduledFor });
+    const base = new Date();
+    const workerId = 'automation-worker-that-dies';
+    const claimed = await db.runtime.claimNextRun({
+      worker_id: workerId,
+      lease_ms: 30_000,
+      kinds: ['automation'],
+      at: base,
+    });
+    const running = await db.runtime.transitionRun({
+      id: claimed!.id,
+      expected_version: claimed!.version,
+      to_status: 'running',
+      idempotency_key: 'automation-crash-running',
+      worker_id: workerId,
+      lease_ms: 30_000,
+    });
+    const step = await db.runtime.claimNextStep({
+      worker_id: workerId,
+      lease_ms: 30_000,
+      run_id: running.id,
+      at: base,
+    });
+    await db.runtime.transitionStep({
+      id: step!.id,
+      expected_version: step!.version,
+      to_status: 'running',
+      idempotency_key: 'automation-crash-step-running',
+      worker_id: workerId,
+      lease_ms: 30_000,
+    });
+    // A write tool call was admitted (the real execute boundary) and the
+    // process died before its result was written.
+    const write = await db.runtime.beginToolCallWithAuthority({
+      run_id: running.id,
+      step_id: step!.id,
+      tool_name: 'tables_mutation',
+      input: { action: 'update_record', record_id: 'rec_1' },
+      canonical_input_hash: 'sha256:crash-write',
+      risk_level: 'r2',
+      idempotency_key: 'automation-crash-write',
+      actor_user_id: task.user_id,
+      worker_id: workerId,
+      lease_ms: 30_000,
+    });
+    expect(write.status).toBe('running');
+
+    const reclaimed = await db.runtime.reclaimStaleRuns(new Date(base.getTime() + 31_000), 10, {
+      outcomeUnknownKinds: ['automation'],
+    });
+    expect(reclaimed).toEqual([
+      expect.objectContaining({ id: queued.run.id, status: 'interrupted', error_code: 'runtime_outcome_unknown' }),
+    ]);
+    // At-least-once outbox: a redelivered event must not notify twice.
+    await projectLatestTerminalOutcome(queued.run.id);
+    await projectLatestTerminalOutcome(queued.run.id);
+
+    expect((await db.runtime.listToolCalls(queued.run.id))[0]).toMatchObject({ status: 'uncertain' });
+    expect(await db.runtime.listSteps(queued.run.id)).toEqual([expect.objectContaining({ status: 'interrupted' })]);
+    expect(await db.scheduledTasks.getById(task.id)).toMatchObject({ last_status: 'interrupted' });
+    expect((await db.sessions.getLatestMessage(queued.session_id))?.content).toContain('结果未知');
+
+    const notifications = await notificationsFor(task.user_id);
+    expect(notifications).toHaveLength(1);
+    expect(notifications[0]).toMatchObject({
+      kind: 'runtime_failed',
+      title: expect.stringContaining('outcome unknown'),
+      body: expect.stringContaining('tables_mutation (update_record) · uncertain'),
+    });
+    expect(JSON.parse(notifications[0]!.payload)).toMatchObject({
+      status: 'interrupted',
+      writes: [{ tool: 'tables_mutation', action: 'update_record', status: 'uncertain' }],
+    });
+
+    const history = await listTaskRuns(db, { userId: task.user_id, role: 'team', scope: 'own' }, task.id);
+    expect(history.ok && history.entries[0]?.run).toMatchObject({ status: 'interrupted', outcome_unknown: true });
+
+    // Never re-executed: not claimable, and the boot catch-up of the same
+    // occurrence resolves to the interrupted run instead of a new one.
+    await expect(
+      db.runtime.claimNextRun({
+        worker_id: 'automation-worker-after-restart',
+        lease_ms: 60_000,
+        kinds: ['automation'],
+        at: new Date(base.getTime() + 32_000),
+      }),
+    ).resolves.toBeUndefined();
+    const catchup = await enqueueAutomationRun({
+      db,
+      task: (await db.scheduledTasks.getById(task.id))!,
+      trigger: 'catchup',
+      scheduledFor,
+    });
+    expect(catchup.run).toMatchObject({ id: queued.run.id, status: 'interrupted' });
+    expect(await db.runtime.listRunsByOwner(task.user_id)).toHaveLength(1);
   });
 });

@@ -31,8 +31,8 @@
 | `feishu_conversations` | PK `id`；UK `feishu_key` | 飞书对话 ↔ Greenhouse 会话映射（迁移 0066）。`feishu_key` = `thread_id ?? root_id ?? message_id` 的回退结果：话题群命中 thread_id（每个话题一个会话）、普通回复链命中 root_id、首次发言用自己的 message_id。**实测 `root_id` 在整条回复链里恒定**，所以用户回复链上任意一条旧消息都续同一个会话。唯一键同时是并发仲裁者——同一串对话的两条消息同时到达时，`DO NOTHING` 让先到的赢，绝不会建出两个会话 |
 | `feishu_message_receipts` | PK `message_id` | 已处理的飞书消息 id（迁移 0066）。飞书会重投事件，而处理一条消息 = 跑一轮 agent = 花钱且会回消息；**先写回执再干活**，写冲突即丢弃。回执只为去重，保留 7 天足够覆盖任何重投窗口 |
 | `user_provider_tokens` | PK `id`；UK `(user_id, provider, workspace_id)`，NULLS NOT DISTINCT | 通用外部 provider 绑定；access/refresh/credential 为加密文本，含 scope、过期时间与 metadata。**`access_token` 自 0056 起可空**——企微这类绑定存的是**身份**而非凭证（应用 token 是 corp 全局、进程内缓存），塞一个空串会让该列自己的契约变成假的；`provider_user_id` 即企微 UserId（`provider='wecom'`）或飞书 open_id（`provider='feishu'`），是个人消息推送的收件人来源；飞书绑定同时是扫码登录的查表键 |
-| `custom_profiles` | PK `id`；UK `(user_id, slug)` | 自定义 Agent 稳定资产身份；owner/current/published version 指针与 draft/review/pilot/verified/rejected/suspended/deprecated/archived 生命周期。共享只由 pilot/verified 派生；backup owner FK SET NULL，reviewer 为保留历史的逻辑引用 |
-| `custom_profile_versions` | PK `id`；UK `(profile_id, version)` | 不可变可执行 manifest；模型、tools、prompt、外观与 purpose/audience/risk/budget/eval refs/review due 一起版本化，含 change log、SHA-256 manifest hash 与创建人；生产 service 无 update/delete |
+| `custom_profiles` | PK `id`；UK `(user_id, slug)` | 自定义 Agent 稳定资产身份；owner 与 current version 指针。`is_shared` 为真才对团队可用（只有 super 能切换），否则仅 owner 可见；backup owner FK SET NULL。v1.4 起 `lifecycle_status` / `lifecycle_note` / `published_version` / `reviewed_*` / `next_review_at` 为退役列 |
+| `custom_profile_versions` | PK `id`；UK `(profile_id, version)` | 不可变可执行 manifest；模型、tools、prompt、外观与 purpose/audience/risk/budget 一起版本化，含 change log、SHA-256 manifest hash 与创建人；生产 service 无 update，随 Agent 删除级联删除 |
 | `user_memories` | PK `id` | 用户长期记忆；`title`（注入 prompt 的召回索引行）+ `content` + 类别、状态机（active/dormant/archived/superseded）、pinned、来源、`superseded_by` 自引用、`last_used_at` |
 | `tool_frictions` | PK `id`, UNIQUE `fingerprint` | Agent 踩坑信号（团队级，永不注入 prompt）；工具/类型/摘要/证据、`occurrence_count` 聚合计数、样本会话、复盘状态与解决备注 |
 | `user_prompts` | PK `id`；UK `artifact_action_id` | **Tasks**（可复用任务，用户面已改叫 Tasks，表名保留）；`description` 一句话用途说明（选择器里展示）、`variables` JSON 存 `{{占位符}}` 定义、`expected_tools` JSON 存该流程实际用过的工具（**仅展示，不做权限判定**）、`source_session_id` 逻辑指向固化来源会话（无 FK，任务比会话活得久）、`created_via` 区分手写与会话固化。聊天固化时 `artifact_action_id` 是 exactly-once 恢复键；无变量无工具的行 = 原来的快捷 Prompt，行为逐字段不变 |
@@ -204,7 +204,7 @@ Subagent 以 child session 作为唯一 `source_id`，完整请求保存在 Run/
 | `workflow_gates` | Workflows | 人工门；FK `run_id → workflow_runs` CASCADE |
 | `api_clients` | LLM 中转 | 中转 / 旧 A2A key（只存 hash）；FK `user_id → users` CASCADE。`api_audit_log` 是活表，与它只有逻辑 `app_id` 关联 |
 
-退役列：`custom_profile_versions.eval_refs`（不再写入，默认 `[]`）。
+退役列：`custom_profile_versions.eval_refs`（不再写入，默认 `[]`）、`custom_profile_versions.review_due_at`；`custom_profiles.lifecycle_status` / `lifecycle_note` / `published_version` / `reviewed_by` / `reviewed_at` / `next_review_at`（v1.4，不再读写）。
 
 ## FK 约束总览
 
@@ -328,7 +328,7 @@ Subagent 以 child session 作为唯一 `source_id`，完整请求保存在 Run/
 | `runtime_events.actor_user_id` | `users.id` | Event actor 审计；账号删除后 Event 仍保留 |
 | `runtime_interrupts.assignee_user_id` / `.decided_by_user_id` | `users.id` | 决策负责人和决定人；完整决议独立保留 |
 | `custom_profiles.forked_from` | 系统或自定义 profile id | profile 谱系，不是数据库 FK |
-| `custom_profiles.reviewed_by` | `users.id` 或 `system:agent-governance` | 生命周期审查 actor；逻辑引用以保留账号删除后的历史 |
+| `custom_profiles.reviewed_by` | `users.id` 或 `system:agent-governance` | v1.4 退役列：历史审查 actor，不再读写 |
 | `custom_profile_versions.created_by` / `.owner_backup_user_id` | `users.id` | 不可变版本快照中的逻辑引用，账号删除不改写证据 |
 | `knowledge_base.owner_user_id` | `users.id` | private 文档所有者 |
 | `knowledge_base_shares.shared_with` | `users.id` 或 `group:<user_groups.id>` | 用户/小组复合共享目标 |

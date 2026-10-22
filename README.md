@@ -93,8 +93,10 @@ same script doubles as an end-to-end smoke tour (see [Development](#development)
   rule automations, and conversational schema planning (the agent drafts a base, you confirm).
 - **Home workbench** — a personal dashboard of live cards backed by the same tools (recipes and
   templates), editable by drag-and-drop or by asking the agent.
-- **Execution center** — one surface for every durable run: automations (cron) and
-  sub-agents, with full step, tool-call and event evidence.
+- **Execution center** — one surface for every durable run: automations (cron, at most every
+  15 minutes, optionally quiet when a run finds nothing new) and sub-agents, with full step,
+  tool-call and event evidence. A run cut off mid-way is never re-run on its own: it ends
+  "outcome unknown" and its owner is told which writes were in flight.
 - **Memory** — per-user memories with titles, pinning and lifecycle, plus the friction signals
   the agent logs when tooling gets in its way.
 - **Skill Center** — an org-wide library of agent skills (SKILL.md bundles) with immutable
@@ -303,6 +305,12 @@ git pull && pnpm install && pnpm drizzle-kit migrate   # then restart the API
 > Execution center (runs still active at upgrade are closed on first boot), and the
 > sandbox host setup (`runsc`, the agent-runtime image, `MISSION_*` / `SANDBOX_RUNNER_*`
 > env) can be decommissioned. MCP machine clients and their audit log are unaffected.
+> Custom agents lose the review lifecycle (draft → review → pilot → verified) and the
+> automatic review worker (`AGENT_GOVERNANCE_ENABLED` can be removed): an agent is private to
+> its owner unless a super makes it available to the team, and everyone who picks it gets its
+> current version. Agents that were verified or in pilot stay shared; previously archived or
+> suspended agents become visible to their owners again. Automations may now run every 15
+> minutes.
 
 > **Upgrading from 0.6.x** — this line removes the public/guest surface (`/api/v1`, the
 > `default` profile, external accounts) and the database-managed LLM gateway upstreams in

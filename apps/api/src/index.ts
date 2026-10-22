@@ -119,7 +119,6 @@ import { createSubagentRuntimeDriver, reconcileReclaimedSubagentRun } from './ru
 import { createRuntimeNotificationProjector } from './notifications/runtime-projector.js';
 import { startNotificationDeliveryWorker } from './notifications/delivery-worker.js';
 import { createRuntimeDomainProjector } from './runtime/domain-projector.js';
-import { startAgentGovernanceWorker } from './agent-governance/worker.js';
 import {
   requireTrustedExecutionSurface,
   resolveTrustedExecutionSwitches,
@@ -440,9 +439,6 @@ async function main() {
   });
   let runtimeWorker: Awaited<ReturnType<typeof startRuntimeWorker>> | null = null;
   let notificationDeliveryWorker: Awaited<ReturnType<typeof startNotificationDeliveryWorker>> | null = null;
-  const agentGovernanceWorker = trustedExecutionPlan.agentGovernance
-    ? await startAgentGovernanceWorker({ db: dbProvider })
-    : null;
 
   // Mount everything (single typed chain — see mountRoutes/AppType above)
   mountRoutes(toolRegistry);
@@ -468,7 +464,6 @@ async function main() {
     usageBudgetSweeper.stop();
     runtimeWorker?.stop();
     notificationDeliveryWorker?.stop();
-    agentGovernanceWorker?.stop();
     stopFeishuBot();
     await runExtensionShutdownHooks();
     await chatRunRegistry.shutdown(5000);
@@ -519,6 +514,10 @@ async function main() {
           ...(trustedExecutionPlan.subagentDriver ? { subagent: createSubagentRuntimeDriver({ toolRegistry }) } : {}),
         },
         driverConcurrency: { automation: 3, subagent: 5 },
+        // An Automation whose worker died mid-turn may have written something:
+        // it ends interrupted / outcome unknown and the owner is told which
+        // writes were in flight. It is never re-executed.
+        outcomeUnknownKinds: ['automation'],
         onRunReclaimed: async (run) => {
           if (run.kind === 'subagent') await reconcileReclaimedSubagentRun(dbProvider, run);
         },

@@ -1592,7 +1592,6 @@ export function ConversationPane({
           }}
           profile={forkedProfile}
           availableTools={availableTools}
-          isSuper={currentUser?.role === 'super'}
           onSave={handleForkSave}
         />
       )}

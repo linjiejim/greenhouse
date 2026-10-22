@@ -31,7 +31,7 @@ const meta: ToolMeta = {
   id: 'automation_query',
   name: 'Automation Query',
   brief: "Read the user's Automations (scheduled tasks): schedule, status, last/next run",
-  description: `Read the current user's Automations — scheduled tasks that run an agent on a cron schedule (what the "Automation" screen shows). \`list\` returns every automation you own with its schedule, enabled flag, last_status and next_run_at; \`get\` adds recent_runs, the last executions with their session ids, so you can tell whether one actually fired and point the user at the resulting conversation. Read here before changing anything with automation_mutation. Only your own are visible. Unrelated to Tables automation rules, which fire on record changes.`,
+  description: `Read the current user's Automations — scheduled tasks that run an agent on a cron schedule (what the "Automation" screen shows). \`list\` returns every automation you own with its schedule, enabled flag, quiet_when_empty (runs that find nothing new stay silent), last_status and next_run_at; \`get\` adds recent_runs, the last executions with their session ids, so you can tell whether one actually fired and point the user at the resulting conversation. Read here before changing anything with automation_mutation. Only your own are visible. Unrelated to Tables automation rules, which fire on record changes.`,
   category: 'core',
   is_global: true,
   builtin: true,

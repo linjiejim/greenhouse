@@ -5,6 +5,11 @@
  * agents, and agents shared by the team. An agent is its model + prompt +
  * tools + look, so all four are edited here and nowhere else; Chat only picks.
  *
+ * A custom agent is private to its owner unless it is available to the team
+ * (`is_shared`). Only a super switches that — from any row they can see;
+ * owners get a one-line hint to ask an admin. Everyone who picks an agent gets
+ * its current version.
+ *
  * Reached from the profile selector's manage entry, or `#/agents` directly.
  */
 
@@ -18,8 +23,8 @@ import {
   EmptyState,
   FilterPills,
   Tabs,
+  Toggle,
   toast,
-  type TagTone,
 } from '../components/ui';
 import { Bot, Plus, Pencil, Trash2, Globe, GitFork } from '../lib/icons';
 import { SproutyAvatar } from '../components/sprouty/index.js';
@@ -39,31 +44,6 @@ const BUILT_IN_PURPOSES: Record<string, TranslationKey> = {
   'sprouty-k3': 'agents.k3Purpose',
   'sprouty-workflows': 'agents.workflowPurpose',
 };
-
-const LIFECYCLE_TONE: Record<NonNullable<api.Profile['lifecycle_status']>, TagTone> = {
-  draft: 'neutral',
-  review: 'warning',
-  pilot: 'info',
-  verified: 'success',
-  rejected: 'danger',
-  suspended: 'danger',
-  deprecated: 'warning',
-  archived: 'neutral',
-};
-
-function lifecycleActions(profile: api.Profile, isSuper: boolean, isOwner = true) {
-  const status = profile.lifecycle_status ?? 'draft';
-  if (isSuper) {
-    if (status === 'review') return ['pilot', 'verified', 'rejected'] as const;
-    if (status === 'pilot') return ['verified', 'suspended', 'deprecated'] as const;
-    if (status === 'verified') return ['suspended', 'deprecated'] as const;
-    if (status === 'suspended') return ['verified', 'deprecated'] as const;
-  }
-  if (!isOwner) return [] as const;
-  if (status === 'draft' || status === 'rejected') return ['review'] as const;
-  if (status === 'review') return ['draft'] as const;
-  return [] as const;
-}
 
 export function AgentsPage() {
   const t = useT();
@@ -85,10 +65,7 @@ export function AgentsPage() {
   // Delete confirm
   const [deleteTarget, setDeleteTarget] = useState<api.Profile | null>(null);
   const [forkTarget, setForkTarget] = useState<api.Profile | null>(null);
-  const [lifecycleTarget, setLifecycleTarget] = useState<{
-    profile: api.Profile;
-    status: api.ProfileLifecycleStatus;
-  } | null>(null);
+  const [sharingIds, setSharingIds] = useState<Set<string>>(() => new Set());
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -161,22 +138,35 @@ export function AgentsPage() {
     }
   };
 
-  const handleLifecycle = async () => {
-    if (!lifecycleTarget) return;
-    const { profile, status } = lifecycleTarget;
+  /** Super only: switch whether an agent is available to the whole team. */
+  const handleShareToggle = async (profile: api.Profile, next: boolean) => {
+    if (sharingIds.has(profile.id)) return;
+    setSharingIds((ids) => new Set(ids).add(profile.id));
     try {
-      await api.transitionCustomProfileLifecycle(Number.parseInt(profile.id.replace('custom:', ''), 10), {
-        status,
-        ...(status === 'pilot' || status === 'verified' ? { publish_version: profile.current_version ?? 1 } : {}),
-      });
-      toast(t('agents.lifecycleUpdated'), 'success');
-      setLifecycleTarget(null);
+      await api.setCustomProfileSharing(Number.parseInt(profile.id.replace('custom:', ''), 10), next);
+      toast(t('agents.sharingUpdated'), 'success');
       await loadData();
       await refreshProfiles();
     } catch (err) {
-      toast(err instanceof Error ? err.message : t('agents.lifecycleFailed'), 'error');
+      toast(err instanceof Error ? err.message : t('agents.sharingFailed'), 'error');
+    } finally {
+      setSharingIds((ids) => {
+        const rest = new Set(ids);
+        rest.delete(profile.id);
+        return rest;
+      });
     }
   };
+
+  const shareToggle = (p: api.Profile) => (
+    <Toggle
+      size="sm"
+      checked={p.is_shared === true}
+      disabled={sharingIds.has(p.id)}
+      label={t('agents.shareToggle')}
+      onChange={(next) => void handleShareToggle(p, next)}
+    />
+  );
 
   if (loading) {
     return (
@@ -189,8 +179,8 @@ export function AgentsPage() {
   }
 
   const myProfiles = profiles.filter((p) => p.user_id === currentUser?.id);
-  // Super receives all non-archived assets so review submissions remain
-  // visible before sharing. Team users only receive reviewed shared assets.
+  // Super receives every member's agents (that is where team availability is
+  // switched); everyone else receives their own plus the team-shared ones.
   const sharedProfiles = profiles.filter((p) => p.user_id !== currentUser?.id && p.is_shared);
   const teamProfiles = isSuper ? profiles.filter((p) => p.user_id !== currentUser?.id && !p.is_shared) : [];
   // Every selectable preset can be forked — the hidden system ones cannot.
@@ -297,7 +287,7 @@ export function AgentsPage() {
                       <tr>
                         <th className="text-left px-4 py-2 font-medium">{t('common.name')}</th>
                         <th className="text-left px-4 py-2 font-medium hidden md:table-cell">{t('agents.model')}</th>
-                        <th className="text-left px-4 py-2 font-medium">{t('agents.lifecycle')}</th>
+                        <th className="text-left px-4 py-2 font-medium">{t('agents.version')}</th>
                         <th className="text-center px-4 py-2 font-medium">{t('agents.tools')}</th>
                         <th className="text-center px-4 py-2 font-medium hidden lg:table-cell">{t('agents.calls')}</th>
                         <th className="text-center px-4 py-2 font-medium hidden md:table-cell">{t('agents.shared')}</th>
@@ -340,33 +330,26 @@ export function AgentsPage() {
                             <Badge variant="secondary">{p.model_id ?? 'flash'}</Badge>
                           </td>
                           <td className="px-4 py-2.5">
-                            <div className="flex items-center gap-1.5">
-                              <Tag tone={LIFECYCLE_TONE[p.lifecycle_status ?? 'draft']}>
-                                {t(`agents.lifecycleStatus.${p.lifecycle_status ?? 'draft'}`)}
-                              </Tag>
-                              <span className="text-[10px] text-fg-faint">v{p.current_version ?? 1}</span>
-                            </div>
+                            <Tag tone="neutral">v{p.current_version ?? 1}</Tag>
                           </td>
                           <td className="px-4 py-2.5 text-center text-fg-muted">{p.tools.length}</td>
                           <td className="px-4 py-2.5 text-center text-fg-faint hidden lg:table-cell">
                             {p.usage?.total_calls || '—'}
                           </td>
                           <td className="px-4 py-2.5 text-center hidden md:table-cell">
-                            {p.is_shared && <Globe size={14} className="inline text-primary-fg" />}
+                            {isSuper
+                              ? shareToggle(p)
+                              : p.is_shared && (
+                                  <Globe
+                                    size={14}
+                                    className="inline text-primary-fg"
+                                    role="img"
+                                    aria-label={t('agents.shareToggle')}
+                                  />
+                                )}
                           </td>
                           <td className="px-4 py-2.5 text-center">
                             <div className="flex items-center justify-center gap-1">
-                              {lifecycleActions(p, isSuper).map((status) => (
-                                <Button
-                                  key={status}
-                                  size="sm"
-                                  variant="ghost"
-                                  onClick={() => setLifecycleTarget({ profile: p, status })}
-                                  title={t(`agents.lifecycleAction.${status}`)}
-                                >
-                                  {t(`agents.lifecycleAction.${status}`)}
-                                </Button>
-                              ))}
                               <button
                                 onClick={() => openEdit(p)}
                                 className="p-1 text-fg-muted hover:text-primary-fg rounded transition-colors"
@@ -388,6 +371,9 @@ export function AgentsPage() {
                     </tbody>
                   </table>
                 </div>
+              )}
+              {scope === 'mine' && myProfiles.length > 0 && !isSuper && (
+                <p className="text-xs text-fg-muted">{t('agents.shareHint')}</p>
               )}
 
               {/* Shared by others */}
@@ -427,27 +413,16 @@ export function AgentsPage() {
                               <Badge variant="secondary">{p.model_id ?? 'flash'}</Badge>
                             </td>
                             <td className="px-4 py-2.5">
-                              <Tag tone={LIFECYCLE_TONE[p.lifecycle_status ?? 'draft']}>
-                                {t(`agents.lifecycleStatus.${p.lifecycle_status ?? 'draft'}`)} · v
-                                {p.published_version ?? p.current_version ?? 1}
-                              </Tag>
+                              <Tag tone="neutral">v{p.current_version ?? 1}</Tag>
                             </td>
                             <td className="px-4 py-2.5 text-center text-fg-muted">
                               {t('agents.toolsCount', { count: p.tools.length })}
                             </td>
                             {isSuper && (
                               <td className="px-4 py-2.5">
-                                <div className="flex flex-wrap items-center justify-end gap-1">
-                                  {lifecycleActions(p, true, false).map((status) => (
-                                    <Button
-                                      key={status}
-                                      size="sm"
-                                      variant="ghost"
-                                      onClick={() => setLifecycleTarget({ profile: p, status })}
-                                    >
-                                      {t(`agents.lifecycleAction.${status}`)}
-                                    </Button>
-                                  ))}
+                                <div className="flex items-center justify-end gap-2 text-xs text-fg-muted">
+                                  <span className="hidden sm:inline">{t('agents.shareToggle')}</span>
+                                  {shareToggle(p)}
                                 </div>
                               </td>
                             )}
@@ -469,7 +444,6 @@ export function AgentsPage() {
         onClose={() => setDrawerOpen(false)}
         profile={editingProfile}
         availableTools={availableTools}
-        isSuper={isSuper}
         onSave={handleSave}
       />
 
@@ -486,18 +460,6 @@ export function AgentsPage() {
       />
 
       {/* Delete Confirmation */}
-      <ConfirmDialog
-        open={!!lifecycleTarget}
-        onClose={() => setLifecycleTarget(null)}
-        onConfirm={handleLifecycle}
-        title={t('agents.lifecycleConfirmTitle')}
-        description={t('agents.lifecycleConfirmDescription', {
-          name: lifecycleTarget?.profile.name ?? '',
-          status: lifecycleTarget ? t(`agents.lifecycleStatus.${lifecycleTarget.status}`) : '',
-        })}
-        confirmLabel={lifecycleTarget ? t(`agents.lifecycleAction.${lifecycleTarget.status}`) : t('common.confirm')}
-      />
-
       <ConfirmDialog
         open={!!deleteTarget}
         onClose={() => setDeleteTarget(null)}

@@ -2,23 +2,20 @@
  * Custom Agent assets and immutable executable versions (PostgreSQL).
  *
  * `custom_profiles` is the stable asset identity. Every configuration edit
- * appends `custom_profile_versions`; no service can update/delete a version.
+ * appends `custom_profile_versions`; no service can update a version.
+ *
+ * Visibility (v1.4): an Agent is private to its owner unless `is_shared` is
+ * true, and only a super switches that (`setShared`). The review lifecycle
+ * columns are retired — nothing here reads or writes them.
  */
 
 import { createHash } from 'node:crypto';
-import { and, asc, desc, eq, gt, inArray, isNotNull, lte, or, sql } from 'drizzle-orm';
-import { alias } from 'drizzle-orm/pg-core';
+import { and, asc, desc, eq, or, sql } from 'drizzle-orm';
 import { nowIso } from '@greenhouse/utils/date';
 
 import type { Db } from '../client.js';
 import * as schema from '../schema/index.js';
-import type {
-  CustomProfileLifecycleStatus,
-  CustomProfileRiskLevel,
-  CustomProfileRow,
-  CustomProfileVersionRow,
-} from '../schema/custom-profile.js';
-import type { UserStatus } from '../schema/user.js';
+import type { CustomProfileRiskLevel, CustomProfileRow, CustomProfileVersionRow } from '../schema/custom-profile.js';
 
 export interface CustomProfileGovernanceInput {
   purpose?: string | null;
@@ -26,7 +23,6 @@ export interface CustomProfileGovernanceInput {
   risk_level?: CustomProfileRiskLevel;
   budget_policy?: Record<string, unknown>;
   owner_backup_user_id?: string | null;
-  review_due_at?: string | null;
   change_log?: string;
   created_by?: string | null;
 }
@@ -42,7 +38,7 @@ export interface CustomProfileInput extends CustomProfileGovernanceInput {
   tools: string[];
   system_prompt: string;
   max_steps?: number;
-  /** Legacy input is ignored: sharing is derived from reviewed lifecycle state. */
+  /** Ignored: a new Agent is always private; a super shares it with `setShared`. */
   is_shared?: boolean;
   avatar?: Record<string, unknown>;
   forked_from?: string;
@@ -59,23 +55,9 @@ export interface CustomProfileUpdateInput extends CustomProfileGovernanceInput {
   avatar?: Record<string, unknown>;
 }
 
-export interface CustomProfileLifecycleInput {
-  status: CustomProfileLifecycleStatus;
-  actor_user_id: string;
-  note?: string | null;
-  publish_version?: number | null;
-  next_review_at?: string | null;
-}
-
 export interface CustomProfileVersionResult {
   profile: CustomProfileRow;
   version: CustomProfileVersionRow;
-}
-
-export interface CustomProfileOwnershipCandidate {
-  profile: CustomProfileRow;
-  owner_status: UserStatus;
-  backup_owner_status: UserStatus | null;
 }
 
 type VersionManifest = Pick<
@@ -93,7 +75,6 @@ type VersionManifest = Pick<
   | 'risk_level'
   | 'budget_policy'
   | 'owner_backup_user_id'
-  | 'review_due_at'
 >;
 
 function manifestHash(manifest: VersionManifest): string {
@@ -125,34 +106,11 @@ function manifestFromIdentity(
       updates.owner_backup_user_id !== undefined
         ? updates.owner_backup_user_id
         : (previous?.owner_backup_user_id ?? row.owner_backup_user_id),
-    review_due_at: updates.review_due_at !== undefined ? updates.review_due_at : (previous?.review_due_at ?? null),
   };
-}
-
-const ALLOWED_LIFECYCLE_TRANSITIONS: Record<CustomProfileLifecycleStatus, ReadonlySet<CustomProfileLifecycleStatus>> = {
-  draft: new Set(['review', 'archived']),
-  review: new Set(['draft', 'pilot', 'verified', 'rejected', 'archived']),
-  pilot: new Set(['verified', 'rejected', 'suspended', 'deprecated', 'archived']),
-  verified: new Set(['suspended', 'deprecated', 'archived']),
-  rejected: new Set(['draft', 'review', 'archived']),
-  suspended: new Set(['pilot', 'verified', 'deprecated', 'archived']),
-  deprecated: new Set(['archived']),
-  archived: new Set(),
-};
-
-function requiresPublishedVersion(status: CustomProfileLifecycleStatus): boolean {
-  return status === 'pilot' || status === 'verified';
-}
-
-function defaultReviewAt(now: string, riskLevel: CustomProfileRiskLevel): string {
-  const reviewDays = riskLevel === 'high' ? 60 : 90;
-  return new Date(Date.parse(now) + reviewDays * 24 * 60 * 60 * 1000).toISOString();
 }
 
 /** User-created Agent assets and their immutable versions. */
 export function createCustomProfileService(db: Db) {
-  const backupOwner = alias(schema.users, 'custom_profile_backup_owner');
-
   const service = {
     async create(input: CustomProfileInput): Promise<CustomProfileRow> {
       const now = nowIso();
@@ -169,13 +127,11 @@ export function createCustomProfileService(db: Db) {
             tools: JSON.stringify(input.tools),
             system_prompt: input.system_prompt,
             max_steps: input.max_steps ?? 12,
-            // A reviewed lifecycle transition is the only path that may share.
+            // Private until a super makes it available to the team.
             is_shared: false,
             avatar: JSON.stringify(input.avatar ?? {}),
             forked_from: input.forked_from ?? null,
             current_version: 1,
-            published_version: null,
-            lifecycle_status: 'draft',
             owner_backup_user_id: input.owner_backup_user_id ?? null,
             created_at: now,
             updated_at: now,
@@ -220,11 +176,6 @@ export function createCustomProfileService(db: Db) {
       return asset ? service.getVersion(profileId, asset.current_version) : undefined;
     },
 
-    async getPublishedVersion(profileId: number): Promise<CustomProfileVersionRow | undefined> {
-      const asset = await service.getById(profileId);
-      return asset?.published_version ? service.getVersion(profileId, asset.published_version) : undefined;
-    },
-
     async listVersions(profileId: number): Promise<CustomProfileVersionRow[]> {
       return db
         .select()
@@ -233,68 +184,18 @@ export function createCustomProfileService(db: Db) {
         .orderBy(desc(schema.customProfileVersions.version));
     },
 
-    /** List assets visible to a user: own + reviewed/published assets from others. */
+    /** Assets visible to a user: their own plus every Agent shared with the team. */
     async listForUser(userId: string): Promise<CustomProfileRow[]> {
       return db
         .select()
         .from(schema.customProfiles)
-        .where(
-          and(
-            sql`${schema.customProfiles.lifecycle_status} <> 'archived'`,
-            or(
-              eq(schema.customProfiles.user_id, userId),
-              and(
-                eq(schema.customProfiles.is_shared, true),
-                inArray(schema.customProfiles.lifecycle_status, ['pilot', 'verified']),
-                isNotNull(schema.customProfiles.published_version),
-              ),
-            ),
-          ),
-        )
+        .where(or(eq(schema.customProfiles.user_id, userId), eq(schema.customProfiles.is_shared, true)))
         .orderBy(asc(schema.customProfiles.name));
     },
 
-    /** Super governance queue: all non-archived assets, including unshared review drafts. */
+    /** Every Agent of every user — the super's view, where team availability is switched. */
     async listAll(): Promise<CustomProfileRow[]> {
-      return db
-        .select()
-        .from(schema.customProfiles)
-        .where(sql`${schema.customProfiles.lifecycle_status} <> 'archived'`)
-        .orderBy(asc(schema.customProfiles.name));
-    },
-
-    /** Stable input for the review-due sweeper; the worker owns transition policy. */
-    async listReviewDue(at: string, limit = 100): Promise<CustomProfileRow[]> {
-      return db
-        .select()
-        .from(schema.customProfiles)
-        .where(
-          and(
-            inArray(schema.customProfiles.lifecycle_status, ['pilot', 'verified']),
-            lte(schema.customProfiles.next_review_at, at),
-          ),
-        )
-        .orderBy(asc(schema.customProfiles.next_review_at), asc(schema.customProfiles.id))
-        .limit(Math.max(1, Math.min(limit, 500)));
-    },
-
-    /**
-     * Stable cursor query for owner-continuity checks. The logical governance
-     * actor may subsequently transition candidates as `system:agent-governance`.
-     */
-    async listActiveWithOwners(limit = 100, afterId = 0): Promise<CustomProfileOwnershipCandidate[]> {
-      return db
-        .select({
-          profile: schema.customProfiles,
-          owner_status: schema.users.status,
-          backup_owner_status: backupOwner.status,
-        })
-        .from(schema.customProfiles)
-        .innerJoin(schema.users, eq(schema.customProfiles.user_id, schema.users.id))
-        .leftJoin(backupOwner, eq(schema.customProfiles.owner_backup_user_id, backupOwner.id))
-        .where(and(sql`${schema.customProfiles.lifecycle_status} <> 'archived'`, gt(schema.customProfiles.id, afterId)))
-        .orderBy(asc(schema.customProfiles.id))
-        .limit(Math.max(1, Math.min(limit, 500)));
+      return db.select().from(schema.customProfiles).orderBy(asc(schema.customProfiles.name));
     },
 
     async createVersion(
@@ -310,9 +211,6 @@ export function createCustomProfileService(db: Db) {
           .for('update')
           .limit(1);
         if (!asset) return undefined;
-        if (asset.lifecycle_status === 'archived') {
-          throw new Error('Archived Agent cannot receive new versions');
-        }
 
         const [previous] = await tx
           .select()
@@ -354,17 +252,9 @@ export function createCustomProfileService(db: Db) {
             avatar: manifest.avatar,
             owner_backup_user_id: manifest.owner_backup_user_id,
             current_version: nextVersion,
-            // Any executable or governance edit invalidates the prior review.
-            // This model deliberately has no independent release channel: the
-            // old immutable reference still resolves for already-pinned work,
-            // but it is no longer discoverable or selectable by other users.
-            lifecycle_status: 'draft',
-            lifecycle_note: null,
-            published_version: null,
-            is_shared: false,
-            reviewed_by: null,
-            reviewed_at: null,
-            next_review_at: null,
+            // `is_shared` is deliberately untouched: editing a team Agent keeps
+            // it shared, and everyone who picks it next gets this version.
+            // Already-pinned work keeps resolving its own immutable version.
             updated_at: now,
           })
           .where(eq(schema.customProfiles.id, id))
@@ -379,80 +269,33 @@ export function createCustomProfileService(db: Db) {
       return (await service.createVersion(id, updates))?.profile;
     },
 
-    async transitionLifecycle(id: number, input: CustomProfileLifecycleInput): Promise<CustomProfileRow | undefined> {
-      const now = nowIso();
-      return db.transaction(async (tx) => {
-        const [asset] = await tx
-          .select()
-          .from(schema.customProfiles)
-          .where(eq(schema.customProfiles.id, id))
-          .for('update')
-          .limit(1);
-        if (!asset) return undefined;
-        if (asset.lifecycle_status === input.status) {
-          throw new Error(`Agent lifecycle is already ${input.status}; no state change was applied`);
-        }
-        if (!ALLOWED_LIFECYCLE_TRANSITIONS[asset.lifecycle_status].has(input.status)) {
-          throw new Error(`Invalid Agent lifecycle transition: ${asset.lifecycle_status} -> ${input.status}`);
-        }
-
-        let publishVersion = asset.published_version;
-        let publishedReviewDueAt: string | null = null;
-        if (requiresPublishedVersion(input.status)) {
-          publishVersion = input.publish_version ?? asset.current_version;
-          const [candidate] = await tx
-            .select({
-              version: schema.customProfileVersions.version,
-              review_due_at: schema.customProfileVersions.review_due_at,
-              risk_level: schema.customProfileVersions.risk_level,
-            })
-            .from(schema.customProfileVersions)
-            .where(
-              and(
-                eq(schema.customProfileVersions.profile_id, id),
-                eq(schema.customProfileVersions.version, publishVersion),
-              ),
-            )
-            .limit(1);
-          if (!candidate) throw new Error(`Agent version does not exist: custom:${id}@${publishVersion}`);
-          publishedReviewDueAt = candidate.review_due_at ?? defaultReviewAt(now, candidate.risk_level);
-        }
-
-        const shared = requiresPublishedVersion(input.status);
-        const [updated] = await tx
-          .update(schema.customProfiles)
-          .set({
-            lifecycle_status: input.status,
-            lifecycle_note: input.note ?? null,
-            published_version: publishVersion,
-            is_shared: shared,
-            reviewed_by: input.status === 'review' || input.status === 'draft' ? null : input.actor_user_id,
-            reviewed_at: input.status === 'review' || input.status === 'draft' ? null : now,
-            next_review_at: shared ? (input.next_review_at ?? publishedReviewDueAt) : null,
-            updated_at: now,
-          })
-          .where(eq(schema.customProfiles.id, id))
-          .returning();
-        return updated;
-      });
+    /** Switch team availability. Only a super may call this (enforced by the route). */
+    async setShared(id: number, shared: boolean): Promise<CustomProfileRow | undefined> {
+      const [updated] = await db
+        .update(schema.customProfiles)
+        .set({ is_shared: shared, updated_at: nowIso() })
+        .where(eq(schema.customProfiles.id, id))
+        .returning();
+      return updated;
     },
 
-    /** Retain history: API deletion is lifecycle archival, never physical delete. */
-    async archive(id: number, actorUserId: string, note?: string): Promise<CustomProfileRow | undefined> {
-      return service.transitionLifecycle(id, {
-        status: 'archived',
-        actor_user_id: actorUserId,
-        note: note ?? 'Archived by owner',
-      });
+    /**
+     * Delete an Agent and its versions. Sessions and Automations pinned to it
+     * stop resolving (they fail closed with "custom Agent no longer exists").
+     */
+    async delete(id: number): Promise<boolean> {
+      const deleted = await db
+        .delete(schema.customProfiles)
+        .where(eq(schema.customProfiles.id, id))
+        .returning({ id: schema.customProfiles.id });
+      return deleted.length > 0;
     },
 
     async countByUser(userId: string): Promise<number> {
       const result = await db
         .select({ count: sql<number>`count(*)::int` })
         .from(schema.customProfiles)
-        .where(
-          and(eq(schema.customProfiles.user_id, userId), sql`${schema.customProfiles.lifecycle_status} <> 'archived'`),
-        );
+        .where(eq(schema.customProfiles.user_id, userId));
       return result[0]?.count ?? 0;
     },
   };

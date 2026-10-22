@@ -279,6 +279,19 @@ describe('write receipt', () => {
     expect(buildTaskNotification(task(), outcome, writes)).toContain('本次写入');
   });
 
+  it('separates in-flight writes from settled ones for an interrupted run', () => {
+    const interrupted = { ...outcome, status: 'interrupted' as const, summary: '运行中断，结果未知。' };
+    const card = buildTaskNotification(task(), interrupted, [
+      { tool: 'knowledge_mutation', action: 'update', status: 'succeeded' },
+      { tool: 'tables_mutation', action: 'update_record', status: 'uncertain' },
+    ]);
+
+    expect(card).toContain('结果未知');
+    expect(card).toMatch(/中断时正在进行的写入[^\n]*\n- tables_mutation \(update_record\) · uncertain/);
+    expect(card).toMatch(/本次写入\*\*\n- knowledge_mutation \(update\)/);
+    expect(buildTaskEmail(task(), interrupted, []).body_text).toContain('中断时没有正在进行的写入');
+  });
+
   it('survives a long answer — the receipt is appended after truncation', () => {
     const writes = [{ tool: 'tables_mutation', status: 'succeeded' }];
     const card = buildTaskNotification(task(), { ...outcome, summary: '长'.repeat(900) }, writes);

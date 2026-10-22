@@ -17,6 +17,7 @@
 
 import { Cron } from 'croner';
 import { logger } from '@greenhouse/utils/logger';
+import { safeJsonParse } from '@greenhouse/utils/json';
 import type { AutomationRunEntry } from '@greenhouse/types/api';
 import { AUTOMATION_OPT_IN_TOOLS, isAutomationOptInTool } from '@greenhouse/types/automation-tools';
 import { ScheduledTaskActiveRunError, type DatabaseProvider, type ScheduledTaskRow } from '@greenhouse/db';
@@ -30,6 +31,7 @@ import {
   MAX_PROMPT_LENGTH,
   MAX_STEPS_LIMIT,
   MAX_TASKS_PER_USER,
+  MIN_INTERVAL_MINUTES,
   MIN_INTERVAL_MS,
   MIN_NAME_LENGTH,
   MIN_PROMPT_LENGTH,
@@ -100,6 +102,12 @@ export interface CreateTaskInput {
   notify_wecom?: boolean;
   notify_feishu?: boolean;
   /**
+   * Stay quiet when a run has nothing new: the run prompt asks for exactly
+   * `NO_UPDATE` in that case, and such a run is recorded as "no update" with no
+   * notification on any channel.
+   */
+  quiet_when_empty?: boolean;
+  /**
    * Extra tools the owner grants to this automation's unattended runs. Only
    * accepted from an actor with `canGrantTools`; see TaskActor.
    */
@@ -114,14 +122,14 @@ export function validateCron(expr: string): { valid: boolean; error?: string } {
   if (expr.length > 100) return { valid: false, error: 'Cron expression too long' };
   try {
     const job = new Cron(expr);
-    // Check minimum interval (1 hour)
+    // Check the minimum interval between two consecutive fires.
     const next1 = job.nextRun();
     if (!next1) return { valid: false, error: 'Cron expression has no next run' };
     const next2 = job.nextRuns(2);
     if (next2.length >= 2) {
       const intervalMs = next2[1]!.getTime() - next2[0]!.getTime();
       if (intervalMs < MIN_INTERVAL_MS) {
-        return { valid: false, error: 'Minimum interval is 1 hour' };
+        return { valid: false, error: `Minimum interval is ${MIN_INTERVAL_MINUTES} minutes` };
       }
     }
     return { valid: true };
@@ -338,6 +346,8 @@ export async function listTaskRuns(
             error_message: run.error_message,
             started_at: run.started_at,
             ended_at: run.ended_at,
+            no_update: run.status === 'succeeded' && runOutputFlag(run.output, 'no_update'),
+            outcome_unknown: run.status === 'interrupted',
           }
         : null,
     };
@@ -345,6 +355,13 @@ export async function listTaskRuns(
   entries.sort((a, b) => b.created_at.localeCompare(a.created_at));
 
   return { ok: true, task: toView(task), entries };
+}
+
+/** Read one boolean flag off a Runtime run's JSON output; anything malformed reads as false. */
+function runOutputFlag(output: string | null, key: string): boolean {
+  if (!output) return false;
+  const parsed: unknown = safeJsonParse(output, null);
+  return !!parsed && typeof parsed === 'object' && (parsed as Record<string, unknown>)[key] === true;
 }
 
 /**
@@ -413,6 +430,7 @@ export async function createTask(
     notify_email: input.notify_email ?? false,
     notify_wecom: input.notify_wecom ?? false,
     notify_feishu: input.notify_feishu ?? false,
+    quiet_when_empty: input.quiet_when_empty === true,
     ...(toolGrant ? { unattended_tools: toolGrant.json } : {}),
   });
 
@@ -495,6 +513,10 @@ export async function updateTask(
   }
   if (input.notify_email !== undefined) {
     updates.notify_email = input.notify_email;
+  }
+  if (input.quiet_when_empty !== undefined) {
+    if (typeof input.quiet_when_empty !== 'boolean') return err('invalid', 'quiet_when_empty must be true or false');
+    updates.quiet_when_empty = input.quiet_when_empty;
   }
 
   const toolGrant = validateUnattendedTools(input.unattended_tools, actor);

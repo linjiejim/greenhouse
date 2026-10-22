@@ -69,7 +69,7 @@
 - v1.4 删除模块时**不删表**：表定义原样挪进 `schema/retired.ts`（从 schema index 导出，Drizzle snapshot 不变、不产生迁移），service 与 provider 入口一并删除。留表只为蓝绿回滚到 v1.3.x 时旧代码还能读写；v1.4 之后的下一个版本用迁移把它们 DROP 掉，再删 `retired.ts` 里对应定义。
 - 应用代码不得 import `retired.ts` 的任何导出；`resetSchema()` 的 TRUNCATE 清单保留这些表名（表还在）。
 - 退役列（表还活着、列不再读写）就地留在原 schema，注释写明退役版本，与退役表同一版本 DROP。
-- 当前退役：评测 `eval_datasets` / `eval_runs` / `eval_results` / `chat_eval_results`；Missions `agent_workspaces` / `agent_runs` / `agent_run_events` / `agent_artifacts` / `agent_run_approvals` / `agent_run_outbox`；Workflows `workflows` / `workflow_runs` / `workflow_node_runs` / `workflow_gates`；LLM 中转 key `api_clients`（`api_audit_log` 仍是活表，与它只有逻辑关联、没有 FK）；列 `custom_profile_versions.eval_refs`。
+- 当前退役：评测 `eval_datasets` / `eval_runs` / `eval_results` / `chat_eval_results`；Missions `agent_workspaces` / `agent_runs` / `agent_run_events` / `agent_artifacts` / `agent_run_approvals` / `agent_run_outbox`；Workflows `workflows` / `workflow_runs` / `workflow_node_runs` / `workflow_gates`；LLM 中转 key `api_clients`（`api_audit_log` 仍是活表，与它只有逻辑关联、没有 FK）；列 `custom_profile_versions.eval_refs` / `review_due_at`，`custom_profiles.lifecycle_status` / `lifecycle_note` / `reviewed_by` / `reviewed_at` / `next_review_at` / `published_version`（及 `idx_custom_profiles_lifecycle`）。注意：旧行的 `lifecycle_status`（如 archived / suspended）不再被读取，这些 Agent 对 owner 重新可见、可用。
 
 ### Schema 迁移
 
@@ -262,22 +262,19 @@
 - 跨领域 Run command 统一走 `executeRunDomainCommand`：`SELECT ... FOR UPDATE` 的 Run 锁必须覆盖领域 side effect，成功后同事务 CAS 更新 desired state 并追加 Event/Outbox；callback 的 `may_drive=false` 只用于 crash-window 已落来源状态的只读确认，不得发起新副作用。这样同一 expected version 的 pause/cancel 只能有一个真正驱动来源域。
 - worker 领取使用 `FOR UPDATE SKIP LOCKED`，heartbeat 必须同时匹配 version、lease owner、未过期 lease 与 Run desired state。过期 lease 不能被旧 worker 续租或确认 Outbox；stale Step 只有 driver 给出可审计的安全 checkpoint 后才终态化旧 attempt 并创建新的 queued attempt，禁止原地覆盖历史或盲重放外部写。
 - Automation admission 的 overlap 约束走 `createRun({single_active_source_kind:true})`：事务 advisory lock 按 `(owner,kind,source_kind)` 串行化，并拒绝同一任务定义下另一条 active occurrence；相同 source identity 仍先按完整 input 做幂等回放。这个 service 选项是 Runtime 队列事实，不得再叠一份进程内 running Set。
-- Automation 的 task summary、成功计数与外部通知只能从 Runtime 终态 Outbox 投影：`scheduled_task_runtime_occurrences` 以 `runtime_run_id` 永久幂等，成功计数与 occurrence 插入同事务；延迟旧事件可补永久事实但不能覆盖更新 Run 的 `last_status`。driver 与 stale hook 禁止直接外发或重复增加 `run_count`。
+- Automation 的 task summary、成功计数与外部通知只能从 Runtime 终态 Outbox 投影：`scheduled_task_runtime_occurrences` 以 `runtime_run_id` 永久幂等，成功计数与 occurrence 插入同事务；延迟旧事件可补永久事实但不能覆盖更新 Run 的 `last_status`。driver 与 stale hook 禁止直接外发或重复增加 `run_count`。`reclaimStaleRuns(at, limit, { outcomeUnknownKinds })`：列出的 kind（目前只有 automation）在 `running` 中 lease 过期且 attempt 用尽时收为 `interrupted` / `runtime_outcome_unknown` 而不是 `failed`——同样终态、同样不重放，只是如实说「结果未知」；occurrence 的 `status` 因此多一个 `interrupted`（text 列、无 CHECK）。
 - Subagent admission 只走 `runtime.admitSubagent()`：稳定 tool-call identity 绑定 child session/message id，并在同一外层事务创建 child session、seq=0 user message、Runtime Run 与 Step；内部 `createRun({active_subagent_parent:{parent_session_id,limit}})` 的 advisory lock 按 `(owner,parent session)` 串行化，从完整 Runtime input 的 `parent_session_id + mode=async` 统计 active background child，精确替代 `spawn_session` 原来的进程内 async 并发 Map。显式 `parent_run_id` 必须在该事务内 `FOR UPDATE`，且 owner/session 匹配、状态仍为 `claimed|running`、`desired_state=run`；调用层不得在显式 id 缺失/失效时降级成按 session 查另一条 Run。任一 identity/lineage/限流失败整笔回滚；禁止另建“先 transcript、后 Runtime”的 ensure 路径。Subagent Run 固定 `max_attempts=1`；只有尚未进入 `running` 的 claim lease 可恢复，running lease stale 必须终态失败，绝不能自动重放可能已外写的整轮。
 - `runtime_runs.parent_run_id` 是域内 CASCADE 所有权；Run 的用户/session/source/root、Event actor、Interrupt 决策人、ToolCall Platform Audit 是松散逻辑关联，使永久执行历史不随外域主体删除。Service 写入 step/tool/artifact/interrupt 时必须验证它们属于同一 Run，不能只依赖单列 FK。
 
-### Custom Agent 版本与治理
+### Custom Agent 版本与团队可用
 
 - `custom_profiles` 是稳定资产身份，`custom_profile_versions` 是不可变完整 manifest；生产 Service 只能 append，
-  不得 update/delete 版本。manifest hash、change log、模型/tools/prompt、purpose/audience/risk/budget 与
-  owner backup/review due 必须随版本冻结。
-- 任何新版本都撤销原审查：资产回 `draft`，清空 `published_version`、共享、reviewer 与 review date。旧
-  `custom:<id>@<version>` 仍可供已 pin 的会话/计划任务重放，但不能继续对其他用户发布。
-- 共享只能由 lifecycle `pilot` / `verified` 派生；不得直接写 `is_shared=true`。迁移把存量行转成 draft v1，
-  并把 sessions/scheduled_tasks/eval_runs 的存量 custom 引用 pin 到 `@1`。
-- 自动治理只消费 `listReviewDue(at, limit)` 与 `listActiveWithOwners(limit, afterId)`；状态变更可用逻辑 actor
-  `system:agent-governance`。发布未显式给 review date 时，low/medium risk 默认 90 天、high risk 默认 60 天，
-  禁止产生永不复核的 pilot/verified。review actor 与版本 created_by/backup snapshot 保持逻辑引用，避免账号删除改写历史。
+  不得 update 版本（`delete` 删除整个 Agent 时随 FK CASCADE 一并删除）。manifest hash、change log、
+  模型/tools/prompt、purpose/audience/risk/budget 与 owner backup 必须随版本冻结。
+- 团队可见只看 `is_shared`，只有 `setShared`（super 路由）能写；新建一律 private，新版本不改变共享状态。
+  旧 `custom:<id>@<version>` 仍可供已 pin 的会话/Automation 解析。
+- 审核生命周期列是退役列（见上「退役表」）：Service 不读不写，`listForUser` / `listAll` / `countByUser` 也不再按
+  `lifecycle_status` 过滤。
 
 ### 统一 Notification Center
 

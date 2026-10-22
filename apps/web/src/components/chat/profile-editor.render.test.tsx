@@ -43,7 +43,6 @@ describe('ProfileEditorDrawer', () => {
               icon: 'MessageCircleQuestion',
             },
           ],
-          isSuper: false,
           onSave: vi.fn(),
         }),
       }),

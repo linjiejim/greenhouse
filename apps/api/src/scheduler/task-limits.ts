@@ -22,8 +22,9 @@ export const MAX_STEPS_LIMIT = 20;
 export const MIN_NAME_LENGTH = 2;
 export const MAX_NAME_LENGTH = 50;
 export const DEFAULT_TIMEZONE = 'UTC';
-/** Cron floor: nothing may fire more often than once an hour. */
-export const MIN_INTERVAL_MS = 3600_000;
+/** Cron floor: nothing may fire more often than once every 15 minutes. */
+export const MIN_INTERVAL_MINUTES = 15;
+export const MIN_INTERVAL_MS = MIN_INTERVAL_MINUTES * 60_000;
 
 /**
  * Which group-bot family a (write-time validated) notify_webhook URL belongs

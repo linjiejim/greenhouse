@@ -37,6 +37,7 @@ import {
 } from '@greenhouse/types/automation-tools';
 import { useT } from '../lib/i18n';
 import { formatDate, formatDateInZone } from '../lib/utils';
+import { cronFiresTooOften } from '../lib/cron-interval';
 import { fetchWeComBinding } from '../lib/api/wecom';
 import { fetchFeishuBinding } from '../lib/api/feishu';
 import { useAuthStore } from '../stores';
@@ -182,6 +183,11 @@ function ScheduleField({ value, onChange }: CrudFieldRenderProps) {
             className="font-mono"
           />
           <p className="text-xs text-fg-muted mt-1">{t('automations.cronHint')}</p>
+          {cronFiresTooOften(sched.raw) && (
+            <p className="text-xs text-danger mt-1" role="alert">
+              {t('automations.cronTooFrequent')}
+            </p>
+          )}
         </div>
       ) : (
         <div className="space-y-3">
@@ -462,7 +468,13 @@ function RunHistoryDialog({ task, onClose }: { task: Task; onClose: () => void }
                     : '—'}
                 </td>
                 <td className="px-3 py-2">
-                  {entry.run ? (
+                  {entry.run?.outcome_unknown ? (
+                    <span title={t('automations.historyOutcomeUnknownHint')}>
+                      <Tag tone="danger">{t('automations.historyOutcomeUnknown')}</Tag>
+                    </span>
+                  ) : entry.run?.no_update ? (
+                    <Tag tone="neutral">{t('automations.historyNoUpdate')}</Tag>
+                  ) : entry.run ? (
                     <Tag tone={runStatusTone(entry.run.status)}>{entry.run.status}</Tag>
                   ) : (
                     <Tag tone="neutral">{t('automations.historyLegacy')}</Tag>
@@ -628,6 +640,13 @@ export function AutomationsPanel() {
                     />
                   ) : task.last_status === 'failed' ? (
                     <XCircle size={13} className="inline text-danger" role="img" aria-label={t('common.failed')} />
+                  ) : task.last_status === 'interrupted' ? (
+                    <AlertTriangle
+                      size={13}
+                      className="inline text-danger"
+                      role="img"
+                      aria-label={t('automations.historyOutcomeUnknown')}
+                    />
                   ) : (
                     <Clock size={13} className="inline text-warning" role="img" aria-label={t('common.pending')} />
                   )}
@@ -767,6 +786,16 @@ export function AutomationsPanel() {
                 },
               ]
             : []) satisfies FieldDef<Task>[]),
+          {
+            key: 'quiet_when_empty',
+            label: t('automations.quietWhenEmpty'),
+            type: 'custom',
+            defaultValue: false,
+            help: t('automations.quietWhenEmptyHint'),
+            render: ({ value, onChange, disabled }) => (
+              <Toggle checked={value === true} disabled={disabled} onChange={(next) => onChange(next)} />
+            ),
+          },
           {
             key: 'unattended_tools',
             label: t('automations.tools'),

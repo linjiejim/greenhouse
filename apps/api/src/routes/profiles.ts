@@ -7,9 +7,9 @@
  * POST /api/profiles/custom/fork      — Fork 一个系统或自定义 Profile
  * GET  /api/profiles/custom/:id       — 获取自定义 Profile 详情
  * GET  /api/profiles/custom/:id/versions — 获取不可变版本历史
- * PUT  /api/profiles/custom/:id       — 追加自定义 Profile 不可变版本（并回到 draft）
- * POST /api/profiles/custom/:id/lifecycle — 提交评审/试点/验证/暂停/退役
- * DELETE /api/profiles/custom/:id     — 归档自定义 Profile（保留版本证据）
+ * PUT  /api/profiles/custom/:id       — 追加自定义 Profile 不可变版本（共享状态不变）
+ * PUT  /api/profiles/custom/:id/sharing — 切换团队可用（仅 super）
+ * DELETE /api/profiles/custom/:id     — 删除自定义 Profile 及其版本
  * GET  /api/profiles/:id              — 获取 Profile 详情（含 24h/7d 分时段用量）
  * POST /api/profiles/reload           — 清除缓存并重新加载所有 Profile 配置
  * GET  /api/profiles/usage/summary    — 全局 LLM 用量汇总（按 profile/caller 维度）
@@ -33,12 +33,7 @@ import {
 import { getModelEntry, getModelRegistry } from '@greenhouse/agent-core';
 import { listChatModels } from '../config/models.js';
 import { getDb } from '@greenhouse/db';
-import type {
-  CustomProfileLifecycleStatus,
-  CustomProfileRiskLevel,
-  CustomProfileRow,
-  CustomProfileVersionRow,
-} from '@greenhouse/db';
+import type { CustomProfileRiskLevel, CustomProfileRow, CustomProfileVersionRow } from '@greenhouse/db';
 import { getAuthUser, requireSuper } from '../auth/middleware.js';
 import { assertCustomProfileAccess, pinProfileIdForUser, ProfileAccessError } from '../profiles/access.js';
 import { getAllToolIds } from '../tools/registry.js';
@@ -131,13 +126,7 @@ function formatCustomProfile(
     forked_from: row.forked_from || null,
     created_at: row.created_at,
     updated_at: row.updated_at,
-    lifecycle_status: row.lifecycle_status,
-    lifecycle_note: row.lifecycle_note,
     current_version: row.current_version,
-    published_version: row.published_version,
-    reviewed_by: row.reviewed_by,
-    reviewed_at: row.reviewed_at,
-    next_review_at: row.next_review_at,
     owner_backup_user_id: row.owner_backup_user_id,
     ...(version
       ? {
@@ -155,10 +144,13 @@ function formatCustomProfile(
   };
 }
 
-async function visibleVersionFor(row: CustomProfileRow, userId: string, isSuper: boolean) {
-  const version = isSuper || row.user_id === userId ? row.current_version : row.published_version;
-  return version ? getDb().customProfiles.getVersion(row.id, version) : undefined;
+/** Everyone who may see an Agent sees its current version — there is no separate published channel. */
+async function currentVersionOf(row: CustomProfileRow) {
+  return getDb().customProfiles.getVersion(row.id, row.current_version);
 }
+
+const SHARING_IS_SUPER_ONLY =
+  'Only an admin can make an Agent available to the team (PUT /api/profiles/custom/:id/sharing); ask one to switch it.';
 
 const profiles = new Hono<AppEnv>()
   // ─── Usage Summary ───────────────────────────────────────
@@ -201,17 +193,15 @@ const profiles = new Hono<AppEnv>()
   .get('/custom', async (c) => {
     const authUser = getAuthUser(c);
 
-    // Super needs the unshared review queue; ordinary users only receive own
-    // assets plus currently published pilot/verified assets.
+    // Super sees every Agent (that is where team availability is switched);
+    // everyone else gets their own plus the ones shared with the team.
     const rows =
       authUser.role === 'super'
         ? await getDb().customProfiles.listAll()
         : await getDb().customProfiles.listForUser(authUser.id);
     const baseMap = new Map(loadAllProfiles().map((p) => [p.id, p]));
     const formatted = await Promise.all(
-      rows.map(async (r) =>
-        formatCustomProfile(r, baseMap, await visibleVersionFor(r, authUser.id, authUser.role === 'super')),
-      ),
+      rows.map(async (r) => formatCustomProfile(r, baseMap, await currentVersionOf(r))),
     );
 
     // Attach usage stats
@@ -252,7 +242,6 @@ const profiles = new Hono<AppEnv>()
       risk_level,
       budget_policy,
       owner_backup_user_id,
-      review_due_at,
       change_log,
     } = body;
 
@@ -311,7 +300,7 @@ const profiles = new Hono<AppEnv>()
     }
 
     if (is_shared === true) {
-      return c.json({ error: 'Sharing requires lifecycle review; submit the Agent for review after creation' }, 400);
+      return c.json({ error: SHARING_IS_SUPER_ONLY }, 400);
     }
     if (risk_level !== undefined && !['low', 'medium', 'high'].includes(risk_level)) {
       return c.json({ error: 'risk_level must be low, medium, or high' }, 400);
@@ -345,7 +334,6 @@ const profiles = new Hono<AppEnv>()
         budget_policy:
           budget_policy && typeof budget_policy === 'object' && !Array.isArray(budget_policy) ? budget_policy : {},
         owner_backup_user_id: typeof owner_backup_user_id === 'string' ? owner_backup_user_id : null,
-        review_due_at: typeof review_due_at === 'string' ? review_due_at : null,
         change_log: typeof change_log === 'string' ? change_log : 'Initial version',
         created_by: authUser.id,
       });
@@ -497,11 +485,11 @@ const profiles = new Hono<AppEnv>()
       }
     }
     const versions = await getDb().customProfiles.listVersions(id);
-    const visible = ownsAsset ? versions : versions.filter((version) => version.version === row.published_version);
+    // Non-owners run the current version, so that is the one they may inspect.
+    const visible = ownsAsset ? versions : versions.filter((version) => version.version === row.current_version);
     return c.json({
       profile_id: `custom:${id}`,
       current_version: row.current_version,
-      published_version: row.published_version,
       versions: visible.map((version) => ({
         ...version,
         tools: safeJsonParse(version.tools, []) as string[],
@@ -510,57 +498,19 @@ const profiles = new Hono<AppEnv>()
       })),
     });
   })
-  /** POST /api/profiles/custom/:id/lifecycle — governed lifecycle transition */
-  .post('/custom/:id/lifecycle', async (c) => {
+  /** PUT /api/profiles/custom/:id/sharing — switch team availability (super only) */
+  .put('/custom/:id/sharing', async (c) => {
     const authUser = getAuthUser(c);
+    if (authUser.role !== 'super') return c.json({ error: SHARING_IS_SUPER_ONLY }, 403);
     const id = Number.parseInt(c.req.param('id'), 10);
     if (!Number.isInteger(id)) return c.json({ error: 'Invalid profile ID' }, 400);
-    const row = await getDb().customProfiles.getById(id);
-    if (!row) return c.json({ error: 'Custom profile not found' }, 404);
-    if (authUser.role !== 'super' && row.user_id !== authUser.id) {
-      return c.json({ error: 'Access denied' }, 403);
-    }
+    const body = (await c.req.json().catch(() => ({}))) as { is_shared?: unknown };
+    if (typeof body.is_shared !== 'boolean') return c.json({ error: 'is_shared must be true or false' }, 400);
 
-    const body = (await c.req.json().catch(() => ({}))) as {
-      status?: CustomProfileLifecycleStatus;
-      note?: string | null;
-      publish_version?: number | null;
-      next_review_at?: string | null;
-    };
-    const statuses: CustomProfileLifecycleStatus[] = [
-      'draft',
-      'review',
-      'pilot',
-      'verified',
-      'rejected',
-      'suspended',
-      'deprecated',
-      'archived',
-    ];
-    if (!body.status || !statuses.includes(body.status)) {
-      return c.json({ error: 'Invalid lifecycle status' }, 400);
-    }
-    if (authUser.role !== 'super' && !['draft', 'review', 'archived'].includes(body.status)) {
-      return c.json({ error: 'Only super can approve, pilot, verify, reject, suspend, or deprecate Agents' }, 403);
-    }
-
-    try {
-      const updated = await getDb().customProfiles.transitionLifecycle(id, {
-        status: body.status,
-        actor_user_id: authUser.id,
-        note: typeof body.note === 'string' ? body.note.trim() || null : null,
-        publish_version: Number.isInteger(body.publish_version) ? body.publish_version : null,
-        next_review_at: typeof body.next_review_at === 'string' ? body.next_review_at : null,
-      });
-      if (!updated) return c.json({ error: 'Custom profile not found' }, 404);
-      const version = await visibleVersionFor(updated, authUser.id, authUser.role === 'super');
-      logger.info(
-        `[Profile] Lifecycle ${row.lifecycle_status} -> ${updated.lifecycle_status}: custom:${id} by ${authUser.id}`,
-      );
-      return c.json(formatCustomProfile(updated, undefined, version));
-    } catch (err) {
-      return c.json({ error: err instanceof Error ? err.message : 'Lifecycle transition failed' }, 409);
-    }
+    const updated = await getDb().customProfiles.setShared(id, body.is_shared);
+    if (!updated) return c.json({ error: 'Custom profile not found' }, 404);
+    logger.info(`[Profile] Team availability custom:${id} -> ${updated.is_shared} by ${authUser.id}`);
+    return c.json(formatCustomProfile(updated, undefined, await currentVersionOf(updated)));
   })
   /** GET /api/profiles/custom/:id — get custom profile detail */
   .get('/custom/:id', async (c) => {
@@ -580,10 +530,9 @@ const profiles = new Hono<AppEnv>()
       }
     }
 
-    const version = await visibleVersionFor(row, authUser.id, authUser.role === 'super');
-    return c.json(formatCustomProfile(row, undefined, version));
+    return c.json(formatCustomProfile(row, undefined, await currentVersionOf(row)));
   })
-  /** PUT /api/profiles/custom/:id — append immutable version and return asset to draft */
+  /** PUT /api/profiles/custom/:id — append an immutable version (team availability unchanged) */
   .put('/custom/:id', async (c) => {
     const authUser = getAuthUser(c);
     const id = parseInt(c.req.param('id'), 10);
@@ -592,8 +541,8 @@ const profiles = new Hono<AppEnv>()
     const row = await getDb().customProfiles.getById(id);
     if (!row) return c.json({ error: 'Custom profile not found' }, 404);
 
-    // Reviewers approve a submitted immutable manifest; only the asset owner
-    // may author the next draft version.
+    // Only the owner authors new versions. A shared Agent stays shared, and
+    // everyone who picks it next gets the new version.
     if (row.user_id !== authUser.id) {
       return c.json({ error: 'Access denied' }, 403);
     }
@@ -651,8 +600,9 @@ const profiles = new Hono<AppEnv>()
       updates.system_prompt = sanitizeForPrompt(body.system_prompt.trim());
     }
     if (body.max_steps !== undefined) updates.max_steps = body.max_steps;
-    if (body.is_shared === true) {
-      return c.json({ error: 'Sharing requires lifecycle review; use the lifecycle endpoint' }, 400);
+    // Echoing the current value back is harmless; changing it here is not.
+    if (body.is_shared !== undefined && body.is_shared !== row.is_shared) {
+      return c.json({ error: SHARING_IS_SUPER_ONLY }, 400);
     }
     if (body.avatar !== undefined) {
       updates.avatar = body.avatar;
@@ -674,7 +624,6 @@ const profiles = new Hono<AppEnv>()
     if (body.owner_backup_user_id !== undefined) {
       updates.owner_backup_user_id = body.owner_backup_user_id || null;
     }
-    if (body.review_due_at !== undefined) updates.review_due_at = body.review_due_at || null;
     updates.change_log = typeof body.change_log === 'string' ? body.change_log.trim() : '';
     updates.created_by = authUser.id;
 
@@ -687,7 +636,7 @@ const profiles = new Hono<AppEnv>()
     const version = await getDb().customProfiles.getCurrentVersion(id);
     return c.json(formatCustomProfile(updated, undefined, version));
   })
-  /** DELETE /api/profiles/custom/:id — archive asset without deleting version evidence */
+  /** DELETE /api/profiles/custom/:id — delete the Agent and its versions */
   .delete('/custom/:id', async (c) => {
     const authUser = getAuthUser(c);
     const id = parseInt(c.req.param('id'), 10);
@@ -701,9 +650,9 @@ const profiles = new Hono<AppEnv>()
       return c.json({ error: 'Access denied' }, 403);
     }
 
-    await getDb().customProfiles.archive(id, authUser.id);
-    logger.info(`[Profile] 🗄️ Custom profile archived: custom:${id} (${row.name}) by ${authUser.id}`);
-    return c.json({ success: true, status: 'archived' as const });
+    await getDb().customProfiles.delete(id);
+    logger.info(`[Profile] 🗑️ Custom profile deleted: custom:${id} (${row.name}) by ${authUser.id}`);
+    return c.json({ success: true });
   })
   // ─── System Profile Routes ───────────────────────────────
 
@@ -766,20 +715,16 @@ const profiles = new Hono<AppEnv>()
     // Append custom profiles for internal users
     // (typed element — an `any[]` here would collapse the whole route's
     // inferred response to `never` and break the hc contract)
-    // The aggregate endpoint feeds the chat picker, not the governance queue:
-    // even super only sees own + published assets here. Super's unshared review
-    // queue is intentionally confined to GET /custom and the Agents page.
+    // The aggregate endpoint feeds the chat picker: even a super only gets their
+    // own + team-shared Agents here. Every member's private Agents stay confined
+    // to GET /custom and the Agents page.
     const customRows = await getDb().customProfiles.listForUser(authUser.id);
     const baseMap = new Map(all.map((p) => [p.id, p]));
     const customProfilesList: Array<
       ReturnType<typeof formatCustomProfile> & { usage: (typeof systemProfiles)[number]['usage'] }
     > = await Promise.all(
       customRows.map(async (r) => {
-        const formatted = formatCustomProfile(
-          r,
-          baseMap,
-          await visibleVersionFor(r, authUser.id, authUser.role === 'super'),
-        );
+        const formatted = formatCustomProfile(r, baseMap, await currentVersionOf(r));
         const u = usageMap.get(formatted.id);
         return {
           ...formatted,

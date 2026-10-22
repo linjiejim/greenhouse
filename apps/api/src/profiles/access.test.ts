@@ -21,9 +21,7 @@ beforeEach(() => {
     id: 7,
     user_id: 'owner',
     is_shared: false,
-    lifecycle_status: 'draft',
     current_version: 3,
-    published_version: null,
   });
   mocks.getVersion.mockImplementation(async (_profileId: number, version: number) => ({ version }));
 });
@@ -37,13 +35,7 @@ describe('custom profile access policy', () => {
   it('allows the owner, a shared reader, and super', async () => {
     await expect(assertCustomProfileAccess(owner, 'custom:7')).resolves.toMatchObject({ id: 7 });
 
-    mocks.getById.mockResolvedValueOnce({
-      id: 7,
-      user_id: 'owner',
-      is_shared: true,
-      lifecycle_status: 'verified',
-      published_version: 2,
-    });
+    mocks.getById.mockResolvedValueOnce({ id: 7, user_id: 'owner', is_shared: true, current_version: 2 });
     await expect(assertCustomProfileAccess(other, 'custom:7')).resolves.toMatchObject({ id: 7 });
 
     mocks.getById.mockResolvedValueOnce({ id: 7, user_id: 'owner', is_shared: false });
@@ -62,30 +54,33 @@ describe('custom profile access policy', () => {
     await expect(assertCustomProfileAccess(owner, 'custom:not-a-number')).rejects.toMatchObject({ status: 400 });
   });
 
-  it('pins owners to current and shared readers to the reviewed published version', async () => {
+  it('pins owners and shared readers alike to the current version', async () => {
     await expect(pinProfileIdForUser(owner, 'custom:7')).resolves.toBe('custom:7@3');
+    await expect(pinProfileIdForUser(other, 'custom:7')).rejects.toMatchObject({ status: 403 });
 
-    mocks.getById.mockResolvedValue({
-      id: 7,
-      user_id: 'owner',
-      is_shared: true,
-      lifecycle_status: 'pilot',
-      current_version: 3,
-      published_version: 2,
-    });
-    await expect(pinProfileIdForUser(other, 'custom:7')).resolves.toBe('custom:7@2');
-    await expect(pinProfileIdForUser(other, 'custom:7@3')).rejects.toMatchObject({ status: 403 });
+    mocks.getById.mockResolvedValue({ id: 7, user_id: 'owner', is_shared: true, current_version: 3 });
+    await expect(pinProfileIdForUser(other, 'custom:7')).resolves.toBe('custom:7@3');
   });
 
-  it('fails closed for suspended assets instead of selecting another Agent', async () => {
+  it('keeps an existing pin resolving after the Agent moved on, but not a version that never existed', async () => {
+    mocks.getById.mockResolvedValue({ id: 7, user_id: 'owner', is_shared: true, current_version: 3 });
+    await expect(pinProfileIdForUser(other, 'custom:7@2')).resolves.toBe('custom:7@2');
+
+    mocks.getVersion.mockResolvedValueOnce(undefined);
+    await expect(pinProfileIdForUser(other, 'custom:7@9')).rejects.toMatchObject({ status: 404 });
+  });
+
+  it('ignores the retired review lifecycle entirely', async () => {
+    // A legacy row may still carry lifecycle_status; it no longer decides anything.
     mocks.getById.mockResolvedValue({
       id: 7,
       user_id: 'owner',
       is_shared: false,
-      lifecycle_status: 'suspended',
-      current_version: 3,
+      lifecycle_status: 'verified',
       published_version: 2,
+      current_version: 3,
     });
-    await expect(pinProfileIdForUser(owner, 'custom:7@2')).rejects.toMatchObject({ status: 403 });
+    await expect(pinProfileIdForUser(other, 'custom:7')).rejects.toMatchObject({ status: 403 });
+    await expect(pinProfileIdForUser(owner, 'custom:7')).resolves.toBe('custom:7@3');
   });
 });

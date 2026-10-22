@@ -97,26 +97,25 @@ v3 曾把模型收进 Agent 身份：想更强的推理就选 deep、想百万�
 - 用户界面统一称 Agent；Profile 只作为服务端契约与内部类型名。Name / System Prompt 是前端必填项，未保存改动关闭前必须确认。
 - Tools 的友好说明来自 registry `brief`；只对 registry 已明确声明的 proxy surface 展示 Read / Write 风险，Write 同时展示 Confirm。该展示不改变 allow-set、confirm gate 或 runtime 权限交集。
 
-### Custom Agent 的版本与生命周期（2026-08-12）
+### Custom Agent 的版本与团队可用（v1.4）
 
 - `custom_profiles` 是稳定资产身份；每次创建/编辑都会向 `custom_profile_versions` 追加完整、带 SHA-256
-  `manifest_hash` 的不可变 manifest。版本同时记录 change log、purpose、audience、risk、budget policy、
-  backup owner 与 review due date；服务层不提供版本 update/delete。
-- 生命周期为 `draft → review → pilot|verified|rejected`，发布后还可 `suspended` / `deprecated` / `archived`。
-  owner 只能编辑自己的 draft、提交审核、撤回或归档；super 在 Agents 页看到所有未归档资产，包括未共享 review，
-  并负责试点、验证、驳回、暂停和退役。只有 `pilot` / `verified` 会共享，非 owner 只能看到 published version。
-- **编辑已验证 Agent 会立即撤销发布**：创建新版本后资产回到 draft，`is_shared=false`、published/reviewer/review
-  字段清空，必须重新审核。当前模型没有独立 release channel，所以不会让旧 verified 继续出现在选择器；但旧的
-  `custom:<id>@<version>` manifest 保留，已 pin 的会话、定时任务与 Eval 仍按原证据运行。
-- 新会话、Scheduler task 与 Eval run 在落库前把 `custom:<id>` pin 为 `custom:<id>@<version>`；外部 Agent tool
-  proxy 同样先按真实用户权限 pin。`resolveProfileAsync()` 对缺失/畸形 custom 引用明确失败，绝不静默替换为 Sprouty。
-- 自动复核 worker 在 API boot 先扫一轮、随后每 15 分钟运行：`listReviewDue(at, limit)` 找到到期
-  pilot/verified，`listActiveWithOwners(limit, afterId)` 以稳定游标检查 owner/backup active 状态。超过复核期，
-  或 owner disabled 且没有 active backup 时，都会以逻辑 actor `system:agent-governance` 自动转为 suspended；
-  owner disabled 但 backup active 时保持可用，同时提醒 backup 与 super 复核归属。每条失败独立隔离，不阻断
-  后续 Agent；进程若在状态变更后、通知前退出，下一轮会从 system-suspended 行用同一 dedupe key 补齐永久通知。
-  worker 与通知不在 Profile 解析层实现。发布时若调用方和版本均未指定复核日期，low/medium risk 默认 90 天、
-  high risk 默认 60 天，保证所有已发布 Agent 都能进入到期扫描。
+  `manifest_hash` 的不可变 manifest。版本同时记录 change log、purpose、audience、risk、budget policy 与
+  backup owner；服务层不提供版本 update。
+- **私有，除非团队可用**：Agent 默认只有 owner 能看、能用；`is_shared=true` 时所有内部用户都能选用。
+  只有 super 能切换（`PUT /api/profiles/custom/:id/sharing`，Agents 页的开关）；owner 在 UI 里只看到一行
+  「请联系管理员」的提示，create/update 带 `is_shared` 想改值会被 400 拒绝。可见性判断只有一处：
+  `profiles/access.ts` 的 `canUseCustomProfile`（owner / super / `is_shared`）。
+- **非 owner 永远拿当前版本**：没有独立发布渠道。`custom:<id>` 对所有人都 pin 到 `current_version`；
+  编辑共享 Agent 不改变共享状态，下一次选用就拿到新版本。
+- **已 pin 的引用继续解析**：新会话、Automation 在落库前把 `custom:<id>` pin 为 `custom:<id>@<version>`
+  （外部 Agent tool proxy 同样先按真实用户权限 pin）；之后 owner 再编辑，已 pin 的会话 / Automation 仍按原
+  版本运行（`assertPinnedProfileExecutionAccess` 只要求「仍可使用该 Agent」+「该版本存在」）。取消共享会立刻
+  撤销非 owner 的执行权限。`resolveProfileAsync()` 对缺失/畸形 custom 引用明确失败，绝不静默替换为 Sprouty。
+- **删除是真删除**：`DELETE /api/profiles/custom/:id` 连同全部版本删除，pin 到它的会话与 Automation 随后
+  fail closed（「custom Agent no longer exists」）。
+- 审核生命周期（draft → review → pilot → verified）、复核期、自动治理 worker（`AGENT_GOVERNANCE_ENABLED`）
+  及其 `agent_review_due` / `agent_suspended` 通知已在 v1.4 删除；对应列是退役列，见 db AGENTS「退役表」。
 
 ## 默认预设 (`sprouty`)
 
@@ -137,7 +136,7 @@ stateless Agent/MCP 不开放该文件工具。
 
 - **owner-scoped 且 super 不例外**：工具构造时钉死 `scope: 'own'`，跨用户管理只存在于 `/api/tasks`
   控制台。模型拿到一个别人的 id 只会得到 `Not authorized`。
-- **校验与配额不在工具里**：cron/时区合法性、每人 10 条上限、最小间隔 1 小时、prompt 长度、
+- **校验与配额不在工具里**：cron/时区合法性、每人 10 条上限、最小间隔 15 分钟、prompt 长度、
   hidden profile 门（create 与 update 同一道，防 create-then-switch）全部在
   `scheduler/task-center.ts`，与 HTTP 路由共用同一份实现。
 - **无人值守上下文禁用写工具**：定时任务执行与 spawn 子会话都过
