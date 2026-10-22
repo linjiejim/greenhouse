@@ -71,7 +71,7 @@ export function TablesNotificationsDialog({ open, onClose }: { open: boolean; on
                 </div>
                 {!notification.read_at && (
                   <Button variant="ghost" size="sm" onClick={() => void markRead(notification)}>
-                    <Check size={13} className="mr-1.5" />
+                    <Check size={13} />
                     {t('tables.markRead')}
                   </Button>
                 )}

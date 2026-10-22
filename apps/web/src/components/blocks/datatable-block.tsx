@@ -182,7 +182,7 @@ export function DataTableBlock({ data, compact = false }: { data: DataTableData;
             )
           }
         >
-          <Download size={13} className="mr-1" aria-hidden="true" />
+          <Download size={13} aria-hidden="true" />
           {t('common.exportCsv')}
         </Button>
         <SearchInput

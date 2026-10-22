@@ -379,7 +379,7 @@ export function EmailAccountsPanel() {
               <span className="text-xs text-fg-muted">{t('emailAccounts.countLabel', { count: ctx.total })}</span>
               <div className="flex-1" />
               <Button size="sm" onClick={ctx.openCreate}>
-                <Plus size={14} className="mr-1" />
+                <Plus size={14} />
                 {t('emailAccounts.add')}
               </Button>
             </div>

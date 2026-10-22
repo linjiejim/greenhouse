@@ -1253,7 +1253,8 @@ export default {
       'Once connected, your tool list is your permission list and every tool documents its own usage; install output skills on demand with skill_query.',
     connectMcp: '1 · Connect the MCP server',
     connectMcpHint:
-      'Then run /mcp in your session and complete the browser sign-in. Use the server address provided by your administrator.',
+      'Add Greenhouse to Codex, Claude Code, Cursor or any MCP client once; the setup lives in Agent connections.',
+    openConnect: 'How to connect',
     startUsing: '2 · Start working',
     pasteToAgent: 'Paste this to your connected agent:',
     bootstrapPrompt:
@@ -1578,7 +1579,7 @@ export default {
     editPrompt: 'Edit task',
     egHermesAgent: 'e.g. Hermes Agent',
     egTranslateToEnglish: 'e.g. Translate to English',
-    addUser: '+ Add User',
+    addUser: 'Add user',
     addNewUser: 'Add new user',
     editUser: 'Edit User',
     resetPassword: 'Reset Password',
@@ -1721,9 +1722,9 @@ export default {
     tabActivity: 'Activity',
     tabConnect: 'Connect an agent',
     intro:
-      'Your own agents (Codex, Claude Code, Cursor…) work with Greenhouse over MCP as you. Reads just run. Writes to shared data wait for your approval unless you allowed them in advance; deletes always ask.',
+      'Your agents work as you over MCP. Reads run at once; changes to shared data wait for you; deletes always ask.',
     legacyOn:
-      'Transition mode is on: agents that still send confirm:true can write shared data without asking. An admin turns it off in Runtime Config › Agent access.',
+      'Transition mode: agents that send confirm:true still write shared data without asking (admins: Runtime Config › Agent access).',
     pendingEmpty: 'Nothing is waiting for you.',
     pendingEmptyHint:
       'When one of your agents wants to change shared data, the request shows up here and in your inbox.',
@@ -1761,6 +1762,7 @@ export default {
     basis_legacy_confirm: 'Legacy confirm',
     basis_approved: 'You approved',
     activityEmpty: 'Your agents have not written anything yet.',
+    connectFirst: 'Connect an agent',
     colTime: 'Time',
     colAgent: 'Agent',
     colOperation: 'Operation',
@@ -1770,7 +1772,7 @@ export default {
     input: 'Input',
     output: 'Output',
     error: 'Error',
-    grantName: 'Standing grant',
+    grantName: 'grant',
     grantsIntro:
       'A standing grant lets your agents make one kind of shared-data write without asking each time. It never covers deletes.',
     grantsEmpty: 'No standing grants. Add one here, or choose “Approve and allow” on a request.',
@@ -1976,9 +1978,6 @@ export default {
     searchDocs: 'Search documents...',
     searchSharedDocs: 'Search shared documents...',
     searchPersonalDocs: 'Search personal documents...',
-    emptyInternalDesc: 'Create your first internal knowledge document.',
-    emptyPersonalDesc: 'Create your first personal knowledge document.',
-    emptySharedDesc: 'Documents others share with you will appear here.',
     noArchivedDocs: 'No archived documents',
     noArchivedDesc: 'Archived documents will appear here.',
     docsCount: '{count} docs',
@@ -2932,8 +2931,7 @@ export default {
 
   taskCenter: {
     title: 'Execution Center',
-    description: 'Track background work, progress, and outcomes across Automations and Subagents.',
-    summary: 'Execution summary',
+    description: 'Track background work and outcomes: automations, subagents and your agents’ writes.',
     filters: 'Execution filters',
     kindFilter: 'Execution type',
     scopeFilter: 'Execution ownership',
@@ -2941,7 +2939,7 @@ export default {
     unavailableTitle: 'Execution Center is unavailable',
     loadMore: 'Load more',
     emptyTitle: 'No executions in this view',
-    emptyDescription: 'Automations and Subagents will appear here when they start.',
+    emptyDescription: 'Automations, subagents and your agents’ writes appear here when they start.',
     notFound: 'Execution not found',
     openRun: 'Open execution: {title}',
     inboxTitle: 'Waiting for me',

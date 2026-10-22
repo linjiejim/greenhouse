@@ -37,7 +37,7 @@ export function SkillHubPage({ subPath }: { subPath: string }) {
       layout="canvas"
       actions={
         <Button size="sm" onClick={() => setUploadOpen(true)}>
-          <Upload size={14} className="mr-1" />
+          <Upload size={14} />
           {t('skillHub.upload')}
         </Button>
       }

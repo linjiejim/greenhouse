@@ -244,7 +244,7 @@ export function ImageAnnotator({ src, imageId }: { src: string; imageId?: string
           {shapes.length === 0 ? t('annotate.hint') : t('annotate.markCount', { count: shapes.length })}
         </span>
         <Button size="sm" disabled={shapes.length === 0 || busy} onClick={sendToModel}>
-          {busy ? <Spinner className="mr-1.5 h-3.5 w-3.5" /> : <Send size={13} className="mr-1.5" />}
+          {busy ? <Spinner className="mr-1.5 h-3.5 w-3.5" /> : <Send size={13} />}
           {t('annotate.useInChat')}
         </Button>
       </div>

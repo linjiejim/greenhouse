@@ -137,7 +137,7 @@ export function AgentAccessPanel({ subPath }: { subPath: string }) {
           onChanged={() => void refresh().catch(() => undefined)}
         />
       )}
-      {active === 'connected' && <ConnectedAgents />}
+      {active === 'connected' && <ConnectedAgents onConnect={() => changeTab('connect')} />}
       {active === 'grants' && <StandingGrants />}
       {active === 'activity' && <AgentActivity />}
       {active === 'connect' && <ConnectGuide mcpUrl={overview?.mcp_url ?? `${window.location.origin}/api/mcp`} />}

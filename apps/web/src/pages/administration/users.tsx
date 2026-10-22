@@ -18,7 +18,7 @@ import {
 } from '../../components/ui';
 import { FormActions, FormError, FormField, FormGrid, FormSection } from '../../components/form';
 import { ModulePage } from '../../components/app/module-page';
-import { Pencil, Key, Ban, Check, Trash2, ArrowUpDown, Shield, Mail, RefreshCw, XCircle } from '../../lib/icons';
+import { Pencil, Key, Ban, Check, Trash2, ArrowUpDown, Shield, Mail, Plus, RefreshCw, XCircle } from '../../lib/icons';
 import { authFetch } from '../../lib/auth';
 import { formatTokens } from '../../lib/api';
 import {
@@ -361,6 +361,7 @@ export function UserManagementPanel() {
             setError('');
           }}
         >
+          <Plus size={14} />
           {t('settings.addUser')}
         </Button>
       }
@@ -489,7 +490,7 @@ export function UserManagementPanel() {
         <div className="bg-surface-raised border border-edge rounded-xl overflow-hidden overflow-x-auto">
           <table className="w-full text-sm min-w-[720px]">
             <thead>
-              <tr className="bg-surface-sunken border-b border-edge text-[11px] text-fg-muted font-medium uppercase tracking-wider">
+              <tr className="bg-surface-sunken border-b border-edge text-xs text-fg-muted font-medium">
                 <th className="text-left py-2.5 px-3">{t('usage.user')}</th>
                 <th className="text-left py-2.5 px-3">{t('common.role')}</th>
                 <th className="text-left py-2.5 px-3">{t('common.status')}</th>
@@ -712,7 +713,7 @@ export function UserManagementPanel() {
               <FormSection title={t('settings.account')} description={t('settings.accountActionsDescription')}>
                 <div className="flex flex-wrap gap-2">
                   <Button variant="ghost" size="sm" type="button" onClick={() => handleResetPassword(editUser)}>
-                    <Key size={13} className="mr-1.5" />
+                    <Key size={13} />
                     {t('settings.resetPassword')}
                   </Button>
                   {(editUser.status === 'invited' || editUser.status === 'reset_required') && (
@@ -724,22 +725,18 @@ export function UserManagementPanel() {
                       disabled={!passwordLinkCapability?.available}
                       title={passwordLinkUnavailableText || undefined}
                     >
-                      <RefreshCw size={13} className="mr-1.5" />
+                      <RefreshCw size={13} />
                       {t('settings.resendPasswordLink')}
                     </Button>
                   )}
                   {editUser.password_link && (
                     <Button variant="ghost" size="sm" type="button" onClick={() => setRevokeLinkTarget(editUser)}>
-                      <XCircle size={13} className="mr-1.5" />
+                      <XCircle size={13} />
                       {t('settings.revokePasswordLink')}
                     </Button>
                   )}
                   <Button variant="ghost" size="sm" type="button" onClick={() => handleToggleStatus(editUser)}>
-                    {editUser.status !== 'disabled' ? (
-                      <Ban size={13} className="mr-1.5" />
-                    ) : (
-                      <Check size={13} className="mr-1.5" />
-                    )}
+                    {editUser.status !== 'disabled' ? <Ban size={13} /> : <Check size={13} />}
                     {editUser.status !== 'disabled' ? t('settings.disable') : t('settings.enable')}
                   </Button>
                   <Button
@@ -750,7 +747,7 @@ export function UserManagementPanel() {
                     data-testid="users-delete"
                     className="text-danger hover:text-danger"
                   >
-                    <Trash2 size={13} className="mr-1.5" />
+                    <Trash2 size={13} />
                     {t('settings.deleteUser')}
                   </Button>
                 </div>

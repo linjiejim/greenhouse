@@ -334,7 +334,7 @@ export function SkillUploadDialog({ open, onClose, skill, onPublished }: Props) 
             {t('common.cancel')}
           </Button>
           <Button size="sm" onClick={() => void submit()} disabled={busy || submitError !== null}>
-            {busy ? <Spinner className="mr-1 h-3.5 w-3.5" /> : <Upload size={14} className="mr-1" />}
+            {busy ? <Spinner className="mr-1 h-3.5 w-3.5" /> : <Upload size={14} />}
             {t('skillHub.uploadDialog.publish')}
           </Button>
         </div>

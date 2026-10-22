@@ -58,7 +58,10 @@ export function ModulePage({
   const body = (
     <div
       className={joinClasses(
-        'mx-auto flex w-full flex-col',
+        // Left-aligned, not centered: Settings and Administration switch between
+        // form (960px) and list (1280px) modules, and a centered column made the
+        // page header jump sideways on every switch.
+        'mr-auto flex w-full flex-col',
         CONTENT_WIDTH[layout],
         isCanvas ? 'h-full min-h-0 px-3 py-3 md:px-4' : 'px-3 py-3 sm:px-5 md:px-6 md:py-4 lg:px-8',
         className,
@@ -94,12 +97,9 @@ export function ModulePage({
         {notice && <div data-module-page-slot="notice">{notice}</div>}
         {tabs && <div data-module-page-slot="tabs">{tabs}</div>}
         {toolbar && (
-          <div
-            data-module-page-slot="toolbar"
-            className="rounded-xl border border-edge bg-surface-raised px-3 py-2.5 shadow-sm"
-          >
-            {toolbar}
-          </div>
+          // A plain row, like the CRUD list toolbar: filters left, count and the
+          // main action right. No card around it, so every list page reads alike.
+          <div data-module-page-slot="toolbar">{toolbar}</div>
         )}
         <div className={joinClasses(isCanvas && 'min-h-0 flex-1 overflow-hidden', contentClassName)}>{children}</div>
       </div>

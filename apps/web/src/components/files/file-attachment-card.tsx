@@ -46,7 +46,7 @@ export function FileAttachmentCard({
         }
       }}
     >
-      {downloading ? <Spinner className="mr-1.5 h-3.5 w-3.5" /> : <Download size={14} className="mr-1.5" />}
+      {downloading ? <Spinner className="mr-1.5 h-3.5 w-3.5" /> : <Download size={14} />}
       {downloadLabel}
     </Button>
   ) : href ? (

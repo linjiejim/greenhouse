@@ -141,11 +141,11 @@ export function SproutyLabPage() {
           </p>
         </div>
         <Button variant="outline" size="sm" onClick={() => setConfig(DEFAULT_CONFIG)}>
-          <RotateCcw size={14} className="mr-1.5" />
+          <RotateCcw size={14} />
           Reset
         </Button>
         <Button size="sm" onClick={copyProfileJson}>
-          <Copy size={14} className="mr-1.5" />
+          <Copy size={14} />
           Copy profile JSON
         </Button>
       </header>

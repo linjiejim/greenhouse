@@ -124,7 +124,7 @@ export function CostValuePanel() {
           <option value="30d">{t('agents.costValue.period.thirtyDays')}</option>
         </Select>
         <Button size="sm" variant="ghost" onClick={() => void load()} disabled={loading}>
-          <RefreshCw size={13} className="mr-1" />
+          <RefreshCw size={13} />
           {t('common.refresh')}
         </Button>
       </div>

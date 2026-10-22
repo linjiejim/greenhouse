@@ -24,7 +24,7 @@ interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
 
 export function Button({ variant = 'default', size = 'md', className = '', children, ...props }: ButtonProps) {
   const base =
-    'inline-flex items-center justify-center font-semibold rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500/40 focus:ring-offset-1 focus:ring-offset-surface-raised disabled:opacity-50 disabled:cursor-not-allowed';
+    'inline-flex items-center justify-center gap-1.5 font-semibold rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500/40 focus:ring-offset-1 focus:ring-offset-surface-raised disabled:opacity-50 disabled:cursor-not-allowed';
   const variants: Record<string, string> = {
     default: 'bg-primary-600 text-white shadow-sm shadow-primary-900/10 hover:bg-primary-700',
     secondary: 'bg-surface-muted text-fg-secondary hover:bg-surface-muted',

@@ -1475,7 +1475,7 @@ export function ConversationPane({
                   disabled={forkingSession}
                   className="flex-shrink-0"
                 >
-                  <GitFork size={13} className="mr-1.5" />
+                  <GitFork size={13} />
                   {t(forkingSession ? 'chat.forking' : 'chat.fork')}
                 </Button>
               </>

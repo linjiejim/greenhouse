@@ -5,8 +5,8 @@
 
 import React, { useMemo } from 'react';
 import { CrudPage, defineCrud, type CrudDataSource } from '../crud';
-import { Tag, TagList } from '../../../components/ui';
-import { Key, Shield } from '../../../lib/icons';
+import { Button, Tag, TagList } from '../../../components/ui';
+import { Key, Plug, Shield } from '../../../lib/icons';
 import { fetchOAuthGrants, revokeOAuthGrant, type OAuthGrant } from '../../../lib/api/oauth';
 import { formatDate } from '../../../lib/utils';
 import { useT } from '../../../lib/i18n';
@@ -20,7 +20,7 @@ const grantsDataSource: CrudDataSource<OAuthGrant> = {
   remove: revokeOAuthGrant,
 };
 
-export function ConnectedAgents() {
+export function ConnectedAgents({ onConnect }: { onConnect: () => void }) {
   const t = useT();
   const schema = useMemo(
     () =>
@@ -95,11 +95,15 @@ export function ConnectedAgents() {
             <div className="text-center py-12">
               <Key size={22} className="mx-auto text-fg-faint mb-2" />
               <p className="text-sm text-fg-muted">{t('oauthGrants.empty')}</p>
+              <Button size="sm" variant="secondary" className="mt-3" onClick={onConnect}>
+                <Plug size={13} />
+                {t('agentAccess.connectFirst')}
+              </Button>
             </div>
           ),
         },
       }),
-    [t],
+    [t, onConnect],
   );
 
   return <CrudPage schema={schema} />;

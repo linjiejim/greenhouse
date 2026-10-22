@@ -104,7 +104,7 @@ export function TaskRunDetail({ runId, backHref = '#/executions' }: { runId: str
                 onClick={() => setCancelConfirm(true)}
                 disabled={!!busy}
               >
-                <Icon size={13} className="mr-1.5" aria-hidden="true" />
+                <Icon size={13} aria-hidden="true" />
                 {t(`taskCenter.command.${command}`)}
               </Button>
             );
@@ -117,7 +117,7 @@ export function TaskRunDetail({ runId, backHref = '#/executions' }: { runId: str
               onClick={() => void runCommand(command)}
               disabled={!!busy}
             >
-              <Icon size={13} className="mr-1.5" aria-hidden="true" />
+              <Icon size={13} aria-hidden="true" />
               {t(`taskCenter.command.${command}`)}
             </Button>
           );
@@ -148,7 +148,7 @@ export function TaskRunDetail({ runId, backHref = '#/executions' }: { runId: str
                 {t('common.back')}
               </Button>
               <Button variant="outline" size="sm" onClick={() => void load()}>
-                <RefreshCw size={13} className="mr-1" /> {t('common.tryAgain')}
+                <RefreshCw size={13} /> {t('common.tryAgain')}
               </Button>
             </>
           }

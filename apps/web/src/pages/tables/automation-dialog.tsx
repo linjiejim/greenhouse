@@ -207,7 +207,7 @@ export function TablesAutomationDialog({
         ) : (
           <div className="flex justify-end">
             <Button size="sm" onClick={startCreate} disabled={tables.length === 0}>
-              <Plus size={13} className="mr-1.5" />
+              <Plus size={13} />
               {t('tables.automations.newAutomation')}
             </Button>
           </div>
@@ -248,7 +248,7 @@ export function TablesAutomationDialog({
                     {automation.status === 'enabled' ? t('common.enabled') : t('common.disabled')}
                   </span>
                   <Button variant="ghost" size="sm" onClick={() => void loadRuns(automation.id)}>
-                    <History size={13} className="mr-1.5" />
+                    <History size={13} />
                     {t('tables.automations.runs')}
                   </Button>
                   <Button variant="outline" size="sm" disabled={saving} onClick={() => void toggle(automation)}>

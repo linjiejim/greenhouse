@@ -303,7 +303,7 @@ export function ShareDialog({ open, onClose, sessionId, sessionTitle, onShareCha
                 <Spinner className="w-4 h-4" />
               ) : (
                 <>
-                  <Share2 size={14} className="mr-1.5" />
+                  <Share2 size={14} />
                   {t('shareDialog.share')}
                 </>
               )}

@@ -736,7 +736,7 @@ export function BrandingStudioPanel() {
                     {t('brandingStudio.clearWorkspace')}
                   </Button>
                   <Button variant="outline" size="sm" onClick={resetPreview}>
-                    <RotateCcw size={13} className="mr-1" />
+                    <RotateCcw size={13} />
                     {t('brandingStudio.reset')}
                   </Button>
                 </div>

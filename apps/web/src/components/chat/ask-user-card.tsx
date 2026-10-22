@@ -155,7 +155,7 @@ export function AskUserCard({ data, onSubmit, submitted = false, submittedMessag
         !isSubmitted ? (
           <ArtifactCardActions hint={t('chat.askRequiredHint')}>
             <Button size="sm" onClick={handleSubmit} disabled={!canSubmit}>
-              <Send size={12} className="mr-1.5" />
+              <Send size={12} />
               {t('chat.askSubmit')}
             </Button>
           </ArtifactCardActions>

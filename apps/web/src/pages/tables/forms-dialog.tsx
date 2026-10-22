@@ -158,7 +158,7 @@ export function TablesFormsDialog({
         ) : (
           <div className="flex justify-end">
             <Button size="sm" onClick={startCreate}>
-              <Plus size={13} className="mr-1.5" />
+              <Plus size={13} />
               {t('tables.forms.newForm')}
             </Button>
           </div>

@@ -24,6 +24,24 @@ import { useExtensionsStore } from '../../stores/extensions-store';
 
 const RUNTIME_GROUPS: WorkspaceSettingGroup[] = ['llm', 'media', 'search', 'agent_access'];
 
+/** Registry descriptions mark identifiers with backticks; show them as inline code, not raw ticks. */
+function Description({ text, className }: { text: string; className: string }) {
+  const parts = text.split('`');
+  return (
+    <p className={className}>
+      {parts.map((part, index) =>
+        index % 2 === 1 ? (
+          <code key={index} className="rounded bg-surface-muted px-1 font-mono text-[10px] text-fg-secondary">
+            {part}
+          </code>
+        ) : (
+          <React.Fragment key={index}>{part}</React.Fragment>
+        ),
+      )}
+    </p>
+  );
+}
+
 function SourceBadge({ source }: { source: WorkspaceSettingView['source'] }) {
   const { t } = useI18n();
   const styles: Record<WorkspaceSettingView['source'], string> = {
@@ -148,7 +166,7 @@ export function RuntimeConfigPanel() {
                       </div>
                       <div>
                         <Toggle checked={effective} onChange={(next) => stage(v.key, next)} size="sm" label={v.label} />
-                        <p className="text-[10px] text-fg-faint mt-1 leading-relaxed">{v.description}</p>
+                        <Description text={v.description} className="text-[10px] text-fg-faint mt-1 leading-relaxed" />
                       </div>
                     </div>
                   );
@@ -201,7 +219,7 @@ export function RuntimeConfigPanel() {
                           </Button>
                         ) : null}
                       </div>
-                      <p className="text-[10px] text-fg-faint mt-0.5">{v.description}</p>
+                      <Description text={v.description} className="text-[10px] text-fg-faint mt-0.5" />
                     </div>
                   </div>
                 );

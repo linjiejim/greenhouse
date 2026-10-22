@@ -4,7 +4,7 @@
 - 每个子页面是一个 Panel 组件，在 `settings/index.tsx` 或 `administration/index.tsx` 中挂载；Panel 根节点必须是 `components/app/module-page.tsx` 的 `<ModulePage moduleId="..." layout="...">`。
 - `ModulePageShell` 只负责模块导航、移动端模块 tabs 和 viewport；`ModulePage` 负责页内身份区、内容宽度、插槽顺序与滚动。路由层不得再包一层 `overflow-y-auto`、页面 padding 或 `max-w-*`。
 - 页面图标、标题与说明只从 `lib/nav-registry.ts` 的 `moduleId` 派生；业务页不得重复手写 page header。页级扩展按 `actions → notice → tabs → toolbar → content` 放入对应 slot，只传当前页面真实需要的 slot，不预留 footer/aside。
-- 布局只选三种：配置表单用 `form`（最大 960px）、列表/数据页用 `list`（最大 1280px）、固定页头的沉浸工作区用 `canvas`（全宽）。不要在业务页面再发明宽度。
+- 布局只选三种：配置表单用 `form`（最大 960px）、列表/数据页用 `list`（最大 1280px）、固定页头的沉浸工作区用 `canvas`（全宽）。不要在业务页面再发明宽度。三种都**左对齐**（不居中），模块之间切换时页头位置不跳。
 - `form` / `list` 的纵向滚动由 `ModulePage` 拥有；`canvas` 的内容子树必须自己声明 `h-full min-h-0 overflow-y-auto`。宽表格只在自己的表格容器横向滚动，禁止让整个页面横向滚动。
 - 移动端页面头自动堆叠，`actions` 内按钮满宽、`toolbar` 换行，模块栏自动把当前项带入视口；调用方不要添加另一套移动端页头、滚动定位或按钮宽度规则。
 - 常规配置内容用 `SettingsPanel` + `SettingsSection`；统一 `space-y-4`、标题层级、说明与操作位，禁止手写另一套 Card header。字段内部用 `components/form` 的 `FormField` / `FormGrid` / `FormActions`。

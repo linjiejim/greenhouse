@@ -230,7 +230,7 @@ export function PromptsPage() {
               </span>
               {scope === 'mine' && (
                 <Button size="sm" onClick={ctx.openCreate}>
-                  <Plus size={14} className="mr-1" /> {t('settings.newPrompt')}
+                  <Plus size={14} /> {t('settings.newPrompt')}
                 </Button>
               )}
             </div>

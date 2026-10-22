@@ -432,7 +432,7 @@ export function ProjectDetailPage({ projectId }: { projectId: number }) {
               setShowCreate(true);
             }}
           >
-            <Plus size={14} className="mr-1" /> {t('projects.addTask')}
+            <Plus size={14} /> {t('projects.addTask')}
           </Button>
         </div>
       </div>

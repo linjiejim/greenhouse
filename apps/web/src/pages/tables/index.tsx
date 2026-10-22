@@ -96,7 +96,7 @@ function TablesHome() {
       layout="list"
       actions={
         <Button onClick={() => setDialog(true)} size="sm">
-          <Plus size={14} className="mr-1.5" />
+          <Plus size={14} />
           {t('tables.base.create')}
         </Button>
       }
@@ -447,23 +447,23 @@ function BaseWorkspace({
           </p>
         </div>
         <Button variant="ghost" size="sm" onClick={() => setNotifications(true)}>
-          <Inbox size={13} className="mr-1.5" />
+          <Inbox size={13} />
           {t('tables.home.notifications')}
         </Button>
         {canBuild && (
           <Button variant="outline" size="sm" onClick={() => setAutomations(true)}>
-            <Zap size={13} className="mr-1.5" />
+            <Zap size={13} />
             {t('tables.automations.title')}
           </Button>
         )}
         {workspace.role === 'owner' && (
           <>
             <Button variant="outline" size="sm" onClick={() => setAudit(true)}>
-              <History size={13} className="mr-1.5" />
+              <History size={13} />
               {t('tables.home.activity')}
             </Button>
             <Button variant="outline" size="sm" onClick={() => setShare(true)}>
-              <Share2 size={13} className="mr-1.5" />
+              <Share2 size={13} />
               {t('tables.home.share')}
             </Button>
           </>

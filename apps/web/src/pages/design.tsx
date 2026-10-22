@@ -657,25 +657,25 @@ function ButtonsSection() {
       <SubSection title="With Icons">
         <DemoRow>
           <Button size="sm">
-            <Plus size={12} className="mr-1.5" />
+            <Plus size={12} />
             Add Item
           </Button>
           <Button variant="outline" size="sm">
-            <Download size={12} className="mr-1.5" />
+            <Download size={12} />
             Export
           </Button>
           <Button variant="ghost" size="sm">
-            <Settings size={14} className="mr-1.5" />
+            <Settings size={14} />
             Settings
           </Button>
           <Button variant="destructive" size="sm">
-            <Trash2 size={12} className="mr-1.5" />
+            <Trash2 size={12} />
             Delete
           </Button>
         </DemoRow>
         <CodeSnippet
           code={`<Button size="sm">
-  <Plus size={12} className="mr-1.5" />
+  <Plus size={12} />
   Add Item
 </Button>`}
         />
@@ -904,7 +904,7 @@ function DetailKitSection() {
           badges={[<Badge key="a">priority</Badge>, <Badge key="b">eu</Badge>]}
           actions={
             <Button size="sm" variant="outline">
-              <Pencil size={12} className="mr-1" /> Edit
+              <Pencil size={12} /> Edit
             </Button>
           }
         />
@@ -1052,7 +1052,7 @@ function CardsSection() {
           </div>
           <div className="mt-3 pt-3 border-t border-edge flex justify-end">
             <Button size="sm" variant="ghost">
-              <Eye size={12} className="mr-1" />
+              <Eye size={12} />
               View
             </Button>
           </div>
@@ -1225,7 +1225,7 @@ function DialogsSection() {
       <SubSection title="Confirm Dialog">
         <DemoRow>
           <Button variant="destructive" size="sm" onClick={() => setConfirmOpen(true)}>
-            <Trash2 size={12} className="mr-1.5" />
+            <Trash2 size={12} />
             Delete Item
           </Button>
         </DemoRow>
@@ -1334,19 +1334,19 @@ function FeedbackSection() {
       <SubSection title="Toast Notifications">
         <DemoRow>
           <Button size="sm" variant="outline" onClick={() => toast('Information message', 'info')}>
-            <Info size={12} className="mr-1.5" />
+            <Info size={12} />
             Info
           </Button>
           <Button size="sm" variant="outline" onClick={() => toast('Operation successful!', 'success')}>
-            <Check size={12} className="mr-1.5" />
+            <Check size={12} />
             Success
           </Button>
           <Button size="sm" variant="outline" onClick={() => toast('Please check your input', 'warning')}>
-            <AlertTriangle size={12} className="mr-1.5" />
+            <AlertTriangle size={12} />
             Warning
           </Button>
           <Button size="sm" variant="outline" onClick={() => toast('Something went wrong', 'error')}>
-            <Trash2 size={12} className="mr-1.5" />
+            <Trash2 size={12} />
             Error
           </Button>
           <Button
@@ -1565,7 +1565,7 @@ function EmptyStatesSection() {
             description="Start a conversation to see messages here."
             action={
               <Button size="sm">
-                <Plus size={14} className="mr-1" /> New message
+                <Plus size={14} /> New message
               </Button>
             }
           />

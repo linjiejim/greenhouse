@@ -121,7 +121,7 @@ export function TaskCaptureCard({
               }
               onClick={save}
             >
-              <Bookmark size={13} className="mr-1.5" />
+              <Bookmark size={13} />
               {saving ? t('tasks.creating') : t('tasks.create')}
             </Button>
           ) : (

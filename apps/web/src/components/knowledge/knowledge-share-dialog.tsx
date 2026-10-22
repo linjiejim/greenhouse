@@ -238,7 +238,7 @@ export function KnowledgeShareDialog({ open, onClose, docId, docTitle, onChanged
               onClick={handleShare}
               disabled={submitting || (selectedUsers.size === 0 && selectedGroups.size === 0)}
             >
-              {submitting ? <Spinner className="w-4 h-4" /> : <Share2 size={14} className="mr-1.5" />}
+              {submitting ? <Spinner className="w-4 h-4" /> : <Share2 size={14} />}
               {t('knowledge.share')}
             </Button>
           </div>

@@ -28,6 +28,7 @@ import {
 } from '../components/ui';
 import { AlertTriangle, CheckCircle, Clock, History, Play, Plus, Zap, XCircle } from '../lib/icons';
 import * as api from '../lib/api';
+import { DEFAULT_AGENT_ID } from '../lib/agent-constants';
 import type { ScheduledTask, ScheduledTaskInput } from '../lib/api';
 import type { AutomationRunEntry } from '@greenhouse/types/api';
 import {
@@ -550,7 +551,13 @@ export function AutomationsPanel() {
     [currentUser?.id, scope],
   );
 
-  const profileName = useCallback((id: string) => profiles.find((p) => p.id === id)?.name ?? id, [profiles]);
+  // Retired system ids (`team`, `default`, …) run as the default agent on the server; name them so.
+  const profileName = useCallback(
+    (id: string) =>
+      profiles.find((p) => p.id === id)?.name ??
+      (id.startsWith('custom:') ? id : (profiles.find((p) => p.id === DEFAULT_AGENT_ID)?.name ?? id)),
+    [profiles],
+  );
 
   const schema = useMemo(
     () =>
@@ -861,7 +868,7 @@ export function AutomationsPanel() {
               </span>
               {scope === 'mine' && (
                 <Button size="sm" onClick={ctx.openCreate}>
-                  <Plus size={14} className="mr-1" />
+                  <Plus size={14} />
                   {t('automations.create')}
                 </Button>
               )}

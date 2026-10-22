@@ -1,8 +1,8 @@
 import { isRuntimeRunActive, type RuntimeRun } from '@greenhouse/types/runtime';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Button, Card, EmptyState, Select, SkeletonCard, Tabs } from '../../components/ui';
+import { Button, EmptyState, Select, SkeletonCard, Tabs } from '../../components/ui';
 import { ModulePage } from '../../components/app/module-page';
-import { CheckCircle2, ClipboardList, ListTodo, RefreshCw, ShieldAlert } from '../../lib/icons';
+import { ClipboardList, RefreshCw } from '../../lib/icons';
 import { useT } from '../../lib/i18n';
 import {
   getRuntimeSummary,
@@ -25,35 +25,6 @@ import {
 import { TaskRunList } from './task-list';
 
 const FALLBACK_REFRESH_MS = 15_000;
-
-function SummaryStrip({ summary }: { summary: RuntimeSummary | null }) {
-  const t = useT();
-  const counts = taskCenterCounts(summary);
-  const cards = [
-    { key: 'attention', label: t('taskCenter.tab.attention'), count: counts.attention, icon: ShieldAlert },
-    { key: 'active', label: t('taskCenter.tab.active'), count: counts.active, icon: ListTodo },
-    { key: 'completed', label: t('taskCenter.tab.completed'), count: counts.completed, icon: CheckCircle2 },
-    { key: 'all', label: t('taskCenter.tab.all'), count: counts.all, icon: ClipboardList },
-  ];
-  return (
-    <div className="grid grid-cols-2 gap-2 md:grid-cols-4" aria-label={t('taskCenter.summary')}>
-      {cards.map((card) => {
-        const Icon = card.icon;
-        return (
-          <Card key={card.key} className="flex items-center gap-3 p-3">
-            <div className="rounded-lg bg-primary-subtle p-2 text-primary-fg">
-              <Icon size={16} aria-hidden="true" />
-            </div>
-            <div>
-              <div className="text-lg font-semibold leading-tight text-fg">{card.count}</div>
-              <div className="text-[11px] text-fg-muted">{card.label}</div>
-            </div>
-          </Card>
-        );
-      })}
-    </div>
-  );
-}
 
 export function TaskCenter({
   initialKind = 'all',
@@ -206,7 +177,7 @@ export function TaskCenter({
       actions={
         <>
           <Button variant="outline" size="sm" onClick={() => void load()} disabled={loading}>
-            <RefreshCw size={13} className="mr-1.5" aria-hidden="true" />
+            <RefreshCw size={13} aria-hidden="true" />
             {t('common.refresh')}
           </Button>
         </>
@@ -223,7 +194,8 @@ export function TaskCenter({
       }
       toolbar={
         <div className="flex flex-wrap items-center gap-2">
-          <div className="min-w-0 flex-1 overflow-x-auto scrollbar-hide">
+          {/* Own row on phones (the selects would squeeze the tabs to one clipped pill). */}
+          <div className="min-w-0 basis-full overflow-x-auto scrollbar-hide sm:basis-0 sm:flex-1">
             <Tabs
               tabs={tabs}
               active={tab}
@@ -258,9 +230,7 @@ export function TaskCenter({
         </div>
       }
     >
-      <SummaryStrip summary={summary} />
-
-      <div className="mt-3">
+      <div>
         {loading && runs.length === 0 && interruptItems.length === 0 ? (
           <div className="grid gap-2">
             <SkeletonCard />

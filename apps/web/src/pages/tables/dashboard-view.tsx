@@ -397,7 +397,7 @@ export function TablesDashboardView({ dashboardId, tables, role }: TablesDashboa
         </div>
         {canBuild && (
           <Button size="sm" onClick={() => openWidgetDialog()}>
-            <Plus size={13} className="mr-1.5" />
+            <Plus size={13} />
             {t('tables.dashboard.widget')}
           </Button>
         )}

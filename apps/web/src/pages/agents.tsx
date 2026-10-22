@@ -192,14 +192,6 @@ export function AgentsPage() {
     <ModulePage
       moduleId="workspace.agents"
       layout="list"
-      actions={
-        activeTab === 'agents' && scope === 'mine' ? (
-          <Button onClick={openCreate} size="sm">
-            <Plus size={14} className="mr-1" />
-            {t('agents.create')}
-          </Button>
-        ) : undefined
-      }
       tabs={
         isSuper ? (
           <Tabs
@@ -215,18 +207,27 @@ export function AgentsPage() {
       }
       toolbar={
         activeTab === 'agents' ? (
-          <FilterPills
-            items={assetScopeItems(isSuper, {
-              mine: t('history.scopeMine'),
-              shared: t('history.scopeShared'),
-              team: t('history.scopeTeam'),
-            })}
-            activeKey={scope}
-            onChange={(key) => setScope((key ?? 'mine') as AssetScope)}
-            variant="segment"
-            fill
-            className="w-full sm:w-auto sm:min-w-80"
-          />
+          <div className="flex flex-wrap items-center gap-2">
+            <FilterPills
+              items={assetScopeItems(isSuper, {
+                mine: t('history.scopeMine'),
+                shared: t('history.scopeShared'),
+                team: t('history.scopeTeam'),
+              })}
+              activeKey={scope}
+              onChange={(key) => setScope((key ?? 'mine') as AssetScope)}
+              variant="segment"
+              fill
+              className="w-full sm:w-auto sm:min-w-80"
+            />
+            <div className="hidden flex-1 sm:block" />
+            {scope === 'mine' && (
+              <Button onClick={openCreate} size="sm" className="w-full sm:w-auto">
+                <Plus size={14} />
+                {t('agents.create')}
+              </Button>
+            )}
+          </div>
         ) : undefined
       }
     >

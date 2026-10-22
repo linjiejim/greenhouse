@@ -79,8 +79,10 @@ describe('Execution Center view model', () => {
   });
 
   it('keeps all durable user task kinds in the shared filter', () => {
-    expect(taskCenterKinds('all')).toEqual(['mission', 'workflow', 'automation', 'subagent']);
+    // Retired kinds stay in All so their history remains visible.
+    expect(taskCenterKinds('all')).toEqual(['mission', 'workflow', 'automation', 'subagent', 'agent_write']);
     expect(taskCenterKinds('automation')).toEqual(['automation']);
+    expect(taskCenterKinds('agent_write')).toEqual(['agent_write']);
   });
 
   it('derives a readable title without changing the complete stored prompt', () => {

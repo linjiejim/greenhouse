@@ -389,7 +389,9 @@ function App() {
   // the agent's client actions on behalf of the main window.
   useEffect(() => {
     if (isSatellite) return;
-    void loadReleaseNotes();
+    // Release notes ship only inside desktop web bundles; a browser fetch just
+    // 404s and logs two console errors on every page load.
+    if (isDesktop()) void loadReleaseNotes();
     reportDesktopBootOk();
     initDesktop();
   }, [isSatellite]);

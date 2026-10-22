@@ -232,7 +232,7 @@ export function TagManagerDialog({ open, onClose, onTagsChanged }: TagManagerDia
             </div>
           ) : (
             <Button variant="outline" size="sm" className="w-full" onClick={() => setShowCreate(true)}>
-              <Plus size={14} className="mr-1" />
+              <Plus size={14} />
               {t('sessionTags.newTag')}
             </Button>
           )}

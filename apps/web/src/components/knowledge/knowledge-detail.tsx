@@ -571,7 +571,7 @@ export function KnowledgeVersionsDialog({
                           title={t('knowledge.restoreToVersion')}
                           onClick={() => setConfirmVersion(v.version)}
                         >
-                          <RotateCcw size={13} className="mr-1" /> {t('common.restore')}
+                          <RotateCcw size={13} /> {t('common.restore')}
                         </Button>
                       ))}
                   </div>

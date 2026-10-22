@@ -47,7 +47,7 @@ export function HtmlPreviewBlock({
         <div className="flex flex-wrap items-center gap-2">
           {hostMounted && (
             <Button size="sm" onClick={() => openSidePane({ kind: 'html', code, title })}>
-              <PanelRight size={13} className="mr-1.5" />
+              <PanelRight size={13} />
               {t('sidePane.openPreview')}
             </Button>
           )}

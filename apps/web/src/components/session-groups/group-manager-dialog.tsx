@@ -237,7 +237,7 @@ export function GroupManagerDialog({ open, onClose, onGroupsChanged }: GroupMana
             </div>
           ) : (
             <Button variant="outline" size="sm" className="w-full" onClick={() => setShowCreate(true)}>
-              <Plus size={14} className="mr-1" />
+              <Plus size={14} />
               {t('sessionGroups.newGroup')}
             </Button>
           )}

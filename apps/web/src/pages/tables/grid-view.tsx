@@ -979,7 +979,7 @@ export function TablesGridView({ table, tables, role, users }: TablesGridViewPro
                   setFieldDialog(null);
                 }}
               >
-                <Archive size={13} className="mr-1.5" />
+                <Archive size={13} />
                 {t('common.archive')}
               </Button>
             ) : (
@@ -1164,7 +1164,7 @@ export function TablesGridView({ table, tables, role, users }: TablesGridViewPro
               }
               disabled={!schema?.fields.length || filterDrafts.length >= 20}
             >
-              <Plus size={13} className="mr-1.5" />
+              <Plus size={13} />
               {t('tables.condition')}
             </Button>
             <div className="flex gap-2">

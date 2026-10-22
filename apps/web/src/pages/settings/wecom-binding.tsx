@@ -94,12 +94,12 @@ export function WeComBindingCard() {
         </div>
         {state.binding ? (
           <Button size="sm" variant="outline" disabled={busy} onClick={unbind}>
-            {busy ? <Spinner className="mr-1.5 h-3.5 w-3.5" /> : <LogOut size={14} className="mr-1.5" />}
+            {busy ? <Spinner className="mr-1.5 h-3.5 w-3.5" /> : <LogOut size={14} />}
             {t('wecom.unbind')}
           </Button>
         ) : (
           <Button size="sm" disabled={busy} onClick={bind}>
-            {busy ? <Spinner className="mr-1.5 h-3.5 w-3.5" /> : <LogIn size={14} className="mr-1.5" />}
+            {busy ? <Spinner className="mr-1.5 h-3.5 w-3.5" /> : <LogIn size={14} />}
             {t('wecom.bind')}
           </Button>
         )}

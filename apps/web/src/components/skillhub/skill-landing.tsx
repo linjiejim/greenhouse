@@ -10,17 +10,16 @@
 
 import React, { useMemo, useState } from 'react';
 import { Button, toast } from '../ui';
-import { Copy, Package, Upload } from '../../lib/icons';
+import { Copy, Package, Plug, Upload } from '../../lib/icons';
 import { useAuthStore } from '../../stores';
 import { countSkillOrigins, ORIGIN_ORDER } from './grouping';
 import { SkillUploadDialog } from './skill-upload-dialog';
 import { useSkills } from './use-skills';
 import { useT } from '../../lib/i18n';
 
-// The MCP endpoint of the deployment the user is looking at — same origin as
-// the web app, so a self-hosted instance never has to configure it separately.
-const MCP_URL = `${typeof window !== 'undefined' ? window.location.origin : ''}/api/mcp`;
-const CONNECT_CMD = `claude mcp add --transport http greenhouse ${MCP_URL}`;
+// Connecting an agent is explained once, in Settings › Agent connections ›
+// Connect; this page links there and keeps only the skill-specific step.
+const CONNECT_HREF = '#/settings/agent-connections/connect';
 
 async function copy(text: string, okMsg: string, errorMsg: string) {
   try {
@@ -73,7 +72,7 @@ export function SkillHubLanding({ showHeader = true }: { showHeader?: boolean })
             <p className="mt-1 text-sm text-fg-muted max-w-2xl">{t('skillHub.description')}</p>
           </div>
           <Button size="sm" className="flex-shrink-0" onClick={() => setUploadOpen(true)}>
-            <Upload size={14} className="mr-1" />
+            <Upload size={14} />
             {t('skillHub.upload')}
           </Button>
         </div>
@@ -98,8 +97,11 @@ export function SkillHubLanding({ showHeader = true }: { showHeader?: boolean })
 
         <div className="space-y-2">
           <div className="text-xs font-medium text-fg-secondary">{t('skillHub.connectMcp')}</div>
-          <CopyBlock text={CONNECT_CMD} />
           <p className="text-[11px] text-fg-faint">{t('skillHub.connectMcpHint')}</p>
+          <Button size="sm" variant="secondary" onClick={() => (window.location.hash = CONNECT_HREF)}>
+            <Plug size={13} />
+            {t('skillHub.openConnect')}
+          </Button>
         </div>
 
         <div className="space-y-2">

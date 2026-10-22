@@ -135,7 +135,7 @@ function CreateGroupRow({ onCreated }: { onCreated: () => void }) {
         className="max-w-xs"
       />
       <Button size="sm" onClick={handleCreate} disabled={creating || !newName.trim()}>
-        {creating ? <Spinner className="w-4 h-4 mr-1" /> : <Plus size={14} className="mr-1" />}
+        {creating ? <Spinner className="w-4 h-4 mr-1" /> : <Plus size={14} />}
         {t('groups.createGroup')}
       </Button>
     </div>

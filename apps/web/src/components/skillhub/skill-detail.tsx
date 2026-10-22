@@ -466,12 +466,12 @@ export function ScanPanel({
             disabled={busy}
             onClick={() => void run(() => decideSkillScan(skill.name, 'clean'), t('skillHub.markedCleanToast'))}
           >
-            <CheckCircle size={14} className="mr-1" />
+            <CheckCircle size={14} />
             {t('skillHub.markClean')}
           </Button>
           {!blocked && (
             <Button variant="ghost" size="sm" disabled={busy} onClick={() => onDecide(true)}>
-              <ShieldAlert size={14} className="mr-1 text-danger" />
+              <ShieldAlert size={14} className="text-danger" />
               {t('skillHub.confirmMalicious')}
             </Button>
           )}
@@ -481,7 +481,7 @@ export function ScanPanel({
             disabled={busy}
             onClick={() => void run(() => rescanSkill(skill.name), t('skillHub.rescanDone'))}
           >
-            <RefreshCw size={14} className="mr-1" />
+            <RefreshCw size={14} />
             {t('skillHub.rescan')}
           </Button>
         </div>

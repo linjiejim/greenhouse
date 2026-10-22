@@ -305,11 +305,6 @@ function DocsScopeView({
 
   const isTeam = scope === 'team';
   const isShared = scope === 'shared';
-  const labels = isTeam
-    ? { empty: t('knowledge.noDocs'), emptyDesc: t('knowledge.emptyInternalDesc') }
-    : isShared
-      ? { empty: t('knowledge.noSharedDocs'), emptyDesc: t('knowledge.emptySharedDesc') }
-      : { empty: t('knowledge.noPersonalDocs'), emptyDesc: t('knowledge.emptyPersonalDesc') };
 
   // Landing path for the current scope (Back target, post-archive redirect).
   const listBasePath =
@@ -546,7 +541,7 @@ function DocsScopeView({
           </div>
           {canEdit && (
             <Button size="sm" className="order-2 sm:order-none flex-shrink-0" onClick={() => openEdit(selectedDoc)}>
-              <Edit3 size={14} className="mr-1" /> {t('common.edit')}
+              <Edit3 size={14} /> {t('common.edit')}
             </Button>
           )}
         </div>
@@ -601,11 +596,11 @@ function DocsScopeView({
             onClick={() => setShowArchived((v) => !v)}
             aria-pressed={showArchived}
           >
-            <Archive size={14} className="mr-1" /> {t('knowledge.showArchived')}
+            <Archive size={14} /> {t('knowledge.showArchived')}
           </Button>
           {!isShared && (
             <Button size="sm" onClick={openCreate}>
-              <Plus size={14} className="mr-1" /> {t('knowledge.newDocBtn')}
+              <Plus size={14} /> {t('knowledge.newDocBtn')}
             </Button>
           )}
         </div>
@@ -613,7 +608,11 @@ function DocsScopeView({
 
       <div className="flex-1 overflow-y-auto px-3 md:px-4 py-3">
         {!showArchived ? (
-          <EmptyState icon={FileEdit} title={t('knowledge.pickFromSidebar')} description={labels.emptyDesc} />
+          <EmptyState
+            icon={FileEdit}
+            title={t('knowledge.pickFromSidebar')}
+            description={t('knowledge.pickFromSidebarDesc')}
+          />
         ) : archivedLoading ? (
           <LoadingSpinner />
         ) : archivedDocs.length === 0 ? (
@@ -644,7 +643,7 @@ function DocsScopeView({
                       handleRestore(doc);
                     }}
                   >
-                    <RotateCcw size={13} className="mr-1" /> {t('common.restore')}
+                    <RotateCcw size={13} /> {t('common.restore')}
                   </Button>
                 }
                 onClick={() => (window.location.hash = docPath(doc))}
@@ -973,7 +972,7 @@ function EditorView({
           </span>
         )}
         <Button size="sm" onClick={onSave} disabled={saving}>
-          {saving ? <Spinner className="mr-1" /> : <Save size={14} className="mr-1" />}
+          {saving ? <Spinner className="mr-1" /> : <Save size={14} />}
           {t('common.save')}
         </Button>
       </div>

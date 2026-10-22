@@ -345,7 +345,7 @@ export function ProjectsPage() {
       layout="canvas"
       actions={
         <Button size="sm" onClick={() => setShowCreate(true)} data-testid="projects-new">
-          <Plus size={14} className="mr-1" /> {t('projects.createProject')}
+          <Plus size={14} /> {t('projects.createProject')}
         </Button>
       }
       toolbar={

@@ -105,7 +105,7 @@ export function AttachmentPicker({ baseId, value, onChange }: AttachmentPickerPr
           {value.length === 0 && <span className="text-xs text-fg-faint">{t('tables.attachments.noneSelected')}</span>}
         </div>
         <Button type="button" variant="outline" size="sm" onClick={() => setOpen(true)}>
-          <Paperclip size={13} className="mr-1.5" />
+          <Paperclip size={13} />
           {t('tables.attachments.chooseOrUpload')}
         </Button>
       </div>
@@ -137,7 +137,7 @@ export function AttachmentPicker({ baseId, value, onChange }: AttachmentPickerPr
               disabled={uploading}
               onClick={() => fileInput.current?.click()}
             >
-              {uploading ? <Spinner /> : <Upload size={13} className="mr-1.5" />}
+              {uploading ? <Spinner /> : <Upload size={13} />}
               {t('common.upload')}
             </Button>
             <input
