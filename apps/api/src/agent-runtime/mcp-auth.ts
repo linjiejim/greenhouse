@@ -20,7 +20,7 @@ import { getRequestSourceIp } from '../security/request-ip.js';
 import type { AgentIdentity } from './api-auth.js';
 import { MUTATING_PROXY_ALLOWLIST } from './tool-proxy.js';
 import { mcpToolIdsForGroups } from '../tools/registry.js';
-import { InMemoryRateLimiter } from '../security/security.js';
+import { checkRateLimit } from '../security/security.js';
 import {
   getMcpResourceUrl,
   getProtectedResourceMetadataUrl,
@@ -36,7 +36,6 @@ import {
 /** Channel recorded for MCP traffic. Reuses the existing `a2a` enum value. */
 export const MCP_AUDIT_CHANNEL = 'a2a' as const;
 
-const oauthLimiter = new InMemoryRateLimiter(120_000);
 const OAUTH_RPM_LIMIT = 120;
 const OAUTH_RPD_LIMIT = 10_000;
 
@@ -145,12 +144,12 @@ async function oauthIdentityMiddleware(c: Context, rawToken: string, next: Next)
   );
 
   const rateKey = `${resolved.client.id}:${resolved.grant.user_id}`;
-  const rpm = oauthLimiter.check(`mcp-oauth:rpm:${rateKey}`, 60_000, OAUTH_RPM_LIMIT);
+  const rpm = await checkRateLimit(`mcp-oauth:rpm:${rateKey}`, 60_000, OAUTH_RPM_LIMIT);
   c.header('X-RateLimit-Limit', String(OAUTH_RPM_LIMIT));
   c.header('X-RateLimit-Remaining', String(Math.max(0, rpm.remaining)));
   c.header('X-RateLimit-Reset', String(Math.ceil(rpm.resetAt / 1000)));
   if (!rpm.allowed) return c.json({ error: { message: 'Rate limit exceeded', type: 'rate_limit_error' } }, 429);
-  const rpd = oauthLimiter.check(`mcp-oauth:rpd:${rateKey}`, 86_400_000, OAUTH_RPD_LIMIT);
+  const rpd = await checkRateLimit(`mcp-oauth:rpd:${rateKey}`, 86_400_000, OAUTH_RPD_LIMIT);
   if (!rpd.allowed) return c.json({ error: { message: 'Daily rate limit exceeded', type: 'rate_limit_error' } }, 429);
 
   if (!resolved.token.last_used_at || Date.now() - new Date(resolved.token.last_used_at).getTime() > 5 * 60 * 1000) {

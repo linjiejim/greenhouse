@@ -22,17 +22,22 @@ let ownerRow: { id: string; role: string; status: string } | null = null;
 let identityBinding: { user_id: string } | null = null;
 const upsertBinding = vi.fn();
 
-vi.mock('@greenhouse/db', () => ({
-  getDb: () => ({
-    users: { getById: async (id: string) => (ownerRow && ownerRow.id === id ? ownerRow : null) },
-    providerTokens: {
-      upsert: upsertBinding,
-      findByProviderUserId: async () => identityBinding,
-      get: async () => null,
-      delete: async () => {},
-    },
-  }),
-}));
+vi.mock('@greenhouse/db', async () => {
+  // Login state lives in the database now; an in-memory fake keeps the same contract.
+  const { fakeLoginStates } = await import('./fake-login-states.js');
+  return {
+    getDb: () => ({
+      oauthLoginStates: fakeLoginStates,
+      users: { getById: async (id: string) => (ownerRow && ownerRow.id === id ? ownerRow : null) },
+      providerTokens: {
+        upsert: upsertBinding,
+        findByProviderUserId: async () => identityBinding,
+        get: async () => null,
+        delete: async () => {},
+      },
+    }),
+  };
+});
 
 // Keep getWeComConfig real (it is a pure env read — the three-key gate is part
 // of what we test); only the upstream identity exchange is stubbed.

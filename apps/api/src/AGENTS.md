@@ -51,7 +51,8 @@ Automation、Tasks、Agents 的 `Mine / Shared / Team` 口径见 [personal asset
 ### 安全 (`security/security.ts`)
 - 用户输入在传给 LLM 前**必须**经过 `sanitizeForPrompt()` 处理
 - 使用 `checkPromptInjection()` 检测和记录注入攻击
-- 限流使用共享的 `InMemoryRateLimiter` 类——不要单独实现
+- 限流一律走 `checkRateLimit(key, windowMs, max)`——不要单独实现。计数在 `rate_limit_buckets`（固定窗口、按 epoch 对齐，桶 key = `<key>:<窗口起点 ms>`，一次原子 upsert-increment），所以重启不清零、多实例共享；限额与 `X-RateLimit-Limit/Remaining/Reset` 响应头不变。过期桶由 `index.ts` 的五分钟 upkeep 清扫。
+- **限流故意 fail-open**：计数表调用失败时放行，并每分钟最多记一条 warn（带期间放行数）。限流是防滥用的刹车，不是鉴权：后面的路由照样查库鉴权，库挂了本就过不去；而计数表一次抖动若 fail-closed，就是对全员 429。别把它改成 fail-closed，也别在路由里再包一层 try/catch。
 - 限流/审计来源 IP 必须走 `security/request-ip.ts`：默认使用 socket peer；只有 loopback 或 `TRUSTED_PROXY_IPS` 明确登记的反代才可提供 `X-Forwarded-For/X-Real-IP`，禁止直接信任请求头。
 - 文件上传：通过 `validateMagicBytes()` 校验 MIME 类型
 - Agent 工具下载公网图片必须走 `security/network.ts` 的 `fetchPublicImage()`：只准 public HTTPS，连接时 DNS 校验、每跳重定向复核、响应大小上限和图片魔数缺一不可；禁止对模型输入 URL 直接 `fetch()`。
@@ -161,7 +162,7 @@ v1 只接 DeepSeek 与 OpenAI 兼容服务，它们**自动**缓存 prompt 前�
 - **一个企微身份只能绑一个账号**（`findByProviderUserId` 查重）：否则两个人都能绑同一位同事，然后都收到他的通知。
 - **个人推送的收件人只从绑定派生**：`scheduled_tasks.notify_wecom` 是**布尔**，与 `notify_email` 同构——通道里没有任何可供瞄准的收件人字段，这正是它能免确认的原因。知识库 @提及是在群通道之外**叠加**一条个人消息，两条腿各自独立（群未配置不影响 DM，未绑定的收件人只是收不到）。
 - **绑定存 `user_provider_tokens(provider='wecom')`，且 `access_token` 为 NULL**：企微应用 token 是 corp 全局的、由 client 缓存，per-user 行没有凭证可存。为此把该列改成可空而不是塞空串——后者会让列注释「AES-256-GCM encrypted」变成假话。
-- 已知限制：企微 markdown **应用消息只在企业微信客户端内可见**（微信侧不显示）；state 与 token 缓存都在进程内存，多实例部署需换共享存储。
+- 已知限制：企微 markdown **应用消息只在企业微信客户端内可见**（微信侧不显示）；应用 token 缓存在进程内存，多实例部署需换共享存储；绑定 `state` 已在 `oauth_login_states`（见下方飞书一节）。
 
 ### 飞书（`feishu/` + `/api/feishu` + `notify_feishu` + 扫码登录）
 
@@ -170,7 +171,7 @@ v1 只接 DeepSeek 与 OpenAI 兼容服务，它们**自动**缓存 prompt 前�
 - **绑定走 OAuth 而非邮箱匹配**（Greenhouse 邮箱与飞书邮箱不一致），存的是 `open_id`；user access token 换完 user_info 即弃，任何飞书凭证都不落库。
 - **绑定与登录共用一个 callback**（`/api/feishu/oauth/callback`），按 state 里的 `intent` 分流——飞书后台每条重定向 URL 都要登记，单 callback 少登记一条。bind state 绑死 userId；login state 不绑，命中绑定后发 **60s 单次消费的兑换码**回 `#/login?feishu_code=...`，前端 `POST /oauth/exchange`（公开 + IP 限流）换正常会话——**复用 `routes/auth.ts` 导出的 `issueUserSession`**，不长第二条签发路径；长期凭证永不进 URL。未绑定 → `not_bound` 引导先密码登录再绑定；**不自动建号**。
 - **三条公开路径**（`isPublicPath`）：`/oauth/callback`（浏览器重定向，state 是凭证）、`/oauth/start-login` 与 `/oauth/exchange`（登录页没有 Bearer 可带）。`/oauth/start` 与 `/binding` 仍要 Bearer，守卫写在路由文件内。护栏 `routes/__tests__/feishu-oauth.test.ts` 直接断言五个路径的 `isPublicPath` 取值。
-- 已知限制与企微同款：state / 兑换码 / tenant token 缓存都在进程内存，多实例部署需换共享存储。DM 需应用开通「机器人」能力且收件人在应用可见范围内（`230002 user not visible to app` 就是范围没放开）。
+- **state 与兑换码在 `oauth_login_states`**（v1.4）：只存 SHA-256，`consume` 是单条条件 UPDATE（并发只有一个赢家），TTL 不变（state 10 分钟、兑换码 60 秒），过期行由五分钟 upkeep 清扫；重启不丢、多实例共享。回调里查 state 失败（库不可用）照样 302 回设置页（`reason=server_error`），不吐 JSON。tenant token 缓存仍在进程内存，多实例部署需换共享存储。DM 需应用开通「机器人」能力且收件人在应用可见范围内（`230002 user not visible to app` 就是范围没放开）。
 
 ### 飞书机器人对话（`feishu/bot/` + 长连接）
 
@@ -323,6 +324,12 @@ v1 只接 DeepSeek 与 OpenAI 兼容服务，它们**自动**缓存 prompt 前�
   并置 `_enriched_at`；内容变更时不传就清空。**刻意没有批量富化管线**（spec D3）——`sources` 那条 enricher 服务的是
   无头单轮的对外 RAG，team KB 的消费者是会换关键词重试、有目录可浏览的交互式模型，对称不是需求。
 
+### 知识库实时更新（`knowledge/live.ts` + WS `knowledge.changed`）
+- 文档被创建、编辑、归档时，看得见它的人收到 `{type:'knowledge.changed', docId, change:'created'|'updated'|'archived'}`，只带 id，接收端经鉴权 API 重拉。
+- **挂在 service 的唯一写路径上**：`db.knowledgeBase.create/update`（`archive`、`restoreVersion` 都走 `update`）调 `onKnowledgeDocChange` 的监听；网页路由、聊天 `knowledge_mutation`、MCP、审批后执行的 agent 写入都经过这里。**别在路由或工具里再发一遍**。不发：`upsert`（CLI 批量导入，另一个进程）、`updateEnrichment`（派生字段）、`delete`。
+- 受众 = 变更前**或**后能看到它的人：team 文档（含刚从 team 改成 private 的）广播给所有在线连接（WS 只接内部账号）；private 文档发给 owner（新旧都发）+ 直接共享与组共享的成员（`knowledgeShares.userIdsWithAccess`）。监听里的异步错误只记 warn，绝不回到写入方。
+- 网页：`ws-store` 收到后调 `useKnowledgeStore.remoteChanged()`（400ms 合并一批）→ `version` +1 → 侧栏树、打开的文档、已归档列表各自重拉。编辑器的冲突基线是**打开编辑器时**的 `updated_at`（`EditorState.baseUpdatedAt`），不能取会被实时刷新的 `selectedDoc.updated_at`，否则别人的保存会把冲突检测抹掉。
+
 ### 知识库侧栏树的排序与整库导出
 
 方案与决策见 [spec](../../../docs/specs/20260811-kb-tree-order-and-export.md)。
@@ -383,6 +390,7 @@ v1 只接 DeepSeek 与 OpenAI 兼容服务，它们**自动**缓存 prompt 前�
 - 权限管理 API 位于 `/api/admin/platform`（super-only），支持 catalog、角色、用户 capability 例外、Entity Policy、最终权限预览和审计。策略写入时必须与当前 Manifest 的 access scopes/fields 交叉校验。
 - 新应用先运行 `pnpm cli platform create-app <id> --title "..." --dry-run` 评审边界；生成器只创建 fail-closed Manifest/registration/test/README，不会自动接入 bootstrap 或生产 runtime。
 - 新应用必须有 Manifest、registration、SQL scope/record/field adapter、HTTP/Tool/MCP 适配和 parity/security matrix；不要直接在 transport 层放行。无专用 Web UI 的应用可以保持 Agent/MCP-only。
+- **管理员改配置必须留平台审计**（v1.4）：`PUT /api/admin/settings` 有实际改动时记 `updateWorkspaceSettings`（`capability='platform.settings.manage'`，summary 只有 `set` / `cleared` / `secret_keys` 三个**键名**列表）；按用户开关功能（`PUT /api/admin/users/:id/features`、`PUT /api/admin/features`）经 `recordAccountSecurityAudit` 记 `setUserFeature`（feature、enabled、`config_keys`）。**永远只记键名不记值**——这些设置里有 LLM / 媒体 / 搜索的密钥。新增管理员写配置的端点照此办理。护栏 `routes/__tests__/admin-config-audit.db.test.ts`。
 
 ### 会话编排工具（`spawn_session` / `call_llm`）
 - 一个会话可派生子会话或并行发起一次性 LLM 调用，把单会话扩成能并行/持久啃复杂任务的"主控"。两者都是 **lazy 且 session-scoped**——只在 `buildLazyServerTools` 收到 `sessionId` 时装配，因此**不在无状态的 proxy/MCP 面暴露**（那两条调用不传 sessionId）。`is_global:true`：对内部用户默认开启（无需 assign），但因 session-scoped 仅在带 sessionId 的 chat 面生效；子工具集永远 ⊆ 调用方权限。
@@ -421,6 +429,10 @@ v1 只接 DeepSeek 与 OpenAI 兼容服务，它们**自动**缓存 prompt 前�
   - **过渡开关** `agent_access.legacy_confirm`（Runtime Config › Agent 接入，布尔，默认开）：开着时 `confirm` 是 tools/list 里的**可选**旧参数，带 `true` 的 r2 写入照旧直接执行并记 basis=`legacy_confirm`；r3 无论如何都要审批。团队配好常驻授权后关掉。
   - 通知：interrupt 生成 inbox 通知（"Codex wants to run records.update"）；agent_write 成功不通知，失败/结果未知才通知。成员侧 API 在 `routes/agent-access.ts`（`/api/agent-access/*`），网页在 Settings › Agent 接入。
   - `/api/agent`（CLI，用成员本人的登录令牌，等同本人操作）**不**走这套审批，保留 `confirm:true`。
+- **有界回复（v1.4，`agent-runtime/tool-output-store.ts`）**：`tools/call` 的回复文本（读工具、已执行的受治理写入、`agent_write_status`）超过 12,000 字符时不原样返回：全文存为私有对象，回复改为两块——先是句柄 `{truncated:true, output_id, total_chars, next_offset, expires_at}`，再是 ≤8,000 字符的预览（截在换行 / `},` / 逗号处）。协议层工具 `tool_output_read`（`output_id`、`offset`、`limit` ≤12,000）按区间续读。长度按 JS 字符串单位计，区间不劈开代理对。
+  - **存储不建表**：对象放在既有存储驱动的 `drive/mcp-output/<sha256(成员+客户端)>/<output_id>.json`。读取时用**调用方**的成员与 OAuth 客户端重算 key，别的成员或同一成员的另一个客户端只会拿到「not found or expired」——鉴权就是 key 本身，没有行可查也没有存在性可泄露。`chat_files` 不能用：每行必须挂在一个聊天会话上，而 MCP 调用没有会话。
+  - `output_id` 自带创建时间：读取时先按它判 24 小时过期（不等清扫），清扫（`index.ts` 的五分钟 upkeep）只靠列举前缀删过期对象；前缀下形状不对的 key 一律不碰。单份存储上限 4,000,000 字符（超出时句柄带 `stored_chars`）。存储写失败不让调用失败（写入可能已执行）：照样返回句柄（`output_id:null`）+ 预览。
+  - 只在 MCP 面；`/api/agent`（CLI）不截断。
 - **暴露范围**：`MCP_EXPOSED_TOOL_IDS`（由各工具 `meta.surface` 派生，见 `tools/registry.ts`）= knowledge + project + tables + chat + skills + automation（只读）+ 生图（`generate_image`，2026-07-23 开放，见下）。工具须同时有 proxy 读/写 tier。
   - **2026-08-16 摘掉三个**：`email_query` / `email_mutation` / `automation_mutation`（proxy tier 原样保留，CLI 照常用）。理由不是"风险大"这种泛泛判断，而是**它们的安全模型在 MCP 上不成立**：`email_mutation` 的全部安全性来自"用户读了那张草稿卡"——draft 把 token 交给模型、send 发服务端存的草稿，中间那道人读的门是承重的；MCP 上 `user_confirmed` 与合成的 `confirm` 都由调用方模型自填，两段确认坍缩成一段。同一条理由早已把它写进 `UNATTENDED_TOOL_DENYLIST`，而 **client_credentials 机器客户端就是无人值守**。email 又是全部写工具里唯一外发、不可逆、发出去收不回的通道。`email_query` 一并摘掉：私人收件箱全文不该交给第三方客户端。`automation_mutation` 是自我增殖（"能建定时任务的定时任务"），当前有三层兜底所以不算在救火，但重开无人值守写权限前先关掉这条侧门。**别用"加 approval lease"复活它们**——那套形状服务的是长任务里等人拍板，MCP 是同步请求-响应，调用方会阻塞等人点按钮。
   - chat：只读 `session_query`（已在只读白名单；`session_history` 2026-08-07 并入其 search/messages，旧名经 `normalizeLegacyToolCall` 别名兼容）；MCP 不提供直接驱动聊天的端点。

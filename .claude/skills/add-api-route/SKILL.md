@@ -85,7 +85,7 @@ export default myRoutes;
 - 数据库操作一律经 `getDb().<域>.<方法>()`，**禁止在路由里直接写 SQL**
 - 日志用 `@greenhouse/utils/logger` 的 `logger.info/warn/error`，**禁止 `console.log`**
 - 用户输入传给 LLM 前**必须** `sanitizeForPrompt()`（`security/security.ts`）
-- 限流用共享的 `InMemoryRateLimiter`，不要另写；来源 IP 走 `security/request-ip.ts`
+- 限流用共享的 `checkRateLimit`（DB 计数、fail-open），不要另写；来源 IP 走 `security/request-ip.ts`
 - 文件上传用 `validateMagicBytes()` 校验；上传读写一律走 `storage/uploads.ts`
 - Agent 工具下载公网图片走 `security/network.ts` 的 `fetchPublicImage()`，禁止裸 `fetch()`
 - **错误文案要指路**，且插值的动态值必须加引号：写 `(ID: "${id}")` 不要写 `(ID: ${id})`

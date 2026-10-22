@@ -2,66 +2,77 @@
  * Security middleware — rate limiting, security headers, input validation.
  *
  * Provides defense-in-depth for an internet-reachable internal deployment:
- * - IP-based rate limiting (in-memory, per-endpoint)
+ * - IP- and user-based rate limiting (per endpoint, counters shared in the database)
  * - Standard security response headers
  * - Profile access control enforcement
  */
 
 import type { Context, Next } from 'hono';
+import { getDb } from '@greenhouse/db';
+import { logger } from '@greenhouse/utils/logger';
+import { toErrorMessage } from '@greenhouse/utils/error';
 import { getRequestSourceIp } from './request-ip.js';
 
 // ─── Rate Limiter ────────────────────────────────────────
 
-interface RateLimitEntry {
-  count: number;
+export interface RateLimitResult {
+  allowed: boolean;
+  /** Requests left in this window after this one (0 once exceeded). */
+  remaining: number;
+  /** Epoch ms when the window ends. */
   resetAt: number;
 }
 
-export class InMemoryRateLimiter {
-  private store = new Map<string, RateLimitEntry>();
-  private cleanupInterval: ReturnType<typeof setInterval>;
+const FAIL_OPEN_WARN_INTERVAL_MS = 60_000;
+let lastFailOpenWarnAt = 0;
+let failOpenSinceWarn = 0;
 
-  constructor(private cleanupIntervalMs = 60_000) {
-    this.cleanupInterval = setInterval(() => this.cleanup(), this.cleanupIntervalMs);
-    this.cleanupInterval.unref();
-  }
-
-  /**
-   * Check and increment rate limit.
-   * @returns remaining requests, or -1 if exceeded
-   */
-  check(key: string, windowMs: number, maxRequests: number): { allowed: boolean; remaining: number; resetAt: number } {
-    const now = Date.now();
-    const entry = this.store.get(key);
-
-    if (!entry || entry.resetAt <= now) {
-      this.store.set(key, { count: 1, resetAt: now + windowMs });
-      return { allowed: true, remaining: maxRequests - 1, resetAt: now + windowMs };
+/**
+ * Count one request against `key` in a fixed window and say whether it is within
+ * `maxRequests`. The counter lives in `rate_limit_buckets` (one atomic
+ * upsert-increment per call, bucket key `<key>:<window start ms>`), so a restart
+ * does not reset it and every instance shares it. Windows are aligned to the
+ * epoch (a 60s window starts on the minute, a day window at 00:00 UTC).
+ *
+ * **Fails open.** If the database call fails the request is allowed and a
+ * warning is logged (at most once a minute, with a count of what was let
+ * through). These limits are abuse brakes, not authorization: every route behind
+ * them still authenticates and authorizes against the same database, so during
+ * an outage a closed limiter would add nothing but a second reason to refuse —
+ * and a brief blip on the counter table alone would otherwise turn into a 429 for
+ * every user at once. The secrets these limits slow down (login passwords aside,
+ * which also have account lockout) are long random values.
+ */
+export async function checkRateLimit(
+  key: string,
+  windowMs: number,
+  maxRequests: number,
+  now: number = Date.now(),
+): Promise<RateLimitResult> {
+  const windowStart = Math.floor(now / windowMs) * windowMs;
+  const resetAt = windowStart + windowMs;
+  try {
+    const count = await getDb().rateLimits.hit(`${key}:${windowStart}`, new Date(resetAt).toISOString());
+    return { allowed: count <= maxRequests, remaining: Math.max(0, maxRequests - count), resetAt };
+  } catch (error) {
+    failOpenSinceWarn += 1;
+    if (now - lastFailOpenWarnAt >= FAIL_OPEN_WARN_INTERVAL_MS) {
+      logger.warn('[rate-limit] counter unavailable, allowing requests (fail-open)', {
+        error: toErrorMessage(error),
+        allowedSinceLastWarning: failOpenSinceWarn,
+      });
+      lastFailOpenWarnAt = now;
+      failOpenSinceWarn = 0;
     }
-
-    entry.count++;
-    if (entry.count > maxRequests) {
-      return { allowed: false, remaining: 0, resetAt: entry.resetAt };
-    }
-
-    return { allowed: true, remaining: maxRequests - entry.count, resetAt: entry.resetAt };
-  }
-
-  private cleanup(): void {
-    const now = Date.now();
-    for (const [key, entry] of this.store) {
-      if (entry.resetAt <= now) {
-        this.store.delete(key);
-      }
-    }
-  }
-
-  destroy(): void {
-    clearInterval(this.cleanupInterval);
+    return { allowed: true, remaining: Math.max(0, maxRequests - 1), resetAt };
   }
 }
 
-const limiter = new InMemoryRateLimiter();
+/** Test hook: forget the fail-open log throttle. */
+export function _resetRateLimitWarnings(): void {
+  lastFailOpenWarnAt = 0;
+  failOpenSinceWarn = 0;
+}
 
 // ─── CORS ────────────────────────────────────────────────
 
@@ -206,20 +217,18 @@ export async function rateLimitMiddleware(c: Context, next: Next) {
   const isInternal = user?.role === 'super' || user?.role === 'team';
   const effectiveConfig = isInternal ? (matchInternalRateLimit(c.req.path) ?? config) : config;
 
-  // Per-IP rate limiting
-  const ipKey = `ip:${ip}:${c.req.path.split('/').slice(0, 4).join('/')}`;
-  const ipResult = limiter.check(ipKey, effectiveConfig.windowMs, effectiveConfig.max);
+  // Per-IP and (if authenticated) per-user limits, counted together.
+  const scope = c.req.path.split('/').slice(0, 4).join('/');
+  const [ipResult, userResult] = await Promise.all([
+    checkRateLimit(`ip:${ip}:${scope}`, effectiveConfig.windowMs, effectiveConfig.max),
+    user?.id ? checkRateLimit(`user:${user.id}:${scope}`, effectiveConfig.windowMs, effectiveConfig.max) : null,
+  ]);
 
-  // Per-user rate limiting (if authenticated)
-  if (user?.id) {
-    const userKey = `user:${user.id}:${c.req.path.split('/').slice(0, 4).join('/')}`;
-    const userResult = limiter.check(userKey, effectiveConfig.windowMs, effectiveConfig.max);
-    if (!userResult.allowed) {
-      c.header('X-RateLimit-Limit', String(effectiveConfig.max));
-      c.header('X-RateLimit-Remaining', '0');
-      c.header('X-RateLimit-Reset', String(Math.ceil(userResult.resetAt / 1000)));
-      return c.json({ error: 'Too many requests. Please try again later.' }, 429);
-    }
+  if (userResult && !userResult.allowed) {
+    c.header('X-RateLimit-Limit', String(effectiveConfig.max));
+    c.header('X-RateLimit-Remaining', '0');
+    c.header('X-RateLimit-Reset', String(Math.ceil(userResult.resetAt / 1000)));
+    return c.json({ error: 'Too many requests. Please try again later.' }, 429);
   }
 
   c.header('X-RateLimit-Limit', String(effectiveConfig.max));

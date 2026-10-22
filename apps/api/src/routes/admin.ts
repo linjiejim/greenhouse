@@ -720,6 +720,13 @@ const admin = new Hono<AppEnv>()
       enabled: body.enabled,
       granted_by: currentUser?.id,
     });
+    await recordAccountSecurityAudit(getDb(), {
+      actorId: currentUser.id,
+      targetUserId: userId,
+      actionId: 'setUserFeature',
+      result: 'success',
+      summary: { feature: body.feature, enabled: body.enabled },
+    });
     return c.json(result);
   })
   /** PUT /api/admin/features — set a user's feature toggle */
@@ -748,6 +755,14 @@ const admin = new Hono<AppEnv>()
       enabled: body.enabled,
       config: body.config,
       granted_by: currentUser?.id,
+    });
+    await recordAccountSecurityAudit(getDb(), {
+      actorId: currentUser.id,
+      targetUserId: body.user_id,
+      actionId: 'setUserFeature',
+      result: 'success',
+      // Config keys, not values — same rule as workspace settings.
+      summary: { feature: body.feature, enabled: body.enabled, config_keys: Object.keys(body.config ?? {}) },
     });
 
     return c.json(result);

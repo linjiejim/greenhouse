@@ -44,7 +44,7 @@ export function isWeComConfigured(env: NodeJS.ProcessEnv = process.env): boolean
  * WeCom issues one token per (corpid, secret) with a ~2h lifetime and rate-limits
  * `gettoken`, so it must be cached rather than fetched per call. In-process is
  * enough for the single pm2 instance this deployment runs (same limitation, and
- * the same note, as the OAuth state map in dashboard-oauth.ts).
+ * the same note, as the in-process Feishu token cache).
  */
 let cached: { token: string; expiresAt: number } | null = null;
 /** Refresh this early so a token never expires mid-request. */

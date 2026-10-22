@@ -28,7 +28,7 @@ import {
 import { sql } from 'drizzle-orm';
 import { validateMemoryText } from '../llm/memory-limits.js';
 import type { AppEnv } from '../app-env.js';
-import { InMemoryRateLimiter } from '../security/security.js';
+import { checkRateLimit } from '../security/security.js';
 import { maskEmail, recordAccountSecurityAudit, resumeUserRuntime } from '../security/account.js';
 import { logger } from '@greenhouse/utils/logger';
 import { toErrorMessage } from '@greenhouse/utils/error';
@@ -37,15 +37,14 @@ const PASSWORD_LINK_BODY_LIMIT = 4096;
 const PASSWORD_LINK_WINDOW_MS = 5 * 60_000;
 const PASSWORD_LINK_TOKEN_LIMIT = 10;
 const INVALID_PASSWORD_LINK_ERROR = 'This password link is invalid or expired.';
-const passwordLinkTokenLimiter = new InMemoryRateLimiter();
 
 function tokenRateKey(operation: 'inspect' | 'complete', token: string): string {
   const hash = hashAccountPasswordToken(token) ?? createHash('sha256').update(token, 'utf8').digest('hex');
   return `password-link:${operation}:${hash}`;
 }
 
-function passwordLinkRateLimitResponse(c: Context<AppEnv>, operation: 'inspect' | 'complete', token: string) {
-  const result = passwordLinkTokenLimiter.check(
+async function passwordLinkRateLimitResponse(c: Context<AppEnv>, operation: 'inspect' | 'complete', token: string) {
+  const result = await checkRateLimit(
     tokenRateKey(operation, token),
     PASSWORD_LINK_WINDOW_MS,
     PASSWORD_LINK_TOKEN_LIMIT,
@@ -105,7 +104,7 @@ const auth = new Hono<AppEnv>()
   .post('/password-link/inspect', async (c) => {
     const body = (await c.req.json().catch(() => ({}))) as { token?: unknown };
     const token = typeof body.token === 'string' ? body.token : '';
-    const limited = passwordLinkRateLimitResponse(c, 'inspect', token);
+    const limited = await passwordLinkRateLimitResponse(c, 'inspect', token);
     if (limited) return limited;
 
     const inspected = await getDb().accountPasswordLinks.inspect(token);
@@ -120,7 +119,7 @@ const auth = new Hono<AppEnv>()
     const body = (await c.req.json().catch(() => ({}))) as { token?: unknown; password?: unknown };
     const token = typeof body.token === 'string' ? body.token : '';
     const password = typeof body.password === 'string' ? body.password : '';
-    const limited = passwordLinkRateLimitResponse(c, 'complete', token);
+    const limited = await passwordLinkRateLimitResponse(c, 'complete', token);
     if (limited) return limited;
     if (password.length < 8) return c.json({ error: 'Password must be at least 8 characters.' }, 400);
 

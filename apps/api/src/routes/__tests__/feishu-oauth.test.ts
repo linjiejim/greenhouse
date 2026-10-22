@@ -22,17 +22,22 @@ let userRows: Record<string, { id: string; role: string; status: string }>;
 let identityBinding: { user_id: string } | null = null;
 const upsertBinding = vi.fn();
 
-vi.mock('@greenhouse/db', () => ({
-  getDb: () => ({
-    users: { getById: async (id: string) => userRows[id] ?? null },
-    providerTokens: {
-      upsert: upsertBinding,
-      findByProviderUserId: async () => identityBinding,
-      get: async () => null,
-      delete: async () => {},
-    },
-  }),
-}));
+vi.mock('@greenhouse/db', async () => {
+  // Login state lives in the database now; an in-memory fake keeps the same contract.
+  const { fakeLoginStates } = await import('./fake-login-states.js');
+  return {
+    getDb: () => ({
+      oauthLoginStates: fakeLoginStates,
+      users: { getById: async (id: string) => userRows[id] ?? null },
+      providerTokens: {
+        upsert: upsertBinding,
+        findByProviderUserId: async () => identityBinding,
+        get: async () => null,
+        delete: async () => {},
+      },
+    }),
+  };
+});
 
 // The login exchange must reuse the SAME session issuance as password login —
 // that contract is why this is a mock seam rather than a re-implementation.

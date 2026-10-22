@@ -8,12 +8,17 @@
  *                  Secrets are AES-256-GCM encrypted at rest; after a write
  *                  the resolved values are re-overlaid onto process.env so
  *                  call-time consumers pick them up without a restart.
+ *                  Every effective change records a platform audit event
+ *                  (`updateWorkspaceSettings`) with the key names only —
+ *                  never a value, secret or not.
  */
 
 import { Hono } from 'hono';
 import { getDb } from '@greenhouse/db';
 import { getWorkspaceSettingDef } from '@greenhouse/types/workspace-settings';
 import { getAuthUser } from '../auth/middleware.js';
+import { humanActor } from '../platform/actor.js';
+import { PLATFORM_ORG_ID } from '../platform/runtime.js';
 import { encryptToken, isEncryptionConfigured } from '../auth/crypto.js';
 import {
   getWorkspaceSettingViews,
@@ -58,6 +63,25 @@ const adminSettingsRoutes = new Hono<AppEnv>()
         w.secret ? { value_enc: encryptToken(String(w.value)) } : { value: w.value },
         user.id,
       );
+    }
+
+    if (writes.length > 0 || clears.length > 0) {
+      // Key names only: the values include LLM / media / search credentials.
+      await getDb().platform.recordAudit({
+        orgId: PLATFORM_ORG_ID,
+        actorId: user.id,
+        actorType: 'human',
+        requestId: humanActor(user, c).requestId,
+        resource: { appId: 'platform', moduleId: 'settings', entityId: 'workspaceSetting' },
+        actionId: 'updateWorkspaceSettings',
+        capability: 'platform.settings.manage',
+        result: 'success',
+        summary: {
+          set: writes.map((w) => w.key),
+          cleared: clears,
+          secret_keys: writes.filter((w) => w.secret).map((w) => w.key),
+        },
+      });
     }
 
     await refreshWorkspaceConfig();

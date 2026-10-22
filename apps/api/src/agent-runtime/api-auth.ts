@@ -13,12 +13,11 @@ import { getDb } from '@greenhouse/db';
 import type { UserRole } from '@greenhouse/db';
 import { validateAccessToken } from '../auth/token.js';
 import { getRequestSourceIp } from '../security/request-ip.js';
-import { InMemoryRateLimiter } from '../security/security.js';
+import { checkRateLimit } from '../security/security.js';
 import { MUTATING_PROXY_ALLOWLIST } from './tool-proxy.js';
 
 const AGENT_RPM_LIMIT = 30;
 const AGENT_RPD_LIMIT = 1000;
-const agentLimiter = new InMemoryRateLimiter(120_000);
 type InternalUserRole = Exclude<UserRole, 'external'>;
 
 /** Resolved identity of the logged-in user for the current agent request. */
@@ -122,7 +121,7 @@ export async function agentRateLimitMiddleware(c: Context, next: Next) {
   const identity = getAgentIdentity(c);
   const baseKey = `agent:${identity.userId}`;
 
-  const rpm = agentLimiter.check(`${baseKey}:rpm`, 60_000, AGENT_RPM_LIMIT);
+  const rpm = await checkRateLimit(`${baseKey}:rpm`, 60_000, AGENT_RPM_LIMIT);
   c.header('X-RateLimit-Limit', String(AGENT_RPM_LIMIT));
   c.header('X-RateLimit-Remaining', String(Math.max(0, rpm.remaining)));
   c.header('X-RateLimit-Reset', String(Math.ceil(rpm.resetAt / 1000)));
@@ -130,7 +129,7 @@ export async function agentRateLimitMiddleware(c: Context, next: Next) {
     return c.json({ error: { message: 'Rate limit exceeded (requests per minute)', type: 'rate_limit_error' } }, 429);
   }
 
-  const rpd = agentLimiter.check(`${baseKey}:rpd`, 86_400_000, AGENT_RPD_LIMIT);
+  const rpd = await checkRateLimit(`${baseKey}:rpd`, 86_400_000, AGENT_RPD_LIMIT);
   if (!rpd.allowed) {
     return c.json({ error: { message: 'Rate limit exceeded (requests per day)', type: 'rate_limit_error' } }, 429);
   }

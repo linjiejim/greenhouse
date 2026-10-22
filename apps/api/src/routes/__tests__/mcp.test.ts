@@ -46,6 +46,17 @@ vi.mock('../../agent-access/governed-write.js', async (importOriginal) => {
   };
 });
 
+// Oversized replies go to the object store; an in-memory map keeps this test off disk.
+const objects = vi.hoisted(() => new Map<string, Buffer>());
+vi.mock('../../storage/uploads.js', () => ({
+  toolOutputKeyPrefix: () => 'drive/mcp-output/',
+  putObjectAtKey: async (key: string, buffer: Buffer) => void objects.set(key, buffer),
+  getObjectAtKey: async (key: string) =>
+    objects.has(key) ? { buffer: objects.get(key)!, contentType: 'application/json' } : null,
+  deleteObjectAtKey: async (key: string) => void objects.delete(key),
+  listObjectKeys: async () => [...objects.keys()],
+}));
+
 function view(over: Record<string, unknown> = {}) {
   return {
     request_id: 'rtr_1',
@@ -74,26 +85,37 @@ import type { ProxyToolManifestEntry } from '../../agent-runtime/tool-proxy.js';
 
 // Minimal Hono context stub. The production server receives this identity from
 // MCP auth middleware before the protocol adapter is constructed.
-const fakeC = {
-  get: (key: string) =>
-    key === 'agentIdentity'
-      ? {
-          userId: 'mcp-test-user',
-          userRole: 'team',
-          allowedTools: ['project_query', 'project_mutation'],
-          allowedWriteTools: ['project_mutation'],
-        }
-      : undefined,
-  req: { method: 'POST', header: () => undefined },
-} as unknown as Context;
+function contextFor(clientId: string) {
+  return {
+    get: (key: string) =>
+      key === 'agentIdentity'
+        ? {
+            userId: 'mcp-test-user',
+            userRole: 'team',
+            allowedTools: ['project_query', 'project_mutation'],
+            allowedWriteTools: ['project_mutation'],
+          }
+        : key === 'oauthClientId'
+          ? clientId
+          : undefined,
+    req: { method: 'POST', header: () => undefined },
+  } as unknown as Context;
+}
+const fakeC = contextFor('client-a');
 
 // Fake registry keyed by REAL tool ids (so getToolMeta resolves their meta), with
 // stub execute/inputSchema. project_query = read, project_mutation = write.
 function makeCtx() {
   const registry = {
     project_query: {
-      inputSchema: z.object({ q: z.string().optional() }),
-      execute: async (input: unknown) => ({ ok: true, echo: input }),
+      inputSchema: z.object({ q: z.string().optional(), rows: z.number().optional() }),
+      execute: async (input: { q?: string; rows?: number }) => ({
+        ok: true,
+        echo: input,
+        ...(input.rows
+          ? { rows: Array.from({ length: input.rows }, (_, i) => ({ id: i, note: 'n'.repeat(50) })) }
+          : {}),
+      }),
     },
     project_mutation: {
       inputSchema: z.object({ name: z.string() }),
@@ -103,8 +125,8 @@ function makeCtx() {
   return { toolIds: ['project_query', 'project_mutation'], registry };
 }
 
-async function connect(ctx: ReturnType<typeof makeCtx>) {
-  const server = buildMcpServer(fakeC, ctx);
+async function connect(ctx: ReturnType<typeof makeCtx>, c: Context = fakeC) {
+  const server = buildMcpServer(c, ctx);
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   await server.connect(serverTransport);
   const client = new Client({ name: 'test', version: '1.0.0' });
@@ -123,7 +145,12 @@ describe('MCP server — tools/list', () => {
     const { client, server } = await connect(makeCtx());
     const { tools } = await client.listTools();
 
-    expect(tools.map((t) => t.name).sort()).toEqual(['agent_write_status', 'project_mutation', 'project_query']);
+    expect(tools.map((t) => t.name).sort()).toEqual([
+      'agent_write_status',
+      'project_mutation',
+      'project_query',
+      'tool_output_read',
+    ]);
 
     const write = tools.find((t) => t.name === 'project_mutation')!;
     // While the transition switch is on, confirm is an optional legacy flag — never required.
@@ -213,6 +240,66 @@ describe('MCP server — tools/call', () => {
     const res = await client.callTool({ name: 'knowledge_query', arguments: {} });
     expect(res.isError).toBe(true);
     expect(firstText(res)).toMatch(/not available/i);
+    await client.close();
+    await server.close();
+  });
+});
+
+describe('MCP server — bounded replies', () => {
+  it('stores an oversized read result, previews it, and pages the rest for the same client only', async () => {
+    objects.clear();
+    const { client, server } = await connect(makeCtx());
+    const res = await client.callTool({ name: 'project_query', arguments: { rows: 600 } });
+    expect(res.isError).toBeFalsy();
+    const blocks = res.content as Array<{ text: string }>;
+    const handle = JSON.parse(blocks[0]!.text);
+    expect(handle).toMatchObject({ truncated: true });
+    expect(handle.total_chars).toBeGreaterThan(12_000);
+    expect(blocks[1]!.text.length).toBe(handle.next_offset);
+
+    let text = blocks[1]!.text;
+    let offset: number | null = handle.next_offset;
+    while (offset !== null) {
+      const page = await client.callTool({
+        name: 'tool_output_read',
+        arguments: { output_id: handle.output_id, offset },
+      });
+      const [position, chunk] = page.content as Array<{ text: string }>;
+      const meta = JSON.parse(position!.text);
+      expect(meta.returned_chars).toBeLessThanOrEqual(12_000);
+      text += chunk!.text;
+      offset = meta.next_offset;
+    }
+    expect(text.length).toBe(handle.total_chars);
+    expect(JSON.parse(text).rows).toHaveLength(600);
+    await client.close();
+    await server.close();
+
+    // Another OAuth client of the same member cannot read it.
+    const other = await connect(makeCtx(), contextFor('client-b'));
+    const denied = await other.client.callTool({
+      name: 'tool_output_read',
+      arguments: { output_id: handle.output_id },
+    });
+    expect(denied.isError).toBe(true);
+    expect(firstText(denied)).toMatch(/not found or expired/);
+    await other.client.close();
+    await other.server.close();
+  });
+
+  it('bounds an executed governed write and keeps the request line last', async () => {
+    objects.clear();
+    const big = { rows: Array.from({ length: 600 }, (_, i) => ({ id: i, note: 'n'.repeat(50) })) };
+    governance.govern.mockResolvedValueOnce({
+      status: 'executed',
+      view: view({ status: 'executed', basis: 'standing_grant', output: big }),
+    });
+    const { client, server } = await connect(makeCtx());
+    const res = await client.callTool({ name: 'project_mutation', arguments: { name: 'X' } });
+    const blocks = res.content as Array<{ text: string }>;
+    expect(JSON.parse(blocks[0]!.text)).toMatchObject({ truncated: true });
+    expect(blocks.at(-1)!.text).toMatch(/Recorded as Greenhouse request rtr_1/);
+    expect(objects.size).toBe(1);
     await client.close();
     await server.close();
   });

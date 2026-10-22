@@ -14,6 +14,7 @@ import { wsClient, type WsStatus } from '../lib/ws';
 import type { OnlineUser, ServerWsEvent } from '@greenhouse/types/ws';
 import { toast } from '../components/ui';
 import { useUIStore } from './ui-store';
+import { useKnowledgeStore } from './knowledge-store';
 import { notifyRuntimeInvalidated } from '../lib/runtime-invalidation';
 
 interface WsStore {
@@ -84,6 +85,11 @@ export const useWsStore = create<WsStore>((set) => {
 
       case 'runtime:invalidate':
         notifyRuntimeInvalidated(event.runId);
+        break;
+
+      case 'knowledge.changed':
+        // The knowledge tree and an open document refetch on the store version.
+        useKnowledgeStore.getState().remoteChanged();
         break;
     }
   });

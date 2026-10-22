@@ -114,6 +114,7 @@ import { settleRetiredRuntimeRuns } from './runtime/retired-kinds.js';
 import { startRuntimeWorker } from './runtime/worker.js';
 import { reconcileInterruptedChatRuntimeRuns } from './chat/runtime.js';
 import { reconcileInterruptedAgentWrites, sweepExpiredAgentWrites } from './agent-access/governed-write.js';
+import { sweepExpiredToolOutputs } from './agent-runtime/tool-output-store.js';
 import { createAutomationRuntimeDriver } from './scheduler/runtime-driver.js';
 import { createSubagentRuntimeDriver, reconcileReclaimedSubagentRun } from './runtime/subagent-driver.js';
 import { createRuntimeNotificationProjector } from './notifications/runtime-projector.js';
@@ -130,6 +131,7 @@ import * as _ws from 'ws';
 const WsServer = _ws.WebSocketServer ?? (_ws as any).default?.WebSocketServer;
 import wsRoutes from './ws/index.js';
 import { connectionManager } from './ws/connection-manager.js';
+import { startKnowledgeLiveUpdates } from './knowledge/live.js';
 import { chatRunRegistry } from './chat/runs.js';
 import { startUsageBudgetSweeper } from './llm/usage-budget-sweeper.js';
 
@@ -378,6 +380,8 @@ async function main() {
   // refuse to start (silently falling back to disk would strand new bundles).
   const skillStore = getSkillStore();
   dbProvider = await initDatabase({ type: 'pg', pgConnectionString: DATABASE_URL });
+  // Announce knowledge writes over WS (`knowledge.changed`) from the service's single write path.
+  startKnowledgeLiveUpdates(dbProvider);
   // Extension-owned tables live in their own migration lane (core DDL stays in
   // drizzle/*.sql, applied before boot). Pending files are applied here, under
   // an advisory lock, before anything can want the tables.
@@ -524,15 +528,24 @@ async function main() {
       })
     : null;
 
-  // Approval requests nobody decided in time: close them so the agent's status
-  // call gets a final answer. Cheap (only waiting agent writes are read).
-  setInterval(
-    () =>
-      void sweepExpiredAgentWrites(dbProvider).catch((error) =>
-        logger.warn('[agent-access] expiry sweep failed', { error: toErrorMessage(error) }),
-      ),
-    5 * 60_000,
-  );
+  // Five-minute expiry sweeps, each failing on its own (one bad sweep never
+  // skips the others, and never becomes an unhandled rejection):
+  //  - approval requests nobody decided in time, so the agent's status call gets
+  //    a final answer (cheap: only waiting agent writes are read);
+  //  - oversized MCP replies past their 24-hour life (agent-runtime/tool-output-store.ts);
+  //  - rate-limit buckets whose window has ended (security/security.ts);
+  //  - Feishu / WeCom login states and one-time login codes past their TTL.
+  const expirySweeps: Array<[string, () => Promise<unknown>]> = [
+    ['agent-access expiry', () => sweepExpiredAgentWrites(dbProvider)],
+    ['MCP tool output', () => sweepExpiredToolOutputs()],
+    ['rate-limit bucket', () => dbProvider.rateLimits.sweepExpired()],
+    ['OAuth login state', () => dbProvider.oauthLoginStates.sweepExpired()],
+  ];
+  setInterval(() => {
+    for (const [label, sweep] of expirySweeps) {
+      void sweep().catch((error) => logger.warn(`[upkeep] ${label} sweep failed`, { error: toErrorMessage(error) }));
+    }
+  }, 5 * 60_000);
 
   // Heartbeat: ping all WS connections every 30s. Never an unhandled rejection:
   // Node would exit the whole API over one failed tick.
