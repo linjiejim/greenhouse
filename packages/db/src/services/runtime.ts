@@ -2407,9 +2407,12 @@ export function createRuntimeService(db: Db) {
             fail('runtime_lease_lost', `Runtime tool call no longer has execution authority for ${workerId}`);
           }
         } else {
+          // Unleased execution is allowed for two synchronous producers only: a
+          // Chat turn and an external agent's write (both run in the request
+          // that owns them; neither is ever claimed by a worker).
           const chatProjection =
-            run.kind === 'chat' &&
-            run.source_kind === 'chat_turn' &&
+            ((run.kind === 'chat' && run.source_kind === 'chat_turn') ||
+              (run.kind === 'agent_write' && run.source_kind === 'proxy_call')) &&
             parentsRunning &&
             run.lease_owner === null &&
             run.lease_expires_at === null &&
@@ -2964,7 +2967,7 @@ export function createRuntimeService(db: Db) {
         ),
       ) as Record<RuntimeRunStatus, number>;
       const byKind = Object.fromEntries(
-        ['chat', 'automation', 'workflow', 'mission', 'subagent', 'eval'].map((kind) => [kind, 0]),
+        ['chat', 'automation', 'workflow', 'mission', 'subagent', 'eval', 'agent_write'].map((kind) => [kind, 0]),
       ) as Record<RuntimeRunKind, number>;
       let total = 0;
       for (const row of runRows) {

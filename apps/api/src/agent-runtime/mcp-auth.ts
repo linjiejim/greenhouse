@@ -30,6 +30,7 @@ import {
   parseStoredOAuthScopes,
   resourceGroupsFromScopes,
   scopesAreSubset,
+  type OAuthScope,
 } from '../platform/oauth.js';
 
 /** Channel recorded for MCP traffic. Reuses the existing `a2a` enum value. */
@@ -58,6 +59,28 @@ function oauthChallenge(c: Context, message: string, status: 401 | 403, error?: 
   ];
   c.header('WWW-Authenticate', `Bearer ${params.join(', ')}`);
   return c.json({ error: { message, type: 'auth_error' } }, status);
+}
+
+/**
+ * The proxy identity an OAuth grant confers: resource-group scopes say WHICH
+ * data, action scopes say WHICH verbs, and the reachable set is their product.
+ * Shared by the live MCP request path and by agent-access, which re-derives the
+ * identity from the CURRENT grant when an approved write finally runs.
+ */
+export function identityFromOAuthScopes(
+  user: { id: string; role: AgentIdentity['userRole'] },
+  scopes: readonly OAuthScope[],
+): AgentIdentity {
+  const groupTools = mcpToolIdsForGroups(resourceGroupsFromScopes(scopes));
+  return {
+    userId: user.id,
+    userRole: user.role,
+    allowedTools: [...groupTools].filter((id) => !MUTATING_PROXY_ALLOWLIST.has(id)),
+    allowedWriteTools: scopes.includes('mcp:write')
+      ? [...groupTools].filter((id) => MUTATING_PROXY_ALLOWLIST.has(id))
+      : [],
+    allowedWorkspaces: [],
+  };
 }
 
 async function oauthIdentityMiddleware(c: Context, rawToken: string, next: Next) {
@@ -110,16 +133,7 @@ async function oauthIdentityMiddleware(c: Context, rawToken: string, next: Next)
   // `allowedWriteTools` narrows writes (resolveProxyToolIds), and both are only
   // ever a narrowing — the bound user's own permissions are still applied on
   // top, per request, in composeMcpContext.
-  const groupTools = mcpToolIdsForGroups(resourceGroupsFromScopes(scopes));
-  const identity: AgentIdentity = {
-    userId: user.id,
-    userRole: user.role,
-    allowedTools: [...groupTools].filter((id) => !MUTATING_PROXY_ALLOWLIST.has(id)),
-    allowedWriteTools: scopes.includes('mcp:write')
-      ? [...groupTools].filter((id) => MUTATING_PROXY_ALLOWLIST.has(id))
-      : [],
-    allowedWorkspaces: [],
-  };
+  const identity = identityFromOAuthScopes({ id: user.id, role: user.role }, scopes);
   c.set('agentIdentity', identity);
   c.set('user', { id: identity.userId, role: identity.userRole });
   c.set('oauthClientId', resolved.client.id);

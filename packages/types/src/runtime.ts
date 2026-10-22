@@ -31,8 +31,13 @@ export type RuntimePayload = RuntimeJsonValue;
  * retired in v1.4. Old runs still list read-only in the Execution center
  * (`workflow_gate` likewise survives only as a historical interrupt kind);
  * nothing creates new ones.
+ *
+ * `agent_write` (v1.4) is one write by an external agent acting for a member
+ * over MCP (`source_kind='proxy_call'`): it runs at once when its risk tier
+ * allows, otherwise it waits on a `mutation_approval` interrupt and the
+ * member's decision runs it at most once. See `apps/api/src/agent-access/`.
  */
-export type RuntimeRunKind = 'chat' | 'automation' | 'workflow' | 'mission' | 'subagent' | 'eval';
+export type RuntimeRunKind = 'chat' | 'automation' | 'workflow' | 'mission' | 'subagent' | 'eval' | 'agent_write';
 
 export const RUNTIME_RUN_KINDS = [
   'chat',
@@ -41,6 +46,7 @@ export const RUNTIME_RUN_KINDS = [
   'mission',
   'subagent',
   'eval',
+  'agent_write',
 ] as const satisfies readonly RuntimeRunKind[];
 
 export type RuntimeRunStatus =

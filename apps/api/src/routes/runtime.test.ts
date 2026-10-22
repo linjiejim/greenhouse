@@ -125,7 +125,7 @@ describe('Runtime API authorization and wire', () => {
     expect(body.next_cursor).toEqual(expect.any(String));
     expect(runtime.listRuns).toHaveBeenCalledWith({
       owner_user_id: 'owner',
-      kinds: ['mission', 'automation', 'subagent'],
+      kinds: ['mission', 'automation', 'subagent', 'agent_write'],
       cursor: undefined,
       limit: 25,
     });
@@ -219,7 +219,7 @@ describe('Runtime API authorization and wire', () => {
     expect(runtime.listInterruptsPage).toHaveBeenCalledWith({
       assignee_user_id: 'owner',
       status: 'pending',
-      kinds: ['mission', 'automation', 'subagent'],
+      kinds: ['mission', 'automation', 'subagent', 'agent_write'],
       cursor: undefined,
       limit: 50,
     });
@@ -237,7 +237,7 @@ describe('Runtime API authorization and wire', () => {
     expect(runtime.summarize).toHaveBeenCalledWith({
       owner_user_id: 'owner',
       assignee_user_id: 'owner',
-      kinds: ['mission', 'automation', 'subagent'],
+      kinds: ['mission', 'automation', 'subagent', 'agent_write'],
     });
     expect((await app.request('/summary?scope=all')).status).toBe(403);
   });

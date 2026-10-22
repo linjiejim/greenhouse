@@ -56,6 +56,7 @@ import clientActionRoutes from './routes/client-actions.js';
 import { CLIENT_ACTIONS_API_PREFIX } from '@greenhouse/types/api';
 import { createAgentRoutes } from './routes/agent-tools.js';
 import { createMcpRoutes } from './routes/mcp.js';
+import { createAgentAccessRoutes } from './routes/agent-access.js';
 import oauthRoutes from './routes/oauth.js';
 import healthRoutes from './routes/health.js';
 import bootstrapRoutes from './routes/bootstrap.js';
@@ -111,6 +112,7 @@ import runtimeRoutes from './routes/runtime.js';
 import { settleRetiredRuntimeRuns } from './runtime/retired-kinds.js';
 import { startRuntimeWorker } from './runtime/worker.js';
 import { reconcileInterruptedChatRuntimeRuns } from './chat/runtime.js';
+import { reconcileInterruptedAgentWrites, sweepExpiredAgentWrites } from './agent-access/governed-write.js';
 import { createAutomationRuntimeDriver } from './scheduler/runtime-driver.js';
 import { createSubagentRuntimeDriver, reconcileReclaimedSubagentRun } from './runtime/subagent-driver.js';
 import { createRuntimeNotificationProjector } from './notifications/runtime-projector.js';
@@ -339,6 +341,10 @@ function mountRoutes(toolRegistry: ToolRegistry) {
       // Runtime is the cross-domain Execution Center read model. Domain drivers
       // remain authoritative and every object is owner/super guarded again in
       // the route as defense in depth.
+      // Agent access: a member's own external agents — pending approvals,
+      // standing grants, recent writes. Every handler re-scopes to the caller.
+      .use('/api/agent-access/*', requireInternal())
+      .route('/api/agent-access', createAgentAccessRoutes(toolRegistry))
       .use('/api/runtime', requireInternal())
       .use('/api/runtime/*', requireInternal())
       .use('/api/runtime', requireTrustedExecutionSurface(trustedExecutionPlan.taskCenter, 'task-center'))
@@ -422,6 +428,11 @@ async function main() {
   // rollout; a Runtime outage must not prevent the rest of Chat from booting.
   await reconcileInterruptedChatRuntimeRuns(dbProvider).catch((error) => {
     logger.error('[chat-runtime] boot reconciliation unavailable', { error: String(error) });
+  });
+  // An external agent's write that was executing when the process stopped may
+  // or may not have taken effect: close it as outcome unknown, never replay it.
+  await reconcileInterruptedAgentWrites(dbProvider).catch((error) => {
+    logger.error('[agent-access] boot reconciliation unavailable', { error: String(error) });
   });
   let runtimeWorker: Awaited<ReturnType<typeof startRuntimeWorker>> | null = null;
   let notificationDeliveryWorker: Awaited<ReturnType<typeof startNotificationDeliveryWorker>> | null = null;
@@ -509,6 +520,16 @@ async function main() {
         },
       })
     : null;
+
+  // Approval requests nobody decided in time: close them so the agent's status
+  // call gets a final answer. Cheap (only waiting agent writes are read).
+  setInterval(
+    () =>
+      void sweepExpiredAgentWrites(dbProvider).catch((error) =>
+        logger.warn('[agent-access] expiry sweep failed', { error: toErrorMessage(error) }),
+      ),
+    5 * 60_000,
+  );
 
   // Heartbeat: ping all WS connections every 30s. Never an unhandled rejection:
   // Node would exit the whole API over one failed tick.

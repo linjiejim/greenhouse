@@ -24,10 +24,28 @@ function eventResult(payload: RuntimeJsonValue): Record<string, RuntimeJsonValue
 function runLabel(run: RuntimeRunRow): string {
   if (run.kind === 'automation') return 'Automation';
   if (run.kind === 'subagent') return 'Subagent';
+  if (run.kind === 'agent_write') return 'Agent write';
   return 'Run';
 }
 
+function agentWriteCopy(interrupt: RuntimeInterruptRow): { title: string; body: string } {
+  const payload = record(JSON.parse(interrupt.payload) as RuntimeJsonValue) ?? {};
+  const client = typeof payload.client_name === 'string' ? payload.client_name : 'An agent';
+  const what =
+    typeof payload.action === 'string'
+      ? payload.action
+      : typeof payload.tool_id === 'string'
+        ? payload.tool_id
+        : 'a write';
+  const risk = interrupt.risk_level === 'r3' ? ' (cannot be undone)' : '';
+  return {
+    title: `${client} wants to run ${what}${risk}`,
+    body: 'Approve or reject it in Settings → Agent access. It expires in 24 hours.',
+  };
+}
+
 function interruptCopy(interrupt: RuntimeInterruptRow, run: RuntimeRunRow): { title: string; body: string } {
+  if (run.kind === 'agent_write') return agentWriteCopy(interrupt);
   const label = runLabel(run);
   const title =
     interrupt.kind === 'mutation_approval' || interrupt.kind === 'workflow_gate'
@@ -124,6 +142,9 @@ export function createRuntimeNotificationProjector(db: DatabaseProvider) {
     // transport ledger before marking the occurrence projected. Creating the
     // generic Runtime fact too would produce two inbox rows for one occurrence.
     if (run.kind === 'automation') return;
+    // An agent's write is already answered to the agent and listed in Agent
+    // access; only a failure or an unknown outcome needs the member's attention.
+    if (run.kind === 'agent_write' && eventStatus === 'succeeded') return;
     const label = runLabel(run);
     const failed = eventStatus !== 'succeeded';
     const eventError = typeof immutableResult.error_message === 'string' ? immutableResult.error_message : null;

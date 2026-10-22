@@ -48,6 +48,7 @@ const DEFAULT_TASK_KINDS = [
   'workflow',
   'automation',
   'subagent',
+  'agent_write',
 ] as const satisfies readonly RuntimeRunKind[];
 const IDEMPOTENCY_KEY_RE = /^[A-Za-z0-9._:-]{1,256}$/;
 
@@ -127,6 +128,8 @@ async function canAccessRunSource(user: AuthUser, run: RuntimeRunRow): Promise<b
   }
   if (run.kind === 'automation') return run.source_kind.startsWith('scheduled_task:');
   if (run.kind === 'subagent') return run.source_kind === 'spawned_session';
+  // An external agent's write belongs to the member it acted for.
+  if (run.kind === 'agent_write') return run.source_kind === 'proxy_call';
   return false;
 }
 

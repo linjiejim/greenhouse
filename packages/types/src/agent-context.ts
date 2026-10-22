@@ -64,7 +64,7 @@ export interface TablesContext {
 /** Durable cross-domain execution list or one Runtime run detail. */
 export interface ExecutionCenterContext {
   type: 'execution-center';
-  runKind?: 'mission' | 'workflow' | 'automation' | 'subagent' | 'eval';
+  runKind?: 'mission' | 'workflow' | 'automation' | 'subagent' | 'eval' | 'agent_write';
   runId?: string;
   /** Filled by the detail page after the Runtime read model loads. */
   runTitle?: string;

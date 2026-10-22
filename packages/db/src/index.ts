@@ -85,6 +85,7 @@ export * from './services/chat-artifact-receipts.js';
 export * from './services/runtime.js';
 export * from './services/notifications.js';
 export * from './services/workspace-settings.js';
+export * from './services/agent-write-grants.js';
 
 // ─── Configuration ───────────────────────────────────────
 

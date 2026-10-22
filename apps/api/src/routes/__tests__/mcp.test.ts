@@ -17,6 +17,57 @@ vi.mock('@greenhouse/db', async (importOriginal) => {
   return { ...actual, getDb: () => ({ apiAudit: { record: async () => {} } }) };
 });
 
+// Writes are governed in agent-access (covered end to end by
+// tests/api/agent-write-governance.db.test.ts); here the route's own job is
+// asserted: strip confirm, honour it only while the switch is on, and shape
+// the three outcomes for the agent.
+const governance = vi.hoisted(() => ({
+  legacy: true,
+  govern: vi.fn(),
+  status: vi.fn(),
+  withdraw: vi.fn(),
+}));
+vi.mock('../../agent-access/context.js', () => ({
+  legacyConfirmEnabled: async () => governance.legacy,
+  baseWriteRisk: () => 'r2',
+  resolveWriteCaller: async (_db: unknown, input: { userId: string; clientId: string; authMethod: string }) => ({
+    ...input,
+    clientName: 'Codex',
+    approverUserId: input.userId,
+  }),
+}));
+vi.mock('../../agent-access/governed-write.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../agent-access/governed-write.js')>();
+  return {
+    ...actual,
+    governProxyWrite: governance.govern,
+    agentWriteStatus: governance.status,
+    withdrawAgentWrite: governance.withdraw,
+  };
+});
+
+function view(over: Record<string, unknown> = {}) {
+  return {
+    request_id: 'rtr_1',
+    status: 'pending',
+    tool_id: 'project_mutation',
+    action: 'project.update',
+    risk: 'r2',
+    client_id: 'c1',
+    client_name: 'Codex',
+    basis: null,
+    input: {},
+    output: null,
+    error: null,
+    created_at: '2026-10-23T00:00:00.000Z',
+    settled_at: null,
+    expires_at: '2026-10-24T00:00:00.000Z',
+    interrupt_id: 'rti_1',
+    decided_by_user_id: null,
+    ...over,
+  };
+}
+
 import { buildMcpServer, toMcpInputSchema } from '../mcp.js';
 import type { ToolRegistry } from '../../agent.js';
 import type { ProxyToolManifestEntry } from '../../agent-runtime/tool-proxy.js';
@@ -67,15 +118,18 @@ function firstText(res: unknown): string {
 }
 
 describe('MCP server — tools/list', () => {
-  it('lists only the tools in the request context, with confirm on writes', async () => {
+  it('lists only the tools in the request context, plus agent_write_status when writes are reachable', async () => {
+    governance.legacy = true;
     const { client, server } = await connect(makeCtx());
     const { tools } = await client.listTools();
 
-    expect(tools.map((t) => t.name).sort()).toEqual(['project_mutation', 'project_query']);
+    expect(tools.map((t) => t.name).sort()).toEqual(['agent_write_status', 'project_mutation', 'project_query']);
 
     const write = tools.find((t) => t.name === 'project_mutation')!;
+    // While the transition switch is on, confirm is an optional legacy flag — never required.
     expect((write.inputSchema as { properties: Record<string, unknown> }).properties.confirm).toBeDefined();
-    expect((write.inputSchema as { required?: string[] }).required).toContain('confirm');
+    expect((write.inputSchema as { required?: string[] }).required ?? []).not.toContain('confirm');
+    expect(write.description).toMatch(/approval/);
 
     const read = tools.find((t) => t.name === 'project_query')!;
     expect((read.inputSchema as { properties?: Record<string, unknown> }).properties?.confirm).toBeUndefined();
@@ -95,21 +149,61 @@ describe('MCP server — tools/call', () => {
     await server.close();
   });
 
-  it('blocks a write without confirm:true', async () => {
+  it('answers a write that needs approval with needs_approval, not an error', async () => {
+    governance.govern.mockResolvedValueOnce({ status: 'needs_approval', reused: false, view: view() });
     const { client, server } = await connect(makeCtx());
     const res = await client.callTool({ name: 'project_mutation', arguments: { name: 'X' } });
-    expect(res.isError).toBe(true);
-    expect(firstText(res)).toMatch(/confirm/i);
+    expect(res.isError).toBeFalsy();
+    const body = JSON.parse(firstText(res));
+    expect(body).toMatchObject({ status: 'needs_approval', request_id: 'rtr_1', risk: 'r2' });
+    expect(body.message).toMatch(/agent_write_status/);
+    expect(governance.govern.mock.calls.at(-1)![0]).toMatchObject({ toolId: 'project_mutation', legacyConfirm: false });
     await client.close();
     await server.close();
   });
 
-  it('runs a write with confirm:true and strips confirm before execution', async () => {
+  it('strips confirm before governance and honours it only while the switch is on', async () => {
+    governance.govern.mockResolvedValue({
+      status: 'executed',
+      view: view({ status: 'executed', basis: 'legacy_confirm', output: { created: { name: 'X' } } }),
+    });
+    governance.legacy = true;
     const { client, server } = await connect(makeCtx());
     const res = await client.callTool({ name: 'project_mutation', arguments: { name: 'X', confirm: true } });
     expect(res.isError).toBeFalsy();
-    // confirm must not leak into the tool input.
     expect(JSON.parse(firstText(res))).toEqual({ created: { name: 'X' } });
+    expect(governance.govern.mock.calls.at(-1)![0]).toMatchObject({ input: { name: 'X' }, legacyConfirm: true });
+
+    governance.legacy = false;
+    await client.callTool({ name: 'project_mutation', arguments: { name: 'X', confirm: true } });
+    expect(governance.govern.mock.calls.at(-1)![0]).toMatchObject({ input: { name: 'X' }, legacyConfirm: false });
+    governance.govern.mockReset();
+    await client.close();
+    await server.close();
+  });
+
+  it('reports a failed write as a tool error', async () => {
+    governance.govern.mockResolvedValueOnce({
+      status: 'failed',
+      view: view({ status: 'failed', error: 'revision conflict' }),
+    });
+    const { client, server } = await connect(makeCtx());
+    const res = await client.callTool({ name: 'project_mutation', arguments: { name: 'X' } });
+    expect(res.isError).toBe(true);
+    expect(firstText(res)).toBe('revision conflict');
+    await client.close();
+    await server.close();
+  });
+
+  it('agent_write_status returns the executed output', async () => {
+    governance.status.mockResolvedValueOnce(view({ status: 'executed', basis: 'approved', output: { ok: 1 } }));
+    const { client, server } = await connect(makeCtx());
+    const res = await client.callTool({
+      name: 'agent_write_status',
+      arguments: { request_id: 'rtr_1', wait_seconds: 5 },
+    });
+    expect(JSON.parse(firstText(res))).toMatchObject({ status: 'executed', output: { ok: 1 } });
+    expect(governance.status.mock.calls.at(-1)!.slice(1)).toEqual(['rtr_1', expect.anything(), 5]);
     await client.close();
     await server.close();
   });
@@ -145,14 +239,15 @@ describe('toMcpInputSchema', () => {
     expect(toMcpInputSchema(base({ inputSchema: undefined }))).toMatchObject({ type: 'object' });
   });
 
-  it('injects a required confirm flag for mutating tools', () => {
-    const s = toMcpInputSchema(
-      base({
-        mutating: true,
-        inputSchema: { type: 'object', properties: { name: { type: 'string' } }, required: ['name'] },
-      }),
-    );
-    expect((s.properties as Record<string, { type?: string }>).confirm.type).toBe('boolean');
-    expect(s.required).toEqual(expect.arrayContaining(['name', 'confirm']));
+  it('adds an optional legacy confirm flag to writes only while the switch is on', () => {
+    const entry = base({
+      mutating: true,
+      inputSchema: { type: 'object', properties: { name: { type: 'string' } }, required: ['name'] },
+    });
+    const legacy = toMcpInputSchema(entry, { legacyConfirm: true });
+    expect((legacy.properties as Record<string, { type?: string }>).confirm.type).toBe('boolean');
+    expect(legacy.required).toEqual(['name']);
+    const strict = toMcpInputSchema(entry, { legacyConfirm: false });
+    expect((strict.properties as Record<string, unknown>).confirm).toBeUndefined();
   });
 });

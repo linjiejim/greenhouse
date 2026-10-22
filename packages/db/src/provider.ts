@@ -49,6 +49,7 @@ import { createChatArtifactReceiptService } from './services/chat-artifact-recei
 import { createRuntimeService } from './services/runtime.js';
 import { createNotificationService } from './services/notifications.js';
 import { createWorkspaceSettingService } from './services/workspace-settings.js';
+import { createAgentWriteGrantService } from './services/agent-write-grants.js';
 
 function createDatabaseProvider(db: Db, client: DbClient['client'] | null) {
   return {
@@ -95,6 +96,7 @@ function createDatabaseProvider(db: Db, client: DbClient['client'] | null) {
     runtime: createRuntimeService(db),
     notifications: createNotificationService(db),
     workspaceSettings: createWorkspaceSettingService(db),
+    agentWriteGrants: createAgentWriteGrantService(db),
 
     /** Health check — verifies DB connection is alive. */
     async healthCheck(): Promise<{ ok: boolean; latencyMs: number }> {

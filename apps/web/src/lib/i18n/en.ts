@@ -643,6 +643,7 @@ export default {
     group_llm: 'Main LLM',
     group_media: 'Media (vision & image generation)',
     group_search: 'Web search',
+    group_agent_access: 'Agent access',
     group_extension: '{name} (extension)',
     sourceDb: 'Workspace',
     sourceEnv: 'Environment',

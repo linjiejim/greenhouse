@@ -55,6 +55,15 @@ import {
   type ProxyToolManifestEntry,
 } from '../agent-runtime/tool-proxy.js';
 import { getAgentIdentity } from '../agent-runtime/api-auth.js';
+import {
+  AGENT_WRITE_MAX_WAIT_SECONDS,
+  AgentWriteError,
+  agentWriteStatus,
+  governProxyWrite,
+  withdrawAgentWrite,
+  type AgentWriteView,
+} from '../agent-access/governed-write.js';
+import { baseWriteRisk, legacyConfirmEnabled, resolveWriteCaller } from '../agent-access/context.js';
 import type { AgentIdentity } from '../agent-runtime/api-auth.js';
 import { mcpCredentialMiddleware, recordMcpAudit } from '../agent-runtime/mcp-auth.js';
 import type { AppEnv } from '../app-env.js';
@@ -77,9 +86,15 @@ const SERVER_VERSION = '0.1.0';
 /** Sent to clients in the initialize response — the agent-facing bootstrap hint. */
 const SERVER_INSTRUCTIONS =
   'Greenhouse team workbench. The tool list is your permission list: a missing tool has not been ' +
-  'granted to you, and each tool documents its own usage. Mutating tools (names ending in ' +
-  '`mutation`) require confirm:true on every call. For reusable output skills (decks, reports, ' +
-  'reviews…) use skill_query skills.find to search and skills.download to install them locally.';
+  'granted to you, and each tool documents its own usage. Writes (tools ending in `mutation`) are ' +
+  'governed by the member you act for: a write may run at once, or come back as ' +
+  '{"status":"needs_approval","request_id":…} — then tell the user, do not resend it, and call ' +
+  'agent_write_status with the request_id (wait_seconds up to 30) to get the result. Deletes always ' +
+  'need approval. For reusable output skills (decks, reports, reviews…) use skill_query skills.find ' +
+  'to search and skills.download to install them locally.';
+
+/** Protocol-level tool every write-capable agent gets; not a catalog tool. */
+export const AGENT_WRITE_STATUS_TOOL = 'agent_write_status';
 
 /**
  * Profile used to resolve the bound user's tool set. Internal-only surface, so we
@@ -214,22 +229,26 @@ async function resolveMcpContext(c: Context, toolRegistry: ToolRegistry): Promis
  * object JSON Schema; mutating tools get a synthetic required `confirm` flag so
  * the agent must consciously opt into each write (see executeProxyTool).
  */
-export function toMcpInputSchema(entry: ProxyToolManifestEntry): Record<string, unknown> {
+export function toMcpInputSchema(
+  entry: ProxyToolManifestEntry,
+  opts: { legacyConfirm: boolean } = { legacyConfirm: false },
+): Record<string, unknown> {
   const raw = entry.inputSchema;
   const base: Record<string, unknown> =
     raw && typeof raw === 'object' && (raw as { type?: unknown }).type === 'object'
       ? structuredClone(raw)
       : { type: 'object', properties: {}, additionalProperties: true };
 
-  if (entry.mutating) {
+  // Transition only: while the workspace still honours confirm:true it stays an
+  // optional flag, so existing agent prompts keep working. Approval, not this
+  // flag, is what governs a write.
+  if (entry.mutating && opts.legacyConfirm) {
     const properties = { ...((base.properties as Record<string, unknown>) ?? {}) };
     properties.confirm = {
       type: 'boolean',
-      description: 'Must be set to true to execute this state-changing operation.',
+      description: 'Optional (legacy). true lets a shared-data write run without asking while the workspace allows it.',
     };
     base.properties = properties;
-    const required = Array.isArray(base.required) ? (base.required as string[]) : [];
-    base.required = Array.from(new Set([...required, 'confirm']));
   }
   return base;
 }
@@ -249,30 +268,99 @@ export function buildMcpServer(c: Context, ctx: McpContext): Server {
     authMethod: oauthAuthMethod ?? 'oauth',
   });
 
-  server.setRequestHandler(ListToolsRequestSchema, async () => ({
-    tools: buildProxyManifest(ctx.toolIds, ctx.registry).map((entry) => ({
+  server.setRequestHandler(ListToolsRequestSchema, async () => {
+    const legacyConfirm = await legacyConfirmEnabled();
+    const entries = buildProxyManifest(ctx.toolIds, ctx.registry);
+    const tools = entries.map((entry) => ({
       name: entry.id,
-      description: entry.mutating ? `${entry.description} (write — requires confirm:true)` : entry.description,
-      inputSchema: toMcpInputSchema(entry),
-    })),
-  }));
+      description: entry.mutating
+        ? `${entry.description} (write — may need the member's approval; see ${AGENT_WRITE_STATUS_TOOL})`
+        : entry.description,
+      inputSchema: toMcpInputSchema(entry, { legacyConfirm }),
+    }));
+    if (entries.some((entry) => entry.mutating)) tools.push(agentWriteStatusToolDef());
+    return { tools };
+  });
 
   server.setRequestHandler(CallToolRequestSchema, async (req) => {
     const start = Date.now();
     const name = req.params.name;
     const rawArgs = (req.params.arguments ?? {}) as Record<string, unknown>;
 
-    // Pull the synthetic confirm flag out of the args before validation/exec.
-    let confirm = false;
-    let input: unknown = rawArgs;
-    if (isMutatingProxyTool(name)) {
-      confirm = rawArgs.confirm === true;
-      const { confirm: _omit, ...rest } = rawArgs;
-      input = rest;
-    }
-
     try {
-      const output = await executeProxyTool(ctx.registry, name, ctx.toolIds, input, { confirm });
+      if (name === AGENT_WRITE_STATUS_TOOL) {
+        if (!ctx.toolIds.some((id) => isMutatingProxyTool(id))) {
+          throw new ProxyToolError(`Tool "${name}" is not available for this credential`, 403);
+        }
+        const result = await handleAgentWriteStatus(c, identity.userId, rawArgs);
+        await recordMcpAudit(c, {
+          endpoint: 'mcp:tools/call',
+          statusCode: 200,
+          durationMs: Date.now() - start,
+          meta: { tool: name, request_id: result.request_id, write_status: result.status },
+        });
+        return { content: [{ type: 'text', text: JSON.stringify(agentFacingView(result)) }] };
+      }
+
+      if (isMutatingProxyTool(name)) {
+        // The legacy confirm flag is ours, not the tool's: strip it before validation.
+        const { confirm, ...input } = rawArgs;
+        const legacy = confirm === true && (await legacyConfirmEnabled());
+        const caller = await resolveWriteCaller(getDb(), {
+          userId: identity.userId,
+          clientId: oauthClientId ?? 'unknown',
+          authMethod: oauthAuthMethod ?? 'oauth',
+        });
+        const governed = await governProxyWrite({
+          db: getDb(),
+          caller,
+          toolId: name,
+          input,
+          registry: ctx.registry,
+          allowedToolIds: ctx.toolIds,
+          baseRisk: baseWriteRisk(name),
+          legacyConfirm: legacy,
+        });
+        await recordMcpAudit(c, {
+          endpoint: 'mcp:tools/call',
+          statusCode: governed.status === 'failed' ? 422 : governed.status === 'needs_approval' ? 202 : 200,
+          durationMs: Date.now() - start,
+          error: governed.status === 'failed' ? (governed.view.error ?? 'failed') : undefined,
+          meta: {
+            tool: name,
+            request_id: governed.view.request_id,
+            write_status: governed.view.status,
+            risk: governed.view.risk,
+            basis: governed.view.basis,
+          },
+        });
+        if (governed.status === 'executed') {
+          return {
+            content: [
+              { type: 'text', text: JSON.stringify(governed.view.output) },
+              {
+                type: 'text',
+                text: `Recorded as Greenhouse request ${governed.view.request_id} (${governed.view.basis}).`,
+              },
+            ],
+          };
+        }
+        if (governed.status === 'failed') {
+          return { content: [{ type: 'text', text: governed.view.error ?? 'Write failed' }], isError: true };
+        }
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(
+                agentFacingView(governed.view, governed.status === 'needs_approval' && governed.reused),
+              ),
+            },
+          ],
+        };
+      }
+
+      const output = await executeProxyTool(ctx.registry, name, ctx.toolIds, rawArgs);
       await recordMcpAudit(c, {
         endpoint: 'mcp:tools/call',
         statusCode: 200,
@@ -281,9 +369,12 @@ export function buildMcpServer(c: Context, ctx: McpContext): Server {
       });
       return { content: [{ type: 'text', text: JSON.stringify(output) }] };
     } catch (err) {
-      const status = err instanceof ProxyToolError ? err.status : 500;
-      const message = err instanceof ProxyToolError ? err.message : 'Tool execution failed';
-      if (!(err instanceof ProxyToolError)) logger.error(`[mcp] tool "${name}" failed:`, err);
+      const status = err instanceof ProxyToolError ? err.status : err instanceof AgentWriteError ? 404 : 500;
+      const message =
+        err instanceof ProxyToolError || err instanceof AgentWriteError ? err.message : 'Tool execution failed';
+      if (!(err instanceof ProxyToolError) && !(err instanceof AgentWriteError)) {
+        logger.error(`[mcp] tool "${name}" failed:`, err);
+      }
       await recordMcpAudit(c, {
         endpoint: 'mcp:tools/call',
         statusCode: status,
@@ -366,6 +457,60 @@ export function buildMcpServer(c: Context, ctx: McpContext): Server {
   });
 
   return server;
+}
+
+function agentWriteStatusToolDef() {
+  return {
+    name: AGENT_WRITE_STATUS_TOOL,
+    description:
+      'Check a write that needed approval. Pass the request_id you were given; wait_seconds (0–30) waits for the ' +
+      "member's decision. action=withdraw cancels a request still waiting. Statuses: pending, executed (output " +
+      'holds the tool result), failed, rejected, expired, withdrawn, superseded, outcome_unknown.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        request_id: { type: 'string', description: 'The request_id from a needs_approval result.' },
+        wait_seconds: { type: 'integer', minimum: 0, maximum: AGENT_WRITE_MAX_WAIT_SECONDS },
+        action: { type: 'string', enum: ['status', 'withdraw'], default: 'status' },
+      },
+      required: ['request_id'],
+      additionalProperties: false,
+    },
+  };
+}
+
+async function handleAgentWriteStatus(c: Context, userId: string, args: Record<string, unknown>) {
+  const requestId = typeof args.request_id === 'string' ? args.request_id.trim() : '';
+  if (!requestId) throw new ProxyToolError('request_id is required', 400);
+  const caller = { userId, clientId: (c.get('oauthClientId') as string | undefined) ?? 'unknown' };
+  if (args.action === 'withdraw') return withdrawAgentWrite(getDb(), requestId, caller);
+  const wait = typeof args.wait_seconds === 'number' && Number.isFinite(args.wait_seconds) ? args.wait_seconds : 0;
+  return agentWriteStatus(getDb(), requestId, caller, wait);
+}
+
+/** What the calling agent sees: enough to act on, without internal ids it cannot use. */
+function agentFacingView(view: AgentWriteView, reused = false) {
+  const base = (process.env.PUBLIC_BASE_URL || '').replace(/\/$/, '');
+  const pending = view.status === 'pending';
+  return {
+    status: pending ? 'needs_approval' : view.status,
+    request_id: view.request_id,
+    tool: view.tool_id,
+    action: view.action,
+    risk: view.risk,
+    ...(pending
+      ? {
+          message:
+            (reused ? 'This same write is already waiting for approval. ' : '') +
+            "This write needs the member's approval in Greenhouse (Settings → Agent access). Tell the user, do " +
+            `not resend it, and call ${AGENT_WRITE_STATUS_TOOL} with this request_id to get the result.`,
+          approve_url: `${base}/#/settings/agent-access?request=${encodeURIComponent(view.request_id)}`,
+          expires_at: view.expires_at,
+        }
+      : {}),
+    ...(view.status === 'executed' ? { output: view.output } : {}),
+    ...(view.error && !pending ? { error: view.error } : {}),
+  };
 }
 
 export function createMcpRoutes(toolRegistry: ToolRegistry) {

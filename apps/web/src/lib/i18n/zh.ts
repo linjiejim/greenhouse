@@ -647,6 +647,7 @@ const zh: Messages = {
     group_llm: '主模型',
     group_media: '媒体（视觉与图像生成）',
     group_search: '联网搜索',
+    group_agent_access: 'Agent 接入',
     group_extension: '{name}（扩展）',
     sourceDb: '工作区',
     sourceEnv: '环境变量',

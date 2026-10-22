@@ -32,7 +32,9 @@ export const runtimeRuns = pgTable(
   'runtime_runs',
   {
     id: text('id').primaryKey(),
-    kind: text('kind', { enum: ['chat', 'automation', 'workflow', 'mission', 'subagent', 'eval'] }).notNull(),
+    kind: text('kind', {
+      enum: ['chat', 'automation', 'workflow', 'mission', 'subagent', 'eval', 'agent_write'],
+    }).notNull(),
     /** Logical user references: permanent execution history must outlive users. */
     owner_user_id: text('owner_user_id').notNull(),
     initiated_by_user_id: text('initiated_by_user_id').notNull(),
