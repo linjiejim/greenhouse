@@ -3010,7 +3010,7 @@ export default {
       subagent: 'Subagent',
       eval: 'Eval',
       chat: 'Chat',
-      agent_write: 'Agent writes',
+      agent_write: 'Agent write',
     },
     scope: {
       own: 'My executions',
