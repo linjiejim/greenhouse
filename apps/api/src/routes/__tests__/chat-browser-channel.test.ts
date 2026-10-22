@@ -48,6 +48,8 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock('@greenhouse/db', () => ({
+  // Sessions in these fixtures carry no digest columns, so this is the real answer.
+  readSessionDigest: () => null,
   getDb: () => ({
     users: mocks.users,
     userFeatures: mocks.userFeatures,
@@ -81,6 +83,10 @@ vi.mock('@greenhouse/agent-core', () => ({
   resolveHistoryBudget: () => 80_000,
   // Text-only default — the vision inline path has its own unit tests (chat-vision.test.ts).
   modelSupportsVision: () => false,
+  // The closing turn-context block's clock line and the deterministic stamps
+  // recorded in the Runtime trace (both unit-tested in agent-core).
+  formatCurrentTimeLine: () => '[Current Time: test]',
+  injectTimeContext: <T>(messages: T[]) => messages,
   getModelEntry: () => ({ options: { max_tokens: 100 } }),
 }));
 
@@ -270,7 +276,9 @@ function panelTurnBody() {
   });
 }
 
-async function sendTurn(body: unknown): Promise<{ tool_ids: string[]; system_prompt: string }> {
+async function sendTurn(
+  body: unknown,
+): Promise<{ tool_ids: string[]; system_prompt: string; messages: Array<{ role: string; content: string }> }> {
   const response = await createApp().request('/api/chat', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -278,7 +286,11 @@ async function sendTurn(body: unknown): Promise<{ tool_ids: string[]; system_pro
   });
   expect(response.status).toBe(200);
   await response.text();
-  return mocks.recordChatRuntimeProviderInput.mock.calls[0]![2] as { tool_ids: string[]; system_prompt: string };
+  return mocks.recordChatRuntimeProviderInput.mock.calls[0]![2] as {
+    tool_ids: string[];
+    system_prompt: string;
+    messages: Array<{ role: string; content: string }>;
+  };
 }
 
 describe('POST /api/chat on the browser-extension channel', () => {
@@ -301,15 +313,20 @@ describe('POST /api/chat on the browser-extension channel', () => {
   it('gives a browser session no inline writer, but the panel actions and page context reach the model', async () => {
     mocks.sessions.getById.mockResolvedValue(sessionOn('browser'));
 
-    const { tool_ids, system_prompt } = await sendTurn(panelTurnBody());
+    const { tool_ids, system_prompt, messages } = await sendTurn(panelTurnBody());
 
     expect(filterBrowserSessionToolIds).toHaveBeenCalledWith(EFFECTIVE_TOOLS);
     expect(tool_ids).toEqual(expect.arrayContaining(['knowledge_query', 'export_data']));
     for (const writer of ['knowledge_mutation', 'project_mutation', 'memory']) expect(tool_ids).not.toContain(writer);
     // The confirm-carded write path and the browser automation are registered as Client Actions.
     expect(tool_ids).toEqual(expect.arrayContaining(['save_to_knowledge', 'browser_read_page', 'browser_click']));
-    expect(system_prompt).toContain('SELECTED-SNIPPET-42');
-    expect(system_prompt).toContain('## UI Actions');
+    // Page context and the UI-actions note are per-turn: they close the newest
+    // user message, never the (cache-stable) system prompt.
+    const closing = messages.at(-1)!.content;
+    expect(closing).toContain('SELECTED-SNIPPET-42');
+    expect(closing).toContain('## UI Actions');
+    expect(system_prompt).not.toContain('SELECTED-SNIPPET-42');
+    expect(system_prompt).not.toContain('## UI Actions');
   });
 
   it('keeps the writers for the same turn on a web session', async () => {

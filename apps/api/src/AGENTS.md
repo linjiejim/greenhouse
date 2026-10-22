@@ -68,6 +68,22 @@ Automation、Tasks、Agents 的 `Mine / Shared / Team` 口径见 [personal asset
 - **`routes/chat.ts` 不直接 import 工具目录（`tools/registry.ts`）**：目录会加载每个已启用的扩展，而 chat 路由测试 mock 的是 `agent-runtime/tool-resolution`、`@greenhouse/db` 只给了 `getDb`。私有 fork 带着自己的扩展跑上游测试时，直接 import 会让 `chat-*` 路由测试在模块加载阶段就失败（v1.3.1 的 fork 同步踩过：`registerExtensionServices` 不在 mock 里）。需要工具元数据的逻辑放进 `tool-resolution.ts`，路由只调函数。
 - Client Actions 只处理当前浏览器的读取、导航、填充等 UI 动作；真实数据写入继续走既有服务端 mutation 工具、确认门与 Platform 权限链。
 
+### Chat 上下文引擎（缓存前缀 + 滚动摘要）
+
+v1 只接 DeepSeek 与 OpenAI 兼容服务，它们**自动**缓存 prompt 前缀，所以目标是前缀稳定，不加显式缓存断点。方案见 spec `20261023-v1-platform-hardening.md` D7。
+
+- **系统 prompt 只放整段会话内稳定的东西**：profile prompt、用户 notes、记忆索引、工具引导、回复语言，最后是滚动摘要。`routes/chat.ts` 的 `buildSystemPromptWithUserNotes` 是唯一组装点；`chat-prompt-cache.test.ts` 钉住两轮不同页面上下文 / 图片下系统 prompt **逐字节相同**。往里加任何逐轮变化的内容都会让每轮缓存全失效。
+- **逐轮内容走收尾块**（`chat/turn-context.ts`）：当前时间、Ambient Context、视觉模型的 Attached Images 说明、UI Actions 说明，拼在**最后一条 user 消息末尾**，只给模型、从不落库。放在末尾是承重的：下一轮这条消息不带收尾块，但共享前缀仍一直延伸到用户原文结尾。工具引导是否出现只看服务端工具，不看随页面变化的 Client Actions。
+- **历史消息的渲染必须是转录的纯函数**：`injectTimeContext` 只用每条消息自己的 `created_at` 打时间戳（不再给最后一条打 `[Current Time]`，「现在」在收尾块里）；图片 ID 提示挂在每条带图的 user 消息上，而不是只挂最新一条。
+- **Runtime trace 记录的是 provider 实际收到的输入**：`system_prompt` + `injectTimeContext(带收尾块的消息)`（与引擎内部同一函数、确定性）；trace input 另记 `digest`。
+- **滚动摘要**（`chat/digest.ts`）：一轮成功落库后（`pumpChatTurn` 的 `onPersisted`），若 `digest_upto_seq` 之后的消息估算 token 超过 `resolveDigestTriggerTokens(model)`（= 历史预算的一半 = 上下文窗口的 25%，128k 模型即 32k），就把「最后两轮问答之前」的部分折进摘要：每趟最多 24k token、尽量停在 assistant 回复之后、不足 4k 不折（每次折叠都会让系统 prompt 失效一次缓存），一次最多 3 趟。走 `complete('team', { caller: 'digest' })`，记在触发这一轮的用户头上、同一套额度规则；任何失败只 `logger.warn`，绝不阻塞或拖慢这一轮。同进程同会话只跑一个折叠。
+- **摘要格式**：Goals / Decisions / Facts / Open items / Artifacts 五个固定英文标题，条目用会话主要语言，上限 6000 字符，旧摘要一并折入。注入前 `sanitizeForPrompt`——它是模型写的、源自用户输入、每轮重放的文本，与记忆同一类持久注入通道。
+- **`seq ≤ digest_upto_seq` 的消息不再进 prompt**，由系统 prompt 末尾的「Earlier in this conversation」段代替（只在折叠时变化）；原有的按预算丢最旧消息的窗口保留作兜底。
+- **只前进、比较后写**：`db.sessions.advanceDigest` 锁会话行，要求 `digest_upto_seq` 仍是折叠开始时读到的值、新值严格更大、且最后一条被折叠的消息 id 与内容都没变；输了竞争直接放弃，不是错误。
+- **改写即重置**：编辑 / 截断 / 原地改写 `seq ≤ digest_upto_seq` 的消息（`editUserMessageAndTruncate`、`deleteMessagesAfterSeq`、`updateMessageContent`、`replaceLatestAssistant`）在同一事务里清空摘要；下一轮回到纯窗口，轮后重新折叠。fork 只在复制范围覆盖已折叠部分时继承摘要。会话列表查询不带 `digest` 列。
+- **找回细节**：`session_query` 的 `conversation_search`（默认当前会话）用 jieba 分词在消息正文里检索并返回 `seq` + 片段；摘要段在有该工具时提示模型去查而不是猜。消息表没有分词列（v1.4 不加迁移），所以是分词后的子串匹配（AND 优先、OR 补位、单字词不参与 OR），量大再加 `_tokens` 列 + GIN 索引。
+- **飞书机器人同一口径**：主人发言时系统 prompt 带摘要、历史从 `digest_upto_seq` 之后开始，轮后折叠；别人在群里回复主人的链，既没有历史也没有摘要（摘要也是主人的历史）。
+
 ### 上传存储 (`storage/uploads.ts`)
 - 聊天上传图片 / 生成图的统一存储层——**不要直接读写磁盘或 COS**，一律走 `putUpload(id, buffer, contentType)` / `getUpload(id)`。
 - `putUpload/getUpload` 是统一安全边界：只接受服务端生成的平坦图片 ID，校验完整路径形态、大小与魔数；工具层不得自行拼接 `UPLOADS_DIR`。新对象使用 `timestamp + 完整 UUID`，读取端只为历史对象兼容旧 8-hex UUID 前缀。
@@ -168,7 +184,7 @@ Automation、Tasks、Agents 的 `Mine / Shared / Team` 口径见 [personal asset
 - **消息先认领再处理**（`feishu_message_receipts` 主键）：飞书会重投，而处理一条消息 = 跑一轮 agent = 花钱且会回消息。
 - **回答必须走 `replyCardMarkdown`（reply）而不是新发一条**：只有 reply 才让用户后续的「回复」保持在同一条链上、`root_id` 稳定；新发一条会开新链，用户每回复一次就换一个会话。
 - 执行复用 `runAgentInSession`（与定时任务、spawn 同一个 runner），`usageContext.caller='feishu-bot'` 归属发消息的用户、计入其月度配额。`channel='feishu'` 的会话**照常出现在会话列表里**——它是用户亲自参与的真实对话，与 workflow 那种引擎产物不同。
-- 回复即延续要带上文：`priorMessages` 用 chat 同一套投影与 token 预算。**只给会话主人回放**——群里别的绑定成员回复同一条链也落进这个会话，而主人可能在 Web 上接着聊过，那些轮次没发到群里，不能经别人的提问带进群。护栏 `tests/api/feishu-bot-history.db.test.ts`。
+- 回复即延续要带上文：`priorMessages` 用 chat 同一套投影与 token 预算，滚动摘要也与 chat 同口径（见「Chat 上下文引擎」）。**只给会话主人回放**——群里别的绑定成员回复同一条链也落进这个会话，而主人可能在 Web 上接着聊过，那些轮次没发到群里，不能经别人的提问带进群；摘要同理只给主人。护栏 `tests/api/feishu-bot-history.db.test.ts`。
 - 长连接连不上只 `logger.warn`，**绝不拖垮主 API**。
 
 ### Tasks（`user_prompts` + `/api/prompts` + `task_capture`）

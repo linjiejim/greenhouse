@@ -3,12 +3,13 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import { eq, and, sql, ne, desc, notInArray, lt, lte, inArray, or } from 'drizzle-orm';
+import { eq, and, sql, ne, desc, notInArray, lt, lte, inArray, or, getTableColumns } from 'drizzle-orm';
 import { nowIso } from '@greenhouse/utils/date';
 import { safeJsonParse } from '@greenhouse/utils/json';
 
 import type { Db } from '../client.js';
 import { sessions, messages, runtimeRuns } from '../schema/index.js';
+import { segmentForFts, buildSnippet } from './fts.js';
 import type {
   SessionRow,
   MessageRow,
@@ -89,6 +90,103 @@ export interface MessageCursorOpts {
 
 export interface ChatHistoryOpts {
   excludeMessageId?: string;
+  /**
+   * Only messages with `seq > afterSeq` — the part of the transcript the
+   * rolling digest has not folded yet (`sessions.digest_upto_seq`).
+   */
+  afterSeq?: number | null;
+}
+
+/**
+ * The rolling-digest columns (migration 0008). Not part of the shared
+ * `SessionRow` contract: clients never need them, and only the chat prompt
+ * assembly and the fold read them. Optional because rows built in memory (and
+ * test doubles) do not carry them.
+ */
+export interface SessionDigestFields {
+  digest?: string | null;
+  digest_upto_seq?: number | null;
+  digest_updated_at?: string | null;
+}
+
+/** A full `sessions` row as read from the database. */
+export type SessionRecord = SessionRow & SessionDigestFields;
+
+/** The usable digest of a session, or null when it has none. */
+export function readSessionDigest(
+  row: SessionDigestFields | null | undefined,
+): { text: string; uptoSeq: number } | null {
+  if (!row || typeof row.digest !== 'string' || !row.digest.trim()) return null;
+  if (typeof row.digest_upto_seq !== 'number' || !Number.isInteger(row.digest_upto_seq)) return null;
+  return { text: row.digest, uptoSeq: row.digest_upto_seq };
+}
+
+/** A transcript message with its position, for the digest fold. */
+export interface SequencedChatMessage {
+  id: string;
+  seq: number;
+  role: 'user' | 'assistant';
+  content: string;
+  created_at: string;
+}
+
+export interface AdvanceDigestInput {
+  /** The `digest_upto_seq` the fold started from (null = no digest yet). */
+  expectedUptoSeq: number | null;
+  /** The last folded message's seq; must be greater than the current value. */
+  uptoSeq: number;
+  /**
+   * The last folded message as the fold read it. An edit at or below it
+   * either rewrites it (same id, new content) or truncates it away, so a
+   * mismatch means the fold summarised a transcript that no longer exists.
+   */
+  boundary: { id: string; content: string };
+  digest: string;
+}
+
+/** One message that matched a content search. */
+export interface MessageSearchHit {
+  session_id: string;
+  message_id: string;
+  seq: number;
+  role: string;
+  snippet: string;
+  created_at: string;
+  /** How many of the query's terms the message contains. */
+  matched_terms: number;
+}
+
+/** A content-search hit across conversations, with the session it belongs to. */
+export interface SessionMessageSearchHit extends MessageSearchHit {
+  title: string | null;
+  profile_id: string;
+  channel: string;
+  session_updated_at: string;
+}
+
+export interface MessageSearchOpts {
+  limit?: number;
+  channel?: string;
+}
+
+/** Most query terms a content search matches on — bounds the SQL it builds. */
+const MAX_SEARCH_TERMS = 8;
+
+/**
+ * Segment a free-text query into the terms a content search matches on.
+ *
+ * Uses the same jieba segmentation as the knowledge base (`segmentForFts`).
+ * Messages have no stored token column (the schema is frozen for v1.4), so the
+ * terms are matched as case-insensitive substrings of the raw content instead
+ * of through a tsvector — the CJK equivalent of the knowledge base's `term:*`
+ * prefix match. Returns `all` for the AND pass and `recall` for the OR pass,
+ * which drops single-character terms (particles like 的/了 match everything)
+ * whenever a longer term exists.
+ */
+export function messageSearchTerms(query: string): { all: string[]; recall: string[] } {
+  const all = [...new Set(segmentForFts(query).split(/\s+/).filter(Boolean))].slice(0, MAX_SEARCH_TERMS);
+  const long = all.filter((term) => [...term].length >= 2);
+  return { all, recall: long.length > 0 ? long : all };
 }
 
 export interface PersistedChatImage {
@@ -215,6 +313,44 @@ function sessionListConditions(opts: SessionListOpts) {
   return conditions;
 }
 
+/**
+ * Columns for session LIST reads: everything except the digest text, which no
+ * list consumer reads and which would add kilobytes per row to a 200-row page.
+ */
+const { digest: _digestColumn, ...sessionListColumns } = getTableColumns(sessions);
+
+/**
+ * Drop the rolling digest when the transcript changes at or below the point it
+ * summarises. A digest cannot be partially un-summarised, so any edit inside
+ * the folded range clears it; the next turn falls back to the plain history
+ * window and the post-turn fold rebuilds the digest from the edited transcript.
+ * Runs inside the caller's transaction, after the session row is locked.
+ */
+async function resetDigestIfFolded(tx: Pick<Db, 'update'>, sessionId: string, seq: number): Promise<void> {
+  await tx
+    .update(sessions)
+    .set({ digest: null, digest_upto_seq: null, digest_updated_at: nowIso() })
+    .where(and(eq(sessions.id, sessionId), sql`${sessions.digest_upto_seq} >= ${seq}`));
+}
+
+function isoString(value: string | Date): string {
+  return value instanceof Date ? value.toISOString() : String(value);
+}
+
+/** `strpos(lower(content), term) > 0` for each term, joined with AND / OR. */
+function contentTermConditions(terms: string[], op: 'and' | 'or') {
+  const parts = terms.map((term) => sql`strpos(lower(${messages.content}), ${term}) > 0`);
+  // Parenthesised: drizzle's and() does not wrap raw fragments, so a bare
+  // `a OR b` would bind to its neighbours.
+  return sql`(${sql.join(parts, op === 'and' ? sql` AND ` : sql` OR `)})`;
+}
+
+/** Number of terms a message contains — the content search's rank. */
+function matchedTermCount(terms: string[]) {
+  const parts = terms.map((term) => sql`(CASE WHEN strpos(lower(${messages.content}), ${term}) > 0 THEN 1 ELSE 0 END)`);
+  return sql<number>`(${sql.join(parts, sql` + `)})`;
+}
+
 export function createSessionService(db: Db) {
   const service = {
     async create(
@@ -248,9 +384,9 @@ export function createSessionService(db: Db) {
       return session;
     },
 
-    async getById(id: string): Promise<SessionRow | undefined> {
+    async getById(id: string): Promise<SessionRecord | undefined> {
       const rows = await db.select().from(sessions).where(eq(sessions.id, id));
-      return rows[0] as SessionRow | undefined;
+      return rows[0] as SessionRecord | undefined;
     },
 
     /**
@@ -286,7 +422,17 @@ export function createSessionService(db: Db) {
           created_at: now,
           updated_at: now,
         };
-        await tx.insert(sessions).values(fork);
+        // A fork that keeps everything the source's digest folded carries the
+        // digest along — message seqs are copied verbatim, so it still lines up.
+        const sourceDigest = readSessionDigest(source);
+        const inheritsDigest =
+          sourceDigest !== null && (input.throughSeq == null || input.throughSeq >= sourceDigest.uptoSeq);
+        await tx.insert(sessions).values({
+          ...fork,
+          ...(inheritsDigest
+            ? { digest: sourceDigest.text, digest_upto_seq: sourceDigest.uptoSeq, digest_updated_at: now }
+            : {}),
+        });
 
         const messageCondition =
           input.throughSeq == null
@@ -312,7 +458,7 @@ export function createSessionService(db: Db) {
       const { limit = 200, offset = 0 } = opts;
       const conditions = sessionListConditions(opts);
 
-      let query = db.select().from(sessions);
+      let query = db.select(sessionListColumns).from(sessions);
       if (conditions.length > 0) {
         query = query.where(conditions.length === 1 ? conditions[0] : and(...conditions)) as any;
       }
@@ -340,7 +486,7 @@ export function createSessionService(db: Db) {
       ];
 
       return (await db
-        .select()
+        .select(sessionListColumns)
         .from(sessions)
         .where(and(...conditions))
         .orderBy(desc(sessions.updated_at))
@@ -424,7 +570,11 @@ export function createSessionService(db: Db) {
     },
 
     async deleteMessagesAfterSeq(sessionId: string, seq: number): Promise<void> {
-      await db.delete(messages).where(and(eq(messages.session_id, sessionId), sql`seq >= ${seq}`));
+      await db.transaction(async (tx) => {
+        await tx.select({ id: sessions.id }).from(sessions).where(eq(sessions.id, sessionId)).limit(1).for('update');
+        await tx.delete(messages).where(and(eq(messages.session_id, sessionId), sql`seq >= ${seq}`));
+        await resetDigestIfFolded(tx, sessionId, seq);
+      });
     },
 
     /**
@@ -533,6 +683,9 @@ export function createSessionService(db: Db) {
         }
 
         await tx.delete(messages).where(eq(messages.id, assistantMessageId));
+        // Never true while the fold keeps the last exchanges verbatim; kept so a
+        // replaced answer can never stay summarised under its old content.
+        await resetDigestIfFolded(tx, sessionId, lastMessage.seq);
         const [inserted] = await tx
           .insert(messages)
           .values(messageValues(input, lastMessage.seq, nowIso(), replacementMessageId ?? randomUUID()))
@@ -651,13 +804,21 @@ export function createSessionService(db: Db) {
         const [updated] = await tx.update(messages).set({ content }).where(eq(messages.id, messageId)).returning();
         await tx.delete(messages).where(and(eq(messages.session_id, sessionId), sql`${messages.seq} > ${message.seq}`));
         await tx.update(sessions).set({ updated_at: nowIso() }).where(eq(sessions.id, sessionId));
+        await resetDigestIfFolded(tx, sessionId, message.seq);
 
         return { ok: true, message: updated as MessageRow };
       });
     },
 
     async updateMessageContent(id: string, content: string): Promise<void> {
-      await db.update(messages).set({ content }).where(eq(messages.id, id));
+      await db.transaction(async (tx) => {
+        const [message] = await tx
+          .update(messages)
+          .set({ content })
+          .where(eq(messages.id, id))
+          .returning({ session_id: messages.session_id, seq: messages.seq });
+        if (message) await resetDigestIfFolded(tx, message.session_id, message.seq);
+      });
     },
 
     async addMessage(input: MessageInput): Promise<MessageRow> {
@@ -771,6 +932,7 @@ export function createSessionService(db: Db) {
     async buildChatMessages(sessionId: string, opts: ChatHistoryOpts = {}): Promise<PersistedChatMessage[]> {
       const conditions = [eq(messages.session_id, sessionId), sql`role IN ('user', 'assistant')`];
       if (opts.excludeMessageId) conditions.push(ne(messages.id, opts.excludeMessageId));
+      if (opts.afterSeq != null) conditions.push(sql`${messages.seq} > ${opts.afterSeq}`);
 
       const rows = await db
         .select({
@@ -785,6 +947,214 @@ export function createSessionService(db: Db) {
       return rows.map((row) => ({
         ...row,
         images: parsePersistedImages(row.images),
+      }));
+    },
+
+    /** User/assistant messages after `afterSeq` (all when null), in transcript order, with ids and seqs. */
+    async listChatMessagesAfter(sessionId: string, afterSeq: number | null): Promise<SequencedChatMessage[]> {
+      const conditions = [eq(messages.session_id, sessionId), sql`role IN ('user', 'assistant')`];
+      if (afterSeq != null) conditions.push(sql`${messages.seq} > ${afterSeq}`);
+      const rows = await db
+        .select({
+          id: messages.id,
+          seq: messages.seq,
+          role: messages.role,
+          content: messages.content,
+          created_at: messages.created_at,
+        })
+        .from(messages)
+        .where(and(...conditions))
+        .orderBy(messages.seq);
+      return rows as SequencedChatMessage[];
+    },
+
+    /**
+     * Move the rolling digest forward with a compare-and-set.
+     *
+     * Succeeds only when (a) `digest_upto_seq` is still what the fold read —
+     * a concurrent fold or an edit-triggered reset makes this one lose — (b)
+     * the new position is strictly ahead of it, and (c) the last folded
+     * message is still there with the content that was summarised. Returns
+     * whether the digest was written; a lost race is not an error.
+     */
+    async advanceDigest(sessionId: string, input: AdvanceDigestInput): Promise<boolean> {
+      if (!Number.isInteger(input.uptoSeq) || input.uptoSeq < 0)
+        throw new Error('uptoSeq must be a non-negative integer');
+      if (input.expectedUptoSeq != null && input.uptoSeq <= input.expectedUptoSeq) return false;
+      if (!input.digest.trim()) throw new Error('A digest cannot be empty');
+
+      return db.transaction(async (tx) => {
+        const [locked] = await tx
+          .select({ digest_upto_seq: sessions.digest_upto_seq })
+          .from(sessions)
+          .where(eq(sessions.id, sessionId))
+          .limit(1)
+          .for('update');
+        if (!locked) return false;
+        if ((locked.digest_upto_seq ?? null) !== input.expectedUptoSeq) return false;
+
+        const [boundary] = await tx
+          .select({ id: messages.id, content: messages.content })
+          .from(messages)
+          .where(and(eq(messages.session_id, sessionId), eq(messages.seq, input.uptoSeq)))
+          .limit(1);
+        if (!boundary || boundary.id !== input.boundary.id || boundary.content !== input.boundary.content) {
+          return false;
+        }
+
+        const updated = await tx
+          .update(sessions)
+          .set({ digest: input.digest, digest_upto_seq: input.uptoSeq, digest_updated_at: nowIso() })
+          .where(
+            and(
+              eq(sessions.id, sessionId),
+              input.expectedUptoSeq == null
+                ? sql`${sessions.digest_upto_seq} IS NULL`
+                : eq(sessions.digest_upto_seq, input.expectedUptoSeq),
+            ),
+          )
+          .returning({ id: sessions.id });
+        return updated.length > 0;
+      });
+    },
+
+    /**
+     * Full-text search inside one conversation's messages (the model's way
+     * back to details the digest folded away). Matches jieba-segmented query
+     * terms; messages containing every term come first, then messages
+     * containing some of the longer ones. Authorization is the caller's job.
+     */
+    async searchConversation(sessionId: string, query: string, limit = 10): Promise<MessageSearchHit[]> {
+      const { all, recall } = messageSearchTerms(query);
+      if (all.length === 0) return [];
+      const base = and(eq(messages.session_id, sessionId), sql`${messages.role} IN ('user', 'assistant')`);
+      const select = (terms: string[], op: 'and' | 'or', excludeIds: string[], take: number) =>
+        db
+          .select({
+            session_id: messages.session_id,
+            message_id: messages.id,
+            seq: messages.seq,
+            role: messages.role,
+            content: messages.content,
+            created_at: messages.created_at,
+            matched_terms: matchedTermCount(all),
+          })
+          .from(messages)
+          .where(
+            and(
+              base,
+              contentTermConditions(terms, op),
+              ...(excludeIds.length > 0 ? [notInArray(messages.id, excludeIds)] : []),
+            ),
+          )
+          .orderBy(desc(matchedTermCount(all)), desc(messages.seq))
+          .limit(take);
+
+      const hits = await select(all, 'and', [], limit);
+      if (hits.length < limit && all.length > 1) {
+        hits.push(
+          ...(await select(
+            recall,
+            'or',
+            hits.map((h) => h.message_id),
+            limit - hits.length,
+          )),
+        );
+      }
+      return hits.map(({ content, ...hit }) => ({
+        ...hit,
+        matched_terms: Number(hit.matched_terms),
+        snippet: buildSnippet(content, query, { window: 300 }),
+      }));
+    },
+
+    /**
+     * Content search across ONE user's own conversations — the same owner
+     * scope as `searchByTitle`, so it reveals nothing title search would not.
+     * Returns the best-matching message per session, best sessions first.
+     */
+    async searchMessages(
+      userId: string,
+      query: string,
+      opts: MessageSearchOpts = {},
+    ): Promise<SessionMessageSearchHit[]> {
+      const { all, recall } = messageSearchTerms(query);
+      if (all.length === 0) return [];
+      const limit = opts.limit ?? 10;
+      const run = async (terms: string[], op: 'and' | 'or', excludeSessionIds: string[], take: number) => {
+        const rows = await db.execute<{
+          session_id: string;
+          message_id: string;
+          seq: number;
+          role: string;
+          content: string;
+          created_at: string | Date;
+          matched_terms: number;
+          title: string | null;
+          profile_id: string;
+          channel: string;
+          session_updated_at: string | Date;
+        }>(sql`
+          SELECT * FROM (
+            SELECT DISTINCT ON (${messages.session_id})
+                   ${messages.session_id} AS session_id,
+                   ${messages.id} AS message_id,
+                   ${messages.seq} AS seq,
+                   ${messages.role} AS role,
+                   ${messages.content} AS content,
+                   ${messages.created_at} AS created_at,
+                   ${matchedTermCount(all)} AS matched_terms,
+                   ${sessions.title} AS title,
+                   ${sessions.profile_id} AS profile_id,
+                   ${sessions.channel} AS channel,
+                   ${sessions.updated_at} AS session_updated_at
+            FROM ${messages}
+            JOIN ${sessions} ON ${sessions.id} = ${messages.session_id}
+            WHERE ${sessions.user_id} = ${userId}
+              AND ${sessions.status} <> 'eval'
+              ${opts.channel ? sql`AND ${sessions.channel} = ${opts.channel}` : sql``}
+              ${
+                excludeSessionIds.length > 0
+                  ? sql`AND ${messages.session_id} NOT IN (${sql.join(
+                      excludeSessionIds.map((id) => sql`${id}`),
+                      sql`, `,
+                    )})`
+                  : sql``
+              }
+              AND ${messages.role} IN ('user', 'assistant')
+              AND ${contentTermConditions(terms, op)}
+            ORDER BY ${messages.session_id}, ${matchedTermCount(all)} DESC, ${messages.seq} DESC
+          ) best
+          ORDER BY best.matched_terms DESC, best.session_updated_at DESC
+          LIMIT ${take}
+        `);
+        return [...rows];
+      };
+
+      const hits = await run(all, 'and', [], limit);
+      if (hits.length < limit && all.length > 1) {
+        hits.push(
+          ...(await run(
+            recall,
+            'or',
+            hits.map((h) => h.session_id),
+            limit - hits.length,
+          )),
+        );
+      }
+      return hits.map((hit) => ({
+        session_id: hit.session_id,
+        message_id: hit.message_id,
+        seq: Number(hit.seq),
+        role: hit.role,
+        snippet: buildSnippet(hit.content, query, { window: 300 }),
+        // Raw rows come back from the driver as Date; keep the ISO-string contract.
+        created_at: isoString(hit.created_at),
+        matched_terms: Number(hit.matched_terms),
+        title: hit.title,
+        profile_id: hit.profile_id,
+        channel: hit.channel,
+        session_updated_at: isoString(hit.session_updated_at),
       }));
     },
 

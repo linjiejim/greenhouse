@@ -28,6 +28,7 @@ import { createClientActionBridge } from '../tools/client-action-bridge.js';
 import type { ClientActionBridge } from '../tools/client-action-bridge.js';
 import { createClientActionTools } from '../tools/client-actions.js';
 import type { ChatRequestBody, ChatRequestMessage } from '@greenhouse/types/api';
+import { readSessionDigest } from '@greenhouse/db';
 import { BROWSER_SESSION_CHANNEL, type SessionChannel } from '@greenhouse/types/session';
 import { resolveProfileAsync } from '../profiles/profile.js';
 import { isChatModelAllowed } from '../config/models.js';
@@ -44,14 +45,15 @@ import {
   windowMessagesByBudget,
   resolveHistoryBudget,
   modelSupportsVision,
+  injectTimeContext,
 } from '@greenhouse/agent-core';
 import type { EngineMessage } from '@greenhouse/agent-core';
 import { inlineImagesForVision } from '../chat/vision.js';
 import { generateSessionTitle } from '../llm/title.js';
 import { canWriteSession } from '../sessions/access.js';
-import { formatAmbientContextPrompt } from '../chat/ambient-context.js';
 import { admitTurnEnvironment } from '../chat/turn-environment.js';
-import type { AmbientContextEnvelope } from '@greenhouse/types/agent-context';
+import { appendImageIdHints, appendTurnContext, buildTurnContextBlock } from '../chat/turn-context.js';
+import { formatDigestSection, scheduleDigestFold } from '../chat/digest.js';
 import { chatRunRegistry, ChatRun } from '../chat/runs.js';
 import { pumpChatTurn, streamRunToResponse } from '../chat/turn.js';
 import { createProviderAttemptBudgetHook } from '../llm/usage-budget.js';
@@ -64,35 +66,6 @@ import {
 import { runtimeAdapterEnabled } from '../trusted-execution/kill-switches.js';
 import { instrumentRuntimeTools } from '../runtime/tool-evidence.js';
 import { chatToolCallClient, countToolCalls, requestAppClient } from '../usage/counters.js';
-
-/**
- * The language model receives upload IDs rather than image bytes. Resolve them
- * from the effective transcript (including persisted history), so regeneration
- * with no new body message still retains an image-only user's visual context.
- */
-export function appendLastUserImageHint(messages: ChatRequestMessage[]): ChatRequestMessage[] {
-  let lastUserIndex = -1;
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    if (messages[index]?.role === 'user') {
-      lastUserIndex = index;
-      break;
-    }
-  }
-  if (lastUserIndex < 0) return messages;
-
-  const lastUser = messages[lastUserIndex];
-  const imageIds = [
-    ...new Set(
-      (lastUser?.images ?? []).map((image) => sanitizeForPrompt(image.id).trim().slice(0, 256)).filter(Boolean),
-    ),
-  ];
-  if (imageIds.length === 0 || !lastUser) return messages;
-
-  const imageHint = `\n\n[Attached image ID(s): ${imageIds.join(', ')}.]`;
-  return messages.map((message, index) =>
-    index === lastUserIndex ? { ...message, content: message.content + imageHint } : message,
-  );
-}
 
 // ─── Route Factory ───────────────────────────────────────
 
@@ -187,6 +160,9 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
         let triggeringUserMessageId: string | undefined;
         let sourceMode: 'message' | 'regeneration' | 'continuation' = 'continuation';
         let expectedAssistantTail: { id: string; content: string } | undefined;
+        // The session's rolling digest as read at the start of this turn: it
+        // replaces every message with seq <= uptoSeq in the prompt.
+        let sessionDigest: { text: string; uptoSeq: number } | null = null;
         try {
           if (sessionId) {
             // ── Session mode: load history + append new user message ──
@@ -195,6 +171,7 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
               return c.json({ error: 'Session not found' }, 404);
             }
             sessionChannel = session.channel;
+            sessionDigest = readSessionDigest(session);
             // Continuing a chat mutates the session and reads its full history.
             // Sharing grants read-only inbox access, so only the owner or super may
             // reach addMessage/buildChatMessages/title updates below.
@@ -292,11 +269,13 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
               }
             }
 
-            chatMessages = regenerationTargetId
-              ? await getDb().sessions.buildChatMessages(sessionId, {
-                  excludeMessageId: regenerationTargetId,
-                })
-              : await getDb().sessions.buildChatMessages(sessionId);
+            // Only what the digest has not folded yet; the digest itself closes
+            // the system prompt below. Read against the same session snapshot,
+            // so digest and history always describe one consistent transcript.
+            chatMessages = await getDb().sessions.buildChatMessages(sessionId, {
+              ...(regenerationTargetId ? { excludeMessageId: regenerationTargetId } : {}),
+              ...(sessionDigest ? { afterSeq: sessionDigest.uptoSeq } : {}),
+            });
 
             // Defer title-provider I/O until the durable Chat Runtime trace is
             // running. The pump still awaits this promise and emits the same
@@ -388,7 +367,7 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
               );
             }
           } else {
-            engineMessages = appendLastUserImageHint(chatMessages);
+            engineMessages = appendImageIdHints(chatMessages);
           }
 
           // When the deployment adapter is enabled, every authenticated Chat
@@ -422,6 +401,7 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
                 requested_model: requestedModel ?? null,
                 effective_model: effectiveModelId,
                 transcript: exactChatMessages,
+                digest: sessionDigest ? { upto_seq: sessionDigest.uptoSeq, text: sessionDigest.text } : null,
                 provider_message_projection: engineMessages,
                 request_context: {
                   workspace_id: body.workspace_id ?? null,
@@ -470,6 +450,10 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
             chatToolCallClient(sessionChannel, requestAppClient(c)),
           );
 
+          // Snapshot before the page's Client Actions join: the system prompt is
+          // decided on these alone so it does not change with the page.
+          const serverTools: ToolRegistry = { ...tools };
+
           // ── Client actions: wire a bridge so execution round-trips to the client ──
           // Browser-declared actions (navigate/prefill/...) ride the legacy
           // `local-tool-request` event: the bridge emits the request and awaits the
@@ -499,44 +483,34 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
               })
             : tools;
 
+          // Cache-first prompt (chat/turn-context.ts): the system prompt holds
+          // only what is stable for this session, so DeepSeek/OpenAI-style
+          // automatic prefix caching keeps hitting turn after turn. Per-turn
+          // content — time, page context, the attached-images and UI-actions
+          // notes — closes the newest user message instead, for the model only.
+          //
           // Prompt-side tool guidance never lists tool names — the LLM already gets
           // full definitions via `tools[]`, and a prompt-side list can diverge from
           // the profile-narrowed set actually registered (leaking internal tool names
-          // into profile-narrowed sessions). We only nudge proactive use.
-          let systemPrompt = await buildSystemPromptWithUserNotes(
+          // into profile-narrowed sessions). We only nudge proactive use. Decided
+          // on the server tools alone: Client Actions vary with the page.
+          const systemPrompt = await buildSystemPromptWithUserNotes(
             profile,
-            Object.keys(tools).length > 0,
+            Object.keys(serverTools).length > 0,
             userId,
-            ambientContext,
+            {
+              digest: sessionDigest?.text,
+              canSearchConversation: Boolean(sessionId) && 'session_query' in serverTools,
+            },
           );
-
-          // Vision models see attached images directly, but analyze_image's own
-          // description commands "call this for each attached image" — verified
-          // live: without this note the model invents a placeholder URL
-          // (https://placeholder.local/…) to satisfy the tool, burns a step on a
-          // guaranteed failure, then answers from the pixels anyway.
-          if (visionInlinedImages > 0) {
-            systemPrompt +=
-              `\n\n## Attached Images\n` +
-              `The user's attached images are embedded in this conversation — you can see them directly. ` +
-              `Do NOT call analyze_image for images you can already see, and never invent an image ID or URL. ` +
-              `analyze_image is only for a public HTTPS image URL, or an image ID explicitly listed in the message text.`;
-          }
-
-          // Nudge the model to actually drive the UI when a request maps to a client action,
-          // instead of only describing the steps in prose.
-          if (usesClientActions) {
-            systemPrompt +=
-              `\n\n## UI Actions (operate the user's current screen)\n` +
-              `These tools operate the screen the user is currently looking at: ${clientActions
-                .map((a) => a.name)
-                .join(', ')}. ` +
-              `When the user asks you to open, navigate to, show, or fill something that maps to one of these actions, ` +
-              `CALL the tool to do it for them rather than only telling them where to click. ` +
-              `Use the matching read action (e.g. *_get_current_view) when you need to know what is on screen. ` +
-              `After a UI action succeeds, briefly confirm what you did. These actions only affect the UI — ` +
-              `real data changes still go through the normal confirmed mutation tools.`;
-          }
+          const providerMessages = appendTurnContext(
+            engineMessages,
+            buildTurnContextBlock({
+              ambientContext,
+              visionInlinedImages,
+              ...(usesClientActions ? { clientActionNames: clientActions.map((a) => a.name) } : {}),
+            }),
+          );
 
           if (runtimeTrace) {
             await recordChatRuntimeProviderInput(getDb(), runtimeTrace, {
@@ -546,7 +520,9 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
               tool_choice: profile.tool_choice ?? 'auto',
               tool_ids: Object.keys(executionToolRegistry),
               system_prompt: systemPrompt,
-              messages: engineMessages,
+              // Exactly what the engine sends: the closing block included and
+              // the same deterministic per-message time stamps it applies.
+              messages: injectTimeContext(providerMessages),
             });
           }
 
@@ -597,7 +573,7 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
           // ── Create chat stream via shared engine ──
           const stream = await createChatStreamAsync({
             profile,
-            messages: engineMessages,
+            messages: providerMessages,
             tools: executionToolRegistry,
             systemPrompt,
             ...(sessionId ? { sessionId } : {}),
@@ -621,7 +597,7 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
             modelId,
             profile,
             systemPrompt,
-            chatMessages: engineMessages,
+            chatMessages: providerMessages,
             sessionId: sessionId ?? undefined,
             userId,
             userLocale: user?.locale ?? undefined,
@@ -631,6 +607,15 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
             expectedTail: expectedAssistantTail,
             providerAttemptHook,
             runtimeTrace,
+            // Rolling digest: fold older turns once the reply is persisted —
+            // in the background, never delaying or failing this turn.
+            ...(sessionId
+              ? {
+                  onPersisted: () => {
+                    void scheduleDigestFold({ sessionId, userId, modelId: effectiveModelId });
+                  },
+                }
+              : {}),
           });
         } catch (err) {
           if (runtimeTrace) {
@@ -762,11 +747,18 @@ const LOCALE_DISPLAY_NAMES: Record<string, string> = {
   zh: 'Simplified Chinese (简体中文)',
 };
 
+/**
+ * The per-session system prompt. Everything here is stable across turns —
+ * the profile prompt, user notes, memory index, tool guidance, response
+ * language and, last, the rolling digest (which changes only when a fold
+ * happens) — so the provider's automatic prefix cache keeps hitting. Anything
+ * that varies per turn belongs in the closing block (chat/turn-context.ts).
+ */
 async function buildSystemPromptWithUserNotes(
   profile: AgentProfile,
   hasTools: boolean,
   userId: string | null,
-  ambientContext?: AmbientContextEnvelope,
+  conversation: { digest?: string; canSearchConversation: boolean },
 ): Promise<string> {
   let userInfo: string | undefined;
   let userLocale: string | undefined;
@@ -807,8 +799,8 @@ async function buildSystemPromptWithUserNotes(
       `${localeName} — it is the user's interface language.`;
   }
 
-  if (ambientContext) {
-    prompt += formatAmbientContextPrompt(ambientContext);
+  if (conversation.digest) {
+    prompt += formatDigestSection(conversation.digest, { canSearch: conversation.canSearchConversation });
   }
 
   return prompt;

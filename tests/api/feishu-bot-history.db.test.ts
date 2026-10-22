@@ -7,7 +7,7 @@
  * 用 generate 测试缝截下模型实际收到的消息。
  */
 
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 process.env.TOKEN_SIGNING_KEY = process.env.TOKEN_SIGNING_KEY ?? '11'.repeat(32);
 
@@ -125,5 +125,80 @@ describe('feishu bot multi-turn context', () => {
 
     expect(seen).toHaveLength(2);
     expect(seen[1]!.messages.map((m) => [m.role, m.content])).toEqual([['user', '我也问一句']]);
+  });
+
+  it('replays the owner the rolling digest instead of the messages it folded, and folds after the turn', async () => {
+    const seen: AgentGenerateArgs[] = [];
+    const generate = async (args: AgentGenerateArgs) => {
+      seen.push(args);
+      return { text: 'ok', usage: { inputTokens: 1, outputTokens: 1 }, steps: [] };
+    };
+    const scheduleFold = vi.fn(() => null);
+
+    const first = message({ text: '最早的问题' });
+    await dispatchFeishuMessage(first, { db, toolRegistry: {}, generate, scheduleFold });
+    const sessionId = (await db.feishuBot.findConversation(first.message_id))!.session_id;
+    // seq 0 = 最早的问题, seq 1 = ok — fold both into the digest.
+    const [, folded] = await db.sessions.listChatMessagesAfter(sessionId, null);
+    expect(
+      await db.sessions.advanceDigest(sessionId, {
+        expectedUptoSeq: null,
+        uptoSeq: folded!.seq,
+        boundary: { id: folded!.id, content: folded!.content },
+        digest: '### Goals\n- DIGEST-MARKER',
+      }),
+    ).toBe(true);
+
+    const second = message({ text: '接着问', root_id: first.message_id, parent_id: first.message_id });
+    await dispatchFeishuMessage(second, { db, toolRegistry: {}, generate, scheduleFold });
+
+    expect(seen[1]!.system).toContain('## Earlier in this conversation');
+    expect(seen[1]!.system).toContain('DIGEST-MARKER');
+    expect(seen[1]!.messages.map((m) => m.content)).toEqual(['接着问']);
+    expect(scheduleFold).toHaveBeenLastCalledWith(expect.objectContaining({ sessionId, userId: owner.id }));
+  });
+
+  it('never shows the digest to another member replying in the owner’s group thread', async () => {
+    const seen: AgentGenerateArgs[] = [];
+    const generate = async (args: AgentGenerateArgs) => {
+      seen.push(args);
+      return { text: 'ok', usage: { inputTokens: 1, outputTokens: 1 }, steps: [] };
+    };
+    const scheduleFold = vi.fn(() => null);
+    const other = await createInternalTestUser(db, { email: `feishu-digest-other-${Date.now()}@test.local` });
+    const otherOpenId = `ou_digest_other_${Date.now()}_${Math.random()}`;
+    await db.providerTokens.upsert({
+      user_id: other.id,
+      provider: 'feishu',
+      workspace_id: null,
+      provider_user_id: otherOpenId,
+      access_token: null,
+    });
+
+    const first = message({ text: '我的预算方案', chat_type: 'group', chat_id: 'oc_digest' });
+    await dispatchFeishuMessage(first, { db, toolRegistry: {}, generate, scheduleFold });
+    const sessionId = (await db.feishuBot.findConversation(first.message_id))!.session_id;
+    const [, folded] = await db.sessions.listChatMessagesAfter(sessionId, null);
+    await db.sessions.advanceDigest(sessionId, {
+      expectedUptoSeq: null,
+      uptoSeq: folded!.seq,
+      boundary: { id: folded!.id, content: folded!.content },
+      digest: '### Facts\n- PRIVATE-DIGEST',
+    });
+    scheduleFold.mockClear();
+
+    const reply = message({
+      text: '我也问一句',
+      chat_type: 'group',
+      chat_id: 'oc_digest',
+      open_id: otherOpenId,
+      root_id: first.message_id,
+      parent_id: first.message_id,
+    });
+    await dispatchFeishuMessage(reply, { db, toolRegistry: {}, generate, scheduleFold });
+
+    expect(seen[1]!.system).not.toContain('PRIVATE-DIGEST');
+    expect(seen[1]!.messages.map((m) => m.content)).toEqual(['我也问一句']);
+    expect(scheduleFold).not.toHaveBeenCalled();
   });
 });

@@ -8,8 +8,9 @@
  * dependency-free window: estimate tokens per message, keep the newest
  * messages within a budget, drop the oldest whole messages beyond it.
  *
- * Deliberately NOT a summarizer. Rolling compaction changes what the model can
- * recall and is a product decision; this is only the safety floor under it.
+ * Deliberately NOT a summarizer: the api's rolling digest (apps/api/src/chat/
+ * digest.ts) folds old turns into a summary once history passes
+ * `resolveDigestTriggerTokens()`; this window stays the safety floor under it.
  */
 
 import { getModelEntry } from './registry.js';
@@ -43,6 +44,23 @@ export function resolveHistoryBudget(modelId?: string): number {
   const entry = modelId ? getModelEntry(modelId) : undefined;
   if (!entry?.contextWindow) return HISTORY_TOKEN_BUDGET;
   return Math.floor(entry.contextWindow * (entry.compactionThreshold ?? DEFAULT_COMPACTION_THRESHOLD));
+}
+
+/**
+ * Share of the history budget at which the rolling digest folds old turns:
+ * half of it, i.e. 25% of the context window at the default 50% threshold.
+ * Folding well before the drop-oldest window bites keeps the prompt prefix
+ * stable (the digest changes once per fold, the window would shift every turn).
+ */
+export const DIGEST_TRIGGER_SHARE_OF_HISTORY = 0.5;
+
+/**
+ * Estimated tokens of not-yet-folded history above which a session's rolling
+ * digest folds its older turns. Follows the same catalog lookup and fallback
+ * as `resolveHistoryBudget` (128k window → 32k; unknown model → 40k).
+ */
+export function resolveDigestTriggerTokens(modelId?: string): number {
+  return Math.floor(resolveHistoryBudget(modelId) * DIGEST_TRIGGER_SHARE_OF_HISTORY);
 }
 
 /** Rough token estimate: CJK ≈ 1 token per char, everything else ≈ 4 chars per token. */

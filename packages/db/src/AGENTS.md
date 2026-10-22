@@ -61,6 +61,7 @@
 
 - `agent_write_grants` 只能放行 r2 写入；r3（不可逆或对外）写入永远要逐次审批，服务层与 API 都要拒绝建 r3 的常驻授权。
 - `usage_counters` 只存计数：不加用户、参数或内容列。新增计数点用 `usageCounters.increment(kind, key, client)`（API 侧走 fire-and-forget 的 `countUsage()`，见 api AGENTS「模块用量计数」），不要另建统计表。按 UTC 日单条 upsert `count = count + 1`；读侧 `summarize(kind, {from, to})` 按 key × client 求和。词表（client、页面模块 id 的封闭清单）在 `@greenhouse/types/usage`。
+- `sessions.digest` / `digest_upto_seq` 只经 `sessions.advanceDigest()` 写入（锁会话行的比较后写：只前进、且最后一条被折叠的消息未变）；任何改动 `seq ≤ digest_upto_seq` 消息的 service 方法必须在同一事务里调 `resetDigestIfFolded`。列表查询用 `sessionListColumns`，不带摘要正文。
 - `custom_profiles` 在 v1.4 去掉审核生命周期：团队可见只看 `is_shared`；`lifecycle_status` / `lifecycle_note` / `reviewed_*` / `next_review_at` / `published_version` 成为退役列（迁移 0008 把未审核却 `is_shared` 的行改回私有，保持可见性不变）。
 
 ### 退役表（`schema/retired.ts`）
@@ -148,6 +149,7 @@
 - **CJK snippet**:`ts_headline` 对分词列与原文不对齐,改 `buildSnippet`(应用层按首个命中 token 截原文);拉丁词才继续用 `ts_headline`
 - **回填**:迁移只加空列,存量行由启动时的 `backfillKnowledgeTokens`（`apps/api/src/knowledge/backfill.ts`）自动补齐,也可 `pnpm cli knowledge reindex` 手动重算;之后写路径保持同步
 - **AND 命中不足时用 OR 补位,不是「首个非空 pass 即返回」**(2026-08-14):旧写法让一条平庸的 AND 命中挡住整个 OR
+- **消息正文检索**(`sessions.searchConversation` / `searchMessages`):`messages` 没有 `_tokens` 列(v1.4 冻结 schema),查询侧仍用 `segmentForFts` 切词,再按词做 `strpos(lower(content), term)` 子串匹配,AND→OR 补位,OR 去掉单字词;原始片段用 `buildSnippet`。数据量上来再补分词列 + GIN 索引
   候选集。现在两个 pass 都跑,AND 结果排前、OR 按 id 去重填满剩余名额,仍不够才回退 ILIKE。`search` 与 `searchShared`
   两处同款,改一处必须改另一处。
 - **`KnowledgeSearchOpts.folderIds` / `KnowledgeListOpts.folderIds` 是收窄语义**:`undefined`=不限目录,

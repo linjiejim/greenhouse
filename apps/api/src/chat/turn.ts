@@ -113,6 +113,12 @@ export interface ChatTurnArgs {
   providerAttemptHook: ProviderAttemptHook;
   /** Durable trace for every authenticated ordinary Chat provider turn. */
   runtimeTrace: ChatRuntimeTrace | null;
+  /**
+   * Called once the run has ended, only for a session turn whose reply was
+   * generated completely and persisted (the route schedules the rolling-digest
+   * fold here). Must not throw; it is not awaited.
+   */
+  onPersisted?: () => void;
 }
 
 /**
@@ -518,6 +524,14 @@ export async function pumpChatTurn(args: ChatTurnArgs): Promise<void> {
       runId: run.runId,
       status: runStatus,
     });
+  }
+
+  if (args.onPersisted && sessionId && generationCompleted && !persistenceError && !run.stopReason) {
+    try {
+      args.onPersisted();
+    } catch (err) {
+      logger.warn('[chat] post-persist hook failed', { error: toErrorMessage(err) });
+    }
   }
 }
 

@@ -296,7 +296,7 @@ export function buildLazyServerTools(
     tools.tables_schema_plan = createTablesSchemaPlanTool({ userId });
   }
   if (effectiveTools.includes('session_query')) {
-    tools.session_query = createSessionQueryTool(db, { userId, userRole });
+    tools.session_query = createSessionQueryTool(db, { userId, userRole, sessionId });
   }
   if (effectiveTools.includes('knowledge_query')) {
     tools.knowledge_query = createKnowledgeQueryTool(db, { userId });
